@@ -5,7 +5,11 @@ import { existsSync, readFileSync, readdirSync } from 'node:fs'
 import { dirname, join, resolve } from 'node:path'
 import { fileURLToPath } from 'node:url'
 import { verifySyncFixture, verifySyncInputs } from './verify-sync-inputs.mjs'
-import { serverTestFixtures, serverTestFixtureRevisions } from './server-test-fixtures.mjs'
+import {
+  serverTestFixtures,
+  serverTestFixtureRevisions,
+  SERVER_TEST_COMMIT,
+} from './server-test-fixtures.mjs'
 
 const plugin = resolve(dirname(fileURLToPath(import.meta.url)), '..')
 const scratch = resolve(plugin, '../.scratch/sync-inputs')
@@ -40,7 +44,8 @@ export function selectServerTests(argv) {
 }
 
 if (process.argv[1] && resolve(process.argv[1]) === fileURLToPath(import.meta.url)) {
-  const { commit } = verifySyncInputs()
+  verifySyncInputs()
+  const commit = SERVER_TEST_COMMIT
   const { repository, files, variables } = selectServerTests(process.argv.slice(2))
   const env = { ...process.env },
     built = new Map()

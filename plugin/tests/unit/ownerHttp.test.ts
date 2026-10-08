@@ -20,11 +20,7 @@ describe('concrete fenced owner HTTP port', () => {
       const fetcher: typeof fetch = async (url, init) => {
         const path = new URL(String(url)).pathname
         expect(new Headers(init?.headers).get('authorization')).toBe(
-          path === '/v1/auth/login'
-            ? null
-            : path.includes('/assets/visibility/')
-              ? 'Bearer absd_' + 'b'.repeat(43)
-              : 'Bearer abst_' + 'a'.repeat(43)
+          path === '/v1/auth/login' ? null : 'Bearer abst_' + 'a'.repeat(43)
         )
         const value =
           path === '/v1/auth/login'
@@ -39,20 +35,9 @@ describe('concrete fenced owner HTTP port', () => {
                   state: 'unavailable',
                   revoked_at: new Date(1000).toISOString(),
                 }
-              : path.includes('/assets/visibility/')
-                ? {
-                    grantId: wire.id,
-                    label: wire.label,
-                    targetFileId: wire.root_file_id,
-                    visible: true,
-                    targetVersionId: 'sample-root-version',
-                    revision: 27,
-                    scopeRevision: 3,
-                    withdrawalGeneration: 0,
-                  }
-                : kind === 'folder'
-                  ? [wire]
-                  : []
+              : (path.endsWith('/grants/groups') ? kind === 'group' : kind === 'folder')
+                ? [wire]
+                : []
         if (init?.method === 'PATCH') sends.push({ path, body: JSON.parse(String(init.body)) })
         return new Response(JSON.stringify(value))
       }

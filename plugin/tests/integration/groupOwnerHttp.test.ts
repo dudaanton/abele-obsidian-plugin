@@ -14,7 +14,7 @@ describe('strict owner group management HTTP', () => {
     if (!root) throw new Error('Explicit reviewed group-owner API archive required')
     s = await scopedApiServer({
       root,
-      commit: '80bc7c666ac54cc186696ebdaaccd2d9e7a735ba',
+      commit: 'f927e62bb41817cd3cf0180e80f989e8c166ff1d',
       group: true,
     })
     const owner = await s.account('sample-group-owner@example.com'),

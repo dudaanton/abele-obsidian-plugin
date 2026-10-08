@@ -5,12 +5,11 @@ import {
   LoginResponseSchema,
   ManifestResponseSchema,
   VaultStateSchema,
-  TargetVisibilitySchema,
 } from '@abele/sync-protocol'
 import { sha256 } from '@abele/sync-core'
-import { SharingHttp, SharingHttpError, type SharingHttpOptions } from './sharingHttp'
+import { SharingHttp, type SharingHttpOptions } from './sharingHttp'
 import { z } from 'zod'
-import { groupHints, type GroupShareHint } from './sharingCatalogue'
+import type { GroupShareHint } from './sharingCatalogue'
 import { preparationOf } from './grantPreparation'
 import type { GroupGrant, GroupRelation, GroupApprovalReceipt } from './groupSharing'
 import type {
@@ -40,6 +39,7 @@ export interface OwnerSharedGrant {
   verified?: boolean
   remembered?: boolean
   revokedAt?: string | null
+  expiresAt?: string | null
 }
 const SharedGrantSchema = z
   .object({
@@ -53,6 +53,7 @@ const SharedGrantSchema = z
     acl_revision: z.number().int().nonnegative(),
     state: z.string().min(1),
     revoked_at: z.string().datetime({ offset: true }).nullable().optional(),
+    expires_at: z.string().datetime({ offset: true }).nullable().optional(),
   })
   .passthrough()
 const segment = (id: string) => encodeURIComponent(id)
@@ -160,84 +161,52 @@ export class OwnerFolderHttpPort implements FolderSharingPort {
   }
   async list(
     session: OwnerSession,
-    remembered: GroupShareHint[] = []
+    _remembered: GroupShareHint[] = []
   ): Promise<OwnerSharedGrant[]> {
-    const rows = z
-      .array(SharedGrantSchema)
-      .max(1000)
-      .parse(
-        await this.http.json(
-          'GET',
-          '/v1/vaults/' + segment(this.options.vaultId) + '/grants',
-          this.ownerToken(session)
-        )
-      )
-    if (
-      rows.some(
-        (row) =>
-          row.vault_id !== this.options.vaultId ||
-          row.selector_kind !== 'folder' ||
-          !row.folder_prefix
-      )
-    )
-      throw new Error('Sharing list differs from the bound vault')
-    const result = rows.map<OwnerSharedGrant>((row) => ({
-      id: row.id,
-      label: row.label,
-      kind: 'folder',
-      prefix: row.folder_prefix!,
-      rootId: null,
-      role: row.role,
-      revision: row.acl_revision,
-      state: row.state,
-      revokedAt: row.revoked_at ?? null,
-      verified: true,
-    }))
-    // The registered list is folder-only. Group identities/revisions must come from
-    // acknowledged management replies, never invented rows or publication revisions.
-    for (const hint of groupHints(remembered)) {
-      const share: OwnerSharedGrant = {
-        ...hint,
-        kind: 'group',
-        prefix: null,
-        remembered: true,
-        verified: false,
-      }
-      try {
-        const token = this.options.deviceToken()
-        if (!token || !/^absd_[A-Za-z0-9_-]{43}$/.test(token))
-          throw new Error('Bound personal group review credential required')
-        const view = TargetVisibilitySchema.parse(
+    const result: OwnerSharedGrant[] = []
+    for (const kind of ['folder', 'group'] as const) {
+      const rows = z
+        .array(SharedGrantSchema)
+        .max(64)
+        .parse(
           await this.http.json(
             'GET',
             '/v1/vaults/' +
               segment(this.options.vaultId) +
-              '/grants/' +
-              segment(hint.id) +
-              '/assets/visibility/' +
-              segment(hint.rootId),
-            token
+              '/grants' +
+              (kind === 'group' ? '/groups' : ''),
+            this.ownerToken(session)
           )
         )
-        if (view.grantId !== hint.id || view.targetFileId !== hint.rootId)
-          throw new Error('Remembered group visibility binding changed')
-        if (view.visible) {
-          share.label = view.label
-          share.state = 'active'
-          share.verified = true
-        }
-      } catch (error) {
-        if (!(error instanceof SharingHttpError)) throw error
-        if (
-          !['not_found', 'scope_updating', 'scope_unavailable', 'network_unavailable'].includes(
-            error.code
-          )
+      if (
+        rows.some(
+          (row) =>
+            row.vault_id !== this.options.vaultId ||
+            row.selector_kind !== kind ||
+            (kind === 'folder' ? !row.folder_prefix : !row.root_file_id)
         )
-          throw error
-      }
-      if (!share.verified) share.state = 'unknown'
-      result.push(share)
+      )
+        throw new Error('Sharing list differs from the bound vault and selector')
+      result.push(
+        ...rows.map<OwnerSharedGrant>((row) => ({
+          id: row.id,
+          label: row.label,
+          kind,
+          prefix: row.folder_prefix ?? null,
+          rootId: row.root_file_id ?? null,
+          role: row.role,
+          revision: row.acl_revision,
+          state: row.state,
+          revokedAt: row.revoked_at ?? null,
+          expiresAt: row.expires_at ?? null,
+          verified: true,
+          remembered: false,
+        }))
+      )
     }
+    // A partial fetch, duplicate identity or unsupported group route is not an inventory.
+    if (new Set(result.map((row) => row.id)).size !== result.length)
+      throw new Error('Sharing inventory contains duplicate identities')
     return result
   }
   async revoke(session: OwnerSession, share: OwnerSharedGrant): Promise<void> {

@@ -52,9 +52,33 @@ it('retains the server-sized discovery inventory without widening publication un
       sharing: [{ issuer: 'https://sync.example', vaultId: 'sample-vault', grants: ids }],
     })
   expect(audiencesFor(migrate(grants), 'https://sync.example', 'sample-vault')).toEqual(grants)
-  expect(
+  expect(() =>
     audiencesFor(migrate([...grants, 'too-many']), 'https://sync.example', 'sample-vault')
-  ).toEqual([])
+  ).toThrow(/discovery/i)
+})
+it('reports an invalid group entry without erasing the valid hints beside it', () => {
+  const valid = {
+    id: 'sample-group',
+    label: 'Sample group',
+    rootId: 'sample-root',
+    role: 'editor',
+    revision: 3,
+    state: 'active',
+  }
+  const raw = {
+    sharing: [
+      {
+        issuer: 'https://sync.example',
+        vaultId: 'sample-vault',
+        grants: ['sample-group'],
+        groups: [valid, { ...valid, id: 'broken-group', revision: 'invalid' }],
+      },
+    ],
+  }
+  const settings = migrateSyncSettings(raw)
+  expect(settings.sharing[0].groups).toEqual(raw.sharing[0].groups)
+  expect(() => groupsFor(settings, 'https://sync.example', 'sample-vault')).toThrow(/discovery/i)
+  expect(() => audiencesFor(settings, 'https://sync.example', 'sample-vault')).toThrow(/discovery/i)
 })
 it('does not accept malformed or oversized sharing catalogues', () => {
   for (const sharing of [
@@ -63,8 +87,10 @@ it('does not accept malformed or oversized sharing catalogues', () => {
     [{ issuer: 'http://unsafe.example', vaultId: 'sample', grants: ['group'] }],
     [{ issuer: 'https://sync.example', vaultId: 'sample-vault', grants: [''] }],
   ]) {
-    expect(
-      audiencesFor(migrateSyncSettings({ sharing }), 'https://sync.example', 'sample-vault')
-    ).toEqual([])
+    const settings = migrateSyncSettings({ sharing })
+    expect(settings.sharing).toEqual(sharing)
+    expect(() => audiencesFor(settings, 'https://sync.example', 'sample-vault')).toThrow(
+      /discovery/i
+    )
   }
 })

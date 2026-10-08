@@ -19,7 +19,7 @@ const versions = [
   {
     name: 'pinned API',
     variable: 'ABELE_SCOPED_API_FIXTURE',
-    commit: '80bc7c666ac54cc186696ebdaaccd2d9e7a735ba',
+    commit: 'f927e62bb41817cd3cf0180e80f989e8c166ff1d',
   },
   {
     name: 'released API',
@@ -95,7 +95,7 @@ describe.each(versions)('owner sharing against the $name', ({ variable, commit }
       },
     }
   }
-  it('the folder-only list preserves client-remembered groups without inventing a group-list route', async () => {
+  it('the authenticated folder and group lists supply the complete current inventory', async () => {
     const { session, grant, hint } = await group()
     const folder = await port.create(session, {
       label: 'Sample folder',
@@ -108,7 +108,11 @@ describe.each(versions)('owner sharing against the $name', ({ variable, commit }
       })
     ).json()
     expect(raw.map((row: any) => row.selector_kind)).toEqual(['folder'])
-    const rows = await port.list(session, [hint])
+    if (variable === 'ABELE_OWNER_RELEASE_FIXTURE') {
+      await expect(port.list(session)).rejects.toMatchObject({ code: 'not_found', status: 404 })
+      return // Never present a cache as a complete list on an unsupported server.
+    }
+    const rows = await port.list(session)
     expect(rows.map((row) => row.id).sort()).toEqual([folder.id, grant.id].sort())
     expect(rows.find((row) => row.id === grant.id)).toMatchObject({
       kind: 'group',
@@ -126,7 +130,16 @@ describe.each(versions)('owner sharing against the $name', ({ variable, commit }
           prefix: 'Shared/',
           role: 'editor',
         })
-        share = (await port.list(session)).find((row) => row.id === folder.id)!
+        share = {
+          id: folder.id,
+          label: 'Sample folder',
+          kind: 'folder',
+          prefix: folder.prefix,
+          rootId: null,
+          role: folder.role,
+          revision: folder.revision,
+          state: folder.state!,
+        }
       } else share = { ...hint, kind: 'group', prefix: null }
       await port.revoke(session, share)
       const row = await server.db
@@ -141,16 +154,23 @@ describe.each(versions)('owner sharing against the $name', ({ variable, commit }
       await expect(port.revoke(session, share)).rejects.toMatchObject({ code: 'conflict' })
     }
   )
-  it('checks remembered names but never substitutes publication revisions for a changed group ACL', async () => {
+  it('uses the current server group ACL, never cached or publication revisions', async () => {
     const { session, grant, hint } = await group()
     await port.updateGroup(session, grant, {
       expected_revision: grant.revision,
       label: 'Changed sample group',
     })
-    const [review] = await port.list(session, [hint])
-    expect(review.label).toBe('Changed sample group')
-    expect(review.revision).toBe(hint.revision) // No registered route returns the current group ACL.
-    await expect(port.revoke(session, review)).rejects.toMatchObject({ code: 'conflict' })
+    await expect(
+      port.revoke(session, { ...hint, kind: 'group', prefix: null })
+    ).rejects.toMatchObject({ code: 'conflict' })
+    if (variable === 'ABELE_OWNER_RELEASE_FIXTURE') {
+      await expect(port.list(session)).rejects.toMatchObject({ code: 'not_found', status: 404 })
+    } else {
+      const [review] = await port.list(session)
+      expect(review.label).toBe('Changed sample group')
+      expect(review.revision).toBe(hint.revision + 1)
+      expect(review.remembered).not.toBe(true)
+    }
     const row = await server.db
       .selectFrom('scope_grants')
       .selectAll()
@@ -161,9 +181,24 @@ describe.each(versions)('owner sharing against the $name', ({ variable, commit }
     const absent = await server.fetch(`http://127.0.0.1/v1/vaults/${vaultId}/grants/groups`, {
       headers: { authorization: 'Bearer ' + accountToken },
     })
-    expect(absent.status).toBe(404)
+    expect(absent.status).toBe(variable === 'ABELE_OWNER_RELEASE_FIXTURE' ? 404 : 200)
+    if (absent.status === 200) {
+      expect((await absent.json())[0]).toMatchObject({
+        id: grant.id,
+        acl_revision: grant.revision + 1,
+      })
+      const [fresh] = await port.list(session)
+      await port.revoke(session, fresh)
+      const stopped = await server.db
+        .selectFrom('scope_grants')
+        .selectAll()
+        .where('id', '=', grant.id)
+        .executeTakeFirstOrThrow()
+      expect(stopped.revoked_at).toEqual(expect.any(String))
+      expect(stopped.acl_revision).toBe(grant.revision + 2)
+    }
   })
-  it('keeps acknowledged group reviews across owner restarts and the real folder-only list', async () => {
+  it('refreshes acknowledged group reviews from server truth across owner restarts', async () => {
     const note = await seed('Notes/remembered-root.md')
     const app = useVault([]),
       config = AbeleConfig.getInstance(),
@@ -218,6 +253,16 @@ describe.each(versions)('owner sharing against the $name', ({ variable, commit }
       })
       expect(grant.state).toBe('active')
       expect(host.audiences.value).toContain(grant.id)
+      if (variable === 'ABELE_OWNER_RELEASE_FIXTURE') {
+        const before = JSON.stringify(config.sync.sharing)
+        await expect(management.list(session)).rejects.toMatchObject({
+          code: 'not_found',
+          status: 404,
+        })
+        expect(JSON.stringify(config.sync.sharing)).toBe(before)
+        expect(host.audiences.value).toContain(grant.id)
+        return
+      }
       let rows = await management.list(session)
       expect(rows.map((row) => row.id)).toContain(grant.id)
       expect(host.audiences.value).toContain(grant.id)
@@ -231,13 +276,12 @@ describe.each(versions)('owner sharing against the $name', ({ variable, commit }
       expect(remembered).toMatchObject({
         label: 'Remembered sample group',
         kind: 'group',
-        remembered: true,
+        remembered: false,
         verified: true,
       })
       await management.revoke(session, remembered)
       expect(host.audiences.value).not.toContain(grant.id)
-      expect(config.sync.sharing[0].grants).not.toContain(grant.id)
-      expect(config.sync.sharing[0].groups).toEqual([])
+      expect(config.sync).not.toHaveProperty('sharing') // Empty inventories never travel as settings.
     } finally {
       owner?.close()
       await host.close()

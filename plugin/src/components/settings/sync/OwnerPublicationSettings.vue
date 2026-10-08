@@ -16,12 +16,8 @@
       <p v-if="discoveryWarning" role="status">{{ discoveryWarning }}</p>
       <div v-if="manager" class="abele-sharing-management">
         <p>
-          Sign in to see shared folders and groups remembered by this plugin, review their images,
-          or stop sharing.
-        </p>
-        <p>
-          The server lists folders, not groups. Groups created elsewhere or without a saved review
-          may not appear here.
+          Sign in to see the server's current shared folders and groups, review their images, or
+          stop sharing.
         </p>
         <label
           >Your email<input
@@ -49,13 +45,7 @@
           v-for="share in shares"
           :key="share.id"
           :name="share.label"
-          :desc="
-            share.kind === 'folder'
-              ? 'Shared folder: ' + share.prefix
-              : share.verified === false
-                ? 'Remembered group — current sharing could not be checked.'
-                : 'Remembered group — its name was checked with the server.'
-          "
+          :desc="share.kind === 'folder' ? 'Shared folder: ' + share.prefix : 'Shared group'"
         >
           <Button
             text="Review images"
@@ -306,7 +296,10 @@ async function loadShares() {
       return
     }
     session.value = authorized
-    shares.value = rows.filter((row) => ['active', 'preparing', 'unknown'].includes(row.state))
+    shares.value = rows.filter(
+      (row) =>
+        row.revokedAt == null && (row.expiresAt == null || Date.parse(row.expiresAt) > Date.now())
+    )
     listed.value = true
     const first = shares.value.find((share) => share.verified !== false)
     if (first) await loadView(first)
@@ -338,7 +331,7 @@ async function stopShare() {
     if (!closed && props.manager === manager)
       error.value =
         share.kind === 'group' && (e as { code?: string }).code === 'conflict'
-          ? 'This group changed since its saved review. No new change was made. The server does not provide a fresh group access review.'
+          ? 'This group changed since this review. Refresh the sharing list and review it again.'
           : sharingErrorMessage(
               e,
               'Could not stop sharing. Sign in again and review the current sharing.'

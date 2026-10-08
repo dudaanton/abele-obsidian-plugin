@@ -41,9 +41,16 @@ export function migrateSyncSettings(raw: unknown): SyncSettings {
   const o = objectOf(raw)
   if (o === null) return defaultSyncSettings()
   const sharing = migrateSharingCatalogue(o.sharing)
+  const retained =
+    sharing ??
+    (o.sharing !== undefined
+      ? (JSON.parse(JSON.stringify(o.sharing)) as SharingCatalogueEntry[])
+      : undefined)
   return {
     keySignature: migrateKeySignature(o.keySignature),
-    ...(sharing?.length ? { sharing } : {}),
+    ...(retained !== undefined && (!Array.isArray(retained) || retained.length)
+      ? { sharing: retained }
+      : {}),
   }
 }
 

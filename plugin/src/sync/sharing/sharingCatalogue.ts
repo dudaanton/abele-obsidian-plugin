@@ -2,8 +2,12 @@ import { normalizeServerUrl } from '@abele/sync-protocol'
 import type { SyncSettings } from '../settings'
 import { z } from 'zod'
 
-/** Last acknowledged group management data; the server has no group list or ACL read route.
- * This is a CAS hint only. Names are checked against the live owner visibility route. */
+/** Offline discovery cache only. Signed-in server inventories replace these hints. */
+export class DiscoveryCatalogueError extends Error {
+  constructor() {
+    super('Sharing discovery data is invalid and needs review')
+  }
+}
 export const GroupShareHintSchema = z
   .object({
     id: z.string().min(1).max(200),
@@ -19,8 +23,9 @@ export function groupHints(raw: unknown): GroupShareHint[] {
   const parsed = z
     .array(GroupShareHintSchema)
     .max(64)
-    .safeParse(raw ?? [])
-  return parsed.success ? parsed.data : []
+    .safeParse(raw === undefined ? [] : raw)
+  if (!parsed.success) throw new DiscoveryCatalogueError()
+  return parsed.data
 }
 
 /** Portable discovery hints only. Every question/add still needs fresh server visibility and
@@ -47,7 +52,9 @@ export function migrateSharingCatalogue(raw: unknown): SharingCatalogueEntry[] |
     issuer: entry.issuer,
     vaultId: entry.vaultId,
     grants: [...new Set<string>(entry.grants)],
-    ...(entry.groups !== undefined ? { groups: groupHints(entry.groups) } : {}),
+    // Keep malformed entries visible to the consumer; never translate corruption into
+    // an empty group inventory or destroy good entries beside a damaged one.
+    ...(entry.groups !== undefined ? { groups: JSON.parse(JSON.stringify(entry.groups)) } : {}),
   }))
 }
 export interface SharingCatalogueEntry {
@@ -56,19 +63,25 @@ export interface SharingCatalogueEntry {
   grants: string[]
   groups?: GroupShareHint[]
 }
+function entryFor(
+  settings: SyncSettings,
+  issuer: string,
+  vaultId: string
+): SharingCatalogueEntry | undefined {
+  if (settings.sharing === undefined) return undefined
+  const catalogue = migrateSharingCatalogue(settings.sharing)
+  if (!catalogue) throw new DiscoveryCatalogueError()
+  return catalogue.find((entry) => entry.issuer === issuer && entry.vaultId === vaultId)
+}
 export function groupsFor(
   settings: SyncSettings,
   issuer: string,
   vaultId: string
 ): GroupShareHint[] {
-  return groupHints(
-    settings.sharing?.find((entry) => entry.issuer === issuer && entry.vaultId === vaultId)?.groups
-  )
+  return groupHints(entryFor(settings, issuer, vaultId)?.groups)
 }
 export function audiencesFor(settings: SyncSettings, issuer: string, vaultId: string): string[] {
-  const entry = settings.sharing?.find(
-    (entry) => entry.issuer === issuer && entry.vaultId === vaultId
-  )
+  const entry = entryFor(settings, issuer, vaultId)
   return entry
     ? [...new Set([...entry.grants, ...groupHints(entry.groups).map((group) => group.id)])]
     : []

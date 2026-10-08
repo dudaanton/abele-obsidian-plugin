@@ -2,6 +2,7 @@ import { createHash } from 'node:crypto'
 import { readFileSync, lstatSync, realpathSync, existsSync } from 'node:fs'
 import { dirname, join, resolve } from 'node:path'
 import { fileURLToPath } from 'node:url'
+import { SERVER_TEST_COMMIT } from './server-test-fixtures.mjs'
 
 const plugin = resolve(dirname(fileURLToPath(import.meta.url)), '..')
 const sha = (file) => createHash('sha256').update(readFileSync(file)).digest('hex')
@@ -48,17 +49,14 @@ export function verifySyncInputs(root = plugin) {
 }
 
 /** Explicit immutable server fixture; absent/wrong input is a failure, never a fallback. */
-export function verifySyncFixture(
-  dir,
-  expected = read(join(plugin, 'vendor/sync/provenance.json')).commit
-) {
+export function verifySyncFixture(dir, expected = SERVER_TEST_COMMIT) {
   if (!dir) throw new Error('ABELE_SYNC_DIR must name an explicitly prepared sync fixture')
   const root = realpathSync(dir)
   const path = join(root, '.abele-sync-fixture.json')
   if (!existsSync(path)) throw new Error('Sync fixture has no clean-archive build provenance')
   const fixture = read(path)
   if (fixture.commit !== expected)
-    throw new Error('Sync fixture revision does not match pinned plugin inputs')
+    throw new Error('Sync fixture revision does not match the required server input')
   if (sha(join(root, 'package-lock.json')) !== fixture.lockSha256)
     throw new Error('Sync fixture lockfile changed')
   if (

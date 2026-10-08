@@ -19,6 +19,7 @@ import {
   groupsFor,
   groupHints,
   type GroupShareHint,
+  DiscoveryCatalogueError,
 } from './sharing/sharingCatalogue'
 
 import {
@@ -48,6 +49,9 @@ export class PluginSharing {
     grants: string[]
     groups: GroupShareHint[]
     catalogueReadable: boolean
+    settingsPending: boolean
+    signedIn: boolean
+    serverSnapshot: boolean
     held: () => boolean
     settling: () => boolean
     restoreTransaction: () => void
@@ -136,7 +140,8 @@ export class PluginSharing {
       )
       let grants: string[] = [],
         groups: GroupShareHint[] = [],
-        catalogueReadable = true
+        catalogueReadable = true,
+        settingsPending = false
       try {
         const raw = await resources.meta.getMeta(AUDIENCES)
         if (raw === null && !resources.fresh) throw new Error('Optional discovery missing')
@@ -162,8 +167,9 @@ export class PluginSharing {
             AUDIENCES,
             JSON.stringify({ value: envelope.value, checksum: await hash(envelope.value) })
           )
-        grants = ids
         groups = groupHints(envelope.value.groups)
+        grants = ids
+        settingsPending = envelope.value.settingsPending === true
       } catch {
         // Discovery is not consent or personal ledger integrity. Preserve its bad record,
         // pause new sharing effects, and leave ordinary personal sync and management usable.
@@ -215,6 +221,7 @@ export class PluginSharing {
         linksChanged: () => this.linksChanged(),
       })
       await runtime.start(resources.fresh)
+      runtime.setAutomaticPaused(true)
       this.live = {
         context,
         runtime,
@@ -223,6 +230,9 @@ export class PluginSharing {
         grants,
         groups,
         catalogueReadable,
+        settingsPending,
+        signedIn: false,
+        serverSnapshot: false,
         held,
         settling,
         restoreTransaction,
@@ -295,17 +305,23 @@ export class PluginSharing {
   private async recordAudiences(
     ids: string[],
     remove: string[] = [],
-    remembered: GroupShareHint[] = []
+    remembered: GroupShareHint[] = [],
+    replace = false
   ) {
     const owner = this.owner()
     const next = this.catalogueQueue.then(async () => {
       if (this.owner() !== owner) throw new Error('Owner audience connection changed')
       const config = AbeleConfig.getInstance()
-      const portable = audiencesFor(config.sync, owner.binding.issuer, owner.binding.vaultId)
+      owner.runtime.setAutomaticPaused(true)
+      this.audiences.value = []
+      const useCache = !replace && !(owner.signedIn && owner.serverSnapshot)
+      const portable = useCache
+        ? audiencesFor(config.sync, owner.binding.issuer, owner.binding.vaultId)
+        : []
       const byId = new Map<string, GroupShareHint>()
       for (const group of [
-        ...owner.groups,
-        ...groupsFor(config.sync, owner.binding.issuer, owner.binding.vaultId),
+        ...(replace ? [] : owner.groups),
+        ...(useCache ? groupsFor(config.sync, owner.binding.issuer, owner.binding.vaultId) : []),
         ...remembered,
       ]) {
         if (remove.includes(group.id)) continue
@@ -314,50 +330,60 @@ export class PluginSharing {
       }
       const groups = [...byId.values()]
       const grants = [
-        ...new Set([...owner.grants, ...portable, ...ids, ...groups.map((group) => group.id)]),
+        ...new Set([
+          ...(replace ? [] : owner.grants),
+          ...portable,
+          ...ids,
+          ...groups
+            .filter((group) => ['active', 'preparing'].includes(group.state))
+            .map((group) => group.id),
+        ]),
       ].filter((id) => !remove.includes(id))
       const overflow = grants.length > 16
-      // Retain every optional hint, but do not silently select a subset for publication.
-      const stored = overflow ? owner.grants.filter((id) => !remove.includes(id)) : grants
-      const value = { binding: owner.binding, grants: stored, groups }
-      const text = JSON.stringify({ value, checksum: await hash(value) })
-      await owner.resources.meta.setMeta(AUDIENCES, text)
-      if ((await owner.resources.meta.getMeta(AUDIENCES)) !== text)
-        throw new Error('Audience selection was not persisted')
+      const entry = { issuer: owner.binding.issuer, vaultId: owner.binding.vaultId, grants, groups }
+      const existing = Array.isArray(config.sync.sharing) ? config.sync.sharing : []
+      const sharing = existing.filter(
+        (item) => item?.issuer !== entry.issuer || item?.vaultId !== entry.vaultId
+      )
+      if (grants.length || groups.length) sharing.push(entry)
+      const changed = JSON.stringify(config.sync.sharing ?? []) !== JSON.stringify(sharing)
+      const needsSave = changed || owner.settingsPending
+      // Pending writes are durable before touching the in-memory settings object. A later
+      // equal-object comparison cannot masquerade as a successfully acknowledged save.
+      const persist = async (pending: boolean) => {
+        const value = { binding: owner.binding, grants, groups, settingsPending: pending }
+        const text = JSON.stringify({ value, checksum: await hash(value) })
+        await owner.resources.meta.setMeta(AUDIENCES, text)
+        if (this.owner() !== owner || (await owner.resources.meta.getMeta(AUDIENCES)) !== text)
+          throw new Error('Audience selection was not persisted')
+      }
+      if (needsSave) owner.settingsPending = true
+      await persist(owner.settingsPending)
       owner.groups = groups
       owner.catalogueReadable = true
-      owner.grants.splice(0, owner.grants.length, ...stored)
-      owner.runtime.setAudiences(overflow ? [] : grants)
-      this.audiences.value = overflow ? [] : grants
-      this.discoveryWarning.value = ''
+      owner.grants.splice(0, owner.grants.length, ...grants)
+      if (replace) owner.serverSnapshot = true
+      if (changed)
+        config.editSettings(() => {
+          const updated = { ...config.sync }
+          if (sharing.length) updated.sharing = sharing
+          else delete updated.sharing
+          config.sync = updated
+        })
+      if (needsSave) {
+        await config.saveSettings()
+        await persist(false)
+        owner.settingsPending = false
+      }
       if (overflow)
         this.pauseDiscovery(
           'There are more sharing choices than automatic image sharing can currently check'
         )
-      const portableGroups = groupsFor(config.sync, owner.binding.issuer, owner.binding.vaultId)
-      if (
-        (!overflow && JSON.stringify(portable) !== JSON.stringify(grants)) ||
-        JSON.stringify(portableGroups) !== JSON.stringify(groups)
-      ) {
-        const entry = {
-          issuer: owner.binding.issuer,
-          vaultId: owner.binding.vaultId,
-          grants: overflow ? portable : grants,
-          groups,
-        }
-        const sharing = config.sync.sharing ?? []
-        config.editSettings(() => {
-          config.sync = {
-            ...config.sync,
-            sharing: [
-              ...sharing.filter(
-                (item) => item.issuer !== entry.issuer || item.vaultId !== entry.vaultId
-              ),
-              entry,
-            ],
-          }
-        })
-        await config.saveSettings()
+      else {
+        owner.runtime.setAudiences(grants)
+        owner.runtime.setAutomaticPaused(false)
+        this.audiences.value = [...grants]
+        this.discoveryWarning.value = ''
       }
     })
     this.catalogueQueue = next.catch(() => {})
@@ -365,10 +391,15 @@ export class PluginSharing {
       await next
     } catch (error) {
       if (this.live !== owner || !owner.held()) throw error
-      this.pauseDiscovery('Sharing choices could not be saved')
+      this.pauseDiscovery(
+        error instanceof DiscoveryCatalogueError
+          ? 'Sharing discovery data is invalid'
+          : 'Sharing choices could not be saved'
+      )
     }
   }
   private pauseDiscovery(reason: string) {
+    this.owner().runtime.setAutomaticPaused(true)
     this.owner().runtime.setAudiences([])
     this.audiences.value = []
     this.discoveryWarning.value =
@@ -415,31 +446,29 @@ export class PluginSharing {
     const list = port.list.bind(port)
     port.list = async (session) => {
       if (this.owner() !== owner) throw new Error('Owner management connection changed')
-      const remembered = [
-        ...new Map(
-          [
-            ...owner.groups,
-            ...groupsFor(
-              AbeleConfig.getInstance().sync,
-              owner.binding.issuer,
-              owner.binding.vaultId
-            ),
-          ].map((group) => [group.id, group])
-        ).values(),
-      ]
-      const shares: OwnerSharedGrant[] = await list(session, remembered)
+      const shares: OwnerSharedGrant[] = await list(session)
       if (this.owner() !== owner) throw new Error('Owner management connection changed')
-      const active = shares
+      const live = shares.filter(
+        (share) =>
+          share.revokedAt == null &&
+          (share.expiresAt == null || Date.parse(share.expiresAt) > Date.now())
+      )
+      const active = live
         .filter((share) => ['active', 'preparing'].includes(share.state))
         .map((share) => share.id)
-      // Absence from this folder-only endpoint says nothing about any group. Retire
-      // only explicit server revocations; unknown/preparing/expired views keep their hints.
-      const retired = shares
-        .filter((share) => share.kind === 'folder' && share.revokedAt != null)
-        .map((share) => share.id)
-      // The publisher's existing audience budget must not prevent listing/revoking shares
-      // created by another client. Do not silently select a subset as publication policy.
-      await this.recordAudiences(active, retired)
+      const groups: GroupShareHint[] = live
+        .filter((share) => share.kind === 'group')
+        .map((share) => ({
+          id: share.id,
+          label: share.label,
+          rootId: share.rootId!,
+          role: share.role,
+          revision: share.revision,
+          state: share.state as GroupShareHint['state'],
+        }))
+      // Both authenticated endpoints succeeded: this complete snapshot replaces cache
+      // hints, including absent groups and stale ACL revisions, on every fetch.
+      await this.recordAudiences(active, [], groups, true)
       return shares
     }
     const revoke = port.revoke.bind(port)
@@ -503,6 +532,18 @@ export class PluginSharing {
     if (this.managementCache?.owner === owner) return this.managementCache.port
     this.managementCache?.port.close()
     const port = this.management()
+    const authorize = port.authorize.bind(port),
+      close = port.close.bind(port)
+    port.authorize = async (password, email) => {
+      const session = await authorize(password, email)
+      if (this.owner() !== owner) throw new Error('Owner management connection changed')
+      owner.signedIn = true
+      return session
+    }
+    port.close = () => {
+      owner.signedIn = false
+      close()
+    }
     this.managementCache = { owner, port }
     return port
   }
@@ -514,13 +555,23 @@ export class PluginSharing {
       return
     }
     this.linksDirty = false
-    const portable = audiencesFor(
-      AbeleConfig.getInstance().sync,
-      owner.binding.issuer,
-      owner.binding.vaultId
-    )
-    if (owner.catalogueReadable && portable.some((id) => !owner.grants.includes(id)))
-      await this.recordAudiences(portable)
+    if (owner.catalogueReadable) {
+      try {
+        const portable =
+          owner.signedIn && owner.serverSnapshot
+            ? []
+            : audiencesFor(
+                AbeleConfig.getInstance().sync,
+                owner.binding.issuer,
+                owner.binding.vaultId
+              )
+        if (owner.settingsPending || portable.some((id) => !owner.grants.includes(id)))
+          await this.recordAudiences(portable)
+      } catch (error) {
+        if (!(error instanceof DiscoveryCatalogueError)) throw error
+        this.pauseDiscovery('Sharing discovery data is invalid')
+      }
+    }
     await owner.runtime.flush()
     try {
       await owner.runtime.refreshPublication()

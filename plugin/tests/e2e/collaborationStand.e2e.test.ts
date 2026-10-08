@@ -26,7 +26,7 @@ import {
 } from './helpers/collaborationPeers'
 import { pasteNativeImage } from './helpers/nativePaste'
 import { leaveEditorForPublication } from './helpers/publicationEditorExit'
-const COMMIT = '80bc7c666ac54cc186696ebdaaccd2d9e7a735ba',
+const COMMIT = 'f927e62bb41817cd3cf0180e80f989e8c166ff1d',
   ROOT = 'Agents/Проект примера.md',
   NOTE = 'Agents/Разрозненные/Общая заметка.md',
   PRIVATE = 'Agents/Личное/Закрытая заметка.md',

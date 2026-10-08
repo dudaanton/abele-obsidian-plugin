@@ -134,8 +134,11 @@ it.each(['overflow', 'settings write', 'stored hints'] as const)(
       expect(host.ownerManagement()).toBeDefined()
       expect(host.discoveryWarning.value).toContain('Personal sync continues')
       expect((host as any).live.runtime.options.grants).toEqual([])
-      expect((host as any).live.grants).toEqual(failure === 'stored hints' ? [] : local)
-      if (failure === 'overflow') expect(config.sync.sharing[0].grants).toEqual(imported)
+      expect((host as any).live.grants).toEqual(
+        failure === 'stored hints' ? [] : failure === 'overflow' ? [...local, ...imported] : local
+      )
+      if (failure === 'overflow')
+        expect(config.sync.sharing[0].grants).toEqual([...local, ...imported])
       expect(fetcher).not.toHaveBeenCalled()
     } finally {
       owner?.close()
@@ -269,7 +272,9 @@ it('imports sharing onto a second owner device at startup and after a settings r
                   account_token: 'abst_' + 'b'.repeat(43),
                   expires_at: new Date(Date.now() + 120000).toISOString(),
                 }
-              : rows
+              : String(url).endsWith('/grants/groups')
+                ? []
+                : rows
           )
         )
     )
@@ -277,8 +282,11 @@ it('imports sharing onto a second owner device at startup and after a settings r
     const account = await manager.authorize('invented-password', 'sample@example.com')
     expect(await manager.list(account)).toHaveLength(17)
     expect(host.audiences.value.length).toBeLessThanOrEqual(16)
-    expect((host as any).live.grants).toContain('sample-group')
-    expect(config.sync.sharing[0].grants).toContain('sample-group')
+    expect((host as any).live.grants).toEqual(rows.map((row) => row.id))
+    expect(
+      config.sync.sharing.find((entry) => entry.vaultId === connection.vaultId)!.grants
+    ).toEqual(rows.map((row) => row.id))
+    expect((host as any).live.grants).not.toContain('sample-group')
     manager.close()
   } finally {
     owner?.close()
