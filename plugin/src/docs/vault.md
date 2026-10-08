@@ -162,10 +162,14 @@ Live Preview supplies the full source snapshot and original range before invokin
 Markdown renderer; plain task markers retain their render-time source positions. Missing
 render-time provenance refuses controls. Frame discovery walks the quote-tree nodes with
 normalised callout names read from each node's own first paragraph, not its full container
-line. List-contained frames are not admitted. Between the cursor and the chosen frame, only
+line. Frames with any non-quote syntax ancestor are not admitted, including frames separated
+from a list item by wrapper quotes. Between the cursor and the chosen frame, only
 that frame's own direct column quotes are transparent; plain or foreign callouts, extra
 quotes and quotes inside lists refuse the command rather than selecting an outer frame.
-The surrounding quote is retained on supported nested-frame removal.
+Every mutation independently verifies the original line prefix profile before serialization.
+Leading indentation and retained quote-prefix spacing are copied exactly, not rebuilt from
+quote depth; prefixes that cannot be reproduced consistently refuse the write. The surrounding
+quote is retained on supported nested-frame removal.
 See the writing guide for commands and editing limitations; there are no column agent tools.
 
 ## Presentations

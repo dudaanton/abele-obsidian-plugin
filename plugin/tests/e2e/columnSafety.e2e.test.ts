@@ -222,6 +222,40 @@ describe.skipIf(!available)('column source and menu safety', () => {
     }
     await shot('list-quote-barriers-refused')
   })
+  it('wrapper quotes cannot hide list ancestry from controls or cursor commands', async () => {
+    for (const depth of [1, 3]) {
+      let wrapped = createColumns('Nested passage', 'two')
+      for (let i = 0; i < depth; i++)
+        wrapped =
+          '> Wrapper passage\n>\n' +
+          wrapped
+            .split('\n')
+            .map((line) => '> ' + line)
+            .join('\n')
+      const text =
+        '- List lead\n\n' +
+        wrapped
+          .split('\n')
+          .map((line) => '  ' + line)
+          .join('\n') +
+        '\n\nAfter.'
+      for (const mode of ['preview', 'source']) {
+        show(text, mode)
+        click(point('.abele-columns-controls button'))
+        const result = evaluate<{ menu: boolean; text: string }>(
+          `await wait(200);return {menu:!!document.querySelector('.menu'),text:view.getMode()==='source'?view.editor.getValue():await app.vault.read(view.file)}`
+        )
+        expect(result).toEqual({ menu: false, text })
+        if (mode === 'source') {
+          const commands = evaluate<{ options: boolean; remove: boolean; text: string }>(
+            `const lines=view.editor.getValue().split('\\n'),line=lines.findIndex(line=>line.includes('Nested passage'));view.editor.setCursor({line,ch:lines[line].indexOf('Nested passage')});app.workspace.activeEditor=view;return {options:app.commands.commands['abele:column-options'].editorCheckCallback(true,view.editor,view),remove:app.commands.commands['abele:remove-columns'].editorCheckCallback(false,view.editor,view),text:view.editor.getValue()}`
+          )
+          expect(commands).toEqual({ options: false, remove: false, text })
+        }
+        await shot('list-ancestry-' + depth + '-' + mode)
+      }
+    }
+  })
   it('a later post-processor cannot reassign a frame before the first menu lookup', async () => {
     const text = textInFrame(
       createColumns('First', 'two') + '\n\n' + createColumns('Second', 'two')

@@ -83,6 +83,8 @@ export interface QuoteSourceRange {
   metadata: string
   /** Immediate syntax container; flattened quote children may be separated by a list. */
   container: string
+  /** The complete syntax ancestry, including containers between quote-tree nodes, is quote-only. */
+  quoteOnlyAncestors: boolean
   children: QuoteSourceRange[]
 }
 
@@ -106,12 +108,16 @@ export function quoteSourceTree(text: string): QuoteSourceRange[] {
       }
     }
     descend(node)
+    let quoteOnlyAncestors = true
+    for (let ancestor = node.parent; ancestor; ancestor = ancestor.parent)
+      if (!['Document', 'Blockquote'].includes(ancestor.name)) quoteOnlyAncestors = false
     return {
       from: start,
       to: node.to,
       callout: marker?.[1].toLowerCase() ?? null,
       metadata: marker?.[2] ?? '',
       container: node.parent?.name ?? '',
+      quoteOnlyAncestors,
       children,
     }
   }

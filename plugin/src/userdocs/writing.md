@@ -60,9 +60,12 @@ another frame's range. Bindings are captured while rendering, before menus or pr
 controls without that original source provenance refuse the operation. Callout names are
 normalised consistently from each quote's own first paragraph when locating nested frames,
 even when strict editing rejects a noncanonical header. Frames inside list items are not
-editable through frame commands. Cursor commands also refuse to reach an outer frame through
-an independent quote or callout within a column, including quotes inside lists; ordinary
-list prose in the frame's own columns remains supported.
+editable through frame commands, even through intervening wrapper quotes. Every syntax
+ancestor must be a quote or the document itself. Cursor commands also refuse to reach an outer
+frame through an independent quote or callout within a column, including quotes inside lists; ordinary
+list prose in the frame's own columns remains supported. Every frame mutation preserves the
+original indentation and retained quote-prefix spacing; inconsistent prefixes that cannot be safely
+reproduced refuse the write.
 
 In Live Preview a click or tap on prose expands the area to source and places a single caret
 at the clicked passage, including formatted or identical passages in different columns.

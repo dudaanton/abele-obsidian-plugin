@@ -38,7 +38,7 @@ export function resolveColumnTarget(
   const selected = path[index]
   if (
     !selected ||
-    !['Document', 'Blockquote'].includes(selected.container) ||
+    !selected.quoteOnlyAncestors ||
     (expected && (selected.from !== expected.from || selected.to !== expected.to))
   )
     return null
@@ -65,11 +65,62 @@ export function findColumns(text: string, position: number): ColumnSource | null
   return resolveColumnTarget(text, position)
 }
 
-function quoted(body: string, prefix: string): string {
+function quoted(body: string, prefix: string, separator = ' '): string {
   return body
     .split('\n')
-    .map((line) => prefix + (line ? ' ' + line : ''))
+    .map((line) => prefix + (line ? separator + line : ''))
     .join('\n')
+}
+
+interface QuotePrefix {
+  marks: string[]
+  prefix: string
+  separator: string
+  body: string
+}
+function quotePrefix(line: string, depth: number): QuotePrefix | null {
+  const marks: string[] = []
+  let rest = line
+  for (let i = 0; i < depth; i++) {
+    const mark = /^[ \t]*>/.exec(rest)?.[0]
+    if (!mark) return null
+    marks.push(mark)
+    rest = rest.slice(mark.length)
+  }
+  const separator = /^[ \t]/.exec(rest)?.[0] ?? ''
+  return { marks, prefix: marks.join(''), separator, body: rest.slice(separator.length) }
+}
+
+/** Independent publication guard: prove every original line's container prefix is reproducible. */
+function mutationPrefixes(text: string, frame: ColumnSource) {
+  const fail = (): never => {
+    throw Error('The original column line prefixes cannot be reproduced safely.')
+  }
+  const parent = quotePrefix(text.slice(frame.from).split('\n')[0], frame.depth) ?? fail()
+  const children = frame.columns.map(
+    (column) => quotePrefix(text.slice(column.from).split('\n')[0], frame.depth + 1) ?? fail()
+  )
+  let at = frame.from,
+    column = 0
+  for (const line of text.slice(frame.from, frame.to).split('\n')) {
+    const outer = quotePrefix(line, frame.depth)
+    if (!outer || outer.prefix !== parent.prefix) fail()
+    if (at !== frame.from) {
+      const inner = quotePrefix(line, frame.depth + 1)
+      if (inner) {
+        while (column + 1 < frame.columns.length && at >= frame.columns[column + 1].from) column++
+        if (
+          at < frame.columns[column].from ||
+          at > frame.columns[column].to ||
+          inner.prefix !== children[column].prefix ||
+          (inner.body && inner.separator !== children[column].separator)
+        )
+          fail()
+      } else if (outer.body.trim()) fail()
+    }
+    at += line.length + 1
+  }
+  return { parent, children }
 }
 function title(line: string): string {
   return /^\s*(?:>\s*)+\[![^\]]+\]\s*(.*)$/.exec(line)?.[1] ?? ''
@@ -114,17 +165,21 @@ function checkedFrame(text: string, record: ColumnSource): ColumnSource {
 /** Replace only the parsed frame; the caller owns the editor/vault transaction. */
 export function changeColumns(text: string, record: ColumnSource, change: ColumnChange): string {
   record = checkedFrame(text, record)
+  const prefixes = mutationPrefixes(text, record)
   const parentTitle = title(text.slice(record.from).split('\n')[0])
-  const columns = record.columns.map((c) => ({
+  const columns = record.columns.map((c, index) => ({
     header: text.slice(c.from).split('\n')[0],
     body: cleanBody(c.body),
+    prefix: prefixes.children[index].prefix,
+    separator: prefixes.children[index].separator,
   }))
   let ratio = record.options.ratio
     ? [...record.options.ratio]
     : Array<number>(columns.length).fill(1)
   let mobile = record.options.mobile
   if (change.type === 'add') {
-    columns.push({ header: '> '.repeat(record.depth + 1) + '[!abele-column]', body: '' })
+    const { prefix, separator } = prefixes.children[0]
+    columns.push({ header: prefix + separator + '[!abele-column]', body: '', prefix, separator })
     ratio = [...ratio, 1]
   }
   if (change.type === 'move') {
@@ -143,11 +198,11 @@ export function changeColumns(text: string, record: ColumnSource, change: Column
     ratio = change.ratio
     mobile = change.mobile
   }
-  const prefix = Array(record.depth).fill('>').join(' ')
-  const childPrefix = prefix + ' >'
+  const { prefix, separator } = prefixes.parent
   const header =
     prefix +
-    ' [!abele-columns|ratio=' +
+    separator +
+    '[!abele-columns|ratio=' +
     ratio.join(':') +
     ' mobile=' +
     mobile +
@@ -156,25 +211,34 @@ export function changeColumns(text: string, record: ColumnSource, change: Column
   const framed =
     header +
     '\n' +
-    columns.map((c) => c.header + '\n' + quoted(c.body, childPrefix)).join('\n' + prefix + '\n')
+    columns
+      .map((c) => c.header + '\n' + quoted(c.body, c.prefix, c.separator))
+      .join('\n' + prefix + '\n')
   return text.slice(0, record.from) + framed + text.slice(record.to)
 }
 
 export function removeColumns(text: string, record: ColumnSource): string {
   record = checkedFrame(text, record)
+  const prefixes = mutationPrefixes(text, record)
   const parentTitle = title(text.slice(record.from).split('\n')[0])
-  const bodies = record.columns.map((c) => {
+  // Retain the original surrounding quote profile or leading indentation, not just its depth.
+  const outer = prefixes.parent.marks.slice(0, record.depth - 1).join('')
+  const indent = prefixes.parent.marks[0].slice(0, -1)
+  const render = (body: string, separator: string) =>
+    record.depth > 1
+      ? quoted(body, outer, separator)
+      : body
+          .split('\n')
+          .map((line) => indent + line)
+          .join('\n')
+  const bodies = record.columns.map((c, index) => {
     const heading = title(text.slice(c.from).split('\n')[0])
-    return (heading ? heading + '\n' : '') + cleanBody(c.body)
-  })
-  let content = (parentTitle ? parentTitle + '\n\n' : '') + bodies.join('\n\n')
-  // Nested columns return to their surrounding quote, not to the document's root.
-  if (record.depth > 1)
-    content = quoted(
-      content,
-      Array(record.depth - 1)
-        .fill('>')
-        .join(' ')
+    return render(
+      (heading ? heading + '\n' : '') + cleanBody(c.body),
+      prefixes.children[index].separator
     )
+  })
+  if (parentTitle) bodies.unshift(render(parentTitle, prefixes.parent.separator))
+  const content = bodies.join('\n' + (record.depth > 1 ? outer : indent) + '\n')
   return text.slice(0, record.from) + content + text.slice(record.to)
 }

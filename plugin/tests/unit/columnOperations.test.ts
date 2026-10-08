@@ -1,5 +1,12 @@
 import { describe, it, expect } from 'vitest'
-import { createColumns, findColumns, changeColumns, removeColumns } from '@/columns/operations'
+import {
+  createColumns,
+  findColumns,
+  changeColumns,
+  removeColumns,
+  type ColumnChange,
+} from '@/columns/operations'
+import { columnSource } from '@/columns/source'
 
 describe('column frame operations', () => {
   it('inserts two or three columns with the selection in the first', () => {
@@ -169,6 +176,88 @@ describe('column frame operations', () => {
       expect(findColumns(text, 0)?.from).toBe(0)
     }
   )
+
+  it.each([1, 3])('refuses list ancestry hidden behind %i wrapper quotes', (depth) => {
+    let wrapped = createColumns('Nested passage', 'two')
+    for (let i = 0; i < depth; i++)
+      wrapped =
+        '> Wrapper passage\n>\n' +
+        wrapped
+          .split('\n')
+          .map((line) => '> ' + line)
+          .join('\n')
+    const text =
+      '- List lead\n\n' +
+      wrapped
+        .split('\n')
+        .map((line) => '  ' + line)
+        .join('\n')
+    const from = text.lastIndexOf('\n', text.indexOf('[!abele-columns|')) + 1
+    const parsed = columnSource(text, from)!
+    expect(parsed).not.toBeNull()
+    expect(findColumns(text, text.indexOf('Nested passage'))).toBeNull()
+    expect(() => removeColumns(text, parsed)).toThrow()
+    expect(() =>
+      changeColumns(text, parsed, { type: 'options', ratio: [2, 1], mobile: 'stack' })
+    ).toThrow()
+  })
+
+  it.each([' ', '  ', '   '])(
+    'preserves the exact leading prefix on every mutation: %j',
+    (indent) => {
+      const text = createColumns('Payload', 'two')
+        .split('\n')
+        .map((line) => indent + line)
+        .join('\n')
+      const record = findColumns(text, text.indexOf('Payload'))!
+      expect(record).not.toBeNull()
+      const changes: ColumnChange[] = [
+        { type: 'options', ratio: [2, 1], mobile: 'keep' },
+        { type: 'add' },
+        { type: 'move', index: 0, to: 1 },
+      ]
+      for (const change of changes) {
+        const changed = changeColumns(text, record, change)
+        expect(changed.split('\n').every((line) => /^([ \t]*)>/.exec(line)?.[1] === indent)).toBe(
+          true
+        )
+        expect(changed).toContain('Payload')
+      }
+      expect(removeColumns(text, record)).toBe(indent + 'Payload\n' + indent + '\n' + indent)
+    }
+  )
+
+  it.each(['leading indentation', 'quote spacing'])(
+    'refuses all mutations when original prefixes vary: %s',
+    (kind) => {
+      const original = createColumns('Payload', 'two')
+      const text =
+        kind === 'leading indentation'
+          ? original
+              .split('\n')
+              .map((line, i) => (i === 0 ? '  ' : ' ') + line)
+              .join('\n')
+          : original.replace('> > [!abele-column]', '>>[!abele-column]')
+      const record = columnSource(text, 0)!
+      expect(record).not.toBeNull()
+      const changes: ColumnChange[] = [
+        { type: 'options', ratio: [2, 1], mobile: 'stack' },
+        { type: 'add' },
+        { type: 'move', index: 0, to: 1 },
+      ]
+      for (const change of changes) expect(() => changeColumns(text, record, change)).toThrow()
+      expect(() => removeColumns(text, record)).toThrow()
+    }
+  )
+
+  it('retains a compact quote prefix instead of synthesising spaced markers', () => {
+    const text = createColumns('Payload', 'two').replaceAll('> ', '>')
+    const record = findColumns(text, text.indexOf('Payload'))!
+    expect(record).not.toBeNull()
+    expect(changeColumns(text, record, { type: 'options', ratio: [2, 1], mobile: 'keep' })).toBe(
+      text.replace('ratio=1:1 mobile=stack', 'ratio=2:1 mobile=keep')
+    )
+  })
 
   it('still targets its own column for ordinary list prose', () => {
     const text = createColumns('- Ordinary passage\n  - Nested list passage', 'two')
