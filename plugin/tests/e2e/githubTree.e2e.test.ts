@@ -161,7 +161,7 @@ describe.skipIf(!available)('folders of a repository in a GitHub tab', () => {
     expect(r.tabs).toBe(1)
   })
 
-  it("the panel stays at a pull request's head: marks the folder, filters, opens a file", () => {
+  it.each([false, true])('marks and filters the head tree with remembered=%s', (open) => {
     const r = evalAsync<{
       error?: string
       folderUrl?: string
@@ -176,6 +176,7 @@ describe.skipIf(!available)('folders of a repository in a GitHub tab', () => {
     }>(`(async () => {
       ${PRELUDE}
       ${TREE}
+      app.saveLocalStorage(${JSON.stringify(PANEL_KEY)}, ${open})
       const leaf = await openTab(${JSON.stringify(`${gh.web}/pull/42/files`)})
       const root = leaf.view.containerEl
       const dir = await until(() => [...root.querySelectorAll('.abele-github-file[data-path="src/util/format.ts"] .abele-github-file__folder-link, .abele-github-file[data-path="src/app.ts"] .abele-github-file__folder-link')]
@@ -187,8 +188,9 @@ describe.skipIf(!available)('folders of a repository in a GitHub tab', () => {
       const report = { folderUrl: leaf.view.model.url }
       const icon = headerIcon(root, 'folder-tree')
       if (!icon) return { ...report, error: 'no tree icon' }
-      icon.click()
-      if (!(await until(() => panelRow(root, 'src')?.classList.contains('is-active'), 20000)))
+      if (!root.querySelector('.abele-github-tree')) icon.click()
+      if (!(await until(() => root.querySelector('.abele-github-tree__filter input') &&
+        panelRow(root, 'src')?.classList.contains('is-active'), 20000)))
         return { ...report, error: 'the panel never marked the folder' }
       report.active = [...root.querySelectorAll('.abele-github-tree .tree-item-self.is-active')].map((r) => r.getAttribute('data-path'))
       const input = root.querySelector('.abele-github-tree__filter input')
