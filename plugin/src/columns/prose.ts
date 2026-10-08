@@ -1,3 +1,11 @@
+import type { SourceParagraph } from './source'
+
+/** A projected end belongs to its last visible unit, never to an excluded trailing control. */
+export function proseAnchor(paragraph: SourceParagraph, count: number): number {
+  if (count < 0 || count > paragraph.positions.length) return paragraph.from
+  return paragraph.positions[count] ?? paragraph.visibleTo ?? paragraph.from
+}
+
 export function proseBlocks(column: HTMLElement): HTMLElement[] {
   return Array.from(column.querySelectorAll<HTMLElement>('p,h1,h2,h3,h4,h5,h6,li')).filter((el) => {
     if (

@@ -9,6 +9,7 @@ export interface SourceParagraph {
   to: number
   positions: number[]
   text: string
+  visibleTo: number | null
 }
 export interface SourceColumn {
   from: number
@@ -177,6 +178,8 @@ export function columnSource(text: string, from: number): ColumnSource | null {
             to: positions[node.to - 1] + 1,
             positions: visible,
             text: projection.text,
+            visibleTo:
+              projection.visibleTo === null ? null : positions[projection.visibleTo - 1] + 1,
           })
         }
         return
@@ -242,7 +245,10 @@ export function columnSource(text: string, from: number): ColumnSource | null {
 }
 
 /** Visible UTF-16 units are mapped by syntax spans, not by matching a rendered string. */
-function inlinePositions(node: SyntaxNode, source: string): { positions: number[]; text: string } {
+function inlinePositions(
+  node: SyntaxNode,
+  source: string
+): { positions: number[]; text: string; visibleTo: number | null } {
   const hidden = new Set([
     'EmphasisMark',
     'HighlightMark',
@@ -264,9 +270,11 @@ function inlinePositions(node: SyntaxNode, source: string): { positions: number[
   ])
   const result: number[] = []
   const characters: string[] = []
-  const append = (at: number, value = source[at]) => {
+  let visibleTo: number | null = null
+  const append = (at: number, value = source[at], end = at + 1) => {
     result.push(at)
     characters.push(value)
+    visibleTo = end
   }
   const walk = (n: SyntaxNode) => {
     if (hidden.has(n.name)) return
@@ -277,7 +285,7 @@ function inlinePositions(node: SyntaxNode, source: string): { positions: number[
       else if (child.name === 'Entity') {
         const raw = source.slice(child.from, child.to)
         const value = decodeHTML(raw)
-        for (let i = 0; i < value.length; i++) append(child.from, value[i])
+        for (let i = 0; i < value.length; i++) append(child.from, value[i], child.to)
       } else walk(child)
       at = child.to
       if (child.name === 'HeaderMark' || child.name === 'TaskMarker')
@@ -286,9 +294,5 @@ function inlinePositions(node: SyntaxNode, source: string): { positions: number[
     for (; at < n.to; at++) append(at)
   }
   walk(node)
-  while (result.length && /\s/.test(characters.at(-1)!)) {
-    result.pop()
-    characters.pop()
-  }
-  return { positions: result, text: characters.join('') }
+  return { positions: result, text: characters.join(''), visibleTo }
 }

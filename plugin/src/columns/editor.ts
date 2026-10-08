@@ -1,7 +1,7 @@
 import { EditorView } from '@codemirror/view'
 import { editorLivePreviewField, type Plugin } from 'obsidian'
 import { COLUMN_INTERACTIVE, columnPath, renderedColumns } from './target'
-import { proseBlocks, proseText } from './prose'
+import { proseAnchor, proseBlocks, proseText } from './prose'
 
 interface Entry {
   view: EditorView
@@ -80,8 +80,8 @@ function entryAt(target: Element, x: number, y: number): Entry | null {
     complete.selectNodeContents(block)
     // Unknown native transformations enter at this source block's start with a single caret.
     // Only an identical grammar projection proves an exact character offset.
-    if (proseText(complete, block.tagName === 'LI').trimEnd() === paragraph.text)
-      anchor = paragraph.positions[count] ?? paragraph.to
+    if (proseText(complete, block.tagName === 'LI') === paragraph.text)
+      anchor = proseAnchor(paragraph, count)
   }
   return { view, document, anchor, widget: parent }
 }
