@@ -1,7 +1,7 @@
 import { parser, GFM, type MarkdownConfig } from '@lezer/markdown'
 import { decodeHTML } from 'entities'
 import type { SyntaxNode } from '@lezer/common'
-import { parseColumnsHeader, type ColumnsOptions } from './core'
+import { columnWeights, parseColumnsHeader, type ColumnsOptions } from './core'
 
 export interface SourceParagraph {
   tag: string
@@ -113,6 +113,13 @@ export function columnSource(text: string, from: number): ColumnSource | null {
     const m = quote(lines[i])
     if (!m || depthOf(m[1]) < depth) break
     const d = depthOf(m[1])
+    // Every non-frame byte must belong to a child. Never discard parent prose or orphan text.
+    if (
+      (d === depth || !start) &&
+      m[2].trim() &&
+      !(d === depth + 1 && /^\[!abele-column(?:\|[^\]]*)?\](?:\s.*)?$/.test(m[2]))
+    )
+      return null
     if (!fence && d === depth + 1 && /^\[!abele-column(?:\|[^\]]*)?\](?:\s.*)?$/.test(m[2])) {
       finish()
       start = offsets[i]
@@ -147,7 +154,9 @@ export function columnSource(text: string, from: number): ColumnSource | null {
     end = offsets[i] + lines[i].length
   }
   finish()
-  return columns.length >= 2 ? { from, to: end, depth, options, columns } : null
+  return columnWeights(options.ratio, columns.length)
+    ? { from, to: end, depth, options, columns }
+    : null
 }
 
 /** Visible UTF-16 units are mapped by syntax spans, not by matching a rendered string. */

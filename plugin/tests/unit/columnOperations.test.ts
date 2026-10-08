@@ -46,6 +46,15 @@ describe('column frame operations', () => {
       'Before\n\nGroup title\n\nFirst title\nLeft\n\nSecond title\nRight\n\nAfter'
     )
   })
+  it.each([
+    '> Unassigned lead\n> > [!abele-column]\n> > Left\n>\n> > [!abele-column]\n> > Right',
+    '> > [!abele-column]\n> > Left\n>\n> > [!abele-column]\n> > Right\n> Unassigned tail',
+    '> > Unassigned deep text\n> > [!abele-column]\n> > Left\n>\n> > [!abele-column]\n> > Right',
+  ])('does not offer source mutation when parent content is unaccounted for: %s', (body) => {
+    const text = 'Before\n\n> [!abele-columns]\n' + body + '\n\nAfter'
+    expect(findColumns(text, text.indexOf('Left'))).toBeNull()
+  })
+
   it('does not offer frame edits for a fenced example', () => {
     const text = '```md\n' + createColumns('Example', 'two') + '\n```'
     expect(findColumns(text, text.indexOf('Example'))).toBeNull()
