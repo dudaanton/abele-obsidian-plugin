@@ -27,6 +27,7 @@ describe.skipIf(!available)('agents dialog on a narrow screen', () => {
           rows: root.querySelectorAll('.abele-agents__open').length,
           overflow: buttons.some(e => { const r = e.getBoundingClientRect(); return r.left < box.left - 1 || r.right > box.right + 1 }),
           seen: buttons.some(e => e.textContent === 'Просмотрено'),
+          dismissals: buttons.filter(e => e.textContent === 'Убрать').length,
           approvals: buttons.some(e => /approve|allow|разрешить/i.test(e.textContent)),
         }
       } finally {
@@ -41,6 +42,7 @@ describe.skipIf(!available)('agents dialog on a narrow screen', () => {
       rows: number
       overflow: boolean
       seen: boolean
+      dismissals: number
       approvals: boolean
     }
     expect(result.searchFocused).toBe(false)
@@ -48,6 +50,7 @@ describe.skipIf(!available)('agents dialog on a narrow screen', () => {
     expect(result.rows).toBe(4)
     expect(result.overflow).toBe(false)
     expect(result.seen).toBe(true)
+    expect(result.dismissals).toBe(3)
     expect(result.approvals).toBe(false)
   })
   it('offers twenty explicit close choices without horizontal overflow', async () => {
