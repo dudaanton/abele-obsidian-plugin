@@ -137,6 +137,7 @@ async function checkedScriptForExecution(
     })
   }
   let permission: CheckedPermission | null = null
+  let versionToRemember: string | null = null
   try {
     const recoveredIdentity = recovered as ManagedScript | null
     if (recoveredIdentity && trust) {
@@ -258,7 +259,9 @@ async function checkedScriptForExecution(
           throw new Error('Script provenance changed during the execution check')
         }
         live.provenance.assertRevision(path, generation)
-        if (localFallback) rememberLocalScriptVersion(app, path, sha)
+        // A verified approval in the temporary local recovery namespace is an explicit
+        // local decision, not an old remote binding's permission. Carry only its exact bytes.
+        if (localFallback || live.provenance.binding.endpoint === 'local:') versionToRemember = sha
         permission = {
           binding: { ...live.provenance.binding },
           fileId: current?.fileId ?? null,
@@ -279,6 +282,12 @@ async function checkedScriptForExecution(
     const script = { path, meta, code: extractScriptBody(source), commandId: '' }
     permissions.set(script, permission)
     assertScriptContext(app, script)
+    if (versionToRemember !== null) {
+      // Persist only AFTER the final synchronous context fence, never from an invalidated
+      // approval or a scoped transition during the awaited IDB checks.
+      rememberLocalScriptVersion(app, path, versionToRemember)
+      assertScriptContext(app, script)
+    }
     return script
   } finally {
     trust?.store.close()

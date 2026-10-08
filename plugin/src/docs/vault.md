@@ -1148,8 +1148,11 @@ script bytes receive this device's ordinary confirmation. A retained descriptor 
 is missing still holds recovery rather than inheriting foreign approvals.
 
 `abele-script-local-upgrade` holds device-local `{path, sha}` records for executable local
-versions captured before the first managed sync, versions explicitly authored here, and exact
-unmanaged versions allowed offline by the retained 1.x local policy after Disconnect. An
+versions captured before the first managed sync, versions explicitly authored here, exact
+unmanaged versions allowed offline by the retained 1.x local policy after Disconnect, and
+versions explicitly approved in a disconnected lost-store recovery namespace. That last review
+is saved only after the final context fence and transfers into the next personal receipt without
+another confirmation; ordinary remote-binding approvals remain principal-bound. An
 unmanaged fallback requires a healthy former personal store, a fully disconnected personal
 context, and absence of both source and retirement evidence in every binding. It neither
 erases managed facts nor infers trust from a lost store. Explicit authoring updates these hashes

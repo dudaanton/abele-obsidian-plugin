@@ -97,7 +97,11 @@ connection; a transition during an execution check still invalidates that check.
 or database is missing/stale after an upgrade, the error points to the Library review action.
 Disconnect sync before repairing a lost context, review each script explicitly, then reconnect.
 Recovery retains old descriptors/databases, approves only the shown bytes, and leaves other
-unknown scripts blocked. A pending remote mutation cannot be replaced by manual review.
+unknown scripts blocked. Exact versions explicitly approved in its temporary local namespace
+are preserved for the next personal connection, without a second review. They are recorded
+only after the final context fence; declined or invalidated decisions do not transfer. Ordinary
+remote-binding permissions still cannot be reused by changing principal. A pending remote
+mutation cannot be replaced by manual review.
 Every managed identity/hold mutation advances a shared per-path runtime generation
 before its asynchronous write begins. A pending or changed generation invalidates checks
 across the awaited approval read and the synchronous compilation boundary; different paths

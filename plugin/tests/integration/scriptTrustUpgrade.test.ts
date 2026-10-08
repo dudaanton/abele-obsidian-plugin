@@ -21,6 +21,7 @@ import { scriptForExecution, assertScriptContext } from '@/scripting/trust/scrip
 import { CONNECTION_KEY, emptyConnection } from '@/sync/connection'
 import { SCOPED_CONNECTION_KEY } from '@/sync/scoped/scopedJoin'
 import { SCRIPT_CONTEXT_HOLD_FILE } from '@/scripting/trust/scriptContextHold'
+import { ScriptProvenance } from '@/scripting/trust/ScriptProvenance'
 
 const path = 'Scripts/local.js'
 const source = '// @name Local sample\nreturn "local result"'
@@ -184,6 +185,52 @@ describe('device-local script upgrade continuity', () => {
     await app.vault.create(other, '// @name Other sample\nreturn "other"')
     await expect(scriptForExecution(app, other)).rejects.toThrow(/unknown/)
   })
+  it('keeps an explicit lost-store recovery approval after reconnect without reviewing it twice', async () => {
+    await connect()
+    expect(app.loadLocalStorage(LOCAL_SCRIPT_UPGRADE_KEY)).toBeNull()
+    app.saveLocalStorage(CONNECTION_KEY, emptyConnection())
+    factory = new IDBFactory()
+    vi.stubGlobal('indexedDB', factory)
+    const firstReview = vi.fn(async () => true)
+    await scriptForExecution(app, path, firstReview)
+    expect(firstReview).toHaveBeenCalledOnce()
+    // Another unknown script in this local recovery context also gets one explicit review.
+    const other = 'Scripts/second-recovery.js'
+    await app.vault.create(other, '// @name Second sample\nreturn "second"')
+    await scriptForExecution(app, other, async () => true)
+    const next = { ...binding, principal: 'sample-recovered-device' }
+    setScriptConnection(app, next)
+    const trust = await activateScriptProvenance(app, next, factory)
+    await trust.provenance.record(path, 'sample-recovered-file')
+    await trust.provenance.record(other, 'sample-second-file')
+    trust.store.close()
+    const secondReview = vi.fn(async () => true)
+    await expect(scriptForExecution(app, path, secondReview)).resolves.toMatchObject({ path })
+    await expect(scriptForExecution(app, other, secondReview)).resolves.toMatchObject({
+      path: other,
+    })
+    expect(secondReview).not.toHaveBeenCalled()
+    app.saveLocalStorage(SCOPED_CONNECTION_KEY, { grantId: 'sample-grant' })
+    await expect(scriptForExecution(app, path, secondReview)).rejects.toThrow(/Scoped/)
+    expect(secondReview).not.toHaveBeenCalled()
+  })
+  it('does not carry a recovery decision if its final approval read enters a scoped context', async () => {
+    await connect()
+    app.saveLocalStorage(CONNECTION_KEY, emptyConnection())
+    factory = new IDBFactory()
+    vi.stubGlobal('indexedDB', factory)
+    const approved = ScriptProvenance.prototype.approved
+    let checks = 0
+    vi.spyOn(ScriptProvenance.prototype, 'approved').mockImplementation(
+      async function (record, sha) {
+        const result = await approved.call(this, record, sha)
+        if (++checks === 2) app.saveLocalStorage(SCOPED_CONNECTION_KEY, { grantId: 'sample-grant' })
+        return result
+      }
+    )
+    await expect(scriptForExecution(app, path, async () => true)).rejects.toThrow(/Scoped/)
+    expect(app.loadLocalStorage(LOCAL_SCRIPT_UPGRADE_KEY)).toBeNull()
+  })
   it.each(['source', 'connection', 'scope'] as const)(
     'does not recover if %s changes during review',
     async (change) => {
@@ -200,6 +247,7 @@ describe('device-local script upgrade continuity', () => {
         })
       ).rejects.toThrow(/changed|Scoped/)
       expect(app.loadLocalStorage(SCRIPT_TRUST_KEY)).toEqual(previous)
+      expect(app.loadLocalStorage(LOCAL_SCRIPT_UPGRADE_KEY)).toBeNull()
     }
   )
   it('does not let manual recovery silently replace a connected engine context', async () => {
