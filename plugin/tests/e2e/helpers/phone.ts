@@ -12,6 +12,7 @@
  * - `shot PATH` — a screenshot to a PNG file;
  * - `reverse PORT` — while it runs, 127.0.0.1:PORT on the phone reaches the same port here;
  * - `doctor` — one line per part, `OK`/`FAIL`, exit 0 when ready;
+ * - `launch BUNDLE [--fresh]` — bring the app forward; `--fresh` starts a new process;
  * - `push-plugin DIR MANIFEST VAULT` — install a build into that vault on the phone.
  */
 import { execFileSync, spawn, type ChildProcess } from 'node:child_process'

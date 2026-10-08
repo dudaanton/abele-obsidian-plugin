@@ -895,7 +895,7 @@ to answer:
 |---|---|
 | `doctor` | one line per part, `OK …` or `FAIL …`, exit 0 when the phone is ready |
 | `take NAME --wait --pid PID`, `drop NAME` | the lock that gives one user the phone, held under a name: `take` prints `taken`, or `already yours` when the lock is under that name already; the pid only frees a lock whose process died; `drop` turns the screen off first. Every other command carries the holder's name in `IPHONE_LOCK_OWNER` |
-| `launch BUNDLE` | brings the app forward and aims the touches and typing at it (`md.obsidian`) |
+| `launch BUNDLE [--fresh]` | brings the app forward and aims the touches and typing at it (`md.obsidian`); `--fresh` terminates the old process and launches a new one |
 | `open-url URL` | opens a URL on the phone (`obsidian://open?vault=…`) |
 | `push-plugin DIR MANIFEST VAULT` | installs a build (`main.js`, `main.css`) into a vault on the phone |
 | `eval --envelope --timeout S CODE` | evaluates in Obsidian's page, prints `{"type","value"}` or `{"thrown"}` |
@@ -914,7 +914,11 @@ keeps it); stops with the driver's own report when
 directory (`ABELE_PHONE_BUILD` names a build to install instead) and installs it into the phone's
 test vault (`ABELE_PHONE_VAULT`, default `abele-e2e` — a copy of the fixture vault, never a real
 one), opening that vault by name if another is open, reloads and waits for exactly that version; starts a small server the page reaches through
-a reversed port.
+a reversed port. If the expected version/API does not become ready within 120 seconds, it
+fresh-launches the app once and allows another 120 seconds for `loadingPluginId` to clear and
+the expected build, target vault and workspace to become ready in a new document. It does not
+reinstall repeatedly, disable plugins or reset vault/sync settings. Failure reports the last
+loader ID, visible page text and native alert state, including page/launch transport errors.
 
 **Inside the page** the harness puts `window.__e2eHost` (`installPhoneHost` in
 `helpers/phone.ts`, put back after every reload): `shot(path)`, `tap`, `swipe`, `longPress`,

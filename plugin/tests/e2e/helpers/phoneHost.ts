@@ -118,7 +118,7 @@ export async function installBuild(pluginDir: string): Promise<string> {
       matches =
         phoneEval(
           `(async () => {
-        if (app.vault.getName() !== ${JSON.stringify(PHONE_VAULT)} || !window.__abeleTest) return false
+        if (app.vault.getName() !== ${JSON.stringify(PHONE_VAULT)} || !window.__abeleTest || app.plugins?.loadingPluginId) return false
         const hashes = ${JSON.stringify(hashes)}
         const loaded = window.__e2eInstalledBuild
         if (!loaded || loaded.api !== window.__abeleTest || loaded.generation !== performance.timeOrigin ||
@@ -162,36 +162,125 @@ export async function installBuild(pluginDir: string): Promise<string> {
   }
   const key = 'abele-e2e-install-request'
   const requestId = 'install-' + Date.now() + '-' + Math.random().toString(36).slice(2)
-  const read = (): ReloadWitness =>
-    JSON.parse(
-      phoneEval(
-        `JSON.stringify({ owner: app.vault.getName(), generation: performance.timeOrigin,
-      requestId: sessionStorage.getItem('${key}'), mobile: !!app.isMobile,
-      apiReady: !!window.__abeleTest && app.plugins.plugins.abele?.manifest.version === ${JSON.stringify(version)},
-      layoutReady: !!app.workspace.layoutReady })`,
-        10_000
-      ).replace(/^=> /, '')
-    ) as ReloadWitness
-  await confirmReload(
-    read(),
-    requestId,
-    true,
-    {
-      request: () =>
+  type InstallState = ReloadWitness & {
+    version: string
+    loadingPluginId: string | null
+    screen: { text: string; readyState: string; visibilityState: string }
+  }
+  let last: InstallState | undefined
+  let readError: string | undefined
+  const read = (): InstallState => {
+    try {
+      last = JSON.parse(
         phoneEval(
           `(() => {
-      sessionStorage.setItem('${key}', ${JSON.stringify(requestId)})
-      setTimeout(() => location.reload(), 50)
-      return ${JSON.stringify(requestId)}
-    })()`,
-          30_000
-        ).replace(/^=> /, ''),
-      read,
-      now: Date.now,
-      pause: (ms) => new Promise((done) => setTimeout(done, ms)),
-    },
-    120_000
-  )
+        const a = window.app, plugins = a?.plugins
+        const version = plugins?.plugins?.abele?.manifest?.version || ''
+        const loadingPluginId = plugins?.loadingPluginId || null
+        return JSON.stringify({ owner: a?.vault?.getName() || '', generation: performance.timeOrigin,
+          requestId: sessionStorage.getItem('${key}'), mobile: !!a?.isMobile,
+          apiReady: !!window.__abeleTest && version === ${JSON.stringify(version)} && !loadingPluginId,
+          layoutReady: !!a?.workspace?.layoutReady, version, loadingPluginId,
+          screen: { text: (document.body?.innerText || '').slice(0, 1000),
+            readyState: document.readyState, visibilityState: document.visibilityState } })
+      })()`,
+          10_000
+        ).replace(/^=> /, '')
+      ) as InstallState
+      readError = undefined
+      return last
+    } catch (error) {
+      readError = String(error)
+      throw error
+    }
+  }
+  const pause = (ms: number) => new Promise<void>((done) => setTimeout(done, ms))
+  const primaryDeadline = Date.now() + 120_000
+  try {
+    let before: InstallState | undefined
+    do {
+      try {
+        before = read()
+      } catch {
+        /* The page may still be starting. */
+      }
+      if (before || Date.now() >= primaryDeadline) break
+      await pause(Math.min(250, primaryDeadline - Date.now()))
+    } while (Date.now() <= primaryDeadline)
+    if (!before) throw new Error(`Reload unconfirmed: ${readError}`)
+    await confirmReload(
+      before,
+      requestId,
+      true,
+      {
+        request: () =>
+          phoneEval(
+            `(() => {
+        sessionStorage.setItem('${key}', ${JSON.stringify(requestId)})
+        setTimeout(() => location.reload(), 50)
+        return ${JSON.stringify(requestId)}
+      })()`,
+            30_000
+          ).replace(/^=> /, ''),
+        read,
+        now: Date.now,
+        pause,
+      },
+      Math.max(0, primaryDeadline - Date.now())
+    )
+  } catch (reloadError) {
+    // A reload keeps the native app/bridge alive. A stuck loader gets one fresh process,
+    // not repeated installs, disabled plugins or changes to the vault's sync/settings state.
+    const previousGeneration = last?.generation
+    let launchError: string | undefined
+    try {
+      driver(['launch', 'md.obsidian', '--fresh'])
+    } catch (error) {
+      launchError = String(error)
+    } // A lost acknowledgment must not replay launch.
+    const deadline = Date.now() + 120_000
+    let recovered = false
+    do {
+      try {
+        const state = read()
+        if (
+          state.owner === PHONE_VAULT &&
+          state.generation !== previousGeneration &&
+          state.mobile &&
+          state.apiReady &&
+          state.layoutReady &&
+          state.version === version &&
+          !state.loadingPluginId
+        ) {
+          recovered = true
+          break
+        }
+      } catch {
+        /* The fresh process may not have a readable page yet. */
+      }
+      if (Date.now() >= deadline) break
+      await pause(Math.min(250, deadline - Date.now()))
+    } while (Date.now() <= deadline)
+    if (!recovered) {
+      let nativeAlert: string
+      try {
+        nativeAlert = driver(['alert'], 10_000)
+      } catch (error) {
+        nativeAlert = String(error)
+      }
+      throw new Error(
+        `Phone install did not become ready as ${version} after one fresh launch: ${JSON.stringify({
+          loadingPluginId: last?.loadingPluginId ?? 'unavailable',
+          screen: last?.screen ?? 'unavailable',
+          lastObserved: last,
+          nativeAlert,
+          readError,
+          launchError,
+          reloadError: String(reloadError),
+        })}`
+      )
+    }
+  }
   phoneEval(
     `(() => {
     window.__e2eInstalledBuild = { hashes: ${JSON.stringify(hashes)},
