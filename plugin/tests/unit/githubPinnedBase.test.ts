@@ -231,6 +231,19 @@ describe('lazy tree caller authority', () => {
       expect(hidden.children).toBeUndefined()
     }
   )
+  it('rechecks a cached tree result if the caller is revoked before promise completion', async () => {
+    const { client, request } = clientWith(lazyRoutes)
+    let allowed = true
+    const agent = guardedGithubClient(client, () => {
+      if (!allowed) throw new Error('Access revoked')
+    })
+    await repoTree(agent, REPO, TARGET)
+    const before = request.mock.calls.length
+    const cached = repoTree(agent, REPO, TARGET)
+    allowed = false
+    await expect(cached).rejects.toThrow('Access revoked')
+    expect(request).toHaveBeenCalledTimes(before)
+  })
   it('does not inherit the first reader’s revoked capability when another reader expands a folder', async () => {
     const { client, request } = clientWith(lazyRoutes)
     let allowed = true

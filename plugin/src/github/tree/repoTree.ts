@@ -119,6 +119,11 @@ async function read(client: GithubClient, repo: RepoRef, sha: string): Promise<R
 /** The tree of a repository at a commit, read once a session. */
 export function repoTree(client: GithubClient, repo: RepoRef, sha: string): Promise<RepoTree> {
   client.assertCurrent?.()
+  const checked = (pending: Promise<RepoTree>) =>
+    pending.then((tree) => {
+      client.assertCurrent?.()
+      return tree
+    })
   const key = `${client.cacheNamespace}:${keyOf(repo, sha)}`
   let cache = trees.get(client)
   if (!cache) {
@@ -135,7 +140,7 @@ export function repoTree(client: GithubClient, repo: RepoRef, sha: string): Prom
   if (known !== undefined) {
     owners.delete(known)
     owners.set(known, { client, key })
-    return known
+    return checked(known)
   }
   const pending = read(client, repo, sha)
   cache.set(key, pending)
@@ -154,7 +159,7 @@ export function repoTree(client: GithubClient, repo: RepoRef, sha: string): Prom
     if (current?.get(owner.key) === oldest) current.delete(owner.key)
     if (!current?.size) trees.delete(owner.client)
   }
-  return pending
+  return checked(pending)
 }
 
 /** Forgets every tree read — for the tests, and a token that was just replaced. */
