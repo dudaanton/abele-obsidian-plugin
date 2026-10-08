@@ -175,6 +175,7 @@ export class NativeOwnerPublication {
   private remote = new Set<string>()
   private epochs = new Map<string, number>()
   private live = false
+  private automaticPaused = false
   private cacheErrors = 0
   private pasteEvents = 0
   private lastReason = 'none'
@@ -209,7 +210,12 @@ export class NativeOwnerPublication {
       {
         observe: (c, grantId) => this.existingObservation(c, grantId),
         add: (request) => this.addExisting(request),
-        held: () => this.enabled() && this.live && options.held() && !options.settling?.(),
+        held: () =>
+          this.enabled() &&
+          this.live &&
+          options.held() &&
+          !options.settling?.() &&
+          !this.automaticPaused,
         questionEpoch: () => this.resolutionEpoch,
       }
     )
@@ -230,6 +236,11 @@ export class NativeOwnerPublication {
   }
   /** The host supplies only persisted, owner-created grant IDs; changing audiences cancels
    * in-flight question reads. Server visibility and sponsor proofs remain the authority. */
+  setAutomaticPaused(paused: boolean): void {
+    this.check()
+    this.automaticPaused = paused
+    this.resolutionEpoch++
+  }
   setAudiences(grants: string[]): void {
     this.check()
     this.resolutionEpoch++
@@ -354,6 +365,10 @@ export class NativeOwnerPublication {
     const target = this.options.eventTarget ?? document
     const paste = (event: ClipboardEvent) => {
       this.pasteEvents++
+      if (this.automaticPaused) {
+        this.lastReason = 'sharing-paused'
+        return
+      }
       if (!event.isTrusted) {
         this.lastReason = 'untrusted-or-no-file'
         return
@@ -792,6 +807,8 @@ export class NativeOwnerPublication {
   private checkEffects() {
     this.check()
     if (this.options.settling?.()) throw new Error('Publication waits for personal settlement')
+    if (this.automaticPaused)
+      throw new Error('Publication is paused until sharing choices are reviewed')
   }
   private async apply(d: PublicationDelta) {
     this.checkEffects()
@@ -952,7 +969,7 @@ export class NativeOwnerPublication {
   /** Called after a sync transaction finishes; HTTP and questions never enter settlement. */
   async refreshPublication() {
     this.check()
-    if (this.options.settling?.()) return
+    if (this.options.settling?.() || this.automaticPaused) return
     await this.intents.retrySettled()
     const delayed =
       (await this.read<Record<string, DelayedLocalLinks>>('delayed-local-links')) ?? {}
@@ -1050,6 +1067,12 @@ export class NativeOwnerPublication {
             (p) => !p.done && !p.cancelled && p.assetPath === op.path && p.assetSha === op.sha
           )
         if (!p || !nativeAssetEligible(op.path, this.options.configurationRoots?.())) continue
+        // Preserve captured, unsubmitted automatic work while paused. New ordinary
+        // personal files still upload; submitted units retain their exact receipt path.
+        if (this.automaticPaused) {
+          holds.push(o.index)
+          continue
+        }
         if (p.assetHandle && p.assetHandle !== o.handle)
           throw new Error('Native local-create handle changed')
         p.assetHandle = o.handle

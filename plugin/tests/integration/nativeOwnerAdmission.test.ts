@@ -145,6 +145,27 @@ it('retains exact receipt metadata inside settlement but defers every publicatio
     f.close()
   }
 })
+it('a discovery pause blocks settled publication replay without retiring its exact receipt', async () => {
+  const f = await nativeOwnerAdmissionFixture('quota_waiting')
+  try {
+    await push(f.transport, f.fs, f.state, f.scan, f.options())
+    expect(f.versionCount()).toBe(1)
+    expect(f.publicationCount()).toBe(0)
+    const native = f.runtime() as any
+    const receipt = await native.read('receipt:sample-request')
+    native.setAudiences([]) // The old discovery pause did only this.
+    native.setAutomaticPaused?.(true)
+    await native.refreshPublication()
+    await native.refreshPublication()
+    expect(f.publicationCount()).toBe(0)
+    expect(await native.read('receipt:sample-request')).toEqual(receipt)
+    native.setAutomaticPaused?.(false)
+    await native.refreshPublication()
+    expect(f.publicationCount()).toBe(1)
+  } finally {
+    f.close()
+  }
+})
 for (const code of ['too_large', 'quota_exceeded', 'quota_waiting'] as const) {
   it(`binds the final admitted commit before transport after ${code}, then settles without weakening exact receipts`, async () => {
     const f = await nativeOwnerAdmissionFixture(code)
