@@ -331,6 +331,25 @@ describe('timeline scroll ownership', () => {
     }
   })
 
+  it.each([-0.5, 0.5])(
+    'keeps holding through a %s pixel scroll rounding adjustment before late title layout',
+    async (rounding) => {
+      const resize = lateResize()
+      const p = await pane(50)
+      p.owner.classList.add('cm-scroller')
+      await p.patch(() => p.shift(50))
+      expect(p.owner.scrollTop).toBe(150)
+      // An editor can quantize our alignment before delivering its scroll event.
+      // This is within the deferred align guard's tolerance, not new reader input.
+      p.owner.scrollTop += rounding
+      p.owner.dispatchEvent(new Event('scroll'))
+      p.shift(48)
+      resize()
+      expect(p.row.getBoundingClientRect().top).toBe(50)
+      expect(p.owner.scrollTop).toBe(198)
+    }
+  )
+
   it('keeps holding through its own scroll event, but releases on a later external scroll', async () => {
     const resize = lateResize()
     const p = await pane(50)

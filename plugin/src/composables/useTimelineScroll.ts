@@ -360,8 +360,10 @@ export function useTimelineScroll(
         resize?.observe(header)
       chrome?.addEventListener('transitionend', followChrome)
       const scroll = () => {
+        // Match align's inclusive tolerance: an editor can round our write by exactly
+        // half a pixel before this event, while late titles still need the same hold.
         const own =
-          alignedScroll?.owner === owner && Math.abs(owner.scrollTop - alignedScroll.top) < 0.5
+          alignedScroll?.owner === owner && Math.abs(owner.scrollTop - alignedScroll.top) <= 0.5
         alignedScroll = null
         if (!own) {
           // WebKit can restore its pre-collapse scroll asynchronously after touchend.
