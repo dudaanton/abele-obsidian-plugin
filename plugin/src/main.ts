@@ -1265,6 +1265,9 @@ export default class AbelePlugin extends Plugin {
       this.app.workspace.onLayoutReady(() => {
         if (!this.scriptsStarted || generation !== this.scriptStartGeneration) return
         const atStart = this.starting
+        // A settings migration may start this before view-type registration on a reload.
+        // Keep the host ready before the index can launch anything, on that path too.
+        ScriptViewService.getInstance()
         ScriptService.getInstance().init()
         // Automations name their script, so they wait for the index that finds it.
         void ScriptService.getInstance().ready.then(() => {
