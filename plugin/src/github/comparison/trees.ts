@@ -1,4 +1,4 @@
-import { buildTree, sortNodes, type TreeNode } from '../tree/fileTree'
+import { buildTree, findNode, sortNodes, type TreeNode } from '../tree/fileTree'
 
 /** Only this repository-reader interface is needed by endpoint comparison logic. */
 export interface TreeReader {
@@ -112,7 +112,8 @@ export function projectTree(
     )
   const extras = from(changes.filter((row) => !row.target))
   const markRemovedFolders = (node: TreeNode) => {
-    if (node.kind === 'dir' && node.path) node.comparisonStatus = 'removed folder'
+    if (node.kind === 'dir' && node.path && findNode(target, node.path)?.kind !== 'dir')
+      node.comparisonStatus = 'removed folder'
     for (const child of node.children ?? []) markRemovedFolders(child)
   }
   markRemovedFolders(extras)

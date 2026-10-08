@@ -61,6 +61,19 @@ describe('device-local frozen bases', () => {
 })
 
 describe('exact endpoint trees', () => {
+  it('does not mark an existing parent removed when only its deleted child is in the changed projection', async () => {
+    const base = buildTree([entry('src/old.ts', 'old'), entry('src/keep.ts', 'keep')]),
+      target = buildTree([entry('src/keep.ts', 'keep')])
+    const changes = await compareTrees(
+      { root: base, expand: async () => {} },
+      { root: target, expand: async () => {} }
+    )
+    for (const changedOnly of [false, true]) {
+      const src = findNode(projectTree(target, changes, changedOnly), 'src')!
+      expect(src.comparisonStatus).toBeUndefined()
+      expect(src.children?.map((n) => n.path)).toContain('src/old.ts')
+    }
+  })
   it.each([true, false])(
     'keeps both endpoint paths when a file and folder replace each other (base folder: %s)',
     async (baseFolder) => {

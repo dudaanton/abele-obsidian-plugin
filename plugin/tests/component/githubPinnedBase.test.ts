@@ -63,6 +63,46 @@ beforeEach(() => {
 })
 
 describe('a pinned project tree', () => {
+  it('keeps a surviving folder’s page action when the changed view contains only its deleted child', async () => {
+    pin()
+    const { wrapper, model, onOpen } = openTab(
+      `https://github.com/sample/project/blob/${TARGET}/src/keep.ts`,
+      {
+        ...routes,
+        [`/repos/sample/project/git/trees/${BASE}`]: {
+          json: {
+            tree: [
+              { path: 'src/old.ts', type: 'blob', sha: 'old', size: 4 },
+              { path: 'src/keep.ts', type: 'blob', sha: 'keep', size: 5 },
+            ],
+          },
+        },
+        [`/repos/sample/project/git/trees/${TARGET}`]: {
+          json: { tree: [{ path: 'src/keep.ts', type: 'blob', sha: 'keep', size: 5 }] },
+        },
+        '/repos/sample/project/git/blobs/keep': { json: text('keep\n') },
+      }
+    )
+    model.tree = true
+    await vi.waitFor(() =>
+      expect(wrapper.find('.abele-github-tree [data-path="src"]').exists()).toBe(true)
+    )
+    const src = () => wrapper.find('.abele-github-tree [data-path="src"]')
+    expect(src().text()).not.toContain('removed folder')
+    expect(src().find('.abele-github-tree__open-folder').exists()).toBe(true)
+    await wrapper
+      .findAll('.abele-github-tree .abele-tabs__tab')
+      .find((t) => t.text() === 'Changed files')!
+      .trigger('click')
+    expect(src().text()).not.toContain('removed folder')
+    expect(src().find('.abele-github-tree__open-folder').exists()).toBe(true)
+    await src().trigger('click', { metaKey: true })
+    expect(onOpen).toHaveBeenLastCalledWith(
+      `https://github.com/sample/project/tree/${TARGET}/src`,
+      false
+    )
+    wrapper.unmount()
+  })
   it('retries unavailable visible counts after the header refresh without opening the file', async () => {
     installFakeIntersectionObserver()
     resetFakeIntersectionObservers()
