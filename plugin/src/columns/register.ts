@@ -22,7 +22,7 @@ import {
   type ColumnChange,
 } from './operations'
 import { parseColumnsHeader, columnWeights } from './core'
-import { columnPath, renderedColumns } from './target'
+import { columnPath, columnMenuTarget, renderedColumns } from './target'
 import type { ColumnSource } from './source'
 
 interface Target {
@@ -255,8 +255,8 @@ export function registerColumns(plugin: Plugin): void {
       doc,
       'contextmenu',
       (event) => {
-        const parent = (event.target as Element).closest<HTMLElement>('.abele-columns')
-        if (!parent || !contexts.has(parent) || parent.closest('.internal-embed')) return
+        const parent = columnMenuTarget(event.target as Element)
+        if (!parent || !contexts.has(parent)) return
         event.preventDefault()
         event.stopImmediatePropagation()
         if (Date.now() < Number(parent.dataset.abeleTapUntil ?? 0)) return

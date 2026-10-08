@@ -1,6 +1,6 @@
 import { EditorView } from '@codemirror/view'
 import { editorLivePreviewField, type Plugin } from 'obsidian'
-import { columnPath, renderedColumns } from './target'
+import { COLUMN_INTERACTIVE, columnPath, renderedColumns } from './target'
 import { proseBlocks, proseText } from './prose'
 
 interface Entry {
@@ -13,7 +13,7 @@ const contextBound = new WeakSet<HTMLElement>()
 
 /** Resolve a native callout's block by syntax order, then its UTF-16 DOM caret offset. */
 function entryAt(target: Element, x: number, y: number): Entry | null {
-  if (target.closest('a,input,button,pre,table,.math,.internal-embed,svg')) return null
+  if (target.closest(COLUMN_INTERACTIVE)) return null
   const parent = target.closest<HTMLElement>('.abele-columns')
   const column = target.closest<HTMLElement>('.abele-column')
   const block = target.closest<HTMLElement>('p,h1,h2,h3,h4,h5,h6,li')
@@ -24,6 +24,7 @@ function entryAt(target: Element, x: number, y: number): Entry | null {
     parent.addEventListener(
       'contextmenu',
       (event) => {
+        if ((event.target as Element).closest(COLUMN_INTERACTIVE)) return
         if (Date.now() < Number(parent.dataset.abeleTapUntil ?? 0)) {
           event.preventDefault()
           event.stopImmediatePropagation()
@@ -102,6 +103,7 @@ export function registerColumnEntry(plugin: Plugin): void {
     let touch: { entry: Entry; x: number; y: number; id: number; time: number } | null = null
     let completed: { view: EditorView; x: number; y: number; until: number } | null = null
     const suppress = (event: MouseEvent) => {
+      if ((event.target as Element).closest(COLUMN_INTERACTIVE)) return false
       if (
         !completed ||
         Date.now() > completed.until ||

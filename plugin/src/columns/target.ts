@@ -1,5 +1,14 @@
 import { descendantColumns } from './operations'
 
+export const COLUMN_INTERACTIVE =
+  'a,input,button,select,textarea,pre,table,img,svg,.math,.footnote-ref,.internal-embed,[role="button"]'
+
+export function columnMenuTarget(target: Element): HTMLElement | null {
+  if (target.closest(COLUMN_INTERACTIVE)) return null
+  const parent = target.closest<HTMLElement>('.abele-columns')
+  return parent && !parent.closest('.internal-embed') ? parent : null
+}
+
 /** Native widget positions identify the outer quote; the DOM nesting path identifies its child. */
 export function columnPath(element: HTMLElement): { root: HTMLElement; path: number[] } {
   let root = element
