@@ -12,6 +12,7 @@ export class NodeConnection {
   readonly state: Ref<NodeConnectionState> = ref('offline')
   readonly error = ref('')
   private disposed = false
+  private generation = 0
   private timer?: number
   private connecting?: Promise<void>
   constructor(
@@ -27,10 +28,11 @@ export class NodeConnection {
       return Promise.resolve()
     }
     this.state.value = 'connecting'
+    const generation = this.generation
     this.connecting = this.client
       .connect()
       .then(async () => {
-        if (this.disposed) {
+        if (this.disposed || generation !== this.generation) {
           await this.client.disconnect()
           return
         }
@@ -38,25 +40,42 @@ export class NodeConnection {
         this.state.value = 'connected'
       })
       .catch((error: unknown) => {
-        this.state.value = 'offline'
-        this.error.value = error instanceof Error ? error.message : 'Connection failed'
+        if (generation === this.generation) {
+          this.state.value = 'offline'
+          this.error.value = error instanceof Error ? error.message : 'Connection failed'
+        }
         throw error
       })
       .finally(() => {
-        this.connecting = undefined
+        if (generation === this.generation) this.connecting = undefined
       })
     return this.connecting
   }
 
+  /** Keep the client, subscriptions and store alive across same-principal re-pairing.
+   * Settle the old admission before reusing NodeClient; a late channel is discarded.
+   */
+  async refreshAuthorization(): Promise<void> {
+    ++this.generation
+    window.clearTimeout(this.timer)
+    this.state.value = 'offline'
+    this.error.value = ''
+    const old = this.connecting
+    await old?.catch(() => {})
+    await this.client.disconnect()
+    this.connecting = undefined
+  }
+
   /** Plugin-owned retry/foreground lifetime, independent of which tab is visible. */
   start(): void {
+    const generation = this.generation
     const tick = async () => {
       if (this.disposed) return
       if (!this.client.connected) {
         this.state.value = 'offline'
         await this.connect().catch(() => {})
       } else this.state.value = 'connected'
-      if (!this.disposed)
+      if (!this.disposed && generation === this.generation)
         this.timer = window.setTimeout((): void => {
           void tick()
         }, 2000)
@@ -149,8 +168,11 @@ export class NodeService {
       nodeFingerprint: device.node_fingerprint,
       publicKey: device.public_key,
     })
-    this.connections.get(id)?.destroy()
-    this.connections.delete(id)
+    const connection = this.connections.get(id)
+    if (connection) {
+      await connection.refreshAuthorization()
+      connection.start()
+    }
     this.nodes.value = this.registry.list()
     return this.nodes.value.find((n) => n.id === id)!
   }
@@ -186,7 +208,19 @@ export class NodeService {
             expected_node_id: node.expectedNodeId,
           },
       store,
-      paired ? this.pairedConnector : undefined
+      paired
+        ? {
+            connect: async () => {
+              // Pins change only through explicit transactional owner verification.
+              // Keep the NodeClient/store/subscriptions stable, but authenticate with
+              // the currently committed pin after a same-principal re-pair.
+              const target = await this.pairedConnector.target(node.expectedNodeId)
+              if (target.profile !== 'paired-wss-v1' || target.installation_id !== node.installationId)
+                throw new Error('installation_identity_mismatch')
+              return this.pairedConnector.connect(target)
+            },
+          }
+        : undefined
     )
     const connection = new NodeConnection(client, store)
     this.connections.set(id, connection)
