@@ -3,25 +3,40 @@
     "id": "@abele/channel-protocol@0.0.0",
     "name": "@abele/channel-protocol",
     "version": "0.0.0",
-    "size": 4070,
-    "unpackedSize": 23683,
-    "shasum": "5c19800bd82d267e1c3fc57ad8eba5f14360dd79",
-    "integrity": "sha512-y/JzS3miyvvWBXmDt4YWHYO10DIudfZQ8ytCTXAQ+P9Ad9CcAmPu760Q8cUJtb46jXBXjsouiXKwGti6Q/BB6A==",
+    "size": 7518,
+    "unpackedSize": 52784,
+    "shasum": "6677555c08acef33a260c628df01556c15e9fb12",
+    "integrity": "sha512-/QSc3+zB2GLOyAUBdnOf3zd5MO1E3x8zbVvVpeF1eabHOKv7lTSpF31Nk3jIcf/T4dOOYa94GK7jjDnTHQsXHQ==",
     "filename": "abele-channel-protocol-0.0.0.tgz",
     "files": [
       {
         "path": "dist/index.d.ts",
-        "size": 14449,
+        "size": 20311,
         "mode": 420
       },
       {
         "path": "dist/index.js",
-        "size": 4070,
+        "size": 4178,
         "mode": 420
       },
       {
         "path": "dist/index.js.map",
-        "size": 4880,
+        "size": 4963,
+        "mode": 420
+      },
+      {
+        "path": "dist/paired.d.ts",
+        "size": 12396,
+        "mode": 420
+      },
+      {
+        "path": "dist/paired.js",
+        "size": 4813,
+        "mode": 420
+      },
+      {
+        "path": "dist/paired.js.map",
+        "size": 5839,
         "mode": 420
       },
       {
@@ -30,17 +45,17 @@
         "mode": 420
       }
     ],
-    "entryCount": 4,
+    "entryCount": 7,
     "bundled": []
   },
   {
     "id": "@abele/node-protocol@0.0.0",
     "name": "@abele/node-protocol",
     "version": "0.0.0",
-    "size": 16845,
-    "unpackedSize": 108523,
-    "shasum": "e9554ef2d7a844f52a39376690c7153dab83fb0c",
-    "integrity": "sha512-ZpVhFZzzl0Q0sg9rpsOztVTI2/bAnKGytPriwlcg13Tvlg67W8S5qTfF6zRYZMBgMa3cidh1nnlriBxciIU4bw==",
+    "size": 17542,
+    "unpackedSize": 112183,
+    "shasum": "6a6bd48f6e1aa6562d8c53cc216ed7c7583e4ae4",
+    "integrity": "sha512-NygAH6/AiJJKKasWdjqt+aVPMaSg6X+xjMY13rcdhSZwOJrqYeP48CmktE1kMg862HTbm7i/Q0eSwiFxQe0gyQ==",
     "filename": "abele-node-protocol-0.0.0.tgz",
     "files": [
       {
@@ -60,17 +75,32 @@
       },
       {
         "path": "dist/index.d.ts",
-        "size": 1699,
+        "size": 1729,
         "mode": 420
       },
       {
         "path": "dist/index.js",
-        "size": 744,
+        "size": 774,
         "mode": 420
       },
       {
         "path": "dist/index.js.map",
-        "size": 678,
+        "size": 699,
+        "mode": 420
+      },
+      {
+        "path": "dist/pairing.d.ts",
+        "size": 658,
+        "mode": 420
+      },
+      {
+        "path": "dist/pairing.js",
+        "size": 509,
+        "mode": 420
+      },
+      {
+        "path": "dist/pairing.js.map",
+        "size": 490,
         "mode": 420
       },
       {
@@ -90,17 +120,17 @@
       },
       {
         "path": "dist/schemas.d.ts",
-        "size": 28752,
+        "size": 29683,
         "mode": 420
       },
       {
         "path": "dist/schemas.js",
-        "size": 8304,
+        "size": 8685,
         "mode": 420
       },
       {
         "path": "dist/schemas.js.map",
-        "size": 9068,
+        "size": 9678,
         "mode": 420
       },
       {
@@ -109,17 +139,17 @@
         "mode": 420
       }
     ],
-    "entryCount": 13,
+    "entryCount": 16,
     "bundled": []
   },
   {
     "id": "@abele/channel-client@0.0.0",
     "name": "@abele/channel-client",
     "version": "0.0.0",
-    "size": 5413,
-    "unpackedSize": 22165,
-    "shasum": "d0bbd5ddcea37d241f72a790575eab2122fb9ac3",
-    "integrity": "sha512-eKZlpJB1Mw6rASQGEJBCyn4o8z6p36rUlxjWuoEjl58Z+K3MG1rVDpvE9GojxCg4ZtHAuRgwxim4uf7hzYWKPA==",
+    "size": 5443,
+    "unpackedSize": 22350,
+    "shasum": "4328efb8c03b342fb8fc954866c3492f14def822",
+    "integrity": "sha512-fpFq9F4VYm6mHxeuBrygCv5bR/FPwCcgNnt4gPPaTCHv4Y6GfxEts3qQEtxk+rAUNAUVSbHPSWcyyXtfttZtgA==",
     "filename": "abele-channel-client-0.0.0.tgz",
     "files": [
       {
@@ -129,12 +159,12 @@
       },
       {
         "path": "dist/index.js",
-        "size": 10119,
+        "size": 10224,
         "mode": 420
       },
       {
         "path": "dist/index.js.map",
-        "size": 10036,
+        "size": 10116,
         "mode": 420
       },
       {
@@ -150,25 +180,40 @@
     "id": "@abele/node-client@0.0.0",
     "name": "@abele/node-client",
     "version": "0.0.0",
-    "size": 9867,
-    "unpackedSize": 50711,
-    "shasum": "59257fcf43a6d5ffb863bda00eb38415e5780639",
-    "integrity": "sha512-8c/xiSVAIDGoKZJGj2lOmMqcCQ7hsPwSEpv4lgVZrHhXnM/cBbXSxQlsGcoqn6L42vFJGykH7my27nH7uuhCuw==",
+    "size": 14477,
+    "unpackedSize": 72359,
+    "shasum": "482850ae0b3718c821731e93c0c2ac6d31259c88",
+    "integrity": "sha512-nkyAiGorBLvj8qCX3lvqtsbdUYgaNC9I0Bn4nKibBsm5a6zDTEwuTHNmaXeDAA2F3elK2BcRE3dSrQEJTEwZ1g==",
     "filename": "abele-node-client-0.0.0.tgz",
     "files": [
       {
         "path": "dist/index.d.ts",
-        "size": 13448,
+        "size": 14268,
         "mode": 420
       },
       {
         "path": "dist/index.js",
-        "size": 18391,
+        "size": 18503,
         "mode": 420
       },
       {
         "path": "dist/index.js.map",
-        "size": 18500,
+        "size": 18642,
+        "mode": 420
+      },
+      {
+        "path": "dist/paired.d.ts",
+        "size": 2035,
+        "mode": 420
+      },
+      {
+        "path": "dist/paired.js",
+        "size": 10261,
+        "mode": 420
+      },
+      {
+        "path": "dist/paired.js.map",
+        "size": 8278,
         "mode": 420
       },
       {
@@ -177,7 +222,7 @@
         "mode": 420
       }
     ],
-    "entryCount": 4,
+    "entryCount": 7,
     "bundled": []
   }
 ]
