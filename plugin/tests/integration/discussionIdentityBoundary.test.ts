@@ -205,108 +205,160 @@ describe('discussion identity at actual I/O boundaries', () => {
   )
 
   it.each([
-    ['original', 'write'], ['undiscovered copy', 'write'],
-    ['original', 'read'], ['undiscovered copy', 'read'],
-    ['original', 'index'], ['undiscovered copy', 'index'],
-  ] as const)('consecutive trusted renames retain the %s identity after an intermediate committed %s', async (kind, phase) => {
-    const app = useVault([
-      { path: original, content: content() }, { path: copy, content: content() },
-      { path: 'Chats/sample-other.abchat', content: serializeChat({ metadata: { type: 'abele-chat', providerId: '', modelId: '', created: '' }, messages: [], internalMessages: [] }) },
-    ])
-    wireRenameHandler(app)
-    const start = kind === 'original' ? original : copy
-    const file = app.vault.getFileByPath(start)!
-    const middle = 'Moved/sample-middle.abchat'
-    const final = 'Moved/sample-final.abchat'
-    const expected = kind === 'original' ? sourceId : await forkId(sourceId, start)
-    const storage = ChatStorage.getInstance()
-    const other = app.vault.getFileByPath('Chats/sample-other.abchat')!
-    const read = app.vault.read.bind(app.vault)
-    let reached!: () => void
-    let release!: () => void
-    const atCheckpoint = new Promise<void>((resolve) => { reached = resolve })
-    const gate = new Promise<void>((resolve) => { release = resolve })
-    let paused = false
-    let committed = false
-    const pause = async () => { if (!paused) { paused = true; reached(); await gate } }
-    if (phase === 'write') {
-      const remove = app.vault.adapter.remove.bind(app.vault.adapter)
-      vi.spyOn(app.vault.adapter, 'remove').mockImplementation(async (path) => {
-        const meta = parseChatMetadata(await read(file))
-        if (file.path === middle && meta?.commentLocation === middle) await pause()
-        return remove(path)
+    ['original', 'write'],
+    ['undiscovered copy', 'write'],
+    ['original', 'read'],
+    ['undiscovered copy', 'read'],
+    ['original', 'index'],
+    ['undiscovered copy', 'index'],
+  ] as const)(
+    'consecutive trusted renames retain the %s identity after an intermediate committed %s',
+    async (kind, phase) => {
+      const app = useVault([
+        { path: original, content: content() },
+        { path: copy, content: content() },
+        {
+          path: 'Chats/sample-other.abchat',
+          content: serializeChat({
+            metadata: { type: 'abele-chat', providerId: '', modelId: '', created: '' },
+            messages: [],
+            internalMessages: [],
+          }),
+        },
+      ])
+      wireRenameHandler(app)
+      const start = kind === 'original' ? original : copy
+      const file = app.vault.getFileByPath(start)!
+      const middle = 'Moved/sample-middle.abchat'
+      const final = 'Moved/sample-final.abchat'
+      const expected = kind === 'original' ? sourceId : await forkId(sourceId, start)
+      const storage = ChatStorage.getInstance()
+      const other = app.vault.getFileByPath('Chats/sample-other.abchat')!
+      const read = app.vault.read.bind(app.vault)
+      let reached!: () => void
+      let release!: () => void
+      const atCheckpoint = new Promise<void>((resolve) => {
+        reached = resolve
       })
-    }
-    if (phase === 'index') {
-      const process = app.vault.process.bind(app.vault)
-      vi.spyOn(app.vault, 'process').mockImplementation(async (target, change) => {
-        const result = await process(target, change)
-        if (target === file && file.path === middle) { committed = true; storage.invalidateDiscussion(other.path) }
-        return result
+      const gate = new Promise<void>((resolve) => {
+        release = resolve
       })
+      let paused = false
+      let committed = false
+      const pause = async () => {
+        if (!paused) {
+          paused = true
+          reached()
+          await gate
+        }
+      }
+      if (phase === 'write') {
+        const remove = app.vault.adapter.remove.bind(app.vault.adapter)
+        vi.spyOn(app.vault.adapter, 'remove').mockImplementation(async (path) => {
+          const meta = parseChatMetadata(await read(file))
+          if (file.path === middle && meta?.commentLocation === middle) await pause()
+          return remove(path)
+        })
+      }
+      if (phase === 'index') {
+        const process = app.vault.process.bind(app.vault)
+        vi.spyOn(app.vault, 'process').mockImplementation(async (target, change) => {
+          const result = await process(target, change)
+          if (target === file && file.path === middle) {
+            committed = true
+            storage.invalidateDiscussion(other.path)
+          }
+          return result
+        })
+      }
+      vi.spyOn(app.vault, 'read').mockImplementation(async (candidate) => {
+        const bytes = await read(candidate)
+        if (
+          phase === 'read' &&
+          candidate === file &&
+          file.path === middle &&
+          parseChatMetadata(bytes)?.commentLocation === middle
+        )
+          await pause()
+        if (phase === 'index' && candidate === other && committed) await pause()
+        return bytes
+      })
+      const updates: Promise<void>[] = []
+      const agents = AgentsService.getInstance()
+      const update = agents.updateFile.bind(agents)
+      vi.spyOn(agents, 'updateFile').mockImplementation((target, oldPath) => {
+        const task = update(target, oldPath)
+        if (target === file && oldPath) updates.push(task)
+        return task
+      })
+      await app.fileManager.renameFile(file, middle)
+      app.emit('vault', 'rename', file, start)
+      await atCheckpoint
+      expect(parseChatMetadata(await read(file))).toMatchObject({
+        commentId: expected,
+        commentLocation: middle,
+      })
+      await app.fileManager.renameFile(file, final)
+      app.emit('vault', 'rename', file, middle)
+      release()
+      await Promise.all(updates)
+      expect(await disk(app, final)).toMatchObject({ commentId: expected, commentLocation: final })
+      const owner = await CommentService.getInstance().load(expected)
+      expect(owner?.currentChatFile.value?.path).toBe(final)
+      await owner!.save()
+      expect((await disk(app, final)).commentId).toBe(expected)
+      expect((await CommentService.getInstance().load(sourceId))?.currentChatFile.value?.path).toBe(
+        kind === 'original' ? final : original
+      )
     }
-    vi.spyOn(app.vault, 'read').mockImplementation(async (candidate) => {
-      const bytes = await read(candidate)
-      if (phase === 'read' && candidate === file && file.path === middle && parseChatMetadata(bytes)?.commentLocation === middle)
-        await pause()
-      if (phase === 'index' && candidate === other && committed) await pause()
-      return bytes
-    })
-    const updates: Promise<void>[] = []
-    const agents = AgentsService.getInstance()
-    const update = agents.updateFile.bind(agents)
-    vi.spyOn(agents, 'updateFile').mockImplementation((target, oldPath) => {
-      const task = update(target, oldPath)
-      if (target === file && oldPath) updates.push(task)
-      return task
-    })
-    await app.fileManager.renameFile(file, middle)
-    app.emit('vault', 'rename', file, start)
-    await atCheckpoint
-    expect(parseChatMetadata(await read(file))).toMatchObject({ commentId: expected, commentLocation: middle })
-    await app.fileManager.renameFile(file, final)
-    app.emit('vault', 'rename', file, middle)
-    release()
-    await Promise.all(updates)
-    expect(await disk(app, final)).toMatchObject({ commentId: expected, commentLocation: final })
-    const owner = await CommentService.getInstance().load(expected)
-    expect(owner?.currentChatFile.value?.path).toBe(final)
-    await owner!.save()
-    expect((await disk(app, final)).commentId).toBe(expected)
-    expect((await CommentService.getInstance().load(sourceId))?.currentChatFile.value?.path).toBe(kind === 'original' ? final : original)
-  })
+  )
 
-  it.each(['delete', 'change identity'] as const)('a failed legacy lookup recovers when the conflicting owner is resolved by %s', async (resolution) => {
-    const competing = 'Archive/sample-conflicting.abchat'
-    const app = useVault([
-      { path: original, content: content({ commentLocation: undefined }, true) },
-      { path: competing, content: content({ commentLocation: competing }) },
-    ])
-    wireRenameHandler(app)
-    const comments = CommentService.getInstance()
-    expect(await comments.load(sourceId)).toBeNull()
-    expect(await comments.load(sourceId)).toBeNull()
-    expect((await disk(app, original)).commentLocation).toBeUndefined()
-    const file = app.vault.getFileByPath(competing)!
-    if (resolution === 'delete') {
-      await app.vault.delete(file)
-      app.emit('vault', 'delete', file)
-    } else {
-      await app.vault.modify(file, content({ commentId: 'sample-other-owner', commentLocation: competing }))
-      app.emit('vault', 'modify', file)
-      await AgentsService.getInstance().updateFile(file)
+  it.each(['delete', 'change identity'] as const)(
+    'a failed legacy lookup recovers when the conflicting owner is resolved by %s',
+    async (resolution) => {
+      const competing = 'Archive/sample-conflicting.abchat'
+      const app = useVault([
+        { path: original, content: content({ commentLocation: undefined }, true) },
+        { path: competing, content: content({ commentLocation: competing }) },
+      ])
+      wireRenameHandler(app)
+      const comments = CommentService.getInstance()
+      expect(await comments.load(sourceId)).toBeNull()
+      expect(await comments.load(sourceId)).toBeNull()
+      expect((await disk(app, original)).commentLocation).toBeUndefined()
+      const file = app.vault.getFileByPath(competing)!
+      if (resolution === 'delete') {
+        await app.vault.delete(file)
+        app.emit('vault', 'delete', file)
+      } else {
+        await app.vault.modify(
+          file,
+          content({ commentId: 'sample-other-owner', commentLocation: competing })
+        )
+        app.emit('vault', 'modify', file)
+        await AgentsService.getInstance().updateFile(file)
+      }
+      expect(await comments.showInSidebar(sourceId)).toBe(true)
+      expect(ChatService.getInstance().activeSession.value?.currentChatFile.value?.path).toBe(
+        original
+      )
+      expect(await disk(app, original)).toMatchObject({
+        commentId: sourceId,
+        commentLocation: original,
+      })
+      expect(comments.isMissing(sourceId)).toBe(false)
+      await ChatService.getInstance().activeSession.value!.save()
+      expect((await disk(app, original)).commentId).toBe(sourceId)
+      if (resolution !== 'delete')
+        expect((await disk(app, competing)).commentId).toBe('sample-other-owner')
     }
-    expect(await comments.showInSidebar(sourceId)).toBe(true)
-    expect(ChatService.getInstance().activeSession.value?.currentChatFile.value?.path).toBe(original)
-    expect(await disk(app, original)).toMatchObject({ commentId: sourceId, commentLocation: original })
-    expect(comments.isMissing(sourceId)).toBe(false)
-    await ChatService.getInstance().activeSession.value!.save()
-    expect((await disk(app, original)).commentId).toBe(sourceId)
-    if (resolution !== 'delete') expect((await disk(app, competing)).commentId).toBe('sample-other-owner')
-  })
+  )
 
   it('a file link replaces the contextual discussion at the tab limit without replacing ordinary tabs or stopping work', async () => {
-    const app = useVault([{ path: original, content: content() }, { path: copy, content: content() }])
+    const app = useVault([
+      { path: original, content: content() },
+      { path: copy, content: content() },
+    ])
     const chats = ChatService.getInstance()
     const ordinary = Array.from({ length: MAX_TABS - 1 }, (_, index) => {
       const session = chats.getSession(chats.createTab())!
