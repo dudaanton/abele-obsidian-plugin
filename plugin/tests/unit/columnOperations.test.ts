@@ -55,6 +55,15 @@ describe('column frame operations', () => {
     expect(findColumns(text, text.indexOf('Left'))).toBeNull()
   })
 
+  it.each([true, false])(
+    'does not treat a quoted fenced example as an editable frame (closed=%s)',
+    (closed) => {
+      const frame = createColumns('Example body', 'two')
+      const text = '> ```md\n' + frame + (closed ? '\n> ```' : '')
+      expect(findColumns(text, text.indexOf('Example body'))).toBeNull()
+    }
+  )
+
   it('does not offer frame edits for a fenced example', () => {
     const text = '```md\n' + createColumns('Example', 'two') + '\n```'
     expect(findColumns(text, text.indexOf('Example'))).toBeNull()

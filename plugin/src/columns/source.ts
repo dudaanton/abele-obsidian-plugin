@@ -58,13 +58,12 @@ export function columnSource(text: string, from: number): ColumnSource | null {
   }
   const index = offsets.indexOf(from)
   if (index < 0) return null
-  // A callout-looking example in a fenced code block is not a record.
+  // Ask the Markdown grammar about surrounding code, including quoted and unclosed fences.
+  const context = markdown.parse(text)
+  for (let node: SyntaxNode | null = context.resolveInner(from, 1); node; node = node.parent)
+    if (node.name === 'FencedCode' || node.name === 'CodeBlock' || node.name === 'HTMLBlock')
+      return null
   let fence = ''
-  for (let i = 0; i < index; i++) {
-    const m = /^\s*(`{3,}|~{3,})/.exec(lines[i])
-    if (m) fence = fence ? (m[1][0] === fence[0] && m[1].length >= fence.length ? '' : fence) : m[1]
-  }
-  if (fence) return null
   const header = quote(lines[index])
   const options = parseColumnsHeader(lines[index])
   if (!header || !options) return null
