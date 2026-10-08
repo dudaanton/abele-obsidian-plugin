@@ -24,6 +24,12 @@
     <AiRunView v-if="activeRun" :run="activeRun" />
     <NodeChatView v-else-if="nodeSession" :key="nodeSession.id" :presenter="nodeSession" @new-chat="onNewTab" />
 
+    <EmptyState
+      v-else-if="session?.preparingClone?.value"
+      text="Creating chat copy…"
+      role="status"
+    />
+
     <template v-else>
       <!-- Header -->
       <div class="abele-ai-chat__header">
@@ -397,6 +403,7 @@ import { useChatKeyboardGap } from '@/composables/useChatKeyboardGap'
 import AiChatInput from './AiChatInput.vue'
 import AiChatTabs from './AiChatTabs.vue'
 import AiRunView from './AiRunView.vue'
+import EmptyState from './obsidian/EmptyState.vue'
 import NodeChatView from './NodeChatView.vue'
 import { newChatMenu } from '@/node/openSession'
 import AiToolApproval from './AiToolApproval.vue'

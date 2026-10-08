@@ -246,6 +246,102 @@ describe('clone into a new chat tab', () => {
     expect(Notice.shown.join('\n')).toContain('closed')
   })
 
+  it('holds a pending clone read-only and adopts it without resetting a delivered draft', async () => {
+    const { app, service, source } = await sourceChat()
+    const storage = ChatStorage.getInstance()
+    const save = storage.saveChat.bind(storage)
+    let release!: () => void
+    const waiting = new Promise<void>((resolve) => {
+      release = resolve
+    })
+    vi.spyOn(storage, 'saveChat').mockImplementation(async (...args) => {
+      await waiting
+      return save(...args)
+    })
+    const pending = service.cloneChatFromMessage(source.id, 'answer')
+    const clone = service.activeSession.value!
+    try {
+      expect(clone.preparingClone.value).toBe(true)
+      expect(clone.isMidTurn).toBe(true)
+      const attachment = await app.vault.create('sample-attachment.txt', 'Sample attachment')
+      clone.draft.value.text = 'Delivered draft'
+      clone.draft.value.attachments = [attachment]
+      const draft = clone.draft.value
+      await clone.sendMessage('Must not start a turn')
+      expect(stream).not.toHaveBeenCalled()
+      expect(clone.queuedMessages.value).toEqual([])
+      release()
+      await pending
+      expect(clone.draft.value).toBe(draft)
+      expect(clone.draft.value.text).toBe('Delivered draft')
+      expect(clone.draft.value.attachments).toEqual([attachment])
+      expect(clone.messages.value.map((message) => message.content)).toEqual([
+        'First question',
+        'Chosen reply',
+      ])
+      expect(clone.preparingClone.value).toBe(false)
+      expect(clone.isMidTurn).toBe(false)
+    } finally {
+      release()
+      await pending
+    }
+  })
+
+  it('cancels a clone cleanly when its reserved tab opens another conversation', async () => {
+    const { app, service, source } = await nestedSource()
+    const storage = ChatStorage.getInstance()
+    const save = storage.saveChat.bind(storage)
+    const entered = vi.fn()
+    let release!: () => void
+    const waiting = new Promise<void>((resolve) => {
+      release = resolve
+    })
+    vi.spyOn(storage, 'saveChat').mockImplementation(async (...args) => {
+      entered()
+      await waiting
+      return save(...args)
+    })
+    const before = app.vault
+      .getFiles()
+      .map((file) => file.path)
+      .sort()
+    const pending = service.cloneChatFromMessage(source.id, 'answer')
+    await vi.waitFor(() => expect(entered).toHaveBeenCalled())
+    const holder = service.activeSession.value!
+    const replacement = await app.vault.create(
+      'AI/Chats/Replacement.abchat',
+      serializeChat({
+        metadata: {
+          type: 'abele-chat',
+          title: 'Replacement',
+          agentId: source.agentId.value,
+          providerId: 'sample-provider',
+          modelId: 'sample-model',
+          created: '2025-01-01',
+        },
+        messages: [
+          { id: 'replacement-root', role: 'user', content: 'Replacement question', timestamp: 1 },
+        ],
+        internalMessages: [],
+      })
+    )
+    await service.openChatInTab(holder.id, replacement)
+    holder.draft.value.text = 'Replacement draft'
+    release()
+    await pending
+    expect(service.activeSession.value).toBe(holder)
+    expect(holder.currentChatFile.value).toBe(replacement)
+    expect(holder.messages.value[0].content).toBe('Replacement question')
+    expect(holder.draft.value.text).toBe('Replacement draft')
+    expect(holder.preparingClone.value).toBe(false)
+    expect(
+      app.vault
+        .getFiles()
+        .map((file) => file.path)
+        .sort()
+    ).toEqual([...before, replacement.path].sort())
+  })
+
   it('returns from a nested copied run to its parent run without creating a writable chat', async () => {
     const { app, service, source, runs } = await nestedSource()
     await service.cloneChatFromMessage(source.id, 'answer')

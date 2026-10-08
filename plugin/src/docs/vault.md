@@ -738,7 +738,9 @@ run IDs and paths, recursively, and point back to the new chat/run; they are ind
 owned for deletion. A nested run's `parentChat` may point to its parent run file; returning
 there opens the read-only run view, not an editable chat. Chat storage refuses run transcripts
 (including recognized torn run headers) on both load and save. The source file, comments and
-device-local rewind data are not changed.
+device-local rewind data are not changed. The reserved clone tab stays read-only during
+copying; adoption does not reset its draft. A change to the tab's conversation lifetime cancels
+the copy and removes only its independent files, never the replacement conversation.
 
 ## Durable chat selections (storage adapter)
 

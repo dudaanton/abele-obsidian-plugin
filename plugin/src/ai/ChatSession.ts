@@ -256,6 +256,8 @@ export class ChatSession implements SummarizerHost, InterceptorHost, AnchorStora
   private toolAbortController: AbortController | null = null
   /** Changes before replacing a conversation; saving its first file does not change it. */
   public readonly conversationVersion = ref(0)
+  /** The reserved clone tab is read-only until its independent snapshot has been adopted. */
+  public readonly preparingClone = ref(false)
   /** The live conversation owns this draft, including imports, independently of every view. */
   public readonly draft = ref<ChatDraft>({ text: '', attachments: [] })
   private get generation(): number {
@@ -339,6 +341,7 @@ export class ChatSession implements SummarizerHost, InterceptorHost, AnchorStora
    */
   private get isBusy(): boolean {
     return (
+      this.preparingClone.value ||
       this.replyChanging ||
       this.isStreaming.value ||
       this.isCompacting.value ||
@@ -360,6 +363,7 @@ export class ChatSession implements SummarizerHost, InterceptorHost, AnchorStora
    * conversation under one of them asks here first.
    */
   get isMidTurn(): boolean {
+    if (this.preparingClone.value) return true
     if (this.replyChanging || this.isStreaming.value || this.isCompacting.value) return true
     if (this.interceptor.working.value) return true
     return this.pendingToolCalls.value.length > 0 || this.pendingQuestions.value !== null
@@ -1873,6 +1877,10 @@ export class ChatSession implements SummarizerHost, InterceptorHost, AnchorStora
   }
 
   async sendMessage(content: string, attachments?: string[]): Promise<void> {
+    if (this.preparingClone.value) {
+      new Notice('Wait for the chat copy to finish.')
+      return
+    }
     // Busy is not a reason to lose what was typed: it waits its turn instead. `takeQueued`
     // hands it to the loop that is already running, at its next iteration; `drainQueue` gives
     // it a turn of its own when the one it waited behind ends without another iteration.
@@ -2314,6 +2322,7 @@ export class ChatSession implements SummarizerHost, InterceptorHost, AnchorStora
   // ── Reset (new chat within this session / tab) ─────────────────
 
   async reset(): Promise<void> {
+    this.preparingClone.value = false
     this.draft.value.imports?.retire()
     this.draft.value = { text: '', attachments: [] }
     this.conversationVersion.value++
@@ -3041,6 +3050,14 @@ export class ChatSession implements SummarizerHost, InterceptorHost, AnchorStora
     })
   }
 
+  /** Adopt into the reserved empty session without resetting any draft delivered meanwhile. */
+  async initializeClone(file: TFile, isCurrent: () => boolean): Promise<void> {
+    const result = await ChatStorage.getInstance().loadChat(file)
+    if (!isCurrent() || !this.preparingClone.value || this.currentChatFile.value || this.allChatMessages.length)
+      throw new Error('The chat copy was cancelled.')
+    await this.restoreLoadedChat(file, result, { readOnly: true })
+  }
+
   async load(file: TFile): Promise<void> {
     await this.reset()
     const result = await ChatStorage.getInstance().loadChat(file)
@@ -3138,7 +3155,7 @@ export class ChatSession implements SummarizerHost, InterceptorHost, AnchorStora
    */
   private busyFor(action: string): boolean {
     const busy =
-      this.isStreaming.value || this.isExecutingTool.value || this.pendingToolCalls.value.length > 0
+      this.preparingClone.value || this.isStreaming.value || this.isExecutingTool.value || this.pendingToolCalls.value.length > 0
     if (busy) new Notice(`The chat is busy — stop it or wait for the turn to finish to ${action}`)
     return busy
   }

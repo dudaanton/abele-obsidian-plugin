@@ -318,11 +318,15 @@ export class ChatService {
     // Reserve the tab before any asynchronous writes: never fall back to the source at limit.
     const cloneId = this.createTab()
     const clone = this.sessions.get(cloneId)!
+    clone.preparingClone.value = true
+    const version = clone.conversationVersion.value
+    const isCurrent = () => this.sessions.get(cloneId) === clone && clone.conversationVersion.value === version
     const storage = ChatStorage.getInstance()
     const runs = RunStorage.getInstance()
     const copies: RunFile[] = []
     const stillOpen = () => {
       if (this.sessions.get(cloneId) !== clone) throw new Error('The new chat tab was closed.')
+      if (!isCurrent() || !clone.preparingClone.value) throw new Error('The chat copy was cancelled.')
     }
     let file: TFile | null = null
     try {
@@ -366,17 +370,23 @@ export class ChatService {
         if (!(await runs.save(run))) throw new Error('Could not save a delegated transcript.')
       }
       stillOpen()
-      await clone.load(file)
+      await clone.initializeClone(file, isCurrent)
       stillOpen()
+      clone.preparingClone.value = false
       clone.mirrorNoteLinks()
       this.saveTabs()
     } catch (error) {
       // Only independent copies: deleting a failed clone cannot delete source transcripts.
       if (file) await storage.deleteChat(file.path)
       await runs.deleteRuns(copies.map((run) => run.runId))
-      clone.destroy()
-      this.dropTab(cloneId)
-      if (this.sessions.has(tabId)) this.switchTab(tabId)
+      // A tab reused by a later load belongs to that conversation now. Clean up only
+      // this operation's files; never destroy or select over the replacement session.
+      if (isCurrent()) {
+        clone.preparingClone.value = false
+        clone.destroy()
+        this.dropTab(cloneId)
+        if (this.sessions.has(tabId)) this.switchTab(tabId)
+      }
       new Notice(
         `Could not create a new chat: ${error instanceof Error ? error.message : String(error)}`
       )

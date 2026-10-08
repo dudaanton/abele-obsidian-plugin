@@ -948,6 +948,13 @@ const probeScript = `(async () => {
       await wait(200)
       await screen('message actions menu', document.querySelector('.menu'), document.querySelector('.menu'))
       report['message actions menu'].labels = [...document.querySelectorAll('.menu-item-title')].map(item=>item.textContent.trim())
+      await closeDialog()
+      actionService.getSession(actionSourceId).preparingClone.value = true
+      await wait(200)
+      const pendingChat = [...document.querySelectorAll('.abele-ai-chat')].find(root=>root.getBoundingClientRect().width)
+      await screen('chat copy pending', pendingChat, pendingChat)
+      report['chat copy pending'].inputs = pendingChat.querySelectorAll('.abele-chat-input, .abele-ai-chat__header').length
+      actionService.getSession(actionSourceId).preparingClone.value = false
     } finally { ${MESSAGE_ACTIONS_CLEANUP} }
 
     // Both selection-menu surfaces with long names and a list longer than the sheet.
@@ -1741,6 +1748,7 @@ describe.skipIf(!available)('the chat dialogs on a phone', () => {
     'chat',
     'message actions',
     'message actions menu',
+    'chat copy pending',
     'node chat',
     'node claude chat',
     'node claude permission',
@@ -1846,6 +1854,7 @@ describe.skipIf(!available)('the chat dialogs on a phone', () => {
     const menu = report['message actions menu'] as Screen & { labels: string[] }
     expect(menu.labels).toContain('Branch from here')
     expect(menu.labels).toContain('New chat from here')
+    expect((report['chat copy pending'] as Screen & { inputs: number }).inputs).toBe(0)
   })
 
   it('node session chrome leaves space for messages and keeps one compact approval and queue row', () => {

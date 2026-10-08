@@ -115,6 +115,14 @@ const script = `(async () => {
     await wait(200)
     if (!document.querySelector('.menu')) throw Error('Message actions menu did not open')
     fs.writeFileSync(dir + '/message-actions-menu.png', (await win.webContents.capturePage()).toPNG())
+    document.body.dispatchEvent(new KeyboardEvent('keydown',{key:'Escape',code:'Escape',keyCode:27,bubbles:true}))
+    actionService.getSession(actionSourceId).preparingClone.value = true
+    await wait(200)
+    const pendingChat = [...document.querySelectorAll('.abele-ai-chat')].find(root=>root.getBoundingClientRect().width)
+    if (pendingChat.querySelector('.abele-chat-input, .abele-ai-chat__header')) throw Error('Pending copy is editable')
+    measureAll('chat copy pending', pendingChat)
+    fs.writeFileSync(dir + '/chat-copy-pending.png', (await win.webContents.capturePage()).toPNG())
+    actionService.getSession(actionSourceId).preparingClone.value = false
   } finally { ${MESSAGE_ACTIONS_CLEANUP} }
 
   const chat = [...document.querySelectorAll('.abele-ai-chat')].find(
