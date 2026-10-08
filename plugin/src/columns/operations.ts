@@ -86,8 +86,24 @@ export function createColumns(selection: string, kind: ColumnTemplate): string {
   )
 }
 
+function checkedFrame(text: string, record: ColumnSource): ColumnSource {
+  const current = columnSource(text, record.from)
+  if (
+    !current ||
+    current.to !== record.to ||
+    current.columns.length !== record.columns.length ||
+    current.columns.some(
+      (column, index) =>
+        column.from !== record.columns[index].from || column.to !== record.columns[index].to
+    )
+  )
+    throw Error('The column frame changed or contains unsupported structure.')
+  return current
+}
+
 /** Replace only the parsed frame; the caller owns the editor/vault transaction. */
 export function changeColumns(text: string, record: ColumnSource, change: ColumnChange): string {
+  record = checkedFrame(text, record)
   const parentTitle = title(text.slice(record.from).split('\n')[0])
   const columns = record.columns.map((c) => ({
     header: text.slice(c.from).split('\n')[0],
@@ -135,6 +151,7 @@ export function changeColumns(text: string, record: ColumnSource, change: Column
 }
 
 export function removeColumns(text: string, record: ColumnSource): string {
+  record = checkedFrame(text, record)
   const parentTitle = title(text.slice(record.from).split('\n')[0])
   const bodies = record.columns.map((c) => {
     const heading = title(text.slice(c.from).split('\n')[0])

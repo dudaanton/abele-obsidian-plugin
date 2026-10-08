@@ -99,6 +99,14 @@ describe('column frame operations', () => {
     expect(removed.match(/\[!abele-columns/g)).toHaveLength(1)
   })
 
+  it('revalidates the current source instead of trusting a previously parsed frame', () => {
+    const text = createColumns('Body', 'two'),
+      record = findColumns(text, 0)!
+    const changed = text.replace('> > [!abele-column]', '> Unassigned lead\n> > [!abele-column]')
+    expect(() => removeColumns(changed, record)).toThrow()
+    expect(() => changeColumns(changed, record, { type: 'add' })).toThrow()
+  })
+
   it('does not offer frame edits for a fenced example', () => {
     const text = '```md\n' + createColumns('Example', 'two') + '\n```'
     expect(findColumns(text, text.indexOf('Example'))).toBeNull()

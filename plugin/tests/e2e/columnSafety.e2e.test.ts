@@ -1,0 +1,128 @@
+import { afterAll, beforeAll, describe, expect, it } from 'vitest'
+import { evalRaw, isObsidianRunning, hasTestApi, runCli } from './helpers/obsidianCli'
+import { onPhone, targets } from './helpers/target'
+import { tap, longPress, screenshot } from './helpers/phone'
+import { shotDir } from './helpers/shots'
+import { createColumns } from '../../src/columns/operations'
+
+targets('desktop', 'phone')
+const NOTE = 'Sample column safety.md'
+const SHOTS = shotDir('column-safety')
+const available = isObsidianRunning() && hasTestApi()
+const prelude = `const wait=ms=>new Promise(r=>setTimeout(r,ms));const leaf=app.workspace.getLeavesOfType('markdown').find(l=>l.view.file?.path===${JSON.stringify(NOTE)});const view=leaf?.view;const root=()=>view.getMode()==='preview'?view.previewMode.containerEl:view.editor.cm.dom;`
+const evaluate = <T>(code: string): T =>
+  JSON.parse(evalRaw(`(async()=>JSON.stringify(await(async()=>{${prelude}${code}})()))()`)) as T
+function show(text: string, mode = 'source') {
+  evaluate(
+    `await app.vault.modify(view.file,${JSON.stringify(text)});await leaf.setViewState({type:'markdown',state:{file:${JSON.stringify(NOTE)},mode:${JSON.stringify(mode)},source:false}});if(${JSON.stringify(mode)}==='source'){view.editor.setValue(${JSON.stringify(text)});view.editor.setCursor({line:view.editor.lineCount()-1,ch:0})}await wait(500);return true`
+  )
+}
+async function shot(name: string) {
+  const path = SHOTS + '/' + name + '.png'
+  if (onPhone()) screenshot(path)
+  else
+    evaluate(
+      `require('fs').writeFileSync(${JSON.stringify(path)},(await require('@electron/remote').getCurrentWindow().webContents.capturePage()).toPNG());return true`
+    )
+}
+function click(point: { x: number; y: number }, right = false) {
+  if (onPhone()) {
+    if (right) longPress(point.x, point.y)
+    else tap(point.x, point.y)
+  } else
+    for (const type of ['mousePressed', 'mouseReleased'])
+      runCli([
+        'dev:cdp',
+        'method=Input.dispatchMouseEvent',
+        'params=' +
+          JSON.stringify({ type, ...point, button: right ? 'right' : 'left', clickCount: 1 }),
+      ])
+}
+function point(selector: string, offset?: number) {
+  return evaluate<{ x: number; y: number }>(`
+  const element=root().querySelector(${JSON.stringify(selector)});element.scrollIntoView({block:'center'});await wait(150);
+  let r=element.getBoundingClientRect();if(${offset !== undefined}){const range=document.createRange();range.setStart(element.lastChild,${offset ?? 0});range.setEnd(element.lastChild,${(offset ?? 0) + 1});r=range.getBoundingClientRect()}
+  return {x:r.x+(${offset !== undefined}?.1:Math.min(30,r.width/2)),y:r.y+r.height/2};`)
+}
+function menu(title: string) {
+  return evaluate<boolean>(
+    `const item=[...document.querySelectorAll('.menu-item')].find(e=>e.querySelector('.menu-item-title')?.textContent===${JSON.stringify(title)});if(!item)return false;item.click();await wait(250);return true`
+  )
+}
+const textInFrame = (body: string) => createColumns(body, 'two') + '\n\nAfter.\n'
+
+describe.skipIf(!available)('column source and menu safety', () => {
+  beforeAll(() =>
+    evaluate(
+      `if(app.vault.getAbstractFileByPath(${JSON.stringify(NOTE)}))throw Error('fixture exists');const file=await app.vault.create(${JSON.stringify(NOTE)},'Start.');await app.workspace.getLeaf('tab').openFile(file);app.workspace.leftSplit.collapse();app.workspace.rightSplit.collapse();return true`
+    )
+  )
+  afterAll(() =>
+    evaluate(
+      `document.querySelectorAll('.menu').forEach(menu=>menu.remove());for(const l of app.workspace.getLeavesOfType('markdown'))if(l.view.file?.path===${JSON.stringify(NOTE)}){await l.view.save();l.detach()}const f=app.vault.getAbstractFileByPath(${JSON.stringify(NOTE)});if(f)await app.vault.delete(f);return true`
+    )
+  )
+
+  it('does not offer mutating commands on parent prose or quoted code examples', () => {
+    for (const text of [
+      '> [!abele-columns]\n> Unassigned lead\n> > [!abele-column]\n> > Left\n>\n> > [!abele-column]\n> > Right\n\nAfter.',
+      '> ```md\n' + createColumns('Code sample', 'two') + '\n> ```\n\nAfter.',
+    ]) {
+      show(text)
+      const result = evaluate<{ options: boolean; remove: boolean; text: string }>(
+        `view.editor.setCursor({line:3,ch:4});app.workspace.activeEditor=view;return {options:app.commands.commands['abele:column-options'].editorCheckCallback(true,view.editor,view),remove:app.commands.commands['abele:remove-columns'].editorCheckCallback(true,view.editor,view),text:view.editor.getValue()}`
+      )
+      expect(result.options).toBe(false)
+      expect(result.remove).toBe(false)
+      expect(result.text).toBe(text)
+    }
+  })
+  it('the nested toolbar edits only its own proportions', async () => {
+    const text = textInFrame(createColumns('Inner passage', 'two'))
+    for (const mode of ['preview', 'source']) {
+      show(text, mode)
+      click(point('.abele-columns .abele-columns .abele-columns-controls button'))
+      evaluate(`await wait(200);return true`)
+      expect(menu('Proportions 2:1')).toBe(true)
+      const result = evaluate<string>(
+        `if(view.getMode()==='source')await view.save();return await app.vault.read(view.file)`
+      )
+      expect(result.split('\n')[0]).toBe(text.split('\n')[0])
+      expect(result).toContain('> > > [!abele-columns|ratio=2:1')
+      await shot('nested-' + mode)
+    }
+  })
+  it('highlight markers do not shift the caret before following prose', async () => {
+    const text = textInFrame('A ==B== C')
+    show(text)
+    // The final text node is " C". Hit its C at the leading edge, not a markup delimiter.
+    click(point('.abele-column p', 1))
+    const result = evaluate<{ line: string; ch: number; selected: number; rendered: boolean }>(
+      `await wait(300);const pos=view.editor.getCursor();return {line:view.editor.getLine(pos.line),ch:pos.ch,selected:view.editor.getSelection().length,rendered:!!root().querySelector('.abele-columns')}`
+    )
+    expect(result).toEqual({ line: '> > A ==B== C', ch: 12, selected: 0, rendered: false })
+    await shot('highlight-entry')
+  })
+  it('inline math does not disable entry into the following ordinary paragraph', async () => {
+    const text = textInFrame('Result $x$.\n\nEdit here.')
+    show(text)
+    click(point('.abele-column p:nth-of-type(2)'))
+    const result = evaluate<{ line: string; selected: number; rendered: boolean }>(
+      `await wait(300);return {line:view.editor.getLine(view.editor.getCursor().line),selected:view.editor.getSelection().length,rendered:!!root().querySelector('.abele-columns')}`
+    )
+    expect(result).toEqual({ line: '> > Edit here.', selected: 0, rendered: false })
+    await shot('inline-math-entry')
+  })
+  it('links retain their native context menu rather than column operations', async () => {
+    show(textInFrame('A [[Sample column safety|sample link]].'), 'preview')
+    click(point('.abele-column a.internal-link'), true)
+    const titles = evaluate<string[]>(
+      `await wait(500);return [...document.querySelectorAll('.menu-item-title')].map(e=>e.textContent)`
+    )
+    expect(titles.some((title) => /new tab/i.test(title))).toBe(true)
+    expect(titles).not.toContain('Add column')
+    expect(titles).not.toContain('Remove columns')
+    await shot('link-menu')
+    evaluate(`document.body.click();return true`)
+  })
+})
