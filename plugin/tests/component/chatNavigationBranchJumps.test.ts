@@ -285,6 +285,71 @@ describe('branch jumps from navigation', () => {
     }
   })
 
+  it('revalidates a discussion return point after its asynchronous open reconciles a changed file', async () => {
+    const parent = session
+    parent.kind = 'comment'
+    vi.spyOn(parent, 'commentId', 'get').mockReturnValue('parent-discussion')
+    const child = fakeChatSession({
+      overrides: { id: 'child-session', commentId: 'child-discussion', anchor: ref(null) },
+    })
+    const active = shallowRef<unknown>(parent)
+    const chats = ChatService.getInstance()
+    const comments = CommentService.getInstance()
+    vi.spyOn(chats, 'activeSession', 'get').mockReturnValue(computed(() => active.value) as never)
+    vi.spyOn(comments, 'trail').mockResolvedValue([])
+    vi.spyOn(comments, 'load').mockResolvedValue(child as never)
+    let finishOpen!: () => void
+    vi.spyOn(comments, 'showInSidebar').mockImplementation(async (id) => {
+      if (id === 'child-discussion') {
+        active.value = child
+        chats.activeTabId.value = child.id
+        return true
+      }
+      return new Promise<boolean>((resolve) => {
+        finishOpen = () => {
+          const state = parent as unknown as { allChatMessages: ChatMessage[] }
+          state.allChatMessages = state.allChatMessages
+            .filter((message) => message.id !== 'a')
+            .map((message) => (message.id === 'a2' ? { ...message, parentId: 'q' } : message))
+          parent.updateVisibleMessages()
+          active.value = parent
+          chats.activeTabId.value = parent.id
+          resolve(true)
+        }
+      })
+    })
+    wrapper.unmount()
+    wrapper = mount(AiChat, { attachTo: document.body })
+    await flushPromises()
+    const box = wrapper.find('.abele-ai-chat__messages').element as HTMLElement
+    Object.defineProperty(box, 'scrollHeight', { configurable: true, get: () => 1000 })
+    Object.defineProperty(box, 'clientHeight', { configurable: true, get: () => 200 })
+    box.getBoundingClientRect = () => ({ top: 0, bottom: 200 }) as DOMRect
+    for (const element of box.querySelectorAll<HTMLElement>('[data-message-id]')) {
+      const top =
+        element.dataset.messageId === 'q' ? -150 : element.dataset.messageId === 'a' ? 0 : 100
+      element.getBoundingClientRect = () => ({ top, bottom: top + 100 }) as DOMRect
+    }
+    box.scrollTop = 100
+    const version = parent.conversationVersion.value
+    await open()
+    wrapper.findComponent({ name: 'ChatNavigation' }).vm.$emit('discussion', 'child-discussion')
+    await pause(80)
+    await open()
+    ;[...modal().querySelectorAll('button')]
+      .find((button) => button.textContent === 'Back to place')!
+      .click()
+    await flushPromises()
+    expect(finishOpen).toBeTypeOf('function')
+    Notice.shown.length = 0
+    finishOpen()
+    await pause(100)
+    expect(parent.conversationVersion.value).toBe(version)
+    expect(parent.branchLeafId).toBe('a2')
+    expect(parent.allMessages.value.some((message) => message.id === 'a')).toBe(false)
+    expect(Notice.shown.join(' ')).toContain('saved place is no longer')
+  })
+
   it('keeps reading available on the current branch while busy and cancels a deferred switch explicitly', async () => {
     session.isExecutingTool.value = true
     await chooseOther()

@@ -1692,18 +1692,23 @@ const navigationDiscussion = async (id: string, messageId?: string, part?: FindP
   if (opened && messageId && session.value === loaded && intent === navigationIntent)
     await applyNavigationJump(loaded, messageId, part, query)
 }
+const navigationPlaceExists = (saved: NavigationPlace) => {
+  const owner = saved.owner
+  const messageId = saved.place?.messageId
+  return !owner.isDestroyed && owner.conversationVersion.value === saved.version &&
+    (!saved.leafId || owner.allMessages.value.some(message => message.id === saved.leafId)) &&
+    (!messageId || owner.allMessages.value.some(message => message.id === messageId))
+}
+const expireNavigationPlace = (saved: NavigationPlace) => {
+  new Notice('The saved place is no longer in this conversation')
+  navigationReturns.value = navigationReturns.value.filter(place => place !== saved)
+}
 const restoreNavigationPlace = async (saved: NavigationPlace) => {
   const owner = saved.owner
   const currentLeaf = () => owner.branchLeafId ?? owner.messages.value.at(-1)?.id ?? null
   const needsBranch = () => saved.leafId !== currentLeaf()
   const intent = navigationIntent
-  if (owner.isDestroyed || owner.conversationVersion.value !== saved.version ||
-      (saved.leafId && !owner.allMessages.value.some(m => m.id === saved.leafId)) ||
-      (saved.place && !owner.allMessages.value.some(m => m.id === saved.place!.messageId))) {
-    new Notice('The saved place is no longer in this conversation')
-    navigationReturns.value = navigationReturns.value.filter(place => place !== saved)
-    return
-  }
+  if (!navigationPlaceExists(saved)) { expireNavigationPlace(saved); return }
   if (needsBranch() && branchBlocked(owner)) { deferNavigation(owner, () => restoreNavigationPlace(saved)); return }
   const source = session.value
   const sourceVersion = source?.conversationVersion.value
@@ -1717,9 +1722,15 @@ const restoreNavigationPlace = async (saved: NavigationPlace) => {
   const selected = chatService.tabSelectionVersion
   await nextTick()
   if (session.value !== owner || intent !== navigationIntent || selected !== chatService.tabSelectionVersion || owner.conversationVersion.value !== saved.version) return
+  // Opening a discussion can reconcile a changed file without replacing its lifetime.
+  if (!navigationPlaceExists(saved)) { expireNavigationPlace(saved); return }
   if (needsBranch()) {
     if (branchBlocked(owner)) { deferNavigation(owner, () => restoreNavigationPlace(saved)); return }
     if (!saved.leafId || !owner.switchBranch(saved.leafId, false)) { new Notice('The saved continuation is unavailable'); return }
+  }
+  if (saved.place && !owner.messages.value.some(message => message.id === saved.place!.messageId)) {
+    expireNavigationPlace(saved)
+    return
   }
   navigationReturns.value = navigationReturns.value.filter(place => place !== saved)
   rememberNavigationIndicator(owner, saved.indicator)
