@@ -6,9 +6,9 @@
  * whose right edge is past it. `scrollWidth > clientWidth` is not usable — on a wrapped flex
  * row it reports overflow that is not there.
  *
- * Two kinds of element are skipped or the check reports phantoms: Obsidian sizes a dropdown by
- * cloning it off-screen (`.is-measuring`), and anything hidden or absolutely positioned pushes
- * no layout sideways.
+ * Obsidian's off-screen measuring clones, hidden elements and absolute positioning are skipped.
+ * Descendants of horizontal clipping containers are measured only as far as they are visible:
+ * tabs can legitimately stand beyond a scrolling strip, but the strip itself must fit the pane.
  *
  * The second question is vertical and is asked of a phone. Obsidian stacks a settings row on
  * a phone — `.is-phone .modal .setting-item` is a column — which turns any horizontal flex
@@ -32,6 +32,7 @@
 import { describe, it, expect, beforeAll, afterAll } from 'vitest'
 import { isObsidianRunning, evalJson, evalRaw, activeVaultName } from './helpers/obsidianCli'
 import { shotDir } from './helpers/shots'
+import { horizontalOverflow } from './helpers/horizontalOverflow'
 
 interface Overflow {
   /** Class names of elements sticking out, with how far past the container they reach. */
@@ -83,20 +84,7 @@ const probeFor = (phone: boolean) =>
   const measure = (rootSel) => {
     const root = d.querySelector(rootSel)
     if (!root) return { over: ['missing ' + rootSel], scroll: -1 }
-    const box = root.getBoundingClientRect()
-    const over = []
-    const walk = (el) => {
-      const s = view.getComputedStyle(el)
-      if (s.visibility === 'hidden' || s.display === 'none' || s.position === 'absolute') return
-      if (el.classList.contains('is-measuring')) return
-      const r = el.getBoundingClientRect()
-      if (r.width > 0 && r.right > box.right + 1) {
-        over.push((el.className || el.tagName).toString().slice(0, 40) +
-          ' +' + Math.round(r.right - box.right))
-      }
-      for (const c of el.children) walk(c)
-    }
-    for (const c of root.children) walk(c)
+    const over = (${horizontalOverflow.toString()})(root)
 
     // A settings row is two halves, each sized around the children it holds. A half taller
     // than the children it holds is holding empty space, which is what a broken row looks
