@@ -8,6 +8,7 @@ export interface SourceParagraph {
   from: number
   to: number
   positions: number[]
+  text: string
 }
 export interface SourceColumn {
   from: number
@@ -23,13 +24,35 @@ export interface ColumnSource {
   columns: SourceColumn[]
 }
 const nativeInline: MarkdownConfig = {
-  defineNodes: ['NativeLink', 'NativeMath'],
+  defineNodes: ['NativeLink', 'NativeMath', 'NativeHighlight', 'HighlightMark'],
   parseInline: [
     {
       name: 'NativeInline',
       before: 'Link',
       parse(context, next, pos) {
         const tail = context.slice(pos, context.end)
+        if (next === 61 && tail.startsWith('==')) {
+          let end = pos + 2
+          while (
+            (end = context.text.indexOf('==', end - context.offset) + context.offset) >=
+            context.offset
+          ) {
+            let slashes = 0
+            for (let i = end - 1; i >= pos && context.char(i) === 92; i--) slashes++
+            if (slashes % 2 === 0) break
+            end += 2
+          }
+          if (end >= pos + 2) {
+            const content = pos + 2
+            return context.addElement(
+              context.elt('NativeHighlight', pos, end + 2, [
+                context.elt('HighlightMark', pos, content),
+                ...context.parser.parseInline(context.slice(content, end), content),
+                context.elt('HighlightMark', end, end + 2),
+              ])
+            )
+          }
+        }
         if (next === 91) {
           const link = /^(?:\[\[[^\]\n]+\]\]|\[\^[^\]\n]+\])/.exec(tail)
           if (link) return context.addElement(context.elt('NativeLink', pos, pos + link[0].length))
@@ -87,7 +110,8 @@ export function columnSource(text: string, from: number): ColumnSource | null {
         const raw = body.slice(node.from, node.to)
         // Standalone native embeds and display math are opaque interactive blocks, not prose.
         if (!/^\s*(?:!\[|\$\$)/.test(raw)) {
-          const visible = inlinePositions(node, body).map((n) => positions[n])
+          const projection = inlinePositions(node, body)
+          const visible = projection.positions.map((n) => positions[n])
           paragraphs.push({
             tag:
               node.name === 'Paragraph' || node.name === 'Task'
@@ -98,6 +122,7 @@ export function columnSource(text: string, from: number): ColumnSource | null {
             from: visible[0] ?? positions[node.from],
             to: positions[node.to - 1] + 1,
             positions: visible,
+            text: projection.text,
           })
         }
         return
@@ -165,9 +190,10 @@ export function columnSource(text: string, from: number): ColumnSource | null {
 }
 
 /** Visible UTF-16 units are mapped by syntax spans, not by matching a rendered string. */
-function inlinePositions(node: SyntaxNode, source: string): number[] {
+function inlinePositions(node: SyntaxNode, source: string): { positions: number[]; text: string } {
   const hidden = new Set([
     'EmphasisMark',
+    'HighlightMark',
     'LinkMark',
     'URL',
     'LinkTitle',
@@ -184,24 +210,32 @@ function inlinePositions(node: SyntaxNode, source: string): number[] {
     'StrikethroughMark',
   ])
   const result: number[] = []
+  const characters: string[] = []
+  const append = (at: number, value = source[at]) => {
+    result.push(at)
+    characters.push(value)
+  }
   const walk = (n: SyntaxNode) => {
     if (hidden.has(n.name)) return
     let at = n.from
     for (let child = n.firstChild; child; child = child.nextSibling) {
-      for (; at < child.from; at++) result.push(at)
-      if (child.name === 'Escape') result.push(child.to - 1)
+      for (; at < child.from; at++) append(at)
+      if (child.name === 'Escape') append(child.to - 1)
       else if (child.name === 'Entity') {
         const raw = source.slice(child.from, child.to)
         const value = decodeHTML(raw)
-        for (let i = 0; i < value.length; i++) result.push(child.from)
+        for (let i = 0; i < value.length; i++) append(child.from, value[i])
       } else walk(child)
       at = child.to
       if (child.name === 'HeaderMark' || child.name === 'TaskMarker')
         while (at < n.to && /[ \t]/.test(source[at])) at++
     }
-    for (; at < n.to; at++) result.push(at)
+    for (; at < n.to; at++) append(at)
   }
   walk(node)
-  while (result.length && /\s/.test(source[result.at(-1)!])) result.pop()
-  return result
+  while (result.length && /\s/.test(characters.at(-1)!)) {
+    result.pop()
+    characters.pop()
+  }
+  return { positions: result, text: characters.join('') }
 }

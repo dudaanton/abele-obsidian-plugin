@@ -55,6 +55,19 @@ describe('source positions inside column callouts', () => {
     ])
   })
 
+  it('maps text after Obsidian highlights to its actual source character', () => {
+    const text =
+      '> [!abele-columns]\n> > [!abele-column]\n> > A ==B== C\n>\n> > [!abele-column]\n> > Right.'
+    const p = columnSource(text, 0)!.columns[0].paragraphs[0]
+    expect(p.positions).toEqual([
+      text.indexOf('A =='),
+      text.indexOf('A ==') + 1,
+      text.indexOf('B=='),
+      text.indexOf(' C'),
+      text.indexOf(' C') + 1,
+    ])
+  })
+
   it('does not make columns out of examples in fences or merge separate records', () => {
     const example = '```md\n> [!abele-columns]\n> > [!abele-column]\n> > Sample.\n```'
     expect(columnSource(example, example.indexOf('>'))).toBeNull()

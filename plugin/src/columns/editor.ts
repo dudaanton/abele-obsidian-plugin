@@ -1,6 +1,7 @@
 import { EditorView } from '@codemirror/view'
 import { editorLivePreviewField, type Plugin } from 'obsidian'
 import { columnPath, renderedColumns } from './target'
+import { proseText } from './prose'
 
 interface Entry {
   view: EditorView
@@ -72,15 +73,13 @@ function entryAt(target: Element, x: number, y: number): Entry | null {
     const range = doc.createRange()
     range.selectNodeContents(block)
     range.setEnd(node, offset)
-    const prefix = range.cloneContents()
-    // Links, math and embeds keep their own interaction; their generated text is not source prose.
-    for (const opaque of Array.from(
-      prefix.querySelectorAll('a,.math,.footnote-ref,.internal-embed,button,input,ul,ol')
-    ))
-      opaque.remove()
-    const text = prefix.textContent ?? ''
-    const count = (block.tagName === 'LI' ? text.trimStart() : text).length
-    anchor = paragraph.positions[count] ?? paragraph.to
+    const count = proseText(range, block.tagName === 'LI').length
+    const complete = doc.createRange()
+    complete.selectNodeContents(block)
+    // Unknown native transformations enter at this source block's start with a single caret.
+    // Only an identical grammar projection proves an exact character offset.
+    if (proseText(complete, block.tagName === 'LI').trimEnd() === paragraph.text)
+      anchor = paragraph.positions[count] ?? paragraph.to
   }
   return { view, document, anchor, widget: parent }
 }
