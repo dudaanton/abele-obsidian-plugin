@@ -1514,7 +1514,11 @@ whether it came from the authenticated server lists). A transient metadata write
 that captured snapshot, not a reconstruction from the older cache. A newer complete server fetch
 may supersede it. If the first write never succeeds, the in-memory snapshot is not a crash-durable
 record; a new lifetime must fetch server truth again. Empty
-`sharing` is omitted from synced settings. Corrupt group entries remain intact, are reported by
+`sharing` is omitted from synced settings. A device with no discovery hints and no successful
+server inventory shows a Sharing hint to sign in or sync plugin settings from another device.
+Local private-file introductions produce the same plain notice once per server/vault session;
+the candidates remain durable and are asked after discovery arrives, not treated as unshared proof.
+Corrupt group entries remain intact, are reported by
 a visible warning and cannot silently erase valid hints beside them. Hints are not authorization;
 the signed-in server lists always replace the cache. The discovery inventory may contain up to
 64 IDs; the existing 16-audience publication budget is unchanged. An oversized union, unreadable
@@ -1569,7 +1573,9 @@ in the Sync tab opens it explicitly. A delayed Review must still be the latest r
 foreground and not busy when its read completes; closing or answering invalidates older reads.
 Questions stay pending while an editor, editable field or link suggestion has focus. Leaving
 editing wakes presentation; returning focus to a desktop window also retries a deferred question.
-Sync never blurs the editor or interrupts input to show a question.
+Sync never blurs the editor or interrupts input to show a question. An already-open question
+stays open across refocus, transient read failures and evidence changes until answered or closed;
+answering still revalidates its exact target, link and audience before any effect.
 **Keep private** remembers a refusal for that file/audience.
 Production validates that all four sharing source flags remain enabled and rejects test API
 and test-sharing activation modules from its rendered graph. `npm run build:test` uses the
@@ -1607,6 +1613,16 @@ scoped installation. Retained personal state or another scoped connection blocks
 missing scoped ledger state requires recovery. Joining publishes no unrelated local file and
 holds unmanaged incoming-path collisions without replacement/remap. Pending/malformed scoped
 context also refuses personal enrolment and vault script execution before credentials/effects.
+
+Scoped authority denial (`unauthorized`) stores the exact connection and a plain owner-removed
+message in device-local `abele-scoped-access-removed`, stops watchers/polls and disables sync/new
+creation until the collaborator leaves. Offline and temporary unavailable/updating views do not
+mean revocation. `abele-scoped-display-name` keeps a connection-bound folder prefix or root path
+for this message; neither record authorizes anything or travels in settings. **Leave this shared
+group** asks for confirmation, tries the scoped self-revoke endpoint, then forgets the scoped
+connection/join/pause/display records, invitation/installation secret slots and both scoped
+IndexedDB databases. Local files, personal ledger markers and script provenance are untouched.
+Departure works after revocation and offline; if the server cannot be told, a notice says so.
 
 The `scoped-native-create-v1:` metadata records exact new-file reviews, immutable bytes,
 operation handles, root/sponsor and own-upload proof for retry. `ScopedPluginHost` installs the
