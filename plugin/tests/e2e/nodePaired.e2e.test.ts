@@ -17,6 +17,26 @@ it('pairs through the real node UI, confirms locally, runs fake prompts and fenc
   if (!cli) throw new Error('Set ABELE_NODE_CLI to the built node CLI')
   mkdirSync('../.scratch', { recursive: true })
   const dir = mkdtempSync(resolve('../.scratch/paired-ui-'))
+  const projectPath = resolve(dir, 'sample-project')
+  mkdirSync(projectPath)
+  const git = async (...args: string[]) =>
+    promisify(execFile)('/usr/bin/git', ['-c', 'core.hooksPath=/dev/null', ...args], {
+      cwd: projectPath,
+    })
+  await git('init', '--initial-branch=main')
+  writeFileSync(resolve(projectPath, 'sample.txt'), 'Sample project content\n')
+  await git('add', 'sample.txt')
+  await git(
+    '-c',
+    'user.name=Sample',
+    '-c',
+    'user.email=sample@example.invalid',
+    '-c',
+    'commit.gpgsign=false',
+    'commit',
+    '-m',
+    'sample'
+  )
   const endpoint = 'wss://sample.example.ts.net:8443/channel'
   const config = resolve(dir, 'paired.json')
   writeFileSync(
@@ -137,6 +157,22 @@ it('pairs through the real node UI, confirms locally, runs fake prompts and fenc
       await until(()=>chat()?.querySelector('.abele-node-permission')?.textContent.includes('Decision delivered to provider'));
       const resolved=(await client.prompts(session.session_id)).find(p=>p.choice==='allow');
       if(!resolved || resolved.state!=='resolved' || resolved.delivered!==true)throw Error('Fake prompt receipt is not exact');
+      const project=await client.registerProject(${JSON.stringify(projectPath)},'trusted');
+      const provision=await client.createWorkspace(project.project_id);
+      for(let i=0;i<200;i++){const job=await client.getJob(provision.job_id);if(job.state==='succeeded')break;if(job.state==='failed')throw Error('Workspace provisioning failed');await wait(50)}
+      chat().querySelector('[aria-label="Node session menu"]').click();
+      await until(()=>[...document.querySelectorAll('.menu-item')].some(item=>item.querySelector('.menu-item-title')?.textContent.trim()==='Projects and workspaces'));
+      [...document.querySelectorAll('.menu-item')].find(item=>item.querySelector('.menu-item-title')?.textContent.trim()==='Projects and workspaces').click();
+      await until(()=>document.querySelector('select[aria-label="Node provider"] option[value="pi"]'));
+      const select=document.querySelector('select[aria-label="Node provider"]');
+      if(select.querySelector('option[value="pi"]').disabled)throw Error('Built pi SDK was not reported available');
+      select.value='pi';select.dispatchEvent(new Event('change',{bubbles:true}));await wait(50);
+      [...document.querySelectorAll('.abele-node-workspaces button')].find(b=>b.textContent.trim()==='Start session in workspace').click();
+      await until(()=>chats.tabOrder.value.some(id=>chats.getNodeSession(id)?.provider.value==='pi'));
+      const piTab=chats.tabOrder.value.find(id=>chats.getNodeSession(id)?.provider.value==='pi');
+      if(!chat().querySelector('.abele-node-chat__title').title.endsWith(' · pi'))throw Error('Pi session was not labelled');
+      // Session creation/opening is metadata only. Never send a real-provider turn.
+      await chats.closeTab(piTab);
       return JSON.stringify({registration:node.id,tab,pin:await nodes.deviceFingerprint(node.expectedNodeId)});
     })()`,
         60000
@@ -172,7 +208,7 @@ it('pairs through the real node UI, confirms locally, runs fake prompts and fenc
     await command('pair', 'confirm', pending.installation_id, repaired.pin)
     expect(
       await evalLong(
-        `(async()=>{${prelude}await nodes.connection(${JSON.stringify(registration)}).connect();return 'reconnected'})()`,
+        `(async()=>{${prelude}await nodes.connection(${JSON.stringify(registration)}).connect();await nodes.deviceKeys.finishEnrollment(${JSON.stringify(invite.node_id)});return 'reconnected'})()`,
         60000
       )
     ).toBe('reconnected')
