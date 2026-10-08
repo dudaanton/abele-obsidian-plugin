@@ -22,7 +22,9 @@ import {
   type ColumnChange,
 } from './operations'
 import { parseColumnsHeader, columnWeights } from './core'
-import { columnPath, columnMenuTarget, renderedColumns } from './target'
+import { bindColumnRender, columnPath, columnMenuTarget, renderedColumns } from './target'
+import { columnRenderContext } from './renderOrigin'
+import { registerColumnWidgets } from './widget'
 import type { ColumnSource } from './source'
 
 interface Target {
@@ -182,6 +184,7 @@ function columnMenu(
 
 export function registerColumns(plugin: Plugin): void {
   registerColumnEntry(plugin)
+  registerColumnWidgets(plugin)
   const contexts = new WeakMap<HTMLElement, MarkdownPostProcessorContext>()
   const mounted = new WeakSet<HTMLElement>()
   const resolve = async (parent: HTMLElement): Promise<Target | null> => {
@@ -233,12 +236,23 @@ export function registerColumns(plugin: Plugin): void {
       })
       .catch((error) => new Notice(String(error)))
   }
-  plugin.registerMarkdownPostProcessor((el, ctx) => {
+  plugin.registerMarkdownPostProcessor((el, original) => {
+    const ctx = columnRenderContext(el, original)
     columnsPostProcessor(el)
     const parents = [
       ...(el.matches('.abele-columns') ? [el] : []),
       ...Array.from(el.querySelectorAll<HTMLElement>('.abele-columns')),
     ]
+    for (const root of parents.filter((parent) => columnPath(parent).root === parent)) {
+      const info = ctx.getSectionInfo(root)
+      if (info) {
+        const from = info.text
+          .split('\n')
+          .slice(0, info.lineStart)
+          .reduce((sum, line) => sum + line.length + 1, 0)
+        bindColumnRender(info.text, from, root)
+      }
+    }
     for (const parent of parents) {
       contexts.set(parent, ctx)
       if (mounted.has(parent)) continue
@@ -256,7 +270,7 @@ export function registerColumns(plugin: Plugin): void {
           open(parent, 0, { x: event.clientX, y: event.clientY })
         })
     }
-  })
+  }, -1000)
   const attach = (doc: Document) =>
     plugin.registerDomEvent(
       doc,

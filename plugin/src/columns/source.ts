@@ -136,6 +136,20 @@ export function quoteSourceRange(text: string, from: number): QuoteSourceRange |
   return find(quoteSourceTree(text))
 }
 
+export function taskMarkerPositions(text: string, from: number, to: number): number[] {
+  const result: number[] = []
+  const visit = (node: SyntaxNode) => {
+    if (node.from >= from && node.to <= to && node.name === 'TaskMarker') {
+      result.push(node.from + 1)
+      return
+    }
+    if (node.to < from || node.from > to) return
+    for (let child = node.firstChild; child; child = child.nextSibling) visit(child)
+  }
+  visit(markdown.parse(text).topNode)
+  return result
+}
+
 /** Parse the quote frame at a known host source position, never search for rendered text. */
 export function columnSource(text: string, from: number): ColumnSource | null {
   const lines = text.split('\n')
