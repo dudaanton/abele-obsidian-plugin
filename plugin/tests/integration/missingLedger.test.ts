@@ -4,7 +4,7 @@ import { IDBFactory } from 'fake-indexeddb'
 import type { App } from 'obsidian'
 import { buildFakeVault } from '../helpers/fakeVault'
 import { buildEngine, type EngineRecipe } from '@/sync/engineBuild'
-import { emptyConnection } from '@/sync/connection'
+import { emptyConnection, writeConnection } from '@/sync/connection'
 import { writeLedgerId } from '@/sync/ledgerId'
 import { AbeleConfig } from '@/services/AbeleConfig'
 import { DEFAULT_AI_SETTINGS } from '@/ai/types'
@@ -25,6 +25,8 @@ function recipe() {
       deviceId: 'sample-device',
     },
     host: {
+      connection: () => input.connection,
+      token: () => 'sample-token',
       deps: () => ({ indexedDB: factory, fetch, WebSocket: class {} }),
       manifest: () => ({ id: 'abele' }),
       settingsArrived: () => {},
@@ -37,6 +39,7 @@ function recipe() {
     noticed: () => {},
     closedElsewhere: () => {},
   } as unknown as EngineRecipe
+  writeConnection(app, input.connection)
   return { app, fetch, factory, input }
 }
 

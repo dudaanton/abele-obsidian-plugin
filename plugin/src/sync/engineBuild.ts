@@ -12,7 +12,12 @@ import type { CommitOp, CommitOpResult } from '@abele/sync-protocol'
 import { AbeleConfig } from '@/services/AbeleConfig'
 import { IndexedDbStateStore, stateDatabaseName } from './IndexedDbStateStore'
 import { ObsidianFileSystem } from './ObsidianFileSystem'
-import { selectiveFrom, type DeviceConnection, type JoinState } from './connection'
+import {
+  inspectConnection,
+  selectiveFrom,
+  type DeviceConnection,
+  type JoinState,
+} from './connection'
 import type { EngineHost } from './engineRunner'
 import { factoryOf, fallbackMsOf, pollMsOf, socketOf, transportOf } from './environment'
 import { readLedgerId, type LedgerId } from './ledgerId'
@@ -25,6 +30,15 @@ import type { StatusBoard } from './statusBoard'
 import { USER_AGENT } from './transport'
 import { activateScriptProvenance } from '@/scripting/trust/scriptTrustStorage'
 import { assertPersonalContext } from './scoped/scopedJoin'
+import { RuntimeFence, fencedPort } from './external/recovery'
+import { runtimeTransport } from './external/runtimeTransport'
+import {
+  checkExternalMigration,
+  generationHeld,
+  personalExternalBinding,
+  recoverExternalState,
+} from './external/pluginSafety'
+import type { ConnectionBinding } from './external/records'
 
 /**
  * The parts one engine runs on, made from the connection — the filesystem, the ledger, the
@@ -34,6 +48,7 @@ import { assertPersonalContext } from './scoped/scopedJoin'
 
 /** What `buildEngine` is handed. */
 export interface EngineRecipe {
+  stillCurrent?(): boolean
   app: App
   host: EngineHost
   board: StatusBoard
@@ -61,10 +76,12 @@ export interface EngineRecipe {
 
 /** An engine, and the ledger and client it was built on. */
 export interface BuiltEngine {
+  /** Synchronous lifetime revocation, before waiting for queued teardown. */
+  invalidate: () => void
   engine: SyncEngine
   store: IndexedDbStateStore
   vault: VaultClient
-  countPending(): Promise<number>
+  countPending: () => Promise<number>
 }
 
 /** Only an explicit enrolment may mint a ledger. Existing descriptors require recovery. */
@@ -90,17 +107,69 @@ export async function buildEngine(recipe: EngineRecipe): Promise<BuiltEngine> {
     () => host.settingsMeaning()
   )
   const ledger = ledgerFor(app, connection.vaultId)
-  const store = await IndexedDbStateStore.open(factoryOf(deps), stateDatabaseName(ledger.stateId), {
-    identity: {
-      key: LEDGER_IDENTITY_KEY,
-      value: JSON.stringify({ stateId: ledger.stateId, vaultId: ledger.vaultId }),
-    },
+  const database = stateDatabaseName(ledger.stateId)
+  let store: IndexedDbStateStore | null = null
+  let binding: ConnectionBinding | null = null
+  const identity = JSON.stringify([
+    connection.serverUrl,
+    connection.vaultId,
+    connection.deviceId,
+    connection.deviceTokenId,
+  ])
+  const fence = new RuntimeFence(app, database, () => {
+    const current = host.connection()
+    const durable = inspectConnection(app).connection
+    const currentLedger = readLedgerId(app)
+    return (
+      currentLedger.stateId === ledger.stateId &&
+      currentLedger.vaultId === ledger.vaultId &&
+      JSON.stringify([
+        durable.serverUrl,
+        durable.vaultId,
+        durable.deviceId,
+        durable.deviceTokenId,
+      ]) === identity &&
+      (recipe.stillCurrent?.() ?? true) &&
+      (!store || store.permitsEngineEffects) &&
+      host.token() === token &&
+      JSON.stringify([
+        current.serverUrl,
+        current.vaultId,
+        current.deviceId,
+        current.deviceTokenId,
+      ]) === identity &&
+      (!binding || generationHeld(app, binding))
+    )
   })
+  try {
+    await checkExternalMigration(app, factoryOf(deps))
+    await fence.settlePredecessors()
+    fence.assertOwned()
+    store = await IndexedDbStateStore.open(factoryOf(deps), database, {
+      identity: {
+        key: LEDGER_IDENTITY_KEY,
+        value: JSON.stringify({ stateId: ledger.stateId, vaultId: ledger.vaultId }),
+      },
+    })
+  } catch (error) {
+    fence.release()
+    throw error
+  }
+  store.guardEffects(() => fence.assertOwned())
+  const closeStore = store.close.bind(store)
+  store.close = () => {
+    fence.release()
+    closeStore()
+  }
   store.onRecoveryRequired((error) => recipe.recoveryRequired?.(store, error))
   store.onClosedElsewhere(() => recipe.closedElsewhere(store))
   settings.useLedger(store)
   try {
+    binding = await personalExternalBinding(app, connection, token, () => fence.assertOwned())
+    fence.assertOwned()
+    await recoverExternalState(app, store, ledger.stateId, database, binding, fence)
     await requireLedger(app, store, ledger)
+    fence.assertOwned()
     const trust = await activateScriptProvenance(
       app,
       {
@@ -112,6 +181,7 @@ export async function buildEngine(recipe: EngineRecipe): Promise<BuiltEngine> {
       },
       factoryOf(deps)
     )
+    trust.store.guardEffects(() => fence.assertOwned())
     trust.store.onRecoveryRequired((error) => recipe.recoveryRequired?.(store, error))
     const renameRef = app.vault.on('rename', (file, from) => {
       void trust.provenance
@@ -132,6 +202,7 @@ export async function buildEngine(recipe: EngineRecipe): Promise<BuiltEngine> {
     store.observeEntries((entry) => trust.provenance.record(entry.path, entry.fileId))
     let ownerPublication: Awaited<ReturnType<NonNullable<typeof deps.ownerPublication>>> | undefined
     const fs = new ObsidianFileSystem(app, {
+      runtimeFence: fence,
       beforeEngineMutation: async (paths) => {
         await ownerPublication?.beforeRemote?.(paths)
         for (const path of paths) await trust.provenance.pending(path)
@@ -145,13 +216,28 @@ export async function buildEngine(recipe: EngineRecipe): Promise<BuiltEngine> {
       },
       yieldsToServer: (path) => settings.yields(path),
     })
-    const vault = new SyncClient({
-      baseUrl: connection.serverUrl,
-      fetch: transportOf(deps),
-      WebSocket: socketOf(deps),
-      token,
-      userAgent: USER_AGENT,
-    }).forVault(connection.vaultId)
+    await fs.recover()
+    fence.activate()
+    const transport = runtimeTransport(fence, transportOf(deps))
+    const vault = fencedPort(
+      new SyncClient({
+        baseUrl: connection.serverUrl,
+        fetch: transport,
+        WebSocket: socketOf(deps),
+        token,
+        userAgent: USER_AGENT,
+      }).forVault(connection.vaultId),
+      fence,
+      [
+        'commit',
+        'commitRaw',
+        'putBlob',
+        'restore',
+        'restoreDeleted',
+        'updateSettings',
+        'revokeVaultDevice',
+      ]
+    )
     if (recipe.committed !== undefined) {
       const commit = vault.commitRaw.bind(vault)
       vault.commitRaw = async (ops, key) => {
@@ -167,8 +253,8 @@ export async function buildEngine(recipe: EngineRecipe): Promise<BuiltEngine> {
         client: vault,
         connection,
         token,
-        fetch: transportOf(deps),
-        held: () => store.permitsEngineEffects && trust.store.permitsEngineEffects,
+        fetch: transport,
+        held: () => fence.owns() && store.permitsEngineEffects && trust.store.permitsEngineEffects,
       })
       const previous = store.close.bind(store)
       store.close = () => {
@@ -184,7 +270,8 @@ export async function buildEngine(recipe: EngineRecipe): Promise<BuiltEngine> {
       client: vault,
       fs,
       state: store,
-      stillHeld: () => store.permitsEngineEffects && trust.store.permitsEngineEffects,
+      stillHeld: () =>
+        fence.owns() && store.permitsEngineEffects && trust.store.permitsEngineEffects,
       // A plain copy, never the ref's own: the engine files it in the state database with the
       // scope its marks were taken under, and IndexedDB cannot clone a reactive proxy.
       selective,
@@ -221,6 +308,7 @@ export async function buildEngine(recipe: EngineRecipe): Promise<BuiltEngine> {
       log: (line) => board.note(line),
     })
     return {
+      invalidate: () => fence.release(),
       engine,
       store,
       vault,

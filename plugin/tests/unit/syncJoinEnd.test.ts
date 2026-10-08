@@ -33,6 +33,11 @@ vi.mock('@/sync/IndexedDbStateStore', () => ({
       onClosedElsewhere: () => undefined,
       onRecoveryRequired: () => undefined,
       permitsEngineEffects: true,
+      databaseIdentity: 'sample-database-identity',
+      guardEffects: () => undefined,
+      getExternalState: async () => null,
+      getJournal: async () => null,
+      pluginMeta: async () => new Map(),
       close: () => undefined,
       async *all() {},
       observeEntries: () => undefined,
@@ -50,11 +55,16 @@ vi.mock('@/scripting/trust/scriptTrustStorage', () => ({
       close: () => undefined,
       onRecoveryRequired: () => undefined,
       permitsEngineEffects: true,
+      guardEffects: () => undefined,
     },
     provenance: {},
   }),
 }))
-vi.mock('@/sync/ObsidianFileSystem', () => ({ ObsidianFileSystem: class {} }))
+vi.mock('@/sync/ObsidianFileSystem', () => ({
+  ObsidianFileSystem: class {
+    async recover() {}
+  },
+}))
 vi.mock('@/sync/ledgerId', () => ({
   readLedgerId: () => ({ stateId: 's1', vaultId: 'v1' }),
   writeLedgerId: () => undefined,
@@ -83,12 +93,22 @@ describe('the end of a join', () => {
   beforeEach(async () => {
     joinedCalls.length = 0
     built.onSync = undefined
+    const local = new Map<string, unknown>()
     recipe = {
       app: {
-        loadLocalStorage: () => null,
-        vault: { configDir: '.obsidian', on: () => ({}), offref: () => undefined },
+        loadLocalStorage: (key: string) => local.get(key) ?? null,
+        saveLocalStorage: (key: string, value: unknown) => local.set(key, value),
+        vault: {
+          configDir: '.obsidian',
+          on: () => ({}),
+          offref: () => undefined,
+          getFiles: () => [],
+          adapter: { list: async () => ({ files: [], folders: [] }) },
+        },
       },
       host: {
+        connection: () => recipe.connection,
+        token: () => recipe.token,
         deps: () => ({}),
         manifest: () => ({ id: 'abele' }),
         settingsArrived: () => undefined,
@@ -97,13 +117,20 @@ describe('the end of a join', () => {
         synced: () => undefined,
       },
       board: { note: () => undefined, failed: () => undefined },
-      connection: { ...emptyConnection(), serverUrl: 'http://x', vaultId: 'v1' },
+      connection: {
+        ...emptyConnection(),
+        serverUrl: 'https://sync.example.invalid',
+        vaultId: 'v1',
+        deviceId: 'sample-device',
+        deviceTokenId: 'abele-sync-device-sample',
+      },
       token: 'absd_x',
       ignoreText: null,
       join: { vaultId: 'v1', prefer: 'theirs', ask: false },
       noticed: () => undefined,
       closedElsewhere: () => undefined,
     } as unknown as EngineRecipe
+    local.set('abele-sync-connection', recipe.connection)
     await buildEngine(recipe)
   })
 

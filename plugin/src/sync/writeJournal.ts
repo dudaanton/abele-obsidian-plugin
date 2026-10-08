@@ -22,7 +22,10 @@ const sameEntry = (a: JournalEntry, b: JournalEntry): boolean =>
 
 /** Local-only write intents and preservation decisions; neither travels with the vault. */
 export class WriteJournal {
-  constructor(private readonly storage: LocalStorage | null) {}
+  constructor(
+    private readonly storage: LocalStorage | null,
+    private readonly assertMutation?: () => void
+  ) {}
 
   private read(key: string): unknown[] {
     let raw: unknown
@@ -95,6 +98,7 @@ export class WriteJournal {
   }
   private save(key: string, entries: unknown[]): void {
     try {
+      this.assertMutation?.()
       if (this.storage === null) throw new Error('no durable local storage')
       const value = entries.length === 0 ? null : entries
       this.storage.saveLocalStorage(key, value)

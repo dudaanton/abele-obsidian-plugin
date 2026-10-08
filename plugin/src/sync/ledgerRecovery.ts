@@ -1,6 +1,11 @@
 import type { StateStore } from '@abele/sync-core'
 import type { LedgerId, LocalStorage } from './ledgerId'
 import { SCOPE_KEY } from './scope'
+import {
+  assertNoExternalLifecycleMarker,
+  EXTERNAL_ACTIVATION_KEY,
+  ExternalRecoveryRequired,
+} from './external/recovery'
 
 export const LEDGER_BOOTSTRAP_KEY = 'abele-sync-ledger-bootstrap'
 export const LEDGER_PROOF_KEY = 'abele-sync-ledger-proof'
@@ -21,6 +26,7 @@ const same = (value: unknown, ledger: LedgerId): boolean => {
 
 /** Only explicit enrolment authorizes a first empty ledger; ordinary startup never does. */
 export function authorizeLedgerBootstrap(storage: LocalStorage, ledger: LedgerId): void {
+  assertNoExternalLifecycleMarker(storage)
   storage.saveLocalStorage(LEDGER_BOOTSTRAP_KEY, { ...ledger })
   if (!same(storage.loadLocalStorage(LEDGER_BOOTSTRAP_KEY), ledger))
     throw new Error('Ledger bootstrap authorization was not persisted')
@@ -34,6 +40,11 @@ export async function requireLedger(
 ): Promise<void> {
   if (!ledger.stateId || !ledger.vaultId || !store.getMeta || !store.setMeta)
     throw new LedgerRecoveryRequired()
+  if (
+    storage.loadLocalStorage(EXTERNAL_ACTIVATION_KEY) != null &&
+    (await store.getMeta('external-files')) === null
+  )
+    throw new ExternalRecoveryRequired('activated ledger lost its journal; bootstrap refused')
   const expected = JSON.stringify({ stateId: ledger.stateId, vaultId: ledger.vaultId })
   const header = await store.getMeta(LEDGER_IDENTITY_KEY)
   const fresh = same(storage.loadLocalStorage(LEDGER_BOOTSTRAP_KEY), ledger)

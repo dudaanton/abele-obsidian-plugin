@@ -36,6 +36,16 @@ import {
 import { SponsoredAssetsHttpPort } from '../sharing/sponsoredHttp'
 import { scopedSecretPort } from './scopedSecretSlots'
 import { fetchWithAbort, waitWithAbort } from './abortableTransport'
+import { RuntimeFence, fencedPort } from '../external/recovery'
+import { runtimeTransport } from '../external/runtimeTransport'
+import {
+  checkExternalMigration,
+  connectionGeneration,
+  generationHeld,
+  recoverExternalState,
+  requireExternalLifecycleSafety,
+} from '../external/pluginSafety'
+import { ConnectionBindingSchema, type ConnectionBinding } from '../external/records'
 
 const digest = (value: unknown) => sha256(new TextEncoder().encode(JSON.stringify(value)))
 const CREATION_JOURNAL = 'scoped-creation-journal-v1'
@@ -51,6 +61,8 @@ interface CreationJournal {
   requestId: string | null
 }
 interface Runtime {
+  credential: string
+  fence: RuntimeFence
   connection: ScopedLocalConnection
   client: ScopedClient
   state: ScopedState
@@ -67,6 +79,7 @@ export class ScopedPluginHost {
   private leaving = false
   private requests = new AbortController()
   private revocation: AbortController | null = null
+  private departure: RuntimeFence | null = null
   private readonly transport: typeof fetch = (input, init) => {
     const c = this.connection.value
     const self =
@@ -74,6 +87,16 @@ export class ScopedPluginHost {
       `${c.issuer}/v1/scoped/vaults/${encodeURIComponent(c.vaultId)}/grants/${encodeURIComponent(c.grantId)}/self`
     const revoking =
       this.leaving && this.revocation && init?.method === 'DELETE' && String(input) === self
+    if (revoking) {
+      try {
+        this.departure?.assertReady()
+        if (!this.departure) throw new Error('Scoped departure requires recovery')
+      } catch (error) {
+        return Promise.reject(
+          error instanceof Error ? error : new Error('Scoped departure refused', { cause: error })
+        )
+      }
+    }
     if (this.closed || (this.leaving && !revoking))
       return Promise.reject(new Error('Scoped connection is closing'))
     return fetchWithAbort(
@@ -146,6 +169,7 @@ export class ScopedPluginHost {
       this.leaving ||
       !!this.accessRemoved.value ||
       this.runtime !== r ||
+      !r.fence.owns() ||
       !r.raw.permitsEngineEffects ||
       !r.meta.permitsEngineEffects
     )
@@ -189,21 +213,69 @@ export class ScopedPluginHost {
         throw new Error('Scoped runtime binding changed')
       return this.runtime
     }
+    await checkExternalMigration(this.app, this.factory)
+    let raw: IndexedDbStateStore | null = null
+    let binding: ConnectionBinding | null = null
+    const database = 'abele-scoped-' + c.ledgerId
+    const descriptor = JSON.stringify(c)
     const token = this.token(c)
-    const client = await createScopedClient({
-      baseUrl: c.issuer,
-      vaultId: c.vaultId,
-      grantId: c.grantId,
-      principalId: c.principalId,
-      principalKind: 'installation',
-      token,
-      fetch: this.transport,
+    const fence = new RuntimeFence(this.app, database, () => {
+      const pending = this.app.loadLocalStorage(SCOPED_JOIN_KEY) as { connection?: unknown } | null
+      return (
+        !this.closed &&
+        !this.leaving &&
+        !this.accessRemoved.value &&
+        this.token(c) === token &&
+        (!raw || raw.permitsEngineEffects) &&
+        JSON.stringify(this.app.loadLocalStorage(SCOPED_CONNECTION_KEY) ?? pending?.connection) ===
+          descriptor &&
+        (!binding || generationHeld(this.app, binding))
+      )
     })
-    if (this.closed) throw new Error('Scoped host closed during client opening')
+    let client: ScopedClient
+    try {
+      await fence.settlePredecessors()
+      client = await createScopedClient({
+        baseUrl: c.issuer,
+        vaultId: c.vaultId,
+        grantId: c.grantId,
+        principalId: c.principalId,
+        principalKind: 'installation',
+        token,
+        fetch: (input, init) => {
+          if (this.leaving && this.revocation && init?.method === 'DELETE')
+            return this.transport(input, init)
+          return runtimeTransport(fence, this.transport)(input, init)
+        },
+      })
+      fence.assertOwned()
+      const partial = {
+        endpoint: c.issuer,
+        vaultId: c.vaultId,
+        mode: 'scoped' as const,
+        principalId: c.principalId,
+        principalType: c.principalKind,
+        grantId: c.grantId,
+        credentialAssociation: c.tokenId + ':' + client.binding.credential_fingerprint,
+      }
+      binding = ConnectionBindingSchema.parse({
+        ...partial,
+        generation: connectionGeneration(this.app, partial),
+      })
+      raw = await IndexedDbStateStore.open(this.factory, database, {
+        identity: {
+          key: 'scoped-plugin-identity-v4',
+          value: JSON.stringify({ connection: c, binding: client.binding }),
+        },
+      })
+      raw.guardEffects(() => fence.assertOwned())
+      await recoverExternalState(this.app, raw, c.ledgerId, database, binding, fence)
+    } catch (error) {
+      raw?.close()
+      fence.release()
+      throw error
+    }
     const expected = JSON.stringify({ connection: c, binding: client.binding })
-    const raw = await IndexedDbStateStore.open(this.factory, 'abele-scoped-' + c.ledgerId, {
-      identity: { key: 'scoped-plugin-identity-v4', value: expected },
-    })
     let meta: IndexedDbStateStore | null = null
     try {
       // Capture before core initialization writes anything. An existing core ledger is
@@ -216,10 +288,19 @@ export class ScopedPluginHost {
       meta = await IndexedDbStateStore.open(this.factory, 'abele-scoped-native-' + c.ledgerId, {
         identity: { key: 'scoped-native-identity-v4', value: expected },
       })
+      meta.guardEffects(() => fence.assertOwned())
       await this.identity(meta, 'scoped-native-identity-v4', expected, fresh)
       if (this.closed) throw new Error('Scoped host closed during database opening')
-      const fs = new ObsidianFileSystem(this.app, { ledger: state.placementStore() })
+      const fs = new ObsidianFileSystem(this.app, {
+        ledger: state.placementStore(),
+        runtimeFence: fence,
+      })
+      await fs.recover()
+      fence.activate()
+      client = fencedPort(client, fence, ['commit', 'putBlob'])
       const r: Runtime = {
+        credential: token,
+        fence,
         connection: structuredClone(c),
         client,
         state,
@@ -281,6 +362,7 @@ export class ScopedPluginHost {
     } catch (error) {
       meta?.close()
       raw.close()
+      fence.release()
       throw error
     }
   }
@@ -338,6 +420,12 @@ export class ScopedPluginHost {
       },
     }
     const flow = new ScopedJoinFlow(this.app, scopedSecretPort(secrets()), port)
+    const begin = flow.begin.bind(flow)
+    flow.begin = (invitation) =>
+      this.serial(async () => {
+        await requireExternalLifecycleSafety(this.app, this.factory)
+        await begin(invitation)
+      })
     const resume = flow.resume.bind(flow)
     flow.resume = (password) =>
       this.serial(async () => {
@@ -423,6 +511,7 @@ export class ScopedPluginHost {
     this.clock = null
   }
   private async failure(error: unknown) {
+    if (this.closed || this.leaving || (this.runtime && !this.runtime.fence.claimHeld())) return
     // Only credential/authority denial means access ended. View preparation, snapshot
     // expiry and offline failures remain retryable; scope_unavailable is not revocation.
     if (error instanceof AbeleError && error.code === 'unauthorized' && this.runtime) {
@@ -450,6 +539,24 @@ export class ScopedPluginHost {
   }
   /** Explicit local departure, including after revocation. Never removes vault files. */
   leave(): Promise<void> {
+    try {
+      if (this.runtime) {
+        this.runtime.fence.assertClaim()
+        if (this.token(this.runtime.connection) !== this.runtime.credential)
+          throw new Error('Scoped credential changed; recovery required')
+      }
+    } catch (error) {
+      return Promise.reject(
+        error instanceof Error ? error : new Error('Scoped departure refused', { cause: error })
+      )
+    }
+    // The departure timeout includes queue settlement and read-only safety inspection.
+    // No revoke is issued until inspection succeeds, even if that budget has elapsed.
+    let deadlinePassed = false
+    const timeout = window.setTimeout(() => {
+      deadlinePassed = true
+      this.revocation?.abort(new Error('Self-revocation timed out'))
+    }, SELF_REVOKE_TIMEOUT_MS)
     this.leaving = true // Fence any in-flight pull/push before waiting behind it.
     this.requests.abort(new Error('Scoped connection is leaving'))
     this.stopWatching()
@@ -462,13 +569,30 @@ export class ScopedPluginHost {
         this.leaving = false
         return
       }
+      const token = this.token(c)
+      const descriptor = JSON.stringify(c)
+      const departure = new RuntimeFence(
+        this.app,
+        'abele-scoped-' + c.ledgerId,
+        () =>
+          !this.closed &&
+          JSON.stringify(this.app.loadLocalStorage(SCOPED_CONNECTION_KEY)) === descriptor &&
+          this.token(c) === token
+      )
+      this.departure = departure
+      try {
+        await departure.settlePredecessors()
+        await requireExternalLifecycleSafety(this.app, this.factory)
+        departure.activate()
+      } catch (error) {
+        this.requests = new AbortController()
+        this.leaving = false
+        this.status('error', error instanceof Error ? error.message : 'External recovery required')
+        throw error
+      }
       let toldServer = false
       const revocation = new AbortController()
       this.revocation = revocation
-      const timeout = window.setTimeout(
-        () => revocation.abort(new Error('Self-revocation timed out')),
-        SELF_REVOKE_TIMEOUT_MS
-      )
       try {
         const client =
           this.runtime?.client ??
@@ -481,7 +605,11 @@ export class ScopedPluginHost {
             token: this.token(c),
             fetch: this.transport,
           }))
-        await waitWithAbort(revocation.signal, () => client.revokeSelf())
+        const request = client.revokeSelf()
+        // waitWithAbort may reject before subscribing when the departure budget expired.
+        void request.catch(() => {})
+        if (deadlinePassed) revocation.abort(new Error('Self-revocation timed out'))
+        await waitWithAbort(revocation.signal, () => request)
         toldServer = true
       } catch {
         // Explicit local departure does not require network access. Report that the
@@ -491,11 +619,15 @@ export class ScopedPluginHost {
         revocation.abort()
         this.revocation = null
       }
+      departure.assertReady()
+      this.runtime?.fence.release()
       this.runtime?.raw.close()
       this.runtime?.meta.close()
       this.runtime = null
       await IndexedDbStateStore.delete(this.factory, 'abele-scoped-' + c.ledgerId)
+      departure.assertReady()
       await IndexedDbStateStore.delete(this.factory, 'abele-scoped-native-' + c.ledgerId)
+      departure.assertReady()
       const road = scopedSecretPort(secrets())
       const pending = this.app.loadLocalStorage(SCOPED_JOIN_KEY) as { invitationId?: string } | null
       const keys = [c.tokenId, c.tokenId + ':binding']
@@ -527,6 +659,10 @@ export class ScopedPluginHost {
         new Notice(
           'Left this shared group on this device. The server could not be told; the local connection key is forgotten.'
         )
+    }).finally(() => {
+      window.clearTimeout(timeout)
+      this.departure?.release()
+      this.departure = null
     })
   }
   private async run() {
@@ -534,6 +670,7 @@ export class ScopedPluginHost {
     const r = this.runtime
     if (!r || !this.held(r)) throw new Error('Scoped writer ownership lost')
     const remote = await r.client.state()
+    if (!this.held(r)) throw new Error('Scoped writer ownership lost')
     this.role.value = remote.role
     const name =
       remote.selector.kind === 'folder'
@@ -850,6 +987,8 @@ export class ScopedPluginHost {
   }
   async close() {
     this.closed = true
+    this.departure?.release()
+    this.runtime?.fence.release()
     this.requests.abort(new Error('Scoped host is closed'))
     this.revocation?.abort(new Error('Scoped host is closed'))
     for (const flow of this.flows) flow.close()

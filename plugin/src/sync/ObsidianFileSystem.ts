@@ -8,6 +8,7 @@ import {
 } from '@abele/sync-core'
 import { caseKey } from '@abele/sync-protocol'
 import { watchVault } from './vaultWatcher'
+import { fencedPort, type RuntimeFence } from './external/recovery'
 import { folderMutations } from './folderMutations'
 import type { LocalStorage } from './ledgerId'
 import { makeParents, pruneAbove } from './vaultFolders'
@@ -39,6 +40,8 @@ const CONFIG_WALK_DEPTH = 32
 const IGNORE_FILE = '.abele-sync-ignore'
 
 export interface ObsidianFileSystemOptions {
+  /** The startup/ownership fence, owned by the engine host. */
+  runtimeFence?: RuntimeFence
   /** Durable restrictive provenance, completed before native bytes or paths change. */
   beforeEngineMutation?: (paths: string[]) => Promise<void>
 
@@ -131,11 +134,32 @@ export class ObsidianFileSystem implements FileSystem {
   private readonly writer: VaultWriter
   private readonly journal: WriteJournal
   private readonly beforeEngineMutation: ((paths: string[]) => Promise<void>) | null
+  private readonly runtimeFence: RuntimeFence | null
+  private readonly guardedAdapter: DataAdapter
 
   constructor(
     private readonly app: App,
     options: ObsidianFileSystemOptions = {}
   ) {
+    this.runtimeFence = options.runtimeFence ?? null
+    this.guardedAdapter = this.runtimeFence
+      ? fencedPort(
+          app.vault.adapter,
+          this.runtimeFence,
+          [
+            'write',
+            'writeBinary',
+            'append',
+            'process',
+            'mkdir',
+            'rename',
+            'remove',
+            'rmdir',
+            'copy',
+          ],
+          false
+        )
+      : app.vault.adapter
     this.beforeEngineMutation = options.beforeEngineMutation ?? null
     this.ledger = options.ledger ?? null
     this.pollMs = options.pollMs ?? DEFAULT_POLL_MS
@@ -143,7 +167,9 @@ export class ObsidianFileSystem implements FileSystem {
     this.onWatch = options.onWatch ?? null
     this.onEngineWrite = options.onEngineWrite ?? null
     this.yieldsToServer = options.yieldsToServer ?? null
-    this.journal = new WriteJournal(options.storage ?? storageOf(app))
+    this.journal = new WriteJournal(options.storage ?? storageOf(app), () =>
+      this.runtimeFence?.assertOwned()
+    )
     this.writer = new VaultWriter({
       adapter: app.vault.adapter,
       native: this.native,
@@ -159,11 +185,19 @@ export class ObsidianFileSystem implements FileSystem {
 
   /** Obsidian desktop's `fs.promises`, or null on a phone (`vaultWrites.nativeOf`). */
   private get native(): NativeFs | null {
-    return nativeOf(this.adapter)
+    const native = nativeOf(this.adapter, () => this.runtimeFence?.assertOwned())
+    return native && this.runtimeFence
+      ? fencedPort(
+          native,
+          this.runtimeFence,
+          ['rename', 'rmdirEmpty', 'replaceFenced', 'installExclusive'],
+          false
+        )
+      : native
   }
 
   private get adapter(): DataAdapter {
-    return this.app.vault.adapter
+    return this.guardedAdapter
   }
 
   /**
@@ -178,7 +212,15 @@ export class ObsidianFileSystem implements FileSystem {
     return this.app.vault.configDir
   }
 
+  /** Existing installation recovery runs before scanner/watcher activation. */
+  async recover(): Promise<void> {
+    this.runtimeFence?.assertOwned()
+    await this.writer.recover()
+    this.runtimeFence?.assertOwned()
+  }
+
   async *list(): AsyncIterable<FileInfo> {
+    this.runtimeFence?.assertReady()
     await this.writer.recover()
     const mutations = folderMutations(this.app.vault)
     await mutations.settled()
@@ -246,6 +288,7 @@ export class ObsidianFileSystem implements FileSystem {
   }
 
   async writeAtomic(path: string, bytes: Uint8Array, mtime: number): Promise<void> {
+    this.runtimeFence?.assertReady()
     const key = caseKey(path),
       expected = this.observedBases.get(key)
     const standing = await this.onlyFileOrNothing(path)
@@ -265,6 +308,7 @@ export class ObsidianFileSystem implements FileSystem {
   }
 
   async move(from: string, to: string): Promise<void> {
+    this.runtimeFence?.assertReady()
     await this.beforeEngineMutation?.([from, to])
     if (from === to) {
       if ((await this.stat(from)) === null) throw new EngineError('io', `no such file: ${from}`)
@@ -305,6 +349,7 @@ export class ObsidianFileSystem implements FileSystem {
   }
 
   async remove(path: string): Promise<void> {
+    this.runtimeFence?.assertReady()
     await this.beforeEngineMutation?.([path])
     const standing = await this.rawStat(path)
     if (standing === null) return
@@ -312,6 +357,7 @@ export class ObsidianFileSystem implements FileSystem {
     try {
       await this.adapter.remove(path)
     } catch (cause) {
+      if (cause instanceof EngineError && cause.code === 'lost') throw cause
       // Two removes of one file race, or the user deleted it while this one was asked for.
       if ((await this.rawStat(path)) === null) return
       throw new EngineError('io', `cannot remove ${path}`, cause)
@@ -323,6 +369,7 @@ export class ObsidianFileSystem implements FileSystem {
 
   /** Tell the host what the engine changed on disk (`onEngineWrite`). */
   private wrote(...paths: string[]): void {
+    this.runtimeFence?.assertOwned()
     if (this.onEngineWrite === null) return
     for (const path of paths) {
       try {
@@ -360,6 +407,7 @@ export class ObsidianFileSystem implements FileSystem {
    * are the two ways of not waiting for the next tick.
    */
   watch(cb: (paths: string[]) => void): () => void {
+    this.runtimeFence?.assertReady()
     const stopMutations = folderMutations(this.app.vault).watch()
     const watcher = watchVault(
       {

@@ -24,10 +24,10 @@ import {
 } from './stateOverlay'
 
 /**
- * One version. The schema below is the whole of it; changing it needs a new version and an
- * `onupgradeneeded` that migrates what is already on the user's disk.
+ * Version 2 fences the version-1 client before external-file activation. The migration
+ * preserves existing stores, entries and metadata; it is not a new empty ledger.
  */
-const DB_VERSION = 1
+const DB_VERSION = 2
 
 const ENTRIES = 'entries'
 const META = 'meta'
@@ -123,6 +123,11 @@ export class IndexedDbStateStore implements StateStore, ExternalStatePort {
   private transactionPending = 0
   private externalPhasePending = false
   private externalCommitUnknown = false
+  private assertEffect: (() => void) | null = null
+  /** Runtime ownership is checked at actual transaction creation, including after awaits. */
+  guardEffects(assertEffect: () => void): void {
+    this.assertEffect = assertEffect
+  }
   private entryObserver: ((entry: StateEntry) => Promise<void>) | null = null
 
   /** Independent durable provenance must settle before an identity can be filed/adopted. */
@@ -144,6 +149,9 @@ export class IndexedDbStateStore implements StateStore, ExternalStatePort {
   onRecoveryRequired(callback: (error: StateRecoveryRequired) => void): void {
     this.recoveryRequired = callback
   }
+  get databaseVersion(): number {
+    return this.connection.db.version
+  }
   get permitsEngineEffects(): boolean {
     return this.connection.permitsEffects
   }
@@ -154,7 +162,10 @@ export class IndexedDbStateStore implements StateStore, ExternalStatePort {
     return this.connection.db
   }
 
-  private constructor(private readonly connection: IndexedDbConnection) {
+  private constructor(
+    private readonly connection: IndexedDbConnection,
+    readonly databaseIdentity: string
+  ) {
     connection.onRecoveryRequired = (error) => {
       this.overlay?.discard(error)
       this.recoveryRequired?.(error)
@@ -190,7 +201,10 @@ export class IndexedDbStateStore implements StateStore, ExternalStatePort {
           // A `delete` or a version bump from another window must not hang on this connection.
           console.debug(`[abele-sync] closing the state database ${name}: another window wants it`)
           db.close()
-          if (store?.db === db) store.closedElsewhere?.()
+          if (store?.db === db) {
+            store.connection.close()
+            store.closedElsewhere?.()
+          }
         },
         DB_VERSION
       )
@@ -203,7 +217,7 @@ export class IndexedDbStateStore implements StateStore, ExternalStatePort {
           ? [{ key: own(options.identity.key), value: options.identity.value }]
           : []),
       ]
-      store = new IndexedDbStateStore(new IndexedDbConnection(db, connect, checks))
+      store = new IndexedDbStateStore(new IndexedDbConnection(db, connect, checks), identity.value)
       return store
     } catch (error) {
       db.close()
@@ -637,18 +651,20 @@ export class IndexedDbStateStore implements StateStore, ExternalStatePort {
     return this.connection.once(what, attempt)
   }
   private begin(what: string, stores: string[], mode: IDBTransactionMode): IDBTransaction {
+    if (mode === 'readwrite') this.assertEffect?.()
     return this.connection.begin(what, stores, mode)
   }
 }
 
 /** The schema, built on the first open of a database that is not there yet. */
 function build(db: IDBDatabase): void {
-  const entries = db.createObjectStore(ENTRIES, { keyPath: 'path' })
-  // Neither index is declared unique: `put` clears the clash itself, in the same transaction,
-  // and a unique index would turn that clearing into a constraint error to work around.
-  entries.createIndex(BY_FILE_ID, 'fileId')
-  entries.createIndex(BY_WIRE_PATH, 'wirePath')
-  db.createObjectStore(META, { keyPath: 'key' })
+  if (!db.objectStoreNames.contains(ENTRIES)) {
+    const entries = db.createObjectStore(ENTRIES, { keyPath: 'path' })
+    // Neither index is unique; put clears clashes in the same transaction.
+    entries.createIndex(BY_FILE_ID, 'fileId')
+    entries.createIndex(BY_WIRE_PATH, 'wirePath')
+  }
+  if (!db.objectStoreNames.contains(META)) db.createObjectStore(META, { keyPath: 'key' })
 }
 
 /** The paths of the rows that hold this entry's `fileId` or its `wirePath`, as asked for. */

@@ -103,6 +103,13 @@ export interface EngineHost {
 
 export class EngineRunner {
   private engine: SyncEngine | null = null
+  private lifetime = 0
+  private revokeRuntime: (() => void) | null = null
+  /** Revoked synchronously, including builds waiting on storage/recovery. */
+  invalidate(): void {
+    this.lifetime++
+    this.revokeRuntime?.()
+  }
   private store: IndexedDbStateStore | null = null
   private vault: VaultClient | null = null
   private unwatchStatus: (() => void) | null = null
@@ -507,7 +514,9 @@ export class EngineRunner {
   ): Promise<void> {
     const app = this.host.app()
     if (app === null) return
-    const { engine, store, vault, countPending } = await buildEngine({
+    const lifetime = this.lifetime
+    const { engine, store, vault, countPending, invalidate } = await buildEngine({
+      stillCurrent: () => lifetime === this.lifetime,
       app,
       host: this.host,
       board: this.board,
@@ -533,6 +542,7 @@ export class EngineRunner {
       recoveryRequired: (closed, error) => this.stopForRecovery(closed, error),
     })
 
+    this.revokeRuntime = invalidate
     this.store = store
     this.vault = vault
     this.engine = engine
@@ -582,6 +592,7 @@ export class EngineRunner {
   }
 
   private closedUnderEngine(store: IndexedDbStateStore): void {
+    if (this.store === store) this.invalidate()
     void this.host.serialise(async () => {
       if (this.store !== store) return
       await this.teardown()
@@ -598,6 +609,8 @@ export class EngineRunner {
    * engine left stands until the new one says `syncing`.
    */
   async teardown({ publish = true }: { publish?: boolean } = {}): Promise<void> {
+    this.invalidate()
+    this.revokeRuntime = null
     const engine = this.engine
     const store = this.store
     this.unwatchStatus?.()
