@@ -12,6 +12,11 @@ import { MarkdownView, TFile } from 'obsidian'
 import { GlobalStore } from '@/stores/GlobalStore'
 import { ChatService } from '@/ai/ChatService'
 import { CommentService } from '@/ai/CommentService'
+import { ChatStorage } from '@/ai/ChatStorage'
+import { serializeChat } from '@/ai/ChatLog'
+import { useVault } from '../helpers/testEnv'
+import { AbeleConfig } from '@/services/AbeleConfig'
+import { DEFAULT_AI_SETTINGS } from '@/ai/types'
 import {
   formatMessageBlock,
   parseMessageBlock,
@@ -286,15 +291,36 @@ describe('pressing a card', () => {
   })
 
   it('opens a comment as a comment, not as a full chat', async () => {
-    const comment = Object.assign(new TFile(), {
-      path: 'AI/Comments/k7d2ph.abchat',
-      basename: 'k7d2ph',
-    })
-    ;(GlobalStore.getInstance() as unknown as { _app: unknown })._app = {
-      vault: { getFileByPath: () => comment },
+    // File links now go through real metadata preparation, rather than a basename route.
+    const path = 'AI/Comments/k7d2ph.abchat'
+    const app = useVault([
+      {
+        path,
+        content: serializeChat({
+          metadata: {
+            type: 'abele-chat',
+            kind: 'comment',
+            commentId: 'k7d2ph',
+            commentLocation: path,
+            anchor: { note: 'Plans.md' },
+            providerId: '',
+            modelId: '',
+            created: '',
+          },
+          messages: [],
+          internalMessages: [],
+        }),
+      },
+    ])
+    AbeleConfig.getInstance().ai = structuredClone(DEFAULT_AI_SETTINGS)
+    vi.spyOn(AbeleConfig.getInstance(), 'saveSettings').mockResolvedValue()
+    ;(app as unknown as { workspace: unknown }).workspace = {
+      iterateAllLeaves: () => {},
+      getLeavesOfType: () => [],
     }
+    const comment = app.vault.getFileByPath(path)!
     const comments = CommentService.getInstance()
-    vi.spyOn(comments, 'isCommentFile').mockReturnValue(true)
+    vi.spyOn(ChatService.getInstance(), 'revealSidebar').mockResolvedValue()
     const shown = vi.spyOn(comments, 'showInSidebar').mockResolvedValue(true)
     const expanded = vi.spyOn(comments, 'openFile').mockResolvedValue()
 
@@ -302,6 +328,9 @@ describe('pressing a card', () => {
 
     expect(shown).toHaveBeenCalledWith('k7d2ph')
     expect(expanded).not.toHaveBeenCalled()
+    comments.destroy()
+    ChatService.getInstance().destroy()
+    ChatStorage.destroy()
   })
 })
 

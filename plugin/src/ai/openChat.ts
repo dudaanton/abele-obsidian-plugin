@@ -234,6 +234,15 @@ export async function openChat(file: TFile, selectionReturn?: () => boolean): Pr
   if (selectionReturn) await chatService.openChatFile(file, selectionReturn)
   else await chatService.openChatFile(file)
   if (selectionReturn && !selectionReturn()) return
+  const session = chatService.getSessionByFile(file.path)
+  if (session?.kind === 'comment' && session.commentId) {
+    // Preserve the single contextual discussion tab (including return from a child), but
+    // address it by the identity prepared for this exact file, never the file's basename.
+    const comments = CommentService.getInstance()
+    if (selectionReturn) await comments.showInSidebar(session.commentId, selectionReturn)
+    else await comments.showInSidebar(session.commentId)
+    return
+  }
   await chatService.revealSidebar()
 }
 
