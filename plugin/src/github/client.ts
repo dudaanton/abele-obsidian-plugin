@@ -158,8 +158,13 @@ export class GithubClient {
   private current = true
   private readonly retireListeners = new Set<() => void>()
   /** Session-only consumers discard immutable private content with this credential generation. */
-  onRetire(listener: () => void): void {
-    this.retireListeners.add(listener)
+  onRetire(listener: () => void): () => void {
+    const listeners = this.retireListeners
+    listeners.add(listener)
+    // Cleanup must remain possible after a capability wrapper has been revoked.
+    return () => {
+      listeners.delete(listener)
+    }
   }
   private retryAt = 0
   get isCurrent(): boolean {

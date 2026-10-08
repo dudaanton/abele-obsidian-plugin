@@ -192,6 +192,41 @@ describe('full text and target line maps', () => {
 })
 
 describe('lazy tree caller authority', () => {
+  it('bounds retirement listeners while nine callers cycle through the eight-tree cache twice', async () => {
+    const { client } = clientWith({
+      [`/repos/sample/project/git/trees/${TARGET}`]: { json: tree([entry('file.ts', 'file')]) },
+    })
+    const listeners = (client as unknown as { retireListeners: Set<() => void> }).retireListeners
+    const callers = Array.from({ length: 9 }, () => guardedGithubClient(client, () => {}))
+    const counts: number[] = []
+    for (let cycle = 0; cycle < 2; cycle++) {
+      for (const caller of callers) await repoTree(caller, REPO, TARGET)
+      counts.push(listeners.size)
+    }
+    expect(counts).toEqual([8, 8])
+    forgetRepoTrees()
+    expect(listeners.size).toBe(0)
+  })
+  it('can unsubscribe an evicted caller after its capability is revoked', async () => {
+    const { client } = clientWith({
+      [`/repos/sample/project/git/trees/${TARGET}`]: { json: tree([]) },
+    })
+    let allowed = true
+    const first = guardedGithubClient(client, () => {
+      if (!allowed) throw new Error('Access revoked')
+    })
+    await repoTree(first, REPO, TARGET)
+    allowed = false
+    for (let i = 0; i < 8; i++)
+      await repoTree(
+        guardedGithubClient(client, () => {}),
+        REPO,
+        TARGET
+      )
+    expect((client as unknown as { retireListeners: Set<() => void> }).retireListeners.size).toBe(8)
+    client.retire()
+    expect((client as unknown as { retireListeners: Set<() => void> }).retireListeners.size).toBe(0)
+  })
   const lazyRoutes: Record<string, Route> = {
     [`/repos/sample/project/git/trees/${BASE}`]: (r) => ({
       json: r.url.includes('recursive=1')

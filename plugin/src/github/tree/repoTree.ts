@@ -89,6 +89,17 @@ const MAX_TREES = 8
 // different capability wrapper, even when both wrappers use the same credentials.
 const trees = new Map<GithubClient, Map<string, Promise<RepoTree>>>()
 const owners = new Map<Promise<RepoTree>, { client: GithubClient; key: string }>()
+const retireSubscriptions = new Map<GithubClient, () => void>()
+
+function releaseEmptyCaller(
+  client: GithubClient,
+  cache: Map<string, Promise<RepoTree>> | undefined
+): void {
+  if (cache?.size || trees.get(client) !== cache) return
+  retireSubscriptions.get(client)?.()
+  retireSubscriptions.delete(client)
+  trees.delete(client)
+}
 
 const keyOf = (repo: RepoRef, sha: string) =>
   `${repo.origin ?? `https://${repo.host}`}/${repo.owner}/${repo.repo}@${sha}`.toLowerCase()
@@ -130,11 +141,12 @@ export function repoTree(client: GithubClient, repo: RepoRef, sha: string): Prom
     cache = new Map()
     trees.set(client, cache)
     const owned = cache
-    client.onRetire?.(() => {
+    const unsubscribe = client.onRetire?.(() => {
       for (const pending of owned.values()) owners.delete(pending)
       owned.clear()
-      if (trees.get(client) === owned) trees.delete(client)
+      releaseEmptyCaller(client, owned)
     })
+    if (unsubscribe) retireSubscriptions.set(client, unsubscribe)
   }
   const known = cache.get(key)
   if (known !== undefined) {
@@ -148,7 +160,7 @@ export function repoTree(client: GithubClient, repo: RepoRef, sha: string): Prom
   pending.catch(() => {
     const current = trees.get(client)
     if (current?.get(key) === pending) current.delete(key)
-    if (!current?.size) trees.delete(client)
+    releaseEmptyCaller(client, current)
     owners.delete(pending)
   })
   while (owners.size > MAX_TREES) {
@@ -157,13 +169,15 @@ export function repoTree(client: GithubClient, repo: RepoRef, sha: string): Prom
     owners.delete(oldest)
     const current = trees.get(owner.client)
     if (current?.get(owner.key) === oldest) current.delete(owner.key)
-    if (!current?.size) trees.delete(owner.client)
+    releaseEmptyCaller(owner.client, current)
   }
   return checked(pending)
 }
 
 /** Forgets every tree read — for the tests, and a token that was just replaced. */
 export function forgetRepoTrees(): void {
+  for (const unsubscribe of retireSubscriptions.values()) unsubscribe()
+  retireSubscriptions.clear()
   trees.clear()
   owners.clear()
 }
