@@ -245,6 +245,46 @@ describe('branch jumps from navigation', () => {
     expect(session.branchLeafId).toBe('b1')
   })
 
+  it('keeps a deferred choice outside the entire automatic retry turn, including the countdown handoff', async () => {
+    AbeleConfig.getInstance().ai.autoRetry = { attempts: 1, firstDelayMs: 1000 }
+    const loop = session as unknown as {
+      runAgentLoop(): Promise<void>
+      runAgentLoopOnce(): Promise<void>
+    }
+    const attempts: (string | null)[] = []
+    let finishSecond!: () => void
+    const second = new Promise<void>((resolve) => {
+      finishSecond = resolve
+    })
+    vi.spyOn(loop, 'runAgentLoopOnce').mockImplementation(async () => {
+      attempts.push(session.branchLeafId)
+      session.isStreaming.value = true
+      if (attempts.length === 1) session.error.value = 'HTTP 503: sample unavailable'
+      else {
+        await second
+        session.error.value = null
+      }
+      session.isStreaming.value = false
+    })
+    const turn = loop.runAgentLoop()
+    try {
+      await flushPromises()
+      expect(session.retrying.value).not.toBeNull()
+      await chooseOther()
+      await pause(1000)
+      expect(attempts).toEqual(['a2', 'a2'])
+      expect(session.branchLeafId).toBe('a2')
+      finishSecond()
+      await turn
+      await pause(100)
+      expect(session.branchLeafId).toBe('b1')
+    } finally {
+      finishSecond()
+      session.cancelAutoRetry()
+      await turn
+    }
+  })
+
   it('keeps reading available on the current branch while busy and cancels a deferred switch explicitly', async () => {
     session.isExecutingTool.value = true
     await chooseOther()

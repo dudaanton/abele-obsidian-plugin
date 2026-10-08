@@ -243,6 +243,8 @@ export class ChatSession implements SummarizerHost, InterceptorHost, AnchorStora
   private allInternalMessages: Message[] = []
   /** The countdown to an automatic retry, for the chat to show; null when nothing is waiting. */
   readonly retrying = ref<{ attempt: number; of: number; secondsLeft: number } | null>(null)
+  /** A retry countdown handing back to its loop is still the same unfinished turn. */
+  private readonly activeAgentTurns = ref(0)
   private retryTimer: number | null = null
   private retryCancel: (() => void) | null = null
   private allChatMessages: ChatMessage[] = []
@@ -1444,23 +1446,27 @@ export class ChatSession implements SummarizerHost, InterceptorHost, AnchorStora
    * refusal five times over with a growing wait between them.
    */
   private async runAgentLoop(): Promise<void> {
-    const settings = { ...DEFAULT_RETRY, ...(AbeleConfig.getInstance().ai.autoRetry ?? {}) }
+    this.activeAgentTurns.value++
+    try {
+      const settings = { ...DEFAULT_RETRY, ...(AbeleConfig.getInstance().ai.autoRetry ?? {}) }
+      for (let attempt = 0; ; attempt++) {
+        await this.runAgentLoopOnce()
 
-    for (let attempt = 0; ; attempt++) {
-      await this.runAgentLoopOnce()
+        const failure = this.error.value
+        if (!failure || attempt >= settings.attempts || !isTransient(failure)) return
+        // The reader is in charge: a pending tool call or a stopped turn is not retried behind
+        // their back.
+        if (this.pendingToolCalls.value.length) return
 
-      const failure = this.error.value
-      if (!failure || attempt >= settings.attempts || !isTransient(failure)) return
-      // The reader is in charge: a pending tool call or a stopped turn is not retried behind
-      // their back.
-      if (this.pendingToolCalls.value.length) return
-
-      const carryOn = await this.waitBeforeRetry(
-        backoffDelay(attempt + 1, settings.firstDelayMs),
-        attempt + 1,
-        settings.attempts
-      )
-      if (!carryOn) return
+        const carryOn = await this.waitBeforeRetry(
+          backoffDelay(attempt + 1, settings.firstDelayMs),
+          attempt + 1,
+          settings.attempts
+        )
+        if (!carryOn) return
+      }
+    } finally {
+      this.activeAgentTurns.value--
     }
   }
 
@@ -3230,6 +3236,7 @@ export class ChatSession implements SummarizerHost, InterceptorHost, AnchorStora
 
   get branchSwitchBlocked(): boolean {
     return (
+      this.activeAgentTurns.value > 0 ||
       this.isMidTurn ||
       this.isExecutingTool.value ||
       this.retrying.value !== null ||
