@@ -84,6 +84,59 @@ function setup(visible = true, canAsk: () => boolean = () => true) {
   }
 }
 describe('existing-private publication prompt and real dialog content', () => {
+  it('reoffers a modal closed without a choice on the next foreground, only after editor idle', async () => {
+    let idle = true
+    const s = setup(true, () => idle)
+    await s.prompt.refresh()
+    await nextTick()
+    s.wrapper.findComponent(PublicationConfirmModal).vm.$emit('close')
+    await s.prompt.refresh() // A save in this foreground must not nag.
+    expect(s.prompt.asking.value).toBeNull()
+    expect(s.prompt.pending.value).toEqual([question])
+    idle = false
+    await s.prompt.foreground(true)
+    expect(s.prompt.asking.value).toBeNull()
+    idle = true
+    await s.prompt.foreground()
+    expect(s.prompt.asking.value).toEqual(question)
+    expect(s.host.answer).not.toHaveBeenCalled()
+    s.detach()
+    s.wrapper.unmount()
+  })
+  it('keeps a dismissed question in Settings through epoch invalidation and read failure', async () => {
+    const s = setup()
+    await s.prompt.refresh()
+    s.prompt.close()
+    let epoch = 0
+    ;(s.host as any).questionEpoch = () => epoch
+    s.host.questions.mockImplementationOnce(async () => {
+      epoch++
+      return []
+    })
+    await s.prompt.refresh()
+    expect(s.prompt.pending.value).toEqual([question])
+    s.host.questions.mockRejectedValueOnce(new Error('Offline'))
+    await s.foreground()
+    expect(s.prompt.pending.value).toEqual([question])
+    expect(s.prompt.asking.value).toBeNull()
+    expect(s.host.answer).not.toHaveBeenCalled()
+    s.detach()
+    s.wrapper.unmount()
+  })
+  it('reattaches an unanswered question after unloading while the modal is open', async () => {
+    const s = setup()
+    await s.prompt.refresh()
+    expect(s.prompt.asking.value).toEqual(question)
+    s.detach()
+    expect(s.prompt.asking.value).toBeNull()
+    const detach = s.prompt.attach(s.host)
+    await s.foreground()
+    expect(s.prompt.pending.value).toEqual([question])
+    expect(s.prompt.asking.value).toEqual(question)
+    expect(s.host.answer).not.toHaveBeenCalled()
+    detach()
+    s.wrapper.unmount()
+  })
   it('keeps a question pending without stealing focus from a typing editor', async () => {
     const editor = document.createElement('div')
     editor.contentEditable = 'true'

@@ -40,6 +40,7 @@ async function fixture(receivedLink = false, delayedPull = false) {
   vi.spyOn(app.metadataCache, 'getFirstLinkpathDest').mockImplementation(
     () => app.vault.getAbstractFileByPath(destination) as any
   )
+  const nativeEvents = new Map<string, (...args: any[]) => void>()
   const options = {
     app: app as any,
     meta,
@@ -54,12 +55,16 @@ async function fixture(receivedLink = false, delayedPull = false) {
       grantId: null,
     },
     grants: ['sample-grant'],
+    pendingWithoutAudiences: vi.fn(),
     token: () => 'absd_' + 'a'.repeat(43),
     fetch: vi.fn() as any,
     enabled: () => true,
     held: () => true,
     configurationRoots: () => ['.obsidian', 'Scripts'],
-    eventTarget: { addEventListener: () => {}, removeEventListener: () => {} } as any,
+    eventTarget: {
+      addEventListener: (name: string, fn: (...args: any[]) => void) => nativeEvents.set(name, fn),
+      removeEventListener: () => {},
+    } as any,
   }
   let runtime = new NativeOwnerPublication(options)
   const installPorts = () => {
@@ -206,6 +211,27 @@ async function fixture(receivedLink = false, delayedPull = false) {
     pull,
     local,
     shadow,
+    hint: options.pendingWithoutAudiences,
+    paste: async (trusted: boolean) => {
+      ;(app.workspace as any).getActiveViewOfType = () => ({
+        file: app.vault.getAbstractFileByPath(sponsor.path),
+        getMode: () => 'source',
+        contentEl: { contains: () => true },
+        editor: {
+          getValue: () => source,
+          getCursor: () => ({ line: 0, ch: source.length }),
+          posToOffset: () => source.length,
+        },
+      })
+      nativeEvents.get('paste')!({
+        isTrusted: trusted,
+        target: {},
+        clipboardData: {
+          files: [{ type: 'image/png', arrayBuffer: async () => new Uint8Array([31, 32]).buffer }],
+        },
+      })
+      await runtime.flush()
+    },
     runtime: () => runtime,
     ports: () => ports,
     reopen: async () => {
@@ -217,6 +243,88 @@ async function fixture(receivedLink = false, delayedPull = false) {
     close: () => runtime.close(),
   }
 }
+it('hints when a trusted image paste is retained for missing discovery, not at join or synthetic paste', async () => {
+  const f = await fixture()
+  try {
+    f.runtime().setAudiences([])
+    expect(f.hint).not.toHaveBeenCalled()
+    await f.paste(false)
+    expect(f.hint).not.toHaveBeenCalled()
+    await f.paste(true)
+    expect(f.runtime().diagnostics().pastes).toHaveLength(1)
+    expect(f.hint).toHaveBeenCalledOnce()
+    expect(f.ports().add).not.toHaveBeenCalled()
+  } finally {
+    f.close()
+  }
+})
+it.each([true, false])(
+  'hints at a new link callback before upload with missing discovery (target indexed=%s)',
+  async (indexed) => {
+    const f = await fixture()
+    try {
+      f.runtime().setAudiences([])
+      await f.runtime().beforeRemote(['Shared/board.md']) // A previously pulled note can be edited locally.
+      expect(f.hint).not.toHaveBeenCalled() // Neither launch nor a received base is an edit.
+      if (!indexed) await f.state.delete(f.target.path)
+      await f.app.vault.modify(f.app.vault.getAbstractFileByPath('Shared/board.md')!, link)
+      await f.changed(link)
+      expect(f.hint).toHaveBeenCalledOnce()
+      expect(f.ports().add).not.toHaveBeenCalled()
+      expect(await f.runtime().confirmation.questions()).toEqual([])
+    } finally {
+      f.close()
+    }
+  }
+)
+it('does not hint for a received link or unrelated body edit when discovery is missing', async () => {
+  const f = await fixture(true)
+  try {
+    f.runtime().setAudiences([])
+    await f.changed(link)
+    await f.pull()
+    await f.local(link + '\nordinary body edit\n')
+    expect(f.hint).not.toHaveBeenCalled()
+    expect(f.ports().add).not.toHaveBeenCalled()
+  } finally {
+    f.close()
+  }
+})
+it.each(['close', 'unload'] as const)(
+  'restores an unanswered question after %s even before native indexing returns',
+  async (exit) => {
+    const f = await fixture()
+    const prompt = new PublicationPrompt(() => true)
+    let detach = prompt.attach(f.runtime().confirmation)
+    try {
+      await f.local(link)
+      await f.runtime().refreshPublication()
+      await prompt.refresh()
+      const question = prompt.asking.value!
+      expect(question).not.toBeNull()
+      if (exit === 'close') prompt.close()
+      detach()
+      await f.reopen() // The durable pending record survives; native cache does not.
+      detach = prompt.attach(f.runtime().confirmation)
+      await prompt.foreground(true)
+      expect(prompt.pending.value).toEqual([question])
+      expect(prompt.asking.value).toEqual(question)
+      // Presentation of saved evidence is not permission to publish or decline it.
+      expect(await f.runtime().confirmation.answer(question, true)).toBe(false)
+      expect(await f.runtime().confirmation.answer(question, false)).toBe(false)
+      expect(f.ports().add).not.toHaveBeenCalled()
+      await f.changed(link)
+      await f.runtime().refreshPublication()
+      await prompt.answer(false)
+      expect(prompt.pending.value).toEqual([])
+      expect(prompt.asking.value).toBeNull()
+      expect(f.ports().add).not.toHaveBeenCalled()
+    } finally {
+      detach()
+      f.close()
+    }
+  }
+)
 it.each([false, 'settlement'] as const)(
   'does not lose an own link when indexing arrives at %s instead of before upload',
   async (indexed) => {

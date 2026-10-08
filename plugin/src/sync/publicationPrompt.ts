@@ -2,6 +2,8 @@ import { ref } from 'vue'
 import type { ExistingPublicationQuestion } from './publication/publicationDecision'
 export interface PublicationPromptHost {
   questionEpoch?(): number
+  /** Durable unanswered items for Settings; not authority to display or answer. */
+  pendingQuestions?(): Promise<ExistingPublicationQuestion[]>
   questions(): Promise<ExistingPublicationQuestion[]>
   answer(question: ExistingPublicationQuestion, accepted: boolean): Promise<boolean>
 }
@@ -29,6 +31,7 @@ export class PublicationPrompt {
   attach(host: PublicationPromptHost): () => void {
     this.reviewRequest++
     this.host = host
+    this.shown.clear()
     return () => {
       if (this.host !== host) return
       this.host = null
@@ -40,9 +43,12 @@ export class PublicationPrompt {
     const host = this.host
     if (!host) return
     const epoch = host.questionEpoch?.()
+    const retained = await host.pendingQuestions?.()
     const result = await host.questions()
     if (host !== this.host) return
-    const pending = epoch === host.questionEpoch?.() ? result : []
+    const validEpoch = epoch === host.questionEpoch?.()
+    const questions = validEpoch ? result : []
+    const pending = validEpoch ? (retained ?? result) : this.pending.value
     // Presentation is not authority. An open question belongs to the user until an
     // answer/close; unavailable or epoch-invalid evidence must not dismiss it. The
     // host still revalidates the exact observation before accepting either answer.
@@ -51,10 +57,13 @@ export class PublicationPrompt {
       asking && !pending.some((q) => q.exposureKey === asking.exposureKey)
         ? [...pending, asking]
         : pending
-    this.show()
+    this.show(questions)
   }
-  async foreground() {
+  /** A real app/window foreground starts a new presentation opportunity. Editor blur
+   * and ordinary refreshes retry idleness without nagging about this foreground's close. */
+  async foreground(retryUnanswered = false) {
     if (!this.visible() || this.busy.value || this.asking.value) return
+    if (retryUnanswered) this.shown.clear()
     const host = this.host,
       request = this.reviewRequest
     try {
@@ -66,14 +75,14 @@ export class PublicationPrompt {
         !this.asking.value &&
         !this.busy.value
       ) {
-        this.pending.value = []
+        // A read failure cannot settle durable work or erase the Settings review list.
         this.close()
       }
     }
   }
-  private show() {
+  private show(questions: ExistingPublicationQuestion[]) {
     if (!this.visible() || !this.canAsk() || this.asking.value || this.busy.value) return
-    const next = this.pending.value.find((q) => !this.shown.has(q.exposureKey))
+    const next = questions.find((q) => !this.shown.has(q.exposureKey))
     if (next) this.ask(next)
   }
   /** Explicit review also revalidates, rather than showing the tab's cached question. */
@@ -83,6 +92,7 @@ export class PublicationPrompt {
     const request = ++this.reviewRequest
     try {
       const epoch = host.questionEpoch?.()
+      const retained = await host.pendingQuestions?.()
       const result = await host.questions()
       if (
         host !== this.host ||
@@ -93,12 +103,11 @@ export class PublicationPrompt {
       )
         return
       const pending = epoch === host.questionEpoch?.() ? result : []
-      this.pending.value = pending
+      if (epoch === host.questionEpoch?.()) this.pending.value = retained ?? pending
       const fresh = pending.find((q) => q.exposureKey === question.exposureKey)
       if (fresh) this.ask(fresh)
     } catch {
       if (host === this.host && request === this.reviewRequest && !this.busy.value) {
-        this.pending.value = []
         this.close()
       }
     }

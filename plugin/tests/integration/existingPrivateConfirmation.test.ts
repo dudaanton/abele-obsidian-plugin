@@ -96,6 +96,26 @@ function setup() {
   }
 }
 describe('existing-private confirmation coordinator', () => {
+  it.each(['unindexed', 'offline', 'unlinked'] as const)(
+    'retains an unanswered durable item with %s evidence without accepting cached consent',
+    async (evidence) => {
+      const s = setup()
+      await s.coordinator.refresh(s.candidates)
+      const [q] = await s.coordinator.questions()
+      if (evidence === 'offline') s.port.observe.mockRejectedValue(new Error('Offline'))
+      else s.port.observe.mockResolvedValue((evidence === 'unindexed' ? undefined : null) as any)
+      const reopened = s.make()
+      if (evidence !== 'offline') await reopened.refresh([])
+      expect(await reopened.pendingQuestions()).toEqual([q])
+      expect(await reopened.questions()).toEqual(evidence === 'unlinked' ? [] : [q])
+      if (evidence !== 'offline') {
+        expect(await reopened.answer(q, true)).toBe(false)
+        expect(await reopened.answer(q, false)).toBe(false)
+      } else await expect(reopened.answer(q, true)).rejects.toThrow('Offline')
+      expect(s.port.add).not.toHaveBeenCalled()
+      expect((await s.store.getExisting(q.exposureKey))?.state).toBe('pending')
+    }
+  )
   it('retains local link introductions until a second owner device discovers its shared audiences', async () => {
     const s = setup(),
       grants: string[] = []

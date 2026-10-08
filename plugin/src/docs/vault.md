@@ -1516,8 +1516,11 @@ may supersede it. If the first write never succeeds, the in-memory snapshot is n
 record; a new lifetime must fetch server truth again. Empty
 `sharing` is omitted from synced settings. A device with no discovery hints and no successful
 server inventory shows a Sharing hint to sign in or sync plugin settings from another device.
-Local private-file introductions produce the same plain notice once per server/vault session;
-the candidates remain durable and are asked after discovery arrives, not treated as unshared proof.
+Local private-file introductions produce the same plain notice once per server/vault session,
+not merely on joining. It fires when a trusted native image paste is retained or an exact local
+link callback differs from the known synced base, before upload or the image's ledger identity
+is available. Received links and unrelated body edits do not trigger it. The candidates remain
+durable and are asked after discovery arrives, not treated as unshared proof.
 Corrupt group entries remain intact, are reported by
 a visible warning and cannot silently erase valid hints beside them. Hints are not authorization;
 the signed-in server lists always replace the cache. The discovery inventory may contain up to
@@ -1568,8 +1571,15 @@ showing or answering a question and immediately before transport. File namespace
 invalidate cached resolutions without changing immutable last-synced link facts. A batch of
 question reads is dropped if its namespace/evidence epoch changes while later questions are
 checked; the presenter also checks that epoch after its await, before using the batch.
-Closing the dialog leaves the question pending without reopening it on every save; **Review**
-in the Sync tab opens it explicitly. A delayed Review must still be the latest request,
+Closing the dialog without a choice leaves the question pending without reopening it on every
+save. The next app/window foreground or owner runtime attachment retries it after editor idle;
+**Review** in the Sync tab opens it explicitly. Only an explicit, revalidated **Share** or
+**Keep private** answers it. The Linked private files list is rebuilt from durable pending
+records, independently of current display eligibility. A temporarily unavailable cache or
+network may display the saved question after restart, but neither answer nor transport can
+use that saved observation as fresh authority. A known invalid link suppresses automatic
+presentation without settling the pending review item. Epoch invalidation and transient read
+failures preserve an already-listed unanswered item. A delayed Review must still be the latest request,
 foreground and not busy when its read completes; closing or answering invalidates older reads.
 Questions stay pending while an editor, editable field or link suggestion has focus. Leaving
 editing wakes presentation; returning focus to a desktop window also retries a deferred question.

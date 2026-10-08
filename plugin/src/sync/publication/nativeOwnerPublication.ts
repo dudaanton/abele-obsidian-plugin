@@ -427,6 +427,7 @@ export class NativeOwnerPublication {
           epoch,
         })
         await this.save()
+        if (!this.options.grants.length) this.options.pendingWithoutAudiences?.()
       }).catch(() => {})
     }
     target.addEventListener('paste', paste, true)
@@ -554,6 +555,7 @@ export class NativeOwnerPublication {
       ...(await observeLinks(this.options.app, this.options.state, path, source, cache)),
       resolutionEpoch,
     }
+    await this.hintMissingDiscovery(path, o)
     this.observations.set(path, o)
     for (const p of this.pastes.filter((p) => !p.done && p.notePath === path)) p.current = copy(o)
     await this.save()
@@ -589,6 +591,36 @@ export class NativeOwnerPublication {
       await this.persisted('received-bases', waiting)
     }
     await this.recoverLocalLinks(path, o)
+  }
+  /** An informational hint at the local link callback, before upload/target identity.
+   * This never creates a candidate or authority; settlement still proves introductions. */
+  private async hintMissingDiscovery(path: string, o: Observation) {
+    if (this.automaticPaused || this.options.grants.length || this.options.settling?.()) return
+    const entry = await this.options.state.get(path)
+    if (!entry || entry.sha === o.sha) return // Received/current bytes are not an introduction.
+    const base = await this.snapshots.get(entry.fileId)
+    if (base.kind !== 'complete' || base.versionId !== entry.versionId) return
+    const renames = await this.snapshots.renames()
+    const known = new Set(
+      base.facts
+        .flatMap((f) => [f.spelling, ...(f.resolvedPath ? [f.resolvedPath] : [])])
+        .map(normalizedSpelling)
+    )
+    for (let n = 0; n < renames.items.length; n++)
+      for (const r of renames.items)
+        if (known.has(normalizedSpelling(r.from))) known.add(normalizedSpelling(r.to))
+    if (
+      o.facts.some(
+        (f) =>
+          f.resolution === 'resolved' &&
+          f.resolvedPath &&
+          nativeAssetEligible(f.resolvedPath, this.options.configurationRoots?.()) &&
+          !known.has(normalizedSpelling(f.spelling)) &&
+          !known.has(normalizedSpelling(f.resolvedPath)) &&
+          !base.facts.some((old) => f.targetId && old.targetId === f.targetId)
+      )
+    )
+      this.options.pendingWithoutAudiences?.()
   }
   private async recoverLocalLinks(path: string, o: Observation) {
     const waiting =

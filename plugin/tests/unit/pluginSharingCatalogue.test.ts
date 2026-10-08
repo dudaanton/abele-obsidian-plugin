@@ -199,6 +199,9 @@ it('explains missing discovery once per vault session and asks retained private 
   let owner = await host.ownerPublication(context)
   try {
     expect(host.discoveryWarning.value).toContain("This device doesn't know what you share yet")
+    expect(notices.slice(beforeNotices)).toEqual([]) // Connecting alone is not a held introduction.
+    await host.refreshPublication()
+    expect(notices.slice(beforeNotices)).toEqual([])
     for (let round = 0; round < 2; round++) {
       const runtime = (host as any).live.runtime
       const candidate = {

@@ -88,13 +88,25 @@ export class ExistingPrivateConfirmation {
   questionEpoch(): number {
     return this.port.questionEpoch?.() ?? 0
   }
+  /** Saved questions remain reviewable even while their current evidence is unavailable
+   * or the link no longer applies. Only an explicit, revalidated answer records consent. */
+  async pendingQuestions(): Promise<ExistingPublicationQuestion[]> {
+    return (await this.store.existing(this.binding))
+      .filter((d) => d.state === 'pending')
+      .map(({ exposureKey, fingerprint, observation }) => ({ exposureKey, fingerprint, observation }))
+  }
   async questions(): Promise<ExistingPublicationQuestion[]> {
     const epoch = this.questionEpoch()
     const questions: ExistingPublicationQuestion[] = []
     for (const d of await this.store.existing(this.binding)) {
-      if (d.state !== 'pending' || d.completed || !this.port.held()) continue
-      const current = await this.current(d)
-      const fresh = current && (await existingPublicationQuestion(current))
+      if (d.state !== 'pending' || !this.port.held()) continue
+      // A restart loses native cache observations, not the question. Show the saved
+      // question on unavailable evidence; answer() still requires a fresh exact observation.
+      const current = await this.current(d).catch((): undefined => undefined)
+      const fresh =
+        current === undefined
+          ? { exposureKey: d.exposureKey, fingerprint: d.fingerprint, observation: d.observation }
+          : current && (await existingPublicationQuestion(current))
       if (
         this.port.held() &&
         fresh?.exposureKey === d.exposureKey &&
@@ -108,7 +120,7 @@ export class ExistingPrivateConfirmation {
     return this.serial(async () => {
       if (!this.port.held()) return candidates
       const pending = (await this.store.existing(this.binding))
-        .filter((d) => d.state === 'pending' && !d.completed)
+        .filter((d) => d.state === 'pending')
         .map((q) => ({
           sponsorId: q.observation.sponsor.fileId,
           targetId: q.observation.target.fileId,
@@ -132,7 +144,8 @@ export class ExistingPrivateConfirmation {
           }
           const q = observation && (await existingPublicationQuestion(observation))
           if (q?.exposureKey === key) await this.store.rememberExisting({ ...q, state: 'pending' })
-          else if (previous) await this.store.rememberExisting({ ...previous, completed: true })
+          // A known no-question result suppresses presentation, not the unanswered
+          // review item. It may become applicable again; it is not an explicit decline.
         }
       for (const d of await this.store.existing(this.binding))
         if (d.state === 'approved' && !d.completed) await this.deliver(d)

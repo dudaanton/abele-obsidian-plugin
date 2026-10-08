@@ -219,6 +219,40 @@ const synced = (): Promise<void> =>
     () => service.status.value.state === 'idle' && service.status.value.lastSyncAt !== null
   )
 
+it.each([false, true])(
+  'reoffers an unanswered sharing question on app foreground (mobile=%s), not editor blur alone',
+  async (mobile) => {
+    Platform.isMobile = mobile
+    start()
+    let idle = true
+    const prompt = service.publicationPrompt
+    ;(prompt as any).canAsk = () => idle
+    const question = { exposureKey: 'sample-unanswered-question' } as any
+    const answer = vi.fn(async () => true)
+    const detach = prompt.attach({ questions: async () => [question], answer })
+    try {
+      await prompt.refresh()
+      expect(prompt.asking.value).toEqual(question)
+      prompt.close()
+      editorBlurEvents.forEach((cb) => cb())
+      await tick()
+      expect(prompt.asking.value).toBeNull()
+      expect(prompt.pending.value).toEqual([question])
+      idle = false
+      domEvents.forEach((cb) => cb())
+      await tick()
+      expect(prompt.asking.value).toBeNull()
+      idle = true
+      editorBlurEvents.forEach((cb) => cb())
+      await tick()
+      expect(prompt.asking.value).toEqual(question)
+      expect(answer).not.toHaveBeenCalled()
+    } finally {
+      detach()
+    }
+  }
+)
+
 /* -- Setting a device up ------------------------------------------------- */
 
 interface Connected {
