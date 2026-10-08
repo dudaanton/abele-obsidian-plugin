@@ -6,6 +6,49 @@ import { useVault } from '../helpers/testEnv'
 import { confirmAction } from '@/modal/confirm'
 vi.mock('@/modal/confirm', () => ({ confirmAction: vi.fn(async () => true) }))
 
+it('offers pi only when the node reports it and shows unavailable capability reasons', async () => {
+  useVault([])
+  const props = nodeWorkspaceFixture()
+  props.model.client.describe = vi.fn(async () => ({
+    providers: [
+      {
+        provider: 'pi',
+        available: true,
+        capabilities: {
+          permissions: { status: 'supported', evidence: 'sample' },
+          compaction: { status: 'unverified', reason: 'Not accepted on this node' },
+        },
+      },
+      { provider: 'claude', available: false, diagnostic: 'CLI unavailable' },
+    ],
+  }))
+  props.model.client.createSession = vi.fn(async () => ({ session_id: 'sample-pi' }) as never)
+  const wrapper = mount(NodeWorkspaceDialog, {
+    props,
+    global: { stubs: { Modal: { template: '<div><slot /></div>' } } },
+  })
+  try {
+    await flushPromises()
+    const select = wrapper.get('select[aria-label="Node provider"]')
+    expect(select.find('option[value="pi"]').exists()).toBe(true)
+    expect(select.find('option[value="claude"]').attributes('disabled')).toBeDefined()
+    expect(wrapper.text()).toContain('Not accepted on this node')
+    await select.setValue('pi')
+    await wrapper
+      .findAll('button')
+      .find((b) => b.text() === 'Start session in workspace')!
+      .trigger('click')
+    await flushPromises()
+    expect(props.model.client.createSession).toHaveBeenCalledWith(
+      'Coding task',
+      'sample-workspace',
+      'pi'
+    )
+  } finally {
+    wrapper.unmount()
+  }
+})
+
 it('never enables removal for a removed workspace, even before selection refresh', async () => {
   useVault([])
   const props = nodeWorkspaceFixture()

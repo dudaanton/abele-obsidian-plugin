@@ -11,6 +11,7 @@ import { promptAnswerStates, type PromptAnswerState } from './promptAnswers'
 import { FrameCodec } from '@abele/channel-protocol'
 import { NodeFilesModel, nodeResourceTarget, type CodeLineRange } from './NodeFilesModel'
 import { PromptSchema, validateParams } from '@abele/node-protocol'
+import { nodeProviders } from './providers'
 
 const NORMALIZED_ARTIFACT_EVENTS = new Set([
   'claude.message.final',
@@ -18,6 +19,12 @@ const NORMALIZED_ARTIFACT_EVENTS = new Set([
   'claude.tool.result',
   'claude.thinking',
   'claude.block.delta',
+  'pi.message.start',
+  'pi.message.delta',
+  'pi.message.final',
+  'pi.tool.call',
+  'pi.tool.update',
+  'pi.tool.result',
 ])
 /** Immutable bytes that cannot be projected; transport/storage failures are retryable. */
 class UnusableArtifactError extends Error {}
@@ -45,6 +52,10 @@ export class NodeChatPresenter implements ChatPresentationSession {
   readonly isStreaming = computed(() => this.projection.value.state === 'running')
   readonly label = computed(() => this.reference.title)
   readonly provider = computed(() => this.projection.value.session?.provider ?? 'fake')
+  readonly providerReports = ref<ReturnType<typeof nodeProviders>>([])
+  readonly providerReport = computed(() =>
+    this.providerReports.value.find((p) => p.provider === this.provider.value)
+  )
   readonly workspaceId = computed(() => this.projection.value.session?.workspace_id)
   readonly nativeSessionId = computed(() => this.projection.value.session?.native_session_id)
   readonly draft = ref<ChatDraft>({ text: '', attachments: [] })
@@ -109,6 +120,7 @@ export class NodeChatPresenter implements ChatPresentationSession {
       await this.connection.connect()
       if (this.destroyed) return
       await this.connection.client.subscribe(this.reference.sessionId)
+      this.providerReports.value = nodeProviders(await this.connection.client.describe())
       await this.refresh()
     } catch (error) {
       this.report(error)
@@ -228,7 +240,7 @@ export class NodeChatPresenter implements ChatPresentationSession {
     }
   }
 
-  async answer(prompt: Prompt, choice: 'allow' | 'deny'): Promise<void> {
+  async answer(prompt: Prompt, choice: 'allow' | 'deny', value?: string): Promise<void> {
     this.error.value = ''
     const client = this.connection.client
     try {
@@ -245,6 +257,7 @@ export class NodeChatPresenter implements ChatPresentationSession {
         revision,
         action_digest,
         choice,
+        ...(value !== undefined && choice === 'allow' ? { value } : {}),
       })
       const operationId = crypto.randomUUID()
       FrameCodec.encode({

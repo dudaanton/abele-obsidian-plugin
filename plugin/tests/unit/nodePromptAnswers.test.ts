@@ -68,6 +68,25 @@ async function fixture() {
   })
   return { first, make }
 }
+it('retains one exact question value across reload and refuses to retarget it', async () => {
+  const { first, make } = await fixture()
+  const question = { ...prompt, kind: 'select' as const, options: ['Inspect', 'Stop'] }
+  await first.presenter.answer(question, 'allow', 'Inspect')
+  const pending = await first.client.pending()
+  expect(pending[0].params).toMatchObject({ choice: 'allow', value: 'Inspect' })
+  first.presenter.destroy()
+  first.store.close()
+  const restored = make()
+  try {
+    await restored.presenter.answer(question, 'allow', 'Stop')
+    expect(await restored.client.pending()).toEqual(pending)
+    expect(restored.presenter.answers.value[question.prompt_id].value).toBe('Inspect')
+  } finally {
+    restored.presenter.destroy()
+    restored.store.close()
+  }
+})
+
 it('admits at most one answer during concurrent UI calls', async () => {
   const { first } = await fixture()
   try {

@@ -15,7 +15,7 @@ export interface NodeClientState extends ClientState {
       error?: string
       request?: { method: string; params: unknown }
       input?: { sessionId: string; text: string }
-      answer?: { sessionId: string; promptId: string; choice: 'allow' | 'deny' }
+      answer?: { sessionId: string; promptId: string; choice: 'allow' | 'deny'; value?: string }
     }
   >
 }
@@ -42,6 +42,7 @@ const StateSchema = z
             sessionId: z.string().min(1).max(128),
             promptId: z.string().min(1).max(128),
             choice: z.enum(['allow', 'deny']),
+            value: z.string().max(32768).optional(),
           })
           .optional(),
         input: z

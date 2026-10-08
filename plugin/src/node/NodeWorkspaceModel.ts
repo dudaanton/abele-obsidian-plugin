@@ -96,7 +96,7 @@ export class NodeWorkspaceModel {
     this.workspaceId.value = this.reservation.value.workspace_id
     await this.load()
   }
-  async startSession(title: string, provider: 'fake' | 'claude'): Promise<NodeSession> {
+  async startSession(title: string, provider: 'fake' | 'claude' | 'pi'): Promise<NodeSession> {
     this.beforeStart()
     const workspace = this.workspaces.value.find((w) => w.workspace_id === this.workspaceId.value)
     if (!workspace || workspace.kind !== 'managed' || workspace.state !== 'ready')

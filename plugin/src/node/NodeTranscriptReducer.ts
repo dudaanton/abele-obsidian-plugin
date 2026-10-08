@@ -2,6 +2,7 @@ import type { JournalEvent } from '@abele/channel-protocol'
 import { PromptSchema, SessionSchema, type Prompt } from '@abele/node-protocol'
 import type { ChatMessage } from '@/ai/types'
 import { ClaudeTranscript } from './claudeTranscript'
+import { PiTranscript } from './piTranscript'
 
 export type NodeSessionState = 'idle' | 'queued' | 'accepted' | 'running' | 'needs-attention'
 export interface NodeTranscript {
@@ -38,6 +39,7 @@ export function reduceTranscript(events: readonly JournalEvent[]): NodeTranscrip
     return current
   }
   const claude = new ClaudeTranscript(message)
+  const pi = new PiTranscript(message)
   for (const event of [...events].sort((a, b) => a.seq - b.seq)) {
     if (seen.has(event.seq)) continue
     seen.add(event.seq)
@@ -51,7 +53,10 @@ export function reduceTranscript(events: readonly JournalEvent[]): NodeTranscrip
       else unknown.push(event)
       continue
     }
-    if (event.type.startsWith('claude.') && (data.artifact_id || data.late)) {
+    if (
+      (event.type.startsWith('claude.') || event.type.startsWith('pi.')) &&
+      (data.artifact_id || data.late)
+    ) {
       unknown.push(event)
       if (text('artifact_id') && !['claude.raw', 'claude.unknown'].includes(event.type))
         artifacts.push({
@@ -62,6 +67,7 @@ export function reduceTranscript(events: readonly JournalEvent[]): NodeTranscrip
       continue
     }
     if (event.type.startsWith('claude.') && claude.apply(event.type, data)) continue
+    if (event.type.startsWith('pi.') && pi.apply(event.type, data)) continue
     if (event.type.startsWith('input.')) {
       const state = text('state') || event.type.slice(6)
       inputs.set(text('input_id'), state)

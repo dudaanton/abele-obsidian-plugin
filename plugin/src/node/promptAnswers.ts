@@ -6,6 +6,7 @@ export interface PromptAnswerState {
   choice: 'allow' | 'deny'
   state: 'pending' | 'answered' | 'rejected'
   error?: string
+  value?: string
 }
 
 /** Installation-local durable answer identity, independent of any mounted card. */
@@ -23,11 +24,13 @@ export function promptAnswerStates(
             sessionId: legacy.data.session_id,
             promptId: legacy.data.prompt_id,
             choice: legacy.data.choice,
+            ...(typeof legacy.data.value === 'string' ? { value: legacy.data.value } : {}),
           }
         : undefined)
     if (identity?.sessionId === sessionId)
       answers[identity.promptId] = {
         choice: identity.choice,
+        ...(identity.value !== undefined ? { value: identity.value } : {}),
         state: receipt.error ? 'rejected' : 'answered',
         ...(receipt.error ? { error: receipt.error } : {}),
       }
@@ -40,7 +43,11 @@ export function promptAnswerStates(
       typeof p.prompt_id === 'string' &&
       (p.choice === 'allow' || p.choice === 'deny')
     )
-      answers[p.prompt_id] = { choice: p.choice, state: 'pending' }
+      answers[p.prompt_id] = {
+        choice: p.choice,
+        state: 'pending',
+        ...(typeof p.value === 'string' ? { value: p.value } : {}),
+      }
   }
   return answers
 }
@@ -53,7 +60,17 @@ export function retainPromptAnswerIdentity(
     if (entry.method !== 'prompt.answer') continue
     const receipt = state.results[entry.operation_id]
     if (!receipt) continue
-    const p = entry.params as { session_id: string; prompt_id: string; choice: 'allow' | 'deny' }
-    receipt.answer = { sessionId: p.session_id, promptId: p.prompt_id, choice: p.choice }
+    const p = entry.params as {
+      session_id: string
+      prompt_id: string
+      choice: 'allow' | 'deny'
+      value?: string
+    }
+    receipt.answer = {
+      sessionId: p.session_id,
+      promptId: p.prompt_id,
+      choice: p.choice,
+      ...(typeof p.value === 'string' ? { value: p.value } : {}),
+    }
   }
 }

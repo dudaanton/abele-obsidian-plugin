@@ -81,10 +81,15 @@
         v-for="prompt in presenter.projection.value.prompts"
         :key="prompt.prompt_id"
         :prompt="prompt"
-        :fake="presenter.provider?.value !== 'claude'"
+        :fake="presenter.provider?.value === 'fake'"
         :disabled="offline"
         :answer-state="presenter.answers?.value[prompt.prompt_id]"
-        @answer="presenter.answer(prompt, $event)"
+        @answer="
+          (choice, value) =>
+            value === undefined
+              ? presenter.answer(prompt, choice)
+              : presenter.answer(prompt, choice, value)
+        "
       />
       <div
         v-for="rejected in presenter.rejected.value"
@@ -127,6 +132,7 @@ import { computed, nextTick, ref, watch, onUnmounted } from 'vue'
 import { Menu, Notice } from 'obsidian'
 import type { NodeChatPresenter } from '@/node/NodeChatPresenter'
 import { nodeQueueView } from '@/node/presentation'
+import { providerLabel, capabilityReason } from '@/node/providers'
 import { NodeService } from '@/node/NodeService'
 import { openNodeWorkspaces } from '@/node/openSession'
 import { openNodeFiles } from '@/node/openFiles'
@@ -160,7 +166,7 @@ const icons = {
 }
 const title = computed(
   () =>
-    `${props.presenter.label.value} · ${props.presenter.provider?.value === 'claude' ? 'Claude Code' : 'Fake (non-executing)'}`
+    `${props.presenter.label.value} · ${providerLabel(props.presenter.provider?.value ?? 'fake')}`
 )
 const status = computed(() =>
   props.presenter.connection.state.value === 'connecting'
@@ -204,9 +210,7 @@ const openMenu = (event: MouseEvent | KeyboardEvent) => {
   const menu = new Menu()
   menu.addItem((i) =>
     i
-      .setTitle(
-        props.presenter.provider?.value === 'claude' ? 'Claude Code' : 'Fake (non-executing)'
-      )
+      .setTitle(providerLabel(props.presenter.provider?.value ?? 'fake'))
       .setIcon('terminal')
       .setDisabled(true)
   )
@@ -221,10 +225,19 @@ const openMenu = (event: MouseEvent | KeyboardEvent) => {
         void props.presenter.connection.connect().catch(() => {})
       })
   )
-  if (props.presenter.provider?.value === 'claude') {
+  if (props.presenter.provider?.value !== 'fake') {
     menu.addItem((i) =>
       i
-        .setTitle('Session resume')
+        .setTitle(
+          props.presenter.provider?.value === 'pi' &&
+            capabilityReason(props.presenter.providerReport?.value, 'resume')
+            ? `Session resume · ${capabilityReason(props.presenter.providerReport?.value, 'resume')}`
+            : 'Session resume'
+        )
+        .setDisabled(
+          props.presenter.provider?.value === 'pi' &&
+            !!capabilityReason(props.presenter.providerReport?.value, 'resume')
+        )
         .setIcon('history')
         .onClick(
           () =>
@@ -237,7 +250,12 @@ const openMenu = (event: MouseEvent | KeyboardEvent) => {
     )
     menu.addItem((i) =>
       i
-        .setTitle('Steer turn')
+        .setTitle(
+          props.presenter.provider?.value === 'pi'
+            ? `Steer turn · ${capabilityReason(props.presenter.providerReport?.value, 'steering') || 'Queued follow-ups only'}`
+            : 'Steer turn'
+        )
+        .setDisabled(true)
         .setIcon('corner-up-right')
         .onClick(() => {
           props.presenter.error.value =
@@ -246,7 +264,12 @@ const openMenu = (event: MouseEvent | KeyboardEvent) => {
     )
     menu.addItem((i) =>
       i
-        .setTitle('Ask a question')
+        .setTitle(
+          props.presenter.provider?.value === 'pi'
+            ? `Provider questions · ${capabilityReason(props.presenter.providerReport?.value, 'extension_prompts') || 'Answer only provider-issued questions'}`
+            : 'Ask a question'
+        )
+        .setDisabled(true)
         .setIcon('circle-help')
         .onClick(() => {
           props.presenter.error.value = 'Interactive questions are not supported yet.'
@@ -268,7 +291,7 @@ const openMenu = (event: MouseEvent | KeyboardEvent) => {
 const send = async (text: string) => {
   sending.value = true
   try {
-    if (permissionFixture.value && props.presenter.provider?.value !== 'claude')
+    if (permissionFixture.value && props.presenter.provider?.value === 'fake')
       await props.presenter.send(text, [{ kind: 'permission', ttl_ms: 60000 }, { kind: 'echo' }])
     else await props.presenter.send(text)
   } finally {

@@ -13,7 +13,7 @@
         </Setting>
         <Setting
           name="Trust this project for execution"
-          desc="Claude can execute commands and load configured resources with your user account. Only register code you trust."
+          desc="Claude and pi can execute commands and load configured resources with your user account. Only register code you trust."
         >
           <Checkbox :is-enabled="trusted" @toggle="trusted = !trusted" />
         </Setting>
@@ -169,8 +169,16 @@
       /></Setting>
       <Setting name="Provider">
         <select v-model="provider" aria-label="Node provider">
-          <option value="claude">Claude Code</option>
-          <option value="fake">Fake (non-executing)</option>
+          <option value="">Choose an available provider</option>
+          <option
+            v-for="p in providers"
+            :key="p.provider"
+            :value="p.provider"
+            :disabled="!providerAvailable(p)"
+          >
+            {{ providerLabel(p.provider)
+            }}{{ providerAvailable(p) ? '' : ' · ' + (p.diagnostic || 'Unavailable') }}
+          </option>
         </select>
       </Setting>
       <Button
@@ -182,20 +190,28 @@
           workspace?.kind !== 'managed' ||
           workspace?.state !== 'ready' ||
           !!attached ||
-          !title.trim()
+          !title.trim() ||
+          !selectedProvider ||
+          !providerAvailable(selectedProvider)
         "
         @click="start"
       />
       <details>
         <summary>Provider availability and effective configuration</summary>
         <p v-for="p in providers" :key="p.provider">
-          {{ p.provider === 'claude' ? 'Claude Code' : 'Fake (non-executing)' }} ·
-          {{ p.available === false ? 'Unavailable' : 'Available'
+          {{ providerLabel(p.provider) }} · {{ providerAvailable(p) ? 'Available' : 'Unavailable'
           }}<template v-if="p.configuration?.model"> · {{ p.configuration.model }}</template
           ><template v-if="p.configuration?.profile">
             · {{ p.configuration.profile }} settings</template
           >
+          <template v-if="p.diagnostic"> · {{ p.diagnostic }}</template>
         </p>
+        <template v-for="p in providers" :key="`features-${p.provider}`">
+          <p v-for="(gate, feature) in p.capabilities" :key="feature">
+            {{ providerLabel(p.provider) }} · {{ feature }} · {{ gate.status }} ·
+            {{ gate.status === 'supported' ? gate.evidence : gate.reason }}
+          </p>
+        </template>
         <details>
           <summary>Technical details</summary>
           <pre>{{
@@ -235,6 +251,12 @@ import { NodeFilesModel } from '@/node/NodeFilesModel'
 import { openNodeFiles } from '@/node/openFiles'
 import type { NodeWorkspaceModel, NodeSession } from '@/node/NodeWorkspaceModel'
 import type { NodeConnection } from '@/node/NodeService'
+import {
+  nodeProviders,
+  providerAvailable,
+  providerLabel,
+  type NodeProviderName,
+} from '@/node/providers'
 import { nodeJobLabel, shortNodePath, workspaceStateLabels } from '@/node/presentation'
 import Icon from './obsidian/Icon.vue'
 import NodePath from './NodePath.vue'
@@ -272,7 +294,7 @@ const path = ref(''),
   base = ref('HEAD'),
   title = ref('Coding task'),
   trusted = ref(false)
-const provider = ref<'claude' | 'fake'>('claude')
+const provider = ref<NodeProviderName | ''>('claude')
 const busy = ref(false),
   error = ref('')
 const offline = computed(() => props.connection.state.value !== 'connected')
@@ -292,17 +314,11 @@ const latestJobs = computed(() => {
   }
   return [...byWorkspace.values()]
 })
-const providers = computed(() => {
-  const description = props.model.description.value as
-    | {
-        providers?: {
-          provider: string
-          available?: boolean
-          configuration?: { model?: string; profile?: string }
-        }[]
-      }
-    | undefined
-  return Array.isArray(description?.providers) ? description.providers : []
+const providers = computed(() => nodeProviders(props.model.description.value))
+const selectedProvider = computed(() => providers.value.find((p) => p.provider === provider.value))
+watch(providers, (reports) => {
+  if (!reports.some((p) => p.provider === provider.value && providerAvailable(p)))
+    provider.value = reports.find(providerAvailable)?.provider ?? ''
 })
 const attached = computed(() =>
   props.model.sessions.value.find((s) => s.workspace_id === props.model.workspaceId.value)
@@ -329,6 +345,8 @@ const selectProject = (e: Event) => {
 }
 const start = () =>
   act(async () => {
+    if (!provider.value || !selectedProvider.value || !providerAvailable(selectedProvider.value))
+      return
     emit('session', await props.model.startSession(title.value.trim(), provider.value))
   })
 const repositoryPermissions = () =>

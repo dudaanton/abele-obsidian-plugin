@@ -51,6 +51,22 @@ export function nodeWorkspaceFixture() {
     describe: async () => ({
       providers: [
         {
+          provider: 'pi',
+          available: true,
+          configuration: { profile: 'isolated', model: 'sample-model' },
+          capabilities: {
+            execution: { status: 'supported', evidence: 'sample-supervised-worker' },
+            permissions: { status: 'supported', evidence: 'sample-exact-approval' },
+            resume: { status: 'supported', evidence: 'sample-native-resume' },
+            extension_prompts: {
+              status: 'unverified',
+              reason: 'Extension compatibility not accepted',
+            },
+            compaction: { status: 'unverified', reason: 'Compaction not accepted' },
+            steering: { status: 'unsupported', reason: 'Serialized follow-ups only' },
+          },
+        },
+        {
           provider: 'claude',
           available: true,
           configuration: { profile: 'inherited', setting_sources: ['user'] },

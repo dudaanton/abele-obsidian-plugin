@@ -2,7 +2,9 @@
   <div class="abele-tool-approval abele-node-permission">
     <div class="abele-tool-approval__header">
       <Icon icon="shield-alert" no-hover /><span>{{
-        prompt.tool_name || 'Permission request'
+        prompt.title ||
+        prompt.tool_name ||
+        (prompt.kind === 'permission' ? 'Permission request' : 'Question')
       }}</span>
     </div>
     <div v-if="summary" class="abele-tool-approval__param">{{ summary }}</div>
@@ -26,19 +28,37 @@
       class="abele-node-permission__note"
       role="status"
     >
-      Answer sent · {{ answerState.choice === 'allow' ? 'Approve' : 'Deny' }}
+      Answer sent ·
+      {{ answerState.choice === 'allow' ? (isQuestion ? 'Answer' : 'Approve') : 'Deny' }}
+      <template v-if="answerState.value !== undefined"> · {{ answerState.value }}</template>
       <template v-if="answerState.state === 'pending'"> · waiting for confirmation</template>
       <template v-if="answerState.error"> · not accepted: {{ answerState.error }}</template>
     </div>
     <template v-else-if="prompt.state === 'pending'">
       <div v-if="expiry" class="abele-node-permission__note">{{ expiry }}</div>
+      <select
+        v-if="prompt.kind === 'select'"
+        v-model="value"
+        aria-label="Question answer"
+        :disabled="disabled"
+      >
+        <option value="">Choose an answer</option>
+        <option v-for="option in prompt.options" :key="option" :value="option">{{ option }}</option>
+      </select>
+      <Input
+        v-if="prompt.kind === 'input'"
+        v-model="value"
+        as-text-area
+        aria-label="Question answer"
+        :disabled="disabled"
+      />
       <div class="abele-tool-approval__actions">
         <Button
-          :text="fake ? 'Allow' : 'Approve'"
+          :text="isQuestion ? 'Answer' : fake ? 'Allow' : 'Approve'"
           accent
-          :disabled="disabled"
-          tooltip="Approve exactly this action once"
-          @click="emit('answer', 'allow')"
+          :disabled="disabled || !valid"
+          tooltip="Approve exactly this action or answer this question once"
+          @click="approve"
         />
         <Button
           text="Deny"
@@ -49,7 +69,11 @@
       </div>
     </template>
     <div v-else class="abele-node-permission__note">
-      Permission {{ prompt.state }}{{ prompt.choice ? ': ' + prompt.choice : '' }}
+      {{ isQuestion ? 'Question' : 'Permission' }} {{ prompt.state
+      }}{{ prompt.choice ? ': ' + prompt.choice : '' }}
+      <template v-if="prompt.value !== undefined && prompt.value !== null">
+        · {{ prompt.value }}</template
+      >
       <template v-if="prompt.state === 'resolved'">
         ·
         {{
@@ -62,7 +86,7 @@
   </div>
 </template>
 <script setup lang="ts">
-import { computed } from 'vue'
+import { computed, ref, watch } from 'vue'
 import type { Prompt } from '@abele/node-client'
 import { toolSummary } from '@/ai/toolLine'
 import { promptExpiry } from '@/node/presentation'
@@ -71,13 +95,32 @@ import { useDisplayClock } from '@/composables/useDisplayClock'
 import Button from './obsidian/Button.vue'
 import Icon from './obsidian/Icon.vue'
 import Diff from './Diff.vue'
+import Input from './obsidian/Input.vue'
 const props = defineProps<{
   prompt: Prompt
   disabled: boolean
   fake?: boolean
   answerState?: PromptAnswerState
 }>()
-const emit = defineEmits<{ (e: 'answer', choice: 'allow' | 'deny'): void }>()
+const emit = defineEmits<{ (e: 'answer', choice: 'allow' | 'deny', value?: string): void }>()
+const value = ref('')
+watch(
+  () => props.prompt.prompt_id,
+  () => {
+    value.value = ''
+  }
+)
+const isQuestion = computed(() => ['select', 'input'].includes(props.prompt.kind))
+const valid = computed(() =>
+  props.prompt.kind === 'select'
+    ? !!props.prompt.options?.includes(value.value)
+    : value.value.length <= 32768
+)
+const approve = () => {
+  if (props.disabled || !valid.value) return
+  if (isQuestion.value) emit('answer', 'allow', value.value)
+  else emit('answer', 'allow')
+}
 const now = useDisplayClock('minute', () => props.prompt.state === 'pending' && !props.answerState)
 const expiry = computed(() => promptExpiry(props.prompt.expires_at, now.value))
 const summary = computed(() =>
@@ -102,6 +145,11 @@ const summary = computed(() =>
   }
   details {
     margin-block: var(--size-4-1);
+  }
+  select,
+  textarea {
+    max-width: 100%;
+    width: 100%;
   }
 }
 </style>
