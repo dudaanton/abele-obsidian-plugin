@@ -56,7 +56,10 @@ explicit quote frame are not admitted for mutation. Rendered controls require
 verified original quote line ranges, including ranges rejected for editing; if the rendered
 quote tree and source disagree, the operation is refused rather than redirected to a sibling.
 An established rendered binding is immutable: moving existing DOM nodes cannot assign them
-another frame's range.
+another frame's range. Bindings are captured while rendering, before menus or prose entry;
+controls without that original source provenance refuse the operation. Callout names are
+normalised consistently when locating nested frames, even when strict editing rejects a
+noncanonical header.
 
 In Live Preview a click or tap on prose expands the area to source and places a single caret
 at the clicked passage, including formatted or identical passages in different columns.

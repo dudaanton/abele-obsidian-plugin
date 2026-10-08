@@ -156,7 +156,13 @@ Code fences close only with a matching delimiter and whitespace-only suffix. Cur
 the innermost quote-tree frame is resolved before strict admission, including rejected nodes.
 Rejection never falls outward. Both source-range endpoints must equal the strict frame's,
 so unsupported lazy continuation is refused. Established DOM bindings cannot be reassigned
-after node reordering. The surrounding quote is retained on nested-frame removal.
+after node reordering, including reordering before the first lookup. Identity is captured in
+the early post-processor from its original section, never established by a menu or prose click.
+Live Preview supplies the full source snapshot and original range before invoking Obsidian's
+Markdown renderer; plain task markers retain their render-time source positions. Missing
+render-time provenance refuses controls. Frame discovery walks the quote-tree nodes with
+normalised callout names, so a rejected uppercase inner header cannot redirect a cursor
+command outward. The surrounding quote is retained on nested-frame removal.
 See the writing guide for commands and editing limitations; there are no column agent tools.
 
 ## Presentations
