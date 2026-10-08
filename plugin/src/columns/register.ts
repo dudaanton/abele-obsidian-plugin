@@ -244,10 +244,17 @@ export function registerColumns(plugin: Plugin): void {
       if (mounted.has(parent)) continue
       mounted.add(parent)
       const controls = parent.ownerDocument.win.createDiv({ cls: 'abele-columns-controls', parent })
+      // The frame control owns its gesture even when strict source admission refuses its menu.
+      controls.addEventListener('mousedown', (event) => event.stopPropagation())
+      controls.addEventListener('pointerdown', (event) => event.stopPropagation())
       new ButtonComponent(controls)
         .setIcon('columns-2')
         .setTooltip('Column options')
-        .onClick((event) => open(parent, 0, { x: event.clientX, y: event.clientY }))
+        .onClick((event) => {
+          event.preventDefault()
+          event.stopPropagation()
+          open(parent, 0, { x: event.clientX, y: event.clientY })
+        })
     }
   })
   const attach = (doc: Document) =>
