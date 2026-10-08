@@ -29,6 +29,9 @@ import NodeFilesDialog from '@/components/NodeFilesDialog.vue'
 import { nodeFilesFixture } from './nodeFilesFixture'
 import NodeWorkspaceDialog from '@/components/NodeWorkspaceDialog.vue'
 import { nodeWorkspaceFixture } from './nodeWorkspaceFixture'
+import NodePairingDialog from '@/components/NodePairingDialog.vue'
+import NodePermissionCard from '@/components/NodePermissionCard.vue'
+import { nodePairingFixture } from './nodePairingFixture'
 import ConfirmModal from '@/components/obsidian/ConfirmModal.vue'
 import AiReplyRevisionDialog from '@/components/AiReplyRevisionDialog.vue'
 import AiReplyOriginalDialog from '@/components/AiReplyOriginalDialog.vue'
@@ -128,6 +131,37 @@ function mountAlone(
  * way. The icon picker, the list of keys, the MCP server, rewind and a script's form have their
  * own openers; the chat's two dialogs open from the chat.
  */
+const mountNodeQuestion = (kind: 'select' | 'input') =>
+  mountAlone(
+    defineComponent({
+      setup: () => () =>
+        h(ObsidianModal, { title: 'Node question' }, () =>
+          h(NodePermissionCard, {
+            disabled: false,
+            prompt: {
+              kind,
+              prompt_id: 'sample-question',
+              session_id: 'sample-session',
+              run_id: 'sample-run',
+              revision: 1,
+              action_digest: 'a'.repeat(64),
+              expires_at: 1999999999999,
+              state: 'pending',
+              choice: null,
+              installation_id: null,
+              delivered: false,
+              title: 'Choose a next action for the sample project',
+              options:
+                kind === 'select'
+                  ? ['Inspect the changed files', 'Stop and leave the workspace unchanged']
+                  : undefined,
+            },
+          })
+        ),
+    }),
+    {}
+  )
+
 const DIALOGS: Record<string, (options?: DialogFixtureOptions) => void | Promise<void>> = {
   'chat-artifacts-empty': () => mountAlone(chatArtifactsFixture('empty')),
   'chat-artifacts': () => mountAlone(chatArtifactsFixture('populated')),
@@ -172,6 +206,12 @@ const DIALOGS: Record<string, (options?: DialogFixtureOptions) => void | Promise
       state: { expanded: [], scrollTop: 0 }, activeMessageId: 'answer-0', canGoBack: true,
     })
   },
+  'node-pairing': () =>
+    mountAlone(NodePairingDialog, { ...nodePairingFixture('waiting'), resumeNodeId: undefined }),
+  'node-pairing-waiting': () => mountAlone(NodePairingDialog, nodePairingFixture('waiting')),
+  'node-pairing-recovery': () => mountAlone(NodePairingDialog, nodePairingFixture('recovery')),
+  'node-question': () => mountNodeQuestion('select'),
+  'node-question-input': () => mountNodeQuestion('input'),
   'node-workspaces': () => mountAlone(NodeWorkspaceDialog, nodeWorkspaceFixture()),
   'node-files': async () =>
     mountAlone(NodeFilesDialog, await nodeFilesFixture('files'), 'node-files'),
@@ -180,9 +220,12 @@ const DIALOGS: Record<string, (options?: DialogFixtureOptions) => void | Promise
     mountAlone(NodeFilesDialog, await nodeFilesFixture('conflict'), 'node-edit-conflict'),
   'node-edit-unknown': async () =>
     mountAlone(NodeFilesDialog, await nodeFilesFixture('unknown'), 'node-edit-unknown'),
-  'node-edit-binary': async () => mountAlone(NodeFilesDialog, await nodeFilesFixture('binary'), 'node-edit-binary'),
-  'node-edit-large': async () => mountAlone(NodeFilesDialog, await nodeFilesFixture('tooLarge'), 'node-edit-large'),
-  'node-edit-shared': async () => mountAlone(NodeFilesDialog, await nodeFilesFixture('shared'), 'node-edit-shared'),
+  'node-edit-binary': async () =>
+    mountAlone(NodeFilesDialog, await nodeFilesFixture('binary'), 'node-edit-binary'),
+  'node-edit-large': async () =>
+    mountAlone(NodeFilesDialog, await nodeFilesFixture('tooLarge'), 'node-edit-large'),
+  'node-edit-shared': async () =>
+    mountAlone(NodeFilesDialog, await nodeFilesFixture('shared'), 'node-edit-shared'),
   'node-diffs': async () =>
     mountAlone(NodeFilesDialog, await nodeFilesFixture('diffs'), 'node-diffs'),
   'node-review': async () =>

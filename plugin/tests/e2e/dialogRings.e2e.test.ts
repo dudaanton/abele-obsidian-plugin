@@ -216,6 +216,12 @@ const script = `(async () => {
           await wait(150)
         }
       }
+      // Pairing input, owner-waiting and pin-recovery are distinct screens; do not
+      // accidentally measure an empty shell while their asynchronous enrollment loads.
+      if (dialogName === 'node-pairing-waiting' && !modal.querySelector('[aria-label="Device key fingerprint"]'))
+        cuts.push({ screen: 'dialog ' + dialogName, field: '-', by: ['device fingerprint did not open'] })
+      if (dialogName === 'node-pairing-recovery' && !modal.querySelector('[aria-label="Owner verified new node key"]'))
+        cuts.push({ screen: 'dialog ' + dialogName, field: '-', by: ['pin recovery did not open'] })
       // Node file/code/diff/review/history fixtures each exercise a separate view.
       measureAll('dialog ' + dialogName, modal)
       // A dialog with tabs, the agent editor's among them, is measured tab by tab.

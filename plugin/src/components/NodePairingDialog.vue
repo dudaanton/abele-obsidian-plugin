@@ -23,6 +23,7 @@
         </div>
         <input
           ref="photo"
+          hidden
           type="file"
           accept="image/*"
           capture="environment"
@@ -261,10 +262,6 @@ onUnmounted(() => {
   textarea {
     width: 100%;
     min-height: 100px;
-  }
-  input[type='file'] {
-    max-width: 100%;
-    margin-block: var(--size-4-2);
   }
   &__actions {
     display: flex;

@@ -60,12 +60,25 @@ a dismissed notice can be shown again on the next blocked application.
 Node history is owned by the daemon journal, not vault Markdown or `.abchat` files. The
 plugin never runs local tools for a node tab. Obsidian's vault-scoped local storage holds
 `abele-node-installation` (local namespace UUID), `abele-node-registry` (installation
-registration id, label, loopback URL and pinned node identity), and the discriminated
+registration id, label, endpoint and pinned node identity; paired registrations also retain public key coordinates, public node fingerprint and installation ID), and the discriminated
 local-chat/node-session layout in `abele-agent-tabs`. None of these travel in settings
 transfer or `data.json`. Tokens use device-local keychain slots `abele-node-<registration id>`
 and bypass the synced secret catalog even when it is unlocked.
 
-Each enrollment uses its own IndexedDB database `abele-node-<local namespace>-<registration id>`,
+Paired private keys live only in origin/device-local IndexedDB `abele-node-keys-device`,
+version 1, object store `keys`, keyed by stable node ID. Each record structured-clones a
+non-extractable ECDSA P-256 CryptoKey, public coordinates, endpoint, node fingerprint and
+optional installation ID. Pending `enrollment` retains the invitation secret and label only
+here for lost-response recovery, until confirmed connection clears it. Web Locks serialize
+all windows sharing this namespace; cryptography happens outside short atomic IndexedDB
+commits. Devices lacking these facilities refuse pairing. Nothing here is a vault file,
+JSON setting, synced secret or transferable configuration. Removing a registration leaves
+its key/history intact for re-pairing; actual revocation is node-owner controlled. Node pin
+changes require explicit out-of-band owner verification, never automatic recovery.
+
+Local enrollment uses IndexedDB `abele-node-<local namespace>-<registration id>`;
+paired history uses `abele-node-paired-<node id>-<installation id>` so same-principal
+re-pairing retains receipts/cursors without sharing them with a new principal. Both use
 version 1, object store `client`. Its `state` record holds pinned node/installation identity,
 stream cursors, cached journal events, immutable operation outbox entries and durable receipts.
 Optional `artifactData` caches parsed normalized provider payloads by artifact ID for offline

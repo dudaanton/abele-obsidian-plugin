@@ -91,8 +91,14 @@ Connect this device to a local AbeleNode with a label, its loopback URL (default
 `http://127.0.0.1:7777`) and an installation token from `abele-node token create`.
 **Check** reports the connection, **Open session** creates or picks a fake session, and
 **Remove** forgets only this device's connection, not the node's history or credential.
-Connections and tokens never travel with settings or the synced key store. This stage is
-local desktop only and does not execute agents or tools. See [Node sessions](ai-chat#node-sessions).
+For a remote desktop or phone, choose **Pair remote node** and scan/paste the owner's invitation.
+Compare the node key, then wait for owner confirmation of this device's fingerprint. Remote
+connections use paired WSS over tailnet-only Tailscale Serve, never a local bearer token.
+**Pairing / re-pair** restores pending enrollment or accepts a fresh invitation; changed node keys
+require explicit independent verification. Revocation is performed by the owner on the node.
+Connections, tokens, non-extractable device keys, pending invitations and history never travel with
+settings or the synced key store. Workspaces offer Claude Code, pi and non-executing fake sessions
+according to the node's availability/capability report. See [Node sessions](ai-chat#node-sessions).
 
 ## Books
 

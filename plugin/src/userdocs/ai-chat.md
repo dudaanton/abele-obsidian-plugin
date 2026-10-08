@@ -47,15 +47,39 @@ alone does not increase the token budget.
 **Settings → Abele → Nodes** connects this device to a local AbeleNode daemon. Create a
 separate installation token with `abele-node token create`, then paste it beside the node's
 label and loopback URL. The token stays only in this device's keychain, even with the synced
-key store unlocked. Remote addresses and phone connections are not available yet; the local
-node can run Claude Code when its installed CLI is available.
+key store unlocked. Local tokens are never sent to remote endpoints.
+
+For a phone or remote desktop, the owner first enables the node's separate paired listener
+and tailnet-only Tailscale Serve endpoint. The local-token listener must never be exposed.
+Both devices must be on the intended tailnet, and the owner must verify its access policy
+and the exact supported Obsidian WebSocket Origin (desktop policy is not proof of iOS support).
+Choose **Pair remote node**, then paste an invitation from `abele-node pair invite`, or use
+**Scan invitation QR** to photograph a code or select its picture. Review the full node key
+fingerprint with the owner before **Pair this device**. The invitation is sensitive and expires
+on the node's clock; keep it private. No access is granted until the owner compares the full
+**device key fingerprint** shown here and confirms that exact key on the node.
+
+**Waiting for owner confirmation** automatically checks while the dialog is open; **Check**
+in Nodes works later. Pending invitations and non-extractable private keys live only in this
+device's IndexedDB, not the vault, `data.json`, key sync or settings transfer. Another device
+must pair independently. Unsupported key persistence or cross-window locks fail explicitly.
+After a lost reply, retry the same retained invitation: **Resume pairing** reuses the same
+persisted device key, with the node's 24-hour consumed-invitation recovery window.
+
+Only the owner can revoke access (`abele-node pair revoke INSTALLATION_ID`). **Remove**
+forgets the registration, not the node grant or history. To re-pair a revoked device, request
+an invitation bound to its existing installation ID; this preserves receipts and sessions.
+For a rotated node key, pairing displays both old and new fingerprints and requires explicit
+independent verification of the new pin. Failed connections never authorize a pin change.
+A lost private key needs owner re-enrollment, not a copied key or transferable configuration.
+Foreground reconnect/replay is supported; background socket survival on a phone is not promised.
 
 After adding a node, the chat's **+** menu offers **Local chat** and **Session on…** for each
 node. Pick an existing session, create a **fake session (non-executing)**, or open **Projects
 and workspaces…**. Register an existing absolute path on the node, choose whether you trust
 it for execution, and create a managed workspace from a branch or commit. Git provisioning
 is a durable job: its state and phase remain visible after restarting. A coding session can
-start only in a ready, unused managed workspace. Choose **Claude Code** or **Fake** and a
+start only in a ready, unused managed workspace. Choose **Claude Code**, **pi** or **Fake** and a
 session title; an attached session can be reopened instead of starting another one. It uses the same
 chat tabs, message renderer and composer, but never runs the plugin's agents or vault tools.
 It accepts text only; local slash commands, attachments, history editing, branches and rewind
@@ -63,8 +87,11 @@ are not offered. Node file links open the workspace's retained file view, never 
 coincidentally named vault file. Nested `abele-message` blocks in node replies remain plain code,
 including their note links and embeds; they do not open vault-backed message cards.
 Open **Projects and workspaces** from the node chat header's **…** menu. That menu also
-holds reconnection, native-session resume information, and actions that explicitly explain
-unsupported steering or interactive questions when chosen. The compact header shows the
+holds reconnection and native-session resume information. Unavailable providers are disabled;
+provider details list supported, unsupported and unverified capabilities with the node's reasons.
+Gated steering and question-initiation actions are disabled. Model login and endpoint availability
+are not established by an installed provider. pi compaction, extension UI and native child evidence
+are not offered as verified features. The compact header shows the
 session title, connection/run status, and an interrupt icon only while a turn is active.
 Its read-only preview lists changed and untracked paths and shows the current unified diff
 of tracked staged/unstaged changes against HEAD. Untracked contents are not included, and
@@ -148,7 +175,7 @@ while its chat tab remains alive, but are not saved across plugin reload or tab 
 Submitted batches and receipts are durable. Browse-only workspaces cannot submit reviews;
 open the browser from a workspace session to send one.
 
-Claude assistant text renders as Markdown; tool rows show the name and a short argument
+Claude and pi assistant text renders as Markdown; tool rows show the name and a short argument
 summary. Click the tool icon to expand arguments, results and file previews. Successful Edit calls show
 before/after snippets, Write calls show supplied content, nested work is grouped and thinking
 is collapsed. Tool previews are collapsed initially; automatically authorized calls have a quiet
@@ -167,9 +194,13 @@ with the same operation identity on reconnect. Unknown acceptance stays queued r
 silently being resent as a new message. Queue state appears on the message itself, changing
 from device-queued to node-queued using receipt identity rather than matching text. The small
 **×** beside a node-queued message cancels it. **Interrupt turn** in the header targets the
-active run, not a later resumed run. Steering and interactive questions are explicitly not
-supported yet. Ordinary follow-ups use the node's saved native session identity to resume
-Claude; an interrupted/unknown input is never automatically rerun.
+active run, not a later resumed run. Steering is not supported. Provider-issued permission,
+confirm and trust requests have exact one-time approve/deny actions; select/input questions show
+the supplied options or a text field (up to 32,768 characters). Deny cancels the question. Answers
+retain the same immutable prompt/operation identity across disconnects and reloads, never a blanket
+permission or a retargeted response. Ordinary follow-ups use the node's saved native session identity
+to resume Claude or pi; an interrupted/unknown input is never automatically rerun. pi final messages
+replace partial text, and parallel tool results remain correlated to their own calls and runtime.
 
 Claude permission cards show the tool and a short argument summary, with the original
 command, arguments or edit diff expandable. **Approve** is the accent button, with **Deny**

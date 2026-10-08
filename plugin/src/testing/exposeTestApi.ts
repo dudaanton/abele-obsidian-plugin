@@ -14,6 +14,10 @@ import { setZen, zen } from '@/reader/zen'
 import { ScopeResolver } from '@/ai/ScopeResolver'
 import { ChatService } from '@/ai/ChatService'
 import { NodeService } from '@/node/NodeService'
+import { NodeDeviceKeyStore } from '@/node/NodeDeviceKeyStore'
+import { generateIdentity, fingerprint, signProof, verifyProof } from '@abele/channel-protocol'
+import { pairedLoopbackTransport } from './nodePairedTransport'
+const nodePairingCrypto = { generateIdentity, fingerprint, signProof, verifyProof }
 import { CommentService } from '@/ai/CommentService'
 import { ChatStorage } from '@/ai/ChatStorage'
 import { ChatSearchIndex } from '@/ai/ChatSearchIndex'
@@ -212,6 +216,9 @@ interface AbeleTestApi {
   }
   ChatService: typeof ChatService
   NodeService: typeof NodeService
+  NodeDeviceKeyStore: typeof NodeDeviceKeyStore
+  nodePairingCrypto: typeof nodePairingCrypto
+  pairedLoopbackTransport: typeof pairedLoopbackTransport
   ChatStorage: typeof ChatStorage
   /** The words of every chat, for timing a search across them. */
   ChatSearchIndex: typeof ChatSearchIndex
@@ -780,6 +787,9 @@ export function exposeTestApi(plugin: Plugin): void {
     },
     ChatService,
     NodeService,
+    NodeDeviceKeyStore,
+    nodePairingCrypto,
+    pairedLoopbackTransport,
     ChatStorage,
     ChatSearchIndex,
     CommentService,

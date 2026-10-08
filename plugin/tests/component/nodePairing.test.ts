@@ -20,6 +20,7 @@ const fixture = () => {
     }),
   }
   const service = {
+    nodes: ref([]),
     deviceKeys: {
       load: vi.fn(async () => undefined),
       pending: vi.fn(async () => []),
@@ -85,6 +86,33 @@ it('retries a lost claim reply after explicit pin recovery without authorizing t
     await flushPromises()
     expect(service.pairedConnector.authorizeNodeKeyChange).toHaveBeenCalledTimes(1)
     expect(service.pair).toHaveBeenCalledTimes(2)
+  } finally {
+    wrapper.unmount()
+  }
+})
+
+it('restores a lost-response invitation without sending it until explicitly retried', async () => {
+  const { service } = fixture()
+  service.deviceKeys.pending.mockResolvedValue([
+    { node_id: invite.node_id, enrollment: { invite, label: 'Sample restored node' } },
+  ] as never)
+  const wrapper = mount(NodePairingDialog, { ...options, props: { service: service as never } })
+  try {
+    await flushPromises()
+    await wrapper
+      .findAll('button')
+      .find((b) => b.text() === 'Resume pairing: Sample restored node')!
+      .trigger('click')
+    await flushPromises()
+    expect(wrapper.text()).toContain(invite.node_fingerprint)
+    expect(service.pair).not.toHaveBeenCalled()
+    await wrapper
+      .findAll('button')
+      .find((b) => b.text() === 'Pair this device')!
+      .trigger('click')
+    await flushPromises()
+    expect(service.pair).toHaveBeenCalledWith('Sample restored node', invite)
+    expect(wrapper.findAll('button').some((b) => b.text() === 'Use another invitation')).toBe(true)
   } finally {
     wrapper.unmount()
   }

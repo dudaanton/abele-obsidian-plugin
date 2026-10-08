@@ -3,6 +3,24 @@
 The tool catalogue, grouped as the settings screen groups it, with the distinctions that are
 easy to get wrong. Which of these an agent actually has depends on its own tool settings.
 
+## Node session boundary
+
+Node chats use AbeleNode's authenticated client API, not this vault tool catalogue. Local-token
+connections remain loopback-only. Remote devices enroll independently with invitations, pinned
+application keys and owner-confirmed non-extractable device keys over paired WSS/Tailscale Serve.
+Private keys and pending invitation secrets live in device-local IndexedDB; see [Vault](vault).
+They never appear in settings transfer, notes or the synced secret store. Pairing and node-key
+recovery require human confirmation, never a vault-tool action or automatic pin replacement.
+
+Claude/pi availability and feature gates come from `node.describe`. A ready trusted managed
+workspace is required for real execution. Tools and select/input/confirm/trust questions use
+exact durable prompts; no blanket grants, local tool fallback, steering, or automatic replay of
+unknown shell outcomes. Native resume uses the saved provider identity. pi snapshots replace
+partials and correlate tools by run/runtime/call, not by creating child node sessions. Provider
+credentials/model configuration stay on the node. Reviewing a workspace uses retained node
+content/diff identities, never coincidentally named vault files. A reported installed provider
+is not proof of model credentials or accepted extension/compaction capabilities.
+
 ## Tool discovery
 
 In **By group** mode, `enable_tools(group)` reveals the group's enabled tools for the rest of

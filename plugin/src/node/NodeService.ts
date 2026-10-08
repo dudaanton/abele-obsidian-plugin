@@ -215,7 +215,10 @@ export class NodeService {
               // Keep the NodeClient/store/subscriptions stable, but authenticate with
               // the currently committed pin after a same-principal re-pair.
               const target = await this.pairedConnector.target(node.expectedNodeId)
-              if (target.profile !== 'paired-wss-v1' || target.installation_id !== node.installationId)
+              if (
+                target.profile !== 'paired-wss-v1' ||
+                target.installation_id !== node.installationId
+              )
                 throw new Error('installation_identity_mismatch')
               return this.pairedConnector.connect(target)
             },
