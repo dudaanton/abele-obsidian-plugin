@@ -1,5 +1,5 @@
 import { shallowReactive } from 'vue'
-import { commitSha } from '../api'
+import { commitSha, FolderError } from '../api'
 import { GithubError, type GithubClient } from '../client'
 import { base64Bytes, repoApiPath } from '../contents'
 import { blobCandidates } from '../urls'
@@ -90,7 +90,7 @@ export class ComparisonService {
     rest: string[],
     baseSha?: string,
     signal?: AbortSignal
-  ): Promise<{ sha: string; path: string; ref: string }> {
+  ): Promise<{ sha: string; path: string; ref: string; kind: 'file' | 'dir' }> {
     let last: unknown
     for (const candidate of blobCandidates(rest).slice(0, 6)) {
       this.check(signal)
@@ -107,7 +107,13 @@ export class ComparisonService {
           node = findNode(base.root, candidate.path)
         }
         this.check(signal)
-        if (node && node.kind !== 'dir') return { sha, path: candidate.path, ref: candidate.ref }
+        if (node)
+          return {
+            sha,
+            path: candidate.path,
+            ref: candidate.ref,
+            kind: node.kind === 'dir' ? 'dir' : 'file',
+          }
         last = new GithubError(
           'not-found',
           'The file is absent from both comparison endpoints.',
@@ -273,7 +279,10 @@ export class ComparisonService {
     signal?: AbortSignal
   ): Promise<PinnedFile> {
     this.check(signal)
-    let change = index.changes.find((c) => c.path === path)
+    let change =
+      index.changes.find((c) => c.path === path) ??
+      index.changes.find((c) => c.previousPath === path)
+    if (change) path = change.path
     if (!change) {
       await index.target.reveal(path)
       const node = findNode(index.target.root, path)
@@ -349,6 +358,7 @@ export class ComparisonService {
   }
   async open(baseSha: string, rest: string[], signal?: AbortSignal): Promise<PinnedFile> {
     const resolved = await this.resolve(rest, baseSha, signal)
+    if (resolved.kind === 'dir') throw new FolderError(resolved.sha, resolved.path)
     const index = await this.index(baseSha, resolved.sha, signal)
     return this.file(index, resolved.path, false, signal)
   }

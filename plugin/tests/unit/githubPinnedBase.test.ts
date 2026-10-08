@@ -165,6 +165,18 @@ describe('comparison reads', () => {
     '/repos/sample/project/git/blobs/new': { json: blob('new\n') },
     '/repos/sample/project/git/blobs/gone': { json: blob('gone\n') },
   }
+  it('opens a renamed file by its base-side name without changing the target', async () => {
+    const { client } = clientWith({
+      [`/repos/sample/project/git/trees/${BASE}`]: { json: tree([entry('old.ts', 'same')]) },
+      [`/repos/sample/project/git/trees/${TARGET}`]: { json: tree([entry('new.ts', 'same')]) },
+      '/repos/sample/project/git/blobs/same': { json: blob('same\n') },
+    })
+    const result = await comparisonService(client, REPO).open(BASE, [TARGET, 'old.ts'])
+    expect(result.path).toBe('new.ts')
+    expect(result.change).toMatchObject({ status: 'renamed', previousPath: 'old.ts' })
+    expect(result.targetSha).toBe(TARGET)
+    expect(result.text).toMatchObject({ additions: 0, deletions: 0 })
+  })
   it('resolves slash refs once and uses only immutable trees/blobs; session hits need no network', async () => {
     const { client, request } = clientWith(routes)
     const service = comparisonService(client, REPO)

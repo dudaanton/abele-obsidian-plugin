@@ -86,6 +86,31 @@ describe('a pinned project tree', () => {
 })
 
 describe('a pinned file tab', () => {
+  it('still promotes blob-style folder links and reads the folder at the resolved target', async () => {
+    pin()
+    const { wrapper, request, model } = openTab(
+      'https://github.com/sample/project/blob/main/packages/core',
+      {
+        ...routes,
+        '/repos/sample/project/commits/main': { text: TARGET },
+        [`/repos/sample/project/git/trees/${TARGET}`]: {
+          json: { tree: [{ path: 'packages/core', type: 'tree', sha: 'core' }] },
+        },
+        '/repos/sample/project/contents/packages/core': {
+          json: [{ name: 'index.ts', path: 'packages/core/index.ts', type: 'file', size: 4 }],
+        },
+      }
+    )
+    await vi.waitFor(() => expect(wrapper.find('.abele-github-folder').exists()).toBe(true))
+    expect(model.screen.kind).toBe('tree')
+    expect(wrapper.find('.abele-github-folder').text()).toContain('index.ts')
+    expect(
+      request.mock.calls
+        .filter(([r]) => r.url.includes('/contents/packages/core'))
+        .every(([r]) => new globalThis.URL(r.url).searchParams.get('ref') === TARGET)
+    ).toBe(true)
+    wrapper.unmount()
+  })
   it('ignores a delayed private diff after unpinning during its load', async () => {
     pin()
     const connection = clientWith(routes),

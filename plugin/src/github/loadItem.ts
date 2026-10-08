@@ -11,7 +11,7 @@ import type { BasePin } from './comparison/pins'
 export interface PinnedLoad {
   base?: BasePin
   signal?: AbortSignal
-  resolved?: { sha: string; path: string; ref: string }
+  resolved?: { sha: string; path: string; ref: string; kind?: 'file' | 'dir' }
 }
 import type { GithubTarget } from './urls'
 import { repoWeb } from './origin'
@@ -69,21 +69,22 @@ export async function loadItem(
     case 'compare':
       return loadCompare(client, t)
     case 'blob':
-      if (pinned.base) {
-        const service = comparisonService(client, t)
-        const resolved =
-          pinned.resolved ?? (await service.resolve(t.rest, pinned.base.baseSha, pinned.signal))
-        const index = await service.index(pinned.base.baseSha, resolved.sha, pinned.signal)
-        const comparison = await service.file(index, resolved.path, false, pinned.signal)
-        return {
-          ref: resolved.sha,
-          path: resolved.path,
-          text: comparison.after?.text ?? '',
-          url: `${repoWeb(t)}/blob/${t.rest.map(encodeURIComponent).join('/')}`,
-          comparison,
-        }
-      }
       try {
+        if (pinned.base) {
+          const service = comparisonService(client, t)
+          const resolved =
+            pinned.resolved ?? (await service.resolve(t.rest, pinned.base.baseSha, pinned.signal))
+          if (resolved.kind === 'dir') throw new FolderError(resolved.sha, resolved.path)
+          const index = await service.index(pinned.base.baseSha, resolved.sha, pinned.signal)
+          const comparison = await service.file(index, resolved.path, false, pinned.signal)
+          return {
+            ref: resolved.sha,
+            path: comparison.path,
+            text: comparison.after?.text ?? '',
+            url: `${repoWeb(t)}/blob/${t.rest.map(encodeURIComponent).join('/')}`,
+            comparison,
+          }
+        }
         return await loadBlob(client, t)
       } catch (e) {
         // A folder's link written as a file's — a README's `packages/core`: its listing.
