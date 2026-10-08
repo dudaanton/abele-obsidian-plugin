@@ -350,6 +350,76 @@ describe('branch jumps from navigation', () => {
     expect(Notice.shown.join(' ')).toContain('saved place is no longer')
   })
 
+  it('advances each back step when a discussion becomes selected before its sidebar reveal finishes', async () => {
+    const root = session
+    const parent = fakeChatSession({
+      messages: ref([
+        { id: 'parent-q', role: 'user', content: 'Parent sample discussion', timestamp: 1 },
+      ]),
+      overrides: { id: 'parent-session', commentId: 'parent-discussion', anchor: ref(null) },
+    })
+    const child = fakeChatSession({
+      messages: ref([
+        { id: 'child-q', role: 'user', content: 'Child sample discussion', timestamp: 2 },
+      ]),
+      overrides: { id: 'child-session', commentId: 'child-discussion', anchor: ref(null) },
+    })
+    const active = shallowRef<unknown>(root)
+    const chats = ChatService.getInstance()
+    const comments = CommentService.getInstance()
+    vi.spyOn(chats, 'activeSession', 'get').mockReturnValue(computed(() => active.value) as never)
+    vi.spyOn(chats, 'switchTab').mockImplementation((id) => {
+      if (id === root.id) {
+        active.value = root
+        chats.activeTabId.value = id
+      }
+    })
+    vi.spyOn(comments, 'trail').mockResolvedValue([])
+    vi.spyOn(comments, 'load').mockImplementation(
+      async (id) => (id === 'parent-discussion' ? parent : child) as never
+    )
+    let slowReveal = false
+    let finishReveal!: () => void
+    vi.spyOn(comments, 'showInSidebar').mockImplementation(async (id) => {
+      const target = id === 'parent-discussion' ? parent : child
+      active.value = target
+      chats.activeTabId.value = target.id
+      if (slowReveal && id === 'parent-discussion')
+        await new Promise<void>((resolve) => {
+          finishReveal = resolve
+        })
+      return true
+    })
+    wrapper.unmount()
+    wrapper = mount(AiChat, { attachTo: document.body })
+    await flushPromises()
+    await open()
+    wrapper.findComponent({ name: 'ChatNavigation' }).vm.$emit('discussion', 'parent-discussion')
+    await pause(80)
+    await open()
+    wrapper.findComponent({ name: 'ChatNavigation' }).vm.$emit('discussion', 'child-discussion')
+    await pause(80)
+    slowReveal = true
+    try {
+      await open()
+      ;[...modal().querySelectorAll('button')]
+        .find((button) => button.textContent === 'Back to place')!
+        .click()
+      await pause(80)
+      expect(active.value).toBe(parent)
+      expect(finishReveal).toBeTypeOf('function')
+      await open()
+      ;[...modal().querySelectorAll('button')]
+        .find((button) => button.textContent === 'Back to place')!
+        .click()
+      await pause(80)
+      expect(active.value).toBe(root)
+    } finally {
+      finishReveal?.()
+      await flushPromises()
+    }
+  })
+
   it('keeps reading available on the current branch while busy and cancels a deferred switch explicitly', async () => {
     session.isExecutingTool.value = true
     await chooseOther()

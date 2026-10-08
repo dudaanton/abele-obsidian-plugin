@@ -1716,9 +1716,24 @@ const restoreNavigationPlace = async (saved: NavigationPlace) => {
   const isCurrent = () => !closed && intent === navigationIntent &&
     owner.conversationVersion.value === saved.version && source?.conversationVersion.value === sourceVersion &&
     chatService.tabSelectionVersion === selection
-  if (owner.kind === 'comment' && owner.commentId) {
-    if (source !== owner && !(await CommentService.getInstance().showInSidebar(owner.commentId, isCurrent))) return
-  } else chatService.switchTab(owner.id)
+  let returnPointExpired = false
+  // The contextual tab is adopted before its phone drawer finishes revealing. Retire an
+  // arrived return step at selection, so a second Back advances rather than repeating it.
+  const stopSelected = watch(session, current => {
+    if (current !== owner || intent !== navigationIntent || needsBranch()) return
+    if (!navigationPlaceExists(saved)) {
+      returnPointExpired = true
+      expireNavigationPlace(saved)
+    } else navigationReturns.value = navigationReturns.value.filter(place => place !== saved)
+  }, { flush: 'sync' })
+  try {
+    if (owner.kind === 'comment' && owner.commentId) {
+      if (source !== owner && !(await CommentService.getInstance().showInSidebar(owner.commentId, isCurrent))) return
+    } else chatService.switchTab(owner.id)
+  } finally {
+    stopSelected()
+  }
+  if (returnPointExpired) return
   const selected = chatService.tabSelectionVersion
   await nextTick()
   if (session.value !== owner || intent !== navigationIntent || selected !== chatService.tabSelectionVersion || owner.conversationVersion.value !== saved.version) return
