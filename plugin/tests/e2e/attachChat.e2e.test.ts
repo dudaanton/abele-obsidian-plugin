@@ -79,14 +79,8 @@ const script = `(async () => {
   }
   const closeArtifacts = async () => {
     if (!artifacts()) return
-    const button = document.querySelector('.modal-close-button')
-    if (!button) throw new Error('no Artifacts close button: ' + JSON.stringify({
-      ancestors: [artifacts().parentElement?.className, artifacts().parentElement?.parentElement?.className],
-      modals: [...document.querySelectorAll('.modal')].map(el => el.className),
-      headings: [...document.querySelectorAll('.modal-title')].map(el => el.textContent),
-    }))
-    button.click()
-    if (!(await until(() => !artifacts()))) throw new Error('Artifacts view did not close: ' + button.outerHTML)
+    escape()
+    if (!(await until(() => !artifacts()))) throw new Error('Artifacts view did not close')
   }
   const press = async (host, title) => {
     const button = () => [...host.querySelectorAll('button')].find((el) => el.textContent.trim() === title)

@@ -143,24 +143,19 @@ describe.skipIf(!available)('one view of a chat’s artifacts', () => {
         observations.missing = card(created[1]).textContent.includes('Show in chat')
         press(card(upload.path), 'Show in chat')
         await until(() => !root())
-        const sourceState = () => [...document.querySelectorAll('.abele-ai-chat')].map(el => ({
-          composing: el.classList.contains('abele-ai-chat--composing'),
-          messages: [...el.querySelectorAll('.abele-ai-chat__messages')].map(box => ({
-            display: getComputedStyle(box).display, style: box.getAttribute('style'),
-            symbols: Object.getOwnPropertySymbols(box).map(key => [String(key), String(box[key])]),
-            source: !!box.querySelector('[data-message-id="sample-upload"]'),
-          })),
-          source: !!el.querySelector('[data-message-id="sample-upload"]'),
-        }))
-        try {
-          await until(() => !document.querySelector('.abele-ai-chat--composing') &&
-            getComputedStyle(document.querySelector('.abele-ai-chat__messages')).display !== 'none')
-        } catch { /* Preserve the state below when the source never becomes visible. */ }
-        observations.sourceState = sourceState()
-        observations.sourceShot = await capture('source')
+        const sourceVisible = () => {
+          const source = document.querySelector('[data-message-id="sample-upload"]')
+          const box = source?.closest('.abele-ai-chat__messages')
+          if (!box || box.closest('.abele-ai-chat--composing') || getComputedStyle(box).display === 'none') return false
+          const b = box.getBoundingClientRect(), s = source.getBoundingClientRect()
+          // Wait for the owning chat's reveal and scroll, not just the dialog's removal.
+          return source.classList.contains('abele-footnote-flash') && b.width > 0 && b.height > 0 &&
+            b.left >= -1 && b.right <= innerWidth + 1 && s.bottom > b.top && s.top < b.bottom
+        }
+        await until(sourceVisible)
         observations.source = !!document.querySelector('[data-message-id="sample-upload"]')
-        observations.sourceVisible = !document.querySelector('.abele-ai-chat--composing') &&
-          getComputedStyle(document.querySelector('.abele-ai-chat__messages')).display !== 'none'
+        observations.sourceVisible = sourceVisible()
+        observations.sourceShot = await capture('source')
         return JSON.stringify({ ...observations, cuts, over })
       } catch (error) { return JSON.stringify({ error: String(error.stack || error), observations }) }
       finally {
@@ -200,7 +195,7 @@ describe.skipIf(!available)('one view of a chat’s artifacts', () => {
     expect(result.live).toBe(true)
     expect(result.missing).toBe(true)
     expect(result.source).toBe(true)
-    expect(result.sourceVisible, JSON.stringify(result.sourceState)).toBe(true)
+    expect(result.sourceVisible).toBe(true)
     expect(result.invalidUnavailable).toBe(true)
     expect(result.cuts).toEqual([])
     expect(result.over).toEqual([])
