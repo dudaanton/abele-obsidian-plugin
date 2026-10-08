@@ -42,7 +42,7 @@ describe('real disposable folder-management HTTP adapters', () => {
     try {
       stand = await spawnCollaborationStandServer(
         process.env.ABELE_SCOPED_API_FIXTURE!,
-        'f927e62bb41817cd3cf0180e80f989e8c166ff1d',
+        'af53188c61871f9064287dcce18a2c313a0f40f9',
         work
       )
       const caps = await (await globalThis.fetch(stand.url + '/v1/capabilities')).json()
@@ -65,7 +65,7 @@ describe('real disposable folder-management HTTP adapters', () => {
   it('prepares production groups from committed server evidence and retains explicit unavailable recovery', async () => {
     server = await scopedApiServer({
       root: process.env.ABELE_SCOPED_API_FIXTURE!,
-      commit: 'f927e62bb41817cd3cf0180e80f989e8c166ff1d',
+      commit: 'af53188c61871f9064287dcce18a2c313a0f40f9',
       group: true,
     })
     const { accountToken } = await server.account('sample-group-owner@example.com')
