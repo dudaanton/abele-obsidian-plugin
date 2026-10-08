@@ -43,13 +43,18 @@ export class PublicationPrompt {
     const result = await host.questions()
     if (host !== this.host) return
     const pending = epoch === host.questionEpoch?.() ? result : []
-    this.pending.value = pending
+    // Presentation is not authority. An open question belongs to the user until an
+    // answer/close; unavailable or epoch-invalid evidence must not dismiss it. The
+    // host still revalidates the exact observation before accepting either answer.
     const asking = this.asking.value
-    if (asking && !pending.some((q) => q.exposureKey === asking.exposureKey)) this.close()
+    this.pending.value =
+      asking && !pending.some((q) => q.exposureKey === asking.exposureKey)
+        ? [...pending, asking]
+        : pending
     this.show()
   }
   async foreground() {
-    if (!this.visible() || this.busy.value) return
+    if (!this.visible() || this.busy.value || this.asking.value) return
     const host = this.host
     try {
       await this.refresh()

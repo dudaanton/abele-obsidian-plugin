@@ -303,6 +303,30 @@ describe('existing-private publication prompt and real dialog content', () => {
     s.detach()
     s.wrapper.unmount()
   })
+  it.each(['empty', 'epoch', 'offline'] as const)(
+    'keeps an unanswered open dialog and its pending item on refocus with %s evidence',
+    async (evidence) => {
+      const s = setup()
+      await s.prompt.refresh()
+      let epoch = 0
+      ;(s.host as any).questionEpoch = () => epoch
+      if (evidence === 'offline') s.host.questions.mockRejectedValue(new Error('Offline'))
+      else
+        s.host.questions.mockImplementation(async () => {
+          if (evidence === 'epoch') epoch++
+          return []
+        })
+      await s.foreground()
+      if (evidence !== 'offline') await s.prompt.refresh()
+      await nextTick()
+      expect(s.wrapper.find('[role="dialog"]').exists()).toBe(true)
+      expect(s.prompt.asking.value?.exposureKey).toBe(question.exposureKey)
+      expect(s.prompt.pending.value.map((q) => q.exposureKey)).toContain(question.exposureKey)
+      expect(s.host.answer).not.toHaveBeenCalled()
+      s.detach()
+      s.wrapper.unmount()
+    }
+  )
   it('revalidates a background question before showing it in the foreground', async () => {
     const s = setup(false)
     await s.prompt.refresh()
