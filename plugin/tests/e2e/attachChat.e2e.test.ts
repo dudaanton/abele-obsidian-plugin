@@ -2,8 +2,8 @@
  * Attaching a chat to a note by hand, in the running app, from both ends and back.
  *
  * The unit tier proves the link lands in the chat file and the index; what only the app can
- * show is the rest of the road: the link button in the chat's header opening Obsidian's own
- * menu, the note's "more options" menu offering *Attach a chat…* and its picker choosing one,
+ * show is the rest of the road: the Artifacts button in the chat's header opening the attachment
+ * controls, the note's *Attach a chat…* command and its picker choosing one,
  * the card appearing under the note and going again when it is detached — and all of it still
  * there once the chat and the note have been closed and opened again.
  *
@@ -22,7 +22,7 @@ interface Step {
   cards: string[]
   /** What the chat file's last metadata record lists in `touched`. */
   file: string[]
-  /** The number beside the chat's link button. */
+  /** The linked-note count in the Artifacts view. */
   count: string
 }
 
@@ -32,7 +32,8 @@ interface Report {
   reopenedNote?: string[]
   detachFromNote?: Step
   noteToChat?: Step
-  chatMenu?: string[]
+  chatArtifacts?: string[]
+  detachedNoteKept?: boolean
   detachFromChat?: Step
   error?: string
 }
@@ -55,18 +56,6 @@ const script = `(async () => {
   const storage = T.ChatStorage.getInstance()
   let leaf = null
 
-  const menuItems = () =>
-    [...document.querySelectorAll('.menu .menu-item-title')].map((e) => e.textContent.trim())
-  const clickMenu = async (title) => {
-    if (!(await until(() => menuItems().includes(title)))) {
-      throw new Error('no menu item "' + title + '" in ' + JSON.stringify(menuItems()))
-    }
-    const item = [...document.querySelectorAll('.menu .menu-item')].find(
-      (el) => el.querySelector('.menu-item-title')?.textContent.trim() === title
-    )
-    item.click()
-    await until(() => !document.querySelector('.menu'), 2000)
-  }
   const escape = () =>
     document.body.dispatchEvent(
       new KeyboardEvent('keydown', { key: 'Escape', code: 'Escape', keyCode: 27, bubbles: true })
@@ -77,18 +66,41 @@ const script = `(async () => {
           e.textContent.trim()
         )
       : []
-  const linkButton = () => document.querySelector('.abele-ai-chat .abele-ai-chat__notes')
+  const artifacts = () => document.querySelector('.abele-chat-artifacts')
+  const openArtifacts = async () => {
+    if (artifacts()) return artifacts()
+    if (!(await until(() => document.querySelector('.abele-ai-chat__artifacts'), 8000)))
+      throw new Error('no Artifacts header control')
+    document.querySelector('.abele-ai-chat__artifacts').click()
+    if (!(await until(artifacts))) throw new Error('no Artifacts view')
+    return artifacts()
+  }
+  const closeArtifacts = async () => {
+    artifacts()?.closest('.modal')?.querySelector('.modal-close-button')?.click()
+    if (!(await until(() => !artifacts()))) throw new Error('Artifacts view did not close')
+  }
+  const press = async (host, title) => {
+    const button = () => [...host.querySelectorAll('button')].find((el) => el.textContent.trim() === title)
+    if (!(await until(() => button() && !button().disabled)))
+      throw new Error('no enabled Artifacts button "' + title + '"')
+    button().click()
+  }
   const inFile = async (path) => {
     const text = await app.vault.adapter.read(path)
     const metas = text.split('\\n').filter(Boolean).map((l) => JSON.parse(l)).filter((r) => r.k === 'meta' || r.type)
     const last = metas[metas.length - 1] || {}
     return (last.touched || []).map((t) => t.path)
   }
-  const step = async (chatPath) => ({
-    cards: cards(),
-    file: await inFile(chatPath),
-    count: (linkButton()?.textContent || '').trim(),
-  })
+  const step = async (chatPath) => {
+    const root = await openArtifacts()
+    const result = {
+      cards: cards(),
+      file: await inFile(chatPath),
+      count: root.querySelector('section[aria-label="Notes"] h3')?.textContent.trim(),
+    }
+    await closeArtifacts()
+    return result
+  }
   const openNote = async (file) => {
     // A new tab goes beside the tab most recently active in the main area. There is none when
     // the last one was just closed, or the one Obsidian put in its place has never been active
@@ -128,13 +140,11 @@ const script = `(async () => {
     await openNote(note)
     await svc.openChatFile(chat)
     await svc.revealSidebar()
-    await until(() => linkButton() && !linkButton().classList.contains('abele-obsidian-icon_disabled'), 8000)
     // The sidebar has the focus now, as it does when the button is pressed; the note is still
     // the file most recently in front, which is what "the note in front" means from there.
 
     // ── from the chat: attach to the note in front ──
-    linkButton().click()
-    await clickMenu('Attach to ' + ${JSON.stringify(NOTE)})
+    await press(await openArtifacts(), 'Attach to current note')
     await until(() => cards().includes(${JSON.stringify(CHAT)}))
     report.chatToNote = await step(chatPath)
 
@@ -168,16 +178,22 @@ const script = `(async () => {
     await until(() => cards().includes(${JSON.stringify(CHAT)}))
     report.noteToChat = await step(chatPath)
 
-    // ── from the chat: detach ──
-    linkButton().click()
-    await until(() => menuItems().length > 0)
-    report.chatMenu = menuItems()
-    await clickMenu('Detach from ' + ${JSON.stringify(NOTE)})
+    // ── from the chat: the linked note's Artifacts card ──
+    const root = await openArtifacts()
+    report.chatArtifacts = [...root.querySelectorAll('section[aria-label="Notes"] .abele-card__name')]
+      .map((el) => el.textContent.trim())
+    const card = [...root.querySelectorAll('.abele-card')].find((el) =>
+      el.querySelector('.abele-card__subtitle')?.textContent === notePath)
+    if (!card) throw new Error('no linked note card in Artifacts')
+    await press(card, 'Unlink')
     await until(() => cards().length === 0)
+    await until(() => !root.querySelector('section[aria-label="Notes"] .abele-card'))
     report.detachFromChat = await step(chatPath)
+    report.detachedNoteKept = !!app.vault.getAbstractFileByPath(notePath)
   } catch (e) {
     report.error = String((e && e.message) || e)
   } finally {
+    await closeArtifacts()
     if (document.querySelector('.menu, .prompt')) escape()
     const session = svc.getSessionByFile(chatPath)
     if (session) svc.closeTab(session.id)
@@ -211,7 +227,7 @@ describe.skipIf(!available)('attaching a chat to a note, in the app', () => {
   })
 
   it('from the chat: attaches it to the note in front, and the card appears', () => {
-    expect(report.chatToNote).toEqual({ cards: [CHAT], file: [`${NOTE}.md`], count: '1' })
+    expect(report.chatToNote).toEqual({ cards: [CHAT], file: [`${NOTE}.md`], count: 'Notes (1)' })
   })
 
   it('is still attached once the chat and the note are opened again', () => {
@@ -220,15 +236,16 @@ describe.skipIf(!available)('attaching a chat to a note, in the app', () => {
   })
 
   it('from the note: the card’s unlink button detaches it', () => {
-    expect(report.detachFromNote).toEqual({ cards: [], file: [], count: '' })
+    expect(report.detachFromNote).toEqual({ cards: [], file: [], count: 'Notes (0)' })
   })
 
   it('from the note: the command picks a chat and attaches it', () => {
-    expect(report.noteToChat).toEqual({ cards: [CHAT], file: [`${NOTE}.md`], count: '1' })
+    expect(report.noteToChat).toEqual({ cards: [CHAT], file: [`${NOTE}.md`], count: 'Notes (1)' })
   })
 
-  it('from the chat: its menu lists the note, and detaches it', () => {
-    expect(report.chatMenu).toContain(`Detach from ${NOTE}`)
-    expect(report.detachFromChat).toEqual({ cards: [], file: [], count: '' })
+  it('from the chat: Artifacts lists the note, and unlinks without deleting it', () => {
+    expect(report.chatArtifacts).toEqual([NOTE])
+    expect(report.detachFromChat).toEqual({ cards: [], file: [], count: 'Notes (0)' })
+    expect(report.detachedNoteKept).toBe(true)
   })
 })
