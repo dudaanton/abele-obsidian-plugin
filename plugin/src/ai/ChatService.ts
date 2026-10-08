@@ -48,6 +48,15 @@ interface TabsState {
   activeIndex: number
 }
 
+interface ContextualOpenRequest {
+  token: symbol
+  current?: () => boolean
+}
+interface FileOpenRequest extends ContextualOpenRequest {
+  contextual: boolean
+  create: () => ChatSession | null
+}
+
 export class ChatService {
   private static instance: ChatService | null = null
 
@@ -64,12 +73,13 @@ export class ChatService {
   private restoringTabs = false
   private restoreGeneration = 0
   private continueRestore: (() => void) | null = null
-  private readonly contextualLoads = new WeakMap<TFile, { current?: () => boolean }>()
+  private readonly contextualLoads = new WeakMap<TFile, ContextualOpenRequest>()
   private loadingFiles = new Map<
     string,
     {
       session: ChatSession | null
       ready: Promise<ChatSession | null>
+      requests: Map<symbol, FileOpenRequest>
     }
   >()
   /** Explicit tab choices invalidate delayed navigation; releasing a contextual tab does not. */
@@ -753,12 +763,34 @@ export class ChatService {
   private loadFile(
     file: TFile,
     create: () => ChatSession | null,
-    contextual?: { current?: () => boolean }
+    contextual?: ContextualOpenRequest,
+    isCurrent?: () => boolean
   ): Promise<ChatSession | null> {
+    const request: FileOpenRequest = {
+      token: Symbol('file-open'),
+      contextual: contextual !== undefined,
+      current: contextual?.current ?? isCurrent,
+      create,
+    }
+    const waitFor = async (load: {
+      ready: Promise<ChatSession | null>
+      requests: Map<symbol, FileOpenRequest>
+    }) => {
+      load.requests.set(request.token, request)
+      try {
+        const session = await load.ready
+        return request.current && !request.current() ? null : session
+      } finally {
+        load.requests.delete(request.token)
+      }
+    }
     const pending = this.loadingFiles.get(file.path)
-    if (pending !== undefined) return pending.ready
+    if (pending !== undefined) return waitFor(pending)
     const existing = this.getSessionByFile(file.path)
-    if (existing) return existing.reconcileForSelectionReturn().then(() => existing)
+    if (existing)
+      return existing
+        .reconcileForSelectionReturn(request.current)
+        .then(() => request.current && !request.current() ? null : existing)
 
     let complete!: (session: ChatSession | null) => void
     let fail!: (error: unknown) => void
@@ -766,7 +798,14 @@ export class ChatService {
       complete = resolve
       fail = reject
     })
-    const entry = { session: null as ChatSession | null, ready }
+    const entry = {
+      session: null as ChatSession | null,
+      ready,
+      requests: new Map([[request.token, request]]),
+    }
+    const currentRequests = () =>
+      [...entry.requests.values()].filter((waiter) => !waiter.current || waiter.current())
+    const currentContextual = () => currentRequests().some((waiter) => waiter.contextual)
     this.loadingFiles.set(file.path, entry)
     const generation = this.restoreGeneration
     void (async () => {
@@ -776,12 +815,12 @@ export class ChatService {
         const comments = CommentService.getInstance()
         const prepared = await ChatStorage.getInstance().prepareDiscussion(file)
         const comment = prepared.identity !== undefined
-        if (contextual?.current && !contextual.current()) {
+        if (!currentRequests().length) {
           complete(null)
           return
         }
         const replacement =
-          contextual &&
+          currentContextual() &&
           prepared.identity &&
           prepared.snapshot.metadata?.kind !== 'chat' &&
           comments.hasContextualTabToReplace(prepared.identity)
@@ -790,9 +829,17 @@ export class ChatService {
           complete(null)
           return
         }
-        const session = (entry.session = comment
-          ? await comments.handOverToTab(file.basename, file)
-          : create())
+        let session: ChatSession | null = null
+        if (comment) session = await comments.handOverToTab(file.basename, file)
+        else {
+          // The first caller may have expired while preparation was reading the file.
+          // Choose a live waiter's holder; its cancellation cannot poison shared I/O.
+          for (const waiter of currentRequests()) {
+            session = waiter.create()
+            if (session) break
+          }
+        }
+        entry.session = session
         if (!session) {
           complete(null)
           return
@@ -800,11 +847,16 @@ export class ChatService {
         if (!comment) await session.load(file)
         // Loading/normalization must succeed before the previous contextual writer is
         // handed back. Generic/attention opens keep their existing independent-tab policy.
-        if (contextual && session.kind === 'comment' && session.commentId && !session.moving.value) {
-          if (!(await comments.releaseOtherContextualTabs(session.commentId, contextual.current))) {
-            complete(null)
-            return
-          }
+        if (
+          currentContextual() &&
+          session.kind === 'comment' &&
+          session.commentId &&
+          !session.moving.value
+        )
+          await comments.releaseOtherContextualTabs(session.commentId, currentContextual)
+        if (!currentRequests().length) {
+          complete(null)
+          return
         }
         if (comment && !this.sessions.has(session.id) && !this.canCreateTab) {
           new Notice(ChatService.TABS_FULL)
@@ -827,7 +879,7 @@ export class ChatService {
         if (this.loadingFiles.get(file.path) === entry) this.loadingFiles.delete(file.path)
       }
     })()
-    return ready
+    return waitFor(entry)
   }
 
   private selectLoaded(session: ChatSession, previous?: ChatSession | null): void {
@@ -863,18 +915,19 @@ export class ChatService {
   /** A file link may replace a contextual tab instead of requiring additional capacity. */
   async openContextualChatFile(file: TFile, selectionReturn?: () => boolean): Promise<void> {
     const raw = toRaw(file)
-    const previous = this.contextualLoads.get(raw)
-    const request = { current: selectionReturn }
+    const request = { token: Symbol('contextual-open'), current: selectionReturn }
     this.contextualLoads.set(raw, request)
+    let opening: Promise<void>
     try {
-      if (selectionReturn) await this.openChatFile(file, selectionReturn)
-      else await this.openChatFile(file)
+      // openChatFile captures the request synchronously. Do not keep this dispatch scope
+      // around during I/O: unrelated generic callers must not inherit an active link either.
+      opening = selectionReturn ? this.openChatFile(file, selectionReturn) : this.openChatFile(file)
     } finally {
-      if (this.contextualLoads.get(raw) === request) {
-        if (previous) this.contextualLoads.set(raw, previous)
-        else this.contextualLoads.delete(raw)
-      }
+      // Parallel requests are not a stack: restoring a predecessor could resurrect a
+      // completed caller. Each request removes only its own token, never another caller's.
+      if (this.contextualLoads.get(raw) === request) this.contextualLoads.delete(raw)
     }
+    await opening
   }
 
   /** Open a chat file in the sidebar: reuse existing tab, load into empty tab, or create new */
@@ -892,7 +945,7 @@ export class ChatService {
       }
       return this.sessions.get(this.createTab()) ?? null
     },
-    this.contextualLoads.get(toRaw(file)))
+    this.contextualLoads.get(toRaw(file)), selectionReturn)
     if (!session || (selectionReturn && !selectionReturn())) return
     if (selectionReturn) await session.reconcileForSelectionReturn(selectionReturn)
     // Loading/reconciliation may finish after a newer link selected another tab.

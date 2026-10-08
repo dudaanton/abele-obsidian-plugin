@@ -238,7 +238,10 @@ it back to disk. **Deleting an original leaves its markers
 broken**; a remaining copy cannot open or be deleted through them. Explicit restoration of the
 same persisted identity can restore those links. File-link replacement of a contextual discussion
 loads and prepares the target before handing the prior contextual tab back. That released slot
-can be reused at the tab limit without closing ordinary chats or stopping the prior discussion. These identifiers travel in chat files, not
+can be reused at the tab limit without closing ordinary chats or stopping the prior discussion.
+Concurrent opens share file I/O, not caller freshness: each waiter has its own request token and
+validity check. Completed contextual tokens are removed rather than restored, so a later
+attention-list open cannot inherit a completed file link's contextual policy. These identifiers travel in chat files, not
 settings or secrets.
 
 Boundary: bytes alone cannot distinguish an unobserved move from a copy followed by deletion.
