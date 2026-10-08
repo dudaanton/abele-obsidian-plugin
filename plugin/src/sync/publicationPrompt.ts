@@ -55,11 +55,17 @@ export class PublicationPrompt {
   }
   async foreground() {
     if (!this.visible() || this.busy.value || this.asking.value) return
-    const host = this.host
+    const host = this.host,
+      request = this.reviewRequest
     try {
       await this.refresh()
     } catch {
-      if (host === this.host) {
+      if (
+        host === this.host &&
+        request === this.reviewRequest &&
+        !this.asking.value &&
+        !this.busy.value
+      ) {
         this.pending.value = []
         this.close()
       }

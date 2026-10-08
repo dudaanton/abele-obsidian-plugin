@@ -303,6 +303,27 @@ describe('existing-private publication prompt and real dialog content', () => {
     s.detach()
     s.wrapper.unmount()
   })
+  it('ignores a failed foreground read that predates a dialog opened by sync refresh', async () => {
+    const s = setup()
+    let fail!: (error: Error) => void
+    s.host.questions.mockReturnValueOnce(
+      new Promise((_resolve, reject) => {
+        fail = reject
+      })
+    )
+    const foreground = s.prompt.foreground()
+    await s.prompt.refresh()
+    await nextTick()
+    expect(s.wrapper.find('[role="dialog"]').exists()).toBe(true)
+    fail(new Error('Delayed connection failure'))
+    await foreground
+    await nextTick()
+    expect(s.wrapper.find('[role="dialog"]').exists()).toBe(true)
+    expect(s.prompt.pending.value.map((q) => q.exposureKey)).toContain(question.exposureKey)
+    expect(s.host.answer).not.toHaveBeenCalled()
+    s.detach()
+    s.wrapper.unmount()
+  })
   it.each(['empty', 'epoch', 'offline'] as const)(
     'keeps an unanswered open dialog and its pending item on refocus with %s evidence',
     async (evidence) => {
