@@ -319,7 +319,25 @@ export class ScriptService {
     if (!this.instance) {
       this.instance = new ScriptService()
     }
-    return this.instance
+    const service = this.instance
+    // Explicit reader/slide consumers can ask for the index after a reload even when the
+    // background script feature is off. Do not strand their `ready` promise forever.
+    // Before layout, init still owns the first scan; this starts no watchers or toolbar.
+    if (
+      GlobalStore.getInstance().app?.workspace.layoutReady &&
+      !service.initialized &&
+      !service.indexed &&
+      !service.discovering &&
+      !service.disposed
+    ) {
+      void service
+        .discover()
+        .catch((error) =>
+          console.error('[ScriptService] Could not read the standalone script index:', error)
+        )
+        .finally(() => service.markReady())
+    }
+    return service
   }
 
   static destroy() {
@@ -601,8 +619,9 @@ export class ScriptService {
     if (!(await reviewOne(this, script, signal))) return false
     // Review also covers the managed gate, without executing a linter/interceptor/startup
     // script as a side effect. This is the recovery exit for an older connection or store.
-    await scriptForExecution(GlobalStore.getInstance().app, script.path,
-      (request) => showScriptApproval({ ...request, reviewOnly: true }, signal))
+    await scriptForExecution(GlobalStore.getInstance().app, script.path, (request) =>
+      showScriptApproval({ ...request, reviewOnly: true }, signal)
+    )
     return true
   }
 
