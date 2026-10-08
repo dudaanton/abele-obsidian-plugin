@@ -269,7 +269,7 @@ const overlaid = () => {
 
 /** A folder's page — its entries and README — in this tab, or in a new one. */
 const openFolder = (node: TreeNode, pane: PaneType | false) => {
-  if (!version.value) return
+  if (!version.value || node.comparisonStatus) return
   emit('open', treeUrl(props.repo, version.value.ref, node.path), pane, overlaid())
 }
 
@@ -287,7 +287,7 @@ function folderPane(event: MouseEvent): PaneType | false | null {
 const pick = (node: TreeNode, event: MouseEvent) => {
   if (node.kind === 'dir') {
     const pane = folderPane(event)
-    if (pane !== null) return openFolder(node, pane)
+    if (pane !== null && !node.comparisonStatus) return openFolder(node, pane)
     const open = shownOpen.value
     if (open.has(node.path)) open.delete(node.path)
     else {

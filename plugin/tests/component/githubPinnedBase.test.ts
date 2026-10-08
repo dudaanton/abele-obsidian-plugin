@@ -111,8 +111,14 @@ describe('a pinned project tree', () => {
       await vi.waitFor(() =>
         expect(wrapper.findAll('.abele-github-tree [data-path="pkg"]')).toHaveLength(2)
       )
-      if (baseFolder)
-        await wrapper.find('.abele-github-tree [data-path="pkg"][aria-expanded]').trigger('click')
+      if (baseFolder) {
+        const folder = wrapper.find('.abele-github-tree [data-path="pkg"][aria-expanded]')
+        await folder.trigger('click', { metaKey: true })
+        expect(onOpen).not.toHaveBeenCalled()
+        await folder.trigger('click', { metaKey: true })
+        expect(onOpen).not.toHaveBeenCalled()
+        await folder.trigger('click')
+      }
       expect(
         wrapper.find(`.abele-github-tree [data-path="${oldPath}"]:not([aria-expanded])`).text()
       ).toContain('removed')
