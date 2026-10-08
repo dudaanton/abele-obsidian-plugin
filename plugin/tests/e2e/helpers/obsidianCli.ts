@@ -839,6 +839,116 @@ function readReloadWitness(): ReloadWitness {
   )
 }
 
+/** Close and reopen only the explicitly selected vault, retaining the running application
+ * and all other vault windows. The pool lease belongs to the caller; reuse the reload lock
+ * because emulation state is shared across renderers. No whole-application restart. */
+export async function reopenVaultWindow(): Promise<void> {
+  if (onPhone()) desktopOnly('vault window reopen')
+  if (!TARGET_VAULT) throw new Error('Vault window reopen requires OBSIDIAN_TEST_VAULT')
+  await takeReloadLock()
+  const uri = 'obsidian://open?vault=' + encodeURIComponent(TARGET_VAULT)
+  const open = (): void => {
+    const command =
+      process.platform === 'darwin'
+        ? 'open'
+        : process.platform === 'win32'
+          ? 'rundll32.exe'
+          : 'xdg-open'
+    const args = process.platform === 'win32' ? ['url.dll,FileProtocolHandler', uri] : [uri]
+    execFileSync(command, args, { timeout: 15000, stdio: 'pipe' })
+  }
+  let closed = false
+  let reopened = false
+  try {
+    closeStrayWindows()
+    const before = evalJsonIdempotent<{
+      vault: string
+      windowId: number
+      contentsId: number
+      generation: number
+      mainPid: number
+      others: number[]
+    }>(`(() => {
+      const remote = require('@electron/remote'), current = remote.getCurrentWindow()
+      return { vault: app.vault.getName(), windowId: current.id, contentsId: current.webContents.id,
+        generation: performance.timeOrigin, mainPid: remote.getGlobal('process').pid,
+        others: remote.BrowserWindow.getAllWindows().filter(win => win.id !== current.id && !win.isDestroyed()).map(win => win.id) }
+    })()`)
+    if (before.vault !== TARGET_VAULT || !before.others.length)
+      throw new Error('Refusing to close an unselected vault or the application’s last window')
+    evalRawIdempotent(
+      '(async () => { await app.workspace.requestSaveLayout.run(); return true })()'
+    )
+    evalRaw(`(() => {
+      const current = require('@electron/remote').getCurrentWindow()
+      if (app.vault.getName() !== ${JSON.stringify(TARGET_VAULT)} || current.id !== ${before.windowId}) throw new Error('Vault window changed')
+      setTimeout(() => current.close(), 50)
+      return true
+    })()`)
+    closed = true
+    await pauseAsync(1000)
+    open()
+    const deadline = Date.now() + 60000
+    let lastError: unknown
+    while (Date.now() < deadline) {
+      await pauseAsync(500)
+      try {
+        const after = evalJsonIdempotent<{
+          vault: string
+          windowId: number
+          contentsId: number
+          generation: number
+          mainPid: number
+          windows: number[]
+          ready: boolean
+        }>(
+          `(() => {
+          const remote = require('@electron/remote'), current = remote.getCurrentWindow()
+          return { vault: app.vault.getName(), windowId: current.id, contentsId: current.webContents.id,
+            generation: performance.timeOrigin, mainPid: remote.getGlobal('process').pid,
+            windows: remote.BrowserWindow.getAllWindows().filter(win => !win.isDestroyed()).map(win => win.id),
+            ready: !!window.__abeleTest && !!app.workspace.layoutReady }
+        })()`,
+          10000
+        )
+        if (
+          after.vault !== TARGET_VAULT ||
+          after.mainPid !== before.mainPid ||
+          before.others.some((id) => !after.windows.includes(id))
+        )
+          throw new Error('Vault reopen changed the application or another window')
+        if (
+          after.ready &&
+          after.windowId !== before.windowId &&
+          after.contentsId !== before.contentsId &&
+          after.generation !== before.generation &&
+          !after.windows.includes(before.windowId)
+        ) {
+          console.info('[abele e2e] vault renderer restart', JSON.stringify({ before, after }))
+          reopened = true
+          setBackgroundThrottling(false)
+          wakeWindow()
+          waitForLinkIndex()
+          return
+        }
+      } catch (error) {
+        lastError = error
+      }
+    }
+    throw new Error('Vault renderer did not close/reopen with a fresh context', {
+      cause: lastError,
+    })
+  } finally {
+    // Even a failed check leaves the leased vault available to the batch recovery path.
+    try {
+      if (closed && !reopened) open()
+    } finally {
+      unlinkSync(join(RELOAD_LOCK, String(process.pid)))
+      rmdirSync(RELOAD_LOCK)
+    }
+  }
+}
+
 async function reloadWindow(
   asked: string | undefined,
   launch: typeof evalRaw = evalRaw
