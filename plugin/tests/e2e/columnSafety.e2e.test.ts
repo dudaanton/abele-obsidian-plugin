@@ -241,7 +241,13 @@ describe.skipIf(!available)('column source and menu safety', () => {
         '\n\nAfter.'
       for (const mode of ['preview', 'source']) {
         show(text, mode)
-        click(point('.abele-columns-controls button'))
+        if (mode === 'preview') click(point('.abele-columns-controls button'))
+        else {
+          const controls = evaluate<number>(
+            `return root().querySelectorAll('.abele-columns-controls button').length`
+          )
+          expect(controls).toBe(0)
+        }
         const result = evaluate<{ menu: boolean; text: string }>(
           `await wait(200);return {menu:!!document.querySelector('.menu'),text:view.getMode()==='source'?view.editor.getValue():await app.vault.read(view.file)}`
         )
@@ -261,7 +267,7 @@ describe.skipIf(!available)('column source and menu safety', () => {
       createColumns('First', 'two') + '\n\n' + createColumns('Second', 'two')
     )
     evaluate(
-      `window.__columnReorder=false;app.plugins.plugins.abele.registerMarkdownPostProcessor((el,ctx)=>{if(!window.__columnReorder||ctx.sourcePath!==${JSON.stringify(NOTE)})return;const frames=el.querySelectorAll('.abele-columns .abele-columns');if(frames.length>=2){frames[0].before(frames[1]);window.__columnReorders++}},100);return true`
+      `window.__columnReorder=false;window.__columnReorderProcessor=app.plugins.plugins.abele.registerMarkdownPostProcessor((el,ctx)=>{if(!window.__columnReorder||ctx.sourcePath!==${JSON.stringify(NOTE)})return;const frames=el.querySelectorAll('.abele-columns .abele-columns');if(frames.length>=2){frames[0].before(frames[1]);window.__columnReorders++}},100);return true`
     )
     try {
       for (const mode of ['preview', 'source']) {
@@ -278,7 +284,9 @@ describe.skipIf(!available)('column source and menu safety', () => {
         await shot('render-time-identity-' + mode)
       }
     } finally {
-      evaluate(`window.__columnReorder=false;return true`)
+      evaluate(
+        `window.__columnReorder=false;window.__abeleTest.rendering.MarkdownPreviewRenderer.unregisterPostProcessor(window.__columnReorderProcessor);delete window.__columnReorderProcessor;return true`
+      )
     }
   })
 
