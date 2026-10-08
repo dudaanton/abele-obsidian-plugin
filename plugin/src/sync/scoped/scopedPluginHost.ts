@@ -35,11 +35,13 @@ import {
 } from './scopedCreation'
 import { SponsoredAssetsHttpPort } from '../sharing/sponsoredHttp'
 import { scopedSecretPort } from './scopedSecretSlots'
+import { fetchWithAbort, waitWithAbort } from './abortableTransport'
 
 const digest = (value: unknown) => sha256(new TextEncoder().encode(JSON.stringify(value)))
 const CREATION_JOURNAL = 'scoped-creation-journal-v1'
 const ACCESS_REMOVED = 'abele-scoped-access-removed'
 const DISPLAY_NAME = 'abele-scoped-display-name'
+const SELF_REVOKE_TIMEOUT_MS = 5000
 interface CreationJournal {
   binding: ScopedClient['binding']
   handle: string
@@ -63,6 +65,24 @@ export class ScopedPluginHost {
   readonly paused = ref(false)
   readonly accessRemoved = ref('')
   private leaving = false
+  private requests = new AbortController()
+  private revocation: AbortController | null = null
+  private readonly transport: typeof fetch = (input, init) => {
+    const c = this.connection.value
+    const self =
+      c &&
+      `${c.issuer}/v1/scoped/vaults/${encodeURIComponent(c.vaultId)}/grants/${encodeURIComponent(c.grantId)}/self`
+    const revoking =
+      this.leaving && this.revocation && init?.method === 'DELETE' && String(input) === self
+    if (this.closed || (this.leaving && !revoking))
+      return Promise.reject(new Error('Scoped connection is closing'))
+    return fetchWithAbort(
+      this.fetcher,
+      (revoking ? this.revocation! : this.requests).signal,
+      input,
+      init
+    )
+  }
   readonly role = ref<'reader' | 'editor' | null>(null)
   private runtime: Runtime | null = null
   private closed = false
@@ -177,7 +197,7 @@ export class ScopedPluginHost {
       principalId: c.principalId,
       principalKind: 'installation',
       token,
-      fetch: this.fetcher,
+      fetch: this.transport,
     })
     if (this.closed) throw new Error('Scoped host closed during client opening')
     const expected = JSON.stringify({ connection: c, binding: client.binding })
@@ -208,7 +228,7 @@ export class ScopedPluginHost {
         fs,
         assets: new SponsoredAssetsHttpPort({
           baseUrl: c.issuer,
-          fetch: this.fetcher,
+          fetch: this.transport,
           context: {
             facet: 'scoped',
             vaultId: c.vaultId,
@@ -265,7 +285,7 @@ export class ScopedPluginHost {
     }
   }
   invitation(issuer: string): ScopedJoinFlow {
-    const api = new GroupJoinHttp({ baseUrl: issuer, fetch: this.fetcher })
+    const api = new GroupJoinHttp({ baseUrl: issuer, fetch: this.transport })
     const port: ScopedJoinPort = {
       login: (...args) => api.login(...args),
       accept: (...args) => api.accept(...args),
@@ -431,16 +451,24 @@ export class ScopedPluginHost {
   /** Explicit local departure, including after revocation. Never removes vault files. */
   leave(): Promise<void> {
     this.leaving = true // Fence any in-flight pull/push before waiting behind it.
+    this.requests.abort(new Error('Scoped connection is leaving'))
     this.stopWatching()
     for (const flow of this.flows) flow.close()
     this.flows.clear()
     return this.serial(async () => {
       const c = this.connection.value
       if (!c) {
+        this.requests = new AbortController()
         this.leaving = false
         return
       }
       let toldServer = false
+      const revocation = new AbortController()
+      this.revocation = revocation
+      const timeout = setTimeout(
+        () => revocation.abort(new Error('Self-revocation timed out')),
+        SELF_REVOKE_TIMEOUT_MS
+      )
       try {
         const client =
           this.runtime?.client ??
@@ -451,13 +479,17 @@ export class ScopedPluginHost {
             principalId: c.principalId,
             principalKind: 'installation',
             token: this.token(c),
-            fetch: this.fetcher,
+            fetch: this.transport,
           }))
-        await client.revokeSelf()
+        await waitWithAbort(revocation.signal, () => client.revokeSelf())
         toldServer = true
       } catch {
         // Explicit local departure does not require network access. Report that the
         // server was not told only after all local cleanup has actually succeeded.
+      } finally {
+        clearTimeout(timeout)
+        revocation.abort()
+        this.revocation = null
       }
       this.runtime?.raw.close()
       this.runtime?.meta.close()
@@ -488,6 +520,7 @@ export class ScopedPluginHost {
       this.role.value = null
       this.paused.value = false
       this.accessRemoved.value = ''
+      this.requests = new AbortController()
       this.leaving = false
       this.status('disconnected')
       if (!toldServer)
@@ -817,6 +850,8 @@ export class ScopedPluginHost {
   }
   async close() {
     this.closed = true
+    this.requests.abort(new Error('Scoped host is closed'))
+    this.revocation?.abort(new Error('Scoped host is closed'))
     for (const flow of this.flows) flow.close()
     this.flows.clear()
     this.stopWatching()
