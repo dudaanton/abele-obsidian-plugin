@@ -408,6 +408,17 @@ export class ComparisonService {
 // A capability wrapper must never inherit a different caller's still-valid access guard.
 const services = new Map<GithubClient, Map<string, ComparisonService>>()
 const cacheOwners = new Map<ComparisonService, { client: GithubClient; key: string }>()
+const retireSubscriptions = new Map<GithubClient, () => void>()
+
+function releaseEmptyCaller(
+  client: GithubClient,
+  repositories: Map<string, ComparisonService> | undefined
+): void {
+  if (repositories?.size || services.get(client) !== repositories) return
+  retireSubscriptions.get(client)?.()
+  retireSubscriptions.delete(client)
+  services.delete(client)
+}
 export function comparisonService(client: GithubClient, repo: Repository): ComparisonService {
   client.assertCurrent()
   const key = `${client.cacheNamespace}:${repositoryKey(repo)}`
@@ -416,14 +427,15 @@ export function comparisonService(client: GithubClient, repo: Repository): Compa
     repositories = new Map()
     services.set(client, repositories)
     const owned = repositories
-    client.onRetire?.(() => {
+    const unsubscribe = client.onRetire?.(() => {
       for (const service of owned.values()) {
         service.clear()
         cacheOwners.delete(service)
       }
       owned.clear()
-      services.delete(client)
+      releaseEmptyCaller(client, owned)
     })
+    if (unsubscribe) retireSubscriptions.set(client, unsubscribe)
   }
   let service = repositories.get(key)
   if (!service) {
@@ -439,7 +451,7 @@ export function comparisonService(client: GithubClient, repo: Repository): Compa
     cacheOwners.delete(oldest)
     const rows = services.get(owner.client)
     rows?.delete(owner.key)
-    if (!rows?.size) services.delete(owner.client)
+    releaseEmptyCaller(owner.client, rows)
   }
   return service
 }

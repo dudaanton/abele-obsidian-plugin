@@ -298,6 +298,56 @@ describe('lazy tree caller authority', () => {
   })
 })
 
+describe('comparison cache lifetime', () => {
+  it('bounds service retirement listeners across two nine-caller eviction cycles and clears them on retirement', () => {
+    const { client, request } = clientWith({})
+    const listeners = (client as unknown as { retireListeners: Set<() => void> }).retireListeners
+    const callers = Array.from({ length: 9 }, () => guardedGithubClient(client, () => {}))
+    const counts: number[] = []
+    for (let cycle = 0; cycle < 2; cycle++) {
+      for (const caller of callers) comparisonService(caller, REPO)
+      counts.push(listeners.size)
+    }
+    expect(counts).toEqual([8, 8])
+    client.retire()
+    expect(listeners.size).toBe(0)
+    expect(request).not.toHaveBeenCalled()
+  })
+  it('unsubscribes an evicted service caller after revocation', () => {
+    const { client } = clientWith({})
+    let allowed = true
+    const first = guardedGithubClient(client, () => {
+      if (!allowed) throw new Error('Access revoked')
+    })
+    const clear = vi.spyOn(comparisonService(first, REPO), 'clear')
+    allowed = false
+    for (let i = 0; i < 8; i++)
+      comparisonService(
+        guardedGithubClient(client, () => {}),
+        REPO
+      )
+    expect(clear).toHaveBeenCalledOnce()
+    const listeners = (client as unknown as { retireListeners: Set<() => void> }).retireListeners
+    expect(listeners.size).toBe(8)
+    client.retire()
+    expect(listeners.size).toBe(0)
+    expect(clear).toHaveBeenCalledOnce()
+  })
+  it('keeps one retirement hook until a caller’s remaining repositories have been cleared', () => {
+    const { client } = clientWith({})
+    const clears = Array.from({ length: 9 }, (_, i) =>
+      vi.spyOn(comparisonService(client, { ...REPO, repo: `project-${i}` }), 'clear')
+    )
+    const listeners = (client as unknown as { retireListeners: Set<() => void> }).retireListeners
+    expect(listeners.size).toBe(1)
+    expect(clears[0]).toHaveBeenCalledOnce()
+    for (const clear of clears.slice(1)) expect(clear).not.toHaveBeenCalled()
+    client.retire()
+    for (const clear of clears) expect(clear).toHaveBeenCalledOnce()
+    expect(listeners.size).toBe(0)
+  })
+})
+
 describe('comparison reads', () => {
   const routes = {
     '/repos/sample/project/commits/topic%2Fwork': { text: TARGET },
