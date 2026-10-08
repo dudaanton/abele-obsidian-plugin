@@ -735,6 +735,13 @@ onBeforeUnmount(() => unpin())
 
 const reload = async (retry = false) => {
   retryPrimary = retry
+  // A denied capability must not leave previously loaded private provenance in the tab.
+  try {
+    client().assertCurrent()
+  } catch {
+    main.clear()
+    Object.assign(screen, emptyScreen())
+  }
   const generation = ++loadGeneration
   promoted.value = null
   cancellation.abort()

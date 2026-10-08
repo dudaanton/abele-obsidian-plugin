@@ -9,6 +9,7 @@ import { GithubUsers, setGithubUsers } from '@/github/users'
 import { useVault } from '../helpers/testEnv'
 import { flushPromises } from '@vue/test-utils'
 import { createGithubTools } from '@/ai/tools/github'
+import { basePins } from '@/github/comparison/pins'
 
 const request = vi.hoisted(() => vi.fn())
 vi.mock('@/github/transport', () => ({ singleHopRequest: request }))
@@ -94,6 +95,75 @@ function setup(mode: 'off' | 'ask') {
 }
 
 describe('an agent-opened tab capability', () => {
+  it('refreshes a loaded pinned file offline through the same live agent capability', async () => {
+    const { app, agent, view, leaf } = setup('off'),
+      base = 'a'.repeat(40),
+      target = 'b'.repeat(40)
+    basePins(app as unknown as App).save({
+      origin: 'https://github.com',
+      owner: 'sample',
+      repo: 'repo',
+      enteredRef: 'base',
+      baseSha: base,
+    })
+    request.mockImplementation(async (r) => {
+      const path = new URL(r.url).pathname
+      const json = path.includes('/git/trees/')
+        ? {
+            tree: [
+              {
+                path: 'file.ts',
+                type: 'blob',
+                sha: path.endsWith(base) ? 'before' : 'after',
+                mode: '100644',
+                size: 8,
+              },
+            ],
+          }
+        : { encoding: 'base64', content: btoa(path.endsWith('/before') ? 'old\n' : 'new\n') }
+      return {
+        status: 200,
+        headers: {},
+        json,
+        text: JSON.stringify(json),
+        arrayBuffer: new ArrayBuffer(0),
+      }
+    })
+    vi.spyOn(leaf, 'setViewState').mockImplementation(async (state) =>
+      view.setState(state.state, { history: false })
+    )
+    await createGithubTools({ agent: () => agent })
+      .find((t) => t.name === 'github_open')!
+      .execute('sample-pinned', {
+        url: `https://github.com/sample/repo/blob/${target}/file.ts`,
+        connection: 'Selected',
+      })
+    await view.onOpen()
+    await vi.waitFor(() =>
+      expect(view.containerEl.querySelector('.abele-github-pinned .cm-editor')).not.toBeNull()
+    )
+    const calls = request.mock.calls.length
+    request.mockImplementation(async () => {
+      throw new Error('Offline')
+    })
+    const refresh = view.containerEl.querySelector<HTMLElement>(
+      '.abele-github-header__actions [aria-label="Load again from GitHub"]'
+    )!
+    expect(refresh).not.toBeNull()
+    refresh.click()
+    await flushPromises()
+    await vi.waitFor(() =>
+      expect(view.containerEl.querySelector('.abele-github-pinned .cm-editor')).not.toBeNull()
+    )
+    expect(request).toHaveBeenCalledTimes(calls)
+    expect(view.containerEl.textContent).not.toContain('not cached for offline')
+    agent.githubConnections!.selected = 'off'
+    refresh.click()
+    await flushPromises()
+    expect(view.model.screen.title).toBe('')
+    expect(view.containerEl.querySelector('.abele-github-pinned .cm-editor')).toBeNull()
+    expect(request).toHaveBeenCalledTimes(calls)
+  })
   it('does not reuse an Ask grant for a replacement token when the tab reloads', async () => {
     const { app, agent, view, leaf } = setup('off')
     agent.githubConnections!.selected = 'ask'

@@ -40,12 +40,38 @@ export function tabConnectionAllowed(scope: TabAccess, id: string): boolean {
   )
 }
 
+// Identical captured scopes reuse their wrapper and its session caches, while different
+// principals, connection restrictions and grants never borrow each other's access guard.
+const tabClients = new WeakMap<GithubClient, Map<string, GithubClient>>()
+
 /** All primary and secondary reads of an agent-opened tab carry the same live capability. */
 export function clientForTab(model: TabAccess, id: string, client: GithubClient): GithubClient {
   if (!model.allowedConnections) return client
   const scope = tabAccessSnapshot(model),
     generation = client.cacheNamespace
-  return guardedGithubClient(
+  const key = JSON.stringify([
+    id,
+    scope.executionAgentId,
+    [...scope.allowedConnections!].sort(),
+    Object.entries(scope.approvedConnections ?? {}).sort(([a], [b]) => a.localeCompare(b)),
+  ])
+  let cached = tabClients.get(client)
+  if (!cached) {
+    cached = new Map()
+    tabClients.set(client, cached)
+    const owned = cached
+    client.onRetire?.(() => {
+      owned.clear()
+      tabClients.delete(client)
+    })
+  }
+  const known = cached.get(key)
+  if (known) {
+    cached.delete(key)
+    cached.set(key, known)
+    return known
+  }
+  const guarded = guardedGithubClient(
     client,
     () => {
       if (!tabConnectionAllowed(scope, id) || (!id && client.hasToken)) {
@@ -56,4 +82,7 @@ export function clientForTab(model: TabAccess, id: string, client: GithubClient)
     },
     true
   )
+  cached.set(key, guarded)
+  while (cached.size > 32) cached.delete(cached.keys().next().value!)
+  return guarded
 }
