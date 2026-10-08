@@ -132,6 +132,9 @@ describe.skipIf(!available)('exact pinned-base GitHub links', () => {
       changed?: number
       target?: string
       renamed?: string
+      survivingLabel?: string
+      folderAction?: boolean
+      modifiedUrl?: string
       over?: string[]
       shot?: string
     }>(
@@ -147,13 +150,19 @@ describe.skipIf(!available)('exact pinned-base GitHub links', () => {
         if (!(await until(() => replacements().length === 2, 20000))) throw Error('Replacement entries were lost')
         const report = { all: replacements().length }
         const panel = root.querySelector('.abele-github-tree')
+        ;[...panel.querySelectorAll('.abele-tabs__tab')].find(t => t.textContent.trim() === 'Changed files').click()
+        await until(() => replacements().length === 2)
+        report.changed = replacements().length
+        const surviving = panel.querySelector('[data-path="surviving"]')
+        report.survivingLabel = surviving?.textContent
+        report.folderAction = !!surviving?.querySelector('.abele-github-tree__open-folder')
+        panel.querySelector('[data-path="sample-replacement"][aria-expanded]').dispatchEvent(new MouseEvent('click', { bubbles: true, metaKey: true, ctrlKey: true }))
+        if (!(await until(() => panel.querySelector('[data-path="sample-replacement/old.ts"]'), 5000))) throw Error('The removed folder modifier click did not expand its own entries')
+        report.modifiedUrl = leaf.view.model.url
         report.over = [...panel.querySelectorAll('.tree-item-self')].filter(el => el.getBoundingClientRect().right > panel.getBoundingClientRect().right + 1).map(el => el.dataset.path)
         const shot = ${JSON.stringify(`${SHOTS}/github-pinned-replacements.png`)}
         if (window.__e2eHost) report.shot = await window.__e2eHost.shot(shot)
         else { require('fs').mkdirSync(${JSON.stringify(SHOTS)}, { recursive: true }); const image = await require('@electron/remote').getCurrentWebContents().capturePage(); require('fs').writeFileSync(shot, image.toPNG()); report.shot = shot }
-        ;[...panel.querySelectorAll('.abele-tabs__tab')].find(t => t.textContent.trim() === 'Changed files').click()
-        await until(() => replacements().length === 2)
-        report.changed = replacements().length
         panel.querySelector('[data-path="sample-directory"]:not([aria-expanded])').click()
         if (!(await until(() => root.querySelector('.abele-github-pinned[data-path="sample-directory"]') && leaf.view.model.screen.comparison, 20000))) throw Error('The removed file was interpreted as a target folder')
         report.target = leaf.view.model.screen.comparison.targetSha
@@ -170,6 +179,9 @@ describe.skipIf(!available)('exact pinned-base GitHub links', () => {
     expect(result.changed).toBe(2)
     expect(result.target).toBe(HEAD_SHA)
     expect(result.renamed).toContain('renamed-old.ts → renamed-new.ts')
+    expect(result.survivingLabel).not.toContain('removed folder')
+    expect(result.folderAction).toBe(true)
+    expect(result.modifiedUrl).toBe(gh.web)
     expect(result.over).toEqual([])
     expect(result.shot).toMatch(/\.png$/)
   }, 120000)

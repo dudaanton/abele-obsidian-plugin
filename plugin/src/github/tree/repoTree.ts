@@ -2,8 +2,8 @@
  * A repository's file tree at one commit, as the tree panel shows it.
  *
  * One request lists the whole tree — the same recursive listing the code search starts from — and
- * the answer is kept for the session per repository and commit, so every tab and every file
- * opened from the panel at that commit reuses it. GitHub stops a recursive listing past 100,000
+ * the answer is kept for the session per calling client, repository and commit. Tabs with the
+ * same capability reuse it; independent callers never share its reader or lazy mutable state. GitHub stops a recursive listing past 100,000
  * entries or 7 MB; then the tree is read a folder at a time instead, each folder when it is
  * opened, by the git object its parent named.
  */

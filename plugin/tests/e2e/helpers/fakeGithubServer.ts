@@ -51,6 +51,8 @@ const fixtureFilesAt = (ref: string, web: string) => {
   if (files && mode === 'pinned')
     return {
       ...files,
+      'surviving/keep.ts': 'kept source\n',
+      ...(files === HEAD_FILES ? {} : { 'surviving/old.ts': 'deleted source\n' }),
       ...(files === HEAD_FILES
         ? {
             'sample-replacement': 'new\n',

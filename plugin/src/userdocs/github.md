@@ -83,6 +83,9 @@ old and new paths remain separate removed/added entries. A reliably paired renam
 when a link uses the old name. When a file becomes a folder or a folder becomes a file, both
 endpoint entries remain in the tree, distinguished by their icons and statuses; removed
 folders expand to their deleted files without following a target file as if it were a folder.
+Modifier-clicks on removed folders also expand or fold those entries, rather than opening a
+target page. A surviving parent of a deleted file remains a normal folder in **Changed files**
+and keeps its folder-page action.
 
 **Change base** replaces the frozen base for this repository's tabs. **Unpin** restores the
 existing file views everywhere for that repository. **Original file** escapes the comparison
