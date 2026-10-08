@@ -279,6 +279,115 @@ describe('request-local contextual opening', () => {
     }
   )
 
+  async function exerciseReleaseCohort(
+    join: 'plain' | 'selection', timing: 'before release' | 'during release',
+    reopen: 'plain' | 'selection' | 'attention' | 'marker'
+  ) {
+    const app = useVault([
+      { path: x, content: content(x, xId, true) },
+      { path: y, content: content(y, yId, true) },
+    ])
+    const comments = CommentService.getInstance()
+    const chats = ChatService.getInstance()
+    await comments.showInSidebar(yId)
+    const ownerY = chats.activeSession.value!
+    ownerY.chatTitle.value = 'A pending cohort title'
+    ownerY.draft.value.text = 'A preserved cohort draft'
+    const draft = ownerY.draft.value
+    ownerY.isStreaming.value = true
+    const saveGate = deferred(), saving = deferred(), reopening = deferred()
+    const readGate = deferred(), reading = deferred()
+    const prepareGate = deferred(), preparing = deferred(), joined = deferred()
+    const storage = ChatStorage.getInstance()
+    const save = storage.saveChat.bind(storage)
+    let saved = false, savingPaused = false
+    vi.spyOn(storage, 'saveChat').mockImplementation(async (...args) => {
+      if (args[2]?.path === y && !savingPaused) {
+        savingPaused = true; saving.resolve(); await saveGate.promise
+        const result = await save(...args); saved = true; return result
+      }
+      return save(...args)
+    })
+    const prepare = storage.prepareDiscussion.bind(storage)
+    let preparePaused = false
+    vi.spyOn(storage, 'prepareDiscussion').mockImplementation(async (...args) => {
+      if (timing === 'before release' && args[0].path === x && !preparePaused) {
+        preparePaused = true; preparing.resolve(); await prepareGate.promise
+      }
+      return prepare(...args)
+    })
+    const read = app.vault.read.bind(app.vault)
+    let readPaused = false
+    vi.spyOn(app.vault, 'read').mockImplementation(async (file) => {
+      if (file.path === y && saved && !readPaused) {
+        readPaused = true; reading.resolve(); await readGate.promise
+      }
+      return read(file)
+    })
+    const reconcile = ownerY.reconcileForSelectionReturn.bind(ownerY)
+    vi.spyOn(ownerY, 'reconcileForSelectionReturn').mockImplementation((...args) => {
+      const task = reconcile(...args); reopening.resolve(); return task
+    })
+    const dispatch = chats.openContextualChatFile.bind(chats)
+    let requests = 0
+    vi.spyOn(chats, 'openContextualChatFile').mockImplementation((...args) => {
+      const task = dispatch(...args)
+      if (args[0].path === x && ++requests === 2) joined.resolve()
+      return task
+    })
+    const release = vi.spyOn(chats, 'releaseSession')
+    const first = openChat(app.vault.getFileByPath(x)!)
+    await (timing === 'before release' ? preparing.promise : saving.promise)
+    const second = join === 'plain'
+      ? openChat(app.vault.getFileByPath(x)!)
+      : openSelectionLink(`${x}#abele-selection=sample-chat-x/sample-anchor-a`)
+    await joined.promise
+    if (timing === 'before release') { prepareGate.resolve(); await saving.promise }
+    const current = reopen === 'selection'
+      ? openSelectionLink(`${y}#abele-selection=sample-chat-y/sample-anchor-b`)
+      : reopen === 'attention' ? comments.revealForAttention(app.vault.getFileByPath(y)!)
+      : reopen === 'marker' ? comments.showInSidebar(yId)
+      : openChat(app.vault.getFileByPath(y)!)
+    await reopening.promise
+    saveGate.resolve()
+    await reading.promise
+    await Promise.all([first, second])
+    expect(release.mock.calls.filter(([id]) => id === ownerY.id)).toHaveLength(1)
+    expect(chats.getSession(ownerY.id)).toBe(ownerY)
+    expect(chats.getSessionByFile(x)).toBeNull()
+    expect(comments.isShown(xId)).toBe(false)
+    readGate.resolve()
+    const result = await current
+    if (reopen === 'attention' || reopen === 'marker') expect(result).toBe(true)
+    expect(chats.activeSession.value).toBe(ownerY)
+    expect(chats.getSession(ownerY.id)).toBe(ownerY)
+    expect(chats.tabOrder.value.filter((id) => id === ownerY.id)).toHaveLength(1)
+    expect(comments.isShown(yId)).toBe(true)
+    expect(ownerY.isDestroyed).toBe(false)
+    expect(ownerY.isStreaming.value).toBe(true)
+    expect(ownerY.draft.value).toBe(draft)
+    if (reopen === 'selection') {
+      expect(chats.pendingAnchorReturn.value?.sessionId).toBe(ownerY.id)
+      expect(chats.pendingAnchorReturn.value?.target.anchor.id).toBe('sample-anchor-b')
+    }
+    expect(parseChatMetadata(await app.vault.read(app.vault.getFileByPath(y)!))).toMatchObject({
+      commentId: yId, commentLocation: y, title: 'A pending cohort title',
+    })
+  }
+
+  it('a late plain-link joiner cannot restart release after a newer attention reopen', async () => {
+    await exerciseReleaseCohort('plain', 'during release', 'attention')
+  })
+  it.each(
+    (['plain', 'selection'] as const).flatMap((join) =>
+      (['before release', 'during release'] as const).flatMap((timing) =>
+        (['plain', 'selection', 'attention', 'marker'] as const).map((reopen) => [join, timing, reopen] as const)
+      )
+    )
+  )('session reopen supersedes %s joiners %s through the %s opener', async (join, timing, reopen) => {
+    await exerciseReleaseCohort(join, timing, reopen)
+  })
+
   it('the latest selection link to the same file survives cancellation of the first shared-load waiter', async () => {
     const app = useVault([
       { path: x, content: content(x, xId, true) },
