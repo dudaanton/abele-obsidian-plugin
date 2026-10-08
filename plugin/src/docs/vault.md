@@ -147,6 +147,10 @@ Insertion, add/move, proportions and removal commands modify only the Markdown f
 Removal retains body content, deeper quotes and explicit titles. There are no new properties,
 sidecars, settings or transfer keys. The renderer never rewrites source. Unknown parent
 metadata, mismatched weights, folding or extra parent content retain native callout rendering.
+Source-mutating commands require a strictly accounted-for frame and revalidate its source
+range before serializing; unassigned parent content and code examples are not admitted.
+Code fences close only with a matching delimiter and whitespace-only suffix. Nested-frame
+commands target the innermost frame; the surrounding quote is retained on removal.
 See the writing guide for commands and editing limitations; there are no column agent tools.
 
 ## Presentations

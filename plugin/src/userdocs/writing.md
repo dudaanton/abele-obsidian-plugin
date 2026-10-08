@@ -45,12 +45,18 @@ A narrow area (500 CSS pixels or less) stacks the columns in source order. Wide 
 individually. Ordinary lists, checkboxes, code, math and embeds use Obsidian's renderer.
 The column callout titles are currently hidden; put a heading inside the child for a visible
 heading. Foldable column callouts and extra content outside the children remain ordinary
-callouts rather than columns.
+callouts rather than columns. Frame commands are not offered when parent prose, orphan
+content, folding, unmatched weights or unclosed code fences make the structure ambiguous.
+Examples inside code fences, including quoted fences, are never treated as editable frames.
+Nested controls and cursor commands target the innermost frame.
 
 In Live Preview a click or tap on prose expands the area to source and places a single caret
 at the clicked passage, including formatted or identical passages in different columns.
-There is no whole-frame selection to type over. Leaving the area restores columns. Native
-links, checkboxes, code controls, math and embeds keep their own interaction. Editing directly
+There is no whole-frame selection to type over. Exact character placement is used only when
+the parsed prose projection matches the native DOM; otherwise the area opens safely with a
+single caret at the source block or column header. Inline math and images do not disable
+entry into adjacent ordinary prose. Leaving the area restores columns. Native
+links, checkboxes, code controls, math and embeds keep their own interaction and context menus. Editing directly
 in side-by-side columns is not supported. Without Abele the note is readable as nested
 callouts. The renderer writes no sidecar; only explicit frame commands change the Markdown.
 
