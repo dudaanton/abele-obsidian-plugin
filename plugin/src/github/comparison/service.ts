@@ -114,10 +114,12 @@ export class ComparisonService {
         const target = await repoTree(this.client, this.repo, sha)
         await target.reveal(candidate.path)
         let node = findNode(target.root, candidate.path)
-        if (!node && baseSha) {
+        if ((!node || node.kind === 'dir') && baseSha) {
           const base = await repoTree(this.client, this.repo, baseSha)
           await base.reveal(candidate.path)
-          node = findNode(base.root, candidate.path)
+          const before = findNode(base.root, candidate.path)
+          // A blob link may name the deleted file replaced by a target directory.
+          if (!node || (before && before.kind !== 'dir')) node = before
         }
         this.check(signal)
         if (node)

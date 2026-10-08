@@ -2,15 +2,18 @@
   <TreeItem
     ref="row"
     :text="node.name"
-    :flair="changes?.get(node.path)"
+    :flair="node.comparisonStatus ?? changes?.get(`${node.kind}:${node.path}`)"
     :icon="ICONS[node.kind]"
     :path="node.path"
-    :active="node.path === current"
+    :active="
+      node.path === current &&
+      (!currentKind || (node.kind === 'dir' ? 'dir' : 'file') === currentKind)
+    "
     :collapsible="node.kind === 'dir'"
     :collapsed="!open"
     @click="emit('pick', node, $event)"
   >
-    <template v-if="node.kind === 'dir'" #actions>
+    <template v-if="node.kind === 'dir' && !node.comparisonStatus" #actions>
       <Icon
         class="abele-github-tree__open-folder"
         icon="folder-open"
@@ -22,10 +25,11 @@
       <div v-if="!node.children" class="abele-github-tree__note">Loading…</div>
       <GithubTreeNode
         v-for="child in paged.visible.value"
-        :key="child.path"
+        :key="`${child.kind}:${child.path}`"
         :node="child"
         :expanded="expanded"
         :current="current"
+        :current-kind="currentKind"
         :changes="changes"
         @visible="(path: string) => emit('visible', path)"
         @pick="(n: TreeNode, e: MouseEvent) => emit('pick', n, e)"
@@ -52,6 +56,7 @@ const props = defineProps<{
   expanded: Set<string>
   /** The file or folder the tab shows. */
   current: string | null
+  currentKind?: 'file' | 'dir'
   changes?: Map<string, string>
 }>()
 
@@ -68,7 +73,8 @@ const row = ref<InstanceType<typeof TreeItem>>()
 let observer: IntersectionObserver | undefined
 const observe = () => {
   observer?.disconnect()
-  if (props.node.kind === 'dir' || !props.changes?.has(props.node.path)) return
+  if (props.node.kind === 'dir' || !props.changes?.has(`${props.node.kind}:${props.node.path}`))
+    return
   if (typeof IntersectionObserver === 'undefined') return emit('visible', props.node.path)
   observer = new IntersectionObserver((entries) => {
     if (entries.some((entry) => entry.isIntersecting)) {
@@ -80,7 +86,7 @@ const observe = () => {
   if (el) observer.observe(el)
 }
 onMounted(observe)
-watch(() => props.changes?.has(props.node.path), observe, { flush: 'post' })
+watch(() => props.changes?.has(`${props.node.kind}:${props.node.path}`), observe, { flush: 'post' })
 onBeforeUnmount(() => observer?.disconnect())
 const open = computed(() => props.expanded.has(props.node.path))
 /** A folder of thousands of files draws a page at a time, as the panel scrolls. */

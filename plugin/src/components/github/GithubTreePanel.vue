@@ -34,10 +34,11 @@
         <div role="tree">
           <GithubTreeNode
             v-for="child in paged.visible.value"
-            :key="child.path"
+            :key="`${child.kind}:${child.path}`"
             :node="child"
             :expanded="shownOpen"
             :current="current?.path ?? null"
+            :current-kind="current?.kind"
             :changes="changeLabels"
             @visible="requestCounts"
             @pick="pick"
@@ -131,8 +132,8 @@ const changeLabels = computed(() => {
         : count?.state === 'unavailable'
           ? '—'
           : '…'
-    labels.set(row.path, `${row.status} ${stats}`)
-    for (const ancestor of ancestors(row.path)) labels.set(ancestor, 'changed')
+    labels.set(`${(row.target ?? row.base)!.kind}:${row.path}`, `${row.status} ${stats}`)
+    for (const ancestor of ancestors(row.path)) labels.set(`dir:${ancestor}`, 'changed')
   }
   return labels
 })

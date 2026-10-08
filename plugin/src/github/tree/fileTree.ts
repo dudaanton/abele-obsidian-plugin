@@ -22,6 +22,8 @@ export interface TreeNode {
   /** From the repository's root, without a leading slash; empty for the root itself. */
   path: string
   kind: NodeKind
+  /** Projection-only label for a removed directory, never repository metadata. */
+  comparisonStatus?: string
   mode?: string
   size?: number
   /** The git object: for a folder read lazily, the tree its children are asked by. */

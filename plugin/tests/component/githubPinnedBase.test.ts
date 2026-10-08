@@ -58,6 +58,55 @@ beforeEach(() => {
 })
 
 describe('a pinned project tree', () => {
+  it.each([true, false])(
+    'opens all file/folder replacement entries in both project modes (base folder: %s)',
+    async (baseFolder) => {
+      pin()
+      const oldPath = baseFolder ? 'pkg/old.ts' : 'pkg',
+        newPath = baseFolder ? 'pkg' : 'pkg/new.ts'
+      const { wrapper, model, onOpen } = openTab(
+        `https://github.com/sample/project/blob/${TARGET}/${newPath}`,
+        {
+          ...routes,
+          [`/repos/sample/project/git/trees/${BASE}`]: {
+            json: { tree: [{ path: oldPath, type: 'blob', sha: 'old', size: 4 }] },
+          },
+          [`/repos/sample/project/git/trees/${TARGET}`]: {
+            json: { tree: [{ path: newPath, type: 'blob', sha: 'new', size: 4 }] },
+          },
+        }
+      )
+      model.tree = true
+      await vi.waitFor(() =>
+        expect(wrapper.findAll('.abele-github-tree [data-path="pkg"]')).toHaveLength(2)
+      )
+      if (baseFolder)
+        await wrapper.find('.abele-github-tree [data-path="pkg"][aria-expanded]').trigger('click')
+      expect(
+        wrapper.find(`.abele-github-tree [data-path="${oldPath}"]:not([aria-expanded])`).text()
+      ).toContain('removed')
+      const changed = wrapper
+        .findAll('.abele-github-tree .abele-tabs__tab')
+        .find((t) => t.text() === 'Changed files')!
+      await changed.trigger('click')
+      expect(wrapper.findAll('.abele-github-tree [data-path="pkg"]')).toHaveLength(2)
+      await wrapper
+        .find(`.abele-github-tree [data-path="${oldPath}"]:not([aria-expanded])`)
+        .trigger('click')
+      expect(onOpen).toHaveBeenLastCalledWith(
+        `https://github.com/sample/project/blob/${TARGET}/${oldPath}`,
+        false
+      )
+      model.url = `https://github.com/sample/project/blob/${TARGET}/${oldPath}`
+      model.target = parseGithubUrl(model.url, ['github.com'])
+      model.nonce++
+      await vi.waitFor(() =>
+        expect(wrapper.find('.abele-github-pinned').text()).toContain('removed')
+      )
+      expect(model.screen.comparison?.targetSha).toBe(TARGET)
+      wrapper.unmount()
+    }
+  )
   const homeRoutes = (branch: () => string) => ({
     ...routes,
     '/repos/sample/project': {

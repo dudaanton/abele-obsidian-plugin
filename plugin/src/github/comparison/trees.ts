@@ -97,28 +97,35 @@ export function projectTree(
   changes: FileChange[],
   changedOnly: boolean
 ): TreeNode {
-  const deleted = changes.filter((row) => !row.target)
-  const extras = buildTree(
-    (changedOnly ? changes : deleted).map((row) => {
-      const n = row.target ?? row.base!
-      return {
-        path: row.path,
-        type: n.kind === 'submodule' ? 'commit' : 'blob',
-        mode: n.mode,
-        sha: n.sha,
-        size: n.size,
-      }
-    })
-  )
-  if (changedOnly) return extras
+  const from = (rows: FileChange[]) =>
+    buildTree(
+      rows.map((row) => {
+        const n = row.target ?? row.base!
+        return {
+          path: row.path,
+          type: n.kind === 'submodule' ? 'commit' : 'blob',
+          mode: n.mode,
+          sha: n.sha,
+          size: n.size,
+        }
+      })
+    )
+  const extras = from(changes.filter((row) => !row.target))
+  const markRemovedFolders = (node: TreeNode) => {
+    if (node.kind === 'dir' && node.path) node.comparisonStatus = 'removed folder'
+    for (const child of node.children ?? []) markRemovedFolders(child)
+  }
+  markRemovedFolders(extras)
+  const root = changedOnly ? from(changes.filter((row) => !!row.target)) : target
   const merge = (a: TreeNode, b?: TreeNode): TreeNode => {
     if (!b?.children) return a
-    const children = new Map((a.children ?? []).map((n) => [n.name, n]))
+    const key = (node: TreeNode) => `${node.kind}:${node.name}`
+    const children = new Map((a.children ?? []).map((n) => [key(n), n]))
     for (const node of b.children) {
-      const existing = children.get(node.name)
-      children.set(node.name, existing?.kind === 'dir' ? merge(existing, node) : (existing ?? node))
+      const existing = children.get(key(node))
+      children.set(key(node), existing?.kind === 'dir' ? merge(existing, node) : (existing ?? node))
     }
     return { ...a, children: sortNodes([...children.values()]) }
   }
-  return merge(target, extras)
+  return merge(root, extras)
 }

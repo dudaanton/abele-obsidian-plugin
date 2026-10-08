@@ -1,12 +1,12 @@
 import { beforeEach, describe, expect, it, vi } from 'vitest'
 import { BasePins, PIN_KEY, repositoryKey } from '@/github/comparison/pins'
-import { compareTrees } from '@/github/comparison/trees'
+import { compareTrees, projectTree } from '@/github/comparison/trees'
 import { fullDiff, decodeBlob } from '@/github/comparison/text'
 import { comparisonService } from '@/github/comparison/service'
 import { GithubClient } from '@/github/client'
 import { guardedGithubClient } from '@/github/guardedClient'
 import { endpoints } from '@/github/urls'
-import { buildTree, type TreeEntry } from '@/github/tree/fileTree'
+import { buildTree, type TreeNode, type TreeEntry } from '@/github/tree/fileTree'
 import { forgetRepoTrees } from '@/github/tree/repoTree'
 import { clientWith } from '../helpers/githubTab'
 
@@ -61,6 +61,30 @@ describe('device-local frozen bases', () => {
 })
 
 describe('exact endpoint trees', () => {
+  it.each([true, false])(
+    'keeps both endpoint paths when a file and folder replace each other (base folder: %s)',
+    async (baseFolder) => {
+      const base = buildTree([entry(baseFolder ? 'pkg/old.ts' : 'pkg', 'old')]),
+        target = buildTree([entry(baseFolder ? 'pkg' : 'pkg/new.ts', 'new')])
+      const changes = await compareTrees(
+        { root: base, expand: async () => {} },
+        { root: target, expand: async () => {} }
+      )
+      const files = (node: TreeNode): string[] =>
+        node.kind === 'dir' ? (node.children ?? []).flatMap(files) : [node.path]
+      const unique = (node: TreeNode) => {
+        const keys = (node.children ?? []).map((child) => `${child.kind}:${child.path}`)
+        expect(new Set(keys).size).toBe(keys.length)
+        for (const child of node.children ?? []) unique(child)
+      }
+      for (const changedOnly of [false, true]) {
+        const projected = projectTree(target, changes, changedOnly)
+        expect(files(projected).sort()).toEqual(['pkg', baseFolder ? 'pkg/old.ts' : 'pkg/new.ts'])
+        unique(projected)
+      }
+      expect(files(target)).toEqual([baseFolder ? 'pkg' : 'pkg/new.ts'])
+    }
+  )
   it('includes behind/divergent changes, modes, deletion, unique renames and ambiguous additions', async () => {
     const base = buildTree([
       entry('old.ts', 'same'),
