@@ -276,6 +276,32 @@ These never travel, whatever the switches say:
   *.tmp
   ```
 
+## Next to Obsidian Sync, and moving from it
+
+**Do not let Abele Sync and Obsidian Sync carry the same files.** Running both on one vault was
+never tested. Each tool takes the other's writes for this device's own edits and sends them on:
+every change travels twice, a file caught mid-write is merged on the Abele Sync server, Obsidian
+Sync's conflicted copies are synced to every device, a delete or rename that arrives through one
+tool is sent again by the other, and with both carrying the configuration folder, plugin settings
+bounce between them. Nothing loops for ever, but expect duplicates, extra conflict files and each
+tool acting on the other's deletes.
+
+A **split** works if no path belongs to both. On this side, per device, under **What this
+device syncs**: excluded folders, the file-type switches, the size cap and the settings categories
+(app settings, appearance, hotkeys, core plugins, community plugins, plugin settings), plus
+`.abele-sync-ignore`. Obsidian Sync has the matching exclusions. Set it up the same way on every
+device. This too is untested, so treat it as a temporary arrangement.
+
+**Moving a vault from Obsidian Sync:**
+
+1. Make a backup of the vault and clear Obsidian Sync's conflicted copies.
+2. On the device with the complete vault, turn Obsidian Sync off for this vault, then connect
+   Abele Sync. It uploads the vault.
+3. On every other device, turn Obsidian Sync off first, then connect Abele Sync. Connecting a
+   vault that already has files compares them with the server instead of duplicating them.
+
+Move a vault whole rather than running both side by side.
+
 ## When two devices change one file
 
 A note changed on two devices before either saw the other's change is resolved on the server as
