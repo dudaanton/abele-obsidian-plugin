@@ -14,6 +14,7 @@ const prelude = `
 `
 let layout: unknown
 let owned = false
+let adapterReport: Awaited<ReturnType<typeof probeAdapter>>
 
 beforeAll(async () => {
   if (!available) return
@@ -52,17 +53,30 @@ describe.skipIf(!available)('external-file filesystem guarantees on the live ada
       return await (${probeAdapter.toString()})(adapter,root,moveAndRetain)
     })()`)
     )
+    adapterReport = out
     console.info('Portable adapter evidence', JSON.stringify(out))
     expect(out.hashRemove).toEqual({ checked: true, editLost: true })
     expect(out.cleanupRace).toEqual({ checked: true, editLost: true })
     expect(out.moveRace).toEqual({ state: 'local-changed', retained: true, sourceOccupied: false })
     expect(out.checkWrite).toEqual({ sawAbsent: true, occupantOverwritten: true })
+    expect(out.replaceGap).toEqual({
+      targetAbsent: true,
+      refused: true,
+      original: 'sample base',
+      incoming: 'sample incoming',
+      occupant: 'sample occupant',
+    })
     expect(out.renameOccupied).toEqual({
       refused: true,
       source: 'sample incoming',
       target: 'sample occupant',
     })
-    expect(out.copy).toEqual({
+  })
+
+  // BUG: the iOS adapter copy overwrites an occupied name, contrary to DataAdapter's contract.
+  // Keep this assertion red on that platform; a probe must not weaken the required guarantee.
+  it('copy refuses an occupied installation target', () => {
+    expect(adapterReport.copy).toEqual({
       supported: true,
       refused: true,
       source: 'sample incoming',
@@ -81,18 +95,50 @@ describe.skipIf(!available)('external-file filesystem guarantees on the live ada
         nativeRename:typeof fsp?.rename==='function',
         exclusiveLink:typeof fsp?.link==='function',
         nativeOpen:typeof fsp?.open==='function',
-        publicOpen:typeof adapter.open==='function',
+        undocumentedOpen:typeof adapter.open==='function',
+        openImplementation:typeof adapter.open==='function'?adapter.open.toString():null,
+        renameImplementation:adapter.rename.toString(),
+        copyImplementation:adapter.copy.toString(),
+        queueImplementation:typeof adapter.queue==='function'?adapter.queue.toString():null,
+        removeImplementation:adapter.remove.toString(),
         publicFsync:typeof adapter.fsync==='function'||typeof adapter.sync==='function',
         fullPath:typeof adapter.getFullPath==='function',
         process:typeof adapter.process==='function'
       }
     })()`)
     console.info('Adapter capabilities', JSON.stringify(out))
-    expect(out.publicOpen).toBe(false)
+    // "open" is not part of DataAdapter. Inspect it rather than infer a descriptor contract.
+    expect(out.undocumentedOpen).toBe(onPhone())
     expect(out.publicFsync).toBe(false)
     expect(out.process).toBe(true)
     expect(out.nativeOpen).toBe(!onPhone())
     expect(out.exclusiveLink).toBe(!onPhone())
+  })
+
+  it('serializes adapter saves behind the cooperative queue, not arbitrary writers', async () => {
+    const out = JSON.parse(
+      await evalLong(`(async()=>{
+      ${prelude}
+      let enter,release,saveCompleted=false
+      const entered=new Promise(resolve=>enter=resolve),gate=new Promise(resolve=>release=resolve)
+      const events=[]
+      const fenced=adapter.queue(async()=>{events.push('fenced-start');enter();await gate;events.push('fenced-end')})
+      let save,completedWhileBusy
+      try {
+        await Promise.race([entered,wait(2000).then(()=>{throw Error('Queue callback did not enter')})])
+        save=adapter.write(root+'/sample-queued.bin','sample queued save').then(()=>{saveCompleted=true;events.push('save')})
+        await wait(100)
+        completedWhileBusy=saveCompleted
+      } finally { release();await fenced;await save }
+      return {completedWhileBusy,events,bytes:await read(root+'/sample-queued.bin')}
+    })()`)
+    )
+    console.info('Cooperative queue evidence', JSON.stringify(out))
+    expect(out).toEqual({
+      completedWhileBusy: false,
+      events: ['fenced-start', 'fenced-end', 'save'],
+      bytes: 'sample queued save',
+    })
   })
 
   it.skipIf(onPhone())(

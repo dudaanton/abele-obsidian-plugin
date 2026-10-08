@@ -72,5 +72,12 @@ describe('external-file safety probes (test-only, not an eviction implementation
     expect(report.renameOccupied.refused).toBe(true)
     expect(report.renameOccupied.target).toBe('sample occupant')
     expect(report.renameOccupied.source).toBe('sample incoming')
+    expect(report.replaceGap).toEqual({
+      targetAbsent: true,
+      refused: true,
+      original: 'sample base',
+      incoming: 'sample incoming',
+      occupant: 'sample occupant',
+    })
   })
 })

@@ -128,5 +128,25 @@ export async function probeAdapter(adapter: ProbeAdapter, root: string, retain =
     }
   }
 
-  return { hashRemove, moveRace, cleanupRace, checkWrite, renameOccupied, copy }
+  // Public rename refuses replacement: the usual two-rename fallback has an observable gap.
+  await write('sample-replace.bin', 'sample base')
+  await write('sample-replace-temp.bin', 'sample incoming')
+  await adapter.rename(`${root}/sample-replace.bin`, `${root}/sample-replace-backup.bin`)
+  const targetAbsent = !(await adapter.exists(`${root}/sample-replace.bin`))
+  await write('sample-replace.bin', 'sample occupant')
+  let gapInstallRefused = false
+  try {
+    await adapter.rename(`${root}/sample-replace-temp.bin`, `${root}/sample-replace.bin`)
+  } catch {
+    gapInstallRefused = true
+  }
+  const replaceGap = {
+    targetAbsent,
+    refused: gapInstallRefused,
+    original: await read('sample-replace-backup.bin'),
+    incoming: await read('sample-replace-temp.bin'),
+    occupant: await read('sample-replace.bin'),
+  }
+
+  return { hashRemove, moveRace, cleanupRace, checkWrite, renameOccupied, copy, replaceGap }
 }
