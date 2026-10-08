@@ -112,6 +112,7 @@ describe('the navigation modal', () => {
     const copy = `${path}\n${serializeChat({ metadata, messages: [{ id: 'recovered-q', role: 'user', content: 'A sample recovered question', timestamp: 1 }], internalMessages: [] })}`
     const app = useVault([{ path, raw: source }])
     const backup = chatCopyPath(app as never, path)
+    await app.vault.adapter.mkdir(backup.slice(0, backup.lastIndexOf('/')))
     await app.vault.adapter.write(backup, copy)
     // Count only writes caused by opening the contents, not fixture creation.
     app.stats.written = 0
