@@ -5,7 +5,7 @@ import { resolve, join } from 'node:path'
 import { productionPluginCode, bootProductionPlugin } from '../helpers/productionPlugin'
 import { spawnCollaborationStandServer } from '../e2e/helpers/collaborationStandHarness'
 import { verifySyncFixture } from '../../scripts/verify-sync-inputs.mjs'
-import { readFileSync } from 'node:fs'
+import { SERVER_TEST_COMMIT } from '../../scripts/server-test-fixtures.mjs'
 
 let code: string
 let native: Awaited<ReturnType<typeof bootProductionPlugin>>
@@ -20,7 +20,7 @@ const password = 'invented-owner-password'
 const email = 'sample-production-owner@example.com'
 beforeAll(async () => {
   const root = verifySyncFixture(process.env.ABELE_SYNC_DIR)
-  const commit = JSON.parse(readFileSync('vendor/sync/provenance.json', 'utf8')).commit
+  const commit = SERVER_TEST_COMMIT
   const scratch = resolve('../.scratch/production-sharing')
   mkdirSync(scratch, { recursive: true })
   work = mkdtempSync(join(scratch, 'run-'))
@@ -424,7 +424,7 @@ it('retires production publication stores across twenty binary-upload reconnect 
   const sync = device.plugin.syncSharing.sync
   const factory = window.indexedDB
   const root = verifySyncFixture(process.env.ABELE_SYNC_DIR)
-  const commit = JSON.parse(readFileSync('vendor/sync/provenance.json', 'utf8')).commit
+  const commit = SERVER_TEST_COMMIT
   let vaultId: string | undefined
   let cycleServer: typeof server | undefined
   const cycleWork = mkdtempSync(join(work, 'binary-cycles-'))
