@@ -25,6 +25,47 @@ it('reads old proof slots without rebinding their stored connection identity', (
   expect(values.get(scopedSecretSlot(logical))).toBe('new-proof')
   expect(port.get(logical)).toBe('new-proof')
 })
+it.each(['invitation', 'installation'])(
+  'clears both readable proof spellings for %s, including legacy token copies',
+  (kind) => {
+    const logical = `abele-scoped-${kind}-${uuid}:binding`
+    const legacy = logical.replaceAll(':', '-')
+    const current = scopedSecretSlot(logical)
+    const values = new Map([
+      [legacy, 'legacy-token-copy'],
+      [current, 'current-token-copy'],
+    ])
+    const port = scopedSecretPort({
+      getLocal: (id) => values.get(id) ?? '',
+      setLocal: (id, value) => {
+        values.set(id, value)
+      },
+    })
+    port.set(logical, '')
+    expect(values.get(current)).toBe('')
+    expect(values.get(legacy)).toBe('')
+    expect(port.get(logical)).toBe('')
+  }
+)
+
+it('can forget a compact proof when the keychain rejects inaccessible legacy names', () => {
+  const values = new Map<string, string>()
+  const port = scopedSecretPort({
+    getLocal: (id) => {
+      if (id.length > 64) throw new Error('Invalid ID')
+      return values.get(id) ?? ''
+    },
+    setLocal: (id, value) => {
+      if (id.length > 64) throw new Error('Invalid ID')
+      values.set(id, value)
+    },
+  })
+  const logical = `abele-scoped-installation-${uuid}:binding`
+  port.set(logical, 'current-proof')
+  expect(() => port.set(logical, '')).not.toThrow()
+  expect(port.get(logical)).toBe('')
+})
+
 it('does not attempt an invalid legacy lookup when a strict keychain rejects it', () => {
   const port = scopedSecretPort({
     getLocal: (id) => {

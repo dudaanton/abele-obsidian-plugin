@@ -29,6 +29,24 @@ export function scopedSecretPort(road: {
         return ''
       }
     },
-    set: (id, value) => road.setLocal(scopedSecretSlot(id), value),
+    set: (id, value) => {
+      const slot = scopedSecretSlot(id)
+      road.setLocal(slot, value)
+      if (value) return
+      const legacy = id.replaceAll(':', '-')
+      if (legacy === slot) return
+      let stored: string
+      try {
+        stored = road.getLocal(legacy)
+      } catch {
+        // Strict keychains cannot read these overlong pre-release slots either.
+        return
+      }
+      if (stored) {
+        road.setLocal(legacy, '')
+        if (road.getLocal(legacy))
+          throw new Error('Legacy scoped keychain slot could not be cleared')
+      }
+    },
   }
 }
