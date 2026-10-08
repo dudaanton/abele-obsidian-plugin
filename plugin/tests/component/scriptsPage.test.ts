@@ -132,6 +132,11 @@ describe('the library', () => {
     expect(fetch.props('icon')).toBe('download')
   })
 
+  it('offers a non-executing trust review even when optional foreign-script checking says confirmed', () => {
+    const card = cardTitled(open(), 'Fetch details')
+    expect(card.findAllComponents(Icon).some((i) => i.props('icon') === 'shield-check')).toBe(true)
+  })
+
   it('lists the parameters a script takes, marking the optional ones and their defaults', () => {
     const fetch = cardTitled(open(), 'Fetch details')
 

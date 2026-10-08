@@ -40,6 +40,15 @@ describe('script approval UI', () => {
     expect(answer).toHaveBeenCalledWith(true)
     wrapper.unmount()
   })
+  it('labels a recovery-only review as approval, not as running the script', () => {
+    const wrapper = mount(ScriptApprovalModal, {
+      props: { request: { ...request, recovery: true, reviewOnly: true, id: 1, answer: vi.fn() } },
+      global: { stubs: { ObsidianModal: { template: '<div><slot /></div>' } } },
+    })
+    expect(wrapper.text()).toContain('Other unreviewed scripts stay blocked')
+    expect(wrapper.findAll('button')[1].text()).toBe('Approve')
+    wrapper.unmount()
+  })
   it('readonly native inspection never approves/runs while retaining exact facts and source', async () => {
     const answer = vi.fn(),
       w = mount(ScriptApprovalModal, {

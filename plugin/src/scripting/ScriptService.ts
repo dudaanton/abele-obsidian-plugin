@@ -597,8 +597,13 @@ export class ScriptService {
   }
 
   /** Shows a script from elsewhere for review; true once this version is confirmed. */
-  review(script: ParsedScript, signal?: AbortSignal): Promise<boolean> {
-    return reviewOne(this, script, signal)
+  async review(script: ParsedScript, signal?: AbortSignal): Promise<boolean> {
+    if (!(await reviewOne(this, script, signal))) return false
+    // Review also covers the managed gate, without executing a linter/interceptor/startup
+    // script as a side effect. This is the recovery exit for an older connection or store.
+    await scriptForExecution(GlobalStore.getInstance().app, script.path,
+      (request) => showScriptApproval({ ...request, reviewOnly: true }, signal))
+    return true
   }
 
   /** Every waiting script in turn, from the command and the notice. */

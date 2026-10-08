@@ -70,14 +70,29 @@ SHA. Shared/agent connections refuse execution. Missing or unknown provenance bl
 rename, restore, adoption, a nested call or an automation cannot bypass the common gate.
 Ordinary local scripts in a vault that has never been sync-managed continue to run locally.
 
-Personal managed scripts use **until confirmed**: run one manually from the script library or
-command palette to review its full source, file identity, connection and SHA-256. **Approve
-and run** stores permission for those exact bytes on this device. A changed file/identity or
+Before the first managed sync, the plugin preserves exact script versions this device already
+allowed in 1.x. With foreign-script checking armed, only the approved versions are preserved;
+with it off, the existing local scripts keep their previous permission. This snapshot is taken
+before either sync host starts, never from an already managed vault's current files. Explicit
+local authoring also records its exact bytes; native create/modify events are not authoring proof.
+Those local versions keep working across personal enrolment and reconnects. Received versions
+and scoped/shared installations never acquire permission from this migration.
+
+Other personal managed scripts use **until confirmed**: run one manually from the command
+palette, or choose the shield action under **Settings → Scripts → Library** to review without
+running it (including a linter or interceptor). Review shows full source, file identity,
+connection and SHA-256. **Approve** records permission without execution; **Approve and run**
+also runs a manually launched script. A changed file/identity or
 connection while the dialog is open invalidates the decision. Checks use this vault's actual
 current connection, not only the provenance descriptor last written by an engine. Switching
 connections with a join question still open invalidates old decisions before a new engine
-exists; disconnect retains managed bytes but does not keep an old connection's permission
-active. Every managed identity/hold mutation advances a shared per-path runtime generation
+exists. Disconnect retains exact personal approvals for offline use, not authority to another
+connection; a transition during an execution check still invalidates that check. If the descriptor
+or database is missing/stale after an upgrade, the error points to the Library review action.
+Disconnect sync before repairing a lost context, review each script explicitly, then reconnect.
+Recovery retains old descriptors/databases, approves only the shown bytes, and leaves other
+unknown scripts blocked. A pending remote mutation cannot be replaced by manual review.
+Every managed identity/hold mutation advances a shared per-path runtime generation
 before its asynchronous write begins. A pending or changed generation invalidates checks
 across the awaited approval read and the synchronous compilation boundary; different paths
 do not invalidate one another. The fence is shared across this runtime's IDB connections,

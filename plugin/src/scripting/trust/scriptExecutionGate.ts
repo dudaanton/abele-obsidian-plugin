@@ -1,10 +1,20 @@
 import type { App } from 'obsidian'
 import { sha256 } from '@abele/sync-core'
 import { parseScriptHeader, extractScriptBody } from '../ScriptParser'
-import { scriptTrustFor, SCRIPT_TRUST_KEY } from './scriptTrustStorage'
+import {
+  scriptTrustFor,
+  SCRIPT_TRUST_KEY,
+  ScriptTrustRecoveryRequired,
+  recoverScriptProvenance,
+} from './scriptTrustStorage'
+import { newStateId } from '@/sync/ids'
 import { storageOf } from '@/sync/vaultWrites'
 import { assertNoScriptContextHold } from './scriptContextHold'
-import { assertCurrentScriptConnection, hasScriptConnection } from './scriptConnection'
+import {
+  assertCurrentScriptConnection,
+  hasScriptConnection,
+  scriptConnectionKey,
+} from './scriptConnection'
 import {
   sameBinding,
   type ManagedScript,
@@ -18,6 +28,8 @@ export interface ScriptApprovalRequest {
   sha: string
   source: string
   identity: ManagedScript
+  recovery?: boolean
+  reviewOnly?: boolean
 }
 export type ScriptConfirmation = (request: ScriptApprovalRequest) => Promise<boolean>
 interface CheckedPermission {
@@ -25,6 +37,7 @@ interface CheckedPermission {
   fileId: string
   generation: number
   provenance: ScriptProvenance
+  connection: string
 }
 const permissions = new WeakMap<ParsedScript, CheckedPermission | null>()
 
@@ -33,7 +46,11 @@ export function assertScriptContext(app: App, script: ParsedScript): void {
   assertNoScriptContextHold(storageOf(app))
   if (!permissions.has(script)) throw new Error('Script has no checked execution snapshot')
   const permission = permissions.get(script)
-  if (permission) permission.provenance.assertRevision(script.path, permission.generation)
+  if (permission) {
+    permission.provenance.assertRevision(script.path, permission.generation)
+    if (permission.connection !== scriptConnectionKey(storageOf(app)))
+      throw new Error('Script connection changed during the execution check')
+  }
   const expected = permission?.binding ?? null
   const current = storageOf(app)?.loadLocalStorage(SCRIPT_TRUST_KEY) as {
     id?: string
@@ -62,16 +79,75 @@ export async function scriptForExecution(
   confirm?: ScriptConfirmation
 ): Promise<ParsedScript> {
   const read = async () => new Uint8Array(await app.vault.adapter.readBinary(path))
+  const connection = scriptConnectionKey(storageOf(app))
   const bytes = await read()
-  let trust = await scriptTrustFor(app)
+  let trust: Awaited<ReturnType<typeof scriptTrustFor>>
+  let recovered: ManagedScript | null = null
+  try {
+    trust = await scriptTrustFor(app)
+  } catch (error) {
+    if (!(error instanceof ScriptTrustRecoveryRequired) || !confirm) throw error
+    const sha = await sha256(bytes)
+    trust = await recoverScriptProvenance(app, async (binding) => {
+      recovered = { binding, fileId: `local:${newStateId()}` }
+      const accepted = await confirm({
+        path,
+        sha,
+        source: decode(bytes),
+        identity: recovered,
+        recovery: true,
+      })
+      if (!equal(bytes, await read()))
+        throw new Error('Script changed while its recovery approval was open')
+      return accepted
+    })
+  }
   let permission: CheckedPermission | null = null
   try {
+    const recoveredIdentity = recovered as ManagedScript | null
+    if (recoveredIdentity && trust) {
+      await trust.provenance.record(path, recoveredIdentity.fileId!)
+      await trust.provenance.approve(path, recoveredIdentity, await sha256(bytes))
+    }
     if (trust) {
       const sha = await sha256(bytes)
-      const initialGeneration = trust.provenance.capture(path)
-      const identity = await trust.provenance.lookup(path)
+      let initialGeneration = trust.provenance.capture(path)
+      let identity = await trust.provenance.lookup(path)
       trust.provenance.assertRevision(path, initialGeneration)
-      if (!identity?.fileId) throw new Error('Script provenance is unknown; execution blocked')
+      if (!identity && confirm && trust.provenance.binding.facet === 'personal') {
+        const proposed = { binding: trust.provenance.binding, fileId: `local:${newStateId()}` }
+        const accepted = await confirm({
+          path,
+          sha,
+          source: decode(bytes),
+          identity: proposed,
+          recovery: true,
+        })
+        if (!accepted) throw new Error('This exact script version needs device-local approval')
+        if (!equal(bytes, await read()))
+          throw new Error('Script changed while its approval was open')
+        assertNoScriptContextHold(storageOf(app))
+        trust.provenance.assertRevision(path, initialGeneration)
+        if (
+          connection !== scriptConnectionKey(storageOf(app)) ||
+          JSON.stringify(
+            (
+              storageOf(app)?.loadLocalStorage(SCRIPT_TRUST_KEY) as {
+                binding?: ScriptBinding
+              } | null
+            )?.binding
+          ) !== JSON.stringify(proposed.binding)
+        )
+          throw new Error('Script connection changed while its approval was open')
+        await trust.provenance.record(path, proposed.fileId)
+        await trust.provenance.approve(path, proposed, sha)
+        initialGeneration = trust.provenance.capture(path)
+        identity = await trust.provenance.lookup(path)
+      }
+      if (!identity?.fileId)
+        throw new Error(
+          'Script provenance is unknown; execution blocked. Review this script under Settings → Scripts → Library; pending sync writes must settle first'
+        )
       if (identity.binding.facet === 'scoped')
         throw new Error('Shared and agent connections refuse script execution')
       const alreadyApproved = await trust.provenance.approved(identity, sha)
@@ -83,6 +159,8 @@ export async function scriptForExecution(
         if (!accepted) throw new Error('This exact script version needs device-local approval')
         if (!equal(bytes, await read()))
           throw new Error('Script changed while its approval was open')
+        if (connection !== scriptConnectionKey(storageOf(app)))
+          throw new Error('Script connection changed while its approval was open')
         trust = await scriptTrustFor(app)
         if (!trust) throw new Error('Script provenance changed while its approval was open')
         trust.provenance.assertRevision(path, initialGeneration)
@@ -126,6 +204,7 @@ export async function scriptForExecution(
           fileId: current.fileId!,
           generation,
           provenance: live.provenance,
+          connection,
         }
       } finally {
         live?.store.close()

@@ -1147,6 +1147,18 @@ Sync continues; scripts remain blocked until durable file identities arrive and 
 script bytes receive this device's ordinary confirmation. A retained descriptor whose database
 is missing still holds recovery rather than inheriting foreign approvals.
 
+`abele-script-local-upgrade` holds device-local `{path, sha}` records for executable local
+versions captured before the first managed sync, and versions explicitly authored here. It is
+never a synced setting or a file. Provenance stores keep the corresponding `script-pre-sync:`
+SHA records so those exact local versions can be approved when a personal ledger identity
+arrives or changes on reconnect. Unknown received bytes acquire no approval. Offline personal
+contexts retain their exact approvals; scoped contexts still refuse execution. Library's shield
+action reviews trust without running code. Explicit disconnected recovery allocates independent
+empty provenance and retains the previous descriptor under
+`abele-script-provenance-retired:<new-local-id>`; no old database is deleted or adopted as new
+permission. Declined or invalidated recovery changes no descriptor. Only the reviewed script
+gets a new local identity and exact-byte approval; unrelated scripts remain blocked.
+
 A saved sync connection without its ledger descriptor, or with empty/evicted ledger storage,
 stops with **Sync recovery required**, before creating an engine, uploading/deleting files or
 initializing script provenance. A durable `ledger-identity-v1` header and device-local

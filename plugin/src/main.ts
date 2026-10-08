@@ -90,6 +90,7 @@ import { CommentService } from './ai/CommentService'
 import { ScriptService } from './scripting/ScriptService'
 import { AutomationService } from './automations/AutomationService'
 import { ScriptViewService } from './scripting/view/ScriptViewService'
+import { preserveLocalScriptVersions } from './scripting/trust/localScriptUpgrade'
 import { showMarkdown } from './scripting/formModal'
 import { SCRIPT_API_DOCS } from './scripting/apiDocs'
 import { SCRIPT_VIEW_DOCS } from './scripting/view/viewDocs'
@@ -300,6 +301,8 @@ export default class AbelePlugin extends Plugin {
       } // Ensure process is defined for Node.js compatibility
 
       await startupStepAsync('settings', () => AbeleConfig.getInstance().loadSettings())
+      // Before either sync host can write: migrate execution decisions, not received bytes.
+      await startupStepAsync('local script approvals', () => preserveLocalScriptVersions(this.app))
       // Settings were just replaced wholesale; anything resolving an agent must see the new set.
       startupStep('agents', () => AgentRegistry.getInstance().notifyConfigReloaded())
 

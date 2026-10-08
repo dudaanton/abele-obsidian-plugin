@@ -47,10 +47,13 @@
           </template>
           <template #actions>
             <Icon
-              v-if="verdictOf(script) !== 'confirmed'"
               class="abele-script-review-action"
               icon="shield-check"
-              tooltip="It changed without being written on this device: look at it and confirm it"
+              :tooltip="
+                verdictOf(script) !== 'confirmed'
+                  ? 'It changed without being written on this device: look at it and confirm it'
+                  : 'Review execution trust on this device without running the script'
+              "
               @click="review(script)"
             />
             <Icon icon="play" tooltip="Run this script now" @click="run(script)" />
@@ -86,6 +89,7 @@
 <script setup lang="ts">
 import { computed, ref } from 'vue'
 import { nanoid } from 'nanoid'
+import { Notice } from 'obsidian'
 import Section from '../../obsidian/Section.vue'
 import Setting from '../../obsidian/Setting.vue'
 import Input from '../../obsidian/Input.vue'
@@ -164,7 +168,9 @@ const verdictOf = (script: ParsedScript) => {
 }
 
 const review = (script: ParsedScript) => {
-  void ScriptService.getInstance().review(script)
+  void ScriptService.getInstance()
+    .review(script)
+    .catch((error) => new Notice(error instanceof Error ? error.message : String(error)))
 }
 
 const run = (script: ParsedScript) => {

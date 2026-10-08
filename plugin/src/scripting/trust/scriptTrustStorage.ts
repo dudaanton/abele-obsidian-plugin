@@ -2,12 +2,13 @@ import type { App } from 'obsidian'
 import { IndexedDbStateStore } from '@/sync/IndexedDbStateStore'
 import { storageOf } from '@/sync/vaultWrites'
 import { newStateId } from '@/sync/ids'
-import { CONNECTION_KEY } from '@/sync/connection'
+import { CONNECTION_KEY, inspectConnection } from '@/sync/connection'
 import { LEDGER_KEY } from '@/sync/ledgerId'
 import { ScriptProvenance, type ScriptBinding } from './ScriptProvenance'
 import { assertCurrentScriptConnection } from './scriptConnection'
 import { ScriptRevision } from './ScriptRevision'
 import { assertNoScriptContextHold, SCRIPT_CONTEXT_HOLD_FILE } from './scriptContextHold'
+import { localScriptVersions } from './localScriptUpgrade'
 
 export const SCRIPT_SENTINEL = '.abele-script-managed'
 export const SCRIPT_TRUST_KEY = 'abele-script-provenance'
@@ -17,6 +18,66 @@ interface Descriptor {
 }
 const database = (id: string) => `abele-script-provenance-${id}`
 const revisions = new Map<string, ScriptRevision>()
+
+export class ScriptTrustRecoveryRequired extends Error {
+  constructor(message: string) {
+    super(
+      `${message}. Review this script under Settings → Scripts → Library; if sync is connected, disconnect it first, then review and reconnect.`
+    )
+    this.name = 'ScriptTrustRecoveryRequired'
+  }
+}
+
+/** Explicit recovery only, with sync stopped. A marker is never itself an approval. */
+export async function recoverScriptProvenance(
+  app: App,
+  review: (binding: ScriptBinding) => Promise<boolean>,
+  factory: IDBFactory = window.indexedDB
+) {
+  const storage = storageOf(app)
+  assertNoScriptContextHold(storage)
+  if (!storage || (await app.vault.adapter.exists(SCRIPT_CONTEXT_HOLD_FILE)))
+    throw new Error('Script execution blocked while a protected context is isolated')
+  const inspected = inspectConnection(storage)
+  const c = inspected.connection
+  if (inspected.damaged.length || c.serverUrl || c.enrolledUrl || c.vaultId || c.deviceId)
+    throw new Error('Disconnect sync before reviewing script trust recovery, then reconnect')
+  const id = newStateId()
+  const value: Descriptor = {
+    id,
+    binding: {
+      localVault: id,
+      endpoint: 'local:',
+      vaultId: 'local',
+      principal: 'local',
+      facet: 'personal',
+      grantId: null,
+    },
+  }
+  const previous = storage.loadLocalStorage(SCRIPT_TRUST_KEY)
+  const context = JSON.stringify([previous, storage.loadLocalStorage(CONNECTION_KEY)])
+  if (!(await review(value.binding))) throw new Error('Script recovery approval was declined')
+  assertNoScriptContextHold(storage)
+  if (
+    (await app.vault.adapter.exists(SCRIPT_CONTEXT_HOLD_FILE)) ||
+    context !==
+      JSON.stringify([
+        storage.loadLocalStorage(SCRIPT_TRUST_KEY),
+        storage.loadLocalStorage(CONNECTION_KEY),
+      ])
+  )
+    throw new Error('Script connection changed while its recovery approval was open')
+  // Retain the old descriptor and database for diagnosis; never delete another path's evidence.
+  storage.saveLocalStorage(`abele-script-provenance-retired:${id}`, previous)
+  storage.saveLocalStorage(SCRIPT_TRUST_KEY, value)
+  if (JSON.stringify(storage.loadLocalStorage(SCRIPT_TRUST_KEY)) !== JSON.stringify(value))
+    throw new Error('Script provenance descriptor was not persisted')
+  await app.vault.adapter.writeBinary(
+    SCRIPT_SENTINEL,
+    new TextEncoder().encode('Managed script provenance required\n').buffer as ArrayBuffer
+  )
+  return open(value, factory, true)
+}
 
 function descriptor(raw: unknown): Descriptor {
   if (!raw || typeof raw !== 'object') throw new Error('Script provenance descriptor is missing')
@@ -83,7 +144,20 @@ export async function activateScriptProvenance(
     SCRIPT_SENTINEL,
     new TextEncoder().encode('Managed script provenance required\n').buffer as ArrayBuffer
   )
-  return open(value, factory, fresh)
+  const trust = await open(value, factory, fresh)
+  try {
+    if (binding.facet === 'personal') {
+      for (const version of localScriptVersions(app)) {
+        await trust.provenance.preserveLocalVersion(version.path, version.sha)
+        if (!(await trust.provenance.lookup(version.path)))
+          await trust.provenance.record(version.path, `local:${newStateId()}`)
+      }
+    }
+    return trust
+  } catch (error) {
+    trust.store.close()
+    throw error
+  }
 }
 
 /** Absence is local trust ONLY when there is no descriptor, connection, ledger or recovery marker. */
@@ -101,11 +175,17 @@ export async function scriptTrustFor(app: App, factory: IDBFactory = window.inde
       ledger?.stateId ||
       (await app.vault.adapter.exists(SCRIPT_SENTINEL))
     ) {
-      throw new Error('Script provenance is missing; execution blocked until recovery')
+      throw new ScriptTrustRecoveryRequired(
+        'Script provenance is missing; execution blocked until recovery'
+      )
     }
     return null
   }
-  const value = descriptor(raw)
-  assertCurrentScriptConnection(storage, value.binding)
-  return open(value, factory, false)
+  try {
+    const value = descriptor(raw)
+    assertCurrentScriptConnection(storage, value.binding)
+    return await open(value, factory, false)
+  } catch (error) {
+    throw new ScriptTrustRecoveryRequired(error instanceof Error ? error.message : String(error))
+  }
 }
