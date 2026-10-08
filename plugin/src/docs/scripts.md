@@ -75,8 +75,14 @@ allowed in 1.x. With foreign-script checking armed, only the approved versions a
 with it off, the existing local scripts keep their previous permission. This snapshot is taken
 before either sync host starts, never from an already managed vault's current files. Explicit
 local authoring also records its exact bytes; native create/modify events are not authoring proof.
-Those local versions keep working across personal enrolment and reconnects. Received versions
-and scoped/shared installations never acquire permission from this migration.
+Those local versions keep working across personal enrolment and reconnects. Exact device-local
+1.x approvals also remain valid when a provenance descriptor predates this migration snapshot.
+After a downgrade and Disconnect, a healthy retained personal store may have genuinely
+unmanaged local scripts: paths with neither a managed receipt (even in another binding) nor a
+pending/retired hold. Those scripts retain the older device-local checking policy and need no
+new review just because a dormant personal descriptor exists. Exact versions run this way are
+remembered for a later personal reconnect. Missing stores, incomplete connections, managed
+received versions and scoped/shared installations do not acquire this unmanaged fallback.
 
 Other personal managed scripts use **until confirmed**: run one manually from the command
 palette, or choose the shield action under **Settings → Scripts → Library** to review without

@@ -118,6 +118,15 @@ export class ScriptProvenance {
     if ((await this.meta.getMeta(retiredKey(path))) !== value)
       throw new Error('Script retirement was not persisted')
   }
+  /** Unknown in this binding is not necessarily unmanaged: another binding or a retired
+   * spelling still proves the path has received managed effects. Never grant local fallback. */
+  async hasSourceEvidence(path: string): Promise<boolean> {
+    return (
+      (await this.meta.getMeta(key(path))) !== null ||
+      (await this.meta.getMeta(retiredKey(path))) !== null
+    )
+  }
+
   async lookup(path: string): Promise<ManagedScript | null> {
     const value = await this.stored(path)
     if (!value) return null

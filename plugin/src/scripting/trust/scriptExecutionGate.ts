@@ -10,10 +10,14 @@ import {
 import { newStateId } from '@/sync/ids'
 import { storageOf } from '@/sync/vaultWrites'
 import { assertNoScriptContextHold } from './scriptContextHold'
+import { legacyScriptPolicy } from './legacyScriptPolicy'
+import { TRUST_KEY } from '../ScriptTrust'
+import { rememberLocalScriptVersion } from './localScriptUpgrade'
 import {
   assertCurrentScriptConnection,
   hasScriptConnection,
   scriptConnectionKey,
+  isDisconnectedPersonalScriptContext,
 } from './scriptConnection'
 import {
   sameBinding,
@@ -34,7 +38,8 @@ export interface ScriptApprovalRequest {
 export type ScriptConfirmation = (request: ScriptApprovalRequest) => Promise<boolean>
 interface CheckedPermission {
   binding: ScriptBinding
-  fileId: string
+  fileId: string | null
+  legacyPolicy?: string
   generation: number
   provenance: ScriptProvenance
   connection: string
@@ -50,6 +55,11 @@ export function assertScriptContext(app: App, script: ParsedScript): void {
     permission.provenance.assertRevision(script.path, permission.generation)
     if (permission.connection !== scriptConnectionKey(storageOf(app)))
       throw new Error('Script connection changed during the execution check')
+    if (
+      permission.legacyPolicy !== undefined &&
+      permission.legacyPolicy !== (JSON.stringify(app.loadLocalStorage(TRUST_KEY)) ?? 'null')
+    )
+      throw new Error('Local script approvals changed during the execution check')
   }
   const expected = permission?.binding ?? null
   const current = storageOf(app)?.loadLocalStorage(SCRIPT_TRUST_KEY) as {
@@ -138,7 +148,18 @@ async function checkedScriptForExecution(
       let initialGeneration = trust.provenance.capture(path)
       let identity = await trust.provenance.lookup(path)
       trust.provenance.assertRevision(path, initialGeneration)
-      if (!identity && confirm && trust.provenance.binding.facet === 'personal') {
+      const legacy = legacyScriptPolicy(app, path, sha)
+      const offlineUnmanaged =
+        !identity &&
+        isDisconnectedPersonalScriptContext(storageOf(app), trust.provenance.binding) &&
+        !(await trust.provenance.hasSourceEvidence(path))
+      const localFallback = offlineUnmanaged && legacy.verdict === 'confirmed'
+      trust.provenance.assertRevision(path, initialGeneration)
+      if (offlineUnmanaged && legacy.verdict === 'refused')
+        throw new Error("This script was refused by this device's local source policy")
+      if (offlineUnmanaged && !localFallback && !confirm)
+        throw new Error('This exact local script version needs device-local approval')
+      if (!identity && !localFallback && confirm && trust.provenance.binding.facet === 'personal') {
         const proposed = { binding: trust.provenance.binding, fileId: `local:${newStateId()}` }
         const accepted = await confirm({
           path,
@@ -168,18 +189,23 @@ async function checkedScriptForExecution(
         initialGeneration = trust.provenance.capture(path)
         identity = await trust.provenance.lookup(path)
       }
-      if (!identity?.fileId)
+      if (!localFallback && !identity?.fileId)
         throw new Error(
           'Script provenance is unknown; execution blocked. Review this script under Settings → Scripts → Library; pending sync writes must settle first'
         )
-      if (identity.binding.facet === 'scoped')
+      if (trust.provenance.binding.facet === 'scoped')
         throw new Error('Shared and agent connections refuse script execution')
-      const alreadyApproved = await trust.provenance.approved(identity, sha)
+      // The older device-local EXACT approval remains a decision even when a managed
+      // descriptor already existed before the newer upgrade snapshot was introduced.
+      if (!localFallback && legacy.exact) {
+        await trust.provenance.approve(path, identity!, sha)
+      }
+      const alreadyApproved = localFallback || (await trust.provenance.approved(identity!, sha))
       trust.provenance.assertRevision(path, initialGeneration)
       if (!alreadyApproved) {
         if (!confirm) throw new Error('This exact script version needs device-local approval')
         trust.store.close()
-        const accepted = await confirm({ path, sha, source: decode(bytes), identity })
+        const accepted = await confirm({ path, sha, source: decode(bytes), identity: identity! })
         if (!accepted) throw new Error('This exact script version needs device-local approval')
         if (!equal(bytes, await read()))
           throw new Error('Script changed while its approval was open')
@@ -192,12 +218,12 @@ async function checkedScriptForExecution(
         trust.provenance.assertRevision(path, initialGeneration)
         if (
           !current ||
-          current.fileId !== identity.fileId ||
-          !sameBinding(current.binding, identity.binding)
+          current.fileId !== identity!.fileId ||
+          !sameBinding(current.binding, identity!.binding)
         ) {
           throw new Error('Script identity or policy changed while its approval was open')
         }
-        await trust.provenance.approve(path, identity, sha)
+        await trust.provenance.approve(path, identity!, sha)
       }
       if (!equal(bytes, await read())) {
         throw new Error('Script changed during the execution check; run it again')
@@ -215,17 +241,28 @@ async function checkedScriptForExecution(
         const generation = initialGeneration
         live.provenance.assertRevision(path, generation)
         const current = await live.provenance.lookup(path)
-        if (
+        if (localFallback) {
+          if (
+            current ||
+            (await live.provenance.hasSourceEvidence(path)) ||
+            legacy.key !== legacyScriptPolicy(app, path, sha).key
+          )
+            throw new Error(
+              'Script provenance or local approval changed during the execution check'
+            )
+        } else if (
           !current ||
-          current.fileId !== identity.fileId ||
+          current.fileId !== identity!.fileId ||
           !(await live.provenance.approved(current, sha))
         ) {
           throw new Error('Script provenance changed during the execution check')
         }
         live.provenance.assertRevision(path, generation)
+        if (localFallback) rememberLocalScriptVersion(app, path, sha)
         permission = {
           binding: { ...live.provenance.binding },
-          fileId: current.fileId!,
+          fileId: current?.fileId ?? null,
+          ...(localFallback ? { legacyPolicy: legacy.key } : {}),
           generation,
           provenance: live.provenance,
           connection,

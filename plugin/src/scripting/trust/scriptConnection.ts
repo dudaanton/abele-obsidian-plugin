@@ -19,6 +19,34 @@ export function scriptConnectionKey(storage: LocalStorage | null): string {
   ])
 }
 
+/** A retained personal installation after Disconnect, not a partial/unknown connection or
+ * the empty namespace created by explicit lost-store recovery. */
+export function isDisconnectedPersonalScriptContext(
+  storage: LocalStorage | null,
+  binding: ScriptBinding
+): boolean {
+  const raw = storage?.loadLocalStorage(CONNECTION_KEY) as Record<string, unknown> | null
+  if (
+    !raw ||
+    !storage ||
+    binding.facet !== 'personal' ||
+    binding.grantId !== null ||
+    binding.endpoint === 'local:'
+  )
+    return false
+  const inspected = inspectConnection(storage)
+  const c = inspected.connection
+  return (
+    !inspected.damaged.length &&
+    !c.serverUrl &&
+    !c.enrolledUrl &&
+    !c.vaultId &&
+    !c.deviceId &&
+    (raw.facet === undefined || raw.facet === 'personal') &&
+    raw.grantId == null
+  )
+}
+
 /** Read the real connection, not the descriptor last written by an engine that may be old. */
 export function hasScriptConnection(storage: LocalStorage | null): boolean {
   const raw = storage?.loadLocalStorage(CONNECTION_KEY) as { vaultId?: unknown } | null

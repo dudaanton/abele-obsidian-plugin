@@ -22,6 +22,16 @@ export function localScriptVersions(app: App): LocalScriptVersion[] {
   )
 }
 
+/** Exact versions explicitly authored here or allowed as positively unmanaged offline code. */
+export function rememberLocalScriptVersion(app: App, path: string, sha: string): void {
+  const current = localScriptVersions(app)
+  if (current.some((v) => v.path === path && v.sha === sha)) return
+  const versions = [...current.filter((v) => v.path !== path), { path, sha }]
+  app.saveLocalStorage(LOCAL_SCRIPT_UPGRADE_KEY, versions)
+  if (JSON.stringify(app.loadLocalStorage(LOCAL_SCRIPT_UPGRADE_KEY)) !== JSON.stringify(versions))
+    throw new Error('Local script approval was not persisted')
+}
+
 /** Run before starting ANY sync host. Once managed, disk bytes cannot bootstrap authority. */
 export async function preserveLocalScriptVersions(app: App): Promise<void> {
   assertNoScriptContextHold(app)
