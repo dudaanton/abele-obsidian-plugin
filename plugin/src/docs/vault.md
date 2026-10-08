@@ -202,13 +202,22 @@ nothing. Messages and unrelated metadata are retained; legacy JSON is encoded as
 `ChatStorage.prepareDiscussion` is the mandatory gate for direct session loads, tab restoration,
 discovery, migrations and writes. Its metadata transform compares exact revisions, rereads a
 concurrently changed file, and publishes nothing from a failed normalization. Storage serializes
-preparation and writes on the same file. A changed incoming self-located identity supersedes
-local observations; obsolete session writes are fenced until the whole snapshot is reconciled.
+preparation and writes on the same file. The gate returns the exact verified bytes as well as
+the parsed snapshot; a checked discussion append or rewrite compares those bytes, never a
+later unverified read. Background summary backfill and manual note attach/detach use this same
+gated, revision-checked metadata transform, including for anchored `kind: chat` and legacy JSON.
+A changed incoming self-located identity supersedes local observations; obsolete session writes
+are fenced until the whole snapshot is reconciled.
 Concurrent conversation edits are conflicts, not an identity tie-break.
 
 Only disposable, revision-tagged `path → identity` and `ID → set of paths` indexes are retained.
-Old local `abele-discussion-locations` and aliases are ignored. ID opening/deletion scans files
-and validates the exact candidate; there is no filename fallback and no basename alias.
+Old local `abele-discussion-locations` and aliases are ignored. A metadata-only inventory reads
+each changed file revision once and retains self-declarations for duplicate detection. Vault
+create/modify/delete/rename events invalidate affected observations; unchanged files require no
+transcript rereads. Cold inventory/discovery is linear in file count, and a warm discussion save
+reads only its own file. ID opening/deletion checks the inventory and validates the exact
+candidate; file-link openers address the supplied file through the gate, never its basename.
+There is no filename fallback and no basename alias.
 Duplicate self-declared owners are conflicts, never first-writer-wins. Legacy discussions can
 retain their stored or historical basename ID only at the old canonical marker path (including
 an old path established by a trusted rename event). A legacy file with a stored ID can be
@@ -217,9 +226,11 @@ the original owner. Other legacy files require explicit identity resolution; nei
 nor local storage establishes ownership. Unresolved legacy/duplicate identity does not hide
 stored attention evidence: it remains visible as incomplete, without a published ID binding.
 
-A trusted rename normalizes at the old logical path first, then commits the retained ID at its
-new location. Only exact paths select sessions. Vault deletion invalidates and closes only the
-deleted file's owner, without flushing it back to disk. **Deleting an original leaves its markers
+A trusted rename attaches its old logical path synchronously to the file's pending preparation,
+including when discovery or a save is already reading it. Preparation normalizes at that old
+logical path first, then commits the retained ID at the new location. Only exact paths select
+sessions. Vault deletion invalidates and closes only the deleted file's owner, without flushing
+it back to disk. **Deleting an original leaves its markers
 broken**; a remaining copy cannot open or be deleted through them. Explicit restoration of the
 same persisted identity can restore those links. These identifiers travel in chat files, not
 settings or secrets.

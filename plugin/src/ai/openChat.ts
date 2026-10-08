@@ -227,17 +227,9 @@ export async function openSelectionLink(href: string): Promise<void> {
  */
 export async function openChat(file: TFile, selectionReturn?: () => boolean): Promise<void> {
   if (selectionReturn && !selectionReturn()) return
-  const comments = CommentService.getInstance()
-  if (comments.isCommentFile(file)) {
-    // In the sidebar, as its marker would open it — not turned into a full chat.
-    const shown = selectionReturn
-      ? await comments.showInSidebar(file.basename, selectionReturn)
-      : await comments.showInSidebar(file.basename)
-    if (shown) return
-    if (selectionReturn) return
-    await comments.openFile(file)
-    return
-  }
+  // File links address this exact file. ChatService classifies committed metadata through
+  // storage preparation and hands discussions to their owner; basename marker lookup is not
+  // a file opener, including for same-basename copies already discovered outside the folder.
   const chatService = ChatService.getInstance()
   if (selectionReturn) await chatService.openChatFile(file, selectionReturn)
   else await chatService.openChatFile(file)

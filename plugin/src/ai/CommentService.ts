@@ -341,6 +341,7 @@ export class CommentService implements CommentInfoSource {
   }
 
   async handleConversationRename(file: TFile, oldPath: string): Promise<void> {
+    ChatStorage.getInstance().noteDiscussionRename(file, oldPath)
     // Only the actual old/new path can select an owner. A matching basename is unrelated.
     const owner = this.sessionOnFile(file.path) ?? this.sessionOnFile(oldPath)
     const pending = this.loading.get(oldPath)

@@ -3,7 +3,8 @@ import { AbeleConfig } from '@/services/AbeleConfig'
 import { GlobalStore } from '@/stores/GlobalStore'
 import { OpenAIClient } from './client/OpenAIClient'
 import type { ModelConfig, ToolDefinition } from './client'
-import { parseChat, serializeMetadata } from './ChatLog'
+import { parseChatMetadata, serializeMetadata } from './ChatLog'
+import { ChatStorage } from './ChatStorage'
 import { ChatService } from './ChatService'
 import { activeBranch, conversationLines, renderLines, type ChatLine } from './chatText'
 import { DEFAULT_AI_SETTINGS } from './types'
@@ -79,7 +80,7 @@ export async function backfillSummary(path: string, signal: AbortSignal): Promis
   const file = app.vault.getAbstractFileByPath(path)
   if (!(file instanceof TFile)) return null
 
-  const parsed = parseChat(await app.vault.read(file))
+  const parsed = await ChatStorage.getInstance().loadChat(file)
   if (parsed.metadata?.type !== 'abele-chat' || parsed.metadata.summary) {
     return parsed.metadata?.summary ?? null
   }
@@ -90,10 +91,24 @@ export async function backfillSummary(path: string, signal: AbortSignal): Promis
 
   // Read again right before writing: the request took seconds, and a chat that moved on in the
   // meantime has a newer metadata record that this one must not be appended behind.
-  const latest = parseChat(await app.vault.read(file)).metadata
-  if (!latest || latest.summary) return latest?.summary ?? null
-  await app.vault.append(file, serializeMetadata({ ...latest, summary }))
-  return summary
+  let recorded: string | null = null
+  await ChatStorage.getInstance().transformDiscussion(
+    file,
+    (content) => {
+      const latest = parseChatMetadata(content)
+      if (!latest || latest.summary || signal.aborted) {
+        recorded = latest?.summary ?? null
+        return content
+      }
+      recorded = summary
+      return content + serializeMetadata({ ...latest, summary })
+    },
+    () => {
+      if (service.getSessionByFile(path))
+        throw new Error('The chat was opened. Summarize it through its session.')
+    }
+  )
+  return recorded
 }
 
 /**

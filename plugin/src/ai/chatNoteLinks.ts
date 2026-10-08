@@ -79,16 +79,25 @@ async function rewriteLinks(
   const { app } = GlobalStore.getInstance()
   const file = app.vault.getAbstractFileByPath(chatPath)
   if (!(file instanceof TFile)) return false
-  const metadata = parseChatMetadata(await app.vault.read(file))
-  if (metadata?.type !== 'abele-chat') return false
-  const current = metadata.touched ?? []
-  const next = change(current)
-  if (sameLinks(next, current)) return false
-  await app.vault.append(
+  let result: { notes: TouchedNote[]; recap?: string; agentId?: string } | undefined
+  await storage.transformDiscussion(
     file,
-    serializeMetadata({ ...metadata, touched: next.length ? next : undefined })
+    (content) => {
+      const metadata = parseChatMetadata(content)
+      if (metadata?.type !== 'abele-chat') return content
+      const current = metadata.touched ?? []
+      const next = change(current)
+      if (sameLinks(next, current)) return content
+      result = { notes: next, recap: metadata.recap, agentId: metadata.agentId }
+      return content + serializeMetadata({ ...metadata, touched: next.length ? next : undefined })
+    },
+    () => {
+      if (ChatService.getInstance().getSessionByFile(chatPath))
+        throw new Error('The chat was opened. Update its links through the session.')
+    }
   )
-  storage.linkNotes(chatPath, next, metadata.recap, metadata.agentId)
+  if (!result) return false
+  storage.linkNotes(chatPath, result.notes, result.recap, result.agentId)
   return true
 }
 

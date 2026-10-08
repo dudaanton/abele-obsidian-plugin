@@ -2,7 +2,7 @@ import { GlobalStore } from '@/stores/GlobalStore'
 import { AgentsService } from '@/agents/AgentsService'
 import { mergeAttentionTruth, settledAttention } from '@/agents/attention'
 import { AbeleConfig } from '@/services/AbeleConfig'
-import { TFile } from 'obsidian'
+import { TFile, TFolder, type EventRef, type Vault } from 'obsidian'
 import { toRaw } from 'vue'
 import { nanoid } from 'nanoid'
 import dayjs from 'dayjs'
@@ -50,6 +50,24 @@ function snapshotTimes(snapshot: ChatSnapshot) {
   return { firstMessageAt: first, lastMessageAt: last, messageTimesVersion: MESSAGE_TIMES_VERSION }
 }
 
+interface PreparedDiscussion {
+  snapshot: ParsedChat
+  identity?: string
+  revision: string
+  /** Transient exact verified bytes, never retained by the lookup index. */
+  content: string
+}
+interface DiscussionObservation {
+  id?: string
+  revision: string
+  file: TFile
+  mtime: number
+  size: number
+  discussion: boolean
+  normalized: boolean
+  failed?: boolean
+}
+
 export class ChatStorage {
   private static instance: ChatStorage | null = null
 
@@ -61,13 +79,182 @@ export class ChatStorage {
   }
 
   private selectionIdentities = new Map<string, string | undefined>()
-  private readonly discussionPaths = new Map<
-    string,
-    { id: string; revision: string; file: TFile; mtime: number; size: number }
-  >()
+  private readonly discussionPaths = new Map<string, DiscussionObservation>()
   private readonly discussionIds = new Map<string, Set<string>>()
   private readonly discussionWrites = new WeakMap<TFile, Promise<unknown>>()
+  private readonly discussionRenames = new WeakMap<TFile, { logicalPath: string }>()
+  private readonly discussionObservedPaths = new WeakMap<TFile, string>()
+  private readonly discussionDirty = new Set<string>()
+  private discussionVault?: Vault
+  private discussionEvents: EventRef[] = []
+  private discussionIndexComplete = false
+  private discussionScanning?: Promise<void>
   private discussionRevision = 0
+
+  private bindDiscussionVault(): void {
+    const vault = GlobalStore.getInstance().app.vault
+    if (this.discussionVault === vault) return
+    for (const event of this.discussionEvents) this.discussionVault?.offref(event)
+    this.discussionVault = vault
+    this.invalidateDiscussion()
+    const changed = (file: import('obsidian').TAbstractFile) => {
+      if (this.discussionVault === vault && file instanceof TFile && file.extension === 'abchat')
+        this.invalidateDiscussion(file.path)
+    }
+    this.discussionEvents = [
+      vault.on('create', changed),
+      vault.on('modify', changed),
+      vault.on('delete', changed),
+      vault.on('rename', (file, oldPath) => {
+        if (this.discussionVault !== vault) return
+        if (file instanceof TFile && file.extension === 'abchat')
+          this.noteDiscussionRename(file, oldPath)
+        else if (file instanceof TFolder) {
+          for (const child of vault.getFiles())
+            if (child.extension === 'abchat' && child.path.startsWith(`${file.path}/`))
+              this.noteDiscussionRename(child, oldPath + child.path.slice(file.path.length))
+        }
+      }),
+    ]
+  }
+
+  /** Provenance is attached synchronously, before a rename handler awaits an existing load. */
+  noteDiscussionRename(file: TFile, oldPath: string): void {
+    this.bindDiscussionVault()
+    file = toRaw(file)
+    if (file.path === oldPath) return
+    if (!this.discussionRenames.has(file))
+      this.discussionRenames.set(file, { logicalPath: canonicalDiscussionPath(oldPath) })
+    this.invalidateDiscussion(oldPath)
+    this.invalidateDiscussion(file.path)
+  }
+
+  private forgetDiscussionObservation(path: string): void {
+    const entry = this.discussionPaths.get(path)
+    this.discussionPaths.delete(path)
+    if (entry?.id) {
+      const paths = this.discussionIds.get(entry.id)
+      paths?.delete(path)
+      if (!paths?.size) this.discussionIds.delete(entry.id)
+    }
+  }
+
+  private recordDiscussionObservation(path: string, entry: DiscussionObservation): void {
+    const previous = this.discussionObservedPaths.get(entry.file)
+    if (previous && previous !== path) this.forgetDiscussionObservation(previous)
+    this.discussionObservedPaths.set(entry.file, path)
+    this.forgetDiscussionObservation(path)
+    this.discussionPaths.set(path, entry)
+    if (entry.id) {
+      const paths = this.discussionIds.get(entry.id) ?? new Set<string>()
+      paths.add(path)
+      this.discussionIds.set(entry.id, paths)
+    }
+    this.discussionDirty.delete(path)
+  }
+
+  private observationCurrent(path: string, file: TFile, entry?: DiscussionObservation): boolean {
+    return (
+      !!entry &&
+      entry.file === toRaw(file) &&
+      file.path === path &&
+      entry.mtime === file.stat.mtime &&
+      entry.size === file.stat.size &&
+      !this.discussionDirty.has(path)
+    )
+  }
+
+  /** Metadata-only inventory: one read per changed revision, with no sessions or ownership tie-break. */
+  private async refreshDiscussionIndex(inventory = false): Promise<void> {
+    this.bindDiscussionVault()
+    if (this.discussionScanning) {
+      await this.discussionScanning
+      return this.refreshDiscussionIndex(inventory)
+    }
+    if (this.discussionIndexComplete && !inventory && !this.discussionDirty.size) return
+    const scan = async () => {
+      const vault = GlobalStore.getInstance().app.vault
+      if (inventory || !this.discussionIndexComplete) {
+        const files = vault.getFiles().filter((file) => file.extension === 'abchat')
+        const present = new Set(files.map((file) => file.path))
+        for (const path of this.discussionPaths.keys())
+          if (!present.has(path)) this.forgetDiscussionObservation(path)
+        for (const file of files)
+          if (!this.observationCurrent(file.path, file, this.discussionPaths.get(file.path)))
+            this.discussionDirty.add(file.path)
+      }
+      while (this.discussionDirty.size) {
+        const path = this.discussionDirty.values().next().value!
+        this.discussionDirty.delete(path)
+        const file = vault.getAbstractFileByPath(path)
+        if (!(file instanceof TFile) || file.extension !== 'abchat') {
+          this.forgetDiscussionObservation(path)
+          continue
+        }
+        const mtime = file.stat.mtime
+        const size = file.stat.size
+        let data
+        try {
+          data = parseChatMetadata(await vault.read(file))
+        } catch (error) {
+          this.forgetDiscussionObservation(path)
+          this.discussionDirty.add(path)
+          throw error
+        }
+        if (GlobalStore.getInstance().app.vault !== vault)
+          throw new Error('The discussion vault changed during discovery.')
+        if (
+          file.path !== path ||
+          file.stat.mtime !== mtime ||
+          file.stat.size !== size ||
+          this.discussionDirty.has(path)
+        ) {
+          this.discussionDirty.add(file.path)
+          this.forgetDiscussionObservation(path)
+          continue
+        }
+        const discussion = isDiscussion(data)
+        let id: string | undefined
+        let normalized = false
+        let failed = false
+        if (discussion && data) {
+          try {
+            if (
+              data.commentId &&
+              data.commentLocation &&
+              canonicalDiscussionPath(data.commentLocation) === path
+            ) {
+              id = data.commentId
+              normalized = true
+            } else if (!data.commentLocation) {
+              const historical = data.commentId ?? file.basename
+              if (`${ChatStorage.commentsFolder()}/${historical}.abchat` === path) id = historical
+            }
+          } catch {
+            failed = true
+          }
+        }
+        this.recordDiscussionObservation(path, {
+          id,
+          normalized,
+          discussion,
+          failed,
+          file: toRaw(file),
+          mtime,
+          size,
+          revision: String(++this.discussionRevision),
+        })
+      }
+      this.discussionIndexComplete = true
+    }
+    const pending = scan()
+    this.discussionScanning = pending
+    try {
+      await pending
+    } finally {
+      if (this.discussionScanning === pending) this.discussionScanning = undefined
+    }
+  }
 
   /** A file reservation shared by preparation, discovery, rename and normal saves. */
   private async withDiscussionFile<T>(file: TFile, work: () => Promise<T>): Promise<T> {
@@ -86,30 +273,25 @@ export class ChatStorage {
     if (path === undefined) {
       this.discussionPaths.clear()
       this.discussionIds.clear()
+      this.discussionDirty.clear()
+      this.discussionIndexComplete = false
       return
     }
-    const entry = this.discussionPaths.get(path)
-    this.discussionPaths.delete(path)
-    if (entry) {
-      const paths = this.discussionIds.get(entry.id)
-      paths?.delete(path)
-      if (!paths?.size) this.discussionIds.delete(entry.id)
-    }
+    this.forgetDiscussionObservation(path)
+    this.discussionDirty.add(path)
   }
 
   discussionIdAt(path: string): string | undefined {
     const entry = this.discussionPaths.get(path)
     const file = GlobalStore.getInstance().app.vault.getAbstractFileByPath(path)
-    return entry &&
-      file === entry.file &&
-      entry.mtime === entry.file.stat.mtime &&
-      entry.size === entry.file.stat.size
+    return entry?.normalized && file instanceof TFile && this.observationCurrent(path, file, entry)
       ? entry.id
       : undefined
   }
 
   /** Synchronous UI hint only; authoritative opening/deletion uses findDiscussion. */
   discussionPathFor(id: string): string | undefined {
+    if (!this.discussionIndexComplete) return undefined
     const paths = this.discussionIds.get(id)
     if (paths?.size !== 1) return undefined
     const path = [...paths][0]
@@ -121,11 +303,16 @@ export class ChatStorage {
     file: TFile,
     oldLogicalPath?: string,
     options: { recover?: boolean } = {}
-  ): Promise<{ snapshot: ParsedChat; identity?: string; revision: string }> {
+  ): Promise<PreparedDiscussion> {
+    this.bindDiscussionVault()
+    if (oldLogicalPath) this.noteDiscussionRename(file, oldLogicalPath)
     return this.withDiscussionFile(file, () =>
       this.prepareDiscussionLocked(file, oldLogicalPath, options.recover ?? true)
     ).catch((error) => {
-      this.invalidateDiscussion(file.path)
+      if (error instanceof DiscussionIdentityConflict) {
+        const entry = this.discussionPaths.get(file.path)
+        if (entry) entry.failed = true
+      } else this.invalidateDiscussion(file.path)
       throw error
     })
   }
@@ -134,7 +321,8 @@ export class ChatStorage {
     file: TFile,
     oldLogicalPath?: string,
     recover = true
-  ): Promise<{ snapshot: ParsedChat; identity?: string; revision: string }> {
+  ): Promise<PreparedDiscussion> {
+    this.bindDiscussionVault()
     file = toRaw(file)
     const { app } = GlobalStore.getInstance()
     if (oldLogicalPath) this.invalidateDiscussion(oldLogicalPath)
@@ -153,11 +341,48 @@ export class ChatStorage {
       const snapshot = parseChat(previous)
       const metadata = snapshot.metadata
       if (!metadata) {
-        this.invalidateDiscussion(path)
-        return { snapshot, revision: String(++this.discussionRevision) }
+        this.recordDiscussionObservation(path, {
+          file,
+          revision: String(++this.discussionRevision),
+          mtime: file.stat.mtime,
+          size: file.stat.size,
+          discussion: false,
+          normalized: false,
+        })
+        return { snapshot, revision: String(++this.discussionRevision), content: previous }
       }
-      // A synced rename that already carries final self-location is normalized already.
-      const logical = metadata.commentLocation === path ? path : (oldLogicalPath ?? path)
+      if (isDiscussion(metadata)) await this.refreshDiscussionIndex()
+      if (file.path !== path) continue
+      // A forced candidate read can supersede an older observation before its modify event
+      // arrives. Record its self-declaration for conflict detection, not as an adopted owner.
+      let declaredId: string | undefined
+      if (isDiscussion(metadata)) {
+        if (
+          metadata.commentId &&
+          metadata.commentLocation &&
+          canonicalDiscussionPath(metadata.commentLocation) === path
+        )
+          declaredId = metadata.commentId
+        else if (!metadata.commentLocation) {
+          const historical = metadata.commentId ?? file.basename
+          if (`${ChatStorage.commentsFolder()}/${historical}.abchat` === path)
+            declaredId = historical
+        }
+      }
+      if (this.discussionPaths.get(path)?.id !== declaredId)
+        this.recordDiscussionObservation(path, {
+          id: declaredId,
+          revision: String(++this.discussionRevision),
+          file,
+          mtime: file.stat.mtime,
+          size: file.stat.size,
+          discussion: isDiscussion(metadata),
+          normalized: false,
+        })
+      // Use provenance attached to this file's active operation, not just a queued callback.
+      const rename = this.discussionRenames.get(file)
+      const logical =
+        metadata.commentLocation === path ? path : (rename?.logicalPath ?? oldLogicalPath ?? path)
       const markerPath = (id: string) => `${ChatStorage.commentsFolder()}/${id}.abchat`
       let legacyOwnerEstablished = false
       if (
@@ -165,14 +390,8 @@ export class ChatStorage {
         metadata.commentId &&
         markerPath(metadata.commentId) !== logical
       ) {
-        const original = app.vault.getAbstractFileByPath(markerPath(metadata.commentId))
-        if (original instanceof TFile) {
-          const declared = parseChatMetadata(await app.vault.read(original))
-          legacyOwnerEstablished =
-            isDiscussion(declared) &&
-            (!declared!.commentId || declared!.commentId === metadata.commentId) &&
-            (!declared!.commentLocation || declared!.commentLocation === original.path)
-        }
+        const original = this.discussionPaths.get(markerPath(metadata.commentId))
+        legacyOwnerEstablished = original?.id === metadata.commentId
       }
       const identity = await discussionIdentity(
         metadata,
@@ -181,21 +400,11 @@ export class ChatStorage {
         legacyOwnerEstablished
       )
       if (identity) {
-        // Conflicting self-declarations are errors, including owners not yet discovered locally.
-        for (const other of app.vault.getFiles()) {
-          if (other === file || other.extension !== 'abchat') continue
-          const data = parseChatMetadata(await app.vault.read(other))
-          if (
-            data?.commentId === identity &&
-            data.commentLocation &&
-            canonicalDiscussionPath(data.commentLocation) === canonicalDiscussionPath(other.path)
-          ) {
-            this.invalidateDiscussion(other.path)
-            throw new DiscussionIdentityConflict(
-              'Conflicting discussion owners. Resolve the files explicitly.'
-            )
-          }
-        }
+        const owners = this.discussionIds.get(identity)
+        if (owners && [...owners].some((owner) => owner !== path))
+          throw new DiscussionIdentityConflict(
+            'Conflicting discussion owners. Resolve the files explicitly.'
+          )
       }
       if (file.path !== path) continue
       if (toRaw(app.vault.getAbstractFileByPath(path)) !== file)
@@ -233,20 +442,30 @@ export class ChatStorage {
       // are checked at the storage boundary; the cache keeps no transcript.
       const revision = String(++this.discussionRevision)
       // No identity is visible until its exact revision was committed and read back.
-      this.invalidateDiscussion(path)
+      if (file.path !== path) continue
+      this.recordDiscussionObservation(path, {
+        id: identity,
+        revision,
+        file,
+        mtime: file.stat.mtime,
+        size: file.stat.size,
+        discussion: isDiscussion(metadata),
+        normalized: identity !== undefined,
+      })
       if (identity) {
-        this.discussionPaths.set(path, {
-          id: identity,
-          revision,
-          file,
-          mtime: file.stat.mtime,
-          size: file.stat.size,
-        })
-        const paths = this.discussionIds.get(identity) ?? new Set<string>()
-        paths.add(path)
-        this.discussionIds.set(identity, paths)
+        await this.refreshDiscussionIndex()
+        if ([...(this.discussionIds.get(identity) ?? [])].some((owner) => owner !== path))
+          throw new DiscussionIdentityConflict(
+            'Conflicting discussion owners. Resolve the files explicitly.'
+          )
       }
-      return { snapshot: parseChat(committed), identity, revision }
+      // Index reconciliation itself awaits I/O. A rename or sync replacement during that
+      // final await must be reread before returning the committed snapshot to an adopter.
+      if (file.path !== path || (await app.vault.read(file)) !== committed) continue
+      if (toRaw(app.vault.getAbstractFileByPath(path)) !== file)
+        throw new Error('The discussion was deleted while being prepared.')
+      if (this.discussionRenames.get(file) === rename) this.discussionRenames.delete(file)
+      return { snapshot: parseChat(committed), identity, revision, content: committed }
     }
     throw new Error('The discussion keeps changing. Reopen it after synchronization finishes.')
   }
@@ -260,13 +479,32 @@ export class ChatStorage {
     const prepared = await this.withDiscussionFile(file, () =>
       this.prepareDiscussionLocked(file, undefined, false)
     )
+    const write = async (verified: PreparedDiscussion) => {
+      check?.()
+      // Metadata append callbacks need a log, not JSON followed by an unreadable meta line.
+      // This migration is computed only after identity preparation and written against the
+      // original verified bytes, preserving every recognized message and metadata field.
+      const base =
+        verified.snapshot.version === 1 && verified.snapshot.metadata
+          ? serializeChat({ ...verified.snapshot, metadata: verified.snapshot.metadata })
+          : verified.content
+      const next = change(base)
+      if (next === base) return
+      await rewriteChat(
+        GlobalStore.getInstance().app,
+        file,
+        next,
+        () => check?.(),
+        verified.content
+      )
+    }
     if (!prepared.identity) {
-      await transformChat(GlobalStore.getInstance().app, file, change, check)
+      await write(prepared)
       return
     }
     await this.withDiscussionFile(file, async () => {
-      await this.prepareDiscussionLocked(file, undefined, false)
-      await transformChat(GlobalStore.getInstance().app, file, change, check)
+      const verified = await this.prepareDiscussionLocked(file, undefined, false)
+      await write(verified)
       await this.prepareDiscussionLocked(file)
     })
   }
@@ -280,12 +518,12 @@ export class ChatStorage {
       this.prepareDiscussionLocked(file, undefined, false)
     )
     if (!prepared.identity) {
-      await rewriteChat(GlobalStore.getInstance().app, file, content, check)
+      await rewriteChat(GlobalStore.getInstance().app, file, content, check, prepared.content)
       return
     }
     await this.withDiscussionFile(file, async () => {
-      await this.prepareDiscussionLocked(file, undefined, false)
-      await rewriteChat(GlobalStore.getInstance().app, file, content, check)
+      const verified = await this.prepareDiscussionLocked(file, undefined, false)
+      await rewriteChat(GlobalStore.getInstance().app, file, content, check, verified.content)
       await this.prepareDiscussionLocked(file)
     })
   }
@@ -293,17 +531,16 @@ export class ChatStorage {
   /** Rebuild disposable caches, then revalidate the exact candidate. Never fall back to names. */
   async findDiscussion(id: string): Promise<TFile | null> {
     const { app } = GlobalStore.getInstance()
-    const files = app.vault.getFiles().filter((file) => file.extension === 'abchat')
-    const present = new Set(files.map((file) => file.path))
-    for (const path of this.discussionPaths.keys())
-      if (!present.has(path)) this.invalidateDiscussion(path)
-    for (const file of files) {
+    await this.refreshDiscussionIndex(true)
+    for (const entry of [...this.discussionPaths.values()]) {
+      if (!entry.discussion || entry.normalized || entry.failed) continue
       try {
-        await this.prepareDiscussion(file)
+        await this.prepareDiscussion(entry.file)
       } catch {
-        this.invalidateDiscussion(file.path) /* Conflicted/ambiguous files grant no ownership. */
+        /* Conflicted/ambiguous revisions grant no ownership; unchanged conflicts need no repeated normalization. */
       }
     }
+    await this.refreshDiscussionIndex()
     const path = this.discussionPathFor(id)
     if (!path) return null
     const file = app.vault.getAbstractFileByPath(path)
@@ -364,7 +601,7 @@ export class ChatStorage {
           throw new Error('Discussion identity changed elsewhere. Reconcile before saving.')
         if (prepared.identity && matchesRevision && !matchesRevision(prepared.snapshot))
           throw new Error('This discussion changed elsewhere. Reconcile before saving.')
-        return this.savePreparedChat(snapshot, plan, existingFile)
+        return this.savePreparedChat(snapshot, plan, existingFile, prepared.content)
       })
     return this.savePreparedChat(snapshot, plan)
   }
@@ -372,7 +609,8 @@ export class ChatStorage {
   private async savePreparedChat(
     snapshot: ChatSnapshot,
     plan: ChatWritePlan,
-    existingFile?: TFile
+    existingFile?: TFile,
+    verifiedContent?: string
   ): Promise<TFile | null> {
     const { app } = GlobalStore.getInstance()
     let { metadata } = snapshot
@@ -383,7 +621,9 @@ export class ChatStorage {
     if (existingFile) {
       // A stale holder must never undo a disk-confirmed answer or acknowledgement, even
       // when its file-change notification has not reached the view yet.
-      const previous = await app.vault.read(existingFile)
+      // Never replace the verified revision with a newer unverified read. The protected
+      // write compares these exact bytes, including for a compaction or metadata-only append.
+      const previous = verifiedContent ?? (await app.vault.read(existingFile))
       assertChatTarget(previous)
       const disk = parseChat(previous)
       if (
@@ -977,6 +1217,9 @@ export class ChatStorage {
   }
 
   static destroy(): void {
+    const storage = ChatStorage.instance
+    if (storage)
+      for (const event of storage.discussionEvents) storage.discussionVault?.offref(event)
     ChatStorage.instance = null
   }
 }

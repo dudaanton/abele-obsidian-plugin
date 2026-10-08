@@ -358,13 +358,26 @@ describe('file-owned discussion identity', () => {
     const app = fixture()
     const storage = ChatStorage.getInstance()
     const paths = (storage as unknown as { discussionPaths: Map<string, unknown> }).discussionPaths
-    vi.spyOn(paths, 'set').mockImplementationOnce(() => {
-      throw new Error('Sample publication interruption')
+    const record = paths.set.bind(paths)
+    let interrupted = false
+    vi.spyOn(paths, 'set').mockImplementation((path, observation) => {
+      // Inventory now uses this same revision-tagged index. Interrupt the actual committed
+      // fork publication, not an earlier metadata-only observation of an unrelated owner.
+      if (
+        !interrupted &&
+        path === copy &&
+        (observation as { id?: string }).id?.startsWith('fork-v1-')
+      ) {
+        interrupted = true
+        throw new Error('Sample publication interruption')
+      }
+      return record(path, observation)
     })
     expect(
       await CommentService.getInstance().handOverToTab(id, app.vault.getFileByPath(copy)!)
     ).toBeNull()
     const fork = await normalized(app)
+    expect(interrupted).toBe(true)
     expect(CommentService.getInstance().sessions.size).toBe(0)
     restart()
     expect((await CommentService.getInstance().load(fork))?.currentChatFile.value?.path).toBe(copy)

@@ -389,6 +389,7 @@ export class AgentsService {
   }
   /** A changed file costs one read, not a vault scan on every streamed token. */
   async updateFile(file: TFile, oldPath?: string): Promise<void> {
+    if (oldPath) ChatStorage.getInstance().noteDiscussionRename(file, oldPath)
     if (oldPath && oldPath !== file.path) {
       // Move the only durable evidence before I/O; never publish a delete-then-rebuild gap.
       const previous = this.files.get(oldPath)
