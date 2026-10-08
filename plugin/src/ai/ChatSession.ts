@@ -3541,12 +3541,17 @@ export class ChatSession implements SummarizerHost, InterceptorHost, AnchorStora
     await this.restoreLoadedChat(file, result, { readOnly: true })
   }
 
-  async load(file: TFile): Promise<void> {
+  async load(
+    file: TFile,
+    resolveCommentIdentity?: (metadata: ChatMetadata | null) => string | undefined
+  ): Promise<void> {
     this.restoringAttention = true
     try {
       await this.reset()
       const result = await ChatStorage.getInstance().loadChat(file)
-      await this.restoreLoadedChat(file, result)
+      // Resolve the path before restoration may publish fields or save a legacy migration.
+      const commentId = resolveCommentIdentity?.(result.metadata)
+      await this.restoreLoadedChat(file, result, { commentId })
     } finally {
       this.restoringAttention = false
     }
@@ -3555,7 +3560,7 @@ export class ChatSession implements SummarizerHost, InterceptorHost, AnchorStora
   private async restoreLoadedChat(
     file: TFile,
     result: ParsedChat,
-    options: { keepLeaf?: string | null; readOnly?: boolean } = {}
+    options: { keepLeaf?: string | null; readOnly?: boolean; commentId?: string } = {}
   ): Promise<void> {
     this.allChatMessages = result.messages.map((m) => (m.id ? m : { ...m, id: nanoid() }))
     this.allInternalMessages = result.internalMessages || []
@@ -3568,6 +3573,8 @@ export class ChatSession implements SummarizerHost, InterceptorHost, AnchorStora
     this.chatIdentity = result.metadata?.chatId
     this.delegationWakeStopped = false
     this.commentIdentity =
+      options.commentId ??
+      (options.readOnly ? this.commentIdentity : undefined) ??
       result.metadata?.commentId ??
       (result.metadata?.kind === 'comment' || result.metadata?.anchor ? file.basename : undefined)
     this.bindingRecovery = result.metadata?.bindingRecovery

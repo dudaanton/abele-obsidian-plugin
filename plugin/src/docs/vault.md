@@ -201,9 +201,13 @@ is preferred. Copied files receive a fresh identity in their owner when explicit
 their own location is written on the next ordinary save.
 Legacy migration also covers anchored discussions already expanded to chats.
 The discussion owner rebuilds identity-to-location mappings from metadata and follows renames;
-closed conversations reopen through that owner after restart. Exact-file handover establishes the marker/declared location before binding any session,
-including tab restoration before background discovery. A copied discussion cannot be adopted
-under the original identity just because no location scan has run. Vault delete notifications
+closed conversations reopen through that owner after restart. One plain identity resolver owns `id → location` and `file path → id` mappings. Load,
+discovery, migration, rename and deletion all resolve the actual path through it; session
+adoption requires the same resolved path. Identity is bound before restoration can save a
+flat-history or permission migration, not as a save-side registration effect. Direct IDs are
+looked up before optional basename aliases; an alias is valid only when no file owns that name
+as its own ID and its basename identifies one recorded location. A copied discussion cannot
+be adopted under the original identity before discovery or after preference restoration. Vault delete notifications
 carry the full file path; only mappings, watchers and owners of that exact file are removed.
 Deleting a same-basename copy elsewhere neither closes nor stops its original, and deletion
 never flushes the deleted conversation back to disk. These identifiers travel with chat files,
