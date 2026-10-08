@@ -297,11 +297,15 @@ describe('a pinned project tree', () => {
 describe('a pinned file tab', () => {
   it('still promotes blob-style folder links and reads the folder at the resolved target', async () => {
     pin()
-    const { wrapper, request, model } = openTab(
+    let branch = TARGET
+    const { wrapper, request, model, onOpen } = openTab(
       'https://github.com/sample/project/blob/main/packages/core',
       {
         ...routes,
-        '/repos/sample/project/commits/main': { text: TARGET },
+        '/repos/sample/project/commits/main': () => ({ text: branch }),
+        [`/repos/sample/project/git/trees/${OTHER}`]: {
+          json: { tree: [{ path: 'packages/core', type: 'tree', sha: 'new-core' }] },
+        },
         [`/repos/sample/project/git/trees/${TARGET}`]: {
           json: { tree: [{ path: 'packages/core', type: 'tree', sha: 'core' }] },
         },
@@ -313,6 +317,27 @@ describe('a pinned file tab', () => {
     await vi.waitFor(() => expect(wrapper.find('.abele-github-folder').exists()).toBe(true))
     expect(model.screen.kind).toBe('tree')
     expect(wrapper.find('.abele-github-folder').text()).toContain('index.ts')
+    branch = OTHER
+    await wrapper
+      .find('.abele-github-header__actions [aria-label="Load again from GitHub"]')
+      .trigger('click')
+    await flushPromises()
+    expect(wrapper.find('.abele-github-folder').exists()).toBe(true)
+    expect(request.mock.calls.filter(([r]) => r.url.endsWith('/commits/main'))).toHaveLength(1)
+    pins().save({
+      origin: 'https://github.com',
+      owner: REPO.owner,
+      repo: REPO.repo,
+      enteredRef: 'changed-base',
+      baseSha: OTHER,
+    })
+    await flushPromises()
+    expect(wrapper.find('.abele-github-folder').exists()).toBe(true)
+    await wrapper.find('.abele-github-folder [data-path="packages/core/index.ts"]').trigger('click')
+    expect(onOpen).toHaveBeenLastCalledWith(
+      `https://github.com/sample/project/blob/${TARGET}/packages/core/index.ts`,
+      false
+    )
     expect(
       request.mock.calls
         .filter(([r]) => r.url.includes('/contents/packages/core'))

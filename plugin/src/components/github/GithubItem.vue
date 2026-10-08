@@ -424,7 +424,27 @@ const main = useLoad<ItemData>(async () => {
   const data = await read(
     currentTarget,
     (t) => {
-      if (active && generation === loadGeneration && currentClient === client()) promoted.value = t
+      if (active && generation === loadGeneration && currentClient === client()) {
+        promoted.value = t
+        // Promotion still belongs to the original blob link's immutable target.
+        if (
+          currentTarget.kind === 'blob' &&
+          t.kind === 'tree' &&
+          projectPin.value &&
+          !props.model.originalFile &&
+          /^[0-9a-f]{40}$/i.test(t.rest[0])
+        ) {
+          frozenTarget = {
+            key,
+            resolved: {
+              sha: t.rest[0],
+              ref: t.rest[0],
+              path: t.rest.slice(1).join('/'),
+              kind: 'dir',
+            },
+          }
+        }
+      }
     },
     retryPrimary,
     {
