@@ -1,4 +1,5 @@
 import { describe, expect, it } from 'vitest'
+import { ExternalRecordSchema } from '@/sync/external/records'
 import {
   inspectProjection,
   parseProjection,
@@ -34,6 +35,78 @@ describe('external projection schema and local ownership', () => {
       inspectProjection(guide, 'Docs/sample-guide.md', { vaultId: projection.vaultId, owned: [] })
     ).toEqual({ kind: 'ordinary' })
   })
+  it.each([
+    ['escaped key', String.raw`"fo\u0072mat":"abele.external"`],
+    ['escaped value', String.raw`"format":"abele\u002eexternal"`],
+    ['both escaped', String.raw`"\u0066ormat":"\u0061bele.external"`],
+  ])(
+    'holds an oversized or damaged marker with %s without depending on JSON spelling',
+    (_label, marker) => {
+      const valid =
+        '{' +
+        marker +
+        ',' +
+        JSON.stringify(projection).slice(1).replace('"format":"abele.external",', '')
+      expect(recognizeProjection(new TextEncoder().encode(valid))).toBe(true)
+      for (const text of [valid + ' '.repeat(16 * 1024), '{' + marker + ', broken']) {
+        const data = new TextEncoder().encode(text)
+        expect(recognizeProjection(data)).toBe(true)
+        expect(
+          inspectProjection(data, 'Media/moved.txt', { vaultId: projection.vaultId, owned: [] })
+        ).toMatchObject({ kind: 'hold', reason: 'malformed' })
+      }
+    }
+  )
+
+  it('never treats an overlong decomposed physical name as an owned projection', () => {
+    const physical = 'Media/' + 'e\u0301'.repeat(90) + '.jpg.abele-ref'
+    const logical = { ...projection, path: 'Media/' + 'é'.repeat(90) + '.jpg' }
+    expect(new TextEncoder().encode(physical.split('/').at(-1))).toHaveLength(284)
+    expect(validateProjectionPlacement(logical, physical)).toBe(false)
+    expect(
+      inspectProjection(bytes(logical), physical, {
+        vaultId: projection.vaultId,
+        owned: [{ ...owned, projectionPath: physical }],
+        sha: owned.projectionSha,
+      })
+    ).toMatchObject({ kind: 'hold' })
+  })
+
+  it('rejects an overlong physical spelling in the external record schema, not just its NFC form', () => {
+    const physical = 'Media/' + 'e\u0301'.repeat(90) + '.jpg.abele-ref'
+    const record = {
+      schema: 1,
+      ledgerId: 'sample-ledger',
+      fileId: projection.fileId,
+      binding: {
+        endpoint: 'https://sync.example.invalid',
+        vaultId: projection.vaultId,
+        mode: 'personal',
+        principalId: 'sample-principal',
+        principalType: 'device',
+        grantId: null,
+        generation: 1,
+        credentialAssociation: 'sample-slot',
+      },
+      representation: 'remote-only',
+      preference: 'on-demand',
+      pinned: false,
+      projectionPath: physical,
+      projectionSha: owned.projectionSha,
+      localRevision: 0,
+      pendingOperationId: null,
+      availability: 'active',
+      blockingReason: null,
+      lastProvenLocalBase: null,
+      retained: [],
+    }
+    expect(ExternalRecordSchema.safeParse(record).success).toBe(false)
+    expect(
+      ExternalRecordSchema.safeParse({ ...record, projectionPath: physical.normalize('NFC') })
+        .success
+    ).toBe(true)
+  })
+
   it('round trips schema 1 with bounded optional media metadata and MIME fallback', () => {
     const value = { ...projection, width: 800, height: 600, duration: 1.5 }
     expect(parseProjection(serializeProjection(value))).toEqual(value)

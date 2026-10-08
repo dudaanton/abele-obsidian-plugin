@@ -1,6 +1,6 @@
 import { normalizeServerUrl, validatePath } from '@abele/sync-protocol'
 import { z } from 'zod'
-import { MAX_ATTACHMENT_BYTES } from './projection'
+import { assertPhysicalPath, MAX_ATTACHMENT_BYTES } from './projection'
 
 const id = z.string().min(1).max(256)
 const revision = z.number().int().nonnegative().max(Number.MAX_SAFE_INTEGER)
@@ -12,7 +12,7 @@ const physicalPath = z
   .max(4096)
   .refine((path) => {
     try {
-      validatePath(path.normalize('NFC'))
+      assertPhysicalPath(path)
       return true
     } catch {
       return false

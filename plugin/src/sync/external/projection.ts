@@ -70,7 +70,7 @@ export function recognizeProjection(bytes: Uint8Array): boolean {
   // A projection is a root JSON object, not an example quoted inside an ordinary note.
   // Known owned paths remain protected independently, even with a destroyed prefix.
   if (!text.trimStart().startsWith('{')) return false
-  if (bytes.byteLength > MAX_PROJECTION_BYTES) return /"format"\s*:\s*"abele\.external"/.test(text)
+  if (bytes.byteLength > MAX_PROJECTION_BYTES) return recognizeDamagedMarker(text)
   try {
     const value: unknown = JSON.parse(text)
     return (
@@ -80,8 +80,61 @@ export function recognizeProjection(bytes: Uint8Array): boolean {
       value.format === 'abele.external'
     )
   } catch {
-    return /"format"\s*:\s*"abele\.external"/.test(text)
+    return recognizeDamagedMarker(text)
   }
+}
+
+/** Decode JSON string tokens instead of assuming literal key/value spellings. This is
+ * recognition, not a repaired document: malformed or uncertain markers can only be held. */
+function recognizeDamagedMarker(text: string): boolean {
+  const token = (start: number): { value: string | null; end: number } => {
+    let end = start + 1
+    for (; end < text.length; end++) {
+      if (text[end] === '\\') {
+        end++
+        continue
+      }
+      if (text[end] !== '"') continue
+      try {
+        // Marker strings are ASCII and at most six bytes per JSON-escaped character.
+        // Do not allocate/parse an unrelated large string merely to recognize a marker.
+        const value: unknown = end - start <= 86 ? JSON.parse(text.slice(start, end + 1)) : null
+        return { value: typeof value === 'string' ? value : null, end: end + 1 }
+      } catch {
+        return { value: null, end: end + 1 }
+      }
+    }
+    return { value: null, end: text.length }
+  }
+  for (let at = 0; at < text.length; at++) {
+    if (text[at] !== '"') continue
+    const key = token(at)
+    at = key.end - 1
+    let colon = key.end
+    while (/\s/.test(text[colon] ?? '') && colon < text.length) colon++
+    if (text[colon] !== ':') continue
+    let valueAt = colon + 1
+    while (/\s/.test(text[valueAt] ?? '') && valueAt < text.length) valueAt++
+    if (text[valueAt] !== '"') continue
+    const value = token(valueAt)
+    if (
+      (key.value === 'format' && (value.value === 'abele.external' || value.value === null)) ||
+      (key.value === null && value.value === 'abele.external')
+    )
+      return true
+    at = value.end - 1
+  }
+  return false
+}
+
+/** Protocol spelling and physical UTF-8 limits are separate checks. */
+export function assertPhysicalPath(path: string): void {
+  validatePath(path.normalize('NFC'))
+  if (
+    encoder.encode(path).byteLength > 1024 ||
+    path.split('/').some((segment) => encoder.encode(segment).byteLength > 255)
+  )
+    throw new Error('Projection physical path too long')
 }
 
 export function parseProjection(bytes: Uint8Array): Projection {
@@ -101,15 +154,9 @@ export function projectionPath(
   originalPhysicalPath: string,
   occupiedPaths: readonly string[] = []
 ): string {
-  validatePath(originalPhysicalPath.normalize('NFC'))
+  assertPhysicalPath(originalPhysicalPath)
   const physical = originalPhysicalPath + '.abele-ref'
-  validatePath(physical.normalize('NFC'))
-  // Wire normalization must not hide an overlong physical sidecar filename.
-  if (
-    encoder.encode(physical).byteLength > 1024 ||
-    physical.split('/').some((segment) => encoder.encode(segment).byteLength > 255)
-  )
-    throw new Error('Projection physical path too long')
+  assertPhysicalPath(physical)
   for (const occupied of occupiedPaths) {
     if (
       caseKey(occupied) === caseKey(physical) ||
@@ -123,7 +170,7 @@ export function projectionPath(
 /** Placement is checked independently of schema and ownership; preserve physical spelling. */
 export function validateProjectionPlacement(projection: Projection, physicalPath: string): boolean {
   try {
-    validatePath(physicalPath.normalize('NFC'))
+    assertPhysicalPath(physicalPath)
     return physicalPath.normalize('NFC') === projectionPath(projection.path).normalize('NFC')
   } catch {
     return false
