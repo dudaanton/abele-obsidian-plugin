@@ -255,6 +255,24 @@ describe('trusted node delegation controller', () => {
     f.store.close()
   })
 
+  it('reads reports after the delivery cursor so completed never precedes its text', async () => {
+    const f = fixture()
+    await f.controller.approve({ parent_id: 'parent', project_ids: ['project'], providers: ['pi'] })
+    await f.controller.create('parent', task)
+    f.client.delegationStatus.mockResolvedValue({ ...child, state: 'completed', session_head_seq: 17, mailbox_head_seq: 1, pending_human_prompts: 0 })
+    const cards = vi.spyOn(f.controller, 'cards').mockImplementationOnce(async () => {
+      await f.store.transaction((s) => {
+        s.cursors.mailbox = 1
+        s.events.mailbox = [{ kind: 'event', node_id: 'node', actor: { kind: 'node' }, at: '2028-01-01T00:00:00Z', stream_id: 'mailbox', seq: 1, type: 'delegation.result', data: { delegation_id: 'delegation', session_id: 'child', report_id: 'report', text: 'Done' } }]
+      })
+      return []
+    })
+    const status = await f.controller.status('parent', 'delegation')
+    expect(status.state === 'completed' && status.reports.length === 0).toBe(false)
+    expect(cards).toHaveBeenCalled()
+    f.store.close()
+  })
+
   it('retains cancellation across an uncertain create response and cancels a late receipt', async () => {
     const f = fixture()
     await f.controller.approve({ parent_id: 'parent', project_ids: ['project'], providers: ['pi'] })

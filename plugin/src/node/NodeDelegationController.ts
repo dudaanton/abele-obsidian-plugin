@@ -201,7 +201,6 @@ export class NodeDelegationController {
       (s) => storage(s).grants[status.grant_id]?.actions.includes('read') === true
     )
     if (canRead) await this.client.subscribeDelegation(status)
-    const card = canRead ? (await this.cards(parent)).find((c) => c.delegationId === id) : undefined
     const delivered = await this.store.transaction((s) => {
       const cursor = s.cursors[status.mailbox_stream_id] ?? 0
       const events = s.events[status.mailbox_stream_id] ?? []
@@ -214,6 +213,7 @@ export class NodeDelegationController {
         const task = Object.values(storage(s).tasks).find((t) => t.child?.delegation_id === id)
         if (task) task.awaitingResult = !delivered
       })
+    const card = canRead ? (await this.cards(parent)).find((c) => c.delegationId === id) : undefined
     return {
       ...this.publicChild(status),
       state: status.state === 'completed' && !delivered ? 'receiving mailbox' : status.state,
