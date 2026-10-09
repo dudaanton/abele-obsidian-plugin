@@ -48,6 +48,7 @@ import {
   SELECTION_MENUS_CLEANUP,
 } from './helpers/selectionMenus'
 import { sampleDocx } from '../fixtures/docx/sampleDocx'
+import { CATALOGUE_PROBE } from './helpers/designCatalogueProbe'
 import { outwardBoxShadowReach } from '../helpers/focusRingPaint'
 import {
   recipientRowFailures,
@@ -2368,5 +2369,30 @@ describe.skipIf(!available)('the chat dialogs on a phone', () => {
 
   it.each(sheets)('%s: the sheet stands the height of the screen', (label) => {
     expect(report[label]?.fill ?? 0).toBeGreaterThanOrEqual(0.85)
+  })
+})
+
+describe.skipIf(!available)('design catalogue phone contracts', () => {
+  let size: [number, number]
+  beforeAll(async () => {
+    size = windowSize()
+    await setMobile(true)
+    await setWindowSize(PHONE.width, PHONE.height)
+  }, 90_000)
+  afterAll(async () => {
+    evalRaw('window.__abeleTest.closeDesignCatalogue()')
+    if (size?.[0]) await setWindowSize(size[0], size[1])
+    await setMobile(false)
+  }, 90_000)
+  it.each(['rows', 'states', 'details', 'swatches', 'images', 'events', 'artifact', 'comment', 'comment-thread', 'waiting'])('%s: inventories intended actions, target sizes and reachable footer', async page => {
+    const result = JSON.parse(await evalLong(`(async () => {
+      window.__abeleTest.openDesignCatalogue(${JSON.stringify(page)});
+      await new Promise(r => setTimeout(r, 300));
+      ${CATALOGUE_PROBE}
+    })()`)) as { failures: string[]; actions: number; primary: number; height: number }
+    expect(result.failures).toEqual([])
+    expect(result.primary).toBeLessThanOrEqual(1)
+    if (page === 'rows') expect(result.actions).toBeGreaterThanOrEqual(14)
+    if (page === 'comment') expect(result.height).toBeLessThan(PHONE.height * 0.85)
   })
 })

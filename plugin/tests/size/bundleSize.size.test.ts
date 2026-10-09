@@ -79,6 +79,11 @@ describe('bundle size', () => {
     expect(report.runtimeElements.style).toBeLessThanOrEqual(12)
   })
 
+  it('excludes the test-only catalogue and its entire fixture graph from production', () => {
+    // The production graph guard additionally checks individual rendered module IDs.
+    expect(report.byPackage.some((p) => p.name === 'src/testing')).toBe(false)
+  })
+
   it('attributes the bundle to packages, so a jump can be traced to what caused it', () => {
     expect(report.byPackage.length).toBeGreaterThan(5)
     expect(report.byPackage.some((p) => p.name === '@vue/runtime-core')).toBe(true)

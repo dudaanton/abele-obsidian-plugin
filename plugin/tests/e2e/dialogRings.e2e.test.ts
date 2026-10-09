@@ -17,6 +17,7 @@ import { describe, it, expect, beforeAll } from 'vitest'
 import { isObsidianRunning, hasTestApi, evalLong } from './helpers/obsidianCli'
 import { MESSAGE_ACTIONS_SETUP, MESSAGE_ACTIONS_CLEANUP } from './helpers/messageActions'
 import { shotDir } from './helpers/shots'
+import { CATALOGUE_PROBE } from './helpers/designCatalogueProbe'
 import { outwardBoxShadowReach } from '../helpers/focusRingPaint'
 import { evalAsync, PRELUDE as BASE_PRELUDE, startFakeGithub, enableGithub, restoreGithub } from './helpers/githubLive'
 import { openBasePicker, basePickerGeometry } from './helpers/githubBasePicker'
@@ -451,5 +452,39 @@ describe.skipIf(!available)('changelog controls', () => {
     })()`)
     ) as string[]
     expect(result).toEqual([])
+  })
+})
+
+describe.skipIf(!available)('design catalogue desktop keyboard contracts', () => {
+  it('inventories actions independently of focus selectors and isolates native activation', async () => {
+    const result = JSON.parse(await evalLong(`(async () => {
+      const api = window.__abeleTest;
+      const wait = () => new Promise(r => setTimeout(r, 150));
+      const win = require('@electron/remote').getCurrentWindow();
+      api.openDesignCatalogue('rows'); await wait();
+      try {
+        const main = document.querySelector('.abele-list-row__main');
+        main.focus();
+        win.webContents.sendInputEvent({type:'keyDown',keyCode:'Enter'});
+        win.webContents.sendInputEvent({type:'char',keyCode:String.fromCharCode(13)});
+        win.webContents.sendInputEvent({type:'keyUp',keyCode:'Enter'}); await wait();
+        if (!document.querySelector('.abele-design-catalogue > [role="status"]')?.textContent.includes('sample.md')) throw Error('Native Enter did not open row');
+        const control = document.querySelector('.abele-disclosure__control');
+        control.focus();
+        win.webContents.sendInputEvent({type:'keyDown',keyCode:'Space'});
+        win.webContents.sendInputEvent({type:'char',keyCode:' '});
+        win.webContents.sendInputEvent({type:'keyUp',keyCode:'Space'}); await wait();
+        if(control.getAttribute('aria-expanded') !== 'true') throw Error('Native Space did not expand detail');
+        const more = document.querySelector('.abele-sheet-header-actions [aria-haspopup="menu"]'); more.click(); await wait();
+        const menu = document.querySelector('.menu'); if (!menu) throw Error('Native menu absent');
+        const refresh = [...menu.querySelectorAll('.menu-item')].find(el=>el.textContent.includes('Refresh')); refresh.click(); await wait();
+        if(document.activeElement !== more) throw Error('Menu did not return focus');
+        const feedback = document.querySelector('.abele-design-catalogue > [role="status"]');
+        if(feedback?.textContent !== 'refresh') throw Error('Menu did not execute isolated action');
+        ${CATALOGUE_PROBE}
+      } finally { api.closeDesignCatalogue(); }
+    })()`)) as { failures: string[]; actions: number }
+    expect(result.failures).toEqual([])
+    expect(result.actions).toBeGreaterThanOrEqual(14)
   })
 })
