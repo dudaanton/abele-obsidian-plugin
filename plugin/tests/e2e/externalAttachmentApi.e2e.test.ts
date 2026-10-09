@@ -107,14 +107,15 @@ async function roundTrip(
     let bytes=maximum?new Uint8Array(200*1024*1024).fill(90):new TextEncoder().encode(${JSON.stringify(content)})
     const base=${JSON.stringify(selectedHead)},url=${JSON.stringify(url)},token=${JSON.stringify(scoped ? reader.key_token : fixture.device.deviceToken)}
     const grant=${JSON.stringify(fixture.grant.id)},vault=${JSON.stringify(fixture.vault)}
-    const requests=[]
+    const requests=[],fetch=api.syncTransport({})
     async function http(route,method='GET',body){
       requests.push(route)
-      const response=await requestUrl({url:url+route,method,headers:{authorization:'Bearer '+token,'x-abele-external-files-version':'1','x-abele-scoped-version':'4','content-type':'application/json'},...(body?{body:JSON.stringify(body)}:{}),throw:false})
-      if(response.status!==200)throw Object.assign(Error('server refused '+response.status),{code:response.json?.error?.code})
+      const response=await fetch(url+route,{method,headers:{authorization:'Bearer '+token,'x-abele-external-files-version':'1','x-abele-scoped-version':'4','content-type':'application/json'},...(body?{body:JSON.stringify(body)}:{}),})
+      if(response.status!==200)throw Object.assign(Error('server refused '+response.status),{code:(await response.json()).error?.code})
       return response
     }
     await adapter.writeBinary(path,bytes.buffer)
+    if(maximum)bytes=null
     const database='sample-attachment-'+crypto.randomUUID(),store=await api.externalState.IndexedDbStateStore.open(indexedDB,database)
     const binding={endpoint:url,vaultId:vault,mode:${JSON.stringify(scoped ? 'scoped' : 'personal')},principalId:${JSON.stringify(scoped ? reader.key_id : fixture.device.deviceId)},principalType:${JSON.stringify(scoped ? 'key' : 'device')},grantId:${scoped ? 'grant' : 'null'},generation:1,credentialAssociation:'sample-slot'}
     const state=await api.externalState.ExternalState.open(store,'sample-ledger',binding)
@@ -128,8 +129,8 @@ async function roundTrip(
       assertOwned:()=>{},serial:{run:job=>engine.runExclusive(job)},sync:async()=>{},scriptsFolder:()=> 'Scripts',
       scopedHead:async()=>({file_id:base.file_id,version_id:base.version_id,path,sha:base.sha,size:base.size,mtime:base.mtime}),
       consent:{read:async()=>consent,write:async value=>{consent=value}},
-      verify:async(id,input)=>(await http(prefix+id+'/external/verify','POST',input)).json,
-      download:async(id,version,sha)=>{activeDownloads++;downloadCount++;peakDownloads=Math.max(peakDownloads,activeDownloads);if(sampling)sample();try{return new Uint8Array((await http(${scoped ? "prefix+id+'/versions/'+version" : "'/v1/blobs/'+sha"})).arrayBuffer)}finally{activeDownloads--;if(sampling)sample()}}})
+      verify:async(id,input)=>(await http(prefix+id+'/external/verify','POST',input)).json(),
+      download:async(id,version,sha)=>{activeDownloads++;downloadCount++;peakDownloads=Math.max(peakDownloads,activeDownloads);if(sampling)sample();try{return new Uint8Array(await (await http(${scoped ? "prefix+id+'/versions/'+version" : "'/v1/blobs/'+sha"})).arrayBuffer())}finally{activeDownloads--;if(sampling)sample()}}})
     try{
       if(sampling){sample();timer=setInterval(sample,25)}
       const options={operationId:crypto.randomUUID(),expectedRevision:0,expectedVersionId:base.version_id}
@@ -142,10 +143,10 @@ async function roundTrip(
       const hydrationResults=maximum?await Promise.all([attachment.hydrate(base.file_id,hydrationOptions),attachment.hydrate(base.file_id,hydrationOptions)]):null
       const hydrated=maximum?hydrationResults[0]:${materialize ? 'await attachment.materializeForDisconnect({operationId:crypto.randomUUID()})' : 'await attachment.hydrate(base.file_id,hydrationOptions)'}
       const disconnectReady=(await attachment.inspectDisconnect()).safe
-      const actual=new Uint8Array(await adapter.readBinary(path)),retired=!await adapter.exists(path+'.abele-ref')
-      const digest=Array.from(new Uint8Array(await crypto.subtle.digest('SHA-256',actual))).map(n=>n.toString(16).padStart(2,'0')).join('')
+      const actual=maximum?null:new Uint8Array(await adapter.readBinary(path)),retired=!await adapter.exists(path+'.abele-ref')
+      const fingerprint=await host.fingerprint(path)
       if(sampling)sample()
-      return JSON.stringify({evicted,missing,sidecar,hydrated,hydrationResults,retired,warning,requests,disconnectReady,peakDownloads,downloadCount,peakMemory,baseline,samples,memoryError,verifiedRead:!maximum&&read.bytes?.length===bytes.length&&read.bytes.every((n,i)=>n===bytes[i]),identical:maximum?actual.length===base.size&&actual.every(n=>n===90)&&digest===base.sha:actual.length===bytes.length&&actual.every((n,i)=>n===bytes[i])})
+      return JSON.stringify({evicted,missing,sidecar,hydrated,hydrationResults,retired,warning,requests,disconnectReady,peakDownloads,downloadCount,peakMemory,baseline,samples,memoryError,verifiedRead:!maximum&&read.bytes?.length===bytes.length&&read.bytes.every((n,i)=>n===bytes[i]),identical:maximum?fingerprint.size===base.size&&fingerprint.sha===base.sha:actual.length===bytes.length&&actual.every((n,i)=>n===bytes[i])})
     }finally{clearInterval(timer);await engine.stop();host.close();store.close();await api.externalState.IndexedDbStateStore.delete(indexedDB,database)}
   })()`,
       maximum ? 600_000 : 180_000

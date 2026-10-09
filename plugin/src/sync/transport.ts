@@ -20,7 +20,7 @@ export const USER_AGENT = 'abele-obsidian-plugin'
 export type RequestUrlFn = (
   request: RequestUrlParam,
   signal?: AbortSignal | null
-) => Promise<RequestUrlResponse>
+) => Promise<RequestUrlResponse | Response>
 
 /** Statuses the fetch spec says carry no body; `Response` refuses to be built with one. */
 const BODILESS_STATUS = new Set([204, 205, 304])
@@ -65,6 +65,8 @@ export function fetchViaRequestUrl(requestUrl: RequestUrlFn): typeof fetch {
       },
       init?.signal
     )
+    // Native desktop responses retain their stream instead of buffering through this bridge.
+    if (answer instanceof Response) return answer
 
     // Defence in depth only. A native adapter must prevent following before returning here;
     // Obsidian's requestUrl does not expose that control (the mobile gate remains separate).

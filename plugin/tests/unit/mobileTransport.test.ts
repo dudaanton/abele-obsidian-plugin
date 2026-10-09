@@ -2,6 +2,26 @@ import { describe, expect, it, vi } from 'vitest'
 import { fetchViaCapacitorHttp, exactNativeRequestBodies } from '@/sync/mobileTransport'
 
 describe('non-following native mobile fetch', () => {
+  it.each([65535, 65536, 65537])(
+    'decodes %i bytes in bounded string chunks and releases native data',
+    async (size) => {
+      const data = 'x'.repeat(size)
+      const answer = {
+        status: 200,
+        headers: {},
+        data: btoa(data) as unknown,
+        url: 'https://sync.example/bytes',
+      }
+      const decode = vi.spyOn(globalThis, 'atob')
+      const response = await fetchViaCapacitorHttp({ request: async () => answer })(answer.url)
+      expect(answer.data).toBeNull()
+      expect(decode.mock.calls.every(([chunk]) => chunk.length <= 32768)).toBe(true)
+      const buffer = await response.arrayBuffer()
+      expect(buffer.byteLength).toBe(size)
+      expect(new Uint8Array(buffer).every((byte) => byte === 120)).toBe(true)
+      decode.mockRestore()
+    }
+  )
   it('prevents native JSON dictionary reordering from changing replay bytes', async () => {
     const seen: string[] = []
     const native = {

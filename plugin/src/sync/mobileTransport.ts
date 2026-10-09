@@ -1,3 +1,4 @@
+import { binaryResponse } from './binaryResponse'
 import { apiVersion } from 'obsidian'
 export interface NativeHttpOptions {
   url: string
@@ -28,9 +29,13 @@ function responseBytes(data: unknown): Uint8Array {
   if (data == null) return new Uint8Array()
   if (typeof data === 'object') return new TextEncoder().encode(JSON.stringify(data))
   if (typeof data !== 'string') throw new Error('Unsupported native sync response bytes')
-  const decoded = atob(data),
-    bytes = new Uint8Array(decoded.length)
-  for (let i = 0; i < decoded.length; i++) bytes[i] = decoded.charCodeAt(i)
+  const padding = data.endsWith('==') ? 2 : data.endsWith('=') ? 1 : 0
+  const bytes = new Uint8Array((data.length / 4) * 3 - padding)
+  // Decode aligned base64 chunks, avoiding a full binary string alongside the buffer.
+  for (let at = 0, offset = 0; at < data.length; at += 32768) {
+    const decoded = atob(data.slice(at, at + 32768))
+    for (let i = 0; i < decoded.length; i++) bytes[offset++] = decoded.charCodeAt(i)
+  }
   return bytes
 }
 /** Known runtime only; no fallback to requestUrl, whose native redirect/cache behavior is unsafe. */
@@ -132,9 +137,8 @@ export function fetchViaCapacitorHttp(native: NativeHttp): typeof fetch {
       throw new Error('Unsupported native sync response status')
     const bodiless = method === 'HEAD' || [204, 205, 304].includes(answer.status)
     const bytes = bodiless ? null : responseBytes(answer.data)
-    return new Response(bytes === null ? null : new Uint8Array(bytes).buffer, {
-      status: answer.status,
-      headers: answer.headers,
-    })
+    answer.data = null
+    const responseInit = { status: answer.status, headers: answer.headers }
+    return bytes === null ? new Response(null, responseInit) : binaryResponse(bytes, responseInit)
   }
 }

@@ -49,6 +49,36 @@ afterEach(async () => {
 })
 
 describe('production desktop credential transport', () => {
+  it('bridges bounded response chunks without reading a whole native ArrayBuffer', async () => {
+    const chunk = new Uint8Array(65536).fill(91)
+    let remaining = 32
+    const response = new Response(
+      new ReadableStream({
+        pull(controller) {
+          if (remaining--) controller.enqueue(chunk)
+          else controller.close()
+        },
+      })
+    )
+    const wholeBody = vi
+      .spyOn(response, 'arrayBuffer')
+      .mockRejectedValue(new Error('whole-body read'))
+    const converted = vi.fn((buffer: ArrayBuffer) => {
+      expect(buffer.byteLength).toBeLessThanOrEqual(65536)
+      return new Uint8Array(buffer)
+    })
+    const fetch = desktopTransport(undefined, {
+      session: { fetch: vi.fn(async () => response) },
+      bytes: converted,
+      body: (buffer) => new Uint8Array(buffer),
+      controller: () => new AbortController(),
+    })
+    const bytes = new Uint8Array(await (await fetch('https://sync.example/bytes')).arrayBuffer())
+    expect(bytes.length).toBe(32 * chunk.length)
+    expect(bytes.every((byte) => byte === 91)).toBe(true)
+    expect(converted).toHaveBeenCalledTimes(32)
+    expect(wholeBody).not.toHaveBeenCalled()
+  })
   it('uses an explicit native host for desktop layout emulation without opening production mobile transport', async () => {
     const source = await listen((_req, res) => res.end('sample native response'))
     const original = { ...obsidian.Platform }

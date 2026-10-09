@@ -75,6 +75,45 @@ async function reason(work: Promise<unknown>) {
 }
 
 describe('external-file host coordination and filesystem effects', () => {
+  it('passes the transferred backing buffer to staging without a full-size snapshot', async () => {
+    const s = setup()
+    const data = new Uint8Array(1024 * 1024)
+    const artifact = await s.artifact(staging, data)
+    const write = vi.spyOn(s.fake.vault.adapter, 'writeBinary')
+    await s.run(async (effects) => {
+      expect(await effects.stage(artifact, data)).toEqual({ status: 'staged' })
+    })
+    expect(write).toHaveBeenCalledWith(staging, data.buffer)
+    expect(write.mock.calls[0][1]).toBe(data.buffer)
+    s.host.close()
+  })
+
+  it('verifies desktop files with one reusable bounded buffer and closes the handle', async () => {
+    const s = setup('desktop')
+    const data = new Uint8Array(3 * 1024 * 1024 + 7)
+    data.fill(123)
+    const buffers = new Set<Uint8Array>()
+    const close = vi.fn(async () => {})
+    const read = vi.fn(
+      async (buffer: Uint8Array, offset: number, length: number, position: number) => {
+        buffers.add(buffer)
+        expect(buffer.length).toBeLessThanOrEqual(1024 * 1024)
+        const part = data.subarray(position, position + length)
+        buffer.set(part, offset)
+        return { bytesRead: part.length }
+      }
+    )
+    const adapter = s.fake.vault.adapter as any
+    adapter.fsPromises.open = vi.fn(async () => ({ read, close }))
+    const wholeRead = vi.spyOn(adapter, 'readBinary')
+    expect(await s.host.matches({ path: source, size: data.length, sha: await sha256(data) })).toBe(
+      true
+    )
+    expect(buffers.size).toBe(1)
+    expect(wholeRead).not.toHaveBeenCalled()
+    expect(close).toHaveBeenCalledOnce()
+    s.host.close()
+  })
   it('refuses an attachment open in a nonactive relevant leaf', async () => {
     const s = setup()
     s.leaves(['Notes/sample.md', source])

@@ -62,6 +62,15 @@ actual exclusive scheduler; both must complete with exactly one content download
 peak active download concurrency **1**. This checks hydration buffer scheduling,
 not a global memory bound for every other consumer or independent process.
 
+The size case uses the production native transport, releases its synthetic input after
+the initial write, and verifies the final SHA/size through the host fingerprint port.
+It does not retain a second full-size comparison buffer or take a WebCrypto snapshot.
+Desktop downloads bridge response chunks; desktop disk rechecks reuse a 1 MiB buffer.
+Expected payload growth is approximately one to two file sizes during download assembly,
+not a proven resident-memory bound. The iOS HTTP and storage bridges still require whole
+buffers and base64 strings; decoding uses bounded temporary strings. Native bridge and
+garbage-collection overhead require live measurement on both platforms.
+
 The size case samples resident memory every 25 ms and at transfer boundaries, reports
 baseline/sample count/sampled peak, and requires growth of at most **1 GiB** over the
 baseline taken before local allocation. It has a ten-minute transfer timeout. Sampling

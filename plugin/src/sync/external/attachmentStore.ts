@@ -1,4 +1,5 @@
-import { sha256, type StateStore } from '@abele/sync-core'
+import type { StateStore } from '@abele/sync-core'
+import { sha256 } from './hash'
 import { ExternalVerifyResponseSchema, kindOf } from '@abele/sync-protocol'
 import { ExternalFileHost } from './ObsidianExternalFileHost'
 import { ExternalFilePortError } from './filesystem'
@@ -190,8 +191,10 @@ export class AttachmentStore {
     for (const artifact of file?.retained ?? []) {
       try {
         if (!(await this.options.host.exists(artifact.path))) continue
-        const bytes = await this.options.host.read(artifact.path)
-        if (bytes.length === head.size && (await sha256(bytes)) === head.sha) return 0
+        if (
+          await this.options.host.matches({ path: artifact.path, size: head.size, sha: head.sha })
+        )
+          return 0
       } catch {
         return 0 // Unreadable retained evidence cannot prove reclamation.
       }
@@ -286,8 +289,7 @@ export class AttachmentStore {
           (file?.localRevision ?? 0) !== opts.expectedRevision
         )
           return false
-        const bytes = await this.options.host.read(head.path)
-        selected = { path: head.wirePath, sha: await sha256(bytes), size: bytes.length }
+        selected = { path: head.wirePath, ...(await this.options.host.fingerprint(head.path)) }
         return true
       })
       if (!checked) return this.result('version-changed')
@@ -390,8 +392,7 @@ export class AttachmentStore {
             return this.result('recovery-required')
         }
         if (opts.signal?.aborted) return this.result('busy')
-        const local = await this.options.host.read(head.path)
-        if (local.length !== head.size || (await sha256(local)) !== head.sha)
+        if (!(await this.options.host.matches({ path: head.path, size: head.size, sha: head.sha })))
           return this.result('local-changed')
         try {
           if (!(await this.verified(id, { ...head, path: head.wirePath })))
@@ -693,7 +694,7 @@ export class AttachmentStore {
         await this.commit(pending, op)
         phase = 'download-intent'
         if (opts.signal?.aborted) return this.result('recovery-required')
-        let bytes: Uint8Array
+        let bytes: Uint8Array | undefined
         try {
           bytes = await this.options.download(id, head.versionId, head.sha)
         } catch (error) {
@@ -702,11 +703,12 @@ export class AttachmentStore {
         this.owned()
         if (bytes.length !== head.size || (await sha256(bytes)) !== head.sha)
           return this.result('version-changed')
-        const staged = await effects.stage(artifact, bytes)
+        const stagingWork = effects.stage(artifact, bytes)
+        bytes = undefined
+        const staged = await stagingWork
         if (staged.status !== 'staged') return this.result('recovery-required')
         // A second disk read ensures the installer consumes the bytes recorded in the intent.
-        const reread = await this.options.host.read(staging)
-        if (reread.length !== head.size || (await sha256(reread)) !== head.sha)
+        if (!(await this.options.host.matches({ path: staging, size: head.size, sha: head.sha })))
           return this.result('local-changed')
         const ready = { ...op, phase: 'ready-to-install' as const, revision: 1 }
         await this.commit({ ...pending, localRevision: pending.localRevision + 1 }, ready)
@@ -945,16 +947,13 @@ export class AttachmentStore {
         blockers.push(file.fileId + ':local-original-missing')
         continue
       }
-      const bytes = await this.options.host.read(base.path)
-      if (bytes.length !== base.size || (await sha256(bytes)) !== base.sha)
-        blockers.push(file.fileId + ':local-changed')
+      if (!(await this.options.host.matches(base))) blockers.push(file.fileId + ':local-changed')
       for (const artifact of file.retained) {
         if (!(await this.options.host.exists(artifact.path))) {
           blockers.push(file.fileId + ':retained-evidence-missing')
           continue
         }
-        const retained = await this.options.host.read(artifact.path)
-        if (retained.length !== artifact.size || (await sha256(retained)) !== artifact.sha)
+        if (!(await this.options.host.matches(artifact)))
           blockers.push(file.fileId + ':retained-evidence-changed')
       }
     }
@@ -966,8 +965,7 @@ export class AttachmentStore {
         blockers.push(op.operationId + ':recovery-required')
       for (const artifact of op.ownedArtifacts) {
         if (!(await this.options.host.exists(artifact.path))) continue
-        const bytes = await this.options.host.read(artifact.path)
-        if (bytes.length !== artifact.size || (await sha256(bytes)) !== artifact.sha)
+        if (!(await this.options.host.matches(artifact)))
           blockers.push(op.operationId + ':retained-evidence-changed')
       }
     }

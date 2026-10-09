@@ -3,6 +3,8 @@ import { caseKey } from '@abele/sync-protocol'
 import { nativeOf } from '../nativeVaultFs'
 import { bytesOf } from '../vaultWrites'
 import { makeParents } from '../vaultFolders'
+import { sha256 as incremental } from '@noble/hashes/sha2'
+import { sha256 } from './hash'
 import {
   ExternalFileCoordination,
   type ExternalReservationRequest,
@@ -13,6 +15,7 @@ import {
   ExternalFilePortError,
   type ExternalEffectGuards,
   type ExternalFilesystemPort,
+  type ExternalByteExpectation,
 } from './filesystem'
 
 const coordinators = new WeakMap<object, ExternalFileCoordination>()
@@ -92,6 +95,57 @@ export class ExternalFileHost {
     this.assertOwned()
     return this.app.vault.adapter.exists(path)
   }
+  /** Native bounded reads on desktop; the mobile adapter exposes only readBinary. */
+  async matches(expected: ExternalByteExpectation): Promise<boolean> {
+    const actual = await this.fingerprint(expected.path)
+    return actual.size === expected.size && actual.sha === expected.sha
+  }
+  async fingerprint(path: string): Promise<{ size: number; sha: string }> {
+    this.assertOwned()
+    const adapter = this.app.vault.adapter as DataAdapter & {
+      getFullPath?: (path: string) => string
+      fsPromises?: {
+        open?: (
+          path: string,
+          flags: string
+        ) => Promise<{
+          read(
+            buffer: Uint8Array,
+            offset: number,
+            length: number,
+            position: number
+          ): Promise<{ bytesRead: number }>
+          close(): Promise<void>
+        }>
+      }
+    }
+    if (this.options.platform === 'desktop' && adapter.fsPromises?.open && adapter.getFullPath) {
+      const file = await adapter.fsPromises.open(adapter.getFullPath(path), 'r')
+      try {
+        const chunk = new Uint8Array(1024 * 1024)
+        const hash = incremental.create()
+        let size = 0
+        for (;;) {
+          this.assertOwned()
+          const { bytesRead } = await file.read(chunk, 0, chunk.length, size)
+          if (!bytesRead) break
+          size += bytesRead
+          hash.update(chunk.subarray(0, bytesRead))
+        }
+        this.assertOwned()
+        const digest = Array.from(hash.digest(), (byte) => byte.toString(16).padStart(2, '0')).join(
+          ''
+        )
+        return { size, sha: digest }
+      } finally {
+        await file.close()
+      }
+    }
+    const bytes = await this.read(path)
+    const sha = await sha256(bytes)
+    this.assertOwned()
+    return { size: bytes.length, sha }
+  }
   acquireUse(fileId: string): { release(): void } {
     this.assertOwned()
     const lease = this.coordination.acquireUse(fileId)
@@ -160,6 +214,7 @@ export class ExternalFileHost {
       installation,
       exists: (path) => adapter.exists(path),
       read: async (path) => new Uint8Array(await adapter.readBinary(path)),
+      matches: (expected) => this.matches(expected),
       makeParents: (path) => makeParents(mutateAdapter, path),
       writeStaging: (path, bytes) => this.effect(() => adapter.writeBinary(path, bytesOf(bytes))),
       install: async (from, to, assertEffect) => {

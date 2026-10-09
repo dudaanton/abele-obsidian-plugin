@@ -53,7 +53,10 @@ and effect tracker, so successors can settle already-issued adapter promises.
 Staging is written only to a fresh hidden `.abele-external-*.incoming` operation-owned path
 recorded before the write, with exact SHA/size. The caller must choose a unique incoming name
 and persist its artifact reference. Existing staging is never rewritten on retry. Input bytes
-are copied before awaits; written bytes are reread and hashed. The target is never written
+are transferred for exclusive use until staging settles, without a defensive full-file copy;
+written bytes are still reread and hashed. Download references are released before those
+reads. Desktop verification uses one reusable 1 MiB native read buffer; mobile uses the
+adapter's whole buffer with incremental SHA-256, avoiding WebCrypto input snapshots. The target is never written
 with downloaded bytes. Initial projection creation uses the same staging/installation path;
 an occupied sidecar is preserved, not replaced or renamed out of the way.
 

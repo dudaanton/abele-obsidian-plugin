@@ -1,4 +1,4 @@
-import { sha256 } from '@abele/sync-core'
+import { sha256 } from './hash'
 import { OwnedArtifactSchema, type ExternalOperation } from './records'
 import type { ExternalReservation } from './coordination'
 
@@ -23,6 +23,7 @@ export interface ExternalByteExpectation {
 export interface ExternalFilesystemPort {
   exists(path: string): Promise<boolean>
   read(path: string): Promise<Uint8Array>
+  matches?(expected: ExternalByteExpectation): Promise<boolean>
   makeParents(path: string): Promise<void>
   writeStaging(path: string, bytes: Uint8Array): Promise<void>
   /** Native link on desktop; final absent check plus adapter rename on mobile. */
@@ -82,6 +83,7 @@ export class ExternalFileEffects {
     return artifact
   }
   private async matches(expected: ExternalByteExpectation): Promise<boolean> {
+    if (this.fs.matches) return this.fs.matches(expected)
     const current = await this.fs.read(expected.path)
     return current.byteLength === expected.size && (await sha256(current)) === expected.sha
   }
@@ -104,13 +106,14 @@ export class ExternalFileEffects {
     await Promise.allSettled([...this.pending])
   }
 
+  /** Caller transfers exclusive use of bytes until this effect settles. Disk rechecks
+   * detect mutations; no attachment-sized defensive snapshot is retained. */
   stage(input: OwnedArtifact, bytes: Uint8Array): Promise<ExternalEffectResult> {
     return this.track(async () => {
-      const artifact = this.owned(input),
-        copy = new Uint8Array(bytes)
+      const artifact = this.owned(input)
       if (!artifact.path.split('/').at(-1)?.startsWith('.abele-external-'))
         throw new ExternalFilePortError('recovery-required')
-      if (copy.byteLength !== artifact.size || (await sha256(copy)) !== artifact.sha)
+      if (bytes.byteLength !== artifact.size || (await sha256(bytes)) !== artifact.sha)
         throw new ExternalFilePortError('local-changed')
       this.check([artifact.path], 'stage', artifact)
       await this.fs.makeParents(artifact.path)
@@ -118,7 +121,9 @@ export class ExternalFileEffects {
       this.check([artifact.path], 'stage', artifact)
       try {
         // Only the random, operation-owned incoming path is written, never the final target.
-        await this.fs.writeStaging(artifact.path, copy)
+        await this.fs.writeStaging(artifact.path, bytes)
+        // The writer is done with the transferred bytes before verification reads disk.
+        bytes = new Uint8Array(0)
         if (!(await this.matches(artifact))) return this.ambiguous([artifact.path], [artifact])
         this.check([artifact.path])
         return { status: 'staged' }

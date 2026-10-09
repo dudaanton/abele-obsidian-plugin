@@ -36,6 +36,7 @@ const desktopRequest = async (
   const controller = native.controller()
   const abort = () => controller.abort()
   signal?.addEventListener('abort', abort, { once: true })
+  let streaming = false
   try {
     // Electron's main-process implementation owns the full native request lifecycle. Manual
     // redirect policy is set BEFORE starting it, not inferred from a final followed response.
@@ -76,19 +77,53 @@ const desktopRequest = async (
       if (next.done) break
       headers[next.value] = response.headers.get(next.value) ?? ''
     }
-    const bytes = native.bytes(await response.arrayBuffer())
-    if (signal?.aborted) throw abortError(signal)
-    return {
+    const init = {
       status: response.status,
       headers,
-      arrayBuffer: bytes.buffer as ArrayBuffer,
-      json: null,
-      text: '',
     }
+    if ((input.method ?? 'GET') === 'HEAD' || [204, 205, 304].includes(response.status)) {
+      await response.body?.cancel()
+      return new Response(null, init)
+    }
+    if (!response.body) return new Response(null, init)
+    const reader = response.body.getReader()
+    const finish = () => signal?.removeEventListener('abort', abort)
+    const body = new ReadableStream<Uint8Array>(
+      {
+        async pull(stream) {
+          try {
+            if (signal?.aborted) throw abortError(signal)
+            const next = await reader.read()
+            if (next.done) {
+              finish()
+              stream.close()
+            } else {
+              // Electron serializes only this bounded chunk, never the complete attachment.
+              const chunk = native.bytes(next.value.buffer)
+              stream.enqueue(
+                chunk.subarray(next.value.byteOffset, next.value.byteOffset + next.value.byteLength)
+              )
+            }
+          } catch (error) {
+            finish()
+            controller.abort()
+            stream.error(error)
+          }
+        },
+        async cancel() {
+          finish()
+          controller.abort()
+          await reader.cancel()
+        },
+      },
+      { highWaterMark: 0 }
+    )
+    streaming = true
+    return new Response(body, init)
   } catch (error) {
     if (signal?.aborted) throw abortError(signal)
     throw error
   } finally {
-    signal?.removeEventListener('abort', abort)
+    if (!streaming) signal?.removeEventListener('abort', abort)
   }
 }
