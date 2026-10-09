@@ -42,6 +42,9 @@ export interface MeasuredElement {
   client: [number, number]
   scroll: [number, number]
   overflow: [string, string]
+  /** Actual CSS line clamp plus a labelled interactive opener, not a blanket clipping waiver. */
+  lineClamp?: number
+  fullTextAvailable?: boolean
   disabled?: boolean
 }
 export interface RowMetrics {
@@ -162,7 +165,11 @@ export function lintDesign(snapshot: DesignSnapshot, options: LintOptions = {}):
   for (const e of els) {
     for (let axis = 0; axis < 2; axis++) {
       const delta = e.scroll[axis] - e.client[axis]
-      if (delta > tolerance && !['auto', 'scroll', 'visible'].includes(e.overflow[axis]))
+      if (
+        delta > tolerance &&
+        !['auto', 'scroll', 'visible'].includes(e.overflow[axis]) &&
+        !(axis === 1 && (e.lineClamp ?? 0) > 0 && e.fullTextAvailable)
+      )
         add(
           'clipping',
           `Content clipped on ${axis ? 'y' : 'x'} by ${delta.toFixed(1)}px`,
@@ -258,7 +265,20 @@ export function lintDesign(snapshot: DesignSnapshot, options: LintOptions = {}):
         if (j === i + 1 && x > tolerance && y <= 0) {
           const gap =
             b.rect.y >= bottom(a.rect) ? b.rect.y - bottom(a.rect) : a.rect.y - bottom(b.rect)
-          if (!onScale(gap))
+          const low = Math.min(bottom(a.rect), bottom(b.rect)),
+            high = Math.max(a.rect.y, b.rect.y)
+          const occupied =
+            parent?.layout?.display.includes('grid') &&
+            group.some(
+              (c) =>
+                c !== a &&
+                c !== b &&
+                c.rect.y < high &&
+                bottom(c.rect) > low &&
+                right(c.rect) > Math.max(a.rect.x, b.rect.x) &&
+                c.rect.x < Math.min(right(a.rect), right(b.rect))
+            )
+          if (!occupied && !onScale(gap))
             add(
               'spacing-scale',
               `Sibling gap ${gap.toFixed(1)}px is not a theme spacing token`,

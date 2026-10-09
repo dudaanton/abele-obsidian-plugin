@@ -173,7 +173,8 @@ describe('renderer design capture', () => {
     ).toBeUndefined()
     const edge = s.elements.find((e) => e.selector.includes('abele-disclosure__control'))!
     expect(edge.level).toBeUndefined()
-    expect(edge.slot).toBe('action')
+    expect(edge.slot).toBeUndefined()
+    expect(s.elements.find((e) => e.selector === 'svg' && e.parent)?.slot).toBe('action')
     expect(s.elements.find((e) => e.selector === 'svg.lucide-file-text')?.iconRole).toBe('content')
   })
   it('does not make a static tree label into a touch action', () => {

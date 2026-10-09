@@ -177,6 +177,20 @@ describe('design lint geometry rules', () => {
       expect.arrayContaining(['sibling-overlap', 'text-triangle'])
     )
   })
+  it('recognizes measured line clamping only when a full-text accessible opener exists', () => {
+    const e = element('preview', {
+      row: undefined,
+      parent: null,
+      text: 'A long sample',
+      scroll: [100, 60],
+      overflow: ['hidden', 'hidden'],
+      lineClamp: 2,
+      fullTextAvailable: true,
+    })
+    expect(codes(snapshot([e]))).not.toContain('clipping')
+    e.fullTextAvailable = false
+    expect(codes(snapshot([e]))).toContain('clipping')
+  })
   it('checks real inline fragments rather than overlapping unions of wrapped sibling text', () => {
     const a = element('wrapped', {
       rect: rect(40, 20, 100, 40),
@@ -203,6 +217,26 @@ describe('design lint geometry rules', () => {
     expect(codes(snapshot([parent, a, b]))).toContain('spacing-scale')
     parent.layout!.justify = 'space-between'
     expect(lintDesign(snapshot([parent, a, b]))).toEqual([])
+  })
+  it('does not infer a giant gap between nonadjacent grid areas whose intervening area is occupied', () => {
+    const parent = element('grid', {
+      parent: null,
+      row: undefined,
+      rect: rect(0, 0, 300, 120),
+      layout: { display: 'grid', justify: 'normal' },
+    })
+    const recovery = element('recovery', {
+      parent: 'grid',
+      row: undefined,
+      rect: rect(0, 100, 300, 20),
+    })
+    const action = element('action', { parent: 'grid', row: undefined, rect: rect(250, 0, 50, 20) })
+    const occupied = element('state', {
+      parent: 'grid',
+      row: undefined,
+      rect: rect(0, 60, 300, 20),
+    })
+    expect(codes(snapshot([parent, recovery, action, occupied]))).not.toContain('spacing-scale')
   })
   it('captures SVG paint fragments without treating their intentional intersections as sibling layout overlap', () => {
     const shapes = [

@@ -25,8 +25,9 @@
             ><span v-if="extension" class="abele-list-row__extension">{{ extension }}</span></span
           >
           <MetaLine v-if="!$slots.metadata && facts?.length" :facts="facts" />
+          <slot v-if="!interactive" name="metadata" />
         </component>
-        <slot name="metadata" />
+        <slot v-if="interactive" name="metadata" />
         <div v-if="snippet" class="abele-list-row__snippet">{{ snippet }}</div>
         <p
           v-if="state !== 'ready'"
@@ -112,6 +113,7 @@ const stateText = {
   display: flex;
   align-items: flex-start;
   gap: var(--size-4-2);
+  padding-inline-start: var(--size-4-2);
 }
 .abele-list-row .abele-list-row__content {
   display: grid;
@@ -173,7 +175,7 @@ const stateText = {
   justify-content: center;
   align-items: center;
   flex: 0 0 auto;
-  min-width: var(--size-4-6);
+  min-width: var(--icon-size);
   min-height: 1lh;
   height: auto;
   margin: 0;

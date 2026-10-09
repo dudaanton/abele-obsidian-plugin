@@ -125,13 +125,7 @@ export function captureDesign(selector: string, options: CaptureOptions = {}): D
         if (el.closest(actions)) slot = 'action'
         else if (!el.closest('.abele-disclosure, [data-design-disclosure]')) slot = 'icon'
       } else if (host && level) slot = 'text'
-      else if (
-        host &&
-        control &&
-        el.closest(actions) &&
-        (!el.querySelector(icons) || el.matches('.abele-disclosure__control'))
-      )
-        slot = 'action'
+      else if (host && control && el.closest(actions) && !el.querySelector(icons)) slot = 'action'
       const ancestors: Element[] = []
       for (let p: Element | null = el; p; p = p.parentElement) ancestors.unshift(p)
       let composed = [255, 255, 255]
@@ -228,6 +222,11 @@ export function captureDesign(selector: string, options: CaptureOptions = {}): D
         client: [el.clientWidth, el.clientHeight],
         scroll: [el.scrollWidth, el.scrollHeight],
         overflow: [s.overflowX, s.overflowY],
+        lineClamp: number(s.webkitLineClamp),
+        fullTextAvailable: !!el
+          .closest('button[aria-label], a[href][aria-label]')
+          ?.getAttribute('aria-label')
+          ?.includes(el.textContent?.trim() || '\u0000'),
         disabled: el.matches(':disabled, [aria-disabled="true"]'),
       })
     }

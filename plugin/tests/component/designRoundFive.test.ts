@@ -33,6 +33,16 @@ describe('native row composition', () => {
     await row.get('.abele-list-row__actions button').trigger('click')
     expect(row.emitted('open')).toBeUndefined()
   })
+  it('keeps readonly metadata in the same compact title stack despite a tall sibling action', () => {
+    const row = mount(ListRow, {
+      props: { title: 'sample.md' },
+      slots: {
+        metadata: () => h('span', { class: 'test-time' }, 'Today'),
+        actions: () => h(Icon, { icon: 'copy', tooltip: 'Copy', interactive: true }),
+      },
+    })
+    expect(row.get('.abele-list-row__title').find('.test-time').exists()).toBe(true)
+  })
   it('keeps the meaningful file extension separate from a clamped basename', () => {
     const row = mount(ListRow, {
       props: { title: 'A long sample document name.md', preserveExtension: true },
