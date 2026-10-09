@@ -158,6 +158,27 @@ describe('external-file host coordination and filesystem effects', () => {
     expect(events).toEqual(['sync', 'external'])
   })
 
+  it('captures reservation parameters before waiting for the engine queue', async () => {
+    const s = setup(),
+      engine = queue(),
+      entered = barrier(),
+      hold = barrier()
+    const paths = [...request.paths],
+      mutable = { ...request, paths }
+    const predecessor = engine.run(async () => {
+      entered.release()
+      await hold.promise
+    })
+    await entered.promise
+    const external = s.host.run(engine, mutable, async () => {
+      expect(await reason(s.fs.remove(source))).toBe('busy')
+    })
+    paths.splice(0, paths.length, 'Elsewhere/sample.bin')
+    hold.release()
+    await Promise.all([predecessor, external])
+    expect(await s.fake.vault.adapter.exists(source)).toBe(true)
+  })
+
   it('blocks apply, rename and delete at either reserved path, including case aliases and ancestors', async () => {
     const s = setup()
     await s.run(async () => {

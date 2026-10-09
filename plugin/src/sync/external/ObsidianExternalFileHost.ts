@@ -108,16 +108,19 @@ export class ExternalFileHost {
   ): Promise<T> {
     if (typeof request.assertIntent !== 'function')
       throw new ExternalFilePortError('recovery-required')
+    // Capture before an exclusive job waits: callers must not redirect a queued reservation
+    // by mutating the original request or its paths array.
+    const intake = Object.freeze({ ...request, paths: Object.freeze([...request.paths]) })
     return serial.run(async () => {
       this.assertOwned()
-      const reservation = this.coordination.reserve(request)
+      const reservation = this.coordination.reserve(intake)
       let effects: ExternalFileEffects | undefined
       try {
         this.assertUnused(reservation.request.paths)
         effects = new ExternalFileEffects(this.filesystem(), reservation, {
           assertOwned: this.assertOwned,
           assertUnused: () => this.assertUnused(reservation.request.paths),
-          assertIntent: request.assertIntent,
+          assertIntent: intake.assertIntent,
         })
         return await work(effects)
       } finally {
