@@ -124,7 +124,10 @@
           :message="missingImage ? 'Image missing' : undefined"
           :facts="[{ key: 'where', value: 'Media' }]"
           ><template #leading
-            ><Image :src="missingImage ? 'Missing/image.png' : sampleImage" alt="Missing image" variant="thumbnail" /></template
+            ><Image
+              :src="missingImage ? 'Missing/image.png' : sampleImage"
+              alt="Missing image"
+              variant="thumbnail" /></template
           ><template #actions
             ><Icon
               icon="link"
@@ -607,7 +610,6 @@ const longPages = new Set<CataloguePage>([
   'index',
   'states',
   'details',
-  'controls',
   'navigation',
   'previews',
   'specialized',
@@ -762,6 +764,9 @@ const renderChart = (chart: EChartsType) =>
 .abele-design-catalogue > .abele-section:first-child {
   margin-top: 0;
 }
+.abele-design-catalogue .abele-list-row__detail > .setting-item-description {
+  margin: var(--size-4-1) 0;
+}
 .abele-design-catalogue__icons {
   display: flex;
   align-items: center;
@@ -790,9 +795,7 @@ const renderChart = (chart: EChartsType) =>
 .abele-design-catalogue > .abele-obsidian-input {
   margin-block: var(--size-4-2);
 }
-body.is-phone
-  .abele-design-catalogue
-  :is(button, summary, input:not([type='range']), select, .checkbox-container) {
+body.is-phone .abele-design-catalogue :is(button, summary, input:not([type='range']), select) {
   min-height: var(--abele-touch-min);
 }
 </style>

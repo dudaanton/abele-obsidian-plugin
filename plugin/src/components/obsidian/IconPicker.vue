@@ -178,6 +178,10 @@ const onKeydown = (event: KeyboardEvent) => {
 </script>
 
 <style lang="scss">
+.abele-icon-picker > .setting-item-description {
+  flex: 0 0 auto;
+  min-height: 1lh;
+}
 .abele-icon-picker {
   display: flex;
   flex-direction: column;

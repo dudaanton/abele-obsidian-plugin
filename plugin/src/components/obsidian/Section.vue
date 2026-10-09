@@ -26,8 +26,11 @@ defineProps<{
   }
 }
 
-.abele-section__heading {
+.abele-section .abele-section__heading {
   margin: 0 0 var(--size-4-2);
+  font-size: var(--font-ui-small);
+  font-weight: var(--font-bold);
+  line-height: var(--line-height-normal);
 }
 
 .abele-section__desc {

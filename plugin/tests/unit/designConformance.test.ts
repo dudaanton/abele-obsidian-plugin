@@ -140,6 +140,7 @@ const STRICT_KIT = [
   'EmptyState',
   'FoldHeading',
   'Card',
+  'Section',
 ]
 const STRICT_SCREENS: string[] = [] // Each migration must append its screen here.
 const MIGRATION_EXEMPTIONS = {

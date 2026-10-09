@@ -37,7 +37,7 @@
       :disabled-reason="busy ? 'Saving colour' : 'Selection unavailable'"
       @click="emit('update:underline', !underline)"
     />
-    <span class="setting-item-description">{{
+    <span v-if="!busy" class="setting-item-description">{{
       modelValue === 'grey' ? 'No colour' : KIT_COLOR_NAMES[modelValue]
     }}</span>
     <span v-if="busy" role="status">Saving {{ KIT_COLOR_NAMES[modelValue] }}…</span>
@@ -88,6 +88,12 @@ const onKey = (event: KeyboardEvent, index: number) => {
 }
 </script>
 <style lang="scss">
+.abele-swatch-picker {
+  display: flex;
+  flex-direction: column;
+  align-items: flex-start;
+  gap: var(--size-4-1);
+}
 .abele-swatch-picker__group {
   display: flex;
   flex-wrap: wrap;

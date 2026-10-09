@@ -98,12 +98,12 @@ const toggle = (id: string, open: boolean) => {
   margin-top: var(--size-4-1);
 }
 .abele-event-list__meta {
-  display: flex;
-  flex-wrap: wrap;
-  align-items: baseline;
-  gap: var(--size-2-1);
+  display: block;
   color: var(--text-muted);
   font-size: var(--font-ui-smaller);
   font-weight: var(--font-normal);
+}
+.abele-event-list__meta .abele-meta-line {
+  display: inline;
 }
 </style>

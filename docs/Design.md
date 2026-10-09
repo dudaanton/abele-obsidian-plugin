@@ -9,7 +9,7 @@ these mappings must never become a global override of Obsidian's mobile UI.
 
 | Level | Size | Weight | Colour |
 |---|---|---|---|
-| Section | `--font-ui-medium` | `--font-semibold` | `--text-normal` |
+| Section | `--font-ui-small`, or inherited native section size | `--font-bold` | `--text-normal` |
 | Object title | `--font-ui-small`, or inherited native row size | `--font-normal` | `--text-normal` |
 | Essential metadata | `--font-ui-smaller` | `--font-normal` | `--text-muted` |
 | Expanded detail | `--font-ui-small` | `--font-normal` | `--text-normal`; labels muted |

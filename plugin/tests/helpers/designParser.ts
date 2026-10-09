@@ -6,7 +6,7 @@ import { compileString } from 'sass-embedded'
 
 const DISCLOSURE_GLYPHS = /[▶▼▸▾►◀▲▽▴▵▿▹◂◃]/u
 const HOST_TOKEN =
-  /^--(?:size-(?:2-[0-8]|4-(?:[0-9]|10|11|12|16|18))|font-(?:interface|text|monospace|ui-(?:small|smaller|medium|large)|normal|medium|semibold)|line-height-(?:normal|tight)|text-(?:normal|muted|faint|accent|error|warning)|icon-(?:size|color|color-hover)|color-(?:red|orange|yellow|green|cyan|blue|purple|pink)|background-(?:primary|secondary|modifier-(?:border|border-focus|active-hover|hover))|interactive-accent|radius-[sm]|cursor(?:-link)?|touch-size-[sml]|abele-touch-min)$/
+  /^--(?:size-(?:2-[0-8]|4-(?:[0-9]|10|11|12|16|18))|font-(?:interface|text|monospace|ui-(?:small|smaller|medium|large)|normal|medium|semibold|bold)|line-height-(?:normal|tight)|text-(?:normal|muted|faint|accent|error|warning)|icon-(?:size|color|color-hover)|color-(?:red|orange|yellow|green|cyan|blue|purple|pink)|background-(?:primary|secondary|modifier-(?:border|border-focus|active-hover|hover))|interactive-accent|radius-[sm]|cursor(?:-link)?|touch-size-[sml]|abele-touch-min)$/
 const hasProp = (node: ElementNode, name: string) =>
   node.props.some((p) =>
     p.type === NodeTypes.ATTRIBUTE

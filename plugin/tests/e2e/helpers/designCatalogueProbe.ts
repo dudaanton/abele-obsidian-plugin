@@ -6,6 +6,9 @@ if (!root) throw Error('Catalogue not mounted')
 const modal = root.closest('.modal')
 const intended = [...root.querySelectorAll('.abele-list-row__main, .abele-list-row__actions .abele-obsidian-icon, .abele-sheet-header-actions .abele-obsidian-icon, .abele-disclosure__control, .abele-swatch-picker__choice, .abele-path-label > summary, .abele-relative-time summary, .abele-image__preview, .abele-quote > .abele-obsidian-icon, .abele-swatch-picker__underline')]
 const failures = []
+for (const heading of root.querySelectorAll('.abele-section__heading')) {
+  if (parseFloat(getComputedStyle(heading).fontSize) > parseFloat(getComputedStyle(root).fontSize) + .1) failures.push('section heading uses document rather than UI typography')
+}
 const shadowReach = ${outwardBoxShadowReach.toString()}
 for (const el of intended) {
   const initial = el.getBoundingClientRect()
