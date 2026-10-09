@@ -1,6 +1,7 @@
 import { SuggestModal, type App } from 'obsidian'
 import type { GithubClient } from '../client'
-import { loadRefs } from '../repoPage/repoHome'
+import type { RepositorySource } from '@/repository/source'
+import { githubRepositorySource } from '@/repository/github'
 import { basePins, type BasePin, type Repository } from './pins'
 
 interface Row {
@@ -17,7 +18,7 @@ export class BasePicker extends SuggestModal<Row> {
   private closed = false
   constructor(
     app: App,
-    private readonly client: GithubClient,
+    private readonly client: GithubClient | RepositorySource,
     private readonly repo: Repository
   ) {
     super(app)
@@ -28,6 +29,9 @@ export class BasePicker extends SuggestModal<Row> {
       { command: 'esc', purpose: 'cancel' },
     ])
   }
+  private source(): RepositorySource {
+    return 'identity' in this.client ? this.client : githubRepositorySource(this.client, this.repo)
+  }
   async getSuggestions(query: string): Promise<Row[]> {
     const name = query.trim(),
       generation = ++this.queryGeneration
@@ -36,7 +40,8 @@ export class BasePicker extends SuggestModal<Row> {
       if (this.closed || generation !== this.queryGeneration) return []
       try {
         const pending =
-          this.resolved.get(name) ?? basePins(this.app).resolve(this.client, this.repo, name)
+          this.resolved.get(name) ??
+          basePins(this.app).resolveSource(this.source(), this.repo, name)
         this.resolved.set(name, pending)
         const pin = await pending
         return this.closed || generation !== this.queryGeneration ? [] : [{ name, pin }]
@@ -46,9 +51,9 @@ export class BasePicker extends SuggestModal<Row> {
       }
     }
     try {
-      this.refs ??= loadRefs(this.client, this.repo).then((refs) => [
-        ...new Set([...refs.branches, ...refs.tags]),
-      ])
+      this.refs ??= this.source()
+        .refs()
+        .then((refs) => [...new Set([...refs.branches, ...refs.tags])])
       return (await this.refs).map((name) => ({ name }))
     } catch {
       this.refs = undefined

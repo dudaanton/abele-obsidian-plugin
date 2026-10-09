@@ -1,3 +1,5 @@
+import type { FolderEntry, FolderData } from '@/repository/model'
+export type { FolderEntry, FolderData } from '@/repository/model'
 /**
  * One folder of a repository at a ref, as a tab lists it: its entries, folders first, and the
  * README GitHub would render under them.
@@ -6,26 +8,8 @@ import { GithubError, type GithubClient } from '../client'
 import { repoApiPath } from '../contents'
 import { repoWeb } from '../origin'
 import { treeCandidates, type GithubTarget } from '../urls'
-import type { NodeKind } from './fileTree'
 
 type Of<K extends GithubTarget['kind']> = Extract<GithubTarget, { kind: K }>
-
-export interface FolderEntry {
-  name: string
-  path: string
-  kind: NodeKind | 'symlink'
-  /** Bytes, for a file. */
-  size?: number
-}
-
-export interface FolderData {
-  ref: string
-  /** Empty for the repository's root. */
-  path: string
-  entries: FolderEntry[]
-  /** GitHub's own address for it. */
-  url: string
-}
 
 /** A `tree/…` link that names a file: the tab shows the file, as GitHub redirects to it. */
 export class NotAFolderError extends GithubError {

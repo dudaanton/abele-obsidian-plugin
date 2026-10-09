@@ -18,6 +18,7 @@ import { secrets } from '@/secrets/SecretStore'
 import { readConnectionItem } from './connectionRead'
 import { GithubError } from './client'
 import type { GithubTarget } from './urls'
+import { githubTabTarget, savedGithubTarget, savedNodeTarget } from '@/repository/state'
 import { sameConnectionServer } from './connectionRouting'
 import { clientForTab, tabAccessSnapshot } from './tabConnectionAccess'
 import GithubItem from '@/components/github/GithubItem.vue'
@@ -65,7 +66,11 @@ export class GithubView extends ItemView {
 
   getDisplayText() {
     if (this.title) return this.title
-    return this.model.target ? shortName(this.model.target) : 'GitHub'
+    return this.model.target
+      ? shortName(this.model.target)
+      : this.model.sourceTarget?.provider === 'node'
+        ? 'Repository'
+        : 'GitHub'
   }
 
   getIcon() {
@@ -79,6 +84,15 @@ export class GithubView extends ItemView {
 
   getState(): Record<string, unknown> {
     const state: Record<string, unknown> = { url: this.model.url }
+    // URL-only callers keep their legacy shape until the repository tab is mounted.
+    if (this.model.target && (this.vue || this.model.sourceTarget))
+      state.sourceTarget = githubTabTarget(
+        this.model.url,
+        this.model.target,
+        this.model.connectionId,
+        this.model.sourceRevision
+      )
+    else if (this.model.sourceTarget) state.sourceTarget = this.model.sourceTarget
     if (this.model.connectionId) {
       state.connectionId = this.model.connectionId
       state.connectionIntent = this.model.connectionIntent ?? 'automatic'
@@ -90,7 +104,40 @@ export class GithubView extends ItemView {
   }
 
   async setState(state: unknown, result: ViewStateResult): Promise<void> {
-    const url = (state as { url?: unknown } | null)?.url
+    const node = savedNodeTarget(state)
+    const saved = savedGithubTarget(state)
+    if (
+      (state as { sourceTarget?: unknown } | null)?.sourceTarget !== undefined &&
+      !node &&
+      !saved
+    ) {
+      this.model.sourceTarget = undefined
+      this.model.sourceRevision = undefined
+      this.model.target = null
+      this.model.url = ''
+      this.model.connectionId = undefined
+      Object.assign(this.model.screen, emptyScreen())
+      this.model.screen.error = 'The saved repository source target is invalid.'
+      this.title = ''
+      this.refreshHeader()
+      await super.setState(state, result)
+      return
+    }
+    if (node) {
+      this.model.sourceTarget = node
+      this.model.target = null
+      this.model.url = ''
+      this.model.connectionId = undefined
+      this.model.sourceRevision = node.revision
+      Object.assign(this.model.screen, emptyScreen())
+      this.model.screen.error = 'This repository source is not available yet.'
+      this.title = ''
+      this.model.nonce++
+      this.refreshHeader()
+      await super.setState(state, result)
+      return
+    }
+    const url = saved?.url ?? (state as { url?: unknown } | null)?.url
     if (typeof url === 'string' && url) {
       const target = parseForSettings(url)
       const requested = state as {
@@ -100,7 +147,7 @@ export class GithubView extends ItemView {
         executionAgentId?: string
         approvedConnections?: Record<string, string>
       }
-      let connectionId = requested.connectionId
+      let connectionId = saved?.connection || requested.connectionId
       const exists = (githubSettings().connections ?? []).some((c) => c.id === connectionId)
       this.model.connectionNotice = ''
       if (connectionId && !exists) {
@@ -128,6 +175,8 @@ export class GithubView extends ItemView {
       this.model.executionAgentId = access.executionAgentId
       this.model.approvedConnections = access.approvedConnections
       const mode = (state as { mode?: unknown }).mode
+      this.model.sourceTarget = saved ?? undefined
+      this.model.sourceRevision = saved?.revision
       this.model.url = url
       this.model.target = target
       // A link followed says nothing of it: the file opens the way the link asks.
@@ -280,6 +329,15 @@ export class GithubView extends ItemView {
     const mountPoint = this.contentEl.createDiv({ cls: 'abele-github-view__mount' })
     this.vue = createApp({
       render: () => {
+        if (
+          this.model.sourceTarget?.provider === 'node' ||
+          (!this.model.target && !this.model.url && this.model.screen.error)
+        )
+          return h(
+            'div',
+            { class: 'abele-github-view__source-unavailable' },
+            this.model.screen.error
+          )
         void AbeleConfig.getInstance().version.value
         void secrets().version.value
         const id = this.model.connectionId

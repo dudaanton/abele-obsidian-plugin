@@ -1,9 +1,9 @@
 <template>
   <div class="abele-github-blob">
     <Teleport :to="toolbarHost ?? 'body'" :disabled="!toolbarHost">
-      <div v-if="markdown || range || client" class="abele-github-blob__toolbar">
+      <div v-if="markdown || range || source" class="abele-github-blob__toolbar">
         <Button
-          v-if="client"
+          v-if="source"
           text="Blame"
           icon="git-commit-horizontal"
           aria-label="Toggle line blame"
@@ -70,7 +70,7 @@
       :selected="selected"
       :focus="focus"
       @select="onSelect"
-      @commit="(sha) => emit('open', `${repoWeb(file)}/commit/${encodeURIComponent(sha)}`)"
+      @commit="(sha) => emit('open', source!.navigation.commit(sha))"
     >
       <template #bar>
         <GithubSelectionBar
@@ -90,8 +90,9 @@
 import { computed, inject, onBeforeUnmount, ref, shallowRef, watch } from 'vue'
 import Button from '../obsidian/Button.vue'
 import GithubNotice from './GithubNotice.vue'
-import { loadBlame, type BlameRange } from '@/github/blame'
-import { repoWeb } from '@/github/origin'
+import type { BlameRange } from '@/repository/model'
+import { useRepositorySource } from '@/repository/context'
+
 import Tabs from '../obsidian/Tabs.vue'
 import GithubCode from './GithubCode.vue'
 import GithubMarkdown from './GithubMarkdown.vue'
@@ -137,19 +138,23 @@ const emit = defineEmits<{
   (e: 'open', url: string): void
 }>()
 
+const source = useRepositorySource(
+  () => props.client,
+  () => props.file
+)
 const blaming = ref(false)
 const blameBusy = ref(false)
 const blameError = ref('')
 const blameRanges = shallowRef<BlameRange[] | null>(null)
 let blameRequest = 0
 const askBlame = async () => {
-  const client = props.client
-  if (!client) return
+  const current = source.value
+  if (!current) return
   const request = ++blameRequest
   blameBusy.value = true
   blameError.value = ''
   try {
-    const ranges = await loadBlame(client, props.file)
+    const ranges = await current.blame(props.file.ref, props.file.path)
     if (request === blameRequest) blameRanges.value = ranges
   } catch (error) {
     if (request === blameRequest)
@@ -184,11 +189,14 @@ onBeforeUnmount(() => {
   ++blameRequest
 })
 
-const markdown = computed(() => isMarkdownPath(props.file.path))
+const markdown = computed(
+  () => source.value?.identity.provider !== 'node' && isMarkdownPath(props.file.path)
+)
 const config = AbeleConfig.getInstance()
 const mode = computed(() => {
   // Followed at once when the setting changes.
   void config.version.value
+  if (source.value?.identity.provider === 'node') return 'code'
   return blobMode({
     path: props.file.path,
     lines: props.range,

@@ -1,3 +1,5 @@
+import type { CommitSummary, CommitData, BlobData } from '@/repository/model'
+export type { CommitSummary, CommitData, BlobData } from '@/repository/model'
 /**
  * What the GitHub views show, fetched and put in one shape.
  *
@@ -122,44 +124,10 @@ export interface FilesData {
   reviewCommentsProblem?: string
 }
 
-export interface CommitSummary {
-  sha: string
-  message: string
-  /** The login when the commit is linked to an account, git's author name when not. */
-  author: string
-  /** Set when `author` is a login. */
-  login?: string
-  avatar?: string
-  date: string
-}
-
-export interface CommitData {
-  sha: string
-  /** The first parent: where a file the commit deletes still exists. */
-  parentSha?: string
-  message: string
-  /** As in `CommitSummary`. */
-  author: string
-  login?: string
-  avatar?: string
-  date: string
-  url: string
-  files: DiffFile[]
-}
-
 export interface DiscussionData extends ItemHead {
   category: string
   comments: Comment[]
   totalComments: number
-}
-
-export interface BlobData {
-  /** Exact endpoint file comparison; absent for the existing original-file view. */
-  comparison?: import('./comparison/service').PinnedFile
-  ref: string
-  path: string
-  text: string
-  url: string
 }
 
 // `any` below is the API's own JSON, read once here and never passed on.

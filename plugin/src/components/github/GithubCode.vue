@@ -14,7 +14,7 @@ import type { LineSpan } from '@/github/permalinks'
 import type { LineRange } from '@/github/urls'
 import { mountCode, type CodeViewer } from '@/github/codeViewer'
 import { LINE_CONTEXT, pinIntoView } from '@/github/scrollTo'
-import type { BlameRange } from '@/github/blame'
+import type { BlameRange } from '@/repository/model'
 import type { BlameHost } from '@/github/blameGutter'
 import GithubBlameRange from './GithubBlameRange.vue'
 

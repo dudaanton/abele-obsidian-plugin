@@ -1,3 +1,5 @@
+import type { CompareData } from '@/repository/model'
+export type { CompareData } from '@/repository/model'
 /**
  * A comparison of two versions of a repository — `compare/base...head` — as a GitHub tab shows
  * it: how far head is ahead of base and behind it, the commits head has that base has not, and
@@ -12,7 +14,7 @@ import type { GithubClient } from './client'
 import { GithubError } from './client'
 import type { GithubTarget } from './urls'
 import { repoWeb } from './origin'
-import { diffFiles, restCommit, type CommitSummary, type DiffFile } from './api'
+import { diffFiles, restCommit } from './api'
 import { commitsFromGraphql } from './graphql'
 import { withFallback } from './sections'
 import { defaultBranch } from './search/source'
@@ -20,35 +22,6 @@ import { defaultBranch } from './search/source'
 type Of<K extends GithubTarget['kind']> = Extract<GithubTarget, { kind: K }>
 
 type RepoLike = { host: string; owner: string; repo: string }
-
-export interface CompareData {
-  /** The base as compared: for `compare/<head>`, the default branch it was compared with. */
-  base: string
-  head: string
-  direct: boolean
-  /** `ahead`, `behind`, `diverged` or `identical`. */
-  status: string
-  aheadBy: number
-  behindBy: number
-  totalCommits: number
-  /** Oldest first, as GitHub lists them. */
-  commits: CommitSummary[]
-  /** Not every commit was read: past `MAX_PAGES` pages, or a page was refused. */
-  commitsComplete: boolean
-  files: DiffFile[]
-  /** GitHub sends at most 300 files for a comparison; more than that are on GitHub only. */
-  filesComplete: boolean
-  additions: number
-  deletions: number
-  /** Where head split from base: where a file the comparison deletes still exists. */
-  mergeBaseSha?: string
-  /** The commit head is at: what its files are opened and searched at. */
-  headSha?: string
-  /** The comparison's address on GitHub. */
-  url: string
-  /** Why part of it is missing or means something else than the link asked for. */
-  note?: string
-}
 
 /** Commits per page asked for; GitHub's largest. */
 const PER_PAGE = 100

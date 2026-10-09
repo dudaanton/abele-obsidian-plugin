@@ -1,3 +1,5 @@
+import type { RepoMeta, RepoHomeData, RefList } from '@/repository/model'
+export type { RepoMeta, RepoHomeData, RefList } from '@/repository/model'
 /**
  * A repository's front page, as a tab shows it: what the repository says of itself, its files at
  * the ref shown with their README, and — asked for once the page is up — its languages, the
@@ -23,33 +25,7 @@ export interface RepoLike {
   repo: string
 }
 
-export interface RepoMeta {
-  /** As GitHub names it now: a renamed repository answers under its new name. */
-  owner: string
-  name: string
-  description: string
-  homepage: string
-  topics: string[]
-  stars: number
-  forks: number
-  watchers: number
-  defaultBranch: string
-  /** SPDX id where GitHub knows one (`MIT`), else the licence's name; null without one. */
-  license: string | null
-  visibility: string
-  archived: boolean
-  /** The repository this one is a fork of. */
-  parent: string | null
-  hasIssues: boolean
-  url: string
-}
-
 /** The front page: the root folder at the ref shown, with the repository's own facts. */
-export interface RepoHomeData extends FolderData {
-  meta: RepoMeta
-  /** The repository has no commits: nothing to list, no README. */
-  empty?: boolean
-}
 
 interface RawRepo {
   name?: string
@@ -100,7 +76,14 @@ const repoName = (r: RepoLike) => `${r.owner}/${r.repo}`
  * so it goes as one part: `loadFolder` then has only the one split to try.
  */
 async function rootAt(client: GithubClient, t: RepoLike, ref: string): Promise<FolderData> {
-  const tree: Of<'tree'> = { kind: 'tree', host: t.host, origin:t.origin, owner: t.owner, repo: t.repo, rest: [ref] }
+  const tree: Of<'tree'> = {
+    kind: 'tree',
+    host: t.host,
+    origin: t.origin,
+    owner: t.owner,
+    repo: t.repo,
+    rest: [ref],
+  }
   return loadFolder(client, tree)
 }
 
@@ -289,13 +272,6 @@ export async function loadLatestRelease(
     }
     throw e
   }
-}
-
-export interface RefList {
-  branches: string[]
-  tags: string[]
-  /** A list came back full: there are more, found by typing their start. */
-  more: boolean
 }
 
 const REF_PAGE = 100

@@ -21,7 +21,7 @@
 <script setup lang="ts">
 import Card from '../obsidian/Card.vue'
 import GithubUser from './GithubUser.vue'
-import type { CommitSummary } from '@/github/api'
+import type { CommitSummary } from '@/repository/model'
 import { formatDate, splitMessage } from '@/github/format'
 
 /** A list of commits — a pull request's, a comparison's — each opening the commit. */

@@ -1,3 +1,5 @@
+import type { ResultFile, CodeResults } from '@/repository/model'
+export type { ResultLine, ResultFile, CodeResults } from '@/repository/model'
 /**
  * What a GitHub tab can search, and how its results open: the repository at the commit the tab
  * stands on — a pull request's head, a commit, the ref a file was read at, the default branch for
@@ -11,6 +13,7 @@ import { encodePath } from '../contents'
 import { Notice } from 'obsidian'
 import type { DiffFile } from '../api'
 import type { GithubClient } from '../client'
+import type { RepositorySource } from '@/repository/source'
 import { parsePatch } from '../patch'
 import { isMarkdownPath } from '../markdownPreview'
 import { findDefinitions, type DefinitionHit } from './definitions'
@@ -32,30 +35,6 @@ import type { CodeNav } from './navAddon'
 
 export type Scope = 'changes' | 'repo' | 'names'
 
-export interface ResultLine {
-  /** What the line is called beside the text: its number, and "before" for a removed one. */
-  label: string
-  text: string
-  column: number
-  length: number
-  url: string
-}
-
-export interface ResultFile {
-  path: string
-  url: string
-  lines: ResultLine[]
-}
-
-export interface CodeResults {
-  files: ResultFile[]
-  /** Matching lines, or files for a name search. */
-  total: number
-  capped: boolean
-  /** Said above the results: where they came from, when it is not the obvious place. */
-  note?: string
-}
-
 /** The changes a tab shows, and how a line in them is linked. */
 export interface TabChanges {
   files: DiffFile[]
@@ -66,6 +45,7 @@ export interface TabChanges {
 export interface TabCodeSource {
   /** A detached account view cannot open delayed results or pickers. */
   alive?(): boolean
+  source?(): RepositorySource
   client(): GithubClient
   repo(): RepoRef
   /** The ref as a person reads it — a branch, a short SHA. */
@@ -113,25 +93,34 @@ export class TabCode implements CodeNav {
   ) {}
 
   private identity(): string {
-    return JSON.stringify([this.src.client().cacheNamespace, this.src.repo(), this.src.refLabel()])
+    return JSON.stringify([
+      this.src.source?.().identity,
+      (this.src.source?.() ?? this.src.client()).cacheNamespace,
+      this.src.repo(),
+      this.src.refLabel(),
+    ])
   }
 
   /** Capture every input before the first await. A late picker cannot navigate a changed tab. */
   private snapshot(): { code: TabCode; current: () => boolean } {
     const key = this.identity(),
       src = this.src,
-      client = src.client(),
+      client = src.source ? undefined : src.client(),
+      source = src.source?.(),
       repo = { ...src.repo() },
       label = src.refLabel()
     const sha = src.sha(),
       blob = src.blob(),
       limit = src.limitBytes()
     const current = () =>
-      this.src.alive?.() !== false && this.identity() === key && client.isCurrent !== false
+      this.src.alive?.() !== false &&
+      this.identity() === key &&
+      (source ?? client).isCurrent !== false
     const code = new TabCode(
       {
         ...src,
         client: () => client,
+        source: source ? () => source : undefined,
         repo: () => repo,
         refLabel: () => label,
         sha: () => sha,
@@ -187,6 +176,22 @@ export class TabCode implements CodeNav {
       const snapshot = this.snapshot()
       const result = await snapshot.code.search(scope, query, glob, onStage, signal)
       if (!snapshot.current()) throw new DOMException('The GitHub tab changed.', 'AbortError')
+      return result
+    }
+    if (this.src.source) {
+      const source = this.src.source()
+      source.assertCurrent()
+      const result = await source.search({
+        ref: await this.src.sha(),
+        scope,
+        query,
+        glob,
+        onStage,
+        signal,
+        limitBytes: this.src.limitBytes(),
+        changes: scope === 'changes' ? await this.src.changes() : null,
+      })
+      source.assertCurrent()
       return result
     }
     if (scope === 'names') return this.searchNames(query.text)
@@ -314,13 +319,21 @@ export class TabCode implements CodeNav {
       let hits: DefinitionHit[]
       let where = `${repo.owner}/${repo.repo} at ${this.src.refLabel()}`
       try {
-        const index =
-          cachedIndex(this.src.client(), repo, sha) ??
-          (await this.index((stage) => {
-            notice ??= new Notice(`Looking for ${name}…`, 0)
-            notice.setMessage(`Looking for ${name}: ${STAGE_TEXT[stage].toLowerCase()}`)
-          }))
-        hits = findDefinitions(index.files, name, fromPath)
+        const index = this.src.source
+          ? null
+          : (cachedIndex(this.src.client(), repo, sha) ??
+            (await this.index((stage) => {
+              notice ??= new Notice(`Looking for ${name}…`, 0)
+              notice.setMessage(`Looking for ${name}: ${STAGE_TEXT[stage].toLowerCase()}`)
+            })))
+        hits = this.src.source
+          ? await this.src
+              .source()
+              .definitions(sha, name, fromPath, this.src.limitBytes(), (stage) => {
+                notice ??= new Notice(`Looking for ${name}…`, 0)
+                notice.setMessage(`Looking for ${name}: ${STAGE_TEXT[stage].toLowerCase()}`)
+              })
+          : findDefinitions(index.files, name, fromPath)
       } catch (e) {
         if (!(e instanceof TooLargeError)) throw e
         hits = await this.definitionsInTab(name, fromPath)
@@ -333,7 +346,11 @@ export class TabCode implements CodeNav {
           `No definition of ${name} found in ${where}. The lookup goes by pattern, so it can miss one.`
         )
       } else if (hits.length === 1) {
-        this.src.open(blobUrl(repo, sha, hits[0].path, hits[0].line), false)
+        this.src.open(
+          this.src.source?.().navigation.file(sha, hits[0].path, hits[0].line) ??
+            blobUrl(repo, sha, hits[0].path, hits[0].line),
+          false
+        )
       } else {
         this.src.pick(hits, sha, name)
       }

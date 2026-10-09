@@ -7,13 +7,14 @@ import { computed, onBeforeUnmount, ref, watch, type ComputedRef, type Ref } fro
 import type { PaneType } from 'obsidian'
 import type { BlobData, CommitData, DiffFile, FilesData, PullData } from '../api'
 import type { GithubClient } from '../client'
-import { commitSha } from '../api'
+import type { RepositorySource } from '@/repository/source'
+import { githubRepositorySource } from '@/repository/github'
 import type { CompareData } from '../compare'
 import type { FolderData } from '../tree/folder'
 import { parsePatch } from '../patch'
 import type { GithubTarget } from '../urls'
-import { resolveSha } from './source'
-import { TabCode, blobUrl, webBase, type TabChanges } from './tabCode'
+
+import { TabCode, webBase, type TabChanges } from './tabCode'
 import { provideCodeNav } from './navAddon'
 import { DefinitionPicker } from './definitionPicker'
 import type { Loaded } from '../useLoad'
@@ -26,6 +27,7 @@ export interface TabSearchOptions {
   data: () => unknown
   files: Loaded<FilesData>
   client: () => GithubClient
+  source?: () => RepositorySource
   open: (url: string, pane: PaneType | false) => void
 }
 
@@ -38,17 +40,28 @@ export interface SearchRequestState {
 }
 
 export function useTabSearch(o: TabSearchOptions) {
-  let alive=true
+  let alive = true
   let definitionPicker: DefinitionPicker | null = null
-  onBeforeUnmount(()=>{alive=false;definitionPicker?.close();definitionPicker=null})
+  onBeforeUnmount(() => {
+    alive = false
+    definitionPicker?.close()
+    definitionPicker = null
+  })
   const findOpen = ref(false)
   const findNonce = ref(0)
   const searchOpen = ref(false)
   const searchRequest = ref<SearchRequestState | null>(null)
-  watch(()=>o.shown.value ? o.client().cacheNamespace : '',()=>{
-    definitionPicker?.close(); definitionPicker=null
-    searchRequest.value=null; searchOpen.value=false; findOpen.value=false
-  },{flush:'sync'})
+  watch(
+    () => (o.shown.value ? (o.source?.().cacheNamespace ?? o.client().cacheNamespace) : ''),
+    () => {
+      definitionPicker?.close()
+      definitionPicker = null
+      searchRequest.value = null
+      searchOpen.value = false
+      findOpen.value = false
+    },
+    { flush: 'sync' }
+  )
 
   /** The SHA the tab's code is at, asked once per item. */
   let shaFor: { key: string; sha: Promise<string> } | null = null
@@ -58,11 +71,13 @@ export function useTabSearch(o: TabSearchOptions) {
     return { host: t.host, origin: t.origin, owner: t.owner, repo: t.repo }
   }
 
+  const source = () => o.source?.() ?? githubRepositorySource(o.client(), repo())
   const sha = (): Promise<string> => {
     const t = o.shown.value
     const d = o.data()
     const key = JSON.stringify([
-      o.client().cacheNamespace,
+      o.source?.().identity,
+      o.source?.().cacheNamespace ?? o.client().cacheNamespace,
       t.kind,
       t.host,
       t.owner,
@@ -78,11 +93,11 @@ export function useTabSearch(o: TabSearchOptions) {
           ? (d as CompareData | null)?.headSha
           : undefined
     if (head) promise = Promise.resolve(head)
-    else if (t.kind === 'compare') promise = resolveSha(o.client(), repo(), t.head)
+    else if (t.kind === 'compare') promise = source().resolve(t.head)
     else if (t.kind === 'commit' && d) promise = Promise.resolve((d as CommitData).sha)
     else if ((t.kind === 'blob' || t.kind === 'tree' || t.kind === 'repo') && d)
-      promise = commitSha(o.client(), repo(), (d as BlobData | FolderData).ref)
-    else promise = resolveSha(o.client(), repo())
+      promise = source().resolve((d as BlobData | FolderData).ref)
+    else promise = source().resolve()
     // A failed lookup is not kept: the next ask tries again.
     promise.catch(() => {
       if (shaFor?.sha === promise) shaFor = null
@@ -143,8 +158,9 @@ export function useTabSearch(o: TabSearchOptions) {
   }
 
   const code = new TabCode({
-    alive:()=>alive,
+    alive: () => alive,
     client: o.client,
+    source,
     repo,
     refLabel,
     sha,
@@ -166,12 +182,25 @@ export function useTabSearch(o: TabSearchOptions) {
       }
     },
     pick: (hits, at, name) => {
-      const r = repo(), client=o.client(), label=refLabel()
+      const r = repo(),
+        client = o.source?.() ?? o.client(),
+        label = refLabel()
       definitionPicker?.close()
-      definitionPicker = new DefinitionPicker(GlobalStore.getInstance().app, hits, name, (hit, newTab) => {
-        if (!alive || client !== o.client() || JSON.stringify(repo()) !== JSON.stringify(r) || label !== refLabel()) return
-        o.open(blobUrl(r, at, hit.path, hit.line), newTab ? 'tab' : false)
-      })
+      definitionPicker = new DefinitionPicker(
+        GlobalStore.getInstance().app,
+        hits,
+        name,
+        (hit, newTab) => {
+          if (
+            !alive ||
+            client !== (o.source?.() ?? o.client()) ||
+            JSON.stringify(repo()) !== JSON.stringify(r) ||
+            label !== refLabel()
+          )
+            return
+          o.open(source().navigation.file(at, hit.path, hit.line), newTab ? 'tab' : false)
+        }
+      )
       definitionPicker.open()
     },
   })

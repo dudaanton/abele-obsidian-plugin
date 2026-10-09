@@ -57,30 +57,31 @@
           :rows="releaseRows"
           :error="release.error.value"
           empty=""
-          :all-url="`${web}/releases`"
+          :all-url="source?.github?.listUrl('releases')"
           all-tooltip="Open every release on GitHub in the browser"
           all-external
           @retry="release.load"
         />
         <GithubRepoList
+          v-if="source?.github"
           list="pulls"
           title="Open pull requests"
           :rows="pullRows"
           :error="pulls.error.value"
           empty="No open pull requests."
-          :all-url="`${web}/pulls`"
+          :all-url="source?.github?.listUrl('pulls')"
           all-tooltip="Every pull request, with filters, in a tab"
           @open="open"
           @retry="pulls.load"
         />
         <GithubRepoList
-          v-if="meta.hasIssues"
+          v-if="source?.github && meta.hasIssues"
           list="issues"
           title="Open issues"
           :rows="issueRows"
           :error="issues.error.value"
           empty="No open issues."
-          :all-url="`${web}/issues`"
+          :all-url="source?.github?.listUrl('issues')"
           all-tooltip="Every issue, with filters, in a tab"
           @open="open"
           @retry="issues.load"
@@ -146,8 +147,9 @@ import FoldHeading from '../obsidian/FoldHeading.vue'
 import GithubFolder from './GithubFolder.vue'
 import GithubRepoList, { type ListRow } from './GithubRepoList.vue'
 import type { GithubClient } from '@/github/client'
+import { useRepositorySource } from '@/repository/context'
+
 import { useLoad } from '@/github/useLoad'
-import { repoWeb } from '@/github/origin'
 import { formatDate } from '@/github/format'
 import { shortRef } from '@/github/itemHead'
 import { GlobalStore } from '@/stores/GlobalStore'
@@ -155,10 +157,6 @@ import { RefPicker } from '@/github/repoPage/RefPicker'
 import {
   formatCount,
   homeUrl as homeUrlOf,
-  loadLanguages,
-  loadLatestRelease,
-  loadOpenIssues,
-  loadOpenPulls,
   type ItemRow,
   type RepoHomeData,
   type RepoLike,
@@ -173,7 +171,7 @@ import {
 const props = defineProps<{
   home: RepoHomeData
   repo: RepoLike
-  client: GithubClient
+  client?: GithubClient
 }>()
 
 const emit = defineEmits<{
@@ -182,9 +180,13 @@ const emit = defineEmits<{
   (e: 'tree'): void
 }>()
 
+const source = useRepositorySource(
+  () => props.client,
+  () => props.repo
+)
 const meta = computed(() => props.home.meta)
-const web = computed(() => repoWeb(props.repo))
 const homeUrl = (r: RepoLike, ref: string | undefined) =>
+  source.value?.navigation.home(ref, meta.value.defaultBranch) ??
   homeUrlOf(r, ref, meta.value.defaultBranch)
 
 /** Only a web address becomes a link; a homepage field holds whatever the owner typed. */
@@ -201,10 +203,10 @@ const homepage = computed(() => {
 })
 const homepageLabel = computed(() => homepage.value.replace(/^https?:\/\//, '').replace(/\/$/, ''))
 
-const languages = useLoad(() => loadLanguages(props.client, props.repo))
-const pulls = useLoad(() => loadOpenPulls(props.client, props.repo))
-const issues = useLoad(() => loadOpenIssues(props.client, props.repo))
-const release = useLoad(() => loadLatestRelease(props.client, props.repo))
+const languages = useLoad(() => source.value?.github?.languages() ?? Promise.resolve([]))
+const pulls = useLoad(() => source.value?.github?.pulls() ?? Promise.resolve([]))
+const issues = useLoad(() => source.value?.github?.issues() ?? Promise.resolve([]))
+const release = useLoad(() => source.value?.github?.release() ?? Promise.resolve(null))
 
 // Asked again for another repository; the same one at another ref has the same lists.
 watch(
@@ -250,7 +252,7 @@ const open = (url: string, pane: PaneType | false) => emit('open', url, pane)
 const switchRef = () => {
   new RefPicker(
     GlobalStore.getInstance().app,
-    props.client,
+    source.value,
     props.repo,
     props.home.ref,
     meta.value.defaultBranch,

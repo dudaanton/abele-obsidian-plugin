@@ -25,7 +25,7 @@
 
 <script setup lang="ts">
 /**
- * A GitHub tab's frame: the content, and — while it is open — the file tree panel beside it on a
+ * A repository tab's frame: the content, and — while it is open — the file tree panel beside it on a
  * wide screen, or over it as a drawer on a narrow one. Each part scrolls on its own.
  */
 import { ref } from 'vue'

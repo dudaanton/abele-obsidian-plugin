@@ -58,7 +58,7 @@
 import { openExternal } from '@/helpers/openExternal'
 import { computed, nextTick, onBeforeUnmount, reactive, ref, shallowRef, watch } from 'vue'
 import Tabs from '../obsidian/Tabs.vue'
-import { comparisonService, type ComparisonIndex } from '@/github/comparison/service'
+import { type ComparisonIndex } from '@/github/comparison/service'
 import { projectTree } from '@/github/comparison/trees'
 import { findNode as findTargetNode } from '@/github/tree/fileTree'
 import { Keymap, type PaneType } from 'obsidian'
@@ -71,15 +71,9 @@ import GithubTreeNode from './GithubTreeNode.vue'
 import type { GithubClient } from '@/github/client'
 import { paneForClick } from '@/github/links'
 import { usePagedList } from '@/composables/usePagedList'
-import {
-  ancestors,
-  blobUrlAt,
-  filterTree,
-  findNode,
-  treeUrl,
-  type TreeNode,
-} from '@/github/tree/fileTree'
-import { repoTree, type RepoTree } from '@/github/tree/repoTree'
+import { ancestors, filterTree, findNode, type TreeNode } from '@/github/tree/fileTree'
+import { useRepositorySource } from '@/repository/context'
+import type { RepositoryTree } from '@/repository/source'
 
 /**
  * The repository's files beside what a tab shows, at the version it shows: a pull request's head,
@@ -92,7 +86,7 @@ import { repoTree, type RepoTree } from '@/github/tree/repoTree'
  */
 const props = defineProps<{
   repo: { host: string; owner: string; repo: string }
-  client: GithubClient
+  client?: GithubClient
   /** Changes when the version does; empty while the tab does not know it yet. */
   versionKey: string
   /** The branch, tag or commit links are made at, and the commit the tree is read at. */
@@ -110,9 +104,13 @@ const emit = defineEmits<{
   (e: 'close'): void
 }>()
 
+const source = useRepositorySource(
+  () => props.client,
+  () => props.repo
+)
 const panel = ref<HTMLElement>()
 const body = ref<HTMLElement>()
-const tree = shallowRef<RepoTree | null>(null)
+const tree = shallowRef<RepositoryTree | null>(null)
 const version = ref<{ ref: string; sha: string } | null>(null)
 const error = ref<string | null>(null)
 const query = ref('')
@@ -137,14 +135,14 @@ const changeLabels = computed(() => {
   const index = comparisonIndex.value,
     labels = new Map<string, string>()
   for (const row of index?.changes ?? []) {
-    const count = index!.counts.get(row.path)
+    const count = index.counts.get(row.path)
     const stats =
       count?.state === 'ready'
         ? `+${count.additions} −${count.deletions}`
         : count?.state === 'unavailable'
           ? '—'
           : '…'
-    labels.set(`${(row.target ?? row.base)!.kind}:${row.path}`, `${row.status} ${stats}`)
+    labels.set(`${(row.target ?? row.base).kind}:${row.path}`, `${row.status} ${stats}`)
     for (const ancestor of ancestors(row.path)) labels.set(`dir:${ancestor}`, 'changed')
   }
   return labels
@@ -152,9 +150,7 @@ const changeLabels = computed(() => {
 const requestCounts = (path: string) => {
   const index = comparisonIndex.value
   if (!index || index.counts.has(path) || !index.changes.some((c) => c.path === path)) return
-  void comparisonService(props.client, props.repo)
-    .file(index, path, false, cancellation.signal)
-    .catch(() => {})
+  void source.value.comparisonFile(index, path, false, cancellation.signal).catch(() => {})
 }
 onBeforeUnmount(() => {
   generation++
@@ -179,10 +175,8 @@ const load = async () => {
       : await props.resolve()
     const index =
       props.comparison ??
-      (props.baseSha
-        ? await comparisonService(props.client, props.repo).index(props.baseSha, v.sha, signal)
-        : null)
-    const t = index?.target ?? (await repoTree(props.client, props.repo, v.sha))
+      (props.baseSha ? await source.value.comparison(props.baseSha, v.sha, signal) : null)
+    const t = index?.target ?? (await source.value.tree(v.sha))
     if (mine !== generation) return
     version.value = index ? { ref: index.targetSha, sha: index.targetSha } : v
     comparisonIndex.value = index
@@ -270,7 +264,7 @@ const overlaid = () => {
 /** A folder's page — its entries and README — in this tab, or in a new one. */
 const openFolder = (node: TreeNode, pane: PaneType | false) => {
   if (!version.value || node.comparisonStatus) return
-  emit('open', treeUrl(props.repo, version.value.ref, node.path), pane, overlaid())
+  emit('open', source.value.navigation.folder(version.value.ref, node.path), pane, overlaid())
 }
 
 /**
@@ -302,7 +296,7 @@ const pick = (node: TreeNode, event: MouseEvent) => {
     return
   }
   if (!version.value) return
-  const url = blobUrlAt(props.repo, version.value.ref, node.path)
+  const url = source.value.navigation.file(version.value.ref, node.path)
   const pane = paneForClick(event, false)
   // A submodule is another repository, at a commit only GitHub's own page names.
   if (pane === null || (node.kind === 'submodule' && !comparisonIndex.value)) openExternal(url)

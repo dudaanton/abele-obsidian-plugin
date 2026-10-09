@@ -5,7 +5,9 @@
  */
 import { SuggestModal, setIcon, type App } from 'obsidian'
 import type { GithubClient } from '../client'
-import { loadRefs, refsStarting, type RefList, type RepoLike } from './repoHome'
+import type { RepositorySource } from '@/repository/source'
+import { githubRepositorySource } from '@/repository/github'
+import { type RefList, type RepoLike } from './repoHome'
 
 export interface RefRow {
   kind: 'branch' | 'tag' | 'note'
@@ -38,7 +40,7 @@ export class RefPicker extends SuggestModal<RefRow> {
 
   constructor(
     app: App,
-    private readonly client: GithubClient,
+    private readonly client: GithubClient | RepositorySource,
     private readonly repo: RepoLike,
     /** The ref shown now, and the default branch, both marked in the list. */
     private readonly current: string,
@@ -56,8 +58,12 @@ export class RefPicker extends SuggestModal<RefRow> {
     this.modalEl.addClass('abele-github-refs')
   }
 
+  private source(): RepositorySource {
+    return 'identity' in this.client ? this.client : githubRepositorySource(this.client, this.repo)
+  }
+
   private refs(): Promise<RefList> {
-    this.listed ??= loadRefs(this.client, this.repo)
+    this.listed ??= this.source().refs()
     return this.listed
   }
 
@@ -68,7 +74,7 @@ export class RefPicker extends SuggestModal<RefRow> {
       lists = [all]
       const typed = query.trim()
       if (all.more && typed) {
-        const found = this.byPrefix.get(typed) ?? refsStarting(this.client, this.repo, typed)
+        const found = this.byPrefix.get(typed) ?? this.source().refs(typed)
         this.byPrefix.set(typed, found)
         const none: RefList = { branches: [], tags: [], more: false }
         lists.push(await found.catch(() => none))

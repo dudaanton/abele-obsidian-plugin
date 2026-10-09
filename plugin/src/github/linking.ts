@@ -13,6 +13,7 @@ import { blobLink, markdownLink, type GithubLink, type LineSpan, type LinkItem }
 import { formatSnippet, type SnippetBlock } from './snippetBlock'
 import { commitSha, type BlobData, type CommitData } from './api'
 import type { GithubClient } from './client'
+import { sourceKey, type RepositorySource } from '@/repository/source'
 import type { GithubTarget } from './urls'
 import type { CompareData } from './compare'
 import type { ChatQuote } from './chatAbout'
@@ -123,6 +124,7 @@ export function createLinker(o: {
   data: () => unknown
   title: () => string
   client: () => GithubClient
+  source?: () => RepositorySource
 }): Linker {
   /** A branch is resolved to its commit once per tab: the link is to what was read. */
   const shas = new Map<string, Promise<string>>()
@@ -157,16 +159,19 @@ export function createLinker(o: {
       const t = o.shown()
       const blob = o.data() as BlobData | null
       if (t?.kind !== 'blob' || !blob) throw new Error('no file is shown')
-      const client = o.client()
-      const key = `${client.cacheNamespace}:${t.host}/${t.owner}/${t.repo}@${blob.ref}`
+      const client = o.client(),
+        source = o.source?.()
+      const key = `${source ? sourceKey(source.identity) : ''}:${(source ?? client).cacheNamespace}:${t.host}/${t.owner}/${t.repo}@${blob.ref}`
       let asked = shas.get(key)
       if (asked === undefined) {
-        asked = commitSha(client, t, blob.ref)
+        asked = source ? source.resolve(blob.ref) : commitSha(client, t, blob.ref)
         shas.set(key, asked)
         // A failure is not kept: the next press asks again.
         asked.catch(() => shas.delete(key))
       }
-      return blobLink(t, await asked, blob.path, span)
+      return o.source
+        ? o.source().navigation.blobLink(await asked, blob.path, span)
+        : blobLink(t, await asked, blob.path, span)
     },
     ...sharing(o.app),
   }

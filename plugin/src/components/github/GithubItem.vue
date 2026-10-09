@@ -228,6 +228,7 @@
             :nonce="model.nonce"
             :busy="largeBusy"
             @large="loadLarge"
+            @open="(url: string) => onOpen?.(url, false)"
           />
           <GithubBlob
             v-else
@@ -291,7 +292,10 @@ import GithubBlob from './GithubBlob.vue'
 import GithubPinnedFile from './GithubPinnedFile.vue'
 import GithubBaseBar from './GithubBaseBar.vue'
 import { basePins } from '@/github/comparison/pins'
-import { comparisonService } from '@/github/comparison/service'
+import { githubRepositorySource } from '@/repository/github'
+import { REPOSITORY_SOURCE } from '@/repository/context'
+import { sourceKey, type RepositorySource, type RepositoryLocation } from '@/repository/source'
+import { loadRepositoryLocation } from '@/repository/load'
 import GithubNotice from './GithubNotice.vue'
 import GithubFindBar from './GithubFindBar.vue'
 import GithubCodeSearch from './GithubCodeSearch.vue'
@@ -306,7 +310,7 @@ import GithubLayout from './GithubLayout.vue'
 import { useTreePanel } from '@/github/tree/useTreePanel'
 import { itemHead, itemTabTitle, placeLink, type ItemHead } from '@/github/itemHead'
 import type { FolderData } from '@/github/tree/folder'
-import { loadItem, type ItemData, type PinnedLoad } from '@/github/loadItem'
+import { type ItemData, type PinnedLoad } from '@/github/loadItem'
 import type { PaneType } from 'obsidian'
 import { useTabSearch } from '@/github/search/useTabSearch'
 import type { GithubViewModel } from '@/github/model'
@@ -315,7 +319,7 @@ import type { BlobMode } from '@/github/markdownPreview'
 import type { GithubClient } from '@/github/client'
 import { targetKey, type GithubTarget } from '@/github/urls'
 import { splitMessage } from '@/github/format'
-import { swappedUrl, type CompareData } from '@/github/compare'
+import { type CompareData } from '@/github/compare'
 import { useLoad } from '@/github/useLoad'
 import { elementTop, pinIntoView } from '@/github/scrollTo'
 import { LINKER, createLinker } from '@/github/linking'
@@ -344,8 +348,10 @@ type Of<K extends GithubTarget['kind']> = Extract<GithubTarget, { kind: K }>
 
 const props = defineProps<{
   model: GithubViewModel
+  source?: RepositorySource
+  sourceLocation?: RepositoryLocation
   enabled: boolean
-  clientFor: (host: string) => GithubClient
+  clientFor?: (host: string) => GithubClient
   /** Connection-aware primary loading; secondary loads stay on clientFor. */
   primaryLoad?: (
     target: GithubTarget,
@@ -380,7 +386,7 @@ watch([root, pageWidth], ([el, width]) => el?.style.setProperty('--abele-github-
 })
 const target = computed(() => props.model.target)
 const pins = basePins(GlobalStore.getInstance().app)
-const pin = computed(() => (target.value ? pins.get(target.value) : null))
+const pin = computed(() => (target.value ? pins.get(target.value, props.source?.identity) : null))
 const setOriginal = (original: boolean) => {
   props.model.originalFile = original
   props.onState?.()
@@ -398,7 +404,13 @@ const projectPin = computed(() =>
   ['blob', 'tree', 'repo'].includes(shown.value?.kind ?? '') ? pin.value : null
 )
 
-const client = () => props.clientFor(target.value.host)
+const client = () => props.clientFor?.(target.value.host)
+const source = computed(
+  () =>
+    props.source ??
+    (target.value ? githubRepositorySource(client(), target.value, props.model.connectionId) : null)
+)
+provide(REPOSITORY_SOURCE, source)
 
 let loadGeneration = 0
 let retryPrimary = false
@@ -410,7 +422,7 @@ onBeforeUnmount(() => {
 })
 const main = useLoad<ItemData>(async () => {
   const generation = loadGeneration,
-    currentClient = client(),
+    currentClient = source.value,
     currentTarget = target.value
   const read =
     props.primaryLoad ??
@@ -419,12 +431,36 @@ const main = useLoad<ItemData>(async () => {
       promote: (target: GithubTarget) => void,
       _retry?: boolean,
       pinned?: PinnedLoad
-    ) => loadItem(currentClient, target, promote, pinned))
-  const key = `${currentClient.cacheNamespace}:${targetKey(currentTarget)}`
+    ) => {
+      if (currentClient.github) return currentClient.github.loadTarget(target, promote, pinned)
+      if (!props.sourceLocation) throw new Error('Select an explicit repository location.')
+      if (props.sourceLocation.kind === 'file' && pinned?.base) {
+        const location = props.sourceLocation
+        return (async () => {
+          const sha = pinned.resolved?.sha ?? (await currentClient.resolve(location.ref))
+          const index = await currentClient.comparison(pinned.base.baseSha, sha, pinned.signal)
+          const comparison = await currentClient.comparisonFile(
+            index,
+            location.path,
+            false,
+            pinned.signal
+          )
+          return {
+            ref: sha,
+            path: location.path,
+            text: comparison.after?.text ?? '',
+            url: currentClient.navigation.file(sha, location.path),
+            comparison,
+          }
+        })()
+      }
+      return loadRepositoryLocation(currentClient, props.sourceLocation)
+    })
+  const key = `${sourceKey(currentClient.identity)}:${currentClient.cacheNamespace}:${targetKey(currentTarget)}:${JSON.stringify(props.sourceLocation ?? null)}`
   const data = await read(
     currentTarget,
     (t) => {
-      if (active && generation === loadGeneration && currentClient === client()) {
+      if (active && generation === loadGeneration && currentClient === source.value) {
         promoted.value = t
         // Promotion still belongs to the original blob link's immutable target.
         if (
@@ -480,6 +516,7 @@ const {
   shown: computed(() => (target.value ? shown.value : null)),
   data: () => main.data.value,
   client,
+  source: () => source.value,
   pinned: () => !!projectPin.value,
   open: (url, pane) => props.onOpen?.(url, pane),
   saved: () => props.onState?.(),
@@ -493,6 +530,7 @@ const tabSearch = useTabSearch({
   data: () => main.data.value,
   files,
   client,
+  source: () => source.value,
   open: (url, pane) => props.onOpen?.(url, pane),
 })
 /** Opens the find bar, or puts the cursor back in it with its query selected. */
@@ -522,12 +560,7 @@ const loadLarge = async () => {
   largeBusy.value = true
   const signal = cancellation.signal
   try {
-    const result = await comparisonService(client(), repoRef.value).file(
-      at.index,
-      at.path,
-      true,
-      signal
-    )
+    const result = await source.value.comparisonFile(at.index, at.path, true, signal)
     if (active && generation === loadGeneration && main.data.value === data)
       main.data.value = { ...data, comparison: result }
   } catch (error) {
@@ -628,7 +661,7 @@ watch(pullTab, (tab) => {
 })
 
 const browserUrl = computed(() => {
-  if (!target.value) return ''
+  if (!target.value || source.value.identity.provider === 'node') return ''
   const data = main.data.value as { url?: string } | null
   // The address the link had, so a line anchor survives; GitHub's own for an item it moved.
   return props.model.url || data?.url || ''
@@ -643,6 +676,7 @@ const linker = createLinker({
   data: () => main.data.value,
   title: () => head.value.title,
   client,
+  source: () => source.value,
 })
 provide(LINKER, linker)
 
@@ -655,7 +689,9 @@ const repo = computed<RepoFile | null>(() => {
 })
 provide(GITHUB_REPO, repo)
 // The people in it are looked up with the tab's own client: its server, its token.
-provide(GITHUB_PEOPLE, () => (target.value ? (props.peopleClient?.() ?? client()) : null))
+provide(GITHUB_PEOPLE, () =>
+  target.value && source.value?.github ? (props.peopleClient?.() ?? client()) : null
+)
 
 // What is on screen, for an agent to ask about: the diffs and the file view add their part.
 const screen = props.model.screen
@@ -666,6 +702,8 @@ const itemLink = computed<GithubLink | null>(() => {
   const t = shown.value
   const data = main.data.value
   if (!t || !data) return null
+  if (source.value.identity.provider === 'node')
+    return { label: head.value.title, url: (data as { url: string }).url }
   const place = placeLink(t, data)
   if (place !== undefined) return place
   const item = linker.item()
@@ -686,7 +724,7 @@ watch(
     ] as const,
   () => {
     const t = target.value ? shown.value : null
-    props.model.screenNamespace = t ? client().cacheNamespace : undefined
+    props.model.screenNamespace = t ? source.value.cacheNamespace : undefined
     screen.link = itemLink.value
     screen.title = main.data.value ? head.value.title : ''
     screen.kind = t?.kind ?? ''
@@ -725,7 +763,15 @@ const openInBrowser = (url: string) => {
 /** The same two versions the other way round, in this tab: its back arrow returns. */
 const swapSides = () => {
   const t = shown.value
-  if (compared.value && t) props.onOpen?.(swappedUrl(t, compared.value), false)
+  if (compared.value && t)
+    props.onOpen?.(
+      source.value.navigation.comparison(
+        compared.value.head,
+        compared.value.base,
+        compared.value.direct
+      ),
+      false
+    )
 }
 
 const openCommit = (sha: string) => {
@@ -760,7 +806,7 @@ const reload = async (retry = false) => {
   if (retry) countRetry.value++
   // A denied capability must not leave previously loaded private provenance in the tab.
   try {
-    client().assertCurrent()
+    source.value.assertCurrent()
   } catch {
     main.clear()
     Object.assign(screen, emptyScreen())
@@ -780,7 +826,7 @@ const reload = async (retry = false) => {
 
 const loadKey = computed(() =>
   target.value
-    ? `${client().cacheNamespace}:${targetKey(target.value)}:${projectPin.value?.baseSha ?? ''}:${!!props.model.originalFile}`
+    ? `${sourceKey(source.value.identity)}:${source.value.cacheNamespace}:${targetKey(target.value)}:${projectPin.value?.baseSha ?? ''}:${!!props.model.originalFile}:${JSON.stringify(props.sourceLocation ?? null)}`
     : null
 )
 

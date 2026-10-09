@@ -29,7 +29,7 @@
 import { computed } from 'vue'
 import EmptyState from '../obsidian/EmptyState.vue'
 import GithubDiffFile from './GithubDiffFile.vue'
-import type { DiffFile } from '@/github/api'
+import type { DiffFile } from '@/repository/model'
 import type { DiffFileAnchor } from '@/github/urls'
 import type { PaneType } from 'obsidian'
 

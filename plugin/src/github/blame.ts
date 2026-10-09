@@ -1,12 +1,7 @@
+import type { BlameRange } from '@/repository/model'
+export type { BlameRange } from '@/repository/model'
 /** File attribution at a ref, scoped to the exact client (and therefore its connection/token). */
 import { GithubError, type GithubClient } from './client'
-import type { CommitSummary } from './api'
-
-export interface BlameRange {
-  start: number
-  end: number
-  commit: CommitSummary
-}
 
 interface FileRef {
   owner: string

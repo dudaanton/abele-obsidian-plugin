@@ -24,10 +24,7 @@ export type LinkItem = RepoRef &
     | { kind: 'compare'; base: string; head: string; direct?: boolean }
   )
 
-export interface GithubLink {
-  label: string
-  url: string
-}
+export type GithubLink = import('@/repository/model').RepositoryLink
 
 /** A run of lines on one side of a diff: `L` the old file, `R` the new. */
 export interface DiffSpan {

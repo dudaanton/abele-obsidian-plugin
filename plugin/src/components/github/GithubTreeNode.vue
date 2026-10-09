@@ -47,7 +47,8 @@
 import { computed, onBeforeUnmount, onMounted, ref, watch } from 'vue'
 import TreeItem from '../obsidian/TreeItem.vue'
 import Icon from '../obsidian/Icon.vue'
-import type { NodeKind, TreeNode } from '@/github/tree/fileTree'
+import type { NodeKind } from '@/github/tree/fileTree'
+import type { TreeNode } from '@/repository/model'
 import { usePagedList } from '@/composables/usePagedList'
 
 /** One entry of the file tree panel, and — for an open folder — what is in it, a page at a time. */

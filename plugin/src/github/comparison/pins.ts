@@ -1,4 +1,5 @@
 import { shallowRef } from 'vue'
+import { sourceKey, type RepositoryIdentity, type RepositorySource } from '@/repository/source'
 import { commitSha } from '../api'
 import type { GithubClient } from '../client'
 import { repoApiPath } from '../contents'
@@ -10,6 +11,8 @@ export interface Repository {
   repo: string
 }
 export interface BasePin {
+  /** Local sources are scoped to opaque workspace identities, never their display labels. */
+  source?: Extract<RepositoryIdentity, { provider: 'node' }>
   origin: string
   owner: string
   repo: string
@@ -23,6 +26,8 @@ export interface LocalStorage {
 export const PIN_KEY = 'abele-github-comparison-bases'
 export const repositoryKey = (repo: Repository) =>
   `${new URL(repo.origin ?? `https://${repo.host}`).origin}/${repo.owner.toLowerCase()}/${repo.repo.toLowerCase()}`
+const pinKey = (repo: Repository, source?: RepositoryIdentity) =>
+  source?.provider === 'node' ? sourceKey(source) : repositoryKey(repo)
 
 /** Reading context, deliberately outside synced settings and settings transfer. */
 export class BasePins {
@@ -49,15 +54,33 @@ export class BasePins {
           enteredRef: row.enteredRef,
           baseSha: row.baseSha.toLowerCase(),
         }
-        this.pins.set(repositoryKey({ ...pin, host: url.host }), pin)
+        if (row.source !== undefined) {
+          const source = row.source
+          if (
+            !source ||
+            source.provider !== 'node' ||
+            !['installation', 'node', 'project', 'workspace'].every(
+              (key) => typeof source[key] === 'string' && /^[a-zA-Z0-9_-]+$/.test(source[key])
+            )
+          )
+            continue
+          pin.source = {
+            provider: 'node',
+            installation: source.installation,
+            node: source.node,
+            project: source.project,
+            workspace: source.workspace,
+          }
+        }
+        this.pins.set(pinKey({ ...pin, host: url.host }, pin.source), pin)
       } catch {
         /* Ignore malformed local preferences. */
       }
     }
   }
-  get(repo: Repository): BasePin | null {
+  get(repo: Repository, source?: RepositoryIdentity): BasePin | null {
     void this.version.value
-    return this.pins.get(repositoryKey(repo)) ?? null
+    return this.pins.get(pinKey(repo, source)) ?? null
   }
   async resolve(client: GithubClient, repo: Repository, enteredRef: string): Promise<BasePin> {
     const ref = enteredRef.trim()
@@ -81,15 +104,35 @@ export class BasePins {
       baseSha: baseSha.toLowerCase(),
     }
   }
+  async resolveSource(
+    source: RepositorySource,
+    repo: Repository,
+    enteredRef: string
+  ): Promise<BasePin> {
+    const ref = enteredRef.trim()
+    if (!ref) throw new Error('Enter a commit, branch or tag.')
+    const baseSha = await source.resolve(ref, true)
+    source.assertCurrent()
+    if (!/^[a-f\d]{40}$/i.test(baseSha))
+      throw new Error('The source did not resolve that ref to a commit SHA.')
+    return {
+      ...(source.identity.provider === 'node' ? { source: { ...source.identity } } : {}),
+      origin: new URL(repo.origin ?? `https://${repo.host}`).origin,
+      owner: repo.owner.toLowerCase(),
+      repo: repo.repo.toLowerCase(),
+      enteredRef: ref,
+      baseSha: baseSha.toLowerCase(),
+    }
+  }
   save(pin: BasePin): void {
-    this.pins.set(repositoryKey({ ...pin, host: new URL(pin.origin).host }), { ...pin })
+    this.pins.set(pinKey({ ...pin, host: new URL(pin.origin).host }, pin.source), { ...pin })
     this.changed()
   }
   async pin(client: GithubClient, repo: Repository, ref: string): Promise<void> {
     this.save(await this.resolve(client, repo, ref))
   }
-  unpin(repo: Repository): void {
-    this.pins.delete(repositoryKey(repo))
+  unpin(repo: Repository, source?: RepositoryIdentity): void {
+    this.pins.delete(pinKey(repo, source))
     this.changed()
   }
   private changed(): void {

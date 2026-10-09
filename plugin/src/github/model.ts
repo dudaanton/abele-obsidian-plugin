@@ -1,9 +1,13 @@
+import type { RepositoryTabTarget } from '@/repository/state'
+import type { RepositoryRevision } from '@/repository/source'
 import type { GithubTarget } from './urls'
 import type { GithubScreen } from './screen'
 import type { BlobMode } from './markdownPreview'
 
 /** What a GitHub tab renders from; the view writes it, the Vue side reads it. */
 export interface GithubViewModel {
+  sourceTarget?: RepositoryTabTarget
+  sourceRevision?: RepositoryRevision
   url: string
   /** Stable connection ID, never a token or keychain slot. Empty/absent is public anonymous. */
   connectionId?: string

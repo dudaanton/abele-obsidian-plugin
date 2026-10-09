@@ -28,7 +28,7 @@
       <EmptyState v-if="readmeText.error.value" :text="readmeText.error.value" />
       <EmptyState v-else-if="readmeText.data.value === null" text="Loading the README…" />
       <GithubText
-        v-else-if="isMarkdownPath(readme.path)"
+        v-else-if="isMarkdownPath(readme.path) && source?.identity.provider !== 'node'"
         :text="readmeText.data.value"
         :repo="readmeFile"
         :client="client"
@@ -52,7 +52,8 @@ import { isMarkdownPath } from '@/github/markdownPreview'
 import { useLoad } from '@/github/useLoad'
 import { paneForClick } from '@/github/links'
 import { usePagedList } from '@/composables/usePagedList'
-import { blobUrlAt, treeUrl } from '@/github/tree/fileTree'
+import { useRepositorySource } from '@/repository/context'
+
 import { formatSize, readmeOf, type FolderData, type FolderEntry } from '@/github/tree/folder'
 import { registerProse, unregisterProse } from '@/github/proseSelection'
 
@@ -64,12 +65,17 @@ import { registerProse, unregisterProse } from '@/github/proseSelection'
 const props = defineProps<{
   folder: FolderData
   repo: { host: string; owner: string; repo: string }
-  client: GithubClient
+  client?: GithubClient
 }>()
 
 const emit = defineEmits<{
   (e: 'open', url: string, pane: PaneType | false): void
 }>()
+
+const source = useRepositorySource(
+  () => props.client,
+  () => props.repo
+)
 
 const ICONS: Record<FolderEntry['kind'], string> = {
   dir: 'folder',
@@ -85,8 +91,8 @@ watch(() => props.folder, paged.reset)
 
 const urlOf = (entry: FolderEntry) =>
   entry.kind === 'dir'
-    ? treeUrl(props.repo, props.folder.ref, entry.path)
-    : blobUrlAt(props.repo, props.folder.ref, entry.path)
+    ? source.value.navigation.folder(props.folder.ref, entry.path)
+    : source.value.navigation.file(props.folder.ref, entry.path)
 
 const open = (entry: FolderEntry, event: MouseEvent) => {
   const url = urlOf(entry)
@@ -104,7 +110,7 @@ const readmeFile = computed<RepoFile>(() => ({
 }))
 const readmeText = useLoad(async () => {
   const r = readme.value
-  return r ? props.client.fileText(props.repo, r.path, props.folder.ref, 'the README') : ''
+  return r ? source.value.text(props.folder.ref, r.path, 'the README') : ''
 })
 /**
  * Words selected in the README are the README's: asked about, linked and quoted as that file at
@@ -124,7 +130,7 @@ watch(readmeEl, (el, old) => {
       const ref = props.folder.ref
       return {
         label: `${owner}/${repo}@${/^[0-9a-f]{40}$/i.test(ref) ? ref.slice(0, 7) : ref} · ${r.path}`,
-        url: blobUrlAt(props.repo, ref, r.path),
+        url: source.value.navigation.file(ref, r.path),
       }
     },
   })

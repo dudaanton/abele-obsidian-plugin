@@ -133,7 +133,7 @@ export interface SearchRequest {
 
 const props = withDefaults(
   defineProps<{
-    code: TabCode
+    code: Pick<TabCode, 'refLabel' | 'search'>
     /** Whether the tab has changes of its own to search: a pull request or a commit. */
     hasChanges?: boolean
     request?: SearchRequest | null

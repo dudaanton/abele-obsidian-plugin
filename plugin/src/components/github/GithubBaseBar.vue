@@ -13,7 +13,7 @@
         text="Unpin"
         icon="pin-off"
         tooltip="Restore original repository file views"
-        @click="pins.unpin(repo)"
+        @click="pins.unpin(repo, source?.identity)"
       />
       <Button
         v-if="file"
@@ -39,9 +39,10 @@ import { GlobalStore } from '@/stores/GlobalStore'
 import { basePins, type BasePin, type Repository } from '@/github/comparison/pins'
 import { BasePicker } from '@/github/comparison/BasePicker'
 import type { GithubClient } from '@/github/client'
+import { useRepositorySource } from '@/repository/context'
 const props = defineProps<{
   repo: Repository
-  client: GithubClient
+  client?: GithubClient
   pin: BasePin | null
   targetSha?: string
   file: boolean
@@ -50,7 +51,11 @@ const props = defineProps<{
 const emit = defineEmits<{ original: [value: boolean] }>()
 const app = GlobalStore.getInstance().app,
   pins = basePins(app)
-const choose = () => new BasePicker(app, props.client, props.repo).open()
+const source = useRepositorySource(
+  () => props.client,
+  () => props.repo
+)
+const choose = () => new BasePicker(app, source.value, props.repo).open()
 </script>
 <style lang="scss">
 .abele-github-base {

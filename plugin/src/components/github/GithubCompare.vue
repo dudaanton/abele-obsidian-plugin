@@ -46,8 +46,9 @@ import Tabs from '../obsidian/Tabs.vue'
 import GithubFiles from './GithubFiles.vue'
 import GithubCommits from './GithubCommits.vue'
 import GithubNotice from './GithubNotice.vue'
-import type { CompareData } from '@/github/compare'
+import type { CompareData } from '@/repository/model'
 import type { DiffFileAnchor } from '@/github/urls'
+import { useRepositorySource } from '@/repository/context'
 import { repoWeb } from '@/github/origin'
 
 export type CompareSection = 'files' | 'commits'
@@ -78,7 +79,13 @@ const tabs = computed(() => [
   },
 ])
 
-const openCommit = (sha: string) => emit('open', `${repoWeb(props.repo)}/commit/${sha}`, false)
+const source = useRepositorySource()
+const openCommit = (sha: string) =>
+  emit(
+    'open',
+    source.value?.navigation.commit(sha) ?? `${repoWeb(props.repo)}/commit/${sha}`,
+    false
+  )
 </script>
 
 <style lang="scss">

@@ -120,7 +120,7 @@ import { diffSnippet, type SnippetBlock } from '@/github/snippetBlock'
 import { SCREEN, diffCode, markExpanded } from '@/github/screen'
 import type { Quote } from '@/github/chatAbout'
 import { diffLink, diffSpan, type DiffSpan, type GithubLink } from '@/github/permalinks'
-import type { DiffFile } from '@/github/api'
+import type { DiffFile } from '@/repository/model'
 import type { DiffFileAnchor } from '@/github/urls'
 import { linesFor, parsePatch } from '@/github/patch'
 import { mountDiff, type Viewer } from '@/github/codeViewer'
@@ -128,6 +128,8 @@ import { LINE_CONTEXT, elementTop, pinIntoView } from '@/github/scrollTo'
 import { fileUrl, lineOnSide } from '@/github/permalinks'
 import { paneForClick } from '@/github/links'
 import { ancestors, treeUrl } from '@/github/tree/fileTree'
+import { useRepositorySource } from '@/repository/context'
+
 import type { PaneType } from 'obsidian'
 
 const props = withDefaults(
@@ -154,6 +156,7 @@ const emit = defineEmits<{
   select: [span: DiffSpan | null]
 }>()
 
+const source = useRepositorySource()
 const root = ref<HTMLElement>()
 const head = ref<HTMLElement>()
 useResizeObserver(head, () => {
@@ -191,7 +194,16 @@ const selectedLabel = computed(() => {
 
 const selectedLink = (): GithubLink => {
   const item = linker?.item()
-  if (!item || !selectedSpan.value) throw new Error('nothing is selected')
+  if (!selectedSpan.value) throw new Error('nothing is selected')
+  const span = selectedSpan.value
+  const ref = span.side === 'L' ? props.refs?.base : props.refs?.head
+  if (source.value?.identity.provider === 'node' && ref)
+    return source.value.navigation.blobLink(
+      ref,
+      span.side === 'L' ? (props.file.previousPath ?? props.file.path) : props.file.path,
+      { from: span.start, to: span.end }
+    )
+  if (!item) throw new Error('nothing is selected')
   return diffLink(item, props.file, selectedSpan.value)
 }
 
@@ -270,7 +282,10 @@ function urlAt(line: number | undefined): string | null {
   const item = linker?.item()
   const sha = deleted.value ? props.refs?.base : props.refs?.head
   if (!item || !sha) return null
-  return fileUrl(item, sha, props.file.path, line)
+  return (
+    source.value?.navigation.file(sha, props.file.path, line) ??
+    fileUrl(item, sha, props.file.path, line)
+  )
 }
 
 const fileName = computed(() => props.file.path.split('/').pop() ?? props.file.path)
@@ -279,10 +294,10 @@ const fileName = computed(() => props.file.path.split('/').pop() ?? props.file.p
 const folders = computed(() => {
   const item = linker?.item()
   const sha = deleted.value ? props.refs?.base : props.refs?.head
-  if (!item || !sha) return []
+  if ((!item && !source.value) || !sha) return []
   return ancestors(props.file.path).map((path) => ({
     name: path.split('/').pop() ?? path,
-    url: treeUrl(item, sha, path),
+    url: source.value?.navigation.folder(sha, path) ?? treeUrl(item, sha, path),
   }))
 })
 

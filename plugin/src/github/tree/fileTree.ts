@@ -1,3 +1,5 @@
+import type { TreeNode } from '@/repository/model'
+export type { TreeNode } from '@/repository/model'
 /**
  * A repository's files as a tree, built from the flat list GitHub's trees API answers with, and
  * the links that climb from a file to its folders.
@@ -16,21 +18,6 @@ export interface TreeEntry {
 }
 
 export type NodeKind = 'dir' | 'file' | 'submodule'
-
-export interface TreeNode {
-  name: string
-  /** From the repository's root, without a leading slash; empty for the root itself. */
-  path: string
-  kind: NodeKind
-  /** Projection-only label for a removed directory, never repository metadata. */
-  comparisonStatus?: string
-  mode?: string
-  size?: number
-  /** The git object: for a folder read lazily, the tree its children are asked by. */
-  sha?: string
-  /** A folder's entries, folders first; unset while they have not been read. */
-  children?: TreeNode[]
-}
 
 interface RepoLike {
   host: string

@@ -8,8 +8,9 @@ import { Platform, type PaneType } from 'obsidian'
 import type { GithubViewModel } from '../model'
 import type { GithubClient } from '../client'
 import { targetKey, type GithubTarget } from '../urls'
-import { commitSha, type BlobData } from '../api'
-import { defaultBranch } from '../search/source'
+import { type BlobData } from '../api'
+import { sourceKey, type RepositorySource } from '@/repository/source'
+import { githubRepositorySource } from '@/repository/github'
 import { GlobalStore } from '@/stores/GlobalStore'
 import { crumbs as crumbsOf, type Crumb } from './fileTree'
 import type { FolderData } from './folder'
@@ -23,6 +24,7 @@ export interface TreePanelOptions {
   shown: ComputedRef<GithubTarget | null>
   data: () => unknown
   client: () => GithubClient
+  source?: () => RepositorySource
   pinned?: () => boolean
   open: (url: string, pane: PaneType | false) => void
   /** The tab's state changed in a way worth saving. */
@@ -31,6 +33,7 @@ export interface TreePanelOptions {
 
 export function useTreePanel(o: TreePanelOptions) {
   const app = () => GlobalStore.getInstance().app
+  const source = () => o.source?.() ?? githubRepositorySource(o.client(), repoRef.value)
 
   /** Open or closed as the tab keeps it; a tab that never said opens as the last one was left. */
   const panelOpen = computed(
@@ -59,7 +62,7 @@ export function useTreePanel(o: TreePanelOptions) {
   const versionKey = computed(() => {
     const r = repoRef.value
     if (!r || !o.data()) return ''
-    return `${o.client().cacheNamespace}:${targetKey(o.shown.value!)}@${ref() ?? ''}`
+    return `${sourceKey(source().identity)}:${source().cacheNamespace}:${targetKey(o.shown.value)}@${ref() ?? ''}`
   })
 
   // The tab owns the frozen target, not the drawer component that is destroyed when closed.
@@ -73,15 +76,19 @@ export function useTreePanel(o: TreePanelOptions) {
   const resolveVersion = async () => {
     const r = repoRef.value
     if (!r) throw new Error('Nothing is shown.')
-    const client = o.client(),
+    const client = source(),
       key = versionKey.value,
       pinned = o.pinned?.() ?? false
     client.assertCurrent?.()
     if (pinned && frozenVersion?.key === key) return frozenVersion.promise
     const read = (async () => {
-      const at = ref() ?? (await defaultBranch(client, r))
-      const sha = await commitSha(client, r, at)
+      const at = ref() ?? (await client.defaultBranch())
+      const sha = await client.resolve(at)
       client.assertCurrent?.()
+      if (versionKey.value === key) {
+        o.model.sourceRevision = { kind: 'commit', commit: sha }
+        o.saved()
+      }
       return { ref: pinned ? sha : at, sha }
     })()
     if (pinned) {
@@ -108,7 +115,21 @@ export function useTreePanel(o: TreePanelOptions) {
     const t = o.shown.value
     const d = o.data() as BlobData | FolderData | null
     if (!t || !d || (t.kind !== 'blob' && t.kind !== 'tree' && t.kind !== 'repo')) return undefined
-    return crumbsOf(t, d.ref, d.path)
+    return crumbsOf(t, d.ref, d.path).map((crumb, index) =>
+      crumb.url
+        ? {
+            ...crumb,
+            url: source().navigation.folder(
+              d.ref,
+              d.path
+                .split('/')
+                .filter(Boolean)
+                .slice(0, index - 1)
+                .join('/')
+            ),
+          }
+        : crumb
+    )
   })
   const crumbRef = computed(() => {
     const t = o.shown.value

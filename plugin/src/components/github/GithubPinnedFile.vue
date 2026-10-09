@@ -72,7 +72,7 @@ import Button from '../obsidian/Button.vue'
 import Badge from '../obsidian/Badge.vue'
 import EmptyState from '../obsidian/EmptyState.vue'
 import GithubSelectionBar from './GithubSelectionBar.vue'
-import type { PinnedFile } from '@/github/comparison/service'
+import type { PinnedFile } from '@/repository/model'
 import type { Repository } from '@/github/comparison/pins'
 import { blobLink, diffSpan, fileUrl, type DiffSpan, type LineSpan } from '@/github/permalinks'
 import { mountDiff, type Viewer } from '@/github/codeViewer'
@@ -84,6 +84,7 @@ import { LINE_CONTEXT, pinIntoView } from '@/github/scrollTo'
 import { formatSize } from '@/github/tree/folder'
 import { openExternal } from '@/helpers/openExternal'
 import type { LineRange } from '@/github/urls'
+import { useRepositorySource } from '@/repository/context'
 
 const props = defineProps<{
   file: PinnedFile
@@ -92,7 +93,8 @@ const props = defineProps<{
   nonce: number
   busy?: boolean
 }>()
-const emit = defineEmits<{ large: [] }>()
+const emit = defineEmits<{ large: []; open: [url: string] }>()
+const source = useRepositorySource()
 const root = ref<HTMLElement>(),
   editor = ref<HTMLElement>()
 const linker = inject(LINKER, null),
@@ -109,12 +111,18 @@ const label = computed(() =>
 const selectedLink = () => {
   const s = selected.value
   if (!s) throw new Error('No lines selected.')
-  return blobLink(
-    props.repo,
-    s.side === 'L' ? props.file.baseSha : props.file.targetSha,
-    s.side === 'L' ? props.file.change.base!.path : props.file.path,
-    { from: s.start, to: s.end }
-  )
+  return source.value
+    ? source.value.navigation.blobLink(
+        s.side === 'L' ? props.file.baseSha : props.file.targetSha,
+        s.side === 'L' ? props.file.change.base.path : props.file.path,
+        { from: s.start, to: s.end }
+      )
+    : blobLink(
+        props.repo,
+        s.side === 'L' ? props.file.baseSha : props.file.targetSha,
+        s.side === 'L' ? props.file.change.base.path : props.file.path,
+        { from: s.start, to: s.end }
+      )
 }
 const selectedQuote = () => ({
   code: picked.value ? diffCode(lines.value, picked.value.from, picked.value.to) : '',
@@ -134,14 +142,14 @@ const clear = () => {
     screen.selectionChat = null
   }
 }
-const openSide = (side: 'base' | 'target') =>
-  openExternal(
-    fileUrl(
-      props.repo,
-      side === 'base' ? props.file.baseSha : props.file.targetSha,
-      side === 'base' ? props.file.change.base!.path : props.file.path
-    )
-  )
+const openSide = (side: 'base' | 'target') => {
+  const ref = side === 'base' ? props.file.baseSha : props.file.targetSha
+  const path = side === 'base' ? props.file.change.base.path : props.file.path
+  const url = source.value?.navigation.file(ref, path) ?? fileUrl(props.repo, ref, path)
+  if (source.value?.identity.provider === 'node') emit('open', url)
+  else openExternal(url)
+}
+
 let viewer: Viewer | null = null,
   unpin = () => {},
   generation = 0

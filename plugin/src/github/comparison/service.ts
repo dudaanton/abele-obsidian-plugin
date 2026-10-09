@@ -1,43 +1,21 @@
+import type { FileCounts, ComparisonIndex, PinnedFile } from '@/repository/model'
+export type { FileCounts, ComparisonIndex, PinnedFile } from '@/repository/model'
 import { shallowReactive } from 'vue'
 import { commitSha, FolderError } from '../api'
 import { GithubError, type GithubClient } from '../client'
 import { base64Bytes, repoApiPath } from '../contents'
 import { blobCandidates } from '../urls'
 import { findNode, type TreeNode } from '../tree/fileTree'
-import { repoTree, type RepoTree } from '../tree/repoTree'
+import { repoTree } from '../tree/repoTree'
 import { repositoryKey, type Repository } from './pins'
 import { compareTrees, type FileChange } from './trees'
-import { decodeBlob, type BlobContent, type TextDiff } from './text'
+import { decodeBlob, type BlobContent } from './text'
 import { computeDiff } from './compute'
 
 export const AUTOMATIC_BYTES = 1024 * 1024
 const MAX_BYTES = 8 * 1024 * 1024
 const MAX_CACHE_BYTES = 16 * 1024 * 1024
-export interface FileCounts {
-  state: 'pending' | 'ready' | 'unavailable'
-  additions?: number
-  deletions?: number
-}
-export interface ComparisonIndex {
-  baseSha: string
-  targetSha: string
-  base: RepoTree
-  target: RepoTree
-  changes: FileChange[]
-  counts: Map<string, FileCounts>
-}
-export interface PinnedFile {
-  baseSha: string
-  targetSha: string
-  path: string
-  index: ComparisonIndex
-  change: FileChange
-  before?: BlobContent
-  after?: BlobContent
-  text?: TextDiff
-  note?: string
-  canLoadLarge?: boolean
-}
+
 interface SharedRead<T> {
   promise: Promise<T>
   controller: AbortController
@@ -178,7 +156,7 @@ export class ComparisonService {
       )
       while (this.indexes.size > 8) {
         const oldest = this.indexes.keys().next().value!
-        const dropped = this.indexes.get(oldest)!
+        const dropped = this.indexes.get(oldest)
         if (!dropped.readers) dropped.controller.abort()
         this.indexes.delete(oldest)
       }
@@ -253,7 +231,7 @@ export class ComparisonService {
       const controller = new AbortController()
       const pending = this.limited(async () => {
         const answer = await this.client.get<{ encoding?: string; content?: string }>(
-          `${repoApiPath(this.repo)}/git/blobs/${encodeURIComponent(node.sha!)}`,
+          `${repoApiPath(this.repo)}/git/blobs/${encodeURIComponent(node.sha)}`,
           { what: `the immutable file ${node.path}` }
         )
         if (
@@ -274,7 +252,7 @@ export class ComparisonService {
         const content = decodeBlob(bytes)
         const size = content.text?.length ? content.text.length * 2 : 0
         this.check(controller.signal)
-        this.blobs.set(node.sha!, content)
+        this.blobs.set(node.sha, content)
         this.bytes += size
         while (this.blobs.size > 256 || this.bytes > MAX_CACHE_BYTES) {
           const oldest = this.blobs.keys().next().value!
@@ -288,7 +266,7 @@ export class ComparisonService {
       this.reading.set(node.sha, entry)
       const settled = () => {
         owned.done = true
-        if (this.reading.get(node.sha!) === owned) this.reading.delete(node.sha!)
+        if (this.reading.get(node.sha) === owned) this.reading.delete(node.sha)
       }
       void pending.then(settled, settled)
     }
@@ -367,20 +345,20 @@ export class ComparisonService {
         return unavailable('Binary or unsupported encoding. Text counts are unavailable (—).')
       if (
         !large &&
-        (before.text!.match(/\n/g)?.length ?? 0) + (after.text!.match(/\n/g)?.length ?? 0) > 20000
+        (before.text.match(/\n/g)?.length ?? 0) + (after.text.match(/\n/g)?.length ?? 0) > 20000
       )
         return unavailable(
           'Many lines: load the diff explicitly, or open either side separately.',
           true
         )
-      result.text = await this.limited(() => computeDiff(before.text!, after.text!, signal), signal)
+      result.text = await this.limited(() => computeDiff(before.text, after.text, signal), signal)
       this.check(signal)
       index.counts.set(path, {
         state: 'ready',
         additions: result.text.additions,
         deletions: result.text.deletions,
       })
-      if (before.text!.includes('\r\n') !== after.text!.includes('\r\n'))
+      if (before.text.includes('\r\n') !== after.text.includes('\r\n'))
         result.note = 'Line endings differ between the base and target (CRLF / LF).'
       if ([before, after].some((c) => c.kind === 'lfs'))
         result.note = 'Git LFS pointer text only. No payload is downloaded.'
@@ -446,7 +424,7 @@ export function comparisonService(client: GithubClient, repo: Repository): Compa
   cacheOwners.set(service, { client, key })
   while (cacheOwners.size > 8) {
     const oldest = cacheOwners.keys().next().value!
-    const owner = cacheOwners.get(oldest)!
+    const owner = cacheOwners.get(oldest)
     oldest.clear()
     cacheOwners.delete(oldest)
     const rows = services.get(owner.client)
