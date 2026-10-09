@@ -315,6 +315,48 @@ export class ObsidianFileSystem implements FileSystem {
     return { ...info, mtime: 0 }
   }
 
+  /** Bounded native reads where available; portable candidates are capped by the attachment
+   * ceiling and inspected one at a time. This never promotes a prefix to a proven local base. */
+  async readPrefix(path: string, maximum: number): Promise<Uint8Array> {
+    this.runtimeFence?.assertReady()
+    const adapter = this.adapter as DataAdapter & {
+      readBinaryPrefix?(path: string, maximum: number): Promise<ArrayBuffer | Uint8Array>
+      getFullPath?(path: string): string
+      fsPromises?: {
+        open?(
+          path: string,
+          flags: string
+        ): Promise<{
+          read(
+            buffer: Uint8Array,
+            offset: number,
+            length: number,
+            position: number
+          ): Promise<{ bytesRead: number }>
+          close(): Promise<void>
+        }>
+      }
+    }
+    if (adapter.readBinaryPrefix) {
+      const bytes = await adapter.readBinaryPrefix(path, maximum)
+      return (bytes instanceof Uint8Array ? bytes : new Uint8Array(bytes)).subarray(0, maximum)
+    }
+    if (adapter.getFullPath && adapter.fsPromises?.open) {
+      const handle = await adapter.fsPromises.open(adapter.getFullPath(path), 'r')
+      try {
+        const bytes = new Uint8Array(maximum)
+        const result = await handle.read(bytes, 0, maximum, 0)
+        return bytes.subarray(0, result.bytesRead)
+      } finally {
+        await handle.close()
+      }
+    }
+    const info = await this.rawStat(path)
+    if (info === null || info.type !== 'file' || info.size > 200 * 1024 * 1024)
+      return new Uint8Array()
+    return new Uint8Array(await adapter.readBinary(path)).subarray(0, maximum)
+  }
+
   async read(path: string): Promise<Uint8Array> {
     try {
       const bytes = new Uint8Array(await this.adapter.readBinary(path))

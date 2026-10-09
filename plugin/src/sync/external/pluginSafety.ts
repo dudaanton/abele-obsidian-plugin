@@ -141,7 +141,8 @@ const inspectionSchema = z
 export async function projectionEvidence(
   app: App,
   assertOwned: () => void = () => {},
-  includeControl = true
+  includeControl = true,
+  ownedPaths: ReadonlySet<string> = new Set()
 ): Promise<string | null> {
   const paths = new Set(app.vault.getFiles().map((file) => file.path))
   const seen = new Set<string>()
@@ -215,7 +216,7 @@ export async function projectionEvidence(
     const old = previous.get(path)
     if (old && old.size === before.size && old.mtime === before.mtime) {
       inspected.push(old)
-      if (old.marker) evidence ??= path
+      if (old.marker && !ownedPaths.has(path.normalize('NFC').toLowerCase())) evidence ??= path
       continue
     }
     let bytes: Uint8Array
@@ -232,7 +233,7 @@ export async function projectionEvidence(
     }
     assertOwned()
     const marker = recognizeProjection(bytes)
-    if (marker) evidence ??= path
+    if (marker && !ownedPaths.has(path.normalize('NFC').toLowerCase())) evidence ??= path
     const after = await stat(path)
     assertOwned()
     if (after?.type === 'file' && after.size === before.size && after.mtime === before.mtime)
@@ -330,13 +331,41 @@ export async function recoverExternalState(
     raw = await store.getExternalState()
   }
   if (raw === null && item) throw new ExternalRecoveryRequired('activated journal is missing')
+  const ownedProjectionPaths = new Set<string>()
   if (raw !== null) {
     const document = decodeExternalDocument(raw)
     if (document.ledgerId !== ledgerId || !sameConnection(document.binding, binding))
       throw new ExternalRecoveryRequired('external connection binding changed')
-    if (externalInventory(document).blocked) throw new ExternalRecoveryRequired()
+    if ((document.files.length || document.operations.length) && item?.phase !== 'active')
+      throw new ExternalRecoveryRequired('external representation has no activated instance proof')
+    // Task-six jobs can be resumed/held per file; destructive eviction/hydration recovery
+    // remains a connection hold until the explicit attachment state machine is implemented.
+    for (const operation of document.operations) {
+      if (
+        operation.expected &&
+        !document.files.some((file) => file.fileId === operation.expected!.fileId)
+      )
+        throw new ExternalRecoveryRequired('external job has no owned file')
+      if (
+        !['projection-update', 'projection-move', 'tombstone', 'detach'].includes(operation.kind) &&
+        !['complete', 'remote-only', 'hydrated'].includes(operation.phase)
+      )
+        throw new ExternalRecoveryRequired()
+      for (const artifact of operation.ownedArtifacts)
+        if (artifact.role === 'projection')
+          ownedProjectionPaths.add(artifact.path.normalize('NFC').toLowerCase())
+      if (['projection-update', 'projection-move'].includes(operation.kind))
+        for (const path of [operation.sourcePath, operation.targetPath])
+          if (path) ownedProjectionPaths.add(path.normalize('NFC').toLowerCase())
+    }
+    for (const file of document.files) {
+      if (!file.lastProvenLocalBase || !(await store.byFileId(file.fileId)))
+        throw new ExternalRecoveryRequired('external proven base/head is missing')
+      if (file.projectionPath)
+        ownedProjectionPaths.add(file.projectionPath.normalize('NFC').toLowerCase())
+    }
   }
-  if (await projectionEvidence(app, () => fence.assertOwned()))
+  if (await projectionEvidence(app, () => fence.assertOwned(), true, ownedProjectionPaths))
     throw new ExternalRecoveryRequired('projection evidence requires recovery before ordinary sync')
   // Inspect installation journals before their existing safe recovery, and publication
   // metadata before any constructor scope work or ordinary replay is permitted.

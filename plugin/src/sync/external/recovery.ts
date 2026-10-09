@@ -1,4 +1,4 @@
-import { EngineError } from '@abele/sync-core'
+import { EngineError, RecoveryBarrier } from '@abele/sync-core'
 import type { ExternalDocument } from './records'
 
 export interface RecoveryStorage {
@@ -52,6 +52,7 @@ export function assertNoExternalLifecycleMarker(storage: RecoveryStorage): void 
 export class RuntimeFence {
   private active = true
   private ready = false
+  readonly recovery = new RecoveryBarrier(() => this.assertOwned())
   private readonly claim: string
   private readonly key: string
   private readonly parent: RuntimeFence | null
@@ -110,10 +111,12 @@ export class RuntimeFence {
   activate(): void {
     this.assertOwned()
     this.ready = true
+    this.recovery.activate()
   }
   release(): void {
     this.active = false
     this.ready = false
+    this.recovery.hold()
     if (!this.parent && this.storage.loadLocalStorage(this.key) === this.claim)
       this.storage.saveLocalStorage(this.key, null)
   }

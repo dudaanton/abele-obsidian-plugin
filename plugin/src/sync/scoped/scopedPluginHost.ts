@@ -46,6 +46,7 @@ import {
   requireExternalLifecycleSafety,
 } from '../external/pluginSafety'
 import { ConnectionBindingSchema, type ConnectionBinding } from '../external/records'
+import { pluginRepresentation } from '../external/pluginRepresentation'
 
 const digest = (value: unknown) => sha256(new TextEncoder().encode(JSON.stringify(value)))
 const CREATION_JOURNAL = 'scoped-creation-journal-v1'
@@ -281,7 +282,7 @@ export class ScopedPluginHost {
       // Capture before core initialization writes anything. An existing core ledger is
       // independent evidence that native metadata must already exist, even on cold open.
       const fresh = initialize && (await raw.pluginMeta()).size === 0
-      const state = await ScopedState.open(raw, client.binding, { initialize })
+      let state = await ScopedState.open(raw, client.binding, { initialize })
       // The core header has proved this exact scope before adding the stable reconnect
       // identity (including upgrading ledgers written before these headers existed).
       await this.identity(raw, 'scoped-plugin-identity-v4', expected)
@@ -291,13 +292,29 @@ export class ScopedPluginHost {
       meta.guardEffects(() => fence.assertOwned())
       await this.identity(meta, 'scoped-native-identity-v4', expected, fresh)
       if (this.closed) throw new Error('Scoped host closed during database opening')
-      const fs = new ObsidianFileSystem(this.app, {
+      const physicalFs = new ObsidianFileSystem(this.app, {
         ledger: state.placementStore(),
         runtimeFence: fence,
       })
-      await fs.recover()
+      await physicalFs.recover()
       fence.activate()
       client = fencedPort(client, fence, ['commit', 'putBlob'])
+      const representations = await pluginRepresentation({
+        app: this.app,
+        store: raw,
+        ledger: state.placementStore(),
+        scoped: state,
+        ledgerId: c.ledgerId,
+        binding,
+        fence,
+        fs: physicalFs,
+        verify: (fileId, input) => client.verifyExternalFile(fileId, input),
+        scriptsFolder: () => AbeleConfig.getInstance().ai.scriptsFolder || 'Scripts',
+      })
+      await representations.recoverJobs()
+      client = representations.scopedClient(client)
+      state = representations.scopedState(state)
+      const fs = representations.fileSystem() as ObsidianFileSystem
       const r: Runtime = {
         credential: token,
         fence,

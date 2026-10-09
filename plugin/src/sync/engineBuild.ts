@@ -39,6 +39,7 @@ import {
   recoverExternalState,
 } from './external/pluginSafety'
 import type { ConnectionBinding } from './external/records'
+import { pluginRepresentation } from './external/pluginRepresentation'
 
 /**
  * The parts one engine runs on, made from the connection — the filesystem, the ledger, the
@@ -221,7 +222,7 @@ export async function buildEngine(recipe: EngineRecipe): Promise<BuiltEngine> {
     store.observeEntries((entry) => trust.provenance.record(entry.path, entry.fileId))
     fence.activate()
     const transport = runtimeTransport(fence, transportOf(deps))
-    const vault = fencedPort(
+    let vault = fencedPort(
       new SyncClient({
         baseUrl: connection.serverUrl,
         fetch: transport,
@@ -267,11 +268,37 @@ export async function buildEngine(recipe: EngineRecipe): Promise<BuiltEngine> {
     const scriptsFolder = AbeleConfig.getInstance().ai.scriptsFolder
     const selective = selectiveFrom(toRaw(connection.selective), Platform.isMobile)
     const ignore = ignoreFor(app.vault.configDir, ignoreText, join === null ? null : ownSettings)
+    const representations = await pluginRepresentation({
+      app,
+      store,
+      ledgerId: ledger.stateId,
+      binding,
+      fence,
+      fs,
+      verify: (fileId, input) => vault.verifyExternalFile(fileId, input),
+      scriptsFolder: () => AbeleConfig.getInstance().ai.scriptsFolder || 'Scripts',
+      excluded: (path, size) =>
+        isExcluded(
+          path,
+          size,
+          selective,
+          AbeleConfig.getInstance().ai.scriptsFolder || 'Scripts'
+        ) || ignore.ignores(path),
+      reconciled: (path) => {
+        settings.noteWrite(path)
+        recipe.written?.(path)
+      },
+    })
+    await representations.recoverJobs()
+    vault = representations.personalClient(vault)
+    const representedFs = representations.fileSystem(),
+      representedState = representations.stateStore()
     const engine = new SyncEngine({
       ...(ownerPublication?.hooks ?? {}),
+      recovery: fence.recovery,
       client: vault,
-      fs,
-      state: store,
+      fs: representedFs,
+      state: representedState,
       stillHeld: () =>
         fence.owns() && store.permitsEngineEffects && trust.store.permitsEngineEffects,
       // A plain copy, never the ref's own: the engine files it in the state database with the
@@ -315,7 +342,7 @@ export async function buildEngine(recipe: EngineRecipe): Promise<BuiltEngine> {
       store,
       vault,
       countPending: async () => {
-        const found = await scan(fs, store, {
+        const found = await scan(representedFs, representedState, {
           excluded: (path, size) =>
             isExcluded(path, size, selective, scriptsFolder || 'Scripts') || ignore.ignores(path),
         })
