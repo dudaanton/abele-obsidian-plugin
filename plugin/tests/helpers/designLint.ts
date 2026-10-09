@@ -20,6 +20,8 @@ export interface MeasuredElement {
   slot?: 'icon' | 'text' | 'action'
   level?: Level
   rect: Box
+  /** CSS fragment rectangles for inline elements wrapping across multiple lines. */
+  fragments?: Box[]
   firstLine?: Box
   /** Range rects are glyph boxes, not CSS line-height boxes. */
   lines?: Box[]
@@ -208,12 +210,23 @@ export function lintDesign(snapshot: DesignSnapshot, options: LintOptions = {}):
           b = group[j]
         const x = Math.min(right(a.rect), right(b.rect)) - Math.max(a.rect.x, b.rect.x)
         const y = Math.min(bottom(a.rect), bottom(b.rect)) - Math.max(a.rect.y, b.rect.y)
-        if (x > tolerance && y > tolerance)
+        const aBoxes = a.fragments?.length ? a.fragments : [a.rect]
+        const bBoxes = b.fragments?.length ? b.fragments : [b.rect]
+        let overlap: { a: Box; b: Box; x: number; y: number } | undefined
+        for (const aa of aBoxes)
+          for (const bb of bBoxes) {
+            const ox = Math.min(right(aa), right(bb)) - Math.max(aa.x, bb.x)
+            const oy = Math.min(bottom(aa), bottom(bb)) - Math.max(aa.y, bb.y)
+            if (ox > tolerance && oy > tolerance) overlap ??= { a: aa, b: bb, x: ox, y: oy }
+          }
+        if (overlap)
           add(
             'sibling-overlap',
-            `Sibling boxes overlap ${x.toFixed(1)}×${y.toFixed(1)}px`,
+            `Sibling fragments overlap ${overlap.x.toFixed(1)}×${overlap.y.toFixed(1)}px`,
             [a, b],
-            Math.min(x, y)
+            Math.min(overlap.x, overlap.y),
+            undefined,
+            [overlap.a, overlap.b]
           )
         const parent = byId.get(a.parent!)
         if (

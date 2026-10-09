@@ -158,6 +158,21 @@ describe('design lint geometry rules', () => {
       expect.arrayContaining(['sibling-overlap', 'text-triangle'])
     )
   })
+  it('checks real inline fragments rather than overlapping unions of wrapped sibling text', () => {
+    const a = element('wrapped', {
+      rect: rect(40, 20, 100, 40),
+      fragments: [rect(40, 20, 100, 20), rect(40, 40, 10, 20)],
+    })
+    const b = element('following', {
+      rect: rect(50, 40, 90, 20),
+      fragments: [rect(50, 40, 90, 20)],
+    })
+    expect(codes(snapshot([a, b]))).not.toContain('sibling-overlap')
+    b.fragments![0].x = 48
+    const overlap = lintDesign(snapshot([a, b])).find((v) => v.rule === 'sibling-overlap')!
+    expect(overlap.delta).toBe(2)
+    expect(overlap.boxes[0]).toEqual(a.fragments![1])
+  })
   it('measures adjacent horizontal layout gaps but not distributed flex free space', () => {
     const parent = element('flex', {
       parent: null,

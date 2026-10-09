@@ -78,7 +78,8 @@ Rules report:
   child emphasis. Colour order uses contrast against the inherited background so dark
   themes work too. A detail identical to the title is reported even when not heavier;
 - `clipping`, `sibling-overlap`, `text-triangle`, `touch-target`: overflowing clipped content,
-  intersecting CSS-layout siblings, text disclosure triangles, enabled mobile controls below 44px.
+  intersecting CSS-layout sibling fragments, text disclosure triangles, enabled mobile controls below 44px.
+  Wrapped inline elements use `getClientRects()` fragments, not their overlapping rectangular unions.
   SVG paint primitives remain captured but are not CSS-layout siblings. Intentional scrolling
   and visible overflow are not clipping;
 - `native-parity`: measured deltas for icon size, row padding, icon/text gap and line height

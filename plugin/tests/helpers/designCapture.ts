@@ -182,6 +182,7 @@ export function captureDesign(selector: string, options: CaptureOptions = {}): D
         slot,
         level,
         rect,
+        fragments: [...el.getClientRects()].filter((r) => r.width && r.height).map(box),
         ...text,
         glyphText,
         paintVisible: nativeReference ? visible(el) : true,
