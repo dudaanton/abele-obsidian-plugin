@@ -6,10 +6,11 @@ import { pendingTeardown } from './teardownBarrier'
 /** Fresh token-only registry; retire legacy credentials without importing old state. */
 export async function prepareTokenConnections(
   app: App,
-  secrets: RetiredSecrets
+  secrets: RetiredSecrets,
+  loadedSync?: unknown
 ): Promise<TokenConnectionRegistry> {
   await pendingTeardown(app)
   const registry = TokenConnectionRegistry.open(app)
-  discardLegacyConnections(app, secrets)
+  discardLegacyConnections(app, secrets, loadedSync)
   return registry
 }

@@ -14,6 +14,37 @@ function local() {
   } as unknown as App
   return { app, data }
 }
+
+it('journals settings-only retired credentials and server proofs before settings can be rewritten', async () => {
+  const { app } = local(),
+    values = new Map([
+      ['abele-sync-device-settings-only', 'old-key'],
+      ['abele-sync-device-settings-only-server', 'old-proof'],
+      ['provider-sample', 'provider-key'],
+    ])
+  let fail = true
+  const secrets = {
+    get: (id: string) => values.get(id) ?? '',
+    remove: (id: string) => {
+      if (fail) throw new Error('keychain unavailable')
+      values.delete(id)
+    },
+  }
+  // Settings are the only reference: no legacy local-storage record exists.
+  await expect(
+    prepareTokenConnections(app, secrets, {
+      deviceTokenId: 'abele-sync-device-settings-only',
+    })
+  ).rejects.toThrow('keychain unavailable')
+  expect(app.loadLocalStorage('abele-sync-retired-access-cleanup-v1')).toEqual([
+    'abele-sync-device-settings-only',
+    'abele-sync-device-settings-only-server',
+  ])
+  fail = false
+  await prepareTokenConnections(app, secrets) // Settings reference may now be absent.
+  expect([...values]).toEqual([['provider-sample', 'provider-key']])
+  expect(app.loadLocalStorage('abele-sync-retired-access-cleanup-v1')).toBeNull()
+})
 it('waits for the previous runtime before discarding its connection state', async () => {
   const { app } = local()
   let finish!: () => void

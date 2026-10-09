@@ -1,10 +1,47 @@
-import { expect, it } from 'vitest'
+import { expect, it, vi } from 'vitest'
 import { IDBFactory } from 'fake-indexeddb'
 import { sha256 } from '@abele/sync-core'
 import { IndexedDbStateStore } from '@/sync/IndexedDbStateStore'
 import { ExecutableReview } from '@/sync/executableReview'
 import { AttachmentConsent } from '@/sync/attachmentConsent'
 import { openDeviceReviews } from '@/sync/openDeviceReviews'
+
+it('automatically reconnects the review writer without losing pending operations', async () => {
+  const factory = new IDBFactory()
+  const open = factory.open.bind(factory)
+  let database: IDBDatabase | undefined
+  factory.open = (...args) => {
+    const request = open(...args)
+    request.addEventListener('success', () => {
+      database = request.result
+    })
+    return request
+  }
+  const review = await openDeviceReviews(factory, 'reconnecting-vault')
+  const source = {
+    id: 'connection-a',
+    address: 'https://sync.example',
+    spaceId: 'space-a',
+    tokenId: 'token-a',
+    scope: { kind: 'group' as const, id: 'group-a', path: 'Groups/sample.md' },
+  }
+  const target = { id: 'local-image-a', path: 'Private/sample.png', kind: 'attachment' as const }
+  try {
+    await review.attachments.recordReceived(source, target.id)
+    vi.spyOn(database!, 'transaction').mockImplementationOnce(() => {
+      throw new DOMException('Connection to Indexed Database server lost', 'UnknownError')
+    })
+    expect(await review.executables.pending()).toEqual([])
+    expect(await review.attachments.mayUpload(source, target)).toBe(true)
+    await review.attachments.recordReceived(source, 'local-image-b')
+    expect(await review.attachments.mayUpload(source, { ...target, id: 'local-image-b' })).toBe(
+      true
+    )
+  } finally {
+    review.close()
+    vi.restoreAllMocks()
+  }
+})
 
 it('reopens actual device IndexedDB with immutable code and independent attachment decisions intact', async () => {
   const factory = new IDBFactory(),

@@ -309,10 +309,14 @@ export default class AbelePlugin extends Plugin {
         const config = AbeleConfig.getInstance(),
           loaded = config.takeLoadedSync()
         try {
-          await prepareTokenConnections(this.app, {
-            get: (id) => secretStore.getLocal(id),
-            remove: (id) => secretStore.forgetLocal(id),
-          })
+          await prepareTokenConnections(
+            this.app,
+            {
+              get: (id) => secretStore.getLocal(id),
+              remove: (id) => secretStore.forgetLocal(id),
+            },
+            loaded?.sync
+          )
           if (loaded !== null) {
             config.acknowledgeSyncMigration()
             await config.rewrite()

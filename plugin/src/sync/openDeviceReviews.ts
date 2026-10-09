@@ -16,9 +16,19 @@ export async function openDeviceReviews(
     identity: { key: 'device-review-identity-v1', value: deviceVaultId },
     effectGuard: assertHeld,
   })
-  return {
-    executables: new ExecutableReview(store, paths),
-    attachments: new AttachmentConsent(store, paths),
-    close: () => store.close(),
+  try {
+    const key = 'device-review-identity-v1'
+    const prior = await store.getMeta(key)
+    if (prior !== null && prior !== deviceVaultId)
+      throw new Error('Device review identity requires recovery')
+    if (prior === null) await store.setMeta(key, deviceVaultId)
+    return {
+      executables: new ExecutableReview(store, paths),
+      attachments: new AttachmentConsent(store, paths),
+      close: () => store.close(),
+    }
+  } catch (error) {
+    store.close()
+    throw error
   }
 }

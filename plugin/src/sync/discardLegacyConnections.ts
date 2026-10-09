@@ -43,7 +43,11 @@ const retiredReference = (id: string) =>
   )
 
 /** Retire only known access metadata/credential namespaces. No files or databases are touched. */
-export function discardLegacyConnections(local: LocalStorage, secrets: RetiredSecrets): void {
+export function discardLegacyConnections(
+  local: LocalStorage,
+  secrets: RetiredSecrets,
+  loadedSync?: unknown
+): void {
   const references = new Set<string>(),
     keys = new Set(legacyKeys)
   const existing = local.loadLocalStorage(cleanupKey)
@@ -86,6 +90,7 @@ export function discardLegacyConnections(local: LocalStorage, secrets: RetiredSe
     }
   }
   for (const key of legacyKeys) collect(local.loadLocalStorage(key))
+  collect(loadedSync)
   const write = (key: string, value: unknown) => {
     local.saveLocalStorage(key, value)
     if (JSON.stringify(local.loadLocalStorage(key)) !== JSON.stringify(value))

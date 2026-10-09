@@ -2006,13 +2006,17 @@ Startup discards old personal/scoped records, journals, ledger references and kn
 credentials. It performs no migration, backup or baseline import. Actual vault files and
 IndexedDB databases are not deleted. `abele-sync-retired-access-cleanup-v1` temporarily holds
 only credential references until verified deletion succeeds, allowing interrupted cleanup to
-resume. New token credentials and unrelated keys are protected. The old access runtime is
+resume. Settings-only credential references and their server proofs are journaled before
+rewriting old settings, so keychain failures remain recoverable even without those settings.
+New token credentials and unrelated keys are protected. The old access runtime is
 not started, including when cleanup fails.
 
 A pending token binding is written before the device keychain write, then activated only
 after the key reads back. Re-pasting the same new token resumes interrupted provisioning;
 different authority cannot take over that binding. A bound record cannot be retargeted: a different token needs a separate local record, preserving existing pending state. A renamed selector keeps its stable ID,
-ledger and credential. Malformed active storage requires recovery. Forget removes only the
+ledger and credential, including during interrupted provisioning: only address, space,
+token and selector kind/ID bind the pending identity; the latest authoritative path is saved.
+Malformed active storage requires recovery. Forget removes only the
 selected metadata; credential/database retirement remains the runtime’s separate action.
 
 Retained push placement stages verified download bytes under the reserved local directory
@@ -2020,6 +2024,10 @@ Retained push placement stages verified download bytes under the reserved local 
 syncs. Bounded runs are loaded during settlement and successful settlement removes staged
 files. Interrupted settlement retains its request journal and staging for retry; orphan
 temporary-directory cleanup belongs to the later recovery stage.
+
+Pull placement fills its byte cache before path leases even for a matching baseline hash:
+the ledger cannot prove that the local source still exists. Source and target are revalidated
+under the lease before placement.
 
 The token adapter's `abele-sync-token-state:commit` slot stores immutable request
 operations, an idempotency key and the accepted receipt until host settlement
@@ -2033,7 +2041,9 @@ upload byte staging remains the retained engine's responsibility.
 
 `abele-sync-reviews-<device-local-vault-id>` is a separate device-only IndexedDB
 writer using the retained store format. It must never share a server-space name
-or an engine's pending metadata overlay. `token-executable-review-v1` stores
+or an engine's pending metadata overlay. Initial open persists `device-review-identity-v1`
+before exposing review ports; automatic reconnect verifies that durable identity without
+reinitializing it. `token-executable-review-v1` stores
 immutable code candidates: connection snapshot, file/version, operation and
 paths, exact bytes/hash, original mtime, receipt time and review/apply status.
 Only explicitly selected IDs are approved; interrupted application retains the

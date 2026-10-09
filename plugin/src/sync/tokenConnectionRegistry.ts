@@ -289,9 +289,9 @@ export class TokenConnectionRegistry {
           address: record.pending.address,
           spaceId: record.pending.spaceId,
           tokenId: record.pending.tokenId,
-          scope: record.pending.scope,
+          scope: { kind: record.pending.scope.kind, id: record.pending.scope.id },
         },
-        identity
+        { ...identity, scope: { kind: authority.scope.kind, id: authority.scope.id } }
       )
     )
       throw recovery()
@@ -309,7 +309,7 @@ export class TokenConnectionRegistry {
     if (saved != null && saved !== token.key) throw recovery()
     if (saved == null) secrets.set(pending.secretReference, token.key)
     if (secrets.get(pending.secretReference) !== token.key) throw recovery()
-    Object.assign(record, pending)
+    Object.assign(record, pending, { scope: clone(authority.scope) })
     delete record.pending
     record.status = status
     this.write(TOKEN_REGISTRY_KEY, doc)

@@ -58,7 +58,9 @@ export function syncPlacementPlugin() {
           'async place(change, sha, entry, fetched, local) {',
           `async place(change, sha, entry, fetched, local) {
           // Downloads do not own paths. The original placer revalidates the source after waiting.
-          if ((!entry || entry.sha !== sha) && !fetched.has(sha)) {
+          // A matching ledger hash does not prove that its local file still exists.
+          // Populate even the fallback's cache before leasing either path.
+          if (!fetched.has(sha)) {
             const bytes = await this.bytesOf(sha, fetched, local);
             if (!bytes) return false;
             fetched = new Map(fetched).set(sha, bytes);

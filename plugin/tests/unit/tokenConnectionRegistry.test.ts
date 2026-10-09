@@ -39,6 +39,30 @@ function secrets() {
   }
 }
 
+it('resumes interrupted provisioning after a folder rename using stable selector identity', () => {
+  const store = local(),
+    registry = TokenConnectionRegistry.open(store),
+    id = registry.add(),
+    keys = secrets()
+  const set = keys.set
+  keys.set = () => {
+    throw new Error('interrupted keychain write')
+  }
+  expect(() => registry.attach(id, token, receipt, keys)).toThrow('interrupted keychain write')
+  const before = registry.records()[0]
+  keys.set = set
+  const reopened = TokenConnectionRegistry.open(store),
+    scope = { ...receipt.scope, path: 'Renamed' }
+  reopened.attach(id, token, { ...receipt, scope }, keys)
+  expect(reopened.records()[0]).toMatchObject({
+    ledgerId: before.ledgerId,
+    secretReference: before.pending!.secretReference,
+    scope,
+    status: 'idle',
+  })
+  expect(keys.data.size).toBe(1)
+})
+
 it('rejects lost registry writes and damaged active storage', () => {
   const store = local()
   store.saveLocalStorage = () => {}
