@@ -3,20 +3,71 @@ import { settingsCategory, sha256, type VaultClient } from '@abele/sync-core'
 import { caseKey, type ChangeItem } from '@abele/sync-protocol'
 import type { StagedHost } from './stagedSettings'
 
+/** Shared by legacy staging views and immutable token candidates; unseen items stay pending. */
+export function reviewedSelection<T>(
+  items: readonly T[],
+  ids: readonly string[],
+  identity: (item: T) => string,
+  accepts: (item: T) => boolean = () => true
+): T[] {
+  const wanted = new Set(ids)
+  return items.filter((item) => accepts(item) && wanted.has(identity(item)))
+}
+
+export interface ExecutablePaths {
+  scriptsFolder?: string
+  configRoots?: string[]
+}
+/** Ask the retained protocol classifier; host configuration roots are supplied separately. */
+function configurationRoots(path: string, options: ExecutablePaths = {}): string[] {
+  const first = path.split('/')[0]
+  return [
+    ...new Set([
+      ...(settingsCategory(caseKey(first) + '/app.json') === 'main' ? [first] : []),
+      ...(options.configRoots ?? []),
+    ]),
+  ]
+}
+const within = (path: string, root: string) => path === root || path.startsWith(root + '/')
+function executablePluginId(path: string, roots: string[]): string | null {
+  for (const root of roots) {
+    const prefix = root.replace(/\/+$/, '') + '/plugins/'
+    if (!caseKey(path).startsWith(caseKey(prefix))) continue
+    const parts = path.slice(prefix.length).split('/')
+    if (parts.length < 2 || (parts.length === 2 && caseKey(parts[1]) === 'data.json')) continue
+    return parts[0]
+  }
+  return null
+}
+export function configurationPath(path: string, options: ExecutablePaths = {}): boolean {
+  return configurationRoots(path, options).some((root) =>
+    within(caseKey(path), caseKey(root.replace(/\/+$/, '')))
+  )
+}
+/** Includes this plugin's code, both move endpoints, and directories containing executable code. */
+export function executablePath(
+  path: string,
+  directory = false,
+  options: ExecutablePaths = {}
+): boolean {
+  const folded = caseKey(path),
+    scripts = caseKey((options.scriptsFolder ?? 'Scripts').replace(/\/+$/, ''))
+  if (scripts && (within(folded, scripts) || (directory && within(scripts, folded)))) return true
+  for (const root of configurationRoots(path, options)) {
+    const plugins = caseKey(root.replace(/\/+$/, '') + '/plugins')
+    if (directory && (within(folded, plugins) || within(plugins, folded))) return true
+    if (executablePluginId(path, [root]) !== null) return true
+  }
+  return false
+}
+
 /** A rename touches both ends: moving code out of its folder also needs consent. */
 export function codePluginIds(change: ChangeItem, ownId: string): string[] {
   const ids = new Set<string>()
   for (const path of [change.path, change.prev_path]) {
     if (path === null) continue
-    const parts = path.split('/')
-    if (
-      settingsCategory(caseKey(path)) !== null &&
-      caseKey(parts[1] ?? '') === 'plugins' &&
-      parts.length >= 4 &&
-      caseKey(parts[2]) !== caseKey(ownId) &&
-      !(parts.length === 4 && caseKey(parts[3]) === 'data.json')
-    )
-      ids.add(parts[2])
+    const id = executablePluginId(path, configurationRoots(path))
+    if (id !== null && caseKey(id) !== caseKey(ownId)) ids.add(id)
   }
   return [...ids]
 }
@@ -28,10 +79,9 @@ export function codePluginIds(change: ChangeItem, ownId: string): string[] {
  */
 export function stagedLane(host: StagedHost, accepts: (change: ChangeItem) => boolean): StagedHost {
   const allowed = async (ids: readonly string[]): Promise<string[]> => {
-    const wanted = new Set(ids)
-    return (await host.list())
-      .filter((one) => accepts(one) && wanted.has(one.version_id))
-      .map((one) => one.version_id)
+    return reviewedSelection(await host.list(), ids, (one) => one.version_id, accepts).map(
+      (one) => one.version_id
+    )
   }
   return {
     ...host,

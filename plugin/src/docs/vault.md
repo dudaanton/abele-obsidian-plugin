@@ -2028,3 +2028,23 @@ device-local and never enters settings transfer. An uncertain response retains
 the original request, and a failed follow-up download retains its accepted
 receipt. The adapter boundary is not yet connected to the production file engine;
 upload byte staging remains the retained engine's responsibility.
+
+## Executable review and attachment consent
+
+`abele-sync-reviews-<device-local-vault-id>` is a separate device-only IndexedDB
+writer using the retained store format. It must never share a server-space name
+or an engine's pending metadata overlay. `token-executable-review-v1` stores
+immutable code candidates: connection snapshot, file/version, operation and
+paths, exact bytes/hash, original mtime, receipt time and review/apply status.
+Only explicitly selected IDs are approved; interrupted application retains the
+same candidate. Later versions stay pending and active files are unchanged by
+staging or rejection. Answered receipts remain stored for delivery deduplication.
+
+`token-attachment-consent-v1` stores observed note references, received provenance,
+questions and allow/deny decisions by connection plus stable **local** file ID.
+Only an actual note-open creates questions. Received content from another
+connection grants no publication consent. A decision follows edits/rename of
+that identity, while a replacement at the same path has a new identity. Neither
+document enters settings, synced secrets or settings transfer. Screens and core
+runtime integration consume these ports separately; no UI or engine is started
+by the metadata adapter.
