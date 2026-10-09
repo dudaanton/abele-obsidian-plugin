@@ -523,7 +523,7 @@ export class ChatService {
 
   /** Reserve capacity for an irreversible metadata promotion while its save runs outside the queue. */
   reserveTab(session: ChatSession): (() => void) | null {
-    return this.mutatePresentation(() => {
+    return this.presentations.mutateImmediate(() => {
       if (!this.sessions.has(session.id) && !this.canCreateTab) return null
       this.tabReservations.add(session)
       return () => { this.mutatePresentation(() => this.tabReservations.delete(session)) }
@@ -579,15 +579,18 @@ export class ChatService {
    * the history's search — which takes the cursor itself.
    */
   async revealSidebar({ focus = true, current }: { focus?: boolean; current?: () => boolean } = {}): Promise<void> {
+    // Revealing is a continuation, not a fresh tab-selection action. Unscoped callers can
+    // reveal the current foreground, but can never supersede an opening already in flight.
     const intent = (current && this.presentationGuards.get(current)) ??
-      this.presentations.begin('sidebar', false, current)
+      this.presentations.captureForeground() ?? this.presentations.begin('sidebar', false, current)
+    if (current && !current()) return
     if (!(await this.presentations.applyAsync(intent, () => this.presentations.selected(intent))) ||
       !this.presentations.selected(intent)) return
     // Workspace animation is I/O too. It cannot hold the tab queue or create a new intent
     // when it completes; only a still-current foreground action may request composer focus.
     await revealSidebarView(GlobalStore.getInstance().app, AI_SIDEBAR_VIEW_TYPE)
     this.presentations.apply(intent, () => {
-      if (focus && this.presentations.selected(intent) && ChatService.isBlank(this.activeSession.value))
+      if (focus && (!current || current()) && this.presentations.selected(intent) && ChatService.isBlank(this.activeSession.value))
         this.requestFocus()
     })
   }
@@ -630,7 +633,7 @@ export class ChatService {
       return
     }
 
-    const intent = this.presentations.begin(session.currentChatFile.value?.path ?? tabId, true)
+    const intent = this.presentations.begin(session.currentChatFile.value?.path ?? tabId, false)
     await this.saveForRelease(session)
     this.presentations.apply(intent, () => {
       if (this.sessions.get(tabId) !== session || session.isDestroyed) return
@@ -710,7 +713,7 @@ export class ChatService {
   private saveForRelease(session: ChatSession): Promise<void> {
     const pending = this.releaseSaves.get(session)
     if (pending) return pending
-    const saving = session.save()
+    const saving = session.saveForRelease()
     this.releaseSaves.set(session, saving)
     void saving.finally(() => { if (this.releaseSaves.get(session) === saving) this.releaseSaves.delete(session) }).catch(() => {})
     return saving
@@ -720,7 +723,7 @@ export class ChatService {
     const session = this.sessions.get(tabId)
     if (!session) return false
     const intent = current && this.presentationGuards.get(current) ||
-      this.presentations.begin(session.currentChatFile.value?.path ?? tabId, true, current)
+      this.presentations.begin(session.currentChatFile.value?.path ?? tabId, false, current)
     if (!(await this.presentations.applyAsync(intent, () => this.sessions.get(tabId) === session && !session.isDestroyed)) ||
       !this.presentations.valid(intent)) return false
     await this.saveForRelease(session)
@@ -885,7 +888,7 @@ export class ChatService {
   }
 
   private closeRunTab(tabId: string): void {
-    const intent = this.presentations.begin(tabId, true)
+    const intent = this.presentations.begin(tabId, false)
     this.presentations.apply(intent, () => {
       this.runTabs.delete(tabId)
       this.tabOrder.value = this.tabOrder.value.filter((id) => id !== tabId)

@@ -42,6 +42,15 @@ export class TabIntentQueue {
     return result
   }
 
+  /** Permission/resource factories must return their result now, or refuse before enqueueing. */
+  mutateImmediate<T>(work: () => T): T {
+    if (this.draining) throw new Error('A synchronous reservation cannot run inside a presentation transaction.')
+    return this.mutate(work) as T
+  }
+
+  /** Capture a reveal continuation's authority without admitting another user action. */
+  captureForeground(): TabIntent | undefined { return this.foreground }
+
   /** Admission is synchronous so a new action supersedes even a commit queued by an observer. */
   begin(target: string, contextual: boolean, current?: () => boolean): TabIntent {
     const intent = { target, contextual, current }

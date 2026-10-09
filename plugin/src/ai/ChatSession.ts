@@ -3307,6 +3307,15 @@ export class ChatSession implements SummarizerHost, InterceptorHost, AnchorStora
     await this.flush()
   }
 
+  /** A presentation release may proceed only when the last flush left no local work behind. */
+  async saveForRelease(): Promise<void> {
+    await this.save()
+    // Automatic flush is deliberately best-effort: it logs write errors and keeps dirty=true.
+    // Releasing/closing must not mistake that fulfilled Promise for a durable save.
+    if (this.dirty || this.writing !== null)
+      throw new Error('This chat still has unsaved changes. Try saving it again before closing.')
+  }
+
   private snapshot(): ChatSnapshot {
     const config = AbeleConfig.getInstance().ai
     const overrides = this.overrides.value

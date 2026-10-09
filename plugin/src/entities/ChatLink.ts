@@ -50,7 +50,8 @@ export class ChatLink {
     if (!(file instanceof TFile)) return
 
     const service = ChatService.getInstance()
-    await service.openChatFile(file)
-    await service.revealSidebar()
+    const current = service.fileOpenGuard(file)
+    await service.openChatFile(file, current)
+    await service.revealSidebar({ current })
   }
 }

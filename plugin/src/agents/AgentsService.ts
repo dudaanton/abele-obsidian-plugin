@@ -530,8 +530,10 @@ export class AgentsService {
         new Notice('Разговор больше недоступен')
         return false
       }
-      chats.switchTab(session.id)
-      await chats.revealSidebar({ focus: false })
+      const current = chats.contextualOpenGuard(session)
+      if (!chats.adoptSession(session, current)) return false
+      await chats.revealSidebar({ focus: false, current })
+      if (!chats.isForegroundPresentation(current)) return false
       if (reason.target) chats.pendingReveal.value = reason.target
       return true
     }
@@ -544,18 +546,20 @@ export class AgentsService {
       new Notice('Разговор больше недоступен')
       return false
     }
+    const presentationCurrent = chats.fileOpenGuard(file)
     chats.openingSelection.value = true
     try {
       if (ref.commentId) {
-        if (!(await CommentService.getInstance().revealForAttention(file))) return false
+        if (!(await CommentService.getInstance().revealForAttention(file, presentationCurrent))) return false
       } else {
-        await chats.openChatFile(file)
-        await chats.revealSidebar({ focus: false })
+        await chats.openChatFile(file, presentationCurrent)
+        await chats.revealSidebar({ focus: false, current: presentationCurrent })
       }
       const session = chats.activeSession.value
-      if (!session || session.currentChatFile.value?.path !== ref.path) return false
+      if (!chats.isForegroundPresentation(presentationCurrent) || !session || session.currentChatFile.value?.path !== ref.path) return false
       await this.updateFile(file)
-      if (!session.isMidTurn && !session.attentionBusy) await session.reconcileForSelectionReturn()
+      if (!session.isMidTurn && !session.attentionBusy) await session.reconcileForSelectionReturn(presentationCurrent)
+      if (!chats.isForegroundPresentation(presentationCurrent) || chats.activeSession.value !== session) return false
       const current = this.liveRow(session)
       if (current?.uncertain)
         new Notice('Состояние не подтверждено. Открыта сохранённая версия разговора.')

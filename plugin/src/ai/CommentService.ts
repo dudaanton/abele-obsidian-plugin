@@ -248,10 +248,10 @@ export class CommentService implements CommentInfoSource {
   }
 
   /** Returns from the attention list without replacing any other discussion tab. */
-  async revealForAttention(file: TFile): Promise<boolean> {
+  async revealForAttention(file: TFile, presentationCurrent?: () => boolean): Promise<boolean> {
     const chats = ChatService.getInstance()
     // Every chat-file opener shares one reservation and hands comment files to this owner.
-    const current = chats.fileOpenGuard(file)
+    const current = presentationCurrent ?? chats.fileOpenGuard(file)
     await chats.openChatFile(file, current)
     const session = chats.activeSession.value
     if (!chats.isForegroundPresentation(current) || session?.currentChatFile.value?.path !== file.path) return false

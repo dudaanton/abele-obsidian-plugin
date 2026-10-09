@@ -62,10 +62,11 @@ export async function attachNoteToChat(note: TFile): Promise<boolean> {
   const chat = await pickChat(app, undefined, { placeholder: 'Attach this note to a chat...' })
   if (!chat) return false
   const service = ChatService.getInstance()
-  await service.openChatFile(chat)
-  // Opening can be refused by a full tab bar. Never insert into the unrelated active chat.
+  const current = service.fileOpenGuard(chat)
+  await service.openChatFile(chat, current)
+  // Opening can be refused or superseded. Never insert into an obsolete selection.
   const session = service.getSessionByFile(chat.path)
-  if (!session || service.activeSession.value?.id !== session.id) return false
+  if (!service.isForegroundPresentation(current) || !session || service.activeSession.value?.id !== session.id) return false
   grantNote(session.scopeResolver, note.path)
   service.pendingInput.value = {
     text: `${noteWikilink(note)} `,
@@ -73,8 +74,8 @@ export async function attachNoteToChat(note: TFile): Promise<boolean> {
     focus: true,
     append: true,
   }
-  await service.revealSidebar()
-  return true
+  await service.revealSidebar({ current })
+  return service.isForegroundPresentation(current)
 }
 
 /** Attaches a chat to one note, and says so — the chat's end has no card to show it. */
