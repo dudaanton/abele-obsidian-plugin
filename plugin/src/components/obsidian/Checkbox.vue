@@ -10,6 +10,7 @@
     @keyup="onKeyup"
   >
     <span
+      v-if="Platform.isMobile"
       class="checkbox-container abele-checkbox__paint"
       :class="{ 'is-enabled': isEnabled }"
       aria-hidden="true"
@@ -18,6 +19,8 @@
 </template>
 
 <script setup lang="ts">
+import { Platform } from 'obsidian'
+import './designKit.css'
 defineProps<{
   isEnabled: boolean
 }>()
@@ -53,7 +56,7 @@ body.is-phone .abele-checkbox {
   align-items: center;
   justify-content: center;
   height: auto;
-  min-height: max(44px, var(--touch-size-m));
+  min-height: var(--abele-touch-min);
   padding-block: var(--size-4-2);
   background: transparent;
 }
