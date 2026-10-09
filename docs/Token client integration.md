@@ -1,14 +1,16 @@
 # Token client integration
 
 `src/sync/v2/contract.ts` is a local copy of the frozen protocol source at
-`2c5346f`, with imports redirected to portable local file-operation schemas and
+`10e8f23`, with imports redirected to portable local file-operation schemas and
 the retained URL helpers. `fileSchemas.ts` copies only retained file operations,
 results and their primitives. Both use the plugin's Zod dependency. The pinned
-server/core archives are unchanged.
+server/core archives are unchanged. `uploadSchemas.ts` copies the retained upload
+begin schemas; the `{sha,size}` receipt follows the documented v2 upload routes.
 
 The non-UI client validates base64 UTF-8 tokens, resolves authority before writing
 device credentials, and calls connection, token management, manifest, changes
-and commit endpoints. It does not send credentials in query strings or follow
+and commit endpoints, plus simple/multipart uploads and file-identity content.
+It does not send credentials in query strings or follow
 redirects. Errors contain recognized codes, never response text or transport
 details. A 401 means the key is refused; the wire cannot distinguish revocation
 from a disabled user or an unknown key. Scope paths are display hints; stable
@@ -32,20 +34,37 @@ complete scan or continue paging past held operations, rather than truncate firs
 
 ## Dependencies still blocking production integration
 
-The frozen contract defines no upload/content request or response schemas,
-multipart/range rules, content version query, or upload authorization fields.
-Inventing these would create a different contract. The pinned engine still
-requires a legacy `VaultClient.state()`, SHA-addressed blob calls, and legacy feed
-events. It has no directory or scoped-removal event boundary. The adapter is
+The pinned engine still requires a legacy `VaultClient.state()`, SHA-addressed
+blob calls, and legacy feed events. It has no directory or scoped-removal event boundary. The adapter is
 therefore not wired into the production engine, and normal token sync remains
 disabled. No legacy adapter was replaced or deleted in this increment.
 
 The two-token runtime regression exercises the real registry, connection engine
 collection, client and coordinator with synthetic runtime ports. It does not
 prove that two production file engines sync. The actual production-engine probe
-and missing upload/content client guarantee remain `it.fails` with `BUG:` notes.
+remains `it.fails` with `BUG: DEPENDS: core v2 binding`.
 No test or documentation treats these dependencies as completed acceptance.
 
-The frozen protocol document calls descendant revocation unresolved. The binding
-model specifies that revoking a token leaves its descendants valid; direct
-revocation already agrees with that decision, but the contract prose needs updating.
+## Upload and content client boundary
+
+`putContent(sha, bytes, options)` copies and verifies immutable bytes before
+transmission. It always sends actual bytes, including repeated digests; no HEAD
+or hash-only shortcut authorizes an upload. Above the configured simple-upload
+threshold it uses begin/part/complete and skips only server-confirmed received
+parts. Completion is never sent after a failed part. Begin plans and final
+digest/size receipts are checked. Callers may retain the upload identity and use
+`beginUpload`, `uploadPart`, and `completeUpload` directly for durable continuation;
+the convenience method itself does not persist upload identities across reload.
+
+`content(fileId, {versionId, range, signal})` reads authorized file/version bytes.
+`headContent` returns actual size and range capability. Partial responses must
+match the requested bounds and actual byte count; ignored ranges and truncated
+responses fail. The retained engine must verify full downloads against its
+manifest/receipt digest before placement and use exact versions for multipart
+downloads. It must also drain genuine final folder-delete events before stopping
+on `scope_unavailable`; deleted group roots and revoked tokens imply no deletes.
+
+Tests use synthetic fetch fixtures against the documented routes and response
+shapes, not a live server or desktop/mobile evidence. Core binding, WebSocket
+runtime integration, durable upload recovery and host placement remain subsequent
+integration work. No second engine is introduced.

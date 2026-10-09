@@ -1,4 +1,4 @@
-// Frozen protocol source 2c5346f; local copy until the shared packages are vendored.
+// Protocol source 10e8f23; local copy until the shared packages are vendored.
 import { z } from 'zod'
 import { normalizeServerUrl, serverUrlProblem } from '@abele/sync-protocol'
 import {

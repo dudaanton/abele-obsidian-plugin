@@ -94,7 +94,7 @@ it('runs two token authorities over one host without a slow connection blocking 
   await engines.close()
 })
 
-// BUG: the pinned production engine only accepts the legacy VaultClient feed.
+// BUG: DEPENDS: core v2 binding; the pinned engine only accepts the legacy VaultClient feed.
 it.fails(
   'runs the production SyncEngine against a v2 connection without a legacy state route',
   async () => {

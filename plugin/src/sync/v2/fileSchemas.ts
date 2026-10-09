@@ -1,4 +1,4 @@
-// Retained file-operation schemas from frozen protocol 2c5346f.
+// Retained file-operation schemas from protocol 10e8f23 (file schemas unchanged).
 import { z } from 'zod'
 import { ERROR_CODES, FILE_KINDS } from '@abele/sync-protocol'
 export const PathSchema = z.string().min(1).max(1024)

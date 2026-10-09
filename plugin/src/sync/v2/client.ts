@@ -1,6 +1,24 @@
 import { z } from 'zod'
 import { ERROR_CODES } from '@abele/sync-protocol'
 import * as wire from './contract'
+import { sha256, DEFAULT_SIMPLE_UPLOAD_BYTES } from '@abele/sync-core'
+import { ShaSchema } from './fileSchemas'
+import {
+  UploadBeginRequestSchema,
+  UploadBeginResponseSchema,
+  UploadReceiptSchema,
+} from './uploadSchemas'
+
+export interface ContentQuery {
+  versionId?: string
+  range?: { start: number; end?: number }
+  signal?: AbortSignal
+}
+const identifier = (value: string) => {
+  if (!value || value.length > 200 || value === '.' || value === '..')
+    throw new V2ClientError('invalid-request')
+  return encodeURIComponent(value)
+}
 
 export class V2ClientError extends Error {
   constructor(
@@ -36,9 +54,18 @@ export class V2Client {
     schema: z.ZodType<T>,
     init: RequestInit = {}
   ): Promise<T> {
+    const response = await this.response(route, init)
+    try {
+      return schema.parse(await response.json())
+    } catch {
+      throw new V2ClientError('invalid-response', response.status)
+    }
+  }
+  private async response(route: string, init: RequestInit = {}): Promise<Response> {
     const headers = new Headers(init.headers)
     headers.set('Authorization', 'Bearer ' + this.token.key)
-    if (init.body !== undefined) headers.set('Content-Type', 'application/json')
+    if (init.body !== undefined && !headers.has('Content-Type'))
+      headers.set('Content-Type', 'application/json')
     let response: Response
     try {
       response = await this.transport(this.token.address + '/v2/' + route, {
@@ -65,11 +92,160 @@ export class V2Client {
       }
       throw new V2ClientError(response.status === 401 ? 'revoked' : code, response.status)
     }
-    try {
-      return schema.parse(await response.json())
-    } catch {
-      throw new V2ClientError('invalid-response', response.status)
+    return response
+  }
+  private uploadRoute(sha: string): string {
+    if (!ShaSchema.safeParse(sha).success) throw new V2ClientError('invalid-request')
+    return 'uploads/' + sha
+  }
+  beginUpload(sha: string, size: number, signal?: AbortSignal) {
+    return this.request(this.uploadRoute(sha) + '/begin', UploadBeginResponseSchema, {
+      method: 'POST',
+      body: JSON.stringify(UploadBeginRequestSchema.parse({ size })),
+      signal,
+    })
+  }
+  async uploadPart(
+    sha: string,
+    uploadId: string,
+    part: number,
+    bytes: Uint8Array,
+    signal?: AbortSignal
+  ): Promise<void> {
+    if (!Number.isSafeInteger(part) || part < 0) throw new V2ClientError('invalid-request')
+    const response = await this.response(
+      this.uploadRoute(sha) + '/' + identifier(uploadId) + '/' + part,
+      {
+        method: 'PUT',
+        body: bytes.slice(),
+        headers: { 'Content-Type': 'application/octet-stream' },
+        signal,
+      }
+    )
+    if (response.status !== 204) throw new V2ClientError('invalid-response')
+  }
+  async completeUpload(
+    sha: string,
+    uploadId: string,
+    size: number,
+    signal?: AbortSignal
+  ): Promise<void> {
+    const result = await this.request(
+      this.uploadRoute(sha) + '/' + identifier(uploadId) + '/complete',
+      UploadReceiptSchema,
+      { method: 'POST', signal }
+    )
+    if (result.sha !== sha || result.size !== size) throw new V2ClientError('invalid-response')
+  }
+  /** Actual immutable bytes are uploaded; a readable digest alone is never an upload shortcut. */
+  async putContent(
+    sha: string,
+    source: Uint8Array,
+    options: { simpleUploadBytes?: number; signal?: AbortSignal } = {}
+  ): Promise<void> {
+    const route = this.uploadRoute(sha),
+      bytes = source.slice()
+    const limit = options.simpleUploadBytes ?? DEFAULT_SIMPLE_UPLOAD_BYTES
+    if (!Number.isSafeInteger(limit) || limit < 0) throw new V2ClientError('invalid-request')
+    if ((await sha256(bytes)) !== sha) throw new V2ClientError('hash_mismatch')
+    if (bytes.length <= limit) {
+      const result = await this.request(route, UploadReceiptSchema, {
+        method: 'PUT',
+        body: bytes,
+        headers: { 'Content-Type': 'application/octet-stream' },
+        signal: options.signal,
+      })
+      if (result.sha !== sha || result.size !== bytes.length)
+        throw new V2ClientError('invalid-response')
+      return
     }
+    const begun = await this.beginUpload(sha, bytes.length, options.signal)
+    if (
+      begun.parts !== Math.ceil(bytes.length / begun.part_size) ||
+      (begun.received ?? []).some((part) => part >= begun.parts)
+    )
+      throw new V2ClientError('invalid-response')
+    const received = new Set(begun.received ?? [])
+    for (let part = 0; part < begun.parts; part++) {
+      if (!received.has(part))
+        await this.uploadPart(
+          sha,
+          begun.upload_id,
+          part,
+          bytes.slice(part * begun.part_size, (part + 1) * begun.part_size),
+          options.signal
+        )
+    }
+    await this.completeUpload(sha, begun.upload_id, bytes.length, options.signal)
+  }
+  private contentRoute(fileId: string, query: ContentQuery): string {
+    if (query.versionId !== undefined) identifier(query.versionId)
+    return (
+      'files/' +
+      identifier(fileId) +
+      '/content' +
+      (query.versionId === undefined
+        ? ''
+        : '?' + new URLSearchParams({ version_id: query.versionId }).toString())
+    )
+  }
+  async headContent(
+    fileId: string,
+    query: Omit<ContentQuery, 'range'> = {}
+  ): Promise<{ size: number; acceptRanges: boolean }> {
+    const response = await this.response(this.contentRoute(fileId, query), {
+      method: 'HEAD',
+      signal: query.signal,
+    })
+    const length = response.headers.get('content-length')
+    if (
+      response.status !== 200 ||
+      length === null ||
+      !/^\d+$/.test(length) ||
+      !Number.isSafeInteger(Number(length))
+    )
+      throw new V2ClientError('invalid-response')
+    return { size: Number(length), acceptRanges: response.headers.get('accept-ranges') === 'bytes' }
+  }
+  async content(fileId: string, query: ContentQuery = {}): Promise<Uint8Array> {
+    const headers = new Headers(),
+      range = query.range
+    if (range) {
+      if (
+        !Number.isSafeInteger(range.start) ||
+        range.start < 0 ||
+        (range.end !== undefined && (!Number.isSafeInteger(range.end) || range.end < range.start))
+      )
+        throw new V2ClientError('invalid-request')
+      headers.set('Range', `bytes=${range.start}-${range.end ?? ''}`)
+    }
+    const response = await this.response(this.contentRoute(fileId, query), {
+      headers,
+      signal: query.signal,
+    })
+    let bytes: Uint8Array
+    try {
+      bytes = new Uint8Array(await response.arrayBuffer())
+    } catch {
+      throw new V2ClientError('unreachable')
+    }
+    const length = response.headers.get('content-length')
+    if (length !== null && (!/^\d+$/.test(length) || Number(length) !== bytes.length))
+      throw new V2ClientError('invalid-response')
+    if (range) {
+      const match = /^bytes (\d+)-(\d+)\/(\d+)$/.exec(response.headers.get('content-range') ?? '')
+      if (response.status !== 206 || !match) throw new V2ClientError('invalid-response')
+      const [start, end, total] = match.slice(1).map(Number)
+      if (
+        ![start, end, total].every(Number.isSafeInteger) ||
+        start !== range.start ||
+        end !== Math.min(range.end ?? total - 1, total - 1) ||
+        end < start ||
+        bytes.length !== end - start + 1
+      )
+        throw new V2ClientError('invalid-response')
+    } else if (response.status !== 200) throw new V2ClientError('invalid-response')
+    return bytes
   }
   connection(): Promise<wire.V2Connection> {
     return this.request('connection', wire.V2ConnectionSchema)

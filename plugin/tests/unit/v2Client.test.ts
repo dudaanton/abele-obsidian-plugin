@@ -116,8 +116,7 @@ describe('v2 token client', () => {
       message: 'Sync connection: server-error',
     })
   })
-  // BUG: frozen protocol does not define upload/content requests or response schemas.
-  it.fails('has a frozen upload/content contract for a production engine', () => {
+  it('has the documented upload/content calls for a production engine', () => {
     expect(V2Client.prototype).toHaveProperty('putContent')
     expect(V2Client.prototype).toHaveProperty('content')
   })
