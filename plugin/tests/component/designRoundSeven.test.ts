@@ -31,7 +31,7 @@ describe('plain list affordances', () => {
   it('overrides native phone swatch padding with theme steps and keeps the shared hit floor', () => {
     const css = readFileSync('src/components/obsidian/SwatchPicker.vue', 'utf8')
     expect(css).toMatch(
-      /body\.is-phone\s+\.abele-swatch-picker__choice\s*\{\s*padding:\s*var\(--size-4-1\)/
+      /body\.is-phone\s+\.modal\s+\.abele-swatch-picker\s+\.abele-swatch-picker__choice\s*\{\s*padding:\s*var\(--size-4-1\)/
     )
   })
   it('extends the native slider hit area without replacing its track or thumb', () => {

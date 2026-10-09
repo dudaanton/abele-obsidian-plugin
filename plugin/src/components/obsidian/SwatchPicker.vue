@@ -100,7 +100,8 @@ const onKey = (event: KeyboardEvent, index: number) => {
   gap: var(--size-4-1);
 }
 .abele-swatch-picker__choice,
-body.is-phone .abele-swatch-picker__choice {
+body.is-phone .abele-swatch-picker__choice,
+body.is-phone .modal .abele-swatch-picker .abele-swatch-picker__choice {
   padding: var(--size-4-1);
 }
 .abele-swatch-picker__swatch {
