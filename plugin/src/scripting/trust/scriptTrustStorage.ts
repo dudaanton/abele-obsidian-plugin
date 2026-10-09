@@ -18,6 +18,10 @@ interface Descriptor {
 }
 const database = (id: string) => `abele-script-provenance-${id}`
 const revisions = new Map<string, ScriptRevision>()
+interface ProvenanceRuntimeGuard {
+  assertOwned(): void
+  effect<T>(work: () => T): T
+}
 
 export class ScriptTrustRecoveryRequired extends Error {
   constructor(message: string) {
@@ -101,11 +105,19 @@ function descriptor(raw: unknown): Descriptor {
   return { id: value.id, binding: { ...b } }
 }
 
-async function open(value: Descriptor, factory: IDBFactory, fresh: boolean) {
+async function open(
+  value: Descriptor,
+  factory: IDBFactory,
+  fresh: boolean,
+  guard?: ProvenanceRuntimeGuard
+) {
+  guard?.assertOwned()
   const store = await IndexedDbStateStore.open(factory, database(value.id), {
+    effectGuard: guard ? () => guard.assertOwned() : undefined,
     identity: { key: 'script-local-vault', value: value.id },
   })
   try {
+    guard?.assertOwned()
     let revision = revisions.get(value.id)
     if (!revision) {
       revision = new ScriptRevision()
@@ -122,12 +134,15 @@ async function open(value: Descriptor, factory: IDBFactory, fresh: boolean) {
 export async function activateScriptProvenance(
   app: App,
   binding: Omit<ScriptBinding, 'localVault'>,
-  factory: IDBFactory
+  factory: IDBFactory,
+  guard?: ProvenanceRuntimeGuard
 ) {
+  guard?.assertOwned()
   const storage = storageOf(app)
   if (!storage) throw new Error('Durable local script provenance storage is unavailable')
   const raw = storage.loadLocalStorage(SCRIPT_TRUST_KEY) ?? null
   const marker = await app.vault.adapter.exists(SCRIPT_SENTINEL)
+  guard?.assertOwned()
   if (raw === null && marker && !storage.loadLocalStorage(CONNECTION_KEY))
     throw new Error('Script provenance is missing; recovery is required')
   // A copied vault can carry the marker without this device's descriptor. The current
@@ -137,17 +152,23 @@ export async function activateScriptProvenance(
   const id = fresh ? newStateId() : descriptor(raw).id
   const value: Descriptor = { id, binding: { ...binding, localVault: id } }
   assertCurrentScriptConnection(storage, value.binding)
+  guard?.assertOwned()
   storage.saveLocalStorage(SCRIPT_TRUST_KEY, value)
   if (JSON.stringify(storage.loadLocalStorage(SCRIPT_TRUST_KEY)) !== JSON.stringify(value))
     throw new Error('Script provenance descriptor was not persisted')
-  await app.vault.adapter.writeBinary(
-    SCRIPT_SENTINEL,
-    new TextEncoder().encode('Managed script provenance required\n').buffer as ArrayBuffer
-  )
-  const trust = await open(value, factory, fresh)
+  guard?.assertOwned()
+  const writeSentinel = () =>
+    app.vault.adapter.writeBinary(
+      SCRIPT_SENTINEL,
+      new TextEncoder().encode('Managed script provenance required\n').buffer as ArrayBuffer
+    )
+  await (guard ? guard.effect(writeSentinel) : writeSentinel())
+  guard?.assertOwned()
+  const trust = await open(value, factory, fresh, guard)
   try {
     if (binding.facet === 'personal') {
       for (const version of localScriptVersions(app)) {
+        guard?.assertOwned()
         await trust.provenance.preserveLocalVersion(version.path, version.sha)
         if (!(await trust.provenance.lookup(version.path)))
           await trust.provenance.record(version.path, `local:${newStateId()}`)

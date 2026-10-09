@@ -1,5 +1,7 @@
 import { afterEach, expect, it, vi } from 'vitest'
 import { IDBFactory } from 'fake-indexeddb'
+import { sha256 } from '@abele/sync-core'
+import { JOURNAL_KEY } from '@/sync/writeJournal'
 import { ObsidianFileSystem } from '@/sync/ObsidianFileSystem'
 import { IndexedDbStateStore } from '@/sync/IndexedDbStateStore'
 import { RuntimeFence } from '@/sync/external/recovery'
@@ -28,6 +30,102 @@ it.each(['write', 'move', 'remove'] as const)(
     expect(await app.vault.adapter.read('Media/sample.bin')).toBe('sample original')
   }
 )
+it('does not install a staged new file after losing ownership during its temp write', async () => {
+  const app = useVault([]),
+    fence = new RuntimeFence(app, 'sample-writer', () => true)
+  cleanup.push(() => fence.release())
+  fence.activate()
+  const fs = new ObsidianFileSystem(app as never, { runtimeFence: fence })
+  const write = app.vault.adapter.writeBinary.bind(app.vault.adapter)
+  vi.spyOn(app.vault.adapter, 'writeBinary').mockImplementation(async (...args) => {
+    await write(...args)
+    fence.release()
+  })
+  const rename = vi.spyOn(app.vault.adapter, 'rename')
+  await expect(
+    fs.writeAtomic('sample.bin', new TextEncoder().encode('sample incoming'), 1000)
+  ).rejects.toThrow()
+  expect(rename).not.toHaveBeenCalled()
+  expect(await app.vault.adapter.exists('sample.bin')).toBe(false)
+})
+
+it('does not install or restore through the mobile swap after losing ownership while reading its backup', async () => {
+  const app = useVault([{ path: 'sample.bin', content: 'sample original' }]),
+    fence = new RuntimeFence(app, 'sample-writer', () => true)
+  cleanup.push(() => fence.release())
+  fence.activate()
+  const fs = new ObsidianFileSystem(app as never, { runtimeFence: fence })
+  const read = app.vault.adapter.readBinary.bind(app.vault.adapter)
+  let backup = ''
+  vi.spyOn(app.vault.adapter, 'readBinary').mockImplementation(async (path) => {
+    const bytes = await read(path)
+    if (path.endsWith('.old')) {
+      backup = path
+      fence.release()
+    }
+    return bytes
+  })
+  const rename = vi.spyOn(app.vault.adapter, 'rename')
+  await expect(
+    fs.writeAtomic('sample.bin', new TextEncoder().encode('sample incoming'), 1000)
+  ).rejects.toThrow()
+  expect(rename.mock.calls).toEqual([['sample.bin', backup]])
+  expect(await app.vault.adapter.read(backup)).toBe('sample original')
+  expect(app.loadLocalStorage(JOURNAL_KEY)).not.toBeNull()
+})
+
+it.each(['cleanup', 'restore'] as const)(
+  'does not perform journal recovery %s after an awaited ownership loss',
+  async (kind) => {
+    const target = 'sample.bin',
+      backup = '.abele-sync-abcd1234.old'
+    const app = useVault([
+      { path: backup, content: 'sample original' },
+      ...(kind === 'cleanup' ? [{ path: target, content: 'sample incoming' }] : []),
+    ])
+    const fence = new RuntimeFence(app, 'sample-writer', () => true)
+    cleanup.push(() => fence.release())
+    const signature = await sha256(new TextEncoder().encode('sample incoming'))
+    app.saveLocalStorage(JOURNAL_KEY, [{ target, backup, replacementSha: signature }])
+    const fs = new ObsidianFileSystem(app as never, { runtimeFence: fence })
+    if (kind === 'cleanup') {
+      const read = app.vault.adapter.readBinary.bind(app.vault.adapter)
+      vi.spyOn(app.vault.adapter, 'readBinary').mockImplementation(async (path) => {
+        const bytes = await read(path)
+        fence.release()
+        return bytes
+      })
+    } else {
+      const stat = app.vault.adapter.stat.bind(app.vault.adapter)
+      vi.spyOn(app.vault.adapter, 'stat').mockImplementation(async (path) => {
+        const found = await stat(path)
+        if (path === target) fence.release()
+        return found
+      })
+    }
+    const remove = vi.spyOn(app.vault.adapter, 'remove'),
+      rename = vi.spyOn(app.vault.adapter, 'rename')
+    await expect(fs.recover()).rejects.toThrow()
+    expect(remove).not.toHaveBeenCalled()
+    expect(rename).not.toHaveBeenCalled()
+    expect(await app.vault.adapter.read(backup)).toBe('sample original')
+    expect(app.loadLocalStorage(JOURNAL_KEY)).not.toBeNull()
+  }
+)
+
+it('rejects a lost claim during IndexedDB schema initialization without leaving an unowned database', async () => {
+  const factory = new IDBFactory()
+  let checks = 0
+  await expect(
+    IndexedDbStateStore.open(factory, 'sample-guarded-open', {
+      effectGuard: () => {
+        if (++checks > 1) throw new Error('sample lost initialization claim')
+      },
+    })
+  ).rejects.toThrow(/initialization claim|open/)
+  expect(await factory.databases()).toEqual([])
+})
+
 it('rejects an old overlay at flush rather than committing it after a successor claim', async () => {
   const app = useVault([]),
     store = await IndexedDbStateStore.open(new IDBFactory(), 'sample-runtime')

@@ -171,7 +171,7 @@ export class ObsidianFileSystem implements FileSystem {
       this.runtimeFence?.assertOwned()
     )
     this.writer = new VaultWriter({
-      adapter: app.vault.adapter,
+      adapter: this.guardedAdapter,
       native: this.native,
       journal: this.journal,
       indexed: (path) => app.vault.getAbstractFileByPath(path) !== null,

@@ -170,6 +170,24 @@ export async function buildEngine(recipe: EngineRecipe): Promise<BuiltEngine> {
     await recoverExternalState(app, store, ledger.stateId, database, binding, fence)
     await requireLedger(app, store, ledger)
     fence.assertOwned()
+    let ownerPublication: Awaited<ReturnType<NonNullable<typeof deps.ownerPublication>>> | undefined
+    const fs = new ObsidianFileSystem(app, {
+      runtimeFence: fence,
+      beforeEngineMutation: async (paths) => {
+        await ownerPublication?.beforeRemote?.(paths)
+        for (const path of paths) await trust.provenance.pending(path)
+      },
+      ledger: store,
+      ...(pollMs === undefined ? {} : { pollMs }),
+      onWatch: (paths) => recipe.noticed(paths),
+      onEngineWrite: (path) => {
+        settings.noteWrite(path)
+        recipe.written?.(path)
+      },
+      yieldsToServer: (path) => settings.yields(path),
+    })
+    await fs.recover()
+    fence.assertOwned()
     const trust = await activateScriptProvenance(
       app,
       {
@@ -179,7 +197,8 @@ export async function buildEngine(recipe: EngineRecipe): Promise<BuiltEngine> {
         facet: 'personal',
         grantId: null,
       },
-      factoryOf(deps)
+      factoryOf(deps),
+      fence
     )
     trust.store.guardEffects(() => fence.assertOwned())
     trust.store.onRecoveryRequired((error) => recipe.recoveryRequired?.(store, error))
@@ -200,23 +219,6 @@ export async function buildEngine(recipe: EngineRecipe): Promise<BuiltEngine> {
         await trust.provenance.record(entry.path, entry.fileId)
     }
     store.observeEntries((entry) => trust.provenance.record(entry.path, entry.fileId))
-    let ownerPublication: Awaited<ReturnType<NonNullable<typeof deps.ownerPublication>>> | undefined
-    const fs = new ObsidianFileSystem(app, {
-      runtimeFence: fence,
-      beforeEngineMutation: async (paths) => {
-        await ownerPublication?.beforeRemote?.(paths)
-        for (const path of paths) await trust.provenance.pending(path)
-      },
-      ledger: store,
-      ...(pollMs === undefined ? {} : { pollMs }),
-      onWatch: (paths) => recipe.noticed(paths),
-      onEngineWrite: (path) => {
-        settings.noteWrite(path)
-        recipe.written?.(path)
-      },
-      yieldsToServer: (path) => settings.yields(path),
-    })
-    await fs.recover()
     fence.activate()
     const transport = runtimeTransport(fence, transportOf(deps))
     const vault = fencedPort(

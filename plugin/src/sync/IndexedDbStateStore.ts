@@ -199,7 +199,10 @@ export class IndexedDbStateStore implements StateStore, ExternalStatePort {
       connectTo(
         indexedDB,
         name,
-        build,
+        (db) => {
+          options.effectGuard?.()
+          build(db)
+        },
         (db) => {
           // A `delete` or a version bump from another window must not hang on this connection.
           console.debug(`[abele-sync] closing the state database ${name}: another window wants it`)
@@ -211,9 +214,10 @@ export class IndexedDbStateStore implements StateStore, ExternalStatePort {
         },
         DB_VERSION
       )
+    options.effectGuard?.()
     const db = await connect()
     try {
-      const identity = await initializeDatabaseIdentity(db)
+      const identity = await initializeDatabaseIdentity(db, options.effectGuard)
       const checks = [
         identity,
         ...(options.identity
@@ -221,6 +225,7 @@ export class IndexedDbStateStore implements StateStore, ExternalStatePort {
           : []),
       ]
       store = new IndexedDbStateStore(new IndexedDbConnection(db, connect, checks), identity.value)
+      if (options.effectGuard) store.guardEffects(options.effectGuard)
       return store
     } catch (error) {
       db.close()

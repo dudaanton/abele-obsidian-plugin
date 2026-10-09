@@ -12,6 +12,8 @@ import { ExternalState } from '@/sync/external/state'
 import { personalExternalBinding } from '@/sync/external/pluginSafety'
 import { StatusBoard } from '@/sync/statusBoard'
 import { useVault } from '../helpers/testEnv'
+import { SCRIPT_SENTINEL, SCRIPT_TRUST_KEY } from '@/scripting/trust/scriptTrustStorage'
+import { ObsidianFileSystem } from '@/sync/ObsidianFileSystem'
 
 const ledger = { stateId: 'sample-ledger', vaultId: 'sample-vault' }
 const bindings = {
@@ -133,6 +135,56 @@ describe('external recovery before ordinary engine activation', () => {
     expect(built.store.permitsEngineEffects).toBe(true)
     expect(s.fetcher).not.toHaveBeenCalled()
   })
+  it('does not overwrite successor provenance when a first build loses ownership during sentinel inspection', async () => {
+    const s = await fixture()
+    s.store.close()
+    let resume = () => {},
+      inspected = () => {},
+      first = true
+    const waiting = new Promise<void>((resolve) => {
+        resume = resolve
+      }),
+      entered = new Promise<void>((resolve) => {
+        inspected = resolve
+      })
+    const exists = s.app.vault.adapter.exists.bind(s.app.vault.adapter)
+    vi.spyOn(s.app.vault.adapter, 'exists').mockImplementation(async (path, ...args) => {
+      if (path === SCRIPT_SENTINEL && first) {
+        first = false
+        inspected()
+        await waiting
+      }
+      return exists(path, ...args)
+    })
+    const writes = vi.spyOn(s.app.vault.adapter, 'writeBinary')
+    const firstBuild = s.build().then(
+      () => null,
+      (error) => error
+    )
+    await entered
+    await s.build()
+    const descriptor = s.app.loadLocalStorage(SCRIPT_TRUST_KEY)
+    resume()
+    expect(await firstBuild).toBeInstanceOf(Error)
+    expect(s.app.loadLocalStorage(SCRIPT_TRUST_KEY)).toEqual(descriptor)
+    expect(writes.mock.calls.filter(([path]) => path === SCRIPT_SENTINEL)).toHaveLength(1)
+  })
+
+  it('completes installation recovery before creating script provenance state or sentinel', async () => {
+    const s = await fixture()
+    s.store.close()
+    const recover = vi
+      .spyOn(ObsidianFileSystem.prototype, 'recover')
+      .mockImplementation(async () => {
+        expect(s.app.loadLocalStorage(SCRIPT_TRUST_KEY)).toBeNull()
+        expect(await s.app.vault.adapter.exists(SCRIPT_SENTINEL)).toBe(false)
+        throw new Error('sample installation recovery hold')
+      })
+    await expect(s.build()).rejects.toThrow('sample installation recovery hold')
+    expect(recover).toHaveBeenCalledOnce()
+    expect(s.app.loadLocalStorage(SCRIPT_TRUST_KEY)).toBeNull()
+  })
+
   it('does not construct scope work or activate publication/replay over an unresolved external journal', async () => {
     const s = await fixture()
     await pending(s)

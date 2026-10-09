@@ -10,6 +10,8 @@ export interface DatabaseIdentity {
 export interface StateOpenOptions {
   /** Plugin meta key checked exactly on every reopen; never initialized by the retry path. */
   identity?: DatabaseIdentity
+  /** Checked before database creation/initialization and all later durable mutations. */
+  effectGuard?: () => void
 }
 export class StateRecoveryRequired extends EngineError {
   constructor(cause?: unknown) {
@@ -22,7 +24,11 @@ export class StateRecoveryRequired extends EngineError {
 }
 
 /** Only initial open may add the generic store identity. Reopen always performs strict reads. */
-export async function initializeDatabaseIdentity(db: IDBDatabase): Promise<DatabaseIdentity> {
+export async function initializeDatabaseIdentity(
+  db: IDBDatabase,
+  assertEffect: () => void = () => {}
+): Promise<DatabaseIdentity> {
+  assertEffect()
   // One serialized transaction: simultaneous initial connections cannot mint different IDs.
   const tx = db.transaction([META], 'readwrite')
   const done = completion(tx, 'cannot establish the database identity')
@@ -32,11 +38,13 @@ export async function initializeDatabaseIdentity(db: IDBDatabase): Promise<Datab
     )
     let value: unknown = row?.value
     if (row === undefined) {
+      assertEffect()
       value = crypto.randomUUID()
       await wait(tx.objectStore(META).put({ key: DATABASE_IDENTITY, value }))
     }
     if (typeof value !== 'string' || !value) throw new StateRecoveryRequired()
     await done
+    assertEffect()
     return { key: DATABASE_IDENTITY, value }
   } catch (error) {
     void done.catch(() => {})
