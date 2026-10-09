@@ -26,6 +26,9 @@ export interface MeasuredElement {
   /** Font-metric baseline derived from the first Range box and canvas descent. */
   baseline?: number
   text: string
+  /** Direct painted text, including aria-hidden disclosure glyphs omitted from text-line geometry. */
+  glyphText?: string
+  paintVisible?: boolean
   font: { size: number; weight: number; lineHeight: number; lineHeightCss?: string; color: string }
   background?: string
   padding: Insets
@@ -52,6 +55,7 @@ export interface DesignSnapshot {
   elements: MeasuredElement[]
   native?: {
     selector: string
+    kind?: string
     metrics: RowMetrics
     variants?: Record<string, RowMetrics>
     elements?: MeasuredElement[]
@@ -161,7 +165,7 @@ export function lintDesign(snapshot: DesignSnapshot, options: LintOptions = {}):
           delta
         )
     }
-    if (/[▶▼►]/u.test(e.text))
+    if (/[▶▼►]/u.test(e.text + (e.glyphText ?? '')))
       add('text-triangle', 'Use a native SVG disclosure icon, not a text glyph', [e])
     if (
       snapshot.mobile &&

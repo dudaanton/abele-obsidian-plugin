@@ -1,6 +1,7 @@
 import { afterEach, describe, expect, it, vi } from 'vitest'
 import { runInNewContext } from 'node:vm'
 import { captureDesign, designCaptureExpression } from '../helpers/designCapture'
+import { lintDesign } from '../helpers/designLint'
 
 function fixture() {
   document.body.innerHTML = `<div id="surface" style="--size-4-1: 4px; --size-2-1: 2px; color: rgb(30,30,30); background: rgb(255,255,255)">
@@ -78,6 +79,34 @@ describe('renderer design capture', () => {
     expect(s.elements.find((e) => e.role === 'control')?.selector).toBe('button')
     expect(document.querySelector('#surface')?.children).toHaveLength(1)
   })
+  it('detects painted Unicode disclosures even when excluded from the semantic text Range', () => {
+    fixture()
+    const meta = document.querySelector('[data-design-level="meta"]')!
+    meta.textContent = '\u25b6'
+    meta.classList.add('collapse-icon')
+    meta.setAttribute('aria-hidden', 'true')
+    expect(lintDesign(captureDesign('#surface')).some((v) => v.rule === 'text-triangle')).toBe(true)
+  })
+  it('measures opacity-only native hover icons without including transparent icons in the visible container', () => {
+    fixture()
+    document
+      .querySelector('#surface')!
+      .insertAdjacentHTML(
+        'beforebegin',
+        '<div class="backlink-pane"><div class="tree-item-self"><span class="collapse-icon"><svg></svg></span><div class="tree-item-inner">Linked entries</div></div></div>'
+      )
+    for (const el of document.querySelectorAll('*'))
+      if (!vi.isMockFunction(el.getBoundingClientRect))
+        vi.spyOn(el, 'getBoundingClientRect').mockReturnValue(new DOMRect(10, 10, 16, 16))
+    const base = vi.mocked(window.getComputedStyle).getMockImplementation()!
+    vi.mocked(window.getComputedStyle).mockImplementation(
+      (el) => ({ ...base(el), opacity: el.matches('svg') ? '0' : '1' }) as CSSStyleDeclaration
+    )
+    const s = captureDesign('#surface')
+    expect(s.elements.some((e) => e.role === 'icon')).toBe(false)
+    expect(s.native?.metrics.iconSize).toBe(16)
+    expect(s.native?.elements?.find((e) => e.role === 'icon')?.paintVisible).toBe(false)
+  })
   it('composites translucent backgrounds before judging colour hierarchy in a dark theme', () => {
     fixture()
     const base = vi.mocked(window.getComputedStyle).getMockImplementation()!
@@ -96,6 +125,22 @@ describe('renderer design capture', () => {
     expect(captureDesign('#surface').elements.find((e) => e.level === 'title')?.background).toBe(
       'rgb(67, 67, 67)'
     )
+  })
+  it('prefers a fully measurable native result row over an iconless section heading', () => {
+    fixture()
+    document
+      .querySelector('#surface')!
+      .insertAdjacentHTML(
+        'beforebegin',
+        '<div class="backlink-pane"><div class="tree-item-self"><div class="tree-item-inner">Linked entries</div></div><div class="tree-item"><div class="tree-item-self search-result-file-title"><svg></svg><div class="tree-item-inner">Result entry</div></div></div></div>'
+      )
+    for (const el of document.querySelectorAll('*'))
+      if (!vi.isMockFunction(el.getBoundingClientRect))
+        vi.spyOn(el, 'getBoundingClientRect').mockReturnValue(new DOMRect(10, 10, 16, 16))
+    const s = captureDesign('#surface')
+    expect(s.native?.metrics.iconSize).toBe(16)
+    expect(s.native?.kind).toBe('search-result')
+    expect(s.native?.metrics.iconTextGap).toBeTypeOf('number')
   })
   it('prefers the Backlinks reference over an earlier indented file explorer row', () => {
     fixture()
@@ -118,7 +163,7 @@ describe('renderer design capture', () => {
   })
   it('is executable as source text without module dependencies', () => {
     fixture()
-    const s = runInNewContext(designCaptureExpression('#surface'), { document, NodeFilter })
+    const s = runInNewContext(designCaptureExpression('#surface'), { document, NodeFilter, Node })
     expect(s.elements.some((e: { level: string }) => e.level === 'title')).toBe(true)
   })
 })

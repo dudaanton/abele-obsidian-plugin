@@ -1,4 +1,4 @@
-import type { Box, DesignSnapshot, Level, MeasuredElement } from './designLint'
+import type { Box, DesignSnapshot, Level, MeasuredElement, RowMetrics } from './designLint'
 
 export interface CaptureOptions {
   rowSelector?: string
@@ -28,7 +28,7 @@ export function captureDesign(selector: string, options: CaptureOptions = {}): D
   const view = document.defaultView!
   const box = (r: DOMRect): Box => ({ x: r.x, y: r.y, width: r.width, height: r.height })
   const number = (s: string) => parseFloat(s) || 0
-  const visible = (el: Element) => {
+  const visible = (el: Element, measureOpacityOnlyIcon = false) => {
     const r = el.getBoundingClientRect()
     if (
       !r.width ||
@@ -45,7 +45,7 @@ export function captureDesign(selector: string, options: CaptureOptions = {}): D
         s.display === 'none' ||
         s.visibility === 'hidden' ||
         s.visibility === 'collapse' ||
-        Number(s.opacity) === 0
+        (Number(s.opacity) === 0 && !measureOpacityOnlyIcon)
       )
         return false
       if (p !== el && (s.overflowX !== 'visible' || s.overflowY !== 'visible')) {
@@ -91,12 +91,12 @@ export function captureDesign(selector: string, options: CaptureOptions = {}): D
       }
     return { text: texts.join(' '), lines, firstLine }
   }
-  const collect = (root: Element): MeasuredElement[] => {
+  const collect = (root: Element, nativeReference = false): MeasuredElement[] => {
     const all = [root, ...root.querySelectorAll('*')]
     const ids = new Map(all.map((el, i) => [el, 'e' + i]))
     const result: MeasuredElement[] = []
     for (const el of all) {
-      if (!visible(el)) continue
+      if (!visible(el, nativeReference && !!el.closest(icons))) continue
       const s = view.getComputedStyle(el),
         rect = box(el.getBoundingClientRect())
       const host = el.closest(rows)
@@ -108,7 +108,12 @@ export function captureDesign(selector: string, options: CaptureOptions = {}): D
         'button, input, select, textarea, summary, a[href], [role="button"], [role="checkbox"], [role="treeitem"], [role="tab"], [role="switch"], [role="menuitem"], [tabindex="0"], .clickable-icon, .is-clickable'
       )
       const text = textBoxes(el, !!level || control)
-      const role = isIcon ? 'icon' : control ? 'control' : text.text ? 'text' : 'other'
+      const glyphText = [...el.childNodes]
+        .filter((n) => n.nodeType === Node.TEXT_NODE)
+        .map((n) => n.textContent ?? '')
+        .join('')
+        .trim()
+      const role = isIcon ? 'icon' : control ? 'control' : text.text || glyphText ? 'text' : 'other'
       let slot: MeasuredElement['slot']
       if (host && isIcon) {
         if (el.closest(actions)) slot = 'action'
@@ -178,6 +183,8 @@ export function captureDesign(selector: string, options: CaptureOptions = {}): D
         level,
         rect,
         ...text,
+        glyphText,
+        paintVisible: nativeReference ? visible(el) : true,
         baseline:
           text.firstLine && m
             ? text.firstLine.y + text.firstLine.height - m.fontBoundingBoxDescent
@@ -212,7 +219,7 @@ export function captureDesign(selector: string, options: CaptureOptions = {}): D
     }
     return result
   }
-  const root = [...document.querySelectorAll(selector)].find(visible)
+  const root = [...document.querySelectorAll(selector)].find((el) => visible(el))
   if (!root) throw new Error('No visible design-lint container: ' + selector)
   const style = view.getComputedStyle(root)
   const scale = [0]
@@ -252,7 +259,7 @@ export function captureDesign(selector: string, options: CaptureOptions = {}): D
     (e) => visible(e) && !e.closest('.abele-list-row')
   )
   for (const reference of references) {
-    const nativeElements = collect(reference)
+    const nativeElements = collect(reference, true)
     const host = nativeElements[0],
       title =
         nativeElements.find((e) => e.level === 'title') ??
@@ -267,11 +274,21 @@ export function captureDesign(selector: string, options: CaptureOptions = {}): D
     }
     snapshot.native ??= {
       selector: nativeSelector,
+      kind: host.kind,
       metrics,
       variants: {},
       elements: nativeElements,
     }
-    snapshot.native.variants![host.kind!] ??= metrics
+    const complete = (m: RowMetrics) =>
+      m.iconSize !== undefined && m.iconTextGap !== undefined && m.lineHeight !== undefined
+    if (complete(metrics) && !complete(snapshot.native.metrics)) {
+      snapshot.native.metrics = metrics
+      snapshot.native.kind = host.kind
+      snapshot.native.elements = nativeElements
+    }
+    const variant = snapshot.native.variants![host.kind!]
+    if (!variant || (complete(metrics) && !complete(variant)))
+      snapshot.native.variants![host.kind!] = metrics
   }
   return snapshot
 }

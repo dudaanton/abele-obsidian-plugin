@@ -59,7 +59,9 @@ use selectors in a config or attributes in test markup:
 ```
 
 Every viewport-visible element is captured, including wrappers. Text roles use actual text
-nodes, not a wrapper's aggregate `textContent`. Declared text blocks additionally gather all
+nodes, not a wrapper's aggregate `textContent`. Direct painted glyph text is retained separately
+so an aria-hidden Unicode disclosure is still forbidden even though it is excluded from the
+semantic text-line Range. Declared text blocks additionally gather all
 of their visible descendant Range rects, excluding SVG/disclosure glyphs. Alignment uses the
 first text line, not the centre of a multiline block or its padded control. A trailing SVG
 inside an action wrapper belongs to the title line; a disclosure's own SVG does not.
@@ -81,8 +83,13 @@ Rules report:
   and visible overflow are not clipping;
 - `native-parity`: measured deltas for icon size, row padding, icon/text gap and line height
   against a visible native reference in the same renderer. Backlinks is preferred when available;
+  a row exposing all four metrics is preferred over an iconless heading, and the selected kind
+  is recorded in JSON;
   native row kinds use their corresponding reference metrics instead of comparing an indented
-  search result with a section heading. `native-reference-missing` prevents
+  search result with a section heading. Native hover-only SVGs with `opacity: 0` still have real
+  layout geometry: references measure these and mark them `paintVisible: false`, without changing
+  the UI or including transparent elements in the container's visible-element pass. Icons with
+  `display: none` or no layout box are never invented: select an actual result row instead. `native-reference-missing` prevents
   a pass without a reference when required. Reference metrics absent in a native row (e.g. no
   icon) are retained as absent, never invented.
 
