@@ -3,7 +3,8 @@ import type { DiffFile } from '@/github/api'
 import type { NodeKind } from '@/github/tree/fileTree'
 import type { FileChange } from '@/github/comparison/trees'
 import type { BlobContent, TextDiff } from '@/github/comparison/text'
-import type { RepositoryTree } from './source'
+import type { RepositoryTree, RepositoryWorkspace, RepositoryStatus, RepositoryComparisonMode } from './source'
+export type { DiffFile } from '@/github/api'
 
 export interface CommitSummary {
   sha: string
@@ -31,6 +32,8 @@ export interface CommitData {
 }
 
 export interface BlobData {
+  contentId?: string | null
+  note?: string
   /** Exact endpoint file comparison; absent for the existing original-file view. */
   comparison?: PinnedFile
   ref: string
@@ -46,6 +49,7 @@ export interface BlameRange {
 }
 
 export interface CompareData {
+  mode?: RepositoryComparisonMode
   /** The base as compared: for `compare/<head>`, the default branch it was compared with. */
   base: string
   head: string
@@ -131,6 +135,11 @@ export interface RepoHomeData extends FolderData {
   meta: RepoMeta
   /** The repository has no commits: nothing to list, no README. */
   empty?: boolean
+  node?: {
+    workspaces: RepositoryWorkspace[]
+    status: RepositoryStatus
+    commits: CommitSummary[]
+  }
 }
 
 export interface RefList {

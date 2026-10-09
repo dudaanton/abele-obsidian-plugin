@@ -7,12 +7,12 @@ export function loadRepositoryLocation(source: RepositorySource, location: Repos
     case 'home':
       return source.home(location.ref)
     case 'file':
-      return source.blob(location.ref, location.path)
+      return source.blob(location.ref, location.path, location.contentId)
     case 'folder':
       return source.folder(location.ref, location.path)
     case 'commit':
       return source.commit(location.commit)
     case 'comparison':
-      return source.compare(location.base, location.head, location.direct)
+      return source.compare(location.base, location.head, location.direct, location.mode)
   }
 }

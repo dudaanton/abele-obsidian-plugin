@@ -29,11 +29,12 @@ export type RepositoryIdentity =
 export type RepositoryRevision =
   | { kind: 'commit'; commit: string }
   | { kind: 'working-tree'; head: string | null; observation: string; observedAt: string }
+export type RepositoryComparisonMode = 'endpoint' | 'merge-base' | 'staged' | 'unstaged'
 export type RepositoryLocation =
   | { kind: 'home'; ref?: string }
-  | { kind: 'file' | 'folder'; ref: string; path: string; lines?: LineSpan }
+  | { kind: 'file' | 'folder'; ref: string; path: string; lines?: LineSpan; contentId?: string }
   | { kind: 'commit'; commit: string }
-  | { kind: 'comparison'; base?: string; head: string; direct?: boolean }
+  | { kind: 'comparison'; base?: string; head: string; direct?: boolean; mode?: RepositoryComparisonMode }
 export interface RepositoryTarget {
   source: RepositoryIdentity
   revision?: RepositoryRevision
@@ -49,13 +50,21 @@ export interface RepositoryTree {
 export interface RepositoryWorkspace {
   id: string
   label: string
-  revision: RepositoryRevision
+  revision?: RepositoryRevision
   readOnly: boolean
+  kind?: 'root' | 'managed' | 'external'
+  branch?: string | null
+  head?: string | null
+  dirty?: boolean | null
+  availability?: 'available' | 'missing' | 'unavailable' | 'bare'
+  workspaceId?: string | null
+  locked?: boolean
+  prunable?: boolean
 }
 export interface RepositoryStatus {
   supported: boolean
   revision?: RepositoryRevision
-  files: { path: string; staged: boolean; unstaged: boolean; untracked: boolean }[]
+  files: { path: string; staged: boolean; unstaged: boolean; untracked: boolean; status?: string }[]
 }
 export interface RepositoryChange {
   kind: 'authority' | 'workspace' | 'refs' | 'tree' | 'status'
@@ -72,11 +81,12 @@ export interface RepositorySearch {
   signal?: AbortSignal
 }
 export interface RepositoryNavigation {
+  workspace?(id: string): string
   home(ref?: string, defaultBranch?: string): string
   file(ref: string, path: string, line?: number): string
   folder(ref: string, path: string): string
   commit(commit: string): string
-  comparison(base: string, head: string, direct?: boolean): string
+  comparison(base: string, head: string, direct?: boolean, mode?: RepositoryComparisonMode): string
   blobLink(commit: string, path: string, lines: LineSpan): RepositoryLink
 }
 export interface GithubRepositoryCapabilities {
@@ -98,6 +108,9 @@ export interface RepositorySource {
   readonly navigation: RepositoryNavigation
   readonly github?: GithubRepositoryCapabilities
   assertCurrent(): void
+  /** Deliberate refresh drops mutable aliases, never retained revisions or comparisons. */
+  refresh?(): void
+  revision?(ref: string): RepositoryRevision | undefined
   metadata(): Promise<RepoHomeData['meta']>
   home(ref?: string): Promise<RepoHomeData>
   workspaces(): Promise<RepositoryWorkspace[]>
@@ -106,10 +119,10 @@ export interface RepositorySource {
   resolve(ref?: string, verify?: boolean): Promise<string>
   tree(commit: string): Promise<RepositoryTree>
   folder(ref: string, path: string): Promise<FolderData>
-  blob(ref: string, path: string): Promise<BlobData>
+  blob(ref: string, path: string, contentId?: string): Promise<BlobData>
   text(ref: string, path: string, what?: string): Promise<string>
   status(): Promise<RepositoryStatus>
-  compare(base: string | undefined, head: string, direct?: boolean): Promise<CompareData>
+  compare(base: string | undefined, head: string, direct?: boolean, mode?: RepositoryComparisonMode): Promise<CompareData>
   comparison(base: string, head: string, signal?: AbortSignal): Promise<ComparisonIndex>
   comparisonFile(
     index: ComparisonIndex,

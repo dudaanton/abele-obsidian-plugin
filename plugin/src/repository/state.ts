@@ -112,12 +112,14 @@ export function savedNodeTarget(
     )
       return null
     if (location.kind === 'file' && !location.path) return null
+    if (location.contentId !== undefined && (location.kind !== 'file' || !id(location.contentId))) return null
   } else if (location.kind === 'home') {
     if (location.ref !== undefined && !text(location.ref)) return null
   } else if (location.kind === 'commit') {
     if (!id(location.commit)) return null
   } else if (location.kind === 'comparison') {
     if (!text(location.head) || (location.base !== undefined && !text(location.base))) return null
+    if (location.mode !== undefined && !['endpoint', 'merge-base', 'staged', 'unstaged'].includes(location.mode as string)) return null
   } else return null
   const selection = location.lines as Record<string, unknown> | undefined
   if (
@@ -161,12 +163,14 @@ export function savedNodeTarget(
               kind: 'comparison' as const,
               head: location.head as string,
               ...(location.base ? { base: location.base as string } : {}),
-              direct: location.direct === true,
+              direct: location.direct !== false,
+              ...(location.mode ? { mode: location.mode as 'endpoint' | 'merge-base' | 'staged' | 'unstaged' } : {}),
             }
           : {
               kind: location.kind,
               ref: location.ref as string,
               path: location.path as string,
+              ...(location.contentId ? { contentId: location.contentId as string } : {}),
               ...(selection
                 ? { lines: { from: selection.from as number, to: selection.to as number } }
                 : {}),

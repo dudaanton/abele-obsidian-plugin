@@ -102,6 +102,11 @@ export interface PullData extends IssueData {
 }
 
 export interface DiffFile {
+  /** Node comparisons retain a manifest; request the patch only when expanded. */
+  loadPatch?: () => Promise<void>
+  staged?: boolean
+  unstaged?: boolean
+  untracked?: boolean
   path: string
   previousPath?: string
   status: string
