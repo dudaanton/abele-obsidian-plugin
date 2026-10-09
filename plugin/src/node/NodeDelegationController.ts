@@ -202,7 +202,25 @@ export class NodeDelegationController {
         t.child && !local.grants[t.child.grant_id]?.revoked ? [t.child] : []
       )
     })
-    if (this.client.connected)
+    if (this.client.connected) {
+      // A parent need not subscribe to every child tool event to show running state
+      // or direct a human to a pending permission/extension question.
+      await Promise.all(
+        children.map(async (child) => {
+          const current = await this.store.transaction(
+            (s) => storage(s).tasks[child.delegation_key].status?.state
+          )
+          if (current && ['completed', 'failed', 'cancelled', 'unknown'].includes(current)) return
+          try {
+            const status = await this.client.delegationStatus(child.delegation_id)
+            await this.store.transaction((s) => {
+              storage(s).tasks[child.delegation_key].status = status
+            })
+          } catch {
+            /* Revoked or offline resources retain their last durable projection. */
+          }
+        })
+      )
       await Promise.all(
         children
           .filter((c) => !this.subscribed.has(c.mailbox_stream_id))
@@ -211,6 +229,7 @@ export class NodeDelegationController {
             this.subscribed.add(c.mailbox_stream_id)
           })
       )
+    }
   }
   async snapshot(): Promise<Record<string, DelegationCard[]>> {
     const parents = await this.store.transaction((s) => [
@@ -251,7 +270,9 @@ export class NodeDelegationController {
             sessionId: child?.session_id,
             nodeId: child?.node_id,
             state,
-            pendingHumanPrompts: t.status?.pending_human_prompts ?? 0,
+            pendingHumanPrompts: ['completed', 'failed', 'cancelled', 'unknown'].includes(state)
+              ? 0
+              : (t.status?.pending_human_prompts ?? 0),
             reports,
           }
         })

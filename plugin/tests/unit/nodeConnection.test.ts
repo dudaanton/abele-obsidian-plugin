@@ -1,5 +1,6 @@
 import { expect, it, vi } from 'vitest'
 import { NodeConnection } from '@/node/NodeService'
+import { ChannelError } from '@abele/channel-protocol'
 
 it('refreshes paired authorization without stranding an open presenter or accepting a late old transport', async () => {
   let finish!: () => void
@@ -27,6 +28,24 @@ it('refreshes paired authorization without stranding an open presenter or accept
   client.connect.mockImplementation(async () => {})
   await connection.connect()
   expect(connection.state.value).toBe('connected')
+  connection.destroy()
+})
+
+it('keeps an admitted node usable when a previously cached mailbox is revoked', async () => {
+  const client = {
+    connected: false,
+    connect: vi.fn(async () => {
+      client.connected = true
+      throw new ChannelError('unauthorized')
+    }),
+    flush: vi.fn(async () => {}),
+    disconnect: vi.fn(async () => {}),
+  }
+  const connection = new NodeConnection(client as never, { close: vi.fn() } as never)
+  await connection.connect()
+  expect(connection.state.value).toBe('connected')
+  expect(connection.error.value).toMatch(/saved.*stream/i)
+  expect(client.flush).toHaveBeenCalledTimes(1)
   connection.destroy()
 })
 

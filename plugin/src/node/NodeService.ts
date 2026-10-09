@@ -1,6 +1,6 @@
 import { ref, type Ref } from 'vue'
 import { NodeClient, PairedWssConnector } from '@abele/node-client'
-import { type PairingInvite, fingerprint } from '@abele/channel-protocol'
+import { type PairingInvite, fingerprint, ChannelError } from '@abele/channel-protocol'
 import { NodeDeviceKeyStore } from './NodeDeviceKeyStore'
 import { GlobalStore } from '@/stores/GlobalStore'
 import { secrets } from '@/secrets/SecretStore'
@@ -57,7 +57,17 @@ export class NodeConnection {
         this.error.value = ''
         this.state.value = 'connected'
       })
-      .catch((error: unknown) => {
+      .catch(async (error: unknown) => {
+        // NodeClient admits the transport before replaying cached stream cursors. A
+        // revoked mailbox must not disable unrelated owner chats or strand the outbox.
+        // This applies only AFTER authenticated admission; failed admission never sets
+        // client.connected, and all requests still undergo node-side authorization.
+        if (!this.disposed && generation === this.generation && this.client.connected && error instanceof ChannelError && error.code === 'unauthorized') {
+          await this.client.flush()
+          this.state.value = 'connected'
+          this.error.value = 'A saved node stream is no longer authorized; retained child transcripts can still be opened.'
+          return
+        }
         if (generation === this.generation) {
           this.state.value = 'offline'
           this.error.value = error instanceof Error ? error.message : 'Connection failed'
