@@ -198,6 +198,9 @@ describe('OpenAI-compatible proxy reasoning delays', () => {
       try {
         const work = session.sendMessage('Answer the sample request.')
         await thinking
+        // The server has sent a frame, but the client's idle deadline starts only after
+        // consuming it. Do not jump the fake clock ahead of that read.
+        await vi.waitFor(() => expect(session.streamingThinking.value).toContain('Considering the sample request.'))
         await vi.advanceTimersByTimeAsync(mode === 'idle timeout' ? 300_001 : 60_001)
         await work
         expect(session.error.value).toMatch(

@@ -304,6 +304,7 @@ describe('navigation in the chat header', () => {
       flush: async () => {},
       destroy: () => {},
       reconcileForSelectionReturn: async () => {},
+      saveForRelease: save,
     }
     const owner = fakeChatSession({
       messages: ref([...messages]),

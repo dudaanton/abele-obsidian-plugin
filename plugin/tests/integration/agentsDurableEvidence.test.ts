@@ -282,6 +282,7 @@ describe('durable attention evidence', () => {
     const app = useVault([{ path, content: '' }])
     const backup = chatCopyPath(app as any, path)
     const copy = `${path}\n${content({ attention: { errors: [error] } })}`
+    await app.vault.adapter.mkdir(backup.slice(0, backup.lastIndexOf('/')))
     await app.vault.adapter.write(backup, copy)
     seed(app)
     const agents = AgentsService.getInstance()

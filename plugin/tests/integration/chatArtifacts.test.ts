@@ -97,10 +97,10 @@ describe('artifacts over real links and chat loading', () => {
         s.pendingToolCalls.value = [tc]
         const engine = s as unknown as {
           ensurePendingToolCallMessage(call: typeof tc): void
-          executeCurrentPendingTool(): Promise<void>
+          executeCurrentPendingTool(call: typeof tc, args: typeof tc.arguments): Promise<void>
         }
         engine.ensurePendingToolCallMessage(tc)
-        await engine.executeCurrentPendingTool()
+        await engine.executeCurrentPendingTool(tc, tc.arguments)
         s.updateVisibleMessages()
         await s.save()
       }
