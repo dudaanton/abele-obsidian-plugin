@@ -63,10 +63,7 @@
           :crumbs="crumbs"
           :ref-label="crumbRef"
           :tree="panelOpen"
-          :swap="
-            !!compared &&
-            !(source?.identity.provider === 'node' && compared.head.startsWith('working-'))
-          "
+          :swap="!!compared && source?.identity.provider !== 'node'"
           @tree="setPanel(!panelOpen)"
           @swap="swapSides"
           @open="(url: string, pane: PaneType | false) => onOpen?.(url, pane)"
@@ -970,7 +967,10 @@ watch(
     stopSource()
     // GitHub already retires its guarded operation client through the tab's credential watcher.
     // Subscribing through an expired proxy would itself require the revoked capability.
-    if (current?.identity.provider !== 'node') { stopSource = () => {}; return }
+    if (current?.identity.provider !== 'node') {
+      stopSource = () => {}
+      return
+    }
     stopSource =
       current?.subscribe((change) => {
         if (change.kind === 'authority') {
@@ -1085,9 +1085,18 @@ body.is-phone .abele-github {
   padding: var(--size-4-2);
 }
 body.is-phone .abele-github_node .abele-github-header .clickable-icon,
-body.is-phone .abele-github_node .abele-github-compare .clickable-icon {
+body.is-phone .abele-github_node .abele-github-compare .clickable-icon,
+body.is-phone .abele-github_node .abele-tabs__tab,
+body.is-phone .abele-github_node .abele-github-file__path-link,
+body.is-phone .abele-github_node .abele-github-crumbs__link {
   min-width: calc(var(--size-4-10) + var(--size-4-1));
   min-height: calc(var(--size-4-10) + var(--size-4-1));
+}
+
+body.is-phone .abele-github_node .abele-github-file__path-link,
+body.is-phone .abele-github_node .abele-github-crumbs__link {
+  display: inline-flex;
+  align-items: center;
 }
 
 @container (max-width: 640px) {

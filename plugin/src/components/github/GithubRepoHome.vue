@@ -504,10 +504,15 @@ const switchRef = () => {
   .tree-item-self {
     padding-inline-start: var(--size-4-6);
   }
-  .tree-item-inner { color: var(--text-normal); }
+  .tree-item-inner {
+    color: var(--text-normal);
+  }
 }
 
-body.is-phone .abele-github-home_node .clickable-icon { min-width: calc(var(--size-4-10) + var(--size-4-1)); min-height: calc(var(--size-4-10) + var(--size-4-1)); }
+body.is-phone .abele-github-home_node .clickable-icon {
+  min-width: calc(var(--size-4-10) + var(--size-4-1));
+  min-height: calc(var(--size-4-10) + var(--size-4-1));
+}
 body.is-phone .abele-github-home_node .tree-item-self {
   min-height: calc(var(--size-4-10) + var(--size-4-1));
 }

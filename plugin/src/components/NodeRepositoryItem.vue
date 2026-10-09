@@ -114,7 +114,10 @@ const live = computed(() => 'ref' in location.value && location.value.ref === WO
 const projectName = ref('Project')
 const updateTitle = () =>
   props.onTitle?.(`${projectName.value} · ${selected.value?.label || 'Workspace'}`)
-const pickerLabel = (ref?: string) => ref && /^[a-f\d]{40,64}$/i.test(ref) ? ref.slice(0, 7) : selected.value?.branch?.replace(/^refs\/heads\//, '') || selected.value?.label || 'Workspace'
+const pickerLabel = (ref?: string) =>
+  ref && /^[a-f\d]{40,64}$/i.test(ref)
+    ? ref.slice(0, 7)
+    : selected.value?.branch?.replace(/^refs\/heads\//, '') || 'Files'
 const chooseRepository = (path?: string) => {
   if (!source.value || offline.value) return
   new RepositoryPicker(
@@ -303,6 +306,20 @@ const externalMenu = (event?: MouseEvent | KeyboardEvent) => {
         )
       })
   )
+  const frozen = props.model.screen.link && parseNodeRepositoryLink(props.model.screen.link.url)
+  if (
+    frozen?.location.kind === 'comparison' &&
+    frozen.location.base &&
+    !frozen.location.head.startsWith('working-')
+  ) {
+    const at = frozen.location
+    menu.addItem((item) =>
+      item
+        .setTitle('Swap versions')
+        .setIcon('arrow-left-right')
+        .onClick(() => open(source.value!.navigation.comparison(at.head, at.base!, true)))
+    )
+  }
   const pins = basePins(GlobalStore.getInstance().app)
   if (source.value && presentation.target && pins.get(presentation.target, source.value.identity))
     menu.addItem((item) =>

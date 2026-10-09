@@ -10,23 +10,16 @@
         @click="chooseBase"
         @keydown.enter.prevent="chooseBase"
       />
-      <Dropdown
+      <Icon
         v-if="data.head.startsWith('working-')"
-        :model-value="data.mode || 'endpoint'"
-        :options="modes"
-        @update:model-value="
-          (mode) =>
-            emit(
-              'open',
-              source!.navigation.comparison(
-                data.base,
-                data.head,
-                mode !== 'merge-base',
-                mode as RepositoryComparisonMode
-              ),
-              false
-            )
-        "
+        class="clickable-icon"
+        role="button"
+        tabindex="0"
+        icon="list-filter"
+        :text-right="modes.find((mode) => mode.value === (data.mode || 'endpoint'))?.display"
+        tooltip="Choose changes to review"
+        @click="chooseMode"
+        @keydown.enter.prevent="chooseMode"
       />
     </div>
     <GithubNotice v-if="data.note" :text="data.note" :retry="false" />
@@ -79,11 +72,10 @@
 
 <script setup lang="ts">
 import { computed } from 'vue'
-import type { PaneType } from 'obsidian'
+import { Menu, type PaneType } from 'obsidian'
 import EmptyState from '../obsidian/EmptyState.vue'
 import Tabs from '../obsidian/Tabs.vue'
 import Icon from '../obsidian/Icon.vue'
-import Dropdown from '../obsidian/Dropdown.vue'
 import { RefPicker } from '@/github/repoPage/RefPicker'
 import { GlobalStore } from '@/stores/GlobalStore'
 import type { RepositoryComparisonMode } from '@/repository/source'
@@ -130,6 +122,30 @@ const modes = [
   { value: 'unstaged', display: 'Other edits' },
   { value: 'merge-base', display: 'From common ancestor' },
 ]
+const chooseMode = (event?: MouseEvent | KeyboardEvent) => {
+  const menu = new Menu()
+  for (const mode of modes)
+    menu.addItem((item) =>
+      item
+        .setTitle(mode.display)
+        .setChecked(mode.value === (props.data.mode || 'endpoint'))
+        .onClick(() => {
+          source.value!.assertCurrent()
+          emit(
+            'open',
+            source.value!.navigation.comparison(
+              props.data.base,
+              props.data.head,
+              mode.value !== 'merge-base',
+              mode.value as RepositoryComparisonMode
+            ),
+            false
+          )
+        })
+    )
+  const rect = (event?.currentTarget as HTMLElement | null)?.getBoundingClientRect()
+  menu.showAtPosition({ x: rect?.left ?? 0, y: rect?.bottom ?? 0 })
+}
 const chooseBase = () =>
   new RefPicker(
     GlobalStore.getInstance().app,

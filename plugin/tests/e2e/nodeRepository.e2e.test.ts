@@ -109,7 +109,9 @@ it('opens the real node repository in the shared tab, follows history, compares,
     await evalLong(`(async()=>{${prelude}
       await api.openNodeRepository(window.__sampleRepositoryNode,window.__sampleRepositoryProject,window.__sampleRepositoryWorkspace,{location:{kind:'comparison',base:${JSON.stringify(head)},head:'Working tree',direct:true}});
       await until(()=>document.querySelector('.abele-github-compare')?.textContent.includes('value = 4'));
-      const mode=document.querySelector('.abele-github-compare select');mode.value='staged';mode.dispatchEvent(new Event('change',{bubbles:true}));
+      document.querySelector('[aria-label="Choose changes to review"]').click();
+      await until(()=>[...document.querySelectorAll('.menu-item')].some(el=>el.textContent.trim()==='Ready for commit'));
+      [...document.querySelectorAll('.menu-item')].find(el=>el.textContent.trim()==='Ready for commit').click();
       await until(()=>document.querySelector('.abele-github-compare')?.textContent.includes('value = 2'));
       return 'compared';
     })()`)

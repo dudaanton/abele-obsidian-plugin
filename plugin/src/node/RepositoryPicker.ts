@@ -23,15 +23,13 @@ export class RepositoryPicker extends SuggestModal<Choice> {
   async getSuggestions(query: string): Promise<Choice[]> {
     try {
       this.source.assertCurrent()
-      this.versions ??= this.source
-        .refs()
-        .then((refs) =>
-          [...refs.branches, ...refs.tags].map((ref) => ({
-            kind: 'version' as const,
-            id: ref,
-            label: nodeRevisionLabel(ref),
-          }))
-        )
+      this.versions ??= this.source.refs().then((refs) =>
+        [...refs.branches, ...refs.tags].map((ref) => ({
+          kind: 'version' as const,
+          id: ref,
+          label: nodeRevisionLabel(ref),
+        }))
+      )
       const rows: Choice[] = [
         ...this.workspaces.map((w) => ({
           kind: w.availability === 'available' ? ('workspace' as const) : ('note' as const),

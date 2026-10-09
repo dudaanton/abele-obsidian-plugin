@@ -109,7 +109,8 @@ guards. Credential retirement clears them. No persistent private-source cache is
 The shared repository leaf (`abele-github`) stores a discriminated `sourceTarget` in Obsidian's
 workspace layout. Existing GitHub URL-only leaves still load. Node targets contain a registration
 ID, installation ID, project ID, opaque worktree ID and an explicit home/file/folder/commit/
-comparison location. Paths are relative; credentials, node URLs and chat grants never enter tab
+comparison location. A node leaf also retains its project/workspace display title for an offline
+restart. Paths are relative; credentials, node URLs and chat grants never enter tab
 state or repository links. Frozen commits retain their resolved IDs. Live Working tree aliases
 observe afresh after restart; links to captured bytes include their retained content ID and
 working observation. An expired observation/content returns an error, never silently reads the
