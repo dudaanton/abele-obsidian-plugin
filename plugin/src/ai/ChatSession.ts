@@ -2239,7 +2239,8 @@ export class ChatSession implements SummarizerHost, InterceptorHost, AnchorStora
   }
 
   abortToolExecution(): void {
-    this.toolAbortController?.abort()
+    // The tool Stop button stops the parent too, including queued wakes and mailbox waiters.
+    this.abort()
   }
 
   async rejectToolCall(reason?: string): Promise<void> {

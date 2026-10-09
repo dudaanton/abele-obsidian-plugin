@@ -8,7 +8,7 @@ import { ChatStorage } from '@/ai/ChatStorage'
 import { serializeChat } from '@/ai/ChatLog'
 import { AbeleConfig } from '@/services/AbeleConfig'
 import { DEFAULT_AI_SETTINGS } from '@/ai/types'
-import type { Message } from '@/ai/client'
+import type { AgentTool, Message } from '@/ai/client'
 import { NodeService, NodeConnection } from '@/node/NodeService'
 import { NodeClientStore } from '@/node/NodeClientStore'
 import { useVault } from '../helpers/testEnv'
@@ -104,6 +104,51 @@ it('clears the durable waiter on Stop; replay stores the result without starting
   await recovery.delegation.wakeDelivered(await recovery.delegation.snapshot(), wake)
   expect(wake).not.toHaveBeenCalled()
   reopened.close()
+})
+
+it.each(['late', 'queued'] as const)('tool-execution Stop fences a %s mailbox wake without losing the result', async (delivery) => {
+  expect((await connection.delegation.status(parent, 'delegation')).state).toBe('receiving mailbox')
+  const entered = deferred<AbortSignal>()
+  const release = deferred()
+  const tool: AgentTool = {
+    name: 'sample_slow_tool', label: 'Sample slow tool', description: 'Test-owned approved tool', parameters: {},
+    execute: async (_id, _params, signal, ctx) => {
+      expect(ctx?.approved).toBe(true)
+      entered.resolve(signal!)
+      await release.promise
+      return { content: [{ type: 'text', text: 'Sample tool receipt' }] }
+    },
+  }
+  const internals = session as unknown as { getTools: () => AgentTool[]; runAgentLoop: () => Promise<void>; afterTurn: () => Promise<void> }
+  vi.spyOn(internals, 'getTools').mockReturnValue([tool])
+  const loop = vi.spyOn(internals, 'runAgentLoop').mockResolvedValue(undefined)
+  vi.spyOn(internals, 'afterTurn').mockResolvedValue(undefined)
+  const send = vi.spyOn(session, 'sendMessage')
+  session.pendingToolCalls.value = [{ type: 'toolCall', id: 'sample-call', name: tool.name, arguments: {} }]
+  const approving = session.approveToolCall()
+  const signal = await entered.promise
+  expect(session.isExecutingTool.value).toBe(true)
+  if (delivery === 'queued') {
+    await deliver()
+    await connection.refreshDelegations()
+    await send.mock.results[0].value
+    expect(session.queuedMessages.value).toHaveLength(1)
+  }
+  // This is the API selected by AiChat's Stop button while an approved tool runs.
+  session.abortToolExecution()
+  expect(signal.aborted).toBe(true)
+  release.resolve()
+  await approving
+  if (delivery === 'late') {
+    await deliver()
+    await connection.refreshDelegations()
+  }
+  await Promise.all(send.mock.results.map((result) => result.value))
+  expect(loop).not.toHaveBeenCalled()
+  expect(send).toHaveBeenCalledTimes(delivery === 'queued' ? 1 : 0)
+  expect(session.queuedMessages.value).toEqual([])
+  expect(await store.transaction((s) => s.delegation!.tasks.key.awaitingResult)).toBe(false)
+  expect((await connection.delegation.cards(parent))[0].reports).toMatchObject([{ kind: 'result', text: 'Sample durable result' }])
 })
 
 it('does not re-arm a waiter when an in-flight status finishes after Stop', async () => {
