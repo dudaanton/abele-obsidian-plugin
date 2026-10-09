@@ -127,6 +127,16 @@ export class ExternalRepresentation {
     options.assertOwned()
     return runtime
   }
+  /** Explicit activation/operation commits refresh the cached representation before another scan. */
+  async activate(state: ExternalState): Promise<void> {
+    this.options.state = state
+    this.document = await state.snapshot()
+    this.owned()
+  }
+  async refresh(): Promise<void> {
+    if (this.options.state) this.document = await this.options.state.snapshot()
+    this.owned()
+  }
   private owned(): void {
     this.options.assertOwned()
     if (this.stopped)

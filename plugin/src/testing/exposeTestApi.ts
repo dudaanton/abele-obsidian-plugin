@@ -103,6 +103,7 @@ import { ObsidianFileSystem } from '@/sync/ObsidianFileSystem'
 import { IndexedDbStateStore } from '@/sync/IndexedDbStateStore'
 import { ExternalState } from '@/sync/external/state'
 import { ExternalFileHost } from '@/sync/external/ObsidianExternalFileHost'
+import { AttachmentStore } from '@/sync/external/attachmentStore'
 import { pluginRepresentation } from '@/sync/external/pluginRepresentation'
 import { RuntimeFence } from '@/sync/external/recovery'
 import { scan, scanScopedChanges, ScopedState } from '@abele/sync-core'
@@ -214,8 +215,8 @@ interface AbeleTestApi {
   /** Sync's fetch-shaped native transport; network.desktopTransport has a different contract. */
   desktopTransport: typeof syncDesktopTransport
   ObsidianFileSystem: typeof ObsidianFileSystem
-  /** Minimal filesystem ports only, not an enabled eviction API. */
   ExternalFileHost: typeof ExternalFileHost
+  AttachmentStore: typeof AttachmentStore
   externalRepresentation: {
     pluginRepresentation: typeof pluginRepresentation
     RuntimeFence: typeof RuntimeFence
@@ -801,6 +802,7 @@ export function exposeTestApi(plugin: Plugin): void {
     ObsidianFileSystem,
     externalState: { IndexedDbStateStore, ExternalState },
     ExternalFileHost,
+    AttachmentStore,
     externalRepresentation: {
       pluginRepresentation,
       RuntimeFence,

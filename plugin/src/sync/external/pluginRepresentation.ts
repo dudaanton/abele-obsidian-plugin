@@ -47,7 +47,9 @@ export async function pluginRepresentation(options: {
     configDir: app.vault.configDir,
     assertOwned: () => fence.assertOwned(),
     installProjection: async (path, bytes, operationId) => {
-      if (!state) throw new ExternalRecoveryRequired('projection has no activated durable state')
+      if ((await store.getExternalState()) === null)
+        throw new ExternalRecoveryRequired('projection has no activated durable state')
+      const state = await ExternalState.open(store, ledgerId, binding)
       const document = await state.snapshot(),
         operation = document.operations.find((op) => op.operationId === operationId)
       fence.assertOwned()

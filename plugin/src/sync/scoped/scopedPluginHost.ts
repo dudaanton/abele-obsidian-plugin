@@ -44,9 +44,13 @@ import {
   generationHeld,
   recoverExternalState,
   requireExternalLifecycleSafety,
+  activateExternalFiles,
 } from '../external/pluginSafety'
 import { ConnectionBindingSchema, type ConnectionBinding } from '../external/records'
 import { pluginRepresentation } from '../external/pluginRepresentation'
+import { AttachmentStore } from '../external/attachmentStore'
+import { ExternalFileHost } from '../external/ObsidianExternalFileHost'
+import type { ExternalRepresentation } from '../external/representation'
 
 const digest = (value: unknown) => sha256(new TextEncoder().encode(JSON.stringify(value)))
 const CREATION_JOURNAL = 'scoped-creation-journal-v1'
@@ -71,6 +75,9 @@ interface Runtime {
   meta: IndexedDbStateStore
   fs: ObsidianFileSystem
   assets: SponsoredAssetsHttpPort
+  binding: ConnectionBinding
+  representations: ExternalRepresentation
+  attachments?: AttachmentStore
 }
 /** Thin Obsidian ports around the same scoped client/state/pull/push used by stand peers. */
 export class ScopedPluginHost {
@@ -324,6 +331,8 @@ export class ScopedPluginHost {
         raw,
         meta,
         fs,
+        binding,
+        representations,
         assets: new SponsoredAssetsHttpPort({
           baseUrl: c.issuer,
           fetch: this.transport,
@@ -382,6 +391,55 @@ export class ScopedPluginHost {
       fence.release()
       throw error
     }
+  }
+  /** Explicit API only. Readers and editors use the scoped version endpoint; never a personal blob. */
+  async attachments(): Promise<AttachmentStore> {
+    const r = this.runtime
+    if (!r) throw new Error('Scoped connection is not active')
+    r.fence.assertReady()
+    if (r.attachments) return r.attachments
+    const state = await activateExternalFiles(
+      this.app,
+      r.raw,
+      r.connection.ledgerId,
+      'abele-scoped-' + r.connection.ledgerId,
+      r.binding,
+      () => r.fence.assertReady()
+    )
+    await r.representations.activate(state)
+    const fileHost = new ExternalFileHost(this.app, {
+      platform:
+        typeof (this.app.vault.adapter as unknown as { fsPromises?: unknown }).fsPromises ===
+        'object'
+          ? 'desktop'
+          : 'mobile',
+      assertOwned: () => r.fence.assertReady(),
+      effect: (work) => r.fence.effect(work),
+    })
+    const close = r.raw.close.bind(r.raw)
+    r.raw.close = () => {
+      fileHost.close()
+      close()
+    }
+    r.attachments = new AttachmentStore({
+      state,
+      ledger: r.state.placementStore(),
+      host: fileHost,
+      binding: r.binding,
+      assertOwned: () => r.fence.assertReady(),
+      serial: { run: (work) => this.serial(work) },
+      sync: () => this.sync(),
+      verify: (fileId, input) => r.client.verifyExternalFile(fileId, input),
+      download: (fileId, versionId) => r.client.version(fileId, versionId),
+      scopedHead: (id) => r.state.getKnown(id),
+      scriptsFolder: () => AbeleConfig.getInstance().ai.scriptsFolder || 'Scripts',
+      refreshed: () => r.representations.refresh(),
+      consent: {
+        read: () => r.raw.getMeta('abele-sync-external-scoped-warning-v1'),
+        write: (value) => r.raw.setMeta('abele-sync-external-scoped-warning-v1', value),
+      },
+    })
+    return r.attachments
   }
   invitation(issuer: string): ScopedJoinFlow {
     const api = new GroupJoinHttp({ baseUrl: issuer, fetch: this.transport })

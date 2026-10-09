@@ -37,9 +37,12 @@ import {
   generationHeld,
   personalExternalBinding,
   recoverExternalState,
+  activateExternalFiles,
 } from './external/pluginSafety'
 import type { ConnectionBinding } from './external/records'
 import { pluginRepresentation } from './external/pluginRepresentation'
+import { AttachmentStore } from './external/attachmentStore'
+import { ExternalFileHost } from './external/ObsidianExternalFileHost'
 
 /**
  * The parts one engine runs on, made from the connection — the filesystem, the ledger, the
@@ -83,6 +86,8 @@ export interface BuiltEngine {
   store: IndexedDbStateStore
   vault: VaultClient
   countPending: () => Promise<number>
+  /** Explicit, no automatic eviction or UI. Activation happens only when called. */
+  attachments: () => Promise<AttachmentStore>
 }
 
 /** Only an explicit enrolment may mint a ledger. Existing descriptors require recovery. */
@@ -336,8 +341,69 @@ export async function buildEngine(recipe: EngineRecipe): Promise<BuiltEngine> {
       },
       log: (line) => board.note(line),
     })
+    let attachments: AttachmentStore | null = null
     return {
       invalidate: () => fence.release(),
+      attachments: async () => {
+        fence.assertReady()
+        if (attachments) return attachments
+        const state = await activateExternalFiles(
+          app,
+          store,
+          ledger.stateId,
+          database,
+          binding!,
+          () => fence.assertReady()
+        )
+        await representations.activate(state)
+        const fileHost = new ExternalFileHost(app, {
+          platform: Platform.isMobile ? 'mobile' : 'desktop',
+          assertOwned: () => fence.assertReady(),
+          effect: (work) => fence.effect(work),
+          reconciled: (path) => {
+            settings.noteWrite(path)
+            recipe.written?.(path)
+          },
+        })
+        const priorClose = store.close.bind(store)
+        store.close = () => {
+          fileHost.close()
+          priorClose()
+        }
+        attachments = new AttachmentStore({
+          state,
+          ledger: store,
+          host: fileHost,
+          binding: binding!,
+          assertOwned: () => fence.assertReady(),
+          // Core's serialized host job (the same queue as sync/apply/rename/delete).
+          serial: {
+            run: (work) =>
+              (
+                engine as unknown as {
+                  exclusive<T>(job: () => Promise<T>): Promise<T>
+                }
+              ).exclusive(work),
+          },
+          sync: () => engine.sync(),
+          verify: (fileId, input) => vault.verifyExternalFile(fileId, input),
+          download: (_fileId, _versionId, sha) => vault.getBlob(sha),
+          scriptsFolder: () => AbeleConfig.getInstance().ai.scriptsFolder || 'Scripts',
+          excluded: (path, size) =>
+            isExcluded(
+              path,
+              size,
+              selective,
+              AbeleConfig.getInstance().ai.scriptsFolder || 'Scripts'
+            ) || ignore.ignores(path),
+          refreshed: () => representations.refresh(),
+          consent: {
+            read: () => store.getMeta('abele-sync-external-scoped-warning-v1'),
+            write: (value) => store.setMeta('abele-sync-external-scoped-warning-v1', value),
+          },
+        })
+        return attachments
+      },
       engine,
       store,
       vault,

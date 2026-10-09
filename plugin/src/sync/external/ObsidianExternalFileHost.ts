@@ -82,6 +82,16 @@ export class ExternalFileHost {
     if (this.openPaths().some((path) => keys.includes(caseKey(path))))
       throw new ExternalFilePortError('busy')
   }
+  async read(path: string): Promise<Uint8Array> {
+    this.assertOwned()
+    const bytes = new Uint8Array(await this.app.vault.adapter.readBinary(path))
+    this.assertOwned()
+    return bytes
+  }
+  async exists(path: string): Promise<boolean> {
+    this.assertOwned()
+    return this.app.vault.adapter.exists(path)
+  }
   acquireUse(fileId: string): { release(): void } {
     this.assertOwned()
     const lease = this.coordination.acquireUse(fileId)
