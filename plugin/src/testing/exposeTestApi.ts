@@ -791,11 +791,6 @@ function chatHistoryPaths(): string[] {
 }
 
 export function exposeTestApi(plugin: Plugin): void {
-  plugin.addCommand({
-    id: 'design-catalogue',
-    name: 'Open design catalogue (test build)',
-    callback: () => openDesignCatalogue(),
-  })
   plugin.register(closeDesignCatalogue)
   window.__abeleTest = {
     openDesignCatalogue,

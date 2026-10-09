@@ -44,7 +44,7 @@ const formatted = computed(() => formatTimestamp(props.value, props))
 }
 body.is-phone .abele-relative-time__detail summary {
   min-height: var(--abele-touch-min);
-  display: inline-flex;
-  align-items: center;
+  display: list-item;
+  list-style-position: inside;
 }
 </style>

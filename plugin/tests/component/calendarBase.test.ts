@@ -168,7 +168,7 @@ describe('a month', () => {
     await prev.trigger('click')
     await prev.trigger('click')
     expect(view.find('.abele-calendar-base__title').text()).toBe('August 2026')
-    await view.find('.abele-calendar-base__controls button').trigger('click')
+    await view.get('.abele-calendar-base__controls [aria-label="Go to today"]').trigger('click')
     expect(view.find('.abele-calendar-base__title').text()).toBe('September 2026')
   })
 

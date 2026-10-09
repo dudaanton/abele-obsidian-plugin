@@ -171,7 +171,7 @@ describe('a life in weeks', () => {
     expect(week()).toBe(String(THIS_WEEK + 1))
     await view.find('canvas').trigger('keydown', { key: 'ArrowUp' })
     expect(week()).toBe(String(THIS_WEEK + 1 - 52))
-    await view.find('.abele-calendar-base__controls button').trigger('click')
+    await view.get('.abele-calendar-base__controls [aria-label="Go to this week"]').trigger('click')
     expect(week()).toBe(String(THIS_WEEK))
   })
 })

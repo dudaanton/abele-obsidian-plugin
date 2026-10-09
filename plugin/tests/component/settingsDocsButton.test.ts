@@ -66,7 +66,11 @@ describe('the documentation button in the settings', () => {
   it('sits inside the tab, not as a full button above the tab strip', () => {
     const wrapper = mount(Settings, { global: { stubs: STUBS } })
     expect(docsButton(wrapper)).toBeDefined()
-    expect(wrapper.findAll('button').some((b) => b.text() === 'Documentation')).toBe(false)
+    expect(
+      wrapper.findAll('button:not(.clickable-icon)').some((b) => b.text() === 'Documentation')
+    ).toBe(false)
+    expect(docsButton(wrapper)?.element.tagName).toBe('BUTTON')
+    expect(docsButton(wrapper)?.attributes('type')).toBe('button')
   })
 
   it('on a phone is not on the list of pages, and is on the page once one is open', async () => {

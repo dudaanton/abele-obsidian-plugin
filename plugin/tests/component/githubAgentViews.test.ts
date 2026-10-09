@@ -299,7 +299,9 @@ describe('the bar under selected lines on a phone', () => {
       await clickLineNumber(wrapper, '.abele-github-code__gutter_new', 4)
 
       const bar = wrapper.find('.abele-github-selection')
-      expect(bar.findAll('button')).toHaveLength(0)
+      // Native icon buttons are semantic buttons, not filled/labelled Button controls.
+      expect(bar.findAll('button:not(.clickable-icon)')).toHaveLength(0)
+      expect(bar.findAll('button.clickable-icon[type="button"]')).toHaveLength(4)
       const icons = bar.findAll('.abele-obsidian-icon')
       expect(icons.map((i) => i.attributes('aria-label'))).toEqual([
         'Copy link',
