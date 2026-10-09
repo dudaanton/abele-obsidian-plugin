@@ -76,6 +76,14 @@ describe('serial tab presentation intents', () => {
     expect(await queue.applyAsync(intent, () => 'ready')).toBe('ready')
   })
 
+  it('normalizes non-Error async failures while preserving their cause', async () => {
+    const queue = new TabIntentQueue(), intent = queue.begin('sample', true)
+    await expect(queue.applyAsync(intent, () => { throw 'Sample reason' })).rejects.toMatchObject({
+      message: 'Tab presentation failed',
+      cause: 'Sample reason',
+    })
+  })
+
   it('rejects completions from before service teardown', () => {
     const queue = new TabIntentQueue(), intent = queue.begin('sample', true)
     queue.clear()

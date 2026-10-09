@@ -75,7 +75,7 @@ export class TabIntentQueue {
         try {
           resolve(this.valid(intent) ? work() : undefined)
         } catch (error) {
-          reject(error)
+          reject(error instanceof Error ? error : new Error('Tab presentation failed', { cause: error }))
         }
       })
     })
