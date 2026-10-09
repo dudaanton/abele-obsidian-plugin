@@ -2020,3 +2020,11 @@ Retained push placement stages verified download bytes under the reserved local 
 syncs. Bounded runs are loaded during settlement and successful settlement removes staged
 files. Interrupted settlement retains its request journal and staging for retry; orphan
 temporary-directory cleanup belongs to the later recovery stage.
+
+The token adapter's `abele-sync-token-state:commit` slot stores immutable request
+operations, an idempotency key and the accepted receipt until host settlement
+finishes. Use the registry's connection-bound storage port; this journal is
+device-local and never enters settings transfer. An uncertain response retains
+the original request, and a failed follow-up download retains its accepted
+receipt. The adapter boundary is not yet connected to the production file engine;
+upload byte staging remains the retained engine's responsibility.
