@@ -168,6 +168,55 @@ describe('trusted node delegation controller', () => {
     f.store.close()
     reopened.close()
   })
+  it('does not present completion before the independent mailbox has caught up', async () => {
+    const f = fixture()
+    await f.controller.approve({ parent_id: 'parent', project_ids: ['project'], providers: ['pi'] })
+    await f.controller.create('parent', task)
+    f.client.delegationStatus.mockResolvedValueOnce({
+      ...child,
+      state: 'completed',
+      session_head_seq: 17,
+      mailbox_head_seq: 2,
+      pending_human_prompts: 0,
+    })
+    await f.controller.restore()
+    expect((await f.controller.cards('parent'))[0].state).not.toBe('completed')
+    await f.store.transaction((s) => {
+      const envelope = {
+        kind: 'event' as const,
+        node_id: 'node',
+        actor: { kind: 'node' as const },
+        at: '2028-01-01T00:00:00Z',
+        stream_id: 'mailbox',
+      }
+      s.events.mailbox = [
+        {
+          ...envelope,
+          seq: 1,
+          type: 'delegation.result',
+          data: {
+            delegation_id: 'delegation',
+            session_id: 'child',
+            report_id: 'sample-report',
+            text: 'Sample durable result',
+          },
+        },
+        {
+          ...envelope,
+          seq: 2,
+          type: 'delegation.terminal',
+          data: { delegation_id: 'delegation', session_id: 'child', state: 'completed' },
+        },
+      ]
+      s.cursors.mailbox = 2
+    })
+    expect((await f.controller.cards('parent'))[0].state).toBe('completed')
+    expect(
+      (await f.controller.cards('parent'))[0].reports.filter((r) => r.kind === 'result')
+    ).toHaveLength(1)
+    f.store.close()
+  })
+
   it('fences foreign child IDs, uses the observed child revision, and never answers human prompts', async () => {
     const f = fixture()
     await f.controller.approve({ parent_id: 'parent', project_ids: ['project'], providers: ['pi'] })

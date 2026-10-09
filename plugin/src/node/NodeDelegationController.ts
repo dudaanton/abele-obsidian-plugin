@@ -266,6 +266,16 @@ export class NodeDelegationController {
           const events = child ? (s.events[child.mailbox_stream_id] ?? []) : []
           const reports: DelegationCard['reports'] = []
           let state: string = t.status?.state ?? child?.state ?? 'outcome unknown'
+          // Session status can arrive before the independent mailbox replay. Do not
+          // announce settled parent delivery while its result/terminal bytes are still
+          // outstanding; the mailbox's committed terminal event settles this card.
+          if (
+            child &&
+            t.status &&
+            ['completed', 'failed', 'cancelled', 'unknown'].includes(t.status.state) &&
+            (s.cursors[child.mailbox_stream_id] ?? 0) < t.status.mailbox_head_seq
+          )
+            state = `${t.status.state} · receiving mailbox`
           for (const event of events) {
             const data = event.data as { delegation_id?: string; state?: string; text?: string }
             if (data.delegation_id !== child?.delegation_id) continue
