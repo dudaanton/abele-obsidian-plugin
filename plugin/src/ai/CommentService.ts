@@ -854,21 +854,31 @@ export class CommentService implements CommentInfoSource {
       try {
         await session.saveForRelease()
       } catch (e) {
-        // The file still says "comment", so nothing here may say otherwise: a session filed as
-        // a chat over a file that is not one comes back after a restart as both, read twice and
-        // written by two sessions. Everything the save was for goes back instead, the per-chat
-        // overrides included — the binding dropped them for a move that never happened.
-        session.kind = previousKind
-        session.chatTitle.value = previousTitle
-        session.bindAgent(previousAgentId)
-        session.restoreOverrides(previousOverrides)
-        throw e
+        // A failed confirmation read can follow a successful write. Inspect current source,
+        // never publish a memory-only rollback over a discussion that already became a chat.
+        let recovered: Awaited<ReturnType<ChatSession['reconcileFailedExpansion']>>
+        try {
+          recovered = await session.reconcileFailedExpansion()
+        } catch (confirmationError) {
+          if (!session.isDestroyed && session.currentChatFile.value === file) session.markDirty()
+          throw new Error('The expansion could not be confirmed. Check the saved conversation before retrying.', { cause: confirmationError })
+        }
+        if (recovered.metadata.kind !== 'chat') {
+          if (recovered.unchanged) {
+            session.kind = previousKind
+            session.chatTitle.value = previousTitle
+            session.bindAgent(previousAgentId)
+            session.restoreOverrides(previousOverrides)
+          }
+          throw e
+        }
       }
 
       // Persisted, so it can be said out loud — and only if there was a switch to speak of.
       // A vault whose comment agent *is* the default agent switches nothing here, and a
       // divider for that is a line about something that did not happen.
-      if (switched && fallback) session.noteAgentSwitch(fallback.id)
+      if (switched && session.agentId.value !== previousAgentId)
+        session.noteAgentSwitch(session.agentId.value)
 
       if (file) {
         // Explicit, because `refreshHistory` only ever scans the chat folder. Known entries are

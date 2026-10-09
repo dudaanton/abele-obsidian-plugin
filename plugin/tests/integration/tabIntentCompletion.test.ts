@@ -329,6 +329,55 @@ describe('tab intent completion boundaries', () => {
     expect(parseChatMetadata(await app.vault.read(file))).toMatchObject({ kind: 'chat', agentId: fallback.id })
   })
 
+  it.each([1, 2])('confirms a committed expansion after post-write read %s fails without reverting disk binding', async (failedRead) => {
+    const { app } = fixture()
+    const chats = ChatService.getInstance(), comments = CommentService.getInstance()
+    const registry = AgentRegistry.getInstance()
+    const fallback = registry.create({ id: 'sample-target-agent', name: 'Sample target', permissionMode: 'allow-all' })
+    const original = registry.create({ id: 'sample-source-agent', name: 'Sample source', utility: true })
+    registry.setDefault(fallback.id)
+    const file = app.vault.getFileByPath(discussion)!
+    await app.vault.modify(file, content({
+      ...parseChatMetadata(discussionContent())!, agentId: original.id,
+      overrides: { permissionMode: 'confirm-all' },
+    }))
+    const session = (await comments.load(discussionId))!
+    session.draft.value.text = 'A retained sample draft'
+    const draft = session.draft.value
+    const process = app.vault.process.bind(app.vault)
+    const read = app.vault.read.bind(app.vault)
+    let committed = false, readsAfterWrite = 0
+    vi.spyOn(app.vault, 'process').mockImplementation(async (...args) => {
+      const result = await process(...args)
+      if (args[0] === file && parseChatMetadata(result)?.kind === 'chat') committed = true
+      return result
+    })
+    vi.spyOn(app.vault, 'read').mockImplementation(async (reading) => {
+      if (reading === file && committed && ++readsAfterWrite === failedRead)
+        throw new Error('Sample post-write read failure')
+      return read(reading)
+    })
+    const outcome = await comments.expand(discussionId).then((result) => ({ result }), (error: unknown) => ({ error }))
+    expect(committed).toBe(true)
+    const saved = parseChatMetadata(await read(file))!
+    expect(saved).toMatchObject({ kind: 'chat', agentId: fallback.id })
+    expect(outcome).toEqual({ result: 'moved' })
+    expect(session.kind).toBe(saved.kind)
+    expect(session.agentId.value).toBe(saved.agentId)
+    expect(session.overrides.value).toEqual(saved.overrides ?? {})
+    expect(session.chatTitle.value).toBe(saved.title)
+    expect(session.draft.value).toBe(draft)
+    expect(session.draft.value.text).toBe('A retained sample draft')
+    expect(session.moving.value).toBe(false)
+    expect(comments.isExpanded(discussionId)).toBe(true)
+    expect(comments.sessionFor(discussionId)).toBe(session)
+    expect(chats.activeSession.value).toBe(session)
+    expect(ChatStorage.getInstance().getHistory().filter((entry) => entry.path === discussion)).toHaveLength(1)
+    // The recovered writer must be based on the committed revision, not the old comment log.
+    await expect(session.saveForRelease()).resolves.toBeUndefined()
+    expect(parseChatMetadata(await read(file))).toMatchObject({ kind: 'chat', agentId: fallback.id })
+  })
+
   it('reentrant expansion explicitly refuses admission without queuing an orphaned reservation', async () => {
     fixture()
     const chats = ChatService.getInstance(), comments = CommentService.getInstance()

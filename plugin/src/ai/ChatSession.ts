@@ -319,6 +319,7 @@ export class ChatSession implements SummarizerHost, InterceptorHost, AnchorStora
   private localRevision = 0
   private dirty = false
   private writing: Promise<void> | null = null
+  private lastWriteRevision: number | null = null
   private persistTimer: number | null = null
 
   // Reactive state for Vue components
@@ -3316,6 +3317,47 @@ export class ChatSession implements SummarizerHost, InterceptorHost, AnchorStora
       throw new Error('This chat still has unsaved changes. Try saving it again before closing.')
   }
 
+  /** Inspect current source after an expansion's write/confirmation failed, without replaying it. */
+  async reconcileFailedExpansion(): Promise<{ metadata: ChatMetadata; unchanged: boolean }> {
+    const file = this.currentChatFile.value
+    const id = this.commentId
+    if (!file || !id || this.writing || this.isBusy || this.isMidTurn)
+      throw new Error('The expansion cannot be confirmed while the conversation is changing.')
+    const path = file.path, version = this.conversationVersion.value, revision = this.localRevision
+    const main = await inspectMainChat(GlobalStore.getInstance().app, file)
+    if (!main?.metadata || main.metadata.commentId !== id || main.metadata.commentLocation !== path)
+      throw new Error('The saved discussion is unavailable or has changed identity.')
+    // Refresh the exact file binding too; a failed readback left its pre-write observation stale.
+    const { snapshot: saved, identity } = await ChatStorage.getInstance().prepareDiscussion(file, undefined, { recover: false })
+    const metadata = saved.metadata
+    if (!metadata || saved.torn || saved.damaged || identity !== id || metadata.commentLocation !== path ||
+      (metadata.kind && metadata.kind !== 'chat' && metadata.kind !== 'comment') ||
+      this.destroyed || this.currentChatFile.value !== file || file.path !== path ||
+      this.conversationVersion.value !== version || this.localRevision !== revision)
+      throw new Error('The discussion changed while confirming the expansion.')
+    // No confirmed change: preserve local pending work; the caller can restore its old binding.
+    if (this.log.matchesDiscussionRevision(saved)) return { metadata, unchanged: true }
+    // Never replace local edits that arrived during the failed write, or merge a foreign history
+    // by adopting its checkpoint under the stale in-memory conversation.
+    if (this.lastWriteRevision !== revision ||
+      JSON.stringify(saved.messages) !== JSON.stringify(this.allChatMessages) ||
+      JSON.stringify(saved.internalMessages) !== JSON.stringify(this.allInternalMessages))
+      throw new Error('Local work changed. Confirm the saved conversation before retrying expansion.')
+    if (this.persistTimer !== null) window.clearTimeout(this.persistTimer)
+    this.persistTimer = null
+    this.dirty = false
+    this.persistFailed = false
+    const restoring = this.restoringAttention
+    this.restoringAttention = true
+    try {
+      this.kind = metadata.kind === 'chat' ? 'chat' : 'comment'
+      await this.restoreLoadedChat(file, saved, { keepLeaf: this.activeLeafId, readOnly: true })
+    } finally {
+      this.restoringAttention = restoring
+    }
+    return { metadata, unchanged: false }
+  }
+
   private snapshot(): ChatSnapshot {
     const config = AbeleConfig.getInstance().ai
     const overrides = this.overrides.value
@@ -3407,6 +3449,7 @@ export class ChatSession implements SummarizerHost, InterceptorHost, AnchorStora
     const plan = this.log.plan(snapshot)
     if (plan.kind === 'noop') return
 
+    this.lastWriteRevision = this.localRevision
     const file = await ChatStorage.getInstance().saveChat(
       snapshot,
       plan,
