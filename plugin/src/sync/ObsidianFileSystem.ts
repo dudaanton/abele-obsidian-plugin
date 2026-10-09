@@ -9,6 +9,8 @@ import {
 import { caseKey } from '@abele/sync-protocol'
 import { watchVault } from './vaultWatcher'
 import { fencedPort, type RuntimeFence } from './external/recovery'
+import { externalCoordinationOf } from './external/ObsidianExternalFileHost'
+import type { ExternalFileCoordination } from './external/coordination'
 import { folderMutations } from './folderMutations'
 import type { LocalStorage } from './ledgerId'
 import { makeParents, pruneAbove } from './vaultFolders'
@@ -136,13 +138,15 @@ export class ObsidianFileSystem implements FileSystem {
   private readonly beforeEngineMutation: ((paths: string[]) => Promise<void>) | null
   private readonly runtimeFence: RuntimeFence | null
   private readonly guardedAdapter: DataAdapter
+  readonly externalCoordination: ExternalFileCoordination
 
   constructor(
     private readonly app: App,
     options: ObsidianFileSystemOptions = {}
   ) {
     this.runtimeFence = options.runtimeFence ?? null
-    this.guardedAdapter = this.runtimeFence
+    this.externalCoordination = externalCoordinationOf(app.vault)
+    const runtimeAdapter = this.runtimeFence
       ? fencedPort(
           app.vault.adapter,
           this.runtimeFence,
@@ -160,6 +164,31 @@ export class ObsidianFileSystem implements FileSystem {
           false
         )
       : app.vault.adapter
+    this.guardedAdapter = new Proxy(runtimeAdapter, {
+      get: (target, key) => {
+        const value = Reflect.get(target, key)
+        if (typeof value !== 'function') return value
+        if (
+          ![
+            'write',
+            'writeBinary',
+            'append',
+            'process',
+            'mkdir',
+            'rename',
+            'remove',
+            'rmdir',
+            'copy',
+          ].includes(String(key))
+        )
+          return value.bind(target)
+        return (...args: unknown[]) => {
+          const paths = args.slice(0, key === 'rename' || key === 'copy' ? 2 : 1) as string[]
+          this.externalCoordination.assertEnginePaths(paths)
+          return value.apply(target, args)
+        }
+      },
+    })
     this.beforeEngineMutation = options.beforeEngineMutation ?? null
     this.ledger = options.ledger ?? null
     this.pollMs = options.pollMs ?? DEFAULT_POLL_MS
@@ -185,7 +214,10 @@ export class ObsidianFileSystem implements FileSystem {
 
   /** Obsidian desktop's `fs.promises`, or null on a phone (`vaultWrites.nativeOf`). */
   private get native(): NativeFs | null {
-    const native = nativeOf(this.adapter, () => this.runtimeFence?.assertOwned())
+    const native = nativeOf(this.adapter, (paths = []) => {
+      this.runtimeFence?.assertOwned()
+      this.externalCoordination.assertEnginePaths(paths)
+    })
     return native && this.runtimeFence
       ? fencedPort(
           native,
@@ -214,14 +246,20 @@ export class ObsidianFileSystem implements FileSystem {
 
   /** Existing installation recovery runs before scanner/watcher activation. */
   async recover(): Promise<void> {
-    this.runtimeFence?.assertOwned()
-    await this.writer.recover()
-    this.runtimeFence?.assertOwned()
+    // Recovery can touch journal-owned paths not known until its asynchronous inspection.
+    const release = this.externalCoordination.beginEngineMutation([''])
+    try {
+      this.runtimeFence?.assertOwned()
+      await this.writer.recover()
+      this.runtimeFence?.assertOwned()
+    } finally {
+      release()
+    }
   }
 
   async *list(): AsyncIterable<FileInfo> {
     this.runtimeFence?.assertReady()
-    await this.writer.recover()
+    await this.recover()
     const mutations = folderMutations(this.app.vault)
     await mutations.settled()
     const revision = mutations.revision
@@ -288,6 +326,15 @@ export class ObsidianFileSystem implements FileSystem {
   }
 
   async writeAtomic(path: string, bytes: Uint8Array, mtime: number): Promise<void> {
+    const release = this.externalCoordination.beginEngineMutation([path])
+    try {
+      await this.writeUnreserved(path, bytes, mtime)
+    } finally {
+      release()
+    }
+  }
+
+  private async writeUnreserved(path: string, bytes: Uint8Array, mtime: number): Promise<void> {
     this.runtimeFence?.assertReady()
     const key = caseKey(path),
       expected = this.observedBases.get(key)
@@ -308,6 +355,15 @@ export class ObsidianFileSystem implements FileSystem {
   }
 
   async move(from: string, to: string): Promise<void> {
+    const release = this.externalCoordination.beginEngineMutation([from, to])
+    try {
+      await this.moveUnreserved(from, to)
+    } finally {
+      release()
+    }
+  }
+
+  private async moveUnreserved(from: string, to: string): Promise<void> {
     this.runtimeFence?.assertReady()
     await this.beforeEngineMutation?.([from, to])
     if (from === to) {
@@ -349,6 +405,15 @@ export class ObsidianFileSystem implements FileSystem {
   }
 
   async remove(path: string): Promise<void> {
+    const release = this.externalCoordination.beginEngineMutation([path])
+    try {
+      await this.removeUnreserved(path)
+    } finally {
+      release()
+    }
+  }
+
+  private async removeUnreserved(path: string): Promise<void> {
     this.runtimeFence?.assertReady()
     await this.beforeEngineMutation?.([path])
     const standing = await this.rawStat(path)

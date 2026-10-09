@@ -19,7 +19,7 @@ export interface NativeFs {
 /** Optional native capabilities; mobile remains adapter-only, never a Node import. */
 export function nativeOf(
   adapter: DataAdapter,
-  assertEffect: () => void = () => {}
+  assertEffect: (paths?: readonly string[]) => void = () => {}
 ): NativeFs | null {
   const raw = adapter as unknown as {
     fsPromises?: Partial<NodeFsPromises>
@@ -51,12 +51,12 @@ export function nativeOf(
   }
   const native: NativeFs = {
     async rename(from, to) {
-      assertEffect()
+      assertEffect([from, to])
       await rename(at(from), at(to))
       await reconcile(from, to)
     },
     async rmdirEmpty(path) {
-      assertEffect()
+      assertEffect([path])
       await rmdir(at(path))
       await reconcile(path)
     },
@@ -78,7 +78,7 @@ export function nativeOf(
               throw new EngineError('conflict', `${target} changed before queued replacement`)
             }
           }
-          assertEffect()
+          assertEffect([temp, target])
           await rename(at(temp), at(target))
           await reconcile(temp, target)
         })
@@ -91,7 +91,7 @@ export function nativeOf(
   if (typeof fsp.link === 'function') {
     const link = fsp.link.bind(fsp)
     native.installExclusive = async (from, to) => {
-      assertEffect()
+      assertEffect([from, to])
       await link(at(from), at(to))
       // The source name remains journal-owned until completion; never weaken exclusive
       // installation by replacing an occupied destination with a rename.
