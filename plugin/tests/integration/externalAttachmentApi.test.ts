@@ -5,6 +5,8 @@ import { sha256 } from '@abele/sync-core'
 import { IndexedDbStateStore } from '@/sync/IndexedDbStateStore'
 import { ExternalState } from '@/sync/external/state'
 import { ExternalFileHost } from '@/sync/external/ObsidianExternalFileHost'
+import { ExternalRepresentation } from '@/sync/external/representation'
+import { ObsidianFileSystem } from '@/sync/ObsidianFileSystem'
 import { AttachmentStore } from '@/sync/external/attachmentStore'
 import { requireExternalLifecycleSafety } from '@/sync/external/pluginSafety'
 import { EXTERNAL_ACTIVATION_KEY } from '@/sync/external/recovery'
@@ -23,7 +25,7 @@ const binding = {
   credentialAssociation: 'sample-slot',
 }
 
-async function setup(mode: 'personal' | 'scoped' = 'personal') {
+async function setup(mode: 'personal' | 'scoped' = 'personal', discoveredLate = false) {
   const identity =
     mode === 'personal'
       ? binding
@@ -54,7 +56,7 @@ async function setup(mode: 'personal' | 'scoped' = 'personal') {
     size: content.length,
     mtime: 1000,
   }
-  await store.put({
+  const initialEntry = {
     path,
     wirePath: path,
     fileId: base.fileId,
@@ -62,7 +64,8 @@ async function setup(mode: 'personal' | 'scoped' = 'personal') {
     sha: base.sha,
     size: base.size,
     mtime: base.mtime,
-  })
+  }
+  if (!discoveredLate) await store.put(initialEntry)
   const verify = vi.fn(
     async (
       fileId: string,
@@ -72,8 +75,22 @@ async function setup(mode: 'personal' | 'scoped' = 'personal') {
   const download = vi.fn(async () => content)
   let consent: string | null = null
   const sync = vi.fn<() => Promise<unknown>>(async () => {})
+  const runtime = await ExternalRepresentation.open({
+    state,
+    ledger: store,
+    fs: new ObsidianFileSystem(fake as unknown as App),
+    assertOwned: () => {},
+    scriptsFolder: () => 'Scripts',
+    verify,
+    installProjection: async (target, bytes) => {
+      await fake.vault.adapter.writeBinary(target, bytes.buffer as ArrayBuffer)
+      return 'written'
+    },
+  })
+  if (discoveredLate) await store.put(initialEntry)
   const api = new AttachmentStore({
     state,
+    refreshed: () => runtime.refresh(),
     ledger: store,
     host,
     binding: identity,
@@ -100,6 +117,7 @@ async function setup(mode: 'personal' | 'scoped' = 'personal') {
   })
   return {
     api,
+    runtime,
     factory,
     database,
     store,
@@ -322,6 +340,169 @@ async function restart(s: Awaited<ReturnType<typeof setup>>) {
 }
 
 describe('manual attachment store', () => {
+  it.each([false, true])(
+    'hydrates a completed remote rename after late discovery=%s',
+    async (late) => {
+      const s = await setup('personal', late)
+      try {
+        expect(
+          (
+            await s.api.evict(s.base.fileId, {
+              operationId: 'sample-evict',
+              expectedRevision: 0,
+              expectedVersionId: s.base.versionId,
+            })
+          ).status
+        ).toBe('complete')
+        const target = 'Media/sample-renamed.bin'
+        await expect(
+          s.runtime.accept({
+            seq: 2,
+            file_id: s.base.fileId,
+            version_id: 'sample-v2',
+            op: 'rename',
+            path: target,
+            prev_path: path,
+            sha: s.base.sha,
+            size: content.length,
+            mtime: 2000,
+            kind: 'attachment',
+            actor: { kind: 'system', id: 'sample', name: 'Sample' },
+            at: '',
+          })
+        ).resolves.toBe(true)
+        expect((await s.state.snapshot()).operations.at(-1)?.phase).toBe('projection-written')
+        await s.runtime.recoverJobs()
+        await s.api.recover()
+        expect(
+          (
+            await s.api.hydrate(s.base.fileId, {
+              operationId: 'sample-hydrate',
+              expectedVersionId: 'sample-v2',
+            })
+          ).status
+        ).toBe('complete')
+        expect(new Uint8Array(await s.fake.vault.adapter.readBinary(target))).toEqual(content)
+      } finally {
+        s.close()
+      }
+    }
+  )
+
+  it('rehashes a retained desktop incoming link after an in-place edit and publication', async () => {
+    const s = await setup()
+    try {
+      const adapter = s.fake.vault.adapter
+      // Shared inode objects model writes through either hard-link name.
+      const inodes = new Map<string, { bytes: ArrayBuffer }>()
+      const read = adapter.readBinary.bind(adapter),
+        write = adapter.writeBinary.bind(adapter)
+      vi.spyOn(adapter, 'readBinary').mockImplementation(
+        async (name) => inodes.get(name)?.bytes ?? read(name)
+      )
+      vi.spyOn(adapter, 'writeBinary').mockImplementation(async (name, data) => {
+        const inode = inodes.get(name)
+        if (inode) inode.bytes = data
+        else inodes.set(name, { bytes: data })
+        await write(name, data)
+      })
+      const remove = adapter.remove.bind(adapter),
+        rename = adapter.rename.bind(adapter)
+      vi.spyOn(adapter, 'remove').mockImplementation(async (name) => {
+        await remove(name)
+        inodes.delete(name)
+      })
+      vi.spyOn(adapter, 'rename').mockImplementation(async (from, to) => {
+        await rename(from, to)
+        const inode = inodes.get(from)
+        if (inode) {
+          inodes.set(to, inode)
+          inodes.delete(from)
+        }
+      })
+      ;(adapter as any).getFullPath = (name: string) => name
+      ;(adapter as any).fsPromises = {
+        rename: adapter.rename.bind(adapter),
+        rmdir: async () => {},
+        link: async (from: string, to: string) => {
+          const inode = inodes.get(from)!
+          inodes.set(to, inode)
+          await write(to, inode.bytes)
+        },
+      }
+      const desktop = new ExternalFileHost(s.fake as unknown as App, {
+        platform: 'desktop',
+        assertOwned: () => {},
+      })
+      try {
+        const api = new AttachmentStore({
+          state: s.state,
+          ledger: s.store,
+          host: desktop,
+          binding,
+          verify: s.verify,
+          download: s.download,
+          sync: s.sync,
+          serial: { run: async <T>(job: () => Promise<T>) => job() },
+          assertOwned: () => {},
+          scriptsFolder: () => 'Scripts',
+        })
+        expect(
+          (
+            await api.evict(s.base.fileId, {
+              operationId: 'sample-first',
+              expectedRevision: 0,
+              expectedVersionId: s.base.versionId,
+            })
+          ).status
+        ).toBe('complete')
+        expect(
+          (
+            await api.hydrate(s.base.fileId, {
+              operationId: 'sample-restore',
+              expectedVersionId: s.base.versionId,
+            })
+          ).status
+        ).toBe('complete')
+        const edited = new TextEncoder().encode('edited bytes!')
+        await adapter.writeBinary(path, edited.buffer)
+        const head = {
+          ...(await s.store.byFileId(s.base.fileId))!,
+          versionId: 'sample-v2',
+          sha: await sha256(edited),
+          size: edited.length,
+        }
+        s.sync.mockImplementation(async () => {
+          await s.store.put(head)
+          return {
+            published: [
+              {
+                file_id: head.fileId,
+                version_id: head.versionId,
+                path,
+                sha: head.sha,
+                size: head.size,
+              },
+            ],
+          }
+        })
+        const file = (await s.state.snapshot()).files[0]
+        const result = await api.evict(s.base.fileId, {
+          operationId: 'sample-second',
+          expectedRevision: file.localRevision,
+          expectedVersionId: s.base.versionId,
+        })
+        expect(result).toEqual({ status: 'complete', reclaimedBytes: 0 })
+        const retained = file.retained.find((artifact) => artifact.role === 'incoming')!
+        expect(new Uint8Array(await adapter.readBinary(retained.path))).toEqual(edited)
+      } finally {
+        desktop.close()
+      }
+    } finally {
+      s.close()
+    }
+  })
+
   it('verifies before sidecar changes, evicts, and hydrates the same bytes', async () => {
     const s = await setup()
     try {

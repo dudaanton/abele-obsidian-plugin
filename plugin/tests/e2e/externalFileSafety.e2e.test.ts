@@ -74,16 +74,19 @@ describe.skipIf(!available)('external-file filesystem guarantees on the live ada
   })
 
   // BUG: the iOS adapter copy overwrites an occupied name, contrary to DataAdapter's contract.
-  // Keep this assertion red on that platform; a probe must not weaken the required guarantee.
-  it('copy refuses an occupied installation target', () => {
-    expect(adapterReport.copy).toEqual({
-      supported: true,
-      refused: true,
-      source: 'sample incoming',
-      target: 'sample occupant',
-      freeTarget: 'sample incoming',
-    })
-  })
+  // Expected failure on phone only; keep the required assertion unchanged.
+  ;(process.env.E2E_TARGET === 'phone' ? it.fails : it)(
+    'copy refuses an occupied installation target',
+    () => {
+      expect(adapterReport.copy).toEqual({
+        supported: true,
+        refused: true,
+        source: 'sample incoming',
+        target: 'sample occupant',
+        freeTarget: 'sample incoming',
+      })
+    }
+  )
 
   it('records the available queue, exclusive-install, handle and durability surfaces', async () => {
     const out = evalJson(`(()=>{

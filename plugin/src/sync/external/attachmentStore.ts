@@ -181,14 +181,22 @@ export class AttachmentStore {
   private result(status: OperationResult['status'], reclaimedBytes = 0): OperationResult {
     return { status, reclaimedBytes }
   }
-  private reclaimed(file: ExternalRecord | undefined, head: { sha: string; size: number }): number {
-    // A retained name may be a native hard link to the removed original. Until its
-    // ownership/outcome is resolved, deleting the visible name has not reclaimed content.
-    return file?.retained.some(
-      (artifact) => artifact.sha === head.sha && artifact.size === head.size
-    )
-      ? 0
-      : head.size
+  private async reclaimed(
+    file: ExternalRecord | undefined,
+    head: { sha: string; size: number }
+  ): Promise<number> {
+    // A retained hard link can change through the original name. Its historical digest
+    // is not evidence that these bytes have gone away; inspect the actual retained content.
+    for (const artifact of file?.retained ?? []) {
+      try {
+        if (!(await this.options.host.exists(artifact.path))) continue
+        const bytes = await this.options.host.read(artifact.path)
+        if (bytes.length === head.size && (await sha256(bytes)) === head.sha) return 0
+      } catch {
+        return 0 // Unreadable retained evidence cannot prove reclamation.
+      }
+    }
+    return head.size
   }
   private reason(error: unknown): OperationResult {
     if (error instanceof ExternalFilePortError) return this.result(error.reason)
@@ -339,7 +347,7 @@ export class AttachmentStore {
                 'complete',
                 existing.unresolvedOutcome
                   ? 0
-                  : this.reclaimed(
+                  : await this.reclaimed(
                       doc.files.find((file) => file.fileId === id),
                       head
                     )
@@ -499,7 +507,7 @@ export class AttachmentStore {
           },
           { ...ready, revision: 2, phase: 'remote-only' }
         )
-        return this.result('complete', this.reclaimed(record, head))
+        return this.result('complete', await this.reclaimed(record, head))
       }
     )
   }
@@ -525,8 +533,37 @@ export class AttachmentStore {
         },
       },
       async (effects) => {
-        const doc = await this.document(),
+        let doc = await this.document(),
           file = doc.files.find((item) => item.fileId === id)
+        const completed = doc.operations.find((op) => op.operationId === file?.pendingOperationId)
+        // Settle acknowledged projection work from this or an earlier runtime before
+        // applying the pending-operation guard. Unknown/held outcomes remain fenced.
+        if (
+          file &&
+          file.representation === 'remote-only' &&
+          !file.blockingReason &&
+          completed &&
+          ['projection-update', 'projection-move'].includes(completed.kind) &&
+          completed.phase === 'projection-written' &&
+          !completed.unresolvedOutcome &&
+          !completed.cleanupReason &&
+          completed.connectionGeneration === doc.binding.generation &&
+          completed.expected?.fileId === id &&
+          completed.expected.versionId === head.versionId &&
+          completed.expected.path === head.wirePath &&
+          completed.expected.sha === head.sha &&
+          completed.expected.size === head.size &&
+          file.projectionPath === completed.targetPath &&
+          file.projectionSha === completed.projectionDigest
+        ) {
+          await this.commit({
+            ...file,
+            localRevision: file.localRevision + 1,
+            pendingOperationId: null,
+          })
+          doc = await this.document()
+          file = doc.files.find((item) => item.fileId === id)
+        }
         const prior = doc.operations.find((op) => op.operationId === opts.operationId)
         if (prior) {
           if (
@@ -667,14 +704,8 @@ export class AttachmentStore {
             blockingReason: null,
             projectionPath: null,
             projectionSha: null,
-            lastProvenLocalBase: {
-              fileId: id,
-              versionId: head.versionId,
-              path: head.wirePath,
-              sha: head.sha,
-              size: head.size,
-              mtime: head.mtime,
-            },
+            // Retained recovery artifacts keep their historical proven base immutable.
+            lastProvenLocalBase: file.lastProvenLocalBase,
             retained: [...file.retained, retained, ...(installed.sourceRetained ? [artifact] : [])],
           },
           { ...cleanup, revision: 3, phase: 'hydrated', cleanupReason: null }
@@ -816,14 +847,7 @@ export class AttachmentStore {
               projectionPath: null,
               projectionSha: null,
               retained,
-              lastProvenLocalBase: {
-                fileId: head.fileId,
-                versionId: head.versionId,
-                path: head.wirePath,
-                sha: head.sha,
-                size: head.size,
-                mtime: head.mtime,
-              },
+              lastProvenLocalBase: file.lastProvenLocalBase,
             },
             { ...op, revision: op.revision + 1, phase: 'hydrated', cleanupReason: null }
           )

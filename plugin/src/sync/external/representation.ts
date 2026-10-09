@@ -71,6 +71,7 @@ export type RepresentationDecision =
       dirty: boolean
       base?: ExternalRecord['lastProvenLocalBase']
     }
+const MAX_INSPECTION_ENTRIES = 10000
 const key = caseKey
 const unexpectedKey = (id: string) => 'external-unexpected-original-v1:' + id
 const terminal = new Set([
@@ -88,6 +89,7 @@ const terminal = new Set([
 export class ExternalRepresentation {
   private document!: ExternalDocument
   private readonly entries = new Map<string, StateEntry>()
+  private inspectionDirty = false
   private stopped = false
   private readonly unexpected = new Set<string>()
   private readonly inspected = new Map<
@@ -95,7 +97,8 @@ export class ExternalRepresentation {
     { path: string; size: number; mtime: number; marker: boolean }
   >()
   private constructor(private readonly options: RepresentationOptions) {
-    for (const entry of options.inspection?.entries ?? []) this.inspected.set(entry.path, entry)
+    for (const entry of (options.inspection?.entries ?? []).slice(-MAX_INSPECTION_ENTRIES))
+      this.inspected.set(entry.path, entry)
   }
   static async open(options: RepresentationOptions): Promise<ExternalRepresentation> {
     const runtime = new ExternalRepresentation(options)
@@ -150,12 +153,36 @@ export class ExternalRepresentation {
   /** Explicit activation/operation commits refresh the cached representation before another scan. */
   async activate(state: ExternalState): Promise<void> {
     this.options.state = state
-    this.document = await state.snapshot()
-    this.owned()
+    await this.refresh()
   }
   async refresh(): Promise<void> {
     if (this.options.state) this.document = await this.options.state.snapshot()
+    // Ordinary sync can discover identities after open(). Operation commits must refresh
+    // their canonical heads as well as the external document, including scoped heads.
+    for (const file of this.document.files) {
+      const known = this.options.scoped ? await this.options.scoped.getKnown(file.fileId) : null
+      const entry = this.options.scoped
+        ? known && {
+            fileId: known.file_id,
+            versionId: known.version_id,
+            path: known.path,
+            wirePath: known.path,
+            sha: known.sha,
+            size: known.size,
+            mtime: known.mtime,
+          }
+        : await this.options.ledger.byFileId(file.fileId)
+      if (entry) this.entries.set(file.fileId, entry)
+      else this.entries.delete(file.fileId)
+    }
     this.owned()
+    this.flushInspection()
+  }
+  private flushInspection(): void {
+    if (!this.inspectionDirty) return
+    this.owned()
+    this.options.inspection?.save([...this.inspected.values()])
+    this.inspectionDirty = false
   }
   private owned(): void {
     this.options.assertOwned()
@@ -275,8 +302,11 @@ export class ExternalRepresentation {
     this.owned()
     const marker = !!bytes && recognizeProjection(bytes)
     if (!supplied) {
+      this.inspected.delete(path)
       this.inspected.set(path, { path, size: info.size, mtime: info.mtime, marker })
-      this.options.inspection?.save([...this.inspected.values()])
+      if (this.inspected.size > MAX_INSPECTION_ENTRIES)
+        this.inspected.delete(this.inspected.keys().next().value)
+      this.inspectionDirty = true
     }
     if (marker) {
       const inspection = inspectProjection(bytes, path, {
@@ -300,8 +330,13 @@ export class ExternalRepresentation {
       get(target, method) {
         if (method === 'list')
           return async function* () {
-            for await (const info of fs.list())
-              if ((await self.classify(info.path, info)).kind === 'ordinary') yield info
+            try {
+              for await (const info of fs.list())
+                if ((await self.classify(info.path, info)).kind === 'ordinary') yield info
+            } finally {
+              // One bounded persistence write per scan, including interrupted enumerations.
+              self.flushInspection()
+            }
           }
         if (method === 'read')
           return async (path: string) => {

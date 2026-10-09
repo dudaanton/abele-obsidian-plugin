@@ -250,6 +250,57 @@ describe('common external representation and durable remote projection work', ()
     ).toHaveLength(0)
   })
 
+  it('persists one bounded inspection cache for 10000 newly imported files', async () => {
+    const fake = buildFakeVault([]),
+      save = vi.fn((entries) =>
+        fake.saveLocalStorage(EXTERNAL_INSPECTION_KEY, { schema: 1, entries })
+      )
+    const storageWrites = vi.spyOn(fake, 'saveLocalStorage')
+    const fs = new ObsidianFileSystem(fake as unknown as App)
+    let count = 0
+    vi.spyOn(fs, 'list').mockImplementation(async function* () {
+      for (let i = 0; i < count; i++) yield { path: `Notes/sample-${i}.md`, size: 10, mtime: 1000 }
+    })
+    const read = vi
+      .spyOn(fs, 'readPrefix')
+      .mockResolvedValue(new TextEncoder().encode('small file'))
+    const runtime = await ExternalRepresentation.open({
+      state: null,
+      emptyView: { ledgerId: 'sample-ledger', binding },
+      ledger: new MemoryStateStore(),
+      fs,
+      assertOwned: () => {},
+      scriptsFolder: () => 'Scripts',
+      inspection: { entries: [], save },
+      verify: async () => {
+        throw Error('unexpected verify')
+      },
+      installProjection: async () => {
+        throw Error('unexpected install')
+      },
+    })
+    count = 10000 // Imported after startup; no external records.
+    for await (const _ of runtime.fileSystem().list()) {
+      /* inspect */
+    }
+    expect(save).toHaveBeenCalledTimes(1)
+    expect(storageWrites).toHaveBeenCalledTimes(1)
+    expect(save.mock.calls[0][0]).toHaveLength(10000)
+    expect(read).toHaveBeenCalledTimes(10000)
+    for await (const _ of runtime.fileSystem().list()) {
+      /* cache hits */
+    }
+    expect(save).toHaveBeenCalledTimes(1)
+    expect(read).toHaveBeenCalledTimes(10000)
+    count = 10001
+    for await (const _ of runtime.fileSystem().list()) {
+      /* bounded growth */
+    }
+    expect(save).toHaveBeenCalledTimes(2)
+    expect(storageWrites).toHaveBeenCalledTimes(2)
+    expect(save.mock.calls[1][0]).toHaveLength(10000)
+  })
+
   it('intentional absence produces neither a server delete nor dirty; ordinary sidecars still sync', async () => {
     const s = await setup()
     await s.fake.vault.adapter.writeBinary(
