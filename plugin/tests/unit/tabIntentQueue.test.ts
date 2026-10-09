@@ -108,6 +108,57 @@ describe('serial tab presentation intents', () => {
     expect(queue.captureForeground()).toBeUndefined()
   })
 
+  it('binds a resolved conversation without admitting a new foreground action', () => {
+    const queue = new TabIntentQueue()
+    const closing = queue.begin('sample-file', false)
+    const opening = queue.begin('sample-unresolved', true)
+    const dropped: string[] = []
+    queue.mutate(() => {
+      queue.apply(closing, () => dropped.push('closed'))
+      expect(queue.retarget(opening, 'sample-file')).toBe(true)
+    })
+    expect(dropped).toEqual([])
+    expect(opening.target).toBe('sample-file')
+    expect(queue.captureForeground()).toBe(opening)
+    expect(queue.valid(closing)).toBe(false)
+    expect(queue.selected(opening)).toBe(true)
+  })
+
+  it('does not let a cancelled lookup retarget over a still-current close', () => {
+    const queue = new TabIntentQueue()
+    const closing = queue.begin('sample-file', false)
+    const opening = queue.begin('sample-unresolved', true)
+    const latest = queue.begin('sample-other', true)
+    expect(queue.retarget(opening, 'sample-file')).toBe(false)
+    expect(queue.valid(closing)).toBe(true)
+    expect(queue.captureForeground()).toBe(latest)
+  })
+
+  it('keeps the original order when an older background lookup resolves after a newer same-file close', () => {
+    const queue = new TabIntentQueue()
+    const opening = queue.begin('sample-unresolved', false)
+    const closing = queue.begin('sample-file', false)
+    const other = queue.begin('sample-other', false)
+    expect(queue.retarget(opening, 'sample-file')).toBe(false)
+    expect(opening.target).toBe('sample-file')
+    expect(queue.valid(opening)).toBe(false)
+    expect(queue.valid(closing)).toBe(true)
+    expect(queue.captureForeground()).toBe(other)
+  })
+
+  it('lets a newer independent lookup bind its file without cancelling an unrelated action', () => {
+    const queue = new TabIntentQueue()
+    const closing = queue.begin('sample-file', false)
+    const opening = queue.begin('sample-unresolved', false)
+    const other = queue.begin('sample-other', false)
+    expect(queue.retarget(opening, 'sample-file')).toBe(true)
+    expect(queue.valid(closing)).toBe(false)
+    expect(queue.valid(opening)).toBe(true)
+    expect(queue.selected(opening)).toBe(false)
+    expect(queue.valid(other)).toBe(true)
+    expect(queue.captureForeground()).toBe(other)
+  })
+
   it('rejects completions from before service teardown', () => {
     const queue = new TabIntentQueue(), intent = queue.begin('sample', true)
     queue.clear()

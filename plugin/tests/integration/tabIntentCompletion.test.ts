@@ -1,5 +1,6 @@
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest'
 import type { TFile } from 'obsidian'
+import { watch } from 'vue'
 import { ChatService, MAX_TABS } from '@/ai/ChatService'
 import { CommentService } from '@/ai/CommentService'
 import { ChatStorage } from '@/ai/ChatStorage'
@@ -10,6 +11,10 @@ import { pickChat } from '@/helpers/suggesters/ChatPicker'
 import { AbeleConfig } from '@/services/AbeleConfig'
 import { serializeChat, parseChatMetadata } from '@/ai/ChatLog'
 import { DEFAULT_AI_SETTINGS, type ChatMetadata } from '@/ai/types'
+import { AgentRegistry } from '@/ai/agents/AgentRegistry'
+import type { SessionOverrides } from '@/ai/agents/types'
+import { captureChatSelection, createChatAnchor } from '@/selection/anchors'
+import { openSelectionLink } from '@/ai/openChat'
 import { useVault } from '../helpers/testEnv'
 import { deferred } from '../helpers/deferred'
 
@@ -65,6 +70,7 @@ afterEach(() => {
   ChatService.getInstance().destroy()
   AgentsService.destroyCurrent()
   ChatStorage.destroy()
+  AgentRegistry.destroy()
   vi.restoreAllMocks()
 })
 
@@ -192,6 +198,135 @@ describe('tab intent completion boundaries', () => {
     expect(chats.getSession(session.id)).toBe(session)
     expect(session.isDestroyed).toBe(false)
     if (kind === 'comment') expect(comments.isShown(discussionId)).toBe(true)
+  })
+
+  it.each(['chat', 'comment'] as const)(
+    'a selection-link return to the same %s conversation supersedes its pending close',
+    async (kind) => {
+      const { app, workspace } = fixture()
+      const chats = ChatService.getInstance(), comments = CommentService.getInstance()
+      const path = kind === 'chat' ? a : discussion
+      const revision = {
+        reference: { chatId: 'sample-selection-chat', messageId: 'sample-reply', revisionId: 'sample-revision' },
+        content: 'A sample passage',
+        projection: { version: 'chat-text-v1', text: 'A sample passage' },
+      }
+      const captured = captureChatSelection({
+        revision, range: { space: 'rendered', start: 2, end: 8 },
+        role: 'assistant', author: 'assistant', title: 'Sample', pathHint: path,
+        sentence: revision.content,
+      })
+      const anchor = createChatAnchor(captured, revision, () => 'sample-anchor')
+      const file = app.vault.getFileByPath(path)!
+      await app.vault.modify(file, serializeChat({
+        metadata: { ...parseChatMetadata(kind === 'chat' ? content() : discussionContent())!, chatId: revision.reference.chatId },
+        messages: [{
+          id: revision.reference.messageId, role: 'assistant', content: revision.content, timestamp: 1,
+          selection: { revisionId: revision.reference.revisionId, versions: [revision], anchors: [anchor] },
+        }],
+        internalMessages: [],
+      }))
+      await chats.openChatFile(file)
+      const session = chats.activeSession.value!
+      session.chatTitle.value = 'A buffered selection title'
+      session.draft.value.text = 'A retained selection draft'
+      const draft = session.draft.value
+      const gate = deferred(), saving = deferred(), reopening = deferred()
+      const storage = ChatStorage.getInstance(), save = storage.saveChat.bind(storage)
+      let paused = false
+      vi.spyOn(storage, 'saveChat').mockImplementation(async (...args) => {
+        if (args[2]?.path === path && !paused) {
+          paused = true; saving.resolve(); await gate.promise
+        }
+        return save(...args)
+      })
+      const reconcile = session.reconcileForSelectionReturn.bind(session)
+      vi.spyOn(session, 'reconcileForSelectionReturn').mockImplementation((...args) => {
+        const task = reconcile(...args)
+        reopening.resolve()
+        return task
+      })
+      const closing = chats.closeTab(session.id)
+      await saving.promise
+      const dropped = vi.fn()
+      const stop = watch(chats.tabOrder, (order) => {
+        if (!order.includes(session.id)) dropped()
+      }, { flush: 'sync' })
+      const latest = openSelectionLink(`${path}#abele-selection=sample-selection-chat/sample-anchor`)
+      await reopening.promise
+      gate.resolve()
+      await Promise.all([closing, latest])
+      stop()
+      expect(dropped).not.toHaveBeenCalled()
+      expect(session.isDestroyed).toBe(false)
+      expect(chats.getSession(session.id)).toBe(session)
+      expect(chats.activeSession.value).toBe(session)
+      expect(chats.tabOrder.value.filter((id) => id === session.id)).toHaveLength(1)
+      expect(session.draft.value).toBe(draft)
+      expect(session.draft.value.text).toBe('A retained selection draft')
+      expect(chats.pendingAnchorReturn.value?.sessionId).toBe(session.id)
+      expect(chats.pendingAnchorReturn.value?.target.anchor.id).toBe('sample-anchor')
+      expect(chats.openingSelection.value).toBe(false)
+      expect(workspace.revealLeaf).toHaveBeenCalled()
+      if (kind === 'comment') expect(comments.isShown(discussionId)).toBe(true)
+    }
+  )
+
+  it('a failed expansion write restores its discussion binding and releases capacity before retry', async () => {
+    const { app } = fixture()
+    const chats = ChatService.getInstance(), comments = CommentService.getInstance()
+    const registry = AgentRegistry.getInstance()
+    const fallback = registry.create({ id: 'sample-default-agent', name: 'Sample default', permissionMode: 'allow-all' })
+    const original = registry.create({ id: 'sample-discussion-agent', name: 'Sample discussion', utility: true })
+    registry.setDefault(fallback.id)
+    await app.vault.create('Notes/sample-extra.md', 'Sample extra text')
+    const overrides: SessionOverrides = {
+      permissionMode: 'confirm-all', toolModes: { read_note: 'off' },
+      scope: [{ type: 'file', path: 'Notes/sample-extra.md' }], fullVaultAccess: false,
+      prompts: [{ type: 'text', value: 'Sample local instructions' }],
+    }
+    const file = app.vault.getFileByPath(discussion)!
+    await app.vault.modify(file, serializeChat({
+      metadata: { ...parseChatMetadata(discussionContent())!, agentId: original.id, overrides },
+      messages: [{ id: 'sample-question', role: 'user', content: 'A sample question', timestamp: 1 }],
+      internalMessages: [],
+    }))
+    for (let index = 0; index < MAX_TABS - 1; index++) {
+      chats.getSession(chats.createTab())!.draft.value.text = `A preserved sample draft ${index}`
+    }
+    const active = chats.activeSession.value
+    const session = (await comments.load(discussionId))!
+    const previousTitle = session.chatTitle.value
+    const storage = ChatStorage.getInstance()
+    const history = vi.spyOn(storage, 'addHistoryEntry')
+    const before = await app.vault.read(file)
+    const write = vi.spyOn(storage, 'saveChat').mockRejectedValue(new Error('Sample expansion write failure'))
+    const outcome = await comments.expand(discussionId).then((result) => ({ result }), (error: unknown) => ({ error }))
+    write.mockRestore()
+    expect(outcome).toMatchObject({ error: expect.any(Error) })
+    expect(session.kind).toBe('comment')
+    expect(session.agentId.value).toBe(original.id)
+    expect(session.overrides.value).toEqual(overrides)
+    expect(session.chatTitle.value).toBe(previousTitle)
+    expect(session.scopeResolver.isInScope('Notes/sample-extra.md')).toBe(true)
+    expect(session.messages.value).toHaveLength(1)
+    expect(session.moving.value).toBe(false)
+    expect(comments.sessions.get(discussionId)).toBe(session)
+    expect(comments.isExpanded(discussionId)).toBe(false)
+    expect(chats.getSession(session.id)).toBeNull()
+    expect(chats.activeSession.value).toBe(active)
+    expect(chats.canCreateTab).toBe(true)
+    expect(history).not.toHaveBeenCalled()
+    expect(await app.vault.read(file)).toBe(before)
+    expect(await comments.expand(discussionId)).toBe('moved')
+    await session.flush()
+    expect(session.kind).toBe('chat')
+    expect(session.agentId.value).toBe(fallback.id)
+    expect(session.overrides.value).toEqual({})
+    expect(chats.activeSession.value).toBe(session)
+    expect(chats.tabOrder.value).toHaveLength(MAX_TABS)
+    expect(storage.getHistory().filter((entry) => entry.path === discussion)).toHaveLength(1)
+    expect(parseChatMetadata(await app.vault.read(file))).toMatchObject({ kind: 'chat', agentId: fallback.id })
   })
 
   it('reentrant expansion explicitly refuses admission without queuing an orphaned reservation', async () => {
