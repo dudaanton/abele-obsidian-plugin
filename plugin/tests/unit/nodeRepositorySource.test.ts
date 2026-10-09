@@ -90,7 +90,7 @@ describe('node repository source through the validated client contract', () => {
     const { source, calls } = fixture()
     const compare = await source.compare(BASE, WORKING_TREE, true)
     expect(compare.files[0].patch).toBeUndefined()
-    expect(compare.note).toContain('not atomic')
+    expect(compare.note).toBe('Files can change while you look. Refresh to update.')
     await compare.files[0].loadPatch!()
     expect(compare.files[0].patch).toContain('+export const answer = 42')
     expect(calls.filter((c) => c.method.endsWith('.patch'))).toHaveLength(1)

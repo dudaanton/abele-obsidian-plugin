@@ -137,7 +137,7 @@ export function useTreePanel(o: TreePanelOptions) {
     return t && d && (t.kind === 'blob' || t.kind === 'tree' || t.kind === 'repo')
       ? shortRef(
           source().identity.provider === 'node' && d.ref.startsWith('working-')
-            ? 'Working tree'
+            ? 'Current files'
             : d.ref
         )
       : undefined

@@ -52,7 +52,13 @@ describe('node-backed shared repository tab', () => {
     expect(wrapper.text()).toContain('sample-project')
     expect(wrapper.text()).toContain('worktrees-feature')
     expect(wrapper.text()).toContain('External')
-    expect(wrapper.text()).toContain('Staged and unstaged')
+    expect(wrapper.text()).toContain('Partly ready')
+    expect(wrapper.find('.abele-github-home__bar').exists()).toBe(false)
+    const row = wrapper.find('.abele-repository-row')
+    expect(row.find('.abele-repository-row__title').element.parentElement).toBe(
+      row.find('.abele-repository-row__meta').element.parentElement
+    )
+    expect(row.find('.tree-item-flair-outer').text()).toBe('Changes')
     expect(wrapper.text()).toContain('Recent commits')
     expect(wrapper.text()).not.toContain('0 stars')
     expect(wrapper.findAll('img')).toHaveLength(0)
@@ -69,7 +75,7 @@ describe('node-backed shared repository tab', () => {
     })
     await flushPromises()
     expect(wrapper.text()).toContain('export const answer = 42')
-    expect(wrapper.text()).toContain('not atomic')
+    expect(wrapper.text()).toContain('Files can change while you look. Refresh to update.')
     expect(calls.some((c) => c.method.endsWith('.patch'))).toBe(true)
     expect(wrapper.find('.abele-github-files__summary').text()).toContain('+1')
     expect(wrapper.find('.abele-github-files__summary').text()).toContain('−1')
@@ -78,16 +84,31 @@ describe('node-backed shared repository tab', () => {
   })
   it('does not pass node commit bodies to the GitHub markdown or credential renderer', async () => {
     const f = nodeRepositoryFixture()
-    const source = new NodeRepositorySource(f.client, identity, { node: repo.owner, project: repo.repo })
+    const source = new NodeRepositorySource(f.client, identity, {
+      node: repo.owner,
+      project: repo.repo,
+    })
     const commit = await source.commit(HEAD)
-    vi.spyOn(source, 'commit').mockResolvedValue({ ...commit, message: 'Update sample\n\n![remote](https://images.invalid/sample.png)' })
-    const model: GithubViewModel = reactive({ url: '', target: { ...repo, kind: 'commit', sha: HEAD }, nonce: 0, tree: false, screen: emptyScreen() })
-    const wrapper = mount(GithubItem, { props: { model, enabled: true, source, sourceLocation: { kind: 'commit', commit: HEAD } } })
+    vi.spyOn(source, 'commit').mockResolvedValue({
+      ...commit,
+      message: 'Update sample\n\n![remote](https://images.invalid/sample.png)',
+    })
+    const model: GithubViewModel = reactive({
+      url: '',
+      target: { ...repo, kind: 'commit', sha: HEAD },
+      nonce: 0,
+      tree: false,
+      screen: emptyScreen(),
+    })
+    const wrapper = mount(GithubItem, {
+      props: { model, enabled: true, source, sourceLocation: { kind: 'commit', commit: HEAD } },
+    })
     await flushPromises()
     expect(wrapper.findComponent(GithubText).exists()).toBe(false)
     expect(wrapper.findAll('img')).toHaveLength(0)
     expect(wrapper.text()).toContain('![remote]')
-    wrapper.unmount(); source.dispose()
+    wrapper.unmount()
+    source.dispose()
   })
   it('uses named keyboard actions and does not open a fake commit for uncommitted blame', async () => {
     const { wrapper, source, onOpen } = fixture({ kind: 'file', ref: WORKING_TREE, path: 'app.ts' })
@@ -104,7 +125,9 @@ describe('node-backed shared repository tab', () => {
   })
   it('refreshes an executed live search without replacing or executing a changed query draft', async () => {
     const search = vi.fn(async () => ({ files: [], total: 0, capped: false }))
-    const wrapper = mount(GithubCodeSearch, { props: { code: { refLabel: () => WORKING_TREE, search }, revisionKey: 'observation-first' } })
+    const wrapper = mount(GithubCodeSearch, {
+      props: { code: { refLabel: () => WORKING_TREE, search }, revisionKey: 'observation-first' },
+    })
     await wrapper.find('input').setValue('sample')
     await wrapper.find('input').trigger('keydown', { key: 'Enter' })
     await flushPromises()

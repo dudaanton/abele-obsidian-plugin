@@ -37,7 +37,7 @@ import { nodeRepositoryLink } from './nodeLinks'
 export const WORKING_TREE = 'Working tree'
 const workingPrefix = 'working-'
 export const nodeRevisionLabel = (ref: string): string =>
-  ref.startsWith(workingPrefix) ? WORKING_TREE : ref
+  ref === WORKING_TREE || ref.startsWith(workingPrefix) ? 'Current files' : ref
 export type NodeRepositoryClient = Pick<
   NodeClient,
   'repository' | 'onEvent' | 'subscribe' | 'connected'
@@ -119,7 +119,10 @@ export class NodeRepositorySource implements RepositorySource {
     }
     this.navigation = {
       workspace: (id) =>
-        nodeRepositoryLink({ ...this.identity, workspace: id }, { kind: 'home', ref: WORKING_TREE }),
+        nodeRepositoryLink(
+          { ...this.identity, workspace: id },
+          { kind: 'home', ref: WORKING_TREE }
+        ),
       home: (ref = WORKING_TREE) => link({ kind: 'home', ref }),
       file: (ref, path, line) =>
         link({ kind: 'file', ref, path, ...(line ? { lines: { from: line, to: line } } : {}) }),
@@ -416,12 +419,25 @@ export class NodeRepositorySource implements RepositorySource {
     }
     return text
   }
-  largeBlob(ref: string, path: string, contentId?: string) { return this.blob(ref, path, contentId, true) }
+  largeBlob(ref: string, path: string, contentId?: string) {
+    return this.blob(ref, path, contentId, true)
+  }
   async blob(ref: string, path: string, contentId?: string, larger = false): Promise<BlobData> {
     const limit = (larger ? 16 : 1) * 1024 * 1024
     if (contentId) {
-      const first = await this.read(() => this.client.repository.content({ ...this.target, content_id: contentId, offset: 0 }))
-      if (first.total > limit) return { ref, path, text: '', contentId, url: this.navigation.file(ref, path), note: 'This retained file is too large for automatic display.', canLoadLarge: !larger && first.total <= 16 * 1024 * 1024 }
+      const first = await this.read(() =>
+        this.client.repository.content({ ...this.target, content_id: contentId, offset: 0 })
+      )
+      if (first.total > limit)
+        return {
+          ref,
+          path,
+          text: '',
+          contentId,
+          url: this.navigation.file(ref, path),
+          note: 'This retained file is too large for automatic display.',
+          canLoadLarge: !larger && first.total <= 16 * 1024 * 1024,
+        }
       const text = await this.content(contentId, limit)
       this.rememberContent(ref, path, contentId)
       return { ref, path, text, contentId, url: this.navigation.file(ref, path) }
@@ -663,14 +679,6 @@ export class NodeRepositorySource implements RepositorySource {
     )
     const baseCommits = new Set(baseHistory.entries.map((c) => c.commit))
     const commits = headHistory.entries.filter((c) => !baseCommits.has(c.commit)).map(summary)
-    const modeLabel =
-      manifest.mode === 'staged'
-        ? 'Staged changes · HEAD to index'
-        : manifest.mode === 'unstaged'
-          ? 'Unstaged changes · index to Working tree'
-          : manifest.mode === 'endpoint'
-            ? 'Endpoint comparison'
-            : 'Merge-base comparison'
     return {
       base: baseSha,
       head: headSha,
@@ -693,7 +701,12 @@ export class NodeRepositorySource implements RepositorySource {
       headSha,
       mergeBaseSha: baseSha,
       url: this.navigation.comparison(baseSha, headSha, direct, manifest.mode),
-      note: `${modeLabel}${manifest.head.kind === 'working' ? ' · Working tree is observed, not atomic. Refresh if files changed on disk.' : ''}`,
+      note:
+        manifest.head.kind === 'working'
+          ? 'Files can change while you look. Refresh to update.'
+          : manifest.mode === 'merge-base'
+            ? 'Changes since the common ancestor.'
+            : undefined,
     }
   }
   async comparison(base: string, head: string, signal?: AbortSignal): Promise<ComparisonIndex> {

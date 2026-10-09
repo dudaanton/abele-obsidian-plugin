@@ -11,37 +11,39 @@
     :source-location="location"
     :keys="keys"
     :on-open="open"
-    :on-title="onTitle"
+    :on-title="updateTitle"
     :on-state="save"
   >
-    <template #repository-actions="{ file }">
-      <div class="abele-node-repository__actions">
-        <Button text="Repository" icon="folder-git-2" @click="open(source.navigation.home())" />
-        <Dropdown
-          :model-value="target.source.workspace"
-          :options="workspaceOptions"
-          aria-label="Workspace"
-          @update:model-value="(workspace) => open(source!.navigation.workspace!(workspace))"
-        />
-        <Button
-          v-if="file"
-          text="History"
-          icon="git-commit-horizontal"
-          @click="showHistory(file.ref, file.path)"
-        />
-        <Button
-          v-if="file && live && managedWorkspace"
-          text="Edit file"
-          icon="pencil"
+    <template #repository-controls="{ file, version: shownRef }">
+      <div class="abele-node-repository__controls">
+        <Icon
+          class="clickable-icon abele-node-repository__picker"
+          role="button"
+          tabindex="0"
+          icon="git-branch"
+          :text-right="pickerLabel(shownRef)"
+          tooltip="Choose a workspace or version"
           :disabled="offline"
-          @click="edit(file.path)"
+          @click="chooseRepository(file?.path)"
+          @keydown.enter.prevent="chooseRepository(file?.path)"
         />
-        <Icon class="clickable-icon" role="button" tabindex="0" icon="folder-git-2" tooltip="External workspace browsing" :disabled="offline || settingsBusy" @click="externalMenu" @keydown.enter.prevent="externalMenu" />
-        <span v-if="offline" role="status">Node offline · reconnect to refresh.</span>
-        <span v-else-if="external" class="abele-node-repository__meta"
-          >External workspace · read only</span
-        >
+        <Icon
+          class="clickable-icon"
+          role="button"
+          tabindex="0"
+          icon="folder-git-2"
+          tooltip="Repository actions"
+          :disabled="offline || settingsBusy"
+          @click="externalMenu"
+          @keydown.enter.prevent="externalMenu"
+        />
       </div>
+    </template>
+    <template #repository-details>
+      <span v-if="offline" role="status">Node offline · reconnect to refresh.</span>
+      <span v-else-if="external" class="abele-node-repository__meta"
+        >External workspace · read only</span
+      >
       <template v-if="historyOpen">
         <div class="abele-node-repository__actions">
           <span>File history</span
@@ -67,7 +69,9 @@ import GithubCommits from './github/GithubCommits.vue'
 import EmptyState from './obsidian/EmptyState.vue'
 import Button from './obsidian/Button.vue'
 import Icon from './obsidian/Icon.vue'
-import Dropdown from './obsidian/Dropdown.vue'
+import { RepositoryPicker } from '@/node/RepositoryPicker'
+import { BasePicker } from '@/github/comparison/BasePicker'
+import { basePins } from '@/github/comparison/pins'
 import { NodeService, type NodeConnection } from '@/node/NodeService'
 import { NodeRepositorySource, WORKING_TREE } from '@/repository/node'
 import { parseNodeRepositoryLink } from '@/repository/nodeLinks'
@@ -107,12 +111,20 @@ const selected = computed(() =>
 const external = computed(() => selected.value?.kind === 'external')
 const managedWorkspace = computed(() => selected.value?.workspaceId)
 const live = computed(() => 'ref' in location.value && location.value.ref === WORKING_TREE)
-const workspaceOptions = computed(() =>
-  workspaces.value.map((w) => ({
-    value: w.id,
-    display: `${w.label}${w.kind === 'external' ? ' · External' : ''}${w.dirty ? ' · Changes' : ''}${w.availability !== 'available' ? ` · ${w.availability}` : ''}`,
-  }))
-)
+const projectName = ref('Project')
+const updateTitle = () =>
+  props.onTitle?.(`${projectName.value} · ${selected.value?.label || 'Workspace'}`)
+const pickerLabel = (ref?: string) => ref && /^[a-f\d]{40,64}$/i.test(ref) ? ref.slice(0, 7) : selected.value?.branch?.replace(/^refs\/heads\//, '') || selected.value?.label || 'Workspace'
+const chooseRepository = (path?: string) => {
+  if (!source.value || offline.value) return
+  new RepositoryPicker(
+    GlobalStore.getInstance().app,
+    source.value,
+    workspaces.value,
+    open,
+    path
+  ).open()
+}
 const presentation: GithubViewModel = reactive({
   url: '',
   target: null,
@@ -170,6 +182,8 @@ const load = async () => {
     source.value?.dispose()
     source.value = next
     workspaces.value = catalog
+    projectName.value = labels.project
+    updateTitle()
     setPresentation(labels.node, labels.project)
     void next.startWatching()
   } catch (reason) {
@@ -221,22 +235,108 @@ const externalMenu = (event?: MouseEvent | KeyboardEvent) => {
   if (offline.value || settingsBusy.value) return
   const menu = new Menu()
   const configure = async (enabled: boolean) => {
-    const current = source.value, transport = connection.value
+    const current = source.value,
+      transport = connection.value
     if (!current || !transport) return
     settingsBusy.value = true
     try {
-      const changed = await changeExternalBrowsing(transport.client, current, enabled, () => confirmAction(GlobalStore.getInstance().app, {
-        title: 'External workspace browsing',
-        message: enabled ? 'Allow this project’s other Git worktrees to be browsed by confirmed node owners? They remain read only. This does not allow agent execution or editing.' : 'Stop browsing external workspaces for this project? Open external views and retained reads lose access.',
-        confirmText: enabled ? 'Allow browsing' : 'Stop browsing',
-        confirmTooltip: enabled ? 'Allow read-only browsing of external workspaces' : 'Stop external workspace reads',
-      }))
+      const changed = await changeExternalBrowsing(transport.client, current, enabled, () =>
+        confirmAction(GlobalStore.getInstance().app, {
+          title: 'External workspace browsing',
+          message: enabled
+            ? 'Allow this project’s other Git worktrees to be browsed by confirmed node owners? They remain read only. This does not allow agent execution or editing.'
+            : 'Stop browsing external workspaces for this project? Open external views and retained reads lose access.',
+          confirmText: enabled ? 'Allow browsing' : 'Stop browsing',
+          confirmTooltip: enabled
+            ? 'Allow read-only browsing of external workspaces'
+            : 'Stop external workspace reads',
+        })
+      )
       if (changed && alive) await load()
-    } catch (error) { new Notice(error instanceof Error ? error.message : String(error)) }
-    finally { settingsBusy.value = false }
+    } catch (error) {
+      new Notice(error instanceof Error ? error.message : String(error))
+    } finally {
+      settingsBusy.value = false
+    }
   }
-  menu.addItem(item => item.setTitle('Allow external workspace browsing').setIcon('folder-git-2').onClick(() => { void configure(true) }))
-  menu.addItem(item => item.setTitle('Stop browsing external workspaces').setIcon('folder-closed').onClick(() => { void configure(false) }))
+  if (presentation.target?.kind === 'blob') {
+    const at = location.value
+    if (at.kind === 'file') {
+      menu.addItem((item) =>
+        item
+          .setTitle('File history')
+          .setIcon('git-commit-horizontal')
+          .onClick(() => {
+            void showHistory(at.ref, at.path)
+          })
+      )
+      if (live.value && managedWorkspace.value)
+        menu.addItem((item) =>
+          item
+            .setTitle('Edit file')
+            .setIcon('pencil')
+            .onClick(() => edit(at.path))
+        )
+    }
+  }
+  menu.addItem((item) =>
+    item
+      .setTitle('Repository home')
+      .setIcon('home')
+      .onClick(() => open(source.value!.navigation.home()))
+  )
+  menu.addItem((item) =>
+    item
+      .setTitle('Compare with another version')
+      .setIcon('git-compare')
+      .onClick(() =>
+        new BasePicker(GlobalStore.getInstance().app, source.value!, presentation.target!).open()
+      )
+  )
+  menu.addItem((item) =>
+    item
+      .setTitle('Chat about this')
+      .setIcon('message-square-plus')
+      .onClick(() => {
+        void import('@/github/GithubView').then(({ GithubView }) =>
+          GlobalStore.getInstance().app.workspace.getActiveViewOfType(GithubView)?.chatAbout()
+        )
+      })
+  )
+  const pins = basePins(GlobalStore.getInstance().app)
+  if (source.value && presentation.target && pins.get(presentation.target, source.value.identity))
+    menu.addItem((item) =>
+      item
+        .setTitle('Stop comparing files')
+        .setIcon('pin-off')
+        .onClick(() => pins.unpin(presentation.target!, source.value!.identity))
+    )
+  if (presentation.target?.kind === 'blob')
+    menu.addItem((item) =>
+      item
+        .setTitle(presentation.originalFile ? 'Show comparison' : 'Original file')
+        .setIcon('file-text')
+        .onClick(() => {
+          presentation.originalFile = !presentation.originalFile
+          save()
+        })
+    )
+  menu.addItem((item) =>
+    item
+      .setTitle('Allow external workspace browsing')
+      .setIcon('folder-git-2')
+      .onClick(() => {
+        void configure(true)
+      })
+  )
+  menu.addItem((item) =>
+    item
+      .setTitle('Stop browsing external workspaces')
+      .setIcon('folder-closed')
+      .onClick(() => {
+        void configure(false)
+      })
+  )
   if (event && 'clientX' in event) menu.showAtMouseEvent(event)
   else {
     const rect = (event?.currentTarget as HTMLElement | null)?.getBoundingClientRect()
@@ -325,6 +425,25 @@ onBeforeUnmount(() => {
 <style lang="scss">
 .abele-node-repository__unavailable {
   padding: var(--size-4-4);
+}
+.abele-node-repository__controls {
+  display: flex;
+  align-items: center;
+  gap: var(--size-4-1);
+  min-width: 0;
+  flex: 1 1 auto;
+}
+.abele-node-repository__picker {
+  min-width: 0;
+  flex: 0 1 auto;
+  justify-content: flex-start;
+  margin-inline-end: auto;
+}
+.abele-node-repository__picker .abele-obsidian-icon__text {
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+  min-width: 0;
 }
 .abele-node-repository__actions {
   display: flex;

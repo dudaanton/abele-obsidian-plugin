@@ -86,13 +86,15 @@ it('opens the real node repository in the shared tab, follows history, compares,
     const state = JSON.parse(
       await evalLong(`(async()=>{${prelude}
       const root=document.querySelector('.abele-github-home');
-      if(!root.textContent.includes('Staged and unstaged'))throw Error('Missing independent status columns');
+      if(!root.textContent.includes('Partly ready'))throw Error('Missing independent status columns');
       const view=app.workspace.getLeavesOfType('abele-github').find(l=>l.view.model?.sourceTarget?.provider==='node').view;
       const state=view.getState();if(JSON.stringify(state).includes('127.0.0.1')||JSON.stringify(state).includes(${JSON.stringify(enrolled.token)}))throw Error('Credentials leaked into state');
       await api.openNodeRepository(window.__sampleRepositoryNode,window.__sampleRepositoryProject,window.__sampleRepositoryWorkspace,{path:'app.ts'});
       await until(()=>document.querySelector('.abele-github-blob')?.textContent.includes('value = 3'));
       document.querySelector('[aria-label="Toggle line blame"]').click();await until(()=>document.querySelector('.abele-github-blame-range')?.textContent.includes('Uncommitted'));
-      const history=[...document.querySelectorAll('button')].find(b=>b.textContent.trim()==='History');if(!history)throw Error('History action missing: '+[...document.querySelectorAll('button')].map(b=>b.textContent.trim()).join('|'));history.click();await until(()=>document.querySelector('.abele-github-commits')?.textContent.includes('Add sample files'));
+      document.querySelector('[aria-label="Repository actions"]').click();
+      await until(()=>[...document.querySelectorAll('.menu-item')].some(el=>el.textContent.trim()==='File history'));
+      [...document.querySelectorAll('.menu-item')].find(el=>el.textContent.trim()==='File history').click();await until(()=>document.querySelector('.abele-github-commits')?.textContent.includes('Add sample files'));
       const search=[...document.querySelectorAll('.abele-github-header .abele-obsidian-icon')].find(el=>el.getAttribute('aria-label')?.startsWith('Search the code'));if(!search)throw Error('Search action missing: '+[...document.querySelectorAll('.abele-github-header .abele-obsidian-icon')].map(el=>el.outerHTML).join('|'));search.click();
       await until(()=>document.querySelector('.abele-github-search input'));const input=document.querySelector('.abele-github-search input');input.value='value';input.dispatchEvent(new Event('input',{bubbles:true}));input.dispatchEvent(new KeyboardEvent('keydown',{key:'Enter',bubbles:true}));
       await until(()=>document.querySelector('.abele-github-search__results')?.textContent.includes('app.ts'));

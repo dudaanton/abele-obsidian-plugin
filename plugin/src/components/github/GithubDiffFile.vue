@@ -53,12 +53,12 @@
       </span>
       <span v-if="file.staged || file.unstaged || file.untracked" class="abele-github-file__note">{{
         file.untracked
-          ? 'Untracked'
+          ? 'New'
           : file.staged && file.unstaged
-            ? 'Staged and unstaged'
+            ? 'Partly ready'
             : file.staged
-              ? 'Staged'
-              : 'Unstaged'
+              ? 'Ready'
+              : 'Edited'
       }}</span>
       <Badge v-if="file.status !== 'modified'" :text="file.status" />
       <Icon
@@ -195,7 +195,10 @@ const loadPatch = async () => {
   patchError.value = ''
   try {
     await props.file.loadPatch()
-    if (generation === patchGeneration) { patchEpoch.value++; emit('loaded') }
+    if (generation === patchGeneration) {
+      patchEpoch.value++
+      emit('loaded')
+    }
   } catch (error) {
     if (generation === patchGeneration)
       patchError.value = error instanceof Error ? error.message : String(error)

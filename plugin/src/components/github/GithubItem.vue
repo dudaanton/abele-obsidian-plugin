@@ -59,11 +59,14 @@
           :labels="head.labels"
           :meta="head.meta"
           :loading="main.loading.value"
-          :chat="!!model.screen.link && linker.canAsk()"
+          :chat="source?.identity.provider !== 'node' && !!model.screen.link && linker.canAsk()"
           :crumbs="crumbs"
           :ref-label="crumbRef"
           :tree="panelOpen"
-          :swap="!!compared"
+          :swap="
+            !!compared &&
+            !(source?.identity.provider === 'node' && compared.head.startsWith('working-'))
+          "
           @tree="setPanel(!panelOpen)"
           @swap="swapSides"
           @open="(url: string, pane: PaneType | false) => onOpen?.(url, pane)"
@@ -73,14 +76,27 @@
           @find="showFind"
           @search="tabSearch.openSearch"
         >
+          <template v-if="source?.identity.provider === 'node'" #controls>
+            <slot
+              name="repository-controls"
+              :file="blob"
+              :version="(main.data.value as { ref?: string } | null)?.ref"
+            >
+              <span>{{ target.repo }}</span>
+            </slot>
+          </template>
           <template #file-actions>
             <div v-if="shown.kind === 'blob' && blob" ref="blobToolbar" />
           </template>
         </GithubHeader>
 
-        <slot name="repository-actions" :file="blob" />
+        <slot name="repository-details" :file="blob" />
         <GithubBaseBar
-          v-if="repoRef && ['blob', 'tree', 'repo'].includes(shown.kind)"
+          v-if="
+            source?.identity.provider !== 'node' &&
+            repoRef &&
+            ['blob', 'tree', 'repo'].includes(shown.kind)
+          "
           :repo="repoRef"
           :client="client()"
           :pin="pin"
@@ -96,7 +112,14 @@
           v-if="tabSearch.searchOpen.value"
           :code="tabSearch.code"
           :ready="!!main.data.value"
-          :revision-key="source?.identity.provider === 'node' && sourceLocation && 'ref' in sourceLocation && sourceLocation.ref === 'Working tree' ? (main.data.value as { url?: string } | null)?.url : undefined"
+          :revision-key="
+            source?.identity.provider === 'node' &&
+            sourceLocation &&
+            'ref' in sourceLocation &&
+            sourceLocation.ref === 'Working tree'
+              ? (main.data.value as { url?: string } | null)?.url
+              : undefined
+          "
           :has-changes="tabSearch.hasChanges.value"
           :request="tabSearch.searchRequest.value"
           @open="(url: string, newTab: boolean) => props.onOpen?.(url, newTab ? 'tab' : false)"
@@ -205,7 +228,11 @@
         </template>
 
         <template v-else-if="shown.kind === 'commit' && commit">
-          <pre v-if="source?.identity.provider === 'node' && splitMessage(commit.message).body" class="abele-github__message">{{ splitMessage(commit.message).body }}</pre>
+          <pre
+            v-if="source?.identity.provider === 'node' && splitMessage(commit.message).body"
+            class="abele-github__message"
+            >{{ splitMessage(commit.message).body }}</pre
+          >
           <GithubText
             v-else-if="splitMessage(commit.message).body && repo"
             class="abele-github__message"
@@ -233,7 +260,13 @@
 
         <template v-else-if="shown.kind === 'blob' && blob">
           <EmptyState v-if="blob.note" :text="blob.note" />
-          <Button v-if="blob.canLoadLarge && source?.largeBlob" text="Load larger file" icon="file-text" :disabled="largeBusy" @click="loadLarge" />
+          <Button
+            v-if="blob.canLoadLarge && source?.largeBlob"
+            text="Load larger file"
+            icon="file-text"
+            :disabled="largeBusy"
+            @click="loadLarge"
+          />
           <GithubPinnedFile
             v-if="blob.comparison"
             :file="blob.comparison"
@@ -528,14 +561,20 @@ const main = useLoad<ItemData>(async () => {
   return data
 })
 
-watch(() => main.data.value, (data) => {
-  if (!data || source.value?.identity.provider !== 'node') return
-  const ref = (data as { ref?: string; sha?: string; headSha?: string }).ref ?? (data as { sha?: string }).sha ?? (data as { headSha?: string }).headSha
-  if (ref) {
-    props.model.sourceRevision = source.value.revision?.(ref)
-    props.onState?.()
+watch(
+  () => main.data.value,
+  (data) => {
+    if (!data || source.value?.identity.provider !== 'node') return
+    const ref =
+      (data as { ref?: string; sha?: string; headSha?: string }).ref ??
+      (data as { sha?: string }).sha ??
+      (data as { headSha?: string }).headSha
+    if (ref) {
+      props.model.sourceRevision = source.value.revision?.(ref)
+      props.onState?.()
+    }
   }
-})
+)
 
 const files = useLoad(() => loadPullFiles(client(), shown.value as Of<'pull'>))
 const commits = useLoad(() => loadPullCommits(client(), shown.value as Of<'pull'>))
@@ -604,10 +643,14 @@ const loadLarge = async () => {
     largeBusy.value = true
     try {
       const loaded = await source.value.largeBlob(data.ref, data.path, data.contentId ?? undefined)
-      if (active && generation === loadGeneration && main.data.value === data) main.data.value = loaded
+      if (active && generation === loadGeneration && main.data.value === data)
+        main.data.value = loaded
     } catch (error) {
-      if (active && generation === loadGeneration && main.data.value === data) main.error.value = error instanceof Error ? error.message : String(error)
-    } finally { largeBusy.value = false }
+      if (active && generation === loadGeneration && main.data.value === data)
+        main.error.value = error instanceof Error ? error.message : String(error)
+    } finally {
+      largeBusy.value = false
+    }
     return
   }
   largeBusy.value = true
@@ -722,6 +765,8 @@ const browserUrl = computed(() => {
 
 const head = computed<ItemHead>(() => {
   const head = itemHead(shown.value, main.data.value)
+  if (source.value?.identity.provider === 'node' && shown.value?.kind === 'repo')
+    return { ...head, title: shown.value.repo, state: undefined }
   if (source.value?.identity.provider === 'node' && compared.value)
     return {
       ...head,
@@ -732,7 +777,7 @@ const head = computed<ItemHead>(() => {
   return head
 })
 const shortNodeRef = (ref: string) =>
-  ref.startsWith('working-') ? 'Working tree' : /^[a-f\d]{40}$/i.test(ref) ? ref.slice(0, 7) : ref
+  ref.startsWith('working-') ? 'Current files' : /^[a-f\d]{40}$/i.test(ref) ? ref.slice(0, 7) : ref
 
 // Comments, diffs and the file view make links to themselves through this.
 const linker = createLinker({
@@ -923,6 +968,9 @@ watch(
   source,
   (current) => {
     stopSource()
+    // GitHub already retires its guarded operation client through the tab's credential watcher.
+    // Subscribing through an expired proxy would itself require the revoked capability.
+    if (current?.identity.provider !== 'node') { stopSource = () => {}; return }
     stopSource =
       current?.subscribe((change) => {
         if (change.kind === 'authority') {
@@ -1036,16 +1084,25 @@ watch(
 body.is-phone .abele-github {
   padding: var(--size-4-2);
 }
-body.is-phone .abele-github_node .abele-github-header .clickable-icon {
+body.is-phone .abele-github_node .abele-github-header .clickable-icon,
+body.is-phone .abele-github_node .abele-github-compare .clickable-icon {
   min-width: calc(var(--size-4-10) + var(--size-4-1));
   min-height: calc(var(--size-4-10) + var(--size-4-1));
 }
 
 @container (max-width: 640px) {
-  .abele-github_node .abele-github-header__top { flex-wrap: wrap; }
-  .abele-github_node .abele-github-header__repo { flex-basis: 100%; }
-  .abele-github_node .abele-github-header__repo:empty { display: none; }
-  .abele-github_node .abele-github-header__actions { margin-inline-start: auto; }
+  .abele-github_node .abele-github-header__top {
+    flex-wrap: nowrap;
+  }
+  .abele-github_node .abele-github-header__repo {
+    flex-basis: 100%;
+  }
+  .abele-github_node .abele-github-header__repo:empty {
+    display: none;
+  }
+  .abele-github_node .abele-github-header__actions {
+    margin-inline-start: auto;
+  }
 }
 
 // Obsidian makes its whole interface unselectable and gives selection back only to a note; a

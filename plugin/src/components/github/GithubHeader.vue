@@ -1,7 +1,10 @@
 <template>
   <header ref="root" class="abele-github-header" :class="{ 'abele-github-header_path': crumbs }">
     <div class="abele-github-header__top">
-      <div class="abele-github-header__repo">{{ crumbs ? '' : repo }}</div>
+      <div v-if="$slots.controls" class="abele-github-header__controls">
+        <slot name="controls" />
+      </div>
+      <div v-else class="abele-github-header__repo">{{ crumbs ? '' : repo }}</div>
       <div class="abele-github-header__actions">
         <Icon
           v-bind="nativeAction"
@@ -220,6 +223,12 @@ const accentStates = ['open', 'draft']
     align-items: center;
     justify-content: space-between;
     gap: var(--size-4-2);
+  }
+
+  &__controls {
+    display: flex;
+    min-width: 0;
+    flex: 1 1 auto;
   }
 
   &__repo {

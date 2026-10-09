@@ -115,7 +115,7 @@ export function useTabSearch(o: TabSearchOptions) {
     if (t.kind === 'blob' || t.kind === 'tree' || t.kind === 'repo') {
       const ref = (d as BlobData | FolderData | null)?.ref ?? ''
       // A commit reads as GitHub shows it; a branch or a tag as it is.
-      if (source().identity.provider === 'node' && ref.startsWith('working-')) return 'Working tree'
+      if (source().identity.provider === 'node' && ref.startsWith('working-')) return 'Current files'
       return /^[0-9a-f]{40}$/i.test(ref) ? ref.slice(0, 7) : ref
     }
     return 'the default branch'

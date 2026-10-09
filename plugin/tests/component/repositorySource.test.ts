@@ -220,7 +220,7 @@ describe('shared repository components with an in-memory source', () => {
       props: { repo, data, tab: 'commits' },
       global: globalFor(source),
     })
-    await wrapper.find('.abele-github-commits .abele-card').trigger('click')
+    await wrapper.find('.abele-github-commits .tree-item-self').trigger('click')
     expect(wrapper.emitted('open')?.[0]?.[0]).toBe(`memory:commit/${HEAD}`)
     wrapper.unmount()
   })

@@ -93,7 +93,10 @@ export class GithubView extends ItemView {
         this.model.connectionId,
         this.model.sourceRevision
       )
-    else if (this.model.sourceTarget) state.sourceTarget = this.model.sourceTarget
+    else if (this.model.sourceTarget) {
+      state.sourceTarget = this.model.sourceTarget
+      if (this.model.sourceTarget.provider === 'node' && this.title) state.title = this.title
+    }
     if (this.model.connectionId) {
       state.connectionId = this.model.connectionId
       state.connectionIntent = this.model.connectionIntent ?? 'automatic'
@@ -134,12 +137,12 @@ export class GithubView extends ItemView {
       this.model.connectionId = undefined
       this.model.sourceRevision = node.revision
       Object.assign(this.model.screen, emptyScreen())
-      const saved = state as { mode?: unknown; tree?: unknown; originalFile?: unknown }
+      const saved = state as { mode?: unknown; tree?: unknown; originalFile?: unknown; title?: unknown }
       this.model.mode = saved.mode === 'code' || saved.mode === 'preview' ? saved.mode : undefined
       if (this.model.tree === undefined && typeof saved.tree === 'boolean')
         this.model.tree = saved.tree
       this.model.originalFile = saved.originalFile === true
-      this.title = ''
+      this.title = typeof saved.title === 'string' && saved.title.length <= 200 ? saved.title : ''
       this.model.nonce++
       this.refreshHeader()
       await super.setState(state, result)

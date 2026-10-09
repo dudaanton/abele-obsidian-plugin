@@ -1,7 +1,15 @@
 <template>
   <div class="abele-github-compare">
     <div v-if="source?.identity.provider === 'node'" class="abele-github-compare__choices">
-      <Button text="Change base" icon="git-branch" @click="chooseBase" />
+      <Icon
+        class="clickable-icon"
+        role="button"
+        tabindex="0"
+        icon="git-branch"
+        tooltip="Choose a version to compare with"
+        @click="chooseBase"
+        @keydown.enter.prevent="chooseBase"
+      />
       <Dropdown
         v-if="data.head.startsWith('working-')"
         :model-value="data.mode || 'endpoint'"
@@ -74,7 +82,7 @@ import { computed } from 'vue'
 import type { PaneType } from 'obsidian'
 import EmptyState from '../obsidian/EmptyState.vue'
 import Tabs from '../obsidian/Tabs.vue'
-import Button from '../obsidian/Button.vue'
+import Icon from '../obsidian/Icon.vue'
 import Dropdown from '../obsidian/Dropdown.vue'
 import { RefPicker } from '@/github/repoPage/RefPicker'
 import { GlobalStore } from '@/stores/GlobalStore'
@@ -118,8 +126,8 @@ const tabs = computed(() => [
 const source = useRepositorySource()
 const modes = [
   { value: 'endpoint', display: 'All changes' },
-  { value: 'staged', display: 'Staged' },
-  { value: 'unstaged', display: 'Unstaged' },
+  { value: 'staged', display: 'Ready for commit' },
+  { value: 'unstaged', display: 'Other edits' },
   { value: 'merge-base', display: 'From common ancestor' },
 ]
 const chooseBase = () =>

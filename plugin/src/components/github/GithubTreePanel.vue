@@ -254,7 +254,7 @@ watch(
 
 const shortRef = (ref: string) =>
   source.value?.identity.provider === 'node' && ref.startsWith('working-')
-    ? 'Working tree'
+    ? 'Current files'
     : /^[0-9a-f]{40}$/i.test(ref)
       ? ref.slice(0, 7)
       : ref

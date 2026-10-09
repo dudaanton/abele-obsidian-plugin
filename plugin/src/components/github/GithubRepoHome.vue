@@ -24,7 +24,7 @@
       </div>
     </div>
 
-    <div class="abele-github-home__bar">
+    <div v-if="!home.node" class="abele-github-home__bar">
       <Button
         class="abele-github-home__ref"
         icon="git-branch"
@@ -51,67 +51,73 @@
     <template v-if="home.node">
       <section class="abele-github-home__workspaces" aria-label="Workspaces">
         <FoldHeading text="Workspaces" />
-        <div
+        <RepositoryRow
           v-for="workspace in home.node.workspaces"
           :key="workspace.id"
-          class="abele-github-home__workspace"
-        >
-          <TreeItem
-            :text="workspace.label"
-            :icon="workspace.kind === 'external' ? 'folder-git-2' : 'folder'"
-            :active="
-              source?.identity.provider === 'node' && workspace.id === source.identity.workspace
-            "
-            :plain="workspace.availability !== 'available'"
-            :flair="
-              workspace.dirty === true
-                ? 'Changes'
-                : workspace.dirty === false
-                  ? 'Clean'
-                  : 'Not checked'
-            "
-            @click="emit('open', source!.navigation.workspace!(workspace.id), false)"
-          />
-          <div class="abele-github-home__workspace-meta">{{ workspaceMeta(workspace) }}</div>
-        </div>
-      </section>
-      <section aria-label="Working tree changes">
-        <FoldHeading text="Working tree" />
-        <Button
-          v-if="
-            home.node.status.revision?.kind === 'working-tree' && home.node.status.revision.head
+          :title="workspace.label"
+          :meta="workspaceMeta(workspace)"
+          kind="workspace"
+          :icon="workspace.kind === 'external' ? 'folder-git-2' : 'folder'"
+          :active="
+            source?.identity.provider === 'node' && workspace.id === source.identity.workspace
           "
-          text="Review changes"
-          icon="file-diff"
-          @click="
-            emit(
-              'open',
-              source!.navigation.comparison(home.node.status.revision.head, 'Working tree', true),
-              false
-            )
+          :plain="workspace.availability !== 'available'"
+          :status="
+            workspace.dirty === true
+              ? 'Changes'
+              : workspace.dirty === false
+                ? 'Clean'
+                : 'Not checked'
           "
+          @pick="emit('open', source!.navigation.workspace!(workspace.id), false)"
         />
+      </section>
+      <section aria-label="Uncommitted changes">
+        <div class="abele-github-home__section-head">
+          <FoldHeading text="Uncommitted changes" />
+          <Icon
+            v-if="
+              home.node.status.revision?.kind === 'working-tree' && home.node.status.revision.head
+            "
+            class="clickable-icon"
+            role="button"
+            tabindex="0"
+            tooltip="Review uncommitted changes"
+            icon="file-diff"
+            @click="
+              emit(
+                'open',
+                source!.navigation.comparison(home.node.status.revision.head, 'Working tree', true),
+                false
+              )
+            "
+          />
+        </div>
         <EmptyState v-if="!home.node.status.files.length" text="No local changes." />
-        <TreeItem
+        <RepositoryRow
           v-for="file in home.node.status.files"
           :key="file.path"
-          :text="file.path"
+          :title="file.path.split('/').pop()!"
+          :meta="file.path.includes('/') ? file.path : undefined"
           icon="file-diff"
-          :flair="changeLabel(file)"
+          kind="change"
+          :status="changeLabel(file)"
           :plain="file.status === 'deleted'"
-          @click="emit('open', source!.navigation.file('Working tree', file.path), false)"
+          @pick="emit('open', source!.navigation.file('Working tree', file.path), false)"
         />
       </section>
       <section aria-label="Recent commits">
         <FoldHeading text="Recent commits" />
         <EmptyState v-if="!home.node.commits.length" text="No commits yet." />
-        <TreeItem
+        <RepositoryRow
           v-for="commit in home.node.commits.slice(0, 10)"
           :key="commit.sha"
-          :text="commit.message.split('\n')[0]"
+          :title="commit.message.split('\n')[0]"
+          :meta="`${commit.author} · ${formatDate(commit.date)}`"
           icon="git-commit-horizontal"
-          :flair="commit.sha.slice(0, 7)"
-          @click="emit('open', source!.navigation.commit(commit.sha), false)"
+          kind="commit"
+          :status="commit.sha.slice(0, 7)"
+          @pick="emit('open', source!.navigation.commit(commit.sha), false)"
         />
       </section>
     </template>
@@ -210,7 +216,7 @@ import type { PaneType } from 'obsidian'
 import Badge from '../obsidian/Badge.vue'
 import Button from '../obsidian/Button.vue'
 import Icon from '../obsidian/Icon.vue'
-import TreeItem from '../obsidian/TreeItem.vue'
+import RepositoryRow from '../repository/RepositoryRow.vue'
 import { nodeRevisionLabel } from '@/repository/node'
 import type { RepositoryWorkspace, RepositoryStatus } from '@/repository/source'
 import EmptyState from '../obsidian/EmptyState.vue'
@@ -261,8 +267,8 @@ const workspaceMeta = (w: RepositoryWorkspace) =>
     w.kind === 'external'
       ? 'External · read only'
       : w.kind === 'managed'
-        ? 'Worktree'
-        : 'Original checkout',
+        ? 'Workspace'
+        : 'Project folder',
     w.branch?.replace(/^refs\/heads\//, '') || (w.head ? 'Detached' : 'No commits'),
     w.head?.slice(0, 7),
     w.availability !== 'available' ? w.availability : '',
@@ -273,14 +279,14 @@ const workspaceMeta = (w: RepositoryWorkspace) =>
     .join(' · ')
 const changeLabel = (file: RepositoryStatus['files'][number]) =>
   file.untracked
-    ? 'Untracked'
+    ? 'New'
     : file.staged && file.unstaged
-      ? 'Staged and unstaged'
+      ? 'Partly ready'
       : file.staged
-        ? 'Staged'
+        ? 'Ready'
         : file.status === 'deleted'
-          ? 'Deleted · unstaged'
-          : 'Unstaged'
+          ? 'Deleted'
+          : 'Edited'
 const homeUrl = (r: RepoLike, ref: string | undefined) =>
   source.value?.navigation.home(ref, meta.value.defaultBranch) ??
   homeUrlOf(r, ref, meta.value.defaultBranch)
@@ -363,6 +369,13 @@ const switchRef = () => {
   flex-direction: column;
   gap: var(--size-4-4);
   container-type: inline-size;
+
+  &__section-head {
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+    gap: var(--size-4-2);
+  }
 
   &__workspace-meta {
     padding-inline-start: var(--size-4-6);
@@ -491,8 +504,10 @@ const switchRef = () => {
   .tree-item-self {
     padding-inline-start: var(--size-4-6);
   }
+  .tree-item-inner { color: var(--text-normal); }
 }
 
+body.is-phone .abele-github-home_node .clickable-icon { min-width: calc(var(--size-4-10) + var(--size-4-1)); min-height: calc(var(--size-4-10) + var(--size-4-1)); }
 body.is-phone .abele-github-home_node .tree-item-self {
   min-height: calc(var(--size-4-10) + var(--size-4-1));
 }
