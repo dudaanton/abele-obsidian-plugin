@@ -18,6 +18,7 @@ export interface MeasuredElement {
   layoutBox?: boolean
   layout?: { display: string; justify: string }
   slot?: 'icon' | 'text' | 'action'
+  iconRole?: 'content' | 'collapse'
   level?: Level
   rect: Box
   /** CSS fragment rectangles for inline elements wrapping across multiple lines. */
@@ -44,6 +45,7 @@ export interface MeasuredElement {
   disabled?: boolean
 }
 export interface RowMetrics {
+  iconRole?: 'content' | 'collapse'
   iconSize?: number
   padding: Insets
   iconTextGap?: number
@@ -117,6 +119,7 @@ export function rowMetrics(elements: MeasuredElement[], row: MeasuredElement): R
     members.find((e) => e.level === 'title') ?? members.find((e) => e.level === 'section')
   return {
     iconSize: icon && Math.max(icon.rect.width, icon.rect.height),
+    iconRole: icon?.iconRole,
     padding: row.padding,
     iconTextGap: icon && title ? line(title).x - right(icon.rect) : undefined,
     lineHeight: title?.font.lineHeight,
@@ -407,8 +410,10 @@ export function lintDesign(snapshot: DesignSnapshot, options: LintOptions = {}):
             metric
           )
       }
-      compare('iconSize', measured.iconSize, reference.iconSize)
-      compare('iconTextGap', measured.iconTextGap, reference.iconTextGap)
+      if (measured.iconRole === reference.iconRole) {
+        compare('iconSize', measured.iconSize, reference.iconSize)
+        compare('iconTextGap', measured.iconTextGap, reference.iconTextGap)
+      }
       compare('lineHeight', measured.lineHeight, reference.lineHeight)
       measured.padding.forEach((v, i) =>
         compare(`padding.${['top', 'right', 'bottom', 'left'][i]}`, v, reference.padding[i])

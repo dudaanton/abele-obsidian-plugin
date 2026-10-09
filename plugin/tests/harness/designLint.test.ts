@@ -53,6 +53,25 @@ describe('design lint geometry rules', () => {
   it('accepts aligned first lines and scale spacing without confusing glyph bounds with line-height', () => {
     expect(lintDesign(snapshot(row()))).toEqual([])
   })
+  it('compares icon parity only within the same semantic icon role, without relaxing size tolerance', () => {
+    const s = snapshot(row())
+    s.elements[1].iconRole = 'content'
+    s.native = {
+      selector: '#reference',
+      metrics: {
+        padding: [8, 8, 8, 8],
+        iconSize: 10,
+        iconRole: 'collapse',
+        iconTextGap: 8,
+        lineHeight: 20,
+      },
+    }
+    expect(codes(s)).not.toContain('native-parity')
+    s.native.metrics.iconRole = 'content'
+    expect(lintDesign(s).some((v) => v.rule === 'native-parity' && v.metric === 'iconSize')).toBe(
+      true
+    )
+  })
   it('reports leading and trailing icons against the first line, not a multi-line title box', () => {
     const els = row()
     els[1].rect.y = 10

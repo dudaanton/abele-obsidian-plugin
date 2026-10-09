@@ -157,6 +157,36 @@ describe('renderer design capture', () => {
     expect(s.native?.elements?.[0].selector).toContain('tree-item-self')
     expect(s.native?.variants).toHaveProperty('backlinks-section')
   })
+  it('classifies a compound native kit row once, without treating its wrapper or edge glyph as text', () => {
+    fixture()
+    document.querySelector('#surface')!.innerHTML =
+      `<article class="tree-item abele-list-row"><div class="tree-item-self abele-list-row__line"><span class="abele-list-row__leading"><svg class="lucide-file-text"></svg></span><div class="tree-item-inner abele-list-row__content"><button class="abele-list-row__main"><span class="abele-list-row__title-line"><span class="abele-list-row__title-text">sample</span><span class="abele-list-row__extension">.md</span></span><span class="abele-meta-line">Work</span></button><div class="abele-list-row__actions"><button class="abele-disclosure__control"><span class="collapse-icon"><svg></svg></span></button></div></div></div></article>`
+    for (const el of document.querySelectorAll('#surface *'))
+      vi.spyOn(el, 'getBoundingClientRect').mockReturnValue(new DOMRect(20, 20, 100, 20))
+    const s = captureDesign('#surface')
+    const titles = s.elements.filter((e) => e.level === 'title')
+    expect(titles).toHaveLength(1)
+    expect(titles[0].text).toBe('sample .md')
+    expect(titles[0].kind).toBe('list-row')
+    expect(
+      s.elements.find((e) => e.selector.includes('abele-list-row__content'))?.level
+    ).toBeUndefined()
+    const edge = s.elements.find((e) => e.selector.includes('abele-disclosure__control'))!
+    expect(edge.level).toBeUndefined()
+    expect(edge.slot).toBe('action')
+    expect(s.elements.find((e) => e.selector === 'svg.lucide-file-text')?.iconRole).toBe('content')
+  })
+  it('does not make a static tree label into a touch action', () => {
+    fixture()
+    document
+      .querySelector('[data-design-row]')!
+      .insertAdjacentHTML('beforeend', '<div role="treeitem">Read only</div>')
+    const el = document.querySelector('[role="treeitem"]')!
+    vi.spyOn(el, 'getBoundingClientRect').mockReturnValue(new DOMRect(20, 20, 100, 20))
+    expect(captureDesign('#surface').elements.find((e) => e.selector === 'div')?.role).not.toBe(
+      'control'
+    )
+  })
   it('throws on absent containers rather than reporting a vacuous pass', () => {
     fixture()
     expect(() => captureDesign('#missing')).toThrow('No visible')

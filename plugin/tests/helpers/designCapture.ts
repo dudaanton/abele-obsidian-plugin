@@ -13,14 +13,15 @@ export interface CaptureOptions {
 export function captureDesign(selector: string, options: CaptureOptions = {}): DesignSnapshot {
   const rows =
     options.rowSelector ??
-    '[data-design-row], .abele-list-row, .tree-item-self, .nav-file-title, .search-result-file-title'
+    '[data-design-row], .abele-list-row__line, .tree-item-self, .nav-file-title, .search-result-file-title'
   const levelSelectors = {
     section:
       '[data-design-level="section"], .abele-list-section-header [class$="__header-text"], .backlink-pane > .tree-item-self > .tree-item-inner',
     title:
-      '[data-design-level="title"], .abele-list-row__title-text, .abele-list-row__title, .tree-item-inner:not(.backlink-pane > .tree-item-self > .tree-item-inner), .nav-file-title-content, .search-result-file-title:not(:has(.tree-item-inner))',
+      '[data-design-level="title"], .abele-list-row__title-line, .tree-item-inner:not(.abele-list-row__content):not(.backlink-pane > .tree-item-self > .tree-item-inner), .nav-file-title-content, .search-result-file-title:not(:has(.tree-item-inner))',
     meta: '[data-design-level="meta"], .abele-meta-line, .abele-list-row__state, .abele-list-row__snippet',
-    detail: '[data-design-level="detail"], .abele-disclosure__control',
+    detail:
+      '[data-design-level="detail"], .abele-disclosure:not(.abele-disclosure_compact) > .abele-disclosure__control',
     ...options.levels,
   }
   const icons = options.iconSelector ?? 'svg, [data-design-icon]'
@@ -105,7 +106,7 @@ export function captureDesign(selector: string, options: CaptureOptions = {}): D
       )
       const isIcon = el.matches(icons) && !el.parentElement?.closest(icons)
       const control = el.matches(
-        'button, input, select, textarea, summary, a[href], [role="button"], [role="checkbox"], [role="treeitem"], [role="tab"], [role="switch"], [role="menuitem"], [tabindex="0"], .clickable-icon, .is-clickable'
+        'button, input, select, textarea, summary, a[href], [role="button"], [role="checkbox"], [role="treeitem"][tabindex="0"], [role="tab"], [role="switch"], [role="menuitem"], [tabindex="0"], .clickable-icon, .is-clickable'
       )
       const text = textBoxes(el, !!level || control)
       const glyphText = [...el.childNodes]
@@ -114,12 +115,23 @@ export function captureDesign(selector: string, options: CaptureOptions = {}): D
         .join('')
         .trim()
       const role = isIcon ? 'icon' : control ? 'control' : text.text || glyphText ? 'text' : 'other'
+      const iconRole = isIcon
+        ? el.closest('.collapse-icon, [data-design-disclosure]')
+          ? ('collapse' as const)
+          : ('content' as const)
+        : undefined
       let slot: MeasuredElement['slot']
       if (host && isIcon) {
         if (el.closest(actions)) slot = 'action'
         else if (!el.closest('.abele-disclosure, [data-design-disclosure]')) slot = 'icon'
       } else if (host && level) slot = 'text'
-      else if (host && control && el.closest(actions) && !el.querySelector(icons)) slot = 'action'
+      else if (
+        host &&
+        control &&
+        el.closest(actions) &&
+        (!el.querySelector(icons) || el.matches('.abele-disclosure__control'))
+      )
+        slot = 'action'
       const ancestors: Element[] = []
       for (let p: Element | null = el; p; p = p.parentElement) ancestors.unshift(p)
       let composed = [255, 255, 255]
@@ -148,7 +160,7 @@ export function captureDesign(selector: string, options: CaptureOptions = {}): D
       const depth = (host?.getAttribute('data-path') ?? '').split('/').length - 1
       const kind =
         host?.getAttribute(options.kindAttribute ?? 'data-design-kind') ??
-        (host?.classList.contains('abele-list-row')
+        (host?.classList.contains('abele-list-row__line')
           ? 'list-row'
           : host?.matches('.backlink-pane > .tree-item-self')
             ? 'backlinks-section'
@@ -180,6 +192,7 @@ export function captureDesign(selector: string, options: CaptureOptions = {}): D
         layoutBox: !el.parentElement?.closest('svg'),
         layout: { display: s.display, justify: s.justifyContent },
         slot,
+        iconRole,
         level,
         rect,
         fragments: [...el.getClientRects()].filter((r) => r.width && r.height).map(box),
@@ -269,6 +282,7 @@ export function captureDesign(selector: string, options: CaptureOptions = {}): D
     const metrics = {
       padding: host.padding,
       iconSize: icon && Math.max(icon.rect.width, icon.rect.height),
+      iconRole: icon?.iconRole,
       iconTextGap:
         icon && title?.firstLine ? title.firstLine.x - icon.rect.x - icon.rect.width : undefined,
       lineHeight: title?.font.lineHeight,
