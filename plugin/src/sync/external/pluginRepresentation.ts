@@ -6,6 +6,7 @@ import { ExternalFileHost } from './ObsidianExternalFileHost'
 import { ExternalRecoveryRequired, type RuntimeFence } from './recovery'
 import type { ConnectionBinding } from './records'
 import { IndexedDbStateStore } from '../IndexedDbStateStore'
+import { EXTERNAL_INSPECTION_KEY, inspectionSchema } from './pluginSafety'
 
 /** Called only after the startup fence/journal inspection, before engine activation.
  * During receive/recovery this callback runs inside the owning sync job; it does not enqueue
@@ -30,7 +31,15 @@ export async function pluginRepresentation(options: {
       ? null
       : await ExternalState.open(store, ledgerId, binding)
   fence.assertOwned()
+  const cached = inspectionSchema.safeParse(app.loadLocalStorage(EXTERNAL_INSPECTION_KEY))
   return ExternalRepresentation.open({
+    inspection: {
+      entries: cached.success ? cached.data.entries : [],
+      save: (entries) => {
+        fence.assertOwned()
+        app.saveLocalStorage(EXTERNAL_INSPECTION_KEY, { schema: 1, entries })
+      },
+    },
     ...options,
     state,
     emptyView: { ledgerId, binding },

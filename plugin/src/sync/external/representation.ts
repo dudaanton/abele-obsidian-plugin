@@ -44,6 +44,12 @@ export interface RepresentationOptions {
   scriptsFolder(): string
   configDir?: string
   excluded?(path: string, size: number): boolean
+  /** Task-3 stat-first projection inspection cache, scoped to this vault. Never authority for
+   * owned paths; a changed stat forces fresh inspection. */
+  inspection?: {
+    entries: readonly { path: string; size: number; mtime: number; marker: boolean }[]
+    save(entries: readonly { path: string; size: number; mtime: number; marker: boolean }[]): void
+  }
   verify(fileId: string, input: ExternalVerifyRequest): Promise<unknown>
   /** Called only with verified bytes and durable intent, inside the sync's own serialized job.
    * Existing sidecars must not be overwritten; hosts can conservatively retain cleanup work. */
@@ -82,7 +88,13 @@ export class ExternalRepresentation {
   private readonly entries = new Map<string, StateEntry>()
   private stopped = false
   private readonly unexpected = new Set<string>()
-  private constructor(private readonly options: RepresentationOptions) {}
+  private readonly inspected = new Map<
+    string,
+    { path: string; size: number; mtime: number; marker: boolean }
+  >()
+  private constructor(private readonly options: RepresentationOptions) {
+    for (const entry of options.inspection?.entries ?? []) this.inspected.set(entry.path, entry)
+  }
   static async open(options: RepresentationOptions): Promise<ExternalRepresentation> {
     const runtime = new ExternalRepresentation(options)
     runtime.document = options.state
@@ -164,8 +176,8 @@ export class ExternalRepresentation {
     const fs = this.options.fs as FileSystem & {
       readPrefix?(path: string, maximum: number): Promise<Uint8Array>
     }
-    if (fs.readPrefix) return fs.readPrefix(path, MAX_PROJECTION_BYTES)
     if (info.size > MAX_PROJECTION_BYTES) return null
+    if (fs.readPrefix) return fs.readPrefix(path, MAX_PROJECTION_BYTES)
     return fs.read(path)
   }
   async classify(
@@ -195,9 +207,23 @@ export class ExternalRepresentation {
     }
     if (this.artifact(path)) return { kind: 'hold', reason: 'owned-artifact', dirty: false }
     if (info === null) return { kind: 'ordinary' }
+    // Scanner exclusions precede byte inspection. Portable adapters have no bounded read:
+    // stat before readPrefix, since their implementation may allocate the entire file.
+    if (this.options.excluded?.(path, info.size) || info.size > MAX_PROJECTION_BYTES)
+      return { kind: 'ordinary' }
+    const prior = this.inspected.get(path)
+    if (!supplied && prior?.size === info.size && prior.mtime === info.mtime)
+      return prior.marker
+        ? { kind: 'hold', reason: 'projection', dirty: false }
+        : { kind: 'ordinary' }
     const bytes = supplied ?? (await this.bytes(path, info))
     this.owned()
-    if (bytes && recognizeProjection(bytes)) {
+    const marker = !!bytes && recognizeProjection(bytes)
+    if (!supplied) {
+      this.inspected.set(path, { path, size: info.size, mtime: info.mtime, marker })
+      this.options.inspection?.save([...this.inspected.values()])
+    }
+    if (marker) {
       const inspection = inspectProjection(bytes, path, {
         vaultId: this.document.binding.vaultId,
         owned: this.document.files,

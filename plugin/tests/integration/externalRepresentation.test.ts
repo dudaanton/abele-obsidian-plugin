@@ -16,6 +16,7 @@ import { ExternalState } from '@/sync/external/state'
 import { ExternalRepresentation } from '@/sync/external/representation'
 import { ObsidianFileSystem } from '@/sync/ObsidianFileSystem'
 import { serializeProjection } from '@/sync/external/projection'
+import { EXTERNAL_INSPECTION_KEY } from '@/sync/external/pluginSafety'
 import { buildFakeVault } from '../helpers/fakeVault'
 
 const binding = {
@@ -168,6 +169,64 @@ const filter = { excluded: () => false }
 
 // BUG: ordinary scanner/pull paths do not yet share external representation policy.
 describe('common external representation and durable remote projection work', () => {
+  it('does not read unchanged mobile attachments across two scans without external records', async () => {
+    const fake = buildFakeVault([])
+    const paths = ['Media/sample-a.bin', 'Media/sample-b.bin', 'Media/sample-c.bin']
+    vi.spyOn(fake.vault, 'getFiles').mockImplementation(() =>
+      paths.map((name) => ({ path: name, stat: { size: 100 * 1024 * 1024, mtime: 1000 } }) as never)
+    )
+    const readBinary = vi.spyOn(fake.vault.adapter, 'readBinary')
+    const runtime = await ExternalRepresentation.open({
+      state: null,
+      emptyView: { ledgerId: 'sample-ledger', binding },
+      ledger: new MemoryStateStore(),
+      fs: new ObsidianFileSystem(fake as unknown as App),
+      verify: async () => {
+        throw Error('no server')
+      },
+      assertOwned: () => {},
+      scriptsFolder: () => 'Scripts',
+      installProjection: async () => 'cleanup-pending',
+    })
+    for (let i = 0; i < 2; i++)
+      for await (const info of runtime.fileSystem().list())
+        if (paths.includes(info.path))
+          expect(await runtime.classify(info.path, info)).toEqual({ kind: 'ordinary' })
+    expect(readBinary).not.toHaveBeenCalled()
+  })
+
+  it('reuses the persisted inspection for unchanged small files and excludes before reading', async () => {
+    const s = await setup()
+    s.fake.vault.adapter.writeBinary('Media/sample-small.bin', new Uint8Array([1, 2]).buffer)
+    s.fake.vault.adapter.writeBinary('Media/sample-excluded.bin', new Uint8Array([3]).buffer)
+    s.fake.saveLocalStorage(EXTERNAL_INSPECTION_KEY, { schema: 1, entries: [] })
+    const readBinary = vi.spyOn(s.fake.vault.adapter, 'readBinary')
+    const runtime = await ExternalRepresentation.open({
+      state: s.state,
+      ledger: s.store,
+      fs: s.fs,
+      verify: s.verify,
+      assertOwned: () => {},
+      scriptsFolder: () => 'Scripts',
+      excluded: (name) => name === 'Media/sample-excluded.bin',
+      inspection: {
+        entries: [],
+        save: (entries) => s.fake.saveLocalStorage(EXTERNAL_INSPECTION_KEY, { schema: 1, entries }),
+      },
+      installProjection: async () => 'cleanup-pending',
+    })
+    for (let i = 0; i < 2; i++)
+      for await (const _ of runtime.fileSystem().list()) {
+        /* classify */
+      }
+    expect(
+      readBinary.mock.calls.filter(([name]) => name === 'Media/sample-small.bin')
+    ).toHaveLength(1)
+    expect(
+      readBinary.mock.calls.filter(([name]) => name === 'Media/sample-excluded.bin')
+    ).toHaveLength(0)
+  })
+
   it('intentional absence produces neither a server delete nor dirty; ordinary sidecars still sync', async () => {
     const s = await setup()
     await s.fake.vault.adapter.writeBinary(

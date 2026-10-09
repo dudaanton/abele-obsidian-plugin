@@ -121,7 +121,7 @@ export async function checkExternalMigration(app: App, factory: IDBFactory): Pro
 }
 
 export const EXTERNAL_INSPECTION_KEY = 'abele-sync-external-inspection-v1'
-const inspectionSchema = z
+export const inspectionSchema = z
   .object({
     schema: z.literal(1),
     entries: z.array(
