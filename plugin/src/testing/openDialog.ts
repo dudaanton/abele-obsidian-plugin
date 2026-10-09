@@ -210,6 +210,7 @@ const DIALOGS: Record<string, (options?: DialogFixtureOptions) => void | Promise
     mountAlone(NodePairingDialog, { ...nodePairingFixture('waiting'), resumeNodeId: undefined }),
   'node-pairing-waiting': () => mountAlone(NodePairingDialog, nodePairingFixture('waiting')),
   'node-pairing-recovery': () => mountAlone(NodePairingDialog, nodePairingFixture('recovery')),
+  'node-pairing-endpoint': () => mountAlone(NodePairingDialog, nodePairingFixture('endpoint')),
   'node-question': () => mountNodeQuestion('select'),
   'node-question-input': () => mountNodeQuestion('input'),
   'node-workspaces': () => mountAlone(NodeWorkspaceDialog, nodeWorkspaceFixture()),

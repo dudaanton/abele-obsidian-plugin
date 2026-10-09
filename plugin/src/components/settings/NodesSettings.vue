@@ -77,6 +77,7 @@ import { ref } from 'vue'
 import { ChatService } from '@/ai/ChatService'
 import { NodeService } from '@/node/NodeService'
 import { isPairedNode } from '@/node/NodeRegistry'
+import { claimedEnrollment } from '@/node/NodeDeviceKeyStore'
 import NodePairingDialog from '../NodePairingDialog.vue'
 import { pickNodeSession } from '@/node/openSession'
 import type { RegisteredNode } from '@/node/NodeRegistry'
@@ -114,9 +115,21 @@ const add = async () => {
 }
 const check = async (id: string) => {
   try {
-    await service.connection(id).connect()
     const node = service.nodes.value.find((n) => n.id === id)
-    if (node && isPairedNode(node)) await service.deviceKeys.finishEnrollment(node.expectedNodeId)
+    const expected =
+      node && isPairedNode(node)
+        ? claimedEnrollment(await service.deviceKeys.load(node.expectedNodeId))
+        : undefined
+    await service.connection(id).connect()
+    if (
+      node &&
+      isPairedNode(node) &&
+      expected &&
+      expected.endpoint === node.url &&
+      expected.node_fingerprint === node.nodeFingerprint &&
+      expected.installation_id === node.installationId
+    )
+      await service.deviceKeys.finishEnrollment(node.expectedNodeId, expected)
     message.value = 'Connected'
   } catch (error) {
     report(error)

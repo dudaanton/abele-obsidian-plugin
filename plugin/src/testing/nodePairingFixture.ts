@@ -2,7 +2,7 @@ import { ref } from 'vue'
 import type { NodeService } from '@/node/NodeService'
 
 /** Presentation-only enrollment; no real key, invitation or connection is used. */
-export function nodePairingFixture(mode: 'waiting' | 'recovery') {
+export function nodePairingFixture(mode: 'waiting' | 'recovery' | 'endpoint') {
   const invite = {
     endpoint: 'wss://sample.example.ts.net:8443/channel',
     node_id: 'sample-node',
@@ -22,16 +22,30 @@ export function nodePairingFixture(mode: 'waiting' | 'recovery') {
   }
   const device = {
     node_id: invite.node_id,
+    endpoint: mode === 'endpoint' ? 'wss://previous.example.ts.net:9443/channel' : invite.endpoint,
     node_fingerprint: mode === 'recovery' ? 'd'.repeat(64) : invite.node_fingerprint,
     installation_id: node.installationId,
-    enrollment: { invite, label: node.label },
+    enrollment: {
+      invite,
+      label: node.label,
+      ...(mode === 'waiting'
+        ? {
+            claim: {
+              installation_id: node.installationId,
+              device_fingerprint: 'c'.repeat(64),
+              state: 'pending',
+            },
+          }
+        : {}),
+    },
   }
   const service = {
     nodes: ref(mode === 'waiting' ? [node] : []),
     deviceKeys: {
       load: async () => device,
       pending: async () => [device],
-      finishEnrollment: async () => {},
+      finishEnrollment: async () => true,
+      authorizeEndpointChange: async () => {},
     },
     deviceFingerprint: async () => 'c'.repeat(64),
     connection: () => ({

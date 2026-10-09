@@ -9,6 +9,7 @@ it.each([
   'node-pairing',
   'node-pairing-waiting',
   'node-pairing-recovery',
+  'node-pairing-endpoint',
   'node-question',
   'node-question-input',
   'node-workspaces',
@@ -63,6 +64,10 @@ it.each([
     if (name === 'node-pairing-recovery') {
       expect(result.text).toContain('d'.repeat(64))
       expect(result.text).toContain('a'.repeat(64))
+    }
+    if (name === 'node-pairing-endpoint') {
+      expect(result.text).toContain('wss://previous.example.ts.net:9443/channel')
+      expect(result.text).toContain('wss://sample.example.ts.net:8443/channel')
     }
     if (name === 'node-workspaces') expect(result.text).toContain('Compaction not accepted')
   },

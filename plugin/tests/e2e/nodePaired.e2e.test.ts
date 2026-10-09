@@ -208,7 +208,7 @@ it('pairs through the real node UI, confirms locally, runs fake prompts and fenc
     await command('pair', 'confirm', pending.installation_id, repaired.pin)
     expect(
       await evalLong(
-        `(async()=>{${prelude}await nodes.connection(${JSON.stringify(registration)}).connect();await nodes.deviceKeys.finishEnrollment(${JSON.stringify(invite.node_id)});return 'reconnected'})()`,
+        `(async()=>{${prelude}const device=await nodes.deviceKeys.load(${JSON.stringify(invite.node_id)});const expected={...device.enrollment.invite,...device.enrollment.claim};await nodes.connection(${JSON.stringify(registration)}).connect();if(!(await nodes.deviceKeys.finishEnrollment(${JSON.stringify(invite.node_id)},expected)))throw Error('Enrollment changed');return 'reconnected'})()`,
         60000
       )
     ).toBe('reconnected')

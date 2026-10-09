@@ -69,12 +69,20 @@ Paired private keys live only in origin/device-local IndexedDB `abele-node-keys-
 version 1, object store `keys`, keyed by stable node ID. Each record structured-clones a
 non-extractable ECDSA P-256 CryptoKey, public coordinates, endpoint, node fingerprint and
 optional installation ID. Pending `enrollment` retains the invitation secret and label only
-here for lost-response recovery, until confirmed connection clears it. Web Locks serialize
+here for lost-response recovery. Its optional `claim` stores the acknowledged installation,
+device fingerprint and pending/confirmed claim state for that exact invitation. Remembering a
+new invitation resets this receipt; an old registration/installation ID never proves that the
+new claim reached the node. Legacy enrollments without a receipt remain explicitly retryable.
+Confirmed connection clears only the captured invitation ID, endpoint, node fingerprint and
+acknowledged installation/device fingerprint; stale completion cannot clear a newer enrollment.
+Web Locks serialize
 all windows sharing this namespace; cryptography happens outside short atomic IndexedDB
 commits. Devices lacking these facilities refuse pairing. Nothing here is a vault file,
 JSON setting, synced secret or transferable configuration. Removing a registration leaves
 its key/history intact for re-pairing; actual revocation is node-owner controlled. Node pin
-changes require explicit out-of-band owner verification, never automatic recovery.
+changes require explicit out-of-band owner verification, never automatic recovery. An endpoint
+change with the same pin has its own explicit owner-verified action and transactional comparison
+of the previous endpoint/pin; it preserves the device key and principal.
 
 Local enrollment uses IndexedDB `abele-node-<local namespace>-<registration id>`;
 paired history uses `abele-node-paired-<node id>-<installation id>` so same-principal

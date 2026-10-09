@@ -50,6 +50,21 @@
             I independently verified the new node key with the owner.
           </label>
         </template>
+        <template v-if="previousEndpoint && previousEndpoint !== invite.endpoint">
+          <p>The endpoint changed. Compare both addresses with the owner before connecting.</p>
+          <p>Previously bound endpoint:</p>
+          <code aria-label="Previous node endpoint">{{ previousEndpoint }}</code>
+          <p>New endpoint:</p>
+          <code aria-label="New node endpoint">{{ invite.endpoint }}</code>
+          <label class="abele-node-pairing__verification">
+            <input
+              v-model="endpointVerified"
+              type="checkbox"
+              aria-label="Owner verified new endpoint"
+            />
+            I independently verified the new endpoint with the owner.
+          </label>
+        </template>
         <template v-if="!node">
           <p v-if="deviceFingerprint">
             This device's fingerprint: <code>{{ deviceFingerprint }}</code>
@@ -60,7 +75,8 @@
             :disabled="
               busy ||
               !label.trim() ||
-              (!!previousPin && previousPin !== invite.node_fingerprint && !verified)
+              (!!previousPin && previousPin !== invite.node_fingerprint && !verified) ||
+              (!!previousEndpoint && previousEndpoint !== invite.endpoint && !endpointVerified)
             "
             @click="pair"
           />
@@ -97,7 +113,7 @@ import { InviteSchema, assertPairedEndpoint, type PairingInvite } from '@abele/c
 import type { NodeService } from '@/node/NodeService'
 import type { RegisteredNode } from '@/node/NodeRegistry'
 import { isPairedNode } from '@/node/NodeRegistry'
-import type { EnrollingDevice } from '@/node/NodeDeviceKeyStore'
+import { claimedEnrollment, type EnrollingDevice } from '@/node/NodeDeviceKeyStore'
 import { invitationPhoto } from '@/node/invitationPhoto'
 import Modal from './obsidian/Modal.vue'
 import Setting from './obsidian/Setting.vue'
@@ -109,6 +125,8 @@ const label = ref('Remote node'),
   raw = ref(''),
   message = ref(''),
   previousPin = ref(''),
+  previousEndpoint = ref(''),
+  endpointVerified = ref(false),
   deviceFingerprint = ref('')
 const invite = ref<PairingInvite>(),
   node = ref<RegisteredNode>(),
@@ -131,6 +149,8 @@ const review = async () => {
     const stored = await props.service.deviceKeys.load(parsed.node_id)
     if (closed) return
     previousPin.value = stored?.node_fingerprint ?? ''
+    previousEndpoint.value = stored?.endpoint ?? ''
+    endpointVerified.value = false
     verified.value = false
     invite.value = parsed
     raw.value = ''
@@ -139,16 +159,24 @@ const review = async () => {
   }
 }
 const resume = async (device: EnrollingDevice) => {
+  // The pending list may predate another window's enrollment; use its current snapshot.
+  const latest = await props.service.deviceKeys.load(device.node_id)
+  if (latest?.enrollment) device = latest
   label.value = device.enrollment.label
   raw.value = JSON.stringify(device.enrollment.invite)
   await review()
   deviceFingerprint.value = await props.service.deviceFingerprint(device.node_id)
-  const registered = props.service.nodes.value.find(
-    (n) =>
-      isPairedNode(n) &&
-      n.expectedNodeId === device.node_id &&
-      n.installationId === device.installation_id
-  )
+  const acknowledged = claimedEnrollment(device)
+  const registered =
+    acknowledged &&
+    props.service.nodes.value.find(
+      (n) =>
+        isPairedNode(n) &&
+        n.expectedNodeId === device.node_id &&
+        n.installationId === acknowledged.installation_id &&
+        n.url === acknowledged.endpoint &&
+        n.nodeFingerprint === acknowledged.node_fingerprint
+    )
   if (registered && isPairedNode(registered)) {
     node.value = registered
     installationId.value = registered.installationId
@@ -161,6 +189,8 @@ const reset = () => {
   node.value = undefined
   deviceFingerprint.value = ''
   previousPin.value = ''
+  previousEndpoint.value = ''
+  endpointVerified.value = false
   verified.value = false
   message.value = ''
   connected.value = false
@@ -169,13 +199,32 @@ const pair = async () => {
   const current = invite.value
   if (!current || busy.value || !label.value.trim()) return
   if (previousPin.value && previousPin.value !== current.node_fingerprint && !verified.value) return
+  if (
+    previousEndpoint.value &&
+    previousEndpoint.value !== current.endpoint &&
+    !endpointVerified.value
+  )
+    return
   busy.value = true
   message.value = ''
   try {
+    if (
+      previousEndpoint.value &&
+      previousEndpoint.value !== current.endpoint &&
+      previousPin.value === current.node_fingerprint
+    ) {
+      await props.service.deviceKeys.authorizeEndpointChange(
+        current,
+        previousEndpoint.value,
+        previousPin.value
+      )
+      previousEndpoint.value = current.endpoint
+    }
     if (previousPin.value && previousPin.value !== current.node_fingerprint) {
       await props.service.pairedConnector.authorizeNodeKeyChange(current, previousPin.value)
       // The explicit pin transaction committed even if the following claim reply is lost.
       previousPin.value = current.node_fingerprint
+      previousEndpoint.value = current.endpoint
     }
     node.value = await props.service.pair(label.value.trim(), current)
     installationId.value = isPairedNode(node.value) ? node.value.installationId : ''
@@ -194,17 +243,31 @@ const check = async () => {
   if (!node.value || busy.value || closed) return
   window.clearTimeout(timer)
   busy.value = true
+  let retry = true
   try {
-    await props.service.connection(node.value.id).connect()
+    const target = node.value
+    const invitation = invite.value!
+    const expected = claimedEnrollment(await props.service.deviceKeys.load(target.expectedNodeId))
+    await props.service.connection(target.id).connect()
     if (closed) return
+    if (
+      !expected ||
+      expected.invite_id !== invitation.invite_id ||
+      expected.endpoint !== invitation.endpoint ||
+      expected.node_fingerprint !== invitation.node_fingerprint ||
+      !(await props.service.deviceKeys.finishEnrollment(target.expectedNodeId, expected))
+    ) {
+      retry = false
+      message.value = 'Pairing changed in another window. Resume the current invitation.'
+      return
+    }
     connected.value = true
     message.value = ''
-    await props.service.deviceKeys.finishEnrollment(node.value.expectedNodeId)
   } catch (error) {
     report(error)
   } finally {
     busy.value = false
-    if (!closed && !connected.value)
+    if (!closed && !connected.value && retry)
       timer = window.setTimeout(() => {
         void check()
       }, 2000)

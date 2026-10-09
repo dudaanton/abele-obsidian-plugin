@@ -92,6 +92,7 @@ const DIALOGS = [
   'node-pairing',
   'node-pairing-waiting',
   'node-pairing-recovery',
+  'node-pairing-endpoint',
   'node-question',
   'node-question-input',
   'node-workspaces',

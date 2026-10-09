@@ -151,8 +151,8 @@ export class NodeService {
   /** Invitation secrets stay in device-local IndexedDB for lost-response recovery. */
   async pair(label: string, invite: PairingInvite): Promise<RegisteredNode> {
     await this.deviceKeys.rememberInvitation(invite, label)
-    await this.pairedConnector.claim(invite)
-    const device = (await this.deviceKeys.load(invite.node_id))!
+    const claim = await this.pairedConnector.claim(invite)
+    const device = await this.deviceKeys.recordClaim(invite, claim)
     if (!device.installation_id) throw new Error('pairing_required')
     const existing = this.registry
       .list()

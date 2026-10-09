@@ -64,14 +64,20 @@ in Nodes works later. Pending invitations and non-extractable private keys live 
 device's IndexedDB, not the vault, `data.json`, key sync or settings transfer. Another device
 must pair independently. Unsupported key persistence or cross-window locks fail explicitly.
 After a lost reply, retry the same retained invitation: **Resume pairing** reuses the same
-persisted device key, with the node's 24-hour consumed-invitation recovery window.
+persisted device key, with the node's 24-hour consumed-invitation recovery window. An old
+registration does not prove a fresh re-pair claim succeeded: **Pair this device** stays available
+until that exact invitation's claim is acknowledged. A newer invitation saved by another window
+is never erased by an older connection's completion.
 
 Only the owner can revoke access (`abele-node pair revoke INSTALLATION_ID`). **Remove**
 forgets the registration, not the node grant or history. To re-pair a revoked device, request
 an invitation bound to its existing installation ID; this preserves receipts and sessions.
 For a rotated node key, pairing displays both old and new fingerprints and requires explicit
 independent verification of the new pin. Failed connections never authorize a pin change.
-A lost private key needs owner re-enrollment, not a copied key or transferable configuration.
+If the owner changes the endpoint hostname or port without changing the node key, pairing shows
+both old and new addresses and requires separate independent verification of the new endpoint.
+It never silently moves an existing binding after a connection failure. A lost private key needs
+owner re-enrollment, not a copied key or transferable configuration.
 Foreground reconnect/replay is supported; background socket survival on a phone is not promised.
 
 After adding a node, the chat's **+** menu offers **Local chat** and **Session on…** for each

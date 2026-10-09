@@ -222,6 +222,8 @@ const script = `(async () => {
         cuts.push({ screen: 'dialog ' + dialogName, field: '-', by: ['device fingerprint did not open'] })
       if (dialogName === 'node-pairing-recovery' && !modal.querySelector('[aria-label="Owner verified new node key"]'))
         cuts.push({ screen: 'dialog ' + dialogName, field: '-', by: ['pin recovery did not open'] })
+      if (dialogName === 'node-pairing-endpoint' && !modal.querySelector('[aria-label="Owner verified new endpoint"]'))
+        cuts.push({ screen: 'dialog ' + dialogName, field: '-', by: ['endpoint recovery did not open'] })
       // Node file/code/diff/review/history fixtures each exercise a separate view.
       measureAll('dialog ' + dialogName, modal)
       // A dialog with tabs, the agent editor's among them, is measured tab by tab.

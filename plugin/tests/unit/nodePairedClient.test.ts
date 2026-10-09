@@ -69,7 +69,7 @@ async function endpoint() {
             client_nonce: frame.client_nonce,
             node_id: invite.node_id,
             endpoint: url,
-            installation_id: frame.invite ? invite.invite_id : 'sample-installation',
+            installation_id: frame.invite ? frame.invite.invite_id : 'sample-installation',
             device_fingerprint: await fingerprint(deviceKey),
             purpose: frame.invite ? 'claim' : 'connect',
             expires_at: Date.now() + 10000,
@@ -173,6 +173,7 @@ it('recovers a lost claim with the same persisted key across independent adapter
   expect(resumed.enrollment!.invite).toEqual(server.invite)
   const connector = new PairedWssConnector(b, server.open)
   const claim = await connector.claim(resumed.enrollment!.invite)
+  await b.recordClaim(resumed.enrollment!.invite, claim)
   expect(claim.device_fingerprint).toBe(firstPin)
   const target = await connector.target(server.invite.node_id)
   await expect(connector.connect(target)).rejects.toThrow('unauthorized')
@@ -186,7 +187,9 @@ it('recovers a lost claim with the same persisted key across independent adapter
       'sample-node',
       'sample-installation',
     ])
-    await b.finishEnrollment(server.invite.node_id)
+    expect(await b.finishEnrollment(server.invite.node_id, { ...server.invite, ...claim })).toBe(
+      true
+    )
     expect(await b.pending()).toEqual([])
     server.revoke()
     await client.disconnect()
@@ -197,6 +200,34 @@ it('recovers a lost claim with the same persisted key across independent adapter
     store.close()
     b.close()
   }
+})
+
+it('claims and connects at an explicitly changed endpoint with the same device key and principal', async () => {
+  const server = await endpoint(),
+    keys = new NodeDeviceKeyStore('sample-endpoint-migration', new IDBFactory(), lockService())
+  const connector = new PairedWssConnector(keys, server.open)
+  await keys.rememberInvitation(server.invite, 'Sample node')
+  await connector.claim(server.invite).catch(() => {})
+  const first = await connector.claim(server.invite)
+  await keys.recordClaim(server.invite, first)
+  const next = {
+    ...server.invite,
+    endpoint: 'wss://other.example.ts.net:9443/channel',
+    invite_id: 'sample-new-invitation',
+  }
+  await expect(connector.claim(next)).rejects.toThrow('node_identity_mismatch')
+  await keys.authorizeEndpointChange(next, server.invite.endpoint, server.invite.node_fingerprint)
+  await keys.rememberInvitation(next, 'Sample moved node')
+  const claim = await connector.claim(next)
+  await keys.recordClaim(next, claim)
+  expect(claim.installation_id).toBe(first.installation_id)
+  expect(claim.device_fingerprint).toBe(first.device_fingerprint)
+  server.confirm()
+  const channel = await connector.connect(await connector.target(next.node_id))
+  expect(server.opens.at(-1)).toBe(next.endpoint)
+  expect(await keys.finishEnrollment(next.node_id, { ...next, ...claim })).toBe(true)
+  await channel.transport.close('test_complete')
+  keys.close()
 })
 
 it('does not bind a late response over an independently committed node pin change', async () => {
