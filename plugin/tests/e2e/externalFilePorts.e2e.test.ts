@@ -124,9 +124,12 @@ describe.skipIf(!available)('external-file production filesystem ports on the li
       const target=root+'/sample-image.svg',stage=root+'/.abele-external-image.incoming'
       const file=await app.vault.create(target,'<svg xmlns="http://www.w3.org/2000/svg" width="2" height="2"><rect width="2" height="2"/></svg>')
       const note=await app.vault.create(root+'/sample-active.md','sample active note')
-      const image=app.workspace.getLeaf('tab'),active=app.workspace.getLeaf('tab')
+      const image=app.workspace.getLeaf('tab')
+      // Obsidian can reuse an empty tab: populate it before requesting the second leaf.
+      await image.openFile(file)
+      const active=app.workspace.getLeaf('tab')
       try{
-        await image.openFile(file);await active.openFile(note);await app.workspace.revealLeaf(active)
+        await active.openFile(note);await app.workspace.revealLeaf(active)
         const view=image.view.getViewType(),notActive=app.workspace.activeLeaf!==image
         const before=await reason(host.run(serial,request([target,stage]),async()=>{}))
         image.detach()
