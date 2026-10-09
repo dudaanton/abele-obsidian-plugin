@@ -108,8 +108,13 @@ npx vitest run tests/harness/designLint.test.ts tests/harness/designCapture.test
 OBSIDIAN_TEST_VAULT=sample-test-vault npm run test:e2e -- tests/e2e/designLint.e2e.test.ts --maxWorkers=2
 ```
 
-The live contract requires a development build exposing `openDesignCatalogue`. It deliberately
-fails when that API is absent or the current catalogue violates the rules; there is no skip
-or screenshot-only baseline that silently blesses defects. Set `DESIGN_LINT_OUT_DIR` to retain
-the evidence in a design pass. The DOM-only unit tests test the collector contract, not browser
-layout; real Range geometry and screenshots require the live adapter.
+The live contract requires a development build exposing `openDesignCatalogue` and a visible
+native reference pane. Known failing pages have `BUG:` assertions registered with `it.fails`;
+the passing pages remain ordinary tests. Every assertion still requires zero violations at
+unchanged thresholds. A repaired BUG page becomes an unexpected pass and fails the batch:
+remove its BUG marker to make it a normal regression test. Opening, measurement and readiness
+checks run in per-page `beforeAll` hooks; cleanup runs in `afterAll`. These suite failures are
+not inverted by `it.fails`, unlike test-level hook errors. There is no skip or screenshot-only
+baseline that silently blesses defects. Set `DESIGN_LINT_OUT_DIR` to retain evidence. The DOM-only
+unit tests test the collector contract, not browser layout; real Range geometry and screenshots
+require the live adapter.
