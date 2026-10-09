@@ -385,7 +385,14 @@ export async function buildEngine(recipe: EngineRecipe): Promise<BuiltEngine> {
                 }
               ).exclusive(work),
           },
-          sync: () => engine.sync(),
+          sync: async () => {
+            const report = await engine.sync()
+            return {
+              published:
+                report.push.committed?.results.filter((result) => result.status === 'applied') ??
+                [],
+            }
+          },
           verify: (fileId, input) => vault.verifyExternalFile(fileId, input),
           download: (_fileId, _versionId, sha) => vault.getBlob(sha),
           scriptsFolder: () => AbeleConfig.getInstance().ai.scriptsFolder || 'Scripts',

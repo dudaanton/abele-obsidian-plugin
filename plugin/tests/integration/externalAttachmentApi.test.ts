@@ -32,7 +32,9 @@ async function setup(mode: 'personal' | 'scoped' = 'personal') {
           principalId: 'sample-reader',
           grantId: 'sample-grant',
         }
-  const store = await IndexedDbStateStore.open(new IDBFactory(), crypto.randomUUID())
+  const factory = new IDBFactory(),
+    database = crypto.randomUUID()
+  const store = await IndexedDbStateStore.open(factory, database)
   const state = await ExternalState.open(store, 'sample-ledger', identity)
   const fake = buildFakeVault([{ path, content: 'sample attachment bytes' }])
   ;(
@@ -67,6 +69,7 @@ async function setup(mode: 'personal' | 'scoped' = 'personal') {
   )
   const download = vi.fn(async () => content)
   let consent: string | null = null
+  const sync = vi.fn<() => Promise<unknown>>(async () => {})
   const api = new AttachmentStore({
     state,
     ledger: store,
@@ -88,20 +91,54 @@ async function setup(mode: 'personal' | 'scoped' = 'personal') {
         consent = value
       },
     },
-    sync: async () => {},
+    sync,
     serial: { run: async <T>(work: () => Promise<T>) => work() },
     assertOwned: () => {},
     scriptsFolder: () => 'Scripts',
   })
   return {
     api,
+    factory,
+    database,
     store,
     state,
     fake,
     host,
     verify,
     download,
+    sync,
     base,
+    close: () => {
+      host.close()
+      store.close()
+    },
+  }
+}
+
+async function restart(s: Awaited<ReturnType<typeof setup>>) {
+  s.close()
+  const store = await IndexedDbStateStore.open(s.factory, s.database)
+  const state = await ExternalState.open(store, 'sample-ledger', binding)
+  const host = new ExternalFileHost(s.fake as unknown as App, {
+    platform: 'mobile',
+    assertOwned: () => {},
+  })
+  const api = new AttachmentStore({
+    state,
+    ledger: store,
+    host,
+    binding,
+    verify: s.verify,
+    download: s.download,
+    sync: s.sync,
+    serial: { run: async <T>(job: () => Promise<T>) => job() },
+    assertOwned: () => {},
+    scriptsFolder: () => 'Scripts',
+  })
+  return {
+    api,
+    state,
+    store,
     close: () => {
       host.close()
       store.close()
@@ -126,12 +163,45 @@ describe('manual attachment store', () => {
         operationId: 'sample-hydrate',
         expectedVersionId: s.base.versionId,
       })
-      expect(restored.status).toMatch(/complete|cleanup-pending/)
+      expect(restored.status).toBe('complete')
+      expect(await s.fake.vault.adapter.exists(path + '.abele-ref')).toBe(false)
       expect(new Uint8Array(await s.fake.vault.adapter.readBinary(path))).toEqual(content)
+      expect((await s.state.snapshot()).files[0]).toMatchObject({
+        representation: 'hydrated',
+        pendingOperationId: null,
+        projectionPath: null,
+      })
     } finally {
       s.close()
     }
   })
+  it('hydrates but preserves a changed or foreign placeholder as held cleanup', async () => {
+    const s = await setup()
+    try {
+      await s.api.evict(s.base.fileId, {
+        operationId: 'sample-evict',
+        expectedRevision: 0,
+        expectedVersionId: s.base.versionId,
+      })
+      const changed = new TextEncoder().encode('sample foreign sidecar')
+      await s.fake.vault.adapter.writeBinary(path + '.abele-ref', changed.buffer)
+      expect(
+        (
+          await s.api.hydrate(s.base.fileId, {
+            operationId: 'sample-hydrate',
+            expectedVersionId: s.base.versionId,
+          })
+        ).status
+      ).toBe('cleanup-pending')
+      expect(new Uint8Array(await s.fake.vault.adapter.readBinary(path + '.abele-ref'))).toEqual(
+        changed
+      )
+      expect((await s.state.snapshot()).files[0].pendingOperationId).toBe('sample-hydrate')
+    } finally {
+      s.close()
+    }
+  })
+
   it('rejects server failure without creating a projection or removing the original', async () => {
     const s = await setup()
     try {
@@ -243,6 +313,108 @@ describe('manual attachment store', () => {
     }
   })
 
+  it.each([
+    ...['prepared', 'delete-ready', 'remote-only'].flatMap((phase) =>
+      ['before', 'after'].map((edge) => ({ kind: 'eviction', boundary: phase, edge }))
+    ),
+    ...['download-intent', 'ready-to-install', 'cleanup-pending', 'hydrated'].flatMap((phase) =>
+      ['before', 'after'].map((edge) => ({ kind: 'hydration', boundary: phase, edge }))
+    ),
+    ...['eviction', 'hydration'].flatMap((kind) =>
+      ['stage', 'install', ...(kind === 'eviction' ? ['delete'] : ['retire'])].flatMap((boundary) =>
+        ['before', 'after'].map((edge) => ({ kind, boundary, edge }))
+      )
+    ),
+  ])(
+    'reopens safely after $kind $edge $boundary without blind mutation replay',
+    async ({ kind, boundary, edge }) => {
+      const s = await setup()
+      try {
+        if (kind === 'hydration')
+          await s.api.evict(s.base.fileId, {
+            operationId: 'sample-base',
+            expectedRevision: 0,
+            expectedVersionId: s.base.versionId,
+          })
+        const operationId = 'sample-terminated'
+        const commit = s.state.commit.bind(s.state)
+        let hit = false,
+          mutations = 0
+        const crash = () => {
+          hit = true
+          throw Error('sample terminated')
+        }
+        vi.spyOn(s.state, 'commit').mockImplementation(async (change) => {
+          const selected = change.operations?.[0]?.next?.phase === boundary
+          if (selected && edge === 'before') crash()
+          const result = await commit(change)
+          if (selected && edge === 'after') crash()
+          return result
+        })
+        const adapter = s.fake.vault.adapter
+        for (const method of ['writeBinary', 'rename', 'remove'] as const) {
+          const original = adapter[method].bind(adapter) as (...args: any[]) => Promise<void>
+          vi.spyOn(adapter, method).mockImplementation(async (...args: any[]) => {
+            const selected =
+              (boundary === 'stage' && method === 'writeBinary') ||
+              (boundary === 'install' && method === 'rename' && args[0].endsWith('.incoming')) ||
+              (boundary === 'delete' && method === 'remove' && args[0] === path) ||
+              (boundary === 'retire' && method === 'rename' && args[0] === path + '.abele-ref')
+            if (selected && edge === 'before') crash()
+            mutations++
+            await original(...args)
+            if (selected && edge === 'after') crash()
+          })
+        }
+        try {
+          const result =
+            kind === 'eviction'
+              ? await s.api.evict(s.base.fileId, {
+                  operationId,
+                  expectedRevision: 0,
+                  expectedVersionId: s.base.versionId,
+                })
+              : await s.api.hydrate(s.base.fileId, {
+                  operationId,
+                  expectedVersionId: s.base.versionId,
+                })
+          expect(result.reclaimedBytes).toBe(0)
+        } catch (error) {
+          expect(String(error)).toContain('terminated')
+        }
+        expect(hit).toBe(true)
+        const count = mutations
+        const restarted = await restart(s)
+        try {
+          await restarted.api.recover()
+          const doc = await restarted.state.snapshot()
+          if (doc.operations.some((op) => op.operationId === operationId)) {
+            if (kind === 'eviction')
+              await restarted.api.evict(s.base.fileId, {
+                operationId,
+                expectedRevision: 0,
+                expectedVersionId: s.base.versionId,
+              })
+            else
+              await restarted.api.hydrate(s.base.fileId, {
+                operationId,
+                expectedVersionId: s.base.versionId,
+              })
+          }
+          expect(mutations).toBe(count)
+          if (await adapter.exists(path))
+            expect(new Uint8Array(await adapter.readBinary(path))).toEqual(content)
+          else expect(await adapter.exists(path + '.abele-ref')).toBe(true)
+        } finally {
+          restarted.close()
+        }
+      } finally {
+        vi.restoreAllMocks()
+        s.close()
+      }
+    }
+  )
+
   it('holds each interrupted eviction phase without deleting again on restart', async () => {
     for (const phase of ['prepared', 'delete-ready', 'remote-only'] as const) {
       const s = await setup()
@@ -315,6 +487,40 @@ describe('manual attachment store', () => {
     }
   })
 
+  it('settles interrupted projection retirement from committed installation evidence after reopening', async () => {
+    const s = await setup()
+    try {
+      await s.api.evict(s.base.fileId, {
+        operationId: 'sample-evict',
+        expectedRevision: 0,
+        expectedVersionId: s.base.versionId,
+      })
+      const rename = s.fake.vault.adapter.rename.bind(s.fake.vault.adapter)
+      vi.spyOn(s.fake.vault.adapter, 'rename').mockImplementation(async (from, to) => {
+        await rename(from, to)
+        if (from === path + '.abele-ref') throw Error('sample lost retirement acknowledgement')
+      })
+      expect(
+        (
+          await s.api.hydrate(s.base.fileId, {
+            operationId: 'sample-hydrate',
+            expectedVersionId: s.base.versionId,
+          })
+        ).status
+      ).toBe('cleanup-pending')
+      const restarted = await restart(s)
+      try {
+        expect((await restarted.api.recover()).pending).toBe(0)
+        expect((await restarted.api.get(s.base.fileId))?.representation).toBe('hydrated')
+        expect(new Uint8Array(await s.fake.vault.adapter.readBinary(path))).toEqual(content)
+      } finally {
+        restarted.close()
+      }
+    } finally {
+      s.close()
+    }
+  })
+
   it('rejects altered and truncated downloaded versions without installing an original', async () => {
     for (const received of [
       new TextEncoder().encode('sample wrong contents'),
@@ -379,6 +585,52 @@ describe('manual attachment store', () => {
     }
   })
 
+  it('does not report reclaimed content bytes while a full retained copy still exists', async () => {
+    const s = await setup()
+    try {
+      await s.api.setPinned(s.base.fileId, false)
+      const doc = await s.state.snapshot(),
+        file = doc.files[0]
+      const retained = {
+        path: 'Media/.abele-external-sample-retained.incoming',
+        sha: s.base.sha,
+        size: content.length,
+        role: 'retained' as const,
+        operationId: 'sample-retained',
+      }
+      await s.fake.vault.adapter.writeBinary(retained.path, content.buffer as ArrayBuffer)
+      await s.state.commit({
+        expectedRevision: doc.revision,
+        files: [
+          {
+            expectedRevision: file.localRevision,
+            next: {
+              ...file,
+              localRevision: file.localRevision + 1,
+              retained: [retained],
+            },
+          },
+        ],
+      })
+      const request = {
+        operationId: 'sample-retained-evict',
+        expectedRevision: file.localRevision + 1,
+        expectedVersionId: s.base.versionId,
+      }
+      expect(await s.api.evict(s.base.fileId, request)).toEqual({
+        status: 'complete',
+        reclaimedBytes: 0,
+      })
+      expect(await s.api.evict(s.base.fileId, request)).toEqual({
+        status: 'complete',
+        reclaimedBytes: 0,
+      })
+      expect(new Uint8Array(await s.fake.vault.adapter.readBinary(retained.path))).toEqual(content)
+    } finally {
+      s.close()
+    }
+  })
+
   it('pins against eviction and serializes an active use lease', async () => {
     const s = await setup()
     try {
@@ -406,41 +658,67 @@ describe('manual attachment store', () => {
     }
   })
 
-  it.fails(
-    'BUG: an unpublished edit can publish before eviction without losing its expected-version intent',
-    async () => {
-      const s = await setup()
-      try {
-        const modified = new TextEncoder().encode('sample changed attachment')
-        await s.fake.vault.adapter.writeBinary(path, modified.buffer as ArrayBuffer)
-        const head = {
-          ...s.base,
-          versionId: 'sample-v2',
-          sha: await sha256(modified),
-          size: modified.length,
-        }
-        const publish = vi
-          .spyOn(s.store, 'byFileId')
-          .mockImplementation(async (id) =>
-            id === s.base.fileId ? { ...head, wirePath: path } : null
-          )
-        // Simulate ordinary publication completing before the engine's exclusive attachment job.
-        // A version selected before publication cannot silently switch to an unrelated live head.
-        expect(
-          (
-            await s.api.evict(s.base.fileId, {
-              operationId: 'sample-publish',
-              expectedRevision: 0,
-              expectedVersionId: s.base.versionId,
-            })
-          ).status
-        ).toBe('complete')
-        expect(publish).toHaveBeenCalled()
-      } finally {
-        s.close()
+  it('an unpublished edit can publish before eviction without losing its expected-version intent', async () => {
+    const s = await setup()
+    try {
+      const modified = new TextEncoder().encode('sample changed attachment')
+      await s.fake.vault.adapter.writeBinary(path, modified.buffer as ArrayBuffer)
+      const head = {
+        ...s.base,
+        versionId: 'sample-v2',
+        sha: await sha256(modified),
+        size: modified.length,
       }
+      const publish = s.sync.mockImplementation(async () => {
+        await s.store.put({ ...head, wirePath: path })
+        return {
+          published: [
+            {
+              file_id: head.fileId,
+              version_id: head.versionId,
+              path,
+              sha: head.sha,
+              size: head.size,
+            },
+          ],
+        }
+      })
+      // Simulate ordinary publication completing before the engine's exclusive attachment job.
+      // A version selected before publication cannot silently switch to an unrelated live head.
+      expect(
+        (
+          await s.api.evict(s.base.fileId, {
+            operationId: 'sample-publish',
+            expectedRevision: 0,
+            expectedVersionId: s.base.versionId,
+          })
+        ).status
+      ).toBe('complete')
+      expect(publish).toHaveBeenCalledOnce()
+      expect(await s.fake.vault.adapter.exists(path)).toBe(false)
+      expect((await s.state.snapshot()).operations[0].expected?.versionId).toBe('sample-v2')
+      expect(
+        (
+          await s.api.evict(s.base.fileId, {
+            operationId: 'sample-publish',
+            expectedRevision: 0,
+            expectedVersionId: s.base.versionId,
+          })
+        ).status
+      ).toBe('complete')
+      expect(
+        (
+          await s.api.evict(s.base.fileId, {
+            operationId: 'sample-publish',
+            expectedRevision: 1,
+            expectedVersionId: s.base.versionId,
+          })
+        ).status
+      ).toBe('recovery-required')
+    } finally {
+      s.close()
     }
-  )
+  })
 
   it('requires explicit scoped acknowledgement for reader eviction and rejects changed operation IDs', async () => {
     const s = await setup('scoped')

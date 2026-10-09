@@ -14,7 +14,7 @@ export class ExternalFilePortError extends Error {
     super(`External files: ${reason}`)
   }
 }
-export type ExternalEffectPhase = 'stage' | 'install' | 'delete-original'
+export type ExternalEffectPhase = 'stage' | 'install' | 'delete-original' | 'retire-projection'
 export interface ExternalByteExpectation {
   path: string
   sha: string
@@ -29,6 +29,8 @@ export interface ExternalFilesystemPort {
   install(from: string, to: string, assertEffect: () => void): Promise<void>
   readonly installation: 'native-link' | 'adapter-rename' | 'unavailable'
   removeOriginal(path: string): Promise<void>
+  /** Move into journal-owned quarantine, never unlink sidecar/recovery bytes. */
+  moveOwned(from: string, to: string): Promise<void>
   /** Reconcile only; cannot turn a failed effect into installation/deletion evidence. */
   reconcile(paths: readonly string[]): Promise<void>
 }
@@ -38,6 +40,7 @@ export type ExternalEffectResult =
   | { status: 'staged' }
   | { status: 'outcome-unknown'; artifacts: OwnedArtifact[]; paths: string[] }
   | { status: 'cleanup-pending'; artifact: OwnedArtifact }
+  | { status: 'retired'; artifact: OwnedArtifact }
 
 export interface ExternalEffectGuards {
   assertOwned(): void
@@ -193,11 +196,37 @@ export class ExternalFileEffects {
     })
   }
 
-  async retire(input: OwnedArtifact): Promise<ExternalEffectResult> {
-    const artifact = this.owned(input)
-    // Neither adapter exposes conditional cleanup of user-editable artifacts. Hash-then-
-    // remove would extend the accepted ORIGINAL deletion race to unrelated recovery bytes.
-    // Retain the journal reference; do not pretend that equal bytes authorize cleanup.
-    return { status: 'cleanup-pending', artifact }
+  retire(input: OwnedArtifact, retained?: OwnedArtifact): Promise<ExternalEffectResult> {
+    return this.track(async () => {
+      const artifact = this.owned(input)
+      if (!retained) return { status: 'cleanup-pending', artifact }
+      const quarantine = this.owned(retained)
+      if (
+        artifact.role !== 'projection' ||
+        quarantine.role !== 'retained' ||
+        artifact.sha !== quarantine.sha ||
+        artifact.size !== quarantine.size ||
+        !quarantine.path.split('/').at(-1)?.startsWith('.abele-external-')
+      )
+        throw new ExternalFilePortError('recovery-required')
+      this.check([artifact.path, quarantine.path], 'retire-projection', quarantine)
+      // Retirement means removing the visible sidecar name, not deleting user-editable
+      // bytes. Preserve the moved inode/file even if an independent writer races the read.
+      if (!(await this.fs.exists(artifact.path))) return { status: 'cleanup-pending', artifact }
+      if (!(await this.matches(artifact))) return { status: 'cleanup-pending', artifact }
+      if (await this.fs.exists(quarantine.path)) return { status: 'cleanup-pending', artifact }
+      this.check([artifact.path, quarantine.path], 'retire-projection', quarantine)
+      try {
+        await this.fs.moveOwned(artifact.path, quarantine.path)
+        this.check([artifact.path, quarantine.path])
+        if (!(await this.matches(quarantine)) || (await this.fs.exists(artifact.path)))
+          return this.ambiguous([artifact.path, quarantine.path], [artifact, quarantine])
+        await this.fs.reconcile([artifact.path, quarantine.path])
+        this.check([artifact.path, quarantine.path])
+        return { status: 'retired', artifact: quarantine }
+      } catch {
+        return this.ambiguous([artifact.path, quarantine.path], [artifact, quarantine])
+      }
+    })
   }
 }

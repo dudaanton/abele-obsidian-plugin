@@ -47,6 +47,15 @@ export type AttachmentSnapshot = ExternalRecord & {
   operation: ExternalOperation | null
 }
 
+export type AttachmentPublication = {
+  file_id: string
+  version_id: string
+  path: string
+  sha: string | null
+  size: number
+}
+const requestKey = (id: string) => 'external-eviction-request-v1:' + id
+
 /** Explicit, non-UI operations. The journal, not an adapter receipt, is the authority after
  * restart; no uncertain install/delete is ever issued a second time on retry. */
 export class AttachmentStore {
@@ -136,7 +145,11 @@ export class AttachmentStore {
     const item = await this.snapshot(id)
     if (item) for (const listener of this.listeners) listener(item)
   }
-  private async commit(file: ExternalRecord, op?: ExternalOperation): Promise<void> {
+  private async commit(
+    file: ExternalRecord,
+    op?: ExternalOperation,
+    request?: string
+  ): Promise<void> {
     this.owned()
     const doc = await this.document()
     const prior = doc.files.find((entry) => entry.fileId === file.fileId)
@@ -146,6 +159,9 @@ export class AttachmentStore {
         expectedRevision: doc.revision,
         files: [{ expectedRevision: prior?.localRevision ?? null, next: file }],
         ...(op ? { operations: [{ expectedRevision: previous?.revision ?? null, next: op }] } : {}),
+        ...(request && op
+          ? { ledger: { metadata: [{ key: requestKey(op.operationId), value: request }] } }
+          : {}),
       })
     } catch (error) {
       this.stopped = true
@@ -155,6 +171,15 @@ export class AttachmentStore {
   }
   private result(status: OperationResult['status'], reclaimedBytes = 0): OperationResult {
     return { status, reclaimedBytes }
+  }
+  private reclaimed(file: ExternalRecord | undefined, head: { sha: string; size: number }): number {
+    // A retained name may be a native hard link to the removed original. Until its
+    // ownership/outcome is resolved, deleting the visible name has not reclaimed content.
+    return file?.retained.some(
+      (artifact) => artifact.sha === head.sha && artifact.size === head.size
+    )
+      ? 0
+      : head.size
   }
   private reason(error: unknown): OperationResult {
     if (error instanceof ExternalFilePortError) return this.result(error.reason)
@@ -225,15 +250,37 @@ export class AttachmentStore {
       return this.result('ineligible')
     // Ordinary publication must finish OUTSIDE the exclusive queue. A sync that fails
     // cannot authorize a later filesystem effect; revalidate all metadata after the run.
+    const request = JSON.stringify([id, opts.expectedVersionId, opts.expectedRevision])
     const retry = (await this.document()).operations.some(
       (op) => op.operationId === opts.operationId
     )
+    let published: AttachmentPublication[] = []
+    let selected: { path: string; sha: string; size: number } | null = null
     if (!retry) {
+      const checked = await this.options.serial.run(async () => {
+        const head = await this.head(id),
+          file = await this.snapshot(id)
+        if (
+          !head ||
+          head.versionId !== opts.expectedVersionId ||
+          (file?.localRevision ?? 0) !== opts.expectedRevision
+        )
+          return false
+        const bytes = await this.options.host.read(head.path)
+        selected = { path: head.wirePath, sha: await sha256(bytes), size: bytes.length }
+        return true
+      })
+      if (!checked) return this.result('version-changed')
       try {
-        await this.options.sync()
+        const report = (await this.options.sync()) as
+          | { published?: AttachmentPublication[] }
+          | undefined
+        published = report?.published ?? []
       } catch {
         return this.result('offline')
       }
+    } else if ((await this.options.ledger.getMeta(requestKey(opts.operationId))) !== request) {
+      return this.result('recovery-required')
     }
     const before = await this.head(id)
     if (!before) return this.result('ineligible')
@@ -267,20 +314,37 @@ export class AttachmentStore {
           if (
             existing.kind !== 'eviction' ||
             existing.expected?.fileId !== id ||
-            existing.expected.versionId !== opts.expectedVersionId ||
+            existing.expected.versionId !== head.versionId ||
             existing.expected.path !== head.wirePath ||
             existing.expected.sha !== head.sha ||
             existing.expected.size !== head.size
           )
             return this.result('recovery-required')
           return existing.phase === 'remote-only'
-            ? this.result('complete', head.size)
+            ? this.result(
+                'complete',
+                this.reclaimed(
+                  doc.files.find((file) => file.fileId === id),
+                  head
+                )
+              )
             : this.result('recovery-required')
         }
         const file = doc.files.find((item) => item.fileId === id)
         if (
           (file?.localRevision ?? 0) !== opts.expectedRevision ||
-          head.versionId !== opts.expectedVersionId
+          (head.versionId !== opts.expectedVersionId &&
+            !published.some(
+              (receipt) =>
+                receipt.file_id === id &&
+                receipt.version_id === head.versionId &&
+                receipt.path === head.wirePath &&
+                receipt.sha === head.sha &&
+                receipt.size === head.size &&
+                selected?.path === head.wirePath &&
+                selected.sha === head.sha &&
+                selected.size === head.size
+            ))
         )
           return this.result('version-changed')
         if (file?.pinned) return this.result('pinned')
@@ -386,7 +450,7 @@ export class AttachmentStore {
           unresolvedOutcome: null,
           cleanupReason: null,
         }
-        await this.commit(record, op)
+        await this.commit(record, op, request)
         phase = 'prepared'
         if (opts.signal?.aborted) return this.result('recovery-required')
         const staged = await effects.stage(artifact, bytes)
@@ -419,7 +483,7 @@ export class AttachmentStore {
           },
           { ...ready, revision: 2, phase: 'remote-only' }
         )
-        return this.result('complete', removed.reclaimedBytes)
+        return this.result('complete', this.reclaimed(record, head))
       }
     )
   }
@@ -428,17 +492,19 @@ export class AttachmentStore {
     const head = await this.head(id)
     if (!head || head.versionId !== opts.expectedVersionId) return this.result('version-changed')
     const staging = `${head.path.slice(0, head.path.lastIndexOf('/') + 1)}.abele-external-${opts.operationId}.incoming`
-    let phase: 'none' | 'download-intent' | 'ready-to-install' = 'none'
+    const quarantine = staging.replace(/\.incoming$/, '.projection')
+    let phase: 'none' | 'download-intent' | 'ready-to-install' | 'cleanup-pending' = 'none'
     return this.options.host.run(
       this.options.serial,
       {
         operationId: opts.operationId,
         fileId: id,
-        paths: [head.path, staging, projectionPath(head.path)],
+        paths: [head.path, staging, projectionPath(head.path), quarantine],
         assertIntent: (effect) => {
           this.owned()
           if (effect === 'stage' && phase === 'download-intent') return
           if (effect === 'install' && phase === 'ready-to-install') return
+          if (effect === 'retire-projection' && phase === 'cleanup-pending') return
           throw new ExternalFilePortError('recovery-required')
         },
       },
@@ -474,6 +540,21 @@ export class AttachmentStore {
         } catch (error) {
           return this.reason(error)
         }
+        const sidecar =
+          file.projectionPath &&
+          file.projectionSha &&
+          (await this.options.host.exists(file.projectionPath))
+            ? {
+                operationId: opts.operationId,
+                path: file.projectionPath,
+                sha: file.projectionSha,
+                size: (await this.options.host.read(file.projectionPath)).length,
+                role: 'projection' as const,
+              }
+            : null
+        const retained = sidecar
+          ? { ...sidecar, path: quarantine, role: 'retained' as const }
+          : null
         const artifact = {
           operationId: opts.operationId,
           path: staging,
@@ -548,15 +629,41 @@ export class AttachmentStore {
           pendingOperationId: opts.operationId,
           blockingReason: 'cleanup-pending',
         }
-        // Do not erase a sidecar with an unconditional remove. It remains protected by its
-        // record and journal until a safe cleanup protocol is available.
-        await this.commit(hydrated, {
+        // Persist installation evidence and retirement ownership BEFORE moving the sidecar.
+        // Keep quarantine bytes: no hash-then-unlink permission for user-editable artifacts.
+        const cleanup = {
           ...ready,
           revision: 2,
-          phase: 'cleanup-pending',
-          cleanupReason: 'projection-retained',
-        })
-        return this.result('cleanup-pending')
+          phase: 'cleanup-pending' as const,
+          cleanupReason: 'projection-retirement',
+          ownedArtifacts: retained ? [artifact, retained] : [artifact],
+        }
+        await this.commit(hydrated, cleanup)
+        phase = 'cleanup-pending'
+        if (opts.signal?.aborted || !sidecar || !retained) return this.result('cleanup-pending')
+        const retired = await effects.retire(sidecar, retained)
+        if (retired.status !== 'retired') return this.result('cleanup-pending')
+        await this.commit(
+          {
+            ...hydrated,
+            localRevision: hydrated.localRevision + 1,
+            pendingOperationId: null,
+            blockingReason: null,
+            projectionPath: null,
+            projectionSha: null,
+            lastProvenLocalBase: {
+              fileId: id,
+              versionId: head.versionId,
+              path: head.wirePath,
+              sha: head.sha,
+              size: head.size,
+              mtime: head.mtime,
+            },
+            retained: [...file.retained, retained, ...(installed.sourceRetained ? [artifact] : [])],
+          },
+          { ...cleanup, revision: 3, phase: 'hydrated', cleanupReason: null }
+        )
+        return this.result('complete')
       }
     )
   }
@@ -646,27 +753,86 @@ export class AttachmentStore {
     return this.options.host.acquireUse(id)
   }
   async recover(): Promise<{ pending: number }> {
-    const document = await this.document()
-    for (const op of document.operations) {
-      if (op.kind !== 'eviction' || op.phase !== 'delete-ready' || !op.expected) continue
-      const file = document.files.find((f) => f.fileId === op.expected?.fileId)
-      if (!file || file.pendingOperationId !== op.operationId || !file.projectionSha) continue
-      if (await this.options.host.exists(op.expected.path)) continue // Never repeat deletion on restart.
-      const sidecar = op.targetPath
-      if (!sidecar || !(await this.options.host.exists(sidecar))) continue
-      const bytes = await this.options.host.read(sidecar)
-      if ((await sha256(bytes)) !== op.projectionDigest) continue
-      await this.commit(
-        {
-          ...file,
-          localRevision: file.localRevision + 1,
-          representation: 'remote-only',
-          pendingOperationId: null,
-        },
-        { ...op, revision: op.revision + 1, phase: 'remote-only' }
-      )
-    }
-    return { pending: (await this.document()).files.filter((f) => f.pendingOperationId).length }
+    return this.options.serial.run(async () => {
+      const document = await this.document()
+      for (const op of document.operations) {
+        if (op.kind === 'hydration' && op.phase === 'cleanup-pending' && op.expected) {
+          const file = document.files.find((f) => f.fileId === op.expected!.fileId)
+          const retired = op.ownedArtifacts.find((artifact) => artifact.role === 'retained')
+          const head = await this.head(op.expected.fileId)
+          // Installation was acknowledged and committed before retirement. Never infer
+          // installation from equal bytes in ready-to-install, nor issue another rename.
+          if (
+            !file ||
+            file.representation !== 'hydrated' ||
+            file.pendingOperationId !== op.operationId ||
+            !retired ||
+            !head ||
+            head.versionId !== op.expected.versionId ||
+            head.sha !== op.expected.sha ||
+            head.wirePath !== op.expected.path ||
+            head.size !== op.expected.size ||
+            !file.projectionPath ||
+            (await this.options.host.exists(file.projectionPath)) ||
+            !(await this.options.host.exists(retired.path)) ||
+            !(await this.options.host.exists(head.path))
+          )
+            continue
+          const bytes = await this.options.host.read(retired.path),
+            original = await this.options.host.read(head.path)
+          if (
+            bytes.length !== retired.size ||
+            (await sha256(bytes)) !== retired.sha ||
+            original.length !== head.size ||
+            (await sha256(original)) !== head.sha
+          )
+            continue
+          const retained = [...file.retained, retired]
+          for (const artifact of op.ownedArtifacts)
+            if (artifact.role === 'incoming' && (await this.options.host.exists(artifact.path)))
+              retained.push(artifact)
+          await this.commit(
+            {
+              ...file,
+              localRevision: file.localRevision + 1,
+              pendingOperationId: null,
+              blockingReason: null,
+              projectionPath: null,
+              projectionSha: null,
+              retained,
+              lastProvenLocalBase: {
+                fileId: head.fileId,
+                versionId: head.versionId,
+                path: head.wirePath,
+                sha: head.sha,
+                size: head.size,
+                mtime: head.mtime,
+              },
+            },
+            { ...op, revision: op.revision + 1, phase: 'hydrated', cleanupReason: null }
+          )
+          continue
+        }
+        if (op.kind !== 'eviction' || op.phase !== 'delete-ready' || !op.expected) continue
+        const file = document.files.find((f) => f.fileId === op.expected?.fileId)
+        if (!file || file.pendingOperationId !== op.operationId || !file.projectionSha) continue
+        if (await this.options.host.exists(op.expected.path)) continue // Never repeat deletion on restart.
+        const sidecar = op.targetPath
+        if (!sidecar || !(await this.options.host.exists(sidecar))) continue
+        const bytes = await this.options.host.read(sidecar)
+        if ((await sha256(bytes)) !== op.projectionDigest) continue
+        await this.commit(
+          {
+            ...file,
+            localRevision: file.localRevision + 1,
+            representation: 'remote-only',
+            pendingOperationId: null,
+          },
+          { ...op, revision: op.revision + 1, phase: 'remote-only' }
+        )
+      }
+      return { pending: (await this.document()).files.filter((f) => f.pendingOperationId).length }
+    })
   }
   async inspectDisconnect(): Promise<{ safe: boolean }> {
     return { safe: !(await this.document()).files.length }

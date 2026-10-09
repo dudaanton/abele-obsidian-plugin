@@ -178,6 +178,10 @@ export class ExternalFileHost {
         await this.effect(() => adapter.rename(from, to))
       },
       removeOriginal: (path) => this.effect(() => adapter.remove(path)),
+      moveOwned: async (from, to) => {
+        if (await adapter.exists(to)) throw new ExternalFilePortError('collision')
+        await this.effect(() => adapter.rename(from, to))
+      },
       reconcile: async (paths) => {
         const raw = adapter as DataAdapter & {
           reconcileInternalFile?: (path: string) => Promise<void>

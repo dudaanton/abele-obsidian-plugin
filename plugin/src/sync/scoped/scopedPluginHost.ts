@@ -48,7 +48,7 @@ import {
 } from '../external/pluginSafety'
 import { ConnectionBindingSchema, type ConnectionBinding } from '../external/records'
 import { pluginRepresentation } from '../external/pluginRepresentation'
-import { AttachmentStore } from '../external/attachmentStore'
+import { AttachmentStore, type AttachmentPublication } from '../external/attachmentStore'
 import { ExternalFileHost } from '../external/ObsidianExternalFileHost'
 import type { ExternalRepresentation } from '../external/representation'
 
@@ -428,7 +428,12 @@ export class ScopedPluginHost {
       binding: r.binding,
       assertOwned: () => r.fence.assertReady(),
       serial: { run: (work) => this.serial(work) },
-      sync: () => this.sync(),
+      sync: () =>
+        this.serial(async () => {
+          const published: AttachmentPublication[] = []
+          await this.run(published)
+          return { published }
+        }),
       verify: (fileId, input) => r.client.verifyExternalFile(fileId, input),
       download: (fileId, versionId) => r.client.version(fileId, versionId),
       scopedHead: (id) => r.state.getKnown(id),
@@ -755,7 +760,7 @@ export class ScopedPluginHost {
         this.departure = null
       })
   }
-  private async run() {
+  private async run(published?: AttachmentPublication[]) {
     if (this.paused.value) return
     const r = this.runtime
     if (!r || !this.held(r)) throw new Error('Scoped writer ownership lost')
@@ -781,6 +786,9 @@ export class ScopedPluginHost {
           ops,
           stillHeld: () => this.held(r),
           configurationDirectories: this.roots(),
+          onSettled: async (head) => {
+            published?.push(head)
+          },
         })
     }
     await pullScoped({

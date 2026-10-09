@@ -24,88 +24,119 @@ afterEach(async () => {
 })
 
 describe('external representation against the selected real server input', () => {
-  it('evicts through live-head verification and restores identical version-bound bytes', async () => {
-    server = await syncServer()
-    const { accountToken } = await server.account('sample-attachment@example.invalid')
-    const { vaultId } = await server.vault(accountToken, 'sample-vault')
-    const device = await server.device(accountToken, vaultId, 'sample-receiver')
-    const sender = await server.device(accountToken, vaultId, 'sample-sender')
-    const original = new TextEncoder().encode('sample live attachment')
-    await seed(server.clientFor(sender.deviceToken, vaultId), [
-      await create(
-        server.clientFor(sender.deviceToken, vaultId),
-        'Media/sample-live.bin',
-        'sample live attachment',
-        1000
-      ),
-    ])
-    const client = new SyncClient({
-      baseUrl: server.BASE_URL,
-      token: device.deviceToken,
-      fetch: server.fetch,
-      WebSocket: server.WebSocket,
-    }).forVault(vaultId)
-    const head = (await client.manifest(null)).items[0]
-    const binding = {
-      endpoint: server.BASE_URL,
-      vaultId,
-      mode: 'personal' as const,
-      principalId: device.deviceId,
-      principalType: 'device' as const,
-      grantId: null,
-      generation: 1,
-      credentialAssociation: 'sample-slot',
-    }
-    store = await IndexedDbStateStore.open(new IDBFactory(), 'sample-round-trip')
-    await store.put({
-      path: head.path,
-      wirePath: head.path,
-      fileId: head.file_id,
-      versionId: head.version_id,
-      sha: head.sha,
-      size: head.size,
-      mtime: head.mtime,
-    })
-    const state = await ExternalState.open(store, 'sample-ledger', binding)
-    const fake = buildFakeVault([{ path: head.path, content: 'sample live attachment' }])
-    ;(
-      fake.workspace as unknown as { iterateAllLeaves(fn: (leaf: unknown) => void): void }
-    ).iterateAllLeaves = () => {}
-    const host = new ExternalFileHost(fake as unknown as App, {
-      platform: 'mobile',
-      assertOwned: () => {},
-    })
-    try {
-      const api = new AttachmentStore({
-        state,
-        ledger: store,
-        host,
-        binding,
-        serial: { run: async <T>(job: () => Promise<T>) => job() },
+  it.each([false, true])(
+    'evicts with ordinary publication (edited=%s) and restores identical version-bound bytes',
+    async (edited) => {
+      server = await syncServer()
+      const { accountToken } = await server.account('sample-attachment@example.invalid')
+      const { vaultId } = await server.vault(accountToken, 'sample-vault')
+      const device = await server.device(accountToken, vaultId, 'sample-receiver')
+      const sender = await server.device(accountToken, vaultId, 'sample-sender')
+      const original = new TextEncoder().encode(
+        edited ? 'sample edited live attachment' : 'sample live attachment'
+      )
+      await seed(server.clientFor(sender.deviceToken, vaultId), [
+        await create(
+          server.clientFor(sender.deviceToken, vaultId),
+          'Media/sample-live.bin',
+          'sample live attachment',
+          1000
+        ),
+      ])
+      const client = new SyncClient({
+        baseUrl: server.BASE_URL,
+        token: device.deviceToken,
+        fetch: server.fetch,
+        WebSocket: server.WebSocket,
+      }).forVault(vaultId)
+      const head = (await client.manifest(null)).items[0]
+      const binding = {
+        endpoint: server.BASE_URL,
+        vaultId,
+        mode: 'personal' as const,
+        principalId: device.deviceId,
+        principalType: 'device' as const,
+        grantId: null,
+        generation: 1,
+        credentialAssociation: 'sample-slot',
+      }
+      store = await IndexedDbStateStore.open(new IDBFactory(), 'sample-round-trip')
+      await store.put({
+        path: head.path,
+        wirePath: head.path,
+        fileId: head.file_id,
+        versionId: head.version_id,
+        sha: head.sha,
+        size: head.size,
+        mtime: head.mtime,
+      })
+      await store.setCursor(head.seq)
+      const state = await ExternalState.open(store, 'sample-ledger', binding)
+      const fake = buildFakeVault([
+        { path: head.path, content: new TextDecoder().decode(original) },
+      ])
+      const barrier = new RecoveryBarrier(() => {})
+      barrier.activate()
+      const engine = new SyncEngine({
+        client,
+        fs: new ObsidianFileSystem(fake as unknown as App),
+        state: store,
+        selective: selectiveFrom(undefined),
+        recovery: barrier,
+      })
+      ;(
+        fake.workspace as unknown as { iterateAllLeaves(fn: (leaf: unknown) => void): void }
+      ).iterateAllLeaves = () => {}
+      const host = new ExternalFileHost(fake as unknown as App, {
+        platform: 'mobile',
         assertOwned: () => {},
-        scriptsFolder: () => 'Scripts',
-        sync: async () => {},
-        verify: (id, expected) => client.verifyExternalFile(id, expected),
-        download: (_id, _version, sha) => client.getBlob(sha),
       })
-      const result = await api.evict(head.file_id, {
-        operationId: 'sample-real-eviction',
-        expectedRevision: 0,
-        expectedVersionId: head.version_id,
-      })
-      expect(result).toEqual({ status: 'complete', reclaimedBytes: original.length })
-      expect(await fake.vault.adapter.exists(head.path)).toBe(false)
-      const restored = await api.hydrate(head.file_id, {
-        operationId: 'sample-real-hydration',
-        expectedVersionId: head.version_id,
-      })
-      expect(restored.status).toBe('cleanup-pending')
-      expect(new Uint8Array(await fake.vault.adapter.readBinary(head.path))).toEqual(original)
-      expect((await client.head(head.file_id)).version_id).toBe(head.version_id)
-    } finally {
-      host.close()
+      try {
+        const api = new AttachmentStore({
+          state,
+          ledger: store,
+          host,
+          binding,
+          serial: {
+            run: <T>(job: () => Promise<T>) =>
+              (engine as unknown as { exclusive<T>(work: () => Promise<T>): Promise<T> }).exclusive(
+                job
+              ),
+          },
+          assertOwned: () => {},
+          scriptsFolder: () => 'Scripts',
+          sync: async () => {
+            const report = await engine.sync()
+            return {
+              published:
+                report.push.committed?.results.filter((result) => result.status === 'applied') ??
+                [],
+            }
+          },
+          verify: (id, expected) => client.verifyExternalFile(id, expected),
+          download: (_id, _version, sha) => client.getBlob(sha),
+        })
+        const result = await api.evict(head.file_id, {
+          operationId: 'sample-real-eviction',
+          expectedRevision: 0,
+          expectedVersionId: head.version_id,
+        })
+        expect(result).toEqual({ status: 'complete', reclaimedBytes: original.length })
+        expect(await fake.vault.adapter.exists(head.path)).toBe(false)
+        const published = await client.head(head.file_id)
+        if (edited) expect(published.version_id).not.toBe(head.version_id)
+        const restored = await api.hydrate(head.file_id, {
+          operationId: 'sample-real-hydration',
+          expectedVersionId: published.version_id,
+        })
+        expect(restored.status).toBe('complete')
+        expect(new Uint8Array(await fake.vault.adapter.readBinary(head.path))).toEqual(original)
+        expect((await client.head(head.file_id)).version_id).toBe(published.version_id)
+      } finally {
+        host.close()
+      }
     }
-  })
+  )
   it('a real personal sync advances remote-only metadata without delete/create/upload or client blob GET', async () => {
     server = await syncServer()
     const { accountToken } = await server.account('sample-sync@example.invalid')
