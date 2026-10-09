@@ -6,7 +6,7 @@ import * as records from '@/sync/external/records'
 import * as state from '@/sync/external/state'
 import { SqliteExternalStateStore } from '@/sync/external/SqliteExternalStateStore'
 
-const selected = '1b28e55b04a1146d20b22175db5648ff9d84d939'
+const selected = '19d35b116a4ac6c062b50154b2fd33626e2ef012'
 const exported = core as Record<string, any>
 describe('canonical external state inputs', () => {
   it('pins the explicit committed canonical input rather than a mutable sibling or unrelated revision', () => {

@@ -72,9 +72,7 @@ describe('external projection schema and local ownership', () => {
     ).toMatchObject({ kind: 'hold' })
   })
 
-  // BUG: the canonical core pin still validates only NFC path length. Keep the same
-  // failing guarantee until core fixes raw physical UTF-8 lengths; do not fork its schema.
-  it('BUG: rejects an overlong physical spelling in the canonical external record schema, not just its NFC form', () => {
+  it('rejects an overlong physical spelling in the canonical external record schema, not just its NFC form', () => {
     const physical = 'Media/' + 'e\u0301'.repeat(90) + '.jpg.abele-ref'
     const record = {
       schema: 1,

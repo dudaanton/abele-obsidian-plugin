@@ -113,12 +113,12 @@ Projection tests are in `plugin/tests/unit/externalProjection.test.ts`.
 
 JSON marker recognition decodes escaped string tokens even when JSON is oversized or damaged;
 ambiguous markers can only establish holds. Projection placement checks physical UTF-8 lengths
-before NFC comparison. **Remaining canonical-input blocker:** the selected core record schema
-still checks its physical `projectionPath` only after NFC normalization. A 284-byte decomposed
-filename is therefore accepted there. The same schema-rejection regression remains a failing
-`BUG:` test; it is not skipped or weakened, and the plugin does not fork or patch the canonical
-schema/archive to conceal it. Core must reject raw path/component byte lengths (1024/255),
-then a corrected exact pin must be vendored before this guarantee can be called complete.
+before NFC comparison. The canonical input
+`19d35b116a4ac6c062b50154b2fd33626e2ef012` now rejects raw physical path/component byte
+lengths above 1024/255, including the 284-byte decomposed filename. The unchanged schema-
+rejection assertion passes as a normal regression test; only its previous `BUG:` label was
+removed. The plugin continues to use core's canonical schema, not a local fork or archive
+patch.
 All existing plugin tests remain in place, including SQLite port tests; no test was moved or
 deleted during the canonical adoption.
 
