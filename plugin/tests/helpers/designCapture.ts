@@ -19,7 +19,7 @@ export function captureDesign(selector: string, options: CaptureOptions = {}): D
       '[data-design-level="section"], .abele-list-section-header [class$="__header-text"], .backlink-pane > .tree-item-self > .tree-item-inner',
     title:
       '[data-design-level="title"], .abele-list-row__title-line, .tree-item-inner:not(.abele-list-row__content):not(.backlink-pane > .tree-item-self > .tree-item-inner), .nav-file-title-content, .search-result-file-title:not(:has(.tree-item-inner))',
-    meta: '[data-design-level="meta"], .abele-meta-line, .abele-list-row__state, .abele-list-row__snippet',
+    meta: '[data-design-level="meta"], .abele-meta-line:not(.abele-event-list__meta > .abele-meta-line), .abele-event-list__meta, .abele-list-row__title > .abele-relative-time, .abele-list-row__state, .abele-list-row__snippet',
     detail:
       '[data-design-level="detail"], .abele-disclosure:not(.abele-disclosure_compact) > .abele-disclosure__control',
     ...options.levels,
@@ -101,8 +101,15 @@ export function captureDesign(selector: string, options: CaptureOptions = {}): D
       const s = view.getComputedStyle(el),
         rect = box(el.getBoundingClientRect())
       const host = el.closest(rows)
-      const level = (Object.keys(levelSelectors) as Level[]).find((l) =>
-        el.matches(levelSelectors[l])
+      const level = (Object.keys(levelSelectors) as Level[]).find(
+        (l) =>
+          el.matches(levelSelectors[l]) &&
+          !(
+            l === 'meta' &&
+            !options.levels?.meta &&
+            el.matches('.abele-meta-line') &&
+            el.closest('.abele-event-list__meta')
+          )
       )
       const isIcon = el.matches(icons) && !el.parentElement?.closest(icons)
       const control = el.matches(
@@ -123,7 +130,11 @@ export function captureDesign(selector: string, options: CaptureOptions = {}): D
       let slot: MeasuredElement['slot']
       if (host && isIcon) {
         if (el.closest(actions)) slot = 'action'
-        else if (!el.closest('.abele-disclosure, [data-design-disclosure]')) slot = 'icon'
+        else if (
+          !el.closest('.abele-disclosure, [data-design-disclosure]') &&
+          (!host.matches('.abele-list-row__line') || el.closest('.abele-list-row__leading'))
+        )
+          slot = 'icon'
       } else if (host && level) slot = 'text'
       else if (host && control && el.closest(actions) && !el.querySelector(icons)) slot = 'action'
       const ancestors: Element[] = []

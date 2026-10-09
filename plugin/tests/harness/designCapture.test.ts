@@ -177,6 +177,28 @@ describe('renderer design capture', () => {
     expect(s.elements.find((e) => e.selector === 'svg' && e.parent)?.slot).toBe('action')
     expect(s.elements.find((e) => e.selector === 'svg.lucide-file-text')?.iconRole).toBe('content')
   })
+  it('measures the whole event metadata band and standalone row timestamp, not the inline actor fragment alone', () => {
+    fixture()
+    document.querySelector('#surface')!.innerHTML =
+      `<div class="abele-list-row__title"><span class="abele-relative-time">Today</span><div class="abele-event-list__meta"><span class="abele-meta-line">A reader</span><span class="abele-relative-time">Yesterday</span></div></div>`
+    for (const el of document.querySelectorAll('#surface *'))
+      vi.spyOn(el, 'getBoundingClientRect').mockReturnValue(new DOMRect(20, 20, 100, 20))
+    expect(
+      captureDesign('#surface')
+        .elements.filter((e) => e.level === 'meta')
+        .map((e) => e.text)
+    ).toEqual(['Today', 'A reader Yesterday'])
+  })
+  it('does not classify a subordinate recovery glyph as the row leading icon', () => {
+    fixture()
+    document.querySelector('#surface')!.innerHTML =
+      '<article class="abele-list-row"><div class="tree-item-self abele-list-row__line"><span class="abele-list-row__leading"><svg class="file"></svg></span><div class="abele-list-row__recovery"><button><svg class="retry"></svg>Retry</button></div></div></article>'
+    for (const el of document.querySelectorAll('#surface *'))
+      vi.spyOn(el, 'getBoundingClientRect').mockReturnValue(new DOMRect(20, 20, 100, 20))
+    const s = captureDesign('#surface')
+    expect(s.elements.find((e) => e.selector === 'svg.file')?.slot).toBe('icon')
+    expect(s.elements.find((e) => e.selector === 'svg.retry')?.slot).toBeUndefined()
+  })
   it('does not make a static tree label into a touch action', () => {
     fixture()
     document

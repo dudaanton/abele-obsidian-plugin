@@ -28,8 +28,10 @@
             v-if="event.jump && event.state !== 'missing'"
             icon="message-square"
             :tooltip="`Open source for ${event.title}`"
-            @click="emit('jump', event.id)" /><Icon
-            v-if="event.state === 'error' && event.retryable"
+            @click="emit('jump', event.id)"
+        /></template>
+        <template v-if="event.state === 'error' && event.retryable" #recovery
+          ><Icon
             icon="refresh-cw"
             :text-right="event.retryLabel"
             :tooltip="event.retryLabel || `Retry ${event.title}`"
@@ -98,12 +100,17 @@ const toggle = (id: string, open: boolean) => {
   margin-top: var(--size-4-1);
 }
 .abele-event-list__meta {
-  display: block;
+  display: flex;
+  flex-wrap: wrap;
+  align-items: flex-start;
+  gap: var(--size-4-1);
   color: var(--text-muted);
   font-size: var(--font-ui-smaller);
   font-weight: var(--font-normal);
+  line-height: var(--line-height-tight);
 }
-.abele-event-list__meta .abele-meta-line {
-  display: inline;
+.abele-event-list__meta .abele-meta-line,
+.abele-event-list__meta .abele-relative-time {
+  font: inherit;
 }
 </style>

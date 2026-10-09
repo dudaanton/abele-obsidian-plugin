@@ -43,6 +43,15 @@ describe('plain, coherent examples', () => {
     expect(agent.get('.abele-list-row__detail').text()).toContain('Reply')
     view.unmount()
   })
+  it.each(['waiting', 'comment-thread', 'events'])(
+    '%s puts retry beside its recovery message instead of in the title menu',
+    (page) => {
+      const view = open(page)
+      const row = view.findAllComponents(ListRow).find((row) => row.props('state') === 'error')!
+      expect(row.get('.abele-list-row__recovery').text()).toContain('Retry')
+      view.unmount()
+    }
+  )
   it('names Cancel and preserves the editor name without a redundant visible label', async () => {
     const view = open('comment')
     expect(view.find('label[for="catalogue-comment"]').exists()).toBe(false)

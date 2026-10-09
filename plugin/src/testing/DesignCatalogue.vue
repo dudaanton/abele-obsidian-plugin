@@ -267,7 +267,7 @@
           snippet="Last result: two notes reviewed."
         />
         <ListRow title="Sample helper" icon="bot" state="error" message="Connection lost"
-          ><template #actions
+          ><template #recovery
             ><Icon
               icon="refresh-cw"
               text-right="Retry"
@@ -312,7 +312,7 @@
           snippet="The original passage is useful here."
           state="error"
           message="Could not save"
-          ><template #actions
+          ><template #recovery
             ><Icon
               icon="refresh-cw"
               text-right="Retry save"

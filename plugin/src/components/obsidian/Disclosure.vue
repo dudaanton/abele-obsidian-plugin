@@ -55,7 +55,8 @@ onMounted(() => {
   align-items: flex-start;
   gap: var(--size-4-1);
   justify-content: flex-start;
-  padding-block: 0;
+  padding: 0;
+  position: relative;
   color: var(--text-muted);
   font-size: var(--font-ui-smaller);
   font-weight: var(--font-normal);
@@ -74,6 +75,10 @@ onMounted(() => {
 }
 .abele-disclosure_compact .abele-disclosure__control {
   font: inherit;
+}
+.abele-disclosure:not(.abele-disclosure_compact) .abele-disclosure__control .collapse-icon {
+  position: absolute;
+  inset-inline-start: calc(-1 * var(--size-4-4));
 }
 .abele-disclosure__control .collapse-icon {
   display: flex;

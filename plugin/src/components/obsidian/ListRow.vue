@@ -167,8 +167,11 @@ const stateText = {
   flex: 0 0 auto;
 }
 .abele-list-row__main > .abele-meta-line,
-.abele-list-row__title > .abele-meta-line {
+.abele-list-row__title > :not(.abele-list-row__title-line) {
   margin-top: var(--size-4-1);
+}
+.abele-list-row__title > .abele-relative-time {
+  line-height: var(--line-height-normal);
 }
 .abele-list-row .abele-list-row__leading {
   display: flex;
@@ -201,14 +204,14 @@ const stateText = {
   font-size: var(--font-ui-smaller);
   font-weight: var(--font-normal);
   color: var(--text-muted);
-  margin: var(--size-4-1) 0 0;
+  margin: 0;
   overflow-wrap: anywhere;
 }
 .abele-list-row__recovery {
-  margin-top: var(--size-4-1);
+  margin: 0;
 }
 .abele-list-row__detail {
   min-width: 0;
-  margin-top: var(--size-4-1);
+  margin: 0;
 }
 </style>
