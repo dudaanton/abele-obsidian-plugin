@@ -37,7 +37,11 @@ rejecting old version-1 normal opens. Device-local `abele-sync-external-activati
 preparing/active bindings and database-instance identity outside the deletable ledger;
 `abele-sync-external-generation-v1` associates canonical identity/credential fingerprints with
 connection generation. `abele-sync-runtime-owner-v1:<database-name>` is a cooperating runtime
-claim, not a filesystem lock. Retained `abele-sync-external-connection-switch-v1` evidence is a
+claim, not a filesystem lock. `abele-sync-external-inspection-v1` caches bounded projection
+inspection by physical path, size and mtime. It is device-local optimization data, not account
+adoption or publication authority. Changed candidates are reinspected; files above 16 KiB are
+not read. Departure borrows an existing claim rather than replacing it, so refusal retains
+its retryable runtime. Retained `abele-sync-external-connection-switch-v1` evidence is a
 recovery hold; completed credential switching/materialization is not implemented yet.
 
 Startup inspects external, installation and publication journals before constructing the

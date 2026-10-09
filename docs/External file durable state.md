@@ -160,10 +160,22 @@ journals before touching paths. This coordinates plugin runtimes; it is not an e
 mechanism for independent filesystem writers. Application restart still requires conservative
 journal inspection rather than matching-content replay.
 
-Projection discovery follows content through the vault index and adapter listing, including
-renamed extensions. Known external records/markers protect damaged paths independently. An
-ordinary note quoting a format example is not itself a projection. Reads are sequential, not
-concurrent full-vault buffering; large-file/phone memory measurement remains a later gate.
+Projection discovery follows bounded content through the vault index and adapter listing,
+including renamed extensions. It stats each path first and never reads files above the 16 KiB
+projection cap. A host prefix reader or desktop native bounded read is used when available;
+otherwise only size-bounded candidates use the portable adapter read. Marker decoding is
+also capped, not a second whole-file allocation. Known external records/markers protect
+damaged paths independently of this candidate search. An ordinary note quoting a format
+example is not itself a projection.
+
+`abele-sync-external-inspection-v1` persists path/size/mtime/marker observations in vault-local
+storage. Matching unchanged files need no content read on the next build. Missing/corrupt
+cache is re-inspected, not accepted as authority. Read errors are still refusals unless a
+follow-up stat confirms the candidate vanished; absence is not projection evidence. A
+successful Disconnect settles the runtime and performs one inventory, sharing that snapshot
+with its before/after revoke checks while rechecking connection identity and activation flags.
+A 3,000-file regression records cold/warm timing and verifies 3,000 cold reads, zero unchanged
+warm reads, and one read after one file changes.
 The reserved unsynced `.abele-sync-ignore` control file is validated at startup, not in the
 credential-retirement inventory. Thus its existing locked-file startup/error/retry exit is
 preserved, while startup still refuses recognizable projection evidence there before bootstrap.
@@ -211,8 +223,21 @@ ledgers and retained evidence remain. Automatic work can stop while recovery is 
 Scoped Leave still has a bounded self-revocation wait and preserves ordinary local files when
 the inventory is clear, including after access removal. A stale scoped host cannot use Leave
 to revoke or erase its successor; delayed enrollment responses cannot install credentials into
-a retired host either. Already-issued server requests may have completed and are not claimed
-to have been cancelled retroactively.
+a retired host either. Queued Leave rechecks the exact original claim inside its callback;
+its departure fence borrows that claim without replacing it. A refused departure releases
+only the borrowed fence, so the runtime and repeated Leave/start stay usable. Cold Leave
+cannot overwrite another host's claim. Already-issued server requests may have completed
+and are not claimed to have been cancelled retroactively.
+
+"Forget without telling the server" now awaits the same complete inventory before deleting
+a pending token, including orphan/moved projections without activation markers. Its existing
+confirmation handler awaits the operation and reports refusal through the existing notice
+mechanism. No new screen or force bypass is introduced.
+
+All `VaultWriter` paths use the guarded adapter, including staged writes, mobile swap/restore
+and journal cleanup. Script provenance activation follows installation recovery and checks
+the claim before descriptor/sentinel writes and database initialization; it cannot overwrite
+a successor's descriptor after an awaited sentinel lookup.
 
 **Conservative initial policy:** every nonempty external document and every activation marker
 requires recovery/disconnect preparation. Even hydrated policy records and terminal operations

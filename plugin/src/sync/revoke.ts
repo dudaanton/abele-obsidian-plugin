@@ -118,7 +118,7 @@ export interface RevokeHost {
   /** Who a retry is telling now, for a screen to show while it waits; null once it is done. */
   telling?(line: string | null): void
   beforeRetirement?(): Promise<void>
-  beforeForget?(): void
+  beforeForget?(): void | Promise<void>
 }
 
 /** The device a revoke is about: where it was enrolled, and what it was called there. */
@@ -234,10 +234,13 @@ export class Revoker {
   }
 
   /** Stop waiting to tell the server, and let the token go: "Forget without telling the server". */
-  forget(tokenId: string): void {
+  async forget(tokenId: string): Promise<void> {
     const entry = this.host.connection().pendingRevoke.find((item) => item.tokenId === tokenId)
     if (entry === undefined) return
-    this.host.beforeForget?.()
+    const inspected = this.host.beforeForget?.()
+    if (inspected instanceof Promise) await inspected
+    // Re-read after inspection: it may have waited while this pending list changed.
+    if (!this.host.connection().pendingRevoke.some((item) => item.tokenId === tokenId)) return
     secrets().device.remove(tokenId)
     secrets().device.remove(tokenServerId(tokenId))
     this.drop(new Set([tokenId]))

@@ -265,7 +265,7 @@ describe('Disconnect tells the server', () => {
     const [waiting] = conn().pendingRevoke
     offline = false
 
-    service.forgetPendingRevoke(waiting!.tokenId)
+    await service.forgetPendingRevoke(waiting!.tokenId)
 
     expect(conn().pendingRevoke).toEqual([])
     expect(readConnection(app).pendingRevoke).toEqual([])
@@ -368,7 +368,7 @@ describe('Disconnect tells the server', () => {
     expect(conn().pendingRevoke).toHaveLength(1)
     expect(seen.some((url) => url.startsWith('http://192.168.1.5'))).toBe(false)
 
-    service.forgetPendingRevoke(waiting!.tokenId)
+    await service.forgetPendingRevoke(waiting!.tokenId)
     expect(conn().pendingRevoke).toEqual([])
     expect(tokenOf(waiting!.tokenId)).toBe('')
   })

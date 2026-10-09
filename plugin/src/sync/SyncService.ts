@@ -490,8 +490,8 @@ export class SyncService {
   }
 
   /** Stop waiting to tell a server that a device left: see `Revoker.forget`. */
-  forgetPendingRevoke(tokenId: string): void {
-    this.enrolment.revoker.forget(tokenId)
+  forgetPendingRevoke(tokenId: string): Promise<void> {
+    return this.serialise(() => this.enrolment.revoker.forget(tokenId))
   }
 
   /** The devices on this vault, from the server: see `devices.ts`. Null with no engine. */

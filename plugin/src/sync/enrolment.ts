@@ -94,6 +94,8 @@ export class Enrolment {
   private accountUrl = ''
   /** What the account's vaults are called, from its last listing, for the connection to say. */
   private vaultNames = new Map<string, string>()
+  /** One inventory after quiescing the runtime, shared only by this departure's revoke. */
+  private retirementInventory: { app: App; identity: string } | null = null
 
   /** Telling the server a device has left, now or later. */
   readonly revoker: Revoker
@@ -108,13 +110,18 @@ export class Enrolment {
       beforeRetirement: async () => {
         this.assertCurrent()
         const app = host.app()
-        if (app) await requireExternalLifecycleSafety(app, host.factory())
+        if (this.retirementInventory) {
+          this.assertCurrent(this.retirementInventory.identity, this.retirementInventory.app)
+          assertNoExternalLifecycleMarker(this.retirementInventory.app)
+        } else if (app) await requireExternalLifecycleSafety(app, host.factory())
         this.assertCurrent()
       },
-      beforeForget: () => {
+      beforeForget: async () => {
         this.assertCurrent()
-        const app = host.app()
-        if (app) assertNoExternalLifecycleMarker(app)
+        const app = host.app(),
+          identity = this.identity()
+        if (app) await requireExternalLifecycleSafety(app, host.factory())
+        this.assertCurrent(identity, app ?? undefined)
       },
     })
   }
@@ -555,57 +562,60 @@ export class Enrolment {
   private async disconnectLocal(forgetPublication = false): Promise<void> {
     this.assertCurrent()
     const identity = this.identity()
-    const before = this.host.app()
-    if (before) await requireExternalLifecycleSafety(before, this.host.factory())
-    this.assertCurrent(identity, before ?? undefined)
     await this.host.teardown()
     const appForSafety = this.host.app()
     if (appForSafety) await requireExternalLifecycleSafety(appForSafety, this.host.factory())
     this.assertCurrent(identity, appForSafety ?? undefined)
-    const own = this.host.connection()
-    const tokenId = own.deviceTokenId
-    const serverUrl = own.enrolledUrl !== '' ? own.enrolledUrl : own.serverUrl
-    const token = boundDeviceToken(secrets().device, tokenId, serverUrl) ?? ''
-    if (token !== '' && serverUrl !== '') {
-      const told = await this.revoker.leave(
-        { serverUrl, deviceId: own.deviceId, deviceName: own.deviceName },
-        token
-      )
-      if (told.kept === false) {
-        await this.host.reconcile()
-        throw new Error(
-          'the server could not be told, and the keychain would not keep the token to tell it ' +
-            'later, so this device stays connected; try again when the server can be reached'
+    const previousInventory = this.retirementInventory
+    if (appForSafety) this.retirementInventory = { app: appForSafety, identity }
+    try {
+      const own = this.host.connection()
+      const tokenId = own.deviceTokenId
+      const serverUrl = own.enrolledUrl !== '' ? own.enrolledUrl : own.serverUrl
+      const token = boundDeviceToken(secrets().device, tokenId, serverUrl) ?? ''
+      if (token !== '' && serverUrl !== '') {
+        const told = await this.revoker.leave(
+          { serverUrl, deviceId: own.deviceId, deviceName: own.deviceName },
+          token
         )
+        if (told.kept === false) {
+          await this.host.reconcile()
+          throw new Error(
+            'the server could not be told, and the keychain would not keep the token to tell it ' +
+              'later, so this device stays connected; try again when the server can be reached'
+          )
+        }
       }
-    }
-    this.assertCurrent(identity, appForSafety ?? undefined)
-    // The secret goes and the id stays: `token()` reads a missing secret as no device, which
-    // is exactly the truth.
-    if (tokenId !== '' && token !== '') {
-      secrets().device.remove(tokenId)
-      secrets().device.remove(tokenServerId(tokenId))
-    }
-    this.host.saveConnection({
-      serverUrl: '',
-      enrolledUrl: '',
-      vaultId: '',
-      vaultName: '',
-      deviceId: '',
-      deviceName: '',
-      paused: false,
-      // A join belongs to the vault it was asked about; connecting again asks again.
-      join: null,
-    })
-    this.account = null
-    this.accountUrl = ''
-    this.host.note('disconnected; the device token is forgotten')
-    const app = this.host.app()
-    if (app) {
-      await retirePublicationStores(app, this.host.factory(), null, forgetPublication)
-      const retained = readLedgerId(app).stateId
-      for (const retired of ledgerCleanupIds(app))
-        if (retired !== retained) await this.dropLedger(retired)
+      this.assertCurrent(identity, appForSafety ?? undefined)
+      // The secret goes and the id stays: `token()` reads a missing secret as no device, which
+      // is exactly the truth.
+      if (tokenId !== '' && token !== '') {
+        secrets().device.remove(tokenId)
+        secrets().device.remove(tokenServerId(tokenId))
+      }
+      this.host.saveConnection({
+        serverUrl: '',
+        enrolledUrl: '',
+        vaultId: '',
+        vaultName: '',
+        deviceId: '',
+        deviceName: '',
+        paused: false,
+        // A join belongs to the vault it was asked about; connecting again asks again.
+        join: null,
+      })
+      this.account = null
+      this.accountUrl = ''
+      this.host.note('disconnected; the device token is forgotten')
+      const app = this.host.app()
+      if (app) {
+        await retirePublicationStores(app, this.host.factory(), null, forgetPublication)
+        const retained = readLedgerId(app).stateId
+        for (const retired of ledgerCleanupIds(app))
+          if (retired !== retained) await this.dropLedger(retired)
+      }
+    } finally {
+      this.retirementInventory = previousInventory
     }
   }
 

@@ -572,10 +572,15 @@ const forgetMessage = computed(() => {
   )
 })
 
-function forgetPending(): void {
+async function forgetPending(): Promise<void> {
   const entry = forgetting.value
   forgetting.value = null
-  if (entry !== null) sync.forgetPendingRevoke(entry.tokenId)
+  if (entry === null) return
+  try {
+    await sync.forgetPendingRevoke(entry.tokenId)
+  } catch (error) {
+    new Notice(`Not forgotten: ${reasonOf(error)}`)
+  }
 }
 
 // A sign-in that was never followed by a vault holds an account token; closing the tab ends it.

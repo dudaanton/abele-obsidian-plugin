@@ -162,6 +162,44 @@ describe('external dependency lifecycle refusals', () => {
     }
   )
 
+  it('Forget without telling the server checks orphan projections before deleting the last pending token', async () => {
+    const s = await personal()
+    await s.target.setMeta('external-files', null)
+    await s.app.vault.adapter.write('sample-moved.txt', '{"format":"abele.external", broken')
+    const tokenId = 'abele-sync-device-revoke-sample'
+    bindDeviceToken(secrets().device, tokenId, 'absd_sample_last', s.own.serverUrl)
+    s.keeper.save({
+      pendingRevoke: [
+        {
+          tokenId,
+          serverUrl: s.own.serverUrl,
+          deviceId: s.own.deviceId,
+          deviceName: 'Sample device',
+          since: new Date().toISOString(),
+          plainHttp: false,
+        },
+      ],
+    })
+    secrets().device.remove(s.own.deviceTokenId)
+    await expect(Promise.resolve().then(() => s.enrolment.revoker.forget(tokenId))).rejects.toThrow(
+      /external|recovery/i
+    )
+    expect(secrets().device.get(tokenId)).toBe('absd_sample_last')
+    expect(s.keeper.connection.value.pendingRevoke).toHaveLength(1)
+    expect(s.fetcher).not.toHaveBeenCalled()
+  })
+
+  it('runs one inventory per successful Disconnect rather than scanning four times', async () => {
+    const s = await personal()
+    await s.target.setMeta('external-files', null)
+    await s.app.vault.adapter.write('sample.md', 'ordinary content')
+    const list = vi.spyOn(s.app.vault.adapter, 'list'),
+      read = vi.spyOn(s.app.vault.adapter, 'readBinary')
+    await s.enrolment.disconnect()
+    expect(list).toHaveBeenCalledTimes(2) // one evidence inventory plus publication catalogue listing
+    expect(read).toHaveBeenCalledOnce()
+  })
+
   it('retained installation evidence is part of the shared inventory even without an external document', async () => {
     const s = await personal()
     await s.target.setMeta('external-files', null)
