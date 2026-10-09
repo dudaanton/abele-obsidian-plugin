@@ -3,8 +3,10 @@ import { NodeEventSchema, validateParams } from '@abele/node-protocol'
 import { z } from 'zod'
 import { retainPromptAnswerIdentity } from './promptAnswers'
 import { FileDraftSchema, type FileDraft } from './fileDrafts'
+import { DelegationStorageSchema, type DelegationStorage } from './delegation'
 
 export interface NodeClientState extends ClientState {
+  delegation?: DelegationStorage
   fileDrafts?: Record<string, FileDraft>
   /** Replaceable artifact payload cache; journal references remain untouched. */
   artifactData?: Record<string, Record<string, unknown>>
@@ -22,6 +24,7 @@ export interface NodeClientState extends ClientState {
 
 const StateSchema = z
   .object({
+    delegation: DelegationStorageSchema.optional(),
     fileDrafts: z.record(z.string(), FileDraftSchema).optional(),
     artifactData: z.record(z.string(), z.record(z.string(), z.unknown())).optional(),
     node_id: z.string().min(1).max(128).optional(),
@@ -129,6 +132,11 @@ export class NodeClientStore implements ClientStore {
             const submitted = state.outbox.slice()
             result = structuredClone(await work(state))
             retainPromptAnswerIdentity(state, submitted)
+            // Retain controller receipts, including approvals that settle after UI disconnection.
+            for (const entry of submitted.filter(e => e.method.startsWith('delegation.'))) {
+              const receipt = state.results[entry.operation_id]
+              if (receipt) receipt.request = { method: entry.method, params: entry.params }
+            }
             for (const entry of submitted.filter((entry) =>
               ['session.send', 'review.submit'].includes(entry.method)
             )) {

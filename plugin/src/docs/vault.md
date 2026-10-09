@@ -89,6 +89,24 @@ paired history uses `abele-node-paired-<node id>-<installation id>` so same-prin
 re-pairing retains receipts/cursors without sharing them with a new principal. Both use
 version 1, object store `client`. Its `state` record holds pinned node/installation identity,
 stream cursors, cached journal events, immutable operation outbox entries and durable receipts.
+Optional `delegation` in this same transactional `state` stores owner-approved grant selections
+and stable parent/task identities, the exact create request body, child links and last observed
+status. Parent IDs use the existing durable `chatId` metadata identity (allocated with a
+checked chat save before owner approval), never transient tab IDs. Reopening/renaming retains
+it; the ordinary chat-copy flow creates a new identity and does not copy authority. Only that
+public chat identity is in vault metadata; delegation task keys, grants and mailboxes remain
+installation-local/node-side.
+Mailbox journals use independent stream IDs/cursors, not child session cursors. Delegation
+receipts retain their request identity for recovery after a lost response. On startup registered
+node connections resume mailbox delivery without needing an open chat tab. The parent card is
+a replaceable projection of durable mailbox events, so replay/reload cannot append a second
+result. Reports stay device-local (not appended to the parent's `.abchat`); `node_delegation_status`
+returns their bounded summaries to the parent model on request. Complete child history stays on
+the node and opens as a normal node chat. Revocation cancels active tasks but retains files,
+workspaces and transcripts. Grants are node-authorized and device-bound: no new secret,
+transfer entry, synced setting or vault file is introduced. Clearing local storage loses the
+plugin's task links/caches; it does not stop children or erase node history.
+
 Optional `artifactData` caches parsed normalized provider payloads by artifact ID for offline
 projection after reload; it does not replace journal references or advance cursors. Old state
 records without this cache remain valid. Project/workspace/job state, trust, repository Claude

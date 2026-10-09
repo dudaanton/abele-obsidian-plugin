@@ -96,6 +96,8 @@ const DIALOGS = [
   'node-question',
   'node-question-input',
   'node-workspaces',
+  'node-delegation-grants',
+  'node-delegation-card',
   'node-files',
   'node-edit',
   'node-edit-conflict',

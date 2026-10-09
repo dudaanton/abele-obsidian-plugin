@@ -28,11 +28,15 @@ import type { ChatMessage } from '@/ai/types'
 import NodeFilesDialog from '@/components/NodeFilesDialog.vue'
 import { nodeFilesFixture } from './nodeFilesFixture'
 import NodeWorkspaceDialog from '@/components/NodeWorkspaceDialog.vue'
+import NodeDelegationGrantsDialog from '@/components/NodeDelegationGrantsDialog.vue'
+import NodeDelegationCard from '@/components/NodeDelegationCard.vue'
+import { nodeDelegationGrantsFixture, nodeDelegationCardFixture } from './nodeDelegationFixture'
 import { nodeWorkspaceFixture } from './nodeWorkspaceFixture'
 import NodePairingDialog from '@/components/NodePairingDialog.vue'
 import NodePermissionCard from '@/components/NodePermissionCard.vue'
 import { nodePairingFixture } from './nodePairingFixture'
 import ConfirmModal from '@/components/obsidian/ConfirmModal.vue'
+import Modal from '@/components/obsidian/Modal.vue'
 import AiReplyRevisionDialog from '@/components/AiReplyRevisionDialog.vue'
 import AiReplyOriginalDialog from '@/components/AiReplyOriginalDialog.vue'
 import ChatAnchorHistory from '@/components/ChatAnchorHistory.vue'
@@ -214,6 +218,9 @@ const DIALOGS: Record<string, (options?: DialogFixtureOptions) => void | Promise
   'node-question': () => mountNodeQuestion('select'),
   'node-question-input': () => mountNodeQuestion('input'),
   'node-workspaces': () => mountAlone(NodeWorkspaceDialog, nodeWorkspaceFixture()),
+  'node-delegation-grants': () => mountAlone(NodeDelegationGrantsDialog, nodeDelegationGrantsFixture()),
+  'node-delegation-card': () => mountAlone(defineComponent({ emits: ['close'], setup: (_props, { emit }) => () => h(Modal, { title: 'Node delegation', onClose: () => emit('close') }, { default: () => h(NodeDelegationCard, { card: nodeDelegationCardFixture(), nodeLabel: 'Sample node' }) }) })),
+
   'node-files': async () =>
     mountAlone(NodeFilesDialog, await nodeFilesFixture('files'), 'node-files'),
   'node-edit': async () => mountAlone(NodeFilesDialog, await nodeFilesFixture('edit'), 'node-edit'),

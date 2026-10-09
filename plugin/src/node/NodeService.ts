@@ -6,11 +6,16 @@ import { GlobalStore } from '@/stores/GlobalStore'
 import { secrets } from '@/secrets/SecretStore'
 import { NodeRegistry, channelUrl, isPairedNode, type RegisteredNode } from './NodeRegistry'
 import { NodeClientStore } from './NodeClientStore'
+import { NodeDelegationController } from './NodeDelegationController'
+import type { DelegationCard } from './delegation'
 
 export type NodeConnectionState = 'connecting' | 'connected' | 'offline'
 export class NodeConnection {
   readonly state: Ref<NodeConnectionState> = ref('offline')
   readonly error = ref('')
+  readonly delegation: NodeDelegationController
+  readonly delegationCards = ref<Record<string, DelegationCard[]>>({})
+  private refreshingDelegations?: Promise<void>
   private disposed = false
   private generation = 0
   private timer?: number
@@ -18,7 +23,20 @@ export class NodeConnection {
   constructor(
     readonly client: NodeClient,
     readonly store: NodeClientStore
-  ) {}
+  ) {
+    this.delegation = new NodeDelegationController(client, store)
+  }
+
+  refreshDelegations(): Promise<void> {
+    return (this.refreshingDelegations ??= (async () => {
+      try {
+        await this.delegation.restore()
+      } finally {
+        const cards = await this.delegation.snapshot()
+        if (!this.disposed) this.delegationCards.value = cards
+      }
+    })().finally(() => { this.refreshingDelegations = undefined }))
+  }
 
   connect(): Promise<void> {
     if (this.disposed) return Promise.reject(new Error('Node connection closed'))
@@ -75,6 +93,7 @@ export class NodeConnection {
         this.state.value = 'offline'
         await this.connect().catch(() => {})
       } else this.state.value = 'connected'
+      await this.refreshDelegations().catch(() => {})
       if (!this.disposed && generation === this.generation)
         this.timer = window.setTimeout((): void => {
           void tick()
@@ -229,6 +248,13 @@ export class NodeService {
     this.connections.set(id, connection)
     connection.start()
     return connection
+  }
+
+  /** Restore durable mailboxes even when no node or parent chat tab is open. */
+  resumeDelegations(): void {
+    for (const node of this.nodes.value) {
+      try { this.connection(node.id) } catch { /* Registration remains visible for owner repair. */ }
+    }
   }
 
   remove(id: string): void {

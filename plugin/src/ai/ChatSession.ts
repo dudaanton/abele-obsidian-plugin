@@ -253,7 +253,11 @@ export class ChatSession implements SummarizerHost, InterceptorHost, AnchorStora
   private userMessageCount = 0
   public readonly chatTitle = ref('')
   private chatCreated = ''
-  private chatIdentity: string | undefined
+  private readonly chatIdentityRef = ref<string>()
+  private get chatIdentity(): string | undefined { return this.chatIdentityRef.value }
+  private set chatIdentity(value: string | undefined) { this.chatIdentityRef.value = value }
+  /** Existing durable chat identity, not the transient tab/AgentLoop ID. */
+  get delegationParentId(): string | undefined { return this.chatIdentity }
   private bindingRecovery: ChatBindingRecovery[] | undefined
   private backgroundAbort: AbortController | null = null
   private toolAbortController: AbortController | null = null
@@ -2678,6 +2682,33 @@ export class ChatSession implements SummarizerHost, InterceptorHost, AnchorStora
     } finally {
       this.writing = null
     }
+  }
+
+  /** Allocate the existing chat identity durably before an owner binds node authority.
+   * Reopening/renaming keeps it; the ordinary chat-copy path allocates its own identity.
+   */
+  async ensureDelegationParentId(): Promise<string> {
+    while (this.writing) await this.writing
+    if (this.chatIdentity) return this.chatIdentity
+    const file = this.currentChatFile.value
+    const generation = this.generation
+    if (!file || this.kind === 'run') throw new Error('Save this parent chat before approving node delegation')
+    const check = () => {
+      if (this.destroyed || generation !== this.generation || this.currentChatFile.value !== file)
+        throw new Error('The parent conversation changed')
+    }
+    check()
+    const operation = Promise.resolve().then(async () => {
+      check()
+      const chatId = crypto.randomUUID()
+      const snapshot = this.snapshot()
+      await this.rewriteReply(file, { ...snapshot, metadata: { ...snapshot.metadata, chatId }, internalMessages: [...snapshot.internalMessages] }, check)
+      check()
+      this.chatIdentity = chatId
+      return chatId
+    })
+    this.writing = operation.then((): void => {}, (): void => {})
+    try { return await operation } finally { this.writing = null }
   }
 
   /** Protected owner edits share one external-change guard and persistence recovery path. */

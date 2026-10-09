@@ -869,6 +869,43 @@ own permissions and cannot move them to a similarly named server.
 - A call the server reports as failed comes back as an error with the server's own words. Stop
   ends the wait at once; the server may still finish the work on its side.
 
+## Nodes
+
+`node_delegations`, `node_delegate`, `node_delegation_send`, `node_delegation_status`,
+`node_delegation_cancel`.
+
+A normal plugin agent can assign a bounded task to Claude Code or pi on an AbeleNode.
+The owner must first approve a grant for this device, **this parent chat**, explicit projects
+and providers in Settings → Nodes → Delegation grants. Enrollment is not delegation approval.
+Enable the Nodes tool group in the parent agent separately. Models cannot approve/revoke
+grants, access credentials, send generic node requests or answer child human prompts.
+
+- `node_delegations` lists approved destinations/providers and this parent's retained children.
+  `node` is an opaque device-local registration reference, not an endpoint or credential.
+- `node_delegate` takes `node`, stable `task_key`, `project_id`, `provider`, `title`, `text` and
+  optional `base_ref` (HEAD by default). Available providers come from the node; fake children
+  require explicit owner fixture approval and never execute code. The child gets its own
+  managed workspace on the node, but this is **not a filesystem sandbox**.
+- Creation returns `node_id`, `session_id`, `delegation_id`, `state`, not a grant or token.
+  Keep the **same task_key and exact arguments** when retrying an uncertain response. Changing
+  the body with that key is refused; allocating a new key can create duplicate work.
+- `node_delegation_send` takes `node`, `delegation_id`, `text`. Follow-ups are serialized, not
+  steering; terminal children cannot accept more controller inputs.
+- `node_delegation_status` takes `node`, `delegation_id` and reads status plus bounded mailbox
+  reports. A pending human prompt requires the person to open the child chat. A worker's
+  informational question does not approve a permission or answer an extension prompt.
+- `node_delegation_cancel` takes `node`, `delegation_id`. Cancellation retains files, branches,
+  workspaces and transcript; the receipt does not prove every process has already exited.
+
+The parent chat shows one durable delegation card with progress, questions, result/terminal
+status and **Open child chat**, which opens the ordinary node transcript. A child continues
+while Obsidian is closed. On reconnect, the independent mailbox replays from its transactional
+cursor and the parent card projects the retained result once, including after plugin reload.
+Reports are device-local and do not append to the parent's vault chat file or automatically
+start a new parent model turn; use status to read them into model context. Owner revocation
+cancels active delegations and blocks further controller access. Grants/task links/mailbox
+cursors are device/node-side, not transferable settings or synced secrets.
+
 ## Scripts
 
 `create_script`, `answer_form`, plus one tool per script the vault has, named `script_<name>`.

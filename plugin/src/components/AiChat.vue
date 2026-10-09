@@ -212,6 +212,8 @@
           @retry-interceptor="onRetryInterceptor"
         />
 
+        <NodeDelegations v-if="session?.delegationParentId" :parent-id="session.delegationParentId" />
+
         <!-- Streaming indicator -->
         <div v-if="isStreaming" class="abele-ai-chat__streaming">
           <div v-if="streamingThinking" class="abele-ai-chat__streaming-thinking">
@@ -439,6 +441,7 @@ import AiChatTabs from './AiChatTabs.vue'
 import AiRunView from './AiRunView.vue'
 import EmptyState from './obsidian/EmptyState.vue'
 import NodeChatView from './NodeChatView.vue'
+import NodeDelegations from './NodeDelegations.vue'
 import { newChatMenu } from '@/node/openSession'
 import AiToolApproval from './AiToolApproval.vue'
 import AiAgentSelector from './AiAgentSelector.vue'

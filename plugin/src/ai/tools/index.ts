@@ -28,6 +28,7 @@ import { createEvalJsTool } from './EvalJsTool'
 import { createListTemplatesTool, createApplyTemplateTool } from './TemplateTool'
 import { createDownloadImageTool, createDownloadFileTool } from './DownloadImageTool'
 import { createDelegateTool } from './DelegateTool'
+import { createNodeDelegationTools } from './NodeDelegationTools'
 import { createScriptTools, createAnswerFormTool } from './ScriptTool'
 import { createCreateScriptTool, createScriptApiDocsTool } from './CreateScriptTool'
 import { createReplaceTool } from './ReplaceTool'
@@ -86,6 +87,7 @@ export function getToolRegistry(tools: AgentTool[] = buildAgentTools()): ToolInf
     'Presentations',
     'Word',
     'AI',
+    'Nodes',
     'Vault data',
     'Maps',
     'Docs',
@@ -305,6 +307,7 @@ function buildAgentTools(options: AgentToolsOptions = {}, everything = false): A
     createDownloadImageTool(),
     createDownloadFileTool(),
     createDelegateTool(options.session),
+    ...createNodeDelegationTools(options.session),
     createReplaceTool(),
     createWriteFileTool(),
     createOpenFileTool(),

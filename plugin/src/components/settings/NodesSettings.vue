@@ -21,6 +21,7 @@
         tooltip="Pick a session or manage projects and workspaces"
         @click="open(node)"
       />
+      <Button text="Delegation grants" tooltip="Owner approval or revocation for plugin-agent delegation" @click="showGrants(node)" />
       <Button
         text="Remove"
         tooltip="Forget only this device's connection and token"
@@ -31,6 +32,14 @@
       text="Pair remote node"
       tooltip="Scan or paste an invitation; re-pair or verify a changed node key"
       @click="showPairing()"
+    />
+    <NodeDelegationGrantsDialog
+      v-if="grantNode"
+      :label="grantNode.label"
+      :controller="service.connection(grantNode.id).delegation"
+      :parents="parentChats"
+      :initial-parent-id="ChatService.getInstance().activeSession.value?.delegationParentId"
+      @close="grantNode = undefined"
     />
     <NodePairingDialog
       v-if="pairing"
@@ -73,12 +82,13 @@
 </template>
 
 <script setup lang="ts">
-import { ref } from 'vue'
+import { computed, ref } from 'vue'
 import { ChatService } from '@/ai/ChatService'
 import { NodeService } from '@/node/NodeService'
 import { isPairedNode } from '@/node/NodeRegistry'
 import { claimedEnrollment } from '@/node/NodeDeviceKeyStore'
 import NodePairingDialog from '../NodePairingDialog.vue'
+import NodeDelegationGrantsDialog from '../NodeDelegationGrantsDialog.vue'
 import { pickNodeSession } from '@/node/openSession'
 import type { RegisteredNode } from '@/node/NodeRegistry'
 import Section from '../obsidian/Section.vue'
@@ -86,6 +96,25 @@ import Setting from '../obsidian/Setting.vue'
 import Input from '../obsidian/Input.vue'
 import Button from '../obsidian/Button.vue'
 const service = NodeService.getInstance()
+const grantNode = ref<RegisteredNode>()
+const parentChats = computed(() => {
+  const chats = ChatService.getInstance()
+  return chats.tabOrder.value.flatMap(id => {
+    const parent = chats.getSession(id)
+    return parent?.delegationParentId ? [{ id: parent.delegationParentId, title: parent.chatTitle.value || 'Untitled chat' }] : []
+  })
+})
+const showGrants = async (node: RegisteredNode) => {
+  try {
+    await service.connection(node.id).connect()
+    const chats = ChatService.getInstance()
+    for (const id of chats.tabOrder.value) {
+      const parent = chats.getSession(id)
+      if (parent?.currentChatFile.value) await parent.ensureDelegationParentId()
+    }
+    grantNode.value = node
+  } catch (error) { report(error) }
+}
 const pairing = ref(false)
 const resumeNodeId = ref<string>()
 const showPairing = (nodeId?: string) => {

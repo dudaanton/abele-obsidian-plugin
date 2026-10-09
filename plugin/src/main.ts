@@ -86,6 +86,7 @@ import { registerWorkbooks } from './spreadsheet/XlsxView'
 import { registerPropertyWidgets } from './properties/register'
 import { registerLinter } from './linter/register'
 import { ChatService } from './ai/ChatService'
+import { NodeService } from './node/NodeService'
 import { CommentService } from './ai/CommentService'
 import { registerTextComments } from './comments/register'
 import { ScriptService } from './scripting/ScriptService'
@@ -355,6 +356,7 @@ export default class AbelePlugin extends Plugin {
         startupStep('finance index', () => GlobalStore.getInstance().initFinance())
         startupStep('time tracking index', () => GlobalStore.getInstance().initTimeTracking())
         void startupStepAsync('css snippets', () => SnippetService.getInstance().init())
+        startupStep('node mailboxes', () => NodeService.getInstance().resumeDelegations())
         if (AbeleConfig.getInstance().ai.enabled) {
           void startupStepAsync('chat tabs', () => ChatService.getInstance().restoreTabs())
         }

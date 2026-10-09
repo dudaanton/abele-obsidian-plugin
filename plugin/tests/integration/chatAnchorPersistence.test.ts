@@ -78,6 +78,16 @@ beforeEach(async () => {
 })
 afterEach(() => session.destroy())
 
+it('keeps delegation parent authority bound to the durable chat identity, not a transient tab ID', async () => {
+  const id = await session.ensureDelegationParentId()
+  expect(id).toBeTruthy()
+  expect(id).not.toBe(session.id)
+  expect((await disk()).metadata?.chatId).toBe(id)
+  await reopen()
+  expect(await session.ensureDelegationParentId()).toBe(id)
+  expect(session.delegationParentId).toBe(id)
+})
+
 describe('durable selection anchors', () => {
   it.each([1, 2])(
     'lazily initializes identities in format %s and preserves source/history through reopen and compaction',
