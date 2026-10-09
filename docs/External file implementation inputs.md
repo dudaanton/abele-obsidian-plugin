@@ -5,12 +5,13 @@
 The plugin base before the state work is `f2a39653` (filesystem probe documentation).
 Its working tree was clean. The original core/protocol pin was
 `80bc7c666ac54cc186696ebdaaccd2d9e7a735ba`. Canonical external state is now packaged from
-the explicitly selected committed input `19d35b116a4ac6c062b50154b2fd33626e2ef012`, which
-includes the shared core facade/schemas/error, CLI connection delegation, and the raw physical
-path-length correction. It succeeds the canonical input
-`1b28e55b04a1146d20b22175db5648ff9d84d939` without a plugin schema fork:
+the explicitly selected committed input `a9354672aab9c4554fc3bf675b3a5c12f0b962ce`, which
+includes the shared core facade/schemas/error, opt-in engine recovery readiness, CLI
+ownership/lifecycle fixes and bounded discovery. It succeeds the canonical input
+`19d35b116a4ac6c062b50154b2fd33626e2ef012`, retaining its physical path-length correction
+without a plugin schema fork:
 
-- Core source tree: `cd861dad286c0c217b36a2f41c756d32fbe2ea2c`.
+- Core source tree: `bc8ebca0e40751da21ce7ec76897f6588d160659`.
 - Protocol source tree: `60b9ee72eee9455b25c57ae88957faec311e6ff3`.
 - Source lockfile SHA-256: `d3e42cb5c3548f605f98450070f98bf2e66488aa54e657b61b44b9824a8c1a2d`.
 
@@ -26,18 +27,16 @@ file. `package.json` and `package-lock.json` resolve those archives, not a sibli
 The verifier also checks that archive names, installed versions and core's protocol dependency
 agree with the provenance revision.
 
-The independently pinned server test input is
-`f927e62bb41817cd3cf0180e80f989e8c166ff1d`, as declared in
-`plugin/scripts/server-test-fixtures.mjs`. The server external-files branch was clean at that
-revision when inspected. The main server checkout was clean at
-`6d0cf6e895c9072db5f696f6daa98761fa96aed0`; it is **not** an implementation input. These
-historical observations do not authorize substituting its packages or another branch's build.
+The independently declared server test input is now also
+`a9354672aab9c4554fc3bf675b3a5c12f0b962ce`, in
+`plugin/scripts/server-test-fixtures.mjs`. It explicitly replaces the historical fixture
+`f927e62bb41817cd3cf0180e80f989e8c166ff1d` for the matching external-files implementation.
+This equality is a selected input, not a requirement to follow either checkout's mutable HEAD.
 
-The different core and server commits are intentional independent pins, not a requirement
-that their HEADs match. The core/protocol archives, provenance, dependency entries, lockfile
-and installed payload were replaced together using the clean-archive vendor procedure for
-the exact canonical commit. The independent server fixture was not silently advanced to the
-new core pin or to an unrelated server HEAD.
+Core/protocol archives, provenance, dependency entries, lockfile and installed payload were
+replaced together using the clean-archive vendor procedure for the exact canonical commit.
+The server fixture was independently exported from that same explicit commit; no live sibling
+build was packed or patched.
 
 ## Verification
 
@@ -46,7 +45,7 @@ From `plugin/`:
 ```sh
 node scripts/verify-sync-inputs.mjs
 npx vitest run tests/unit/syncBuildInputs.test.ts
-node scripts/vendor-sync.mjs /path/to/sync-repository f927e62bb41817cd3cf0180e80f989e8c166ff1d fixture
+node scripts/vendor-sync.mjs /path/to/sync-repository a9354672aab9c4554fc3bf675b3a5c12f0b962ce fixture
 ```
 
 The last command exports only committed source into disposable local scratch storage and
