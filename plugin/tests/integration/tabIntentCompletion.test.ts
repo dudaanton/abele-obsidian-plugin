@@ -378,6 +378,50 @@ describe('tab intent completion boundaries', () => {
     expect(parseChatMetadata(await read(file))).toMatchObject({ kind: 'chat', agentId: fallback.id })
   })
 
+  it('a failed write with an unreadable confirmation never silently expands after I/O returns', async () => {
+    const { app } = fixture()
+    const chats = ChatService.getInstance(), comments = CommentService.getInstance()
+    const registry = AgentRegistry.getInstance()
+    const fallback = registry.create({ id: 'sample-default-agent', name: 'Sample default' })
+    const original = registry.create({ id: 'sample-comment-agent', name: 'Sample comment', utility: true })
+    registry.setDefault(fallback.id)
+    const file = app.vault.getFileByPath(discussion)!
+    await app.vault.modify(file, content({
+      ...parseChatMetadata(discussionContent())!, agentId: original.id,
+      overrides: { permissionMode: 'confirm-all' },
+    }))
+    const session = (await comments.load(discussionId))!
+    const storage = ChatStorage.getInstance()
+    const read = app.vault.read.bind(app.vault)
+    const failedRead = vi.spyOn(app.vault, 'read')
+    // Fail the confirmation read, not the writer's earlier preparation reads.
+    const write = vi.spyOn(storage, 'saveChat').mockImplementationOnce(async () => {
+      failedRead.mockImplementationOnce(async () => { throw new Error('Sample read unavailable') })
+      throw new Error('Sample write unavailable')
+    })
+    const result = await comments.expand(discussionId).then(
+      (value) => ({ value }), (error: unknown) => ({ error })
+    )
+    expect(result).toMatchObject({ error: expect.any(Error) })
+    expect(session.kind).toBe('comment')
+    expect(session.agentId.value).toBe(original.id)
+    expect(session.overrides.value).toEqual({ permissionMode: 'confirm-all' })
+    expect(session.moving.value).toBe(false)
+    expect(comments.isExpanded(discussionId)).toBe(false)
+    expect(chats.getSession(session.id)).toBeNull()
+    expect(storage.getHistory().filter((entry) => entry.path === discussion)).toHaveLength(0)
+    failedRead.mockRestore()
+    // The write failure and confirmation failure have ended. No background retry is allowed.
+    await new Promise((resolve) => setTimeout(resolve, 400))
+    expect(await read(file)).toBeDefined()
+    expect(parseChatMetadata(await read(file))).toMatchObject({ kind: 'comment', agentId: original.id })
+    expect(storage.getHistory().filter((entry) => entry.path === discussion)).toHaveLength(0)
+    expect(write).toHaveBeenCalledOnce()
+    expect(await comments.expand(discussionId)).toBe('moved')
+    expect(parseChatMetadata(await read(file))).toMatchObject({ kind: 'chat', agentId: fallback.id })
+    expect(write).toHaveBeenCalledTimes(2)
+  })
+
   it('reentrant expansion explicitly refuses admission without queuing an orphaned reservation', async () => {
     fixture()
     const chats = ChatService.getInstance(), comments = CommentService.getInstance()

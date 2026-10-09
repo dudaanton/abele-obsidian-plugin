@@ -860,7 +860,13 @@ export class CommentService implements CommentInfoSource {
         try {
           recovered = await session.reconcileFailedExpansion()
         } catch (confirmationError) {
-          if (!session.isDestroyed && session.currentChatFile.value === file) session.markDirty()
+          // Unknown is not permission to retry an irreversible promotion behind the person's
+          // back. Restore the requested binding in memory, but leave the writer's pending
+          // state alone; only an explicit new action may attempt another write.
+          session.kind = previousKind
+          session.chatTitle.value = previousTitle
+          session.bindAgent(previousAgentId)
+          session.restoreOverrides(previousOverrides)
           throw new Error('The expansion could not be confirmed. Check the saved conversation before retrying.', { cause: confirmationError })
         }
         if (recovered.metadata.kind !== 'chat') {
