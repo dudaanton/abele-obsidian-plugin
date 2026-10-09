@@ -23,10 +23,10 @@ all existing revision/checksum checks and run the same assertions.
 required fixture variable automatically (omit the repository to reuse verified matching archives
 from `.scratch/sync-inputs/` or explicit fixture variables). The installed core/protocol pin stays
 independent of the released-server owner contract fixture: `ABELE_OWNER_RELEASE_FIXTURE` is checked
-against its own exact revision. The server-backed tier is pinned independently to `af53188`,
-which retains the owner group-list route and makes stale note edits with unavailable base content
-produce conflict copies instead of empty-base merges; the installed core/protocol archives stay
-unchanged.
+against its own exact revision. The current server-backed tier and installed core/protocol archives are pinned to
+`70b178a19ff66aad73ae2cc92e3508cca8e25c42`, including the unknown-base fix and final
+external-file implementation. Run the focused matrix in `External file validation.md`
+with its clean-archive fixture and `--maxWorkers=2`.
 Both revisions run `ownerSharingContracts.test.ts`: the older released server still exercises
 preparation, keys, invitations, revocation and security policy, while complete management listing
 must fail closed there because its group-list route does not exist.

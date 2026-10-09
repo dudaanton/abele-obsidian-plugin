@@ -5,9 +5,11 @@
 The plugin base before the state work is `f2a39653` (filesystem probe documentation).
 Its working tree was clean. The original core/protocol pin was
 `80bc7c666ac54cc186696ebdaaccd2d9e7a735ba`. Canonical external state is now packaged from
-the explicitly selected committed input `75b84b5d3e83e119e9624b32a331e1827986342d`, which
+the explicitly selected committed input `70b178a19ff66aad73ae2cc92e3508cca8e25c42`, which
 includes the shared core facade/schemas/error, opt-in engine recovery readiness, CLI
-ownership/lifecycle fixes, bounded discovery and the public exclusive scheduler port. It succeeds the canonical input
+ownership/lifecycle fixes, bounded discovery and the public exclusive scheduler port. The final input follows the
+server rebase onto v0.1.2, including the unknown-base fix; core/protocol source trees
+and the reviewed scoped payload remain unchanged from the preceding vendor input. It succeeds the canonical input
 `19d35b116a4ac6c062b50154b2fd33626e2ef012`, retaining its physical path-length correction
 without a plugin schema fork:
 
@@ -28,7 +30,7 @@ The verifier also checks that archive names, installed versions and core's proto
 agree with the provenance revision.
 
 The independently declared server test input is now also
-`75b84b5d3e83e119e9624b32a331e1827986342d`, in
+`70b178a19ff66aad73ae2cc92e3508cca8e25c42`, in
 `plugin/scripts/server-test-fixtures.mjs`. It explicitly replaces the historical fixture
 `f927e62bb41817cd3cf0180e80f989e8c166ff1d` for the matching external-files implementation.
 This equality is a selected input, not a requirement to follow either checkout's mutable HEAD.
@@ -45,7 +47,7 @@ From `plugin/`:
 ```sh
 node scripts/verify-sync-inputs.mjs
 npx vitest run tests/unit/syncBuildInputs.test.ts
-node scripts/vendor-sync.mjs /path/to/sync-repository 75b84b5d3e83e119e9624b32a331e1827986342d fixture
+node scripts/vendor-sync.mjs /path/to/sync-repository 70b178a19ff66aad73ae2cc92e3508cca8e25c42 fixture
 ```
 
 The last command exports only committed source into disposable local scratch storage and

@@ -4,7 +4,7 @@ External attachment records previously caused an unconditional lifecycle refusal
 `materializeForDisconnect()` was a recovery-required stub. Preparation now uses the
 same personal engine scheduler or scoped host queue as hydration and ordinary sync.
 Core and protocol are pinned to committed revision
-`75b84b5d3e83e119e9624b32a331e1827986342d`; the server fixture uses that revision too.
+`70b178a19ff66aad73ae2cc92e3508cca8e25c42`; the server fixture uses that revision too.
 The plugin no longer calls the engine's private scheduler.
 
 `SyncService.inspectDisconnect()` returns the inventory revision, required original
