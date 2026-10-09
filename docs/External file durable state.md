@@ -3,12 +3,14 @@
 ## Scope
 
 This is the state/projection foundation and its initial plugin recovery/lifecycle gates, not
-an enabled attachment store. It adds no UI, automatic eviction or ordinary scanner
-classification. Minimal filesystem ports are now implemented separately (see
-`External file filesystem ports.md`), without a production caller. Existing interrupted-installation recovery now
+an enabled attachment store. It adds no UI or automatic eviction. Minimal filesystem ports
+are implemented separately (see `External file filesystem ports.md`); the task-six
+representation classifier and durable projection jobs now participate in ordinary sync,
+without a production eviction/hydration caller. Existing interrupted-installation recovery now
 runs before engine activation under a runtime fence. IndexedDB uses schema version 2; the
-explicit activation marker is outside that deletable database. Nonempty external inventories
-remain connection-wide holds until classification and attachment recovery are integrated.
+explicit activation marker is outside that deletable database. Bound projection/tombstone/
+detach jobs are now held or recovered per file during startup; destructive external inventories
+remain connection-wide holds until attachment recovery and materialization are integrated.
 
 The canonical portable implementation now lives in the pinned core package's `external/`
 modules. The plugin's `records.ts`, `state.ts` and `SqliteExternalStateStore.ts` are compatibility
@@ -241,8 +243,11 @@ and journal cleanup. Script provenance activation follows installation recovery 
 the claim before descriptor/sentinel writes and database initialization; it cannot overwrite
 a successor's descriptor after an awaited sentinel lookup.
 
-**Conservative initial policy:** every nonempty external document and every activation marker
-requires recovery/disconnect preparation. Even hydrated policy records and terminal operations
+**Initial policy updated after task six:** activated/bound ledgers with known projection,
+tombstone or detach jobs now recover/hold per file before ordinary sync. Eviction/hydration,
+missing provenance, corrupt journals, unowned markers and any connection-switch evidence
+remain whole-connection holds. Every nonempty external document and activation marker
+still blocks lifecycle retirement until disconnect preparation. Even hydrated policy records and terminal operations
 are retained rather than guessed safe to discard. This is intentionally not the completed
 materialization API or credential-switch workflow. A later preparation implementation must
 prove/recheck an empty dependency inventory and persist readiness before relaxing these holds.

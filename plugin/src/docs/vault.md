@@ -13,8 +13,8 @@ exact text, including leading zeros, matters.
 
 The sync ledger reserves a schema-1 external-file document at `plugin:external-files` in its
 IndexedDB `meta` store. The SQLite adapter uses `daemon:external-files` in the existing CLI
-ledger. These primitives are not yet activated by production attachment operations: no
-projection files, eviction, automatic policy or UI are introduced by this foundation.
+ledger. The ledger can now classify existing external records during ordinary personal and scoped
+sync. There is still no production eviction/hydration caller, automatic policy or UI.
 
 Records bind to the local ledger, normalized endpoint, vault, personal/scoped mode, principal,
 grant, connection generation and credential association. They separate local representation
@@ -45,8 +45,16 @@ its retryable runtime. Retained `abele-sync-external-connection-switch-v1` evide
 recovery hold; completed credential switching/materialization is not implemented yet.
 
 Startup inspects external, installation and publication journals before constructing the
-personal engine or enabling scoped watchers/replay. Nonempty external inventories are held
-connection-wide. Effect guards recheck runtime ownership, durable descriptor and credential/
+personal engine or enabling scoped watchers/replay. Projection-update/move, tombstone and detach
+jobs for activated, bound ledgers are recoverable per file; eviction/hydration and unknown
+inventories remain connection-wide holds. A remote metadata event creates a revision-checked
+projection job and advances the ordinary head in the same IndexedDB phase commit, before
+cursor progression. Scoped heads remain in scoped state; its checkpoint advances only after
+the job and head have persisted. A restart can hold or resume the recorded job without
+receiving that event again. An unexpected original retains its earlier proven local base.
+An occupied/changed projection stays in `cleanup-pending`; it is never treated as a create,
+rename, upload or deletion of the original. Saved representations and operation artifacts
+stay device-local, never in settings, transfer data or projection JSON. Effect guards recheck runtime ownership, durable descriptor and credential/
 generation at state, filesystem/native and HTTP boundaries. Destructive lifecycle operations
 use a shared inventory and existing error handlers; unresolved dependencies cannot authorize
 revoke, token/descriptor replacement or database retirement. Activated connections remain
