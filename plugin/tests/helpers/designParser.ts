@@ -148,6 +148,9 @@ export function inspectCss(
       value === 'max(44px, var(--touch-size-m))'
     )
       return
+    // Consuming a host token does not authorize redefining the host's palette/type scale.
+    // The centralized, exact touch floor above is the only kit-owned static definition.
+    if (decl.prop.startsWith('--')) errors.push(`unapproved token definition: ${decl.prop}`)
     for (const match of value.matchAll(/var\((--[\w-]+)/g))
       if (!HOST_TOKEN.test(match[1])) errors.push(`unapproved token: ${match[1]}`)
     const literal = value

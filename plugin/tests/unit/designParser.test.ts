@@ -54,6 +54,9 @@ describe('parsed design contracts', () => {
     expect(inspectDesign('<style>.x { color: var(--my-grey); }</style>')).toContain(
       'unapproved token: --my-grey'
     )
+    expect(inspectDesign('<style>:root { --color-red: salmon; }</style>')).toContain(
+      'unapproved token definition: --color-red'
+    )
   })
   it('rejects raw flat rows but accepts named alternatives and the kit implementation', () => {
     expect(
