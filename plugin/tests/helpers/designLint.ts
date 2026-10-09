@@ -262,7 +262,14 @@ export function lintDesign(snapshot: DesignSnapshot, options: LintOptions = {}):
             )
         }
         // Adjacent vertical boxes and real horizontal gaps, not distributed free space.
-        if (j === i + 1 && x > tolerance && y <= 0) {
+        if (
+          j === i + 1 &&
+          x > tolerance &&
+          y <= 0 &&
+          (!parent?.layout?.display.includes('grid') ||
+            (Math.abs(a.rect.x - b.rect.x) <= tolerance &&
+              Math.abs(a.rect.width - b.rect.width) <= tolerance))
+        ) {
           const gap =
             b.rect.y >= bottom(a.rect) ? b.rect.y - bottom(a.rect) : a.rect.y - bottom(b.rect)
           const low = Math.min(bottom(a.rect), bottom(b.rect)),

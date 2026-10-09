@@ -6,7 +6,7 @@
         :state="event.state === 'pending' ? 'loading' : (event.state ?? 'ready')"
         :message="event.message || messages[event.state ?? 'ready']"
       >
-        <template #metadata
+        <template v-if="event.actor || event.source || showTime(event)" #metadata
           ><div class="abele-event-list__meta">
             <MetaLine
               :facts="[

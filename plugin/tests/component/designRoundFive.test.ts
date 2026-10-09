@@ -43,6 +43,12 @@ describe('native row composition', () => {
     })
     expect(row.get('.abele-list-row__title').find('.test-time').exists()).toBe(true)
   })
+  it('does not reserve an empty metadata band for an untimestamped failed event', () => {
+    const view = mount(EventList, {
+      props: { events: [{ id: 'retry', title: 'A draft', state: 'error' }] },
+    })
+    expect(view.find('.abele-event-list__meta').exists()).toBe(false)
+  })
   it('keeps the meaningful file extension separate from a clamped basename', () => {
     const row = mount(ListRow, {
       props: { title: 'A long sample document name.md', preserveExtension: true },

@@ -24,6 +24,10 @@ body.is-phone
     .abele-swatch-picker__choice,
     .abele-path-label > summary,
     .abele-list-section-header .is-collapsible,
+    .abele-tabs__tab,
+    .abele-breadcrumbs__item,
+    .abele-fold-heading.is-collapsible,
+    .abele-tree-item__self.is-clickable,
     .abele-image__preview
   ) {
   min-width: var(--abele-touch-min);

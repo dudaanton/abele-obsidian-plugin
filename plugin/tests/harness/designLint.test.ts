@@ -238,6 +238,18 @@ describe('design lint geometry rules', () => {
     })
     expect(codes(snapshot([parent, recovery, action, occupied]))).not.toContain('spacing-scale')
   })
+  it('does not infer grid track spacing from boxes in unlike spanning areas, but still reports off-scale gaps in the same track', () => {
+    const p = element('grid', {
+      parent: null,
+      row: undefined,
+      layout: { display: 'grid', justify: 'normal' },
+    })
+    const detail = element('detail', { parent: 'grid', row: undefined, rect: rect(0, 46, 300, 20) })
+    const edge = element('edge', { parent: 'grid', row: undefined, rect: rect(250, 0, 50, 20) })
+    expect(codes(snapshot([p, detail, edge]))).not.toContain('spacing-scale')
+    edge.rect = rect(0, 0, 300, 20)
+    expect(codes(snapshot([p, detail, edge]))).toContain('spacing-scale')
+  })
   it('captures SVG paint fragments without treating their intentional intersections as sibling layout overlap', () => {
     const shapes = [
       element('path-a', { layoutBox: false }),

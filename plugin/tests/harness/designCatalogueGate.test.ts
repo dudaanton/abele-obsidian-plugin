@@ -5,14 +5,9 @@ import { dirname, join, resolve } from 'node:path'
 
 const probe = vi.hoisted(() => ({
   bugs: {
-    rows: 'line-alignment',
     states: 'native-parity',
     details: 'clipping',
     images: 'line-alignment',
-    events: 'hierarchy-order',
-    artifact: 'row-column',
-    'comment-thread': 'row-spacing',
-    waiting: 'text-left-edge',
     controls: 'clipping',
     navigation: 'row-column',
     'icon-picker': 'sibling-overlap',
@@ -32,10 +27,10 @@ vi.mock('../e2e/helpers/designLint', () => ({
     async (_selector: string, directory: string, _capture: unknown, rules: unknown) => {
       const page = directory.split(/[\\/]/).at(-1)!
       probe.measurements.push({ page, rules })
-      if (process.env.DESIGN_GATE_PROBE === 'capture-error' && page === 'waiting')
+      if (process.env.DESIGN_GATE_PROBE === 'capture-error' && page === 'states')
         throw new Error('Probe capture failed')
       const rule =
-        process.env.DESIGN_GATE_PROBE === 'fixed' && page === 'waiting'
+        process.env.DESIGN_GATE_PROBE === 'fixed' && page === 'states'
           ? undefined
           : probe.bugs[page]
       return {
@@ -69,7 +64,17 @@ it('measures all catalogue pages with the unchanged native-reference requirement
       .filter((m) => !(m.page in probe.bugs))
       .map((m) => m.page)
       .sort()
-  ).toEqual(['comment', 'previews', 'specialized', 'swatches'])
+  ).toEqual([
+    'artifact',
+    'comment',
+    'comment-thread',
+    'events',
+    'previews',
+    'rows',
+    'specialized',
+    'swatches',
+    'waiting',
+  ])
 })
 it('rejects a repaired BUG and does not hide capture errors as expected failures', () => {
   const cwd = resolve(dirname(fileURLToPath(import.meta.url)), '../..')
@@ -77,7 +82,7 @@ it('rejects a repaired BUG and does not hide capture errors as expected failures
   const run = (state: string) =>
     spawnSync(
       process.execPath,
-      [cli, 'run', 'tests/harness/designCatalogueGate.test.ts', '--maxWorkers=2', '-t', 'waiting'],
+      [cli, 'run', 'tests/harness/designCatalogueGate.test.ts', '--maxWorkers=2', '-t', 'states'],
       {
         cwd,
         encoding: 'utf8',

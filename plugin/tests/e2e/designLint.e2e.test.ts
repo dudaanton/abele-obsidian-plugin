@@ -4,16 +4,16 @@ import { measureDesign, type DesignReport } from './helpers/designLint'
 import { shotDir } from './helpers/shots'
 
 const pages = [
-  { page: 'rows', bug: 'line-alignment and text-left-edge' },
+  { page: 'rows' },
   { page: 'states', bug: 'native-parity' },
   { page: 'details', bug: 'clipping' },
   { page: 'swatches' },
   { page: 'images', bug: 'line-alignment and native-parity' },
-  { page: 'events', bug: 'text-left-edge and hierarchy-order' },
-  { page: 'artifact', bug: 'line-alignment and row-column' },
+  { page: 'events' },
+  { page: 'artifact' },
   { page: 'comment' },
-  { page: 'comment-thread', bug: 'spacing-scale and row-spacing' },
-  { page: 'waiting', bug: 'line-alignment, text-left-edge and hierarchy-order' },
+  { page: 'comment-thread' },
+  { page: 'waiting' },
   { page: 'controls', bug: 'clipping and spacing-scale' },
   { page: 'navigation', bug: 'row-column and hierarchy-consistency' },
   { page: 'previews' },
