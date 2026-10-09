@@ -534,6 +534,45 @@ describe('common external representation and durable remote projection work', ()
     }
   })
 
+  it('migrates legacy unexpected-original blockers before a delete can replace the reason', async () => {
+    const s = await setup()
+    await s.state.commit({
+      expectedRevision: 1,
+      files: [
+        {
+          expectedRevision: 0,
+          next: {
+            ...s.file,
+            localRevision: 1,
+            blockingReason: 'unexpected-original',
+          },
+        },
+      ],
+    })
+    const open = async () =>
+      ExternalRepresentation.open({
+        state: await ExternalState.open(s.store, 'sample-ledger', binding),
+        ledger: s.store,
+        fs: s.fs,
+        verify: s.verify,
+        assertOwned: () => {},
+        scriptsFolder: () => 'Scripts',
+        installProjection: async () => 'cleanup-pending',
+      })
+    await (
+      await open()
+    ).accept(
+      event({
+        op: 'delete',
+        version_id: 'sample-deleted',
+        sha: null,
+        size: null,
+        mtime: null,
+      }) as never
+    )
+    expect(await (await open()).classify(path)).toMatchObject({ kind: 'hold', dirty: true })
+  })
+
   it('server verification failure and projection edits preserve bytes and pending work', async () => {
     const s = await setup()
     s.verify.mockRejectedValueOnce(Error('sample unavailable'))

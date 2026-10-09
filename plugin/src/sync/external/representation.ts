@@ -129,6 +129,20 @@ export class ExternalRepresentation {
             mtime: known.mtime,
           })
       }
+    // Upgrade earlier blockers/scoped dirty evidence to the independent provenance bit
+    // before subsequent metadata can replace the display reason.
+    const metadata = []
+    for (const id of runtime.unexpected)
+      if ((await options.ledger.getMeta(unexpectedKey(id))) === null)
+        metadata.push({ key: unexpectedKey(id), value: 'unresolved' })
+    if (metadata.length && options.state) {
+      options.assertOwned()
+      await options.state.commit({
+        expectedRevision: runtime.document.revision,
+        ledger: { metadata },
+      })
+      runtime.document = await options.state.snapshot()
+    }
     options.assertOwned()
     return runtime
   }
@@ -201,10 +215,6 @@ export class ExternalRepresentation {
     supplied?: Uint8Array
   ): Promise<RepresentationDecision> {
     this.owned()
-    // Inspect the actual upload/write buffer even when the destination does not yet exist
-    // or scanner exclusions would skip it. Native creation bypasses ordinary commit guards.
-    if (supplied && recognizeProjection(supplied))
-      return { kind: 'hold', reason: 'projection', dirty: false }
     const info = observed === undefined ? await this.options.fs.stat(path) : observed
     this.owned()
     for (const file of this.document.files) {
@@ -245,6 +255,10 @@ export class ExternalRepresentation {
       }
     }
     if (this.artifact(path)) return { kind: 'hold', reason: 'owned-artifact', dirty: false }
+    // Inspect the actual upload/write buffer even for a new/excluded destination. Managed
+    // originals above still establish their independent dirty provenance first.
+    if (supplied && recognizeProjection(supplied))
+      return { kind: 'hold', reason: 'projection', dirty: false }
     if (info === null) return { kind: 'ordinary' }
     // Scanner exclusions precede byte inspection. Portable adapters have no bounded read:
     // stat before readPrefix, since their implementation may allocate the entire file.
@@ -885,13 +899,12 @@ export class ExternalRepresentation {
             self.owned()
             if (offset === 0 || inventory === null) {
               const all: Awaited<ReturnType<ScopedState['knownPage']>> = []
+              const managed = new Set(
+                self.document.files.filter((file) => self.managed(file)).map((file) => file.fileId)
+              )
               for (let from = 0; ; from += 1000) {
                 const page = await state.knownPage(from)
-                all.push(
-                  ...page.filter(
-                    (known) => !self.file(known.file_id) || !self.managed(self.file(known.file_id)!)
-                  )
-                )
+                all.push(...page.filter((known) => !managed.has(known.file_id)))
                 if (page.length < 1000) break
               }
               self.owned()
