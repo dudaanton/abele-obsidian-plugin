@@ -6,10 +6,20 @@ export const piFailure = (data: Record<string, unknown>): string => {
   const snapshot = object(data.message)
   if (snapshot.role !== 'assistant' || snapshot.stopReason !== 'error') return ''
   const raw = text(snapshot.errorMessage).trim()
-  const status = raw.match(/\b(?:HTTP\s*)?([45]\d{2})\b/i)?.[1]
+  const retainedStatus = data.http_status
+  const status =
+    typeof retainedStatus === 'number' &&
+    Number.isInteger(retainedStatus) &&
+    retainedStatus >= 400 &&
+    retainedStatus < 600
+      ? retainedStatus
+      : raw.match(/\b(?:HTTP\s*)?([45]\d{2})\b/i)?.[1]
+  const plain = /provider_error|\bSDK\b|\bjournal\b/i.test(raw)
+    ? ''
+    : raw.split(/\r?\n/)[0].slice(0, 240)
   const reason = status
     ? `the model service returned an error (HTTP ${status})`
-    : raw.split(/\r?\n/)[0].slice(0, 240) || 'the model service returned an error'
+    : plain || 'the model service returned an error'
   return `The agent could not answer: ${reason}.`
 }
 const blocksText = (v: unknown): string =>

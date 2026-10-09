@@ -100,19 +100,36 @@
       >
         Not accepted: {{ rejected.text }} · {{ rejected.error }}
       </div>
-      <details v-if="presenter.projection.value.unknown.length">
-        <summary>Other journal records and provider evidence</summary>
-        <template v-for="record in presenter.projection.value.unknown" :key="record.seq">
-          <details v-if="recordArtifact(record.data)">
-            <summary>{{ record.type }} · {{ record.seq }}</summary>
-            <Button text="Read stored record" @click="readArtifact(recordArtifact(record.data))" />
-            <pre v-if="artifacts[recordArtifact(record.data)]">{{
-              artifacts[recordArtifact(record.data)]
-            }}</pre>
-          </details>
-        </template>
-        <pre>{{ JSON.stringify(presenter.projection.value.unknown, null, 2) }}</pre>
-      </details>
+      <div v-if="presenter.projection.value.unknown.length" class="abele-chat-msg">
+        <span
+          class="clickable-icon abele-chat-msg__icon abele-node-chat__details-spacer"
+          aria-hidden="true"
+          ><Icon icon="bot"
+        /></span>
+        <details class="abele-chat-msg__body">
+          <summary>Details</summary>
+          <p
+            v-for="(diagnostic, index) in diagnostics"
+            :key="index"
+            class="abele-node-chat__diagnostic"
+          >
+            {{ diagnostic }}
+          </p>
+          <template v-for="record in presenter.projection.value.unknown" :key="record.seq">
+            <details v-if="recordArtifact(record.data)">
+              <summary>{{ record.type }} · {{ record.seq }}</summary>
+              <Button
+                text="Read stored record"
+                @click="readArtifact(recordArtifact(record.data))"
+              />
+              <pre v-if="artifacts[recordArtifact(record.data)]">{{
+                artifacts[recordArtifact(record.data)]
+              }}</pre>
+            </details>
+          </template>
+          <pre>{{ JSON.stringify(presenter.projection.value.unknown, null, 2) }}</pre>
+        </details>
+      </div>
     </div>
     <AiChatInput
       :key="presenter.id"
@@ -142,7 +159,20 @@ import NodePermissionCard from './NodePermissionCard.vue'
 import AiChatInput from './AiChatInput.vue'
 import Icon from './obsidian/Icon.vue'
 import Button from './obsidian/Button.vue'
+import { piFailure } from '@/node/piTranscript'
 const props = defineProps<{ presenter: NodeChatPresenter }>()
+const diagnostics = computed(() =>
+  props.presenter.projection.value.unknown
+    .filter((record) => record.type === 'pi.message.final')
+    .map((record) =>
+      piFailure(
+        record.data && typeof record.data === 'object' && !Array.isArray(record.data)
+          ? (record.data as Record<string, unknown>)
+          : {}
+      )
+    )
+    .filter(Boolean)
+)
 const emit = defineEmits<{ (e: 'new-chat'): void }>()
 // The presenter owns resource identities; this thin view supplies Obsidian's dialog adapter.
 const stopFiles = props.presenter.setFilesOpener?.((model, path, range) =>
@@ -303,7 +333,7 @@ const send = async (text: string) => {
 }
 const retry = (messageId: string) => {
   if (offline.value || sending.value) return
-  const messages = presentation.value.messages
+  const messages = props.presenter.messages.value
   const failed = messages.find((message) => message.id === messageId)
   const input = messages.find(
     (message) => message.id === failed?.retryInputId && message.role === 'user'
@@ -330,6 +360,9 @@ watch(
 </script>
 <style lang="scss">
 .abele-node-chat {
+  &__details-spacer {
+    visibility: hidden;
+  }
   display: flex;
   flex-direction: column;
   flex: 1;

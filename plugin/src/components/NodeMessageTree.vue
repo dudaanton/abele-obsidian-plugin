@@ -15,18 +15,20 @@
       >
       <template #metadata>
         <div v-if="message.error" class="abele-ai-chat__error" role="alert">
-          {{ message.error }}
+          <div class="abele-ai-chat__error-line">
+            <span class="abele-node-error-text">{{ message.error }}</span>
+            <button
+              v-if="message.retryInputId"
+              class="clickable-icon"
+              type="button"
+              aria-label="Send again"
+              :disabled="offline"
+              @click="emit('retry', message.id)"
+            >
+              <Icon icon="rotate-cw" tooltip="Send again" no-hover />
+            </button>
+          </div>
         </div>
-        <button
-          v-if="message.error && message.retryInputId"
-          class="clickable-icon"
-          type="button"
-          aria-label="Send again"
-          :disabled="offline"
-          @click="emit('retry', message.id)"
-        >
-          <Icon icon="rotate-cw" tooltip="Send again" no-hover />
-        </button>
         <div v-if="queueStates[message.id]" class="abele-node-queue-state" role="status">
           <Icon icon="clock" no-hover />
           <span>{{ queueStates[message.id].label }}</span>
@@ -87,6 +89,10 @@ const emit = defineEmits<{
 }>()
 </script>
 <style lang="scss">
+.abele-node-error-text {
+  flex: 1;
+  min-width: 0;
+}
 .abele-node-child-work {
   margin-inline-start: var(--size-4-3);
   padding-inline-start: var(--size-4-2);
