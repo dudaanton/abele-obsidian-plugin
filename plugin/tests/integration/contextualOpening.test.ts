@@ -757,6 +757,40 @@ describe('request-local contextual opening', () => {
     expect(comments.isShown(xId)).toBe(false)
   })
 
+  it('a release requested by a synchronous observer waits for its queued admission result', async () => {
+    useVault([{ path: y, content: content(y, yId) }])
+    const chats = ChatService.getInstance(), comments = CommentService.getInstance()
+    await comments.showInSidebar(yId)
+    const session = chats.activeSession.value!
+    let released!: Promise<boolean>
+    chats.mutatePresentation(() => { released = chats.releaseSession(session.id) })
+    expect(await released).toBe(true)
+    expect(chats.getSession(session.id)).toBeNull()
+    expect(comments.isShown(yId)).toBe(false)
+    expect(session.isDestroyed).toBe(false)
+  })
+
+  it('an expansion reserves its last tab slot before persisting the metadata change', async () => {
+    useVault([{ path: x, content: content(x, xId) }])
+    const chats = ChatService.getInstance(), comments = CommentService.getInstance()
+    for (let index = 0; index < MAX_TABS - 1; index++) {
+      chats.getSession(chats.createTab())!.draft.value.text = `A sample draft ${index}`
+    }
+    const session = (await comments.load(xId))!
+    const gate = deferred(), saving = deferred(), save = session.save.bind(session)
+    vi.spyOn(session, 'save').mockImplementationOnce(async () => {
+      saving.resolve(); await gate.promise; return save()
+    })
+    const expanding = comments.expand(xId)
+    await saving.promise
+    const roomWhileSaving = chats.canCreateTab
+    gate.resolve()
+    expect(await expanding).toBe('moved')
+    expect(roomWhileSaving).toBe(false)
+    expect(chats.activeSession.value).toBe(session)
+    expect(chats.tabOrder.value).toHaveLength(MAX_TABS)
+  })
+
   it('the latest selection link to the same file survives cancellation of the first shared-load waiter', async () => {
     const app = useVault([
       { path: x, content: content(x, xId, true) },

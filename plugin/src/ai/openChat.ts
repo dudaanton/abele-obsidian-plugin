@@ -142,12 +142,14 @@ export function captureSelectionLink(
     })
 }
 
-let selectionReturnGeneration = 0
+/** Spinner ownership only; presentation authority lives in ChatService's intent queue. */
+let finishingSelection: (() => boolean) | undefined
 
 /** Ordinary note links and rendered chat links use the same identity-first adapter. */
 export async function openSelectionLink(href: string): Promise<void> {
-  const generation = ++selectionReturnGeneration
   const service = ChatService.getInstance()
+  const current = service.contextualOpenGuard('selection-link')
+  finishingSelection = current
   service.openingSelection.value = true
   try {
     const parsed = parseAnchorLink(href)
@@ -157,14 +159,14 @@ export async function openSelectionLink(href: string): Promise<void> {
     }
     const { app } = GlobalStore.getInstance()
     const index = await ChatStorage.getInstance().selectionIdentityIndex()
-    if (generation !== selectionReturnGeneration) return
+    if (!current()) return
     const found = resolveAnchorPath(parsed.address.chatId, parsed.pathHint, index)
     if (found.status === 'missing') {
       new Notice('The selection source has been deleted or is unavailable')
       return
     }
     const path = found.status === 'found' ? found.path : await chooseAnchorSource(found.paths)
-    if (!path || generation !== selectionReturnGeneration) return
+    if (!path || !current()) return
     const file = app.vault.getAbstractFileByPath(path)
     // Validate again after a choice: a file can change while a dialog is open.
     if (
@@ -174,17 +176,17 @@ export async function openSelectionLink(href: string): Promise<void> {
       new Notice('The selection source changed. Open the link again.')
       return
     }
-    if (generation !== selectionReturnGeneration) return
-    await openChat(file, () => generation === selectionReturnGeneration)
+    if (!current()) return
+    await openChat(file, current)
     const session = service.getSessionByFile(file.path)
     if (
       !session ||
       service.activeSession.value !== session ||
-      generation !== selectionReturnGeneration
+      !current()
     )
       return
     const anchor = await session.getAnchor(parsed.address.chatId, parsed.address.anchorId)
-    if (generation !== selectionReturnGeneration || service.activeSession.value !== session) return
+    if (!current() || service.activeSession.value !== session) return
     if (!anchor) {
       new Notice('This selection is no longer available. Reopen the chat and try again.')
       return
@@ -213,7 +215,7 @@ export async function openSelectionLink(href: string): Promise<void> {
   } catch (error) {
     new Notice(error instanceof Error ? error.message : String(error))
   } finally {
-    if (generation === selectionReturnGeneration) service.openingSelection.value = false
+    if (finishingSelection === current) service.openingSelection.value = false
   }
 }
 
@@ -231,25 +233,14 @@ export async function openChat(file: TFile, selectionReturn?: () => boolean): Pr
   // storage preparation and hands discussions to their owner; basename marker lookup is not
   // a file opener, including for same-basename copies already discovered outside the folder.
   const chatService = ChatService.getInstance()
-  // One generation decision spans preparation, shared loading and contextual showing.
-  // A late waiter or a second presentation stage must not manufacture a fresh release claim.
-  const current = chatService.contextualOpenGuard(
-    chatService.getSessionByFile(file.path) ?? CommentService.getInstance().getSessionByFile(file.path),
-    selectionReturn
-  )
+  // One admitted intent spans preparation, shared loading, presentation and reveal.
+  // Neither a late waiter nor completion may manufacture a fresh user action.
+  const current = chatService.contextualOpenGuard(file.path, selectionReturn)
   const opened = selectionReturn
     ? await chatService.openContextualChatFile(file, selectionReturn, current)
     : await chatService.openContextualChatFile(file, undefined, current)
   if (!opened || !current()) return
-  const session = chatService.getSessionByFile(file.path)
-  if (session?.kind === 'comment' && session.commentId) {
-    // Preserve the single contextual discussion tab (including return from a child), but
-    // address it by the identity prepared for this exact file, never the file's basename.
-    const comments = CommentService.getInstance()
-    await comments.showInSidebar(session.commentId, current)
-    return
-  }
-  await chatService.revealSidebar()
+  await chatService.revealSidebar({ current })
 }
 
 /** A file named in a chat — an attachment, a tool's target: a chat to the sidebar, the rest to the editor. */

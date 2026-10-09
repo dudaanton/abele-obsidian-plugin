@@ -60,6 +60,22 @@ describe('serial tab presentation intents', () => {
     expect(queue.mutate(() => 'ready')).toBe('ready')
   })
 
+  it('settles queued async callers after teardown without committing their work', async () => {
+    const queue = new TabIntentQueue(), intent = queue.begin('sample', true)
+    let queued!: Promise<string | undefined>
+    queue.mutate(() => {
+      queued = queue.applyAsync(intent, () => 'stale')
+      queue.clear()
+    })
+    expect(await queued).toBeUndefined()
+  })
+
+  it('rejects an async commit error without poisoning subsequent actions', async () => {
+    const queue = new TabIntentQueue(), intent = queue.begin('sample', true)
+    await expect(queue.applyAsync(intent, () => { throw new Error('Sample failure') })).rejects.toThrow('Sample failure')
+    expect(await queue.applyAsync(intent, () => 'ready')).toBe('ready')
+  })
+
   it('rejects completions from before service teardown', () => {
     const queue = new TabIntentQueue(), intent = queue.begin('sample', true)
     queue.clear()

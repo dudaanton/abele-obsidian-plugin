@@ -94,14 +94,17 @@ export class CommentService implements CommentInfoSource {
    * `expand` moved it into `expanded`, and it is destroyed only with the comment itself.
    */
   async revealChat(id: string): Promise<void> {
-    id = this.canonicalId(id)
-    ChatService.getInstance().noteSessionOpen(this.sessions.get(id) ?? this.expanded.get(id))
+    const chats = ChatService.getInstance()
+    const current = chats.contextualOpenGuard(this.presentationTarget(id))
     const session = await this.load(id)
-    if (!session || !this.expanded.has(id)) return
+    if (!session || !current() || !this.expanded.has(session.commentId ?? id)) return
+    if (!chats.adoptSession(session, current)) return
+    await chats.revealSidebar({ current })
+  }
 
-    const chatService = ChatService.getInstance()
-    if (!chatService.adoptSession(session)) return
-    await chatService.revealSidebar()
+  private presentationTarget(id: string): string {
+    return (this.sessions.get(id) ?? this.expanded.get(id))?.currentChatFile.value?.path ??
+      ChatStorage.getInstance().discussionPathFor(id) ?? `discussion:${id}`
   }
 
   /**
@@ -117,7 +120,7 @@ export class CommentService implements CommentInfoSource {
       if (note) notes.add(note)
     }
     for (const note of notes) dispatchCommentsChanged(note)
-  })
+  }, { flush: 'sync' })
 
   /**
    * Whether the open comment is actually in front of the person: its tab is the active one and
@@ -205,85 +208,55 @@ export class CommentService implements CommentInfoSource {
    * Returns whether the comment reached the sidebar, so a caller can say why it did not.
    */
   async showInSidebar(id: string, selectionReturn?: () => boolean): Promise<boolean> {
-    selectionReturn = ChatService.getInstance().contextualOpenGuard(
-      this.sessions.get(id) ?? this.expanded.get(id),
-      selectionReturn
-    )
+    const chats = ChatService.getInstance()
+    const current = chats.contextualOpenGuard(this.presentationTarget(id), selectionReturn)
     const session = await this.load(id)
-    if (!session || (selectionReturn && !selectionReturn())) return false
-    id = session.commentId ?? this.canonicalId(id)
-    if (selectionReturn) await session.reconcileForSelectionReturn(selectionReturn)
-    if (selectionReturn && !selectionReturn()) return false
+    if (!session || !current() || session.moving.value) return false
+    const shown = await chats.presentContextualSession(session, current)
+    if (!shown) return false
+    await chats.revealSidebar({ current })
+    return current()
+  }
 
-    // Opened as a chat since: it is one of the sidebar's own tabs now, not the one comment tab,
-    // and a way back into it from a child below must not mark it as a comment being read.
-    if (this.expanded.has(id)) {
-      await this.revealChat(id)
-      return true
+  /** Called only by the ChatService serial presentation transaction, never during I/O. */
+  showPresentationNow(session: ChatSession, selected = true): void {
+    const id = session.commentId
+    if (!id) return
+    if (session.kind === 'chat') {
+      this.sessions.delete(id)
+      this.shown.delete(id)
+      this.expanded.set(id, session)
+      this.watchState(id, session)
+      if (this.open.value === id) this.open.value = null
+      return
     }
-
-    if (session.moving.value) return false
-
-    // One at a time — «табы не плодить, а открывать на месте уже открытого КОНТЕКСТНОГО таба».
-    // The one before it is handed back exactly as closing its tab would hand it back: alive,
-    // still writing the same file, still painting its marker. An *expanded* comment is not
-    // touched — that one is a chat, and owns its tab like any other.
-    if (!(await this.releaseOtherContextualTabs(id, selectionReturn))) return false
-
-    const chatService = ChatService.getInstance()
-    // It can be refused: the tab bar has a limit and `adoptSession` keeps it. Nothing is
-    // marked and nothing is revealed then — the person has already been told why.
-    if (!chatService.adoptSession(session)) return false
-
+    if (!this.sessions.has(id)) this.adopt(id, session)
     this.shown.add(id)
-    this.open.value = id
-    await chatService.revealSidebar()
-
-    // Measured once the sidebar is there to be seen, and the note repainted either way.
+    if (selected) this.open.value = id
     this.lastOnScreen = this.onScreen(id)
     const note = session.anchor.value?.note
     if (note) dispatchCommentsChanged(note)
-    return true
   }
 
-  /** UI capacity only: no file ownership is inferred from the contextual tab's ID. */
-  hasContextualTabToReplace(id: string): boolean {
-    const chats = ChatService.getInstance()
-    return [...this.shown].some((other) => {
-      const session = this.sessions.get(other)
-      return (
-        other !== id &&
-        session?.kind === 'comment' &&
-        !session.isDestroyed &&
-        chats.getSession(session.id) === session
-      )
-    })
-  }
-
-  async releaseOtherContextualTabs(id: string, isCurrent?: () => boolean): Promise<boolean> {
-    for (const other of [...this.shown]) {
-      if (isCurrent && !isCurrent()) return false
-      if (other !== id && !(await this.hideFromSidebar(other, isCurrent))) return false
-    }
-    return !isCurrent || isCurrent()
+  releasePresentationNow(session: ChatSession): void {
+    const id = session.commentId
+    if (!id) return
+    this.shown.delete(id)
+    if (this.open.value === id) this.open.value = null
+    const note = session.anchor.value?.note
+    if (note) dispatchCommentsChanged(note)
   }
 
   /** Returns from the attention list without replacing any other discussion tab. */
   async revealForAttention(file: TFile): Promise<boolean> {
-    ChatService.getInstance().noteSessionOpen(this.sessionOnFile(file.path))
-    if (!(await ChatStorage.getInstance().prepareDiscussion(file)).identity) return false
     const chats = ChatService.getInstance()
     // Every chat-file opener shares one reservation and hands comment files to this owner.
-    await chats.openChatFile(file)
+    const current = chats.fileOpenGuard(file)
+    await chats.openChatFile(file, current)
     const session = chats.activeSession.value
-    if (session?.currentChatFile.value?.path !== file.path) return false
-    if (session.kind === 'comment') {
-      const id = session.commentId ?? file.basename
-      this.shown.add(id)
-      this.open.value = id
-    }
-    await chats.revealSidebar({ focus: false })
-    return true
+    if (!chats.isForegroundPresentation(current) || session?.currentChatFile.value?.path !== file.path) return false
+    await chats.revealSidebar({ focus: false, current })
+    return chats.isForegroundPresentation(current) && chats.activeSession.value === session
   }
 
   /**
@@ -303,17 +276,13 @@ export class CommentService implements CommentInfoSource {
     const chats = ChatService.getInstance()
     // A loaded-but-never-adopted contextual holder has no tab to release. Otherwise a
     // refused release is terminal for its caller, not permission to retry with a new token.
-    if (chats.getSession(session.id) && !(await chats.releaseSession(session.id, isCurrent)))
-      return false
-    // A save can outlive the request, or a reopen can supersede the per-session release.
-    // Update presentation only after the tab really left; never erase the reopened state.
-    if ((isCurrent && !isCurrent()) || chats.getSession(session.id)) return false
-    this.shown.delete(id)
-    if (this.open.value === id) this.open.value = null
-
-    const note = session.anchor.value?.note
-    if (note) dispatchCommentsChanged(note)
-    return true
+    if (chats.getSession(session.id)) return chats.releaseSession(session.id, isCurrent)
+    // A holder without a tab can only clear its mark inside the same queue as a reopen.
+    return chats.mutatePresentation(() => {
+      if ((isCurrent && !isCurrent()) || chats.getSession(session.id)) return false
+      this.releasePresentationNow(session)
+      return true
+    }) ?? false
   }
 
   /** True for a comment that has been opened as a chat: `ChatService` owns it now. */
@@ -462,6 +431,10 @@ export class CommentService implements CommentInfoSource {
 
   /** Drops every trace of a session without touching the file it was read from. */
   private forget(id: string): void {
+    ChatService.getInstance().mutatePresentation(() => this.forgetNow(id))
+  }
+
+  private forgetNow(id: string): void {
     this.watchers.get(id)?.()
     this.watchers.delete(id)
     this.sessions.delete(id)
@@ -556,16 +529,7 @@ export class CommentService implements CommentInfoSource {
 
   /** Opens a comment wherever it now lives: its chat if it became one, the sidebar otherwise. */
   async reveal(id: string): Promise<boolean> {
-    ChatService.getInstance().noteSessionOpen(this.sessions.get(id) ?? this.expanded.get(id))
-    const session = await this.load(id)
-    if (!session) return false
-    id = session.commentId ?? this.canonicalId(id)
-    if (session.kind === 'chat') {
-      // Read from a file that became a chat: `ChatService` owns it, as `expand` would have left it.
-      if (this.sessions.delete(id)) this.expanded.set(id, session)
-      await this.revealChat(id)
-      return true
-    }
+    // Admit before loading; a delayed return must never become a fresh user action.
     return this.showInSidebar(id)
   }
 
@@ -818,29 +782,13 @@ export class CommentService implements CommentInfoSource {
   }
 
   /**
-   * The session for a comment file `ChatService` is restoring a tab for.
-   *
-   * It is `load` plus the bookkeeping the two ways into a tab do. A comment that was expanded
-   * into a chat comes back as one — `expanded`, owned by `ChatService`. A comment that is
-   * still a comment comes back as what it is, marked `shown`: this service owns it, and
-   * closing the tab hands it back rather than ending it.
-   *
-   * Loading it and *then* letting `restoreTabs` build its own is what put two log writers on
-   * one file — the editor is up before `onLayoutReady`, so the comment is usually read first.
+   * Obtains the shared writer for a discussion file. Loading a second writer during tab
+   * restoration would race the editor's early load; actual presentation is a separate commit.
    */
   async handOverToTab(id: string, file?: TFile): Promise<ChatSession | null> {
-    const session = await this.load(id, file)
-    if (!session) return null
-    id = session.commentId ?? this.canonicalId(id)
-
-    if (session.kind === 'comment') {
-      this.shown.add(id)
-      this.open.value = id
-      return session
-    }
-
-    if (this.sessions.delete(id)) this.expanded.set(id, session)
-    return session
+    // Ownership preparation only. Tab registration and shown/expanded decisions belong to
+    // ChatService's commit, not to the completion of a shared file read.
+    return this.load(id, file)
   }
 
   // ── Becoming a chat ───────────────────────────────────────────
@@ -855,7 +803,7 @@ export class CommentService implements CommentInfoSource {
    * Answers with what happened, so a caller can say why it did not move: a turn it may not be
    * taken out of, or a tab bar with no room in it.
    */
-  async expand(id: string): Promise<CommentMoveResult> {
+  async expand(id: string, presentationCurrent?: () => boolean): Promise<CommentMoveResult> {
     id = this.canonicalId(id)
     const session = this.sessions.get(id)
     if (!session) return 'busy'
@@ -869,7 +817,11 @@ export class CommentService implements CommentInfoSource {
     // Before anything moves. The sidebar keeps a limit on its tabs, and it used to be asked
     // last: the file already said "chat", the history already had an entry, and the answer was
     // no — a conversation filed as a chat that nothing was holding, with no way back.
-    if (!ChatService.getInstance().hasRoomFor(session)) {
+    const chats = ChatService.getInstance()
+    const current = chats.contextualOpenGuard(session, presentationCurrent)
+    if (!current()) return 'busy'
+    const releaseRoom = chats.reserveTab(session)
+    if (!releaseRoom) {
       new Notice(ChatService.TABS_FULL)
       return 'no-room'
     }
@@ -933,26 +885,17 @@ export class CommentService implements CommentInfoSource {
         session.recapIfMissing()
       }
 
-      this.sessions.delete(id)
-      // It may already have been in a tab, read there rather than expanded; the mark goes now,
-      // because from here on the tab belongs to a chat and closing it is closing it.
-      this.shown.delete(id)
-      this.expanded.set(id, session)
-
-      const chatService = ChatService.getInstance()
-      // Room was asked for before any of this: nothing here can be refused any more.
-      chatService.adoptSession(session)
-      await chatService.revealSidebar()
-
-      // Folded: what was in the card is in the sidebar now, and a card left open over a
-      // conversation that has moved is a card showing a copy of it.
-      if (this.open.value === id) this.open.value = null
+      // File ownership follows the persisted kind even if a newer action superseded its UI.
+      // Completion cannot manufacture an adoption/reveal intent and steal that selection.
+      chats.mutatePresentation(() => this.showPresentationNow(session, false))
+      if (chats.adoptSession(session, current)) await chats.revealSidebar({ current })
 
       const note = session.anchor.value?.note
       if (note) dispatchCommentsChanged(note)
       return 'moved'
     } finally {
       session.moving.value = false
+      releaseRoom()
     }
   }
 
@@ -981,19 +924,18 @@ export class CommentService implements CommentInfoSource {
    * file; `ChatService.openChatFile` would have built a second one on top of it.
    */
   async openFile(file: TFile): Promise<void> {
-    const chatService = ChatService.getInstance()
-
-    const already = chatService.getSessionByFile(file.path)
+    const chats = ChatService.getInstance()
+    const current = chats.contextualOpenGuard(file.path)
+    const already = chats.getSessionByFile(file.path)
     if (already) {
-      chatService.switchTab(already.id)
-      await chatService.revealSidebar()
+      if (chats.adoptSession(already, current)) await chats.revealSidebar({ current })
       return
     }
 
     const id = file.basename
     const session = await this.load(id, file)
-    if (!session) return
-    await this.expand(session.commentId ?? id)
+    if (!session || !current()) return
+    await this.expand(session.commentId ?? id, current)
   }
 
   // ── Following the note ────────────────────────────────────────
@@ -1106,28 +1048,25 @@ export class CommentService implements CommentInfoSource {
     for (const [id, session] of [...this.sessions, ...this.expanded]) {
       if (session.currentChatFile.value?.path === path) ids.add(id)
     }
-    for (const id of ids) {
-      const owner = this.sessions.get(id) ?? this.expanded.get(id) ?? null
-      // A colliding basename is never enough to destroy an owner of another file.
-      if (owner?.currentChatFile.value && owner.currentChatFile.value.path !== path) {
-        continue
+    const chats = ChatService.getInstance()
+    chats.mutatePresentation(() => {
+      for (const id of ids) {
+        const owner = this.sessions.get(id) ?? this.expanded.get(id) ?? null
+        // A colliding basename is never enough to destroy an owner of another file.
+        if (owner?.currentChatFile.value && owner.currentChatFile.value.path !== path) continue
+        this.generations.set(id, (this.generations.get(id) ?? 0) + 1)
+        const note = owner?.anchor.value?.note
+        this.forgetNow(id)
+        if (owner) {
+          // Deletion is not a close/save: never write the deleted conversation back.
+          chats.dropTab(owner.id)
+          owner.destroy()
+        }
+        this.missing.add(id)
+        if (this.open.value === id) this.open.value = null
+        if (note) dispatchCommentsChanged(note)
       }
-      this.generations.set(id, (this.generations.get(id) ?? 0) + 1)
-      const note = owner?.anchor.value?.note
-      this.watchers.get(id)?.()
-      this.watchers.delete(id)
-      this.sessions.delete(id)
-      this.expanded.delete(id)
-      if (owner) {
-        // Deletion is not a close/save: never write the deleted conversation back.
-        ChatService.getInstance().dropTab(owner.id)
-        owner.destroy()
-      }
-      this.shown.delete(id)
-      this.missing.add(id)
-      if (this.open.value === id) this.open.value = null
-      if (note) dispatchCommentsChanged(note)
-    }
+    })
   }
 
   // ── Removing one ──────────────────────────────────────────────
@@ -1166,25 +1105,23 @@ export class CommentService implements CommentInfoSource {
       }
     }
 
-    this.watchers.get(id)?.()
-    this.watchers.delete(id)
-
-    const wasShown = this.shown.delete(id)
-
-    if (this.sessions.delete(id)) {
-      // Shown in the sidebar as well: the tab goes with it, and without a save — the file is
-      // about to be deleted, and writing it on the way out would put the comment back.
-      if (wasShown && session) ChatService.getInstance().dropTab(session.id)
-      session?.destroy()
-    } else if (this.expanded.delete(id) && session) {
-      // Expanded: `ChatService` owns it, and closing the tab is what saves and disposes it.
-      await ChatService.getInstance().closeTab(session.id)
-    }
+    // Deletion is terminal file ownership, not a cancellable close intent. A tab reselected
+    // during saving must still stop writing before the conversation file is deleted.
+    if (session && this.expanded.has(id)) await session.save()
+    const chats = ChatService.getInstance()
+    chats.mutatePresentation(() => {
+      const owner = this.sessionOnFile(validated.path) ?? session
+      this.forgetNow(id)
+      if (owner) {
+        chats.dropTab(owner.id)
+        owner.destroy()
+      }
+      if (this.open.value === id) this.open.value = null
+    })
 
     // Revalidate immediately before deletion too: a sync arrival may have changed ownership.
     if ((await ChatStorage.getInstance().findDiscussion(id)) === validated)
       await ChatStorage.getInstance().deleteChat(validated.path)
-    if (this.open.value === id) this.open.value = null
     if (notePath) dispatchCommentsChanged(notePath)
   }
 
@@ -1365,7 +1302,14 @@ export class CommentService implements CommentInfoSource {
       session.destroy()
     }
     this.sessions.clear()
-    // Expanded sessions belong to ChatService, which disposes of its own.
+    // Registered expanded sessions belong to ChatService. A persisted expansion whose UI
+    // was superseded can remain only in this cache, and still needs an unload/flush owner.
+    const chats = ChatService.getInstance()
+    for (const session of this.expanded.values()) {
+      if (chats.getSession(session.id) === session || session.isDestroyed) continue
+      void session.flush()
+      session.destroy()
+    }
     this.expanded.clear()
     this.shown.clear()
     this.loading.clear()
