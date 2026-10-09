@@ -5,6 +5,12 @@ export interface TabIntent {
   readonly current?: () => boolean
 }
 
+/** Mutable binding is private to the queue; its priority is the original action's order. */
+interface AdmittedTabIntent extends TabIntent {
+  target: string
+  readonly order: number
+}
+
 /**
  * One synchronous commit queue for tab state. Slow preparation runs outside it; its result
  * may commit only under the original intent. A synchronous observer can enqueue another
@@ -13,8 +19,9 @@ export interface TabIntent {
 export class TabIntentQueue {
   private pending: (() => void)[] = []
   private draining = false
-  private latest = new Map<string, TabIntent>()
+  private latest = new Map<string, AdmittedTabIntent>()
   private foreground?: TabIntent
+  private order = 0
 
   /** Reentrant callers enqueue work and receive no immediate result. Internal helpers stay inline. */
   mutate<T>(work: () => T): T | undefined {
@@ -53,12 +60,27 @@ export class TabIntentQueue {
 
   /** Admission is synchronous so a new action supersedes even a commit queued by an observer. */
   begin(target: string, contextual: boolean, current?: () => boolean): TabIntent {
-    const intent = { target, contextual, current }
+    const intent = { target, contextual, current, order: ++this.order }
     if (!current || current()) {
       this.latest.set(target, intent)
       this.foreground = intent
     }
     return intent
+  }
+
+  /**
+   * Bind a provisional request to its resolved conversation. This is admission bookkeeping,
+   * not a new action: preserve foreground and priority, even when resolution finishes late.
+   */
+  retarget(intent: TabIntent, target: string): boolean {
+    const admitted = this.latest.get(intent.target)
+    if (admitted !== intent || !this.valid(intent)) return false
+    if (intent.target === target) return true
+    this.latest.delete(intent.target)
+    const incumbent = this.latest.get(target)
+    admitted.target = target
+    if (!incumbent || incumbent.order < admitted.order) this.latest.set(target, admitted)
+    return this.valid(intent)
   }
 
   valid(intent: TabIntent): boolean {

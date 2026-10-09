@@ -852,7 +852,7 @@ export class CommentService implements CommentInfoSource {
       if (file) session.chatTitle.value = title
 
       try {
-        await session.save()
+        await session.saveForRelease()
       } catch (e) {
         // The file still says "comment", so nothing here may say otherwise: a session filed as
         // a chat over a file that is not one comes back after a restart as both, read twice and

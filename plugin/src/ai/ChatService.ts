@@ -533,6 +533,7 @@ export class ChatService {
   adoptSession(session: ChatSession, current?: () => boolean): boolean {
     const intent = (current && this.presentationGuards.get(current)) ??
       this.presentations.begin(session.currentChatFile.value?.path ?? session.id, true, current)
+    if (!this.presentations.retarget(intent, session.currentChatFile.value?.path ?? session.id)) return false
     return this.presentations.apply(intent, () => {
       if (session.isDestroyed || !this.adoptSessionNow(session)) return false
       CommentService.getInstance().showPresentationNow(session)
@@ -738,6 +739,7 @@ export class ChatService {
   async presentContextualSession(session: ChatSession, current: () => boolean, previous?: ChatSession | null): Promise<boolean> {
     const intent = this.presentationGuards.get(current)
     if (!intent) throw new Error('Contextual presentation requires an admitted intent.')
+    if (!this.presentations.retarget(intent, session.currentChatFile.value?.path ?? session.id)) return false
     const comments = CommentService.getInstance()
     // An expanded discussion is an independent chat, never a replacement for the comment slot.
     if (session.kind !== 'comment') return this.presentLoadedSession(intent, session, previous)
@@ -1002,6 +1004,9 @@ export class ChatService {
     const intent = this.contextualLoads.get(toRaw(file)) ??
       (selectionReturn && this.presentationGuards.get(selectionReturn)) ??
       this.presentations.begin(file.path, false, selectionReturn)
+    // A link's file becomes authoritative only after identity resolution. Keep the original
+    // action, but bind it to the same key used by closes before awaiting the shared writer.
+    if (!this.presentations.retarget(intent, file.path)) return
     const current = this.intentGuard(intent)
     const previous = this.activeSession.value
     const session = await this.loadFile(file, () => {
