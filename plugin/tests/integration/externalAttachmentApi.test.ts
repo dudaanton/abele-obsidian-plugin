@@ -481,6 +481,13 @@ describe('manual attachment store', () => {
       expect(await s.fake.vault.adapter.exists(path)).toBe(false)
       await s.api.recover()
       expect((await s.state.snapshot()).files[0].representation).toBe('remote-only')
+      expect(
+        await s.api.evict(s.base.fileId, {
+          operationId: 'sample-lost-delete',
+          expectedRevision: 0,
+          expectedVersionId: s.base.versionId,
+        })
+      ).toEqual({ status: 'complete', reclaimedBytes: 0 })
       expect(intercepted).toHaveBeenCalledOnce()
     } finally {
       s.close()

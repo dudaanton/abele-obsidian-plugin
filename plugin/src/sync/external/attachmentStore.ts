@@ -323,10 +323,12 @@ export class AttachmentStore {
           return existing.phase === 'remote-only'
             ? this.result(
                 'complete',
-                this.reclaimed(
-                  doc.files.find((file) => file.fileId === id),
-                  head
-                )
+                existing.unresolvedOutcome
+                  ? 0
+                  : this.reclaimed(
+                      doc.files.find((file) => file.fileId === id),
+                      head
+                    )
               )
             : this.result('recovery-required')
         }
@@ -828,7 +830,12 @@ export class AttachmentStore {
             representation: 'remote-only',
             pendingOperationId: null,
           },
-          { ...op, revision: op.revision + 1, phase: 'remote-only' }
+          {
+            ...op,
+            revision: op.revision + 1,
+            phase: 'remote-only',
+            unresolvedOutcome: 'delete-acknowledgement-not-recorded',
+          }
         )
       }
       return { pending: (await this.document()).files.filter((f) => f.pendingOperationId).length }
