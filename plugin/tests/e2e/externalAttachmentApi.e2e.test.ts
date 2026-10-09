@@ -24,7 +24,7 @@ beforeAll(async () => {
   // eslint-disable-next-line no-unsanitized/method -- The verified archive supplies literal module paths.
   const load = (file: string) => import(/* @vite-ignore */ pathToFileURL(join(root, file)).href)
   const { scopedFixture } = await load('packages/server/tests/helpers/scopedFixture.ts')
-  const { createFolderGrant, issueFolderKey } = await load(
+  const { createFolderGrant, issueFolderKey, updateFolderKey } = await load(
     'packages/server/src/auth/folderManagement.ts'
   )
   const { prepareFolderAdmissions } = await load('packages/server/src/scoped/admissions.ts')
@@ -59,6 +59,15 @@ beforeAll(async () => {
       expires_at: '2030-01-02T00:00:00.000Z',
     }
   )
+  fixture.revokeReader = () =>
+    updateFolderKey(
+      fixture.deps,
+      fixture.owner.accountToken,
+      fixture.vault,
+      fixture.grant.id,
+      reader.key_id,
+      { expected_revision: 0, revoke: true }
+    )
   url = await fixture.t.app.listen({ host: '127.0.0.1', port: 0 })
   if (onPhone()) closeReverse = exposeToPhone(Number(new URL(url).port))
   layout = JSON.parse(await evalLong('JSON.stringify(app.workspace.getLayout())'))
@@ -92,7 +101,7 @@ async function roundTrip(scoped: boolean) {
     }
     await adapter.writeBinary(path,bytes.buffer)
     const database='sample-attachment-'+crypto.randomUUID(),store=await api.externalState.IndexedDbStateStore.open(indexedDB,database)
-    const binding={endpoint:url,vaultId:vault,mode:${JSON.stringify(scoped ? 'scoped' : 'personal')},principalId:${JSON.stringify(scoped ? reader.id : fixture.device.deviceId)},principalType:${JSON.stringify(scoped ? 'key' : 'device')},grantId:${scoped ? 'grant' : 'null'},generation:1,credentialAssociation:'sample-slot'}
+    const binding={endpoint:url,vaultId:vault,mode:${JSON.stringify(scoped ? 'scoped' : 'personal')},principalId:${JSON.stringify(scoped ? reader.key_id : fixture.device.deviceId)},principalType:${JSON.stringify(scoped ? 'key' : 'device')},grantId:${scoped ? 'grant' : 'null'},generation:1,credentialAssociation:'sample-slot'}
     const state=await api.externalState.ExternalState.open(store,'sample-ledger',binding)
     await store.put({path,wirePath:path,fileId:base.file_id,versionId:base.version_id,sha:base.sha,size:base.size,mtime:base.mtime})
     const host=new api.ExternalFileHost(app,{platform:${JSON.stringify(onPhone() ? 'mobile' : 'desktop')},assertOwned:()=>{}})
@@ -156,11 +165,7 @@ describe('attachment API with the pinned real server on live adapters', () => {
   )
 
   it('lost scoped reader rights preserve the original before any external filesystem mutation', async () => {
-    await fixture.t.db
-      .updateTable('api_keys')
-      .set({ revoked_at: '2030-01-01T00:00:00.000Z' })
-      .where('id', '=', reader.id)
-      .execute()
+    await fixture.revokeReader()
     const outcome = await roundTrip(true)
     expect(outcome.evicted).toEqual({ status: 'unavailable', reclaimedBytes: 0 })
     expect(outcome.missing).toBe(false)
