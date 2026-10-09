@@ -3,27 +3,10 @@ import { evalJson, evalLong } from './helpers/obsidianCli'
 import { measureDesign, type DesignReport } from './helpers/designLint'
 import { shotDir } from './helpers/shots'
 
-const pages = [
-  { page: 'rows' },
-  { page: 'states', bug: 'native-parity' },
-  { page: 'details', bug: 'clipping' },
-  { page: 'swatches' },
-  { page: 'images', bug: 'line-alignment and native-parity' },
-  { page: 'events' },
-  { page: 'artifact' },
-  { page: 'comment' },
-  { page: 'comment-thread' },
-  { page: 'waiting' },
-  { page: 'controls', bug: 'clipping and spacing-scale' },
-  { page: 'navigation', bug: 'row-column and hierarchy-consistency' },
-  { page: 'previews' },
-  { page: 'specialized' },
-  { page: 'icon-picker', bug: 'spacing-scale and sibling-overlap' },
-  { page: 'confirm', bug: 'sibling-overlap' },
-]
+import { DESIGN_CASES } from './helpers/designCatalogueCases'
 const directory = process.env.DESIGN_LINT_OUT_DIR ?? shotDir('design-lint')
 describe('kit catalogue live design contract', () => {
-  for (const { page, bug } of pages)
+  for (const { page, bug } of DESIGN_CASES)
     describe(page, () => {
       let report: DesignReport
       // Suite-hook errors stay red; test-level hooks are also inverted by it.fails.
@@ -34,7 +17,9 @@ describe('kit catalogue live design contract', () => {
         ).toBe(true)
         const opened = await evalLong(`(async () => {
         window.__abeleTest.openDesignCatalogue(${JSON.stringify(page)}, 'disclosed')
-        await new Promise(resolve => setTimeout(resolve, 300))
+        await new Promise(resolve => setTimeout(resolve, 500))
+        await document.fonts.ready
+        await new Promise(requestAnimationFrame)
         return 'opened'
       })()`)
         expect(opened).toBe('opened')

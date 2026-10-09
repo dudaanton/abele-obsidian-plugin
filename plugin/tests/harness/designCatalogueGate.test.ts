@@ -15,6 +15,14 @@ const probe = vi.hoisted(() => ({
   } as Record<string, string>,
   measurements: [] as { page: string; rules: unknown }[],
 }))
+// Inject synthetic outstanding debt into the real registration path. The live catalogue
+// is clean, but capture errors, missing native references and unexpected BUG passes remain red.
+vi.mock('../e2e/helpers/designCatalogueCases', async (importOriginal) => {
+  const actual = await importOriginal<typeof import('../e2e/helpers/designCatalogueCases')>()
+  return {
+    DESIGN_CASES: actual.DESIGN_CASES.map((entry) => ({ ...entry, bug: probe.bugs[entry.page] })),
+  }
+})
 vi.mock('../e2e/helpers/obsidianCli', () => ({
   evalJson: vi.fn(() => true),
   evalLong: vi.fn(async (code: string) =>
@@ -55,7 +63,7 @@ vi.mock('../e2e/helpers/designLint', () => ({
 await import('../e2e/designLint.e2e.test')
 
 it('measures all catalogue pages with the unchanged native-reference requirement', () => {
-  expect(probe.measurements).toHaveLength(16)
+  expect(probe.measurements).toHaveLength(17)
   expect(
     probe.measurements.every((m) => JSON.stringify(m.rules) === '{"requireNative":true}')
   ).toBe(true)
@@ -69,12 +77,21 @@ it('measures all catalogue pages with the unchanged native-reference requirement
     'comment',
     'comment-thread',
     'events',
+    'index',
     'previews',
     'rows',
     'specialized',
     'swatches',
     'waiting',
   ])
+})
+it('registers every real catalogue page as an ordinary clean contract after measured repairs', async () => {
+  const actual = await vi.importActual<typeof import('../e2e/helpers/designCatalogueCases')>(
+    '../e2e/helpers/designCatalogueCases'
+  )
+  const { CATALOGUE_PAGES } = await import('@/testing/designCatalogue')
+  expect(actual.DESIGN_CASES.map((entry) => entry.page)).toEqual([...CATALOGUE_PAGES])
+  expect(actual.DESIGN_CASES.every((entry) => entry.bug === undefined)).toBe(true)
 })
 it('rejects a repaired BUG and does not hide capture errors as expected failures', () => {
   const cwd = resolve(dirname(fileURLToPath(import.meta.url)), '../..')

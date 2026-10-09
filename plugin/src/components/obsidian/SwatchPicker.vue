@@ -104,6 +104,9 @@ body.is-phone .abele-swatch-picker__choice,
 body.is-phone .modal .abele-swatch-picker .abele-swatch-picker__choice {
   padding: var(--size-4-1);
 }
+body.is-phone .modal .abele-swatch-picker .abele-swatch-picker__underline {
+  padding: var(--size-4-1);
+}
 .abele-swatch-picker__swatch {
   display: flex;
   align-items: center;

@@ -34,6 +34,12 @@ describe('plain list affordances', () => {
       /body\.is-phone\s+\.modal\s+\.abele-swatch-picker\s+\.abele-swatch-picker__choice\s*\{\s*padding:\s*var\(--size-4-1\)/
     )
   })
+  it('keeps the underline control on the same phone theme padding as swatch choices', () => {
+    const css = readFileSync('src/components/obsidian/SwatchPicker.vue', 'utf8')
+    expect(css).toMatch(
+      /body\.is-phone\s+\.modal\s+\.abele-swatch-picker\s+\.abele-swatch-picker__underline\s*\{\s*padding:\s*var\(--size-4-1\)/
+    )
+  })
   it('extends the native slider hit area without replacing its track or thumb', () => {
     const css = readFileSync('src/components/obsidian/Slider.vue', 'utf8')
     expect(css).toContain('var(--abele-touch-min) - var(--slider-track-height)')
