@@ -5,6 +5,53 @@ import type { ChatSession } from '@/ai/ChatSession'
 import type { RepositorySource } from '@/repository/source'
 import type { ToolContext } from '@/ai/toolContext'
 
+it('rejects retained results after A→B→A without requiring a new chat project grant', async () => {
+  const session = {
+    conversationVersion: { value: 0 },
+    branchSelectionVersion: 0,
+  } as unknown as ChatSession
+  const host = new NodeRepositoryToolsHost()
+  const source = {
+    identity: { provider: 'node', installation: 'i', node: 'n', project: 'p', workspace: 'w' },
+    cacheNamespace: 'generation',
+    assertCurrent: vi.fn(),
+    text: vi.fn(async () => 'branch A bytes\n'.repeat(4000)),
+  } as unknown as RepositorySource
+  const tab = { source, selection: () => null, open: vi.fn() }
+  host.attach(tab)
+  host.grant(session, 'n', 'p')
+  const approve = vi.fn(async () => true)
+  const read = (params: Record<string, unknown>) =>
+    createNodeTools(host, approve)
+      .find((t) => t.name === 'node_file')!
+      .execute('id', params, undefined, { session, interactive: true } as ToolContext)
+  const first = await read({ node: 'n', project: 'p', workspace: 'w', path: 'a' })
+  const cursor = (first.details as { cursor: string }).cursor
+  expect(cursor).toBeTruthy()
+  Object.defineProperty(session, 'branchSelectionVersion', { value: 1, configurable: true })
+  const stale = await read({ cursor })
+  expect(stale.content[0].text).toMatch(/start the read again/i)
+  expect(stale.content[0].text).not.toContain('branch A bytes')
+  expect(stale.details).toBeUndefined()
+  expect(host.authorized(session, tab)).toBe(true)
+  const fresh = await read({ node: 'n', project: 'p', workspace: 'w', path: 'a' })
+  expect(fresh.content[0].text).toContain('branch A bytes')
+  expect(approve).not.toHaveBeenCalled()
+  const branchBCursor = (fresh.details as { cursor: string }).cursor
+  Object.defineProperty(session, 'branchSelectionVersion', { value: 2, configurable: true })
+  expect((await read({ cursor: branchBCursor })).content[0].text).toMatch(/start the read again/i)
+  expect(source.text).toHaveBeenCalledTimes(2)
+  vi.mocked(source.text).mockImplementation(async () => {
+    Object.defineProperty(session, 'branchSelectionVersion', { value: 3, configurable: true })
+    return 'retained bytes from a read started on the previous branch'
+  })
+  const switchedDuringRead = await read({ node: 'n', project: 'p', workspace: 'w', path: 'a' })
+  expect(switchedDuringRead.content[0].text).toMatch(/start the read again/i)
+  expect(switchedDuringRead.content[0].text).not.toContain('retained bytes')
+  expect(switchedDuringRead.details).toBeUndefined()
+  expect(host.authorized(session, tab)).toBe(true)
+})
+
 it('requires a chat/project grant and rechecks it before publication and continuations', async () => {
   const session = {} as ChatSession
   const host = new NodeRepositoryToolsHost()

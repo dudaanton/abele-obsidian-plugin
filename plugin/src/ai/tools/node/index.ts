@@ -34,6 +34,7 @@ export interface NodeRepositoryTab {
 type Grant = { conversation: number; principals: Set<string> }
 type Pending = {
   session: ChatSession
+  branchSelectionVersion: number
   tool: string
   tab?: NodeRepositoryTab
   guard(): void
@@ -200,6 +201,10 @@ export function createNodeTools(
   })
   const page = (entry: Pending): AgentToolResult => {
     entry.guard()
+    if (entry.branchSelectionVersion !== (entry.session.branchSelectionVersion ?? 0)) {
+      entry.text = ''
+      return answer('The chat branch changed; start the read again.')
+    }
     // 24 KiB payload leaves ample room for the note and continuation envelope.
     let bytes = 0,
       end = 0
@@ -253,6 +258,7 @@ export function createNodeTools(
         // Only the executing context supplies identity; no active-tab/session fallback.
         const session = ctx?.session
         if (!session) throw new Error('An executing chat is required for a repository read grant')
+        const branchSelectionVersion = session.branchSelectionVersion ?? 0
         signal?.throwIfAborted()
         for (const [key, entry] of pending) if (entry.expires <= Date.now()) pending.delete(key)
         const cursor = string(p, 'cursor')
@@ -422,6 +428,7 @@ export function createNodeTools(
         }
         return page({
           session,
+          branchSelectionVersion,
           tool: kind,
           tab,
           guard: accessGuard,

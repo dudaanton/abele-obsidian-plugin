@@ -982,8 +982,11 @@ defaults to `WORKTREE`; `base` selects a comparison, `path` is repository-relati
 `path` reads a lazy file patch; without a path it returns status and changes against
 HEAD or the chosen base. Each serialized result is below 32 KiB.
 If bytes are omitted, the response includes a continuation cursor: invoke the same
-tool with `cursor` alone. Continuations expire after ten minutes, are chat/tool
+tool with `cursor` alone. Continuations expire after ten minutes, are chat/tool/branch-selection
 scoped, and recheck the original grant and source authority before returning bytes.
+Switching branches rejects retained results with “start the read again”, even when
+switching back to the original branch. The owner's project grant covers the whole chat
+and remains valid across branch switches; a fresh read needs no new approval.
 At most sixteen results of up to 4 MiB each are retained per host; narrow a
 larger read. Provider coverage/truncation notes remain in the source result.
 Confirmed node installations have node-wide owner authority: chat grants constrain
