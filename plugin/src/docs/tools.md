@@ -943,3 +943,49 @@ list.
 
 Each carries its own mode, so reading the settings and changing them are two permissions. What
 each setting decides is the `settings` section of this reference.
+# Node repositories
+
+Read-only tools require an explicit owner grant for the executing chat and node project,
+separate from delegation and generic tool approvals. Opening a tab grants no access.
+Part A registers provider-neutral sources and the shared tab opener with
+`nodeRepositoryToolsHost.attach`. Supply a shared owner/controller generation as
+`authority` across a project's sources; without it grants pin each source's cache namespace.
+Sources must assert live installation/owner authority and use `WORKTREE` as the working
+revision selector. Supply `target()` with the current location/revision and `selection()`
+with selected code/prose; attach only actual open repository tabs and detach on close.
+The callback receives `(node, project, workspace, path?, revision?)`;
+`revision` contains `ref`, optional `commit`, `base`, and `{ start, end }` lines.
+Interactive reads ask the owner separately for access. Background runs cannot ask.
+The chat settings' “Revoke repository access” button revokes every project grant for
+that conversation; part A may also call `revoke` for one project.
+Grants are held in memory and disappear when the plugin restarts; nothing new is stored in the vault.
+
+| Tool | Purpose |
+| --- | --- |
+| `node_views` | Authorized open repository tabs and their selections |
+| `list_node_worktrees` | Available project workspaces, including external worktrees |
+| `node_read` | Project overview and workspace catalogue, including external worktrees |
+| `node_tree` | Directory entries at a revision |
+| `node_file` | File text at a revision |
+| `node_changes` | Working status, or endpoint changes from an explicit base |
+| `node_commits` | Commit history, optionally for a path |
+| `node_commit` | Details of the selected commit |
+| `node_compare` | Endpoint comparison of base and revision |
+| `node_search` | Code or path search with optional regex, case sensitivity and glob |
+| `node_grep` | Code or path search at an explicit revision |
+| `node_blame` | Attribution at a path and revision |
+| `node_open` | Open/reuse the shared repository tab at a file, revision, comparison or lines |
+
+Use opaque `node`, `project`, and `workspace` IDs from authorized tabs. `revision`
+defaults to `WORKTREE`; `base` selects a comparison, `path` is repository-relative.
+`node_open` and `node_file` accept `start_line` and `end_line`. `node_changes` with
+`path` reads a lazy file patch; without a path it returns status and changes against
+HEAD or the chosen base. Each serialized result is below 32 KiB.
+If bytes are omitted, the response includes a continuation cursor: invoke the same
+tool with `cursor` alone. Continuations expire after ten minutes, are chat/tool
+scoped, and recheck the original grant and source authority before returning bytes.
+At most sixteen results of up to 4 MiB each are retained per host; narrow a
+larger read. Provider coverage/truncation notes remain in the source result.
+Confirmed node installations have node-wide owner authority: chat grants constrain
+these plugin tools, not a compromised owner device. Already delivered bytes can remain
+in chat history after access is revoked.

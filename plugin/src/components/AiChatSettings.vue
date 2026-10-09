@@ -1,5 +1,15 @@
 <template>
   <div class="abele-chat-settings">
+    <Setting
+      name="Node repository access"
+      desc="Revoke this chat's repository read grants. Later reads require a new owner approval."
+    >
+      <Button
+        text="Revoke repository access"
+        tooltip="Require new owner approval for repository reads"
+        @click="revokeNodeReads"
+      />
+    </Setting>
     <Setting name="Hide reasoning" desc="Show only a spinner while the model is thinking.">
       <Checkbox :is-enabled="hideReasoning" @toggle="toggleHideReasoning" />
     </Setting>
@@ -155,6 +165,7 @@
 </template>
 
 <script setup lang="ts">
+import { nodeRepositoryToolsHost } from '@/ai/tools/node'
 import { ref, computed } from 'vue'
 import Setting from './obsidian/Setting.vue'
 import Button from './obsidian/Button.vue'
@@ -175,6 +186,9 @@ import Icon from './obsidian/Icon.vue'
 const emit = defineEmits<{ close: [] }>()
 
 const session = computed(() => ChatService.getInstance().activeSession.value)
+function revokeNodeReads() {
+  if (session.value) nodeRepositoryToolsHost.revokeAll(session.value)
+}
 
 // ── Deleting this chat ──
 

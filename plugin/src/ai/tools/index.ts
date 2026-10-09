@@ -46,6 +46,7 @@ import { createReadSettingsTool, createWriteSettingsTool } from './SettingsTools
 import { createRememberTool } from './RememberTool'
 import { createForgetTool } from './ForgetTool'
 import { createGithubTools } from './github'
+import { createNodeTools } from './node'
 import { createBookTools } from './BookTools'
 import { createDeckTools } from './DeckTools'
 import { createDocxTools } from './DocxTools'
@@ -229,6 +230,7 @@ export interface AgentToolsOptions {
   session?: ChatSession
   /** Only an interactive executing session may ask for per-connection GitHub access. */
   githubApproval?: import('@/github/agentAccess').ConnectionApproval
+  nodeRepositoryApproval?: import('./node').RepositoryReadApproval
   /**
    * The agent the tools act for — whose memory `remember` and `forget` change. A chat passes its own, a script
    * the agent it runs. Without one, the call context identifies the agent; never the chat
@@ -342,6 +344,7 @@ function buildAgentTools(options: AgentToolsOptions = {}, everything = false): A
   tools.push(...createDocxTools())
   tools.push(...createXlsxTools())
   tools.push(...createCanvasTools())
+  tools.push(...createNodeTools(undefined, options.nodeRepositoryApproval))
 
   // Read-only, and only while the integration is on: with it off there is no GitHub to read.
   if (everything || githubSettings().enabled)

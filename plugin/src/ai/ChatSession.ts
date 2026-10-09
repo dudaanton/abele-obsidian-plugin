@@ -1004,6 +1004,13 @@ export class ChatSession implements SummarizerHost, InterceptorHost, AnchorStora
       scope: this.scopeResolver,
       skillCeiling: this.skillCeiling,
       githubAgent: () => this.githubAgent(),
+      nodeRepositoryApproval:
+        this.kind === 'run'
+          ? undefined
+          : async (target, signal) =>
+              (await import('@/node/repositoryReadApproval')).repositoryReadApproval(
+                GlobalStore.getInstance().app
+              )(target, signal),
       githubApproval:
         this.kind === 'run'
           ? undefined
