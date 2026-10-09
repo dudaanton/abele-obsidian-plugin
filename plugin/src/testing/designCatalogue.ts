@@ -3,6 +3,7 @@ import DesignCatalogue from './DesignCatalogue.vue'
 import { GlobalStore } from '@/stores/GlobalStore'
 
 export const CATALOGUE_PAGES = [
+  'index',
   'rows',
   'states',
   'details',
@@ -76,7 +77,7 @@ export function closeDesignCatalogue() {
 }
 /** Only reachable through the fenced test API/command. Fixtures perform no vault writes. */
 export function openDesignCatalogue(
-  page: CataloguePage = 'rows',
+  page: CataloguePage = 'index',
   variant: 'inline' | 'stacked' | 'disclosed' = 'disclosed'
 ) {
   if (!CATALOGUE_PAGES.includes(page)) throw new Error('Unknown catalogue page')
