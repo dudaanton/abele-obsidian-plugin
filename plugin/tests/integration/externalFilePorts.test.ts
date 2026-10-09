@@ -75,6 +75,74 @@ async function reason(work: Promise<unknown>) {
 }
 
 describe('external-file host coordination and filesystem effects', () => {
+  it('rechecks intent before each mobile append and retains partial staging on refusal', async () => {
+    const s = setup()
+    const data = new Uint8Array(2 * 1024 * 1024 + 7)
+    const artifact = await s.artifact(staging, data)
+    let allowed = true
+    const write = vi.spyOn(s.fake.vault.adapter, 'writeBinary')
+    const append = vi.fn(async () => {
+      allowed = false
+    })
+    Object.assign(s.fake.vault.adapter, { appendBinary: append })
+    const read = vi.spyOn(s.fake.vault.adapter, 'readBinary')
+    await s.host.run(
+      queue(),
+      {
+        ...request,
+        assertIntent: () => {
+          if (!allowed) throw new ExternalFilePortError('recovery-required')
+        },
+      },
+      async (effects) => {
+        expect((await effects.stage(artifact, data)).status).toBe('outcome-unknown')
+      }
+    )
+    expect(write).toHaveBeenCalledTimes(1)
+    expect(append).toHaveBeenCalledTimes(1)
+    expect(read).not.toHaveBeenCalled()
+    expect(await s.fake.vault.adapter.exists(staging)).toBe(true)
+    s.host.close()
+  })
+
+  it('bounds mobile bridge writes before any full-size verification read', async () => {
+    const s = setup()
+    let data: Uint8Array | undefined = new Uint8Array(3 * 1024 * 1024 + 7)
+    data.fill(91)
+    const artifact = await s.artifact(staging, data)
+    const chunks: Uint8Array[] = []
+    const write = vi
+      .spyOn(s.fake.vault.adapter, 'writeBinary')
+      .mockImplementation(async (_path, buffer) => {
+        expect(buffer.byteLength).toBeLessThanOrEqual(1024 * 1024)
+        chunks.push(new Uint8Array(buffer))
+      })
+    const append = vi.fn(async (_path: string, buffer: ArrayBuffer) => {
+      expect(buffer.byteLength).toBeLessThanOrEqual(1024 * 1024)
+      chunks.push(new Uint8Array(buffer))
+    })
+    Object.assign(s.fake.vault.adapter, { appendBinary: append })
+    const read = vi.spyOn(s.fake.vault.adapter, 'readBinary').mockImplementation(async () => {
+      expect(data).toBeUndefined()
+      expect(append).toHaveBeenCalledTimes(3)
+      const result = new Uint8Array(artifact.size)
+      let at = 0
+      for (const chunk of chunks) {
+        result.set(chunk, at)
+        at += chunk.length
+      }
+      return result.buffer
+    })
+    await s.run(async (effects) => {
+      const pending = effects.stage(artifact, data!)
+      data = undefined
+      expect(await pending).toEqual({ status: 'staged' })
+    })
+    expect(write).toHaveBeenCalledTimes(1)
+    expect(read).toHaveBeenCalledTimes(1)
+    s.host.close()
+  })
+
   it('passes the transferred backing buffer to staging without a full-size snapshot', async () => {
     const s = setup()
     const data = new Uint8Array(1024 * 1024)

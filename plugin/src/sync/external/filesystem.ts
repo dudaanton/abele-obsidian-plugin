@@ -25,7 +25,7 @@ export interface ExternalFilesystemPort {
   read(path: string): Promise<Uint8Array>
   matches?(expected: ExternalByteExpectation): Promise<boolean>
   makeParents(path: string): Promise<void>
-  writeStaging(path: string, bytes: Uint8Array): Promise<void>
+  writeStaging(path: string, bytes: Uint8Array, assertEffect: () => void): Promise<void>
   /** Native link on desktop; final absent check plus adapter rename on mobile. */
   install(from: string, to: string, assertEffect: () => void): Promise<void>
   readonly installation: 'native-link' | 'adapter-rename' | 'unavailable'
@@ -121,7 +121,9 @@ export class ExternalFileEffects {
       this.check([artifact.path], 'stage', artifact)
       try {
         // Only the random, operation-owned incoming path is written, never the final target.
-        await this.fs.writeStaging(artifact.path, bytes)
+        await this.fs.writeStaging(artifact.path, bytes, () =>
+          this.check([artifact.path], 'stage', artifact)
+        )
         // The writer is done with the transferred bytes before verification reads disk.
         bytes = new Uint8Array(0)
         if (!(await this.matches(artifact))) return this.ambiguous([artifact.path], [artifact])

@@ -67,9 +67,12 @@ the initial write, and verifies the final SHA/size through the host fingerprint 
 It does not retain a second full-size comparison buffer or take a WebCrypto snapshot.
 Desktop downloads bridge response chunks; desktop disk rechecks reuse a 1 MiB buffer.
 Expected payload growth is approximately one to two file sizes during download assembly,
-not a proven resident-memory bound. The iOS HTTP and storage bridges still require whole
-buffers and base64 strings; decoding uses bounded temporary strings. Native bridge and
-garbage-collection overhead require live measurement on both platforms.
+not a proven resident-memory bound. Mobile immutable blob/version downloads now use 1 MiB
+HTTP ranges and staging uses 1 MiB writes when `appendBinary` exists. Verification still
+uses whole-file `readBinary`. See `External file filesystem ports.md` for allocation estimates
+and fallback limits. Native bridge and garbage-collection overhead require live measurement
+on both platforms. Range downloads add one request per chunk; the current server loads the
+blob before slicing each range, so server read cost and transfer duration also need live checks.
 
 The size case samples resident memory every 25 ms and at transfer boundaries, reports
 baseline/sample count/sampled peak, and requires growth of at most **1 GiB** over the

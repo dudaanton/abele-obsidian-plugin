@@ -1,4 +1,5 @@
 import { binaryResponse } from './binaryResponse'
+import { rangedBinaryTransport } from './rangedBinaryTransport'
 import { apiVersion } from 'obsidian'
 export interface NativeHttpOptions {
   url: string
@@ -54,7 +55,7 @@ export function mobileTransport(): typeof fetch {
     throw new Error(
       'Native sync transport is unsupported until its non-following runtime is verified'
     )
-  return fetchViaCapacitorHttp(exactNativeRequestBodies(http))
+  return rangedBinaryTransport(fetchViaCapacitorHttp(exactNativeRequestBodies(http)))
 }
 /** NSJSONSerialization can reorder dictionaries. Commit replay must send the same bytes. */
 export function exactNativeRequestBodies(native: NativeHttp): NativeHttp {

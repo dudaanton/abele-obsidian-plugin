@@ -112,6 +112,35 @@ disabled until the complete verification/recovery/classification/lifecycle gates
 
 ## Verification
 
+Mobile staging uses sequential 1 MiB `writeBinary`/`appendBinary` calls when the runtime
+adapter exposes `appendBinary` (public CapacitorAdapter API since 1.12.3). Each call receives
+an exact bounded ArrayBuffer, with ownership, reservation, open/use and journal intent
+checked before every write. Missing append support retains the whole-write fallback.
+Partial writes or failed checks retain ambiguous staging evidence. Disk SHA/size checks
+after staging, before installation and after installation remain in place; rename and its
+final absence check remain unchanged. Incremental SHA-256 already avoids WebCrypto copies.
+
+Mobile immutable blob and version downloads request sequential 1 MiB HTTP ranges. Personal
+blob and scoped historical-version server routes support Range; vendored clients expose
+only whole-byte results, so the mobile transport assembles one full buffer. Authorization,
+abort and non-following redirect handling travel through the existing native transport.
+Contiguous Content-Range, stable total and exact chunk lengths are required. A server that
+ignores the initial Range retains the whole-response fallback. Final server-verified SHA
+and size remain authoritative. No server code is changed.
+
+For file size F and chunk C = 1 MiB, download and staging payload reachability falls from
+F plus a whole base64 string (about 2.33F with one-byte strings, 3.67F with two-byte strings)
+to F + O(C). An additional whole bridge/string serialization copy could previously raise
+that to roughly 3.67F–6.33F; its presence is runtime-dependent. These are allocation models,
+not resident-memory measurements. Mobile `readBinary` still reads the whole file and may
+hold its base64 response while decoding: the remaining expected peak is about 2.33F–3.67F,
+plus unknown native copies and GC lag. Thus the conservative one-string overall bound is
+unchanged; the improvement removes repeated whole-file download/write bridge pressure.
+The public mobile adapter has no bounded binary-read API. Caller and staging effect release
+the download reference before any verification read; spies check sequencing and bounded
+bridge arguments, but cannot prove garbage collection or native memory reclamation.
+Live mobile batching and native resident-memory sampling remain required.
+
 `plugin/tests/integration/externalFilePorts.test.ts` covers nonactive leaves, pending-open
 invalidation, leases/teardown, supplied exclusive serialization, engine mutation reservations,
 final hash/ownership checks, occupied/new targets, final mobile absence checks, desktop link

@@ -216,7 +216,28 @@ export class ExternalFileHost {
       read: async (path) => new Uint8Array(await adapter.readBinary(path)),
       matches: (expected) => this.matches(expected),
       makeParents: (path) => makeParents(mutateAdapter, path),
-      writeStaging: (path, bytes) => this.effect(() => adapter.writeBinary(path, bytesOf(bytes))),
+      writeStaging: async (path, bytes, assertEffect) => {
+        const chunkSize = 1024 * 1024
+        // CapacitorAdapter gained appendBinary in 1.12.3. Check the actual runtime:
+        // older/custom adapters retain the whole-write path and all disk rechecks.
+        if (
+          this.options.platform !== 'mobile' ||
+          typeof adapter.appendBinary !== 'function' ||
+          bytes.length <= chunkSize
+        ) {
+          assertEffect()
+          await this.effect(() => adapter.writeBinary(path, bytesOf(bytes)))
+          return
+        }
+        for (let at = 0; at < bytes.length; at += chunkSize) {
+          // A view would expose its full backing buffer to the base64 bridge.
+          const chunk = bytes.slice(at, at + chunkSize).buffer
+          assertEffect()
+          await this.effect(() =>
+            at === 0 ? adapter.writeBinary(path, chunk) : adapter.appendBinary(path, chunk)
+          )
+        }
+      },
       install: async (from, to, assertEffect) => {
         if (installation === 'native-link') {
           assertEffect()
