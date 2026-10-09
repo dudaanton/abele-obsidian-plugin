@@ -12,6 +12,7 @@ import type {
   ExternalRecord,
 } from './records'
 import type { ExternalSerialization } from './coordination'
+import { installationBase, installationProofKey } from './installationProof'
 
 export type AttachmentReason =
   | 'offline'
@@ -158,7 +159,8 @@ export class AttachmentStore {
   private async commit(
     file: ExternalRecord,
     op?: ExternalOperation,
-    request?: string
+    request?: string,
+    installation?: string
   ): Promise<void> {
     this.owned()
     const doc = await this.document()
@@ -169,8 +171,17 @@ export class AttachmentStore {
         expectedRevision: doc.revision,
         files: [{ expectedRevision: prior?.localRevision ?? null, next: file }],
         ...(op ? { operations: [{ expectedRevision: previous?.revision ?? null, next: op }] } : {}),
-        ...(request && op
-          ? { ledger: { metadata: [{ key: requestKey(op.operationId), value: request }] } }
+        ...((request && op) || installation
+          ? {
+              ledger: {
+                metadata: [
+                  ...(request && op ? [{ key: requestKey(op.operationId), value: request }] : []),
+                  ...(installation
+                    ? [{ key: installationProofKey(file.fileId), value: installation }]
+                    : []),
+                ],
+              },
+            }
           : {}),
       })
     } catch (error) {
@@ -601,11 +612,14 @@ export class AttachmentStore {
           file.projectionPath === completed.targetPath &&
           file.projectionSha === completed.projectionDigest
         ) {
-          await this.commit({
-            ...file,
-            localRevision: file.localRevision + 1,
-            pendingOperationId: null,
-          })
+          await this.commit(
+            {
+              ...file,
+              localRevision: file.localRevision + 1,
+              pendingOperationId: null,
+            },
+            { ...completed, revision: completed.revision + 1, phase: 'complete' }
+          )
           doc = await this.document()
           file = doc.files.find((item) => item.fileId === id)
         }
@@ -737,7 +751,25 @@ export class AttachmentStore {
           cleanupReason: 'projection-retirement',
           ownedArtifacts: retained ? [artifact, retained] : [artifact],
         }
-        await this.commit(hydrated, cleanup)
+        await this.commit(
+          hydrated,
+          cleanup,
+          undefined,
+          JSON.stringify({
+            schema: 1,
+            ledgerId: doc.ledgerId,
+            generation: doc.binding.generation,
+            operationId: opts.operationId,
+            base: {
+              fileId: id,
+              versionId: head.versionId,
+              path: head.path,
+              sha: head.sha,
+              size: head.size,
+              mtime: head.mtime,
+            },
+          })
+        )
         phase = 'cleanup-pending'
         if (opts.signal?.aborted || !sidecar || !retained) return this.result('cleanup-pending')
         const retired = await effects.retire(sidecar, retained)
@@ -942,7 +974,11 @@ export class AttachmentStore {
         blockers.push(file.fileId + ':recovery-required')
         continue
       }
-      const base = file.lastProvenLocalBase
+      const base = installationBase(
+        await this.options.ledger.getMeta(installationProofKey(file.fileId)),
+        doc,
+        file
+      )
       if (!base || !(await this.options.host.exists(base.path))) {
         blockers.push(file.fileId + ':local-original-missing')
         continue
@@ -1018,7 +1054,6 @@ export class AttachmentStore {
       if (opts.signal?.aborted) return this.result('disconnect-incomplete')
       if (file.representation === 'hydrated') continue
       if (file.availability !== 'active') return this.result('unavailable')
-      if (file.pendingOperationId) return this.result('recovery-required')
       const head = await this.head(file.fileId)
       if (!head) return this.result('unavailable')
       const result = await this.hydrate(file.fileId, {

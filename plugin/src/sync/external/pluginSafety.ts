@@ -11,6 +11,7 @@ import { wait, completion } from '../idbRequests'
 import { IndexedDbStateStore, stateDatabaseName } from '../IndexedDbStateStore'
 import { WriteJournal } from '../writeJournal'
 import { DISCONNECT_PROOF_KEY } from './attachmentStore'
+import { installationBase, installationProofKey } from './installationProof'
 import { EXTERNAL_RETIRED_KEY } from './connectionSwitch'
 import { SCOPED_CONNECTION_KEY, SCOPED_JOIN_KEY } from '../scoped/scopedJoin'
 import { ConnectionBindingSchema, sameConnection, type ConnectionBinding } from './records'
@@ -496,7 +497,8 @@ export async function requireExternalLifecycleSafety(
   if (installation.entries().length || installation.recovered().length)
     throw new ExternalRecoveryRequired('installation or retained-byte recovery is unfinished')
   const names = new Set<string>(database ? [database] : [])
-  const activatedLedgers = [...(marker?.ledgers ?? []), ...retiredLedgers(app)]
+  const retired = retiredLedgers(app)
+  const activatedLedgers = [...(marker?.ledgers ?? []), ...retired]
   for (const item of activatedLedgers) names.add(item.databaseName)
   for (const key of [undefined, LEDGER_PROOF_KEY, LEDGER_BOOTSTRAP_KEY]) {
     const held = readLedgerId(app, key)
@@ -516,6 +518,10 @@ export async function requireExternalLifecycleSafety(
   for (const name of names) {
     const found = await inspectExistingLedger(factory, name)
     const activated = activatedLedgers.find((item) => item.databaseName === name)
+    // An active marker always keeps original-byte protection, even if also retired.
+    const retiredOnly =
+      retired.some((item) => item.databaseName === name) &&
+      !marker?.ledgers.some((item) => item.databaseName === name)
     if (
       activated &&
       (!found || found.identity !== activated.databaseIdentity || activated.phase !== 'active')
@@ -573,15 +579,18 @@ export async function requireExternalLifecycleSafety(
           file.representation !== 'hydrated' ||
           file.pendingOperationId ||
           file.blockingReason ||
-          file.projectionPath ||
-          !file.lastProvenLocalBase
+          file.projectionPath
         )
           throw new ExternalRecoveryRequired('materialization is incomplete')
-        await verifyLocal(
-          file.lastProvenLocalBase.path,
-          file.lastProvenLocalBase.sha,
-          file.lastProvenLocalBase.size
-        )
+        if (!retiredOnly) {
+          const rawProof =
+            found?.metadata.get('plugin:' + installationProofKey(file.fileId)) ?? null
+          if (rawProof !== null && typeof rawProof !== 'string')
+            throw new ExternalRecoveryRequired('installation proof is unreadable')
+          const base = installationBase(typeof rawProof === 'string' ? rawProof : null, doc, file)
+          if (!base) throw new ExternalRecoveryRequired('materialization is incomplete')
+          await verifyLocal(base.path, base.sha, base.size)
+        }
         for (const artifact of file.retained) {
           await verifyLocal(artifact.path, artifact.sha, artifact.size)
           ownedPaths.add(artifact.path.normalize('NFC').toLowerCase())

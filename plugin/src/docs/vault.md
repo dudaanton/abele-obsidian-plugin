@@ -50,6 +50,13 @@ and artifact ownership after departure or staged replacement. These records do n
 settings or transfers. Tombstones, lost access and uncertain installations remain blockers;
 readiness never permits purging retained recovery bytes.
 
+Verified hydration commits `external-installation-v1:<fileId>` plugin metadata alongside its
+acknowledged installation phase. The proof binds the installed path, version, size and SHA
+to the ledger, generation and hydration operation; it does not replace the historical proven
+base used for retained-artifact provenance. Disconnect checks use this current installation
+proof. Retired ledgers continue to require readiness and intact recovery artifacts, while
+ordinary originals handed to a replacement connection may be edited or renamed.
+
 Startup inspects external, installation and publication journals before constructing the
 personal engine or enabling scoped watchers/replay. Projection-update/move, tombstone and detach
 jobs for activated, bound ledgers are recoverable per file; eviction/hydration and unknown
