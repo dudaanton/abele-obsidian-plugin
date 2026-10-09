@@ -114,7 +114,45 @@ export function findDefaultLeaf(messages: ChatMessage[]): ChatMessage | undefine
  */
 export function getInternalMessagesForPath(path: ChatMessage[], allInternal: Message[]): Message[] {
   const ids = new Set(path.map((m) => m.id))
-  return allInternal.filter((m) => !m.chatMessageId || ids.has(m.chatMessageId))
+  const selected = (m: Message) => !m.chatMessageId || ids.has(m.chatMessageId)
+  // Legacy logs may still have plain-string assistant content.
+  const toolIds = (m: Message) =>
+    m.role === 'assistant' && Array.isArray(m.content)
+      ? m.content.flatMap((b) => (b.type === 'toolCall' ? [b.id] : []))
+      : []
+  // Old/partially linked results inherit their call's branch, not the global fallback.
+  // Scope by the preceding assistant rather than a global set: call ids may be reused.
+  let calls = new Set<string>()
+  let keepCalls = true
+  const filtered = allInternal.filter((m) => {
+    if (m.role === 'assistant') {
+      calls = new Set(toolIds(m))
+      keepCalls = selected(m)
+    }
+    if (m.role === 'toolResult' && calls.has(m.toolCallId) && !keepCalls) return false
+    return selected(m)
+  })
+  const toolOwners = new Map(
+    path.filter((m) => m.role === 'tool-call').map((m) => [m.id, m.toolCallId])
+  )
+  const ordered: Message[] = []
+  let injected: Message[] = []
+  calls = new Set()
+  for (const m of filtered) {
+    const owner = m.chatMessageId ? toolOwners.get(m.chatMessageId) : undefined
+    if ((m.role === 'user' || m.role === 'system') && owner && calls.has(owner)) {
+      injected.push(m)
+      continue
+    }
+    if (m.role !== 'toolResult') {
+      ordered.push(...injected)
+      injected = []
+      calls = new Set(toolIds(m))
+    }
+    ordered.push(m)
+  }
+  ordered.push(...injected)
+  return ordered
 }
 
 /**

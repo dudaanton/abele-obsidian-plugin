@@ -103,6 +103,7 @@ export class AgentLoop {
     this.abortController = new AbortController()
     const signal = this.abortController.signal
     const messages = [...opts.messages]
+    const injected: Message[] = []
 
     // Forward external abort signal to internal controller
     const externalSignal = opts.streamOptions?.signal
@@ -170,7 +171,7 @@ export class AgentLoop {
           tc.destinationKey = requestTools.find((tool) => tool.name === tc.name)?.destinationKey
         }
 
-        // Execute tools sequentially
+        // Execute sequentially; injected user messages follow the whole call/result batch.
         for (let ti = 0; ti < toolCalls.length; ti++) {
           if (signal.aborted) break
 
@@ -195,9 +196,11 @@ export class AgentLoop {
 
           // Inject extra messages (e.g. image content from read_image tool)
           if (resultMsg.injectMessages?.length) {
-            messages.push(...resultMsg.injectMessages)
+            injected.push(...resultMsg.injectMessages)
           }
         }
+
+        messages.push(...injected.splice(0))
 
         // If paused, exit the main loop
         if (this._pausedToolCalls) break
@@ -222,6 +225,7 @@ export class AgentLoop {
         })
       }
     } finally {
+      messages.push(...injected)
       externalSignal?.removeEventListener('abort', onExternalAbort)
       this._isRunning = false
       this.abortController = null

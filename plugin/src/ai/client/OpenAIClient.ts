@@ -1,6 +1,7 @@
 import { request as requestUrl, withDeadline, readTextLimited, checkRequest } from '@/helpers/http'
 import { requestTimeoutSeconds } from '@/ai/requestTimeout'
 import { prepareImageForApi } from '@/ai/imagePrep'
+import { repairOpenAIToolHistory } from './toolHistory'
 import type {
   AssistantMessage,
   AssistantContentBlock,
@@ -14,7 +15,7 @@ import type {
   StreamEvent,
   StopReason,
   Usage,
-  } from './types'
+} from './types'
 
 // ── OpenAI API types (request/response) ─────────────────────
 
@@ -148,7 +149,9 @@ export class OpenAIClient {
 
     const timeoutMs = requestTimeoutSeconds(model.requestTimeoutSeconds) * 1000
     const connection = new AbortController()
-    const signal = options.signal ? AbortSignal.any([options.signal, connection.signal]) : connection.signal
+    const signal = options.signal
+      ? AbortSignal.any([options.signal, connection.signal])
+      : connection.signal
     let currentBlock: (AssistantContentBlock & { partialArgs?: string }) | null = null
     // Track which reasoning field this model uses (reasoning_content, reasoning, reasoning_text)
     let reasoningField: string | null = null
@@ -160,19 +163,28 @@ export class OpenAIClient {
       const resolved = await OpenAIClient.resolveVaultImages(messages)
       const body = this.buildRequestBody(model, systemPrompt, resolved, tools, options)
       options.signal?.throwIfAborted()
-      checkRequest({ url: this.getUrl(model), headers: { Authorization: `Bearer ${model.apiKey}` } })
+      checkRequest({
+        url: this.getUrl(model),
+        headers: { Authorization: `Bearer ${model.apiKey}` },
+      })
       // Unlike requestUrl, fetch streams the answer and accepts Stop's abort signal.
-      const response = await withDeadline(window.fetch(this.getUrl(model), {
-        method: 'POST',
-        headers: {
-          'Content-Type': 'application/json',
-          Authorization: `Bearer ${model.apiKey}`,
-        },
-        body: JSON.stringify(body),
-        signal,
-      }), timeoutMs, () => connection.abort())
+      const response = await withDeadline(
+        window.fetch(this.getUrl(model), {
+          method: 'POST',
+          headers: {
+            'Content-Type': 'application/json',
+            Authorization: `Bearer ${model.apiKey}`,
+          },
+          body: JSON.stringify(body),
+          signal,
+        }),
+        timeoutMs,
+        () => connection.abort()
+      )
       if (!response.ok) {
-        const errorText = await withDeadline(readTextLimited(response, 64 * 1024), timeoutMs, () => connection.abort()).catch(() => 'Unreadable or oversized error response')
+        const errorText = await withDeadline(readTextLimited(response, 64 * 1024), timeoutMs, () =>
+          connection.abort()
+        ).catch(() => 'Unreadable or oversized error response')
         throw new Error(`HTTP ${response.status}: ${errorText}`)
       }
       if (!response.body) throw new Error('No response body')
@@ -480,28 +492,6 @@ export class OpenAIClient {
 
         result.push(openaiMsg)
 
-        // Insert synthetic tool results for orphaned tool calls
-        if (toolCalls.length > 0) {
-          const nextToolResults = new Set<string>()
-          for (let j = i + 1; j < messages.length; j++) {
-            const next = messages[j]
-            if (next.role === 'toolResult') {
-              nextToolResults.add(next.toolCallId)
-            } else if (next.role === 'assistant' || next.role === 'user') {
-              break
-            }
-            // Skip injected messages (e.g. image content) without breaking the scan
-          }
-          for (const tc of toolCalls) {
-            if (!nextToolResults.has(tc.id)) {
-              result.push({
-                role: 'tool',
-                content: 'No result provided',
-                tool_call_id: tc.id,
-              })
-            }
-          }
-        }
         continue
       }
 
@@ -516,7 +506,7 @@ export class OpenAIClient {
       }
     }
 
-    return result
+    return repairOpenAIToolHistory(result)
   }
 
   private convertTools(tools: ToolDefinition[]): OpenAITool[] {
@@ -656,7 +646,9 @@ export class OpenAIClient {
       while (true) {
         signal?.throwIfAborted()
 
-        const { done, value } = await withDeadline(reader.read(), timeoutMs, () => { void reader.cancel().catch(() => {}) })
+        const { done, value } = await withDeadline(reader.read(), timeoutMs, () => {
+          void reader.cancel().catch(() => {})
+        })
         if (done) break
         bytes += value.byteLength
         if (bytes > 20 * 1024 * 1024) throw new Error('Chat response too large')

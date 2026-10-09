@@ -1415,8 +1415,11 @@ export class ChatSession implements SummarizerHost, InterceptorHost, AnchorStora
         if (chatMsg) msg.chatMessageId = chatMsg.id
         if (msg.chatMessageId) lastLinkedId = msg.chatMessageId
       } else if (!msg.chatMessageId && lastLinkedId) {
-        // Link injected messages (e.g. from read_image) to the preceding tool-call
-        msg.chatMessageId = lastLinkedId
+        // Batch injections follow all results, but still belong to their originating call.
+        const owner = newMsgs.find(
+          (m) => m.role === 'toolResult' && m.injectMessages?.includes(msg)
+        )
+        msg.chatMessageId = owner?.chatMessageId || lastLinkedId
       }
     }
   }
