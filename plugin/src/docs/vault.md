@@ -1837,8 +1837,22 @@ compare-and-swap guarantee against unrelated processes bypassing the adapter que
 Keep these backup bytes/locators until the person has reviewed and
 copied out what is needed; recovery never overwrites the edited target automatically.
 
-Several records are kept in Obsidian's local storage for this vault, which no file carries: under
-`abele-sync-connection`, this device's connection — the server (and the one it enrolled on), the
+Device-local sync records live in `abele-sync-connections-v1` in Obsidian's local storage for
+this vault, which no file carries. Each connection has a stable local ID, separate personal
+or scoped state, endpoint, server vault, principal/grant, scope, secret reference, ledger,
+pause and last known status. Current screens and the single engine use the selected record;
+multiple engine scheduling is separate work. The registry never enters `data.json` or settings
+transfer. Receiving devices independently enrol using the transferred setup information.
+
+Migration copies existing local slots into one registry record in one verified write.
+It keeps token references, database names, checkpoints and unfinished operations intact;
+tokens stay in the device-only keychain and ledger contents stay in IndexedDB. Restart before
+the write retries from the original slots; restart after it uses the committed registry.
+Original slots remain recovery evidence and are never read as live state once a registry exists.
+An unreadable registry requires recovery rather than adopting stale credentials.
+
+Within each record, the existing logical storage slots remain: `abele-sync-connection`,
+this device's connection — the server (and the one it enrolled on), the
 vault and its name, the device it enrolled as, the keychain name of its token, whether it is
 paused, what of the vault it takes, a join in progress (which side wins where this vault and the
 server both held a file — `mine`, `theirs` or `null` for merge both — or `ask` while a transfer's
@@ -1854,7 +1868,7 @@ in Obsidian's IndexedDB, as a database named `abele-sync-<id>`; it also holds th
 settings changes that arrived from other devices and wait for the person to reload or keep this
 device's, so a file in the config folder may be older on disk than on the other devices until then.
 **Disconnect** retains the currently referenced ledger for reconnecting the same server vault;
-it retries deletion of retired ledgers. **Forget** deletes all ledgers named by this vault's
+it retries deletion of retired ledgers. **Forget** deletes all ledgers named by the selected connection's
 local descriptor, recovery proof, bootstrap or `abele-sync-ledger-cleanup` tombstones. IDs are
 filed in those tombstones before a descriptor is replaced/cleared; failed or blocked deletions
 remain explicitly pending and retry on Disconnect/Forget, including after restart. Successful
@@ -2251,7 +2265,7 @@ Folder/group sharing is device-neutral: an e-ink reader uses the same grants, re
 roles and scoped installation rules as any other collaborator device. Books are ordinary
 shared files, not a separate connection profile or attachment policy.
 
-Device-local `abele-sync-scoped-join` keeps the exact resumable invitation/enrolment attempt;
+The connection-local `abele-sync-scoped-join` slot keeps the exact resumable invitation/enrolment attempt;
 `abele-sync-scoped-connection` is a disjoint scoped installation descriptor with script policy
 `refuse`. Account tokens/passwords are never persisted. Invitation/installation secrets and
 independent issuer/member/credential binding proofs remain in the device-only keychain, not

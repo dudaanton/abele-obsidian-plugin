@@ -1,4 +1,5 @@
 import type { LocalStorage } from './ledgerId'
+import { selectedConnectionStorage } from './connectionRegistry'
 
 /**
  * The idempotency key each "Restore all deleted since" batch went out under, kept in the vault's
@@ -30,7 +31,9 @@ export class RestoreKeys {
     private readonly vaultId: string,
     private readonly mint: () => string,
     private readonly now: () => number = Date.now
-  ) {}
+  ) {
+    if (storage) this.storage = selectedConnectionStorage(storage)
+  }
 
   /** The key this batch went out under before, or a new one, kept until `clear`. */
   keyOf(ids: readonly string[]): string {

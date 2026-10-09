@@ -6,6 +6,7 @@ import { PublicationDecisionStore } from './publicationDecision'
 import type { SnapshotDescriptor } from './snapshotDatabase'
 import { emptyLocalLinkUnit } from './linkUnit'
 import { requireExternalLifecycleSafety } from '../external/pluginSafety'
+import { otherConnectionOwnsSlot } from '../connectionRegistry'
 
 export const PUBLICATION_DESCRIPTOR = 'abele-owner-publication'
 export const PUBLICATION_SENTINEL = '.abele-owner-publication'
@@ -49,6 +50,7 @@ async function catalogue(app: App, forget = false): Promise<StoreRecord[]> {
       PUBLICATION_DESCRIPTOR + sentinel.slice(PUBLICATION_SENTINEL.length).replace('-', ':')
     const descriptor = app.loadLocalStorage(key) as SnapshotDescriptor | null
     const retained = records.find((r) => r.key === key)
+    if (!descriptor && !retained && otherConnectionOwnsSlot(app, key)) continue
     // A catalogue copy is ownership proof for explicit Forget, not permission to recreate
     // a lost live descriptor. Only a durable retirement intent permits automatic deletion.
     if (!descriptor && !retained?.retiring && !(forget && retained))

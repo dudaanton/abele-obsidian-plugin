@@ -118,6 +118,7 @@ import '@/composables/useFooterFold'
 import '@/composables/useFooterView'
 import { SyncService } from './sync/SyncService'
 import { PluginSharing } from './sync/pluginSharing'
+import { connectionApp } from './sync/connectionApp'
 import { renderStatus, type SyncStatus } from './sync/status'
 // Keep the extracted section last so its dependencies do not reorder the existing styles.
 import { registerCoreCommands } from '@/startup/registerCoreCommands'
@@ -196,10 +197,11 @@ export default class AbelePlugin extends Plugin {
       deps.fetch = observePhoneReplayTransport(this.app, (input, init) =>
         transportOf({})(input, init)
       )
-    this.syncSharing = new PluginSharing(this.app, sync, deps)
+    const syncApp = connectionApp(this.app)
+    this.syncSharing = new PluginSharing(syncApp, sync, deps)
     sync.sharing.value = this.syncSharing
     deps.ownerPublication = this.syncSharing.ownerPublication
-    sync.init(this.app, this, deps)
+    sync.init(syncApp, this, deps)
     void this.syncSharing.scoped.start().catch((error) => {
       sync.note('scoped sharing requires recovery: ' + String(error))
     })

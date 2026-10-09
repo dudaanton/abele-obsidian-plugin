@@ -20,6 +20,7 @@ import { wireParts, type ServiceParts } from './serviceParts'
 import { DISCONNECTED_STATUS, type SyncStatus } from './status'
 import { StatusBoard } from './statusBoard'
 import type { PluginSharing } from './pluginSharing'
+import { connectionApp, prepareConnectionApp, connectionStatus } from './connectionApp'
 import { requireExternalLifecycleSafety } from './external/pluginSafety'
 import { factoryOf } from './environment'
 
@@ -152,6 +153,17 @@ export class SyncService {
 
   private constructor() {
     this.board.onStatusChange((status) => {
+      if (this.app) {
+        try {
+          connectionStatus(this.app, status.state)
+        } catch (error) {
+          this.note(
+            error instanceof Error
+              ? error.message
+              : 'connection status could not be persisted; recovery required'
+          )
+        }
+      }
       void this.heldPrompt.noticed(status)
       void this.settingsPrompt.noticed(status)
       void this.codePrompt.noticed(status)
@@ -167,6 +179,7 @@ export class SyncService {
    * the vault, and Obsidian's file index is not complete until the layout is.
    */
   init(app: App, plugin: AbelePlugin, deps: SyncServiceDeps = {}): void {
+    app = connectionApp(app)
     this.app = app
     this.plugin = plugin
     this.deps = deps
@@ -214,8 +227,9 @@ export class SyncService {
   }
 
   /** Read this device's connection, moving it out of `data.json`: see `ConnectionKeeper.open`. */
-  openConnection(app: App): Promise<void> {
-    return this.keeper.open(app)
+  async openConnection(app: App): Promise<void> {
+    await pendingTeardown(app)
+    return this.keeper.open(await prepareConnectionApp(app))
   }
 
   /**
