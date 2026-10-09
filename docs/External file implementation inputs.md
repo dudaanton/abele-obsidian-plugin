@@ -3,12 +3,21 @@
 ## Selected revisions
 
 The plugin base before the state work is `f2a39653` (filesystem probe documentation).
-Its working tree was clean. Core and protocol remain packaged from the same committed
-source, `80bc7c666ac54cc186696ebdaaccd2d9e7a735ba`:
+Its working tree was clean. The original core/protocol pin was
+`80bc7c666ac54cc186696ebdaaccd2d9e7a735ba`. Canonical external state is now packaged from
+the explicitly selected committed input `1b28e55b04a1146d20b22175db5648ff9d84d939`, which
+includes the shared core facade/schemas/error and CLI connection delegation:
 
-- Core source tree: `d115692ae637461eed9c5936a209a11ca8766dc8`.
-- Protocol source tree: `67d3dbbfe47516428f7856593a9ddee66ad2a499`.
-- Source lockfile SHA-256: `63dda462a22f354606984d224262a1f1bae21bd820856955b5da5ca91c782773`.
+- Core source tree: `bb0f74362d42c3556b170b46ef497a6c5cc12ae6`.
+- Protocol source tree: `60b9ee72eee9455b25c57ae88957faec311e6ff3`.
+- Source lockfile SHA-256: `d3e42cb5c3548f605f98450070f98bf2e66488aa54e657b61b44b9824a8c1a2d`.
+
+The reviewed scoped push payload remains byte-identical: SHA-256
+`9e9c7888d8da1f7c96d8e9b1401ace2b8829af4899c948fd085364622e651983` for
+`dist/scopedPush.js`. The new pin is not a Git descendant of the old one; selected shared
+scoped source and this payload were compared explicitly, rather than assuming ancestry
+implied compatibility. The input guard and retained scoped tests enforce the new exact pin
+and preserve the previous payload guarantee.
 
 `plugin/vendor/sync/provenance.json` inventories both archives and every installed payload
 file. `package.json` and `package-lock.json` resolve those archives, not a sibling checkout.
@@ -23,8 +32,10 @@ revision when inspected. The main server checkout was clean at
 historical observations do not authorize substituting its packages or another branch's build.
 
 The different core and server commits are intentional independent pins, not a requirement
-that their HEADs match. No dependency archives or lock entries were replaced for this work.
-An external-files server extension can be pinned separately when its contract is integrated.
+that their HEADs match. The core/protocol archives, provenance, dependency entries, lockfile
+and installed payload were replaced together using the clean-archive vendor procedure for
+the exact canonical commit. The independent server fixture was not silently advanced to the
+new core pin or to an unrelated server HEAD.
 
 ## Verification
 

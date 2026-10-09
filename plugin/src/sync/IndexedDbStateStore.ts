@@ -1,4 +1,15 @@
-import { EngineError, type Journal, type StateEntry, type StateStore } from '@abele/sync-core'
+import {
+  EngineError,
+  checkExternalPhase,
+  prepareExternalLedger,
+  EXTERNAL_STATE_KEY,
+  ExternalStateError,
+  type ExternalPhaseBatch,
+  type ExternalStatePort,
+  type Journal,
+  type StateEntry,
+  type StateStore,
+} from '@abele/sync-core'
 import { asEngineError, completion, connectTo, deleteDatabase, wait } from './idbRequests'
 import {
   initializeDatabaseIdentity,
@@ -6,14 +17,6 @@ import {
   type StateOpenOptions,
 } from './idbIdentity'
 import { IndexedDbConnection } from './idbConnection'
-import {
-  checkExternalPhase,
-  prepareExternalLedger,
-  EXTERNAL_STATE_KEY,
-  ExternalStateError,
-  type ExternalPhaseBatch,
-  type ExternalStatePort,
-} from './external/state'
 import {
   copyEntry,
   copyJournal,

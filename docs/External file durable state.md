@@ -9,12 +9,15 @@ runs before engine activation under a runtime fence. IndexedDB uses schema versi
 explicit activation marker is outside that deletable database. Nonempty external inventories
 remain connection-wide holds until classification and attachment recovery are integrated.
 
-The portable implementation lives in `plugin/src/sync/external/` and imports no Obsidian API.
-The plugin repository carries only pinned core/protocol archives, not their source packages.
-Consequently this work does not mutate the separate sync repository or repack unrelated source.
-`SqliteExternalStateStore` is a reusable adapter for the existing CLI ledger schema; attaching
-it to the CLI's open database is a subsequent integration step in that repository. It must use
-that same connection, not a separately opened connection inside an outer CLI transaction.
+The canonical portable implementation now lives in the pinned core package's `external/`
+modules. The plugin's `records.ts`, `state.ts` and `SqliteExternalStateStore.ts` are compatibility
+re-exports, not independent prototypes. Facade, schemas, revision/binding checks, transaction
+helpers and error class come from the same canonical input; IndexedDB implements that core
+port directly. Mixing error prototypes would turn definite aborts into unknown outcomes.
+Core's SQLite adapter is delegated by the CLI's own already-open ledger connection in the
+selected source revision. No second connection or duplicated scoped head authority is used.
+The plugin did not edit the separate sync repository; it exported committed core/protocol
+source at the explicit pin using the normal vendor procedure.
 
 ## State and binding
 
@@ -98,8 +101,26 @@ These are pure inspection results; scanner/watcher wiring comes later.
 on-disk SQLite (`node:sqlite`), not memory-store transaction substitutes. It covers reopening,
 CAS races across independent connections, definite aborts with ledger rollback, lost commit
 acknowledgements, nested/queued transaction rejection, existing provenance refusals, scoped
-checkpoint coupling, durable-only storage and connection separation. Projection tests are in
-`plugin/tests/unit/externalProjection.test.ts`.
+checkpoint coupling, durable-only storage and connection separation. These emulator reopen
+checks prove transaction/reconnection behavior, not renderer-restart persistence by themselves.
+`plugin/tests/e2e/externalStateRestart.e2e.test.ts` additionally commits a phase through the real
+IndexedDB adapter, closes only the selected vault window, opens it again through the vault URI,
+and reads the same database-instance identity, revision and phase from the new renderer. It
+checks that the old window/webContents are gone, the in-memory witness vanished, the main app
+process stayed running, and other windows stayed open. No whole-app restart or alternate
+persistence backup is used. The production-only bundle exposes no test API for this.
+Projection tests are in `plugin/tests/unit/externalProjection.test.ts`.
+
+JSON marker recognition decodes escaped string tokens even when JSON is oversized or damaged;
+ambiguous markers can only establish holds. Projection placement checks physical UTF-8 lengths
+before NFC comparison. **Remaining canonical-input blocker:** the selected core record schema
+still checks its physical `projectionPath` only after NFC normalization. A 284-byte decomposed
+filename is therefore accepted there. The same schema-rejection regression remains a failing
+`BUG:` test; it is not skipped or weakened, and the plugin does not fork or patch the canonical
+schema/archive to conceal it. Core must reject raw path/component byte lengths (1024/255),
+then a corrected exact pin must be vendored before this guarantee can be called complete.
+All existing plugin tests remain in place, including SQLite port tests; no test was moved or
+deleted during the canonical adoption.
 
 The earlier filesystem probe still demonstrates unconditional deletion races and unsafe iOS
 copy. Its strict-eviction blocker has been superseded by the explicit manual-eviction contract:
@@ -211,10 +232,11 @@ plugin-side passing tests do not establish completion of these CLI requirements:
    plugin currently avoids the eager constructor by constructing only after recovery; other
    hosts must not instantiate that old core before their barrier. Preserve scoped checkpoint
    and head authority in `scopedState.ts`, not another external head table.
-2. **Existing SQLite ledger (`packages/cli/src/sqliteState.ts`):** attach the external phase
-   adapter to the same already-open database/connection, expose durable instance identity and
-   effect guards, reject nesting in uncommitted outer transactions, and inspect committed
-   phases after reopening. Keep ledger/head/checkpoint changes atomic with external phases;
+2. **Existing SQLite ledger (`packages/cli/src/sqliteState.ts`):** canonical phase adapter
+   delegation on the same already-open connection is implemented in the selected core/CLI
+   revision. Remaining host integration must expose durable instance identity and effect
+   guards, reject nesting in uncommitted outer transactions, and inspect committed phases
+   after reopening. Keep ledger/head/checkpoint changes atomic with external phases;
    do not substitute memory or a separately opened connection to simulate nesting safety.
 3. **Daemon composition (`packages/cli/src/vault.ts`, `commands/run.ts`, `lock.ts`,
    `lockMutation.ts`, `nodeFs.ts`, `nodeFsGuard.ts`):** take/validate the existing vault lock

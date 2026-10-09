@@ -24,6 +24,16 @@ import {
   type RecoveryStorage,
 } from './recovery'
 
+// Marker envelopes use the plugin's Zod version; binding semantics always use the
+// canonical core parser, which may have a different Zod runtime.
+const markerBinding = z.unknown().transform((input, ctx) => {
+  const result = ConnectionBindingSchema.safeParse(input)
+  if (!result.success) {
+    ctx.addIssue({ code: 'custom', message: 'Invalid canonical connection binding' })
+    return z.NEVER
+  }
+  return result.data
+})
 const activationSchema = z
   .object({
     schema: z.literal(1),
@@ -34,7 +44,7 @@ const activationSchema = z
             ledgerId: z.string().min(1),
             databaseName: z.string().min(1),
             databaseIdentity: z.string().min(1),
-            binding: ConnectionBindingSchema,
+            binding: markerBinding,
             phase: z.enum(['preparing', 'active']),
           })
           .strict()
