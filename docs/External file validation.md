@@ -75,9 +75,11 @@ drivers and run artifacts remain local, outside this repository.
 
 LIMIT: the current phone driver and host bridge do not expose native resident memory
 for the application process or supply `window.__abeleExternalMemoryBytes`. The phone
-200 MiB case is therefore an explicit `it.fails`, with every assertion retained; it is
-not skipped and does not establish a passing phone memory bound. Desktop runs the
-case normally. Once the local runner supplies the sampler, remove the expected-failure
+resident-memory bound test is therefore an explicit `it.fails`; it does not establish
+a passing phone memory bound. The separate 200 MiB transfer test runs normally on both
+targets with every transfer assertion retained. Both tests share one round trip from
+`beforeAll`, sampling only when a resident-memory sampler exists. Desktop runs both
+tests normally. Once the local runner supplies the sampler, remove the expected-failure
 marker and rerun the case on both targets.
 
 The local integration matrix is not evidence that live phone memory or installation

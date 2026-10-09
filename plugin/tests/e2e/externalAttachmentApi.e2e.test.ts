@@ -100,9 +100,10 @@ async function roundTrip(
     // The local runner may supply a native resident-memory sampler on hosts without
     // process.memoryUsage. JS heap alone omits the full-file ArrayBuffers on iOS.
     const memory=()=>typeof window.__abeleExternalMemoryBytes==='function'?window.__abeleExternalMemoryBytes():globalThis.process?.memoryUsage?.().rss
-    let baseline=0,peakMemory=0,samples=0,memoryError=null,timer
+    const sampling=maximum&&(typeof window.__abeleExternalMemoryBytes==='function'||typeof globalThis.process?.memoryUsage==='function')
+    let baseline=0,peakMemory=0,samples=0,memoryError=maximum&&!sampling?'Resident-memory sampler required':null,timer
     const sample=()=>{const value=memory();if(!Number.isFinite(value)||value<=0){memoryError='Resident-memory sampler required';return}peakMemory=Math.max(peakMemory,value);samples++}
-    if(maximum){sample();baseline=peakMemory;if(memoryError)throw Error(memoryError)}
+    if(sampling){sample();baseline=peakMemory}
     let bytes=maximum?new Uint8Array(200*1024*1024).fill(90):new TextEncoder().encode(${JSON.stringify(content)})
     const base=${JSON.stringify(selectedHead)},url=${JSON.stringify(url)},token=${JSON.stringify(scoped ? reader.key_token : fixture.device.deviceToken)}
     const grant=${JSON.stringify(fixture.grant.id)},vault=${JSON.stringify(fixture.vault)}
@@ -128,22 +129,22 @@ async function roundTrip(
       scopedHead:async()=>({file_id:base.file_id,version_id:base.version_id,path,sha:base.sha,size:base.size,mtime:base.mtime}),
       consent:{read:async()=>consent,write:async value=>{consent=value}},
       verify:async(id,input)=>(await http(prefix+id+'/external/verify','POST',input)).json,
-      download:async(id,version,sha)=>{activeDownloads++;downloadCount++;peakDownloads=Math.max(peakDownloads,activeDownloads);if(maximum)sample();try{return new Uint8Array((await http(${scoped ? "prefix+id+'/versions/'+version" : "'/v1/blobs/'+sha"})).arrayBuffer)}finally{activeDownloads--;if(maximum)sample()}}})
+      download:async(id,version,sha)=>{activeDownloads++;downloadCount++;peakDownloads=Math.max(peakDownloads,activeDownloads);if(sampling)sample();try{return new Uint8Array((await http(${scoped ? "prefix+id+'/versions/'+version" : "'/v1/blobs/'+sha"})).arrayBuffer)}finally{activeDownloads--;if(sampling)sample()}}})
     try{
-      if(maximum){sample();timer=setInterval(sample,25)}
+      if(sampling){sample();timer=setInterval(sample,25)}
       const options={operationId:crypto.randomUUID(),expectedRevision:0,expectedVersionId:base.version_id}
       const warning=${scoped ? '(await attachment.evict(base.file_id,options)).status' : 'null'}
       const evicted=await attachment.evict(base.file_id,{...options,acknowledgeScopedWarning:true})
       const missing=!await adapter.exists(path),sidecar=await adapter.exists(path+'.abele-ref')
       const read=maximum?null:await attachment.read(base.file_id,{expectedVersionId:base.version_id})
-      if(maximum){bytes=null;sample()}
+      if(maximum){bytes=null;if(sampling)sample()}
       const hydrationOptions={operationId:crypto.randomUUID(),expectedVersionId:base.version_id}
       const hydrationResults=maximum?await Promise.all([attachment.hydrate(base.file_id,hydrationOptions),attachment.hydrate(base.file_id,hydrationOptions)]):null
       const hydrated=maximum?hydrationResults[0]:${materialize ? 'await attachment.materializeForDisconnect({operationId:crypto.randomUUID()})' : 'await attachment.hydrate(base.file_id,hydrationOptions)'}
       const disconnectReady=(await attachment.inspectDisconnect()).safe
       const actual=new Uint8Array(await adapter.readBinary(path)),retired=!await adapter.exists(path+'.abele-ref')
       const digest=Array.from(new Uint8Array(await crypto.subtle.digest('SHA-256',actual))).map(n=>n.toString(16).padStart(2,'0')).join('')
-      if(maximum)sample()
+      if(sampling)sample()
       return JSON.stringify({evicted,missing,sidecar,hydrated,hydrationResults,retired,warning,requests,disconnectReady,peakDownloads,downloadCount,peakMemory,baseline,samples,memoryError,verifiedRead:!maximum&&read.bytes?.length===bytes.length&&read.bytes.every((n,i)=>n===bytes[i]),identical:maximum?actual.length===base.size&&actual.every(n=>n===90)&&digest===base.sha:actual.length===bytes.length&&actual.every((n,i)=>n===bytes[i])})
     }finally{clearInterval(timer);await engine.stop();host.close();store.close();await api.externalState.IndexedDbStateStore.delete(indexedDB,database)}
   })()`,
@@ -153,11 +154,9 @@ async function roundTrip(
 }
 
 describe('attachment API with the pinned real server on live adapters', () => {
-  // LIMIT: the phone driver has no native application resident-memory sampler to supply
-  // window.__abeleExternalMemoryBytes; retain every assertion as an expected phone failure.
-  ;(onPhone() ? it.fails : it)(
-    'transfers the 200 MiB limit with one hydration buffer job and bounded resident-memory growth',
-    async () => {
+  describe('200 MiB attachment', () => {
+    let outcome: Awaited<ReturnType<typeof roundTrip>>
+    beforeAll(async () => {
       const bytes = Buffer.alloc(200 * 1024 * 1024, 90)
       const sha = await sha256(bytes)
       const client = new SyncClient({
@@ -181,7 +180,7 @@ describe('attachment API with the pinned real server on live adapters', () => {
           'sample-maximum-create'
         )
       ).results[0]
-      const outcome = await roundTrip(false, false, maximumHead, true)
+      outcome = await roundTrip(false, false, maximumHead, true)
       console.info('sample maximum attachment memory', {
         target: onPhone() ? 'phone' : 'desktop',
         baseline: outcome.baseline,
@@ -190,6 +189,9 @@ describe('attachment API with the pinned real server on live adapters', () => {
         growth: outcome.peakMemory - outcome.baseline,
         peakDownloads: outcome.peakDownloads,
       })
+    }, 600_000)
+
+    it('transfers the limit with one hydration buffer job', () => {
       expect(outcome).toMatchObject({
         missing: true,
         sidecar: true,
@@ -199,16 +201,20 @@ describe('attachment API with the pinned real server on live adapters', () => {
         hydrated: { status: 'complete' },
         peakDownloads: 1,
         downloadCount: 1,
-        memoryError: null,
       })
       expect(
         outcome.hydrationResults.every((result: { status: string }) => result.status === 'complete')
       ).toBe(true)
+    })
+
+    // LIMIT: the phone driver has no native application resident-memory sampler to supply
+    // window.__abeleExternalMemoryBytes; only the memory bound is an expected phone failure.
+    ;(onPhone() ? it.fails : it)('bounds resident-memory growth', () => {
+      expect(outcome.memoryError).toBeNull()
       expect(outcome.samples).toBeGreaterThan(2)
       expect(outcome.peakMemory - outcome.baseline).toBeLessThanOrEqual(1024 * 1024 * 1024)
-    },
-    600_000
-  )
+    })
+  })
   it.each([false, true])('materializes before departure (scoped reader=%s)', async (scoped) => {
     expect(await roundTrip(scoped, true)).toMatchObject({
       evicted: { status: 'complete' },
