@@ -947,8 +947,11 @@ each setting decides is the `settings` section of this reference.
 
 Read-only tools require an explicit owner grant for the executing chat and node project,
 separate from delegation and generic tool approvals. Opening a tab grants no access.
-Part A registers provider-neutral sources and the shared tab opener with
-`nodeRepositoryToolsHost.attach`. Supply a shared owner/controller generation as
+Actual node repository tabs register provider-neutral sources and the shared opener through
+`attachNodeRepositoryToolsTab` and `nodeRepositoryToolsHost.attach`, and detach on source
+replacement or close. The bridge maps the tool's `WORKTREE`, commit/comparison and line-range
+options to the owner opener without granting access. Cached selections and reads require a
+connected owner controller; reauthorization retires its project grants. Supply a shared owner/controller generation as
 `authority` across a project's sources; without it grants pin each source's cache namespace.
 Sources must assert live installation/owner authority and use `WORKTREE` as the working
 revision selector. Supply `target()` with the current location/revision and `selection()`

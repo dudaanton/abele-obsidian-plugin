@@ -95,6 +95,7 @@ export async function openNodeRepositoryFixture(state: NodeRepositoryScreen = 'h
     client,
     state: ref(state === 'offline' ? 'offline' : 'connected'),
     error: ref(''),
+    authorizationGeneration: 0,
     connect: async () => {
       if (state === 'offline') throw new Error('Node offline. Reconnect to browse this repository.')
     },

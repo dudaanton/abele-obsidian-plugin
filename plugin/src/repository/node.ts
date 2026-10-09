@@ -185,6 +185,8 @@ export class NodeRepositorySource implements RepositorySource {
     this.emit({ kind: 'workspace' })
   }
   async resolve(ref = WORKING_TREE): Promise<string> {
+    // Agent reads use the protocol-neutral selector; owner tab state retains its legacy alias.
+    if (ref === 'WORKTREE') ref = WORKING_TREE
     this.assertCurrent()
     if (this.revisions.has(ref)) return ref
     if (ref.startsWith(workingPrefix))

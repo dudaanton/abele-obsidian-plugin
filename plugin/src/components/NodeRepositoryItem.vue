@@ -83,6 +83,7 @@ import type { RepositoryLocation, RepositoryWorkspace } from '@/repository/sourc
 import type { CommitSummary } from '@/repository/model'
 import { NodeFilesModel } from '@/node/NodeFilesModel'
 import { openNodeFiles } from '@/node/openFiles'
+import { attachNodeRepositoryToolsTab } from '@/node/repositoryToolsTab'
 const props = defineProps<{
   model: GithubViewModel
   keys?: { find: number }
@@ -136,6 +137,7 @@ const presentation: GithubViewModel = reactive({
 })
 let generation = 0
 let alive = true
+let detachTools = () => {}
 const load = async () => {
   const current = target.value
   if (!current) return
@@ -182,8 +184,17 @@ const load = async () => {
       next.dispose()
       return
     }
+    detachTools()
     source.value?.dispose()
     source.value = next
+    detachTools = attachNodeRepositoryToolsTab(next, transport, {
+      target: () => ({
+        source: next.identity,
+        location: location.value,
+        ...(presentation.sourceRevision ? { revision: presentation.sourceRevision } : {}),
+      }),
+      selection: () => props.model.screen.selection,
+    })
     workspaces.value = catalog
     projectName.value = labels.project
     updateTitle()
@@ -390,6 +401,7 @@ const edit = (path: string) => {
 watch(
   () => target.value && JSON.stringify(target.value.source),
   () => {
+    detachTools()
     source.value?.dispose()
     source.value = undefined
     void load()
@@ -413,6 +425,7 @@ watch(
   () => NodeService.getInstance().nodes.value,
   (nodes) => {
     if (!target.value || nodes.some((node) => node.id === target.value!.source.node)) return
+    detachTools()
     source.value?.dispose()
     source.value = undefined
     error.value = 'This node was removed. Reconnect it before browsing.'
@@ -436,6 +449,7 @@ watch(offline, (isOffline) => {
 onBeforeUnmount(() => {
   alive = false
   ++generation
+  detachTools()
   source.value?.dispose()
 })
 </script>

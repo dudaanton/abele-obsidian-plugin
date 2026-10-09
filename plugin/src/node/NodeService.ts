@@ -103,6 +103,11 @@ export class NodeConnection {
     return this.connecting
   }
 
+  /** Read grants bind to this owner-controller generation, never to a transport reconnect. */
+  get authorizationGeneration(): number {
+    return this.generation
+  }
+
   /** Keep the client, subscriptions and store alive across same-principal re-pairing.
    * Settle the old admission before reusing NodeClient; a late channel is discarded.
    */
