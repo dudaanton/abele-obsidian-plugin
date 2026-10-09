@@ -3,6 +3,7 @@
     <button
       type="button"
       class="clickable-icon abele-disclosure__control"
+      :aria-label="label"
       :aria-expanded="modelValue"
       :aria-controls="contentId"
       @click="emit('update:modelValue', !modelValue)"

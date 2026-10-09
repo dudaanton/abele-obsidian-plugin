@@ -93,6 +93,7 @@ policy during migration, including controls with previously smaller hit areas.
 | `message-square` | Open a message/comment |
 | `refresh-cw` | Refresh/retry, with explicit wording |
 | `x` | Close/dismiss/remove from selection, not file deletion |
+| `image-off` | Image unavailable; keep its identity and explanation |
 
 No text triangle disclosure glyphs. `Disclosure`/`FoldHeading` draw Obsidian's collapse icon;
 native `details/summary` is an allowed semantic alternative. Expansion must not also open an

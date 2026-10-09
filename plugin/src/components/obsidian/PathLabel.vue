@@ -1,5 +1,5 @@
 <template>
-  <details v-if="mode !== 'full'" class="abele-path-label">
+  <details v-if="mode !== 'full' && expandable" class="abele-path-label">
     <summary>
       <span v-if="workspace">{{ workspace }} · </span>{{ compact
       }}<span v-if="missing"> · Unavailable</span>
@@ -17,11 +17,13 @@
       />
     </div>
   </details>
-  <span v-else class="abele-path-label"
-    ><span v-if="workspace">{{ workspace }} · </span
-    ><span class="abele-path-label__full">{{ path }}</span
-    ><span v-if="missing"> · Unavailable</span></span
-  >
+  <span v-else class="abele-path-label">
+    <span v-if="workspace">{{ workspace }} · </span
+    ><span :class="{ 'abele-path-label__full': mode === 'full' }">{{
+      mode === 'full' ? path : compact
+    }}</span
+    ><span v-if="missing"> · Unavailable</span>
+  </span>
 </template>
 <script setup lang="ts">
 import { computed } from 'vue'
@@ -34,8 +36,10 @@ const props = withDefaults(
     missing?: boolean
     copyable?: boolean
     revealable?: boolean
+    /** False only when the containing row already exposes full path detail. */
+    expandable?: boolean
   }>(),
-  { mode: 'context' }
+  { mode: 'context', expandable: true }
 )
 const emit = defineEmits<{ copy: [path: string]; reveal: [path: string] }>()
 const compact = computed(() => {

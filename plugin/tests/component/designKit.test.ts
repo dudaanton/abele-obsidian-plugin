@@ -3,6 +3,7 @@ import { mount } from '@vue/test-utils'
 import { h, ref } from 'vue'
 import Icon from '@/components/obsidian/Icon.vue'
 import ListRow from '@/components/obsidian/ListRow.vue'
+import Card from '@/components/obsidian/Card.vue'
 import MetaLine from '@/components/obsidian/MetaLine.vue'
 import RelativeTime from '@/components/obsidian/RelativeTime.vue'
 import PathLabel from '@/components/obsidian/PathLabel.vue'
@@ -27,6 +28,8 @@ describe('Icon semantics', () => {
     const decorative = mount(Icon, { props: { icon: 'folder' } })
     expect(decorative.attributes('aria-hidden')).toBe('true')
     expect(decorative.attributes('tabindex')).toBeUndefined()
+    await decorative.trigger('click')
+    expect(decorative.emitted('click')).toBeUndefined()
   })
   it('retains a disabled toggle with a reason and blocks activation', async () => {
     const view = mount(Icon, {
@@ -46,6 +49,22 @@ describe('Icon semantics', () => {
   })
 })
 describe('ListRow', () => {
+  it('names a disabled main action reason without disabling valid sibling actions', async () => {
+    const view = mount(ListRow, {
+      props: {
+        title: 'missing.md',
+        interactive: true,
+        disabled: true,
+        disabledReason: 'File unavailable',
+      },
+      slots: { actions: () => h(Icon, { interactive: true, icon: 'unlink', tooltip: 'Unlink' }) },
+    })
+    expect(view.get('.abele-list-row__main').attributes('disabled')).toBeDefined()
+    expect(view.get('.abele-list-row__main').attributes('aria-label')).toContain('File unavailable')
+    await view.get('.abele-list-row__main').trigger('click')
+    expect(view.emitted('open')).toBeUndefined()
+    expect(view.get('.abele-list-row__actions button').attributes('disabled')).toBeUndefined()
+  })
   it('isolates sibling actions from opening, and exposes controlled selection', async () => {
     const view = mount(ListRow, {
       props: { title: 'sample.md', interactive: true, selected: true },
@@ -105,6 +124,11 @@ describe('RelativeTime', () => {
   })
 })
 describe('PathLabel', () => {
+  it('permits noninteractive compact context when a row detail already exposes the full path', () => {
+    const view = mount(PathLabel, { props: { path: 'Work/sample.md', expandable: false } })
+    expect(view.text()).toBe('Work')
+    expect(view.find('summary').exists()).toBe(false)
+  })
   it('disambiguates duplicate basenames by context and makes the full path selectable', async () => {
     const first = mount(PathLabel, { props: { path: 'Work/Long/sample.md', mode: 'context' } })
     const second = mount(PathLabel, { props: { path: 'Archive/sample.md', mode: 'context' } })
@@ -185,6 +209,7 @@ describe('Quote', () => {
       },
     })
     expect(view.text()).toContain('Source unavailable')
+    expect(view.find('.collapse-icon').exists()).toBe(true)
     await view.get('[aria-label="Expand quote"]').trigger('click')
     expect(view.get('blockquote').classes()).not.toContain('abele-quote__text_preview')
     expect(view.get('[aria-label="Collapse quote"]').attributes('aria-expanded')).toBe('true')
@@ -214,7 +239,21 @@ describe('SwatchPicker', () => {
     expect(view.find('[role="checkbox"]').exists()).toBe(true)
   })
 })
+describe('Card attachment previews', () => {
+  it('does not crop information out of a thumbnail by default', () => {
+    const view = mount(Card, {
+      props: { title: 'Diagram choice', thumbnail: 'https://example.invalid/sample.png' },
+    })
+    expect(view.getComponent(Image).props('fit')).toBe('contain')
+  })
+})
 describe('Image thumbnail', () => {
+  it('retains an honest loading slot while the source is still resolving', () => {
+    const view = mount(Image, { props: { src: '', variant: 'thumbnail', pending: true } })
+    expect(view.text()).toContain('Loading image')
+    expect(view.find('img').exists()).toBe(false)
+    expect(view.attributes('aria-busy')).toBe('true')
+  })
   it('holds loading space, handles failure after resolution and recovers on source change', async () => {
     const view = mount(Image, {
       props: {

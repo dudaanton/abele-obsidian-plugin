@@ -14,9 +14,11 @@
           type="button"
           class="clickable-icon abele-list-row__main"
           :aria-pressed="selected"
-          @click="emit('open')"
+          :aria-label="disabled && disabledReason ? `${title}: ${disabledReason}` : undefined"
+          :disabled="disabled"
+          @click="!disabled && emit('open')"
         >
-          {{ title }}
+          <span class="abele-list-row__title-text">{{ title }}</span>
         </button>
         <div v-else class="abele-list-row__title">{{ title }}</div>
         <slot name="metadata"><MetaLine v-if="facts?.length" :facts="facts" /></slot>
@@ -44,6 +46,8 @@ withDefaults(
     facts?: MetaFact[]
     snippet?: string
     interactive?: boolean
+    disabled?: boolean
+    disabledReason?: string
     selected?: boolean
     state?: 'ready' | 'loading' | 'missing' | 'error'
     message?: string
@@ -92,13 +96,23 @@ const stateText = {
   width: 100%;
   justify-content: flex-start;
   white-space: normal;
+  height: auto;
+  min-height: var(--icon-size);
+  display: flex;
 }
-.abele-list-row__title,
-.abele-list-row__main {
+.abele-list-row__title-text {
   display: -webkit-box;
   -webkit-box-orient: vertical;
   -webkit-line-clamp: 2;
   overflow: hidden;
+}
+.abele-list-row__leading {
+  display: flex;
+  align-items: center;
+  min-height: var(--icon-size);
+}
+body.is-phone .abele-list-row__leading {
+  min-height: var(--abele-touch-min);
 }
 .abele-list-row__actions {
   display: flex;

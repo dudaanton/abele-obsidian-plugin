@@ -16,7 +16,7 @@
       'abele-obsidian-icon_active': active,
       [`abele-obsidian-icon_color-${color}`]: color && color !== 'grey',
     }"
-    @click="!disabled && emit('click', $event)"
+    @click="isInteractive && !disabled && emit('click', $event)"
   >
     <span v-if="textLeft" class="abele-obsidian-icon__text">{{ textLeft }}</span>
     <span v-if="icon" ref="iconEl" class="abele-obsidian-icon__icon" aria-hidden="true" />
@@ -134,7 +134,7 @@ watch(accessibleName, updateTooltip)
   }
 }
 
-@each $name in red, orange, yellow, green, cyan, blue, purple, pink {
+@each $name in 'red', 'orange', 'yellow', 'green', 'cyan', 'blue', 'purple', 'pink' {
   .abele-obsidian-icon.abele-obsidian-icon_color-#{$name} {
     color: var(--color-#{$name});
   }

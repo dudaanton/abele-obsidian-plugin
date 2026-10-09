@@ -19,7 +19,7 @@
     <Image
       v-if="thumbnail"
       :src="thumbnail"
-      fit="cover"
+      :fit="thumbnailFit"
       loading="lazy"
       class="abele-card__thumbnail"
     />
@@ -92,6 +92,8 @@ const props = withDefaults(
     cover?: string
     /** A small picture on the right, beside the words: a note's cover in a list. Vault path, link name or URL. */
     thumbnail?: string
+    /** Contain preserves diagrams; cover is an explicit choice for decorative photos. */
+    thumbnailFit?: 'contain' | 'cover'
     /** For a card that is the thing itself rather than one of a grid — a post in a feed. The title is a heading. */
     large?: boolean
     /** A location shown by the shared path primitive rather than repeated in the title. */
@@ -112,6 +114,7 @@ const props = withDefaults(
     icon: undefined,
     cover: undefined,
     thumbnail: undefined,
+    thumbnailFit: 'contain',
     subtitle: undefined,
     description: undefined,
     meta: undefined,
@@ -295,7 +298,7 @@ const open = (event: Event) => {
 
 /** Line breaks stay: an excerpt of a note reads as its paragraphs, not as one run-on line. */
 .abele-card__description {
-  font-size: var(--font-small);
+  font-size: var(--font-ui-small);
   color: var(--text-muted);
   overflow-wrap: anywhere;
   white-space: pre-line;

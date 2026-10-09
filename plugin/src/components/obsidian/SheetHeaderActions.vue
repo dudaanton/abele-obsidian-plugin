@@ -13,7 +13,7 @@
       v-if="actions?.length"
       ref="overflow"
       icon="ellipsis"
-      tooltip="More actions"
+      :tooltip="overflowLabel"
       aria-haspopup="menu"
       @click="openMenu"
     />
@@ -33,7 +33,10 @@ export interface HeaderAction {
   disabled?: boolean
   reason?: string
 }
-const props = defineProps<{ context?: HeaderAction; actions?: HeaderAction[] }>()
+const props = withDefaults(
+  defineProps<{ context?: HeaderAction; actions?: HeaderAction[]; overflowLabel?: string }>(),
+  { overflowLabel: 'More actions' }
+)
 const emit = defineEmits<{ action: [id: string] }>()
 const overflow = ref<{ $el: HTMLElement }>()
 let menu: Menu | undefined

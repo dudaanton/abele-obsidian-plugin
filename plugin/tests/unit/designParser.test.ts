@@ -29,6 +29,20 @@ describe('parsed design contracts', () => {
       'literal spacing: padding'
     )
   })
+  it('rejects literal colours hidden in border/shadow shorthands and nonsemantic icon controls', () => {
+    expect(
+      inspectDesign(
+        '<template><div class="clickable-icon" @click="go" aria-label="Go" /></template><style>.x { border: 1px solid red; box-shadow: 0 0 1px blue; padding: 5%; }</style>'
+      )
+    ).toEqual(
+      expect.arrayContaining([
+        'nonsemantic icon action',
+        'literal colour: border',
+        'literal colour: box-shadow',
+        'literal spacing: padding',
+      ])
+    )
+  })
   it('does not let an invented token become a private palette', () => {
     expect(inspectDesign('<style>.x { color: var(--my-grey); }</style>')).toContain(
       'unapproved token: --my-grey'

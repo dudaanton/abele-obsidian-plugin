@@ -4,7 +4,7 @@
       <FoldHeading
         :class="classPrefix + '__header-text'"
         :text="text"
-        :count="count"
+        :count="total === undefined ? count : undefined"
         :collapsible="fold.enabled"
         :collapsed="fold.collapsed.value"
         @toggle="fold.toggle"

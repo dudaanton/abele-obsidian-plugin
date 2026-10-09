@@ -5,7 +5,7 @@ import postcss from 'postcss'
 import { compileString } from 'sass-embedded'
 
 const HOST_TOKEN =
-  /^--(?:size-(?:2|4)-\d+|font-(?:interface|text|monospace|ui-(?:small|smaller|medium|large)|normal|medium|semibold)|line-height-(?:normal|tight)|text-(?:normal|muted|faint|accent|error|warning)|icon-(?:size|color|color-hover)|color-(?:red|orange|yellow|green|cyan|blue|purple|pink)|background-(?:primary|secondary|modifier-[\w-]+)|radius-[sm]|cursor(?:-link)?|touch-size-[\w-]+|abele-touch-min)$/
+  /^--(?:size-(?:2-[0-8]|4-(?:[0-9]|10|11|12|16|18))|font-(?:interface|text|monospace|ui-(?:small|smaller|medium|large)|normal|medium|semibold)|line-height-(?:normal|tight)|text-(?:normal|muted|faint|accent|error|warning)|icon-(?:size|color|color-hover)|color-(?:red|orange|yellow|green|cyan|blue|purple|pink)|background-(?:primary|secondary|modifier-(?:border|border-focus|active-hover|hover))|interactive-accent|radius-[sm]|cursor(?:-link)?|touch-size-[sml]|abele-touch-min)$/
 const hasProp = (node: ElementNode, name: string) =>
   node.props.some((p) =>
     p.type === NodeTypes.ATTRIBUTE
@@ -60,6 +60,21 @@ export function inspectDesign(
     if (node.type !== NodeTypes.ELEMENT) return
     const tag = aliases.get(node.tag) ?? node.tag
     if (hasProp(node, 'style')) errors.push('inline style')
+    const classes = node.props.find((p) => p.type === NodeTypes.ATTRIBUTE && p.name === 'class')
+    if (
+      classes?.type === NodeTypes.ATTRIBUTE &&
+      classes.value?.content.split(/\s+/).includes('clickable-icon') &&
+      hasEvent(node, 'click') &&
+      !['button', 'component'].includes(tag)
+    )
+      errors.push('nonsemantic icon action')
+    if (
+      options.screen &&
+      ['div', 'span', 'p'].includes(tag) &&
+      classes?.type === NodeTypes.ATTRIBUTE &&
+      /(?:__|-)(?:meta(?:data)?|empty)(?:$|[_-])/.test(classes.value?.content ?? '')
+    )
+      errors.push('local metadata or empty-state composition')
     if (
       tag === 'Icon' &&
       (hasEvent(node, 'click') || hasProp(node, 'interactive')) &&
@@ -84,10 +99,15 @@ export function inspectDesign(
 
 export function inspectCss(
   css: string,
-  options: { scss?: boolean; touchPolicy?: boolean; qr?: boolean } = {}
+  options: { scss?: boolean; touchPolicy?: boolean; qr?: boolean; screen?: boolean } = {}
 ): string[] {
   const errors: string[] = []
   const root = postcss.parse(options.scss ? compileString(css, { style: 'expanded' }).css : css)
+  if (options.screen)
+    root.walkRules((rule) => {
+      if (/(?:__|-)(?:meta(?:data)?|empty)(?:$|[_-]|\b)/.test(rule.selector))
+        errors.push('local metadata or empty-state styling')
+    })
   root.walkDecls((decl) => {
     const value = decl.value
     if (options.qr && ['fill', 'background-color'].includes(decl.prop)) return
@@ -102,9 +122,14 @@ export function inspectCss(
     const literal = value
       .replace(/var\([^)]*\)/g, '')
       .replace(/(?:transparent|currentColor|inherit|initial|unset)/g, '')
+    const colourLiteral = literal
+      .replace(/\b(?:solid|dashed|dotted|none|inset|outset)\b/g, '')
+      .replace(/-?\d+(?:\.\d+)?(?:px|em|rem|%)?/g, '')
     if (
-      /^(?:color|background(?:-color)?|fill|stroke|border(?:-[\w-]+)?-color)$/.test(decl.prop) &&
-      /#[\da-f]+|rgba?\(|hsla?\(|\b[a-z]+\b/i.test(literal)
+      /^(?:color|background(?:-color)?|fill|stroke|box-shadow|outline|outline-color|border(?:-(?:top|right|bottom|left|inline-start|inline-end|block-start|block-end))?(?:-color)?)$/.test(
+        decl.prop
+      ) &&
+      /#|rgba?\(|hsla?\(|\b[a-z]+\b/i.test(colourLiteral)
     )
       errors.push(`literal colour: ${decl.prop}`)
     if (
@@ -115,7 +140,7 @@ export function inspectCss(
       errors.push(`literal typography: ${decl.prop}`)
     if (
       /^(?:padding|margin|gap|row-gap|column-gap)(?:-[\w-]+)?$/.test(decl.prop) &&
-      /\d(?:px|em|rem|vh|vw)/.test(literal)
+      /\d(?:px|em|rem|vh|vw|%)/.test(literal)
     )
       errors.push(`literal spacing: ${decl.prop}`)
     if (

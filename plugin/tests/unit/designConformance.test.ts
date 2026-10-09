@@ -138,6 +138,8 @@ const STRICT_KIT = [
   'SwatchPicker',
   'Image',
   'EmptyState',
+  'FoldHeading',
+  'Card',
 ]
 const STRICT_SCREENS: string[] = [] // Each migration must append its screen here.
 const MIGRATION_EXEMPTIONS = {
@@ -152,7 +154,7 @@ const MIGRATION_EXEMPTIONS = {
     'ChatAnchorHistory.vue',
     'AiReplyRevisionDialog.vue',
   ], // Nested navigation and history, not all flat rows.
-  stage4: ['AgentsList.vue'], // Rich-choice cards need comparison before replacing.
+  stage4: ['settings/ai/AgentsSettings.vue'], // Rich-choice cards need comparison before replacing.
   stage5: ['NodePath.vue', 'NodeFilesDialog.vue', 'NodeWorkspaceDialog.vue'], // Recovery and permission context.
   stage6: walk(ROOT)
     .map(name)

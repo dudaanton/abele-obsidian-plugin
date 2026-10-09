@@ -87,7 +87,7 @@ watch(() => props.collapsible, draw, { flush: 'post' })
 }
 
 .abele-fold-heading__count {
-  color: var(--text-faint);
+  color: var(--text-muted);
   font-size: var(--font-ui-small);
   font-weight: var(--font-normal);
 }

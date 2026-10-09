@@ -1,27 +1,26 @@
 <template>
   <figure class="abele-quote">
     <blockquote
+      v-if="!long || !expanded"
       class="abele-quote__text"
       :class="{ 'abele-quote__text_preview': long && !expanded }"
     >
       {{ text || 'No quoted text' }}
     </blockquote>
+    <Disclosure v-if="long" v-model="expanded" :label="expanded ? 'Collapse quote' : 'Expand quote'"
+      ><blockquote class="abele-quote__text">{{ text }}</blockquote></Disclosure
+    >
     <figcaption v-if="source || unresolved" class="abele-quote__source">
-      {{ source }}<template v-if="unresolved"> · Source unavailable</template>
+      {{ source
+      }}<template v-if="unresolved"
+        ><template v-if="source"> · </template>Source unavailable</template
+      >
     </figcaption>
-    <Icon
-      v-if="long"
-      :icon="expanded ? 'minus' : 'plus'"
-      :text-right="expanded ? 'Collapse quote' : 'Expand quote'"
-      :tooltip="expanded ? 'Collapse quote' : 'Expand quote'"
-      :aria-expanded="expanded"
-      @click="expanded = !expanded"
-    />
   </figure>
 </template>
 <script setup lang="ts">
 import { ref, computed } from 'vue'
-import Icon from './Icon.vue'
+import Disclosure from './Disclosure.vue'
 const props = defineProps<{ text: string; source?: string; unresolved?: boolean }>()
 const expanded = ref(false)
 const long = computed(() => props.text.length > 240 || props.text.split('\n').length > 3)

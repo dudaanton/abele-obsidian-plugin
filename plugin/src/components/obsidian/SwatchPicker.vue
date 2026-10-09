@@ -20,20 +20,23 @@
         /></span>
       </button>
     </div>
-    <label v-if="underline !== undefined" class="abele-swatch-picker__underline"
-      ><Checkbox
-        :is-enabled="underline"
-        :aria-disabled="disabled || busy"
-        aria-label="Underline annotation"
-        @toggle="!disabled && !busy && emit('update:underline', !underline)"
-      />Underline</label
-    >
+    <Icon
+      v-if="underline !== undefined"
+      class="abele-swatch-picker__underline"
+      icon="underline"
+      text-right="Underline"
+      tooltip="Underline annotation"
+      role="checkbox"
+      :aria-checked="underline"
+      :disabled="disabled || busy"
+      :disabled-reason="busy ? 'Saving colour' : 'Selection unavailable'"
+      @click="emit('update:underline', !underline)"
+    />
     <span v-if="busy" role="status">Saving colour…</span>
   </div>
 </template>
 <script setup lang="ts">
 import { KIT_COLORS, KIT_COLOR_NAMES, type KitColor } from '@/constants/colors'
-import Checkbox from './Checkbox.vue'
 import Icon from './Icon.vue'
 const props = withDefaults(
   defineProps<{
@@ -104,7 +107,7 @@ const onKey = (event: KeyboardEvent, index: number) => {
   gap: var(--size-4-2);
   margin-top: var(--size-4-2);
 }
-@each $color in red, orange, yellow, green, cyan, blue, purple, pink {
+@each $color in 'red', 'orange', 'yellow', 'green', 'cyan', 'blue', 'purple', 'pink' {
   .abele-swatch-picker__choice_#{$color} .abele-swatch-picker__swatch {
     background: var(--color-#{$color});
   }

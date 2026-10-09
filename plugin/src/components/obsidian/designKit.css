@@ -20,7 +20,9 @@ body.is-phone
   .abele-list-row__main,
   .abele-disclosure__control,
   .abele-swatch-picker__choice,
-  .abele-image__preview
+  .abele-image__preview,
+  .abele-path-label > summary,
+  .abele-relative-time summary
 ):focus-visible {
   outline: var(--size-2-1) solid var(--background-modifier-border-focus);
   outline-offset: var(--size-2-1);
