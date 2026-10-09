@@ -73,6 +73,13 @@ ArrayBuffers and do not establish this bound. The test fails when the sampler is
 or invalid; it does not skip or substitute an estimated buffer size. Native sampling
 drivers and run artifacts remain local, outside this repository.
 
+LIMIT: the current phone driver and host bridge do not expose native resident memory
+for the application process or supply `window.__abeleExternalMemoryBytes`. The phone
+200 MiB case is therefore an explicit `it.fails`, with every assertion retained; it is
+not skipped and does not establish a passing phone memory bound. Desktop runs the
+case normally. Once the local runner supplies the sampler, remove the expected-failure
+marker and rerun the case on both targets.
+
 The local integration matrix is not evidence that live phone memory or installation
 passed. Completion still requires the supervising smart-check/build gate, these live
 batches and the server's PostgreSQL gate with no backend skips. Record those results
