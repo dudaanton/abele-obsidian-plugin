@@ -164,13 +164,10 @@ it('a normal plugin agent delegates through owner UI to both fake providers, sur
       await expect(human.subscribe(child.mailbox)).rejects.toThrow(/unauthorized/)
     }
     for (let i = 0; i < 600; i++) {
-      if (
-        (await Promise.all(children.map((c) => human!.history(c.sessionId)))).every((h) =>
-          h.some((e) => e.type === 'run.completed')
-        )
-      )
-        break
-      if (i === 599) throw Error('Offline delegated tasks did not complete')
+      const histories = await Promise.all(children.map((c) => human!.history(c.sessionId)))
+      if (histories.every(h => h.some(e => e.type === 'run.completed'))) break
+      if (i === 599 || histories.some(h => h.some(e => ['run.failed', 'input.failed', 'input.delivery_unknown'].includes(e.type))))
+        throw Error('Offline delegated tasks did not complete: ' + JSON.stringify(histories))
       await wait(25)
     }
     reloadPlugin()
