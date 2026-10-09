@@ -36,6 +36,33 @@ describe('connection switching', () => {
 })
 
 describe('an issue', () => {
+  it('keeps a pending pull request promotion across a parent rerender with the same client', async () => {
+    const connection = clientWith({
+      '/repos/o/r/issues/7': { json: { ...ISSUE, number: 7, pull_request: {} } },
+      '/repos/o/r/issues/7/comments': { json: [] },
+      '/repos/o/r/pulls/7': { json: PULL },
+      '/repos/o/r/pulls/7/reviews': { json: [] },
+    })
+    let release!: () => void
+    const pending = new Promise<void>((resolve) => (release = resolve))
+    const request = connection.request.getMockImplementation()!
+    connection.request.mockImplementation(async (req) => {
+      if (req.url.endsWith('/issues/7')) await pending
+      return request(req)
+    })
+    const { wrapper } = open('https://github.com/o/r/issues/7', {}, true, document.body, connection)
+    await flushPromises()
+    await wrapper.setProps({ clientFor: () => connection.client })
+    release()
+    await flushPromises()
+
+    expect(wrapper.find('.abele-tabs').exists()).toBe(true)
+    expect(wrapper.find('.abele-tabs').text()).toContain('Files')
+    expect(wrapper.find('.abele-tabs').text()).toContain('Commits')
+    expect(wrapper.find('.abele-github-header__title').text()).toContain('Fix the crash')
+    wrapper.unmount()
+  })
+
   it('shows its title, state, labels, body and comments, and names the tab', async () => {
     const { wrapper, onTitle } = open('https://github.com/o/r/issues/5#issuecomment-9', {
       '/repos/o/r/issues/5': { json: ISSUE },

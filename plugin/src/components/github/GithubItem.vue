@@ -405,11 +405,30 @@ const projectPin = computed(() =>
 )
 
 const client = () => props.clientFor?.(target.value.host)
-const source = computed(
-  () =>
-    props.source ??
-    (target.value ? githubRepositorySource(client(), target.value, props.model.connectionId) : null)
-)
+let githubAdapter: { client: GithubClient; key: string; source: RepositorySource } | undefined
+const source = computed(() => {
+  if (props.source) return props.source
+  if (!target.value) return null
+  const currentClient = client()
+  const repository = target.value
+  const key = JSON.stringify([
+    props.model.connectionId,
+    repository.origin,
+    repository.host,
+    repository.owner,
+    repository.repo,
+  ])
+  // Parent renders replace clientFor callbacks even when their client is unchanged.
+  // Keep the adapter identity so pending promotions still belong to this source.
+  if (githubAdapter?.client !== currentClient || githubAdapter.key !== key) {
+    githubAdapter = {
+      client: currentClient,
+      key,
+      source: githubRepositorySource(currentClient, repository, props.model.connectionId),
+    }
+  }
+  return githubAdapter.source
+})
 provide(REPOSITORY_SOURCE, source)
 
 let loadGeneration = 0
