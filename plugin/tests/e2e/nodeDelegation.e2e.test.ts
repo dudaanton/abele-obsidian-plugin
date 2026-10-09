@@ -113,7 +113,8 @@ it('a normal plugin agent delegates through owner UI to both fake providers, sur
       await until(() => [...doc.querySelectorAll('.setting-item-name')].some(e=>e.textContent===node.label));
       const row = [...doc.querySelectorAll('.setting-item')].find(r=>r.querySelector('.setting-item-name')?.textContent===node.label);
       [...row.querySelectorAll('button')].find(b=>b.textContent.trim()==='Delegation grants').click();
-      await until(() => document.querySelector('[aria-label="Delegation provider"] option[value="pi"]'));
+      try { await until(() => document.querySelector('[aria-label="Delegation provider"] option[value="pi"]')) }
+      catch(e) { throw Error(String(e) + ' · owner UI status: ' + [...doc.querySelectorAll('.abele-settings__content [role="status"]')].map(p=>p.textContent).join(' · ') + ' · dialog: ' + document.querySelector('.abele-node-grants')?.textContent) }
       const select=(label,value)=>{const e=document.querySelector('select[aria-label="'+label+'"]');e.value=value;e.dispatchEvent(new Event('change',{bubbles:true}))};
       for(const provider of ['claude','pi']) {
         select('Delegation parent chat',parent.delegationParentId); select('Delegation project',${JSON.stringify(project.project_id)}); select('Delegation provider',provider);

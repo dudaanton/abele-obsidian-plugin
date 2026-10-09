@@ -108,10 +108,10 @@ const showGrants = async (node: RegisteredNode) => {
   try {
     await service.connection(node.id).connect()
     const chats = ChatService.getInstance()
-    for (const id of chats.tabOrder.value) {
-      const parent = chats.getSession(id)
-      if (parent?.currentChatFile.value) await parent.ensureDelegationParentId()
-    }
+    // Opening owner approval must not rewrite unrelated chats or fail because an
+    // unrelated file changed elsewhere. Choose the parent by activating it first.
+    const parent = chats.activeSession.value
+    if (parent?.currentChatFile.value) await parent.ensureDelegationParentId()
     grantNode.value = node
   } catch (error) { report(error) }
 }

@@ -13,6 +13,8 @@ it.each([
   'node-question',
   'node-question-input',
   'node-workspaces',
+  'node-delegation-grants',
+  'node-delegation-card',
 ])(
   '%s fits a real screen with readable identity and usable controls',
   async (name) => {
@@ -30,7 +32,7 @@ it.each([
       if (${JSON.stringify(name)} === 'node-workspaces') for (const details of modal.querySelectorAll('details')) details.open = true;
       const body = modal.querySelector('.abele-modal__body');
       const outside = [];
-      for (const field of modal.querySelectorAll('input,textarea,select,button,code')) {
+      for (const field of modal.querySelectorAll('input,textarea,select,button,code,[role="checkbox"]')) {
         const r = field.getBoundingClientRect();
         if (r.width && (r.left < 0 || r.right > innerWidth + 1)) outside.push(field.getAttribute('aria-label') || field.tagName);
       }
@@ -40,10 +42,20 @@ it.each([
         provider.value='pi';provider.dispatchEvent(new Event('change',{bubbles:true}));
         provider.scrollIntoView({block:'center'});await wait(100);
       }
+      if (${JSON.stringify(name)} === 'node-delegation-grants') {
+        const select=(label,value)=>{const field=modal.querySelector('select[aria-label="'+label+'"]');field.value=value;field.dispatchEvent(new Event('change',{bubbles:true}))};
+        select('Delegation project','sample-project');select('Delegation provider','pi');await wait(100);
+        modal.querySelector('[aria-label="Approve delegation actions"]').click();await wait(100);
+      }
       let shot;
       if (window.__e2eHost) shot = await window.__e2eHost.shot(${JSON.stringify(shots + '/' + name + '.png')});
       else { require('fs').writeFileSync(${JSON.stringify(shots + '/' + name + '.png')}, (await require('@electron/remote').getCurrentWindow().webContents.capturePage()).toPNG()); shot = 'saved' }
       body.scrollTop = body.scrollHeight;
+      if (${JSON.stringify(name)} === 'node-delegation-grants') {
+        await wait(150);
+        if (window.__e2eHost) { const bottom=await window.__e2eHost.shot(${JSON.stringify(shots + '/' + name + '-actions.png')}); if (bottom.startsWith('no picture:')) throw Error(bottom) }
+        else require('fs').writeFileSync(${JSON.stringify(shots + '/' + name + '-actions.png')}, (await require('@electron/remote').getCurrentWindow().webContents.capturePage()).toPNG());
+      }
       return JSON.stringify({ outside, text, shot, controls: modal.querySelectorAll('input,textarea,select,button').length });
     } finally {
       modal?.dispatchEvent(new KeyboardEvent('keydown', { key: 'Escape', code: 'Escape', keyCode: 27, bubbles: true }));
@@ -70,6 +82,8 @@ it.each([
       expect(result.text).toContain('wss://sample.example.ts.net:8443/channel')
     }
     if (name === 'node-workspaces') expect(result.text).toContain('Compaction not accepted')
+    if (name === 'node-delegation-grants') expect(result.text).toContain('Owner approval for this device')
+    if (name === 'node-delegation-card') { expect(result.text).toContain('Open child chat'); expect(result.text).toContain('Result') }
   },
   90000
 )
