@@ -3,8 +3,9 @@
 ## Scope
 
 This is the state/projection foundation and its initial plugin recovery/lifecycle gates, not
-an enabled attachment store. It adds no UI, external-file filesystem effects, automatic
-eviction or ordinary scanner classification. Existing interrupted-installation recovery now
+an enabled attachment store. It adds no UI, automatic eviction or ordinary scanner
+classification. Minimal filesystem ports are now implemented separately (see
+`External file filesystem ports.md`), without a production caller. Existing interrupted-installation recovery now
 runs before engine activation under a runtime fence. IndexedDB uses schema version 2; the
 explicit activation marker is outside that deletable database. Nonempty external inventories
 remain connection-wide holds until classification and attachment recovery are integrated.
@@ -127,8 +128,9 @@ copy. Its strict-eviction blocker has been superseded by the explicit manual-evi
 server verification, local coordination and a final hash precede removal, with the outside-
 writer interval accepted. The selected mobile hydration contract uses staging, a final absent-
 target check and adapter rename, never copy; its final outside-writer interval is also accepted.
-Desktop/CLI retain native create-if-absent installation. None of those filesystem paths is
-implemented or enabled by this state work, and the copy-overwrite regression is unchanged.
+Desktop/CLI retain native create-if-absent installation. The plugin's minimal ports now
+implement staging, guarded installation and final-check original removal separately; the
+complete attachment state machine is not enabled. The copy-overwrite regression is unchanged.
 
 ## Plugin startup and runtime fence
 

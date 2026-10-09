@@ -1,8 +1,14 @@
 # External file filesystem probe
 
-## Decision
+## Historical decision
 
-**Blocker: neither tested adapter supplies the complete external-files cleanup contract.**
+The strict-deletion blocker below is superseded by the approved manual-eviction contract.
+The selected mobile installation contract now accepts the final absence-check/rename interval,
+not unsafe copy. See `External file filesystem ports.md` for the implemented minimal ports
+and their residual risks. The original probe assertions, including the failing mobile copy
+assertion, remain unchanged as capability evidence.
+
+**Historical blocker: neither tested adapter supplies the complete external-files cleanup contract.**
 A hash comparison followed by `remove(path)` can discard a later write. Moving first and
 hashing again preserves a changed copy only if that copy is retained; it does not make its
 final deletion safe. The desktop local-save queue does not exclude an already-open native
