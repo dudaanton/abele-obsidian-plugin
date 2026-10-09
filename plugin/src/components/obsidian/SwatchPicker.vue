@@ -99,7 +99,8 @@ const onKey = (event: KeyboardEvent, index: number) => {
   flex-wrap: wrap;
   gap: var(--size-4-1);
 }
-.abele-swatch-picker__choice {
+.abele-swatch-picker__choice,
+body.is-phone .abele-swatch-picker__choice {
   padding: var(--size-4-1);
 }
 .abele-swatch-picker__swatch {

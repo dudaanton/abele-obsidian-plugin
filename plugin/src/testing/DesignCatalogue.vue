@@ -129,7 +129,7 @@
               :src="missingImage ? 'Missing/image.png' : sampleImage"
               alt="Missing image"
               variant="thumbnail" /></template
-          ><template #actions
+          ><template #recovery
             ><Icon
               icon="link"
               text-right="Relink"
@@ -146,9 +146,10 @@
               :src="brokenImage ? 'data:image/png;base64,broken' : sampleImage"
               alt="Unreadable image"
               variant="thumbnail" /></template
-          ><template #actions
+          ><template #recovery
             ><Icon
               icon="refresh-cw"
+              text-right="Retry"
               tooltip="Retry loading preview"
               @click="brokenImage = false" /></template
         ></ListRow>
@@ -223,7 +224,7 @@
           state="error"
           message="Connection lost"
           snippet="A saved outline is ready to read."
-          ><template #actions
+          ><template #recovery
             ><Icon
               icon="refresh-cw"
               text-right="Retry"
@@ -231,7 +232,7 @@
               @click="announce('Retry refreshing draft.md')" /></template
         ></ListRow>
         <ListRow title="missing.md" icon="file-text" state="missing" message="File missing"
-          ><template #actions
+          ><template #recovery
             ><Icon
               icon="link"
               text-right="Relink"

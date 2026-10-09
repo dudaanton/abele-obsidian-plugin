@@ -43,7 +43,7 @@ describe('plain, coherent examples', () => {
     expect(agent.get('.abele-list-row__detail').text()).toContain('Reply')
     view.unmount()
   })
-  it.each(['waiting', 'comment-thread', 'events'])(
+  it.each(['waiting', 'comment-thread', 'events', 'states', 'images'])(
     '%s puts retry beside its recovery message instead of in the title menu',
     (page) => {
       const view = open(page)

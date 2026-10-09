@@ -3,12 +3,17 @@
     <EmptyState v-if="!text" text="No quoted text" />
     <blockquote
       v-else-if="!long || !expanded"
+      :id="textId"
       class="abele-quote__text"
       :class="{ 'abele-quote__text_preview': long && !expanded }"
     >
       {{ text || 'No quoted text' }}
     </blockquote>
-    <Disclosure v-if="long" v-model="expanded" :label="expanded ? 'Collapse quote' : 'Expand quote'"
+    <Disclosure
+      v-if="long"
+      v-model="expanded"
+      :target-id="textId"
+      :label="expanded ? 'Collapse quote' : 'Expand quote'"
       ><blockquote class="abele-quote__text">{{ text }}</blockquote></Disclosure
     >
     <figcaption v-if="source || unresolved" class="abele-quote__source">
@@ -20,11 +25,12 @@
   </figure>
 </template>
 <script setup lang="ts">
-import { ref, computed } from 'vue'
+import { ref, computed, useId } from 'vue'
 import Disclosure from './Disclosure.vue'
 import EmptyState from './EmptyState.vue'
 const props = defineProps<{ text: string; source?: string; unresolved?: boolean }>()
 const expanded = ref(false)
+const textId = `abele-quote-${useId()}`
 const long = computed(() => props.text.length > 240 || props.text.split('\n').length > 3)
 </script>
 <style>

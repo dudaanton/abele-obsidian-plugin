@@ -24,6 +24,7 @@
  */
 import { onMounted, ref, watch } from 'vue'
 import { setTooltip } from 'obsidian'
+import './designKit.css'
 
 const props = withDefaults(
   defineProps<{
@@ -78,5 +79,12 @@ watch(
 .abele-slider {
   width: 100%;
   min-width: 0;
+}
+body.is-phone input.abele-slider {
+  // Extend the hit box around the native track, not the track/gradient or thumb itself.
+  box-sizing: content-box;
+  border-block: calc((var(--abele-touch-min) - var(--slider-track-height)) / 2) solid transparent;
+  background-clip: padding-box;
+  border-radius: calc(var(--abele-touch-min) / 2);
 }
 </style>

@@ -70,6 +70,12 @@ const emit = defineEmits<{
   padding: var(--size-4-1);
   margin: calc(-1 * var(--size-4-1));
 
+  // The host clone's left coordinate is viewport-relative, not wrapper-relative.
+  // Keep it in that coordinate space so its hidden intrinsic width cannot widen the scroller.
+  .dropdown.is-measuring {
+    position: fixed;
+  }
+
   .dropdown {
     width: 100%;
     min-width: 0;

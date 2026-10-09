@@ -6,23 +6,25 @@
       ></span>
       <div class="tree-item-inner abele-list-row__content">
         <component
-          :is="interactive ? 'button' : 'div'"
+          :is="mainInteractive ? 'button' : 'div'"
           :class="
-            interactive
+            mainInteractive
               ? 'clickable-icon is-clickable abele-list-row__main'
               : 'abele-list-row__title'
           "
-          :type="interactive ? 'button' : undefined"
-          :disabled="interactive ? disabled : undefined"
+          :type="mainInteractive ? 'button' : undefined"
+          :disabled="mainInteractive ? disabled : undefined"
+          :aria-expanded="!interactive && expanded !== undefined ? expanded : undefined"
+          :aria-controls="!interactive && expanded !== undefined ? detailId : undefined"
           :aria-pressed="interactive ? selected : undefined"
           :aria-label="
-            interactive
+            mainInteractive
               ? disabled && disabledReason
                 ? `${title}: ${disabledReason}`
                 : title
               : undefined
           "
-          @click="interactive && !disabled && emit('open')"
+          @click="openMain"
         >
           <span class="abele-list-row__title-line"
             ><span class="abele-list-row__title-text">{{ stem }}</span
@@ -30,9 +32,9 @@
             ><Icon v-if="interactive" class="abele-list-row__opener" icon="chevron-right" no-hover
           /></span>
           <MetaLine v-if="!$slots.metadata && facts?.length" :facts="facts" />
-          <slot v-if="!interactive" name="metadata" />
+          <slot v-if="!mainInteractive" name="metadata" />
         </component>
-        <slot v-if="interactive" name="metadata" />
+        <slot v-if="mainInteractive" name="metadata" />
         <div v-if="snippet" class="abele-list-row__snippet">{{ snippet }}</div>
         <p
           v-if="state !== 'ready'"
@@ -97,6 +99,12 @@ const props = withDefaults(
 )
 const emit = defineEmits<{ open: []; 'update:expanded': [expanded: boolean] }>()
 const detailId = `abele-row-${useId()}`
+const mainInteractive = computed(() => props.interactive || props.expanded !== undefined)
+const openMain = () => {
+  if (!mainInteractive.value || props.disabled) return
+  if (props.interactive) emit('open')
+  else emit('update:expanded', !props.expanded)
+}
 const extension = computed(() =>
   props.preserveExtension ? (/\.[\w-]{1,12}$/.exec(props.title)?.[0] ?? '') : ''
 )
@@ -166,8 +174,7 @@ const stateIcon = {
 }
 .abele-list-row__title-line {
   display: flex;
-  align-items: flex-start;
-  gap: var(--size-4-1);
+  align-items: flex-end;
   min-width: 0;
 }
 .abele-list-row__title-text {
@@ -187,6 +194,8 @@ const stateIcon = {
 }
 .abele-list-row__opener {
   flex: 0 0 auto;
+  align-self: flex-start;
+  padding: 0;
   margin-inline-start: auto;
 }
 .abele-list-row__state {
