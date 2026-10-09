@@ -44,6 +44,9 @@ describe('plain list affordances', () => {
     const css = readFileSync('src/components/obsidian/Slider.vue', 'utf8')
     expect(css).toContain('var(--abele-touch-min) - var(--slider-track-height)')
     expect(css).toContain('background-clip: padding-box')
+    expect(css).toContain(
+      'border-radius: calc(var(--slider-track-height) / 2) / calc(var(--abele-touch-min) / 2)'
+    )
   })
   it('labels unlabelled metadata by meaning rather than pairing ambiguous values', () => {
     const view = mount(MetaLine, {

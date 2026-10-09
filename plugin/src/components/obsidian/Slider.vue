@@ -85,6 +85,6 @@ body.is-phone input.abele-slider {
   box-sizing: content-box;
   border-block: calc((var(--abele-touch-min) - var(--slider-track-height)) / 2) solid transparent;
   background-clip: padding-box;
-  border-radius: calc(var(--abele-touch-min) / 2);
+  border-radius: calc(var(--slider-track-height) / 2) / calc(var(--abele-touch-min) / 2);
 }
 </style>

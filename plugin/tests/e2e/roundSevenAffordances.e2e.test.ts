@@ -69,7 +69,7 @@ it.skipIf(unavailable)(
         const underlinePadding=getComputedStyle(document.querySelector('.abele-swatch-picker__underline')).padding;
         window.__abeleTest.openDesignCatalogue('controls');await new Promise(r=>setTimeout(r,300));
         const slider=document.querySelector('input[type="range"]'),dropdown=document.querySelector('.abele-obsidian-dropdown');
-        const geometry={slider:slider.getBoundingClientRect().height,track:getComputedStyle(slider,'::-webkit-slider-runnable-track').height,overflow:dropdown.scrollWidth-dropdown.clientWidth};
+        const geometry={slider:slider.getBoundingClientRect().height,track:getComputedStyle(slider,'::-webkit-slider-runnable-track').height,radius:parseFloat(getComputedStyle(slider).borderTopLeftRadius),overflow:dropdown.scrollWidth-dropdown.clientWidth};
         const input=document.querySelector('.search-input-container input');input.style.paddingLeft=(parseFloat(getComputedStyle(input).paddingLeft)+5)+'px';
         const snapshot=${designCaptureExpression('.abele-design-catalogue')};
         return {choices,underlinePadding,geometry,snapshot};
@@ -78,7 +78,7 @@ it.skipIf(unavailable)(
       ) as {
         choices: { hit: number; padding: string }[]
         underlinePadding: string
-        geometry: { slider: number; track: string; overflow: number }
+        geometry: { slider: number; track: string; radius: number; overflow: number }
         snapshot: DesignSnapshot
       }
       expect(result.choices).toHaveLength(KIT_COLORS.length + 6)
@@ -88,6 +88,7 @@ it.skipIf(unavailable)(
       expect(result.underlinePadding).toBe('4px')
       expect(result.geometry.slider).toBeGreaterThanOrEqual(44)
       expect(result.geometry.track).toBe('6px')
+      expect(result.geometry.radius).toBe(parseFloat(result.geometry.track) / 2)
       expect(result.geometry.overflow).toBeLessThanOrEqual(1)
       expect(
         lintDesign(result.snapshot).some(
