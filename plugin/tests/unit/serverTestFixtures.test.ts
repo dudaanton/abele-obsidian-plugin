@@ -40,7 +40,8 @@ function archive(directory: string, name: string, commit: string) {
 describe('server-backed fast-tier fixture gate', () => {
   it('skips only the files that require an absent fixture', () => {
     const skipped = missingServerTests({})
-    expect(skipped).toHaveLength(19)
+    expect(skipped).toHaveLength(20)
+    expect(skipped).toContain('tests/integration/externalRepresentationServer.test.ts')
     expect(skipped).toContain('tests/integration/ownerSharingContracts.test.ts')
     expect(skipped).toContain('tests/integration/productionSharingBuild.test.ts')
     expect(skipped).toContain('tests/integration/syncService.test.ts')
@@ -52,6 +53,7 @@ describe('server-backed fast-tier fixture gate', () => {
   it('keeps independent fixture gates separate', () => {
     const skipped = missingServerTests({ ABELE_SYNC_DIR: '/sample/fixture' })
     expect(skipped).not.toContain('tests/integration/syncService.test.ts')
+    expect(skipped).not.toContain('tests/integration/externalRepresentationServer.test.ts')
     expect(skipped).toContain('tests/integration/ownerHttpApi.test.ts')
     expect(skipped).toContain('tests/integration/sponsoredHttpApi.test.ts')
     expect(skipped).toContain('tests/integration/groupJoinHttp.test.ts')

@@ -4,6 +4,7 @@ export const SERVER_TEST_COMMIT = 'a9354672aab9c4554fc3bf675b3a5c12f0b962ce'
 export const serverTestFixtures = {
   ABELE_SYNC_DIR: [
     'syncServer',
+    'externalRepresentationServer',
     'syncService',
     'syncHeldDeletes',
     'syncJoin',
