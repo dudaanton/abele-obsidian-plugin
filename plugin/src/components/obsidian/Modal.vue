@@ -20,6 +20,8 @@ import { onBeforeMount, onMounted, onUnmounted, ref, shallowRef, useSlots } from
  */
 const props = defineProps<{
   title?: string
+  /** A form's Cancel/Close is the dismiss action instead of the native header button. */
+  closeInFooter?: boolean
   /** Dirty forms may refuse Escape, backdrop and the close button alike. */
   canClose?: () => boolean | Promise<boolean>
   /**
@@ -76,7 +78,12 @@ onBeforeMount(() => {
       super.onClose()
       if (!unmounting) emit('close')
     }
-  })(app, { title: props.title, size: props.size ?? 'default', footer: !!slots.footer })
+  })(app, {
+    title: props.title,
+    size: props.size ?? 'default',
+    footer: !!slots.footer,
+    closeInFooter: props.closeInFooter,
+  })
 
   modal.value.modalEl.addClass('abele-modal')
   if (props.phoneSheet) modal.value.modalEl.addClass('mod-lg')
@@ -142,5 +149,4 @@ body.is-phone .modal.mod-lg .abele-modal__body .abele-modal__actions {
   bottom: 0;
   padding-bottom: max(var(--size-4-4), var(--safe-area-inset-bottom));
 }
-
 </style>

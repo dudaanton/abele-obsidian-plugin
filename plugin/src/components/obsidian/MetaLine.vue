@@ -19,12 +19,28 @@ export interface MetaFact {
   unknown?: string
 }
 const props = defineProps<{ facts: MetaFact[] }>()
+const labels: Record<string, string> = { where: 'Folder', scope: 'Scope' }
+const plainLabel = (key: string) => {
+  // Positional keys carry already-composed card prose, not named metadata facts.
+  if (/^\d+$/.test(key)) return undefined
+  const words = key
+    .replace(/([a-z])([A-Z])/g, '$1 $2')
+    .replace(/[-_]/g, ' ')
+    .toLowerCase()
+  return words.charAt(0).toUpperCase() + words.slice(1)
+}
 const present = computed(() =>
   props.facts.flatMap((fact) => {
     const missing = fact.value === undefined || fact.value === null || fact.value === ''
     return missing && !fact.required
       ? []
-      : [{ ...fact, value: missing ? (fact.unknown ?? 'Unknown') : fact.value }]
+      : [
+          {
+            ...fact,
+            label: fact.label || labels[fact.key] || plainLabel(fact.key),
+            value: missing ? (fact.unknown ?? 'Unknown') : fact.value,
+          },
+        ]
   })
 )
 </script>

@@ -16,6 +16,8 @@ export interface ShellOptions {
   size?: ShellSize
   /** A row under the body for the dialog's buttons, which stays in sight while the body scrolls. */
   footer?: boolean
+  /** The footer already contains the dismiss action; keep Escape/backdrop behavior. */
+  closeInFooter?: boolean
   /** Extra classes on the dialog, for its own rules. */
   cls?: string[]
 }
@@ -69,6 +71,7 @@ export class ShellModal extends Modal {
       this.footerEl = null
     }
     if (options.title) this.setTitle(options.title)
+    if (options.closeInFooter) this.modalEl.addClass('abele-modal_footer-dismiss')
   }
 
   open(): void {

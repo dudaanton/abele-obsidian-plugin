@@ -1,9 +1,15 @@
 <template>
-  <ObsidianModal :title="title" @close="emit('close')">
+  <ObsidianModal :title="title" close-in-footer @close="emit('close')">
     <p class="abele-confirm__message">{{ message }}</p>
     <template #footer>
       <Button text="Cancel" :tooltip="cancelTooltip" @click="emit('close')" />
-      <Button :text="confirmText" :warning="!readOnly" :disabled="readOnly" :tooltip="confirmTooltip" @click="onConfirm" />
+      <Button
+        :text="confirmText"
+        :warning="!readOnly"
+        :disabled="readOnly"
+        :tooltip="confirmTooltip"
+        @click="onConfirm"
+      />
     </template>
   </ObsidianModal>
 </template>

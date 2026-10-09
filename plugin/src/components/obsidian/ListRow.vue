@@ -7,7 +7,11 @@
       <div class="tree-item-inner abele-list-row__content">
         <component
           :is="interactive ? 'button' : 'div'"
-          :class="interactive ? 'clickable-icon abele-list-row__main' : 'abele-list-row__title'"
+          :class="
+            interactive
+              ? 'clickable-icon is-clickable abele-list-row__main'
+              : 'abele-list-row__title'
+          "
           :type="interactive ? 'button' : undefined"
           :disabled="interactive ? disabled : undefined"
           :aria-pressed="interactive ? selected : undefined"
@@ -22,8 +26,9 @@
         >
           <span class="abele-list-row__title-line"
             ><span class="abele-list-row__title-text">{{ stem }}</span
-            ><span v-if="extension" class="abele-list-row__extension">{{ extension }}</span></span
-          >
+            ><span v-if="extension" class="abele-list-row__extension">{{ extension }}</span
+            ><Icon v-if="interactive" class="abele-list-row__opener" icon="chevron-right" no-hover
+          /></span>
           <MetaLine v-if="!$slots.metadata && facts?.length" :facts="facts" />
           <slot v-if="!interactive" name="metadata" />
         </component>
@@ -32,9 +37,11 @@
         <p
           v-if="state !== 'ready'"
           class="abele-list-row__state"
+          :class="`abele-list-row__state_${state}`"
           :role="state === 'error' ? 'alert' : 'status'"
         >
-          {{ message || stateText[state] }}
+          <Icon class="abele-list-row__status-icon" :icon="stateIcon[state]" no-hover />
+          <span>{{ message || stateText[state] }}</span>
         </p>
         <div v-if="$slots.recovery" class="abele-list-row__recovery"><slot name="recovery" /></div>
         <div
@@ -79,7 +86,7 @@ const props = withDefaults(
     disabled?: boolean
     disabledReason?: string
     selected?: boolean
-    state?: 'ready' | 'loading' | 'missing' | 'error'
+    state?: 'ready' | 'loading' | 'missing' | 'error' | 'waiting'
     message?: string
     preserveExtension?: boolean
     expanded?: boolean
@@ -101,6 +108,14 @@ const stateText = {
   loading: 'Refreshing…',
   missing: 'Object unavailable',
   error: 'Could not load object',
+  waiting: 'Waiting for your answer',
+}
+const stateIcon = {
+  ready: 'check',
+  loading: 'loader-circle',
+  missing: 'file-question',
+  error: 'triangle-alert',
+  waiting: 'circle-help',
 }
 </script>
 <style>
@@ -151,7 +166,8 @@ const stateText = {
 }
 .abele-list-row__title-line {
   display: flex;
-  align-items: flex-end;
+  align-items: flex-start;
+  gap: var(--size-4-1);
   min-width: 0;
 }
 .abele-list-row__title-text {
@@ -165,6 +181,30 @@ const stateText = {
 }
 .abele-list-row__extension {
   flex: 0 0 auto;
+}
+.abele-list-row__main.is-clickable {
+  cursor: var(--cursor-link);
+}
+.abele-list-row__opener {
+  flex: 0 0 auto;
+  margin-inline-start: auto;
+}
+.abele-list-row__state {
+  display: flex;
+  align-items: flex-start;
+  gap: var(--size-4-1);
+}
+.abele-list-row__status-icon {
+  flex: 0 0 auto;
+  padding: 0;
+  min-height: 1lh;
+}
+.abele-list-row__state_error .abele-list-row__status-icon {
+  color: var(--text-error);
+}
+.abele-list-row__state_missing .abele-list-row__status-icon,
+.abele-list-row__state_waiting .abele-list-row__status-icon {
+  color: var(--text-warning);
 }
 .abele-list-row__main > .abele-meta-line,
 .abele-list-row__title > :not(.abele-list-row__title-line) {

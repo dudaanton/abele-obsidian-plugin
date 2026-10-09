@@ -28,7 +28,7 @@ describe('plain, coherent examples', () => {
   it('keeps location and source facts together, with no redundant type or duplicate source count', () => {
     const view = open('rows')
     const first = view.findAllComponents(ListRow)[0]
-    expect(first.get('.abele-meta-line').text()).toBe('Work · Sources 2')
+    expect(first.get('.abele-meta-line').text()).toBe('Folder: Work · Sources: 2')
     expect(first.text()).not.toContain('Note ·')
     expect(first.get('.abele-list-row__content').find('.abele-list-row__detail').exists()).toBe(
       false

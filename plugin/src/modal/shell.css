@@ -11,6 +11,12 @@
   overflow: hidden;
 }
 
+/* A form with a footer dismiss button has one visible exit, not a duplicate header control. */
+.modal.abele-modal_footer-dismiss .modal-close-button,
+.modal.abele-modal_footer-dismiss .modal-header-button.mod-raised {
+  display: none;
+}
+
 /*
  * Never taller than the room the dialog stands in, so that its body scrolls rather than the
  * dialog being cut at both ends. Obsidian's own cap is written in viewport units, which keep the

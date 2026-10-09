@@ -15,6 +15,7 @@
   <Modal
     v-else
     :title="titles[page]"
+    :close-in-footer="page === 'comment'"
     :size="longPages.has(page) ? 'tall' : undefined"
     @close="emit('close')"
   >
@@ -49,7 +50,7 @@
           :message="note.missing ? 'File missing. Saved sources are still available.' : undefined"
           :facts="[
             { key: 'where', value: note.parent },
-            { key: 'sources', value: `Sources ${note.sources}` },
+            { key: 'sources', value: note.sources },
           ]"
           v-model:expanded="note.expanded"
           details-label="Sources"
@@ -244,13 +245,13 @@
           icon="bot"
           :facts="[
             { key: 'model', value: 'Sample model' },
-            { key: 'scope', value: 'Workspace notes' },
+            { key: 'where', value: 'Work' },
           ]"
+          state="waiting"
           v-model:expanded="questionOpen"
           details-label="Question"
           ><template #detail
-            ><p class="setting-item-description" role="status">Waiting for your answer</p>
-            <Quote text="Which folder should I use?" /><Button
+            ><Quote text="Which folder should I use?" /><Button
               text="Reply"
               tooltip="Answer the pending question"
               @click="replyOpen = !replyOpen" /><Input
@@ -519,7 +520,7 @@
       </template>
       <p v-if="feedback" role="status" class="setting-item-description">{{ feedback }}</p>
     </div>
-    <template #footer
+    <template v-if="page === 'comment'" #footer
       ><Button
         v-if="page === 'comment'"
         text="Save"
