@@ -110,7 +110,7 @@
               tooltip="Retry loading items"
               @click="announce('Retry')" /></template
         ></EmptyState>
-        <ListSectionHeader text="Retained content" :count="2" :total="10" loading />
+        <ListSectionHeader text="Retained content" :count="3" :total="10" loading />
         <ListRow
           title="sample.md"
           state="loading"
@@ -170,18 +170,20 @@
             :colors="['yellow', 'green']"
             busy
         /></Setting>
-        <Icon icon="pencil" tooltip="Edit annotation" @click="announce('Edit')" /><Icon
-          icon="folder"
-        /><Icon
-          icon="search"
-          tooltip="Search unavailable"
-          disabled
-          disabled-reason="Loading index"
-          interactive
-        /><Icon icon="check" tooltip="Selected option" :active="true" interactive />
+        <div class="abele-design-catalogue__icons">
+          <Icon icon="pencil" tooltip="Edit annotation" @click="announce('Edit')" /><Icon
+            icon="folder"
+          /><Icon
+            icon="search"
+            tooltip="Search unavailable"
+            disabled
+            disabled-reason="Loading index"
+            interactive
+          /><Icon icon="check" tooltip="Selected option" :active="true" interactive />
+        </div>
       </template>
       <template v-else-if="page === 'images'">
-        <ListSectionHeader text="Attachments" :count="3" />
+        <ListSectionHeader text="Attachments" :count="4" />
         <ListRow title="sample-diagram.png" snippet="Contain preserves the complete diagram"
           ><template #leading
             ><Image
@@ -561,7 +563,7 @@ const events = [
 const sampleImage =
   'data:image/svg+xml,' +
   encodeURIComponent(
-    '<svg xmlns="http://www.w3.org/2000/svg" width="64" height="48"><rect x="4" y="4" width="56" height="40" fill="none" stroke="currentColor"/><path d="M8 36L24 18L40 28L56 10" fill="none" stroke="currentColor"/></svg>'
+    '<svg xmlns="http://www.w3.org/2000/svg" width="64" height="48"><rect width="64" height="48" fill="white"/><rect x="4" y="4" width="56" height="40" fill="none" stroke="currentColor"/><path d="M8 36L24 18L40 28L56 10" fill="none" stroke="currentColor"/></svg>'
   )
 const longQuote =
   'A synthetic passage that remains selectable and wraps fully when expanded. '.repeat(6)
@@ -599,6 +601,11 @@ const renderChart = (chart: EChartsType) =>
   min-width: 0;
   display: flex;
   flex-direction: column;
+  gap: var(--size-4-2);
+}
+.abele-design-catalogue__icons {
+  display: flex;
+  align-items: center;
   gap: var(--size-4-2);
 }
 .abele-design-catalogue__chart {

@@ -240,6 +240,13 @@ describe('SwatchPicker', () => {
   })
 })
 describe('Card attachment previews', () => {
+  it('does not also open a card when its shared path detail is expanded', async () => {
+    const view = mount(Card, {
+      props: { title: 'sample.md', path: 'Work/sample.md', clickable: true },
+    })
+    await view.get('summary').trigger('click')
+    expect(view.emitted('click')).toBeUndefined()
+  })
   it('does not crop information out of a thumbnail by default', () => {
     const view = mount(Card, {
       props: { title: 'Diagram choice', thumbnail: 'https://example.invalid/sample.png' },

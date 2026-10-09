@@ -27,6 +27,7 @@ for (const el of intended) {
   for (let ancestor = el.parentElement; ancestor && ancestor !== document.documentElement; ancestor = ancestor.parentElement) {
     const css = getComputedStyle(ancestor), b = ancestor.getBoundingClientRect()
     if (css.overflowX !== 'visible' && Math.max(b.left + ancestor.clientLeft - (box.left - reach), box.right + reach - (b.left + ancestor.clientLeft + ancestor.clientWidth)) > .5) failures.push('clipped horizontal ring: ' + label)
+    if (css.overflowY !== 'visible' && Math.max(b.top + ancestor.clientTop - (box.top - reach), box.bottom + reach - (b.top + ancestor.clientTop + ancestor.clientHeight)) > .5) failures.push('clipped vertical ring: ' + label)
   }
 }
 for (const thumbnail of root.querySelectorAll('.abele-image-thumbnail')) {
@@ -35,6 +36,9 @@ for (const thumbnail of root.querySelectorAll('.abele-image-thumbnail')) {
 }
 const close = [...modal.querySelectorAll('button')].find(el => el.textContent.trim() === 'Close')
 if (close) { close.focus(); close.scrollIntoView({block:'nearest'}); const b=close.getBoundingClientRect(); if(b.bottom>innerHeight||b.top<0) failures.push('unreachable close') }
+for (const image of root.querySelectorAll('img.abele-image_fit-natural')) {
+  if (image.naturalWidth && image.getBoundingClientRect().width > image.naturalWidth + 1) failures.push('natural image unexpectedly stretched')
+}
 const body = root.closest('.abele-modal__body') || root.parentElement
 body.scrollTop = 0
 return { failures, actions: intended.filter(el => el.getBoundingClientRect().width > 0).length, primary: modal.querySelectorAll('.mod-cta').length, height: modal.getBoundingClientRect().height }

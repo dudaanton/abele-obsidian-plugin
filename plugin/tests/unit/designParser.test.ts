@@ -43,6 +43,13 @@ describe('parsed design contracts', () => {
       ])
     )
   })
+  it('checks date formatting and disclosure glyphs inside template expressions and attributes', () => {
+    expect(
+      inspectDesign(
+        `<template><span>{{ stamp.toLocaleString() }}</span><Icon :label="stamp.toLocaleDateString()" /><button :text="open ? '▼' : '▶'" /></template>`
+      )
+    ).toEqual(expect.arrayContaining(['local display date', 'text disclosure glyph']))
+  })
   it('does not let an invented token become a private palette', () => {
     expect(inspectDesign('<style>.x { color: var(--my-grey); }</style>')).toContain(
       'unapproved token: --my-grey'

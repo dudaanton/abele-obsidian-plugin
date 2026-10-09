@@ -145,12 +145,24 @@ const onKeydown = (event: KeyboardEvent) => {
     ArrowDown: () => columns(),
     ArrowUp: () => -columns(),
   }
+  const tile = (event.target as HTMLElement).closest('.abele-icon-picker__icon')
   const step = steps[event.key]
   if (step) {
+    if (tile) {
+      const tiles = Array.from(grid.value?.querySelectorAll('.abele-icon-picker__icon') ?? [])
+      cursor.value = tiles.indexOf(tile)
+    }
     event.preventDefault()
     move(step())
+    if (tile)
+      void nextTick(() => {
+        grid.value?.querySelectorAll<HTMLElement>('.abele-icon-picker__icon')[cursor.value]?.focus()
+      })
     return
   }
+  // A focused tile is now a native button. Its own Enter/Space activation must choose that
+  // tile, not the search field's independently highlighted cursor.
+  if (tile) return
   if (event.key === 'Enter' && !event.isComposing) {
     const name = shown.value[cursor.value]
     if (!name) return

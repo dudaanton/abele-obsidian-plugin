@@ -1,3 +1,16 @@
+/* Focused controls need paint room when a native scroller brings them to its edge. */
+:is(
+  .abele-obsidian-icon.clickable-icon,
+  .abele-list-row__main,
+  .abele-disclosure__control,
+  .abele-swatch-picker__choice,
+  .abele-path-label > summary,
+  .abele-relative-time summary,
+  .abele-image__preview
+) {
+  scroll-margin-block: var(--size-4-1);
+}
+
 /* Host touch sizes can be smaller in a theme. This is the single accessibility floor,
    not a new visual spacing token; desktop controls keep their native geometry. */
 body.is-phone {

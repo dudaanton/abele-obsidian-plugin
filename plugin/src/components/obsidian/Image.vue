@@ -95,6 +95,8 @@ watch(
 }
 .abele-image_fit-natural {
   width: auto;
+  align-self: flex-start;
+  object-fit: contain;
 }
 .abele-image_missing {
   min-height: var(--size-4-8);

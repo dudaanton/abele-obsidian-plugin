@@ -4,6 +4,7 @@ import ts from 'typescript'
 import postcss from 'postcss'
 import { compileString } from 'sass-embedded'
 
+const DISCLOSURE_GLYPHS = /[▶▼▸▾►◀▲▽▴▵▿▹◂◃]/u
 const HOST_TOKEN =
   /^--(?:size-(?:2-[0-8]|4-(?:[0-9]|10|11|12|16|18))|font-(?:interface|text|monospace|ui-(?:small|smaller|medium|large)|normal|medium|semibold)|line-height-(?:normal|tight)|text-(?:normal|muted|faint|accent|error|warning)|icon-(?:size|color|color-hover)|color-(?:red|orange|yellow|green|cyan|blue|purple|pink)|background-(?:primary|secondary|modifier-(?:border|border-focus|active-hover|hover))|interactive-accent|radius-[sm]|cursor(?:-link)?|touch-size-[sml]|abele-touch-min)$/
 const hasProp = (node: ElementNode, name: string) =>
@@ -43,6 +44,8 @@ export function inspectDesign(
       if (node.importClause?.name && path.endsWith('.vue'))
         aliases.set(node.importClause.name.text, path.split('/').pop()!.slice(0, -4))
     }
+    if (ts.isStringLiteral(node) && DISCLOSURE_GLYPHS.test(node.text))
+      errors.push('text disclosure glyph')
     if (ts.isCallExpression(node) && ts.isPropertyAccessExpression(node.expression)) {
       if (
         ['toLocaleString', 'toLocaleDateString', 'toLocaleTimeString', 'format'].includes(
@@ -55,9 +58,37 @@ export function inspectDesign(
   }
   visit(ast)
   const walk = (node: TemplateChildNode) => {
-    if (node.type === NodeTypes.TEXT && /[▶▼▸▾►◀]/u.test(node.content))
+    if (node.type === NodeTypes.TEXT && DISCLOSURE_GLYPHS.test(node.content))
       errors.push('text disclosure glyph')
+    if (node.type === NodeTypes.INTERPOLATION && node.content.type === NodeTypes.SIMPLE_EXPRESSION)
+      visit(
+        ts.createSourceFile(
+          'expression.ts',
+          node.content.content,
+          ts.ScriptTarget.Latest,
+          true,
+          ts.ScriptKind.TS
+        )
+      )
     if (node.type !== NodeTypes.ELEMENT) return
+    for (const prop of node.props) {
+      if (
+        prop.type === NodeTypes.ATTRIBUTE &&
+        prop.value &&
+        DISCLOSURE_GLYPHS.test(prop.value.content)
+      )
+        errors.push('text disclosure glyph')
+      if (prop.type === NodeTypes.DIRECTIVE && prop.exp?.type === NodeTypes.SIMPLE_EXPRESSION)
+        visit(
+          ts.createSourceFile(
+            'expression.ts',
+            prop.exp.content,
+            ts.ScriptTarget.Latest,
+            true,
+            ts.ScriptKind.TS
+          )
+        )
+    }
     const tag = aliases.get(node.tag) ?? node.tag
     if (hasProp(node, 'style')) errors.push('inline style')
     const classes = node.props.find((p) => p.type === NodeTypes.ATTRIBUTE && p.name === 'class')

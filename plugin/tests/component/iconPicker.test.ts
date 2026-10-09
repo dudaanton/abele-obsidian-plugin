@@ -125,6 +125,19 @@ describe('the icon picker', () => {
     expect(wrapper.emitted('choose')).toEqual([['pause']])
   })
 
+  it('does not replace a focused native icon button activation with the search cursor', async () => {
+    const wrapper = open('pause')
+    await nextTick()
+    const calendar = wrapper.findAllComponents(Icon).find((i) => i.props('icon') === 'calendar')!
+    const event = new KeyboardEvent('keydown', { key: 'Enter', bubbles: true, cancelable: true })
+    calendar.element.dispatchEvent(event)
+    expect(event.defaultPrevented).toBe(false)
+    expect(wrapper.emitted('choose')).toBeUndefined()
+    // happy-dom has no browser button key defaults. Its native click is checked separately live.
+    await calendar.trigger('click')
+    expect(wrapper.emitted('choose')).toEqual([['calendar']])
+  })
+
   it('walks the grid with the arrow keys from the search field', async () => {
     const wrapper = open('pause')
 

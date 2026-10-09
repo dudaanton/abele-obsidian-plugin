@@ -7,7 +7,7 @@
  * inside does not count.
  */
 export const INTERACTIVE =
-  'button, a, input, select, textarea, [role="button"], [contenteditable], .clickable-icon'
+  'button, a, input, select, textarea, summary, [role="button"], [contenteditable], .clickable-icon'
 
 export function fromControl(event: Event): boolean {
   let el = event.target as Element | null
