@@ -103,6 +103,7 @@ import type {
   AiSettings,
   SubAgentRunRef,
   QueuedMessage,
+  DelegationWakeFence,
 } from './types'
 import type { CommentState } from '@/editor/CommentPlugin'
 import type { UserContentPart } from './client'
@@ -1902,16 +1903,33 @@ export class ChatSession implements SummarizerHost, InterceptorHost, AnchorStora
   /** An automatic result notification is not permission to resume a stopped chat. */
   wakeDelegationResult(id: string): boolean {
     if (this.destroyed || this.delegationWakeStopped || this.preparingClone.value) return false
-    const generation = this.generation
-    const stopEpoch = this.delegationStopEpoch
-    const isCurrent = () => !this.destroyed && !this.delegationWakeStopped &&
-      generation === this.generation && stopEpoch === this.delegationStopEpoch
+    const wake: DelegationWakeFence = {
+      sessionId: this.id,
+      generation: this.generation,
+      stopEpoch: this.delegationStopEpoch,
+    }
     void this.sendMessage(
       `The result for node delegation ${id} has arrived. Call node_delegation_status to read the durable mailbox result.`,
       undefined,
-      isCurrent
+      wake
     ).catch((error) => { console.error('[Abele] Delegation result notification failed', error) })
     return true
+  }
+
+  private isDelegationWakeCurrent(wake: DelegationWakeFence): boolean {
+    return !this.destroyed && !this.delegationWakeStopped && wake.sessionId === this.id &&
+      wake.generation === this.generation && wake.stopEpoch === this.delegationStopEpoch
+  }
+
+  /** Keep ordinary user messages, but drop wakes from a stopped or replaced session. */
+  private currentQueuedMessages(): QueuedMessage[] {
+    const queued = this.queuedMessages.value
+    const current = queued.filter((q) => !q.delegationWake || this.isDelegationWakeCurrent(q.delegationWake))
+    if (current.length !== queued.length) {
+      this.queuedMessages.value = current
+      this.markDirty()
+    }
+    return current
   }
 
   private resumeDelegationWake(): void {
@@ -1920,7 +1938,8 @@ export class ChatSession implements SummarizerHost, InterceptorHost, AnchorStora
     if (parent) NodeService.resumeDelegationWaiters(parent)
   }
 
-  async sendMessage(content: string, attachments?: string[], isCurrent?: () => boolean): Promise<void> {
+  async sendMessage(content: string, attachments?: string[], delegationWake?: DelegationWakeFence): Promise<void> {
+    const isCurrent = delegationWake ? () => this.isDelegationWakeCurrent(delegationWake) : undefined
     if (isCurrent && !isCurrent()) return
     if (this.preparingClone.value) {
       new Notice('Wait for the chat copy to finish.')
@@ -1934,7 +1953,10 @@ export class ChatSession implements SummarizerHost, InterceptorHost, AnchorStora
     if (this.isBusy) {
       this.queuedMessages.value = [
         ...this.queuedMessages.value,
-        { id: nanoid(), content, attachments: attachments?.length ? [...attachments] : undefined },
+        {
+          id: nanoid(), content, attachments: attachments?.length ? [...attachments] : undefined,
+          ...(delegationWake ? { delegationWake: { ...delegationWake } } : {}),
+        },
       ]
       await this.save()
       return
@@ -2048,11 +2070,11 @@ export class ChatSession implements SummarizerHost, InterceptorHost, AnchorStora
     if (this.isBusy) return
     if (this.pendingToolCalls.value.length) return
 
-    const [next, ...rest] = this.queuedMessages.value
+    const [next, ...rest] = this.currentQueuedMessages()
     if (!next) return
 
     this.queuedMessages.value = rest
-    await this.sendMessage(next.content, next.attachments)
+    await this.sendMessage(next.content, next.attachments, next.delegationWake)
   }
 
   /**
@@ -2140,11 +2162,12 @@ export class ChatSession implements SummarizerHost, InterceptorHost, AnchorStora
    * for the iteration after, rather than being handed over twice.
    */
   private async takeQueued(): Promise<Message[]> {
-    const queued = this.queuedMessages.value
+    const queued = this.currentQueuedMessages()
     // Only the run of messages at the front that the interceptor would not look at: one it
     // would look at waits for its own turn, through `drainQueue` and `sendMessage`, rather
     // than slipping into this one past it. Order is kept, so nothing behind it goes first.
     const cut = queued.findIndex((q) => {
+      if (q.delegationWake) return false
       const route = this.interceptRoute(q.content)
       return route.kind !== 'none' && !route.replyOnly
     })
@@ -2156,7 +2179,13 @@ export class ChatSession implements SummarizerHost, InterceptorHost, AnchorStora
     this.turnPolicy.clear()
 
     const messages: Message[] = []
-    for (const q of taken) messages.push(await this.userMessage(q.content, q.attachments))
+    for (const q of taken) {
+      if (q.delegationWake && !this.isDelegationWakeCurrent(q.delegationWake)) continue
+      const message = await this.userMessage(q.content, q.attachments, !q.delegationWake)
+      // Stop can win while message/attachment preparation is pending, after dequeue.
+      if (q.delegationWake && !this.isDelegationWakeCurrent(q.delegationWake)) continue
+      messages.push(message)
+    }
     return messages
   }
 

@@ -723,7 +723,12 @@ paths, exactly as in a normal user bubble. Imported media stays in the ordinary 
 folder, never as binary data in settings. Enqueuing saves immediately; consumption, editing
 and cancellation update the chat's queue. Reopening restores the queue without starting a
 request; the user can return a message to the composer and send it again. Cancelling a queued
-message removes only its reference, not the referenced vault file.
+message removes only its reference, not the referenced vault file. Automatic node-result
+notifications also carry `delegationWake: {sessionId, generation, stopEpoch}`. These are
+runtime cancellation markers, not authority: Stop invalidates them, and queued notifications
+from a different session/reopen are discarded on consumption. Both queue-draining and
+iteration injection preserve the fence through asynchronous preparation. Discarding a wake
+does not remove the durable result from the device-local node mailbox.
 
 A `current_location` tool answer contains personal coordinates, accuracy, acquisition time and
 the answering platform. Like other tool answers it is sent to the model and retained in the

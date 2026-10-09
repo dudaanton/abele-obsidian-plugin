@@ -154,6 +154,111 @@ it('does not start a model turn if Stop arrives during asynchronous wake prepara
   expect(loop).not.toHaveBeenCalled()
 })
 
+it.each(['drain', 'iteration'] as const)('keeps the queued wake fence during %s preparation after Stop', async (consumer) => {
+  await connection.delegation.status(parent, 'delegation')
+  session.isStreaming.value = true
+  const send = vi.spyOn(session, 'sendMessage')
+  await deliver()
+  await connection.refreshDelegations()
+  await send.mock.results[0].value
+  expect(session.queuedMessages.value).toHaveLength(1)
+  session.isStreaming.value = false
+  const prepared = deferred<Message>()
+  const internals = session as unknown as {
+    userMessage: (text: string) => Promise<Message>
+    runAgentLoop: () => Promise<void>
+    afterTurn: () => Promise<void>
+    drainQueue: () => Promise<void>
+    takeQueued: () => Promise<Message[]>
+  }
+  const userMessage = vi.spyOn(internals, 'userMessage').mockImplementation(() => prepared.promise)
+  const loop = vi.spyOn(internals, 'runAgentLoop').mockResolvedValue(undefined)
+  vi.spyOn(internals, 'afterTurn').mockResolvedValue(undefined)
+  const consuming = consumer === 'drain' ? internals.drainQueue() : internals.takeQueued()
+  await vi.waitFor(() => expect(userMessage).toHaveBeenCalled())
+  session.abort()
+  prepared.resolve({ role: 'user', content: 'Sample result notification', timestamp: 1 })
+  const injected = await consuming
+  expect(loop).not.toHaveBeenCalled()
+  if (consumer === 'iteration') expect(injected).toEqual([])
+  expect(session.queuedMessages.value).toEqual([])
+  expect((await connection.delegation.cards(parent))[0].reports).toMatchObject([{ kind: 'result', text: 'Sample durable result' }])
+})
+
+it('drains a queued wake normally when no Stop invalidated it', async () => {
+  await connection.delegation.status(parent, 'delegation')
+  session.isStreaming.value = true
+  const send = vi.spyOn(session, 'sendMessage')
+  await deliver()
+  await connection.refreshDelegations()
+  await send.mock.results[0].value
+  expect(session.queuedMessages.value).toHaveLength(1)
+  expect((await ChatStorage.getInstance().loadChat(session.currentChatFile.value!)).metadata?.queuedMessages?.[0].delegationWake).toMatchObject({
+    sessionId: session.id, generation: session.conversationVersion.value, stopEpoch: expect.any(Number),
+  })
+  session.isStreaming.value = false
+  const internals = session as unknown as { runAgentLoop: () => Promise<void>; afterTurn: () => Promise<void>; drainQueue: () => Promise<void> }
+  const loop = vi.spyOn(internals, 'runAgentLoop').mockResolvedValue(undefined)
+  vi.spyOn(internals, 'afterTurn').mockResolvedValue(undefined)
+  await internals.drainQueue()
+  expect(loop).toHaveBeenCalledTimes(1)
+  expect(session.queuedMessages.value).toEqual([])
+})
+
+it.each(['drain', 'iteration'] as const)('drops a stale queued wake on %s even after an explicit resume, without losing user messages', async (consumer) => {
+  await connection.delegation.status(parent, 'delegation')
+  session.isStreaming.value = true
+  const send = vi.spyOn(session, 'sendMessage')
+  await deliver()
+  await connection.refreshDelegations()
+  await send.mock.results[0].value
+  const stale = session.queuedMessages.value.slice()
+  session.abort()
+  session.isStreaming.value = false
+  const internals = session as unknown as {
+    userMessage: (text: string) => Promise<Message>
+    runAgentLoop: () => Promise<void>
+    afterTurn: () => Promise<void>
+    drainQueue: () => Promise<void>
+    takeQueued: () => Promise<Message[]>
+  }
+  const loop = vi.spyOn(internals, 'runAgentLoop').mockResolvedValue(undefined)
+  vi.spyOn(internals, 'afterTurn').mockResolvedValue(undefined)
+  await session.sendMessage('Please continue.')
+  loop.mockClear()
+  // A previously captured queue snapshot must remain stale after the parent resumes.
+  session.queuedMessages.value = [...stale, { id: 'explicit-user', content: 'Explicit queued message' }]
+  const userMessage = vi.spyOn(internals, 'userMessage')
+  const injected = consumer === 'drain' ? await internals.drainQueue() : await internals.takeQueued()
+  expect(userMessage).toHaveBeenCalledTimes(1)
+  expect(userMessage.mock.calls[0][0]).toBe('Explicit queued message')
+  expect(loop).toHaveBeenCalledTimes(consumer === 'drain' ? 1 : 0)
+  if (consumer === 'iteration') expect(injected).toMatchObject([{ content: 'Explicit queued message' }])
+  expect(session.queuedMessages.value).toEqual([])
+})
+
+it('drops a persisted queued wake rather than treating reopening as an explicit resume', async () => {
+  await connection.delegation.status(parent, 'delegation')
+  session.isStreaming.value = true
+  const send = vi.spyOn(session, 'sendMessage')
+  await deliver()
+  await connection.refreshDelegations()
+  await send.mock.results[0].value
+  const file = session.currentChatFile.value!
+  session.destroy()
+  session = new ChatSession(ChatService.getInstance())
+  await session.load(file)
+  const internals = session as unknown as { userMessage: (text: string) => Promise<Message>; runAgentLoop: () => Promise<void>; afterTurn: () => Promise<void>; drainQueue: () => Promise<void> }
+  const userMessage = vi.spyOn(internals, 'userMessage')
+  const loop = vi.spyOn(internals, 'runAgentLoop').mockResolvedValue(undefined)
+  vi.spyOn(internals, 'afterTurn').mockResolvedValue(undefined)
+  await internals.drainQueue()
+  expect(userMessage).not.toHaveBeenCalled()
+  expect(loop).not.toHaveBeenCalled()
+  expect(session.queuedMessages.value).toEqual([])
+  expect((await connection.delegation.cards(parent))[0].reports).toHaveLength(1)
+})
+
 it('fences a wake callback already selected when Stop wins at the dispatch boundary', async () => {
   await connection.delegation.status(parent, 'delegation')
   await deliver()

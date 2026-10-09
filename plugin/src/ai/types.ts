@@ -28,11 +28,20 @@ export interface ChatDraft {
   imports?: DraftImports<ChatDraft>
 }
 
-/** A message the person sent while the agent was working, waiting for the next iteration. */
+/** An automatic mailbox wake is valid only in the session/conversation that queued it. */
+export interface DelegationWakeFence {
+  sessionId: string
+  generation: number
+  stopEpoch: number
+}
+
+/** A message queued while the agent was working, waiting for the next iteration. */
 export interface QueuedMessage {
   id: string
   content: string
   attachments?: string[]
+  /** Data rather than a callback: saving/reopening must not turn a wake into an explicit send. */
+  delegationWake?: DelegationWakeFence
 }
 
 export interface AiProvider {
