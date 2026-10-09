@@ -26,10 +26,14 @@ async function taskKey(parent: string, key: string): Promise<string> {
 /** Provider-neutral trusted controller. No Obsidian, secrets, generic RPC or prompt answers. */
 export class NodeDelegationController {
   private readonly subscribed = new Set<string>()
+  private readonly denied = new Set<string>()
   constructor(
     readonly client: NodeClient,
     readonly store: NodeClientStore
   ) {}
+
+  /** Server subscriptions belong to a transport, never to this controller's lifetime. */
+  connectionChanged() { this.subscribed.clear(); this.denied.clear() }
 
   /** Owner UI only. These methods are deliberately absent from the model tools. */
   async approve(params: DelegationGrantRequest) {
@@ -78,13 +82,15 @@ export class NodeDelegationController {
       actions: g.actions,
     }))
   }
-  async create(parent: string, raw: DelegationTaskInput) {
+  async create(parent: string, raw: DelegationTaskInput, signal?: AbortSignal) {
     const input = DelegationTaskInputSchema.parse(raw)
     const key = await taskKey(parent, input.task_key)
+    if (signal?.aborted) throw new Error('Delegation call cancelled')
     const request = await this.store.transaction((s) => {
       const local = storage(s)
       const previous = local.tasks[key]
       if (previous) {
+        if (previous.cancelled) throw new Error('Delegation call cancelled; use a new task key')
         if (JSON.stringify(previous.input) !== JSON.stringify(input))
           throw new Error('idempotency_mismatch: preserve the same task key and body')
         this.requireGrant(s, previous.request.grant_id, parent, 'create')
@@ -112,17 +118,41 @@ export class NodeDelegationController {
       local.tasks[key] = { parentId: parent, input, request }
       return request
     })
+    if (signal?.aborted) throw new Error('Delegation call cancelled')
     const available = nodeProviders(await this.client.describe()).some(
       (p) => p.provider === input.provider && providerAvailable(p)
     )
+    if (signal?.aborted) throw new Error('Delegation call cancelled')
     if (!available) throw new Error('Provider unavailable on this node')
     // Exact retained body even when a prior reply was lost. Node deduplicates the task key.
-    const child = await this.client.createDelegation(request)
+    let child: Awaited<ReturnType<NodeClient['createDelegation']>>
+    try {
+      child = await this.client.createDelegation(request)
+    } catch (error) {
+      if (signal?.aborted) await this.store.transaction((s) => { storage(s).tasks[key].cancelled = true })
+      throw error
+    }
+    if (signal?.aborted) await this.store.transaction((s) => { storage(s).tasks[key].cancelled = true })
     await this.store.transaction((s) => {
       storage(s).tasks[key].child = child
     })
+    if (signal?.aborted) {
+      await this.cancelAborted(key, child.delegation_id)
+      throw new Error('Delegation call cancelled')
+    }
     await this.client.subscribeDelegation(child)
+    if (signal?.aborted) {
+      await this.store.transaction((s) => { storage(s).tasks[key].cancelled = true })
+      await this.cancelAborted(key, child.delegation_id)
+      throw new Error('Delegation call cancelled')
+    }
     return this.publicChild(child)
+  }
+  private async cancelAborted(key: string, id: string) {
+    try {
+      await this.client.cancelDelegation(id)
+      await this.store.transaction((s) => { storage(s).tasks[key].cancelSettled = true })
+    } catch { /* Retain the intent for retry on restore. */ }
   }
   private publicChild(child: {
     node_id: string
@@ -172,16 +202,31 @@ export class NodeDelegationController {
     )
     if (canRead) await this.client.subscribeDelegation(status)
     const card = canRead ? (await this.cards(parent)).find((c) => c.delegationId === id) : undefined
+    const delivered = await this.store.transaction((s) => {
+      const cursor = s.cursors[status.mailbox_stream_id] ?? 0
+      const events = s.events[status.mailbox_stream_id] ?? []
+      return cursor >= status.mailbox_head_seq &&
+        (status.state !== 'completed' || events.some((e) => e.type === 'delegation.result' &&
+          (e.data as { delegation_id?: string }).delegation_id === id))
+    })
+    if (status.state === 'completed')
+      await this.store.transaction((s) => {
+        const task = Object.values(storage(s).tasks).find((t) => t.child?.delegation_id === id)
+        if (task) task.awaitingResult = !delivered
+      })
     return {
       ...this.publicChild(status),
+      state: status.state === 'completed' && !delivered ? 'receiving mailbox' : status.state,
       session_head_seq: status.session_head_seq,
       pending_human_prompts: status.pending_human_prompts,
       reports: card?.reports ?? [],
     }
   }
-  async send(parent: string, id: string, text: string) {
+  async send(parent: string, id: string, text: string, signal?: AbortSignal) {
     await this.owned(parent, id, 'send')
+    if (signal?.aborted) throw new Error('Delegation call cancelled')
     const status = await this.client.delegationStatus(id)
+    if (signal?.aborted) throw new Error('Delegation call cancelled')
     return this.client.sendDelegation(id, text, status.session_head_seq)
   }
   async cancel(parent: string, id: string) {
@@ -190,7 +235,7 @@ export class NodeDelegationController {
   }
   /** Recover receipts before subscribing. Does not depend on an open parent/child tab. */
   async restore() {
-    const children = await this.store.transaction((s) => {
+    const { children, cancellations } = await this.store.transaction((s) => {
       const local = storage(s)
       for (const receipt of Object.values(s.results)) {
         const method = receipt.request?.method
@@ -215,11 +260,17 @@ export class NodeDelegationController {
           }
         }
       }
-      return Object.values(local.tasks).flatMap((t) =>
-        t.child && !local.grants[t.child.grant_id]?.revoked ? [t.child] : []
-      )
+      return {
+        children: Object.values(local.tasks).flatMap((t) =>
+          t.child && !t.cancelled && !local.grants[t.child.grant_id]?.revoked ? [t.child] : []
+        ),
+        cancellations: Object.entries(local.tasks).flatMap(([key, t]) =>
+          t.child && t.cancelled && !t.cancelSettled ? [{ key, id: t.child.delegation_id }] : []
+        ),
+      }
     })
     if (this.client.connected) {
+      await Promise.all(cancellations.map(({ key, id }) => this.cancelAborted(key, id)))
       // A parent need not subscribe to every child tool event to show running state
       // or direct a human to a pending permission/extension question.
       await Promise.all(
@@ -240,14 +291,32 @@ export class NodeDelegationController {
       )
       await Promise.all(
         children
-          .filter((c) => !this.subscribed.has(c.mailbox_stream_id))
+          .filter((c) => !this.subscribed.has(c.mailbox_stream_id) && !this.denied.has(c.mailbox_stream_id))
           .map(async (c) => {
-            await this.client.subscribeDelegation(c)
-            this.subscribed.add(c.mailbox_stream_id)
+            try {
+              await this.client.subscribeDelegation(c)
+              this.subscribed.add(c.mailbox_stream_id)
+            } catch {
+              // One revoked grant cannot prevent unrelated mailboxes from recovering.
+              // Retry on the next connection, not on every foreground tick.
+              this.denied.add(c.mailbox_stream_id)
+            }
           })
       )
     }
   }
+  /** Wake only a waiting model, once the result is durably present in its parent card. */
+  async wakeDelivered(cards: Record<string, DelegationCard[]>, wake: (parent: string, id: string) => boolean): Promise<void> {
+    const pending = await this.store.transaction((s) => Object.entries(storage(s).tasks)
+      .filter(([, task]) => task.awaitingResult && task.child)
+      .map(([key, task]) => ({ key, parent: task.parentId, id: task.child!.delegation_id })))
+    for (const { key, parent, id } of pending) {
+      const card = cards[parent]?.find((c) => c.delegationId === id)
+      if (card?.state === 'completed' && card.reports.some((r) => r.kind === 'result') && wake(parent, id))
+        await this.store.transaction((s) => { storage(s).tasks[key].awaitingResult = false })
+    }
+  }
+
   async snapshot(): Promise<Record<string, DelegationCard[]>> {
     const parents = await this.store.transaction((s) => [
       ...new Set(Object.values(storage(s).tasks).map((t) => t.parentId)),

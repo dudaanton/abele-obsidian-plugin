@@ -39,13 +39,18 @@ it('keeps an admitted node usable when a previously cached mailbox is revoked', 
       throw new ChannelError('unauthorized')
     }),
     flush: vi.fn(async () => {}),
+    subscribe: vi.fn(async (stream: string) => { if (stream === 'revoked') throw new ChannelError('unauthorized') }),
     disconnect: vi.fn(async () => {}),
   }
-  const connection = new NodeConnection(client as never, { close: vi.fn() } as never)
+  const state = { cursors: { revoked: 1, healthy: 2 } as Record<string, number> }
+  const store = { transaction: vi.fn(async (work: (s: typeof state) => unknown) => work(state)), close: vi.fn() }
+  const connection = new NodeConnection(client as never, store as never)
   await connection.connect()
   expect(connection.state.value).toBe('connected')
   expect(connection.error.value).toMatch(/saved.*stream/i)
   expect(client.flush).toHaveBeenCalledTimes(1)
+  expect(client.subscribe).toHaveBeenCalledWith('healthy')
+  expect(state.cursors).toEqual({ healthy: 2 })
   connection.destroy()
 })
 

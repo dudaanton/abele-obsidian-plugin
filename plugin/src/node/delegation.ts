@@ -45,6 +45,9 @@ export const DelegationStorageSchema = z
           input: DelegationTaskInputSchema,
           request,
           child: z.custom<Delegation>((v) => DelegationSchema.safeParse(v).success).optional(),
+          cancelled: z.boolean().optional(),
+          cancelSettled: z.boolean().optional(),
+          awaitingResult: z.boolean().optional(),
           status: z
             .custom<DelegationStatus>((v) => DelegationStatusSchema.safeParse(v).success)
             .optional(),

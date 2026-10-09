@@ -7,6 +7,26 @@ import { IDBFactory } from 'fake-indexeddb'
 import type { ChatSession } from '@/ai/ChatSession'
 import type { NodeClient } from '@abele/node-client'
 afterEach(() => vi.restoreAllMocks())
+it('never creates after Stop while connecting, and cancels a child accepted concurrently with Stop', async () => {
+  let release!: () => void
+  const gate = new Promise<void>((resolve) => { release = resolve })
+  const created = vi.fn(async () => ({ delegation_id: 'child' }))
+  const cancel = vi.fn(async () => {})
+  const service = { connection: () => ({ connect: () => gate, delegation: { create: created, cancel }, refreshDelegations: async () => {} }) }
+  vi.spyOn(NodeService, 'getInstance').mockReturnValue(service as never)
+  const tools = createNodeDelegationTools({ ensureDelegationParentId: async () => 'parent' } as ChatSession)
+  const signal = new AbortController()
+  const pending = tools[1].execute('create', { node: 'node', task_key: 'key', provider: 'pi', title: 'Task', text: 'Work' }, signal.signal)
+  signal.abort()
+  release()
+  await expect(pending).rejects.toThrow(/cancelled/)
+  expect(created).not.toHaveBeenCalled()
+  const racing = new AbortController()
+  created.mockImplementationOnce(async () => { racing.abort(); return { delegation_id: 'child' } })
+  await expect(tools[1].execute('create', { node: 'node', task_key: 'key', provider: 'pi', title: 'Task', text: 'Work' }, racing.signal)).rejects.toThrow(/cancelled/)
+  expect(cancel).toHaveBeenCalledWith('parent', 'child')
+})
+
 it('offers only bounded controller tools; never publishes grant IDs, credentials or owner APIs', async () => {
   const store = new NodeClientStore('tools', new IDBFactory())
   const grant = {

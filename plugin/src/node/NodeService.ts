@@ -33,7 +33,18 @@ export class NodeConnection {
         await this.delegation.restore()
       } finally {
         const cards = await this.delegation.snapshot()
-        if (!this.disposed) this.delegationCards.value = cards
+        if (!this.disposed) {
+          this.delegationCards.value = cards
+          const { ChatService } = await import('@/ai/ChatService')
+          await this.delegation.wakeDelivered(cards, (parent, id) => {
+            const session = ChatService.getInstance().getAllSessions().find(
+              (s) => s.delegationParentId === parent
+            )
+            if (!session) return false
+            void session.sendMessage(`The result for node delegation ${id} has arrived. Call node_delegation_status to read the durable mailbox result.`)
+            return true
+          })
+        }
       }
     })().finally(() => { this.refreshingDelegations = undefined }))
   }
@@ -54,6 +65,7 @@ export class NodeConnection {
           await this.client.disconnect()
           return
         }
+        this.delegation.connectionChanged()
         this.error.value = ''
         this.state.value = 'connected'
       })
@@ -63,6 +75,18 @@ export class NodeConnection {
         // This applies only AFTER authenticated admission; failed admission never sets
         // client.connected, and all requests still undergo node-side authorization.
         if (!this.disposed && generation === this.generation && this.client.connected && error instanceof ChannelError && error.code === 'unauthorized') {
+          this.delegation.connectionChanged()
+          // NodeClient stops cursor replay on the first unauthorized stream. Probe
+          // each saved cursor independently and discard only rejected subscriptions;
+          // retained events stay durable. The next reconnect can then replay B.
+          const streams = await this.store.transaction((s) => Object.keys(s.cursors))
+          for (const stream of streams) {
+            try { await this.client.subscribe(stream) }
+            catch (failure) {
+              if (!(failure instanceof ChannelError) || failure.code !== 'unauthorized') throw failure
+              await this.store.transaction((s) => { delete s.cursors[stream] })
+            }
+          }
           await this.client.flush()
           this.state.value = 'connected'
           this.error.value = 'A saved node stream is no longer authorized; retained child transcripts can still be opened.'

@@ -217,6 +217,63 @@ describe('trusted node delegation controller', () => {
     f.store.close()
   })
 
+  it('recovers other mailboxes after one grant is revoked and a connection changes', async () => {
+    const f = fixture()
+    await f.controller.approve({ parent_id: 'parent', project_ids: ['project'], providers: ['pi'] })
+    await f.controller.create('parent', task)
+    const other = { ...child, delegation_id: 'other', delegation_key: 'other-key', mailbox_stream_id: 'other-mailbox', grant_id: 'other-grant' }
+    await f.store.transaction((s) => {
+      s.delegation!.grants['other-grant'] = { ...grant, grant_id: 'other-grant' }
+      s.delegation!.tasks['other-key'] = { parentId: 'parent', input: { ...task, task_key: 'other' }, request: { grant_id: 'other-grant', delegation_key: 'other-key', project_id: 'project', provider: 'pi', title: 'Sample task', text: 'Review parser' }, child: other }
+    })
+    await f.controller.restore()
+    f.client.subscribeDelegation.mockClear()
+    f.client.subscribeDelegation.mockImplementation(async (c) => { if (c.mailbox_stream_id === 'mailbox') throw new Error('unauthorized') })
+    f.controller.connectionChanged()
+    await f.controller.restore()
+    expect(f.client.subscribeDelegation).toHaveBeenCalledWith(other)
+    f.store.close()
+  })
+
+  it('withholds terminal status until the durable result has been replayed', async () => {
+    const f = fixture()
+    await f.controller.approve({ parent_id: 'parent', project_ids: ['project'], providers: ['pi'] })
+    await f.controller.create('parent', task)
+    f.client.delegationStatus.mockResolvedValue({ ...child, state: 'completed', session_head_seq: 17, mailbox_head_seq: 2, pending_human_prompts: 0 })
+    expect((await f.controller.status('parent', 'delegation')).state).not.toBe('completed')
+    await f.store.transaction((s) => {
+      s.cursors.mailbox = 2
+      s.events.mailbox = [{ kind: 'event', node_id: 'node', actor: { kind: 'node' }, at: '2028-01-01T00:00:00Z', stream_id: 'mailbox', seq: 1, type: 'delegation.result', data: { delegation_id: 'delegation', session_id: 'child', report_id: 'report', text: 'Done' } }]
+    })
+    const cards = { parent: await f.controller.cards('parent') }
+    const wake = vi.fn(() => true)
+    const reopened = new NodeDelegationController(f.client as unknown as NodeClient, new NodeClientStore('sample-delegation', f.factory))
+    await reopened.wakeDelivered(cards, wake)
+    await reopened.wakeDelivered(cards, wake)
+    expect(wake).toHaveBeenCalledTimes(1)
+    expect(await f.controller.status('parent', 'delegation')).toMatchObject({ state: 'completed', reports: [{ text: 'Done' }] })
+    f.store.close()
+  })
+
+  it('retains cancellation across an uncertain create response and cancels a late receipt', async () => {
+    const f = fixture()
+    await f.controller.approve({ parent_id: 'parent', project_ids: ['project'], providers: ['pi'] })
+    const abort = new AbortController()
+    f.client.createDelegation.mockImplementationOnce(async () => {
+      abort.abort()
+      throw new Error('outcome_unknown')
+    })
+    await expect(f.controller.create('parent', task, abort.signal)).rejects.toThrow()
+    const request = f.client.createDelegation.mock.calls[0][0]
+    await f.store.transaction((s) => {
+      s.results['late-operation'] = { request: { method: 'delegation.create', params: request }, result: { ...child, delegation_key: request.delegation_key } }
+    })
+    await f.controller.restore()
+    expect(f.client.cancelDelegation).toHaveBeenCalledWith('delegation')
+    await expect(f.controller.create('parent', task)).rejects.toThrow(/cancelled/)
+    f.store.close()
+  })
+
   it('fences foreign child IDs, uses the observed child revision, and never answers human prompts', async () => {
     const f = fixture()
     await f.controller.approve({ parent_id: 'parent', project_ids: ['project'], providers: ['pi'] })

@@ -12,6 +12,9 @@ const node = {
   description: 'Device-local node reference returned by node_delegations',
 }
 const delegation_id = { type: 'string', description: 'Child reference returned by node_delegate' }
+const checkCancelled = (signal?: AbortSignal) => {
+  if (signal?.aborted) throw new Error('Delegation call cancelled')
+}
 const result = (value: unknown) => ({
   content: [{ type: 'text' as const, text: JSON.stringify(value) }],
 })
@@ -26,7 +29,8 @@ export function createNodeDelegationTools(owner?: ChatSession): AgentTool[] {
     execute: (
       parent: string,
       params: Record<string, unknown>,
-      service: NodeService
+      service: NodeService,
+      signal?: AbortSignal
     ) => Promise<unknown>
   ): AgentTool => ({
     name,
@@ -35,12 +39,19 @@ export function createNodeDelegationTools(owner?: ChatSession): AgentTool[] {
     description,
     parameters,
     execute: async (_id, params, signal, ctx) => {
-      if (signal?.aborted) throw new Error('Delegation call cancelled')
+      checkCancelled(signal)
       const parent = ctx?.session ?? owner
       if (!parent) throw new Error('Node delegation requires an executing parent chat')
       const service = NodeService.getInstance()
       const parentId = await parent.ensureDelegationParentId()
-      const value = await execute(parentId, params, service)
+      checkCancelled(signal)
+      const value = await execute(parentId, params, service, signal)
+      if (signal?.aborted && name === 'node_delegate') {
+        const child = value as { delegation_id?: string }
+        if (child.delegation_id && typeof params.node === 'string')
+          await service.connection(params.node).delegation.cancel(parentId, child.delegation_id).catch(() => {})
+      }
+      checkCancelled(signal)
       return result(value)
     },
   })
@@ -99,12 +110,18 @@ export function createNodeDelegationTools(owner?: ChatSession): AgentTool[] {
         },
         required: ['node', 'task_key', 'provider', 'title', 'text'],
       },
-      async (parent, params, service) => {
+      async (parent, params, service, signal) => {
         const { node, ...input } = Create.parse(params)
         const connection = service.connection(node)
         await connection.connect()
+        checkCancelled(signal)
         try {
-          return await connection.delegation.create(parent, input)
+          const child = await connection.delegation.create(parent, input, signal)
+          if (signal?.aborted) {
+            await connection.delegation.cancel(parent, child.delegation_id).catch(() => {})
+            checkCancelled(signal)
+          }
+          return child
         } finally {
           await connection.refreshDelegations().catch(() => {})
         }
@@ -119,11 +136,12 @@ export function createNodeDelegationTools(owner?: ChatSession): AgentTool[] {
         properties: { node, delegation_id, text: { type: 'string' } },
         required: ['node', 'delegation_id', 'text'],
       },
-      async (parent, params, service) => {
+      async (parent, params, service, signal) => {
         const input = Send.parse(params)
         const connection = service.connection(input.node)
         await connection.connect()
-        return connection.delegation.send(parent, input.delegation_id, input.text)
+        checkCancelled(signal)
+        return connection.delegation.send(parent, input.delegation_id, input.text, signal)
       }
     ),
     tool(
