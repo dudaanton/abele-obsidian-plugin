@@ -1,6 +1,29 @@
 import { expect, it } from 'vitest'
 import { reduceTranscript } from '@/node/NodeTranscriptReducer'
 import type { JournalEvent } from '@abele/channel-protocol'
+it.each([502, 400])(
+  'projects empty failed finals and puts error evidence first (HTTP %s)',
+  (status) => {
+    const failure = event(2, 'pi.message.final', {
+      run_id: 'sample-run',
+      message_id: 'failed',
+      runtime_generation: 1,
+      message: {
+        role: 'assistant',
+        content: [],
+        stopReason: 'error',
+        errorMessage: `${status} Sample rejection`,
+      },
+    })
+    const projection = reduceTranscript([event(1, 'pi.session.bound', {}), failure])
+    expect(projection.messages.at(-1)).toMatchObject({
+      role: 'assistant',
+      content: '',
+      error: `The agent could not answer: the model service returned an error (HTTP ${status}).`,
+    })
+    expect(projection.unknown[0]).toEqual(failure)
+  }
+)
 const event = (seq: number, type: string, data: unknown): JournalEvent => ({
   kind: 'event',
   node_id: 'sample-node',
@@ -10,6 +33,41 @@ const event = (seq: number, type: string, data: unknown): JournalEvent => ({
   actor: { kind: 'node' },
   at: '2025-01-01T00:00:00.000Z',
   data,
+})
+it.each([
+  ['', 'the model service returned an error'],
+  ['Connection closed\nSample diagnostic detail', 'Connection closed'],
+])('keeps failed final text and thinking with a short explanation', (errorMessage, reason) => {
+  const scope = { run_id: 'sample-run', message_id: 'failed', runtime_generation: 1 }
+  const failure = event(2, 'pi.message.final', {
+    ...scope,
+    message: {
+      role: 'assistant',
+      content: [
+        { type: 'text', text: 'Partial answer' },
+        { type: 'thinking', thinking: 'Sample reasoning' },
+      ],
+      stopReason: 'error',
+      errorMessage,
+    },
+  })
+  const projection = reduceTranscript([
+    event(1, 'run.started', { run_id: 'sample-run', input_id: 'sample-input' }),
+    failure,
+    failure,
+    event(3, 'pi.message.delta', {
+      ...scope,
+      delta: { type: 'text_delta', contentIndex: 0, delta: 'Late text' },
+    }),
+  ])
+  expect(projection.messages).toHaveLength(1)
+  expect(projection.messages[0]).toMatchObject({
+    content: 'Partial answer',
+    thinking: 'Sample reasoning',
+    error: `The agent could not answer: ${reason}.`,
+    retryInputId: 'input:sample-input',
+  })
+  expect(projection.unknown).toEqual([failure])
 })
 it('replaces pi partials with final snapshots and separates runtime generations and runs', () => {
   const base = { run_id: 'sample-run', runtime_generation: 1, message_id: '1' }

@@ -2,7 +2,7 @@ import type { JournalEvent } from '@abele/channel-protocol'
 import { PromptSchema, SessionSchema, type Prompt } from '@abele/node-protocol'
 import type { ChatMessage } from '@/ai/types'
 import { ClaudeTranscript } from './claudeTranscript'
-import { PiTranscript } from './piTranscript'
+import { PiTranscript, piFailure } from './piTranscript'
 
 export type NodeSessionState = 'idle' | 'queued' | 'accepted' | 'running' | 'needs-attention'
 export interface NodeTranscript {
@@ -67,7 +67,10 @@ export function reduceTranscript(events: readonly JournalEvent[]): NodeTranscrip
       continue
     }
     if (event.type.startsWith('claude.') && claude.apply(event.type, data)) continue
-    if (event.type.startsWith('pi.') && pi.apply(event.type, data)) continue
+    if (event.type.startsWith('pi.') && pi.apply(event.type, data, runInputs.get(text('run_id')))) {
+      if (event.type === 'pi.message.final' && piFailure(data)) unknown.unshift(event)
+      continue
+    }
     if (event.type.startsWith('input.')) {
       const state = text('state') || event.type.slice(6)
       inputs.set(text('input_id'), state)

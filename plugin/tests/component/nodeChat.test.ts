@@ -7,6 +7,87 @@ import AiChatMessage from '@/components/AiChatMessage.vue'
 import AiChatInput from '@/components/AiChatInput.vue'
 import VoiceRecorder from '@/components/VoiceRecorder.vue'
 import { useVault } from '../helpers/testEnv'
+import { reduceTranscript } from '@/node/NodeTranscriptReducer'
+import type { JournalEvent } from '@abele/channel-protocol'
+
+it.each([false, true])(
+  'shows a failed pi turn and resends its input (follow-up: %s)',
+  async (followup) => {
+    useVault([])
+    const status = followup ? 400 : 502
+    const record = (seq: number, type: string, data: unknown): JournalEvent => ({
+      kind: 'event',
+      node_id: 'sample-node',
+      stream_id: 'sample-session',
+      seq,
+      type,
+      actor: { kind: 'node' },
+      at: '2025-01-01T00:00:00.000Z',
+      data,
+    })
+    const failure = record(7, 'pi.message.final', {
+      run_id: 'sample-failed',
+      message_id: 'failed',
+      message: {
+        role: 'assistant',
+        content: [],
+        stopReason: 'error',
+        errorMessage: `${status} Sample rejection`,
+      },
+    })
+    const projection = reduceTranscript([
+      record(1, 'pi.session.bound', {}),
+      ...(followup
+        ? [
+            record(2, 'input.accepted', { input_id: 'first', text: 'First question' }),
+            record(3, 'pi.message.final', {
+              run_id: 'first',
+              message_id: 'reply',
+              message: { role: 'assistant', content: [{ type: 'text', text: 'Sample answer' }] },
+            }),
+          ]
+        : []),
+      record(4, 'input.accepted', { input_id: 'failed-input', text: 'Sample failed question' }),
+      record(5, 'run.started', { run_id: 'sample-failed', input_id: 'failed-input' }),
+      record(6, 'input.accepted', { input_id: 'queued-input', text: 'Different queued question' }),
+      failure,
+    ])
+    const presenter = {
+      id: 'sample',
+      label: ref('Sample session'),
+      messages: ref(projection.messages),
+      projection: ref(projection),
+      state: ref('needs-attention'),
+      queued: ref([]),
+      rejected: ref([]),
+      error: ref(''),
+      draft: ref({ text: '', attachments: [] }),
+      connection: { state: ref('connected'), error: ref('') },
+      send: vi.fn(),
+      openResource: vi.fn(),
+    }
+    const wrapper = mount(NodeChatView, {
+      props: { presenter: presenter as never },
+      global: { stubs: { AiChatInput: true, Icon: true, Button: true } },
+    })
+    try {
+      expect(wrapper.get('.abele-chat-msg_assistant [role="alert"]').text()).toContain(
+        `HTTP ${status}`
+      )
+      const detail = wrapper.get('details')
+      expect((detail.element as HTMLDetailsElement).open).toBe(false)
+      expect(JSON.parse(detail.get('pre').text())[0]).toEqual(failure)
+      await wrapper.get('[aria-label="Send again"]').trigger('click')
+      await flushPromises()
+      expect(presenter.send).toHaveBeenCalledExactlyOnceWith('Sample failed question')
+      presenter.connection.state.value = 'offline'
+      await flushPromises()
+      expect(wrapper.get('[aria-label="Send again"]').attributes('disabled')).toBeDefined()
+    } finally {
+      wrapper.unmount()
+    }
+  }
+)
 
 it('uses the shared composer and renderer, labels offline queue and never offers local history controls', async () => {
   useVault([])

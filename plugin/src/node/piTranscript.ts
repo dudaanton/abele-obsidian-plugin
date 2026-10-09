@@ -2,6 +2,16 @@ import type { ChatMessage } from '@/ai/types'
 const text = (v: unknown) => (typeof v === 'string' ? v : '')
 const object = (v: unknown): Record<string, unknown> =>
   v && typeof v === 'object' && !Array.isArray(v) ? (v as Record<string, unknown>) : {}
+export const piFailure = (data: Record<string, unknown>): string => {
+  const snapshot = object(data.message)
+  if (snapshot.role !== 'assistant' || snapshot.stopReason !== 'error') return ''
+  const raw = text(snapshot.errorMessage).trim()
+  const status = raw.match(/\b(?:HTTP\s*)?([45]\d{2})\b/i)?.[1]
+  const reason = status
+    ? `the model service returned an error (HTTP ${status})`
+    : raw.split(/\r?\n/)[0].slice(0, 240) || 'the model service returned an error'
+  return `The agent could not answer: ${reason}.`
+}
 const blocksText = (v: unknown): string =>
   Array.isArray(v)
     ? v
@@ -15,7 +25,7 @@ export class PiTranscript {
   private blocks = new Map<string, Map<number, { text: string; thinking: string }>>()
   private finals = new Set<string>()
   constructor(private message: (id: string, role: ChatMessage['role']) => ChatMessage) {}
-  apply(type: string, data: Record<string, unknown>): boolean {
+  apply(type: string, data: Record<string, unknown>, inputId?: string): boolean {
     const scope = [text(data.run_id), data.runtime_generation ?? 0]
     const id = JSON.stringify(['pi', ...scope, text(data.message_id)])
     const toolId = (native: unknown) => JSON.stringify(['pi-tool', ...scope, text(native)])
@@ -54,6 +64,12 @@ export class PiTranscript {
       )
       this.blocks.set(id, blocks)
       if (hadPartial || [...blocks.values()].some((b) => b.text || b.thinking)) render()
+      const error = type === 'pi.message.final' ? piFailure(data) : ''
+      if (error) {
+        render()
+        this.message(id, 'assistant').error = error
+        if (inputId) this.message(id, 'assistant').retryInputId = `input:${inputId}`
+      }
       if (type === 'pi.message.final') this.finals.add(id)
       return true
     }

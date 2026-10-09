@@ -14,6 +14,19 @@
         }}</span></template
       >
       <template #metadata>
+        <div v-if="message.error" class="abele-ai-chat__error" role="alert">
+          {{ message.error }}
+        </div>
+        <button
+          v-if="message.error && message.retryInputId"
+          class="clickable-icon"
+          type="button"
+          aria-label="Send again"
+          :disabled="offline"
+          @click="emit('retry', message.id)"
+        >
+          <Icon icon="rotate-cw" tooltip="Send again" no-hover />
+        </button>
         <div v-if="queueStates[message.id]" class="abele-node-queue-state" role="status">
           <Icon icon="clock" no-hover />
           <span>{{ queueStates[message.id].label }}</span>
@@ -46,6 +59,7 @@
         :queue-states="queueStates"
         :offline="offline"
         @cancel="emit('cancel', $event)"
+        @retry="emit('retry', $event)"
       />
       <pre v-else>{{ JSON.stringify(children[message.id], null, 2) }}</pre>
     </details>
@@ -67,7 +81,10 @@ withDefaults(
   }>(),
   { depth: 0, queueStates: () => ({}) }
 )
-const emit = defineEmits<{ (e: 'cancel', inputId: string): void }>()
+const emit = defineEmits<{
+  (e: 'cancel', inputId: string): void
+  (e: 'retry', messageId: string): void
+}>()
 </script>
 <style lang="scss">
 .abele-node-child-work {

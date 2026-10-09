@@ -621,6 +621,10 @@ export interface ChatMessage {
   parentId?: string
   role: 'user' | 'assistant' | 'tool-call' | 'tool-result' | 'system'
   content: string
+  /** Plain failure explanation, separate from model answer content. */
+  error?: string
+  /** The accepted input to resend after a failed node turn. */
+  retryInputId?: string
   thinking?: string
   toolCallId?: string
   toolName?: string

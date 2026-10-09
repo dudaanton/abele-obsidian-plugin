@@ -72,6 +72,7 @@
         :offline="offline"
         :open-resource="openResource"
         @cancel="presenter.cancelInput($event)"
+        @retry="retry"
       />
       <div v-for="artifact in presenter.projection.value.artifacts" :key="artifact.artifactId">
         <Button text="Read stored output" @click="readArtifact(artifact.artifactId)" />
@@ -299,6 +300,15 @@ const send = async (text: string) => {
   }
   await nextTick()
   if (scroller.value) scroller.value.scrollTop = scroller.value.scrollHeight
+}
+const retry = (messageId: string) => {
+  if (offline.value || sending.value) return
+  const messages = presentation.value.messages
+  const failed = messages.find((message) => message.id === messageId)
+  const input = messages.find(
+    (message) => message.id === failed?.retryInputId && message.role === 'user'
+  )
+  if (input) void send(input.content)
 }
 const readArtifact = async (id: string) => {
   try {
