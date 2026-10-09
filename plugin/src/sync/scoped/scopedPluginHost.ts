@@ -855,8 +855,10 @@ export class ScopedPluginHost {
         if ((await r.fs.stat(path)) !== null) throw new Error('Scoped path became occupied')
         await r.fs.writeAtomic(path, source.bytes, Date.now())
       },
-      upload: async (_path, source) => {
+      upload: async (path, source) => {
         if (!this.held(r)) throw new Error('Scoped writer lost')
+        if ((await r.representations.classify(path, undefined, source.bytes)).kind !== 'ordinary')
+          throw new Error('Held representation cannot be uploaded as a native asset')
         await r.client.putBlob(source.sha, source.bytes)
         return r.assets.proof(c.grantId, source.sha)
       },

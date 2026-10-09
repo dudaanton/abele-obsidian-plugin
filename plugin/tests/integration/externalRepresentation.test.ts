@@ -239,6 +239,19 @@ describe('common external representation and durable remote projection work', ()
     expect([...result.dirty]).not.toContain(path)
   })
 
+  it('rejects projection bytes at a new native asset placement before upload', async () => {
+    const s = await setup(true),
+      target = 'Media/sample-new.png'
+    const upload = vi.fn()
+    const placeAndUpload = async () => {
+      await s.runtime.fileSystem().writeAtomic(target, s.projection, 1000)
+      await upload(s.projection)
+    }
+    await expect(placeAndUpload()).rejects.toThrow('recovery')
+    expect(upload).not.toHaveBeenCalled()
+    expect(await s.fake.vault.adapter.exists(target)).toBe(false)
+  })
+
   it('recognizable renamed/damaged projections are never folder-native creates', async () => {
     const s = await setup()
     await s.fake.vault.adapter.rename(s.file.projectionPath, 'Media/sample-renamed.txt')
@@ -289,6 +302,43 @@ describe('common external representation and durable remote projection work', ()
         )
     ).rejects.toThrow('recovery')
     expect(commitRaw).not.toHaveBeenCalled()
+  })
+
+  it('refuses a remote rename onto another identity and retains both ledger bases after restart', async () => {
+    const s = await setup(),
+      otherPath = 'Media/sample-other.bin',
+      otherId = 'sample-other'
+    await s.store.put({ ...entry, path: otherPath, wirePath: otherPath, fileId: otherId })
+    await s.state.commit({
+      expectedRevision: 1,
+      files: [
+        {
+          expectedRevision: null,
+          next: {
+            ...s.file,
+            fileId: otherId,
+            projectionPath: otherPath + '.abele-ref',
+            availability: 'deleted',
+            lastProvenLocalBase: {
+              ...s.file.lastProvenLocalBase,
+              fileId: otherId,
+              path: otherPath,
+            },
+          },
+        },
+      ],
+    })
+    await s.runtime.refresh()
+    await expect(
+      s.runtime.accept(event({ op: 'move', path: otherPath, prev_path: path }) as never)
+    ).rejects.toThrow('collision')
+    s.store.close()
+    const reopened = await IndexedDbStateStore.open(s.factory, s.name)
+    cleanups.push(() => reopened.close())
+    const state = await ExternalState.open(reopened, 'sample-ledger', binding)
+    expect(await reopened.byFileId(otherId)).toMatchObject({ path: otherPath })
+    expect(await reopened.byFileId(id)).toMatchObject({ path })
+    expect((await state.snapshot()).files).toHaveLength(2)
   })
 
   it('metadata-only pages persist projection jobs before cursor advancement and never GET client blobs', async () => {
@@ -440,6 +490,48 @@ describe('common external representation and durable remote projection work', ()
       base: { versionId: 'sample-v1' },
     })
     expect((await s.state.snapshot()).files[0].blockingReason).toBe('unexpected-original')
+  })
+
+  it('persists scanner-observed unexpected originals independently of later blockers across restart', async () => {
+    for (const deleted of [false, true]) {
+      const s = await setup()
+      await s.fake.vault.adapter.writeBinary(
+        path,
+        new TextEncoder().encode('sample unresolved edit').buffer
+      )
+      await s.runtime.classify(path)
+      if (deleted)
+        await s.runtime.accept(
+          event({
+            op: 'delete',
+            version_id: 'sample-deleted',
+            sha: null,
+            size: null,
+            mtime: null,
+          }) as never
+        )
+      await s.fake.vault.adapter.remove(path)
+      s.store.close()
+      const reopened = await IndexedDbStateStore.open(s.factory, s.name)
+      cleanups.push(() => reopened.close())
+      const state = await ExternalState.open(reopened, 'sample-ledger', binding)
+      const runtime = await ExternalRepresentation.open({
+        state,
+        ledger: reopened,
+        fs: s.fs,
+        verify: s.verify,
+        assertOwned: () => {},
+        scriptsFolder: () => 'Scripts',
+        installProjection: async () => 'cleanup-pending',
+      })
+      if (deleted)
+        await runtime.accept(event({ op: 'restore', version_id: 'sample-restored' }) as never)
+      expect(await runtime.classify(path)).toMatchObject({
+        kind: 'hold',
+        dirty: true,
+        base: { versionId: 'sample-v1' },
+      })
+    }
   })
 
   it('server verification failure and projection edits preserve bytes and pending work', async () => {
@@ -604,6 +696,34 @@ describe('common external representation and durable remote projection work', ()
     expect(s.verify).toHaveBeenCalledOnce()
   })
 
+  it('detach retry and restart repair canonical scoped state before acknowledging departure', async () => {
+    for (const restart of [false, true]) {
+      const s = await setup(true),
+        put = s.scoped!.putKnown.bind(s.scoped!)
+      vi.spyOn(s.scoped!, 'putKnown')
+        .mockRejectedValueOnce(Error('sample aborted detach'))
+        .mockImplementation(put)
+      await expect(s.runtime.detach(id)).rejects.toThrow('sample aborted detach')
+      expect((await s.scoped!.getKnown(id))?.state).toBe('materialized')
+      const runtime = restart
+        ? await ExternalRepresentation.open({
+            state: await ExternalState.open(s.store, 'sample-ledger', s.file.binding),
+            ledger: s.store,
+            scoped: s.scoped,
+            fs: s.fs,
+            verify: s.verify,
+            assertOwned: () => {},
+            scriptsFolder: () => 'Scripts',
+            installProjection: async () => 'cleanup-pending',
+          })
+        : s.runtime
+      if (restart) await runtime.recoverJobs()
+      else expect(await runtime.detach(id)).toBe(true)
+      expect((await s.scoped!.getKnown(id))?.state).toBe('detached')
+      expect((await s.state.snapshot()).operations).toHaveLength(1)
+    }
+  })
+
   it('replay repairs a scoped metadata commit that failed after durable job intent, before checkpoint advance', async () => {
     const s = await setup(true),
       put = s.scoped!.putKnown.bind(s.scoped!)
@@ -679,6 +799,34 @@ describe('common external representation and durable remote projection work', ()
     expect((await s.state.snapshot()).files[0].blockingReason).toBe('approval-required')
     expect(install).not.toHaveBeenCalled()
     expect((await s.state.snapshot()).files[0].preference).toBe('on-demand')
+  })
+
+  it('pages large scoped inventories in linear reads, including filtered external identities', async () => {
+    const s = await setup(true)
+    const known = await s.scoped!.getKnown(id)
+    const rows = Array.from({ length: 10000 }, (_, i) => ({
+      ...known!,
+      file_id: 'sample-ordinary-' + i,
+      path: 'Media/sample-' + i + '.bin',
+    }))
+    rows.splice(4000, 0, known!)
+    let reads = 0
+    vi.spyOn(s.scoped!, 'knownPage').mockImplementation(async (offset, limit = 1000) => {
+      const page = rows.slice(offset, offset + limit)
+      reads += page.length
+      return page
+    })
+    const view = s.runtime.scopedState(s.scoped!)
+    const seen = []
+    for (let offset = 0; ; offset += 1000) {
+      const page = await view.knownPage(offset)
+      seen.push(...page)
+      if (page.length < 1000) break
+    }
+    expect(seen.map((row) => row.file_id)).toEqual(
+      rows.filter((row) => row.file_id !== id).map((row) => row.file_id)
+    )
+    expect(reads).toBeLessThanOrEqual(rows.length + 1000)
   })
 
   it('the adopted shared recovery barrier prevents constructor scope effects and all early verbs', async () => {

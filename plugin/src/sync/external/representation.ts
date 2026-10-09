@@ -71,6 +71,7 @@ export type RepresentationDecision =
       base?: ExternalRecord['lastProvenLocalBase']
     }
 const key = caseKey
+const unexpectedKey = (id: string) => 'external-unexpected-original-v1:' + id
 const terminal = new Set([
   'complete',
   'remote-only',
@@ -107,7 +108,11 @@ export class ExternalRepresentation {
           operations: [],
         })
     for (const file of runtime.document.files)
-      if (file.blockingReason === 'unexpected-original') runtime.unexpected.add(file.fileId)
+      if (
+        file.blockingReason === 'unexpected-original' ||
+        (await options.ledger.getMeta(unexpectedKey(file.fileId))) !== null
+      )
+        runtime.unexpected.add(file.fileId)
     for await (const entry of options.ledger.all()) runtime.entries.set(entry.fileId, entry)
     if (options.scoped)
       for (const file of runtime.document.files) {
@@ -196,11 +201,35 @@ export class ExternalRepresentation {
     supplied?: Uint8Array
   ): Promise<RepresentationDecision> {
     this.owned()
+    // Inspect the actual upload/write buffer even when the destination does not yet exist
+    // or scanner exclusions would skip it. Native creation bypasses ordinary commit guards.
+    if (supplied && recognizeProjection(supplied))
+      return { kind: 'hold', reason: 'projection', dirty: false }
     const info = observed === undefined ? await this.options.fs.stat(path) : observed
     this.owned()
     for (const file of this.document.files) {
       if (this.managed(file) && this.original(file, path)) {
-        if (info !== null && file.representation !== 'hydrated') this.unexpected.add(file.fileId)
+        if (
+          info !== null &&
+          file.representation !== 'hydrated' &&
+          !this.unexpected.has(file.fileId)
+        ) {
+          // Dirty provenance survives unavailable/delete/approval blockers. The observation is
+          // durable before scanner/metadata callers can acknowledge it; no second head table.
+          try {
+            if (!this.options.state) throw new ExternalRecoveryRequired('external state missing')
+            await this.options.state.commit({
+              expectedRevision: this.document.revision,
+              ledger: { metadata: [{ key: unexpectedKey(file.fileId), value: 'unresolved' }] },
+            })
+            this.document = await this.options.state.snapshot()
+            this.owned()
+            this.unexpected.add(file.fileId)
+          } catch (error) {
+            this.stopped = true
+            throw error
+          }
+        }
         return info === null &&
           !this.unexpected.has(file.fileId) &&
           ['remote-only', 'pending-download'].includes(file.representation)
@@ -273,6 +302,12 @@ export class ExternalRepresentation {
                 throw new ExternalRecoveryRequired(
                   'held representation cannot be mutated by ordinary sync'
                 )
+            if (
+              method === 'writeAtomic' &&
+              (await self.classify(args[0] as string, undefined, args[1] as Uint8Array)).kind !==
+                'ordinary'
+            )
+              throw new ExternalRecoveryRequired('projection bytes cannot be ordinary content')
             return Reflect.get(target, method).apply(target, args)
           }
         const value = Reflect.get(target, method)
@@ -432,6 +467,16 @@ export class ExternalRepresentation {
     const entry = this.entries.get(file.fileId)
     if (!entry || !file.lastProvenLocalBase)
       throw new ExternalRecoveryRequired('managed file has no proven base/head')
+    // Accepting server metadata is not permission to replace another local identity's
+    // placement (including tombstones with unresolved sidecars). Keep the event replayable.
+    if (!this.options.scoped) {
+      for await (const placed of this.options.ledger.all())
+        if (
+          placed.fileId !== file.fileId &&
+          [placed.path, placed.wirePath].some((path) => key(path) === key(change.path))
+        )
+          throw new ExternalRecoveryRequired('external rename placement collision')
+    }
     const desired = change.op === 'delete' ? 'deleted' : 'active'
     const expected = {
       fileId: file.fileId,
@@ -593,7 +638,10 @@ export class ExternalRepresentation {
       entry = this.entries.get(id)
     if (!file || !this.managed(file)) return false
     if (!entry) throw new ExternalRecoveryRequired('detach head missing')
-    if (file.availability === 'detached') return true
+    if (file.availability === 'detached') {
+      await this.scopedDetached(id)
+      return true
+    }
     const operation: ExternalOperation = {
       schema: 1,
       operationId: crypto.randomUUID(),
@@ -629,11 +677,18 @@ export class ExternalRepresentation {
       },
       operation
     )
+    await this.scopedDetached(id)
+    return true
+  }
+  private async scopedDetached(id: string): Promise<void> {
+    this.owned()
     if (this.options.scoped) {
       const known = await this.options.scoped.getKnown(id)
-      if (known) await this.options.scoped.putKnown({ ...known, state: 'detached' })
+      if (!known) throw new ExternalRecoveryRequired('detach scoped head missing')
+      if (known.state !== 'detached')
+        await this.options.scoped.putKnown({ ...known, state: 'detached' })
     }
-    return true
+    this.owned()
   }
   private async process(operationId: string, mtime?: number): Promise<void> {
     const op = this.document.operations.find((op) => op.operationId === operationId)!,
@@ -774,6 +829,14 @@ export class ExternalRepresentation {
     this.owned()
     for (const operation of [...this.document.operations]) {
       if (
+        operation.kind === 'detach' &&
+        operation.expected &&
+        this.file(operation.expected.fileId)?.availability === 'detached'
+      ) {
+        await this.scopedDetached(operation.expected.fileId)
+        continue
+      }
+      if (
         !['projection-update', 'projection-move'].includes(operation.kind) ||
         terminal.has(operation.phase)
       )
@@ -809,6 +872,9 @@ export class ExternalRepresentation {
     }
   }
   scopedState(state: ScopedState): ScopedState {
+    // One filtered snapshot per enumeration. Rebuild at offset zero, not at every page;
+    // otherwise each scoped scan performs N/page-size complete inventory reads.
+    let inventory: Awaited<ReturnType<ScopedState['knownPage']>> | null = null
     // eslint-disable-next-line @typescript-eslint/no-this-alias -- The captured coordinator owns scoped filtering.
     const self = this
     return new Proxy(state, {
@@ -816,17 +882,22 @@ export class ExternalRepresentation {
         if (method === 'placementStore') return () => self.stateStore(state.placementStore())
         if (method === 'knownPage')
           return async (offset: number, limit = 1000) => {
-            const all = []
-            for (let from = 0; ; from += 1000) {
-              const page = await state.knownPage(from)
-              all.push(
-                ...page.filter(
-                  (known) => !self.file(known.file_id) || !self.managed(self.file(known.file_id)!)
+            self.owned()
+            if (offset === 0 || inventory === null) {
+              const all: Awaited<ReturnType<ScopedState['knownPage']>> = []
+              for (let from = 0; ; from += 1000) {
+                const page = await state.knownPage(from)
+                all.push(
+                  ...page.filter(
+                    (known) => !self.file(known.file_id) || !self.managed(self.file(known.file_id)!)
+                  )
                 )
-              )
-              if (page.length < 1000) break
+                if (page.length < 1000) break
+              }
+              self.owned()
+              inventory = all
             }
-            return all.slice(offset, offset + limit)
+            return inventory.slice(offset, offset + limit)
           }
         if (method === 'getJournal')
           return async () => {
