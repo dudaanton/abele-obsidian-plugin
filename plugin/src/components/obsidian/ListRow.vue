@@ -109,20 +109,30 @@ const stateText = {
   line-height: var(--line-height-normal);
 }
 .abele-list-row .abele-list-row__line {
-  display: flex;
-  align-items: flex-start;
-  gap: var(--size-4-2);
+  display: grid;
+  grid-template-columns: max-content minmax(0, 1fr) max-content;
+  align-items: start;
+  column-gap: var(--size-4-2);
+  row-gap: var(--size-4-1);
 }
 .abele-list-row .abele-list-row__content {
-  display: block;
+  display: contents;
   flex: 1;
   min-width: 0;
   overflow: visible;
   white-space: normal;
 }
+.abele-list-row__content > * {
+  grid-column: 2 / -1;
+}
 .abele-list-row .abele-list-row__main,
 .abele-list-row__title {
-  display: block;
+  grid-column: 2;
+  grid-row: 1;
+  display: flex;
+  flex-direction: column;
+  justify-content: flex-start;
+  align-items: stretch;
   padding: 0;
   margin: 0;
   height: auto;
@@ -160,7 +170,8 @@ const stateText = {
   display: flex;
   justify-content: center;
   align-items: center;
-  flex: 0 0 auto;
+  grid-column: 1;
+  grid-row: 1;
   min-width: var(--size-4-6);
   min-height: 1lh;
   height: auto;
@@ -172,8 +183,9 @@ const stateText = {
 }
 .abele-list-row .abele-list-row__actions {
   display: flex;
+  grid-column: 3;
+  grid-row: 1;
   align-items: flex-start;
-  flex: 0 0 auto;
   gap: var(--size-2-1);
   margin: 0;
 }
