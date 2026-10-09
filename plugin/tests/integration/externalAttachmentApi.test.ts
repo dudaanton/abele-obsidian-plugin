@@ -243,6 +243,142 @@ describe('manual attachment store', () => {
     }
   })
 
+  it('holds each interrupted eviction phase without deleting again on restart', async () => {
+    for (const phase of ['prepared', 'delete-ready', 'remote-only'] as const) {
+      const s = await setup()
+      try {
+        const commit = s.state.commit.bind(s.state)
+        vi.spyOn(s.state, 'commit').mockImplementation(async (change) => {
+          const answer = await commit(change)
+          if (change.operations?.[0]?.next?.phase === phase) throw Error('sample terminated')
+          return answer
+        })
+        await expect(
+          s.api.evict(s.base.fileId, {
+            operationId: 'sample-interrupted',
+            expectedRevision: 0,
+            expectedVersionId: s.base.versionId,
+          })
+        ).rejects.toThrow('terminated')
+        const saved = (await s.state.snapshot()).operations[0]
+        expect(saved.phase).toBe(phase)
+        const recovered = await ExternalState.open(s.store, 'sample-ledger', binding)
+        const next = new AttachmentStore({
+          state: recovered,
+          ledger: s.store,
+          host: s.host,
+          binding,
+          verify: s.verify,
+          download: s.download,
+          sync: async () => {},
+          serial: { run: async <T>(work: () => Promise<T>) => work() },
+          assertOwned: () => {},
+          scriptsFolder: () => 'Scripts',
+        })
+        await next.recover()
+        expect(await s.fake.vault.adapter.exists(path)).toBe(phase !== 'remote-only')
+        expect((await recovered.snapshot()).files[0].representation).toBe(
+          phase === 'remote-only' ? 'remote-only' : 'hydrated'
+        )
+      } finally {
+        s.close()
+      }
+    }
+  })
+
+  it('finishes bookkeeping after a terminated delete acknowledgement, without replaying delete', async () => {
+    const s = await setup()
+    try {
+      const remove = s.fake.vault.adapter.remove.bind(s.fake.vault.adapter)
+      const intercepted = vi
+        .spyOn(s.fake.vault.adapter, 'remove')
+        .mockImplementationOnce(async (target) => {
+          await remove(target)
+          throw Error('sample lost acknowledgement')
+        })
+      expect(
+        (
+          await s.api.evict(s.base.fileId, {
+            operationId: 'sample-lost-delete',
+            expectedRevision: 0,
+            expectedVersionId: s.base.versionId,
+          })
+        ).status
+      ).toBe('recovery-required')
+      expect((await s.state.snapshot()).operations[0].phase).toBe('delete-ready')
+      expect(await s.fake.vault.adapter.exists(path)).toBe(false)
+      await s.api.recover()
+      expect((await s.state.snapshot()).files[0].representation).toBe('remote-only')
+      expect(intercepted).toHaveBeenCalledOnce()
+    } finally {
+      s.close()
+    }
+  })
+
+  it('rejects altered and truncated downloaded versions without installing an original', async () => {
+    for (const received of [
+      new TextEncoder().encode('sample wrong contents'),
+      content.subarray(0, 2),
+    ]) {
+      const s = await setup()
+      try {
+        await s.api.evict(s.base.fileId, {
+          operationId: 'sample-offload',
+          expectedRevision: 0,
+          expectedVersionId: s.base.versionId,
+        })
+        s.download.mockResolvedValueOnce(received)
+        expect(
+          (
+            await s.api.hydrate(s.base.fileId, {
+              operationId: 'sample-fetch',
+              expectedVersionId: s.base.versionId,
+            })
+          ).status
+        ).toBe('version-changed')
+        expect(await s.fake.vault.adapter.exists(path)).toBe(false)
+        expect((await s.state.snapshot()).operations.at(-1)?.phase).toBe('download-intent')
+      } finally {
+        s.close()
+      }
+    }
+  })
+
+  it('keeps a use lease for the full verified read, blocking a concurrent eviction', async () => {
+    const s = await setup()
+    try {
+      await s.api.setPinned(s.base.fileId, false)
+      let finish!: (bytes: Uint8Array) => void
+      const waiting = new Promise<Uint8Array>((resolve) => {
+        finish = resolve
+      })
+      const readBinary = s.fake.vault.adapter.readBinary.bind(s.fake.vault.adapter)
+      vi.spyOn(s.fake.vault.adapter, 'readBinary').mockImplementation(async (target) => {
+        if (target === path) return (await waiting).buffer as ArrayBuffer
+        return readBinary(target)
+      })
+      const reading = s.api.read(s.base.fileId, { expectedVersionId: s.base.versionId })
+      await Promise.resolve()
+      let reserved = false
+      try {
+        const ticket = s.host.coordination.reserve({
+          operationId: 'sample-read-race',
+          fileId: s.base.fileId,
+          paths: [path],
+        })
+        reserved = true
+        ticket.release()
+      } catch {
+        /* The active read must block reservation. */
+      }
+      finish(content)
+      expect(await reading).toMatchObject({ versionId: s.base.versionId, bytes: content })
+      expect(reserved).toBe(false)
+    } finally {
+      s.close()
+    }
+  })
+
   it('pins against eviction and serializes an active use lease', async () => {
     const s = await setup()
     try {

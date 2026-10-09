@@ -68,9 +68,7 @@ export class AttachmentStore {
       download(fileId: string, versionId: string, sha: string): Promise<Uint8Array>
       scriptsFolder(): string
       excluded?(path: string, size: number): boolean
-      scopedHead?(
-        id: string
-      ): Promise<{
+      scopedHead?(id: string): Promise<{
         file_id: string
         version_id: string
         path: string
@@ -197,9 +195,7 @@ export class AttachmentStore {
       proof.size === head.size
     )
   }
-  async inspectEviction(
-    id: string
-  ): Promise<{
+  async inspectEviction(id: string): Promise<{
     status: OperationResult['status']
     revision: number | null
     versionId: string | null
@@ -568,33 +564,38 @@ export class AttachmentStore {
     id: string,
     opts: { expectedVersionId: string }
   ): Promise<{ bytes: Uint8Array; versionId: string } | OperationResult> {
-    const file = await this.snapshot(id),
-      head = await this.head(id)
-    if (!head || head.versionId !== opts.expectedVersionId) return this.result('version-changed')
-    const reason = this.eligible(head.path, head.size)
-    if (reason) return this.result(reason)
-    if (file?.availability !== 'active') return this.result('unavailable')
-    let bytes: Uint8Array
-    if (file?.representation !== 'hydrated') {
+    const lease = this.acquireUse(id)
+    try {
+      const file = await this.snapshot(id),
+        head = await this.head(id)
+      if (!head || head.versionId !== opts.expectedVersionId) return this.result('version-changed')
+      const reason = this.eligible(head.path, head.size)
+      if (reason) return this.result(reason)
+      if (file?.availability !== 'active') return this.result('unavailable')
+      let bytes: Uint8Array
+      if (file?.representation !== 'hydrated') {
+        try {
+          if (!(await this.verified(id, { ...head, path: head.wirePath })))
+            return this.result('version-changed')
+        } catch (error) {
+          return this.reason(error)
+        }
+      }
       try {
-        if (!(await this.verified(id, { ...head, path: head.wirePath })))
-          return this.result('version-changed')
+        bytes =
+          file?.representation === 'hydrated'
+            ? await this.options.host.read(head.path)
+            : await this.options.download(id, head.versionId, head.sha)
       } catch (error) {
         return this.reason(error)
       }
+      this.owned()
+      if (bytes.length !== head.size || (await sha256(bytes)) !== head.sha)
+        return this.result('version-changed')
+      return { bytes, versionId: head.versionId }
+    } finally {
+      lease.release()
     }
-    try {
-      bytes =
-        file?.representation === 'hydrated'
-          ? await this.options.host.read(head.path)
-          : await this.options.download(id, head.versionId, head.sha)
-    } catch (error) {
-      return this.reason(error)
-    }
-    this.owned()
-    if (bytes.length !== head.size || (await sha256(bytes)) !== head.sha)
-      return this.result('version-changed')
-    return { bytes, versionId: head.versionId }
   }
   async setPinned(id: string, pinned: boolean): Promise<OperationResult> {
     return this.options.serial.run(async () => {
