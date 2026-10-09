@@ -131,7 +131,9 @@ export function captureDesign(selector: string, options: CaptureOptions = {}): D
       if (host && isIcon) {
         if (el.closest(actions)) slot = 'action'
         else if (
-          !el.closest('.abele-disclosure, [data-design-disclosure]') &&
+          !el.closest(
+            '.abele-disclosure, [data-design-disclosure], .abele-image, .abele-image-thumbnail'
+          ) &&
           (!host.matches('.abele-list-row__line') || el.closest('.abele-list-row__leading'))
         )
           slot = 'icon'

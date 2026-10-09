@@ -144,6 +144,23 @@ describe('design lint geometry rules', () => {
       expect.arrayContaining(['row-column', 'row-spacing'])
     )
   })
+  it('compares painted edge columns within the same glyph role, not content commands against gutter disclosures', () => {
+    const a = row()
+    a[4].iconRole = 'collapse'
+    const b = row().map((e) => ({
+      ...e,
+      id: e.id + '2',
+      row: 'row2',
+      parent: e.parent === null ? null : 'row2',
+      rect: { ...e.rect, y: e.rect.y + 120 },
+      firstLine: e.firstLine && { ...e.firstLine, y: e.firstLine.y + 120 },
+    }))
+    b[4].iconRole = 'content'
+    b[4].rect.x += 6
+    expect(codes(snapshot([...a, ...b]))).not.toContain('row-column')
+    b[4].iconRole = 'collapse'
+    expect(codes(snapshot([...a, ...b]))).toContain('row-column')
+  })
   it('checks level consistency and colour contrast against the captured background in light and dark themes', () => {
     const els = row()
     els[0].background = 'rgb(255, 255, 255)'

@@ -341,7 +341,7 @@ export function lintDesign(snapshot: DesignSnapshot, options: LintOptions = {}):
           ? title
           : members.find((m) => m.slot === slot && (m.role === 'icon' || m.role === 'control'))
       if (!e) continue
-      const key = `${kind}:${slot}`
+      const key = `${kind}:${slot}${slot !== 'text' && e.iconRole ? ':' + e.iconRole : ''}`
       const first = columns.get(key)
       if (!first) columns.set(key, e)
       else {

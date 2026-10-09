@@ -199,6 +199,16 @@ describe('renderer design capture', () => {
     expect(s.elements.find((e) => e.selector === 'svg.file')?.slot).toBe('icon')
     expect(s.elements.find((e) => e.selector === 'svg.retry')?.slot).toBeUndefined()
   })
+  it('keeps an image fallback glyph inside its thumbnail rather than treating it as a row leading icon', () => {
+    fixture()
+    document.querySelector('#surface')!.innerHTML =
+      '<article class="abele-list-row"><div class="tree-item-self abele-list-row__line"><span class="abele-list-row__leading"><span class="abele-image-thumbnail"><svg class="fallback"></svg></span></span></div></article>'
+    for (const el of document.querySelectorAll('#surface *'))
+      vi.spyOn(el, 'getBoundingClientRect').mockReturnValue(new DOMRect(20, 20, 64, 64))
+    expect(
+      captureDesign('#surface').elements.find((e) => e.selector === 'svg.fallback')?.slot
+    ).toBeUndefined()
+  })
   it('does not make a static tree label into a touch action', () => {
     fixture()
     document
