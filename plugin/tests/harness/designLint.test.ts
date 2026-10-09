@@ -161,6 +161,26 @@ describe('design lint geometry rules', () => {
     b[4].iconRole = 'collapse'
     expect(codes(snapshot([...a, ...b]))).toContain('row-column')
   })
+  it('compares sibling rows within a list scope rather than a nested source history against its parent list', () => {
+    const outer = row()
+    const inner = row().map((e) => ({
+      ...e,
+      id: e.id + '2',
+      row: 'row2',
+      parent: e.parent === null ? null : 'row2',
+      rect: { ...e.rect, x: e.rect.x + 40, y: e.rect.y + 120 },
+      firstLine: e.firstLine && { ...e.firstLine, x: e.firstLine.x + 40, y: e.firstLine.y + 120 },
+    }))
+    outer[0].rowScope = 'files'
+    inner[0].rowScope = 'history'
+    inner[3].rect.y += 4
+    expect(codes(snapshot([...outer, ...inner]))).not.toContain('row-column')
+    expect(codes(snapshot([...outer, ...inner]))).not.toContain('row-spacing')
+    inner[0].rowScope = 'files'
+    expect(codes(snapshot([...outer, ...inner]))).toEqual(
+      expect.arrayContaining(['row-column', 'row-spacing'])
+    )
+  })
   it('checks level consistency and colour contrast against the captured background in light and dark themes', () => {
     const els = row()
     els[0].background = 'rgb(255, 255, 255)'

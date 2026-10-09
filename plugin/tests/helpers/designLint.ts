@@ -12,6 +12,8 @@ export interface MeasuredElement {
   selector: string
   parent: string | null
   row?: string
+  /** The containing list or disclosure; nested collections do not share sibling columns. */
+  rowScope?: string
   kind?: string
   role: 'icon' | 'text' | 'control' | 'other'
   /** SVG paint primitives are captured but do not participate in CSS sibling layout. */
@@ -341,7 +343,7 @@ export function lintDesign(snapshot: DesignSnapshot, options: LintOptions = {}):
           ? title
           : members.find((m) => m.slot === slot && (m.role === 'icon' || m.role === 'control'))
       if (!e) continue
-      const key = `${kind}:${slot}${slot !== 'text' && e.iconRole ? ':' + e.iconRole : ''}`
+      const key = `${host.rowScope ?? snapshot.selector}:${kind}:${slot}${slot !== 'text' && e.iconRole ? ':' + e.iconRole : ''}`
       const first = columns.get(key)
       if (!first) columns.set(key, e)
       else {
@@ -380,7 +382,7 @@ export function lintDesign(snapshot: DesignSnapshot, options: LintOptions = {}):
           gap.value,
           gap.key
         )
-      const key = `${kind}:${gap.key}`
+      const key = `${host.rowScope ?? snapshot.selector}:${kind}:${gap.key}`
       const first = gaps.get(key)
       if (!first) gaps.set(key, gap)
       else if (Math.abs(gap.value - first.value) > tolerance)

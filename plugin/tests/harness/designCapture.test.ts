@@ -209,6 +209,18 @@ describe('renderer design capture', () => {
       captureDesign('#surface').elements.find((e) => e.selector === 'svg.fallback')?.slot
     ).toBeUndefined()
   })
+  it('records separate comparison scopes for a source history nested in a file row', () => {
+    fixture()
+    document.querySelector('#surface')!.innerHTML =
+      '<article class="abele-list-row"><div class="tree-item-self abele-list-row__line"><div class="abele-list-row__detail"><ol class="abele-event-list"><li><article class="abele-list-row"><div class="tree-item-self abele-list-row__line"></div></article></li></ol></div></div></article>'
+    for (const el of document.querySelectorAll('#surface *'))
+      vi.spyOn(el, 'getBoundingClientRect').mockReturnValue(new DOMRect(20, 20, 100, 20))
+    const s = captureDesign('#surface'),
+      rows = s.elements.filter((e) => e.selector === 'div.tree-item-self.abele-list-row__line')
+    expect(rows).toHaveLength(2)
+    expect(rows[0].rowScope).not.toBe(rows[1].rowScope)
+    expect(rows[1].rowScope).toBe(s.elements.find((e) => e.selector === 'ol.abele-event-list')!.id)
+  })
   it('does not make a static tree label into a touch action', () => {
     fixture()
     document

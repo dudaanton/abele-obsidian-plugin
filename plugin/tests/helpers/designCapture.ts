@@ -194,6 +194,13 @@ export function captureDesign(selector: string, options: CaptureOptions = {}): D
           [...el.classList].map((c) => '.' + c).join(''),
         parent: ids.get(el.parentElement!) ?? null,
         row: host && ids.get(host),
+        rowScope: host
+          ? ids.get(
+              host.parentElement?.closest(
+                '.abele-event-list, .abele-list-row__detail, .tree-item-children, [data-design-list]'
+              ) ?? root
+            )
+          : undefined,
         kind,
         role,
         layoutBox: !el.parentElement?.closest('svg'),
