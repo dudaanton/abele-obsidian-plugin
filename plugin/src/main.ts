@@ -98,6 +98,7 @@ import { SCRIPT_API_DOCS } from './scripting/apiDocs'
 import { SCRIPT_VIEW_DOCS } from './scripting/view/viewDocs'
 import { ScopeResolver } from './ai/ScopeResolver'
 import { ChatStorage } from './ai/ChatStorage'
+import { renameDelegationIdentity } from './ai/delegationIdentity'
 import weekday from 'dayjs/plugin/weekday'
 import updateLocale from 'dayjs/plugin/updateLocale'
 import dayOfYear from 'dayjs/plugin/dayOfYear'
@@ -1368,6 +1369,7 @@ export default class AbelePlugin extends Plugin {
         if (!(file instanceof TFile)) return
         // A chat is renamed after its title; comments on its answers name it by path.
         if (file.extension === 'abchat') {
+          renameDelegationIdentity(oldPath, file.path)
           void CommentService.getInstance().handleRename(oldPath, file.path)
           return
         }

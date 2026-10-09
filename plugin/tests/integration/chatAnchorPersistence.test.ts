@@ -88,6 +88,21 @@ it('keeps delegation parent authority bound to the durable chat identity, not a 
   expect(session.delegationParentId).toBe(id)
 })
 
+it('does not share delegation authority with a copied abchat file', async () => {
+  const id = await session.ensureDelegationParentId()
+  const copyPath = 'AI/Chats/sample-copy.abchat'
+  await app.vault.create(copyPath, await app.vault.read(file()))
+  const copy = new ChatSession(ChatService.getInstance())
+  try {
+    await copy.load(app.vault.getAbstractFileByPath(copyPath) as TFile)
+    expect(copy.delegationParentId).toBeUndefined()
+    const fresh = await copy.ensureDelegationParentId()
+    expect(fresh).not.toBe(id)
+    expect(session.delegationParentId).toBe(id)
+    expect((await disk()).metadata?.chatId).toBe(id)
+  } finally { copy.destroy() }
+})
+
 describe('durable selection anchors', () => {
   it.each([1, 2])(
     'lazily initializes identities in format %s and preserves source/history through reopen and compaction',

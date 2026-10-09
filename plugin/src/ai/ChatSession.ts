@@ -30,6 +30,7 @@ import type {
 } from './client'
 import { ChatStorage } from './ChatStorage'
 import { cloneChatPath } from './chatClone'
+import { claimDelegationIdentity, ownsDelegationIdentity } from './delegationIdentity'
 import {
   prepareSelectionRevision,
   ensureCapturedAnchor,
@@ -257,7 +258,11 @@ export class ChatSession implements SummarizerHost, InterceptorHost, AnchorStora
   private get chatIdentity(): string | undefined { return this.chatIdentityRef.value }
   private set chatIdentity(value: string | undefined) { this.chatIdentityRef.value = value }
   /** Existing durable chat identity, not the transient tab/AgentLoop ID. */
-  get delegationParentId(): string | undefined { return this.chatIdentity }
+  get delegationParentId(): string | undefined {
+    const file = this.currentChatFile.value
+    return file && this.chatIdentity && ownsDelegationIdentity(this.chatIdentity, file.path)
+      ? this.chatIdentity : undefined
+  }
   private bindingRecovery: ChatBindingRecovery[] | undefined
   private backgroundAbort: AbortController | null = null
   private toolAbortController: AbortController | null = null
@@ -2689,7 +2694,7 @@ export class ChatSession implements SummarizerHost, InterceptorHost, AnchorStora
    */
   async ensureDelegationParentId(): Promise<string> {
     while (this.writing) await this.writing
-    if (this.chatIdentity) return this.chatIdentity
+    if (this.delegationParentId) return this.delegationParentId
     const file = this.currentChatFile.value
     const generation = this.generation
     if (!file || this.kind === 'run') throw new Error('Save this parent chat before approving node delegation')
@@ -2700,10 +2705,26 @@ export class ChatSession implements SummarizerHost, InterceptorHost, AnchorStora
     check()
     const operation = Promise.resolve().then(async () => {
       check()
+      const existing = this.chatIdentity
+      // An older identity may predate the device-local owner binding. Never adopt
+      // ambiguous file metadata: two physical files cannot claim one parent grant.
+      if (existing) {
+        const files = GlobalStore.getInstance().app.vault.getFiles().filter(
+          (candidate) => candidate.extension === 'abchat' && candidate.path !== file.path
+        )
+        let duplicated = false
+        for (const candidate of files) {
+          const loaded = await ChatStorage.getInstance().loadChat(candidate).catch((): null => null)
+          if (loaded?.metadata?.chatId === existing) { duplicated = true; break }
+        }
+        check()
+        if (!duplicated && claimDelegationIdentity(existing, file.path)) return existing
+      }
       const chatId = crypto.randomUUID()
       const snapshot = this.snapshot()
       await this.rewriteReply(file, { ...snapshot, metadata: { ...snapshot.metadata, chatId }, internalMessages: [...snapshot.internalMessages] }, check)
       check()
+      claimDelegationIdentity(chatId, file.path)
       this.chatIdentity = chatId
       return chatId
     })
