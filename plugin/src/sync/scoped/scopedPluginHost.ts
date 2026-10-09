@@ -8,6 +8,8 @@ import {
   pushScoped,
   scanScopedChanges,
   sha256,
+  exclusiveOperationPort,
+  type ExclusiveOperationOptions,
   type ScopedClient,
   type StateEntry,
 } from '@abele/sync-core'
@@ -36,7 +38,7 @@ import {
 import { SponsoredAssetsHttpPort } from '../sharing/sponsoredHttp'
 import { scopedSecretPort } from './scopedSecretSlots'
 import { fetchWithAbort, waitWithAbort } from './abortableTransport'
-import { RuntimeFence, fencedPort } from '../external/recovery'
+import { RuntimeFence, fencedPort, EXTERNAL_ACTIVATION_KEY } from '../external/recovery'
 import { runtimeTransport } from '../external/runtimeTransport'
 import {
   checkExternalMigration,
@@ -49,6 +51,7 @@ import {
 import { ConnectionBindingSchema, type ConnectionBinding } from '../external/records'
 import { pluginRepresentation } from '../external/pluginRepresentation'
 import { AttachmentStore, type AttachmentPublication } from '../external/attachmentStore'
+import { stageScopedDeparture } from '../external/connectionSwitch'
 import { ExternalFileHost } from '../external/ObsidianExternalFileHost'
 import type { ExternalRepresentation } from '../external/representation'
 
@@ -81,6 +84,11 @@ interface Runtime {
 }
 /** Thin Obsidian ports around the same scoped client/state/pull/push used by stand peers. */
 export class ScopedPluginHost {
+  private readonly operations = exclusiveOperationPort((work) => this.serial(work))
+
+  runExclusive<T>(work: () => Promise<T>, options?: ExclusiveOperationOptions): Promise<T> {
+    return this.operations.runExclusive(work, options)
+  }
   readonly connection = shallowRef<ScopedLocalConnection | null>(null)
   readonly paused = ref(false)
   readonly accessRemoved = ref('')
@@ -277,7 +285,7 @@ export class ScopedPluginHost {
         },
       })
       raw.guardEffects(() => fence.assertOwned())
-      await recoverExternalState(this.app, raw, c.ledgerId, database, binding, fence)
+      await recoverExternalState(this.app, raw, c.ledgerId, database, binding, fence, this.factory)
     } catch (error) {
       raw?.close()
       fence.release()
@@ -307,6 +315,7 @@ export class ScopedPluginHost {
       fence.activate()
       client = fencedPort(client, fence, ['commit', 'putBlob'])
       const representations = await pluginRepresentation({
+        factory: this.factory,
         app: this.app,
         store: raw,
         ledger: state.placementStore(),
@@ -427,7 +436,7 @@ export class ScopedPluginHost {
       host: fileHost,
       binding: r.binding,
       assertOwned: () => r.fence.assertReady(),
-      serial: { run: (work) => this.serial(work) },
+      serial: { run: (work) => this.runExclusive(work) },
       sync: () =>
         this.serial(async () => {
           const published: AttachmentPublication[] = []
@@ -707,13 +716,21 @@ export class ScopedPluginHost {
         this.revocation = null
       }
       departure.assertReady()
+      const externalDeparture = this.app.loadLocalStorage(EXTERNAL_ACTIVATION_KEY) != null
+      if (externalDeparture)
+        await stageScopedDeparture(this.app, scopedSecretPort(secrets()), c, async () => {
+          await requireExternalLifecycleSafety(this.app, this.factory)
+          departure.assertReady()
+        })
       this.runtime?.raw.close()
       this.runtime?.meta.close()
       this.runtime = null
-      await IndexedDbStateStore.delete(this.factory, 'abele-scoped-' + c.ledgerId)
-      departure.assertReady()
-      await IndexedDbStateStore.delete(this.factory, 'abele-scoped-native-' + c.ledgerId)
-      departure.assertReady()
+      if (!externalDeparture) {
+        await IndexedDbStateStore.delete(this.factory, 'abele-scoped-' + c.ledgerId)
+        departure.assertReady()
+        await IndexedDbStateStore.delete(this.factory, 'abele-scoped-native-' + c.ledgerId)
+        departure.assertReady()
+      }
       const road = scopedSecretPort(secrets())
       const pending = this.app.loadLocalStorage(SCOPED_JOIN_KEY) as { invitationId?: string } | null
       const keys = [c.tokenId, c.tokenId + ':binding']

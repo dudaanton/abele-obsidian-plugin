@@ -173,7 +173,15 @@ export async function buildEngine(recipe: EngineRecipe): Promise<BuiltEngine> {
   try {
     binding = await personalExternalBinding(app, connection, token, () => fence.assertOwned())
     fence.assertOwned()
-    await recoverExternalState(app, store, ledger.stateId, database, binding, fence)
+    await recoverExternalState(
+      app,
+      store,
+      ledger.stateId,
+      database,
+      binding,
+      fence,
+      factoryOf(deps)
+    )
     await requireLedger(app, store, ledger)
     fence.assertOwned()
     let ownerPublication: Awaited<ReturnType<NonNullable<typeof deps.ownerPublication>>> | undefined
@@ -274,6 +282,7 @@ export async function buildEngine(recipe: EngineRecipe): Promise<BuiltEngine> {
     const selective = selectiveFrom(toRaw(connection.selective), Platform.isMobile)
     const ignore = ignoreFor(app.vault.configDir, ignoreText, join === null ? null : ownSettings)
     const representations = await pluginRepresentation({
+      factory: factoryOf(deps),
       app,
       store,
       ledgerId: ledger.stateId,
@@ -377,14 +386,7 @@ export async function buildEngine(recipe: EngineRecipe): Promise<BuiltEngine> {
           binding: binding!,
           assertOwned: () => fence.assertReady(),
           // Core's serialized host job (the same queue as sync/apply/rename/delete).
-          serial: {
-            run: (work) =>
-              (
-                engine as unknown as {
-                  exclusive<T>(job: () => Promise<T>): Promise<T>
-                }
-              ).exclusive(work),
-          },
+          serial: { run: (work) => engine.runExclusive(work) },
           sync: async () => {
             const report = await engine.sync()
             return {

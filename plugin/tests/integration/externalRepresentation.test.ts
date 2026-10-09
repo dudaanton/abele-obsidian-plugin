@@ -42,6 +42,29 @@ const entry = {
   mtime: 1000,
 }
 const cleanups: (() => void)[] = []
+it('holds predecessor recovery bytes without adopting their file identity on a new connection', async () => {
+  const retained = 'Media/.abele-external-sample-predecessor.incoming'
+  const fake = buildFakeVault([{ path: retained, content: 'sample retained bytes' }])
+  const representation = await ExternalRepresentation.open({
+    state: null,
+    emptyView: {
+      ledgerId: 'sample-new-ledger',
+      binding: { ...binding, principalId: 'sample-new-device' },
+    },
+    ledger: new MemoryStateStore(),
+    fs: new ObsidianFileSystem(fake as unknown as App),
+    assertOwned: () => {},
+    scriptsFolder: () => 'Scripts',
+    verify: async () => {
+      throw Error('unexpected verification')
+    },
+    installProjection: async () => {
+      throw Error('unexpected install')
+    },
+    retiredPaths: new Set([retained.toLowerCase()]),
+  })
+  expect(await representation.classify(retained)).toMatchObject({ kind: 'hold', dirty: false })
+})
 afterEach(() => {
   vi.restoreAllMocks()
   for (const close of cleanups.splice(0)) close()

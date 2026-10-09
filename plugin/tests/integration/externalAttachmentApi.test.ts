@@ -6,6 +6,8 @@ import { IndexedDbStateStore } from '@/sync/IndexedDbStateStore'
 import { ExternalState } from '@/sync/external/state'
 import { ExternalFileHost } from '@/sync/external/ObsidianExternalFileHost'
 import { AttachmentStore } from '@/sync/external/attachmentStore'
+import { requireExternalLifecycleSafety } from '@/sync/external/pluginSafety'
+import { EXTERNAL_ACTIVATION_KEY } from '@/sync/external/recovery'
 import { buildFakeVault } from '../helpers/fakeVault'
 
 const path = 'Media/sample-image.bin'
@@ -114,6 +116,179 @@ async function setup(mode: 'personal' | 'scoped' = 'personal') {
     },
   }
 }
+
+describe('disconnect materialization', () => {
+  it('includes acknowledged desktop staging links in readiness without deleting them', async () => {
+    const s = await setup()
+    try {
+      s.fake.saveLocalStorage(EXTERNAL_ACTIVATION_KEY, {
+        schema: 1,
+        ledgers: [
+          {
+            ledgerId: 'sample-ledger',
+            databaseName: s.database,
+            databaseIdentity: s.store.databaseIdentity,
+            binding,
+            phase: 'active',
+          },
+        ],
+      })
+      await s.api.evict(s.base.fileId, {
+        operationId: 'sample-offload',
+        expectedRevision: 0,
+        expectedVersionId: s.base.versionId,
+      })
+      const artifact = (await s.state.snapshot()).operations[0].ownedArtifacts[0]
+      const sidecar = await s.fake.vault.adapter.readBinary(path + '.abele-ref')
+      await s.fake.vault.adapter.writeBinary(artifact.path, sidecar)
+      expect(
+        (await s.api.materializeForDisconnect({ operationId: 'sample-departure' })).status
+      ).toBe('complete')
+      await expect(
+        requireExternalLifecycleSafety(s.fake as unknown as App, s.factory)
+      ).resolves.toBeUndefined()
+      expect(await s.fake.vault.adapter.exists(artifact.path)).toBe(true)
+      await s.fake.vault.adapter.write(artifact.path, 'sample changed retained artifact')
+      expect(await s.api.inspectDisconnect()).toMatchObject({ safe: false })
+    } finally {
+      s.close()
+    }
+  })
+  it('permits departure only after committed readiness and rechecks local bytes', async () => {
+    const s = await setup()
+    try {
+      s.fake.saveLocalStorage(EXTERNAL_ACTIVATION_KEY, {
+        schema: 1,
+        ledgers: [
+          {
+            ledgerId: 'sample-ledger',
+            databaseName: s.database,
+            databaseIdentity: s.store.databaseIdentity,
+            binding,
+            phase: 'active',
+          },
+        ],
+      })
+      await s.api.evict(s.base.fileId, {
+        operationId: 'sample-offload',
+        expectedRevision: 0,
+        expectedVersionId: s.base.versionId,
+      })
+      await expect(
+        requireExternalLifecycleSafety(s.fake as unknown as App, s.factory)
+      ).rejects.toThrow(/external/i)
+      await s.api.materializeForDisconnect({ operationId: 'sample-departure' })
+      await expect(
+        requireExternalLifecycleSafety(s.fake as unknown as App, s.factory)
+      ).resolves.toBeUndefined()
+      await s.fake.vault.adapter.write(path, 'sample outside edit')
+      await expect(
+        requireExternalLifecycleSafety(s.fake as unknown as App, s.factory)
+      ).rejects.toThrow(/external/i)
+    } finally {
+      s.close()
+    }
+  })
+  it('persists preparation, installs originals and reopens ready without discarding recovery bytes', async () => {
+    const s = await setup()
+    try {
+      await s.api.evict(s.base.fileId, {
+        operationId: 'sample-offload',
+        expectedRevision: 0,
+        expectedVersionId: s.base.versionId,
+      })
+      expect(await s.api.inspectDisconnect()).toMatchObject({
+        safe: false,
+        requiredBytes: content.length,
+      })
+      expect(
+        (await s.api.materializeForDisconnect({ operationId: 'sample-departure' })).status
+      ).toBe('complete')
+      expect(new Uint8Array(await s.fake.vault.adapter.readBinary(path))).toEqual(content)
+      expect((await s.state.snapshot()).operations.at(-1)?.phase).toBe('hydrated')
+      const reopened = await restart(s)
+      try {
+        expect(await reopened.api.inspectDisconnect()).toMatchObject({
+          safe: true,
+          requiredBytes: 0,
+        })
+        expect((await reopened.state.snapshot()).files[0].retained.length).toBeGreaterThan(0)
+        expect(
+          (
+            await reopened.api.evict(s.base.fileId, {
+              operationId: 'sample-late-eviction',
+              expectedRevision: 6,
+              expectedVersionId: s.base.versionId,
+            })
+          ).status
+        ).toBe('busy')
+      } finally {
+        reopened.close()
+      }
+    } finally {
+      s.close()
+    }
+  })
+
+  it.each(['offline', 'no-space', 'version-changed', 'approval-required', 'unavailable'])(
+    'keeps dependencies when preparation fails with %s',
+    async (reason) => {
+      const s = await setup()
+      try {
+        await s.api.evict(s.base.fileId, {
+          operationId: 'sample-offload',
+          expectedRevision: 0,
+          expectedVersionId: s.base.versionId,
+        })
+        vi.spyOn(s.api, 'hydrate').mockResolvedValueOnce({
+          status: reason as any,
+          reclaimedBytes: 0,
+        })
+        expect(
+          (await s.api.materializeForDisconnect({ operationId: 'sample-departure' })).status
+        ).toBe(reason)
+        expect((await s.state.snapshot()).files[0].representation).toBe('remote-only')
+        expect(await s.api.inspectDisconnect()).toMatchObject({ safe: false })
+        expect(await s.fake.vault.adapter.exists(path + '.abele-ref')).toBe(true)
+      } finally {
+        s.close()
+      }
+    }
+  )
+
+  it.each(['deleted', 'detached', 'unavailable'] as const)(
+    'retains unresolved %s files in preparation inventory',
+    async (availability) => {
+      const s = await setup()
+      try {
+        await s.api.evict(s.base.fileId, {
+          operationId: 'sample-offload',
+          expectedRevision: 0,
+          expectedVersionId: s.base.versionId,
+        })
+        const doc = await s.state.snapshot(),
+          file = doc.files[0]
+        await s.state.commit({
+          expectedRevision: doc.revision,
+          files: [
+            {
+              expectedRevision: file.localRevision,
+              next: { ...file, localRevision: file.localRevision + 1, availability },
+            },
+          ],
+        })
+        expect(
+          (await s.api.materializeForDisconnect({ operationId: 'sample-departure' })).status
+        ).toBe('unavailable')
+        expect((await s.state.snapshot()).files[0].availability).toBe(availability)
+        expect(await s.api.inspectDisconnect()).toMatchObject({ safe: false })
+        expect(s.download).not.toHaveBeenCalled()
+      } finally {
+        s.close()
+      }
+    }
+  )
+})
 
 async function restart(s: Awaited<ReturnType<typeof setup>>) {
   s.close()

@@ -478,6 +478,19 @@ export class SyncService {
   disconnect(): Promise<void> {
     return this.enrolment.disconnect()
   }
+  async inspectDisconnect() {
+    const api = this.sharing.value?.scope.value
+      ? await this.sharing.value.scoped.attachments()
+      : await this.runner.attachments()
+    return api.inspectDisconnect()
+  }
+  async materializeForDisconnect(options: { operationId: string; signal?: AbortSignal }) {
+    const api = this.sharing.value?.scope.value
+      ? await this.sharing.value.scoped.attachments()
+      : await this.runner.attachments()
+    this.pause()
+    return api.materializeForDisconnect(options)
+  }
 
   /** Disconnect and throw away the ledger and the keychain name: see `Enrolment.forget`. */
   forget(): Promise<void> {

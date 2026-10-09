@@ -35,6 +35,7 @@ import {
 import { ExternalRecoveryRequired } from './recovery'
 
 export interface RepresentationOptions {
+  retiredPaths?: ReadonlySet<string>
   state: ExternalState | null
   /** Read-only empty view for a not-yet-activated ledger. This cannot commit or install. */
   emptyView?: { ledgerId: string; binding: ConnectionBinding }
@@ -185,6 +186,7 @@ export class ExternalRepresentation {
   }
   private artifact(path: string): boolean {
     return (
+      this.options.retiredPaths?.has(key(path)) ||
       this.document.files.some(
         (file) => file.projectionPath && key(file.projectionPath) === key(path)
       ) ||

@@ -26,6 +26,8 @@ export type AttachmentReason =
   | 'unavailable'
   | 'recovery-required'
   | 'unsupported-storage'
+  | 'no-space'
+  | 'disconnect-incomplete'
 export type OperationResult = {
   status: 'complete' | 'cleanup-pending' | AttachmentReason
   reclaimedBytes: number
@@ -55,6 +57,13 @@ export type AttachmentPublication = {
   size: number
 }
 const requestKey = (id: string) => 'external-eviction-request-v1:' + id
+export const DISCONNECT_PROOF_KEY = 'external-disconnect-ready-v1'
+export type DisconnectCheck = {
+  safe: boolean
+  revision: number
+  requiredBytes: number
+  blockers: string[]
+}
 
 /** Explicit, non-UI operations. The journal, not an adapter receipt, is the authority after
  * restart; no uncertain install/delete is ever issued a second time on retry. */
@@ -184,6 +193,7 @@ export class AttachmentStore {
   private reason(error: unknown): OperationResult {
     if (error instanceof ExternalFilePortError) return this.result(error.reason)
     const code = (error as { code?: string }).code
+    if (code === 'ENOSPC') return this.result('no-space')
     if (code === 'unsupported_server') return this.result('unsupported-server')
     if (['forbidden', 'unauthorized', 'not_found'].includes(code ?? ''))
       return this.result('unavailable')
@@ -246,6 +256,8 @@ export class AttachmentStore {
     ])
   }
   async evict(id: string, opts: EvictOptions): Promise<OperationResult> {
+    if ((await this.document()).operations.some((op) => op.kind === 'disconnect-preparation'))
+      return this.result('busy')
     if (!opts.operationId || !opts.expectedVersionId || !Number.isInteger(opts.expectedRevision))
       return this.result('ineligible')
     // Ordinary publication must finish OUTSIDE the exclusive queue. A sync that fails
@@ -308,6 +320,8 @@ export class AttachmentStore {
       async (effects) => {
         const doc = await this.document(),
           existing = doc.operations.find((op) => op.operationId === opts.operationId)
+        if (doc.operations.some((op) => op.kind === 'disconnect-preparation'))
+          return this.result('busy')
         const head = await this.head(id)
         if (!head) return this.result('ineligible')
         if (existing) {
@@ -841,10 +855,138 @@ export class AttachmentStore {
       return { pending: (await this.document()).files.filter((f) => f.pendingOperationId).length }
     })
   }
-  async inspectDisconnect(): Promise<{ safe: boolean }> {
-    return { safe: !(await this.document()).files.length }
+  async inspectDisconnect(): Promise<DisconnectCheck> {
+    return this.options.serial.run(() => this.disconnectInventory())
   }
-  async materializeForDisconnect(): Promise<OperationResult> {
-    return this.result('recovery-required')
+  private async disconnectInventory(): Promise<DisconnectCheck> {
+    const doc = await this.document()
+    const blockers: string[] = []
+    let requiredBytes = 0
+    for (const file of doc.files) {
+      if (file.representation !== 'hydrated') {
+        requiredBytes += file.lastProvenLocalBase?.size ?? 0
+        blockers.push(file.fileId + ':materialization-required')
+        continue
+      }
+      if (file.pendingOperationId || file.blockingReason || file.projectionPath) {
+        blockers.push(file.fileId + ':recovery-required')
+        continue
+      }
+      const base = file.lastProvenLocalBase
+      if (!base || !(await this.options.host.exists(base.path))) {
+        blockers.push(file.fileId + ':local-original-missing')
+        continue
+      }
+      const bytes = await this.options.host.read(base.path)
+      if (bytes.length !== base.size || (await sha256(bytes)) !== base.sha)
+        blockers.push(file.fileId + ':local-changed')
+      for (const artifact of file.retained) {
+        if (!(await this.options.host.exists(artifact.path))) {
+          blockers.push(file.fileId + ':retained-evidence-missing')
+          continue
+        }
+        const retained = await this.options.host.read(artifact.path)
+        if (retained.length !== artifact.size || (await sha256(retained)) !== artifact.sha)
+          blockers.push(file.fileId + ':retained-evidence-changed')
+      }
+    }
+    for (const op of doc.operations) {
+      if (
+        op.kind !== 'disconnect-preparation' &&
+        !['hydrated', 'remote-only', 'complete'].includes(op.phase)
+      )
+        blockers.push(op.operationId + ':recovery-required')
+      for (const artifact of op.ownedArtifacts) {
+        if (!(await this.options.host.exists(artifact.path))) continue
+        const bytes = await this.options.host.read(artifact.path)
+        if (bytes.length !== artifact.size || (await sha256(bytes)) !== artifact.sha)
+          blockers.push(op.operationId + ':retained-evidence-changed')
+      }
+    }
+    this.owned()
+    return { safe: !blockers.length, revision: doc.revision, requiredBytes, blockers }
+  }
+  async materializeForDisconnect(opts: {
+    operationId: string
+    signal?: AbortSignal
+  }): Promise<OperationResult> {
+    if (!opts?.operationId) return this.result('ineligible')
+    await this.options.serial.run(async () => {
+      const doc = await this.document()
+      const prior = doc.operations.find((op) => op.operationId === opts.operationId)
+      if (prior && prior.kind !== 'disconnect-preparation')
+        throw new ExternalFilePortError('recovery-required')
+      if (prior) return
+      if (doc.operations.some((op) => op.kind === 'disconnect-preparation'))
+        throw new ExternalFilePortError('busy')
+      await this.options.state.commit({
+        expectedRevision: doc.revision,
+        operations: [
+          {
+            expectedRevision: null,
+            next: {
+              schema: 1,
+              operationId: opts.operationId,
+              kind: 'disconnect-preparation',
+              phase: 'disconnect-preparing',
+              revision: 0,
+              connectionGeneration: doc.binding.generation,
+              expected: null,
+              sourcePath: null,
+              targetPath: null,
+              previousRepresentation: null,
+              localBase: null,
+              desiredRepresentation: 'hydrated',
+              projectionDigest: null,
+              ownedArtifacts: [],
+              unresolvedOutcome: null,
+              cleanupReason: null,
+            },
+          },
+        ],
+      })
+    })
+    // Hydration enters the same engine queue independently. Never await it while owning
+    // that queue; every installation revalidates the version and connection on entry.
+    for (const file of (await this.document()).files) {
+      if (opts.signal?.aborted) return this.result('disconnect-incomplete')
+      if (file.representation === 'hydrated') continue
+      if (file.availability !== 'active') return this.result('unavailable')
+      if (file.pendingOperationId) return this.result('recovery-required')
+      const head = await this.head(file.fileId)
+      if (!head) return this.result('unavailable')
+      const result = await this.hydrate(file.fileId, {
+        operationId: `${opts.operationId}-${file.fileId}`,
+        expectedVersionId: head.versionId,
+        signal: opts.signal,
+      })
+      if (result.status !== 'complete') return result
+    }
+    return this.options.serial.run(async () => {
+      const check = await this.disconnectInventory()
+      if (!check.safe) return this.result('disconnect-incomplete')
+      const doc = await this.document(),
+        op = doc.operations.find((item) => item.operationId === opts.operationId)
+      if (!op || doc.revision !== check.revision) return this.result('recovery-required')
+      this.owned()
+      await this.options.state.commit({
+        expectedRevision: doc.revision,
+        operations: [
+          {
+            expectedRevision: op.revision,
+            next: { ...op, revision: op.revision + 1, phase: 'disconnect-ready' },
+          },
+        ],
+        ledger: {
+          metadata: [
+            {
+              key: DISCONNECT_PROOF_KEY,
+              value: JSON.stringify({ revision: doc.revision + 1, operationId: opts.operationId }),
+            },
+          ],
+        },
+      })
+      return this.result('complete')
+    })
   }
 }

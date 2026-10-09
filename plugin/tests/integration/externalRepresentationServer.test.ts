@@ -24,7 +24,7 @@ afterEach(async () => {
 })
 
 describe('external representation against the selected real server input', () => {
-  it.each([false, true])(
+  it.each([false, true, 'disconnect'] as const)(
     'evicts with ordinary publication (edited=%s) and restores identical version-bound bytes',
     async (edited) => {
       server = await syncServer()
@@ -97,12 +97,7 @@ describe('external representation against the selected real server input', () =>
           ledger: store,
           host,
           binding,
-          serial: {
-            run: <T>(job: () => Promise<T>) =>
-              (engine as unknown as { exclusive<T>(work: () => Promise<T>): Promise<T> }).exclusive(
-                job
-              ),
-          },
+          serial: { run: <T>(job: () => Promise<T>) => engine.runExclusive(job) },
           assertOwned: () => {},
           scriptsFolder: () => 'Scripts',
           sync: async () => {
@@ -125,13 +120,35 @@ describe('external representation against the selected real server input', () =>
         expect(await fake.vault.adapter.exists(head.path)).toBe(false)
         const published = await client.head(head.file_id)
         if (edited) expect(published.version_id).not.toBe(head.version_id)
-        const restored = await api.hydrate(head.file_id, {
-          operationId: 'sample-real-hydration',
-          expectedVersionId: published.version_id,
-        })
+        const restored =
+          edited === 'disconnect'
+            ? await api.materializeForDisconnect({ operationId: 'sample-real-departure' })
+            : await api.hydrate(head.file_id, {
+                operationId: 'sample-real-hydration',
+                expectedVersionId: published.version_id,
+              })
         expect(restored.status).toBe('complete')
         expect(new Uint8Array(await fake.vault.adapter.readBinary(head.path))).toEqual(original)
         expect((await client.head(head.file_id)).version_id).toBe(published.version_id)
+        if (edited === 'disconnect') {
+          expect(await api.inspectDisconnect()).toMatchObject({ safe: true, requiredBytes: 0 })
+          expect(
+            await new SyncClient({
+              baseUrl: server.BASE_URL,
+              token: device.deviceToken,
+              fetch: server.fetch,
+            }).revokeSelf()
+          ).toBe('revoked')
+          await expect(
+            client.verifyExternalFile(head.file_id, {
+              version_id: published.version_id,
+              path: published.path,
+              sha: published.sha,
+              size: published.size,
+            })
+          ).rejects.toThrow()
+          expect(new Uint8Array(await fake.vault.adapter.readBinary(head.path))).toEqual(original)
+        }
       } finally {
         host.close()
       }

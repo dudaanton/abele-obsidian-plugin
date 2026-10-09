@@ -6,13 +6,14 @@ import { ExternalFileHost } from './ObsidianExternalFileHost'
 import { ExternalRecoveryRequired, type RuntimeFence } from './recovery'
 import type { ConnectionBinding } from './records'
 import { IndexedDbStateStore } from '../IndexedDbStateStore'
-import { EXTERNAL_INSPECTION_KEY, inspectionSchema } from './pluginSafety'
+import { EXTERNAL_INSPECTION_KEY, inspectionSchema, retiredArtifactPaths } from './pluginSafety'
 
 /** Called only after the startup fence/journal inspection, before engine activation.
  * During receive/recovery this callback runs inside the owning sync job; it does not enqueue
  * or await public sync() recursively. No production caller initiates eviction/hydration. */
 export async function pluginRepresentation(options: {
   app: App
+  factory: IDBFactory
   store: IndexedDbStateStore
   ledger?: StateStore
   scoped?: ScopedState
@@ -41,6 +42,7 @@ export async function pluginRepresentation(options: {
       },
     },
     ...options,
+    retiredPaths: await retiredArtifactPaths(app, options.factory, () => fence.assertOwned()),
     state,
     emptyView: { ledgerId, binding },
     ledger: options.ledger ?? store,

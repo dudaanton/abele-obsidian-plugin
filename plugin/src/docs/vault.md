@@ -42,7 +42,13 @@ inspection by physical path, size and mtime. It is device-local optimization dat
 adoption or publication authority. Changed candidates are reinspected; files above 16 KiB are
 not read. Departure borrows an existing claim rather than replacing it, so refusal retains
 its retryable runtime. Retained `abele-sync-external-connection-switch-v1` evidence is a
-recovery hold; completed credential switching/materialization is not implemented yet.
+recovery hold until its recorded credential and descriptor writes are reconciled. Explicit
+disconnect preparation materializes active attachments, verifies local originals and retained
+artifacts, then commits a revision-bound external-disconnect-ready-v1 ledger receipt. The
+device-local abele-sync-external-retired-v1 inventory preserves predecessor ledger descriptors
+and artifact ownership after departure or staged replacement. These records do not travel in
+settings or transfers. Tombstones, lost access and uncertain installations remain blockers;
+readiness never permits purging retained recovery bytes.
 
 Startup inspects external, installation and publication journals before constructing the
 personal engine or enabling scoped watchers/replay. Projection-update/move, tombstone and detach

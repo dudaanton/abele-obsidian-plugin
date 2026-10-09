@@ -10,6 +10,8 @@ import { IGNORE_FILE } from '../scope'
 import { wait, completion } from '../idbRequests'
 import { IndexedDbStateStore, stateDatabaseName } from '../IndexedDbStateStore'
 import { WriteJournal } from '../writeJournal'
+import { DISCONNECT_PROOF_KEY } from './attachmentStore'
+import { EXTERNAL_RETIRED_KEY } from './connectionSwitch'
 import { SCOPED_CONNECTION_KEY, SCOPED_JOIN_KEY } from '../scoped/scopedJoin'
 import { ConnectionBindingSchema, sameConnection, type ConnectionBinding } from './records'
 import { decodeExternalDocument, ExternalState } from './state'
@@ -62,6 +64,38 @@ function activation(storage: RecoveryStorage): Activation | null {
     throw new ExternalRecoveryRequired('activation marker is unreadable')
   }
 }
+function retiredLedgers(storage: RecoveryStorage): Activation['ledgers'] {
+  const raw = storage.loadLocalStorage(EXTERNAL_RETIRED_KEY)
+  if (raw == null) return []
+  const parsed = z.array(activationSchema).safeParse(raw)
+  if (!parsed.success) throw new ExternalRecoveryRequired('retired ledger inventory is unreadable')
+  return parsed.data.flatMap((item) => item.ledgers)
+}
+export async function retiredArtifactPaths(
+  storage: RecoveryStorage,
+  factory: IDBFactory | undefined,
+  assertOwned: () => void
+): Promise<Set<string>> {
+  const paths = new Set<string>()
+  for (const retired of retiredLedgers(storage)) {
+    if (!factory) throw new ExternalRecoveryRequired('retired ledger storage is unavailable')
+    assertOwned()
+    const found = await inspectExistingLedger(factory, retired.databaseName)
+    assertOwned()
+    const saved = found?.metadata.get('plugin:external-files')
+    if (!found || found.identity !== retired.databaseIdentity || typeof saved !== 'string')
+      throw new ExternalRecoveryRequired('retired evidence is missing')
+    const document = decodeExternalDocument(saved)
+    if (!sameConnection(document.binding, retired.binding))
+      throw new ExternalRecoveryRequired('retired evidence binding changed')
+    for (const file of document.files)
+      for (const artifact of file.retained) paths.add(artifact.path.normalize('NFC').toLowerCase())
+    for (const op of document.operations)
+      for (const artifact of op.ownedArtifacts)
+        paths.add(artifact.path.normalize('NFC').toLowerCase())
+  }
+  return paths
+}
 function persist(storage: RecoveryStorage, key: string, value: unknown): void {
   storage.saveLocalStorage(key, value)
   if (JSON.stringify(storage.loadLocalStorage(key)) !== JSON.stringify(value))
@@ -111,7 +145,7 @@ export async function checkExternalMigration(app: App, factory: IDBFactory): Pro
   if (app.loadLocalStorage(EXTERNAL_SWITCH_KEY) != null)
     throw new ExternalRecoveryRequired('connection replacement is unfinished')
   const marker = activation(app)
-  for (const item of marker?.ledgers ?? []) {
+  for (const item of [...(marker?.ledgers ?? []), ...retiredLedgers(app)]) {
     const found = await inspectExistingLedger(factory, item.databaseName)
     if (!found || found.identity !== item.databaseIdentity || found.version < 2)
       throw new ExternalRecoveryRequired(
@@ -309,7 +343,8 @@ export async function recoverExternalState(
   ledgerId: string,
   databaseName: string,
   binding: ConnectionBinding,
-  fence: RuntimeFence
+  fence: RuntimeFence,
+  factory?: IDBFactory
 ): Promise<void> {
   fence.assertOwned()
   const marker = activation(app)
@@ -331,7 +366,7 @@ export async function recoverExternalState(
     raw = await store.getExternalState()
   }
   if (raw === null && item) throw new ExternalRecoveryRequired('activated journal is missing')
-  const ownedProjectionPaths = new Set<string>()
+  const ownedProjectionPaths = await retiredArtifactPaths(app, factory, () => fence.assertOwned())
   if (raw !== null) {
     const document = decodeExternalDocument(raw)
     if (document.ledgerId !== ledgerId || !sameConnection(document.binding, binding))
@@ -347,7 +382,13 @@ export async function recoverExternalState(
       )
         throw new ExternalRecoveryRequired('external job has no owned file')
       if (
-        !['projection-update', 'projection-move', 'tombstone', 'detach'].includes(operation.kind) &&
+        ![
+          'projection-update',
+          'projection-move',
+          'tombstone',
+          'detach',
+          'disconnect-preparation',
+        ].includes(operation.kind) &&
         !['complete', 'remote-only', 'hydrated'].includes(operation.phase)
       )
         throw new ExternalRecoveryRequired()
@@ -451,11 +492,12 @@ export async function requireExternalLifecycleSafety(
 ): Promise<void> {
   if (app.loadLocalStorage(EXTERNAL_SWITCH_KEY) != null) throw new ExternalRecoveryRequired()
   const marker = activation(app)
-  if (marker) throw new ExternalRecoveryRequired()
   const installation = new WriteJournal(app)
   if (installation.entries().length || installation.recovered().length)
     throw new ExternalRecoveryRequired('installation or retained-byte recovery is unfinished')
   const names = new Set<string>(database ? [database] : [])
+  const activatedLedgers = [...(marker?.ledgers ?? []), ...retiredLedgers(app)]
+  for (const item of activatedLedgers) names.add(item.databaseName)
   for (const key of [undefined, LEDGER_PROOF_KEY, LEDGER_BOOTSTRAP_KEY]) {
     const held = readLedgerId(app, key)
     if (held.stateId) names.add(stateDatabaseName(held.stateId))
@@ -470,14 +512,83 @@ export async function requireExternalLifecycleSafety(
       names.add('abele-scoped-' + id)
       names.add('abele-scoped-native-' + id)
     }
+  const ownedPaths = new Set<string>()
   for (const name of names) {
     const found = await inspectExistingLedger(factory, name)
+    const activated = activatedLedgers.find((item) => item.databaseName === name)
+    if (
+      activated &&
+      (!found || found.identity !== activated.databaseIdentity || activated.phase !== 'active')
+    )
+      throw new ExternalRecoveryRequired('activated ledger is missing or changed')
     const raw = found?.metadata.get('plugin:external-files')
+    if (activated && raw == null) throw new ExternalRecoveryRequired('activated journal is missing')
     if (raw != null) {
-      if (typeof raw !== 'string' || externalInventory(decodeExternalDocument(raw)).blocked)
+      if (typeof raw !== 'string') throw new ExternalRecoveryRequired()
+      const doc = decodeExternalDocument(raw)
+      if (
+        activated &&
+        (activated.ledgerId !== doc.ledgerId || !sameConnection(activated.binding, doc.binding))
+      )
+        throw new ExternalRecoveryRequired('activation binding changed')
+      if (!externalInventory(doc).blocked && !activated) continue
+      // Deleting a database still owning retained evidence is never authorized by a
+      // departure receipt. Readiness permits leaving, not purging recovery material.
+      if (database === name && externalInventory(doc).blocked) throw new ExternalRecoveryRequired()
+      let proof: { revision?: number; operationId?: string }
+      try {
+        proof = JSON.parse(String(found?.metadata.get('plugin:' + DISCONNECT_PROOF_KEY)))
+      } catch {
         throw new ExternalRecoveryRequired()
+      }
+      if (
+        proof?.revision !== doc.revision ||
+        !doc.operations.some(
+          (op) =>
+            op.kind === 'disconnect-preparation' &&
+            op.phase === 'disconnect-ready' &&
+            op.operationId === proof.operationId
+        )
+      )
+        throw new ExternalRecoveryRequired('disconnect preparation is incomplete')
+      for (const op of doc.operations)
+        if (
+          op.kind !== 'disconnect-preparation' &&
+          !['hydrated', 'remote-only', 'complete'].includes(op.phase)
+        )
+          throw new ExternalRecoveryRequired('operation is unresolved')
+      const verifyLocal = async (path: string, sha: string, size: number) => {
+        const bytes = new Uint8Array(await app.vault.adapter.readBinary(path))
+        if (bytes.length !== size || (await sha256(bytes)) !== sha)
+          throw new ExternalRecoveryRequired('materialized or retained bytes changed')
+      }
+      for (const op of doc.operations)
+        for (const artifact of op.ownedArtifacts) {
+          if (!(await app.vault.adapter.exists(artifact.path))) continue
+          await verifyLocal(artifact.path, artifact.sha, artifact.size)
+          ownedPaths.add(artifact.path.normalize('NFC').toLowerCase())
+        }
+      for (const file of doc.files) {
+        if (
+          file.representation !== 'hydrated' ||
+          file.pendingOperationId ||
+          file.blockingReason ||
+          file.projectionPath ||
+          !file.lastProvenLocalBase
+        )
+          throw new ExternalRecoveryRequired('materialization is incomplete')
+        await verifyLocal(
+          file.lastProvenLocalBase.path,
+          file.lastProvenLocalBase.sha,
+          file.lastProvenLocalBase.size
+        )
+        for (const artifact of file.retained) {
+          await verifyLocal(artifact.path, artifact.sha, artifact.size)
+          ownedPaths.add(artifact.path.normalize('NFC').toLowerCase())
+        }
+      }
     }
   }
-  if (await projectionEvidence(app, () => {}, false))
+  if (await projectionEvidence(app, () => {}, false, ownedPaths))
     throw new ExternalRecoveryRequired('unresolved projection evidence')
 }

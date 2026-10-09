@@ -86,7 +86,7 @@ afterAll(async () => {
   }
 })
 
-async function roundTrip(scoped: boolean) {
+async function roundTrip(scoped: boolean, materialize = false) {
   return JSON.parse(
     await evalLong(`(async()=>{
     const api=window.__abeleTest,path=${JSON.stringify(head.path)},bytes=new TextEncoder().encode(${JSON.stringify(content)}),adapter=app.vault.adapter
@@ -119,15 +119,27 @@ async function roundTrip(scoped: boolean) {
       const evicted=await attachment.evict(base.file_id,{...options,acknowledgeScopedWarning:true})
       const missing=!await adapter.exists(path),sidecar=await adapter.exists(path+'.abele-ref')
       const read=await attachment.read(base.file_id,{expectedVersionId:base.version_id})
-      const hydrated=await attachment.hydrate(base.file_id,{operationId:crypto.randomUUID(),expectedVersionId:base.version_id})
+      const hydrated=${materialize ? 'await attachment.materializeForDisconnect({operationId:crypto.randomUUID()})' : 'await attachment.hydrate(base.file_id,{operationId:crypto.randomUUID(),expectedVersionId:base.version_id})'}
+      const disconnectReady=(await attachment.inspectDisconnect()).safe
       const actual=new Uint8Array(await adapter.readBinary(path)),retired=!await adapter.exists(path+'.abele-ref')
-      return JSON.stringify({evicted,missing,sidecar,hydrated,retired,warning,requests,verifiedRead:read.bytes?.length===bytes.length&&read.bytes.every((n,i)=>n===bytes[i]),identical:actual.length===bytes.length&&actual.every((n,i)=>n===bytes[i])})
+      return JSON.stringify({evicted,missing,sidecar,hydrated,retired,warning,requests,disconnectReady,verifiedRead:read.bytes?.length===bytes.length&&read.bytes.every((n,i)=>n===bytes[i]),identical:actual.length===bytes.length&&actual.every((n,i)=>n===bytes[i])})
     }finally{host.close();store.close();await api.externalState.IndexedDbStateStore.delete(indexedDB,database)}
   })()`)
   )
 }
 
 describe('attachment API with the pinned real server on live adapters', () => {
+  it.each([false, true])('materializes before departure (scoped reader=%s)', async (scoped) => {
+    expect(await roundTrip(scoped, true)).toMatchObject({
+      evicted: { status: 'complete' },
+      missing: true,
+      sidecar: true,
+      hydrated: { status: 'complete' },
+      disconnectReady: true,
+      identical: true,
+      retired: true,
+    })
+  })
   it.each([false, true])(
     'completes HTTP-backed eviction/read/hydration (scoped reader=%s)',
     async (scoped) => {

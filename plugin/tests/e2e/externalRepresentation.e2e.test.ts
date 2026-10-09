@@ -37,7 +37,7 @@ const prelude = `
     context.open=async()=>{
       context.fence=new ports.RuntimeFence(app,database,()=>window.__representationOwner===root)
       context.fence.activate()
-      context.runtime=await ports.pluginRepresentation({app,store:context.store,ledger:scoped?scoped.placementStore():context.store,scoped:scoped??undefined,ledgerId,binding,fence:context.fence,fs,verify:(...args)=>context.verify(...args),scriptsFolder:()=>context.scripts})
+      context.runtime=await ports.pluginRepresentation({app,factory:indexedDB,store:context.store,ledger:scoped?scoped.placementStore():context.store,scoped:scoped??undefined,ledgerId,binding,fence:context.fence,fs,verify:(...args)=>context.verify(...args),scriptsFolder:()=>context.scripts})
     }
     await context.open()
     context.close=async()=>{context.fence.release();context.store.close();await persistence.IndexedDbStateStore.delete(indexedDB,database)}

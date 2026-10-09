@@ -9,6 +9,11 @@ import { authorizeLedgerBootstrap, requireLedger } from '@/sync/ledgerRecovery'
 import { IndexedDbStateStore, stateDatabaseName } from '@/sync/IndexedDbStateStore'
 import { rememberLedgerCleanup } from '@/sync/ledgerCleanup'
 import { ExternalState } from '@/sync/external/state'
+import { sha256 } from '@abele/sync-core'
+import { AttachmentStore } from '@/sync/external/attachmentStore'
+import { ExternalFileHost } from '@/sync/external/ObsidianExternalFileHost'
+import { activateExternalFiles } from '@/sync/external/pluginSafety'
+import { EXTERNAL_RETIRED_KEY } from '@/sync/external/connectionSwitch'
 import { ScopedPluginHost } from '@/sync/scoped/scopedPluginHost'
 import { SCOPED_CONNECTION_KEY, type ScopedLocalConnection } from '@/sync/scoped/scopedJoin'
 import { scopedSecretPort } from '@/sync/scoped/scopedSecretSlots'
@@ -123,6 +128,199 @@ async function personal(retired = false) {
 }
 
 describe('external dependency lifecycle refusals', () => {
+  it('scoped Leave retains its databases after materialized departure', async () => {
+    const app = useVault([]),
+      factory = new IDBFactory()
+    setSecrets(null)
+    AbeleConfig.getInstance().applySettings()
+    const c: ScopedLocalConnection = {
+      version: 4,
+      facet: 'scoped',
+      issuer: 'https://sync.example.invalid',
+      vaultId: 'sample-vault',
+      grantId: 'sample-grant',
+      memberId: 'sample-member',
+      principalId: 'sample-principal',
+      principalKind: 'installation',
+      role: 'reader',
+      rootFileId: 'sample-root',
+      tokenId: 'abele-scoped-installation-sample',
+      ledgerId: 'sample-scoped-ledger',
+      scriptPolicy: 'refuse',
+    }
+    const token = 'absi_' + 'a'.repeat(43),
+      road = scopedSecretPort(secrets())
+    road.set(c.tokenId, token)
+    road.set(c.tokenId + ':binding', JSON.stringify({ connection: c, token }))
+    app.saveLocalStorage(SCOPED_CONNECTION_KEY, c)
+    const fetcher = vi.fn(async () => new Response(JSON.stringify({ revoked: true })))
+    const host = new ScopedPluginHost(app, fetcher as never, factory)
+    cleanup.push(() => host.close())
+    const r = await (host as any).open(c, true)
+    const state = await activateExternalFiles(
+      app,
+      r.raw,
+      c.ledgerId,
+      'abele-scoped-' + c.ledgerId,
+      r.binding,
+      () => r.fence.assertReady()
+    )
+    const bytes = new TextEncoder().encode('sample materialized bytes'),
+      path = 'Media/sample.bin'
+    await app.vault.createFolder('Media')
+    await app.vault.adapter.writeBinary(path, bytes.buffer)
+    const base = {
+      fileId: 'sample-file',
+      versionId: 'sample-v1',
+      path,
+      sha: await sha256(bytes),
+      size: bytes.length,
+      mtime: 1000,
+    }
+    await r.raw.put({ ...base, wirePath: path })
+    await state.commit({
+      expectedRevision: 0,
+      files: [
+        {
+          expectedRevision: null,
+          next: {
+            schema: 1,
+            ledgerId: c.ledgerId,
+            binding: r.binding,
+            fileId: base.fileId,
+            representation: 'hydrated',
+            preference: 'on-demand',
+            pinned: false,
+            projectionPath: null,
+            projectionSha: null,
+            localRevision: 0,
+            pendingOperationId: null,
+            availability: 'active',
+            blockingReason: null,
+            lastProvenLocalBase: base,
+            retained: [],
+          },
+        },
+      ],
+    })
+    const api = await host.attachments()
+    expect((await api.materializeForDisconnect({ operationId: 'sample-departure' })).status).toBe(
+      'complete'
+    )
+    await host.leave()
+    expect(fetcher).toHaveBeenCalledOnce()
+    expect(app.loadLocalStorage(SCOPED_CONNECTION_KEY)).toBeNull()
+    expect(road.get(c.tokenId)).toBe('')
+    expect(await factory.databases()).toEqual(
+      expect.arrayContaining([
+        expect.objectContaining({ name: 'abele-scoped-' + c.ledgerId }),
+        expect.objectContaining({ name: 'abele-scoped-native-' + c.ledgerId }),
+      ])
+    )
+    expect(new Uint8Array(await app.vault.adapter.readBinary(path))).toEqual(bytes)
+  })
+  it.each(['disconnect', 'chooseVault', 'import'] as const)(
+    '%s completes after preparation while retaining the predecessor ledger',
+    async (verb) => {
+      const s = await personal()
+      const document = s.before,
+        file = document.files[0],
+        path = 'Media/sample.bin'
+      const bytes = new TextEncoder().encode('sample materialized bytes')
+      await s.app.vault.createFolder('Media')
+      await s.app.vault.adapter.writeBinary(path, bytes.buffer)
+      const base = {
+        fileId: file.fileId,
+        versionId: 'sample-v1',
+        path,
+        sha: await sha256(bytes),
+        size: bytes.length,
+        mtime: 1000,
+      }
+      await s.target.put({ ...base, wirePath: path })
+      const state = await activateExternalFiles(
+        s.app,
+        s.target,
+        s.ledger.stateId,
+        stateDatabaseName(s.ledger.stateId),
+        document.binding,
+        () => {}
+      )
+      await state.commit({
+        expectedRevision: document.revision,
+        files: [
+          {
+            expectedRevision: file.localRevision,
+            next: {
+              ...file,
+              localRevision: file.localRevision + 1,
+              representation: 'hydrated',
+              projectionPath: null,
+              projectionSha: null,
+              blockingReason: null,
+              lastProvenLocalBase: base,
+            },
+          },
+        ],
+      })
+      const host = new ExternalFileHost(s.app, { platform: 'mobile', assertOwned: () => {} })
+      cleanup.push(() => host.close())
+      const api = new AttachmentStore({
+        state,
+        ledger: s.target,
+        host,
+        binding: document.binding,
+        serial: { run: async (work) => work() },
+        assertOwned: () => {},
+        sync: async () => {},
+        verify: async () => {
+          throw Error('unexpected verification')
+        },
+        download: async () => {
+          throw Error('unexpected download')
+        },
+        scriptsFolder: () => 'Scripts',
+      })
+      expect((await api.materializeForDisconnect({ operationId: 'sample-departure' })).status).toBe(
+        'complete'
+      )
+      if (verb === 'disconnect') await s.enrolment.disconnect()
+      else if (verb === 'chooseVault')
+        await s.enrolment.chooseVault('sample-target', 'Sample device')
+      else
+        await s.enrolment.adoptTransferred(
+          {
+            serverUrl: s.own.serverUrl,
+            vaultId: 'sample-target',
+            vaultName: 'Sample vault',
+            deviceId: 'sample-import',
+            deviceName: 'Sample device',
+          },
+          'absd_sample_import',
+          s.own.selective
+        )
+      expect(s.app.loadLocalStorage(EXTERNAL_RETIRED_KEY)).not.toBeNull()
+      const reopened = await IndexedDbStateStore.open(
+        s.factory,
+        stateDatabaseName(s.ledger.stateId)
+      )
+      try {
+        expect(JSON.parse((await reopened.getExternalState())!).files[0].representation).toBe(
+          'hydrated'
+        )
+      } finally {
+        reopened.close()
+      }
+      expect(new Uint8Array(await s.app.vault.adapter.readBinary(path))).toEqual(bytes)
+      if (verb !== 'disconnect') {
+        expect(s.keeper.connection.value.vaultId).toBe('sample-target')
+        expect(s.keeper.connection.value.deviceTokenId).not.toBe(s.own.deviceTokenId)
+        expect(s.keeper.connection.value.pendingRevoke.length).toBe(1)
+        expect(s.fetcher).not.toHaveBeenCalled()
+        expect(readLedgerId(s.app).stateId).not.toBe(s.ledger.stateId)
+      }
+    }
+  )
   it.each(['disconnect', 'forget', 'chooseVault', 'import'] as const)(
     '%s preserves credentials, descriptor and durable inventory before any revoke/enrol',
     async (verb) => {

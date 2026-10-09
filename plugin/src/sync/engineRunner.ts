@@ -22,6 +22,7 @@ import { AbeleConfig } from '@/services/AbeleConfig'
 import type { IndexedDbStateStore } from './IndexedDbStateStore'
 import type { DeviceConnection, JoinState } from './connection'
 import { buildEngine, firstRun } from './engineBuild'
+import type { AttachmentStore } from './external/attachmentStore'
 import { JOIN_SCOPE, joinLine, joinOf } from './joinState'
 import { enrolledElsewhere } from './enrolment'
 import type { SyncServiceDeps } from './environment'
@@ -103,6 +104,7 @@ export interface EngineHost {
 
 export class EngineRunner {
   private engine: SyncEngine | null = null
+  private attachmentApi: (() => Promise<AttachmentStore>) | null = null
   private lifetime = 0
   private revokeRuntime: (() => void) | null = null
   /** Revoked synchronously, including builds waiting on storage/recovery. */
@@ -146,6 +148,10 @@ export class EngineRunner {
   /** Whether an engine is running at all. */
   isRunning(): boolean {
     return this.engine !== null
+  }
+  async attachments(): Promise<AttachmentStore> {
+    if (!this.attachmentApi) throw new Error('Sync runtime is unavailable; recovery required')
+    return this.attachmentApi()
   }
 
   /** The vault client of the running engine, or null. */
@@ -515,7 +521,7 @@ export class EngineRunner {
     const app = this.host.app()
     if (app === null) return
     const lifetime = this.lifetime
-    const { engine, store, vault, countPending, invalidate } = await buildEngine({
+    const { engine, store, vault, countPending, invalidate, attachments } = await buildEngine({
       stillCurrent: () => lifetime === this.lifetime,
       app,
       host: this.host,
@@ -546,6 +552,7 @@ export class EngineRunner {
     this.store = store
     this.vault = vault
     this.engine = engine
+    this.attachmentApi = attachments
     this.countPending = countPending
     this.unwatchStatus = engine.onStatus((engineStatus) => {
       const status = statusOf(engineStatus)
@@ -616,6 +623,7 @@ export class EngineRunner {
     this.unwatchStatus?.()
     this.unwatchStatus = null
     this.engine = null
+    this.attachmentApi = null
     this.countPending = null
     this.localPending = null
     this.pendingRevision++

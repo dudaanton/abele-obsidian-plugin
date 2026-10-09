@@ -5,13 +5,13 @@
 The plugin base before the state work is `f2a39653` (filesystem probe documentation).
 Its working tree was clean. The original core/protocol pin was
 `80bc7c666ac54cc186696ebdaaccd2d9e7a735ba`. Canonical external state is now packaged from
-the explicitly selected committed input `a9354672aab9c4554fc3bf675b3a5c12f0b962ce`, which
+the explicitly selected committed input `75b84b5d3e83e119e9624b32a331e1827986342d`, which
 includes the shared core facade/schemas/error, opt-in engine recovery readiness, CLI
-ownership/lifecycle fixes and bounded discovery. It succeeds the canonical input
+ownership/lifecycle fixes, bounded discovery and the public exclusive scheduler port. It succeeds the canonical input
 `19d35b116a4ac6c062b50154b2fd33626e2ef012`, retaining its physical path-length correction
 without a plugin schema fork:
 
-- Core source tree: `bc8ebca0e40751da21ce7ec76897f6588d160659`.
+- Core source tree: `cf69c853ad195d198518b1a84fbb99339b25113c`.
 - Protocol source tree: `60b9ee72eee9455b25c57ae88957faec311e6ff3`.
 - Source lockfile SHA-256: `d3e42cb5c3548f605f98450070f98bf2e66488aa54e657b61b44b9824a8c1a2d`.
 
@@ -28,7 +28,7 @@ The verifier also checks that archive names, installed versions and core's proto
 agree with the provenance revision.
 
 The independently declared server test input is now also
-`a9354672aab9c4554fc3bf675b3a5c12f0b962ce`, in
+`75b84b5d3e83e119e9624b32a331e1827986342d`, in
 `plugin/scripts/server-test-fixtures.mjs`. It explicitly replaces the historical fixture
 `f927e62bb41817cd3cf0180e80f989e8c166ff1d` for the matching external-files implementation.
 This equality is a selected input, not a requirement to follow either checkout's mutable HEAD.
@@ -45,7 +45,7 @@ From `plugin/`:
 ```sh
 node scripts/verify-sync-inputs.mjs
 npx vitest run tests/unit/syncBuildInputs.test.ts
-node scripts/vendor-sync.mjs /path/to/sync-repository a9354672aab9c4554fc3bf675b3a5c12f0b962ce fixture
+node scripts/vendor-sync.mjs /path/to/sync-repository 75b84b5d3e83e119e9624b32a331e1827986342d fixture
 ```
 
 The last command exports only committed source into disposable local scratch storage and

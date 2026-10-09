@@ -28,7 +28,8 @@ import { USER_AGENT } from './transport'
 import { Revoker, withTimeout } from './revoke'
 import { retirePublicationStores } from './publication/publicationRetirement'
 import { requireExternalLifecycleSafety } from './external/pluginSafety'
-import { assertNoExternalLifecycleMarker } from './external/recovery'
+import { assertNoExternalLifecycleMarker, EXTERNAL_ACTIVATION_KEY } from './external/recovery'
+import { stageConnectionSwitch, stageConnectionDeparture } from './external/connectionSwitch'
 
 /**
  * Setting this device up and taking it down again: signing in, enrolling on a vault, taking a
@@ -112,7 +113,9 @@ export class Enrolment {
         const app = host.app()
         if (this.retirementInventory) {
           this.assertCurrent(this.retirementInventory.identity, this.retirementInventory.app)
-          assertNoExternalLifecycleMarker(this.retirementInventory.app)
+          if (this.retirementInventory.app.loadLocalStorage(EXTERNAL_ACTIVATION_KEY) != null)
+            await requireExternalLifecycleSafety(this.retirementInventory.app, host.factory())
+          else assertNoExternalLifecycleMarker(this.retirementInventory.app)
         } else if (app) await requireExternalLifecycleSafety(app, host.factory())
         this.assertCurrent()
       },
@@ -278,8 +281,13 @@ export class Enrolment {
       await requireExternalLifecycleSafety(app, this.host.factory())
       this.assertCurrent(identity, app)
       const held = this.host.connection().deviceTokenId
-      const tokenId = isDeviceSecretId(held) ? held : newSecretId()
-      dropped = this.enrolAs(app, enrolled.device_token, {
+      const tokenId =
+        app.loadLocalStorage(EXTERNAL_ACTIVATION_KEY) != null
+          ? newSecretId()
+          : isDeviceSecretId(held)
+            ? held
+            : newSecretId()
+      dropped = await this.enrolAs(app, enrolled.device_token, {
         serverUrl: accountUrl,
         vaultId,
         vaultName,
@@ -333,7 +341,9 @@ export class Enrolment {
     await requireExternalLifecycleSafety(app, this.host.factory())
     this.assertCurrent(undefined, app)
     const own = this.host.connection()
-    if (own.serverUrl !== '' || own.vaultId !== '') await this.disconnect()
+    const externalReplacement = app.loadLocalStorage(EXTERNAL_ACTIVATION_KEY) != null
+    if (externalReplacement) await this.host.serialise(() => this.host.teardown())
+    else if (own.serverUrl !== '' || own.vaultId !== '') await this.disconnect()
     const identity = this.identity()
     // A vault this device already walked to the end is a reconnect: nothing to choose, so
     // nothing is asked and it syncs at once (task-8 review, #6).
@@ -347,7 +357,7 @@ export class Enrolment {
     await requireExternalLifecycleSafety(app, this.host.factory())
     this.assertCurrent(identity, app)
     const tokenId = newSecretId()
-    const dropped = this.enrolAs(app, token, {
+    const dropped = await this.enrolAs(app, token, {
       serverUrl,
       vaultId: arrived.vaultId,
       vaultName: arrived.vaultName,
@@ -355,7 +365,10 @@ export class Enrolment {
       deviceName: arrived.deviceName,
       tokenId,
       selective: { ...selective, maxFileBytes: this.host.connection().selective.maxFileBytes },
-      join: reconnect ? null : { vaultId: arrived.vaultId, prefer: null, ask: true },
+      join:
+        !externalReplacement && reconnect
+          ? null
+          : { vaultId: arrived.vaultId, prefer: null, ask: true },
     })
     this.host.note(
       reconnect
@@ -452,7 +465,7 @@ export class Enrolment {
    * Write the connection an enrolment produced, minting a ledger when this vault has none for
    * that vault. Returns the ledger it replaced, for `settle` to delete.
    */
-  private enrolAs(
+  private async enrolAs(
     app: App,
     token: string,
     enrolled: {
@@ -465,10 +478,36 @@ export class Enrolment {
       selective?: DeviceConnection['selective']
       join: JoinState | null
     }
-  ): string | null {
+  ): Promise<string | null> {
     this.assertCurrent(undefined, app)
-    assertNoExternalLifecycleMarker(app)
     const { tokenId, selective, join, ...where } = enrolled
+    if (app.loadLocalStorage(EXTERNAL_ACTIVATION_KEY) != null) {
+      const oldLedger = readLedgerId(app)
+      const targetLedger = { stateId: newStateId(), vaultId: where.vaultId }
+      await stageConnectionSwitch(
+        app,
+        secrets().device,
+        {
+          ...this.host.connection(),
+          ...where,
+          deviceTokenId: tokenId,
+          enrolledUrl: where.serverUrl,
+          paused: false,
+          migrated: true,
+          join,
+          ...(selective === undefined ? {} : { selective }),
+        },
+        targetLedger,
+        token,
+        async () => {
+          await requireExternalLifecycleSafety(app, this.host.factory())
+          this.assertCurrent(undefined, app)
+        }
+      )
+      this.host.saveConnection(inspectConnection(app).connection)
+      return oldLedger.stateId || null
+    }
+    assertNoExternalLifecycleMarker(app)
     const before = secrets().device.get(tokenId)
     const beforeServer = secrets().device.get(tokenServerId(tokenId))
     bindDeviceToken(secrets().device, tokenId, token, where.serverUrl)
@@ -587,13 +626,17 @@ export class Enrolment {
         }
       }
       this.assertCurrent(identity, appForSafety ?? undefined)
-      // The secret goes and the id stays: `token()` reads a missing secret as no device, which
-      // is exactly the truth.
-      if (tokenId !== '' && token !== '') {
-        secrets().device.remove(tokenId)
-        secrets().device.remove(tokenServerId(tokenId))
-      }
-      this.host.saveConnection({
+      const departure: Pick<
+        DeviceConnection,
+        | 'serverUrl'
+        | 'enrolledUrl'
+        | 'vaultId'
+        | 'vaultName'
+        | 'deviceId'
+        | 'deviceName'
+        | 'paused'
+        | 'join'
+      > = {
         serverUrl: '',
         enrolledUrl: '',
         vaultId: '',
@@ -601,9 +644,30 @@ export class Enrolment {
         deviceId: '',
         deviceName: '',
         paused: false,
-        // A join belongs to the vault it was asked about; connecting again asks again.
         join: null,
-      })
+      }
+      if (appForSafety?.loadLocalStorage(EXTERNAL_ACTIVATION_KEY) != null) {
+        await stageConnectionDeparture(
+          appForSafety,
+          secrets().device,
+          {
+            ...this.host.connection(),
+            ...departure,
+            migrated: true,
+          },
+          async () => {
+            await requireExternalLifecycleSafety(appForSafety, this.host.factory())
+            this.assertCurrent(identity, appForSafety)
+          }
+        )
+      }
+      // The secret goes and the id stays: `token()` reads a missing secret as no device, which
+      // is exactly the truth.
+      if (tokenId !== '' && token !== '') {
+        secrets().device.remove(tokenId)
+        secrets().device.remove(tokenServerId(tokenId))
+      }
+      this.host.saveConnection(departure)
       this.account = null
       this.accountUrl = ''
       this.host.note('disconnected; the device token is forgotten')
@@ -644,6 +708,7 @@ export class Enrolment {
       let failure: unknown
       for (const stateId of ledgerCleanupIds(app)) {
         try {
+          await requireExternalLifecycleSafety(app, this.host.factory(), stateDatabaseName(stateId))
           await IndexedDbStateStore.delete(this.host.factory(), stateDatabaseName(stateId))
           finishLedgerCleanup(app, stateId)
         } catch (error) {

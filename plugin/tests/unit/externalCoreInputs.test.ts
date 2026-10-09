@@ -6,9 +6,13 @@ import * as records from '@/sync/external/records'
 import * as state from '@/sync/external/state'
 import { SqliteExternalStateStore } from '@/sync/external/SqliteExternalStateStore'
 
-const selected = 'a9354672aab9c4554fc3bf675b3a5c12f0b962ce'
+const selected = '75b84b5d3e83e119e9624b32a331e1827986342d'
 const exported = core as Record<string, any>
 describe('canonical external state inputs', () => {
+  it('exports the public engine scheduler and scoped queue adapter', () => {
+    expect(exported.SyncEngine.prototype.runExclusive).toBeTypeOf('function')
+    expect(exported.exclusiveOperationPort).toBeTypeOf('function')
+  })
   it('pins the explicit committed canonical input rather than a mutable sibling or unrelated revision', () => {
     const provenance = JSON.parse(
       readFileSync(new URL('../../vendor/sync/provenance.json', import.meta.url), 'utf8')

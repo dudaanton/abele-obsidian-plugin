@@ -28,6 +28,8 @@ import { joinOf } from './joinState'
 import type { LocalStorage } from './ledgerId'
 import type { SyncState } from './status'
 import { assertNoExternalLifecycleMarker } from './external/recovery'
+import { recoverConnectionSwitch, recoverScopedDeparture } from './external/connectionSwitch'
+import { scopedSecretPort } from './scoped/scopedSecretSlots'
 
 /**
  * This device's connection as the service holds it: read out of the vault's local storage,
@@ -92,6 +94,8 @@ export class ConnectionKeeper {
    */
   async open(app: App): Promise<void> {
     this.storage = app
+    await recoverScopedDeparture(app, scopedSecretPort(secrets()))
+    await recoverConnectionSwitch(app, secrets().device)
     if (app.loadLocalStorage(CONNECTION_KEY) == null) assertNoExternalLifecycleMarker(app)
     const config = AbeleConfig.getInstance()
     const loaded = config.takeLoadedSync()

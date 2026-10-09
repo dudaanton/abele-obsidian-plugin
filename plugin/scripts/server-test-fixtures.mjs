@@ -1,5 +1,5 @@
 /** Server test input is independent of the installed core/protocol package pin. */
-export const SERVER_TEST_COMMIT = 'a9354672aab9c4554fc3bf675b3a5c12f0b962ce'
+export const SERVER_TEST_COMMIT = '75b84b5d3e83e119e9624b32a331e1827986342d'
 /** Only fast-tier files whose setup uses a real, provenance-checked server archive. */
 export const serverTestFixtures = {
   ABELE_SYNC_DIR: [
