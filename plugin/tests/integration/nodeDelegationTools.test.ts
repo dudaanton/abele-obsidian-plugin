@@ -23,6 +23,7 @@ it('offers only bounded controller tools; never publishes grant IDs, credentials
   }
   const client = {
     connected: true,
+    listProjects: async () => [],
     describe: async () => ({ providers: [{ provider: 'pi', available: true }] }),
     approveDelegationGrant: vi.fn(async () => grant),
     createDelegation: vi.fn(async (request) => ({

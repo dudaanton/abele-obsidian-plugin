@@ -42,6 +42,14 @@ function fixture() {
   const client = {
     connected: true,
     store,
+    listProjects: vi.fn(async (after?: string) =>
+      after
+        ? []
+        : [
+            { project_id: 'project', root_path: '/workspace/sample-parser' },
+            { project_id: 'other-project', root_path: '/workspace/sample-other' },
+          ]
+    ),
     describe: vi.fn(async () => ({
       providers: [
         { provider: 'pi', available: true },
@@ -78,7 +86,12 @@ describe('trusted node delegation controller', () => {
     expect(f.client.createDelegation).not.toHaveBeenCalled()
     await f.controller.approve({ parent_id: 'parent', project_ids: ['project'], providers: ['pi'] })
     expect(await f.controller.destinations('other')).toEqual([])
-    expect(JSON.stringify(await f.controller.destinations('parent'))).not.toContain('grant_id')
+    const destinations = await f.controller.destinations('parent')
+    expect(destinations[0].projects).toEqual([
+      { project_id: 'project', root_path: '/workspace/sample-parser' },
+    ])
+    expect(JSON.stringify(destinations)).not.toContain('grant_id')
+    expect(JSON.stringify(destinations)).not.toContain('sample-other')
     await f.controller.create('parent', task)
     expect(f.client.createDelegation.mock.calls[0][0].grant_id).toBe('grant')
   })

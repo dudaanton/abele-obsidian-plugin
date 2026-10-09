@@ -50,16 +50,33 @@ export class NodeDelegationController {
     return this.store.transaction((s) => Object.values(storage(s).grants))
   }
   async destinations(parent: string) {
+    const grants = (await this.grants()).filter((g) => !g.revoked && g.parent_id === parent)
+    if (!grants.length) return []
     const providers = nodeProviders(await this.client.describe()).filter(providerAvailable)
-    return (await this.grants())
-      .filter((g) => !g.revoked && g.parent_id === parent)
-      .map((g) => ({
-        project_ids: g.project_ids,
-        providers: g.providers.filter(
-          (p) => providers.some((v) => v.provider === p) && (p !== 'fake' || g.allow_fake)
-        ),
-        actions: g.actions,
-      }))
+    const allowed = new Set(grants.flatMap((g) => g.project_ids))
+    const projects = new Map<string, { project_id: string; root_path: string }>()
+    let after: string | undefined
+    while (projects.size < allowed.size) {
+      const page = await this.client.listProjects(after)
+      if (!page.length) break
+      for (const project of page)
+        if (allowed.has(project.project_id))
+          projects.set(project.project_id, {
+            project_id: project.project_id,
+            root_path: project.root_path,
+          })
+      const next = page.at(-1)!.project_id
+      if (next === after) throw new Error('Node project pagination did not advance')
+      after = next
+    }
+    return grants.map((g) => ({
+      project_ids: g.project_ids,
+      projects: g.project_ids.map((id) => projects.get(id) ?? { project_id: id }),
+      providers: g.providers.filter(
+        (p) => providers.some((v) => v.provider === p) && (p !== 'fake' || g.allow_fake)
+      ),
+      actions: g.actions,
+    }))
   }
   async create(parent: string, raw: DelegationTaskInput) {
     const input = DelegationTaskInputSchema.parse(raw)

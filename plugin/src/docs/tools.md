@@ -880,7 +880,8 @@ and providers in Settings → Nodes → Delegation grants. Enrollment is not del
 Enable the Nodes tool group in the parent agent separately. Models cannot approve/revoke
 grants, access credentials, send generic node requests or answer child human prompts.
 
-- `node_delegations` lists approved destinations/providers and this parent's retained children.
+- `node_delegations` lists approved destinations/providers, approved project IDs and full
+  node-side paths, and this parent's retained children. Unapproved projects are not returned.
   `node` is an opaque device-local registration reference, not an endpoint or credential.
 - `node_delegate` takes `node`, stable `task_key`, `project_id`, `provider`, `title`, `text` and
   optional `base_ref` (HEAD by default). Available providers come from the node; fake children
