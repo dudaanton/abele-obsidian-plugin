@@ -50,6 +50,59 @@ const row = () => [
 const codes = (s: DesignSnapshot, options = {}) => lintDesign(s, options).map((v) => v.rule)
 
 describe('design lint geometry rules', () => {
+  it('compares native control insets against independent native geometry without accepting changed values', () => {
+    const input = element('search', { padding: [0, 8, 0, 30], nativePadding: [0, 8, 0, 30] })
+    expect(codes(snapshot([input]))).not.toContain('spacing-scale')
+    input.padding[3] = 35
+    expect(codes(snapshot([input]))).toContain('spacing-scale')
+    input.padding[3] = 32
+    expect(codes(snapshot([input]))).toContain('native-parity')
+    delete input.nativePadding
+    input.padding[3] = 30
+    expect(codes(snapshot([input]))).toContain('spacing-scale')
+  })
+  it('recognizes native selected text paint without masking an off-theme override', () => {
+    const normal = element('normal', { level: 'title', role: 'text' })
+    normal.nativeFont = { ...normal.font }
+    const selected = element('selected', {
+      level: 'title',
+      role: 'text',
+      rect: rect(40, 60, 100, 20),
+      font: { ...normal.font, color: 'rgb(30, 30, 30)' },
+    })
+    selected.nativeFont = { ...selected.font }
+    expect(codes(snapshot([normal, selected]))).not.toContain('hierarchy-consistency')
+    selected.font.color = 'rgb(0, 0, 0)'
+    expect(codes(snapshot([normal, selected]))).toContain('hierarchy-consistency')
+  })
+  it('recognizes measured platform insets only on their matching padding side', () => {
+    const modal = element('modal', { padding: [0, 16, 34, 16], environmentPadding: [0, 0, 34, 0] })
+    expect(codes(snapshot([modal], true))).not.toContain('spacing-scale')
+    modal.padding[2] = 37
+    expect(codes(snapshot([modal], true))).toContain('spacing-scale')
+    modal.padding = [34, 16, 0, 16]
+    expect(codes(snapshot([modal], true))).toContain('spacing-scale')
+  })
+  it('compares a native tree family with its own independently captured collapse gutter, not Backlinks padding', () => {
+    const els = row()
+    els[0].padding[3] = 24
+    els[0].nativeRow = { padding: [8, 8, 8, 24], lineHeight: 20 }
+    const s = snapshot(els)
+    s.native = { selector: '#reference', metrics: { padding: [8, 8, 8, 8], lineHeight: 20 } }
+    expect(codes(s)).not.toContain('native-parity')
+    els[0].padding[3] = 28
+    expect(codes(s)).toContain('native-parity')
+  })
+  it('does not confuse a transparent header box with painted text, but still detects actual title/control overlap', () => {
+    const header = element('header', {
+      rect: rect(0, 0, 300, 44),
+      fragments: [rect(20, 10, 120, 20)],
+    })
+    const close = element('close', { role: 'control', rect: rect(250, 0, 44, 44) })
+    expect(codes(snapshot([header, close]))).not.toContain('sibling-overlap')
+    header.fragments = [rect(20, 10, 260, 20)]
+    expect(codes(snapshot([header, close]))).toContain('sibling-overlap')
+  })
   it('accepts aligned first lines and scale spacing without confusing glyph bounds with line-height', () => {
     expect(lintDesign(snapshot(row()))).toEqual([])
   })

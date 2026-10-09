@@ -34,8 +34,8 @@ native `--input-radius`, never an invented pill.
 - Compact titles wrap to two lines. Meaningful file extensions remain visible outside a clamped basename. Opening or expansion must expose the full title. Form
   labels, warnings, errors and expanded detail wrap fully. Use `min-width: 0`; break long
   unbroken segments only when necessary.
-- Metadata contains short complete facts, separated by ` · `; no separators around missing
-  optional facts. Zero is a value. Required unknown facts are explicit. Wrap by fact and
+- Metadata contains short complete, labelled facts (`Model: …`, `Folder: …`), separated by
+  ` · `; no ambiguous pairs of unlabelled values or separators around missing optional facts. Zero is a value. Required unknown facts are explicit. Wrap by fact and
   permit a second line on phone. A recovery or permission explanation never silently truncates.
 - Use container width for reflow and host phone mode for touch/shell behaviour. Never adapt
   a modal by reading the ambient main window's width.
@@ -64,14 +64,17 @@ Missing targets keep their identity, path and valid actions; disabled Open/Revea
 Use at most **one `mod-cta` per dialog state**. Secondary actions remain neutral; destructive
 actions use the existing confirmation before deletion. Annotation choice displays actual
 swatches, with a selection ring/check and accessible names; a grey word-only dropdown is not
-a colour picker. Status always includes text or a glyph, never colour alone.
+a colour picker. List status pairs readable text with a small native glyph and a host colour
+cue where appropriate, never colour alone. Waiting, loading, missing and failed are distinct.
 
 Every action has an accessible name, visible focus ring and keyboard operation. `Icon` in
 interactive mode is a real `button type="button"` using native `.clickable-icon`; Enter and
 Space activate it through browser semantics. Decorative mode has no tab stop or button role.
 Existing click-listener/toggle callers infer interactive mode; new code should name it explicitly.
 Do not add parallel role/tab/key handlers to a semantic button. Disabled actions give a reason.
-Main row actions and trailing controls are siblings, not nested interactive elements. Compose flat rows through native `tree-item` / `tree-item-self` / `tree-item-inner` / `tree-item-flair-outer` anatomy. The main target includes title and noninteractive facts, sharing its phone hit height rather than reserving a tall title box. Interactive metadata remains outside that target. Detail aligns within the same content column; optional disclosure belongs at the far edge and its label/count use smaller muted normal text. Titles are regular-weight normal text; bold belongs to section labels or meaningful unread state.
+An object-opening row shows a native `chevron-right` with native hover/cursor treatment.
+A disclosure-only row's title also toggles its detail, like a native tree item; this never opens
+an object. Main row actions and trailing controls are siblings, not nested interactive elements. Compose flat rows through native `tree-item` / `tree-item-self` / `tree-item-inner` / `tree-item-flair-outer` anatomy. The main target includes title and noninteractive facts, sharing its phone hit height rather than reserving a tall title box. Interactive metadata remains outside that target. Detail aligns within the same content column; optional disclosure belongs at the far edge and its label/count use smaller muted normal text. Titles are regular-weight normal text; bold belongs to section labels or meaningful unread state.
 
 Phone controls measure at least **44 × 44 CSS pixels**. `obsidian/designKit.css` is the one
 accessibility floor, `max(44px, var(--touch-size-m))`, not a private spacing scale. Verify actual
@@ -108,7 +111,7 @@ state and accessibility tests before screens adopt them.
 | Component | Native pattern and contract |
 |---|---|
 | `ListRow` | Search-result/backlinks flat object row: leading icon/thumbnail, title, metadata, snippet, sibling actions, detail slot. Controlled selection; retained identity during loading/missing/error. |
-| `MetaLine` | Backlinks secondary line: stable keyed facts, optional labels, separators only between present facts; required unknowns explicit. |
+| `MetaLine` | Backlinks secondary line: stable keyed facts with explicit or plain-word derived labels, separators only between present facts; required unknowns explicit. Legacy positional card prose remains precomposed. |
 | `RelativeTime` | Search metadata: semantic instant, controlled clock, exact detail and unified formatter. |
 | `PathLabel` | Backlinks location: basename/context/full modes, workspace disambiguation, selectable full path, optional copy/reveal events. |
 | `Disclosure` | Tree-item collapse control: controlled expanded state, optional count and associated detail. Whole label is the control. |
@@ -150,7 +153,11 @@ never build a separate overlay.
 | Workspace code/diff needing all available room | `full` |
 | Form requiring wider columns | `wide`, not automatically tall |
 
-One shell title, no repeated purpose heading. Footer immediately follows short content; long
+One shell title, no repeated purpose heading, and one visible dismiss action. Read-only dialogs
+keep the platform's native header close control and no redundant Close footer. A form with
+Cancel/Close in its footer sets `closeInFooter` on `Modal`/`ShellModal`; this hides only the
+native header control, preserving Escape, backdrop and dirty-form checks. Confirmation uses
+this policy too. Footer immediately follows short content; long
 content scrolls above reachable footer actions. Do not strand Save/Close far below a field.
 Internal actions stay beside their field. Do not resize the shell while someone types.
 
@@ -176,6 +183,13 @@ and actual data-driven editor/diagram geometry. The centralized 44px accessibili
 also named. A generic tokens file is not permission to invent colours. No static inline style;
 data-driven geometry must have its own documented test. Class naming is
 `abele-<block>__<element>_<modifier>`.
+
+The geometry collector compares native search/select insets and tree collapse padding against
+independent host-only probes, not a blanket spacing waiver or an unrelated Backlinks family.
+It still requires a visible native pane. Platform safe-area padding is environmental; title
+paint, not the transparent native header's bounding box, determines close-button overlap.
+Accessible quote preview clamping requires a labelled full-text disclosure with a real target.
+Numeric tolerances, clipping checks without disclosure and negative parity cases remain enforced.
 
 Unit/component tests protect behaviour and accessibility, not appearance. Live phone/focus-ring
 tests inventory intended actions, target sizes, overflow, scroll reachability and focus return.

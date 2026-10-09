@@ -18,7 +18,7 @@ export function captureDesign(selector: string, options: CaptureOptions = {}): D
     section:
       '[data-design-level="section"], .abele-list-section-header [class$="__header-text"], .backlink-pane > .tree-item-self > .tree-item-inner',
     title:
-      '[data-design-level="title"], .abele-list-row__title-line, .tree-item-inner:not(.abele-list-row__content):not(.backlink-pane > .tree-item-self > .tree-item-inner), .nav-file-title-content, .search-result-file-title:not(:has(.tree-item-inner))',
+      '[data-design-level="title"], .abele-list-row__title-line, .abele-tree-item__text, .tree-item-inner:not(.abele-list-row__content):not(.abele-tree-item__inner):not(.backlink-pane > .tree-item-self > .tree-item-inner), .nav-file-title-content, .search-result-file-title:not(:has(.tree-item-inner))',
     meta: '[data-design-level="meta"], .abele-meta-line:not(.abele-event-list__meta > .abele-meta-line), .abele-event-list__meta, .abele-list-row__title > .abele-relative-time, .abele-list-row__state, .abele-list-row__snippet',
     detail:
       '[data-design-level="detail"], .abele-disclosure:not(.abele-disclosure_compact) > .abele-disclosure__control',
@@ -92,6 +92,51 @@ export function captureDesign(selector: string, options: CaptureOptions = {}): D
       }
     return { text: texts.join(' '), lines, firstLine }
   }
+  const insets = (s: CSSStyleDeclaration): MeasuredElement['padding'] =>
+    [s.paddingTop, s.paddingRight, s.paddingBottom, s.paddingLeft].map(
+      number
+    ) as MeasuredElement['padding']
+  // Rebuild just this ancestor chain outside plugin classes/styles. Host compound padding
+  // (search glyph room, em-based select insets, tree collapse gutter) is not a spacing step.
+  // Its independent baseline remains measurable, and modified kit geometry still fails.
+  const nativeStyle = (el: Element): CSSStyleDeclaration => {
+    let child: Element | undefined
+    let target: Element | undefined
+    for (let p: Element | null = el; p && p !== document.body; p = p.parentElement) {
+      const clone = p.cloneNode(p === el) as Element
+      for (const node of [clone, ...clone.querySelectorAll('*')]) {
+        node.removeAttribute('id')
+        node.removeAttribute('style')
+        for (const cls of [...node.classList])
+          if (cls.startsWith('abele-')) node.classList.remove(cls)
+      }
+      if (child) clone.appendChild(child)
+      target ??= clone
+      child = clone
+    }
+    const probe = child as HTMLElement
+    probe.setAttribute('data-design-native-probe', '')
+    probe.style.cssText = 'position:fixed;left:-10000px;visibility:hidden;pointer-events:none;'
+    document.body.appendChild(probe)
+    try {
+      // Computed styles can be live objects; copy values before removing the probe.
+      const s = view.getComputedStyle(target!)
+      return Object.fromEntries(
+        [
+          'paddingTop',
+          'paddingRight',
+          'paddingBottom',
+          'paddingLeft',
+          'fontSize',
+          'fontWeight',
+          'lineHeight',
+          'color',
+        ].map((key) => [key, s[key as keyof CSSStyleDeclaration]])
+      ) as unknown as CSSStyleDeclaration
+    } finally {
+      probe.remove()
+    }
+  }
   const collect = (root: Element, nativeReference = false): MeasuredElement[] => {
     const all = [root, ...root.querySelectorAll('*')]
     const ids = new Map(all.map((el, i) => [el, 'e' + i]))
@@ -116,6 +161,21 @@ export function captureDesign(selector: string, options: CaptureOptions = {}): D
         'button, input, select, textarea, summary, a[href], [role="button"], [role="checkbox"], [role="treeitem"][tabindex="0"], [role="tab"], [role="switch"], [role="menuitem"], [tabindex="0"], .clickable-icon, .is-clickable'
       )
       const text = textBoxes(el, !!level || control)
+      if (el.matches('.abele-list-row__state') && text.firstLine) {
+        const glyph = el.querySelector('.abele-list-row__status-icon svg')?.getBoundingClientRect()
+        if (glyph) {
+          const end = text.firstLine.x + text.firstLine.width
+          text.firstLine.x = Math.min(text.firstLine.x, glyph.x)
+          text.firstLine.width = end - text.firstLine.x
+        }
+      }
+      const native =
+        !nativeReference &&
+        el.matches(
+          '.search-input-container input, select.dropdown:not(.is-measuring), .abele-tree-item__self, .abele-tree-item__text'
+        )
+          ? nativeStyle(el)
+          : undefined
       const glyphText = [...el.childNodes]
         .filter((n) => n.nodeType === Node.TEXT_NODE)
         .map((n) => n.textContent ?? '')
@@ -134,7 +194,8 @@ export function captureDesign(selector: string, options: CaptureOptions = {}): D
           !el.closest(
             '.abele-disclosure, [data-design-disclosure], .abele-image, .abele-image-thumbnail'
           ) &&
-          (!host.matches('.abele-list-row__line') || el.closest('.abele-list-row__leading'))
+          (!host.matches('.abele-list-row__line') || el.closest('.abele-list-row__leading')) &&
+          (!host.matches('.abele-tree-item__self') || el.closest('.abele-tree-item__glyph'))
         )
           slot = 'icon'
       } else if (host && level) slot = 'text'
@@ -209,7 +270,10 @@ export function captureDesign(selector: string, options: CaptureOptions = {}): D
         iconRole,
         level,
         rect,
-        fragments: [...el.getClientRects()].filter((r) => r.width && r.height).map(box),
+        fragments:
+          el.matches('.modal-header') && s.backgroundColor === 'rgba(0, 0, 0, 0)'
+            ? textBoxes(el, true).lines
+            : [...el.getClientRects()].filter((r) => r.width && r.height).map(box),
         ...text,
         glyphText,
         paintVisible: nativeReference ? visible(el) : true,
@@ -231,6 +295,28 @@ export function captureDesign(selector: string, options: CaptureOptions = {}): D
           number,
           number,
         ],
+        nativePadding: native && el.matches('input, select') ? insets(native) : undefined,
+        nativeRow:
+          native && el.matches('.abele-tree-item__self')
+            ? { padding: insets(native), lineHeight: number(native.lineHeight) || undefined }
+            : undefined,
+        nativeFont:
+          native && el.matches('.abele-tree-item__text')
+            ? {
+                size: number(native.fontSize),
+                weight: number(native.fontWeight),
+                lineHeight: number(native.lineHeight),
+                color: native.color,
+              }
+            : undefined,
+        environmentPadding: el.matches('.modal')
+          ? [
+              number(s.getPropertyValue('--safe-area-inset-top')),
+              0,
+              number(s.getPropertyValue('--safe-area-inset-bottom')),
+              0,
+            ]
+          : undefined,
         margin: [s.marginTop, s.marginRight, s.marginBottom, s.marginLeft].map(number) as [
           number,
           number,
@@ -243,10 +329,18 @@ export function captureDesign(selector: string, options: CaptureOptions = {}): D
         scroll: [el.scrollWidth, el.scrollHeight],
         overflow: [s.overflowX, s.overflowY],
         lineClamp: number(s.webkitLineClamp),
-        fullTextAvailable: !!el
-          .closest('button[aria-label], a[href][aria-label]')
-          ?.getAttribute('aria-label')
-          ?.includes(el.textContent?.trim() || '\u0000'),
+        fullTextAvailable:
+          !!el
+            .closest('button[aria-label], a[href][aria-label]')
+            ?.getAttribute('aria-label')
+            ?.includes(el.textContent?.trim() || '\u0000') ||
+          (el.matches('.abele-quote__text_preview[id]') &&
+            [
+              ...(el
+                .closest('.abele-quote')
+                ?.querySelectorAll('button[aria-label][aria-controls][aria-expanded="false"]') ??
+                []),
+            ].some((button) => button.getAttribute('aria-controls') === el.id)),
         disabled: el.matches(':disabled, [aria-disabled="true"]'),
       })
     }

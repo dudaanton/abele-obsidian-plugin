@@ -37,6 +37,14 @@ export interface MeasuredElement {
   font: { size: number; weight: number; lineHeight: number; lineHeightCss?: string; color: string }
   background?: string
   padding: Insets
+  /** Independently measured host-only control geometry, never copied from the kit element. */
+  nativePadding?: Insets
+  /** Resolved platform safe-area insets, by side; these are environmental, not spacing tokens. */
+  environmentPadding?: Insets
+  /** The corresponding host tree family rather than an unrelated native result row. */
+  nativeRow?: RowMetrics
+  /** Native selected/unselected text paint, independently measured in the same host context. */
+  nativeFont?: MeasuredElement['font']
   margin: Insets
   /** Resolved auto margins are distributed free space, not design spacing tokens. */
   autoMargins?: number[]
@@ -165,6 +173,18 @@ export function lintDesign(snapshot: DesignSnapshot, options: LintOptions = {}):
     return parent ? background(parent) : 'rgb(255, 255, 255)'
   }
   for (const e of els) {
+    if (e.nativePadding)
+      e.padding.forEach((value, i) => {
+        const delta = value - e.nativePadding![i]
+        if (Math.abs(delta) > tolerance)
+          add(
+            'native-parity',
+            `padding.${i}: ${value.toFixed(1)}px vs native ${e.nativePadding![i].toFixed(1)}px`,
+            [e],
+            delta,
+            `padding.${i}`
+          )
+      })
     for (let axis = 0; axis < 2; axis++) {
       const delta = e.scroll[axis] - e.client[axis]
       if (
@@ -200,7 +220,19 @@ export function lintDesign(snapshot: DesignSnapshot, options: LintOptions = {}):
     ] as const) {
       values.forEach((value, i) => {
         if (name === 'margin' && e.autoMargins?.includes(i)) return
-        if (!onScale(name === 'margin' ? Math.abs(value) : value))
+        if (
+          !onScale(name === 'margin' ? Math.abs(value) : value) &&
+          !(
+            name === 'padding' &&
+            e.nativePadding &&
+            Math.abs(value - e.nativePadding[i]) <= tolerance
+          ) &&
+          !(
+            name === 'padding' &&
+            e.environmentPadding?.[i] &&
+            Math.abs(value - e.environmentPadding[i]) <= tolerance
+          )
+        )
           add(
             'spacing-scale',
             `${name}[${i}] ${value.toFixed(1)}px is not a theme spacing token`,
@@ -424,7 +456,7 @@ export function lintDesign(snapshot: DesignSnapshot, options: LintOptions = {}):
     }
     if (snapshot.native) {
       const measured = rowMetrics(els, host),
-        reference = snapshot.native.variants?.[kind] ?? snapshot.native.metrics
+        reference = host.nativeRow ?? snapshot.native.variants?.[kind] ?? snapshot.native.metrics
       const compare = (metric: string, actual?: number, expected?: number) => {
         if (
           actual !== undefined &&
@@ -449,15 +481,21 @@ export function lintDesign(snapshot: DesignSnapshot, options: LintOptions = {}):
       )
     }
   }
+  const nativeText = (e: MeasuredElement) =>
+    e.nativeFont &&
+    Math.abs(e.font.size - e.nativeFont.size) <= fontTolerance &&
+    Math.abs(e.font.weight - e.nativeFont.weight) <= weightTolerance &&
+    e.font.color === e.nativeFont.color
   const styles = new Map<Level, MeasuredElement>()
   for (const e of els)
     if (e.level) {
       const first = styles.get(e.level)
       if (!first) styles.set(e.level, e)
       else if (
-        Math.abs(e.font.size - first.font.size) > fontTolerance ||
-        Math.abs(e.font.weight - first.font.weight) > weightTolerance ||
-        e.font.color !== first.font.color
+        !(nativeText(e) && nativeText(first)) &&
+        (Math.abs(e.font.size - first.font.size) > fontTolerance ||
+          Math.abs(e.font.weight - first.font.weight) > weightTolerance ||
+          e.font.color !== first.font.color)
       )
         add('hierarchy-consistency', `${e.level} typography differs within this container`, [
           e,

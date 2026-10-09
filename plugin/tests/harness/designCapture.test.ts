@@ -232,6 +232,102 @@ describe('renderer design capture', () => {
       'control'
     )
   })
+  it('measures native search/select padding in an independent host-only context and retains modified actual insets', () => {
+    fixture()
+    document.querySelector('#surface')!.innerHTML =
+      '<div class="abele-obsidian-search"><div class="search-input-container"><input type="search" /></div></div><select class="dropdown"><option>Work</option></select>'
+    for (const el of document.querySelectorAll('#surface *'))
+      vi.spyOn(el, 'getBoundingClientRect').mockReturnValue(new DOMRect(20, 20, 100, 44))
+    const base = vi.mocked(window.getComputedStyle).getMockImplementation()!
+    vi.mocked(window.getComputedStyle).mockImplementation(
+      (el) =>
+        ({
+          ...base(el),
+          paddingLeft: el.matches('input')
+            ? el.closest('.abele-obsidian-search')
+              ? '35px'
+              : '30px'
+            : el.matches('select')
+              ? '10.4px'
+              : '4px',
+        }) as CSSStyleDeclaration
+    )
+    const s = captureDesign('#surface')
+    expect(s.elements.find((e) => e.selector === 'input')?.nativePadding?.[3]).toBe(30)
+    expect(s.elements.find((e) => e.selector === 'input')?.padding[3]).toBe(35)
+    expect(s.elements.find((e) => e.selector === 'select.dropdown')?.nativePadding?.[3]).toBe(10.4)
+    expect(document.querySelectorAll('[data-design-native-probe]')).toHaveLength(0)
+  })
+  it('omits hidden native measuring clones from paint and overflow, but retains ordinary clipped content', () => {
+    fixture()
+    document.querySelector('#surface')!.innerHTML =
+      '<div class="abele-obsidian-dropdown"><select class="dropdown"><option>Work</option></select><select class="dropdown is-measuring" style="visibility:hidden"><option>Work</option></select></div>'
+    for (const el of document.querySelectorAll('#surface *'))
+      vi.spyOn(el, 'getBoundingClientRect').mockReturnValue(new DOMRect(20, 20, 100, 44))
+    const s = captureDesign('#surface')
+    expect(s.elements.some((e) => e.selector.includes('is-measuring'))).toBe(false)
+  })
+  it('classifies native tree text and content icon separately from the collapse hit gutter', () => {
+    fixture()
+    document.querySelector('#surface')!.innerHTML =
+      '<div class="tree-item-self abele-tree-item__self"><span class="collapse-icon"><svg class="collapse"></svg></span><div class="tree-item-inner abele-tree-item__inner"><span class="abele-tree-item__glyph"><svg class="folder"></svg></span><span class="abele-tree-item__text">Work</span></div></div>'
+    for (const el of document.querySelectorAll('#surface *'))
+      vi.spyOn(el, 'getBoundingClientRect').mockReturnValue(new DOMRect(20, 20, 100, 44))
+    const s = captureDesign('#surface')
+    expect(s.elements.filter((e) => e.level === 'title').map((e) => e.selector)).toEqual([
+      'span.abele-tree-item__text',
+    ])
+    expect(s.elements.find((e) => e.selector === 'svg.collapse')?.slot).toBeUndefined()
+    expect(s.elements.find((e) => e.selector === 'svg.folder')?.slot).toBe('icon')
+    expect(
+      s.elements.find((e) => e.selector.includes('abele-tree-item__self'))?.nativeRow
+    ).toBeDefined()
+  })
+  it('captures only painted header title fragments so a close button over blank header space is not an overlap', () => {
+    fixture()
+    document.querySelector('#surface')!.innerHTML =
+      '<div class="modal-header"><div class="modal-title">Title</div></div>'
+    for (const el of document.querySelectorAll('#surface *'))
+      vi.spyOn(el, 'getBoundingClientRect').mockReturnValue(new DOMRect(20, 20, 300, 44))
+    const base = vi.mocked(window.getComputedStyle).getMockImplementation()!
+    vi.mocked(window.getComputedStyle).mockImplementation(
+      (el) =>
+        ({
+          ...base(el),
+          backgroundColor: el.matches('.modal-header') ? 'rgba(0, 0, 0, 0)' : 'rgb(255, 255, 255)',
+        }) as CSSStyleDeclaration
+    )
+    const header = captureDesign('#surface').elements.find(
+      (e) => e.selector === 'div.modal-header'
+    )!
+    expect(header.fragments?.[0]).toEqual({ x: 40, y: 20, width: 40, height: 16 })
+  })
+  it('measures the entire compound status band including its decorative native glyph', () => {
+    fixture()
+    document.querySelector('#surface')!.innerHTML =
+      '<div class="abele-list-row__state"><span class="abele-list-row__status-icon" aria-hidden="true"><svg></svg></span><span>Working</span></div>'
+    for (const el of document.querySelectorAll('#surface *'))
+      vi.spyOn(el, 'getBoundingClientRect').mockReturnValue(new DOMRect(20, 20, 16, 16))
+    expect(captureDesign('#surface').elements.find((e) => e.level === 'meta')?.firstLine?.x).toBe(
+      20
+    )
+  })
+  it('recognizes a clamped quote only with its own labelled accessible full-text disclosure', () => {
+    fixture()
+    document.querySelector('#surface')!.innerHTML =
+      '<figure class="abele-quote"><blockquote id="sample-quote" class="abele-quote__text_preview">Full passage</blockquote><button aria-label="Expand quote" aria-controls="sample-quote" aria-expanded="false">Expand quote</button></figure>'
+    for (const el of document.querySelectorAll('#surface *'))
+      vi.spyOn(el, 'getBoundingClientRect').mockReturnValue(new DOMRect(20, 20, 100, 44))
+    expect(
+      captureDesign('#surface').elements.find((e) => e.selector.includes('blockquote'))
+        ?.fullTextAvailable
+    ).toBe(true)
+    document.querySelector('button[aria-controls]')!.removeAttribute('aria-controls')
+    expect(
+      captureDesign('#surface').elements.find((e) => e.selector.includes('blockquote'))
+        ?.fullTextAvailable
+    ).toBe(false)
+  })
   it('throws on absent containers rather than reporting a vacuous pass', () => {
     fixture()
     expect(() => captureDesign('#missing')).toThrow('No visible')
