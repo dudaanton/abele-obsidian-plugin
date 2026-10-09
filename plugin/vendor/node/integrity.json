@@ -52,10 +52,10 @@
     "id": "@abele/node-protocol@0.0.0",
     "name": "@abele/node-protocol",
     "version": "0.0.0",
-    "size": 20762,
-    "unpackedSize": 139922,
-    "shasum": "e84e51377d3307cb66af1cc3391a8c3a2659c871",
-    "integrity": "sha512-GtKNOs6jr9G3IWsivZAa6yKXkSVOZtakdw1b2AmE+ej4pYWLQHJ9XhCFMUC8aAHFOY6AUP+vlcVH1HbnsyLOKQ==",
+    "size": 27337,
+    "unpackedSize": 220548,
+    "shasum": "3f49d260bffc5ea962893aefaa700d2d2c06c9e7",
+    "integrity": "sha512-QVOAEELJ1hX7ogklDqr8/XYG+BwPNrB8V1+DzpadwX6TnvRo2noMHaRKpS+WE2a7X2Mr/fCXu3ovMzhP8j4l9g==",
     "filename": "abele-node-protocol-0.0.0.tgz",
     "files": [
       {
@@ -119,6 +119,21 @@
         "mode": 420
       },
       {
+        "path": "dist/repository.d.ts",
+        "size": 42088,
+        "mode": 420
+      },
+      {
+        "path": "dist/repository.js",
+        "size": 8017,
+        "mode": 420
+      },
+      {
+        "path": "dist/repository.js.map",
+        "size": 10095,
+        "mode": 420
+      },
+      {
         "path": "dist/resources.d.ts",
         "size": 9943,
         "mode": 420
@@ -135,17 +150,17 @@
       },
       {
         "path": "dist/schemas.d.ts",
-        "size": 34476,
+        "size": 54517,
         "mode": 420
       },
       {
         "path": "dist/schemas.js",
-        "size": 9406,
+        "size": 9655,
         "mode": 420
       },
       {
         "path": "dist/schemas.js.map",
-        "size": 10175,
+        "size": 10311,
         "mode": 420
       },
       {
@@ -154,7 +169,7 @@
         "mode": 420
       }
     ],
-    "entryCount": 19,
+    "entryCount": 22,
     "bundled": []
   },
   {
@@ -195,25 +210,25 @@
     "id": "@abele/node-client@0.0.0",
     "name": "@abele/node-client",
     "version": "0.0.0",
-    "size": 15320,
-    "unpackedSize": 76094,
-    "shasum": "53209b48fe9011134d0f5d2c21131099a84589dd",
-    "integrity": "sha512-voyQQ2Y+ChreM1a83r8ZbKGnILVAGvohNIR8sFp4PaZZHyHwiYR4Cijtlam5ezGe/9DKizmsEsm2CpIMCtMBpQ==",
+    "size": 17194,
+    "unpackedSize": 88790,
+    "shasum": "a22ea58f2de420cc5d82d25dd74b36ef53a103d8",
+    "integrity": "sha512-GYoZp9bT9jES/6BzCPvfMztOWLy7Uw1/VO+RwmnhLWIsFmULjZdQj/XtI3e/CDRLogM+rQaT2ac3lnviPPikiQ==",
     "filename": "abele-node-client-0.0.0.tgz",
     "files": [
       {
         "path": "dist/index.d.ts",
-        "size": 15407,
+        "size": 15858,
         "mode": 420
       },
       {
         "path": "dist/index.js",
-        "size": 19989,
+        "size": 20435,
         "mode": 420
       },
       {
         "path": "dist/index.js.map",
-        "size": 19752,
+        "size": 20100,
         "mode": 420
       },
       {
@@ -232,12 +247,27 @@
         "mode": 420
       },
       {
+        "path": "dist/repository.d.ts",
+        "size": 5873,
+        "mode": 420
+      },
+      {
+        "path": "dist/repository.js",
+        "size": 2872,
+        "mode": 420
+      },
+      {
+        "path": "dist/repository.js.map",
+        "size": 2706,
+        "mode": 420
+      },
+      {
         "path": "package.json",
         "size": 372,
         "mode": 420
       }
     ],
-    "entryCount": 7,
+    "entryCount": 10,
     "bundled": []
   }
 ]
