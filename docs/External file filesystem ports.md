@@ -122,6 +122,14 @@ removal, free-target installation, target appearance during installation and amb
 installation evidence. No real server round trip or restart attachment recovery is claimed
 by these minimal-port tests. Device drivers, locks and run artifacts stay outside the repo.
 
+Observed verification: 65 focused fast checks passed (28 new port/coordination cases and
+37 existing writer/probe cases). The selected live-port suite passed all five cases on
+desktop and all five on mobile, without skips. The initial image-leaf fixture requested two
+empty tabs before populating either; Obsidian reused the empty leaf. The fixture now opens
+the image before requesting the active note tab, retaining the original nonactive-image
+and pending-open assertions. Queued reservation intake also has a regression: caller-owned
+path arrays are copied before waiting, so mutation cannot redirect a queued reservation.
+
 The historical `External file filesystem probe.md` copy-overwrite assertion remains a failing
 mobile regression: unsafe adapter copy was not fixed, adopted or reclassified as acceptable.
 Application restart durability belongs to the existing durable-state tests; arbitrary power
