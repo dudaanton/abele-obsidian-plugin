@@ -1,6 +1,6 @@
 import { binaryResponse } from './binaryResponse'
 
-const CHUNK = 1024 * 1024
+const CHUNK = 8 * 1024 * 1024
 const binaryPath =
   /\/v1\/(?:blobs\/[a-f0-9]{64}|(?:scoped\/)?vaults\/[^/]+\/(?:grants\/[^/]+\/)?files\/[^/]+\/versions\/[^/]+)$/
 
@@ -17,12 +17,15 @@ export function rangedBinaryTransport(send: typeof fetch): typeof fetch {
     )
     if (method.toUpperCase() !== 'GET' || !binaryPath.test(url.pathname) || headers.has('range'))
       return send(input, init)
+    const signal = init?.signal ?? (input instanceof Request ? input.signal : undefined)
     let output: Uint8Array | undefined
     let at = 0
     let responseHeaders: Headers | undefined
     for (;;) {
+      signal?.throwIfAborted()
       headers.set('range', `bytes=${at}-${at + CHUNK - 1}`)
       const response = await send(input, { ...init, headers })
+      signal?.throwIfAborted()
       // Older servers may ignore Range. Preserve their one-shot behavior; never
       // concatenate a whole response onto a partially received file.
       if (at === 0 && response.status !== 206) return response

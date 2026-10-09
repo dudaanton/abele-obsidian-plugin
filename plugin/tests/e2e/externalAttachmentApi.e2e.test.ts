@@ -2,7 +2,7 @@ import { randomBytes } from 'node:crypto'
 import { SyncClient, sha256 } from '@abele/sync-core'
 import { join } from 'node:path'
 import { pathToFileURL } from 'node:url'
-import { afterAll, beforeAll, describe, expect, it } from 'vitest'
+import { afterAll, afterEach, beforeAll, describe, expect, it } from 'vitest'
 import { verifySyncFixture } from '../../scripts/verify-sync-inputs.mjs'
 import { evalLong, hasTestApi, isObsidianRunning } from './helpers/obsidianCli'
 import { exposeToPhone } from './helpers/phone'
@@ -14,6 +14,27 @@ let layout: unknown, fixture: any, url: string, reader: any, head: any
 let closeReverse: (() => void) | undefined
 let folderOwned = false
 const content = 'sample portable attachment'
+const TRANSFER_TIMEOUT = 600_000
+const activeRoundTrips = new Set<string>()
+
+async function settleRoundTrips() {
+  for (const id of activeRoundTrips) {
+    await evalLong(
+      `(async()=>{
+      const jobs=window.__abeleAttachmentJobs,job=jobs?.[${JSON.stringify(id)}]
+      if(!job)return true
+      job.controller.abort()
+      await Promise.allSettled(job.task?[job.task]:[])
+      delete jobs[${JSON.stringify(id)}]
+      return true
+    })()`,
+      TRANSFER_TIMEOUT
+    )
+    activeRoundTrips.delete(id)
+  }
+}
+
+afterEach(settleRoundTrips, TRANSFER_TIMEOUT)
 
 beforeAll(async () => {
   if (!isObsidianRunning() || !hasTestApi()) throw Error('Live attachment API is required')
@@ -74,9 +95,10 @@ beforeAll(async () => {
   layout = JSON.parse(await evalLong('JSON.stringify(app.workspace.getLayout())'))
   await evalLong(`app.vault.createFolder(${JSON.stringify(folder)}).then(()=>true)`)
   folderOwned = true
-})
+}, TRANSFER_TIMEOUT)
 afterAll(async () => {
   try {
+    await settleRoundTrips()
     if (folderOwned)
       await evalLong(
         `(async()=>{const entry=app.vault.getAbstractFileByPath(${JSON.stringify(folder)});if(entry)await app.vault.delete(entry,true);await app.workspace.changeLayout(${JSON.stringify(layout)});return true})()`
@@ -85,7 +107,7 @@ afterAll(async () => {
     closeReverse?.()
     await fixture?.close()
   }
-})
+}, TRANSFER_TIMEOUT)
 
 async function roundTrip(
   scoped: boolean,
@@ -93,9 +115,22 @@ async function roundTrip(
   selectedHead = head,
   maximum = false
 ) {
-  return JSON.parse(
-    await evalLong(
-      `(async()=>{
+  const started = Date.now()
+  const id = 'sample-transfer-' + randomBytes(16).toString('hex')
+  activeRoundTrips.add(id)
+  try {
+    await evalLong(`(()=>{
+      const jobs=window.__abeleAttachmentJobs??={}
+      jobs[${JSON.stringify(id)}]={controller:new AbortController()}
+      return true
+    })()`)
+    return JSON.parse(
+      await evalLong(
+        `(async()=>{
+    const job=window.__abeleAttachmentJobs?.[${JSON.stringify(id)}]
+    if(!job||job.controller.signal.aborted)return JSON.stringify({cancelled:true})
+    job.task=(async()=>{
+    const signal=job.controller.signal,started=performance.now()
     const api=window.__abeleTest,path=${JSON.stringify(selectedHead.path)},adapter=app.vault.adapter,maximum=${maximum}
     // The local runner may supply a native resident-memory sampler on hosts without
     // process.memoryUsage. JS heap alone omits the full-file ArrayBuffers on iOS.
@@ -110,7 +145,7 @@ async function roundTrip(
     const requests=[],fetch=api.syncTransport({})
     async function http(route,method='GET',body){
       requests.push(route)
-      const response=await fetch(url+route,{method,headers:{authorization:'Bearer '+token,'x-abele-external-files-version':'1','x-abele-scoped-version':'4','content-type':'application/json'},...(body?{body:JSON.stringify(body)}:{}),})
+      const response=await fetch(url+route,{signal,method,headers:{authorization:'Bearer '+token,'x-abele-external-files-version':'1','x-abele-scoped-version':'4','content-type':'application/json'},...(body?{body:JSON.stringify(body)}:{}),})
       if(response.status!==200)throw Object.assign(Error('server refused '+response.status),{code:(await response.json()).error?.code})
       return response
     }
@@ -131,27 +166,46 @@ async function roundTrip(
       consent:{read:async()=>consent,write:async value=>{consent=value}},
       verify:async(id,input)=>(await http(prefix+id+'/external/verify','POST',input)).json(),
       download:async(id,version,sha)=>{activeDownloads++;downloadCount++;peakDownloads=Math.max(peakDownloads,activeDownloads);if(sampling)sample();try{return new Uint8Array(await (await http(${scoped ? "prefix+id+'/versions/'+version" : "'/v1/blobs/'+sha"})).arrayBuffer())}finally{activeDownloads--;if(sampling)sample()}}})
+    const operations=[]
+    const operation=work=>{const pending=Promise.resolve().then(work);operations.push(pending);pending.catch(()=>job.controller.abort());return pending}
     try{
       if(sampling){sample();timer=setInterval(sample,25)}
-      const options={operationId:crypto.randomUUID(),expectedRevision:0,expectedVersionId:base.version_id}
+      const options={operationId:crypto.randomUUID(),expectedRevision:0,expectedVersionId:base.version_id,signal}
       const warning=${scoped ? '(await attachment.evict(base.file_id,options)).status' : 'null'}
       const evicted=await attachment.evict(base.file_id,{...options,acknowledgeScopedWarning:true})
       const missing=!await adapter.exists(path),sidecar=await adapter.exists(path+'.abele-ref')
       const read=maximum?null:await attachment.read(base.file_id,{expectedVersionId:base.version_id})
       if(maximum){bytes=null;if(sampling)sample()}
-      const hydrationOptions={operationId:crypto.randomUUID(),expectedVersionId:base.version_id}
-      const hydrationResults=maximum?await Promise.all([attachment.hydrate(base.file_id,hydrationOptions),attachment.hydrate(base.file_id,hydrationOptions)]):null
-      const hydrated=maximum?hydrationResults[0]:${materialize ? 'await attachment.materializeForDisconnect({operationId:crypto.randomUUID()})' : 'await attachment.hydrate(base.file_id,hydrationOptions)'}
+      const hydrationOptions={operationId:crypto.randomUUID(),expectedVersionId:base.version_id,signal}
+      const hydrationResults=maximum?await Promise.all([operation(()=>attachment.hydrate(base.file_id,hydrationOptions)),operation(()=>attachment.hydrate(base.file_id,hydrationOptions))]):null
+      const hydrated=maximum?hydrationResults[0]:${materialize ? 'await attachment.materializeForDisconnect({operationId:crypto.randomUUID(),signal})' : 'await attachment.hydrate(base.file_id,hydrationOptions)'}
       const disconnectReady=(await attachment.inspectDisconnect()).safe
       const actual=maximum?null:new Uint8Array(await adapter.readBinary(path)),retired=!await adapter.exists(path+'.abele-ref')
       const fingerprint=await host.fingerprint(path)
       if(sampling)sample()
-      return JSON.stringify({evicted,missing,sidecar,hydrated,hydrationResults,retired,warning,requests,disconnectReady,peakDownloads,downloadCount,peakMemory,baseline,samples,memoryError,verifiedRead:!maximum&&read.bytes?.length===bytes.length&&read.bytes.every((n,i)=>n===bytes[i]),identical:maximum?fingerprint.size===base.size&&fingerprint.sha===base.sha:actual.length===bytes.length&&actual.every((n,i)=>n===bytes[i])})
-    }finally{clearInterval(timer);await engine.stop();host.close();store.close();await api.externalState.IndexedDbStateStore.delete(indexedDB,database)}
+      return JSON.stringify({durationMs:performance.now()-started,evicted,missing,sidecar,hydrated,hydrationResults,retired,warning,requests,disconnectReady,peakDownloads,downloadCount,peakMemory,baseline,samples,memoryError,verifiedRead:!maximum&&read.bytes?.length===bytes.length&&read.bytes.every((n,i)=>n===bytes[i]),identical:maximum?fingerprint.size===base.size&&fingerprint.sha===base.sha:actual.length===bytes.length&&actual.every((n,i)=>n===bytes[i])})
+    }finally{
+      job.controller.abort();clearInterval(timer)
+      await Promise.allSettled(operations)
+      try{await engine.stop()}finally{host.close();store.close();await api.externalState.IndexedDbStateStore.delete(indexedDB,database)}
+    }
+    })()
+    return await job.task
   })()`,
-      maximum ? 600_000 : 180_000
+        maximum ? TRANSFER_TIMEOUT : 180_000
+      )
     )
-  )
+  } finally {
+    try {
+      await settleRoundTrips()
+    } finally {
+      console.info('sample attachment transfer duration', {
+        target: onPhone() ? 'phone' : 'desktop',
+        maximum,
+        durationMs: Date.now() - started,
+      })
+    }
+  }
 }
 
 describe('attachment API with the pinned real server on live adapters', () => {
@@ -189,8 +243,9 @@ describe('attachment API with the pinned real server on live adapters', () => {
         samples: outcome.samples,
         growth: outcome.peakMemory - outcome.baseline,
         peakDownloads: outcome.peakDownloads,
+        durationMs: outcome.durationMs,
       })
-    }, 600_000)
+    }, TRANSFER_TIMEOUT)
 
     it('transfers the limit with one hydration buffer job', () => {
       expect(outcome).toMatchObject({

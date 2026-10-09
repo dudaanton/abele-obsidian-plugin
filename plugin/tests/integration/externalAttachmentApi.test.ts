@@ -80,7 +80,9 @@ async function setup(
       request: { version_id: string; path: string; sha: string; size: number }
     ) => ({ file_id: fileId, ...request, verified: true as const })
   )
-  const download = vi.fn(async () => content)
+  const download = vi.fn<
+    (fileId: string, versionId: string, sha: string, signal?: AbortSignal) => Promise<Uint8Array>
+  >(async () => content)
   let consent: string | null = null
   const sync = vi.fn<() => Promise<unknown>>(async () => {})
   const runtime = await ExternalRepresentation.open({
@@ -936,6 +938,124 @@ describe('manual attachment store', () => {
           })
         ).status
       ).toBe('recovery-required')
+    } finally {
+      s.close()
+    }
+  })
+
+  it.each(['resolve', 'reject'] as const)(
+    'settles cancelled hydration before releasing its reservation (%s download)',
+    async (completion) => {
+      const s = await setup()
+      try {
+        await s.api.evict(s.base.fileId, {
+          operationId: 'sample-eviction',
+          expectedRevision: 0,
+          expectedVersionId: s.base.versionId,
+        })
+        const abort = new AbortController()
+        let settle!: () => void
+        let started!: () => void
+        const downloading = new Promise<void>((resolve) => {
+          started = resolve
+        })
+        s.download.mockImplementationOnce(async (_id, _version, _sha, signal) => {
+          expect(signal).toBe(abort.signal)
+          started()
+          await new Promise<void>((resolve) => {
+            settle = resolve
+          })
+          if (completion === 'reject') throw new DOMException('Cancelled', 'AbortError')
+          return content
+        })
+        const write = vi.spyOn(s.fake.vault.adapter, 'writeBinary')
+        const pending = s.api.hydrate(s.base.fileId, {
+          operationId: 'sample-cancellation',
+          expectedVersionId: s.base.versionId,
+          signal: abort.signal,
+        })
+        await downloading
+        abort.abort()
+        expect(() => s.api.acquireUse(s.base.fileId)).toThrow('busy')
+        expect(() => s.host.coordination.assertEnginePaths([path])).toThrow('busy')
+        settle()
+        expect((await pending).status).toBe('recovery-required')
+        expect(write).not.toHaveBeenCalled()
+        expect(await s.fake.vault.adapter.exists(path)).toBe(false)
+        const lease = s.api.acquireUse(s.base.fileId)
+        lease.release()
+        expect(() => s.host.coordination.assertEnginePaths([path])).not.toThrow()
+        const reservation = s.host.coordination.reserve({
+          operationId: 'sample-next-operation',
+          fileId: s.base.fileId,
+          paths: [path],
+        })
+        reservation.release()
+      } finally {
+        s.close()
+      }
+    }
+  )
+
+  it('releases the read lease when a download fails', async () => {
+    const s = await setup()
+    try {
+      await s.api.evict(s.base.fileId, {
+        operationId: 'sample-eviction',
+        expectedRevision: 0,
+        expectedVersionId: s.base.versionId,
+      })
+      s.download.mockRejectedValueOnce(new DOMException('Cancelled', 'AbortError'))
+      expect(
+        await s.api.read(s.base.fileId, { expectedVersionId: s.base.versionId })
+      ).toMatchObject({ status: 'offline' })
+      const reservation = s.host.coordination.reserve({
+        operationId: 'sample-next-operation',
+        fileId: s.base.fileId,
+        paths: [path],
+      })
+      reservation.release()
+    } finally {
+      s.close()
+    }
+  })
+
+  it('waits for an issued staging write on cancellation and releases the reservation without installing', async () => {
+    const s = await setup()
+    try {
+      await s.api.evict(s.base.fileId, {
+        operationId: 'sample-eviction',
+        expectedRevision: 0,
+        expectedVersionId: s.base.versionId,
+      })
+      let started!: () => void
+      let settle!: () => void
+      const writing = new Promise<void>((resolve) => {
+        started = resolve
+      })
+      const original = s.fake.vault.adapter.writeBinary.bind(s.fake.vault.adapter)
+      vi.spyOn(s.fake.vault.adapter, 'writeBinary').mockImplementation(async (...args) => {
+        await original(...args)
+        started()
+        await new Promise<void>((resolve) => {
+          settle = resolve
+        })
+      })
+      const abort = new AbortController()
+      const pending = s.api.hydrate(s.base.fileId, {
+        operationId: 'sample-staging-cancellation',
+        expectedVersionId: s.base.versionId,
+        signal: abort.signal,
+      })
+      await writing
+      abort.abort()
+      expect(() => s.api.acquireUse(s.base.fileId)).toThrow('busy')
+      settle()
+      expect((await pending).status).toBe('recovery-required')
+      expect(await s.fake.vault.adapter.exists(path)).toBe(false)
+      expect(() => s.host.coordination.assertEnginePaths([path])).not.toThrow()
+      const lease = s.api.acquireUse(s.base.fileId)
+      lease.release()
     } finally {
       s.close()
     }

@@ -120,7 +120,7 @@ Partial writes or failed checks retain ambiguous staging evidence. Disk SHA/size
 after staging, before installation and after installation remain in place; rename and its
 final absence check remain unchanged. Incremental SHA-256 already avoids WebCrypto copies.
 
-Mobile immutable blob and version downloads request sequential 1 MiB HTTP ranges. Personal
+Mobile immutable blob and version downloads request sequential 8 MiB HTTP ranges. Personal
 blob and scoped historical-version server routes support Range; vendored clients expose
 only whole-byte results, so the mobile transport assembles one full buffer. Authorization,
 abort and non-following redirect handling travel through the existing native transport.
@@ -128,7 +128,8 @@ Contiguous Content-Range, stable total and exact chunk lengths are required. A s
 ignores the initial Range retains the whole-response fallback. Final server-verified SHA
 and size remain authoritative. No server code is changed.
 
-For file size F and chunk C = 1 MiB, download and staging payload reachability falls from
+For file size F and download chunk C = 8 MiB (staging remains 1 MiB), download and staging
+payload reachability falls from
 F plus a whole base64 string (about 2.33F with one-byte strings, 3.67F with two-byte strings)
 to F + O(C). An additional whole bridge/string serialization copy could previously raise
 that to roughly 3.67F–6.33F; its presence is runtime-dependent. These are allocation models,
@@ -139,7 +140,9 @@ unchanged; the improvement removes repeated whole-file download/write bridge pre
 The public mobile adapter has no bounded binary-read API. Caller and staging effect release
 the download reference before any verification read; spies check sequencing and bounded
 bridge arguments, but cannot prove garbage collection or native memory reclamation.
-Live mobile batching and native resident-memory sampling remain required.
+An 8 MiB download chunk cuts a 200 MiB transfer from 200 requests to 25 while keeping bridge
+temporaries independent of file size. Live mobile batching and native resident-memory
+sampling remain required.
 
 `plugin/tests/integration/externalFilePorts.test.ts` covers nonactive leaves, pending-open
 invalidation, leases/teardown, supplied exclusive serialization, engine mutation reservations,

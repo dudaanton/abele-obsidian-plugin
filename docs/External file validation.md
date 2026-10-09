@@ -67,7 +67,7 @@ the initial write, and verifies the final SHA/size through the host fingerprint 
 It does not retain a second full-size comparison buffer or take a WebCrypto snapshot.
 Desktop downloads bridge response chunks; desktop disk rechecks reuse a 1 MiB buffer.
 Expected payload growth is approximately one to two file sizes during download assembly,
-not a proven resident-memory bound. Mobile immutable blob/version downloads now use 1 MiB
+not a proven resident-memory bound. Mobile immutable blob/version downloads now use 8 MiB
 HTTP ranges and staging uses 1 MiB writes when `appendBinary` exists. Verification still
 uses whole-file `readBinary`. See `External file filesystem ports.md` for allocation estimates
 and fallback limits. Native bridge and garbage-collection overhead require live measurement
@@ -98,3 +98,14 @@ The local integration matrix is not evidence that live phone memory or installat
 passed. Completion still requires the supervising smart-check/build gate, these live
 batches and the server's PostgreSQL gate with no backend skips. Record those results
 separately from the focused plugin test result.
+
+The attachment round-trip setup, maximum-size hook and teardown explicitly allow ten minutes.
+Each remote round trip registers an AbortController and its settlement promise before
+attachment work. Failure, timeout, afterEach and afterAll abort the operation and await all
+issued hydration jobs before closing the host/database or deleting fixtures. Transfer duration
+is logged on success and failure; all transfer and memory assertions remain. Cancellation
+cannot interrupt an already-issued adapter write: teardown waits for its settlement.
+Hydration forwards its signal to the download callback, rechecks cancellation before staging
+and at mutation boundaries, and retains durable pending recovery state while releasing
+runtime reservations after settlement. A download callback that ignores the signal is awaited
+to completion before cancellation releases the reservation.

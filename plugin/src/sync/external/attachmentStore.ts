@@ -85,7 +85,12 @@ export class AttachmentStore {
         fileId: string,
         input: { version_id: string; path: string; sha: string; size: number }
       ): Promise<unknown>
-      download(fileId: string, versionId: string, sha: string): Promise<Uint8Array>
+      download(
+        fileId: string,
+        versionId: string,
+        sha: string,
+        signal?: AbortSignal
+      ): Promise<Uint8Array>
       scriptsFolder(): string
       excluded?(path: string, size: number): boolean
       scopedHead?(id: string): Promise<{
@@ -538,6 +543,7 @@ export class AttachmentStore {
         paths: [head.path, staging, projectionPath(head.path), quarantine],
         assertIntent: (effect) => {
           this.owned()
+          if (opts.signal?.aborted) throw new ExternalFilePortError('recovery-required')
           if (effect === 'stage' && phase === 'download-intent') return
           if (effect === 'install' && phase === 'ready-to-install') return
           if (effect === 'retire-projection' && phase === 'cleanup-pending') return
@@ -710,11 +716,13 @@ export class AttachmentStore {
         if (opts.signal?.aborted) return this.result('recovery-required')
         let bytes: Uint8Array | undefined
         try {
-          bytes = await this.options.download(id, head.versionId, head.sha)
+          bytes = await this.options.download(id, head.versionId, head.sha, opts.signal)
         } catch (error) {
+          if (opts.signal?.aborted) return this.result('recovery-required')
           return this.reason(error)
         }
         this.owned()
+        if (opts.signal?.aborted) return this.result('recovery-required')
         if (bytes.length !== head.size || (await sha256(bytes)) !== head.sha)
           return this.result('version-changed')
         const stagingWork = effects.stage(artifact, bytes)
