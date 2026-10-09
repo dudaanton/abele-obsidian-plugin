@@ -3,6 +3,7 @@ import { IDBFactory } from 'fake-indexeddb'
 import type { NodeClient, Delegation, DelegationGrant } from '@abele/node-client'
 import { NodeClientStore } from '@/node/NodeClientStore'
 import { NodeDelegationController } from '@/node/NodeDelegationController'
+import { deferred } from '../helpers/deferred'
 
 const grant: DelegationGrant = {
   grant_id: 'grant',
@@ -289,6 +290,103 @@ describe('trusted node delegation controller', () => {
     await f.controller.restore()
     expect(f.client.cancelDelegation).toHaveBeenCalledWith('delegation')
     await expect(f.controller.create('parent', task)).rejects.toThrow(/cancelled/)
+    f.store.close()
+  })
+
+  it('persists Stop while subscription is pending even when disconnect rejects it', async () => {
+    const f = fixture()
+    await f.controller.approve({ parent_id: 'parent', project_ids: ['project'], providers: ['pi'] })
+    const subscription = deferred()
+    f.client.subscribeDelegation.mockImplementationOnce(() => subscription.promise)
+    f.client.cancelDelegation.mockRejectedValue(new Error('disconnected'))
+    const abort = new AbortController()
+    const creating = f.controller.create('parent', task, abort.signal)
+    const rejected = expect(creating).rejects.toThrow()
+    await vi.waitFor(() => expect(f.client.subscribeDelegation).toHaveBeenCalled())
+    abort.abort()
+    // Stop must be durable BEFORE the pending request settles, not only in its success path.
+    const saved = await f.store.transaction((s) => Object.values(s.delegation!.tasks)[0])
+    subscription.reject(new Error('disconnected'))
+    await rejected
+    expect(saved.cancelled).toBe(true)
+    expect(saved.cancelSettled).not.toBe(true)
+    f.client.cancelDelegation.mockResolvedValue({ ...child, state: 'cancelled' })
+    const reopened = new NodeClientStore('sample-delegation', f.factory)
+    const recovery = new NodeDelegationController(f.client as unknown as NodeClient, reopened)
+    await recovery.restore()
+    expect(f.client.cancelDelegation).toHaveBeenCalledWith('delegation')
+    expect(await reopened.transaction((s) => Object.values(s.delegation!.tasks)[0].cancelSettled)).toBe(true)
+    reopened.close()
+    f.store.close()
+  })
+
+  it('does not replace a settled cancellation with the stale create child on unwinding', async () => {
+    const f = fixture()
+    await f.controller.approve({ parent_id: 'parent', project_ids: ['project'], providers: ['pi'] })
+    const subscription = deferred()
+    f.client.subscribeDelegation.mockImplementationOnce(() => subscription.promise)
+    f.client.cancelDelegation.mockResolvedValueOnce({ ...child, state: 'cancelled' }).mockRejectedValue(new Error('disconnected'))
+    const abort = new AbortController()
+    const creating = f.controller.create('parent', task, abort.signal)
+    const rejected = expect(creating).rejects.toThrow()
+    await vi.waitFor(() => expect(f.client.subscribeDelegation).toHaveBeenCalled())
+    abort.abort()
+    await vi.waitFor(async () => expect(await f.store.transaction((s) => Object.values(s.delegation!.tasks)[0].cancelSettled)).toBe(true))
+    subscription.reject(new Error('disconnected'))
+    await rejected
+    expect(await f.store.transaction((s) => Object.values(s.delegation!.tasks)[0].child!.state)).toBe('cancelled')
+    expect(f.client.cancelDelegation).toHaveBeenCalledTimes(1)
+    const request = f.client.createDelegation.mock.calls[0][0]
+    await f.store.transaction((s) => {
+      s.results['old-create-receipt'] = { request: { method: 'delegation.create', params: request }, result: { ...child, delegation_key: request.delegation_key } }
+    })
+    await f.controller.restore()
+    expect((await f.controller.cards('parent'))[0].state).toBe('cancelled')
+    f.store.close()
+  })
+
+  it.each([false, true])('persists Stop during the child-record write (write rejects=%s)', async (rejectWrite) => {
+    const f = fixture()
+    await f.controller.approve({ parent_id: 'parent', project_ids: ['project'], providers: ['pi'] })
+    const entered = deferred()
+    const release = deferred()
+    const transaction = f.store.transaction.bind(f.store)
+    let held = false
+    vi.spyOn(f.store, 'transaction').mockImplementation((work) => transaction(async (s) => {
+      const value = await work(s)
+      if (!held && Object.values(s.delegation?.tasks ?? {}).some((t) => t.child)) {
+        held = true
+        entered.resolve()
+        await release.promise
+      }
+      return value
+    }))
+    f.client.cancelDelegation.mockRejectedValue(new Error('disconnected'))
+    const abort = new AbortController()
+    const creating = f.controller.create('parent', task, abort.signal)
+    const rejected = expect(creating).rejects.toThrow()
+    await entered.promise
+    abort.abort()
+    if (rejectWrite) release.reject(new Error('sample write failure'))
+    else release.resolve()
+    await rejected
+    const saved = await transaction((s) => Object.values(s.delegation!.tasks)[0])
+    expect(saved).toMatchObject({ cancelled: true, child: { delegation_id: 'delegation' } })
+    f.client.cancelDelegation.mockResolvedValue({ ...child, state: 'cancelled' })
+    await f.controller.restore()
+    expect(await transaction((s) => Object.values(s.delegation!.tasks)[0].cancelSettled)).toBe(true)
+    f.store.close()
+  })
+
+  it('retains cancellation requested after create returned when the remote cancel fails', async () => {
+    const f = fixture()
+    await f.controller.approve({ parent_id: 'parent', project_ids: ['project'], providers: ['pi'] })
+    await f.controller.create('parent', task)
+    f.client.cancelDelegation.mockRejectedValueOnce(new Error('disconnected'))
+    await expect(f.controller.cancel('parent', 'delegation')).rejects.toThrow('disconnected')
+    expect(await f.store.transaction((s) => Object.values(s.delegation!.tasks)[0].cancelled)).toBe(true)
+    await f.controller.restore()
+    expect(await f.store.transaction((s) => Object.values(s.delegation!.tasks)[0].cancelSettled)).toBe(true)
     f.store.close()
   })
 

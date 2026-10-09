@@ -118,40 +118,68 @@ export class NodeDelegationController {
       local.tasks[key] = { parentId: parent, input, request }
       return request
     })
-    if (signal?.aborted) throw new Error('Delegation call cancelled')
-    const available = nodeProviders(await this.client.describe()).some(
-      (p) => p.provider === input.provider && providerAvailable(p)
-    )
-    if (signal?.aborted) throw new Error('Delegation call cancelled')
-    if (!available) throw new Error('Provider unavailable on this node')
-    // Exact retained body even when a prior reply was lost. Node deduplicates the task key.
-    let child: Awaited<ReturnType<NodeClient['createDelegation']>>
-    try {
-      child = await this.client.createDelegation(request)
-    } catch (error) {
-      if (signal?.aborted) await this.store.transaction((s) => { storage(s).tasks[key].cancelled = true })
-      throw error
-    }
-    if (signal?.aborted) await this.store.transaction((s) => { storage(s).tasks[key].cancelled = true })
-    await this.store.transaction((s) => {
-      storage(s).tasks[key].child = child
+    let child: Awaited<ReturnType<NodeClient['createDelegation']>> | undefined
+    const retainCancellation = () => this.store.transaction((s) => {
+      const task = storage(s).tasks[key]
+      task.cancelled = true
+      // A failed child-record write must not lose an already accepted child identity.
+      if (child && !task.child) task.child = child
     })
-    if (signal?.aborted) {
-      await this.cancelAborted(key, child.delegation_id)
-      throw new Error('Delegation call cancelled')
+    let cancelling: Promise<void> | undefined
+    const onAbort = () => {
+      // Start durable intent on Stop itself, independently of whether an outstanding
+      // create/write/subscription ever resolves. Never request remote cancellation first.
+      cancelling = retainCancellation().then(async () => {
+        if (child) await this.cancelAborted(key, child.delegation_id)
+      })
+      void cancelling.catch(() => { /* The finally path retries a failed intent write. */ })
     }
-    await this.client.subscribeDelegation(child)
-    if (signal?.aborted) {
-      await this.store.transaction((s) => { storage(s).tasks[key].cancelled = true })
-      await this.cancelAborted(key, child.delegation_id)
-      throw new Error('Delegation call cancelled')
+    signal?.addEventListener('abort', onAbort, { once: true })
+    try {
+      if (signal?.aborted) throw new Error('Delegation call cancelled')
+      const available = nodeProviders(await this.client.describe()).some(
+        (p) => p.provider === input.provider && providerAvailable(p)
+      )
+      if (signal?.aborted) throw new Error('Delegation call cancelled')
+      if (!available) throw new Error('Provider unavailable on this node')
+      // Exact retained body even when a prior reply was lost. Node deduplicates the task key.
+      child = await this.client.createDelegation(request)
+      await this.store.transaction((s) => {
+        const task = storage(s).tasks[key]
+        if (!task.cancelSettled) task.child = child
+      })
+      if (signal?.aborted) throw new Error('Delegation call cancelled')
+      await this.client.subscribeDelegation(child)
+      if (signal?.aborted) throw new Error('Delegation call cancelled')
+      return this.publicChild(child)
+    } finally {
+      try {
+        if (signal?.aborted) {
+          await cancelling?.catch(() => {})
+          // Also covers Stop during the child write and rejection of subscription;
+          // persist the known child before another await can fail or the call unwinds.
+          await retainCancellation()
+          if (child) await this.cancelAborted(key, child.delegation_id)
+        }
+      } finally {
+        signal?.removeEventListener('abort', onAbort)
+      }
     }
-    return this.publicChild(child)
+  }
+  private async commitCancellation(key: string, id: string) {
+    const cancelled = await this.client.cancelDelegation(id)
+    await this.store.transaction((s) => {
+      const task = storage(s).tasks[key]
+      task.cancelSettled = true
+      if (task.child) task.child.state = cancelled.state
+      if (task.status) task.status = { ...task.status, state: cancelled.state }
+    })
+    return cancelled
   }
   private async cancelAborted(key: string, id: string) {
     try {
-      await this.client.cancelDelegation(id)
-      await this.store.transaction((s) => { storage(s).tasks[key].cancelSettled = true })
+      if (await this.store.transaction((s) => storage(s).tasks[key].cancelSettled)) return
+      await this.commitCancellation(key, id)
     } catch { /* Retain the intent for retry on restore. */ }
   }
   private publicChild(child: {
@@ -230,8 +258,11 @@ export class NodeDelegationController {
     return this.client.sendDelegation(id, text, status.session_head_seq)
   }
   async cancel(parent: string, id: string) {
-    await this.owned(parent, id, 'cancel')
-    return this.publicChild(await this.client.cancelDelegation(id))
+    const child = await this.owned(parent, id, 'cancel')
+    // Also covers Stop racing the tool wrapper's post-create refresh, after create's
+    // signal listener has been released. A disconnected cancel still has durable intent.
+    await this.store.transaction((s) => { storage(s).tasks[child.delegation_key].cancelled = true })
+    return this.publicChild(await this.commitCancellation(child.delegation_key, id))
   }
   /** Recover receipts before subscribing. Does not depend on an open parent/child tab. */
   async restore() {
@@ -253,6 +284,7 @@ export class NodeDelegationController {
             const task = local.tasks[child.data.delegation_key]
             if (
               task &&
+              !task.cancelSettled &&
               task.parentId === child.data.parent_id &&
               task.request.grant_id === child.data.grant_id
             )
