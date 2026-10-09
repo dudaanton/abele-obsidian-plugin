@@ -83,13 +83,13 @@ import { VaultWatcherWrapper } from './helpers/VaultWatcherWrapper'
 import { exposeTestApi } from '@/testing/exposeTestApi'
 import { observePhoneReplayTransport } from '@/testing/phoneReplay'
 import { transportOf, type SyncServiceDeps } from '@/sync/environment'
-import './helpers/vaultUtils'
-import './helpers/runAfterSync'
-import './helpers/protocolHandler'
-import './helpers/linkHandler'
-import './editor/ChartCodeblock'
-import './editor/MapCodeblock'
-import './ai/messageCards'
+import { readFileContent } from './helpers/vaultUtils'
+import { runAfterSync } from './helpers/runAfterSync'
+import { handleProtocolAction } from './helpers/protocolHandler'
+import { handleLinkAction } from './helpers/linkHandler'
+import { registerChartCodeblock } from './editor/ChartCodeblock'
+import { registerMapCodeblock } from './editor/MapCodeblock'
+import { registerMessageCardBlock } from './ai/messageCards'
 import { SnippetService } from './services/SnippetService'
 import { startCalendars } from './calendars/start'
 import '@/audio/voiceModal'
@@ -117,8 +117,8 @@ import { HeaderCommands } from '@/headerButtons/viewActions'
 import '@/composables/useFooterFold'
 import '@/composables/useFooterView'
 import { SyncService } from './sync/SyncService'
-import { PluginSharing } from './sync/pluginSharing'
-import { connectionApp } from './sync/connectionApp'
+import type { PluginSharing } from './sync/pluginSharing'
+import { prepareTokenConnections } from './sync/tokenRegistryPreparation'
 import { renderStatus, type SyncStatus } from './sync/status'
 // Keep the extracted section last so its dependencies do not reorder the existing styles.
 import { registerCoreCommands } from '@/startup/registerCoreCommands'
@@ -192,19 +192,9 @@ export default class AbelePlugin extends Plugin {
    */
   private initSync(): void {
     const sync = SyncService.getInstance()
-    const deps: SyncServiceDeps = {}
-    if (process.env.NODE_ENV !== 'production')
-      deps.fetch = observePhoneReplayTransport(this.app, (input, init) =>
-        transportOf({})(input, init)
-      )
-    const syncApp = connectionApp(this.app)
-    this.syncSharing = new PluginSharing(syncApp, sync, deps)
-    sync.sharing.value = this.syncSharing
-    deps.ownerPublication = this.syncSharing.ownerPublication
-    sync.init(syncApp, this, deps)
-    void this.syncSharing.scoped.start().catch((error) => {
-      sync.note('scoped sharing requires recovery: ' + String(error))
-    })
+    // Stage-0 cutover must never start the retired personal/scoped adapters. The v2
+    // engine adapter and token UI are installed in subsequent rebuild stages.
+    sync.note('Sync is not connected')
 
     const statusEl = this.addStatusBarItem()
     statusEl.addClass('mod-clickable')
@@ -306,7 +296,7 @@ export default class AbelePlugin extends Plugin {
         this.registerDomEvent(document, 'keydown', () => mobileBackground.activate())
         this.register(() => mobileBackground.destroy())
       })
-      // Before either sync host can write: migrate execution decisions, not received bytes.
+      // Before either sync host can write: preserve local execution decisions, not access state.
       await startupStepAsync('local script approvals', () => preserveLocalScriptVersions(this.app))
       // Settings were just replaced wholesale; anything resolving an agent must see the new set.
       startupStep('agents', () => AgentRegistry.getInstance().notifyConfigReloaded())
@@ -315,16 +305,25 @@ export default class AbelePlugin extends Plugin {
       // into a key when this device was unlocked, not now.
       const secretStore = createPluginSecrets(this)
       setSecrets(secretStore)
-      await startupStepAsync('sync connection', () =>
-        SyncService.getInstance()
-          .openConnection(this.app)
-          .catch((e) =>
-            console.error(
-              '[Abele] the sync connection could not be read, or data.json not written without it',
-              (e as Error)?.message
-            )
+      await startupStepAsync('sync connection', async () => {
+        const config = AbeleConfig.getInstance(),
+          loaded = config.takeLoadedSync()
+        try {
+          await prepareTokenConnections(this.app, {
+            get: (id) => secretStore.getLocal(id),
+            remove: (id) => secretStore.forgetLocal(id),
+          })
+          if (loaded !== null) {
+            config.acknowledgeSyncMigration()
+            await config.rewrite()
+          }
+        } catch (error) {
+          console.error(
+            '[Abele] retired access cleanup requires recovery',
+            (error as Error)?.message
           )
-      )
+        }
+      })
       await startupStepAsync('synced secrets', () =>
         secretStore.load().catch((e) => {
           console.error('[Abele] the synced secrets could not be opened', (e as Error)?.message)

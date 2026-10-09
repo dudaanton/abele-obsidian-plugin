@@ -1,9 +1,38 @@
 import type { LocalStorage } from '@/sync/ledgerId'
 import { CONNECTION_KEY, inspectConnection } from '@/sync/connection'
 import type { ScriptBinding } from './ScriptProvenance'
+import {
+  selectedConnectionStorage,
+  ConnectionRegistry,
+  REGISTRY_KEY,
+  CONNECTION_STORAGE,
+} from '@/sync/connectionRegistry'
+
+function currentToken(storage: LocalStorage | null) {
+  if (!storage || storage.loadLocalStorage(REGISTRY_KEY) == null) return undefined
+  const registry = ConnectionRegistry.open(storage)
+  const id =
+    (storage as LocalStorage & { [CONNECTION_STORAGE]?: string })[CONNECTION_STORAGE] ??
+    registry.selectedId
+  return registry.records().find((record) => record.id === id) ?? null
+}
 
 /** The identity portion only: pausing and selective settings do not change execution authority. */
 export function scriptConnectionKey(storage: LocalStorage | null): string {
+  const token = currentToken(storage)
+  if (token !== undefined)
+    return token
+      ? JSON.stringify([
+          token.id,
+          token.address,
+          token.spaceId,
+          token.tokenId,
+          token.scope?.kind ?? null,
+          token.scope?.id ?? null,
+          !!token.pending,
+        ])
+      : 'absent'
+  storage = storage && selectedConnectionStorage(storage)
   const raw = storage?.loadLocalStorage(CONNECTION_KEY) as Record<string, unknown> | null
   if (!raw) return 'absent'
   const inspected = inspectConnection(storage!)
@@ -25,6 +54,7 @@ export function isDisconnectedPersonalScriptContext(
   storage: LocalStorage | null,
   binding: ScriptBinding
 ): boolean {
+  storage = storage && selectedConnectionStorage(storage)
   const raw = storage?.loadLocalStorage(CONNECTION_KEY) as Record<string, unknown> | null
   if (
     !raw ||
@@ -49,6 +79,10 @@ export function isDisconnectedPersonalScriptContext(
 
 /** Read the real connection, not the descriptor last written by an engine that may be old. */
 export function hasScriptConnection(storage: LocalStorage | null): boolean {
+  const token = currentToken(storage)
+  if (token !== undefined)
+    return !!token?.secretReference && !token.pending && token.status !== 'needs-token'
+  storage = storage && selectedConnectionStorage(storage)
   const raw = storage?.loadLocalStorage(CONNECTION_KEY) as { vaultId?: unknown } | null
   return !!raw?.vaultId
 }
@@ -56,6 +90,7 @@ export function assertCurrentScriptConnection(
   storage: LocalStorage | null,
   binding: ScriptBinding
 ): void {
+  storage = storage && selectedConnectionStorage(storage)
   const raw = storage?.loadLocalStorage(CONNECTION_KEY)
   if (!raw || typeof raw !== 'object') {
     if (

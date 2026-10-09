@@ -1746,180 +1746,17 @@ aliases and changed endpoint URLs are refused with a request for a fresh call; t
 
 ## Sync
 
-Sync uses a self-hosted **abele-sync** server; there is no hosted service. The server operator
-owns the vault history, retention policy and account provisioning.
+Sync access is being rebuilt around one token connection kind. Each token carries an address,
+a bearer key and a stable folder/group selector. Root `/` is an ordinary folder selector.
+Connection state and secrets remain device-only; settings transfer does not connect another
+device. The token engine adapter and connection UI are not active in this intermediate build.
+See **Token connection registry** below for the local record and discard semantics.
 
-`.abele-script-managed` is a device-local recovery marker for script provenance. It is hidden
-and never synced. Managed file identities and exact-byte execution approvals live in a
-separate device-local IndexedDB database, selected by `abele-script-provenance` in this vault's
-local storage—not in `data.json` or a transferable settings section. Rename, restore and
-adoption do not make received bytes into trusted local code. A missing store behind a marker
-requires recovery; never delete the marker to bypass a hold. The marker carries no approval
-and a copied marker does not authorize another vault/device. If a connected new device has
-only a copied marker and no local descriptor, sync allocates a new empty provenance namespace
-under the verified current connection. The marker's bytes are never read as identity or trust.
-Sync continues; scripts remain blocked until durable file identities arrive and the exact
-script bytes receive this device's ordinary confirmation. A retained descriptor whose database
-is missing still holds recovery rather than inheriting foreign approvals.
-
-`abele-script-local-upgrade` holds device-local `{path, sha}` records for executable local
-versions captured before the first managed sync, versions explicitly authored here, exact
-unmanaged versions allowed offline by the retained 1.x local policy after Disconnect, and
-versions explicitly approved in a disconnected lost-store recovery namespace. That last review
-is saved only after the final context fence and transfers into the next personal receipt without
-another confirmation; ordinary remote-binding approvals remain principal-bound. An
-unmanaged fallback requires a healthy former personal store, a fully disconnected personal
-context, and absence of both source and retirement evidence in every binding. It neither
-erases managed facts nor infers trust from a lost store. Explicit authoring updates these hashes
-even before a first sync connection, so a create/edit in the same plugin session survives
-connecting without a folder resnapshot. Native arrival events do not update them, and a changed
-or protected authoring context records no transferable decision. Old explicit local SHA approvals
-can also authorize the same bytes against an existing personal receipt without another review. It is
-never a synced setting or a file. Provenance stores keep the corresponding `script-pre-sync:`
-SHA records so those exact local versions can be approved when a personal ledger identity
-arrives or changes on reconnect. Unknown received bytes acquire no approval. Offline personal
-contexts retain their exact approvals; scoped contexts still refuse execution. Library's shield
-action reviews trust without running code. Explicit disconnected recovery allocates independent
-empty provenance and retains the previous descriptor under
-`abele-script-provenance-retired:<new-local-id>`; no old database is deleted or adopted as new
-permission. Declined or invalidated recovery changes no descriptor. Only the reviewed script
-gets a new local identity and exact-byte approval; unrelated scripts remain blocked.
-
-A saved sync connection without its ledger descriptor, or with empty/evicted ledger storage,
-stops with **Sync recovery required**, before creating an engine, uploading/deleting files or
-initializing script provenance. A durable `ledger-identity-v1` header and device-local
-`abele-sync-ledger-proof` sentinel distinguish a legitimate empty vault from loss. Explicit
-enrolment alone writes a one-use `abele-sync-ledger-bootstrap` authorization, consumed before
-sync starts. Positive legacy state can acquire the header; an unprovable empty ledger cannot.
-Every automatic IndexedDB reopen after a WebKit lost-transaction/server-loss error verifies
-the actual fresh database's instance identity and expected ledger header before retrying.
-It never initializes missing identity, accepts overlay values, or performs legacy/bootstrap
-repair on that path. Missing/mismatched/unreadable identity is terminal for that runtime:
-**Sync recovery required**, stopped triggers and a false engine-effect fence before further
-writes/commits. Independent script-provenance stores have the same strict reopen protection.
-Restore this device's ledger backup, or use **Forget** and explicitly review a new join. Do not
-edit metadata to bypass the hold. No link baseline or script trust is inferred from current
-files during recovery. Independent script-provenance holds/approvals are not cleared by
-forgetting the sync ledger.
-
-Each enrolled device-local connection runs its own engine, queue and ledger over the same
-vault. The current screens show the selected connection. Competing placements reserve all
-affected paths together (including both ends of moves, case aliases and parent directories)
-through their durable state update. Downloads usually precede the reservation; the original
-file and runtime ownership are checked again before placement. Recovery reserves the vault
-when unfinished physical writes need inspection; ordinary scans with no recovery journal
-take no vault-wide reservation. Plugin reload waits for all connection runtimes.
-
-Before placement can replace local work, immutable bytes, timestamps and the destination's
-base are retained separately for each writable destination in device-local IndexedDB
-`abele-local-edit-copies-<local connection id>-<binding hash>`, under `local-edit-copies-v1`.
-Its binding is checked on open and reopen; explicit re-enrolment opens a separate namespace
-and retains predecessor evidence. These stores have independent writers so a capture cannot join
-an engine's uncommitted ledger transaction. A missing destination writer, failed capture or
-256 MiB retained-byte limit holds placement. Scoped captures conservatively preserve ordinary
-local files without inferring upload authority; destination routing and delivery of these
-copies are separate work. Copies and database identities never travel in settings or transfer.
-
-Known scoped item refusals retain the exact request, operations and staged source references
-under `scoped-item-holds-v1` in that connection's ledger before vacating the active journal,
-atomically. Other items and receiving can continue; the existing status reports the hold.
-An uncertain request keeps its active identity and immutable sources, including when a later
-replay is refused; receiving still runs. Held sources are not automatically discarded or
-reapplied. Review controls belong to the later connection UI work.
-
-When the person syncs the vault with Abele Sync, a few files in it are the sync's. A note whose
-name ends in `(Conflicted copy <device> <YYYYMMDDHHMM>)` — `Plan (Conflicted copy laptop
-202609041530).md` — is another device's version of the note beside it, written when both changed
-it and the vault's policy says to keep both rather than merge. It is an ordinary note: read both
-when asked, and leave choosing between them to the person. A merged note may hold one passage
-twice, once as each device wrote it, for the same reason.
-
-`.abele-sync-ignore` at the vault root lists, in gitignore patterns, what this device does not
-sync; it never syncs itself, so each device has its own. If it is there but cannot be read, sync
-stops with an error rather than running without it, until **Sync now** or a settings change tries
-again. Other hidden files and folders — `.git/`,
-`.DS_Store`, `.trash/` — are neither fetched nor sent by the plugin, nor is a config folder renamed
-from `.obsidian`. The daemon's `.abele-sync/` folder, when
-a vault is synced by the command-line client, is its state and never syncs either. Leave both
-alone unless asked. A hidden `.abele-sync-….tmp` or `.abele-sync-….old` file beside a note is a
-file the sync is writing that moment; unfinished replacements are recovered before each scan,
-not only at startup. A recovery error stops the scan rather than treating the gap as a delete. Never delete an `.old` by hand: it can be
-the only copy of that file. If both a backup and an independently edited target survive an
-interruption, the target is left untouched and the backup is retained under its hidden name.
-The device-local `abele-sync-recovered-writes` record maps each preserved backup to its original
-target and intended replacement hash. It is persisted before the active write intent completes,
-so scanning resumes without treating the backup as a new uploadable file. A stale installed flag
-never authorizes discarding it. A later edit, reversion or deletion of the target does not undo
-the preservation decision. On desktop, the final comparison and replacement use the same
-adapter write queue as ordinary local saves: earlier edits hold replacement, later saves run
-after it. A native adapter without that queue uses a journalled backup and atomic exclusive
-link installation; it refuses to overwrite a recreated target and keeps the old inode's bytes
-recoverable. The mandatory-preservation flag is written in the active intent before installation,
-so a crash during awaited reconciliation cannot discard that inode merely because the target
-matches the remote replacement hash. A flagged backup still restores the original target when
-installation never happened and the target is absent. Adapters with neither safe capability hold replacement. This is not an OS-wide
-compare-and-swap guarantee against unrelated processes bypassing the adapter queue.
-Keep these backup bytes/locators until the person has reviewed and
-copied out what is needed; recovery never overwrites the edited target automatically.
-
-Device-local sync records live in `abele-sync-connections-v1` in Obsidian's local storage for
-this vault, which no file carries. Each connection has a stable local ID, separate personal
-or scoped state, endpoint, server vault, principal/grant, scope, secret reference, ledger,
-pause and last known status. Current screens and the single engine use the selected record;
-multiple engine scheduling is separate work. The registry never enters `data.json` or settings
-transfer. Receiving devices independently enrol using the transferred setup information.
-
-Migration copies existing local slots into one registry record in one verified write.
-It keeps token references, database names, checkpoints and unfinished operations intact;
-tokens stay in the device-only keychain and ledger contents stay in IndexedDB. Restart before
-the write retries from the original slots; restart after it uses the committed registry.
-Original slots remain recovery evidence and are never read as live state once a registry exists.
-An unreadable registry requires recovery rather than adopting stale credentials.
-
-Within each record, the existing logical storage slots remain: `abele-sync-connection`,
-this device's connection — the server (and the one it enrolled on), the
-vault and its name, the device it enrolled as, the keychain name of its token, whether it is
-paused, what of the vault it takes, a join in progress (which side wins where this vault and the
-server both held a file — `mine`, `theirs` or `null` for merge both — or `ask` while a transfer's
-connection waits for the person to choose; cleared once the join is done), and any device it left
-while the server could not be told,
-whose token is kept under an `abele-sync-device-revoke-…` keychain name until it is (one that left
-a server on plain http to another machine is never told, and is kept until the person forgets it); under
-`abele-sync-writes`, unfinished replacements, including the replacement hash and whether it was
-installed, recovered before the next scan; under `abele-sync-restore-keys`, for a day, the keys of a **Restore all deleted
-since** whose answer did not arrive, so pressing it again is not a second restore; under
-`abele-sync-ledger`, the id of the record of what it has synced. That record is outside the vault,
-in Obsidian's IndexedDB, as a database named `abele-sync-<id>`; it also holds the Obsidian
-settings changes that arrived from other devices and wait for the person to reload or keep this
-device's, so a file in the config folder may be older on disk than on the other devices until then.
-**Disconnect** retains the currently referenced ledger for reconnecting the same server vault;
-it retries deletion of retired ledgers. **Forget** deletes all ledgers named by the selected connection's
-local descriptor, recovery proof, bootstrap or `abele-sync-ledger-cleanup` tombstones. IDs are
-filed in those tombstones before a descriptor is replaced/cleared; failed or blocked deletions
-remain explicitly pending and retry on Disconnect/Forget, including after restart. Successful
-Forget removes the ledger descriptor, proof, bootstrap and cleanup key. The legacy empty
-`{stateId:'',vaultId:''}` marker is also a clean forgotten state when no recovery/cleanup evidence
-remains. Script provenance and its managed sentinel are independently retained to prevent
-forgetting sync from turning received scripts into trusted local code. The app-wide IndexedDB
-namespace is never swept by prefix: legacy databases with no surviving vault-local ownership
-record require explicit recovery, not inferred deletion of another local vault's state.
-
-Other plugins' code (`main.js`, `manifest.json`, `styles.css`, including new plugins) waits in
-that same durable staging queue but has its own confirmation, **Review plugin code from sync**.
-It names each plugin as new or changed, with the manifest version when available. Applying
-settings cannot install that code: only **Install and reload** (or **Install plugin code** where
-reload is unavailable) can. **Keep local code** declines it without changing local code; **Later**
-leaves it staged with a review button on the Sync tab. Other plugins' `data.json` stays in the
-settings flow, and Abele's own folder keeps its existing rules. The device token itself is in the
-keychain — one per vault on a desktop, one for the whole app on a phone. A device-only keychain
-entry named `<token-id>-server` binds each token id and its exact token value to the server that
-minted it; missing or mismatched proofs, or bindings to another server, are never sent. Neither the token nor this binding travels. So a copy of the vault, a
-synced `data.json` or a transfer never makes another vault sync as this device or read its record;
-a transfer that carries the connection gives the other device a device of its own, made on the
-server when the codes are made. A device set up by a transfer from an older version is the
-exception, and syncs as the sender until it is connected again. None of it is a file an agent can see. Version history and
-deleted files are kept on the server and shown in dialogs the person opens (the `commands`
-section).
+The retained file engine keeps its independent journals, immutable pending bytes, file/version
+identities, history and conflict handling. Its path coordinator protects placement together
+with state updates across independent connections; network downloads do not hold path leases.
+Incoming executable operations require immutable source-aware review in the later review stage.
+Attachment consent is connection-specific and cannot be granted by background processing.
 
 ## Screenshots
 
@@ -2156,265 +1993,30 @@ The offline/paused pending count is computed from a read-only local scan against
 ledger, using this device's selective and ignore filters. A failed first server request does not
 mean there are no local edits; counting asks the server nothing and acknowledges no changes.
 
-## Owner sharing UI
+## Token connection registry
 
-Owner sharing, scoped join, scoped creation and publication flags are enabled in production.
-The plugin installs `PluginSharing` at layout-ready in both build modes. It supplies the bound
-owner publication lifetime, folder/group management ports and scoped installation/creation
-ports; no test API installs them. Each operation still requires its matching connection.
-Folder reviews keep exact paths, require fresh owner-password authentication and expose
-only scoped machine keys. Sponsored/native lists require identity/version, intrinsic sponsors,
-CAS/withdrawal generations and own-upload proof; no body parser or personal-token fallback.
-Grant create/PATCH replies retain the committed id and revision separately from preparation.
-A preparation failure or unfinished bounded page retries the authenticated `/prepare` path,
-not another create/PATCH. The review keeps its saved grant and issues no key/approval until
-preparation is ready. A closed or superseded review cannot adopt a late preparation response.
-The UI retains no password after confirmation and no long-lived secret setting. Current rows
-and operation ports do not substitute credentials between personal and scoped pipelines.
-Owner sign-in in Sharing reads the server's folder and group lists, and loads their image lists;
-a missing local link cache does not block explicit unsharing. Both authenticated list requests
-must succeed before local/portable cache hints are replaced. Group names, roots, roles and current
-ACL revisions come from server rows, including groups created elsewhere. An access change after
-that review causes a conflict and another server review, never a guessed revision. Stop sharing names the folder/group and warns that all
-collaborators and connected apps lose access, without deleting their downloaded copies. It uses
-the existing password-authenticated, revision-checked revoke route and changes no other share.
-Folder reviews count synced inventory files and state that the server decides sharing eligibility:
-current manifest names/kinds cannot reveal immutable executable or namespace provenance. Group-root
-reviews report the exact synced note checked, without claiming a certified membership graph.
+`abele-sync-connections-v2` is the device-local registry, containing only kind `token`. Each
+record has an address, authoritative space/token IDs and stable folder/group selector, an
+independent ledger ID, pause and status. Secret references use the device-only keychain
+namespace `abele-sync-device-token-…`; raw keys never enter the registry, synced settings,
+encrypted synced secrets or settings transfer. Engine-local state is bound to the local
+connection ID under `abele-sync-token-state:`; copied settings cannot carry that identity.
 
-`data.json`'s shared `sync.sharing` catalogue carries server/vault-bound grant IDs and optional
-`groups` management hints: group ID, last acknowledged name, root file ID, role, ACL revision and
-state. The same hints are stored in the bound local `owner-publication-audiences-v1` record,
-with `settingsPending` tracking an unacknowledged settings write. That obligation survives a
-restart and clears only after a later save and durable marker update both succeed. Before the first
-write, the owner lifetime captures the exact desired discovery snapshot (IDs, group details and
-whether it came from the authenticated server lists). A transient metadata write failure retries
-that captured snapshot, not a reconstruction from the older cache. A newer complete server fetch
-may supersede it. If the first write never succeeds, the in-memory snapshot is not a crash-durable
-record; a new lifetime must fetch server truth again. Empty
-`sharing` is omitted from synced settings. A device with no discovery hints and no successful
-server inventory shows a Sharing hint to sign in or sync plugin settings from another device.
-Local private-file introductions produce the same plain notice once per server/vault session,
-not merely on joining. It fires when a trusted native image paste is retained or an exact local
-link callback differs from the known synced base, before upload or the image's ledger identity
-is available. Received links and unrelated body edits do not trigger it. The candidates remain
-durable and are asked after discovery arrives, not treated as unshared proof.
-Corrupt group entries remain intact, are reported by
-a visible warning and cannot silently erase valid hints beside them. Hints are not authorization;
-the signed-in server lists always replace the cache. The discovery inventory may contain up to
-64 IDs; the existing 16-audience publication budget is unchanged. An oversized union, unreadable
-discovery or failed settings save pauses new automatic sharing, preserves discovery data and shows
-a warning, without stopping personal sync or management. All discovered IDs remain persisted,
-not just the subset that fits the publication budget. The pause prevents settled automatic intent
-replay and final asset transport as well as new paste publication. Consent/receipt metadata remains
-intact for resumption; it is not discarded or acknowledged by matching current bytes.
-It travels with the Sync transfer section and ordinary plugin-settings sync, so a second personal
-device can discover the same audiences. It carries no credentials, consent, local principal or
-ledger identity. Local audience records remain bound to their own device; imported IDs still
-require fresh server visibility and intrinsic sponsor proofs for every publication operation.
-When plugin-settings sync is disabled, signing in under Sharing can refresh this discovery list
-from both owner grant-list routes without enabling settings sync. Cached group data can travel
-with the Sync transfer section, but never substitutes for signed-in server truth.
+Startup discards old personal/scoped records, journals, ledger references and known access
+credentials. It performs no migration, backup or baseline import. Actual vault files and
+IndexedDB databases are not deleted. `abele-sync-retired-access-cleanup-v1` temporarily holds
+only credential references until verified deletion succeeds, allowing interrupted cleanup to
+resume. New token credentials and unrelated keys are protected. The old access runtime is
+not started, including when cleanup fails.
 
-The publication store keeps existing-private decisions (`pending`, `declined`,
-`approved`) in its own device-local IndexedDB, separate from the personal sync ledger.
-A decision is keyed by connection, stable target file identity and one audience, not content,
-version, sponsor or the audience set. The pending question retains a separate freshness
-fingerprint; changed target bytes/identity or withdrawal invalidate an open answer, without
-forgetting a refusal. These records are not transferable settings or publication permission.
-Local settlement retains link candidates before advancing the last-synced baseline; pull only
-advances it. A merge compares the submitted local facts, not received links in the merged body.
-An arbitrary unknown baseline never proposes publication questions. A missing received cache
-keeps a device-local expected file/version/SHA until its exact callback recovers that base;
-a callback cannot overwrite a newer settled version. A locally observed note creation keeps
-its prepared handle until a novel creation receipt proves the empty base. Adopted, collided
-and received creates cannot supply that proof. Late initial indexing can then recover its links.
-The novel-create base is retained even if the first cache callback itself arrives before the image
-gets its ledger identity, so later resolution can recover the introduction without another edit.
-A submitted local edit whose cache was not ready keeps its source SHA and proven prior base
-until the exact callback arrives. A link whose image is not in the ledger yet also retains its
-original local base; post-sync revalidation resolves the new image identity without needing
-another cache event. Late cache completion restores an applied native-paste sponsor and schedules
-revalidation through the sync queue, outside the personal transaction. The host also tracks the
-ledger's transaction boundary for automatic engine runs; receipt metadata can settle inside it,
-but publication effects and questions wait until it finishes. Receipt version/SHA checks prevent stale callbacks from
-creating questions, and merged received links are never compared as locally submitted facts.
-A confirmed existing-private decision stores its exact add request and stable intent ID before
-HTTP; a lost reply retries that request, not another publication. Temporarily unavailable
-cache evidence retains the approved request for a later retry; it is not completion or refusal.
-Target/link/sponsor checks and
-owner-device audience visibility are re-read outside the personal settlement transaction.
-Short links are resolved again against the current namespace and stable ledger identity before
-showing or answering a question and immediately before transport. File namespace changes
-invalidate cached resolutions without changing immutable last-synced link facts. A batch of
-question reads is dropped if its namespace/evidence epoch changes while later questions are
-checked; the presenter also checks that epoch after its await, before using the batch.
-Closing the dialog without a choice leaves the question pending without reopening it on every
-save. The next app/window foreground or owner runtime attachment retries it after editor idle;
-**Review** in the Sync tab opens it explicitly. Only an explicit, revalidated **Share** or
-**Keep private** answers it. The Linked private files list is rebuilt from durable pending
-records, independently of current display eligibility. A temporarily unavailable cache or
-network may display the saved question after restart, but neither answer nor transport can
-use that saved observation as fresh authority. A known invalid link suppresses automatic
-presentation without settling the pending review item. Epoch invalidation and transient read
-failures preserve an already-listed unanswered item. A delayed Review must still be the latest request,
-foreground and not busy when its read completes; closing or answering invalidates older reads.
-Questions stay pending while an editor, editable field or link suggestion has focus. Leaving
-editing wakes presentation; returning focus to a desktop window also retries a deferred question.
-Sync never blurs the editor or interrupts input to show a question. An already-open question
-stays open across refocus, transient read failures and evidence changes until answered or closed;
-answering still revalidates its exact target, link and audience before any effect. A failed older
-foreground read cannot clear a question opened by a newer sync refresh.
-**Keep private** remembers a refusal for that file/audience.
-Production validates that all four sharing source flags remain enabled and rejects test API
-and test-sharing activation modules from its rendered graph. `npm run build:test` uses the
-separate `sharing-test` mode only to mark the test artifact, not to unlock a production feature. Test HTTPS stand activation still requires
-an owned isolated fixture context and bound device; it does not bypass server activation or
-credential/visibility checks.
+A pending token binding is written before the device keychain write, then activated only
+after the key reads back. Re-pasting the same new token resumes interrupted provisioning;
+different authority cannot take over that binding. A bound record cannot be retargeted: a different token needs a separate local record, preserving existing pending state. A renamed selector keeps its stable ID,
+ledger and credential. Malformed active storage requires recovery. Forget removes only the
+selected metadata; credential/database retirement remains the runtime’s separate action.
 
-## Group wizard and initial batch
-
-The owner group wizard requires a certified exact root/member/anchor preview and fresh owner
-account authentication. Relations/anchors are separate explicit version-bound approvals; a
-preparing grant is not automatic approval. No whole-vault client parser, basename inference or
-received-file remap supplies authority. Initial existing-image batches use checksum-bound
-`initial-asset-batch-v1:` metadata with exact target/sponsor/audience versions, withdrawals and
-stable per-operation request IDs before publication; stale replacements or lost evidence hold.
-An existing/resumed review whose journal disappears cannot mint replacement operation IDs.
-Successful relation acknowledgements advance the reviewed ACL revision and retain confirmed
-progress; an uncertain approval reply is recovery, not permission to guess another revision.
-
-## Scoped invitation and creation state
-
-Folder/group sharing is device-neutral: an e-ink reader uses the same grants, reader/editor
-roles and scoped installation rules as any other collaborator device. Books are ordinary
-shared files, not a separate connection profile or attachment policy.
-
-The connection-local `abele-sync-scoped-join` slot keeps the exact resumable invitation/enrolment attempt;
-`abele-sync-scoped-connection` is a disjoint scoped installation descriptor with script policy
-`refuse`. Account tokens/passwords are never persisted. Invitation/installation secrets and
-independent issuer/member/credential binding proofs remain in the device-only keychain, not
-in transferred settings. Proof names losslessly compact UUIDs and their type prefix when needed
-to meet Obsidian's lowercase/digit/dash alphabet and 64-character limit; the host also reads old
-proof slots without changing the descriptor or proof. Clearing a scoped secret also clears every
-readable pre-release alias, including bindings that contain a copy of the credential. Strict
-keychains that refuse an old overlong name do not block removal of its supported compact slot.
-Forget's exact empty ledger marker is not
-an active personal connection, and dormant script provenance is preserved but never used by the
-scoped installation. Retained personal state or another scoped connection blocks setup;
-missing scoped ledger state requires recovery. Joining publishes no unrelated local file and
-holds unmanaged incoming-path collisions without replacement/remap. Pending/malformed scoped
-context also refuses personal enrolment and vault script execution before credentials/effects.
-
-Scoped authority denial (`unauthorized`) stores the exact connection and a plain owner-removed
-message in device-local `abele-scoped-access-removed`, stops watchers/polls and disables sync/new
-creation until the collaborator leaves. Offline and temporary unavailable/updating views do not
-mean revocation. `abele-scoped-display-name` keeps a connection-bound folder prefix or root path
-for this message; neither record authorizes anything or travels in settings. **Leave this shared
-group** asks for confirmation, tries the scoped self-revoke endpoint, then forgets the scoped
-connection/join/pause/display records, invitation/installation secret slots and both scoped
-IndexedDB databases. Local files, personal ledger markers and script provenance are untouched.
-Departure works after revocation and offline. It aborts in-flight scoped requests (including
-pending response bodies) before waiting for the queue, and gives best-effort self-revocation at
-most five seconds before aborting and continuing local cleanup. An uncooperative transport's late
-result cannot revive the departed connection. If the server cannot be told, a notice says so.
-
-The `scoped-native-create-v1:` metadata records exact new-file reviews, immutable bytes,
-operation handles, root/sponsor and own-upload proof for retry. `ScopedPluginHost` installs the
-separate tagged ledger, scoped client, guarded filesystem, upload/native HTTP and link ports.
-New notes and chosen image bytes are explicitly reviewed with a current root or intrinsic
-sponsor. Installation tokens and colon-suffixed binding slots use device-only keychain entries
-with a keychain-safe spelling, through the secret service. Reader or
-changed scope/root/sponsor, occupied path, adoption and lost evidence hold instead of upload or
-replacement. No received file is moved to satisfy a new-file choice.
-
-## Publication intent integration
-
-The intent ledger uses `publication-intents-v1:` metadata, exact connection binding
-and a checksum-verified bounded aggregate. It records immutable push units, approved decisions,
-local-create handles, exact verified receipts, per-audience CAS deltas and stable intent IDs.
-A lost successful response is reconciled by its exact receipt; withdrawal or version changes
-never trigger a stale re-add. Missing ledger evidence on reopen requires recovery rather than
-manufacturing a new intent. The separate `publication-scoped-unit-v1:` records connect the
-reviewed core's durable pre-upload and exact-version settlement hooks to immutable cache facts;
-completed unit metadata is removed only after core journal retirement. The production plugin
-installs the owner host, attaches its confirmation coordinator to the foreground prompt and
-refreshes it after settlement. The trusted owner host port uses
-reviewed personal hooks, including exact received-note delivery, and `native-owner-v1:` metadata
-in an independently owned store. Rows bind note/cache observations, paste range, stable handles,
-prepared sending candidates, exact admitted submitted bodies and wire receipts to the connection
-with checksums. Ready-image intents are durable before a partial hold can release any upload.
-Blob refusals can further reduce a candidate: before transport, the exact durable core submitted
-journal binds an ordered subset without changing fields or stable handles, retaining the original
-plan. Version-2 metadata stores original operation values once, preserving field order, with a
-fixed-size admitted-selection bitmap reserved before upload. Binding cannot duplicate the body
-or grow past storage limits after submission; admission-held reasons are derived from the
-selection rather than appended, and legacy rows decode to the same exact evidence. Receipt
-metadata references that frozen unit's operation digest instead of duplicating its operation
-array, while retaining the strict original wire body and receipt verification.
-Once bound, body/key/handles are immutable on replay; receipts must match exactly, and
-omitted targets/sponsors stay held. A final-binding persistence failure prevents transport. Only trusted exact native paste-range
-introduction plus verified novel creation and authorized intrinsic sponsor proof may publish;
-received snapshots are baselines, never owner introduction or script consent. Lost evidence
-holds. Native cache/paste evidence remains a prerequisite; the production host never replaces
-it with a body parser or infers local authorship from received bytes.
-
-## Production sharing host records
-
-`abele-owner-publication:<binding-hash>` in vault-local storage describes each connection's
-independent publication database; `.abele-owner-publication-<binding-hash>` is its hidden
-recovery sentinel and never syncs. Re-enrolment, Forget and vault changes open disjoint resources
-for the new ledger/principal instead of blocking personal sync or inheriting old decisions.
-Legacy unsuffixed records are reopened only for their exact matching binding; old-identity work
-is retained separately for recovery, never replayed as a new identity. Either one lost while
-the other remains requires recovery, not an empty publication baseline. The database's
-`owner-publication-audiences-v1` record is checksum-bound to local vault, issuer and personal
-principal. It retains only IDs returned by authenticated owner grant creation/preparation.
-Selecting an audience does not grant access: every question and publication rechecks the existing
-server visibility and intrinsic-sponsor proof endpoints. Neither the catalogue nor its decisions
-travel in settings transfer.
-
-`abele-owner-publication-stores-v1` is a device-local ownership/retirement catalogue.
-Every known record, including the current binding, requires its matching descriptor and
-sentinel before opening. Loss of both markers still holds recovery when the catalogue
-proves previous storage; it never allocates an empty replacement over retained decisions.
-Disconnect and a new binding retire old stores only when all retained work is provably
-terminal; unknown or unfinished evidence stays separate for recovery. Empty binary-only
-link units carry no retained link work: live uploads no longer create them, and old empty
-units are cleared at settlement or accepted as terminal during retirement. Nonempty or
-unknown layouts still hold. At most 16 stores may
-be retained: a full recovery budget holds new allocation rather than evicting pending work.
-Forget explicitly deletes the catalogued databases, descriptors and sentinels, including
-unfinished local work. Durable retirement markers let interrupted deletion resume without
-mistaking an intentionally removed descriptor for a new installation. None of this catalogue
-establishes sharing authority or transfers consent to a new binding.
-
-Scoped installations use `abele-scoped-<ledgerId>` and `abele-scoped-native-<ledgerId>` IndexedDB
-stores, bound to the exact scoped credential fingerprint and descriptor. `abele-scoped-paused`
-is a device-local pause preference. Personal cursors and journals are never reused. Native
-identity initialization is allowed only alongside an explicitly initialized empty core store.
-A missing native header beside an existing core ledger or journal holds recovery, including
-loss of the whole native database; cold open never manufactures replacement creation evidence.
-An exact
-scoped CREATE receipt is retained under `scoped-creation-receipt-v1:<handle>` before final
-materialization, so delayed certification or a restart cannot become identity adoption by
-matching bytes. `scoped-creation-journal-v1` binds the reviewed handle to its exact core request
-before transport. The installed scoped client retains the receipt on every send, including
-watcher/timer journal replay, before core can retire that journal. Compact acknowledgements
-never substitute for an exact creation receipt. Note creation uses the existing no-adoption
-scoped commit protocol; image
-creation uses the existing sponsored-native API and principal-owned upload proof. Received files
-keep their original paths. Scripts stay refused for scoped connections, even when paused.
-
-## Publication snapshot contract
-
-The sync implementation defines a separate device-local IndexedDB link-snapshot store, bound to
-local vault, issuer, principal/facet/grant and exact settled note identity/version/SHA. Its
-independent descriptor and recovery sentinel are installed by the plugin's trusted host. Unknown or lost evidence never creates
-an empty local baseline. Pending local-create novelty clears on settlement; immutable
-received baselines and bounded known-rename evidence are separate from publication authority.
-The disabled pure publication reducer also defines device-local pending/declined/approved
-exposure decisions, keyed by exact connection, target identity/version/SHA and audience
-admission/publication/withdrawal generations. Only revalidated confirmations may be approved.
-These records are metadata contracts, not activated upload/publication hooks; lost evidence
-continues to hold rather than reconstructing a permission from current note contents.
+Retained push placement stages verified download bytes under the reserved local directory
+`.abele-sync/placement-outbox/<request-hash>/<sha>` before path leases. This directory never
+syncs. Bounded runs are loaded during settlement and successful settlement removes staged
+files. Interrupted settlement retains its request journal and staging for retry; orphan
+temporary-directory cleanup belongs to the later recovery stage.

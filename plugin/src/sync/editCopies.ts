@@ -138,12 +138,12 @@ export function refreshEditCopyDestinations(host: object, storage: LocalStorage)
       .records()
       .filter(
         (record) =>
-          record.endpoint &&
-          record.vaultId &&
+          record.address &&
+          record.spaceId &&
           record.secretReference &&
-          (record.kind === 'personal' ||
-            (record.scope.role === 'editor' &&
-              !registry.storage(record.id).loadLocalStorage('abele-scoped-access-removed')))
+          !record.pending &&
+          record.status !== 'needs-token' &&
+          record.status !== 'scope_unavailable'
       )
       .map((record) => record.id)
   )

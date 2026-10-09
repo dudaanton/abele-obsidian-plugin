@@ -1,10 +1,5 @@
 import type { App } from 'obsidian'
-import {
-  CONNECTION_STORAGE,
-  ConnectionRegistry,
-  REGISTRY_KEY,
-  type ConnectionStatus,
-} from './connectionRegistry'
+import { CONNECTION_STORAGE, ConnectionRegistry, type ConnectionStatus } from './connectionRegistry'
 
 interface Context {
   app: App
@@ -15,11 +10,11 @@ interface Context {
 const contexts = new WeakMap<App, Context>()
 
 /** Thin Obsidian adapter. All other App properties, symbols and vault identity stay shared. */
-export function connectionApp(app: App, extraLegacyKeys: string[] = []): App {
+export function connectionApp(app: App): App {
   const existing = contexts.get(app)
   if (existing) return existing.app
-  const registry = ConnectionRegistry.open(app, extraLegacyKeys)
-  const id = registry.selectedId || registry.add('personal')
+  const registry = ConnectionRegistry.open(app)
+  const id = registry.selectedId || registry.add()
   const adapted = connectionAppFor(app, id)
   const context = contexts.get(adapted)
   if (!context) throw new Error('Connection context requires recovery')
@@ -47,17 +42,9 @@ export function connectionAppFor(app: App, id: string): App {
   return adapted
 }
 
-/** Discover earlier publication descriptors even if a crash preceded their catalogue write. */
+/** No legacy inventory, migration or network activity is part of token context preparation. */
 export async function prepareConnectionApp(app: App): Promise<App> {
-  if (contexts.has(app)) return connectionApp(app)
-  if (app.loadLocalStorage(REGISTRY_KEY) != null) return connectionApp(app)
-  const files = (await app.vault.adapter.list('')).files
-  const keys = files.flatMap((file) =>
-    /^\.abele-owner-publication-[a-f0-9]{64}$/.test(file)
-      ? ['abele-owner-publication:' + file.slice('.abele-owner-publication-'.length)]
-      : []
-  )
-  return connectionApp(app, keys)
+  return connectionApp(app)
 }
 
 export function connectionStatus(app: App, status: ConnectionStatus): void {

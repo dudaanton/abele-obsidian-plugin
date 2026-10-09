@@ -23,10 +23,6 @@ import { PluginSharing } from './pluginSharing'
 import { connectionApp, prepareConnectionApp, connectionStatus } from './connectionApp'
 import { requireExternalLifecycleSafety } from './external/pluginSafety'
 import { factoryOf } from './environment'
-import { connectionAppFor } from './connectionApp'
-import { CONNECTION_STORAGE, ConnectionRegistry, REGISTRY_KEY } from './connectionRegistry'
-import { refreshEditCopyDestinations } from './editCopies'
-import { ConnectionEngines } from './connectionEngines'
 
 export { isWireConfigDir } from './scope'
 export type { ConnectionEdit, ConnectionPatch, VaultChoice } from './enrolment'
@@ -155,8 +151,7 @@ export class SyncService {
   /** Drops the settings-saved subscription. */
   private unhookSettings: (() => void) | null = null
 
-  private readonly siblings = new ConnectionEngines()
-  private constructor(private readonly subordinate = false) {
+  private constructor() {
     this.board.onStatusChange((status) => {
       if (this.app) {
         try {
@@ -188,7 +183,6 @@ export class SyncService {
     this.app = app
     this.plugin = plugin
     this.deps = deps
-    if (!this.subordinate) this.startSiblings(app, plugin, deps)
     this.keeper.read(app)
     // A settings save moves the scripts folder, which the engine is built on too.
     this.unhookSettings?.()
@@ -216,45 +210,6 @@ export class SyncService {
       this.note(error instanceof Error ? error.message : String(error))
     )
     tellJoinWaiting(this.connection.value)
-  }
-
-  private startSiblings(app: App, plugin: AbelePlugin, deps: SyncServiceDeps): void {
-    if (app.loadLocalStorage(REGISTRY_KEY) == null) return
-    const records = ConnectionRegistry.open(app).records()
-    const ownId = (app as App & { [CONNECTION_STORAGE]?: string })[CONNECTION_STORAGE]
-    const connected = records.filter(
-      (record) => record.endpoint && record.vaultId && record.secretReference
-    )
-    refreshEditCopyDestinations(app.vault, app)
-    this.siblings.start(
-      connected.filter((record) => record.id !== ownId).map((record) => record.id),
-      (id) => {
-        const child = new SyncService(true)
-        const local = connectionAppFor(app, id)
-        const childDeps = { ...deps }
-        const sharing = new PluginSharing(local, child, childDeps)
-        child.sharing.value = sharing
-        childDeps.ownerPublication = sharing.ownerPublication
-        return {
-          start: async () => {
-            child.init(local, plugin, childDeps)
-            await sharing.scoped.start()
-          },
-          invalidate: () => child.runner.invalidate(),
-          close: () => child.destroy(),
-        }
-      },
-      (id, error) => {
-        try {
-          ConnectionRegistry.open(app).setStatus(id, 'error')
-        } catch {
-          /* keep original failure */
-        }
-        this.note(
-          error instanceof Error ? error.message : 'additional connection requires recovery'
-        )
-      }
-    )
   }
 
   /**
@@ -315,11 +270,9 @@ export class SyncService {
     // Closing synchronously revokes both host lifetimes before a successor can start;
     // the barrier also awaits scoped in-flight work and independent metadata teardown.
     const sharedClosing = sharing?.close() ?? Promise.resolve()
-    const siblingsClosing = this.siblings.close()
     const stopping = this.queue.run(async () => {
       await sharedClosing
       await this.runner.teardown()
-      await siblingsClosing
     })
     if (this.app !== null) recordTeardown(this.app, Promise.all([this.previousTeardown, stopping]))
     await stopping
