@@ -13,7 +13,7 @@ import { WriteJournal } from '../writeJournal'
 import { SCOPED_CONNECTION_KEY, SCOPED_JOIN_KEY } from '../scoped/scopedJoin'
 import { ConnectionBindingSchema, sameConnection, type ConnectionBinding } from './records'
 import { decodeExternalDocument, ExternalState } from './state'
-import { recognizeProjection } from './projection'
+import { MAX_PROJECTION_BYTES, recognizeProjection } from './projection'
 import {
   EXTERNAL_ACTIVATION_KEY,
   EXTERNAL_SWITCH_KEY,
@@ -120,7 +120,24 @@ export async function checkExternalMigration(app: App, factory: IDBFactory): Pro
   }
 }
 
-/** Sequential bounded-concurrency reads. Recognition follows content, not the extension or account. */
+export const EXTERNAL_INSPECTION_KEY = 'abele-sync-external-inspection-v1'
+const inspectionSchema = z
+  .object({
+    schema: z.literal(1),
+    entries: z.array(
+      z
+        .object({
+          path: z.string(),
+          size: z.number().int().nonnegative(),
+          mtime: z.number(),
+          marker: z.boolean(),
+        })
+        .strict()
+    ),
+  })
+  .strict()
+
+/** Stat-first, persisted inspection. Recognition follows bounded content, not the extension. */
 export async function projectionEvidence(
   app: App,
   assertOwned: () => void = () => {},
@@ -140,16 +157,90 @@ export async function projectionEvidence(
     for (const child of listed.folders) await walk(child)
   }
   await walk('')
+  const cached = inspectionSchema.safeParse(app.loadLocalStorage(EXTERNAL_INSPECTION_KEY))
+  // The index is an optimization, never authority: damaged/missing cache triggers inspection.
+  const previous = new Map(
+    (cached.success ? cached.data.entries : []).map((entry) => [entry.path, entry])
+  )
+  const inspected: { path: string; size: number; mtime: number; marker: boolean }[] = []
+  let evidence: string | null = null
+  const stat = async (path: string) => {
+    try {
+      return await app.vault.adapter.stat(path)
+    } catch (cause) {
+      const code =
+        typeof cause === 'object' && cause !== null && 'code' in cause ? cause.code : null
+      if (code === 'ENOENT' || code === 'ENOTDIR') return null
+      throw cause
+    }
+  }
+  const adapter = app.vault.adapter as typeof app.vault.adapter & {
+    readBinaryPrefix?(path: string, maximumBytes: number): Promise<ArrayBuffer | Uint8Array>
+    getFullPath?(path: string): string
+    fsPromises?: {
+      open?(
+        path: string,
+        flags: string
+      ): Promise<{
+        read(
+          buffer: Uint8Array,
+          offset: number,
+          length: number,
+          position: number
+        ): Promise<{ bytesRead: number }>
+        close(): Promise<void>
+      }>
+    }
+  }
+  const readCandidate = async (path: string): Promise<ArrayBuffer | Uint8Array> => {
+    if (adapter.readBinaryPrefix) return adapter.readBinaryPrefix(path, MAX_PROJECTION_BYTES)
+    if (adapter.getFullPath && adapter.fsPromises?.open) {
+      const handle = await adapter.fsPromises.open(adapter.getFullPath(path), 'r')
+      try {
+        const buffer = new Uint8Array(MAX_PROJECTION_BYTES)
+        const { bytesRead } = await handle.read(buffer, 0, buffer.length, 0)
+        return buffer.subarray(0, bytesRead)
+      } finally {
+        await handle.close()
+      }
+    }
+    return adapter.readBinary(path) // Stat-bounded portable/mobile candidate only.
+  }
   for (const path of paths) {
-    // This reserved, unsynced control file belongs to startup's ignore validation, not
-    // credential retirement. A locked ignore file must keep its existing startup/retry exit.
     if (!includeControl && path === IGNORE_FILE) continue
     assertOwned()
-    const bytes = new Uint8Array(await app.vault.adapter.readBinary(path))
+    const before = await stat(path)
     assertOwned()
-    if (recognizeProjection(bytes)) return path
+    if (!before || before.type !== 'file' || before.size > MAX_PROJECTION_BYTES) continue
+    const old = previous.get(path)
+    if (old && old.size === before.size && old.mtime === before.mtime) {
+      inspected.push(old)
+      if (old.marker) evidence ??= path
+      continue
+    }
+    let bytes: Uint8Array
+    try {
+      const read = await readCandidate(path)
+      bytes =
+        read instanceof Uint8Array
+          ? read.subarray(0, MAX_PROJECTION_BYTES)
+          : new Uint8Array(read, 0, Math.min(read.byteLength, MAX_PROJECTION_BYTES))
+    } catch (cause) {
+      assertOwned()
+      if ((await stat(path)) === null) continue
+      throw cause
+    }
+    assertOwned()
+    const marker = recognizeProjection(bytes)
+    if (marker) evidence ??= path
+    const after = await stat(path)
+    assertOwned()
+    if (after?.type === 'file' && after.size === before.size && after.mtime === before.mtime)
+      inspected.push({ path, size: before.size, mtime: before.mtime, marker })
   }
-  return null
+  assertOwned()
+  persist(app, EXTERNAL_INSPECTION_KEY, { schema: 1, entries: inspected })
+  return evidence
 }
 
 /** A connection generation is device-local; same-vault endpoint/credential replacements are different. */

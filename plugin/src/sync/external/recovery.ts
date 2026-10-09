@@ -52,21 +52,38 @@ export function assertNoExternalLifecycleMarker(storage: RecoveryStorage): void 
 export class RuntimeFence {
   private active = true
   private ready = false
-  private readonly claim = crypto.randomUUID()
+  private readonly claim: string
   private readonly key: string
+  private readonly parent: RuntimeFence | null
   constructor(
     private readonly storage: RecoveryStorage,
     readonly database: string,
-    private readonly current: () => boolean
+    private readonly current: () => boolean,
+    options: { borrow?: RuntimeFence; requireUnclaimed?: boolean } = {}
   ) {
     this.key = OWNER_KEY + database
+    this.parent = options.borrow ?? null
+    if (this.parent) {
+      this.parent.assertClaim()
+      if (this.parent.storage !== storage || this.parent.database !== database)
+        throw new ExternalRecoveryRequired('departure claim binding changed')
+      this.claim = this.parent.claim
+      return // Borrowing never overwrites or retires the runtime's claim.
+    }
+    if (options.requireUnclaimed && storage.loadLocalStorage(this.key) != null)
+      throw new EngineError('lost', 'Runtime ownership lost; another runtime owns this connection')
+    this.claim = crypto.randomUUID()
     storage.saveLocalStorage(this.key, this.claim)
     if (storage.loadLocalStorage(this.key) !== this.claim)
       throw new ExternalRecoveryRequired('runtime ownership was not persisted')
   }
   claimHeld(): boolean {
     try {
-      return this.active && this.storage.loadLocalStorage(this.key) === this.claim
+      return (
+        this.active &&
+        (!this.parent || this.parent.claimHeld()) &&
+        this.storage.loadLocalStorage(this.key) === this.claim
+      )
     } catch {
       return false
     }
@@ -77,7 +94,7 @@ export class RuntimeFence {
   }
   owns(): boolean {
     try {
-      return this.active && this.storage.loadLocalStorage(this.key) === this.claim && this.current()
+      return this.claimHeld() && this.current()
     } catch {
       return false
     }
@@ -97,7 +114,7 @@ export class RuntimeFence {
   release(): void {
     this.active = false
     this.ready = false
-    if (this.storage.loadLocalStorage(this.key) === this.claim)
+    if (!this.parent && this.storage.loadLocalStorage(this.key) === this.claim)
       this.storage.saveLocalStorage(this.key, null)
   }
   async settlePredecessors(): Promise<void> {

@@ -539,10 +539,11 @@ export class ScopedPluginHost {
   }
   /** Explicit local departure, including after revocation. Never removes vault files. */
   leave(): Promise<void> {
+    const original = this.runtime
     try {
-      if (this.runtime) {
-        this.runtime.fence.assertClaim()
-        if (this.token(this.runtime.connection) !== this.runtime.credential)
+      if (original) {
+        original.fence.assertClaim()
+        if (this.token(original.connection) !== original.credential)
           throw new Error('Scoped credential changed; recovery required')
       }
     } catch (error) {
@@ -563,6 +564,11 @@ export class ScopedPluginHost {
     for (const flow of this.flows) flow.close()
     this.flows.clear()
     return this.serial(async () => {
+      // The queue may have waited while another host became the owner. Do not acquire
+      // a new claim over it; an existing runtime lends its exact original claim.
+      original?.fence.assertClaim()
+      if (original && this.runtime !== original)
+        throw new Error('Scoped runtime changed; recovery required')
       const c = this.connection.value
       if (!c) {
         this.requests = new AbortController()
@@ -577,7 +583,8 @@ export class ScopedPluginHost {
         () =>
           !this.closed &&
           JSON.stringify(this.app.loadLocalStorage(SCOPED_CONNECTION_KEY)) === descriptor &&
-          this.token(c) === token
+          this.token(c) === token,
+        original ? { borrow: original.fence } : { requireUnclaimed: true }
       )
       this.departure = departure
       try {
@@ -620,7 +627,6 @@ export class ScopedPluginHost {
         this.revocation = null
       }
       departure.assertReady()
-      this.runtime?.fence.release()
       this.runtime?.raw.close()
       this.runtime?.meta.close()
       this.runtime = null
@@ -648,6 +654,7 @@ export class ScopedPluginHost {
         if (this.app.loadLocalStorage(key) != null)
           throw new Error('Scoped connection state could not be cleared')
       }
+      original?.fence.release()
       this.connection.value = null
       this.role.value = null
       this.paused.value = false
@@ -659,11 +666,19 @@ export class ScopedPluginHost {
         new Notice(
           'Left this shared group on this device. The server could not be told; the local connection key is forgotten.'
         )
-    }).finally(() => {
-      window.clearTimeout(timeout)
-      this.departure?.release()
-      this.departure = null
     })
+      .catch((error) => {
+        this.requests = new AbortController()
+        this.leaving = false
+        if (!this.closed)
+          this.status('error', error instanceof Error ? error.message : 'Scoped recovery required')
+        throw error
+      })
+      .finally(() => {
+        window.clearTimeout(timeout)
+        this.departure?.release()
+        this.departure = null
+      })
   }
   private async run() {
     if (this.paused.value) return

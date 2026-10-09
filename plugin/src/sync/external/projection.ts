@@ -66,7 +66,12 @@ export type Projection = z.infer<typeof ProjectionSchema>
 export function recognizeProjection(bytes: Uint8Array): boolean {
   // Size limits belong to schema validation, not recognition. An oversized moved marker
   // must not become an ordinary upload merely because its format field appears late.
-  const text = new TextDecoder().decode(bytes)
+  // The file inspector never supplies more than the cap. Pure callers may supply an
+  // oversized fixture; skip leading JSON whitespace without allocating a string for it.
+  let start = 0
+  if (bytes[0] === 0xef && bytes[1] === 0xbb && bytes[2] === 0xbf) start = 3
+  while (start < bytes.length && [0x20, 0x09, 0x0a, 0x0d].includes(bytes[start])) start++
+  const text = new TextDecoder().decode(bytes.subarray(start, start + MAX_PROJECTION_BYTES))
   // A projection is a root JSON object, not an example quoted inside an ordinary note.
   // Known owned paths remain protected independently, even with a destroyed prefix.
   if (!text.trimStart().startsWith('{')) return false

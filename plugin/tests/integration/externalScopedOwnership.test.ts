@@ -74,6 +74,81 @@ it('a stale scoped host cannot revoke or forget a successor connection through L
   expect(s.fetcher).not.toHaveBeenCalled()
 })
 
+it('a queued Leave rechecks the original claim after a successor opens while its queue is blocked', async () => {
+  const s = await fixture()
+  let unblock = () => {},
+    entered = () => {}
+  const blocker = new Promise<void>((resolve) => {
+      unblock = resolve
+    }),
+    started = new Promise<void>((resolve) => {
+      entered = resolve
+    })
+  const occupying = (s.host as any).serial(async () => {
+    entered()
+    await blocker
+  })
+  await started
+  const leaving = s.host.leave()
+  const successor = s.open()
+  const next = await (successor as any).open(s.c, false)
+  unblock()
+  await occupying
+  await expect(leaving).rejects.toThrow(/ownership|held|recovery/i)
+  expect(next.fence.claimHeld()).toBe(true)
+  expect(s.app.loadLocalStorage(SCOPED_CONNECTION_KEY)).toEqual(s.c)
+  expect(s.road.get(s.c.tokenId)).toBe('absi_' + 'a'.repeat(43))
+  expect(s.fetcher).not.toHaveBeenCalled()
+})
+
+it('a refused Leave preserves its runtime claim so both start and Leave are retryable', async () => {
+  const s = await fixture()
+  await s.app.vault.adapter.write(
+    'Shared/sample.bin',
+    'changed ordinary candidate requiring inspection'
+  )
+  const state = vi
+    .spyOn(s.r.client, 'state')
+    .mockResolvedValue({
+      state: 'preparing',
+      role: 'editor',
+      selector: { kind: 'group', root_file_id: s.c.rootFileId },
+    })
+  const read = vi
+    .spyOn(s.app.vault.adapter, 'readBinary')
+    .mockRejectedValueOnce(new Error('sample transient read failure'))
+  await expect(s.host.leave()).rejects.toThrow('sample transient read failure')
+  expect(s.r.fence.claimHeld()).toBe(true)
+  expect(s.host.active).toBe(true)
+  read.mockRestore()
+  await s.host.start()
+  expect(state).toHaveBeenCalled()
+  const revoke = vi.spyOn(s.r.client, 'revokeSelf').mockResolvedValue('revoked')
+  await s.host.leave()
+  expect(revoke).toHaveBeenCalledOnce()
+  expect(s.host.connection.value).toBeNull()
+})
+
+it('does not refuse Leave solely because an ordinary candidate vanishes between listing and reading', async () => {
+  const s = await fixture()
+  await s.app.vault.adapter.write(
+    'Shared/sample.bin',
+    'changed ordinary candidate requiring inspection'
+  )
+  const read = s.app.vault.adapter.readBinary.bind(s.app.vault.adapter)
+  vi.spyOn(s.app.vault.adapter, 'readBinary').mockImplementation(async (path) => {
+    if (path === 'Shared/sample.bin') {
+      await s.app.vault.adapter.remove(path)
+      throw Object.assign(new Error('sample file vanished'), { code: 'ENOENT' })
+    }
+    return read(path)
+  })
+  const revoke = vi.spyOn(s.r.client, 'revokeSelf').mockResolvedValue('revoked')
+  await expect(s.host.leave()).resolves.toBeUndefined()
+  expect(revoke).toHaveBeenCalledOnce()
+  expect(s.host.connection.value).toBeNull()
+})
+
 it('cold scoped recovery holds pending downloads before watcher activation or scoped publication replay', async () => {
   const s = await fixture()
   const generation = s.app.loadLocalStorage(EXTERNAL_GENERATION_KEY) as {
