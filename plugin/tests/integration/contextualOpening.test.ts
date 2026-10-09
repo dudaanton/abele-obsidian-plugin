@@ -240,7 +240,7 @@ describe('request-local contextual opening', () => {
         reopening.resolve()
         return result
       })
-      const release = vi.spyOn(chats, 'releaseSession')
+      const saveCalls = vi.mocked(storage.saveChat)
       const stale = openChat(app.vault.getFileByPath(x)!)
       await saving.promise
       const current =
@@ -250,10 +250,10 @@ describe('request-local contextual opening', () => {
       await reopening.promise
       saveGate.resolve()
       await reading.promise
-      // The old plain link has no generation guard. Its cancelled release must itself stop
-      // the opener before it can retry while the newer Y reconciliation is still suspended.
+      // The old link may finish its save, but cannot retry the presentation transaction
+      // while the newer Y reconciliation is still suspended. Exactly one save was needed.
       await stale
-      expect(release.mock.calls.filter(([id]) => id === ownerY.id)).toHaveLength(1)
+      expect(saveCalls.mock.calls.filter(([, , file]) => file?.path === y)).toHaveLength(1)
       expect(chats.getSession(ownerY.id)).toBe(ownerY)
       expect(chats.getSessionByFile(x)).toBeNull()
       expect(comments.isShown(xId)).toBe(false)
@@ -352,7 +352,7 @@ describe('request-local contextual opening', () => {
       if (args[0].path === x && ++requests === 2) joined.resolve()
       return task
     })
-    const release = vi.spyOn(chats, 'releaseSession')
+    const saveCalls = vi.mocked(storage.saveChat)
     const first = openChat(app.vault.getFileByPath(x)!)
     await (timing === 'before release' ? preparing.promise : saving.promise)
     const second =
@@ -376,7 +376,8 @@ describe('request-local contextual opening', () => {
     saveGate.resolve()
     await reading.promise
     await Promise.all([first, second])
-    expect(release.mock.calls.filter(([id]) => id === ownerY.id)).toHaveLength(1)
+    // Shared waiters can plan together, but save only once and never commit a stale release.
+    expect(saveCalls.mock.calls.filter(([, , file]) => file?.path === y)).toHaveLength(1)
     expect(chats.getSession(ownerY.id)).toBe(ownerY)
     expect(chats.getSessionByFile(x)).toBeNull()
     expect(comments.isShown(xId)).toBe(false)
@@ -541,6 +542,219 @@ describe('request-local contextual opening', () => {
     expect(comments.isShown(xId)).toBe(true)
     expect(ownerY.isDestroyed).toBe(false)
     for (const session of ordinary) expect(chats.getSession(session.id)).toBe(session)
+  })
+
+  it('a new blank tab supersedes a contextual open still preparing its file', async () => {
+    const app = useVault([{ path: x, content: content(x, xId) }])
+    const chats = ChatService.getInstance(), comments = CommentService.getInstance()
+    const gate = deferred(), preparing = deferred()
+    const storage = ChatStorage.getInstance(), prepare = storage.prepareDiscussion.bind(storage)
+    vi.spyOn(storage, 'prepareDiscussion').mockImplementationOnce(async (...args) => {
+      preparing.resolve(); await gate.promise; return prepare(...args)
+    })
+    const older = openChat(app.vault.getFileByPath(x)!)
+    await preparing.promise
+    const blank = chats.newTab()
+    gate.resolve()
+    await older
+    expect(chats.activeTabId.value).toBe(blank)
+    expect(chats.getSessionByFile(x)).toBeNull()
+    expect(comments.isShown(xId)).toBe(false)
+  })
+
+  it.each(['reveal', 'revealChat'] as const)('a delayed %s does not manufacture a newer presentation intent', async (entry) => {
+    const app = useVault([{ path: x, content: content(x, xId) }, { path: y, content: content(y, yId) }])
+    const chats = ChatService.getInstance(), comments = CommentService.getInstance()
+    await comments.load(yId)
+    if (entry === 'revealChat') await comments.expand(yId)
+    const gate = deferred(), loading = deferred(), load = comments.load.bind(comments)
+    vi.spyOn(comments, 'load').mockImplementationOnce(async (...args) => {
+      loading.resolve(); await gate.promise; return load(...args)
+    })
+    const older = comments[entry](yId)
+    await loading.promise
+    await openChat(app.vault.getFileByPath(x)!)
+    const latest = chats.activeSession.value
+    gate.resolve()
+    await older
+    expect(chats.activeSession.value).toBe(latest)
+    expect(comments.isShown(xId)).toBe(true)
+  })
+
+  it('returning to an expanded discussion leaves the contextual discussion registered', async () => {
+    useVault([{ path: x, content: content(x, xId) }, { path: y, content: content(y, yId) }])
+    const chats = ChatService.getInstance(), comments = CommentService.getInstance()
+    await comments.load(xId)
+    expect(await comments.expand(xId)).toBe('moved')
+    const expanded = chats.activeSession.value!
+    await comments.showInSidebar(yId)
+    const contextual = chats.activeSession.value!
+    expect(await comments.showInSidebar(xId)).toBe(true)
+    expect(chats.activeSession.value).toBe(expanded)
+    expect(chats.getSession(contextual.id)).toBe(contextual)
+    expect(comments.isShown(yId)).toBe(true)
+    expect(comments.isShown(xId)).toBe(false)
+  })
+
+  it('the tab-specific file opener cannot bypass discussion capacity or presentation bookkeeping', async () => {
+    const app = useVault([{ path: x, content: content(x, xId) }, { path: y, content: content(y, yId) }])
+    const chats = ChatService.getInstance(), comments = CommentService.getInstance()
+    const holder = chats.getSession(chats.createTab())!
+    holder.draft.value.text = 'A retained tab draft'
+    await chats.openChatInTab(holder.id, app.vault.getFileByPath(y)!)
+    const discussion = chats.activeSession.value!
+    expect(comments.isShown(yId)).toBe(true)
+    while (chats.canCreateTab) chats.createTab()
+    await chats.openChatInTab(holder.id, app.vault.getFileByPath(x)!)
+    expect(chats.tabOrder.value).toHaveLength(MAX_TABS)
+    expect(chats.getSessionByFile(x)).toBeNull()
+    expect(chats.getSession(discussion.id)).toBe(discussion)
+    expect(holder.draft.value.text).toBe('A retained tab draft')
+  })
+
+  it('a selection lookup is admitted before I/O and cannot override a later marker action', async () => {
+    useVault([{ path: x, content: content(x, xId, true) }, { path: y, content: content(y, yId) }])
+    const chats = ChatService.getInstance(), comments = CommentService.getInstance()
+    const gate = deferred(), reading = deferred()
+    const storage = ChatStorage.getInstance(), index = storage.selectionIdentityIndex.bind(storage)
+    vi.spyOn(storage, 'selectionIdentityIndex').mockImplementationOnce(async () => {
+      reading.resolve(); await gate.promise; return index()
+    })
+    const older = openSelectionLink(`${x}#abele-selection=sample-chat-x/sample-anchor-a`)
+    await reading.promise
+    expect(await comments.showInSidebar(yId)).toBe(true)
+    const latest = chats.activeSession.value
+    gate.resolve()
+    await older
+    expect(chats.activeSession.value).toBe(latest)
+    expect(comments.isShown(yId)).toBe(true)
+    expect(comments.isShown(xId)).toBe(false)
+    expect(chats.openingSelection.value).toBe(false)
+    expect(chats.pendingAnchorReturn.value).toBeNull()
+  })
+
+  it('a failed replacement save leaves every registered contextual tab intact', async () => {
+    const app = useVault([{ path: x, content: content(x, xId) }, { path: y, content: content(y, yId) }])
+    const chats = ChatService.getInstance(), comments = CommentService.getInstance()
+    await comments.revealForAttention(app.vault.getFileByPath(y)!)
+    const previous = chats.activeSession.value!
+    previous.draft.value.text = 'A sample draft to preserve'
+    const save = vi.spyOn(previous, 'save').mockRejectedValueOnce(new Error('Sample save failure'))
+    await expect(openChat(app.vault.getFileByPath(x)!)).rejects.toThrow('Sample save failure')
+    expect(chats.activeSession.value).toBe(previous)
+    expect(chats.getSession(previous.id)).toBe(previous)
+    expect(comments.isShown(yId)).toBe(true)
+    expect(comments.isShown(xId)).toBe(false)
+    expect(previous.isDestroyed).toBe(false)
+    save.mockRestore()
+  })
+
+  it('background attention hydration registers its tab without selecting or marking it as active', async () => {
+    const app = useVault([{ path: x, content: content(x, xId) }, { path: y, content: content(y, yId) }])
+    const chats = ChatService.getInstance(), comments = CommentService.getInstance()
+    const gate = deferred(), preparing = deferred()
+    const storage = ChatStorage.getInstance(), prepare = storage.prepareDiscussion.bind(storage)
+    vi.spyOn(storage, 'prepareDiscussion').mockImplementationOnce(async (...args) => {
+      preparing.resolve(); await gate.promise; return prepare(...args)
+    })
+    const older = comments.revealForAttention(app.vault.getFileByPath(x)!)
+    await preparing.promise
+    expect(await comments.revealForAttention(app.vault.getFileByPath(y)!)).toBe(true)
+    const latest = chats.activeSession.value!
+    gate.resolve()
+    expect(await older).toBe(false)
+    expect(chats.activeSession.value).toBe(latest)
+    expect(comments.open.value).toBe(yId)
+    expect(comments.isShown(xId)).toBe(true)
+    expect(comments.isShown(yId)).toBe(true)
+  })
+
+  it('completion of a persisted expansion cannot select over a newer contextual action', async () => {
+    useVault([{ path: x, content: content(x, xId) }, { path: y, content: content(y, yId) }])
+    const chats = ChatService.getInstance(), comments = CommentService.getInstance()
+    const session = (await comments.load(xId))!
+    const gate = deferred(), saving = deferred(), save = session.save.bind(session)
+    vi.spyOn(session, 'save').mockImplementationOnce(async () => {
+      saving.resolve(); await gate.promise; return save()
+    })
+    const older = comments.expand(xId)
+    await saving.promise
+    expect(await comments.showInSidebar(yId)).toBe(true)
+    const latest = chats.activeSession.value!
+    gate.resolve()
+    expect(await older).toBe('moved')
+    expect(chats.activeSession.value).toBe(latest)
+    expect(comments.isShown(yId)).toBe(true)
+    expect(comments.isExpanded(xId)).toBe(true)
+    expect(session.kind).toBe('chat')
+  })
+
+  it('a current replacement saves a contextual tab hydrated after its initial release plan', async () => {
+    const z = 'AI/Comments/sample-z.abchat', zId = 'sample-discussion-z'
+    const app = useVault([
+      { path: x, content: content(x, xId) }, { path: y, content: content(y, yId) },
+      { path: z, content: content(z, zId) },
+    ])
+    app.saveLocalStorage('abele-agent-tabs', { tabs: [{ chatFilePath: y }, { chatFilePath: z }], activeIndex: 0 })
+    const chats = ChatService.getInstance(), comments = CommentService.getInstance()
+    const loadGate = deferred(), loading = deferred(), saveGate = deferred(), saving = deferred()
+    const storage = ChatStorage.getInstance(), prepare = storage.prepareDiscussion.bind(storage)
+    let paused = false
+    vi.spyOn(storage, 'prepareDiscussion').mockImplementation(async (...args) => {
+      if (args[0].path === z && !paused) { paused = true; loading.resolve(); await loadGate.promise }
+      return prepare(...args)
+    })
+    const restoring = chats.restoreTabs()
+    await loading.promise
+    const ownerY = chats.activeSession.value!, save = ownerY.save.bind(ownerY)
+    vi.spyOn(ownerY, 'save').mockImplementationOnce(async () => {
+      saving.resolve(); await saveGate.promise; return save()
+    })
+    const latest = openChat(app.vault.getFileByPath(x)!)
+    await saving.promise
+    loadGate.resolve()
+    await restoring
+    const ownerZ = chats.getSessionByFile(z)!
+    const savedZ = vi.spyOn(ownerZ, 'save')
+    saveGate.resolve()
+    await latest
+    expect(chats.activeSession.value?.currentChatFile.value?.path).toBe(x)
+    expect(savedZ).toHaveBeenCalledOnce()
+    expect(comments.isShown(xId)).toBe(true)
+    expect(comments.isShown(yId)).toBe(false)
+    expect(comments.isShown(zId)).toBe(false)
+    expect(ownerY.isDestroyed).toBe(false)
+    expect(ownerZ.isDestroyed).toBe(false)
+  })
+
+  it('deleting a discussion is terminal even if its expanded tab is reselected during saving', async () => {
+    const app = useVault([{ path: x, content: content(x, xId) }])
+    const chats = ChatService.getInstance(), comments = CommentService.getInstance()
+    await comments.load(xId)
+    await comments.expand(xId)
+    const session = chats.activeSession.value!
+    const gate = deferred(), saving = deferred(), save = session.save.bind(session)
+    vi.spyOn(session, 'save').mockImplementationOnce(async () => {
+      saving.resolve(); await gate.promise; return save()
+    })
+    const deleting = comments.remove(xId)
+    await saving.promise
+    chats.switchTab(session.id)
+    gate.resolve()
+    await deleting
+    expect(session.isDestroyed).toBe(true)
+    expect(chats.getSession(session.id)).toBeNull()
+    expect(app.vault.getFileByPath(x)).toBeNull()
+    await session.save()
+    expect(app.vault.getFileByPath(x)).toBeNull()
+  })
+
+  it('a contextual dispatch honors an external scope guard without minting a live intent', async () => {
+    const app = useVault([{ path: x, content: content(x, xId) }])
+    const chats = ChatService.getInstance(), comments = CommentService.getInstance()
+    expect(await chats.openContextualChatFile(app.vault.getFileByPath(x)!, undefined, () => false)).toBe(false)
+    expect(chats.getSessionByFile(x)).toBeNull()
+    expect(comments.isShown(xId)).toBe(false)
   })
 
   it('the latest selection link to the same file survives cancellation of the first shared-load waiter', async () => {

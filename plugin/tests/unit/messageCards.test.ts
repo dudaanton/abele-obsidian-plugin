@@ -321,13 +321,15 @@ describe('pressing a card', () => {
     const comment = app.vault.getFileByPath(path)!
     const comments = CommentService.getInstance()
     vi.spyOn(ChatService.getInstance(), 'revealSidebar').mockResolvedValue()
-    const shown = vi.spyOn(comments, 'showInSidebar').mockResolvedValue(true)
     const expanded = vi.spyOn(comments, 'openFile').mockResolvedValue()
+    const chats = ChatService.getInstance()
 
     await openMessage({ chat: comment.path, message: 'm1', text: '' })
 
-    expect(shown).toHaveBeenCalledWith('k7d2ph', expect.any(Function))
-    expect(shown.mock.calls[0][1]!()).toBe(true)
+    const session = chats.getSessionByFile(path)!
+    expect(session.kind).toBe('comment')
+    expect(comments.isShown(session.commentId!)).toBe(true)
+    expect(chats.activeSession.value).toBe(session)
     expect(expanded).not.toHaveBeenCalled()
     comments.destroy()
     ChatService.getInstance().destroy()
