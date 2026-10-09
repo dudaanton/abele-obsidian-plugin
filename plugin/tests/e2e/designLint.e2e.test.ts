@@ -16,8 +16,8 @@ const pages = [
   { page: 'waiting', bug: 'line-alignment, text-left-edge and hierarchy-order' },
   { page: 'controls', bug: 'clipping and spacing-scale' },
   { page: 'navigation', bug: 'row-column and hierarchy-consistency' },
-  { page: 'previews', bug: 'spacing-scale' },
-  { page: 'specialized', bug: 'sibling-overlap' },
+  { page: 'previews' },
+  { page: 'specialized' },
   { page: 'icon-picker', bug: 'spacing-scale and sibling-overlap' },
   { page: 'confirm', bug: 'sibling-overlap' },
 ]

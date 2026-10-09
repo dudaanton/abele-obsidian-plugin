@@ -15,8 +15,6 @@ const probe = vi.hoisted(() => ({
     waiting: 'text-left-edge',
     controls: 'clipping',
     navigation: 'row-column',
-    previews: 'spacing-scale',
-    specialized: 'sibling-overlap',
     'icon-picker': 'sibling-overlap',
     confirm: 'sibling-overlap',
   } as Record<string, string>,
@@ -71,7 +69,7 @@ it('measures all catalogue pages with the unchanged native-reference requirement
       .filter((m) => !(m.page in probe.bugs))
       .map((m) => m.page)
       .sort()
-  ).toEqual(['comment', 'swatches'])
+  ).toEqual(['comment', 'previews', 'specialized', 'swatches'])
 })
 it('rejects a repaired BUG and does not hide capture errors as expected failures', () => {
   const cwd = resolve(dirname(fileURLToPath(import.meta.url)), '../..')

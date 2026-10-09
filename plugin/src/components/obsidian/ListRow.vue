@@ -43,22 +43,22 @@
         >
           <slot name="detail" />
         </div>
-      </div>
-      <div
-        v-if="$slots.actions || expanded !== undefined"
-        class="tree-item-flair-outer abele-list-row__actions"
-      >
-        <slot name="actions" />
-        <Disclosure
-          v-if="expanded !== undefined"
-          compact
-          control-only
-          :target-id="detailId"
-          :label="detailsLabel"
-          :count="detailsCount"
-          :model-value="expanded"
-          @update:model-value="emit('update:expanded', $event)"
-        />
+        <div
+          v-if="$slots.actions || expanded !== undefined"
+          class="tree-item-flair-outer abele-list-row__actions"
+        >
+          <slot name="actions" />
+          <Disclosure
+            v-if="expanded !== undefined"
+            compact
+            control-only
+            :target-id="detailId"
+            :label="detailsLabel"
+            :count="detailsCount"
+            :model-value="expanded"
+            @update:model-value="emit('update:expanded', $event)"
+          />
+        </div>
       </div>
     </div>
   </article>
@@ -109,25 +109,27 @@ const stateText = {
   line-height: var(--line-height-normal);
 }
 .abele-list-row .abele-list-row__line {
+  display: flex;
+  align-items: flex-start;
+  gap: var(--size-4-2);
+}
+.abele-list-row .abele-list-row__content {
   display: grid;
-  grid-template-columns: max-content minmax(0, 1fr) max-content;
+  grid-template-columns: minmax(0, 1fr) max-content;
   align-items: start;
   column-gap: var(--size-4-2);
   row-gap: var(--size-4-1);
-}
-.abele-list-row .abele-list-row__content {
-  display: contents;
   flex: 1;
   min-width: 0;
   overflow: visible;
   white-space: normal;
 }
 .abele-list-row__content > * {
-  grid-column: 2 / -1;
+  grid-column: 1 / -1;
 }
 .abele-list-row .abele-list-row__main,
 .abele-list-row__title {
-  grid-column: 2;
+  grid-column: 1;
   grid-row: 1;
   display: flex;
   flex-direction: column;
@@ -170,8 +172,7 @@ const stateText = {
   display: flex;
   justify-content: center;
   align-items: center;
-  grid-column: 1;
-  grid-row: 1;
+  flex: 0 0 auto;
   min-width: var(--size-4-6);
   min-height: 1lh;
   height: auto;
@@ -183,7 +184,7 @@ const stateText = {
 }
 .abele-list-row .abele-list-row__actions {
   display: flex;
-  grid-column: 3;
+  grid-column: 2;
   grid-row: 1;
   align-items: flex-start;
   gap: var(--size-2-1);

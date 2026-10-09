@@ -152,7 +152,7 @@ const open = (event: Event) => {
 .abele-card {
   display: flex;
   flex-direction: column;
-  gap: var(--size-2-1);
+  gap: var(--size-4-1);
   min-width: 0;
   /** So the cover can be capped against the card's own width, whatever the screen. */
   container-type: inline-size;
@@ -204,7 +204,7 @@ const open = (event: Event) => {
  * the top corners follow the card's own radius so the picture does not poke out of it.
  */
 .abele-card__cover {
-  margin: calc(-1 * var(--size-4-4)) calc(-1 * var(--size-4-4)) var(--size-4-2);
+  margin: calc(-1 * var(--size-4-4)) calc(-1 * var(--size-4-4)) var(--size-4-1);
   overflow: hidden;
   border-radius: var(--radius-m) var(--radius-m) 0 0;
 }
