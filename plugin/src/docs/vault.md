@@ -1802,6 +1802,31 @@ edit metadata to bypass the hold. No link baseline or script trust is inferred f
 files during recovery. Independent script-provenance holds/approvals are not cleared by
 forgetting the sync ledger.
 
+Each enrolled device-local connection runs its own engine, queue and ledger over the same
+vault. The current screens show the selected connection. Competing placements reserve all
+affected paths together (including both ends of moves, case aliases and parent directories)
+through their durable state update. Downloads usually precede the reservation; the original
+file and runtime ownership are checked again before placement. Recovery reserves the vault
+when unfinished physical writes need inspection; ordinary scans with no recovery journal
+take no vault-wide reservation. Plugin reload waits for all connection runtimes.
+
+Before placement can replace local work, immutable bytes, timestamps and the destination's
+base are retained separately for each writable destination in device-local IndexedDB
+`abele-local-edit-copies-<local connection id>-<binding hash>`, under `local-edit-copies-v1`.
+Its binding is checked on open and reopen; explicit re-enrolment opens a separate namespace
+and retains predecessor evidence. These stores have independent writers so a capture cannot join
+an engine's uncommitted ledger transaction. A missing destination writer, failed capture or
+256 MiB retained-byte limit holds placement. Scoped captures conservatively preserve ordinary
+local files without inferring upload authority; destination routing and delivery of these
+copies are separate work. Copies and database identities never travel in settings or transfer.
+
+Known scoped item refusals retain the exact request, operations and staged source references
+under `scoped-item-holds-v1` in that connection's ledger before vacating the active journal,
+atomically. Other items and receiving can continue; the existing status reports the hold.
+An uncertain request keeps its active identity and immutable sources, including when a later
+replay is refused; receiving still runs. Held sources are not automatically discarded or
+reapplied. Review controls belong to the later connection UI work.
+
 When the person syncs the vault with Abele Sync, a few files in it are the sync's. A note whose
 name ends in `(Conflicted copy <device> <YYYYMMDDHHMM>)` — `Plan (Conflicted copy laptop
 202609041530).md` — is another device's version of the note beside it, written when both changed

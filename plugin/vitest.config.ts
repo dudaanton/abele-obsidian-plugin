@@ -4,6 +4,7 @@ import path from 'path'
 import { verifySyncFixture } from './scripts/verify-sync-inputs.mjs'
 import { missingServerTests } from './scripts/server-test-fixtures.mjs'
 import FastSequencer from './scripts/fast-sequencer.mjs'
+import { syncPlacementPlugin } from './scripts/sync-placement.mjs'
 
 const skippedServerTests = missingServerTests()
 if (skippedServerTests.length)
@@ -19,7 +20,7 @@ const missingFixture = path.resolve(__dirname, 'tests/helpers/missingSyncFixture
  * pre-commit hook run. End-to-end tests live in `vitest.e2e.config.ts` and are opt-in.
  */
 export default defineConfig({
-  plugins: [vue()],
+  plugins: [syncPlacementPlugin(), vue()],
   resolve: {
     // An array rather than a map because one entry is a regular expression; the order is the
     // order they are tried in, so the specific names come before the one-character `@`.
@@ -60,6 +61,7 @@ export default defineConfig({
     ],
   },
   test: {
+    server: { deps: { inline: [/@abele\/sync-core/] } },
     globals: true,
     // Standalone and paired shard pools have different scheduling pressure. The CLI can
     // override these bounded defaults for a different measured runner quota.

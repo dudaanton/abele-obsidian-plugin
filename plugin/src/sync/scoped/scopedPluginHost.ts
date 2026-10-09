@@ -12,6 +12,7 @@ import {
   type ExclusiveOperationOptions,
   type ScopedClient,
   type StateEntry,
+  type ScopedJournal,
 } from '@abele/sync-core'
 import { AbeleConfig } from '@/services/AbeleConfig'
 import { secrets } from '@/secrets/SecretStore'
@@ -54,6 +55,12 @@ import { AttachmentStore, type AttachmentPublication } from '../external/attachm
 import { stageScopedDeparture } from '../external/connectionSwitch'
 import { ExternalFileHost } from '../external/ObsidianExternalFileHost'
 import type { ExternalRepresentation } from '../external/representation'
+import { CONNECTION_STORAGE } from '../connectionRegistry'
+import { editCopiesOf, refreshEditCopyDestinations } from '../editCopies'
+import { registerConnectionEditCopies } from '../editCopyStore'
+import { coordinatedFileSystem, pathCoordinatorOf } from '../pathCoordinator'
+import { receiveDespiteRejectedItems } from './receiveContinuity'
+import { holdScopedItem, readScopedItemHolds, type ItemHold } from './itemHolds'
 
 const digest = (value: unknown) => sha256(new TextEncoder().encode(JSON.stringify(value)))
 const CREATION_JOURNAL = 'scoped-creation-journal-v1'
@@ -84,6 +91,12 @@ interface Runtime {
 }
 /** Thin Obsidian ports around the same scoped client/state/pull/push used by stand peers. */
 export class ScopedPluginHost {
+  readonly heldItems = shallowRef<ItemHold[]>([])
+  private sendFailure = ''
+  private readonly status: (
+    state: 'disconnected' | 'idle' | 'syncing' | 'paused' | 'error',
+    error?: string
+  ) => void
   private readonly operations = exclusiveOperationPort((work) => this.serial(work))
 
   runExclusive<T>(work: () => Promise<T>, options?: ExclusiveOperationOptions): Promise<T> {
@@ -133,11 +146,20 @@ export class ScopedPluginHost {
     private readonly app: App,
     private readonly fetcher: typeof fetch,
     private readonly factory: IDBFactory,
-    private readonly status: (
+    statusSink: (
       state: 'disconnected' | 'idle' | 'syncing' | 'paused' | 'error',
       error?: string
     ) => void = () => {}
   ) {
+    this.status = (state, error) =>
+      statusSink(
+        state === 'idle' && (this.heldItems.value.length || this.sendFailure) ? 'error' : state,
+        error ??
+          (this.sendFailure ||
+            (this.heldItems.value.length
+              ? `${this.heldItems.value.length} scoped items held; receiving continues`
+              : undefined))
+      )
     this.paused.value = app.loadLocalStorage('abele-scoped-paused') === true
     const c = app.loadLocalStorage(SCOPED_CONNECTION_KEY) as ScopedLocalConnection | null
     if (c) {
@@ -331,6 +353,42 @@ export class ScopedPluginHost {
       client = representations.scopedClient(client)
       state = representations.scopedState(state)
       const fs = representations.fileSystem() as ObsidianFileSystem
+      const copyId = (this.app as App & { [CONNECTION_STORAGE]?: string })[CONNECTION_STORAGE]
+      const copies = copyId
+        ? await registerConnectionEditCopies(
+            this.factory,
+            editCopiesOf(this.app.vault),
+            copyId,
+            JSON.stringify({ ledgerId: c.ledgerId, binding }),
+            raw,
+            (path) => {
+              return (
+                this.role.value === 'editor' &&
+                !['.abele-sync', '.trash', ...this.roots()].some(
+                  (root) => path === root || path.startsWith(root + '/')
+                ) &&
+                !/\.(js|mjs|cjs|ts|tsx|jsx|py|sh|bash|zsh|fish|lua|rb|pl|php|ps1|bat|cmd|exe|dll|so|dylib|jar|wasm|vbs)$/i.test(
+                  path
+                )
+              )
+            },
+            () => fence.assertOwned()
+          )
+        : null
+      const closeRaw = raw.close.bind(raw)
+      raw.close = () => {
+        copies?.close()
+        closeRaw()
+      }
+      const coordinatedFs = coordinatedFileSystem(
+        fs,
+        pathCoordinatorOf(this.app.vault),
+        () => fence.assertReady(),
+        (paths) => {
+          refreshEditCopyDestinations(this.app.vault, this.app)
+          return editCopiesOf(this.app.vault).capture(fs, paths)
+        }
+      )
       const r: Runtime = {
         credential: token,
         fence,
@@ -339,7 +397,7 @@ export class ScopedPluginHost {
         state,
         raw,
         meta,
-        fs,
+        fs: coordinatedFs,
         binding,
         representations,
         assets: new SponsoredAssetsHttpPort({
@@ -790,30 +848,51 @@ export class ScopedPluginHost {
         : (await r.state.getKnown(r.connection.rootFileId))?.path
     if (name) this.app.saveLocalStorage(DISPLAY_NAME, { connection: r.connection, name })
     if (remote.state !== 'active') return
-    if (remote.role === 'editor') {
-      // '/' cannot match a normal vault-relative path: group untracked files need explicit
-      // creation review. Folder-native creates use only the server's certified prefix.
-      const prefix = remote.selector.kind === 'folder' ? remote.selector.prefix : '/'
-      const ops = await scanScopedChanges(r.fs, r.state, prefix, this.roots())
-      if (ops.length || (await r.state.getJournal()))
+    this.heldItems.value = await readScopedItemHolds(r.raw)
+    this.sendFailure = ''
+    await receiveDespiteRejectedItems<ScopedJournal['ops'][number]>({
+      pending: async () => remote.role === 'editor' && !!(await r.state.getJournal()),
+      items: async () => {
+        if (remote.role !== 'editor') return []
+        // '/' cannot match a normal vault-relative path: group untracked files need explicit
+        // creation review. Folder-native creates use only the server's certified prefix.
+        const prefix = remote.selector.kind === 'folder' ? remote.selector.prefix : '/'
+        return scanScopedChanges(r.fs, r.state, prefix, this.roots())
+      },
+      blocked: async (op) =>
+        this.heldItems.value.some((hold) =>
+          hold.ops.some((held) => JSON.stringify(held) === JSON.stringify(op))
+        ),
+      send: async (op) => {
         await pushScoped({
           client: r.client,
           state: r.state,
           fs: r.fs,
-          ops,
+          ops: op === 'replay' ? undefined : [op],
           stillHeld: () => this.held(r),
           configurationDirectories: this.roots(),
           onSettled: async (head) => {
             published?.push(head)
           },
         })
-    }
-    await pullScoped({
-      client: r.client,
-      state: r.state,
-      fs: r.fs,
-      stillHeld: () => this.held(r),
-      configurationDirectories: this.roots(),
+      },
+      hold: async (op, error) => {
+        if (op === 'replay') throw error
+        this.heldItems.value = await holdScopedItem(r.raw, r.state, op, error)
+      },
+      report: (error) => {
+        this.sendFailure = error instanceof Error ? error.message : 'scoped send requires recovery'
+        this.status('error', this.sendFailure)
+      },
+      receive: async () => {
+        await pullScoped({
+          client: r.client,
+          state: r.state,
+          fs: r.fs,
+          stillHeld: () => this.held(r),
+          configurationDirectories: this.roots(),
+        })
+      },
     })
   }
   creation(): Promise<

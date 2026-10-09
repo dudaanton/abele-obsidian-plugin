@@ -12,6 +12,7 @@ import { fencedPort, type RuntimeFence } from './external/recovery'
 import { externalCoordinationOf } from './external/ObsidianExternalFileHost'
 import type { ExternalFileCoordination } from './external/coordination'
 import { folderMutations } from './folderMutations'
+import { pathCoordinatorOf } from './pathCoordinator'
 import type { LocalStorage } from './ledgerId'
 import { makeParents, pruneAbove } from './vaultFolders'
 import {
@@ -246,15 +247,23 @@ export class ObsidianFileSystem implements FileSystem {
 
   /** Existing installation recovery runs before scanner/watcher activation. */
   async recover(): Promise<void> {
-    // Recovery can touch journal-owned paths not known until its asynchronous inspection.
-    const release = this.externalCoordination.beginEngineMutation([''])
-    try {
-      this.runtimeFence?.assertOwned()
-      await this.writer.recover()
-      this.runtimeFence?.assertOwned()
-    } finally {
-      release()
-    }
+    this.runtimeFence?.assertOwned()
+    if (!this.journal.entries().length) return
+    await pathCoordinatorOf(this.app.vault).run(
+      [''],
+      async () => {
+        // Recovery can touch journal-owned paths not known until its asynchronous inspection.
+        const release = this.externalCoordination.beginEngineMutation([''])
+        try {
+          this.runtimeFence?.assertOwned()
+          await this.writer.recover()
+          this.runtimeFence?.assertOwned()
+        } finally {
+          release()
+        }
+      },
+      () => this.runtimeFence?.assertOwned()
+    )
   }
 
   async *list(): AsyncIterable<FileInfo> {

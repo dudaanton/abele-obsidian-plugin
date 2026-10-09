@@ -21,6 +21,10 @@ import {
 import type { EngineHost } from './engineRunner'
 import { factoryOf, fallbackMsOf, pollMsOf, socketOf, transportOf } from './environment'
 import { readLedgerId, type LedgerId } from './ledgerId'
+import { CONNECTION_STORAGE } from './connectionRegistry'
+import { editCopiesOf, refreshEditCopyDestinations } from './editCopies'
+import { registerConnectionEditCopies } from './editCopyStore'
+import { coordinatedFileSystem, pathCoordinatorOf } from './pathCoordinator'
 import { requireLedger, LedgerRecoveryRequired, LEDGER_IDENTITY_KEY } from './ledgerRecovery'
 import { summarise } from './messages'
 import { OwnSettingsWatch, ownSettingsPath } from './ownSettings'
@@ -163,7 +167,9 @@ export async function buildEngine(recipe: EngineRecipe): Promise<BuiltEngine> {
   }
   store.guardEffects(() => fence.assertOwned())
   const closeStore = store.close.bind(store)
+  let releaseCopies: (() => void) | null = null
   store.close = () => {
+    releaseCopies?.()
     fence.release()
     closeStore()
   }
@@ -183,6 +189,25 @@ export async function buildEngine(recipe: EngineRecipe): Promise<BuiltEngine> {
       factoryOf(deps)
     )
     await requireLedger(app, store, ledger)
+    const copyId = (app as App & { [CONNECTION_STORAGE]?: string })[CONNECTION_STORAGE]
+    if (copyId) {
+      const copies = await registerConnectionEditCopies(
+        factoryOf(deps),
+        editCopiesOf(app.vault),
+        copyId,
+        JSON.stringify({ ledger, binding }),
+        store,
+        (path, size) =>
+          !isExcluded(
+            path,
+            size,
+            connection.selective,
+            AbeleConfig.getInstance().ai.scriptsFolder || 'Scripts'
+          ),
+        () => fence.assertOwned()
+      )
+      releaseCopies = copies.close
+    }
     fence.assertOwned()
     let ownerPublication: Awaited<ReturnType<NonNullable<typeof deps.ownerPublication>>> | undefined
     const fs = new ObsidianFileSystem(app, {
@@ -305,7 +330,16 @@ export async function buildEngine(recipe: EngineRecipe): Promise<BuiltEngine> {
     })
     await representations.recoverJobs()
     vault = representations.personalClient(vault)
-    const representedFs = representations.fileSystem(),
+    const ordinaryFs = representations.fileSystem()
+    const representedFs = coordinatedFileSystem(
+        ordinaryFs,
+        pathCoordinatorOf(app.vault),
+        () => fence.assertReady(),
+        (paths) => {
+          refreshEditCopyDestinations(app.vault, app)
+          return editCopiesOf(app.vault).capture(ordinaryFs, paths)
+        }
+      ),
       representedState = representations.stateStore()
     const engine = new SyncEngine({
       ...(ownerPublication?.hooks ?? {}),
