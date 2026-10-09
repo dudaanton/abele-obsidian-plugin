@@ -2,15 +2,15 @@
 
 ## Scope
 
-This is the state/projection foundation and its initial plugin recovery/lifecycle gates, not
-an enabled attachment store. It adds no UI or automatic eviction. Minimal filesystem ports
-are implemented separately (see `External file filesystem ports.md`); the task-six
-representation classifier and durable projection jobs now participate in ordinary sync,
-without a production eviction/hydration caller. Existing interrupted-installation recovery now
-runs before engine activation under a runtime fence. IndexedDB uses schema version 2; the
-explicit activation marker is outside that deletable database. Bound projection/tombstone/
-detach jobs are now held or recovered per file during startup; destructive external inventories
-remain connection-wide holds until attachment recovery and materialization are integrated.
+This describes the state/projection foundation used by the explicit attachment API. It
+adds no UI or automatic eviction. Minimal filesystem ports are implemented separately
+(see `External file filesystem ports.md`); representation classification and durable
+projection jobs participate in ordinary sync. Interrupted-operation recovery runs before
+engine activation under a runtime fence. IndexedDB uses schema version 2; the explicit
+activation marker is outside that deletable database. Bound projection/tombstone/detach
+jobs are held or recovered per file during startup. Attachment recovery and disconnect
+materialization use the shared lifecycle inventory; unresolved dependencies remain
+connection-wide holds. See `External files.md` for the current contract.
 
 The canonical portable implementation now lives in the pinned core package's `external/`
 modules. The plugin's `records.ts`, `state.ts` and `SqliteExternalStateStore.ts` are compatibility

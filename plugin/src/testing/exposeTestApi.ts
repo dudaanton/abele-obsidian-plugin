@@ -106,7 +106,7 @@ import { ExternalFileHost } from '@/sync/external/ObsidianExternalFileHost'
 import { AttachmentStore } from '@/sync/external/attachmentStore'
 import { pluginRepresentation } from '@/sync/external/pluginRepresentation'
 import { RuntimeFence } from '@/sync/external/recovery'
-import { scan, scanScopedChanges, ScopedState } from '@abele/sync-core'
+import { scan, scanScopedChanges, ScopedState, SyncEngine, RecoveryBarrier } from '@abele/sync-core'
 import { activateScriptProvenance } from '@/scripting/trust/scriptTrustStorage'
 import { scriptForExecution } from '@/scripting/trust/scriptExecutionGate'
 import { showScriptApproval, scriptApprovalDialog } from '@/scripting/trust/scriptApprovalPrompt'
@@ -218,6 +218,8 @@ interface AbeleTestApi {
   ExternalFileHost: typeof ExternalFileHost
   AttachmentStore: typeof AttachmentStore
   externalRepresentation: {
+    SyncEngine: typeof SyncEngine
+    RecoveryBarrier: typeof RecoveryBarrier
     pluginRepresentation: typeof pluginRepresentation
     RuntimeFence: typeof RuntimeFence
     scan: typeof scan
@@ -804,6 +806,8 @@ export function exposeTestApi(plugin: Plugin): void {
     ExternalFileHost,
     AttachmentStore,
     externalRepresentation: {
+      SyncEngine,
+      RecoveryBarrier,
       pluginRepresentation,
       RuntimeFence,
       scan,

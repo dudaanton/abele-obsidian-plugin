@@ -14,6 +14,287 @@ import { ExternalFileHost } from '@/sync/external/ObsidianExternalFileHost'
 import { AttachmentStore } from '@/sync/external/attachmentStore'
 import { serializeProjection } from '@/sync/external/projection'
 import { selectiveFrom } from '@/sync/connection'
+import { pluginRepresentation } from '@/sync/external/pluginRepresentation'
+import { RuntimeFence } from '@/sync/external/recovery'
+import { runRetention } from '@abele/sync-server/src/history/retention.js'
+import { createUploadManager } from '@abele/sync-server/src/blobs/uploads.js'
+import { loadConfig } from '@abele/sync-server/src/config.js'
+
+describe('two-device external attachment matrix', () => {
+  it.each([
+    [false, null],
+    [true, null],
+    [true, 'staging'],
+    [true, 'sidecar'],
+    [true, 'unknown'],
+  ] as const)(
+    'keeps policy local through remote changes (restart=%s, evidence=%s)',
+    async (restart, evidence) => {
+      server = await syncServer()
+      const { accountToken } = await server.account('sample-matrix@example.invalid')
+      const { vaultId } = await server.vault(accountToken, 'sample-vault')
+      const a = await server.device(accountToken, vaultId, 'sample-a')
+      const b = await server.device(accountToken, vaultId, 'sample-b')
+      const other = server.clientFor(b.deviceToken, vaultId)
+      await seed(other, [await create(other, 'Media/sample-matrix.bin', 'sample first', 1000)])
+      const initial = (await other.manifest(null)).items[0]
+      const factory = new IDBFactory()
+      const binding = {
+        endpoint: server.BASE_URL,
+        vaultId,
+        mode: 'personal' as const,
+        principalId: a.deviceId,
+        principalType: 'device' as const,
+        grantId: null,
+        generation: 1,
+        credentialAssociation: 'sample-slot',
+      }
+      const fake = buildFakeVault([{ path: initial.path, content: 'sample first', mtime: 1000 }])
+      const retained = buildFakeVault([
+        { path: initial.path, content: 'sample first', mtime: 1000 },
+      ])
+      ;(
+        fake.workspace as unknown as { iterateAllLeaves(fn: (leaf: unknown) => void): void }
+      ).iterateAllLeaves = () => {}
+      const client = server.clientFor(a.deviceToken, vaultId)
+      const downloads = vi.spyOn(client, 'getBlob')
+      const uploads = vi.spyOn(client, 'putBlob')
+      const commits = vi.spyOn(client, 'commitRaw')
+      const otherStore = await IndexedDbStateStore.open(factory, 'sample-b-matrix')
+      let engine: SyncEngine
+      let host: ExternalFileHost
+      let api: AttachmentStore
+      let fence: RuntimeFence
+      async function open() {
+        store = await IndexedDbStateStore.open(factory, 'sample-a-matrix')
+        const state = await ExternalState.open(store, 'sample-ledger', binding)
+        const fs = new ObsidianFileSystem(fake as unknown as App)
+        fence = new RuntimeFence(fake, 'sample-a-matrix', () => true)
+        fence.activate()
+        const representation = await pluginRepresentation({
+          app: fake as unknown as App,
+          factory,
+          store,
+          ledgerId: 'sample-ledger',
+          binding,
+          fs,
+          fence,
+          scriptsFolder: () => 'Scripts',
+          verify: (id, input) => client.verifyExternalFile(id, input),
+        })
+        engine = new SyncEngine({
+          client: representation.personalClient(client),
+          fs: representation.fileSystem(),
+          state: representation.stateStore(),
+          selective: selectiveFrom(undefined),
+          recovery: fence.recovery,
+        })
+        host = new ExternalFileHost(fake as unknown as App, {
+          platform: 'mobile',
+          assertOwned: () => fence.assertReady(),
+        })
+        api = new AttachmentStore({
+          state,
+          ledger: store,
+          host,
+          binding,
+          refreshed: () => representation.refresh(),
+          serial: { run: (job) => engine.runExclusive(job) },
+          assertOwned: () => fence.assertReady(),
+          scriptsFolder: () => 'Scripts',
+          sync: () => engine.sync(),
+          verify: (id, input) => client.verifyExternalFile(id, input),
+          download: (id, version) => client.versionBytes(id, version),
+        })
+        await api.recover()
+      }
+      async function reopen() {
+        if (!restart) return
+        await engine!.stop()
+        host!.close()
+        fence!.release()
+        store!.close()
+        await open()
+      }
+      const base = {
+        path: initial.path,
+        wirePath: initial.path,
+        fileId: initial.file_id,
+        versionId: initial.version_id,
+        sha: initial.sha,
+        size: initial.size,
+        mtime: initial.mtime,
+      }
+      store = await IndexedDbStateStore.open(factory, 'sample-a-matrix')
+      await store.put(base)
+      await store.setCursor(initial.seq)
+      store.close()
+      await otherStore.put(base)
+      await otherStore.setCursor(initial.seq)
+      const ordinary = new SyncEngine({
+        client: other,
+        fs: new ObsidianFileSystem(retained as unknown as App),
+        state: otherStore,
+        selective: selectiveFrom(undefined),
+      })
+      await open()
+      try {
+        expect(
+          await api!.evict(initial.file_id, {
+            operationId: 'sample-evict',
+            expectedRevision: 0,
+            expectedVersionId: initial.version_id,
+          })
+        ).toMatchObject({ status: 'complete' })
+        expect(await fake.vault.adapter.exists(initial.path)).toBe(false)
+        await reopen()
+        await retained.vault.adapter.writeBinary(
+          initial.path,
+          new TextEncoder().encode('sample second').buffer
+        )
+        expect((await ordinary.sync()).push.applied).toBe(1)
+        const edited = await other.head(initial.file_id)
+        downloads.mockClear()
+        uploads.mockClear()
+        commits.mockClear()
+        await engine!.sync()
+        expect((await api!.get(initial.file_id))?.knownVersion).toBe(edited.version_id)
+        expect(downloads).not.toHaveBeenCalled()
+        expect(uploads).not.toHaveBeenCalled()
+        expect(commits).not.toHaveBeenCalled()
+        expect(await fake.vault.adapter.exists(initial.path)).toBe(false)
+        if (evidence) {
+          const state = await ExternalState.open(store!, 'sample-ledger', binding)
+          const document = await state.snapshot()
+          const pending = document.operations.find(
+            (op) => op.operationId === document.files[0].pendingOperationId
+          )!
+          if (evidence === 'staging')
+            await fake.vault.adapter.writeBinary(
+              pending.ownedArtifacts[0].path,
+              new TextEncoder().encode('sample retained evidence').buffer
+            )
+          if (evidence === 'sidecar')
+            await fake.vault.adapter.writeBinary(
+              initial.path + '.abele-ref',
+              new TextEncoder().encode('sample foreign sidecar').buffer
+            )
+          if (evidence === 'unknown')
+            await state.commit({
+              expectedRevision: document.revision,
+              operations: [
+                {
+                  expectedRevision: pending.revision,
+                  next: {
+                    ...pending,
+                    revision: pending.revision + 1,
+                    unresolvedOutcome: 'sample unknown installation',
+                  },
+                },
+              ],
+            })
+          const before = await state.snapshot()
+          expect(
+            await api!.hydrate(initial.file_id, {
+              operationId: 'sample-held-hydration',
+              expectedVersionId: edited.version_id,
+            })
+          ).toMatchObject({ status: 'ineligible' })
+          expect(await state.snapshot()).toEqual(before)
+          expect(await fake.vault.adapter.exists(initial.path)).toBe(false)
+          expect((await api!.inspectDisconnect()).safe).toBe(false)
+          return
+        }
+        await reopen()
+        const config = loadConfig({
+          ABELE_MASTER_KEY: 'ab'.repeat(32),
+          ABELE_TOKEN_PEPPER: 'test',
+          ABELE_BLOB_DIR: server.store.dir,
+        })
+        const retention = await runRetention({
+          db: server.db,
+          dialect: 'sqlite',
+          store: server.store,
+          uploads: createUploadManager({ config, db: server.db, store: server.store }),
+          idempotencyTtlMs: 86400000,
+          now: () => new Date(Date.now() + 400 * 86400000),
+        })
+        expect(retention.versions_removed).toBe(1)
+        await expect(
+          client.versionBytes(initial.file_id, initial.version_id)
+        ).rejects.toMatchObject({ code: 'not_found' })
+        expect(
+          await api!.hydrate(initial.file_id, {
+            operationId: 'sample-expired',
+            expectedVersionId: initial.version_id,
+          })
+        ).toMatchObject({ status: 'version-changed' })
+        expect(await fake.vault.adapter.exists(initial.path)).toBe(false)
+        expect(
+          await api!.hydrate(initial.file_id, {
+            operationId: 'sample-hydrate',
+            expectedVersionId: edited.version_id,
+          })
+        ).toMatchObject({ status: 'complete' })
+        expect(new Uint8Array(await fake.vault.adapter.readBinary(initial.path))).toEqual(
+          new TextEncoder().encode('sample second')
+        )
+        expect(await otherStore.getExternalState()).toBeNull()
+        expect(await retained.vault.adapter.exists(initial.path)).toBe(true)
+        const snapshot = await api!.get(initial.file_id)
+        expect(
+          await api!.evict(initial.file_id, {
+            operationId: 'sample-evict-again',
+            expectedRevision: snapshot!.localRevision,
+            expectedVersionId: edited.version_id,
+          })
+        ).toMatchObject({ status: 'complete' })
+        const renamed = (
+          await seed(other, [
+            {
+              op: 'move',
+              file_id: initial.file_id,
+              base_version_id: edited.version_id,
+              to_path: 'Media/sample-renamed.bin',
+            },
+          ])
+        ).results[0]
+        await engine!.sync()
+        await reopen()
+        expect((await store!.byFileId(initial.file_id))?.path).toBe('Media/sample-renamed.bin')
+        await seed(other, [
+          { op: 'delete', file_id: initial.file_id, base_version_id: renamed.version_id! },
+        ])
+        await engine!.sync()
+        await reopen()
+        expect((await api!.get(initial.file_id))?.availability).toBe('deleted')
+        expect((await api!.inspectDisconnect()).safe).toBe(false)
+        expect((await other.restoreDeleted(initial.file_id)).status).toBe('applied')
+        await engine!.sync()
+        await reopen()
+        expect((await api!.get(initial.file_id))?.availability).toBe('active')
+        expect(await fake.vault.adapter.exists('Media/sample-renamed.bin')).toBe(false)
+        const restored = await other.head(initial.file_id)
+        expect(
+          await api!.hydrate(initial.file_id, {
+            operationId: 'sample-restored-hydration',
+            expectedVersionId: restored.version_id,
+          })
+        ).toMatchObject({ status: 'complete' })
+        expect(
+          new Uint8Array(await fake.vault.adapter.readBinary('Media/sample-renamed.bin'))
+        ).toEqual(new TextEncoder().encode('sample second'))
+        expect(await otherStore.getExternalState()).toBeNull()
+      } finally {
+        await engine!.stop()
+        await ordinary.stop()
+        host!.close()
+        fence!.release()
+        otherStore.close()
+      }
+    }
+  )
+})
 
 let server: SyncServer | undefined
 let store: IndexedDbStateStore | undefined

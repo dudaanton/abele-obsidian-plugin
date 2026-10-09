@@ -1,4 +1,5 @@
 import { randomBytes } from 'node:crypto'
+import { SyncClient, sha256 } from '@abele/sync-core'
 import { join } from 'node:path'
 import { pathToFileURL } from 'node:url'
 import { afterAll, beforeAll, describe, expect, it } from 'vitest'
@@ -86,11 +87,24 @@ afterAll(async () => {
   }
 })
 
-async function roundTrip(scoped: boolean, materialize = false) {
+async function roundTrip(
+  scoped: boolean,
+  materialize = false,
+  selectedHead = head,
+  maximum = false
+) {
   return JSON.parse(
-    await evalLong(`(async()=>{
-    const api=window.__abeleTest,path=${JSON.stringify(head.path)},bytes=new TextEncoder().encode(${JSON.stringify(content)}),adapter=app.vault.adapter
-    const base=${JSON.stringify(head)},url=${JSON.stringify(url)},token=${JSON.stringify(scoped ? reader.key_token : fixture.device.deviceToken)}
+    await evalLong(
+      `(async()=>{
+    const api=window.__abeleTest,path=${JSON.stringify(selectedHead.path)},adapter=app.vault.adapter,maximum=${maximum}
+    // The local runner may supply a native resident-memory sampler on hosts without
+    // process.memoryUsage. JS heap alone omits the full-file ArrayBuffers on iOS.
+    const memory=()=>typeof window.__abeleExternalMemoryBytes==='function'?window.__abeleExternalMemoryBytes():globalThis.process?.memoryUsage?.().rss
+    let baseline=0,peakMemory=0,samples=0,memoryError=null,timer
+    const sample=()=>{const value=memory();if(!Number.isFinite(value)||value<=0){memoryError='Resident-memory sampler required';return}peakMemory=Math.max(peakMemory,value);samples++}
+    if(maximum){sample();baseline=peakMemory;if(memoryError)throw Error(memoryError)}
+    let bytes=maximum?new Uint8Array(200*1024*1024).fill(90):new TextEncoder().encode(${JSON.stringify(content)})
+    const base=${JSON.stringify(selectedHead)},url=${JSON.stringify(url)},token=${JSON.stringify(scoped ? reader.key_token : fixture.device.deviceToken)}
     const grant=${JSON.stringify(fixture.grant.id)},vault=${JSON.stringify(fixture.vault)}
     const requests=[]
     async function http(route,method='GET',body){
@@ -105,30 +119,80 @@ async function roundTrip(scoped: boolean, materialize = false) {
     const state=await api.externalState.ExternalState.open(store,'sample-ledger',binding)
     await store.put({path,wirePath:path,fileId:base.file_id,versionId:base.version_id,sha:base.sha,size:base.size,mtime:base.mtime})
     const host=new api.ExternalFileHost(app,{platform:${JSON.stringify(onPhone() ? 'mobile' : 'desktop')},assertOwned:()=>{}})
+    const barrier=new api.externalRepresentation.RecoveryBarrier(()=>{});barrier.activate()
+    const engine=new api.externalRepresentation.SyncEngine({client:{},fs:new api.ObsidianFileSystem(app),state:store,selective:{},recovery:barrier})
     const prefix=${scoped ? "'/v1/scoped/vaults/'+vault+'/grants/'+grant+'/files/'" : "'/v1/vaults/'+vault+'/files/'"}
-    let consent=null
+    let consent=null,activeDownloads=0,peakDownloads=0,downloadCount=0
     const attachment=new api.AttachmentStore({state,ledger:store,host,binding,
-      assertOwned:()=>{},serial:{run:async job=>job()},sync:async()=>{},scriptsFolder:()=> 'Scripts',
+      assertOwned:()=>{},serial:{run:job=>engine.runExclusive(job)},sync:async()=>{},scriptsFolder:()=> 'Scripts',
       scopedHead:async()=>({file_id:base.file_id,version_id:base.version_id,path,sha:base.sha,size:base.size,mtime:base.mtime}),
       consent:{read:async()=>consent,write:async value=>{consent=value}},
       verify:async(id,input)=>(await http(prefix+id+'/external/verify','POST',input)).json,
-      download:async(id,version,sha)=>new Uint8Array((await http(${scoped ? "prefix+id+'/versions/'+version" : "'/v1/blobs/'+sha"})).arrayBuffer)})
+      download:async(id,version,sha)=>{activeDownloads++;downloadCount++;peakDownloads=Math.max(peakDownloads,activeDownloads);if(maximum)sample();try{return new Uint8Array((await http(${scoped ? "prefix+id+'/versions/'+version" : "'/v1/blobs/'+sha"})).arrayBuffer)}finally{activeDownloads--;if(maximum)sample()}}})
     try{
+      if(maximum){sample();timer=setInterval(sample,25)}
       const options={operationId:crypto.randomUUID(),expectedRevision:0,expectedVersionId:base.version_id}
       const warning=${scoped ? '(await attachment.evict(base.file_id,options)).status' : 'null'}
       const evicted=await attachment.evict(base.file_id,{...options,acknowledgeScopedWarning:true})
       const missing=!await adapter.exists(path),sidecar=await adapter.exists(path+'.abele-ref')
-      const read=await attachment.read(base.file_id,{expectedVersionId:base.version_id})
-      const hydrated=${materialize ? 'await attachment.materializeForDisconnect({operationId:crypto.randomUUID()})' : 'await attachment.hydrate(base.file_id,{operationId:crypto.randomUUID(),expectedVersionId:base.version_id})'}
+      const read=maximum?null:await attachment.read(base.file_id,{expectedVersionId:base.version_id})
+      if(maximum){bytes=null;sample()}
+      const hydrationOptions={operationId:crypto.randomUUID(),expectedVersionId:base.version_id}
+      const hydrationResults=maximum?await Promise.all([attachment.hydrate(base.file_id,hydrationOptions),attachment.hydrate(base.file_id,hydrationOptions)]):null
+      const hydrated=maximum?hydrationResults[0]:${materialize ? 'await attachment.materializeForDisconnect({operationId:crypto.randomUUID()})' : 'await attachment.hydrate(base.file_id,hydrationOptions)'}
       const disconnectReady=(await attachment.inspectDisconnect()).safe
       const actual=new Uint8Array(await adapter.readBinary(path)),retired=!await adapter.exists(path+'.abele-ref')
-      return JSON.stringify({evicted,missing,sidecar,hydrated,retired,warning,requests,disconnectReady,verifiedRead:read.bytes?.length===bytes.length&&read.bytes.every((n,i)=>n===bytes[i]),identical:actual.length===bytes.length&&actual.every((n,i)=>n===bytes[i])})
-    }finally{host.close();store.close();await api.externalState.IndexedDbStateStore.delete(indexedDB,database)}
-  })()`)
+      const digest=Array.from(new Uint8Array(await crypto.subtle.digest('SHA-256',actual))).map(n=>n.toString(16).padStart(2,'0')).join('')
+      if(maximum)sample()
+      return JSON.stringify({evicted,missing,sidecar,hydrated,hydrationResults,retired,warning,requests,disconnectReady,peakDownloads,downloadCount,peakMemory,baseline,samples,memoryError,verifiedRead:!maximum&&read.bytes?.length===bytes.length&&read.bytes.every((n,i)=>n===bytes[i]),identical:maximum?actual.length===base.size&&actual.every(n=>n===90)&&digest===base.sha:actual.length===bytes.length&&actual.every((n,i)=>n===bytes[i])})
+    }finally{clearInterval(timer);await engine.stop();host.close();store.close();await api.externalState.IndexedDbStateStore.delete(indexedDB,database)}
+  })()`,
+      maximum ? 600_000 : 180_000
+    )
   )
 }
 
 describe('attachment API with the pinned real server on live adapters', () => {
+  it('transfers the 200 MiB limit with one hydration buffer job and bounded resident-memory growth', async () => {
+    const bytes = Buffer.alloc(200 * 1024 * 1024, 90)
+    const sha = await sha256(bytes)
+    const client = new SyncClient({ baseUrl: url, token: fixture.device.deviceToken }).forVault(
+      fixture.vault
+    )
+    // Exercise normal multipart upload at the limit; the simple PUT route is smaller.
+    await client.putBlob(sha, bytes)
+    const maximumHead = (
+      await client.commit(
+        [{ op: 'create', path: folder + '/sample-maximum.bin', sha, size: bytes.length, mtime: 1 }],
+        'sample-maximum-create'
+      )
+    ).results[0]
+    const outcome = await roundTrip(false, false, maximumHead, true)
+    console.info('sample maximum attachment memory', {
+      target: onPhone() ? 'phone' : 'desktop',
+      baseline: outcome.baseline,
+      sampledPeak: outcome.peakMemory,
+      samples: outcome.samples,
+      growth: outcome.peakMemory - outcome.baseline,
+      peakDownloads: outcome.peakDownloads,
+    })
+    expect(outcome).toMatchObject({
+      missing: true,
+      sidecar: true,
+      identical: true,
+      retired: true,
+      evicted: { status: 'complete', reclaimedBytes: 200 * 1024 * 1024 },
+      hydrated: { status: 'complete' },
+      peakDownloads: 1,
+      downloadCount: 1,
+      memoryError: null,
+    })
+    expect(
+      outcome.hydrationResults.every((result: { status: string }) => result.status === 'complete')
+    ).toBe(true)
+    expect(outcome.samples).toBeGreaterThan(2)
+    expect(outcome.peakMemory - outcome.baseline).toBeLessThanOrEqual(1024 * 1024 * 1024)
+  }, 600_000)
   it.each([false, true])('materializes before departure (scoped reader=%s)', async (scoped) => {
     expect(await roundTrip(scoped, true)).toMatchObject({
       evicted: { status: 'complete' },

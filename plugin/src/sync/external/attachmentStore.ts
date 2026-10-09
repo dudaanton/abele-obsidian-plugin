@@ -536,6 +536,50 @@ export class AttachmentStore {
         let doc = await this.document(),
           file = doc.files.find((item) => item.fileId === id)
         const completed = doc.operations.find((op) => op.operationId === file?.pendingOperationId)
+        // Explicit hydration can supersede a same-path metadata refresh that never
+        // installed anything. Preserve the old sidecar for hydration's journalled
+        // retirement; staging/unknown outcomes and moves must still require recovery.
+        if (
+          file?.representation === 'remote-only' &&
+          file.blockingReason === 'cleanup-pending' &&
+          completed?.kind === 'projection-update' &&
+          completed.phase === 'cleanup-pending' &&
+          completed.cleanupReason === 'cleanup-pending' &&
+          !completed.unresolvedOutcome &&
+          completed.connectionGeneration === doc.binding.generation &&
+          completed.expected?.fileId === id &&
+          completed.expected.versionId === head.versionId &&
+          completed.expected.path === head.wirePath &&
+          completed.expected.sha === head.sha &&
+          completed.expected.size === head.size &&
+          file.projectionPath === completed.sourcePath &&
+          file.projectionPath === completed.targetPath &&
+          file.projectionSha &&
+          (await this.options.host.exists(file.projectionPath)) &&
+          (await sha256(await this.options.host.read(file.projectionPath))) === file.projectionSha
+        ) {
+          let absent = true
+          for (const artifact of completed.ownedArtifacts)
+            if (await this.options.host.exists(artifact.path)) absent = false
+          if (absent) {
+            await this.commit(
+              {
+                ...file,
+                localRevision: file.localRevision + 1,
+                pendingOperationId: null,
+                blockingReason: null,
+              },
+              {
+                ...completed,
+                revision: completed.revision + 1,
+                phase: 'complete',
+                cleanupReason: null,
+              }
+            )
+            doc = await this.document()
+            file = doc.files.find((item) => item.fileId === id)
+          }
+        }
         // Settle acknowledged projection work from this or an earlier runtime before
         // applying the pending-operation guard. Unknown/held outcomes remain fenced.
         if (
