@@ -69,10 +69,10 @@ const actionLabel = (reason: AttentionReason) =>
 const updateAction = (el: HTMLElement, reason: AttentionReason) => {
   let glyph = el.querySelector<HTMLElement>('.abele-agents__action-icon')
   if (!glyph) {
-    glyph = el.ownerDocument.createElement('span')
-    glyph.className = 'abele-agents__action-icon'
-    glyph.setAttribute('aria-hidden', 'true')
-    el.appendChild(glyph)
+    glyph = el.createSpan({
+      cls: 'abele-agents__action-icon',
+      attr: { 'aria-hidden': 'true' },
+    })
   }
   setIcon(glyph, reason.kind === 'error' ? 'check' : 'x')
   setTooltip(el, actionLabel(reason))
