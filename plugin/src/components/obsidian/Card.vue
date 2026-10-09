@@ -43,6 +43,7 @@
       </div>
     </div>
 
+    <PathLabel v-if="path" :path="path" />
     <div v-if="subtitle || $slots.subtitle" class="abele-card__subtitle">
       <slot name="subtitle">{{ subtitle }}</slot>
     </div>
@@ -54,9 +55,11 @@
       {{ description }}
     </div>
 
-    <div v-if="meta?.length" class="abele-card__meta">
-      <span v-for="entry in meta" :key="entry">{{ entry }}</span>
-    </div>
+    <MetaLine
+      v-if="meta?.length"
+      class="abele-card__meta"
+      :facts="meta.map((value, index) => ({ key: String(index), value }))"
+    />
 
     <slot />
   </div>
@@ -70,6 +73,8 @@
  */
 import Image from './Image.vue'
 import Icon from './Icon.vue'
+import MetaLine from './MetaLine.vue'
+import PathLabel from './PathLabel.vue'
 import { computed } from 'vue'
 import { fromControl } from '@/helpers/interactive'
 
@@ -89,10 +94,12 @@ const props = withDefaults(
     thumbnail?: string
     /** For a card that is the thing itself rather than one of a grid — a post in a feed. The title is a heading. */
     large?: boolean
-    /** A secondary identifier — a model id, a path. Rendered in the monospace face. */
+    /** A location shown by the shared path primitive rather than repeated in the title. */
+    path?: string
+    /** Secondary prose. Technical identifiers can use the subtitle slot explicitly. */
     subtitle?: string
     description?: string
-    /** Short facts about the item, shown as one faint row. */
+    /** Short essential facts, shown by MetaLine. */
     meta?: string[]
     /** Cuts the description at two lines, for a list where one long card buries the next. */
     clampDescription?: boolean
@@ -280,8 +287,8 @@ const open = (event: Event) => {
 }
 
 .abele-card__subtitle {
-  font-family: var(--font-monospace);
-  font-size: var(--font-smallest);
+  font-family: var(--font-interface);
+  font-size: var(--font-ui-smaller);
   color: var(--text-muted);
   overflow-wrap: anywhere;
 }
@@ -318,11 +325,6 @@ const open = (event: Event) => {
 }
 
 .abele-card__meta {
-  display: flex;
-  flex-wrap: wrap;
-  gap: var(--size-2-1) var(--size-4-2);
-  margin-top: var(--size-2-1);
-  font-size: var(--font-smallest);
-  color: var(--text-faint);
+  margin-top: var(--size-4-1);
 }
 </style>

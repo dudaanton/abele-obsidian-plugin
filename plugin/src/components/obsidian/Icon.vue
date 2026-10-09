@@ -1,9 +1,15 @@
 <template>
-  <div
+  <component
+    :is="isInteractive ? 'button' : 'span'"
     ref="el"
     class="abele-obsidian-icon"
-    :aria-pressed="active"
+    :type="isInteractive ? 'button' : undefined"
+    :disabled="isInteractive ? disabled : undefined"
+    :aria-label="isInteractive ? accessibleName : undefined"
+    :aria-hidden="!isInteractive ? true : undefined"
+    :aria-pressed="isInteractive ? active : undefined"
     :class="{
+      'clickable-icon': isInteractive,
       'abele-obsidian-icon_with-bg': withBg,
       'abele-obsidian-icon_no-hover': noHover,
       'abele-obsidian-icon_disabled': disabled,
@@ -12,16 +18,17 @@
     }"
     @click="!disabled && emit('click', $event)"
   >
-    <div v-if="textLeft" class="abele-obsidian-icon__text">{{ textLeft }}</div>
-    <div v-if="icon" ref="iconEl" class="abele-obsidian-icon__icon" />
-    <div v-if="textRight" class="abele-obsidian-icon__text">{{ textRight }}</div>
-  </div>
+    <span v-if="textLeft" class="abele-obsidian-icon__text">{{ textLeft }}</span>
+    <span v-if="icon" ref="iconEl" class="abele-obsidian-icon__icon" aria-hidden="true" />
+    <span v-if="textRight" class="abele-obsidian-icon__text">{{ textRight }}</span>
+  </component>
 </template>
 
 <script setup lang="ts">
-import { ref, onMounted, watch } from 'vue'
+import { computed, getCurrentInstance, ref, onMounted, watch } from 'vue'
 import { setIcon, setTooltip } from 'obsidian'
 import type { KitColor } from '@/constants/colors'
+import './designKit.css'
 
 const props = withDefaults(
   defineProps<{
@@ -29,6 +36,10 @@ const props = withDefaults(
     textLeft?: string
     textRight?: string
     tooltip?: string
+    /** Explicit mode; omitted preserves existing callers with a click listener. */
+    interactive?: boolean
+    label?: string
+    disabledReason?: string
     withBg?: boolean
     noHover?: boolean
     disabled?: boolean
@@ -45,6 +56,7 @@ const props = withDefaults(
     tooltip: undefined,
     color: undefined,
     active: undefined,
+    interactive: undefined,
   }
 )
 
@@ -52,13 +64,21 @@ const emit = defineEmits<{
   click: [event: MouseEvent]
 }>()
 
+const instance = getCurrentInstance()
+const isInteractive = computed(
+  () => props.interactive ?? (!!instance?.vnode.props?.onClick || props.active !== undefined)
+)
+const accessibleName = computed(() => {
+  const label = props.label ?? props.tooltip ?? props.textLeft ?? props.textRight ?? ''
+  return props.disabled && props.disabledReason ? `${label}: ${props.disabledReason}` : label
+})
 const el = ref<HTMLElement>()
 const iconEl = ref<HTMLElement>()
 
 // Obsidian's own tooltip rather than the browser's `title`: it is styled with the theme and
 // appears without the second-long delay a native tooltip has.
 const updateTooltip = () => {
-  if (el.value) setTooltip(el.value, props.tooltip ?? '')
+  if (el.value) setTooltip(el.value, accessibleName.value || props.tooltip || '')
 }
 
 const updateIcon = () => {
@@ -75,7 +95,7 @@ onMounted(() => {
   updateTooltip()
 })
 watch(() => props.icon, updateIcon)
-watch(() => props.tooltip, updateTooltip)
+watch(accessibleName, updateTooltip)
 </script>
 
 <style lang="scss">
@@ -83,7 +103,7 @@ watch(() => props.tooltip, updateTooltip)
   display: flex;
   align-items: center;
   justify-content: center;
-  height: 1.5em;
+  min-height: var(--icon-size);
   color: var(--icon-color);
   padding: var(--size-2-1) var(--size-2-2);
   border-radius: var(--radius-s);
@@ -123,12 +143,12 @@ watch(() => props.tooltip, updateTooltip)
 .abele-obsidian-icon__icon {
   display: flex;
   align-items: center;
-  height: 1.5em;
+  height: var(--icon-size);
 }
 
 .abele-obsidian-icon__text {
   user-select: none;
-  font-size: var(--font-smaller);
+  font-size: var(--font-ui-smaller);
 
   &:first-child {
     margin-right: var(--size-2-2);

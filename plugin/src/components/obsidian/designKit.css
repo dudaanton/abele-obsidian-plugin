@@ -1,0 +1,27 @@
+/* Host touch sizes can be smaller in a theme. This is the single accessibility floor,
+   not a new visual spacing token; desktop controls keep their native geometry. */
+body.is-phone {
+  --abele-touch-min: max(44px, var(--touch-size-m));
+}
+body.is-phone
+  :is(
+    .abele-obsidian-icon.clickable-icon,
+    .abele-list-row__main,
+    .abele-disclosure__control,
+    .abele-swatch-picker__choice,
+    .abele-path-label > summary,
+    .abele-list-section-header .is-collapsible,
+    .abele-image__preview
+  ) {
+  min-width: var(--abele-touch-min);
+  min-height: var(--abele-touch-min);
+}
+:is(
+  .abele-list-row__main,
+  .abele-disclosure__control,
+  .abele-swatch-picker__choice,
+  .abele-image__preview
+):focus-visible {
+  outline: var(--size-2-1) solid var(--background-modifier-border-focus);
+  outline-offset: var(--size-2-1);
+}

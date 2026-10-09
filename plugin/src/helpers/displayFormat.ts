@@ -1,3 +1,54 @@
+export type TimestampValue = string | number | Date | null | undefined
+
+/** Presentation only: storage/serialization is deliberately left to the caller. */
+export function formatTimestamp(
+  value: TimestampValue,
+  options: {
+    now?: Date
+    mode?: 'relative' | 'absolute'
+    timeZone?: string
+    diagnostic?: boolean
+  } = {}
+): { label: string; exact: string; datetime: string | undefined } {
+  const unknown: { label: string; exact: string; datetime: string | undefined } = {
+    label: 'Time unknown',
+    exact: 'Time unknown',
+    datetime: undefined,
+  }
+  if (value === null || value === undefined || value === '') return unknown
+  const date = new Date(value)
+  if (!Number.isFinite(date.getTime())) return unknown
+  const timeZone = options.timeZone ?? Intl.DateTimeFormat().resolvedOptions().timeZone
+  const formatter = new Intl.DateTimeFormat('en-GB', {
+    timeZone,
+    year: 'numeric',
+    month: '2-digit',
+    day: '2-digit',
+    hour: '2-digit',
+    minute: '2-digit',
+    second: '2-digit',
+    hourCycle: 'h23',
+    timeZoneName: 'shortOffset',
+  })
+  const parts = (d: Date) =>
+    Object.fromEntries(formatter.formatToParts(d).map((p) => [p.type, p.value]))
+  const p = parts(date)
+  const clock = `${p.hour}:${p.minute}`
+  const exact = `${p.day}.${p.month}.${p.year}, ${clock}${options.diagnostic ? `:${p.second} ${timeZone} (${p.timeZoneName})` : ''}`
+  // Calendar arithmetic in the selected zone, not elapsed milliseconds over a DST change.
+  const ordinal = (v: Record<string, string>) =>
+    Date.UTC(Number(v.year), Number(v.month) - 1, Number(v.day)) / 86400000
+  const now = options.now ?? new Date()
+  const day = Number.isFinite(now.getTime())
+    ? relativeDayLabel(ordinal(p) - ordinal(parts(now)))
+    : ''
+  return {
+    label: options.mode !== 'absolute' && day ? `${day}, ${clock}` : exact,
+    exact,
+    datetime: date.toISOString(),
+  }
+}
+
 /** Existing binary-size presentation; deliberately keeps MB even above one gigabyte. */
 export function formatBytes(bytes: number): string {
   if (bytes < 1024) return `${bytes} B`
