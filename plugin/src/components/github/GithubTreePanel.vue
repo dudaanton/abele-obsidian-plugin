@@ -252,7 +252,12 @@ watch(
   () => void showCurrent()
 )
 
-const shortRef = (ref: string) => (/^[0-9a-f]{40}$/i.test(ref) ? ref.slice(0, 7) : ref)
+const shortRef = (ref: string) =>
+  source.value?.identity.provider === 'node' && ref.startsWith('working-')
+    ? 'Working tree'
+    : /^[0-9a-f]{40}$/i.test(ref)
+      ? ref.slice(0, 7)
+      : ref
 
 /** Whether the panel lies over the content — a phone, a narrow pane — rather than beside it. */
 const overlaid = () => {

@@ -4,36 +4,61 @@
       <div class="abele-github-header__repo">{{ crumbs ? '' : repo }}</div>
       <div class="abele-github-header__actions">
         <Icon
+          v-bind="nativeAction"
+          @keydown.enter.prevent="emit('tree')"
+          @keydown.space.prevent="emit('tree')"
           icon="folder-tree"
           :active="tree"
           :tooltip="tree ? 'Hide the file tree' : 'Show the repository\'s files beside this'"
           @click="emit('tree')"
         />
         <Icon
+          v-bind="nativeAction"
+          @keydown.enter.prevent="emit('swap')"
+          @keydown.space.prevent="emit('swap')"
           v-if="swap"
           icon="arrow-left-right"
           tooltip="Swap base and head: what base has that head has not"
           @click="emit('swap')"
         />
-        <Icon icon="search" tooltip="Find in this tab (Mod+F)" @click="emit('find')" />
         <Icon
+          v-bind="nativeAction"
+          icon="search"
+          tooltip="Find in this tab (Mod+F)"
+          @click="emit('find')"
+          @keydown.enter.prevent="emit('find')"
+          @keydown.space.prevent="emit('find')"
+        />
+        <Icon
+          v-bind="nativeAction"
+          @keydown.enter.prevent="emit('search')"
+          @keydown.space.prevent="emit('search')"
           icon="file-search"
           tooltip="Search the code: this change, the whole repository, or file names"
           @click="emit('search')"
         />
         <Icon
+          v-bind="nativeAction"
+          @keydown.enter.prevent="emit('chat')"
+          @keydown.space.prevent="emit('chat')"
           v-if="chat"
           icon="message-square-plus"
           tooltip="Chat about this: a new chat with a link to it in the input"
           @click="emit('chat')"
         />
         <Icon
+          v-bind="nativeAction"
+          @keydown.enter.prevent="loading || emit('refresh')"
+          @keydown.space.prevent="loading || emit('refresh')"
           icon="refresh-cw"
-          tooltip="Load again from GitHub"
+          :tooltip="node ? 'Refresh from the node' : 'Load again from GitHub'"
           :disabled="loading"
           @click="emit('refresh')"
         />
         <Icon
+          v-bind="nativeAction"
+          @keydown.enter.prevent="emit('browser')"
+          @keydown.space.prevent="emit('browser')"
           v-if="url"
           icon="external-link"
           tooltip="Open this on GitHub in the browser"
@@ -71,7 +96,8 @@
 </template>
 
 <script setup lang="ts">
-import { ref } from 'vue'
+import { computed, ref } from 'vue'
+import { useRepositorySource } from '@/repository/context'
 import { useResizeObserver } from '@vueuse/core'
 import Icon from '../obsidian/Icon.vue'
 import Badge from '../obsidian/Badge.vue'
@@ -113,6 +139,12 @@ withDefaults(
     crumbs: undefined,
     refLabel: undefined,
   }
+)
+
+const source = useRepositorySource()
+const node = computed(() => source.value?.identity.provider === 'node')
+const nativeAction = computed(() =>
+  node.value ? { class: 'clickable-icon', role: 'button', tabindex: 0 } : {}
 )
 
 const emit = defineEmits<{

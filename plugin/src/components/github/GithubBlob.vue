@@ -226,8 +226,16 @@ const onSelect = (span: LineSpan | null) => {
 // A new file, or a link to other lines of it: what was selected before is gone, and the view
 // opens where the link says rather than where the last switch left off.
 watch(
-  () => [props.text, props.range],
-  () => {
+  () => [props.text, props.range, props.file.path, source.value?.cacheNamespace] as const,
+  (next, previous) => {
+    // A live observation replaces bytes of the same file, not the user's line selection.
+    if (
+      source.value?.identity.provider === 'node' &&
+      next[1] === previous[1] &&
+      next[2] === previous[2] &&
+      next[3] === previous[3]
+    )
+      return
     selected.value = null
     focus.value = null
   }
@@ -248,8 +256,8 @@ const selectedQuote = (): Quote => {
  */
 const screen = inject(SCREEN, null)
 watch(
-  selected,
-  (s) => {
+  [selected, () => props.text],
+  ([s]) => {
     if (!screen) return
     screen.selection = s
       ? { path: props.file.path, label: linesLabel(s), code: selectedQuote().code }

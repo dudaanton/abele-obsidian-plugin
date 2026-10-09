@@ -40,7 +40,7 @@
             @pointerdown="refreshLink"
             @mouseenter="refreshLink"
             @focus="refreshLink"
-            @click.stop
+            @click.stop="openFolder($event, openUrl!)"
             @keydown.enter.stop
             >{{ fileName }}</a
           >
@@ -51,6 +51,15 @@
         <span class="abele-github-file__add">+{{ file.additions }}</span>
         <span class="abele-github-file__del">−{{ file.deletions }}</span>
       </span>
+      <span v-if="file.staged || file.unstaged || file.untracked" class="abele-github-file__note">{{
+        file.untracked
+          ? 'Untracked'
+          : file.staged && file.unstaged
+            ? 'Staged and unstaged'
+            : file.staged
+              ? 'Staged'
+              : 'Unstaged'
+      }}</span>
       <Badge v-if="file.status !== 'modified'" :text="file.status" />
       <Icon
         v-if="openUrl"
@@ -69,7 +78,12 @@
     </div>
 
     <div v-if="expanded" class="abele-github-file__body">
-      <div v-if="lines.length" ref="editorEl" class="abele-github-code" />
+      <EmptyState v-if="patchBusy" text="Loading the file changes…" />
+      <div v-else-if="patchError" role="alert">
+        {{ patchError }}
+        <Icon icon="refresh-cw" tooltip="Try loading the file changes again" @click="loadPatch" />
+      </div>
+      <div v-else-if="lines.length" ref="editorEl" class="abele-github-code" />
       <EmptyState v-else>
         {{
           file.diffNote
@@ -154,6 +168,7 @@ const emit = defineEmits<{
   /** Opens a GitHub URL: `false` by the usual rule, a pane type in a new tab, split or window. */
   open: [url: string, pane: PaneType | false]
   select: [span: DiffSpan | null]
+  loaded: []
 }>()
 
 const source = useRepositorySource()
@@ -169,7 +184,43 @@ useResizeObserver(head, () => {
 const editorEl = ref<HTMLElement>()
 const expanded = ref(props.initiallyOpen || !!props.anchor)
 
-const lines = computed(() => (props.file.patch ? parsePatch(props.file.patch) : []))
+const patchBusy = ref(false)
+const patchError = ref('')
+const patchEpoch = ref(0)
+let patchGeneration = 0
+const loadPatch = async () => {
+  if (!props.file.loadPatch || props.file.patch !== undefined || patchBusy.value) return
+  const generation = ++patchGeneration
+  patchBusy.value = true
+  patchError.value = ''
+  try {
+    await props.file.loadPatch()
+    if (generation === patchGeneration) { patchEpoch.value++; emit('loaded') }
+  } catch (error) {
+    if (generation === patchGeneration)
+      patchError.value = error instanceof Error ? error.message : String(error)
+  } finally {
+    if (generation === patchGeneration) {
+      patchBusy.value = false
+      await nextTick()
+      void draw()
+    }
+  }
+}
+watch(
+  expanded,
+  (open) => {
+    if (open) void loadPatch()
+  },
+  { immediate: true }
+)
+onBeforeUnmount(() => {
+  ++patchGeneration
+})
+const lines = computed(() => {
+  void patchEpoch.value
+  return props.file.patch ? parsePatch(props.file.patch) : []
+})
 const highlight = computed(() => {
   const a = props.anchor
   if (!a?.line || !a.side) return []
@@ -197,6 +248,8 @@ const selectedLink = (): GithubLink => {
   if (!selectedSpan.value) throw new Error('nothing is selected')
   const span = selectedSpan.value
   const ref = span.side === 'L' ? props.refs?.base : props.refs?.head
+  if (source.value?.identity.provider === 'node' && !ref)
+    throw new Error('This index side is available in the retained patch, not as a whole-file link.')
   if (source.value?.identity.provider === 'node' && ref)
     return source.value.navigation.blobLink(
       ref,
@@ -281,7 +334,7 @@ const openTooltip = computed(() =>
 function urlAt(line: number | undefined): string | null {
   const item = linker?.item()
   const sha = deleted.value ? props.refs?.base : props.refs?.head
-  if (!item || !sha) return null
+  if ((!item && !source.value) || !sha) return null
   return (
     source.value?.navigation.file(sha, props.file.path, line) ??
     fileUrl(item, sha, props.file.path, line)

@@ -38,6 +38,23 @@ it('uses the shared code/diff views and never enables following a listed symboli
     wrapper.unmount()
   }
 })
+it('keeps an active local draft and reports external changes instead of replacing its text', async () => {
+  useVault([])
+  const props = await nodeFilesFixture('edit')
+  let changed: (() => void) | undefined
+  const wrapper = mount(NodeFilesDialog, {
+    props: { ...props, subscribeChanges: (listener: () => void) => { changed = listener; return () => { changed = undefined } } },
+    global: { stubs },
+  })
+  await flushPromises()
+  const text = props.model.draftText.value
+  changed!()
+  await flushPromises()
+  expect(wrapper.text()).toContain('Changed on disk')
+  expect(props.model.draftText.value).toBe(text)
+  wrapper.unmount()
+  expect(changed).toBeUndefined()
+})
 it('retains the snapshot of an existing selection when another snapshot is published', async () => {
   useVault([])
   const props = await nodeFilesFixture('review')

@@ -16,6 +16,7 @@
       :anchor="file.hash === anchor?.hash ? anchor : undefined"
       :comment-anchor="commentAnchor"
       :refs="refs"
+      @loaded="patchEpoch++"
       @open="(url: string, pane: PaneType | false) => emit('open', url, pane)"
     />
     <EmptyState v-if="!files.length" text="No files changed." />
@@ -26,7 +27,7 @@
 </template>
 
 <script setup lang="ts">
-import { computed } from 'vue'
+import { computed, ref } from 'vue'
 import EmptyState from '../obsidian/EmptyState.vue'
 import GithubDiffFile from './GithubDiffFile.vue'
 import type { DiffFile } from '@/repository/model'
@@ -56,8 +57,9 @@ const emit = defineEmits<{
 const holdsComment = (file: DiffFile) =>
   !!props.commentAnchor && file.reviewComments.some((c) => c.anchor === props.commentAnchor)
 
-const additions = computed(() => props.files.reduce((n, f) => n + f.additions, 0))
-const deletions = computed(() => props.files.reduce((n, f) => n + f.deletions, 0))
+const patchEpoch = ref(0)
+const additions = computed(() => { void patchEpoch.value; return props.files.reduce((n, f) => n + f.additions, 0) })
+const deletions = computed(() => { void patchEpoch.value; return props.files.reduce((n, f) => n + f.deletions, 0) })
 const anchored = computed(() => props.files.some((f) => f.hash === props.anchor?.hash))
 </script>
 

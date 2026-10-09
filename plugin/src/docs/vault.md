@@ -104,6 +104,26 @@ runtime-only. Immutable trees, blob text and endpoint indexes/counts are bounded
 caches scoped to credential generation and repository identity, with separate caller capability
 guards. Credential retirement clears them. No persistent private-source cache is added.
 
+## Node repository tabs (device-local)
+
+The shared repository leaf (`abele-github`) stores a discriminated `sourceTarget` in Obsidian's
+workspace layout. Existing GitHub URL-only leaves still load. Node targets contain a registration
+ID, installation ID, project ID, opaque worktree ID and an explicit home/file/folder/commit/
+comparison location. Paths are relative; credentials, node URLs and chat grants never enter tab
+state or repository links. Frozen commits retain their resolved IDs. Live Working tree aliases
+observe afresh after restart; links to captured bytes include their retained content ID and
+working observation. An expired observation/content returns an error, never silently reads the
+current file under the old identity.
+
+Node comparison bases use the existing device-local base store with a source identity; they are
+isolated by installation/project/worktree rather than display labels. Repository tab reads keep
+at most 4 MiB of decoded content in a source-local LRU and bounded revision/link metadata in
+session memory. Node content and per-file patch retention belong to the daemon. External-access
+revocation clears the source and pending publications; reconnect requires mutable refresh.
+Human-opened tabs grant no agent access. External worktrees remain read only. Human editing of
+managed working files opens the existing durable workspace editor, retaining its drafts and save
+receipts; external changes report changed-on-disk rather than replacing an active draft.
+
 ## Device-local template approvals
 
 `abele-template-trust` in Obsidian's vault-scoped local storage holds template confirmations.

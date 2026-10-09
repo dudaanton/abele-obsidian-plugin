@@ -1755,6 +1755,47 @@ describe.skipIf(!available)('the GitHub base picker on a phone', () => {
   }, 90000)
 })
 
+describe.skipIf(!available)('the node repository tab on a phone', () => {
+  let size: [number, number]
+  beforeAll(async () => {
+    size = windowSize()
+    await setMobile(true)
+    await setWindowSize(PHONE.width, PHONE.height)
+  }, 90000)
+  afterAll(async () => {
+    evalRaw('window.__abeleTest.closeNodeRepositoryFixture()')
+    if (size?.[0]) await setWindowSize(size[0], size[1])
+    await setMobile(false)
+  }, 120000)
+  for (const state of ['home', 'file', 'changes', 'compare', 'commits', 'empty', 'missing', 'offline']) {
+    it(`keeps the node repository ${state} readable in a full-width native leaf`, async () => {
+      const result = JSON.parse(await evalLong(`(async () => {
+        await window.__abeleTest.openNodeRepositoryFixture(${JSON.stringify(state)});
+        await new Promise(r => setTimeout(r, 250));
+        const root = [...document.querySelectorAll('.abele-github, .abele-node-repository__unavailable')].find(el => el.getBoundingClientRect().width > 0);
+        if (!root) throw Error('Repository tab missing');
+        const box = root.getBoundingClientRect();
+        const repo = root.querySelector('.abele-github-header__repo');
+        if (repo?.textContent.trim() && repo.getBoundingClientRect().width < 300) throw Error('Repository name squeezed beside actions');
+        const clipped = [...root.querySelectorAll('button,select,[role="button"]')].filter(el => {
+          const r=el.getBoundingClientRect();return r.width > 0 && (r.left < -1 || r.right > innerWidth+1)
+        }).map(el => el.getAttribute('aria-label') || el.textContent);
+        const hitBoxes = [...root.querySelectorAll('.abele-github-header [role="button"]')].map(el => {const r=el.getBoundingClientRect();return {width:r.width,height:r.height}});
+        const shot=${JSON.stringify(SHOTS)}+'/node-repository-${state}.png';
+        require('fs').mkdirSync(${JSON.stringify(SHOTS)},{recursive:true});
+        const image=await require('@electron/remote').getCurrentWebContents().capturePage();require('fs').writeFileSync(shot,image.toPNG());
+        return JSON.stringify({width:box.width,left:box.left,right:box.right,clipped,hitBoxes,shot});
+      })()`)) as {width:number;left:number;right:number;clipped:string[];hitBoxes:{width:number;height:number}[];shot:string}
+      expect(result.width).toBeGreaterThan(300)
+      expect(result.left).toBeGreaterThanOrEqual(0)
+      expect(result.right).toBeLessThanOrEqual(PHONE.width)
+      expect(result.clipped).toEqual([])
+      expect(result.hitBoxes.every(box => box.width >= 44 && box.height >= 44)).toBe(true)
+      expect(result.shot).toMatch(/\.png$/)
+    }, 90000)
+  }
+})
+
 describe.skipIf(!available)('the chat dialogs on a phone', () => {
   let report: Report = {}
   let size: [number, number] = [0, 0]

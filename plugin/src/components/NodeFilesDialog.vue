@@ -1,6 +1,20 @@
 <template>
   <Modal title="Workspace files and review" size="full" @close="close">
     <div class="abele-node-files">
+      <div v-if="onRepository" class="abele-node-files__actions">
+        <Button
+          text="Open repository"
+          icon="folder-git-2"
+          :disabled="busy || offline"
+          @click="
+            act(async () => {
+              await onRepository!()
+              close()
+            })
+          "
+        />
+        <span>Files, workspaces, commits and Working tree changes in a tab.</span>
+      </div>
       <div class="abele-node-files__actions" role="tablist" aria-label="Workspace views">
         <Button text="Files" :accent="tab === 'files'" @click="tab = 'files'" />
         <Button text="Diffs" :accent="tab === 'diffs'" @click="tab = 'diffs'" />
@@ -62,6 +76,9 @@
           />
         </div>
         <template v-if="model.document.value">
+          <p v-if="changedOnDisk" role="status">
+            Changed on disk · your local draft is kept. Reload to inspect the current contents.
+          </p>
           <h3 class="abele-node-files__path">{{ model.filePath.value }}</h3>
           <p>{{ model.document.value.size }} bytes · retained version</p>
           <div class="abele-node-files__actions">
@@ -411,6 +428,8 @@ import GithubCode from './github/GithubCode.vue'
 import GithubDiffFile from './github/GithubDiffFile.vue'
 const props = defineProps<{
   model: NodeFilesModel
+  onRepository?: () => Promise<unknown>
+  subscribeChanges?: (listener: () => void) => () => void
   connection: Pick<NodeConnection, 'state'>
   initialPath?: string
   initialTab?: 'files' | 'diffs' | 'history'
@@ -418,6 +437,21 @@ const props = defineProps<{
   initialRange?: CodeLineRange
 }>()
 const emit = defineEmits<{ close: [] }>()
+const changedOnDisk = ref(false)
+let stopChanges = () => {}
+onMounted(() => {
+  stopChanges =
+    props.subscribeChanges?.(() => {
+      changedOnDisk.value = true
+    }) ?? (() => {})
+})
+onUnmounted(() => stopChanges())
+watch(
+  () => props.model.document.value?.contentId,
+  () => {
+    changedOnDisk.value = false
+  }
+)
 const lifetime = new AbortController()
 const close = () => {
   lifetime.abort()

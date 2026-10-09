@@ -33,6 +33,7 @@ export interface CommitData {
 
 export interface BlobData {
   contentId?: string | null
+  canLoadLarge?: boolean
   note?: string
   /** Exact endpoint file comparison; absent for the existing original-file view. */
   comparison?: PinnedFile

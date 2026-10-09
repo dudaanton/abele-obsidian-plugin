@@ -3,6 +3,7 @@
     <Button
       class="clickable-icon abele-github-blame-range__open"
       :text="splitMessage(commit.message).title"
+      :disabled="!commit.sha"
       :tooltip="details"
       @click="open"
       @pointerdown="press"
@@ -66,6 +67,7 @@ const cancel = () => {
   timer = undefined
 }
 const showDetails = () => {
+  if (!props.commit.sha) return
   cancel()
   held = true
   modal?.close()
@@ -95,6 +97,7 @@ const move = (e: PointerEvent) => {
   if (Math.hypot(e.clientX - start.x, e.clientY - start.y) > 8) cancel()
 }
 const open = () => {
+  if (!props.commit.sha) return
   if (held) {
     held = false
     return

@@ -1,5 +1,5 @@
 <template>
-  <div class="abele-github-home">
+  <div class="abele-github-home" :class="{ 'abele-github-home_node': home.node }">
     <div class="abele-github-home__about">
       <p v-if="meta.description" class="abele-github-home__description">
         {{ meta.description }}
@@ -12,10 +12,10 @@
         rel="noopener"
         >{{ homepageLabel }}</a
       >
-      <div v-if="meta.topics.length" class="abele-github-home__topics">
+      <div v-if="source?.github && meta.topics.length" class="abele-github-home__topics">
         <Badge v-for="topic in meta.topics" :key="topic" :text="topic" color="blue" />
       </div>
-      <div class="abele-github-home__stats">
+      <div v-if="source?.github" class="abele-github-home__stats">
         <Icon icon="star" no-hover :text-right="`${formatCount(meta.stars)} stars`" />
         <Icon icon="git-fork" no-hover :text-right="`${formatCount(meta.forks)} forks`" />
         <Icon icon="eye" no-hover :text-right="`${formatCount(meta.watchers)} watching`" />
@@ -28,12 +28,12 @@
       <Button
         class="abele-github-home__ref"
         icon="git-branch"
-        :text="shortRef(home.ref)"
+        :text="shortRef(nodeRevisionLabel(home.ref))"
         tooltip="Switch to another branch or tag: the files and the README follow"
         @click="switchRef"
       />
       <Button
-        v-if="home.ref !== meta.defaultBranch"
+        v-if="meta.defaultBranch && home.ref !== meta.defaultBranch"
         icon="undo-2"
         :text="meta.defaultBranch"
         tooltip="Back to the default branch"
@@ -47,6 +47,74 @@
         @click="emit('tree')"
       />
     </div>
+
+    <template v-if="home.node">
+      <section class="abele-github-home__workspaces" aria-label="Workspaces">
+        <FoldHeading text="Workspaces" />
+        <div
+          v-for="workspace in home.node.workspaces"
+          :key="workspace.id"
+          class="abele-github-home__workspace"
+        >
+          <TreeItem
+            :text="workspace.label"
+            :icon="workspace.kind === 'external' ? 'folder-git-2' : 'folder'"
+            :active="
+              source?.identity.provider === 'node' && workspace.id === source.identity.workspace
+            "
+            :plain="workspace.availability !== 'available'"
+            :flair="
+              workspace.dirty === true
+                ? 'Changes'
+                : workspace.dirty === false
+                  ? 'Clean'
+                  : 'Not checked'
+            "
+            @click="emit('open', source!.navigation.workspace!(workspace.id), false)"
+          />
+          <div class="abele-github-home__workspace-meta">{{ workspaceMeta(workspace) }}</div>
+        </div>
+      </section>
+      <section aria-label="Working tree changes">
+        <FoldHeading text="Working tree" />
+        <Button
+          v-if="
+            home.node.status.revision?.kind === 'working-tree' && home.node.status.revision.head
+          "
+          text="Review changes"
+          icon="file-diff"
+          @click="
+            emit(
+              'open',
+              source!.navigation.comparison(home.node.status.revision.head, 'Working tree', true),
+              false
+            )
+          "
+        />
+        <EmptyState v-if="!home.node.status.files.length" text="No local changes." />
+        <TreeItem
+          v-for="file in home.node.status.files"
+          :key="file.path"
+          :text="file.path"
+          icon="file-diff"
+          :flair="changeLabel(file)"
+          :plain="file.status === 'deleted'"
+          @click="emit('open', source!.navigation.file('Working tree', file.path), false)"
+        />
+      </section>
+      <section aria-label="Recent commits">
+        <FoldHeading text="Recent commits" />
+        <EmptyState v-if="!home.node.commits.length" text="No commits yet." />
+        <TreeItem
+          v-for="commit in home.node.commits.slice(0, 10)"
+          :key="commit.sha"
+          :text="commit.message.split('\n')[0]"
+          icon="git-commit-horizontal"
+          :flair="commit.sha.slice(0, 7)"
+          @click="emit('open', source!.navigation.commit(commit.sha), false)"
+        />
+      </section>
+    </template>
 
     <div class="abele-github-home__columns">
       <div class="abele-github-home__side">
@@ -142,6 +210,9 @@ import type { PaneType } from 'obsidian'
 import Badge from '../obsidian/Badge.vue'
 import Button from '../obsidian/Button.vue'
 import Icon from '../obsidian/Icon.vue'
+import TreeItem from '../obsidian/TreeItem.vue'
+import { nodeRevisionLabel } from '@/repository/node'
+import type { RepositoryWorkspace, RepositoryStatus } from '@/repository/source'
 import EmptyState from '../obsidian/EmptyState.vue'
 import FoldHeading from '../obsidian/FoldHeading.vue'
 import GithubFolder from './GithubFolder.vue'
@@ -185,6 +256,31 @@ const source = useRepositorySource(
   () => props.repo
 )
 const meta = computed(() => props.home.meta)
+const workspaceMeta = (w: RepositoryWorkspace) =>
+  [
+    w.kind === 'external'
+      ? 'External · read only'
+      : w.kind === 'managed'
+        ? 'Worktree'
+        : 'Original checkout',
+    w.branch?.replace(/^refs\/heads\//, '') || (w.head ? 'Detached' : 'No commits'),
+    w.head?.slice(0, 7),
+    w.availability !== 'available' ? w.availability : '',
+    w.locked ? 'Locked' : '',
+    w.prunable ? 'Prunable' : '',
+  ]
+    .filter(Boolean)
+    .join(' · ')
+const changeLabel = (file: RepositoryStatus['files'][number]) =>
+  file.untracked
+    ? 'Untracked'
+    : file.staged && file.unstaged
+      ? 'Staged and unstaged'
+      : file.staged
+        ? 'Staged'
+        : file.status === 'deleted'
+          ? 'Deleted · unstaged'
+          : 'Unstaged'
 const homeUrl = (r: RepoLike, ref: string | undefined) =>
   source.value?.navigation.home(ref, meta.value.defaultBranch) ??
   homeUrlOf(r, ref, meta.value.defaultBranch)
@@ -267,6 +363,13 @@ const switchRef = () => {
   flex-direction: column;
   gap: var(--size-4-4);
   container-type: inline-size;
+
+  &__workspace-meta {
+    padding-inline-start: var(--size-4-6);
+    color: var(--text-muted);
+    font-size: var(--font-ui-smaller);
+    overflow-wrap: anywhere;
+  }
 
   &__about {
     display: flex;
@@ -380,6 +483,18 @@ const switchRef = () => {
       background-color: var(--color-#{$name});
     }
   }
+}
+
+.abele-github-home_node .abele-github-folder__list {
+  border: none;
+  padding: 0;
+  .tree-item-self {
+    padding-inline-start: var(--size-4-6);
+  }
+}
+
+body.is-phone .abele-github-home_node .tree-item-self {
+  min-height: calc(var(--size-4-10) + var(--size-4-1));
 }
 
 @container (min-width: 760px) {

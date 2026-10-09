@@ -75,6 +75,11 @@ genuinely theirs to take. Every one is prefixed **Abele:** in the palette.
   already showing that item, else the GitHub tab used last, else a new one; Mod+Enter opens a new
   tab. The same picker is *Open another GitHub item…* in a GitHub tab's "more options" menu (only
   while the GitHub integration is on)
+- Open node repository — choose a connected node, registered project and workspace, then browse
+  its repository in the same tab layout as GitHub. Workspaces include the original checkout,
+  node worktrees and opted-in external worktrees. Working tree shows local changes above HEAD;
+  branches and commits stay frozen until deliberately refreshed. Human browsing does not grant
+  an agent access. The workspace files dialog offers the same entry point
 - Open GitHub repository… — a picker of repositories: pinned ones (`github.pinnedRepos`), the ones
   opened lately on this device, the account's own and the starred ones (with a token, asked of
   GitHub once an hour), and GitHub's repository search for what is typed; `owner/repo` typed whole

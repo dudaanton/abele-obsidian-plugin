@@ -14,7 +14,11 @@
         @close="setPanel(false)"
       />
     </template>
-    <div ref="root" class="abele-github">
+    <div
+      ref="root"
+      class="abele-github"
+      :class="{ 'abele-github_node': source?.identity.provider === 'node' }"
+    >
       <EmptyState v-if="!enabled">
         The GitHub integration is off. Turn it on in Abele settings → GitHub.
       </EmptyState>
@@ -74,6 +78,7 @@
           </template>
         </GithubHeader>
 
+        <slot name="repository-actions" :file="blob" />
         <GithubBaseBar
           v-if="repoRef && ['blob', 'tree', 'repo'].includes(shown.kind)"
           :repo="repoRef"
@@ -91,6 +96,7 @@
           v-if="tabSearch.searchOpen.value"
           :code="tabSearch.code"
           :ready="!!main.data.value"
+          :revision-key="source?.identity.provider === 'node' && sourceLocation && 'ref' in sourceLocation && sourceLocation.ref === 'Working tree' ? (main.data.value as { url?: string } | null)?.url : undefined"
           :has-changes="tabSearch.hasChanges.value"
           :request="tabSearch.searchRequest.value"
           @open="(url: string, newTab: boolean) => props.onOpen?.(url, newTab ? 'tab' : false)"
@@ -106,7 +112,12 @@
             @click="reload(true)"
           />
         </div>
-        <EmptyState v-else-if="!main.data.value" text="Loading from GitHub…" />
+        <EmptyState
+          v-else-if="!main.data.value"
+          :text="
+            source?.identity.provider === 'node' ? 'Loading from the node…' : 'Loading from GitHub…'
+          "
+        />
 
         <template v-else-if="shown.kind === 'issue' && issue">
           <GithubThread
@@ -194,8 +205,9 @@
         </template>
 
         <template v-else-if="shown.kind === 'commit' && commit">
+          <pre v-if="source?.identity.provider === 'node' && splitMessage(commit.message).body" class="abele-github__message">{{ splitMessage(commit.message).body }}</pre>
           <GithubText
-            v-if="splitMessage(commit.message).body && repo"
+            v-else-if="splitMessage(commit.message).body && repo"
             class="abele-github__message"
             :text="splitMessage(commit.message).body"
             :repo="repo"
@@ -220,6 +232,8 @@
         />
 
         <template v-else-if="shown.kind === 'blob' && blob">
+          <EmptyState v-if="blob.note" :text="blob.note" />
+          <Button v-if="blob.canLoadLarge && source?.largeBlob" text="Load larger file" icon="file-text" :disabled="largeBusy" @click="loadLarge" />
           <GithubPinnedFile
             v-if="blob.comparison"
             :file="blob.comparison"
@@ -231,7 +245,7 @@
             @open="(url: string) => onOpen?.(url, false)"
           />
           <GithubBlob
-            v-else
+            v-else-if="!blob.note"
             :text="blob.text"
             :file="blobFile!"
             :range="blobRange"
@@ -514,6 +528,15 @@ const main = useLoad<ItemData>(async () => {
   return data
 })
 
+watch(() => main.data.value, (data) => {
+  if (!data || source.value?.identity.provider !== 'node') return
+  const ref = (data as { ref?: string; sha?: string; headSha?: string }).ref ?? (data as { sha?: string }).sha ?? (data as { headSha?: string }).headSha
+  if (ref) {
+    props.model.sourceRevision = source.value.revision?.(ref)
+    props.onState?.()
+  }
+})
+
 const files = useLoad(() => loadPullFiles(client(), shown.value as Of<'pull'>))
 const commits = useLoad(() => loadPullCommits(client(), shown.value as Of<'pull'>))
 
@@ -575,7 +598,18 @@ const loadLarge = async () => {
   const data = blob.value,
     at = data?.comparison,
     generation = loadGeneration
-  if (!data || !at || !repoRef.value || largeBusy.value) return
+  if (!data || !repoRef.value || largeBusy.value) return
+  if (!at) {
+    if (!data.canLoadLarge || !source.value.largeBlob) return
+    largeBusy.value = true
+    try {
+      const loaded = await source.value.largeBlob(data.ref, data.path, data.contentId ?? undefined)
+      if (active && generation === loadGeneration && main.data.value === data) main.data.value = loaded
+    } catch (error) {
+      if (active && generation === loadGeneration && main.data.value === data) main.error.value = error instanceof Error ? error.message : String(error)
+    } finally { largeBusy.value = false }
+    return
+  }
   largeBusy.value = true
   const signal = cancellation.signal
   try {
@@ -686,7 +720,19 @@ const browserUrl = computed(() => {
   return props.model.url || data?.url || ''
 })
 
-const head = computed<ItemHead>(() => itemHead(shown.value, main.data.value))
+const head = computed<ItemHead>(() => {
+  const head = itemHead(shown.value, main.data.value)
+  if (source.value?.identity.provider === 'node' && compared.value)
+    return {
+      ...head,
+      title: `${shortNodeRef(compared.value.base)} → ${shortNodeRef(compared.value.head)}`,
+      state: undefined,
+      meta: [],
+    }
+  return head
+})
+const shortNodeRef = (ref: string) =>
+  ref.startsWith('working-') ? 'Working tree' : /^[a-f\d]{40}$/i.test(ref) ? ref.slice(0, 7) : ref
 
 // Comments, diffs and the file view make links to themselves through this.
 const linker = createLinker({
@@ -821,6 +867,7 @@ const scrollToAnchor = async () => {
 onBeforeUnmount(() => unpin())
 
 const reload = async (retry = false) => {
+  if (retry) source.value.refresh?.()
   retryPrimary = retry
   if (retry) countRetry.value++
   // A denied capability must not leave previously loaded private provenance in the tab.
@@ -866,6 +913,57 @@ watch(
   },
   { flush: 'sync' }
 )
+
+// Invalidations follow only explicitly live Working tree locations, not retained observations,
+// pinned files or comparisons. Keep mounted viewers and scroll while replacing read data.
+let stopSource = () => {}
+let refreshRunning = false
+let refreshAgain = false
+watch(
+  source,
+  (current) => {
+    stopSource()
+    stopSource =
+      current?.subscribe((change) => {
+        if (change.kind === 'authority') {
+          main.clear()
+          Object.assign(screen, emptyScreen())
+          main.error.value = 'Repository access changed. Reconnect or choose another workspace.'
+          return
+        }
+        const location = props.sourceLocation
+        if (
+          projectPin.value ||
+          !location ||
+          !('ref' in location) ||
+          location.ref !== 'Working tree'
+        )
+          return
+        const refresh = async () => {
+          if (refreshRunning) {
+            refreshAgain = true
+            return
+          }
+          refreshRunning = true
+          const scroller = root.value?.closest('.abele-github-layout__main')
+          const scroll = scroller?.scrollTop
+          try {
+            do {
+              refreshAgain = false
+              await reload()
+            } while (refreshAgain && active)
+            await nextTick()
+            if (scroller && scroll !== undefined) scroller.scrollTop = scroll
+          } finally {
+            refreshRunning = false
+          }
+        }
+        void refresh()
+      }) ?? (() => {})
+  },
+  { immediate: true }
+)
+onBeforeUnmount(() => stopSource())
 
 // A new item loads from scratch; the same item at another line or comment only moves there.
 watch(
@@ -937,6 +1035,17 @@ watch(
 
 body.is-phone .abele-github {
   padding: var(--size-4-2);
+}
+body.is-phone .abele-github_node .abele-github-header .clickable-icon {
+  min-width: calc(var(--size-4-10) + var(--size-4-1));
+  min-height: calc(var(--size-4-10) + var(--size-4-1));
+}
+
+@container (max-width: 640px) {
+  .abele-github_node .abele-github-header__top { flex-wrap: wrap; }
+  .abele-github_node .abele-github-header__repo { flex-basis: 100%; }
+  .abele-github_node .abele-github-header__repo:empty { display: none; }
+  .abele-github_node .abele-github-header__actions { margin-inline-start: auto; }
 }
 
 // Obsidian makes its whole interface unselectable and gives selection back only to a note; a

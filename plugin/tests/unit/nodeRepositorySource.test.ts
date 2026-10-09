@@ -26,6 +26,19 @@ describe('node repository source through the validated client contract', () => {
     })
     expect(rows[1]).toMatchObject({ kind: 'external', readOnly: true })
   })
+  it('loads a larger file only after an explicit larger request', async () => {
+    const f = nodeRepositoryFixture()
+    const original = f.client.repository.blob.bind(f.client.repository)
+    f.client.repository.blob = async params => params.larger ? original(params) : { content_id: null, size: 2 * 1024 * 1024, binary: false, requires_larger_load: true, too_large: false }
+    const source = new NodeRepositorySource(f.client, identity, { node: 'Sample', project: 'Sample' })
+    const ordinary = await source.blob(WORKING_TREE, 'app.ts')
+    expect(ordinary.canLoadLarge).toBe(true)
+    expect(ordinary.text).toBe('')
+    const larger = await source.largeBlob(ordinary.ref, ordinary.path)
+    expect(larger.text).toContain('42')
+    expect(f.calls.find(c => c.method.endsWith('.blob'))?.params.larger).toBe(true)
+    source.dispose()
+  })
   it('captures Working tree once, transports retained bytes and freezes branch reads', async () => {
     const { source, calls } = fixture()
     const a = await source.blob(WORKING_TREE, 'app.ts')
@@ -160,6 +173,21 @@ describe('node repository source through the validated client contract', () => {
     await expect(source.blob(blob.ref, blob.path, blob.contentId!)).rejects.toThrow(
       'no longer available'
     )
+    source.dispose()
+  })
+  it('copies its identity so later input mutation cannot retarget reads or links', async () => {
+    const f = nodeRepositoryFixture(), input = { ...identity }
+    const source = new NodeRepositorySource(f.client, input, { node: 'Sample', project: 'Sample' })
+    input.workspace = 'other-worktree'
+    await source.blob(WORKING_TREE, 'app.ts')
+    expect(f.calls.find(c => c.method.endsWith('.blob'))?.params.worktree_id).toBe(identity.workspace)
+    expect(parseNodeRepositoryLink(source.navigation.home())?.source).toEqual(identity)
+    source.dispose()
+  })
+  it('bounds mutable ref aliases within one tab lifetime', async () => {
+    const { source } = fixture()
+    for (let i = 0; i < 80; i++) await source.resolve(`refs/heads/sample-${i}`)
+    expect((source as unknown as { aliases: Map<string, unknown> }).aliases.size).toBeLessThanOrEqual(64)
     source.dispose()
   })
   it('checks authority both before requests and before publishing late results', async () => {

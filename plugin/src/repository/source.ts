@@ -120,6 +120,7 @@ export interface RepositorySource {
   tree(commit: string): Promise<RepositoryTree>
   folder(ref: string, path: string): Promise<FolderData>
   blob(ref: string, path: string, contentId?: string): Promise<BlobData>
+  largeBlob?(ref: string, path: string, contentId?: string): Promise<BlobData>
   text(ref: string, path: string, what?: string): Promise<string>
   status(): Promise<RepositoryStatus>
   compare(base: string | undefined, head: string, direct?: boolean, mode?: RepositoryComparisonMode): Promise<CompareData>

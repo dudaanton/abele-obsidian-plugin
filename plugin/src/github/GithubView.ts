@@ -22,6 +22,7 @@ import { githubTabTarget, savedGithubTarget, savedNodeTarget } from '@/repositor
 import { sameConnectionServer } from './connectionRouting'
 import { clientForTab, tabAccessSnapshot } from './tabConnectionAccess'
 import GithubItem from '@/components/github/GithubItem.vue'
+import NodeRepositoryItem from '@/components/NodeRepositoryItem.vue'
 import { shortName, targetKey } from './urls'
 import type { GithubViewModel } from './model'
 import type { PinnedLoad } from './loadItem'
@@ -74,7 +75,7 @@ export class GithubView extends ItemView {
   }
 
   getIcon() {
-    return 'github'
+    return this.model.sourceTarget?.provider === 'node' ? 'folder-git-2' : 'github'
   }
 
   /** Which item this tab shows, whatever line or comment it was last pointed at. */
@@ -124,13 +125,20 @@ export class GithubView extends ItemView {
       return
     }
     if (node) {
+      const previous = this.model.sourceTarget
+      if (result && previous && JSON.stringify(previous) !== JSON.stringify(node))
+        result.history = true
       this.model.sourceTarget = node
       this.model.target = null
       this.model.url = ''
       this.model.connectionId = undefined
       this.model.sourceRevision = node.revision
       Object.assign(this.model.screen, emptyScreen())
-      this.model.screen.error = 'This repository source is not available yet.'
+      const saved = state as { mode?: unknown; tree?: unknown; originalFile?: unknown }
+      this.model.mode = saved.mode === 'code' || saved.mode === 'preview' ? saved.mode : undefined
+      if (this.model.tree === undefined && typeof saved.tree === 'boolean')
+        this.model.tree = saved.tree
+      this.model.originalFile = saved.originalFile === true
       this.title = ''
       this.model.nonce++
       this.refreshHeader()
@@ -329,10 +337,17 @@ export class GithubView extends ItemView {
     const mountPoint = this.contentEl.createDiv({ cls: 'abele-github-view__mount' })
     this.vue = createApp({
       render: () => {
-        if (
-          this.model.sourceTarget?.provider === 'node' ||
-          (!this.model.target && !this.model.url && this.model.screen.error)
-        )
+        if (this.model.sourceTarget?.provider === 'node')
+          return h(NodeRepositoryItem, {
+            model: this.model,
+            keys: this.keys,
+            onTitle: (title: string) => {
+              this.title = title
+              this.refreshHeader()
+            },
+            onState: () => this.app.workspace.requestSaveLayout(),
+          })
+        if (!this.model.target && !this.model.url && this.model.screen.error)
           return h(
             'div',
             { class: 'abele-github-view__source-unavailable' },

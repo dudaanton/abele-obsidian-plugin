@@ -87,7 +87,8 @@ export class NodeRepositorySource implements RepositorySource {
     private readonly labels: { node: string; project: string; isCurrent?: () => boolean },
     revision?: RepositoryRevision
   ) {
-    this.cacheNamespace = JSON.stringify(identity)
+    this.identity = Object.freeze({ ...identity })
+    this.cacheNamespace = `${JSON.stringify(this.identity)}:${crypto.randomUUID()}`
     if (revision)
       this.remember(
         revision.kind === 'commit'
@@ -111,14 +112,14 @@ export class NodeRepositorySource implements RepositorySource {
           ? this.fileContents.get(JSON.stringify([location.ref, location.path]))
           : undefined
       return nodeRepositoryLink(
-        identity,
+        this.identity,
         location.kind === 'file' && contentId ? { ...location, contentId } : location,
         ref ? this.revision(ref) : undefined
       )
     }
     this.navigation = {
       workspace: (id) =>
-        nodeRepositoryLink({ ...identity, workspace: id }, { kind: 'home', ref: WORKING_TREE }),
+        nodeRepositoryLink({ ...this.identity, workspace: id }, { kind: 'home', ref: WORKING_TREE }),
       home: (ref = WORKING_TREE) => link({ kind: 'home', ref }),
       file: (ref, path, line) =>
         link({ kind: 'file', ref, path, ...(line ? { lines: { from: line, to: line } } : {}) }),
@@ -197,6 +198,7 @@ export class NodeRepositorySource implements RepositorySource {
         )
       )
       this.aliases.set(ref, pending)
+      if (this.aliases.size > 64) this.aliases.delete(this.aliases.keys().next().value!)
       void pending.catch(() => {
         if (this.aliases.get(ref) === pending) this.aliases.delete(ref)
       })
@@ -414,16 +416,20 @@ export class NodeRepositorySource implements RepositorySource {
     }
     return text
   }
-  async blob(ref: string, path: string, contentId?: string): Promise<BlobData> {
+  largeBlob(ref: string, path: string, contentId?: string) { return this.blob(ref, path, contentId, true) }
+  async blob(ref: string, path: string, contentId?: string, larger = false): Promise<BlobData> {
+    const limit = (larger ? 16 : 1) * 1024 * 1024
     if (contentId) {
-      const text = await this.content(contentId)
+      const first = await this.read(() => this.client.repository.content({ ...this.target, content_id: contentId, offset: 0 }))
+      if (first.total > limit) return { ref, path, text: '', contentId, url: this.navigation.file(ref, path), note: 'This retained file is too large for automatic display.', canLoadLarge: !larger && first.total <= 16 * 1024 * 1024 }
+      const text = await this.content(contentId, limit)
       this.rememberContent(ref, path, contentId)
       return { ref, path, text, contentId, url: this.navigation.file(ref, path) }
     }
     const sha = await this.resolve(ref),
       revision = await this.at(sha)
     const blob = await this.read(() =>
-      this.client.repository.blob({ ...this.target, revision, path })
+      this.client.repository.blob({ ...this.target, revision, path, larger })
     )
     if (blob.content_id) this.rememberContent(sha, path, blob.content_id)
     const note = blob.binary
@@ -434,9 +440,10 @@ export class NodeRepositorySource implements RepositorySource {
     return {
       ref: sha,
       path,
-      text: !note && blob.content_id ? await this.content(blob.content_id) : '',
+      text: !note && blob.content_id ? await this.content(blob.content_id, limit) : '',
       url: this.navigation.file(sha, path),
       contentId: blob.content_id,
+      canLoadLarge: blob.requires_larger_load && !blob.too_large,
       note,
     }
   }
@@ -909,7 +916,7 @@ export class NodeRepositorySource implements RepositorySource {
     } catch {
       /* Reconnection polling will retry the bounded lease. */
     }
-    if (!this.disposed)
+    if (!this.disposed && !this.retired)
       this.timer = window.setTimeout(() => {
         void this.renewWatch()
       }, 30000)
@@ -920,6 +927,8 @@ export class NodeRepositorySource implements RepositorySource {
     this.stopEvents?.()
     this.aliases.clear()
     this.textCache.clear()
+    this.fileContents.clear()
+    this.revisions.clear()
     this.textBytes = 0
     if (this.subscription)
       void this.client.repository

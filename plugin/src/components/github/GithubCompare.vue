@@ -1,5 +1,26 @@
 <template>
   <div class="abele-github-compare">
+    <div v-if="source?.identity.provider === 'node'" class="abele-github-compare__choices">
+      <Button text="Change base" icon="git-branch" @click="chooseBase" />
+      <Dropdown
+        v-if="data.head.startsWith('working-')"
+        :model-value="data.mode || 'endpoint'"
+        :options="modes"
+        @update:model-value="
+          (mode) =>
+            emit(
+              'open',
+              source!.navigation.comparison(
+                data.base,
+                data.head,
+                mode !== 'merge-base',
+                mode as RepositoryComparisonMode
+              ),
+              false
+            )
+        "
+      />
+    </div>
     <GithubNotice v-if="data.note" :text="data.note" :retry="false" />
     <EmptyState
       v-if="data.status === 'identical'"
@@ -19,7 +40,11 @@
           :files="data.files"
           :complete="data.filesComplete"
           :anchor="anchor"
-          :refs="{ head: data.headSha, base: data.mergeBaseSha }"
+          :refs="
+            data.mode === 'staged' || data.mode === 'unstaged'
+              ? undefined
+              : { head: data.headSha, base: data.mergeBaseSha }
+          "
           @open="(url: string, pane: PaneType | false) => emit('open', url, pane)"
         />
       </template>
@@ -30,8 +55,14 @@
         />
         <GithubCommits v-else :commits="data.commits" @open="openCommit" />
         <div v-if="!data.commitsComplete" class="abele-github-compare__more">
-          {{ data.commits.length }} of {{ data.totalCommits }} commits are listed here; the rest are
-          on GitHub.
+          <template v-if="source?.identity.provider === 'node'"
+            >The commit list is a bounded window. Open a commit or narrow the selected version to
+            inspect more history.</template
+          >
+          <template v-else
+            >{{ data.commits.length }} of {{ data.totalCommits }} commits are listed here; the rest
+            are on GitHub.</template
+          >
         </div>
       </template>
     </template>
@@ -43,6 +74,11 @@ import { computed } from 'vue'
 import type { PaneType } from 'obsidian'
 import EmptyState from '../obsidian/EmptyState.vue'
 import Tabs from '../obsidian/Tabs.vue'
+import Button from '../obsidian/Button.vue'
+import Dropdown from '../obsidian/Dropdown.vue'
+import { RefPicker } from '@/github/repoPage/RefPicker'
+import { GlobalStore } from '@/stores/GlobalStore'
+import type { RepositoryComparisonMode } from '@/repository/source'
 import GithubFiles from './GithubFiles.vue'
 import GithubCommits from './GithubCommits.vue'
 import GithubNotice from './GithubNotice.vue'
@@ -80,6 +116,21 @@ const tabs = computed(() => [
 ])
 
 const source = useRepositorySource()
+const modes = [
+  { value: 'endpoint', display: 'All changes' },
+  { value: 'staged', display: 'Staged' },
+  { value: 'unstaged', display: 'Unstaged' },
+  { value: 'merge-base', display: 'From common ancestor' },
+]
+const chooseBase = () =>
+  new RefPicker(
+    GlobalStore.getInstance().app,
+    source.value!,
+    props.repo,
+    props.data.base,
+    '',
+    (ref) => emit('open', source.value!.navigation.comparison(ref, props.data.head, true), false)
+  ).open()
 const openCommit = (sha: string) =>
   emit(
     'open',
@@ -93,6 +144,13 @@ const openCommit = (sha: string) =>
   display: flex;
   flex-direction: column;
   gap: var(--size-4-3);
+
+  &__choices {
+    display: flex;
+    flex-wrap: wrap;
+    align-items: center;
+    gap: var(--size-4-2);
+  }
 
   &__more {
     color: var(--text-muted);

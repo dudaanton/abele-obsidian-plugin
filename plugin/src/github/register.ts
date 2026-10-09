@@ -25,6 +25,8 @@ import {
   NotificationsView,
 } from './notifications/NotificationsView'
 import { revealSidebarView } from '@/views/revealSidebarView'
+import { chooseNodeRepository, openNodeRepositoryTarget } from '@/node/openRepository'
+import { parseNodeRepositoryLink } from '@/repository/nodeLinks'
 
 /**
  * Where a click is taken as a click on a note's link. The settings window and dialogs are left
@@ -49,12 +51,23 @@ export { paneForClick }
 export function linkClickHandler(app: App) {
   return (evt: MouseEvent) => {
     const settings = githubSettings()
-    if (!settings.enabled || !settings.openLinks) return
     if (evt.button !== 0 || evt.defaultPrevented) return
 
     const target = evt.target as Element | null
     if (!target?.closest?.(NOTE_SURFACES)) return
 
+    const anchor = target?.closest('a[href], .external-link[data-href]')
+    const raw = anchor?.getAttribute('href') ?? anchor?.getAttribute('data-href')
+    const nodeTarget = raw ? parseNodeRepositoryLink(raw) : null
+    if (nodeTarget) {
+      const pane = paneForClick(evt, false)
+      if (pane === null) return
+      evt.preventDefault()
+      evt.stopImmediatePropagation()
+      void openNodeRepositoryTarget(app, nodeTarget, pane)
+      return
+    }
+    if (!settings.enabled || !settings.openLinks) return
     const link = linkAtClick(target)
     if (!link) return
     const pane = paneForClick(evt, link.sourceMode)
@@ -66,7 +79,11 @@ export function linkClickHandler(app: App) {
     const source = (app.workspace?.getLeavesOfType?.(GITHUB_VIEW_TYPE) ?? [])
       .map((leaf) => leaf.view as GithubView)
       .find((view) => view.containerEl?.contains(target))
-    if (source?.model?.connectionId) void openGithubUrl(app, link.url, pane, { sourceId: source.model.connectionId, sourceIntent:source.model.connectionIntent })
+    if (source?.model?.connectionId)
+      void openGithubUrl(app, link.url, pane, {
+        sourceId: source.model.connectionId,
+        sourceIntent: source.model.connectionIntent,
+      })
     else void openGithubUrl(app, link.url, pane)
   }
 }
@@ -75,6 +92,18 @@ export function registerGithub(plugin: Plugin): void {
   const { app } = plugin
 
   plugin.registerView(GITHUB_VIEW_TYPE, (leaf) => new GithubView(leaf))
+  plugin.addCommand({
+    id: 'open-node-repository',
+    name: 'Open node repository',
+    icon: 'folder-git-2',
+    callback: () => chooseNodeRepository(app),
+  })
+  plugin.registerObsidianProtocolHandler('abele-node-repository', (params) => {
+    const target = parseNodeRepositoryLink(
+      `obsidian://abele-node-repository?target=${encodeURIComponent(params.target || '')}`
+    )
+    if (target) void openNodeRepositoryTarget(app, target)
+  })
   plugin.registerView(GITHUB_NOTIFICATIONS_VIEW_TYPE, (leaf) => new NotificationsView(leaf))
   // People's names and pictures, kept on this device; what was met last is written on the way out.
   const users = initGithubUsers(plugin)

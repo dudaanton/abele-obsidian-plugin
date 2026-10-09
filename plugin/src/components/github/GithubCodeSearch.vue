@@ -139,6 +139,8 @@ const props = withDefaults(
     request?: SearchRequest | null
     /** The tab's item has loaded, so which commit to search is known. */
     ready?: boolean
+    /** Only supplied for live node observations; frozen searches never follow invalidations. */
+    revisionKey?: string
   }>(),
   { hasChanges: false, request: null, ready: true }
 )
@@ -162,6 +164,9 @@ const results = ref<CodeResults | null>(null)
 let abort: AbortController | null = null
 /** Enter was pressed before the tab's item loaded: the search runs once it has. */
 let pending = false
+let livePending = false
+let lastQuery = ''
+const queryKey = () => JSON.stringify([query.value.trim(), scope.value, glob.value, caseSensitive.value, wholeWord.value, regex.value])
 
 const scopes = computed(() => [
   ...(props.hasChanges ? [{ value: 'changes', display: 'Only the changed files' }] : []),
@@ -200,6 +205,8 @@ const run = async () => {
     return
   }
   pending = false
+  livePending = false
+  lastQuery = queryKey()
   abort?.abort()
   const mine = (abort = new AbortController())
   running.value = true
@@ -227,14 +234,24 @@ const run = async () => {
     if (abort === mine) {
       running.value = false
       abort = null
+      const rerun = livePending && lastQuery === queryKey()
+      livePending = false
+      if (rerun) void run()
     }
   }
 }
+
+watch(() => props.revisionKey, (next, previous) => {
+  if (!next || !previous || next === previous || !lastQuery || lastQuery !== queryKey()) return
+  if (running.value) livePending = true
+  else if (results.value) void run()
+})
 
 const cancel = () => {
   abort?.abort()
   abort = null
   running.value = false
+  livePending = false
 }
 
 const onKey = (e: KeyboardEvent) => {
@@ -303,7 +320,7 @@ onMounted(() => {
 })
 onBeforeUnmount(() => {
   window.clearTimeout(nameTimer)
-  abort?.abort()
+  cancel()
 })
 
 defineExpose({ focus })

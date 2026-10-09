@@ -86,7 +86,7 @@ export function useTreePanel(o: TreePanelOptions) {
       const sha = await client.resolve(at)
       client.assertCurrent?.()
       if (versionKey.value === key) {
-        o.model.sourceRevision = { kind: 'commit', commit: sha }
+        o.model.sourceRevision = client.revision?.(sha) ?? { kind: 'commit', commit: sha }
         o.saved()
       }
       return { ref: pinned ? sha : at, sha }
@@ -135,7 +135,11 @@ export function useTreePanel(o: TreePanelOptions) {
     const t = o.shown.value
     const d = o.data() as BlobData | FolderData | null
     return t && d && (t.kind === 'blob' || t.kind === 'tree' || t.kind === 'repo')
-      ? shortRef(d.ref)
+      ? shortRef(
+          source().identity.provider === 'node' && d.ref.startsWith('working-')
+            ? 'Working tree'
+            : d.ref
+        )
       : undefined
   })
 
