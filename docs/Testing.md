@@ -24,7 +24,7 @@ required fixture variable automatically (omit the repository to reuse verified m
 from `.scratch/sync-inputs/` or explicit fixture variables). The installed core/protocol pin stays
 independent of the released-server owner contract fixture: `ABELE_OWNER_RELEASE_FIXTURE` is checked
 against its own exact revision. The current server-backed tier and installed core/protocol archives are pinned to
-`70b178a19ff66aad73ae2cc92e3508cca8e25c42`, including the unknown-base fix and final
+`b6d8066cc7a72ade3d1143985b6f0cd510e854e7`, including the unknown-base fix and final
 external-file implementation. Run the focused matrix in `External file validation.md`
 with its clean-archive fixture and `--maxWorkers=2`.
 Both revisions run `ownerSharingContracts.test.ts`: the older released server still exercises

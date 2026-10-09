@@ -4,7 +4,7 @@ Use the exact core/protocol revision in `plugin/vendor/sync/provenance.json`, no
 mutable server checkout. From `plugin/`, export the independent fixture:
 
 ```sh
-node scripts/vendor-sync.mjs /path/to/sync-repository 70b178a19ff66aad73ae2cc92e3508cca8e25c42 fixture
+node scripts/vendor-sync.mjs /path/to/sync-repository b6d8066cc7a72ade3d1143985b6f0cd510e854e7 fixture
 node scripts/verify-sync-inputs.mjs
 ```
 
