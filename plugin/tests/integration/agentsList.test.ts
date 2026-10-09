@@ -287,7 +287,8 @@ describe('one list independent of open tabs', () => {
     expect(await opened).toBe(true)
     expect(chats.tabOrder.value).toHaveLength(20)
     expect(chats.tabOrder.value).not.toContain(original[0])
-    expect(revealing).toHaveBeenCalledWith({ focus: false })
+    expect(revealing).toHaveBeenCalledWith({ focus: false, current: expect.any(Function) })
+    expect(revealing.mock.calls[0][0]?.current?.()).toBe(true)
   })
   it('deduplicates a live discussion against its file and keeps its error after closure', async () => {
     useVault([])

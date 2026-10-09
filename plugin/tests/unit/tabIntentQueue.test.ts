@@ -84,6 +84,30 @@ describe('serial tab presentation intents', () => {
     })
   })
 
+  it('refuses a reentrant synchronous factory before enqueueing its side effects', () => {
+    const queue = new TabIntentQueue()
+    let acquired = 0
+    queue.mutate(() => {
+      expect(() => queue.mutateImmediate(() => { acquired++ })).toThrow('cannot run inside')
+    })
+    expect(acquired).toBe(0)
+    const release = queue.mutateImmediate(() => {
+      acquired++
+      return () => { acquired-- }
+    })
+    expect(acquired).toBe(1)
+    release()
+    expect(acquired).toBe(0)
+  })
+
+  it('captures foreground authority without superseding it', () => {
+    const queue = new TabIntentQueue(), original = queue.begin('sample', true)
+    expect(queue.captureForeground()).toBe(original)
+    expect(queue.valid(original)).toBe(true)
+    queue.clear()
+    expect(queue.captureForeground()).toBeUndefined()
+  })
+
   it('rejects completions from before service teardown', () => {
     const queue = new TabIntentQueue(), intent = queue.begin('sample', true)
     queue.clear()

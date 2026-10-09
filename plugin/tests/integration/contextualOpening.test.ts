@@ -639,14 +639,22 @@ describe('request-local contextual opening', () => {
     await comments.revealForAttention(app.vault.getFileByPath(y)!)
     const previous = chats.activeSession.value!
     previous.draft.value.text = 'A sample draft to preserve'
-    const save = vi.spyOn(previous, 'save').mockRejectedValueOnce(new Error('Sample save failure'))
-    await expect(openChat(app.vault.getFileByPath(x)!)).rejects.toThrow('Sample save failure')
+    previous.chatTitle.value = 'An unsaved sample title'
+    const save = vi.spyOn(ChatStorage.getInstance(), 'saveChat').mockRejectedValue(new Error('Sample write failure'))
+    const opening = openChat(app.vault.getFileByPath(x)!)
+    const outcome = await opening.then(() => ({ opened: true }), (error: unknown) => ({ error }))
+    save.mockRestore()
+    expect(outcome).toMatchObject({ error: expect.any(Error) })
     expect(chats.activeSession.value).toBe(previous)
     expect(chats.getSession(previous.id)).toBe(previous)
     expect(comments.isShown(yId)).toBe(true)
     expect(comments.isShown(xId)).toBe(false)
     expect(previous.isDestroyed).toBe(false)
-    save.mockRestore()
+    expect(previous.chatTitle.value).toBe('An unsaved sample title')
+    await openChat(app.vault.getFileByPath(x)!)
+    expect(chats.activeSession.value?.currentChatFile.value?.path).toBe(x)
+    expect(parseChatMetadata(await app.vault.read(app.vault.getFileByPath(y)!))?.title)
+      .toBe('An unsaved sample title')
   })
 
   it('background attention hydration registers its tab without selecting or marking it as active', async () => {
