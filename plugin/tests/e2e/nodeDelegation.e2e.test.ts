@@ -113,17 +113,18 @@ it('a normal plugin agent delegates through owner UI to both fake providers, sur
       await until(() => [...doc.querySelectorAll('.setting-item-name')].some(e=>e.textContent===node.label));
       const row = [...doc.querySelectorAll('.setting-item')].find(r=>r.querySelector('.setting-item-name')?.textContent===node.label);
       [...row.querySelectorAll('button')].find(b=>b.textContent.trim()==='Delegation grants').click();
-      try { await until(() => document.querySelector('[aria-label="Delegation provider"] option[value="pi"]')) }
-      catch(e) { throw Error(String(e) + ' · owner UI status: ' + [...doc.querySelectorAll('.abele-settings__content [role="status"]')].map(p=>p.textContent).join(' · ') + ' · dialog: ' + document.querySelector('.abele-node-grants')?.textContent) }
-      const select=(label,value)=>{const e=document.querySelector('select[aria-label="'+label+'"]');e.value=value;e.dispatchEvent(new Event('change',{bubbles:true}))};
+      // A native settings window owns its modal document, not the main chat window.
+      try { await until(() => doc.querySelector('[aria-label="Delegation provider"] option[value="pi"]')) }
+      catch(e) { throw Error(String(e) + ' · owner UI status: ' + [...doc.querySelectorAll('.abele-settings__content [role="status"]')].map(p=>p.textContent).join(' · ') + ' · dialog: ' + doc.querySelector('.abele-node-grants')?.textContent) }
+      const select=(label,value)=>{const e=doc.querySelector('select[aria-label="'+label+'"]');e.value=value;e.dispatchEvent(new Event('change',{bubbles:true}))};
       for(const provider of ['claude','pi']) {
         select('Delegation parent chat',parent.delegationParentId); select('Delegation project',${JSON.stringify(project.project_id)}); select('Delegation provider',provider);
-        await wait(100); document.querySelector('[aria-label="Approve delegation actions"]').click(); await wait(100);
-        [...document.querySelectorAll('.abele-node-grants button')].find(b=>b.textContent.trim()==='Approve grant').click();
-        await until(() => document.querySelector('[aria-label="Approve delegation actions"]').getAttribute('aria-checked')==='false');
-        await until(() => [...document.querySelectorAll('.abele-node-grants button')].find(b=>b.textContent.trim()==='Refresh')?.disabled===false);
+        await wait(100); doc.querySelector('[aria-label="Approve delegation actions"]').click(); await wait(100);
+        [...doc.querySelectorAll('.abele-node-grants button')].find(b=>b.textContent.trim()==='Approve grant').click();
+        await until(() => doc.querySelector('[aria-label="Approve delegation actions"]').getAttribute('aria-checked')==='false');
+        await until(() => [...doc.querySelectorAll('.abele-node-grants button')].find(b=>b.textContent.trim()==='Refresh')?.disabled===false);
       }
-      document.body.dispatchEvent(new KeyboardEvent('keydown',{key:'Escape',bubbles:true})); app.setting.close();
+      doc.body.dispatchEvent(new KeyboardEvent('keydown',{key:'Escape',bubbles:true})); app.setting.close();
       return JSON.stringify({registration:node.id,parent:parent.delegationParentId,agent:agent.id})
     })()`)
     registration = setup.registration
@@ -209,9 +210,10 @@ it('a normal plugin agent delegates through owner UI to both fake providers, sur
     try {
       evalAsync(`(async () => {
         ${PRELUDE}
+        const fixtureAgent = ${JSON.stringify(agentId)} || chats.getSessionByFile(${JSON.stringify(path)})?.agent.value?.id;
         for(const id of [...chats.tabOrder.value]) {const child=chats.getNodeSession(id),parent=chats.getSession(id);if(child?.reference.registrationId===${JSON.stringify(registration)}||parent?.currentChatFile.value?.path===${JSON.stringify(path)})await chats.closeTab(id)}
         if(app.vault.getAbstractFileByPath(${JSON.stringify(path)}))await T.ChatStorage.getInstance().deleteChat(${JSON.stringify(path)});
-        if(${JSON.stringify(agentId)})T.AgentRegistry.getInstance().remove(${JSON.stringify(agentId)});
+        if(fixtureAgent)T.AgentRegistry.getInstance().remove(fixtureAgent);
         for(const n of [...nodes.nodes.value].filter(n=>n.id===${JSON.stringify(registration)}||n.label==='Sample delegation node'))nodes.remove(n.id);
         app.setting.close();return JSON.stringify(true)
       })()`)

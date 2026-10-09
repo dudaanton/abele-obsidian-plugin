@@ -31,6 +31,11 @@
           </option>
         </select>
       </Setting>
+      <NodePath
+        v-if="selectedProject"
+        :path="selectedProject.root_path"
+        label="Full delegation project path"
+      />
       <Setting
         name="Provider"
         desc="Only providers reported available by this node can be approved."
@@ -115,6 +120,7 @@ import {
   type NodeProviderName,
 } from '@/node/providers'
 import Modal from './obsidian/Modal.vue'
+import NodePath from './NodePath.vue'
 import Setting from './obsidian/Setting.vue'
 import Checkbox from './obsidian/Checkbox.vue'
 import Button from './obsidian/Button.vue'
@@ -138,6 +144,7 @@ const busy = ref(false)
 const error = ref('')
 const message = ref('')
 const projects = ref<Project[]>([])
+const selectedProject = computed(() => projects.value.find((p) => p.project_id === projectId.value))
 const providers = ref<NodeProvider[]>([])
 const grants = ref<DelegationGrant[]>([])
 const available = computed(() => providers.value.filter(providerAvailable))

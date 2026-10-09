@@ -15,6 +15,9 @@ it('requires explicit action/fake confirmation, resets it when the selected auth
   try {
     await flushPromises()
     await wrapper.get('[aria-label="Delegation project"]').setValue('sample-project')
+    expect(wrapper.find('.abele-node-path code').text()).toBe(
+      '/workspace/sample-project-with-a-long-name'
+    )
     await wrapper.get('[aria-label="Delegation provider"]').setValue('pi')
     const button = () => wrapper.findAll('button').find((b) => b.text() === 'Approve grant')!
     expect(button().attributes('disabled')).toBeDefined()
