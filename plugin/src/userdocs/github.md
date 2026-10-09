@@ -12,6 +12,16 @@ colour and alignment, so a page cannot position a fake window over Obsidian. Som
 README layouts therefore look simpler here. External links open only HTTP(S) or email, and
 large READMEs with many unmatched backticks no longer repeatedly rescan the entire text.
 
+## Repositories on a node
+
+**Open node repository** chooses a connected node, a project and a workspace, then opens the same repository tab used for GitHub. The workspace files dialog also offers **Open repository**. Node browsing does not require the GitHub integration to be enabled.
+
+Use the compact header picker to choose the project folder, a node workspace, an allowed external workspace, or another version. **Current files** includes edits that have not been committed. The home page lists **Uncommitted changes**, recent commits, files and the README. **Partly ready** means a file has changes both prepared for a commit and still outside it; **Ready**, **Edited**, **New** and **Deleted** describe the other states.
+
+The repository actions menu offers file history, comparison bases and external-workspace browsing. External browsing needs owner approval for the project and remains read only; it does not allow agent execution or editing. Human browsing does not grant an agent access. Node content cannot load GitHub images or use GitHub credentials.
+
+Compare current files with HEAD or another version. The changes filter separates **All changes**, **Ready for commit** and **Other edits**. Counts load with each file's changes. Commit versions and captured links stay fixed; current files refresh when the node reports a change. Local editing opens the existing workspace editor, where a changed-on-disk notice preserves the draft rather than replacing it. Saved tabs and comparison bases remain local to this device, with no node credentials in their state or links.
+
 ## Turning it on
 
 The integration is off until you turn it on in **Settings → Abele → GitHub**. Without a token only

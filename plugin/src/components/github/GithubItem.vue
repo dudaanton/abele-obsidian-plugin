@@ -260,6 +260,7 @@
           <Button
             v-if="blob.canLoadLarge && source?.largeBlob"
             text="Load larger file"
+            tooltip="Load this retained version up to the larger file limit"
             icon="file-text"
             :disabled="largeBusy"
             @click="loadLarge"
