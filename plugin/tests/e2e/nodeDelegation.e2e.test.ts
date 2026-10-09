@@ -177,6 +177,8 @@ it('a normal plugin agent delegates through owner UI to both fake providers, sur
       counts: number[]
     }>(`(async () => {
       ${PRELUDE}
+      // Tab restoration is asynchronous and can trail mailbox replay on a fast reconnect.
+      await until(()=>chats.getSessionByFile(${JSON.stringify(path)}));
       const parent=chats.getSessionByFile(${JSON.stringify(path)});
       await until(()=>nodes.connection(${JSON.stringify(registration)}).delegationCards.value[${JSON.stringify(parentId)}]?.every(c=>c.state==='completed'));
       chats.switchTab(parent.id);await chats.revealSidebar({focus:false});
