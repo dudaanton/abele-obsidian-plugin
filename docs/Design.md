@@ -10,7 +10,7 @@ these mappings must never become a global override of Obsidian's mobile UI.
 | Level | Size | Weight | Colour |
 |---|---|---|---|
 | Section | `--font-ui-medium` | `--font-semibold` | `--text-normal` |
-| Object title | `--font-ui-small`, or inherited native row size | `--font-medium` | `--text-normal` |
+| Object title | `--font-ui-small`, or inherited native row size | `--font-normal` | `--text-normal` |
 | Essential metadata | `--font-ui-smaller` | `--font-normal` | `--text-muted` |
 | Expanded detail | `--font-ui-small` | `--font-normal` | `--text-normal`; labels muted |
 
@@ -20,8 +20,8 @@ files and recovery instructions are not `--text-faint`. Detail is subordinate be
 placed behind disclosure, not because it is microscopic.
 
 Keep native row padding. Additional composition spacing uses `--size-4-1` within related
-facts, `--size-4-2` between row parts, `--size-4-3` around expanded detail and `--size-4-4`
-between groups. `Section` retains its existing larger settings-section variant; that is not
+facts, `--size-4-2` between row parts, `--size-4-4` around expanded detail and between groups,
+and `--size-4-8` between major sections. The shared rhythm is 2/4/8/16/32 through host tokens. `Section` retains its existing larger settings-section variant; that is not
 permission to enlarge ordinary list rows. Radius comes from `--radius-s`, `--radius-m` or
 native `--input-radius`, never an invented pill.
 
@@ -31,7 +31,7 @@ native `--input-radius`, never an invented pill.
   space so the title does not shift. Always-visible actions are also acceptable.
 - Phone: one column, actions discoverable without hover. Prefer one frequent action plus an
   Obsidian `Menu` for extras. Increase hit areas, not decorative glyphs.
-- Compact titles wrap to two lines. Opening or expansion must expose the full title. Form
+- Compact titles wrap to two lines. Meaningful file extensions remain visible outside a clamped basename. Opening or expansion must expose the full title. Form
   labels, warnings, errors and expanded detail wrap fully. Use `min-width: 0`; break long
   unbroken segments only when necessary.
 - Metadata contains short complete facts, separated by ` · `; no separators around missing
@@ -71,7 +71,7 @@ interactive mode is a real `button type="button"` using native `.clickable-icon`
 Space activate it through browser semantics. Decorative mode has no tab stop or button role.
 Existing click-listener/toggle callers infer interactive mode; new code should name it explicitly.
 Do not add parallel role/tab/key handlers to a semantic button. Disabled actions give a reason.
-Main row actions and trailing controls are siblings, not nested interactive elements.
+Main row actions and trailing controls are siblings, not nested interactive elements. Compose flat rows through native `tree-item` / `tree-item-self` / `tree-item-inner` / `tree-item-flair-outer` anatomy. The main target includes title and noninteractive facts, sharing its phone hit height rather than reserving a tall title box. Interactive metadata remains outside that target. Detail aligns within the same content column; optional disclosure belongs at the far edge and its label/count use smaller muted normal text. Titles are regular-weight normal text; bold belongs to section labels or meaningful unread state.
 
 Phone controls measure at least **44 × 44 CSS pixels**. `obsidian/designKit.css` is the one
 accessibility floor, `max(44px, var(--touch-size-m))`, not a private spacing scale. Verify actual

@@ -16,15 +16,20 @@
         @keydown="onKey($event, index)"
       >
         <span class="abele-swatch-picker__swatch" aria-hidden="true"
-          ><Icon v-if="modelValue === color" icon="check" no-hover
+          ><Icon
+            v-if="color === 'grey'"
+            class="abele-swatch-picker__clear"
+            icon="ban"
+            no-hover /><Icon v-else-if="modelValue === color" icon="check" no-hover
         /></span>
       </button>
     </div>
     <Icon
       v-if="underline !== undefined"
       class="abele-swatch-picker__underline"
+      :class="{ 'is-active': underline, 'abele-obsidian-icon_active': underline }"
       icon="underline"
-      text-right="Underline"
+      :text-right="underline ? 'Underline on' : 'Underline off'"
       tooltip="Underline annotation"
       role="checkbox"
       :aria-checked="underline"
@@ -32,7 +37,13 @@
       :disabled-reason="busy ? 'Saving colour' : 'Selection unavailable'"
       @click="emit('update:underline', !underline)"
     />
-    <span v-if="busy" role="status">Saving colour…</span>
+    <span class="setting-item-description">{{
+      modelValue === 'grey' ? 'No colour' : KIT_COLOR_NAMES[modelValue]
+    }}</span>
+    <span v-if="busy" role="status">Saving {{ KIT_COLOR_NAMES[modelValue] }}…</span>
+    <span v-else-if="disabled" class="setting-item-description">{{
+      disabledReason || 'Colour cannot be changed here'
+    }}</span>
   </div>
 </template>
 <script setup lang="ts">
@@ -46,6 +57,7 @@ const props = withDefaults(
     disabled?: boolean
     busy?: boolean
     underline?: boolean
+    disabledReason?: string
   }>(),
   { colors: () => [...KIT_COLORS], underline: undefined }
 )
@@ -94,9 +106,8 @@ const onKey = (event: KeyboardEvent, index: number) => {
   border: 1px solid var(--background-modifier-border);
   border-radius: var(--radius-s);
 }
-.abele-swatch-picker__choice[aria-checked='true'] .abele-swatch-picker__swatch {
-  outline: var(--size-2-1) solid var(--text-normal);
-  outline-offset: var(--size-2-1);
+.abele-swatch-picker__choice[aria-checked='true'] {
+  background: var(--background-modifier-active-hover);
 }
 .abele-swatch-picker__swatch .abele-obsidian-icon {
   color: var(--text-normal);

@@ -3,37 +3,41 @@
     <li v-for="event in events" :key="event.id">
       <ListRow
         :title="event.title"
-        :facts="[
-          { key: 'actor', value: event.actor },
-          { key: 'source', value: event.source, required: true, unknown: 'Source unavailable' },
-        ]"
         :state="event.state === 'pending' ? 'loading' : (event.state ?? 'ready')"
-        :message="event.message"
+        :message="event.message || messages[event.state ?? 'ready']"
       >
         <template #metadata
-          ><MetaLine
-            :facts="[
-              { key: 'actor', value: event.actor },
-              { key: 'source', value: event.source, required: true, unknown: 'Source unavailable' },
-            ]" /><RelativeTime :value="event.time" :now="now" :diagnostic="diagnostic"
-        /></template>
-        <template #actions>
-          <Icon
+          ><div class="abele-event-list__meta">
+            <MetaLine
+              :facts="[
+                { key: 'actor', value: event.actor },
+                { key: 'source', value: event.source },
+              ]"
+            /><span v-if="(event.actor || event.source) && showTime(event)" aria-hidden="true">
+              · </span
+            ><RelativeTime
+              v-if="showTime(event)"
+              :value="event.time"
+              :now="now"
+              mode="absolute"
+              :diagnostic="diagnostic"
+            /></div
+        ></template>
+        <template #actions
+          ><Icon
             v-if="event.jump && event.state !== 'missing'"
             icon="message-square"
             :tooltip="`Open source for ${event.title}`"
-            @click="emit('jump', event.id)"
-          />
-          <Icon
+            @click="emit('jump', event.id)" /><Icon
             v-if="event.state === 'error' && event.retryable"
             icon="refresh-cw"
-            :tooltip="`Retry ${event.title}`"
+            :text-right="event.retryLabel"
+            :tooltip="event.retryLabel || `Retry ${event.title}`"
             @click="emit('retry', event.id)"
-          />
-        </template>
+        /></template>
         <template v-if="event.detail" #detail
           ><Disclosure
-            :label="`Details for ${event.title}`"
+            :label="event.detailLabel || 'Details'"
             :model-value="expanded.has(event.id)"
             @update:model-value="toggle(event.id, $event)"
             >{{ event.detail }}</Disclosure
@@ -63,10 +67,20 @@ export interface KitEvent {
   message?: string
   jump?: boolean
   retryable?: boolean
+  retryLabel?: string
   detail?: string
+  detailLabel?: string
 }
 defineProps<{ events: KitEvent[]; now?: Date; diagnostic?: boolean }>()
 const emit = defineEmits<{ jump: [id: string]; retry: [id: string] }>()
+const messages = {
+  ready: '',
+  pending: 'Saving…',
+  missing: 'Source unavailable',
+  error: 'Could not save',
+}
+const showTime = (event: KitEvent) =>
+  event.time !== undefined || !['pending', 'error'].includes(event.state ?? 'ready')
 const expanded = ref(new Set<string>())
 const toggle = (id: string, open: boolean) => {
   if (open) expanded.value.add(id)
@@ -78,8 +92,18 @@ const toggle = (id: string, open: boolean) => {
   list-style: none;
   padding: 0;
   margin: 0;
+  border-inline-start: var(--size-2-1) solid var(--background-modifier-border);
 }
 .abele-event-list > li + li {
-  border-top: 1px solid var(--background-modifier-border);
+  margin-top: var(--size-4-1);
+}
+.abele-event-list__meta {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: baseline;
+  gap: var(--size-2-1);
+  color: var(--text-muted);
+  font-size: var(--font-ui-smaller);
+  font-weight: var(--font-normal);
 }
 </style>

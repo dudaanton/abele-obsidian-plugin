@@ -16,13 +16,6 @@
     <div v-if="cover" class="abele-card__cover">
       <Image :src="cover" :alt="title" fit="cover" class="abele-card__cover-image" />
     </div>
-    <Image
-      v-if="thumbnail"
-      :src="thumbnail"
-      :fit="thumbnailFit"
-      loading="lazy"
-      class="abele-card__thumbnail"
-    />
     <div class="abele-card__head">
       <div class="abele-card__title">
         <Icon v-if="icon" :icon="icon" no-hover class="abele-card__icon" />
@@ -43,6 +36,13 @@
       </div>
     </div>
 
+    <Image
+      v-if="thumbnail"
+      :src="thumbnail"
+      :fit="thumbnailFit"
+      loading="lazy"
+      class="abele-card__thumbnail"
+    />
     <PathLabel v-if="path" :path="path" />
     <div v-if="subtitle || $slots.subtitle" class="abele-card__subtitle">
       <slot name="subtitle">{{ subtitle }}</slot>
@@ -156,7 +156,7 @@ const open = (event: Event) => {
   min-width: 0;
   /** So the cover can be capped against the card's own width, whatever the screen. */
   container-type: inline-size;
-  padding: var(--size-4-3);
+  padding: var(--size-4-4);
   border: 1px solid var(--background-modifier-border);
   border-radius: var(--radius-m);
 }
@@ -186,9 +186,7 @@ const open = (event: Event) => {
  * holds; the minimum height keeps it from being a sliver beside a card of one line.
  */
 .abele-card_thumbed {
-  position: relative;
-  padding-inline-end: calc(var(--size-4-16) + var(--size-4-3));
-  min-height: var(--size-4-12);
+  min-height: var(--size-4-16);
 }
 
 /**
@@ -196,12 +194,9 @@ const open = (event: Event) => {
  * title that already names the note, so it carries no `alt` of its own.
  */
 .abele-card .abele-card__thumbnail {
-  position: absolute;
-  inset-block: 0;
-  inset-inline-end: 0;
   width: var(--size-4-16);
-  height: 100%;
-  border-radius: 0 var(--radius-m) var(--radius-m) 0;
+  height: var(--size-4-16);
+  border-radius: var(--radius-s);
 }
 
 /**
@@ -209,7 +204,7 @@ const open = (event: Event) => {
  * the top corners follow the card's own radius so the picture does not poke out of it.
  */
 .abele-card__cover {
-  margin: calc(-1 * var(--size-4-3)) calc(-1 * var(--size-4-3)) var(--size-4-2);
+  margin: calc(-1 * var(--size-4-4)) calc(-1 * var(--size-4-4)) var(--size-4-2);
   overflow: hidden;
   border-radius: var(--radius-m) var(--radius-m) 0 0;
 }
@@ -272,12 +267,12 @@ const open = (event: Event) => {
   align-items: center;
   flex-wrap: wrap;
   gap: var(--size-2-2);
-  flex: 1 1 min(12em, 50%);
+  flex: 1 1 0;
   min-width: 0;
 }
 
 .abele-card__name {
-  font-weight: var(--font-semibold);
+  font-weight: var(--font-normal);
   font-size: var(--font-ui-small);
   overflow-wrap: anywhere;
 }

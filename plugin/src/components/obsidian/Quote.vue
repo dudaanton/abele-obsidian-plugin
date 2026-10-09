@@ -1,7 +1,8 @@
 <template>
   <figure class="abele-quote">
+    <EmptyState v-if="!text" text="No quoted text" />
     <blockquote
-      v-if="!long || !expanded"
+      v-else-if="!long || !expanded"
       class="abele-quote__text"
       :class="{ 'abele-quote__text_preview': long && !expanded }"
     >
@@ -21,6 +22,7 @@
 <script setup lang="ts">
 import { ref, computed } from 'vue'
 import Disclosure from './Disclosure.vue'
+import EmptyState from './EmptyState.vue'
 const props = defineProps<{ text: string; source?: string; unresolved?: boolean }>()
 const expanded = ref(false)
 const long = computed(() => props.text.length > 240 || props.text.split('\n').length > 3)
@@ -36,7 +38,7 @@ const long = computed(() => props.text.length > 240 || props.text.split('\n').le
   line-height: var(--line-height-normal);
   color: var(--text-normal);
   border-inline-start: var(--size-2-1) solid var(--background-modifier-border);
-  padding-inline-start: var(--size-4-3);
+  padding-inline-start: var(--size-4-2);
   margin: 0 0 var(--size-4-2);
   white-space: pre-wrap;
   overflow-wrap: anywhere;

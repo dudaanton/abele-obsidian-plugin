@@ -117,8 +117,6 @@ function onReset() {
   font-size: var(--font-ui-small);
   font-weight: var(--font-semibold);
   color: var(--text-muted);
-  text-transform: uppercase;
-  letter-spacing: 0.05em;
   cursor: pointer;
 
   &:hover {

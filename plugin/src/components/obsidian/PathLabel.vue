@@ -1,13 +1,22 @@
 <template>
-  <details v-if="mode !== 'full' && expandable" class="abele-path-label">
+  <details
+    v-if="mode !== 'full' && expandable"
+    class="abele-path-label"
+    @toggle="opened = ($event.target as HTMLDetailsElement).open"
+  >
     <summary>
-      <span v-if="workspace">{{ workspace }} · </span>{{ compact
-      }}<span v-if="missing"> · Unavailable</span>
+      <span
+        ref="glyph"
+        class="collapse-icon"
+        :class="{ 'is-collapsed': !opened }"
+        aria-hidden="true"
+      />{{ compact }}
     </summary>
+    <span v-if="workspace" class="abele-path-label__workspace">Workspace: {{ workspace }}</span>
+    <span v-if="missing" class="abele-path-label__state">Unavailable on this device</span>
     <div class="abele-path-label__full">{{ path }}</div>
     <div class="abele-path-label__actions">
-      <Icon v-if="copyable" icon="copy" tooltip="Copy full path" @click="emit('copy', path)" />
-      <Icon
+      <Icon v-if="copyable" icon="copy" tooltip="Copy full path" @click="emit('copy', path)" /><Icon
         v-if="revealable"
         icon="folder"
         tooltip="Reveal in file explorer"
@@ -17,16 +26,17 @@
       />
     </div>
   </details>
-  <span v-else class="abele-path-label">
-    <span v-if="workspace">{{ workspace }} · </span
+  <span v-else class="abele-path-label"
+    ><span v-if="workspace" class="abele-path-label__workspace">Workspace: {{ workspace }}</span
     ><span :class="{ 'abele-path-label__full': mode === 'full' }">{{
       mode === 'full' ? path : compact
     }}</span
-    ><span v-if="missing"> · Unavailable</span>
-  </span>
+    ><span v-if="missing" class="abele-path-label__state">Unavailable on this device</span></span
+  >
 </template>
 <script setup lang="ts">
-import { computed } from 'vue'
+import { computed, ref, onMounted, watch, nextTick } from 'vue'
+import { setIcon } from 'obsidian'
 import Icon from './Icon.vue'
 const props = withDefaults(
   defineProps<{
@@ -36,14 +46,25 @@ const props = withDefaults(
     missing?: boolean
     copyable?: boolean
     revealable?: boolean
-    /** False only when the containing row already exposes full path detail. */
     expandable?: boolean
   }>(),
   { mode: 'context', expandable: true }
 )
 const emit = defineEmits<{ copy: [path: string]; reveal: [path: string] }>()
+const glyph = ref<HTMLElement>(),
+  opened = ref(false)
+const draw = () => {
+  if (glyph.value) {
+    glyph.value.replaceChildren()
+    setIcon(glyph.value, 'right-triangle')
+  }
+}
+onMounted(draw)
+watch(
+  () => [props.mode, props.expandable],
+  () => void nextTick(draw)
+)
 const compact = computed(() => {
-  // Preserve remote syntax: a Windows path is not silently rewritten to a vault path.
   const index = Math.max(props.path.lastIndexOf('/'), props.path.lastIndexOf('\\'))
   return props.mode === 'basename'
     ? props.path.slice(index + 1) || props.path
@@ -60,9 +81,23 @@ const compact = computed(() => {
   overflow-wrap: anywhere;
 }
 .abele-path-label > summary {
+  display: flex;
+  align-items: flex-start;
+  gap: var(--size-4-1);
+  list-style: none;
   cursor: var(--cursor-link);
 }
+.abele-path-label > summary::marker,
+.abele-path-label > summary::-webkit-details-marker {
+  display: none;
+  content: '';
+}
+.abele-path-label__workspace,
+.abele-path-label__state {
+  display: block;
+}
 .abele-path-label__full {
+  display: block;
   user-select: text;
   white-space: pre-wrap;
   overflow-wrap: anywhere;

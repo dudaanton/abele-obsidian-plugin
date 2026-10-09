@@ -3,6 +3,9 @@
     <div ref="root" class="abele-icon-picker" @keydown="onKeydown">
       <Search v-model="query" placeholder="Search icons, e.g. calendar" />
 
+      <div class="setting-item-description" role="status">
+        {{ focusedName || shown[cursor] || 'Choose an icon' }}
+      </div>
       <EmptyState v-if="!matches.length" :text="`No icon is called anything like “${query}”.`" />
 
       <div v-else ref="grid" class="abele-icon-picker__scroller">
@@ -14,6 +17,7 @@
             :icon="name"
             :tooltip="name"
             :active="idx === cursor"
+            @focus="focusedName = name"
             @click="emit('choose', name)"
           />
         </div>
@@ -68,6 +72,7 @@ const allIcons: string[] = [
   ...new Set(getIconIds().map((id) => (id.startsWith('lucide-') ? id.slice(7) : id))),
 ].sort((a, b) => a.localeCompare(b))
 
+const focusedName = ref('')
 const query = ref('')
 const pages = ref(1)
 const cursor = ref(-1)

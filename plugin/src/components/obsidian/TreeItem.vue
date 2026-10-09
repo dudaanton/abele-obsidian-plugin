@@ -18,7 +18,7 @@
         :class="{ 'is-collapsed': collapsed }"
       />
       <div class="tree-item-inner abele-tree-item__inner">
-        <span v-if="icon" ref="glyph" class="abele-tree-item__glyph" />
+        <span ref="glyph" class="abele-tree-item__glyph" aria-hidden="true" />
         <span class="abele-tree-item__text">{{ text }}</span>
       </div>
       <div v-if="flair || $slots.actions" class="tree-item-flair-outer">
@@ -92,9 +92,9 @@ const glyph = ref<HTMLElement>()
 
 const draw = () => {
   if (chevron.value && !chevron.value.firstChild) setIcon(chevron.value, 'right-triangle')
-  if (glyph.value && props.icon) {
+  if (glyph.value) {
     glyph.value.replaceChildren()
-    setIcon(glyph.value, props.icon)
+    if (props.icon) setIcon(glyph.value, props.icon)
   }
 }
 onMounted(draw)
@@ -114,6 +114,7 @@ watch(() => [props.icon, props.collapsible], draw, { flush: 'post' })
   flex: 0 0 auto;
   color: var(--icon-color);
   opacity: var(--icon-opacity);
+  width: var(--icon-xs);
 
   .svg-icon {
     --icon-size: var(--icon-xs);

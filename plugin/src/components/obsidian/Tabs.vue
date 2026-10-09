@@ -121,8 +121,8 @@ const emit = defineEmits<{
 .abele-tabs_primary .abele-tabs__tab_active {
   &,
   &:hover {
-    background-color: var(--interactive-accent);
-    color: var(--text-on-accent);
+    background-color: var(--background-modifier-hover);
+    color: var(--text-normal);
   }
 }
 

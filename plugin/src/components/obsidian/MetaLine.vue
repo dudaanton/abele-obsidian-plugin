@@ -1,5 +1,5 @@
 <template>
-  <div v-if="present.length" class="abele-meta-line">
+  <span v-if="present.length" class="abele-meta-line">
     <template v-for="(fact, index) in present" :key="fact.key">
       <template v-if="index"> · </template>
       <span class="abele-meta-line__fact"
@@ -7,7 +7,7 @@
       >
     </template>
     <slot />
-  </div>
+  </span>
 </template>
 <script setup lang="ts">
 import { computed } from 'vue'
@@ -30,6 +30,7 @@ const present = computed(() =>
 </script>
 <style>
 .abele-meta-line {
+  display: block;
   color: var(--text-muted);
   font-size: var(--font-ui-smaller);
   font-weight: var(--font-normal);
