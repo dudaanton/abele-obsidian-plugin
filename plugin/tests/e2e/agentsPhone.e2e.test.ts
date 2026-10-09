@@ -29,6 +29,10 @@ describe.skipIf(!available)('agents dialog on a narrow screen', () => {
           seen: buttons.some(e => e.textContent === 'Просмотрено'),
           dismissals: buttons.filter(e => e.textContent === 'Убрать').length,
           approvals: buttons.some(e => /approve|allow|разрешить/i.test(e.textContent)),
+          namedIcons: buttons.every(e => e.classList.contains('clickable-icon') && e.getAttribute('aria-label') && e.querySelector('svg')),
+          touchTargets: !app.isMobile || buttons.every(e => { const r = e.getBoundingClientRect(); return r.width >= 44 && r.height >= 44 }),
+          keyboardRows: [...root.querySelectorAll('.abele-agents__open')].every(e => e.getAttribute('role') === 'button' && e.getAttribute('tabindex') === '0'),
+          collapsedDetails: [...root.querySelectorAll('details')].every(e => !e.open),
         }
       } finally {
         document.body.dispatchEvent(new KeyboardEvent('keydown', { key: 'Escape', code: 'Escape', keyCode: 27, bubbles: true }))
@@ -44,6 +48,10 @@ describe.skipIf(!available)('agents dialog on a narrow screen', () => {
       seen: boolean
       dismissals: number
       approvals: boolean
+      namedIcons: boolean
+      touchTargets: boolean
+      keyboardRows: boolean
+      collapsedDetails: boolean
     }
     expect(result.searchFocused).toBe(false)
     expect(result.sections).toEqual(['Нужно твоё действие', 'Работают', 'Связь и доставка'])
@@ -52,6 +60,39 @@ describe.skipIf(!available)('agents dialog on a narrow screen', () => {
     expect(result.seen).toBe(true)
     expect(result.dismissals).toBe(3)
     expect(result.approvals).toBe(false)
+    expect(result.namedIcons).toBe(true)
+    expect(result.touchTargets).toBe(true)
+    expect(result.keyboardRows).toBe(true)
+    expect(result.collapsedDetails).toBe(true)
+  })
+  it('sizes an empty list to content rather than reserving the screen height', async () => {
+    const result = JSON.parse(
+      await evalLong(
+        `(async () => {
+      const wait = ms => new Promise(r => setTimeout(r, ms))
+      window.__abeleTest.openDialog('agents')
+      try {
+        for (let i = 0; i < 50 && !document.querySelector('.abele-agents'); i++) await wait(100)
+        const root = document.querySelector('.abele-agents')
+        if (!root) throw new Error('Agents dialog did not open')
+        const source = root.__vueParentComponent.parent.props.source
+        source.rows.value = []
+        source.incomplete.value = false
+        await wait(300)
+        const modal = root.closest('.modal')
+        const box = modal.getBoundingClientRect()
+        return { height: box.height, viewport: innerHeight, emptySections: root.querySelectorAll('.abele-agents__empty').length, clipped: root.scrollWidth > root.clientWidth }
+      } finally {
+        document.body.dispatchEvent(new KeyboardEvent('keydown', { key: 'Escape', code: 'Escape', keyCode: 27, bubbles: true }))
+      }
+    })()`,
+        15000
+      )
+    ) as { height: number; viewport: number; emptySections: number; clipped: boolean }
+    expect(result.height).toBeGreaterThan(0)
+    expect(result.height).toBeLessThan(result.viewport * 0.75)
+    expect(result.emptySections).toBe(3)
+    expect(result.clipped).toBe(false)
   })
   it('offers twenty explicit close choices without horizontal overflow', async () => {
     const result = JSON.parse(

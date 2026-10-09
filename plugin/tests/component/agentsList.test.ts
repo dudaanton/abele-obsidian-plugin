@@ -90,6 +90,50 @@ describe('agents dialog', () => {
     expect(source.markSeen).toHaveBeenCalledWith(source.rows.value[0], 'stale-approval')
     wrapper.unmount()
   })
+  it('uses content-sized native rows, named icon actions and keyboard opening', async () => {
+    useVault([])
+    const source = {
+      rows: ref(rows),
+      incomplete: ref(false),
+      status: ref(''),
+      open: vi.fn().mockResolvedValue(false),
+      markSeen: vi.fn().mockResolvedValue(undefined),
+    }
+    const wrapper = mount(AgentsListDialog, {
+      props: { source },
+      global: {
+        stubs: {
+          ObsidianModal: {
+            ...stub,
+            name: 'ObsidianModal',
+            props: { size: String, phoneSheet: Boolean },
+          },
+        },
+      },
+    })
+    const modal = wrapper.findComponent({ name: 'ObsidianModal' })
+    expect(modal.props('size')).not.toBe('tall')
+    expect(modal.props('phoneSheet')).toBe(false)
+    const row = wrapper.find('.abele-agents__open')
+    expect(row.classes()).toContain('tree-item-self')
+    expect(row.attributes('role')).toBe('button')
+    expect(row.attributes('tabindex')).toBe('0')
+    expect(wrapper.find('.abele-agents__title').text()).toBe(rows[0].title)
+    expect(wrapper.find('.abele-agents__metadata').text()).toContain(rows[0].agent)
+    const action = wrapper.find('.abele-agents__seen')
+    expect(action.classes()).toContain('clickable-icon')
+    expect(action.attributes('aria-label')).toContain('Просмотрено')
+    expect(action.attributes('aria-label')).toContain('Sample failure')
+    expect(action.find('[data-icon="check"]').exists()).toBe(true)
+    await row.trigger('keydown.enter')
+    await flushPromises()
+    expect(source.open).toHaveBeenCalledWith(rows[0], rows[0].reasons[0])
+    await row.trigger('keydown.space')
+    await flushPromises()
+    expect(source.open).toHaveBeenCalledTimes(2)
+    expect(source.markSeen).not.toHaveBeenCalled()
+    wrapper.unmount()
+  })
   it('owns one modal and releases it cleanly on command cleanup', async () => {
     useVault([])
     openAgents()
