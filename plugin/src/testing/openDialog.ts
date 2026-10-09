@@ -213,6 +213,19 @@ const DIALOGS: Record<string, (options?: DialogFixtureOptions) => void | Promise
       state: { expanded: [], scrollTop: 0 }, activeMessageId: 'answer-0', canGoBack: true,
     })
   },
+  'agents': () => mountAlone(AgentsListDialog, { source: agentsFixture() }),
+  'agents-tabs': async () => {
+    const completion = chooseAttentionTab(
+      GlobalStore.getInstance().app,
+      Array.from({ length: 20 }, (_, i) => ({
+        id: `sample-tab-${i}`,
+        label: `Sample conversation ${i + 1} with an intentionally long invented title for a narrow dialog`,
+      })),
+      async () => {}
+    )
+    document.querySelector<HTMLElement>('.abele-agents-tabs')?.setAttribute('data-abele-fixture', 'agents-tabs')
+    await completion
+  },
   'node-pairing': () =>
     mountAlone(NodePairingDialog, { ...nodePairingFixture('waiting'), resumeNodeId: undefined }),
   'node-pairing-waiting': () => mountAlone(NodePairingDialog, nodePairingFixture('waiting')),
@@ -237,19 +250,6 @@ const DIALOGS: Record<string, (options?: DialogFixtureOptions) => void | Promise
     mountAlone(NodeFilesDialog, await nodeFilesFixture('tooLarge'), 'node-edit-large'),
   'node-edit-shared': async () =>
     mountAlone(NodeFilesDialog, await nodeFilesFixture('shared'), 'node-edit-shared'),
-  'agents': () => mountAlone(AgentsListDialog, { source: agentsFixture() }),
-  'agents-tabs': async () => {
-    const completion = chooseAttentionTab(
-      GlobalStore.getInstance().app,
-      Array.from({ length: 20 }, (_, i) => ({
-        id: `sample-tab-${i}`,
-        label: `Sample conversation ${i + 1} with an intentionally long invented title for a narrow dialog`,
-      })),
-      async () => {}
-    )
-    document.querySelector<HTMLElement>('.abele-agents-tabs')?.setAttribute('data-abele-fixture', 'agents-tabs')
-    await completion
-  },
   'node-diffs': async () =>
     mountAlone(NodeFilesDialog, await nodeFilesFixture('diffs'), 'node-diffs'),
   'node-review': async () =>
