@@ -41,8 +41,7 @@ export class NodeConnection {
               (s) => s.delegationParentId === parent
             )
             if (!session) return false
-            void session.sendMessage(`The result for node delegation ${id} has arrived. Call node_delegation_status to read the durable mailbox result.`)
-            return true
+            return session.wakeDelegationResult(id)
           })
         }
       }
@@ -162,6 +161,15 @@ export class NodeService {
   }
   static destroyCurrent(): void {
     this.instance?.destroy()
+  }
+  /** Stop must not create new services/connections just to remove old waiters. */
+  static stopDelegationWaiters(parent: string): Promise<void> {
+    const connections = this.instance ? [...this.instance.connections.values()] : []
+    return Promise.all(connections.map((c) => c.delegation.stopParent(parent))).then((): void => {})
+  }
+  static resumeDelegationWaiters(parent: string): void {
+    for (const connection of this.instance?.connections.values() ?? [])
+      connection.delegation.resumeParent(parent)
   }
   private constructor() {
     const { app } = GlobalStore.getInstance()

@@ -27,6 +27,8 @@ async function taskKey(parent: string, key: string): Promise<string> {
 export class NodeDelegationController {
   private readonly subscribed = new Set<string>()
   private readonly denied = new Set<string>()
+  private readonly stoppedParents = new Set<string>()
+  private readonly wakeEpochs = new Map<string, number>()
   constructor(
     readonly client: NodeClient,
     readonly store: NodeClientStore
@@ -34,6 +36,18 @@ export class NodeDelegationController {
 
   /** Server subscriptions belong to a transport, never to this controller's lifetime. */
   connectionChanged() { this.subscribed.clear(); this.denied.clear() }
+
+  /** Synchronous fence first; durable waiter removal is serialized with status writes. */
+  stopParent(parent: string): Promise<void> {
+    this.stoppedParents.add(parent)
+    this.wakeEpochs.set(parent, (this.wakeEpochs.get(parent) ?? 0) + 1)
+    return this.store.transaction((s) => {
+      for (const task of Object.values(storage(s).tasks))
+        if (task.parentId === parent) task.awaitingResult = false
+    })
+  }
+  /** Only an explicitly resumed parent turn can arm new waiters after Stop. */
+  resumeParent(parent: string): void { this.stoppedParents.delete(parent) }
 
   /** Owner UI only. These methods are deliberately absent from the model tools. */
   async approve(params: DelegationGrantRequest) {
@@ -217,6 +231,7 @@ export class NodeDelegationController {
     })
   }
   async status(parent: string, id: string) {
+    const wakeEpoch = this.wakeEpochs.get(parent) ?? 0
     await this.owned(parent, id, 'status')
     const status = await this.client.delegationStatus(id)
     await this.store.transaction((s) => {
@@ -239,7 +254,8 @@ export class NodeDelegationController {
     if (status.state === 'completed')
       await this.store.transaction((s) => {
         const task = Object.values(storage(s).tasks).find((t) => t.child?.delegation_id === id)
-        if (task) task.awaitingResult = !delivered
+        if (task) task.awaitingResult = !delivered && !this.stoppedParents.has(parent) &&
+          wakeEpoch === (this.wakeEpochs.get(parent) ?? 0)
       })
     const card = canRead ? (await this.cards(parent)).find((c) => c.delegationId === id) : undefined
     return {
@@ -268,6 +284,9 @@ export class NodeDelegationController {
   async restore() {
     const { children, cancellations } = await this.store.transaction((s) => {
       const local = storage(s)
+      // Retry waiter clearing if Stop's initial durable write failed.
+      for (const task of Object.values(local.tasks))
+        if (this.stoppedParents.has(task.parentId)) task.awaitingResult = false
       for (const receipt of Object.values(s.results)) {
         const method = receipt.request?.method
         if (method === 'delegation.grant.create' || method === 'delegation.grant.revoke') {
@@ -339,10 +358,15 @@ export class NodeDelegationController {
   }
   /** Wake only a waiting model, once the result is durably present in its parent card. */
   async wakeDelivered(cards: Record<string, DelegationCard[]>, wake: (parent: string, id: string) => boolean): Promise<void> {
+    const epochs = new Map(this.wakeEpochs)
     const pending = await this.store.transaction((s) => Object.entries(storage(s).tasks)
       .filter(([, task]) => task.awaitingResult && task.child)
       .map(([key, task]) => ({ key, parent: task.parentId, id: task.child!.delegation_id })))
     for (const { key, parent, id } of pending) {
+      // Stop may have won after enumeration but before dispatch (or before a new
+      // explicit turn). Neither a stale snapshot nor that new turn revives this wake.
+      if (this.stoppedParents.has(parent) ||
+        (epochs.get(parent) ?? 0) !== (this.wakeEpochs.get(parent) ?? 0)) continue
       const card = cards[parent]?.find((c) => c.delegationId === id)
       if (card?.state === 'completed' && card.reports.some((r) => r.kind === 'result') && wake(parent, id))
         await this.store.transaction((s) => { storage(s).tasks[key].awaitingResult = false })

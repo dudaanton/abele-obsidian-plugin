@@ -31,6 +31,7 @@ import type {
 import { ChatStorage } from './ChatStorage'
 import { cloneChatPath } from './chatClone'
 import { claimDelegationIdentity, ownsDelegationIdentity } from './delegationIdentity'
+import { NodeService } from '@/node/NodeService'
 import {
   prepareSelectionRevision,
   ensureCapturedAnchor,
@@ -239,6 +240,8 @@ export class ChatSession implements SummarizerHost, InterceptorHost, AnchorStora
   private agentLoop: AgentLoop | null = null
   private turnAbortController: AbortController | null = null
   private turnAborted = false
+  private delegationWakeStopped = false
+  private delegationStopEpoch = 0
   private unsubscribe: (() => void) | null = null
   private streamStartTime = 0
   private allInternalMessages: Message[] = []
@@ -1517,6 +1520,7 @@ export class ChatSession implements SummarizerHost, InterceptorHost, AnchorStora
     const controller = new AbortController()
     this.turnAbortController = controller
     this.turnAborted = false
+    this.resumeDelegationWake()
     const generation = this.generation
     this.isStreaming.value = true
     this.streamingContent.value = ''
@@ -1895,11 +1899,35 @@ export class ChatSession implements SummarizerHost, InterceptorHost, AnchorStora
     return true
   }
 
-  async sendMessage(content: string, attachments?: string[]): Promise<void> {
+  /** An automatic result notification is not permission to resume a stopped chat. */
+  wakeDelegationResult(id: string): boolean {
+    if (this.destroyed || this.delegationWakeStopped || this.preparingClone.value) return false
+    const generation = this.generation
+    const stopEpoch = this.delegationStopEpoch
+    const isCurrent = () => !this.destroyed && !this.delegationWakeStopped &&
+      generation === this.generation && stopEpoch === this.delegationStopEpoch
+    void this.sendMessage(
+      `The result for node delegation ${id} has arrived. Call node_delegation_status to read the durable mailbox result.`,
+      undefined,
+      isCurrent
+    ).catch((error) => { console.error('[Abele] Delegation result notification failed', error) })
+    return true
+  }
+
+  private resumeDelegationWake(): void {
+    this.delegationWakeStopped = false
+    const parent = this.delegationParentId
+    if (parent) NodeService.resumeDelegationWaiters(parent)
+  }
+
+  async sendMessage(content: string, attachments?: string[], isCurrent?: () => boolean): Promise<void> {
+    if (isCurrent && !isCurrent()) return
     if (this.preparingClone.value) {
       new Notice('Wait for the chat copy to finish.')
       return
     }
+    // Only a new explicit send can resume after Stop; automatic mailbox sends carry a fence.
+    if (!isCurrent) this.resumeDelegationWake()
     // Busy is not a reason to lose what was typed: it waits its turn instead. `takeQueued`
     // hands it to the loop that is already running, at its next iteration; `drainQueue` gives
     // it a turn of its own when the one it waited behind ends without another iteration.
@@ -1914,7 +1942,7 @@ export class ChatSession implements SummarizerHost, InterceptorHost, AnchorStora
 
     // The interceptor looks first, when there is one and the message is its kind. Never in a
     // run, where nobody is there to send a draft on.
-    const route = this.interceptRoute(content)
+    const route = isCurrent ? { kind: 'none' as const } : this.interceptRoute(content)
     if (route.kind === 'agent' && !route.replyOnly)
       return this.sendDraftMessage(content, attachments)
     if (route.kind === 'script' && !route.replyOnly)
@@ -1926,7 +1954,10 @@ export class ChatSession implements SummarizerHost, InterceptorHost, AnchorStora
     this.wroteThisTurn = false
     this.turnPolicy.clear()
 
-    this.rememberInternal(await this.userMessage(content, attachments))
+    const message = await this.userMessage(content, attachments, !isCurrent)
+    // Stop may arrive while attachments/message preparation is awaiting I/O.
+    if (isCurrent && !isCurrent()) return
+    this.rememberInternal(message)
 
     try {
       await this.runAgentLoop()
@@ -2322,6 +2353,12 @@ export class ChatSession implements SummarizerHost, InterceptorHost, AnchorStora
   }
 
   abort(): void {
+    this.delegationWakeStopped = true
+    ++this.delegationStopEpoch
+    const parent = this.delegationParentId
+    if (parent) void NodeService.stopDelegationWaiters(parent).catch((error) => {
+      console.error('[Abele] Could not clear delegation waiters on Stop', error)
+    })
     this.turnAborted = true
     this.cancelAutoRetry()
     this.abortQuestions()
@@ -3146,6 +3183,7 @@ export class ChatSession implements SummarizerHost, InterceptorHost, AnchorStora
     this.chatTitle.value = result.metadata?.title || ''
     this.chatCreated = result.metadata?.created || ''
     this.chatIdentity = result.metadata?.chatId
+    this.delegationWakeStopped = false
     this.bindingRecovery = result.metadata?.bindingRecovery
     // Before `restoreAgentBinding`, which rebuilds the scope: the anchor has to be in place
     // by then or the note is left out until the next agent change.
