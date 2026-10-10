@@ -8,6 +8,7 @@ export const fixtureFetch: typeof fetch = (input, init) =>
 /** Pinned real server, isolated storage and CLI-provisioned root tokens. */
 import { spawn, spawnSync, type ChildProcess } from 'node:child_process'
 import { randomBytes } from 'node:crypto'
+import { createInterface } from 'node:readline'
 import { existsSync, realpathSync } from 'node:fs'
 import { rm } from 'node:fs/promises'
 import { createServer } from 'node:net'
@@ -103,13 +104,22 @@ export async function spawnSyncServer(dir: string): Promise<SyncServer> {
     ABELE_TOKEN_PEPPER: randomBytes(16).toString('hex'),
     ABELE_PORT: String(port),
     ABELE_HOST: '127.0.0.1',
+    ABELE_FIXTURE_HTTP_TRACE: '1',
   }
 
-  const child = spawn(process.execPath, [SERVER], { env, stdio: ['ignore', 'pipe', 'pipe'] })
+  const child = spawn(
+    process.execPath,
+    ['--import', join(__dirname, 'syncFixtureHttpTrace.mjs'), SERVER],
+    { env, stdio: ['ignore', 'pipe', 'pipe'] }
+  )
   // Held rather than printed: a suite that passes says nothing, and one that does not gets
   // the server's own words in the failure.
   const said: string[] = []
   child.stdout?.on('data', (chunk: Buffer) => said.push(chunk.toString()))
+  if (child.stdout)
+    createInterface({ input: child.stdout }).on('line', (line) => {
+      if (line.startsWith('[sync-fixture-http] ')) console.debug(line)
+    })
   child.stderr?.on('data', (chunk: Buffer) => said.push(chunk.toString()))
 
   const url = tls?.url ?? network.url

@@ -2,6 +2,12 @@
 export class ExchangeTrace {
   private readonly active = new Map<symbol, { operation: string; startedAt: number }>()
   private readonly lines: string[] = []
+  private readonly requests: {
+    operation: string
+    startedAt: number
+    durationMs: number
+    outcome: string
+  }[] = []
   private sealed = false
   private total = 0
   private readonly stages = new Map<
@@ -54,11 +60,21 @@ export class ExchangeTrace {
     }
   }
   async run<T>(operation: string, work: () => Promise<T>): Promise<T> {
+    const startedAt = Date.now()
+    let outcome = 'failed'
     const finish = this.begin(operation)
     try {
-      return await work()
+      const result = await work()
+      outcome = 'complete'
+      return result
     } finally {
       finish()
+      if (/^(GET|POST|PUT|DELETE|HEAD) /.test(operation)) {
+        const request = { operation, startedAt, durationMs: Date.now() - startedAt, outcome }
+        this.requests.push(request)
+        if (this.requests.length > 64) this.requests.shift()
+        console.debug('[Abele Sync request]', request)
+      }
     }
   }
   log(line: string): void {
@@ -69,9 +85,11 @@ export class ExchangeTrace {
     return {
       active: [...this.active.values()].map((one) => ({
         operation: one.operation,
+        startedAt: one.startedAt,
         elapsedMs: Date.now() - one.startedAt,
       })),
       log: [...this.lines],
+      requests: this.requests.map((one) => ({ ...one })),
       scans: this.scans.map((one) => ({ ...one })),
       firstSync: {
         complete: this.sealed,

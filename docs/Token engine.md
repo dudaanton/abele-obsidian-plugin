@@ -1,5 +1,13 @@
 # Token engine integration
 
+Phone live fixtures disable HTTP keep-alive at the fixture server to avoid reusing USB
+reverse connections. `[sync-fixture-http]` lines in the tier log record actual server
+arrival/finish timestamps, connection ID, port, route, declared body length and body
+completion without credentials or content. `[phone-reverse]` records tunnel ownership
+lifetimes. Exchange snapshots retain the last 64 client request timings and outcomes.
+The 20261010-223931 batch had an empty sync-fixture.log and discarded runtime server
+stdout, so whether its timed-out requests reached the server cannot be established.
+
 Native transport keeps 30-second inactivity timeouts and a fallback overall bound of
 30 seconds plus (request bytes + requested Range bytes) / 32 KiB/s, rounded up to seconds.
 The default simple upload, server upload part and ranged download chunk are each 8 MiB

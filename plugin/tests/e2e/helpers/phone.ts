@@ -131,6 +131,7 @@ const tunnels = new Map<number, { stop: () => Promise<void> }>()
 export async function exposeToPhone(port: number): Promise<() => Promise<void>> {
   while (tunnels.has(port)) await tunnels.get(port)!.stop()
   const child: ChildProcess = spawn(DRIVER, ['reverse', String(port)], { stdio: 'ignore' })
+  console.debug('[phone-reverse]', { event: 'start', port, at: Date.now() })
   let stopping: Promise<void> | undefined
   const owner = {
     stop: (): Promise<void> => {
@@ -148,6 +149,7 @@ export async function exposeToPhone(port: number): Promise<() => Promise<void>> 
         child.kill()
       }).then(() => {
         if (tunnels.get(port) === owner) tunnels.delete(port)
+        console.debug('[phone-reverse]', { event: 'stop', port, at: Date.now() })
       })
       return stopping
     },
@@ -159,7 +161,10 @@ export async function exposeToPhone(port: number): Promise<() => Promise<void>> 
       if (child.exitCode !== null || child.signalCode !== null)
         throw new Error('Phone reverse exited before readiness')
       const status = JSON.parse(driver(['status'])) as { reverse?: number[] }
-      if (status.reverse?.includes(port)) break
+      if (status.reverse?.includes(port)) {
+        console.debug('[phone-reverse]', { event: 'ready', port, at: Date.now() })
+        break
+      }
       if (Date.now() > deadline)
         throw new Error(`the phone did not open port ${port} back to this machine`)
       await new Promise((resolve) => setTimeout(resolve, 200))
