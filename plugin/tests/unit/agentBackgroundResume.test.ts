@@ -85,6 +85,64 @@ describe('an unfinished mobile request', () => {
     expect(events.filter((e) => e.type === 'message_end')).toHaveLength(1)
   })
 
+  it('uses native app-state edges even when the WebView stays visible', async () => {
+    unbind()
+    let nativeState!: (state: { isActive: boolean }) => void
+    const remove = vi.fn()
+    const host = window as Window & { Capacitor?: unknown }
+    host.Capacitor = {
+      Plugins: {
+        App: {
+          addListener: vi.fn((_event, listener) => {
+            nativeState = listener
+            return Promise.resolve({ remove })
+          }),
+        },
+      },
+    }
+    unbind = bindAppSuspension(appSuspension, document, window)
+    vi.spyOn(OpenAIClient.prototype, 'stream').mockImplementation(
+      async function* (_model, _prompt, messages) {
+        requests.push(structuredClone(messages))
+        if (requests.length === 1) {
+          nativeState({ isActive: false })
+          expect(document.visibilityState).toBe('visible')
+          yield { type: 'error', error: 'Network connection lost' }
+        } else yield { type: 'done', message: answer('complete') }
+      }
+    )
+    try {
+      const { done } = run()
+      await flush()
+      nativeState({ isActive: true })
+      await done
+      expect(requests).toHaveLength(2)
+      unbind()
+      await flush()
+      expect(remove).toHaveBeenCalledOnce()
+    } finally {
+      Reflect.deleteProperty(host, 'Capacitor')
+    }
+  })
+
+  it('recovers after a frozen host gap without any DOM visibility event', async () => {
+    vi.spyOn(OpenAIClient.prototype, 'stream').mockImplementation(
+      async function* (_model, _prompt, messages) {
+        requests.push(structuredClone(messages))
+        if (requests.length === 1) {
+          yield { type: 'text_delta', delta: 'partial' }
+          vi.setSystemTime(Date.now() + 40_000)
+          yield { type: 'error', error: 'Load failed' }
+        } else yield { type: 'done', message: answer('complete') }
+      }
+    )
+    const { done } = run()
+    const result = await done
+    expect(document.visibilityState).toBe('visible')
+    expect(requests).toHaveLength(2)
+    expect(result.messages.at(-1)).toEqual(answer('complete'))
+  })
+
   it('recognizes a WebKit load failure across backgrounding', async () => {
     droppingProvider('Load failed')
     const { done } = run()

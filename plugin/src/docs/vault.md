@@ -1173,8 +1173,9 @@ background execution. No audio file is stored in the vault.
 
 ## Returning from mobile suspension
 
-While a local agent turn is in memory, mobile visibility/page lifecycle events identify an
-unfinished model request that failed across backgrounding. On return, that request is retried
+While a local agent turn is in memory, native app-state and mobile visibility/page lifecycle
+events identify an unfinished model request that failed across backgrounding. Hosts that keep
+the document visible also use suspended JavaScript timer gaps to detect return. On return, that request is retried
 without requiring a button press, independently of `ai.autoRetry`. A quiet reconnecting status
 appears in the chat. Completed response messages and tool results remain in history; only the
 failed response is requested again, and its uncommitted partial text/tool arguments are

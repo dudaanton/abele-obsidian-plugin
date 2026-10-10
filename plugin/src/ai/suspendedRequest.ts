@@ -41,7 +41,9 @@ export class SuspendedRequest {
   }
 
   shouldResume(reason: string, error?: string): boolean {
-    if (this.turnSignal?.aborted || !this.lifecycle.enabled || !this.crossedBackground) return false
+    if (this.turnSignal?.aborted || !this.lifecycle.enabled) return false
+    if (this.lifecycle.recoverIfFrozen()) this.crossedBackground = true
+    if (!this.crossedBackground) return false
     return (
       this.stale ||
       reason === 'aborted' ||
