@@ -44,9 +44,14 @@ export class SilentBackgroundAudio implements BackgroundAudioPort {
       this.audio.setAttribute('playsinline', '')
     }
     this.session = (navigator as Navigator & { audioSession?: WebAudioSession }).audioSession
-    if (this.session && this.previousType === undefined) {
-      this.previousType = this.session.type
+    // Auto selects exclusive playback for HTML media on WebKit. Without a mixing API,
+    // declining the keep-alive is safer than silently interrupting another application's music.
+    if (!this.session) throw new Error('Audio session mixing is unavailable')
+    if (this.previousType === undefined) {
+      const previous = this.session.type
       this.session.type = 'ambient'
+      if (this.session.type !== 'ambient') throw new Error('Audio session mixing is unavailable')
+      this.previousType = previous
     }
     try {
       await this.audio.play()
