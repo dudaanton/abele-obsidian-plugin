@@ -8,7 +8,6 @@ import { CredentialGenerations } from '@/secrets/credentialGenerations'
 import { newSecretId } from '@/sync/ids'
 import { REVOKE_SECRET_PREFIX } from '@/sync/connection'
 import { NodeRegistry } from '@/node/NodeRegistry'
-import { scopedSecretSlot } from '@/sync/scoped/scopedSecretSlots'
 
 // Inventory of minted keychain names: settings (calendar/MCP/GitHub/providers/images/saved
 // keys), secret store, credential clocks, sync/revoke and scoped credentials/proofs, nodes.
@@ -46,9 +45,6 @@ it('all plugin-minted secret names satisfy the host rule, including derived proo
     'invented-token'
   )
   registry.token(uuid)
-  for (const kind of ['invitation', 'installation'])
-    for (const suffix of ['', ':binding', ':accepted'])
-      ids.push(scopedSecretSlot(`abele-scoped-${kind}-${uuid}${suffix}`))
   const clock = new CredentialGenerations({
     getSecret: (id) => {
       ids.push(id)

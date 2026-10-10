@@ -101,7 +101,13 @@ export class TokenEngines {
   announce(): void {
     if (this.closed) return
     for (const record of this.ui.registry.records())
-      if (record.secretReference && !record.paused && record.scope && !record.pending)
+      if (
+        record.secretReference &&
+        !record.paused &&
+        record.scope &&
+        !record.pending &&
+        record.status !== 'needs-token'
+      )
         this.ui.registry.setStatus(record.id, 'joining')
     this.ui.refresh()
   }
@@ -159,7 +165,9 @@ export class TokenEngines {
     })
     const records = this.ui.registry
       .records()
-      .filter((one) => one.secretReference && one.scope && !one.pending)
+      .filter(
+        (one) => one.secretReference && one.scope && !one.pending && one.status !== 'needs-token'
+      )
     this.engines.start(
       records.map((one) => one.id),
       (id) =>
@@ -176,11 +184,13 @@ export class TokenEngines {
     const code = (error as { code?: string })?.code
     this.ui.registry.setStatus(
       id,
-      code === 'scope_updating' || code === 'scope_unavailable'
-        ? code
-        : code === 'offline' || code === 'unreachable'
-          ? 'offline'
-          : 'error'
+      code === 'unauthorized' || code === 'forbidden'
+        ? 'needs-token'
+        : code === 'scope_updating' || code === 'scope_unavailable'
+          ? code
+          : code === 'offline' || code === 'unreachable'
+            ? 'offline'
+            : 'error'
     )
     this.ui.publish(id, { error: connectionError(error) })
   }
@@ -453,7 +463,8 @@ export class TokenEngines {
     if (this.closed || !this.ui.registry.records().some((one) => one.id === id)) return
     const epoch = (this.activityEpoch.get(id) ?? 0) + 1
     this.activityEpoch.set(id, epoch)
-    this.ui.registry.setStatus(id, status.state)
+    if (this.ui.registry.records().find((one) => one.id === id)?.status !== 'needs-token')
+      this.ui.registry.setStatus(id, status.state)
     const activity: Parameters<TokenUi['publish']>[1] = {
       pending: status.pending,
       heldDeletes: status.heldDeletes ?? 0,

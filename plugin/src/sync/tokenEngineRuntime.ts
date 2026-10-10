@@ -103,6 +103,8 @@ export class TokenEngineRuntime implements ConnectionRuntime, TokenUiRuntime {
           )
           if (!response.ok) {
             if (response.status === 401 || response.status === 403) this.permitted = false
+            if (response.status >= 500)
+              throw new EngineError('offline', 'The sync server is temporarily unavailable')
             return response
           }
           if (url.pathname === '/v2/connection') {
@@ -277,6 +279,7 @@ export class TokenEngineRuntime implements ConnectionRuntime, TokenUiRuntime {
         const target = await this.resolve(id)
         return !!target && (await options.reviews.attachments.mayUpload(this.source(), target))
       },
+      maxBytes: () => this.authority?.limits.max_file_bytes ?? 0,
       send: (one, bytes) =>
         this.client.publishGroupAsset(normalisePath(one.path), bytes, one.mtime, one.key),
       changed: () => options.publicationChanged?.(),

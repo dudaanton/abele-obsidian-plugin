@@ -1,6 +1,5 @@
-import type { ExistingPublicationQuestion } from '@/sync/publication/publicationDecision'
 /** Presentation-only fixture: no consent, credentials, storage or HTTP operation. */
-export const publicationQuestion: ExistingPublicationQuestion = {
+export const publicationQuestion = {
   exposureKey: 'a'.repeat(64),
   fingerprint: 'b'.repeat(64),
   observation: {

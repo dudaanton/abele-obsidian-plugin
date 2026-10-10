@@ -6,9 +6,91 @@ import { PathCoordinator, coordinatedFileSystem } from '@/sync/pathCoordinator'
 import { ExecutableReview } from '@/sync/executableReview'
 import { AttachmentConsent } from '@/sync/attachmentConsent'
 import { ignoreFor } from '@/sync/scope'
+import { TokenAttachmentHost } from '@/sync/tokenAttachmentHost'
+import { useVault } from '../helpers/testEnv'
 
 const scope = { kind: 'folder' as const, id: 'root', path: '/' }
 const token = (address: string) => encodeAccessToken({ v: 1, address, key: 'a'.repeat(43), scope })
+it('a shadowed short link cannot send a newly resolved private file using persisted approval', async () => {
+  const group = { kind: 'group' as const, id: 'group', path: 'Groups/sample.md' }
+  const app = useVault([
+    { path: group.path, content: '![[sample.png]]' },
+    { path: 'Private/sample.png', content: 'approved bytes' },
+    { path: 'Groups/sample.png', content: 'new private bytes' },
+  ])
+  let resolved = app.vault.getFileByPath('Private/sample.png')!
+  vi.spyOn(app.metadataCache, 'getFirstLinkpathDest').mockImplementation(() => resolved)
+  const local = new TokenAttachmentHost(app as never),
+    metadata = new MemoryStateStore()
+  const source = {
+    id: 'connection',
+    address: 'https://first.example',
+    spaceId: 'sample-space',
+    tokenId: 'sample-token',
+    scope: group,
+  }
+  const consent = new AttachmentConsent(metadata),
+    note = (await local.note(group.path))!
+  await consent.observeNote(
+    source,
+    note.id,
+    note.targets.map((one) => one.id)
+  )
+  const [question] = await consent.noteOpened(source, note.id, {
+    resolve: async (id) => local.resolve(id),
+  })
+  expect(
+    await consent.decide(question.id, true, { resolve: async (id) => local.resolve(id) })
+  ).toBe(true)
+  resolved = app.vault.getFileByPath('Groups/sample.png')!
+  const changed = (await new TokenAttachmentHost(app as never).note(group.path))!
+  const next = changed.targets[0]
+  expect(next.id).not.toBe(question.fileId)
+  const fs = new MemoryFileSystem(),
+    wire = await server(group.path, '![[sample.png]]', source.address, group as typeof scope)
+  await fs.writeAtomic(next.path, new TextEncoder().encode('new private bytes'), 100)
+  const restarted = new AttachmentConsent(metadata)
+  const engine = new TokenEngineRuntime({
+    id: source.id,
+    encoded: encodeAccessToken({
+      v: 1,
+      address: source.address,
+      key: 'a'.repeat(43),
+      scope: group,
+    }),
+    fs,
+    state: new MemoryStateStore(),
+    reviews: {
+      executables: new ExecutableReview(metadata),
+      attachments: restarted,
+      close: () => {},
+    },
+    localFiles: { resolve: async (id) => local.resolve(id), note: async () => changed },
+    fetch: wire.fetch,
+    changed: () => {},
+    failed: () => {},
+    covers: async () => false,
+    scopeInput: async () => ({ key: 'group', ignore: ignoreFor('.obsidian', null) }),
+  })
+  try {
+    await engine.sync()
+    wire.requests.length = 0
+    await expect(engine.publishAttachment(next.id)).rejects.toThrow('not approved')
+    expect(wire.requests).toEqual([])
+    await restarted.observeNote(
+      source,
+      changed.id,
+      changed.targets.map((one) => one.id)
+    )
+    const questions = await restarted.noteOpened(source, changed.id, {
+      resolve: async (id) => local.resolve(id),
+    })
+    expect(questions).toHaveLength(1)
+    expect(questions[0].fileId).toBe(next.id)
+  } finally {
+    await engine.disconnect()
+  }
+})
 async function server(
   path: string,
   text: string,

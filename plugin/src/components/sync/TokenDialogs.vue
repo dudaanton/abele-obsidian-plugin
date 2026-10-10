@@ -3,7 +3,7 @@
     :title="title"
     :size="mode === 'share' || mode === 'review' ? 'tall' : 'default'"
     phone-sheet
-    @close="emit('close')"
+    @close="close"
   >
     <Section
       v-if="mode === 'connect'"
@@ -178,13 +178,13 @@
         text="Close"
         tooltip="Close without making another decision"
         :disabled="busy"
-        @click="emit('close')"
+        @click="close"
       />
     </template>
   </Modal>
 </template>
 <script setup lang="ts">
-import { computed, onMounted, ref } from 'vue'
+import { computed, onMounted, onBeforeUnmount, ref, watch } from 'vue'
 import { Notice } from 'obsidian'
 import Modal from '../obsidian/Modal.vue'
 import Setting from '../obsidian/Setting.vue'
@@ -209,6 +209,25 @@ const props = defineProps<{
   question?: AttachmentQuestion
 }>()
 const emit = defineEmits<{ close: [] }>()
+let generation = 0
+let alive = true
+function invalidate() {
+  generation++
+  issued.value = ''
+  tokens.value = []
+  revoking.value = null
+  error.value = ''
+  busy.value = false
+}
+function close() {
+  alive = false
+  invalidate()
+  emit('close')
+}
+onBeforeUnmount(() => {
+  alive = false
+  invalidate()
+})
 const text = ref(''),
   error = ref(''),
   busy = ref(false),
@@ -250,15 +269,16 @@ const operationName = (value: string) =>
     }) as Record<string, string>
   )[value] ?? 'Changed file'
 async function run(action: () => Promise<void>) {
-  if (busy.value) return
+  if (busy.value || !alive) return
+  const epoch = generation
   busy.value = true
   error.value = ''
   try {
     await action()
   } catch (cause) {
-    error.value = connectionError(cause)
+    if (alive && epoch === generation) error.value = connectionError(cause)
   } finally {
-    busy.value = false
+    if (alive && epoch === generation) busy.value = false
   }
 }
 async function connect() {
@@ -268,14 +288,19 @@ async function connect() {
   emit('close')
 }
 async function issue() {
+  const epoch = generation,
+    id = props.connectionId
   const scope = choices.value[Number(selected.value)]
   if (!scope) return
-  issued.value = (
+  const result = (
     await props.ui
-      .client(props.connectionId)
+      .client(id)
       .issue({ scope: { kind: scope.kind, id: scope.id }, label: label.value.trim() })
   ).token
-  tokens.value = await props.ui.issued(props.connectionId)
+  if (!alive || epoch !== generation) return
+  issued.value = result
+  const listed = await props.ui.issued(id)
+  if (alive && epoch === generation) tokens.value = listed
 }
 async function copy() {
   await navigator.clipboard.writeText(issued.value)
@@ -283,9 +308,13 @@ async function copy() {
 }
 async function revoke() {
   if (!revoking.value) return
-  await props.ui.client(props.connectionId).revoke(revoking.value.id)
+  const epoch = generation,
+    id = props.connectionId
+  await props.ui.client(id).revoke(revoking.value.id)
+  if (!alive || epoch !== generation) return
   revoking.value = null
-  tokens.value = await props.ui.issued(props.connectionId)
+  const listed = await props.ui.issued(id)
+  if (alive && epoch === generation) tokens.value = listed
 }
 async function approve() {
   if (props.candidate) await props.ui.approve(props.candidate)
@@ -303,13 +332,37 @@ async function disconnect() {
   await props.ui.disconnect(props.connectionId)
   emit('close')
 }
-onMounted(() => {
+function loadShare() {
   if (props.mode === 'share')
     void run(async () => {
-      choices.value = await props.ui.choices(props.connectionId)
-      tokens.value = await props.ui.issued(props.connectionId)
+      const epoch = generation,
+        id = props.connectionId
+      const available = await props.ui.choices(id)
+      if (!alive || epoch !== generation) return
+      choices.value = available
+      const listed = await props.ui.issued(id)
+      if (alive && epoch === generation) tokens.value = listed
     })
-})
+}
+onMounted(loadShare)
+watch(
+  () => [props.ui, props.connectionId, props.mode],
+  () => {
+    invalidate()
+    choices.value = []
+    selected.value = '0'
+    loadShare()
+  },
+  { flush: 'sync' }
+)
+watch(
+  selected,
+  () => {
+    invalidate()
+    loadShare()
+  },
+  { flush: 'sync' }
+)
 </script>
 <style>
 .token-sync-content {

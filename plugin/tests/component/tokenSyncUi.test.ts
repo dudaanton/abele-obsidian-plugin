@@ -5,6 +5,8 @@ import { TokenUi } from '@/sync/tokenUi'
 import { TokenConnectionRegistry } from '@/sync/tokenConnectionRegistry'
 import Button from '@/components/obsidian/Button.vue'
 import Modal from '@/components/obsidian/Modal.vue'
+import Icon from '@/components/obsidian/Icon.vue'
+import Dropdown from '@/components/obsidian/Dropdown.vue'
 import TokenQrReader from '@/components/sync/TokenQrReader.vue'
 import { tokenUiFixture, sampleIssuedToken } from '@/testing/tokenUiFixture'
 import SyncSettings from '@/components/settings/SyncSettings.vue'
@@ -14,6 +16,154 @@ import { AttachmentConsent } from '@/sync/attachmentConsent'
 import { Notice } from '../mocks/obsidian'
 
 const modalStub = { template: '<div><slot /><slot name="footer" /></div>' }
+function shareFixture() {
+  const ui = tokenUiFixture()
+  const scope = { kind: 'folder' as const, id: 'root', path: '/' }
+  vi.spyOn(ui, 'choices').mockResolvedValue([scope, { ...scope, id: 'other', path: 'Shared' }])
+  vi.spyOn(ui, 'issued').mockResolvedValue([
+    {
+      id: 'issued',
+      label: 'Sample',
+      scope,
+      issued_by_token_id: 'root',
+      created_at: '2025-01-01',
+      revoked_at: null,
+    },
+  ])
+  return ui
+}
+it('cancelling a revoke confirmation makes no request', async () => {
+  const ui = shareFixture(),
+    revoke = vi.fn()
+  vi.spyOn(ui, 'client').mockReturnValue({ revoke } as never)
+  const view = mount(TokenDialogs, {
+    props: { ui, mode: 'share', connectionId: ui.rows.value[0].id },
+    global: { stubs: { Modal: modalStub } },
+  })
+  await flushPromises()
+  await view
+    .findAllComponents(Icon)
+    .find((one) => one.props('icon') === 'ban')!
+    .trigger('click')
+  await view
+    .findAllComponents(Button)
+    .find((one) => one.props('text') === 'Keep access')!
+    .trigger('click')
+  expect(revoke).not.toHaveBeenCalled()
+  expect(view.text()).not.toContain('Revoke Sample')
+  view.unmount()
+})
+it('shows token list and revoke errors', async () => {
+  const ui = shareFixture()
+  const issued = vi.spyOn(ui, 'issued').mockRejectedValueOnce(new Error('List failed'))
+  const view = mount(TokenDialogs, {
+    props: { ui, mode: 'share', connectionId: ui.rows.value[0].id },
+    global: { stubs: { Modal: modalStub } },
+  })
+  await flushPromises()
+  expect(view.get('[role="alert"]').text()).toContain('could not finish')
+  view.unmount()
+  issued.mockResolvedValue([
+    {
+      id: 'issued',
+      label: 'Sample',
+      scope: { kind: 'folder', id: 'root', path: '/' },
+      issued_by_token_id: 'root',
+      created_at: '2025-01-01',
+      revoked_at: null,
+    },
+  ])
+  vi.spyOn(ui, 'client').mockReturnValue({
+    revoke: async () => {
+      throw new Error('Revoke failed')
+    },
+  } as never)
+  const next = mount(TokenDialogs, {
+    props: { ui, mode: 'share', connectionId: ui.rows.value[0].id },
+    global: { stubs: { Modal: modalStub } },
+  })
+  await flushPromises()
+  await next
+    .findAllComponents(Icon)
+    .find((one) => one.props('icon') === 'ban')!
+    .trigger('click')
+  await next
+    .findAllComponents(Button)
+    .find((one) => one.props('text') === 'Revoke')!
+    .trigger('click')
+  await flushPromises()
+  expect(next.get('[role="alert"]').text()).toContain('could not finish')
+  next.unmount()
+})
+it.each(['close', 'scope', 'connection'] as const)(
+  'discards a late issued token after %s',
+  async (change) => {
+    const ui = shareFixture()
+    let answer!: (value: { token: string }) => void
+    vi.spyOn(ui, 'client').mockReturnValue({
+      issue: () =>
+        new Promise((resolve) => {
+          answer = resolve
+        }),
+    } as never)
+    const view = mount(TokenDialogs, {
+      props: { ui, mode: 'share', connectionId: ui.rows.value[0].id },
+      global: { stubs: { Modal: modalStub } },
+    })
+    await flushPromises()
+    await view.find('input').setValue('Sample access')
+    await view
+      .findAllComponents(Button)
+      .find((one) => one.props('text') === 'Get token')!
+      .trigger('click')
+    if (change === 'close') view.findComponent(Modal).vm.$emit('close')
+    else if (change === 'scope') view.findComponent(Dropdown).vm.$emit('update:model-value', '1')
+    else await view.setProps({ connectionId: ui.rows.value[1].id })
+    await flushPromises()
+    answer({ token: 'late-secret-token' })
+    await flushPromises()
+    expect(view.text()).not.toContain('New token')
+    expect(view.html()).not.toContain('late-secret-token')
+    view.unmount()
+  }
+)
+it.each(['close', 'scope', 'connection'] as const)(
+  'discards a late access list after %s',
+  async (change) => {
+    const ui = shareFixture()
+    let answer!: (value: Awaited<ReturnType<TokenUi['issued']>>) => void
+    vi.spyOn(ui, 'issued')
+      .mockImplementationOnce(
+        () =>
+          new Promise((resolve) => {
+            answer = resolve
+          })
+      )
+      .mockResolvedValue([])
+    const view = mount(TokenDialogs, {
+      props: { ui, mode: 'share', connectionId: ui.rows.value[0].id },
+      global: { stubs: { Modal: modalStub } },
+    })
+    await flushPromises()
+    if (change === 'close') view.findComponent(Modal).vm.$emit('close')
+    else if (change === 'scope') view.findComponent(Dropdown).vm.$emit('update:model-value', '1')
+    else await view.setProps({ connectionId: ui.rows.value[1].id })
+    await flushPromises()
+    answer([
+      {
+        id: 'late',
+        label: 'Late access response',
+        scope: { kind: 'folder', id: 'root', path: '/' },
+        issued_by_token_id: 'root',
+        created_at: '2025-01-01',
+        revoked_at: null,
+      },
+    ])
+    await flushPromises()
+    expect(view.text()).not.toContain('Late access response')
+    view.unmount()
+  }
+)
 it('ends an unreachable connection attempt with a visible error and ignores its late answer', async () => {
   vi.useFakeTimers()
   const data = new Map<string, unknown>(),

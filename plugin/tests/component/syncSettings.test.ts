@@ -16,7 +16,6 @@ import SelectiveSync from '@/components/settings/sync/SelectiveSync.vue'
 import { AbeleConfig } from '@/services/AbeleConfig'
 import { TokenSettingsPort } from '@/sync/tokenSettingsPort'
 import { emptyConnection, type DeviceConnection } from '@/sync/connection'
-import type { ExistingPublicationQuestion } from '@/sync/publication/publicationDecision'
 import { defaultSyncSettings } from '@/sync/settings'
 import { DISCONNECTED_STATUS, type SyncStatus } from '@/sync/status'
 import { type ChangeItem } from '@abele/sync-protocol'
@@ -81,7 +80,6 @@ const service = {
   answerJoin: vi.fn(),
   heldPrompt: { held: ref<{ path: string; fileId: string }[]>([]), decided: ref(null) },
   codePrompt: { staged: ref([]), ask: vi.fn() },
-  publicationPrompt: { pending: ref<ExistingPublicationQuestion[]>([]), open: vi.fn() },
   settingsPrompt: {
     staged: ref<ChangeItem[]>([]),
     names: ref<Record<string, string>>({}),
@@ -140,7 +138,6 @@ beforeEach(() => {
   service.connected = false
   service.sharing.value = null
   service.heldPrompt.held.value = []
-  service.publicationPrompt.pending.value = []
   service.settingsPrompt.staged.value = []
   service.listDevices.mockResolvedValue(null)
   service.status.value = { ...DISCONNECTED_STATUS }

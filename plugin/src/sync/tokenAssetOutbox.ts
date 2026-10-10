@@ -34,6 +34,7 @@ export class TokenAssetOutbox {
   private operations: Promise<void> = Promise.resolve()
   private cached: Candidate[] = []
   private recovery: string | null = null
+  private readonly refused = new Map<string, { path: string; reason: string; key: string }>()
   constructor(
     private readonly options: {
       state: StateStore
@@ -41,6 +42,7 @@ export class TokenAssetOutbox {
       assertOwned(): void
       serial<T>(work: () => Promise<T>): Promise<T>
       approved(id: string): Promise<boolean>
+      maxBytes(): number
       send(one: Candidate, bytes: Uint8Array): Promise<unknown>
       changed(): void
     }
@@ -117,6 +119,13 @@ export class TokenAssetOutbox {
     bytes: Uint8Array
     mtime: number
   }): Promise<string> {
+    if (input.bytes.length > this.options.maxBytes()) {
+      const reason = 'This file is too large for this server'
+      this.refused.set(input.id, { path: input.path, reason, key: input.id })
+      this.options.changed()
+      throw errorOf('too_large', reason)
+    }
+    this.refused.delete(input.id)
     const marker = markerOf(input)
     const key = await this.mutate(async (queue) => {
       const prior = await this.options.state.getMeta(marker),
@@ -142,11 +151,14 @@ export class TokenAssetOutbox {
   }
   state(): { path: string; reason: string; key: string }[] {
     if (this.recovery) return [{ path: 'A file', reason: this.recovery, key: 'recovery' }]
-    return this.cached.map((one) => ({
-      path: one.path,
-      key: one.key,
-      reason: one.hold?.message ?? one.uncertain ?? 'The file is waiting to be sent',
-    }))
+    return [
+      ...this.refused.values(),
+      ...this.cached.map((one) => ({
+        path: one.path,
+        key: one.key,
+        reason: one.hold?.message ?? one.uncertain ?? 'The file is waiting to be sent',
+      })),
+    ]
   }
   private async process(id: string, retryHeld: boolean): Promise<Map<string, unknown>> {
     const errors = new Map<string, unknown>(),
@@ -159,6 +171,15 @@ export class TokenAssetOutbox {
       attempted.add(one.key)
       try {
         this.options.assertOwned()
+        if (one.bytes.length > this.options.maxBytes()) {
+          const refusal = { code: 'too_large', message: 'This file is too large for this server' }
+          await this.mutate(async (queue) => {
+            const current = queue.find((item) => item.key === one.key)
+            if (current) current.hold = refusal
+          })
+          errors.set(one.key, errorOf(refusal.code, refusal.message))
+          continue
+        }
         if (!(await this.options.approved(one.id))) {
           errors.set(
             one.key,
