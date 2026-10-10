@@ -1,17 +1,6 @@
 import { ChangeTracker } from '@/ai/rewind/ChangeTracker'
-import { deferredCleanup } from '@/helpers/deferredCleanup'
-import {
-  Editor,
-  EventRef,
-  MarkdownPostProcessorContext,
-  MarkdownView,
-  Notice,
-  Plugin,
-  Platform,
-  TFile,
-  TFolder,
-  type TAbstractFile,
-} from 'obsidian'
+import '@/helpers/deferredCleanup'
+import { MarkdownPostProcessorContext, Notice, Plugin, Platform } from 'obsidian'
 import { setKeyboardDiagnostics } from '@/helpers/keyboardDiagnostics'
 import { applySettingsLook } from '@/helpers/settingsLook'
 import './styles.css'
@@ -24,47 +13,40 @@ import { AgentRegistry } from './ai/agents/AgentRegistry'
 import { mobileBackground } from './ai/mobileBackground'
 import { SilentBackgroundAudio } from './ai/mobileBackgroundAudio'
 import { appSuspension, bindAppSuspension } from './ai/appSuspension'
-import { createNoteInGroup } from './commands/createNoteInGroup'
-import { commentHereInView } from './commands/commentCommands'
-import { registerNoteMenu } from './commands/noteMenu'
-import { NOTE_ACTIONS } from './commands/noteActions'
-import { isScriptPath } from './scripting/scriptPath'
-import { TemplateService } from './templates/TemplateService'
-import { taskStateField } from './editor/TaskPlugin'
-import { galleryExtensions } from './editor/GalleryPlugin'
-import { galleryPostProcessor } from './editor/galleryPostProcessor'
-import { recordSignatures, SIGNATURE_PROCESSOR_ORDER } from '@/components/obsidian/markdownParts'
-import { mermaidExtensions, refreshMermaidEditors } from './editor/MermaidPlugin'
-import { editorSyntaxExtension, refreshSyntaxEditors } from './editor/EditorSyntax'
-import { mermaidPostProcessor, MERMAID_PROCESSOR_ORDER } from './mermaid/mermaidBlocks'
-import { footnoteExtensions } from './editor/FootnotePlugin'
-import { highlightStateField } from './editor/HighlightPlugin'
-import { coloredHighlightPostProcessor } from './editor/highlightPostProcessor'
-import {
-  commentExtensions,
-  setCommentClickHandler,
-  setCommentInfoSource,
-} from '@/editor/CommentPlugin'
-import { TIMELINE_SIDEBAR_VIEW_TYPE, TimelineSidebarView } from './views/TimelineSidebarView'
-import { TODO_SIDEBAR_VIEW_TYPE, TodoSidebarView } from './views/TodoSidebarView'
-import { AI_SIDEBAR_VIEW_TYPE, AiSidebarView } from './views/AiSidebarView'
-import { FINANCE_SIDEBAR_VIEW_TYPE, FinanceSidebarView } from './views/FinanceSidebarView'
-import { ACCOUNTS_SIDEBAR_VIEW_TYPE, AccountsSidebarView } from './views/AccountsSidebarView'
+import './commands/createNoteInGroup'
+import './commands/commentCommands'
+import './commands/noteMenu'
+import './commands/noteActions'
+import './scripting/scriptPath'
+import './templates/TemplateService'
+import './editor/TaskPlugin'
+import './editor/GalleryPlugin'
+import './editor/galleryPostProcessor'
+import '@/components/obsidian/markdownParts'
+import './editor/MermaidPlugin'
+import './editor/EditorSyntax'
+import './mermaid/mermaidBlocks'
+import './editor/FootnotePlugin'
+import './editor/HighlightPlugin'
+import './editor/highlightPostProcessor'
+import '@/editor/CommentPlugin'
+import './views/TimelineSidebarView'
+import './views/TodoSidebarView'
+import './views/AiSidebarView'
+import './views/FinanceSidebarView'
+import './views/AccountsSidebarView'
 import { revealSidebarView } from './views/revealSidebarView'
-import {
-  TIME_TRACKING_SIDEBAR_VIEW_TYPE,
-  TimeTrackingSidebarView,
-} from './views/TimeTrackingSidebarView'
-import { SCRIPT_RUNS_VIEW_TYPE, ScriptRunsView } from './views/ScriptRunsView'
-import { USER_DOCS_VIEW_TYPE, UserDocsView, openUserDocs } from './views/UserDocsView'
+import './views/TimeTrackingSidebarView'
+import './views/ScriptRunsView'
+import './views/UserDocsView'
 import { registerChangelog } from './changelog/register'
-import { SCRIPT_VIEW_TYPE, ScriptView } from './views/ScriptView'
-import { CHART_VIEW_ID, ChartView } from './bases/ChartView'
-import { BaseProbeView, probeFor } from './analytics/sources/baseProbe'
-import { FIND_AND_REPLACE_VIEW_ID, FindAndReplaceView } from './bases/FindAndReplaceView'
-import { CALENDAR_VIEW_ID, CalendarView, calendarViewOptions } from './bases/CalendarView'
-import { TIMELINE_VIEW_ID, TimelineView, timelineViewOptions } from './bases/TimelineView'
-import { CODE_VIEW_TYPE, CodeView } from './views/CodeView'
+import './views/ScriptView'
+import './bases/ChartView'
+import './analytics/sources/baseProbe'
+import './bases/FindAndReplaceView'
+import './bases/CalendarView'
+import './bases/TimelineView'
+import './views/CodeView'
 import { registerDrawing } from './drawing/register'
 import { registerCanvas } from './canvas/register'
 import { registerReader } from './reader/register'
@@ -76,44 +58,44 @@ import { registerLinter } from './linter/register'
 import { ChatService } from './ai/ChatService'
 import { NodeService } from './node/NodeService'
 import { AgentsService } from './agents/AgentsService'
-import { openAgents, closeAgents } from './agents/openAgents'
+import { closeAgents } from './agents/openAgents'
 import { CommentService } from './ai/CommentService'
-import { registerTextComments } from './comments/register'
+import './comments/register'
 import { ScriptService } from './scripting/ScriptService'
 import { AutomationService } from './automations/AutomationService'
 import { ScriptViewService } from './scripting/view/ScriptViewService'
 import { preserveLocalScriptVersions } from './scripting/trust/localScriptUpgrade'
-import { showMarkdown } from './scripting/formModal'
-import { previewImage } from './commands/utilityDialogs'
-import { SCRIPT_API_DOCS } from './scripting/apiDocs'
-import { SCRIPT_VIEW_DOCS } from './scripting/view/viewDocs'
+import './scripting/formModal'
+import './commands/utilityDialogs'
+import './scripting/apiDocs'
+import './scripting/view/viewDocs'
 import { ScopeResolver } from './ai/ScopeResolver'
 import { ChatStorage } from './ai/ChatStorage'
-import { followChatBindingRename } from './ai/chatBindingRenames'
-import { renameDelegationIdentity } from './ai/delegationIdentity'
+import './ai/chatBindingRenames'
+import './ai/delegationIdentity'
 import weekday from 'dayjs/plugin/weekday'
 import updateLocale from 'dayjs/plugin/updateLocale'
 import dayOfYear from 'dayjs/plugin/dayOfYear'
 import dayjs from 'dayjs'
 import { AbeleSettingTab } from './settings'
-import { createHeaderExtension } from './editor/HeaderExtension'
+import './editor/HeaderExtension'
 import { VaultWatcherWrapper } from './helpers/VaultWatcherWrapper'
 import { exposeTestApi } from '@/testing/exposeTestApi'
 import { observePhoneReplayTransport } from '@/testing/phoneReplay'
 import { transportOf, type SyncServiceDeps } from '@/sync/environment'
-import { readFileContent } from './helpers/vaultUtils'
-import { runAfterSync } from './helpers/runAfterSync'
-import { handleProtocolAction } from './helpers/protocolHandler'
-import { handleLinkAction } from './helpers/linkHandler'
-import { registerChartCodeblock } from './editor/ChartCodeblock'
-import { registerMapCodeblock } from './editor/MapCodeblock'
-import { registerMessageCardBlock } from './ai/messageCards'
+import './helpers/vaultUtils'
+import './helpers/runAfterSync'
+import './helpers/protocolHandler'
+import './helpers/linkHandler'
+import './editor/ChartCodeblock'
+import './editor/MapCodeblock'
+import './ai/messageCards'
 import { SnippetService } from './services/SnippetService'
 import { startCalendars } from './calendars/start'
-import { dictate } from '@/audio/voiceModal'
+import '@/audio/voiceModal'
 import { registerLineLinks } from './lineLinks/register'
-import { registerCheckboxes } from './checkboxes/register'
-import { registerColumns } from './columns/register'
+import './checkboxes/register'
+import './columns/register'
 import './columns/styles.css'
 import { registerNotePlaces } from './notePlaces/register'
 import { registerGithub } from '@/github/register'
@@ -122,23 +104,29 @@ import { createPluginSecrets } from '@/secrets/host'
 import { initializeDestinations, checkRequestDestinations } from '@/secrets/destinations'
 import { setRequestGuard } from '@/helpers/http'
 import { markLoad } from '@/helpers/loadMarks'
-import { installUntrustedGuard, uninstallUntrustedGuard } from '@/markdown/renderUntrusted'
+import { uninstallUntrustedGuard } from '@/markdown/renderUntrusted'
 import { beginStartup, startupStep, startupStepAsync } from '@/helpers/startupSteps'
 import { startStartupScripts } from '@/scripting/startupRunner'
 import { claimVueSetters } from '@/helpers/vueGlobals'
-import { openChat, openSelectionLink } from '@/ai/openChat'
-import { keepChatFilesOutOfLeaves, routeChatAnchorLinks } from '@/ai/chatFileLeaves'
+import '@/ai/openChat'
+import '@/ai/chatFileLeaves'
 import { ChatSearchIndex } from '@/ai/ChatSearchIndex'
 import { applyQuickButton, setQuickButton } from '@/quickButton/mount'
-import { openQuickMenu } from '@/quickButton/open'
+import '@/quickButton/open'
 import { HeaderCommands } from '@/headerButtons/viewActions'
-import { moveFooterFolds } from '@/composables/useFooterFold'
-import { moveFooterView } from '@/composables/useFooterView'
+import '@/composables/useFooterFold'
+import '@/composables/useFooterView'
 import { SyncService } from './sync/SyncService'
 import { PluginSharing } from './sync/pluginSharing'
 import { renderStatus, type SyncStatus } from './sync/status'
 // Keep the extracted section last so its dependencies do not reorder the existing styles.
 import { registerCoreCommands } from '@/startup/registerCoreCommands'
+import { registerViews } from '@/startup/registerViews'
+import { registerBasesViews } from '@/startup/registerBasesViews'
+import { registerEditor } from '@/startup/registerEditor'
+import { registerWorkspaceEvents } from '@/startup/registerWorkspaceEvents'
+import { registerLinks } from '@/startup/registerLinks'
+import { registerAiFeatures } from '@/startup/registerAiFeatures'
 
 // Every module imported above has run its top-level code by now. See `helpers/loadMarks.ts`.
 markLoad('evalEnd')
@@ -325,7 +313,16 @@ export default class AbelePlugin extends Plugin {
       // into a key when this device was unlocked, not now.
       const secretStore = createPluginSecrets(this)
       setSecrets(secretStore)
-      await startupStepAsync('sync connection', () => SyncService.getInstance().openConnection(this.app).catch((e) => console.error('[Abele] the sync connection could not be read, or data.json not written without it', (e as Error)?.message)))
+      await startupStepAsync('sync connection', () =>
+        SyncService.getInstance()
+          .openConnection(this.app)
+          .catch((e) =>
+            console.error(
+              '[Abele] the sync connection could not be read, or data.json not written without it',
+              (e as Error)?.message
+            )
+          )
+      )
       await startupStepAsync('synced secrets', () =>
         secretStore.load().catch((e) => {
           console.error('[Abele] the synced secrets could not be opened', (e as Error)?.message)
@@ -435,408 +432,22 @@ export default class AbelePlugin extends Plugin {
 
   /** The panes the plugin opens: the sidebars, the code and documentation tabs. */
   private registerViews() {
-    this.registerView(TIMELINE_SIDEBAR_VIEW_TYPE, (leaf) => new TimelineSidebarView(leaf, this.app))
-    this.registerView(TODO_SIDEBAR_VIEW_TYPE, (leaf) => new TodoSidebarView(leaf, this.app))
-    this.registerView(FINANCE_SIDEBAR_VIEW_TYPE, (leaf) => new FinanceSidebarView(leaf, this.app))
-    this.registerView(ACCOUNTS_SIDEBAR_VIEW_TYPE, (leaf) => new AccountsSidebarView(leaf, this.app))
-    this.registerView(SCRIPT_RUNS_VIEW_TYPE, (leaf) => new ScriptRunsView(leaf, this.app))
-    this.registerView(SCRIPT_VIEW_TYPE, (leaf) => new ScriptView(leaf))
-    // Reader dashboards, live slides and restored tabs also execute scripts directly.
-    // The leaf host belongs to the registered view type, not to the optional script index.
-    ScriptViewService.getInstance()
-    this.registerView(
-      TIME_TRACKING_SIDEBAR_VIEW_TYPE,
-      (leaf) => new TimeTrackingSidebarView(leaf, this.app)
-    )
-
-    this.registerView(CODE_VIEW_TYPE, (leaf) => new CodeView(leaf))
-    // The documentation for people, opened by a command, from the settings and on first start.
-    this.registerView(USER_DOCS_VIEW_TYPE, (leaf) => new UserDocsView(leaf))
-    this.registerExtensions(
-      [
-        'json',
-        'css',
-        'js',
-        'ts',
-        'html',
-        'xml',
-        'yaml',
-        'yml',
-        'csv',
-        'txt',
-        'abchat',
-        'abcomment',
-      ],
-      CODE_VIEW_TYPE
-    )
-    // A chat file opened from anywhere — file explorer, quick switcher, a link, search — goes
-    // to the chat panel instead of replacing the note in front.
-    this.register(keepChatFilesOutOfLeaves(openChat, () => this.app.workspace))
-    this.register(routeChatAnchorLinks(this.app.workspace, openSelectionLink))
-
-    // AI sidebar is always registered so the view can be restored, but commands/ribbon are conditional
-    this.registerView(AI_SIDEBAR_VIEW_TYPE, (leaf) => new AiSidebarView(leaf, this.app))
+    registerViews(this)
   }
 
   /** The views the plugin adds to bases. */
   private registerBasesViews() {
-    // Custom Bases view types for finance
-    this.registerBasesView(CHART_VIEW_ID, {
-      name: 'Chart',
-      icon: 'chart-line',
-      // Inside an offscreen probe host the same id reads a base's rows for the analytics tools
-      // instead of drawing them — see `analytics/sources/baseProbe.ts`.
-      factory: (controller, containerEl) => {
-        const probe = probeFor(containerEl)
-        return probe
-          ? new BaseProbeView(controller, CHART_VIEW_ID, probe)
-          : new ChartView(controller, containerEl)
-      },
-      options: () => [
-        {
-          key: 'chartType',
-          type: 'dropdown' as const,
-          displayName: 'Chart type',
-          default: 'line',
-          options: {
-            line: 'Line',
-            bar: 'Bar',
-            scatter: 'Scatter',
-          },
-        },
-        {
-          key: 'dateProperty',
-          type: 'property' as const,
-          displayName: 'Date property (X axis)',
-          placeholder: 'Leave empty to use file name',
-        },
-        {
-          key: 'groupProperty',
-          type: 'property' as const,
-          displayName: 'Group by property',
-          placeholder: 'Optional — split into separate series',
-        },
-        {
-          key: 'showDots',
-          type: 'toggle' as const,
-          displayName: 'Show data points on lines',
-          default: false,
-        },
-        {
-          key: 'logScale',
-          type: 'toggle' as const,
-          displayName: 'Logarithmic scale',
-          default: false,
-        },
-        {
-          key: 'dualAxis',
-          type: 'toggle' as const,
-          displayName: 'Separate Y axis per series',
-          default: false,
-        },
-        {
-          key: 'timeAxis',
-          type: 'toggle' as const,
-          displayName: 'Proportional time axis',
-          default: false,
-        },
-        {
-          key: 'chartHeight',
-          type: 'slider' as const,
-          displayName: 'Chart height',
-          default: 500,
-          min: 200,
-          max: 1000,
-          step: 50,
-        },
-      ],
-    })
-
-    this.registerBasesView(FIND_AND_REPLACE_VIEW_ID, {
-      name: 'Find and replace',
-      icon: 'replace-all',
-      factory: (controller, containerEl) => new FindAndReplaceView(controller, containerEl),
-    })
-
-    // The notes a base finds on a month, a week or a year, placed by a date property.
-    this.registerBasesView(CALENDAR_VIEW_ID, {
-      name: 'Calendar',
-      icon: 'calendar-days',
-      factory: (controller, containerEl) => new CalendarView(controller, containerEl),
-      options: calendarViewOptions,
-    })
-
-    // History: people, events and eras on one line of years, placed by dates as notes write them.
-    this.registerBasesView(TIMELINE_VIEW_ID, {
-      name: 'Timeline',
-      icon: 'gantt-chart',
-      factory: (controller, containerEl) => new TimelineView(controller, containerEl),
-      options: timelineViewOptions,
-    })
+    registerBasesViews(this)
   }
 
   /** What the plugin adds to notes: editor extensions, post-processors and code blocks. */
   private registerEditor() {
-    installUntrustedGuard()
-    registerCheckboxes(this)
-    registerColumns(this)
-    this.registerEditorExtension(taskStateField)
-    this.registerEditorExtension(galleryExtensions)
-    this.registerEditorExtension(createHeaderExtension())
-    this.registerEditorExtension(footnoteExtensions)
-    this.registerEditorExtension(highlightStateField)
-    this.registerEditorExtension(commentExtensions)
-    registerTextComments(this)
-    const config = AbeleConfig.getInstance()
-    this.registerEditorExtension(editorSyntaxExtension(() => config.editorSyntaxHighlight))
-    this.register(
-      watch(
-        () => {
-          // Saves, transfers and settings arriving from sync all increment the version.
-          void config.version.value
-          return config.editorSyntaxHighlight
-        },
-        () => refreshSyntaxEditors(this.app)
-      )
-    )
-    // Reads each rendered block before anything draws into it, so a render replaced over and
-    // over — a reply being streamed — keeps the blocks that came back the same.
-    this.registerMarkdownPostProcessor(recordSignatures, SIGNATURE_PROCESSOR_ORDER)
-    // The gallery outside the editor: reading mode, embeds, chat, script views.
-    this.registerMarkdownPostProcessor(galleryPostProcessor)
-    // Coloured highlights outside the editor, for the same places.
-    this.registerMarkdownPostProcessor(coloredHighlightPostProcessor)
-    // Mermaid diagrams drawn by the plugin's viewer rather than Obsidian's: in rendered
-    // markdown ahead of Obsidian's own processor, and in Live Preview as the block's widget.
-    this.registerMarkdownPostProcessor(mermaidPostProcessor, MERMAID_PROCESSOR_ORDER)
-    this.registerEditorExtension(mermaidExtensions())
-    // Obsidian fires this when the vault is allowed to show diagrams (and when the viewer's
-    // setting changes, which fires it too): rendered markdown is redrawn by Obsidian, the
-    // editors are told here.
-    this.registerEvent(
-      (
-        this.app.workspace as unknown as {
-          on(name: 'post-processor-change', callback: () => void): EventRef
-        }
-      ).on('post-processor-change', () => refreshMermaidEditors(this.app))
-    )
-
-    // this.registerPriorityCodeblockPostProcessor(
-    //   TASK_CODEBLOCK_KEYWORD,
-    //   -100,
-    //   async (source: string, el, ctx) => TaskRenderer.register(source, el, ctx)
-    // )
-
-    registerChartCodeblock((lang, handler) =>
-      this.registerMarkdownCodeBlockProcessor(lang, handler)
-    )
-
-    registerMapCodeblock((lang, handler) => this.registerMarkdownCodeBlockProcessor(lang, handler))
-    // A chat message kept in a note, as a card that opens the chat at it.
-    registerMessageCardBlock((lang, handler) =>
-      this.registerMarkdownCodeBlockProcessor(lang, handler)
-    )
+    registerEditor(this)
   }
 
   /** The plugin's answers to what happens in the workspace, and its menu items. */
   private registerWorkspaceEvents() {
-    const orphanCleanup = deferredCleanup(() => GlobalStore.getInstance().cleanupOrphanedWidgets())
-    this.register(() => orphanCleanup.stop())
-    this.registerEvent(
-      this.app.workspace.on('css-change', () => {
-        GlobalStore.getInstance().themeVersion.value++
-      })
-    )
-
-    this.registerEvent(
-      this.app.workspace.on('active-leaf-change', (leaf) => {
-        const store = GlobalStore.getInstance()
-
-        const viewType = leaf?.view.getViewType()
-        if (viewType === 'empty') {
-          store.currentFile.value = null
-          return
-        }
-
-        // A chat file already in a leaf — a layout saved before chats were kept out of leaves
-        // (`keepChatFilesOutOfLeaves`) — goes to the chat panel, and its leaf with it.
-        if (leaf && viewType === CODE_VIEW_TYPE) {
-          const file = (leaf.view as any).file as TFile | undefined
-          if (file?.extension === 'abchat') {
-            leaf.detach()
-            void openChat(file)
-            return
-          }
-        }
-
-        if (leaf?.view.getViewType() !== 'markdown') return
-
-        const file = (leaf.view as MarkdownView).file
-
-        if (file) {
-          store.currentFile.value = file
-        }
-
-        // Delayed cleanup for widgets whose DOM was removed without CodeMirror calling destroy().
-        // The delay ensures CodeMirror's own destroy() runs first when it does fire.
-        orphanCleanup.schedule()
-      })
-    )
-
-    this.registerEvent(
-      this.app.workspace.on('file-menu', (menu, file) => {
-        // Add folders to the agent context.
-        if (file instanceof TFolder && AbeleConfig.getInstance().ai.enabled) {
-          menu.addItem((item) => {
-            item
-              .setTitle(NOTE_ACTIONS[0].title)
-              .setIcon(NOTE_ACTIONS[0].icon)
-              .onClick(async () => {
-                const chatService = ChatService.getInstance()
-                const session = chatService.activeSession.value
-                if (!session) return
-                session.scopeResolver.addFolder(file.path)
-                session.scopeResolver.invalidate()
-                const { workspace } = this.app
-                let leaf = workspace.getLeavesOfType(AI_SIDEBAR_VIEW_TYPE)[0] ?? null
-                if (!leaf) {
-                  leaf = workspace.getRightLeaf(false)
-                  await leaf.setViewState({ type: AI_SIDEBAR_VIEW_TYPE, active: true })
-                }
-                void workspace.revealLeaf(leaf)
-              })
-          })
-          return
-        }
-
-        if (!(file instanceof TFile)) return
-
-        // "Open version history (Abele)" for a file the server holds versions of. Named after
-        // the plugin because Obsidian's own Sync puts an "Open version history" in this same
-        // menu. Shown only on a device that is connected: on every other one the dialog could
-        // only say so.
-        if (SyncService.getInstance().isConnected()) {
-          menu.addItem((item) => {
-            item
-              .setTitle('Open version history (Abele)')
-              .setIcon('history')
-              .onClick(() => {
-                GlobalStore.getInstance().versionHistoryPath.value = file.path
-              })
-          })
-        }
-
-        // "Preview" for images
-        const IMAGE_EXTENSIONS = ['png', 'jpg', 'jpeg', 'gif', 'webp', 'bmp', 'svg']
-        if (IMAGE_EXTENSIONS.includes(file.extension.toLowerCase())) {
-          menu.addItem((item) => {
-            item
-              .setTitle('Preview')
-              .setIcon('eye')
-              .onClick(() => {
-                void previewImage(file.path)
-              })
-          })
-        }
-
-        // "Create note in group" for markdown files
-        if (file.extension === 'md') {
-          menu.addItem((item) => {
-            item
-              .setTitle('Create note in group')
-              .setIcon('file-plus')
-              .onClick(() => createNoteInGroup(file))
-          })
-        }
-
-        // "Open as code" for code files
-        const ext = file.extension
-        if (
-          ![
-            'base',
-            'json',
-            'css',
-            'js',
-            'ts',
-            'html',
-            'xml',
-            'yaml',
-            'yml',
-            'csv',
-            'txt',
-            'svg',
-          ].includes(ext)
-        )
-          return
-        menu.addItem((item) => {
-          item
-            .setTitle('Open as code')
-            .setIcon('code')
-            .onClick(async () => {
-              const leaf = this.app.workspace.getLeaf('tab')
-              await leaf.setViewState({
-                type: CODE_VIEW_TYPE,
-                state: { file: file.path },
-              })
-              this.app.workspace.setActiveLeaf(leaf, { focus: true })
-            })
-        })
-      })
-    )
-
-    registerNoteMenu(this)
-
-    // "Find and create aliases" on right-click in editor
-    this.registerEvent(
-      this.app.workspace.on('editor-menu', (menu, editor) => {
-        const selection = editor.getSelection()
-        if (!selection) return
-
-        const wikilinkRegex = /\[\[([^\]|]+)\|([^\]]+)\]\]/g
-        const links: { path: string; alias: string }[] = []
-        let match: RegExpExecArray | null
-        while ((match = wikilinkRegex.exec(selection)) !== null) {
-          links.push({ path: match[1].trim(), alias: match[2].trim() })
-        }
-        if (!links.length) return
-
-        menu.addItem((item) => {
-          item
-            .setTitle('Find and create aliases')
-            .setIcon('link')
-            .onClick(async () => {
-              let created = 0
-              for (const { path, alias } of links) {
-                const file = this.app.metadataCache.getFirstLinkpathDest(path, '')
-                if (!file) continue
-
-                const cache = this.app.metadataCache.getFileCache(file)
-                const existing = cache?.frontmatter?.aliases
-                if (Array.isArray(existing) ? existing.includes(alias) : existing === alias)
-                  continue
-
-                await this.app.fileManager.processFrontMatter(file, (fm) => {
-                  if (!fm.aliases) fm.aliases = []
-                  if (!Array.isArray(fm.aliases)) fm.aliases = [fm.aliases]
-                  fm.aliases.push(alias)
-                })
-                created++
-              }
-
-              if (created > 0) {
-                new Notice(`Created ${created} alias${created > 1 ? 'es' : ''}`)
-              } else {
-                new Notice('All aliases already exist')
-              }
-            })
-        })
-      })
-    )
-
-    const activeView = this.app.workspace.getActiveViewOfType(MarkdownView)
-    if (activeView?.file) {
-      GlobalStore.getInstance().currentFile.value = activeView.file
-    }
+    registerWorkspaceEvents(this)
   }
 
   /** The commands and ribbon icons that are there whatever the settings. */
@@ -846,55 +457,7 @@ export default class AbelePlugin extends Plugin {
 
   /** `obsidian://abele` links, and the default template for notes made from outside. */
   private registerLinks() {
-    // Register protocol handler for obsidian://abele
-    // Routes to link handler when "name" param is present, otherwise to protocol action
-    this.registerObsidianProtocolHandler('abele', (params) => {
-      const exec = () => {
-        if (params.name) {
-          void handleLinkAction(this.app, params)
-        } else {
-          void handleProtocolAction(this.app, params)
-        }
-      }
-
-      // Check if the link opts out of sync waiting
-      if (params.name) {
-        const link = AbeleConfig.getInstance().links.find((l) => l.name === params.name)
-        if (link && !link.waitForSync) {
-          exec()
-          return
-        }
-      }
-
-      runAfterSync(this.app, exec)
-    })
-
-    // Register default template hook only after workspace is ready
-    this.app.workspace.onLayoutReady(() => {
-      this.registerEvent(
-        this.app.vault.on('create', async (file) => {
-          if (!(file instanceof TFile)) return
-          if (file.extension !== 'md') return
-
-          // Check if path is excluded
-          if (AbeleConfig.getInstance().isPathExcludedFromDefaultTemplate(file.path)) return
-
-          // Journals have their own templates
-          if (AbeleConfig.getInstance().journals.some((j) => j.checkIfNotePathIsJournal(file.path)))
-            return
-
-          // Wait for 1 second to ensure there is no content being added (e.g., from Obsidian Web Clipper)
-          await new Promise((res) => window.setTimeout(res, 1000))
-
-          // Check if file is empty
-          const content = await readFileContent(file)
-          if (content.trim() !== '') return
-
-          // Apply default template
-          await TemplateService.getInstance().applyDefaultTemplate(file, true)
-        })
-      )
-    })
+    registerLinks(this)
   }
 
   /** True once the agent's commands and ribbon icon are on the screen. */
@@ -975,271 +538,8 @@ export default class AbelePlugin extends Plugin {
   }
 
   registerAiFeatures() {
-    const agents = AgentsService.getInstance()
-    this.addCommand({ id: 'agents', name: 'Agents', icon: 'activity', callback: openAgents })
-    const ribbon = this.addRibbonIcon('activity', 'Agents', openAgents)
-    ribbon.addClass('abele-agents-ribbon')
-    const badge = ribbon.createSpan({ cls: 'abele-agents-ribbon__badge' })
-    this.register(
-      watch([agents.badge, agents.tooltip], ([value, tooltip]) => {
-        badge.textContent = `${value.mark}${value.incomplete ? ' ?' : ''}`.trim()
-        ribbon.setAttribute('aria-label', tooltip)
-      }, { immediate: true })
-    )
-    this.app.workspace.onLayoutReady(() => { void agents.start() })
-    this.registerEvent(
-      this.app.vault.on('rename', (file, oldPath) => {
-        if (file instanceof TFile && file.extension === 'abchat') void agents.updateFile(file, oldPath)
-        else if (file instanceof TFolder) {
-          for (const child of this.app.vault.getFiles()) if (child.extension === 'abchat' && child.path.startsWith(`${file.path}/`)) {
-            void agents.updateFile(child, oldPath + child.path.slice(file.path.length))
-          }
-        }
-      })
-    )
-    this.registerEvent(
-      this.app.vault.on('delete', (file) => {
-        if (file instanceof TFile && file.extension === 'abchat') agents.deleted(file.path)
-      })
-    )
-    const onChatFileChanged = (file: TAbstractFile) => {
-      if (!(file instanceof TFile) || file.extension !== 'abchat') return
-      // An open tab is not authoritative over a synced file. The adapter applies disk
-      // decisions read-only; its own writes use the same monotonic resolution rule.
-      agents.scheduleFile(file)
-    }
-    this.registerEvent(this.app.vault.on('create', onChatFileChanged))
-    this.registerEvent(this.app.vault.on('modify', onChatFileChanged))
-    // The editor's comment field reads this synchronously to draw each marker's icon.
-    setCommentInfoSource(CommentService.getInstance())
-
-    // The passage a comment is about is painted open only while the comment is on screen.
-    // A sidebar collapsing is a resize and a tab coming forward is a leaf change; neither is
-    // anything the editor would hear about on its own.
-    this.registerEvent(
-      this.app.workspace.on('resize', () => CommentService.getInstance().reconsiderOpen())
-    )
-    this.registerEvent(
-      this.app.workspace.on('active-leaf-change', () =>
-        CommentService.getInstance().reconsiderOpen()
-      )
-    )
-
-    // The editor owns the press; the service owns what it opens. Injected rather than
-    // imported, so `CommentPlugin` and `CommentService` do not import each other.
-    setCommentClickHandler((ids) => {
-      CommentService.getInstance().openFrom(ids)
-    })
-
-    this.addCommand({
-      id: 'comment-here',
-      name: 'Comment here',
-      icon: 'message-circle-plus',
-      editorCallback: (_editor: Editor, view: MarkdownView) => {
-        void commentHereInView(view)
-      },
-    })
-
-    // Beside the note actions, offered with or without a selection: a
-    // comment at the caret is a question about the place, not about a passage.
-    this.registerEvent(
-      this.app.workspace.on('editor-menu', (menu, _editor, view) => {
-        // A `MarkdownFileInfo` has no `save()`, and a comment cannot wait on a buffer nobody
-        // can flush — only a real pane is offered the item.
-        if (!(view instanceof MarkdownView) || !view.file) return
-
-        menu.addItem((item) => {
-          item
-            .setTitle('Ask here')
-            .setIcon('message-circle-plus')
-            .onClick(() => {
-              void commentHereInView(view)
-            })
-        })
-      })
-    )
-
-    this.registerEvent(
-      this.app.vault.on('rename', (file, oldPath) => {
-        if (!(file instanceof TFile)) return
-        // A chat is renamed after its title; comments on its answers name it by path.
-        if (file.extension === 'abchat') {
-          renameDelegationIdentity(oldPath, file.path)
-          void CommentService.getInstance().handleRename(oldPath, file.path)
-          return
-        }
-        // A script's chats name it by path too, and follow it the same way a note's do.
-        if (isScriptPath(oldPath) || isScriptPath(file.path)) {
-          void ChatStorage.getInstance().handleNoteRename(oldPath, file.path)
-          return
-        }
-        if (file.extension !== 'md') return
-        // The lists folded under it stay folded, and as far down and as open as they were.
-        moveFooterFolds(oldPath, file.path)
-        moveFooterView(oldPath, file.path)
-        // Keep binding rewrites behind existing maintenance of the same chat records.
-        void Promise.all([
-          CommentService.getInstance().handleRename(oldPath, file.path),
-          ChatStorage.getInstance().handleNoteRename(oldPath, file.path),
-        ])
-          .then(() => followChatBindingRename(oldPath, file.path))
-          .catch((error) => {
-            new Notice(
-              'Could not follow a card rename in chat links. Reopen the source before changing links.'
-            )
-            console.error('[Abele] Card link rename failed', error)
-          })
-      })
-    )
-
-    // A comment file arriving or leaving from outside `CommentService` itself — sync, a
-    // restore, or a person deleting one by hand — rather than through `create`/`remove`.
-    this.registerEvent(
-      this.app.vault.on('create', (file) => {
-        if (!(file instanceof TFile) || file.extension !== 'abchat') return
-        const comments = CommentService.getInstance()
-        if (!comments.isCommentFile(file)) return
-        comments.handleFileCreated(file.basename)
-      })
-    )
-
-    this.registerEvent(
-      this.app.vault.on('delete', (file) => {
-        if (!(file instanceof TFile) || file.extension !== 'abchat') return
-        const comments = CommentService.getInstance()
-        // Every deletion is exact-path scoped, including an undiscovered outside-folder copy.
-        comments.handleFileDeleted(file.path)
-      })
-    )
-
-    // A chat file changing without this device changing it — sync landing while the app is
-    // open. What it may have brought is the record of a note that chat wrote to, and that
-    // record is what a footer under the note draws its card from. A file a session here has
-    // open is skipped: that one writes its own entry as it goes, and re-reading it would be a
-    // read of the whole conversation on every save.
-    this.registerEvent(
-      this.app.vault.on('modify', (file) => {
-        if (!(file instanceof TFile) || file.extension !== 'abchat') return
-        if (ChatService.getInstance().getSessionByFile(file.path)) return
-        void ChatStorage.getInstance().refreshEntry(file)
-      })
-    )
-
-    // The same question at startup, which is where most of it is answered: the index is this
-    // device's own cache (`chat-index.json`), so every chat another device wrote is behind.
-    this.app.workspace.onLayoutReady(() => {
-      void ChatStorage.getInstance().refreshHistory()
-    })
-
-    this.addCommand({
-      id: 'show-ai-sidebar',
-      name: 'Show AI chat sidebar',
-      icon: 'bot',
-      // Through the chat service rather than `activateView`: a blank chat shown this way gets
-      // the cursor, and only the service knows whether the chat in front is blank.
-      callback: () => {
-        void ChatService.getInstance().revealSidebar()
-      },
-    })
-
-    // Finding words: in the chat in front, and in every chat there has been. Both show the chat
-    // panel first; the chat on screen takes the request (`AiChat.vue`).
-    this.addCommand({
-      id: 'find-in-chat',
-      name: 'Find in the current chat',
-      icon: 'search',
-      callback: () => {
-        const chats = ChatService.getInstance()
-        void chats.revealSidebar({ focus: false }).then(() => (chats.findRequest.value = true))
-      },
-    })
-
-    this.addCommand({
-      id: 'search-all-chats',
-      name: 'Search all chats',
-      icon: 'history',
-      callback: () => {
-        const chats = ChatService.getInstance()
-        void chats.revealSidebar({ focus: false }).then(() => (chats.historyRequest.value = true))
-      },
-    })
-
-    this.addRibbonIcon(AiSidebarView.getIcon(), 'Show AI chat', () => {
-      void ChatService.getInstance().revealSidebar()
-    })
-
-    // Registered whether or not scripts are enabled: the reference is what someone reads
-    // while deciding to turn them on.
-    this.addCommand({
-      id: 'voice-input',
-      name: 'Dictate into the note',
-      icon: 'mic',
-      editorCallback: (editor) => {
-        void dictate(this.app).then((text) => {
-          if (!text) return
-          // At the cursor, and the cursor after it: dictating twice in a row should append
-          // rather than overwrite what the first go put there.
-          editor.replaceSelection(text)
-          editor.focus()
-        })
-      },
-    })
-
-    this.addCommand({
-      id: 'show-script-runs',
-      name: 'Show script runs',
-      icon: ScriptRunsView.getIcon(),
-      callback: () => {
-        void this.activateView(SCRIPT_RUNS_VIEW_TYPE)
-      },
-    })
-
-    this.addCommand({
-      id: 'open-documentation',
-      name: 'Open documentation',
-      icon: UserDocsView.getIcon(),
-      callback: () => void openUserDocs(this.app),
-    })
-
-    // The quick button's menu without the button: bound to a key, or from the palette.
-    this.addCommand({
-      id: 'open-quick-menu',
-      name: 'Open quick menu',
-      icon: 'zap',
-      callback: () =>
-        void openQuickMenu(this.app, {
-          x: window.innerWidth / 2,
-          y: window.innerHeight / 2,
-        }),
-    })
-    // Over the workspace, so only once there is one to be over.
-    this.app.workspace.onLayoutReady(() => applyQuickButton())
-
-    // Command buttons among the icons at the top right of a note; see `headerButtons/viewActions.ts`.
-    this.app.workspace.onLayoutReady(() => {
-      this.headerCommands = new HeaderCommands()
-      this.headerCommands.start(this)
-    })
-
-    // The first start in a vault: no settings file yet. The documentation is the way in, and it
-    // is shown once — the settings are written straight after, so the next start is not a first.
-    if (AbeleConfig.getInstance().freshInstall) {
-      this.app.workspace.onLayoutReady(() => {
-        void openUserDocs(this.app)
-        void AbeleConfig.getInstance().saveSettings()
-      })
-    }
-
-    this.addCommand({
-      id: 'show-script-api',
-      name: 'Show script API reference',
-      icon: 'book-open',
-      callback: () => {
-        // No title: the reference opens with its own heading, which the modal lifts into the
-        // title bar rather than showing a second name above it. The views reference follows
-        // the main one — a person asking for the API wants all of it, not a second command.
-        void showMarkdown(SCRIPT_API_DOCS + '\n\n---\n\n' + SCRIPT_VIEW_DOCS)
-      },
+    registerAiFeatures(this, (commands) => {
+      this.headerCommands = commands
     })
   }
 
