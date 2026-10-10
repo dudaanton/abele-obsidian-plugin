@@ -299,11 +299,6 @@ const lineClass = (line: DiffLine) => ({
     color: var(--abele-diff-added-ink);
   }
 }
-.abele-diff__changed {
-  border-radius: var(--radius-s);
-  box-decoration-break: clone;
-  -webkit-box-decoration-break: clone;
-}
 
 // A folded run is a band across the card: the glyph in the number column, the words on the
 // text's edge. Obsidian's own fold is centred text between margins, made for a whole-file modal.
