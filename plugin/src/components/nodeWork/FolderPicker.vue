@@ -45,6 +45,14 @@
         <span class="abele-folder-picker__name">{{ row.up ? '..' : row.name }}</span>
         <span v-if="row.git" class="abele-folder-picker__branch">{{ row.git.branch }}</span>
         <StatusDot v-if="row.open" tone="accent" label="Already open" />
+        <Icon
+          v-if="!row.up"
+          class="abele-folder-picker__inside"
+          icon="chevron-right"
+          size="xs"
+          :tooltip="`Go into ${row.name}`"
+          @click.stop="go(row.path)"
+        />
       </div>
       <div v-if="!rows.length && !listing.error" class="abele-folder-picker__empty">
         No folders here
@@ -248,6 +256,10 @@ body.is-phone .abele-folder-picker__row {
   color: var(--text-faint);
   font-family: var(--font-monospace);
   font-size: var(--font-ui-smaller);
+}
+.abele-folder-picker__inside {
+  flex: 0 0 auto;
+  margin-block: calc(-1 * var(--size-4-1));
 }
 .abele-folder-picker__empty {
   padding: var(--size-4-2);
