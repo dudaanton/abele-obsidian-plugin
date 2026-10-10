@@ -114,11 +114,11 @@ describe('the cursor in the composer', () => {
       kind: 'chat',
       overrides: {
         pendingQuestions: ref({
-          id: 'sample-question',
           questions: [{ question: 'Which sample folder?', options: [] }],
           currentIndex: 0,
           answers: [],
         }),
+        attention: ref({ question: { id: 'sample-question', status: 'waiting' } }),
         answerCurrentQuestion: answer,
       },
     })

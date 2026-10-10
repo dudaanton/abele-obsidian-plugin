@@ -291,7 +291,7 @@
         <div
           v-if="currentQuestion"
           class="abele-ai-chat__questions"
-          :data-attention-id="session?.pendingQuestions.value?.id"
+          :data-attention-id="session?.attention?.value.question?.id"
         >
           <div class="abele-ai-chat__questions-question">{{ currentQuestion.question }}</div>
           <div class="abele-ai-chat__questions-options">

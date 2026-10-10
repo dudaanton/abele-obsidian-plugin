@@ -92,6 +92,46 @@ describe('real agents list on synthetic states', () => {
       expect(violations).toEqual([])
     })
   }
+  it('Reply opens the existing live question and focuses its composer without answering', async () => {
+    const raw = await evalLong(`(async () => {
+      ${close}
+      const chats = window.__abeleTest.ChatService.getInstance()
+      const previous = chats.activeTabId.value
+      const id = chats.newTab()
+      const session = chats.getSession(id)
+      try {
+        session.chatTitle.value = 'Fabricated waiting question'
+        const questions = [{ question: 'Which fabricated folder?', options: [] }]
+        session.pendingQuestions.value = { questions, currentIndex: 0, answers: [], resolve: () => {} }
+        session.attention.value = { question: { id: 'fabricated-question', at: Date.now(), status: 'waiting', currentIndex: 0, answers: [], questions } }
+        await chats.revealSidebar({ focus: false })
+        app.commands.executeCommandById('abele:agents')
+        await new Promise(r => setTimeout(r, 300))
+        const row = [...document.querySelectorAll('.abele-list-row')].find(el => el.querySelector('.abele-list-row__title-text')?.textContent === session.chatTitle.value)
+        if (!row) throw new Error('Live question is not in the list')
+        row.querySelector('.abele-list-row__recovery button').click()
+        await new Promise(r => setTimeout(r, 500))
+        const question = document.querySelector('.abele-ai-chat__questions')
+        const composer = document.querySelector('.abele-chat-input')
+        return JSON.stringify({ modalClosed: !document.querySelector('.abele-agents'), exactQuestion: question?.dataset.attentionId === 'fabricated-question', composerFocused: composer?.contains(document.activeElement), waiting: session.attention.value.question?.status, pending: !!session.pendingQuestions.value, sameSession: chats.activeSession.value === session })
+      } finally {
+        ${close}
+        session.pendingQuestions.value = null
+        session.attention.value = {}
+        chats.dropTab(id)
+        session.destroy()
+        if (previous) chats.setActiveTab(previous)
+      }
+    })()`)
+    expect(JSON.parse(raw)).toEqual({
+      modalClosed: true,
+      exactQuestion: true,
+      composerFocused: true,
+      waiting: 'waiting',
+      pending: true,
+      sameSession: true,
+    })
+  })
   it.skipIf(onPhone())(
     'activates the native opening button once for Enter and once for Space',
     async () => {
