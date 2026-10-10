@@ -52,6 +52,7 @@ beforeEach(() => {
 })
 
 afterEach(() => {
+  vi.restoreAllMocks()
   vi.useRealTimers()
 })
 
@@ -113,6 +114,26 @@ describe('pinning a target into view', () => {
     paneHeight = 500
     vi.advanceTimersByTime(60)
     expect(pane.scrollTop).toBe(784)
+  })
+
+  it('restores a changed layout during ResizeObserver delivery, before the next paint, and releases it on owner input', () => {
+    let resize: (() => void) | undefined
+    const observe = vi.fn(),
+      disconnect = vi.fn()
+    vi.spyOn(window, 'ResizeObserver').mockImplementation(function (callback) {
+      resize = () => callback([], { observe, disconnect, unobserve: vi.fn() })
+      return { observe, disconnect, unobserve: vi.fn() }
+    })
+    pinIntoView(inner, elementTop(find))
+    expect(observe).toHaveBeenCalledWith(inner)
+    targetY = 1100
+    resize!()
+    expect(pane.scrollTop).toBe(1084)
+    pane.dispatchEvent(new Event('wheel'))
+    expect(disconnect).toHaveBeenCalled()
+    targetY = 1400
+    resize!()
+    expect(pane.scrollTop).toBe(1084)
   })
 
   it('follows the target while what is above it grows', () => {

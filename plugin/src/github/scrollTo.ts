@@ -113,11 +113,13 @@ export function pinIntoView(from: Element, locate: Locate, options: PinOptions =
   running.get(container)?.()
 
   let cancelTick: () => void = () => {}
+  let resize: ResizeObserver | undefined
   let stopped = false
   const stop = () => {
     if (stopped) return
     stopped = true
     cancelTick()
+    resize?.disconnect()
     for (const type of INTERRUPTIONS) container.removeEventListener(type, stop, true)
     if (running.get(container) === stop) running.delete(container)
   }
@@ -155,6 +157,18 @@ export function pinIntoView(from: Element, locate: Locate, options: PinOptions =
     cancelTick = soon(win, tick)
   }
 
+  // CodeMirror can finish measuring after an animation-frame callback. Resize delivery
+  // runs after those layouts and before paint, so a refresh cannot flash a shifted viewport.
+  const Resize = win.ResizeObserver
+  if (typeof Resize === 'function') {
+    resize = new Resize(() => {
+      if (stopped) return
+      cancelTick()
+      tick()
+    })
+    resize.observe(from)
+    resize.observe(container)
+  }
   tick()
   return stop
 }

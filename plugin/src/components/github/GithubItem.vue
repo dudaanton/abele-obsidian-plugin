@@ -1029,6 +1029,37 @@ watch(
           const scroller = root.value?.closest('.abele-github-layout__main')
           const scroll = scroller?.scrollTop
           const refreshKey = loadKey.value
+          let interrupted = false
+          const interrupt = () => {
+            interrupted = true
+            unpin()
+          }
+          const gestures = ['wheel', 'touchstart', 'pointerdown', 'keydown'] as const
+          for (const gesture of gestures) scroller?.addEventListener(gesture, interrupt, true)
+          const preserveScroll = (reading = false) => {
+            if (
+              !interrupted &&
+              scroller &&
+              scroll !== undefined &&
+              root.value &&
+              active &&
+              loadKey.value === refreshKey &&
+              current === source.value
+            ) {
+              unpin()
+              unpin = pinIntoView(
+                root.value,
+                () => {
+                  const top = scroller.getBoundingClientRect().top + scroll - scroller.scrollTop
+                  return reading ? { estimate: top } : top
+                },
+                { context: 0, ...(reading ? { settleMs: 30_000 } : {}) }
+              )
+            }
+          }
+          // Start before reading: another invalidation can arrive while a refresh is still
+          // running, and its intermediate DOM must keep the owner's position too.
+          preserveScroll(true)
           try {
             do {
               refreshAgain = false
@@ -1040,24 +1071,9 @@ watch(
               current === source.value
             )
             await nextTick()
-            if (
-              scroller &&
-              scroll !== undefined &&
-              root.value &&
-              active &&
-              loadKey.value === refreshKey &&
-              current === source.value
-            ) {
-              // CodeMirror and native scroll anchoring settle after Vue's tick. Keep the
-              // original position through those layouts, but stop as soon as the owner acts.
-              unpin()
-              unpin = pinIntoView(
-                root.value,
-                () => scroller.getBoundingClientRect().top + scroll - scroller.scrollTop,
-                { context: 0 }
-              )
-            }
+            preserveScroll()
           } finally {
+            for (const gesture of gestures) scroller?.removeEventListener(gesture, interrupt, true)
             refreshRunning = false
           }
         }

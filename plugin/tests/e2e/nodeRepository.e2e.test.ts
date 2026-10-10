@@ -126,7 +126,7 @@ it('opens the real node repository in the shared tab, follows history, compares,
       const code=document.querySelector('.abele-github-blob > .abele-github-code .cm-content'),editor=api.codeView(code);
       if(!editor.state.doc.toString().includes('value = 5'))throw Error('Refresh lost the draft');
       if(editor.state.selection.main.anchor!==window.__sampleRepositoryCursor)throw Error('Refresh lost the cursor');
-      if(Math.abs(code.closest('.abele-github-layout__main').scrollTop-window.__sampleRepositoryScroll)>1)throw Error('Refresh lost the scroll position');
+      if(Math.abs(code.closest('.abele-github-layout__main').scrollTop-window.__sampleRepositoryScroll)>1)throw Error('Refresh lost the scroll position: '+JSON.stringify({expected:window.__sampleRepositoryScroll,actual:code.closest('.abele-github-layout__main').scrollTop,height:code.closest('.abele-github-layout__main').scrollHeight,viewport:code.closest('.abele-github-layout__main').clientHeight,lines:editor.state.doc.lines,cursor:editor.state.selection.main.anchor}));
       [...document.querySelectorAll('.abele-github-blob__changed button')].find(b=>b.textContent.trim()==='Keep mine').click();
       [...document.querySelectorAll('.abele-node-save button')].find(b=>b.textContent.trim()==='Save file').click();
       await until(()=>document.querySelector('.abele-node-save')?.textContent.includes('Conflict ·'));
