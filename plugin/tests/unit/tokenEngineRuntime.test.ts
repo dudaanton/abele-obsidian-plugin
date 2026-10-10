@@ -10,7 +10,7 @@ import { TokenAttachmentHost } from '@/sync/tokenAttachmentHost'
 import { useVault } from '../helpers/testEnv'
 import { NativeSyncFailure } from '@/sync/mobileTransport'
 
-it('keeps native pre-send failure details and error status after core wraps it as offline', async () => {
+it('keeps native pre-send failure details and error status through the classified core transport', async () => {
   const metadata = new MemoryStateStore()
   const changed = vi.fn()
   const failed = vi.fn()
@@ -32,10 +32,8 @@ it('keeps native pre-send failure details and error status after core wraps it a
     covers: async () => false,
   })
   try {
-    await expect(one.sync()).rejects.toMatchObject({ code: 'offline' })
-    expect(failed).toHaveBeenCalledWith(
-      expect.objectContaining({ code: 'native-sync', phase: 'encoding' })
-    )
+    await expect(one.sync()).rejects.toMatchObject({ code: 'io' })
+    expect(failed).toHaveBeenCalledWith(expect.objectContaining({ code: 'io', phase: 'encoding' }))
     expect(changed.mock.calls.at(-1)?.[0]).toMatchObject({
       state: 'error',
       lastError: expect.stringContaining("Couldn't send changes"),

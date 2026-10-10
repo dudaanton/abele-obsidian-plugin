@@ -1,9 +1,12 @@
 # Token engine integration
 
 The production plugin pins core and protocol to server commit
-`695f4e7e070879bb33ed09ee7c502228d87a062d`. The vendor script generated
+`cb60097fa66228a6bd183cb33cb3d0903b409123`. The vendor script generated
 the archives and provenance; package.json, package-lock.json and SERVER_TEST_COMMIT
-use the same input. No server source is changed.
+use the same input. This revision preserves classified host transport errors and tolerates
+transient server SQLite snapshot contention. Mobile transport emits classified EngineErrors;
+core carries their sanitized diagnostics and status without a plugin status override.
+No server source is changed.
 
 `TokenEngines` opens an independent IndexedDB ledger and runtime fence for each
 device-local registry record. Its UI bindings start, sync, pause and disconnect

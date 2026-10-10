@@ -1,5 +1,5 @@
 {
-  "commit": "695f4e7e070879bb33ed09ee7c502228d87a062d",
+  "commit": "cb60097fa66228a6bd183cb33cb3d0903b409123",
   "lockSha256": "5085f099d0b0f91e9d740433239739a90065930a7ecccaaaf7dfa17f40bbca15",
   "node": "v22.23.2",
   "npm": "10.9.8",
@@ -7,9 +7,9 @@
   "sourceMap": false,
   "packages": {
     "@abele/sync-protocol": {
-      "archive": "abele-sync-protocol-0.0.0-695f4e7e0708.tgz",
-      "sha256": "e2cec8eec18a1ac05907793c10bc2f99d93956f4e6f1f2197044ca95af3d697e",
-      "integrity": "sha512-ntQd4dOE07NlQYxLzAkJzu/YR4tr18InRko5ZU6dScBmPk9sTLENOccwnL5YWUWdr5S60enHZ13NTKUlW+TOsg==",
+      "archive": "abele-sync-protocol-0.0.0-cb60097fa662.tgz",
+      "sha256": "032814bfbf183c28c0ec9844c334f01a99a3ce31cf2f404620f15a7941233918",
+      "integrity": "sha512-SdWc+j7/zbgSVqMEx+EXcAy7qw5n2Q6FP0co2TT3QbfCHUJtuJqrVBZ0Y0SMZ0NKZI/wGtEqlv/nSvdDysw56Q==",
       "tree": "81d8279a7fec4e37d1acd16723faab7b5fa5383e",
       "files": {
         "dist/capabilities.d.ts": "eb75091b4222db8a851d7a96c547a25fc88dc56b1c5d5c2939b7927e331977b6",
@@ -48,14 +48,14 @@
         "dist/sponsoredAssets.js": "e05221404d2c6a8d0154718ce673ffaca726979c88e6d93c6bffe7103b9a49f1",
         "dist/v2.d.ts": "b8263c129c435074f5a4faaa5ae98adc3abbc654ef095189e9cabb8e200977ce",
         "dist/v2.js": "c37d123af26a73230760be49ed9f88e792b79dcffa62a32e39a22e35f6d29d93",
-        "package.json": "be0d60b9ed120707fb39dc903f411ae9d0e00c5a716964a5df3a371a6bc73c31"
+        "package.json": "e0bf66af28135d5e90d7f9b1cdfce874a40fc74d52b781dae65634c5cfd6060b"
       }
     },
     "@abele/sync-core": {
-      "archive": "abele-sync-core-0.0.0-695f4e7e0708.tgz",
-      "sha256": "d8279de64504cab82d675fc6a6aaebee664528c95581ce2c09d614764ecb07f8",
-      "integrity": "sha512-VLJ3ZsSW6vvgJGimnWEZBO/WktEILAnjDfIc4pdanHl9VE+GUJm7Ve12q9dtE+VJGvaaM2Xts78ZwufknuMXww==",
-      "tree": "e09aa41c95cdc5ef0d108ae1a4bdceac5c3a0721",
+      "archive": "abele-sync-core-0.0.0-cb60097fa662.tgz",
+      "sha256": "a0501d275a4b9b7b27d190cd305447871526b61b2abdf6ed4782728a6d00ad99",
+      "integrity": "sha512-lLOgtHAnkoBguiBkowQfEdJwPBdlfL8yb997SLlDOL/ZRBIsu3Cpy/d68IJraipIYo2E7skHm4rRUKr/8rm00g==",
+      "tree": "b4ef1998c9e8601af3487f2c9586f87ec14ad535",
       "files": {
         "dist/accessClient.d.ts": "c190f9ab00798ea599cbe3a729f9db31adc1aba055337b66f8a2f2bb2e4fcd6d",
         "dist/accessClient.js": "16533ae602b2ce0972f853b5da8e3c5f990ad12cbd458bda30e7bbd0c81a3490",
@@ -97,8 +97,8 @@
         "dist/guard.js": "dc7d73c99f4fc21ad6fa2cd00c1681adb61aba369d5403913242cbb717b789c5",
         "dist/hash.d.ts": "5585777664f95cd52d9962e3f28298463861d05ab3c87bc5824924724ed83e70",
         "dist/hash.js": "1a6e745a742db3de5d1bcef5423a00295fa71fb3b5de46f77e7972ee02a38c1a",
-        "dist/http.d.ts": "28b285cedb5dc03f0938c612e1c49662ebe0c7cb14f5f46b846e2b7222ea0d1c",
-        "dist/http.js": "c96ad60c5d764c56318ac032bec0585830f91ed5d190ad12f02070aaf1abc225",
+        "dist/http.d.ts": "0acc5b61989a21bb7eabe27b8ae235dc5d0bf8a689cc6b04a327dd9340a3c0a3",
+        "dist/http.js": "03c4d335a3bb947c6dc6852e5e134359bad6db0e59a94918d6bcd9b6641586a7",
         "dist/ignore.d.ts": "2a0949eea8c4376e2b5c0ebe39b3262459e84c6c12dcaed14f19c06a8cee5213",
         "dist/ignore.js": "dd49e7dd9a618ab616817914720d953e674af691f0affb47afbabfbde39f0bc4",
         "dist/index.d.ts": "2a2c3281bab54d6c60f71d27bdb1133ac3d8cef7ca0aaf10303ed05682d71f49",
@@ -147,7 +147,7 @@
         "dist/wake.js": "e68b5b45c2c0f950a7f93e9c61760f7b2be7ca67f5ea0f6ffac30b43767c9423",
         "dist/watchReports.d.ts": "da31039a76e466f7f08677d2b9c584734ce6addd6a66b03ef93cfebc8ba69d48",
         "dist/watchReports.js": "bb575feac69ffb45956fb06b390ece752b327b2cae9d65d62299e1a4b8f511ec",
-        "package.json": "dd14f4d15c1b508f8a98af92438eb1c7f905a5c012e1c07235e0763a62de55bb"
+        "package.json": "b539ed054ee80b1d5770153ada38186334302cb56453f428e4181312d0cf8ce1"
       }
     }
   }

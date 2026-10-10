@@ -84,7 +84,6 @@ export class TokenEngineRuntime implements ConnectionRuntime, TokenUiRuntime {
   private ignore: PathMatcher | null = null
   private authority: V2Connection | null = null
   private readonly compared = new Set<string>()
-  private transportFailure: ReturnType<typeof nativeSyncFailure>
   private held = new Set<string>()
   private readonly manifestIds = new Set<string>()
   private readonly assetPaths = new Map<string, string>()
@@ -108,7 +107,6 @@ export class TokenEngineRuntime implements ConnectionRuntime, TokenUiRuntime {
           } catch (error) {
             const native = nativeSyncFailure(error)
             if (native) {
-              this.transportFailure = native
               this.trace.log(native.message)
             }
             throw error
@@ -324,7 +322,6 @@ export class TokenEngineRuntime implements ConnectionRuntime, TokenUiRuntime {
       ...(options.paths?.scriptsFolder ? { scriptsFolder: options.paths.scriptsFolder } : {}),
       ...(options.fallbackMs ? { fallbackMs: options.fallbackMs } : {}),
       onSync: (report) => {
-        this.transportFailure = undefined
         options.comparing?.()
         this.trace.finishFirstSync()
         options.changed(this.engine.status, report)
@@ -332,22 +329,11 @@ export class TokenEngineRuntime implements ConnectionRuntime, TokenUiRuntime {
       },
       onFail: (error) => {
         options.comparing?.()
-        options.failed(nativeSyncFailure(error) ?? error)
+        options.failed(error)
       },
       log: (line) => this.trace.log(line),
     })
-    this.unstatus = this.engine.onStatus((status) => {
-      const native = this.transportFailure
-      options.changed(
-        native && status.state === 'offline'
-          ? {
-              ...status,
-              state: native.code === 'offline' ? 'offline' : 'error',
-              lastError: native.message,
-            }
-          : status
-      )
-    })
+    this.unstatus = this.engine.onStatus((status) => options.changed(status))
     this.actions = new TokenActions(this.engine, options.state, this.client)
     this.outbox = new TokenAssetOutbox({
       state: options.state,

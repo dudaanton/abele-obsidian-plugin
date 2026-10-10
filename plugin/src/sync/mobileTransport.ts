@@ -1,3 +1,4 @@
+import { EngineError } from '@abele/sync-core'
 import { binaryResponse } from './binaryResponse'
 import { rangedBinaryTransport } from './rangedBinaryTransport'
 import { apiVersion } from 'obsidian'
@@ -19,8 +20,7 @@ export interface NativeHttpResponse {
 export interface NativeHttp {
   request(options: NativeHttpOptions): Promise<NativeHttpResponse>
 }
-export class NativeSyncFailure extends Error {
-  readonly code: string
+export class NativeSyncFailure extends EngineError {
   constructor(
     readonly phase: string,
     error: unknown
@@ -43,11 +43,13 @@ export class NativeSyncFailure extends Error {
         : network
           ? 'Server unavailable'
           : 'Sync interrupted'
-    super(`${label}. Native ${phase} (${nativeCode}): ${clean(native?.message ?? error)}`)
-    this.code = network ? 'offline' : 'native-sync'
+    super(
+      network ? 'offline' : 'io',
+      `${label}. Native ${phase} (${nativeCode}): ${clean(native?.message ?? error)}`
+    )
   }
 }
-/** Core currently wraps transport failures as offline; retain the classified host cause. */
+/** Find a sanitized native diagnosis, including failures nested by host callers. */
 export function nativeSyncFailure(error: unknown): NativeSyncFailure | undefined {
   let current = error
   for (let depth = 0; depth < 8 && current; depth++) {
