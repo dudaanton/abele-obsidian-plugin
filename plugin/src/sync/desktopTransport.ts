@@ -1,4 +1,5 @@
 import { Platform } from 'obsidian'
+import { EngineError } from '@abele/sync-core'
 import type { RequestUrlFn } from './transport'
 import { fetchViaRequestUrl } from './transport'
 import { sessionAwareNet, type SessionFetch, type SessionNet } from './desktopNet'
@@ -36,12 +37,39 @@ const desktopRequest = async (
   const controller = native.controller()
   const abort = () => controller.abort()
   signal?.addEventListener('abort', abort, { once: true })
+  // The native Electron port has no upload progress callback. Allow slow large uploads
+  // before headers; once a response is streaming, bound each wait between chunks instead.
+  const requestBytes =
+    typeof input.body === 'string'
+      ? new TextEncoder().encode(input.body).length
+      : (input.body?.byteLength ?? 0)
+  // Injected Node hosts use Node timers; production uses this vault window.
+  const clock =
+    typeof window === 'undefined' || typeof window.setTimeout !== 'function'
+      ? { setTimeout, clearTimeout }
+      : window
+  const waitNative = async <T>(work: Promise<T>, deadlineMs: number): Promise<T> => {
+    let timer: ReturnType<typeof setTimeout> | undefined
+    try {
+      return await Promise.race([
+        work,
+        new Promise<never>((_resolve, reject) => {
+          timer = clock.setTimeout(() => {
+            reject(new EngineError('offline', 'The server stopped answering. Try syncing again.'))
+            controller.abort()
+          }, deadlineMs)
+        }),
+      ])
+    } finally {
+      clock.clearTimeout(timer)
+    }
+  }
   let streaming = false
   try {
     // Electron's main-process implementation owns the full native request lifecycle. Manual
     // redirect policy is set BEFORE starting it, not inferred from a final followed response.
-    const response = await native.session
-      .fetch(url.href, {
+    const response = await waitNative(
+      native.session.fetch(url.href, {
         method: input.method ?? 'GET',
         redirect: 'manual',
         credentials: 'omit',
@@ -51,14 +79,15 @@ const desktopRequest = async (
         ...(input.body === undefined
           ? {}
           : { body: typeof input.body === 'string' ? input.body : native.body(input.body) }),
-      })
-      .catch((error: unknown) => {
-        // Electron's native manual policy rejects at the redirect before exposing a Response.
-        if ((error as { message?: unknown } | null)?.message === 'Redirect was cancelled') {
-          throw new Error('sync transport refuses redirects')
-        }
-        throw error
-      })
+      }),
+      30000 + Math.ceil(requestBytes / (32 * 1024)) * 1000
+    ).catch((error: unknown) => {
+      // Electron's native manual policy rejects at the redirect before exposing a Response.
+      if ((error as { message?: unknown } | null)?.message === 'Redirect was cancelled') {
+        throw new Error('sync transport refuses redirects')
+      }
+      throw error
+    })
     if (signal?.aborted) throw abortError(signal)
     if (
       response.type === 'opaqueredirect' ||
@@ -93,7 +122,7 @@ const desktopRequest = async (
         async pull(stream) {
           try {
             if (signal?.aborted) throw abortError(signal)
-            const next = await reader.read()
+            const next = await waitNative(reader.read(), 30000)
             if (next.done) {
               finish()
               stream.close()

@@ -8,6 +8,7 @@ import { ExternalFileHost } from '@/sync/external/ObsidianExternalFileHost'
 import { ExternalRepresentation } from '@/sync/external/representation'
 import { ObsidianFileSystem } from '@/sync/ObsidianFileSystem'
 import { AttachmentStore } from '@/sync/external/attachmentStore'
+import { desktopTransport } from '@/sync/desktopTransport'
 import { requireExternalLifecycleSafety } from '@/sync/external/pluginSafety'
 import { EXTERNAL_ACTIVATION_KEY } from '@/sync/external/recovery'
 import { EXTERNAL_RETIRED_KEY, stageConnectionSwitch } from '@/sync/external/connectionSwitch'
@@ -18,6 +19,36 @@ import { buildFakeVault } from '../helpers/fakeVault'
 
 const path = 'Media/sample-image.bin'
 const content = new TextEncoder().encode('sample attachment bytes')
+it('refuses offload promptly when desktop pre-publication sync stalls, retaining the sole bytes', async () => {
+  const s = await setup(),
+    controller = new AbortController(),
+    fetch = vi.fn(() => new Promise<Response>(() => {}))
+  const transport = desktopTransport(undefined, {
+    session: { fetch },
+    controller: () => controller,
+    bytes: (buffer: ArrayBuffer) => new Uint8Array(buffer),
+    body: (buffer: ArrayBuffer) => new Uint8Array(buffer),
+  })
+  vi.useFakeTimers({ toFake: ['setTimeout', 'clearTimeout'] })
+  try {
+    s.sync.mockImplementation(() => transport('https://sync.example/v2/connection'))
+    const pending = s.api.evict(s.base.fileId, {
+      operationId: 'stalled-offload',
+      expectedRevision: 0,
+      expectedVersionId: s.base.versionId,
+    })
+    await vi.waitFor(() => expect(fetch).toHaveBeenCalledOnce())
+    await vi.advanceTimersByTimeAsync(30000)
+    expect(await pending).toMatchObject({ status: 'offline' })
+    expect(controller.signal.aborted).toBe(true)
+    expect(new Uint8Array(await s.fake.vault.adapter.readBinary(path))).toEqual(content)
+    expect(await s.fake.vault.adapter.exists(path + '.abele-ref')).toBe(false)
+    expect((await s.state.snapshot()).operations).toEqual([])
+  } finally {
+    vi.useRealTimers()
+    s.close()
+  }
+})
 const binding = {
   endpoint: 'https://sync.example.invalid',
   vaultId: 'sample-vault',

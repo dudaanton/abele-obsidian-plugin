@@ -25,6 +25,57 @@ vi.mock('@/sync/desktopNet', () => ({
 // Socket-level translation checks use a manual-redirect Node fetch test port. Native Electron
 // session/redirect/proxy behavior is asserted independently in the desktop e2e gate.
 const servers: Server[] = []
+it('aborts a desktop server check that never answers instead of hanging an offload', async () => {
+  vi.useFakeTimers()
+  const controller = new AbortController()
+  const host = {
+    session: { fetch: vi.fn(() => new Promise<Response>(() => {})) },
+    controller: () => controller,
+    bytes: (b: ArrayBuffer) => new Uint8Array(b),
+    body: (b: ArrayBuffer) => new Uint8Array(b),
+  }
+  try {
+    const result = desktopTransport(
+      undefined,
+      host
+    )('http://sync.example/v2/connection').catch((error) => error)
+    await vi.advanceTimersByTimeAsync(30000)
+    expect(await result).toMatchObject({ code: 'offline' })
+    expect(controller.signal.aborted).toBe(true)
+  } finally {
+    vi.useRealTimers()
+  }
+})
+it('allows a large desktop upload more than 30 seconds before its answer', async () => {
+  vi.useFakeTimers()
+  let answer!: (response: Response) => void
+  const controller = new AbortController()
+  const host = {
+    session: {
+      fetch: vi.fn(
+        () =>
+          new Promise<Response>((resolve) => {
+            answer = resolve
+          })
+      ),
+    },
+    controller: () => controller,
+    bytes: (b: ArrayBuffer) => new Uint8Array(b),
+    body: (b: ArrayBuffer) => new Uint8Array(b),
+  }
+  try {
+    const result = desktopTransport(undefined, host)('http://sync.example/v2/uploads/sample', {
+      method: 'PUT',
+      body: new Uint8Array(1024 * 1024),
+    })
+    await vi.advanceTimersByTimeAsync(31000)
+    expect(controller.signal.aborted).toBe(false)
+    answer(new Response(null, { status: 204 }))
+    expect((await result).status).toBe(204)
+  } finally {
+    vi.useRealTimers()
+  }
+})
 async function listen(handler: RequestListener): Promise<string> {
   const server = createServer(handler)
   servers.push(server)
@@ -34,6 +85,48 @@ async function listen(handler: RequestListener): Promise<string> {
   if (!address || typeof address === 'string') throw new Error('No listener')
   return `http://127.0.0.1:${address.port}`
 }
+
+it.each([false, true])(
+  'bounds body inactivity while allowing progressing downloads (stall=%s)',
+  async (stall) => {
+    vi.useFakeTimers()
+    const controller = new AbortController()
+    let sink!: ReadableStreamDefaultController<Uint8Array>
+    const body = new ReadableStream<Uint8Array>({
+      start(stream) {
+        sink = stream
+      },
+    })
+    const transport = desktopTransport(undefined, {
+      session: { fetch: async () => new Response(body) },
+      controller: () => controller,
+      bytes: (buffer: ArrayBuffer) => new Uint8Array(buffer),
+      body: (buffer: ArrayBuffer) => new Uint8Array(buffer),
+    })
+    try {
+      const response = await transport('http://sync.example/download'),
+        reader = response.body!.getReader()
+      if (stall) {
+        const failure = reader.read().catch((error) => error)
+        await vi.advanceTimersByTimeAsync(30000)
+        expect(await failure).toMatchObject({ code: 'offline' })
+        expect(controller.signal.aborted).toBe(true)
+      } else {
+        for (let i = 0; i < 3; i++) {
+          const chunk = reader.read()
+          await vi.advanceTimersByTimeAsync(20000)
+          sink.enqueue(new Uint8Array([i]))
+          expect((await chunk).value).toEqual(new Uint8Array([i]))
+          expect(controller.signal.aborted).toBe(false)
+        }
+        sink.close()
+        expect((await reader.read()).done).toBe(true)
+      }
+    } finally {
+      vi.useRealTimers()
+    }
+  }
+)
 
 afterEach(async () => {
   vi.restoreAllMocks()

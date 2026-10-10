@@ -135,7 +135,13 @@ liveCase(
         `try{return await host.evict(${JSON.stringify(source)},${JSON.stringify(path)})}catch(error){return {status:'refused',reason:String(error.message)}}`
       )
       expect(refused).not.toMatchObject({ status: 'complete' })
+      expect(refused).toMatchObject({ status: 'offline' })
       expect(a.read(path)).toBe('only reachable pending bytes')
+      expect(
+        a.run(
+          `const root=await openSyncTab();return [...root.querySelectorAll('[role=alert]')].some(one=>/reachable|answer|unavailable|interrupted/i.test(textOf(one)))`
+        )
+      ).toBe(true)
       await a.pause(other, false)
       await a.syncNow(other)
       const remote = (await s.items(target)).find((one) => one.path === path)!
