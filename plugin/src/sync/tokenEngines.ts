@@ -168,9 +168,11 @@ export class TokenEngines {
   }
   start(): void {
     if (this.closed) return
-    const beforeOpening = pendingTeardown(this.app).then(async () => {
+    const teardown = pendingTeardown(this.app)
+    const documents = teardown.then(() => activeExternalDocuments(this.app, factoryOf(this.deps)))
+    const beforeOpening = documents.then(async (found) => {
       const manager = tokenOffloadsOf(this.app.vault, pathCoordinatorOf(this.app.vault))
-      for (const document of await activeExternalDocuments(this.app, factoryOf(this.deps))) {
+      for (const document of found) {
         if (this.closed) return
         manager.remember(
           document.ledgerId,
@@ -206,7 +208,7 @@ export class TokenEngines {
       (id) =>
         this.create(
           records.find((one) => one.id === id),
-          beforeOpening
+          { teardown, documents, ready: beforeOpening }
         ),
       (id, error) => this.failed(id, error)
     )
@@ -216,6 +218,7 @@ export class TokenEngines {
     if (this.closed || !this.ui.registry.records().some((one) => one.id === id)) return
     const code = (error as { code?: string })?.code
     if (code === 'startup-cancelled') return
+    this.ui.finishStartup(id, 'failed')
     this.ui.registry.setStatus(
       id,
       code === 'unauthorized' || code === 'forbidden'
@@ -228,7 +231,10 @@ export class TokenEngines {
     )
     this.ui.publish(id, { error: connectionError(error), inspection: undefined })
   }
-  private create(record: TokenConnectionRecord, beforeOpening: Promise<void>): ConnectionRuntime {
+  private create(
+    record: TokenConnectionRecord,
+    beforeOpening: { teardown: Promise<void>; documents: Promise<unknown>; ready: Promise<void> }
+  ): ConnectionRuntime {
     let active = true,
       runtime: TokenEngineRuntime | undefined
     let closeStore: (() => void) | undefined,
@@ -268,6 +274,7 @@ export class TokenEngines {
         code: 'startup-cancelled',
       })
       startup.abort(error)
+      this.ui.finishStartup(record.id, 'cancelled')
       active = false
       runtime?.invalidate()
       fence?.release()
@@ -279,16 +286,70 @@ export class TokenEngines {
       if (!active || this.closed) throw new Error('Sync startup cancelled')
       fence?.assertOwned()
     }
+    const stage = async <T>(
+      name: string,
+      work: () => Promise<T>,
+      progressing = false
+    ): Promise<T> => {
+      assertActive()
+      this.ui.startupStage(record.id, name)
+      let timer: number | undefined
+      let cancelWait: (() => void) | undefined
+      try {
+        let result: T
+        if (!progressing) {
+          result = await connectStage(
+            name,
+            `${name} could not finish starting sync. Try Sync now again.`,
+            async () => {
+              assertActive()
+              const value = await work()
+              assertActive()
+              return value
+            },
+            startup.signal
+          )
+        } else {
+          result = await Promise.race([
+            work(),
+            new Promise<never>((_, reject) => {
+              cancelWait = () => {
+                const reason: unknown = startup.signal.reason
+                reject(reason instanceof Error ? reason : new Error('Sync startup cancelled'))
+              }
+              startup.signal.addEventListener('abort', cancelWait, { once: true })
+              if (startup.signal.aborted) cancelWait()
+              const check = () => {
+                const current = this.ui.activity.value[record.id]?.startup
+                const remaining = 120000 - (Date.now() - (current?.progressAt ?? Date.now()))
+                if (remaining <= 0) {
+                  const error = Object.assign(
+                    new Error(`${current?.stage ?? name} stalled. Try Sync now again.`),
+                    { code: 'startup-stage' }
+                  )
+                  startup.abort(error)
+                  reject(error)
+                } else timer = window.setTimeout(check, Math.min(1000, remaining))
+              }
+              timer = window.setTimeout(check, 1000)
+            }),
+          ])
+        }
+        assertActive()
+        this.ui.finishStartup(record.id, 'complete')
+        return result
+      } finally {
+        window.clearTimeout(timer)
+        if (cancelWait) startup.signal.removeEventListener('abort', cancelWait)
+      }
+    }
     const start = async () => {
-      await connectStage(
-        'opening sync',
-        'Could not finish starting sync. Try Sync now again.',
-        async () => {
-          await beforeOpening
-          assertActive()
-        },
-        startup.signal
-      )
+      await stage('Waiting for previous sync', () => beforeOpening.teardown)
+      await stage('Reading offloaded file records', async () => {
+        await beforeOpening.documents
+        await beforeOpening.ready
+        assertActive()
+      })
       if (!active || this.closed) return
       fence = claim()
       this.pending.add(record.id)
@@ -297,24 +358,47 @@ export class TokenEngines {
       if (!key || !record.scope) throw new Error('Connection needs its token')
       const inspection = {
         signal: startup.signal,
+        stage: (name: string) => {
+          assertActive()
+          this.ui.startupStage(record.id, name)
+        },
+        inventoryProgress: (completed: number, total: number) => {
+          assertActive()
+          this.ui.startupProgress(record.id, completed, total)
+        },
         progress: (completed: number, total: number) => {
           assertActive()
           this.ui.inspectionProgress(record.id, completed, total)
         },
       }
-      await requireExternalLifecycleSafety(
-        this.app,
-        factoryOf(this.deps),
-        undefined,
-        true,
-        undefined,
-        assertActive,
-        inspection
+      await stage(
+        'Checking recovery records',
+        () =>
+          requireExternalLifecycleSafety(
+            this.app,
+            factoryOf(this.deps),
+            undefined,
+            true,
+            undefined,
+            assertActive,
+            inspection
+          ),
+        true
       )
       assertActive()
-      const state = await openTokenLedger(factoryOf(this.deps), this.ui.registry, record, () =>
-        fence.assertOwned()
-      )
+      const state = await stage('Opening sync storage', async () => {
+        const opened = await openTokenLedger(
+          factoryOf(this.deps),
+          this.ui.registry,
+          record,
+          assertActive
+        )
+        if (startup.signal.aborted) {
+          opened.close()
+          assertActive()
+        }
+        return opened
+      })
       stateHandle = state
       closeStore = () => state.close()
       assertActive()
@@ -332,40 +416,45 @@ export class TokenEngines {
         this.ownSettings?.path ?? `${this.app.vault.configDir}/plugins/abele/data.json`,
         () => this.ownSettings?.arrived()
       )
-      const binding = await tokenExternalBinding(record, key)
+      const binding = await stage('Checking connection identity', () =>
+        tokenExternalBinding(record, key)
+      )
       assertActive()
-      await recoverExternalState(
-        this.app,
-        state,
-        record.ledgerId,
-        record.ledgerId,
-        binding,
-        fence,
-        factoryOf(this.deps),
-        inspection
+      await stage(
+        'Checking saved sync state',
+        () =>
+          recoverExternalState(
+            this.app,
+            state,
+            record.ledgerId,
+            record.ledgerId,
+            binding,
+            fence,
+            factoryOf(this.deps),
+            inspection
+          ),
+        true
       )
       assertActive()
       this.ui.publish(record.id, { inspection: undefined })
-      await connectStage(
-        'starting sync',
-        'Could not finish starting sync. Try Sync now again.',
-        async () => {
-          assertActive()
-          const ordinary = new ObsidianFileSystem(this.app, {
-            runtimeFence: fence,
-            ledger: state,
-            preserveEmptyDirectories: true,
-            pollMs: pollMsOf(this.deps),
-            onEngineWrite: (path) => {
-              own.noteWrite(path)
-              runtime?.written(path)
-            },
-          })
-          await ordinary.recover()
-          assertActive()
-          fence.activate()
-          const manager = tokenOffloadsOf(this.app.vault, pathCoordinatorOf(this.app.vault))
-          const offloads = await tokenOffloadConnection({
+      {
+        assertActive()
+        const ordinary = new ObsidianFileSystem(this.app, {
+          runtimeFence: fence,
+          ledger: state,
+          preserveEmptyDirectories: true,
+          pollMs: pollMsOf(this.deps),
+          onEngineWrite: (path) => {
+            own.noteWrite(path)
+            runtime?.written(path)
+          },
+        })
+        await stage('Recovering local files', () => ordinary.recover())
+        assertActive()
+        fence.activate()
+        const manager = tokenOffloadsOf(this.app.vault, pathCoordinatorOf(this.app.vault))
+        const offloads = await stage('Preparing file access', () =>
+          tokenOffloadConnection({
             app: this.app,
             factory: factoryOf(this.deps),
             state,
@@ -388,74 +477,76 @@ export class TokenEngines {
             rememberIdentity: (path) => this.localFiles.remember(path),
             hydratedIdentity: (path) => this.localFiles.hydrated(path),
           })
-          this.offloadPorts.set(record.id, offloads)
-          assertActive()
-          const fs = coordinatedFileSystem(
-            offloads.fs,
-            pathCoordinatorOf(this.app.vault),
-            () => fence.assertReady(),
-            async (paths) => {
-              const affected = new Set(paths)
-              for await (const info of ordinary.placementFiles(paths)) affected.add(info.path)
-              await editCopiesOf(this.app.vault).capture(ordinary, [...affected])
+        )
+        this.offloadPorts.set(record.id, offloads)
+        assertActive()
+        const fs = coordinatedFileSystem(
+          offloads.fs,
+          pathCoordinatorOf(this.app.vault),
+          () => fence.assertReady(),
+          async (paths) => {
+            const affected = new Set(paths)
+            for await (const info of ordinary.placementFiles(paths)) affected.add(info.path)
+            await editCopiesOf(this.app.vault).capture(ordinary, [...affected])
+          }
+        )
+        if (!this.ui.reviews) throw new Error('Device reviews are not available')
+        const current = this.ui.registry.records().find((one) => one.id === record.id)
+        fence.assertReady()
+        runtime = new TokenEngineRuntime({
+          id: record.id,
+          encoded: encodeAccessToken({
+            v: 1,
+            address: record.address,
+            key,
+            scope: record.scope,
+          }),
+          fs,
+          state,
+          engineState: offloads.state,
+          engineClient: offloads.client,
+          preparePlacement: (paths) => manager.prepare(paths),
+          recoverPlacement: () => ordinary.recover(),
+          scopeInput: async (selective) => {
+            const text = await readIgnore(this.app)
+            return {
+              key: await scopeKey(selective, text),
+              ignore: ignoreFor(this.app.vault.configDir, text),
             }
-          )
-          if (!this.ui.reviews) throw new Error('Device reviews are not available')
-          const current = this.ui.registry.records().find((one) => one.id === record.id)
-          fence.assertReady()
-          runtime = new TokenEngineRuntime({
-            id: record.id,
-            encoded: encodeAccessToken({
-              v: 1,
-              address: record.address,
-              key,
-              scope: record.scope,
-            }),
-            fs,
-            state,
-            engineState: offloads.state,
-            engineClient: offloads.client,
-            preparePlacement: (paths) => manager.prepare(paths),
-            recoverPlacement: () => ordinary.recover(),
-            scopeInput: async (selective) => {
-              const text = await readIgnore(this.app)
-              return {
-                key: await scopeKey(selective, text),
-                ignore: ignoreFor(this.app.vault.configDir, text),
-              }
-            },
-            reviews: this.ui.reviews,
-            fetch: transportOf(this.deps),
-            WebSocket: socketOf(this.deps),
-            paths: { scriptsFolder: this.scriptsFolder, configRoots: [this.app.vault.configDir] },
-            paused: current.paused,
-            selective: current.selective,
-            fallbackMs: fallbackMsOf(this.deps),
-            expectedSource: reviewSourceOf(record),
-            localFiles: this.localFiles,
-            ownSettingsPath:
-              this.ownSettings?.path ?? `${this.app.vault.configDir}/plugins/abele/data.json`,
-            assertHeld: () => fence.assertReady(),
-            publicationChanged: () => {
-              if (runtime)
-                void this.changed(record.id, runtime.engine.status).catch((error) =>
-                  this.failed(record.id, error)
-                )
-            },
-            changed: (status, report) => {
-              if (report) own.settle()
-              void this.changed(record.id, status, report).catch((error) =>
+          },
+          reviews: this.ui.reviews,
+          fetch: transportOf(this.deps),
+          WebSocket: socketOf(this.deps),
+          paths: { scriptsFolder: this.scriptsFolder, configRoots: [this.app.vault.configDir] },
+          paused: current.paused,
+          selective: current.selective,
+          fallbackMs: fallbackMsOf(this.deps),
+          expectedSource: reviewSourceOf(record),
+          localFiles: this.localFiles,
+          ownSettingsPath:
+            this.ownSettings?.path ?? `${this.app.vault.configDir}/plugins/abele/data.json`,
+          assertHeld: () => fence.assertReady(),
+          publicationChanged: () => {
+            if (runtime)
+              void this.changed(record.id, runtime.engine.status).catch((error) =>
                 this.failed(record.id, error)
               )
-            },
-            failed: (error) => {
-              own.settle()
+          },
+          changed: (status, report) => {
+            if (report) own.settle()
+            void this.changed(record.id, status, report).catch((error) =>
               this.failed(record.id, error)
-            },
-            covers: async (path) =>
-              [...this.live].some(([id, one]) => id !== record.id && one.covers(path)),
-          })
-          const copies = await registerConnectionEditCopies(
+            )
+          },
+          failed: (error) => {
+            own.settle()
+            this.failed(record.id, error)
+          },
+          covers: async (path) =>
+            [...this.live].some(([id, one]) => id !== record.id && one.covers(path)),
+        })
+        const copies = await stage('Opening edit history', () =>
+          registerConnectionEditCopies(
             factoryOf(this.deps),
             editCopiesOf(this.app.vault),
             record.id,
@@ -464,43 +555,42 @@ export class TokenEngines {
             (path, size) => runtime.acceptsLocal(path, size),
             () => fence.assertReady()
           )
-          closeCopies = copies.close
-          assertActive()
-          this.live.set(record.id, runtime)
-          this.pending.delete(record.id)
-          unbind = this.ui.bind(record.id, {
-            assertCurrent: () => fence.assertReady(),
-            sync: () => runtime.sync(),
-            pause: (paused) => runtime.pause(paused),
-            updateSelective: (selective) => runtime.updateSelective(selective),
-            opened: (path) => runtime.opened(path),
-            resolve: (id) => runtime.resolve(id),
-            publishAttachment: (id) => runtime.publishAttachment(id),
-            historyClient: runtime.client,
-            entryFor: (path) => runtime.entryFor(path),
-            heldDeletes: () => runtime.heldDeletes(),
-            decideDeletes: (kind, ids) => runtime.decideDeletes(kind, ids),
-            deferred: () => runtime.deferred(),
-            applyDeferred: (ids) => runtime.applyDeferred(ids),
-            keepLocal: (paths, ids) => runtime.keepLocal(paths, ids),
-            apply: (candidate) => runtime.apply(candidate),
-            disconnect: async () => {
-              active = false
-              fence?.release()
-              await runtime.disconnect()
-              this.live.delete(record.id)
-              unbind?.()
-              closeCopies?.()
-              closeStore?.()
-              offloads.close()
-              this.offloadPorts.delete(record.id)
-              this.refreshDestinations()
-            },
-          })
-          await runtime.start()
-        },
-        startup.signal
-      )
+        )
+        closeCopies = copies.close
+        assertActive()
+        this.live.set(record.id, runtime)
+        this.pending.delete(record.id)
+        unbind = this.ui.bind(record.id, {
+          assertCurrent: () => fence.assertReady(),
+          sync: () => runtime.sync(),
+          pause: (paused) => runtime.pause(paused),
+          updateSelective: (selective) => runtime.updateSelective(selective),
+          opened: (path) => runtime.opened(path),
+          resolve: (id) => runtime.resolve(id),
+          publishAttachment: (id) => runtime.publishAttachment(id),
+          historyClient: runtime.client,
+          entryFor: (path) => runtime.entryFor(path),
+          heldDeletes: () => runtime.heldDeletes(),
+          decideDeletes: (kind, ids) => runtime.decideDeletes(kind, ids),
+          deferred: () => runtime.deferred(),
+          applyDeferred: (ids) => runtime.applyDeferred(ids),
+          keepLocal: (paths, ids) => runtime.keepLocal(paths, ids),
+          apply: (candidate) => runtime.apply(candidate),
+          disconnect: async () => {
+            active = false
+            fence?.release()
+            await runtime.disconnect()
+            this.live.delete(record.id)
+            unbind?.()
+            closeCopies?.()
+            closeStore?.()
+            offloads.close()
+            this.offloadPorts.delete(record.id)
+            this.refreshDestinations()
+          },
+        })
+        await stage('Starting file exchange', () => runtime.start())
+      }
       this.startupCancels.delete(record.id)
     }
     const begin = () => {
@@ -512,6 +602,7 @@ export class TokenEngines {
       draining = start().catch(async (error) => {
         const cancelled = startup.signal.aborted
         const failure = cancelled ? startup.signal.reason : error
+        this.failed(record.id, failure)
         cancel()
         this.startupCancels.delete(record.id)
         await runtime?.disconnect()
@@ -529,16 +620,25 @@ export class TokenEngines {
       return starting
     }
     this.retries.set(record.id, async (assertCurrent) => {
-      await draining?.catch(() => {})
       if (this.ui.runtimes.has(record.id)) return
-      await connectStage(
-        'retry opening sync',
-        'Could not finish starting sync. Try Sync now again.',
-        async (assertRetry) => {
-          await beforeOpening
-          assertRetry()
-        }
-      )
+      assertCurrent()
+      this.ui.startupStage(record.id, 'Waiting to retry sync')
+      this.ui.publish(record.id, { error: undefined })
+      try {
+        await connectStage(
+          'retry opening sync',
+          'Could not finish starting sync. Try Sync now again.',
+          async (assertRetry) => {
+            await draining?.catch(() => {})
+            await beforeOpening.ready
+            assertRetry()
+          }
+        )
+        this.ui.finishStartup(record.id, 'complete')
+      } catch (error) {
+        this.failed(record.id, error)
+        throw error
+      }
       assertCurrent()
       if (this.closed) return
       await begin().catch((error) => {
@@ -599,6 +699,7 @@ export class TokenEngines {
     if (status.lastSyncAt) activity.lastSync = Date.parse(status.lastSyncAt)
     if (report) {
       activity.error = undefined
+      activity.startup = undefined
       activity.completed = report.pull.applied + (report.secondPull?.applied ?? 0)
       activity.total = activity.completed + status.pending
       const results = report.push.committed?.results ?? []

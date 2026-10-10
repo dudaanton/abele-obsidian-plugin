@@ -16,6 +16,7 @@ export function connectionError(error: unknown): string {
   if (error instanceof Error && /External files:|Sync recovery required/.test(error.message))
     return 'Sync recovery required. Files and connection have been kept.'
   const code = (error as { code?: string } | null)?.code
+  if (code === 'startup-stage' && error instanceof Error) return error.message
   return (
     (
       {
@@ -113,6 +114,20 @@ export const statusName = (status: string) =>
     }) as Record<string, string>
   )[status] ?? 'Needs attention'
 export interface ConnectionActivity {
+  startup?: {
+    stage: string
+    completed: number
+    total: number
+    startedAt: number
+    progressAt: number
+    outcome?: 'failed'
+  }
+  startupTimings?: {
+    stage: string
+    startedAt: number
+    durationMs: number
+    outcome: 'complete' | 'failed' | 'cancelled'
+  }[]
   inspection?: { completed: number; total: number }
   heldDeletes?: number
   deferred?: number
@@ -123,6 +138,18 @@ export interface ConnectionActivity {
   refused?: { path: string; reason: string }[]
   conflicts?: string[]
   error?: string
+}
+export function connectionStatusText(
+  row: Pick<TokenConnectionRecord, 'status' | 'paused'>,
+  activity?: ConnectionActivity
+): string {
+  if (activity?.startup) {
+    const one = activity.startup
+    return `${one.stage}… ${one.completed}/${one.total}${one.outcome === 'failed' ? ' · Needs attention' : ''}`
+  }
+  if (activity?.inspection)
+    return `Checking the vault… ${activity.inspection.completed}/${activity.inspection.total}`
+  return statusName(row.paused ? 'paused' : row.status)
 }
 export interface TokenUiRuntime extends ExecutableApplyPort, ConsentResolvePort {
   assertCurrent?(): void
@@ -228,10 +255,64 @@ export class TokenUi {
     })
   }
   inspectionProgress(id: string, completed: number, total: number): void {
+    this.startupProgress(id, completed, total)
     this.activity.value = {
       ...this.activity.value,
       [id]: { ...this.activity.value[id], inspection: { completed, total }, error: undefined },
     }
+  }
+  startupStage(id: string, stage: string): void {
+    if (this.activity.value[id]?.startup?.stage === stage) return
+    this.finishStartup(id, 'complete')
+    const now = Date.now()
+    this.activity.value = {
+      ...this.activity.value,
+      [id]: {
+        ...this.activity.value[id],
+        startup: { stage, completed: 0, total: 1, startedAt: now, progressAt: now },
+      },
+    }
+    console.debug('[Abele Sync startup]', id, stage, 'started')
+  }
+  startupProgress(id: string, completed: number, total: number): void {
+    const old = this.activity.value[id]?.startup
+    if (!old) return
+    this.activity.value = {
+      ...this.activity.value,
+      [id]: {
+        ...this.activity.value[id],
+        startup: {
+          ...old,
+          completed,
+          total,
+          progressAt: completed > old.completed || total > old.total ? Date.now() : old.progressAt,
+        },
+      },
+    }
+  }
+  finishStartup(id: string, outcome: 'complete' | 'failed' | 'cancelled'): void {
+    const activity = this.activity.value[id]
+    if (!activity?.startup || activity.startup.outcome) return
+    const { stage, startedAt } = activity.startup
+    const timing = { stage, startedAt, durationMs: Date.now() - startedAt, outcome }
+    this.activity.value = {
+      ...this.activity.value,
+      [id]: {
+        ...activity,
+        startup: outcome === 'failed' ? { ...activity.startup, outcome } : undefined,
+        startupTimings: [...(activity.startupTimings ?? []), timing].slice(-64),
+      },
+    }
+    console.debug('[Abele Sync startup]', id, stage, timing.durationMs, 'ms', outcome)
+  }
+  startupSnapshot() {
+    return this.rows.value.map((row) => ({
+      id: row.id,
+      statusText: connectionStatusText(row, this.activity.value[row.id]),
+      startup: this.activity.value[row.id]?.startup ?? null,
+      inspection: this.activity.value[row.id]?.inspection ?? null,
+      startupTimings: this.activity.value[row.id]?.startupTimings ?? [],
+    }))
   }
   async connect(text: string, signal?: AbortSignal): Promise<void> {
     // Validate with the server before adding a row. Failed paste leaves all existing rows intact.

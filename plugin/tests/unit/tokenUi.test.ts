@@ -56,6 +56,19 @@ const secondToken = encodeAccessToken({
   key: 'b'.repeat(43),
   scope: { kind: 'folder', id: 'root', path: '/' },
 })
+it('exposes safe synchronous startup timings and status for the test hook', async () => {
+  const { ui } = setup()
+  await ui.connect(token)
+  const id = ui.rows.value[0].id
+  ui.startupStage(id, 'Checking the vault')
+  ui.inspectionProgress(id, 12, 12023)
+  expect(ui.startupSnapshot()[0].statusText).toBe('Checking the vault… 12/12023')
+  ui.finishStartup(id, 'failed')
+  expect(ui.startupSnapshot()[0].startupTimings).toEqual([
+    expect.objectContaining({ stage: 'Checking the vault', outcome: 'failed' }),
+  ])
+  expect(JSON.stringify(ui.startupSnapshot())).not.toContain('a'.repeat(43))
+})
 for (const stage of ['first guard', 'second guard', 'server']) {
   it(`bounds a hung ${stage} without late enrollment`, async () => {
     vi.useFakeTimers()

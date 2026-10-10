@@ -133,6 +133,34 @@ for (const action of ['pass', 'refuse', 'disconnect', 'unload']) {
   })
 }
 
+it('names and bounds a stalled inspection and retains its startup timings', async () => {
+  vi.useFakeTimers()
+  const { ui, host, registry, encoded, release, probe } = inspectionFixture()
+  try {
+    await ui.connect(encoded)
+    const id = registry.records()[0].id
+    await vi.waitFor(() => expect(ui.activity.value[id]?.inspection?.total).toBe(1))
+    expect(ui.activity.value[id].startup).toMatchObject({
+      stage: 'Checking the vault',
+      completed: 0,
+      total: 1,
+    })
+    await vi.advanceTimersByTimeAsync(120001)
+    expect(registry.records()[0].status).toBe('error')
+    expect(ui.activity.value[id].error).toContain('Checking the vault')
+    expect(ui.activity.value[id].startupTimings).toEqual(
+      expect.arrayContaining([
+        expect.objectContaining({ stage: 'Checking the vault', outcome: 'failed' }),
+      ])
+    )
+  } finally {
+    vi.useRealTimers()
+    release()
+    await host.close()
+    probe.mockRestore()
+  }
+})
+
 it('revokes a timed-out engine start and permits a later explicit retry', async () => {
   vi.useFakeTimers()
   let release!: () => void

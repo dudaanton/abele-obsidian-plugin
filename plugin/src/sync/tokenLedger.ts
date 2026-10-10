@@ -25,12 +25,15 @@ export async function openTokenLedger(
     effectGuard: assertHeld,
   })
   try {
+    assertHeld()
     const prior = await store.getMeta(IDENTITY)
+    assertHeld()
     if (prior !== binding && (prior !== null || storage.loadLocalStorage(PROOF) != null))
       throw new Error('Sync recovery required: token ledger identity lost')
     if (prior === null) await store.setMeta(IDENTITY, binding)
     if ((await store.getMeta(IDENTITY)) !== binding)
       throw new Error('Sync recovery required: token ledger identity not stored')
+    assertHeld()
     storage.saveLocalStorage(PROOF, binding)
     if (storage.loadLocalStorage(PROOF) !== binding)
       throw new Error('Sync recovery required: token ledger proof not stored')

@@ -15,6 +15,52 @@ vi.mock('node:fs', async (original) => {
 vi.mock('../e2e/helpers/target', () => ({ onPhone: () => false }))
 vi.mock('../e2e/helpers/phone', () => ({ screenshot: vi.fn() }))
 
+it('records inspection stage, counters and timings rather than hiding them behind Connecting', () => {
+  const startup = {
+    stage: 'Checking the vault',
+    completed: 8469,
+    total: 12023,
+    startedAt: 100,
+    progressAt: 200,
+  }
+  const timings = [
+    { stage: 'Waiting for previous sync', startedAt: 50, durationMs: 50, outcome: 'complete' },
+  ]
+  const app = {
+    plugins: {
+      plugins: {
+        abele: {
+          tokenEngines: {
+            ui: {
+              rows: { value: [{ id: 'sample', status: 'joining', paused: false }] },
+              activity: {
+                value: {
+                  sample: {
+                    startup,
+                    startupTimings: timings,
+                    inspection: { completed: 8469, total: 12023 },
+                  },
+                },
+              },
+            },
+            live: new Map(),
+          },
+        },
+      },
+    },
+    setting: {},
+  }
+  const snapshot = new Function('app', 'document', SYNC_SNAPSHOT + ';return syncSnapshot()')(
+    app,
+    document
+  )
+  expect(snapshot.connections[0]).toMatchObject({
+    statusText: 'Checking the vault… 8469/12023',
+    startup,
+    startupTimings: timings,
+  })
+})
+
 it('snapshots a stuck engine and pending holds synchronously without reading a token or awaiting its ledger', () => {
   const engine = {
     state: 'syncing',

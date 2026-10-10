@@ -76,6 +76,7 @@ import { setKeyboardDiagnostics } from '@/helpers/keyboardDiagnostics'
 import { confirmProtocolWrite } from '@/helpers/protocolConfirm'
 import { openIconPicker } from './openIconPicker'
 import { openSecretsList } from './openSecretsList'
+import { tokenUi } from '@/sync/tokenUi'
 import { openMcpServer } from './openMcpServer'
 import { openRewind } from './openRewind'
 import { openDialog, dialogNames } from './openDialog'
@@ -185,6 +186,7 @@ export interface NoteRenderSample {
 }
 
 interface AbeleTestApi {
+  syncStartup(): ReturnType<import('@/sync/tokenUi').TokenUi['startupSnapshot']>
   canvasProbe: ReturnType<typeof createCanvasProbe>
   openDesignCatalogue: typeof openDesignCatalogue
   closeDesignCatalogue: typeof closeDesignCatalogue
@@ -795,6 +797,7 @@ export function exposeTestApi(plugin: Plugin): void {
   window.__abeleTest = {
     openDesignCatalogue,
     closeDesignCatalogue,
+    syncStartup: () => structuredClone(tokenUi.value?.startupSnapshot() ?? []),
     resetSyncTokenState: (request) => resetSyncTokenState(plugin, request),
     captureSyncTokenOwnership: (vault) => captureSyncTokenOwnership(plugin, vault),
     canvasProbe: createCanvasProbe(plugin),

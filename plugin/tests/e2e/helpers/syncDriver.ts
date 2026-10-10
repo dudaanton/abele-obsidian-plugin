@@ -1,8 +1,10 @@
 import type { VaultCli } from './obsidianCli'
 import { waitFor } from './syncVault'
 import { captureSyncFailure, SYNC_SNAPSHOT } from './syncDiagnostics'
+import { STARTUP_WAIT, waitForStartup } from './startupWait'
 export const SYNC_PRELUDE = `
  ${SYNC_SNAPSHOT}
+ ${STARTUP_WAIT}
  const host = app.plugins.plugins.abele.tokenEngines
  if (!host) throw new Error('Token host is not ready')
  const svc = host.ui
@@ -67,7 +69,8 @@ export class SyncDriver {
     body: string,
     confidential = false,
     timeoutMs = 90000,
-    cleanup = false
+    cleanup = false,
+    startupProgress = false
   ): Promise<T> {
     if (!cleanup) this.assertActive()
     const key = '__abeleSyncJob' + Math.random().toString(36).slice(2)
@@ -78,17 +81,51 @@ export class SyncDriver {
       evaluate(
         `(()=>{window[${JSON.stringify(key)}]=null;(async()=>{const jobKey=${JSON.stringify(key)};${SYNC_PRELUDE}\n${body}})().then(value=>window[${JSON.stringify(key)}]={ok:true,value:value===undefined?null:value},error=>window[${JSON.stringify(key)}]={ok:false,error:String(error?.message||error)});return true})()`
       )
-      await waitFor(
-        what,
-        () => {
-          if (!cleanup) this.assertActive()
-          answer = evaluate(
-            `(()=>{const result=window[${JSON.stringify(key)}];if(result)delete window[${JSON.stringify(key)}];return result||null})()`
-          )
-          return answer !== null
-        },
-        timeoutMs
-      )
+      const check = () => {
+        if (!cleanup) this.assertActive()
+        const state = evaluate(
+          `(()=>{const result=window[${JSON.stringify(key)}];if(result)delete window[${JSON.stringify(key)}];${SYNC_SNAPSHOT}return {result:result||null,snapshot:syncSnapshot()}})()`
+        ) as {
+          result: typeof answer
+          snapshot: {
+            connections: {
+              id: string
+              startup?: { stage: string; completed: number; total: number }
+              startupTimings?: unknown[]
+              inspection?: { completed: number; total: number }
+              lastError?: string
+            }[]
+          }
+        }
+        answer = state.result
+        return {
+          ready: answer !== null,
+          progress: JSON.stringify(
+            state.snapshot.connections.map((one) => [
+              one.id,
+              one.startup?.stage,
+              one.startup?.completed,
+              one.startup?.total,
+              one.startupTimings?.length,
+              one.inspection?.completed,
+              one.inspection?.total,
+            ])
+          ),
+        }
+      }
+      if (startupProgress) await waitForStartup(check)
+      else
+        await waitFor(
+          what,
+          () => {
+            if (!cleanup) this.assertActive()
+            answer = evaluate(
+              `(()=>{const result=window[${JSON.stringify(key)}];if(result)delete window[${JSON.stringify(key)}];return result||null})()`
+            )
+            return answer !== null
+          },
+          timeoutMs
+        )
       if (!cleanup) this.assertActive()
       const result = answer as unknown as { ok: boolean; value: T; error?: string }
       if (!result.ok) throw new Error(confidential ? what + ' failed' : what + ': ' + result.error)
@@ -106,7 +143,10 @@ export class SyncDriver {
   async connect(token: string): Promise<string> {
     return this.long<string>(
       'connect by token',
-      `const before=new Set(svc.rows.value.map(one=>one.id)); const root=await openSyncTab(); await press(root,'Connect…'); await poll(()=>modal('Connect to a server')); const box=modal('Connect to a server'); typeInto(box.querySelector('input[placeholder="Paste your token"]'),${JSON.stringify(token)}); await press(box,'Connect'); await poll(()=>!modal('Connect to a server')); const added=svc.rows.value.find(one=>!before.has(one.id)); if(!added) throw new Error('No connection added'); await poll(()=>svc.runtimes.has(added.id)); await closeSettings(); return added.id`,
+      `const before=new Set(svc.rows.value.map(one=>one.id)); const root=await openSyncTab(); await press(root,'Connect…'); await poll(()=>modal('Connect to a server')); const box=modal('Connect to a server'); typeInto(box.querySelector('input[placeholder="Paste your token"]'),${JSON.stringify(token)}); await press(box,'Connect'); await poll(()=>!modal('Connect to a server')); const added=svc.rows.value.find(one=>!before.has(one.id)); if(!added) throw new Error('No connection added'); await waitForStartup(()=>{const activity=svc.activity.value[added.id]||{}, phase=activity.startup;return {ready:svc.runtimes.has(added.id)&&!phase,progress:JSON.stringify([phase?.stage,phase?.completed,phase?.total,activity.startupTimings?.length,activity.inspection?.completed,activity.inspection?.total]),error:activity.error}}); await closeSettings(); return added.id`,
+      true,
+      90000,
+      false,
       true
     ).catch((error: unknown) => {
       // Only product state is reported; private eval errors may contain the pasted token.

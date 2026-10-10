@@ -189,7 +189,7 @@ import {
   tokenUi,
   scopeName,
   connectionName,
-  statusName,
+  connectionStatusText,
   connectionError,
   type TokenUi,
 } from '@/sync/tokenUi'
@@ -222,13 +222,10 @@ const dialog = ref<{
 } | null>(null)
 function description(row: TokenConnectionRecord) {
   const last = activity.value[row.id]?.lastSync
-  const inspection = activity.value[row.id]?.inspection
   return (
     row.address +
     ' · ' +
-    (inspection
-      ? `Checking the vault… ${inspection.completed}/${inspection.total}`
-      : statusName(row.paused ? 'paused' : row.status)) +
+    connectionStatusText(row, activity.value[row.id]) +
     ' · ' +
     (last ? 'Last synced ' + new Date(last).toLocaleString() : 'Not synced yet')
   )

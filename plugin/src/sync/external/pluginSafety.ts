@@ -196,6 +196,8 @@ export const inspectionSchema = z
 /** Stat-first, persisted inspection. Recognition follows bounded content, not the extension. */
 export interface ProjectionInspection {
   signal?: AbortSignal
+  stage?(stage: string): void
+  inventoryProgress?(completed: number, total: number): void
   progress?(completed: number, total: number): void
 }
 /** Only read-only work may outlive cancellation; callers assert before later effects. */
@@ -239,8 +241,10 @@ export async function projectionEvidence(
   }
   const readOnly = <T>(work: () => Promise<T>) => inspectionRead(inspection, assertCurrent, work)
   const paths = new Set(app.vault.getFiles().map((file) => file.path))
+  inspection.stage?.('Listing the vault')
   inspection.progress?.(0, paths.size)
   const seen = new Set<string>()
+  let folders = 1
   const walk = async (folder: string): Promise<void> => {
     assertCurrent()
     // Bound alias loops by the protocol path budget, not an unrelated note-count or
@@ -251,10 +255,13 @@ export async function projectionEvidence(
     const listed = await readOnly(() => app.vault.adapter.list(folder))
     assertCurrent()
     for (const file of listed.files) paths.add(file)
+    folders += listed.folders.length
+    inspection.inventoryProgress?.(seen.size, folders)
     inspection.progress?.(0, paths.size)
     for (const child of listed.folders) await walk(child)
   }
   await walk('')
+  inspection.stage?.('Checking the vault')
   const cached = inspectionSchema.safeParse(app.loadLocalStorage(EXTERNAL_INSPECTION_KEY))
   // The index is an optimization, never authority: damaged/missing cache triggers inspection.
   const previous = new Map(
