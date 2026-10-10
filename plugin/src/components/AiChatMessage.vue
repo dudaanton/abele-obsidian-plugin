@@ -587,7 +587,12 @@ function onMessageClick(event: MouseEvent) {
 // touch screen, where the long press that fires it is the one selecting the words: the menu
 // jumped up before they were chosen. There `ChatSelectionBar` offers it once they are.
 const onContentMenu = (event: MouseEvent) => {
-  if (props.canComment && !Platform.isMobile) comments.onContentMenu(event)
+  if (!props.canComment) return
+  if (Platform.isMobile) {
+    // Do not let the workspace's custom-menu handler cancel WebKit's default selection.
+    // Merely declining our own menu still bubbles to that handler when native menus are off.
+    event.stopPropagation()
+  } else comments.onContentMenu(event)
 }
 
 const interceptorText = ref('')
