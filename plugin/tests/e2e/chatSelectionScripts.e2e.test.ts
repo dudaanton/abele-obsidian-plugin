@@ -62,7 +62,7 @@ const PRELUDE = `${WAIT_PRELUDE}
     }, 5000)) {
       const r=word.getBoundingClientRect()
       await shoot('gesture-target-failure')
-      throw Error('Saved words did not become a stable gesture target: '+JSON.stringify({box:r.toJSON(),connected:word.isConnected,root:root.outerHTML,hit:document.elementFromPoint(r.left+r.width/2,r.top+r.height/2)?.outerHTML.slice(0,600)}))
+      throw Error('Saved words did not become a stable gesture target: '+JSON.stringify({box:r.toJSON(),connected:word.isConnected,rootBox:root.getBoundingClientRect().toJSON(),ancestors:[word,...(function*(n){while(n=n.parentElement)yield n})(word)].map(el=>({tag:el.tagName,cls:el.className,display:getComputedStyle(el).display,visibility:getComputedStyle(el).visibility,box:el.getBoundingClientRect().toJSON()})),candidates:[...document.querySelectorAll(selector)].map(el=>({root:el.getBoundingClientRect().toJSON(),word:el.querySelector('strong')?.getBoundingClientRect().toJSON()})),root:root.outerHTML,hit:document.elementFromPoint(r.left+r.width/2,r.top+r.height/2)?.outerHTML.slice(0,600)}))
     }
     const bounds = word.getBoundingClientRect()
     const events = [], tracking = new AbortController()
