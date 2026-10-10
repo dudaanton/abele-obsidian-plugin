@@ -1,4 +1,4 @@
-import { afterAll, beforeAll, describe, expect, it } from 'vitest'
+import { afterAll, beforeAll, beforeEach, describe, expect, it } from 'vitest'
 import {
   evalJson,
   evalLong,
@@ -13,6 +13,7 @@ import { shotDir } from './helpers/shots'
 import { measureDesign } from './helpers/designLint'
 import {
   BINDING_SETUP,
+  BINDING_RESET,
   BINDING_PRELUDE,
   BINDING_CLEANUP,
   BINDING_CHAT,
@@ -30,10 +31,24 @@ const run = async <T>(code: string): Promise<T> =>
   JSON.parse(
     await evalLong(
       `(async()=>{${WAIT_PRELUDE}${BINDING_PRELUDE}
-try{${code}}catch(error){return JSON.stringify({error:String(error.stack||error)})}})()`,
+try{${code}}catch(error){return JSON.stringify({error:String(error.message||error),stack:String(error.stack||'')})}})()`,
       45000
     )
   ) as T
+
+const reopen = () =>
+  evalLong(
+    `(async()=>{
+  const chats=window.__abeleTest.ChatService.getInstance()
+  const owner=chats.getSessionByFile(${JSON.stringify(BINDING_CHAT)}), writes=[]
+  let revision=owner?.localRevision
+  if(owner)Object.defineProperty(owner,'localRevision',{get:()=>revision,set:value=>{writes.push({before:revision,after:value,stack:new Error('Revision writer').stack});revision=value},configurable:true})
+  try {await chats.openChatFile(app.vault.getAbstractFileByPath(${JSON.stringify(BINDING_CHAT)}));await chats.revealSidebar({focus:false});return 'open'}
+  catch(error){throw Error(String(error.message||error)+'; writers: '+JSON.stringify(writes))}
+  finally {if(owner)Object.defineProperty(owner,'localRevision',{value:revision,writable:true,configurable:true})}
+})()`,
+    45000
+  )
 
 for (const layout of onPhone() ? ['native phone'] : ['desktop', 'phone layout']) {
   describe.skipIf(!available)(`${layout}: explicit card binding`, () => {
@@ -49,6 +64,9 @@ for (const layout of onPhone() ? ['native phone'] : ['desktop', 'phone layout'])
         `(async()=>{${BINDING_SETUP} return JSON.stringify(bindingOld)})()`,
         45000
       )
+    })
+    beforeEach(async () => {
+      await evalLong(`(async()=>{${BINDING_RESET}return 'reset'})()`, 45000)
     })
     afterAll(async () => {
       if (saved) await evalLong(`(async()=>{${BINDING_CLEANUP}return 'clean'})()`, 45000)
@@ -113,10 +131,7 @@ for (const layout of onPhone() ? ['native phone'] : ['desktop', 'phone layout'])
       expect(open.quote).toBe('echo')
       expect(open.keyboard).toBe(false)
       await reloadApp('app.plugins.disablePlugin("abele"); app.plugins.enablePlugin("abele")')
-      await evalLong(
-        `(async()=>{const chats=window.__abeleTest.ChatService.getInstance();await chats.openChatFile(app.vault.getAbstractFileByPath(${JSON.stringify(BINDING_CHAT)}));await chats.revealSidebar();return 'open'})()`,
-        45000
-      )
+      await reopen()
       const removed = await run<any>(`
         const details=await until(()=>document.querySelector('.abele-chat-bindings'),5000);details.open=true
         details.querySelector('[aria-label="Card link actions"]').click()
@@ -136,6 +151,7 @@ for (const layout of onPhone() ? ['native phone'] : ['desktop', 'phone layout'])
 
     it('reports a missing card without recreating it', async () => {
       const report = await run<any>(`
+        const bound=await bindSample();if(bound.status!=='applied')throw Error('Missing-card fixture did not bind')
         const card=app.vault.getAbstractFileByPath(${JSON.stringify(BINDING_CARD)}),content=await app.vault.read(card)
         await app.vault.delete(card)
         try {
@@ -159,6 +175,7 @@ for (const layout of onPhone() ? ['native phone'] : ['desktop', 'phone layout'])
 
     it('bounds a long binding history while leaving the composer on screen', async () => {
       const report = await run<any>(`
+        const bound=await bindSample();if(bound.status!=='applied')throw Error('Long-history fixture did not bind')
         const old=owner.bindingRecoveries.value
         try {
         owner.bindingRecoveries.value=Array.from({length:40},(_,i)=>({id:'sample-long-'+i,status:'applied',targetPath:${JSON.stringify(BINDING_CARD)}}))
@@ -175,9 +192,6 @@ for (const layout of onPhone() ? ['native phone'] : ['desktop', 'phone layout'])
     })
 
     it('retries only a failed publication after reopen; uncertain recovery offers no blind replay', async () => {
-      await run<any>(
-        `await app.vault.delete(app.vault.getAbstractFileByPath(${JSON.stringify(BINDING_CARD)}));return JSON.stringify({deleted:true})`
-      )
       const failed = await run<any>(
         `const result=await bindSample(true);await wait(600);return JSON.stringify(result)`
       )
@@ -191,10 +205,7 @@ for (const layout of onPhone() ? ['native phone'] : ['desktop', 'phone layout'])
       )
       expect(failureDesign.violations).toEqual([])
       await reloadApp('app.plugins.disablePlugin("abele"); app.plugins.enablePlugin("abele")')
-      await evalLong(
-        `(async()=>{const chats=window.__abeleTest.ChatService.getInstance();await chats.openChatFile(app.vault.getAbstractFileByPath(${JSON.stringify(BINDING_CHAT)}));await chats.revealSidebar();return 'open'})()`,
-        45000
-      )
+      await reopen()
       const retried = await run<any>(`
         const root=await until(()=>document.querySelector('.abele-chat-bindings'),5000)
         const rows=[...root.querySelectorAll('.setting-item')];const row=rows.find(el=>el.textContent.includes('known-not-written'));row.querySelector('button').click()
@@ -209,7 +220,7 @@ for (const layout of onPhone() ? ['native phone'] : ['desktop', 'phone layout'])
         return JSON.stringify({actions,operations:owner.allMessages.value[0].decorationOperations.length,card:!!app.vault.getAbstractFileByPath(${JSON.stringify(BINDING_CARD)})})`)
       expect(retried.error).toBeUndefined()
       expect(retried.actions).not.toContain('Retry binding only')
-      expect(retried.operations).toBe(2)
+      expect(retried.operations).toBe(1)
       expect(retried.card).toBe(true)
       await run<any>(
         `document.body.dispatchEvent(new MouseEvent('mousedown',{bubbles:true}));await wait(400);return JSON.stringify({closed:true})`

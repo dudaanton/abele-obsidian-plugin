@@ -28,6 +28,22 @@ export const BINDING_SETUP = `
   await chats.openChatFile(app.vault.getAbstractFileByPath(${JSON.stringify(BINDING_CHAT)}));await chats.revealSidebar()
 `
 
+export const BINDING_RESET = `
+  document.getSelection()?.removeAllRanges()
+  document.body.dispatchEvent(new KeyboardEvent('keydown',{key:'Escape',bubbles:true}))
+  const chats=window.__abeleTest.ChatService.getInstance()
+  const owner=chats.getSessionByFile(${JSON.stringify(BINDING_CHAT)})
+  if(owner)await chats.closeTab(owner.id)
+  const card=app.vault.getAbstractFileByPath(${JSON.stringify(BINDING_CARD)})
+  if(card)await app.vault.delete(card)
+  const file=app.vault.getAbstractFileByPath(${JSON.stringify(BINDING_CHAT)})
+  await app.vault.modify(file,[
+    {v:2,k:'meta',type:'abele-chat',providerId:'',modelId:'',created:'',title:'Sample binding source'},
+    {k:'msg',id:'sample-reply',role:'assistant',content:'echo **echo**',timestamp:1}
+  ].map(JSON.stringify).join('\\n')+'\\n')
+  await chats.openChatFile(file);await chats.revealSidebar({focus:false})
+`
+
 export const BINDING_PRELUDE = `
   const chats=window.__abeleTest.ChatService.getInstance()
   const owner=chats.getSessionByFile(${JSON.stringify(BINDING_CHAT)})
@@ -42,14 +58,22 @@ export const BINDING_PRELUDE = `
       const anchor=await owner.ensureChatAnchor(snapshot)
       return {status:'ready',anchorId:anchor.id,backlink:'[['+${JSON.stringify(BINDING_CHAT)}+'#abele-selection='+encodeURIComponent(revision.reference.chatId)+'/'+encodeURIComponent(anchor.id)+'|Return to selection]]'}
     }}
-    const process=app.vault.process.bind(app.vault)
-    let writes=0
-    if(fail)app.vault.process=async(...args)=>{if(++writes===4)throw Error('Sample known-no-write publication failure');return process(...args)}
+    const storage=window.__abeleTest.ChatStorage.getInstance()
+    const rewrite=storage.rewriteDiscussion.bind(storage)
+    let injected=false
+    if(fail)storage.rewriteDiscussion=async(file,content,...args)=>{
+      const records=content.trim().split('\\n').map(JSON.parse)
+      if(!injected && file.path===${JSON.stringify(BINDING_CHAT)} && records.some(r=>r.k==='msg' && r.decorationOperations?.some(op=>op.targetPath===${JSON.stringify(BINDING_CARD)} && !op.undoneAt))){
+        injected=true
+        throw Error('Sample known-no-write publication failure')
+      }
+      return rewrite(file,content,...args)
+    }
     try {
       const outcome=await window.__abeleTest.ScriptService.getInstance().executeFromSelection(${JSON.stringify(BINDING_DIR + '/Scripts/bind.js')},target)
       if(outcome.status!=='done')throw Error('Sample binding launch did not complete')
       return JSON.parse(outcome.output)
-    } finally {if(fail)app.vault.process=process}
+    } finally {if(fail)storage.rewriteDiscussion=rewrite}
   }
 `
 
