@@ -1859,7 +1859,7 @@ describe.skipIf(!available)('the node repository tab on a phone', () => {
         const clipped = [...root.querySelectorAll('button,select,[role="button"]')].filter(el => {
           const r=el.getBoundingClientRect();return r.width > 0 && (r.left < -1 || r.right > innerWidth+1)
         }).map(el => el.getAttribute('aria-label') || el.textContent);
-        const hitBoxes = [...root.querySelectorAll('.abele-github-header [role="button"], .abele-node-save button, .abele-node-save summary, .abele-github-blob > details > summary, .abele-github-blob__changed button, .abele-github > .abele-obsidian-setting [role="checkbox"]')].map(el => {const r=el.getBoundingClientRect();return {width:r.width,height:r.height}}).filter(box=>box.width>0);
+        const hitBoxes = [...root.querySelectorAll('.abele-github-header [role="button"], .abele-node-save button, .abele-node-save summary, .abele-github-blob > details > summary, .abele-node-save__state button, .abele-github > .abele-obsidian-setting [role="checkbox"]')].map(el => {const r=el.getBoundingClientRect();return {width:r.width,height:r.height}}).filter(box=>box.width>0);
         const shot=${JSON.stringify(SHOTS)}+'/node-repository-${state}.png';
         require('fs').mkdirSync(${JSON.stringify(SHOTS)},{recursive:true});
         const image=await require('@electron/remote').getCurrentWebContents().capturePage();require('fs').writeFileSync(shot,image.toPNG());

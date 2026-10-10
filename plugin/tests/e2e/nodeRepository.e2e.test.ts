@@ -122,22 +122,30 @@ it('opens the real node repository in the shared tab, follows history, compares,
     })()`)
     writeFileSync(resolve(projectPath, 'app.ts'), 'export const value = 6\n')
     await evalLong(`(async()=>{${prelude}
-      await until(()=>document.querySelector('.abele-github-blob__changed')?.textContent.includes('Changed on disk'));
+      await until(()=>document.querySelector('.abele-node-save__state')?.textContent.includes('Changed on disk'));
       const code=document.querySelector('.abele-github-blob > .abele-github-code .cm-content'),editor=api.codeView(code);
       if(!editor.state.doc.toString().includes('value = 5'))throw Error('Refresh lost the draft');
       if(editor.state.selection.main.anchor!==window.__sampleRepositoryCursor)throw Error('Refresh lost the cursor');
       if(Math.abs(code.closest('.abele-github-layout__main').scrollTop-window.__sampleRepositoryScroll)>1)throw Error('Refresh lost the scroll position: '+JSON.stringify({expected:window.__sampleRepositoryScroll,actual:code.closest('.abele-github-layout__main').scrollTop,height:code.closest('.abele-github-layout__main').scrollHeight,viewport:code.closest('.abele-github-layout__main').clientHeight,lines:editor.state.doc.lines,cursor:editor.state.selection.main.anchor}));
-      [...document.querySelectorAll('.abele-github-blob__changed button')].find(b=>b.textContent.trim()==='Keep mine').click();
+      if(document.querySelector('.abele-node-save').textContent.includes('Use loaded version as base'))throw Error('Duplicate reconciliation action');
+      const choices=[...document.querySelectorAll('.abele-node-save__state button')].map(b=>b.textContent.trim());
+      if(JSON.stringify(choices)!==JSON.stringify(['Reload','Keep mine']))throw Error('Unexpected reconciliation choices: '+choices);
+      [...document.querySelectorAll('.abele-node-save__state button')].find(b=>b.textContent.trim()==='Keep mine').click();
+      await until(()=>!document.querySelector('.abele-node-save__state')&&[...document.querySelectorAll('.abele-node-save button')].some(b=>b.textContent.trim()==='Save file'&&!b.disabled));
+      return 'new disk base adopted without saving';
+    })()`)
+    expect(readFileSync(resolve(projectPath, 'app.ts'), 'utf8')).toBe('export const value = 6\n')
+    // A second external writer wins after explicit adoption; Save must still detect that race.
+    writeFileSync(resolve(projectPath, 'app.ts'), 'export const value = 9\n')
+    await evalLong(`(async()=>{${prelude}
       [...document.querySelectorAll('.abele-node-save button')].find(b=>b.textContent.trim()==='Save file').click();
       await until(()=>document.querySelector('.abele-node-save')?.textContent.includes('Conflict ·'));
       return 'conflict retained';
     })()`)
-    expect(readFileSync(resolve(projectPath, 'app.ts'), 'utf8')).toBe('export const value = 6\n')
+    expect(readFileSync(resolve(projectPath, 'app.ts'), 'utf8')).toBe('export const value = 9\n')
     await evalLong(`(async()=>{${prelude}
-      document.querySelector('.abele-node-save [aria-label="Reload current version"]').click();
-      await wait(100);
-      [...document.querySelectorAll('.abele-node-save button')].find(b=>b.textContent.trim()==='Use loaded version as base for this draft').click();
-      await until(()=>[...document.querySelectorAll('.abele-node-save button')].some(b=>b.textContent.trim()==='Save file'&&!b.disabled));
+      [...document.querySelectorAll('.abele-node-save__state button')].find(b=>b.textContent.trim()==='Keep mine').click();
+      await until(()=>!document.querySelector('.abele-node-save__state')&&[...document.querySelectorAll('.abele-node-save button')].some(b=>b.textContent.trim()==='Save file'&&!b.disabled));
       [...document.querySelectorAll('.abele-node-save button')].find(b=>b.textContent.trim()==='Save file').click();
       await until(()=>document.querySelector('.abele-node-save')?.textContent.includes('Saved ·'));
       await api.openNodeRepository(window.__sampleRepositoryNode,window.__sampleRepositoryProject,window.__sampleRepositoryExternal,{path:'app.ts'});
@@ -176,6 +184,20 @@ it('opens the real node repository in the shared tab, follows history, compares,
       await proposal.execute('approved',params,undefined,{...context,approved:true});
       await until(()=>[...document.querySelectorAll('.abele-github-blob > .abele-github-code .cm-content')].some(el=>el.getBoundingClientRect().width&&el.textContent.includes('value = 8')));
       return 'proposal retained without a node save';
+    })()`)
+    expect(readFileSync(resolve(projectPath, 'app.ts'), 'utf8')).toBe(draftText)
+    await evalLong(`(async()=>{${prelude}
+      const root=app.workspace.getLeavesOfType('abele-github').find(l=>l.view.model?.sourceTarget?.source.workspace===window.__sampleRepositoryWorkspace).view.contentEl;
+      root.querySelector('.abele-node-save [aria-label="Reload current version"]').click();
+      await until(()=>[...document.querySelectorAll('.modal button')].some(b=>b.textContent.trim()==='Cancel'));
+      [...document.querySelectorAll('.modal button')].find(b=>b.textContent.trim()==='Cancel').click();
+      await until(()=>!document.querySelector('.modal'));
+      if(!root.querySelector('.abele-github-blob > .abele-github-code').textContent.includes('value = 8'))throw Error('Cancel lost the draft');
+      root.querySelector('.abele-node-save [aria-label="Reload current version"]').click();
+      await until(()=>[...document.querySelectorAll('.modal button')].some(b=>b.textContent.trim()==='Reload'));
+      [...document.querySelectorAll('.modal button')].find(b=>b.textContent.trim()==='Reload').click();
+      await until(()=>root.querySelector('.abele-github-blob > .abele-github-code')?.textContent.includes('value = 5'));
+      return 'reload confirmed from disk';
     })()`)
     expect(readFileSync(resolve(projectPath, 'app.ts'), 'utf8')).toBe(draftText)
     await evalLong(`(async()=>{${prelude}

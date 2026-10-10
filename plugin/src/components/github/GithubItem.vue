@@ -298,6 +298,7 @@
             :toolbar-host="blobToolbar"
             :client="client()"
             @mode="setMode"
+            :refresh="() => reload(true)"
             @open="(url: string) => onOpen?.(url)"
           />
         </template>

@@ -693,6 +693,67 @@ export class NodeFilesModel {
       }
     }
   }
+  draftSnapshot(): FileDraftSnapshot | null {
+    const draft = this.draft.value
+    return draft
+      ? { revision: draft.revision, text: this.draftText.value, baseContentId: draft.baseContentId }
+      : null
+  }
+  private async currentForReconciliation(shown: FileDraftSnapshot | null) {
+    const path = this.filePath.value,
+      generation = this.fileGeneration
+    const check = () => {
+      if (generation !== this.fileGeneration || path !== this.filePath.value)
+        throw new Error('File view changed before draft reconciliation')
+      assertDraftRevision(this.draft.value, shown?.revision ?? null)
+      if (
+        shown &&
+        (this.draftText.value !== shown.text ||
+          this.draft.value?.baseContentId !== shown.baseContentId)
+      )
+        throw new Error(draftConflict)
+      if (this.draft.value?.pending)
+        throw new Error('This save is unresolved; keep its draft and evidence')
+    }
+    await this.persistingEdit
+    check()
+    // An explicit reconciliation must read disk, not fall back to a retained baseline offline.
+    const document = await this.documents.read(path)
+    await this.persistingEdit
+    check()
+    return { path, generation, document }
+  }
+  async reloadCurrent(shown: FileDraftSnapshot | null = this.draftSnapshot()) {
+    if (this.draftError.value === draftConflict) {
+      // The visible failed-CAS copy is not the shared draft. Forget only that private copy,
+      // after a successful current read, and load the other view's draft without deleting it.
+      const path = this.filePath.value,
+        generation = this.fileGeneration
+      const document = await this.documents.read(path)
+      if (generation !== this.fileGeneration) throw new Error('File view changed before reload')
+      await this.openFile(path, undefined, this.fileRange.value, document)
+      return
+    }
+    const { path, generation, document } = await this.currentForReconciliation(shown)
+    await this.documents.discard(path, shown?.revision ?? null)
+    if (generation !== this.fileGeneration) return
+    this.document.value = document
+    this.draft.value = undefined
+    this.draftText.value = document.text ?? ''
+    this.editing.value = false
+    this.draftError.value = ''
+    this.predecessorText.value = undefined
+  }
+  async keepMine(shown: FileDraftSnapshot | null = this.draftSnapshot()) {
+    if (!shown) throw new Error('There is no local draft to keep')
+    const { path, generation, document } = await this.currentForReconciliation(shown)
+    const draft = await this.documents.rebase(path, document, shown.revision)
+    if (generation !== this.fileGeneration) return
+    this.document.value = document
+    this.draft.value = draft
+    this.editing.value = true
+    this.draftError.value = ''
+  }
   async rebaseDraft() {
     const path = this.filePath.value,
       doc = this.document.value,

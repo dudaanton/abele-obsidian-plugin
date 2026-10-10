@@ -346,7 +346,7 @@ it('does not label an unstored private edit as the previously saved version', as
     wrapper.unmount()
   }
 })
-it('allows explicit conflict rebase when the loaded content has returned to the original base', async () => {
+it('allows Keep mine after re-reading disk even when its content has returned to the original base', async () => {
   useVault([])
   const props = await nodeFilesFixture('conflict')
   const wrapper = mount(NodeFilesDialog, { props, global: { stubs } })
@@ -354,7 +354,7 @@ it('allows explicit conflict rebase when the loaded content has returned to the 
     await flushPromises()
     const rebase = wrapper
       .findAll('button')
-      .find((b) => b.text() === 'Use loaded version as base for this draft')
+      .find((b) => b.text() === 'Keep mine')
     expect(rebase).toBeDefined()
     await rebase!.trigger('click')
     await flushPromises()

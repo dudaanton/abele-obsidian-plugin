@@ -87,7 +87,7 @@ it('edits from the node code view, restores local drafts, and checks a lost save
     })()`)
     expect(readFileSync(resolve(workspacePath, 'sample.txt'), 'utf8')).toBe('local draft')
     writeFileSync(resolve(workspacePath, 'sample.txt'), 'external')
-    evalAsync(`(async()=>{${prelude}press('Save file');await until(()=>document.querySelector('.abele-node-files').textContent.includes('Conflict ·'));press('Reload current version');await wait(50);await until(()=>[...document.querySelectorAll('.modal button')].some(b=>b.textContent==='Use loaded version as base for this draft'&&!b.disabled));press('Use loaded version as base for this draft');await until(()=>document.querySelector('.abele-node-files').textContent.includes('Unsent edit'));await enter('lost draft');
+    evalAsync(`(async()=>{${prelude}press('Save file');await until(()=>document.querySelector('.abele-node-files').textContent.includes('Conflict ·'));await until(()=>[...document.querySelectorAll('.modal button')].some(b=>b.textContent==='Keep mine'&&!b.disabled));press('Keep mine');await until(()=>document.querySelector('.abele-node-files').textContent.includes('Unsent edit'));await enter('lost draft');
       const store=nodes.connection(${JSON.stringify(registration)}).store,original=store.transaction.bind(store);let dropped=false;
       store.transaction=work=>original(async state=>{const result=await work(state);if(!dropped&&Object.values(state.results).some(r=>r.result?.state==='saved'&&r.request?.params?.text==='lost draft')){dropped=true;throw Error('Dropped local receipt commit')}return result});
       press('Save file');await until(()=>document.querySelector('.abele-node-files').textContent.includes('outcome unknown'));await until(()=>dropped);await close();return true

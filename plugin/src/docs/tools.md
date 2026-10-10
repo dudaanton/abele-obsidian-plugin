@@ -992,9 +992,11 @@ External worktree editing is off until the owner approves that exact worktree id
 the repository tab's native toggle, and can be revoked there. Historical files remain read only.
 
 Working-tree tabs refresh trees, status, visible files and executed searches on invalidations
-and reconnect. Local drafts, scroll and selection are kept. “Changed on disk” offers Reload
-(discard local text and use the loaded disk version) or Keep mine (keep the original save
-precondition). Conflicts require deliberate inspection/rebase. An uncertain save retains its
+and reconnect, including redacted catalogue hints that require refreshing all mutable state.
+Local drafts, scroll and selection are kept. “Changed on disk” and conflicts offer two actions:
+Reload asks before discarding changed local text and re-reads the file from the node; Keep mine
+re-reads disk, keeps the proposed text, and explicitly adopts that content identity for the next
+Save. A later external edit can still conflict with that precondition. An uncertain save retains its
 original operation ID and recovery evidence: check that save, never retry with a new ID.
 Frozen commit/compare views do not follow filesystem changes.
 

@@ -18,6 +18,7 @@ import { emptyScreen } from '@/github/screen'
 import type { RepositoryLocation } from '@/repository/source'
 import type { GithubViewModel } from '@/github/model'
 
+vi.mock('@/modal/confirm', () => ({ confirmAction: vi.fn(async () => true) }))
 const repo = { host: 'node.invalid', owner: 'Sample node', repo: 'Sample project' }
 beforeEach(() => useVault([]))
 function fixture(location: RepositoryLocation = { kind: 'home', ref: WORKING_TREE }) {
@@ -89,6 +90,8 @@ describe('node-backed shared repository tab', () => {
       undefined,
       new NodeDocumentSource(client, identity.workspace, true)
     )
+    let disk = { text: 'before', contentId: 'a'.repeat(64), size: 6, binary: false, large: false, tooLarge: false }
+    editor.documents.read = vi.fn(async () => ({ ...disk }))
     const f = nodeRepositoryFixture(),
       source = new NodeRepositorySource(f.client, identity, {
         node: repo.owner,
@@ -110,6 +113,7 @@ describe('node-backed shared repository tab', () => {
     code.vm.$emit('select', { from: 1, to: 1 })
     code.vm.$emit('change', 'my unsent draft')
     await flushPromises()
+    disk = { ...disk, text: 'external', contentId: 'b'.repeat(64) }
     await wrapper.setProps({ text: 'external', contentId: 'b'.repeat(64) })
     await flushPromises()
     expect(code.props('text')).toBe('my unsent draft')
@@ -119,8 +123,11 @@ describe('node-backed shared repository tab', () => {
       .findAll('button')
       .find((b) => b.text() === 'Keep mine')!
       .trigger('click')
+    await flushPromises()
     expect(wrapper.text()).not.toContain('Changed on disk')
-    expect(editor.draft.value?.baseContentId).toBe('a'.repeat(64))
+    expect(editor.draft.value?.baseContentId).toBe('b'.repeat(64))
+    expect(editor.draftText.value).toBe('my unsent draft')
+    disk = { ...disk, text: 'another external edit', contentId: 'c'.repeat(64) }
     await wrapper.setProps({ text: 'another external edit', contentId: 'c'.repeat(64) })
     await flushPromises()
     await wrapper

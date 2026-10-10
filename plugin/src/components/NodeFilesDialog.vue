@@ -76,12 +76,15 @@
           />
         </div>
         <template v-if="model.document.value">
-          <p v-if="changedOnDisk" role="status">
-            Changed on disk · your local draft is kept. Reload to inspect the current contents.
-          </p>
           <h3 class="abele-node-files__path">{{ model.filePath.value }}</h3>
           <p>{{ model.document.value.size }} bytes · retained version</p>
-          <NodeFileSaveState :model="model" :offline="offline" :locked="busy" />
+          <NodeFileSaveState
+            :model="model"
+            :offline="offline"
+            :locked="busy"
+            :changed-on-disk="changedOnDisk"
+            @reconciled="changedOnDisk = false"
+          />
           <p
             v-if="
               !model.fileEditable.value &&

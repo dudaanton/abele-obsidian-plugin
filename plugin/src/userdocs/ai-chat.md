@@ -178,12 +178,13 @@ reloads. **Save file** checks that original version before applying the change. 
 at most 32,768 characters; larger local drafts remain stored but cannot be submitted. Binary
 files, symbolic links and Git metadata stay read only. There is no file creation or Git mutation UI.
 
-A **Conflict** keeps your draft separate from the changed workspace. **Reload current version**
-loads current contents without replacing your draft. Inspect **Last loaded version**, then
-choose **Use loaded version as base for this draft** only if you intend to apply the retained
-draft against that version. **Discard local draft** forgets only known, local editor work; it
-never restores or changes the workspace file. If the current file returns to the original
-version after a conflict, the explicit base choice still lets you continue with your draft.
+A **Conflict** or **Changed on disk** keeps your draft separate from the changed workspace and
+offers two choices. **Reload** re-reads the file from the node and discards your local draft,
+asking for confirmation if you have changes. **Keep mine** re-reads disk and keeps your text,
+explicitly adopting the current content identity as the next Save's precondition. It does not
+write the file; a later external change can still conflict. **Discard local draft** forgets
+only known, local editor work and never restores or changes the workspace file. If disk
+returns to the original version after a conflict, **Keep mine** still lets you continue.
 Your retained text remains readable and copyable even if the current file becomes binary or
 exceeds the viewing limit.
 

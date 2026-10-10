@@ -29,29 +29,22 @@
     </Teleport>
 
     <template v-if="editor && editor.filePath.value === file.path">
-      <div v-if="changedOnDisk" class="abele-github-blob__changed" role="status">
-        <span>Changed on disk · your local draft is kept.</span>
-        <Button
-          text="Reload"
-          tooltip="Discard the local draft and use the last loaded disk version"
-          :disabled="!!editor.draft.value?.pending"
-          @click="reloadDraft"
-        />
-        <Button
-          text="Keep mine"
-          tooltip="Keep the draft and its original save precondition"
-          @click="keptContent = contentId"
-        />
-      </div>
       <NodeFileSaveState
         :model="editor"
         :offline="offline"
         :locked="!writable"
         :reload="reloadEditor"
+        :keep-mine="keepMine"
       />
-      <details v-if="editor.draft.value && editor.draftText.value !== text">
+      <details
+        v-if="
+          editor.draft.value &&
+          editor.document.value?.text !== undefined &&
+          editor.draftText.value !== editor.document.value.text
+        "
+      >
         <summary>Last loaded version</summary>
-        <GithubCode :text="text" :path="file.path" />
+        <GithubCode :text="editor.document.value.text" :path="file.path" />
       </details>
     </template>
     <div v-if="editorError" role="alert">{{ editorError }}</div>
@@ -130,6 +123,7 @@ import Button from '../obsidian/Button.vue'
 import GithubNotice from './GithubNotice.vue'
 import NodeFileSaveState from '../NodeFileSaveState.vue'
 import type { NodeFilesModel } from '@/node/NodeFilesModel'
+import type { FileDraftSnapshot } from '@/node/fileDrafts'
 import type { BlameRange } from '@/repository/model'
 import { useRepositorySource } from '@/repository/context'
 
@@ -174,6 +168,7 @@ const props = withDefaults(
     offline?: boolean
     contentId?: string | null
     documentNote?: string
+    refresh?: () => Promise<unknown>
   }>(),
   {
     range: undefined,
@@ -186,6 +181,7 @@ const props = withDefaults(
     offline: false,
     contentId: undefined,
     documentNote: undefined,
+    refresh: undefined,
   }
 )
 
@@ -194,13 +190,16 @@ const emit = defineEmits<{
   (e: 'open', url: string): void
 }>()
 
-const editorError = ref(''),
-  keptContent = ref<string | null>()
+const editorError = ref('')
 const unsaved = computed(
   () =>
     !!props.editor &&
     props.editor.filePath.value === props.file.path &&
-    (props.editor.draftDirty.value || !!props.editor.draft.value?.pending)
+    (props.editor.draftDirty.value ||
+      !!props.editor.draft.value?.pending ||
+      props.editor.document.value?.contentId !== props.contentId ||
+      (props.editor.draft.value?.status !== 'saved' &&
+        props.editor.draftText.value !== props.editor.document.value?.text))
 )
 const visibleText = computed(() =>
   props.editor?.filePath.value === props.file.path &&
@@ -208,14 +207,8 @@ const visibleText = computed(() =>
     ? props.editor.draftText.value
     : props.text
 )
-const changedOnDisk = computed(
-  () =>
-    unsaved.value &&
-    props.contentId !== props.editor?.draft.value?.baseContentId &&
-    keptContent.value !== props.contentId
-)
 let editorGeneration = 0
-const reloadEditor = async () => {
+const syncEditor = async () => {
   const editor = props.editor
   if (!editor) return
   await editor.openFile(props.file.path, undefined, props.range, {
@@ -228,14 +221,24 @@ const reloadEditor = async () => {
   })
   editor.editing.value = (!!props.writable && editor.fileEditable.value) || !!editor.draft.value
 }
-const reloadDraft = async () => {
-  try {
-    await props.editor?.discardDraft()
-    await reloadEditor()
-    keptContent.value = undefined
-  } catch (e) {
-    editorError.value =
-      e instanceof Error ? e.message : 'The local editor could not reload this draft'
+const reloadEditor = async (shown: FileDraftSnapshot | null) => {
+  const editor = props.editor
+  if (!editor) return
+  await editor.reloadCurrent(shown)
+  editor.editing.value = !!props.writable && editor.fileEditable.value
+  editorError.value = ''
+  if (props.refresh) {
+    await props.refresh()
+    await syncEditor()
+  }
+}
+const keepMine = async (shown: FileDraftSnapshot | null) => {
+  if (!props.editor) return
+  await props.editor.keepMine(shown)
+  editorError.value = ''
+  if (props.refresh) {
+    await props.refresh()
+    await syncEditor()
   }
 }
 const editText = (text: string) => {
@@ -258,7 +261,7 @@ watch(
     const mine = ++editorGeneration
     if (props.editor?.draftError.value && props.editor.filePath.value === props.file.path) return
     try {
-      await reloadEditor()
+      await syncEditor()
       if (mine === editorGeneration) editorError.value = ''
     } catch (e) {
       if (mine === editorGeneration)
@@ -446,15 +449,6 @@ body.is-phone .abele-github-blob > details > summary {
     flex-wrap: wrap;
     align-items: center;
     gap: var(--size-4-2);
-  }
-
-  &__changed {
-    display: flex;
-    align-items: center;
-    flex-wrap: wrap;
-    gap: var(--size-4-2);
-    color: var(--text-muted);
-    font-size: var(--font-ui-small);
   }
 
   &__range {
