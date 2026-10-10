@@ -114,6 +114,8 @@ import { AttachmentStore } from '@/sync/external/attachmentStore'
 import { pluginRepresentation } from '@/sync/external/pluginRepresentation'
 import { RuntimeFence } from '@/sync/external/recovery'
 import { tokenSyncProbe } from './tokenSyncProbe'
+import { nativeSyncTransportSnapshot } from '../sync/mobileTransport'
+import { externalFileSnapshot } from '../sync/external/ObsidianExternalFileHost'
 import type { TokenEngineRuntime } from '@/sync/tokenEngineRuntime'
 import { scan, SyncEngine, RecoveryBarrier } from '@abele/sync-core'
 import { activateScriptProvenance } from '@/scripting/trust/scriptTrustStorage'
@@ -228,6 +230,8 @@ interface AbeleTestApi {
   ExternalFileHost: typeof ExternalFileHost
   AttachmentStore: typeof AttachmentStore
   tokenSyncProbe(id: string): ReturnType<typeof tokenSyncProbe>
+  nativeSyncTransport(): ReturnType<typeof nativeSyncTransportSnapshot>
+  externalFileOperations(): ReturnType<typeof externalFileSnapshot>
   externalRepresentation: {
     SyncEngine: typeof SyncEngine
     RecoveryBarrier: typeof RecoveryBarrier
@@ -843,6 +847,8 @@ export function exposeTestApi(plugin: Plugin): void {
       if (!runtime || !binding?.assertCurrent) throw new Error('Token runtime is not ready')
       return tokenSyncProbe(runtime, () => binding.assertCurrent())
     },
+    nativeSyncTransport: nativeSyncTransportSnapshot,
+    externalFileOperations: externalFileSnapshot,
     externalRepresentation: {
       SyncEngine,
       RecoveryBarrier,

@@ -2,6 +2,11 @@ import { EngineError } from '@abele/sync-core'
 import { binaryResponse } from './binaryResponse'
 import { rangedBinaryTransport } from './rangedBinaryTransport'
 import { apiVersion } from 'obsidian'
+import { ExchangeTrace } from './exchangeTrace'
+const nativeRequests = new ExchangeTrace()
+nativeRequests.finishFirstSync()
+export const nativeSyncTransportSnapshot = () => nativeRequests.snapshot()
+export const MOBILE_BINARY_CHUNK_BYTES = 1024 * 1024
 export interface NativeHttpOptions {
   url: string
   method: string
@@ -102,7 +107,10 @@ export function mobileTransport(): typeof fetch {
     throw new Error(
       'Native sync transport is unsupported until its non-following runtime is verified'
     )
-  return rangedBinaryTransport(fetchViaCapacitorHttp(exactNativeRequestBodies(http)))
+  return rangedBinaryTransport(
+    fetchViaCapacitorHttp(exactNativeRequestBodies(http)),
+    MOBILE_BINARY_CHUNK_BYTES
+  )
 }
 /** NSJSONSerialization can reorder dictionaries. Commit replay must send the same bytes. */
 export function exactNativeRequestBodies(native: NativeHttp): NativeHttp {
@@ -122,6 +130,31 @@ export function exactNativeRequestBodies(native: NativeHttp): NativeHttp {
 }
 /** Exact native bytes and explicit pre-follow refusal, measured through the real iOS bridge. */
 export function fetchViaCapacitorHttp(native: NativeHttp): typeof fetch {
+  const send = capacitorFetch(native)
+  return (input, init) => {
+    const url = new URL(
+      typeof input === 'string' ? input : input instanceof URL ? input.href : input.url
+    )
+    const headers = new Headers(
+      init?.headers ?? (input instanceof Request ? input.headers : undefined)
+    )
+    const range = /^bytes=\d+-\d+$/.test(headers.get('range') ?? '') ? headers.get('range') : null
+    const masked = url.pathname
+      .replace(/\/v2\/files\/[^/]+\//, '/v2/files/:id/')
+      .replace(/\/v2\/uploads\/[^/]+/, '/v2/uploads/:id')
+    const path =
+      /^\/v2\/(?:connection|commit|changes|manifest|files\/:id\/(?:content|external\/verify)|uploads\/:id)$/.test(
+        masked
+      )
+        ? masked
+        : '/other'
+    return nativeRequests.run(
+      `${(init?.method ?? (input instanceof Request ? input.method : 'GET')).toUpperCase()} ${path}${range ? ' ' + range : ''}`,
+      () => send(input, init)
+    )
+  }
+}
+function capacitorFetch(native: NativeHttp): typeof fetch {
   return async (input, init) => {
     let phase = 'encoding'
     try {

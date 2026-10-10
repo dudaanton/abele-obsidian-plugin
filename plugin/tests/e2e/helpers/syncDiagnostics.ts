@@ -10,6 +10,9 @@ const syncSnapshot = () => {
  const host=app.plugins.plugins.abele?.tokenEngines, ui=host?.ui;
  const docs=[...new Set([document,app.setting.activeTab?.containerEl.ownerDocument].filter(Boolean))];
  return {
+  attachmentStage:window.__abeleAttachmentStage||null,
+  nativeTransport:window.__abeleTest?.nativeSyncTransport?.(),
+  externalFiles:window.__abeleTest?.externalFileOperations?.(),
   connections:(ui?.rows?.value||[]).map(row=>{
    const activity=ui.activity?.value[row.id]||{}, status=host.live?.get(row.id)?.engine.status;
    const startup=activity.startup, inspection=activity.inspection;
@@ -53,4 +56,22 @@ export function captureSyncFailure(cli: VaultCli, label: string): string {
   }
   writeFileSync(base + '.json', JSON.stringify({ label, snapshot, artifacts }, null, 2) + '\n')
   return JSON.stringify({ snapshot, evidence: base + '.json', screenshots: artifacts })
+}
+
+/** Capture before the runner's timeout starts teardown; no screenshot or app lifecycle changes. */
+export function captureSyncProgress(cli: VaultCli, label: string): void {
+  const directory = resolve(
+    process.env.ABELE_SCENARIO_EVIDENCE ||
+      process.env.ABELE_E2E_SHOTS ||
+      '.scratch/live-wait-failures'
+  )
+  const snapshot = cli.evalAwait(`(async()=>{${SYNC_SNAPSHOT}return syncSnapshot()})()`)
+  mkdirSync(directory, { recursive: true })
+  writeFileSync(
+    join(
+      directory,
+      'progress-' + Date.now() + '-' + Math.random().toString(36).slice(2, 8) + '.json'
+    ),
+    JSON.stringify({ label, snapshot }, null, 2) + '\n'
+  )
 }

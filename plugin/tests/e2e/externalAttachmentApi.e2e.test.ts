@@ -69,15 +69,19 @@ async function roundTrip(folderToken = false, size = 26, departure = false) {
     if(sampling){sample();baseline=peakMemory;timer=setInterval(sample,25)}
     const adapter=app.vault.adapter,api=window.__abeleTest
     let probe
+    const phase=stage=>{window.__abeleAttachmentStage={stage,startedAt:Date.now(),size}}
     try {
+      phase('Receiving attachment')
       await svc.pause(id,false)
       probe=api.tokenSyncProbe(id)
       await probe.sync()
       probe.reset()
+      phase('Evicting attachment')
       const evicted=await host.evict(id,path)
       const missing=!await adapter.exists(path),sidecar=await adapter.exists(path+'.abele-ref')
       let verifiedRead=null
       if(!maximum){
+        phase('Reading offloaded attachment')
         const record=svc.registry.records().find(one=>one.id===id)
         const store=await api.externalState.IndexedDbStateStore.open(indexedDB,record.ledgerId)
         const document=JSON.parse(await store.getExternalState())
@@ -90,15 +94,17 @@ async function roundTrip(folderToken = false, size = 26, departure = false) {
         }finally{readHost.close();store.close()}
         probe.reset()
       }
+      phase(${departure}?'Materializing before departure':'Hydrating concurrent requests')
       if(${departure})await svc.disconnect(id)
       else await Promise.all([host.hydrate(path),host.hydrate(path)])
       const externalHost=new api.ExternalFileHost(app,{platform:${JSON.stringify(onPhone() ? 'mobile' : 'desktop')},assertOwned:()=>{}})
+      phase('Checking hydrated attachment')
       let fingerprint;try{fingerprint=await externalHost.fingerprint(path)}finally{externalHost.close()}
       const actual=maximum?null:new Uint8Array(await adapter.readBinary(path))
       if(sampling)sample()
       const {peakDownloads,downloadCount,verificationCount}=probe.stats()
       return {evicted,missing,sidecar,retired:!await adapter.exists(path+'.abele-ref'),identical:fingerprint.sha===${JSON.stringify(file.sha)}&&fingerprint.size===size&&(maximum||actual.length===size&&actual.every(byte=>byte===90)),disconnectReady:!svc.rows.value.some(one=>one.id===id),baseline,peakMemory,samples,memoryError,peakDownloads,downloadCount,verificationCount,verifiedRead}
-    } finally {probe?.close();clearInterval(timer)}
+    } finally {probe?.close();clearInterval(timer);delete window.__abeleAttachmentStage}
   `,
     false,
     TIMEOUT

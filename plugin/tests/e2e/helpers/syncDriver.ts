@@ -1,6 +1,6 @@
 import type { VaultCli } from './obsidianCli'
 import { waitFor } from './syncVault'
-import { captureSyncFailure, SYNC_SNAPSHOT } from './syncDiagnostics'
+import { captureSyncFailure, captureSyncProgress, SYNC_SNAPSHOT } from './syncDiagnostics'
 import { STARTUP_WAIT, waitForStartup } from './startupWait'
 export const SYNC_PRELUDE = `
  ${SYNC_SNAPSHOT}
@@ -77,6 +77,7 @@ export class SyncDriver {
     const cli = this.vault()
     const evaluate = confidential ? cli.evalAwaitPrivate.bind(cli) : cli.evalAwait.bind(cli)
     let answer: { ok: boolean; value?: T; error?: string } | null = null
+    let nextEvidence = Date.now() + 30000
     try {
       evaluate(
         `(()=>{window[${JSON.stringify(key)}]=null;(async()=>{const jobKey=${JSON.stringify(key)};${SYNC_PRELUDE}\n${body}})().then(value=>window[${JSON.stringify(key)}]={ok:true,value:value===undefined?null:value},error=>window[${JSON.stringify(key)}]={ok:false,error:String(error?.message||error)});return true})()`
@@ -122,6 +123,14 @@ export class SyncDriver {
             answer = evaluate(
               `(()=>{const result=window[${JSON.stringify(key)}];if(result)delete window[${JSON.stringify(key)}];return result||null})()`
             )
+            if (answer === null && timeoutMs > 90000 && Date.now() >= nextEvidence) {
+              nextEvidence = Date.now() + 30000
+              try {
+                captureSyncProgress(cli, what)
+              } catch {
+                console.debug('[sync progress] diagnostic capture unavailable')
+              }
+            }
             return answer !== null
           },
           timeoutMs

@@ -5,6 +5,9 @@ import { bytesOf } from '../vaultWrites'
 import { makeParents } from '../vaultFolders'
 import { sha256 as incremental } from '@noble/hashes/sha2'
 import { sha256 } from './hash'
+import { ExchangeTrace } from '../exchangeTrace'
+const fileOperations = new ExchangeTrace()
+export const externalFileSnapshot = () => fileOperations.snapshot()
 import type { PathCoordinator } from '../pathCoordinator'
 import {
   ExternalFileCoordination,
@@ -91,7 +94,9 @@ export class ExternalFileHost {
   }
   async read(path: string): Promise<Uint8Array> {
     this.assertOwned()
-    const bytes = new Uint8Array(await this.app.vault.adapter.readBinary(path))
+    const bytes = new Uint8Array(
+      await fileOperations.run('readBinary', () => this.app.vault.adapter.readBinary(path), true)
+    )
     this.assertOwned()
     return bytes
   }
@@ -105,6 +110,9 @@ export class ExternalFileHost {
     return actual.size === expected.size && actual.sha === expected.sha
   }
   async fingerprint(path: string): Promise<{ size: number; sha: string }> {
+    return fileOperations.run('fingerprint', () => this.fingerprintBytes(path), true)
+  }
+  private async fingerprintBytes(path: string): Promise<{ size: number; sha: string }> {
     this.assertOwned()
     const adapter = this.app.vault.adapter as DataAdapter & {
       getFullPath?: (path: string) => string
@@ -221,16 +229,21 @@ export class ExternalFileHost {
             typeof args[0] === 'string'
               ? [args[0], ...(key === 'rename' && typeof args[1] === 'string' ? [args[1]] : [])]
               : []
-          return this.options.placement && paths.length
-            ? this.options.placement.run(paths, work, this.assertOwned)
-            : work()
+          return fileOperations.run(
+            String(key),
+            () =>
+              this.options.placement && paths.length
+                ? this.options.placement.run(paths, work, this.assertOwned)
+                : work(),
+            true
+          )
         }
       },
     })
     return {
       installation,
       exists: (path) => adapter.exists(path),
-      read: async (path) => new Uint8Array(await adapter.readBinary(path)),
+      read: (path) => this.read(path),
       matches: (expected) => this.matches(expected),
       makeParents: (path) => makeParents(mutateAdapter, path),
       writeStaging: async (path, bytes, assertEffect) => {

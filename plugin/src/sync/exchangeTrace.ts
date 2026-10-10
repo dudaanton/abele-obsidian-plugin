@@ -59,7 +59,7 @@ export class ExchangeTrace {
       }
     }
   }
-  async run<T>(operation: string, work: () => Promise<T>): Promise<T> {
+  async run<T>(operation: string, work: () => Promise<T>, retain = false): Promise<T> {
     const startedAt = Date.now()
     let outcome = 'failed'
     const finish = this.begin(operation)
@@ -69,7 +69,7 @@ export class ExchangeTrace {
       return result
     } finally {
       finish()
-      if (/^(GET|POST|PUT|DELETE|HEAD) /.test(operation)) {
+      if (retain || /^(GET|POST|PUT|DELETE|HEAD) /.test(operation)) {
         const request = { operation, startedAt, durationMs: Date.now() - startedAt, outcome }
         this.requests.push(request)
         if (this.requests.length > 64) this.requests.shift()

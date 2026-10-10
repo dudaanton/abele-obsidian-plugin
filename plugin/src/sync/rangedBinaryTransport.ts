@@ -1,11 +1,14 @@
 import { binaryResponse } from './binaryResponse'
+import { retryTransientOperation } from './transientOperation'
 
 const CHUNK = 8 * 1024 * 1024
 const binaryPath = /\/v2\/files\/[^/]+\/content$/
 
 /** Keep native base64 response strings bounded for immutable blob/version reads.
  * The caller still checks final size and SHA against its server-verified intent. */
-export function rangedBinaryTransport(send: typeof fetch): typeof fetch {
+export function rangedBinaryTransport(send: typeof fetch, chunkBytes = CHUNK): typeof fetch {
+  if (!Number.isSafeInteger(chunkBytes) || chunkBytes < 1 || chunkBytes > CHUNK)
+    throw new Error('Invalid binary chunk size')
   return async (input, init) => {
     const url = new URL(
       typeof input === 'string' ? input : input instanceof URL ? input.href : input.url
@@ -22,8 +25,11 @@ export function rangedBinaryTransport(send: typeof fetch): typeof fetch {
     let responseHeaders: Headers | undefined
     for (;;) {
       signal?.throwIfAborted()
-      headers.set('range', `bytes=${at}-${at + CHUNK - 1}`)
-      const response = await send(input, { ...init, headers })
+      headers.set('range', `bytes=${at}-${at + chunkBytes - 1}`)
+      const response = await retryTransientOperation(
+        () => send(input, { ...init, headers }),
+        () => signal?.throwIfAborted()
+      )
       signal?.throwIfAborted()
       // Older servers may ignore Range. Preserve their one-shot behavior; never
       // concatenate a whole response onto a partially received file.
@@ -38,7 +44,7 @@ export function rangedBinaryTransport(send: typeof fetch): typeof fetch {
         !Number.isSafeInteger(total) ||
         total <= 0 ||
         start !== at ||
-        end !== Math.min(at + CHUNK, total) - 1 ||
+        end !== Math.min(at + chunkBytes, total) - 1 ||
         (output && output.length !== total)
       )
         throw new Error('Invalid binary content range')
