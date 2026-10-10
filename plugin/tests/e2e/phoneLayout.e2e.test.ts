@@ -581,11 +581,18 @@ const probeScript = `(async () => {
       // measure the toolbar's full box too, so a centred strip cannot hide either end.
       const toolbar = preview.querySelector('.abele-gallery-viewer__toolbar').getBoundingClientRect()
       if (toolbar.left < 0 || toolbar.right > window.innerWidth) report['chat image preview'].over.push('toolbar')
-      preview.querySelector('.abele-gallery-viewer__close').click()
+      const dismiss = preview.closest('.modal').querySelector('.modal-close-button, .modal-header-button')
+      if (!dismiss || !dismiss.getClientRects().length) throw new Error('The picture modal has no visible dismiss action')
+      const close = dismiss.getBoundingClientRect()
+      if (close.width <= 0 || close.height <= 0 || close.left < 0 || close.right > window.innerWidth || close.top < 0 || close.bottom > window.innerHeight)
+        throw new Error('The picture modal dismiss action is outside the phone viewport')
+      dismiss.click()
+      if (!(await until(() => !document.querySelector('.abele-gallery-viewer'), 3000)))
+        throw new Error('The picture modal did not close')
       chat.querySelector('.abele-chat-input__attachment-remove').click()
       } finally {
         if (scope && scopeBefore) scope.entries.value = scopeBefore
-        document.querySelector('.abele-gallery-viewer__close')?.click()
+        document.querySelector('.abele-gallery-viewer')?.closest('.modal')?.querySelector('.modal-close-button, .modal-header-button')?.click()
       }
     }
 
