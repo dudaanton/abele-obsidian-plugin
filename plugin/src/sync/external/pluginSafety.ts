@@ -194,23 +194,64 @@ export const inspectionSchema = z
   .strict()
 
 /** Stat-first, persisted inspection. Recognition follows bounded content, not the extension. */
+export interface ProjectionInspection {
+  signal?: AbortSignal
+  progress?(completed: number, total: number): void
+}
+/** Only read-only work may outlive cancellation; callers assert before later effects. */
+async function inspectionRead<T>(
+  inspection: ProjectionInspection,
+  assertCurrent: () => void,
+  work: () => Promise<T>
+): Promise<T> {
+  assertCurrent()
+  inspection.signal?.throwIfAborted()
+  let cancel: () => void = () => {}
+  try {
+    const result = await Promise.race([
+      work(),
+      new Promise<never>((_, reject) => {
+        cancel = () => reject(new Error('Vault inspection cancelled'))
+        inspection.signal?.addEventListener('abort', cancel, { once: true })
+        if (inspection.signal?.aborted) cancel()
+      }),
+    ])
+    assertCurrent()
+    inspection.signal?.throwIfAborted()
+    return result
+  } finally {
+    inspection.signal?.removeEventListener('abort', cancel)
+  }
+}
 export async function projectionEvidence(
   app: App,
   assertOwned: () => void = () => {},
   includeControl = true,
-  ownedPaths: ReadonlySet<string> = new Set()
+  ownedPaths: ReadonlySet<string> = new Set(),
+  inspection: ProjectionInspection = {}
 ): Promise<string | null> {
+  const started = Date.now()
+  let stopped = false
+  const assertCurrent = () => {
+    if (stopped) throw new Error('Vault inspection stopped')
+    inspection.signal?.throwIfAborted()
+    assertOwned()
+  }
+  const readOnly = <T>(work: () => Promise<T>) => inspectionRead(inspection, assertCurrent, work)
   const paths = new Set(app.vault.getFiles().map((file) => file.path))
+  inspection.progress?.(0, paths.size)
   const seen = new Set<string>()
   const walk = async (folder: string): Promise<void> => {
-    assertOwned()
+    assertCurrent()
     // Bound alias loops by the protocol path budget, not an unrelated note-count or
     // configuration-directory depth limit that would restrict legitimate ordinary vaults.
     if (new TextEncoder().encode(folder.normalize('NFC')).byteLength > 1024 || seen.has(folder))
       throw new ExternalRecoveryRequired('projection inventory is incomplete')
     seen.add(folder)
-    const listed = await app.vault.adapter.list(folder)
+    const listed = await readOnly(() => app.vault.adapter.list(folder))
+    assertCurrent()
     for (const file of listed.files) paths.add(file)
+    inspection.progress?.(0, paths.size)
     for (const child of listed.folders) await walk(child)
   }
   await walk('')
@@ -220,10 +261,16 @@ export async function projectionEvidence(
     (cached.success ? cached.data.entries : []).map((entry) => [entry.path, entry])
   )
   const inspected: { path: string; size: number; mtime: number; marker: boolean }[] = []
+  const checkpoint = () => {
+    if (!inspected.length) return
+    const entries = new Map(previous)
+    for (const entry of inspected) entries.set(entry.path, entry)
+    persist(app, EXTERNAL_INSPECTION_KEY, { schema: 1, entries: [...entries.values()] })
+  }
   let evidence: string | null = null
   const stat = async (path: string) => {
     try {
-      return await app.vault.adapter.stat(path)
+      return await readOnly(() => app.vault.adapter.stat(path))
     } catch (cause) {
       const code =
         typeof cause === 'object' && cause !== null && 'code' in cause ? cause.code : null
@@ -265,9 +312,9 @@ export async function projectionEvidence(
   }
   const inspect = async (path: string) => {
     if (!includeControl && path === IGNORE_FILE) return
-    assertOwned()
+    assertCurrent()
     const before = await stat(path)
-    assertOwned()
+    assertCurrent()
     if (!before || before.type !== 'file' || before.size > MAX_PROJECTION_BYTES) return
     const old = previous.get(path)
     if (old && old.size === before.size && old.mtime === before.mtime) {
@@ -277,37 +324,65 @@ export async function projectionEvidence(
     }
     let bytes: Uint8Array
     try {
-      const read = await readCandidate(path)
+      const read = await readOnly(() => readCandidate(path))
       bytes =
         read instanceof Uint8Array
           ? read.subarray(0, MAX_PROJECTION_BYTES)
           : new Uint8Array(read, 0, Math.min(read.byteLength, MAX_PROJECTION_BYTES))
     } catch (cause) {
-      assertOwned()
+      assertCurrent()
       if ((await stat(path)) === null) return
       throw cause
     }
-    assertOwned()
+    assertCurrent()
     const marker = recognizeProjection(bytes)
     if (marker && !ownedPaths.has(path.normalize('NFC').toLowerCase())) evidence ??= path
     const after = await stat(path)
-    assertOwned()
+    assertCurrent()
     if (after?.type === 'file' && after.size === before.size && after.mtime === before.mtime)
       inspected.push({ path, size: before.size, mtime: before.mtime, marker })
   }
   // Preserve hidden-file coverage, but cap concurrent adapter work instead of serial iOS stats.
   const remaining = [...paths]
   let next = 0
-  await Promise.all(
-    Array.from({ length: Math.min(8, remaining.length) }, async () => {
-      while (next < remaining.length) {
-        assertOwned()
-        await inspect(remaining[next++])
-      }
-    })
-  )
-  assertOwned()
+  let completed = 0
+  inspection.progress?.(0, remaining.length)
+  const workers = Array.from({ length: Math.min(8, remaining.length) }, async () => {
+    while (next < remaining.length) {
+      assertCurrent()
+      await inspect(remaining[next++])
+      assertCurrent()
+      completed++
+      if (completed % 128 === 0) checkpoint()
+      inspection.progress?.(completed, remaining.length)
+    }
+  })
+  try {
+    await Promise.all(workers)
+  } catch (error) {
+    stopped = true
+    // Completed entries remain a cache, never permission to skip the next full inventory.
+    checkpoint()
+    console.debug(
+      '[Abele Sync]',
+      'checking vault stopped',
+      completed,
+      remaining.length,
+      Date.now() - started,
+      'ms'
+    )
+    throw error
+  }
+  assertCurrent()
   persist(app, EXTERNAL_INSPECTION_KEY, { schema: 1, entries: inspected })
+  console.debug(
+    '[Abele Sync]',
+    'checking vault complete',
+    completed,
+    remaining.length,
+    Date.now() - started,
+    'ms'
+  )
   return evidence
 }
 
@@ -377,7 +452,8 @@ export async function recoverExternalState(
   databaseName: string,
   binding: ConnectionBinding,
   fence: RuntimeFence,
-  factory?: IDBFactory
+  factory?: IDBFactory,
+  inspection: ProjectionInspection = {}
 ): Promise<void> {
   fence.assertOwned()
   const marker = activation(app)
@@ -447,7 +523,9 @@ export async function recoverExternalState(
         ownedProjectionPaths.add(file.projectionPath.normalize('NFC').toLowerCase())
     }
   }
-  if (await projectionEvidence(app, () => fence.assertOwned(), true, ownedProjectionPaths))
+  if (
+    await projectionEvidence(app, () => fence.assertOwned(), true, ownedProjectionPaths, inspection)
+  )
     throw new ExternalRecoveryRequired('projection evidence requires recovery before ordinary sync')
   // Inspect installation journals before their existing safe recovery, and publication
   // metadata before any constructor scope work or ordinary replay is permitted.
@@ -533,13 +611,24 @@ export async function activateExternalFiles(
 
 /** One read-only safety inventory for replacement, enrollment, departure and delayed cleanup.
  * Activation is conservatively retained until the explicit preparation API exists. */
+export function requireExternalEnrollmentSafety(app: App): void {
+  if (app.loadLocalStorage(EXTERNAL_SWITCH_KEY) != null) throw new ExternalRecoveryRequired()
+  activation(app)
+  retiredLedgers(app)
+  const installation = new WriteJournal(app)
+  if (installation.entries().length || installation.recovered().length)
+    throw new ExternalRecoveryRequired('installation or retained-byte recovery is unfinished')
+}
 export async function requireExternalLifecycleSafety(
   app: App,
   factory: IDBFactory,
   database?: string,
   preserveActiveOffloads = false,
   departingLedger?: string,
-  assertCurrent: () => void = () => {}
+  assertCurrent: () => void = () => {},
+  inspection: ProjectionInspection = {},
+  inspectProjections = true,
+  metadataOnly = false
 ): Promise<void> {
   if (app.loadLocalStorage(EXTERNAL_SWITCH_KEY) != null) throw new ExternalRecoveryRequired()
   const marker = activation(app)
@@ -567,7 +656,9 @@ export async function requireExternalLifecycleSafety(
     }
   const ownedPaths = new Set<string>()
   for (const name of names) {
-    const found = await inspectExistingLedger(factory, name)
+    const found = await inspectionRead(inspection, assertCurrent, () =>
+      inspectExistingLedger(factory, name)
+    )
     const activated = activatedLedgers.find((item) => item.databaseName === name)
     // An active marker always keeps original-byte protection, even if also retired.
     const retiredOnly =
@@ -638,14 +729,23 @@ export async function requireExternalLifecycleSafety(
           !['hydrated', 'remote-only', 'complete'].includes(op.phase)
         )
           throw new ExternalRecoveryRequired('operation is unresolved')
+      // Enrollment checks durable recovery metadata only. Byte verification belongs to startup.
+      if (metadataOnly) continue
       const verifyLocal = async (path: string, sha: string, size: number) => {
-        const bytes = new Uint8Array(await app.vault.adapter.readBinary(path))
+        const bytes = new Uint8Array(
+          await inspectionRead(inspection, assertCurrent, () => app.vault.adapter.readBinary(path))
+        )
         if (bytes.length !== size || (await sha256(bytes)) !== sha)
           throw new ExternalRecoveryRequired('materialized or retained bytes changed')
       }
       for (const op of doc.operations)
         for (const artifact of op.ownedArtifacts) {
-          if (!(await app.vault.adapter.exists(artifact.path))) continue
+          if (
+            !(await inspectionRead(inspection, assertCurrent, () =>
+              app.vault.adapter.exists(artifact.path)
+            ))
+          )
+            continue
           await verifyLocal(artifact.path, artifact.sha, artifact.size)
           ownedPaths.add(artifact.path.normalize('NFC').toLowerCase())
         }
@@ -674,6 +774,9 @@ export async function requireExternalLifecycleSafety(
     }
   }
   assertCurrent()
-  if (await projectionEvidence(app, assertCurrent, false, ownedPaths))
+  if (
+    inspectProjections &&
+    (await projectionEvidence(app, assertCurrent, false, ownedPaths, inspection))
+  )
     throw new ExternalRecoveryRequired('unresolved projection evidence')
 }

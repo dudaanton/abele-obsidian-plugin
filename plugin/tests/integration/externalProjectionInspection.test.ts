@@ -1,12 +1,51 @@
 import { performance } from 'node:perf_hooks'
 import { afterEach, describe, expect, it, vi } from 'vitest'
-import { projectionEvidence } from '@/sync/external/pluginSafety'
+import { projectionEvidence, EXTERNAL_INSPECTION_KEY } from '@/sync/external/pluginSafety'
 import { MAX_PROJECTION_BYTES, recognizeProjection } from '@/sync/external/projection'
 import { useVault } from '../helpers/testEnv'
 
 afterEach(() => vi.restoreAllMocks())
 
 describe('bounded persisted external projection inspection', () => {
+  it('cancels a pending read, checkpoints completed evidence and resumes without rereading it', async () => {
+    const app = useVault(
+      Array.from({ length: 12 }, (_, index) => ({ path: `Notes/${index}.md`, content: 'ordinary' }))
+    )
+    const controller = new AbortController()
+    let release!: () => void
+    const gate = new Promise<void>((resolve) => {
+      release = resolve
+    })
+    const original = app.vault.adapter.readBinary.bind(app.vault.adapter)
+    const reads = vi.spyOn(app.vault.adapter, 'readBinary').mockImplementation(async (path) => {
+      if (Number(path.split('/')[1].split('.')[0]) >= 8) await gate
+      return original(path)
+    })
+    const progress = vi.fn()
+    const inspection = projectionEvidence(app as never, () => {}, true, new Set(), {
+      signal: controller.signal,
+      progress,
+    }).catch((error) => error)
+    try {
+      await vi.waitFor(() => expect(progress).toHaveBeenCalledWith(8, 12))
+      controller.abort()
+      expect(await inspection).toBeInstanceOf(Error)
+      const saved = app.loadLocalStorage(EXTERNAL_INSPECTION_KEY) as { entries: unknown[] }
+      expect(saved.entries).toHaveLength(8)
+      release()
+      await new Promise((resolve) => setTimeout(resolve, 1))
+      expect(app.loadLocalStorage(EXTERNAL_INSPECTION_KEY)).toEqual(saved)
+      reads.mockClear()
+      expect(await projectionEvidence(app as never)).toBeNull()
+      expect(reads).toHaveBeenCalledTimes(4)
+      expect(
+        reads.mock.calls.every(([path]) => Number(path.split('/')[1].split('.')[0]) >= 8)
+      ).toBe(true)
+    } finally {
+      release()
+      controller.abort()
+    }
+  })
   it('checks files concurrently with at most eight adapter operations in flight', async () => {
     const app = useVault(
       Array.from({ length: 24 }, (_, index) => ({ path: `Notes/${index}.md`, content: 'ordinary' }))

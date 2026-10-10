@@ -164,6 +164,18 @@ it.each(['close', 'scope', 'connection'] as const)(
     view.unmount()
   }
 )
+it('shows vault inspection progress in its connection row and keeps sync blocked', () => {
+  const ui = tokenUiFixture()
+  const id = ui.rows.value[0].id
+  ui.activity.value = { ...ui.activity.value, [id]: { inspection: { completed: 12, total: 3000 } } }
+  const view = mount(SyncSettings, { props: { model: ui } })
+  expect(view.text()).toContain('Checking the vault… 12/3000')
+  const sync = view
+    .findAllComponents(Icon)
+    .find((one) => one.props('tooltip') === 'Sync this connection now')!
+  expect(sync.props('disabled')).toBe(true)
+  view.unmount()
+})
 it('allows Close during a slow vault check and cancels enrollment', async () => {
   const data = new Map<string, unknown>()
   const registry = TokenConnectionRegistry.open({

@@ -20,7 +20,7 @@
         <Icon
           icon="refresh-cw"
           tooltip="Sync this connection now"
-          :disabled="row.paused || !ui.runtimes.has(row.id) || busy.has(row.id)"
+          :disabled="row.paused || !!activity[row.id]?.inspection || busy.has(row.id)"
           @click="act(row.id, () => ui!.sync(row.id))"
         />
         <Icon
@@ -222,10 +222,13 @@ const dialog = ref<{
 } | null>(null)
 function description(row: TokenConnectionRecord) {
   const last = activity.value[row.id]?.lastSync
+  const inspection = activity.value[row.id]?.inspection
   return (
     row.address +
     ' · ' +
-    statusName(row.paused ? 'paused' : row.status) +
+    (inspection
+      ? `Checking the vault… ${inspection.completed}/${inspection.total}`
+      : statusName(row.paused ? 'paused' : row.status)) +
     ' · ' +
     (last ? 'Last synced ' + new Date(last).toLocaleString() : 'Not synced yet')
   )

@@ -11,6 +11,128 @@ import { AttachmentConsent } from '@/sync/attachmentConsent'
 import { buildFakeVault } from '../helpers/fakeVault'
 import * as safety from '@/sync/external/pluginSafety'
 
+function inspectionFixture(marker = false) {
+  const app = buildFakeVault([
+    {
+      path: 'Notes/slow.txt',
+      content: marker ? '{"format":"abele.external", broken' : 'ordinary note',
+    },
+  ])
+  const registry = TokenConnectionRegistry.open(app)
+  const keys = new Map<string, string>()
+  const secrets = {
+    get: (id: string) => keys.get(id) ?? null,
+    set: (id: string, key: string) => {
+      keys.set(id, key)
+    },
+    remove: (id: string) => {
+      keys.delete(id)
+    },
+  }
+  const metadata = new MemoryStateStore()
+  const scope = { kind: 'folder' as const, id: 'root', path: '/' }
+  const transport = vi.fn<typeof fetch>(async (input) =>
+    new URL(String(input)).pathname === '/v2/connection'
+      ? Response.json({
+          protocol: 2,
+          token_id: 'token',
+          space_id: 'space',
+          scope,
+          status: 'active',
+          limits: { max_file_bytes: 1000, quota_bytes: null },
+        })
+      : Response.json({ items: [], cursor: 1, next: null })
+  )
+  const ui = new TokenUi(registry, secrets, transport, {
+    executables: new ExecutableReview(metadata),
+    attachments: new AttachmentConsent(metadata),
+    close: () => {},
+  })
+  const host = new TokenEngines(app as unknown as App, ui, secrets.get, {
+    fetch: transport,
+    indexedDB: new IDBFactory(),
+    WebSocket: class {
+      constructor() {
+        throw new Error('No test socket')
+      }
+    } as unknown as typeof WebSocket,
+  })
+  let release!: () => void
+  const gate = new Promise<void>((resolve) => {
+    release = resolve
+  })
+  const read = app.vault.adapter.readBinary.bind(app.vault.adapter)
+  const probe = vi.spyOn(app.vault.adapter, 'readBinary').mockImplementation(async (path) => {
+    await gate
+    return read(path)
+  })
+  const encoded = encodeAccessToken({
+    v: 1,
+    address: 'https://sync.example',
+    key: 'a'.repeat(43),
+    scope,
+  })
+  return { app, registry, ui, host, transport, probe, release, encoded }
+}
+
+for (const action of ['pass', 'refuse', 'disconnect', 'unload']) {
+  it(`keeps a slow full inspection outside Connect and handles ${action} safely`, async () => {
+    const fixture = inspectionFixture(action === 'refuse')
+    const { ui, host, registry, transport, release, encoded } = fixture
+    let connected = false
+    const connecting = ui.connect(encoded).then(() => {
+      connected = true
+    })
+    try {
+      await vi.waitFor(() => expect(connected).toBe(true), { timeout: 300 })
+      await connecting
+      const id = registry.records()[0].id
+      await vi.waitFor(() =>
+        expect(ui.activity.value[id]?.inspection).toEqual({ completed: 0, total: 1 })
+      )
+      await new Promise((resolve) => setTimeout(resolve, 20))
+      expect(ui.runtimes.has(id)).toBe(false)
+      expect(
+        transport.mock.calls.every(
+          ([input]) => new URL(String(input)).pathname === '/v2/connection'
+        )
+      ).toBe(true)
+      vi.useFakeTimers()
+      await vi.advanceTimersByTimeAsync(60000)
+      expect(registry.records()[0].status).toBe('joining')
+      expect(ui.activity.value[id].error).toBeUndefined()
+      vi.useRealTimers()
+      if (action === 'disconnect') {
+        await ui.disconnect(id)
+        expect(registry.records()).toEqual([])
+      } else if (action === 'unload') {
+        await host.close()
+      }
+      release()
+      if (action === 'pass') await vi.waitFor(() => expect(ui.runtimes.has(id)).toBe(true))
+      else if (action === 'refuse') {
+        await vi.waitFor(() => expect(registry.records()[0].status).toBe('error'))
+        expect(ui.activity.value[id].error).toContain('recovery')
+      }
+      if (action !== 'pass') {
+        await new Promise((resolve) => setTimeout(resolve, 20))
+        expect(ui.runtimes.has(id)).toBe(false)
+        expect(
+          transport.mock.calls.every(
+            ([input]) => new URL(String(input)).pathname === '/v2/connection'
+          )
+        ).toBe(true)
+      }
+    } finally {
+      vi.useRealTimers()
+      release()
+      await connecting.catch(() => {})
+      await host.close()
+      fixture.probe.mockRestore()
+    }
+  })
+}
+
 it('revokes a timed-out engine start and permits a later explicit retry', async () => {
   vi.useFakeTimers()
   let release!: () => void

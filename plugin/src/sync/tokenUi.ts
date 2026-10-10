@@ -113,6 +113,7 @@ export const statusName = (status: string) =>
     }) as Record<string, string>
   )[status] ?? 'Needs attention'
 export interface ConnectionActivity {
+  inspection?: { completed: number; total: number }
   heldDeletes?: number
   deferred?: number
   pending?: number
@@ -226,6 +227,12 @@ export class TokenUi {
       }
     })
   }
+  inspectionProgress(id: string, completed: number, total: number): void {
+    this.activity.value = {
+      ...this.activity.value,
+      [id]: { ...this.activity.value[id], inspection: { completed, total }, error: undefined },
+    }
+  }
   async connect(text: string, signal?: AbortSignal): Promise<void> {
     // Validate with the server before adding a row. Failed paste leaves all existing rows intact.
     const token = decodeAccessToken(text),
@@ -303,6 +310,7 @@ export class TokenUi {
       .then(() => {
         if (
           !this.runtimes.has(id) &&
+          !this.activity.value[id]?.inspection &&
           this.registry.records().find((one) => one.id === id)?.status === 'joining'
         ) {
           this.registry.setStatus(id, 'error')
@@ -352,12 +360,11 @@ export class TokenUi {
     if (!record || record.paused) throw new Error('Sync is paused')
     const runtime = this.runtimes.get(id)
     if (!runtime) {
-      await connectStage(
-        'retry starting sync',
-        'Could not finish starting sync. Try Sync now again.',
-        (assertCurrent) => this.retryConnection(id, assertCurrent)
-      )
-      if (!this.runtimes.has(id))
+      await this.retryConnection(id, () => {
+        if (!this.registry.records().some((one) => one.id === id))
+          throw new ConnectStageError('Connection cancelled.')
+      })
+      if (!this.runtimes.has(id) && !this.activity.value[id]?.inspection)
         throw new ConnectStageError('Could not finish starting sync. Try Sync now again.')
       return
     }
