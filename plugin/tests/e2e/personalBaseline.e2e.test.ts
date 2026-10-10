@@ -68,6 +68,135 @@ liveCase(
     ).rejects.toThrow()
     expect(a.exists(path)).toBe(false)
     expect(a.rows().map((one) => one.id)).toContain(id)
+    const refusal = await a.long(
+      'open unavailable external file',
+      `try{await svc.openFile(${JSON.stringify(path)});return 'unexpected success'}catch(error){return String(error.message)}`
+    )
+    expect(String(refusal)).toMatch(/unavailable|offline|recovery/i)
+    expect(
+      a.run(
+        `return [...document.querySelectorAll('.notice')].some(one=>one.textContent.includes('Cannot get this file yet: '+${JSON.stringify(path)}))`
+      )
+    ).toBe(true)
+  },
+  fixture
+)
+liveCase(
+  'personalBaseline',
+  'offloaded content forwards through a newly permitted connection as real bytes',
+  [112],
+  async () => {
+    const s = fixture(),
+      a = s.primary,
+      target = await s.addServer(),
+      path = s.root + '/forward.bin',
+      source = await s.connect()
+    a.create(path, 'real forwarded binary bytes')
+    await a.syncNow(source)
+    expect(
+      await a.long(
+        'offload source',
+        `return await host.evict(${JSON.stringify(source)},${JSON.stringify(path)})`
+      )
+    ).toMatchObject({ status: 'complete' })
+    expect(a.exists(path)).toBe(false)
+    const recipient = await s.connect(a, target.rootToken)
+    await a.syncNow(recipient)
+    const remote = (await s.items(target)).find((one) => one.path === path)!
+    expect(remote).toBeDefined()
+    expect(
+      new TextDecoder().decode(
+        await s.client(target).versionBytes(remote.file_id, remote.version_id)
+      )
+    ).toBe('real forwarded binary bytes')
+    expect((await s.items(target)).some((one) => one.path.endsWith('.abele-ref'))).toBe(false)
+  },
+  fixture
+)
+liveCase(
+  'personalBaseline',
+  'offload cannot remove the only reachable copy still owed to another server',
+  [115],
+  async () => {
+    const s = fixture(),
+      a = s.primary,
+      target = await s.addServer(),
+      source = await s.connect(),
+      other = await s.connect(a, target.rootToken),
+      path = s.root + '/owed.bin'
+    await a.pause(other, true)
+    a.create(path, 'only reachable pending bytes')
+    await a.syncNow(source)
+    expect((await s.items(target)).some((one) => one.path === path)).toBe(false)
+    s.server.suspend()
+    try {
+      const refused = await a.long(
+        'offload unreachable retained source',
+        `try{return await host.evict(${JSON.stringify(source)},${JSON.stringify(path)})}catch(error){return {status:'refused',reason:String(error.message)}}`
+      )
+      expect(refused).not.toMatchObject({ status: 'complete' })
+      expect(a.read(path)).toBe('only reachable pending bytes')
+      await a.pause(other, false)
+      await a.syncNow(other)
+      const remote = (await s.items(target)).find((one) => one.path === path)!
+      expect(
+        new TextDecoder().decode(
+          await s.client(target).versionBytes(remote.file_id, remote.version_id)
+        )
+      ).toBe('only reachable pending bytes')
+    } finally {
+      s.server.resume()
+    }
+  },
+  fixture
+)
+liveCase(
+  'personalBaseline',
+  'simultaneous hydration edit and transfer preserve the newest local bytes',
+  [116],
+  async () => {
+    const s = fixture(),
+      a = s.primary,
+      target = await s.addServer(),
+      source = await s.connect(),
+      other = await s.connect(a, target.rootToken),
+      path = s.root + '/race.bin'
+    a.create(path, 'old retained version')
+    await a.syncNow()
+    expect(
+      await a.long(
+        'offload race source',
+        `return await host.evict(${JSON.stringify(source)},${JSON.stringify(path)})`
+      )
+    ).toMatchObject({ status: 'complete' })
+    await a.pause(source, true)
+    await a.pause(other, true)
+    const outcome = await a.long<{ bytes: string; hydrated: boolean }>(
+      'race opening with an edit and transfer',
+      `
+      const gate=window.__abeleTest.holdTokenDownload(${JSON.stringify(source)})
+      try{
+        const opened=host.hydrate(${JSON.stringify(path)}).then(()=>true,()=>false)
+        await gate.ready
+        await app.vault.create(${JSON.stringify(path)},'newest local edit')
+        await svc.pause(${JSON.stringify(other)},false)
+        const transfer=svc.runtimes.get(${JSON.stringify(other)}).sync().catch(()=>{})
+        gate.release()
+        const hydrated=await opened
+        await transfer
+        return {hydrated,bytes:await app.vault.adapter.read(${JSON.stringify(path)})}
+      }finally{gate.close()}
+    `
+    )
+    expect(outcome.bytes).toBe('newest local edit')
+    await a.syncNow(other)
+    const remote = (await s.items(target)).find((one) => one.path === path)!
+    expect(
+      new TextDecoder().decode(
+        await s.client(target).versionBytes(remote.file_id, remote.version_id)
+      )
+    ).toBe('newest local edit')
+    expect(a.read(path)).toBe('newest local edit')
   },
   fixture
 )

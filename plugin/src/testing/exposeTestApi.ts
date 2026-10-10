@@ -114,6 +114,7 @@ import { AttachmentStore } from '@/sync/external/attachmentStore'
 import { pluginRepresentation } from '@/sync/external/pluginRepresentation'
 import { RuntimeFence } from '@/sync/external/recovery'
 import { tokenSyncProbe } from './tokenSyncProbe'
+import { holdTokenDownload } from './holdTokenDownload'
 import { nativeSyncTransportSnapshot } from '../sync/mobileTransport'
 import { externalFileSnapshot } from '../sync/external/ObsidianExternalFileHost'
 import type { TokenEngineRuntime } from '@/sync/tokenEngineRuntime'
@@ -230,6 +231,7 @@ interface AbeleTestApi {
   ExternalFileHost: typeof ExternalFileHost
   AttachmentStore: typeof AttachmentStore
   tokenSyncProbe(id: string): ReturnType<typeof tokenSyncProbe>
+  holdTokenDownload(id: string): ReturnType<typeof holdTokenDownload>
   nativeSyncTransport(): ReturnType<typeof nativeSyncTransportSnapshot>
   externalFileOperations(): ReturnType<typeof externalFileSnapshot>
   externalRepresentation: {
@@ -846,6 +848,20 @@ export function exposeTestApi(plugin: Plugin): void {
         binding = host.ui.runtimes.get(id)
       if (!runtime || !binding?.assertCurrent) throw new Error('Token runtime is not ready')
       return tokenSyncProbe(runtime, () => binding.assertCurrent())
+    },
+    holdTokenDownload: (id) => {
+      const host = (
+        plugin as unknown as {
+          tokenEngines: {
+            live: Map<string, TokenEngineRuntime>
+            ui: { runtimes: Map<string, { assertCurrent(): void }> }
+          }
+        }
+      ).tokenEngines
+      const runtime = host?.live.get(id),
+        binding = host?.ui.runtimes.get(id)
+      if (!runtime || !binding) throw new Error('Connection runtime is unavailable')
+      return holdTokenDownload(runtime, () => binding.assertCurrent())
     },
     nativeSyncTransport: nativeSyncTransportSnapshot,
     externalFileOperations: externalFileSnapshot,

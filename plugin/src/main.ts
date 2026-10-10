@@ -1,5 +1,6 @@
 import { ChangeTracker } from '@/ai/rewind/ChangeTracker'
 import '@/helpers/deferredCleanup'
+import { openSyncedFile } from './sync/openSyncedFile'
 import {
   Editor,
   EventRef,
@@ -452,8 +453,18 @@ export default class AbelePlugin extends Plugin {
             },
           })
           ui.openFile = async (path) => {
-            await this.tokenEngines?.hydrate(path)
-            await this.app.workspace.openLinkText(path, '', false)
+            await openSyncedFile(
+              path,
+              async (file) => {
+                await this.tokenEngines?.hydrate(file)
+              },
+              async (file) => {
+                await this.app.workspace.openLinkText(file, '', false)
+              },
+              (message) => {
+                new Notice(message)
+              }
+            )
           }
           this.register(() => {
             if (tokenUi.value === ui) tokenUi.value = null
