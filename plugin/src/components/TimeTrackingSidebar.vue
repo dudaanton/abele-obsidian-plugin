@@ -249,7 +249,7 @@ const dailyChartData = pausedWhileHidden(active, () => {
 })
 
 function renderDailyChart(dailyChart: EChartsType) {
-  const colors = getThemeColors()
+  const colors = getThemeColors(dailyChart.getDom?.())
   const data = dailyChartData.value
 
   if (!data.some(([, v]) => v > 0)) {
@@ -316,7 +316,7 @@ const groupsPieData = pausedWhileHidden(active, (): GroupPieItem[] => {
 
   const resolveCache = new Map<string, string | null>()
   const resolve = (wikilink: string): string | null => {
-    if (resolveCache.has(wikilink)) return resolveCache.get(wikilink)!
+    if (resolveCache.has(wikilink)) return resolveCache.get(wikilink)
     const linkPath = wikilinkToPath(wikilink)
     const file = linkPath ? app.metadataCache.getFirstLinkpathDest(linkPath, '') : null
     const resolved = file ? file.path : null
@@ -354,7 +354,7 @@ function createGroupsPieChart(groupsPieChart: EChartsType) {
 }
 
 function renderGroupsPieChart(groupsPieChart: EChartsType) {
-  const colors = getThemeColors()
+  const colors = getThemeColors(groupsPieChart.getDom?.())
   const data = groupsPieData.value
 
   if (!data.length) {

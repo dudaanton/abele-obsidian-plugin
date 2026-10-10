@@ -37,7 +37,7 @@ export function useFinanceCharts(options: FinanceChartOptions) {
   }
 
   function renderPieChart(pieChart: EChartsType) {
-    const colors = getThemeColors()
+    const colors = getThemeColors(pieChart.getDom?.())
     const data = pieData.value
 
     if (!data.length) {
@@ -86,7 +86,7 @@ export function useFinanceCharts(options: FinanceChartOptions) {
   }
 
   function renderCalendarChart(calendarChart: EChartsType) {
-    const colors = getThemeColors()
+    const colors = getThemeColors(calendarChart.getDom?.())
     const rangeStart = periodStart.value.format(DATE_FORMAT)
     const rangeEnd = periodEnd.value.format(DATE_FORMAT)
     const dayTotals = calendarData.value
@@ -101,11 +101,8 @@ export function useFinanceCharts(options: FinanceChartOptions) {
     }
 
     const maxExpense = Math.max(...expenseData.map((e) => e[1]), 1)
-    const bgPrimary = getComputedStyle(document.body)
-      .getPropertyValue('--background-primary')
-      .trim()
-    const isDark = document.body.classList.contains('theme-dark')
-    const emptyColor = isDark ? 'rgba(255,255,255,0.04)' : 'rgba(0,0,0,0.03)'
+    const bgPrimary = colors.bgPrimary
+    const emptyColor = colors.bgSecondary
 
     const fmtShort = (n: number): string => {
       if (Math.abs(n) >= 1000) return (n / 1000).toFixed(1) + 'k'
@@ -134,7 +131,8 @@ export function useFinanceCharts(options: FinanceChartOptions) {
           min: 0,
           max: maxExpense,
           inRange: {
-            color: [emptyColor, colors.expense + '40', colors.expense + '80', colors.expense],
+            // Interpolate resolved host colours; appending hex alpha fails for rgb/hsl themes.
+            color: [emptyColor, colors.expense],
           },
         },
         calendar: {

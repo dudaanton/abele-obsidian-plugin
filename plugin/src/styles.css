@@ -36,29 +36,17 @@ body.is-tablet.abele-half-width-sidebars {
   line-height: var(--line-height-normal);
 }
 
-/* Colored highlight variables */
+/* Named highlights follow the active theme on both platforms and in either colour mode. */
 body {
-  --abele-highlight-red: rgba(255, 82, 82, 0.3);
-  --abele-highlight-orange: rgba(255, 152, 0, 0.3);
-  --abele-highlight-yellow: rgba(255, 235, 59, 0.3);
-  --abele-highlight-green: rgba(76, 175, 80, 0.3);
-  --abele-highlight-cyan: rgba(0, 188, 212, 0.3);
-  --abele-highlight-blue: rgba(66, 133, 244, 0.3);
-  --abele-highlight-purple: rgba(156, 39, 176, 0.3);
-  --abele-highlight-pink: rgba(233, 30, 99, 0.3);
-  --abele-highlight-gray: rgba(158, 158, 158, 0.3);
-}
-
-.theme-dark {
-  --abele-highlight-red: rgba(255, 82, 82, 0.35);
-  --abele-highlight-orange: rgba(255, 152, 0, 0.35);
-  --abele-highlight-yellow: rgba(255, 235, 59, 0.25);
-  --abele-highlight-green: rgba(76, 175, 80, 0.35);
-  --abele-highlight-cyan: rgba(0, 188, 212, 0.35);
-  --abele-highlight-blue: rgba(66, 133, 244, 0.35);
-  --abele-highlight-purple: rgba(156, 39, 176, 0.35);
-  --abele-highlight-pink: rgba(233, 30, 99, 0.35);
-  --abele-highlight-gray: rgba(158, 158, 158, 0.35);
+  --abele-highlight-red: rgba(var(--color-red-rgb), 0.3);
+  --abele-highlight-orange: rgba(var(--color-orange-rgb), 0.3);
+  --abele-highlight-yellow: rgba(var(--color-yellow-rgb), 0.3);
+  --abele-highlight-green: rgba(var(--color-green-rgb), 0.3);
+  --abele-highlight-cyan: rgba(var(--color-cyan-rgb), 0.3);
+  --abele-highlight-blue: rgba(var(--color-blue-rgb), 0.3);
+  --abele-highlight-purple: rgba(var(--color-purple-rgb), 0.3);
+  --abele-highlight-pink: rgba(var(--color-pink-rgb), 0.3);
+  --abele-highlight-gray: color-mix(in srgb, var(--text-muted) 30%, transparent);
 }
 
 /* Highlight decorations */

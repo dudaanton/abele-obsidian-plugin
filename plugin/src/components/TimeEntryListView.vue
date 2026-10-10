@@ -131,7 +131,7 @@ const dailyChartData = computed(() => {
 })
 
 function renderChart(chart: EChartsType) {
-  const colors = getThemeColors()
+  const colors = getThemeColors(chart.getDom?.())
   const data = dailyChartData.value
 
   if (!data.length) {

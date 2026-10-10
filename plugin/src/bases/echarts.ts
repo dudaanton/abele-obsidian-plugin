@@ -33,23 +33,30 @@ function ensureRegistered() {
 
 const THEME_NAME = 'obsidian-abele'
 
-function css(varName: string): string {
-  return getComputedStyle(document.body).getPropertyValue(varName).trim()
+function themeReader(doc: Document) {
+  const style = (doc.defaultView ?? window).getComputedStyle(doc.body)
+  return (name: string) => style.getPropertyValue(name).trim()
 }
 
-function buildTheme(): Record<string, any> {
+function buildTheme(doc: Document): Record<string, any> {
+  const css = themeReader(doc)
   const textColor = css('--text-normal')
   const textMuted = css('--text-muted')
   const textFaint = css('--text-faint')
   const border = css('--background-modifier-border')
   const bgSecondary = css('--background-secondary')
   const accent = css('--interactive-accent')
-  const success = css('--text-success') || '#16a34a'
-  const error = css('--text-error') || '#dc2626'
+  const success = css('--text-success') || css('--color-green')
+  const error = css('--text-error') || css('--color-red')
 
   return {
     // Palette
-    color: [accent, success, error, '#f59e0b', '#8b5cf6', '#06b6d4', '#ec4899', '#14b8a6'],
+    color: [
+      accent,
+      success,
+      error,
+      ...['orange', 'purple', 'cyan', 'pink', 'blue'].map((name) => css(`--color-${name}`)),
+    ],
     backgroundColor: 'transparent',
 
     // Global text
@@ -74,7 +81,7 @@ function buildTheme(): Record<string, any> {
       backgroundColor: bgSecondary,
       borderColor: border,
       textStyle: { color: textColor },
-      extraCssText: 'border-radius: 6px; box-shadow: 0 2px 8px rgba(0,0,0,.15);',
+      extraCssText: `border-radius: ${css('--radius-s')}; box-shadow: ${css('--shadow-s')};`,
     },
 
     // Category axis (x when horizontal, y when vertical)
@@ -140,20 +147,22 @@ function buildTheme(): Record<string, any> {
 /** Initialize an ECharts instance with the Obsidian theme applied */
 export function echartsInit(el: HTMLElement): EChartsType {
   ensureRegistered()
-  registerTheme(THEME_NAME, buildTheme())
+  registerTheme(THEME_NAME, buildTheme(el.ownerDocument))
   return init(el, THEME_NAME)
 }
 
 /** Get current resolved Obsidian CSS color values for use in chart options */
-export function getThemeColors() {
+export function getThemeColors(el?: HTMLElement) {
+  const css = themeReader(el?.ownerDocument ?? document)
   return {
-    income: css('--text-success') || '#16a34a',
-    expense: css('--text-error') || '#dc2626',
+    income: css('--text-success') || css('--color-green'),
+    expense: css('--text-error') || css('--color-red'),
     accent: css('--interactive-accent'),
     text: css('--text-normal'),
     textMuted: css('--text-muted'),
     textFaint: css('--text-faint'),
     border: css('--background-modifier-border'),
+    bgPrimary: css('--background-primary'),
     bgSecondary: css('--background-secondary'),
   }
 }

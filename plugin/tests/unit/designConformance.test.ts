@@ -219,6 +219,27 @@ function rawFormControls(source: string): string[] {
   return tags
 }
 
+describe('migrated theme colours', () => {
+  it('does not keep a private highlight palette or dark-mode shades', () => {
+    const css = readFileSync(STYLES, 'utf8')
+    const declarations = [...css.matchAll(/--abele-highlight-[a-z]+:\s*([^;]+);/g)].map(
+      (match) => match[1]
+    )
+    expect(declarations).toHaveLength(9)
+    expect(
+      declarations.every((value) => /var\(--(?:color-[a-z]+-rgb|text-muted)\)/.test(value))
+    ).toBe(true)
+  })
+  it('keeps chart defaults and gallery-viewer chrome free of literal colours', () => {
+    const chart = readFileSync(join(ROOT, '../bases/echarts.ts'), 'utf8')
+    const finance = readFileSync(join(ROOT, '../composables/useFinanceCharts.ts'), 'utf8')
+    const gallery = styleBlock(readFileSync(join(ROOT, 'GalleryViewer.vue'), 'utf8'))
+    expect(
+      [chart, finance, gallery].some((source) => /#[0-9a-fA-F]{3,8}\b|\brgba?\(\s*\d/.test(source))
+    ).toBe(false)
+  })
+})
+
 describe('migrated dialog sizing', () => {
   it('keeps audited picker and import shells on shared sizes', () => {
     const files = [
