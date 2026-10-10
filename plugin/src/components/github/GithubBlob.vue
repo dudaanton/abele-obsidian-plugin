@@ -31,8 +31,17 @@
     <template v-if="editor && editor.filePath.value === file.path">
       <div v-if="changedOnDisk" class="abele-github-blob__changed" role="status">
         <span>Changed on disk · your local draft is kept.</span>
-        <Button text="Reload" :disabled="!!editor.draft.value?.pending" @click="reloadDraft" />
-        <Button text="Keep mine" @click="keptContent = contentId" />
+        <Button
+          text="Reload"
+          tooltip="Discard the local draft and use the last loaded disk version"
+          :disabled="!!editor.draft.value?.pending"
+          @click="reloadDraft"
+        />
+        <Button
+          text="Keep mine"
+          tooltip="Keep the draft and its original save precondition"
+          @click="keptContent = contentId"
+        />
       </div>
       <NodeFileSaveState
         :model="editor"

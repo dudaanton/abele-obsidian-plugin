@@ -4,6 +4,7 @@
       <Button
         v-if="!model.editing.value"
         text="Edit file"
+        tooltip="Start a local draft from the loaded file"
         icon="pencil"
         :disabled="locked || busy || !model.fileEditable.value || !!model.draft.value?.pending"
         @click="act(() => model.beginEditing())"
@@ -11,6 +12,7 @@
       <Button
         v-else-if="model.draft.value?.pending"
         text="Check save"
+        tooltip="Check the original save operation without creating a new save"
         icon="refresh-cw"
         :disabled="busy || offline"
         @click="act(() => model.checkSave())"
@@ -18,6 +20,7 @@
       <Button
         v-else
         text="Save file"
+        tooltip="Save this draft using its original content identity"
         icon="save"
         :disabled="
           locked ||
@@ -78,6 +81,7 @@
           model.document.value?.contentId !== model.draft.value.baseContentId)
       "
       text="Use loaded version as base for this draft"
+      tooltip="Keep this draft and use the loaded disk version as its new save precondition"
       :disabled="locked || busy || !model.fileEditable.value"
       @click="act(() => model.rebaseDraft())"
     />
@@ -95,6 +99,7 @@
       <Button
         v-if="model.draft.value.result.predecessor_content_id"
         text="Read retained predecessor"
+        tooltip="Read the retained bytes from before the save"
         :disabled="busy || offline"
         @click="act(() => model.readPredecessor())"
       />
