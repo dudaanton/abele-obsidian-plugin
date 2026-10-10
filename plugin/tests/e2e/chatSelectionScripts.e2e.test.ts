@@ -47,6 +47,7 @@ const PRELUDE = `${WAIT_PRELUDE}
     if (!await until(() => parseFloat(getComputedStyle(document.body).getPropertyValue('--keyboard-height')) === 0, 5000)) throw Error('Keyboard did not close before selecting words')
     const word = await until(() => root.querySelector('strong'), 5000)
     if (!word) throw Error('Saved words did not render')
+    word.scrollIntoView({block:'center',inline:'nearest'})
     // Native sheets finish closing after their DOM is removed. Wait for the message's
     // geometry and hit target to stay put before sending a gesture to WebKit.
     let previous = '', stableSince = Date.now()
@@ -54,7 +55,11 @@ const PRELUDE = `${WAIT_PRELUDE}
       const r = word.getBoundingClientRect(), key = JSON.stringify([r.x,r.y,r.width,r.height])
       if (key !== previous) {previous = key; stableSince = Date.now()}
       return word.isConnected && r.width > 0 && word.contains(document.elementFromPoint(r.left+r.width/2,r.top+r.height/2)) && Date.now()-stableSince >= 600
-    }, 5000)) throw Error('Saved words did not become a stable gesture target')
+    }, 5000)) {
+      const r=word.getBoundingClientRect()
+      await shoot('gesture-target-failure')
+      throw Error('Saved words did not become a stable gesture target: '+JSON.stringify({box:r.toJSON(),root:root.outerHTML,hit:document.elementFromPoint(r.left+r.width/2,r.top+r.height/2)?.outerHTML}))
+    }
     const bounds = word.getBoundingClientRect()
     const events = [], tracking = new AbortController()
     let touches = 0
@@ -90,6 +95,12 @@ const PRELUDE = `${WAIT_PRELUDE}
       choice.click()
     }
     } finally { tracking.abort() }
+  }
+  const runIds = () => window.__abeleTest.ScriptRuns.getInstance().runs.value.map(run=>run.id)
+  const outputReady = async prior => {
+    const record=await until(()=>window.__abeleTest.ScriptRuns.getInstance().runs.value.find(run=>!prior.includes(run.id)&&run.path===${JSON.stringify(SCRIPTS + '/capture.js')}&&run.status!=='running'),8000)
+    if(!record || record.status!=='done')throw Error('Selection script did not finish: '+JSON.stringify(record))
+    if(!await until(async()=>{const file=app.vault.getAbstractFileByPath(${JSON.stringify(NOTE)});return file&&(await app.vault.read(file)).includes('#abele-selection=')},8000))throw Error('Script output backlink bytes were not saved')
   }
   const anchorCount = () => chats.getSessionByFile(${JSON.stringify(CHAT)})?.allMessages.value.find(m => m.id === 'answer')?.selection?.anchors.length || 0
   const form = async () => {
@@ -180,8 +191,8 @@ for (const layout of onPhone() ? ['native phone'] : ['desktop', 'phone layout'])
       const field=[...second.querySelectorAll('input')].find(el=>!el.value);field.value='Sample extra context';field.dispatchEvent(new Event('input',{bubbles:true}))
       const owner=chats.activeSession.value
       chats.createTab()
-      button(second,'Run').click()
-      if(!await until(()=>app.vault.getAbstractFileByPath(${JSON.stringify(NOTE)}),8000))throw Error('Script output was not saved')
+      const prior=runIds();button(second,'Run').click()
+      await outputReady(prior)
       const message=owner.allMessages.value.find(m=>m.id==='answer')
       return JSON.stringify({before,cancelled,done:{source:window.__abeleTest.ScriptRuns.getInstance().runs.value[0].source,content:message.content,range:message.selection.anchors[0].snapshot.source.range,otherTab:chats.activeSession.value!==owner}})
     `)
@@ -211,8 +222,8 @@ for (const layout of onPhone() ? ['native phone'] : ['desktop', 'phone layout'])
         await shoot('nested-discussion')
         await app.vault.delete(app.vault.getAbstractFileByPath(${JSON.stringify(NOTE)}))
         await select('nested-answer');const nestedForm=await form()
-        const field=[...nestedForm.querySelectorAll('input')].find(el=>!el.value);field.value='Nested context';field.dispatchEvent(new Event('input',{bubbles:true}));button(nestedForm,'Run').click()
-        if(!await until(()=>app.vault.getAbstractFileByPath(${JSON.stringify(NOTE)}),8000))throw Error('Nested output missing')
+        const field=[...nestedForm.querySelectorAll('input')].find(el=>!el.value);field.value='Nested context';field.dispatchEvent(new Event('input',{bubbles:true}));const prior=runIds();button(nestedForm,'Run').click()
+        await outputReady(prior)
         const owner=chats.activeSession.value,message=owner.allMessages.value.find(m=>m.id==='nested-answer')
         await chats.closeTab(owner.id);await returnFromNote()
         return JSON.stringify({returned,nested:{kind:chats.activeSession.value.kind,quote:document.querySelector('[data-selection-return]').textContent,content:message.content,keyboard:['INPUT','TEXTAREA'].includes(document.activeElement?.tagName)}})
