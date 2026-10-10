@@ -22,6 +22,113 @@ import { resetSyncTokenState } from '@/testing/resetSyncTokenState'
 import type { Plugin } from 'obsidian'
 import { projectionPath } from '@/sync/external/projection'
 
+it.each([false, true, 'touched', 'paged'])(
+  'stages a remote executable deletion without revival after review and restart (approved=%s)',
+  async (approved) => {
+    const server = await v2Server(),
+      user = await createUser(
+        { db: server.db, pepper: server.config.tokenPepper },
+        'Code review',
+        server.address
+      ),
+      remote = new V2EngineClient(user.token, { fetch: globalThis.fetch }),
+      app = buildFakeVault([]),
+      fs = new ObsidianFileSystem(app as unknown as App),
+      state = new MemoryStateStore(),
+      reviews = {
+        executables: new ExecutableReview(new MemoryStateStore()),
+        attachments: new AttachmentConsent(new MemoryStateStore()),
+        close: () => {},
+      }
+    const make = () =>
+      new TokenEngineRuntime({
+        id: 'review-test',
+        encoded: user.token,
+        fs,
+        state,
+        reviews,
+        fetch: (input, init) => {
+          const url = new URL(String(input))
+          if (
+            approved === 'paged' &&
+            url.pathname === '/v2/changes' &&
+            !url.searchParams.has('limit')
+          )
+            url.searchParams.set('limit', '1')
+          return globalThis.fetch(url, init)
+        },
+        changed: () => {},
+        failed: (error) => {
+          throw error
+        },
+        covers: async () => false,
+      })
+    let engine = make()
+    try {
+      await engine.sync()
+      const bytes = new TextEncoder().encode('// incoming code'),
+        sha = await sha256(bytes)
+      await remote.putBlob(sha, bytes)
+      await remote.commitRaw(
+        [{ op: 'create', path: 'Scripts/sample.js', sha, size: bytes.length, mtime: 1000 }],
+        crypto.randomUUID()
+      )
+      await engine.sync()
+      await engine.sync()
+      if (approved)
+        await reviews.executables.approve(
+          (await reviews.executables.pending()).map((one) => one.id),
+          engine
+        )
+      let file = (await remote.manifest()).items.find((one) => one.path === 'Scripts/sample.js')!
+      await remote.commitRaw(
+        [
+          {
+            op: 'move',
+            file_id: file.file_id,
+            base_version_id: file.version_id,
+            to_path: 'Scripts/renamed.js',
+          },
+        ],
+        crypto.randomUUID()
+      )
+      await engine.sync()
+      await engine.sync()
+      if (approved)
+        await reviews.executables.approve(
+          (await reviews.executables.pending()).map((one) => one.id),
+          engine
+        )
+      await engine.disconnect()
+      engine = make()
+      if (approved === 'touched') await fs.writeAtomic('Scripts/renamed.js', bytes, 1001)
+      if (approved === 'paged')
+        await remote.commitRaw(
+          [
+            { op: 'mkdir', path: 'Other/one' },
+            { op: 'mkdir', path: 'Other/two' },
+          ],
+          crypto.randomUUID()
+        )
+      file = (await remote.manifest()).items.find((one) => one.path === 'Scripts/renamed.js')!
+      await remote.commitRaw(
+        [{ op: 'delete', file_id: file.file_id, base_version_id: file.version_id }],
+        crypto.randomUUID()
+      )
+      await engine.sync()
+      await engine.sync()
+      expect((await remote.manifest()).items.filter((one) => one.kind !== 'directory')).toEqual([])
+      expect(
+        (await reviews.executables.pending()).filter((one) => one.operation === 'delete')
+      ).toMatchObject([{ path: 'Scripts/renamed.js', bytes: null }])
+      expect(await fs.stat('Scripts/renamed.js')).toEqual(approved ? expect.anything() : null)
+    } finally {
+      await engine.disconnect()
+      await server.close()
+    }
+  }
+)
+
 it('first root contact stages different existing hotkeys and exposes the review while Ready', async () => {
   const server = await v2Server(),
     factory = new IDBFactory()

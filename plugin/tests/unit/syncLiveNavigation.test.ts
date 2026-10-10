@@ -1,6 +1,44 @@
 import { expect, it, vi } from 'vitest'
-import { SYNC_PRELUDE } from '../e2e/helpers/syncDriver'
+import { SYNC_PRELUDE, SyncDriver } from '../e2e/helpers/syncDriver'
 vi.mock('../e2e/helpers/syncVault', () => ({ waitFor: vi.fn() }))
+
+it('reopens trash instead of inspecting a previous mounted empty list', async () => {
+  const old = document.createElement('div')
+  old.className = 'modal'
+  const close = document.createElement('button'),
+    list = document.createElement('div')
+  close.className = 'modal-close-button'
+  list.className = 'abele-deleted-files'
+  list.textContent = 'Old empty trash'
+  old.append(close, list)
+  document.body.append(old)
+  old.querySelector('button')!.addEventListener('click', () => old.remove())
+  const command = vi.fn(() => {
+    if (document.querySelector('.abele-deleted-files')) return
+    const fresh = document.createElement('div')
+    fresh.className = 'abele-deleted-files'
+    fresh.textContent = 'Fresh trash'
+    document.body.append(fresh)
+  })
+  const app = {
+    plugins: { plugins: { abele: { tokenEngines: { ui: {} } } } },
+    setting: { close: vi.fn() },
+    commands: { executeCommandById: command },
+  }
+  const driver = new SyncDriver(() => ({}) as never),
+    run = vi.spyOn(driver, 'run').mockReturnValue(true)
+  await driver.trash()
+  try {
+    await new Function(
+      'app',
+      'document',
+      `return (async()=>{${SYNC_PRELUDE};${run.mock.calls[0][0]}})()`
+    )(app, document)
+    expect(document.querySelector('.abele-deleted-files')?.textContent).toBe('Fresh trash')
+  } finally {
+    document.querySelectorAll('.modal,.abele-deleted-files').forEach((one) => one.remove())
+  }
+})
 
 it('reuses an already open phone Sync page whose tab menu is hidden', async () => {
   const root = document.createElement('div')

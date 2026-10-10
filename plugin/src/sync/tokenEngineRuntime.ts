@@ -80,6 +80,7 @@ export class TokenEngineRuntime implements ConnectionRuntime, TokenUiRuntime {
   private ignore: PathMatcher | null = null
   private authority: V2Connection | null = null
   private held = new Set<string>()
+  private readonly manifestIds = new Set<string>()
   private readonly assetPaths = new Map<string, string>()
   private unstatus: () => void
   private readonly token
@@ -114,6 +115,8 @@ export class TokenEngineRuntime implements ConnectionRuntime, TokenUiRuntime {
               throw new EngineError('protocol', 'Token selector identity changed')
           } else if (url.pathname === '/v2/manifest') {
             const page = V2ManifestSchema.parse(await response.json())
+            if (!url.searchParams.get('next')) this.manifestIds.clear()
+            for (const item of page.items) this.manifestIds.add(item.file_id)
             const incomingPaths: string[] = []
             for (const item of page.items)
               if ((await options.state.byFileId(item.file_id))?.versionId !== item.version_id)
@@ -125,6 +128,7 @@ export class TokenEngineRuntime implements ConnectionRuntime, TokenUiRuntime {
                 await this.joinItem(item)
                 items.push(item)
               }
+            if (page.next === null) await this.reviewMissingExecutables()
             await this.refreshHolds()
             return Response.json({ ...page, items }, { headers: response.headers })
           } else if (url.pathname === '/v2/changes') {
@@ -443,6 +447,63 @@ export class TokenEngineRuntime implements ConnectionRuntime, TokenUiRuntime {
     })
     await this.options.state.setMeta('token-review-sequence:' + version, String(event.cursor))
     return true
+  }
+  /** A scope recheck walks the manifest at its current head, skipping older departures.
+   * Review holds are temporary scope exclusions, so recover their real departure events
+   * before core interprets an absent reviewed file as an edit to revive. Absence alone
+   * is never deletion authority (including group loss and incomplete manifest pages). */
+  private async reviewMissingExecutables(): Promise<void> {
+    const latest = new Map<string, ExecutableCandidate>()
+    for (const one of await this.options.reviews.executables.state())
+      if (one.source.id === this.options.id) latest.set(one.fileId, one)
+    const missing = [...latest.values()].filter(
+      (one) =>
+        !this.manifestIds.has(one.fileId) &&
+        !['delete', 'delete_directory', 'removal'].includes(one.operation)
+    )
+    if (!missing.length) return
+    let since = Infinity
+    for (const one of missing) {
+      const cursor = await this.options.state.getMeta('token-review-sequence:' + one.versionId)
+      if (cursor === null) throw new EngineError('lost', 'Executable review cursor is missing')
+      const value = Number(cursor)
+      if (!Number.isSafeInteger(value) || value < 0)
+        throw new EngineError('lost', 'Executable review cursor is invalid')
+      since = Math.min(since, value)
+    }
+    const ids = new Set(missing.map((one) => one.fileId)),
+      events = new Map<string, V2Change>()
+    let next: string | null = null
+    do {
+      const url = new URL('/v2/changes', this.token.address)
+      url.searchParams.set('since', String(since))
+      if (next !== null) url.searchParams.set('next', next)
+      const response = await this.trace.run('review departure recovery', () =>
+        this.options.fetch(url, {
+          headers: { authorization: 'Bearer ' + this.token.key },
+          cache: 'no-store',
+        })
+      )
+      this.assertHeld()
+      if (!response.ok) {
+        if (response.status === 401 || response.status === 403) {
+          this.permitted = false
+          throw new EngineError('unauthorized', 'Executable departure recovery access closed')
+        }
+        throw new EngineError('protocol', 'Executable departure recovery failed')
+      }
+      const page = V2ChangesSchema.parse(await response.json())
+      for (const event of page.items) {
+        const id = event.type === 'content' ? event.item.file_id : event.file_id
+        if (ids.has(id)) events.set(id, event)
+      }
+      next = page.next
+      if (next !== null && (!Number.isSafeInteger(Number(next)) || Number(next) <= since))
+        throw new EngineError('protocol', 'Executable departure recovery did not advance')
+      since = page.cursor
+    } while (next !== null)
+    for (const event of events.values())
+      if (event.type !== 'content') await this.reviewDeparture(event)
   }
   private async joinItem(item: V2ManifestItem): Promise<void> {
     if (

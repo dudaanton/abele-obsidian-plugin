@@ -243,7 +243,7 @@ export class SyncDriver {
   }
   async trash(): Promise<void> {
     this.run(
-      `await closeSettings();app.commands.executeCommandById('abele:sync-deleted-files');await poll(()=>document.querySelector('.abele-deleted-files'));return true`
+      `await closeSettings();for(const doc of new Set([document,settingsDoc()]))for(const box of doc.querySelectorAll('.abele-deleted-files'))box.closest('.modal')?.querySelector('.modal-close-button')?.click();await poll(()=>!inWindows('.abele-deleted-files'),20000,'previous trash dialog to close');app.commands.executeCommandById('abele:sync-deleted-files');await poll(()=>inWindows('.abele-deleted-files'));return true`
     )
   }
   async restore(selector: string, name: string): Promise<void> {
