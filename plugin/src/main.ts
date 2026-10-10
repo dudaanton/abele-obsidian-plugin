@@ -1,4 +1,3 @@
-import { registerCoreCommands } from '@/startup/registerCoreCommands'
 import { ChangeTracker } from '@/ai/rewind/ChangeTracker'
 import { deferredCleanup } from '@/helpers/deferredCleanup'
 import {
@@ -138,6 +137,8 @@ import { moveFooterView } from '@/composables/useFooterView'
 import { SyncService } from './sync/SyncService'
 import { PluginSharing } from './sync/pluginSharing'
 import { renderStatus, type SyncStatus } from './sync/status'
+// Keep the extracted section last so its dependencies do not reorder the existing styles.
+import { registerCoreCommands } from '@/startup/registerCoreCommands'
 
 // Every module imported above has run its top-level code by now. See `helpers/loadMarks.ts`.
 markLoad('evalEnd')
