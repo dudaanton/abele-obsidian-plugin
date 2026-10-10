@@ -138,13 +138,18 @@ describe.skipIf(!available)('column content compatibility', () => {
           disconnect(){active.delete(this);return super.disconnect()}
         };
         try{
-          const text=view.editor.getValue();
+          const text=view.editor.getValue();let first;
           for(let i=0;i<3;i++){
             view.editor.setValue(text+'\\nSample revision '+i);
             view.editor.setCursor({line:view.editor.lineCount()-1,ch:0});await wait(800);
+            const count=store.galleriesContainers.value.length;
+            if(i===0)first=count;else if(count!==first)throw Error('gallery count grew on replacement');
           }
           view.editor.focus();view.editor.setCursor({line:4,ch:6});await wait(500);
           if(root.querySelector('.abele-columns'))throw Error('the source area did not open');
+          // MarkdownView keeps the inactive Reading render until its leaf closes.
+          for(const leaf of app.workspace.getLeavesOfType('markdown'))if(leaf.view===view)leaf.detach();
+          await wait(500);
           return {remaining:active.size,targets:[...active.values()],galleries:store.galleriesContainers.value.length-baseline};
         }finally{window.ResizeObserver=Native}
       `)
