@@ -65,6 +65,36 @@ describe('the find bar', () => {
     expect(outside).not.toHaveBeenCalled()
   })
 
+  it('takes Enter before the application keymap, only inside its own input, and releases it on close', async () => {
+    const keymap = vi.fn((event: KeyboardEvent) => {
+      if (event.key === 'Enter') {
+        event.preventDefault()
+        event.stopPropagation()
+      }
+    })
+    document.addEventListener('keydown', keymap, true)
+    const view = bar({ query: 'pond', count: 2, position: 1 })
+    const input = view.get('input').element
+    try {
+      input.dispatchEvent(
+        new KeyboardEvent('keydown', { key: 'Enter', bubbles: true, cancelable: true })
+      )
+      expect(view.emitted('next')).toHaveLength(1)
+      expect(keymap).not.toHaveBeenCalled()
+      const outside = document.createElement('input')
+      document.body.appendChild(outside)
+      outside.dispatchEvent(new KeyboardEvent('keydown', { key: 'Enter', bubbles: true }))
+      expect(keymap).toHaveBeenCalledTimes(1)
+      expect(view.emitted('next')).toHaveLength(1)
+      view.unmount()
+      outside.dispatchEvent(new KeyboardEvent('keydown', { key: 'Enter', bubbles: true }))
+      expect(keymap).toHaveBeenCalledTimes(2)
+    } finally {
+      document.removeEventListener('keydown', keymap, true)
+      view.unmount()
+    }
+  })
+
   it('passes what is typed up', async () => {
     const view = bar()
     await view.find('input').setValue('garden')

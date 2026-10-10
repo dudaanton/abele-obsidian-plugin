@@ -58,7 +58,17 @@ const openMenu = () => {
       if (action.icon) item.setIcon(action.icon)
     })
   menu.onHide(() => {
-    if (trigger.isConnected) trigger.focus()
+    // Hiding may finish after the chosen action focuses a search field or opens a dialog.
+    // Restore a dismissed menu's focus, but never take it back from that destination.
+    const active = trigger.ownerDocument.activeElement
+    if (
+      trigger.isConnected &&
+      (!active ||
+        active === trigger.ownerDocument.body ||
+        active === trigger ||
+        active.closest('.menu'))
+    )
+      trigger.focus()
   })
   const box = trigger.getBoundingClientRect()
   menu.showAtPosition({ x: box.left, y: box.bottom }, trigger.ownerDocument)

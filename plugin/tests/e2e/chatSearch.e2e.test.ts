@@ -16,6 +16,7 @@
  * development build — see docs/Testing.md.
  */
 import { describe, it, expect, beforeAll, afterAll } from 'vitest'
+import { shotDir } from './helpers/shots'
 import {
   evalJson,
   evalLong,
@@ -29,6 +30,7 @@ import {
 
 const available = isObsidianRunning() && hasTestApi()
 const PHONE = { width: 390, height: 844 }
+const SHOTS = shotDir('chat-search')
 
 interface Shown {
   /** The find bar's counter. */
@@ -166,8 +168,12 @@ const script = (phone: boolean) => `(async () => {
     // ── Find in the chat ──
     ${
       phone
-        ? `const button = [...document.querySelectorAll('.abele-ai-chat__find')].find((b) => b.getClientRects().length)
-    button.click()`
+        ? `const overflow = [...document.querySelectorAll('.abele-ai-chat__overflow [aria-haspopup="menu"]')].find((b) => b.getClientRects().length)
+    if (!overflow) throw new Error('the phone chat actions did not appear')
+    overflow.click()
+    const action = await until(() => [...document.querySelectorAll('.menu-item')].find((item) => item.textContent.trim() === 'Find in this chat'))
+    if (!action) throw new Error('the phone menu did not offer Find in this chat')
+    action.click()`
         : `// A click on the messages, then the key, as a person reading would.
     el.dispatchEvent(new PointerEvent('pointerdown', { bubbles: true }))
     // A press on text that takes no focus leaves the cursor nowhere; a dispatched one does not.
@@ -182,6 +188,10 @@ const script = (phone: boolean) => `(async () => {
     input().value = WORD
     input().dispatchEvent(new Event('input', { bubbles: true }))
     report.typed = await settle(null)
+    // A menu's delayed dismissal must not steal the cursor back from the search field.
+    report.focused = report.focused && document.activeElement === input()
+    const image = await require('@electron/remote').getCurrentWebContents().capturePage()
+    require('fs').writeFileSync(${JSON.stringify(SHOTS)} + '/' + ${JSON.stringify(phone ? 'phone' : 'desktop')} + '-find.png', image.toPNG())
     key(input(), { key: 'Enter', shiftKey: true })
     report.up1 = await settle(report.typed)
     key(input(), { key: 'Enter', shiftKey: true })
@@ -220,6 +230,8 @@ const script = (phone: boolean) => `(async () => {
     await until(() => svc.activeSession.value?.currentChatFile.value?.path === paths[1], 4000)
     report.openedChat = svc.activeSession.value?.currentChatFile.value?.basename ?? null
     report.landed = await settle(null)
+    const landedImage = await require('@electron/remote').getCurrentWebContents().capturePage()
+    require('fs').writeFileSync(${JSON.stringify(SHOTS)} + '/' + ${JSON.stringify(phone ? 'phone' : 'desktop')} + '-result.png', landedImage.toPNG())
   } catch (e) {
     report.error = String((e && e.message) || e)
   } finally {

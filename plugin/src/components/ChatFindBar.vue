@@ -7,7 +7,6 @@
       placeholder="Find in this chat"
       aria-label="Find in this chat"
       @update:model-value="emit('update:query', $event)"
-      @keydown="onKey"
     />
     <span class="abele-chat-find__count" aria-live="polite">{{ countText }}</span>
     <div class="abele-chat-find__actions">
@@ -29,7 +28,7 @@
 </template>
 
 <script setup lang="ts">
-import { computed, onMounted, ref, watch } from 'vue'
+import { computed, onMounted, onUnmounted, ref, watch } from 'vue'
 import Input from './obsidian/Input.vue'
 import Icon from './obsidian/Icon.vue'
 
@@ -69,15 +68,14 @@ const countText = computed(() => {
 })
 
 const onKey = (e: KeyboardEvent) => {
-  if (e.key === 'Enter') {
-    e.preventDefault()
-    emit(e.shiftKey ? 'previous' : 'next')
-  } else if (e.key === 'Escape') {
-    // Taken here, so Obsidian does not also act on it — close a panel, leave a modal.
-    e.preventDefault()
-    e.stopPropagation()
-    emit('close')
-  }
+  const field = inputRef.value?.$el as HTMLInputElement | undefined
+  if (!field?.isConnected || e.target !== field || e.isComposing) return
+  if (e.key !== 'Enter' && e.key !== 'Escape') return
+  // Before Obsidian's document keymap: on mobile it takes plain Enter before the input hears it.
+  e.preventDefault()
+  e.stopImmediatePropagation()
+  if (e.key === 'Enter') emit(e.shiftKey ? 'previous' : 'next')
+  else emit('close')
 }
 
 /** Puts the cursor in the field with what is there selected, for another Cmd+F. */
@@ -87,9 +85,13 @@ const focus = () => {
   el?.select()
 }
 
+let keyWindow: Window | null = null
 onMounted(() => {
+  keyWindow = (inputRef.value?.$el as HTMLElement | undefined)?.ownerDocument.defaultView ?? null
+  keyWindow?.addEventListener('keydown', onKey, true)
   if (props.autofocus !== false) focus()
 })
+onUnmounted(() => keyWindow?.removeEventListener('keydown', onKey, true))
 watch(() => props.focusRequest, focus)
 
 defineExpose({ focus })
