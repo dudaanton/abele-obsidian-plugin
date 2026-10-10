@@ -108,7 +108,9 @@ it.skipIf(!available).each([
       qa(editorDoc, '.abele-agent-editor .abele-tabs__tab').find(tab => tab.textContent.trim() === 'Access').click()
       await wait()
       report.labels.push(qa(editorDoc, '.abele-agent-editor select')[0].textContent)
-      qa(editorDoc, '.abele-agent-editor .setting-item').find(row => row.querySelector('.setting-item-name')?.textContent === 'Permission mode').scrollIntoView({ block: 'center' })
+      // A different tab keeps the modal's previous scroll position; capture its first row.
+      await wait(500)
+      for (const scroller of qa(editorDoc, '.modal-container *')) if (scroller.scrollTop) scroller.scrollTop = 0
       await shoot('agent-permissions', editorDoc)
       await close(editorDoc)
       if (settingsWindow) settingsWindow.close()
