@@ -1,4 +1,4 @@
-import type { App } from 'obsidian'
+import type { App, EventRef } from 'obsidian'
 import { encodeAccessToken } from '@abele/sync-protocol'
 import type { EngineStatus, SyncReport } from '@abele/sync-core'
 import { ConnectionEngines, type ConnectionRuntime } from './connectionEngines'
@@ -21,6 +21,7 @@ import { registerConnectionEditCopies } from './editCopyStore'
 import { openTokenLedger } from './tokenLedger'
 import { reviewSourceOf } from './reviewState'
 import { requireExternalLifecycleSafety } from './external/pluginSafety'
+import { TokenAttachmentHost } from './tokenAttachmentHost'
 
 /** One native host, independent durable engines, and one vault-wide placement coordinator. */
 export class TokenEngines {
@@ -28,6 +29,8 @@ export class TokenEngines {
   private readonly live = new Map<string, TokenEngineRuntime>()
   private readonly pending = new Set<string>()
   private closed = false
+  private readonly localFiles: TokenAttachmentHost
+  private readonly renameEvent: EventRef
   constructor(
     private readonly app: App,
     private readonly ui: TokenUi,
@@ -35,6 +38,10 @@ export class TokenEngines {
     private readonly deps: SyncServiceDeps = {},
     private readonly scriptsFolder = 'Scripts'
   ) {
+    this.localFiles = new TokenAttachmentHost(app)
+    this.renameEvent = app.vault.on('rename', (file, from) =>
+      this.localFiles.renamed(from, file.path)
+    )
     ui.connectionsChanged = async () => {
       this.start()
       await this.engines.settled()
@@ -143,6 +150,7 @@ export class TokenEngines {
         paused: record.paused,
         fallbackMs: fallbackMsOf(this.deps),
         expectedSource: reviewSourceOf(record),
+        localFiles: this.localFiles,
         assertHeld: () => fence.assertReady(),
         changed: (status, report) => {
           void this.changed(record.id, status, report).catch((error) =>
@@ -170,6 +178,9 @@ export class TokenEngines {
         pause: (paused) => runtime.pause(paused),
         opened: (path) => runtime.opened(path),
         resolve: (id) => runtime.resolve(id),
+        publishAttachment: (id) => runtime.publishAttachment(id),
+        historyClient: runtime.client,
+        entryFor: (path) => runtime.entryFor(path),
         apply: (candidate) => runtime.apply(candidate),
         disconnect: async () => {
           active = false
@@ -255,6 +266,7 @@ export class TokenEngines {
   }
   async close(): Promise<void> {
     this.closed = true
+    this.app.vault.offref(this.renameEvent)
     this.ui.connectionsChanged = async () => {}
     await this.engines.close()
   }

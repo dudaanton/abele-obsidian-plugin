@@ -6,11 +6,11 @@ describe('reviewed v2 input pin', () => {
     const provenance = JSON.parse(
       readFileSync(new URL('../../vendor/sync/provenance.json', import.meta.url), 'utf8')
     )
-    expect(provenance.commit).toBe('664759f8ab307c74804868bbe5bb8e3e3182d0e0')
+    expect(provenance.commit).toBe('cf01a4abb764464a3bc4ab9ab3cb3d5bf1f0d62c')
     for (const pkg of Object.values(provenance.packages) as any[])
-      expect(pkg.archive).toContain('664759f8ab30')
+      expect(pkg.archive).toContain('cf01a4abb764')
     expect(provenance.packages['@abele/sync-core'].files['dist/v2Client.js']).toBe(
-      '6ea2261be494055521644de1598c483e2090a291260998295430cf2c6f4f82b6'
+      'bde854523badcc222792dfe252b586a94322a1a129a89ada0340ff599d37e365'
     )
   })
 })

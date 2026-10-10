@@ -72,6 +72,9 @@ export interface TokenUiRuntime extends ExecutableApplyPort, ConsentResolvePort 
   disconnect(): Promise<void>
   /** Stable local identities already recorded by the engine, never derived from a path. */
   opened(path: string): Promise<{ source: ReviewSource; noteId: string }[]>
+  publishAttachment?(fileId: string): Promise<void>
+  historyClient?: import('@abele/sync-core').V2EngineClient
+  entryFor?(path: string): Promise<import('@abele/sync-core').StateEntry | null>
 }
 export type DeviceReviews = Awaited<ReturnType<typeof openDeviceReviews>>
 export class TokenUi {
@@ -261,6 +264,7 @@ export class TokenUi {
     if (!runtime || !this.reviews) throw new Error('File exchange is not available in this build')
     if (!(await this.reviews.attachments.decide(question.id, allow, runtime)))
       throw new Error('File changed; reopen the note')
+    if (allow) await runtime.publishAttachment?.(question.fileId)
     await this.refreshReviews()
   }
   async opened(path: string): Promise<void> {

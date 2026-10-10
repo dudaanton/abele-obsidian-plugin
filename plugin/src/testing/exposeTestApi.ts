@@ -100,18 +100,8 @@ import { singleHopRequest } from '@/github/transport'
 import { connectionApproval } from '@/github/approveConnection'
 import { endpoints } from '@/github/urls'
 import { newDrawing, openImageInk } from '@/drawing/files'
-import { SyncService } from '@/sync/SyncService'
 import { transportOf } from '@/sync/environment'
 import { desktopTransport as syncDesktopTransport } from '@/sync/desktopTransport'
-import { joinFixtureTransfer } from './joinFixtureTransfer'
-import { prepareFixtureContext, restoreFixtureContext } from './fixtureContext'
-import {
-  enableOwnerPublicationFixture,
-  disableOwnerPublicationFixture,
-  ownerPublicationDiagnostics,
-} from './ownerPublicationFixture'
-import { openFencedScreen, closeFencedScreen, FENCED_SCREENS } from './fencedScreens'
-import { startPhoneReplay, verifyPhoneReplay, clearPhoneReplayEvidence } from './phoneReplay'
 import { ObsidianFileSystem } from '@/sync/ObsidianFileSystem'
 import { IndexedDbStateStore } from '@/sync/IndexedDbStateStore'
 import { ExternalState } from '@/sync/external/state'
@@ -119,7 +109,7 @@ import { ExternalFileHost } from '@/sync/external/ObsidianExternalFileHost'
 import { AttachmentStore } from '@/sync/external/attachmentStore'
 import { pluginRepresentation } from '@/sync/external/pluginRepresentation'
 import { RuntimeFence } from '@/sync/external/recovery'
-import { scan, scanScopedChanges, ScopedState, SyncEngine, RecoveryBarrier } from '@abele/sync-core'
+import { scan, SyncEngine, RecoveryBarrier } from '@abele/sync-core'
 import { activateScriptProvenance } from '@/scripting/trust/scriptTrustStorage'
 import { scriptForExecution } from '@/scripting/trust/scriptExecutionGate'
 import { showScriptApproval, scriptApprovalDialog } from '@/scripting/trust/scriptApprovalPrompt'
@@ -213,21 +203,10 @@ interface AbeleTestApi {
    * in from `obsidian eval`, and going round the service through the client would test the
    * server rather than the plugin.
    */
-  SyncService: typeof SyncService
+
   /** Production transport selection, for native credential/redirect probes. */
   syncTransport: typeof transportOf
-  joinFixtureTransfer: typeof joinFixtureTransfer
-  openFencedScreen: typeof openFencedScreen
-  closeFencedScreen: typeof closeFencedScreen
-  fencedScreens: typeof FENCED_SCREENS
-  enableOwnerPublicationFixture: typeof enableOwnerPublicationFixture
-  disableOwnerPublicationFixture: typeof disableOwnerPublicationFixture
-  ownerPublicationDiagnostics: typeof ownerPublicationDiagnostics
-  prepareFixtureContext: typeof prepareFixtureContext
-  restoreFixtureContext: typeof restoreFixtureContext
-  startPhoneReplay: typeof startPhoneReplay
-  verifyPhoneReplay: typeof verifyPhoneReplay
-  clearPhoneReplayEvidence: typeof clearPhoneReplayEvidence
+
   /** Sync's fetch-shaped native transport; network.desktopTransport has a different contract. */
   desktopTransport: typeof syncDesktopTransport
   ObsidianFileSystem: typeof ObsidianFileSystem
@@ -239,8 +218,6 @@ interface AbeleTestApi {
     pluginRepresentation: typeof pluginRepresentation
     RuntimeFence: typeof RuntimeFence
     scan: typeof scan
-    scanScopedChanges: typeof scanScopedChanges
-    ScopedState: typeof ScopedState
   }
   /** Real IndexedDB phase persistence only; synthetic test databases, no filesystem ports. */
   externalState: {
@@ -815,20 +792,9 @@ export function exposeTestApi(plugin: Plugin): void {
     canvasProbe: createCanvasProbe(plugin),
     setKeyboardDiagnostics,
     ScopeResolver,
-    SyncService,
+
     syncTransport: transportOf,
-    joinFixtureTransfer,
-    openFencedScreen,
-    closeFencedScreen,
-    fencedScreens: FENCED_SCREENS,
-    enableOwnerPublicationFixture,
-    disableOwnerPublicationFixture,
-    ownerPublicationDiagnostics,
-    prepareFixtureContext,
-    restoreFixtureContext,
-    startPhoneReplay,
-    verifyPhoneReplay,
-    clearPhoneReplayEvidence,
+
     desktopTransport: syncDesktopTransport,
     ObsidianFileSystem,
     externalState: { IndexedDbStateStore, ExternalState },
@@ -840,8 +806,6 @@ export function exposeTestApi(plugin: Plugin): void {
       pluginRepresentation,
       RuntimeFence,
       scan,
-      scanScopedChanges,
-      ScopedState,
     },
     scriptTrust: {
       activate: activateScriptProvenance,

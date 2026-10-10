@@ -74,40 +74,6 @@
     @close="versionHistoryPath = null"
   />
   <DeletedFilesModal v-if="deletedFilesModalOpened" @close="deletedFilesModalOpened = false" />
-  <SyncLogModal v-if="syncLogModalOpened" @close="syncLogModalOpened = false" />
-  <!-- Keyed by the question: a hold that grew is a new question, and a dialog of its own. -->
-  <HeldDeletesModal
-    v-if="heldAsking"
-    :key="heldAsking.key"
-    :held="heldAsking.held"
-    @close="heldPrompt.close()"
-  />
-  <!-- Keyed the same way: a new batch of settings from another device is a new question. -->
-  <SettingsArrivedModal
-    v-if="settingsAsking"
-    :key="settingsAsking.key"
-    :changes="settingsAsking.changes"
-    :names="settingsAsking.names"
-    :question-key="settingsAsking.key"
-    @close="settingsPrompt.later($event)"
-  />
-  <PluginCodeModal
-    v-if="codeAsking && !settingsAsking && !heldAsking"
-    :key="codeAsking.key"
-    :changes="codeAsking.changes"
-    :names="codeAsking.names"
-    :question-key="codeAsking.key"
-    @close="codePrompt.later($event)"
-  />
-  <PublicationConfirmModal
-    v-if="publicationAsking && !heldAsking && !settingsAsking && !codeAsking"
-    :key="publicationAsking.exposureKey"
-    :question="publicationAsking"
-    :busy="publicationBusy"
-    :error="publicationError"
-    @answer="publicationPrompt.answer($event)"
-    @close="publicationPrompt.close()"
-  />
   <Teleport v-if="settingsContainer" :to="settingsContainer">
     <SettingsView />
   </Teleport>
@@ -123,7 +89,6 @@ onBeforeUnmount(() => {
 })
 import { GlobalStore } from '@/stores/GlobalStore'
 import NoteWidgets from './NoteWidgets.vue'
-import { SyncService } from '@/sync/SyncService'
 import TimelineSidebarView from './TimelineSidebar.vue'
 import TodoSidebarView from './TodoSidebar.vue'
 import FindAndReplaceBases from './FindAndReplaceBases.vue'
@@ -131,12 +96,7 @@ import CalendarBase from './calendarBase/CalendarBase.vue'
 import TimelineBase from './timelineBase/TimelineBase.vue'
 import VersionHistoryModal from './sync/VersionHistoryModal.vue'
 import DeletedFilesModal from './sync/DeletedFilesModal.vue'
-import HeldDeletesModal from './sync/HeldDeletesModal.vue'
-import PublicationConfirmModal from './sync/PublicationConfirmModal.vue'
-import SettingsArrivedModal from './sync/SettingsArrivedModal.vue'
-import PluginCodeModal from './sync/PluginCodeModal.vue'
 import TokenReviewPrompts from './sync/TokenReviewPrompts.vue'
-import SyncLogModal from './sync/SyncLogModal.vue'
 import { TIMELINE_SIDEBAR_ID_ATTR } from '@/views/TimelineSidebarView'
 import { TODO_SIDEBAR_ID_ATTR } from '@/views/TodoSidebarView'
 import { AI_SIDEBAR_ID_ATTR } from '@/views/AiSidebarView'
@@ -155,7 +115,6 @@ import SettingsView from './settings/Settings.vue'
 const {
   versionHistoryPath,
   deletedFilesModalOpened,
-  syncLogModalOpened,
   timelineSidebarIds,
   todoSidebarIds,
   aiSidebarIds,
@@ -172,13 +131,4 @@ const {
   settingsContainer,
 } = GlobalStore.getInstance()
 
-/** Many files deleted at once, held back until decided: the question, while one is open. */
-const { heldPrompt, settingsPrompt, codePrompt, publicationPrompt } = SyncService.getInstance()
-const publicationAsking = publicationPrompt.asking
-const publicationBusy = publicationPrompt.busy
-const publicationError = publicationPrompt.error
-const codeAsking = codePrompt.asking
-const heldAsking = heldPrompt.asking
-/** Obsidian settings changed on another device, staged until answered: the question, if open. */
-const settingsAsking = settingsPrompt.asking
 </script>

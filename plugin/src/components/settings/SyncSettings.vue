@@ -39,6 +39,11 @@
           tooltip="Review disconnecting this connection"
           @click="dialog = { mode: 'disconnect', connectionId: row.id }"
         />
+        <Icon
+          icon="trash-2"
+          tooltip="Open this connection's deleted files"
+          @click="openTrash(row.id)"
+        />
       </Setting>
       <p v-if="rows.length && !ui.available.value">
         File exchange is opening. Connections that need attention keep their files here.
@@ -130,6 +135,12 @@ import Icon from '../obsidian/Icon.vue'
 import Button from '../obsidian/Button.vue'
 import EmptyState from '../obsidian/EmptyState.vue'
 import TokenDialogs from '../sync/TokenDialogs.vue'
+import { historyConnection } from '@/sync/tokenHistory'
+import { GlobalStore } from '@/stores/GlobalStore'
+function openTrash(id: string) {
+  historyConnection.value = id
+  GlobalStore.getInstance().deletedFilesModalOpened.value = true
+}
 import {
   tokenUi,
   scopeName,

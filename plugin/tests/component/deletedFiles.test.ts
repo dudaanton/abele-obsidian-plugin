@@ -17,7 +17,7 @@ import Badge from '@/components/obsidian/Badge.vue'
 import Button from '@/components/obsidian/Button.vue'
 import EmptyState from '@/components/obsidian/EmptyState.vue'
 import RestoreSince from '@/components/sync/RestoreSince.vue'
-import { SyncService } from '@/sync/SyncService'
+import * as TokenHistory from '@/sync/tokenHistory'
 import { DISCONNECTED_STATUS, type SyncStatus } from '@/sync/status'
 import { useVault } from '../helpers/testEnv'
 
@@ -105,7 +105,7 @@ beforeEach(() => {
   service.status.value = { ...DISCONNECTED_STATUS, state: 'idle' }
   client.trash.mockResolvedValue(TRASH)
   client.restoreDeleted.mockResolvedValue(applied('Notes/older.md'))
-  vi.spyOn(SyncService, 'getInstance').mockReturnValue(service as never)
+  vi.spyOn(TokenHistory, 'tokenHistory').mockReturnValue(service as never)
 })
 
 afterEach(() => {

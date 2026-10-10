@@ -6,7 +6,7 @@ import * as records from '@/sync/external/records'
 import * as state from '@/sync/external/state'
 import { SqliteExternalStateStore } from '@/sync/external/SqliteExternalStateStore'
 
-const selected = '664759f8ab307c74804868bbe5bb8e3e3182d0e0'
+const selected = 'cf01a4abb764464a3bc4ab9ab3cb3d5bf1f0d62c'
 const exported = core as Record<string, any>
 describe('canonical external state inputs', () => {
   it('exports the public engine scheduler and scoped queue adapter', () => {

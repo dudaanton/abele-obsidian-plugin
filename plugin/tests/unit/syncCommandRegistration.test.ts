@@ -2,6 +2,7 @@ import { takePendingTab } from '@/components/settings/settingsTab'
 import { tokenSettingsFixture } from '../helpers/tokenSettingsFixture'
 import { tokenUi } from '@/sync/tokenUi'
 import { flushPromises } from '@vue/test-utils'
+import { GlobalStore } from '@/stores/GlobalStore'
 /**
  * The sync commands exist whether or not the agent is switched on.
  *
@@ -88,7 +89,7 @@ describe('the sync commands', () => {
     expect(app.setting.open).toHaveBeenCalledOnce()
     expect(app.setting.openTabById).toHaveBeenCalledWith('abele')
     expect(takePendingTab()).toBe('sync')
-    expect(Notice.shown.at(-1)).toContain('Deleted-file history is not available')
+    expect(GlobalStore.getInstance().deletedFilesModalOpened.value).toBe(true)
   })
 
   it('says sync is paused when Sync now is run from the palette while it is', () => {

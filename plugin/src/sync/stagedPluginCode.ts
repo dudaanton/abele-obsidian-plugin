@@ -1,5 +1,5 @@
 import type { App } from 'obsidian'
-import { settingsCategory, sha256, type VaultClient } from '@abele/sync-core'
+import { settingsCategory, sha256, type EngineClient } from '@abele/sync-core'
 import { caseKey, type ChangeItem } from '@abele/sync-protocol'
 import type { StagedHost } from './stagedSettings'
 
@@ -52,6 +52,8 @@ export function executablePath(
 ): boolean {
   const folded = caseKey(path),
     scripts = caseKey((options.scriptsFolder ?? 'Scripts').replace(/\/+$/, ''))
+  if (!directory && /\.(?:[cm]?js|ts|tsx|jsx|py|sh|bash|zsh|ps1|lua|rb|php|wasm)$/.test(folded))
+    return true
   if (scripts && (within(folded, scripts) || (directory && within(scripts, folded)))) return true
   for (const root of configurationRoots(path, options)) {
     const plugins = caseKey(root.replace(/\/+$/, '') + '/plugins')
@@ -114,7 +116,7 @@ function manifestLabel(bytes: Uint8Array): ManifestLabel {
 /** Labels describe the exact staged manifest, never a newer server head or executable bytes. */
 export async function pluginCodeNames(
   app: App | null,
-  client: VaultClient | null,
+  client: EngineClient | null,
   changes: readonly ChangeItem[],
   ownId: string
 ): Promise<Record<string, string>> {

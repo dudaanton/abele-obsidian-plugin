@@ -105,7 +105,7 @@
  */
 import { computed, onMounted, ref, useTemplateRef } from 'vue'
 import { Notice } from 'obsidian'
-import type { VaultClient } from '@abele/sync-core'
+import type { V2EngineClient } from '@abele/sync-core'
 import type { VersionInfo, VersionOp } from '@abele/sync-protocol'
 import ObsidianModal from '../obsidian/Modal.vue'
 import Card from '../obsidian/Card.vue'
@@ -115,7 +115,7 @@ import Button from '../obsidian/Button.vue'
 import EmptyState from '../obsidian/EmptyState.vue'
 import ConfirmModal from '../obsidian/ConfirmModal.vue'
 import { GlobalStore } from '@/stores/GlobalStore'
-import { SyncService } from '@/sync/SyncService'
+import { tokenHistory } from '@/sync/tokenHistory'
 import { formatWhen, mergeLine, reasonOf, restoredNotice } from '@/sync/format'
 import { unifiedDiff } from '@/sync/diff'
 import { formatBytes } from '@/helpers/reduceImage'
@@ -167,7 +167,7 @@ const TEXT_EXTENSIONS = [
   'svg',
 ]
 
-const sync = SyncService.getInstance()
+const sync = tokenHistory()
 
 const versions = ref<VersionInfo[]>([])
 const hasOlder = ref(false)
@@ -187,7 +187,7 @@ const root = useTemplateRef<HTMLElement>('root')
 let fileId = ''
 /** The version this device currently agrees with — the one there is nothing to restore to. */
 let currentVersionId = ''
-let client: VaultClient | null = null
+let client: V2EngineClient | null = null
 
 /**
  * Whether a diff is worth drawing for this path.
@@ -231,7 +231,7 @@ const confirmMessage = computed(() => {
 /** The three facts about a version that fit on one faint row: who, when, and how big. */
 const metaOf = (version: VersionInfo): string[] => [
   version.actor.name,
-  formatWhen(version.at),
+  formatWhen(new Date(version.mtime ?? Date.parse(version.at)).toISOString()),
   formatBytes(version.size),
 ]
 

@@ -1,6 +1,4 @@
 import { Platform, type App } from 'obsidian'
-import type { OwnerPushHooks, PersonalNoteHook, VaultClient, StateStore } from '@abele/sync-core'
-import type { DeviceConnection } from './connection'
 import { PHONE_POLL_MS, phoneSocket } from './phone'
 import { wsFor } from './transport'
 import { mobileTransport } from './mobileTransport'
@@ -16,23 +14,6 @@ import { desktopTransport } from './desktopTransport'
  * no two tests share a database.
  */
 export interface SyncServiceDeps {
-  /** Trusted production host factory (the plugin installs it), with isolated stand replacements
-   * permitted through this port. No setting, test hook or environment value establishes authority. */
-  ownerPublication?: (context: {
-    app: App
-    state: StateStore
-    client: VaultClient
-    connection: DeviceConnection
-    token: string
-    fetch: typeof fetch
-    held: () => boolean
-  }) => Promise<{
-    hooks: OwnerPushHooks & { onPersonalNoteApplied?: PersonalNoteHook }
-    beforeRemote?(paths: string[]): void | Promise<void>
-    /** Post-sync work, outside the personal settlement transaction; never holds uploads. */
-    settled?(): void | Promise<void>
-    close(): void
-  }>
   fetch?: typeof fetch
   WebSocket?: typeof WebSocket
   indexedDB?: IDBFactory

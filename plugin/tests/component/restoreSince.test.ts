@@ -17,7 +17,7 @@ import ConfirmModal from '@/components/obsidian/ConfirmModal.vue'
 import Dropdown from '@/components/obsidian/Dropdown.vue'
 import Input from '@/components/obsidian/Input.vue'
 import Setting from '@/components/obsidian/Setting.vue'
-import { SyncService } from '@/sync/SyncService'
+import * as TokenHistory from '@/sync/tokenHistory'
 import { DISCONNECTED_STATUS, type SyncStatus } from '@/sync/status'
 import { useVault } from '../helpers/testEnv'
 
@@ -97,7 +97,7 @@ beforeEach(() => {
   client.restoreDeletedMany.mockImplementation(async (ids: string[]) =>
     ids.map((id) => applied(id, ITEMS.find((one) => one.file_id === id)!.path))
   )
-  vi.spyOn(SyncService, 'getInstance').mockReturnValue(service as never)
+  vi.spyOn(TokenHistory, 'tokenHistory').mockReturnValue(service as never)
 })
 
 afterEach(() => {

@@ -114,12 +114,11 @@ import { ChatSearchIndex } from '@/ai/ChatSearchIndex'
 import { applyQuickButton, setQuickButton } from '@/quickButton/mount'
 import '@/quickButton/open'
 import { HeaderCommands } from '@/headerButtons/viewActions'
-import '@/composables/useFooterFold'
-import '@/composables/useFooterView'
-import { SyncService } from './sync/SyncService'
-import type { PluginSharing } from './sync/pluginSharing'
+import { moveFooterFolds } from '@/composables/useFooterFold'
+import { moveFooterView } from '@/composables/useFooterView'
 import { prepareTokenConnections } from './sync/tokenRegistryPreparation'
 import { tokenUi, TokenUi } from './sync/tokenUi'
+import { historyConnection } from './sync/tokenHistory'
 import { openDeviceReviews } from './sync/openDeviceReviews'
 import { transportOf } from './sync/environment'
 import { TokenEngines } from './sync/tokenEngines'
@@ -144,8 +143,6 @@ export default class AbelePlugin extends Plugin {
   private tokenEngines: TokenEngines | null = null
   private vueApp: VueApp | null = null
   private headerCommands: HeaderCommands | null = null
-  /** Application sharing ports, installed identically in production and development. */
-  syncSharing: PluginSharing | null = null
 
   initializeVue() {
     const rootContainer = createDiv()
@@ -316,7 +313,7 @@ export default class AbelePlugin extends Plugin {
       name: 'Open deleted files',
       icon: 'trash-2',
       callback: () => {
-        new Notice('Deleted-file history is not available from the server yet.')
+        GlobalStore.getInstance().deletedFilesModalOpened.value = true
       },
     })
   }
@@ -452,7 +449,6 @@ export default class AbelePlugin extends Plugin {
       // After the store: a token moved out of the settings lands in it when it is open here.
       await startupStepAsync('legacy secrets', () => AbeleConfig.getInstance().moveLegacySecrets())
       // Announce before layout-ready so cold-start links wait for the first pull.
-      startupStep('sync announcement', () => SyncService.getInstance().announce())
 
       startupStep('settings look', () => applySettingsLook(AbeleConfig.getInstance()))
       this.app.workspace.onLayoutReady(() => startupStep('sync', () => this.initSync()))
@@ -680,7 +676,6 @@ export default class AbelePlugin extends Plugin {
     }
     // The engine has a socket, a watcher and timers of its own, and a state database that must
     // be closed; the sync in flight is waited for rather than cut off.
-    void SyncService.getInstance().destroy()
     SnippetService.destroy()
     AutomationService.destroy()
     ScriptService.destroy()

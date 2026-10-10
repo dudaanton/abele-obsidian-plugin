@@ -4,9 +4,7 @@ import {
   type FileInfo,
   type StateStore,
   type StateEntry,
-  type VaultClient,
-  type ScopedClient,
-  type ScopedState,
+  type EngineClient,
 } from '@abele/sync-core'
 import {
   caseKey,
@@ -59,7 +57,6 @@ export interface RepresentationOptions {
     bytes: Uint8Array,
     operationId: string
   ): Promise<'written' | 'cleanup-pending'>
-  scoped?: ScopedState
 }
 export type RepresentationDecision =
   | { kind: 'ordinary' }
@@ -118,21 +115,6 @@ export class ExternalRepresentation {
       )
         runtime.unexpected.add(file.fileId)
     for await (const entry of options.ledger.all()) runtime.entries.set(entry.fileId, entry)
-    if (options.scoped)
-      for (const file of runtime.document.files) {
-        const known = await options.scoped.getKnown(file.fileId)
-        if (known?.dirty) runtime.unexpected.add(file.fileId)
-        if (known)
-          runtime.entries.set(file.fileId, {
-            path: known.path,
-            wirePath: known.path,
-            fileId: known.file_id,
-            versionId: known.version_id,
-            sha: known.sha,
-            size: known.size,
-            mtime: known.mtime,
-          })
-      }
     // Upgrade earlier blockers/scoped dirty evidence to the independent provenance bit
     // before subsequent metadata can replace the display reason.
     const metadata = []
@@ -160,18 +142,7 @@ export class ExternalRepresentation {
     // Ordinary sync can discover identities after open(). Operation commits must refresh
     // their canonical heads as well as the external document, including scoped heads.
     for (const file of this.document.files) {
-      const known = this.options.scoped ? await this.options.scoped.getKnown(file.fileId) : null
-      const entry = this.options.scoped
-        ? known && {
-            fileId: known.file_id,
-            versionId: known.version_id,
-            path: known.path,
-            wirePath: known.path,
-            sha: known.sha,
-            size: known.size,
-            mtime: known.mtime,
-          }
-        : await this.options.ledger.byFileId(file.fileId)
+      const entry = await this.options.ledger.byFileId(file.fileId)
       if (entry) this.entries.set(file.fileId, entry)
       else this.entries.delete(file.fileId)
     }
@@ -398,7 +369,7 @@ export class ExternalRepresentation {
   ): Promise<void> {
     this.owned()
     for (const op of ops) {
-      if (op.file_id && this.file(op.file_id) && this.managed(this.file(op.file_id)!))
+      if (op.file_id && this.file(op.file_id) && this.managed(this.file(op.file_id)))
         throw new ExternalRecoveryRequired(
           'managed identity publication requires resolved provenance'
         )
@@ -409,13 +380,13 @@ export class ExternalRepresentation {
     }
     this.owned()
   }
-  personalClient(client: VaultClient): VaultClient {
+  engineClient(client: EngineClient): EngineClient {
     // eslint-disable-next-line @typescript-eslint/no-this-alias -- The captured coordinator survives client interception.
     const self = this
     return new Proxy(client, {
       get(target, method) {
         if (method === 'changes')
-          return async (...args: Parameters<VaultClient['changes']>) => {
+          return async (...args: Parameters<EngineClient['changes']>) => {
             let since = args[0]
             for (;;) {
               const page = await client.changes(since, args[1]),
@@ -432,7 +403,7 @@ export class ExternalRepresentation {
             }
           }
         if (method === 'manifest')
-          return async (...args: Parameters<VaultClient['manifest']>) => {
+          return async (...args: Parameters<EngineClient['manifest']>) => {
             const page = await client.manifest(...args),
               items = []
             for (const item of page.items) {
@@ -470,7 +441,7 @@ export class ExternalRepresentation {
     ledger?: Parameters<ExternalState['commit']>[0]['ledger']
   ): Promise<void> {
     this.owned()
-    const current = this.file(file.fileId)!,
+    const current = this.file(file.fileId),
       prior = this.document.operations.find((op) => op.operationId === operation.operationId)
     try {
       if (!this.options.state)
@@ -520,7 +491,7 @@ export class ExternalRepresentation {
       throw new ExternalRecoveryRequired('managed file has no proven base/head')
     // Accepting server metadata is not permission to replace another local identity's
     // placement (including tombstones with unresolved sidecars). Keep the event replayable.
-    if (!this.options.scoped) {
+    {
       for await (const placed of this.options.ledger.all())
         if (
           placed.fileId !== file.fileId &&
@@ -546,21 +517,6 @@ export class ExternalRepresentation {
     if (existing && file.availability === desired) {
       if (existing.expected?.sha !== expected.sha || existing.expected.size !== expected.size)
         throw new ExternalRecoveryRequired('replayed metadata changed its immutable basis')
-      // The durable intent may have committed before a definite/unknown scoped metadata
-      // failure. Repair canonical heads before allowing the replayed page to checkpoint.
-      await this.scopedHead(
-        file,
-        {
-          path: expected.path,
-          wirePath: expected.path,
-          fileId: file.fileId,
-          versionId: expected.versionId,
-          sha: expected.sha,
-          size: expected.size,
-          mtime: change.mtime ?? entry.mtime,
-        },
-        desired
-      )
       return true
     }
     const operationId = crypto.randomUUID()
@@ -655,34 +611,10 @@ export class ExternalRepresentation {
       size: expected.size,
       mtime: change.mtime ?? entry.mtime,
     }
-    await this.commit(next, operation, this.options.scoped ? undefined : { putEntries: [updated] })
-    await this.scopedHead(file, updated, desired)
+    await this.commit(next, operation, { putEntries: [updated] })
+    this.entries.set(file.fileId, updated)
     if (!blocked) await this.process(operation.operationId, change.mtime ?? entry.mtime)
     return true
-  }
-  private async scopedHead(
-    file: ExternalRecord,
-    updated: StateEntry,
-    desired: 'active' | 'deleted'
-  ): Promise<void> {
-    const state = this.options.scoped
-    if (!state) return
-    const prior = await state.getKnown(file.fileId)
-    const observed =
-      file.lastProvenLocalBase && (await this.classify(file.lastProvenLocalBase.path))
-    await state.putKnown({
-      ...prior,
-      file_id: file.fileId,
-      version_id: updated.versionId,
-      path: updated.wirePath,
-      sha: updated.sha,
-      size: updated.size,
-      mtime: updated.mtime,
-      state: desired === 'deleted' ? 'deleted' : 'known_not_materialized',
-      dirty: (prior?.dirty ?? false) || (observed?.kind === 'hold' && observed.dirty) || false,
-    })
-    this.owned()
-    this.entries.set(file.fileId, updated)
   }
   async detach(id: string): Promise<boolean> {
     const file = this.file(id),
@@ -690,7 +622,6 @@ export class ExternalRepresentation {
     if (!file || !this.managed(file)) return false
     if (!entry) throw new ExternalRecoveryRequired('detach head missing')
     if (file.availability === 'detached') {
-      await this.scopedDetached(id)
       return true
     }
     const operation: ExternalOperation = {
@@ -728,24 +659,13 @@ export class ExternalRepresentation {
       },
       operation
     )
-    await this.scopedDetached(id)
     return true
   }
-  private async scopedDetached(id: string): Promise<void> {
-    this.owned()
-    if (this.options.scoped) {
-      const known = await this.options.scoped.getKnown(id)
-      if (!known) throw new ExternalRecoveryRequired('detach scoped head missing')
-      if (known.state !== 'detached')
-        await this.options.scoped.putKnown({ ...known, state: 'detached' })
-    }
-    this.owned()
-  }
   private async process(operationId: string, mtime?: number): Promise<void> {
-    const op = this.document.operations.find((op) => op.operationId === operationId)!,
-      expected = op.expected!
-    const file = this.file(expected.fileId)!
-    const entry = this.entries.get(file.fileId)!
+    const op = this.document.operations.find((op) => op.operationId === operationId),
+      expected = op.expected
+    const file = this.file(expected.fileId)
+    const entry = this.entries.get(file.fileId)
     let reason = file.blockingReason,
       phase: ExternalOperation['phase'] = op.phase
     const eligibility = this.eligibility(expected.path, 'attachment', expected.size)
@@ -817,7 +737,7 @@ export class ExternalRepresentation {
       if (op.projectionDigest !== (await sha256(bytes)))
         throw new ExternalRecoveryRequired('recorded projection bytes changed')
       installationIssued = true
-      const result = await this.options.installProjection(op.targetPath!, bytes, op.operationId)
+      const result = await this.options.installProjection(op.targetPath, bytes, op.operationId)
       this.owned()
       phase = result === 'written' ? 'projection-written' : 'cleanup-pending'
       const original =
@@ -850,8 +770,7 @@ export class ExternalRepresentation {
       this.owned()
       if (
         !installationIssued &&
-        this.options.scoped &&
-        ['unauthorized', 'forbidden', 'scoped_unavailable', 'not_found'].includes(
+        ['unauthorized', 'forbidden', 'scope_unavailable', 'not_found'].includes(
           (error as { code?: string }).code ?? ''
         )
       ) {
@@ -884,7 +803,6 @@ export class ExternalRepresentation {
         operation.expected &&
         this.file(operation.expected.fileId)?.availability === 'detached'
       ) {
-        await this.scopedDetached(operation.expected.fileId)
         continue
       }
       if (
@@ -895,9 +813,9 @@ export class ExternalRepresentation {
       const file = operation.expected && this.file(operation.expected.fileId)
       if (!file || file.pendingOperationId !== operation.operationId) continue
       const eligibility = this.eligibility(
-        operation.expected!.path,
+        operation.expected.path,
         'attachment',
-        operation.expected!.size
+        operation.expected.size
       )
       if (eligibility) {
         await this.process(operation.operationId)
@@ -921,210 +839,5 @@ export class ExternalRepresentation {
       }
       await this.process(operation.operationId)
     }
-  }
-  scopedState(state: ScopedState): ScopedState {
-    // One filtered snapshot per enumeration. Rebuild at offset zero, not at every page;
-    // otherwise each scoped scan performs N/page-size complete inventory reads.
-    let inventory: Awaited<ReturnType<ScopedState['knownPage']>> | null = null
-    // eslint-disable-next-line @typescript-eslint/no-this-alias -- The captured coordinator owns scoped filtering.
-    const self = this
-    return new Proxy(state, {
-      get(target, method) {
-        if (method === 'placementStore') return () => self.stateStore(state.placementStore())
-        if (method === 'knownPage')
-          return async (offset: number, limit = 1000) => {
-            self.owned()
-            if (offset === 0 || inventory === null) {
-              const all: Awaited<ReturnType<ScopedState['knownPage']>> = []
-              const managed = new Set(
-                self.document.files.filter((file) => self.managed(file)).map((file) => file.fileId)
-              )
-              for (let from = 0; ; from += 1000) {
-                const page = await state.knownPage(from)
-                all.push(...page.filter((known) => !managed.has(known.file_id)))
-                if (page.length < 1000) break
-              }
-              self.owned()
-              inventory = all
-            }
-            return inventory.slice(offset, offset + limit)
-          }
-        if (method === 'getJournal')
-          return async () => {
-            const journal = await state.getJournal()
-            if (journal) await self.guardOps(journal.ops)
-            return journal
-          }
-        const value = Reflect.get(target, method)
-        return typeof value === 'function' ? value.bind(target) : value
-      },
-    })
-  }
-  scopedClient(client: ScopedClient): ScopedClient {
-    // eslint-disable-next-line @typescript-eslint/no-this-alias -- The captured coordinator owns scoped receipts.
-    const self = this
-    const change = (item: {
-      file_id: string
-      version_id: string
-      path: string
-      sha: string
-      size: number
-      mtime: number
-      kind: 'attachment' | 'note' | 'canvas'
-    }): ChangeItem => ({
-      ...item,
-      seq: 0,
-      op: 'modify',
-      prev_path: null,
-      actor: { kind: 'system', id: 'scoped', name: 'Scoped sync' },
-      at: '',
-    })
-    let snapshot: {
-      id: string
-      anchor: string
-      seen: Set<string>
-      managed: Set<string>
-      next: string | null
-    } | null = null
-    return new Proxy(client, {
-      get(target, method) {
-        if (method === 'state' || method === 'negotiate')
-          return async (...args: unknown[]) => {
-            try {
-              return await Reflect.get(target, method).apply(target, args)
-            } catch (error) {
-              if (
-                ['unauthorized', 'forbidden', 'scoped_unavailable', 'not_found'].includes(
-                  (error as { code?: string }).code ?? ''
-                )
-              )
-                for (const file of [...self.document.files])
-                  if (self.managed(file)) await self.detach(file.fileId)
-              throw error
-            }
-          }
-        if (method === 'openSnapshot' || method === 'snapshotPage')
-          return async (...args: unknown[]) => {
-            const page = await Reflect.get(target, method).apply(target, args),
-              items = []
-            if (method === 'openSnapshot')
-              snapshot = {
-                id: page.snapshot_id,
-                anchor: JSON.stringify(page.checkpoint),
-                seen: new Set(),
-                managed: new Set(),
-                next: page.cursor,
-              }
-            if (
-              !snapshot ||
-              snapshot.id !== page.snapshot_id ||
-              snapshot.anchor !== JSON.stringify(page.checkpoint) ||
-              snapshot.next !== page.cursor
-            )
-              throw new ExternalRecoveryRequired('scoped snapshot identity or anchor changed')
-            for (const item of page.items) {
-              if (snapshot.seen.has(item.file_id) || snapshot.seen.size >= 100000)
-                throw new ExternalRecoveryRequired('scoped snapshot duplicate or budget exceeded')
-              snapshot.seen.add(item.file_id)
-              if (self.file(item.file_id) && self.managed(self.file(item.file_id)!))
-                snapshot.managed.add(item.file_id)
-              else items.push(item)
-            }
-            snapshot.next = page.next_cursor
-            // As in core scoped pull, no metadata/filesystem mutation before complete anchored
-            // inventory and its terminal-only feed proof. Resolve managed IDs to current
-            // authorized heads; opaque versions do not order snapshot headers against pushes.
-            if (page.next_cursor === null && page.feed_checkpoint) {
-              for (const id of snapshot.managed) {
-                try {
-                  const head = await client.head(id)
-                  if (head.file_id !== id)
-                    throw new ExternalRecoveryRequired('scoped snapshot head identity changed')
-                  await self.accept(change(head))
-                } catch (error) {
-                  if ((error as { code?: string }).code === 'not_found') await self.detach(id)
-                  else {
-                    if (
-                      ['unauthorized', 'forbidden', 'scoped_unavailable'].includes(
-                        (error as { code?: string }).code ?? ''
-                      )
-                    )
-                      await self.detach(id)
-                    throw error
-                  }
-                }
-              }
-              for (const file of [...self.document.files])
-                if (
-                  self.managed(file) &&
-                  !snapshot.seen.has(file.fileId) &&
-                  !['detached', 'deleted'].includes(file.availability)
-                )
-                  await self.detach(file.fileId)
-              snapshot = null
-            }
-            return { ...page, items }
-          }
-        if (method === 'feed')
-          return async (...args: Parameters<ScopedClient['feed']>) => {
-            const page = await client.feed(...args),
-              events = []
-            for (const event of page.events) {
-              const id = event.type === 'content' ? event.file.file_id : event.file_id
-              if (!self.file(id) || !self.managed(self.file(id)!)) {
-                events.push(event)
-                continue
-              }
-              if (event.type === 'content') {
-                try {
-                  const head = await client.head(id)
-                  if (head.file_id !== id)
-                    throw new ExternalRecoveryRequired('scoped head identity changed')
-                  await self.accept(change(head))
-                } catch (error) {
-                  if ((error as { code?: string }).code === 'not_found') await self.detach(id)
-                  else {
-                    if (
-                      ['unauthorized', 'forbidden', 'scoped_unavailable'].includes(
-                        (error as { code?: string }).code ?? ''
-                      )
-                    )
-                      await self.detach(id)
-                    throw error
-                  }
-                }
-              } else if (event.type === 'departed') await self.detach(id)
-              else {
-                const entry = self.entries.get(id)!
-                await self.accept({
-                  ...change({
-                    file_id: id,
-                    version_id: entry.versionId,
-                    path: entry.wirePath,
-                    sha: entry.sha,
-                    size: entry.size,
-                    mtime: entry.mtime,
-                    kind: 'attachment',
-                  }),
-                  op: 'delete',
-                  sha: null,
-                  size: null,
-                  mtime: null,
-                })
-              }
-            }
-            return { ...page, events }
-          }
-        if (method === 'commit') {
-          const commit = client.commit.bind(client)
-          return async (...args: Parameters<ScopedClient['commit']>) => {
-            await self.guardOps(args[0].ops)
-            return commit(...args)
-          }
-        }
-        const value = Reflect.get(target, method)
-        return typeof value === 'function' ? value.bind(target) : value
-      },
-    })
   }
 }

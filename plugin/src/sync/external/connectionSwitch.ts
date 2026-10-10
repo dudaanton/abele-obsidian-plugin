@@ -5,7 +5,9 @@ import { CONNECTION_KEY, inspectConnection, type DeviceConnection } from '../con
 import { LEDGER_KEY, readLedgerId, type LedgerId } from '../ledgerId'
 import { LEDGER_BOOTSTRAP_KEY } from '../ledgerRecovery'
 import { rememberLedgerCleanup } from '../ledgerCleanup'
-import { newRevokeSecretId } from '../revoke'
+import { REVOKE_SECRET_PREFIX } from '../connection'
+import { randomStem } from '../ids'
+const newRevokeSecretId = () => REVOKE_SECRET_PREFIX + randomStem() + randomStem()
 import {
   SCOPED_CONNECTION_KEY,
   SCOPED_JOIN_KEY,

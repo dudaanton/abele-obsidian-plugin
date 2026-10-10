@@ -1,6 +1,14 @@
 import { expect, it } from 'vitest'
 import { MemoryStateStore, sha256 } from '@abele/sync-core'
 import { ExecutableReview, EXECUTABLE_REVIEW_KEY } from '@/sync/executableReview'
+import { executablePath } from '@/sync/stagedPluginCode'
+
+it.each(['Tools/sample.js', 'Tools/sample.py', '.obsidian/plugins/abele/main.js'])(
+  'classifies executable rename/delete endpoints without a server kind: %s',
+  (path) => {
+    expect(executablePath(path)).toBe(true)
+  }
+)
 
 const source = {
   id: 'connection-a',

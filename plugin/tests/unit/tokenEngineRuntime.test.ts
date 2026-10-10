@@ -26,7 +26,7 @@ async function server(
     kind: path.endsWith('.js') ? 'script' : 'note',
   }
   const requests: string[] = []
-  const fetch = vi.fn(async (input: RequestInfo | URL) => {
+  const fetch = vi.fn(async (input: RequestInfo | URL, init?: RequestInit) => {
     const route = new URL(
       typeof input === 'string' ? input : input instanceof URL ? input.href : input.url
     ).pathname
@@ -43,6 +43,18 @@ async function server(
     if (route === '/v2/manifest') return Response.json({ items: [item], cursor: 1, next: null })
     if (route === '/v2/changes') return Response.json({ items: [], cursor: 1, next: null })
     if (route.includes('/content')) return new Response(bytes)
+    if (route.startsWith('/v2/uploads/')) return new Response(null, { status: 204 })
+    if (route === '/v2/commit') {
+      const ops = JSON.parse(String(init?.body)).ops
+      return Response.json({
+        cursor: 1,
+        results: ops.map(() => ({
+          status: 'rejected',
+          code: 'quota_exceeded',
+          message: 'sample quota',
+        })),
+      })
+    }
     throw new Error('Unexpected route: ' + route)
   })
   return { fetch, requests, item, bytes, address }
@@ -207,21 +219,15 @@ it('refuses a server that mutates an already captured executable version before 
   }
 })
 
-// BUG: DEPENDS: groups. The frozen server/core binding deliberately reports scope_updating.
-it.fails('synchronizes a group token once the group binding is available', async () => {
-  const wire = await server('Groups/sample.md', 'group sample'),
-    fs = new MemoryFileSystem()
+it('synchronizes a group token once the group binding is available', async () => {
   const group = { kind: 'group' as const, id: 'sample-group', path: 'Groups/sample.md' }
-  wire.fetch.mockResolvedValue(
-    Response.json({
-      protocol: 2,
-      token_id: 'sample-token',
-      space_id: 'sample-space',
-      scope: group,
-      status: 'scope_updating',
-      limits: { max_file_bytes: 1000000, quota_bytes: null },
-    })
-  )
+  const wire = await server(
+      'Groups/sample.md',
+      'group sample',
+      'https://first.example',
+      group as typeof scope
+    ),
+    fs = new MemoryFileSystem()
   const metadata = new MemoryStateStore(),
     runtime = new TokenEngineRuntime({
       id: 'sample-group-connection',
@@ -250,3 +256,42 @@ it.fails('synchronizes a group token once the group binding is available', async
     await runtime.disconnect()
   }
 })
+
+it('stages standalone executable bytes outside the scripts folder', async () => {
+  const wire = await server('Tools/sample.js', 'incoming executable'),
+    fs = new MemoryFileSystem()
+  const host = runtime(wire, fs)
+  try {
+    await host.runtime.sync()
+    expect(await fs.stat(wire.item.path)).toBeNull()
+    const candidates = await host.reviews.executables.pending()
+    expect(candidates).toHaveLength(1)
+    expect(candidates[0].bytes).toEqual([...wire.bytes])
+  } finally {
+    await host.runtime.disconnect()
+  }
+})
+
+it.each(['same', 'different'])(
+  'first connection preserves %s local bytes at a server path',
+  async (local) => {
+    const wire = await server('Notes/sample.md', 'same'),
+      fs = new MemoryFileSystem()
+    await fs.writeAtomic(wire.item.path, new TextEncoder().encode(local), 500)
+    const host = runtime(wire, fs)
+    try {
+      await host.runtime.sync()
+      expect(new TextDecoder().decode(await fs.read(wire.item.path))).toBe('same')
+      const files = []
+      for await (const info of fs.list())
+        if (!info.path.startsWith('.abele-sync/')) files.push(info.path)
+      expect(files).toHaveLength(local === 'same' ? 1 : 2)
+      if (local !== 'same')
+        expect(
+          new TextDecoder().decode(await fs.read(files.find((path) => path !== wire.item.path)!))
+        ).toBe(local)
+    } finally {
+      await host.runtime.disconnect()
+    }
+  }
+)

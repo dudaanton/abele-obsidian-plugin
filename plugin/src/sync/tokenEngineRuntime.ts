@@ -28,6 +28,7 @@ import type { ExecutableCandidate } from './executableReview'
 import { executablePath, configurationPath, type ExecutablePaths } from './stagedPluginCode'
 import type { ReviewSource } from './reviewState'
 import { sourceIdentity } from './reviewState'
+import type { ConsentTarget } from './attachmentConsent'
 
 export interface TokenEngineOptions {
   id: string
@@ -45,6 +46,10 @@ export interface TokenEngineOptions {
   failed(error: unknown): void
   covers(path: string): Promise<boolean>
   expectedSource?: ReviewSource
+  localFiles?: {
+    note(path: string): Promise<{ id: string; targets: ConsentTarget[] } | null>
+    resolve(id: string): ConsentTarget | null
+  }
 }
 /** Host wiring around the retained engine. All exchange and journaling belongs to core. */
 export class TokenEngineRuntime implements ConnectionRuntime, TokenUiRuntime {
@@ -81,7 +86,10 @@ export class TokenEngineRuntime implements ConnectionRuntime, TokenUiRuntime {
         const page = V2ManifestSchema.parse(await response.json())
         const items: V2ManifestItem[] = []
         for (const item of page.items)
-          if (!(await this.reviewItem(item, null, page.cursor))) items.push(item)
+          if (!(await this.reviewItem(item, null, page.cursor))) {
+            await this.joinItem(item)
+            items.push(item)
+          }
         await this.refreshHolds()
         return Response.json({ ...page, items }, { headers: response.headers })
       } else if (url.pathname === '/v2/changes') {
@@ -250,6 +258,56 @@ export class TokenEngineRuntime implements ConnectionRuntime, TokenUiRuntime {
     await this.options.state.setMeta('token-review-sequence:' + version, String(event.cursor))
     return true
   }
+  private async joinItem(item: V2ManifestItem): Promise<void> {
+    if (item.kind === 'directory' || (await this.options.state.get(item.path))) return
+    const before = await this.options.fs.stat(item.path)
+    if (!before) return
+    const local = await this.options.fs.read(item.path),
+      hash = await sha256(local)
+    if (hash === item.sha) return
+    const incoming = await this.client.versionBytes(item.file_id, item.version_id)
+    if (incoming.length !== item.size || (await sha256(incoming)) !== item.sha)
+      throw new EngineError('protocol', 'Incoming content integrity mismatch')
+    const dot = item.path.lastIndexOf('.'),
+      slash = item.path.lastIndexOf('/')
+    const stem = dot > slash ? item.path.slice(0, dot) : item.path,
+      ext = dot > slash ? item.path.slice(dot) : ''
+    const copy =
+      stem + ' (Conflicted copy local ' + before.mtime + ' ' + hash.slice(0, 12) + ')' + ext
+    const work = async () => {
+      this.assertHeld()
+      if (await this.options.state.get(item.path)) return
+      const current = await this.options.fs.stat(item.path)
+      if (
+        !current ||
+        current.mtime !== before.mtime ||
+        (await sha256(await this.options.fs.read(item.path))) !== hash
+      )
+        throw new EngineError('lost', 'Local file changed during first connection; retry required')
+      await this.options.state.setMeta(
+        'token-first-connection:' + item.file_id,
+        JSON.stringify({
+          path: item.path,
+          copy,
+          localSha: hash,
+          remoteSha: item.sha,
+          version: item.version_id,
+        })
+      )
+      const exists = await this.options.fs.stat(copy)
+      if (exists && (await sha256(await this.options.fs.read(copy))) !== hash)
+        throw new EngineError('lost', 'Conflict copy path is occupied')
+      if (!exists) await this.options.fs.writeAtomic(copy, local, before.mtime)
+      this.assertHeld()
+      if ((await sha256(await this.options.fs.read(item.path))) !== hash)
+        throw new EngineError('lost', 'Local file changed; preserved conflict copy remains')
+      await this.options.fs.writeAtomic(item.path, incoming, item.mtime)
+    }
+    const lease = (this.options.fs as FileSystem & { [key: symbol]: unknown })[
+      Symbol.for('abele.sync.placement-v1')
+    ] as ((paths: string[], work: () => Promise<void>) => Promise<void>) | undefined
+    await (lease ? lease([item.path, copy], work) : work())
+  }
   async start(): Promise<void> {
     await this.refreshHolds()
     this.assertHeld()
@@ -259,6 +317,7 @@ export class TokenEngineRuntime implements ConnectionRuntime, TokenUiRuntime {
     await this.refreshHolds()
     this.assertHeld()
     await this.engine.sync()
+    await this.publishPending()
   }
   invalidate(): void {
     this.active = false
@@ -276,8 +335,8 @@ export class TokenEngineRuntime implements ConnectionRuntime, TokenUiRuntime {
     if (paused) this.engine.pause()
     else this.engine.resume()
   }
-  async resolve(_fileId: string): Promise<null> {
-    return null
+  async resolve(fileId: string): Promise<ConsentTarget | null> {
+    return this.options.localFiles?.resolve(fileId) ?? null
   }
   covers(path: string): boolean {
     return (
@@ -290,9 +349,82 @@ export class TokenEngineRuntime implements ConnectionRuntime, TokenUiRuntime {
   async pathFor(fileId: string): Promise<string | null> {
     return (await this.options.state.byFileId(fileId))?.path ?? null
   }
-  async opened(_path: string): Promise<[]> {
-    return []
-  } // Group identity/link publication awaits the group binding.
+  entryFor(path: string) {
+    return this.options.state.get(path)
+  }
+  async opened(path: string): Promise<{ source: ReviewSource; noteId: string }[]> {
+    this.assertHeld()
+    if (this.token.scope.kind !== 'group' || !this.covers(path)) return []
+    const entry = await this.options.state.get(path)
+    if (!entry || !path.endsWith('.md')) return []
+    const note = await this.options.localFiles?.note(path)
+    if (!note) return []
+    const source = this.source()
+    for (const target of note.targets) {
+      const received = await this.options.state.get(target.path)
+      if (received && received.sha === (await sha256(await this.options.fs.read(target.path))))
+        await this.options.reviews.attachments.recordReceived(source, target.id)
+    }
+    await this.options.reviews.attachments.observeNote(
+      source,
+      note.id,
+      note.targets.map((one) => one.id)
+    )
+    return [{ source, noteId: note.id }]
+  }
+  async publishAttachment(id: string): Promise<void> {
+    this.assertHeld()
+    const target = await this.resolve(id)
+    if (!target || !(await this.options.reviews.attachments.mayUpload(this.source(), target)))
+      throw new Error('File publication is not approved')
+    const info = await this.options.fs.stat(target.path)
+    if (!info) throw new Error('File is no longer available')
+    const bytes = await this.options.fs.read(target.path),
+      hash = await sha256(bytes)
+    const marker = 'token-asset-publication:' + id + ':' + hash + ':' + info.mtime
+    const key = (await this.options.state.getMeta(marker)) ?? crypto.randomUUID()
+    await this.options.state.setMeta(marker, key)
+    const queue = JSON.parse((await this.options.state.getMeta('token-asset-outbox')) ?? '[]') as {
+      id: string
+      path: string
+      bytes: number[]
+      sha: string
+      mtime: number
+      key: string
+    }[]
+    if (!queue.some((one) => one.key === key)) {
+      queue.push({ id, path: target.path, bytes: [...bytes], sha: hash, mtime: info.mtime, key })
+      await this.options.state.setMeta('token-asset-outbox', JSON.stringify(queue))
+    }
+    await this.publishPending()
+    await this.sync()
+  }
+  private async publishPending(): Promise<void> {
+    const queue = JSON.parse((await this.options.state.getMeta('token-asset-outbox')) ?? '[]') as {
+      id: string
+      path: string
+      bytes: number[]
+      sha: string
+      mtime: number
+      key: string
+    }[]
+    for (const one of [...queue]) {
+      const target = await this.resolve(one.id)
+      if (!target || !(await this.options.reviews.attachments.mayUpload(this.source(), target)))
+        throw new Error('Pending file publication requires its original local identity')
+      const bytes = new Uint8Array(one.bytes)
+      if ((await sha256(bytes)) !== one.sha)
+        throw new EngineError('lost', 'Pending publication integrity mismatch')
+      this.assertHeld()
+      await this.client.publishGroupAsset(one.path, bytes, one.mtime, one.key)
+      this.assertHeld()
+      queue.splice(
+        queue.findIndex((item) => item.key === one.key),
+        1
+      )
+      await this.options.state.setMeta('token-asset-outbox', JSON.stringify(queue))
+    }
+  }
   async apply(candidate: ExecutableCandidate): Promise<void> {
     this.assertHeld()
     if (candidate.source.id !== this.options.id) throw new Error('Review connection changed')

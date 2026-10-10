@@ -60,7 +60,7 @@ import Dropdown from '../obsidian/Dropdown.vue'
 import Input from '../obsidian/Input.vue'
 import Button from '../obsidian/Button.vue'
 import ConfirmModal from '../obsidian/ConfirmModal.vue'
-import { SyncService } from '@/sync/SyncService'
+import { tokenHistory } from '@/sync/tokenHistory'
 import { reasonOf } from '@/sync/format'
 import { RestoreKeys } from '@/sync/restoreKeys'
 import type { LocalStorage } from '@/sync/ledgerId'
@@ -84,7 +84,7 @@ const emit = defineEmits<{
   (e: 'restored', fileIds: string[]): void
 }>()
 
-const sync = SyncService.getInstance()
+const sync = tokenHistory()
 const root = useTemplateRef<HTMLElement>('root')
 
 const preset = ref<Preset>('hour')

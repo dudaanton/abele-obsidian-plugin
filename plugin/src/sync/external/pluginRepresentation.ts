@@ -1,5 +1,5 @@
 import type { App } from 'obsidian'
-import type { FileSystem, StateStore, ScopedState } from '@abele/sync-core'
+import type { FileSystem, StateStore } from '@abele/sync-core'
 import { ExternalState } from './state'
 import { ExternalRepresentation, type RepresentationOptions } from './representation'
 import { ExternalFileHost } from './ObsidianExternalFileHost'
@@ -16,7 +16,6 @@ export async function pluginRepresentation(options: {
   factory: IDBFactory
   store: IndexedDbStateStore
   ledger?: StateStore
-  scoped?: ScopedState
   ledgerId: string
   binding: ConnectionBinding
   fence: RuntimeFence
@@ -75,13 +74,13 @@ export async function pluginRepresentation(options: {
           { run: (work) => work() },
           {
             operationId,
-            fileId: operation.expected!.fileId,
+            fileId: operation.expected.fileId,
             paths: [
               ...new Set([
                 path,
                 artifact.path,
                 ...(operation.sourcePath ? [operation.sourcePath] : []),
-                operation.expected!.path,
+                operation.expected.path,
               ]),
             ],
             assertIntent: (_phase, paths, incoming) => {

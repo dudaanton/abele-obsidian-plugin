@@ -57,7 +57,7 @@
  */
 import { onMounted, ref, useTemplateRef } from 'vue'
 import { Notice } from 'obsidian'
-import type { VaultClient } from '@abele/sync-core'
+import type { V2EngineClient } from '@abele/sync-core'
 import type { FileKind, TrashItem } from '@abele/sync-protocol'
 import ObsidianModal from '../obsidian/Modal.vue'
 import Card from '../obsidian/Card.vue'
@@ -66,7 +66,7 @@ import Badge from '../obsidian/Badge.vue'
 import Button from '../obsidian/Button.vue'
 import EmptyState from '../obsidian/EmptyState.vue'
 import RestoreSince from './RestoreSince.vue'
-import { SyncService } from '@/sync/SyncService'
+import { tokenHistory } from '@/sync/tokenHistory'
 import { formatWhen, reasonOf, restoredNotice } from '@/sync/format'
 import { formatBytes } from '@/helpers/reduceImage'
 
@@ -84,7 +84,7 @@ const KIND_LABEL: Record<FileKind, string> = {
 /** What the screen says when there is nothing in the trash, which is the usual case. */
 const EMPTY = 'Nothing has been deleted, or everything deleted has already been swept.'
 
-const sync = SyncService.getInstance()
+const sync = tokenHistory()
 
 const items = ref<TrashItem[]>([])
 /** What the list says when there is no list: reading, unreachable, or an empty trash. */
@@ -100,7 +100,7 @@ let line: Promise<void> = Promise.resolve()
 
 const root = useTemplateRef<HTMLElement>('root')
 
-let client: VaultClient | null = null
+let client: V2EngineClient | null = null
 
 /** When it went, and how much comes back with it. */
 const metaOf = (item: TrashItem): string[] => [

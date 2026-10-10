@@ -379,7 +379,7 @@ export async function recoverExternalState(
     for (const operation of document.operations) {
       if (
         operation.expected &&
-        !document.files.some((file) => file.fileId === operation.expected!.fileId)
+        !document.files.some((file) => file.fileId === operation.expected.fileId)
       )
         throw new ExternalRecoveryRequired('external job has no owned file')
       if (
@@ -420,9 +420,7 @@ export async function recoverExternalState(
       !publication.idempotencyKey ||
       !publication.startedAt ||
       !Array.isArray(publication.ops) ||
-      publication.ops.some((op) => !CommitOpSchema.safeParse(op).success) ||
-      (publication.publicationPhase !== undefined &&
-        !['prepared', 'submitted'].includes(publication.publicationPhase)))
+      publication.ops.some((op) => !CommitOpSchema.safeParse(op).success))
   )
     throw new ExternalRecoveryRequired('publication journal is unreadable')
   await store.pluginMeta()

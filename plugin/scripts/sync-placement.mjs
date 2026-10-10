@@ -12,15 +12,6 @@ async function coordinatePlacement(fs, paths, work) {
   const run = fs[Symbol.for('abele.sync.placement-v1')];
   return run ? run(paths, work) : work();
 }
-async function withDeliveryBytes(placer, change, work) {
-  if (!placer.opts.onPersonalNoteApplied || change.kind !== 'note' || !change.sha) return work();
-  const bytes = await placer.client.getBlob(change.sha);
-  const cache = placer.placementDelivery ??= new Map();
-  const held = cache.get(change.sha) ?? { bytes, users: 0 };
-  held.users++; cache.set(change.sha, held);
-  try { return await work(); }
-  finally { if (--held.users === 0) cache.delete(change.sha); }
-}
 `
 export function syncPlacementPlugin() {
   return {
@@ -36,8 +27,8 @@ export function syncPlacementPlugin() {
             code,
             `async ${name}(change, entry) {`,
             `async ${name}(change, entry) {
-            return withDeliveryBytes(this, change, () => coordinatePlacement(this.fs, [change.path, ...(entry ? [entry.path] : [])],
-              () => this.${name}Unlocked(change, entry)));
+            return coordinatePlacement(this.fs, [change.path, ...(entry ? [entry.path] : [])],
+              () => this.${name}Unlocked(change, entry));
           }
           async ${name}Unlocked(change, entry) {`
           )
@@ -65,15 +56,10 @@ export function syncPlacementPlugin() {
             if (!bytes) return false;
             fetched = new Map(fetched).set(sha, bytes);
           }
-          return withDeliveryBytes(this, change, () => coordinatePlacement(this.fs, [change.path, ...(entry ? [entry.path] : [])],
-            () => this.placeUnlocked(change, sha, entry, fetched, local)));
+          return coordinatePlacement(this.fs, [change.path, ...(entry ? [entry.path] : [])],
+            () => this.placeUnlocked(change, sha, entry, fetched, local));
         }
         async placeUnlocked(change, sha, entry, fetched, local) {`
-        )
-        code = replaceOnce(
-          code,
-          'const exact = event ? await this.client.getBlob(sha) : null;',
-          'const exact = event ? this.placementDelivery?.get(sha)?.bytes ?? null : null;'
         )
       } else if (file.endsWith('/pusher.js')) {
         code = replaceOnce(
@@ -97,10 +83,6 @@ export function syncPlacementPlugin() {
           if (index > 0) await this.planner.fetchRun(run, verdicts);
           for (const [sha, bytes] of verdicts.fetched) await stage(sha, bytes);
         }
-        if (this.opts.onSettled) for (const result of results) {
-          if (result.status !== 'rejected' && result.sha && !stagedDownloads.has(result.sha))
-            await stage(result.sha, await this.client.getBlob(result.sha));
-        }
         const readStaged = async (sha) => {
           const path = stagedDownloads.get(sha);
           if (!path) return null;
@@ -117,16 +99,7 @@ export function syncPlacementPlugin() {
           }
         };
         await loadRun(verdicts.runs[0] ?? []);
-        const placementClient = new Proxy(this.client, { get(target, key) {
-          if (key === 'getBlob') return readStaged;
-          const value = Reflect.get(target, key);
-          return typeof value === 'function' ? value.bind(target) : value;
-        } });`
-        )
-        code = replaceOnce(
-          code,
-          'await settleOwnerUnit(this.client, journal, sending, results, this.opts.onSettled, hookIndices, outcome.body.creation_outcomes);',
-          'await settleOwnerUnit(placementClient, journal, sending, results, this.opts.onSettled, hookIndices, outcome.body.creation_outcomes);'
+`
         )
         code = replaceOnce(
           code,

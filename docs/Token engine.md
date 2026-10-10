@@ -1,7 +1,7 @@
 # Token engine integration
 
 The production plugin pins core and protocol to server commit
-`664759f8ab307c74804868bbe5bb8e3e3182d0e0`. The vendor script generated
+`cf01a4abb764464a3bc4ab9ab3cb3d5bf1f0d62c`. The vendor script generated
 the archives and provenance; package.json, package-lock.json and SERVER_TEST_COMMIT
 use the same input. No server source is changed.
 
@@ -27,20 +27,15 @@ Ordinary items remain available to core. Non-root connections exclude .obsidian.
 Reviewed directory effects use core directory placement with an in-memory candidate
 response, without starting an additional engine.
 
-Groups fail closed as scope_updating in the pinned contract. Group runtime acceptance
-remains it.fails with DEPENDS: groups. Group note identity/link resolution and
-attachment publication cannot be enabled until that binding exists; arrival and
-background processing never grant private-file consent. The existing consent and
-review ports/storage remain independently tested. Deleted-file history is not served
-by v2 yet, so its palette command explains that limitation instead of invoking v1.
+Group connections use the production v2 adapter. Attachment questions are created only
+on a real note-open event and use device-local file identities retained through renames.
+An allowed decision invokes explicit group asset publication, with immutable pending bytes
+and the original idempotency identity kept across uncertainty. History/trash screens use
+the selected token connection and v2 restore calls. Original modification time is shown.
 
-Verification includes two production token runtimes sharing a vault, two real pinned
-HTTP/SQLite servers with forwarding and restart, native host binding/disconnect,
-immutable review and later-candidate approval, ledger eviction/reconnect, directory
-identity, and the retained placement/transport/review/settings guarantees. The
-server-backed test uses the vendor script fixture and ABELE_SYNC_DIR.
-Live desktop vault exchange, live iPhone, large paged snapshots and all 124 acceptance
-scenarios remain manager checks; phone screenshots are desktop CSS emulation.
-
-Removed access-screen assertions and their individual reasons are listed in
-[DELETED-SYNC-LEGACY.md](../plugin/tests/DELETED-SYNC-LEGACY.md).
+First connection preserves different local bytes in a deterministic conflict copy before
+placing the verified server variant under the shared path lease. Matching bytes are adopted.
+The host migration is incomplete: retained legacy client/scoped imports still fail the
+production type check and associated regression tests. Token hydration/eviction and its
+multi-connection ownership/forwarding fences are not yet integrated. No live desktop or
+phone evidence, completed multi-connection eviction, or complete scenario acceptance is claimed.

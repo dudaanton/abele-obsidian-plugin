@@ -21,7 +21,7 @@ import Badge from '@/components/obsidian/Badge.vue'
 import Button from '@/components/obsidian/Button.vue'
 import EmptyState from '@/components/obsidian/EmptyState.vue'
 import ConfirmModal from '@/components/obsidian/ConfirmModal.vue'
-import { SyncService } from '@/sync/SyncService'
+import * as TokenHistory from '@/sync/tokenHistory'
 import { DISCONNECTED_STATUS, type SyncStatus } from '@/sync/status'
 import { useVault } from '../helpers/testEnv'
 
@@ -42,9 +42,9 @@ const version = (over: Partial<VersionInfo> & { no: number }): VersionInfo => ({
   path: PATH,
   sha: `sha-${over.no}`,
   size: 1024,
-  mtime: 0,
+  mtime: Date.now() - 5 * 60_000,
   actor: { kind: 'device', id: 'd1', name: 'Desktop' },
-  at: minutesAgo(5),
+  at: minutesAgo(1),
   merge: null,
   ...over,
 })
@@ -146,7 +146,7 @@ beforeEach(() => {
   client.versions.mockReset().mockResolvedValue(HISTORY)
   client.versionBytes.mockResolvedValue(bytesOf('one\nTWO\n'))
   client.restore.mockResolvedValue(APPLIED)
-  vi.spyOn(SyncService, 'getInstance').mockReturnValue(service as never)
+  vi.spyOn(TokenHistory, 'tokenHistory').mockReturnValue(service as never)
 })
 
 afterEach(() => {
