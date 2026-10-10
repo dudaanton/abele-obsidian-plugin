@@ -39,6 +39,25 @@ it.each(['select', 'input'] as const)(
   }
 )
 
+it('keeps Stop available while an answer is awaiting confirmation', async () => {
+  useVault([])
+  const wrapper = mount(NodePermissionCard, {
+    props: {
+      prompt: { prompt_id: 'sample', state: 'pending' } as never,
+      disabled: false,
+      answerState: { state: 'pending', choice: 'deny' } as never,
+    },
+  })
+  try {
+    const stop = wrapper.findAll('button').find((b) => b.text() === 'Stop')!
+    expect(stop).toBeDefined()
+    await stop.trigger('click')
+    expect(wrapper.emitted('stop')).toEqual([[]])
+  } finally {
+    wrapper.unmount()
+  }
+})
+
 it('shows one accent approval row, a short summary and expandable original arguments without vault reads', async () => {
   const app = useVault([{ path: 'sample.txt', raw: 'LOCAL SAMPLE' }]),
     read = vi.spyOn(app.vault, 'read')
@@ -61,9 +80,16 @@ it('shows one accent approval row, a short summary and expandable original argum
     expect(wrapper.findAll('.abele-tool-approval__actions button').map((b) => b.text())).toEqual([
       'Approve',
       'Deny',
+      'Stop',
     ])
     await wrapper.get('button.mod-cta').trigger('click')
     expect(wrapper.emitted('answer')).toEqual([['allow']])
+    const stop = wrapper.findAll('button').find((b) => b.text() === 'Stop')!
+    expect(stop.classes()).not.toContain('mod-cta')
+    await stop.trigger('click')
+    expect(wrapper.emitted('stop')).toEqual([[]])
+    await wrapper.setProps({ disabled: true })
+    expect(stop.attributes('disabled')).toBeDefined()
     expect(wrapper.text()).toContain('in 5 min')
     expect(read).not.toHaveBeenCalled()
   } finally {

@@ -158,6 +158,7 @@ it('restores exact Claude permission cards and nested work without fake controls
     draft: ref({ text: '', attachments: [] }),
     connection: { state: ref('connected'), error: ref('') },
     answer,
+    stopFromApproval: vi.fn(),
     openResource: vi.fn(),
     send: vi.fn(),
     interrupt: vi.fn(),
@@ -194,6 +195,11 @@ it('restores exact Claude permission cards and nested work without fake controls
       .trigger('click')
     await flushPromises()
     expect(answer).toHaveBeenCalledWith(prompt, 'allow')
+    await wrapper
+      .findAll('button')
+      .find((b) => b.text() === 'Stop')!
+      .trigger('click')
+    expect(presenter.stopFromApproval).toHaveBeenCalledWith(prompt)
     await wrapper.get('[aria-label="Cancel queued input"]').trigger('click')
     expect(presenter.cancelInput).toHaveBeenCalledWith('i')
   } finally {

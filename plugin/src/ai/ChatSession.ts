@@ -2555,6 +2555,38 @@ export class ChatSession implements SummarizerHost, InterceptorHost, AnchorStora
     }
   }
 
+  /** Reject the paused turn as a whole, without the continuation used by Reject. */
+  stopFromApproval(expectedCallId?: string): void {
+    const pending = this.pendingToolCalls.value
+    if (!pending.length || (expectedCallId && !pending.some((tc) => tc.id === expectedCallId)))
+      return
+
+    // Match the composer Stop: keep queued human text as a draft, not as a new turn.
+    const queued = this.takeQueuedMessages().filter((q) => !q.delegationWake)
+    if (queued.length) {
+      const draft = this.draft.value
+      const files = queued
+        .flatMap((q) => q.attachments ?? [])
+        .map((path) => GlobalStore.getInstance().app.vault.getAbstractFileByPath(path))
+        .filter((file): file is TFile => file instanceof TFile)
+      this.draft.value = {
+        ...draft,
+        text: [...queued.map((q) => q.content), draft.text].filter(Boolean).join('\n'),
+        attachments: [
+          ...draft.attachments,
+          ...files.filter((file) => !draft.attachments.includes(file)),
+        ],
+      }
+    }
+    // Fence loops, scripts, retries and delegated wakes before settling any call.
+    this.abort()
+    for (const tc of pending) {
+      this.ensurePendingToolCallMessage(tc)
+      this.recordRefusal(tc, 'User stopped the agent')
+    }
+    this.markDirty()
+  }
+
   abortToolExecution(): void {
     // The tool Stop button stops the parent too, including queued wakes and mailbox waiters.
     this.abort()

@@ -159,6 +159,9 @@
         :disabled="keyApprovalBusy"
         @click="approve"
       />
+      <Button text="Edit" @click="toggleEdit" />
+      <Button text="Reject" @click="reject" />
+      <Button text="Stop" tooltip="Reject and stop the agent" @click="stop" />
       <Button
         v-if="canApproveAllWrites"
         text="Always allow writes"
@@ -173,8 +176,6 @@
         :tooltip="`Stop asking about ${message.toolName}. Every other tool still asks.`"
         @click="allowAll"
       />
-      <Button text="Edit" @click="toggleEdit" />
-      <Button text="Reject" @click="reject" />
     </div>
   </div>
 </template>
@@ -552,6 +553,11 @@ const reject = () => {
   session.value?.rejectToolCall('User rejected this action')
 }
 
+const stop = () => {
+  keyApprovalController?.abort()
+  session.value?.stopFromApproval(props.message.toolCallId)
+}
+
 const toggleEdit = () => {
   isEditing.value = !isEditing.value
 }
@@ -676,6 +682,12 @@ const toggleEdit = () => {
 .abele-tool-approval__actions {
   display: flex;
   flex-wrap: wrap;
-  gap: var(--size-4-2);
+  gap: var(--size-4-1);
+
+  // Keep the four one-shot actions together in a narrow sidebar or phone drawer.
+  // Native button height, type and colours stay with the theme.
+  button {
+    padding-inline: var(--size-4-2);
+  }
 }
 </style>

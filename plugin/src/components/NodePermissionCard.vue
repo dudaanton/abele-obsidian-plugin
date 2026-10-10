@@ -33,6 +33,14 @@
       <template v-if="answerState.value !== undefined"> · {{ answerState.value }}</template>
       <template v-if="answerState.state === 'pending'"> · waiting for confirmation</template>
       <template v-if="answerState.error"> · not accepted: {{ answerState.error }}</template>
+      <div class="abele-tool-approval__actions">
+        <Button
+          text="Stop"
+          :disabled="disabled"
+          tooltip="Reject and stop the agent"
+          @click="!disabled && emit('stop')"
+        />
+      </div>
     </div>
     <template v-else-if="prompt.state === 'pending'">
       <div v-if="expiry" class="abele-node-permission__note">{{ expiry }}</div>
@@ -65,6 +73,12 @@
           :disabled="disabled"
           tooltip="Do not allow this action"
           @click="emit('answer', 'deny')"
+        />
+        <Button
+          text="Stop"
+          :disabled="disabled"
+          tooltip="Reject and stop the agent"
+          @click="!disabled && emit('stop')"
         />
       </div>
     </template>
@@ -102,7 +116,10 @@ const props = defineProps<{
   fake?: boolean
   answerState?: PromptAnswerState
 }>()
-const emit = defineEmits<{ (e: 'answer', choice: 'allow' | 'deny', value?: string): void }>()
+const emit = defineEmits<{
+  (e: 'answer', choice: 'allow' | 'deny', value?: string): void
+  (e: 'stop'): void
+}>()
 const value = ref('')
 watch(
   () => props.prompt.prompt_id,

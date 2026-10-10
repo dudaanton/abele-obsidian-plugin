@@ -59,6 +59,25 @@ async function settled(wrapper: ReturnType<typeof approval>) {
   return wrapper
 }
 
+it('offers a keyboard-reachable Stop with Reject weight and stops the request session', async () => {
+  const stopFromApproval = vi.fn()
+  vi.spyOn(ChatService.getInstance(), 'activeSession', 'get').mockReturnValue({
+    value: { stopFromApproval, getToolMode: () => 'ask', permissionMode: ref('confirm-all') },
+  } as never)
+  const wrapper = approval('eval_js', { code: 'return "sample"' })
+  try {
+    const stop = buttonSaying(wrapper, 'Stop')!
+    expect(stop).toBeDefined()
+    expect(stop.props('tooltip')).toBe('Reject and stop the agent')
+    expect(stop.find('button').attributes('disabled')).toBeUndefined()
+    expect(stop.find('button').classes()).not.toContain('mod-cta')
+    await stop.find('button').trigger('click')
+    expect(stopFromApproval).toHaveBeenCalledOnce()
+  } finally {
+    wrapper.unmount()
+  }
+})
+
 it('shows ZIP selections and virtual names literally without a content/diff preview', async () => {
   const files = [
     { path: 'Notes/sample.md' },

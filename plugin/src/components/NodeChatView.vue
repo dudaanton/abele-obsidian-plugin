@@ -86,6 +86,7 @@
         :fake="presenter.provider?.value === 'fake'"
         :disabled="offline"
         :answer-state="presenter.answers?.value[prompt.prompt_id]"
+        @stop="presenter.stopFromApproval(prompt)"
         @answer="
           (choice, value) =>
             value === undefined

@@ -74,7 +74,7 @@ it('shows the durable answer as sent after view remount and presenter/store relo
   view.unmount()
   view = mountView(first.presenter)
   expect(view.text()).toContain('Answer sent')
-  expect(view.findAll('.abele-node-permission button')).toHaveLength(0)
+  expect(view.findAll('.abele-node-permission button').map((b) => b.text())).toEqual(['Stop'])
   view.unmount()
   first.presenter.destroy()
   first.store.close()
@@ -83,7 +83,7 @@ it('shows the durable answer as sent after view remount and presenter/store relo
     await restored.presenter.refresh()
     view = mountView(restored.presenter)
     expect(view.text()).toContain('Answer sent')
-    expect(view.findAll('.abele-node-permission button')).toHaveLength(0)
+    expect(view.findAll('.abele-node-permission button').map((b) => b.text())).toEqual(['Stop'])
     expect(await restored.client.pending()).toEqual(pending)
   } finally {
     view.unmount()

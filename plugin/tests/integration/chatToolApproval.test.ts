@@ -155,6 +155,42 @@ const askedAbout = async (...ids: string[]) => {
   expect(looksBusy()).toBe(false)
 }
 
+describe('stopping from an approval', () => {
+  it('rejects every pending call without tools or another model turn, and stays settled', async () => {
+    await askedAbout('one', 'two', 'three')
+    session.queuedMessages.value = [{ id: 'queued', content: 'Unsent follow-up' }]
+    session.draft.value.text = 'Draft text'
+
+    session.stopFromApproval('one')
+    await session.approveToolCall()
+    await session.rejectToolCall()
+
+    expect(session.pendingToolCalls.value).toEqual([])
+    expect(whileRunning).toEqual([])
+    expect(turns).toHaveBeenCalledTimes(1)
+    expect(looksBusy()).toBe(false)
+    expect(session.queuedMessages.value).toEqual([])
+    expect(session.draft.value.text).toBe('Unsent follow-up\nDraft text')
+    expect(session.messages.value.filter((m) => m.role === 'tool-call')).toEqual(
+      expect.arrayContaining(
+        ['one', 'two', 'three'].map((toolCallId) =>
+          expect.objectContaining({
+            toolCallId,
+            toolStatus: 'rejected',
+            toolResult: 'User stopped the agent',
+          })
+        )
+      )
+    )
+  })
+
+  it('does not let a stale request stop a different pending run', async () => {
+    await askedAbout('new-call')
+    session.stopFromApproval('old-call')
+    expect(session.pendingToolCalls.value.map((c) => c.id)).toEqual(['new-call'])
+  })
+})
+
 describe('the calls that follow the one that was approved', () => {
   it('leave the chat looking busy while they run', async () => {
     await askedAbout('one', 'two', 'three')

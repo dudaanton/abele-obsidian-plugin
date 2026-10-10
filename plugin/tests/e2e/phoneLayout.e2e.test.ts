@@ -890,7 +890,8 @@ const probeScript = `(async () => {
         const approval = claudeChat.querySelector('.abele-node-permission')
         const approveButton = [...approval.querySelectorAll('button')].find(b => b.textContent.trim() === 'Approve')
         const denyButton = [...approval.querySelectorAll('button')].find(b => b.textContent.trim() === 'Deny')
-        report['node claude permission'].actionRows = Math.abs(approveButton.getBoundingClientRect().top - denyButton.getBoundingClientRect().top) < 2 ? 1 : 2
+        const stopButton = [...approval.querySelectorAll('button')].find(b => b.textContent.trim() === 'Stop')
+        report['node claude permission'].actionRows = [denyButton, stopButton].every(b => b && Math.abs(approveButton.getBoundingClientRect().top - b.getBoundingClientRect().top) < 2) ? 1 : 2
         report['node claude permission'].accent = approveButton.classList.contains('mod-cta')
         report['node claude permission'].queueCopies = (claudeChat.textContent.match(/Sample queued follow-up/g) || []).length
         report['node claude chat'].headerHeight = claudeChat.querySelector('.abele-ai-chat__header').getBoundingClientRect().height
@@ -909,7 +910,7 @@ const probeScript = `(async () => {
         await wait(100)
         await screen('node answer sent', sentChat, sentScroll)
         report['node answer sent'].sent = sentChat.querySelector('.abele-node-permission')?.textContent.includes('Answer sent')
-        report['node answer sent'].buttons = sentChat.querySelectorAll('.abele-node-permission button').length
+        report['node answer sent'].buttons = [...sentChat.querySelectorAll('.abele-node-permission button')].map(b => b.textContent.trim())
         chats.nodeSessions.delete(sent.id)
         chats.tabOrder.value = chats.tabOrder.value.filter(id => id !== sent.id)
         const fence = String.fromCharCode(96).repeat(3)
@@ -2101,9 +2102,9 @@ describe.skipIf(!available)('the chat dialogs on a phone', () => {
   })
 
   it('a restored sent answer offers no second approval or denial on a phone', () => {
-    const sent = report['node answer sent'] as Screen & { sent: boolean; buttons: number }
+    const sent = report['node answer sent'] as Screen & { sent: boolean; buttons: string[] }
     expect(sent.sent).toBe(true)
-    expect(sent.buttons).toBe(0)
+    expect(sent.buttons).toEqual(['Stop'])
   })
 
   it('node message blocks remain plain code on a phone rather than vault-backed cards', () => {

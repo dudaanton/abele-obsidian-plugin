@@ -87,6 +87,7 @@ export class NodeChatPresenter implements ChatPresentationSession {
   private refreshing?: Promise<void>
   private dirty = false
   private readonly unusableArtifacts = new Set<string>()
+  private readonly interruptingRuns = new Set<string>()
 
   constructor(
     readonly reference: Extract<ChatReference, { kind: 'node-session' }>,
@@ -290,13 +291,36 @@ export class NodeChatPresenter implements ChatPresentationSession {
     await this.refresh()
   }
 
-  async interrupt(runId: string): Promise<void> {
+  async stopFromApproval(prompt: Prompt): Promise<void> {
     try {
-      await this.connection.client.interrupt(this.reference.sessionId, runId)
+      prompt = PromptSchema.parse(prompt)
+      if (prompt.session_id !== this.reference.sessionId)
+        throw new Error('Prompt belongs to another session')
+      if (!this.connection.client.connected) throw new Error('Reconnect before stopping a run')
+      const current = this.projection.value.prompts.find((p) => p.prompt_id === prompt.prompt_id)
+      if (!current || current.state !== 'pending' || current.run_id !== prompt.run_id) return
+      // session.interrupt atomically denies all pending prompts and interrupts the worker.
+      // Sending a deny answer first would release it to take another turn before Stop.
+      await this.interrupt(prompt.run_id)
     } catch (error) {
       this.report(error)
     }
-    await this.refresh()
+  }
+
+  async interrupt(runId: string): Promise<void> {
+    if (this.interruptingRuns.has(runId)) return
+    this.interruptingRuns.add(runId)
+    this.error.value = ''
+    try {
+      try {
+        await this.connection.client.interrupt(this.reference.sessionId, runId)
+      } catch (error) {
+        this.report(error)
+      }
+      await this.refresh()
+    } finally {
+      this.interruptingRuns.delete(runId)
+    }
   }
 
   async cancelInput(inputId: string): Promise<void> {

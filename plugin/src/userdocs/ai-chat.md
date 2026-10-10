@@ -275,7 +275,9 @@ replace partial text, and parallel tool results remain correlated to their own c
 
 Claude permission cards show the tool and a short argument summary, with the original
 command, arguments or edit diff expandable. **Approve** is the accent button, with **Deny**
-beside it. An approaching expiry is shown as relative time; distant deadlines stay hidden.
+beside it, and **Stop** to deny all pending requests and interrupt that run without another
+provider turn. Stop remains available while an answer is waiting for confirmation.
+An approaching expiry is shown as relative time; distant deadlines stay hidden.
 Approvals apply only to that exact action; no argument editing or permanent allow is offered.
 Cards survive reopening/reload from the journal, including resolved/expired decisions.
 After choosing an answer, the card shows **Answer sent** without another Approve/Deny choice,
@@ -651,7 +653,9 @@ An agent's permission mode decides what it may change without asking:
 
 Every tool can also be set to off, ask or automatic, for example to keep web access off for one
 agent. When a change needs your approval, the chat shows exactly what would change, and you can
-approve it, edit it or refuse with a reason.
+approve it, edit it or refuse with a reason. **Reject** refuses only that call and lets the
+agent continue. **Stop** rejects every pending call in the run and stops the agent; queued
+human messages return to the draft instead of starting another turn.
 
 ## Tools
 
