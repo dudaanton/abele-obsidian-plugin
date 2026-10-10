@@ -24,7 +24,7 @@ const updateDropdown = () => {
       dropdown.value.addOption(option.value, option.display)
     })
 
-    if (props.modelValue) {
+    if (props.modelValue !== undefined) {
       dropdown.value.setValue(props.modelValue)
     }
 
