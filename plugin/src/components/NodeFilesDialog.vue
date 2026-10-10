@@ -81,79 +81,7 @@
           </p>
           <h3 class="abele-node-files__path">{{ model.filePath.value }}</h3>
           <p>{{ model.document.value.size }} bytes · retained version</p>
-          <div class="abele-node-files__actions">
-            <Button
-              v-if="!model.editing.value"
-              text="Edit file"
-              icon="pencil"
-              :disabled="busy || !model.fileEditable.value || !!model.draft.value?.pending"
-              @click="act(() => model.beginEditing())"
-            />
-            <Button
-              v-else-if="model.draft.value?.pending"
-              text="Check save"
-              :disabled="busy"
-              @click="act(() => model.checkSave())"
-            />
-            <Button
-              v-else
-              text="Save file"
-              accent
-              :disabled="
-                busy ||
-                !model.draftDirty.value ||
-                !!model.draftError.value ||
-                model.draft.value?.status === 'conflict'
-              "
-              @click="act(() => model.saveFile())"
-            />
-            <Button
-              text="Reload current version"
-              icon="refresh-cw"
-              :disabled="busy || offline || !model.canReloadDraft.value"
-              @click="act(() => model.openFile(model.filePath.value, lifetime.signal))"
-            />
-            <Button
-              v-if="model.draft.value && !model.draft.value.pending"
-              text="Discard local draft"
-              :disabled="busy || !!model.draftError.value"
-              @click="act(() => model.discardDraft())"
-            />
-          </div>
-          <p v-if="model.draftError.value" role="alert">{{ model.draftError.value }}</p>
-          <p
-            v-if="
-              model.editing.value &&
-              !model.draft.value?.pending &&
-              model.draft.value?.status === 'draft' &&
-              !model.draftError.value
-            "
-            role="status"
-          >
-            Unsent edit · stored only on this device. Save uses the version you started from.
-          </p>
-          <p
-            v-if="
-              model.draft.value?.status === 'saved' &&
-              !model.draftDirty.value &&
-              !model.draftError.value
-            "
-            role="status"
-          >
-            Saved · the node confirmed this version. External editors may change it afterwards.
-          </p>
-          <p v-if="model.draft.value?.status === 'conflict'" role="alert">
-            Conflict · the workspace changed. Your local draft is retained and was not applied.
-            Reload and inspect the current version before choosing a new base.
-          </p>
-          <p v-if="model.draft.value?.status === 'rejected'" role="alert">
-            Save rejected · {{ model.draft.value.error }}. Your local draft is retained.
-          </p>
-          <p v-if="model.draft.value?.pending" role="alert">
-            Save outcome unknown · keep this draft. Reconnect and check the same save; do not submit
-            it again. A confirmed uncertain replacement requires inspection of the retained
-            predecessor.
-          </p>
+          <NodeFileSaveState :model="model" :offline="offline" :locked="busy" />
           <p
             v-if="
               !model.fileEditable.value &&
@@ -164,40 +92,6 @@
             This version is read only. The bounded editor accepts UTF-8 text up to 32,768 characters
             and does not edit Git metadata.
           </p>
-          <Button
-            v-if="
-              model.draft.value &&
-              !model.draft.value.pending &&
-              (model.draft.value.status === 'conflict' ||
-                model.document.value.contentId !== model.draft.value.baseContentId)
-            "
-            text="Use loaded version as base for this draft"
-            :disabled="busy || !model.fileEditable.value"
-            @click="act(() => model.rebaseDraft())"
-          />
-          <details v-if="model.draft.value?.result" class="abele-node-files__comment">
-            <summary>Save receipt and retained predecessor</summary>
-            <p class="abele-node-files__path">
-              Operation · {{ model.draft.value.result.operation_id }}<br />Outcome ·
-              {{ model.draft.value.result.state }}<br />Predecessor ·
-              {{ model.draft.value.result.predecessor_content_id || 'See recovery path'
-              }}<template v-if="model.draft.value.result.recovery_path"
-                ><br />Recovery copy · node storage ·
-                {{ model.draft.value.result.recovery_path }}</template
-              >
-            </p>
-            <Button
-              v-if="model.draft.value.result.predecessor_content_id"
-              text="Read retained predecessor"
-              :disabled="busy || offline"
-              @click="act(() => model.readPredecessor())"
-            />
-            <GithubCode
-              v-if="model.predecessorText.value !== undefined"
-              :text="model.predecessorText.value"
-              :path="model.filePath.value"
-            />
-          </details>
           <p v-if="model.document.value.tooLarge">
             This file exceeds the node's retained-content limit. Its size is shown without loading
             its contents.
@@ -420,6 +314,7 @@ import type {
 } from '@/node/NodeFilesModel'
 import type { NodeConnection } from '@/node/NodeService'
 import Modal from './obsidian/Modal.vue'
+import NodeFileSaveState from './NodeFileSaveState.vue'
 import Button from './obsidian/Button.vue'
 import Setting from './obsidian/Setting.vue'
 import Input from './obsidian/Input.vue'

@@ -1,6 +1,15 @@
 import { z } from 'zod'
-import { FileWriteSchema, FileMutationResultSchema } from '@abele/node-protocol'
+import {
+  FileWriteSchema,
+  FileMutationResultSchema,
+  RepositoryWriteSchema,
+  RepositoryMutationResultSchema,
+  type RepositoryWrite,
+  type RepositoryMutationResult,
+} from '@abele/node-protocol'
 import type { FileWrite, FileMutationResult } from '@abele/node-client'
+export type DraftWrite = FileWrite | RepositoryWrite
+export type DraftReceipt = FileMutationResult | RepositoryMutationResult
 /** Installation-local editor state, never settings or a vault file. */
 export const FileDraftSchema = z
   .object({
@@ -16,12 +25,20 @@ export const FileDraftSchema = z
     pending: z
       .object({
         operationId: z.string().min(1).max(128),
-        params: z.custom<FileWrite>((value) => FileWriteSchema.safeParse(value).success),
+        params: z.custom<DraftWrite>(
+          (value) =>
+            FileWriteSchema.safeParse(value).success ||
+            RepositoryWriteSchema.safeParse(value).success
+        ),
       })
       .strict()
       .optional(),
     result: z
-      .custom<FileMutationResult>((value) => FileMutationResultSchema.safeParse(value).success)
+      .custom<DraftReceipt>(
+        (value) =>
+          FileMutationResultSchema.safeParse(value).success ||
+          RepositoryMutationResultSchema.safeParse(value).success
+      )
       .optional(),
     error: z.string().optional(),
   })

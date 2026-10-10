@@ -1,4 +1,4 @@
-import { computed, readonly, ref, shallowRef } from 'vue'
+import { computed, readonly, ref, shallowRef, markRaw } from 'vue'
 import type { NodeClient, DiffMode, DiffSnapshot, ReviewAnchor } from '@abele/node-client'
 import {
   selectedContext,
@@ -6,10 +6,11 @@ import {
   ReviewAnchorSchema,
   ReviewBatchSchema,
   FileWriteSchema,
+  RepositoryWriteSchema,
 } from '@abele/node-protocol'
 import type { DiffFile } from '@/github/api'
 import type { DiffSpan } from '@/github/permalinks'
-import { type FileDraft, type FileDraftSnapshot } from './fileDrafts'
+import { type FileDraft, type FileDraftSnapshot, type DraftReceipt } from './fileDrafts'
 const draftConflict =
   'Local draft changed in another view. Copy your visible text before reloading the shared draft.'
 const assertDraftRevision = (draft: FileDraft | undefined, revision: string | null) => {
@@ -31,7 +32,8 @@ export interface CodeDocumentSource {
     path: string,
     document: Awaited<ReturnType<CodeDocumentSource['read']>>,
     text: string,
-    expectedRevision?: string | null
+    expectedRevision?: string | null,
+    guard?: () => void
   ): Promise<FileDraft>
   save(path: string, shown?: FileDraftSnapshot): Promise<FileDraft | undefined>
   check(path: string, expectedRevision?: string | null): Promise<FileDraft | undefined>
@@ -41,6 +43,7 @@ export interface CodeDocumentSource {
     expectedRevision?: string | null
   ): Promise<FileDraft>
   discard(path: string, expectedRevision?: string | null): Promise<void>
+  predecessor?(receipt: DraftReceipt): Promise<string>
 }
 export interface DiffSource {
   capture(mode: DiffMode, commit?: string): Promise<{ snapshot: DiffSnapshot; patch: string }>
@@ -111,8 +114,15 @@ export class NodeDocumentSource implements CodeDocumentSource {
   private readonly observed = new Map<string, FileDraft | undefined>()
   constructor(
     private client: NodeClient,
-    private workspaceId: string
+    private workspaceId: string,
+    private repository = false
   ) {}
+  private parseWrite(path: string, contentId: string | null, text: string) {
+    const body = { path, expected_content_id: contentId, text }
+    return this.repository
+      ? RepositoryWriteSchema.safeParse({ ...body, worktree_id: this.workspaceId })
+      : FileWriteSchema.safeParse({ ...body, workspace_id: this.workspaceId })
+  }
   private async transaction<T>(
     path: string,
     work: (drafts: Record<string, FileDraft>, key: string) => T | Promise<T>
@@ -120,7 +130,9 @@ export class NodeDocumentSource implements CodeDocumentSource {
     const committed = await this.client.store.transaction(async (state) => {
       const local = state as typeof state & { fileDrafts?: Record<string, FileDraft> }
       const drafts = (local.fileDrafts ??= {}),
-        key = JSON.stringify([this.workspaceId, path])
+        key = JSON.stringify(
+          this.repository ? ['repository', this.workspaceId, path] : [this.workspaceId, path]
+        )
       // Memory adapters and old persisted records both migrate without losing their text.
       if (drafts[key] && !drafts[key].revision) drafts[key].revision = crypto.randomUUID()
       const value = await work(drafts, key)
@@ -139,12 +151,7 @@ export class NodeDocumentSource implements CodeDocumentSource {
   ) {
     if (doc.binary || doc.tooLarge || doc.text === undefined || doc.text.length > 32768)
       throw new Error('This file is not editable in the bounded text editor')
-    const params = FileWriteSchema.safeParse({
-      workspace_id: this.workspaceId,
-      path,
-      expected_content_id: doc.contentId,
-      text,
-    })
+    const params = this.parseWrite(path, doc.contentId, text)
     if (!params.success)
       throw new Error(
         'The text editor accepts existing UTF-8 files up to 32768 characters, outside Git metadata'
@@ -155,20 +162,24 @@ export class NodeDocumentSource implements CodeDocumentSource {
     path: string,
     doc: Awaited<ReturnType<CodeDocumentSource['read']>>,
     text: string,
-    expectedRevision = this.observed.get(path)?.revision ?? null
+    expectedRevision = this.observed.get(path)?.revision ?? null,
+    guard?: () => void
   ) {
     if (text.length > 16 * 1024 * 1024)
       throw new Error('Local draft exceeds the retained-content limit; copy it before closing')
     return this.transaction(path, (drafts, key) => {
+      guard?.()
       const previous = drafts[key]
       assertDraftRevision(previous, expectedRevision)
-      if (!previous) this.writable(path, doc, doc.text ?? '')
+      if (!previous || previous.status === 'saved') this.writable(path, doc, doc.text ?? '')
       // Existing drafts belong to their retained baseline, even when current contents became
       // binary/large. Editing them locally never adopts that new file version implicitly.
       if (previous?.pending)
         throw new Error('This save is unresolved; check its original outcome before editing')
       const draft: FileDraft = {
-        ...(previous ?? { baseContentId: doc.contentId!, baseText: doc.text! }),
+        ...(previous && previous.status !== 'saved'
+          ? previous
+          : { baseContentId: doc.contentId!, baseText: doc.text! }),
         revision: crypto.randomUUID(),
         text,
         status: previous?.status === 'conflict' ? 'conflict' : 'draft',
@@ -189,12 +200,7 @@ export class NodeDocumentSource implements CodeDocumentSource {
         throw new Error(
           'Inspect the current version and explicitly use it as the base before saving again'
         )
-      const parsed = FileWriteSchema.safeParse({
-        workspace_id: this.workspaceId,
-        path,
-        expected_content_id: shown.baseContentId,
-        text: shown.text,
-      })
+      const parsed = this.parseWrite(path, shown.baseContentId, shown.text)
       if (!parsed.success)
         throw new Error(
           'This draft exceeds the UTF-8 save limit of 32768 characters or contains unsupported text. Your local draft is retained.'
@@ -217,11 +223,16 @@ export class NodeDocumentSource implements CodeDocumentSource {
     if (!pending) return draft
     // Identity/body were committed before outbox admission. Resume that same operation even
     // after reload or failure in the tiny gap between those local transactions.
-    if (!(await this.client.operationResult(pending.operationId)))
-      await this.client.writeFile(pending.params, pending.operationId)
-    let result: Awaited<ReturnType<NodeClient['fileMutationResult']>>, error: string | undefined
+    if (!draft.result && !(await this.client.operationResult(pending.operationId))) {
+      if ('worktree_id' in pending.params)
+        await this.client.repository.write(pending.params, pending.operationId)
+      else await this.client.writeFile(pending.params, pending.operationId)
+    }
+    let result: DraftReceipt | undefined, error: string | undefined
     try {
-      result = await this.client.fileMutationResult(pending.operationId)
+      result = this.repository
+        ? await this.client.repository.mutationResult(pending.operationId)
+        : await this.client.fileMutationResult(pending.operationId)
     } catch (e) {
       const receipt = await this.client.operationResult(pending.operationId)
       if (!receipt?.error) throw e
@@ -230,7 +241,9 @@ export class NodeDocumentSource implements CodeDocumentSource {
     if (
       result &&
       (result.operation_id !== pending.operationId ||
-        result.workspace_id !== this.workspaceId ||
+        (this.repository
+          ? !('worktree_id' in result) || result.worktree_id !== this.workspaceId
+          : !('workspace_id' in result) || result.workspace_id !== this.workspaceId) ||
         result.path !== path ||
         result.expected_content_id !== pending.params.expected_content_id)
     )
@@ -300,7 +313,56 @@ export class NodeDocumentSource implements CodeDocumentSource {
       delete drafts[key]
     })
   }
+  async predecessor(receipt: DraftReceipt) {
+    if (this.repository)
+      return readNodeText(
+        (offset) =>
+          receipt.recovery_path
+            ? this.client.repository.readRecovery({
+                worktree_id: this.workspaceId,
+                recovery_path: receipt.recovery_path,
+                offset,
+              })
+            : this.client.repository.content({
+                worktree_id: this.workspaceId,
+                content_id: receipt.predecessor_content_id!,
+                offset,
+              }),
+        16 * 1024 * 1024
+      )
+    return readNodeText(
+      (offset) =>
+        receipt.recovery_path?.startsWith('file-recovery/')
+          ? this.client.readRecovery(this.workspaceId, receipt.recovery_path, offset)
+          : this.client.readContent(this.workspaceId, receipt.predecessor_content_id!, offset),
+      16 * 1024 * 1024
+    )
+  }
   async read(path: string) {
+    if (this.repository) {
+      const target = { worktree_id: this.workspaceId }
+      const { revision } = await this.client.repository.observe(target)
+      const content = await this.client.repository.blob({ ...target, revision, path })
+      return {
+        text:
+          content.content_id && !content.binary && !content.requires_larger_load
+            ? await readNodeText(
+                (offset) =>
+                  this.client.repository.content({
+                    ...target,
+                    content_id: content.content_id!,
+                    offset,
+                  }),
+                1024 * 1024
+              )
+            : undefined,
+        contentId: content.content_id,
+        size: content.size,
+        binary: content.binary,
+        large: content.requires_larger_load,
+        tooLarge: content.too_large,
+      }
+    }
     const content = await this.client.readFile(this.workspaceId, path)
     const text =
       content.content_id && !content.binary
@@ -423,9 +485,12 @@ export class NodeFilesModel {
     readonly client: NodeClient,
     readonly nodeId: string,
     readonly workspaceId: string,
-    readonly sessionId?: string
+    readonly sessionId?: string,
+    documents?: CodeDocumentSource
   ) {
-    this.documents = new NodeDocumentSource(client, workspaceId)
+    // Models own explicit refs and transactional stores; Vue must not recursively proxy them.
+    markRaw(this)
+    this.documents = documents ?? new NodeDocumentSource(client, workspaceId)
     this.diffs = new NodeDiffSource(client, workspaceId)
   }
   async list(path = '', more = false, signal?: AbortSignal) {
@@ -440,7 +505,12 @@ export class NodeFilesModel {
     this.entries.value = more ? [...this.entries.value, ...page.entries] : page.entries
     this.next.value = page.next
   }
-  async openFile(path: string, signal?: AbortSignal, range?: CodeLineRange) {
+  async openFile(
+    path: string,
+    signal?: AbortSignal,
+    range?: CodeLineRange,
+    loaded?: Awaited<ReturnType<CodeDocumentSource['read']>>
+  ) {
     await this.persistingEdit.catch((e) => {
       if (!(e instanceof Error) || e.message !== draftConflict || path !== this.filePath.value)
         throw e
@@ -450,7 +520,7 @@ export class NodeFilesModel {
     let draft = await this.documents.draft(path)
     let doc: Awaited<ReturnType<CodeDocumentSource['read']>>
     try {
-      doc = await this.documents.read(path)
+      doc = loaded ?? (await this.documents.read(path))
     } catch (e) {
       if (!draft) throw e
       // Even offline/reopened views can display the original local base and unsent text.
@@ -647,13 +717,12 @@ export class NodeFilesModel {
       content = receipt?.predecessor_content_id,
       generation = this.fileGeneration
     if (!content) return
-    const text = await readNodeText(
-      (offset) =>
-        receipt?.recovery_path?.startsWith('file-recovery/')
-          ? this.client.readRecovery(this.workspaceId, receipt.recovery_path, offset)
-          : this.client.readContent(this.workspaceId, content, offset),
-      16 * 1024 * 1024
-    )
+    const text = this.documents.predecessor
+      ? await this.documents.predecessor(receipt!)
+      : await readNodeText(
+          (offset) => this.client.readContent(this.workspaceId, content, offset),
+          16 * 1024 * 1024
+        )
     if (generation === this.fileGeneration) this.predecessorText.value = text
   }
   openResource(resource: string, signal?: AbortSignal) {
