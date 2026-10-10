@@ -14,12 +14,26 @@
       tooltip="Start a comment on the selected words, kept with them in this chat"
       @click="ask"
     />
-    <Button
-      v-if="shown.copyLink"
-      text="Copy link to selection"
-      icon="link"
-      @click="copyLink"
-    />
+    <Button v-if="shown.copyLink" text="Copy link to selection" icon="link" @click="copyLink" />
+    <template v-if="shown.script">
+      <Button
+        v-for="item in pinned"
+        :key="item.script"
+        :text="item.label"
+        :icon="item.icon"
+        :data-script="item.script"
+        :aria-label="`Run ${item.label} on these words`"
+        :tooltip="`Run ${item.label} on these words`"
+        @click="script(item.script)"
+      />
+      <Button
+        :text="pinned.length ? 'Other script…' : 'Scripts…'"
+        icon="scroll-text"
+        aria-label="Run a script on these words…"
+        tooltip="Run a script on these words…"
+        @click="script()"
+      />
+    </template>
     <Button
       v-if="shown.highlight"
       text="Highlight"
@@ -32,13 +46,14 @@
 </template>
 
 <script setup lang="ts">
-import { nextTick, onBeforeUnmount, onMounted, reactive, ref, shallowRef } from 'vue'
+import { computed, nextTick, onBeforeUnmount, onMounted, reactive, ref, shallowRef } from 'vue'
 import { Platform } from 'obsidian'
 import Button from './obsidian/Button.vue'
 import type { HighlightColor } from '@/reader/highlights'
 import { selectionAnchor, messageRenderedText } from '@/ai/messageComments'
 import { SettledSelection } from '@/helpers/settledSelection'
 import { placeSelectionBar } from '@/helpers/selectionBarPlace'
+import type { SelectionMenuItem } from '@/scripting/selectionMenuScripts'
 
 /**
  * "Ask here" over words selected in a chat, on a phone or a tablet. A computer has it in the
@@ -54,6 +69,14 @@ const props = defineProps<{
   /** The chat's scrolling list of messages. The bar is drawn beside it, in its parent. */
   scroller: HTMLElement
   captureLink?: (id: string, quote: string, start: number, text: string) => (() => void) | undefined
+  captureScript?: (
+    id: string,
+    quote: string,
+    start: number,
+    text: string
+  ) => ((name?: string) => void) | undefined
+  scripts?: SelectionMenuItem[]
+  scriptMenu?: () => SelectionMenuItem[]
 }>()
 
 const emit = defineEmits<{
@@ -68,6 +91,8 @@ interface Asked {
   range: Range
   highlight: boolean
   copyLink?: () => void
+  script?: (name?: string) => void
+  scripts: SelectionMenuItem[]
 }
 
 const shown = shallowRef<Asked | null>(null)
@@ -75,6 +100,12 @@ const bar = ref<HTMLElement>()
 const place = reactive({ top: 0, left: 0 })
 const placed = ref(false)
 const doc = props.scroller.ownerDocument
+// Narrow layouts use a single searchable native list, not a long menu above the handles.
+const pinned = computed(() =>
+  !Platform.isPhone && props.scroller.clientWidth >= 600 && (shown.value?.scripts.length ?? 0) <= 3
+    ? (shown.value?.scripts ?? [])
+    : []
+)
 
 /** The words selected now, if they lie inside one message that can be asked about. */
 function read(): Asked | null {
@@ -93,9 +124,25 @@ function read(): Asked | null {
     ...anchor,
     range,
     highlight: el.dataset.highlightReply === 'true',
-    copyLink: el.dataset.copySelection === 'true'
-      ? props.captureLink?.(el.dataset.askMessage, anchor.quote, anchor.start, messageRenderedText(el))
-      : undefined,
+    scripts: props.scriptMenu?.() ?? props.scripts ?? [],
+    copyLink:
+      el.dataset.copySelection === 'true'
+        ? props.captureLink?.(
+            el.dataset.askMessage,
+            anchor.quote,
+            anchor.start,
+            messageRenderedText(el)
+          )
+        : undefined,
+    script:
+      el.dataset.copySelection === 'true'
+        ? props.captureScript?.(
+            el.dataset.askMessage,
+            anchor.quote,
+            anchor.start,
+            messageRenderedText(el)
+          )
+        : undefined,
   }
 }
 
@@ -144,6 +191,13 @@ function copyLink() {
   pressing = false
   shown.value = null
   action?.()
+}
+
+function script(name?: string) {
+  const action = shown.value?.script
+  pressing = false
+  shown.value = null
+  action?.(name)
 }
 
 function highlight() {

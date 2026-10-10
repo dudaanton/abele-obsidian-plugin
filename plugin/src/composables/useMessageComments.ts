@@ -19,6 +19,8 @@ import type { HighlightColor } from '@/reader/highlights'
 import type { ReplyHighlight } from '@/ai/replyAnnotations'
 import type { MessageComment } from '@/ai/types'
 
+import type { SelectionMenuItem } from '@/scripting/selectionMenuScripts'
+
 type Ask = (quote?: string, start?: number) => void
 
 /**
@@ -39,7 +41,13 @@ export function useMessageComments(
   highlights: () => ReplyHighlight[] | undefined = () => [],
   highlight?: (quote: string, start: number, color: HighlightColor) => void,
   removeHighlight?: (id: string) => void,
-  captureLink?: (quote: string, start: number, text: string) => (() => void) | undefined
+  captureLink?: (quote: string, start: number, text: string) => (() => void) | undefined,
+  captureScript?: (
+    quote: string,
+    start: number,
+    text: string
+  ) => ((name?: string) => void) | undefined,
+  scripts: () => SelectionMenuItem[] = () => []
 ) {
   const content = ref<ComponentPublicInstance | null>(null)
   const root = (): HTMLElement | null => (content.value?.$el as HTMLElement | undefined) ?? null
@@ -112,6 +120,7 @@ export function useMessageComments(
     const selected = root()?.ownerDocument.getSelection()?.toString() ?? anchor.quote
 
     const copyLink = captureLink?.(anchor.quote, anchor.start, messageRenderedText(root()!))
+    const run = captureScript?.(anchor.quote, anchor.start, messageRenderedText(root()!))
     const menu = new Menu()
     menu.addItem((item) =>
       item
@@ -125,9 +134,28 @@ export function useMessageComments(
         .setIcon('message-circle-plus')
         .onClick(() => ask(anchor.quote, anchor.start))
     )
-    if (copyLink) menu.addItem((item) =>
-      item.setTitle('Copy link to selection').setIcon('link').onClick(copyLink)
-    )
+    if (copyLink)
+      menu.addItem((item) =>
+        item.setTitle('Copy link to selection').setIcon('link').onClick(copyLink)
+      )
+    if (run) {
+      const pinned = scripts()
+      for (const script of pinned.length <= 3 ? pinned : [])
+        menu.addItem((item) =>
+          item
+            .setTitle(script.label)
+            .setIcon(script.icon)
+            .setSection('scripts')
+            .onClick(() => run(script.script))
+        )
+      menu.addItem((item) =>
+        item
+          .setTitle(pinned.length > 3 ? 'Scripts…' : 'Other script…')
+          .setIcon('scroll-text')
+          .setSection('scripts')
+          .onClick(() => run())
+      )
+    }
     if (highlight) {
       menu.addItem((item) =>
         item

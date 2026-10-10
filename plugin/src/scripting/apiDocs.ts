@@ -29,6 +29,7 @@ Every script must start with a comment block declaring its metadata:
 // @param limit number? "Max results" = 50
 // @param verbose boolean? "Verbose output" = true
 // @book
+// @chat-selection
 // @toolbar
 // @startup
 // @lint warning
@@ -41,8 +42,9 @@ Every script must start with a comment block declaring its metadata:
 - Boolean params are rendered as toggles, not text inputs
 - Default values: add \`= value\` after description. Use quotes for strings with spaces: \`= "my value"\`
 - Defaults pre-fill the form UI and are used as fallback when the param is not provided (e.g. via link URL)
-- Add \`selection\` after description/default to auto-fill from editor selection: \`// @param text string "Input text" selection\`. Run on words in a book, it is filled with those words
+- Add \`selection\` after description/default to auto-fill from editor selection: \`// @param text string "Input text" selection\`. Run on words in a book or saved chat message, it is filled with those captured words
 - \`@book\`: the script is on the book menu, offered first on the book reader's selection bar (so can any script chosen in Settings → Books, and any script can be picked there from the list); see \`book\` below
+- \`@chat-selection\`: opt into the chat selection menu independently of \`@book\`. Settings → Scripts → Selection menus → Chats owns order, label and icon; membership pins a script only to that surface. Unlisted header opt-ins follow alphabetically. Removing a settings pin does not disable a header opt-in
 - \`@toolbar\`: the script is on the toolbar — an icon on the left ribbon on a computer, run on the note in front and its selection, and a place on the phone's toolbar above the keyboard (so can any script pinned from the script library)
 - \`@startup\`: the script runs each time the plugin starts, after the vault is open, with its parameter defaults and no forms (\`form()\` answers \`null\`); \`@startup desktop\` or \`@startup mobile\` runs it on those devices only. A script that needs a parameter without a default is skipped. The startup list in Settings → Scripts → Startup does the same and sets the order
 - Parameters are available via the \`params\` object (e.g. \`params.paramName\`)
@@ -411,8 +413,12 @@ receive \`null\`. A script may declare its own \`selection\` variable.
 The shared runtime also supports \`source.kind === 'chat'\`: \`chatId\`, \`messageId\`,
 \`revisionId\`, \`role\`, \`author\`, \`quote\`, rendered \`range\`, \`projectionVersion\`
 and surrounding \`context\`. Chat contexts include a durable \`anchorId\` and \`backlink\`;
-\`pathHint\` is only a navigation hint, not identity. Chat selection launch is not enabled
-in the UI yet. It does not supply \`book\` or an interceptor's \`chat\`/\`message\`.
+\`pathHint\` is only a navigation hint, not identity. Select words in a saved user or assistant
+message, including a nested discussion. Desktop right-click offers pinned scripts plus
+“Other script…”; long menus fold into “Scripts…”. On narrow touch layouts the settled selection
+bar offers one “Scripts…” button opening the searchable native list. Its pin only changes
+menu membership, never executes. Ask here, Highlight and native Copy remain available.
+Chat-selection runs do not supply \`book\` or an interceptor's \`chat\`/\`message\`.
 
 Selection is captured before pickers, review or forms. Selection parameters use its words
 before their defaults; only an empty required parameter opens the initial form. The chat

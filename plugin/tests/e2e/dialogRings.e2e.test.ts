@@ -21,6 +21,7 @@ import { CATALOGUE_PROBE } from './helpers/designCatalogueProbe'
 import { outwardBoxShadowReach } from '../helpers/focusRingPaint'
 import { evalAsync, PRELUDE as BASE_PRELUDE, startFakeGithub, enableGithub, restoreGithub } from './helpers/githubLive'
 import { openBasePicker, basePickerGeometry } from './helpers/githubBasePicker'
+import { SELECTION_PICKER_OPEN, SELECTION_PICKER_CLOSE } from './helpers/selectionScriptPicker'
 import {
   SELECTION_MENUS_SETUP,
   SELECTION_MENUS_OPEN,
@@ -146,6 +147,12 @@ const script = `(async () => {
     await wait(400)
     measureAll('history', document.querySelector('.modal'))
     await closeDialog()
+  }
+
+  {
+    ${SELECTION_PICKER_OPEN}
+    measureAll('selection script picker', selectionPrompt)
+    ${SELECTION_PICKER_CLOSE}
   }
 
   window.__abeleTest.openIconPicker('calendar')

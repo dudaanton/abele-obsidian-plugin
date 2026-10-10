@@ -87,7 +87,9 @@ describe('words selected in a chat on a phone', () => {
     select('night train')
     await vi.advanceTimersByTimeAsync(SETTLE_MS.touch + 20)
     expect(captureLink).toHaveBeenCalledWith('m1', 'night train', 9, 'Take the night train.')
-    const button = bar().findAll('button').find((button) => button.text() === 'Copy link to selection')!
+    const button = bar()
+      .findAll('button')
+      .find((button) => button.text() === 'Copy link to selection')!
     expect(button).toBeDefined()
     await button.trigger('pointerdown')
     document.getSelection()!.removeAllRanges()
@@ -95,6 +97,41 @@ describe('words selected in a chat on a phone', () => {
     await button.trigger('click')
     expect(copy).toHaveBeenCalledOnce()
     expect(wrapper.emitted('ask')).toBeUndefined()
+  })
+
+  it('collapses a long script menu into a searchable picker and keeps the captured launch on selection loss', async () => {
+    scroller.querySelector<HTMLElement>('[data-ask-message]')!.dataset.copySelection = 'true'
+    const run = vi.fn()
+    const captureScript = vi.fn(() => run)
+    await wrapper.setProps({
+      captureScript,
+      scripts: Array.from({ length: 20 }, (_, i) => ({
+        script: `Sample ${i}`,
+        label: `Long sample ${i}`,
+        icon: 'scroll-text',
+      })),
+    } as any)
+    select('night train')
+    await vi.advanceTimersByTimeAsync(SETTLE_MS.touch + 20)
+    expect(captureScript).toHaveBeenCalledWith('m1', 'night train', 9, 'Take the night train.')
+    const button = bar().find('[aria-label="Run a script on these words…"]')
+    expect(button.exists(), bar().html()).toBe(true)
+    expect(bar().text()).not.toContain('Long sample')
+    await button.trigger('pointerdown')
+    document.getSelection()!.removeAllRanges()
+    document.dispatchEvent(new Event('selectionchange'))
+    await button.trigger('click')
+    expect(run).toHaveBeenCalledWith(undefined)
+    expect(bar().exists()).toBe(false)
+  })
+
+  it('offers no script launch on a streamed target without a saved-selection marker', async () => {
+    const captureScript = vi.fn(() => vi.fn())
+    await wrapper.setProps({ captureScript } as any)
+    select('train')
+    await vi.advanceTimersByTimeAsync(SETTLE_MS.touch + 20)
+    expect(captureScript).not.toHaveBeenCalled()
+    expect(bar().find('[aria-label="Run a script on these words…"]').exists()).toBe(false)
   })
 
   it('go away at once when the words are let go', async () => {

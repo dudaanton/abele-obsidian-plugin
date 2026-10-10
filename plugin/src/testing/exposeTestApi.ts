@@ -35,6 +35,7 @@ import { TemplateService } from '@/templates/TemplateService'
 import { UserTemplate } from '@/templates/UserTemplate'
 import { TransactionNoteTemplate } from '@/templates/TransactionNoteTemplate'
 import { ScriptService } from '@/scripting/ScriptService'
+import { SelectionScriptPicker } from '@/scripting/SelectionScriptPicker'
 import { ScriptTrust } from '@/scripting/ScriptTrust'
 import { LinterService } from '@/linter/LinterService'
 import { lintInView } from '@/linter/LinterView'
@@ -275,6 +276,7 @@ interface AbeleTestApi {
   /** A picture opened to draw on. */
   openImageInk: typeof openImageInk
   ScriptService: typeof ScriptService
+  SelectionScriptPicker: typeof SelectionScriptPicker
   /** Which versions of the scripts this device vouches for; `reset()` rereads what is stored. */
   ScriptTrust: typeof ScriptTrust
   /** The linter: its report, runs and fixes. */
@@ -861,6 +863,7 @@ export function exposeTestApi(plugin: Plugin): void {
     newDrawing,
     openImageInk,
     ScriptService,
+    SelectionScriptPicker,
     ScriptTrust,
     LinterService,
     lintInView,

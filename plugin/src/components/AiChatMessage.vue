@@ -445,6 +445,7 @@ import {
   toolSummary as toolSummaryOf,
 } from '@/ai/toolLine'
 import type { FindPart } from '@/ai/chatFind'
+import type { SelectionMenuItem } from '@/scripting/selectionMenuScripts'
 
 const props = defineProps<{
   message: ChatMessage
@@ -467,6 +468,14 @@ const props = defineProps<{
   /** This user message's turn changed files that can still be put back. */
   changedFiles?: boolean
   captureLink?: (id: string, quote: string, start: number, text: string) => (() => void) | undefined
+  captureScript?: (
+    id: string,
+    quote: string,
+    start: number,
+    text: string
+  ) => ((name?: string) => void) | undefined
+  scripts?: SelectionMenuItem[]
+  scriptMenu?: () => SelectionMenuItem[]
 }>()
 
 const emit = defineEmits<{
@@ -502,8 +511,15 @@ const comments = useMessageComments(
     ? (quote, start, color) => emit('highlight', props.message.id, quote, start, color)
     : undefined,
   (id) => emit('remove-highlight', props.message.id, id),
-  (quote, start, text) => !props.message.draft && !props.readOnlyHistory && replyRendered.value
-    ? props.captureLink?.(props.message.id, quote, start, text) : undefined
+  (quote, start, text) =>
+    !props.message.draft && !props.readOnlyHistory && replyRendered.value
+      ? props.captureLink?.(props.message.id, quote, start, text)
+      : undefined,
+  (quote, start, text) =>
+    !props.message.draft && !props.readOnlyHistory && replyRendered.value
+      ? props.captureScript?.(props.message.id, quote, start, text)
+      : undefined,
+  () => props.scriptMenu?.() ?? props.scripts ?? []
 )
 
 async function copyMessage() {
@@ -715,7 +731,12 @@ function previewContentImage(event: MouseEvent) {
   const file = link ? app.metadataCache.getFirstLinkpathDest(link, '') : null
   const url = (target as HTMLImageElement).src
   if (file instanceof TFile && isImagePath(file.path)) {
-    contentPicture.value = { url: vaultUrl(app, file), alt: file.name, type: 'local', path: file.path }
+    contentPicture.value = {
+      url: vaultUrl(app, file),
+      alt: file.name,
+      type: 'local',
+      path: file.path,
+    }
   } else if (/^https?:\/\//i.test(url)) {
     contentPicture.value = { url, alt: target.getAttribute('alt') || '', type: 'remote', path: url }
   } else return

@@ -246,10 +246,34 @@ API is unchanged. The shared runtime's chat adapter carries `kind: 'chat'`, chat
 identity, author/role, exact rendered range, quote, projection version and surrounding context,
 plus a durable anchor ID and backlink. It reviews the script and completes forms before validating
 and saving that anchor. A stale revision returns a conflict; a failed save exposes no backlink to
-execution. Chat-selection launch is not enabled in the UI yet, and does not impersonate the
-interceptor's `chat` or `message`. Selection and run/rerun state retain the captured source rather
+execution. Select words in a saved user/assistant message or nested discussion: desktop
+right-click offers pinned scripts plus **Other script…**, while narrow touch layouts offer
+one **Scripts…** button after selection handles settle. Long menus use the searchable native
+script list. Pinning there changes only that surface's membership; it never runs the script.
+Ask here, Highlight and native Copy/selection remain available. These runs do not impersonate
+the interceptor's `chat` or `message`. Selection and run/rerun state retain the captured source rather
 than consulting current tabs or DOM selection. Ordinary runs find `selection === null`; scripts
 can shadow that name. Selection has no binding operation and does not edit chat messages.
+
+Opt into chats with `// @chat-selection`; `// @book` alone does not populate the chat menu.
+Use both headers for one source-neutral script. **Settings → Scripts → Selection menus**
+keeps independent Books/Chats lists: settings order, label and icon override that surface;
+unlisted header opt-ins follow alphabetically. A missing script stays configured but is
+not offered until it returns. Removing a pin does not disable a header opt-in. For example:
+
+```js
+// @name Capture words
+// @book
+// @chat-selection
+// @param word string "Word" selection
+await create('Cards/sample.md', params.word + '\\n\\n' + selection.backlink)
+```
+
+The resulting note can return to the exact captured occurrence, even after a chat rename or
+when its original revision is now historical. It is not automatically linked into the message.
+Cancelling the initial parameter form saves no anchor or new legacy-chat identity. A run that
+has begun may retain its anchor even if later cancelled; this does not claim that its output
+or note write completed.
 
 The toolbar is the same idea for notes. A script whose header has `// @toolbar`, or which the
 person pinned from the script library (`ai.toolbarScripts`, by name), is an icon on Obsidian's

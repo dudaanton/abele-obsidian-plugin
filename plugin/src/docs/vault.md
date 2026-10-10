@@ -87,7 +87,14 @@ entries override presentation and order on their own surface; unlisted `@book` o
 `@chat-selection` opt-ins follow alphabetically on that surface only. Removing a settings
 entry does not disable a header opt-in. Book choices travel with the Book reader transfer
 section, chat choices with Script settings. Neither list contains credentials or grants trust.
-Chat launch wiring is separate; configuring these lists writes no message annotations.
+Configuring these lists or pinning in the searchable script picker writes no message annotations
+and never executes a script. Launch on saved user/assistant messages and nested discussions
+captures the owning session and source evidence before menus/forms. After admission and form
+completion, validation initializes legacy identities/versions and ensures a durable selection
+anchor before execution receives its backlink. Cancelling the initial form or declining review
+writes no selection metadata. Once execution begins, its anchor may remain even if the script
+later stops or fails. Message Markdown and provider history remain unchanged; note creation
+through script APIs is ordinary output, not automatic message/card binding.
 
 ## Device-local GitHub comparison bases
 

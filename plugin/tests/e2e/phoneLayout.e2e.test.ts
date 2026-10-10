@@ -64,6 +64,7 @@ import {
   publicationFault,
 } from './helpers/canvasPublicationReview'
 import { MESSAGE_ACTIONS_SETUP, MESSAGE_ACTIONS_CLEANUP } from './helpers/messageActions'
+import { SELECTION_PICKER_OPEN, SELECTION_PICKER_CLOSE } from './helpers/selectionScriptPicker'
 const CANVAS_SCREENS = ['canvas publication review', 'canvas publication confirmation']
 const WORD_SAMPLE = Buffer.from(sampleDocx()).toString('base64')
 
@@ -699,6 +700,21 @@ const probeScript = `(async () => {
     if (probeSession) chats.closeTab(probeSession.id)
 
     // A script's form with a note field, Obsidian's editor in it, beside a plain question.
+    {
+      ${SELECTION_PICKER_OPEN}
+      await screen('selection script picker', selectionPrompt, selectionPrompt.querySelector('.prompt-results'))
+      report['selection script picker'].pins = [...selectionPrompt.querySelectorAll('.abele-selection-script-choice')].filter(row => row.getBoundingClientRect().top < selectionPrompt.querySelector('.prompt-results').getBoundingClientRect().bottom).map(row => {
+        const title = row.querySelector('.suggestion-title'), pin = row.querySelector('button'), icon = pin.querySelector('svg')
+        const range = document.createRange(); range.selectNodeContents(title)
+        const line = range.getClientRects()[0], r = pin.getBoundingClientRect(), i = icon.getBoundingClientRect()
+        return {offset:i.top+i.height/2-line.top-line.height/2,width:r.width,height:r.height}
+      })
+      const results = selectionPrompt.querySelector('.prompt-results')
+      results.scrollTop = results.scrollHeight
+      await wait(100)
+      await screen('selection script picker bottom', selectionPrompt, results)
+      ${SELECTION_PICKER_CLOSE}
+    }
     window.__abeleTest.showFormModal([
       { name: 'title', label: 'Title', type: 'text' },
       { name: 'body', label: 'Description', type: 'note', default: 'A [[link]] and a list:\\n- one\\n- two' },
@@ -1878,6 +1894,8 @@ describe.skipIf(!available)('the chat dialogs on a phone', () => {
     'mcp server',
     'rewind',
     'script form',
+    'selection script picker',
+    'selection script picker bottom',
     'docs page',
     'docs contents',
     'docs search result',
@@ -1925,6 +1943,15 @@ describe.skipIf(!available)('the chat dialogs on a phone', () => {
       expect(report[label]?.clipped).toEqual([])
     }
   )
+  it('selection picker pins align to the first title line and have touch-sized targets', () => {
+    const picker = report['selection script picker'] as Screen & { pins: { offset: number; width: number; height: number }[] }
+    expect(picker.pins.length).toBeGreaterThan(0)
+    for (const pin of picker.pins) {
+      expect(Math.abs(pin.offset)).toBeLessThanOrEqual(1)
+      expect(pin.width).toBeGreaterThanOrEqual(44)
+      expect(pin.height).toBeGreaterThanOrEqual(44)
+    }
+  })
   it('message actions have phone-sized targets and keep branching and cloning in the native menu', () => {
     const actions = report['message actions'] as Screen & { targets: number[][] }
     expect(actions.clipped).toEqual([])

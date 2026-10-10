@@ -116,8 +116,11 @@
       <!-- "Ask here" over words selected on a touch screen, once the finger has let them go. -->
       <ChatSelectionBar
         v-if="messagesContainer && canComment && !composing"
+        :key="session?.id"
         :scroller="messagesContainer"
         :capture-link="captureLink"
+        :capture-script="captureScript"
+        :script-menu="selectionScripts"
         @ask="onAskHere"
         @highlight="onHighlight"
       />
@@ -188,6 +191,8 @@
           :comments="commentsOn.get(msg.id)"
           :can-comment="canComment"
           :capture-link="captureLink"
+          :capture-script="captureScript"
+          :script-menu="selectionScripts"
           :can-rewind="canRewind && msg.role === 'user' && !msg.draft"
           :changed-files="changedTurns.has(msg.id)"
           :can-clone="!!session"
@@ -468,6 +473,9 @@ import type { TemplateVariable } from '@/templates/TemplateParser'
 import type { MessageComment } from '@/ai/types'
 import { sameConversation, type ConversationOwner } from '@/ai/draftImports'
 import { revealAnchor, captureSelectionLink } from '@/ai/openChat'
+import { ScriptService } from '@/scripting/ScriptService'
+import { selectionMenu } from '@/scripting/selectionMenuScripts'
+import { captureChatScriptTarget, chatScriptAction } from '@/scripting/runFromChat'
 import { discoverSkills } from '@/ai/tools/SkillTool'
 import { getChildren } from '@/ai/chatTree'
 import { isChatLog } from '@/ai/chatText'
@@ -680,6 +688,22 @@ const captureLink = (id: string, quote: string, start: number, text: string) => 
   if (!s) return undefined
   const prepare = captureSelectionLink(s, id, quote, start, text)
   return () => { void prepare().then((link) => navigator.clipboard.writeText(link)).catch(reportReplyError) }
+}
+// Read at menu capture: changing the scripts folder can replace the service singleton.
+const selectionScripts = () => {
+  const config = AbeleConfig.getInstance()
+  return selectionMenu(
+    ScriptService.getInstance().getAll(),
+    config.ai.chatSelectionScripts ?? [],
+    'chat'
+  )
+}
+const captureScript = (id: string, quote: string, start: number, text: string) => {
+  if (!AbeleConfig.getInstance().ai.scriptsEnabled) return undefined
+  const owner = session.value
+  if (!owner) return undefined
+  const target = captureChatScriptTarget(owner, id, quote, start, text)
+  return target ? chatScriptAction(GlobalStore.getInstance().app, target) : undefined
 }
 const anchorHistory = shallowRef<{ anchor: ChatAnchor; resolution: ChatAnchorResolution } | null>(null)
 let anchorReturnGeneration = 0
@@ -1707,7 +1731,7 @@ const navigationPlaceExists = (saved: NavigationPlace) => {
 }
 const expireNavigationPlace = (saved: NavigationPlace) => {
   new Notice('The saved place is no longer in this conversation')
-  navigationReturns.value = navigationReturns.value.filter(place => place !== saved)
+  navigationReturns.value = navigationReturns.value.filter((place) => place !== saved)
 }
 const restoreNavigationPlace = async (saved: NavigationPlace) => {
   const owner = saved.owner
@@ -1744,16 +1768,28 @@ const restoreNavigationPlace = async (saved: NavigationPlace) => {
   await nextTick()
   if (session.value !== owner || intent !== navigationIntent || selected !== chatService.tabSelectionVersion || owner.conversationVersion.value !== saved.version) return
   // Opening a discussion can reconcile a changed file without replacing its lifetime.
-  if (!navigationPlaceExists(saved)) { expireNavigationPlace(saved); return }
-  if (needsBranch()) {
-    if (branchBlocked(owner)) { deferNavigation(owner, () => restoreNavigationPlace(saved)); return }
-    if (!saved.leafId || !owner.switchBranch(saved.leafId, false)) { new Notice('The saved continuation is unavailable'); return }
-  }
-  if (saved.place && !owner.messages.value.some(message => message.id === saved.place!.messageId)) {
+  if (!navigationPlaceExists(saved)) {
     expireNavigationPlace(saved)
     return
   }
-  navigationReturns.value = navigationReturns.value.filter(place => place !== saved)
+  if (needsBranch()) {
+    if (branchBlocked(owner)) {
+      deferNavigation(owner, () => restoreNavigationPlace(saved))
+      return
+    }
+    if (!saved.leafId || !owner.switchBranch(saved.leafId, false)) {
+      new Notice('The saved continuation is unavailable')
+      return
+    }
+  }
+  if (
+    saved.place &&
+    !owner.messages.value.some((message) => message.id === saved.place!.messageId)
+  ) {
+    expireNavigationPlace(saved)
+    return
+  }
+  navigationReturns.value = navigationReturns.value.filter((place) => place !== saved)
   rememberNavigationIndicator(owner, saved.indicator)
   anchor = null
   endSteady(messagesContainer.value)
