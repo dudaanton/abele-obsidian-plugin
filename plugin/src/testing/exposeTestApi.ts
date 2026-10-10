@@ -187,6 +187,11 @@ export interface NoteRenderSample {
 
 interface AbeleTestApi {
   syncStartup(): ReturnType<import('@/sync/tokenUi').TokenUi['startupSnapshot']>
+  syncScans(): {
+    id: string
+    scans: ReturnType<import('@/sync/exchangeTrace').ExchangeTrace['snapshot']>['scans']
+    active: ReturnType<import('@/sync/exchangeTrace').ExchangeTrace['snapshot']>['active']
+  }[]
   canvasProbe: ReturnType<typeof createCanvasProbe>
   openDesignCatalogue: typeof openDesignCatalogue
   closeDesignCatalogue: typeof closeDesignCatalogue
@@ -798,6 +803,12 @@ export function exposeTestApi(plugin: Plugin): void {
     openDesignCatalogue,
     closeDesignCatalogue,
     syncStartup: () => structuredClone(tokenUi.value?.startupSnapshot() ?? []),
+    syncScans: () =>
+      [...(tokenUi.value?.runtimes ?? [])].map(([id, runtime]) => ({
+        id,
+        scans: runtime.scanSnapshot?.().scans ?? [],
+        active: runtime.scanSnapshot?.().active.filter((one) => one.operation === 'fs list') ?? [],
+      })),
     resetSyncTokenState: (request) => resetSyncTokenState(plugin, request),
     captureSyncTokenOwnership: (vault) => captureSyncTokenOwnership(plugin, vault),
     canvasProbe: createCanvasProbe(plugin),

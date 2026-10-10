@@ -44,6 +44,7 @@ const CONFIG_WALK_DEPTH = 32
 const IGNORE_FILE = '.abele-sync-ignore'
 
 export interface ObsidianFileSystemOptions {
+  startupInventory?: () => ReadonlyMap<string, FileInfo> | undefined
   preserveEmptyDirectories?: boolean
   /** The startup/ownership fence, owned by the engine host. */
   runtimeFence?: RuntimeFence
@@ -130,6 +131,10 @@ export class ObsidianFileSystem implements FileSystem {
    * what a `stat` compares against before it answers mtime 0 (`yieldsToServer`).
    */
   private readonly yielded = new Map<string, string>()
+  private configInventory: FileInfo[] | null = null
+  private inventoryConsumed = false
+  private configPolled = false
+  private readonly startupInventory?: () => ReadonlyMap<string, FileInfo> | undefined
   /** Last engine-visible byte/absence observation, not a fresh read inside a replacement.
    * Digests avoid retaining the vault's binary contents. A later stat never promotes new bytes. */
   private readonly observedBases = new Map<string, { sha: string } | { absent: true }>()
@@ -150,6 +155,7 @@ export class ObsidianFileSystem implements FileSystem {
     options: ObsidianFileSystemOptions = {}
   ) {
     this.preserveEmptyDirectories = options.preserveEmptyDirectories ?? false
+    this.startupInventory = options.startupInventory
     this.runtimeFence = options.runtimeFence ?? null
     this.externalCoordination = externalCoordinationOf(app.vault)
     const runtimeAdapter = this.runtimeFence
@@ -365,7 +371,17 @@ export class ObsidianFileSystem implements FileSystem {
       }
       if (info === null || actual !== path) this.awaitingIndex.delete(path)
     }
-    for await (const info of this.walkConfig(this.configDir)) yield await this.told(info, true)
+    if (!this.startupInventory) this.configInventory = null
+    if (this.configInventory === null) {
+      const inventory = this.inventoryConsumed ? undefined : this.startupInventory?.()
+      this.inventoryConsumed = true
+      this.configInventory = inventory
+        ? [...inventory.values()].filter(
+            (info) => info.path.startsWith(this.configDir + '/') && !isAdapterTemp(info.path)
+          )
+        : await this.readConfigInventory()
+    }
+    for (const info of this.configInventory) yield await this.told(info, true)
     if (mutations.revision !== revision) {
       throw new EngineError(
         'io',
@@ -553,6 +569,7 @@ export class ObsidianFileSystem implements FileSystem {
 
   /** Tell the host what the engine changed on disk (`onEngineWrite`). */
   private wrote(...paths: string[]): void {
+    if (paths.some((path) => path.startsWith(this.configDir + '/'))) this.configInventory = null
     this.runtimeFence?.assertOwned()
     if (this.onEngineWrite === null) return
     for (const path of paths) {
@@ -572,6 +589,9 @@ export class ObsidianFileSystem implements FileSystem {
 
   /** The file at `path` as the disk has it, before `told`; null for none, or not a file. */
   private async fileAt(path: string): Promise<FileInfo | null> {
+    const indexed = this.app.vault.getFileByPath(path)
+    if (indexed && !this.awaitingIndex.has(path))
+      return { path, size: indexed.stat.size, mtime: stamp(indexed.stat.mtime) }
     const standing = await this.rawStat(path)
     if (standing === null || standing.type !== 'file') return null
     // The path that was statted, spelled as it was asked for: the engine matches what comes
@@ -700,12 +720,29 @@ export class ObsidianFileSystem implements FileSystem {
    */
   private async configSnapshot(): Promise<Map<string, string>> {
     const taken = new Map<string, string>()
-    for await (const info of this.walkConfig(this.configDir)) {
+    if (!this.configPolled && this.configInventory === null && !this.inventoryConsumed) {
+      const inventory = this.startupInventory?.()
+      this.inventoryConsumed = true
+      this.configInventory = inventory
+        ? [...inventory.values()].filter(
+            (info) => info.path.startsWith(this.configDir + '/') && !isAdapterTemp(info.path)
+          )
+        : await this.readConfigInventory()
+    } else if (this.configPolled || this.configInventory === null) {
+      this.configInventory = await this.readConfigInventory()
+    }
+    this.configPolled = true
+    for (const info of this.configInventory) {
       taken.set(info.path, `${info.size}:${info.mtime}`)
     }
     const ignore = await this.stat(IGNORE_FILE)
     if (ignore !== null) taken.set(ignore.path, `${ignore.size}:${ignore.mtime}`)
     return taken
+  }
+  private async readConfigInventory(): Promise<FileInfo[]> {
+    const files: FileInfo[] = []
+    for await (const info of this.walkConfig(this.configDir)) files.push(info)
+    return files
   }
 
   private async spellingOnDisk(path: string): Promise<string | null> {

@@ -11,6 +11,38 @@ import { useVault } from '../helpers/testEnv'
 
 const scope = { kind: 'folder' as const, id: 'root', path: '/' }
 const token = (address: string) => encodeAccessToken({ v: 1, address, key: 'a'.repeat(43), scope })
+it('does not schedule watch exchanges for ignored activity between fallback polls', async () => {
+  const wire = await server('Notes/sample.md', 'note')
+  const fs = new MemoryFileSystem()
+  let notify!: (paths: string[]) => void
+  fs.watch = (callback) => {
+    notify = callback
+    return () => {}
+  }
+  const one = runtime(wire, fs, undefined, undefined, 'Private/**')
+  try {
+    await one.runtime.start()
+    await one.runtime.sync()
+    const count = wire.requests.length
+    vi.useFakeTimers()
+    notify(['Private/ignored.md'])
+    await vi.advanceTimersByTimeAsync(2000)
+    expect(wire.requests).toHaveLength(count)
+    expect(one.runtime.trace.snapshot().log).not.toContain('sync: watch')
+    expect(one.runtime.trace.snapshot().scans).toEqual(
+      expect.arrayContaining([
+        expect.objectContaining({
+          operation: 'fs list',
+          completed: expect.any(Number),
+          durationMs: expect.any(Number),
+        }),
+      ])
+    )
+  } finally {
+    vi.useRealTimers()
+    await one.runtime.disconnect()
+  }
+})
 it('a shadowed short link cannot send a newly resolved private file using persisted approval', async () => {
   const group = { kind: 'group' as const, id: 'group', path: 'Groups/sample.md' }
   const app = useVault([

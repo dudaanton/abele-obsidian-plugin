@@ -163,6 +163,7 @@ export function connectionStatusText(
   return statusName(row.paused ? 'paused' : row.status)
 }
 export interface TokenUiRuntime extends ExecutableApplyPort, ConsentResolvePort {
+  scanSnapshot?(): ReturnType<import('./exchangeTrace').ExchangeTrace['snapshot']>
   assertCurrent?(): void
   sync(): Promise<void>
   pause(paused: boolean): Promise<void>

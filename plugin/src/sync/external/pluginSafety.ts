@@ -195,6 +195,7 @@ export const inspectionSchema = z
 
 /** Stat-first, persisted inspection. Recognition follows bounded content, not the extension. */
 export interface ProjectionInspection {
+  inventory?(files: ReadonlyMap<string, { path: string; size: number; mtime: number }>): void
   signal?: AbortSignal
   stage?(stage: string): void
   inventoryProgress?(completed: number, total: number): void
@@ -240,7 +241,9 @@ export async function projectionEvidence(
     assertOwned()
   }
   const readOnly = <T>(work: () => Promise<T>) => inspectionRead(inspection, assertCurrent, work)
-  const paths = new Set(app.vault.getFiles().map((file) => file.path))
+  const indexed = new Map(app.vault.getFiles().map((file) => [file.path, file]))
+  const inventory = new Map<string, { path: string; size: number; mtime: number }>()
+  const paths = new Set(indexed.keys())
   inspection.stage?.('Listing the vault')
   inspection.progress?.(0, paths.size)
   const seen = new Set<string>()
@@ -268,14 +271,19 @@ export async function projectionEvidence(
     (cached.success ? cached.data.entries : []).map((entry) => [entry.path, entry])
   )
   const inspected: { path: string; size: number; mtime: number; marker: boolean }[] = []
+  let dirty = false
+  let updated = false
   const checkpoint = () => {
-    if (!inspected.length) return
+    if (!dirty) return
     const entries = new Map(previous)
     for (const entry of inspected) entries.set(entry.path, entry)
     persist(app, EXTERNAL_INSPECTION_KEY, { schema: 1, entries: [...entries.values()] })
+    dirty = false
   }
   let evidence: string | null = null
   const stat = async (path: string) => {
+    const file = indexed.get(path)
+    if (file) return { type: 'file', ...file.stat }
     try {
       return await readOnly(() => app.vault.adapter.stat(path))
     } catch (cause) {
@@ -322,6 +330,8 @@ export async function projectionEvidence(
     assertCurrent()
     const before = await stat(path)
     assertCurrent()
+    if (before?.type === 'file')
+      inventory.set(path, { path, size: before.size, mtime: before.mtime })
     if (!before || before.type !== 'file' || before.size > MAX_PROJECTION_BYTES) return
     const old = previous.get(path)
     if (old && old.size === before.size && old.mtime === before.mtime) {
@@ -346,8 +356,11 @@ export async function projectionEvidence(
     if (marker && !ownedPaths.has(path.normalize('NFC').toLowerCase())) evidence ??= path
     const after = await stat(path)
     assertCurrent()
-    if (after?.type === 'file' && after.size === before.size && after.mtime === before.mtime)
+    if (after?.type === 'file' && after.size === before.size && after.mtime === before.mtime) {
       inspected.push({ path, size: before.size, mtime: before.mtime, marker })
+      dirty = true
+      updated = true
+    }
   }
   // Preserve hidden-file coverage, but cap concurrent adapter work instead of serial iOS stats.
   const remaining = [...paths]
@@ -361,7 +374,8 @@ export async function projectionEvidence(
       assertCurrent()
       completed++
       if (completed % 128 === 0) checkpoint()
-      inspection.progress?.(completed, remaining.length)
+      if (completed <= 8 || completed % 128 === 0 || completed === remaining.length)
+        inspection.progress?.(completed, remaining.length)
     }
   })
   try {
@@ -381,7 +395,9 @@ export async function projectionEvidence(
     throw error
   }
   assertCurrent()
-  persist(app, EXTERNAL_INSPECTION_KEY, { schema: 1, entries: inspected })
+  if (updated || !cached.success || cached.data.entries.length !== inspected.length)
+    persist(app, EXTERNAL_INSPECTION_KEY, { schema: 1, entries: inspected })
+  inspection.inventory?.(inventory)
   console.debug(
     '[Abele Sync]',
     'checking vault complete',

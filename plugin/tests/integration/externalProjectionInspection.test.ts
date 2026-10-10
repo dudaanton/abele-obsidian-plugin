@@ -48,7 +48,10 @@ describe('bounded persisted external projection inspection', () => {
   })
   it('checks files concurrently with at most eight adapter operations in flight', async () => {
     const app = useVault(
-      Array.from({ length: 24 }, (_, index) => ({ path: `Notes/${index}.md`, content: 'ordinary' }))
+      Array.from({ length: 24 }, (_, index) => ({
+        path: `.hidden/${index}.md`,
+        content: 'ordinary',
+      }))
     )
     const stat = app.vault.adapter.stat.bind(app.vault.adapter)
     let running = 0,
@@ -72,6 +75,7 @@ describe('bounded persisted external projection inspection', () => {
       { path: 'Media/sample-video.bin', content: 'small synthetic fixture' },
       { path: '.hidden/sample-large.bin', content: 'small synthetic fixture' },
     ])
+    app.vault.getFileByPath('Media/sample-video.bin')!.stat.size = 2 * 1024 * 1024 * 1024
     const stat = app.vault.adapter.stat.bind(app.vault.adapter)
     vi.spyOn(app.vault.adapter, 'stat').mockImplementation(async (path) => {
       const found = await stat(path)

@@ -238,6 +238,17 @@ export class TokenEngineRuntime implements ConnectionRuntime, TokenUiRuntime {
       client: options.engineClient?.(this.client) ?? this.client,
       fs: new Proxy(options.fs, {
         get: (target, name) => {
+          if (name === 'watch' && target.watch)
+            return (notify: (paths: string[]) => void) =>
+              target.watch((paths) => {
+                // Polling settings and editor activity also reports ignored files.
+                // They cannot change this connection's inventory; keep the ignore
+                // control file itself observable so scope changes still take effect.
+                const relevant = paths.filter(
+                  (path) => path === '.abele-sync-ignore' || !this.ignore?.ignores(path)
+                )
+                if (relevant.length) notify(relevant)
+              })
           if (name === 'writeAtomic')
             return async (path: string, bytes: Uint8Array, mtime: number) => {
               await target.writeAtomic(path, bytes, mtime)
@@ -248,10 +259,14 @@ export class TokenEngineRuntime implements ConnectionRuntime, TokenUiRuntime {
             const trace = this.trace
             return async function* () {
               const finish = trace.begin('fs ' + String(name))
+              let completed = 0
               try {
-                yield* value.call(target)
+                for await (const info of value.call(target)) {
+                  completed++
+                  yield info
+                }
               } finally {
-                finish()
+                finish(completed)
               }
             }
           }

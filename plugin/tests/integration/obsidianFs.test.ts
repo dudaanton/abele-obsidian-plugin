@@ -112,7 +112,10 @@ describe('ObsidianFileSystem — listing', () => {
     app.vault.adapter.stat = async () => {
       throw new Error('adapter unavailable')
     }
-    await expect(codeOf(fs.stat('Note.md'))).resolves.toBe('io')
+    // Indexed metadata needs no disk call. An unindexed path must still propagate
+    // an unknown adapter failure rather than claiming the file disappeared.
+    expect(await fs.stat('Note.md')).not.toBeNull()
+    await expect(codeOf(fs.stat('Absent.md'))).resolves.toBe('io')
   })
 
   it('uses the actual spelling after a local case-only rename before a pulled file was indexed', async () => {
