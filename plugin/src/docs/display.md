@@ -63,6 +63,31 @@ highlight.
 like a picture (see `vault` → `drawings`), and a PDF, audio or video file like a note. Embed
 what already exists in the vault; do not write a file only to embed it.
 
+## Note columns
+
+Use nested ordinary callouts; without Abele they remain readable as quotes:
+
+```markdown
+> [!abele-columns|ratio=2:1 mobile=aside-collapse]
+> > [!abele-column]
+> > Main paragraph.
+>
+> > [!abele-column|role=aside] Reference
+> > Supporting paragraph.
+```
+
+Columns accept lists, tables, code, math, attachments, note embeds, clickable tasks,
+galleries, Mermaid diagrams, maps and charts. Wide tables/code scroll inside their block;
+visuals fit and resize to the column. Rendered galleries are read-only; change their source
+to edit them. Live Preview renders the area while the cursor is outside it and exposes
+ordinary source when editing it — not simultaneous typing in two live columns.
+
+`mobile=stack` preserves written order on narrow panes; `aside-first` puts reference columns
+first; `aside-collapse` initially folds them under their headings; `keep` retains a scrolling
+row. Desktop and print use the chosen proportions; print expands asides and omits controls.
+Insert and change the frame with the column commands/menu. True text wrapping around a
+short aside is not supported. See `vault` → `Note columns` for the complete record.
+
 ## Galleries
 
 A line `::abele-gallery::` followed by one picture or video per line draws them as a gallery the

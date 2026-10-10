@@ -392,8 +392,19 @@ An ordinary `abele-columns` callout contains two or more direct `abele-column` c
 Metadata `ratio=2:1 mobile=stack` gives one positive weight per child; omitting the ratio makes
 them equal. A parent-quoted blank line separates children. `mobile=stack` preserves written
 order on narrow panes; `mobile=keep` keeps a horizontally scrolling row. The text-and-aside
-insertion template uses `ratio=2:1` and marks its second child `abele-column|role=aside`;
-this is an annotation, not an aside-specific mobile or print mode.
+insertion template uses `ratio=2:1` and marks its second child `abele-column|role=aside`.
+An aside shows its native callout heading (or “Aside” when no heading was supplied); main
+column titles remain hidden. `mobile=aside-first` stacks asides before the main columns,
+retaining source order within each role. `mobile=aside-collapse` stacks in written order
+and initially folds each aside under its heading on panes up to 500 px wide. Click/tap the
+heading, or use Enter/Space while it is focused, to expand it. Folding is ephemeral view
+state, not a source mutation. Wide panes always show the complete aside.
+The column menu can change a column's role and select any of these narrow-screen policies.
+
+Print/PDF export restores the written order and configured proportions, expands all asides,
+and omits layout/folding controls. Code and table cells wrap for paper instead of leaving
+content outside a horizontal scroller. Screen stacking and collapsing do not hide exported
+content. The ordinary Obsidian PDF export command works with this record.
 
 Each column supports native lists, tables, code, inline/display math, images, attachments,
 note embeds and clickable tasks, plus Abele galleries, Mermaid diagrams, maps and charts.

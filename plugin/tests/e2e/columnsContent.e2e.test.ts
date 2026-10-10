@@ -9,7 +9,8 @@ import {
   runCli,
 } from './helpers/obsidianCli'
 import { onPhone, targets } from './helpers/target'
-import { screenshot, tap } from './helpers/phone'
+import { tap } from './helpers/phone'
+import { columnShot } from './helpers/columnShots'
 import { shotDir } from './helpers/shots'
 
 targets('desktop', 'phone')
@@ -41,12 +42,7 @@ const ROOT = `const view=app.workspace.activeLeaf.view;
   const root=view.getMode()==='preview'?view.previewMode.containerEl:view.editor.cm.dom;
   const frame=root.querySelector('.abele-columns');const column=frame.querySelector('.abele-column');`
 function capture(name: string) {
-  if (onPhone()) {
-    screenshot(`${SHOTS}/${name}.png`)
-    return
-  }
-  probe(`require('fs').writeFileSync(${JSON.stringify(SHOTS)}+'/'+${JSON.stringify(name)}+'.png',
-    (await require('@electron/remote').getCurrentWindow().webContents.capturePage()).toPNG());return true`)
+  columnShot(`${SHOTS}/${name}.png`)
 }
 
 describe.skipIf(!available)('column content compatibility', () => {
