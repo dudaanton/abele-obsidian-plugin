@@ -26,6 +26,7 @@ import { ChatSearchIndex } from '@/ai/ChatSearchIndex'
 import { GlobalStore } from '@/stores/GlobalStore'
 import { AgentRegistry } from '@/ai/agents/AgentRegistry'
 import { AbeleConfig } from '@/services/AbeleConfig'
+import { originalNotePlaceHookTypes } from './notePlaceHooks'
 import { secrets } from '@/secrets/SecretStore'
 import { NoteRelations } from '@/entities/NoteRelations'
 import { Log } from '@/entities/Log'
@@ -267,6 +268,7 @@ interface AbeleTestApi {
   UserTemplate: typeof UserTemplate
   TransactionNoteTemplate: typeof TransactionNoteTemplate
   AbeleConfig: typeof AbeleConfig
+  originalNotePlaceHookTypes: typeof originalNotePlaceHookTypes
   /** A synthetic update notice; no installed manifest or local marker is modified. */
   showChangelogOffer: typeof showOffer
   /** The synced secret store: status, lock, unlock — driven live. */
@@ -859,6 +861,7 @@ export function exposeTestApi(plugin: Plugin): void {
     UserTemplate,
     TransactionNoteTemplate,
     AbeleConfig,
+    originalNotePlaceHookTypes,
     secrets,
     newDrawing,
     openImageInk,
