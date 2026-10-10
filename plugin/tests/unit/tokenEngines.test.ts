@@ -1,7 +1,7 @@
 import { expect, it, vi } from 'vitest'
 import type { App } from 'obsidian'
 import { IDBFactory } from 'fake-indexeddb'
-import { MemoryStateStore } from '@abele/sync-core'
+import { MemoryStateStore, type EngineStatus, type SyncReport } from '@abele/sync-core'
 import { encodeAccessToken } from '@abele/sync-protocol'
 import { TokenEngines } from '@/sync/tokenEngines'
 import { TokenUi, connectionError } from '@/sync/tokenUi'
@@ -509,6 +509,108 @@ it.each(['revoked', 'forbidden', '503', 'network'] as const)(
             reason: connectionError({ code: 'offline' }),
           })
         )
+        // A retry blocked on the connection check has not sent these bytes.
+        const id = registry.records()[0].id
+        await (
+          host as unknown as {
+            changed: (id: string, status: EngineStatus) => Promise<void>
+          }
+        ).changed(id, {
+          state: 'syncing',
+          pending: 0,
+          lastSyncAt: null,
+          lastError: 'Network unavailable',
+          cursor: 0,
+          headSeq: null,
+        })
+        expect(ui.activity.value[id]?.refused).toContainEqual({
+          path: 'Private/keep.md',
+          reason: connectionError({ code: 'offline' }),
+        })
+        expect(ui.activity.value[id]?.pending).toBeGreaterThan(0)
+        const runtime = host as unknown as {
+          live: Map<
+            string,
+            { pendingLocalDetails: () => Promise<{ count: number; paths: string[] }> }
+          >
+          changed: (id: string, status: EngineStatus, report?: SyncReport) => Promise<void>
+        }
+        let finish!: (value: { count: number; paths: string[] }) => void
+        vi.spyOn(runtime.live.get(id)!, 'pendingLocalDetails').mockReturnValueOnce(
+          new Promise((resolve) => {
+            finish = resolve
+          })
+        )
+        // On a large vault the failed attempt's pending scan can outlive the backoff.
+        ui.publish(id, { refused: [], pending: 0 })
+        const failed = runtime.changed(id, {
+          state: 'offline',
+          pending: 0,
+          lastSyncAt: null,
+          lastError: 'Network unavailable',
+          cursor: 0,
+          headSeq: null,
+        })
+        await runtime.changed(id, {
+          state: 'syncing',
+          pending: 0,
+          lastSyncAt: null,
+          lastError: 'Network unavailable',
+          cursor: 0,
+          headSeq: null,
+        })
+        finish({ count: 1, paths: ['Private/keep.md'] })
+        await failed
+        expect(ui.activity.value[id]?.refused).toContainEqual({
+          path: 'Private/keep.md',
+          reason: connectionError({ code: 'offline' }),
+        })
+        expect(registry.records()[0].status).toBe('syncing')
+        vi.spyOn(runtime.live.get(id)!, 'pendingLocalDetails').mockReturnValueOnce(
+          new Promise((resolve) => {
+            finish = resolve
+          })
+        )
+        const olderFailure = runtime.changed(id, {
+          state: 'offline',
+          pending: 0,
+          lastSyncAt: null,
+          lastError: 'Network unavailable',
+          cursor: 0,
+          headSeq: null,
+        })
+        const report: SyncReport = {
+          pull: { applied: 0, held: [], skipped: 0, cursor: 1, deferred: 0, bootstrapped: false },
+          push: {
+            committed: null,
+            applied: 1,
+            merged: 0,
+            conflicts: 0,
+            rejected: [],
+            replayed: false,
+            kept: [],
+          },
+          secondPull: null,
+          collisions: [],
+          deferred: 0,
+          joined: false,
+        }
+        await runtime.changed(
+          id,
+          {
+            state: 'idle',
+            pending: 0,
+            lastSyncAt: new Date().toISOString(),
+            lastError: null,
+            cursor: 1,
+            headSeq: 1,
+          },
+          report
+        )
+        finish({ count: 1, paths: ['Private/keep.md'] })
+        await olderFailure
+        expect(ui.activity.value[id]?.refused).toEqual([])
+        expect(ui.activity.value[id]?.pending).toBe(0)
         await vi.waitFor(() => expect(transport.mock.calls.length).toBeGreaterThan(stopped), {
           timeout: 4000,
         })

@@ -75,7 +75,7 @@ liveCase(
       )
       expect(
         a.run(
-          `const root=await openSyncTab();let refused;await poll(()=>refused=[...root.querySelectorAll('.setting-item')].find(one=>textOf(one.querySelector('.setting-item-name'))===${JSON.stringify(path)}&&textOf(one).includes('Not sent:')));return textOf(refused)`
+          `const root=await openSyncTab();let refused;await poll(()=>refused=[...root.querySelectorAll('.setting-item')].find(one=>textOf(one.querySelector('.setting-item-name'))===${JSON.stringify(path)}&&textOf(one).includes('Not sent:')),20000,'unsent phone file stays visible during retry');return textOf(refused)`
         )
       ).toMatch(/Not sent:.*(?:unavailable|interrupted|reachable|timed out)/i)
     } finally {

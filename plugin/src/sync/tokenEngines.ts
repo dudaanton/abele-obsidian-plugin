@@ -44,6 +44,7 @@ export class TokenEngines {
   private readonly retries = new Map<string, (assertCurrent: () => void) => Promise<void>>()
   private readonly startupCancels = new Map<string, () => void>()
   private readonly activityEpoch = new Map<string, number>()
+  private readonly activityReports = new Map<string, number>()
   private readonly offloadPorts = new Map<
     string,
     Awaited<ReturnType<typeof tokenOffloadConnection>>
@@ -741,6 +742,10 @@ export class TokenEngines {
     if (this.closed || !this.ui.registry.records().some((one) => one.id === id)) return
     const epoch = (this.activityEpoch.get(id) ?? 0) + 1
     this.activityEpoch.set(id, epoch)
+    const reportEpoch = (this.activityReports.get(id) ?? 0) + (report ? 1 : 0)
+    this.activityReports.set(id, reportEpoch)
+    const runtime = this.live.get(id)
+    const failureReason = this.ui.activity.value[id]?.error ?? connectionError({ code: 'offline' })
     if (this.ui.registry.records().find((one) => one.id === id)?.status !== 'needs-token')
       this.ui.registry.setStatus(id, status.state)
     const activity: Parameters<TokenUi['publish']>[1] = {
@@ -748,17 +753,24 @@ export class TokenEngines {
       heldDeletes: status.heldDeletes ?? 0,
       deferred: status.deferred ?? 0,
     }
-    const unsent =
-      status.state === 'offline' ? await this.live.get(id)?.pendingLocalDetails() : undefined
+    const unsent = status.state === 'offline' ? await runtime?.pendingLocalDetails() : undefined
     if (unsent) activity.pending = unsent.count
     const publications = this.live.get(id)?.publications() ?? []
     activity.pending = (activity.pending ?? 0) + publications.length
     activity.refused = publications.map((one) => ({ path: one.path, reason: one.reason }))
+    // Starting another attempt is not evidence that previously unsent bytes arrived.
+    if (status.state === 'syncing' && !report) {
+      const previous = this.ui.activity.value[id]?.refused ?? []
+      activity.refused.push(
+        ...previous.filter((one) => !activity.refused.some((item) => item.path === one.path))
+      )
+      activity.pending = Math.max(activity.pending, this.ui.activity.value[id]?.pending ?? 0)
+    }
     if (unsent)
       activity.refused.push(
         ...unsent.paths.map((path) => ({
           path,
-          reason: this.ui.activity.value[id]?.error ?? connectionError({ code: 'offline' }),
+          reason: failureReason,
         }))
       )
     if (status.lastSyncAt) activity.lastSync = Date.parse(status.lastSyncAt)
@@ -787,7 +799,25 @@ export class TokenEngines {
         one.status === 'conflict' ? [one.conflict_path] : []
       )
     }
-    if (this.activityEpoch.get(id) !== epoch) return
+    if (this.activityEpoch.get(id) !== epoch) {
+      // A slow pending scan may finish during the next attempt. Keep its evidence,
+      // but never replace a later successful report or a replacement runtime.
+      if (
+        unsent &&
+        !this.closed &&
+        this.live.get(id) === runtime &&
+        this.activityReports.get(id) === reportEpoch &&
+        this.ui.registry.records().some((one) => one.id === id)
+      ) {
+        const current = this.ui.activity.value[id]
+        const refused = [...(current?.refused ?? [])]
+        for (const path of unsent.paths)
+          if (!refused.some((one) => one.path === path))
+            refused.push({ path, reason: failureReason })
+        this.ui.publish(id, { refused, pending: Math.max(current?.pending ?? 0, unsent.count) })
+      }
+      return
+    }
     if (!this.closed && this.ui.registry.records().some((one) => one.id === id))
       this.ui.publish(id, activity)
     if (!this.closed && this.ui.registry.records().some((one) => one.id === id))
