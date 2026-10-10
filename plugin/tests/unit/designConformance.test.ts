@@ -294,7 +294,10 @@ describe('the design standard', () => {
    * computes no layout, so the rule is guarded by name.
    */
   it('sizes the composer a thumb meets so iOS does not zoom into it', () => {
-    const chat = styleBlock(readFileSync(join(ROOT, 'AiChatInput.vue'), 'utf8'))
+    expect(readFileSync(join(ROOT, 'AiChatInput.vue'), 'utf8')).toMatch(
+      /<style\b[^>]*src=["']\.\/chat\/input\.scss["']/
+    )
+    const chat = readFileSync(join(ROOT, 'chat', 'input.scss'), 'utf8')
     const sidebar =
       /body\.is-mobile \.abele-chat-input__textarea\s*\{([^}]*)\}/.exec(chat)?.[1] ?? ''
 
