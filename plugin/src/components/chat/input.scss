@@ -1,0 +1,221 @@
+.abele-chat-input {
+  border-top: 1px solid var(--background-modifier-border);
+  padding: var(--size-4-2);
+  flex-shrink: 0;
+  transition: border-color 0.15s;
+
+  &--dragover {
+    border-color: var(--interactive-accent);
+  }
+}
+
+.abele-chat-input__attachments {
+  display: flex;
+  flex-wrap: wrap;
+  gap: var(--size-2-2);
+  margin-bottom: var(--size-4-1);
+}
+
+.abele-chat-input__attachment {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: var(--size-2-1);
+  padding: var(--size-2-1) var(--size-2-3);
+  background-color: var(--background-secondary);
+  border-radius: var(--radius-s);
+  font-size: var(--font-smaller);
+  color: var(--text-muted);
+  max-width: 200px;
+
+  .abele-obsidian-icon {
+    flex-shrink: 0;
+  }
+}
+
+.abele-chat-input__attachment-remove {
+  margin-left: auto;
+}
+
+.abele-chat-input__attachment-name {
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.abele-chat-input__textarea {
+  width: 100%;
+  resize: none;
+  border: 1px solid var(--background-modifier-border);
+  border-radius: var(--radius-s);
+  padding: var(--size-2-3) var(--size-4-2);
+  font-family: inherit;
+  font-size: inherit;
+  line-height: 1.5;
+  background-color: var(--background-primary);
+  color: var(--text-normal);
+  height: 34px;
+  min-height: 34px;
+  // Keep in step with `TEXTAREA_MAX_HEIGHT`: the script sizes the field as it is typed into,
+  // and this stops it going further if anything else ever sets a height.
+  max-height: 140px;
+  overflow-y: hidden;
+  box-sizing: border-box;
+
+  &:focus {
+    border-color: var(--interactive-accent);
+    outline: none;
+  }
+}
+
+/**
+ * The note editor drawn as the composer's field: the text box's border and radius around it,
+ * the note's own typography inside. It grows with the text up to the text box's six lines or
+ * so and scrolls after that; opened out, it takes all the height the chat gives it.
+ */
+.abele-chat-input__editor {
+  border: 1px solid var(--background-modifier-border);
+  border-radius: var(--radius-s);
+  background-color: var(--background-primary);
+  cursor: text;
+  overflow: hidden;
+
+  &:focus-within {
+    border-color: var(--interactive-accent);
+  }
+
+  .markdown-source-view.mod-cm6 .cm-scroller {
+    min-height: 34px;
+    max-height: 140px;
+    padding: var(--size-2-3) var(--size-4-2);
+    overflow-y: auto;
+  }
+
+  // A note centres a readable column in a wide pane; a field is the column.
+  .markdown-source-view.mod-cm6.is-readable-line-width .cm-sizer,
+  .markdown-source-view.mod-cm6 .cm-sizer {
+    max-width: none;
+    margin: 0;
+    padding: 0;
+  }
+}
+
+/** Opened out over the whole chat: the conversation is hidden and the field has its height. */
+.abele-chat-input--expanded {
+  flex: 1 1 auto;
+  min-height: 0;
+  display: flex;
+  flex-direction: column;
+
+  > .abele-chat-input__field {
+    flex: 1 1 auto;
+    min-height: 0;
+  }
+
+  > .abele-chat-input__textarea {
+    max-height: none;
+    overflow-y: auto;
+  }
+
+  .abele-chat-input__editor .markdown-source-view.mod-cm6,
+  .abele-chat-input__editor .cm-editor {
+    height: 100%;
+  }
+
+  .abele-chat-input__editor .markdown-source-view.mod-cm6 .cm-scroller {
+    height: 100%;
+    max-height: none;
+  }
+}
+
+/**
+ * A phone, where this is the field a comment is typed into.
+ *
+ * The composer inherits its size from the pane, which on a phone can put it under 16 px — and
+ * below 16 px iOS answers a focus by zooming the whole view into the field, so the note behind
+ * jumps and has to be pinched back. `--font-ui-medium` is exactly that floor. Nothing else is
+ * touched: the height is set by the script as the field is typed into.
+ */
+body.is-mobile .abele-chat-input__textarea {
+  font-size: var(--font-ui-medium);
+}
+
+.abele-chat-input__voice {
+  margin: var(--size-4-2) 0;
+}
+
+.abele-chat-input__mic_open {
+  color: var(--interactive-accent);
+}
+
+.abele-chat-input__toolbar {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  margin-top: var(--size-4-1);
+}
+
+.abele-chat-input__toolbar-left {
+  display: flex;
+  align-items: center;
+  gap: var(--size-4-1);
+}
+
+.abele-chat-input__toolbar-right {
+  display: flex;
+  align-items: center;
+  gap: var(--size-4-1);
+
+  > .abele-obsidian-icon {
+    flex-shrink: 0;
+    height: 2em;
+    width: 2em;
+  }
+}
+
+.abele-chat-input__tokens {
+  font-size: var(--font-smaller);
+  color: var(--text-faint);
+  white-space: nowrap;
+}
+
+.abele-chat-input__scope-badge {
+  font-size: var(--font-smaller);
+  color: var(--text-muted);
+  background-color: var(--background-secondary);
+  padding: var(--size-2-1) var(--size-2-3);
+  border-radius: var(--radius-s);
+  cursor: pointer;
+  white-space: nowrap;
+
+  &:hover {
+    background-color: var(--background-modifier-hover);
+  }
+}
+
+.abele-chat-input__continue {
+  opacity: 0.5;
+
+  &:hover {
+    opacity: 1;
+  }
+}
+
+.abele-chat-input__spinner {
+  animation: abele-spin 1s linear infinite;
+  color: var(--text-muted);
+}
+
+@keyframes abele-spin {
+  from {
+    transform: rotate(0deg);
+  }
+  to {
+    transform: rotate(360deg);
+  }
+}
+
+.abele-chat-input__disabled {
+  opacity: 0.3;
+  pointer-events: none;
+}

@@ -157,32 +157,22 @@
 </template>
 
 <script setup lang="ts">
-import { ref, computed, nextTick, onMounted, onUnmounted, watch } from 'vue'
-import { Menu, TFile, Notice } from 'obsidian'
+import { ref, computed, nextTick, watch } from 'vue'
+import { TFile } from 'obsidian'
 import Icon from './obsidian/Icon.vue'
 import VoiceRecorder from './VoiceRecorder.vue'
 import ChatPicture from './ChatPicture.vue'
 import { isImagePath } from '@/ai/tools/ReadImageTool'
 import { discoverSkills } from '@/ai/tools/SkillTool'
-import { isHeicImport } from '@/media/imageImport'
-import { imageFileForImport } from '@/media/importImageFile'
-import { GlobalStore } from '@/stores/GlobalStore'
-import { pickVaultFile } from '@/helpers/suggesters/VaultFilePicker'
-import { pickChat } from '@/helpers/suggesters/ChatPicker'
-import { ChatService } from '@/ai/ChatService'
+import { useChatInputAttachments } from '@/composables/useChatInputAttachments'
+import { useChatInputEditor } from '@/composables/useChatInputEditor'
 import {
-  importExternalFile,
   getAttachmentIcon,
   fileName as attachmentName,
   ALLOWED_ACCEPT,
 } from '@/ai/attachments'
 import type { ChatDraft } from '@/ai/types'
-import { DraftImports, sameConversation, type ConversationOwner } from '@/ai/draftImports'
-import {
-  createEmbeddedEditor,
-  isEmbeddedEditorAvailable,
-  type EmbeddedEditor,
-} from '@/editor/embeddedEditor'
+import { sameConversation, type ConversationOwner } from '@/ai/draftImports'
 
 const props = defineProps<{
   isStreaming: boolean
@@ -233,28 +223,11 @@ const emit = defineEmits<{
 /** The slash commands the chat answers itself; anything else is looked up as a skill. */
 const COMMANDS = ['/compact', '/new', '/load', '/scope', '/prompt']
 
-const TEXTAREA_MIN_HEIGHT = 34
-/**
- * Six lines or so before it starts scrolling. Three was what it used to be, which is not
- * enough to see a paragraph you are still writing. The stylesheet caps it at the same number.
- */
-const TEXTAREA_MAX_HEIGHT = 140
-
 const draft = ref<ChatDraft>(props.conversationDraft ?? { text: '', attachments: [] })
 let draftOwner = props.attachmentOwner
 let boundToSession = !!props.conversationDraft
 const importing = computed(() => !!draft.value.imports?.pending.size)
 const text = computed({ get: () => draft.value.text, set: (value) => { draft.value.text = value } })
-const inputEl = ref<HTMLTextAreaElement | null>(null)
-const editorHost = ref<HTMLElement | null>(null)
-/**
- * The note editor cannot be borrowed — an Obsidian that moved its insides, or a test with no
- * Obsidian at all — and the field is the plain text box it used to be.
- */
-const fallback = ref(props.textOnly || !isEmbeddedEditorAvailable(GlobalStore.getInstance().app))
-let editor: EmbeddedEditor | null = null
-/** What the editor itself last reported, so writing it back does not move the cursor. */
-let echoed = ''
 const fileInputEl = ref<HTMLInputElement | null>(null)
 const attachments = computed({
   get: () => draft.value.attachments,
@@ -267,6 +240,13 @@ const attachments = computed({
  * cursor, the undo history and the attachments are all simply still there.
  */
 const expanded = defineModel<boolean>('expanded', { default: false })
+const {
+  inputEl, editorHost, fallback, write, autoResize, onInput, syncText, focus,
+  hasFocus, onKeydown, onEmptyPress, onEditorDrop,
+} = useChatInputEditor({
+  props, text, expanded, send: () => send(), keepNote: () => keepNote(),
+  emitFocus: (focused) => emit('focus', focused),
+})
 const expandLabel = computed(() =>
   expanded.value ? 'Collapse the message field' : 'Expand the message field'
 )
@@ -283,41 +263,6 @@ const toggleExpanded = () => {
   setExpanded(!expanded.value)
   // Straight back to writing; the button is only a change of room.
   void nextTick(() => focus())
-}
-
-/**
- * Puts text in the field from outside — a draft coming back, a quote, a dictation, a send
- * emptying it. Straight into the editor as well, not through a watcher: typed and cleared in
- * one tick, the value a watcher sees has not changed, and the sent words stayed in the field.
- */
-const write = (value: string) => {
-  text.value = value
-  if (editor && value !== echoed) {
-    echoed = value
-    editor.set(value)
-  }
-}
-
-const autoResize = () => {
-  const el = inputEl.value
-  // A hidden field — the chat's drawer on a phone, shut while text is put in — measures
-  // nothing; it is sized when it is drawn (`watchDrawn`).
-  if (!el || !el.getClientRects().length) return
-  // Opened out, the stylesheet gives it the chat's height, and it scrolls within that.
-  if (expanded.value) {
-    el.style.removeProperty('height')
-    el.style.removeProperty('overflow-y')
-    return
-  }
-  el.style.height = `${TEXTAREA_MIN_HEIGHT}px`
-  const newHeight = Math.min(el.scrollHeight, TEXTAREA_MAX_HEIGHT)
-  el.style.height = `${newHeight}px`
-  el.style.overflowY = el.scrollHeight > TEXTAREA_MAX_HEIGHT ? 'auto' : 'hidden'
-}
-
-const onInput = (e: Event) => {
-  text.value = (e.target as HTMLTextAreaElement).value
-  nextTick(autoResize)
 }
 
 const send = () => {
@@ -399,134 +344,13 @@ const onVoiceNote = (dictated: string) => {
   keepNote()
 }
 
-const showAttachMenu = (event: MouseEvent) => {
-  const menu = new Menu()
-  menu.addItem((item) => {
-    item.setTitle('From vault').setIcon('vault').onClick(pickFromVault)
-  })
-  menu.addItem((item) => {
-    item.setTitle('From disk').setIcon('hard-drive').onClick(pickFromDisk)
-  })
-  menu.addItem((item) => {
-    item.setTitle('Agent chat').setIcon('messages-square').onClick(pickFromChats)
-  })
-  menu.showAtMouseEvent(event)
-}
-
-/**
- * Another chat, for the agent to read what was said in it. Not announced as `attachFile`: that
- * puts the file into the chat's scope, and a chat log in scope would be the whole log — every
- * note the other agent read — where an attachment is only the conversation.
- */
-const pickFromChats = async () => {
-  const { app } = GlobalStore.getInstance()
-  const owner = draftOwner
-  const state = importsFor(draft.value, owner)
-  const current = ChatService.getInstance().activeSession.value?.currentChatFile.value?.path
-  const file = await pickChat(app, current)
-  const target = state.target
-  if (file && state.active && (props.ownsConversation?.(owner) ?? true) && !target.attachments.some((a) => a.path === file.path)) {
-    target.attachments = [...target.attachments, file]
-  }
-}
-
-const pickFromVault = async () => {
-  const { app } = GlobalStore.getInstance()
-  const owner = draftOwner
-  const state = importsFor(draft.value, owner)
-  const file = await pickVaultFile(app)
-  if (file && state.active && (props.ownsConversation?.(owner) ?? true)) attachToDraft(file, state.target, owner)
-}
-
-const pickFromDisk = () => {
-  fileInputEl.value?.click()
-}
-
-const onFileSelected = async (e: Event) => {
-  const input = e.target as HTMLInputElement
-  const fileList = input.files ? Array.from(input.files) : []
-  input.value = ''
-  if (!fileList.length) return
-
-  await importFiles(fileList)
-}
-
-const onPaste = async (e: ClipboardEvent) => {
-  if (props.textOnly) return
-  const items = e.clipboardData?.items
-  if (!items) return
-
-  const files: File[] = []
-  for (const item of items) {
-    if (item.kind === 'file') {
-      const file = item.getAsFile()
-      if (file) files.push(file)
-    }
-  }
-
-  if (!files.length) return
-  e.preventDefault()
-
-  await importFiles(files)
-}
-
-// ── Drag & drop ──
-
-const isDragging = ref(false)
-let dragLeaveTimer: ReturnType<typeof setTimeout> | null = null
-
-const onDragOver = () => {
-  if (props.textOnly) return
-  if (dragLeaveTimer) {
-    window.clearTimeout(dragLeaveTimer)
-    dragLeaveTimer = null
-  }
-  isDragging.value = true
-}
-
-const onDragLeave = () => {
-  // Small delay to prevent flicker when moving between child elements
-  dragLeaveTimer = window.setTimeout(() => {
-    isDragging.value = false
-  }, 50)
-}
-
-const onDrop = async (e: DragEvent) => {
-  if (props.textOnly) return
-  isDragging.value = false
-  const dt = e.dataTransfer
-  if (!dt) return
-
-  console.debug('[Abele drop]', {
-    types: [...dt.types],
-    text: dt.getData('text/plain'),
-    html: dt.getData('text/html'),
-    files: dt.files?.length,
-  })
-
-  // 1. Obsidian internal drag — files from file explorer
-  // Obsidian puts the path in text/plain and may also provide Files
-  const textData = dt.getData('text/plain')?.trim()
-  if (textData) {
-    const { app } = GlobalStore.getInstance()
-    let handled = false
-    for (const line of textData.split('\n').map((s) => s.trim()).filter(Boolean)) {
-      // Both URI and wikilink drags must work here now that this event stops at the composer.
-      const fileParam = line.match(/[?&]file=([^&]+)/)
-      const path = fileParam ? decodeURIComponent(fileParam[1]) : line.replace(/^\[\[|\]\]$/g, '')
-      const file = app.vault.getAbstractFileByPath(path)
-      if (file instanceof TFile) {
-        addAttachment(file)
-        handled = true
-      }
-    }
-    if (handled) return
-  }
-
-  // 2. External files from OS
-  const fileList = dt.files ? Array.from(dt.files) : []
-  await importFiles(fileList)
-}
+const {
+  showAttachMenu, onFileSelected, onPaste, isDragging, onDragOver, onDragLeave,
+  onDrop, addAttachment, importFiles,
+} = useChatInputAttachments({
+  props, draft, owner: () => draftOwner, fileInputEl,
+  emitAttachFile: (path, owner) => emit('attachFile', path, owner),
+})
 
 const setText = (value: string) => {
   write(value)
@@ -577,452 +401,12 @@ watch(() => [props.conversationDraft, props.attachmentOwner] as const, ([owned, 
 
 // Text can arrive while no composer exists. When one is mounted, it mirrors the session,
 // without echoing edits the embedded editor already made or moving their cursor.
-watch(text, (value) => {
-  if (editor && value !== echoed) {
-    echoed = value
-    editor.set(value)
-  }
-  nextTick(autoResize)
-})
-
-function importsFor(target: ChatDraft, owner?: ConversationOwner): DraftImports<ChatDraft> {
-  if (!target.imports) target.imports = new DraftImports(target, owner)
-  return target.imports
-}
-
-function attachToDraft(file: TFile, target: ChatDraft, owner?: ConversationOwner): void {
-  const state = importsFor(target, owner)
-  const owns = props.ownsConversation ?? (() => true)
-  const ready = props.attachmentReady ?? ((path, origin) => emit('attachFile', path, origin))
-  const current = state.target
-  if (!state.active || !owns(owner) || current.attachments.some((a) => a.path === file.path)) return
-  current.attachments = [...current.attachments, file]
-  if (!isHeicImport(file.path)) {
-    ready(file.path, owner)
-    return
-  }
-  const done = state.begin(file.path)
-  if (!done) return
-  void imageFileForImport(GlobalStore.getInstance().app, file).then((converted) => {
-    const current = state.target
-    if (!state.active || !owns(owner) || !current.attachments.some((a) => a.path === file.path)) return
-    current.attachments = current.attachments.map((a) => a.path === file.path ? converted : a)
-    ready(converted.path, owner)
-  }).catch((err) => {
-    new Notice(`Failed to import ${file.name}: ${err instanceof Error ? err.message : err}`)
-  }).finally(done)
-}
-
-const addAttachment = (file: TFile) => attachToDraft(file, draft.value, draftOwner)
-
-/** Capture once before any await: disk, paste and whole-chat drops obey the same ownership. */
-async function importFiles(files: File[]): Promise<void> {
-  const target = draft.value
-  const owner = draftOwner
-  const state = importsFor(target, owner)
-  const owns = props.ownsConversation ?? (() => true)
-  const ready = props.attachmentReady ?? ((path, origin) => emit('attachFile', path, origin))
-  const done = state.begin(`external-${Date.now()}-${Math.random()}`)
-  if (!done) return
-  try {
-    for (const file of files) {
-      if (!state.active || !owns(owner)) break
-      try {
-        const imported = await importExternalFile(file)
-        const current = state.target
-        if (state.active && owns(owner)) {
-          // importExternalFile already attempted normalization, including non-convertible HEIC.
-          if (!current.attachments.some((a) => a.path === imported.path)) {
-            current.attachments = [...current.attachments, imported]
-            ready(imported.path, owner)
-          }
-        }
-      } catch (err) {
-        new Notice(`Failed to import ${file.name}: ${err instanceof Error ? err.message : err}`)
-      }
-    }
-  } finally { done?.() }
-}
-
-/** `atEnd` puts the cursor after what is already typed — text somebody else put there. */
-function focus(options: { atEnd?: boolean } = {}) {
-  if (editor) {
-    if (options.atEnd) editor.focusEnd()
-    else editor.focus()
-    return
-  }
-  const el = inputEl.value
-  if (!el) return
-  el.focus()
-  if (options.atEnd) el.setSelectionRange(el.value.length, el.value.length)
-}
-
-/** Whether the field has the cursor — a focus given to one not on screen yet is dropped. */
-function hasFocus(): boolean {
-  const el = editor ? editor.contentEl : inputEl.value
-  const active = el?.ownerDocument.activeElement
-  return !!el && !!active && el.contains(active)
-}
+watch(text, syncText)
 
 const isDraftFor = (owner?: ConversationOwner) => sameConversation(draftOwner, owner)
 
 defineExpose({ setText, addAttachment, importFiles, focus, hasFocus, takeDraft, putDraft, isDraftFor })
 
-const onKeydown = (e: KeyboardEvent) => {
-  // Alt+Enter is Enter without the model, and only where there is a note to keep.
-  if (e.key === 'Enter' && e.altKey && props.canNote) {
-    e.preventDefault()
-    keepNote()
-    return
-  }
-  if (e.key === 'Enter' && e.shiftKey) {
-    e.preventDefault()
-    send()
-  }
-}
-
-// Cmd/Ctrl+Enter is send in either field. The borrowed editor's scope first
-// shields it from Obsidian's earlier window-capture follow-link hotkey.
-const onCaptureKeydown = (e: KeyboardEvent) => {
-  // A borrowed editor submits through its scope before this listener is reached.
-  if (editor && e.defaultPrevented) return
-  if (e.key === 'Enter' && (e.metaKey || e.ctrlKey) && hasFocus()) {
-    e.preventDefault()
-    e.stopImmediatePropagation()
-    send()
-  }
-}
-
-/**
- * The keys the note editor is given before its own and Obsidian's: the same as the text box
- * had. Enter is a new line, as in a note; Shift+Enter sends; Alt+Enter keeps a note, and only
- * where there is one to keep — anywhere else Obsidian may have it.
- */
-const EDITOR_KEYS = [
-  {
-    key: 'Shift-Enter',
-    run: () => {
-      send()
-      return true
-    },
-  },
-  {
-    key: 'Alt-Enter',
-    run: () => {
-      if (!props.canNote) return false
-      keepNote()
-      return true
-    },
-  },
-]
-
-const mountEditor = () => {
-  const host = editorHost.value
-  if (!host) return
-  echoed = text.value
-  editor = createEmbeddedEditor(GlobalStore.getInstance().app, host, {
-    value: text.value,
-    placeholder: 'Message...',
-    onChange: (value) => {
-      echoed = value
-      text.value = value
-    },
-    onSubmit: send,
-    onFocus: () => emit('focus', true),
-    onBlur: () => emit('focus', false),
-    keys: EDITOR_KEYS,
-  })
-  if (!editor) fallback.value = true
-}
-
-
-/** A press on the field below the last line puts the cursor at the end, as in a note. */
-const onEmptyPress = (event: MouseEvent) => {
-  const target = event.target as HTMLElement
-  if (!editor || target.closest('.cm-content')) return
-  event.preventDefault()
-  editor.focusEnd()
-}
-
-/**
- * A file dropped on the note editor is an attachment, as it was on the text box — not a link
- * written into the message, which is what the editor would make of it. Only the default is
- * taken from the editor (it stands down for an event already handled); the drop goes on to the
- * handlers above, which read what was dropped. Text dragged in is left to the editor.
- */
-const onEditorDrop = (e: DragEvent) => {
-  const dt = e.dataTransfer
-  if (!dt) return
-  const plain = dt.getData('text/plain')?.trim() ?? ''
-  if (dt.files?.length || plain.startsWith('obsidian://') || isVaultPath(plain)) {
-    e.preventDefault()
-  }
-}
-
-const isVaultPath = (value: string): boolean => {
-  if (!value || value.includes('\n')) return false
-  const { app } = GlobalStore.getInstance()
-  return app.vault.getAbstractFileByPath(value.replace(/^\[\[|\]\]$/g, '')) instanceof TFile
-}
-
-/**
- * Sizes the field again whenever its width changes — above all from none to some, when a chat
- * that was filled while hidden is shown: its text arrived when there was nothing to measure.
- */
-let drawn: ResizeObserver | null = null
-let lastWidth = -1
-const watchDrawn = () => {
-  const el = inputEl.value
-  const View = el?.ownerDocument.defaultView?.ResizeObserver ?? window.ResizeObserver
-  if (!el || !View) return
-  drawn = new View((entries) => {
-    const width = entries[entries.length - 1]?.contentRect.width ?? 0
-    if (width === lastWidth) return
-    lastWidth = width
-    if (width > 0) autoResize()
-  })
-  drawn.observe(el)
-}
-
-onMounted(() => {
-  window.addEventListener('keydown', onCaptureKeydown, true)
-  if (fallback.value) {
-    watchDrawn()
-    return
-  }
-  mountEditor()
-  // Built and refused after all: the text box is drawn on the next tick, and sized from then.
-  if (fallback.value) void nextTick(watchDrawn)
-})
-
-onUnmounted(() => {
-  window.removeEventListener('keydown', onCaptureKeydown, true)
-  drawn?.disconnect()
-  editor?.destroy()
-  editor = null
-})
 </script>
 
-<style lang="scss">
-.abele-chat-input {
-  border-top: 1px solid var(--background-modifier-border);
-  padding: var(--size-4-2);
-  flex-shrink: 0;
-  transition: border-color 0.15s;
-
-  &--dragover {
-    border-color: var(--interactive-accent);
-  }
-}
-
-.abele-chat-input__attachments {
-  display: flex;
-  flex-wrap: wrap;
-  gap: var(--size-2-2);
-  margin-bottom: var(--size-4-1);
-}
-
-.abele-chat-input__attachment {
-  display: flex;
-  align-items: center;
-  justify-content: space-between;
-  gap: var(--size-2-1);
-  padding: var(--size-2-1) var(--size-2-3);
-  background-color: var(--background-secondary);
-  border-radius: var(--radius-s);
-  font-size: var(--font-smaller);
-  color: var(--text-muted);
-  max-width: 200px;
-
-  .abele-obsidian-icon {
-    flex-shrink: 0;
-  }
-}
-
-.abele-chat-input__attachment-remove {
-  margin-left: auto;
-}
-
-.abele-chat-input__attachment-name {
-  overflow: hidden;
-  text-overflow: ellipsis;
-  white-space: nowrap;
-}
-
-.abele-chat-input__textarea {
-  width: 100%;
-  resize: none;
-  border: 1px solid var(--background-modifier-border);
-  border-radius: var(--radius-s);
-  padding: var(--size-2-3) var(--size-4-2);
-  font-family: inherit;
-  font-size: inherit;
-  line-height: 1.5;
-  background-color: var(--background-primary);
-  color: var(--text-normal);
-  height: 34px;
-  min-height: 34px;
-  // Keep in step with `TEXTAREA_MAX_HEIGHT`: the script sizes the field as it is typed into,
-  // and this stops it going further if anything else ever sets a height.
-  max-height: 140px;
-  overflow-y: hidden;
-  box-sizing: border-box;
-
-  &:focus {
-    border-color: var(--interactive-accent);
-    outline: none;
-  }
-}
-
-/**
- * The note editor drawn as the composer's field: the text box's border and radius around it,
- * the note's own typography inside. It grows with the text up to the text box's six lines or
- * so and scrolls after that; opened out, it takes all the height the chat gives it.
- */
-.abele-chat-input__editor {
-  border: 1px solid var(--background-modifier-border);
-  border-radius: var(--radius-s);
-  background-color: var(--background-primary);
-  cursor: text;
-  overflow: hidden;
-
-  &:focus-within {
-    border-color: var(--interactive-accent);
-  }
-
-  .markdown-source-view.mod-cm6 .cm-scroller {
-    min-height: 34px;
-    max-height: 140px;
-    padding: var(--size-2-3) var(--size-4-2);
-    overflow-y: auto;
-  }
-
-  // A note centres a readable column in a wide pane; a field is the column.
-  .markdown-source-view.mod-cm6.is-readable-line-width .cm-sizer,
-  .markdown-source-view.mod-cm6 .cm-sizer {
-    max-width: none;
-    margin: 0;
-    padding: 0;
-  }
-}
-
-/** Opened out over the whole chat: the conversation is hidden and the field has its height. */
-.abele-chat-input--expanded {
-  flex: 1 1 auto;
-  min-height: 0;
-  display: flex;
-  flex-direction: column;
-
-  > .abele-chat-input__field {
-    flex: 1 1 auto;
-    min-height: 0;
-  }
-
-  > .abele-chat-input__textarea {
-    max-height: none;
-    overflow-y: auto;
-  }
-
-  .abele-chat-input__editor .markdown-source-view.mod-cm6,
-  .abele-chat-input__editor .cm-editor {
-    height: 100%;
-  }
-
-  .abele-chat-input__editor .markdown-source-view.mod-cm6 .cm-scroller {
-    height: 100%;
-    max-height: none;
-  }
-}
-
-/**
- * A phone, where this is the field a comment is typed into.
- *
- * The composer inherits its size from the pane, which on a phone can put it under 16 px — and
- * below 16 px iOS answers a focus by zooming the whole view into the field, so the note behind
- * jumps and has to be pinched back. `--font-ui-medium` is exactly that floor. Nothing else is
- * touched: the height is set by the script as the field is typed into.
- */
-body.is-mobile .abele-chat-input__textarea {
-  font-size: var(--font-ui-medium);
-}
-
-.abele-chat-input__voice {
-  margin: var(--size-4-2) 0;
-}
-
-.abele-chat-input__mic_open {
-  color: var(--interactive-accent);
-}
-
-.abele-chat-input__toolbar {
-  display: flex;
-  align-items: center;
-  justify-content: space-between;
-  margin-top: var(--size-4-1);
-}
-
-.abele-chat-input__toolbar-left {
-  display: flex;
-  align-items: center;
-  gap: var(--size-4-1);
-}
-
-.abele-chat-input__toolbar-right {
-  display: flex;
-  align-items: center;
-  gap: var(--size-4-1);
-
-  > .abele-obsidian-icon {
-    flex-shrink: 0;
-    height: 2em;
-    width: 2em;
-  }
-}
-
-.abele-chat-input__tokens {
-  font-size: var(--font-smaller);
-  color: var(--text-faint);
-  white-space: nowrap;
-}
-
-.abele-chat-input__scope-badge {
-  font-size: var(--font-smaller);
-  color: var(--text-muted);
-  background-color: var(--background-secondary);
-  padding: var(--size-2-1) var(--size-2-3);
-  border-radius: var(--radius-s);
-  cursor: pointer;
-  white-space: nowrap;
-
-  &:hover {
-    background-color: var(--background-modifier-hover);
-  }
-}
-
-.abele-chat-input__continue {
-  opacity: 0.5;
-
-  &:hover {
-    opacity: 1;
-  }
-}
-
-.abele-chat-input__spinner {
-  animation: abele-spin 1s linear infinite;
-  color: var(--text-muted);
-}
-
-@keyframes abele-spin {
-  from {
-    transform: rotate(0deg);
-  }
-  to {
-    transform: rotate(360deg);
-  }
-}
-
-.abele-chat-input__disabled {
-  opacity: 0.3;
-  pointer-events: none;
-}
-</style>
+<style lang="scss" src="./chat/input.scss"></style>
