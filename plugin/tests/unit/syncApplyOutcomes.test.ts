@@ -1,10 +1,10 @@
 import { describe, expect, it, vi } from 'vitest'
-import { EngineRunner } from '@/sync/engineRunner'
+import { TokenActions } from '@/sync/tokenActions'
 import { appliedNotice } from '@/sync/stagedSettings'
 
 describe('reporting settings writes when later bookkeeping fails', () => {
   it('keeps the completed outcome even when reading the remaining queue fails', async () => {
-    const runner = new EngineRunner({} as never, {} as never)
+    const runner = new TokenActions({} as never, {} as never, {} as never)
     const engine = {
       deferred: vi
         .fn()

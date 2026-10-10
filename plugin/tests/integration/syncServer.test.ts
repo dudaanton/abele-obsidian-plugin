@@ -1,7 +1,8 @@
 // @vitest-environment node
 import { afterEach, describe, expect, it } from 'vitest'
-import { SyncClient, sha256 } from '@abele/sync-core'
-import { syncServer, type SyncServer } from '../helpers/syncServer'
+import { AccessClient, V2EngineClient, sha256 } from '@abele/sync-core'
+import { v2Server, type V2Server } from '@abele/sync-server/tests/helpers/v2Server.js'
+import { createUser } from '@abele/sync-server/src/access/tokens.js'
 
 /**
  * The harness itself, proved once. Everything downstream — the service, the settings screens —
@@ -11,7 +12,7 @@ import { syncServer, type SyncServer } from '../helpers/syncServer'
  * Node, not happy-dom: the server is Fastify on better-sqlite3.
  */
 describe('syncServer', () => {
-  let server: SyncServer | null = null
+  let server: V2Server | null = null
 
   afterEach(async () => {
     await server?.close()
@@ -19,16 +20,20 @@ describe('syncServer', () => {
   })
 
   it('keeps the live head and copies a stale device edit whose base version was pruned', async () => {
-    server = await syncServer()
-    const { accountToken } = await server.account()
-    const { vaultId } = await server.vault(accountToken)
-    const currentDevice = await server.device(accountToken, vaultId, 'Sample current device')
-    const staleDevice = await server.device(accountToken, vaultId, 'Sample offline device')
-    // Use the plugin's installed client archives, not the fixture's core source.
-    const clientFor = (token: string) =>
-      new SyncClient({ baseUrl: server!.BASE_URL, fetch: server!.fetch, token }).forVault(vaultId)
-    const currentClient = clientFor(currentDevice.deviceToken)
-    const staleClient = clientFor(staleDevice.deviceToken)
+    server = await v2Server()
+    const user = await createUser(
+      { db: server.db, pepper: server.config.tokenPepper },
+      'Sample user',
+      server.address
+    )
+    const access = AccessClient.fromToken(user.token, { fetch: globalThis.fetch })
+    const authority = await access.connection()
+    const issued = await access.issue({
+      scope: { kind: authority.scope.kind, id: authority.scope.id },
+      label: 'Sample offline device',
+    })
+    const currentClient = new V2EngineClient(user.token, { fetch: globalThis.fetch })
+    const staleClient = new V2EngineClient(issued.token, { fetch: globalThis.fetch })
     expect((await currentClient.state()).settings.conflict).toBe('merge')
     const upload = async (client: typeof currentClient, text: string) => {
       const bytes = new TextEncoder().encode(text)
@@ -108,7 +113,7 @@ describe('syncServer', () => {
     const changes = await currentClient.changes(latest.seq)
     expect(changes.items).toMatchObject([
       {
-        op: 'conflict',
+        op: 'modify',
         file_id: result.conflict_file_id,
         version_id: result.conflict_version_id,
         sha: incoming.sha,
@@ -118,16 +123,16 @@ describe('syncServer', () => {
   })
 
   it('runs a real server a device can ask for the state of its vault', async () => {
-    server = await syncServer()
-    const { accountToken } = await server.account()
-    const { vaultId } = await server.vault(accountToken)
-    const { deviceToken } = await server.device(accountToken, vaultId)
-
-    const client = server.clientFor(deviceToken, vaultId)
+    server = await v2Server()
+    const user = await createUser(
+      { db: server.db, pepper: server.config.tokenPepper },
+      'Sample user',
+      server.address
+    )
+    const client = new V2EngineClient(user.token, { fetch: globalThis.fetch })
     const state = await client.state()
-
     expect(state.head_seq).toBe(0)
-    expect(server.BASE_URL).toMatch(/^https?:\/\//)
-    expect(server.TEST_PASSWORD).toBeTruthy()
+    expect(server.address).toMatch(/^https?:\/\//)
+    expect((await client.connection()).status).toBe('active')
   })
 })

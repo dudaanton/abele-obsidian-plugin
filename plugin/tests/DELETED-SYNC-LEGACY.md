@@ -71,3 +71,21 @@ Retired access and transfer fixtures after the core v2 update:
 `unit/scopedCreationBarrier.test.ts` are retained and ported to token ledger/review
 identity, production engine watchers and teardown/opening barriers. Their old
 scoped raw/native database split and invitation creation API no longer exist.
+
+- `unit/ownerNativePublication.test.ts`: Removed owner paste-range proof and automatic sponsor publication; token attachment consent is per stable file identity and explicit note opening.
+
+- `unit/nativeOwnerPullBaseline.test.ts`: Removed personal pull callbacks and owner sponsor-baseline protocol; the token adapter records received attachment provenance.
+
+- `unit/nativeOwnerPartialBatch.test.ts`: Removed owner admitted-unit/sponsor proof schema; v2 explicit attachment publication owns an independent durable request.
+
+- `unit/confirmationReview.test.ts`: Removed own-paste certification and sponsor discovery model; attachment questions now originate from explicit note opening and per-connection provenance.
+
+- `unit/discoveryLifecycle.test.ts`: Removed personal owner grant catalogue written to synced settings; token scopes are server-authorized and live credentials remain device-local.
+
+- `unit/publicationConnectionIdentity.test.ts`: Removed publication stores and legacy principal/sentinel retirement model; token records and device review source binding cover the current identities.
+
+- `integration/nativeOwnerAdmission.test.ts`: Removed owner admitted publication units and sponsor receipts, not part of v2 explicit publication.
+
+- `integration/ownerBindingGrowth.test.ts`: Removed legacy owner prepared/submitted ledger schema and its upgrade paths; the addendum forbids legacy migration.
+
+- `integration/ownerLedgerBudget.test.ts`: Removed legacy owner prepared-row budgets and migration; v2 publication storage must enforce its own durable capacity.

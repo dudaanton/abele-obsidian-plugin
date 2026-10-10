@@ -2,9 +2,10 @@
 import { afterEach, describe, expect, it, vi } from 'vitest'
 import { IDBFactory } from 'fake-indexeddb'
 import type { App } from 'obsidian'
-import { SyncClient, SyncEngine, RecoveryBarrier, sha256 } from '@abele/sync-core'
+import { AccessClient, V2EngineClient, SyncEngine, RecoveryBarrier, sha256 } from '@abele/sync-core'
 import { create, blob, seed } from '@abele/sync-test-seed'
-import { syncServer, type SyncServer } from '../helpers/syncServer'
+import { v2Server, type V2Server } from '@abele/sync-server/tests/helpers/v2Server.js'
+import { createUser } from '@abele/sync-server/src/access/tokens.js'
 import { buildFakeVault } from '../helpers/fakeVault'
 import { IndexedDbStateStore } from '@/sync/IndexedDbStateStore'
 import { ObsidianFileSystem } from '@/sync/ObsidianFileSystem'
@@ -20,6 +21,32 @@ import { runRetention } from '@abele/sync-server/src/history/retention.js'
 import { createUploadManager } from '@abele/sync-server/src/blobs/uploads.js'
 import { loadConfig } from '@abele/sync-server/src/config.js'
 
+async function tokenPair(server: V2Server) {
+  const user = await createUser(
+    { db: server.db, pepper: server.config.tokenPepper },
+    'Sample user',
+    server.address
+  )
+  const access = AccessClient.fromToken(user.token, { fetch: globalThis.fetch })
+  const authority = await access.connection()
+  const issued = await access.issue({
+    scope: { kind: authority.scope.kind, id: authority.scope.id },
+    label: 'Sample second device',
+  })
+  return {
+    spaceId: authority.space_id,
+    first: {
+      token: user.token,
+      id: authority.token_id,
+      revoke: async () => {
+        await access.revoke(authority.token_id)
+        return 'revoked'
+      },
+    },
+    second: { token: issued.token, id: issued.info.id },
+  }
+}
+
 describe('two-device external attachment matrix', () => {
   it.each([
     [false, null],
@@ -30,20 +57,17 @@ describe('two-device external attachment matrix', () => {
   ] as const)(
     'keeps policy local through remote changes (restart=%s, evidence=%s)',
     async (restart, evidence) => {
-      server = await syncServer()
-      const { accountToken } = await server.account('sample-matrix@example.invalid')
-      const { vaultId } = await server.vault(accountToken, 'sample-vault')
-      const a = await server.device(accountToken, vaultId, 'sample-a')
-      const b = await server.device(accountToken, vaultId, 'sample-b')
-      const other = server.clientFor(b.deviceToken, vaultId)
+      server = await v2Server()
+      const { spaceId: vaultId, first: a, second: b } = await tokenPair(server)
+      const other = new V2EngineClient(b.token, { fetch: globalThis.fetch })
       await seed(other, [await create(other, 'Media/sample-matrix.bin', 'sample first', 1000)])
       const initial = (await other.manifest(null)).items[0]
       const factory = new IDBFactory()
       const binding = {
-        endpoint: server.BASE_URL,
+        endpoint: server.address,
         vaultId,
         mode: 'personal' as const,
-        principalId: a.deviceId,
+        principalId: a.id,
         principalType: 'device' as const,
         grantId: null,
         generation: 1,
@@ -56,7 +80,7 @@ describe('two-device external attachment matrix', () => {
       ;(
         fake.workspace as unknown as { iterateAllLeaves(fn: (leaf: unknown) => void): void }
       ).iterateAllLeaves = () => {}
-      const client = server.clientFor(a.deviceToken, vaultId)
+      const client = new V2EngineClient(a.token, { fetch: globalThis.fetch })
       const downloads = vi.spyOn(client, 'getBlob')
       const uploads = vi.spyOn(client, 'putBlob')
       const commits = vi.spyOn(client, 'commitRaw')
@@ -83,7 +107,7 @@ describe('two-device external attachment matrix', () => {
           verify: (id, input) => client.verifyExternalFile(id, input),
         })
         engine = new SyncEngine({
-          client: representation.personalClient(client),
+          client: representation.engineClient(client),
           fs: representation.fileSystem(),
           state: representation.stateStore(),
           selective: selectiveFrom(undefined),
@@ -269,7 +293,9 @@ describe('two-device external attachment matrix', () => {
         await reopen()
         expect((await api!.get(initial.file_id))?.availability).toBe('deleted')
         expect((await api!.inspectDisconnect()).safe).toBe(false)
-        expect((await other.restoreDeleted(initial.file_id)).status).toBe('applied')
+        expect((await other.restoreDeleted(initial.file_id, 'sample-restore-deleted')).status).toBe(
+          'applied'
+        )
         await engine!.sync()
         await reopen()
         expect((await api!.get(initial.file_id))?.availability).toBe('active')
@@ -296,7 +322,7 @@ describe('two-device external attachment matrix', () => {
   )
 })
 
-let server: SyncServer | undefined
+let server: V2Server | undefined
 let store: IndexedDbStateStore | undefined
 afterEach(async () => {
   store?.close()
@@ -308,34 +334,26 @@ describe('external representation against the selected real server input', () =>
   it.each([false, true, 'disconnect'] as const)(
     'evicts with ordinary publication (edited=%s) and restores identical version-bound bytes',
     async (edited) => {
-      server = await syncServer()
-      const { accountToken } = await server.account('sample-attachment@example.invalid')
-      const { vaultId } = await server.vault(accountToken, 'sample-vault')
-      const device = await server.device(accountToken, vaultId, 'sample-receiver')
-      const sender = await server.device(accountToken, vaultId, 'sample-sender')
+      server = await v2Server()
+      const { spaceId: vaultId, first: device, second: sender } = await tokenPair(server)
       const original = new TextEncoder().encode(
         edited ? 'sample edited live attachment' : 'sample live attachment'
       )
-      await seed(server.clientFor(sender.deviceToken, vaultId), [
+      await seed(new V2EngineClient(sender.token, { fetch: globalThis.fetch }), [
         await create(
-          server.clientFor(sender.deviceToken, vaultId),
+          new V2EngineClient(sender.token, { fetch: globalThis.fetch }),
           'Media/sample-live.bin',
           'sample live attachment',
           1000
         ),
       ])
-      const client = new SyncClient({
-        baseUrl: server.BASE_URL,
-        token: device.deviceToken,
-        fetch: server.fetch,
-        WebSocket: server.WebSocket,
-      }).forVault(vaultId)
+      const client = new V2EngineClient(device.token, { fetch: globalThis.fetch })
       const head = (await client.manifest(null)).items[0]
       const binding = {
-        endpoint: server.BASE_URL,
+        endpoint: server.address,
         vaultId,
         mode: 'personal' as const,
-        principalId: device.deviceId,
+        principalId: device.id,
         principalType: 'device' as const,
         grantId: null,
         generation: 1,
@@ -413,13 +431,7 @@ describe('external representation against the selected real server input', () =>
         expect((await client.head(head.file_id)).version_id).toBe(published.version_id)
         if (edited === 'disconnect') {
           expect(await api.inspectDisconnect()).toMatchObject({ safe: true, requiredBytes: 0 })
-          expect(
-            await new SyncClient({
-              baseUrl: server.BASE_URL,
-              token: device.deviceToken,
-              fetch: server.fetch,
-            }).revokeSelf()
-          ).toBe('revoked')
+          expect(await device.revoke()).toBe('revoked')
           await expect(
             client.verifyExternalFile(head.file_id, {
               version_id: published.version_id,
@@ -435,20 +447,12 @@ describe('external representation against the selected real server input', () =>
       }
     }
   )
-  it('a real personal sync advances remote-only metadata without delete/create/upload or client blob GET', async () => {
-    server = await syncServer()
-    const { accountToken } = await server.account('sample-sync@example.invalid')
-    const { vaultId } = await server.vault(accountToken, 'sample-vault')
-    const receiver = await server.device(accountToken, vaultId, 'sample-receiver')
-    const sender = await server.device(accountToken, vaultId, 'sample-sender')
-    const other = server.clientFor(sender.deviceToken, vaultId)
+  it('a real token sync advances remote-only metadata without delete/create/upload or client blob GET', async () => {
+    server = await v2Server()
+    const { spaceId: vaultId, first: receiver, second: sender } = await tokenPair(server)
+    const other = new V2EngineClient(sender.token, { fetch: globalThis.fetch })
     await seed(other, [await create(other, 'Media/sample.bin', 'sample original', 1000)])
-    const client = new SyncClient({
-      baseUrl: server.BASE_URL,
-      token: receiver.deviceToken,
-      fetch: server.fetch,
-      WebSocket: server.WebSocket,
-    }).forVault(vaultId)
+    const client = new V2EngineClient(receiver.token, { fetch: globalThis.fetch })
     const initial = (await client.manifest(null)).items[0]
     const base = {
       fileId: initial.file_id,
@@ -459,10 +463,10 @@ describe('external representation against the selected real server input', () =>
       mtime: initial.mtime,
     }
     const binding = {
-      endpoint: server.BASE_URL,
+      endpoint: server.address,
       vaultId,
       mode: 'personal' as const,
-      principalId: receiver.deviceId,
+      principalId: receiver.id,
       principalType: 'device' as const,
       grantId: null,
       generation: 1,
@@ -542,7 +546,7 @@ describe('external representation against the selected real server input', () =>
     const barrier = new RecoveryBarrier(() => {})
     barrier.activate()
     const engine = new SyncEngine({
-      client: runtime.personalClient(client),
+      client: runtime.engineClient(client),
       fs: runtime.fileSystem(),
       state: runtime.stateStore(),
       selective: selectiveFrom(undefined),

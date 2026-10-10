@@ -96,6 +96,7 @@ export class TokenUi {
   ) {
     // Vue must observe the exposed refs, never proxy IndexedDB/state/runtime host objects.
     markRaw(this)
+    this.registry.finishForgotten(this.secrets)
     this.refresh()
     const activity: Record<string, ConnectionActivity> = {}
     for (const row of this.rows.value) {
@@ -217,22 +218,18 @@ export class TokenUi {
     this.refresh()
   }
   async pause(id: string, paused: boolean): Promise<void> {
-    await this.runtimes.get(id)?.pause(paused)
     this.registry.setPaused(id, paused)
     this.refresh()
+    await this.runtimes.get(id)?.pause(paused)
   }
   async disconnect(id: string): Promise<void> {
     const record = this.registry.records().find((one) => one.id === id)
     if (!record) return
+    this.registry.beginForget(id)
+    this.refresh()
     await this.runtimes.get(id)?.disconnect()
     // Local disconnect is not revocation: other tokens and all local files remain untouched.
-    for (const reference of [record.secretReference, record.pending?.secretReference]) {
-      if (reference) {
-        this.secrets.remove(reference)
-        if (this.secrets.get(reference)) throw new Error('Credential cleanup failed')
-      }
-    }
-    this.registry.forget(id)
+    this.registry.finishForgotten(this.secrets, id)
     this.runtimes.delete(id)
     this.available.value = this.runtimes.size > 0
     this.refresh()

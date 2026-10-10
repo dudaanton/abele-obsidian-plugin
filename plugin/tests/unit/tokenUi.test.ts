@@ -42,7 +42,7 @@ function setup() {
     },
     transport
   )
-  return { ui, registry, keys, transport }
+  return { ui, registry, keys, transport, data }
 }
 const token = encodeAccessToken({
   v: 1,
@@ -104,6 +104,36 @@ it('uses plain reasons for connection errors', () => {
   expect(connectionError({ code: 'revoked' })).toContain('closed')
   expect(connectionError({ code: 'too_large' })).toContain('too large')
   expect(connectionError({ code: 'quota_waiting' })).toContain('full')
+})
+
+it('resumes credential cleanup after disconnect is interrupted, without touching another connection', async () => {
+  const { ui, registry, keys, transport } = setup()
+  await ui.connect(token)
+  await ui.connect(token)
+  const [first, second] = registry.records()
+  ui.bind(first.id, {
+    disconnect: async () => {
+      throw new Error('interrupted')
+    },
+  } as never)
+  await expect(ui.disconnect(first.id)).rejects.toThrow('interrupted')
+  expect(registry.records()).toEqual([second])
+  expect(keys.size).toBe(2)
+  new TokenUi(
+    registry,
+    {
+      get: (id) => keys.get(id) ?? null,
+      set: (id, value) => {
+        keys.set(id, value)
+      },
+      remove: (id) => {
+        keys.delete(id)
+      },
+    },
+    transport
+  )
+  expect(keys.size).toBe(1)
+  expect(keys.get(second.secretReference)).toBeTruthy()
 })
 
 it('resumes the same interrupted connection when the token is pasted again', async () => {

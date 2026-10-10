@@ -30,6 +30,7 @@ import { executablePath, configurationPath, type ExecutablePaths } from './stage
 import type { ReviewSource } from './reviewState'
 import { sourceIdentity } from './reviewState'
 import type { ConsentTarget } from './attachmentConsent'
+import { TokenActions } from './tokenActions'
 
 export interface TokenEngineOptions {
   id: string
@@ -57,6 +58,7 @@ export interface TokenEngineOptions {
 export class TokenEngineRuntime implements ConnectionRuntime, TokenUiRuntime {
   readonly engine: SyncEngine
   readonly client: V2EngineClient
+  readonly actions: TokenActions
   private active = true
   private permitted = true
   private authority: V2Connection | null = null
@@ -118,7 +120,17 @@ export class TokenEngineRuntime implements ConnectionRuntime, TokenUiRuntime {
     this.client.onRemoval = (_id, path) => options.covers(path)
     this.engine = new SyncEngine({
       client: this.client,
-      fs: options.fs,
+      fs: new Proxy(options.fs, {
+        get: (target, name) => {
+          if (name === 'writeAtomic')
+            return async (path: string, bytes: Uint8Array, mtime: number) => {
+              await target.writeAtomic(path, bytes, mtime)
+              this.actions.written(path)
+            }
+          const value = Reflect.get(target, name)
+          return typeof value === 'function' ? value.bind(target) : value
+        },
+      }),
       state: options.state,
       selective: this.selective,
       stillHeld: () => this.active,
@@ -131,6 +143,13 @@ export class TokenEngineRuntime implements ConnectionRuntime, TokenUiRuntime {
       onFail: (error) => options.failed(error),
     })
     this.unstatus = this.engine.onStatus((status) => options.changed(status))
+    this.actions = new TokenActions(this.engine, options.state, this.client)
+    const commit = this.client.commitRaw.bind(this.client)
+    this.client.commitRaw = async (ops, key) => {
+      const outcome = await commit(ops, key)
+      this.actions.recordDeleteResults(this.client, ops, outcome.body.results)
+      return outcome
+    }
     if (options.paused) this.engine.pause()
   }
   async updateSelective(selective: SelectiveSettings): Promise<void> {
@@ -362,6 +381,18 @@ export class TokenEngineRuntime implements ConnectionRuntime, TokenUiRuntime {
   }
   entryFor(path: string) {
     return this.options.state.get(path)
+  }
+  heldDeletes() {
+    return this.engine.heldDeletes()
+  }
+  decideDeletes(kind: 'confirm' | 'restore', ids: readonly string[]) {
+    return this.actions.decideDeletes(kind, ids)
+  }
+  deferred() {
+    return this.engine.deferred()
+  }
+  applyDeferred(ids: readonly string[]) {
+    return this.actions.applyDeferred(ids)
   }
   async opened(path: string): Promise<{ source: ReviewSource; noteId: string }[]> {
     this.assertHeld()

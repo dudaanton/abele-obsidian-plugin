@@ -1,9 +1,9 @@
 import { describe, expect, it, vi } from 'vitest'
-import { EngineRunner } from '@/sync/engineRunner'
+import { TokenActions } from '@/sync/tokenActions'
 import { decidedNotice } from '@/sync/heldDeletes'
 
 function runner() {
-  const runner = new EngineRunner({} as never, {} as never)
+  const runner = new TokenActions({} as never, {} as never, {} as never)
   const client = {}
   const ops = Array.from({ length: 50 }, (_, n) => ({
     op: 'delete',

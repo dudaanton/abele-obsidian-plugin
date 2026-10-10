@@ -75,7 +75,14 @@ const recordSchema = z
   .strict()
 export type TokenConnectionRecord = z.infer<typeof recordSchema>
 const documentSchema = z
-  .object({ version: z.literal(2), selectedId: z.string(), records: z.array(recordSchema) })
+  .object({
+    version: z.literal(2),
+    selectedId: z.string(),
+    records: z.array(recordSchema),
+    cleanup: z
+      .array(z.object({ id, references: z.array(z.string().startsWith(secretPrefix)) }).strict())
+      .optional(),
+  })
   .strict()
 type Document = z.infer<typeof documentSchema>
 const clone = <T>(value: T): T => JSON.parse(JSON.stringify(value)) as T
@@ -190,6 +197,48 @@ export class TokenConnectionRegistry {
     doc.records = doc.records.filter((entry) => entry.id !== localId)
     if (doc.selectedId === localId) doc.selectedId = doc.records[0]?.id ?? ''
     this.write(TOKEN_REGISTRY_KEY, doc)
+  }
+  /** Remove authority and journal credential cleanup in one verified device-local write. */
+  beginForget(localId: string): void {
+    const doc = this.document(),
+      record = this.record(doc, localId)
+    const references = [
+      ...new Set(
+        [record.secretReference, record.pending?.secretReference].filter(
+          (one): one is string => !!one
+        )
+      ),
+    ]
+    doc.cleanup = [...(doc.cleanup ?? []), { id: localId, references }]
+    doc.records = doc.records.filter((one) => one.id !== localId)
+    if (doc.selectedId === localId) doc.selectedId = doc.records[0]?.id ?? ''
+    this.write(TOKEN_REGISTRY_KEY, doc)
+  }
+  finishForgotten(
+    secrets: DeviceTokenSecrets & { remove(reference: string): void },
+    only?: string
+  ): void {
+    const doc = this.document()
+    for (const item of doc.cleanup ?? []) {
+      if (only !== undefined && item.id !== only) continue
+      if (
+        doc.records.some(
+          (one) =>
+            one.id === item.id ||
+            item.references.includes(one.secretReference) ||
+            (!!one.pending && item.references.includes(one.pending.secretReference))
+        )
+      )
+        throw recovery()
+      for (const reference of item.references) {
+        secrets.remove(reference)
+        if (secrets.get(reference)) throw new Error('Credential cleanup failed')
+      }
+    }
+    if (doc.cleanup?.length) {
+      doc.cleanup = only === undefined ? [] : doc.cleanup.filter((one) => one.id !== only)
+      this.write(TOKEN_REGISTRY_KEY, doc)
+    }
   }
   setPaused(localId: string, paused: boolean): void {
     const doc = this.document(),
