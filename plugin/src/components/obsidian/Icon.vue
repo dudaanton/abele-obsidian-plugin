@@ -5,6 +5,7 @@
     class="abele-obsidian-icon"
     :type="isInteractive ? 'button' : undefined"
     :disabled="isInteractive ? disabled : undefined"
+    :aria-disabled="isInteractive && disabled ? 'true' : undefined"
     :aria-label="isInteractive ? accessibleName : undefined"
     :aria-hidden="!isInteractive ? true : undefined"
     :aria-pressed="isInteractive ? active : undefined"
@@ -112,6 +113,10 @@ watch(accessibleName, updateTooltip)
     color: var(--text-faint);
     cursor: default;
   }
+  &_disabled.clickable-icon:hover {
+    color: var(--text-faint);
+    background-color: transparent;
+  }
 
   &_with-bg {
     background-color: var(--background-secondary);
@@ -121,13 +126,16 @@ watch(accessibleName, updateTooltip)
     color: var(--text-accent);
     background-color: var(--background-modifier-active-hover);
   }
-  &:not(.abele-obsidian-icon_disabled):not(.abele-obsidian-icon_no-hover) {
+  // Only an icon that does something reacts to the pointer. A picture-only icon is a span with
+  // no `clickable-icon`, and a disabled one carries Obsidian's own `aria-disabled`, whose rule
+  // already keeps the hover background off; neither may light up.
+  &.clickable-icon:not(.abele-obsidian-icon_disabled):not(.abele-obsidian-icon_no-hover) {
     cursor: var(--cursor-link);
   }
   // Only where there is a pointer to hover with, as Obsidian's `.clickable-icon` does: a phone
   // keeps `:hover` on whatever was tapped last, so the highlight stayed behind after a tap.
   @media (hover: hover) {
-    &:not(.abele-obsidian-icon_disabled):not(.abele-obsidian-icon_no-hover):hover {
+    &.clickable-icon:not(.abele-obsidian-icon_disabled):not(.abele-obsidian-icon_no-hover):hover {
       color: var(--icon-color-hover);
       background-color: var(--background-modifier-hover);
     }
