@@ -46,7 +46,7 @@ async function annotateOnPhone(
     unexpose = exposeToPhone(port)
     return await evalLong(
       `(async () => {
-      const response = await requestUrl({url:${JSON.stringify('http://127.0.0.1:')} + ${port} + '/${token}', method:'GET'})
+      const response = await requestUrl({url:${JSON.stringify(`http://127.0.0.1:${port}/${token}`)}, method:'GET'})
       const {snapshot, violations, png} = response.json
       const artifacts = []
       await (${annotateDesign.toString()})(snapshot, violations, png, (name, data) => artifacts.push({name, data}))
