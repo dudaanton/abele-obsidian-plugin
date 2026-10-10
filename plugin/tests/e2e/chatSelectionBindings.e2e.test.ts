@@ -53,7 +53,7 @@ const reopen = () =>
 for (const layout of onPhone() ? ['native phone'] : ['desktop', 'phone layout']) {
   describe.skipIf(!available)(`${layout}: explicit card binding`, () => {
     let size: number[] | undefined
-    let saved: unknown
+    let saved: string | undefined
     beforeAll(async () => {
       if (layout === 'phone layout') {
         size = evalJson('require("@electron/remote").getCurrentWindow().getContentSize()')
@@ -69,7 +69,7 @@ for (const layout of onPhone() ? ['native phone'] : ['desktop', 'phone layout'])
       await evalLong(`(async()=>{${BINDING_RESET}return 'reset'})()`, 45000)
     })
     afterAll(async () => {
-      if (saved) await evalLong(`(async()=>{${BINDING_CLEANUP}return 'clean'})()`, 45000)
+      if (saved) await evalLong(`(async()=>{window.__bindingOld=${saved};${BINDING_CLEANUP}return 'clean'})()`, 45000)
       if (size) {
         evalRaw(
           `require("@electron/remote").getCurrentWindow().setContentSize(${size[0]},${size[1]})`
