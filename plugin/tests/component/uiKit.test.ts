@@ -615,6 +615,46 @@ describe('button content', () => {
   })
 })
 
+describe('Button parts and states', () => {
+  it('names its parts and its kind', () => {
+    const view = mount(Button, {
+      props: {
+        text: 'Save',
+        tooltip: 'Keep it',
+        icon: 'save',
+        trailingIcon: 'arrow-up-right',
+        accent: true,
+      },
+    })
+
+    expect(view.classes()).toEqual(
+      expect.arrayContaining(['abele-obsidian-button', 'mod-cta', 'abele-obsidian-button_accent'])
+    )
+    expect(view.find('.abele-obsidian-button__icon').exists()).toBe(true)
+    expect(view.find('.abele-obsidian-button__label').text()).toBe('Save')
+    expect(view.find('.abele-obsidian-button__trailing-icon').exists()).toBe(true)
+  })
+
+  it('says it is busy while loading, and does not pass a second press on', async () => {
+    const view = mount(Button, { props: { text: 'Connect', tooltip: 'Connect', loading: true } })
+
+    expect(view.attributes('aria-busy')).toBe('true')
+    expect(view.find('.abele-obsidian-button__icon_loading').exists()).toBe(true)
+    await view.trigger('click')
+    expect(view.emitted('click')).toBeUndefined()
+
+    await view.setProps({ loading: false })
+    await view.trigger('click')
+    expect(view.emitted('click')).toHaveLength(1)
+  })
+
+  it('stands as wide as its place when asked', () => {
+    const view = mount(Button, { props: { text: 'Connect', tooltip: 'Connect', block: true } })
+
+    expect(view.classes()).toContain('abele-obsidian-button_block')
+  })
+})
+
 describe('tooltips', () => {
   // Obsidian's `setTooltip` shows the text on hover and puts it on `aria-label`, so this is
   // both the tooltip and what a screen reader announces.
