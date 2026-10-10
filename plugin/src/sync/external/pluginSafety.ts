@@ -281,8 +281,8 @@ export async function projectionEvidence(
     dirty = false
   }
   let evidence: string | null = null
-  const stat = async (path: string) => {
-    const file = indexed.get(path)
+  const stat = async (path: string, disk = false) => {
+    const file = disk ? null : app.vault.getFileByPath(path)
     if (file) return { type: 'file', ...file.stat }
     try {
       return await readOnly(() => app.vault.adapter.stat(path))
@@ -348,7 +348,10 @@ export async function projectionEvidence(
           : new Uint8Array(read, 0, Math.min(read.byteLength, MAX_PROJECTION_BYTES))
     } catch (cause) {
       assertCurrent()
-      if ((await stat(path)) === null) return
+      if ((await stat(path, true)) === null) {
+        inventory.delete(path)
+        return
+      }
       throw cause
     }
     assertCurrent()

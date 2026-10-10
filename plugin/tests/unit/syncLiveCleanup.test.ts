@@ -4,7 +4,7 @@ import { TokenSyncLive } from '../e2e/helpers/tokenSyncLive'
 import { spawnSyncServer } from '../e2e/helpers/syncServer'
 import { exposeToPhone } from '../e2e/helpers/phone'
 import { onPhone } from '../e2e/helpers/target'
-import { mkdtempSync } from 'node:fs'
+import { mkdtempSync, mkdirSync } from 'node:fs'
 import { resolve, join } from 'node:path'
 vi.mock('../e2e/helpers/syncVault', () => ({ waitFor: vi.fn() }))
 vi.mock('../e2e/helpers/syncServer', () => ({
@@ -13,7 +13,11 @@ vi.mock('../e2e/helpers/syncServer', () => ({
   spawnSyncServer: vi.fn(),
 }))
 vi.mock('../e2e/helpers/obsidianCli', () => ({ vaultCli: vi.fn() }))
-vi.mock('../e2e/helpers/phone', () => ({ PHONE_VAULT: 'phone', exposeToPhone: vi.fn() }))
+vi.mock('../e2e/helpers/phone', async (original) => ({
+  ...(await original<typeof import('../e2e/helpers/phone')>()),
+  PHONE_VAULT: 'phone',
+  exposeToPhone: vi.fn(),
+}))
 vi.mock('../e2e/helpers/target', () => ({ onPhone: vi.fn(() => false) }))
 afterEach(() => {
   vi.unstubAllEnvs()
@@ -22,6 +26,7 @@ afterEach(() => {
 
 it('retains every phone reverse through the case and checks WebSockets on the device', async () => {
   vi.mocked(onPhone).mockReturnValue(true)
+  mkdirSync(resolve('../.scratch'), { recursive: true })
   const live = new TokenSyncLive(false)
   ;(live as unknown as { work: string }).work = mkdtempSync(
     join(resolve('../.scratch'), 'reverse-case-')
@@ -65,6 +70,7 @@ it('retains every phone reverse through the case and checks WebSockets on the de
 
 it('shares one teardown when a timeout hook and its late body both close the same fixture', async () => {
   vi.stubEnv('OBSIDIAN_TEST_VAULT', 'primary-pool')
+  mkdirSync(resolve('../.scratch'), { recursive: true })
   const live = new TokenSyncLive(false)
   let release!: () => void
   const waiting = new Promise<void>((resolve) => {
@@ -126,6 +132,7 @@ it('attempts both pool resets and restores each pool even when the first reset f
 
 it('names discovered connections and pending paths without resetting pre-existing state', async () => {
   vi.stubEnv('OBSIDIAN_TEST_VAULT', 'primary-pool')
+  mkdirSync(resolve('../.scratch'), { recursive: true })
   const live = new TokenSyncLive(false)
   vi.spyOn(live.primary, 'rows').mockReturnValue([
     { id: 'existing-id', status: 'offline', address: 'https://sync.example', paused: false },
@@ -140,6 +147,7 @@ it('names discovered connections and pending paths without resetting pre-existin
 
 it('reports both cleanup failures while still restoring the lease', async () => {
   vi.stubEnv('OBSIDIAN_TEST_VAULT', 'primary-pool')
+  mkdirSync(resolve('../.scratch'), { recursive: true })
   const live = new TokenSyncLive(false)
   vi.spyOn(live.primary, 'resetTokenState').mockRejectedValue(new Error('polite blocked'))
   vi.spyOn(live.primary, 'forceResetTokenState').mockRejectedValue(

@@ -4,6 +4,17 @@ import { ObsidianFileSystem } from '@/sync/ObsidianFileSystem'
 import { buildFakeVault } from '../helpers/fakeVault'
 import { tokenHostFixture } from '../helpers/tokenHostFixture'
 
+it('normalizes fractional inventory timestamps exactly like a fresh config listing', async () => {
+  const app = buildFakeVault([{ path: '.obsidian/app.json', content: '{}' }])
+  const info = { path: '.obsidian/app.json', size: 2, mtime: 1234.75 }
+  const fs = new ObsidianFileSystem(app as never, {
+    startupInventory: () => new Map([[info.path, info]]),
+  })
+  const files = []
+  for await (const file of fs.list()) files.push(file)
+  expect(files.find((file) => file.path === info.path)?.mtime).toBe(1235)
+})
+
 it('settles first sync on a warm 12k-file vault without reading unrelated content', async () => {
   const scope = { kind: 'folder', id: 'sample-root', path: '/' }
   const transport = vi.fn<typeof fetch>(async (input) =>

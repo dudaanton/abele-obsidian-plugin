@@ -23,7 +23,7 @@ describe('live GitHub credential changes during code search', () => {
     try {
       restoreGithub()
     } finally {
-      gh?.stop()
+      await gh?.stop()
     }
   })
 

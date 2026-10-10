@@ -7,6 +7,23 @@ import { useVault } from '../helpers/testEnv'
 afterEach(() => vi.restoreAllMocks())
 
 describe('bounded persisted external projection inspection', () => {
+  it.each(['delete', 'rename'])(
+    'skips a captured indexed path after %s while listing directories',
+    async (action) => {
+      const app = useVault([{ path: 'Notes/gone.md', content: 'ordinary' }])
+      const list = app.vault.adapter.list.bind(app.vault.adapter)
+      vi.spyOn(app.vault.adapter, 'list').mockImplementation(async (path) => {
+        const result = await list(path)
+        if (path === '') {
+          if (action === 'delete')
+            await app.vault.delete(app.vault.getFileByPath('Notes/gone.md')!, true)
+          else await app.vault.adapter.rename('Notes/gone.md', 'Notes/renamed.md')
+        }
+        return result
+      })
+      await expect(projectionEvidence(app as never)).resolves.toBeNull()
+    }
+  )
   it('cancels a pending read, checkpoints completed evidence and resumes without rereading it', async () => {
     const app = useVault(
       Array.from({ length: 12 }, (_, index) => ({ path: `Notes/${index}.md`, content: 'ordinary' }))

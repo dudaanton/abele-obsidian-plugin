@@ -48,7 +48,7 @@ describe.skipIf(!available)('searching a GitHub tab', () => {
     try {
       restoreGithub()
     } finally {
-      gh?.stop()
+      await gh?.stop()
     }
   }, 60_000)
 

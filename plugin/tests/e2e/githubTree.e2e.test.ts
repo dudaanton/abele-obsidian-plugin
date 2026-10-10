@@ -101,7 +101,7 @@ describe.skipIf(!available)('folders of a repository in a GitHub tab', () => {
          app.saveLocalStorage(${JSON.stringify(WIDTH_KEY)}, ${panelWidth.replace(/^=> /, '')})`
       )
     } finally {
-      gh?.stop()
+      await gh?.stop()
     }
   })
 

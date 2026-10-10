@@ -48,7 +48,7 @@ for (const mobile of [false, true]) {
         try {
           restoreGithub()
         } finally {
-          gh?.stop()
+          await gh?.stop()
           if (size) {
             evalRawIdempotent(
               `(() => { require('@electron/remote').getCurrentWindow().setContentSize(${size[0]}, ${size[1]}); return 'ok' })()`

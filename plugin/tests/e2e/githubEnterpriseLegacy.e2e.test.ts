@@ -63,7 +63,7 @@ for (const mode of ['legacy', 'no-raw'] as const) {
         })()`)
         restoreGithub()
       } finally {
-        gh?.stop()
+        await gh?.stop()
       }
     }, 60_000)
 

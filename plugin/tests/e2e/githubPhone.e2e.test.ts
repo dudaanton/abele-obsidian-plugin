@@ -354,7 +354,7 @@ describe.skipIf(!available)('a pull request on a phone', () => {
     try {
       restoreGithub()
     } finally {
-      gh?.stop()
+      await gh?.stop()
     }
     // The window first: leaving emulation reloads the app at whatever size the window is.
     if (size[0]) await setWindowSize(size[0], size[1])

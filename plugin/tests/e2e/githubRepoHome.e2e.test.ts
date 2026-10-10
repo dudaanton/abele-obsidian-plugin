@@ -83,7 +83,7 @@ describe.skipIf(!available)("a repository's front page", () => {
     try {
       restoreGithub()
     } finally {
-      gh?.stop()
+      await gh?.stop()
     }
   })
 

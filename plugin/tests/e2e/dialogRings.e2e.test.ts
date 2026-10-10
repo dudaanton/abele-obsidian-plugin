@@ -19,7 +19,13 @@ import { MESSAGE_ACTIONS_SETUP, MESSAGE_ACTIONS_CLEANUP } from './helpers/messag
 import { shotDir } from './helpers/shots'
 import { CATALOGUE_PROBE } from './helpers/designCatalogueProbe'
 import { outwardBoxShadowReach } from '../helpers/focusRingPaint'
-import { evalAsync, PRELUDE as BASE_PRELUDE, startFakeGithub, enableGithub, restoreGithub } from './helpers/githubLive'
+import {
+  evalAsync,
+  PRELUDE as BASE_PRELUDE,
+  startFakeGithub,
+  enableGithub,
+  restoreGithub,
+} from './helpers/githubLive'
 import { openBasePicker, basePickerGeometry } from './helpers/githubBasePicker'
 import { SELECTION_PICKER_OPEN, SELECTION_PICKER_CLOSE } from './helpers/selectionScriptPicker'
 import {
@@ -418,7 +424,10 @@ describe.skipIf(!available)('GitHub comparison base focus', () => {
       })()`)
       expect(result.clipped).toEqual([])
       expect(result.over).toEqual([])
-    } finally { restoreGithub(); gh.stop() }
+    } finally {
+      restoreGithub()
+      await gh.stop()
+    }
   }, 90000)
 })
 

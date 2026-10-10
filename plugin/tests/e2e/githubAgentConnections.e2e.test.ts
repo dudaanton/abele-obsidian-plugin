@@ -38,7 +38,7 @@ describe.skipIf(!available)('execution-agent GitHub connection boundary', () => 
       )
       restoreGithub()
     } finally {
-      gh?.stop()
+      await gh?.stop()
     }
   })
 

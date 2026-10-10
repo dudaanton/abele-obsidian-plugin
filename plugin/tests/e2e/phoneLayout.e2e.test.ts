@@ -1830,7 +1830,7 @@ describe.skipIf(!available)('the GitHub base picker on a phone', () => {
     try {
       restoreGithub()
     } finally {
-      gh?.stop()
+      await gh?.stop()
     }
     if (size?.[0]) await setWindowSize(size[0], size[1])
     await setMobile(false)

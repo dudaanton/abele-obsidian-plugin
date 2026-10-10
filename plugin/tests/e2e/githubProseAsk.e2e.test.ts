@@ -55,7 +55,7 @@ describe.skipIf(!available)('words selected in a discussion comment', () => {
       })()`)
       restoreGithub()
     } finally {
-      gh?.stop()
+      await gh?.stop()
     }
   }, 60_000)
 

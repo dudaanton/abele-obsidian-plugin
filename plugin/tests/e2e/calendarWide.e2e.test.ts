@@ -297,7 +297,7 @@ describe.skipIf(!available)('a wide entry in the sidebar timeline', () => {
     } catch (e) {
       console.warn('[abele e2e] wide calendar not restored', e)
     }
-    server?.stop()
+    await server?.stop()
     // The window first: leaving emulation reloads the app at whatever size the window is.
     if (size[0]) await setWindowSize(size[0], size[1])
     await reloadApp('app.emulateMobile(false)')

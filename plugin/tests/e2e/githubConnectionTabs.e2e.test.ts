@@ -33,7 +33,7 @@ describe.skipIf(!available)('connection-aware GitHub tabs', () => {
     try {
       restoreGithub()
     } finally {
-      gh?.stop()
+      await gh?.stop()
     }
   })
 

@@ -34,7 +34,7 @@ describe.skipIf(!available)('file blame on a phone', () => {
     try {
       restoreGithub()
     } finally {
-      gh?.stop()
+      await gh?.stop()
     }
     if (size) {
       evalRaw(

@@ -376,9 +376,11 @@ export class ObsidianFileSystem implements FileSystem {
       const inventory = this.inventoryConsumed ? undefined : this.startupInventory?.()
       this.inventoryConsumed = true
       this.configInventory = inventory
-        ? [...inventory.values()].filter(
-            (info) => info.path.startsWith(this.configDir + '/') && !isAdapterTemp(info.path)
-          )
+        ? [...inventory.values()]
+            .filter(
+              (info) => info.path.startsWith(this.configDir + '/') && !isAdapterTemp(info.path)
+            )
+            .map((info) => ({ ...info, mtime: stamp(info.mtime) }))
         : await this.readConfigInventory()
     }
     for (const info of this.configInventory) yield await this.told(info, true)

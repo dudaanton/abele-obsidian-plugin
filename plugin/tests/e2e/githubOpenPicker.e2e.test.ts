@@ -113,7 +113,7 @@ describe.skipIf(!available)('the Open GitHub link or item picker', () => {
     try {
       restoreGithub()
     } finally {
-      gh?.stop()
+      await gh?.stop()
     }
   })
 

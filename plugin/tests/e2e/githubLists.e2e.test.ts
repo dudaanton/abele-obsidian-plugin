@@ -72,7 +72,7 @@ describe.skipIf(!available)("a repository's lists", () => {
     try {
       restoreGithub()
     } finally {
-      gh?.stop()
+      await gh?.stop()
     }
   })
 

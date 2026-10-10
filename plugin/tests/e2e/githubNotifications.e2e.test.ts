@@ -115,7 +115,7 @@ describe.skipIf(!available)('GitHub notifications', () => {
       closeAll()
       restoreGithub()
     } finally {
-      gh?.stop()
+      await gh?.stop()
     }
   })
 
@@ -306,7 +306,7 @@ describe.skipIf(!available || onPhone())('GitHub notifications on a phone', () =
       closeAll()
       restoreGithub()
     } finally {
-      gh?.stop()
+      await gh?.stop()
     }
     if (size[0]) await setWindowSize(size[0], size[1])
     await reloadApp('app.emulateMobile(false)')

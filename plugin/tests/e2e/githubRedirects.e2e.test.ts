@@ -13,27 +13,30 @@ const available = isObsidianRunning() && hasTestApi()
 describe.skipIf(!available)('GitHub redirect credential confinement', () => {
   let child: ChildProcess
   let origin: string
-  const unexpose: (() => void)[] = []
+  const unexpose: (() => Promise<void>)[] = []
   beforeAll(async () => {
     child = spawn(process.execPath, [join(__dirname, 'helpers/redirectServer.mjs')], {
       stdio: ['ignore', 'pipe', 'inherit'],
     })
-    origin = await new Promise<string>((resolve, reject) => {
+    const ports = await new Promise<number[]>((resolve, reject) => {
       const timer = setTimeout(() => reject(new Error('redirect server did not start')), 5000)
       child.stdout!.on('data', (chunk: Buffer) => {
         const m = /listening (\d+) (\d+)/.exec(chunk.toString())
         if (m) {
           clearTimeout(timer)
-          if (onPhone())
-            for (const port of [Number(m[1]), Number(m[2])]) unexpose.push(exposeToPhone(port))
-          resolve(`http://127.0.0.1:${m[1]}`)
+          resolve([Number(m[1]), Number(m[2])])
         }
       })
     })
+    if (onPhone()) for (const port of ports) unexpose.push(await exposeToPhone(port))
+    origin = `http://127.0.0.1:${ports[0]}`
   })
-  afterAll(() => {
-    for (const stop of unexpose) stop()
-    child?.kill()
+  afterAll(async () => {
+    try {
+      await Promise.all(unexpose.map((stop) => stop()))
+    } finally {
+      child?.kill()
+    }
   })
 
   it('records requestUrl redirect behaviour without revealing credentials', async () => {

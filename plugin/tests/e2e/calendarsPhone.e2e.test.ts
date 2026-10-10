@@ -277,7 +277,7 @@ describe.skipIf(!available)('calendars on a phone', () => {
     } catch (e) {
       console.warn('[abele e2e] calendars not restored', e)
     }
-    server?.stop()
+    await server?.stop()
     // The window first: leaving emulation reloads the app at whatever size the window is.
     if (size[0]) await setWindowSize(size[0], size[1])
     await reload('app.emulateMobile(false)')

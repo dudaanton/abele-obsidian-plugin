@@ -36,7 +36,7 @@ describe.skipIf(!available)('exact pinned-base GitHub links', () => {
       try {
         restoreGithub()
       } finally {
-        gh?.stop()
+        await gh?.stop()
       }
     }
   })

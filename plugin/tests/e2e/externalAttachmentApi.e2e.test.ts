@@ -11,7 +11,7 @@ import { onPhone, targets } from './helpers/target'
 targets('desktop', 'phone')
 const folder = 'sample-attachment-roundtrip-' + randomBytes(16).toString('hex')
 let layout: unknown, fixture: any, url: string, reader: any, head: any
-let closeReverse: (() => void) | undefined
+let closeReverse: (() => Promise<void>) | undefined
 let folderOwned = false
 const content = 'sample portable attachment'
 const TRANSFER_TIMEOUT = 600_000
@@ -91,7 +91,7 @@ beforeAll(async () => {
       { expected_revision: 0, revoke: true }
     )
   url = await fixture.t.app.listen({ host: '127.0.0.1', port: 0 })
-  if (onPhone()) closeReverse = exposeToPhone(Number(new URL(url).port))
+  if (onPhone()) closeReverse = await exposeToPhone(Number(new URL(url).port))
   layout = JSON.parse(await evalLong('JSON.stringify(app.workspace.getLayout())'))
   await evalLong(`app.vault.createFolder(${JSON.stringify(folder)}).then(()=>true)`)
   folderOwned = true
@@ -104,8 +104,11 @@ afterAll(async () => {
         `(async()=>{const entry=app.vault.getAbstractFileByPath(${JSON.stringify(folder)});if(entry)await app.vault.delete(entry,true);await app.workspace.changeLayout(${JSON.stringify(layout)});return true})()`
       )
   } finally {
-    closeReverse?.()
-    await fixture?.close()
+    try {
+      await closeReverse?.()
+    } finally {
+      await fixture?.close()
+    }
   }
 }, TRANSFER_TIMEOUT)
 

@@ -123,7 +123,7 @@ describe.skipIf(!available)('GitHub links in a note', () => {
       })()`)
       restoreGithub()
     } finally {
-      gh?.stop()
+      await gh?.stop()
     }
   }, 60_000)
 

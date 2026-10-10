@@ -66,7 +66,7 @@ describe.skipIf(!available)('single external occurrence completion in the runnin
       )
   })
   afterAll(async () => {
-    server?.stop()
+    await server?.stop()
     if (!onPhone()) {
       if (size.length)
         evalRaw(

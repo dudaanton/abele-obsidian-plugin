@@ -120,7 +120,7 @@ describe.skipIf(!available)('a GitHub tab', () => {
       })()`)
       restoreGithub()
     } finally {
-      gh?.stop()
+      await gh?.stop()
     }
   }, 60_000)
 
