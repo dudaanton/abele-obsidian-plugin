@@ -172,7 +172,7 @@ export function captureDesign(selector: string, options: CaptureOptions = {}): D
       const native =
         !nativeReference &&
         el.matches(
-          '.search-input-container input, select.dropdown:not(.is-measuring), .abele-tree-item__self, .abele-tree-item__text, .abele-list-row__line'
+          '.search-input-container input, select.dropdown:not(.is-measuring), .abele-tree-item__self, .abele-tree-item__text'
         )
           ? nativeStyle(el)
           : undefined
@@ -297,7 +297,7 @@ export function captureDesign(selector: string, options: CaptureOptions = {}): D
         ],
         nativePadding: native && el.matches('input, select') ? insets(native) : undefined,
         nativeRow:
-          native && el.matches('.abele-tree-item__self, .abele-list-row__line')
+          native && el.matches('.abele-tree-item__self')
             ? { padding: insets(native), lineHeight: number(native.lineHeight) || undefined }
             : undefined,
         nativeFont:
@@ -426,6 +426,13 @@ export function captureDesign(selector: string, options: CaptureOptions = {}): D
     if (!variant || (complete(metrics) && !complete(variant)))
       snapshot.native.variants![host.kind!] = metrics
   }
+  // Gutterless list rows use the plain native section-row geometry, not a result/file
+  // row's reserved disclosure gutter. Keep the complete result reference for other metrics.
+  const plainRow = snapshot.native?.variants?.['backlinks-section']
+  if (plainRow)
+    for (const element of elements)
+      if (element.kind === 'list-row' && element.id === element.row)
+        element.nativeRow = { padding: plainRow.padding, lineHeight: plainRow.lineHeight }
   return snapshot
 }
 export const designCaptureExpression = (selector: string, options: CaptureOptions = {}): string =>

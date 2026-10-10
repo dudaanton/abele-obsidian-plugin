@@ -334,7 +334,7 @@ describe('renderer design capture', () => {
       s.elements.find((e) => e.selector.includes('abele-tree-item__self'))?.nativeRow
     ).toBeDefined()
   })
-  it('compares list padding with its independent host family, not a native result disclosure gutter', () => {
+  it('compares gutterless lists with the measured native section family, not a result disclosure gutter', () => {
     fixture()
     document.querySelector('#surface')!.innerHTML =
       '<article class="tree-item abele-list-row"><div class="tree-item-self abele-list-row__line"><span class="abele-list-row__title-line">Sample record</span></div></article>'
@@ -342,7 +342,7 @@ describe('renderer design capture', () => {
       .querySelector('#surface')!
       .insertAdjacentHTML(
         'beforebegin',
-        '<div class="backlink-pane"><div class="tree-item-self search-result-file-title"><span class="collapse-icon"><svg></svg></span><div class="tree-item-inner">Source entry</div></div></div>'
+        '<div class="backlink-pane"><div class="tree-item-self"><div class="tree-item-inner">Linked entries</div></div><div class="tree-item"><div class="tree-item-self search-result-file-title"><span class="collapse-icon"><svg></svg></span><div class="tree-item-inner">Source entry</div></div></div></div>'
       )
     for (const el of document.querySelectorAll('*'))
       if (!vi.isMockFunction(el.getBoundingClientRect))
@@ -357,7 +357,9 @@ describe('renderer design capture', () => {
             : el.matches('.tree-item-self')
               ? el.matches('.abele-list-row__line')
                 ? '12px'
-                : '8px'
+                : el.matches('.backlink-pane > .tree-item-self')
+                  ? '8px'
+                  : '24px'
               : '0px',
         }) as CSSStyleDeclaration
     )
@@ -376,6 +378,8 @@ describe('renderer design capture', () => {
         }),
       ])
     )
+    row.padding[3] = 8
+    expect(lintDesign(s).filter((v) => v.rule === 'native-parity')).toEqual([])
     expect(document.querySelectorAll('[data-design-native-probe]')).toHaveLength(0)
   })
   it('captures only painted header title fragments so a close button over blank header space is not an overlap', () => {
