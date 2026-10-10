@@ -4,7 +4,7 @@ import { beforeEach, afterEach, describe, expect, it } from 'vitest'
 import { TokenSyncLive } from './helpers/tokenSyncLive'
 import { fixtureFetch } from './helpers/syncServer'
 import { onPhone, targets } from './helpers/target'
-import { MOBILE_MAX_FILE_BYTES } from '../../src/sync/connection'
+import { MOBILE_MAX_FILE_BYTES } from '../../src/sync/connectionDefaults'
 import { allowFixtureAttachment } from './helpers/externalAttachmentFixture'
 
 targets('desktop', 'phone')

@@ -21,6 +21,7 @@ import { serverUrlProblem } from '@abele/sync-protocol'
 import { DEVICE_SECRET_PREFIX, isDeviceSecretId } from '@/secrets/deviceSecret'
 import { readLedgerId, type LocalStorage } from './ledgerId'
 import { joinFrom, type JoinState } from './joinState'
+import { MOBILE_MAX_FILE_BYTES } from './connectionDefaults'
 
 export type { JoinState } from './joinState'
 
@@ -31,7 +32,7 @@ export const CONNECTION_KEY = 'abele-sync-connection'
  * What a phone syncs at most unless it was told otherwise. A vault's video and its scans are
  * what fill a phone up, and a device that skips them still has every note.
  */
-export const MOBILE_MAX_FILE_BYTES = 50 * 1024 * 1024
+export { MOBILE_MAX_FILE_BYTES } from './connectionDefaults'
 
 export interface DeviceConnection {
   /**

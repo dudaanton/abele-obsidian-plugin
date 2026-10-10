@@ -15,6 +15,7 @@ it('records exposed methods without invoking native or adapter operations', () =
     readFile: 'function',
     appendFile: 'function',
     stat: 'function',
+    readFileInChunks: 'undefined',
   })
   expect(result.adapterMethods.readBinaryRange).toBe('function')
   expect(result.readFileOffsetLength).toBe('unknown')
@@ -32,4 +33,22 @@ it('reports absent bridges and tolerates unavailable property getters', () => {
   expect(
     phoneCapabilities({ Plugins: { Filesystem: filesystem } }, {}).filesystemMethods.readFile
   ).toBe('undefined')
+})
+
+it('records chunk reads and native header version metadata without reading files', () => {
+  const readFileInChunks = vi.fn()
+  const header = { name: 'Filesystem', version: '6.1.0', methods: [{ name: 'readFileInChunks' }] }
+  const result = phoneCapabilities(
+    {
+      getPlatform: () => 'ios',
+      PluginHeaders: [header],
+      Plugins: { Filesystem: { readFileInChunks } },
+    },
+    {}
+  )
+  expect(result.platform).toBe('ios')
+  expect(result.filesystemVersion).toBe('6.1.0')
+  expect(result.filesystemHeader).toEqual(header)
+  expect(result.filesystemMethods.readFileInChunks).toBe('function')
+  expect(readFileInChunks).not.toHaveBeenCalled()
 })
