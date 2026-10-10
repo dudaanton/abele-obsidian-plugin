@@ -7,7 +7,7 @@ import type { CommitOp, V2ManifestItem } from '@abele/sync-protocol'
 import { vaultCli } from './obsidianCli'
 import { SyncDriver } from './syncDriver'
 import { spawnSyncServer, siblingMissing, fixtureFetch, type SyncServer } from './syncServer'
-import { PHONE_VAULT, exposeToPhone } from './phone'
+import { PHONE_VAULT, exposeToPhone, waitForPhoneRoute } from './phone'
 import { onPhone } from './target'
 import { waitFor } from './syncVault'
 import { syncFixtureRules } from './syncFixtureRules'
@@ -23,7 +23,7 @@ export class TokenSyncLive {
   readonly primary: SyncDriver
   readonly peer?: SyncDriver
   readonly servers: SyncServer[] = []
-  private readonly reverses: (() => void)[] = []
+  private readonly reverses: (() => Promise<void>)[] = []
   readonly ids = new Map<SyncDriver, string[]>()
   private readonly saved = new Map<SyncDriver, { ignore: string | null; file: string | null }>()
   private work = ''
@@ -95,11 +95,13 @@ export class TokenSyncLive {
         this.reverses.push(await exposeToPhone(Number(url.port)))
       // Check the actual device route, including WebSocket upgrades, before using this token.
       const token = AccessClient.fromToken(server.rootToken, { fetch: fixtureFetch }).token
-      await this.primary.long(
-        'phone fixture WebSocket route',
-        `await new Promise((resolve,reject)=>{const socket=new WebSocket(${JSON.stringify(server.url.replace(/^http/, 'ws') + '/v2/events')});const timer=setTimeout(()=>finish(new Error('Fixture WebSocket did not answer through the phone route')),10000);function finish(error){clearTimeout(timer);socket.close();error?reject(error):resolve(true)}socket.onopen=()=>socket.send(JSON.stringify({token:${JSON.stringify(token.key)}}));socket.onerror=()=>finish(new Error('Fixture WebSocket is unreachable from the phone'));socket.onmessage=event=>{try{if(JSON.parse(event.data).type==='changes')finish()}catch(error){finish(error)}}});return true`,
-        true,
-        20000
+      await waitForPhoneRoute(() =>
+        this.primary.long(
+          'phone fixture WebSocket route',
+          `await new Promise((resolve,reject)=>{const socket=new WebSocket(${JSON.stringify(server.url.replace(/^http/, 'ws') + '/v2/events')});const timer=setTimeout(()=>finish(new Error('Fixture WebSocket did not answer through the phone route')),5000);function finish(error){clearTimeout(timer);socket.close();error?reject(error):resolve(true)}socket.onopen=()=>socket.send(JSON.stringify({token:${JSON.stringify(token.key)}}));socket.onerror=()=>finish(new Error('Fixture WebSocket is unreachable from the phone'));socket.onmessage=event=>{try{if(JSON.parse(event.data).type==='changes')finish()}catch(error){finish(error)}}});return true`,
+          true,
+          7000
+        )
       )
     }
     return server
@@ -238,7 +240,7 @@ export class TokenSyncLive {
     this.saved.clear()
     for (const stop of this.reverses.splice(0))
       try {
-        stop()
+        await stop()
       } catch (error) {
         failures.push(error)
       }

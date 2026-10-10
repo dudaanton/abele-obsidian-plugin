@@ -13,7 +13,7 @@ import { exposeToPhone } from './phone'
 
 export interface CalendarProcess {
   origin: string
-  stop(): void
+  stop(): Promise<void>
 }
 
 export async function startCalendarProcess(ics: string): Promise<CalendarProcess> {
@@ -46,11 +46,11 @@ export async function startCalendarProcess(ics: string): Promise<CalendarProcess
     child.on('exit', (code) => reject(new Error(`the fake calendar exited with ${code}`)))
   })
   // On a real phone the same address has to lead here: see `exposeToPhone`.
-  const unexpose = onPhone() ? exposeToPhone(port) : () => {}
+  const unexpose = onPhone() ? await exposeToPhone(port) : () => {}
   return {
     origin: `http://127.0.0.1:${port}`,
-    stop: () => {
-      unexpose()
+    stop: async () => {
+      await unexpose()
       child.kill()
       rmSync(dir, { recursive: true, force: true })
     },

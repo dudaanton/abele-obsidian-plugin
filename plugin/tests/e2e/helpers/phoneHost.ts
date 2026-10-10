@@ -301,7 +301,7 @@ export async function installBuild(pluginDir: string): Promise<string> {
 export const SHOTS = process.env.ABELE_PHONE_SHOTS ?? shotDir('abele-iphone')
 
 let server: Server | undefined
-let unexpose: (() => void) | undefined
+let unexpose: (() => Promise<void>) | undefined
 
 /**
  * Every request the page makes of the host, when it arrived and how the driver answered, one
@@ -380,11 +380,11 @@ export async function startHost(): Promise<void> {
   await new Promise<void>((done) => server!.listen(0, '127.0.0.1', done))
   const port = (server.address() as AddressInfo).port
   process.env.ABELE_PHONE_HOST_PORT = String(port)
-  unexpose = exposeToPhone(port)
+  unexpose = await exposeToPhone(port)
   installPhoneHost()
 }
 
-export function stopHost(): void {
-  unexpose?.()
+export async function stopHost(): Promise<void> {
+  await unexpose?.()
   server?.close()
 }

@@ -47,7 +47,7 @@ export async function setup(): Promise<void> {
       await startHost()
       console.info(`\n  phone ready, abele ${version}\n`)
     } catch (error) {
-      stopHost()
+      await stopHost()
       dropPhone()
       throw error
     }
@@ -59,7 +59,7 @@ export async function setup(): Promise<void> {
     await restoreDesktopWindow()
   } catch (error) {
     if (onPhone()) {
-      stopHost()
+      await stopHost()
       dropPhone()
     }
     throw error
@@ -81,7 +81,7 @@ export async function teardown(): Promise<void> {
     // Last: on a phone every call above goes to the phone, and one made after the drop would
     // take it again under this run's name, a lock nobody would give back.
     if (onPhone()) {
-      stopHost()
+      await stopHost()
       dropPhone()
     }
   }

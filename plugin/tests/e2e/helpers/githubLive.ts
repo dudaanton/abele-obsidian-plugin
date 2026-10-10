@@ -30,7 +30,7 @@ export interface FakeGithub {
   requests(): string[]
   /** A stdout barrier: returns only after all preceding log lines have reached the worker. */
   drainRequests(): Promise<string[]>
-  stop(): void
+  stop(): Promise<void>
 }
 
 /**
@@ -80,7 +80,7 @@ export async function startFakeGithub(
   })
   const origin = `http://127.0.0.1:${port}`
   // On a real phone the same address has to lead here: see `exposeToPhone`.
-  const unexpose = onPhone() ? exposeToPhone(port) : () => {}
+  const unexpose = onPhone() ? await exposeToPhone(port) : () => {}
   return {
     origin,
     web: `${origin}/${OWNER}/${REPO}`,
@@ -99,8 +99,8 @@ export async function startFakeGithub(
         })
         child.send({ drain: marker })
       }),
-    stop: () => {
-      unexpose()
+    stop: async () => {
+      await unexpose()
       output.close()
       child.kill()
       rmSync(dir, { recursive: true, force: true })

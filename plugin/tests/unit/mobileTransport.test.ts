@@ -1,5 +1,74 @@
 import { describe, expect, it, vi } from 'vitest'
 import { fetchViaCapacitorHttp, exactNativeRequestBodies } from '@/sync/mobileTransport'
+import { connectionError } from '@/sync/tokenUi'
+it.each([409, 412])(
+  'returns HTTP %i for a tiny native upload instead of inventing a transport failure',
+  async (status) => {
+    const request = vi.fn(async (options: import('@/sync/mobileTransport').NativeHttpOptions) => {
+      expect(options.method).toBe('PUT')
+      expect(options.url).toBe('https://sync.example/v2/uploads/' + 'a'.repeat(64))
+      expect(options.headers['Content-Type']).toBe('application/octet-stream')
+      expect(options.dataType).toBe('file')
+      expect(atob(options.data as string)).toBe('phone edit\n')
+      return { status, headers: {}, data: btoa('{}'), url: options.url }
+    })
+    const response = await fetchViaCapacitorHttp({ request })(
+      'https://sync.example/v2/uploads/' + 'a'.repeat(64),
+      { method: 'PUT', body: new TextEncoder().encode('phone edit\n') }
+    )
+    expect(response.status).toBe(status)
+  }
+)
+it('reserves server unavailable for a known native connectivity failure', async () => {
+  let cause: unknown
+  try {
+    await fetchViaCapacitorHttp({
+      request: async () => {
+        throw Object.assign(new Error('not connected'), { code: -1009 })
+      },
+    })('https://sync.example/v2/connection')
+  } catch (error) {
+    cause = error
+  }
+  expect(connectionError(cause)).toMatch(/^Server unavailable.*sending.*-1009/)
+})
+
+it('preserves sanitized native phase and cause through the core offline wrapper', async () => {
+  const transport = fetchViaCapacitorHttp({
+    request: async () => {
+      throw Object.assign(new Error('native failed https://secret.example Bearer secret-token'), {
+        code: 'E_NATIVE',
+      })
+    },
+  })
+  let cause: unknown
+  try {
+    await transport('https://sync.example/v2/uploads/' + 'a'.repeat(64), {
+      method: 'PUT',
+      body: new TextEncoder().encode('phone edit\n'),
+    })
+  } catch (error) {
+    cause = error
+  }
+  expect(
+    connectionError(Object.assign(new Error('never reached server'), { code: 'offline', cause }))
+  ).toMatch(/Sync interrupted.*sending.*E_NATIVE/)
+  expect(connectionError(cause)).not.toContain('secret')
+})
+it('labels unsupported bodies as pre-send failures without invoking native HTTP', async () => {
+  const request = vi.fn()
+  let cause: unknown
+  try {
+    await fetchViaCapacitorHttp({ request })('https://sync.example/v2/commit', {
+      method: 'POST',
+      body: new Blob(['x']),
+    })
+  } catch (error) {
+    cause = error
+  }
+  expect(request).not.toHaveBeenCalled()
+  expect(connectionError(cause)).toMatch(/Couldn't send changes.*encoding/)
+})
 
 describe('non-following native mobile fetch', () => {
   it('lets the engine inspect a clone before consuming the native JSON response', async () => {
@@ -51,7 +120,7 @@ describe('non-following native mobile fetch', () => {
         // Model native JSON dictionary encoding: semantic equality is insufficient for receipts.
         const raw =
           options.dataType === 'file'
-            ? atob(options.data)
+            ? atob(options.data as string)
             : JSON.stringify(options.data, Object.keys(options.data).sort())
         seen.push(raw)
         return { status: 200, headers: {}, data: btoa(raw), url: options.url }

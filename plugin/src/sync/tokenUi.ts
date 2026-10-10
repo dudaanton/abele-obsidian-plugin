@@ -1,3 +1,4 @@
+import { nativeSyncFailure } from './mobileTransport'
 import { markRaw, shallowRef } from 'vue'
 import {
   TokenConnectionRegistry,
@@ -12,6 +13,8 @@ import type { openDeviceReviews } from './openDeviceReviews'
 import type { ReviewSource } from './reviewState'
 
 export function connectionError(error: unknown): string {
+  const native = nativeSyncFailure(error)
+  if (native) return native.message
   if (error instanceof ConnectStageError) return error.message
   if (error instanceof Error && /External files:|Sync recovery required/.test(error.message))
     return 'Sync recovery required. Files and connection have been kept.'

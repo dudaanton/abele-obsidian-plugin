@@ -127,19 +127,73 @@ export const screenshot = (path: string): void => {
  * (a fake GitHub, a calendar feed), so the URL the plugin is given works on both devices.
  * Returns the function that closes it again.
  */
-export function exposeToPhone(port: number): () => void {
+const tunnels = new Map<number, { stop: () => Promise<void> }>()
+export async function exposeToPhone(port: number): Promise<() => Promise<void>> {
+  while (tunnels.has(port)) await tunnels.get(port)!.stop()
   const child: ChildProcess = spawn(DRIVER, ['reverse', String(port)], { stdio: 'ignore' })
-  const deadline = Date.now() + 20_000
-  for (;;) {
-    const status = JSON.parse(driver(['status'])) as { reverse?: number[] }
-    if (status.reverse?.includes(port)) break
-    if (Date.now() > deadline) {
-      child.kill()
-      throw new Error(`the phone did not open port ${port} back to this machine`)
-    }
-    Atomics.wait(new Int32Array(new SharedArrayBuffer(4)), 0, 0, 200)
+  let stopping: Promise<void> | undefined
+  const owner = {
+    stop: (): Promise<void> => {
+      if (stopping) return stopping
+      stopping = new Promise<void>((resolve, reject) => {
+        if (child.exitCode !== null || child.signalCode !== null) {
+          resolve()
+          return
+        }
+        const timer = setTimeout(() => reject(new Error('Phone reverse did not exit')), 10000)
+        child.once('exit', () => {
+          clearTimeout(timer)
+          resolve()
+        })
+        child.kill()
+      }).then(() => {
+        if (tunnels.get(port) === owner) tunnels.delete(port)
+      })
+      return stopping
+    },
   }
-  return () => void child.kill()
+  tunnels.set(port, owner)
+  const deadline = Date.now() + 20000
+  try {
+    for (;;) {
+      if (child.exitCode !== null || child.signalCode !== null)
+        throw new Error('Phone reverse exited before readiness')
+      const status = JSON.parse(driver(['status'])) as { reverse?: number[] }
+      if (status.reverse?.includes(port)) break
+      if (Date.now() > deadline)
+        throw new Error(`the phone did not open port ${port} back to this machine`)
+      await new Promise((resolve) => setTimeout(resolve, 200))
+    }
+    return owner.stop
+  } catch (error) {
+    await owner.stop()
+    throw error
+  }
+}
+
+/** Retry authenticated route readiness; never preserve tokens or device snapshots in errors. */
+export async function waitForPhoneRoute(
+  probe: () => Promise<unknown>,
+  timeoutMs = 30000
+): Promise<void> {
+  const deadline = Date.now() + timeoutMs
+  let detail = 'no answer'
+  do {
+    try {
+      await probe()
+      return
+    } catch (error) {
+      detail = String((error as Error)?.message ?? error)
+        .split('; observed')[0]
+        .replace(/https?:\/\/[^\s]+/gi, '[address]')
+        .replace(/Bearer\s+\S+/gi, '[credential]')
+        .replace(/[A-Za-z0-9_+/-]{24,}/g, '[redacted]')
+        .slice(0, 240)
+    }
+    if (Date.now() >= deadline) break
+    await new Promise((resolve) => setTimeout(resolve, 200))
+  } while (Date.now() < deadline)
+  throw new Error('Phone authenticated route readiness failed: ' + detail)
 }
 
 /**

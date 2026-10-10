@@ -19,6 +19,42 @@ export interface NativeHttpResponse {
 export interface NativeHttp {
   request(options: NativeHttpOptions): Promise<NativeHttpResponse>
 }
+export class NativeSyncFailure extends Error {
+  readonly code: string
+  constructor(
+    readonly phase: string,
+    error: unknown
+  ) {
+    const native = error as { code?: unknown; message?: unknown }
+    const clean = (value: unknown) =>
+      (typeof value === 'string' || typeof value === 'number' ? String(value) : 'unknown')
+        .replace(/https?:\/\/[^\s]+/gi, '[address]')
+        .replace(/Bearer\s+\S+/gi, '[credential]')
+        .replace(/[A-Za-z0-9_+/-]{24,}/g, '[redacted]')
+        .replace(/[\r\n]/g, ' ')
+        .slice(0, 200)
+    const nativeCode = clean(native?.code)
+    const network =
+      phase === 'sending' &&
+      /^(?:-1003|-1004|-1009|ENOTFOUND|ECONNREFUSED|ENETUNREACH)$/.test(nativeCode)
+    const label =
+      phase === 'encoding'
+        ? "Couldn't send changes"
+        : network
+          ? 'Server unavailable'
+          : 'Sync interrupted'
+    super(`${label}. Native ${phase} (${nativeCode}): ${clean(native?.message ?? error)}`)
+    this.code = network ? 'offline' : 'native-sync'
+  }
+}
+/** Core currently wraps transport failures as offline; retain the classified host cause. */
+export function nativeSyncFailure(error: unknown): NativeSyncFailure | undefined {
+  let current = error
+  for (let depth = 0; depth < 8 && current; depth++) {
+    if (current instanceof NativeSyncFailure) return current
+    current = (current as { cause?: unknown }).cause
+  }
+}
 const abortError = () => new DOMException('The native sync request was aborted', 'AbortError')
 function base64(bytes: Uint8Array): string {
   let text = ''
@@ -76,70 +112,80 @@ export function exactNativeRequestBodies(native: NativeHttp): NativeHttp {
 /** Exact native bytes and explicit pre-follow refusal, measured through the real iOS bridge. */
 export function fetchViaCapacitorHttp(native: NativeHttp): typeof fetch {
   return async (input, init) => {
-    const signal = init?.signal ?? (input instanceof Request ? input.signal : null)
-    if (signal?.aborted) throw abortError()
-    const url = new URL(
-      typeof input === 'string' ? input : input instanceof URL ? input.href : input.url
-    ).href
-    const method = (init?.method ?? (input instanceof Request ? input.method : 'GET')).toUpperCase()
-    const incoming = new Headers(
-      init?.headers ?? (input instanceof Request ? input.headers : undefined)
-    )
-    const headers: Record<string, string> = {}
-    incoming.forEach((value, key) => {
-      headers[key] = value
-    })
-    // Native response caching otherwise reused an authenticated GET for another principal.
-    delete headers['cache-control']
-    headers['Cache-Control'] = 'no-cache, no-store'
-    const contentType = headers['content-type']
-    delete headers['content-type']
-    if (contentType) headers['Content-Type'] = contentType
-    const options: NativeHttpOptions = {
-      url,
-      method,
-      headers,
-      disableRedirects: true,
-      responseType: 'arraybuffer',
+    let phase = 'encoding'
+    try {
+      const signal = init?.signal ?? (input instanceof Request ? input.signal : null)
+      if (signal?.aborted) throw abortError()
+      const url = new URL(
+        typeof input === 'string' ? input : input instanceof URL ? input.href : input.url
+      ).href
+      const method = (
+        init?.method ?? (input instanceof Request ? input.method : 'GET')
+      ).toUpperCase()
+      const incoming = new Headers(
+        init?.headers ?? (input instanceof Request ? input.headers : undefined)
+      )
+      const headers: Record<string, string> = {}
+      incoming.forEach((value, key) => {
+        headers[key] = value
+      })
+      // Native response caching otherwise reused an authenticated GET for another principal.
+      delete headers['cache-control']
+      headers['Cache-Control'] = 'no-cache, no-store'
+      const contentType = headers['content-type']
+      delete headers['content-type']
+      if (contentType) headers['Content-Type'] = contentType
+      const options: NativeHttpOptions = {
+        url,
+        method,
+        headers,
+        disableRedirects: true,
+        responseType: 'arraybuffer',
+      }
+      const body = init?.body
+      if (body !== undefined && body !== null) {
+        if (typeof body === 'string') {
+          headers['Content-Type'] ??= 'text/plain'
+          options.data = contentType?.toLowerCase().includes('application/json')
+            ? JSON.parse(body)
+            : body
+        } else if (body instanceof ArrayBuffer || ArrayBuffer.isView(body)) {
+          const bytes =
+            body instanceof ArrayBuffer
+              ? new Uint8Array(body)
+              : new Uint8Array(body.buffer, body.byteOffset, body.byteLength)
+          options.data = base64(bytes)
+          options.dataType = 'file'
+          headers['Content-Type'] ??= 'application/octet-stream'
+        } else throw new Error('Unsupported native sync request body')
+      }
+      phase = 'sending'
+      const answer = await new Promise<NativeHttpResponse>((resolve, reject) => {
+        const aborted = () => reject(abortError())
+        signal?.addEventListener('abort', aborted, { once: true })
+        Promise.resolve()
+          .then(() => {
+            if (signal?.aborted) throw abortError()
+            return native.request(options)
+          })
+          .then((value) => (signal?.aborted ? reject(abortError()) : resolve(value)), reject)
+          .finally(() => signal?.removeEventListener('abort', aborted))
+      })
+      phase = 'response'
+      if (answer.status >= 300 && answer.status < 400 && answer.status !== 304)
+        throw new Error('sync transport refuses redirects before following')
+      if (answer.url !== url)
+        throw new Error('Native sync transport unexpectedly followed a redirect')
+      if (answer.status < 200 || answer.status > 599)
+        throw new Error('Unsupported native sync response status')
+      const bodiless = method === 'HEAD' || [204, 205, 304].includes(answer.status)
+      const bytes = bodiless ? null : responseBytes(answer.data)
+      answer.data = null
+      const responseInit = { status: answer.status, headers: answer.headers }
+      return bytes === null ? new Response(null, responseInit) : binaryResponse(bytes, responseInit)
+    } catch (error) {
+      if (error instanceof DOMException && error.name === 'AbortError') throw error
+      throw error instanceof NativeSyncFailure ? error : new NativeSyncFailure(phase, error)
     }
-    const body = init?.body
-    if (body !== undefined && body !== null) {
-      if (typeof body === 'string') {
-        headers['Content-Type'] ??= 'text/plain'
-        options.data = contentType?.toLowerCase().includes('application/json')
-          ? JSON.parse(body)
-          : body
-      } else if (body instanceof ArrayBuffer || ArrayBuffer.isView(body)) {
-        const bytes =
-          body instanceof ArrayBuffer
-            ? new Uint8Array(body)
-            : new Uint8Array(body.buffer, body.byteOffset, body.byteLength)
-        options.data = base64(bytes)
-        options.dataType = 'file'
-        headers['Content-Type'] ??= 'application/octet-stream'
-      } else throw new Error('Unsupported native sync request body')
-    }
-    const answer = await new Promise<NativeHttpResponse>((resolve, reject) => {
-      const aborted = () => reject(abortError())
-      signal?.addEventListener('abort', aborted, { once: true })
-      Promise.resolve()
-        .then(() => {
-          if (signal?.aborted) throw abortError()
-          return native.request(options)
-        })
-        .then((value) => (signal?.aborted ? reject(abortError()) : resolve(value)), reject)
-        .finally(() => signal?.removeEventListener('abort', aborted))
-    })
-    if (answer.status >= 300 && answer.status < 400 && answer.status !== 304)
-      throw new Error('sync transport refuses redirects before following')
-    if (answer.url !== url)
-      throw new Error('Native sync transport unexpectedly followed a redirect')
-    if (answer.status < 200 || answer.status > 599)
-      throw new Error('Unsupported native sync response status')
-    const bodiless = method === 'HEAD' || [204, 205, 304].includes(answer.status)
-    const bytes = bodiless ? null : responseBytes(answer.data)
-    answer.data = null
-    const responseInit = { status: answer.status, headers: answer.headers }
-    return bytes === null ? new Response(null, responseInit) : binaryResponse(bytes, responseInit)
   }
 }

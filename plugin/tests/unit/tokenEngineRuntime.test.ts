@@ -8,6 +8,45 @@ import { AttachmentConsent } from '@/sync/attachmentConsent'
 import { ignoreFor } from '@/sync/scope'
 import { TokenAttachmentHost } from '@/sync/tokenAttachmentHost'
 import { useVault } from '../helpers/testEnv'
+import { NativeSyncFailure } from '@/sync/mobileTransport'
+
+it('keeps native pre-send failure details and error status after core wraps it as offline', async () => {
+  const metadata = new MemoryStateStore()
+  const changed = vi.fn()
+  const failed = vi.fn()
+  const one = new TokenEngineRuntime({
+    id: 'native-failure',
+    encoded: token('https://sync.example'),
+    fs: new MemoryFileSystem(),
+    state: new MemoryStateStore(),
+    reviews: {
+      executables: new ExecutableReview(metadata),
+      attachments: new AttachmentConsent(metadata),
+      close: () => {},
+    },
+    fetch: async () => {
+      throw new NativeSyncFailure('encoding', new Error('unsupported bytes'))
+    },
+    changed,
+    failed,
+    covers: async () => false,
+  })
+  try {
+    await expect(one.sync()).rejects.toMatchObject({ code: 'offline' })
+    expect(failed).toHaveBeenCalledWith(
+      expect.objectContaining({ code: 'native-sync', phase: 'encoding' })
+    )
+    expect(changed.mock.calls.at(-1)?.[0]).toMatchObject({
+      state: 'error',
+      lastError: expect.stringContaining("Couldn't send changes"),
+    })
+    expect(one.trace.snapshot().log).toContain(
+      "Couldn't send changes. Native encoding (unknown): unsupported bytes"
+    )
+  } finally {
+    await one.disconnect()
+  }
+})
 
 const scope = { kind: 'folder' as const, id: 'root', path: '/' }
 const token = (address: string) => encodeAccessToken({ v: 1, address, key: 'a'.repeat(43), scope })
