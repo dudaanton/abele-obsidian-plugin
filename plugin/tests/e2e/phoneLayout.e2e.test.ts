@@ -180,7 +180,7 @@ interface Screen {
   canvasFits?: boolean
   ids?: string[]
   /** Direct and overflow header actions, measured while the native menu is open. */
-  header?: { direct: string[]; overflow: string[]; unreachable: string[]; clipped: string[] }
+  header?: { direct: string[]; overflow: string[]; unreachable: string[]; clipped: string[]; findOpened: boolean }
   /** Where the picture went. */
   shot: string
   error: string
@@ -368,7 +368,7 @@ const probeScript = `(async () => {
   }
 
   const headerActions = async (label, root) => {
-    const entry = { direct: [], overflow: [], unreachable: [], clipped: [] }
+    const entry = { direct: [], overflow: [], unreachable: [], clipped: [], findOpened: false }
     const reachable = (el) => {
       const r = el.getBoundingClientRect()
       return r.width > 0 && r.height > 0 && r.left >= 0 && r.right <= window.innerWidth &&
@@ -392,8 +392,15 @@ const probeScript = `(async () => {
       entry.overflow.push(title)
       if (!reachable(item)) entry.unreachable.push(title)
     }
+    // Execute an overflow action rather than sending Escape to the document: that also
+    // dismisses the mobile sidebar and would leave later pictures on the underlying pane.
+    const findItem = [...menu.querySelectorAll('.menu-item')].find(item =>
+      item.querySelector('.menu-item-title')?.textContent.trim() === 'Find in this chat')
+    findItem.click()
+    entry.findOpened = await until(() => root.querySelector('.abele-chat-find'), 3000)
+    root.querySelector('[aria-label="Close the find bar (Esc)"]')?.click()
+    await wait(300)
     report[label].header = entry
-    await closeDialog()
   }
 
   // Lists worth measuring: a vault with two skills shows nothing about how a list of twenty
@@ -2234,6 +2241,7 @@ describe.skipIf(!available)('the chat dialogs on a phone', () => {
     ])
     expect(header?.unreachable).toEqual([])
     expect(header?.clipped).toEqual([])
+    expect(header?.findOpened).toBe(true)
     expect(report[label + ' header menu']?.error).toBe('')
     expect(report[label + ' header menu']?.over).toEqual([])
   })
