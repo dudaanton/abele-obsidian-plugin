@@ -69,7 +69,7 @@ watch(
   flex-direction: column;
   align-items: center;
   gap: var(--size-4-1);
-  padding: var(--size-4-6) var(--size-4-3);
+  padding: var(--size-4-4) var(--size-4-3);
   text-align: center;
 
   .abele-empty-state__action {
