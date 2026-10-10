@@ -162,7 +162,9 @@ export class SettingsKeeper {
     const finishRead = edits.beginRead()
     try {
       const stamp = await this.readStamp()
-      const stored: unknown = await this.host.plugin().loadData()
+      const plugin = this.host.plugin()
+      if (!plugin) return
+      const stored: unknown = await plugin.loadData()
       this.deferredRewrite = false
       this.waitingForInitialFile = stored === null || stored === undefined
       const legacy = isSettingsObject(stored) && isSettingsObject(stored.sync) ? stored.sync : null

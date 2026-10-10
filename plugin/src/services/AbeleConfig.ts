@@ -34,7 +34,7 @@ export {
 } from './settingsShape'
 
 export class AbeleConfig {
-  public plugin: AbelePlugin
+  public plugin: AbelePlugin | null = null
 
   public refreshDelay: number
   public tasksFolder: string

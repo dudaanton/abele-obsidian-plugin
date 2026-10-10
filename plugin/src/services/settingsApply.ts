@@ -7,7 +7,8 @@ import { pruneToolDescriptions } from '@/ai/tools/toolDescriptionOverrides'
 import {
   AiSettings,
   DEFAULT_AI_SETTINGS,
-  ImageProvider,
+  type ImageProvider,
+  type ImageModelConfig2,
   migrateOldPermissions,
   type AiChatHistoryEntry,
 } from '@/ai/types'
@@ -36,6 +37,20 @@ import {
   normalizeLink,
   type AbeleSettings,
 } from './settingsShape'
+
+/** Persisted AI fields written before provider lists and tool modes were introduced. */
+interface LegacyAiSettings extends Omit<AiSettings, 'imageGeneration'> {
+  allowWebSearch?: boolean
+  imageGeneration?: {
+    apiType?: ImageProvider['apiType']
+    endpoint?: string
+    apiKeyId?: string
+    model?: string
+    size?: ImageModelConfig2['size']
+    outputFormat?: ImageModelConfig2['outputFormat']
+    quality?: ImageModelConfig2['quality']
+  }
+}
 
 export interface Applied {
   migrated: boolean
@@ -104,21 +119,21 @@ export function applySettingsTo(
     migrated = true
   }
   // Migrate old boolean permissions to toolModes
-  if (settings?.ai && !settings.ai.toolModes && (settings.ai as any).allowWebSearch !== undefined) {
-    config.ai.toolModes = migrateOldPermissions(null, settings.ai as any)
+  const legacyAi = settings?.ai as LegacyAiSettings | undefined
+  if (legacyAi && !legacyAi.toolModes && legacyAi.allowWebSearch !== undefined) {
+    config.ai.toolModes = migrateOldPermissions(null, legacyAi)
   }
   const mcpPermissions = migrateMcpPermissions(config.ai)
   config.ai = mcpPermissions.ai
   migrated ||= mcpPermissions.changed
   notifyMcpPermissionReset(mcpPermissions.reset)
   // Migrate image generation settings to imageProviders
-  if (settings?.ai && !settings.ai.imageProviders) {
-    const old = settings.ai as any
+  if (legacyAi && !legacyAi.imageProviders) {
     // Check for v2 format (single imageGeneration object)
-    const ig = old.imageGeneration
+    const ig = legacyAi.imageGeneration
     // Check for v1 format (openRouterApiKey + imageModel)
-    const legacyKey = old.openRouterApiKey || ''
-    const legacyModel = old.imageModel || ''
+    const legacyKey = legacyAi.openRouterApiKey || ''
+    const legacyModel = legacyAi.imageModel || ''
 
     if (ig) {
       // Migrate v2 → v3

@@ -530,7 +530,9 @@ async function valhallaRoute(points: GeoPlace[], mode: TravelMode): Promise<GeoR
 
   const legs: RouteLeg[] = trip.legs.map((leg, index) => ({
     steps: (leg.maneuvers || [])
-      .filter((maneuver) => maneuver.instruction)
+      .filter(
+        (maneuver): maneuver is typeof maneuver & { instruction: string } => !!maneuver.instruction
+      )
       .map((maneuver) => ({
         text: maneuver.instruction,
         distanceKm: maneuver.length || 0,

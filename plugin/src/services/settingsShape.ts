@@ -263,7 +263,8 @@ export function normalizeHeaderButton(
   }
 }
 
-export const DEFAULT_SETTINGS: AbeleSettings = {
+// Defaults are complete; the persisted shape stays optional for older settings files.
+export const DEFAULT_SETTINGS: Required<Omit<AbeleSettings, 'secretStore'>> = {
   refreshDelay: 300,
   tasksFolder: 'Tasks',
   logsNotesTypes: ['journal', 'log', 'daily'],
