@@ -191,6 +191,71 @@ describe.skipIf(!available)('parallel chat undo in the app', () => {
   }, 90_000)
 })
 
+describe.skipIf(!available)('reviewed undo boundaries in the app', () => {
+  it('refuses entire rename units and legacy records, and persists late writes under their owner', () => {
+    const result = evalAsync<Record<string, unknown>>(
+      `(async () => {
+      const dir = ${JSON.stringify(DIR)}, t = window.__abeleTest.rewind
+      const get = name => app.vault.getAbstractFileByPath(dir + '/' + name)
+      const read = name => get(name) ? app.vault.read(get(name)) : null
+      try {
+        await app.vault.createFolder(dir)
+        await app.vault.create(dir + '/Old.md', 'original')
+        const store = t.memoryStore()
+        const a = new t.ChatRewind(app, { key: () => 'review-a', turn: () => 'a' }, store)
+        const owned = a.track('edit', 'run-a')
+        await owned.app.vault.modify(get('Old.md'), 'alpha')
+        await app.vault.modify(get('Old.md'), 'human')
+        await owned.app.fileManager.renameFile(get('Old.md'), dir + '/New.md')
+        await owned.close()
+        const refused = await a.apply(await a.planSince(0))
+        const rename = { old: await read('Old.md'), destination: await read('New.md'), skipped: refused.skipped.length }
+        await app.vault.create(dir + '/Source.md', 'source')
+        const moving = new t.ChatRewind(app, { key: () => 'moving', turn: () => 'move' }, store)
+        const mover = moving.track('mv', 'moving-run')
+        await mover.app.fileManager.renameFile(get('Source.md'), dir + '/Destination.md')
+        await mover.app.vault.modify(get('Destination.md'), 'edited destination')
+        await mover.close()
+        const movePlan = await moving.planSince(0)
+        await app.vault.create(dir + '/Source.md', 'new human source')
+        await moving.apply(movePlan)
+        const occupied = { source: await read('Source.md'), destination: await read('Destination.md') }
+        const b = new t.ChatRewind(app, { key: () => 'review-b', turn: () => 'b' }, store)
+        const creator = b.track('create', 'run-b')
+        await creator.app.vault.create(dir + '/Foreign.md', 'other chat')
+        await creator.close()
+        await store.writeLog('legacy-a', { version: 1, entries: b.entries.value.map(({chat, run, ...entry}) => entry) })
+        const legacy = new t.ChatRewind(app, { key: () => 'legacy-a', turn: () => null }, store)
+        const plan = await legacy.planSince(0)
+        await legacy.apply(plan, { [dir + '/Foreign.md']: 'overwrite' })
+        let key = 'owner-a'
+        const host = new t.ChatRewind(app, { key: () => key, turn: () => 'script' }, store)
+        const late = host.track('script_sample', 'original-run')
+        await late.close()
+        key = 'owner-b'
+        await late.app.vault.create(dir + '/Late.md', 'late owner edit')
+        await host.flush()
+        const saved = await store.readLog('owner-a')
+        return { rename, occupied, legacy: await read('Foreign.md'), reason: plan.items[0].reason,
+          owner: saved.entries[0].chat, run: saved.entries[0].run, otherJournal: await store.readLog('owner-b') }
+      } catch (error) { return { error: String(error.stack || error) } }
+      finally { const folder = app.vault.getAbstractFileByPath(dir); if (folder) await app.vault.delete(folder, true) }
+    })()`,
+      60_000
+    )
+    expect(result.error).toBeUndefined()
+    expect(result).toMatchObject({
+      rename: { old: null, destination: 'human', skipped: 2 },
+      occupied: { source: 'new human source', destination: 'edited destination' },
+      legacy: 'other chat',
+      reason: expect.stringContaining('no chat owner'),
+      owner: 'owner-a',
+      run: 'original-run',
+      otherJournal: null,
+    })
+  }, 90_000)
+})
+
 describe.skipIf(!available)('the rewind dialog in the app', () => {
   let outcome: Outcome
 
@@ -208,7 +273,7 @@ describe.skipIf(!available)('the rewind dialog in the app', () => {
     expect(outcome.left).toBe(0)
   })
 
-  it('shows a non-destructive conflict and an empty state at desktop and phone widths', async () => {
+  it('shows refused conflicts, unowned legacy records and an empty state at desktop and phone widths', async () => {
     const size = evalJson<[number, number]>(
       `require('@electron/remote').getCurrentWindow().getContentSize()`
     )
@@ -218,7 +283,7 @@ describe.skipIf(!available)('the rewind dialog in the app', () => {
         evalRaw(
           `require('@electron/remote').getCurrentWindow().setContentSize(${mobile ? '390,844' : '1100,850'})`
         )
-        for (const state of ['conflict', 'empty']) {
+        for (const state of ['conflict', 'legacy', 'empty']) {
           const result = evalAsync<{
             error?: string
             text: string
@@ -232,11 +297,11 @@ describe.skipIf(!available)('the rewind dialog in the app', () => {
             const get = p => app.vault.getAbstractFileByPath(p)
             try {
               if (get(dir)) await app.vault.delete(get(dir), true)
-              if (state === 'conflict') {
+              if (state !== 'empty') {
                 await app.vault.createFolder(dir)
                 const path = dir + '/A sample note with a deliberately long descriptive filename.md'
                 await app.vault.create(path, 'Original sample text.')
-                await window.__abeleTest.openRewind(path, dir + '/Created.md', true)
+                await window.__abeleTest.openRewind(path, dir + '/Created.md', state === 'legacy' ? 'legacy' : true)
                 await wait(500)
                 document.querySelector('.abele-rewind .tree-item-self')?.click()
               } else await window.__abeleTest.openRewind('', '')
@@ -259,7 +324,11 @@ describe.skipIf(!available)('the rewind dialog in the app', () => {
           expect(result.right).toBeLessThanOrEqual(result.width + 1)
           expect(result.selects).toBe(0)
           expect(result.text).toContain(
-            state === 'conflict' ? 'left untouched' : 'changed no files'
+            state === 'legacy'
+              ? 'no chat owner'
+              : state === 'conflict'
+                ? 'left untouched'
+                : 'changed no files'
           )
         }
       }

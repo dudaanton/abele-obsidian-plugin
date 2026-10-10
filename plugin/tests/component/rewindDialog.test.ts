@@ -134,6 +134,18 @@ describe('the buttons', () => {
   })
 })
 
+it('explains that a legacy snapshot has no proven owner instead of offering overwrite', async () => {
+  await agentWrites(() => app.vault.modify(file('Notes/Plan.md'), 'second draft'))
+  rewind.entries.value = rewind.entries.value.map(({ chat: _chat, run: _run, ...entry }) => entry)
+  const view = await open()
+  expect(view.findComponent(TreeItem).props('flair')).toBe('unverified owner')
+  await view.findComponent(TreeItem).find('.tree-item-self').trigger('click')
+  expect(view.text()).toContain('no chat owner')
+  expect(view.findComponent(Dropdown).exists()).toBe(false)
+  expect(button(view, 'Files only').props('disabled')).toBe(true)
+  expect(await app.vault.read(file('Notes/Plan.md'))).toBe('second draft')
+})
+
 describe('a file changed since', () => {
   beforeEach(async () => {
     await agentWrites(() => app.vault.modify(file('Notes/Plan.md'), 'second draft'))

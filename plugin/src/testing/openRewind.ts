@@ -14,7 +14,7 @@ import { GlobalStore } from '@/stores/GlobalStore'
 export async function openRewind(
   edit: string,
   create: string,
-  conflict = false
+  conflict: boolean | 'legacy' = false
 ): Promise<ChatRewind> {
   const { app } = GlobalStore.getInstance()
   const rewind = new ChatRewind(
@@ -33,7 +33,10 @@ export async function openRewind(
     await end()
   }
 
-  if (conflict) {
+  if (conflict === 'legacy') {
+    rewind.entries.value = rewind.entries.value.map(({ chat: _chat, run: _run, ...entry }) => entry)
+  }
+  if (conflict === true) {
     const file = app.vault.getAbstractFileByPath(edit)
     if (file instanceof TFile) await app.vault.append(file, '\nA later edit from another writer.\n')
   }

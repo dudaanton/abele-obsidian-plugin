@@ -146,6 +146,7 @@ const filesTooltip = computed(() =>
 
 function flairOf(item: RestoreItem): string {
   if (item.action === 'unrestorable') return 'cannot be put back'
+  if (item.reason) return 'unverified owner'
   if (item.conflict) return 'changed since'
   const words: Record<ItemAction, string> = {
     rewrite: 'put back',

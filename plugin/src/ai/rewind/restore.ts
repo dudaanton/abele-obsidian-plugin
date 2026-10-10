@@ -252,7 +252,9 @@ export async function applyRestore(
     try {
       for (const [path, expected] of unit.expected) {
         if (currentAfter(await fs.current(path)) !== expected)
-          throw new Error(`Changed since the undo snapshot at ${path}: rename unit left untouched`)
+          throw new Error(
+            `Changed since the undo snapshot at ${path}: this restore step was refused`
+          )
       }
       await step(
         fs.checked(
