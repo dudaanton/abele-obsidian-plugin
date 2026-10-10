@@ -467,6 +467,20 @@ export class ChatSession implements SummarizerHost, InterceptorHost, AnchorStora
   public readonly agentId = ref('')
   /** Only what somebody deliberately changed in this chat. Empty means "follow the agent". */
   public readonly overrides = ref<SessionOverrides>({})
+  get nodeScopeIdentity(): string | undefined {
+    return this.delegationParentId
+  }
+
+  noteNodeWorktreeSwitch(label: string): void {
+    this.appendChatMessage({
+      id: nanoid(),
+      role: 'system',
+      content: `Node worktree: ${label}`,
+      timestamp: Date.now(),
+    })
+    this.updateVisibleMessages()
+    this.markDirty()
+  }
 
   /** The agent in force, falling back to the default one if this chat's agent was deleted. */
   public readonly agent = computed<AgentDefinition | null>(() => {

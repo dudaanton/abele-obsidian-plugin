@@ -1,4 +1,5 @@
 import { nanoid } from 'nanoid'
+import type { NodeScopeEntry, NodeScopeTarget } from '../nodeScope'
 import {
   BOOK_TOOL_MODES,
   DOCX_TOOL_MODES,
@@ -176,6 +177,10 @@ export interface SessionOverrides {
   permissionMode?: PermissionMode
   toolModes?: Record<string, ToolMode>
   scope?: ScopeEntry[]
+  /** Remote permissions travel with the chat; local owner approval never does. */
+  nodeScope?: NodeScopeEntry[]
+  /** Selection is not permission and cannot expand nodeScope. */
+  nodeTarget?: NodeScopeTarget
   fullVaultAccess?: boolean
   prompts?: AgentPrompt[]
 }
