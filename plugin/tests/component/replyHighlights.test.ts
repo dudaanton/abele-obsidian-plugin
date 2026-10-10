@@ -12,7 +12,7 @@ beforeEach(() => useVault([]))
 
 describe('reply highlight rendering', () => {
   it('explicitly enables WebKit selection instead of inheriting a touch pane’s user-select none', () => {
-    const source = readFileSync('src/components/AiChatMessage.vue', 'utf8')
+    const source = readFileSync('src/styles/chatMessage/body.scss', 'utf8')
     const rule =
       source.match(/\.abele-chat-msg__body \[data-ask-message\][^{]*\{([^}]+)\}/)?.[1] ?? ''
     expect(rule).toContain('-webkit-user-select: text')

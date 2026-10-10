@@ -107,13 +107,8 @@ import { vaultUrl } from '@/helpers/vaultUrl'
 import { openImageInk } from '@/drawing/files'
 import { isDrawable } from '@/drawing/pictureEntries'
 
-export interface ViewerImage {
-  url: string
-  alt: string
-  type: 'local' | 'remote'
-  path: string
-  description?: string
-}
+import type { ViewerImage } from '@/helpers/viewerImage'
+export type { ViewerImage } from '@/helpers/viewerImage'
 
 const props = defineProps<{
   images: ViewerImage[]

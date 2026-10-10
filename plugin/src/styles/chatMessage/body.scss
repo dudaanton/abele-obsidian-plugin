@@ -1,0 +1,291 @@
+.abele-chat-msg {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: flex-start;
+  gap: var(--size-4-2);
+  padding: var(--size-4-2) 0;
+  line-height: 1.5;
+
+  &_user .abele-chat-msg__body {
+    background-color: var(--background-secondary);
+    border-radius: var(--radius-s);
+    padding: var(--size-4-1) var(--size-4-3);
+  }
+
+  &_tool-call,
+  &_tool-result {
+    padding: var(--size-2-1) 0;
+  }
+
+  &_system {
+    color: var(--text-faint);
+
+    .abele-chat-msg__compact-label {
+      text-align: center;
+      display: block;
+    }
+  }
+
+  &_tool-result:not(:has(.abele-chat-msg__tool-error)) {
+    display: none;
+  }
+}
+
+/**
+ * The icon and the timestamp sit beside the message's first line, so both are given a box
+ * exactly one line tall and their content centred in it. `1lh` is that line — the element's
+ * own font size times its line height — which is why this holds when the font changes:
+ * a phone's larger text moves the icon with it. It replaced four hand-picked pixel offsets
+ * that were tuned against one desktop font size and left the icons sitting ~4px low
+ * everywhere else.
+ */
+.abele-chat-msg__icon,
+.abele-chat-msg__time {
+  flex-shrink: 0;
+  display: flex;
+  align-items: center;
+  height: 1lh;
+}
+
+.abele-chat-msg__icon {
+  color: var(--text-faint);
+  cursor: pointer;
+
+  &:hover {
+    color: var(--text-muted);
+  }
+}
+
+// The tool rows set a smaller font on their line, so their icon matches it to stay on it.
+.abele-chat-msg_tool-call > .abele-chat-msg__icon,
+.abele-chat-msg_tool-result > .abele-chat-msg__icon {
+  font-size: var(--font-small);
+}
+
+// A user message is a bubble, and its text starts below the bubble's own padding.
+.abele-chat-msg_user > .abele-chat-msg__icon,
+.abele-chat-msg_user > .abele-chat-msg__time {
+  margin-top: var(--size-4-1);
+}
+
+.abele-chat-msg__time {
+  font-size: var(--font-smaller);
+  color: var(--text-faint);
+  white-space: nowrap;
+}
+
+// WebKit touch panes can inherit user-select:none. Desktop emulation permits scripted
+// ranges regardless, so opt the actual rendered words into native selection explicitly.
+.abele-chat-msg__body [data-ask-message],
+.abele-chat-msg__body [data-ask-message] :not(button, .abele-comment-marker, .abele-comment-marker *) {
+  user-select: text;
+  -webkit-user-select: text;
+  -webkit-touch-callout: default;
+}
+
+.abele-chat-msg__body {
+  flex: 1;
+  min-width: 0;
+  overflow-wrap: break-word;
+  word-break: break-word;
+  overflow-x: hidden;
+
+  p:first-child {
+    margin-top: 0;
+  }
+  p:last-child {
+    margin-bottom: 0;
+  }
+  h1,
+  h2,
+  h3,
+  h4,
+  h5,
+  h6 {
+    margin-top: var(--size-4-2);
+  }
+  h1:first-child,
+  h2:first-child,
+  h3:first-child {
+    margin-top: 0;
+  }
+
+  pre {
+    position: relative;
+    white-space: pre-wrap;
+    word-break: break-word;
+    overflow-x: auto;
+    margin: var(--size-4-2) 0;
+
+    code {
+      display: block;
+      padding: var(--size-4-2) var(--size-4-3);
+      background-color: var(--background-secondary);
+      border-radius: var(--radius-s);
+      font-size: var(--font-small);
+      line-height: 1.5;
+    }
+
+    .copy-code-button {
+      position: absolute;
+      top: var(--size-4-1);
+      right: var(--size-4-1);
+      color: var(--text-muted);
+      background: none;
+      border: none;
+      box-shadow: none;
+
+      &:hover {
+        color: var(--text-normal);
+        background-color: var(--background-modifier-hover);
+      }
+    }
+  }
+
+  :not(pre) > code {
+    padding: 1px var(--size-4-1);
+    background-color: var(--code-background);
+    border-radius: var(--radius-s);
+    font-size: 0.9em;
+  }
+
+  table {
+    border-collapse: collapse;
+    width: 100%;
+
+    th,
+    td {
+      border: 1px solid var(--background-modifier-border);
+      padding: var(--size-4-1) var(--size-4-2);
+      text-align: left;
+    }
+
+    th {
+      background-color: var(--background-secondary);
+    }
+  }
+}
+
+/**
+ * On a phone Obsidian shows a code block's copy button all the time, where a desktop shows it
+ * on hover, and it sat on the end of the first line of code (2026-09-05, from the phone). A
+ * float the size of the button keeps the first lines clear of it; the lines below it take the
+ * full width, which a padding on the block would not have let them. The sizes are the
+ * button's as Obsidian draws it, measured from the block's corner less the code's own padding:
+ * a tablet pads it wider (4px 20px) and a phone taller (6px 8px, under `is-phone`).
+ */
+body.is-mobile
+  :is(.abele-chat-msg__body, .abele-chat-msg__thinking, .abele-ai-chat__streaming-thinking)
+  pre
+  > code::before {
+  content: '';
+  float: right;
+  width: 60px;
+  height: 34px;
+}
+
+body.is-phone
+  :is(.abele-chat-msg__body, .abele-chat-msg__thinking, .abele-ai-chat__streaming-thinking)
+  pre
+  > code::before {
+  width: 36px;
+  height: 38px;
+}
+
+.abele-chat-msg__thinking {
+  margin-top: 0;
+  margin-bottom: var(--size-4-2);
+  border: 1px solid var(--background-modifier-border);
+  border-radius: var(--radius-s);
+  padding: var(--size-4-1) var(--size-4-2);
+  font-size: var(--font-small);
+  overflow: hidden;
+  overflow-wrap: break-word;
+  word-break: break-word;
+
+  summary {
+    cursor: pointer;
+    color: var(--text-muted);
+    font-style: italic;
+  }
+
+  pre {
+    position: relative;
+    white-space: pre-wrap;
+    word-break: break-word;
+    overflow-x: auto;
+    margin: var(--size-4-2) 0;
+
+    code {
+      display: block;
+      padding: var(--size-4-2) var(--size-4-3);
+      background-color: var(--background-secondary);
+      border-radius: var(--radius-s);
+      font-size: var(--font-small);
+      line-height: 1.5;
+    }
+
+    .copy-code-button {
+      position: absolute;
+      top: var(--size-4-1);
+      right: var(--size-4-1);
+      color: var(--text-muted);
+      background: none;
+      border: none;
+      box-shadow: none;
+
+      &:hover {
+        color: var(--text-normal);
+        background-color: var(--background-modifier-hover);
+      }
+    }
+  }
+
+  :not(pre) > code {
+    padding: 1px var(--size-4-1);
+    background-color: var(--code-background);
+    border-radius: var(--radius-s);
+    font-size: 0.9em;
+  }
+
+  table {
+    border-collapse: collapse;
+    width: 100%;
+    font-size: var(--font-small);
+
+    th,
+    td {
+      border: 1px solid var(--background-modifier-border);
+      padding: var(--size-4-1) var(--size-4-2);
+      text-align: left;
+    }
+
+    th {
+      background-color: var(--background-secondary);
+    }
+  }
+}
+
+.abele-chat-msg__revision {
+  display: flex;
+  flex-wrap: wrap;
+  gap: var(--size-4-1);
+  align-items: center;
+  margin-top: var(--size-4-1);
+  color: var(--text-muted);
+  font-size: var(--font-small);
+}
+
+.abele-chat-msg__compact-label {
+  color: var(--text-faint);
+  font-size: var(--font-small);
+}
+
+.abele-chat-msg__compact-summary {
+  font-size: var(--font-small);
+  color: var(--text-muted);
+  border-top: 1px solid var(--background-modifier-border);
+  padding-top: var(--size-4-1);
+  margin-top: var(--size-4-1);
+}
+

@@ -1,0 +1,383 @@
+.abele-chat-msg__tool-line {
+  display: flex;
+  align-items: center;
+  gap: var(--size-4-1);
+  font-size: var(--font-small);
+  color: var(--text-muted);
+  overflow: hidden;
+
+  code {
+    color: var(--text-accent);
+    font-size: var(--font-smaller);
+    flex-shrink: 0;
+    white-space: nowrap;
+  }
+}
+
+.abele-chat-msg__tool-summary {
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.abele-chat-msg__tool-link {
+  color: var(--text-accent);
+  cursor: pointer;
+
+  &:hover {
+    text-decoration: underline;
+  }
+}
+
+.abele-chat-msg__tool-spinner {
+  animation: abele-spin 1s linear infinite;
+  color: var(--text-faint);
+  flex-shrink: 0;
+  overflow: hidden;
+}
+
+.abele-chat-msg__tool-progress {
+  font-size: var(--font-smaller);
+  color: var(--text-muted);
+  font-style: italic;
+}
+
+/**
+ * The badge keeps its word. It is a flex item next to a file path that can be arbitrarily
+ * long, and the body around it sets `word-break: break-word` — so left to shrink it collapsed
+ * to a single character's width and broke "failed" across three lines. The path has an
+ * ellipsis and can give up the room instead.
+ */
+.abele-chat-msg__tool-err-badge {
+  flex: 0 0 auto;
+  white-space: nowrap;
+  word-break: normal;
+  color: var(--text-error);
+  font-size: var(--font-smaller);
+}
+
+.abele-chat-msg__tool-error {
+  font-size: var(--font-small);
+  color: var(--text-error);
+}
+
+.abele-chat-msg__attachments {
+  display: flex;
+  flex-wrap: wrap;
+  gap: var(--size-2-2);
+  margin-top: var(--size-4-1);
+}
+
+.abele-chat-msg__attachment-chip {
+  display: inline-flex;
+  align-items: center;
+  gap: var(--size-2-1);
+  padding: var(--size-2-1) var(--size-2-3);
+  background-color: var(--background-secondary);
+  border-radius: var(--radius-s);
+  font-size: var(--font-smaller);
+  color: var(--text-accent);
+  cursor: pointer;
+
+  &:hover {
+    background-color: var(--background-modifier-hover);
+  }
+}
+
+.abele-chat-msg__image-wrap {
+  margin-top: var(--size-4-1);
+}
+
+.abele-chat-msg__image-preview {
+  display: block;
+  max-width: 300px;
+  max-height: 300px;
+  border-radius: var(--radius-s);
+  border: 1px solid var(--background-modifier-border);
+  cursor: pointer;
+}
+
+.abele-chat-msg__image-link {
+  display: block;
+  margin-top: var(--size-2-1);
+  font-size: var(--font-smallest);
+  color: var(--text-accent);
+  cursor: pointer;
+  word-break: break-all;
+
+  &:hover {
+    text-decoration: underline;
+  }
+}
+
+.abele-chat-msg__new-file {
+  margin-top: var(--size-4-1);
+  border-radius: var(--radius-s);
+  max-height: 300px;
+  overflow-y: auto;
+  background-color: var(--background-secondary);
+
+  code {
+    display: block;
+    padding: var(--size-4-2) var(--size-4-3);
+    font-size: var(--font-small);
+    white-space: pre-wrap;
+    word-break: break-word;
+  }
+}
+
+.abele-chat-msg__diff {
+  margin-top: var(--size-4-1);
+  border-radius: var(--radius-s);
+  overflow: hidden;
+  font-size: var(--font-small);
+  max-height: 300px;
+  overflow-y: auto;
+}
+
+.abele-chat-msg__details {
+  margin-bottom: var(--size-4-1);
+  font-size: var(--font-smaller);
+  color: var(--text-muted);
+  border-bottom: 1px solid var(--background-modifier-border);
+  padding-bottom: var(--size-2-1);
+
+  pre {
+    background-color: var(--background-secondary);
+    border-radius: var(--radius-s);
+    padding: var(--size-4-1) var(--size-4-2);
+    max-height: 200px;
+    overflow: auto;
+    margin: var(--size-2-1) 0 var(--size-4-1);
+    font-size: var(--font-smaller);
+    white-space: pre-wrap;
+    word-break: break-word;
+  }
+}
+
+.abele-chat-msg__detail-row {
+  display: flex;
+  gap: var(--size-4-2);
+  margin-bottom: var(--size-4-1);
+}
+
+.abele-chat-msg__detail-label {
+  font-weight: bold;
+  margin-right: var(--size-4-1);
+  flex-shrink: 0;
+  white-space: nowrap;
+}
+
+.abele-chat-msg__detail-time {
+  color: var(--text-faint);
+}
+
+.abele-chat-msg__branch-nav {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  gap: var(--size-2-1);
+  flex-basis: 100%;
+  color: var(--text-faint);
+  font-size: var(--font-smaller);
+
+  .clickable-icon {
+    cursor: pointer;
+    &:hover {
+      color: var(--text-muted);
+    }
+  }
+}
+
+.abele-chat-msg__branch-label {
+  white-space: nowrap;
+  min-width: 20px;
+  text-align: center;
+}
+
+.abele-chat-msg__branch-disabled {
+  opacity: 0.3;
+  pointer-events: none;
+}
+
+.abele-chat-msg__branch-add {
+  margin-left: var(--size-2-1);
+  cursor: pointer;
+  color: var(--text-faint);
+
+  &:hover {
+    color: var(--text-muted);
+  }
+}
+
+.abele-chat-msg__actions {
+  display: flex;
+  flex-wrap: wrap;
+  gap: var(--size-4-1);
+  // Theme focus rings paint outside each button, including inside the clipped message body.
+  padding: var(--size-4-1);
+  margin-bottom: var(--size-4-1);
+}
+
+body.is-mobile .abele-chat-msg__actions button,
+body.is-mobile button.abele-chat-msg__icon {
+  min-width: 44px;
+  min-height: 44px;
+}
+
+button.abele-chat-msg__icon {
+  padding: 0;
+}
+
+@container (max-width: 450px) {
+  .abele-chat-msg__time {
+    display: none;
+  }
+}
+
+// ── Draft ──
+
+.abele-chat-msg--draft {
+  &.abele-chat-msg_user .abele-chat-msg__body {
+    border: 1px dashed var(--interactive-accent);
+    background-color: var(--background-primary-alt);
+  }
+}
+
+.abele-chat-msg__draft-actions {
+  display: flex;
+  gap: var(--size-4-1);
+  flex-basis: 100%;
+  padding-left: calc(var(--icon-size) + var(--size-4-2));
+}
+
+.abele-chat-msg__draft-btn {
+  font-size: var(--font-ui-smaller);
+  padding: var(--size-2-1) var(--size-4-2);
+  border-radius: var(--radius-s);
+  border: 1px solid var(--background-modifier-border);
+  background: var(--background-secondary);
+  color: var(--text-muted);
+  cursor: pointer;
+
+  &:hover {
+    background: var(--background-modifier-hover);
+    color: var(--text-normal);
+  }
+
+  &--send {
+    background: var(--interactive-accent);
+    color: var(--text-on-accent);
+    border-color: var(--interactive-accent);
+
+    &:hover {
+      background: var(--interactive-accent-hover);
+    }
+  }
+}
+
+// ── Interceptor sub-chat ──
+
+.abele-chat-msg__interceptor {
+  flex-basis: 100%;
+  margin-left: calc(var(--icon-size) + var(--size-4-2) + var(--size-4-3));
+  border-left: 2px solid var(--background-modifier-border);
+  padding-left: var(--size-4-2);
+}
+
+.abele-chat-msg__interceptor-collapsed {
+  display: flex;
+  align-items: center;
+  gap: var(--size-2-1);
+  font-size: var(--font-smaller);
+  color: var(--text-faint);
+  cursor: pointer;
+
+  &:hover {
+    color: var(--text-muted);
+  }
+}
+
+.abele-chat-msg__interceptor-header {
+  display: flex;
+  align-items: center;
+  gap: var(--size-2-1);
+  font-size: var(--font-smaller);
+  color: var(--text-faint);
+  cursor: pointer;
+  margin-bottom: var(--size-4-1);
+
+  &:hover {
+    color: var(--text-muted);
+  }
+}
+
+.abele-chat-msg__interceptor-messages {
+  display: flex;
+  flex-direction: column;
+  gap: var(--size-4-1);
+}
+
+.abele-chat-msg__interceptor-msg {
+  font-size: var(--font-ui-small);
+  line-height: 1.5;
+
+  p:first-child {
+    margin-top: 0;
+  }
+  p:last-child {
+    margin-bottom: 0;
+  }
+
+  &--user {
+    color: var(--text-muted);
+    font-style: italic;
+  }
+
+  &--assistant {
+    color: var(--text-normal);
+  }
+}
+
+.abele-chat-msg__interceptor-typing {
+  display: inline-flex;
+  gap: 4px;
+}
+
+.abele-chat-msg__interceptor-error {
+  display: flex;
+  align-items: center;
+  gap: var(--size-4-2);
+  margin-top: var(--size-4-1);
+  font-size: var(--font-ui-small);
+  color: var(--text-error);
+}
+
+.abele-chat-msg__interceptor-input {
+  display: flex;
+  align-items: center;
+  gap: var(--size-4-1);
+  margin-top: var(--size-4-1);
+}
+
+.abele-chat-msg__interceptor-textarea {
+  flex: 1;
+  resize: none;
+  border: 1px solid var(--background-modifier-border);
+  border-radius: var(--radius-s);
+  padding: var(--size-2-1) var(--size-4-1);
+  font-family: inherit;
+  font-size: var(--font-ui-small);
+  line-height: 1.5;
+  background-color: var(--background-primary);
+  color: var(--text-normal);
+  height: 28px;
+  min-height: 28px;
+  max-height: 60px;
+  overflow-y: hidden;
+
+  &:focus {
+    border-color: var(--interactive-accent);
+    outline: none;
+  }
+}
