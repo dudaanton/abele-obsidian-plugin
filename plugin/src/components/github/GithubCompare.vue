@@ -87,7 +87,8 @@ import type { DiffFileAnchor } from '@/github/urls'
 import { useRepositorySource } from '@/repository/context'
 import { repoWeb } from '@/github/origin'
 
-export type CompareSection = 'files' | 'commits'
+import type { CompareSection } from '@/github/compareSection'
+export type { CompareSection } from '@/github/compareSection'
 
 /** A comparison's body under its header: what it could not show, then its files or commits. */
 const props = defineProps<{
