@@ -164,13 +164,15 @@ export const SECTIONS: Section[] = [
       },
     }
   ),
+  // Whole voice connection travels, including its optional clientName.
   aiBlock('ai-voice', 'Voice input', ['voice'], {
     secretsOf: (settings) => [ai(settings).voice?.apiKeyId || DEFAULT_TRANSCRIPTION.apiKeyId],
   }),
-  // Whole providers travel, including each model's optional requestTimeoutSeconds override.
+  // Whole providers travel, including clientName and each model's requestTimeoutSeconds.
   aiList('ai-providers', 'AI providers', 'providers', (p: Identified & { apiKeyId?: string }) =>
     p.apiKeyId ? [p.apiKeyId] : []
   ),
+  // Image connections also carry their optional clientName.
   aiList(
     'ai-image-providers',
     'Image providers',

@@ -57,6 +57,14 @@
             />
           </Setting>
 
+          <Setting name="Client name" :desc="CLIENT_NAME_DESCRIPTION">
+            <Input
+              :model-value="provider.clientName || ''"
+              placeholder="Default"
+              @update:model-value="updateProvider(pIdx, 'clientName', $event)"
+            />
+          </Setting>
+
           <Setting name="API Key" desc="Stored securely in keychain.">
             <SecretField
               :value="storedSecret(provider.apiKeyId)"
@@ -341,6 +349,14 @@
           />
         </Setting>
 
+        <Setting name="Client name" :desc="CLIENT_NAME_DESCRIPTION">
+          <Input
+            :model-value="voice.clientName || ''"
+            placeholder="Default"
+            @update:model-value="setVoice('clientName', $event)"
+          />
+        </Setting>
+
         <Setting
           name="OpenRouter API key"
           desc="Stored in the keychain, shared with image generation."
@@ -400,6 +416,14 @@
               :model-value="ip.endpoint"
               :placeholder="imgEndpointDefault(ip.apiType)"
               @update:model-value="updateImageProvider(ipIdx, 'endpoint', $event)"
+            />
+          </Setting>
+
+          <Setting name="Client name" :desc="CLIENT_NAME_DESCRIPTION">
+            <Input
+              :model-value="ip.clientName || ''"
+              placeholder="Default"
+              @update:model-value="updateImageProvider(ipIdx, 'clientName', $event)"
             />
           </Setting>
 
@@ -681,6 +705,7 @@ import { savedKeysWithIds } from '@/ai/savedKeyIds'
 import { TRANSCRIPTION_MODELS } from '@/ai/transcription'
 import { DEFAULT_RETRY, type RetrySettings } from '@/ai/retry'
 import { DEFAULT_VOICE_SETTINGS, voiceKeyId, type VoiceSettings } from '@/ai/transcriptionSettings'
+import { CLIENT_NAME_DESCRIPTION } from '@/ai/client/clientName'
 import { ChatStorage } from '@/ai/ChatStorage'
 import { CommentService } from '@/ai/CommentService'
 import { AgentRegistry } from '@/ai/agents/AgentRegistry'
@@ -1303,7 +1328,8 @@ const fetchModels = async (pIdx: number) => {
   try {
     const models = await client.fetchModels(
       provider.baseUrl,
-      keyFor(provider.apiKeyId, provider.baseUrl, config)
+      keyFor(provider.apiKeyId, provider.baseUrl, config),
+      provider.clientName
     )
     remoteModels[provider.id] = models
   } catch (err: unknown) {

@@ -1151,6 +1151,16 @@ records. Unsaved new records acquire an identity before editing. Settings transf
 each saved-key record separately by this identity, and `ai.autoRetry` travels in AI general
 settings. Incoming settings cannot move an open key editor onto another record.
 
+## Model client identity
+
+Model connections may store `ai.providers[].clientName`, image connections
+`ai.imageProviders[].clientName`, and dictation `ai.voice.clientName`. These optional text
+values select the request's `User-Agent`, not an agent's display name or prompt. Absent,
+empty or whitespace-only leaves the existing transport identity unchanged. Whole providers,
+image providers and the voice block carry these fields in settings transfer. Sharing a
+keychain reference does not inherit another connection's client name. See `settings` for
+transport limitations.
+
 ## Model request timeout
 
 `ai.requestTimeoutSeconds` stores the shared chat-model timeout in seconds, defaulting to 60.

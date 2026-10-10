@@ -121,6 +121,17 @@ and `ai.defaultAgentId` is the one a new chat opens with. `ai.commentAgentId` is
 the agent a comment starts on, and `ai.commentFolder` and `ai.chatFolder` are where comments
 and chats are written.
 
+Each model connection has **Client name** (`ai.providers.N.clientName`): an optional
+`User-Agent` for chat (including image attachments), agent, fallback and background requests,
+and fetching the model list. Empty or whitespace-only keeps the existing transport defaults.
+Desktop chat uses native streaming when a name is set because Chromium's page `fetch` ignores
+`User-Agent`. Mobile chat still uses page `fetch`, which may ignore the header. Model listing,
+image generation/editing and dictation use the native request transport; mobile header behavior
+depends on Obsidian. Images and voice have separate connections and their own **Client name**
+(`ai.imageProviders.N.clientName` and `ai.voice.clientName`); sharing a key does not share an
+identity. All three values travel with their respective settings sections. No other identifying
+client headers are added by these connections.
+
 `ai.permissionMode` and `ai.toolModes` are permissions: the first decides whether writes are
 confirmed, and the second holds one mode per tool — `off`, `ask` or `auto`. `ai.defaultScope`
 and `ai.defaultFullVaultAccess` are what a chat may reach when its agent says nothing. Changing
