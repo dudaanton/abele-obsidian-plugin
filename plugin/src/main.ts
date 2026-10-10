@@ -310,21 +310,25 @@ export default class AbelePlugin extends Plugin {
       } // Ensure process is defined for Node.js compatibility
 
       await startupStepAsync('settings', () => AbeleConfig.getInstance().loadSettings())
-      if (Platform.isMobile) {
+      startupStep('mobile background', () => {
+        if (!Platform.isMobile) return
         this.register(bindAppSuspension(appSuspension, document, window))
         mobileBackground.install(new SilentBackgroundAudio())
-        this.register(watch(
-          AbeleConfig.getInstance().version,
-          () => mobileBackground.configure(true, {
-            whileAgents: AbeleConfig.getInstance().ai.backgroundWhileAgents === true,
-            always: AbeleConfig.getInstance().ai.backgroundAlways === true,
-          }),
-          { immediate: true, flush: 'sync' }
-        ))
+        this.register(
+          watch(
+            AbeleConfig.getInstance().version,
+            () =>
+              mobileBackground.configure(true, {
+                whileAgents: AbeleConfig.getInstance().ai.backgroundWhileAgents === true,
+                always: AbeleConfig.getInstance().ai.backgroundAlways === true,
+              }),
+            { immediate: true, flush: 'sync' }
+          )
+        )
         this.registerDomEvent(document, 'pointerdown', () => mobileBackground.activate())
         this.registerDomEvent(document, 'keydown', () => mobileBackground.activate())
         this.register(() => mobileBackground.destroy())
-      }
+      })
       // Before either sync host can write: migrate execution decisions, not received bytes.
       await startupStepAsync('local script approvals', () => preserveLocalScriptVersions(this.app))
       // Settings were just replaced wholesale; anything resolving an agent must see the new set.
