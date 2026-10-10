@@ -3,7 +3,7 @@ import type { App } from 'obsidian'
 import { ObsidianFileSystem } from '@/sync/ObsidianFileSystem'
 import { buildFakeVault } from '../helpers/fakeVault'
 import { pathCoordinatorOf } from '@/sync/pathCoordinator'
-import { JOURNAL_KEY } from '@/sync/WriteJournal'
+import { JOURNAL_KEY } from '@/sync/writeJournal'
 
 it('keeps a journal and local bytes intact if placement finds unrecovered work on its own path', async () => {
   const app = buildFakeVault([{ path: 'note.md', content: 'local edit' }])

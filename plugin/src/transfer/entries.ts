@@ -20,6 +20,7 @@ import { DEFAULT_TRANSCRIPTION } from '@/ai/transcription'
 import { pruneToolDescriptions } from '@/ai/tools/toolDescriptionOverrides'
 import { FIREFLY_TOKEN_KEY_ID } from '@/secrets/legacy'
 import { isReservedSecretId } from '@/secrets/deviceSecret'
+import { migrateSyncSettings } from '@/sync/settings'
 import {
   FILE_SECTION_LABELS,
   isFileSection,
@@ -400,7 +401,13 @@ export const SECTIONS: Section[] = [
    * carried them made two devices one identity on the server. Nor the ledger id, which names a
    * database in the app's IndexedDB that every local vault on a machine shares.
    */
-  rootBlock('sync', 'Sync', ['sync']),
+  rootBlock('sync', 'Sync', ['sync'], {
+    read: (settings) =>
+      settings.sync === undefined ? {} : { sync: migrateSyncSettings(settings.sync) },
+    write: (settings, data) => {
+      if (data.sync !== undefined) settings.sync = migrateSyncSettings(data.sync)
+    },
+  }),
   rootBlock('other', 'Other', [
     'refreshDelay',
     'logsNotesTypes',

@@ -42,7 +42,14 @@ it('carries every declared shared sync setting through its transfer section', ()
   }
   const entry = collectEntries(source).find((item) => item.section === 'sync')!
   expect(Object.keys((entry.data as { sync: object }).sync).sort()).toEqual(names.sort())
-  expect(applyEntries([entry], { ...DEFAULT_SETTINGS, sync: defaults }).sync).toEqual(source.sync)
+  expect(applyEntries([entry], { ...DEFAULT_SETTINGS, sync: defaults }).sync).toEqual({
+    keySignature: source.sync.keySignature,
+  })
+  // Older payloads must pass the same product boundary as newly collected entries.
+  const incoming = { ...entry, data: { sync: source.sync } }
+  expect(applyEntries([incoming], { ...DEFAULT_SETTINGS, sync: defaults }).sync).toEqual({
+    keySignature: source.sync.keySignature,
+  })
 })
 
 it('carries all selective choices except the receiver-local size cap, using only a sibling token', () => {

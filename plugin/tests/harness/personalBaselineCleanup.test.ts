@@ -1,24 +1,33 @@
 import { readFileSync } from 'node:fs'
 import { describe, expect, it } from 'vitest'
+import ts from 'typescript'
 
 const source = readFileSync('tests/e2e/personalBaseline.e2e.test.ts', 'utf8')
-const keysText = source.match(/const localKeys = (\[[\s\S]*?\])/)[1]
-const keys: string[] = new Function(`return ${keysText}`)()
-const snapshot = source.match(/`(Object\.fromEntries\([^\n]+)`/)[1]
-const expression = snapshot.replace('${JSON.stringify(localKeys)}', JSON.stringify(keys))
+const file = ts.createSourceFile('personalBaseline.ts', source, ts.ScriptTarget.Latest)
 
 describe('personal baseline local authority cleanup', () => {
-  it('keeps missing keys across the JSON transport so teardown clears newly created authority', () => {
-    const local = new Map<string, unknown>()
-    const app = { loadLocalStorage: (key: string) => local.get(key) }
-    const saved = JSON.parse(JSON.stringify(new Function('app', `return ${expression}`)(app)))
-    for (const key of keys) local.set(key, { synthetic: 'temporary authority' })
-    // The real teardown iterates the transported snapshot, not the original key list.
-    for (const [key, value] of Object.entries(saved)) {
-      if (value == null) local.delete(key)
-      else local.set(key, value)
+  it('sets no ad hoc local authority outside the shared token-pool fixture', () => {
+    // Probe bodies are template strings too. Any direct write needs explicit cleanup coverage.
+    expect(source).not.toMatch(/saveLocalStorage\s*\(/)
+    const cases: ts.CallExpression[] = []
+    const visit = (node: ts.Node) => {
+      if (ts.isCallExpression(node) && node.expression.getText(file) === 'liveCase')
+        cases.push(node)
+      ts.forEachChild(node, visit)
     }
-    expect([...local.entries()]).toEqual([])
-    expect(Object.keys(saved)).toEqual(keys)
+    visit(file)
+    expect(cases.length).toBeGreaterThan(0)
+    expect(source).toContain('const fixture = liveSuite()')
+    for (const one of cases) expect(one.arguments.at(-1)?.getText(file)).toBe('fixture')
+  })
+  it('delegates every case to cleanup that resets each leased device, including failure fallback', () => {
+    const suite = readFileSync('tests/e2e/helpers/syncLiveCases.ts', 'utf8')
+    const fixture = readFileSync('tests/e2e/helpers/tokenSyncLive.ts', 'utf8')
+    const driver = readFileSync('tests/e2e/helpers/syncDriver.ts', 'utf8')
+    expect(suite).toContain('await current.close()')
+    expect(fixture).toContain('for (const [device, saved] of [...this.saved].reverse())')
+    expect(fixture).toContain('await device.resetTokenState()')
+    expect(fixture).toContain('await device.forceResetTokenState()')
+    expect(driver).toContain('window.__abeleTest.resetSyncTokenState')
   })
 })

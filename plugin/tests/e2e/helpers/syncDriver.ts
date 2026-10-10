@@ -125,14 +125,15 @@ export class SyncDriver {
       )
     })
   }
-  async syncNow(id?: string): Promise<void> {
+  async syncNow(id?: string): Promise<SyncStatus[]> {
     await this.long(
       'sync token connections',
       `for(const row of svc.rows.value.filter(one=>!one.paused${id ? '&&one.id===' + JSON.stringify(id) : ''})) await svc.sync(row.id); return true`
     )
-    await this.waitIdle(id)
+    return this.waitIdle(id)
   }
-  async waitIdle(id?: string): Promise<void> {
+  async waitIdle(id?: string): Promise<SyncStatus[]> {
+    let settled: SyncStatus[] = []
     await waitFor(
       'token connection to settle',
       () => {
@@ -144,12 +145,17 @@ export class SyncDriver {
               .map((one) => one.id + ': ' + (one.error ?? 'Token exchange needs attention'))
               .join('; ')
           )
-        return rows.length > 0 && rows.every((one) => ['idle', 'paused'].includes(one.status))
+        if (rows.length > 0 && rows.every((one) => ['idle', 'paused'].includes(one.status))) {
+          settled = rows
+          return true
+        }
+        return false
       },
       60000
     ).catch((error) => {
       throw this.failure('token connection to settle', error)
     })
+    return settled
   }
   async pause(id: string, paused: boolean): Promise<void> {
     this.run(
@@ -248,7 +254,7 @@ export class SyncDriver {
   }
   async restore(selector: string, name: string): Promise<void> {
     this.run(
-      `const root=document.querySelector(${JSON.stringify(selector)});let row;await poll(()=>row=[...root.querySelectorAll('.abele-card')].find(one=>textOf(one.querySelector('.abele-card__name'))===${JSON.stringify(name)}));await press(row,'Restore');if(${selector === '.abele-version-history'}){await poll(()=>document.querySelector('.abele-confirm__message'));await press(document.querySelector('.abele-confirm__message').closest('.modal'),'Restore')}return true`
+      `const root=document.querySelector(${JSON.stringify(selector)});let row;await poll(()=>row=[...root.querySelectorAll('.abele-card')].find(one=>textOf(one.querySelector('.abele-card__name'))===${JSON.stringify(name)}));await press(row,'Restore');if(${selector === '.abele-version-history'}){await poll(()=>document.querySelector('.abele-confirm__message'));const confirm=document.querySelector('.abele-confirm__message').closest('.modal');await press(confirm.querySelector('.abele-modal__footer'),'Restore')}return true`
     )
   }
   candidates(): {

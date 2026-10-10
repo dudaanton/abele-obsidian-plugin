@@ -6,9 +6,9 @@ import ConfirmModal from '@/components/obsidian/ConfirmModal.vue'
 import { useVault } from '../helpers/testEnv'
 
 it('addresses the current confirmation body and shared footer in the phone probe', () => {
-  const source = readFileSync('tests/e2e/syncPhone.e2e.test.ts', 'utf8')
+  const source = readFileSync('tests/e2e/helpers/syncDriver.ts', 'utf8')
   expect(source).toContain("document.querySelector('.abele-confirm__message')")
-  expect(source).toContain("confirm.querySelectorAll('.abele-modal__footer button')")
+  expect(source).toContain("confirm.querySelector('.abele-modal__footer')")
   expect(source).not.toContain("document.querySelector('.abele-confirm')")
   expect(source).not.toContain('.abele-confirm__actions')
 })
