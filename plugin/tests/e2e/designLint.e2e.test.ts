@@ -13,7 +13,17 @@ describe('kit catalogue live design contract', () => {
     const result = await evalLong(`(async () => {
       const paths = ${JSON.stringify([referenceTarget, referenceSource])}
       if (paths.some(path => app.vault.getAbstractFileByPath(path))) throw new Error('Design reference fixture already exists')
-      const explorers = app.workspace.getLeavesOfType('file-explorer').map(leaf => ({
+      const explorerLeaves = app.workspace.getLeavesOfType('file-explorer')
+      const readyExplorer = async leaf => {
+        await leaf.loadIfDeferred()
+        const deadline = Date.now() + 10000
+        while (!leaf.view.fileItems || !leaf.view.navFileContainerEl || !leaf.view.fileItems['/']) {
+          if (Date.now() > deadline) throw new Error('Native file explorer did not initialize')
+          await new Promise(resolve => setTimeout(resolve, 100))
+        }
+      }
+      for (const leaf of explorerLeaves) await readyExplorer(leaf)
+      const explorers = explorerLeaves.map(leaf => ({
         id: leaf.id,
         folds: Object.values(leaf.view.fileItems).filter(item => item.file.children).map(item => [item.file.path, item.collapsed]),
         scrollTop: leaf.view.navFileContainerEl.scrollTop,
@@ -51,6 +61,12 @@ describe('kit catalogue live design contract', () => {
       for (const saved of state.explorers) {
         const leaf = app.workspace.getLeavesOfType('file-explorer').find(leaf => leaf.id === saved.id)
         if (!leaf) throw new Error('Original file explorer was not restored')
+        await leaf.loadIfDeferred()
+        const deadline = Date.now() + 10000
+        while (!leaf.view.fileItems || !leaf.view.navFileContainerEl || !leaf.view.fileItems['/']) {
+          if (Date.now() > deadline) throw new Error('Restored file explorer did not initialize')
+          await new Promise(resolve => setTimeout(resolve, 100))
+        }
         for (const [path, collapsed] of saved.folds) {
           const item = leaf.view.fileItems[path]
           if (item && item.collapsed !== collapsed) item.setCollapsed(collapsed)
