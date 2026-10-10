@@ -6,7 +6,7 @@ import { ScriptRuns } from '@/scripting/ScriptRuns'
 import { runInterceptorScript } from '@/ai/interceptor/runScript'
 import type { InterceptInput } from '@/ai/interceptor/context'
 import { showFormModal } from '@/scripting/formModal'
-import { GlobalStore } from '@/stores/GlobalStore'
+import { closeComponentDialogs } from '@/modal/componentDialog'
 import { AbeleConfig } from '@/services/AbeleConfig'
 import { DEFAULT_AI_SETTINGS } from '@/ai/types'
 import { useVault } from '../helpers/testEnv'
@@ -30,6 +30,7 @@ beforeEach(() => {
   requestUrl.mockReset()
 })
 afterEach(() => {
+  closeComponentDialogs()
   vi.useRealTimers()
   vi.restoreAllMocks()
   ScriptService.destroy()
@@ -164,10 +165,10 @@ describe('script deadlines and prompts', () => {
     const call = ctx.form([])
     const stopped = expect(call).rejects.toThrow(/abort|stopped/i)
     await flushPromises()
-    expect(GlobalStore.getInstance().scriptFormModalOpened.value).toBe(true)
+    await expect.poll(() => !!document.querySelector('.abele-script-form')).toBe(true)
     controller.abort()
     await stopped
-    expect(GlobalStore.getInstance().scriptFormModalOpened.value).toBe(false)
+    expect(document.querySelector('.abele-script-form')).toBeNull()
   })
 
   it.each(['script', 'policy'] as const)(

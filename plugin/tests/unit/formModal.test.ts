@@ -1,18 +1,45 @@
 /**
  * Opening the form modal from outside a script.
  *
- * The modal is one Vue component mounted inside the plugin's root, watching three refs in the
- * store; showing a form is writing to them and waiting. That was a private method on
- * `ScriptService`, which meant anything else wanting a modal — the API reference command —
- * would have had to write those refs itself and drift from how scripts do it.
+ * The presentation adapter records the request-local props passed to the on-demand host.
+ * The queue's guarantees are unchanged: each caller receives its own answer, in order,
+ * with no shared UI-store fields. The real mounted host is covered at component level.
  */
-import { describe, it, expect, beforeEach, afterEach } from 'vitest'
+import { describe, it, expect, beforeEach, afterEach, vi } from 'vitest'
 import { showFormModal, showMarkdown } from '@/scripting/formModal'
-import { GlobalStore } from '@/stores/GlobalStore'
 import type { FormField } from '@/scripting/types'
 import { useVault } from '../helpers/testEnv'
 
-const store = () => GlobalStore.getInstance()
+const presentation = vi.hoisted(() => ({
+  scriptFormModalOpened: { value: false },
+  scriptFormId: { value: 0 },
+  scriptFormFields: { value: [] as FormField[] },
+  scriptFormResolve: { value: null as ((values: Record<string, string> | null) => void) | null },
+}))
+vi.mock('@/modal/componentDialog', () => ({
+  openComponentDialog: (
+    _load: unknown,
+    props: { fields: FormField[]; resolve: (values: Record<string, string> | null) => void },
+    options: { onClosed: () => void }
+  ) => {
+    presentation.scriptFormId.value++
+    presentation.scriptFormFields.value = props.fields
+    presentation.scriptFormResolve.value = props.resolve
+    presentation.scriptFormModalOpened.value = true
+    let closed = false
+    return {
+      ready: Promise.resolve(),
+      close() {
+        if (closed) return
+        closed = true
+        presentation.scriptFormModalOpened.value = false
+        presentation.scriptFormResolve.value = null
+        options.onClosed()
+      },
+    }
+  },
+}))
+const store = () => presentation
 
 /** Answer the modal the way closing it does, so a pending promise settles. */
 const answer = (result: Record<string, string> | null) => {

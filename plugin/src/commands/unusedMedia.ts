@@ -1,5 +1,5 @@
-import { GlobalStore } from '@/stores/GlobalStore'
+import { openUtilityDialog } from './utilityDialogs'
 
 export const unusedMedia = (): void => {
-  GlobalStore.getInstance().unusedMediaModalOpened.value = true
+  void openUtilityDialog('unusedMedia')
 }

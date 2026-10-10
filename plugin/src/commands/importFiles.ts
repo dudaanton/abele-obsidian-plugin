@@ -1,5 +1,5 @@
-import { GlobalStore } from '@/stores/GlobalStore'
+import { openUtilityDialog } from './utilityDialogs'
 
 export const importFiles = (): void => {
-  GlobalStore.getInstance().importFilesModalOpened.value = true
+  void openUtilityDialog('importFiles')
 }

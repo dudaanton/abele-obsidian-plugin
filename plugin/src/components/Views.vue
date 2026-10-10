@@ -64,51 +64,6 @@
   <Teleport v-for="[id, instance] in timelineBaseInstances" :key="id" :to="instance.el">
     <TimelineBase :instance="instance" />
   </Teleport>
-  <FindAndReplaceModal
-    v-if="findAndReplaceModalOpened"
-    @close="findAndReplaceModalOpened = false"
-  />
-  <MigrateFromDataviewModal
-    v-if="migrateFromDataviewModalOpened"
-    @close="migrateFromDataviewModalOpened = false"
-  />
-  <SaveMediaModal v-if="saveMediaModalOpened" @close="saveMediaModalOpened = false" />
-  <ImportFilesModal v-if="importFilesModalOpened" @close="importFilesModalOpened = false" />
-  <GalleryViewer
-    v-if="previewImagePath"
-    :images="previewImages"
-    :start-index="previewStartIndex"
-    :gallery-file-path="previewImagePath"
-    @close="previewImagePath = null"
-  />
-  <UnusedMediaModal v-if="unusedMediaModalOpened" @close="unusedMediaModalOpened = false" />
-  <DeduplicateMediaModal
-    v-if="deduplicateMediaModalOpened"
-    @close="deduplicateMediaModalOpened = false"
-  />
-  <MigrateFromFireflyModal
-    v-if="migrateFromFireflyModalOpened"
-    @close="migrateFromFireflyModalOpened = false"
-  />
-  <MigrateDataviewFieldsModal
-    v-if="migrateDataviewFieldsModalOpened"
-    @close="migrateDataviewFieldsModalOpened = false"
-  />
-  <MigrateFromTogglModal
-    v-if="migrateFromTogglModalOpened"
-    @close="migrateFromTogglModalOpened = false"
-  />
-  <ScriptApprovalModal
-    v-if="scriptApprovalDialog"
-    :key="scriptApprovalDialog.id"
-    :request="scriptApprovalDialog"
-  />
-  <ScriptFormModal
-    v-if="scriptFormModalOpened && scriptFormResolve"
-    :key="scriptFormId"
-    :fields="scriptFormFields"
-    :resolve="scriptFormResolve"
-  />
   <!-- Keyed by the path: opening the history of a second file must rebuild the dialog, not
        hand a new prop to one still holding the first file's versions. -->
   <VersionHistoryModal
@@ -158,10 +113,13 @@
 </template>
 
 <script setup lang="ts">
-import { computed, onBeforeUnmount } from 'vue'
-import { scriptApprovalDialog, cancelScriptApprovals } from '@/scripting/trust/scriptApprovalPrompt'
-onBeforeUnmount(cancelScriptApprovals)
-import { TFile } from 'obsidian'
+import { onBeforeUnmount } from 'vue'
+import { cancelScriptApprovals } from '@/scripting/trust/scriptApprovalPrompt'
+import { closeComponentDialogs } from '@/modal/componentDialog'
+onBeforeUnmount(() => {
+  cancelScriptApprovals()
+  closeComponentDialogs()
+})
 import { GlobalStore } from '@/stores/GlobalStore'
 import NoteWidgets from './NoteWidgets.vue'
 import { SyncService } from '@/sync/SyncService'
@@ -170,18 +128,6 @@ import TodoSidebarView from './TodoSidebar.vue'
 import FindAndReplaceBases from './FindAndReplaceBases.vue'
 import CalendarBase from './calendarBase/CalendarBase.vue'
 import TimelineBase from './timelineBase/TimelineBase.vue'
-import FindAndReplaceModal from './FindAndReplaceModal.vue'
-import MigrateFromDataviewModal from './MigrateFromDataviewModal.vue'
-import SaveMediaModal from './SaveMediaModal.vue'
-import ImportFilesModal from './ImportFilesModal.vue'
-import GalleryViewer from './GalleryViewer.vue'
-import UnusedMediaModal from './UnusedMediaModal.vue'
-import DeduplicateMediaModal from './DeduplicateMediaModal.vue'
-import MigrateFromFireflyModal from './MigrateFromFireflyModal.vue'
-import MigrateDataviewFieldsModal from './MigrateDataviewFieldsModal.vue'
-import MigrateFromTogglModal from './MigrateFromTogglModal.vue'
-import ScriptFormModal from './ScriptFormModal.vue'
-import ScriptApprovalModal from './ScriptApprovalModal.vue'
 import VersionHistoryModal from './sync/VersionHistoryModal.vue'
 import DeletedFilesModal from './sync/DeletedFilesModal.vue'
 import HeldDeletesModal from './sync/HeldDeletesModal.vue'
@@ -203,23 +149,8 @@ import TimeTrackingSidebarView from './TimeTrackingSidebar.vue'
 import ScriptRunsView from './ScriptRuns.vue'
 import ScriptView from './ScriptView.vue'
 import SettingsView from './settings/Settings.vue'
-import { vaultUrl } from '@/helpers/vaultUrl'
 
 const {
-  findAndReplaceModalOpened,
-  migrateFromDataviewModalOpened,
-  saveMediaModalOpened,
-  importFilesModalOpened,
-  previewImagePath,
-  unusedMediaModalOpened,
-  deduplicateMediaModalOpened,
-  migrateFromFireflyModalOpened,
-  migrateDataviewFieldsModalOpened,
-  migrateFromTogglModalOpened,
-  scriptFormModalOpened,
-  scriptFormId,
-  scriptFormFields,
-  scriptFormResolve,
   versionHistoryPath,
   deletedFilesModalOpened,
   syncLogModalOpened,
@@ -248,44 +179,4 @@ const codeAsking = codePrompt.asking
 const heldAsking = heldPrompt.asking
 /** Obsidian settings changed on another device, staged until answered: the question, if open. */
 const settingsAsking = settingsPrompt.asking
-
-const IMAGE_EXTENSIONS = new Set(['png', 'jpg', 'jpeg', 'gif', 'webp', 'bmp', 'svg'])
-
-const previewImages = computed(() => {
-  const path = previewImagePath.value
-  if (!path) return []
-  const { app } = GlobalStore.getInstance()
-  const file = app.vault.getAbstractFileByPath(path)
-  if (!file || !(file instanceof TFile)) return []
-
-  // Collect all images in the same folder
-  const folder = file.parent
-  if (!folder) return [toViewerImage(file)]
-
-  return folder.children
-    .filter(
-      (f): f is TFile => f instanceof TFile && IMAGE_EXTENSIONS.has(f.extension.toLowerCase())
-    )
-    .sort((a, b) => a.name.localeCompare(b.name))
-    .map(toViewerImage)
-})
-
-const previewStartIndex = computed(() => {
-  const path = previewImagePath.value
-  if (!path) return 0
-  return Math.max(
-    0,
-    previewImages.value.findIndex((img) => img.path === path)
-  )
-})
-
-function toViewerImage(file: TFile) {
-  const { app } = GlobalStore.getInstance()
-  return {
-    url: vaultUrl(app, file),
-    alt: file.name,
-    type: 'local' as const,
-    path: file.path,
-  }
-}
 </script>

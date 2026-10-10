@@ -21,7 +21,6 @@ import { syncTaskFileName } from '@/helpers/taskFileName'
 import { transactionFileTarget } from '@/helpers/transactionFileName'
 import { VaultWatcher, type FileChangeEvent } from '@/helpers/VaultWatcher'
 import { AbeleConfig, DEFAULT_SETTINGS } from '@/services/AbeleConfig'
-import type { FormField } from '@/scripting/types'
 import { App, TFile, type EventRef } from 'obsidian'
 import { computed, ref, shallowRef, toRaw } from 'vue'
 import type { FindAndReplaceInstance } from '@/bases/FindAndReplaceView'
@@ -42,22 +41,6 @@ export class GlobalStore {
   public readonly headersContainers = ref<Array<Header>>([])
   public readonly galleriesContainers = ref<Array<Gallery>>([])
   public readonly footnotesContainers = ref<Array<Footnote>>([])
-  public readonly findAndReplaceModalOpened = ref(false)
-  public readonly migrateFromDataviewModalOpened = ref(false)
-  public readonly saveMediaModalOpened = ref(false)
-  public readonly importFilesModalOpened = ref(false)
-  public readonly previewImagePath = ref<string | null>(null)
-  public readonly unusedMediaModalOpened = ref(false)
-  public readonly deduplicateMediaModalOpened = ref(false)
-  public readonly migrateFromFireflyModalOpened = ref(false)
-  public readonly migrateDataviewFieldsModalOpened = ref(false)
-  public readonly migrateFromTogglModalOpened = ref(false)
-  public readonly scriptFormModalOpened = ref(false)
-  public readonly scriptFormId = ref(0)
-  public readonly scriptFormFields = ref<FormField[]>([])
-  public readonly scriptFormResolve = ref<((result: Record<string, string> | null) => void) | null>(
-    null
-  )
 
   /**
    * The three sync dialogs, opened from the file menu, the status bar and the command palette.

@@ -1,5 +1,3 @@
-import { GlobalStore } from '@/stores/GlobalStore'
+import { openUtilityDialog } from './utilityDialogs'
 
-export const migrateFromDataview = async (): Promise<void> => {
-  GlobalStore.getInstance().migrateFromDataviewModalOpened.value = true
-}
+export const migrateFromDataview = (): Promise<void> => openUtilityDialog('migrateFromDataview')

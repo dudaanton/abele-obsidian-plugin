@@ -1,5 +1,5 @@
-import { GlobalStore } from '@/stores/GlobalStore'
+import { openUtilityDialog } from './utilityDialogs'
 
 export const deduplicateMedia = (): void => {
-  GlobalStore.getInstance().deduplicateMediaModalOpened.value = true
+  void openUtilityDialog('deduplicateMedia')
 }

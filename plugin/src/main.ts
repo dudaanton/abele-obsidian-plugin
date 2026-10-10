@@ -102,6 +102,7 @@ import { AutomationService } from './automations/AutomationService'
 import { ScriptViewService } from './scripting/view/ScriptViewService'
 import { preserveLocalScriptVersions } from './scripting/trust/localScriptUpgrade'
 import { showMarkdown } from './scripting/formModal'
+import { openUtilityDialog, previewImage } from './commands/utilityDialogs'
 import { SCRIPT_API_DOCS } from './scripting/apiDocs'
 import { SCRIPT_VIEW_DOCS } from './scripting/view/viewDocs'
 import { ScopeResolver } from './ai/ScopeResolver'
@@ -752,7 +753,7 @@ export default class AbelePlugin extends Plugin {
               .setTitle('Preview')
               .setIcon('eye')
               .onClick(() => {
-                GlobalStore.getInstance().previewImagePath.value = file.path
+                void previewImage(file.path)
               })
           })
         }
@@ -941,7 +942,7 @@ export default class AbelePlugin extends Plugin {
       name: 'Migrate data from Firefly III',
       icon: 'database',
       callback: () => {
-        GlobalStore.getInstance().migrateFromFireflyModalOpened.value = true
+        void openUtilityDialog('migrateFromFirefly')
       },
     })
 
@@ -977,7 +978,7 @@ export default class AbelePlugin extends Plugin {
       name: 'Migrate from Dataview fields',
       icon: 'database',
       callback: () => {
-        GlobalStore.getInstance().migrateDataviewFieldsModalOpened.value = true
+        void openUtilityDialog('migrateDataviewFields')
       },
     })
 
@@ -1013,7 +1014,7 @@ export default class AbelePlugin extends Plugin {
       name: 'Migrate time entries from Toggl',
       icon: 'database',
       callback: () => {
-        GlobalStore.getInstance().migrateFromTogglModalOpened.value = true
+        void openUtilityDialog('migrateFromToggl')
       },
     })
 

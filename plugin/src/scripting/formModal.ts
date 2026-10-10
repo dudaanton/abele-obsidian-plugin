@@ -1,19 +1,20 @@
 import { GlobalStore } from '@/stores/GlobalStore'
 import type { FormField } from './types'
+import { openComponentDialog, type ComponentDialog } from '@/modal/componentDialog'
 
 interface FormRequest {
   open(): void
 }
 
-// The modal belongs to a store (and its root window), not to the script that asks for it.
+// Each request owns its component and answer; the queue preserves the order of presentation.
 const queues = new WeakMap<GlobalStore, FormRequest[]>()
 
 /**
  * Put a form on screen and wait for an answer — `null` if it was dismissed.
  *
- * The modal itself is a Vue component mounted once inside the plugin's root, so opening one
- * is writing to the store it watches. Everything that shows a form goes through here: a
- * script asking for its parameters, `form()` inside a script, and the API reference command.
+ * Each queued request loads and mounts a fresh component through the shared dialog host.
+ * Everything that shows a form goes through here: script parameters, `form()` and the
+ * API reference command. No fields or resolver live in the shared UI store.
  */
 export function showFormModal(
   fields: FormField[],
@@ -26,17 +27,17 @@ export function showFormModal(
   queues.set(store, queue)
   return new Promise((resolve, reject) => {
     let settled = false
-    const finish = (values: Record<string, string> | null, stopped = false) => {
+    let dialog: ComponentDialog | null = null
+    const finish = (values: Record<string, string> | null, stopped = false, error?: unknown) => {
       if (settled) return
       settled = true
       signal?.removeEventListener('abort', abort)
       const active = queue[0] === request
       queue.splice(queue.indexOf(request), 1)
-      if (active) {
-        store.scriptFormModalOpened.value = false
-        store.scriptFormResolve.value = null
-      }
+      dialog?.close()
       if (stopped) reject(new Error('Script stopped'))
+      else if (error)
+        reject(error instanceof Error ? error : new Error('Could not load script form'))
       else resolve(values)
       if (active) queue[0]?.open()
     }
@@ -44,10 +45,16 @@ export function showFormModal(
     const abort = () => finish(null, true)
     const request: FormRequest = {
       open: () => {
-        store.scriptFormId.value++
-        store.scriptFormFields.value = fields
-        store.scriptFormResolve.value = answer
-        store.scriptFormModalOpened.value = true
+        dialog = openComponentDialog(
+          async () => (await import('@/components/ScriptFormModal.vue')).default,
+          {
+            fields,
+            resolve: answer,
+          },
+          { onClosed: (error) => finish(null, false, error) }
+        )
+        // Import failures settle this request through onClosed and let the queue continue.
+        void dialog.ready.catch(() => {})
       },
     }
     queue.push(request)

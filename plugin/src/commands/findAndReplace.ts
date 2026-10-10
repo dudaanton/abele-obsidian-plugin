@@ -1,5 +1,3 @@
-import { GlobalStore } from '@/stores/GlobalStore'
+import { openUtilityDialog } from './utilityDialogs'
 
-export const findAndReplace = async (): Promise<void> => {
-  GlobalStore.getInstance().findAndReplaceModalOpened.value = true
-}
+export const findAndReplace = (): Promise<void> => openUtilityDialog('findAndReplace')

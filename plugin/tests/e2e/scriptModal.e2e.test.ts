@@ -61,10 +61,10 @@ const probe = (shape: string) => `(() => {
     const question = { name: 'format', label: 'Material format', type: 'select', options: ['Text', 'Audio'] }
     const fields = '${shape}' === 'document' ? [prose] : [prose, question, { ...prose, name: 'more' }]
 
-    const store = window.__abeleTest.GlobalStore.getInstance()
-    store.scriptFormFields.value = fields
-    store.scriptFormResolve.value = () => {}
-    store.scriptFormModalOpened.value = true
+    const shown = window.__abeleTest.showFormModal(fields)
+    const deadline = Date.now() + 10000
+    while (!document.querySelector('.abele-script-form') && Date.now() < deadline)
+      await new Promise((resolve) => setTimeout(resolve, 50))
 
     // Markdown renders asynchronously and re-renders once more on a timer of its own, so the
     // heights these questions are about do not exist for another frame or two.
@@ -97,8 +97,8 @@ const probe = (shape: string) => `(() => {
       tableScrollsItself: table$.scrollWidth > table$.clientWidth + 1,
     }
 
-    store.scriptFormResolve.value(null)
-    store.scriptFormModalOpened.value = false
+    modal.querySelector('.modal-close-button, .modal-header-button.mod-raised').click()
+    await shown
   })()
   return 'started'
 })()`
