@@ -10,7 +10,8 @@
  */
 import type { App, TFile } from 'obsidian'
 import { walletAmount } from '@/entities/walletAmount'
-import { getNameFromPath } from '@/helpers/pathsHelpers'
+import { name } from './financeNames'
+export { name } from './financeNames'
 import { scaleFor, toUnits } from '../money'
 import { ImpliedRates, type RateObservation } from '../rates'
 import { parseDate, parseNumber, type Column, type Row, type Table } from '../table'
@@ -207,8 +208,6 @@ export class Ledger {
   }
 }
 
-export const name = (p: string | null) => (p ? getNameFromPath(p) : '')
-
 /** Reads the finance notes into a table, as `spec` asks. */
 export function readFinance(spec: FinanceSource, deps: FinanceDeps): Table {
   const ledger = new Ledger(deps)
@@ -217,7 +216,7 @@ export function readFinance(spec: FinanceSource, deps: FinanceDeps): Table {
   const categories = new Set((spec.categories ?? []).map((c) => ledger.named(c, 'category')))
   const linked = spec.linkedTo ? ledger.named(spec.linkedTo, 'note') : null
   const target = spec.currency?.trim().toUpperCase() || null
-  const rates = target ? ledger.rates() : null
+  const conversion = target ? { target, rates: ledger.rates() } : null
 
   const meta: Record<string, unknown> = { source: 'finance', measure }
   if (ledger.outOfScope) meta.outOfScope = ledger.outOfScope
@@ -241,7 +240,8 @@ export function readFinance(spec: FinanceSource, deps: FinanceDeps): Table {
     date: string,
     t?: Tx
   ): number | null => {
-    if (!target) return amount
+    if (!conversion) return amount
+    const { target, rates } = conversion
     if (!currency) {
       unconverted.set('(none)', (unconverted.get('(none)') ?? 0) + 1)
       return null
@@ -259,7 +259,8 @@ export function readFinance(spec: FinanceSource, deps: FinanceDeps): Table {
     return amount * r
   }
   const finishMeta = () => {
-    if (target) {
+    if (conversion) {
+      const { target, rates } = conversion
       meta.currency = target
       meta.ratesUsed = [...rates.used.values()].map((u) => ({
         pair: `${u.from}→${u.to}`,

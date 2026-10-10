@@ -1,7 +1,8 @@
 import { walletAmount } from '@/entities/walletAmount'
 import { scaleFor, toUnits } from '../money'
 import type { Column, Row, Table } from '../table'
-import { name, type FinanceDeps, type FinanceSource, type Ledger } from './finance'
+import type { FinanceDeps, FinanceSource, Ledger } from './finance'
+import { name } from './financeNames'
 
 /**
  * Balances over time: one row per day a balance changed, plus the first day of the range and its

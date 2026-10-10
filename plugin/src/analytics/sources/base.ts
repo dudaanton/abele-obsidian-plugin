@@ -4,7 +4,7 @@
  * view shows. Typed from the values Bases hands over — numbers, dates, lists — and a text column
  * that holds only numbers (`"7,5"`) is read as numbers.
  */
-import { TFile, type App } from 'obsidian'
+import { TFile, type App, type ListValue } from 'obsidian'
 import { queryBase } from './baseProbe'
 import { coerce, inferType, type Column, type Row, type Table } from '../table'
 
@@ -27,7 +27,6 @@ interface ValueLike {
   constructor: { type?: string }
   toString(): string
   length?: () => number
-  get?: (i: number) => ValueLike
 }
 
 /** A Bases value as a plain one: number, boolean, list of strings, a `YYYY-MM-DD…` string, or null. */
@@ -45,9 +44,11 @@ export function plainValue(v: unknown): unknown {
     case 'boolean':
       return text === 'true'
     case 'list': {
+      // The Bases list contract requires get(); only its optional length fallback is legacy.
+      const list = val as ValueLike & Pick<ListValue, 'get'>
       const out: string[] = []
       const n = typeof val.length === 'function' ? val.length() : 0
-      for (let i = 0; i < n; i++) out.push(String(val.get(i)?.toString() ?? ''))
+      for (let i = 0; i < n; i++) out.push(String(list.get(i)?.toString() ?? ''))
       return out
     }
     default:

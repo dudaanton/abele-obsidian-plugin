@@ -56,6 +56,10 @@ describe('runtime import graph', () => {
     expect(cyclicComponents(importGraph(resolve('src/word')))).toEqual([])
   })
 
+  it('keeps finance sources and their balance reader acyclic', () => {
+    expect(cyclicComponents(importGraph(resolve('src/analytics/sources')))).toEqual([])
+  })
+
   it('does not load the concrete script view just to get its view type', () => {
     const file = resolve('src/scripting/view/ScriptViewService.ts')
     expect(runtimeImports(readFileSync(file, 'utf8'), file)).not.toContain('@/views/ScriptView')

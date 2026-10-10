@@ -15,9 +15,11 @@ function pairs(xs: readonly Maybe[], ys: readonly Maybe[]): [number[], number[]]
   const b: number[] = []
   const n = Math.min(xs.length, ys.length)
   for (let i = 0; i < n; i++) {
-    if (ok(xs[i]) && ok(ys[i])) {
-      a.push(xs[i])
-      b.push(ys[i])
+    const x = xs[i]
+    const y = ys[i]
+    if (ok(x) && ok(y)) {
+      a.push(x)
+      b.push(y)
     }
   }
   return [a, b]

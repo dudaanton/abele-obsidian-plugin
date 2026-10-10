@@ -98,7 +98,9 @@ function plainSeries(
   range: { from?: string; to?: string } = ctx.spec
 ): PeriodValue[] {
   return resample(
-    points.filter((p) => p.date).map((p) => ({ date: p.date, value: p.value })),
+    points
+      .filter((p): p is Point & { date: string } => !!p.date)
+      .map((p) => ({ date: p.date, value: p.value })),
     {
       period,
       agg: ctx.agg,
@@ -183,6 +185,8 @@ export async function analyseGroup(
       case 'series':
         break // added below whenever there is a series
       case 'rolling': {
+        // overTime above always builds a series for rolling, trend and correlation.
+        if (!series) throw new Error('Rolling analysis requires a time series')
         const w = a.window ?? 3
         const r = rolling(values, w, a.agg ?? 'mean')
         result.rolling = {
@@ -196,6 +200,7 @@ export async function analyseGroup(
         break
       }
       case 'trend':
+        if (!series) throw new Error('Trend analysis requires a time series')
         result.trend = trend(series)
         break
       case 'seasonality': {
@@ -258,6 +263,7 @@ export async function analyseGroup(
         break
       }
       case 'correlate': {
+        if (!series || !period) throw new Error('Correlation analysis requires a time series')
         const w = a.with
         const other = w.source ? await readOther(w.source) : table
         const col = pickColumn(other, w.value, ['number', 'money'], 'the value to correlate with')
@@ -276,7 +282,7 @@ export async function analyseGroup(
               : null,
         }))
         const ys = resample(
-          pts.filter((p) => p.date),
+          pts.filter((p): p is { date: string; value: number | null } => !!p.date),
           {
             period: period,
             agg: w.agg ?? (otherMoney ? 'sum' : 'mean'),

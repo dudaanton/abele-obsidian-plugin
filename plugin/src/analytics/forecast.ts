@@ -146,14 +146,18 @@ export function forecast(values: readonly (number | null)[], opts: ForecastOptio
     const k = Math.floor((h - 1) / m)
     // The same period a season back; further back if that one is empty.
     let i = len - m + ((h - 1) % m)
-    while (i >= 0 && at(i) === null) i -= m
-    if (i < 0) {
+    let value = at(i)
+    while (i >= 0 && value === null) {
+      i -= m
+      value = at(i)
+    }
+    if (i < 0 || value === null) {
       throw new Error(
         'A seasonal forecast needs the same period in a past season; fill the gaps first.'
       )
     }
     const widen = Math.sqrt(k + 1)
-    points.push(band(h, at(i), Z80 * s * widen, Z95 * s * widen))
+    points.push(band(h, value, Z80 * s * widen, Z95 * s * widen))
   }
   return { method: 'seasonal', horizon, residualStdev: s, points, note: NOTE }
 }

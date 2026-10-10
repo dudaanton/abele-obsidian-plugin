@@ -2,7 +2,7 @@
  * Which way a series is going, how fast, and how much of its movement a straight line explains;
  * and how a value differs by month of the year or day of the week.
  */
-import { mean } from './stats'
+import { mean, sum } from './stats'
 import { isDate, toUtc } from './resample'
 
 export interface LinearFit {
@@ -125,7 +125,8 @@ export function seasonality(
   const buckets = [...groups.entries()]
     .sort((a, b) => a[0] - b[0])
     .map(([k, vs]) => {
-      const m = mean(vs)
+      // A bucket is created only when its first finite value is added: it is nonempty.
+      const m = sum(vs) / vs.length
       return { bucket: names[k], mean: m, n: vs.length, index: overall ? m / overall : null }
     })
   return { by, overallMean: overall, buckets }
