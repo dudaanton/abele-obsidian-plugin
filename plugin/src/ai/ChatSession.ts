@@ -309,6 +309,7 @@ export class ChatSession implements SummarizerHost, InterceptorHost, AnchorStora
   public readonly messages = ref<ChatMessage[]>([])
   public readonly allMessages = ref<ChatMessage[]>([])
   public readonly isStreaming = ref(false)
+  public readonly reconnecting = ref<'waiting' | 'connecting' | null>(null)
   public readonly streamingContent = ref('')
   public readonly streamingThinking = ref('')
   public readonly pendingToolCalls = ref<ToolCallContent[]>([])
@@ -1246,6 +1247,14 @@ export class ChatSession implements SummarizerHost, InterceptorHost, AnchorStora
 
   private handleAgentEvent(event: AgentEvent): void {
     switch (event.type) {
+      case 'reconnecting':
+        this.reconnecting.value = event.state
+        break
+      case 'message_start':
+        this.streamingContent.value = ''
+        this.streamingThinking.value = ''
+        this.streamStartTime = 0
+        break
       case 'stream_event': {
         const se = event.event
         if (se.type === 'text_delta') {
@@ -1648,6 +1657,7 @@ export class ChatSession implements SummarizerHost, InterceptorHost, AnchorStora
       console.error('[Abele AI]', err)
     } finally {
       if (this.turnAbortController === controller) this.turnAbortController = null
+      this.reconnecting.value = null
       this.isStreaming.value = false
       this.unsubscribe?.()
       this.unsubscribe = null

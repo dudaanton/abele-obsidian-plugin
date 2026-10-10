@@ -1171,6 +1171,19 @@ the mixing-friendly ambient audio session where supported, never an exclusive pl
 session. Operating-system suspension, autoplay and battery policies can still prevent
 background execution. No audio file is stored in the vault.
 
+## Returning from mobile suspension
+
+While a local agent turn is in memory, mobile visibility/page lifecycle events identify an
+unfinished model request that failed across backgrounding. On return, that request is retried
+without requiring a button press, independently of `ai.autoRetry`. A quiet reconnecting status
+appears in the chat. Completed response messages and tool results remain in history; only the
+failed response is requested again, and its uncommitted partial text/tool arguments are
+replaced rather than appended. No completed tool is replayed. A frozen, idle transport is
+cancelled after a short return grace period; a healthy stream or a running tool is not.
+Stopping, replacing or destroying the conversation cancels its reconnect. Authentication and
+other non-transient provider refusals are not automatically retried. Recovery does not survive
+an app process being killed or a plugin reload; it is not a durable background job.
+
 ## Model request timeout
 
 `ai.requestTimeoutSeconds` stores the shared chat-model timeout in seconds, defaulting to 60.

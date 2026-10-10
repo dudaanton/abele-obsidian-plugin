@@ -19,6 +19,12 @@ using a mixing-friendly audio session where available. The first stops shortly a
 turn ends; the second continues even when idle. This may use more battery and cannot guarantee
 background execution under every system policy.
 
+If a local model connection fails while the mobile app is in the background, Abele waits for
+you to return and reconnects automatically. The chat quietly shows **Reconnecting…**.
+Completed work is kept; the unfinished response is requested again, without repeating
+completed tool calls. **Stop** cancels reconnecting too. This works while the app keeps the
+turn in memory, not after the operating system closes the app completely.
+
 On the **General** tab, **Request timeout (seconds)** sets how long Abele waits for a model
 connection or the next response chunk. It defaults to **60**; use a higher value for slow local
 models. Values from **1 to 3600** seconds are accepted; clearing the field restores 60.

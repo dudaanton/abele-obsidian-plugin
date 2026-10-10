@@ -220,6 +220,7 @@ export type StreamEvent =
 export type AgentEvent =
   | { type: 'agent_start' }
   | { type: 'agent_end' }
+  | { type: 'reconnecting'; state: 'waiting' | 'connecting' | null }
   | { type: 'message_start'; message: Message }
   | { type: 'message_end'; message: Message }
   | { type: 'stream_event'; event: StreamEvent }

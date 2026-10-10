@@ -302,6 +302,10 @@
           </div>
         </div>
 
+        <div v-if="reconnecting" class="setting-item-description" role="status" aria-live="polite">
+          {{ reconnecting === 'waiting' ? 'Waiting to reconnect when the app returns…' : 'Reconnecting…' }}
+        </div>
+
         <!-- Error -->
         <div v-if="error" class="abele-ai-chat__error">
           <div class="abele-ai-chat__error-line">
@@ -2403,6 +2407,7 @@ const hasFallbackModel = computed(() => session.value?.hasFallbackModel ?? false
 
 /** The countdown to an automatic retry, when one is running. */
 const retrying = computed(() => session.value?.retrying.value ?? null)
+const reconnecting = computed(() => session.value?.reconnecting.value ?? null)
 const fallbackModelName = computed(
   () => session.value?.resolveModel({ fallback: true })?.name ?? ''
 )

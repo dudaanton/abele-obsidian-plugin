@@ -1,5 +1,7 @@
 import { OpenAIClient } from './OpenAIClient'
 import { mobileBackground } from '../mobileBackground'
+import { appSuspension } from '../appSuspension'
+import { SuspendedRequest } from '../suspendedRequest'
 import type {
   AgentEvent,
   AgentTool,
@@ -254,57 +256,71 @@ export class AgentLoop {
       parameters: t.parameters,
     }))
 
-    let result: AssistantMessage | null = null
-
-    this.emit({
-      type: 'message_start',
-      message: {
-        role: 'assistant',
-        content: [],
-        model: model.id,
-        usage: { input: 0, output: 0, cacheRead: 0, cacheWrite: 0, totalTokens: 0 },
-        stopReason: 'stop',
-        timestamp: Date.now(),
-      },
+    const empty = (error?: string): AssistantMessage => ({
+      role: 'assistant',
+      content: [],
+      model: model.id,
+      usage: { input: 0, output: 0, cacheRead: 0, cacheWrite: 0, totalTokens: 0 },
+      stopReason: error ? 'error' : 'stop',
+      ...(error ? { errorMessage: error } : {}),
+      timestamp: Date.now(),
     })
 
-    for await (const event of this.client.stream(
-      model,
-      systemPrompt,
-      messages,
-      toolDefs,
-      options
-    )) {
-      this.emit({ type: 'stream_event', event })
-
-      if (event.type === 'done') {
-        result = event.message
-      } else if (event.type === 'error') {
-        result = event.message || {
-          role: 'assistant',
-          content: [],
-          model: model.id,
-          usage: { input: 0, output: 0, cacheRead: 0, cacheWrite: 0, totalTokens: 0 },
-          stopReason: 'error',
-          errorMessage: event.error,
-          timestamp: Date.now(),
+    try {
+      for (;;) {
+        const request = new SuspendedRequest(options.signal)
+        let result: AssistantMessage | null = null
+        this.emit({ type: 'message_start', message: empty() })
+        try {
+          for await (const event of this.client.stream(model, systemPrompt, messages, toolDefs, {
+            ...options,
+            signal: request.controller.signal,
+          })) {
+            if (event.type === 'done') result = event.message
+            else if (event.type === 'error') result = event.message ?? empty(event.error)
+            else {
+              request.progress()
+              this.emit({ type: 'reconnecting', state: null })
+              this.emit({ type: 'stream_event', event })
+            }
+          }
+        } catch (error) {
+          result = empty(error instanceof Error ? error.message : 'Model connection failed')
+        } finally {
+          request.dispose()
         }
-      }
-    }
+        result ??= empty('No response received')
 
-    if (!result) {
-      result = {
-        role: 'assistant',
-        content: [],
-        model: model.id,
-        usage: { input: 0, output: 0, cacheRead: 0, cacheWrite: 0, totalTokens: 0 },
-        stopReason: 'error',
-        errorMessage: 'No response received',
-        timestamp: Date.now(),
+        if (request.shouldResume(result.stopReason, result.errorMessage)) {
+          this.emit({
+            type: 'reconnecting',
+            state: appSuspension.hidden ? 'waiting' : 'connecting',
+          })
+          if (await appSuspension.waitForReturn(options.signal)) {
+            this.emit({ type: 'reconnecting', state: 'connecting' })
+            // Only this unfinished response is requested again. The history includes all
+            // completed tool calls/results; no tool from the abandoned stream was executed.
+            continue
+          }
+          // Stop/unload while waiting must not publish an incomplete tool call or retry it.
+          return { ...empty(), stopReason: 'error' }
+        }
+        this.emit({
+          type: 'stream_event',
+          event:
+            result.stopReason === 'error'
+              ? {
+                  type: 'error',
+                  error: result.errorMessage ?? 'Model connection failed',
+                  message: result,
+                }
+              : { type: 'done', message: result },
+        })
+        return result
       }
+    } finally {
+      this.emit({ type: 'reconnecting', state: null })
     }
-
-    return result
   }
 
   /**

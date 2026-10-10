@@ -22,6 +22,7 @@ import { AbeleConfig } from './services/AbeleConfig'
 import { AgentRegistry } from './ai/agents/AgentRegistry'
 import { mobileBackground } from './ai/mobileBackground'
 import { SilentBackgroundAudio } from './ai/mobileBackgroundAudio'
+import { appSuspension, bindAppSuspension } from './ai/appSuspension'
 import { createTask, createTaskAndInsert } from './commands/createTask'
 import { createTransaction, createTransactionAndInsert } from './commands/createTransaction'
 import { createTimeEntry, stopActiveTimeEntry } from './commands/createTimeEntry'
@@ -310,6 +311,7 @@ export default class AbelePlugin extends Plugin {
 
       await startupStepAsync('settings', () => AbeleConfig.getInstance().loadSettings())
       if (Platform.isMobile) {
+        this.register(bindAppSuspension(appSuspension, document, window))
         mobileBackground.install(new SilentBackgroundAudio())
         this.register(watch(
           AbeleConfig.getInstance().version,
