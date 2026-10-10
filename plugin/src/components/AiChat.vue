@@ -80,6 +80,7 @@
                reading the file again and copying what the chat is made of. -->
           <Icon
             icon="sliders-horizontal"
+            class="abele-ai-chat__secondary-action"
             with-bg
             tooltip="Scope, skills, prompts, permissions and settings"
             @click="openSetup()"
@@ -94,7 +95,6 @@
           />
           <Icon
             icon="plus"
-            class="abele-ai-chat__secondary-action"
             with-bg
             tooltip="Start a new chat"
             @click="onNewChatMenu"
@@ -2531,7 +2531,11 @@ const headerOverflowActions = computed<HeaderAction[]>(() => [
     : []),
   { id: 'find', label: 'Find in this chat', icon: 'search' },
   { id: 'navigation', label: 'Navigation', icon: 'list-tree' },
-  { id: 'new', label: 'Start a new chat', icon: 'plus' },
+  {
+    id: 'setup',
+    label: 'Scope, skills, prompts, permissions and settings',
+    icon: 'sliders-horizontal',
+  },
 ])
 const onHeaderOverflowAction = (id: string) => {
   switch (id) {
@@ -2547,8 +2551,8 @@ const onHeaderOverflowAction = (id: string) => {
     case 'navigation':
       openNavigation()
       break
-    case 'new':
-      onNewChatMenu()
+    case 'setup':
+      openSetup()
       break
   }
 }

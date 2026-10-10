@@ -6,6 +6,7 @@ import ChatArtifacts from '@/components/ChatArtifacts.vue'
 import SheetHeaderActions from '@/components/obsidian/SheetHeaderActions.vue'
 import ChatFindBar from '@/components/ChatFindBar.vue'
 import ChatNavigation from '@/components/ChatNavigation.vue'
+import AiChatSetup from '@/components/AiChatSetup.vue'
 import { ChatService } from '@/ai/ChatService'
 import type { ChatSession } from '@/ai/ChatSession'
 import { useVault } from '../helpers/testEnv'
@@ -48,15 +49,25 @@ afterEach(() => {
   vi.restoreAllMocks()
 })
 describe('the compact chat header', () => {
-  it('keeps find, navigation and new chat reachable through the overflow kit', async () => {
+  it('keeps new chat direct and moves settings into the overflow kit', async () => {
     view = mountChat()
     const overflow = view.findComponent(SheetHeaderActions)
     expect(overflow.exists()).toBe(true)
     expect(overflow.props('actions')).toEqual([
       { id: 'find', label: 'Find in this chat', icon: 'search' },
       { id: 'navigation', label: 'Navigation', icon: 'list-tree' },
-      { id: 'new', label: 'Start a new chat', icon: 'plus' },
+      {
+        id: 'setup',
+        label: 'Scope, skills, prompts, permissions and settings',
+        icon: 'sliders-horizontal',
+      },
     ])
+    expect(view.get('[tooltip="Start a new chat"]').classes()).not.toContain(
+      'abele-ai-chat__secondary-action'
+    )
+    overflow.vm.$emit('action', 'setup')
+    await nextTick()
+    expect(view.findComponent(AiChatSetup).exists()).toBe(true)
     overflow.vm.$emit('action', 'find')
     await nextTick()
     expect(view.findComponent(ChatFindBar).exists()).toBe(true)

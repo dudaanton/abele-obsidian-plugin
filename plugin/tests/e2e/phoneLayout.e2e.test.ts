@@ -596,9 +596,12 @@ const probeScript = `(async () => {
       guardedChat.interceptor.script.value = 'Phone probe guard'
       guardedChat.interceptor.pattern.value = '^/todo'
     }
-    const setup = chat && chat.querySelector('.lucide-sliders-horizontal')
+    chat?.querySelector('[aria-label="More chat actions"]')?.click()
+    await until(() => document.querySelector('.menu'), 3000)
+    const setup = [...document.querySelectorAll('.menu-item')].find(item =>
+      item.querySelector('.menu-item-title')?.textContent.trim() === 'Scope, skills, prompts, permissions and settings')
     if (setup) {
-      setup.closest('.abele-icon, .clickable-icon, div').click()
+      setup.click()
       await until(() => document.querySelector('.modal .abele-chat-setup'), 5000)
       await wait(300)
       const tabs = [...document.querySelectorAll('.modal .abele-chat-setup .abele-tabs__tab')]
@@ -646,7 +649,7 @@ const probeScript = `(async () => {
       await closeDialog()
       if (guardedChat) guardedChat.interceptor.followAgent()
     } else {
-      report['setup'] = { over: [], scrollers: [], capped: [], clipped: [], fill: 0, shot: '', error: 'no setup button' }
+      report['setup'] = { over: [], scrollers: [], capped: [], clipped: [], fill: 0, shot: '', error: 'no setup menu item' }
     }
 
     const history = chat && chat.querySelector('.lucide-history')
@@ -2229,15 +2232,15 @@ describe.skipIf(!available)('the chat dialogs on a phone', () => {
   it.each(['chat', 'nested comment'])('%s: every header action stays reachable directly or in More', (label) => {
     const header = report[label]?.header
     expect(header?.direct).toEqual([
-      'Agents', 'Scope, skills, prompts, permissions and settings',
+      'Agents',
       ...(label === 'chat' ? ['Artifacts — notes, images and scripts'] : []),
-      'Open a chat you have had', 'More chat actions',
+      'Start a new chat', 'Open a chat you have had', 'More chat actions',
     ])
     expect(header?.overflow).toEqual([
       ...(label === 'nested comment' ? [
         'Back to the passage this is about', 'Turn this comment into an ordinary chat',
       ] : []),
-      'Find in this chat', 'Navigation', 'Start a new chat',
+      'Find in this chat', 'Navigation', 'Scope, skills, prompts, permissions and settings',
     ])
     expect(header?.unreachable).toEqual([])
     expect(header?.clipped).toEqual([])
