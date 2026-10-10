@@ -29,29 +29,44 @@
         :class="{
           'is-selected': keyboard && i === index,
           'abele-folder-picker__row_up': row.up,
+          'abele-folder-picker__row_create': row.create,
         }"
         role="option"
         :aria-selected="i === index"
-        @click="go(row.path)"
+        @click="row.create ? emit('create', row.path) : go(row.path)"
       >
         <span class="abele-folder-picker__icon"
           ><Icon
-            :icon="row.up ? 'corner-left-up' : row.git ? 'folder-git-2' : 'folder'"
+            :icon="
+              row.create
+                ? 'folder-plus'
+                : row.up
+                  ? 'corner-left-up'
+                  : row.git
+                    ? 'folder-git-2'
+                    : 'folder'
+            "
             size="xs"
             :interactive="false"
         /></span>
-        <span class="abele-folder-picker__name">{{ row.up ? '..' : row.name }}</span>
+        <span class="abele-folder-picker__name">{{
+          row.up ? '..' : row.create ? `New folder “${row.name}”` : row.name
+        }}</span>
         <span v-if="row.git" class="abele-folder-picker__branch">{{ row.git.branch }}</span>
         <StatusDot v-if="row.open" tone="accent" label="Already open" />
       </div>
       <div v-if="!rows.length && !listing.error" class="abele-folder-picker__empty">
-        No folders here
+        No folders here. Type a name to make one.
       </div>
     </div>
 
     <div class="abele-folder-picker__preview" aria-live="polite">
       <template v-if="target && !listing.error">
-        <Icon :icon="target.git ? 'folder-git-2' : 'folder'" size="xs" :interactive="false" />
+        <Icon
+          :icon="target.create ? 'folder-plus' : target.git ? 'folder-git-2' : 'folder'"
+          size="xs"
+          :interactive="false"
+        />
         <span class="abele-folder-picker__preview-path">{{ target.path }}</span>
         <span class="abele-folder-picker__preview-facts">{{ facts(target) }}</span>
       </template>
@@ -65,6 +80,13 @@
         accent
         tooltip="Show this folder in the node panel"
         @click="emit('show', target.path)"
+      />
+      <Button
+        v-else-if="target?.create"
+        text="Create"
+        accent
+        tooltip="Make this folder on the node and open it"
+        @click="emit('create', target.path)"
       />
       <Button
         v-else
@@ -105,6 +127,7 @@ const props = withDefaults(
 const emit = defineEmits<{
   (e: 'open', path: string): void
   (e: 'show', path: string): void
+  (e: 'create', path: string): void
   (e: 'cancel'): void
 }>()
 
@@ -126,14 +149,23 @@ const parent = computed(() => {
 
 interface Row extends NodeDirectory {
   up?: boolean
+  /** Not there yet: picking it makes the folder. */
+  create?: boolean
 }
 const rows = computed<Row[]>(() => {
   const found = (listing.value.entries ?? []).filter((e) =>
     e.name.toLowerCase().startsWith(filter.value)
   )
+  // A name that is no folder here yet is offered as a new one, the way the quick switcher
+  // offers to create a note.
+  const raw = query.value.slice(query.value.lastIndexOf('/') + 1).trim()
+  const fresh =
+    raw && !/[\\:*?"<>|]/.test(raw) && listing.value.entries && !found.length
+      ? [{ name: raw, path: `${dir.value}${raw}`, create: true }]
+      : []
   return !filter.value && parent.value
     ? [{ name: '..', path: parent.value, up: true }, ...found]
-    : found
+    : [...found, ...fresh]
 })
 watch(
   rows,
@@ -146,10 +178,12 @@ watch(
 
 // What Open opens: the folder one stands in. Described under the list at all times, so the
 // line never comes and goes and the dialog keeps its height.
-const target = computed<NodeDirectory | null>(() => {
-  // A name typed down to one folder means that folder.
-  const only = rows.value.filter((r) => !r.up)
+const target = computed<Row | null>(() => {
+  // A name typed down to one folder means that folder; a name of none, a new one.
+  const only = rows.value.filter((r) => !r.up && !r.create)
   if (filter.value && only.length === 1) return only[0]
+  const fresh = rows.value.find((r) => r.create)
+  if (fresh && !only.length) return fresh
   const path = dir.value.replace(/\/$/, '')
   if (!path || path === '~') return null
   const known = parent.value
@@ -158,15 +192,19 @@ const target = computed<NodeDirectory | null>(() => {
   return known ?? { name: path.slice(path.lastIndexOf('/') + 1), path }
 })
 
-const facts = (d: NodeDirectory) =>
-  d.git
-    ? `Git repository · ${d.git.branch}${d.git.copies > 1 ? ` · ${d.git.copies} copies` : ''}`
-    : 'Plain folder · files only'
+const facts = (d: Row) =>
+  d.create
+    ? 'New folder'
+    : d.git
+      ? `Git repository · ${d.git.branch}${d.git.copies > 1 ? ` · ${d.git.copies} copies` : ''}`
+      : 'Plain folder · files only'
 
 function go(path: string) {
   query.value = path.endsWith('/') ? path : `${path}/`
   void nextTick(() => field.value?.inputRef?.focus())
 }
+
+const choose = (t: Row) => emit(t.create ? 'create' : t.open ? 'show' : 'open', t.path)
 
 function onKey(e: KeyboardEvent) {
   const row = rows.value[index.value]
@@ -181,9 +219,9 @@ function onKey(e: KeyboardEvent) {
   } else if (e.key === 'Enter') {
     e.preventDefault()
     if (e.metaKey || e.ctrlKey) {
-      if (target.value) emit(target.value.open ? 'show' : 'open', target.value.path)
-    } else if (row && keyboard.value) go(row.path)
-    else if (target.value) emit(target.value.open ? 'show' : 'open', target.value.path)
+      if (target.value) choose(target.value)
+    } else if (row && keyboard.value) row.create ? emit('create', row.path) : go(row.path)
+    else if (target.value) choose(target.value)
   } else if (e.key === 'Backspace' && !filter.value && parent.value) {
     e.preventDefault()
     go(parent.value)
@@ -232,6 +270,13 @@ onMounted(() => window.setTimeout(() => field.value?.inputRef?.focus()))
 }
 body.is-phone .abele-folder-picker__row {
   min-height: var(--touch-size-m);
+}
+.abele-folder-picker__row_create {
+  color: var(--text-accent);
+
+  .abele-folder-picker__icon {
+    color: inherit;
+  }
 }
 .abele-folder-picker__row_up {
   color: var(--text-muted);

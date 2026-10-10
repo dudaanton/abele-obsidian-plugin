@@ -6,8 +6,9 @@ import { describe, it, expect } from 'vitest'
 import { mount } from '@vue/test-utils'
 import NodePanel from '@/components/nodeWork/NodePanel.vue'
 import FolderPicker from '@/components/nodeWork/FolderPicker.vue'
-import CopyView from '@/components/nodeWork/CopyView.vue'
-import type { FolderSummary, NodeSummary } from '@/components/nodeWork/types'
+import FolderTree from '@/components/nodeWork/FolderTree.vue'
+import FileTree from '@/components/nodeWork/FileTree.vue'
+import type { FileChange, FolderSummary, NodeSummary } from '@/components/nodeWork/types'
 
 const node: NodeSummary = { name: 'Sample node', status: 'connected' }
 const folder: FolderSummary = {
@@ -28,26 +29,49 @@ describe('NodePanel', () => {
     expect(view.emitted('connect')).toHaveLength(1)
   })
 
-  it('lists copies under their folder, with the count of changed files, and picks one', async () => {
-    const view = mount(NodePanel, { props: { phase: 'ready', node, folders: [folder] } })
-    const copies = view.findAll('.abele-node-panel__copy')
-    expect(copies.map((c) => c.get('.tree-item-inner').text())).toEqual(['main', 'feature'])
-    expect(copies[0].get('.tree-item-flair').text()).toBe('2')
-    expect(copies[1].find('.tree-item-flair').exists()).toBe(false)
-    await copies[1].trigger('click')
-    expect(view.emitted('select')).toEqual([['c2']])
-  })
-
   it('says the node is offline by its dot, not by words on the row', () => {
     const view = mount(NodePanel, {
-      props: {
-        phase: 'ready',
-        node: { ...node, status: 'offline', seen: '5 min ago' },
-        folders: [folder],
-      },
+      props: { phase: 'ready', node: { ...node, status: 'offline', seen: '5 min ago' } },
     })
     expect(view.get('.abele-status-dot').classes()).toContain('abele-status-dot_red')
-    expect(view.get('.abele-status-dot').attributes('aria-label')).toBe('Offline · seen 5 min ago')
+    expect(view.get('.abele-status-dot').attributes('aria-label')).toBe(
+      'Offline · last heard 5 min ago'
+    )
+  })
+})
+
+describe('FolderTree', () => {
+  it('lists worktrees under their folder, with the count of changed files, and picks one', async () => {
+    const view = mount(FolderTree, { props: { folders: [folder] } })
+    const rows = view.findAll('.abele-tree-item__self').slice(1)
+    expect(rows.map((r) => r.get('.abele-tree-item__text').text())).toEqual(['main', 'feature'])
+    expect(rows[0].get('.abele-copy-codes__count').text()).toBe('2')
+    expect(rows[1].find('.abele-copy-codes__count').exists()).toBe(false)
+    await rows[1].trigger('click')
+    expect(view.emitted('select')).toEqual([['c2']])
+  })
+})
+
+describe('FileTree', () => {
+  const change = (path: string, stage: FileChange['stage']): FileChange => ({
+    path,
+    kind: 'modified',
+    stage,
+    added: 1,
+    removed: 1,
+    before: 'a',
+    after: 'b',
+  })
+  it('splits changed files into unstaged and staged, a partly staged one in both', () => {
+    const view = mount(FileTree, {
+      props: {
+        entries: [],
+        mode: 'changed',
+        changes: [change('a.ts', 'unstaged'), change('b.ts', 'staged'), change('c.ts', 'partly')],
+      },
+    })
+    const groups = view.findAll('.abele-file-tree__group')
+    expect(groups.map((g) => g.get('.tree-item-flair').text())).toEqual(['2', '2'])
   })
 })
 
@@ -89,35 +113,14 @@ describe('FolderPicker', () => {
   })
 })
 
-describe('CopyView', () => {
-  it('opens a change as its diff in place, and closes it on a second press', async () => {
-    const view = mount(CopyView, {
-      props: {
-        node,
-        folder,
-        copy: folder.copies[0],
-        changes: [
-          { path: 'src/a.ts', kind: 'modified', added: 1, removed: 1, before: 'a', after: 'b' },
-        ],
-      },
+describe('FolderPicker, new folder', () => {
+  it('offers a name no folder has as a new folder, and makes it', async () => {
+    const view = mount(FolderPicker, {
+      props: { browse: () => ({ entries: [{ name: 'code', path: '~/code' }] }) },
     })
-    const row = view.get('.abele-copy-view__change')
-    await row.trigger('click')
-    expect(view.find('.abele-diff').exists()).toBe(true)
-    await row.trigger('click')
-    expect(view.find('.abele-diff').exists()).toBe(false)
-  })
-
-  it('shows only files for a folder that is not a repository', () => {
-    const view = mount(CopyView, {
-      props: {
-        node,
-        folder: { ...folder, git: false, copies: [] },
-        entries: [{ name: 'a.sh', kind: 'file' }],
-      },
-    })
-    expect(view.find('.abele-copy-view__changes').exists()).toBe(false)
-    expect(view.find('.abele-copy-view__history').exists()).toBe(false)
-    expect(view.get('.abele-copy-view__plain-note').text()).toContain('Not a git repository')
+    await view.get('input').setValue('~/tool')
+    expect(view.get('.abele-folder-picker__row_create').text()).toContain('tool')
+    await view.get('.abele-folder-picker__row_create').trigger('click')
+    expect(view.emitted('create')).toEqual([['~/tool']])
   })
 })

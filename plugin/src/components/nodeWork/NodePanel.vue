@@ -67,6 +67,20 @@
         <div class="nav-buttons-container">
           <Icon
             class="nav-action-button"
+            icon="message-square-plus"
+            :tooltip="here ? `New chat in ${here}` : 'Open a folder first'"
+            :disabled="!here || node.status !== 'connected'"
+            @click="emit('new-chat')"
+          />
+          <Icon
+            class="nav-action-button"
+            icon="history"
+            :tooltip="here ? `History of ${here}` : 'Open a folder first'"
+            :disabled="!here || !git"
+            @click="emit('history')"
+          />
+          <Icon
+            class="nav-action-button"
             icon="folder-plus"
             tooltip="Open folder"
             :disabled="node.status !== 'connected'"
@@ -78,18 +92,20 @@
             tooltip="Refresh"
             @click="emit('refresh')"
           />
-          <Icon
-            class="nav-action-button"
-            icon="more-horizontal"
-            tooltip="Node menu"
-            @click="(e: MouseEvent) => emit('menu', e)"
-          />
         </div>
       </div>
 
       <div class="abele-node-panel__node">
+        <Icon icon="server" size="xs" :interactive="false" />
         <span class="abele-node-panel__node-name">{{ node.name }}</span>
         <StatusDot :tone="nodeTone" :label="nodeLabel" :pulse="node.status === 'connecting'" />
+        <Icon
+          class="abele-node-panel__node-menu"
+          icon="more-horizontal"
+          size="xs"
+          tooltip="Node menu"
+          @click="(e: MouseEvent) => emit('menu', e)"
+        />
       </div>
 
       <div v-if="node.status === 'offline'" class="abele-node-panel__notice" role="status">
@@ -97,7 +113,7 @@
         <Icon icon="rotate-cw" size="xs" tooltip="Try to reconnect" @click="emit('retry')" />
       </div>
 
-      <div v-if="!folders.length" class="abele-node-panel__intro abele-node-panel__intro_empty">
+      <div v-if="empty" class="abele-node-panel__intro abele-node-panel__intro_empty">
         <div class="abele-node-panel__intro-text">
           Open a folder on {{ node.name }} to see its files and changes.
         </div>
@@ -107,116 +123,27 @@
             icon="folder-plus"
             accent
             :disabled="node.status !== 'connected'"
-            tooltip="Choose a folder on the node"
+            tooltip="Choose a folder on the node, or make a new one"
             @click="emit('open-folder')"
           />
         </div>
       </div>
-
-      <div
-        v-else
-        class="abele-node-panel__tree"
-        :class="{ 'abele-node-panel__tree_stale': node.status === 'offline' }"
-        role="tree"
-        :aria-label="`Folders on ${node.name}`"
-      >
-        <div
-          v-for="folder in folders"
-          :key="folder.id"
-          class="tree-item nav-folder abele-node-panel__folder"
-          :class="{ 'is-collapsed': collapsed.has(folder.id) }"
-        >
-          <div
-            class="tree-item-self is-clickable nav-folder-title abele-node-panel__row"
-            :class="{
-              'mod-collapsible': folder.git,
-              'abele-node-panel__row_missing': folder.missing,
-              'is-active': !folder.git && selected === folder.id,
-            }"
-            role="treeitem"
-            tabindex="0"
-            :aria-expanded="folder.git ? !collapsed.has(folder.id) : undefined"
-            :aria-selected="!folder.git ? selected === folder.id : undefined"
-            @click="folder.git ? toggle(folder.id) : emit('select', folder.id)"
-            @keydown.enter.prevent="folder.git ? toggle(folder.id) : emit('select', folder.id)"
-            @keydown.right.prevent="collapsed.delete(folder.id)"
-            @keydown.left.prevent="folder.git && collapsed.add(folder.id)"
-          >
-            <span
-              v-if="folder.git"
-              class="tree-item-icon collapse-icon"
-              :class="{ 'is-collapsed': collapsed.has(folder.id) }"
-              ><Icon icon="right-triangle"
-            /></span>
-            <span class="abele-node-panel__kind" :title="undefined"
-              ><Icon
-                :icon="folder.missing ? 'folder-x' : folder.git ? 'folder-git-2' : 'folder'"
-                size="xs"
-                :tooltip="folder.missing ? `Not found on ${node.name}` : folder.path"
-                :interactive="false"
-            /></span>
-            <div class="tree-item-inner nav-folder-title-content">{{ folder.name }}</div>
-            <div
-              v-if="folder.git && collapsed.has(folder.id) && changedIn(folder)"
-              class="tree-item-flair-outer"
-            >
-              <span class="tree-item-flair">{{ changedIn(folder) }}</span>
-            </div>
-          </div>
-          <div
-            v-if="folder.git && !collapsed.has(folder.id)"
-            class="tree-item-children nav-folder-children"
-            role="group"
-          >
-            <div v-for="copy in folder.copies" :key="copy.id" class="tree-item nav-file">
-              <div
-                class="tree-item-self is-clickable nav-file-title abele-node-panel__row abele-node-panel__copy"
-                :class="{
-                  'is-active': selected === copy.id,
-                  'abele-node-panel__row_missing': copy.missing,
-                }"
-                role="treeitem"
-                tabindex="0"
-                :aria-selected="selected === copy.id"
-                @click="emit('select', copy.id)"
-                @keydown.enter.prevent="emit('select', copy.id)"
-              >
-                <span class="abele-node-panel__kind"
-                  ><Icon
-                    :icon="copyIcon(copy)"
-                    size="xs"
-                    :tooltip="copyTooltip(copy)"
-                    :interactive="false"
-                /></span>
-                <div class="tree-item-inner nav-file-title-content">{{ copy.branch }}</div>
-                <div v-if="copy.changed" class="tree-item-flair-outer">
-                  <span
-                    ref="flairEls"
-                    class="tree-item-flair"
-                    :data-tooltip="`${copy.changed} changed ${copy.changed === 1 ? 'file' : 'files'}`"
-                    >{{ copy.changed }}</span
-                  >
-                </div>
-              </div>
-            </div>
-          </div>
-        </div>
-      </div>
+      <slot v-else />
     </template>
   </div>
 </template>
 
 <script setup lang="ts">
-// The node's side panel: the computer where agents work, the folders opened on it and their
-// working copies. Before a node is connected it is the way to connect one. State is said by codes
-// (a dot after the node, an icon per kind of copy, a count of changed files); the words are in
-// the tooltips.
-import { computed, onMounted, reactive, ref, watch } from 'vue'
-import { setIcon, setTooltip } from 'obsidian'
+// The node's side panel, a tab of the left sidebar beside the file explorer: the computer where
+// agents work, with its connection dot, and under it whatever layout of folders and files the
+// slot holds. Before a node is connected it is the way to connect one. State is said by codes;
+// the words are in the tooltips.
+import { computed, ref, watch } from 'vue'
+import { setIcon } from 'obsidian'
 import Button from '../obsidian/Button.vue'
 import Icon from '../obsidian/Icon.vue'
 import StatusDot from '../obsidian/StatusDot.vue'
-import type { CopySummary, FolderSummary, NodeSummary } from './types'
+import type { NodeSummary } from './types'
 
 const props = withDefaults(
   defineProps<{
@@ -226,15 +153,22 @@ const props = withDefaults(
      */
     phase: 'looking' | 'found' | 'connecting' | 'not-found' | 'remote' | 'ready'
     node?: NodeSummary
-    folders?: FolderSummary[]
-    /** The selected copy, or a plain folder's id. */
-    selected?: string
+    /** No folder is open yet. */
+    empty?: boolean
+    /** The worktree or folder the panel shows, by name, for the header's tooltips. */
+    here?: string
+    /** It is a repository, so it has a history. */
+    git?: boolean
+    /** When anything last came from the node ("12 s ago"). */
+    updated?: string
     installCommand?: string
   }>(),
   {
     node: undefined,
-    folders: () => [],
-    selected: undefined,
+    empty: false,
+    here: undefined,
+    git: false,
+    updated: undefined,
     installCommand: 'npm install -g abele-node && abele-node start',
   }
 )
@@ -243,16 +177,13 @@ const emit = defineEmits<{
   (e: 'connect'): void
   (e: 'connect-other'): void
   (e: 'open-folder'): void
+  (e: 'new-chat'): void
+  (e: 'history'): void
   (e: 'refresh'): void
   (e: 'retry'): void
   (e: 'menu', event: MouseEvent): void
-  (e: 'select', id: string): void
   (e: 'copy', text: string): void
 }>()
-
-const collapsed = reactive(new Set<string>())
-const toggle = (id: string) => (collapsed.has(id) ? collapsed.delete(id) : collapsed.add(id))
-const changedIn = (folder: FolderSummary) => folder.copies.reduce((n, c) => n + c.changed, 0)
 
 const nodeTone = computed(() =>
   props.node?.status === 'connected'
@@ -263,28 +194,11 @@ const nodeTone = computed(() =>
 )
 const nodeLabel = computed(() =>
   props.node?.status === 'connected'
-    ? `Connected${props.node.address ? ` · ${props.node.address}` : ''}`
+    ? `Connected, live${props.updated ? ` · last change ${props.updated}` : ''}`
     : props.node?.status === 'connecting'
-      ? 'Connecting…'
-      : `Offline · seen ${props.node?.seen ?? 'a while ago'}`
+      ? 'Reconnecting…'
+      : `Offline · last heard ${props.node?.seen ?? 'a while ago'}`
 )
-
-const copyIcon = (copy: CopySummary) =>
-  copy.missing
-    ? 'folder-x'
-    : copy.kind === 'project'
-      ? 'house'
-      : copy.kind === 'detached'
-        ? 'git-commit-horizontal'
-        : 'git-branch'
-const copyTooltip = (copy: CopySummary) =>
-  copy.missing
-    ? `Not found on ${props.node?.name} · ${copy.path}`
-    : copy.kind === 'project'
-      ? `Project folder · ${copy.path}`
-      : copy.kind === 'detached'
-        ? `Detached at ${copy.branch} · ${copy.path}`
-        : `Worktree · ${copy.path}`
 
 const introIconEl = ref<HTMLElement>()
 watch(
@@ -298,16 +212,6 @@ watch(
     )
   },
   { immediate: true }
-)
-
-// Counts are numbers on screen; what they count is in Obsidian's tooltip.
-const flairEls = ref<HTMLElement[]>([])
-const applyTooltips = () => flairEls.value.forEach((el) => setTooltip(el, el.dataset.tooltip ?? ''))
-onMounted(applyTooltips)
-watch(
-  () => props.folders,
-  () => queueMicrotask(applyTooltips),
-  { deep: true }
 )
 </script>
 
@@ -414,39 +318,34 @@ body.is-phone .abele-node-panel__link {
   font-size: var(--font-ui-smaller);
 }
 
-.abele-node-panel__tree {
-  padding: 0 var(--size-4-2) var(--size-4-4);
+.abele-node-panel__node-name {
+  flex: 0 1 auto;
+  min-width: 0;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
 }
-.abele-node-panel__tree_stale .tree-item-self {
-  color: var(--text-muted);
+.abele-node-panel__node > .abele-obsidian-icon:not(.abele-node-panel__node-menu) {
+  padding: 0;
+  color: var(--icon-color);
 }
+.abele-node-panel__node-menu {
+  margin-inline-start: auto;
+}
+</style>
 
-// Rows are Obsidian's tree items; the kind glyph sits before the name, as in Bookmarks.
-.abele-node-panel__row {
+<style lang="scss">
+// The node's choosers (NodeSuggestModal): Obsidian's suggestion row with the kind glyph before it.
+.abele-node-suggestion {
   align-items: center;
-  gap: var(--size-4-1);
+  gap: var(--size-4-3);
 }
-.abele-node-panel__kind {
+.abele-node-suggestion .abele-node-suggestion__kind {
   display: flex;
   flex: 0 0 auto;
   color: var(--icon-color);
-
-  .abele-obsidian-icon {
-    padding: 0;
-  }
 }
-.abele-node-panel__row.is-active .abele-node-panel__kind {
-  color: inherit;
-}
-.abele-node-panel__row_missing {
-  color: var(--text-faint);
-
-  .abele-node-panel__kind {
-    color: var(--text-faint);
-  }
-}
-
-body.is-phone .abele-node-panel__row {
-  min-height: var(--touch-size-m);
+.abele-node-suggestion_current .suggestion-title {
+  color: var(--text-accent);
 }
 </style>

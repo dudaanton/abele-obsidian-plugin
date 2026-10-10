@@ -34,7 +34,8 @@
       </div>
       <div v-if="flair || $slots.actions || $slots.end" class="tree-item-flair-outer">
         <span v-if="flair" class="tree-item-flair abele-tree-item__flair">{{ flair }}</span>
-        <slot name="end" />
+        <!-- Codes that are always there: a state dot, a kind of change. -->
+        <span v-if="$slots.end" class="abele-tree-item__end"><slot name="end" /></span>
         <!-- Shown while the row is pointed at or focused; always on a phone, which cannot point. -->
         <span v-if="$slots.actions" class="abele-tree-item__actions"><slot name="actions" /></span>
       </div>
@@ -63,6 +64,8 @@ const props = withDefaults(
     icon?: string
     /** Muted text at the row's end: a size, a count. */
     flair?: string
+    /** Faint text after the name, cut short when the row is narrow: where a file lies. */
+    note?: string
     /** The row stands for what is shown now. */
     active?: boolean
     /** Has children to fold: draws the arrow, and shows the default slot while open. */
@@ -82,6 +85,7 @@ const props = withDefaults(
     icon: undefined,
     note: undefined,
     flair: undefined,
+    note: undefined,
     active: false,
     collapsible: false,
     collapsed: false,
@@ -159,10 +163,25 @@ watch(() => [props.icon, props.collapsible], draw, { flush: 'post' })
 }
 
 .abele-tree-item__note {
+  flex: 1 1 auto;
   min-width: 0;
   color: var(--text-muted);
   font-size: var(--font-ui-smaller);
   overflow-wrap: anywhere;
+}
+.abele-tree-item__inner:has(.abele-tree-item__note) {
+  flex: 1 1 auto;
+  align-items: baseline;
+}
+
+.abele-tree-item__end {
+  display: flex;
+  align-items: center;
+  gap: var(--size-4-1);
+
+  .abele-obsidian-icon {
+    padding: 0;
+  }
 }
 
 .abele-tree-item__self .tree-item-flair {

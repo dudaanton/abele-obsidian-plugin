@@ -23,6 +23,28 @@ export interface CopySummary {
   /** Files with uncommitted changes. */
   changed: number
   missing?: boolean
+  /** Changed files you have not looked at since they changed. */
+  unseen?: number
+  /** An agent is working in this copy right now. */
+  running?: boolean
+  /** Commits ahead of and behind the folder's main branch. */
+  ahead?: number
+  behind?: number
+  /** The last commit, said as it should read ("Fix navigation · 2 h ago"). */
+  lastCommit?: string
+  /** The node agent's chats that work in this copy. */
+  chats?: ChatSummary[]
+}
+
+/** A chat of the node agent, listed under the copy it works in. */
+export interface ChatSummary {
+  id: string
+  title: string
+  /** The agent is answering now. */
+  running?: boolean
+  /** Something new since you last opened it. */
+  unseen?: boolean
+  when: string
 }
 
 export interface FolderSummary {
@@ -40,8 +62,14 @@ export type ChangeKind = 'modified' | 'added' | 'deleted' | 'renamed' | 'conflic
 export interface FileChange {
   path: string
   kind: ChangeKind
+  /** Where the change sits: in the working tree, prepared for the commit, or partly both. */
+  stage?: 'unstaged' | 'staged' | 'partly'
   /** Some of the change is staged and some is not. */
   partlyStaged?: boolean
+  /** When the file last changed, said as it should read ("5 min ago"). */
+  when?: string
+  /** Changed since you last looked at it. */
+  unseen?: boolean
   /** The old path of a renamed file. */
   from?: string
   added: number
@@ -57,6 +85,15 @@ export interface FolderEntry {
   size?: string
 }
 
+/** One file or folder of a copy's tree; a file carries its git change, if it has one. */
+export interface TreeEntry {
+  path: string
+  name: string
+  kind: 'folder' | 'file'
+  children?: TreeEntry[]
+  change?: FileChange
+}
+
 export interface CommitSummary {
   hash: string
   subject: string
@@ -65,6 +102,8 @@ export interface CommitSummary {
   when: string
   /** The day heading the commit is grouped under ("Today", "Yesterday", "8 October"). */
   day: string
+  /** The files the commit changed, for its own page. */
+  files?: FileChange[]
 }
 
 /** One folder on the node as the Open folder dialog lists it. */
@@ -73,4 +112,14 @@ export interface NodeDirectory {
   path: string
   git?: { branch: string; copies: number }
   open?: boolean
+}
+
+/** What a pairing code from `abele-node pair` holds, read out of it. */
+export interface PairingCode {
+  name: string
+  host: string
+  port: number
+  fingerprint: string
+  /** How long the code stays good, in words ("10 more minutes"). */
+  expires: string
 }
