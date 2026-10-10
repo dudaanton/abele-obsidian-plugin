@@ -7,7 +7,6 @@ import { AbeleConfig } from '@/services/AbeleConfig'
 import { useVault } from '../helpers/testEnv'
 import { FakeSettings } from '../helpers/fakeSettings'
 import Card from '@/components/obsidian/Card.vue'
-import Button from '@/components/obsidian/Button.vue'
 import Icon from '@/components/obsidian/Icon.vue'
 
 it.each(['remove', 'reorder'] as const)(
@@ -33,7 +32,7 @@ it.each(['remove', 'reorder'] as const)(
       await card(first.name).find('input[type="password"]').setValue('first draft')
       await card(first.name)
         .findAllComponents(Icon)
-        .find((icon) => icon.props('tooltip') === 'Reveal')!
+        .find((icon) => icon.props('tooltip') === 'Show the key')!
         .trigger('click')
       const incoming = config.exportSettings()
       incoming.ai = {
@@ -56,8 +55,8 @@ it.each(['remove', 'reorder'] as const)(
           'first draft'
         )
         await card(first.name)
-          .findAllComponents(Button)
-          .find((button) => button.props('text') === 'Save')!
+          .findAllComponents(Icon)
+          .find((icon) => icon.props('tooltip') === 'Save key')!
           .trigger('click')
         await flushPromises()
         expect(app.secretStorage.getSecret(first.keyId)).toBe('first draft')

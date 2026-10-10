@@ -1,14 +1,12 @@
 <template>
-  <div v-if="agentName" class="abele-override-notice">
-    <Icon :icon="isOverridden ? 'pencil' : 'bot'" no-hover />
+  <div v-if="agentName" class="abele-override-notice setting-item-description">
     <span class="abele-override-notice__text">
       {{ isOverridden ? overridden : fromAgent }}
     </span>
     <Icon
-      v-if="isOverridden"
+      v-if="isOverridden && showReset"
       class="abele-override-notice__reset"
       icon="undo-2"
-      :text-right="`Reset to ${agentName}`"
       :tooltip="`Drop this chat's own setting and follow ${agentName} again`"
       @click="reset"
     />
@@ -27,11 +25,15 @@ import type { OverrideKey } from '@/ai/agents/types'
  * Without it a chat that narrowed its scope once looks identical to one following its agent,
  * and editing the agent would appear to do nothing.
  */
-const props = defineProps<{
-  field: OverrideKey
-  fromAgent: string
-  overridden: string
-}>()
+const props = withDefaults(
+  defineProps<{
+    field: OverrideKey
+    fromAgent: string
+    overridden?: string
+    showReset?: boolean
+  }>(),
+  { overridden: 'Overridden for this chat.', showReset: true }
+)
 
 const session = computed(() => ChatService.getInstance().activeSession.value)
 const agentName = computed(() => session.value?.agent.value?.name ?? '')
@@ -53,12 +55,7 @@ function reset() {
   align-items: center;
   flex-wrap: wrap;
   gap: var(--size-2-2);
-  margin-bottom: var(--size-4-2);
-  padding: var(--size-2-2) var(--size-4-2);
-  border-radius: var(--radius-s);
-  background: var(--background-secondary);
-  color: var(--text-muted);
-  font-size: var(--font-smallest);
+  margin: 0;
 }
 
 .abele-override-notice__text {

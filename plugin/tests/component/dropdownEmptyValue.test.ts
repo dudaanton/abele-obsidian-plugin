@@ -14,10 +14,12 @@ it('keeps an explicit empty value when rebuilding options whose first value is n
   })
   try {
     expect((view.find('select').element as HTMLSelectElement).value).toBe('')
-    await view.setProps({ options: [
-      { value: ':agent', display: 'Agent default (Sample)' },
-      { value: '', display: 'Off' },
-    ] })
+    await view.setProps({
+      options: [
+        { value: ':agent', display: 'Agent default (Sample)' },
+        { value: '', display: 'Off' },
+      ],
+    })
     expect((view.find('select').element as HTMLSelectElement).value).toBe('')
   } finally {
     view.unmount()

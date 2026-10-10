@@ -89,7 +89,10 @@ describe('the agent picker', () => {
     const view = mount(AiAgentSelector, { shallow: true })
 
     expect(view.find('.abele-agent-selector__model').text()).toBe('Small')
-    expect(view.find('.abele-agent-selector__model').attributes('title')).toContain('overridden')
+    expect(view.findComponent(AgentOverrideNotice).exists()).toBe(true)
+    expect(view.findComponent(AgentOverrideNotice).props('overridden')).toBe(
+      'Overridden for this chat.'
+    )
   })
 
   it('switches the chat onto another agent', async () => {
@@ -130,7 +133,7 @@ describe('the override notice', () => {
     const view = mount(AgentOverrideNotice, { props, shallow: true })
 
     expect(view.find('.abele-override-notice__text').text()).toBe('Overridden here.')
-    expect(view.findComponent('.abele-override-notice__reset').props('textRight')).toContain(
+    expect(view.findComponent('.abele-override-notice__reset').props('tooltip')).toContain(
       'Researcher'
     )
   })

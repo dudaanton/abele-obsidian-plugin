@@ -1,5 +1,5 @@
 <template>
-  <div ref="settingsRoot" class="abele-settings__ai">
+  <div class="abele-settings__ai">
     <Setting name="AI Agent" desc="Enable AI agent features including the chat sidebar.">
       <Checkbox :is-enabled="enabled" @toggle="toggleEnabled" />
     </Setting>
@@ -44,135 +44,108 @@
         </div>
       </Setting>
       <Section title="Providers">
-        <div v-for="(provider, pIdx) in providers" :key="provider.id" class="abele-ai-provider">
-          <div class="abele-ai-provider__header">
-            <strong class="abele-ai-provider__name">{{
-              provider.name || 'Unnamed Provider'
-            }}</strong>
-            <Icon
-              icon="trash"
-              tooltip="Remove this provider and its models"
-              @click="askRemoveProvider(pIdx)"
-            />
-          </div>
-
-          <Setting name="Name" desc="Display name for this provider.">
-            <Input
-              :model-value="provider.name"
-              @update:model-value="updateProvider(pIdx, 'name', $event)"
-            />
-          </Setting>
-
-          <Setting name="Base URL" desc="OpenAI-compatible API endpoint.">
-            <Input
-              :model-value="provider.baseUrl"
-              placeholder="https://api.openai.com/v1"
-              @update:model-value="updateProvider(pIdx, 'baseUrl', $event)"
-            />
-          </Setting>
-
-          <Setting name="Client name" :desc="CLIENT_NAME_DESCRIPTION">
-            <Input
-              :model-value="provider.clientName || ''"
-              placeholder="Default"
-              @update:model-value="updateProvider(pIdx, 'clientName', $event)"
-            />
-          </Setting>
-
-          <Setting name="API Key" desc="Stored securely in keychain.">
-            <SecretField
-              :value="storedSecret(provider.apiKeyId)"
-              :model-value="secretInputs[provider.id] || ''"
-              :placeholder="'sk-...'"
-              @update:model-value="secretInputs[provider.id] = $event"
-              @save="applyProviderSecret(pIdx)"
-            />
-          </Setting>
-
-          <div class="abele-ai-provider__models">
-            <div class="abele-ai-provider__models-header">
-              <span>Models</span>
-              <div class="abele-ai-provider__models-actions">
-                <Icon
-                  icon="download"
-                  tooltip="Fetch models from API"
-                  :disabled="!provider.baseUrl || !provider.apiKeyId || fetchingModels === pIdx"
-                  @click="fetchModels(pIdx)"
-                />
-                <Icon icon="plus" tooltip="Add model manually" @click="addModel(pIdx)" />
-              </div>
-            </div>
-
-            <!-- Fetched models picker -->
-            <div v-if="remoteModels[provider.id]?.length" class="abele-ai-provider__remote-models">
-              <div class="abele-ai-provider__remote-label">
-                {{ remoteModels[provider.id].length }} models available
-              </div>
-              <input
-                type="text"
-                class="abele-obsidian-input"
-                placeholder="Filter models..."
-                :value="modelFilter[provider.id] || ''"
-                @input="modelFilter[provider.id] = ($event.target as HTMLInputElement).value"
+        <ProviderSettings
+          v-for="(provider, pIdx) in providers"
+          :key="provider.id"
+          :name="provider.name"
+          :client-name="provider.clientName"
+          :secret-value="storedSecret(provider.apiKeyId)"
+          :secret-input="secretInputs[provider.id] || ''"
+          @update:name="updateProvider(pIdx, 'name', $event)"
+          @update:client-name="updateProvider(pIdx, 'clientName', $event)"
+          @update:secret-input="secretInputs[provider.id] = $event"
+          @save-secret="applyProviderSecret(pIdx)"
+          @remove="askRemoveProvider(pIdx)"
+        >
+          <template #endpoint>
+            <Setting name="Base URL" desc="OpenAI-compatible API endpoint.">
+              <Input
+                :model-value="provider.baseUrl"
+                placeholder="https://api.openai.com/v1"
+                @update:model-value="updateProvider(pIdx, 'baseUrl', $event)"
               />
-              <div class="abele-ai-provider__remote-list">
-                <div
-                  v-for="rm in filteredRemoteModels(provider.id)"
-                  :key="rm.id"
-                  class="abele-ai-provider__remote-item"
-                  :class="{
-                    'abele-ai-provider__remote-item_added': isModelAdded(pIdx, rm.id),
-                  }"
-                  @click="toggleRemoteModel(pIdx, rm.id)"
-                >
-                  <Checkbox
-                    :is-enabled="isModelAdded(pIdx, rm.id)"
-                    @click.stop
-                    @toggle="toggleRemoteModel(pIdx, rm.id)"
-                  />
-                  <span>{{ rm.id }}</span>
-                  <span v-if="rm.owned_by" class="abele-ai-provider__remote-owner">
-                    {{ rm.owned_by }}
-                  </span>
-                </div>
+            </Setting>
+          </template>
+
+          <template #model-actions>
+            <Icon
+              icon="download"
+              tooltip="Fetch models from API"
+              :disabled="!provider.baseUrl || !provider.apiKeyId || fetchingModels === pIdx"
+              @click="fetchModels(pIdx)"
+            />
+            <Icon icon="plus" tooltip="Add model manually" @click="addModel(pIdx)" />
+          </template>
+
+          <!-- Fetched models picker -->
+          <div v-if="remoteModels[provider.id]?.length" class="abele-ai-provider__remote-models">
+            <div class="abele-ai-provider__remote-label">
+              {{ remoteModels[provider.id].length }} models available
+            </div>
+            <input
+              type="text"
+              class="abele-obsidian-input"
+              placeholder="Filter models..."
+              :value="modelFilter[provider.id] || ''"
+              @input="modelFilter[provider.id] = ($event.target as HTMLInputElement).value"
+            />
+            <div class="abele-ai-provider__remote-list">
+              <div
+                v-for="rm in filteredRemoteModels(provider.id)"
+                :key="rm.id"
+                class="abele-ai-provider__remote-item"
+                :class="{
+                  'abele-ai-provider__remote-item_added': isModelAdded(pIdx, rm.id),
+                }"
+                @click="toggleRemoteModel(pIdx, rm.id)"
+              >
+                <Checkbox
+                  :is-enabled="isModelAdded(pIdx, rm.id)"
+                  @click.stop
+                  @toggle="toggleRemoteModel(pIdx, rm.id)"
+                />
+                <span>{{ rm.id }}</span>
+                <span v-if="rm.owned_by" class="abele-ai-provider__remote-owner">
+                  {{ rm.owned_by }}
+                </span>
               </div>
             </div>
-
-            <div v-if="fetchError[provider.id]" class="abele-ai-provider__fetch-error">
-              {{ fetchError[provider.id] }}
-            </div>
-
-            <CardGrid>
-              <Card
-                v-for="(model, mIdx) in provider.models"
-                :key="mIdx"
-                :title="model.name || model.id"
-                :subtitle="model.id"
-                :meta="[
-                  formatTokens(model.contextWindow) + ' ctx',
-                  formatTokens(model.maxTokens) + ' out',
-                ]"
-                clickable
-                @click="openModelEdit(pIdx, mIdx)"
-              >
-                <template #badges>
-                  <Badge v-if="model.supportsReasoning" text="reasoning" />
-                </template>
-              </Card>
-            </CardGrid>
-
-            <EmptyState v-if="!provider.models.length" text="No models yet." />
-
-            <ModelEditModal
-              v-if="editingModel?.pIdx === pIdx"
-              :model="editingModel.model"
-              :is-new="editingModel.isNew"
-              @save="onModelSave(pIdx, editingModel.mIdx, $event)"
-              @delete="removeModel(pIdx, editingModel.mIdx)"
-              @close="editingModel = null"
-            />
           </div>
-        </div>
+
+          <div v-if="fetchError[provider.id]" class="abele-ai-provider__fetch-error">
+            {{ fetchError[provider.id] }}
+          </div>
+
+          <CardGrid>
+            <Card
+              v-for="(model, mIdx) in provider.models"
+              :key="mIdx"
+              :title="model.name || model.id"
+              :subtitle="model.id"
+              :meta="[
+                formatTokens(model.contextWindow) + ' ctx',
+                formatTokens(model.maxTokens) + ' out',
+              ]"
+              clickable
+              @click="openModelEdit(pIdx, mIdx)"
+            >
+              <template #badges>
+                <Badge v-if="model.supportsReasoning" text="reasoning" />
+              </template>
+            </Card>
+          </CardGrid>
+
+          <EmptyState v-if="!provider.models.length" text="No models yet." />
+
+          <ModelEditModal
+            v-if="editingModel?.pIdx === pIdx"
+            :model="editingModel.model"
+            :is-new="editingModel.isNew"
+            @save="onModelSave(pIdx, editingModel.mIdx, $event)"
+            @delete="removeModel(pIdx, editingModel.mIdx)"
+            @close="editingModel = null"
+          />
+        </ProviderSettings>
 
         <div class="abele-settings__ai-actions">
           <Button
@@ -386,100 +359,80 @@
       </Section>
 
       <Section title="Image Generation">
-        <div v-for="(ip, ipIdx) in imageProviders" :key="ipIdx" class="abele-ai-provider">
-          <div class="abele-ai-provider__header">
-            <strong class="abele-ai-provider__name">{{ ip.name || 'Unnamed Provider' }}</strong>
-            <Icon
-              icon="trash"
-              tooltip="Remove this provider and its models"
-              @click="askRemoveImageProvider(ipIdx)"
-            />
-          </div>
-
-          <Setting name="ID" desc="Short identifier used in model keys (e.g. openai, openrouter).">
-            <Input
-              :model-value="ip.id"
-              placeholder="e.g. openai"
-              @update:model-value="updateImageProvider(ipIdx, 'id', $event)"
-            />
-          </Setting>
-
-          <Setting name="Name" desc="Display name for this provider.">
-            <Input
-              :model-value="ip.name"
-              @update:model-value="updateImageProvider(ipIdx, 'name', $event)"
-            />
-          </Setting>
-
-          <Setting
-            name="API Type"
-            desc="OpenAI uses /v1/images/generations, OpenRouter uses chat completions."
-          >
-            <Dropdown
-              :model-value="ip.apiType"
-              :options="IMAGE_API_TYPES"
-              @update:model-value="updateImageProvider(ipIdx, 'apiType', $event)"
-            />
-          </Setting>
-
-          <Setting
-            name="Endpoint"
-            :desc="'Leave empty for default: ' + imgEndpointDefault(ip.apiType)"
-          >
-            <Input
-              :model-value="ip.endpoint"
-              :placeholder="imgEndpointDefault(ip.apiType)"
-              @update:model-value="updateImageProvider(ipIdx, 'endpoint', $event)"
-            />
-          </Setting>
-
-          <Setting name="Client name" :desc="CLIENT_NAME_DESCRIPTION">
-            <Input
-              :model-value="ip.clientName || ''"
-              placeholder="Default"
-              @update:model-value="updateImageProvider(ipIdx, 'clientName', $event)"
-            />
-          </Setting>
-
-          <Setting name="API Key" desc="Stored securely in keychain.">
-            <SecretField
-              :value="storedSecret(ip.apiKeyId)"
-              :model-value="imgSecretInputs[ip.id] || ''"
-              :placeholder="'sk-...'"
-              @update:model-value="imgSecretInputs[ip.id] = $event"
-              @save="applyImageProviderSecret(ipIdx)"
-            />
-          </Setting>
-
-          <div class="abele-ai-provider__models">
-            <div class="abele-ai-provider__models-header">
-              <span>Models</span>
-              <Icon icon="plus" tooltip="Add model" @click="addImageModel(ipIdx)" />
-            </div>
-
-            <CardGrid>
-              <Card
-                v-for="(im, imIdx) in ip.models"
-                :key="imIdx"
-                :title="im.name || im.id"
-                :subtitle="`${ip.id}::${im.id}`"
-                :meta="ip.apiType === 'openai' ? [im.size, im.quality, im.outputFormat] : []"
-                clickable
-                @click="openImageModelEdit(ipIdx, imIdx)"
+        <ProviderSettings
+          v-for="(ip, ipIdx) in imageProviders"
+          :key="ipIdx"
+          :name="ip.name"
+          :client-name="ip.clientName"
+          :secret-value="storedSecret(ip.apiKeyId)"
+          :secret-input="imgSecretInputs[ip.id] || ''"
+          @update:name="updateImageProvider(ipIdx, 'name', $event)"
+          @update:client-name="updateImageProvider(ipIdx, 'clientName', $event)"
+          @update:secret-input="imgSecretInputs[ip.id] = $event"
+          @save-secret="applyImageProviderSecret(ipIdx)"
+          @remove="askRemoveImageProvider(ipIdx)"
+        >
+          <template #identity>
+            <Setting
+              name="ID"
+              desc="Short identifier used in model keys (e.g. openai, openrouter)."
+            >
+              <Input
+                :model-value="ip.id"
+                placeholder="e.g. openai"
+                @update:model-value="updateImageProvider(ipIdx, 'id', $event)"
               />
-            </CardGrid>
+            </Setting>
+          </template>
+          <template #endpoint>
+            <Setting
+              name="API Type"
+              desc="OpenAI uses /v1/images/generations, OpenRouter uses chat completions."
+            >
+              <Dropdown
+                :model-value="ip.apiType"
+                :options="IMAGE_API_TYPES"
+                @update:model-value="updateImageProvider(ipIdx, 'apiType', $event)"
+              />
+            </Setting>
+            <Setting
+              name="Endpoint"
+              :desc="'Leave empty for default: ' + imgEndpointDefault(ip.apiType)"
+            >
+              <Input
+                :model-value="ip.endpoint"
+                :placeholder="imgEndpointDefault(ip.apiType)"
+                @update:model-value="updateImageProvider(ipIdx, 'endpoint', $event)"
+              />
+            </Setting>
+          </template>
 
-            <ImageModelEditModal
-              v-if="editingImageModel?.pIdx === ipIdx"
-              :model="editingImageModel.model"
-              :is-new="editingImageModel.isNew"
-              :is-open-ai="ip.apiType === 'openai'"
-              @save="onImageModelSave(ipIdx, editingImageModel.mIdx, $event)"
-              @delete="removeImageModel(ipIdx, editingImageModel.mIdx)"
-              @close="editingImageModel = null"
+          <template #model-actions>
+            <Icon icon="plus" tooltip="Add model" @click="addImageModel(ipIdx)" />
+          </template>
+
+          <CardGrid>
+            <Card
+              v-for="(im, imIdx) in ip.models"
+              :key="imIdx"
+              :title="im.name || im.id"
+              :subtitle="`${ip.id}::${im.id}`"
+              :meta="ip.apiType === 'openai' ? [im.size, im.quality, im.outputFormat] : []"
+              clickable
+              @click="openImageModelEdit(ipIdx, imIdx)"
             />
-          </div>
-        </div>
+          </CardGrid>
+
+          <ImageModelEditModal
+            v-if="editingImageModel?.pIdx === ipIdx"
+            :model="editingImageModel.model"
+            :is-new="editingImageModel.isNew"
+            :is-open-ai="ip.apiType === 'openai'"
+            @save="onImageModelSave(ipIdx, editingImageModel.mIdx, $event)"
+            @delete="removeImageModel(ipIdx, editingImageModel.mIdx)"
+            @close="editingImageModel = null"
+          />
+        </ProviderSettings>
 
         <div class="abele-settings__ai-actions">
           <Button
@@ -527,22 +480,14 @@
                 placeholder="Secret name"
                 @update:model-value="(v: string) => updateSecretName(sIdx, v)"
               />
-              <div class="abele-ai-secret__row">
-                <input
-                  :type="revealedInputs[secret.id] ? 'text' : 'password'"
-                  class="abele-obsidian-input"
-                  :value="secretValueInputs[secret.id] || ''"
-                  placeholder="Value..."
-                  @input="secretValueInputs[secret.id] = ($event.target as HTMLInputElement).value"
-                  @keydown.enter="applySecretValue(sIdx)"
-                />
-                <Icon
-                  :icon="revealedInputs[secret.id] ? 'eye-off' : 'eye'"
-                  :tooltip="revealedInputs[secret.id] ? 'Hide' : 'Reveal'"
-                  @click="revealedInputs[secret.id] = !revealedInputs[secret.id]"
-                />
-                <Icon icon="copy" tooltip="Copy the key" @click="copySecret(secret.keyId)" />
-              </div>
+              <SecretField
+                :value="storedSecret(secret.keyId)"
+                :model-value="secretValueInputs[secret.id] || ''"
+                placeholder="Value..."
+                replace-placeholder="Value..."
+                @update:model-value="secretValueInputs[secret.id] = $event"
+                @save="applySecretValue(sIdx)"
+              />
               <Setting
                 name="Allowed addresses"
                 desc="Add an address from a request's confirmation. Each saved-key request still asks."
@@ -560,13 +505,6 @@
                 </div>
               </Setting>
               <div class="abele-ai-secret__row">
-                <Button
-                  text="Save"
-                  accent
-                  :disabled="!secretValueInputs[secret.id]"
-                  tooltip="Store this value in the keychain"
-                  @click="applySecretValue(sIdx)"
-                />
                 <Icon icon="trash" tooltip="Remove this secret" @click="askRemoveSecret(sIdx)" />
                 <Icon
                   icon="x"
@@ -713,7 +651,7 @@ import ModelEditModal from '../ModelEditModal.vue'
 import ImageModelEditModal from '../ImageModelEditModal.vue'
 import Icon from '../../obsidian/Icon.vue'
 import SecretField from '../SecretField.vue'
-import { copyKey } from '@/secrets/copyKey'
+import ProviderSettings from './ProviderSettings.vue'
 import { AbeleConfig } from '@/services/AbeleConfig'
 import { savedKeysWithIds } from '@/ai/savedKeyIds'
 import { TRANSCRIPTION_MODELS } from '@/ai/transcription'
@@ -829,16 +767,34 @@ const onToolDescriptionUpdate = (toolName: string, value: string) => {
 }
 
 const {
-  remoteModels, fetchingModels, fetchError, modelFilter, filteredRemoteModels,
-  auxModelKey, modelOptions, addProvider, askRemoveProvider, updateProvider, fetchModels,
-  isModelAdded, toggleRemoteModel, editingModel, addModel, openModelEdit, onModelSave,
-  removeModel, formatTokens, selectAuxModel,
+  remoteModels,
+  fetchingModels,
+  fetchError,
+  modelFilter,
+  filteredRemoteModels,
+  auxModelKey,
+  modelOptions,
+  addProvider,
+  askRemoveProvider,
+  updateProvider,
+  fetchModels,
+  isModelAdded,
+  toggleRemoteModel,
+  editingModel,
+  addModel,
+  openModelEdit,
+  onModelSave,
+  removeModel,
+  formatTokens,
+  selectAuxModel,
 } = useAiProviderModels({ config, providers, auxiliaryModelId, save: () => save(), askRemoval })
 
 let pendingSave = false
 const write = () => {
   pendingSave = false
-  void config.saveSettings().catch((err) => console.error('[Abele] Failed to save AI settings', err))
+  void config
+    .saveSettings()
+    .catch((err) => console.error('[Abele] Failed to save AI settings', err))
 }
 const persist = debounce(write, 500, true)
 const save = () => {
@@ -897,8 +853,8 @@ watch(config.version, () => {
   defaultImageModel.value = config.ai.defaultImageModel || ''
   secrets.value = secretRows(config.ai.secrets || [])
   const retained = new Set(secrets.value.map((secret) => secret.id))
-  for (const id of Object.keys(secretValueInputs)) if (!retained.has(id)) delete secretValueInputs[id]
-  for (const id of Object.keys(revealedInputs)) if (!retained.has(id)) delete revealedInputs[id]
+  for (const id of Object.keys(secretValueInputs))
+    if (!retained.has(id)) delete secretValueInputs[id]
   if (editingSecretId.value && !retained.has(editingSecretId.value)) {
     editingSecretId.value = null
     secretIsNew = false
@@ -1033,17 +989,34 @@ const applyVoiceSecret = () => {
 }
 
 const {
-  imgEndpointDefault, imageModelOptions, addImageProvider, askRemoveImageProvider,
-  updateImageProvider, applyImageProviderSecret, editingImageModel, addImageModel,
-  openImageModelEdit, onImageModelSave, removeImageModel, selectDefaultImageModel,
+  imgEndpointDefault,
+  imageModelOptions,
+  addImageProvider,
+  askRemoveImageProvider,
+  updateImageProvider,
+  applyImageProviderSecret,
+  editingImageModel,
+  addImageModel,
+  openImageModelEdit,
+  onImageModelSave,
+  removeImageModel,
+  selectDefaultImageModel,
 } = useAiImageModels({
-  config, imageProviders, defaultImageModel, imgSecretInputs, voice, save, askRemoval,
+  config,
+  imageProviders,
+  defaultImageModel,
+  imgSecretInputs,
+  voice,
+  save,
+  askRemoval,
 })
 
 // ── User secrets ────────────────────────────────────────────
 
 const editingSecretId = ref<string | null>(null)
-const editingSecretIdx = computed(() => secrets.value.findIndex((secret) => secret.id === editingSecretId.value))
+const editingSecretIdx = computed(() =>
+  secrets.value.findIndex((secret) => secret.id === editingSecretId.value)
+)
 
 /** The name the open card started with, so that cancelling puts it back. */
 let secretNameBefore = ''
@@ -1053,16 +1026,6 @@ let secretIsNew = false
 const getSecretFullValue = (secretId: string): string => {
   if (!secretId) return ''
   return secretStore().get(secretId) || ''
-}
-
-const revealedInputs = reactive<Record<string, boolean>>({})
-
-const settingsRoot = ref<HTMLElement>()
-
-const copySecret = (secretId: string) => {
-  const value = getSecretFullValue(secretId)
-  if (!value) return
-  void copyKey(value, 'The key', settingsRoot.value?.ownerDocument.defaultView ?? activeWindow)
 }
 
 const addSecret = () => {
@@ -1119,7 +1082,6 @@ const removeSecret = (idx: number) => {
   editingSecretId.value = null
   secretIsNew = false
   for (const key of Object.keys(secretValueInputs)) delete secretValueInputs[key]
-  for (const key of Object.keys(revealedInputs)) delete revealedInputs[key]
   save()
 }
 
@@ -1189,29 +1151,6 @@ const updatePrompt = (field: keyof Omit<AiPrompts, 'toolDescriptions'>, value: s
 </script>
 
 <style lang="scss">
-.abele-ai-provider {
-  padding: var(--size-4-3) 0;
-  border-bottom: 1px solid var(--background-modifier-border);
-
-  &:last-child {
-    border-bottom: none;
-  }
-}
-
-.abele-ai-provider__header {
-  display: flex;
-  align-items: center;
-  justify-content: space-between;
-  flex-wrap: wrap;
-  gap: var(--size-4-1);
-  margin-bottom: var(--size-4-2);
-}
-
-.abele-ai-provider__name {
-  min-width: 0;
-  overflow-wrap: anywhere;
-}
-
 /** Was a bare `<template>`; the wrapper keeps the card's own column layout. */
 .abele-ai-secret__editor {
   display: flex;
@@ -1229,24 +1168,6 @@ const updatePrompt = (field: keyof Omit<AiPrompts, 'toolDescriptions'>, value: s
 
 .abele-settings__ai-actions {
   margin-top: var(--size-4-4);
-}
-
-.abele-ai-provider__models {
-  margin-top: var(--size-4-4);
-}
-
-.abele-ai-provider__models-header {
-  display: flex;
-  align-items: center;
-  justify-content: space-between;
-  margin-bottom: var(--size-4-2);
-  font-size: var(--font-small);
-  color: var(--text-muted);
-}
-
-.abele-ai-provider__models-actions {
-  display: flex;
-  gap: var(--size-4-1);
 }
 
 .abele-ai-provider__remote-models {

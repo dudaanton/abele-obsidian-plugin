@@ -8,9 +8,15 @@
     />
     <span v-else class="abele-agent-selector__empty">No agent configured</span>
 
-    <span v-if="modelLabel" class="abele-agent-selector__model" :title="modelTitle">
-      {{ modelLabel }}
-    </span>
+    <div v-if="modelLabel" class="abele-agent-selector__model">
+      <span>{{ modelLabel }}</span>
+      <AgentOverrideNotice
+        v-if="modelOverridden"
+        field="modelId"
+        from-agent="Model comes from this chat's agent."
+        :show-reset="false"
+      />
+    </div>
   </div>
 </template>
 
@@ -18,6 +24,7 @@
 import { computed } from 'vue'
 import { Notice } from 'obsidian'
 import Dropdown from './obsidian/Dropdown.vue'
+import AgentOverrideNotice from './AgentOverrideNotice.vue'
 import { ChatService } from '@/ai/ChatService'
 import { AgentRegistry } from '@/ai/agents/AgentRegistry'
 
@@ -58,9 +65,7 @@ const modelLabel = computed(() => {
   return model ? model.name || model.id : ''
 })
 
-const modelTitle = computed(() =>
-  session.value?.isOverridden('modelId') ? 'Model overridden for this chat' : 'Model from the agent'
-)
+const modelOverridden = computed(() => session.value?.isOverridden('modelId') ?? false)
 
 const onSelect = (agentId: string) => {
   const s = session.value

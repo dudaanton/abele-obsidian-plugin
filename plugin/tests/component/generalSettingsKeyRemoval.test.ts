@@ -28,14 +28,14 @@ it('does not carry a removed secret editor or its revealed value onto the next r
   app.secretStorage.setSecret('sample-second-key', 'second value')
   vi.spyOn(config, 'saveSettings').mockResolvedValue(undefined)
   screen = mount(GeneralSettings, {
-    global: { stubs: { Input: true, Dropdown: true, Search: true } },
+    global: { stubs: { Dropdown: true, Search: true } },
   })
   const card = (title: string) =>
     screen!.findAllComponents(Card).find((item) => item.props('title') === title)!
   await card('Sample first').trigger('click')
   await card('Sample first')
     .findAllComponents(Icon)
-    .find((icon) => icon.props('tooltip') === 'Reveal')!
+    .find((icon) => icon.props('tooltip') === 'Show the key')!
     .vm.$emit('click')
   await card('Sample first')
     .findAllComponents(Icon)

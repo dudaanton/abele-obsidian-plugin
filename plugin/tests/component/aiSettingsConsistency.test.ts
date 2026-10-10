@@ -2,6 +2,7 @@ import { afterEach, beforeEach, expect, it, vi } from 'vitest'
 import { mount, type VueWrapper } from '@vue/test-utils'
 import { ref, shallowRef } from 'vue'
 import GeneralSettings from '@/components/settings/ai/GeneralSettings.vue'
+import ProviderSettings from '@/components/settings/ai/ProviderSettings.vue'
 import AgentEditorModal from '@/components/settings/ai/AgentEditorModal.vue'
 import AiChatSettings from '@/components/AiChatSettings.vue'
 import AiScopeManager from '@/components/AiScopeManager.vue'
@@ -61,21 +62,35 @@ function seed() {
   const reviewer = registry.create({ name: 'Sample reviewer', utility: true })
   const agent = registry.create({ name: 'Sample agent', interceptorAgentId: reviewer.id })
   const interceptor = new ChatInterceptor({
-    conversationVersion: ref(0), messages: ref([]), findMessage: () => undefined,
-    updateVisibleMessages: () => {}, save: async () => {},
+    conversationVersion: ref(0),
+    messages: ref([]),
+    findMessage: () => undefined,
+    updateVisibleMessages: () => {},
+    save: async () => {},
     defaultInterceptor: () => ({ agentId: reviewer.id, contextDepth: 0 }),
   })
   const overridden = ref(true)
-  const clearOverride = vi.fn(() => { overridden.value = false })
-  const session = fakeChatSession({ overrides: {
-    agent: shallowRef(agent), interceptor, activeModelId: ref('sample-model'),
-    activeProviderId: ref('sample-provider'), isOverridden: () => overridden.value,
-    permissionMode: ref('allow-edit'),
-    scopeResolver: { entries: ref([]), fullVaultAccess: ref(false) },
-    customSystemPrompt: ref(''), customSystemPromptNotePath: ref(''),
-    clearOverride, save: vi.fn(async () => {}),
-  } })
-  vi.spyOn(ChatService, 'getInstance').mockReturnValue({ activeSession: shallowRef(session) } as never)
+  const clearOverride = vi.fn(() => {
+    overridden.value = false
+  })
+  const session = fakeChatSession({
+    overrides: {
+      agent: shallowRef(agent),
+      interceptor,
+      activeModelId: ref('sample-model'),
+      activeProviderId: ref('sample-provider'),
+      isOverridden: () => overridden.value,
+      permissionMode: ref('allow-edit'),
+      scopeResolver: { entries: ref([]), fullVaultAccess: ref(false) },
+      customSystemPrompt: ref(''),
+      customSystemPromptNotePath: ref(''),
+      clearOverride,
+      save: vi.fn(async () => {}),
+    },
+  })
+  vi.spyOn(ChatService, 'getInstance').mockReturnValue({
+    activeSession: shallowRef(session),
+  } as never)
   return { agent, reviewer, interceptor, clearOverride, session }
 }
 
@@ -84,7 +99,11 @@ it('keeps agent exclusion, missing scripts, chat inheritance and valid patterns'
   AgentRegistry.getInstance().update(agent.id, { interceptorScript: 'Missing sample' })
   const editor = open(AgentEditorModal, { agentId: agent.id })
   const options = row(editor, 'Interceptor').findComponent(Dropdown).props('options')
-  expect(options.map((o: { value: string }) => o.value)).toEqual(['', reviewer.id, 'script:Missing sample'])
+  expect(options.map((o: { value: string }) => o.value)).toEqual([
+    '',
+    reviewer.id,
+    'script:Missing sample',
+  ])
   expect(options.at(-1).display).toBe('Script: Missing sample · missing')
   const chat = open(AiChatSettings)
   const picker = row(chat, 'Interceptor').find('select')
@@ -112,7 +131,10 @@ it('uses the same interceptor field descriptions in the agent and chat editors',
 it('uses the clearer permission labels with unchanged stored values on both screens', async () => {
   const { agent } = seed()
   const editor = open(AgentEditorModal, { agentId: agent.id })
-  await editor.findAll('.abele-tabs__tab').find((tab) => tab.text() === 'Access')!.trigger('click')
+  await editor
+    .findAll('.abele-tabs__tab')
+    .find((tab) => tab.text() === 'Access')!
+    .trigger('click')
   const scope = open(AiScopeManager)
   const expected = [
     { value: 'confirm-all', display: 'Ask before every change' },
@@ -129,20 +151,92 @@ it('uses the shared override notice for models and resets both model fields', as
   const notice = chat.findComponent(AgentOverrideNotice)
   expect(notice.exists()).toBe(true)
   expect(notice.text()).toContain('Overridden for this chat.')
-  await notice.findAllComponents(Icon).find((icon) => icon.props('icon') === 'undo-2')!.vm.$emit('click')
+  await notice
+    .findAllComponents(Icon)
+    .find((icon) => icon.props('icon') === 'undo-2')!
+    .vm.$emit('click')
   expect(clearOverride.mock.calls.map((call) => call[0])).toEqual(['modelId', 'providerId'])
   expect(session.save).toHaveBeenCalledOnce()
 })
 
 it('edits named secrets through the existing key editor and keeps their transfer identity', async () => {
   const config = AbeleConfig.getInstance()
-  config.ai.secrets = [{ id: 'sample-secret', name: 'Sample key', keyId: 'sample-key', allowedOrigins: ['https://sample.invalid'] }]
+  config.ai.secrets = [
+    {
+      id: 'sample-secret',
+      name: 'Sample key',
+      keyId: 'sample-key',
+      allowedOrigins: ['https://sample.invalid'],
+    },
+  ]
   const general = open(GeneralSettings)
-  await general.findAll('.abele-card').find((card) => card.text().includes('Sample key'))!.trigger('click')
+  await general
+    .findAll('.abele-card')
+    .find((card) => card.text().includes('Sample key'))!
+    .trigger('click')
   const field = general.find('.abele-ai-secret__editor').findComponent(SecretField)
   expect(field.exists()).toBe(true)
   await field.vm.$emit('update:model-value', 'sample-value')
   await field.vm.$emit('save')
-  expect(config.ai.secrets[0]).toEqual({ id: 'sample-secret', name: 'Sample key', keyId: 'sample-key', allowedOrigins: ['https://sample.invalid'] })
-  expect(collectEntries(config.exportSettings()).some((entry) => entry.secretIds?.includes('sample-key'))).toBe(true)
+  expect(config.ai.secrets[0]).toEqual({
+    id: 'sample-secret',
+    name: 'Sample key',
+    keyId: 'sample-key',
+    allowedOrigins: ['https://sample.invalid'],
+  })
+  expect(
+    collectEntries(config.exportSettings()).some((entry) => entry.secretIds?.includes('sample-key'))
+  ).toBe(true)
+})
+
+it('assembles chat and image provider fields once while preserving endpoints, model keys and secret ids', async () => {
+  const config = AbeleConfig.getInstance()
+  config.ai.providers = [
+    {
+      id: 'sample-chat',
+      name: 'Sample chat',
+      baseUrl: 'https://sample.invalid/v1',
+      apiKeyId: 'sample-chat-key',
+      models: [],
+    },
+  ]
+  config.ai.imageProviders = [
+    {
+      id: 'sample-image',
+      name: 'Sample image',
+      apiType: 'openai',
+      endpoint: 'https://sample.invalid/images',
+      apiKeyId: 'sample-image-key',
+      models: [],
+    },
+  ]
+  const general = open(GeneralSettings)
+  const providers = general.findAllComponents(ProviderSettings)
+  expect(providers).toHaveLength(2)
+  for (const provider of providers) {
+    expect(provider.findAll('.setting-item-name').map((name) => name.text())).toContain('API Key')
+    expect(provider.find('.abele-ai-provider__models-header').text()).toBe('Models')
+    await row(provider, 'Name')
+      .findComponent(Input)
+      .vm.$emit('update:model-value', 'Renamed sample')
+    await row(provider, 'Client name')
+      .findComponent(Input)
+      .vm.$emit('update:model-value', 'sample-client')
+  }
+  expect(config.ai.providers[0]).toMatchObject({
+    name: 'Renamed sample',
+    clientName: 'sample-client',
+    baseUrl: 'https://sample.invalid/v1',
+    apiKeyId: 'sample-chat-key',
+  })
+  expect(config.ai.imageProviders[0]).toMatchObject({
+    name: 'Renamed sample',
+    clientName: 'sample-client',
+    endpoint: 'https://sample.invalid/images',
+    apiKeyId: 'sample-image-key',
+  })
+  const entries = collectEntries(config.exportSettings())
+  for (const id of ['sample-chat-key', 'sample-image-key']) {
+    expect(entries.some((entry) => entry.secretIds?.includes(id))).toBe(true)
+  }
 })

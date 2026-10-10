@@ -36,10 +36,11 @@ const isOpen = (wrapper: Screen, name: string) => editorIn(wrapper, name)?.exist
 const valueField = (wrapper: Screen, name: string) =>
   cardFor(wrapper, name)?.find('input[type="password"]')
 
-const buttonIn = (wrapper: Screen, name: string, text: string) =>
+/** Saving uses the existing key editor's compact action, not a separate card editor button. */
+const saveIn = (wrapper: Screen, name: string) =>
   cardFor(wrapper, name)
-    ?.findAll('button')
-    .find((b) => b.text() === text)
+    ?.findAll('.abele-obsidian-icon')
+    .find((icon) => icon.attributes('aria-label') === 'Save key')
 
 const iconIn = (wrapper: Screen, name: string, tooltip: string) =>
   cardFor(wrapper, name)
@@ -74,7 +75,7 @@ describe('the open editor', () => {
 
     const reachedCard = vi.fn()
     cardFor(wrapper, 'Firefly')?.element.addEventListener('click', reachedCard)
-    await buttonIn(wrapper, 'Firefly', 'Save')?.trigger('click')
+    await saveIn(wrapper, 'Firefly')?.trigger('click')
 
     expect(reachedCard).not.toHaveBeenCalled()
   })
@@ -86,7 +87,7 @@ describe('saving a secret', () => {
     await cardFor(wrapper, 'Firefly')?.trigger('click')
     await type(wrapper, 'Firefly', 'new-value')
 
-    await buttonIn(wrapper, 'Firefly', 'Save')?.trigger('click')
+    await saveIn(wrapper, 'Firefly')?.trigger('click')
 
     expect(app.secretStorage.getSecret('abele-secret-firefly')).toBe('new-value')
   })
@@ -96,7 +97,7 @@ describe('saving a secret', () => {
     await cardFor(wrapper, 'Firefly')?.trigger('click')
     await type(wrapper, 'Firefly', 'new-value')
 
-    await buttonIn(wrapper, 'Firefly', 'Save')?.trigger('click')
+    await saveIn(wrapper, 'Firefly')?.trigger('click')
 
     expect(isOpen(wrapper, 'Firefly')).toBe(false)
     expect(cardFor(wrapper, 'Firefly')?.find('.abele-card__subtitle').text()).toBe('new-••••alue')
@@ -104,7 +105,8 @@ describe('saving a secret', () => {
 })
 
 describe('cancelling', () => {
-  const cancel = (wrapper: Screen, name: string) => iconIn(wrapper, name, 'Cancel')?.trigger('click')
+  const cancel = (wrapper: Screen, name: string) =>
+    iconIn(wrapper, name, 'Cancel')?.trigger('click')
 
   it('closes the card', async () => {
     const wrapper = open()
@@ -170,7 +172,7 @@ describe('cancelling', () => {
       ?.trigger('click')
     await cardFor(wrapper, '(unnamed)')?.find('input[type="text"]').setValue('Weather')
     await type(wrapper, 'Weather', 'wk-1234')
-    await buttonIn(wrapper, 'Weather', 'Save')?.trigger('click')
+    await saveIn(wrapper, 'Weather')?.trigger('click')
 
     await cardFor(wrapper, 'Weather')?.trigger('click')
     await cancel(wrapper, 'Weather')
