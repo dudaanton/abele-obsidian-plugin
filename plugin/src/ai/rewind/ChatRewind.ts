@@ -7,7 +7,7 @@
  * `RewindStore`), and kept under the size the settings allow — the chats
  * written to least recently go first.
  */
-import { shallowRef } from 'vue'
+import { shallowRef, type ShallowRef } from 'vue'
 import { Notice, type App } from 'obsidian'
 import { AbeleConfig } from '@/services/AbeleConfig'
 import { ChangeTracker, type Recording } from './ChangeTracker'
@@ -42,7 +42,12 @@ export function rewindLimitBytes(): number {
 
 export class ChatRewind implements Recording {
   /** The entries, oldest first. Replaced, never mutated, so a view watching it redraws. */
-  readonly entries = shallowRef<RewindEntry[]>([])
+  private readonly journalEntries = shallowRef<RewindEntry[]>([])
+  private readonly journals = new Map<string, ChatRewind>()
+
+  get entries(): ShallowRef<RewindEntry[]> {
+    return this.journalKey ? this.journalEntries : (this.journal()?.entries ?? this.journalEntries)
+  }
 
   private loadedKey: string | null = null
   private loading: Promise<void> | null = null
@@ -54,8 +59,26 @@ export class ChatRewind implements Recording {
   constructor(
     private readonly app: App,
     private readonly host: RewindHost,
-    private readonly store: RewindStore = adapterStore(app)
+    private readonly store: RewindStore = adapterStore(app),
+    private readonly journalKey?: string
   ) {}
+
+  /** A mutable host selects a journal; it never becomes that journal's persistence identity. */
+  private journal(key = this.host.key()): ChatRewind | null {
+    if (this.journalKey) return this
+    if (!key) return null
+    let journal = this.journals.get(key)
+    if (!journal) {
+      journal = new ChatRewind(
+        this.app,
+        { key: () => key, turn: () => this.host.turn() },
+        this.store,
+        key
+      )
+      this.journals.set(key, journal)
+    }
+    return journal
+  }
 
   /** Call-local recording, passed explicitly through ToolContext.app. */
   track(
@@ -63,6 +86,8 @@ export class ChatRewind implements Recording {
     run: string,
     turn = this.host.turn()
   ): { app: App; close: () => Promise<void> } {
+    if (!this.journalKey)
+      return this.journal()?.track(tool, run, turn) ?? { app: this.app, close: async () => {} }
     const tracker = ChangeTracker.get(this.app)
     const chat = this.host.key()
     if (!tracker || rewindLimitBytes() === 0 || !chat || !turn)
@@ -89,6 +114,10 @@ export class ChatRewind implements Recording {
     blobs: Map<string, ArrayBuffer>,
     owner?: { chat: string; run: string; turn: string; tool: string }
   ): void {
+    if (!this.journalKey) {
+      this.journal(owner?.chat ?? this.host.key())?.record(op, changes, blobs, owner)
+      return
+    }
     const turn = owner?.turn ?? this.host.turn()
     if (!turn) return
     for (const change of changes) {
@@ -114,6 +143,7 @@ export class ChatRewind implements Recording {
 
   /** Reads the chat's log. Called when the chat is opened; safe to call again. */
   load(): Promise<void> {
+    if (!this.journalKey) return this.journal()?.load() ?? Promise.resolve()
     const key = this.host.key()
     if (!key || key === this.loadedKey) return this.loading ?? Promise.resolve()
     this.loadedKey = key
@@ -129,6 +159,10 @@ export class ChatRewind implements Recording {
 
   /** Writes the log and the copies it needs, then keeps the whole store under its cap. */
   flush(): Promise<void> {
+    if (!this.journalKey)
+      return Promise.all([...this.journals.values()].map((journal) => journal.flush())).then(
+        () => {}
+      )
     this.writing = this.writing
       .then(() => this.writeNow())
       .catch((err) => {
@@ -214,6 +248,8 @@ export class ChatRewind implements Recording {
   }
 
   private async plan(select: (e: RewindEntry) => boolean): Promise<RestorePlan> {
+    if (!this.journalKey)
+      return this.journal()?.plan(select) ?? { items: [], entryIds: [], settled: [], units: [] }
     await this.load()
     return planRestore(
       this.entries.value.filter((e) => (!e.chat || e.chat === this.host.key()) && select(e)),
@@ -226,6 +262,11 @@ export class ChatRewind implements Recording {
     plan: RestorePlan,
     choices: Record<string, ConflictChoice> = {}
   ): Promise<RestoreResult> {
+    if (!this.journalKey) {
+      const journal = this.journal()
+      if (!journal) throw new Error('This undo plan no longer belongs to this chat; reopen it')
+      return journal.apply(plan, choices)
+    }
     await this.load()
     const key = this.host.key()
     const available = new Set(
