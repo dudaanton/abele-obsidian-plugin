@@ -1,10 +1,11 @@
 import { beforeAll, expect, it } from 'vitest'
-import { existsSync, mkdirSync, statSync, writeFileSync } from 'node:fs'
+import { existsSync, mkdirSync, statSync, writeFileSync, readFileSync } from 'node:fs'
 import { resolve, join } from 'node:path'
 import { pathToFileURL } from 'node:url'
 import { targets, onPhone } from './helpers/target'
 import { liveScenarioHost, type ScenarioHost } from './helpers/scenarioHost'
 import { evidenceManifest, runEvidence, type ScenarioDriver } from '../acceptance/evidence'
+import { mappedSyncCases, caseKey } from './helpers/syncLiveCases'
 
 targets('desktop', 'phone')
 
@@ -13,11 +14,18 @@ const output = process.env.ABELE_SCENARIO_EVIDENCE
 const host = liveScenarioHost(),
   platform = host.platform
 const requested = process.env.ABELE_SCENARIOS?.split(',').map(Number)
+const mapped = mappedSyncCases().filter((one) =>
+  onPhone() ? one.file === 'syncPhone' : one.file !== 'syncPhone'
+)
 const ids =
   requested ??
-  evidenceManifest()
-    .filter((scenario) => scenario.required.includes(platform))
-    .map((scenario) => scenario.id)
+  [...new Set(mapped.flatMap((one) => one.scenarios))]
+    .filter((id) =>
+      evidenceManifest()
+        .find((one) => one.id === id)
+        ?.required.includes(platform)
+    )
+    .sort((a, b) => a - b)
 let scenarios: ScenarioDriver[] = []
 beforeAll(async () => {
   if (!output) return
@@ -38,6 +46,52 @@ beforeAll(async () => {
         },
       }))
     }
+  } else {
+    scenarios = ids.map((id) => ({
+      id,
+      run: async () => {
+        const cases = mapped.filter((one) => one.scenarios.includes(id))
+        if (!cases.length) throw new Error('No live test mapped to this scenario')
+        const checks: { name: string; expected: unknown; actual: unknown }[] = [],
+          artifacts: string[] = []
+        for (const one of cases) {
+          const file = join(
+            output,
+            String(id).padStart(3, '0') +
+              '-' +
+              platform +
+              '-' +
+              caseKey(one.file, one.name) +
+              '.json'
+          )
+          if (!existsSync(file))
+            throw new Error('Mapped live test has not run: ' + one.file + ' / ' + one.name)
+          const row = JSON.parse(readFileSync(file, 'utf8'))
+          if (
+            !process.env.ABELE_SYNC_EVIDENCE_RUN ||
+            row.runId !== process.env.ABELE_SYNC_EVIDENCE_RUN ||
+            row.status !== 'verified' ||
+            row.platform !== platform ||
+            row.case.file !== one.file ||
+            row.case.name !== one.name
+          )
+            throw new Error('Mapped live test did not pass in this evidence run')
+          checks.push(...row.checks)
+          artifacts.push(...row.artifacts)
+        }
+        return { checks, artifacts }
+      },
+    }))
+  }
+})
+
+it('maps each live token test to acceptance scenario numbers', () => {
+  expect(mapped.length).toBeGreaterThan(0)
+  for (const one of mapped) {
+    expect(one.scenarios.length).toBeGreaterThan(0)
+    expect(
+      one.scenarios.every((id) => evidenceManifest().some((scenario) => scenario.id === id))
+    ).toBe(true)
   }
 })
 

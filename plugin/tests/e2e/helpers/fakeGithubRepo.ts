@@ -247,7 +247,7 @@ export function tarball(files: Files, folder: string): Buffer {
     blocks.push(body, Buffer.alloc((512 - (body.length % 512)) % 512))
   }
   blocks.push(Buffer.alloc(1024))
-  return gzipSync(Buffer.concat(blocks))
+  return gzipSync(new Uint8Array(Buffer.concat(blocks.map((one) => new Uint8Array(one)))))
 }
 
 /**
@@ -402,7 +402,7 @@ export function fixtures(web: string) {
       isAnswered: true,
       author: user('carol'),
       category: { name: 'Ideas' },
-      labels: { nodes: [] },
+      labels: { nodes: [] as { name: string }[] },
       comments: {
         totalCount: 2,
         nodes: [

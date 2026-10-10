@@ -121,3 +121,24 @@ The historical server fixture gates no longer hide removed-product tests:
 
 - `integration/productionSharingBuild.test.ts` (partial retirement and port): deleted invitations, password enrollment, owner/grant preview controls, intrinsic sponsors and separate scoped creation APIs. Production bundle boot, native controls, actual note-open consent, denial, no automatic private publication, immutable response-loss retry, ordinary exchange beside obsolete markers and twenty binary reconnect/drain cycles remain as token tests. The retired owner-publication database deletion assertion is replaced by native runtime closure; token ledgers retain recovery evidence by design.
 - `unit/serverTestFixtures.test.ts` (partial retirement): removed historical owner/group/sponsored gate combinations and names of already deleted singleton handover/device tests. Current fixture absence, explicit selection, provenance checks and a new existing-file assertion remain.
+
+### Live tier token ports (P11)
+
+These files remain, with removed access flows deleted and surviving behavior ported to the
+production token host. No live desktop or iPhone pass is implied by the port.
+
+- `e2e/sync.e2e.test.ts`: deleted password initialization and account/device pairing via the daemon. Both-way file operations, original timestamps, line merging, exactly one stable conflict copy and native history/trash restore now use two leased token pools.
+- `e2e/syncJoin.e2e.test.ts`: deleted vault selection, enrolment and the mine/theirs/merge join-choice dialogs. Identical first-contact files, server plus local conflict bytes, local-only uploads and restart without another token remain.
+- `e2e/syncDevices.e2e.test.ts`: deleted account invitations, reader roles, separate personal/scoped connections and singleton device replacement. Folder/group sharing, onward issuance, revocation/disconnect retaining files, overlapping connections, unavailable-server isolation and explicit private attachment consent remain.
+- `e2e/syncDeletes.e2e.test.ts`: deleted password/daemon setup only. Bulk-deletion holds, both answers, paused answer replacement, palette pause, directory cleanup, sequential restore queue and bulk restore are ported to token connections.
+- `e2e/syncSettings.e2e.test.ts`: deleted personal join decisions and whole-plugin installation catalogue/version-batch approvals. Ordinary settings Later/Keep/Apply, immutable executable new/change/rename/delete review, later candidates, original mtime, restart provenance, own plugin code and partial-scope configuration exclusion remain.
+- `e2e/syncDialogs.e2e.test.ts`: deleted login, account creation, vault picker, invitation/reader dialogs, three-way join choices and whole-plugin catalogue screens. Surviving token screens retain overflow, height caps, focus-ring, reachable-action, held-path count, history paging/preview/confirmation, log, trash and date-field checks at desktop and narrow widths. Actual file exchange and foreground phone behavior are in sync and syncPhone.
+- `e2e/syncTransfer.e2e.test.ts`: deleted copied personal device-binding/reconnect flow. Settings transfer still must exclude live tokens, local registry identities and ledgers, checked against the real collector and stored settings.
+- `e2e/syncPhone.e2e.test.ts`: deleted the password/account paired-versus-unpaired screen model. Geometry is ported to syncDialogs; this file now drives the physical phone tier for scenarios 117–124.
+- `e2e/personalBaseline.e2e.test.ts`: deleted v1 account/daemon admission and personal baseline protocol. Committed-response-loss replay and quiet version stability remain through the native token engine; multi-source offload hydration is added through the production coordinator.
+- `e2e/helpers/syncServer.ts`: deleted daemon init/config/password/account helpers; the pinned fixture provisions a root token with `user create` and issues scope tokens over v2.
+- `e2e/helpers/syncDriver.ts`: deleted sign-in pacing, account/login, vault choice, enrollment and legacy singleton service verbs. Native token actions use the existing bounded CLI transport and private credential-result handling.
+- `e2e/helpers/syncScreens.ts`: deleted synthetic retired-screen service fixtures; captures now measure real native token screens in their owner document.
+
+`e2e/syncedScripts.e2e.test.ts` and the independent current component/integration guarantees
+for partial settings-write failures, review concurrency and phone foreground polling are retained.

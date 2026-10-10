@@ -1068,89 +1068,81 @@ instead: `taskDatePhone` taps the time field and measures the system keyboard.
 
 ### The sync suite
 
-What follows is said of `sync.e2e.test.ts`, and holds for every `sync*.e2e.test.ts`: each makes a
-server, an account, daemon folders and a vault of its own, and takes them away again.
+The token suites use exclusively leased pool vaults. They never create or register Obsidian
+vaults, touch a personal vault, or dispose shared app windows. The manager supplies two open
+desktop pools in `OBSIDIAN_TEST_VAULT` and `ABELE_SYNC_PEER_VAULT`. Both need the current
+`npm run build:test` installed, native menus disabled, and Obsidian's own Sync disabled.
+A pool containing a live connection or pending executable/attachment review fails before
+its settings are changed. Do not run two batches against either pool concurrently.
 
-`sync.e2e.test.ts` does not drive the vault the rest of the tier drives. It pairs a device with a
-server and writes files, which is not something to do to anyone's notes, so it makes a vault for
-the run and takes it away again.
+`ABELE_SYNC_DIR` must name the built, provenance-checked clean-archive fixture at
+`695f4e7e070879bb33ed09ee7c502228d87a062d`, prepared using
+`node scripts/vendor-sync.mjs <server-repository> 695f4e7 fixture` from the plugin root.
+No mutable sibling build is accepted. See [pinned sync inputs](Sync%20build%20inputs%20proposal.md).
+Each case starts an isolated real server and runs its `user create` CLI for a root token.
+Folder/group access is issued over v2, through the real Share dialog or fixture API.
+Multi-server cases start a second isolated server; the plugin still runs its production engines.
 
-What it needs, and what it says when something is missing:
+Without a running app, `node node_modules/typescript/bin/tsc -p tsconfig.sync-e2e.json`
+checks the sync live sources and their imported helpers. The fixture-backed
+`tests/unit/syncLiveServer.test.ts` checks real CLI provisioning and v2 issuance; it never
+drives a desktop or phone. `syncLiveContracts.test.ts` checks the retired-flow fence and mappings.
 
-- **Obsidian running with a vault open.** That window is only used to send the message that opens
-  the test vault; nothing is written to it. It is `OBSIDIAN_TEST_VAULT` when set, else the window
-  in front. Without one the suite skips.
-- **An explicit revision-checked sync fixture.** `ABELE_SYNC_DIR` names a clean-archive fixture
-  prepared by `node scripts/vendor-sync.mjs <repository> <pinned-commit> fixture`. The server,
-  admin CLI and daemon come from that fixture's checked `dist`, never a mutable sibling build.
-  The e2e helper locates the `abele-sync` source checkout beside the main plugin checkout via
-  Git's common directory, so main checkouts and worktrees give the same preparation command
-  without a symlink. Missing/changed/wrong-revision fixture provenance fails, rather than
-  silently skipping.
-  See [pinned sync inputs](Sync%20build%20inputs%20proposal.md) for rebuild/update instructions.
-- **This plugin, built for testing.** `npm run build:test`, newer than `src/` and the pinned
-  `vendor/sync` payloads, which the bundle inlines. A missing, stale or
-  production build fails the suite at once, saying so; it is not built for you, because a build
-  takes longer than a test worker may stay silent.
+Every connection is made by pasting the token into the native Connect dialog. Remote fixture
+edits use v2 commits; local edits use Obsidian's vault API. Reviews, consent, history, trash,
+pause and disconnect use the actual native controls. The hydration cases exercise the
+production host port through its shared coordinator. The transfer case reads the actual
+settings-transfer collector through the test-only API.
+
+From `plugin/`, run the desktop cases with the existing e2e tier (files run sequentially):
 
 ```bash
-npm run build:test
-OBSIDIAN_TEST_VAULT=<vault> npm run test:e2e -- tests/e2e/sync.e2e.test.ts
+export OBSIDIAN_TEST_VAULT=<leased-primary-pool>
+export ABELE_SYNC_PEER_VAULT=<leased-peer-pool>
+export ABELE_SYNC_DIR=<built-pinned-fixture>
+export ABELE_SCENARIO_EVIDENCE=<absolute-artifact-directory>
+export ABELE_SYNC_EVIDENCE_RUN=<unique-batch-id>
+npm run test:e2e -- tests/e2e/sync.e2e.test.ts tests/e2e/syncJoin.e2e.test.ts tests/e2e/syncDevices.e2e.test.ts tests/e2e/syncDeletes.e2e.test.ts tests/e2e/syncSettings.e2e.test.ts tests/e2e/syncDialogs.e2e.test.ts tests/e2e/syncTransfer.e2e.test.ts tests/e2e/personalBaseline.e2e.test.ts --maxWorkers=2
+npm run test:e2e -- tests/e2e/syncScenarios.e2e.test.ts --maxWorkers=2
 ```
 
-It takes well under a minute. What it makes, and takes away at the end:
+Run the evidence aggregator separately **after** the behavioral files. Each `liveCase`
+declares scenario numbers and writes case-specific JSON and a PNG. The aggregator requires
+every mapped case for a requested scenario to have passed with the current batch ID;
+old artifacts and a later pass cannot conceal another case's failure. Defaults aggregate
+the mapped scenarios required on that platform by the acceptance manifest.
+`ABELE_SCENARIOS=...` selects explicit scenario numbers. Unmapped requested scenarios
+remain unverified. These are plugin-side observations, not server or phone verification.
 
-- a folder in the system's temp directory holding the server's database and blobs and the daemon's
-  folder, and a server on a free port on `127.0.0.1`, killed at the end;
-- a throwaway account on that server, with a made-up password;
-- a vault, a folder named `abele-sync-e2e-<8 hex>` in the folder the suite keeps test vaults
-  in (`VAULTS_DIR` in `tests/e2e/helpers/syncVault.ts`), holding the build, an
-  `.abele-sync-ignore` that keeps its config folder out of the sync, and two settings the suite
-  needs: menus drawn by the page (a native macOS menu cannot be clicked from a script) and
-  Obsidian's own Sync switched off (it adds an **Open version history** of its own beside the
-  plugin's **Open version history (Abele)**). It opens in a window of its own behind whatever is in front, with the vault's
-  Restricted Mode turned off so the plugin loads.
+The physical phone batch uses the existing phone driver, build installer, vault and exclusive
+phone lock described above. With the same fixture/evidence variables, run:
 
-At the end the device is forgotten, which drops its ledger and its keychain entry; the window is
-closed; the folder is deleted; and the vault is taken off Obsidian's vault list, through the same
-message the vault switcher's **Remove from list** sends. A window that will not close is left open
-with its folder, and a warning names the path: close the window, remove the vault from the
-switcher, then delete the folder.
+```bash
+export ABELE_PHONE_BACKGROUND=<manager-executable-that-presses-Home>
+npm run test:e2e:phone -- tests/e2e/syncPhone.e2e.test.ts --maxWorkers=2
+npm run test:e2e:phone -- tests/e2e/syncScenarios.e2e.test.ts --maxWorkers=2
+```
 
-A machine where several runs share one Obsidian can name a command in `ABELE_E2E_APP_GATE`.
-Opening the vault, closing its window and taking it off the list rewrite the app's own vault list,
-so each of those steps is run between `<command> enter`, which may wait until the app is free, and
-`<command> leave`. Without the variable they simply run.
+`syncPhone` maps scenarios 117–124: token paste, file operations, actual background/return,
+server outage/recovery, note-open attachment consent, executable approval/rejection,
+conflict copies and two servers. The Home action must be real; no background event is
+fabricated. QR camera scanning and changing the phone's actual network still need separate
+manager checks. Server suspension exercises unavailable transport without manipulating
+the phone's network settings. `syncDialogs` measures desktop and phone-emulated widths
+1200/390/320 under the existing shared reload lock; those PNGs are Mac evidence only.
 
-The other sync files differ in a few ways worth knowing before a run:
+Each fixture limits uploads to its unique synthetic directory through a temporary ignore
+file. The settings case additionally allows only synthetic hotkeys; it saves and restores
+the existing bytes. Pool credentials/configuration are otherwise excluded. Teardown rejects
+owned pending code, denies owned unanswered attachment questions, disconnects only owned
+connections, removes only its synthetic directory, restores the ignore file and prior active
+note, and stops every server/phone port reversal. Disconnect intentionally retains device
+recovery ledgers; use disposable manager-owned pools for repeated batches. Desktop visibility
+emulation follows the tier's existing foreground convention and is restored. No phone
+visibility is emulated. Cleanup failures fail the case, so the manager can quarantine the pool.
 
-- **Sign-ins are spaced out.** The server lets one address sign in ten times a minute, and a
-  daemon's `init` counts as much as the plugin's sign-in. `syncJoin` signs in about eight times,
-  so it waits between them (`beforeSignIn` in `tests/e2e/helpers/syncDriver.ts`) and takes a
-  couple of minutes.
-- **Some let part of the config folder through.** `syncJoin` lets Abele's own `data.json` sync;
-  `syncSettings` and `syncDialogs` also let `app.json`, `hotkeys.json` or other plugins'
-  `data.json` through. They allow small synthetic plugin-code fixtures too, for the separate
-  code review; Abele's own `main.js` stays out everywhere.
-- **The questions need the app in front.** The held-deletes and settings dialogs are asked only
-  while the page is visible, and the test window sits behind everything. The suites make the page
-  say it is (`SyncDriver.inFront`) and undo it at the end.
-- **`syncDevices` and `syncDialogs` kill their server part way,** for a Disconnect nobody answers;
-  those cases come last. A token kept to tell that server is let go in `afterAll`.
-- **`syncDialogs` turns its window into a phone** under the same reload lock as `syncPhone`
-  (`tests/e2e/helpers/phoneWindow.ts`), and runs for several minutes.
-
-Two things are left behind on purpose, as not worth the machinery that would avoid them:
-
-- **The account's password is briefly visible in the process list.** It is an argument to the
-  admin CLI's `create-account` and to the `obsidian eval` that signs the plugin in, for as long as
-  each of those runs. It is a made-up password for an account on a server that lives only for the
-  run.
-- **Obsidian's profile can keep a trace of the device.** Where Obsidian's keychain cannot delete an
-  entry, the token's entry (`abele-sync-device-…`) is emptied rather than removed. If forgetting
-  the device fails — the suite warns `could not disconnect the test device` — the token stays in
-  that entry and the ledger stays in Obsidian's IndexedDB as `abele-sync-<id>`. The token is for a
-  server that no longer exists.
+The existing `syncedScripts.e2e.test.ts` remains a desktop check of standalone script trust;
+its surviving guarantees are not retired with the account screens.
 
 ### The test hook
 

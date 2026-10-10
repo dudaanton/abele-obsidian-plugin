@@ -43,14 +43,17 @@ describe('server-backed fast-tier fixture gate', () => {
   })
   it('skips only the files that require an absent fixture', () => {
     const skipped = missingServerTests({})
-    expect(skipped).toHaveLength(11)
+    expect(skipped).toHaveLength(12)
     expect(skipped).not.toContain('tests/integration/scopedPublicationPush.test.ts')
     expect(skipped).toContain('tests/integration/tokenEngineServer.test.ts')
     expect(skipped).toContain('tests/integration/externalRepresentationServer.test.ts')
     expect(skipped).toContain('tests/integration/productionSharingBuild.test.ts')
     expect(skipped).toContain('tests/integration/syncService.test.ts')
     expect(skipped).not.toContain('tests/unit/syncBuildInputs.test.ts')
-    expect(skipped.every((file: string) => file.startsWith('tests/integration/'))).toBe(true)
+    expect(skipped).toContain('tests/unit/syncLiveServer.test.ts')
+    expect(skipped.filter((file: string) => !file.startsWith('tests/integration/'))).toEqual([
+      'tests/unit/syncLiveServer.test.ts',
+    ])
   })
 
   it('runs every current token fixture when its explicit variable is set', () => {

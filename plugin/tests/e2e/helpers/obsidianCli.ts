@@ -5,7 +5,11 @@
  * `eval`, DOM queries, console capture and plugin reload against the real running instance,
  * which is everything these tests need.
  */
-import { execFileSync, spawnSync } from 'node:child_process'
+import {
+  execFileSync,
+  spawnSync,
+  type SpawnSyncOptionsWithStringEncoding,
+} from 'node:child_process'
 import {
   existsSync,
   mkdirSync,
@@ -130,13 +134,14 @@ function runOnce(args: string[], timeoutMs: number, vault: string, reply?: strin
     const command = framed
       ? [EVAL_PROCESS, CLI, reply, String(Date.now() + timeoutMs), ...fullArgs]
       : fullArgs
-    const result = spawnSync(executable, command, {
+    const options: SpawnSyncOptionsWithStringEncoding & { detached: boolean } = {
       encoding: 'utf8',
       detached: framed && process.platform !== 'win32',
       timeout: timeoutMs,
       killSignal: 'SIGKILL',
       maxBuffer: 64 * 1024 * 1024,
-    })
+    }
+    const result = spawnSync(executable, command, options)
     // A proxy killed at the outer deadline must not leave its CLI child running. The running
     // Obsidian app is a different process group and is never touched.
     if (framed && result.pid > 0 && process.platform !== 'win32') {
@@ -707,7 +712,7 @@ const RELOAD_LOCK = join(tmpdir(), 'abele-e2e-reload.lock')
 /** Only for an abandoned acquisition that died before recording its live owner. */
 const RELOAD_LOCK_STALE_MS = 120_000
 
-const pauseAsync = (ms: number) => new Promise((resolve) => setTimeout(resolve, ms))
+const pauseAsync = (ms: number) => new Promise<void>((resolve) => setTimeout(resolve, ms))
 
 async function takeReloadLock(): Promise<void> {
   const deadline = Date.now() + 5 * 60_000

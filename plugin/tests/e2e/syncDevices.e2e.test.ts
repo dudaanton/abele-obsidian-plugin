@@ -1,234 +1,216 @@
-/**
- * The devices on a vault, and leaving one (phase 3b, decisions 3 and 6), end to end: the running
- * Obsidian, a daemon folder as a second device, a real server.
- *
- * - **Devices on this vault** on the Sync tab lists the daemon, this device (marked, with no
- *   Revoke) and a device made for a transfer (`enrolSibling`), which it says this one enrolled.
- * - **Revoke** on the daemon, confirmed: the row goes, the daemon's next sync is refused and says
- *   to connect again, and this device keeps syncing.
- * - **Disconnect** tells the server: this device is gone from the account's own list, and the
- *   device made for the transfer is still on it — disconnecting one no longer cuts off both.
- * - **Disconnect with the server down** keeps the token to tell it later: the Sync tab shows
- *   **Waiting to tell the server**, and **Forget without telling the server**, confirmed, lets it
- *   go. Last, since it kills the server.
- *
- * The account's own list is read over HTTP from the test process (`accountDevices`), because it
- * is exactly what a device that left can no longer read for itself.
- *
- * Requires Obsidian running with a vault open, the sibling repository built, and
- * `npm run build:test` newer than the source — see docs/Testing.md.
- */
-import { mkdirSync, mkdtempSync, rmSync } from 'node:fs'
-import { tmpdir } from 'node:os'
-import { join } from 'node:path'
-import { afterAll, beforeAll, describe, expect, it } from 'vitest'
-import {
-  daemonConfig,
-  daemonSyncOnce,
-  initDaemon,
-  siblingMissing,
-  spawnSyncServer,
-  type SyncServer,
-} from './helpers/syncServer'
-import { obsidianMissing, openTestVault, waitFor, type TestVault } from './helpers/syncVault'
-import { accountDevices, beforeSignIn, SyncDriver } from './helpers/syncDriver'
-
-const EMAIL = 'sync-devices@example.com'
-const PASSWORD = 'a-password-nobody-prints'
-const DEVICE = 'obsidian on this desk'
-const DAEMON = 'daemon in a cupboard'
-const SIBLING = 'the phone a transfer set up'
-
-const why = siblingMissing() ?? obsidianMissing()
-if (why !== null) console.info(`\n  sync devices e2e skipped: ${why}\n`)
-
-let workspace = ''
-let daemonDir = ''
-let server: SyncServer | null = null
-let vault: TestVault | null = null
-let siblingId = ''
-
-const app = (): TestVault => {
-  if (vault === null) throw new Error('the test vault was never opened')
-  return vault
-}
-const sync = new SyncDriver(app)
-
-const liveServer = (): SyncServer => {
-  if (server === null) throw new Error('no server')
-  return server
-}
-
-interface Row {
-  id: string
-  name: string
-  desc: string
-  self: boolean
-  revoke: boolean
-}
-
-/** The Sync tab's device list, row by row, once it has read the server. */
-function deviceRows(): Promise<Row[]> {
-  return sync.long<Row[]>(
-    'the device list on the Sync tab',
-    `
-    const root = await openSyncTab()
-    const section = () => sectionTitled(root, 'Devices on this vault')
-    if (!(await poll(() => section() && section().querySelector('[data-device]'), 20000)))
-      throw new Error('the device list never filled: ' + textOf(section()))
-    const rows = [...section().querySelectorAll('[data-device]')].map((row) => ({
-      id: row.getAttribute('data-device'),
-      name: textOf(row.querySelector('.setting-item-name')),
-      desc: textOf(row.querySelector('.setting-item-description')),
-      self: textOf(row.querySelector('.setting-item-control')).includes('This device'),
-      revoke: !!buttonIn(row, 'Revoke'),
-    }))
-    await closeSettings()
-    return rows
-    `,
-    60_000
-  )
-}
-
-describe.skipIf(why !== null)('the devices on a vault', () => {
-  beforeAll(async () => {
-    workspace = mkdtempSync(join(tmpdir(), 'abele-sync-devices-'))
-    daemonDir = join(workspace, 'daemon')
-    mkdirSync(daemonDir)
-    server = await spawnSyncServer(workspace)
-    server.createAccount(EMAIL, PASSWORD)
-    await beforeSignIn()
-    initDaemon({
-      dir: daemonDir,
-      serverUrl: server.url,
-      email: EMAIL,
-      password: PASSWORD,
-      vaultName: 'Devices',
-      deviceName: DAEMON,
-    })
-    const vaultId = daemonConfig(daemonDir).vaultId
-
-    vault = await openTestVault()
-    vault.run(['dev:errors', 'clear'], 20_000)
-    await beforeSignIn()
-    sync.run(`
-      await svc.connect(${JSON.stringify(server.url)}, ${JSON.stringify(EMAIL)}, ${JSON.stringify(PASSWORD)})
-      await svc.chooseVault(${JSON.stringify(vaultId)}, ${JSON.stringify(DEVICE)})
-      return 'ok'
-    `)
-    await sync.waitIdle()
-    daemonSyncOnce(daemonDir)
-  }, 300_000)
-
-  afterAll(async () => {
-    try {
-      if (vault !== null) sync.run(`await svc.forget(); return 'ok'`, 30_000)
-    } catch (error) {
-      console.warn(`could not disconnect the test device: ${String(error)}`)
-    }
-    try {
-      await vault?.dispose()
-    } finally {
-      await server?.kill()
-      if (workspace !== '') rmSync(workspace, { recursive: true, force: true })
-    }
-  }, 300_000)
-
-  it('lists every device on the vault, this one marked, and says which one enrolled the sibling', async () => {
-    siblingId = sync.run<{ deviceId: string }>(
-      `return await svc.enrolSibling(${JSON.stringify(SIBLING)})`
-    ).deviceId
-    const rows = await deviceRows()
-    expect(rows.map((row) => row.name).sort()).toEqual([DAEMON, DEVICE, SIBLING].sort())
-    const self = rows.find((row) => row.name === DEVICE)
-    expect(self).toMatchObject({ self: true, revoke: false })
-    expect(rows.find((row) => row.name === SIBLING)?.desc).toContain(`connected by ${DEVICE}`)
-    expect(rows.find((row) => row.name === DAEMON)?.desc).toContain(
-      'connected with the account password'
+import { expect } from 'vitest'
+import { AccessClient } from '@abele/sync-core'
+import { fixtureFetch } from './helpers/syncServer'
+import { liveSuite, liveCase } from './helpers/syncLiveCases'
+const fixture = liveSuite()
+liveCase(
+  'syncDevices',
+  'folder departure keeps the owner file and return delivers its current bytes',
+  [43, 45, 46, 47, 48, 49, 51],
+  async () => {
+    const s = fixture(),
+      a = s.primary,
+      b = s.peer!,
+      folder = s.root + '/shared',
+      path = folder + '/note.md',
+      outside = s.root + '/private/note.md',
+      id = await s.connect()
+    a.create(path, 'shared source')
+    await a.syncNow()
+    await s.connect(b, await a.share(id, 'Folder: ' + folder))
+    await s.cycle()
+    b.rename(path, folder + '/renamed.md')
+    await s.cycle()
+    expect(a.read(folder + '/renamed.md')).toBe('shared source')
+    expect(a.exists(path)).toBe(false)
+    a.rename(folder + '/renamed.md', outside)
+    await s.cycle()
+    expect(a.read(outside)).toBe('shared source')
+    expect(b.exists(folder + '/renamed.md')).toBe(false)
+    a.create(outside, 'current private edit')
+    a.rename(outside, path)
+    await s.cycle()
+    expect(b.read(path)).toBe('current private edit')
+    b.remove([path])
+    await s.cycle()
+    expect(a.exists(path)).toBe(false)
+  },
+  fixture
+)
+liveCase(
+  'syncDevices',
+  'group note arrival and background indexing never publish a private attachment',
+  [74, 76, 77, 78, 79, 80, 81],
+  async () => {
+    const s = fixture(),
+      a = s.primary,
+      group = s.root + '/ConsentGroup.md',
+      note = s.root + '/consent.md',
+      asset = s.root + '/private.bin',
+      neighbor = s.root + '/neighbor.bin'
+    await s.put(group, 'consent group')
+    await s.put(note, '---\ngroups: ["[[' + s.root + '/ConsentGroup]]"]\n---\n![[' + asset + ']]')
+    const root = (await s.items()).find((one) => one.path === group)!
+    a.create(asset, 'private immutable bytes')
+    a.create(neighbor, 'private neighbor')
+    await s.connect(a, await s.server.issue({ kind: 'group', id: root.file_id }))
+    await a.syncNow()
+    expect(a.questions()).toHaveLength(0)
+    expect((await s.items()).some((one) => one.path === asset)).toBe(false)
+    a.open(note)
+    await a.consent('Allow')
+    await a.syncNow()
+    expect((await s.items()).some((one) => one.path === asset)).toBe(true)
+    expect((await s.items()).some((one) => one.path === neighbor)).toBe(false)
+    a.create(asset, 'future permitted edit')
+    await a.syncNow()
+    const sent = (await s.items()).find((one) => one.path === asset)!
+    expect(
+      new TextDecoder().decode(await s.client().versionBytes(sent.file_id, sent.version_id))
+    ).toBe('future permitted edit')
+    await s.connect(s.peer!, await s.server.issue({ kind: 'group', id: root.file_id }))
+    await s.peer!.syncNow()
+    expect(s.peer!.read(asset)).toBe('future permitted edit')
+    expect(s.peer!.questions()).toHaveLength(0)
+    const second = await s.addServer()
+    await s.put(group, 'consent group', second)
+    await s.put(
+      note,
+      '---\ngroups: ["[[' + s.root + '/ConsentGroup]]"]\n---\n![[' + asset + ']]',
+      second
     )
-  })
-
-  it('Revoke stops the daemon at its next sync, and this device keeps syncing', async () => {
-    const gone = await sync.long<boolean>(
-      'Revoke on the daemon, confirmed',
-      `
-      const root = await openSyncTab()
-      const doc = root.ownerDocument
-      const section = () => sectionTitled(root, 'Devices on this vault')
-      const row = () => [...section().querySelectorAll('[data-device]')].find(
-        (r) => textOf(r.querySelector('.setting-item-name')) === ${JSON.stringify(DAEMON)})
-      if (!(await poll(row, 20000))) throw new Error('no row for the daemon')
-      await press(row(), 'Revoke')
-      await press(() => modalOf('.abele-confirm__message', doc), 'Revoke')
-      const left = await poll(() => !row(), 20000)
-      await closeSettings()
-      return left
-      `,
-      60_000
+    const otherRoot = (await s.items(second)).find((one) => one.path === group)!
+    await s.connect(a, await second.issue({ kind: 'group', id: otherRoot.file_id }))
+    await a.syncNow()
+    expect(a.questions()).toHaveLength(0)
+    expect((await s.items(second)).some((one) => one.path === asset)).toBe(false)
+    a.open(s.root + '/ConsentGroup.md')
+    a.open(note)
+    await a.consent('Deny')
+    await a.syncNow()
+    expect((await s.items(second)).some((one) => one.path === asset)).toBe(false)
+    expect(a.read(asset)).toBe('future permitted edit')
+  },
+  fixture
+)
+liveCase(
+  'syncDevices',
+  'two servers share one vault and an unavailable server does not stop the other',
+  [24, 25, 26, 27, 28, 102],
+  async () => {
+    const s = fixture(),
+      a = s.primary,
+      second = await s.addServer(),
+      path = s.root + '/both.md'
+    const first = await s.connect(),
+      other = await s.connect(a, second.rootToken)
+    a.create(path, 'same local edit')
+    await a.syncNow()
+    expect((await s.items()).map((one) => one.path)).toContain(path)
+    expect((await s.items(second)).map((one) => one.path)).toContain(path)
+    await s.put(path, 'remote edit', second)
+    await a.syncNow()
+    await a.syncNow(first)
+    const file = (await s.items()).find((one) => one.path === path)!
+    expect(
+      new TextDecoder().decode(await s.client().versionBytes(file.file_id, file.version_id))
+    ).toBe('remote edit')
+    await second.kill()
+    a.create(path, 'offline edit')
+    await expect(a.syncNow(other)).rejects.toThrow()
+    await a.syncNow(first)
+    expect(a.rows()).toHaveLength(2)
+    expect((await s.items()).find((one) => one.path === path)?.version_id).not.toBe(file.version_id)
+  },
+  fixture
+)
+liveCase(
+  'syncDevices',
+  'folder and group tokens from Share connect the second pool vault',
+  [6, 11, 13, 14, 15, 16, 37, 42, 57, 58, 60, 61],
+  async () => {
+    const s = fixture(),
+      a = s.primary,
+      b = s.peer!,
+      folder = s.root + '/folder',
+      group = s.root + '/Group.md',
+      member = s.root + '/member.md'
+    const id = await s.connect()
+    a.create(folder + '/sample.md', 'folder content')
+    a.create(group, 'group root')
+    a.create(member, '---\ngroups: ["[[' + s.root + '/Group]]","[[Unrelated group]]"]\n---\nmember')
+    a.create(s.root + '/private.md', 'private')
+    await a.syncNow()
+    const folderToken = await a.share(id, 'Folder: ' + folder),
+      groupToken = await a.share(id, 'Group: Group')
+    b.create(folder + '/local.md', 'local inside shared folder')
+    b.create(s.root + '/outside.md', 'local outside shared folder')
+    await s.connect(b, folderToken)
+    await s.connect(b, groupToken)
+    await s.cycle()
+    expect(b.read(folder + '/sample.md')).toBe('folder content')
+    expect(b.read(member)).toContain('[[Unrelated group]]')
+    expect(b.exists(s.root + '/private.md')).toBe(false)
+    expect(a.read(folder + '/local.md')).toBe('local inside shared folder')
+    expect((await s.items()).some((one) => one.path === s.root + '/outside.md')).toBe(false)
+    b.create(member, b.read(member)! + '\nrecipient edit')
+    await s.cycle()
+    expect(a.read(member)).toContain('recipient edit')
+    const onward = await b.share(s.ids.get(b)![0], 'Folder: ' + folder)
+    expect(onward).toMatch(/^[A-Za-z0-9+/=_-]+$/)
+  },
+  fixture
+)
+liveCase(
+  'syncDevices',
+  'revoke stops exchange but keeps files and other device tokens active',
+  [18, 19, 22],
+  async () => {
+    const s = fixture(),
+      a = s.primary,
+      b = s.peer!,
+      path = s.root + '/retained.md',
+      id = await s.connect()
+    const issued = await a.share(id, 'Whole vault', 'Sample revoked recipient')
+    await s.connect(b, issued)
+    a.create(path, 'retained local content')
+    await s.cycle()
+    a.run(
+      `const root=await openSyncTab();icon(connectionRow(root,${JSON.stringify(id)}),'share-2');await poll(()=>modal('Share access'));const box=modal('Share access');let row;await poll(()=>row=[...box.querySelectorAll('.setting-item')].find(one=>textOf(one.querySelector('.setting-item-name'))==='Sample revoked recipient'));icon(row,'ban');await press(box,'Revoke');await press(box,'Close');await closeSettings();return true`
     )
-    expect(gone).toBe(true)
-    expect(() => daemonSyncOnce(daemonDir)).toThrow(/abele-sync run --once failed/)
-
-    sync.create('Devices/After the revoke.md', 'still syncing\n')
-    await sync.syncNow()
-    expect(sync.serverPaths()).toContain('Devices/After the revoke.md')
-  })
-
-  it('Disconnect tells the server, and the device a transfer made stays enrolled', async () => {
-    const own = sync.run<string>(`return svc.connection.value.deviceId`)
-    const before = await accountDevices(liveServer().url, EMAIL, PASSWORD)
-    expect(before.map((d) => d.id)).toContain(own)
-
-    sync.run(`await svc.disconnect(); return 'ok'`, 30_000)
-    expect(sync.run<unknown[]>(`return svc.connection.value.pendingRevoke`)).toEqual([])
-
-    const after = await accountDevices(liveServer().url, EMAIL, PASSWORD)
-    expect(after.map((d) => d.id)).not.toContain(own)
-    expect(after.map((d) => d.id)).toContain(siblingId)
-  })
-
-  it('Disconnect with the server down keeps the token to tell it later, until it is forgotten', async () => {
-    const vaultId = daemonConfig(daemonDir).vaultId
-    await beforeSignIn()
-    sync.run(`
-      await svc.connect(${JSON.stringify(liveServer().url)}, ${JSON.stringify(EMAIL)}, ${JSON.stringify(PASSWORD)})
-      await svc.chooseVault(${JSON.stringify(vaultId)}, ${JSON.stringify(DEVICE)})
-      return 'ok'
-    `)
-    await sync.waitIdle()
-    await liveServer().kill()
-
-    // Up to ten seconds for a server that does not answer; a refused socket is quicker.
-    await sync.long(
-      'a Disconnect with nobody answering',
-      `await svc.disconnect(); return 'ok'`,
-      60_000
-    )
-    expect(sync.run<unknown[]>(`return svc.connection.value.pendingRevoke`)).toHaveLength(1)
-
-    const shown = await sync.long<{ row: boolean; after: number }>(
-      'the waiting line on the Sync tab, and forgetting it',
-      `
-      const root = await openSyncTab()
-      const doc = root.ownerDocument
-      const row = () => [...root.querySelectorAll('.setting-item')].find(
-        (r) => textOf(r.querySelector('.setting-item-name')) === 'Waiting to tell the server')
-      const seen = await poll(row, 10000)
-      if (seen) {
-        await press(row(), 'Forget without telling the server')
-        await press(() => modalOf('.abele-confirm__message', doc), 'Forget')
-        await poll(() => !row(), 10000)
-      }
-      await closeSettings()
-      return { row: seen, after: svc.connection.value.pendingRevoke.length }
-      `,
-      60_000
-    )
-    expect(shown).toEqual({ row: true, after: 0 })
-    await waitFor(
-      'the status to say not connected',
-      () => sync.status().state === 'disconnected',
-      10_000
-    )
-  })
-})
+    await expect(b.syncNow()).rejects.toThrow()
+    expect(b.read(path)).toBe('retained local content')
+    a.create(s.root + '/active.md', 'still active')
+    await a.syncNow()
+    expect((await s.items()).map((one) => one.path)).toContain(s.root + '/active.md')
+    const access = AccessClient.fromToken(s.server.rootToken, { fetch: fixtureFetch })
+    expect(
+      (await access.tokens()).items.some(
+        (one) => one.label === 'Sample revoked recipient' && one.revoked_at
+      )
+    ).toBe(true)
+  },
+  fixture
+)
+liveCase(
+  'syncDevices',
+  'disconnect is local and leaves other connections and files intact',
+  [22, 23, 34],
+  async () => {
+    const s = fixture(),
+      a = s.primary,
+      second = await s.addServer(),
+      id = await s.connect(),
+      other = await s.connect(a, second.rootToken),
+      path = s.root + '/kept.md'
+    a.create(path, 'kept')
+    await a.syncNow()
+    await a.disconnect(id)
+    expect(a.read(path)).toBe('kept')
+    expect(a.rows().map((one) => one.id)).toEqual([other])
+    a.create(path, 'still active')
+    await a.syncNow(other)
+    expect((await s.items(second)).find((one) => one.path === path)).toBeDefined()
+  },
+  fixture
+)

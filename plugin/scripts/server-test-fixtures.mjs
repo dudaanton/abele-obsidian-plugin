@@ -14,7 +14,7 @@ export const serverTestFixtures = {
     'syncOwnSettings',
     'syncConnectionSaves',
     'productionSharingBuild',
-  ].map((name) => `tests/integration/${name}.test.ts`),
+  ].map((name) => `tests/integration/${name}.test.ts`).concat('tests/unit/syncLiveServer.test.ts'),
 }
 
 export const serverTestFixtureRevisions = {}

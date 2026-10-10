@@ -12,6 +12,7 @@ import { mkdirSync, rmdirSync, statSync } from 'node:fs'
 import { tmpdir } from 'node:os'
 import { join } from 'node:path'
 import { delay } from './syncServer'
+import type { VaultCli } from './obsidianCli'
 import { openTestVault, waitFor, type TestVault } from './syncVault'
 
 /** Obsidian's key, and this window's own wish, which its `sessionStorage` keeps over a reload. */
@@ -58,7 +59,7 @@ export async function openVaultUnderLock(): Promise<TestVault> {
   }
 }
 
-const hasTestApi = (vault: TestVault): boolean => {
+const hasTestApi = (vault: VaultCli): boolean => {
   try {
     return vault.evalRaw('String(typeof window.__abeleTest === "object")', 10_000) === 'true'
   } catch {
@@ -70,7 +71,7 @@ const hasTestApi = (vault: TestVault): boolean => {
  * Reloads the test window as a phone or as a desktop, and waits for the plugin to be back.
  * Background throttling is switched off again, since a reload turns it back on.
  */
-export async function reloadAs(vault: TestVault, mobile: boolean): Promise<void> {
+export async function reloadAs(vault: VaultCli, mobile: boolean): Promise<void> {
   await takeReloadLock()
   try {
     vault.evalRaw(
@@ -92,7 +93,7 @@ export async function reloadAs(vault: TestVault, mobile: boolean): Promise<void>
       // This remains desktop layout/lifecycle evidence, never native phone HTTP evidence.
       vault.evalAwait(
         `(async () => {
-        const api = window.__abeleTest, svc = api.SyncService.getInstance()
+        const api = window.__abeleTest, tokenHost = app.plugins.plugins.abele.tokenEngines
         const remote = require('@electron/remote'), buffer = require('node:buffer').Buffer
         const host = {
           session: remote.getCurrentWebContents().session,
@@ -100,11 +101,10 @@ export async function reloadAs(vault: TestVault, mobile: boolean): Promise<void>
           body: bytes => buffer.from(bytes),
           controller: () => new (remote.getGlobal('AbortController'))()
         }
-        await svc.serialise(async () => {
-          await svc.runner.teardown()
-          svc.deps.fetch = api.desktopTransport(undefined, host)
-          await svc.runner.reconcile()
-        })
+        await tokenHost.engines.reset()
+        tokenHost.deps.fetch = api.desktopTransport(undefined, host)
+        tokenHost.start()
+        await tokenHost.engines.settled()
         return 'ok'
       })()`,
         30_000
@@ -120,17 +120,13 @@ export async function reloadAs(vault: TestVault, mobile: boolean): Promise<void>
   )
 }
 
-export const windowSize = (vault: TestVault): [number, number] =>
+export const windowSize = (vault: VaultCli): [number, number] =>
   vault.evalAwait<[number, number]>(
     `require('@electron/remote').getCurrentWindow().getContentSize()`
   )
 
 /** Resizes, then nudges by two pixels and back: a capture after a reload waits on a frame. */
-export async function setWindowSize(
-  vault: TestVault,
-  width: number,
-  height: number
-): Promise<void> {
+export async function setWindowSize(vault: VaultCli, width: number, height: number): Promise<void> {
   vault.evalRaw(
     `(() => {
       const w = require('@electron/remote').getCurrentWindow()

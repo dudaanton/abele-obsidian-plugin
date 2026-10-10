@@ -35,6 +35,7 @@
       "strict-null-folders.json",
       "tests",
       "tsconfig.json",
+      "tsconfig.sync-e2e.json",
       "version-bump.mjs",
       "vendor",
       "vite.config.mts",

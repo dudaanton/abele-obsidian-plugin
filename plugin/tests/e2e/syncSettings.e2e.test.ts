@@ -1,405 +1,223 @@
-/**
- * Settings that travel (phase 3b, decisions 5 and 11), end to end: the running Obsidian on one
- * side, a daemon folder standing in for another device, a real server between.
- *
- * - **Abele's own settings file syncs**: it reaches the server and the other device, the chat
- *   index beside it does not, and a setting changed on the other device is taken up here with a
- *   single reload — the log says so once — after which neither side has anything to send.
- * - **Obsidian's settings from another device wait**: a change to `app.json` made on the other
- *   device is not written here but asked about in **Settings changed on another device**.
- *   **Keep this device's** sends this device's file over it; **Later** leaves it on the Sync tab
- *   under **Settings waiting**, where **Apply and reload** writes it and reloads; **Reload now**
- *   in the dialog does the same. The reload is the test seam, `settingsPrompt.reloader`, counted
- *   rather than run: a real reload would take the test window's state with it (GUESS-19).
- * - **A local change before reloading wins**: a hotkey file changed here while another device's
- *   change to it waits goes out, and the log says it replaced the one that waited.
- *
- * The test vault's ignore file keeps the config folder out, as every sync suite's does, but lets
- * through the settings and small synthetic code fixtures these cases need; Abele's bundle stays out.
- * The questions are asked only while the app is in front, which the suite says it is.
- *
- * Requires Obsidian running with a vault open, the sibling repository built, and
- * `npm run build:test` newer than the source — see docs/Testing.md.
- */
-import {
-  existsSync,
-  mkdirSync,
-  mkdtempSync,
-  readFileSync,
-  rmSync,
-  utimesSync,
-  writeFileSync,
-} from 'node:fs'
-import { tmpdir } from 'node:os'
-import { dirname, join } from 'node:path'
-import { afterAll, beforeAll, describe, expect, it } from 'vitest'
-import {
-  daemonConfig,
-  daemonSyncOnce,
-  initDaemon,
-  siblingMissing,
-  spawnSyncServer,
-  type SyncServer,
-} from './helpers/syncServer'
-import { obsidianMissing, openTestVault, waitFor, type TestVault } from './helpers/syncVault'
-import { SyncDriver } from './helpers/syncDriver'
-
-const EMAIL = 'sync-settings@example.com'
-const PASSWORD = 'a-password-nobody-prints'
-const OWN_SETTINGS = '.obsidian/plugins/abele/data.json'
-const CHAT_INDEX = '.obsidian/plugins/abele/chat-index.json'
-const APP_JSON = '.obsidian/app.json'
-const HOTKEYS = '.obsidian/hotkeys.json'
-const FROM_DAEMON = 'Tasks the other device chose'
-const CODE = '.obsidian/plugins/sample-code/main.js'
-const MANIFEST = '.obsidian/plugins/sample-code/manifest.json'
-const FRESH = '.obsidian/plugins/fresh-code/main.js'
-
-const why = siblingMissing() ?? obsidianMissing()
-if (why !== null) console.info(`\n  sync settings e2e skipped: ${why}\n`)
-
-let workspace = ''
-let daemonDir = ''
-let server: SyncServer | null = null
-let vault: TestVault | null = null
-
-const app = (): TestVault => {
-  if (vault === null) throw new Error('the test vault was never opened')
-  return vault
-}
-const sync = new SyncDriver(app)
-
-const here = (path: string): string => readFileSync(join(app().path, path), 'utf8')
-const onDaemon = (path: string): string => readFileSync(join(daemonDir, path), 'utf8')
-
-/**
- * Writes a file in the daemon's folder as the other device changing it, a little in the future
- * so the newer-mtime rule is never a coin toss against this device's copy, and syncs the daemon.
- */
-function daemonWrites(path: string, text: string, futureMs = 5_000): void {
-  const file = join(daemonDir, path)
-  mkdirSync(dirname(file), { recursive: true })
-  writeFileSync(file, text)
-  const later = new Date(Date.now() + futureMs)
-  utimesSync(file, later, later)
-  daemonSyncOnce(daemonDir)
-}
-
-const tasksFolder = (): string =>
-  app().evalAwait<string>('window.__abeleTest.AbeleConfig.getInstance().tasksFolder')
-
-/** Syncs here until the settings question is open, and hands back its lead line. */
-async function askedAboutSettings(): Promise<string> {
-  let lead = ''
-  await waitFor(
-    'the "Settings changed on another device" dialog',
-    () => {
-      lead = sync.run<string>(`
-        const modal = modalOf('.abele-staged-settings')
-        if (!modal) { await svc.syncNow(); return '' }
-        return textOf(modal.querySelector('.abele-staged-settings__lead'))
-      `)
-      return lead !== ''
-    },
-    60_000
-  )
-  return lead
-}
-
-/** The reload counted rather than run, from here on. */
-function countReloads(): void {
-  sync.run(`
-    window.__abeleReloads = 0
-    svc.codePrompt.reloader = svc.settingsPrompt.reloader = {
-      available: () => true,
-      reload: () => { window.__abeleReloads++; return true },
-    }
-    return 'ok'
-  `)
-}
-
-const reloads = (): number => app().evalAwait<number>('window.__abeleReloads ?? 0')
-
-describe.skipIf(why !== null)('settings that travel between devices', () => {
-  beforeAll(async () => {
-    workspace = mkdtempSync(join(tmpdir(), 'abele-sync-settings-'))
-    daemonDir = join(workspace, 'daemon')
-    mkdirSync(daemonDir)
-    server = await spawnSyncServer(workspace)
-    server.createAccount(EMAIL, PASSWORD)
-    initDaemon({
-      dir: daemonDir,
-      serverUrl: server.url,
-      email: EMAIL,
-      password: PASSWORD,
-      vaultName: 'Settings',
-      deviceName: 'daemon',
-    })
-    const vaultId = daemonConfig(daemonDir).vaultId
-
-    vault = await openTestVault()
-    writeFileSync(
-      join(vault.path, '.abele-sync-ignore'),
-      [
-        '.obsidian/',
-        `!${APP_JSON}`,
-        `!${HOTKEYS}`,
-        `!${OWN_SETTINGS}`,
-        '!.obsidian/plugins/sample-code/*',
-        '!.obsidian/plugins/fresh-code/*',
-        '',
-      ].join('\n')
-    )
-    writeFileSync(join(vault.path, HOTKEYS), '{}\n')
-    mkdirSync(dirname(join(vault.path, CODE)), { recursive: true })
-    writeFileSync(join(vault.path, CODE), 'module.exports = {}')
-    writeFileSync(
-      join(vault.path, MANIFEST),
-      JSON.stringify({ name: 'Sample code tool', version: '1.0.0' })
-    )
-    vault.run(['dev:errors', 'clear'], 20_000)
-    sync.run(`
-      await svc.connect(${JSON.stringify(server.url)}, ${JSON.stringify(EMAIL)}, ${JSON.stringify(PASSWORD)})
-      await svc.chooseVault(${JSON.stringify(vaultId)}, 'obsidian')
-      return 'ok'
-    `)
-    await sync.waitIdle()
-    // The first sync after a join takes up Abele's own settings file; one more settles it.
-    await sync.syncNow()
-    sync.inFront()
-    sync.recordNotices()
-    daemonSyncOnce(daemonDir)
-  }, 300_000)
-
-  afterAll(async () => {
-    // Closing from the leased host unloads the plugin and its sync connection. Do not
-    // wait for a failed fixture's renderer or pending settings dialog before that close.
-    try {
-      await vault?.dispose()
-      if (vault)
-        expect(existsSync(vault.path), 'owned temporary vault closed and removed').toBe(false)
-    } finally {
-      await server?.kill()
-      if (workspace !== '') rmSync(workspace, { recursive: true, force: true })
-    }
-  }, 300_000)
-
-  it("carries Abele's settings file to the other device, and not the chat index", () => {
-    const paths = sync.serverPaths()
-    expect(paths).toContain(OWN_SETTINGS)
-    expect(paths).not.toContain(CHAT_INDEX)
-    expect(JSON.parse(onDaemon(OWN_SETTINGS))).toMatchObject({ tasksFolder: tasksFolder() })
-  })
-
-  it('takes up a setting changed on the other device with one reload, and then settles', async () => {
-    const before = sync.log().length
-    const changed = { ...JSON.parse(onDaemon(OWN_SETTINGS)), tasksFolder: FROM_DAEMON }
-    daemonWrites(OWN_SETTINGS, JSON.stringify(changed, null, 2))
-
-    for (let tries = 0; tries < 10 && tasksFolder() !== FROM_DAEMON; tries++) {
-      await sync.syncNow()
-    }
-    expect(tasksFolder()).toBe(FROM_DAEMON)
-    const arrived = sync
-      .log()
-      .slice(before)
-      .filter((line) => line.includes('Abele settings arrived from another device'))
-    expect(arrived).toHaveLength(1)
-
-    // Two more rounds on both sides, and nobody has anything to send: the reload wrote nothing
-    // a serialisation apart from the other device's.
-    await sync.syncNow()
-    daemonSyncOnce(daemonDir)
-    await sync.syncNow()
-    const last = sync
-      .log()
-      // Each line opens with its time.
-      .filter((line) => line.includes(' sync: done'))
-      .pop()
-    expect(last).toContain('pushed 0')
-  })
-
-  it("asks about Obsidian's settings from another device, and Keep this device's sends this one's", async () => {
-    const ours = here(APP_JSON)
-    daemonWrites(APP_JSON, JSON.stringify({ ...JSON.parse(ours), e2eFromDaemon: 1 }, null, 2))
-
-    const lead = await askedAboutSettings()
-    expect(lead).toContain('App settings')
-    // Staged, not written: the file here is still this device's.
-    expect(here(APP_JSON)).not.toContain('e2eFromDaemon')
-
-    sync.run(`
-      await press(() => modalOf('.abele-staged-settings'), "Keep this device's")
-      if (!(await poll(() => !modalOf('.abele-staged-settings'), 20000))) throw new Error('the dialog stayed open')
-      return 'ok'
-    `)
-    await sync.waitIdle()
-    expect(sync.status().deferred ?? 0).toBe(0)
-    daemonSyncOnce(daemonDir)
-    expect(onDaemon(APP_JSON)).not.toContain('e2eFromDaemon')
-    expect(JSON.parse(onDaemon(APP_JSON))).toEqual(JSON.parse(here(APP_JSON)))
-  })
-
-  it('leaves them waiting on the Sync tab after Later, where Apply and reload writes them and reloads', async () => {
-    countReloads()
-    daemonWrites(APP_JSON, JSON.stringify({ ...JSON.parse(here(APP_JSON)), e2eFromDaemon: 2 }))
-    await askedAboutSettings()
-    sync.run(`
-      await press(() => modalOf('.abele-staged-settings'), 'Later')
-      if (!(await poll(() => !modalOf('.abele-staged-settings'), 10000))) throw new Error('the dialog stayed open')
-      return 'ok'
-    `)
+import { expect } from 'vitest'
+import { liveSuite, liveCase } from './helpers/syncLiveCases'
+import { reloadAs } from './helpers/phoneWindow'
+import { waitFor } from './helpers/syncVault'
+const fixture = liveSuite()
+liveCase(
+  'syncSettings',
+  'every incoming executable create change rename and delete waits for exact review',
+  [85, 86, 87, 88, 89, 90],
+  async () => {
+    const s = fixture(),
+      a = s.primary,
+      path = s.root + '/sample.js',
+      id = await s.connect()
+    await s.put(path, '// reviewed candidate one')
+    await a.syncNow()
+    expect(a.exists(path)).toBe(false)
+    const first = a.candidates().find((one) => one.path === path)!
+    expect(first.source.id).toBe(id)
+    expect(first.receivedAt).toBeGreaterThan(0)
+    expect(first.mtime).toBeGreaterThan(0)
+    await s.put(s.root + '/ordinary.md', 'ordinary receive')
+    await a.syncNow()
+    expect(a.read(s.root + '/ordinary.md')).toBe('ordinary receive')
+    await a.review(path, 'Approve')
+    expect(a.read(path)).toBe('// reviewed candidate one')
     expect(
-      app().evalAwait<string>(
-        `document.querySelector('.abele-sync-status')?.getAttribute('aria-label') ?? ''`
+      Math.abs(
+        a.run<number>(`return (await app.vault.adapter.stat(${JSON.stringify(path)})).mtime`) -
+          first.mtime
       )
-    ).toContain('Settings waiting (1)')
-
-    const waiting = await sync.long<boolean>(
-      'the waiting settings on the Sync tab',
-      `
-      const root = await openSyncTab()
-      const section = () => sectionTitled(root, 'Settings waiting (1)')
-      if (!(await poll(section, 10000))) return false
-      await press(section, 'Apply and reload')
-      await poll(() => window.__abeleReloads > 0, 20000)
-      await closeSettings()
-      return true
-      `,
-      60_000
+    ).toBeLessThan(2)
+    await s.put(path, '// candidate two')
+    await a.syncNow()
+    expect(a.read(path)).toBe('// reviewed candidate one')
+    await a.review(path, 'Reject')
+    expect(a.read(path)).toBe('// reviewed candidate one')
+    await s.put(path, '// candidate three')
+    await a.syncNow()
+    a.run(
+      `await app.plugins.disablePlugin('abele');await app.plugins.enablePlugin('abele');return true`
     )
-    expect(waiting).toBe(true)
-    expect(reloads()).toBe(1)
-    expect(here(APP_JSON)).toContain('e2eFromDaemon')
-    // The reload that did not happen here left the engine paused for it: take it up again.
-    sync.run(`svc.resume(); return 'ok'`)
-    await sync.waitIdle()
-  })
-
-  it('Reload now in the dialog writes what arrived and reloads, once', async () => {
-    countReloads()
-    daemonWrites(APP_JSON, JSON.stringify({ ...JSON.parse(here(APP_JSON)), e2eFromDaemon: 3 }))
-    await askedAboutSettings()
-    sync.run(`
-      await press(() => modalOf('.abele-staged-settings'), 'Reload now')
-      if (!(await poll(() => !modalOf('.abele-staged-settings'), 20000))) throw new Error('the dialog stayed open')
-      return 'ok'
-    `)
-    await waitFor('the reload', () => reloads() > 0, 20_000)
-    expect(reloads()).toBe(1)
-    expect(JSON.parse(here(APP_JSON))).toMatchObject({ e2eFromDaemon: 3 })
-    sync.run(`svc.resume(); return 'ok'`)
-    await sync.waitIdle()
-  })
-
-  it("a settings file changed here while another device's change to it waits goes out, and says so", async () => {
-    daemonWrites(
-      HOTKEYS,
-      JSON.stringify({ 'editor:toggle-bold': [{ modifiers: ['Mod'], key: 'J' }] }),
-      // This case writes here afterwards. A future daemon mtime would make its earlier edit
-      // appear newer and win the conflict by design.
-      0
+    await a.waitIdle(id)
+    expect(a.candidates().find((one) => one.path === path)?.source.id).toBe(id)
+    await a.review(path, 'Approve')
+    expect(a.read(path)).toBe('// candidate three')
+    const file = (await s.items()).find((one) => one.path === path)!,
+      to = s.root + '/renamed.js'
+    await s.commit([
+      { op: 'move', file_id: file.file_id, base_version_id: file.version_id, to_path: to },
+    ])
+    await a.syncNow()
+    expect(a.exists(path)).toBe(true)
+    expect(a.exists(to)).toBe(false)
+    await a.review(to, 'Approve')
+    expect(a.read(to)).toBe('// candidate three')
+    const moved = (await s.items()).find((one) => one.path === to)!
+    await s.commit([{ op: 'delete', file_id: moved.file_id, base_version_id: moved.version_id }])
+    await a.syncNow()
+    expect(a.exists(to)).toBe(true)
+    await a.review(to, 'Reject')
+    expect(a.exists(to)).toBe(true)
+  },
+  fixture
+)
+liveCase(
+  'syncSettings',
+  'approval of an open candidate never approves its later replacement',
+  [87, 89],
+  async () => {
+    const s = fixture(),
+      a = s.primary,
+      path = s.root + '/review.js'
+    await s.connect()
+    await s.put(path, '// first immutable review')
+    await a.syncNow()
+    a.run(
+      `const root=await openSyncTab();const row=[...root.querySelectorAll('.setting-item')].find(one=>textOf(one.querySelector('.setting-item-name'))===${JSON.stringify(path)});icon(row,'eye');await poll(()=>modal('Review incoming code'));return true`
     )
-    await askedAboutSettings()
-    sync.run(`await escapeIn(); return 'ok'`)
-    const mine = JSON.stringify({ 'editor:toggle-italic': [{ modifiers: ['Mod'], key: 'K' }] })
-    // Written the way Obsidian writes its own settings: through the adapter, under it.
-    app().evalAwait(
-      `app.vault.adapter.write(${JSON.stringify(HOTKEYS)}, ${JSON.stringify(mine)}).then(() => 'ok')`
+    await s.put(path, '// later candidate')
+    await a.syncNow()
+    a.run(`await press(modal('Review incoming code'),'Approve');return true`)
+    expect(a.read(path)).toBe('// first immutable review')
+    expect(a.candidates().some((one) => one.path === path)).toBe(true)
+    await a.review(path, 'Approve')
+    expect(a.read(path)).toBe('// later candidate')
+  },
+  fixture
+)
+liveCase(
+  'syncSettings',
+  'the plugin own code is staged with provenance while ordinary notes continue',
+  [83, 85, 88, 90],
+  async () => {
+    const s = fixture(),
+      a = s.primary,
+      path = '.obsidian/plugins/abele/sample-review.js'
+    a.run(
+      `await app.vault.adapter.write('.abele-sync-ignore',${JSON.stringify('*\n!' + s.root + '/\n!' + s.root + '/**\n!.obsidian/\n!.obsidian/plugins/\n!.obsidian/plugins/abele/\n!' + path + '\n')});return true`
     )
-    await waitFor(
-      () =>
-        'the log to say this device replaced the change that waited (its lines on the file: ' +
-        JSON.stringify(sync.log().filter((line) => line.includes('hotkeys'))) +
-        ')',
-      () => {
-        app().evalAwait(
-          `(async () => { await window.__abeleTest.SyncService.getInstance().syncNow(); return 'ok' })()`
+    const id = await s.connect()
+    await s.put(path, '// inert own-plugin fixture')
+    await s.put(s.root + '/continues.md', 'ordinary content')
+    await a.syncNow()
+    const candidate = a.candidates().find((one) => one.path === path)
+    expect(candidate?.source.id).toBe(id)
+    expect(candidate?.source.address).toBe(s.server.url)
+    expect(a.exists(path)).toBe(false)
+    expect(a.read(s.root + '/continues.md')).toBe('ordinary content')
+    await a.review(path, 'Reject')
+    expect(a.exists(path)).toBe(false)
+  },
+  fixture
+)
+liveCase(
+  'syncSettings',
+  'partial folder and group connections never carry Obsidian configuration',
+  [84],
+  async () => {
+    const s = fixture(),
+      a = s.primary,
+      b = s.peer!,
+      folder = s.root + '/shared'
+    const id = await s.connect()
+    a.create(folder + '/sample.md', 'shared')
+    a.create(folder + '/sample.js', '// shared code')
+    a.create(s.root + '/ConfigurationGroup.md', 'group root')
+    a.create(
+      s.root + '/member.md',
+      '---\ngroups: ["[[' + s.root + '/ConfigurationGroup]]"]\n---\nmember'
+    )
+    await a.syncNow()
+    const config = '.obsidian/plugins/abele/partial-sample-' + s.root.slice(-8) + '.js'
+    await s.put(config, '// private server configuration')
+    await s.connect(b, await a.share(id, 'Folder: ' + folder))
+    await b.syncNow()
+    expect(b.candidates().some((one) => one.path === folder + '/sample.js')).toBe(true)
+    expect(b.candidates().some((one) => one.path.startsWith('.obsidian/'))).toBe(false)
+    await s.connect(b, await a.share(id, 'Group: ConfigurationGroup'))
+    await b.syncNow()
+    expect(b.read(s.root + '/member.md')).toContain('member')
+    expect(b.exists(config)).toBe(false)
+    expect(b.candidates().some((one) => one.path.startsWith('.obsidian/'))).toBe(false)
+    expect(
+      (await s.items()).filter(
+        (one) => one.path.startsWith('.obsidian/') && one.path.endsWith('data.json')
+      )
+    ).toEqual([])
+  },
+  fixture
+)
+
+liveCase(
+  'syncSettings',
+  'settings review keeps local bytes on Later and Keep and applies incoming bytes with one reload',
+  [83, 103],
+  async () => {
+    const s = fixture(),
+      a = s.primary,
+      b = s.peer!,
+      path = '.obsidian/hotkeys.json',
+      devices = [a, b]
+    const saved = devices.map((one) => one.read(path))
+    const incoming = JSON.stringify({ 'editor:toggle-bold': [{ modifiers: ['Mod'], key: 'B' }] })
+    const local = JSON.stringify({ 'editor:toggle-italic': [{ modifiers: ['Mod'], key: 'I' }] })
+    try {
+      for (const device of devices)
+        device.run(
+          `await app.vault.adapter.write('.abele-sync-ignore',${JSON.stringify('*\n!' + s.root + '/\n!' + s.root + '/**\n!.obsidian/\n!.obsidian/hotkeys.json\n')});return true`
         )
-        return sync
-          .log()
-          .some((line) =>
-            /your change to .*hotkeys\.json on this device replaced the one from/.test(line)
-          )
-      },
-      60_000
-    )
-    expect(sync.status().deferred ?? 0).toBe(0)
-    daemonSyncOnce(daemonDir)
-    expect(onDaemon(HOTKEYS)).toBe(mine)
-  })
-
-  it('keeps code out of the settings answer and declines it in its own dialog', async () => {
-    countReloads()
-    daemonWrites(CODE, 'module.exports = { changed: true }')
-    daemonWrites(MANIFEST, JSON.stringify({ name: 'Sample code tool', version: '2.0.0' }))
-    daemonWrites(FRESH, 'module.exports = {}')
-    daemonWrites(APP_JSON, JSON.stringify({ ...JSON.parse(here(APP_JSON)), codeReviewTest: true }))
-    await askedAboutSettings()
-    sync.run(`
-      await press(() => modalOf('.abele-staged-settings'), 'Reload now')
-      if (!(await poll(() => modalOf('.abele-plugin-code'), 20000))) throw new Error('no separate code review: ' + JSON.stringify({ code: svc.codePrompt.asking.value, staged: svc.codePrompt.staged.value.map(x => x.path), settings: svc.settingsPrompt.asking.value, held: svc.heldPrompt.asking.value, modals: [...document.querySelectorAll('.modal')].map(x => textOf(x)), settingsModals: [...(app.setting.containerEl?.ownerDocument?.querySelectorAll('.modal') ?? [])].map(x => textOf(x)) }))
-      return 'ok'
-    `)
-    expect(JSON.parse(here(APP_JSON))).toMatchObject({ codeReviewTest: true })
-    expect(here(CODE)).toBe('module.exports = {}')
-    expect(here(MANIFEST)).toContain('1.0.0')
-    expect(existsSync(join(app().path, FRESH))).toBe(false)
-    const labels = sync.run<string[]>(
-      `return [...modalOf('.abele-plugin-code').querySelectorAll('li')].map(textOf)`
-    )
-    expect(labels).toContain('Sample code tool (sample-code) — Changed · Version 2.0.0')
-    expect(labels).toContain('fresh-code — New')
-    sync.run(`
-      await press(() => modalOf('.abele-plugin-code'), 'Keep local code')
-      if (!(await poll(() => !modalOf('.abele-plugin-code'), 20000))) throw new Error('code review stayed open')
-      svc.resume()
-      return 'ok'
-    `)
-    await sync.syncNow()
-    expect(here(CODE)).toBe('module.exports = {}')
-    expect(existsSync(join(app().path, FRESH))).toBe(false)
-    expect(reloads()).toBe(1) // The settings reload, not an installation.
-  })
-
-  it('Later installs nothing; the Sync tab reopens the code confirmation and Install applies it', async () => {
-    countReloads()
-    daemonSyncOnce(daemonDir)
-    daemonWrites(CODE, 'module.exports = { approved: true }')
-    daemonWrites(MANIFEST, JSON.stringify({ name: 'Sample code tool', version: '3.0.0' }))
-    daemonWrites(FRESH, 'module.exports = { approved: true }')
-    await sync.syncNow()
-    sync.run(`
-      if (!(await poll(() => modalOf('.abele-plugin-code'), 20000))) throw new Error('no code review')
-      await press(() => modalOf('.abele-plugin-code'), 'Later')
-      return 'ok'
-    `)
-    expect(here(CODE)).toBe('module.exports = {}')
-    expect(existsSync(join(app().path, FRESH))).toBe(false)
-    expect(reloads()).toBe(0)
-    await sync.long(
-      'installing reviewed code',
-      `
-      const root = await openSyncTab()
-      await press(root, 'Review plugin code')
-      const review = () => modalOf('.abele-plugin-code', root.ownerDocument)
-      if (!(await poll(review, 10000))) throw new Error('no code review from the tab: ' + JSON.stringify({ code: svc.codePrompt.asking.value, settings: svc.settingsPrompt.asking.value, held: svc.heldPrompt.asking.value, main: [...document.querySelectorAll('.modal')].map(x => textOf(x)), settingsModals: [...root.ownerDocument.querySelectorAll('.modal')].map(x => textOf(x)) }))
-      await press(review, 'Install and reload')
-      if (!(await poll(() => window.__abeleReloads > 0, 20000))) throw new Error('no installation reload')
-      await closeSettings()
-      svc.resume()
-      return 'ok'
-    `,
-      60_000
-    )
-    expect(here(CODE)).toBe('module.exports = { approved: true }')
-    expect(here(MANIFEST)).toContain('3.0.0')
-    expect(here(FRESH)).toBe('module.exports = { approved: true }')
-    expect(reloads()).toBe(1)
-  })
-
-  it('says nothing went wrong in the plugin while all that happened', () => {
-    const captured = app().run(['dev:errors'], 20_000)
-    expect(captured).not.toMatch(/plugin:abele|\/plugins\/abele\//)
-  })
-})
+      a.run(
+        `await app.vault.adapter.write(${JSON.stringify(path)},${JSON.stringify(incoming)});return true`
+      )
+      b.run(
+        `await app.vault.adapter.write(${JSON.stringify(path)},${JSON.stringify(local)});return true`
+      )
+      await s.connect()
+      await s.connect(b)
+      b.run(
+        `host.presentReviews();await poll(()=>document.querySelector('.abele-staged-settings'));await press(document.querySelector('.abele-staged-settings'),'Later');return true`
+      )
+      expect(b.read(path)).toBe(local)
+      b.run(
+        `const root=await openSyncTab();icon(connectionRow(root,svc.rows.value[0].id),'settings');await poll(()=>settingsDoc().querySelector('.abele-staged-settings'));await press(settingsDoc().querySelector('.abele-staged-settings'),"Keep this device's");await closeSettings();return true`
+      )
+      await b.syncNow()
+      expect(b.read(path)).toBe(local)
+      await s.put(path, incoming)
+      await b.syncNow()
+      b.run(
+        `host.presentReviews();await poll(()=>document.querySelector('.abele-staged-settings'));const root=document.querySelector('.abele-staged-settings');let button=[...root.querySelectorAll('button')].find(one=>/Reload now|Apply and reload/.test(textOf(one)));if(!button)throw new Error('Reload action unavailable');window.__abeleReviewBeforeReload=true;button.click();return true`
+      )
+      await waitFor(
+        'reviewed settings reload to finish',
+        () => {
+          try {
+            return b
+              .vault()
+              .evalAwait<boolean>(
+                `Boolean(!window.__abeleReviewBeforeReload&&window.__abeleTest&&app.plugins.plugins.abele?.tokenEngines)`
+              )
+          } catch {
+            return false
+          }
+        },
+        60000
+      )
+      await b.waitIdle()
+      expect(b.read(path)).toBe(incoming)
+    } finally {
+      for (const device of devices) {
+        for (const id of s.ids.get(device) || [])
+          if (device.rows().some((one) => one.id === id)) await device.disconnect(id)
+      }
+      for (let i = 0; i < devices.length; i++)
+        devices[i].run(
+          `const path=${JSON.stringify(path)};if(${JSON.stringify(saved[i])}===null){if(await app.vault.adapter.exists(path))await app.vault.adapter.remove(path)}else await app.vault.adapter.write(path,${JSON.stringify(saved[i])});return true`
+        )
+      for (const device of devices) await reloadAs(device.vault(), false)
+    }
+  },
+  fixture
+)

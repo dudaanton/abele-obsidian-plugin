@@ -31,6 +31,7 @@ import { CommentService } from '@/ai/CommentService'
 import { ChatStorage } from '@/ai/ChatStorage'
 import { ChatSearchIndex } from '@/ai/ChatSearchIndex'
 import { GlobalStore } from '@/stores/GlobalStore'
+import { collectEntries as collectTransferEntries } from '@/transfer/entries'
 import { AgentRegistry } from '@/ai/agents/AgentRegistry'
 import { AbeleConfig } from '@/services/AbeleConfig'
 import { originalNotePlaceHookTypes } from './notePlaceHooks'
@@ -247,6 +248,7 @@ interface AbeleTestApi {
   CommentService: typeof CommentService
   AgentRegistry: typeof AgentRegistry
   GlobalStore: typeof GlobalStore
+  collectTransferEntries: typeof collectTransferEntries
   Log: typeof Log
   Journal: typeof Journal
   TimeEntry: typeof TimeEntry
@@ -829,6 +831,7 @@ export function exposeTestApi(plugin: Plugin): void {
     CommentService,
     AgentRegistry,
     GlobalStore,
+    collectTransferEntries,
     Log,
     Journal,
     TimeEntry,
