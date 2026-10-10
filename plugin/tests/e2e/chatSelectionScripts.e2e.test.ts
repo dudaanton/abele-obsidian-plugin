@@ -45,7 +45,7 @@ const PRELUDE = `${WAIT_PRELUDE}
     if (!root) throw Error('Saved message did not render')
     const focused = document.activeElement
     if (focused instanceof HTMLElement) focused.blur()
-    if (!await until(() => parseFloat(getComputedStyle(document.body).getPropertyValue('--keyboard-height')) === 0, 5000)) throw Error('Keyboard did not close before selecting words')
+    if (!await until(() => (parseFloat(getComputedStyle(document.body).getPropertyValue('--keyboard-height')) || 0) === 0, 5000)) throw Error('Keyboard did not close before selecting words')
     let word = await until(() => root.querySelector('strong'), 5000)
     if (!word) throw Error('Saved words did not render')
     word.scrollIntoView({block:'center',inline:'nearest'})
@@ -62,7 +62,7 @@ const PRELUDE = `${WAIT_PRELUDE}
     }, 5000)) {
       const r=word.getBoundingClientRect()
       await shoot('gesture-target-failure')
-      throw Error('Saved words did not become a stable gesture target: '+JSON.stringify({box:r.toJSON(),connected:word.isConnected,rootBox:root.getBoundingClientRect().toJSON(),ancestors:[word,...(function*(n){while(n=n.parentElement)yield n})(word)].map(el=>({tag:el.tagName,cls:el.className,display:getComputedStyle(el).display,visibility:getComputedStyle(el).visibility,box:el.getBoundingClientRect().toJSON()})),candidates:[...document.querySelectorAll(selector)].map(el=>({root:el.getBoundingClientRect().toJSON(),word:el.querySelector('strong')?.getBoundingClientRect().toJSON()})),root:root.outerHTML,hit:document.elementFromPoint(r.left+r.width/2,r.top+r.height/2)?.outerHTML.slice(0,600)}))
+      throw Error('Saved words did not become a stable gesture target: '+JSON.stringify({box:r.toJSON(),connected:word.isConnected,rootBox:root.getBoundingClientRect().toJSON(),drawer:root.closest('.workspace-drawer')?.className,hit:document.elementFromPoint(r.left+r.width/2,r.top+r.height/2)?.outerHTML.slice(0,600)}))
     }
     const bounds = word.getBoundingClientRect()
     const events = [], tracking = new AbortController()
@@ -80,7 +80,7 @@ const PRELUDE = `${WAIT_PRELUDE}
         const selection = document.getSelection(), range = selection?.rangeCount ? selection.getRangeAt(0) : null
         const hit = document.elementFromPoint(bounds.left + bounds.width/2, bounds.top + bounds.height/2)
         await shoot('selection-failure')
-        throw Error('Selection script button did not appear: ' + JSON.stringify({selection:selection?.toString(),range:range && {start:range.startOffset,end:range.endOffset,startNode:range.startContainer.parentElement?.outerHTML,endNode:range.endContainer.parentElement?.outerHTML},touchDown:touches,connected:word.isConnected,styles:[word,...(function*(n){while(n=n.parentElement)yield n})(word)].map(el=>({tag:el.tagName,cls:el.className,select:getComputedStyle(el).webkitUserSelect,callout:getComputedStyle(el).webkitTouchCallout})),keyboardHeight:getComputedStyle(document.body).getPropertyValue('--keyboard-height'),hit:hit?.outerHTML,events}))
+        throw Error('Selection script button did not appear: ' + JSON.stringify({selection:selection?.toString(),range:range && {start:range.startOffset,end:range.endOffset,startNode:range.startContainer.parentElement?.outerHTML,endNode:range.endContainer.parentElement?.outerHTML},touchDown:touches,connected:word.isConnected,keyboardHeight:getComputedStyle(document.body).getPropertyValue('--keyboard-height'),hit:hit?.outerHTML.slice(0,600),events}))
       }
       await shoot('selection-bar')
       button.dispatchEvent(new PointerEvent('pointerdown', {bubbles:true}))
@@ -215,16 +215,19 @@ for (const layout of onPhone() ? ['native phone'] : ['desktop', 'phone layout'])
       await reloadApp('app.plugins.disablePlugin("abele"); app.plugins.enablePlugin("abele")')
       const report = await run<any>(`
       const leaf=app.workspace.getLeaf('tab')
-      const returnFromNote=async()=>{await leaf.setViewState({type:'markdown',state:{file:${JSON.stringify(NOTE)},mode:'preview'},active:true});const link=await until(()=>leaf.view.containerEl.querySelector('a.internal-link'),5000);if(!link)throw Error('Output backlink missing');link.click();if(!await until(()=>document.querySelector('[data-selection-return]'),8000))throw Error('Captured range did not return')}
+      const returnFromNote=async()=>{await leaf.setViewState({type:'markdown',state:{file:${JSON.stringify(NOTE)},mode:'preview'},active:true});await leaf.loadIfDeferred();const link=await until(()=>leaf.view.containerEl.querySelector('a.internal-link'),5000);if(!link)throw Error('Output backlink missing');link.click();if(!await until(()=>document.querySelector('[data-selection-return]'),8000))throw Error('Captured range did not return')}
       try {
         await returnFromNote()
         const returned={quote:document.querySelector('[data-selection-return]').textContent,keyboard:['INPUT','TEXTAREA'].includes(document.activeElement?.tagName)}
         const nested=comments.commentPath('sample-script-discussion')
         await window.__abeleTest.ChatStorage.getInstance().ensureFolder(nested.slice(0,nested.lastIndexOf('/')))
         await app.vault.create(nested,[{v:2,k:'meta',type:'abele-chat',providerId:'',modelId:'',created:'',kind:'comment',anchor:{note:${JSON.stringify(CHAT)},message:'answer',quote:'echo',start:5}}, {k:'msg',id:'nested-answer',role:'assistant',content:'nested **echo**',timestamp:3}].map(JSON.stringify).join('\\n')+'\\n')
-        await chats.openChatFile(app.vault.getAbstractFileByPath(nested));await chats.revealSidebar();await wait(300)
-        await shoot('nested-discussion')
+        // Closing/deleting the active output note can hide a native drawer. Do that before
+        // revealing the discussion, not between revealing it and sending a touch to its words.
+        await leaf.setViewState({type:'empty',active:false})
         await app.vault.delete(app.vault.getAbstractFileByPath(${JSON.stringify(NOTE)}))
+        await chats.openChatFile(app.vault.getAbstractFileByPath(nested));await chats.revealSidebar({focus:false});await wait(300)
+        await shoot('nested-discussion')
         await select('nested-answer');const nestedForm=await form()
         const field=[...nestedForm.querySelectorAll('input')].find(el=>!el.value);field.value='Nested context';field.dispatchEvent(new Event('input',{bubbles:true}));const prior=runIds();button(nestedForm,'Run').click()
         await outputReady(prior)
