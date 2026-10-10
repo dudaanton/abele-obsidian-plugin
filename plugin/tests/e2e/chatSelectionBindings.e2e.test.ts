@@ -69,7 +69,11 @@ for (const layout of onPhone() ? ['native phone'] : ['desktop', 'phone layout'])
       await evalLong(`(async()=>{${BINDING_RESET}return 'reset'})()`, 45000)
     })
     afterAll(async () => {
-      if (saved) await evalLong(`(async()=>{window.__bindingOld=${saved};${BINDING_CLEANUP}return 'clean'})()`, 45000)
+      if (saved)
+        await evalLong(
+          `(async()=>{window.__bindingOld=${saved};${BINDING_CLEANUP}return 'clean'})()`,
+          45000
+        )
       if (size) {
         evalRaw(
           `require("@electron/remote").getCurrentWindow().setContentSize(${size[0]},${size[1]})`
@@ -207,6 +211,17 @@ for (const layout of onPhone() ? ['native phone'] : ['desktop', 'phone layout'])
     })
 
     it('retries only a failed publication after reopen; uncertain recovery offers no blind replay', async () => {
+      // Own the prior undone operation instead of inheriting it from the lifecycle test.
+      const prepared = await run<any>(`
+        const bound=await bindSample();if(bound.status!=='applied')throw Error('Recovery fixture did not bind')
+        const root=await until(()=>document.querySelector('.abele-chat-bindings'),5000);root.open=true
+        root.querySelector('[aria-label="Card link actions"]').click()
+        const undo=await until(()=>[...document.querySelectorAll('.menu-item')].find(el=>el.textContent.trim()==='Remove link (undo binding)'),5000);undo.click()
+        if(!await until(()=>owner.allMessages.value[0].content==='echo **echo**',5000))throw Error('Recovery fixture did not undo')
+        await app.vault.delete(app.vault.getAbstractFileByPath(${JSON.stringify(BINDING_CARD)}))
+        return JSON.stringify({operations:owner.allMessages.value[0].decorationOperations.length,undone:!!owner.allMessages.value[0].decorationOperations[0].undoneAt})`)
+      expect(prepared.error).toBeUndefined()
+      expect(prepared).toMatchObject({ operations: 1, undone: true })
       const failed = await run<any>(
         `const result=await bindSample(true);await wait(600);return JSON.stringify(result)`
       )
@@ -235,7 +250,7 @@ for (const layout of onPhone() ? ['native phone'] : ['desktop', 'phone layout'])
         return JSON.stringify({actions,operations:owner.allMessages.value[0].decorationOperations.length,card:!!app.vault.getAbstractFileByPath(${JSON.stringify(BINDING_CARD)})})`)
       expect(retried.error).toBeUndefined()
       expect(retried.actions).not.toContain('Retry binding only')
-      expect(retried.operations).toBe(1)
+      expect(retried.operations).toBe(2)
       expect(retried.card).toBe(true)
       await run<any>(
         `document.body.dispatchEvent(new MouseEvent('mousedown',{bubbles:true}));await wait(400);return JSON.stringify({closed:true})`
