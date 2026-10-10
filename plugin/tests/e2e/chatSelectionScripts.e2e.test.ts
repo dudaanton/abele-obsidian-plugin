@@ -40,25 +40,29 @@ const PRELUDE = `${WAIT_PRELUDE}
   }
   const visible = selector => [...document.querySelectorAll(selector)].find(el => el.getBoundingClientRect().width > 0)
   const select = async id => {
-    const root = await until(() => visible('[data-ask-message="' + id + '"]'), 5000)
+    const selector='[data-ask-message="' + id + '"]'
+    let root = await until(() => visible(selector), 5000)
     if (!root) throw Error('Saved message did not render')
     const focused = document.activeElement
     if (focused instanceof HTMLElement) focused.blur()
     if (!await until(() => parseFloat(getComputedStyle(document.body).getPropertyValue('--keyboard-height')) === 0, 5000)) throw Error('Keyboard did not close before selecting words')
-    const word = await until(() => root.querySelector('strong'), 5000)
+    let word = await until(() => root.querySelector('strong'), 5000)
     if (!word) throw Error('Saved words did not render')
     word.scrollIntoView({block:'center',inline:'nearest'})
     // Native sheets finish closing after their DOM is removed. Wait for the message's
     // geometry and hit target to stay put before sending a gesture to WebKit.
     let previous = '', stableSince = Date.now()
     if (!await until(() => {
+      const currentRoot=visible(selector), currentWord=currentRoot?.querySelector('strong')
+      if (!currentWord) return false
+      if (currentWord!==word) {root=currentRoot;word=currentWord;stableSince=Date.now()}
       const r = word.getBoundingClientRect(), key = JSON.stringify([r.x,r.y,r.width,r.height])
       if (key !== previous) {previous = key; stableSince = Date.now()}
       return word.isConnected && r.width > 0 && word.contains(document.elementFromPoint(r.left+r.width/2,r.top+r.height/2)) && Date.now()-stableSince >= 600
     }, 5000)) {
       const r=word.getBoundingClientRect()
       await shoot('gesture-target-failure')
-      throw Error('Saved words did not become a stable gesture target: '+JSON.stringify({box:r.toJSON(),root:root.outerHTML,hit:document.elementFromPoint(r.left+r.width/2,r.top+r.height/2)?.outerHTML}))
+      throw Error('Saved words did not become a stable gesture target: '+JSON.stringify({box:r.toJSON(),connected:word.isConnected,root:root.outerHTML,hit:document.elementFromPoint(r.left+r.width/2,r.top+r.height/2)?.outerHTML.slice(0,600)}))
     }
     const bounds = word.getBoundingClientRect()
     const events = [], tracking = new AbortController()
