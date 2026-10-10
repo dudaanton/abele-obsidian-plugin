@@ -112,7 +112,11 @@ export class TokenSyncLive {
   client(server = this.server): V2EngineClient {
     return new V2EngineClient(server.rootToken, { fetch: fixtureFetch })
   }
-  async connect(device = this.primary, token = this.server.rootToken): Promise<string> {
+  async connect(
+    device = this.primary,
+    token = this.server.rootToken,
+    qrImage?: string
+  ): Promise<string> {
     const client = AccessClient.fromToken(token, { fetch: fixtureFetch })
     await waitFor(
       'new group scope to become active',
@@ -131,7 +135,7 @@ export class TokenSyncLive {
     const before = new Set(device.rows().map((one) => one.id))
     let id: string
     try {
-      id = await device.connect(token)
+      id = await device.connect(token, qrImage)
     } finally {
       // Even a failed activation can have saved a native connection. Own it for teardown.
       const owned = this.ids.get(device)!

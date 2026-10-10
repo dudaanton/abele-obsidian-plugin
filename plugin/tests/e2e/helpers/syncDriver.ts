@@ -149,10 +149,10 @@ export class SyncDriver {
       'return svc.rows.value.map(({id,status,paused,address})=>({id,status,paused,address,error:svc.activity.value[id]?.error}))'
     )
   }
-  async connect(token: string): Promise<string> {
+  async connect(token: string, qrImage?: string): Promise<string> {
     return this.long<string>(
       'connect by token',
-      `const before=new Set(svc.rows.value.map(one=>one.id)); const root=await openSyncTab(); await press(root,'Connect…'); await poll(()=>modal('Connect to a server')); const box=modal('Connect to a server'); typeInto(box.querySelector('input[placeholder="Paste your token"]'),${JSON.stringify(token)}); await press(box,'Connect'); await poll(()=>!modal('Connect to a server')); const added=svc.rows.value.find(one=>!before.has(one.id)); if(!added) throw new Error('No connection added'); await waitForStartup(()=>{const current=app.plugins.plugins.abele.tokenEngines, ui=current.ui, row=ui.rows.value.find(one=>one.id===added.id), activity=ui.activity.value[added.id]||{}, phase=activity.startup, engine=current.live.get(added.id)?.engine.status;const ready=row?.status==='idle'&&engine?.state==='idle'&&!!engine.lastSyncAt&&!engine.lastError&&(!phase||phase.outcome==='complete');return {ready,progress:JSON.stringify([row?.status,engine?.state,!!engine?.lastSyncAt,phase?.stage,phase?.completed,phase?.total,phase?.outcome,activity.startupTimings?.length,activity.inspection?.completed,activity.inspection?.total]),error:ready?undefined:activity.error}}); await closeSettings(); return added.id`,
+      `const before=new Set(svc.rows.value.map(one=>one.id)); const root=await openSyncTab(); await press(root,'Connect…'); await poll(()=>modal('Connect to a server')); const box=modal('Connect to a server'); ${qrImage ? `const picture=await (await fetch(${JSON.stringify(qrImage)})).blob();const files=new DataTransfer();files.items.add(new File([picture],'access.png',{type:'image/png'}));const input=box.querySelector('input[type=file]');input.files=files.files;input.dispatchEvent(new input.ownerDocument.defaultView.Event('change',{bubbles:true}));await poll(()=>box.querySelector('input[placeholder="Paste your token"]').value===${JSON.stringify(token)})` : `typeInto(box.querySelector('input[placeholder="Paste your token"]'),${JSON.stringify(token)})`}; await press(box,'Connect'); await poll(()=>!modal('Connect to a server')); const added=svc.rows.value.find(one=>!before.has(one.id)); if(!added) throw new Error('No connection added'); await waitForStartup(()=>{const current=app.plugins.plugins.abele.tokenEngines, ui=current.ui, row=ui.rows.value.find(one=>one.id===added.id), activity=ui.activity.value[added.id]||{}, phase=activity.startup, engine=current.live.get(added.id)?.engine.status;const ready=row?.status==='idle'&&engine?.state==='idle'&&!!engine.lastSyncAt&&!engine.lastError&&(!phase||phase.outcome==='complete');return {ready,progress:JSON.stringify([row?.status,engine?.state,!!engine?.lastSyncAt,phase?.stage,phase?.completed,phase?.total,phase?.outcome,activity.startupTimings?.length,activity.inspection?.completed,activity.inspection?.total]),error:ready?undefined:activity.error}}); await closeSettings(); return added.id`,
       true,
       90000,
       false,
@@ -243,6 +243,24 @@ export class SyncDriver {
     return this.long(
       'issue sharing token',
       `const root=await openSyncTab(); icon(connectionRow(root,${JSON.stringify(id)}),'share-2'); await poll(()=>modal('Share access')); const box=modal('Share access'); const select=box.querySelector('select'); await poll(()=>select.options.length>0); const option=[...select.options].find(one=>one.textContent.trim()===${JSON.stringify(scopeLabel)}); if(!option) throw new Error('Scope choice unavailable'); select.value=option.value; select.dispatchEvent(new select.ownerDocument.defaultView.Event('change',{bubbles:true})); typeInto(box.querySelector('input[placeholder="For a new device or a collaborator"]'),${JSON.stringify(label)}); await press(box,'Get token'); await poll(()=>box.querySelector('textarea')); const token=box.querySelector('textarea').value; await press(box,'Close'); await closeSettings(); return token`,
+      true
+    )
+  }
+  async shareQr(id: string): Promise<{ token: string; image: string }> {
+    return this.long(
+      'render issued access QR',
+      `
+      const root=await openSyncTab();icon(connectionRow(root,${JSON.stringify(id)}),'share-2');await poll(()=>modal('Share access'));
+      const box=modal('Share access');await poll(()=>box.querySelector('select').options.length>0);
+      const select=box.querySelector('select'),option=[...select.options].find(one=>one.textContent.trim()==='Whole vault');if(!option)throw new Error('Root sharing unavailable');
+      select.value=option.value;select.dispatchEvent(new select.ownerDocument.defaultView.Event('change',{bubbles:true}));
+      typeInto(box.querySelector('input[placeholder="For a new device or a collaborator"]'),'QR recipient');await press(box,'Get token');await poll(()=>box.querySelector('svg.abele-qr'));
+      const token=box.querySelector('textarea').value,svg=box.querySelector('svg.abele-qr').cloneNode(true);
+      svg.setAttribute('xmlns','http://www.w3.org/2000/svg');svg.setAttribute('width','1024');svg.setAttribute('height','1024');svg.querySelector('rect').setAttribute('fill','white');svg.querySelector('path').setAttribute('fill','black');
+      const url=URL.createObjectURL(new Blob([new XMLSerializer().serializeToString(svg)],{type:'image/svg+xml'}));let image;
+      try{const picture=new Image();picture.src=url;await picture.decode();const canvas=document.createElement('canvas');canvas.width=1024;canvas.height=1024;canvas.getContext('2d').drawImage(picture,0,0,1024,1024);image=canvas.toDataURL('image/png')}finally{URL.revokeObjectURL(url)}
+      await press(box,'Close');await closeSettings();return {token,image}
+    `,
       true
     )
   }

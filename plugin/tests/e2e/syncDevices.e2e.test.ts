@@ -5,6 +5,53 @@ import { liveSuite, liveCase } from './helpers/syncLiveCases'
 const fixture = liveSuite()
 liveCase(
   'syncDevices',
+  '117 a rendered sharing QR connects a desktop recipient and exchanges files',
+  [117],
+  async () => {
+    const s = fixture(),
+      a = s.primary,
+      b = s.peer!,
+      id = await s.connect(),
+      path = s.root + '/qr.md'
+    const qr = await a.shareQr(id)
+    expect(qr.image).toMatch(/^data:image\/png;base64,/)
+    await s.connect(b, qr.token, qr.image)
+    b.create(path, 'decoded QR recipient writes')
+    await s.cycle()
+    expect(a.read(path)).toBe('decoded QR recipient writes')
+  },
+  fixture
+)
+liveCase(
+  'syncDevices',
+  '21a revoking one own device keeps the other own device exchanging',
+  [21],
+  async () => {
+    const s = fixture(),
+      a = s.primary,
+      b = s.peer!,
+      owner = await s.connect(),
+      path = s.root + '/own-device.md'
+    const ownToken = await a.share(owner, 'Whole vault', 'My other device')
+    await s.connect(b, ownToken)
+    a.create(path, 'before own-device revoke')
+    await s.cycle()
+    a.run(
+      `const root=await openSyncTab();icon(connectionRow(root,${JSON.stringify(owner)}),'share-2');await poll(()=>modal('Share access'));const box=modal('Share access');let row;await poll(()=>row=[...box.querySelectorAll('.setting-item')].find(one=>textOf(one.querySelector('.setting-item-name'))==='My other device'));icon(row,'ban');await press(box,'Revoke');await press(box,'Close');await closeSettings();return true`
+    )
+    await expect(b.syncNow()).rejects.toThrow()
+    expect(b.read(path)).toBe('before own-device revoke')
+    a.create(path, 'remaining own device edit')
+    await a.syncNow(owner)
+    const remote = (await s.items()).find((one) => one.path === path)!
+    expect(
+      new TextDecoder().decode(await s.client().versionBytes(remote.file_id, remote.version_id))
+    ).toBe('remaining own device edit')
+  },
+  fixture
+)
+liveCase(
+  'syncDevices',
   'folder departure keeps the owner file and return delivers its current bytes',
   [43, 45, 46, 47, 48, 49, 51],
   async () => {
@@ -127,7 +174,7 @@ liveCase(
 liveCase(
   'syncDevices',
   'folder and group tokens from Share connect the second pool vault',
-  [6, 11, 13, 14, 15, 16, 37, 42, 57, 58, 60, 61],
+  [6, 11, 13, 14, 15, 16, 21, 37, 42, 57, 58, 60, 61],
   async () => {
     const s = fixture(),
       a = s.primary,
@@ -158,9 +205,11 @@ liveCase(
     expect(b.exists(s.root + '/private.md')).toBe(false)
     expect(a.read(folder + '/local.md')).toBe('local inside shared folder')
     expect(a.read(s.root + '/local-member.md')).toContain('pre-existing local member')
+    expect(b.read(folder + '/linked.md')).toBe('[[' + folder + '/sample|Shared target]]')
+    b.open(folder + '/linked.md')
     expect(
       b.run(
-        `await poll(()=>app.metadataCache.getFirstLinkpathDest(${JSON.stringify(folder + '/sample')},${JSON.stringify(folder + '/linked.md')}));await app.workspace.openLinkText(${JSON.stringify(folder + '/sample')},${JSON.stringify(folder + '/linked.md')},false);await poll(()=>app.workspace.getActiveFile()?.path===${JSON.stringify(folder + '/sample.md')});return app.workspace.getActiveFile().path`
+        `const leaf=app.workspace.getLeaf(false),state=leaf.getViewState();await leaf.setViewState({...state,state:{...state.state,mode:'preview'}});let link;await poll(()=>link=leaf.view.containerEl.querySelector('a.internal-link[data-href="'+${JSON.stringify(folder + '/sample')}+'"]'));link.click();await poll(()=>app.workspace.getActiveFile()?.path===${JSON.stringify(folder + '/sample.md')});return app.workspace.getActiveFile().path`
       )
     ).toBe(folder + '/sample.md')
     expect((await s.items()).some((one) => one.path === s.root + '/outside.md')).toBe(false)
@@ -181,6 +230,19 @@ liveCase(
     await a.syncNow(third)
     await b.syncNow()
     expect(b.read(thirdPath)).toBe('third recipient edit')
+    const friend = AccessClient.fromToken(folderToken, { fetch: fixtureFetch })
+    await AccessClient.fromToken(s.server.rootToken, { fetch: fixtureFetch }).revoke(
+      (await friend.connection()).token_id
+    )
+    await expect(b.syncNow(s.ids.get(b)![0])).rejects.toThrow()
+    a.create(thirdPath, 'onward recipient still authorized after friend revoke')
+    await a.syncNow(third)
+    const forwarded = (await s.items()).find((one) => one.path === thirdPath)!
+    expect(
+      new TextDecoder().decode(
+        await s.client().versionBytes(forwarded.file_id, forwarded.version_id)
+      )
+    ).toBe('onward recipient still authorized after friend revoke')
   },
   fixture
 )
