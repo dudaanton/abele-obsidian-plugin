@@ -274,7 +274,9 @@ describe('durable attention evidence', () => {
       new Error('Sample storage unavailable')
     )
     vi.spyOn(console, 'error').mockImplementation(() => {})
-    await expect(session.approveToolCall()).rejects.toThrow('Операция не началась')
+    await expect(session.approveToolCall()).rejects.toThrow(
+      'Could not save the permission. The operation did not start.'
+    )
     expect(execute).not.toHaveBeenCalled()
     expect(stored(app)).toContain('sample-request')
   })
