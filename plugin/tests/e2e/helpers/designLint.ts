@@ -1,8 +1,11 @@
 import { existsSync, mkdirSync, readFileSync, unlinkSync, writeFileSync } from 'node:fs'
 import { resolve, join } from 'node:path'
+import { createServer } from 'node:http'
+import { randomUUID } from 'node:crypto'
+import type { AddressInfo } from 'node:net'
 import { evalLong } from './obsidianCli'
 import { onPhone } from './target'
-import { screenshot as phoneScreenshot } from './phone'
+import { screenshot as phoneScreenshot, exposeToPhone } from './phone'
 import { designCaptureExpression, type CaptureOptions } from '../../helpers/designCapture'
 import { annotateDesign } from '../../helpers/designAnnotate'
 import {
@@ -17,6 +20,45 @@ export interface DesignReport {
   violations: Violation[]
   directory: string
   artifacts: string[]
+}
+// Large PNGs and snapshots travel over the existing reversed-port contract, never argv.
+async function annotateOnPhone(
+  snapshot: DesignSnapshot,
+  violations: Violation[],
+  png: string
+): Promise<string> {
+  const token = randomUUID()
+  const payload = JSON.stringify({ snapshot, violations, png })
+  const server = createServer((req, res) => {
+    if (req.method !== 'GET' || req.url !== '/' + token) {
+      res.writeHead(404).end()
+      return
+    }
+    res.writeHead(200, { 'Content-Type': 'application/json', Connection: 'close' }).end(payload)
+  })
+  let unexpose: (() => void) | undefined
+  try {
+    await new Promise<void>((resolve, reject) => {
+      server.once('error', reject)
+      server.listen(0, '127.0.0.1', resolve)
+    })
+    const port = (server.address() as AddressInfo).port
+    unexpose = exposeToPhone(port)
+    return await evalLong(
+      `(async () => {
+      const response = await requestUrl({url:${JSON.stringify('http://127.0.0.1:')} + ${port} + '/${token}', method:'GET'})
+      const {snapshot, violations, png} = response.json
+      const artifacts = []
+      await (${annotateDesign.toString()})(snapshot, violations, png, (name, data) => artifacts.push({name, data}))
+      return JSON.stringify(artifacts)
+    })()`,
+      120_000
+    )
+  } finally {
+    unexpose?.()
+    server.closeAllConnections()
+    await new Promise<void>((resolve) => server.close(() => resolve()))
+  }
 }
 /** Runs only in the selected vault's renderer. The caller owns the vault/window lease. */
 export async function measureDesign(
@@ -68,13 +110,10 @@ export async function measureDesign(
   const report = { snapshot, violations, directory, artifacts }
   writeFileSync(reportFile, JSON.stringify(report, null, 2) + '\n')
   const rendered = onPhone()
-    ? await evalLong(
-        `(async () => {
-    const artifacts = []
-    await (${annotateDesign.toString()})(${JSON.stringify(snapshot)}, ${JSON.stringify(violations)}, ${JSON.stringify('data:image/png;base64,' + readFileSync(join(directory, 'capture.png')).toString('base64'))}, (name, data) => artifacts.push({name, data}))
-    return JSON.stringify(artifacts)
-  })()`,
-        120_000
+    ? await annotateOnPhone(
+        snapshot,
+        violations,
+        'data:image/png;base64,' + readFileSync(join(directory, 'capture.png')).toString('base64')
       )
     : await evalLong(
         `(async () => {

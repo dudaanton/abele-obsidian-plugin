@@ -3,10 +3,13 @@ import { mkdtempSync, readFileSync, rmSync, writeFileSync } from 'node:fs'
 import { tmpdir } from 'node:os'
 import { join } from 'node:path'
 
-const transport = vi.hoisted(() => ({ eval: vi.fn(), shot: vi.fn() }))
+const transport = vi.hoisted(() => ({ eval: vi.fn(), shot: vi.fn(), expose: vi.fn(() => vi.fn()) }))
 vi.mock('../e2e/helpers/obsidianCli', () => ({ evalLong: transport.eval }))
 vi.mock('../e2e/helpers/target', () => ({ onPhone: () => true }))
-vi.mock('../e2e/helpers/phone', () => ({ screenshot: transport.shot }))
+vi.mock('../e2e/helpers/phone', () => ({
+  screenshot: transport.shot,
+  exposeToPhone: transport.expose,
+}))
 import { measureDesign } from '../e2e/helpers/designLint'
 
 let directory: string
@@ -39,5 +42,6 @@ it('captures and annotates native phone evidence without Electron, Node or files
   expect(transport.shot).toHaveBeenCalledWith(join(directory, 'capture.png'))
   for (const [code] of transport.eval.mock.calls)
     expect(code).not.toMatch(/require\(['"](?:fs|path|@electron\/remote)/)
+  expect(transport.eval.mock.calls[1][0]).not.toContain(image.toString('base64'))
   expect(readFileSync(join(directory, 'annotated.png'))).toEqual(image)
 })
