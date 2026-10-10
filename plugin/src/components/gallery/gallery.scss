@@ -1,0 +1,287 @@
+/**
+ * A container, so the layouts below can ask how wide the gallery is rather than the window: a
+ * gallery in a chat or a sidebar is narrow on the widest screen.
+ */
+.abele-gallery {
+  position: relative;
+  margin: 0.5em 0;
+  border-radius: var(--radius-m);
+  container-type: inline-size;
+}
+
+.abele-gallery__drop-zone {
+  position: absolute;
+  inset: 0;
+  z-index: 10;
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  justify-content: center;
+  gap: 0.5em;
+  min-height: 120px;
+  color: var(--text-accent);
+  font-weight: var(--font-semibold);
+  background: color-mix(in srgb, var(--background-primary) 88%, var(--interactive-accent));
+  border: 2px dashed var(--interactive-accent);
+  border-radius: var(--radius-m);
+  pointer-events: none;
+}
+
+.abele-gallery__header {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  padding: 2px 0;
+}
+
+.abele-gallery__header-right {
+  display: flex;
+  gap: 2px;
+  margin-left: auto;
+}
+
+.abele-gallery__empty {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  justify-content: center;
+  gap: 0.5em;
+  padding: 2em;
+  color: var(--text-muted);
+  background: var(--background-secondary);
+  border-radius: var(--radius-m);
+  cursor: pointer;
+
+  &:hover {
+    background: var(--background-modifier-hover);
+  }
+}
+
+.abele-gallery__grid {
+  display: grid;
+  grid-template-columns: repeat(auto-fill, minmax(200px, 1fr));
+  gap: 4px;
+  border-radius: var(--radius-m);
+  overflow: hidden;
+
+  &--column {
+    display: flex;
+    flex-direction: column;
+    gap: 4px;
+
+    .abele-gallery__item {
+      aspect-ratio: unset;
+    }
+
+    .abele-gallery__image {
+      height: auto;
+      object-fit: contain;
+    }
+  }
+}
+
+.abele-gallery__item {
+  position: relative;
+  aspect-ratio: 1;
+  overflow: hidden;
+}
+
+/**
+ * Narrow: a chat, a sidebar, a phone. A 200px column fits once there, so the grid was one
+ * picture per row, each a square the width of the chat — three pictures a screen and a half
+ * tall. Here the grid keeps three to a row (two for two pictures, as `auto-fit` stretches what
+ * is there), and a picture in the column layout is capped rather than as tall as it is wide.
+ */
+@container (max-width: 480px) {
+  .abele-gallery__grid:not(.abele-gallery__grid--column) {
+    grid-template-columns: repeat(auto-fit, minmax(calc((100% - 8px) / 3), 1fr));
+  }
+
+  .abele-gallery__grid--column .abele-gallery__image {
+    max-height: 240px;
+  }
+}
+
+.abele-gallery__image {
+  width: 100%;
+  height: 100%;
+  object-fit: cover;
+  cursor: pointer;
+}
+
+.abele-gallery__masonry {
+  display: flex;
+  gap: 4px;
+  border-radius: var(--radius-m);
+  overflow: hidden;
+}
+
+.abele-gallery__masonry-col {
+  flex: 1;
+  display: flex;
+  flex-direction: column;
+  gap: 4px;
+
+  .abele-gallery__item {
+    aspect-ratio: unset;
+  }
+
+  .abele-gallery__image {
+    width: 100%;
+    height: auto;
+  }
+}
+
+.abele-gallery__slider-wrap {
+  position: relative;
+  width: 100%;
+  border-radius: var(--radius-m);
+  overflow: hidden;
+  background: var(--background-secondary);
+
+  &--no-bg {
+    background: none;
+  }
+}
+
+.abele-gallery__slider {
+  display: flex;
+  overflow-x: auto;
+  scroll-snap-type: x mandatory;
+  scrollbar-width: none;
+  touch-action: pan-x pan-y;
+
+  &::-webkit-scrollbar {
+    display: none;
+  }
+}
+
+.abele-gallery__slider-item {
+  flex: 0 0 100%;
+  min-width: 100%;
+  scroll-snap-align: center;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+}
+
+.abele-gallery__image--contain {
+  max-width: 100%;
+  max-height: 100%;
+  object-fit: contain;
+}
+
+.abele-gallery__slider-nav {
+  position: absolute;
+  top: 0;
+  bottom: 0;
+  width: 48px;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  z-index: 1;
+  cursor: pointer;
+
+  .abele-obsidian-icon {
+    color: var(--text-muted);
+  }
+
+  &:hover .abele-obsidian-icon {
+    color: var(--text-normal);
+  }
+
+  &--prev {
+    left: 0;
+  }
+
+  &--next {
+    right: 0;
+  }
+}
+
+.abele-gallery__image-error {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  justify-content: center;
+  gap: 0.5em;
+  height: 100%;
+  color: var(--text-muted);
+  background: var(--background-secondary);
+  font-size: 0.85em;
+
+  span {
+    text-overflow: ellipsis;
+    overflow: hidden;
+    white-space: nowrap;
+    max-width: 90%;
+  }
+}
+
+/* Edit mode */
+.abele-gallery__edit-list {
+  display: flex;
+  flex-direction: column;
+  gap: 4px;
+}
+
+.abele-gallery__edit-item {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  padding: 4px;
+  background: var(--background-secondary);
+  border-radius: var(--radius-s);
+}
+
+.abele-gallery__edit-thumb {
+  width: 48px;
+  height: 48px;
+  object-fit: cover;
+  border-radius: var(--radius-s);
+  flex-shrink: 0;
+
+  &--missing {
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    background: var(--background-modifier-border);
+    color: var(--text-muted);
+  }
+}
+
+.abele-gallery__edit-fields {
+  flex: 1;
+  min-width: 0;
+  display: flex;
+  flex-direction: column;
+  gap: 2px;
+}
+
+.abele-gallery__edit-path {
+  font-size: var(--font-smallest);
+  color: var(--text-faint);
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+
+.abele-gallery__edit-description {
+  width: 100%;
+  padding: 2px 6px;
+  font-size: var(--font-smaller);
+  border: 1px solid var(--background-modifier-border);
+  border-radius: var(--radius-s);
+  background: var(--background-primary);
+  color: var(--text-normal);
+
+  &::placeholder {
+    color: var(--text-faint);
+  }
+}
+
+.abele-gallery__edit-actions {
+  display: flex;
+  gap: 2px;
+  flex-shrink: 0;
+}
