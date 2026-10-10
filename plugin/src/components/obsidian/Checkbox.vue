@@ -75,7 +75,9 @@ body.is-phone .abele-checkbox {
   height: auto;
   min-height: var(--abele-touch-min);
   padding-block: var(--size-4-2);
+  /* The outer box is only the finger's target; the track and its shadow are the paint's. */
   background: transparent;
+  box-shadow: none;
 }
 body.is-phone .abele-checkbox::after {
   display: none;
