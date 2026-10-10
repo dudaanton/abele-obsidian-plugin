@@ -34,37 +34,6 @@
         <dl v-if="parsed && !badCode" class="abele-pair__fields" aria-label="What the code holds">
           <dt>Node</dt>
           <dd class="abele-pair__value_name">{{ parsed.name }}</dd>
-          <!-- Where to reach the node is taken from the code but can be changed: the same node
-               may be reached by another address from here (its local one, a VPN, a tunnel). -->
-          <dt><label for="abele-pair-host">Address</label></dt>
-          <dd class="abele-pair__editable">
-            <Input
-              id="abele-pair-host"
-              v-model="host"
-              :invalid="!host.trim()"
-              aria-label="Address"
-              autocomplete="off"
-              spellcheck="false"
-            />
-            <Icon
-              v-if="host !== parsed.host || port !== String(parsed.port)"
-              icon="rotate-ccw"
-              size="xs"
-              tooltip="Back to what the code says"
-              @click="reset"
-            />
-          </dd>
-          <dt><label for="abele-pair-port">Port</label></dt>
-          <dd class="abele-pair__editable">
-            <Input
-              id="abele-pair-port"
-              v-model="port"
-              :invalid="!portValid"
-              inputmode="numeric"
-              aria-label="Port"
-              autocomplete="off"
-            />
-          </dd>
           <dt>Key</dt>
           <dd class="abele-pair__fingerprint">
             <span v-for="(group, i) in groups" :key="i">{{ group }}</span>
@@ -72,13 +41,42 @@
           <dt>Valid</dt>
           <dd>{{ parsed.expires }}</dd>
         </dl>
-        <div
-          v-if="parsed && error && tried === `${host.trim()}:${port.trim()}`"
-          class="abele-pair__error"
-          role="alert"
-        >
-          {{ error }}
-        </div>
+        <!-- Where to reach the node: read from the code, but the same node may be reached by
+             another address from here (its local one, a VPN, a tunnel), so these are fields. -->
+        <template v-if="parsed && !badCode">
+          <Setting
+            class="abele-pair__setting"
+            name="Address"
+            :desc="host.trim() === parsed.host ? 'From the code.' : `The code says ${parsed.host}.`"
+            :error="hostError"
+          >
+            <Input
+              v-model="host"
+              :invalid="!!hostError"
+              aria-label="Address"
+              autocomplete="off"
+              spellcheck="false"
+            />
+          </Setting>
+          <Setting
+            class="abele-pair__setting"
+            name="Port"
+            :desc="
+              port.trim() === String(parsed.port)
+                ? 'From the code.'
+                : `The code says ${parsed.port}.`
+            "
+            :error="portValid ? undefined : 'A number from 1 to 65535.'"
+          >
+            <Input
+              v-model="port"
+              :invalid="!portValid"
+              inputmode="numeric"
+              aria-label="Port"
+              autocomplete="off"
+            />
+          </Setting>
+        </template>
         <Setting
           v-if="parsed && keyChanged && !badCode"
           class="abele-pair__changed"
@@ -191,6 +189,14 @@ const parsed = computed(() => (result.value && !('error' in result.value) ? resu
 const badCode = computed(() => (result.value && 'error' in result.value ? result.value.error : ''))
 // The address the error is about; editing it away hides the error.
 const tried = ref(props.error && parsed.value ? `${parsed.value.host}:${parsed.value.port}` : '')
+// A node that did not answer is said on the address it was asked at, until that is changed.
+const hostError = computed(() =>
+  !host.value.trim()
+    ? 'Where the node is: a name or an IP address.'
+    : props.error && tried.value === `${host.value.trim()}:${port.value.trim()}`
+      ? props.error
+      : undefined
+)
 function connect() {
   tried.value = `${host.value.trim()}:${port.value.trim()}`
   emit('connect', text.value, { host: host.value.trim(), port: Number(port.value) })
@@ -277,7 +283,7 @@ const groups = computed(() => parsed.value?.fingerprint.match(/.{1,4}/g) ?? [])
   color: var(--text-error);
   font-size: var(--font-ui-smaller);
 }
-// The code read out: names muted on the left, values on the right, one line each; address and port in fields.
+// The code read out: names muted on the left, values on the right, one line each.
 .abele-pair__fields {
   display: grid;
   grid-template-columns: max-content 1fr;
@@ -298,24 +304,6 @@ const groups = computed(() => parsed.value?.fingerprint.match(/.{1,4}/g) ?? [])
     color: var(--text-normal);
     font-family: var(--font-monospace);
     font-size: var(--font-ui-smaller);
-  }
-  dt label {
-    cursor: inherit;
-  }
-  // The two values one may change sit in fields, the rest stay plain text.
-  .abele-pair__editable {
-    display: flex;
-    align-items: center;
-    gap: var(--size-4-1);
-    font-family: inherit;
-
-    input {
-      font-family: var(--font-monospace);
-      font-size: var(--font-ui-smaller);
-    }
-  }
-  dt:has(label) {
-    align-self: center;
   }
   .abele-pair__value_name {
     font-family: inherit;
@@ -348,6 +336,10 @@ const groups = computed(() => parsed.value?.fingerprint.match(/.{1,4}/g) ?? [])
   gap: var(--size-4-2);
   color: var(--text-muted);
   font-size: var(--font-ui-small);
+}
+// The fields sit in the step's column, as rows of a settings form.
+.abele-pair__setting.setting-item {
+  padding-block: var(--size-4-2);
 }
 .abele-pair .modal-button-container {
   margin-top: var(--size-4-2);
