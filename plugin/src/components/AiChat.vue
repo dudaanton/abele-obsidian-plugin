@@ -2693,8 +2693,6 @@ const showDebug = () => {
   overflow-x: hidden;
   padding: var(--size-4-2) var(--size-4-3);
   user-select: text;
-  -webkit-user-select: text;
-  -webkit-touch-callout: default;
 }
 
 /* While the chat holds the reader's place itself, the browser does not hold it a second time. */

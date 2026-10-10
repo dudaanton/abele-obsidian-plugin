@@ -53,7 +53,7 @@ const PRELUDE = `${WAIT_PRELUDE}
     if (!await until(() => {
       const r = word.getBoundingClientRect(), key = JSON.stringify([r.x,r.y,r.width,r.height])
       if (key !== previous) {previous = key; stableSince = Date.now()}
-      return word.isConnected && r.width > 0 && document.elementFromPoint(r.left+r.width/2,r.top+r.height/2) === word && Date.now()-stableSince >= 600
+      return word.isConnected && r.width > 0 && word.contains(document.elementFromPoint(r.left+r.width/2,r.top+r.height/2)) && Date.now()-stableSince >= 600
     }, 5000)) throw Error('Saved words did not become a stable gesture target')
     const bounds = word.getBoundingClientRect()
     const events = [], tracking = new AbortController()
@@ -134,7 +134,7 @@ for (const layout of onPhone() ? ['native phone'] : ['desktop', 'phone layout'])
       await app.vault.create(${JSON.stringify(SCRIPTS + '/capture.js')}, ${JSON.stringify(SCRIPT)})
       for (let i=0;i<35;i++) await app.vault.create(${JSON.stringify(SCRIPTS)}+'/sample-'+i+'.js', '// @name Sample long script '+i+' with a descriptive label\\n// @description More context for a source-neutral selection script.\\nreturn selection.text')
       await scripts.discover()
-      app.vault.setConfig('nativeMenus',app.isMobile)
+      app.vault.setConfig('nativeMenus',false)
       await chats.openChatFile(app.vault.getAbstractFileByPath(${JSON.stringify(CHAT)})); await chats.revealSidebar()
       const picker = new window.__abeleTest.SelectionScriptPicker(app,scripts.getAll(),()=>{},'chat')
       picker.open();if(!await until(()=>visible('.abele-selection-script-choice'),5000))throw Error('Long script list did not open')

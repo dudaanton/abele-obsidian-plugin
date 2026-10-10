@@ -243,7 +243,6 @@
         data-find-part="content"
         @rendered="onReplyRendered"
         @contextmenu="onContentMenu"
-        @touchstart.passive="onContentTouch"
       />
       <Markdown v-else-if="message.content" :text="message.content" :resource-opener="resourceOpener" data-find-part="content" />
       <slot name="metadata" />
@@ -587,16 +586,8 @@ function onMessageClick(event: MouseEvent) {
 // Only where a comment can be kept: elsewhere a right-click stays the browser's own. Not on a
 // touch screen, where the long press that fires it is the one selecting the words: the menu
 // jumped up before they were chosen. There `ChatSelectionBar` offers it once they are.
-const onContentTouch = (event: TouchEvent) => {
-  if (props.canComment && Platform.isMobile) event.stopPropagation()
-}
 const onContentMenu = (event: MouseEvent) => {
-  if (!props.canComment) return
-  if (Platform.isMobile) {
-    // Do not let the workspace's custom-menu handler cancel WebKit's default selection.
-    // Merely declining our own menu still bubbles to that handler when native menus are off.
-    event.stopPropagation()
-  } else comments.onContentMenu(event)
+  if (props.canComment && !Platform.isMobile) comments.onContentMenu(event)
 }
 
 const interceptorText = ref('')
@@ -928,8 +919,6 @@ const shortTime = (ts: number) => dayjs(ts).format('HH:mm')
 
 // WebKit touch panes can inherit user-select:none. Desktop emulation permits scripted
 // ranges regardless, so opt the actual rendered words into native selection explicitly.
-.abele-chat-msg:has([data-ask-message]),
-.abele-chat-msg__body:has([data-ask-message]),
 .abele-chat-msg__body [data-ask-message],
 .abele-chat-msg__body [data-ask-message] :not(button, .abele-comment-marker, .abele-comment-marker *) {
   user-select: text;
