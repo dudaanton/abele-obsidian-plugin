@@ -532,6 +532,7 @@ export class ChatService {
   }
 
   adoptSession(session: ChatSession, current?: () => boolean): boolean {
+    if (!current) this.tabSelectionRevision++
     const intent = (current && this.presentationGuards.get(current)) ??
       this.presentations.begin(session.currentChatFile.value?.path ?? session.id, true, current)
     if (!this.presentations.retarget(intent, session.currentChatFile.value?.path ?? session.id)) return false
@@ -553,7 +554,8 @@ export class ChatService {
       return false
     }
 
-    this.tabSelectionRevision++
+    // Committing an admitted open is not a newer choice: its selection guard must survive
+    // adoption so the caller can reveal the sidebar and the exact search result afterwards.
     this.sessions.set(session.id, session)
     this.tabOrder.value = [...this.tabOrder.value, session.id]
     this.activeTabId.value = session.id

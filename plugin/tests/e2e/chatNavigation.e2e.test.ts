@@ -3,6 +3,7 @@ import { evalLong, evalRaw, hasTestApi, isObsidianRunning } from './helpers/obsi
 import { onPhone, targets } from './helpers/target'
 import { tap, typeText } from './helpers/phone'
 import { shotDir } from './helpers/shots'
+import { withEmulatedPhone } from './helpers/emulatedPhone'
 
 targets('desktop', 'phone')
 const available = isObsidianRunning() && hasTestApi()
@@ -37,7 +38,7 @@ interface NavigationReport {
   unavailable: boolean
 }
 
-const script = `(async () => {
+const script = (layout: string) => `(async () => {
   const wait = ms => new Promise(r => setTimeout(r, ms))
   const until = async fn => { for (let i = 0; i < 300; i++) { if (fn()) return; await wait(30) } throw Error('Navigation destination did not appear: ' + fn.toString() + '; query=' + document.querySelector('.abele-chat-navigation input')?.value + '; rows=' + document.querySelectorAll('.abele-chat-navigation [data-nav-item]').length + '; latest=' + window.__abeleTest.ChatService.getInstance().activeSession.value?.messages.value.at(-1)?.id) }
   const chats = window.__abeleTest.ChatService.getInstance()
@@ -49,8 +50,24 @@ const script = `(async () => {
   const modal = () => document.querySelector('.abele-chat-navigation')
   const item = id => box()?.querySelector('[data-message-id="' + id + '"]')
   const offset = id => item(id).getBoundingClientRect().top - box().getBoundingClientRect().top
+  const capture = async name => {
+    // Let native sheets finish their open/dismiss animation before recording the screen.
+    await wait(350)
+    const path = ${JSON.stringify(SHOTS + '/')} + ${JSON.stringify(layout)} + '-' + name + '.png'
+    if (window.__e2eHost) return window.__e2eHost.shot(path)
+    const image = await require('@electron/remote').getCurrentWebContents().capturePage()
+    require('fs').writeFileSync(path, image.toPNG())
+  }
   const open = async () => {
-    document.querySelector('.abele-ai-chat__navigation').click()
+    const button = [...document.querySelectorAll('.abele-ai-chat__navigation')].find(el => el.getClientRects().length)
+    if (button) button.click()
+    else {
+      const overflow = [...document.querySelectorAll('.abele-ai-chat__overflow [aria-haspopup="menu"]')].find(el => el.getClientRects().length)
+      if (!overflow) throw Error('No visible chat navigation action')
+      overflow.click()
+      await until(() => [...document.querySelectorAll('.menu-item')].some(item => item.textContent.trim() === 'Navigation'))
+      ;[...document.querySelectorAll('.menu-item')].find(item => item.textContent.trim() === 'Navigation').click()
+    }
     await until(modal)
     await wait(100)
   }
@@ -126,7 +143,7 @@ const script = `(async () => {
     // Put the reader at the first question again, then open its direct and nested discussions.
     await open(); await choose('To start'); await wait(200)
     await open(); await until(() => modal().textContent.includes('Which plants need shade?'))
-    if (window.__e2eHost) await window.__e2eHost.shot(${JSON.stringify(SHOTS + '/navigation-discussions.png')})
+    await capture('navigation-discussions')
     const fold = [...modal().querySelectorAll('summary')].find(s => s.textContent.includes('Nested discussions'))
     fold.click(); await until(() => modal().textContent.includes('How much shade?'))
     await choose('How much shade?')
@@ -197,10 +214,11 @@ const script = `(async () => {
     modal().querySelector('[role="checkbox"]').click()
     await until(() => modal().textContent.includes('3 of 3 discussions'))
     report.unavailable = modal().textContent.includes('Unavailable discussion') && modal().textContent.includes('Missing sample passage')
-    if (window.__e2eHost) await window.__e2eHost.shot(${JSON.stringify(SHOTS + '/navigation-search-discussions.png')})
+    await capture('navigation-search-discussions')
     await choose('How much shade')
     await until(() => chats.activeSession.value?.commentId === 'navd02' && document.querySelector('.abele-chat-find__count')?.textContent.trim() === '1 of 1')
     report.discussionSearch = true
+    await capture('navigation-discussion-result')
     await open(); await choose('Back to place'); await until(() => chats.activeSession.value === owner)
     report.draft = owner.draft.value.text
     // The search/jump cannot have selected the alternate answer. Account for the explicit
@@ -268,33 +286,38 @@ describe.skipIf(!available || !onPhone())('navigation with the phone keyboard', 
 })
 
 describe.skipIf(!available)('current-branch chat navigation', () => {
-  it('jumps, returns, opens direct and nested discussions, and keeps the draft and reading place', async () => {
-    const result = JSON.parse(await evalLong(script, 90_000)) as NavigationReport
-    console.warn(
-      `Navigation of 600 messages: mount ${Math.round(result.jumpMs)} ms; settled sample ${Math.round(result.settledMs)} ms`
-    )
-    expect(result.unfocusedSearch).toBe(true)
-    expect(result.questions).toBe(300)
-    expect(result.hiddenBranch).toBe(true)
-    expect(result.firstMounted).toBe(true)
-    expect(result.drift).toBeLessThan(2)
-    expect(result.latest).toBe(true)
-    expect(result.returned).toBe(true)
-    expect(result.middleReturnDrift).toBeLessThan(2)
-    expect(result.nestedBack).toBe(true)
-    expect(result.discussion).toBe(true)
-    expect(result.nested).toBe(true)
-    expect(result.discussionReturn).toBe(true)
-    expect(result.draft).toBe('An unsent sample follow-up')
-    expect(result.searchPart).toBe(true)
-    expect(result.selectedBranch).toBe(result.beforeBranch)
-    expect(result.branchJump).toBe(true)
-    expect(result.branchReturn).toBe(true)
-    expect(result.branchPositionDrift).toBeLessThan(2)
-    expect(result.branchDeferred).toBe(true)
-    expect(result.allBranchSearch).toBe(true)
-    expect(result.sharedOnce).toBe(true)
-    expect(result.discussionSearch).toBe(true)
-    expect(result.unavailable).toBe(true)
-  }, 100_000)
+  it.each(onPhone() ? ['phone'] : ['desktop', 'emulated phone'])(
+    'jumps, returns, opens direct and nested discussions, and keeps the draft and reading place on %s',
+    async (layout) => {
+      const run = async () => JSON.parse(await evalLong(script(layout), 90_000)) as NavigationReport
+      const result = layout === 'emulated phone' ? await withEmulatedPhone(run) : await run()
+      console.warn(
+        `Navigation of 600 messages: mount ${Math.round(result.jumpMs)} ms; settled sample ${Math.round(result.settledMs)} ms`
+      )
+      expect(result.unfocusedSearch).toBe(true)
+      expect(result.questions).toBe(300)
+      expect(result.hiddenBranch).toBe(true)
+      expect(result.firstMounted).toBe(true)
+      expect(result.drift).toBeLessThan(2)
+      expect(result.latest).toBe(true)
+      expect(result.returned).toBe(true)
+      expect(result.middleReturnDrift).toBeLessThan(2)
+      expect(result.nestedBack).toBe(true)
+      expect(result.discussion).toBe(true)
+      expect(result.nested).toBe(true)
+      expect(result.discussionReturn).toBe(true)
+      expect(result.draft).toBe('An unsent sample follow-up')
+      expect(result.searchPart).toBe(true)
+      expect(result.selectedBranch).toBe(result.beforeBranch)
+      expect(result.branchJump).toBe(true)
+      expect(result.branchReturn).toBe(true)
+      expect(result.branchPositionDrift).toBeLessThan(2)
+      expect(result.branchDeferred).toBe(true)
+      expect(result.allBranchSearch).toBe(true)
+      expect(result.sharedOnce).toBe(true)
+      expect(result.discussionSearch).toBe(true)
+      expect(result.unavailable).toBe(true)
+    },
+    180_000
+  )
 })

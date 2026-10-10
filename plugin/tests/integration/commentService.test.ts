@@ -69,6 +69,24 @@ beforeEach(() => {
   vi.spyOn(ChatService.getInstance(), 'sidebarShowing').mockReturnValue(true)
 })
 
+describe('guarded discussion presentation', () => {
+  it('keeps the opening selection guard valid when a released discussion is adopted again', async () => {
+    const comments = CommentService.getInstance()
+    const chats = ChatService.getInstance()
+    const discussion = await comments.create(noteFile(), SELECTION_END, 'The selected passage')
+    await comments.hideFromSidebar(discussion.commentId!)
+    const selection = chats.tabSelectionVersion
+    const current = () => chats.tabSelectionVersion === selection
+
+    expect(await comments.showInSidebar(discussion.commentId!, current)).toBe(true)
+    expect(chats.activeSession.value).toBe(discussion)
+    expect(current()).toBe(true)
+    // A later explicit choice must still invalidate the guard.
+    chats.newTab()
+    expect(current()).toBe(false)
+  })
+})
+
 describe('creating a comment', () => {
   it('writes the marker into the note at the end of the selection', async () => {
     const session = await CommentService.getInstance().create(
