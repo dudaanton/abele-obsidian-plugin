@@ -15,7 +15,7 @@ import type { ChangeItem } from '@abele/sync-protocol'
 import SettingsArrivedModal from '@/components/sync/SettingsArrivedModal.vue'
 import StagedSettingsBlock from '@/components/sync/StagedSettingsBlock.vue'
 import Button from '@/components/obsidian/Button.vue'
-import { SyncService } from '@/sync/SyncService'
+import { TokenSettingsPort } from '@/sync/tokenSettingsPort'
 import { useVault } from '../helpers/testEnv'
 
 /** The dialog itself is Obsidian's; unwrapping it puts the body where a query can reach it. */
@@ -83,7 +83,7 @@ beforeEach(() => {
     blocked: [],
     unshown: [],
   })
-  vi.spyOn(SyncService, 'getInstance').mockReturnValue(service as never)
+  vi.spyOn(TokenSettingsPort, 'getInstance').mockReturnValue(service as never)
 })
 
 afterEach(() => {

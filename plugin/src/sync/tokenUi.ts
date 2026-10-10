@@ -76,6 +76,19 @@ export interface TokenUiRuntime extends ExecutableApplyPort, ConsentResolvePort 
   updateSelective?(selective: import('@abele/sync-core').SelectiveSettings): Promise<void>
   historyClient?: import('@abele/sync-core').V2EngineClient
   entryFor?(path: string): Promise<import('@abele/sync-core').StateEntry | null>
+  heldDeletes?(): Promise<import('@abele/sync-core').HeldDelete[]>
+  decideDeletes?(
+    kind: 'confirm' | 'restore',
+    ids: readonly string[]
+  ): Promise<{ decided: number; applied: boolean; completed?: number } | null>
+  deferred?(): Promise<import('@abele/sync-protocol').ChangeItem[]>
+  applyDeferred?(
+    ids: readonly string[]
+  ): Promise<import('./stagedSettings').DeferredSettingsBatch | null>
+  keepLocal?(
+    paths: string[] | undefined,
+    ids: readonly string[]
+  ): Promise<import('@abele/sync-core').DeferredKept | null>
 }
 export type DeviceReviews = Awaited<ReturnType<typeof openDeviceReviews>>
 export class TokenUi {

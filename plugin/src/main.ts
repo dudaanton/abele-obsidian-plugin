@@ -410,7 +410,13 @@ export default class AbelePlugin extends Plugin {
             ui,
             (reference) => secretStore.getLocal(reference) || null,
             {},
-            AbeleConfig.getInstance().ai.scriptsFolder || 'Scripts'
+            AbeleConfig.getInstance().ai.scriptsFolder || 'Scripts',
+            {
+              path: `${this.manifest.dir ?? `${this.app.vault.configDir}/plugins/${this.manifest.id}`}/data.json`,
+              arrived: () => {
+                void this.onExternalSettingsChange()
+              },
+            }
           )
           ui.openFile = (path) => this.app.workspace.openLinkText(path, '', false)
           this.register(() => {

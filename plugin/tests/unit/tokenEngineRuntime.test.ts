@@ -132,6 +132,38 @@ it('stages immutable executable bytes before cursor advance and approves without
     await a.runtime.disconnect()
   }
 })
+it('stages ordinary root settings for an explicit reload decision while normal notes keep moving', async () => {
+  const wire = await server('.obsidian/app.json', '{"sample":true}'),
+    fs = new MemoryFileSystem(),
+    one = runtime(wire, fs)
+  try {
+    await one.runtime.sync()
+    expect(await fs.stat(wire.item.path)).toBeNull()
+    expect(await one.runtime.deferred()).toMatchObject([
+      { path: wire.item.path, version_id: wire.item.version_id },
+    ])
+    expect(await one.reviews.executables.pending()).toEqual([])
+    expect(await one.runtime.applyDeferred([wire.item.version_id])).toMatchObject({
+      applied: [wire.item.path],
+    })
+    expect(await fs.read(wire.item.path)).toEqual(wire.bytes)
+  } finally {
+    await one.runtime.disconnect()
+  }
+})
+it('does not bypass settings review at first contact with an existing local configuration file', async () => {
+  const wire = await server('.obsidian/app.json', '{"sample":"remote"}'),
+    fs = new MemoryFileSystem(),
+    one = runtime(wire, fs)
+  await fs.writeAtomic(wire.item.path, new TextEncoder().encode('{"sample":"local"}'), 2000)
+  try {
+    await one.runtime.sync()
+    expect(new TextDecoder().decode(await fs.read(wire.item.path))).toBe('{"sample":"local"}')
+    expect(await one.runtime.deferred()).toMatchObject([{ path: wire.item.path }])
+  } finally {
+    await one.runtime.disconnect()
+  }
+})
 
 it('applies the older reviewed executable candidate while a newer immutable candidate stays pending', async () => {
   const wire = await server('Scripts/sample.js', 'original content'),

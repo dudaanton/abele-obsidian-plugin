@@ -89,3 +89,9 @@ scoped raw/native database split and invitation creation API no longer exist.
 - `integration/ownerBindingGrowth.test.ts`: Removed legacy owner prepared/submitted ledger schema and its upgrade paths; the addendum forbids legacy migration.
 
 - `integration/ownerLedgerBudget.test.ts`: Removed legacy owner prepared-row budgets and migration; v2 publication storage must enforce its own durable capacity.
+
+- `component/pluginCode.test.ts`: Retired whole-plugin installation catalogue and batch reload screen; immutable per-file code review is tested by tokenSyncUi and executableReview (approval, rejection and deferred candidates).
+
+- `component/publicationPrompt.test.ts`: Retired sponsor and paste-evidence automatic foreground prompt; token attachment questions originate only from the real note-open port, with durable per-connection consent.
+
+- `component/syncLog.test.ts`: Retired singleton sync-log screen and clipboard buffer; token connections expose independent progress, refusal and conflict state instead.

@@ -44,6 +44,11 @@
           tooltip="Open this connection's deleted files"
           @click="openTrash(row.id)"
         />
+        <Icon
+          icon="settings"
+          tooltip="What this device syncs and changes waiting for review"
+          @click="configure(row.id)"
+        />
       </Setting>
       <p v-if="rows.length && !ui.available.value">
         File exchange is opening. Connections that need attention keep their files here.
@@ -124,6 +129,21 @@
       v-bind="dialog"
       @close="dialog = null"
     />
+    <Modal
+      v-if="preferences"
+      :title="preferences.name"
+      size="tall"
+      phone-sheet
+      @close="preferences = null"
+    >
+      <HeldDeletesBlock v-if="preferences.held.length" :held="preferences.held" />
+      <StagedSettingsBlock
+        v-if="preferences.changes.length"
+        :changes="preferences.changes"
+        :names="{}"
+      />
+      <SelectiveSync />
+    </Modal>
   </div>
   <EmptyState v-else text="Sync is opening. If it cannot open, restart Obsidian and try again." />
 </template>
@@ -135,6 +155,29 @@ import Icon from '../obsidian/Icon.vue'
 import Button from '../obsidian/Button.vue'
 import EmptyState from '../obsidian/EmptyState.vue'
 import TokenDialogs from '../sync/TokenDialogs.vue'
+import Modal from '../obsidian/Modal.vue'
+import SelectiveSync from './sync/SelectiveSync.vue'
+import HeldDeletesBlock from '../sync/HeldDeletesBlock.vue'
+import StagedSettingsBlock from '../sync/StagedSettingsBlock.vue'
+import { TokenSettingsPort } from '@/sync/tokenSettingsPort'
+const preferences = ref<{
+  name: string
+  held: import('@abele/sync-core').HeldDelete[]
+  changes: import('@abele/sync-protocol').ChangeItem[]
+} | null>(null)
+async function configure(id: string) {
+  if (!ui.value) return
+  await act(id, async () => {
+    historyConnection.value = id
+    const port = TokenSettingsPort.forConnection(ui.value, id)
+    await port.settingsPrompt.refresh()
+    preferences.value = {
+      name: connectionName(rows.value.find((row) => row.id === id)),
+      held: (await ui.value.runtimes.get(id)?.heldDeletes?.()) ?? [],
+      changes: port.settingsPrompt.staged.value,
+    }
+  })
+}
 import { historyConnection } from '@/sync/tokenHistory'
 import { GlobalStore } from '@/stores/GlobalStore'
 function openTrash(id: string) {

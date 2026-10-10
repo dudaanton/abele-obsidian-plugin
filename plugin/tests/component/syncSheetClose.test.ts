@@ -2,9 +2,8 @@ import { afterEach, beforeEach, expect, it, vi } from 'vitest'
 import { defineComponent, h, ref } from 'vue'
 import { flushPromises, mount } from '@vue/test-utils'
 import { Modal } from 'obsidian'
-import SyncLogModal from '@/components/sync/SyncLogModal.vue'
 import DeletedFilesModal from '@/components/sync/DeletedFilesModal.vue'
-import { SyncService } from '@/sync/SyncService'
+import * as historyPort from '@/sync/tokenHistory'
 import { useVault } from '../helpers/testEnv'
 
 beforeEach(() => useVault([]))
@@ -12,14 +11,14 @@ afterEach(() => {
   vi.restoreAllMocks()
   document.body.replaceChildren()
 })
-it.each([SyncLogModal, DeletedFilesModal])(
+it.each([DeletedFilesModal])(
   'forwards native sheet dismissal once, including while trash is loading',
   async (Sheet) => {
     let finish: (value: never[]) => void = () => {}
     const trash = new Promise<never[]>((resolve) => {
       finish = resolve
     })
-    vi.spyOn(SyncService, 'getInstance').mockReturnValue({
+    vi.spyOn(historyPort, 'tokenHistory').mockReturnValue({
       log: ref([]),
       client: () => ({ trash: () => trash }),
     } as never)

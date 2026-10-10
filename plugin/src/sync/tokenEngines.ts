@@ -23,6 +23,7 @@ import { openTokenLedger } from './tokenLedger'
 import { reviewSourceOf } from './reviewState'
 import { requireExternalLifecycleSafety } from './external/pluginSafety'
 import { TokenAttachmentHost } from './tokenAttachmentHost'
+import { OwnSettingsWatch } from './ownSettings'
 
 /** One native host, independent durable engines, and one vault-wide placement coordinator. */
 export class TokenEngines {
@@ -38,7 +39,8 @@ export class TokenEngines {
     private readonly ui: TokenUi,
     private readonly key: (reference: string) => string | null,
     private readonly deps: SyncServiceDeps = {},
-    private readonly scriptsFolder = 'Scripts'
+    private readonly scriptsFolder = 'Scripts',
+    private readonly ownSettings?: { path: string; arrived(): void }
   ) {
     this.localFiles = new TokenAttachmentHost(app)
     this.renameEvent = app.vault.on('rename', (file, from) =>
@@ -126,11 +128,16 @@ export class TokenEngines {
         fence?.release()
         this.failed(record.id, new Error('Connection opened elsewhere'))
       })
+      const own = new OwnSettingsWatch(
+        this.ownSettings?.path ?? `${this.app.vault.configDir}/plugins/abele/data.json`,
+        () => this.ownSettings?.arrived()
+      )
       const ordinary = new ObsidianFileSystem(this.app, {
         runtimeFence: fence,
         ledger: state,
         preserveEmptyDirectories: true,
         pollMs: pollMsOf(this.deps),
+        onEngineWrite: (path) => own.noteWrite(path),
       })
       await ordinary.recover()
       fence.activate()
@@ -165,13 +172,19 @@ export class TokenEngines {
         fallbackMs: fallbackMsOf(this.deps),
         expectedSource: reviewSourceOf(record),
         localFiles: this.localFiles,
+        ownSettingsPath:
+          this.ownSettings?.path ?? `${this.app.vault.configDir}/plugins/abele/data.json`,
         assertHeld: () => fence.assertReady(),
         changed: (status, report) => {
+          if (report) own.settle()
           void this.changed(record.id, status, report).catch((error) =>
             this.failed(record.id, error)
           )
         },
-        failed: (error) => this.failed(record.id, error),
+        failed: (error) => {
+          own.settle()
+          this.failed(record.id, error)
+        },
         covers: async (path) =>
           [...this.live].some(([id, one]) => id !== record.id && one.covers(path)),
       })
@@ -196,6 +209,11 @@ export class TokenEngines {
         publishAttachment: (id) => runtime.publishAttachment(id),
         historyClient: runtime.client,
         entryFor: (path) => runtime.entryFor(path),
+        heldDeletes: () => runtime.heldDeletes(),
+        decideDeletes: (kind, ids) => runtime.decideDeletes(kind, ids),
+        deferred: () => runtime.deferred(),
+        applyDeferred: (ids) => runtime.applyDeferred(ids),
+        keepLocal: (paths, ids) => runtime.keepLocal(paths, ids),
         apply: (candidate) => runtime.apply(candidate),
         disconnect: async () => {
           active = false

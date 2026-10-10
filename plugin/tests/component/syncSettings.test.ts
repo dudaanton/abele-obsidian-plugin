@@ -14,7 +14,7 @@
 import Checkbox from '@/components/obsidian/Checkbox.vue'
 import SelectiveSync from '@/components/settings/sync/SelectiveSync.vue'
 import { AbeleConfig } from '@/services/AbeleConfig'
-import { SyncService } from '@/sync/SyncService'
+import { TokenSettingsPort } from '@/sync/tokenSettingsPort'
 import { emptyConnection, type DeviceConnection } from '@/sync/connection'
 import type { ExistingPublicationQuestion } from '@/sync/publication/publicationDecision'
 import { defaultSyncSettings } from '@/sync/settings'
@@ -153,7 +153,7 @@ beforeEach(() => {
   client.state.mockResolvedValue({ head_seq: 7, settings: VAULT_SETTINGS, usage: USAGE })
   client.usage.mockResolvedValue(USAGE)
   client.updateSettings.mockResolvedValue(VAULT_SETTINGS)
-  vi.spyOn(SyncService, 'getInstance').mockReturnValue(service as never)
+  vi.spyOn(TokenSettingsPort, 'getInstance').mockReturnValue(service as never)
 })
 
 afterEach(() => {

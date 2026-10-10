@@ -4,6 +4,7 @@ import TokenDialogs from '@/components/sync/TokenDialogs.vue'
 import { TokenUi } from '@/sync/tokenUi'
 import { TokenConnectionRegistry } from '@/sync/tokenConnectionRegistry'
 import Button from '@/components/obsidian/Button.vue'
+import Modal from '@/components/obsidian/Modal.vue'
 import TokenQrReader from '@/components/sync/TokenQrReader.vue'
 import { tokenUiFixture, sampleIssuedToken } from '@/testing/tokenUiFixture'
 import SyncSettings from '@/components/settings/SyncSettings.vue'
@@ -144,4 +145,37 @@ it('approves only the immutable code candidate displayed while a later version r
   await vi.waitFor(() => expect(view.emitted('close')).toBeDefined())
   expect(apply).toHaveBeenCalledExactlyOnceWith({ ...candidate, status: 'applying' })
   expect((await reviews.executables.pending()).map((one) => one.versionId)).toEqual(['version-b'])
+})
+
+it('rejects only the displayed executable candidate, leaving local code and a later candidate untouched', async () => {
+  const ui = tokenUiFixture(),
+    candidate = ui.candidates.value[0],
+    reject = vi.spyOn(ui, 'reject').mockResolvedValue(),
+    approve = vi.spyOn(ui, 'approve')
+  const view = mount(TokenDialogs, {
+    props: { ui, mode: 'review', candidate },
+    global: { stubs: { Modal: modalStub } },
+  })
+  await view
+    .findAllComponents(Button)
+    .find((one) => one.props('text') === 'Reject')!
+    .trigger('click')
+  await flushPromises()
+  expect(reject).toHaveBeenCalledExactlyOnceWith(candidate)
+  expect(approve).not.toHaveBeenCalled()
+})
+it('closing executable review decides nothing and leaves it available for later', async () => {
+  const ui = tokenUiFixture(),
+    candidate = ui.candidates.value[0],
+    reject = vi.spyOn(ui, 'reject'),
+    approve = vi.spyOn(ui, 'approve')
+  const view = mount(TokenDialogs, {
+    props: { ui, mode: 'review', candidate },
+    global: { stubs: { Modal: modalStub } },
+  })
+  view.findComponent(Modal).vm.$emit('close')
+  expect(view.emitted('close')).toHaveLength(1)
+  expect(reject).not.toHaveBeenCalled()
+  expect(approve).not.toHaveBeenCalled()
+  expect(ui.candidates.value).toContain(candidate)
 })

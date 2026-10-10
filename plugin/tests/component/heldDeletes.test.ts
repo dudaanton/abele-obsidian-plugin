@@ -16,7 +16,7 @@ import HeldDeletesBlock from '@/components/sync/HeldDeletesBlock.vue'
 import Button from '@/components/obsidian/Button.vue'
 import ConfirmModal from '@/components/obsidian/ConfirmModal.vue'
 import TreeItem from '@/components/obsidian/TreeItem.vue'
-import { SyncService } from '@/sync/SyncService'
+import { TokenSettingsPort } from '@/sync/tokenSettingsPort'
 import { DISCONNECTED_STATUS, type SyncStatus } from '@/sync/status'
 import { useVault } from '../helpers/testEnv'
 
@@ -49,7 +49,7 @@ beforeEach(() => {
     decided: ids.length,
     applied: true,
   }))
-  vi.spyOn(SyncService, 'getInstance').mockReturnValue(service as never)
+  vi.spyOn(TokenSettingsPort, 'getInstance').mockReturnValue(service as never)
 })
 
 afterEach(() => {

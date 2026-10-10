@@ -41,6 +41,7 @@ export interface TokenEngineOptions {
   fetch: typeof fetch
   WebSocket?: typeof WebSocket
   paths?: ExecutablePaths
+  ownSettingsPath?: string
   paused?: boolean
   selective?: SelectiveSettings
   fallbackMs?: number
@@ -136,7 +137,9 @@ export class TokenEngineRuntime implements ConnectionRuntime, TokenUiRuntime {
       stillHeld: () => this.active,
       ignore: { ignores: (path) => this.blocked(path) },
       // Host transport durably stages every executable delivery before core receives the page.
-      defer: (path) => executablePath(path, false, options.paths),
+      defer: (path) =>
+        executablePath(path, false, options.paths) ||
+        (configurationPath(path, options.paths) && path !== options.ownSettingsPath),
       ...(options.paths?.scriptsFolder ? { scriptsFolder: options.paths.scriptsFolder } : {}),
       ...(options.fallbackMs ? { fallbackMs: options.fallbackMs } : {}),
       onSync: (report) => options.changed(this.engine.status, report),
@@ -289,6 +292,11 @@ export class TokenEngineRuntime implements ConnectionRuntime, TokenUiRuntime {
     return true
   }
   private async joinItem(item: V2ManifestItem): Promise<void> {
+    if (
+      configurationPath(item.path, this.options.paths) &&
+      item.path !== this.options.ownSettingsPath
+    )
+      return
     if (item.kind === 'directory' || (await this.options.state.get(item.path))) return
     const before = await this.options.fs.stat(item.path)
     if (!before) return
@@ -393,6 +401,9 @@ export class TokenEngineRuntime implements ConnectionRuntime, TokenUiRuntime {
   }
   applyDeferred(ids: readonly string[]) {
     return this.actions.applyDeferred(ids)
+  }
+  keepLocal(paths: string[] | undefined, ids: readonly string[]) {
+    return this.engine.keepLocal(paths, ids)
   }
   async opened(path: string): Promise<{ source: ReviewSource; noteId: string }[]> {
     this.assertHeld()
