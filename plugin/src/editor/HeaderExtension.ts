@@ -20,11 +20,11 @@ export function createHeaderExtension(): Extension {
       private readonly nested: boolean
 
       constructor(view: EditorView) {
+        // Form editors have no file, but still receive updates after construction.
+        this.view = view
         this.nested = isNestedEditor(view.state)
         this.file = this.nested ? null : (view.state.field(editorInfoField)?.file ?? null)
         if (!this.file) return
-
-        this.view = view
 
         const cache = GlobalStore.getInstance().app.metadataCache.getFileCache(this.file)
         this.noteType = cache?.frontmatter?.type

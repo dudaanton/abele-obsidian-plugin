@@ -55,7 +55,13 @@ interface EmbedRegistry {
       context: { app: App; containerEl: HTMLElement; state: Record<string, unknown> },
       file: unknown,
       subpath: string
-    ) => { editable: boolean; showEditor(): void; editMode?: object; unload?(): void }
+    ) => {
+      editable: boolean
+      showEditor(): void
+      editMode?: object
+      load?(): void
+      unload?(): void
+    }
   >
 }
 
@@ -97,18 +103,24 @@ export function getMarkdownEditorClass(app: App): EditorClass | null {
     const makeEmbed = registry?.embedByExtension?.md
     if (typeof makeEmbed !== 'function') return null
     const embed = makeEmbed({ app, containerEl: activeWindow.createDiv(), state: {} }, null, '')
-    embed.editable = true
-    embed.showEditor()
-    const editMode = embed.editMode
-    const proto = editMode ? Object.getPrototypeOf(Object.getPrototypeOf(editMode)) : null
-    embed.unload?.()
-    const ctor = proto?.constructor as EditorClass | undefined
-    // The two things everything below relies on; a class without them is not the editor.
-    if (typeof ctor !== 'function') return null
-    if (typeof proto.buildLocalExtensions !== 'function' || typeof proto.set !== 'function') {
-      return null
+    try {
+      // Component.unload does nothing until load has run. The discovery editor otherwise
+      // leaves native workspace listeners holding its CodeMirror extensions and our bundle.
+      embed.load?.()
+      embed.editable = true
+      embed.showEditor()
+      const editMode = embed.editMode
+      const proto = editMode ? Object.getPrototypeOf(Object.getPrototypeOf(editMode)) : null
+      const ctor = proto?.constructor as EditorClass | undefined
+      // The two things everything below relies on; a class without them is not the editor.
+      if (typeof ctor !== 'function') return null
+      if (typeof proto.buildLocalExtensions !== 'function' || typeof proto.set !== 'function') {
+        return null
+      }
+      cached = ctor
+    } finally {
+      embed.unload?.()
     }
-    cached = ctor
   } catch (error) {
     console.debug('[Abele] Note editor not available for forms:', error)
     cached = null
