@@ -3,6 +3,7 @@ import { Decoration, EditorView, WidgetType, type DecorationSet } from '@codemir
 import {
   MarkdownRenderer,
   MarkdownRenderChild,
+  type Component,
   editorInfoField,
   editorLivePreviewField,
   type Plugin,
@@ -11,6 +12,22 @@ import {
 import { quoteSourceTree, type QuoteSourceRange } from './source'
 import { resolveColumnTarget } from './operations'
 import { setColumnRenderOrigin } from './renderOrigin'
+
+/** A renderer may finish post-processing after CodeMirror has replaced its host. */
+class ColumnRenderChild extends MarkdownRenderChild {
+  gone = false
+  onunload(): void {
+    this.gone = true
+  }
+  addChild<T extends Component>(child: T): T {
+    if (!this.gone) return super.addChild(child)
+    // Renderers allocate maps, galleries and observers before registering their child.
+    // Loading then unloading also disposes resources whose onload has not run yet.
+    child.load()
+    child.unload()
+    return child
+  }
+}
 
 class ColumnWidget extends WidgetType {
   constructor(
@@ -36,7 +53,7 @@ class ColumnWidget extends WidgetType {
     })
     const rendered = host.createDiv({ cls: 'markdown-rendered' })
     setColumnRenderOrigin(rendered, this.text, this.from, this.to)
-    const child = new MarkdownRenderChild(host)
+    const child = new ColumnRenderChild(host)
     child.load()
     lifetimes.set(host, child)
     // The ordinary renderer still supplies links, diagrams, math, embeds and post-processors.
@@ -46,7 +63,15 @@ class ColumnWidget extends WidgetType {
       rendered,
       this.sourcePath,
       child
-    )
+    ).catch((error: unknown) => {
+      if (child.gone) return
+      child.unload()
+      rendered.empty()
+      rendered.createEl('p', {
+        text: 'Could not render columns. Open the source to edit this area.',
+      })
+      console.error('Abele: column rendering failed', error)
+    })
     host.addEventListener(
       'click',
       (event) => {
@@ -84,7 +109,7 @@ class ColumnWidget extends WidgetType {
     lifetimes.delete(host)
   }
 }
-const lifetimes = new WeakMap<HTMLElement, MarkdownRenderChild>()
+const lifetimes = new WeakMap<HTMLElement, ColumnRenderChild>()
 
 export function registerColumnWidgets(plugin: Plugin): void {
   const field = StateField.define<DecorationSet>({

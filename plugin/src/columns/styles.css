@@ -36,6 +36,18 @@
   min-width: 0;
 }
 
+/* Preserve code lines; scroll locally instead of wrapping them to the narrower frame. */
+.abele-column pre,
+.abele-column pre code {
+  white-space: pre;
+  overflow-wrap: normal;
+}
+
+.abele-column pre {
+  max-width: 100%;
+  overflow-x: auto;
+}
+
 .abele-column-table {
   max-width: 100%;
   /* Scroll the table alone: the paragraph and checkbox beside it must not move. */
