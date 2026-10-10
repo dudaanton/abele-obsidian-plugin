@@ -891,7 +891,19 @@ export class NodeRepositorySource implements RepositorySource {
     }
     this.watching = true
     this.stopEvents = this.client.onEvent((event) => {
-      const data = event.data as { project_id?: string; external_read?: boolean } | undefined
+      const data = event.data as
+        | { project_id?: string; external_read?: boolean; refresh_required?: boolean }
+        | undefined
+      if (
+        event.type === 'stream.redacted' &&
+        event.stream_id === 'catalog' &&
+        data?.refresh_required === true
+      ) {
+        // The skipped event may have changed permissions or any mutable repository state.
+        ++this.authorityGeneration
+        this.reconnect()
+        return
+      }
       if (
         event.type === 'project.repository_settings.changed' &&
         data?.project_id === this.identity.project

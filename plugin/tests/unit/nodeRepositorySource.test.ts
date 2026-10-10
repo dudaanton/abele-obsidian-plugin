@@ -14,6 +14,36 @@ const fixture = () => {
   }
 }
 describe('node repository source through the validated client contract', () => {
+  it('refreshes all mutable consumers after a redacted catalogue event replaces a missed invalidation', async () => {
+    const f = nodeRepositoryFixture()
+    const source = new NodeRepositorySource({ ...f.client, onEvent: listener => f.client.onEvent(event => {
+      if (event.type !== 'repository.invalidated') listener(event)
+    }) }, identity, { node: 'Sample', project: 'Sample' })
+    await source.startWatching()
+    const first = await source.resolve(WORKING_TREE), changed = vi.fn()
+    source.subscribe(changed)
+    f.change()
+    expect(await source.resolve(WORKING_TREE)).toBe(first)
+    f.event('stream.redacted', { refresh_required: false })
+    expect(changed).not.toHaveBeenCalled()
+    f.event('stream.redacted', { refresh_required: true })
+    expect(changed).toHaveBeenCalledWith({ kind: 'workspace' })
+    expect(await source.resolve(WORKING_TREE)).not.toBe(first)
+    expect((await source.blob(WORKING_TREE, 'app.ts')).text).toContain('84')
+    source.dispose()
+  })
+  it('fences pending reads across a catalogue redaction that may hide a permission change', async () => {
+    const f = nodeRepositoryFixture()
+    const source = new NodeRepositorySource(f.client, identity, { node: 'Sample', project: 'Sample' })
+    await source.startWatching()
+    let release!: (value: Awaited<ReturnType<typeof f.client.repository.refs>>) => void
+    f.client.repository.refs = vi.fn(() => new Promise(resolve => { release = resolve }))
+    const pending = source.refs()
+    f.event('stream.redacted', { refresh_required: true })
+    release({ entries: [], cursor: null, incomplete: false, omissions: [], default_branch: 'main' })
+    await expect(pending).rejects.toThrow('authorization changed')
+    source.dispose()
+  })
   it('keeps authority subscriptions without a mutable lease in frozen views, then watches and releases live views', async () => {
     const { source, calls } = fixture()
     await source.startWatching(false)
