@@ -64,15 +64,16 @@ export class ChatSelectionBindings {
       app.vault.getAbstractFileByPath(`${targetPath}.md`)
     if (!(target instanceof TFile) || target.extension !== 'md')
       throw new Error(`No card at ${targetPath}. Nothing was linked.`)
-    const existing = this.session
-      .bindingState()
-      .recovery.find(
-        (entry) =>
-          (entry.anchorId ?? entry.operation?.anchorId) === anchorId &&
-          entry.targetPath === target.path &&
-          entry.status !== 'undone' &&
-          sameRevision(entry.snapshot?.source ?? entry.operation!.captured, snapshot.source)
+    const existing = this.session.bindingState().recovery.find((entry) => {
+      const captured = entry.snapshot?.source ?? entry.operation?.captured
+      return (
+        captured &&
+        (entry.anchorId ?? entry.operation?.anchorId) === anchorId &&
+        entry.targetPath === target.path &&
+        entry.status !== 'undone' &&
+        sameRevision(captured, snapshot.source)
       )
+    })
     if (existing) return this.result(existing)
     const entry: SelectionBindingRecovery = {
       id: nanoid(),
@@ -156,6 +157,19 @@ export class ChatSelectionBindings {
         const message = state.messages.find((m) => m.id === snapshot.source.messageId)
         if (!message || message.draft || message.role !== snapshot.source.role)
           throw new Error('The saved source message is unavailable.')
+        const existing = message.decorationOperations?.find((op) => op.id === operationId)
+        if (existing) {
+          entry = {
+            ...entry,
+            operation: existing,
+            status: existing.undoneAt ? 'undone' : 'applied',
+            evidence: undefined,
+          }
+          return {
+            recovery: state.recovery.map((e) => (key(e) === operationId ? entry : e)),
+            result: this.result(entry),
+          }
+        }
         ensureCapturedAnchor(message, snapshot.source.chatId, snapshot, () => entry.anchorId!)
         if (!message.selection?.anchors.some((a) => a.id === entry.anchorId))
           throw new Error('The durable source anchor is unavailable.')

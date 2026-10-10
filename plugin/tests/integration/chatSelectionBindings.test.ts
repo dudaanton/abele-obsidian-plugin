@@ -131,6 +131,25 @@ it('retains a failed publication and retries only binding, without duplicate lin
   expect((await disk()).messages[0].decorationOperations).toHaveLength(1)
 })
 
+it('serializes concurrent binding-only retries by operation identity', async () => {
+  await app.vault.createFolder('Cards')
+  await app.vault.create('Cards/Sample.md', 'Sample')
+  const process = app.vault.process.bind(app.vault)
+  let writes = 0
+  vi.spyOn(app.vault, 'process').mockImplementation(async (file, fn) => {
+    if (++writes === 5) throw Error('Sample prepublication failure')
+    return process(file, fn)
+  })
+  const failed = await bind()
+  const results = await Promise.all([
+    bindings().retry(failed.operationId),
+    bindings().retry(failed.operationId),
+  ])
+  expect(results.map((result) => result.status)).toEqual(['applied', 'applied'])
+  expect((await disk()).messages[0].decorationOperations).toHaveLength(1)
+  expect((await disk()).metadata?.bindingRecovery?.[0].status).toBe('applied')
+})
+
 it('settles lost acknowledgement only by atomically persisted operation evidence', async () => {
   await app.vault.createFolder('Cards')
   await app.vault.create('Cards/Sample.md', 'Sample')
