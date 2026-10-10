@@ -1,19 +1,46 @@
 <template>
-  <div class="setting-item abele-obsidian-setting">
-    <div class="setting-item-info">
-      <div class="setting-item-name">{{ name }}</div>
-      <div v-if="desc" class="setting-item-description">{{ desc }}</div>
+  <div
+    class="setting-item abele-obsidian-setting"
+    :class="{
+      'setting-item-heading': heading,
+      'is-invalid': !!error,
+      'abele-obsidian-setting_heading': heading,
+      'abele-obsidian-setting_invalid': !!error,
+    }"
+  >
+    <div class="setting-item-info abele-obsidian-setting__info">
+      <div class="setting-item-name abele-obsidian-setting__name">
+        <slot name="name">{{ name }}</slot>
+      </div>
+      <div
+        v-if="desc || $slots.desc"
+        class="setting-item-description abele-obsidian-setting__description"
+      >
+        <slot name="desc">{{ desc }}</slot>
+      </div>
     </div>
-    <div class="setting-item-control">
+    <div
+      v-if="!heading || $slots.default"
+      class="setting-item-control abele-obsidian-setting__control"
+    >
       <slot />
+      <div v-if="error" class="setting-item-error abele-obsidian-setting__error" role="alert">
+        {{ error }}
+      </div>
     </div>
   </div>
 </template>
 
 <script setup lang="ts">
+// Obsidian's settings row: what Nuxt UI calls a FormField. Its name and description label the
+// control beside them; the error is Obsidian's own, under the control.
 defineProps<{
   name: string
   desc?: string
+  /** What is wrong with the value, under the control, in Obsidian's warning colour. */
+  error?: string
+  /** A section heading among the rows, as Obsidian's settings have between groups. */
+  heading?: boolean
 }>()
 </script>
 
