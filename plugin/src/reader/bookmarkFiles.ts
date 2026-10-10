@@ -24,11 +24,32 @@ export function bookmarksPathOf(settings: ReaderSettings): string {
   return slash < 0 ? BOOKMARKS_FILE : `${places.slice(0, slash)}/${BOOKMARKS_FILE}`
 }
 
+const writeQueues = new WeakMap<object, Map<string, Promise<void>>>()
+
 /** The bookmarks kept at `path` in the vault, with this device's backup in `dir`. */
-export function bookmarkFiles(adapter: PlacesAdapter, dir: string, path: string): BookmarkStorage {
+export function bookmarkFiles(
+  adapter: PlacesAdapter,
+  dir: string,
+  path: string,
+  serializationKey: object = adapter
+): BookmarkStorage {
   const backup = `${dir}/book-bookmarks.backup.json`
   const readIf = async (file: string) => ((await adapter.exists(file)) ? adapter.read(file) : null)
   return {
+    withWriteLock: (write) => {
+      let queues = writeQueues.get(serializationKey)
+      if (!queues) writeQueues.set(serializationKey, (queues = new Map()))
+      const work = (queues.get(path) ?? Promise.resolve()).then(write)
+      const tail = work.then(
+        () => {},
+        () => {}
+      )
+      queues.set(path, tail)
+      void tail.then(() => {
+        if (queues.get(path) === tail) queues.delete(path)
+      })
+      return work
+    },
     read: (copy) => readIf(copy === 'backup' ? backup : path),
     write: async (data, copy) => {
       if (copy === 'backup') return adapter.write(backup, data)
@@ -40,13 +61,15 @@ export function bookmarkFiles(adapter: PlacesAdapter, dir: string, path: string)
 }
 
 let bookmarks: BookBookmarks | null = null
+let serializationKey: object = {}
 
 export function initBookBookmarks(plugin: Plugin): BookBookmarks {
   const { vault } = plugin.app
   const dir = plugin.manifest.dir ?? `${vault.configDir}/plugins/abele`
   const pathNow = () => normalizePath(bookmarksPathOf(currentReaderSettings()))
   let path = pathNow()
-  const store = new BookBookmarks(bookmarkFiles(vault.adapter, dir, path))
+  const key = (serializationKey = {})
+  const store = new BookBookmarks(bookmarkFiles(vault.adapter, dir, path, key))
   bookmarks = store
 
   const heard = (file: unknown) => {
@@ -59,7 +82,7 @@ export function initBookBookmarks(plugin: Plugin): BookBookmarks {
     const next = pathNow()
     if (next === path) return
     const old = path
-    if (!(await store.moveTo(bookmarkFiles(vault.adapter, dir, next)))) {
+    if (!(await store.moveTo(bookmarkFiles(vault.adapter, dir, next, key)))) {
       new Notice(`Bookmarks stay in ${old}: ${next} holds something else.`)
       return
     }
@@ -85,12 +108,10 @@ export const bookBookmarks = (): BookBookmarks | null => bookmarks
 /** Flush pending reader edits first; the agent's writer owns only its subsequent persistence. */
 export async function bookBookmarkWriter(app: App): Promise<BookBookmarks | null> {
   if (!bookmarks) return null
+  const key = serializationKey
+  const path = normalizePath(bookmarksPathOf(currentReaderSettings()))
   await bookmarks.flush()
   return new BookBookmarks(
-    bookmarkFiles(
-      app.vault.adapter,
-      `${app.vault.configDir}/plugins/abele`,
-      normalizePath(bookmarksPathOf(currentReaderSettings()))
-    )
+    bookmarkFiles(app.vault.adapter, `${app.vault.configDir}/plugins/abele`, path, key)
   )
 }

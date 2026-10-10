@@ -1847,7 +1847,8 @@ was made and last changed, in milliseconds. A removed one stays as `deleted: tru
 another device's copy does not bring it back. Every device keeps the latest `at` for each bookmark;
 `book-bookmarks.backup.json` in the plugin's folder is this device's copy. The agent sees them
 through `book_views` and `book_highlights` and adds or removes one with `book_bookmark`, never by
-writing the file.
+writing the file. Writers on this device share a per-file queue for the whole read–merge–backup–write
+transaction, including separate agent invocations; each retains its own rewind attribution.
 
 `.epub` and `.pdf` files can be linked at a place, like notes at lines. The place goes where a
 heading would: `[[Books/Dune.epub#cfi=/6/8!/4/2,/1:0,/1:22|Chapter 3]]` (an EPUB CFI without its

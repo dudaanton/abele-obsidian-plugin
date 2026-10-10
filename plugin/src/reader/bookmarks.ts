@@ -33,6 +33,8 @@ export interface Bookmark {
 
 /** Where the bookmarks are kept: the file, and a backup of it on this device. */
 export interface BookmarkStorage {
+  /** Shared by every writer of this file, covering read, merge, backup and main write. */
+  withWriteLock?(write: () => Promise<void>): Promise<void>
   read(copy: 'main' | 'backup'): Promise<string | null>
   write(data: string, copy: 'main' | 'backup'): Promise<void>
 }
@@ -287,20 +289,21 @@ export class BookBookmarks {
     if (!this.dirty) return this.pending
     this.dirty = false
     const storage = this.storage
+    const commit = async () => {
+      // What another device wrote since this one last read the file is kept.
+      this.tell(mergeBookmarks(this.books, await this.read('main', storage)))
+      const forget = Date.now() - FORGET_REMOVED_MS
+      for (const [key, marks] of Object.entries(this.books)) {
+        for (const [id, mark] of Object.entries(marks))
+          if (mark.deleted && mark.at < forget) delete marks[id]
+        if (!Object.keys(marks).length) delete this.books[key]
+      }
+      const data = JSON.stringify(this.books)
+      await storage.write(data, 'backup')
+      await storage.write(data, 'main')
+    }
     this.pending = this.pending
-      .then(async () => {
-        // What another device wrote since this one last read the file is kept.
-        this.tell(mergeBookmarks(this.books, await this.read('main', storage)))
-        const forget = Date.now() - FORGET_REMOVED_MS
-        for (const [key, marks] of Object.entries(this.books)) {
-          for (const [id, mark] of Object.entries(marks))
-            if (mark.deleted && mark.at < forget) delete marks[id]
-          if (!Object.keys(marks).length) delete this.books[key]
-        }
-        const data = JSON.stringify(this.books)
-        await storage.write(data, 'backup')
-        await storage.write(data, 'main')
-      })
+      .then(() => (storage.withWriteLock ? storage.withWriteLock(commit) : commit()))
       .catch((e) => {
         this.dirty = true
         console.warn('[Abele] bookmarks could not be saved', e)
