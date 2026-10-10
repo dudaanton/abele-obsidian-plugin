@@ -1,6 +1,24 @@
 import { describe, expect, it, vi } from 'vitest'
 import { fetchViaCapacitorHttp, exactNativeRequestBodies } from '@/sync/mobileTransport'
 import { connectionError } from '@/sync/tokenUi'
+it('rejects an oversized native range before decoding or allocating its whole body', async () => {
+  const decode = vi.spyOn(window, 'atob')
+  const url = 'https://sync.example/v2/files/id/content'
+  const request = vi.fn(async () => ({
+    url,
+    status: 206,
+    headers: { 'content-range': 'bytes 0-2097151/2097152' },
+    data: 'A'.repeat(4 * Math.ceil((2 * 1024 * 1024) / 3)),
+  }))
+  try {
+    await expect(
+      fetchViaCapacitorHttp({ request })(url, { headers: { Range: 'bytes=0-1048575' } })
+    ).rejects.toThrow('Native binary response exceeds requested range')
+    expect(decode).not.toHaveBeenCalled()
+  } finally {
+    decode.mockRestore()
+  }
+})
 it('bounds a stalled 8 MiB range at its size-aware deadline', async () => {
   vi.useFakeTimers()
   const request = vi.fn(() => new Promise<never>(() => {}))

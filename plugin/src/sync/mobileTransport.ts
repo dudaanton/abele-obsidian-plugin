@@ -48,7 +48,7 @@ export class NativeSyncFailure extends EngineError {
     // local incompatibilities and redirect refusals are deterministic stopping errors.
     const permanent =
       (phase === 'encoding' && error instanceof SyntaxError) ||
-      /^(?:Unsupported (?:native sync request body|native sync response bytes|native sync response status|bytes)|sync transport refuses redirects before following|Native sync transport unexpectedly followed a redirect)$/i.test(
+      /^(?:Unsupported (?:native sync request body|native sync response bytes|native sync response status|bytes)|sync transport refuses redirects before following|Native sync transport unexpectedly followed a redirect|Native binary response exceeds requested range)$/i.test(
         typeof native?.message === 'string' ? native.message : ''
       )
     const label =
@@ -243,6 +243,16 @@ function capacitorFetch(native: NativeHttp): typeof fetch {
       if (answer.status < 200 || answer.status > 599)
         throw new Error('Unsupported native sync response status')
       const bodiless = method === 'HEAD' || [204, 205, 304].includes(answer.status)
+      if (!bodiless && expectedBytes && answer.status >= 200 && answer.status < 300) {
+        const data = answer.data
+        const padding =
+          typeof data === 'string' ? (data.endsWith('==') ? 2 : data.endsWith('=') ? 1 : 0) : 0
+        const decodedBytes = typeof data === 'string' ? (data.length / 4) * 3 - padding : 0
+        if (decodedBytes > expectedBytes) {
+          answer.data = null
+          throw new Error('Native binary response exceeds requested range')
+        }
+      }
       const bytes = bodiless ? null : responseBytes(answer.data)
       answer.data = null
       const responseInit = { status: answer.status, headers: answer.headers }
