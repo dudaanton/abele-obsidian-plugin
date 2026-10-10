@@ -17,7 +17,7 @@ describe('kit catalogue live design contract', () => {
       const readyExplorer = async leaf => {
         await leaf.loadIfDeferred()
         const deadline = Date.now() + 10000
-        while (!leaf.view.fileItems || !leaf.view.navFileContainerEl || !leaf.view.fileItems['/']) {
+        while (!leaf.view.fileItems || !leaf.view.navFileContainerEl || !Object.keys(leaf.view.fileItems).length) {
           if (Date.now() > deadline) throw new Error('Native file explorer did not initialize')
           await new Promise(resolve => setTimeout(resolve, 100))
         }
@@ -63,7 +63,7 @@ describe('kit catalogue live design contract', () => {
         if (!leaf) throw new Error('Original file explorer was not restored')
         await leaf.loadIfDeferred()
         const deadline = Date.now() + 10000
-        while (!leaf.view.fileItems || !leaf.view.navFileContainerEl || !leaf.view.fileItems['/']) {
+        while (!leaf.view.fileItems || !leaf.view.navFileContainerEl || !Object.keys(leaf.view.fileItems).length) {
           if (Date.now() > deadline) throw new Error('Restored file explorer did not initialize')
           await new Promise(resolve => setTimeout(resolve, 100))
         }
