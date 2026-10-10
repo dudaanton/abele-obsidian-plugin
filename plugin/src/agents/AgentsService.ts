@@ -491,9 +491,10 @@ export class AgentsService {
   }
   refresh(force = true): Promise<void> {
     if (this.refreshing !== undefined) return this.refreshing
-    const scan = this.drainingTask
-      ? this.drainingTask.then(() => this.scan(force))
-      : this.scan(force)
+    const scan =
+      this.drainingTask !== undefined
+        ? this.drainingTask.then(() => this.scan(force))
+        : this.scan(force)
     this.refreshing = scan.finally(() => {
       this.refreshing = undefined
     })
