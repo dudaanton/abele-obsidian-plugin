@@ -136,6 +136,7 @@ const stateIcon = {
   display: flex;
   align-items: flex-start;
   gap: var(--size-4-2);
+  padding-inline-start: var(--size-4-2);
 }
 .abele-list-row .abele-list-row__content {
   display: grid;

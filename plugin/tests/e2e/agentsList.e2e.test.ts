@@ -56,7 +56,7 @@ describe('real agents list on synthetic states', () => {
         await document.fonts.ready
         const root = document.querySelector('.abele-agents')
         if (!root) throw new Error('Agents list did not mount')
-        const snapshot = ${designCaptureExpression('.modal.abele-modal', { nativeSelector: '.backlink-pane .search-result-file-title' })}
+        const snapshot = ${designCaptureExpression('.modal.abele-modal', { nativeSelector: '.backlink-pane > .tree-item-self, .backlink-pane .search-result-file-title' })}
         const overflowing = [...root.querySelectorAll('*')].filter(el => {
           const r = el.getBoundingClientRect()
           return r.width && (r.left < 0 || r.right > innerWidth + 1)
@@ -64,15 +64,27 @@ describe('real agents list on synthetic states', () => {
         const closes = document.querySelectorAll('.modal .modal-header-button, .modal .modal-close-button').length
         const searchFocused = root.querySelector('input') === document.activeElement
         const rows = root.querySelectorAll('.abele-list-row').length
-        if (window.__e2eHost) await window.__e2eHost.shot(${JSON.stringify(path)})
-        else {
-          const win = require('@electron/remote').getCurrentWindow()
-          require('fs').writeFileSync(${JSON.stringify(path)}, (await win.webContents.capturePage()).toPNG())
+        const shot = async path => {
+          if (window.__e2eHost) await window.__e2eHost.shot(path)
+          else {
+            const win = require('@electron/remote').getCurrentWindow()
+            require('fs').writeFileSync(path, (await win.webContents.capturePage()).toPNG())
+          }
         }
-        return JSON.stringify({ snapshot, overflowing, closes, searchFocused, rows })
+        await shot(${JSON.stringify(path)})
+        let bottomSnapshot = null
+        if (${JSON.stringify(state)} === 'mixed') {
+          const body = root.closest('.abele-modal__body')
+          body.scrollTop = body.scrollHeight
+          await new Promise(r => setTimeout(r, 150))
+          bottomSnapshot = ${designCaptureExpression('.modal.abele-modal', { nativeSelector: '.backlink-pane > .tree-item-self, .backlink-pane .search-result-file-title' })}
+          await shot(${JSON.stringify(path.replace('.png', '-bottom.png'))})
+        }
+        return JSON.stringify({ snapshot, bottomSnapshot, overflowing, closes, searchFocused, rows })
       })()`)
       const result = JSON.parse(raw) as {
         snapshot: DesignSnapshot
+        bottomSnapshot: DesignSnapshot | null
         overflowing: string[]
         closes: number
         searchFocused: boolean
@@ -90,6 +102,14 @@ describe('real agents list on synthetic states', () => {
         JSON.stringify({ snapshot: result.snapshot, violations }, null, 2)
       )
       expect(violations).toEqual([])
+      if (result.bottomSnapshot) {
+        const bottomViolations = lintDesign(result.bottomSnapshot, { requireNative: true })
+        writeFileSync(
+          join(directory, `${state}-${onPhone() ? 'phone' : 'desktop'}-bottom-lint.json`),
+          JSON.stringify({ snapshot: result.bottomSnapshot, violations: bottomViolations }, null, 2)
+        )
+        expect(bottomViolations).toEqual([])
+      }
     })
   }
   it('Reply opens the existing live question and focuses its composer without answering', async () => {

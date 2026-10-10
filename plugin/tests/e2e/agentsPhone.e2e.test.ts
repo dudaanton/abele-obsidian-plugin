@@ -12,27 +12,37 @@ describe.skipIf(!available)('agents dialog on a narrow screen', () => {
       await evalLong(
         `(async () => {
       const wait = ms => new Promise(r => setTimeout(r, ms))
-      window.__abeleTest.openDialog('agents')
+      window.__abeleTest.openDialog('agents', { agentsState: 'many' })
       try {
         for (let i = 0; i < 50 && !document.querySelector('.abele-agents'); i++) await wait(100)
         await wait(300)
         const root = document.querySelector('.abele-agents')
         if (!root) throw new Error('Agents dialog did not open')
         const box = root.getBoundingClientRect()
+        let owner = root.__vueParentComponent
+        while (owner && !owner.props.source) owner = owner.parent
+        if (!owner) throw new Error('Synthetic agents source is unavailable')
+        // Exercise the same retained-request dismissal case as the original fixture.
+        owner.props.source.rows.value[0].reasons = owner.props.source.rows.value[0].reasons.map(r => ({ ...r, uncertain: true }))
+        await wait(100)
+        const details = [...root.querySelectorAll('.abele-agents__details-toggle')]
+        const collapsedDetails = details.length === 4 && details.every(e => e.getAttribute('aria-expanded') === 'false')
+        for (const detail of details) detail.click()
+        await wait(100)
         const buttons = [...root.querySelectorAll('button')]
         if (window.__e2eHost) await window.__e2eHost.shot(${JSON.stringify(`${SHOTS}/agents-real.png`)})
         return {
           searchFocused: document.activeElement === root.querySelector('input'),
-          sections: [...root.querySelectorAll('h3')].map(e => e.textContent),
-          rows: root.querySelectorAll('.abele-agents__open').length,
+          sections: [...root.querySelectorAll('.abele-fold-heading__text')].map(e => e.textContent),
+          rows: root.querySelectorAll('.abele-list-row').length,
           overflow: buttons.some(e => { const r = e.getBoundingClientRect(); return r.left < box.left - 1 || r.right > box.right + 1 }),
-          seen: buttons.some(e => e.textContent === 'Просмотрено'),
-          dismissals: buttons.filter(e => e.textContent === 'Убрать').length,
-          approvals: buttons.some(e => /approve|allow|разрешить/i.test(e.textContent)),
+          seen: buttons.some(e => e.textContent === 'Mark as seen'),
+          dismissals: buttons.filter(e => e.textContent === 'Dismiss').length,
+          approvals: buttons.some(e => /approve|allow/i.test(e.textContent)),
           namedIcons: buttons.every(e => e.classList.contains('clickable-icon') && e.getAttribute('aria-label') && e.querySelector('svg')),
           touchTargets: !app.isMobile || buttons.every(e => { const r = e.getBoundingClientRect(); return r.width >= 44 && r.height >= 44 }),
-          keyboardRows: [...root.querySelectorAll('.abele-agents__open')].every(e => e.getAttribute('role') === 'button' && e.getAttribute('tabindex') === '0'),
-          collapsedDetails: [...root.querySelectorAll('details')].every(e => !e.open),
+          keyboardRows: [...root.querySelectorAll('.abele-list-row__main')].every(e => e.tagName === 'BUTTON' && e.getAttribute('type') === 'button' && e.tabIndex === 0),
+          collapsedDetails,
         }
       } finally {
         document.body.dispatchEvent(new KeyboardEvent('keydown', { key: 'Escape', code: 'Escape', keyCode: 27, bubbles: true }))
@@ -54,7 +64,7 @@ describe.skipIf(!available)('agents dialog on a narrow screen', () => {
       collapsedDetails: boolean
     }
     expect(result.searchFocused).toBe(false)
-    expect(result.sections).toEqual(['Нужно твоё действие', 'Работают', 'Связь и доставка'])
+    expect(result.sections).toEqual(['Needs your attention', 'Working', 'Connection and delivery'])
     expect(result.rows).toBe(4)
     expect(result.overflow).toBe(false)
     expect(result.seen).toBe(true)
@@ -70,18 +80,15 @@ describe.skipIf(!available)('agents dialog on a narrow screen', () => {
       await evalLong(
         `(async () => {
       const wait = ms => new Promise(r => setTimeout(r, ms))
-      window.__abeleTest.openDialog('agents')
+      window.__abeleTest.openDialog('agents', { agentsState: 'empty' })
       try {
         for (let i = 0; i < 50 && !document.querySelector('.abele-agents'); i++) await wait(100)
         const root = document.querySelector('.abele-agents')
         if (!root) throw new Error('Agents dialog did not open')
-        const source = root.__vueParentComponent.parent.props.source
-        source.rows.value = []
-        source.incomplete.value = false
         await wait(300)
         const modal = root.closest('.modal')
         const box = modal.getBoundingClientRect()
-        return { height: box.height, viewport: innerHeight, emptySections: root.querySelectorAll('.abele-agents__empty').length, clipped: root.scrollWidth > root.clientWidth }
+        return { height: box.height, viewport: innerHeight, emptySections: root.querySelectorAll('section > .abele-empty-state').length, clipped: root.scrollWidth > root.clientWidth }
       } finally {
         document.body.dispatchEvent(new KeyboardEvent('keydown', { key: 'Escape', code: 'Escape', keyCode: 27, bubbles: true }))
       }
