@@ -258,7 +258,7 @@ export default [
     rules: { 'obsidianmd/prefer-create-el': 'off' },
   },
   {
-    files: ['plugin/src/scripting/ScriptService.ts'],
+    files: ['plugin/src/scripting/scriptCompiler.ts'],
     rules: {
       'obsidianmd/rule-custom-message': 'warn',
       '@typescript-eslint/no-implied-eval': 'warn',

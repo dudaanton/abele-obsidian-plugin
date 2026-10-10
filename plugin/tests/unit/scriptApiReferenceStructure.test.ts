@@ -5,8 +5,8 @@ import { SCRIPT_API_DOCS } from '@/scripting/apiDocs'
 
 function runtimeNames(name: string): string[] {
   const source = ts.createSourceFile(
-    'ScriptService.ts',
-    readFileSync('src/scripting/ScriptService.ts', 'utf8'),
+    'scriptCompiler.ts',
+    readFileSync('src/scripting/scriptCompiler.ts', 'utf8'),
     ts.ScriptTarget.Latest,
     true
   )

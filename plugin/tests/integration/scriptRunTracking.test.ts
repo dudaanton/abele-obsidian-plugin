@@ -55,6 +55,33 @@ beforeEach(async () => {
 
 const runs = () => ScriptRuns.getInstance().runs.value
 
+describe('the scripts status bar', () => {
+  it('counts concurrent runs in one clickable row and removes it after the last Stop', async () => {
+    const first = service.execute('Scripts/slow.js', {}, { source: 'command' })
+    const firstEnded = Promise.allSettled([first])
+    await vi.waitFor(() => expect(ScriptRuns.getInstance().running()).toHaveLength(1))
+    const firstId = ScriptRuns.getInstance().running()[0].id
+    const addStatus = vi.mocked(AbeleConfig.getInstance().plugin.addStatusBarItem)
+    const row = addStatus.mock.results[0].value as HTMLElement
+    expect(row.textContent).toBe('▶ Slow')
+    expect(row.classList.contains('mod-clickable')).toBe(true)
+    expect(row.getAttribute('aria-label')).toBe('Show script runs')
+
+    const second = service.execute('Scripts/slow.js', {}, { source: 'command' })
+    const secondEnded = Promise.allSettled([second])
+    await vi.waitFor(() => expect(ScriptRuns.getInstance().running()).toHaveLength(2))
+    expect(addStatus).toHaveBeenCalledOnce()
+    expect(row.textContent).toBe('▶ 2 scripts')
+    ScriptRuns.getInstance().stop(firstId)
+    await firstEnded
+    expect(row.textContent).toBe('▶ Slow')
+    expect(row.isConnected).toBe(true)
+    ScriptRuns.getInstance().stopAll()
+    await secondEnded
+    expect(row.isConnected).toBe(false)
+  })
+})
+
 describe('a script that ran', () => {
   it('is on the list, with what it was given and what it returned', async () => {
     await service.execute('Scripts/tag.js', { tag: 'todo' }, { source: 'command' })
