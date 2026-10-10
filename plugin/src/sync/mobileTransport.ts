@@ -156,8 +156,10 @@ export function fetchViaCapacitorHttp(native: NativeHttp): typeof fetch {
         readTimeout: 30000,
       }
       const body = init?.body
+      let requestBytes = 0
       if (body !== undefined && body !== null) {
         if (typeof body === 'string') {
+          requestBytes = new TextEncoder().encode(body).byteLength
           headers['Content-Type'] ??= 'text/plain'
           options.data = contentType?.toLowerCase().includes('application/json')
             ? JSON.parse(body)
@@ -167,20 +169,27 @@ export function fetchViaCapacitorHttp(native: NativeHttp): typeof fetch {
             body instanceof ArrayBuffer
               ? new Uint8Array(body)
               : new Uint8Array(body.buffer, body.byteOffset, body.byteLength)
+          requestBytes = bytes.byteLength
           options.data = base64(bytes)
           options.dataType = 'file'
           headers['Content-Type'] ??= 'application/octet-stream'
         } else throw new Error('Unsupported native sync request body')
       }
       phase = 'sending'
-      let timer: ReturnType<typeof setTimeout> | undefined
+      const range = /^bytes=(\d+)-(\d+)$/.exec(incoming.get('range') ?? '')
+      const expectedBytes = range ? Math.max(0, Number(range[2]) - Number(range[1]) + 1) : 0
+      // The native bridge exposes no byte-progress callbacks. Native inactivity
+      // timeouts remain 30s; this last-resort overall bound allows 32 KiB/s.
+      const deadlineMs = 30000 + Math.ceil((requestBytes + expectedBytes) / (32 * 1024)) * 1000
+      let timer: number | undefined
       const aborted = () => rejectRequest?.(abortError())
       let rejectRequest: ((error: unknown) => void) | undefined
       const answer = await new Promise<NativeHttpResponse>((resolve, reject) => {
         rejectRequest = reject
         timer = window.setTimeout(
-          () => reject(new Error('Native request did not answer within 30 seconds')),
-          30000
+          () =>
+            reject(new Error(`Native request did not answer within ${deadlineMs / 1000} seconds`)),
+          deadlineMs
         )
         signal?.addEventListener('abort', aborted, { once: true })
         Promise.resolve()

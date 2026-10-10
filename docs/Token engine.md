@@ -1,5 +1,15 @@
 # Token engine integration
 
+Native transport keeps 30-second inactivity timeouts and a fallback overall bound of
+30 seconds plus (request bytes + requested Range bytes) / 32 KiB/s, rounded up to seconds.
+The default simple upload, server upload part and ranged download chunk are each 8 MiB
+(286 seconds); server-advertised larger parts scale with their actual body size.
+Capacitor source is not installed here. Upstream 7.4.3 selects connectTimeout before
+readTimeout in [HttpRequestHandler.swift](https://github.com/ionic-team/capacitor/blob/7.4.3/ios/Capacitor/Capacitor/Plugins/HttpRequestHandler.swift#L203)
+and sets URLRequest.timeoutInterval in [CapacitorUrlRequest.swift](https://github.com/ionic-team/capacitor/blob/7.4.3/ios/Capacitor/Capacitor/Plugins/CapacitorUrlRequest.swift).
+The native bridge exposes no byte-progress callback; the JS bound is a conservative
+throughput allowance, not a direct progress measurement. Close still aborts host waiting.
+
 The production plugin pins core and protocol to server commit
 `cb60097fa66228a6bd183cb33cb3d0903b409123`. The vendor script generated
 the archives and provenance; package.json, package-lock.json and SERVER_TEST_COMMIT

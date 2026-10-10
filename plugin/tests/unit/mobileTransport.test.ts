@@ -1,6 +1,45 @@
 import { describe, expect, it, vi } from 'vitest'
 import { fetchViaCapacitorHttp, exactNativeRequestBodies } from '@/sync/mobileTransport'
 import { connectionError } from '@/sync/tokenUi'
+it('bounds a stalled 8 MiB range at its size-aware deadline', async () => {
+  vi.useFakeTimers()
+  const request = vi.fn(() => new Promise<never>(() => {}))
+  try {
+    const attempt = fetchViaCapacitorHttp({ request })(
+      'https://sync.example/v2/files/sample/content',
+      { headers: { Range: 'bytes=0-8388607' } }
+    )
+    const rejected = expect(attempt).rejects.toMatchObject({
+      code: 'offline',
+      message: expect.stringContaining('286 seconds'),
+    })
+    await vi.advanceTimersByTimeAsync(286000)
+    await rejected
+    expect(vi.getTimerCount()).toBe(0)
+  } finally {
+    vi.useRealTimers()
+  }
+})
+it.each(['upload', 'range'])('allows a slow 8 MiB %s beyond 30 seconds', async (kind) => {
+  vi.useFakeTimers()
+  const url = 'https://sync.example/v2/files/sample/content'
+  const bytes = new Uint8Array(8 * 1024 * 1024)
+  const request = vi.fn(async () => {
+    await new Promise((resolve) => setTimeout(resolve, 60000))
+    return { status: 204, headers: {}, data: '', url }
+  })
+  try {
+    const attempt = fetchViaCapacitorHttp({ request })(
+      url,
+      kind === 'upload' ? { method: 'PUT', body: bytes } : { headers: { Range: 'bytes=0-8388607' } }
+    )
+    const completed = expect(attempt).resolves.toMatchObject({ status: 204 })
+    await vi.advanceTimersByTimeAsync(60000)
+    await completed
+  } finally {
+    vi.useRealTimers()
+  }
+})
 it('bounds a native request that never answers and ignores its late response', async () => {
   vi.useFakeTimers()
   let answer!: (response: import('@/sync/mobileTransport').NativeHttpResponse) => void
