@@ -124,6 +124,7 @@ export function drawingEmbedsInEditor(app: App, sourcePath: (view: EditorView) =
   return (view: EditorView) => {
     const shown = new Map<HTMLElement, DrawingEmbed>()
     let frame = 0
+    let path = sourcePath(view)
     const scan = () => {
       frame = 0
       for (const [el, embed] of shown)
@@ -131,7 +132,7 @@ export function drawingEmbedsInEditor(app: App, sourcePath: (view: EditorView) =
           embed.unload()
           shown.delete(el)
         }
-      const path = sourcePath(view)
+      path = sourcePath(view)
       for (const el of Array.from(
         view.contentDOM.querySelectorAll<HTMLElement>('.internal-embed[src]')
       )) {
@@ -152,11 +153,33 @@ export function drawingEmbedsInEditor(app: App, sourcePath: (view: EditorView) =
     const schedule = () => {
       if (!frame) frame = view.dom.win.requestAnimationFrame(scan)
     }
-    const observer = new MutationObserver(schedule)
-    observer.observe(view.contentDOM, { childList: true, subtree: true })
+    const selector = '.internal-embed[src]'
+    const hasEmbed = (node: Node) =>
+      node.nodeType === 1 &&
+      ((node as Element).matches(selector) || !!(node as Element).querySelector(selector))
+    const observer = new MutationObserver((records) => {
+      // Typing changes text and line wrappers, not pictures. Only search again when embeds
+      // enter/leave the rendered DOM or Obsidian changes an embed's link or dimensions.
+      if (
+        records.some((record) =>
+          record.type === 'attributes'
+            ? (record.target as Element).matches('.internal-embed')
+            : [...Array.from(record.addedNodes), ...Array.from(record.removedNodes)].some(hasEmbed)
+        )
+      )
+        schedule()
+    })
+    observer.observe(view.contentDOM, {
+      childList: true,
+      subtree: true,
+      attributes: true,
+      attributeFilter: ['src', 'width', 'height', 'alt'],
+    })
     schedule()
     return {
-      update: schedule,
+      update: () => {
+        if (sourcePath(view) !== path) schedule()
+      },
       destroy: () => {
         observer.disconnect()
         if (frame) view.dom.win.cancelAnimationFrame(frame)

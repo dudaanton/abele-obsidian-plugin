@@ -22,6 +22,8 @@
  */
 import { MarkdownView, Notice, WorkspaceLeaf, type Plugin, type TFile } from 'obsidian'
 import { AbeleConfig } from '@/services/AbeleConfig'
+import { watch } from 'vue'
+import { settingsSlice } from '@/composables/settingsSlice'
 import { NotePlaceKeeper, type PlaceIo, type ViewPlace } from './keeper'
 import type { NotePlace } from './store'
 import { isExplicitTarget } from './target'
@@ -226,6 +228,7 @@ export function registerNotePlaces(plugin: Plugin): void {
   const unhook = hookViews(k)
 
   const sampleAll = () => {
+    if (!AbeleConfig.getInstance().rememberNotePlaces) return
     app.workspace.iterateAllLeaves((leaf) => {
       if (leaf.view instanceof MarkdownView) k.sample(leaf.view)
     })
@@ -235,7 +238,18 @@ export function registerNotePlaces(plugin: Plugin): void {
     k.flush()
   }
 
-  plugin.registerInterval(window.setInterval(sampleAll, SAMPLE_MS))
+  let timer = 0
+  const followSampling = () => {
+    window.clearInterval(timer)
+    timer = 0
+    if (AbeleConfig.getInstance().rememberNotePlaces && document.visibilityState !== 'hidden')
+      timer = window.setInterval(sampleAll, SAMPLE_MS)
+  }
+  const stopSettings = watch(
+    settingsSlice((config) => config.rememberNotePlaces),
+    followSampling
+  )
+  followSampling()
   plugin.registerEvent(app.vault.on('rename', (file, oldPath) => k.renamed(oldPath, file.path)))
   plugin.registerEvent(
     app.vault.on('delete', (file) => {
@@ -249,8 +263,11 @@ export function registerNotePlaces(plugin: Plugin): void {
   // A phone app sent to the background may never come back to say it quit.
   plugin.registerDomEvent(document, 'visibilitychange', () => {
     if (document.visibilityState === 'hidden') saveNow()
+    followSampling()
   })
   plugin.register(() => {
+    stopSettings()
+    window.clearInterval(timer)
     saveNow()
     k.stop()
     unhook()

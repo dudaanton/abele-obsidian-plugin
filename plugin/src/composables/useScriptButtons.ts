@@ -1,6 +1,7 @@
 import { computed, onScopeDispose, ref, unref, type ComputedRef, type Ref } from 'vue'
 import type { EventRef, TFile } from 'obsidian'
-import { AbeleConfig, type HeaderButtonDefinition } from '@/services/AbeleConfig'
+import type { HeaderButtonDefinition } from '@/services/AbeleConfig'
+import { settingsSlice } from './settingsSlice'
 import { buttonParams, noteTags, noteVariables, scriptButtonsFor } from '@/helpers/headerButtons'
 import { getFrontmatterFromCache } from '@/helpers/notesUtils'
 import { runScriptByName } from '@/scripting/runScript'
@@ -31,13 +32,12 @@ export function useScriptButtons(
     onScopeDispose(() => metadataCache.offref(changed))
   }
 
+  const buttons = settingsSlice((config) => config.headerButtons)
   const scriptButtons = computed(() => {
-    const config = AbeleConfig.getInstance()
-    void config.version.value
     void frontmatterRevision.value
     const path = unref(filePath)
     // Command buttons are drawn among Obsidian's own icons at the top right instead.
-    return scriptButtonsFor(config.headerButtons, {
+    return scriptButtonsFor(buttons.value, {
       type: unref(noteType),
       path,
       frontmatter: getFrontmatterFromCache(path),

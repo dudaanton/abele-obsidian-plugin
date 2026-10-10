@@ -20,7 +20,7 @@ import {
 } from '@codemirror/view'
 import { editorInfoField } from 'obsidian'
 import { watch } from 'vue'
-import { AbeleConfig } from '@/services/AbeleConfig'
+import { settingsSlice } from '@/composables/settingsSlice'
 import { formsPlaces, type EntryFrame, type FormsPlace } from '../highlights'
 import { entryFrame, parseNoteTemplate } from '../noteTemplate'
 import { currentReaderSettings } from '../currentSettings'
@@ -248,7 +248,7 @@ export function registerFormsLinks(plugin: Plugin): void {
   plugin.registerEditorExtension(editorLinks(app))
   const reload = (): void => void loadFrames(app)
   app.workspace.onLayoutReady(reload)
-  plugin.register(watch(AbeleConfig.getInstance().version, reload))
+  plugin.register(watch(settingsSlice(templatePaths), reload))
   plugin.registerEvent(
     app.vault.on('modify', (file) => {
       if (framePaths.includes(file.path)) reload()

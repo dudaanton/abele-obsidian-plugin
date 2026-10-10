@@ -9,7 +9,7 @@
  */
 import { Notice, normalizePath, TFile, type Plugin } from 'obsidian'
 import { watch } from 'vue'
-import { AbeleConfig } from '@/services/AbeleConfig'
+import { settingsSlice } from '@/composables/settingsSlice'
 import { BookBookmarks, type BookmarkStorage } from './bookmarks'
 import { MOVE_AFTER_MS, type PlacesAdapter } from './places'
 import { placesPathOf, type ReaderSettings } from './settings'
@@ -44,8 +44,7 @@ let bookmarks: BookBookmarks | null = null
 export function initBookBookmarks(plugin: Plugin): BookBookmarks {
   const { vault } = plugin.app
   const dir = plugin.manifest.dir ?? `${vault.configDir}/plugins/abele`
-  const pathNow = () =>
-    normalizePath(bookmarksPathOf(currentReaderSettings()))
+  const pathNow = () => normalizePath(bookmarksPathOf(currentReaderSettings()))
   let path = pathNow()
   const store = new BookBookmarks(bookmarkFiles(vault.adapter, dir, path))
   bookmarks = store
@@ -68,7 +67,7 @@ export function initBookBookmarks(plugin: Plugin): BookBookmarks {
     await vault.adapter.remove(old).catch((): void => {})
   }
   let timer = 0
-  const stop = watch(AbeleConfig.getInstance().version, () => {
+  const stop = watch(settingsSlice(pathNow), () => {
     window.clearTimeout(timer)
     timer = window.setTimeout((): void => void move(), MOVE_AFTER_MS)
   })

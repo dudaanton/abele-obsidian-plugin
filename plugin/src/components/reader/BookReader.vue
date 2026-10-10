@@ -212,7 +212,7 @@ import { type BookModel, type PanelTab, type SearchHit, type TocEntry } from '@/
 import type { Bookmark } from '@/reader/bookmarks'
 import { ScriptService } from '@/scripting/ScriptService'
 import { bookMenu } from '@/scripting/bookMenuScripts'
-import { AbeleConfig } from '@/services/AbeleConfig'
+import { settingsSlice } from '@/composables/settingsSlice'
 import { readerSettingsFrom } from '@/reader/settings'
 import { zen, zenFootShown } from '@/reader/zen'
 
@@ -291,11 +291,10 @@ const quoteTarget = () => {
 // header says `@book` — offered first, and any other picked from a list.
 const scriptList = ScriptService.getInstance().scriptList
 const hasScripts = computed(() => scriptList.value.length > 0)
-const config = AbeleConfig.getInstance()
-const pinnedScripts = computed(() => {
-  void config.version.value
-  return bookMenu(scriptList.value, readerSettingsFrom(config.reader).selectionScripts)
-})
+const selectedScripts = settingsSlice(
+  (config) => readerSettingsFrom(config.reader).selectionScripts
+)
+const pinnedScripts = computed(() => bookMenu(scriptList.value, selectedScripts.value))
 
 const onColor = (color: HighlightColor) => {
   if (props.model.active) emit('recolor', props.model.active, color)

@@ -57,6 +57,31 @@ async function start() {
 }
 
 describe('calendar marks while shared settings are being read', () => {
+  it('does no calendar refresh or list invalidation for unrelated settings publications', async () => {
+    const { service } = await start()
+    const refresh = vi.spyOn(service, 'refreshChanged').mockResolvedValue()
+    const before = service.state.version
+    for (let i = 0; i < 5; i++) {
+      config.tasksFolder = `Sample tasks ${i}`
+      config.version.value++
+      await nextTick()
+      await vi.advanceTimersByTimeAsync(1600)
+    }
+    expect(refresh).toHaveBeenCalledTimes(0)
+    expect(service.state.version).toBe(before)
+    config.calendarCompletion = { sample: { feedId: 'sample-feed', seenAt: Date.now() } }
+    config.version.value++
+    await nextTick()
+    await vi.advanceTimersByTimeAsync(1600)
+    expect(refresh).toHaveBeenCalledTimes(0)
+    expect(service.state.version).toBe(before + 1)
+    config.calendars.refreshMinutes++
+    config.version.value++
+    await nextTick()
+    await vi.advanceTimersByTimeAsync(1600)
+    expect(refresh).toHaveBeenCalledTimes(1)
+  })
+
   it.each([true, false])(
     'updates the visible done=%s checkbox before a slow settings read can finish',
     async (done) => {

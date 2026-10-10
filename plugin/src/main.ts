@@ -1,4 +1,5 @@
 import { ChangeTracker } from '@/ai/rewind/ChangeTracker'
+import { deferredCleanup } from '@/helpers/deferredCleanup'
 import {
   Editor,
   EventRef,
@@ -657,6 +658,8 @@ export default class AbelePlugin extends Plugin {
 
   /** The plugin's answers to what happens in the workspace, and its menu items. */
   private registerWorkspaceEvents() {
+    const orphanCleanup = deferredCleanup(() => GlobalStore.getInstance().cleanupOrphanedWidgets())
+    this.register(() => orphanCleanup.stop())
     this.registerEvent(
       this.app.workspace.on('css-change', () => {
         GlobalStore.getInstance().themeVersion.value++
@@ -694,9 +697,7 @@ export default class AbelePlugin extends Plugin {
 
         // Delayed cleanup for widgets whose DOM was removed without CodeMirror calling destroy().
         // The delay ensures CodeMirror's own destroy() runs first when it does fire.
-        window.setTimeout(() => {
-          store.cleanupOrphanedWidgets()
-        }, 500)
+        orphanCleanup.schedule()
       })
     )
 

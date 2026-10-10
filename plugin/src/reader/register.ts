@@ -7,6 +7,7 @@
  */
 import { Notice, TFile, type Plugin } from 'obsidian'
 import { watch } from 'vue'
+import { settingsSlice } from '@/composables/settingsSlice'
 import { AbeleConfig } from '@/services/AbeleConfig'
 import { BOOK_EXTENSIONS, BOOK_VIEW_TYPE, BookView, READER_EXTENSIONS } from './BookView'
 import { initBookPlaces } from './places'
@@ -51,12 +52,15 @@ export function registerReader(plugin: Plugin): void {
     callback: () => setZen(!zen().on),
   })
   // The fonts folder: read when a book or the settings first ask, followed from then on.
-  const fonts = new ReaderFonts(app.vault, () =>
-    fontsFolderOf(currentReaderSettings())
-  )
+  const fonts = new ReaderFonts(app.vault, () => fontsFolderOf(currentReaderSettings()))
   initReaderFonts(fonts)
   plugin.register(fonts.start())
-  plugin.register(watch(AbeleConfig.getInstance().version, () => fonts.folderChanged()))
+  plugin.register(
+    watch(
+      settingsSlice(() => fontsFolderOf(currentReaderSettings())),
+      () => fonts.folderChanged()
+    )
+  )
   plugin.register(() => initReaderFonts(null))
   plugin.registerView(BOOK_VIEW_TYPE, (leaf) => new BookView(leaf))
   // The last page turned is written a moment later; quitting or unloading writes it now.
@@ -127,7 +131,6 @@ export function registerReader(plugin: Plugin): void {
 
   // PDFs open in the reader while the setting says so — those already open in Obsidian's viewer,
   // tabs brought back from the last session among them, move over as it takes effect.
-  const config = AbeleConfig.getInstance()
   let taken = false
   const apply = () => {
     const on = currentReaderSettings().pdfInReader
@@ -136,7 +139,10 @@ export function registerReader(plugin: Plugin): void {
     taken = on
   }
   app.workspace.onLayoutReady(apply)
-  const stop = watch(config.version, apply)
+  const stop = watch(
+    settingsSlice(() => currentReaderSettings().pdfInReader),
+    apply
+  )
   plugin.register(() => {
     stop()
     setPdfTakeover(app, false, BOOK_VIEW_TYPE)

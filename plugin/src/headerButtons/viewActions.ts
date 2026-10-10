@@ -26,6 +26,7 @@ import { watch, type WatchStopHandle } from 'vue'
 import { AbeleConfig, type HeaderButtonDefinition } from '@/services/AbeleConfig'
 import { GlobalStore } from '@/stores/GlobalStore'
 import { commandButtonsFor, noteTags, splitForHeader } from '@/helpers/headerButtons'
+import { settingsSlice } from '@/composables/settingsSlice'
 
 /** The class on each button, so tests and styles find them. */
 export const COMMAND_ACTION_CLASS = 'abele-command-action'
@@ -65,21 +66,30 @@ export class HeaderCommands {
   private stopped = false
   private retryTimer: number | null = null
   private retriesLeft = RETRIES
+  private frame = 0
+
+  private schedule(): void {
+    if (this.stopped || this.frame) return
+    this.frame = window.requestAnimationFrame(() => {
+      this.frame = 0
+      this.draw()
+    })
+  }
 
   start(plugin: Plugin): void {
     const { app } = GlobalStore.getInstance()
-    const redraw = () => this.draw()
+    const redraw = () => this.schedule()
     plugin.registerEvent(app.workspace.on('layout-change', redraw))
     plugin.registerEvent(app.workspace.on('active-leaf-change', redraw))
     plugin.registerEvent(app.workspace.on('file-open', redraw))
     plugin.registerEvent(
       app.metadataCache.on('changed', (file: TFile) => {
-        if (this.isOpen(file)) this.draw()
+        if (this.isOpen(file)) this.schedule()
       })
     )
     plugin.registerEvent(
       app.vault.on('rename', (file: TAbstractFile) => {
-        if (file instanceof TFile && this.isOpen(file)) this.draw()
+        if (file instanceof TFile && this.isOpen(file)) this.schedule()
       })
     )
     plugin.registerEvent(
@@ -88,10 +98,10 @@ export class HeaderCommands {
       })
     )
     this.stopWatch = watch(
-      AbeleConfig.getInstance().version,
+      settingsSlice((config) => config.headerButtons),
       () => {
         this.retriesLeft = RETRIES
-        this.draw()
+        this.schedule()
       },
       { flush: 'post' }
     )
@@ -102,6 +112,8 @@ export class HeaderCommands {
     this.stopped = true
     this.stopWatch?.()
     this.stopWatch = null
+    if (this.frame) window.cancelAnimationFrame(this.frame)
+    this.frame = 0
     if (this.retryTimer !== null) window.clearTimeout(this.retryTimer)
     this.retryTimer = null
     for (const { els } of this.drawn.values()) for (const el of els) el.remove()

@@ -115,6 +115,18 @@ afterEach(() => {
 })
 
 describe('the quick button', () => {
+  it('does not measure idle layout each second, but reacts to a bar appearing', async () => {
+    const view = viewIn(workspace.rootSplit)
+    const queries = vi.spyOn(view.containerEl, 'querySelectorAll')
+    await mountButton()
+    queries.mockClear()
+    await advance(5000)
+    expect(queries).not.toHaveBeenCalled()
+    view.containerEl.createDiv({ cls: 'abele-chat-input' })
+    await settle()
+    expect(queries).toHaveBeenCalled()
+  })
+
   it('is there on a phone once switched on, and not while off', async () => {
     viewIn(workspace.rootSplit)
     await mountButton()

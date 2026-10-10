@@ -14,6 +14,7 @@ import type { FoliateLocation, View as FoliateView } from '@/vendor/foliate-js/v
 import { FootnoteHandler } from '@/vendor/foliate-js/footnotes.js'
 import BookReader from '@/components/reader/BookReader.vue'
 import { AbeleConfig } from '@/services/AbeleConfig'
+import { settingsSlice } from '@/composables/settingsSlice'
 import { auditDocument, blankDocument, frameSandbox } from './bookSafety'
 import type { OpenedBook } from './openBook'
 import { openBookFile } from './openFile'
@@ -193,8 +194,10 @@ export class BookView extends FileView {
     this.addAction('list', 'Contents', () => this.showPanel('contents'))
     this.addAction('a-large-small', 'Text and layout', () => (this.model.settingsOpen = true))
 
-    const config = AbeleConfig.getInstance()
-    const stopSettings = watch(config.version, () => this.applySettings())
+    const stopSettings = watch(
+      settingsSlice((config) => ({ reader: config.reader, aiEnabled: !!config.ai?.enabled })),
+      () => this.applySettings()
+    )
     // Font files added, changed or removed in the fonts folder, here or on another device.
     const fonts = readerFonts()
     const stopFonts = fonts ? watch(fonts.version, () => this.applyFonts()) : null

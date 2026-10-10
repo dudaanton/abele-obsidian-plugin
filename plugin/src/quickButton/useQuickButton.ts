@@ -9,7 +9,7 @@
  */
 import { computed, onBeforeUnmount, onMounted, ref, shallowRef, watch, type Ref } from 'vue'
 import { Platform, type App, type EventRef, type View } from 'obsidian'
-import { AbeleConfig } from '@/services/AbeleConfig'
+import { settingsSlice } from '@/composables/settingsSlice'
 import { KEYBOARD_EVENTS, TYPED, keyboardVar } from '@/modal/keyboard'
 import { safeAreaBottom } from '@/modal/keyboardLift'
 import { quickButtonSettingsFrom } from './settings'
@@ -49,12 +49,8 @@ function step(doc: Document, name: string, fallback: number): number {
 }
 
 export function useQuickButton(app: App, button: Ref<HTMLElement | null | undefined>) {
-  const config = AbeleConfig.getInstance()
   const doc = document
-  const settings = computed(() => {
-    void config.version.value
-    return quickButtonSettingsFrom(config.quickButton)
-  })
+  const settings = settingsSlice((config) => quickButtonSettingsFrom(config.quickButton))
 
   const context = shallowRef<QuickContext>({ view: null, drawer: 'closed' })
   const typing = ref(false)
@@ -114,7 +110,9 @@ export function useQuickButton(app: App, button: Ref<HTMLElement | null | undefi
     const size = el.offsetHeight || 52
     const gap = step(doc, '--size-4-3', 12)
     const column = { left: el.offsetLeft, right: el.offsetLeft + size }
-    const shown = obstacles(doc, context.value.view).filter((o) => o.getClientRects().length > 0)
+    const bars = obstacles(doc, context.value.view)
+    observeLayout(bars)
+    const shown = bars.filter((o) => o.getClientRects().length > 0)
     // Above the home indicator where nothing else is at the bottom — a tablet has no navigation bar.
     const bottom = window.innerHeight - insetBottom
     line.value = restLine(shown.map(boxOf), column, bottom)
@@ -129,6 +127,11 @@ export function useQuickButton(app: App, button: Ref<HTMLElement | null | undefi
     if (frame) return
     frame = window.requestAnimationFrame(() => {
       frame = 0
+      if (gone.value || doc.visibilityState === 'hidden') {
+        sizeWatch.disconnect()
+        sized.clear()
+        return
+      }
       place()
     })
   }
@@ -221,7 +224,42 @@ export function useQuickButton(app: App, button: Ref<HTMLElement | null | undefi
   const events: EventRef[] = []
   const bodyWatch = new MutationObserver(readBody)
   const rootWatch = new MutationObserver(readKeyboard)
-  let timer = 0
+  const layoutSelector =
+    '.mobile-navbar, .mobile-toolbar, .abele-book-reader__foot, .abele-chat-input, .view-header'
+  const sized = new Set<HTMLElement>()
+  const sizeWatch = new ResizeObserver(schedule)
+  const observeLayout = (bars: HTMLElement[]) => {
+    const root = context.value.view?.containerEl
+    const header = root?.querySelector<HTMLElement>('.view-header')
+    const next = new Set([...bars, ...(root ? [root] : []), ...(header ? [header] : [])])
+    for (const el of sized)
+      if (!next.has(el)) {
+        sizeWatch.unobserve(el)
+        sized.delete(el)
+      }
+    for (const el of next)
+      if (!sized.has(el)) {
+        sizeWatch.observe(el)
+        sized.add(el)
+      }
+  }
+  const containsBar = (node: Node) =>
+    node.nodeType === 1 &&
+    ((node as Element).matches(layoutSelector) || !!(node as Element).querySelector(layoutSelector))
+  const layoutWatch = new MutationObserver((records) => {
+    if (gone.value || doc.visibilityState === 'hidden') return
+    if (
+      records.some((record) =>
+        record.type === 'attributes'
+          ? (record.target as Element).matches(layoutSelector)
+          : [...Array.from(record.addedNodes), ...Array.from(record.removedNodes)].some(containsBar)
+      )
+    )
+      schedule()
+  })
+  const onVisibility = () => {
+    if (doc.visibilityState !== 'hidden') refreshContext()
+  }
 
   onMounted(() => {
     const { workspace } = app
@@ -236,11 +274,14 @@ export function useQuickButton(app: App, button: Ref<HTMLElement | null | undefi
     doc.addEventListener('scroll', onScroll, { capture: true, passive: true })
     bodyWatch.observe(doc.body, { childList: true, attributes: true, attributeFilter: ['class'] })
     rootWatch.observe(doc.documentElement, { attributes: true, attributeFilter: ['style'] })
-    // Bars come and go inside views with nothing announced — a book's selection bar, a chat's
-    // composer growing a line. Reading where things stand once a second costs a few rectangles.
-    timer = window.setInterval(() => {
-      if (!gone.value) refreshContext()
-    }, 1000)
+    // Bar insertion/removal and size changes are enough; an idle phone needs no layout poll.
+    layoutWatch.observe(doc.body, {
+      childList: true,
+      subtree: true,
+      attributes: true,
+      attributeFilter: ['class', 'style', 'hidden'],
+    })
+    doc.addEventListener('visibilitychange', onVisibility)
     measureInsets()
     readKeyboard()
     readSelection()
@@ -258,7 +299,9 @@ export function useQuickButton(app: App, button: Ref<HTMLElement | null | undefi
     doc.removeEventListener('scroll', onScroll, { capture: true })
     bodyWatch.disconnect()
     rootWatch.disconnect()
-    window.clearInterval(timer)
+    layoutWatch.disconnect()
+    sizeWatch.disconnect()
+    doc.removeEventListener('visibilitychange', onVisibility)
     if (frame) window.cancelAnimationFrame(frame)
   })
 

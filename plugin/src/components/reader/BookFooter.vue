@@ -86,6 +86,7 @@ import Icon from '../obsidian/Icon.vue'
 import Button from '../obsidian/Button.vue'
 import Slider from '../obsidian/Slider.vue'
 import { AbeleConfig } from '@/services/AbeleConfig'
+import { settingsSlice } from '@/composables/settingsSlice'
 import { percent, type BookModel } from '@/reader/model'
 import { readerSettingsFrom } from '@/reader/settings'
 import { nextShow, progressText, type ProgressShow } from '@/reader/readingProgress'
@@ -114,7 +115,10 @@ const marked = computed(() => props.model.bookmarksHere.length > 0)
 
 const config = AbeleConfig.getInstance()
 const show = ref<ProgressShow>(readerSettingsFrom(config.reader).progressShow)
-watch(config.version, () => (show.value = readerSettingsFrom(config.reader).progressShow))
+watch(
+  settingsSlice((config) => readerSettingsFrom(config.reader).progressShow),
+  (next) => (show.value = next)
+)
 
 /** The slider while its thumb is held, in thousandths; null otherwise. */
 const dragging = ref<number | null>(null)
