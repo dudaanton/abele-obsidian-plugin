@@ -4,6 +4,7 @@ import { shotDir } from './helpers/shots'
 import { describe, it, expect, beforeAll, afterAll } from 'vitest'
 import { evalLong, evalRaw, hasTestApi, isObsidianRunning } from './helpers/obsidianCli'
 import { onPhone, targets } from './helpers/target'
+import { withEmulatedPhone } from './helpers/emulatedPhone'
 
 targets('desktop', 'phone')
 const HEIC = readFileSync(
@@ -25,7 +26,8 @@ const PANE_PRELUDE = `
   const paneHost = leaf => leaf.view.containerEl.isConnected ? leaf.view.containerEl.querySelector('.abele-chat-input') : null
   const paneInput = leaf => paneHost(leaf)?.__vueParentComponent?.exposed
   const capture = async name => {
-    const path = ${JSON.stringify(SHOTS + '/')} + name + '.png'
+    await wait(350)
+    const path = ${JSON.stringify(SHOTS + '/')} + (app.isMobile ? 'phone-' : 'desktop-') + name + '.png'
     if (${onPhone()}) return window.__e2eHost.shot(path)
     const image = await require('@electron/remote').getCurrentWebContents().capturePage()
     require('fs').writeFileSync(path, image.toPNG())
@@ -52,7 +54,7 @@ describe.skipIf(!available)('chat pictures and image import in the running brows
   })
   afterAll(() => {
     evalRaw(`(async () => {
-      document.querySelector('.abele-gallery-viewer__close')?.click()
+      document.querySelector('.abele-gallery-viewer')?.closest('.modal')?.querySelector('.modal-close-button, .modal-header-button')?.click()
       const dir = app.vault.getAbstractFileByPath(${JSON.stringify(DIR)})
       if (dir) await app.vault.delete(dir, true)
       return 'ok'
@@ -297,26 +299,33 @@ describe.skipIf(!available)('chat pictures and image import in the running brows
     150_000
   )
 
-  it('returns a drawn picture to the originating composer in place of the original', async () => {
-    const result = JSON.parse(
-      await evalLong(
-        `(async () => {
+  it.each(onPhone() ? ['phone'] : ['desktop', 'emulated phone'])(
+    'returns a drawn picture to the originating composer in place of the original on %s',
+    async (layout) => {
+      const run = async () =>
+        JSON.parse(
+          await evalLong(
+            `(async () => {
       const wait = ms => new Promise(r => setTimeout(r, ms))
       const until = async fn => { for (let i = 0; i < 160; i++) { const value = fn(); if (value) return value; await wait(50) } throw new Error('UI did not appear') }
       const chats = window.__abeleTest.ChatService.getInstance()
       const previous = chats.activeTabId.value
       const tab = chats.createTab()
       let view
+      const files = []
       const session = chats.getSession(tab)
       ${PANE_PRELUDE}
       let sourcePane, mirrorPane
       const safeTop = document.body.style.getPropertyValue('--safe-area-inset-top')
-      document.body.style.setProperty('--safe-area-inset-top', '48px')
+      // The native modal owns desktop chrome; the phone still must clear its status bar.
+      const minimumTop = app.isMobile ? 48 : 0
+      document.body.style.setProperty('--safe-area-inset-top', minimumTop + 'px')
       try {
         const canvas = document.createElement('canvas'); canvas.width = 96; canvas.height = 64
         const ctx = canvas.getContext('2d'); ctx.fillStyle = '#ffffff'; ctx.fillRect(0, 0, 96, 64)
         const blob = await new Promise(r => canvas.toBlob(r, 'image/png'))
         const source = await app.vault.createBinary(${JSON.stringify(DIR)} + '/sample-draft.png', await blob.arrayBuffer())
+        files.push(source)
         chats.pendingInput.value = { text: 'An unfinished message', tabId: tab, attachments: [source.path] }
         sourcePane = await makePane()
         mirrorPane = await makePane()
@@ -324,8 +333,17 @@ describe.skipIf(!available)('chat pictures and image import in the running brows
         const thumb = await until(() => paneHost(sourcePane)?.querySelector('.abele-chat-input__attachments img'))
         thumb.click()
         const preview = await until(() => document.querySelector('.abele-gallery-viewer'))
-        const headerTop = preview.querySelector('.abele-gallery-viewer__info').getBoundingClientRect().top
-        const closeTop = preview.querySelector('.abele-gallery-viewer__close').getBoundingClientRect().top
+        await wait(300)
+        const header = preview.querySelector('.abele-gallery-viewer__info').getBoundingClientRect()
+        const dismiss = preview.closest('.modal').querySelector('.modal-close-button, .modal-header-button')
+        if (!dismiss || !dismiss.getClientRects().length) throw new Error('The picture modal has no visible dismiss action')
+        const close = dismiss.getBoundingClientRect()
+        const title = preview.closest('.modal').querySelector('.modal-title').getBoundingClientRect()
+        const headerAfterTitle = title.width > 0 && title.height > 0 && header.top >= title.bottom
+        const headerTop = header.top
+        const closeTop = close.top
+        const previewInView = header.width > 0 && header.height > 0 && header.left >= 0 && header.right <= innerWidth && header.bottom <= innerHeight && close.width > 0 && close.height > 0 && close.left >= 0 && close.right <= innerWidth && close.bottom <= innerHeight
+        await capture('drawing-preview')
         preview.querySelector('[data-icon="pen-line"], .lucide-pen-line').closest('.abele-obsidian-icon').click()
         view = await until(() => app.workspace.getLeavesOfType('abele-image-ink').map(l => l.view).find(v => v.image && v.session?.surface.width > 0))
         view.session.items.add([{ id: 'sample-mark', type: 'shape', kind: 'line', x1: 10, y1: 10, x2: 80, y2: 50, color: 'red', size: 4 }])
@@ -334,6 +352,7 @@ describe.skipIf(!available)('chat pictures and image import in the running brows
         const paths = [...paneHost(sourcePane).querySelectorAll('.abele-chat-input__attachments img')].map(i => i.alt)
         const logicalPaths = session.draft.value.attachments.map(file => file.path)
         const made = app.vault.getAbstractFileByPath(logicalPaths[0])
+        if (made && made !== source) files.push(made)
         const img = new Image(); img.src = app.vault.getResourcePath(made); await img.decode()
         const pixels = document.createElement('canvas'); pixels.width = 96; pixels.height = 64
         const c = pixels.getContext('2d'); c.drawImage(img, 0, 0)
@@ -341,38 +360,45 @@ describe.skipIf(!available)('chat pictures and image import in the running brows
         const field = paneHost(sourcePane).querySelector('.abele-chat-input__field')
         const draft = field.querySelector('.cm-content')?.textContent || field.value || ''
         await capture('drawn-owner-and-mirror')
-        return { paths, logicalPaths, draft, point, headerTop, closeTop, original: !!app.vault.getAbstractFileByPath(source.path), ownership: evidence(session) }
+        return { paths, logicalPaths, draft, point, headerTop, closeTop, minimumTop, headerAfterTitle, previewInView, original: !!app.vault.getAbstractFileByPath(source.path), ownership: evidence(session) }
       } catch (e) { return { error: String(e?.stack || e), ownership: evidence(session) } }
       finally {
         document.body.style.setProperty('--safe-area-inset-top', safeTop)
         view?.leaf.detach()
         await chats.closeTab(tab)
+        for (const file of files) if (app.vault.getAbstractFileByPath(file.path)) await app.vault.delete(file)
         if (previous) chats.switchTab(previous)
         for (const leaf of ownedPanes) if (leaf.view.containerEl.isConnected) leaf.detach()
         if (previousLeaf?.view.containerEl.isConnected) app.workspace.setActiveLeaf(previousLeaf, { focus: false })
       }
     })()`,
-        120_000
-      )
-    )
-    console.log('drawn picture ownership', JSON.stringify(result))
-    writeFileSync(join(SHOTS, 'drawn-ownership.json'), JSON.stringify(result, null, 2))
-    expect(result.error).toBeUndefined()
-    expect(result.headerTop).toBeGreaterThanOrEqual(48)
-    expect(result.closeTop).toBeGreaterThanOrEqual(48)
-    expect(result.paths).toHaveLength(1)
-    expect(result.paths[0]).toContain('drawn')
-    expect(result.draft).toContain('An unfinished message')
-    expect(result.original).toBe(true)
-    expect(result.point[1]).toBeLessThan(200)
-    expect(result.logicalPaths).toHaveLength(1)
-    expect(result.logicalPaths[0]).toContain('drawn')
-    expect(result.ownership.panes).toHaveLength(2)
-    for (const pane of result.ownership.panes) {
-      expect(pane.connected).toBe(true)
-      expect(pane.owner).toBe(true)
-      expect(pane.sharesDraft).toBe(true)
-      expect(pane.thumbnails).toEqual(result.paths)
-    }
-  }, 150_000)
+            120_000
+          )
+        )
+      const result = layout === 'emulated phone' ? await withEmulatedPhone(run) : await run()
+      console.log('drawn picture ownership', layout, JSON.stringify(result))
+      writeFileSync(join(SHOTS, layout + '-drawn-ownership.json'), JSON.stringify(result, null, 2))
+      expect(result.error).toBeUndefined()
+      expect(result.minimumTop).toBe(layout === 'desktop' ? 0 : 48)
+      expect(result.headerTop).toBeGreaterThanOrEqual(result.minimumTop)
+      expect(result.closeTop).toBeGreaterThanOrEqual(result.minimumTop)
+      expect(result.headerAfterTitle).toBe(true)
+      expect(result.previewInView).toBe(true)
+      expect(result.paths).toHaveLength(1)
+      expect(result.paths[0]).toContain('drawn')
+      expect(result.draft).toContain('An unfinished message')
+      expect(result.original).toBe(true)
+      expect(result.point[1]).toBeLessThan(200)
+      expect(result.logicalPaths).toHaveLength(1)
+      expect(result.logicalPaths[0]).toContain('drawn')
+      expect(result.ownership.panes).toHaveLength(2)
+      for (const pane of result.ownership.panes) {
+        expect(pane.connected).toBe(true)
+        expect(pane.owner).toBe(true)
+        expect(pane.sharesDraft).toBe(true)
+        expect(pane.thumbnails).toEqual(result.paths)
+      }
+    },
+    240_000
+  )
 })
