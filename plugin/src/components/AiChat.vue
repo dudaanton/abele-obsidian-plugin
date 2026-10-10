@@ -2407,7 +2407,7 @@ const hasFallbackModel = computed(() => session.value?.hasFallbackModel ?? false
 
 /** The countdown to an automatic retry, when one is running. */
 const retrying = computed(() => session.value?.retrying.value ?? null)
-const reconnecting = computed(() => session.value?.reconnecting.value ?? null)
+const reconnecting = computed(() => session.value?.reconnecting?.value ?? null)
 const fallbackModelName = computed(
   () => session.value?.resolveModel({ fallback: true })?.name ?? ''
 )
