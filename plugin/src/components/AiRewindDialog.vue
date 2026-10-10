@@ -21,8 +21,11 @@
           <div class="abele-rewind__detail">
             <Setting
               v-if="item.conflict"
-              name="Changed since"
-              desc="Another edit overlaps this undo. This file will be left untouched to preserve that work."
+              :name="item.reason ? 'Cannot verify ownership' : 'Changed since'"
+              :desc="
+                item.reason ??
+                'Another edit overlaps this undo. This file will be left untouched to preserve that work.'
+              "
             />
             <p class="abele-rewind__note">{{ explain(item) }}</p>
             <Diff v-if="item.diff" :text-left="item.diff.old" :text-right="item.diff.new" />

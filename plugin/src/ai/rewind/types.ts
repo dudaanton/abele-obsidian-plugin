@@ -81,6 +81,8 @@ export interface RestoreItem {
   from?: string
   /** Changed since the agent's last change to it, by somebody else. */
   conflict: boolean
+  /** Why the snapshot cannot authorize a restore, independently of matching content. */
+  reason?: string
   /** State expected immediately before applying; not merely when the preview was opened. */
   expected?: After
   /** The move source is checked too, so a later edit there cannot be moved or removed. */
@@ -98,6 +100,7 @@ export interface RestoreUnit {
   paths: string[]
   expected: Record<string, After>
   refs: string[]
+  refused?: string
 }
 
 export interface RestorePlan {

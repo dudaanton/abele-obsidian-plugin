@@ -15,6 +15,7 @@ import type {
   RestoreItem,
   RestorePlan,
   RestoreResult,
+  RestoreUnit,
   RewindEntry,
 } from './types'
 
@@ -25,12 +26,14 @@ const beforeAfter = (before: Before): After =>
   before.t === 'missing' ? null : before.t === 'folder' ? 'folder' : before.hash
 
 const depth = (path: string) => path.split('/').length
+export const UNOWNED_RECORDING =
+  'This old recording has no chat owner. Its contents may belong to another writer; the file is left untouched.'
 
 export async function planRestore(entries: RewindEntry[], fs: VaultFs): Promise<RestorePlan> {
   const ordered = [...entries].sort((a, b) => a.at - b.at)
   const byPath = new Map<
     string,
-    { target: Before; expected: After; refs: string[]; interrupted: boolean }
+    { target: Before; expected: After; refs: string[]; interrupted: boolean; unowned: boolean }
   >()
   for (const entry of ordered) {
     entry.changes.forEach((change, index) => {
@@ -38,6 +41,7 @@ export async function planRestore(entries: RewindEntry[], fs: VaultFs): Promise<
       const known = byPath.get(change.path)
       if (known) {
         known.interrupted ||= known.expected !== beforeAfter(change.before) || !!change.uncertain
+        known.unowned ||= !entry.chat
         known.expected = change.after
         known.refs.push(ref)
       } else {
@@ -46,6 +50,7 @@ export async function planRestore(entries: RewindEntry[], fs: VaultFs): Promise<
           expected: change.after,
           refs: [ref],
           interrupted: !!change.uncertain,
+          unowned: !entry.chat,
         })
       }
     })
@@ -72,15 +77,22 @@ export async function planRestore(entries: RewindEntry[], fs: VaultFs): Promise<
   /** Paths a move back empties, so they are not also sent to the trash. */
   const movedAway = new Set<string>()
 
-  for (const [path, { target, expected, refs, interrupted }] of byPath) {
+  for (const [path, { target, expected, refs, interrupted, unowned }] of byPath) {
     const current = currents.get(path) as Current
     // Already as it was: nothing to do, and nothing to show — but it leaves the log all the same.
-    if (!interrupted && currentAfter(current) === beforeAfter(target)) {
+    if (!unowned && !interrupted && currentAfter(current) === beforeAfter(target)) {
       settled.push(...refs)
       continue
     }
-    const conflict = interrupted || currentAfter(current) !== expected
-    const base = { path, conflict, target, refs, expected }
+    const conflict = unowned || interrupted || currentAfter(current) !== expected
+    const base = {
+      path,
+      conflict,
+      target,
+      refs,
+      expected,
+      ...(unowned ? { reason: UNOWNED_RECORDING } : {}),
+    }
     const oldText = current.t === 'text' ? current.text : ''
 
     if (target.t === 'missing') {
@@ -156,7 +168,11 @@ export async function planRestore(entries: RewindEntry[], fs: VaultFs): Promise<
       members.some((item) => item.conflict || item.action === 'unrestorable') ||
       [...paths].some((path) => !byPath.has(path))
     ) {
-      for (const item of members) item.conflict = true
+      const reason = members.find((item) => item.reason)?.reason
+      for (const item of members) {
+        item.conflict = true
+        item.reason ??= reason
+      }
     }
     return {
       paths: [...paths],
@@ -208,7 +224,11 @@ export async function applyRestore(
       },
       refs: item.refs,
     }))
-  ).map((unit) => ({ ...unit, expected: new Map(Object.entries(unit.expected)), failed: false }))
+  ).map((unit: RestoreUnit) => ({
+    ...unit,
+    expected: new Map(Object.entries(unit.expected)),
+    failed: !!unit.refused,
+  }))
   const unitOf = (item: RestoreItem) => units.find((unit) => unit.paths.includes(item.path))!
   for (const item of plan.items) {
     if (item.action === 'unrestorable' || item.conflict || choices[item.path] === 'skip')

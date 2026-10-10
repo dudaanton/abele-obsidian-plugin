@@ -13,7 +13,7 @@ import { AbeleConfig } from '@/services/AbeleConfig'
 import { ChangeTracker, type Recording } from './ChangeTracker'
 import { adapterStore, type RewindStore } from './RewindStore'
 import { VaultFs } from './vaultFs'
-import { applyRestore, planRestore } from './restore'
+import { applyRestore, planRestore, UNOWNED_RECORDING } from './restore'
 import type {
   Change,
   ConflictChoice,
@@ -222,22 +222,47 @@ export class ChatRewind implements Recording {
   }
 
   /** Puts the files back; what was restored leaves the log, what was skipped stays. */
-  async apply(plan: RestorePlan, choices: Record<string, ConflictChoice> = {}): Promise<RestoreResult> {
+  async apply(
+    plan: RestorePlan,
+    choices: Record<string, ConflictChoice> = {}
+  ): Promise<RestoreResult> {
     await this.load()
     const key = this.host.key()
-    const owned = new Set(
+    const available = new Set(
       this.entries.value
         .filter((entry) => !entry.chat || entry.chat === key)
         .flatMap((entry) => entry.changes.map((_, index) => `${entry.id}:${index}`))
     )
     if (
-      [...plan.settled, ...plan.items.flatMap((item) => item.refs)].some((ref) => !owned.has(ref))
+      [
+        ...plan.settled,
+        ...plan.items.flatMap((item) => item.refs),
+        ...(plan.units?.flatMap((unit) => unit.refs) ?? []),
+      ].some((ref) => !available.has(ref))
     )
       throw new Error('This undo plan no longer belongs to this chat; reopen it')
+    const owned = new Set(
+      this.entries.value
+        .filter((entry) => entry.chat === key)
+        .flatMap((entry) => entry.changes.map((_, index) => `${entry.id}:${index}`))
+    )
+    // Matching bytes in an old broadcast journal are not evidence of who wrote them.
+    const safePlan: RestorePlan = {
+      ...plan,
+      settled: plan.settled.filter((ref) => owned.has(ref)),
+      items: plan.items.map((item) =>
+        item.refs.every((ref) => owned.has(ref))
+          ? item
+          : { ...item, conflict: true, reason: UNOWNED_RECORDING }
+      ),
+      units: plan.units?.map((unit) =>
+        unit.refs.every((ref) => owned.has(ref)) ? unit : { ...unit, refused: UNOWNED_RECORDING }
+      ),
+    }
     const tracker = ChangeTracker.get(this.app)
     const fs = new VaultFs(this.app, tracker?.checkedApp.bind(tracker))
     const blob = (name: string) => (key ? this.store.readBlob(key, name) : Promise.resolve(null))
-    const run = () => applyRestore(plan, choices, fs, blob)
+    const run = () => applyRestore(safePlan, choices, fs, blob)
     const outcome = await run()
 
     const done = new Set(outcome.refs)

@@ -132,8 +132,12 @@ it('reads legacy entries without identity and applies the same later-edit safety
   ).toEqual(['sample.md'])
   expect(await text()).toBe('human')
   await app.vault.modify(file(), 'alpha')
-  expect((await legacy.apply(await legacy.planSince(0), {})).restored).toEqual(['sample.md'])
-  expect(await text()).toBe('original')
+  // Matching the broadcast journal's bytes does not prove this chat wrote them.
+  const result = await legacy.apply(await legacy.planSince(0), {})
+  expect(result.restored).toEqual([])
+  expect(result.skipped).toEqual(['sample.md'])
+  expect(await text()).toBe('alpha')
+  expect(legacy.entries.value).toHaveLength(1)
 })
 
 it('rejects a plan belonging to another chat', async () => {

@@ -1054,8 +1054,9 @@ destinations (including chains of moves) are one restore unit: refusing any memb
 mutating the others, and every member is rechecked before each native mutation. Conflicting files remain
 untouched and in the journal; there is no force-overwrite option. Preconditions are checked again
 when applying, including at the native adapter queue boundary. Adapters without that boundary
-refuse undo rather than risk a read/write race. Old entries without `chat`/`run` remain readable
-in their existing chat folder, with the same conflict checks. Legacy folder moves cannot prove
+refuse undo rather than risk a read/write race. Old entries without a `chat` owner remain
+readable in their existing chat folder but are refused with an ownership explanation, even
+when current bytes match: the old broadcast recorder could have captured somebody else's edit. Legacy folder moves cannot prove
 ownership of their descendants and are left untouched.
 
 A tool result too long to send whole carries `stored`: its key and the whole text. The model was
