@@ -149,6 +149,21 @@ for (const layout of onPhone() ? ['native phone'] : ['desktop', 'phone layout'])
       expect(undoneDesign.violations).toEqual([])
     })
 
+    it('serializes overlapping reopens of an externally updated source without losing its card binding', async () => {
+      const report = await run<any>(`
+        const bound=await bindSample();if(bound.status!=='applied')throw Error('Overlap fixture did not bind')
+        const file=app.vault.getAbstractFileByPath(${JSON.stringify(BINDING_CHAT)})
+        const records=(await app.vault.read(file)).trim().split('\\n').map(JSON.parse)
+        const meta=records.find(r=>r.k==='meta');meta.title='Updated sample binding source'
+        await app.vault.modify(file,records.map(JSON.stringify).join('\\n')+'\\n')
+        await Promise.all([owner.reconcileForSelectionReturn(),owner.reconcileForSelectionReturn()])
+        return JSON.stringify({title:owner.chatTitle.value,content:owner.allMessages.value[0].content,operations:owner.allMessages.value[0].decorationOperations.length})`)
+      expect(report.error).toBeUndefined()
+      expect(report.title).toBe('Updated sample binding source')
+      expect(report.content).toBe(`echo **[[${BINDING_CARD.replace(/\.md$/u, '')}|echo]]**`)
+      expect(report.operations).toBe(1)
+    })
+
     it('reports a missing card without recreating it', async () => {
       const report = await run<any>(`
         const bound=await bindSample();if(bound.status!=='applied')throw Error('Missing-card fixture did not bind')
