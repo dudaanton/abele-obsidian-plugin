@@ -3,6 +3,11 @@ import { evalLong, hasTestApi, isObsidianRunning } from './helpers/obsidianCli'
 import { targets } from './helpers/target'
 import { shotDir } from './helpers/shots'
 const SHOTS = shotDir('abele-phone')
+const closeDialog = `
+  for (const button of [...document.querySelectorAll('.modal .modal-header-button, .modal-close-button')].reverse()) button.click()
+  for (let i = 0; i < 50 && document.querySelector('.modal.abele-modal'); i++) await wait(100)
+  if (document.querySelector('.modal.abele-modal')) throw new Error('Agents dialog did not close')
+`
 
 targets('desktop', 'phone')
 const available = isObsidianRunning() && hasTestApi()
@@ -12,6 +17,7 @@ describe.skipIf(!available)('agents dialog on a narrow screen', () => {
       await evalLong(
         `(async () => {
       const wait = ms => new Promise(r => setTimeout(r, ms))
+      ${closeDialog}
       window.__abeleTest.openDialog('agents', { agentsState: 'many' })
       try {
         for (let i = 0; i < 50 && !document.querySelector('.abele-agents'); i++) await wait(100)
@@ -45,7 +51,7 @@ describe.skipIf(!available)('agents dialog on a narrow screen', () => {
           collapsedDetails,
         }
       } finally {
-        document.body.dispatchEvent(new KeyboardEvent('keydown', { key: 'Escape', code: 'Escape', keyCode: 27, bubbles: true }))
+        ${closeDialog}
       }
     })()`,
         15000
@@ -80,6 +86,7 @@ describe.skipIf(!available)('agents dialog on a narrow screen', () => {
       await evalLong(
         `(async () => {
       const wait = ms => new Promise(r => setTimeout(r, ms))
+      ${closeDialog}
       window.__abeleTest.openDialog('agents', { agentsState: 'empty' })
       try {
         for (let i = 0; i < 50 && !document.querySelector('.abele-agents'); i++) await wait(100)
@@ -90,7 +97,7 @@ describe.skipIf(!available)('agents dialog on a narrow screen', () => {
         const box = modal.getBoundingClientRect()
         return { height: box.height, viewport: innerHeight, emptySections: root.querySelectorAll('section > .abele-empty-state').length, clipped: root.scrollWidth > root.clientWidth }
       } finally {
-        document.body.dispatchEvent(new KeyboardEvent('keydown', { key: 'Escape', code: 'Escape', keyCode: 27, bubbles: true }))
+        ${closeDialog}
       }
     })()`,
         15000
@@ -106,6 +113,7 @@ describe.skipIf(!available)('agents dialog on a narrow screen', () => {
       await evalLong(
         `(async () => {
       const wait = ms => new Promise(r => setTimeout(r, ms))
+      ${closeDialog}
       window.__abeleTest.openDialog('agents-tabs')
       try {
         for (let i = 0; i < 50 && !document.querySelector('.abele-agents-tabs'); i++) await wait(100)
@@ -117,7 +125,7 @@ describe.skipIf(!available)('agents dialog on a narrow screen', () => {
         if (window.__e2eHost) await window.__e2eHost.shot(${JSON.stringify(`${SHOTS}/agents-tabs-real.png`)})
         return { choices: buttons.length, overflow: buttons.some(e => { const r = e.getBoundingClientRect(); return r.left < box.left - 1 || r.right > box.right + 1 }) }
       } finally {
-        document.body.dispatchEvent(new KeyboardEvent('keydown', { key: 'Escape', code: 'Escape', keyCode: 27, bubbles: true }))
+        ${closeDialog}
       }
     })()`,
         15000
