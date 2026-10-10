@@ -44,6 +44,15 @@ describe('columns over native callout DOM', () => {
     expect(el.querySelectorAll('input')).toHaveLength(1)
   })
 
+  it('supplies the content container omitted by the native renderer for an empty column', () => {
+    const el = fixture()
+    const empty = el.querySelectorAll('.callout[data-callout="abele-column"]')[1]
+    empty.querySelector('.callout-content')!.remove()
+    columnsPostProcessor(el)
+    expect(empty.querySelector(':scope > .callout-content')).not.toBeNull()
+    expect(empty.querySelector('.callout-content')!.textContent).toBe('')
+  })
+
   it('also handles the callout itself as the processor root', () => {
     const el = fixture()
     columnsPostProcessor(el.firstElementChild as HTMLElement)

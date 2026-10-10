@@ -1,20 +1,27 @@
 /** The provisional callout record; no renderer or host API belongs here. */
+export type ColumnsMobile = 'stack' | 'keep' | 'aside-first' | 'aside-collapse'
 export interface ColumnsOptions {
   ratio: number[] | null
-  mobile: 'stack' | 'keep'
+  mobile: ColumnsMobile
 }
 
 export function parseColumnsHeader(line: string): ColumnsOptions | null {
   const match = /^\s*(?:>\s*)*\[!abele-columns(?:\|([^\]]*))?\](?:\s.*)?$/.exec(line)
   if (!match) return null
   let ratio: number[] | null = null
-  let mobile: 'stack' | 'keep' = 'stack'
+  let mobile: ColumnsMobile = 'stack'
   const seen = new Set<string>()
   for (const token of (match[1] ?? '').trim().split(/\s+/).filter(Boolean)) {
     const [key, value, extra] = token.split('=')
     if (extra !== undefined || seen.has(key)) return null
     seen.add(key)
-    if (key === 'mobile' && (value === 'stack' || value === 'keep')) {
+    if (
+      key === 'mobile' &&
+      (value === 'stack' ||
+        value === 'keep' ||
+        value === 'aside-first' ||
+        value === 'aside-collapse')
+    ) {
       mobile = value
       continue
     }

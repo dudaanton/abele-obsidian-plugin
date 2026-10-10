@@ -1,11 +1,12 @@
 import { columnSource, quoteSourceTree, type QuoteSourceRange, type ColumnSource } from './source'
-import { columnWeights } from './core'
+import { columnWeights, type ColumnsMobile } from './core'
 
 export type ColumnTemplate = 'two' | 'three' | 'aside'
 export type ColumnChange =
   | { type: 'add' }
   | { type: 'move'; index: number; to: number }
-  | { type: 'options'; ratio: number[]; mobile: 'stack' | 'keep' }
+  | { type: 'options'; ratio: number[]; mobile: ColumnsMobile }
+  | { type: 'role'; index: number; role: 'main' | 'aside' }
 
 export function columnFrames(text: string): ColumnSource[] {
   const frames: ColumnSource[] = []
@@ -188,6 +189,20 @@ export function changeColumns(text: string, record: ColumnSource, change: Column
     columns.splice(change.to, 0, column)
     const [weight] = ratio.splice(change.index, 1)
     ratio.splice(change.to, 0, weight)
+  }
+  if (change.type === 'role') {
+    const column = columns[change.index]
+    if (!column) throw Error('Choose an existing column.')
+    column.header = column.header.replace(
+      /\[!abele-column(?:\|([^\]]*))?\]/,
+      (_header, metadata: string | undefined) => {
+        const tokens = (metadata ?? '')
+          .split(/\s+/)
+          .filter((token) => token && !token.startsWith('role='))
+        if (change.role === 'aside') tokens.push('role=aside')
+        return '[!abele-column' + (tokens.length ? '|' + tokens.join(' ') : '') + ']'
+      }
+    )
   }
   if (change.type === 'options') {
     if (

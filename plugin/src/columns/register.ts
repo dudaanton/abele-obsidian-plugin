@@ -152,12 +152,25 @@ function columnMenu(
         ).open()
       )
   )
-  for (const mobile of ['stack', 'keep'] as const)
+  menu.addSeparator()
+  for (const role of ['main', 'aside'] as const)
     menu.addItem((item) =>
       item
         .setTitle(
-          mobile === 'stack' ? 'Stack on narrow screens' : 'Keep side by side on narrow screens'
+          role === 'aside' ? 'Use this column as an aside' : 'Use this column as main content'
         )
+        .onClick(() => change({ type: 'role', index, role }))
+    )
+  const mobileLabels = {
+    stack: 'Stack on narrow screens',
+    keep: 'Keep side by side on narrow screens',
+    'aside-first': 'Show asides first on narrow screens',
+    'aside-collapse': 'Collapse asides on narrow screens',
+  }
+  for (const mobile of ['stack', 'keep', 'aside-first', 'aside-collapse'] as const)
+    menu.addItem((item) =>
+      item
+        .setTitle(mobileLabels[mobile])
         .setChecked(target.record.options.mobile === mobile)
         .onClick(() =>
           change({
@@ -238,7 +251,7 @@ export function registerColumns(plugin: Plugin): void {
   }
   plugin.registerMarkdownPostProcessor((el, original) => {
     const ctx = columnRenderContext(el, original)
-    columnsPostProcessor(el)
+    columnsPostProcessor(el, ctx)
     const parents = [
       ...(el.matches('.abele-columns') ? [el] : []),
       ...Array.from(el.querySelectorAll<HTMLElement>('.abele-columns')),

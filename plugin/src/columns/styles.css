@@ -17,7 +17,10 @@
 }
 
 .callout.abele-columns > .callout-title,
-.callout.abele-columns > .callout-content > .abele-column > .callout-title {
+.callout.abele-columns
+  > .callout-content
+  > .abele-column[data-abele-column-role='main']
+  > .callout-title {
   display: none;
 }
 
@@ -34,6 +37,22 @@
 
 .abele-column > .callout-content {
   min-width: 0;
+}
+
+.abele-column[data-abele-column-role='aside'] > .callout-title > .callout-icon {
+  display: none;
+}
+
+.abele-column-aside-fold[hidden] {
+  display: none;
+}
+
+.abele-column > .callout-title[role='button'] {
+  cursor: pointer;
+}
+
+.abele-column[data-abele-aside-collapsed='true'] > .callout-content {
+  display: none;
 }
 
 /* Preserve code lines; scroll locally instead of wrapping them to the narrower frame. */
@@ -55,12 +74,19 @@
 }
 
 @container abele-columns (max-width: 500px) {
-  .callout.abele-columns[data-abele-columns-mobile='stack'] > .callout-content {
+  .callout.abele-columns:not([data-abele-columns-mobile='keep']) > .callout-content {
     flex-direction: column;
   }
-  .callout.abele-columns[data-abele-columns-mobile='stack'] > .callout-content > .abele-column {
+  .callout.abele-columns:not([data-abele-columns-mobile='keep'])
+    > .callout-content
+    > .abele-column {
     flex: none;
     width: 100%;
+  }
+  .callout.abele-columns[data-abele-columns-mobile='aside-first']
+    > .callout-content
+    > .abele-column[data-abele-column-role='aside'] {
+    order: -1;
   }
   .callout.abele-columns[data-abele-columns-mobile='keep'] > .callout-content {
     /* The explicit narrow layout scrolls the row, never shrinks the theme's font. */
@@ -68,6 +94,49 @@
   }
   .callout.abele-columns[data-abele-columns-mobile='keep'] > .callout-content > .abele-column {
     min-width: calc(var(--abele-column-weight, 1) * 12rem);
+  }
+}
+
+@media print {
+  .callout.abele-columns {
+    padding-top: 0;
+    container-type: normal;
+  }
+  .abele-columns-controls,
+  .abele-column-aside-fold {
+    display: none !important;
+  }
+  .callout.abele-columns > .callout-content,
+  .print .callout.abele-columns > .callout-content {
+    /* Obsidian's print sheet forces callout contents to inherit block display. */
+    display: flex !important;
+    flex-direction: row !important;
+    overflow: visible !important;
+  }
+  .callout.abele-columns > .callout-content > .abele-column {
+    flex: var(--abele-column-weight, 1) 1 0 !important;
+    min-width: 0 !important;
+    width: auto !important;
+    order: 0 !important;
+  }
+  .abele-column[data-abele-aside-collapsed] > .callout-content {
+    display: block !important;
+  }
+  .abele-column pre,
+  .abele-column pre code {
+    white-space: pre-wrap;
+    overflow-wrap: anywhere;
+  }
+  .abele-column-table {
+    overflow: visible;
+  }
+  .abele-column-table table {
+    width: 100%;
+    table-layout: fixed;
+  }
+  .abele-column-table th,
+  .abele-column-table td {
+    overflow-wrap: anywhere;
   }
 }
 
