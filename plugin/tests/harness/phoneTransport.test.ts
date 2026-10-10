@@ -1,12 +1,62 @@
 import { beforeEach, expect, it, vi } from 'vitest'
-import { installPhoneHost, phoneEval } from '../e2e/helpers/phone'
+import { beginPhoneCase, endPhoneCase, installPhoneHost, phoneEval } from '../e2e/helpers/phone'
 
 const exec = vi.hoisted(() => vi.fn())
 vi.mock('node:child_process', () => ({
   default: { execFileSync: exec },
   execFileSync: exec,
 }))
-beforeEach(() => exec.mockReset())
+beforeEach(() => {
+  exec.mockReset()
+  endPhoneCase()
+})
+
+const identity = { timeOrigin: 123, loadId: 'first-load' }
+const envelope = (value: unknown) => JSON.stringify({ type: 'object', value })
+it('retries a lost eval reply once using the same job without repeating mutations', () => {
+  exec.mockReturnValueOnce(envelope(identity))
+  beginPhoneCase()
+  exec
+    .mockReturnValueOnce('')
+    .mockReturnValueOnce(envelope({ identity, answer: { type: 'number', value: 7 } }))
+  expect(phoneEval('window.mutations++;7', 1000)).toBe('=> 7')
+  expect(exec.mock.calls[1][1]).toEqual(exec.mock.calls[2][1])
+})
+it('reports reload before executing an action in the replacement WebView', () => {
+  exec.mockReturnValueOnce(envelope(identity))
+  beginPhoneCase()
+  exec.mockImplementationOnce(() => {
+    throw Object.assign(new Error('driver'), { stderr: 'JSONDecodeError: empty reply' })
+  })
+  exec.mockReturnValueOnce(
+    envelope({ identity: { timeOrigin: 456, loadId: 'new-load' }, answer: { type: 'undefined' } })
+  )
+  expect(() => phoneEval('mutate()', 1000)).toThrow('Obsidian was reloaded during the case')
+  expect(exec).toHaveBeenCalledTimes(3)
+})
+it('keeps a repeated driver failure distinct from a reload', () => {
+  exec.mockReturnValueOnce(envelope(identity))
+  beginPhoneCase()
+  exec.mockReturnValue('')
+  expect(() => phoneEval('probe()', 1000)).toThrow(/phone.*transport/)
+  expect(exec).toHaveBeenCalledTimes(3)
+})
+it('the page job executes once and refuses a replacement load before mutating it', async () => {
+  exec.mockReturnValueOnce(envelope(identity))
+  beginPhoneCase()
+  exec.mockReturnValue(envelope({ identity, answer: { type: 'number', value: 1 } }))
+  phoneEval('++window.mutations', 1000)
+  const code = exec.mock.calls[1][1].at(-1)
+  const evaluate = new Function('window', 'performance', `return ${code}`)
+  const page = { __abelePhoneLoadIdentity: identity, mutations: 0 }
+  await Promise.all([evaluate(page, { timeOrigin: 123 }), evaluate(page, { timeOrigin: 123 })])
+  expect(page.mutations).toBe(1)
+  const replacement = { mutations: 0 }
+  const reply = await evaluate(replacement, { timeOrigin: 456 })
+  expect(replacement.mutations).toBe(0)
+  expect(reply.identity.timeOrigin).toBe(456)
+  expect(reply.answer).toBeUndefined()
+})
 
 it('reports a host failure before a caller tries to parse a feature report', () => {
   exec.mockReturnValue(

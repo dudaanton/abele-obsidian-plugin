@@ -7,7 +7,13 @@ import type { CommitOp, V2ManifestItem } from '@abele/sync-protocol'
 import { vaultCli } from './obsidianCli'
 import { SyncDriver } from './syncDriver'
 import { spawnSyncServer, siblingMissing, fixtureFetch, type SyncServer } from './syncServer'
-import { PHONE_VAULT, exposeToPhone, waitForPhoneRoute } from './phone'
+import {
+  PHONE_VAULT,
+  beginPhoneCase,
+  endPhoneCase,
+  exposeToPhone,
+  waitForPhoneRoute,
+} from './phone'
 import { onPhone } from './target'
 import { waitFor } from './syncVault'
 import { syncFixtureRules } from './syncFixtureRules'
@@ -42,6 +48,7 @@ export class TokenSyncLive {
   async start(): Promise<void> {
     siblingMissing()
     try {
+      if (onPhone()) beginPhoneCase()
       // Validate BOTH leases before mutating either one; never reset pre-existing state here.
       for (const [label, device] of [
         ['primary', this.primary],
@@ -195,6 +202,8 @@ export class TokenSyncLive {
     return (this.closing ??= this.closeOwned())
   }
   private async closeOwned(): Promise<void> {
+    // Cleanup may inspect a replacement page after reporting the failed case.
+    if (onPhone()) endPhoneCase()
     const failures: unknown[] = []
     for (const device of this.saved.keys()) device.retire()
     for (const [device, saved] of [...this.saved].reverse()) {

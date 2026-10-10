@@ -43,12 +43,82 @@ export function phoneHome(): void {
  * CLI's `eval` does, so `evalRaw` and everything built on it read both alike: a string as it
  * is, anything else as JSON, `undefined` as `(no output)`, a throw as `Error: <message>`.
  */
+interface PhoneLoadIdentity {
+  timeOrigin: number
+  loadId: string
+}
+let caseIdentity: PhoneLoadIdentity | undefined
+const loadIdentity = `window.__abelePhoneLoadIdentity ||= {timeOrigin:performance.timeOrigin,loadId:Math.random().toString(36).slice(2)}`
+
+/** A case owns one WebView load. Explicit fixture cleanup ends this ownership. */
+export function beginPhoneCase(): void {
+  caseIdentity = undefined
+  caseIdentity = JSON.parse(
+    rawPhoneEval(`(()=>(${loadIdentity}))()`, 10000).slice(3)
+  ) as PhoneLoadIdentity
+  console.debug('[phone-webview]', { event: 'case-start', ...caseIdentity, at: Date.now() })
+}
+export function endPhoneCase(): void {
+  caseIdentity = undefined
+}
+
 export function phoneEval(code: string, timeoutMs: number): string {
+  if (!caseIdentity) return rawPhoneEval(code, timeoutMs)
+  const expected = caseIdentity
+  const key = Math.random().toString(36).slice(2)
+  // Cache the promise before running the action. A lost reply retries this same
+  // job, never a second gesture/write, and a replacement page executes nothing.
+  const wrapped = `(async()=>{
+    const identity=${loadIdentity},expected=${JSON.stringify(expected)},key=${JSON.stringify(key)};
+    if(identity.timeOrigin!==expected.timeOrigin||identity.loadId!==expected.loadId)return {identity};
+    if(window.__abelePhoneEvalReply?.key!==key)window.__abelePhoneEvalReply={key,promise:Promise.resolve().then(async()=>{
+      try{const value=await eval(${JSON.stringify(code)});return {type:typeof value,value}}
+      catch(error){return {thrown:String(error?.message||error)}}
+    })};
+    return {identity,answer:await window.__abelePhoneEvalReply.promise};
+  })()`
+  let packet:
+    | { identity: PhoneLoadIdentity; answer?: { type?: string; value?: unknown; thrown?: string } }
+    | undefined
+  for (let attempt = 0; attempt < 2; attempt++) {
+    try {
+      // Both synchronous attempts together stay below the worker heartbeat limit.
+      const raw = rawPhoneEval(wrapped, Math.min(timeoutMs, attempt ? 10000 : 30000), 5000)
+      if (!raw.startsWith('=> ')) throw new Error('phone driver transport: missing eval reply')
+      packet = JSON.parse(raw.slice(3)) as typeof packet
+      if (!packet?.identity) throw new Error('phone driver transport: missing load identity')
+      break
+    } catch (error) {
+      if (attempt) throw error
+      console.debug('[phone-webview]', { event: 'eval-retry', ...expected, at: Date.now() })
+    }
+  }
+  if (
+    packet!.identity.timeOrigin !== expected.timeOrigin ||
+    packet!.identity.loadId !== expected.loadId
+  )
+    throw new Error(
+      'Obsidian was reloaded during the case: ' +
+        JSON.stringify({ before: expected, after: packet!.identity })
+    )
+  const answer = packet!.answer
+  if (!answer) throw new Error('phone driver transport: missing eval answer')
+  if (answer.thrown !== undefined) {
+    assertPhoneTransport(answer.thrown)
+    return `Error: ${answer.thrown.replace(/^\w*Error: /, '')}`
+  }
+  if (answer.type === 'undefined') return '(no output)'
+  return typeof answer.value === 'string'
+    ? `=> ${answer.value}`
+    : `=> ${JSON.stringify(answer.value, null, 2)}`
+}
+
+function rawPhoneEval(code: string, timeoutMs: number, graceMs = 15000): string {
   let out: string
   try {
     out = driver(
       ['eval', '--envelope', '--timeout', String(Math.ceil(timeoutMs / 1000)), code],
-      timeoutMs + 15_000
+      timeoutMs + graceMs
     )
   } catch (error) {
     const err = error as { status?: number; stdout?: string; stderr?: string; signal?: string }
