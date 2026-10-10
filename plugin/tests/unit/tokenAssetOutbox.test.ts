@@ -98,3 +98,30 @@ it('reopens a lost response with the exact request and attempts it once per pass
   expect(one.send).toHaveBeenCalledTimes(2)
   expect(reopened.state()).toEqual([])
 })
+
+it('replays an uncertain request with its original key and body after the server size limit drops', async () => {
+  const one = await fixture()
+  let limit = 100
+  const options = { ...one.options, maxBytes: () => limit },
+    outbox = new TokenAssetOutbox(options),
+    key = await outbox.enqueue(one.input),
+    send = one.send.getMockImplementation()!
+  const loseResponse = async (...args: Parameters<typeof send>) => {
+    await send(...args)
+    throw new Error('Response lost')
+  }
+  one.send.mockImplementationOnce(loseResponse).mockImplementationOnce(loseResponse)
+  await expect(outbox.drain(false, key)).rejects.toThrow('Response lost')
+  limit = 2
+  const reopened = new TokenAssetOutbox(options)
+  await reopened.restore()
+  await expect(reopened.drain(false, key)).rejects.toThrow('Response lost')
+  expect(one.send).toHaveBeenCalledTimes(2)
+  expect(one.requests[1]).toEqual(one.requests[0])
+  expect(reopened.state()).toEqual([{ path: one.input.path, key, reason: 'Response lost' }])
+  limit = 100
+  await reopened.drain(true)
+  expect(one.send).toHaveBeenCalledTimes(3)
+  expect(one.requests[2]).toEqual(one.requests[0])
+  expect(reopened.state()).toEqual([])
+})

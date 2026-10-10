@@ -171,7 +171,9 @@ export class TokenAssetOutbox {
       attempted.add(one.key)
       try {
         this.options.assertOwned()
-        if (one.bytes.length > this.options.maxBytes()) {
+        // A changed limit cannot turn an unanswered request into a known refusal.
+        // Reconcile that request with its original key before considering a new attempt.
+        if (one.uncertain === undefined && one.bytes.length > this.options.maxBytes()) {
           const refusal = { code: 'too_large', message: 'This file is too large for this server' }
           await this.mutate(async (queue) => {
             const current = queue.find((item) => item.key === one.key)

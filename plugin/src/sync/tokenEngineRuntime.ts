@@ -21,6 +21,7 @@ import {
   V2ManifestSchema,
   V2ChangesSchema,
   V2ConnectionSchema,
+  ErrorCodeSchema,
   decodeAccessToken,
   normalisePath,
   type V2ManifestItem,
@@ -103,8 +104,20 @@ export class TokenEngineRuntime implements ConnectionRuntime, TokenUiRuntime {
           )
           if (!response.ok) {
             if (response.status === 401 || response.status === 403) this.permitted = false
-            if (response.status >= 500)
-              throw new EngineError('offline', 'The sync server is temporarily unavailable')
+            if (response.status >= 500) {
+              // Read a clone so the protocol client can still decode classified refusals.
+              const body = await response
+                .clone()
+                .json()
+                .catch((): null => null)
+              const code = ErrorCodeSchema.safeParse(body?.error?.code)
+              if (
+                !code.success ||
+                code.data === 'internal' ||
+                typeof body?.error?.message !== 'string'
+              )
+                throw new EngineError('offline', 'The sync server is temporarily unavailable')
+            }
             return response
           }
           if (url.pathname === '/v2/connection') {

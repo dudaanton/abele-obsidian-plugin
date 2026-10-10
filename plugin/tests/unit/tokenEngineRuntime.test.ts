@@ -382,6 +382,25 @@ it('keeps group exchange closed while the server reports scope_updating', async 
     await a.runtime.disconnect()
   }
 })
+it.each([
+  ['scope_updating', 'scope_updating'],
+  ['scope_unavailable', 'scope_unavailable'],
+  ['internal', 'offline'],
+])('classifies a 503 %s response as %s', async (code, expected) => {
+  const wire = await server('Shared/sample.md', 'sample'),
+    fs = new MemoryFileSystem(),
+    a = runtime(wire, fs)
+  wire.fetch.mockImplementation(async () =>
+    Response.json({ error: { code, message: 'Sample server refusal' } }, { status: 503 })
+  )
+  try {
+    await expect(a.runtime.sync()).rejects.toMatchObject({ code: expected })
+    expect(fs.snapshot().size).toBe(0)
+    expect(await a.state.getCursor()).toBe(0)
+  } finally {
+    await a.runtime.disconnect()
+  }
+})
 
 it('refuses a server that mutates an already captured executable version before advancing its cursor', async () => {
   const wire = await server('Scripts/sample.js', 'immutable sample'),
