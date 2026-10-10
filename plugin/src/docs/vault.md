@@ -395,6 +395,15 @@ order on narrow panes; `mobile=keep` keeps a horizontally scrolling row. The tex
 insertion template uses `ratio=2:1` and marks its second child `abele-column|role=aside`;
 this is an annotation, not an aside-specific mobile or print mode.
 
+Each column supports native lists, tables, code, inline/display math, images, attachments,
+note embeds and clickable tasks, plus Abele galleries, Mermaid diagrams, maps and charts.
+Wide tables and code scroll within their own block, not the surrounding prose. Galleries
+inside rendered columns are read-only (their images and viewer still work); edit the source
+to change them. Diagrams, maps and charts size to their column and respond to its resize.
+Their resources belong to the render, including asynchronous results arriving after a
+Live Preview widget has been replaced. Without Abele the same source remains nested quotes
+and ordinary callouts, with all content retained.
+
 Insertion, add/move, proportions and removal commands modify only the Markdown frame.
 Removal retains body content, deeper quotes and explicit titles. There are no new properties,
 sidecars, settings or transfer keys. The renderer never rewrites source. Unknown parent
