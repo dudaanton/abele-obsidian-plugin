@@ -10,6 +10,13 @@ import { spawnSyncServer, siblingMissing, fixtureFetch, type SyncServer } from '
 import { exposeToPhone, PHONE_VAULT } from './phone'
 import { onPhone } from './target'
 import { waitFor } from './syncVault'
+import { syncFixtureRules } from './syncFixtureRules'
+function cleanupReason(error: unknown, depth = 0): string {
+  const message = error instanceof Error ? error.message : String(error)
+  return error instanceof AggregateError && depth < 3
+    ? message + ': ' + error.errors.map((one) => cleanupReason(one, depth + 1)).join('; ')
+    : message
+}
 /** Manager leases both named pool vaults. Never open, register or dispose shared app windows. */
 export class TokenSyncLive {
   readonly root = 'Sync fixtures ' + randomUUID().slice(0, 8)
@@ -35,9 +42,24 @@ export class TokenSyncLive {
     siblingMissing()
     try {
       // Validate BOTH leases before mutating either one; never reset pre-existing state here.
-      for (const device of [this.primary, ...(this.peer ? [this.peer] : [])]) {
-        if (device.rows().length || device.candidates().length || device.questions().length)
-          throw new Error('Pool vault contains existing connections or pending reviews; untouched')
+      for (const [label, device] of [
+        ['primary', this.primary],
+        ...(this.peer ? [['peer', this.peer] as const] : []),
+      ] as const) {
+        const rows = device.rows(),
+          candidates = device.candidates(),
+          questions = device.questions()
+        if (rows.length || candidates.length || questions.length)
+          throw new Error(
+            'Pool vault contains existing connections or pending reviews; untouched. ' +
+              label +
+              ': ' +
+              JSON.stringify({
+                connections: rows.map((one) => `${one.id} (${one.status}) ${one.address}`),
+                candidates: candidates.map((one) => one.path),
+                consents: questions.map((one) => one.path),
+              })
+          )
       }
       for (const device of [this.primary, ...(this.peer ? [this.peer] : [])]) {
         const saved = device.run<{ ignore: string | null; file: string | null }>(
@@ -50,7 +72,7 @@ export class TokenSyncLive {
           )
         // Configuration is excluded except in the explicit settings suite; do not exchange pool credentials.
         device.run(
-          `await app.vault.adapter.write('.abele-sync-ignore',${JSON.stringify('*\n!' + this.root + '/\n!' + this.root + '/**\n.obsidian/\n')});return true`
+          `await app.vault.adapter.write('.abele-sync-ignore',${JSON.stringify(syncFixtureRules(this.root))});return true`
         )
         this.ids.set(device, [])
       }
@@ -157,7 +179,20 @@ export class TokenSyncLive {
       try {
         await device.resetTokenState()
       } catch (error) {
-        failures.push(error)
+        try {
+          await device.forceResetTokenState()
+          console.warn(
+            'Live sync polite cleanup failed; guarded pool reset succeeded:',
+            cleanupReason(error)
+          )
+        } catch (fallback) {
+          failures.push(
+            new AggregateError(
+              [error, fallback],
+              'Polite cleanup and guarded pool reset both failed'
+            )
+          )
+        }
       }
       try {
         // Fixture files are the only notes this case owns. Reset itself never touches files.
@@ -197,6 +232,10 @@ export class TokenSyncLive {
         failures.push(error)
       }
     if (this.work) rmSync(this.work, { recursive: true, force: true })
-    if (failures.length) throw new AggregateError(failures, 'Live sync fixture cleanup failed')
+    if (failures.length)
+      throw new AggregateError(
+        failures,
+        'Live sync fixture cleanup failed: ' + failures.map((one) => cleanupReason(one)).join('; ')
+      )
   }
 }

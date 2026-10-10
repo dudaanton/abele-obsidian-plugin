@@ -1,4 +1,5 @@
 import { expect } from 'vitest'
+import { syncFixtureRules } from './helpers/syncFixtureRules'
 import { liveSuite, liveCase } from './helpers/syncLiveCases'
 import { reloadAs } from './helpers/phoneWindow'
 import { waitFor } from './helpers/syncVault'
@@ -96,9 +97,14 @@ liveCase(
       a = s.primary,
       path = '.obsidian/plugins/abele/sample-review.js'
     a.run(
-      `await app.vault.adapter.write('.abele-sync-ignore',${JSON.stringify('*\n!' + s.root + '/\n!' + s.root + '/**\n!.obsidian/\n!.obsidian/plugins/\n!.obsidian/plugins/abele/\n!' + path + '\n')});return true`
+      `await app.vault.adapter.write('.abele-sync-ignore',${JSON.stringify(syncFixtureRules(s.root, [path]))});return true`
     )
     const id = await s.connect()
+    expect(
+      (await s.items()).filter(
+        (one) => one.kind !== 'directory' && one.path.startsWith('.obsidian/')
+      )
+    ).toEqual([])
     await s.put(path, '// inert own-plugin fixture')
     await s.put(s.root + '/continues.md', 'ordinary content')
     await a.syncNow()
@@ -166,7 +172,7 @@ liveCase(
     try {
       for (const device of devices)
         device.run(
-          `await app.vault.adapter.write('.abele-sync-ignore',${JSON.stringify('*\n!' + s.root + '/\n!' + s.root + '/**\n!.obsidian/\n!.obsidian/hotkeys.json\n')});return true`
+          `await app.vault.adapter.write('.abele-sync-ignore',${JSON.stringify(syncFixtureRules(s.root, [path]))});return true`
         )
       a.run(
         `await app.vault.adapter.write(${JSON.stringify(path)},${JSON.stringify(incoming)});return true`

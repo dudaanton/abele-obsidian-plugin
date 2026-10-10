@@ -9,6 +9,7 @@ import { resetTokenPool, type TokenPoolResetRequest } from './resetTokenPool'
 
 const JOURNAL = 'abele-sync-test-pool-ledgers-v1'
 const REVIEW_ID = 'abele-sync-device-review-id-v1'
+const resetting = new WeakMap<Plugin, Promise<void>>()
 type HostInputs = {
   ui: TokenUi
   key: ConstructorParameters<typeof TokenEngines>[2]
@@ -63,6 +64,25 @@ export async function captureSyncTokenOwnership(plugin: Plugin, vault: string): 
 
 /** No filesystem, settings-transfer, server revocation or unrelated secret operations. */
 export async function resetSyncTokenState(
+  plugin: Plugin,
+  request: TokenPoolResetRequest
+): Promise<void> {
+  if (
+    !request.vault ||
+    request.vault !== plugin.app.vault.getName() ||
+    request.confirm !== 'reset-sync-token-state'
+  )
+    throw new Error('Exact leased pool vault and reset-sync-token-state confirmation required')
+  const prior = resetting.get(plugin)
+  if (prior !== undefined) return prior
+  const pending = performResetSyncTokenState(plugin, request).finally(() => {
+    if (resetting.get(plugin) === pending) resetting.delete(plugin)
+  })
+  resetting.set(plugin, pending)
+  return pending
+}
+
+async function performResetSyncTokenState(
   plugin: Plugin,
   request: TokenPoolResetRequest
 ): Promise<void> {

@@ -1115,6 +1115,14 @@ Each live case separately resets the clean leases it used, deletes only its own 
 and restores its ignore file, active note and visibility override. Cleanup attempts every lease
 and restoration even after failure. Scenario evidence is marked verified only after cleanup
 succeeds. A dirty lease at normal case setup is refused, never silently reset.
+The refusal names the primary/peer lease, connection IDs/statuses/servers and pending review
+or consent paths, without credentials. If waiting for previous test jobs fails, teardown calls
+the manager's guarded reset directly; that port still drains engines before deleting storage.
+Successful fallback is logged. If both attempts fail, their nested reasons are included in the
+cleanup error and the case remains failed. Configuration fixtures use exact-file exceptions:
+negating `.obsidian/` would accidentally include the whole installed configuration tree.
+Concurrent reset callers share one in-flight operation, including a fallback after a CLI
+timeout; they cannot create two replacement engine hosts.
 
 Batch runner checks: wait for the token host as well as the test API after installing; register
 lease cleanup immediately after the first successful lease and validate the second. Add

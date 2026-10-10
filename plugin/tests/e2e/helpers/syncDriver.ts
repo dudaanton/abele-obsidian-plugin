@@ -29,7 +29,7 @@ export class SyncDriver {
   run<T>(body: string): T {
     return this.vault().evalAwait<T>(`(async()=>{${SYNC_PRELUDE}\n${body}})()`)
   }
-  async long<T>(what: string, body: string, confidential = false): Promise<T> {
+  async long<T>(what: string, body: string, confidential = false, timeoutMs = 90000): Promise<T> {
     const key = '__abeleSyncJob' + Math.random().toString(36).slice(2)
     const cli = this.vault()
     const evaluate = confidential ? cli.evalAwaitPrivate.bind(cli) : cli.evalAwait.bind(cli)
@@ -46,7 +46,7 @@ export class SyncDriver {
           )
           return answer !== null
         },
-        90000
+        timeoutMs
       )
       const result = answer as unknown as { ok: boolean; value: T; error?: string }
       if (!result.ok) throw new Error(confidential ? what + ' failed' : what + ': ' + result.error)
@@ -100,11 +100,23 @@ export class SyncDriver {
   async resetTokenState(): Promise<void> {
     await this.long(
       'reset leased pool token state',
-      `await poll(()=>Object.keys(window).filter(key=>key.startsWith('__abeleSyncJob')&&key!==jobKey).every(key=>window[key]!==null),60000,'previous sync UI jobs to settle');for(const key of Object.keys(window).filter(key=>key.startsWith('__abeleSyncJob')&&key!==jobKey))delete window[key];for(const doc of new Set([document,settingsDoc()]))for(const button of [...doc.querySelectorAll('.modal-close-button')].reverse())button.click();await window.__abeleTest.resetSyncTokenState({vault:app.vault.getName(),confirm:'reset-sync-token-state'});return true`
+      `await poll(()=>Object.keys(window).filter(key=>key.startsWith('__abeleSyncJob')&&key!==jobKey).every(key=>window[key]!==null),10000,'previous sync UI jobs to settle');for(const key of Object.keys(window).filter(key=>key.startsWith('__abeleSyncJob')&&key!==jobKey))delete window[key];for(const doc of new Set([document,settingsDoc()]))for(const button of [...doc.querySelectorAll('.modal-close-button')].reverse())button.click();await window.__abeleTest.resetSyncTokenState({vault:app.vault.getName(),confirm:'reset-sync-token-state'});return true`,
+      false,
+      20000
     )
   }
   captureTokenOwnership(): void {
     this.run(`await window.__abeleTest.captureSyncTokenOwnership(app.vault.getName());return true`)
+  }
+  async forceResetTokenState(): Promise<void> {
+    // Same guarded port as the manager's reset. A hung helper job is not a reason to
+    // skip it: the port itself drains engines before any database is removed.
+    await this.long(
+      'guarded pool reset after polite cleanup failed',
+      `await window.__abeleTest.resetSyncTokenState({vault:app.vault.getName(),confirm:'reset-sync-token-state'});for(const key of Object.keys(window).filter(key=>key.startsWith('__abeleSyncJob')&&key!==jobKey))delete window[key];for(const doc of new Set([document,settingsDoc()]))for(const button of [...doc.querySelectorAll('.modal-close-button')].reverse())button.click();return true`,
+      false,
+      60000
+    )
   }
   async share(id: string, scopeLabel: string, label = 'Sample recipient'): Promise<string> {
     return this.long(

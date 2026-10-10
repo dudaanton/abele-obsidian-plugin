@@ -85,7 +85,10 @@ it('removes owned credentials, ledgers, edit snapshots and all review decisions 
   } as unknown as Plugin
   try {
     await captureSyncTokenOwnership(plugin, 'leased-pool')
-    await resetSyncTokenState(plugin, { vault: 'leased-pool', confirm: 'reset-sync-token-state' })
+    await Promise.all([
+      resetSyncTokenState(plugin, { vault: 'leased-pool', confirm: 'reset-sync-token-state' }),
+      resetSyncTokenState(plugin, { vault: 'leased-pool', confirm: 'reset-sync-token-state' }),
+    ])
     expect(close).toHaveBeenCalledOnce()
     expect(registry.records()).toEqual([])
     expect(keys).toEqual(new Map([['unrelated-key', 'keep']]))

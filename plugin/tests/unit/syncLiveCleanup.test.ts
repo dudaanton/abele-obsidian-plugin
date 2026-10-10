@@ -18,6 +18,9 @@ it('attempts both pool resets and restores each pool even when the first reset f
       if (index === 1) throw new Error('blocked')
     })
   )
+  const forced = devices.map((device) =>
+    vi.spyOn(device, 'forceResetTokenState').mockResolvedValue()
+  )
   const removals = devices.map((device) => vi.spyOn(device, 'remove').mockImplementation(() => {}))
   const restorations = devices.map((device) => vi.spyOn(device, 'run').mockReturnValue(true))
   const saved = (
@@ -26,7 +29,9 @@ it('attempts both pool resets and restores each pool even when the first reset f
     }
   ).saved
   for (const device of devices) saved.set(device, { ignore: 'existing ignore', file: null })
-  await expect(live.close()).rejects.toThrow('Live sync fixture cleanup failed')
+  await live.close()
+  expect(forced[1]).toHaveBeenCalledOnce()
+  expect(forced[0]).not.toHaveBeenCalled()
   for (let index = 0; index < devices.length; index++) {
     expect(resets[index]).toHaveBeenCalledOnce()
     expect(removals[index]).toHaveBeenCalledWith([live.root])
@@ -39,4 +44,38 @@ it('attempts both pool resets and restores each pool even when the first reset f
   }
   await live.close()
   for (const reset of resets) expect(reset).toHaveBeenCalledOnce()
+})
+
+it('names discovered connections and pending paths without resetting pre-existing state', async () => {
+  vi.stubEnv('OBSIDIAN_TEST_VAULT', 'primary-pool')
+  const live = new TokenSyncLive(false)
+  vi.spyOn(live.primary, 'rows').mockReturnValue([
+    { id: 'existing-id', status: 'offline', address: 'https://sync.example', paused: false },
+  ])
+  vi.spyOn(live.primary, 'candidates').mockReturnValue([{ path: 'Scripts/pending.js' }] as never)
+  vi.spyOn(live.primary, 'questions').mockReturnValue([])
+  const reset = vi.spyOn(live.primary, 'resetTokenState')
+  await expect(live.start()).rejects.toThrow('existing-id (offline)')
+  await expect(live.start()).rejects.toThrow('Scripts/pending.js')
+  expect(reset).not.toHaveBeenCalled()
+})
+
+it('reports both cleanup failures while still restoring the lease', async () => {
+  vi.stubEnv('OBSIDIAN_TEST_VAULT', 'primary-pool')
+  const live = new TokenSyncLive(false)
+  vi.spyOn(live.primary, 'resetTokenState').mockRejectedValue(new Error('polite blocked'))
+  vi.spyOn(live.primary, 'forceResetTokenState').mockRejectedValue(
+    new Error('guarded recovery required')
+  )
+  const restore = vi.spyOn(live.primary, 'run').mockReturnValue(true)
+  const remove = vi.spyOn(live.primary, 'remove').mockImplementation(() => {})
+  const saved = (
+    live as unknown as {
+      saved: Map<typeof live.primary, { ignore: string | null; file: string | null }>
+    }
+  ).saved
+  saved.set(live.primary, { ignore: 'original ignore', file: null })
+  await expect(live.close()).rejects.toThrow('polite blocked; guarded recovery required')
+  expect(remove).toHaveBeenCalledWith([live.root])
+  expect(restore.mock.calls.some(([body]) => body.includes('original ignore'))).toBe(true)
 })
