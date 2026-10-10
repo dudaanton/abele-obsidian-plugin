@@ -15,7 +15,8 @@
           @keydown.enter.prevent="unfold(index)"
           @keydown.space.prevent="unfold(index)"
         >
-          {{ foldLabel(row.lines.length) }}
+          <span class="abele-diff__sign"><Icon icon="unfold-vertical" size="xs" /></span
+          >{{ foldLabel(row.lines.length) }}
         </div>
         <div
           v-else
@@ -49,7 +50,8 @@
           @keydown.enter.prevent="unfoldPair(index)"
           @keydown.space.prevent="unfoldPair(index)"
         >
-          {{ foldLabel(pair.lines?.length ?? 0) }}
+          <span class="abele-diff__sign"><Icon icon="unfold-vertical" size="xs" /></span
+          >{{ foldLabel(pair.lines?.length ?? 0) }}
         </div>
         <template v-else>
           <div
@@ -89,6 +91,7 @@
 // A sign before each line says the same without colour.
 import { computed, ref, watch } from 'vue'
 import { diffLines, foldUnchanged, pairRows, type DiffLine, type DiffRow } from './diffModel'
+import Icon from './obsidian/Icon.vue'
 
 const props = withDefaults(
   defineProps<{
@@ -166,10 +169,9 @@ const lineClass = (line: DiffLine) => ({
 }
 .abele-diff__sign {
   flex: 0 0 auto;
-  width: var(--size-4-3);
-  color: var(--text-faint);
+  width: var(--size-4-5);
+  color: var(--text-muted);
   font-family: var(--font-monospace);
-  text-align: center;
   user-select: none;
 }
 .abele-diff__text {
@@ -179,6 +181,19 @@ const lineClass = (line: DiffLine) => ({
 // Obsidian spaces its fold for a whole-file modal; inside a card or a chat it keeps closer.
 .abele-diff .abele-diff__fold {
   margin-block: var(--size-4-1);
+  // Laid out as a line: the unfold glyph in the sign column, the words on the text's left edge.
+  display: flex;
+  align-items: center;
+  padding-inline: var(--size-4-1) var(--size-4-2);
+  text-align: start;
+
+  .abele-diff__sign {
+    display: flex;
+    color: inherit;
+  }
+  .abele-diff__sign .abele-obsidian-icon {
+    padding: 0;
+  }
 }
 .abele-diff__empty {
   color: var(--text-muted);
