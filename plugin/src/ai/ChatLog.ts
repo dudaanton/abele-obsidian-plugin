@@ -150,6 +150,111 @@ export function parseChatMetadata(content: string): ChatMetadata | null {
   return metadata ?? parseLegacy(content).metadata
 }
 
+/** Discovery retains metadata and terminal tool identities, never a transcript. */
+export interface ChatAttentionSnapshot {
+  metadata: ChatMetadata | null
+  records: number
+  damaged: number
+  torn: boolean
+  version: 1 | 2
+}
+
+/** Validate the log cooperatively without constructing message or internal-message arrays.
+ * The adapter has no portable range-read API, but parsing can still yield within a large file.
+ * Retain last-wins tool records exactly as parseChat does, including legacy resolutions. */
+export async function parseChatAttention(
+  content: string,
+  yieldControl: () => Promise<void>
+): Promise<ChatAttentionSnapshot> {
+  const firstEnd = content.indexOf('\n')
+  let head
+  try {
+    head = JSON.parse(content.slice(0, firstEnd < 0 ? undefined : firstEnd))
+  } catch {
+    /* legacy */
+  }
+  if (!head || head.k !== 'meta' || typeof head.v !== 'number') {
+    await yieldControl()
+    const parsed = parseChat(content)
+    return withToolResolutions(parsed, parsed.messages)
+  }
+  let metadata: ChatMetadata | null = null
+  let records = 0,
+    damaged = 0,
+    offset = 0,
+    budget = 0
+  const tools = new Map<string, Pick<ChatMessage, 'toolCallId' | 'toolResult' | 'toolStatus'>>()
+  while (offset < content.length) {
+    const end = content.indexOf('\n', offset)
+    const line = content.slice(offset, end < 0 ? undefined : end)
+    offset = end < 0 ? content.length : end + 1
+    budget += line.length
+    if (budget >= 256 * 1024) {
+      await yieldControl()
+      budget = 0
+    }
+    if (!line.trim()) continue
+    try {
+      const record = JSON.parse(line)
+      records++
+      if (record.k === 'meta') {
+        const { k, v, ...rest } = record
+        void k
+        void v
+        metadata = mergeMetadataEvidence(rest as ChatMetadata, metadata)
+      } else if (record.k === 'msg') {
+        // An update without a result replaces an older result for the same message ID.
+        if (record.toolCallId)
+          tools.set(record.id, {
+            toolCallId: record.toolCallId,
+            toolResult: record.toolResult === undefined ? undefined : '',
+            toolStatus: record.toolStatus,
+          })
+        else tools.delete(record.id)
+      }
+    } catch {
+      damaged++
+      // A glued complete record still counts when comparing a safety copy with the main log.
+      if (salvageGlued(line)) records++
+    }
+  }
+  return withToolResolutions(
+    { metadata, records, damaged, torn: isTorn(content), version: 2 },
+    tools.values()
+  )
+}
+
+function withToolResolutions(
+  parsed: ChatAttentionSnapshot,
+  messages: Iterable<Pick<ChatMessage, 'toolCallId' | 'toolResult' | 'toolStatus'>>
+): ChatAttentionSnapshot {
+  if (!parsed.metadata)
+    return {
+      metadata: null,
+      records: parsed.records,
+      damaged: parsed.damaged,
+      torn: parsed.torn,
+      version: parsed.version,
+    }
+  const resolved = new Set(parsed.metadata.attention?.resolved ?? [])
+  for (const message of messages)
+    if (
+      message.toolCallId &&
+      (message.toolResult !== undefined || message.toolStatus === 'rejected')
+    )
+      resolved.add(message.toolCallId)
+  return {
+    metadata: {
+      ...parsed.metadata,
+      attention: { ...parsed.metadata.attention, resolved: [...resolved] },
+    },
+    records: parsed.records,
+    damaged: parsed.damaged,
+    torn: parsed.torn,
+    version: parsed.version,
+  }
+}
+
 /** Metadata remains last-wins except for irreversible, disk-recorded attention decisions. */
 function mergeMetadataEvidence(current: ChatMetadata, previous: ChatMetadata | null): ChatMetadata {
   const state = current.attention ?? {}
