@@ -121,6 +121,7 @@ export class ChatService {
     sessionId: string
     kind: import('@/agents/attention').AttentionReason['kind']
     id: string
+    focusComposer?: boolean
   } | null>(null)
   /** A comment return can address a passage within that message, in one specific chat. */
   public readonly pendingPassage = ref<{ path: string; message: string; quote: string; start?: number } | null>(null)

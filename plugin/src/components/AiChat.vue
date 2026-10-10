@@ -288,7 +288,11 @@
         <AiToolApproval v-if="pendingApprovalMessage" :message="pendingApprovalMessage" />
 
         <!-- Questions tool -->
-        <div v-if="currentQuestion" class="abele-ai-chat__questions">
+        <div
+          v-if="currentQuestion"
+          class="abele-ai-chat__questions"
+          :data-attention-id="session?.pendingQuestions.value?.id"
+        >
           <div class="abele-ai-chat__questions-question">{{ currentQuestion.question }}</div>
           <div class="abele-ai-chat__questions-options">
             <button
@@ -1899,6 +1903,12 @@ watch(
     const target = [...el.querySelectorAll<HTMLElement>('[data-attention-id]')].find(e => e.dataset.attentionId === request.id)
       ?? el.querySelector<HTMLElement>(request.kind === 'approval' ? '.abele-tool-approval' : '.abele-ai-chat__questions')
     target?.scrollIntoView({ block: 'center' })
+    // Only an explicit Reply to this exact question takes the keyboard. A stale list
+    // entry must not focus the composer for another question that arrived meanwhile.
+    if (request.focusComposer && request.kind === 'question' && target?.dataset.attentionId === request.id) {
+      await nextTick()
+      if (session.value === s && messagesContainer.value === el) focusComposer()
+    }
   },
   { flush: 'post', immediate: true }
 )

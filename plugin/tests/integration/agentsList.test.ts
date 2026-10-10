@@ -1,8 +1,10 @@
+import 'fake-indexeddb/auto'
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest'
 import { AgentsService } from '@/agents/AgentsService'
 import { ChatSession } from '@/ai/ChatSession'
 import { ChatService } from '@/ai/ChatService'
 import { ChatStorage } from '@/ai/ChatStorage'
+import { NodeService } from '@/node/NodeService'
 import { CommentService } from '@/ai/CommentService'
 import { ShellModal } from '@/modal/ShellModal'
 import { AbeleConfig } from '@/services/AbeleConfig'
@@ -58,6 +60,50 @@ describe('one list independent of open tabs', () => {
     expect(agents.badge.value.attention).toBe(2)
     expect(agents.incomplete.value).toBe(true)
     expect(await CommentService.getInstance().load('sample')).toBeNull()
+  })
+  it('publishes model and note-folder facts from storage without starting a chat', async () => {
+    useVault([{ path: 'Comments/sample.abchat', content: content({
+      modelId: 'sample-model', kind: 'comment', commentId: 'sample',
+      anchor: { note: 'Notes/Chapters/sample.md' },
+    }) }])
+    const agents = AgentsService.getInstance()
+    await agents.start()
+    expect(agents.rows.value[0]).toMatchObject({ model: 'sample-model', folder: 'Notes/Chapters' })
+    expect(ChatService.getInstance().getAllSessions()).toHaveLength(0)
+  })
+  it('routes Reply on an unsaved live question to the exact session with focus intent', async () => {
+    useVault([])
+    const chats = ChatService.getInstance()
+    const session = new ChatSession(chats)
+    chats.adoptSession(session)
+    session.attention.value = { question: {
+      id: 'sample-question', at: 1, status: 'waiting', currentIndex: 0, answers: [],
+      questions: [{ question: 'Which sample folder?', options: [] }],
+    } }
+    const agents = AgentsService.getInstance()
+    vi.spyOn(chats, 'revealSidebar').mockResolvedValue(undefined)
+    const row = agents.rows.value.find(r => r.reference.sessionId === session.id)!
+    expect(await agents.open(row, row.reasons[0], { focusComposer: true })).toBe(true)
+    expect(chats.pendingAttentionReveal.value).toEqual({
+      sessionId: session.id, kind: 'question', id: 'sample-question', focusComposer: true,
+    })
+    expect(session.attention.value.question?.status).toBe('waiting')
+    expect(chats.getAllSessions()).toHaveLength(1)
+  })
+  it('reconnects through the existing node transport without sending input or creating tabs', async () => {
+    useVault([])
+    const connect = vi.fn().mockResolvedValue(undefined)
+    const connection = vi.spyOn(NodeService.prototype, 'connection').mockReturnValue({ connect } as never)
+    const nodes = NodeService.getInstance()
+    try {
+      const agents = AgentsService.getInstance()
+      agents.setNodes([{ id: 'sample-registration', expectedNodeId: 'sample-node', label: 'Sample node' }])
+      await agents.reconnect(agents.rows.value[0])
+      expect(connection).toHaveBeenCalledWith('sample-registration')
+      expect(connect).toHaveBeenCalledOnce()
+      expect(ChatService.getInstance().getAllSessions()).toHaveLength(0)
+      expect(agents.incomplete.value).toBe(true)
+    } finally { nodes.destroy(); connection.mockRestore() }
   })
   it('opens discussions through their owner without replacing another discussion tab', async () => {
     const app = useVault(

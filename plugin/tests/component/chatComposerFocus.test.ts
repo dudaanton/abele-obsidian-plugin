@@ -108,6 +108,58 @@ describe('the cursor in the composer', () => {
     expect(textarea(wrapper).selectionStart).toBe('half a thought'.length)
   })
 
+  it('focuses only an explicit Reply at the exact waiting question, without sending', async () => {
+    const answer = vi.fn()
+    const session = fakeChatSession({
+      kind: 'chat',
+      overrides: {
+        pendingQuestions: ref({
+          id: 'sample-question',
+          questions: [{ question: 'Which sample folder?', options: [] }],
+          currentIndex: 0,
+          answers: [],
+        }),
+        answerCurrentQuestion: answer,
+      },
+    })
+    vi.spyOn(service, 'activeSession', 'get').mockReturnValue({ value: session } as never)
+    service.openingSelection.value = true
+    const wrapper = open()
+    await wait(100)
+    service.openingSelection.value = false
+    const question = wrapper.get('.abele-ai-chat__questions').element as HTMLElement
+    const scroll = vi.spyOn(question, 'scrollIntoView')
+    service.pendingAttentionReveal.value = {
+      sessionId: session.id,
+      kind: 'question',
+      id: 'sample-question',
+      focusComposer: true,
+    }
+    await nextTick()
+    await wait(200)
+    expect(scroll).toHaveBeenCalledWith({ block: 'center' })
+    expect(document.activeElement).toBe(textarea(wrapper))
+    expect(answer).not.toHaveBeenCalled()
+  })
+
+  it('does not focus for ordinary attention opening or a stale Reply', async () => {
+    service.openingSelection.value = true
+    const wrapper = open()
+    await wait(100)
+    service.openingSelection.value = false
+    for (const focusComposer of [false, true]) {
+      service.pendingAttentionReveal.value = {
+        sessionId: 'session-1',
+        kind: 'question',
+        id: 'gone-question',
+        focusComposer,
+      }
+      await nextTick()
+      await wait(100)
+      expect(document.activeElement).not.toBe(textarea(wrapper))
+    }
+  })
+
   it('is asked for by the + in the tab bar', async () => {
     const newTab = vi.spyOn(service, 'newTab').mockReturnValue('tab-b')
     const create = vi.spyOn(service, 'createTab')

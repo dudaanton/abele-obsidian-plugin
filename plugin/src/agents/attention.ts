@@ -35,6 +35,8 @@ export interface AttentionRow {
   title: string
   agent: string
   source: string
+  model?: string
+  folder?: string
   quote?: string
   reasons: AttentionReason[]
   updatedAt?: number

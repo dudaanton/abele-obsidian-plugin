@@ -72,6 +72,7 @@ export class AgentsService {
           session.chatTitle,
           session.anchor,
           session.agentId,
+          session.activeModelId,
           () => session.kind,
         ],
         () => this.publish(),
@@ -103,6 +104,8 @@ export class AgentsService {
       title: metadata.title || path.split('/').pop() || 'Чат',
       agent: AgentRegistry.getInstance().get(metadata.agentId ?? '')?.name || 'Агент',
       source: isDiscussion(metadata) ? `Обсуждение · ${metadata.anchor?.note ?? ''}` : 'Чат',
+      model: metadata.modelId || AgentRegistry.getInstance().get(metadata.agentId ?? '')?.modelId,
+      folder: (metadata.anchor?.note || path).split('/').slice(0, -1).join('/') || '/',
       quote: metadata.anchor?.quote,
       reasons: attentionReasons(metadata.attention ?? {}, metadata.pendingToolCalls ?? [], live),
     }
@@ -198,7 +201,7 @@ export class AgentsService {
       {
         type: 'abele-chat',
         providerId: '',
-        modelId: '',
+        modelId: session.activeModelId.value,
         created: '',
         kind: session.kind === 'comment' ? 'comment' : 'chat',
         anchor: session.anchor.value ?? undefined,
@@ -520,7 +523,17 @@ export class AgentsService {
     }
     await this.updateFile(file)
   }
-  async open(row: AttentionRow, reason: AttentionReason): Promise<boolean> {
+  /** Transport admission only: no new input, retry of a run or approval decision. */
+  async reconnect(row: AttentionRow): Promise<void> {
+    if (row.reference.kind !== 'node') return
+    const { NodeService } = await import('@/node/NodeService')
+    await NodeService.getInstance().connection(row.reference.registrationId).connect()
+  }
+  async open(
+    row: AttentionRow,
+    reason: AttentionReason,
+    options: { focusComposer?: boolean } = {}
+  ): Promise<boolean> {
     const chats = ChatService.getInstance()
     if (row.reference.kind !== 'local') return false
     const ref = row.reference
@@ -535,6 +548,12 @@ export class AgentsService {
       await chats.revealSidebar({ focus: false, current })
       if (!chats.isForegroundPresentation(current)) return false
       if (reason.target) chats.pendingReveal.value = reason.target
+      chats.pendingAttentionReveal.value = {
+        sessionId: session.id,
+        kind: reason.kind,
+        id: reason.id,
+        focusComposer: options.focusComposer,
+      }
       return true
     }
     const existing = [...this.live.keys()].find((s) => s.currentChatFile.value?.path === ref.path)
@@ -580,6 +599,7 @@ export class AgentsService {
         sessionId: session.id,
         kind: reason.kind,
         id: reason.id,
+        focusComposer: options.focusComposer,
       }
       return true
     } finally {
