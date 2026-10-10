@@ -5,33 +5,29 @@ afterEach(async () => {
   await one?.runtime.disconnect()
   one = undefined
 })
-// BUG: token publication drops a rejected response instead of retaining its immutable source.
-it.fails(
-  'retains a rejected item and its exact staged source after restarting the adapter',
-  async () => {
-    one = await tokenPublicationFixture()
-    one.publish.mockResolvedValueOnce({
-      cursor: 0,
-      results: [{ status: 'rejected', code: 'quota_exceeded', message: 'sample quota' }],
-    })
-    await one.runtime.publishAttachment('first').catch(() => {})
-    const saved = JSON.parse((await one.state.getMeta('token-asset-outbox')) ?? '[]')
-    expect(saved).toHaveLength(1)
-    expect(saved[0]).toMatchObject({
-      id: 'first',
-      path: 'first.bin',
-      mtime: 1000,
-      bytes: [...new TextEncoder().encode('first immutable bytes')],
-    })
-    await one.runtime.disconnect()
-    const next = one.make()
-    try {
-      expect(JSON.parse((await one.state.getMeta('token-asset-outbox')) ?? '[]')).toEqual(saved)
-    } finally {
-      await next.disconnect()
-    }
+it('retains a rejected item and its exact staged source after restarting the adapter', async () => {
+  one = await tokenPublicationFixture()
+  one.publish.mockResolvedValueOnce({
+    cursor: 0,
+    results: [{ status: 'rejected', code: 'quota_exceeded', message: 'sample quota' }],
+  })
+  await one.runtime.publishAttachment('first').catch(() => {})
+  const saved = JSON.parse((await one.state.getMeta('token-asset-outbox')) ?? '[]')
+  expect(saved).toHaveLength(1)
+  expect(saved[0]).toMatchObject({
+    id: 'first',
+    path: 'first.bin',
+    mtime: 1000,
+    bytes: [...new TextEncoder().encode('first immutable bytes')],
+  })
+  await one.runtime.disconnect()
+  const next = one.make()
+  try {
+    expect(JSON.parse((await one.state.getMeta('token-asset-outbox')) ?? '[]')).toEqual(saved)
+  } finally {
+    await next.disconnect()
   }
-)
+})
 it('an aborted durable enqueue neither vacates retained work nor sends a request', async () => {
   one = await tokenPublicationFixture()
   one.publish.mockRejectedValueOnce(new Error('sample response loss'))

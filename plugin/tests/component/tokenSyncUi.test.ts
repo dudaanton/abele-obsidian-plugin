@@ -11,8 +11,18 @@ import SyncSettings from '@/components/settings/SyncSettings.vue'
 import { MemoryStateStore, sha256 } from '@abele/sync-core'
 import { ExecutableReview } from '@/sync/executableReview'
 import { AttachmentConsent } from '@/sync/attachmentConsent'
+import { Notice } from '../mocks/obsidian'
 
 const modalStub = { template: '<div><slot /><slot name="footer" /></div>' }
+it('reports a failed review refresh without leaving an unhandled settings promise', async () => {
+  const ui = tokenUiFixture(),
+    before = Notice.shown.length
+  vi.spyOn(ui, 'refreshReviews').mockRejectedValue(new Error('sample closed review store'))
+  const view = mount(SyncSettings, { props: { model: ui } })
+  await flushPromises()
+  expect(Notice.shown.slice(before).join(' ')).toContain('Incoming changes')
+  view.unmount()
+})
 
 it('connects with only a token and shows a plain failure without closing the dialog', async () => {
   const data = new Map<string, unknown>()

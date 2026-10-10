@@ -1,491 +1,184 @@
-import { beforeAll, afterAll, expect, it } from 'vitest'
-import { mkdirSync, mkdtempSync } from 'node:fs'
-import { rm } from 'node:fs/promises'
-import { resolve, join } from 'node:path'
-import { productionPluginCode, bootProductionPlugin } from '../helpers/productionPlugin'
-import { spawnCollaborationStandServer } from '../e2e/helpers/collaborationStandHarness'
-import { verifySyncFixture } from '../../scripts/verify-sync-inputs.mjs'
-import { SERVER_TEST_COMMIT } from '../../scripts/server-test-fixtures.mjs'
-
+import { beforeAll, afterEach, expect, it } from 'vitest'
+import { AccessClient, V2EngineClient } from '@abele/sync-core'
+import { v2Server } from '@abele/sync-server/tests/helpers/v2Server.js'
+import { createUser } from '@abele/sync-server/src/access/tokens.js'
+import { create, seed } from '@abele/sync-test-seed'
+import {
+  productionPluginCode,
+  bootProductionPlugin,
+  nativeFetch,
+} from '../helpers/productionPlugin'
+import type { TokenEngines } from '@/sync/tokenEngines'
+import type { TokenUi } from '@/sync/tokenUi'
 let code: string
-let native: Awaited<ReturnType<typeof bootProductionPlugin>>
-let server: Awaited<ReturnType<typeof spawnCollaborationStandServer>>
-let work: string
-let peer: Awaited<ReturnType<typeof bootProductionPlugin>>
-let unshared: Awaited<ReturnType<typeof bootProductionPlugin>>
-let group: any
-let groupFlow: any
-let groupReview: any
-const password = 'invented-owner-password'
-const email = 'sample-production-owner@example.com'
+const fixtureFetch: typeof fetch = (input, init) =>
+  nativeFetch(input, { ...init, redirect: 'manual' })
 beforeAll(async () => {
-  const root = verifySyncFixture(process.env.ABELE_SYNC_DIR)
-  const commit = SERVER_TEST_COMMIT
-  const scratch = resolve('../.scratch/production-sharing')
-  mkdirSync(scratch, { recursive: true })
-  work = mkdtempSync(join(scratch, 'run-'))
-  server = await spawnCollaborationStandServer(root, commit, work)
-  server.createAccount(email, password)
   code = await productionPluginCode()
-  native = await bootProductionPlugin(code)
 }, 120000)
-afterAll(async () => {
-  try {
-    await native?.close()
-  } finally {
-    await peer?.close()
-    await unshared?.close()
-    await server?.stop()
-    if (work) await rm(work, { recursive: true, force: true })
-  }
+const hosts: Awaited<ReturnType<typeof bootProductionPlugin>>[] = [],
+  servers: Awaited<ReturnType<typeof v2Server>>[] = []
+afterEach(async () => {
+  for (const host of hosts.splice(0).reverse()) await host.close()
+  for (const server of servers.splice(0)) await server.close()
 })
-
-it('installs sharing from the production plugin rather than a test API', async () => {
-  expect(code).not.toContain('__abeleTest')
-  expect((window as any).__abeleTest).toBeUndefined()
-  expect(native.plugin.syncSharing).toBeDefined()
-  expect(typeof native.plugin.syncSharing.ownerFolder).toBe('function')
-  expect(typeof native.plugin.syncSharing.ownerGroup).toBe('function')
-  expect(typeof native.plugin.syncSharing.invitation).toBe('function')
-  expect(typeof native.plugin.syncSharing.createScoped).toBe('function')
-})
-
-function buttonIn(root: ParentNode, text: string) {
-  const button = [...root.querySelectorAll<HTMLButtonElement>('button')].find(
-    (element) => element.textContent?.trim() === text
-  )
-  expect(button).toBeDefined()
-  return button!
+async function device() {
+  const native = await bootProductionPlugin(code)
+  hosts.push(native)
+  await expect.poll(() => native.plugin.tokenEngines, { timeout: 10000 }).toBeDefined()
+  const host = native.plugin.tokenEngines as TokenEngines,
+    ui = (host as unknown as { ui: TokenUi }).ui
+  return { ...native, host, ui }
 }
-async function syncSettings() {
+async function fixture() {
+  const server = await v2Server()
+  servers.push(server)
+  const token = (
+      await createUser(
+        { db: server.db, pepper: server.config.tokenPepper },
+        'Sample user',
+        server.address
+      )
+    ).token,
+    owner = new V2EngineClient(token, { fetch: fixtureFetch })
+  await seed(owner, [
+    await create(owner, 'Groups/sample.md', 'sample root', 1000),
+    await create(
+      owner,
+      'Notes/member.md',
+      '---\ngroups: ["[[Groups/sample]]"]\n---\n![[Private/sample.bin]]',
+      1000
+    ),
+  ])
+  const root = (await owner.manifest(null)).items.find((one) => one.path === 'Groups/sample.md')!,
+    shared = await AccessClient.fromToken(token, { fetch: fixtureFetch }).issue({
+      scope: { kind: 'group', id: root.file_id },
+      label: 'Sample group',
+    }),
+    native = await device()
+  await native.app.vault.adapter.mkdir('Private')
+  await native.app.vault.adapter.write('Private/sample.bin', 'sample private bytes', {
+    mtime: 2000,
+  })
+  await native.ui.connect(shared.token)
+  const id = native.ui.rows.value[0].id
+  await native.ui.sync(id)
+  return { ...native, id, owner, token, shared, server }
+}
+it('boots the unmodified production bundle with native token controls and no test API', async () => {
+  const native = await device()
+  expect((window as unknown as { __abeleTest?: unknown }).__abeleTest).toBeUndefined()
+  expect(native.plugin.syncSharing).toBeUndefined()
   const root = native.settings()
-  const tab = () =>
-    [...root.querySelectorAll<HTMLElement>('[role="tab"]')].find(
-      (element) => element.textContent?.trim() === 'Sync'
-    )
-  await expect.poll(() => !!tab()).toBe(true)
-  tab()!.click()
-  return root
-}
-it('enables invitation controls rendered by the unmodified production settings UI', async () => {
-  const root = await syncSettings()
-  await expect.poll(() => root.textContent).toContain('Join a shared group')
-  buttonIn(root, 'Join a shared group…').click()
-  await expect.poll(() => !!document.querySelector('.abele-scoped-join')).toBe(true)
-  const dialog = document.querySelector('.abele-scoped-join')!
-  expect(dialog.textContent).not.toContain('not active')
-  expect(buttonIn(dialog, 'Join group').disabled).toBe(false)
-  for (const input of dialog.querySelectorAll<HTMLInputElement>('input'))
-    expect(input.disabled).toBe(false)
-  buttonIn(dialog.closest('.modal')!, 'Close').click()
+  await expect.poll(() => root.querySelectorAll('[role="tab"]').length).toBeGreaterThan(0)
+  const sync = [...root.querySelectorAll<HTMLElement>('[role="tab"]')].find(
+    (one) => one.textContent?.trim() === 'Sync'
+  )!
+  sync.click()
+  await expect.poll(() => root.textContent).toContain('Connect')
+  expect(root.textContent).not.toContain('Join a shared group')
 })
-
-it('shares a folder and a prepared group through the production owner ports', async () => {
-  const host = native.plugin.syncSharing
-  await host.sync.connect(server.url, email, password)
-  await host.sync.chooseVault({ create: 'Sample production vault' }, 'Sample owner')
-  await native.app.vault.createFolder('Folder share')
-  await native.app.vault.createFolder('Notes')
-  await native.app.vault.createFolder('Elsewhere')
-  await native.app.vault.createFolder('Assets')
-  await native.app.vault.create('Folder share/example.md', 'Sample folder note')
-  await native.app.vault.create('Notes/Project.md', 'Sample root')
-  // The root must exist on the server before a new groups token is introduced.
-  await host.sync.syncNow()
-  await native.app.vault.create(
-    'Elsewhere/member.md',
-    '---\ngroups: ["[[Notes/Project]]"]\n---\nSample shared note\n'
+it('production note-open consent publishes only the selected private target, including later edits', async () => {
+  const s = await fixture()
+  await s.app.vault.adapter.write('Private/neighbor.bin', 'sample neighbor')
+  for (let turn = 0; turn < 2; turn++) await s.ui.sync(s.id)
+  expect(s.ui.questions.value).toEqual([])
+  expect((await s.owner.manifest(null)).items.map((one) => one.path)).not.toContain(
+    'Private/sample.bin'
   )
-  await native.app.vault.createBinary('Assets/private.png', new Uint8Array([21, 22, 23]).buffer)
-  await host.sync.syncNow()
-  const folder = host.ownerFolder()
-  await folder.review('Folder share/', 'reader', 'Sample folder audience')
-  const credential = await folder.confirm(password, email)
-  expect(credential.token).toMatch(/^absk_/)
-  groupFlow = host.ownerGroup()
-  groupReview = await groupFlow.review('Notes/Project.md', 'editor', 'Sample project audience')
-  for (let page = 0; page < 100; page++) {
-    group = await groupFlow.confirm(groupReview, password, email)
-    if (group.state === 'active') break
-  }
-  expect(group.state).toBe('active')
-  expect(host.audiences.value).toContain(group.id)
-}, 30000)
-
-it('enables owner review controls rendered by the unmodified production settings UI', async () => {
-  const root = await syncSettings()
-  await expect.poll(() => root.textContent).toContain('Share a folder…')
-  expect(root.textContent).not.toContain('Sharing is not active')
-  expect(root.textContent).not.toContain('Review images…')
-  for (const [action, selector, review] of [
-    ['Share a folder…', '.abele-folder-sharing', 'Review folder'],
-    ['Share a group…', '.abele-group-review', 'Review group'],
-  ] as const) {
-    expect(buttonIn(root, action).disabled).toBe(false)
-    buttonIn(root, action).click()
-    await expect.poll(() => !!document.querySelector(selector)).toBe(true)
-    const dialog = document.querySelector(selector)!
-    expect(dialog.textContent).not.toContain('not active')
-    if (review) expect(buttonIn(dialog, review).disabled).toBe(false)
-    buttonIn(dialog.closest('.modal')!, 'Close').click()
-    await expect.poll(() => !!document.querySelector(selector)).toBe(false)
-  }
+  const note = s.app.vault.getFileByPath('Notes/member.md')!
+  s.app.emit('workspace', 'file-open', note)
+  await expect.poll(() => s.ui.questions.value.length).toBe(1)
+  await s.ui.decide(s.ui.questions.value[0], true)
+  expect((await s.owner.manifest(null)).items.map((one) => one.path)).toContain(
+    'Private/sample.bin'
+  )
+  expect((await s.owner.manifest(null)).items.map((one) => one.path)).not.toContain(
+    'Private/neighbor.bin'
+  )
+  await s.app.vault.adapter.write('Private/sample.bin', 'sample future bytes', { mtime: 3000 })
+  await s.ui.sync(s.id)
+  const file = (await s.owner.manifest(null)).items.find(
+    (one) => one.path === 'Private/sample.bin'
+  )!
+  expect(new TextDecoder().decode(await s.owner.versionBytes(file.file_id, file.version_id))).toBe(
+    'sample future bytes'
+  )
+  expect(s.network.requests.every((one) => one.path.startsWith('/v2/'))).toBe(true)
 })
-
-it('joins a collaborator with the production scoped host and no personal credential fallback', async () => {
-  const collaborator = 'sample-production-collaborator@example.com'
-  server.createAccount(collaborator, password)
-  const invitation = await groupFlow.invitation('editor')
-  peer = await bootProductionPlugin(code)
-  const host = peer.plugin.syncSharing
-  const flow = host.invitation(server.url)
-  await flow.begin({
-    issuer: server.url,
-    token: invitation,
-    email: collaborator,
-    name: 'Sample scoped collaborator',
-    role: 'editor',
-    platform: 'desktop',
-  })
-  const joined = await flow.resume(password)
-  expect(joined.phase).toBe('joined')
-  expect(host.scope.value).toMatchObject({
-    facet: 'scoped',
-    principalKind: 'installation',
-    scriptPolicy: 'refuse',
-  })
-  expect(await peer.app.vault.adapter.read('Elsewhere/member.md')).toContain('Sample shared note')
-  expect(await peer.app.vault.adapter.exists('Assets/private.png')).toBe(false)
-  expect(host.sync.connection.value.deviceTokenId).toBe('')
-}, 30000)
-
-it('creates a reviewed scoped note through the production scoped creation ports', async () => {
-  const host = peer.plugin.syncSharing
-  const flow = await host.createScoped()
-  const review = await flow.review({
-    kind: 'note',
-    path: 'Elsewhere/new-scoped.md',
-    text: 'Sample collaborator-created note',
-    rootId: group.rootId,
-  })
-  await expect
-    .poll(
-      async () => {
-        try {
-          await flow.confirm(review)
-          return true
-        } catch (error) {
-          if ((error as { code?: string }).code === 'scope_updating') return false
-          throw error
-        }
-      },
-      { timeout: 10000 }
-    )
-    .toBe(true)
-  await host.scoped.sync()
-  await native.plugin.syncSharing.sync.syncNow()
-  expect(await peer.app.vault.adapter.read('Elsewhere/new-scoped.md')).toContain(
-    'Sample collaborator-created note'
+it('production denial keeps the private file and never publishes on background processing', async () => {
+  const s = await fixture()
+  s.app.emit('workspace', 'file-open', s.app.vault.getFileByPath('Notes/member.md'))
+  await expect.poll(() => s.ui.questions.value.length).toBe(1)
+  await s.ui.decide(s.ui.questions.value[0], false)
+  await s.ui.sync(s.id)
+  expect((await s.owner.manifest(null)).items.map((one) => one.path)).not.toContain(
+    'Private/sample.bin'
   )
-  expect(await native.app.vault.adapter.read('Elsewhere/new-scoped.md')).toContain(
-    'Sample collaborator-created note'
+  expect(await s.app.vault.adapter.read('Private/sample.bin')).toBe('sample private bytes')
+})
+it('a renamed explicitly published attachment stays one server file with the same identity', async () => {
+  const s = await fixture()
+  s.app.emit('workspace', 'file-open', s.app.vault.getFileByPath('Notes/member.md'))
+  await expect.poll(() => s.ui.questions.value.length).toBe(1)
+  await s.ui.decide(s.ui.questions.value[0], true)
+  const before = (await s.owner.manifest(null)).items.find(
+    (one) => one.path === 'Private/sample.bin'
+  )!
+  await s.app.vault.rename(s.app.vault.getFileByPath('Private/sample.bin')!, 'Private/renamed.bin')
+  await s.ui.sync(s.id)
+  const after = (await s.owner.manifest(null)).items.filter((one) => one.kind === 'attachment')
+  expect(after).toMatchObject([{ file_id: before.file_id, path: 'Private/renamed.bin' }])
+  expect(await s.app.vault.adapter.exists('Private/renamed.bin')).toBe(true)
+})
+it('production retry repeats the exact successful request after its response is lost', async () => {
+  const s = await fixture()
+  s.app.emit('workspace', 'file-open', s.app.vault.getFileByPath('Notes/member.md'))
+  await expect.poll(() => s.ui.questions.value.length).toBe(1)
+  s.network.loseAssetCommit = true
+  await expect(s.ui.decide(s.ui.questions.value[0], true)).rejects.toThrow()
+  const first = s.network.requests.find((one) => one.path === '/v2/group-assets')!
+  await s.ui.sync(s.id)
+  const attempts = s.network.requests.filter((one) => one.path === '/v2/group-assets')
+  expect(attempts.length).toBeGreaterThanOrEqual(2)
+  expect(attempts.every((one) => one.key === first.key && one.body === first.body)).toBe(true)
+  const file = (await s.owner.manifest(null)).items.find(
+    (one) => one.path === 'Private/sample.bin'
+  )!
+  expect(await s.owner.versions(file.file_id)).toHaveLength(1)
+})
+it('a copied obsolete script marker does not block ordinary token exchange', async () => {
+  const s = await fixture()
+  await s.app.vault.adapter.write('.abele-script-managed', 'untrusted sample marker')
+  await s.app.vault.adapter.write(
+    'Notes/local.md',
+    '---\ngroups: ["[[Groups/sample]]"]\n---\nlocal sample'
   )
-}, 30000)
-
-it('creates a scoped image with its own upload proof and an exact intrinsic sponsor', async () => {
-  const host = peer.plugin.syncSharing
-  const flow = await host.createScoped()
-  const selected = flow.sponsors.find(
-    (candidate: { fileId: string }) => candidate.fileId === group.rootId
-  )
-  expect(selected).toBeDefined()
-  const { label: _label, ...sponsor } = selected
-  const review = await flow.review({
-    kind: 'asset',
-    path: 'Assets/scoped-new.png',
-    bytes: new Uint8Array([7, 8, 9]),
-    sponsor,
-  })
-  await expect
-    .poll(
-      async () => {
-        try {
-          await flow.confirm(review)
-          return true
-        } catch (error) {
-          if ((error as { code?: string }).code === 'scope_updating') return false
-          throw error
-        }
-      },
-      { timeout: 10000 }
-    )
-    .toBe(true)
-  await expect
-    .poll(
-      async () => {
-        try {
-          await host.scoped.sync()
-          return true
-        } catch (error) {
-          if ((error as { code?: string }).code === 'scope_updating') return false
-          throw error
-        }
-      },
-      { timeout: 10000 }
-    )
-    .toBe(true)
-  await native.plugin.syncSharing.sync.syncNow()
-  expect([
-    ...new Uint8Array(await peer.app.vault.adapter.readBinary('Assets/scoped-new.png')),
-  ]).toEqual([7, 8, 9])
-  expect(await peer.app.vault.adapter.read('Notes/Project.md')).toContain('scoped-new.png')
-}, 30000)
-
-it('publishes an existing private target only after the production confirmation dialog accepts', async () => {
-  const host = native.plugin.syncSharing
-  const file = native.app.vault.getAbstractFileByPath('Elsewhere/member.md')
-  await native.metadata(file)
-  await host.sync.syncNow()
-  expect(host.publicationPrompt.asking.value).toBeNull()
-  await native.app.vault.modify(
-    file,
-    (await native.app.vault.read(file)) + '\n![[Assets/private.png]]\n'
-  )
-  await host.sync.syncNow()
-  await expect
-    .poll(
-      async () => {
-        await host.sync.syncNow()
-        return document.querySelector('.abele-publication-confirm')?.textContent ?? ''
-      },
-      { timeout: 10000 }
-    )
-    .toContain('Assets/private.png')
-  await peer.plugin.syncSharing.scoped.sync()
-  expect(await peer.app.vault.adapter.exists('Assets/private.png')).toBe(false)
-  const button = [
-    ...document.querySelectorAll<HTMLButtonElement>('.abele-publication-confirm button'),
-  ].find((element) => element.textContent?.trim() === 'Share')!
-  expect(button).toBeDefined()
-  button.click()
-  await expect.poll(() => host.publicationPrompt.asking.value, { timeout: 10000 }).toBeNull()
-  await peer.plugin.syncSharing.scoped.sync()
-  expect([
-    ...new Uint8Array(await peer.app.vault.adapter.readBinary('Assets/private.png')),
-  ]).toEqual([21, 22, 23])
-  expect((window as any).__abeleTest).toBeUndefined()
-}, 30000)
-
-it('retains a creation receipt when background sync replays a successful lost reply', async () => {
-  const host = peer.plugin.syncSharing
-  const flow = await host.createScoped()
-  const review = await flow.review({
-    kind: 'note',
-    path: 'Elsewhere/lost-response.md',
-    text: 'Sample lost-response note',
-    rootId: group.rootId,
-  })
-  host.scoped.setPaused(true)
-  peer.network.loseScopedCommit = true
-  try {
-    await expect(flow.confirm(review)).rejects.toThrow(/never reached|lost|server/i)
-    expect(peer.network.loseScopedCommit).toBe(false)
-    host.scoped.setPaused(false)
-    await expect
-      .poll(
-        async () => {
-          try {
-            await host.scoped.sync()
-            return (await (host.scoped as any).runtime.state.getJournal()) === null
-          } catch (error) {
-            if ((error as { code?: string }).code === 'scope_updating') return false
-            throw error
-          }
-        },
-        { timeout: 10000 }
-      )
-      .toBe(true)
-    const runtime = (host.scoped as any).runtime
-    expect(await runtime.state.getJournal()).toBeNull()
-    expect(await runtime.meta.getMeta('scoped-creation-receipt-v1:' + review.id)).not.toBeNull()
-    // The ordinary timer/watcher entry point already retired the journal. Confirmation
-    // must complete from that exact retained receipt, never another CREATE or byte adoption.
-    await expect
-      .poll(
-        async () => {
-          try {
-            await flow.confirm(review)
-            return true
-          } catch (error) {
-            if ((error as { code?: string }).code === 'scope_updating') return false
-            throw error
-          }
-        },
-        { timeout: 10000 }
-      )
-      .toBe(true)
-    await native.plugin.syncSharing.sync.syncNow()
-    const entry = await native.plugin.syncSharing.sync.entryFor('Elsewhere/lost-response.md')
-    expect(entry).not.toBeNull()
-    expect(await native.plugin.syncSharing.sync.client().versions(entry.fileId)).toHaveLength(1)
-  } finally {
-    peer.network.loseScopedCommit = false
-    host.scoped.setPaused(false)
-  }
-}, 30000)
-
-it('keeps personal sync working through disconnect, re-enrolment, Forget and another vault without sharing', async () => {
-  unshared = await bootProductionPlugin(code)
-  const host = unshared.plugin.syncSharing
-  const sync = host.sync
-  const connect = async (choice: string | { create: string }) => {
-    await sync.connect(server.url, email, password)
-    await sync.chooseVault(choice, 'Sample unshared device')
-    await sync.syncNow()
-    expect(sync.status.value.state).toBe('idle')
-    expect(host.audiences.value).toEqual([])
-  }
-  await connect({ create: 'Sample unshared vault' })
-  const first = sync.connection.value
-  await unshared.app.vault.create('sample-before.md', 'Sample before reconnect')
-  await sync.syncNow()
-  await sync.disconnect()
-  await connect(first.vaultId)
-  expect(sync.connection.value.deviceId).not.toBe(first.deviceId)
-  await unshared.app.vault.create('sample-after.md', 'Sample after reconnect')
-  await sync.syncNow()
-  expect(await sync.entryFor('sample-after.md')).not.toBeNull()
-  await sync.forget()
-  await connect(first.vaultId)
-  await sync.disconnect()
-  await connect({ create: 'Sample other vault' })
-  expect(sync.connection.value.vaultId).not.toBe(first.vaultId)
-  await unshared.app.vault.create('sample-other.md', 'Sample on another vault')
-  await sync.syncNow()
-  expect(await sync.entryFor('sample-other.md')).not.toBeNull()
-}, 30000)
-
-it('does not publish a recipient-planted private link when the owner resaves it', async () => {
-  const host = native.plugin.syncSharing
-  await native.app.vault.createBinary(
-    'Assets/planted-private.png',
-    new Uint8Array([31, 32, 33]).buffer
-  )
-  await host.sync.syncNow()
-  const remote = peer.app.vault.getAbstractFileByPath('Elsewhere/member.md')
-  await peer.app.vault.modify(
-    remote,
-    (await peer.app.vault.read(remote)) + '\n![[Assets/planted-private.png]]\n'
-  )
-  await expect
-    .poll(
-      async () => {
-        try {
-          await peer.plugin.syncSharing.scoped.sync()
-          return true
-        } catch (error) {
-          if ((error as { code?: string }).code === 'scope_updating') return false
-          throw error
-        }
-      },
-      { timeout: 10000 }
-    )
-    .toBe(true)
-  await host.sync.syncNow()
-  const local = native.app.vault.getAbstractFileByPath('Elsewhere/member.md')
-  await native.metadata(local)
-  await native.app.vault.modify(
-    local,
-    (await native.app.vault.read(local)) + '\nOrdinary owner sentence.\n'
-  )
-  await host.sync.syncNow()
-  await expect
-    .poll(
-      async () => {
-        try {
-          await host.refreshPublication()
-          return true
-        } catch (error) {
-          if ((error as { code?: string }).code === 'scope_updating') return false
-          throw error
-        }
-      },
-      { timeout: 10000 }
-    )
-    .toBe(true)
-  expect(host.publicationPrompt.pending.value).toEqual([])
-  expect(host.publicationPrompt.asking.value).toBeNull()
-  await peer.plugin.syncSharing.scoped.sync()
-  expect(await peer.app.vault.adapter.exists('Assets/planted-private.png')).toBe(false)
-}, 30000)
-
-it('retires production publication stores across twenty binary-upload reconnect cycles', async () => {
-  const device = await bootProductionPlugin(code)
-  const sync = device.plugin.syncSharing.sync
-  const factory = window.indexedDB
-  const root = verifySyncFixture(process.env.ABELE_SYNC_DIR)
-  const commit = SERVER_TEST_COMMIT
-  let vaultId: string | undefined
-  let cycleServer: typeof server | undefined
-  const cycleWork = mkdtempSync(join(work, 'binary-cycles-'))
-  try {
-    for (let cycle = 0; cycle < 20; cycle++) {
-      // Keep real login throttling intact: each isolated issuer exercises seven reconnects,
-      // then the next issuer also exercises the same vault's cross-binding cleanup.
-      if (cycle % 7 === 0) {
-        await cycleServer?.stop()
-        const directory = join(cycleWork, String(cycle))
-        mkdirSync(directory)
-        cycleServer = await spawnCollaborationStandServer(root, commit, directory)
-        cycleServer.createAccount(email, password)
-        vaultId = undefined
-      }
-      await sync.connect(cycleServer!.url, email, password)
-      await sync.chooseVault(
-        vaultId ?? { create: 'Sample binary lifecycle vault' },
-        'Sample binary device'
-      )
-      vaultId = sync.connection.value.vaultId
-      await device.app.vault.createBinary(
-        `Images/sample-${cycle}.png`,
-        new Uint8Array([cycle, 1, 2]).buffer
-      )
-      await sync.syncNow()
-      expect(sync.status.value.state).toBe('idle')
-      const records = device.app.loadLocalStorage('abele-owner-publication-stores-v1') as {
-        descriptor: { id: string }
-      }[]
-      expect(records).toHaveLength(1)
-      const name = 'abele-link-snapshots-' + records[0].descriptor.id
-      await sync.disconnect()
-      expect(device.app.loadLocalStorage('abele-owner-publication-stores-v1')).toEqual([])
-      expect((await factory.databases()).map((database) => database.name)).not.toContain(name)
-    }
-  } finally {
-    try {
-      await device.close()
-    } finally {
-      await cycleServer?.stop()
-      await rm(cycleWork, { recursive: true, force: true })
-    }
-  }
-}, 30000)
-
-it('continues production personal sync with a copied script marker and no local provenance descriptor', async () => {
-  const device = await bootProductionPlugin(code)
-  try {
-    await device.app.vault.adapter.write('.abele-script-managed', 'Untrusted copied marker')
-    await device.app.vault.create('sample-arrived.md', 'Sample arriving vault contents')
-    const sync = device.plugin.syncSharing.sync
-    await sync.connect(server.url, email, password)
-    await sync.chooseVault({ create: 'Sample marker recovery vault' }, 'Sample new device')
-    await sync.syncNow()
-    expect(sync.status.value.state).toBe('idle')
-    expect(await sync.entryFor('sample-arrived.md')).not.toBeNull()
-    expect(device.app.loadLocalStorage('abele-script-provenance')).toMatchObject({
-      binding: { facet: 'personal', principal: sync.connection.value.deviceId },
+  await s.ui.sync(s.id)
+  expect((await s.owner.manifest(null)).items.map((one) => one.path)).toContain('Notes/local.md')
+})
+it('twenty production binary reconnect cycles drain each token runtime and preserve local files', async () => {
+  const s = await fixture()
+  await s.ui.disconnect(s.id)
+  for (let turn = 0; turn < 20; turn++) {
+    await s.ui.connect(s.token)
+    const id = s.ui.rows.value[0].id,
+      path = `Images/sample-${turn}.bin`
+    await s.app.vault.adapter.mkdir('Images')
+    await s.app.vault.adapter.writeBinary(path, new Uint8Array([turn, 1, 2]).buffer, {
+      mtime: 5000 + turn,
     })
-  } finally {
-    await device.close()
+    await s.ui.sync(id)
+    const runtime = (
+      s.host as unknown as {
+        live: Map<string, { options: { state: { permitsEngineEffects: boolean } } }>
+      }
+    ).live.get(id)!
+    expect((await s.owner.manifest(null)).items.map((one) => one.path)).toContain(path)
+    await s.ui.disconnect(id)
+    expect(runtime.options.state.permitsEngineEffects).toBe(false)
+    expect(s.ui.runtimes.size).toBe(0)
+    expect(s.ui.registry.records()).toEqual([])
+    expect(await s.app.vault.adapter.exists(path)).toBe(true)
   }
 }, 30000)

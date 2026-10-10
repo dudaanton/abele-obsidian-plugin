@@ -32,6 +32,12 @@ export const reviewPath = z
       return false
     }
   })
+/** The host preserves physical spelling; only the request path must be canonical NFC. */
+export const localReviewPath = z
+  .string()
+  .min(1)
+  .max(1024)
+  .refine((value) => reviewPath.safeParse(value.normalize('NFC')).success)
 export const reviewSourceSchema = z
   .object({
     id: reviewId,

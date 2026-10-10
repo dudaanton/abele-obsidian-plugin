@@ -4,7 +4,7 @@ import { configurationPath, executablePath, type ExecutablePaths } from './stage
 import {
   ReviewDocuments,
   reviewId,
-  reviewPath,
+  localReviewPath,
   reviewSourceSchema,
   rootConnection,
   sourceIdentity,
@@ -16,7 +16,7 @@ export const ATTACHMENT_CONSENT_KEY = 'token-attachment-consent-v1'
 const targetSchema = z
   .object({
     id: reviewId,
-    path: reviewPath,
+    path: localReviewPath,
     kind: z.enum(['attachment', 'canvas', 'note', 'script', 'settings']),
   })
   .strict()
@@ -30,7 +30,7 @@ const questionSchema = z
     id: reviewId,
     source: reviewSourceSchema,
     fileId: reviewId,
-    path: reviewPath,
+    path: localReviewPath,
     noteIds: z.array(reviewId),
   })
   .strict()

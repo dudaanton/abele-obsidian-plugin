@@ -23,8 +23,7 @@ guarantees remain in the token UI, registry, transport, review, placement and en
 | `unit/fencedScreenFixture.test.ts` | Static inspection of names/flags specific to the removed access-screen fixture. Native token fixtures use isolated synthetic state and token UI component tests. |
 
 No registry, secret isolation, transport security, immutable review, attachment consent,
-shared placement, file/version journal or recovery guarantee is removed. Group-only
-integration expectations remain explicitly dependent on the group implementation.
+shared placement, file/version journal or recovery guarantee is removed. Group exchange and explicit attachment publication are exercised by the production token bundle tests.
 
 Further retired-product coverage:
 
@@ -107,7 +106,7 @@ scoped raw/native database split and invitation creation API no longer exist.
 - `integration/externalRecoveryBarrier.test.ts` (partial retirement): removed creation of the retired script-trust sentinel and owner-publication constructor hook. Their ordering guarantee is preserved by testing current external inspection before any native engine activation, script provenance or replay. All recovery, filesystem, retained-client, multipart, descriptor and successor fences are ported.
 - `integration/externalScopedOwnership.test.ts`: all seven ownership/recovery guarantees are ported to token hosts; only scoped installation credentials, self-revocation and the old Leave queue are retired.
 - `integration/scopedPublicationPush.test.ts` (partial retirement): removed sponsor link snapshots and admitted-unit cleanup/schema. Token tests retain consent before enqueue, immutable bytes and request key across response loss, committed-versus-follow-up-failure distinction and interrupted cleanup retry.
-- `unit/scopedItemHolds.test.ts` (partial retirement): removed `ScopedState` and the two-slot scoped journal schema. Durable immutable source retention and abort-before-send are ported to token publication. The actual rejected-item retention gap remains `it.fails` with `BUG:` until publication is fixed.
+- `unit/scopedItemHolds.test.ts` (partial retirement): removed `ScopedState` and the two-slot scoped journal schema. Durable immutable source retention and abort-before-send are ported to token publication. Rejected-item retention now passes against the durable token outbox, alongside independent receiving and later uploads.
 
 The historical server fixture gates no longer hide removed-product tests:
 
@@ -119,3 +118,6 @@ The historical server fixture gates no longer hide removed-product tests:
 - `tests/integration/sponsoredApiAvailability.test.ts`: availability of removed v1 sponsored-asset routes is no longer a product guarantee.
 - `tests/integration/replayProbeHttp.test.ts`: removed phone replay observation driver over v1 device commits; immutable request retry remains covered by token publication tests.
 - `tests/helpers/scopedApiServer.ts`: unused historical account/vault/invitation fixture after these removals.
+
+- `integration/productionSharingBuild.test.ts` (partial retirement and port): deleted invitations, password enrollment, owner/grant preview controls, intrinsic sponsors and separate scoped creation APIs. Production bundle boot, native controls, actual note-open consent, denial, no automatic private publication, immutable response-loss retry, ordinary exchange beside obsolete markers and twenty binary reconnect/drain cycles remain as token tests. The retired owner-publication database deletion assertion is replaced by native runtime closure; token ledgers retain recovery evidence by design.
+- `unit/serverTestFixtures.test.ts` (partial retirement): removed historical owner/group/sponsored gate combinations and names of already deleted singleton handover/device tests. Current fixture absence, explicit selection, provenance checks and a new existing-file assertion remain.

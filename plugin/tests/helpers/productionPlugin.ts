@@ -8,7 +8,7 @@ import * as obsidian from '../mocks/obsidian'
 import { buildFakeVault } from './fakeVault'
 
 /** Electron's native session has no WebView CORS policy and never follows a redirect here. */
-const nativeFetch: typeof fetch = async (input, init) => {
+export const nativeFetch: typeof fetch = async (input, init) => {
   if (init?.redirect !== 'manual')
     throw new Error('Production native transport lost its redirect policy')
   const url = new URL(
@@ -107,22 +107,36 @@ export async function bootProductionPlugin(code: string) {
       return result
     }
   }
+  app.vault.rename = async (file: { path: string }, to: string) => {
+    const from = file.path
+    await app.vault.adapter.rename(from, to)
+    const renamed = app.vault.getFileByPath(to)!
+    app.emit('vault', 'rename', renamed, from)
+    await metadata(renamed)
+  }
   if (!(window.indexedDB instanceof IDBFactory))
     Object.defineProperty(window, 'indexedDB', { configurable: true, value: new IDBFactory() })
   const native = createRequire(import.meta.url)
-  const network = { loseScopedCommit: false }
+  const network = {
+    loseAssetCommit: false,
+    requests: [] as { path: string; key: string | null; body: string | null }[],
+  }
   const sessionFetch: typeof fetch = async (input, init) => {
     const response = await nativeFetch(input, init)
     const url = typeof input === 'string' ? input : input instanceof URL ? input.href : input.url
+    network.requests.push({
+      path: new URL(url).pathname,
+      key: new Headers(init?.headers).get('idempotency-key'),
+      body: typeof init?.body === 'string' ? init.body : null,
+    })
     if (
-      network.loseScopedCommit &&
+      network.loseAssetCommit &&
       init?.method === 'POST' &&
-      new URL(url).pathname.includes('/scoped/') &&
-      new URL(url).pathname.endsWith('/commit') &&
+      new URL(url).pathname === '/v2/group-assets' &&
       response.ok
     ) {
-      network.loseScopedCommit = false
-      throw new Error('Sample successful scoped CREATE response lost')
+      network.loseAssetCommit = false
+      throw new Error('Sample successful publication response lost')
     }
     return response
   }
@@ -185,11 +199,11 @@ export async function bootProductionPlugin(code: string) {
       return tab.containerEl as HTMLElement
     },
     close: async () => {
-      const sharing = plugin.syncSharing
+      const host = plugin.tokenEngines
       plugin.onunload()
       // The plugin closes this synchronously and records its async work in the reload barrier.
       // Awaiting it here is cleanup observation, never fixture-installed teardown wiring.
-      await sharing?.close()
+      await host?.close()
       for (const dispose of disposals.splice(0).reverse()) dispose()
     },
   }

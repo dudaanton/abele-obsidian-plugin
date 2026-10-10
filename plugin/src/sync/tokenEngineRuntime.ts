@@ -21,6 +21,7 @@ import {
   V2ChangesSchema,
   V2ConnectionSchema,
   decodeAccessToken,
+  normalisePath,
   type V2ManifestItem,
   type V2Change,
   type V2Connection,
@@ -34,6 +35,8 @@ import type { ReviewSource } from './reviewState'
 import { sourceIdentity } from './reviewState'
 import type { ConsentTarget } from './attachmentConsent'
 import { TokenActions } from './tokenActions'
+import { TokenAssetOutbox, ASSET_IDENTITIES, assetIdentitiesSchema } from './tokenAssetOutbox'
+import { PLACEMENT } from './pathCoordinator'
 
 export interface TokenEngineOptions {
   id: string
@@ -48,6 +51,7 @@ export interface TokenEngineOptions {
   preparePlacement?(paths: readonly string[]): Promise<void>
   engineClient?(client: EngineClient): EngineClient
   engineState?: StateStore
+  publicationChanged?(): void
   scopeInput?(selective: SelectiveSettings): Promise<{ key: string; ignore: PathMatcher }>
   paused?: boolean
   selective?: SelectiveSettings
@@ -67,11 +71,13 @@ export class TokenEngineRuntime implements ConnectionRuntime, TokenUiRuntime {
   readonly engine: SyncEngine
   readonly client: V2EngineClient
   readonly actions: TokenActions
+  private readonly outbox: TokenAssetOutbox
   private active = true
   private permitted = true
   private ignore: PathMatcher | null = null
   private authority: V2Connection | null = null
   private held = new Set<string>()
+  private readonly assetPaths = new Map<string, string>()
   private unstatus: () => void
   private readonly token
   private readonly selective: SelectiveSettings
@@ -128,6 +134,9 @@ export class TokenEngineRuntime implements ConnectionRuntime, TokenUiRuntime {
         await options.preparePlacement?.(incomingPaths)
         const items: V2Change[] = []
         for (const event of page.items) {
+          if (event.type !== 'content')
+            for (const [path, id] of this.assetPaths)
+              if (id === event.file_id) this.assetPaths.delete(path)
           const reviewed =
             event.type === 'content'
               ? await this.reviewItem(event.item, event.prev_path, event.cursor)
@@ -144,7 +153,11 @@ export class TokenEngineRuntime implements ConnectionRuntime, TokenUiRuntime {
       ...(options.WebSocket ? { WebSocket: options.WebSocket } : {}),
     })
     const prepare = this.client.prepare.bind(this.client)
+    const includes = this.client.includes.bind(this.client)
+    this.client.includes = (path) =>
+      includes(path) || (this.active && this.permitted && this.assetPaths.has(normalisePath(path)))
     this.client.prepare = async (fs, state, excluded) => {
+      this.assetPaths.clear()
       if (options.scopeInput) {
         const input = await options.scopeInput(this.selective)
         this.assertHeld()
@@ -156,6 +169,22 @@ export class TokenEngineRuntime implements ConnectionRuntime, TokenUiRuntime {
         }
       }
       await prepare(fs, state, excluded)
+      if (this.token.scope.kind === 'group') {
+        const identities = assetIdentitiesSchema.parse(
+          JSON.parse((await options.state.getMeta(ASSET_IDENTITIES)) ?? '[]')
+        )
+        for (const identity of identities) {
+          const local = await this.resolve(identity.id),
+            entry = await options.state.byFileId(identity.fileId)
+          if (
+            local &&
+            entry &&
+            includes(entry.wirePath ?? entry.path) &&
+            !configurationPath(local.path, options.paths)
+          )
+            this.assetPaths.set(normalisePath(local.path), identity.fileId)
+        }
+      }
     }
     this.client.onRemoval = (_id, path) => options.covers(path)
     this.engine = new SyncEngine({
@@ -181,11 +210,27 @@ export class TokenEngineRuntime implements ConnectionRuntime, TokenUiRuntime {
         (configurationPath(path, options.paths) && path !== options.ownSettingsPath),
       ...(options.paths?.scriptsFolder ? { scriptsFolder: options.paths.scriptsFolder } : {}),
       ...(options.fallbackMs ? { fallbackMs: options.fallbackMs } : {}),
-      onSync: (report) => options.changed(this.engine.status, report),
+      onSync: (report) => {
+        options.changed(this.engine.status, report)
+        void this.outbox.drain().catch(() => options.publicationChanged?.())
+      },
       onFail: (error) => options.failed(error),
     })
     this.unstatus = this.engine.onStatus((status) => options.changed(status))
     this.actions = new TokenActions(this.engine, options.state, this.client)
+    this.outbox = new TokenAssetOutbox({
+      state: options.state,
+      binding: () => sourceIdentity(options.expectedSource ?? this.source()),
+      assertOwned: () => this.assertHeld(),
+      serial: (work) => this.engine.runExclusive(work),
+      approved: async (id) => {
+        const target = await this.resolve(id)
+        return !!target && (await options.reviews.attachments.mayUpload(this.source(), target))
+      },
+      send: (one, bytes) =>
+        this.client.publishGroupAsset(normalisePath(one.path), bytes, one.mtime, one.key),
+      changed: () => options.publicationChanged?.(),
+    })
     const commit = this.client.commitRaw.bind(this.client)
     this.client.commitRaw = async (ops, key) => {
       const outcome = await commit(ops, key)
@@ -422,19 +467,21 @@ export class TokenEngineRuntime implements ConnectionRuntime, TokenUiRuntime {
   async start(): Promise<void> {
     await this.refreshHolds()
     this.assertHeld()
+    await this.outbox.restore()
     this.engine.start()
   }
-  async sync(): Promise<void> {
+  async sync(retryHeld = true): Promise<void> {
     await this.refreshHolds()
     this.assertHeld()
     await this.engine.sync()
-    await this.publishPending()
+    await this.outbox.drain(retryHeld)
   }
   invalidate(): void {
     this.active = false
   }
   async close(): Promise<void> {
     await this.engine.stop()
+    await this.outbox.close()
     this.unstatus()
   }
   async disconnect(): Promise<void> {
@@ -503,53 +550,39 @@ export class TokenEngineRuntime implements ConnectionRuntime, TokenUiRuntime {
     const target = await this.resolve(id)
     if (!target || !(await this.options.reviews.attachments.mayUpload(this.source(), target)))
       throw new Error('File publication is not approved')
-    const info = await this.options.fs.stat(target.path)
-    if (!info) throw new Error('File is no longer available')
-    const bytes = await this.options.fs.read(target.path),
-      hash = await sha256(bytes)
-    const marker = 'token-asset-publication:' + id + ':' + hash + ':' + info.mtime
-    const key = (await this.options.state.getMeta(marker)) ?? crypto.randomUUID()
-    await this.options.state.setMeta(marker, key)
-    const queue = JSON.parse((await this.options.state.getMeta('token-asset-outbox')) ?? '[]') as {
-      id: string
-      path: string
-      bytes: number[]
-      sha: string
-      mtime: number
-      key: string
-    }[]
-    if (!queue.some((one) => one.key === key)) {
-      queue.push({ id, path: target.path, bytes: [...bytes], sha: hash, mtime: info.mtime, key })
-      await this.options.state.setMeta('token-asset-outbox', JSON.stringify(queue))
-    }
-    await this.publishPending()
-    await this.sync()
-  }
-  private async publishPending(): Promise<void> {
-    const queue = JSON.parse((await this.options.state.getMeta('token-asset-outbox')) ?? '[]') as {
-      id: string
-      path: string
-      bytes: number[]
-      sha: string
-      mtime: number
-      key: string
-    }[]
-    for (const one of [...queue]) {
-      const target = await this.resolve(one.id)
-      if (!target || !(await this.options.reviews.attachments.mayUpload(this.source(), target)))
-        throw new Error('Pending file publication requires its original local identity')
-      const bytes = new Uint8Array(one.bytes)
-      if ((await sha256(bytes)) !== one.sha)
-        throw new EngineError('lost', 'Pending publication integrity mismatch')
+    await this.options.preparePlacement?.([target.path])
+    const capture = async () => {
       this.assertHeld()
-      await this.client.publishGroupAsset(one.path, bytes, one.mtime, one.key)
-      this.assertHeld()
-      queue.splice(
-        queue.findIndex((item) => item.key === one.key),
-        1
+      const current = await this.resolve(id),
+        before = await this.options.fs.stat(target.path)
+      if (!current || current.path !== target.path || !before)
+        throw new Error('File is no longer available')
+      const bytes = await this.options.fs.read(target.path),
+        hash = await sha256(bytes),
+        after = await this.options.fs.stat(target.path)
+      if (
+        !after ||
+        before.size !== after.size ||
+        before.mtime !== after.mtime ||
+        bytes.length !== after.size ||
+        (await sha256(await this.options.fs.read(target.path))) !== hash ||
+        (await this.resolve(id))?.path !== target.path
       )
-      await this.options.state.setMeta('token-asset-outbox', JSON.stringify(queue))
+        throw new Error('File changed during publication capture; retry from the current file')
+      this.assertHeld()
+      return { id, path: target.path, bytes: bytes.slice(), sha: hash, mtime: before.mtime }
     }
+    const placement = Reflect.get(this.options.fs, PLACEMENT) as
+      | (<T>(paths: string[], work: () => Promise<T>) => Promise<T>)
+      | undefined
+    const copy = placement ? await placement([target.path], capture) : await capture()
+    // Enqueue after releasing the path lease: core may itself be waiting for that lease.
+    const key = await this.outbox.enqueue(copy)
+    await this.outbox.drain(false, key)
+    await this.engine.sync()
+  }
+  publications() {
+    return this.outbox.state()
   }
   async apply(candidate: ExecutableCandidate): Promise<void> {
     this.assertHeld()

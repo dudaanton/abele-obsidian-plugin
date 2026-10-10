@@ -10,11 +10,9 @@ export const serverTestFixtures = {
     'syncHeldDeletes',
     'syncJoin',
     'syncStagedSettings',
-    'syncHandover',
     'syncBundleReload',
     'syncOwnSettings',
     'syncConnectionSaves',
-    'syncDevices',
     'productionSharingBuild',
   ].map((name) => `tests/integration/${name}.test.ts`),
 }

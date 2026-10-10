@@ -1,10 +1,10 @@
 // @vitest-environment node
 import { afterEach, describe, expect, it } from 'vitest'
-import { mkdtempSync, mkdirSync, writeFileSync, rmSync } from 'node:fs'
+import { mkdtempSync, mkdirSync, writeFileSync, rmSync, existsSync } from 'node:fs'
 import { createHash } from 'node:crypto'
 import { fileURLToPath } from 'node:url'
 import { join } from 'node:path'
-import { missingServerTests } from '../../scripts/server-test-fixtures.mjs'
+import { missingServerTests, serverTestFixtures } from '../../scripts/server-test-fixtures.mjs'
 import { locateSyncFixture, selectServerTests } from '../../scripts/test-server.mjs'
 
 const scratch = fileURLToPath(new URL('../../../.scratch/sync-inputs/', import.meta.url))
@@ -38,9 +38,12 @@ function archive(directory: string, name: string, commit: string) {
 }
 
 describe('server-backed fast-tier fixture gate', () => {
+  it('registers only existing current fixture consumers', () => {
+    for (const file of Object.values(serverTestFixtures).flat()) expect(existsSync(file)).toBe(true)
+  })
   it('skips only the files that require an absent fixture', () => {
     const skipped = missingServerTests({})
-    expect(skipped).toHaveLength(13)
+    expect(skipped).toHaveLength(11)
     expect(skipped).not.toContain('tests/integration/scopedPublicationPush.test.ts')
     expect(skipped).toContain('tests/integration/tokenEngineServer.test.ts')
     expect(skipped).toContain('tests/integration/externalRepresentationServer.test.ts')

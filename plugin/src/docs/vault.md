@@ -2075,7 +2075,7 @@ decoder; it populates the token field and still requires pressing Connect.
 
 Token issuance and revocation use v2 directly. Issued token text is held only while its
 dialog is open; it is never saved into settings, transfer, the registry or the sync log.
-Each token connection uses the production v2 runtime. File exchange and exact-candidate executable approval are enabled for root and folder connections. Group local identities and attachment publication remain dependent on the group binding. No legacy engine is started.
+Each token connection uses the production v2 runtime. Root, folder and group connections use the same engine. Group attachment publication is explicit and follows the connection’s saved consent. No legacy engine is started.
 
 Agent settings tools expose device-only token preferences as `sync.connections.<local-id>.address` and `.paused`. Only an unprovisioned record may change address; a live token never moves to a different endpoint. Credentials, ledger identity and internal state are not exposed. Writes reconcile the token host and report startup failure beside the saved value.
 
@@ -2088,3 +2088,13 @@ use the shared path coordinator. Eviction preserves unfinished per-destination e
 removing local bytes. Disconnect materializes offloaded files and verifies retained evidence.
 The local consent identity survives an acknowledged hydration, while an unrelated replacement
 at the same path receives no inherited permission.
+
+`plugin:token-asset-outbox` in each device-only ledger retains immutable approved attachment
+bytes, path, original mtime, source identity and request key. Unknown responses retry the same
+request; known rejected items remain held while unrelated files and receiving continue.
+Sync now retries a known refusal with a new key and its retained bytes. A matching receipt,
+baseline adoption and queue removal commit together; a newer received baseline is never
+downgraded by a late receipt. Settled/rejected receipt metadata remains device-only too.
+Accepted publication also retains the stable local file identity and server file identity in
+that ledger. Group attachment renames follow this recorded identity; replacements at the same
+path do not acquire consent, and scope departures remove the rename eligibility.

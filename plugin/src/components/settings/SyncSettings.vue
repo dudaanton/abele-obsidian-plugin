@@ -148,7 +148,8 @@
   <EmptyState v-else text="Sync is opening. If it cannot open, restart Obsidian and try again." />
 </template>
 <script setup lang="ts">
-import { computed, onMounted, ref } from 'vue'
+import { computed, onMounted, onUnmounted, ref } from 'vue'
+import { Notice } from 'obsidian'
 import Section from '../obsidian/Section.vue'
 import Setting from '../obsidian/Setting.vue'
 import Icon from '../obsidian/Icon.vue'
@@ -242,9 +243,24 @@ async function act(id: string, action: () => Promise<void>) {
   }
 }
 function openFile(path: string) {
-  if (ui.value) void ui.value.openFile(path)
+  if (ui.value)
+    void ui.value
+      .openFile(path)
+      .catch(
+        () =>
+          new Notice(
+            'The file could not be opened. Its contents have been kept. Try again when a server is available.'
+          )
+      )
 }
+let active = true
+onUnmounted(() => {
+  active = false
+})
 onMounted(() => {
-  void ui.value?.refreshReviews()
+  void ui.value?.refreshReviews().catch(() => {
+    if (active)
+      new Notice('Incoming changes could not be opened. Reopen sync settings to try again.')
+  })
 })
 </script>

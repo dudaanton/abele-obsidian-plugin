@@ -337,6 +337,12 @@ export class TokenEngines {
         ownSettingsPath:
           this.ownSettings?.path ?? `${this.app.vault.configDir}/plugins/abele/data.json`,
         assertHeld: () => fence.assertReady(),
+        publicationChanged: () => {
+          if (runtime)
+            void this.changed(record.id, runtime.engine.status).catch((error) =>
+              this.failed(record.id, error)
+            )
+        },
         changed: (status, report) => {
           if (report) own.settle()
           void this.changed(record.id, status, report).catch((error) =>
@@ -455,6 +461,9 @@ export class TokenEngines {
     }
     if (status.state === 'offline')
       activity.pending = (await this.live.get(id)?.pendingLocal()) ?? status.pending
+    const publications = this.live.get(id)?.publications() ?? []
+    activity.pending = (activity.pending ?? 0) + publications.length
+    activity.refused = publications.map((one) => ({ path: one.path, reason: one.reason }))
     if (status.lastSyncAt) activity.lastSync = Date.parse(status.lastSyncAt)
     if (report) {
       activity.error = undefined
@@ -475,7 +484,7 @@ export class TokenEngines {
           reason: connectionError({ code: one.code }),
         }))
       )
-      activity.refused = refused
+      activity.refused = [...activity.refused, ...refused]
       activity.conflicts = results.flatMap((one) =>
         one.status === 'conflict' ? [one.conflict_path] : []
       )
