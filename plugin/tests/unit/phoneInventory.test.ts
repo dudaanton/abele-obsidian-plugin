@@ -25,14 +25,12 @@ it('settles first sync on a warm 12k-file vault without reading unrelated conten
   await app.vault.adapter.write('.abele-sync-ignore', '*\n!Shared/**\n')
   app.saveLocalStorage(EXTERNAL_INSPECTION_KEY, {
     schema: 1,
-    entries: app.vault
-      .getFiles()
-      .map((file) => ({
-        path: file.path,
-        size: file.stat.size,
-        mtime: file.stat.mtime,
-        marker: false,
-      })),
+    entries: app.vault.getFiles().map((file) => ({
+      path: file.path,
+      size: file.stat.size,
+      mtime: file.stat.mtime,
+      marker: false,
+    })),
   })
   const read = vi.spyOn(app.vault.adapter, 'readBinary')
   const stat = vi.spyOn(app.vault.adapter, 'stat')
