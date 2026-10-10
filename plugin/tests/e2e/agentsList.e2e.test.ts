@@ -1,4 +1,4 @@
-import { afterAll, describe, expect, it } from 'vitest'
+import { afterAll, beforeAll, describe, expect, it } from 'vitest'
 import { writeFileSync } from 'node:fs'
 import { join } from 'node:path'
 import { evalJson, evalLong } from './helpers/obsidianCli'
@@ -10,10 +10,38 @@ import { lintDesign, type DesignSnapshot } from '../helpers/designLint'
 targets('desktop', 'phone')
 const directory = shotDir('agents-list')
 const states = ['empty', 'waiting', 'many', 'working', 'error', 'mixed'] as const
-const close = `document.querySelector('.modal-close-button')?.click()`
+const close = `for (const button of [...document.querySelectorAll('.modal .modal-header-button, .modal-close-button')].reverse()) button.click()`
 
+beforeAll(async () => {
+  expect(
+    await evalLong(`(async () => {
+    ${close}
+    const root = 'AgentsListLayoutFixture'
+    if (app.vault.getAbstractFileByPath(root)) throw new Error('Layout fixture already exists')
+    window.__agentsListLayout = app.workspace.getLayout()
+    await app.vault.createFolder(root)
+    await app.vault.create(root + '/target.md', 'A fabricated target.\\n')
+    await app.vault.create(root + '/source.md', 'A fabricated link to [[' + root + '/target]].\\n')
+    for (let i = 0; i < 50 && !app.metadataCache.resolvedLinks[root + '/source.md']?.[root + '/target.md']; i++) await new Promise(r => setTimeout(r, 100))
+    const leaf = app.workspace.getLeaf('tab')
+    await leaf.setViewState({ type: 'backlink', state: { file: root + '/target.md' }, active: true })
+    app.workspace.leftSplit.collapse()
+    await new Promise(r => setTimeout(r, 500))
+    return 'ready'
+  })()`)
+  ).toBe('ready')
+})
 afterAll(async () => {
-  await evalLong(`(() => { ${close}; return 'closed' })()`)
+  await evalLong(`(async () => {
+    ${close}
+    if (window.__agentsListLayout) {
+      await app.workspace.changeLayout(window.__agentsListLayout)
+      delete window.__agentsListLayout
+      const root = app.vault.getAbstractFileByPath('AgentsListLayoutFixture')
+      if (root) await app.vault.delete(root, true)
+    }
+    return 'closed'
+  })()`)
 })
 
 describe('real agents list on synthetic states', () => {
@@ -22,18 +50,17 @@ describe('real agents list on synthetic states', () => {
       const path = join(directory, `${state}-${onPhone() ? 'phone' : 'desktop'}.png`)
       const raw = await evalLong(`(async () => {
         ${close}
-        app.workspace.leftSplit.expand()
         window.__abeleTest.openDialog('agents', { agentsState: ${JSON.stringify(state)} })
         await new Promise(r => setTimeout(r, 400))
         await document.fonts.ready
         const root = document.querySelector('.abele-agents')
         if (!root) throw new Error('Agents list did not mount')
-        const snapshot = ${designCaptureExpression('.modal.abele-modal')}
+        const snapshot = ${designCaptureExpression('.modal.abele-modal', { nativeSelector: '.backlink-pane .tree-item-self' })}
         const overflowing = [...root.querySelectorAll('*')].filter(el => {
           const r = el.getBoundingClientRect()
           return r.width && (r.left < 0 || r.right > innerWidth + 1)
         }).map(el => el.className)
-        const closes = document.querySelectorAll('.modal .modal-close-button').length
+        const closes = document.querySelectorAll('.modal .modal-header-button, .modal .modal-close-button').length
         const searchFocused = root.querySelector('input') === document.activeElement
         const rows = root.querySelectorAll('.abele-list-row').length
         if (window.__e2eHost) await window.__e2eHost.shot(${JSON.stringify(path)})
@@ -77,7 +104,7 @@ describe('real agents list on synthetic states', () => {
       const contents = require('@electron/remote').getCurrentWindow().webContents
       for (const key of ['Enter', ' ']) {
         button.focus()
-        await contents.debugger.sendCommand('Input.dispatchKeyEvent', { type: 'keyDown', key, code: key === 'Enter' ? 'Enter' : 'Space', windowsVirtualKeyCode: key === 'Enter' ? 13 : 32 })
+        await contents.debugger.sendCommand('Input.dispatchKeyEvent', { type: 'keyDown', key, text: key === 'Enter' ? '\\r' : ' ', code: key === 'Enter' ? 'Enter' : 'Space', windowsVirtualKeyCode: key === 'Enter' ? 13 : 32 })
         await contents.debugger.sendCommand('Input.dispatchKeyEvent', { type: 'keyUp', key, code: key === 'Enter' ? 'Enter' : 'Space', windowsVirtualKeyCode: key === 'Enter' ? 13 : 32 })
       }
       return JSON.stringify({ clicks, focused: document.activeElement === button })
