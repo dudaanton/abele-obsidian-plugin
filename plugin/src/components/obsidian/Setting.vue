@@ -103,6 +103,13 @@ defineProps<{
     overflow-wrap: anywhere;
   }
 
+  // Obsidian caps an invalid row's control at half its flex row; here the grid column already is
+  // that half, and the cap shrank the field to a quarter of the row, off the right edge. As heavy
+  // as Obsidian's own rule, so it wins by coming later.
+  &.is-invalid > .setting-item-control {
+    max-width: none;
+  }
+
   /**
    * A toggle stays on the row with its name, however narrow the row. Obsidian says the same
    * of its own: on a phone every setting stacks except `.mod-toggle`, whose control is small
