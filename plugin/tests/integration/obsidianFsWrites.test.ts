@@ -46,6 +46,7 @@ it('stages mobile writes in 1 MiB bridge buffers before installing the complete 
   const installed = new Uint8Array(await adapter.readBinary('large.bin'))
   expect(installed.length).toBe(bytes.length)
   expect(installed.every((value, index) => value === bytes[index])).toBe(true)
+  expect((await fs.read('large.bin')).length).toBe(bytes.length)
   expect(digest.mock.calls.some(([, input]) => input.byteLength > 1024 * 1024)).toBe(false)
   digest.mockRestore()
 })
@@ -79,6 +80,26 @@ it('stops mobile staging appends when runtime ownership is lost', async () => {
   await expect(fs.writeAtomic('large.bin', new Uint8Array(1024 * 1024 + 1), 1000)).rejects.toThrow()
   expect(append).not.toHaveBeenCalled()
   expect(await app.vault.adapter.read('large.bin')).toBe('original')
+})
+
+it('mobile staging a subarray never copies the whole file view before chunking', async () => {
+  const app = buildFakeVault([]),
+    cap = 1024 * 1024
+  const input = new Uint8Array(3 * cap + 2).subarray(1, -1)
+  const write = vi.spyOn(app.vault.adapter, 'writeBinary')
+  app.vault.adapter.appendBinary = vi.fn(async () => {})
+  const fs = new ObsidianFileSystem(app as unknown as App)
+  const slice = vi.spyOn(ArrayBuffer.prototype, 'slice').mockImplementation(function (start, end) {
+    const length = (end ?? this.byteLength) - (start ?? 0)
+    if (length > cap) throw new Error('whole-file copy')
+    return new Uint8Array(this, start, length).slice().buffer
+  })
+  try {
+    await fs.writeAtomic('subarray.bin', input, 1)
+    expect(write.mock.calls[0][1].byteLength).toBe(cap)
+  } finally {
+    slice.mockRestore()
+  }
 })
 
 const VAULT: FakeFileSpec[] = [

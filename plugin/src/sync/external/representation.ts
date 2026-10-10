@@ -1,5 +1,5 @@
+import { sha256 } from './hash'
 import {
-  sha256,
   type FileSystem,
   type FileInfo,
   type StateStore,

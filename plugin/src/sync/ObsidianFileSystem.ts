@@ -1,11 +1,6 @@
+import { sha256 } from './external/hash'
 import type { App, DataAdapter, ListedFiles, Stat } from 'obsidian'
-import {
-  EngineError,
-  sha256,
-  type FileInfo,
-  type FileSystem,
-  type StateStore,
-} from '@abele/sync-core'
+import { EngineError, type FileInfo, type FileSystem, type StateStore } from '@abele/sync-core'
 import { caseKey } from '@abele/sync-protocol'
 import { watchVault } from './vaultWatcher'
 import { fencedPort, type RuntimeFence } from './external/recovery'
@@ -17,7 +12,6 @@ import type { LocalStorage } from './ledgerId'
 import { makeParents, pruneAbove } from './vaultFolders'
 import { VaultDirectories } from './vaultDirectories'
 import {
-  bytesOf,
   isAdapterTemp,
   isDroppableTemp,
   nativeOf,
@@ -487,7 +481,7 @@ export class ObsidianFileSystem implements FileSystem {
     // Capture BEFORE the awaited provenance/publication hold. The native final fence must
     // compare these authorized bytes, not adopt a local save that arrives during that await.
     await this.beforeEngineMutation?.([path])
-    await this.writer.write(path, bytesOf(bytes), mtime, standing !== null, before)
+    await this.writer.write(path, bytes, mtime, standing !== null, before)
     this.observedBases.delete(key)
   }
 

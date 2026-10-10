@@ -1,4 +1,5 @@
-import { sha256 } from '@abele/sync-core'
+import { sha256 } from './external/hash'
+
 import type { TokenConnectionRecord } from './tokenConnectionRegistry'
 import type { ConnectionBinding } from './external/records'
 /** Opaque token identity and a device-local slot fingerprint; never a legacy grant. */

@@ -1,4 +1,5 @@
-import { sha256, type FileSystem, type StateEntry, type StateStore } from '@abele/sync-core'
+import { sha256 } from './external/hash'
+import { type FileSystem, type StateEntry, type StateStore } from '@abele/sync-core'
 import { ConnectionRegistry, REGISTRY_KEY } from './connectionRegistry'
 import type { LocalStorage } from './ledgerId'
 

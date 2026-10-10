@@ -79,12 +79,13 @@ export class VaultWriter {
    */
   async write(
     path: string,
-    bytes: ArrayBuffer,
+    bytes: ArrayBuffer | Uint8Array,
     mtime: number,
     exists: boolean,
     before: ArrayBuffer | null
   ): Promise<void> {
     await this.deps.makeParents(path)
+    const view = bytes instanceof ArrayBuffer ? new Uint8Array(bytes) : bytes
     const temp = await this.freeName(path, 'tmp')
     let entry: JournalEntry = { target: path, temp, replacementSha: await signature(bytes) }
     this.deps.journal.add(entry)
@@ -100,11 +101,11 @@ export class VaultWriter {
           bytes.byteLength > chunkSize
         ) {
           for (let at = 0; at < bytes.byteLength; at += chunkSize) {
-            const chunk = bytes.slice(at, at + chunkSize)
+            const chunk = bytesOf(view.slice(at, at + chunkSize))
             if (at === 0) await this.adapter.writeBinary(temp, chunk, { mtime })
             else await this.adapter.appendBinary(temp, chunk, { mtime })
           }
-        } else await this.adapter.writeBinary(temp, bytes, { mtime })
+        } else await this.adapter.writeBinary(temp, bytesOf(view), { mtime })
       } catch (cause) {
         throw new EngineError('io', `cannot write ${path}`, cause)
       }
@@ -403,8 +404,8 @@ export class VaultWriter {
   }
 }
 
-async function signature(bytes: ArrayBuffer): Promise<string> {
-  return sha256(new Uint8Array(bytes))
+async function signature(bytes: ArrayBuffer | Uint8Array): Promise<string> {
+  return sha256(bytes instanceof ArrayBuffer ? new Uint8Array(bytes) : bytes)
 }
 
 /** The app as the vault's local storage, where the running plugin always has one. */

@@ -1,5 +1,6 @@
+import { sha256 } from './external/hash'
 import type { App } from 'obsidian'
-import { settingsCategory, sha256, type EngineClient } from '@abele/sync-core'
+import { settingsCategory, type EngineClient } from '@abele/sync-core'
 import { caseKey, type ChangeItem } from '@abele/sync-protocol'
 import type { StagedHost } from './stagedSettings'
 

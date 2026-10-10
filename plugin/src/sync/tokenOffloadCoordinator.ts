@@ -1,10 +1,5 @@
-import {
-  sha256,
-  type FileSystem,
-  type FileInfo,
-  type StateStore,
-  type StateEntry,
-} from '@abele/sync-core'
+import { sha256 } from './external/hash'
+import { type FileSystem, type FileInfo, type StateStore, type StateEntry } from '@abele/sync-core'
 import { caseKey } from '@abele/sync-protocol'
 import type { PathCoordinator } from './pathCoordinator'
 

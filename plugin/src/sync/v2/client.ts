@@ -1,7 +1,8 @@
+import { sha256 } from '../external/hash'
 import { z } from 'zod'
 import { ERROR_CODES } from '@abele/sync-protocol'
 import * as wire from './contract'
-import { sha256, DEFAULT_SIMPLE_UPLOAD_BYTES } from '@abele/sync-core'
+import { DEFAULT_SIMPLE_UPLOAD_BYTES } from '@abele/sync-core'
 import { ShaSchema } from './fileSchemas'
 import {
   UploadBeginRequestSchema,

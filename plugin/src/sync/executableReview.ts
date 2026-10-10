@@ -1,5 +1,6 @@
+import { sha256 } from './external/hash'
 import { z } from 'zod'
-import { sha256 } from '@abele/sync-core'
+
 import {
   configurationPath,
   executablePath,

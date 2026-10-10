@@ -1,3 +1,4 @@
+import { sha256 } from './external/hash'
 import { nativeSyncFailure } from './mobileTransport'
 import {
   SyncEngine,
@@ -8,7 +9,6 @@ import {
   applyStaged,
   ExpectedWrites,
   EngineError,
-  sha256,
   type FileSystem,
   type StateStore,
   type EngineClient,

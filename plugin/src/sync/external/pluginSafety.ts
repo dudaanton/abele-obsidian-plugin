@@ -1,5 +1,6 @@
+import { sha256 } from './hash'
 import type { App } from 'obsidian'
-import { sha256 } from '@abele/sync-core'
+
 import { CommitOpSchema } from '@abele/sync-protocol'
 import { z } from 'zod'
 import { TokenConnectionRegistry } from '../tokenConnectionRegistry'

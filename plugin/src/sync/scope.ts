@@ -1,9 +1,9 @@
+import { sha256 } from './external/hash'
 import type { App } from 'obsidian'
 import {
   encodeText,
   IgnoreRules,
   settingsCategory,
-  sha256,
   type PathMatcher,
   type SelectiveSettings,
 } from '@abele/sync-core'

@@ -1,4 +1,5 @@
-import { sha256 } from '@abele/sync-core'
+import { sha256 } from './hash'
+
 import { z } from 'zod'
 import { bindDeviceToken, boundDeviceToken, tokenServerId } from '@/secrets/deviceSecret'
 import { CONNECTION_KEY, inspectConnection, type DeviceConnection } from '../connection'
