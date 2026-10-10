@@ -24,10 +24,12 @@ it('maps every token live case including all eight phone scenarios', () => {
   expect(new Set(cases.map((one) => one.file + ':' + one.name)).size).toBe(cases.length)
   for (const one of cases)
     expect(one.scenarios.every((id) => Number.isInteger(id) && id >= 1 && id <= 124)).toBe(true)
-  expect(
-    cases
-      .filter((one) => one.file === 'syncPhone')
-      .flatMap((one) => one.scenarios)
-      .sort((a, b) => a - b)
-  ).toEqual([117, 118, 119, 120, 121, 122, 123, 124])
+  const phoneCases = cases.filter((one) => one.file === 'syncPhone')
+  const phoneSource = readFileSync(new URL('../e2e/syncPhone.e2e.test.ts', import.meta.url), 'utf8')
+  // The mapper omits empty ID arrays, so count declarations as well as mapped cases.
+  expect(phoneCases).toHaveLength([...phoneSource.matchAll(/\bliveCase\s*\(/g)].length)
+  for (const one of phoneCases) expect(one.scenarios.length, one.name).toBeGreaterThan(0)
+  expect([...new Set(phoneCases.flatMap((one) => one.scenarios))].sort((a, b) => a - b)).toEqual([
+    117, 118, 119, 120, 121, 122, 123, 124,
+  ])
 })
