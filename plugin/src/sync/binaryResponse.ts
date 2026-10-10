@@ -14,8 +14,11 @@ export function binaryResponse(bytes: Uint8Array, init: ResponseInit): Response 
   const bodyUsed = Object.getOwnPropertyDescriptor(Response.prototype, 'bodyUsed')?.get
   Object.defineProperty(response, 'bodyUsed', { get: () => consumed || !!bodyUsed?.call(response) })
   response.arrayBuffer = async () => {
-    if (response.bodyUsed || stream.locked) throw new TypeError('Response body already consumed')
-    const reader = stream.getReader()
+    // clone() tees the body and replaces this response's stream. The original stream
+    // is then locked by the tee, while this response's branch remains unread.
+    const body = response.body
+    if (response.bodyUsed || body.locked) throw new TypeError('Response body already consumed')
+    const reader = body.getReader()
     consumed = true
     try {
       const { value } = await reader.read()

@@ -434,8 +434,10 @@ export class TokenEngines {
         },
       })
       await stage('Recovering local files', () => ordinary.recover())
+      // Validate retained recovery bytes here. recoverExternalState below owns the
+      // single full projection inspection, including configuration/control files.
       await stage(
-        'Checking the vault',
+        'Checking retained recovery bytes',
         () =>
           requireExternalLifecycleSafety(
             this.app,
@@ -444,7 +446,8 @@ export class TokenEngines {
             true,
             undefined,
             assertActive,
-            inspection
+            inspection,
+            false
           ),
         true
       )

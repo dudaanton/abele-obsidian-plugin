@@ -184,8 +184,15 @@ for (const action of ['pass', 'refuse', 'disconnect', 'unload']) {
         await host.close()
       }
       release()
-      if (action === 'pass') await vi.waitFor(() => expect(ui.runtimes.has(id)).toBe(true))
-      else if (action === 'refuse') {
+      if (action === 'pass') {
+        await vi.waitFor(() => expect(ui.runtimes.has(id)).toBe(true))
+        expect(
+          ui.activity.value[id].startupTimings?.filter((one) => one.stage === 'Listing the vault')
+        ).toHaveLength(1)
+        expect(
+          ui.activity.value[id].startupTimings?.filter((one) => one.stage === 'Checking the vault')
+        ).toHaveLength(1)
+      } else if (action === 'refuse') {
         await vi.waitFor(() => expect(registry.records()[0].status).toBe('error'))
         expect(ui.activity.value[id].error).toContain('recovery')
       }

@@ -2,6 +2,28 @@ import { describe, expect, it, vi } from 'vitest'
 import { fetchViaCapacitorHttp, exactNativeRequestBodies } from '@/sync/mobileTransport'
 
 describe('non-following native mobile fetch', () => {
+  it('lets the engine inspect a clone before consuming the native JSON response', async () => {
+    const payload = {
+      protocol: 2,
+      token_id: 'token',
+      space_id: 'space',
+      status: 'active',
+      scope: { kind: 'folder', id: 'root', path: '/' },
+      limits: { max_file_bytes: 1000, quota_bytes: null },
+    }
+    const json = JSON.stringify(payload)
+    const response = await fetchViaCapacitorHttp({
+      request: async (options) => ({
+        status: 200,
+        headers: { 'content-type': 'application/json', 'content-length': String(json.length) },
+        data: btoa(json),
+        url: options.url,
+      }),
+    })('https://sync.example/v2/connection')
+    expect(await response.clone().json()).toEqual(payload)
+    expect(await response.text()).toBe(JSON.stringify(payload))
+    await expect(response.text()).rejects.toThrow(/consumed/)
+  })
   it.each([65535, 65536, 65537])(
     'decodes %i bytes in bounded string chunks and releases native data',
     async (size) => {

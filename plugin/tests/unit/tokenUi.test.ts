@@ -7,6 +7,16 @@ import { ExecutableReview } from '@/sync/executableReview'
 import { AttachmentConsent } from '@/sync/attachmentConsent'
 import { tokenUiFixture } from '@/testing/tokenUiFixture'
 
+it('distinguishes a cut-off response body from an unreachable server', () => {
+  expect(
+    connectionError(
+      Object.assign(new Error('GET /v2/connection was cut off before its body arrived'), {
+        code: 'offline',
+      })
+    )
+  ).toBe('The server response was cut off before it finished. Try syncing again.')
+})
+
 function setup() {
   const data = new Map<string, unknown>(),
     keys = new Map<string, string>()

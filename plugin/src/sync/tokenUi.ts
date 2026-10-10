@@ -16,6 +16,12 @@ export function connectionError(error: unknown): string {
   if (error instanceof Error && /External files:|Sync recovery required/.test(error.message))
     return 'Sync recovery required. Files and connection have been kept.'
   const code = (error as { code?: string } | null)?.code
+  if (
+    code === 'offline' &&
+    error instanceof Error &&
+    /was cut off before its body arrived/.test(error.message)
+  )
+    return 'The server response was cut off before it finished. Try syncing again.'
   if (code === 'startup-stage' && error instanceof Error) return error.message
   return (
     (
@@ -149,6 +155,11 @@ export function connectionStatusText(
   }
   if (activity?.inspection)
     return `Checking the vault… ${activity.inspection.completed}/${activity.inspection.total}`
+  if (
+    row.status === 'offline' &&
+    activity?.error === 'The server response was cut off before it finished. Try syncing again.'
+  )
+    return 'Server response interrupted'
   return statusName(row.paused ? 'paused' : row.status)
 }
 export interface TokenUiRuntime extends ExecutableApplyPort, ConsentResolvePort {
