@@ -1,24 +1,11 @@
-import PublicationConfirmModal from '@/components/sync/PublicationConfirmModal.vue'
-import { mount } from '@vue/test-utils'
-import { beforeEach, expect, it } from 'vitest'
+import TokenDialogs from '@/components/sync/TokenDialogs.vue'
+import { tokenUiFixture } from '@/testing/tokenUiFixture'
+import { mount, flushPromises } from '@vue/test-utils'
+import { beforeEach, expect, it, vi } from 'vitest'
 import { useVault } from '../helpers/testEnv'
 
 const global = {
-  stubs: { ObsidianModal: { template: '<section><slot/><slot name="footer"/></section>' } },
-}
-const target = {
-  fileId: 'opaque-file',
-  versionId: 'opaque-version',
-  sha: 'a'.repeat(64),
-  path: 'Images/sample.png',
-  eligible: true,
-}
-const sponsor = {
-  fileId: 'opaque-note',
-  versionId: 'opaque-note-version',
-  admissionGeneration: 1,
-  intrinsic: true,
-  inScope: true,
+  stubs: { Modal: { template: '<section><slot/><slot name="footer"/></section>' } },
 }
 const technical =
   /\b(?:grant|sponsors?|admission|intrinsic|authority|facet|audience|exposure|CAS|SHA|withdrawal generation)\b/i
@@ -39,33 +26,56 @@ function plain(text: string) {
 }
 beforeEach(() => useVault([]))
 
-it('asks whether to share a private image while retaining the exact answer controls', () => {
+it('asks whether to share a private image while retaining the exact answer controls', async () => {
+  const ui = tokenUiFixture()
   const question = {
-    exposureKey: 'opaque-question',
-    fingerprint: 'c'.repeat(64),
-    observation: {
-      target,
-      sponsor: { ...sponsor, path: 'Notes/sample.md' },
-      audience: { grantId: 'opaque-grant', label: 'Sample group' },
+    ...ui.questions.value[0],
+    id: 'opaque-question',
+    fileId: 'opaque-file',
+    path: 'Images/sample.png',
+    noteIds: ['opaque-note'],
+    source: {
+      ...ui.questions.value[0].source,
+      id: 'opaque-grant',
+      scope: { kind: 'group' as const, id: 'opaque-root', path: 'Groups/Sample group.md' },
     },
   }
-  const screen = mount(PublicationConfirmModal, {
-    props: { question, busy: true } as never,
+  let finish!: () => void
+  const deciding = vi.spyOn(ui, 'decide').mockImplementation(
+    () =>
+      new Promise<void>((resolve) => {
+        finish = resolve
+      })
+  )
+  const screen = mount(TokenDialogs, {
+    props: { ui, mode: 'attachment', question },
     global,
   })
   try {
     plain(screen.text())
-    expect(screen.text()).toContain('This file is private')
-    expect(screen.text()).toContain(target.path)
+    expect(screen.text()).toContain('private file')
+    expect(screen.text()).toContain(question.path)
     expect(screen.text()).toContain('Sample group')
-    for (const text of ['Share', 'Keep private'])
+    expect(screen.text()).toContain(question.source.address)
+    const buttons = () => screen.findAll('button')
+    const allow = buttons().find((button) => button.text() === 'Allow')!
+    const deny = buttons().find((button) => button.text() === 'Deny')!
+    expect(allow.exists()).toBe(true)
+    await deny.trigger('click')
+    expect(deciding).toHaveBeenCalledExactlyOnceWith(question, false)
+    for (const text of ['Allow', 'Deny'])
       expect(
-        screen
-          .findAll('button')
+        buttons()
           .find((button) => button.text() === text)!
           .attributes('disabled')
       ).toBeDefined()
+    expect(screen.emitted('close')).toBeUndefined()
+    finish()
+    await flushPromises()
+    expect(screen.emitted('close')).toHaveLength(1)
   } finally {
+    finish?.()
     screen.unmount()
+    deciding.mockRestore()
   }
 })

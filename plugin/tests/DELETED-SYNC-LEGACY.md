@@ -142,3 +142,8 @@ production token host. No live desktop or iPhone pass is implied by the port.
 
 `e2e/syncedScripts.e2e.test.ts` and the independent current component/integration guarantees
 for partial settings-write failures, review concurrency and phone foreground polling are retained.
+
+### Surviving transfer and language guarantees
+
+- `component/sharingPlainLanguage.test.ts` (port): removed the deleted `PublicationConfirmModal` import and sponsor/admission question schema. The private-file question remains in `TokenDialogs`: plain language, file and connection names, hidden internal identities, exact Allow/Deny controls, and disabled answers while a decision runs are retained.
+- `unit/designConformance.test.ts` (partial retirement and port): the singleton `SyncLogModal` scroll-list target is removed. History/trash lists keep their existing rules; token sharing and executable review are checked against their shared scrolling body and separately pinned footer. Transfer name/note columns and phone metadata rules remain unchanged.

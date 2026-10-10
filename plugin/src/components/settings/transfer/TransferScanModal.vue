@@ -82,8 +82,13 @@
           <Checkbox :is-enabled="accepted.has(id(item))" @toggle="toggle(item)" />
           <div class="abele-transfer-scan__entry-content">
             <span class="abele-transfer-scan__entry-name">{{ item.entry.label }}</span>
-
+            <span v-if="item.status === 'replace'" class="abele-transfer-scan__entry-note">
+              Replaces the item already on this device.
+            </span>
+          </div>
+          <div class="abele-transfer-scan__entry-details">
             <Badge :text="statusWord(item.status)" />
+            <span class="abele-transfer-scan__entry-section">{{ label(item.entry.section) }}</span>
           </div>
         </div>
 

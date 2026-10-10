@@ -116,7 +116,6 @@ import Card from '../obsidian/Card.vue'
 import CardGrid from '../obsidian/CardGrid.vue'
 import Button from '../obsidian/Button.vue'
 import Badge from '../obsidian/Badge.vue'
-import Icon from '../obsidian/Icon.vue'
 import EmptyState from '../obsidian/EmptyState.vue'
 import SecretStoreSettings from './SecretStoreSettings.vue'
 import TransferPreviewModal from './transfer/TransferPreviewModal.vue'
@@ -205,16 +204,6 @@ const details = (entry: TransferEntry): string[] => {
   if (!data || typeof data !== 'object') return []
 
   const facts: string[] = []
-  if (entry.section === CONNECTION_SECTION) {
-    const where = data as { serverUrl?: string; vaultName?: string; vaultId?: string }
-    facts.push(`${where.vaultName || where.vaultId} on ${where.serverUrl}`)
-    facts.push(
-      withKeys.value
-        ? 'The other device gets a device of its own on the server'
-        : 'Without keys, only what this device syncs goes; the other device signs in itself'
-    )
-    return facts
-  }
   if (isFileSection(entry.section)) {
     const file = entry.data as TransferFile
     facts.push(file.base ? `${file.base}/${file.path}` : file.path)

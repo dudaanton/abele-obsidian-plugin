@@ -513,7 +513,6 @@ describe('the design standard', () => {
     const dialogs = [
       ['sync/VersionHistoryModal.vue', '.abele-version-history', '.abele-version-history__list'],
       ['sync/DeletedFilesModal.vue', '.abele-deleted-files', '.abele-deleted-files__list'],
-      ['sync/SyncLogModal.vue', '.abele-sync-log', '.abele-sync-log__feed'],
     ]
 
     for (const [file, rootClass, listClass] of dialogs) {
@@ -530,6 +529,18 @@ describe('the design standard', () => {
       expect(list, `${file} ${listClass}`).toMatch(/min-height:\s*0/)
       expect(list, `${file} ${listClass}`).toMatch(/overflow-y:\s*auto/)
     }
+    // Token sharing/review use the shared scrolling body and an independent pinned footer.
+    const tokens = readFileSync(join(ROOT, 'sync/TokenDialogs.vue'), 'utf8')
+    const shell = readFileSync(join(ROOT, '..', 'modal/ShellModal.ts'), 'utf8')
+    const shellCss = readFileSync(join(ROOT, '..', 'modal/shell.css'), 'utf8')
+    expect(tokens).toContain("mode === 'share' || mode === 'review' ? 'tall'")
+    expect(tokens).toContain('<template #footer>')
+    expect(shell).toContain('this.contentEl.appendChild(this.bodyEl)')
+    expect(shell).toContain('this.contentEl.appendChild(this.footerEl)')
+    expect(shellCss).toMatch(/\.modal\.abele-modal \.abele-modal__body\s*\{[^}]*min-height:\s*0/)
+    expect(shellCss).toMatch(/\.modal\.abele-modal \.abele-modal__body\s*\{[^}]*flex:\s*1 1 auto/)
+    expect(shellCss).toMatch(/\.modal\.abele-modal \.abele-modal__body\s*\{[^}]*overflow-y:\s*auto/)
+    expect(shellCss).toMatch(/\.abele-modal__footer\s*\{[^}]*flex:\s*0 0 auto/)
   })
 
   it('keeps the retained held-delete action row visible with safe-area space', () => {
