@@ -1,7 +1,17 @@
 <template>
-  <div class="abele-list-section-header" :class="classPrefix + '__header'">
-    <div :class="classPrefix + '__header-left'">
+  <div
+    class="abele-list-section-header"
+    :class="[
+      classPrefix + '__header',
+      {
+        'abele-list-section-header_collapsed': fold.collapsed.value,
+        'abele-list-section-header_loading': loading,
+      },
+    ]"
+  >
+    <div class="abele-list-section-header__leading" :class="classPrefix + '__header-left'">
       <FoldHeading
+        class="abele-list-section-header__title"
         :class="classPrefix + '__header-text'"
         :text="text"
         :count="total === undefined ? count : undefined"
@@ -14,7 +24,12 @@
     <span v-if="total !== undefined" class="abele-list-section-header__count"
       >{{ count }} of {{ total }}</span
     >
-    <span v-if="loading" class="abele-list-section-header__count" role="status">Loading…</span>
+    <span
+      v-if="loading"
+      class="abele-list-section-header__count abele-list-section-header__loading"
+      role="status"
+      >Loading…</span
+    >
     <div
       v-if="!fold.collapsed.value || actionsWhenCollapsed"
       :class="groupActions ? classPrefix + '__header-right' : undefined"
@@ -22,6 +37,7 @@
     >
       <Icon
         v-if="search && !fold.collapsed.value"
+        class="abele-list-section-header__search-toggle"
         :class="classPrefix + '__search-toggle'"
         icon="search"
         :active="search.open.value"
@@ -34,6 +50,7 @@
   <Search
     v-if="search && !fold.collapsed.value && search.open.value"
     v-model="search.query.value"
+    class="abele-list-section-header__search"
     :class="classPrefix + '__search'"
     :placeholder="placeholder"
     autofocus

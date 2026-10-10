@@ -48,4 +48,29 @@ describe('shared list section header', () => {
     expect(open.value).toBe(false)
     view.unmount()
   })
+
+  it('names its parts and states whatever prefix a caller gives', () => {
+    const collapsed = ref(true)
+    const view = mount(ListSectionHeader, {
+      props: {
+        classPrefix: 'sample-list',
+        text: 'Samples',
+        count: 2,
+        loading: true,
+        fold: { enabled: true, collapsed, toggle: () => {} },
+      },
+    })
+    const header = view.get('.abele-list-section-header')
+
+    expect(header.classes()).toEqual(
+      expect.arrayContaining([
+        'sample-list__header',
+        'abele-list-section-header_collapsed',
+        'abele-list-section-header_loading',
+      ])
+    )
+    expect(header.find('.abele-list-section-header__leading').exists()).toBe(true)
+    expect(header.find('.abele-list-section-header__title').exists()).toBe(true)
+    expect(header.get('.abele-list-section-header__loading').attributes('role')).toBe('status')
+  })
 })
