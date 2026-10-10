@@ -113,6 +113,8 @@ import { ExternalFileHost } from '@/sync/external/ObsidianExternalFileHost'
 import { AttachmentStore } from '@/sync/external/attachmentStore'
 import { pluginRepresentation } from '@/sync/external/pluginRepresentation'
 import { RuntimeFence } from '@/sync/external/recovery'
+import { tokenSyncProbe } from './tokenSyncProbe'
+import type { TokenEngineRuntime } from '@/sync/tokenEngineRuntime'
 import { scan, SyncEngine, RecoveryBarrier } from '@abele/sync-core'
 import { activateScriptProvenance } from '@/scripting/trust/scriptTrustStorage'
 import { scriptForExecution } from '@/scripting/trust/scriptExecutionGate'
@@ -225,6 +227,7 @@ interface AbeleTestApi {
   ObsidianFileSystem: typeof ObsidianFileSystem
   ExternalFileHost: typeof ExternalFileHost
   AttachmentStore: typeof AttachmentStore
+  tokenSyncProbe(id: string): ReturnType<typeof tokenSyncProbe>
   externalRepresentation: {
     SyncEngine: typeof SyncEngine
     RecoveryBarrier: typeof RecoveryBarrier
@@ -826,6 +829,20 @@ export function exposeTestApi(plugin: Plugin): void {
     externalState: { IndexedDbStateStore, ExternalState },
     ExternalFileHost,
     AttachmentStore,
+    tokenSyncProbe: (id) => {
+      const host = (
+        plugin as unknown as {
+          tokenEngines: {
+            live: Map<string, TokenEngineRuntime>
+            ui: { runtimes: Map<string, { assertCurrent?: () => void }> }
+          }
+        }
+      ).tokenEngines
+      const runtime = host.live.get(id),
+        binding = host.ui.runtimes.get(id)
+      if (!runtime || !binding?.assertCurrent) throw new Error('Token runtime is not ready')
+      return tokenSyncProbe(runtime, () => binding.assertCurrent())
+    },
     externalRepresentation: {
       SyncEngine,
       RecoveryBarrier,

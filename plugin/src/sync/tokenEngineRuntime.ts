@@ -81,6 +81,22 @@ export class TokenEngineRuntime implements ConnectionRuntime, TokenUiRuntime {
   private readonly outbox: TokenAssetOutbox
   private active = true
   private readonly requests = new AbortController()
+  private readonly transportObservers = new Set<(path: string, active: boolean) => void>()
+  observeTransport(listener: (path: string, active: boolean) => void): () => void {
+    this.transportObservers.add(listener)
+    return () => {
+      this.transportObservers.delete(listener)
+    }
+  }
+  private observeRequest(path: string, active: boolean): void {
+    for (const listener of this.transportObservers) {
+      try {
+        listener(path, active)
+      } catch {
+        /* Diagnostics cannot affect an exchange. */
+      }
+    }
+  }
   private permitted = true
   private ignore: PathMatcher | null = null
   private authority: V2Connection | null = null
@@ -103,6 +119,10 @@ export class TokenEngineRuntime implements ConnectionRuntime, TokenUiRuntime {
         async () => {
           this.assertHeld()
           let response: Response
+          const path = new URL(
+            typeof input === 'string' ? input : input instanceof URL ? input.href : input.url
+          ).pathname
+          this.observeRequest(path, true)
           const request = new AbortController()
           const abort = () => request.abort()
           const callerSignal = init?.signal ?? (input instanceof Request ? input.signal : undefined)
@@ -119,6 +139,7 @@ export class TokenEngineRuntime implements ConnectionRuntime, TokenUiRuntime {
             }
             throw error
           } finally {
+            this.observeRequest(path, false)
             callerSignal?.removeEventListener('abort', abort)
             this.requests.signal.removeEventListener('abort', abort)
           }

@@ -1,5 +1,8 @@
 // Two origins with controlled redirects. Only invented credentials, never logged.
 import { createServer } from 'node:http'
+import { installFixtureHttpTrace } from './syncFixtureHttpTrace.mjs'
+// These phone probes traverse the same USB reverse as token fixtures.
+installFixtureHttpTrace(() => {}, process.env.E2E_TARGET === 'phone')
 const seen = []
 const sink = createServer((req, res) => {
   seen.push({

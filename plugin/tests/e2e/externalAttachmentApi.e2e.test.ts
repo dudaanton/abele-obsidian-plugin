@@ -62,14 +62,13 @@ async function roundTrip(folderToken = false, size = 26, departure = false) {
     let baseline=0,peakMemory=0,samples=0,memoryError=maximum&&!sampling?'Resident-memory sampler required':null,timer
     const sample=()=>{const value=memory();if(!Number.isFinite(value)||value<=0){memoryError='Resident-memory sampler required';return}peakMemory=Math.max(peakMemory,value);samples++}
     if(sampling){sample();baseline=peakMemory;timer=setInterval(sample,25)}
-    const runtime=svc.runtimes.get(id),adapter=app.vault.adapter,api=window.__abeleTest
-    let activeDownloads=0,peakDownloads=0,downloadCount=0,verificationCount=0
-    const nativeFetch=runtime.options.fetch
-    const trackedFetch=async(input,init)=>{const url=new URL(typeof input==='string'?input:input.url??input.href);if(url.pathname.endsWith('/external/verify'))verificationCount++;const download=url.pathname.startsWith('/v2/files/')&&url.pathname.endsWith('/content');if(download){activeDownloads++;downloadCount++;peakDownloads=Math.max(peakDownloads,activeDownloads)}try{return await nativeFetch(input,init)}finally{if(download)activeDownloads--}}
+    const adapter=app.vault.adapter,api=window.__abeleTest
+    let probe
     try {
       await svc.pause(id,false)
-      await runtime.sync()
-      runtime.options.fetch=trackedFetch
+      probe=api.tokenSyncProbe(id)
+      await probe.sync()
+      probe.reset()
       const evicted=await host.evict(id,path)
       const missing=!await adapter.exists(path),sidecar=await adapter.exists(path+'.abele-ref')
       let verifiedRead=null
@@ -78,13 +77,13 @@ async function roundTrip(folderToken = false, size = 26, departure = false) {
         const store=await api.externalState.IndexedDbStateStore.open(indexedDB,record.ledgerId)
         const document=JSON.parse(await store.getExternalState())
         const state=await api.externalState.ExternalState.open(store,record.ledgerId,document.binding)
-        const readHost=new api.ExternalFileHost(app,{platform:${JSON.stringify(onPhone() ? 'mobile' : 'desktop')},assertOwned:()=>runtime.assertHeld()})
+        const readHost=new api.ExternalFileHost(app,{platform:${JSON.stringify(onPhone() ? 'mobile' : 'desktop')},assertOwned:()=>probe.assertCurrent()})
         try{
-          const reader=new api.AttachmentStore({state,ledger:store,host:readHost,binding:document.binding,assertOwned:()=>runtime.assertHeld(),serial:{run:work=>runtime.engine.runExclusive(work)},sync:()=>runtime.sync(),scriptsFolder:()=> 'Scripts',verify:(file,input)=>runtime.client.verifyExternalFile(file,input),download:(file,version)=>runtime.client.versionBytes(file,version)})
+          const reader=new api.AttachmentStore({state,ledger:store,host:readHost,binding:document.binding,assertOwned:()=>probe.assertCurrent(),serial:{run:work=>probe.runExclusive(work)},sync:()=>probe.sync(),scriptsFolder:()=> 'Scripts',verify:(file,input)=>probe.verify(file,input),download:(file,version)=>probe.download(file,version)})
           const head=await store.get(path),read=await reader.read(head.fileId,{expectedVersionId:head.versionId})
           verifiedRead=read.bytes?.length===size&&read.bytes.every(byte=>byte===90)&&!await adapter.exists(path)
         }finally{readHost.close();store.close()}
-        activeDownloads=0;peakDownloads=0;downloadCount=0
+        probe.reset()
       }
       if(${departure})await svc.disconnect(id)
       else await Promise.all([host.hydrate(path),host.hydrate(path)])
@@ -92,8 +91,9 @@ async function roundTrip(folderToken = false, size = 26, departure = false) {
       let fingerprint;try{fingerprint=await externalHost.fingerprint(path)}finally{externalHost.close()}
       const actual=maximum?null:new Uint8Array(await adapter.readBinary(path))
       if(sampling)sample()
+      const {peakDownloads,downloadCount,verificationCount}=probe.stats()
       return {evicted,missing,sidecar,retired:!await adapter.exists(path+'.abele-ref'),identical:fingerprint.sha===${JSON.stringify(file.sha)}&&fingerprint.size===size&&(maximum||actual.length===size&&actual.every(byte=>byte===90)),disconnectReady:!svc.rows.value.some(one=>one.id===id),baseline,peakMemory,samples,memoryError,peakDownloads,downloadCount,verificationCount,verifiedRead}
-    } finally {runtime.options.fetch=nativeFetch;clearInterval(timer)}
+    } finally {probe?.close();clearInterval(timer)}
   `,
     false,
     TIMEOUT
