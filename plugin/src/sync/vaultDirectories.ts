@@ -4,7 +4,9 @@ import type { LocalStorage } from './ledgerId'
 
 const KEY = 'abele-sync-local-directories-v1'
 const REMOVALS = 'abele-sync-empty-directory-removals-v1'
-const removalSchema = z.array(z.object({ path: z.string(), birth: z.number() }).strict())
+const removalSchema = z.array(
+  z.object({ path: z.string(), birth: z.number(), files: z.array(z.string()).optional() }).strict()
+)
 const schema = z.array(
   z.object({ path: z.string(), identity: z.string().min(1), birth: z.number() }).strict()
 )
@@ -40,6 +42,68 @@ export class VaultDirectories {
     if (JSON.stringify(this.storage.loadLocalStorage(REMOVALS)) !== JSON.stringify(removals))
       throw new Error('Pending empty-directory removal was not stored')
   }
+  private async tree(
+    path: string,
+    depth = 0
+  ): Promise<{ files: string[]; folders: { path: string; birth: number }[] }> {
+    if (depth > 32) throw new EngineError('io', 'Directory tree is too deep')
+    const children = await this.adapter.list(path)
+    const files = [...children.files]
+    const folders: { path: string; birth: number }[] = []
+    for (const child of children.folders) {
+      // Never follow/remove a symlink or a protected directory as empty content.
+      if (
+        (await this.symlink(child)) ||
+        /(?:^|\/)(?:\.git|\.trash|\.abele-sync)(?:\/|$)/.test(child)
+      ) {
+        files.push(child)
+        continue
+      }
+      const stat = await this.adapter.stat(child)
+      if (stat?.type !== 'folder') continue
+      const nested = await this.tree(child, depth + 1)
+      files.push(...nested.files)
+      folders.push(...nested.folders, { path: child, birth: stat.ctime })
+    }
+    return { files, folders }
+  }
+  private async reconcile(): Promise<void> {
+    for (const pending of this.removals().sort((a, b) => b.path.length - a.path.length)) {
+      const drop = () =>
+        this.saveRemovals(this.removals().filter((one) => one.path !== pending.path))
+      const stat = await this.adapter.stat(pending.path)
+      if (
+        stat?.type !== 'folder' ||
+        stat.ctime !== pending.birth ||
+        (await this.symlink(pending.path))
+      ) {
+        drop()
+        continue
+      }
+      const tree = await this.tree(pending.path)
+      // New local content supersedes the remote departure. Legacy intents have no
+      // baseline, so conservatively publish their surviving content too.
+      const originalFiles = new Set(pending.files ?? [])
+      if (tree.files.some((path) => !originalFiles.has(path))) {
+        drop()
+        continue
+      }
+      if (tree.files.length) continue
+      for (const folder of [...tree.folders, { path: pending.path, birth: pending.birth }]) {
+        const current = await this.adapter.stat(folder.path)
+        if (current?.type !== 'folder' || current.ctime !== folder.birth) continue
+        const children = await this.adapter.list(folder.path)
+        if (children.files.length || children.folders.length) continue
+        try {
+          await this.removeEmpty(folder.path)
+        } catch (error) {
+          if (!['ENOTEMPTY', 'EEXIST', 'ENOENT'].includes((error as { code?: string }).code ?? ''))
+            throw error
+        }
+      }
+      if (!(await this.adapter.stat(pending.path))) drop()
+    }
+  }
   /** Only retry a requested departure, never prune unrelated deliberately empty folders. */
   async removedChild(path: string): Promise<void> {
     for (const pending of this.removals().sort((a, b) => b.path.length - a.path.length)) {
@@ -57,6 +121,7 @@ export class VaultDirectories {
     }
   }
   async *list(): AsyncIterable<{ path: string; identity: string; mtime: number }> {
+    await this.reconcile()
     const found: { path: string; birth: number; mtime: number }[] = []
     const walk = async (path: string, depth: number) => {
       if (depth > 32) throw new EngineError('io', 'Directory tree is too deep')
@@ -97,7 +162,13 @@ export class VaultDirectories {
     const removals = this.removals()
     for (const one of found) {
       // A departed folder awaiting a held child must not be published as a new mkdir.
-      if (removals.some((pending) => pending.path === one.path && pending.birth === one.birth))
+      if (
+        removals.some(
+          (pending) =>
+            (pending.path === one.path && pending.birth === one.birth) ||
+            one.path.startsWith(pending.path + '/')
+        )
+      )
         continue
       yield {
         path: one.path,
@@ -144,9 +215,10 @@ export class VaultDirectories {
       throw new EngineError('conflict', 'Directory path is occupied')
     const children = await this.adapter.list(path)
     if (children.files.length || children.folders.length) {
+      const prior = this.removals().find((one) => one.path === path && one.birth === stat.ctime)
       this.saveRemovals([
         ...this.removals().filter((one) => one.path !== path),
-        { path, birth: stat.ctime },
+        prior ?? { path, birth: stat.ctime, files: (await this.tree(path)).files },
       ])
       // Core forgets ENOTEMPTY removals; retain the intent until held children depart.
       throw Object.assign(new Error('Directory is not empty'), { code: 'ENOTEMPTY' })
@@ -154,5 +226,6 @@ export class VaultDirectories {
     await this.removeEmpty(path)
     this.save(this.records().filter((one) => one.path !== path))
     this.saveRemovals(this.removals().filter((one) => one.path !== path))
+    await this.removedChild(path)
   }
 }

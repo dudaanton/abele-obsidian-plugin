@@ -1,6 +1,65 @@
 import { expect, it, vi } from 'vitest'
 import { VaultDirectories } from '@/sync/vaultDirectories'
 
+it.each(['local delete', 'empty child', 'missing', 'recreated', 'new content'])(
+  'reconciles pending directory removal on a scan: %s',
+  async (change) => {
+    const dirs = new Map([
+      ['A', 1],
+      ['A/child', 2],
+    ])
+    const files = new Set(['A/child/file.md'])
+    const saved = new Map<string, unknown>()
+    const children = (path: string) => ({
+      files: [...files].filter((p) => p.slice(0, p.lastIndexOf('/')) === path),
+      folders: [...dirs.keys()].filter((p) =>
+        p.includes('/') ? p.slice(0, p.lastIndexOf('/')) === path : path === ''
+      ),
+    })
+    const removed: string[] = []
+    const port = {
+      stat: async (path: string) =>
+        dirs.has(path) ? { type: 'folder', ctime: dirs.get(path)!, mtime: 1, size: 0 } : null,
+      list: async (path: string) => children(path),
+      mkdir: async () => {},
+      rename: async () => {},
+      rmdir: async (path: string, recursive: boolean) => {
+        expect(recursive).toBe(false)
+        expect(children(path)).toEqual({ files: [], folders: [] })
+        removed.push(path)
+        dirs.delete(path)
+      },
+    }
+    const storage = {
+      loadLocalStorage: (key: string) => saved.get(key),
+      saveLocalStorage: (key: string, value: unknown) => {
+        saved.set(key, value)
+      },
+    }
+    const folders = new VaultDirectories(port, storage)
+    await expect(folders.remove('A')).rejects.toMatchObject({ code: 'ENOTEMPTY' })
+    if (change !== 'new content') files.clear()
+    if (change === 'empty child') await folders.remove('A/child')
+    if (change === 'missing') dirs.clear()
+    if (change === 'recreated') dirs.set('A', 3)
+    if (change === 'new content') files.add('A/new.md')
+    const reloaded = new VaultDirectories(port, storage)
+    const published = []
+    for await (const dir of reloaded.list()) published.push(dir.path)
+    expect(saved.get('abele-sync-empty-directory-removals-v1')).toEqual([])
+    if (change === 'recreated' || change === 'new content') {
+      expect(dirs.has('A')).toBe(true)
+      expect(published).toContain('A')
+      expect(removed).not.toContain('A')
+    } else {
+      expect(dirs.has('A')).toBe(false)
+      expect(published).not.toContain('A')
+      if (change === 'local delete') expect(removed).toEqual(['A/child', 'A'])
+    }
+    if (change === 'new content') expect(files.has('A/new.md')).toBe(true)
+  }
+)
+
 it.each(['delete', 'move'])(
   'finishes a deferred remote folder removal after a later child %s',
   async (operation) => {
