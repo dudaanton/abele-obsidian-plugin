@@ -119,6 +119,9 @@ import '@/composables/useFooterView'
 import { SyncService } from './sync/SyncService'
 import type { PluginSharing } from './sync/pluginSharing'
 import { prepareTokenConnections } from './sync/tokenRegistryPreparation'
+import { tokenUi, TokenUi } from './sync/tokenUi'
+import { openDeviceReviews } from './sync/openDeviceReviews'
+import { transportOf } from './sync/environment'
 import { renderStatus, type SyncStatus } from './sync/status'
 // Keep the extracted section last so its dependencies do not reorder the existing styles.
 import { registerCoreCommands } from '@/startup/registerCoreCommands'
@@ -309,7 +312,7 @@ export default class AbelePlugin extends Plugin {
         const config = AbeleConfig.getInstance(),
           loaded = config.takeLoadedSync()
         try {
-          await prepareTokenConnections(
+          const registry = await prepareTokenConnections(
             this.app,
             {
               get: (id) => secretStore.getLocal(id),
@@ -321,6 +324,49 @@ export default class AbelePlugin extends Plugin {
             config.acknowledgeSyncMigration()
             await config.rewrite()
           }
+          const reviewKey = 'abele-sync-device-review-id-v1'
+          let reviewId = this.app.loadLocalStorage(reviewKey)
+          if (reviewId == null) {
+            reviewId = crypto.randomUUID()
+            this.app.saveLocalStorage(reviewKey, reviewId)
+            if (this.app.loadLocalStorage(reviewKey) !== reviewId)
+              throw new Error('Device review identity was not stored')
+          }
+          if (typeof reviewId !== 'string')
+            throw new Error('Device review identity requires recovery')
+          const reviews = await openDeviceReviews(window.indexedDB, reviewId, {
+            configRoots: [this.app.vault.configDir],
+          })
+          const ui = new TokenUi(
+            registry,
+            {
+              get: (id) => secretStore.getLocal(id) || null,
+              set: (id, value) => secretStore.setLocal(id, value),
+              remove: (id) => secretStore.forgetLocal(id),
+            },
+            (input, init) => transportOf({})(input, init),
+            reviews
+          )
+          tokenUi.value = ui
+          ui.openFile = (path) => this.app.workspace.openLinkText(path, '', false)
+          this.register(() => {
+            if (tokenUi.value === ui) tokenUi.value = null
+            reviews.close()
+          })
+          this.registerEvent(
+            this.app.workspace.on('file-open', (file) => {
+              if (file)
+                void ui
+                  .opened(file.path)
+                  .catch(
+                    () =>
+                      new Notice(
+                        'The private file question could not be opened. Reopen the note to try again.'
+                      )
+                  )
+            })
+          )
+          await ui.refreshReviews()
         } catch (error) {
           console.error(
             '[Abele] retired access cleanup requires recovery',

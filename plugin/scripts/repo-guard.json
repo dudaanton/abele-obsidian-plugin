@@ -4,6 +4,7 @@
   "$layout": "Every directory named here may hold only the entries listed; a new file or folder beside them fails until it is added. Directories not named here are not checked this way.",
   "layout": {
     ".": [
+      ".gitignore",
       ".githooks",
       ".github",
       "LICENSE",

@@ -90,6 +90,17 @@ const SHOTS = shotDir('abele-phone')
  * differ.
  */
 const DIALOGS = [
+  'sync-connect',
+  'sync-connect-error',
+  'sync-connect-token',
+  'sync-connections',
+  'sync-empty',
+  'sync-share',
+  'sync-share-token',
+  'sync-review',
+  'sync-attachment',
+  'sync-states',
+  'sync-disconnect',
   'chat-artifacts-empty',
   'chat-artifacts',
   'chat-artifacts-long',

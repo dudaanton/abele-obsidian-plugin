@@ -705,7 +705,6 @@ or deleting an inline image removes/changes its drawing reference; original medi
 relationships remain in the package, since unsupported parts may still reference them.
 There is no new persistent editor setting or sidecar. Phone views do not offer hand editing.
 
-
 ## Imported images
 
 Images imported through Abele's chat, gallery, file importer and media downloads are stored
@@ -758,18 +757,18 @@ The person gets the same links from **Copy link to lines** on the editor's menu.
 
 `type: task`. One note per task, in the tasks folder (`Tasks` by default).
 
-| Property | Meaning |
-|---|---|
-| `created` | Date the task was made |
-| `date` | The day it is scheduled for |
-| `dateTime` | Time on that day, `HH:mm` |
-| `due` | Deadline date |
-| `dueTime` | Time of the deadline |
-| `completed` | Date it was finished. Its presence is what "done" means |
-| `recurrence` | Repeat rule, when it repeats |
-| `groups` | What the task belongs to — the project, the person, the note it came out of |
-| `priority` | `low`, `medium` or `high`. Anything else, or nothing, is no priority. The property's name is selected by `taskPriorityProperty` (default `priority`); read that setting before writing. `priorityProperties` only controls property widgets |
-| `labels` | Labels, one value or a list — `labels: [work, errands]`. The property's name is a setting (`taskLabelProperty`); read it before writing labels, it may not be `labels` |
+| Property     | Meaning                                                                                                                                                                                                                                     |
+| ------------ | ------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| `created`    | Date the task was made                                                                                                                                                                                                                      |
+| `date`       | The day it is scheduled for                                                                                                                                                                                                                 |
+| `dateTime`   | Time on that day, `HH:mm`                                                                                                                                                                                                                   |
+| `due`        | Deadline date                                                                                                                                                                                                                               |
+| `dueTime`    | Time of the deadline                                                                                                                                                                                                                        |
+| `completed`  | Date it was finished. Its presence is what "done" means                                                                                                                                                                                     |
+| `recurrence` | Repeat rule, when it repeats                                                                                                                                                                                                                |
+| `groups`     | What the task belongs to — the project, the person, the note it came out of                                                                                                                                                                 |
+| `priority`   | `low`, `medium` or `high`. Anything else, or nothing, is no priority. The property's name is selected by `taskPriorityProperty` (default `priority`); read that setting before writing. `priorityProperties` only controls property widgets |
+| `labels`     | Labels, one value or a list — `labels: [work, errands]`. The property's name is a setting (`taskLabelProperty`); read it before writing labels, it may not be `labels`                                                                      |
 
 Priority orders the task list of tasks without a date, highest first; dated tasks stay in date
 order. Labels are free text: write them plainly, without a `#`. Colours for labels live in the
@@ -790,16 +789,16 @@ An inline checklist is Markdown in a note's body, not a `type: task` note. Do no
 separate task note merely to track a list item. Preserve the list's text, indentation and
 links when editing a marker with the normal note read/edit tools.
 
-| Marker | Meaning | Open | Done |
-|---|---|---|---|
-| `[ ]` | Open | yes | no |
-| `[/]` | In progress | yes | no |
-| `[x]` or `[X]` | Done | no | yes |
-| `[-]` | Cancelled | no | no |
-| `[>]` | Forwarded | yes | no |
-| `[<]` | Scheduled | yes | no |
-| `[?]` | Question | yes | no |
-| `[!]` | Important | yes | no |
+| Marker         | Meaning     | Open | Done |
+| -------------- | ----------- | ---- | ---- |
+| `[ ]`          | Open        | yes  | no   |
+| `[/]`          | In progress | yes  | no   |
+| `[x]` or `[X]` | Done        | no   | yes  |
+| `[-]`          | Cancelled   | no   | no   |
+| `[>]`          | Forwarded   | yes  | no   |
+| `[<]`          | Scheduled   | yes  | no   |
+| `[?]`          | Question    | yes  | no   |
+| `[!]`          | Important   | yes  | no   |
 
 Write `- [/] Sample item` while it is in progress and `- [x] Sample item` once it is done.
 Cancellation is not completion. When reporting progress, keep cancelled items separate from
@@ -826,14 +825,14 @@ Its options sit in the view's own entry and all of them may be left out:
 views:
   - type: abele-calendar
     name: Calendar
-    mode: month              # month, week, year or life — where it opens
-    dateProperty: note.date  # the day a note is on
+    mode: month # month, week, year or life — where it opens
+    dateProperty: note.date # the day a note is on
     timeProperty: note.dateTime
-    endProperty: note.due    # the last day, for something that spans days
+    endProperty: note.due # the last day, for something that spans days
     endTimeProperty: note.dueTime
-    showCalendarEvents: false  # true adds the external calendars' events
-    doneLast: true           # false lists done tasks where the sort puts them
-    lifeExpectancy: 90       # years the life layout draws; left out, the plugin setting
+    showCalendarEvents: false # true adds the external calendars' events
+    doneLast: true # false lists done tasks where the sort puts them
+    lifeExpectancy: 90 # years the life layout draws; left out, the plugin setting
 ```
 
 Left out, the four properties are the task's own, so a base over the tasks folder needs none of
@@ -861,19 +860,19 @@ the date value or in the time property. Formula dates are never written.
 
 `type: transaction`. One note per transaction.
 
-| Property | Meaning |
-|---|---|
-| `date` | When it happened |
-| `from` | Wikilink to the account it left |
-| `to` | Wikilink to the account it went to |
-| `amount` | Number |
-| `currency` | Currency code |
-| `foreignAmount`, `foreignCurrency` | The same sum in a second currency, for multi-currency |
-| `category` | Wikilink to a category note |
-| `groups` | Anything the transaction relates to — a trip, a project, a person |
+| Property                           | Meaning                                                           |
+| ---------------------------------- | ----------------------------------------------------------------- |
+| `date`                             | When it happened                                                  |
+| `from`                             | Wikilink to the account it left                                   |
+| `to`                               | Wikilink to the account it went to                                |
+| `amount`                           | Number                                                            |
+| `currency`                         | Currency code                                                     |
+| `foreignAmount`, `foreignCurrency` | The same sum in a second currency, for multi-currency             |
+| `category`                         | Wikilink to a category note                                       |
+| `groups`                           | Anything the transaction relates to — a trip, a project, a person |
 
 Whether a transaction counts as income, spending or a neutral transfer is decided by the
-*types of the accounts on each side*, never by the sign of the amount. Amounts are positive.
+_types of the accounts on each side_, never by the sign of the amount. Amounts are positive.
 
 ## Accounts
 
@@ -894,11 +893,11 @@ ordinary Properties editor.
 
 `type: time-entry`. One note per tracked stretch.
 
-| Property | Meaning |
-|---|---|
-| `start` | Start, date and time |
-| `end` | End, date and time. Absent or null means the timer is still running |
-| `groups` | What the time was spent on |
+| Property | Meaning                                                             |
+| -------- | ------------------------------------------------------------------- |
+| `start`  | Start, date and time                                                |
+| `end`    | End, date and time. Absent or null means the timer is still running |
+| `groups` | What the time was spent on                                          |
 
 Totals roll up through `groups`: time tracked against a task also counts towards the project
 that task belongs to, and so on up.
@@ -928,10 +927,10 @@ and read it from every relevant context.
 Two optional properties on any note. The backlinks at the foot of a note are cards, and a
 note that has these shows them on its card; a script's `noteInfo` returns the cover too.
 
-| Property | Meaning |
-|---|---|
-| `description` | One or two sentences on what the note is; a card shows the first two lines |
-| `cover` | A picture: `"[[poster.jpg]]"`, a vault path, or a web address. Shown as a thumbnail |
+| Property      | Meaning                                                                             |
+| ------------- | ----------------------------------------------------------------------------------- |
+| `description` | One or two sentences on what the note is; a card shows the first two lines          |
+| `cover`       | A picture: `"[[poster.jpg]]"`, a vault path, or a web address. Shown as a thumbnail |
 
 Worth filling on notes that are linked from many places — a person, a place, a film — so the
 list of backlinks says what each one is without opening it.
@@ -950,9 +949,10 @@ shows as a raw list.
 ## Counters
 
 A property named in the `counterProperties` setting is a counter: the plugin draws it with − and
-+ beside the number. Its value is a plain number, `reps: 12`; empty or missing counts as 0, so the
-first + writes 1. Write a number, never text, into one; a value that is not a number is shown as
-it is and the buttons leave it alone.
+
+- beside the number. Its value is a plain number, `reps: 12`; empty or missing counts as 0, so the
+  first + writes 1. Write a number, never text, into one; a value that is not a number is shown as
+  it is and the buttons leave it alone.
 
 ## Dates, priorities, labels and groups
 
@@ -1009,7 +1009,7 @@ Chats are `.abchat` files under the chat folder, one JSON record per line. While
 rewritten whole, a copy of the new content sits in the plugin's folder under `chat-backups/`, on
 this device only, and goes once the file is written; a file found cut short by a crash is put
 back from it. Besides the
-conversation, a chat's metadata record remembers what it *did*: `touched` lists the notes it
+conversation, a chat's metadata record remembers what it _did_: `touched` lists the notes it
 is linked to — the ones it wrote to (created, edited, replaced, moved or copied into place,
 never merely read), each with the time it was last written, and the ones the person attached it
 to by hand, each with the time it was attached. The two are the same entry and look the same;
@@ -1329,7 +1329,7 @@ reach. The body lines of a callout take one normally.
 
 **Never write, move or edit a marker.** It is an index into a file the plugin owns: an id with
 no file behind it draws an icon that opens nothing, and a marker carried away from its passage
-silently reattaches somebody's conversation to different text. Editing the note *around* a
+silently reattaches somebody's conversation to different text. Editing the note _around_ a
 marker is fine — surviving that is what it is for. For an AI discussion, change the commented
 passage with `edit_selection` rather than `edit`: it moves the AI discussion's stored quote
 with the text. Human comments use exact quote resolution; changing their passage can leave an
@@ -1670,7 +1670,7 @@ cached anywhere.
 
 ## Diagrams
 
-A fenced ```` ```mermaid ```` block is drawn as a diagram — in notes, in the chat and in GitHub
+A fenced ` ```mermaid ` block is drawn as a diagram — in notes, in the chat and in GitHub
 tabs — so a flowchart, a sequence, a class, state, ER or Gantt diagram, a timeline, a pie or a
 mind map is written as Mermaid source in the note rather than as a picture. The person sees it
 at the width of the note and zooms, drags or opens it full screen themselves, so a large diagram
@@ -1853,6 +1853,7 @@ leave either as it is. It is found by that property, not its name. Each highligh
   `anchor: { note: <the book>, quote, cfi }` — the book and the place, and no marker anywhere; the
   book is never written to. The link is how the reader finds the chat again, so leave it as it is;
   removing the callout takes the mark off the words and leaves the chat where it is.
+
 - Other callouts, headings and paragraphs in the note are the person's and are left as they are.
 
 **Where highlights go is a setting** (`reader.notesTo`, `notesPath`, `notesTemplate` in the
@@ -1903,7 +1904,7 @@ opens the note. A translation card is the usual one:
 ```yaml
 word-forms: [māja, mājas, mājā]
 word-language: lv
-word-books: ["[[Books/Novel.epub]]"]
+word-books: ['[[Books/Novel.epub]]']
 ```
 
 - `word-forms` — a list; the note is a rule while it has one. Matched whole and case-insensitively;
@@ -1981,7 +1982,6 @@ One drawing may be embedded several times in a note, each with its own part and 
 write a drawing's file yourself — the picture and the data must agree, and only the drawing tab
 keeps them so.
 
-
 ## Temporary execution context hold
 
 A durable local `abele-script-execution-context-hold` plus `.abele-script-context-hold`
@@ -2058,3 +2058,24 @@ that identity, while a replacement at the same path has a new identity. Neither
 document enters settings, synced secrets or settings transfer. Screens and core
 runtime integration consume these ports separately; no UI or engine is started
 by the metadata adapter.
+
+The native Sync settings now read `abele-sync-connections-v2`. Connecting validates the
+token with the server before adding a record; interrupted keychain provisioning reuses the
+same pending binding. Disconnect stops that connection, verifies removal of its local
+credential, then forgets its metadata without touching files or other connections. It does
+not revoke a server token. `abele-sync-token-state:last-sync` stores only the last successful
+sync time in the connection's device-local state. Progress, errors and conflict paths are
+runtime state supplied by the core adapter, never synced settings.
+
+`abele-sync-device-review-id-v1` is a verified device-local UUID for the review database.
+Incoming-code review selects the exact displayed candidate ID; later candidates remain
+pending. Only workspace file-open events ask the attachment-consent port to resolve stable
+local identities. Closing a question defers it; allow/deny goes through that connection's
+resolver and durable decision store. Camera/photo QR input reuses the settings-transfer
+decoder; it populates the token field and still requires pressing Connect.
+
+Token issuance and revocation use v2 directly. Issued token text is held only while its
+dialog is open; it is never saved into settings, transfer, the registry or the sync log.
+The installed core has no v2 runtime binding yet. File exchange and executable approval
+remain unavailable until that adapter binds the sync, apply and local-identity ports;
+the UI does not start a legacy engine or fabricate completion.

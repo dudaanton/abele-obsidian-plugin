@@ -1,4 +1,5 @@
 <template>
+  <TokenReviewPrompts />
   <!-- Before the panels, as the widgets were; their own component, see there. -->
   <NoteWidgets />
   <Teleport
@@ -134,6 +135,7 @@ import HeldDeletesModal from './sync/HeldDeletesModal.vue'
 import PublicationConfirmModal from './sync/PublicationConfirmModal.vue'
 import SettingsArrivedModal from './sync/SettingsArrivedModal.vue'
 import PluginCodeModal from './sync/PluginCodeModal.vue'
+import TokenReviewPrompts from './sync/TokenReviewPrompts.vue'
 import SyncLogModal from './sync/SyncLogModal.vue'
 import { TIMELINE_SIDEBAR_ID_ATTR } from '@/views/TimelineSidebarView'
 import { TODO_SIDEBAR_ID_ATTR } from '@/views/TodoSidebarView'

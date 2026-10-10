@@ -16,6 +16,7 @@ import { approveScriptKeyRequest } from '@/secrets/requestApproval'
 import { destinationFixture } from './destinationFixture'
 import { reviewScript } from '@/scripting/reviewScript'
 import { chatArtifactsFixture } from './chatArtifactsFixture'
+import TokenUiFixture from './TokenUiFixture.vue'
 
 export interface DialogFixtureOptions {
   /** Inspect all synthetic recipient-row variants, without inheriting ambient rights. */
@@ -195,23 +196,73 @@ const DIALOGS: Record<string, (options?: DialogFixtureOptions) => void | Promise
   },
   'chat-navigation': () => {
     const messages = Array.from({ length: 40 }, (_, i): ChatMessage[] => [
-      { id: `question-${i}`, parentId: i ? `tool-${i - 1}` : undefined, role: 'user',
-        content: `Sample question ${i + 1} with enough words to wrap across a narrow screen`, timestamp: 1700000000000 + i * 3600000 },
-      { id: `answer-${i}`, parentId: `question-${i}`, role: 'assistant',
-        content: 'A sample answer with more detail about the question.', timestamp: 1700000001000 + i * 3600000 },
-      { id: `tool-${i}`, parentId: `answer-${i}`, role: 'tool-call', content: '', toolName: 'read',
-        toolStatus: 'pending', toolParams: { path: 'Notes/sample-file.md' }, timestamp: 1700000002000 + i * 3600000 },
+      {
+        id: `question-${i}`,
+        parentId: i ? `tool-${i - 1}` : undefined,
+        role: 'user',
+        content: `Sample question ${i + 1} with enough words to wrap across a narrow screen`,
+        timestamp: 1700000000000 + i * 3600000,
+      },
+      {
+        id: `answer-${i}`,
+        parentId: `question-${i}`,
+        role: 'assistant',
+        content: 'A sample answer with more detail about the question.',
+        timestamp: 1700000001000 + i * 3600000,
+      },
+      {
+        id: `tool-${i}`,
+        parentId: `answer-${i}`,
+        role: 'tool-call',
+        content: '',
+        toolName: 'read',
+        toolStatus: 'pending',
+        toolParams: { path: 'Notes/sample-file.md' },
+        timestamp: 1700000002000 + i * 3600000,
+      },
     ]).flat()
     mountAlone(ChatNavigation, {
       messages,
-      allMessages: [...messages,
-        { id: 'alternate', parentId: 'question-0', role: 'user', content: 'Alternate sample continuation with enough words to wrap on a narrow screen', timestamp: 1700000003000 },
-        { id: 'alternate-first', parentId: 'alternate', role: 'assistant', content: 'First nested continuation', timestamp: 1700000004000 },
-        { id: 'alternate-second', parentId: 'alternate', role: 'assistant', content: 'Second nested continuation', timestamp: 1700000005000 },
-        { id: 'other-start', role: 'user', content: 'Another sample conversation start', timestamp: 1700000006000 },
+      allMessages: [
+        ...messages,
+        {
+          id: 'alternate',
+          parentId: 'question-0',
+          role: 'user',
+          content: 'Alternate sample continuation with enough words to wrap on a narrow screen',
+          timestamp: 1700000003000,
+        },
+        {
+          id: 'alternate-first',
+          parentId: 'alternate',
+          role: 'assistant',
+          content: 'First nested continuation',
+          timestamp: 1700000004000,
+        },
+        {
+          id: 'alternate-second',
+          parentId: 'alternate',
+          role: 'assistant',
+          content: 'Second nested continuation',
+          timestamp: 1700000005000,
+        },
+        {
+          id: 'other-start',
+          role: 'user',
+          content: 'Another sample conversation start',
+          timestamp: 1700000006000,
+        },
       ],
-      comments: [{ id: 'layout-sample-missing-discussion', message: 'question-0', quote: 'A retained sample passage ' + 'x'.repeat(100) }],
-      state: { expanded: [], scrollTop: 0 }, activeMessageId: 'answer-0', canGoBack: true,
+      comments: [
+        {
+          id: 'layout-sample-missing-discussion',
+          message: 'question-0',
+          quote: 'A retained sample passage ' + 'x'.repeat(100),
+        },
+      ],
+      state: { expanded: [], scrollTop: 0 },
+      activeMessageId: 'answer-0',
+      canGoBack: true,
     })
   },
   'agents': (options) => mountAlone(AgentsListDialog, { source: agentsFixture(options?.agentsState) }),
@@ -235,8 +286,28 @@ const DIALOGS: Record<string, (options?: DialogFixtureOptions) => void | Promise
   'node-question': () => mountNodeQuestion('select'),
   'node-question-input': () => mountNodeQuestion('input'),
   'node-workspaces': () => mountAlone(NodeWorkspaceDialog, nodeWorkspaceFixture()),
-  'node-delegation-grants': () => mountAlone(NodeDelegationGrantsDialog, nodeDelegationGrantsFixture()),
-  'node-delegation-card': () => mountAlone(defineComponent({ emits: ['close'], setup: (_props, { emit }) => () => h(Modal, { title: 'Node delegation', onClose: () => emit('close') }, { default: () => h(NodeDelegationCard, { card: nodeDelegationCardFixture(), nodeLabel: 'Sample node' }) }) })),
+  'node-delegation-grants': () =>
+    mountAlone(NodeDelegationGrantsDialog, nodeDelegationGrantsFixture()),
+  'node-delegation-card': () =>
+    mountAlone(
+      defineComponent({
+        emits: ['close'],
+        setup:
+          (_props, { emit }) =>
+          () =>
+            h(
+              Modal,
+              { title: 'Node delegation', onClose: () => emit('close') },
+              {
+                default: () =>
+                  h(NodeDelegationCard, {
+                    card: nodeDelegationCardFixture(),
+                    nodeLabel: 'Sample node',
+                  }),
+              }
+            ),
+      })
+    ),
 
   'node-files': async () =>
     mountAlone(NodeFilesDialog, await nodeFilesFixture('files'), 'node-files'),
@@ -487,6 +558,17 @@ const DIALOGS: Record<string, (options?: DialogFixtureOptions) => void | Promise
       codes: 1,
     }),
   'transfer-scan': () => mountAlone(TransferScanModal),
+  'sync-connect': () => mountAlone(TokenUiFixture, { screen: 'connect' }),
+  'sync-connect-error': () => mountAlone(TokenUiFixture, { screen: 'connect-error' }),
+  'sync-connect-token': () => mountAlone(TokenUiFixture, { screen: 'connect-token' }),
+  'sync-connections': () => mountAlone(TokenUiFixture, { screen: 'connections' }),
+  'sync-empty': () => mountAlone(TokenUiFixture, { screen: 'empty' }),
+  'sync-share': () => mountAlone(TokenUiFixture, { screen: 'share' }),
+  'sync-share-token': () => mountAlone(TokenUiFixture, { screen: 'share-token' }),
+  'sync-review': () => mountAlone(TokenUiFixture, { screen: 'review' }),
+  'sync-attachment': () => mountAlone(TokenUiFixture, { screen: 'attachment' }),
+  'sync-states': () => mountAlone(TokenUiFixture, { screen: 'states' }),
+  'sync-disconnect': () => mountAlone(TokenUiFixture, { screen: 'disconnect' }),
   'github-connection-approval': () =>
     void connectionApproval(GlobalStore.getInstance().app)({
       id: 'sample',
