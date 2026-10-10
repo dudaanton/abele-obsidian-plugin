@@ -1,15 +1,29 @@
 <template>
-  <div ref="el" class="abele-obsidian-dropdown" />
+  <div
+    ref="el"
+    class="abele-obsidian-dropdown"
+    :class="[$attrs.class, { 'abele-obsidian-dropdown_disabled': disabled }]"
+    :style="$attrs.style as string | undefined"
+  />
 </template>
 
 <script setup lang="ts">
-import { ref, onMounted, watch } from 'vue'
+// Obsidian's own select, the dropdown of its settings: what Nuxt UI calls a Select. Obsidian
+// builds the element, so the attributes a caller gives (a label, an id) are handed to it.
+import { ref, onMounted, watch, useAttrs } from 'vue'
 import { DropdownComponent } from 'obsidian'
 
+defineOptions({ inheritAttrs: false })
+
 const props = defineProps<{
-  options: { value: string; display: string }[]
+  /** The choices; one marked `disabled` is shown but cannot be picked. */
+  options: { value: string; display: string; disabled?: boolean }[]
   modelValue: string
+  /** Cannot be changed now. */
+  disabled?: boolean
 }>()
+
+const attrs = useAttrs()
 
 const el = ref<HTMLElement>()
 const dropdown = ref<DropdownComponent>()
@@ -19,10 +33,19 @@ const updateDropdown = () => {
     el.value.empty()
 
     dropdown.value = new DropdownComponent(el.value)
+    dropdown.value.selectEl.classList.add('abele-obsidian-dropdown__base')
 
     props.options.forEach((option) => {
       dropdown.value.addOption(option.value, option.display)
+      if (option.disabled) {
+        const added = dropdown.value.selectEl.querySelector(
+          `option[value="${CSS.escape(option.value)}"]`
+        ) as HTMLOptionElement | null
+        if (added) added.disabled = true
+      }
     })
+    applyAttrs()
+    dropdown.value.setDisabled(!!props.disabled)
 
     if (props.modelValue !== undefined) {
       dropdown.value.setValue(props.modelValue)
@@ -31,6 +54,17 @@ const updateDropdown = () => {
     dropdown.value.onChange((value) => {
       emit('update:model-value', value)
     })
+  }
+}
+
+// The wrapper keeps a caller's class and style, so it can be placed; the rest is the select's.
+const applyAttrs = () => {
+  const select = dropdown.value?.selectEl
+  if (!select) return
+  for (const [name, value] of Object.entries(attrs)) {
+    if (name === 'class' || name === 'style' || name.startsWith('on')) continue
+    if (value === false || value === undefined || value === null) select.removeAttribute(name)
+    else select.setAttribute(name, value === true ? '' : String(value))
   }
 }
 
@@ -45,6 +79,11 @@ onMounted(() => {
 })
 watch(() => props.options, updateDropdown)
 watch(() => props.modelValue, updateValue)
+watch(
+  () => props.disabled,
+  (value) => dropdown.value?.setDisabled(!!value)
+)
+watch(() => ({ ...attrs }), applyAttrs)
 
 const emit = defineEmits<{
   (e: 'update:model-value', value: string): void
