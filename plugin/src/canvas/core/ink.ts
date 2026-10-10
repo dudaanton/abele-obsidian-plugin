@@ -4,6 +4,8 @@ import { penWidth, strokePath, strokeCenterline } from '../../ink/stroke'
 import { insideLoop } from '../../drawing/selection'
 import { canvasVisibility } from './visibility'
 import { bounds, type CanvasGraph, type CanvasNode, type Rect } from './model'
+import { rawInk } from './inkData'
+export { rawInk, inkIds } from './inkData'
 
 export const inkSchema = z
   .object({
@@ -40,13 +42,6 @@ export interface InkEntry {
   stroke: CanvasInk
   node?: CanvasNode
 }
-export function rawInk(owner: Owner, writable = false): unknown[] {
-  const value = owner.abele?.ink
-  if (value === undefined) return []
-  if (Array.isArray(value)) return value
-  if (writable) throw new Error('Canvas ink has an incompatible extension container')
-  return []
-}
 const entriesCache = new WeakMap<unknown[], CanvasInk[]>()
 export function inkOf(owner: Owner): CanvasInk[] {
   const raw = rawInk(owner)
@@ -56,14 +51,6 @@ export function inkOf(owner: Owner): CanvasInk[] {
     entriesCache.set(raw, entries)
   }
   return entries
-}
-/** Even opaque entries reserve their IDs; never overwrite an unknown ink version. */
-export function inkIds(graph: CanvasGraph): string[] {
-  return [graph, ...graph.nodes].flatMap((owner) =>
-    rawInk(owner).flatMap((v) =>
-      v && typeof v === 'object' && 'id' in v && typeof v.id === 'string' ? [v.id] : []
-    )
-  )
 }
 export function addInk(graph: CanvasGraph, input: CanvasInk, nodeId?: string): void {
   const stroke = inkSchema.parse(input),

@@ -1,7 +1,7 @@
 /** JSON Canvas + extension data, independent of any vault or host API. */
 import { z } from 'zod'
 import { lineIds } from './primitives'
-import { inkIds } from './ink'
+import { inkIds } from './inkData'
 
 export const SHAPES = [
   'rectangle',

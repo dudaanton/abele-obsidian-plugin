@@ -56,6 +56,10 @@ describe('runtime import graph', () => {
     expect(cyclicComponents(importGraph(resolve('src/word')))).toEqual([])
   })
 
+  it('keeps Canvas core parsing independent of ink geometry and visibility', () => {
+    expect(cyclicComponents(importGraph(resolve('src/canvas/core')))).toEqual([])
+  })
+
   it('keeps finance sources and their balance reader acyclic', () => {
     expect(cyclicComponents(importGraph(resolve('src/analytics/sources')))).toEqual([])
   })
