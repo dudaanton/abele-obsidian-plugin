@@ -87,23 +87,40 @@ describe('captured copy-link adapter', () => {
     expect(session.allMessages.value[0].content).toBe('echo **echo**')
   })
 
-  it('does not retire a return when a disk attention scan keeps the same pending requests', async () => {
-    const source = session.currentChatFile.value!
-    const saved = parseChat(await app.vault.read(source))
-    const requests = session.pendingToolCalls.value
-    const read = app.vault.read.bind(app.vault)
-    let scanned = false
-    vi.spyOn(app.vault, 'read').mockImplementation(async (file) => {
-      if (file === source && !scanned) {
-        scanned = true
-        session.applyAttentionTruth(saved.metadata!)
+  it.each(['empty', 'pending', 'settled'] as const)(
+    'does not retire a return when an attention scan keeps the same %s requests',
+    async (mode) => {
+      const call = {
+        type: 'toolCall' as const,
+        id: 'sample-request',
+        name: 'read',
+        arguments: { path: 'Notes/sample.md' },
       }
-      return read(file)
-    })
-    await session.reconcileForSelectionReturn()
-    expect(session.pendingToolCalls.value).toBe(requests)
-    expect(session.allMessages.value[0].content).toBe('echo **echo**')
-  })
+      if (mode === 'pending') {
+        session.pendingToolCalls.value = [call]
+        await session.save()
+      }
+      const source = session.currentChatFile.value!
+      const saved = parseChat(await app.vault.read(source))
+      if (mode === 'settled') {
+        saved.metadata!.pendingToolCalls = [call]
+        saved.metadata!.attention = { resolved: [call.id] }
+      }
+      const requests = session.pendingToolCalls.value
+      const read = app.vault.read.bind(app.vault)
+      let scanned = false
+      vi.spyOn(app.vault, 'read').mockImplementation(async (file) => {
+        if (file === source && !scanned) {
+          scanned = true
+          session.applyAttentionTruth(saved.metadata!)
+        }
+        return read(file)
+      })
+      await session.reconcileForSelectionReturn()
+      expect(session.pendingToolCalls.value).toBe(requests)
+      expect(session.allMessages.value[0].content).toBe('echo **echo**')
+    }
+  )
 
   it('still rejects an actual local edit during a source read', async () => {
     const source = session.currentChatFile.value!
@@ -132,7 +149,7 @@ describe('captured copy-link adapter', () => {
     expect(session.chatTitle.value).toBe('Unsaved sample title')
   })
 
-  it('does not let an obsolete queued return adopt a new conversation', async () => {
+  it('abandons an obsolete queued return without changing the source', async () => {
     let current = true
     const first = session.reconcileForSelectionReturn()
     const queued = session.reconcileForSelectionReturn(() => current)
