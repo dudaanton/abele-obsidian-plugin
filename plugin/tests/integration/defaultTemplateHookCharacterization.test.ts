@@ -9,6 +9,7 @@ import { confirmTemplate, templateHarness } from '../helpers/templateHarness'
 import { TemplateService } from '@/templates/TemplateService'
 
 const enabledSteps = vi.hoisted(() => ({ workspaceEvents: false }))
+const disposals: (() => void)[] = []
 
 // Drive public onload while omitting unrelated startup subsystems, never calling the
 // private registration method or copying its event handler into the test.
@@ -38,6 +39,7 @@ beforeEach(() => {
   vi.spyOn(AbeleConfig.getInstance(), 'isPathExcludedFromDefaultTemplate').mockReturnValue(false)
 })
 afterEach(() => {
+  for (const dispose of disposals.splice(0)) dispose()
   vi.restoreAllMocks()
   vi.useRealTimers()
   vi.unstubAllEnvs()
@@ -63,6 +65,7 @@ async function setup(workspaceEvents = false) {
     addSettingTab: vi.fn(),
     addCommand: vi.fn(),
     registerEvent: vi.fn(),
+    register: (dispose: () => void) => disposals.push(dispose),
     registerObsidianProtocolHandler: vi.fn(),
   })
   await plugin.onload()
