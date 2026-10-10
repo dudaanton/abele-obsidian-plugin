@@ -172,7 +172,7 @@ export function captureDesign(selector: string, options: CaptureOptions = {}): D
       const native =
         !nativeReference &&
         el.matches(
-          '.search-input-container input, select.dropdown:not(.is-measuring), .abele-tree-item__self, .abele-tree-item__text'
+          '.search-input-container input, select.dropdown:not(.is-measuring), .abele-tree-item__self, .abele-tree-item__text, .abele-list-row__line'
         )
           ? nativeStyle(el)
           : undefined
@@ -297,7 +297,7 @@ export function captureDesign(selector: string, options: CaptureOptions = {}): D
         ],
         nativePadding: native && el.matches('input, select') ? insets(native) : undefined,
         nativeRow:
-          native && el.matches('.abele-tree-item__self')
+          native && el.matches('.abele-tree-item__self, .abele-list-row__line')
             ? { padding: insets(native), lineHeight: number(native.lineHeight) || undefined }
             : undefined,
         nativeFont:

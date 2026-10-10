@@ -334,6 +334,50 @@ describe('renderer design capture', () => {
       s.elements.find((e) => e.selector.includes('abele-tree-item__self'))?.nativeRow
     ).toBeDefined()
   })
+  it('compares list padding with its independent host family, not a native result disclosure gutter', () => {
+    fixture()
+    document.querySelector('#surface')!.innerHTML =
+      '<article class="tree-item abele-list-row"><div class="tree-item-self abele-list-row__line"><span class="abele-list-row__title-line">Sample record</span></div></article>'
+    document
+      .querySelector('#surface')!
+      .insertAdjacentHTML(
+        'beforebegin',
+        '<div class="backlink-pane"><div class="tree-item-self search-result-file-title"><span class="collapse-icon"><svg></svg></span><div class="tree-item-inner">Source entry</div></div></div>'
+      )
+    for (const el of document.querySelectorAll('*'))
+      if (!vi.isMockFunction(el.getBoundingClientRect))
+        vi.spyOn(el, 'getBoundingClientRect').mockReturnValue(new DOMRect(20, 20, 100, 24))
+    const base = vi.mocked(window.getComputedStyle).getMockImplementation()!
+    vi.mocked(window.getComputedStyle).mockImplementation(
+      (el) =>
+        ({
+          ...base(el),
+          paddingLeft: el.matches('.search-result-file-title')
+            ? '24px'
+            : el.matches('.tree-item-self')
+              ? el.matches('.abele-list-row__line')
+                ? '12px'
+                : '8px'
+              : '0px',
+        }) as CSSStyleDeclaration
+    )
+    const s = captureDesign('#surface')
+    expect(s.native?.metrics.padding?.[3]).toBe(24)
+    const row = s.elements.find((el) => el.selector.includes('abele-list-row__line'))!
+    expect(row.padding[3]).toBe(12)
+    expect(row.nativeRow?.padding?.[3]).toBe(8)
+    expect(lintDesign(s)).toEqual(
+      expect.arrayContaining([
+        expect.objectContaining({
+          rule: 'native-parity',
+          metric: 'padding.left',
+          delta: 4,
+          elements: [row.id],
+        }),
+      ])
+    )
+    expect(document.querySelectorAll('[data-design-native-probe]')).toHaveLength(0)
+  })
   it('captures only painted header title fragments so a close button over blank header space is not an overlap', () => {
     fixture()
     document.querySelector('#surface')!.innerHTML =
