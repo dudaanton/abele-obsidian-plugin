@@ -1,0 +1,206 @@
+.abele-finance-sidebar__header {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  margin-bottom: var(--size-4-2);
+}
+
+.abele-finance-sidebar__header-left {
+  display: flex;
+  align-items: center;
+  gap: calc(var(--p-spacing) / 2);
+}
+
+.abele-finance-sidebar__header-text {
+  font-weight: bold;
+}
+
+// Three distances, used the same way all through the sidebar: --size-4-1 between rows that
+// belong together, --size-4-4 between one currency's card and the next, and --size-4-6
+// between the blocks — the cards, the period summary, the transactions.
+
+// --- Currency Cards ---
+
+.abele-finance-sidebar__cards {
+  display: flex;
+  flex-direction: column;
+  gap: var(--size-4-4);
+  margin-top: var(--size-4-2);
+  margin-bottom: var(--size-4-6);
+}
+
+.abele-finance-sidebar__card {
+  display: flex;
+  flex-direction: column;
+}
+
+// A rule over rows that qualify the figure above them: the debts under a balance, the money
+// lent and returned under the period's savings. Solid is kept for the total it closes.
+.abele-finance-sidebar__dashed {
+  margin-top: var(--size-4-1);
+  padding-top: var(--size-4-1);
+  border-top: 1px dashed var(--background-modifier-border);
+}
+
+.abele-finance-sidebar__card-balance {
+  font-size: var(--font-ui-large);
+  font-weight: var(--font-semibold);
+  font-variant-numeric: tabular-nums;
+  line-height: 1.2;
+}
+
+.abele-finance-sidebar__card-currency {
+  color: var(--text-faint);
+  font-size: var(--font-ui-smaller);
+  font-weight: normal;
+}
+
+// Label on the left, amount on the right, as in the period summary below — one size smaller,
+// because these belong to the balance above them rather than standing on their own.
+.abele-finance-sidebar__card-details {
+  display: flex;
+  flex-direction: column;
+  gap: var(--size-2-1);
+  font-size: var(--font-ui-smaller);
+  font-variant-numeric: tabular-nums;
+}
+
+.abele-finance-sidebar__card-row {
+  display: flex;
+  justify-content: space-between;
+  align-items: baseline;
+  gap: var(--size-4-2);
+}
+
+.abele-finance-sidebar__card-debts {
+  display: flex;
+  flex-wrap: wrap;
+  justify-content: flex-end;
+  column-gap: var(--size-4-2);
+}
+
+.abele-finance-sidebar__card-net {
+  font-weight: var(--font-medium);
+}
+
+// --- Section ---
+
+.abele-finance-sidebar__section {
+  margin-bottom: var(--size-4-6);
+}
+
+.abele-finance-sidebar__section-header {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: calc(var(--p-spacing) / 2);
+  margin: 0 0 var(--size-4-2) 0;
+
+  .abele-finance-sidebar__section-title {
+    margin: 0;
+  }
+}
+
+.abele-finance-sidebar__search {
+  margin-bottom: var(--size-4-2);
+}
+
+.abele-finance-sidebar__section-title {
+  font-size: var(--font-ui-small);
+  font-weight: var(--font-semibold);
+  color: var(--text-muted);
+  text-transform: uppercase;
+  letter-spacing: 0.05em;
+  margin: 0 0 var(--size-4-2) 0;
+}
+
+// --- Tabs ---
+
+.abele-finance-sidebar__currency-tabs {
+  margin-bottom: var(--size-4-2);
+}
+
+.abele-finance-sidebar__chart-tabs {
+  margin-top: var(--size-4-4);
+}
+
+// --- Summary ---
+
+.abele-finance-sidebar__summary {
+  display: flex;
+  flex-direction: column;
+  gap: var(--size-4-1);
+}
+
+.abele-finance-sidebar__summary-row {
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  font-size: var(--font-ui-small);
+}
+
+.abele-finance-sidebar__summary-row--total {
+  border-top: 1px solid var(--background-modifier-border);
+  padding-top: var(--size-4-1);
+  font-weight: var(--font-semibold);
+}
+
+.abele-finance-sidebar__summary-label {
+  color: var(--text-muted);
+}
+
+.abele-finance-sidebar__summary-value {
+  font-variant-numeric: tabular-nums;
+}
+
+.abele-finance-sidebar__summary-value--income {
+  color: var(--text-success);
+}
+
+.abele-finance-sidebar__summary-value--expense {
+  color: var(--text-error);
+}
+
+// --- Charts ---
+
+.abele-finance-sidebar__pie-empty {
+  height: 200px;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  color: var(--text-faint);
+  font-size: var(--font-ui-small);
+  font-style: italic;
+}
+
+.abele-finance-sidebar__pie-chart,
+.abele-finance-sidebar__calendar-chart,
+.abele-finance-sidebar__networth-chart {
+  width: 100%;
+  max-width: 100%;
+  height: 220px;
+  margin-top: var(--size-4-2);
+
+  canvas {
+    max-width: 100% !important;
+  }
+}
+
+// --- Transactions ---
+
+.abele-finance-sidebar__transactions {
+  display: flex;
+  flex-direction: column;
+}
+
+.abele-finance-sidebar__sentinel {
+  height: 1px;
+}
+
+// --- Empty ---
+
+.abele-finance-sidebar__empty {
+  font-size: var(--font-ui-small);
+  color: var(--text-faint);
+  font-style: italic;
+}
