@@ -88,14 +88,29 @@ it('removes owned credentials, ledgers, edit snapshots and all review decisions 
     configDir: '.obsidian',
     notes: new Map([['note.md', 'keep']]),
   }
+  let startupActive = true
+  registry.setStatus(id, 'joining')
+  ui.publish(id, { inspection: { completed: 0, total: 12000 } })
+  const cancelStartup = vi.fn(() => {
+    startupActive = false
+  })
   const close = vi.fn(async () => {
+    expect(startupActive).toBe(false)
+    expect(registry.records()).toHaveLength(1)
     ledger.close()
     snapshots.close()
   })
   const plugin = {
     app: { ...storage, vault },
     register: (callback: () => void) => registered.push(callback),
-    tokenEngines: { ui, close, scriptsFolder: 'Scripts', key: secrets.get, deps: {} },
+    tokenEngines: {
+      ui,
+      close,
+      cancelStartup,
+      scriptsFolder: 'Scripts',
+      key: secrets.get,
+      deps: {},
+    },
   } as unknown as Plugin
   try {
     await captureSyncTokenOwnership(plugin, 'leased-pool')
@@ -103,7 +118,10 @@ it('removes owned credentials, ledgers, edit snapshots and all review decisions 
       resetSyncTokenState(plugin, { vault: 'leased-pool', confirm: 'reset-sync-token-state' }),
       resetSyncTokenState(plugin, { vault: 'leased-pool', confirm: 'reset-sync-token-state' }),
     ])
+    expect(cancelStartup).toHaveBeenCalledOnce()
     expect(close).toHaveBeenCalledOnce()
+    expect(ui.activity.value).toEqual({})
+    expect(ui.rows.value).toEqual([])
     expect(registry.records()).toEqual([])
     expect(local.get(EXTERNAL_ACTIVATION_KEY)).toBeNull()
     expect(keys).toEqual(new Map([['unrelated-key', 'keep']]))

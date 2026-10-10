@@ -105,6 +105,7 @@ async function performResetSyncTokenState(
         return [...owned, 'abele-sync-reviews-' + reviewsId]
       },
       stop: async () => {
+        old.cancelStartup()
         await old.close()
         ui.reviews?.close()
       },

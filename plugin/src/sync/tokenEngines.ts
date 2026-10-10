@@ -785,10 +785,15 @@ export class TokenEngines {
     if (!this.closed && this.ui.registry.records().some((one) => one.id === id))
       await TokenSettingsPort.forConnection(this.ui, id, this.app).noticed(status, report)
   }
+  /** Explicit reset/unload cancellation; does not forget records or bypass departure checks. */
+  cancelStartup(): void {
+    for (const cancel of this.startupCancels.values()) cancel()
+  }
   close(): Promise<void> {
     if (this.closing !== undefined) return this.closing
     const prior = pendingTeardown(this.app)
     this.closed = true
+    this.cancelStartup()
     this.app.vault.offref(this.renameEvent)
     this.ui.connectionsChanged = async () => {}
     this.closing = this.engines.close()

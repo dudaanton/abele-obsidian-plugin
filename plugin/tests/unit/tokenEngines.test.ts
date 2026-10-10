@@ -85,6 +85,23 @@ it('leaves inspection running when disconnect is refused', async () => {
   }
 })
 
+it('cancels a joining inspection before manager reset drains the host', async () => {
+  const { host, ui, registry, encoded, release, probe } = inspectionFixture()
+  try {
+    await ui.connect(encoded)
+    const id = registry.records()[0].id
+    await vi.waitFor(() => expect(ui.activity.value[id]?.inspection?.total).toBe(1))
+    host.cancelStartup()
+    expect(ui.activity.value[id]?.startupTimings?.at(-1)?.outcome).toBe('cancelled')
+    expect(registry.records()).toHaveLength(1)
+    await host.close()
+  } finally {
+    release()
+    probe.mockRestore()
+    await host.close()
+  }
+})
+
 function inspectionFixture(marker = false) {
   const app = buildFakeVault([
     {
