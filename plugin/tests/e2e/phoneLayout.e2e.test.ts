@@ -1074,7 +1074,7 @@ const probeScript = `(async () => {
       if (await until(() => document.querySelector('.modal .abele-rewind .tree-item-self'), 5000)) {
         const row = document.querySelector('.modal .abele-rewind .tree-item-self[data-path="' + edited + '"]')
         if (row) row.click()
-        await until(() => document.querySelector('.modal .abele-rewind .abele-diff .cm-editor'), 3000)
+        await until(() => document.querySelector('.modal .abele-rewind .abele-diff .diff-line'), 3000)
         await wait(300)
         const dialog = document.querySelector('.modal .abele-rewind').closest('.modal')
         await screen('rewind', dialog, dialog.querySelector('.abele-modal__body'))

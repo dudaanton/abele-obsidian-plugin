@@ -140,12 +140,6 @@ useInfiniteScroll(() => props.scrollContainer ?? null, loadMore, {
   p {
     margin: 0;
   }
-  .cm-gutters.cm-gutters-before {
-    background-color: transparent;
-  }
-  .cm-mergeViewEditor:first-child .cm-gutters.cm-gutters-before {
-    border: none;
-  }
 }
 @media (max-width: 845px) {
   .abele-sar-fm-modal .abele-replacement-preview__replacements {

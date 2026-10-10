@@ -357,7 +357,7 @@ describe.skipIf(!available)('the linter', () => {
         const group = root.querySelector('.abele-linter__group[data-group="${FOLDER}/Heading.md"]')
         const icons = group.querySelectorAll('.abele-linter__group-actions > *')
         icons[1].click()
-        await until(() => document.querySelector('.modal .abele-diff .cm-mergeView'), 5000)
+        await until(() => document.querySelector('.modal .abele-diff .diff-line'), 5000)
         await wait(600)
         const modal = document.querySelector('.modal')
         const previewOver = pastEdge(modal)
