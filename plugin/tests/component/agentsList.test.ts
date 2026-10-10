@@ -62,7 +62,7 @@ describe('agents dialog', () => {
     expect(source.open).toHaveBeenCalledWith(rows[0], rows[0].reasons[0])
     expect(source.markSeen).not.toHaveBeenCalled()
     expect(wrapper.find('.abele-agents__seen').exists()).toBe(false)
-    await wrapper.get('.abele-disclosure__control').trigger('click')
+    await wrapper.get('.abele-agents__details-toggle').trigger('click')
     expect(wrapper.find('.abele-agents__seen').element.textContent).toBe('Просмотрено')
     await wrapper.find('.abele-agents__seen').trigger('click')
     expect(source.markSeen).toHaveBeenCalledWith(rows[0], 'error-1')
@@ -87,7 +87,7 @@ describe('agents dialog', () => {
       props: { source },
       global: { stubs: { ObsidianModal: stub } },
     })
-    await wrapper.get('.abele-disclosure__control').trigger('click')
+    await wrapper.get('.abele-agents__details-toggle').trigger('click')
     const buttons = wrapper.findAll('.abele-agents__seen')
     expect(buttons).toHaveLength(3)
     for (const button of buttons) expect(button.text()).toBe('Убрать')
@@ -128,7 +128,7 @@ describe('agents dialog', () => {
     expect((row.element as HTMLButtonElement).tabIndex).toBe(0)
     expect(wrapper.find('.abele-list-row__title-text').text()).toBe(rows[0].title)
     expect(wrapper.find('.abele-meta-line').text()).toContain(rows[0].agent)
-    await wrapper.get('.abele-disclosure__control').trigger('click')
+    await wrapper.get('.abele-agents__details-toggle').trigger('click')
     const action = wrapper.find('.abele-agents__seen')
     expect(action.classes()).toContain('clickable-icon')
     expect(action.attributes('aria-label')).toContain('Просмотрено')
@@ -216,12 +216,35 @@ describe('agents dialog', () => {
     const retry = wrapper.findAllComponents(Icon).find((c) => c.props('icon') === 'refresh-cw')!
     expect(retry.props('textRight')).toBe('Восстановить связь')
     expect(retry.props('tooltip')).toContain('не перезапускает работу')
+    expect(wrapper.text()).toContain('Только подключение к узлу; работа не перезапускается')
     await retry.trigger('click')
     await flushPromises()
     expect(source.reconnect).toHaveBeenCalledWith(row)
+    expect(wrapper.text()).toContain('Связь восстановлена')
     expect(source.open).not.toHaveBeenCalled()
     expect(source.markSeen).not.toHaveBeenCalled()
     expect(wrapper.emitted('close')).toBeUndefined()
+    wrapper.unmount()
+  })
+  it('labels details separately from the single conversation-opening chevron', async () => {
+    useVault([])
+    const source = {
+      rows: ref(rows),
+      incomplete: ref(false),
+      status: ref(''),
+      open: vi.fn(),
+      markSeen: vi.fn(),
+    }
+    const wrapper = mount(AgentsListDialog, {
+      props: { source },
+      global: { stubs: { ObsidianModal: stub } },
+    })
+    expect(wrapper.getComponent(ListRow).props('expanded')).toBeUndefined()
+    expect(wrapper.get('.abele-agents__details-toggle').text()).toContain('Ошибка и отметка')
+    expect(wrapper.get('.abele-agents__details-toggle').attributes('aria-expanded')).toBe('false')
+    expect(wrapper.text()).toContain('Цифры считают строки, не запросы')
+    await wrapper.get('.abele-agents__details-toggle').trigger('click')
+    expect(wrapper.find('.abele-agents__seen').text()).toBe('Просмотрено')
     wrapper.unmount()
   })
   it('owns one modal and releases it cleanly on command cleanup', async () => {

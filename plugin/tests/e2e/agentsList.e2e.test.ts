@@ -110,7 +110,10 @@ describe('real agents list on synthetic states', () => {
         const row = [...document.querySelectorAll('.abele-list-row')].find(el => el.querySelector('.abele-list-row__title-text')?.textContent === session.chatTitle.value)
         if (!row) throw new Error('Live question is not in the list')
         row.querySelector('.abele-list-row__recovery button').click()
-        await new Promise(r => setTimeout(r, 500))
+        for (let i = 0; i < 40; i++) {
+          if (!document.querySelector('.abele-agents') && document.querySelector('.abele-chat-input')?.contains(document.activeElement)) break
+          await new Promise(r => setTimeout(r, 100))
+        }
         const question = document.querySelector('.abele-ai-chat__questions')
         const composer = document.querySelector('.abele-chat-input')
         return JSON.stringify({ modalClosed: !document.querySelector('.abele-agents'), exactQuestion: question?.dataset.attentionId === 'fabricated-question', composerFocused: composer?.contains(document.activeElement), waiting: session.attention.value.question?.status, pending: !!session.pendingQuestions.value, sameSession: chats.activeSession.value === session })

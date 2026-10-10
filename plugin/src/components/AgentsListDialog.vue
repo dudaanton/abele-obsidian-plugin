@@ -1,8 +1,17 @@
 <template>
   <ObsidianModal title="Агенты" @close="emit('close')">
     <div class="abele-agents">
-      <Input v-model="query" type="search" aria-label="Поиск агентов" placeholder="Поиск агентов" />
+      <Input
+        v-model="query"
+        type="search"
+        aria-label="Поиск разговоров и агентов"
+        placeholder="Поиск разговоров и агентов"
+      />
+      <EmptyState
+        text="Ожидания и работа в разговорах. Цифры считают строки, не запросы. Нажми название, чтобы открыть разговор."
+      />
       <EmptyState v-if="failure" variant="error" :text="failure" />
+      <EmptyState v-if="feedback" :text="feedback" />
       <section v-for="section in sections" :key="section.title">
         <ListSectionHeader :text="section.title" :count="section.rows.length" />
         <EmptyState
@@ -23,9 +32,6 @@
           :facts="facts(row)"
           :state="state(row)"
           :message="label(row)"
-          :expanded="expanded.has(row.key)"
-          details-label="Детали запроса и время"
-          @update:expanded="toggleDetails(row.key, $event)"
           @open="open(row)"
         >
           <template #recovery>
@@ -38,6 +44,17 @@
               @click="open(row, true)"
             />
             <Icon
+              v-if="primary(row).kind === 'approval' && !unavailable(row)"
+              icon="shield-check"
+              text-right="Рассмотреть в чате"
+              tooltip="Открыть разговор на запросе разрешения; ничего не разрешает из списка"
+              @click="open(row)"
+            />
+            <EmptyState
+              v-if="row.reference.kind === 'node' && row.reasons.some((r) => r.kind === 'delivery')"
+              text="Только подключение к узлу; работа не перезапускается. Сводка сессий может остаться недоступной."
+            />
+            <Icon
               v-if="row.reference.kind === 'node' && row.reasons.some((r) => r.kind === 'delivery')"
               icon="refresh-cw"
               text-right="Восстановить связь"
@@ -45,20 +62,36 @@
               :disabled="busy"
               @click="reconnect(row)"
             />
-          </template>
-          <template #detail>
-            <Quote v-if="row.quote" :text="row.quote" />
-            <p class="setting-item-description">{{ age(row) }}</p>
             <Icon
-              v-for="reason in row.reasons.filter(canDismissAttention)"
-              :key="reason.id"
-              class="abele-agents__seen"
-              :icon="reason.kind === 'error' ? 'check' : 'x'"
-              :text-right="reason.kind === 'error' ? 'Просмотрено' : 'Убрать'"
-              :tooltip="actionLabel(reason)"
-              :disabled="busy"
-              @click="seen(row, reason.id)"
+              class="abele-agents__details-toggle"
+              :icon="expanded.has(row.key) ? 'chevron-down' : 'chevron-right'"
+              :text-right="
+                primary(row).kind === 'error' ? 'Ошибка и отметка «Просмотрено»' : 'Детали и время'
+              "
+              tooltip="Показать или скрыть детали запроса и время"
+              :aria-expanded="expanded.has(row.key)"
+              :aria-controls="`agents-detail-${row.key}`"
+              @click="toggleDetails(row.key, !expanded.has(row.key))"
             />
+          </template>
+          <template v-if="expanded.has(row.key)" #detail>
+            <div :id="`agents-detail-${row.key}`">
+              <Quote v-if="row.quote" :text="row.quote" />
+              <p class="setting-item-description">{{ age(row) }}</p>
+              <p class="setting-item-description">
+                Папка — расположение разговора или заметки обсуждения.
+              </p>
+              <Icon
+                v-for="reason in row.reasons.filter(canDismissAttention)"
+                :key="reason.id"
+                class="abele-agents__seen"
+                :icon="reason.kind === 'error' ? 'check' : 'x'"
+                :text-right="reason.kind === 'error' ? 'Просмотрено' : 'Убрать'"
+                :tooltip="actionLabel(reason)"
+                :disabled="busy"
+                @click="seen(row, reason.id)"
+              />
+            </div>
           </template>
         </ListRow>
       </section>
@@ -93,6 +126,7 @@ const source = props.source ?? AgentsService.getInstance()
 const emit = defineEmits<{ (e: 'close'): void }>()
 const query = ref(''),
   failure = ref(''),
+  feedback = ref(''),
   busy = ref(false),
   expanded = ref(new Set<string>())
 const toggleDetails = (key: string, value: boolean) => {
@@ -168,6 +202,7 @@ const reconnect = async (row: AttentionRow) => {
   failure.value = ''
   try {
     await (source.reconnect ?? ((r) => AgentsService.getInstance().reconnect(r)))(row)
+    feedback.value = `${row.title} · Связь восстановлена. Сводка сессий по-прежнему может быть неполной.`
   } catch (error) {
     failure.value = error instanceof Error ? error.message : 'Не удалось восстановить связь'
   } finally {
