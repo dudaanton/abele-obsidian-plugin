@@ -300,6 +300,16 @@ const lineClass = (line: DiffLine) => ({
   }
 }
 
+// The changed words one small step above their line. The mark lies over the line's own tint, so
+// its alpha adds to the line's: Obsidian's 40% over 20% reads as half-strength colour and
+// outshouts the text; 18% makes about a third in all, still seen in the dark theme.
+.abele-diff.diff-view .abele-diff__line_removed .abele-diff__changed {
+  background-color: color-mix(in oklch, var(--background-modifier-error) 18%, transparent);
+}
+.abele-diff.diff-view .abele-diff__line_added .abele-diff__changed {
+  background-color: color-mix(in oklch, var(--background-modifier-success) 18%, transparent);
+}
+
 // A folded run is a band across the card: the glyph in the number column, the words on the
 // text's edge. Obsidian's own fold is centred text between margins, made for a whole-file modal.
 .abele-diff .abele-diff__fold {
