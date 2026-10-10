@@ -128,10 +128,10 @@ export function diffLines(before: string, after: string): DiffLine[] {
     same(change.fromA)
     const removed = a.slice(change.fromA, change.toA)
     const added = b.slice(change.fromB, change.toB)
-    // Words are compared only where lines were replaced; a line only added or only removed is
-    // changed through and through.
-    let rangesA: [number, number][] = [[0, removed.join('\n').length]]
-    let rangesB: [number, number][] = [[0, added.join('\n').length]]
+    // Words are compared only where lines were replaced; a line only added or only removed has
+    // nothing to mark inside it, its colour already says it all.
+    let rangesA: [number, number][] = []
+    let rangesB: [number, number][] = []
     if (removed.length && added.length) {
       const textA = removed.join('\n')
       const textB = added.join('\n')

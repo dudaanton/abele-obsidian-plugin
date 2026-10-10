@@ -2,9 +2,30 @@
   <div
     class="abele-diff diff-view"
     :class="[`abele-diff_${layout}`, { 'abele-diff_empty': !changed }]"
+    :style="{ '--abele-diff-digits': digits }"
   >
+    <div v-if="title || $slots.title || changed" class="abele-diff__header">
+      <span v-if="title || $slots.title" class="abele-diff__title"
+        ><slot name="title">{{ title }}</slot></span
+      >
+      <span v-if="changed" class="abele-diff__stats">
+        <span v-if="stats.removed" class="abele-diff__stat abele-diff__stat_removed"
+          >−{{ stats.removed }}</span
+        >
+        <span v-if="stats.added" class="abele-diff__stat abele-diff__stat_added"
+          >+{{ stats.added }}</span
+        >
+      </span>
+    </div>
+    <div
+      v-if="changed && layout === 'split' && (labelBefore || labelAfter)"
+      class="abele-diff__labels"
+    >
+      <div class="abele-diff__label">{{ labelBefore }}</div>
+      <div class="abele-diff__label">{{ labelAfter }}</div>
+    </div>
     <div v-if="!changed" class="abele-diff__empty">{{ emptyText }}</div>
-    <template v-else-if="layout === 'unified'">
+    <div v-else-if="layout === 'unified'" class="abele-diff__body">
       <template v-for="(row, index) in rows" :key="index">
         <div
           v-if="row.kind === 'fold'"
@@ -15,8 +36,8 @@
           @keydown.enter.prevent="unfold(index)"
           @keydown.space.prevent="unfold(index)"
         >
-          <span class="abele-diff__sign"><Icon icon="unfold-vertical" size="xs" /></span
-          >{{ foldLabel(row.lines.length) }}
+          <span class="abele-diff__gutter"><Icon icon="unfold-vertical" size="xs" /></span
+          ><span class="abele-diff__fold-label">{{ foldLabel(row.lines.length) }}</span>
         </div>
         <div
           v-else
@@ -25,7 +46,10 @@
           :data-line-a="row.lineA"
           :data-line-b="row.lineB"
         >
-          <span class="abele-diff__sign">{{ sign(row) }}</span
+          <span class="abele-diff__gutter" aria-hidden="true"
+            ><span class="abele-diff__number">{{ row.lineA }}</span
+            ><span class="abele-diff__number">{{ row.lineB }}</span></span
+          ><span class="abele-diff__sign">{{ sign(row) }}</span
           ><span class="abele-diff__text"
             ><span
               v-for="(piece, p) in row.pieces"
@@ -36,10 +60,8 @@
           >
         </div>
       </template>
-    </template>
-    <div v-else class="abele-diff__grid">
-      <div v-if="labelBefore || labelAfter" class="abele-diff__label">{{ labelBefore }}</div>
-      <div v-if="labelBefore || labelAfter" class="abele-diff__label">{{ labelAfter }}</div>
+    </div>
+    <div v-else class="abele-diff__body abele-diff__grid">
       <template v-for="(pair, index) in pairs" :key="index">
         <div
           v-if="pair.kind === 'fold'"
@@ -50,8 +72,8 @@
           @keydown.enter.prevent="unfoldPair(index)"
           @keydown.space.prevent="unfoldPair(index)"
         >
-          <span class="abele-diff__sign"><Icon icon="unfold-vertical" size="xs" /></span
-          >{{ foldLabel(pair.lines?.length ?? 0) }}
+          <span class="abele-diff__gutter"><Icon icon="unfold-vertical" size="xs" /></span
+          ><span class="abele-diff__fold-label">{{ foldLabel(pair.lines?.length ?? 0) }}</span>
         </div>
         <template v-else>
           <div
@@ -64,7 +86,11 @@
             ]"
           >
             <template v-if="pair[side]">
-              <span class="abele-diff__sign">{{ sign(pair[side]!) }}</span
+              <span class="abele-diff__gutter" aria-hidden="true"
+                ><span class="abele-diff__number">{{
+                  side === 'left' ? pair[side]!.lineA : pair[side]!.lineB
+                }}</span></span
+              ><span class="abele-diff__sign">{{ sign(pair[side]!) }}</span
               ><span class="abele-diff__text"
                 ><span
                   v-for="(piece, p) in pair[side]!.pieces"
@@ -108,6 +134,8 @@ const props = withDefaults(
     labelAfter?: string
     /** Said in place of the comparison when the two texts are the same. */
     emptyText?: string
+    /** What is compared, usually the file's path; shown in the header beside the counts. */
+    title?: string
   }>(),
   {
     layout: 'unified',
@@ -115,6 +143,7 @@ const props = withDefaults(
     labelBefore: undefined,
     labelAfter: undefined,
     emptyText: 'No changes',
+    title: undefined,
   }
 )
 
@@ -129,6 +158,15 @@ watch(
   { immediate: true }
 )
 const pairs = computed(() => pairRows(rows.value))
+const stats = computed(() => ({
+  removed: lines.value.filter((l) => l.kind === 'removed').length,
+  added: lines.value.filter((l) => l.kind === 'added').length,
+}))
+// The number column is as wide as the longest number in it, so every line keeps one edge.
+const digits = computed(
+  () =>
+    String(Math.max(props.textLeft.split('\n').length, props.textRight.split('\n').length)).length
+)
 
 function unfold(index: number): void {
   const row = rows.value[index]
@@ -154,23 +192,89 @@ const lineClass = (line: DiffLine) => ({
 </script>
 
 <style lang="scss">
+// A card like the kit's tables: Obsidian's border and large radius, a header band in its
+// secondary background, then the lines. The lines keep Obsidian's own diff colours.
 .abele-diff {
   container-type: inline-size;
   min-width: 0;
+  border: var(--border-width) solid var(--background-modifier-border);
+  border-radius: var(--radius-l);
+  overflow: hidden;
+  background-color: var(--background-primary);
   font-size: var(--font-ui-small);
   line-height: var(--line-height-normal);
+  // A grey that sits on a coloured line takes that line's hue, as a shadow does, rather than
+  // staying a neutral grey laid over the colour.
+  --abele-diff-removed-ink: color-mix(in oklch, var(--text-error) 55%, var(--text-muted));
+  --abele-diff-added-ink: color-mix(in oklch, var(--text-success) 55%, var(--text-muted));
 }
 
-// Obsidian's line pads the text on both sides; the sign sits in the first of those pads.
-.abele-diff .abele-diff__line {
+.abele-diff__header {
+  position: sticky;
+  top: 0;
+  z-index: 1;
+  display: flex;
+  align-items: baseline;
+  gap: var(--size-4-3);
+  padding: var(--size-4-2) var(--size-4-3);
+  border-bottom: var(--border-width) solid var(--background-modifier-border);
+  background-color: var(--background-secondary);
+}
+.abele-diff__title {
+  flex: 1 1 auto;
+  min-width: 0;
+  overflow: hidden;
+  color: var(--text-normal);
+  font-weight: var(--font-semibold);
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+.abele-diff__stats {
+  display: flex;
+  gap: var(--size-4-2);
+  margin-inline-start: auto;
+  font-family: var(--font-monospace);
+  font-size: var(--font-ui-smaller);
+  font-variant-numeric: tabular-nums;
+}
+.abele-diff__stat_removed {
+  color: var(--text-error);
+}
+.abele-diff__stat_added {
+  color: var(--text-success);
+}
+
+.abele-diff__body {
+  padding-block: var(--size-4-1);
+}
+
+// Numbers, sign, text: the numbers start where the header's title starts.
+.abele-diff .abele-diff__line,
+.abele-diff .abele-diff__fold {
   display: flex;
   min-width: 0;
-  padding-inline: var(--size-4-1) var(--size-4-2);
+  padding-inline: var(--size-4-3);
+}
+.abele-diff__gutter {
+  display: flex;
+  flex: 0 0 auto;
+  gap: var(--size-4-2);
+  margin-inline-end: var(--size-4-2);
+  color: var(--text-faint);
+  font-family: var(--font-monospace);
+  font-size: var(--font-ui-smaller);
+  font-variant-numeric: tabular-nums;
+  line-height: calc(var(--line-height-normal) * var(--font-ui-small) / var(--font-ui-smaller));
+  user-select: none;
+}
+.abele-diff__number {
+  width: calc(var(--abele-diff-digits) * 1ch);
+  text-align: end;
 }
 .abele-diff__sign {
   flex: 0 0 auto;
-  width: var(--size-4-5);
-  color: var(--text-muted);
+  width: var(--size-4-4);
+  color: var(--text-faint);
   font-family: var(--font-monospace);
   user-select: none;
 }
@@ -178,51 +282,125 @@ const lineClass = (line: DiffLine) => ({
   flex: 1 1 auto;
   min-width: 0;
 }
-// Obsidian spaces its fold for a whole-file modal; inside a card or a chat it keeps closer.
-.abele-diff .abele-diff__fold {
-  margin-block: var(--size-4-1);
-  // Laid out as a line: the unfold glyph in the sign column, the words on the text's left edge.
-  display: flex;
-  align-items: center;
-  padding-inline: var(--size-4-1) var(--size-4-2);
-  text-align: start;
-
+// A little air between lines, more than the leading inside a wrapped one, so a long line that
+// wraps still reads as one line and not as two.
+.abele-diff .abele-diff__line {
+  padding-block: var(--size-2-1);
+}
+.abele-diff__line_removed {
+  .abele-diff__gutter,
   .abele-diff__sign {
-    display: flex;
-    color: inherit;
-  }
-  .abele-diff__sign .abele-obsidian-icon {
-    padding: 0;
+    color: var(--abele-diff-removed-ink);
   }
 }
+.abele-diff__line_added {
+  .abele-diff__gutter,
+  .abele-diff__sign {
+    color: var(--abele-diff-added-ink);
+  }
+}
+.abele-diff__changed {
+  border-radius: var(--radius-s);
+  box-decoration-break: clone;
+  -webkit-box-decoration-break: clone;
+}
+
+// A folded run is a band across the card: the glyph in the number column, the words on the
+// text's edge. Obsidian's own fold is centred text between margins, made for a whole-file modal.
+.abele-diff .abele-diff__fold {
+  align-items: center;
+  margin: var(--size-4-1) 0;
+  padding-block: var(--size-4-1);
+  background-color: var(--background-secondary);
+  font-size: var(--font-ui-smaller);
+  text-align: start;
+
+  .abele-diff__gutter {
+    justify-content: flex-end;
+    // Both number columns and their gap, then the sign column: the label starts on the text.
+    width: calc(2 * var(--abele-diff-digits) * 1ch + var(--size-4-2));
+    margin-inline-end: calc(var(--size-4-2) + var(--size-4-4));
+    color: inherit;
+    font-size: inherit;
+    line-height: inherit;
+  }
+  .abele-diff__gutter .abele-obsidian-icon {
+    padding: 0;
+  }
+  &:focus-visible {
+    box-shadow: inset 0 0 0 2px var(--background-modifier-border-focus);
+    outline: none;
+  }
+}
+.abele-diff__body > .abele-diff__fold:first-child {
+  margin-top: 0;
+}
+.abele-diff__body > .abele-diff__fold:last-child {
+  margin-bottom: 0;
+}
+
 .abele-diff__empty {
+  padding: var(--size-4-2) var(--size-4-3);
   color: var(--text-muted);
 }
 
+// Side by side: one number column per side, a rule between the sides.
+// No band above and below the two columns, so the rule between them meets the labels.
+.abele-diff .abele-diff__grid {
+  padding-block: 0;
+}
 .abele-diff__grid {
   display: grid;
   grid-template-columns: minmax(0, 1fr) minmax(0, 1fr);
-  column-gap: var(--size-4-1);
 
   > .diff-collapsed {
     grid-column: 1 / -1;
   }
+  > .abele-diff__line_right {
+    border-inline-start: var(--border-width) solid var(--background-modifier-border);
+  }
+  .abele-diff__fold .abele-diff__gutter {
+    width: calc(var(--abele-diff-digits) * 1ch);
+  }
 }
-.abele-diff__label {
-  padding: 0 var(--size-4-2) var(--size-4-1);
+// The two versions named over their columns, a second band under the header.
+.abele-diff__labels {
+  display: grid;
+  grid-template-columns: minmax(0, 1fr) minmax(0, 1fr);
+  border-bottom: var(--border-width) solid var(--background-modifier-border);
+  background-color: var(--background-secondary);
   color: var(--text-muted);
   font-size: var(--font-ui-smaller);
 }
+.abele-diff__label {
+  padding: var(--size-4-1) var(--size-4-3);
 
-// Too narrow for two columns: each change stands above its replacement, and an unchanged line
-// is shown once.
+  & + & {
+    border-inline-start: var(--border-width) solid var(--background-modifier-border);
+  }
+}
+
+// A narrow place (a chat, the phone): the numbers give their room to the text, and two columns
+// fold into one, each change above its replacement.
 @container (max-width: 30em) {
-  .abele-diff__grid {
+  .abele-diff__line .abele-diff__gutter {
+    display: none;
+  }
+  .abele-diff .abele-diff__fold .abele-diff__gutter {
+    width: auto;
+    margin-inline-end: var(--size-4-2);
+  }
+  .abele-diff__grid,
+  .abele-diff__labels {
     grid-template-columns: minmax(0, 1fr);
+
+    > .abele-diff__line_right {
+      border-inline-start: none;
+    }
   }
   .abele-diff__line_right.abele-diff__line_same,
   .abele-diff__line_blank,
-  .abele-diff__label {
+  .abele-diff__labels {
     display: none;
   }
 }

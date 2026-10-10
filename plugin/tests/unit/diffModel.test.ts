@@ -22,6 +22,15 @@ describe('diffLines', () => {
     expect(lines[3]).toMatchObject({ lineA: 3, lineB: 3 })
   })
 
+  it('leaves a wholly added or removed line unmarked, its colour already says it', () => {
+    const lines = diffLines('a', 'a\nnew line')
+
+    expect(lines[1]).toMatchObject({
+      kind: 'added',
+      pieces: [{ text: 'new line', changed: false }],
+    })
+  })
+
   it('marks the words that changed inside a changed line', () => {
     const [, removed, added] = diffLines('a\nAsk first.', 'a\nCheck first.')
 
