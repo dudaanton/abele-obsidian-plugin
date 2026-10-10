@@ -185,6 +185,11 @@ describe('the message on a phone', () => {
     const event = new MouseEvent('contextmenu', { bubbles: true, cancelable: true })
     md.element.dispatchEvent(event)
     document.body.removeEventListener('contextmenu', hostMenu)
+    const hostTouch = vi.fn()
+    document.body.addEventListener('touchstart', hostTouch)
+    md.element.dispatchEvent(new Event('touchstart', { bubbles: true }))
+    document.body.removeEventListener('touchstart', hostTouch)
+    expect(hostTouch).not.toHaveBeenCalled()
     // The host's custom context menu cancels WebKit's native word selection.
     expect(hostMenu).not.toHaveBeenCalled()
     expect(event.defaultPrevented).toBe(false)

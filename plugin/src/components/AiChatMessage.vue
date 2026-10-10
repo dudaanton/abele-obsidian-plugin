@@ -243,6 +243,7 @@
         data-find-part="content"
         @rendered="onReplyRendered"
         @contextmenu="onContentMenu"
+        @touchstart.passive="onContentTouch"
       />
       <Markdown v-else-if="message.content" :text="message.content" :resource-opener="resourceOpener" data-find-part="content" />
       <slot name="metadata" />
@@ -586,6 +587,9 @@ function onMessageClick(event: MouseEvent) {
 // Only where a comment can be kept: elsewhere a right-click stays the browser's own. Not on a
 // touch screen, where the long press that fires it is the one selecting the words: the menu
 // jumped up before they were chosen. There `ChatSelectionBar` offers it once they are.
+const onContentTouch = (event: TouchEvent) => {
+  if (props.canComment && Platform.isMobile) event.stopPropagation()
+}
 const onContentMenu = (event: MouseEvent) => {
   if (!props.canComment) return
   if (Platform.isMobile) {

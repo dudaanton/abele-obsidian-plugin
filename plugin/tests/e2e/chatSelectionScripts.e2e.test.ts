@@ -57,7 +57,7 @@ const PRELUDE = `${WAIT_PRELUDE}
     let touches = 0
     for (const type of ['touchstart','touchend','touchcancel','pointerdown','pointerup','pointercancel','selectionchange','contextmenu']) document.addEventListener(type, e => {
       if (e.touches) touches = e.touches.length
-      events.push({type, touches, pointerType:e.pointerType, target:e.target?.nodeName, selected:document.getSelection()?.toString(), connected:word.isConnected, elapsed:performance.now(),prevented:e.defaultPrevented})
+      events.push({type, touches, pointerType:e.pointerType, target:e.target?.nodeName, selected:document.getSelection()?.toString(), connected:word.isConnected, elapsed:performance.now(),prevented:e.defaultPrevented,trusted:e.isTrusted})
     }, {capture:true,signal:tracking.signal})
     try {
       if (window.__e2eHost) await window.__e2eHost.longPress(bounds.left + bounds.width/2, bounds.top + bounds.height/2)
