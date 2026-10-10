@@ -8,7 +8,7 @@ import { AbeleConfig } from '@/services/AbeleConfig'
 import { DEFAULT_AI_SETTINGS, type ChatMetadata } from '@/ai/types'
 import { serializeChat, parseChatMetadata } from '@/ai/ChatLog'
 import { chatCopyPath } from '@/ai/chatCopy'
-import { useVault } from '../helpers/testEnv'
+import { useAttentionVault as useVault } from '../helpers/attentionVault'
 
 const path = 'Chats/sample-ledger.abchat'
 const error = { id: 'sample-error', at: 10, text: 'Sample failure' }

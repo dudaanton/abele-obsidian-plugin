@@ -23,6 +23,32 @@ const rows: AttentionRow[] = [
 ]
 const stub = { template: '<div><slot /></div>' }
 describe('agents dialog', () => {
+  it('offers one native bulk seen action independent of search and keeps per-row actions', async () => {
+    const source = {
+      rows: ref(rows),
+      incomplete: ref(false),
+      status: ref(''),
+      open: vi.fn(),
+      markSeen: vi.fn(),
+      markAllSeen: vi.fn().mockResolvedValue(undefined),
+    }
+    const wrapper = mount(AgentsListDialog, {
+      props: { source },
+      global: { stubs: { ObsidianModal: stub } },
+    })
+    const action = wrapper.get('.abele-agents__all-seen')
+    expect(action.text()).toBe('Mark all as seen')
+    expect(action.classes()).toContain('clickable-icon')
+    expect(action.attributes('aria-label')).toContain('Mark all as seen')
+    await wrapper.get('.abele-agents__details-toggle').trigger('click')
+    expect(wrapper.find('.abele-agents__seen').exists()).toBe(true)
+    await wrapper.get('input').setValue('no matching sample')
+    await action.trigger('click')
+    await flushPromises()
+    expect(source.markAllSeen).toHaveBeenCalledOnce()
+    expect(source.markSeen).not.toHaveBeenCalled()
+    wrapper.unmount()
+  })
   it('shows all three sections, one row per session, and never approves from the list', () => {
     useVault([])
     const source = {

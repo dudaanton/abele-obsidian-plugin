@@ -15,7 +15,7 @@ import { AgentRegistry } from '@/ai/agents/AgentRegistry'
 import type { SessionOverrides } from '@/ai/agents/types'
 import { captureChatSelection, createChatAnchor } from '@/selection/anchors'
 import { openSelectionLink } from '@/ai/openChat'
-import { useVault } from '../helpers/testEnv'
+import { useAttentionVault as useVault } from '../helpers/attentionVault'
 import { deferred } from '../helpers/deferred'
 
 vi.mock('@/editor/CommentPlugin', () => ({ dispatchCommentsChanged: vi.fn() }))

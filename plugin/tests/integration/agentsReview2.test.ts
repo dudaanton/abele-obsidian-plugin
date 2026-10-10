@@ -7,7 +7,7 @@ import { AgentsService } from '@/agents/AgentsService'
 import { AbeleConfig } from '@/services/AbeleConfig'
 import { DEFAULT_AI_SETTINGS, type ChatMetadata } from '@/ai/types'
 import { serializeChat, parseChatMetadata } from '@/ai/ChatLog'
-import { useVault } from '../helpers/testEnv'
+import { useAttentionVault as useVault } from '../helpers/attentionVault'
 
 const path = 'Chats/sample-review.abchat'
 const metadata = (extra: Partial<ChatMetadata> = {}): ChatMetadata => ({

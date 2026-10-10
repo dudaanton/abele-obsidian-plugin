@@ -7,7 +7,7 @@ import { AbeleConfig } from '@/services/AbeleConfig'
 import { DEFAULT_AI_SETTINGS } from '@/ai/types'
 import { serializeChat } from '@/ai/ChatLog'
 import * as ChatLog from '@/ai/ChatLog'
-import { useVault } from '../helpers/testEnv'
+import { useAttentionVault as useVault } from '../helpers/attentionVault'
 import { syntheticChats } from '../helpers/syntheticChats'
 
 beforeEach(() => {

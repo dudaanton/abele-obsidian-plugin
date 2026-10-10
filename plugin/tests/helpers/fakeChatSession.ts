@@ -109,6 +109,8 @@ export function fakeChatSession({
     repeatMessage: nothing,
     retryFromMessage: nothing,
     retryRequest: nothing,
+    markFailuresSeen: async () => {},
+    attention: ref({}),
     retryInterceptor: nothing,
     sendInterceptorMessage: nothing,
     confirmDraft: nothing,

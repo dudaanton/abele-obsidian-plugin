@@ -10,7 +10,7 @@ import { ShellModal } from '@/modal/ShellModal'
 import { AbeleConfig } from '@/services/AbeleConfig'
 import { DEFAULT_AI_SETTINGS } from '@/ai/types'
 import { serializeChat, parseChatMetadata } from '@/ai/ChatLog'
-import { useVault } from '../helpers/testEnv'
+import { useAttentionVault as useVault } from '../helpers/attentionVault'
 
 const evidence = { errors: [{ id: 'error-1', at: 10, text: 'Sample run failure' }] }
 const content = (extra = {}) =>
@@ -112,6 +112,8 @@ describe('one list independent of open tabs', () => {
         content: content({
           kind: 'comment',
           anchor: { note: 'Notes/sample.md', quote: `Sample ${name} passage` },
+          // A live request keeps the row available after opening acknowledges its failure.
+          pendingToolCalls: [{ id: `approval-${name}`, name: 'sample_tool', arguments: {} }],
         }),
       }))
     )
@@ -137,7 +139,11 @@ describe('one list independent of open tabs', () => {
       const app = useVault([
         {
           path: 'AI/Comments/sample-discussion.abchat',
-          content: content({ kind: 'comment', anchor: { note: 'Notes/sample.md' } }),
+          content: content({
+            kind: 'comment', anchor: { note: 'Notes/sample.md' },
+            // Exercise rename/reopen on live work, not an already-seen failure.
+            pendingToolCalls: [{ id: 'sample-approval', name: 'sample_tool', arguments: {} }],
+          }),
         },
       ])
       ;(app as unknown as { workspace: unknown }).workspace = {
