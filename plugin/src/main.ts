@@ -1,3 +1,4 @@
+import { registerCoreCommands } from '@/startup/registerCoreCommands'
 import { ChangeTracker } from '@/ai/rewind/ChangeTracker'
 import { deferredCleanup } from '@/helpers/deferredCleanup'
 import {
@@ -16,7 +17,6 @@ import { setKeyboardDiagnostics } from '@/helpers/keyboardDiagnostics'
 import { applySettingsLook } from '@/helpers/settingsLook'
 import './styles.css'
 import { GlobalStore } from './stores/GlobalStore'
-import { pasteFromClipboard } from './commands/pasteFromClipboard'
 import { registerFocusRelease } from './helpers/fieldFocus'
 import { createApp, App as VueApp, watch } from 'vue'
 import VueEntry from './App.vue'
@@ -25,19 +25,11 @@ import { AgentRegistry } from './ai/agents/AgentRegistry'
 import { mobileBackground } from './ai/mobileBackground'
 import { SilentBackgroundAudio } from './ai/mobileBackgroundAudio'
 import { appSuspension, bindAppSuspension } from './ai/appSuspension'
-import { createTask, createTaskAndInsert } from './commands/createTask'
-import { createTransaction, createTransactionAndInsert } from './commands/createTransaction'
-import { createTimeEntry, stopActiveTimeEntry } from './commands/createTimeEntry'
 import { createNoteInGroup } from './commands/createNoteInGroup'
 import { commentHereInView } from './commands/commentCommands'
 import { registerNoteMenu } from './commands/noteMenu'
 import { NOTE_ACTIONS } from './commands/noteActions'
 import { isScriptPath } from './scripting/scriptPath'
-import {
-  createNoteFromTemplate,
-  replaceNoteWithTemplate,
-  insertTemplateAtCursor,
-} from './commands/templateCommands'
 import { TemplateService } from './templates/TemplateService'
 import { taskStateField } from './editor/TaskPlugin'
 import { galleryExtensions } from './editor/GalleryPlugin'
@@ -54,15 +46,6 @@ import {
   setCommentClickHandler,
   setCommentInfoSource,
 } from '@/editor/CommentPlugin'
-import { insertGallery, convertImagesToGalleries } from './commands/galleryCommands'
-import { reindexFootnotes } from './commands/footnoteCommands'
-import { insertHighlight, removeHighlight } from './commands/highlightCommands'
-import { setCoverFromFirstMedia } from './commands/setCover'
-import { findAndReplace } from './commands/findAndReplace'
-import { saveMedia } from './commands/saveMedia'
-import { importFiles } from './commands/importFiles'
-import { unusedMedia } from './commands/unusedMedia'
-import { deduplicateMedia } from './commands/deduplicateMedia'
 import { TIMELINE_SIDEBAR_VIEW_TYPE, TimelineSidebarView } from './views/TimelineSidebarView'
 import { TODO_SIDEBAR_VIEW_TYPE, TodoSidebarView } from './views/TodoSidebarView'
 import { AI_SIDEBAR_VIEW_TYPE, AiSidebarView } from './views/AiSidebarView'
@@ -102,7 +85,7 @@ import { AutomationService } from './automations/AutomationService'
 import { ScriptViewService } from './scripting/view/ScriptViewService'
 import { preserveLocalScriptVersions } from './scripting/trust/localScriptUpgrade'
 import { showMarkdown } from './scripting/formModal'
-import { openUtilityDialog, previewImage } from './commands/utilityDialogs'
+import { previewImage } from './commands/utilityDialogs'
 import { SCRIPT_API_DOCS } from './scripting/apiDocs'
 import { SCRIPT_VIEW_DOCS } from './scripting/view/viewDocs'
 import { ScopeResolver } from './ai/ScopeResolver'
@@ -115,8 +98,6 @@ import dayOfYear from 'dayjs/plugin/dayOfYear'
 import dayjs from 'dayjs'
 import { AbeleSettingTab } from './settings'
 import { createHeaderExtension } from './editor/HeaderExtension'
-import { migrateFromDataview } from './commands/migrateFromDataview'
-// migrateFromFirefly is triggered via modal
 import { VaultWatcherWrapper } from './helpers/VaultWatcherWrapper'
 import { exposeTestApi } from '@/testing/exposeTestApi'
 import { observePhoneReplayTransport } from '@/testing/phoneReplay'
@@ -141,7 +122,6 @@ import { secrets, setSecrets } from '@/secrets/SecretStore'
 import { createPluginSecrets } from '@/secrets/host'
 import { initializeDestinations, checkRequestDestinations } from '@/secrets/destinations'
 import { setRequestGuard } from '@/helpers/http'
-import { reviewKeyDestinations } from '@/secrets/destinationReview'
 import { markLoad } from '@/helpers/loadMarks'
 import { installUntrustedGuard, uninstallUntrustedGuard } from '@/markdown/renderUntrusted'
 import { beginStartup, startupStep, startupStepAsync } from '@/helpers/startupSteps'
@@ -860,357 +840,7 @@ export default class AbelePlugin extends Plugin {
 
   /** The commands and ribbon icons that are there whatever the settings. */
   private registerCommands() {
-    this.addCommand({
-      id: 'review-key-destinations',
-      name: 'Review key destinations',
-      callback: reviewKeyDestinations,
-    })
-    this.addCommand({
-      id: 'create-task',
-      name: 'Create new task',
-      icon: 'circle-plus',
-      callback: () => {
-        void createTask()
-      },
-    })
-
-    this.addCommand({
-      id: 'create-task-and-insert-link',
-      name: 'Create new task and insert into current note',
-      icon: 'list-plus',
-      editorCallback: (editor: Editor) => {
-        void createTaskAndInsert(editor)
-      },
-    })
-
-    this.addCommand({
-      id: 'find-and-replace',
-      name: 'Find and replace in frontmatter and content of all notes, matching the criteria',
-      icon: 'replace-all',
-      callback: () => {
-        void findAndReplace()
-      },
-    })
-
-    this.addCommand({
-      id: 'import-files',
-      name: 'Import files to vault',
-      icon: 'import',
-      callback: () => {
-        importFiles()
-      },
-    })
-
-    this.addCommand({
-      id: 'save-media',
-      name: 'Save remote media to vault',
-      icon: 'download',
-      callback: () => {
-        saveMedia()
-      },
-    })
-
-    this.addCommand({
-      id: 'unused-media',
-      name: 'Find and delete unused media',
-      icon: 'trash-2',
-      callback: () => {
-        unusedMedia()
-      },
-    })
-
-    this.addCommand({
-      id: 'deduplicate-media',
-      name: 'Deduplicate media attachments',
-      icon: 'copy-check',
-      callback: () => {
-        deduplicateMedia()
-      },
-    })
-
-    this.addCommand({
-      id: 'migrate-from-dataview',
-      name: 'Migrate tasks from Dataview',
-      icon: 'database',
-      callback: () => {
-        void migrateFromDataview()
-      },
-    })
-
-    this.addCommand({
-      id: 'migrate-from-firefly',
-      name: 'Migrate data from Firefly III',
-      icon: 'database',
-      callback: () => {
-        void openUtilityDialog('migrateFromFirefly')
-      },
-    })
-
-    this.addCommand({
-      id: 'create-transaction',
-      name: 'Create new transaction',
-      icon: 'receipt',
-      callback: () => {
-        void createTransaction()
-      },
-    })
-
-    this.addCommand({
-      id: 'create-transaction-and-insert-link',
-      name: 'Create new transaction and insert into current note',
-      icon: 'receipt',
-      editorCallback: (editor: Editor) => {
-        void createTransactionAndInsert(editor)
-      },
-    })
-
-    this.addCommand({
-      id: 'show-timeline-sidebar',
-      name: 'Show timeline sidebar',
-      icon: 'calendar-range',
-      callback: () => {
-        void this.activateView(TIMELINE_SIDEBAR_VIEW_TYPE)
-      },
-    })
-
-    this.addCommand({
-      id: 'migrate-dataview-fields',
-      name: 'Migrate from Dataview fields',
-      icon: 'database',
-      callback: () => {
-        void openUtilityDialog('migrateDataviewFields')
-      },
-    })
-
-    this.addCommand({
-      id: 'show-todo-sidebar',
-      name: 'Show todo sidebar',
-      icon: 'check-square',
-      callback: () => {
-        void this.activateView(TODO_SIDEBAR_VIEW_TYPE)
-      },
-    })
-
-    this.addCommand({
-      id: 'show-finance-sidebar',
-      name: 'Show finance sidebar',
-      icon: 'wallet',
-      callback: () => {
-        void this.activateView(FINANCE_SIDEBAR_VIEW_TYPE)
-      },
-    })
-
-    this.addCommand({
-      id: 'show-accounts-sidebar',
-      name: 'Show accounts sidebar',
-      icon: AccountsSidebarView.getIcon(),
-      callback: () => {
-        void this.activateView(ACCOUNTS_SIDEBAR_VIEW_TYPE)
-      },
-    })
-
-    this.addCommand({
-      id: 'migrate-from-toggl',
-      name: 'Migrate time entries from Toggl',
-      icon: 'database',
-      callback: () => {
-        void openUtilityDialog('migrateFromToggl')
-      },
-    })
-
-    this.addCommand({
-      id: 'show-time-tracking-sidebar',
-      name: 'Show time tracking sidebar',
-      icon: 'timer',
-      callback: () => {
-        void this.activateView(TIME_TRACKING_SIDEBAR_VIEW_TYPE)
-      },
-    })
-
-    this.addCommand({
-      id: 'start-timer',
-      name: 'Start timer for current note',
-      icon: 'play',
-      callback: () => {
-        const file = this.app.workspace.getActiveFile()
-        if (file) {
-          void createTimeEntry({ groups: [`[[${file.basename}]]`] })
-        }
-      },
-    })
-
-    this.addCommand({
-      id: 'stop-timer',
-      name: 'Stop active timer',
-      icon: 'square',
-      callback: () => {
-        void stopActiveTimeEntry()
-      },
-    })
-
-    this.addCommand({
-      id: 'paste-from-clipboard',
-      name: 'Paste from clipboard at cursor',
-      icon: 'clipboard-paste',
-      editorCallback: async (editor: Editor) => {
-        await pasteFromClipboard(editor)
-      },
-    })
-
-    this.addCommand({
-      id: 'create-note-from-template',
-      name: 'Create note from template',
-      icon: 'file-plus-2',
-      callback: () => {
-        createNoteFromTemplate()
-      },
-    })
-
-    this.addCommand({
-      id: 'create-note-in-group',
-      name: 'Create note in group',
-      icon: 'folder-plus',
-      callback: () => {
-        const file = this.app.workspace.getActiveFile()
-        if (file) {
-          void createNoteInGroup(file)
-        }
-      },
-    })
-
-    this.addCommand({
-      id: 'replace-note-with-template',
-      name: 'Replace current note with template',
-      icon: 'file-input',
-      callback: () => {
-        replaceNoteWithTemplate()
-      },
-    })
-
-    this.addCommand({
-      id: 'insert-template-at-cursor',
-      name: 'Insert template at cursor',
-      icon: 'file-symlink',
-      editorCallback: (editor: Editor) => {
-        insertTemplateAtCursor(editor)
-      },
-    })
-
-    this.addCommand({
-      id: 'insert-gallery',
-      name: 'Insert image gallery',
-      icon: 'gallery-horizontal',
-      editorCallback: (editor: Editor) => {
-        insertGallery(editor)
-      },
-    })
-
-    this.addCommand({
-      id: 'convert-images-to-galleries',
-      name: 'Convert images on page to galleries',
-      icon: 'images',
-      editorCallback: (editor: Editor) => {
-        convertImagesToGalleries(editor)
-      },
-    })
-
-    this.addCommand({
-      id: 'reindex-footnotes',
-      name: 'Reindex footnotes',
-      icon: 'list-ordered',
-      editorCallback: (editor: Editor) => {
-        reindexFootnotes(editor)
-      },
-    })
-
-    this.addCommand({
-      id: 'insert-highlight',
-      name: 'Insert colored highlight',
-      icon: 'highlighter',
-      editorCallback: (editor: Editor) => {
-        void insertHighlight(editor)
-      },
-    })
-
-    this.addCommand({
-      id: 'remove-highlight',
-      name: 'Remove colored highlight',
-      icon: 'eraser',
-      editorCallback: (editor: Editor) => {
-        removeHighlight(editor)
-      },
-    })
-
-    this.addCommand({
-      id: 'set-cover-from-first-media',
-      name: 'Set cover from first image/video in note',
-      icon: 'image',
-      callback: () => {
-        void setCoverFromFirstMedia()
-      },
-    })
-
-    this.addCommand({
-      id: 'open-today-daily-note',
-      name: "Open today's daily note",
-      icon: 'calendar',
-      callback: () => {
-        const journal = AbeleConfig.getInstance().journals.find((j) => j.isDefaultDailyJournal)
-        if (!journal) {
-          new Notice('No default daily journal configured')
-          return
-        }
-        journal.createJournalNote(dayjs())
-      },
-    })
-
-    this.addCommand({
-      id: 'create-css-snippet',
-      name: 'Create CSS snippet',
-      icon: 'palette',
-      callback: () => {
-        void SnippetService.getInstance().createSnippet()
-      },
-    })
-
-    this.addCommand({
-      id: 'reload-css-snippets',
-      name: 'Reload CSS snippets',
-      icon: 'refresh-cw',
-      callback: async () => {
-        await SnippetService.getInstance().reload()
-        new Notice('CSS snippets reloaded')
-      },
-    })
-
-    this.addCommand({
-      id: 'create-script',
-      name: 'Create script',
-      icon: 'scroll-text',
-      callback: () => {
-        void ScriptService.getInstance().createScript()
-      },
-    })
-
-    this.addRibbonIcon(TimelineSidebarView.getIcon(), 'Show timeline sidebar', () => {
-      void this.activateView(TIMELINE_SIDEBAR_VIEW_TYPE)
-    })
-
-    this.addRibbonIcon(TodoSidebarView.getIcon(), 'Show todo sidebar', () => {
-      void this.activateView(TODO_SIDEBAR_VIEW_TYPE)
-    })
-
-    this.addRibbonIcon(FinanceSidebarView.getIcon(), 'Show finance sidebar', () => {
-      void this.activateView(FINANCE_SIDEBAR_VIEW_TYPE)
-    })
-
-    this.addRibbonIcon(TimeTrackingSidebarView.getIcon(), 'Show time tracking', () => {
-      void this.activateView(TIME_TRACKING_SIDEBAR_VIEW_TYPE)
-    })
-
-    this.addRibbonIcon(ScriptRunsView.getIcon(), 'Show script runs', () => {
-      void this.activateView(SCRIPT_RUNS_VIEW_TYPE)
-    })
+    registerCoreCommands(this)
   }
 
   /** `obsidian://abele` links, and the default template for notes made from outside. */
