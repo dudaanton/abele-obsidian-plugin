@@ -226,6 +226,9 @@ export interface AiSettings {
   sequentialAuxiliary: boolean
   /** Seconds to connect or wait for the next response chunk; not a total-turn limit. */
   requestTimeoutSeconds?: number
+  /** Mobile-only silent audio; both modes are opt-in. */
+  backgroundWhileAgents?: boolean
+  backgroundAlways?: boolean
   permissionMode: PermissionMode
   toolModes: Record<string, ToolMode>
   scriptsEnabled: boolean
@@ -491,6 +494,8 @@ export const DEFAULT_AI_SETTINGS: AiSettings = {
   auxiliaryModelId: '',
   sequentialAuxiliary: false,
   requestTimeoutSeconds: DEFAULT_REQUEST_TIMEOUT_SECONDS,
+  backgroundWhileAgents: false,
+  backgroundAlways: false,
   permissionMode: 'confirm-all',
   toolModes: {
     web_search: 'auto',

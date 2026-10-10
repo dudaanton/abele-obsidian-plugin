@@ -1,4 +1,5 @@
 import { OpenAIClient } from './OpenAIClient'
+import { mobileBackground } from '../mobileBackground'
 import type {
   AgentEvent,
   AgentTool,
@@ -99,6 +100,7 @@ export class AgentLoop {
       throw new Error('AgentLoop.run() called while already running')
     }
     this._isRunning = true
+    const endBackgroundTurn = mobileBackground.beginTurn()
     this._pausedToolCalls = null
     this.abortController = new AbortController()
     const signal = this.abortController.signal
@@ -230,6 +232,7 @@ export class AgentLoop {
       this._isRunning = false
       this.abortController = null
       this.emit({ type: 'agent_end' })
+      endBackgroundTurn()
     }
 
     return { messages, pausedAt: this._pausedToolCalls || undefined }

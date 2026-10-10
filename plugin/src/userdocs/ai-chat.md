@@ -13,6 +13,12 @@ Chats with AI models that can read and change your notes, inside limits you set.
 
 ### Waiting for slow models
 
+On mobile, the **General** tab also offers **Keep running in background while agents work**
+and **Keep running in background always**. Both are off by default. They play a silent loop
+using a mixing-friendly audio session where available. The first stops shortly after the last
+turn ends; the second continues even when idle. This may use more battery and cannot guarantee
+background execution under every system policy.
+
 On the **General** tab, **Request timeout (seconds)** sets how long Abele waits for a model
 connection or the next response chunk. It defaults to **60**; use a higher value for slow local
 models. Values from **1 to 3600** seconds are accepted; clearing the field restores 60.

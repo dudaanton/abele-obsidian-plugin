@@ -140,6 +140,8 @@ export const SECTIONS: Section[] = [
       'auxiliaryModelId',
       'sequentialAuxiliary',
       'requestTimeoutSeconds',
+      'backgroundWhileAgents',
+      'backgroundAlways',
       'autoRetry',
       'permissionMode',
       'toolModes', // Includes identity-based MCP keys; do not rewrite these as provider aliases.

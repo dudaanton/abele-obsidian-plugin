@@ -5,6 +5,20 @@
     </Setting>
 
     <template v-if="enabled">
+      <template v-if="Platform.isMobile">
+        <Setting
+          name="Keep running in background while agents work"
+          desc="Play silent audio while a turn is running. May use more battery; background execution depends on the system."
+        >
+          <Checkbox :is-enabled="backgroundWhileAgents" @toggle="toggleBackground('whileAgents')" />
+        </Setting>
+        <Setting
+          name="Keep running in background always"
+          desc="Play silent audio even when agents are idle. Off by default; may use more battery."
+        >
+          <Checkbox :is-enabled="backgroundAlways" @toggle="toggleBackground('always')" />
+        </Setting>
+      </template>
       <Setting
         name="Key destinations"
         desc="Review addresses changed outside this device before sending keys there."
@@ -675,12 +689,13 @@
 
 <script setup lang="ts">
 import { DEFAULT_REWIND_LIMIT_MB } from '@/ai/rewind/ChatRewind'
+import { mobileBackground } from '@/ai/mobileBackground'
 import { keyFor, keyDestinations, acceptIntroducedDestinations } from '@/secrets/destinations'
 import { reviewKeyDestinations } from '@/secrets/destinationReview'
 import { secrets as secretStore } from '@/secrets/SecretStore'
 import { MEMORY_PLACEHOLDER } from '@/ai/agents/memory'
 import { ref, computed, reactive, watch, onBeforeUnmount } from 'vue'
-import { Notice, debounce } from 'obsidian'
+import { Notice, Platform, debounce } from 'obsidian'
 import { nanoid } from 'nanoid'
 import Setting from '../../obsidian/Setting.vue'
 import Input from '../../obsidian/Input.vue'
@@ -881,6 +896,8 @@ const applyFields = () => {
   config.ai = {
     ...config.ai,
     enabled: enabled.value,
+    backgroundWhileAgents: backgroundWhileAgents.value,
+    backgroundAlways: backgroundAlways.value,
     providers: JSON.parse(JSON.stringify(providers.value)),
     auxiliaryModelId: auxiliaryModelId.value,
     sequentialAuxiliary: sequentialAuxiliary.value,
@@ -902,6 +919,8 @@ const applyFields = () => {
 
 watch(config.version, () => {
   enabled.value = config.ai.enabled
+  backgroundWhileAgents.value = config.ai.backgroundWhileAgents === true
+  backgroundAlways.value = config.ai.backgroundAlways === true
   providers.value = JSON.parse(JSON.stringify(config.ai.providers))
   auxiliaryModelId.value = config.ai.auxiliaryModelId
   sequentialAuxiliary.value = config.ai.sequentialAuxiliary
@@ -932,6 +951,18 @@ onBeforeUnmount(() => {
   persist.cancel?.()
   if (pendingSave) write()
 })
+
+const backgroundWhileAgents = ref(config.ai.backgroundWhileAgents === true)
+const backgroundAlways = ref(config.ai.backgroundAlways === true)
+const toggleBackground = (mode: 'whileAgents' | 'always') => {
+  const value = mode === 'whileAgents' ? backgroundWhileAgents : backgroundAlways
+  value.value = !value.value
+  save()
+  mobileBackground.configure(Platform.isMobile, {
+    whileAgents: backgroundWhileAgents.value,
+    always: backgroundAlways.value,
+  })
+}
 
 const toggleEnabled = () => {
   enabled.value = !enabled.value

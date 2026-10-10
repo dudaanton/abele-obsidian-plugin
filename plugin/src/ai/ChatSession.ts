@@ -16,6 +16,7 @@ import { GlobalStore } from '@/stores/GlobalStore'
 import type { MapBlock } from '@/helpers/mapConfig'
 import { DEFAULT_RETRY, backoffDelay, isTransient } from './retry'
 import { AgentLoop } from './client/AgentLoop'
+import { mobileBackground } from './mobileBackground'
 import type {
   AgentEvent,
   AgentTool,
@@ -1470,6 +1471,7 @@ export class ChatSession implements SummarizerHost, InterceptorHost, AnchorStora
    */
   private async runAgentLoop(): Promise<void> {
     this.activeAgentTurns.value++
+    const endBackgroundTurn = mobileBackground.beginTurn()
     try {
       const settings = { ...DEFAULT_RETRY, ...(AbeleConfig.getInstance().ai.autoRetry ?? {}) }
       for (let attempt = 0; ; attempt++) {
@@ -1490,6 +1492,7 @@ export class ChatSession implements SummarizerHost, InterceptorHost, AnchorStora
       }
     } finally {
       this.activeAgentTurns.value--
+      endBackgroundTurn()
     }
   }
 

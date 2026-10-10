@@ -1161,6 +1161,16 @@ image providers and the voice block carry these fields in settings transfer. Sha
 keychain reference does not inherit another connection's client name. See `settings` for
 transport limitations.
 
+## Mobile background audio
+
+`ai.backgroundWhileAgents` and `ai.backgroundAlways` are booleans, both false by default.
+They travel in AI general settings. Their settings rows and audio playback exist only on
+mobile. The first keeps silent looping audio active during agent turns and releases it two
+seconds after the last turn ends; the second keeps it active even when idle. The plugin uses
+the mixing-friendly ambient audio session where supported, never an exclusive playback
+session. Operating-system suspension, autoplay and battery policies can still prevent
+background execution. No audio file is stored in the vault.
+
 ## Model request timeout
 
 `ai.requestTimeoutSeconds` stores the shared chat-model timeout in seconds, defaulting to 60.
