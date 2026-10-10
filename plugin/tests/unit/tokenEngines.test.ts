@@ -13,6 +13,87 @@ import * as safety from '@/sync/external/pluginSafety'
 import { JOURNAL_KEY, WriteJournal } from '@/sync/writeJournal'
 import { ObsidianFileSystem } from '@/sync/ObsidianFileSystem'
 
+it('surfaces a server size refusal by path and reason, keeps bytes pending and avoids repeated rejected uploads', async () => {
+  const app = buildFakeVault([{ path: 'oversized.bin', content: 'too many bytes' }])
+  const registry = TokenConnectionRegistry.open(app),
+    keys = new Map<string, string>(),
+    metadata = new MemoryStateStore()
+  const secrets = {
+    get: (id: string) => keys.get(id) ?? null,
+    set: (id: string, key: string) => {
+      keys.set(id, key)
+    },
+    remove: (id: string) => {
+      keys.delete(id)
+    },
+  }
+  const scope = { kind: 'folder' as const, id: 'root', path: '/' }
+  const transport = vi.fn<typeof fetch>(async (input) => {
+    const path = new URL(String(input)).pathname
+    if (path === '/v2/connection')
+      return Response.json({
+        protocol: 2,
+        token_id: 'token',
+        space_id: 'space',
+        scope,
+        status: 'active',
+        limits: { max_file_bytes: 4, quota_bytes: null },
+      })
+    if (path === '/v2/manifest' || path === '/v2/changes')
+      return Response.json({ items: [], cursor: 0, next: null })
+    if (path.startsWith('/v2/uploads/'))
+      return Response.json(
+        { error: { code: 'too_large', message: 'File exceeds the server size limit' } },
+        { status: 413 }
+      )
+    throw new Error('Unexpected upload or commit: ' + path)
+  })
+  const ui = new TokenUi(registry, secrets, transport, {
+    executables: new ExecutableReview(metadata),
+    attachments: new AttachmentConsent(metadata),
+    close: () => {},
+  })
+  const host = new TokenEngines(app as unknown as App, ui, secrets.get, {
+    fetch: transport,
+    indexedDB: new IDBFactory(),
+    WebSocket: class {
+      constructor() {
+        throw new Error('No test socket')
+      }
+    } as unknown as typeof WebSocket,
+  })
+  try {
+    await ui.connect(
+      encodeAccessToken({ v: 1, address: 'https://size.example', key: 'a'.repeat(43), scope })
+    )
+    const id = registry.records()[0].id
+    await vi.waitFor(() => expect(ui.runtimes.has(id)).toBe(true))
+    await ui.sync(id)
+    expect(ui.activity.value[id].refused).toContainEqual({
+      path: 'oversized.bin',
+      reason: 'This file is too large for the server. It stays on this device.',
+    })
+    expect(ui.activity.value[id].pending).toBeGreaterThan(0)
+    expect(await app.vault.adapter.read('oversized.bin')).toBe('too many bytes')
+    const uploads = () =>
+      transport.mock.calls.filter(([input]) =>
+        new URL(String(input)).pathname.startsWith('/v2/uploads/')
+      ).length
+    expect(uploads()).toBe(1)
+    await ui.sync(id)
+    expect(uploads()).toBe(1)
+    expect(ui.activity.value[id].refused).toContainEqual({
+      path: 'oversized.bin',
+      reason: 'This file is too large for the server. It stays on this device.',
+    })
+    expect(
+      transport.mock.calls.some(([input]) => new URL(String(input)).pathname === '/v2/commit')
+    ).toBe(false)
+  } finally {
+    await host.close()
+  }
+})
+
 it('recovers interrupted installations before inspecting their bytes', async () => {
   const fixture = inspectionFixture()
   const { app, ui, host, registry, encoded, release, probe } = fixture

@@ -16,6 +16,29 @@ import { AttachmentConsent } from '@/sync/attachmentConsent'
 import { Notice } from '../mocks/obsidian'
 
 const modalStub = { template: '<div><slot /><slot name="footer" /></div>' }
+it('displays the exact path and server-size reason for an oversized unsent file', async () => {
+  const ui = tokenUiFixture(),
+    id = ui.rows.value[0].id
+  ui.publish(id, {
+    pending: 1,
+    refused: [
+      {
+        path: 'Media/oversized.bin',
+        reason: 'This file is too large for the server. It stays on this device.',
+      },
+    ],
+  })
+  const view = mount(SyncSettings, { props: { model: ui } })
+  await flushPromises()
+  const row = view
+    .findAll('.setting-item')
+    .find((one) => one.find('.setting-item-name').text() === 'Media/oversized.bin')
+  expect(row).toBeDefined()
+  expect(row!.find('.setting-item-description').text()).toBe(
+    'Not sent: This file is too large for the server. It stays on this device.'
+  )
+  view.unmount()
+})
 function shareFixture() {
   const ui = tokenUiFixture()
   const scope = { kind: 'folder' as const, id: 'root', path: '/' }

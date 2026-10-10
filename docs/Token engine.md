@@ -19,11 +19,15 @@ The native bridge exposes no byte-progress callback; the JS bound is a conservat
 throughput allowance, not a direct progress measurement. Close still aborts host waiting.
 
 The production plugin pins core and protocol to server commit
-`cb60097fa66228a6bd183cb33cb3d0903b409123`. The vendor script generated
+`c5d4ccbf83fc4b2812f8cc131d1918851546295e`. The vendor script generated
 the archives and provenance; package.json, package-lock.json and SERVER_TEST_COMMIT
 use the same input. This revision preserves classified host transport errors and tolerates
 transient server SQLite snapshot contention. Mobile transport emits classified EngineErrors;
 core carries their sanitized diagnostics and status without a plugin status override.
+It also reports V2 server size-limit refusals and preserves observation times for
+script review. Oversized local files remain pending and appear by path under
+“Not sent” with the server-limit reason. Rejected bytes stay local, and repeated
+syncs do not repeat the refused upload while the size limit is unchanged.
 No server source is changed.
 
 `TokenEngines` opens an independent IndexedDB ledger and runtime fence for each
