@@ -25,10 +25,18 @@ export interface Evidence extends Observation {
 }
 const desktopRanges = [
   [2, 23],
+  [24, 28],
+  [34, 34],
   [35, 56],
+  [57, 58],
+  [60, 61],
+  [69, 74],
   [76, 90],
+  [91, 91],
   [92, 107],
+  [110, 110],
   [111, 116],
+  [117, 117],
 ]
 export function liveRequirements(id: number): EvidencePlatform[] {
   if (!Number.isInteger(id) || id < 1 || id > 124) throw new Error('Unknown acceptance scenario')

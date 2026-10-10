@@ -1,6 +1,13 @@
 import { expect, it } from 'vitest'
 import { liveRequirements, runEvidence, evidenceManifest } from '../acceptance/evidence'
 
+it.each([24, 25, 26, 27, 28, 57, 58, 60, 61, 69, 70, 71, 72, 73, 74, 91, 110, 117])(
+  'requires desktop evidence for mapped app scenario %s',
+  (id) => {
+    expect(liveRequirements(id)).toContain('Mac')
+  }
+)
+
 it('accounts for every scenario and keeps server, desktop and physical phone evidence separate', () => {
   expect(evidenceManifest().map((item) => item.id)).toEqual(
     Array.from({ length: 124 }, (_, i) => i + 1)
