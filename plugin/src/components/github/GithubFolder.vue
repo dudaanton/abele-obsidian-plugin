@@ -66,6 +66,8 @@ const props = defineProps<{
   folder: FolderData
   repo: { host: string; owner: string; repo: string }
   client?: GithubClient
+  /** Ordinary owner browsing can stay live; readme citations still use the retained ref. */
+  browseRef?: string
 }>()
 
 const emit = defineEmits<{
@@ -91,8 +93,8 @@ watch(() => props.folder, paged.reset)
 
 const urlOf = (entry: FolderEntry) =>
   entry.kind === 'dir'
-    ? source.value.navigation.folder(props.folder.ref, entry.path)
-    : source.value.navigation.file(props.folder.ref, entry.path)
+    ? source.value.navigation.folder(props.browseRef ?? props.folder.ref, entry.path)
+    : source.value.navigation.file(props.browseRef ?? props.folder.ref, entry.path)
 
 const open = (entry: FolderEntry, event: MouseEvent) => {
   const url = urlOf(entry)

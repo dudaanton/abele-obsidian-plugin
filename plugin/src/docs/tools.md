@@ -969,7 +969,7 @@ Grants are held in memory and disappear when the plugin restarts; nothing new is
 | `list_node_worktrees` | Available project workspaces, including external worktrees |
 | `node_read` | Project overview and workspace catalogue, including external worktrees |
 | `node_tree` | Directory entries at a revision |
-| `node_file` | File text at a revision |
+| `node_file` | File text at a revision and the exact full-file content identity, including for selected lines |
 | `node_changes` | Working status, or endpoint changes from an explicit base |
 | `node_commits` | Commit history, optionally for a path |
 | `node_commit` | Details of the selected commit |
@@ -978,6 +978,25 @@ Grants are held in memory and disappear when the plugin restarts; nothing new is
 | `node_grep` | Code or path search at an explicit revision |
 | `node_blame` | Attribution at a path and revision |
 | `node_open` | Open/reuse the shared repository tab at a file, revision, comparison or lines |
+| `node_propose_edit` | Propose an exact current-file edit for per-edit owner approval, then retain a local draft; never save automatically |
+
+`node_propose_edit` requires an existing repository read grant **and** a separate owner
+approval of each edit in the chat approval card. Automatic tool modes, general file write
+permissions, scripts and delegation cannot substitute for that approval. Supply `node`,
+`project`, `workspace`, `path`, `expected_content_id` (the full-file identity from `node_file`)
+and complete `text` (up to 32,768 characters). Changed proposals require new approval.
+The current base must still match, editing must be allowed for this worktree, and an existing
+unsent draft is never overwritten. Approval stores only a device-local draft and opens the
+repository file. The owner must explicitly Save there. No Git writes are offered.
+External worktree editing is off until the owner approves that exact worktree identity using
+the repository tab's native toggle, and can be revoked there. Historical files remain read only.
+
+Working-tree tabs refresh trees, status, visible files and executed searches on invalidations
+and reconnect. Local drafts, scroll and selection are kept. “Changed on disk” offers Reload
+(discard local text and use the loaded disk version) or Keep mine (keep the original save
+precondition). Conflicts require deliberate inspection/rebase. An uncertain save retains its
+original operation ID and recovery evidence: check that save, never retry with a new ID.
+Frozen commit/compare views do not follow filesystem changes.
 
 Use opaque `node`, `project`, and `workspace` IDs from authorized tabs. `revision`
 defaults to `WORKTREE`; `base` selects a comparison, `path` is repository-relative.

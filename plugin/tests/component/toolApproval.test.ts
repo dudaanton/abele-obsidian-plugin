@@ -252,6 +252,25 @@ const buttonSaying = (wrapper: ReturnType<typeof approval>, text: string) =>
   wrapper.findAllComponents(Button).find((b) => b.props('text') === text)
 
 describe('being offered to stop confirming every write', () => {
+  it('shows the exact node proposal and never offers automatic edit permission', () => {
+    sessionIn('allow-all', 'ask')
+    const wrapper = approval('node_propose_edit', {
+      node: 'node-sample',
+      project: 'project-sample',
+      workspace: 'worktree-sample',
+      path: 'src/sample.ts',
+      expected_content_id: 'a'.repeat(64),
+      text: 'export const sample = 42\n',
+    })
+    expect(wrapper.text()).toContain('src/sample.ts')
+    expect(wrapper.text()).toContain('a'.repeat(64))
+    expect(wrapper.text()).toContain('export const sample = 42')
+    expect(wrapper.text()).toContain('Save in the repository tab is a separate owner action')
+    expect(buttonSaying(wrapper, 'Always allow')).toBeUndefined()
+    expect(buttonSaying(wrapper, 'Always allow writes')).toBeUndefined()
+    expect(app.stats.read).toBe(0)
+    wrapper.unmount()
+  })
   it('does not offer general write allowance for a deck tool still in Ask mode', () => {
     sessionIn('confirm-all', 'ask')
     const wrapper = approval('deck_create', {

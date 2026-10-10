@@ -14,6 +14,29 @@ const fixture = () => {
   }
 }
 describe('node repository source through the validated client contract', () => {
+  it('keeps authority subscriptions without a mutable lease in frozen views, then watches and releases live views', async () => {
+    const { source, calls } = fixture()
+    await source.startWatching(false)
+    expect(calls.filter(c => c.method.endsWith('.watch'))).toHaveLength(0)
+    await source.startWatching()
+    expect(calls.filter(c => c.method.endsWith('.watch'))).toHaveLength(1)
+    source.stopWatching()
+    expect(calls.filter(c => c.method.endsWith('.unwatch'))).toHaveLength(1)
+    await source.startWatching()
+    expect(calls.filter(c => c.method.endsWith('.watch'))).toHaveLength(2)
+    source.dispose()
+  })
+  it('retains immutable content-cache hits across working invalidations while dropping mutable aliases', async () => {
+    const { source, calls, change } = fixture()
+    await source.startWatching()
+    await source.blob(HEAD, 'app.ts')
+    const transports = calls.filter(c => c.method.endsWith('.content')).length
+    change()
+    await source.blob(HEAD, 'app.ts')
+    expect(calls.filter(c => c.method.endsWith('.content'))).toHaveLength(transports)
+    expect((await source.blob(WORKING_TREE, 'app.ts')).text).toContain('84')
+    source.dispose()
+  })
   it('discovers original and external workspaces with branch, HEAD and dirty state', async () => {
     const { source } = fixture()
     const rows = await source.workspaces()

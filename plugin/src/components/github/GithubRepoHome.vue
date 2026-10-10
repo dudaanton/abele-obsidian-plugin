@@ -201,6 +201,7 @@
         <GithubFolder
           v-else
           :folder="home"
+          :browse-ref="browseRef"
           :repo="repo"
           :client="client"
           @open="(url: string, pane: PaneType | false) => emit('open', url, pane)"
@@ -249,6 +250,7 @@ const props = defineProps<{
   home: RepoHomeData
   repo: RepoLike
   client?: GithubClient
+  browseRef?: string
 }>()
 
 const emit = defineEmits<{

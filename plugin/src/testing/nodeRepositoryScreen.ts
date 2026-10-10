@@ -7,6 +7,7 @@ import { GITHUB_VIEW_TYPE } from '@/github/GithubService'
 import type { GithubView } from '@/github/GithubView'
 import type { RepositoryLocation } from '@/repository/source'
 import { WORKING_TREE } from '@/repository/node'
+import { NodeDocumentSource } from '@/node/NodeFilesModel'
 import { nodeRepositoryFixture, identity, BASE, HEAD } from './nodeRepositoryData'
 
 export const NODE_REPOSITORY_SCREENS = [
@@ -18,6 +19,12 @@ export const NODE_REPOSITORY_SCREENS = [
   'empty',
   'missing',
   'offline',
+  'editable',
+  'changed-on-disk',
+  'conflict',
+  'outcome-unknown',
+  'external-off',
+  'external-on',
 ] as const
 export type NodeRepositoryScreen = (typeof NODE_REPOSITORY_SCREENS)[number]
 let leaf: WorkspaceLeaf | undefined
@@ -46,6 +53,21 @@ export async function openNodeRepositoryFixture(state: NodeRepositoryScreen = 'h
   }
   const f = nodeRepositoryFixture(),
     store = new MemoryClientStore()
+  const editingState = [
+    'editable',
+    'changed-on-disk',
+    'conflict',
+    'outcome-unknown',
+    'external-off',
+    'external-on',
+  ].includes(state)
+  const externalState = state === 'external-off' || state === 'external-on'
+  let editingEnabled = state !== 'external-off'
+  const worktree = externalState ? 'external-fixture' : identity.workspace
+  if (editingState)
+    f.change(
+      'export const answer = 42\n\nexport function describe(value: number) {\n  return `Result: ${value}`\n}\n\nexport const summary = describe(answer)\n'
+    )
   await store.transaction((s) => {
     s.node_id = identity.node
     s.installation_id = identity.installation
@@ -55,42 +77,81 @@ export async function openNodeRepositoryFixture(state: NodeRepositoryScreen = 'h
     store,
     target: { expected_node_id: identity.node },
     getProject: async () => ({ project_id: identity.project, root_path: '/sample/Sample project' }),
-    repository: new RepositoryClient(async (method, params: any) => {
-      const result: any = await f.request(method, params)
-      if (method.endsWith('.worktrees')) {
-        result.entries[1].branch = 'refs/heads/orca/sample-review'
-        result.entries.push({
-          ...result.entries[0],
-          worktree_id: 'managed-fixture',
-          workspace_id: 'workspace-managed-fixture',
-          kind: 'managed',
-          path_label: 'feature-workspace',
-          branch: 'refs/heads/review-layout',
-          dirty: false,
-        })
-        // The visual read fixture does not advertise an editor backed by fake write operations.
-        result.entries[0].workspace_id = null
-        if (state === 'missing') result.entries[0].availability = 'missing'
-        if (state === 'empty')
-          result.entries = [{ ...result.entries[0], head: null, branch: null, dirty: false }]
-      }
-      if (method.endsWith('.compare') && params.head.kind === 'commit') {
-        result.entries = result.entries.map(
-          ({ path, status }: { path: string; status: string }) => ({ path, status })
-        )
-      }
-      if (state === 'empty') {
-        if (method.endsWith('.tree') || method.endsWith('.status') || method.endsWith('.history'))
-          result.entries = []
-        if (method.endsWith('.observe')) result.revision.head = null
-        if (method.endsWith('.refs')) {
-          result.entries = []
-          result.default_branch = null
+    operationResult: (id: string) => store.transaction((s) => s.results[id]),
+    repository: new RepositoryClient(
+      async (method, params: any) => {
+        if (method === 'repository.v1.editing.get')
+          return { worktree_id: params.worktree_id, enabled: editingEnabled }
+        const result: any = await f.request(method, params)
+        if (method.endsWith('.worktrees')) {
+          result.entries[1].branch = 'refs/heads/orca/sample-review'
+          result.entries.push({
+            ...result.entries[0],
+            worktree_id: 'managed-fixture',
+            workspace_id: 'workspace-managed-fixture',
+            kind: 'managed',
+            path_label: 'feature-workspace',
+            branch: 'refs/heads/review-layout',
+            dirty: false,
+          })
+          if (state === 'missing') result.entries[0].availability = 'missing'
+          if (state === 'empty')
+            result.entries = [{ ...result.entries[0], head: null, branch: null, dirty: false }]
         }
+        if (method.endsWith('.compare') && params.head.kind === 'commit') {
+          result.entries = result.entries.map(
+            ({ path, status }: { path: string; status: string }) => ({ path, status })
+          )
+        }
+        if (state === 'empty') {
+          if (method.endsWith('.tree') || method.endsWith('.status') || method.endsWith('.history'))
+            result.entries = []
+          if (method.endsWith('.observe')) result.revision.head = null
+          if (method.endsWith('.refs')) {
+            result.entries = []
+            result.default_branch = null
+          }
+        }
+        return result
+      },
+      {
+        mutation: async (_method, params: any) => {
+          editingEnabled = params.enabled
+          return { worktree_id: params.worktree_id, enabled: editingEnabled }
+        },
+        save: async (_method, params: any, operation_id = crypto.randomUUID()) => {
+          await store.transaction((s) => {
+            s.results[operation_id] = {
+              result: {
+                operation_id,
+                worktree_id: params.worktree_id,
+                path: params.path,
+                state:
+                  state === 'outcome-unknown'
+                    ? 'outcome_unknown'
+                    : state === 'conflict'
+                      ? 'conflict'
+                      : 'saved',
+                expected_content_id: params.expected_content_id,
+                content_id: 'c'.repeat(64),
+                predecessor_content_id: params.expected_content_id,
+                recovery_path: state === 'outcome-unknown' ? 'file-recovery/sample/copy' : null,
+              },
+            }
+          })
+          return { operation_id }
+        },
+        result: (operation) => store.transaction((s) => s.results[operation]),
       }
-      return result
-    }),
+    ),
   } as unknown as NodeClient
+  if (editingState && state !== 'external-off') {
+    const documents = new NodeDocumentSource(client, worktree, true)
+    const document = await documents.read('app.ts')
+    await documents.edit('app.ts', document, document.text!.replace('42', '48'))
+    if (state === 'conflict' || state === 'outcome-unknown') await documents.save('app.ts')
+    if (state === 'changed-on-disk') f.change(document.text!.replace('42', '84'))
+  }
   const connection = {
     client,
     state: ref(state === 'offline' ? 'offline' : 'connected'),
@@ -119,7 +180,7 @@ export async function openNodeRepositoryFixture(state: NodeRepositoryScreen = 'h
     service.connection = previousConnection
   }
   const location: RepositoryLocation =
-    state === 'file'
+    state === 'file' || editingState
       ? { kind: 'file', ref: WORKING_TREE, path: 'app.ts', lines: { from: 1, to: 1 } }
       : state === 'changes'
         ? { kind: 'comparison', base: HEAD, head: WORKING_TREE, direct: true }
@@ -134,7 +195,7 @@ export async function openNodeRepositoryFixture(state: NodeRepositoryScreen = 'h
     active: true,
     state: {
       title: 'Sample project · sample-project',
-      sourceTarget: { provider: 'node', source: identity, location },
+      sourceTarget: { provider: 'node', source: { ...identity, workspace: worktree }, location },
       tree: state === 'file' && !Platform.isMobile,
     },
   })
@@ -148,6 +209,7 @@ export async function openNodeRepositoryFixture(state: NodeRepositoryScreen = 'h
     throw new Error('Repository fixture did not settle')
   }
   await until(() => !!view.model.screen.link || !!view.model.screen.error)
+  if (editingState) await until(() => !!view.contentEl.querySelector('.abele-node-save'))
   if (state === 'commits') {
     const tab = Array.from(view.contentEl.querySelectorAll<HTMLElement>('.abele-tabs__tab')).find(
       (el) => el.textContent?.includes('Commits')

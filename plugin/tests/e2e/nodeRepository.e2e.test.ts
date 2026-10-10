@@ -1,13 +1,14 @@
 import { expect, it } from 'vitest'
 import { spawn, execFile, type ChildProcess } from 'node:child_process'
 import { promisify } from 'node:util'
-import { mkdirSync, mkdtempSync, writeFileSync, rmSync } from 'node:fs'
+import { mkdirSync, mkdtempSync, writeFileSync, readFileSync, rmSync } from 'node:fs'
 import { resolve } from 'node:path'
 import { evalLong, evalRaw } from './helpers/obsidianCli'
 import { targets } from './helpers/target'
 
 targets('desktop')
 const cli = process.env.ABELE_NODE_CLI
+const draftText = 'export const value = 5\n' + '// Sample context line\n'.repeat(100)
 const pause = (ms: number) => new Promise((resolve) => setTimeout(resolve, ms))
 const prelude = `const api=window.__abeleTest,nodes=api.NodeService.getInstance();const wait=ms=>new Promise(r=>setTimeout(r,ms));const until=async f=>{for(let i=0;i<200;i++){if(f())return;await wait(50)}throw Error('Repository UI did not settle: '+f.toString())};`
 it('opens the real node repository in the shared tab, follows history, compares, searches and refreshes external edits', async () => {
@@ -79,6 +80,7 @@ it('opens the real node repository in the shared tab, follows history, compares,
       const catalogue=await client.repository.worktrees({project_id:project.project_id});
       const workspace=catalogue.entries.find(w=>w.kind==='root');
       window.__sampleRepositoryProject=project.project_id;window.__sampleRepositoryWorkspace=workspace.worktree_id;
+      window.__sampleRepositoryExternal=catalogue.entries.find(w=>w.kind==='external').worktree_id;
       await api.openNodeRepository(node.id,project.project_id,workspace.worktree_id);
       await until(()=>document.querySelector('.abele-github-home')?.textContent.includes('external-worktree'));
       return node.id;
@@ -89,7 +91,8 @@ it('opens the real node repository in the shared tab, follows history, compares,
       if(!root.textContent.includes('Partly ready'))throw Error('Missing independent status columns');
       const view=app.workspace.getLeavesOfType('abele-github').find(l=>l.view.model?.sourceTarget?.provider==='node').view;
       const state=view.getState();if(JSON.stringify(state).includes('127.0.0.1')||JSON.stringify(state).includes(${JSON.stringify(enrolled.token)}))throw Error('Credentials leaked into state');
-      await api.openNodeRepository(window.__sampleRepositoryNode,window.__sampleRepositoryProject,window.__sampleRepositoryWorkspace,{path:'app.ts'});
+      const fileRow=[...root.querySelectorAll('.abele-github-folder__list .tree-item-self')].find(el=>el.textContent.includes('app.ts'));
+      if(!fileRow)throw Error('Ordinary repository file navigation is missing');fileRow.click();
       await until(()=>document.querySelector('.abele-github-blob')?.textContent.includes('value = 3'));
       document.querySelector('[aria-label="Toggle line blame"]').click();await until(()=>document.querySelector('.abele-github-blame-range')?.textContent.includes('Uncommitted'));
       document.querySelector('[aria-label="Repository actions"]').click();
@@ -107,8 +110,75 @@ it('opens the real node repository in the shared tab, follows history, compares,
       `(async()=>{${prelude}await until(()=>document.querySelector('.abele-github-blob')?.textContent.includes('value = 4'));return 'refreshed'})()`
     )
     await evalLong(`(async()=>{${prelude}
+      const code=document.querySelector('.abele-github-blob > .abele-github-code .cm-content');
+      if(code.contentEditable!=='true')throw Error('Current working file is not editable in the tab');
+      const editor=api.codeView(code);editor.dispatch({changes:{from:0,to:editor.state.doc.length,insert:${JSON.stringify(draftText)}},selection:{anchor:10}});
+      await until(()=>[...document.querySelectorAll('.abele-node-save button')].some(b=>b.textContent.trim()==='Save file'&&!b.disabled));
+      const scroller=code.closest('.abele-github-layout__main');scroller.scrollTop=400;await wait(100);
+      window.__sampleRepositoryScroll=scroller.scrollTop;if(scroller.scrollTop<100)throw Error('Scroll fixture was not tall enough');
+      window.__sampleRepositoryCursor=editor.state.selection.main.anchor;return 'draft retained';
+    })()`)
+    writeFileSync(resolve(projectPath, 'app.ts'), 'export const value = 6\n')
+    await evalLong(`(async()=>{${prelude}
+      await until(()=>document.querySelector('.abele-github-blob__changed')?.textContent.includes('Changed on disk'));
+      const code=document.querySelector('.abele-github-blob > .abele-github-code .cm-content'),editor=api.codeView(code);
+      if(!editor.state.doc.toString().includes('value = 5'))throw Error('Refresh lost the draft');
+      if(editor.state.selection.main.anchor!==window.__sampleRepositoryCursor)throw Error('Refresh lost the cursor');
+      if(Math.abs(code.closest('.abele-github-layout__main').scrollTop-window.__sampleRepositoryScroll)>1)throw Error('Refresh lost the scroll position');
+      [...document.querySelectorAll('.abele-github-blob__changed button')].find(b=>b.textContent.trim()==='Keep mine').click();
+      [...document.querySelectorAll('.abele-node-save button')].find(b=>b.textContent.trim()==='Save file').click();
+      await until(()=>document.querySelector('.abele-node-save')?.textContent.includes('Conflict ·'));
+      return 'conflict retained';
+    })()`)
+    expect(readFileSync(resolve(projectPath, 'app.ts'), 'utf8')).toBe('export const value = 6\n')
+    await evalLong(`(async()=>{${prelude}
+      document.querySelector('.abele-node-save [aria-label="Reload current version"]').click();
+      await wait(100);
+      [...document.querySelectorAll('.abele-node-save button')].find(b=>b.textContent.trim()==='Use loaded version as base for this draft').click();
+      await until(()=>[...document.querySelectorAll('.abele-node-save button')].some(b=>b.textContent.trim()==='Save file'&&!b.disabled));
+      [...document.querySelectorAll('.abele-node-save button')].find(b=>b.textContent.trim()==='Save file').click();
+      await until(()=>document.querySelector('.abele-node-save')?.textContent.includes('Saved ·'));
+      await api.openNodeRepository(window.__sampleRepositoryNode,window.__sampleRepositoryProject,window.__sampleRepositoryExternal,{path:'app.ts'});
+      const external=app.workspace.getLeavesOfType('abele-github').find(l=>l.view.model?.sourceTarget?.source.workspace===window.__sampleRepositoryExternal).view.contentEl;
+      await until(()=>external.querySelector('[aria-label="Allow external workspace editing"]'));
+      await until(()=>external.querySelector('.abele-github-blob > .abele-github-code .cm-content'));
+      if(external.querySelector('.abele-github-blob > .abele-github-code .cm-content').contentEditable!=='false')throw Error('External editing was enabled without approval');
+      external.querySelector('[aria-label="Allow external workspace editing"]').click();
+      await until(()=>[...document.querySelectorAll('.modal button')].some(b=>b.textContent.trim()==='Allow editing'));
+      [...document.querySelectorAll('.modal button')].find(b=>b.textContent.trim()==='Allow editing').click();
+      await until(()=>external.querySelector('.abele-github-blob > .abele-github-code .cm-content')?.contentEditable==='true');
+      const code=external.querySelector('.abele-github-blob > .abele-github-code .cm-content'),editor=api.codeView(code);
+      editor.dispatch({changes:{from:0,to:editor.state.doc.length,insert:'export const value = 7\\n'}});
+      await until(()=>[...external.querySelectorAll('.abele-node-save button')].some(b=>b.textContent.trim()==='Save file'&&!b.disabled));
+      [...external.querySelectorAll('.abele-node-save button')].find(b=>b.textContent.trim()==='Save file').click();
+      await until(()=>external.querySelector('.abele-node-save')?.textContent.includes('Saved ·'));
+      external.querySelector('[aria-label="Allow external workspace editing"]').click();
+      await until(()=>[...document.querySelectorAll('.modal button')].some(b=>b.textContent.trim()==='Turn off editing'));
+      [...document.querySelectorAll('.modal button')].find(b=>b.textContent.trim()==='Turn off editing').click();
+      await until(()=>external.querySelector('.abele-github-blob > .abele-github-code .cm-content')?.contentEditable==='false');
+      return 'external approval and revocation verified';
+    })()`)
+    expect(readFileSync(resolve(projectPath, 'app.ts'), 'utf8')).toBe(draftText)
+    expect(readFileSync(resolve(dir, 'external-worktree/app.ts'), 'utf8')).toBe(
+      'export const value = 7\n'
+    )
+    await evalLong(`(async()=>{${prelude}
+      const session={conversationVersion:{value:0},branchSelectionVersion:0},context={session,interactive:true};
+      const tools=api.createAgentTools({everything:true,nodeRepositoryApproval:async()=>true});
+      const ids={node:window.__sampleRepositoryNode,project:window.__sampleRepositoryProject,workspace:window.__sampleRepositoryWorkspace,path:'app.ts'};
+      const read=await tools.find(t=>t.name==='node_file').execute('read',ids,undefined,context);
+      const contentId=read.content[0].text.match(/Exact file content identity: ([a-f0-9]{64})/)[1];
+      const proposal=tools.find(t=>t.name==='node_propose_edit'),params={...ids,expected_content_id:contentId,text:'export const value = 8\\n'};
+      let refused=false;try{await proposal.execute('unapproved',params,undefined,context)}catch(e){refused=e.message.includes('per-edit')}
+      if(!refused)throw Error('Proposal accepted without per-edit approval');
+      await proposal.execute('approved',params,undefined,{...context,approved:true});
+      await until(()=>[...document.querySelectorAll('.abele-github-blob > .abele-github-code .cm-content')].some(el=>el.getBoundingClientRect().width&&el.textContent.includes('value = 8')));
+      return 'proposal retained without a node save';
+    })()`)
+    expect(readFileSync(resolve(projectPath, 'app.ts'), 'utf8')).toBe(draftText)
+    await evalLong(`(async()=>{${prelude}
       await api.openNodeRepository(window.__sampleRepositoryNode,window.__sampleRepositoryProject,window.__sampleRepositoryWorkspace,{location:{kind:'comparison',base:${JSON.stringify(head)},head:'Working tree',direct:true}});
-      await until(()=>document.querySelector('.abele-github-compare')?.textContent.includes('value = 4'));
+      await until(()=>document.querySelector('.abele-github-compare')?.textContent.includes('value = 5'));
       document.querySelector('[aria-label="Choose changes to review"]').click();
       await until(()=>[...document.querySelectorAll('.menu-item')].some(el=>el.textContent.trim()==='Ready for commit'));
       [...document.querySelectorAll('.menu-item')].find(el=>el.textContent.trim()==='Ready for commit').click();
@@ -118,7 +188,7 @@ it('opens the real node repository in the shared tab, follows history, compares,
   } finally {
     try {
       await evalLong(
-        `(async()=>{const id=${JSON.stringify(registration)}||window.__sampleRepositoryNode;for(const leaf of app.workspace.getLeavesOfType('abele-github'))if(leaf.view.model?.sourceTarget?.source?.node===id)leaf.detach();if(id)window.__abeleTest.NodeService.getInstance().remove(id);delete window.__sampleRepositoryNode;delete window.__sampleRepositoryProject;delete window.__sampleRepositoryWorkspace;return 'restored'})()`
+        `(async()=>{const id=${JSON.stringify(registration)}||window.__sampleRepositoryNode;for(const leaf of app.workspace.getLeavesOfType('abele-github'))if(leaf.view.model?.sourceTarget?.source?.node===id)leaf.detach();if(id)window.__abeleTest.NodeService.getInstance().remove(id);delete window.__sampleRepositoryNode;delete window.__sampleRepositoryProject;delete window.__sampleRepositoryWorkspace;delete window.__sampleRepositoryExternal;delete window.__sampleRepositoryCursor;delete window.__sampleRepositoryScroll;document.querySelector('.modal-close-button')?.click();return 'restored'})()`
       )
     } finally {
       if (child?.exitCode === null) {

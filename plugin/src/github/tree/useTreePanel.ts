@@ -9,7 +9,7 @@ import type { GithubViewModel } from '../model'
 import type { GithubClient } from '../client'
 import { targetKey, type GithubTarget } from '../urls'
 import { type BlobData } from '../api'
-import { sourceKey, type RepositorySource } from '@/repository/source'
+import { sourceKey, type RepositorySource, type RepositoryLocation } from '@/repository/source'
 import { githubRepositorySource } from '@/repository/github'
 import { GlobalStore } from '@/stores/GlobalStore'
 import { crumbs as crumbsOf, type Crumb } from './fileTree'
@@ -25,6 +25,7 @@ export interface TreePanelOptions {
   data: () => unknown
   client: () => GithubClient
   source?: () => RepositorySource
+  location?: () => RepositoryLocation | undefined
   pinned?: () => boolean
   open: (url: string, pane: PaneType | false) => void
   /** The tab's state changed in a way worth saving. */
@@ -34,6 +35,17 @@ export interface TreePanelOptions {
 export function useTreePanel(o: TreePanelOptions) {
   const app = () => GlobalStore.getInstance().app
   const source = () => o.source?.() ?? githubRepositorySource(o.client(), repoRef.value)
+
+  const browseRef = (ref: string) => {
+    const location = o.location?.()
+    return source().identity.provider === 'node' &&
+      !o.pinned?.() &&
+      location &&
+      'ref' in location &&
+      location.ref === 'Working tree'
+      ? 'Working tree'
+      : ref
+  }
 
   /** Open or closed as the tab keeps it; a tab that never said opens as the last one was left. */
   const panelOpen = computed(
@@ -89,7 +101,7 @@ export function useTreePanel(o: TreePanelOptions) {
         o.model.sourceRevision = client.revision?.(sha) ?? { kind: 'commit', commit: sha }
         o.saved()
       }
-      return { ref: pinned ? sha : at, sha }
+      return { ref: pinned ? sha : browseRef(at), sha }
     })()
     if (pinned) {
       frozenVersion = { key, promise: read }
@@ -120,7 +132,7 @@ export function useTreePanel(o: TreePanelOptions) {
         ? {
             ...crumb,
             url: source().navigation.folder(
-              d.ref,
+              browseRef(d.ref),
               d.path
                 .split('/')
                 .filter(Boolean)

@@ -9,6 +9,9 @@
     :enabled="true"
     :source="source"
     :source-location="location"
+    :document-model="documents"
+    :editing-allowed="editingEnabled && !offline"
+    :node-offline="offline"
     :keys="keys"
     :on-open="open"
     :on-title="updateTitle"
@@ -41,8 +44,25 @@
     </template>
     <template #repository-details>
       <span v-if="offline" role="status">Node offline · reconnect to refresh.</span>
+      <Setting
+        v-if="external && live"
+        name="External workspace editing"
+        :desc="
+          editingEnabled
+            ? 'Editing allowed for this worktree. Git actions are not enabled.'
+            : 'Read only until you allow editing for this worktree.'
+        "
+      >
+        <Checkbox
+          class="abele-node-repository__editing"
+          :is-enabled="editingEnabled"
+          aria-label="Allow external workspace editing"
+          :aria-disabled="offline || settingsBusy"
+          @toggle="toggleEditing"
+        />
+      </Setting>
       <span v-else-if="external" class="abele-node-repository__meta"
-        >External workspace · read only</span
+        >External workspace · historical version · read only</span
       >
       <template v-if="historyOpen">
         <div class="abele-node-repository__actions">
@@ -69,6 +89,8 @@ import GithubCommits from './github/GithubCommits.vue'
 import EmptyState from './obsidian/EmptyState.vue'
 import Button from './obsidian/Button.vue'
 import Icon from './obsidian/Icon.vue'
+import Setting from './obsidian/Setting.vue'
+import Checkbox from './obsidian/Checkbox.vue'
 import { RepositoryPicker } from '@/node/RepositoryPicker'
 import { BasePicker } from '@/github/comparison/BasePicker'
 import { basePins } from '@/github/comparison/pins'
@@ -81,8 +103,7 @@ import type { GithubViewModel } from '@/github/model'
 import type { GithubTarget } from '@/github/urls'
 import type { RepositoryLocation, RepositoryWorkspace } from '@/repository/source'
 import type { CommitSummary } from '@/repository/model'
-import { NodeFilesModel } from '@/node/NodeFilesModel'
-import { openNodeFiles } from '@/node/openFiles'
+import { NodeFilesModel, NodeDocumentSource } from '@/node/NodeFilesModel'
 import { attachNodeRepositoryToolsTab } from '@/node/repositoryToolsTab'
 const props = defineProps<{
   model: GithubViewModel
@@ -91,6 +112,56 @@ const props = defineProps<{
   onState?: () => void
 }>()
 const source = shallowRef<NodeRepositorySource>()
+const documents = shallowRef<NodeFilesModel>()
+const editingEnabled = ref(false)
+let stopMutable = () => {}
+let mutableGeneration = 0
+const refreshMutable = async () => {
+  const current = source.value,
+    transport = connection.value
+  if (!current || !transport || !live.value) return
+  const mine = ++mutableGeneration
+  try {
+    const [catalog, permission] = await Promise.all([
+      current.workspaces(),
+      transport.client.repository.editingStatus({ worktree_id: current.identity.workspace }),
+    ])
+    if (!alive || mine !== mutableGeneration || current !== source.value) return
+    current.assertCurrent()
+    workspaces.value = catalog
+    editingEnabled.value = permission.enabled
+    updateTitle()
+  } catch {
+    if (mine === mutableGeneration) editingEnabled.value = false
+  }
+}
+const toggleEditing = async () => {
+  const current = source.value,
+    transport = connection.value
+  if (!current || !transport || offline.value || settingsBusy.value || !external.value) return
+  const enabled = !editingEnabled.value
+  settingsBusy.value = true
+  try {
+    if (
+      !(await confirmAction(GlobalStore.getInstance().app, {
+        title: enabled ? 'Allow editing in this worktree?' : 'Turn off worktree editing?',
+        message: enabled
+          ? `Allow current files in ${selected.value?.label || 'this external worktree'} to be saved by confirmed node owners? This applies only to this worktree identity, not agent execution or Git actions. Chat edits still require per-edit approval.`
+          : 'Stop new saves in this external worktree? Local drafts and unresolved save evidence are kept.',
+        confirmText: enabled ? 'Allow editing' : 'Turn off editing',
+        confirmTooltip: enabled ? 'Allow saves for this worktree identity' : 'Stop new saves',
+      }))
+    )
+      return
+    current.assertCurrent()
+    await transport.client.repository.editing({ worktree_id: current.identity.workspace, enabled })
+    if (alive && current === source.value) await refreshMutable()
+  } catch (e) {
+    new Notice(e instanceof Error ? e.message : String(e))
+  } finally {
+    settingsBusy.value = false
+  }
+}
 const connection = shallowRef<NodeConnection>()
 const workspaces = shallowRef<RepositoryWorkspace[]>([])
 const error = ref('')
@@ -110,7 +181,6 @@ const selected = computed(() =>
   workspaces.value.find((w) => w.id === target.value?.source.workspace)
 )
 const external = computed(() => selected.value?.kind === 'external')
-const managedWorkspace = computed(() => selected.value?.workspaceId)
 const live = computed(() => 'ref' in location.value && location.value.ref === WORKING_TREE)
 const projectName = ref('Project')
 const updateTitle = () =>
@@ -164,11 +234,13 @@ const load = async () => {
       )
     const project = await transport.client.getProject(current.source.project)
     if (!project) throw new Error('This project is no longer registered on the node.')
+    const authority = transport.authorizationGeneration
     const labels = {
       node: registered.label,
       project: project.root_path.split(/[\\/]/).pop() || 'Project',
       isCurrent: () =>
         alive &&
+        transport.authorizationGeneration === authority &&
         service.nodes.value.some(
           (node) => node.id === registered.id && node.expectedNodeId === registered.expectedNodeId
         ),
@@ -186,7 +258,23 @@ const load = async () => {
     }
     detachTools()
     source.value?.dispose()
+    stopMutable()
     source.value = next
+    editingEnabled.value = false
+    documents.value = new NodeFilesModel(
+      transport.client,
+      principal.node || '',
+      current.source.workspace,
+      undefined,
+      new NodeDocumentSource(transport.client, current.source.workspace, true)
+    )
+    stopMutable = next.subscribe((change) => {
+      if (change.kind === 'authority') {
+        editingEnabled.value = false
+        return
+      }
+      void refreshMutable()
+    })
     detachTools = attachNodeRepositoryToolsTab(next, transport, {
       target: () => ({
         source: next.identity,
@@ -194,12 +282,44 @@ const load = async () => {
         ...(presentation.sourceRevision ? { revision: presentation.sourceRevision } : {}),
       }),
       selection: () => props.model.screen.selection,
+      proposeEdit: async (proposal, guard) => {
+        const editor = documents.value
+        if (!editor) throw new Error('Repository editor unavailable')
+        guard()
+        if (
+          editor.draftError.value ||
+          (editor.draftDirty.value && editor.filePath.value === proposal.path)
+        )
+          throw new Error('Keep or discard the visible local draft before proposing another edit')
+        const permission = await transport.client.repository.editingStatus({
+          worktree_id: next.identity.workspace,
+        })
+        guard()
+        if (!permission.enabled)
+          throw new Error('Editing is off for this worktree; the owner must enable it first')
+        const document = await editor.documents.read(proposal.path)
+        guard()
+        if (document.contentId !== proposal.expected_content_id)
+          throw new Error('The proposed base changed; read the file and ask for new approval')
+        const existing = await editor.documents.draft(proposal.path)
+        guard()
+        if (existing && existing.status !== 'saved')
+          throw new Error('A local draft already exists. Review it before proposing another edit')
+        if (existing) await editor.documents.discard(proposal.path, existing.revision)
+        await editor.documents.edit(proposal.path, document, proposal.text, null, guard)
+        guard()
+        await editor.openFile(proposal.path, undefined, undefined, document)
+        editor.editing.value = true
+        open(next.navigation.file(WORKING_TREE, proposal.path))
+        return 'Approved proposal retained as a local draft in the repository tab. The owner must explicitly Save; no node file was written.'
+      },
     })
     workspaces.value = catalog
     projectName.value = labels.project
     updateTitle()
     setPresentation(labels.node, labels.project)
-    void next.startWatching()
+    if (live.value) await refreshMutable()
+    void next.startWatching(live.value)
   } catch (reason) {
     if (alive && mine === generation) {
       error.value = `Node unavailable · ${reason instanceof Error ? reason.message : String(reason)}`
@@ -284,13 +404,6 @@ const externalMenu = (event?: MouseEvent | KeyboardEvent) => {
             void showHistory(at.ref, at.path)
           })
       )
-      if (live.value && managedWorkspace.value)
-        menu.addItem((item) =>
-          item
-            .setTitle('Edit file')
-            .setIcon('pencil')
-            .onClick(() => edit(at.path))
-        )
     }
   }
   menu.addItem((item) =>
@@ -383,25 +496,14 @@ const showHistory = async (ref: string, path: string) => {
     historyError.value = error instanceof Error ? error.message : String(error)
   }
 }
-const edit = (path: string) => {
-  if (external.value || !managedWorkspace.value || !connection.value) return
-  const shownSource = source.value
-  openNodeFiles(
-    new NodeFilesModel(
-      connection.value.client,
-      connection.value.client.target.expected_node_id || '',
-      managedWorkspace.value
-    ),
-    connection.value,
-    path,
-    undefined,
-    (listener) => shownSource?.subscribe(() => listener()) ?? (() => {})
-  )
-}
 watch(
   () => target.value && JSON.stringify(target.value.source),
   () => {
     detachTools()
+    stopMutable()
+    ++mutableGeneration
+    editingEnabled.value = false
+    documents.value = undefined
     source.value?.dispose()
     source.value = undefined
     void load()
@@ -421,6 +523,14 @@ watch(
       )
   }
 )
+watch(live, (isLive) => {
+  if (!source.value) return
+  if (isLive) {
+    source.value.reconnect()
+    void refreshMutable()
+    void source.value.startWatching()
+  } else source.value.stopWatching()
+})
 watch(
   () => NodeService.getInstance().nodes.value,
   (nodes) => {
@@ -442,7 +552,10 @@ let wasOffline = true
 watch(offline, (isOffline) => {
   if (!isOffline && wasOffline && source.value) {
     source.value.reconnect()
-    void source.value.startWatching()
+    if (live.value) {
+      void refreshMutable()
+      void source.value.startWatching()
+    }
   }
   wasOffline = isOffline
 })
@@ -450,6 +563,8 @@ onBeforeUnmount(() => {
   alive = false
   ++generation
   detachTools()
+  stopMutable()
+  ++mutableGeneration
   source.value?.dispose()
 })
 </script>
@@ -482,6 +597,9 @@ onBeforeUnmount(() => {
   flex-wrap: wrap;
   gap: var(--size-4-2);
   min-width: 0;
+}
+body.is-phone .abele-node-repository__editing {
+  min-width: calc(var(--size-4-10) + var(--size-4-1));
 }
 body.is-phone .abele-node-repository__actions .clickable-icon {
   min-width: calc(var(--size-4-10) + var(--size-4-1));

@@ -1257,7 +1257,12 @@ export class ChatSession implements SummarizerHost, InterceptorHost, AnchorStora
         callerCtx?: ToolContext
       ): Promise<AgentToolResult> => {
         // ZIP's selected array and invocation owner must not change during approval/tracker awaits.
-        const invocationParams = tool.name === 'zip' ? { ...snapshotZipRequest(params) } : params
+        const invocationParams =
+          tool.name === 'zip'
+            ? { ...snapshotZipRequest(params) }
+            : tool.name === 'node_propose_edit'
+              ? { ...params }
+              : params
         const ownerAgent = this.agent.value
         const version = this.conversationVersion.value
         const invocationApp = GlobalStore.getInstance().app
@@ -1282,7 +1287,8 @@ export class ChatSession implements SummarizerHost, InterceptorHost, AnchorStora
           interactive: this.kind !== 'run',
           approved:
             callerCtx?.approved === true ||
-            (await this.turnPolicy.isApproved(id, tool.permissionKey, tool.destinationKey)),
+            (tool.name !== 'node_propose_edit' &&
+              (await this.turnPolicy.isApproved(id, tool.permissionKey, tool.destinationKey))),
         }
         // Everything the call changes in the vault is remembered, so the turn can be taken back.
         // A delegated run records nothing of its own: the chat's `delegate` call is open for as
@@ -1352,7 +1358,7 @@ export class ChatSession implements SummarizerHost, InterceptorHost, AnchorStora
   }
 
   needsApproval(toolName: string, args?: Record<string, unknown>, permissionKey?: string): boolean {
-    if (needsSecretApproval(toolName, args)) return true
+    if (toolName === 'node_propose_edit' || needsSecretApproval(toolName, args)) return true
     const mode = this.permissionMode.value
 
     // This tool only records a proposal. Accepting it is a separate owner action, never a
@@ -2591,7 +2597,8 @@ export class ChatSession implements SummarizerHost, InterceptorHost, AnchorStora
     permissionKey?: string,
     destinationKey?: string
   ) {
-    if (needsSecretApproval(name, args)) return Promise.resolve({ kind: 'ask' as const })
+    if (name === 'node_propose_edit' || needsSecretApproval(name, args))
+      return Promise.resolve({ kind: 'ask' as const })
     return this.turnPolicy.decide(
       id,
       name,

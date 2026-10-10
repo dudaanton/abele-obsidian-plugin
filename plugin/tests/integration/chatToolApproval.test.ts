@@ -106,6 +106,18 @@ beforeEach(() => {
   whileRunning = []
 })
 
+it('always asks the owner separately for a node edit proposal, including under automatic tool policy', async () => {
+  session.permissionMode.value = 'allow-all'
+  session.toolModes.value.node_propose_edit = 'auto'
+  expect(session.needsApproval('node_propose_edit', { path: 'sample.ts' })).toBe(true)
+  const internal = session as unknown as {
+    policyFor(id: string, name: string, args: Record<string, unknown>): Promise<{ kind: string }>
+  }
+  expect(
+    (await internal.policyFor('sample', 'node_propose_edit', { path: 'sample.ts' })).kind
+  ).toBe('ask')
+})
+
 it('keeps Word write approval independent of general file write permissions', () => {
   session.permissionMode.value = 'allow-all'
   session.toolModes.value.docx_edit = 'ask'

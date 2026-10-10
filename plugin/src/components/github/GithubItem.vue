@@ -123,7 +123,15 @@
           @close="tabSearch.searchOpen.value = false"
         />
 
-        <div v-if="main.error.value" class="abele-github__error">
+        <span
+          v-if="main.error.value && liveEditableFile && documentModel?.draft.value"
+          role="status"
+          >Current disk version unavailable · your local draft is kept. {{ main.error.value }}</span
+        >
+        <div
+          v-if="main.error.value && !(liveEditableFile && documentModel?.draft.value)"
+          class="abele-github__error"
+        >
           <EmptyState :text="main.error.value" />
           <Button
             text="Try again"
@@ -276,9 +284,14 @@
             @open="(url: string) => onOpen?.(url, false)"
           />
           <GithubBlob
-            v-else-if="!blob.note"
+            v-else-if="!blob.note || (liveEditableFile && documentModel?.draft.value)"
             :text="blob.text"
             :file="blobFile!"
+            :editor="liveEditableFile ? documentModel : undefined"
+            :writable="editingAllowed"
+            :offline="nodeOffline"
+            :content-id="blob.contentId"
+            :document-note="blob.note"
             :range="blobRange"
             :plain="blobPlain"
             :mode="model.mode"
@@ -292,6 +305,7 @@
         <GithubRepoHome
           v-else-if="shown.kind === 'repo' && home"
           :home="home"
+          :browse-ref="browseRef"
           :repo="repoRef!"
           :client="client()"
           @open="(url: string, pane: PaneType | false) => onOpen?.(url, pane)"
@@ -309,6 +323,7 @@
         <template v-else-if="shown.kind === 'tree' && folder">
           <GithubFolder
             :folder="folder"
+            :browse-ref="browseRef"
             :repo="repoRef!"
             :client="client()"
             @open="(url: string, pane: PaneType | false) => onOpen?.(url, pane)"
@@ -323,6 +338,7 @@
 
 <script setup lang="ts">
 import { openExternal } from '@/helpers/openExternal'
+import type { NodeFilesModel } from '@/node/NodeFilesModel'
 import { computed, nextTick, onBeforeUnmount, provide, ref, watch } from 'vue'
 import EmptyState from '../obsidian/EmptyState.vue'
 import Button from '../obsidian/Button.vue'
@@ -395,6 +411,9 @@ const props = defineProps<{
   model: GithubViewModel
   source?: RepositorySource
   sourceLocation?: RepositoryLocation
+  documentModel?: NodeFilesModel
+  editingAllowed?: boolean
+  nodeOffline?: boolean
   enabled: boolean
   clientFor?: (host: string) => GithubClient
   /** Connection-aware primary loading; secondary loads stay on clientFor. */
@@ -419,6 +438,17 @@ const props = defineProps<{
 
 const root = ref<HTMLElement>()
 const blobToolbar = ref<HTMLElement | null>(null)
+const liveWorkingView = computed(
+  () =>
+    props.source?.identity.provider === 'node' &&
+    props.sourceLocation &&
+    'ref' in props.sourceLocation &&
+    props.sourceLocation.ref === 'Working tree'
+)
+const browseRef = computed(() =>
+  liveWorkingView.value && !projectPin.value ? 'Working tree' : undefined
+)
+const liveEditableFile = computed(() => !!browseRef.value && props.sourceLocation?.kind === 'file')
 
 // How wide the text runs, from the settings, followed at once when they change.
 const config = AbeleConfig.getInstance()
@@ -596,6 +626,7 @@ const {
   data: () => main.data.value,
   client,
   source: () => source.value,
+  location: () => props.sourceLocation,
   pinned: () => !!projectPin.value,
   open: (url, pane) => props.onOpen?.(url, pane),
   saved: () => props.onState?.(),
@@ -996,13 +1027,35 @@ watch(
           refreshRunning = true
           const scroller = root.value?.closest('.abele-github-layout__main')
           const scroll = scroller?.scrollTop
+          const refreshKey = loadKey.value
           try {
             do {
               refreshAgain = false
               await reload()
-            } while (refreshAgain && active)
+            } while (
+              refreshAgain &&
+              active &&
+              loadKey.value === refreshKey &&
+              current === source.value
+            )
             await nextTick()
-            if (scroller && scroll !== undefined) scroller.scrollTop = scroll
+            if (
+              scroller &&
+              scroll !== undefined &&
+              root.value &&
+              active &&
+              loadKey.value === refreshKey &&
+              current === source.value
+            ) {
+              // CodeMirror and native scroll anchoring settle after Vue's tick. Keep the
+              // original position through those layouts, but stop as soon as the owner acts.
+              unpin()
+              unpin = pinIntoView(
+                root.value,
+                () => scroller.getBoundingClientRect().top + scroll - scroller.scrollTop,
+                { context: 0 }
+              )
+            }
           } finally {
             refreshRunning = false
           }
@@ -1039,6 +1092,10 @@ watch(
 </script>
 
 <style lang="scss">
+// Live node refresh owns scroll restoration; native anchoring must not move it afterwards.
+.abele-github-layout__main:has(> .abele-github_node) {
+  overflow-anchor: none;
+}
 .abele-github {
   // The bar over selected words is placed inside it, and scrolls with the text it is over.
   position: relative;

@@ -6,6 +6,11 @@ import GithubCode from '@/components/github/GithubCode.vue'
 import GithubBlameRange from '@/components/github/GithubBlameRange.vue'
 import GithubText from '@/components/github/GithubText.vue'
 import GithubCodeSearch from '@/components/github/GithubCodeSearch.vue'
+import { NodeClient, MemoryClientStore } from '@abele/node-client'
+import { NodeDocumentSource, NodeFilesModel } from '@/node/NodeFilesModel'
+import GithubBlob from '@/components/github/GithubBlob.vue'
+import { REPOSITORY_SOURCE } from '@/repository/context'
+import { parseNodeRepositoryLink } from '@/repository/nodeLinks'
 import { NodeRepositorySource, WORKING_TREE } from '@/repository/node'
 import { nodeRepositoryFixture, identity, HEAD, BASE } from '../helpers/nodeRepositoryFixture'
 import { useVault } from '../helpers/testEnv'
@@ -46,6 +51,173 @@ function fixture(location: RepositoryLocation = { kind: 'home', ref: WORKING_TRE
   return { ...f, source, wrapper, model, onOpen }
 }
 describe('node-backed shared repository tab', () => {
+  it('keeps ordinary live folder navigation editable, without retargeting retained citations or frozen navigation', async () => {
+    const live = fixture()
+    await flushPromises()
+    const entry = live.wrapper
+      .findAll('.abele-github-folder__list .tree-item-self')
+      .find((row) => row.text().includes('app.ts'))!
+    await entry.trigger('click')
+    const opened = parseNodeRepositoryLink(live.onOpen.mock.calls[0][0])!
+    expect(opened.location).toMatchObject({ kind: 'file', path: 'app.ts', ref: WORKING_TREE })
+    expect(parseNodeRepositoryLink(live.model.screen.link!.url)?.revision?.kind).toBe(
+      'working-tree'
+    )
+    live.wrapper.unmount()
+    live.source.dispose()
+    const frozen = fixture({ kind: 'home', ref: HEAD })
+    await flushPromises()
+    await frozen.wrapper
+      .findAll('.abele-github-folder__list .tree-item-self')
+      .find((row) => row.text().includes('app.ts'))!
+      .trigger('click')
+    expect(parseNodeRepositoryLink(frozen.onOpen.mock.calls[0][0])?.location).toMatchObject({
+      ref: HEAD,
+    })
+    frozen.wrapper.unmount()
+    frozen.source.dispose()
+  })
+  it('keeps editable drafts and selections across disk refresh, with explicit Reload and Keep mine', async () => {
+    const client = new NodeClient(
+      { url: 'ws://127.0.0.1:7777/channel', profile: 'local-token-v1', token: 'a'.repeat(64) },
+      new MemoryClientStore()
+    )
+    const editor = new NodeFilesModel(
+      client,
+      identity.node,
+      identity.workspace,
+      undefined,
+      new NodeDocumentSource(client, identity.workspace, true)
+    )
+    const f = nodeRepositoryFixture(),
+      source = new NodeRepositorySource(f.client, identity, {
+        node: repo.owner,
+        project: repo.repo,
+      })
+    const wrapper = mount(GithubBlob, {
+      props: {
+        text: 'before',
+        file: { ...repo, ref: WORKING_TREE, path: 'sample.ts' },
+        editor,
+        writable: true,
+        contentId: 'a'.repeat(64),
+      },
+      global: { provide: { [REPOSITORY_SOURCE as symbol]: { value: source } } },
+    })
+    await flushPromises()
+    const code = wrapper.findComponent(GithubCode)
+    expect(code.props('editable')).toBe(true)
+    code.vm.$emit('select', { from: 1, to: 1 })
+    code.vm.$emit('change', 'my unsent draft')
+    await flushPromises()
+    await wrapper.setProps({ text: 'external', contentId: 'b'.repeat(64) })
+    await flushPromises()
+    expect(code.props('text')).toBe('my unsent draft')
+    expect(code.props('selected')).toEqual({ from: 1, to: 1 })
+    expect(wrapper.text()).toContain('Changed on disk')
+    await wrapper
+      .findAll('button')
+      .find((b) => b.text() === 'Keep mine')!
+      .trigger('click')
+    expect(wrapper.text()).not.toContain('Changed on disk')
+    expect(editor.draft.value?.baseContentId).toBe('a'.repeat(64))
+    await wrapper.setProps({ text: 'another external edit', contentId: 'c'.repeat(64) })
+    await flushPromises()
+    await wrapper
+      .findAll('button')
+      .find((b) => b.text() === 'Reload')!
+      .trigger('click')
+    await flushPromises()
+    expect(code.props('text')).toBe('another external edit')
+    expect(editor.draft.value).toBeUndefined()
+    wrapper.unmount()
+    source.dispose()
+  })
+  it('turns external editing off without dropping local text and never enables historical files', async () => {
+    const client = new NodeClient(
+      { url: 'ws://127.0.0.1:7777/channel', profile: 'local-token-v1', token: 'a'.repeat(64) },
+      new MemoryClientStore()
+    )
+    const editor = new NodeFilesModel(
+      client,
+      identity.node,
+      identity.workspace,
+      undefined,
+      new NodeDocumentSource(client, identity.workspace, true)
+    )
+    const live = fixture({ kind: 'file', ref: WORKING_TREE, path: 'app.ts' })
+    await live.wrapper.setProps({ documentModel: editor, editingAllowed: true })
+    await flushPromises()
+    expect(live.wrapper.findComponent(GithubCode).props('editable'), live.wrapper.html()).toBe(true)
+    live.wrapper.findComponent(GithubCode).vm.$emit('change', 'unsent')
+    await flushPromises()
+    await live.wrapper.setProps({ editingAllowed: false })
+    await flushPromises()
+    expect(live.wrapper.findAllComponents(GithubCode).at(-1)!.props('editable')).toBe(false)
+    expect(editor.draftText.value).toBe('unsent')
+    const frozen = fixture({ kind: 'file', ref: HEAD, path: 'app.ts' })
+    await frozen.wrapper.setProps({ documentModel: editor, editingAllowed: true })
+    await flushPromises()
+    expect(frozen.wrapper.findComponent(GithubCode).props('editable')).toBe(false)
+    live.wrapper.unmount()
+    live.source.dispose()
+    frozen.wrapper.unmount()
+    frozen.source.dispose()
+  })
+  it('does not treat a confirmed save as an editable unsent draft when the current file becomes binary', async () => {
+    const client = new NodeClient(
+      { url: 'ws://127.0.0.1:7777/channel', profile: 'local-token-v1', token: 'a'.repeat(64) },
+      new MemoryClientStore()
+    )
+    const documents = new NodeDocumentSource(client, identity.workspace, true)
+    const doc = {
+      text: 'before',
+      contentId: 'a'.repeat(64),
+      size: 6,
+      binary: false,
+      large: false,
+      tooLarge: false,
+    }
+    await documents.edit('sample.ts', doc, 'saved')
+    client.repository.write = vi.fn(async (_, operation_id) => ({ operation_id: operation_id! }))
+    client.repository.mutationResult = vi.fn(async (operation_id) => ({
+      operation_id,
+      worktree_id: identity.workspace,
+      path: 'sample.ts',
+      state: 'saved',
+      expected_content_id: doc.contentId,
+      content_id: 'b'.repeat(64),
+      predecessor_content_id: doc.contentId,
+      recovery_path: null,
+    }))
+    await documents.save('sample.ts')
+    const editor = new NodeFilesModel(
+      client,
+      identity.node,
+      identity.workspace,
+      undefined,
+      documents
+    )
+    const wrapper = mount(GithubBlob, {
+      props: {
+        text: 'saved',
+        file: { ...repo, ref: WORKING_TREE, path: 'sample.ts' },
+        contentId: 'b'.repeat(64),
+        editor,
+        writable: true,
+      },
+    })
+    await flushPromises()
+    await wrapper.setProps({
+      text: '',
+      contentId: 'c'.repeat(64),
+      documentNote: 'Binary file · no text preview.',
+    })
+    await flushPromises()
+    expect(wrapper.findAllComponents(GithubCode).at(-1)!.props('editable')).toBe(false)
+    expect(editor.draft.value?.status).toBe('saved')
+    wrapper.unmount()
+  })
   it('shows workspace identities, dirty state, recent commits, changes and a safe README', async () => {
     const { wrapper, source } = fixture()
     await flushPromises()

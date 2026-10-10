@@ -1,4 +1,5 @@
 import { RepositoryClient } from '@abele/node-client'
+import { sha256 } from '@noble/hashes/sha2'
 import type { RepositoryRevision } from '@abele/node-protocol'
 import type { JournalEvent } from '@abele/channel-protocol'
 
@@ -28,7 +29,9 @@ export function nodeRepositoryFixture() {
   let observation = 0
   const contents = new Map<string, string>()
   const content = (value: string) => {
-    const id = `content-${contents.size}`
+    const id = Array.from(sha256(new TextEncoder().encode(value)), (b) =>
+      b.toString(16).padStart(2, '0')
+    ).join('')
     contents.set(id, value)
     return {
       content_id: id,

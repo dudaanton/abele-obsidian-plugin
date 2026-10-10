@@ -28,6 +28,24 @@
       </div>
     </Teleport>
 
+    <template v-if="editor && editor.filePath.value === file.path">
+      <div v-if="changedOnDisk" class="abele-github-blob__changed" role="status">
+        <span>Changed on disk · your local draft is kept.</span>
+        <Button text="Reload" :disabled="!!editor.draft.value?.pending" @click="reloadDraft" />
+        <Button text="Keep mine" @click="keptContent = contentId" />
+      </div>
+      <NodeFileSaveState
+        :model="editor"
+        :offline="offline"
+        :locked="!writable"
+        :reload="reloadEditor"
+      />
+      <details v-if="editor.draft.value && editor.draftText.value !== text">
+        <summary>Last loaded version</summary>
+        <GithubCode :text="text" :path="file.path" />
+      </details>
+    </template>
+    <div v-if="editorError" role="alert">{{ editorError }}</div>
     <div v-if="blaming && blameBusy" role="status">Loading line blame…</div>
     <GithubNotice
       v-if="blaming && blameError"
@@ -63,18 +81,29 @@
     <GithubCode
       v-else
       ref="code"
-      :text="text"
+      :text="visibleText"
       :path="file.path"
-      :blame="blaming ? blameRanges : null"
+      :editable="
+        !!editor &&
+        editor.filePath.value === file.path &&
+        writable &&
+        (editor.fileEditable.value ||
+          (!!editor.draft.value && editor.draft.value.status !== 'saved')) &&
+        !offline &&
+        !editor.saving.value &&
+        !editor.draft.value?.pending
+      "
+      :blame="blaming && !unsaved ? blameRanges : null"
       :range="range"
       :selected="selected"
       :focus="focus"
       @select="onSelect"
+      @change="editText"
       @commit="(sha) => emit('open', source!.navigation.commit(sha))"
     >
       <template #bar>
         <GithubSelectionBar
-          v-if="linker && selected"
+          v-if="linker && selected && !unsaved"
           :linker="linker"
           :label="linesLabel(selected)"
           :link="selectedLink"
@@ -90,6 +119,8 @@
 import { computed, inject, onBeforeUnmount, ref, shallowRef, watch } from 'vue'
 import Button from '../obsidian/Button.vue'
 import GithubNotice from './GithubNotice.vue'
+import NodeFileSaveState from '../NodeFileSaveState.vue'
+import type { NodeFilesModel } from '@/node/NodeFilesModel'
 import type { BlameRange } from '@/repository/model'
 import { useRepositorySource } from '@/repository/context'
 
@@ -129,8 +160,24 @@ const props = withDefaults(
     client?: GithubClient
     /** In a tab, file actions sit below the pinned path; standalone previews stay inline. */
     toolbarHost?: HTMLElement | null
+    editor?: NodeFilesModel
+    writable?: boolean
+    offline?: boolean
+    contentId?: string | null
+    documentNote?: string
   }>(),
-  { range: undefined, plain: false, mode: undefined, client: undefined, toolbarHost: null }
+  {
+    range: undefined,
+    plain: false,
+    mode: undefined,
+    client: undefined,
+    toolbarHost: null,
+    editor: undefined,
+    writable: false,
+    offline: false,
+    contentId: undefined,
+    documentNote: undefined,
+  }
 )
 
 const emit = defineEmits<{
@@ -138,6 +185,79 @@ const emit = defineEmits<{
   (e: 'open', url: string): void
 }>()
 
+const editorError = ref(''),
+  keptContent = ref<string | null>()
+const unsaved = computed(
+  () =>
+    !!props.editor &&
+    props.editor.filePath.value === props.file.path &&
+    (props.editor.draftDirty.value || !!props.editor.draft.value?.pending)
+)
+const visibleText = computed(() =>
+  props.editor?.filePath.value === props.file.path &&
+  (unsaved.value || props.editor.draft.value?.status !== 'saved')
+    ? props.editor.draftText.value
+    : props.text
+)
+const changedOnDisk = computed(
+  () =>
+    unsaved.value &&
+    props.contentId !== props.editor?.draft.value?.baseContentId &&
+    keptContent.value !== props.contentId
+)
+let editorGeneration = 0
+const reloadEditor = async () => {
+  const editor = props.editor
+  if (!editor) return
+  await editor.openFile(props.file.path, undefined, props.range, {
+    text: props.documentNote ? undefined : props.text,
+    contentId: props.contentId ?? null,
+    size: new TextEncoder().encode(props.text).length,
+    binary: !!props.documentNote,
+    large: false,
+    tooLarge: !!props.documentNote,
+  })
+  editor.editing.value = (!!props.writable && editor.fileEditable.value) || !!editor.draft.value
+}
+const reloadDraft = async () => {
+  try {
+    await props.editor?.discardDraft()
+    await reloadEditor()
+    keptContent.value = undefined
+  } catch (e) {
+    editorError.value =
+      e instanceof Error ? e.message : 'The local editor could not reload this draft'
+  }
+}
+const editText = (text: string) => {
+  if (!props.writable) return
+  void props.editor?.editText(text).catch((e: unknown) => {
+    editorError.value = e instanceof Error ? e.message : 'The local draft could not be stored'
+  })
+}
+watch(
+  () => [
+    props.editor,
+    props.file.path,
+    props.file.ref,
+    props.text,
+    props.contentId,
+    props.documentNote,
+  ],
+  async () => {
+    const mine = ++editorGeneration
+    if (props.editor?.draftError.value && props.editor.filePath.value === props.file.path) return
+    try {
+      await reloadEditor()
+      if (mine === editorGeneration) editorError.value = ''
+    } catch (e) {
+      if (mine === editorGeneration)
+        editorError.value =
+          e instanceof Error ? e.message : 'The local editor could not reload this draft'
+    }
+  },
+  { immediate: true }
+)
 const source = useRepositorySource(
   () => props.client,
   () => props.file
@@ -256,13 +376,15 @@ const selectedQuote = (): Quote => {
  */
 const screen = inject(SCREEN, null)
 watch(
-  [selected, () => props.text],
+  [selected, () => props.text, unsaved],
   ([s]) => {
     if (!screen) return
-    screen.selection = s
-      ? { path: props.file.path, label: linesLabel(s), code: selectedQuote().code }
-      : null
-    screen.selectionChat = s && linker ? { link: selectedLink, quote: selectedQuote } : null
+    screen.selection =
+      s && !unsaved.value
+        ? { path: props.file.path, label: linesLabel(s), code: selectedQuote().code }
+        : null
+    screen.selectionChat =
+      s && linker && !unsaved.value ? { link: selectedLink, quote: selectedQuote } : null
   },
   { immediate: true }
 )
@@ -297,6 +419,12 @@ const switchTo = (next: string) => {
 </script>
 
 <style lang="scss">
+body.is-phone .abele-github-blob > details > summary {
+  min-height: calc(var(--size-4-10) + var(--size-4-1));
+  padding-block: var(--size-4-2);
+  box-sizing: border-box;
+  align-content: center;
+}
 .abele-github-blob {
   min-width: 0;
   display: flex;
@@ -308,6 +436,15 @@ const switchTo = (next: string) => {
     flex-wrap: wrap;
     align-items: center;
     gap: var(--size-4-2);
+  }
+
+  &__changed {
+    display: flex;
+    align-items: center;
+    flex-wrap: wrap;
+    gap: var(--size-4-2);
+    color: var(--text-muted);
+    font-size: var(--font-ui-small);
   }
 
   &__range {

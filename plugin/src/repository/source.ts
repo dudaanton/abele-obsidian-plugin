@@ -122,6 +122,8 @@ export interface RepositorySource {
   blob(ref: string, path: string, contentId?: string): Promise<BlobData>
   largeBlob?(ref: string, path: string, contentId?: string): Promise<BlobData>
   text(ref: string, path: string, what?: string): Promise<string>
+  /** Identity of the bytes just read; never a new mutable read. */
+  contentIdentity?(ref: string, path: string): Promise<string | undefined>
   status(): Promise<RepositoryStatus>
   compare(base: string | undefined, head: string, direct?: boolean, mode?: RepositoryComparisonMode): Promise<CompareData>
   comparison(base: string, head: string, signal?: AbortSignal): Promise<ComparisonIndex>

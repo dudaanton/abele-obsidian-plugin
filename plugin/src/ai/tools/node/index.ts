@@ -1,6 +1,8 @@
 import type { AgentTool, AgentToolResult } from '../../client'
 import type { ChatSession } from '../../ChatSession'
 import type { RepositorySource, RepositoryIdentity, RepositoryTarget } from '@/repository/source'
+import { RepositoryWriteSchema } from '@abele/node-protocol'
+export type RepositoryEditProposal = { path: string; expected_content_id: string; text: string }
 
 export type RepositoryReadApproval = (
   target: Extract<RepositoryIdentity, { provider: 'node' }>,
@@ -22,6 +24,8 @@ export interface NodeRepositoryTab {
   /** Current location/revision, supplied by the repository view for node_views. */
   target?(): RepositoryTarget
   selection(): unknown
+  /** Local draft only. Never an RPC write; approval of this proposal is not approval of Save. */
+  proposeEdit?(proposal: RepositoryEditProposal, guard: () => void): Promise<string>
   open(
     node: string,
     project: string,
@@ -181,6 +185,7 @@ const names = [
   'grep',
   'blame',
   'open',
+  'propose_edit',
 ] as const
 const string = (p: Record<string, unknown>, key: string, fallback = ''): string => {
   if (p[key] === undefined) return fallback
@@ -229,7 +234,10 @@ export function createNodeTools(
       name: kind === 'worktrees' ? 'list_node_worktrees' : `node_${kind}`,
       label: `Node repository ${kind}`,
       category: 'Node repositories',
-      description: `Read-only node repository ${kind}. Requires an owner grant for the executing chat and project. Use opaque node/project/workspace IDs; revision defaults to the working tree. Continuations use cursor alone. ${kind === 'search' ? 'Mode code or path; query, regex, case_sensitive and glob select matches.' : ''}`,
+      description:
+        kind === 'propose_edit'
+          ? 'Propose an edit to one current working file. Requires a separate per-edit owner approval and an existing chat repository read grant. Supply exact path, expected_content_id from node_file, and complete proposed text. Retains a device-local draft only; the owner must explicitly Save in the repository tab. Historical versions, Git actions and automatic uncertain retries are not supported.'
+          : `Read-only node repository ${kind}. Requires an owner grant for the executing chat and project. Use opaque node/project/workspace IDs; revision defaults to the working tree. Continuations use cursor alone. ${kind === 'search' ? 'Mode code or path; query, regex, case_sensitive and glob select matches.' : ''}`,
       parameters: {
         type: 'object',
         properties: {
@@ -246,6 +254,7 @@ export function createNodeTools(
               'cursor',
               'mode',
               'commit',
+              ...(kind === 'propose_edit' ? ['expected_content_id', 'text'] : []),
             ].map((key) => [key, { type: 'string' }])
           ),
           regex: { type: 'boolean' },
@@ -259,10 +268,21 @@ export function createNodeTools(
         const session = ctx?.session
         if (!session) throw new Error('An executing chat is required for a repository read grant')
         const branchSelectionVersion = session.branchSelectionVersion ?? 0
+        // Strings are captured before any grant/UI/storage await. Model flags never supply approval.
+        const proposal =
+          kind === 'propose_edit'
+            ? Object.freeze({
+                path: string(p, 'path'),
+                expected_content_id: string(p, 'expected_content_id'),
+                text: string(p, 'text'),
+              })
+            : undefined
         signal?.throwIfAborted()
         for (const [key, entry] of pending) if (entry.expires <= Date.now()) pending.delete(key)
         const cursor = string(p, 'cursor')
         if (cursor) {
+          if (kind === 'propose_edit')
+            throw new Error('Edit proposals cannot be resumed through a read cursor')
           const entry = pending.get(cursor)
           if (!entry || entry.session !== session || entry.tool !== kind)
             throw new Error('Continuation is expired or belongs to another chat/tool')
@@ -301,7 +321,12 @@ export function createNodeTools(
             )
           })
           if (!tab) throw new Error('No repository source is available for these IDs')
-          if (!host.authorized(session, tab) && approve && ctx.interactive)
+          if (
+            kind !== 'propose_edit' &&
+            !host.authorized(session, tab) &&
+            approve &&
+            ctx.interactive
+          )
             await host.request(session, tab, approve, signal)
           checks.push(host.guard(session, tab))
           guard()
@@ -328,6 +353,32 @@ export function createNodeTools(
           )
             throw new Error('Use a relative repository path without traversal')
           switch (kind) {
+            case 'propose_edit': {
+              if (!ctx.interactive || !ctx.approved)
+                throw new Error(
+                  'A separate per-edit owner approval is required; automatic permission is not enough'
+                )
+              if (p.revision && !['WORKTREE', 'Working tree'].includes(string(p, 'revision')))
+                throw new Error('Only current working files can receive an edit proposal')
+              if (
+                !proposal?.expected_content_id ||
+                !RepositoryWriteSchema.safeParse({ worktree_id: workspace, ...proposal }).success
+              )
+                throw new Error(
+                  'An edit proposal requires an exact content identity and bounded valid UTF-8 text'
+                )
+              if (!tab.proposeEdit)
+                throw new Error('This repository tab does not support local edit proposals')
+              const editGuard = () => {
+                guard()
+                if (branchSelectionVersion !== (session.branchSelectionVersion ?? 0))
+                  throw new Error('Chat branch changed before edit proposal admission')
+              }
+              editGuard()
+              result = await tab.proposeEdit(proposal, editGuard)
+              editGuard()
+              break
+            }
             case 'worktrees':
               result = await s.workspaces()
               break
@@ -337,8 +388,9 @@ export function createNodeTools(
             case 'tree':
               result = await s.folder(ref, path)
               break
-            case 'file':
-              result = await s.text(ref, path)
+            case 'file': {
+              const fileRef = s.contentIdentity ? await s.resolve(ref) : ref
+              result = await s.text(fileRef, path)
               if (p.start_line !== undefined || p.end_line !== undefined) {
                 const start = p.start_line ?? 1,
                   end = p.end_line
@@ -354,7 +406,13 @@ export function createNodeTools(
                   .slice((start as number) - 1, end as number | undefined)
                   .join('\n')
               }
+              if (s.contentIdentity) {
+                const contentId = await s.contentIdentity(fileRef, path)
+                if (contentId && typeof result === 'string')
+                  result = `${result}\n\nExact file content identity: ${contentId}`
+              }
               break
+            }
             case 'changes':
               result = path
                 ? await s.comparisonFile(await s.comparison(string(p, 'base', 'HEAD'), ref), path)

@@ -129,9 +129,12 @@ isolated by installation/project/worktree rather than display labels. Repository
 at most 4 MiB of decoded content in a source-local LRU and bounded revision/link metadata in
 session memory. Node content and per-file patch retention belong to the daemon. External-access
 revocation clears the source and pending publications; reconnect requires mutable refresh.
-Human-opened tabs grant no agent access. External worktrees remain read only. Human editing of
-managed working files opens the existing durable workspace editor, retaining its drafts and save
-receipts; external changes report changed-on-disk rather than replacing an active draft.
+Human-opened tabs grant no agent access. Current working files use the shared durable editor
+inside the repository tab. External worktrees start read only; the node retains one explicit
+owner editing approval per opaque worktree identity, revoked by the native tab toggle or project
+external opt-out. Drafts/receipts stay device-local, and external changes report changed-on-disk
+rather than replacing an active draft. Chat edit proposals use separate per-edit owner approval,
+retain only a local draft and still require an explicit human Save.
 
 ## Device-local template approvals
 
@@ -335,7 +338,9 @@ bounded at 32,768 UTF-16 code units; unsent drafts may grow to the retained-cont
 being silently discarded when save admission refuses them. A save identity/body commits locally
 before outbox admission; source recreation resumes exactly that operation. Each shared
 `[workspace_id, relative_path]` draft has a revision UUID, migrated transactionally for old
-records. Editing, rebase and discard compare that revision; save also verifies the exact visible
+records. Repository-target drafts use `['repository', worktree_id, relative_path]` in the same
+`fileDrafts` map, isolated from legacy workspace drafts. Their immutable pending bodies and
+receipts use `worktree_id`; shared draft CAS and uncertain-operation retention are unchanged. Editing, rebase and discard compare that revision; save also verifies the exact visible
 text and base identity before queuing that snapshot. Different models/windows cannot silently
 replace each other's draft or submit text that their editor did not show. Failed-CAS private
 text stays visible for copying; passive dialog reopening does not discard it. Explicit reload

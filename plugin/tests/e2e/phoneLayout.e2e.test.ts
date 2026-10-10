@@ -1830,9 +1830,25 @@ describe.skipIf(!available)('the node repository tab on a phone', () => {
     if (size?.[0]) await setWindowSize(size[0], size[1])
     await setMobile(false)
   }, 120000)
-  for (const state of ['home', 'file', 'changes', 'compare', 'commits', 'empty', 'missing', 'offline']) {
+  for (const state of [
+    'home',
+    'file',
+    'changes',
+    'compare',
+    'commits',
+    'empty',
+    'missing',
+    'offline',
+    'editable',
+    'changed-on-disk',
+    'conflict',
+    'outcome-unknown',
+    'external-off',
+    'external-on',
+  ]) {
     it(`keeps the node repository ${state} readable in a full-width native leaf`, async () => {
-      const result = JSON.parse(await evalLong(`(async () => {
+      const result = JSON.parse(
+        await evalLong(`(async () => {
         await window.__abeleTest.openNodeRepositoryFixture(${JSON.stringify(state)});
         await new Promise(r => setTimeout(r, 250));
         const root = [...document.querySelectorAll('.abele-github, .abele-node-repository__unavailable')].find(el => el.getBoundingClientRect().width > 0);
@@ -1843,17 +1859,25 @@ describe.skipIf(!available)('the node repository tab on a phone', () => {
         const clipped = [...root.querySelectorAll('button,select,[role="button"]')].filter(el => {
           const r=el.getBoundingClientRect();return r.width > 0 && (r.left < -1 || r.right > innerWidth+1)
         }).map(el => el.getAttribute('aria-label') || el.textContent);
-        const hitBoxes = [...root.querySelectorAll('.abele-github-header [role="button"]')].map(el => {const r=el.getBoundingClientRect();return {width:r.width,height:r.height}});
+        const hitBoxes = [...root.querySelectorAll('.abele-github-header [role="button"], .abele-node-save button, .abele-node-save summary, .abele-github-blob > details > summary, .abele-github-blob__changed button, .abele-github > .abele-obsidian-setting [role="checkbox"]')].map(el => {const r=el.getBoundingClientRect();return {width:r.width,height:r.height}}).filter(box=>box.width>0);
         const shot=${JSON.stringify(SHOTS)}+'/node-repository-${state}.png';
         require('fs').mkdirSync(${JSON.stringify(SHOTS)},{recursive:true});
         const image=await require('@electron/remote').getCurrentWebContents().capturePage();require('fs').writeFileSync(shot,image.toPNG());
         return JSON.stringify({width:box.width,left:box.left,right:box.right,clipped,hitBoxes,shot});
-      })()`)) as {width:number;left:number;right:number;clipped:string[];hitBoxes:{width:number;height:number}[];shot:string}
+      })()`)
+      ) as {
+        width: number
+        left: number
+        right: number
+        clipped: string[]
+        hitBoxes: { width: number; height: number }[]
+        shot: string
+      }
       expect(result.width).toBeGreaterThan(300)
       expect(result.left).toBeGreaterThanOrEqual(0)
       expect(result.right).toBeLessThanOrEqual(PHONE.width)
       expect(result.clipped).toEqual([])
-      expect(result.hitBoxes.every(box => box.width >= 44 && box.height >= 44)).toBe(true)
+      expect(result.hitBoxes.every((box) => box.width >= 44 && box.height >= 44)).toBe(true)
       expect(result.shot).toMatch(/\.png$/)
     }, 90000)
   }

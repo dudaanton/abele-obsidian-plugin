@@ -11,6 +11,22 @@
       <pre class="abele-tool-approval__code"><code>{{ params.content }}</code></pre>
     </template>
 
+    <template v-else-if="message.toolName === 'node_propose_edit'">
+      <div class="abele-tool-approval__path">{{ params.path }}</div>
+      <div class="abele-tool-approval__param">
+        Node · {{ params.node }} · Project · {{ params.project }} · Worktree ·
+        {{ params.workspace }}
+      </div>
+      <div class="abele-tool-approval__param">
+        Expected content · {{ params.expected_content_id }}
+      </div>
+      <pre class="abele-tool-approval__code"><code>{{ params.text }}</code></pre>
+      <div class="abele-tool-approval__note">
+        Approve this exact edit as a local draft only. Save in the repository tab is a separate
+        owner action. Read permission does not allow edits.
+      </div>
+    </template>
+
     <!-- Write: an overwrite of a file that exists, so show what it does to it -->
     <template v-else-if="message.toolName === 'write'">
       <div class="abele-tool-approval__path">{{ params.path }}</div>
@@ -509,7 +525,7 @@ const approveAllWrites = () => {
  */
 const canAllowAll = computed(() => {
   const name = props.message.toolName
-  if (!name || keyRequest.value) return false
+  if (!name || name === 'node_propose_edit' || keyRequest.value) return false
   const s = session.value
   if (!s) return false
   return s.getToolMode(name, props.message.toolCallId) === 'ask'

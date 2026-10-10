@@ -3,6 +3,7 @@ import {
   nodeRepositoryToolsHost,
   type NodeRepositoryToolsHost,
   type NodeOpenRevision,
+  type RepositoryEditProposal,
 } from '@/ai/tools/node'
 import { openNodeRepository, type OpenNodeRepositoryOptions } from './openRepository'
 import { WORKING_TREE } from '@/repository/node'
@@ -19,7 +20,11 @@ const workingRef = (ref: string) => (ref === 'WORKTREE' ? WORKING_TREE : ref)
 export function attachNodeRepositoryToolsTab(
   source: RepositorySource,
   connection: ConnectionAuthority,
-  view: { target(): RepositoryTarget; selection(): unknown },
+  view: {
+    target(): RepositoryTarget
+    selection(): unknown
+    proposeEdit?(proposal: RepositoryEditProposal, guard: () => void): Promise<string>
+  },
   host: NodeRepositoryToolsHost = nodeRepositoryToolsHost,
   opener: (
     node: string,
@@ -51,6 +56,21 @@ export function attachNodeRepositoryToolsTab(
     },
     target: view.target,
     selection: view.selection,
+    ...(view.proposeEdit
+      ? {
+          proposeEdit: async (proposal: RepositoryEditProposal, guard: () => void) => {
+            assertCurrent()
+            guard()
+            const result = await view.proposeEdit!(proposal, () => {
+              assertCurrent()
+              guard()
+            })
+            assertCurrent()
+            guard()
+            return result
+          },
+        }
+      : {}),
     open: async (node, project, workspace, path, revision?: NodeOpenRevision) => {
       assertCurrent()
       if (

@@ -9,6 +9,8 @@
  * replaces with a string literal at build time, so the guard folds to `false` and this
  * module is dropped entirely from the production bundle.
  */
+import { EditorView } from '@codemirror/view'
+const codeView = (element: HTMLElement) => EditorView.findFromDOM(element)
 import { eink, setEink } from '@/reader/eink'
 import { setZen, zen } from '@/reader/zen'
 import { ScopeResolver } from '@/ai/ScopeResolver'
@@ -248,6 +250,7 @@ interface AbeleTestApi {
   }
   ChatService: typeof ChatService
   NodeService: typeof NodeService
+  codeView: typeof codeView
   openNodeRepository: typeof openNodeRepository
   openNodeRepositoryFixture: typeof openNodeRepositoryFixture
   closeNodeRepositoryFixture: typeof closeNodeRepositoryFixture
@@ -842,6 +845,7 @@ export function exposeTestApi(plugin: Plugin): void {
     },
     ChatService,
     NodeService,
+    codeView,
     openNodeRepository,
     openNodeRepositoryFixture,
     closeNodeRepositoryFixture,

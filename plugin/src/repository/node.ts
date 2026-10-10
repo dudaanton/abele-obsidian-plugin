@@ -79,6 +79,7 @@ export class NodeRepositorySource implements RepositorySource {
   private timer?: number
   private subscription?: string
   private watching = false
+  private mutableWatch = false
   private comparisonIds = new WeakMap<ComparisonIndex, string>()
   readonly navigation: RepositorySource['navigation']
   constructor(
@@ -469,6 +470,10 @@ export class NodeRepositorySource implements RepositorySource {
     this.fileContents.set(JSON.stringify([ref, path]), id)
     if (this.fileContents.size > 2048)
       this.fileContents.delete(this.fileContents.keys().next().value!)
+  }
+  async contentIdentity(ref: string, path: string) {
+    this.assertCurrent()
+    return this.fileContents.get(JSON.stringify([await this.resolve(ref), path]))
   }
   async text(ref: string, path: string) {
     const blob = await this.blob(ref, path)
@@ -877,8 +882,13 @@ export class NodeRepositorySource implements RepositorySource {
   private emit(event: RepositoryChange) {
     for (const listener of this.listeners) listener(event)
   }
-  async startWatching() {
-    if (this.watching || this.disposed) return
+  async startWatching(mutable = true) {
+    if (this.disposed) return
+    this.mutableWatch = mutable
+    if (this.watching) {
+      if (mutable && !this.timer) await this.renewWatch()
+      return
+    }
     this.watching = true
     this.stopEvents = this.client.onEvent((event) => {
       const data = event.data as { project_id?: string; external_read?: boolean } | undefined
@@ -907,37 +917,59 @@ export class NodeRepositorySource implements RepositorySource {
       )
         return
       this.refresh()
-      this.textCache.clear()
-      this.textBytes = 0
       this.emit({ kind: 'workspace' })
     })
     try {
       await this.read(() => this.client.subscribe('catalog'))
-      await this.renewWatch()
+      if (this.mutableWatch) await this.renewWatch()
     } catch {
       this.emit({ kind: 'workspace' })
-      this.timer = window.setTimeout(() => {
-        void this.renewWatch()
-      }, 5000)
+      if (this.mutableWatch && !this.disposed && !this.retired)
+        this.timer = window.setTimeout(() => {
+          void this.renewWatch()
+        }, 5000)
     }
   }
+  stopWatching() {
+    this.mutableWatch = false
+    window.clearTimeout(this.timer)
+    this.timer = undefined
+    const subscription = this.subscription
+    this.subscription = undefined
+    if (subscription)
+      void this.client.repository
+        .unwatch({ ...this.target, subscription_id: subscription })
+        .catch(() => {})
+  }
   private async renewWatch() {
-    if (this.disposed || this.retired) return
+    if (this.disposed || this.retired || !this.mutableWatch) return
     try {
       if (this.client.connected) {
         const lease = await this.read(() => this.client.repository.watch(this.target))
+        if (!this.mutableWatch || this.disposed || this.retired) {
+          void this.client.repository
+            .unwatch({ ...this.target, subscription_id: lease.subscription_id })
+            .catch(() => {})
+          return
+        }
+        const firstLease = !this.subscription
         this.subscription = lease.subscription_id
+        if (firstLease) {
+          this.refresh()
+          this.emit({ kind: 'workspace' })
+        }
       }
     } catch {
       /* Reconnection polling will retry the bounded lease. */
     }
-    if (!this.disposed && !this.retired)
+    if (!this.disposed && !this.retired && this.mutableWatch)
       this.timer = window.setTimeout(() => {
         void this.renewWatch()
       }, 30000)
   }
   dispose() {
     this.disposed = true
+    this.mutableWatch = false
     window.clearTimeout(this.timer)
     this.stopEvents?.()
     this.aliases.clear()
