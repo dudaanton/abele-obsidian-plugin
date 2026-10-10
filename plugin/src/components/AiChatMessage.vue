@@ -924,6 +924,8 @@ const shortTime = (ts: number) => dayjs(ts).format('HH:mm')
 
 // WebKit touch panes can inherit user-select:none. Desktop emulation permits scripted
 // ranges regardless, so opt the actual rendered words into native selection explicitly.
+.abele-chat-msg:has([data-ask-message]),
+.abele-chat-msg__body:has([data-ask-message]),
 .abele-chat-msg__body [data-ask-message],
 .abele-chat-msg__body [data-ask-message] :not(button, .abele-comment-marker, .abele-comment-marker *) {
   user-select: text;

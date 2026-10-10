@@ -68,7 +68,7 @@ const PRELUDE = `${WAIT_PRELUDE}
         const selection = document.getSelection(), range = selection?.rangeCount ? selection.getRangeAt(0) : null
         const hit = document.elementFromPoint(bounds.left + bounds.width/2, bounds.top + bounds.height/2)
         await shoot('selection-failure')
-        throw Error('Selection script button did not appear: ' + JSON.stringify({selection:selection?.toString(),range:range && {start:range.startOffset,end:range.endOffset,startNode:range.startContainer.parentElement?.outerHTML,endNode:range.endContainer.parentElement?.outerHTML},touchDown:touches,connected:word.isConnected,keyboardHeight:getComputedStyle(document.body).getPropertyValue('--keyboard-height'),hit:hit?.outerHTML,events}))
+        throw Error('Selection script button did not appear: ' + JSON.stringify({selection:selection?.toString(),range:range && {start:range.startOffset,end:range.endOffset,startNode:range.startContainer.parentElement?.outerHTML,endNode:range.endContainer.parentElement?.outerHTML},touchDown:touches,connected:word.isConnected,styles:[word,...(function*(n){while(n=n.parentElement)yield n})(word)].map(el=>({tag:el.tagName,cls:el.className,select:getComputedStyle(el).webkitUserSelect,callout:getComputedStyle(el).webkitTouchCallout})),keyboardHeight:getComputedStyle(document.body).getPropertyValue('--keyboard-height'),hit:hit?.outerHTML,events}))
       }
       await shoot('selection-bar')
       button.dispatchEvent(new PointerEvent('pointerdown', {bubbles:true}))
