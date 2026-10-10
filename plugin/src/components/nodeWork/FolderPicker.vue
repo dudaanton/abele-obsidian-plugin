@@ -147,6 +147,9 @@ watch(
 // What Open opens: the folder one stands in. Described under the list at all times, so the
 // line never comes and goes and the dialog keeps its height.
 const target = computed<NodeDirectory | null>(() => {
+  // A name typed down to one folder means that folder.
+  const only = rows.value.filter((r) => !r.up)
+  if (filter.value && only.length === 1) return only[0]
   const path = dir.value.replace(/\/$/, '')
   if (!path || path === '~') return null
   const known = parent.value
