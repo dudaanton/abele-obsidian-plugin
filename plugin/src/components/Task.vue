@@ -76,6 +76,8 @@
 </template>
 
 <script setup lang="ts">
+import { confirmAction } from '@/modal/confirm'
+import { GlobalStore } from '@/stores/GlobalStore'
 import { DISPLAY_DATE_FORMAT } from '@/constants/dates'
 import { Task } from '@/entities/Task'
 import dayjs from 'dayjs'
@@ -267,8 +269,13 @@ const onContextMenu = (e: MouseEvent) => {
     item
       .setTitle('Delete')
       .setIcon('trash')
-      .onClick(() => {
-        if (confirm('Are you sure you want to delete this task?')) {
+      .onClick(async () => {
+        if (
+          await confirmAction(GlobalStore.getInstance().app, {
+            title: 'Delete task',
+            message: 'Are you sure you want to delete this task?',
+          })
+        ) {
           props.task.remove()
         }
       })

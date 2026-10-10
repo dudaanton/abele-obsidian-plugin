@@ -210,6 +210,17 @@ describe('task card interactions', () => {
     expect(item.title).toBe('Delete')
     expect(item.icon).toBe('trash')
     item.handler()
+    expect(remove).not.toHaveBeenCalled()
+    expect(window.confirm).not.toHaveBeenCalled()
+    const dialog = document.querySelector('.abele-modal')!
+    expect(dialog?.querySelector('.abele-confirm__message')?.textContent).toBe(
+      'Are you sure you want to delete this task?'
+    )
+    const button = Array.from(dialog.querySelectorAll<HTMLButtonElement>('button')).find(
+      (b) => b.textContent === (confirmed ? 'Delete' : 'Cancel')
+    )!
+    button.click()
+    await flushPromises()
     expect(remove).toHaveBeenCalledTimes(confirmed ? 1 : 0)
   })
 })

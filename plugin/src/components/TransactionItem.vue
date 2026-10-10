@@ -59,6 +59,8 @@
 </template>
 
 <script setup lang="ts">
+import { confirmAction } from '@/modal/confirm'
+import { GlobalStore } from '@/stores/GlobalStore'
 import { Transaction } from '@/entities/Transaction'
 import { computed, onMounted, ref, watch } from 'vue'
 import ObsidianIcon from './obsidian/Icon.vue'
@@ -113,8 +115,13 @@ const onContextMenu = (e: MouseEvent) => {
     item
       .setTitle('Delete')
       .setIcon('trash')
-      .onClick(() => {
-        if (confirm('Are you sure you want to delete this transaction?')) {
+      .onClick(async () => {
+        if (
+          await confirmAction(GlobalStore.getInstance().app, {
+            title: 'Delete transaction',
+            message: 'Are you sure you want to delete this transaction?',
+          })
+        ) {
           props.transaction.remove()
         }
       })

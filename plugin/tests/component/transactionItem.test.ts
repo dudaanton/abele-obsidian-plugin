@@ -143,7 +143,16 @@ describe('TransactionItem', () => {
       expect(instance.items).toHaveLength(1)
       expect(instance.items[0]).toMatchObject({ title: 'Delete', icon: 'trash' })
       instance.items[0].handler()
-      expect(confirm).toHaveBeenCalledWith('Are you sure you want to delete this transaction?')
+      expect(remove).not.toHaveBeenCalled()
+      expect(confirm).not.toHaveBeenCalled()
+      const dialog = document.querySelector('.abele-modal')!
+      expect(dialog?.querySelector('.abele-confirm__message')?.textContent).toBe(
+        'Are you sure you want to delete this transaction?'
+      )
+      Array.from(dialog.querySelectorAll<HTMLButtonElement>('button'))
+        .find((b) => b.textContent === (confirmed ? 'Delete' : 'Cancel'))!
+        .click()
+      await flushPromises()
       expect(remove).toHaveBeenCalledTimes(confirmed ? 1 : 0)
     }
   )

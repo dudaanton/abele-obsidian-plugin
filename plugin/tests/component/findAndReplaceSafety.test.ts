@@ -14,6 +14,7 @@ const wrappers: VueWrapper[] = []
 afterEach(() => {
   wrappers.splice(0).forEach((w) => w.unmount())
   vi.restoreAllMocks()
+  vi.unstubAllGlobals()
 })
 const action = (fields: Partial<ReplacementAction>) =>
   Object.assign(new ReplacementAction(), fields)
@@ -47,6 +48,42 @@ for (const [name, component] of [
       }
       return { app, file, state, preview }
     }
+
+    it.each([false, true])(
+      'waits for the kit confirmation before bulk replacement, accepted=%s',
+      async (accepted) => {
+        const native = vi.fn(() => false)
+        vi.stubGlobal('confirm', native)
+        const { app, file, state, preview } = await open()
+        await preview([action({ property: 'label', value: 'new' })])
+        const before = await app.vault.read(file)
+        const applying = state.replace()
+        expect(await app.vault.read(file)).toBe(before)
+        expect(native).not.toHaveBeenCalled()
+        const dialog = document.querySelector('.abele-modal')!
+        expect(dialog?.querySelector('.abele-confirm__message')?.textContent).toBe(
+          'Are you sure you want to apply the changes to 1 notes?'
+        )
+        Array.from(dialog.querySelectorAll<HTMLButtonElement>('button'))
+          .find((b) => b.textContent === (accepted ? 'Apply changes' : 'Cancel'))!
+          .click()
+        await applying
+        expect(await app.vault.read(file)).toContain(accepted ? 'label: new' : 'label: old')
+      }
+    )
+
+    it('applies the previews named in the question even if a new search arrives while it is open', async () => {
+      const { app, file, state, preview } = await open()
+      await preview([action({ property: 'label', value: 'new' })])
+      const applying = state.replace()
+      state.searchResults = []
+      const dialog = document.querySelector('.abele-modal')!
+      Array.from(dialog.querySelectorAll<HTMLButtonElement>('button'))
+        .find((b) => b.textContent === 'Apply changes')!
+        .click()
+      await applying
+      expect(await app.vault.read(file)).toContain('label: new')
+    })
 
     // BUG: two competing writes can overwrite each other, and frontmatter is not awaited.
     it('commits property and body replacements as one awaited file write', async () => {

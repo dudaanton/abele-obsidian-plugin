@@ -72,6 +72,7 @@
 </template>
 
 <script setup lang="ts">
+import { confirmAction } from '@/modal/confirm'
 import ObsidianModal from './obsidian/Modal.vue'
 import ObsidianButton from './obsidian/Button.vue'
 import ObsidianIcon from './obsidian/Icon.vue'
@@ -237,10 +238,16 @@ const replaceOne = async (searchResult: SearchResult) => {
 }
 
 const replace = async () => {
+  const results = [...searchResults.value]
   if (
-    confirm(`Are you sure you want to apply the changes to ${searchResults.value.length} notes?`)
+    await confirmAction(GlobalStore.getInstance().app, {
+      title: 'Apply changes',
+      message: `Are you sure you want to apply the changes to ${results.length} notes?`,
+      confirmText: 'Apply changes',
+      confirmTooltip: 'Apply the previewed changes to these notes',
+    })
   ) {
-    for (const result of searchResults.value) {
+    for (const result of results) {
       await replaceOne(result)
     }
   }
