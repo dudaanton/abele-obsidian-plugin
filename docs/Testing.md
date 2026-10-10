@@ -1094,6 +1094,36 @@ pause and disconnect use the actual native controls. The hydration cases exercis
 production host port through its shared coordinator. The transfer case reads the actual
 settings-transfer collector through the test-only API.
 
+Before a batch, install the current `build:test` into **both exclusively leased pool vaults**.
+The manager may then reset stale token state explicitly, from `plugin/` with the same leases:
+
+```bash
+ABELE_SYNC_RESET_CONFIRM=reset-sync-token-state npx vitest run \
+  --config vitest.e2e.config.ts --maxWorkers=1 tests/e2e/syncResetPool.e2e.test.ts
+```
+
+This requires `OBSIDIAN_TEST_VAULT` and `ABELE_SYNC_PEER_VAULT` to name two different leased
+pools. The test-build port checks the exact vault name and confirmation before effects.
+It drains engines, removes registry-owned credentials and IndexedDB ledgers/edit snapshots,
+and recreates empty review/consent storage. It does not touch notes, `data.json`, other plugin
+settings, unrelated credentials, other vaults' databases, or server tokens. A test-only local
+ownership journal retains database names even after a case disconnects; failed reset retains
+that journal for retry. Unreferenced databases left by older builds cannot be attributed safely
+and are not swept by name. No production build exposes this operation.
+
+Each live case separately resets the clean leases it used, deletes only its own fixture folder,
+and restores its ignore file, active note and visibility override. Cleanup attempts every lease
+and restoration even after failure. Scenario evidence is marked verified only after cleanup
+succeeds. A dirty lease at normal case setup is refused, never silently reset.
+
+Batch runner checks: wait for the token host as well as the test API after installing; register
+lease cleanup immediately after the first successful lease and validate the second. Add
+`--reporter=json` when requesting `--outputFile.json`, and save/return both Vitest exit codes
+instead of returning the final logging command's success. Use pipeline failure checking for
+fixture provisioning. Vitest is sequential here but may reorder files by its duration cache;
+loop over files if a particular input order matters. For a subset run, restrict scenario
+aggregation to that subset rather than requiring evidence from cases not run.
+
 From `plugin/`, run the desktop cases with the existing e2e tier (files run sequentially):
 
 ```bash

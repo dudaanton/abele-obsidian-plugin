@@ -109,7 +109,7 @@ liveCase(
           a.run(`return document.querySelectorAll('.abele-version-history .abele-card').length`)
         ).toBeGreaterThan(50)
         a.run(
-          `const box=document.querySelector('.abele-version-history');box.querySelector('.abele-card').click();await poll(()=>box.querySelector('.abele-version-history__diff'));return true`
+          `const box=inWindows('.abele-version-history');const older=[...box.querySelectorAll('.abele-card')].find(card=>{const button=buttonIn(card,'Restore');return button&&!button.disabled});if(!older)throw new Error('No restorable historical version');older.click();await poll(()=>box.querySelector('.abele-version-history__diff'));return true`
         )
         const preview = await captureSyncScreen(
           a,
@@ -120,7 +120,7 @@ liveCase(
         expect(preview.clipped).toEqual([])
         expect(preview.stranded).toEqual([])
         a.run(
-          `await press(document.querySelector('.abele-version-history .abele-card'),'Restore');await poll(()=>document.querySelector('.abele-confirm__message'));return true`
+          `const box=inWindows('.abele-version-history');const older=[...box.querySelectorAll('.abele-card')].find(card=>{const button=buttonIn(card,'Restore');return button&&!button.disabled});await press(older,'Restore');await poll(()=>inWindows('.abele-confirm__message'));return true`
         )
         const confirm = await captureSyncScreen(
           a,
@@ -141,9 +141,9 @@ liveCase(
         expect(code.extra.onTop).toBe(true)
         closeSyncScreens(a)
         a.run(
-          `app.commands.executeCommandById('abele:sync-log');await poll(()=>document.querySelector('.abele-sync-log'));return true`
+          `app.commands.executeCommandById('abele:sync-log');await poll(()=>inWindows('.token-sync-settings'));return true`
         )
-        const log = await captureSyncScreen(a, 'token-log-' + width, '.abele-sync-log')
+        const log = await captureSyncScreen(a, 'token-log-' + width, '.token-sync-settings')
         expect(log.over).toEqual([])
         expect(log.clipped).toEqual([])
         closeSyncScreens(a)
@@ -172,37 +172,45 @@ liveCase(
     for (const path of paths) a.create(path, 'held sample content')
     await a.syncNow()
     await a.pause(id, true)
-    a.remove([s.root + '/long sample folder'])
+    // Exercise sixty file deletions; a directory removal is one directory operation in v2.
+    a.remove(paths)
     await a.pause(id, false)
     await a.syncNow()
+    expect(
+      a.run(`return (await svc.runtimes.get(${JSON.stringify(id)}).heldDeletes()).length`)
+    ).toBe(60)
     try {
       for (const width of [1200, 390, 320]) {
         await setWindowSize(a.vault(), width, width === 1200 ? 900 : 844)
         await reloadAs(a.vault(), width < 500)
         await a.waitIdle()
         a.run(
-          `const root=await openSyncTab();icon(connectionRow(root,${JSON.stringify(id)}),'settings');await poll(()=>settingsDoc().querySelector('.abele-held-deletes'));return true`
+          `const root=await openSyncTab();icon(connectionRow(root,${JSON.stringify(id)}),'settings');await poll(()=>inWindows('.abele-held-deletes'),20000,'held deletions in either owner window');return true`
         )
         const held = await captureSyncScreen(a, 'token-held-' + width, '.abele-held-deletes')
         expect(held.over).toEqual([])
         expect(held.clipped).toEqual([])
         expect(held.capped).toEqual([])
         expect(held.stranded).toEqual([])
-        expect(
-          a.run(`return textOf(settingsDoc().querySelector('.abele-held-deletes__more'))`)
-        ).toBe('and 40 more')
+        expect(a.run(`return textOf(inWindows('.abele-held-deletes__more'))`)).toBe('and 40 more')
         expect(
           a.run(
-            `const box=settingsDoc().querySelector('.abele-held-deletes');const paths=box.querySelector('.abele-held-deletes__paths').getBoundingClientRect(),actions=box.querySelector('.abele-held-deletes__actions').getBoundingClientRect();return paths.bottom<=actions.top+1`
+            `const box=inWindows('.abele-held-deletes');const paths=box.querySelector('.abele-held-deletes__paths').getBoundingClientRect(),actions=box.querySelector('.abele-held-deletes__actions').getBoundingClientRect();return paths.bottom<=actions.top+1`
           )
         ).toBe(true)
         closeSyncScreens(a)
       }
       a.run(
-        `const root=await openSyncTab();icon(connectionRow(root,${JSON.stringify(id)}),'settings');await poll(()=>settingsDoc().querySelector('.abele-held-deletes'));await press(settingsDoc().querySelector('.abele-held-deletes'),'Delete everywhere');await poll(()=>document.querySelector('.abele-confirm__message')||settingsDoc().querySelector('.abele-confirm__message'));const confirm=document.querySelector('.abele-confirm__message')||settingsDoc().querySelector('.abele-confirm__message');await press(confirm.closest('.modal'),'Delete everywhere');return true`
+        `const root=await openSyncTab();icon(connectionRow(root,${JSON.stringify(id)}),'settings');await poll(()=>inWindows('.abele-held-deletes'));await press(inWindows('.abele-held-deletes'),'Delete everywhere');await poll(()=>inWindows('.abele-confirm__message'));const confirm=inWindows('.abele-confirm__message');await press(confirm.closest('.modal'),'Delete everywhere');return true`
       )
       closeSyncScreens(a)
       await a.syncNow()
+      // Keep the folder-deletion behavior as well as the held-file layout guarantee.
+      a.remove([s.root + '/long sample folder'])
+      await a.syncNow()
+      expect(
+        (await s.items()).some((one) => one.path.startsWith(s.root + '/long sample folder'))
+      ).toBe(false)
       for (const width of [1200, 390, 320]) {
         await setWindowSize(a.vault(), width, width === 1200 ? 900 : 844)
         await reloadAs(a.vault(), width < 500)

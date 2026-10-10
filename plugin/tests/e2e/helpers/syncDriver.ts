@@ -6,13 +6,14 @@ export const SYNC_PRELUDE = `
  const svc = host.ui
  const sleep = ms => new Promise(resolve => setTimeout(resolve, ms))
  const textOf = el => el?.textContent?.trim() || ''
- const poll = async (fn, ms = 20000) => { const until=Date.now()+ms; while(Date.now()<until) { if(await fn()) return true; await sleep(100) } throw new Error('Live sync condition did not complete') }
+ const poll = async (fn, ms = 20000, label = 'expected live state') => { const until=Date.now()+ms; while(Date.now()<until) { if(await fn()) return true; await sleep(100) } throw new Error('Live sync condition did not complete: '+label) }
  const buttonIn = (root,text) => [...root.querySelectorAll('button')].find(el=>textOf(el)===text)
- const press = async (root,text) => { let button; await poll(()=> {button=buttonIn(typeof root==='function'?root():root,text); return button&&!button.disabled}); button.click(); await sleep(100) }
+ const press = async (root,text) => { let button; await poll(()=> {const container=typeof root==='function'?root():root;button=container&&buttonIn(container,text); return button&&!button.disabled},20000,'enabled '+text+' button'); button.click(); await sleep(100) }
  const typeInto = (input,text) => { if(!input) throw new Error('Input unavailable'); input.value=text; input.dispatchEvent(new input.ownerDocument.defaultView.Event('input',{bubbles:true})) }
  const settingsDoc = () => app.setting.activeTab?.containerEl.ownerDocument || document
+ const inWindows = selector => [...new Set([settingsDoc(),document])].map(doc=>doc.querySelector(selector)).find(Boolean)
  const modal = title => [...new Set([document,settingsDoc()])].flatMap(doc=>[...doc.querySelectorAll('.modal')]).find(el=>textOf(el.querySelector('.modal-title'))===title)
- const openSyncTab = async () => { app.setting.open(); app.setting.openTabById('abele'); await sleep(300); const root=app.setting.activeTab.containerEl; const tab=[...root.querySelectorAll('[role="tab"],.abele-tabs__tab')].find(el=>textOf(el)==='Sync'); if(!tab) throw new Error('Sync tab unavailable'); tab.click(); await poll(()=>root.querySelector('.token-sync-settings')); return root }
+ const openSyncTab = async () => { app.setting.open(); app.setting.openTabById('abele'); await sleep(300); let root=app.setting.activeTab.containerEl; if(root.querySelector('.token-sync-settings'))return root; const tab=[...root.querySelectorAll('[role="tab"],.abele-tabs__tab')].find(el=>textOf(el)==='Sync'); if(tab)tab.click(); else app.commands.executeCommandById('abele:sync-log'); await poll(()=>{root=app.setting.activeTab.containerEl;return root.querySelector('.token-sync-settings')}); return root }
  const connectionRow = (root,id) => { const index=svc.rows.value.findIndex(one=>one.id===id); const rows=[...root.querySelectorAll('.setting-item')].filter(one=>one.querySelector('svg.lucide-unlink')); if(index<0||!rows[index]) throw new Error('Connection row unavailable'); return rows[index] }
  const icon = (root,name) => { const el=root.querySelector('svg.lucide-'+name)?.closest('.abele-obsidian-icon'); if(!el||el.classList.contains('abele-obsidian-icon_disabled')) throw new Error('Action unavailable: '+name); el.click() }
  const closeSettings = async () => { app.setting.close(); await sleep(100) }
@@ -33,7 +34,7 @@ export class SyncDriver {
     const cli = this.vault()
     const evaluate = confidential ? cli.evalAwaitPrivate.bind(cli) : cli.evalAwait.bind(cli)
     evaluate(
-      `(()=>{window[${JSON.stringify(key)}]=null;(async()=>{${SYNC_PRELUDE}\n${body}})().then(value=>window[${JSON.stringify(key)}]={ok:true,value:value===undefined?null:value},error=>window[${JSON.stringify(key)}]={ok:false,error:String(error?.message||error)});return true})()`
+      `(()=>{window[${JSON.stringify(key)}]=null;(async()=>{const jobKey=${JSON.stringify(key)};${SYNC_PRELUDE}\n${body}})().then(value=>window[${JSON.stringify(key)}]={ok:true,value:value===undefined?null:value},error=>window[${JSON.stringify(key)}]={ok:false,error:String(error?.message||error)});return true})()`
     )
     let answer: { ok: boolean; value?: T; error?: string } | null = null
     try {
@@ -93,8 +94,17 @@ export class SyncDriver {
   }
   async disconnect(id: string): Promise<void> {
     this.run(
-      `const root=await openSyncTab(); icon(connectionRow(root,${JSON.stringify(id)}),'unlink'); await poll(()=>modal('Disconnect?')); await press(modal('Disconnect?'),'Disconnect'); await poll(()=>!svc.rows.value.some(one=>one.id===${JSON.stringify(id)})); await closeSettings(); return true`
+      `for(const doc of new Set([document,settingsDoc()]))for(const button of [...doc.querySelectorAll('.modal-close-button')].reverse())button.click(); const root=await openSyncTab(); icon(connectionRow(root,${JSON.stringify(id)}),'unlink'); await poll(()=>modal('Disconnect?')); await press(modal('Disconnect?'),'Disconnect'); await poll(()=>!svc.rows.value.some(one=>one.id===${JSON.stringify(id)})); await closeSettings(); return true`
     )
+  }
+  async resetTokenState(): Promise<void> {
+    await this.long(
+      'reset leased pool token state',
+      `await poll(()=>Object.keys(window).filter(key=>key.startsWith('__abeleSyncJob')&&key!==jobKey).every(key=>window[key]!==null),60000,'previous sync UI jobs to settle');for(const key of Object.keys(window).filter(key=>key.startsWith('__abeleSyncJob')&&key!==jobKey))delete window[key];for(const doc of new Set([document,settingsDoc()]))for(const button of [...doc.querySelectorAll('.modal-close-button')].reverse())button.click();await window.__abeleTest.resetSyncTokenState({vault:app.vault.getName(),confirm:'reset-sync-token-state'});return true`
+    )
+  }
+  captureTokenOwnership(): void {
+    this.run(`await window.__abeleTest.captureSyncTokenOwnership(app.vault.getName());return true`)
   }
   async share(id: string, scopeLabel: string, label = 'Sample recipient'): Promise<string> {
     return this.long(

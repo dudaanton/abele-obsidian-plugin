@@ -105,6 +105,8 @@ import { transportOf } from '@/sync/environment'
 import { desktopTransport as syncDesktopTransport } from '@/sync/desktopTransport'
 import { ObsidianFileSystem } from '@/sync/ObsidianFileSystem'
 import { IndexedDbStateStore } from '@/sync/IndexedDbStateStore'
+import { resetSyncTokenState, captureSyncTokenOwnership } from './resetSyncTokenState'
+import type { TokenPoolResetRequest } from './resetTokenPool'
 import { ExternalState } from '@/sync/external/state'
 import { ExternalFileHost } from '@/sync/external/ObsidianExternalFileHost'
 import { AttachmentStore } from '@/sync/external/attachmentStore'
@@ -225,6 +227,8 @@ interface AbeleTestApi {
     IndexedDbStateStore: typeof IndexedDbStateStore
     ExternalState: typeof ExternalState
   }
+  resetSyncTokenState(request: TokenPoolResetRequest): Promise<void>
+  captureSyncTokenOwnership(vault: string): Promise<string[]>
   scriptTrust: {
     activate: typeof activateScriptProvenance
     load: typeof scriptForExecution
@@ -791,6 +795,8 @@ export function exposeTestApi(plugin: Plugin): void {
   window.__abeleTest = {
     openDesignCatalogue,
     closeDesignCatalogue,
+    resetSyncTokenState: (request) => resetSyncTokenState(plugin, request),
+    captureSyncTokenOwnership: (vault) => captureSyncTokenOwnership(plugin, vault),
     canvasProbe: createCanvasProbe(plugin),
     setKeyboardDiagnostics,
     ScopeResolver,

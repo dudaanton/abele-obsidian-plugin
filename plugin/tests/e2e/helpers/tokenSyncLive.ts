@@ -34,9 +34,12 @@ export class TokenSyncLive {
   async start(): Promise<void> {
     siblingMissing()
     try {
+      // Validate BOTH leases before mutating either one; never reset pre-existing state here.
       for (const device of [this.primary, ...(this.peer ? [this.peer] : [])]) {
         if (device.rows().length || device.candidates().length || device.questions().length)
           throw new Error('Pool vault contains existing connections or pending reviews; untouched')
+      }
+      for (const device of [this.primary, ...(this.peer ? [this.peer] : [])]) {
         const saved = device.run<{ ignore: string | null; file: string | null }>(
           `return {ignore:await app.vault.adapter.exists('.abele-sync-ignore')?await app.vault.adapter.read('.abele-sync-ignore'):null,file:app.workspace.getActiveFile()?.path||null}`
         )
@@ -98,6 +101,7 @@ export class TokenSyncLive {
       const owned = this.ids.get(device)!
       for (const row of device.rows())
         if (!before.has(row.id) && !owned.includes(row.id)) owned.push(row.id)
+      device.captureTokenOwnership()
     }
     await device.syncNow(id)
     return id
@@ -151,17 +155,17 @@ export class TokenSyncLive {
     const failures: unknown[] = []
     for (const [device, saved] of [...this.saved].reverse()) {
       try {
-        for (const candidate of device.candidates())
-          if ((this.ids.get(device) || []).includes(candidate.source.id))
-            device.run(
-              `await svc.reject(svc.candidates.value.find(one=>one.id===${JSON.stringify(candidate.id)}));return true`
-            )
-        device.run(
-          `for(const question of svc.questions.value.filter(one=>${JSON.stringify(this.ids.get(device) || [])}.includes(one.source.id)))await svc.decide(question,false);return true`
-        )
-        for (const id of this.ids.get(device) || [])
-          if (device.rows().some((one) => one.id === id)) await device.disconnect(id)
+        await device.resetTokenState()
+      } catch (error) {
+        failures.push(error)
+      }
+      try {
+        // Fixture files are the only notes this case owns. Reset itself never touches files.
         device.remove([this.root])
+      } catch (error) {
+        failures.push(error)
+      }
+      try {
         device.run(
           `if(${JSON.stringify(saved.ignore)}===null){if(await app.vault.adapter.exists('.abele-sync-ignore'))await app.vault.adapter.remove('.abele-sync-ignore')}else await app.vault.adapter.write('.abele-sync-ignore',${JSON.stringify(saved.ignore)});const old=${JSON.stringify(saved.file)};if(old&&app.vault.getFileByPath(old))await app.workspace.getLeaf(false).openFile(app.vault.getFileByPath(old));app.setting.close();return true`
         )
@@ -179,7 +183,13 @@ export class TokenSyncLive {
       }
     }
     this.saved.clear()
-    for (const reverse of this.reverses.splice(0)) reverse()
+    for (const reverse of this.reverses.splice(0)) {
+      try {
+        reverse()
+      } catch (error) {
+        failures.push(error)
+      }
+    }
     for (const server of this.servers.splice(0))
       try {
         await server.kill()

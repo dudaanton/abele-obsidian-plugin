@@ -82,6 +82,12 @@ export function liveCase(
       } catch (one) {
         error ||= one
       }
+      // A cleanup failure is a failed scenario, never verified evidence.
+      try {
+        await fixture().close()
+      } catch (one) {
+        error = error ? new AggregateError([error, one], 'Live case and cleanup failed') : one
+      }
       for (const scenario of scenarios)
         writeFileSync(
           join(output, String(scenario).padStart(3, '0') + '-' + platform + '-' + key + '.json'),
