@@ -52,6 +52,13 @@ describe('runtime import graph', () => {
     ).toEqual([['a', 'b', 'c'], ['e']])
   })
 
+  it('resolves aliases from the source root even when reporting a nested folder', () => {
+    const root = resolve('tests/fixtures/import-graph')
+    expect(cyclicComponents(importGraph(resolve(root, 'nested'), root))).toEqual([
+      ['first.ts', 'second.ts'],
+    ])
+  })
+
   it('keeps Word operation helpers independent of the edit dispatcher', () => {
     expect(cyclicComponents(importGraph(resolve('src/word')))).toEqual([])
   })
@@ -62,6 +69,10 @@ describe('runtime import graph', () => {
 
   it('keeps finance sources and their balance reader acyclic', () => {
     expect(cyclicComponents(importGraph(resolve('src/analytics/sources')))).toEqual([])
+  })
+
+  it('keeps the design catalogue registry independent of its component', () => {
+    expect(cyclicComponents(importGraph(resolve('src/testing')))).toEqual([])
   })
 
   it('does not load the concrete script view just to get its view type', () => {

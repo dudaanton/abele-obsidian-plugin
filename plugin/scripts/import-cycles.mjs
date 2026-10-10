@@ -34,7 +34,7 @@ export function runtimeImports(source, filename) {
   return imports
 }
 
-export function importGraph(root = join(plugin, 'src')) {
+export function importGraph(root = join(plugin, 'src'), aliasRoot = join(plugin, 'src')) {
   const sources = new Map()
   function walk(dir) {
     for (const entry of readdirSync(dir, { withFileTypes: true })) {
@@ -51,7 +51,7 @@ export function importGraph(root = join(plugin, 'src')) {
     for (const specifier of runtimeImports(source, file)) {
       const clean = specifier.split('?')[0]
       const base = clean.startsWith('@/')
-        ? join(root, clean.slice(2))
+        ? join(aliasRoot, clean.slice(2))
         : clean.startsWith('.')
           ? resolve(dirname(file), clean)
           : null

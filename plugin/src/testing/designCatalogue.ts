@@ -2,71 +2,8 @@ import { createApp, h, type App as VueApp } from 'vue'
 import DesignCatalogue from './DesignCatalogue.vue'
 import { GlobalStore } from '@/stores/GlobalStore'
 
-export const CATALOGUE_PAGES = [
-  'index',
-  'rows',
-  'states',
-  'details',
-  'swatches',
-  'images',
-  'events',
-  'artifact',
-  'comment',
-  'comment-thread',
-  'waiting',
-  'controls',
-  'navigation',
-  'previews',
-  'specialized',
-  'icon-picker',
-  'confirm',
-] as const
-export type CataloguePage = (typeof CATALOGUE_PAGES)[number]
-export const CATALOGUE_COMPONENTS = [
-  'Avatar',
-  'Badge',
-  'Breadcrumbs',
-  'Button',
-  'Card',
-  'CardGrid',
-  'Chart',
-  'Checkbox',
-  'ConfirmModal',
-  'DateDivider',
-  'Disclosure',
-  'Dropdown',
-  'EmptyState',
-  'EventList',
-  'FloatingButton',
-  'FoldHeading',
-  'Icon',
-  'IconPicker',
-  'Image',
-  'Input',
-  'ListRow',
-  'ListSectionHeader',
-  'Markdown',
-  'MetaLine',
-  'Modal',
-  'NotePicker',
-  'PanelResizeHandle',
-  'PathLabel',
-  'PeriodSelector',
-  'QrCode',
-  'Quote',
-  'RelativeTime',
-  'Search',
-  'Section',
-  'Setting',
-  'SheetHeaderActions',
-  'SidebarPanel',
-  'Slider',
-  'SwatchPicker',
-  'Table',
-  'Tabs',
-  'TreeItem',
-  'Waveform',
-] as const
+import { CATALOGUE_PAGES, type CataloguePage } from './catalogueShape'
+export { CATALOGUE_PAGES, CATALOGUE_COMPONENTS, type CataloguePage } from './catalogueShape'
 let mounted: VueApp | undefined
 let host: HTMLElement | undefined
 export function closeDesignCatalogue() {

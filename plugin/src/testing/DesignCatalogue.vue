@@ -537,7 +537,7 @@
 <script setup lang="ts">
 import { ref, computed } from 'vue'
 import dayjs from 'dayjs'
-import { CATALOGUE_PAGES, type CataloguePage } from './designCatalogue'
+import { CATALOGUE_PAGES, type CataloguePage } from './catalogueShape'
 import type { KitColor } from '@/constants/colors'
 import type { EChartsType } from '@/bases/echarts'
 import type { KitEvent } from '@/components/obsidian/EventList.vue'
