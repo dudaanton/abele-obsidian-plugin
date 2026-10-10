@@ -36,3 +36,31 @@ Further retired-product coverage:
 
 `unit/reviewedScopedInput.test.ts` remains, ported to the exact v2 input and its
 reviewed v2 client checksum; reproducibility and payload integrity are retained.
+
+Retired access and transfer fixtures after the core v2 update:
+
+| File | Reason |
+|---|---|
+| `integration/syncDevices.test.ts` | Account-enrolled device lists, device naming and account-device revocation were replaced by issued-token management; token UI and v2 client tests cover issue/list/revoke. |
+| `integration/syncHandover.test.ts` | Personal enrollment, transferred sibling devices and deferred self-revocation are removed. Token registry and UI tests retain origin, credential association and independent disconnect guarantees. |
+| `integration/syncJoinQuestion.test.ts` | The removed choose-a-winning-vault enrollment dialog; token first contact follows the fixed identical/conflict rules instead. |
+| `unit/syncJoinEnd.test.ts` | Finishing the removed enrollment/join-choice workflow. |
+| `unit/syncRevoke.test.ts` | Deferred revocation of an account-enrolled device on local disconnect; disconnect now closes only the local token connection. |
+| `unit/testSharingIssuer.test.ts` | Issuer fixtures for removed grants/invitations; v2 token issuance has separate tests. |
+| `unit/pluginSharingCatalogue.test.ts` | Singleton personal/scoped grant catalog for deleted sharing screens. |
+| `unit/syncSharingTeardown.test.ts` | Lifetime of the removed singleton grant-sharing service; connection engine and token UI ownership tests remain. |
+| `component/transferConnection.test.ts` | Settings-transfer enrollment and adoption of live sibling credentials are explicitly removed. Token connections, credentials and ledger identities cannot be transferred. |
+| `unit/joinFixtureTransfer.test.ts` | Test-only account enrollment and device transfer fixture removed with the product workflow. |
+| `unit/phoneReplay.test.ts` | Retired account/join device fixture, not the live token evidence runner. |
+| `unit/phoneReplayFailure.test.ts` | Failure handling of the retired account/join device fixture. |
+| `integration/fixtureContext.test.ts` | Test-only singleton account enrollment context, replaced by token runtime fixtures. |
+| `integration/fixtureRecovery.test.ts` | Recovery of the retired account enrollment fixture; durable token registry/review storage and ledger tests remain. |
+
+| File | Removed API-specific assertions and retained coverage |
+|---|---|
+| `integration/externalRepresentation.test.ts` | Six assertions of scoped receipt hooks, separate scoped metadata writes, anchored scoped snapshots and scoped-known paging. The removed scoped client/state has no equivalent separate table or commit. Unified ledger metadata, durable jobs before feed advancement, exact byte guards, restart recovery and authority-loss byte retention remain in this file; atomic ledger/document abort and replay remain in externalState. |
+| `integration/externalState.test.ts` | Separate scoped head/checkpoint table identity: one token ledger now stores heads and checkpoints atomically; all transaction-abort and ownership assertions remain. |
+| `integration/placementNetworkLease.test.ts` | Removed personal-note delivery callback download. The missing-baseline pull and bounded push-run lease assertions remain. |
+
+| `integration/settingsToolsSync.test.ts` | Removed only the warning for manually changing a legacy vault/device/keychain identity. Token identity is fixed by the access token. Public address, pause, file filters, caps, origin restrictions, secret isolation and settings-write descriptions are ported to individual token connections. |
+| `integration/settingsToolsSyncChecks.test.ts` | Removed address-emptying-as-disconnect and manual vault-ID replacement; neither can retarget a token connection. Normalization, all filter/cap validation, actual stored-value reporting and startup-failure reporting remain. |

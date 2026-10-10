@@ -31,7 +31,7 @@ const abele = vi.hoisted(() => {
   }
 })
 
-vi.mock('@/sync/SyncService', () => ({ SyncService: { getInstance: () => abele } }))
+vi.mock('@/sync/tokenSettlement', () => abele)
 
 import { runAfterSync } from '@/helpers/runAfterSync'
 

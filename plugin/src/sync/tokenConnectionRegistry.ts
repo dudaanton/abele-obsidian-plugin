@@ -1,4 +1,7 @@
 import { z } from 'zod'
+import { Platform } from 'obsidian'
+import type { SelectiveSettings } from '@abele/sync-core'
+import { defaultSelective, selectiveProblem } from './connection'
 import { normalizeServerUrl, serverUrlProblem } from '@abele/sync-protocol'
 import { DEVICE_SECRET_PREFIX } from '@/secrets/deviceSecret'
 import type { LocalStorage } from './ledgerId'
@@ -51,6 +54,9 @@ const recordSchema = z
     secretReference: z.string(),
     ledgerId: id,
     paused: z.boolean(),
+    selective: z
+      .custom<SelectiveSettings>((value) => selectiveProblem(value, defaultSelective()) === null)
+      .optional(),
     status: z.enum([
       'needs-token',
       'disconnected',
@@ -103,6 +109,7 @@ export class TokenConnectionRegistry {
       secretReference: '',
       ledgerId: crypto.randomUUID(),
       paused: false,
+      selective: defaultSelective(Platform.isMobile),
       status: 'needs-token',
       state: {},
     }
@@ -190,6 +197,17 @@ export class TokenConnectionRegistry {
     record.paused = paused
     if (record.status === 'idle' || record.status === 'paused')
       record.status = paused ? 'paused' : 'idle'
+    this.write(TOKEN_REGISTRY_KEY, doc)
+  }
+  setSelective(localId: string, selective: SelectiveSettings): void {
+    const doc = this.document(),
+      record = this.record(doc, localId)
+    const problem = selectiveProblem(
+      selective,
+      record.selective ?? defaultSelective(Platform.isMobile)
+    )
+    if (problem) throw new Error(problem)
+    record.selective = clone(selective)
     this.write(TOKEN_REGISTRY_KEY, doc)
   }
   setAddress(localId: string, address: string): void {

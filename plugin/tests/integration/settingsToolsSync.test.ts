@@ -6,6 +6,7 @@ import { tokenUi } from '@/sync/tokenUi'
  * match the settings screen. Internal migration and revocation bookkeeping stays private.
  */
 import { describe, it, expect, beforeEach, afterEach, vi } from 'vitest'
+import { Platform } from 'obsidian'
 import { PLAIN_HTTP_REFUSED } from '@abele/sync-protocol'
 import {
   createReadSettingsTool,
@@ -14,8 +15,6 @@ import {
 } from '@/ai/tools/SettingsTools'
 import { DEFAULT_AI_SETTINGS } from '@/ai/types'
 import { AbeleConfig } from '@/services/AbeleConfig'
-import { emptyConnection } from '@/sync/connection'
-import { SyncService } from '@/sync/SyncService'
 import { useVault } from '../helpers/testEnv'
 import type { FakeApp } from '../helpers/fakeVault'
 
@@ -28,25 +27,16 @@ async function answer(tool: typeof read, params: Record<string, unknown>): Promi
 }
 
 const OLD = 'https://old.example.com'
-const TOKEN_ID = 'abele-sync-device-abc123'
 
 let app: FakeApp
 
 let saved: number
 
-/** The connection as a device enrolled on `OLD` holds it; `token` puts its token in the keychain. */
-function connected({ token = false } = {}): void {
-  SyncService.getInstance().connection.value = {
-    ...emptyConnection(),
-    serverUrl: OLD,
-    enrolledUrl: OLD,
-    vaultId: 'v1',
-    deviceId: 'd1',
-    deviceTokenId: TOKEN_ID,
-    deviceName: 'Laptop',
-    migrated: true,
-  }
-  if (token) app.secretStorage.setSecret(TOKEN_ID, 'the-device-token')
+let fixture: ReturnType<typeof tokenSettingsFixture>
+function connected({ token = false, isMobile = false } = {}): void {
+  Platform.isMobile = isMobile
+  fixture = tokenSettingsFixture(app)
+  if (token) fixture.bind()
 }
 
 beforeEach(() => {
@@ -63,14 +53,12 @@ beforeEach(() => {
 afterEach(async () => {
   tokenUi.value = null
   vi.restoreAllMocks()
-  await SyncService.getInstance().destroy()
 })
 
 describe('reading where this device syncs', () => {
   it('reads a device field from the connection', async () => {
-    expect(await answer(read, { path: 'sync.serverUrl' })).toContain(`"${OLD}"`)
-    expect(await answer(read, { path: 'sync.deviceName' })).toContain('"Laptop"')
-    expect(await answer(read, { path: 'sync.selective.images' })).toContain('true')
+    expect(await answer(read, { path: fixture.path('address') })).toContain(`"${OLD}"`)
+    expect(await answer(read, { path: fixture.path('selective.images') })).toContain('true')
   })
 
   it('lists the device fields under sync, beside what data.json shares', async () => {
@@ -91,7 +79,7 @@ describe('reading where this device syncs', () => {
 
 describe('changing where this device syncs', () => {
   it('cannot retarget a live token or expose its credentials and ledger through settings', async () => {
-    const token = tokenSettingsFixture(app)
+    const token = fixture
     token.bind()
     const before = token.registry.records()
     const reconcile = vi.fn(async () => {})
@@ -116,14 +104,14 @@ describe('changing where this device syncs', () => {
   })
 
   it('refuses plain http to another machine with the https rule', async () => {
-    const text = await answer(write, { path: 'sync.serverUrl', value: 'http://192.168.1.5' })
+    const text = await answer(write, { path: fixture.path('address'), value: 'http://192.168.1.5' })
 
     expect(text).toContain(PLAIN_HTTP_REFUSED)
-    expect(SyncService.getInstance().connection.value.serverUrl).toBe(OLD)
+    expect(fixture.registry.records()[0].address).toBe(OLD)
   })
 
   it('writes an https address through updateConnection, not data.json, and reconciles', async () => {
-    const token = tokenSettingsFixture(app)
+    const token = fixture
     const reconcile = vi.fn(async () => {})
     token.ui.connectionsChanged = reconcile
     const update = vi.spyOn(token.ui, 'updateConnection')
@@ -141,43 +129,46 @@ describe('changing where this device syncs', () => {
   it('returns the refusal when the token would leave the server that minted it', async () => {
     connected({ token: true })
 
-    const text = await answer(write, { path: 'sync.serverUrl', value: 'https://new.example.com' })
+    const text = await answer(write, {
+      path: fixture.path('address'),
+      value: 'https://new.example.com',
+    })
 
-    expect(text).toContain(`enrolled on ${OLD}`)
-    expect(SyncService.getInstance().connection.value.serverUrl).toBe(OLD)
+    expect(text).toContain('original server')
+    expect(fixture.registry.records()[0].address).toBe(OLD)
   })
 
   it('refuses a keychain name without the device prefix', async () => {
     const text = await answer(write, { path: 'sync.deviceTokenId', value: 'my-key' })
 
-    expect(text).toContain('abele-sync-device-')
-    expect(SyncService.getInstance().connection.value.deviceTokenId).toBe(TOKEN_ID)
+    expect(text).toMatch(/not a setting|No setting|not a valid field path/)
+    expect(fixture.keys.size).toBe(0)
   })
 
   it('pauses this device and changes its cap on the connection', async () => {
-    await answer(write, { path: 'sync.paused', value: 'true' })
-    await answer(write, { path: 'sync.selective.maxFileBytes', value: '1000' })
+    await answer(write, { path: fixture.path('paused'), value: 'true' })
+    await answer(write, { path: fixture.path('selective.maxFileBytes'), value: '1000' })
 
-    const connection = SyncService.getInstance().connection.value
+    const connection = fixture.registry.records()[0]
     expect(connection.paused).toBe(true)
     expect(connection.selective.maxFileBytes).toBe(1000)
     expect(saved).toBe(0)
   })
 
   it('takes a kind of file off this device on the connection, leaving the rest', async () => {
-    await answer(write, { path: 'sync.selective.images', value: 'false' })
+    await answer(write, { path: fixture.path('selective.images'), value: 'false' })
 
-    const selective = SyncService.getInstance().connection.value.selective
+    const selective = fixture.registry.records()[0].selective
     expect(selective.images).toBe(false)
     expect(selective.audio).toBe(true)
     expect(saved).toBe(0)
   })
 
   it('still checks the type of a device field', async () => {
-    const text = await answer(write, { path: 'sync.paused', value: '"yes"' })
+    const text = await answer(write, { path: fixture.path('paused'), value: '"yes"' })
 
     expect(text).toContain('type')
-    expect(SyncService.getInstance().connection.value.paused).toBe(false)
+    expect(fixture.registry.records()[0].paused).toBe(false)
   })
 
   it('does not write what the bookkeeping owns, or the whole block at once', async () => {
@@ -185,7 +176,7 @@ describe('changing where this device syncs', () => {
       expect(await answer(write, { path, value: '"x"' })).toMatch(/not a setting|No setting/)
     }
     expect(await answer(write, { path: 'sync', value: '{}' })).toContain('one field')
-    expect(SyncService.getInstance().connection.value.enrolledUrl).toBe(OLD)
+    expect(fixture.registry.records()[0].address).toBe(OLD)
   })
 
   it('keeps the shared keySignature in data.json', async () => {
@@ -205,23 +196,21 @@ describe('changing where this device syncs', () => {
 
 describe('what a write would do, as the approval card says it', () => {
   it('warns that a new server address moves the token, naming where', () => {
-    const view = describeSettingsWrite('sync.serverUrl', 'https://new.example.com')
+    const view = describeSettingsWrite(fixture.path('address'), 'https://new.example.com')
 
     expect(view.before).toBe(`"${OLD}"`)
     expect(view.after).toBe('"https://new.example.com"')
-    expect(view.warning).toContain('Changes where this device syncs')
-    expect(view.warning).toContain('new.example.com')
+    expect(view.warning).toContain('original server')
+    expect(view.warning).toContain('Use a new token')
     expect(view.deviceOnly).toBe(true)
   })
 
-  it('names the current server for a field that moves the token elsewhere', () => {
-    for (const path of ['sync.vaultId', 'sync.deviceId', 'sync.deviceTokenId']) {
-      expect(describeSettingsWrite(path, '"x"').warning).toContain('old.example.com')
-    }
-  })
-
   it('says only this device for a switch that moves no token', () => {
-    for (const path of ['sync.paused', 'sync.selective.maxFileBytes', 'sync.selective.images']) {
+    for (const path of [
+      fixture.path('paused'),
+      fixture.path('selective.maxFileBytes'),
+      fixture.path('selective.images'),
+    ]) {
       const view = describeSettingsWrite(path, 'false')
       expect(view.warning).toBeNull()
       expect(view.deviceOnly).toBe(true)

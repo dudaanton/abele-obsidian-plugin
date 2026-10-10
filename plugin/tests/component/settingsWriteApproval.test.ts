@@ -14,10 +14,11 @@ import AiToolApproval from '@/components/AiToolApproval.vue'
 import { ChatService } from '@/ai/ChatService'
 import { DEFAULT_AI_SETTINGS, type ChatMessage } from '@/ai/types'
 import { AbeleConfig } from '@/services/AbeleConfig'
-import { emptyConnection } from '@/sync/connection'
-import { SyncService } from '@/sync/SyncService'
+import { tokenSettingsFixture } from '../helpers/tokenSettingsFixture'
+import { tokenUi } from '@/sync/tokenUi'
 import { useVault } from '../helpers/testEnv'
 
+let token: ReturnType<typeof tokenSettingsFixture>
 const OLD = 'https://old.example.com'
 
 beforeEach(() => {
@@ -26,17 +27,12 @@ beforeEach(() => {
     value: undefined,
   } as never)
   AbeleConfig.getInstance().ai = { ...DEFAULT_AI_SETTINGS, chatFolder: 'AI/Chats' }
-  SyncService.getInstance().connection.value = {
-    ...emptyConnection(),
-    serverUrl: OLD,
-    enrolledUrl: OLD,
-    vaultId: 'v1',
-  }
+  token = tokenSettingsFixture()
 })
 
 afterEach(async () => {
   vi.restoreAllMocks()
-  await SyncService.getInstance().destroy()
+  tokenUi.value = null
 })
 
 function approval(params: Record<string, unknown>) {
@@ -54,19 +50,19 @@ function approval(params: Record<string, unknown>) {
 
 describe('approving a change to a setting', () => {
   it('shows the old and the new server address, and where the token would go', () => {
-    const wrapper = approval({ path: 'sync.serverUrl', value: 'https://new.example.com' })
+    const wrapper = approval({ path: token.path('address'), value: 'https://new.example.com' })
 
-    expect(wrapper.find('.abele-tool-approval__path').text()).toBe('sync.serverUrl')
+    expect(wrapper.find('.abele-tool-approval__path').text()).toBe(token.path('address'))
     expect(wrapper.find('.abele-tool-approval__before').text()).toBe(`"${OLD}"`)
     expect(wrapper.find('.abele-tool-approval__after').text()).toBe('"https://new.example.com"')
     const warning = wrapper.find('.abele-tool-approval__warning')
     expect(warning.exists()).toBe(true)
-    expect(warning.text()).toContain('Changes where this device syncs')
-    expect(warning.text()).toContain('new.example.com')
+    expect(warning.text()).toContain('Use a new token for another server')
+    expect(warning.text()).toContain('original server')
   })
 
   it('draws the warning glyph in the warning colour, as decoration nobody clicks', () => {
-    const wrapper = approval({ path: 'sync.serverUrl', value: 'https://new.example.com' })
+    const wrapper = approval({ path: token.path('address'), value: 'https://new.example.com' })
 
     const glyph = wrapper.find('.abele-tool-approval__warning .abele-obsidian-icon')
     expect(glyph.classes()).toContain('abele-obsidian-icon_color-orange')
@@ -83,7 +79,7 @@ describe('approving a change to a setting', () => {
   })
 
   it('says a per-device switch touches only this device', () => {
-    const wrapper = approval({ path: 'sync.paused', value: 'true' })
+    const wrapper = approval({ path: token.path('paused'), value: 'true' })
 
     expect(wrapper.find('.abele-tool-approval__warning').exists()).toBe(false)
     expect(wrapper.text()).toContain('Only this device.')

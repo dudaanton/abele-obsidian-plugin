@@ -19,7 +19,8 @@ export const deviceValue = (path: string): unknown =>
   isValidDevicePath(path) ? tokenValue(path) : undefined
 export const writeDevice = (path: string, next: unknown): Promise<string | null> =>
   isValidDevicePath(path) ? writeToken(path, next) : Promise.resolve(invalidPath(path))
-export const deviceTypes = (_path: string): readonly string[] | null => null
+export const deviceTypes = (path: string): readonly string[] | null =>
+  path.endsWith('.selective.maxFileBytes') ? ['number', 'empty'] : null
 export const deviceNext = tokenNext
 export const startFailure = tokenFailure
 export const deviceWarning = (path: string, _next: unknown): string | null =>

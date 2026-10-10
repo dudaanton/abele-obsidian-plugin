@@ -480,8 +480,7 @@ export class ExternalRepresentation {
     return this.options.excluded?.(path, size) ? 'excluded' : null
   }
   /** Persist required work BEFORE returning a page that core may checkpoint. No client blob
-   * read and no filesystem effect precedes the durable job. Personal heads stay in entries;
-   * scoped heads stay in ScopedState. */
+   * read and no filesystem effect precedes the durable job. All token heads use one ledger. */
   async accept(change: ChangeItem): Promise<boolean> {
     this.owned()
     const file = this.file(change.file_id)
@@ -514,9 +513,15 @@ export class ExternalRepresentation {
         op.expected.path === expected.path &&
         op.desiredAvailability === desired
     )
-    if (existing && file.availability === desired) {
+    if (existing && entry.versionId === expected.versionId && entry.wirePath === expected.path) {
       if (existing.expected?.sha !== expected.sha || existing.expected.size !== expected.size)
         throw new ExternalRecoveryRequired('replayed metadata changed its immutable basis')
+      if (
+        file.availability !== desired &&
+        file.pendingOperationId === existing.operationId &&
+        existing.unresolvedOutcome === 'verification-unavailable'
+      )
+        await this.process(existing.operationId, change.mtime ?? entry.mtime)
       return true
     }
     const operationId = crypto.randomUUID()

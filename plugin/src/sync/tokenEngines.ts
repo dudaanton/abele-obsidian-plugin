@@ -148,6 +148,7 @@ export class TokenEngines {
         WebSocket: socketOf(this.deps),
         paths: { scriptsFolder: this.scriptsFolder, configRoots: [this.app.vault.configDir] },
         paused: record.paused,
+        selective: record.selective,
         fallbackMs: fallbackMsOf(this.deps),
         expectedSource: reviewSourceOf(record),
         localFiles: this.localFiles,
@@ -176,6 +177,7 @@ export class TokenEngines {
       unbind = this.ui.bind(record.id, {
         sync: () => runtime.sync(),
         pause: (paused) => runtime.pause(paused),
+        updateSelective: (selective) => runtime.updateSelective(selective),
         opened: (path) => runtime.opened(path),
         resolve: (id) => runtime.resolve(id),
         publishAttachment: (id) => runtime.publishAttachment(id),

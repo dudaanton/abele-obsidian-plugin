@@ -1,6 +1,5 @@
 import { App } from 'obsidian'
-import { tokenUi } from '@/sync/tokenUi'
-import { watch } from 'vue'
+import { isFullySynced, onStatusChange } from '@/sync/tokenSettlement'
 
 /**
  * Waits for the vault to have settled before executing a callback.
@@ -42,11 +41,7 @@ function afterObsidianSync(app: App, callback: () => void): void {
 
 /** Waits for the Abele Sync engine to have nothing in flight. */
 function afterAbeleSync(callback: () => void): void {
-  const settled = () =>
-    !(tokenUi.value?.rows.value ?? []).some(
-      (row) => row.status === 'syncing' || row.status === 'joining'
-    )
-  if (settled()) {
+  if (isFullySynced()) {
     callback()
     return
   }
@@ -54,14 +49,10 @@ function afterAbeleSync(callback: () => void): void {
   // `done` rather than the unsubscribe alone: a status change while the callback runs would
   // otherwise reach a listener that has been removed from one copy of the set and not the other.
   let done = false
-  const unsubscribe = watch(
-    settled,
-    (ready) => {
-      if (done || !ready) return
-      done = true
-      unsubscribe()
-      callback()
-    },
-    { flush: 'sync' }
-  )
+  const unsubscribe = onStatusChange(() => {
+    if (done || !isFullySynced()) return
+    done = true
+    unsubscribe()
+    callback()
+  })
 }

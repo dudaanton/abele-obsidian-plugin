@@ -35,7 +35,10 @@ the selected token connection and v2 restore calls. Original modification time i
 
 First connection preserves different local bytes in a deterministic conflict copy before
 placing the verified server variant under the shared path lease. Matching bytes are adopted.
-The host migration is incomplete: retained legacy client/scoped imports still fail the
-production type check and associated regression tests. Token hydration/eviction and its
+Removed core APIs and their production adapters have been deleted; the production type
+check passes. Regression porting remains incomplete: several retained tests still import
+retired fixtures, and server-backed external-file tests still use the old harness. Each
+connection keeps validated file filters and a device-only size cap; settings tools write
+these through the token controller without transferring credentials or ledger identity. Token hydration/eviction and its
 multi-connection ownership/forwarding fences are not yet integrated. No live desktop or
 phone evidence, completed multi-connection eviction, or complete scenario acceptance is claimed.

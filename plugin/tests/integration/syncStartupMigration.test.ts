@@ -1,8 +1,8 @@
 // @vitest-environment node
 import { describe, expect, it, vi } from 'vitest'
-import type { App } from 'obsidian'
 import { AbeleConfig } from '@/services/AbeleConfig'
-import { ConnectionKeeper } from '@/sync/connectionKeeper'
+import { prepareTokenConnections } from '@/sync/tokenRegistryPreparation'
+import { secrets } from '@/secrets/SecretStore'
 import { CONNECTION_KEY } from '@/sync/connection'
 import { LEDGER_KEY } from '@/sync/ledgerId'
 import { createPluginSecrets } from '@/secrets/host'
@@ -13,7 +13,7 @@ import { buildFakeVault } from '../helpers/fakeVault'
 vi.mock('@/ai/tools', () => ({ codeToolDescriptions: () => ({}) }))
 
 describe('the complete startup migration order', () => {
-  it('keeps legacy data through chat-index migration and a refused connection save, then retries after a restart', async () => {
+  it('journals retired credentials before a refused cleanup and retries without activating legacy state', async () => {
     Object.assign(globalThis, { window: globalThis, document: { visibilityState: 'visible' } })
     const path = '.obsidian/plugins/abele/data.json'
     const identity = {
@@ -50,7 +50,7 @@ describe('the complete startup migration order', () => {
     setSecrets(createPluginSecrets(plugin))
     const store = app.saveLocalStorage.bind(app)
     app.saveLocalStorage = (key, value) => {
-      if (key === CONNECTION_KEY) throw new Error('storage unavailable')
+      if (key === 'abele-sync-retired-access-cleanup-v1') throw new Error('storage unavailable')
       store(key, value)
     }
     try {
@@ -59,15 +59,29 @@ describe('the complete startup migration order', () => {
       await config.loadSettings()
       expect(await app.vault.adapter.exists('.obsidian/plugins/abele/chat-index.json')).toBe(true)
       expect(writes).toBe(0)
-      await new ConnectionKeeper(() => undefined).open(app as unknown as App)
+      await expect(
+        prepareTokenConnections(
+          app,
+          { get: (id) => secrets().getLocal(id), remove: (id) => secrets().forgetLocal(id) },
+          config.takeLoadedSync()?.sync
+        )
+      ).rejects.toThrow('storage unavailable')
       await config.saveSettings()
       expect(writes).toBe(0)
       expect((await plugin.loadData()).sync).toMatchObject(identity)
       app.saveLocalStorage = store
       config.init(plugin)
       await config.loadSettings()
-      await new ConnectionKeeper(() => undefined).open(app as unknown as App)
-      expect(app.loadLocalStorage(CONNECTION_KEY)).toMatchObject(identity)
+      const registry = await prepareTokenConnections(
+        app,
+        { get: (id) => secrets().getLocal(id), remove: (id) => secrets().forgetLocal(id) },
+        config.takeLoadedSync()?.sync
+      )
+      config.acknowledgeSyncMigration()
+      await config.rewrite()
+      expect(registry.records()).toEqual([])
+      expect(app.secretStorage.getSecret(identity.deviceTokenId)).toBe('')
+      expect(app.loadLocalStorage(CONNECTION_KEY)).toBeNull()
       expect((await plugin.loadData()).sync).not.toHaveProperty('deviceTokenId')
       expect(writes).toBeGreaterThan(0)
     } finally {

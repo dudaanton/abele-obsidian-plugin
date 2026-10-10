@@ -11,6 +11,7 @@ import {
   type EngineClient,
   type SyncReport,
   type EngineStatus,
+  type SelectiveSettings,
 } from '@abele/sync-core'
 import {
   V2ManifestSchema,
@@ -40,6 +41,7 @@ export interface TokenEngineOptions {
   WebSocket?: typeof WebSocket
   paths?: ExecutablePaths
   paused?: boolean
+  selective?: SelectiveSettings
   fallbackMs?: number
   assertHeld?(): void
   changed(status: EngineStatus, report?: SyncReport): void
@@ -61,7 +63,9 @@ export class TokenEngineRuntime implements ConnectionRuntime, TokenUiRuntime {
   private held = new Set<string>()
   private unstatus: () => void
   private readonly token
+  private readonly selective: SelectiveSettings
   constructor(private readonly options: TokenEngineOptions) {
+    this.selective = structuredClone(options.selective ?? selectiveDefaults())
     this.token = decodeAccessToken(options.encoded)
     const transport: typeof fetch = async (input, init) => {
       this.assertHeld()
@@ -116,7 +120,7 @@ export class TokenEngineRuntime implements ConnectionRuntime, TokenUiRuntime {
       client: this.client,
       fs: options.fs,
       state: options.state,
-      selective: selectiveDefaults(),
+      selective: this.selective,
       stillHeld: () => this.active,
       ignore: { ignores: (path) => this.blocked(path) },
       // Host transport durably stages every executable delivery before core receives the page.
@@ -128,6 +132,13 @@ export class TokenEngineRuntime implements ConnectionRuntime, TokenUiRuntime {
     })
     this.unstatus = this.engine.onStatus((status) => options.changed(status))
     if (options.paused) this.engine.pause()
+  }
+  async updateSelective(selective: SelectiveSettings): Promise<void> {
+    await this.engine.runExclusive(async () => {
+      this.assertHeld()
+      Object.assign(this.selective, structuredClone(selective))
+    })
+    if (this.engine.status.state !== 'paused') await this.engine.rescan()
   }
   private assertHeld(): void {
     if (!this.active) throw new EngineError('lost', 'Connection stopped')

@@ -16,8 +16,6 @@ import { Notice } from 'obsidian'
 import AbelePlugin from '@/main'
 import { AbeleConfig } from '@/services/AbeleConfig'
 import { DEFAULT_AI_SETTINGS, type AiSettings } from '@/ai/types'
-import { SyncService } from '@/sync/SyncService'
-import { GlobalStore } from '@/stores/GlobalStore'
 import { useVault } from '../helpers/testEnv'
 
 interface Command {
@@ -51,7 +49,6 @@ const SYNC_IDS = ['sync-now', 'sync-pause-resume', 'sync-log', 'sync-deleted-fil
 
 beforeEach(() => {
   useVault([])
-  vi.spyOn(SyncService.getInstance(), 'init').mockImplementation(() => {})
 })
 
 afterEach(() => {

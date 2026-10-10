@@ -73,6 +73,7 @@ export interface TokenUiRuntime extends ExecutableApplyPort, ConsentResolvePort 
   /** Stable local identities already recorded by the engine, never derived from a path. */
   opened(path: string): Promise<{ source: ReviewSource; noteId: string }[]>
   publishAttachment?(fileId: string): Promise<void>
+  updateSelective?(selective: import('@abele/sync-core').SelectiveSettings): Promise<void>
   historyClient?: import('@abele/sync-core').V2EngineClient
   entryFor?(path: string): Promise<import('@abele/sync-core').StateEntry | null>
 }
@@ -175,14 +176,26 @@ export class TokenUi {
     }
     await this.connectionsChanged()
   }
-  async updateConnection(id: string, patch: { address?: string; paused?: boolean }): Promise<void> {
+  async updateConnection(
+    id: string,
+    patch: {
+      address?: string
+      paused?: boolean
+      selective?: import('@abele/sync-core').SelectiveSettings
+    }
+  ): Promise<void> {
     if (patch.address !== undefined) {
       await this.connectionChangeGuard()
       this.registry.setAddress(id, patch.address)
     }
     if (patch.paused !== undefined) await this.pause(id, patch.paused)
+    if (patch.selective !== undefined) {
+      this.registry.setSelective(id, patch.selective)
+    }
     this.refresh()
     try {
+      if (patch.selective !== undefined)
+        await this.runtimes.get(id)?.updateSelective?.(patch.selective)
       await this.connectionsChanged()
     } catch (error) {
       this.registry.setStatus(id, 'error')

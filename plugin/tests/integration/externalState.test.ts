@@ -4,7 +4,7 @@ import { mkdirSync, mkdtempSync, rmSync } from 'node:fs'
 import { resolve } from 'node:path'
 import { IDBFactory, IDBObjectStore } from 'fake-indexeddb'
 import { afterEach, describe, expect, it, vi } from 'vitest'
-import { MemoryStateStore, ScopedState } from '@abele/sync-core'
+import { MemoryStateStore } from '@abele/sync-core'
 import { IndexedDbStateStore } from '@/sync/IndexedDbStateStore'
 import { ExternalState, ExternalStateError, type ExternalStatePort } from '@/sync/external/state'
 import { SqliteExternalStateStore } from '@/sync/external/SqliteExternalStateStore'
@@ -608,45 +608,5 @@ describe('external storage commit boundaries', () => {
     await expect(
       ExternalState.open(await host.reopen(), 'sample-ledger', binding)
     ).rejects.toMatchObject({ reason: 'recovery-required' })
-  })
-
-  it('uses the existing scoped head/checkpoint record in the same database, not a duplicate external head', async () => {
-    const host = await idb()
-    const scopedBinding = {
-      version: 4,
-      facet: 'scoped',
-      endpoint_identity: binding.endpoint,
-      vault_id: binding.vaultId,
-      grant_id: 'sample-grant',
-      principal_kind: 'key',
-      principal_id: binding.principalId,
-      credential_fingerprint: 'e'.repeat(64),
-    }
-    const scoped = await ScopedState.open(host.port, scopedBinding, { initialize: true })
-    const externalBinding = {
-      ...binding,
-      mode: 'scoped',
-      grantId: scopedBinding.grant_id,
-      principalType: 'key',
-    }
-    const external = await ExternalState.open(host.port, 'sample-ledger', externalBinding)
-    // ScopedState's existing metadata format remains its sole head authority.
-    const metadata = await host.port.pluginMeta()
-    const key = 'scoped-v4-state'
-    const root = JSON.parse(metadata.get(key)!)
-    const checkpoint = { kind: 'scoped', token: 'sample-checkpoint' }
-    await external.commit({
-      expectedRevision: 0,
-      operations: [{ expectedRevision: null, next: operation() }],
-      ledger: { metadata: [{ key, value: JSON.stringify({ ...root, checkpoint }) }] },
-    })
-    expect(await scoped.getCheckpoint()).toEqual(checkpoint)
-    const port = await host.reopen()
-    const reopened = await ScopedState.open(port, scopedBinding)
-    expect(await reopened.getCheckpoint()).toEqual(checkpoint)
-    expect(
-      (await (await ExternalState.open(port, 'sample-ledger', externalBinding)).snapshot())
-        .operations[0].phase
-    ).toBe('prepared')
   })
 })

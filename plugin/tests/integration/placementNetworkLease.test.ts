@@ -71,63 +71,6 @@ it('downloads a same-hash move with a missing local baseline before acquiring ei
   expect(await disk.read('new.md')).toEqual(bytes)
 })
 
-it('does not reserve a path during the exact-byte download for a note delivery callback', async () => {
-  const disk = new MemoryFileSystem(),
-    state = new MemoryStateStore(),
-    locks = new PathCoordinator()
-  const bytes = new TextEncoder().encode('sample'),
-    sha = await sha256(bytes)
-  const downloading = deferred<void>(),
-    release = deferred<void>()
-  let calls = 0
-  const placer = new PullPlacer(
-    {
-      getBlob: async () => {
-        if (++calls === 2) {
-          downloading.resolve()
-          await release.promise
-        }
-        return bytes
-      },
-    },
-    coordinatedFileSystem(disk, locks),
-    state,
-    {
-      dirty: new Set(),
-      expected: new ExpectedWrites(),
-      filter: { excluded: () => false },
-      onPersonalNoteApplied: async () => {},
-    },
-    sha256
-  )
-  const change: ChangeItem = {
-    seq: 1,
-    file_id: 'sample-file',
-    version_id: 'sample-version',
-    path: 'sample.md',
-    prev_path: null,
-    op: 'create',
-    kind: 'note',
-    sha,
-    size: bytes.length,
-    mtime: 10,
-    at: '2025-01-01T00:00:00Z',
-    actor: { kind: 'system', id: 'sample', name: 'Sample' },
-  }
-  const placement = placer.place(change, sha, null, new Map(), new Map())
-  await downloading.promise
-  let entered = false
-  const other = locks.run(['sample.md'], async () => {
-    entered = true
-  })
-  try {
-    await vi.waitFor(() => expect(entered).toBe(true), { timeout: 100 })
-  } finally {
-    release.resolve()
-    await Promise.all([placement, other])
-  }
-})
-
 it('does not reserve any placement path during later bounded push download runs', async () => {
   const disk = new MemoryFileSystem(),
     state = new MemoryStateStore(),

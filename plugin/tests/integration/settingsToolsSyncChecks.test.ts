@@ -13,8 +13,7 @@ import { describe, it, expect, beforeEach, afterEach, vi } from 'vitest'
 import { Platform, type App } from 'obsidian'
 import { createWriteSettingsTool, describeSettingsWrite } from '@/ai/tools/SettingsTools'
 import { AbeleConfig } from '@/services/AbeleConfig'
-import { emptyConnection, MOBILE_MAX_FILE_BYTES, type DeviceConnection } from '@/sync/connection'
-import { SyncService } from '@/sync/SyncService'
+import { defaultSelective, MOBILE_MAX_FILE_BYTES } from '@/sync/connection'
 import { useVault } from '../helpers/testEnv'
 import type { FakeApp } from '../helpers/fakeVault'
 
@@ -26,32 +25,17 @@ async function answer(params: Record<string, unknown>): Promise<string> {
 }
 
 const OLD = 'https://old.example.com'
-const TOKEN_ID = 'abele-sync-device-abc123'
 
 let app: FakeApp
 
-const connection = (): DeviceConnection => SyncService.getInstance().connection.value
+const connection = () => fixture.registry.records()[0]
 
-/** A device enrolled on `OLD`; `token` puts its token in the keychain. */
+let fixture: ReturnType<typeof tokenSettingsFixture>
 function connected({ token = false, isMobile = false } = {}): void {
-  SyncService.getInstance().connection.value = {
-    ...emptyConnection(isMobile),
-    serverUrl: OLD,
-    enrolledUrl: OLD,
-    vaultId: 'v1',
-    vaultName: 'Notes',
-    deviceId: 'd1',
-    deviceTokenId: TOKEN_ID,
-    deviceName: 'Laptop',
-    migrated: true,
-  }
-  if (token) {
-    app.secretStorage.setSecret(TOKEN_ID, 'the-device-token')
-    app.secretStorage.setSecret(
-      `${TOKEN_ID}-server`,
-      JSON.stringify({ server: OLD, token: 'the-device-token' })
-    )
-  }
+  Platform.isMobile = isMobile
+  if (!fixture || fixture.app !== app) fixture = tokenSettingsFixture(app)
+  fixture.registry.setSelective(fixture.id, defaultSelective(isMobile))
+  if (token) fixture.bind()
 }
 
 beforeEach(() => {
@@ -67,27 +51,29 @@ afterEach(async () => {
   tokenUi.value = null
   vi.restoreAllMocks()
   Platform.isMobile = false
-  await SyncService.getInstance().destroy()
 })
 
 describe('the server address is stored the way a sign-in stores it', () => {
   it('keeps the enrolled server under another spelling, stored as the sign-in wrote it', async () => {
     connected({ token: true })
 
-    const text = await answer({ path: 'sync.serverUrl', value: ' https://OLD.example.com/ ' })
+    const text = await answer({
+      path: fixture.path('address'),
+      value: ' https://OLD.example.com/ ',
+    })
 
-    expect(connection().serverUrl).toBe(OLD)
+    expect(connection().address).toBe(OLD)
     expect(text).toContain(`"${OLD}" → "${OLD}"`)
   })
 
   it('stores a new address normalised, and the card shows it that way', async () => {
-    expect(describeSettingsWrite('sync.serverUrl', 'https://New.Example.com/').after).toBe(
+    expect(describeSettingsWrite(fixture.path('address'), 'https://New.Example.com/').after).toBe(
       '"https://new.example.com"'
     )
 
-    const text = await answer({ path: 'sync.serverUrl', value: 'https://New.Example.com/' })
+    const text = await answer({ path: fixture.path('address'), value: 'https://New.Example.com/' })
 
-    expect(connection().serverUrl).toBe('https://new.example.com')
+    expect(connection().address).toBe('https://new.example.com')
     expect(text).toContain('→ "https://new.example.com"')
   })
 })
@@ -95,7 +81,7 @@ describe('the server address is stored the way a sign-in stores it', () => {
 describe('the selective settings are held to the Sync tab rules', () => {
   it('refuses a cap that is not a positive whole number, and changes nothing', async () => {
     for (const value of ['0', '-1', '"lots"', '1.5', '{}', '[]', 'true']) {
-      const text = await answer({ path: 'sync.selective.maxFileBytes', value })
+      const text = await answer({ path: fixture.path('selective.maxFileBytes'), value })
       expect(text, value).toMatch(/was not changed|type has to match/)
       expect(connection().selective.maxFileBytes, value).toBeNull()
     }
@@ -105,7 +91,7 @@ describe('the selective settings are held to the Sync tab rules', () => {
     Platform.isMobile = true
     connected({ isMobile: true })
 
-    const text = await answer({ path: 'sync.selective.maxFileBytes', value: '0' })
+    const text = await answer({ path: fixture.path('selective.maxFileBytes'), value: '0' })
 
     expect(text).toContain('was not changed')
     expect(connection().selective.maxFileBytes).toBe(MOBILE_MAX_FILE_BYTES)
@@ -115,23 +101,26 @@ describe('the selective settings are held to the Sync tab rules', () => {
     Platform.isMobile = true
     connected({ isMobile: true })
 
-    const text = await answer({ path: 'sync.selective.maxFileBytes', value: 'null' })
+    const text = await answer({ path: fixture.path('selective.maxFileBytes'), value: 'null' })
 
     expect(connection().selective.maxFileBytes).toBeNull()
     expect(text).toContain(`${MOBILE_MAX_FILE_BYTES} → null`)
   })
 
   it('refuses a folder list with anything but folder names in it', async () => {
-    const text = await answer({ path: 'sync.selective.excludedFolders', value: '["a", 5]' })
+    const text = await answer({
+      path: fixture.path('selective.excludedFolders'),
+      value: '["a", 5]',
+    })
 
     expect(text).toContain('was not changed')
     expect(connection().selective.excludedFolders).toEqual([])
   })
 
   it('refuses a switch that is not true or false, and settings missing some', async () => {
-    const kind = await answer({ path: 'sync.selective.settings.main', value: '"no"' })
-    const block = await answer({ path: 'sync.selective.settings', value: '{}' })
-    const extra = await answer({ path: 'sync.selective.surprise', value: 'true' })
+    const kind = await answer({ path: fixture.path('selective.settings.main'), value: '"no"' })
+    const block = await answer({ path: fixture.path('selective.settings'), value: '{}' })
+    const extra = await answer({ path: fixture.path('selective.surprise'), value: 'true' })
 
     expect(kind).toMatch(/was not changed|type/)
     expect(block).toContain('was not changed')
@@ -141,33 +130,25 @@ describe('the selective settings are held to the Sync tab rules', () => {
   })
 
   it('reports what was stored', async () => {
-    const text = await answer({ path: 'sync.selective.maxFileBytes', value: '1000' })
+    const text = await answer({ path: fixture.path('selective.maxFileBytes'), value: '1000' })
 
-    expect(text).toBe('sync.selective.maxFileBytes: null → 1000')
+    expect(text).toBe(fixture.path('selective.maxFileBytes') + ': null → 1000')
     expect(connection().selective.maxFileBytes).toBe(1000)
   })
 })
 
-describe('the warning when the address is emptied', () => {
-  it('says the device stops syncing and the token stays valid until Disconnect', () => {
-    const view = describeSettingsWrite('sync.serverUrl', '""')
-
-    expect(view.warning).toContain('Stops this device syncing')
-    expect(view.warning).toContain('stays valid on old.example.com until Disconnect')
-    expect(view.warning).not.toContain('will be sent')
-  })
-})
-
-describe('a vault changed under the connection', () => {
-  it('forgets the old vault name, so nothing names a vault this device left', async () => {
-    await answer({ path: 'sync.vaultId', value: '"v2"' })
-
-    expect(connection().vaultId).toBe('v2')
-    expect(connection().vaultName).toBe('')
-  })
-})
-
 describe('a write that leaves sync unable to start', () => {
+  it('reports a stored filter even when the running engine cannot rescan', async () => {
+    const runtime = fixture.bind()
+    runtime.updateSelective = async () => {
+      throw Object.assign(Error('sample offline'), { code: 'offline' })
+    }
+    const text = await answer({ path: fixture.path('selective.maxFileBytes'), value: '1000' })
+    expect(fixture.registry.records()[0].selective?.maxFileBytes).toBe(1000)
+    expect(text).toContain(fixture.path('selective.maxFileBytes') + ': null → 1000')
+    expect(text).toContain('sync could not start:')
+    expect(text).not.toContain('was not changed')
+  })
   /** A state database that will not open: the build fails the way a broken one does. */
   const brokenDatabase = {
     open: () => {
@@ -176,7 +157,7 @@ describe('a write that leaves sync unable to start', () => {
   } as unknown as IDBFactory
 
   it('says so in the answer, beside what was written', async () => {
-    const token = tokenSettingsFixture(app)
+    const token = fixture
     token.bind()
     token.ui.runtimes.clear()
     const host = new TokenEngines(

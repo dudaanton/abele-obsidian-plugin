@@ -1,15 +1,6 @@
 import { afterEach, describe, expect, it, vi } from 'vitest'
 import { IDBFactory } from 'fake-indexeddb'
-import {
-  scan,
-  sha256,
-  SyncEngine,
-  MemoryStateStore,
-  RecoveryBarrier,
-  ScopedState,
-  scanScopedChanges,
-  pullScoped,
-} from '@abele/sync-core'
+import { scan, sha256, SyncEngine, MemoryStateStore, RecoveryBarrier } from '@abele/sync-core'
 import type { App } from 'obsidian'
 import { IndexedDbStateStore } from '@/sync/IndexedDbStateStore'
 import { ExternalState } from '@/sync/external/state'
@@ -84,35 +75,7 @@ async function setup(scopedMode = false) {
     name = 'sample-representation'
   const store = await IndexedDbStateStore.open(factory, name)
   cleanups.push(() => store.close())
-  const scoped = scopedMode
-    ? await ScopedState.open(
-        store,
-        {
-          version: 4,
-          facet: 'scoped',
-          endpoint_identity: binding.endpoint,
-          vault_id: binding.vaultId,
-          grant_id: 'sample-grant',
-          principal_kind: 'installation',
-          principal_id: 'sample-principal',
-          credential_fingerprint: 'c'.repeat(64),
-        },
-        { initialize: true }
-      )
-    : undefined
   await store.put(entry)
-  if (scoped)
-    await scoped.putKnown({
-      file_id: id,
-      version_id: entry.versionId,
-      path,
-      sha: entry.sha,
-      size: entry.size,
-      mtime: entry.mtime,
-      state: 'materialized',
-      dirty: false,
-      native: true,
-    })
   const state = await ExternalState.open(store, 'sample-ledger', localBinding)
   const projection = serializeProjection({
     format: 'abele.external',
@@ -164,14 +127,13 @@ async function setup(scopedMode = false) {
   const runtime = await ExternalRepresentation.open({
     state,
     ledger: store,
-    scoped,
     fs,
     verify,
     assertOwned: () => {},
     scriptsFolder: () => 'Scripts',
     installProjection: async () => 'cleanup-pending',
   })
-  return { factory, name, store, state, scoped, fake, fs, runtime, verify, file, projection }
+  return { factory, name, store, state, fake, fs, runtime, verify, file, projection }
 }
 const event = (patch = {}) => ({
   seq: 2,
@@ -329,20 +291,6 @@ describe('common external representation and durable remote projection work', ()
   it('recognizable renamed/damaged projections are never folder-native creates', async () => {
     const s = await setup()
     await s.fake.vault.adapter.rename(s.file.projectionPath, 'Media/sample-renamed.txt')
-    const scopedBinding = {
-      version: 4 as const,
-      facet: 'scoped' as const,
-      endpoint_identity: binding.endpoint,
-      vault_id: binding.vaultId,
-      grant_id: 'sample-grant',
-      principal_kind: 'installation' as const,
-      principal_id: 'sample-principal',
-      credential_fingerprint: 'c'.repeat(64),
-    }
-    const scoped = await ScopedState.open(new MemoryStateStore(), scopedBinding, {
-      initialize: true,
-    })
-    expect(await scanScopedChanges(s.runtime.fileSystem(), scoped, 'Media/')).toEqual([])
     expect((await scan(s.runtime.fileSystem(), s.runtime.stateStore(), filter)).ops).toEqual([])
     await s.fake.vault.adapter.writeBinary(
       s.file.projectionPath,
@@ -369,7 +317,7 @@ describe('common external representation and durable remote projection work', ()
     const commitRaw = vi.fn(async () => ({ body: { results: [] }, replayed: false }))
     await expect(
       s.runtime
-        .personalClient({ commitRaw } as never)
+        .engineClient({ commitRaw } as never)
         .commitRaw(
           [{ op: 'delete', file_id: foreignId, base_version_id: entry.versionId }],
           'sample-held-replay'
@@ -420,7 +368,7 @@ describe('common external representation and durable remote projection work', ()
       getBlob = vi.fn(async () => {
         throw Error('No blob read for metadata')
       })
-    const client = s.runtime.personalClient({
+    const client = s.runtime.engineClient({
       changes: async () => ({ items: [event()], next_since: 2, head_seq: 2 }),
       getBlob,
     } as never)
@@ -444,7 +392,7 @@ describe('common external representation and durable remote projection work', ()
         ? { items: [event()], next_since: 2, head_seq: 3 }
         : { items: [ordinary], next_since: 3, head_seq: 3 }
     )
-    const client = s.runtime.personalClient({ changes } as never)
+    const client = s.runtime.engineClient({ changes } as never)
     expect((await client.changes(1)).items).toEqual([ordinary])
     expect(changes).toHaveBeenCalledTimes(2)
     expect((await s.state.snapshot()).operations).toHaveLength(1)
@@ -697,7 +645,7 @@ describe('common external representation and durable remote projection work', ()
     const s = await setup(),
       commitRaw = vi.fn(),
       putBlob = vi.fn()
-    const client = s.runtime.personalClient({ commitRaw, putBlob } as never)
+    const client = s.runtime.engineClient({ commitRaw, putBlob } as never)
     await expect(
       client.commitRaw(
         [{ op: 'delete', file_id: id, base_version_id: entry.versionId }],
@@ -723,74 +671,6 @@ describe('common external representation and durable remote projection work', ()
     await expect(fs.writeAtomic(path, bytes, 1000)).rejects.toThrow('recovery')
   })
 
-  it('a publication receipt hook can wrap the scoped commit without recursively calling itself', async () => {
-    const s = await setup(true),
-      rawCommit = vi.fn(async () => ({ results: [] }))
-    const client = s.runtime.scopedClient({ commit: rawCommit } as never)
-    const original = client.commit.bind(client)
-    let hooks = 0
-    client.commit = async (request) => {
-      if (++hooks > 1) throw Error('sample recursive publication hook')
-      return original(request)
-    }
-    await expect(
-      client.commit({
-        request_id: 'sample-request',
-        ops: [
-          {
-            op: 'create',
-            path: 'Notes/sample-new.md',
-            sha: entry.sha,
-            size: entry.size,
-            mtime: 1000,
-          },
-        ],
-      })
-    ).resolves.toEqual({ results: [] })
-    expect(hooks).toBe(1)
-    expect(rawCommit).toHaveBeenCalledOnce()
-  })
-
-  it('scoped feed advances only after durable metadata/jobs, preserving native provenance without version downloads', async () => {
-    const s = await setup(true),
-      head = {
-        file_id: id,
-        version_id: 'sample-v2',
-        path,
-        sha: 'b'.repeat(64),
-        size: 18,
-        mtime: 2000,
-        kind: 'attachment',
-      }
-    const checkpoint = { kind: 'scoped' as const, token: 'sample-after' }
-    await s.scoped!.setCheckpoint({ kind: 'scoped', token: 'sample-before' })
-    const version = vi.fn(async () => {
-      throw Error('No client version download')
-    })
-    const client = s.runtime.scopedClient({
-      binding: s.scoped!.binding,
-      negotiate: async () => ({ state: { state: 'active' } }),
-      feed: async () => ({
-        checkpoint,
-        has_more: false,
-        events: [{ type: 'content', file: head }],
-      }),
-      head: async () => head,
-      version,
-    } as never)
-    const report = await pullScoped({
-      client,
-      state: s.runtime.scopedState(s.scoped!),
-      fs: s.runtime.fileSystem(),
-    })
-    expect(report.complete).toBe(true)
-    expect(await s.scoped!.getCheckpoint()).toEqual(checkpoint)
-    expect((await s.state.snapshot()).operations).toHaveLength(1)
-    expect(await s.scoped!.getKnown(id)).toMatchObject({ version_id: 'sample-v2', native: true })
-    expect(version).not.toHaveBeenCalled()
-    expect(s.verify).toHaveBeenCalledOnce()
-  })
-
   it('revocation during scoped verification records lost access without a personal fallback or byte removal', async () => {
     const s = await setup(true)
     s.verify.mockRejectedValueOnce(
@@ -802,89 +682,11 @@ describe('common external representation and durable remote projection work', ()
       preference: 'on-demand',
       lastProvenLocalBase: { versionId: 'sample-v1' },
     })
-    expect((await s.scoped!.getKnown(id))?.state).toBe('detached')
+    expect((await s.state.snapshot()).files[0].availability).toBe('detached')
     expect(await s.fake.vault.adapter.readBinary(s.file.projectionPath)).toEqual(
       s.projection.buffer
     )
     expect(s.verify).toHaveBeenCalledOnce()
-  })
-
-  it('detach retry and restart repair canonical scoped state before acknowledging departure', async () => {
-    for (const restart of [false, true]) {
-      const s = await setup(true),
-        put = s.scoped!.putKnown.bind(s.scoped!)
-      vi.spyOn(s.scoped!, 'putKnown')
-        .mockRejectedValueOnce(Error('sample aborted detach'))
-        .mockImplementation(put)
-      await expect(s.runtime.detach(id)).rejects.toThrow('sample aborted detach')
-      expect((await s.scoped!.getKnown(id))?.state).toBe('materialized')
-      const runtime = restart
-        ? await ExternalRepresentation.open({
-            state: await ExternalState.open(s.store, 'sample-ledger', s.file.binding),
-            ledger: s.store,
-            scoped: s.scoped,
-            fs: s.fs,
-            verify: s.verify,
-            assertOwned: () => {},
-            scriptsFolder: () => 'Scripts',
-            installProjection: async () => 'cleanup-pending',
-          })
-        : s.runtime
-      if (restart) await runtime.recoverJobs()
-      else expect(await runtime.detach(id)).toBe(true)
-      expect((await s.scoped!.getKnown(id))?.state).toBe('detached')
-      expect((await s.state.snapshot()).operations).toHaveLength(1)
-    }
-  })
-
-  it('replay repairs a scoped metadata commit that failed after durable job intent, before checkpoint advance', async () => {
-    const s = await setup(true),
-      put = s.scoped!.putKnown.bind(s.scoped!)
-    vi.spyOn(s.scoped!, 'putKnown')
-      .mockRejectedValueOnce(Error('sample aborted head write'))
-      .mockImplementation(put)
-    await expect(s.runtime.accept(event() as never)).rejects.toThrow('sample aborted')
-    expect((await s.state.snapshot()).operations).toHaveLength(1)
-    expect((await s.scoped!.getKnown(id))?.version_id).toBe('sample-v1')
-    await s.runtime.accept(event() as never)
-    expect((await s.scoped!.getKnown(id))?.version_id).toBe('sample-v2')
-    expect((await s.state.snapshot()).operations).toHaveLength(1)
-  })
-
-  it('scoped snapshot work waits for the complete anchored inventory and terminal feed proof', async () => {
-    const s = await setup(true),
-      head = {
-        file_id: id,
-        version_id: 'sample-v2',
-        path,
-        sha: 'b'.repeat(64),
-        size: 18,
-        mtime: 2000,
-        kind: 'attachment',
-      }
-    const checkpoint = { kind: 'scoped' as const, token: 'sample-anchor' }
-    const client = s.runtime.scopedClient({
-      openSnapshot: async () => ({
-        snapshot_id: 'sample-snapshot',
-        cursor: 'sample-first',
-        next_cursor: 'sample-last',
-        checkpoint,
-        items: [head],
-      }),
-      snapshotPage: async () => ({
-        snapshot_id: 'sample-snapshot',
-        cursor: 'sample-last',
-        next_cursor: null,
-        checkpoint,
-        feed_checkpoint: checkpoint,
-        items: [],
-      }),
-      head: async () => head,
-    } as never)
-    await client.openSnapshot()
-    expect((await s.state.snapshot()).operations).toEqual([])
-    await client.snapshotPage('sample-snapshot', 'sample-last')
-    expect((await s.state.snapshot()).operations).toHaveLength(1)
   })
 
   it('changing scripts_folder or selective policy holds pending work without restoring sync inclusion', async () => {
@@ -914,32 +716,40 @@ describe('common external representation and durable remote projection work', ()
     expect((await s.state.snapshot()).files[0].preference).toBe('on-demand')
   })
 
-  it('pages large scoped inventories in linear reads, including filtered external identities', async () => {
-    const s = await setup(true)
-    const known = await s.scoped!.getKnown(id)
-    const rows = Array.from({ length: 10000 }, (_, i) => ({
-      ...known!,
-      file_id: 'sample-ordinary-' + i,
-      path: 'Media/sample-' + i + '.bin',
-    }))
-    rows.splice(4000, 0, known!)
-    let reads = 0
-    vi.spyOn(s.scoped!, 'knownPage').mockImplementation(async (offset, limit = 1000) => {
-      const page = rows.slice(offset, offset + limit)
-      reads += page.length
-      return page
+  it('replays a token metadata event after verification failure without creating a second durable job', async () => {
+    const s = await setup()
+    s.verify.mockRejectedValueOnce(Error('sample verification unavailable'))
+    await s.runtime.accept(event() as never)
+    expect((await s.state.snapshot()).operations).toHaveLength(1)
+    expect((await s.state.snapshot()).files[0].availability).toBe('unavailable')
+    await s.runtime.accept(event() as never)
+    expect((await s.state.snapshot()).operations).toHaveLength(1)
+    expect((await s.state.snapshot()).files[0].availability).toBe('active')
+  })
+
+  it('a failed detach commit leaves both metadata and bytes intact and retries after reopening', async () => {
+    const s = await setup()
+    const commit = s.state.commit.bind(s.state)
+    vi.spyOn(s.state, 'commit')
+      .mockRejectedValueOnce(Error('sample aborted detach'))
+      .mockImplementation(commit)
+    await expect(s.runtime.detach(id)).rejects.toThrow('sample aborted detach')
+    expect((await s.state.snapshot()).files[0].availability).toBe('active')
+    const runtime = await ExternalRepresentation.open({
+      state: await ExternalState.open(s.store, 'sample-ledger', s.file.binding),
+      ledger: s.store,
+      fs: s.fs,
+      verify: s.verify,
+      assertOwned: () => {},
+      scriptsFolder: () => 'Scripts',
+      installProjection: async () => 'cleanup-pending',
     })
-    const view = s.runtime.scopedState(s.scoped!)
-    const seen = []
-    for (let offset = 0; ; offset += 1000) {
-      const page = await view.knownPage(offset)
-      seen.push(...page)
-      if (page.length < 1000) break
-    }
-    expect(seen.map((row) => row.file_id)).toEqual(
-      rows.filter((row) => row.file_id !== id).map((row) => row.file_id)
+    expect(await runtime.detach(id)).toBe(true)
+    expect((await s.state.snapshot()).operations).toHaveLength(1)
+    expect((await s.state.snapshot()).files[0].availability).toBe('detached')
+    expect(await s.fake.vault.adapter.readBinary(s.file.projectionPath)).toEqual(
+      s.projection.buffer
     )
-    expect(reads).toBeLessThanOrEqual(rows.length + 1000)
   })
 
   it('the adopted shared recovery barrier prevents constructor scope effects and all early verbs', async () => {

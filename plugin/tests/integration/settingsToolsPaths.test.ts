@@ -11,8 +11,8 @@ import { Platform } from 'obsidian'
 import { createReadSettingsTool, createWriteSettingsTool } from '@/ai/tools/SettingsTools'
 import { deviceValue, writeDevice } from '@/ai/tools/settingsDevice'
 import { AbeleConfig } from '@/services/AbeleConfig'
-import { emptyConnection } from '@/sync/connection'
-import { SyncService } from '@/sync/SyncService'
+import { tokenSettingsFixture } from '../helpers/tokenSettingsFixture'
+import { tokenUi } from '@/sync/tokenUi'
 import { useVault } from '../helpers/testEnv'
 
 const write = createWriteSettingsTool()
@@ -23,6 +23,7 @@ async function answer(tool: typeof write, params: Record<string, unknown>): Prom
   return result.content.map((part) => ('text' in part ? part.text : '')).join('')
 }
 
+let token: ReturnType<typeof tokenSettingsFixture>
 const BLOCKED = ['__proto__', 'prototype', 'constructor']
 
 /** Whatever a polluting write may have put on the prototypes every object reads through. */
@@ -40,52 +41,43 @@ beforeEach(() => {
   const config = AbeleConfig.getInstance()
   config.applySettings(undefined)
   config.saveSettings = vi.fn(async () => undefined)
-  SyncService.getInstance().connection.value = {
-    ...emptyConnection(false),
-    serverUrl: 'https://sync.example.com',
-    enrolledUrl: 'https://sync.example.com',
-    vaultId: 'v1',
-    deviceId: 'd1',
-    deviceTokenId: 'abele-sync-device-abc123',
-    deviceName: 'Laptop',
-    migrated: true,
-  }
+  token = tokenSettingsFixture()
 })
 
 afterEach(async () => {
   delete (Object.prototype as Record<string, unknown>).polluted
   delete (Array.prototype as unknown as Record<string, unknown>).polluted
   vi.restoreAllMocks()
-  await SyncService.getInstance().destroy()
+  tokenUi.value = null
 })
 
 describe("a path into this device's connection", () => {
   for (const segment of BLOCKED) {
     it(`is refused through ${segment}, and nothing is written anywhere`, async () => {
-      const path = `sync.selective.${segment}.polluted`
+      const path = `sync.connections.${token.id}.${segment}.polluted`
 
       expect(await answer(write, { path, value: 'true' })).toBe(
         `"${path}" is not a valid field path.`
       )
       expect(await answer(read, { path })).toBe(`"${path}" is not a valid field path.`)
       expect(polluted()).toEqual([])
-      expect(SyncService.getInstance().connection.value.selective).not.toHaveProperty('polluted')
+      expect(token.registry.records()[0]).not.toHaveProperty('polluted')
     })
   }
 
   for (const segment of BLOCKED) {
     it(`is refused through ${segment} when written or read directly, too`, async () => {
-      const path = `sync.selective.${segment}.polluted`
+      const path = `sync.connections.${token.id}.${segment}.polluted`
 
       expect(await writeDevice(path, true)).toBe(`"${path}" is not a valid field path.`)
       expect(deviceValue(path)).toBeUndefined()
-      expect(deviceValue(`sync.selective.${segment}`)).toBeUndefined()
+      expect(deviceValue(`sync.connections.${token.id}.${segment}`)).toBeUndefined()
       expect(polluted()).toEqual([])
     })
   }
 
-  it('is refused for a name the selective settings do not have, or below a plain field', async () => {
-    for (const path of ['sync.selective.polluted', 'sync.paused.polluted']) {
+  it('is refused for a name the token preferences do not have, or below a plain field', async () => {
+    for (const path of [token.path('polluted'), token.path('paused') + '.polluted']) {
       expect(await answer(write, { path, value: 'true' })).toBe(
         `"${path}" is not a valid field path.`
       )
@@ -93,11 +85,11 @@ describe("a path into this device's connection", () => {
     expect(polluted()).toEqual([])
   })
 
-  it('still writes a field of the selective settings', async () => {
-    const text = await answer(write, { path: 'sync.selective.images', value: 'false' })
+  it('still writes a public token preference', async () => {
+    const text = await answer(write, { path: token.path('paused'), value: 'true' })
 
     expect(text).not.toContain('not a valid field path')
-    expect(SyncService.getInstance().connection.value.selective.images).toBe(false)
+    expect(token.registry.records()[0].paused).toBe(true)
   })
 })
 

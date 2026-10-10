@@ -1,9 +1,7 @@
 import { afterEach, expect, it } from 'vitest'
-import type { App } from 'obsidian'
 import type AbelePlugin from '@/main'
 import { AbeleConfig } from '@/services/AbeleConfig'
 import { DEFAULT_AI_SETTINGS } from '@/ai/types'
-import { ConnectionKeeper } from '@/sync/connectionKeeper'
 import { CONNECTION_KEY } from '@/sync/connection'
 import { createAgent } from '@/ai/agents/types'
 import { FakeSettings } from '../helpers/fakeSettings'
@@ -45,7 +43,7 @@ it('loads a synthetic 1.72.0 settings file without losing current features or in
   })
   config.init(disk as unknown as AbelePlugin)
   await config.loadSettings()
-  await new ConnectionKeeper(() => undefined).open(app as unknown as App)
+  config.acknowledgeSyncMigration()
   const settings = config.exportSettings()
   expect(settings).toMatchObject({
     refreshDelay: 777,
@@ -65,12 +63,7 @@ it('loads a synthetic 1.72.0 settings file without losing current features or in
     'by-group'
   )
   expect(config.ai.chatHistory).toEqual(previous.ai.chatHistory)
-  expect(app.loadLocalStorage(CONNECTION_KEY)).toMatchObject({
-    serverUrl: '',
-    deviceId: '',
-    deviceTokenId: '',
-    migrated: true,
-  })
+  expect(app.loadLocalStorage(CONNECTION_KEY)).toBeNull()
   await config.saveSettings()
   const beforeReload = config.exportSettings()
   await config.loadSettings()
