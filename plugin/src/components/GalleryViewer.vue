@@ -1,6 +1,6 @@
 <template>
-  <Teleport to="body">
-    <div class="abele-gallery-viewer" @click.self="close" @wheel.prevent="onWheel" @touchstart.stop>
+  <ObsidianModal :title="currentImage.alt || 'Picture'" size="full" @close="close">
+    <div class="abele-gallery-viewer" @click.self="close">
       <div class="abele-gallery-viewer__info">
         <div class="abele-gallery-viewer__counter">
           {{ currentIndex + 1 }} / {{ images.length }}
@@ -12,7 +12,6 @@
           >
         </div>
       </div>
-      <ObsidianIcon icon="x" class="abele-gallery-viewer__close" no-hover @click="close" />
 
       <div
         v-if="images.length > 1"
@@ -32,11 +31,16 @@
       </div>
 
       <div
+        ref="frame"
         class="abele-gallery-viewer__image-wrap"
-        @mousedown.prevent="onDragStart"
-        @touchstart="onTouchStart"
-        @touchmove.prevent="onTouchMove"
-        @touchend="onTouchEnd"
+        tabindex="0"
+        data-ignore-swipe="true"
+        @wheel="onWheel"
+        @pointerdown="onPointerDown"
+        @pointermove="onPointerMove"
+        @pointerup="onPointerUp"
+        @pointercancel="onPointerUp"
+        @dblclick="onDoubleClick"
         @click.self="close"
       >
         <img
@@ -47,6 +51,7 @@
           :style="imageStyle"
           draggable="false"
           @click.stop
+          @load="fit"
         />
       </div>
 
@@ -82,7 +87,7 @@
         <ObsidianIcon icon="more-horizontal" no-hover text-right="More" @click="showMoreMenu" />
       </div>
     </div>
-  </Teleport>
+  </ObsidianModal>
 </template>
 
 <script setup lang="ts">
@@ -90,6 +95,8 @@ import { ref, computed, onMounted, onUnmounted, watch } from 'vue'
 import { FileSystemAdapter, Menu, Notice, Platform, TFile } from 'obsidian'
 import { request as requestUrl } from '@/helpers/http'
 import ObsidianIcon from './obsidian/Icon.vue'
+import ObsidianModal from './obsidian/Modal.vue'
+import { useViewerPanZoom } from '@/composables/useViewerPanZoom'
 import { GlobalStore } from '@/stores/GlobalStore'
 import { createImportedBinary } from '@/media/importImageFile'
 import { setCoverFromMedia } from '@/commands/setCover'
@@ -123,9 +130,6 @@ const emit = defineEmits<{
 }>()
 
 const currentIndex = ref(props.startIndex)
-const scale = ref(1)
-const translateX = ref(0)
-const translateY = ref(0)
 const urlOverride = ref<string | null>(null)
 
 const imageEl = ref<HTMLImageElement | null>(null)
@@ -159,20 +163,47 @@ function drawOnImage() {
   const file = resolveFile()
   if (!file) return
   close()
-  void openImageInk(GlobalStore.getInstance().app, file.path, props.chatId, null, props.replaceAttachment)
+  void openImageInk(
+    GlobalStore.getInstance().app,
+    file.path,
+    props.chatId,
+    null,
+    props.replaceAttachment
+  )
 }
 
 const displayUrl = computed(() => urlOverride.value || currentImage.value.url)
 
+const frame = ref<HTMLElement | null>(null)
+const {
+  view,
+  fit,
+  reset,
+  onWheel,
+  onDoubleClick,
+  onKey,
+  onPointerDown,
+  onPointerMove,
+  onPointerUp,
+} = useViewerPanZoom(
+  frame,
+  () => ({
+    width: imageEl.value?.naturalWidth ?? 0,
+    height: imageEl.value?.naturalHeight ?? 0,
+  }),
+  {
+    close,
+    maxFitScale: 1,
+    wheelZoom: true,
+    swipe: (direction) => (direction === 'next' ? next() : prev()),
+  }
+)
 const imageStyle = computed(() => ({
-  transform: `translate(${translateX.value}px, ${translateY.value}px) scale(${scale.value})`,
-  cursor: scale.value > 1 ? 'grab' : 'default',
+  transform: `translate(${view.value.x}px, ${view.value.y}px) scale(${view.value.scale})`,
 }))
 
 function resetTransform() {
-  scale.value = 1
-  translateX.value = 0
-  translateY.value = 0
+  reset()
   urlOverride.value = null
 }
 
@@ -386,7 +417,11 @@ async function downloadImage() {
       fileName += '.' + ext
     }
 
-    const file = await createImportedBinary(app, fileName, new Blob([buffer], { type: response.headers['content-type'] || '' }))
+    const file = await createImportedBinary(
+      app,
+      fileName,
+      new Blob([buffer], { type: response.headers['content-type'] || '' })
+    )
     new Notice(`Downloaded: ${file.path}`)
   } catch (e) {
     new Notice(`Download failed: ${e}`)
@@ -461,176 +496,6 @@ function canvasToBlob(canvas: HTMLCanvasElement, type: string, quality?: number)
   })
 }
 
-// --- Zoom / Pan / Keyboard ---
-
-function onWheel(e: WheelEvent) {
-  const delta = e.deltaY > 0 ? -0.15 : 0.15
-  const newScale = Math.max(0.5, Math.min(10, scale.value + delta))
-
-  if (newScale !== scale.value) {
-    const rect = imageEl.value?.getBoundingClientRect()
-    if (rect) {
-      const cx = e.clientX - rect.left - rect.width / 2
-      const cy = e.clientY - rect.top - rect.height / 2
-      const factor = newScale / scale.value
-      translateX.value = cx - factor * (cx - translateX.value)
-      translateY.value = cy - factor * (cy - translateY.value)
-    }
-    scale.value = newScale
-  }
-}
-
-let isDragging = false
-let dragStartX = 0
-let dragStartY = 0
-let startTranslateX = 0
-let startTranslateY = 0
-
-function onDragStart(e: MouseEvent) {
-  if (scale.value <= 1) return
-  isDragging = true
-  dragStartX = e.clientX
-  dragStartY = e.clientY
-  startTranslateX = translateX.value
-  startTranslateY = translateY.value
-  document.addEventListener('mousemove', onDragMove)
-  document.addEventListener('mouseup', onDragEnd)
-}
-
-function onDragMove(e: MouseEvent) {
-  if (!isDragging) return
-  translateX.value = startTranslateX + (e.clientX - dragStartX)
-  translateY.value = startTranslateY + (e.clientY - dragStartY)
-}
-
-function onDragEnd() {
-  isDragging = false
-  document.removeEventListener('mousemove', onDragMove)
-  document.removeEventListener('mouseup', onDragEnd)
-}
-
-// --- Touch swipe + pinch-to-zoom ---
-
-let touchStartX = 0
-let touchStartY = 0
-let touchStartTranslateX = 0
-let touchStartTranslateY = 0
-let isSwiping = false
-let isPinching = false
-let pinchStartDist = 0
-let pinchStartScale = 1
-let pinchStartMidX = 0
-let pinchStartMidY = 0
-let pinchStartTranslateX = 0
-let pinchStartTranslateY = 0
-
-function getTouchDist(e: TouchEvent): number {
-  const a = e.touches[0]
-  const b = e.touches[1]
-  return Math.hypot(a.clientX - b.clientX, a.clientY - b.clientY)
-}
-
-function getTouchMid(e: TouchEvent): { x: number; y: number } {
-  const a = e.touches[0]
-  const b = e.touches[1]
-  return { x: (a.clientX + b.clientX) / 2, y: (a.clientY + b.clientY) / 2 }
-}
-
-function onTouchStart(e: TouchEvent) {
-  if (e.touches.length === 2) {
-    // Start pinch
-    isPinching = true
-    isSwiping = false
-    pinchStartDist = getTouchDist(e)
-    pinchStartScale = scale.value
-    pinchStartTranslateX = translateX.value
-    pinchStartTranslateY = translateY.value
-    const mid = getTouchMid(e)
-    pinchStartMidX = mid.x
-    pinchStartMidY = mid.y
-    return
-  }
-  if (e.touches.length !== 1) return
-  const t = e.touches[0]
-  touchStartX = t.clientX
-  touchStartY = t.clientY
-  touchStartTranslateX = translateX.value
-  touchStartTranslateY = translateY.value
-  isSwiping = true
-  isPinching = false
-}
-
-function onTouchMove(e: TouchEvent) {
-  if (isPinching && e.touches.length === 2) {
-    const dist = getTouchDist(e)
-    const mid = getTouchMid(e)
-    const newScale = Math.max(0.5, Math.min(10, pinchStartScale * (dist / pinchStartDist)))
-
-    // Pan: track midpoint movement
-    const panDx = mid.x - pinchStartMidX
-    const panDy = mid.y - pinchStartMidY
-
-    // Zoom around initial pinch midpoint
-    // The wrap center is the image's untranslated origin
-    const wrap = imageEl.value?.parentElement
-    if (wrap) {
-      const wrapRect = wrap.getBoundingClientRect()
-      const originX = wrapRect.left + wrapRect.width / 2
-      const originY = wrapRect.top + wrapRect.height / 2
-      // Pinch point relative to the image's untranslated center
-      const px = pinchStartMidX - originX - pinchStartTranslateX
-      const py = pinchStartMidY - originY - pinchStartTranslateY
-      const factor = newScale / pinchStartScale
-      translateX.value = pinchStartTranslateX + px * (1 - factor) + panDx
-      translateY.value = pinchStartTranslateY + py * (1 - factor) + panDy
-    } else {
-      const factor = newScale / pinchStartScale
-      translateX.value = pinchStartTranslateX * factor + panDx
-      translateY.value = pinchStartTranslateY * factor + panDy
-    }
-    scale.value = newScale
-    return
-  }
-
-  if (!isSwiping || e.touches.length !== 1) return
-  const t = e.touches[0]
-  const dx = t.clientX - touchStartX
-  const dy = t.clientY - touchStartY
-
-  if (scale.value > 1) {
-    // Pan when zoomed
-    translateX.value = touchStartTranslateX + dx
-    translateY.value = touchStartTranslateY + dy
-  }
-}
-
-function onTouchEnd(e: TouchEvent) {
-  if (isPinching) {
-    if (e.touches.length < 2) {
-      isPinching = false
-      if (scale.value <= 1) resetTransform()
-    }
-    return
-  }
-
-  if (!isSwiping) return
-  isSwiping = false
-
-  if (scale.value > 1) return // don't swipe-navigate when zoomed
-
-  const t = e.changedTouches[0]
-  const dx = t.clientX - touchStartX
-  const dy = t.clientY - touchStartY
-  const absDx = Math.abs(dx)
-  const absDy = Math.abs(dy)
-
-  // Horizontal swipe: min 50px, more horizontal than vertical
-  if (absDx > 50 && absDx > absDy * 1.5) {
-    if (dx < 0) next()
-    else prev()
-  }
-}
-
 function onKeydown(e: KeyboardEvent) {
   switch (e.key) {
     case 'Escape':
@@ -645,6 +510,8 @@ function onKeydown(e: KeyboardEvent) {
       e.stopPropagation()
       next()
       break
+    default:
+      onKey(e)
   }
 }
 
@@ -656,159 +523,91 @@ onMounted(() => {
 
 onUnmounted(() => {
   document.removeEventListener('keydown', onKeydown, true)
-  document.removeEventListener('mousemove', onDragMove)
-  document.removeEventListener('mouseup', onDragEnd)
 })
 </script>
 
 <style lang="scss">
 .abele-gallery-viewer {
-  position: fixed;
-  inset: 0;
-  /* Obsidian's own layer for a full-window dialog: above the workspace, under the menus,
-     notices and tooltips it opens, which a hard-coded number here once hid behind it. */
-  z-index: var(--layer-modal);
-  background: rgba(0, 0, 0, 0.9);
-  display: flex;
-  align-items: center;
-  justify-content: center;
-  user-select: none;
-}
-
-.abele-gallery-viewer__info {
-  position: absolute;
-  top: calc(var(--safe-area-inset-top, env(safe-area-inset-top, 0px)) + var(--size-4-4));
-  left: 50%;
-  transform: translateX(-50%);
+  position: relative;
+  flex: 1 1 auto;
+  min-height: 0;
   display: flex;
   flex-direction: column;
-  align-items: center;
-  gap: 4px;
-  pointer-events: none;
+  gap: var(--size-4-2);
+  user-select: none;
 }
-
-.abele-gallery-viewer__counter {
-  color: rgba(255, 255, 255, 0.7);
-  font-size: 14px;
-}
-
+.abele-gallery-viewer__info,
 .abele-gallery-viewer__file-info {
   display: flex;
   flex-direction: column;
   align-items: center;
-  gap: 2px;
+  gap: var(--size-2-1);
+  pointer-events: none;
 }
-
+.abele-gallery-viewer__counter {
+  color: var(--text-muted);
+  font-size: var(--font-ui-small);
+}
 .abele-gallery-viewer__filename {
-  color: rgba(255, 255, 255, 0.85);
-  font-size: 13px;
-  max-width: 300px;
+  color: var(--text-normal);
+  font-size: var(--font-ui-small);
+  max-width: 100%;
   overflow: hidden;
   text-overflow: ellipsis;
   white-space: nowrap;
 }
-
 .abele-gallery-viewer__meta {
-  color: rgba(255, 255, 255, 0.5);
-  font-size: 11px;
+  color: var(--text-muted);
+  font-size: var(--font-ui-smaller);
 }
-
-.abele-gallery-viewer__close {
-  position: absolute;
-  top: calc(var(--safe-area-inset-top, env(safe-area-inset-top, 0px)) + var(--size-4-3));
-  right: calc(var(--safe-area-inset-right, 0px) + var(--size-4-3));
-  z-index: 2;
-  color: rgba(255, 255, 255, 0.7);
-  cursor: pointer;
-
-  &:hover {
-    color: #fff;
-  }
-}
-
 .abele-gallery-viewer__nav {
   position: absolute;
-  top: 0;
-  bottom: 0;
-  width: 60px;
+  top: 50%;
+  transform: translateY(-50%);
   display: flex;
   align-items: center;
   justify-content: center;
   cursor: pointer;
   z-index: 1;
-
-  .abele-obsidian-icon {
-    color: rgba(255, 255, 255, 0.5);
-  }
-
-  &:hover .abele-obsidian-icon {
-    color: #fff;
-  }
-
+  background-color: var(--background-primary);
+  border-radius: var(--radius-s);
   &--prev {
-    left: 0;
+    left: var(--size-4-2);
   }
-
   &--next {
-    right: 0;
+    right: var(--size-4-2);
   }
 }
-
 .abele-gallery-viewer__image-wrap {
-  display: flex;
-  align-items: center;
-  justify-content: center;
-  width: 100%;
-  height: 100%;
+  position: relative;
+  flex: 1 1 auto;
+  min-height: 0;
   overflow: hidden;
+  touch-action: none;
+  outline: none;
+  background-color: var(--background-secondary);
+  border-radius: var(--radius-m);
 }
-
 .abele-gallery-viewer__image {
-  max-width: 90vw;
-  max-height: min(85vh, calc(100dvh - var(--safe-area-inset-top, 0px) - var(--safe-area-inset-bottom, 0px) - 112px));
-  object-fit: contain;
+  position: absolute;
+  top: 0;
+  left: 0;
+  max-width: none;
+  max-height: none;
+  transform-origin: 0 0;
   transition: none;
 }
-
 .abele-gallery-viewer__caption {
-  position: absolute;
-  bottom: calc(var(--safe-area-inset-bottom, env(safe-area-inset-bottom, 0px)) + 56px);
-  left: 50%;
-  transform: translateX(-50%);
-  max-width: 80vw;
-  padding: 6px 14px;
-  background: rgba(0, 0, 0, 0.6);
-  border-radius: var(--radius-m);
-  backdrop-filter: blur(8px);
-  color: rgba(255, 255, 255, 0.85);
-  font-size: 14px;
+  color: var(--text-normal);
+  font-size: var(--font-ui-small);
   text-align: center;
+  overflow-wrap: anywhere;
   pointer-events: none;
 }
-
 .abele-gallery-viewer__toolbar {
-  position: absolute;
-  bottom: calc(var(--safe-area-inset-bottom, env(safe-area-inset-bottom, 0px)) + var(--size-4-4));
-  left: 50%;
-  transform: translateX(-50%);
   display: flex;
-  gap: 4px;
-  padding: 6px 10px;
-  background: rgba(0, 0, 0, 0.6);
-  border-radius: var(--radius-m);
-  backdrop-filter: blur(8px);
-
-  .abele-obsidian-icon {
-    color: rgba(255, 255, 255, 0.7);
-    cursor: pointer;
-
-    &:hover {
-      color: #fff;
-    }
-  }
-
-  .abele-obsidian-icon__text {
-    color: inherit;
-  }
+  flex-wrap: wrap;
+  justify-content: center;
+  gap: var(--size-2-1);
 }
 </style>
