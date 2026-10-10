@@ -1,4 +1,4 @@
-import { TFile } from 'obsidian'
+import { TFile, type App } from 'obsidian'
 import { GlobalStore } from '@/stores/GlobalStore'
 import { nanoid } from 'nanoid'
 import { arrayBufferToBase64, getMime } from '@/ai/imagePrep'
@@ -8,17 +8,24 @@ import { ensureAttachmentFolder } from '@/media/attachmentFolder'
 /**
  * Get the vault's configured attachment folder path, ensuring it exists.
  */
-export async function getAttachmentFolder(signal?: AbortSignal): Promise<string> {
-  return ensureAttachmentFolder(GlobalStore.getInstance().app, undefined, signal)
+export async function getAttachmentFolder(
+  signal?: AbortSignal,
+  app = GlobalStore.getInstance().app
+): Promise<string> {
+  return ensureAttachmentFolder(app, undefined, signal)
 }
 
 /**
  * Save a base64 data URL image to the vault attachments folder.
  * Returns the vault path of the saved file.
  */
-export async function saveImageToVault(dataUrl: string, nameHint?: string, signal?: AbortSignal): Promise<string> {
-  const { app } = GlobalStore.getInstance()
-  const folder = await getAttachmentFolder(signal)
+export async function saveImageToVault(
+  dataUrl: string,
+  nameHint?: string,
+  signal?: AbortSignal,
+  app: App = GlobalStore.getInstance().app
+): Promise<string> {
+  const folder = await getAttachmentFolder(signal, app)
 
   // Parse data URL: data:image/png;base64,iVBOR...
   const match = dataUrl.match(/^data:image\/(\w+);base64,(.+)$/)
@@ -47,7 +54,12 @@ export async function saveImageToVault(dataUrl: string, nameHint?: string, signa
     counter++
   }
 
-  const saved = await createImportedBinary(app, targetPath, new Blob([buffer], { type: `image/${match[1]}` }), signal)
+  const saved = await createImportedBinary(
+    app,
+    targetPath,
+    new Blob([buffer], { type: `image/${match[1]}` }),
+    signal
+  )
   return saved.path
 }
 

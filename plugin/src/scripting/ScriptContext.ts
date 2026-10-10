@@ -4,6 +4,7 @@ import dayjs from 'dayjs'
 import { nanoid } from 'nanoid'
 import type { AgentTool } from '@/ai/client'
 import { GlobalStore } from '@/stores/GlobalStore'
+import { appOf, type ToolContext } from '@/ai/toolContext'
 import { createReadFileTool } from '@/ai/tools/ReadFileTool'
 import { createEditFileTool } from '@/ai/tools/EditFileTool'
 import { createCreateFileTool } from '@/ai/tools/CreateFileTool'
@@ -136,6 +137,7 @@ export const NO_FORM_HANDLER =
   'Form input is not available when one script runs another unless a view is open.'
 
 export function buildScriptContext(opts: {
+  toolContext?: ToolContext
   params: Record<string, unknown>
   signal: AbortSignal
   logs: string[]
@@ -191,6 +193,28 @@ export function buildScriptContext(opts: {
   const generateImageTool = createGenerateImageTool()
   const downloadImageTool = createDownloadImageTool()
   const downloadFileTool = createDownloadFileTool()
+  if (opts.toolContext) {
+    for (const tool of [
+      readTool,
+      editTool,
+      writeTool,
+      createTool,
+      deleteTool,
+      moveTool,
+      copyTool,
+      lsTool,
+      findTool,
+      replaceTool,
+      applyTemplateTool,
+      listTemplatesTool,
+      generateImageTool,
+      downloadImageTool,
+      downloadFileTool,
+    ]) {
+      const execute = tool.execute
+      tool.execute = (id, params, signal) => execute(id, params, signal, opts.toolContext)
+    }
+  }
 
   const views: View[] = []
 
@@ -681,7 +705,7 @@ export function buildScriptContext(opts: {
 
     async unzip(zipPath: string, targetFolder?: string): Promise<string[]> {
       const { extractArchive, MAX_ZIP_BYTES } = await import('./unzip')
-      const { app } = GlobalStore.getInstance()
+      const app = appOf(opts.toolContext)
       const file = app.vault.getAbstractFileByPath(zipPath)
       if (!(file instanceof TFile)) throw new Error(`File not found: ${zipPath}`)
 
@@ -748,6 +772,7 @@ export function buildScriptContext(opts: {
         signal: s,
         source: 'script',
         onWrite: opts.onWrite,
+        toolContext: opts.toolContext,
       })
     },
 

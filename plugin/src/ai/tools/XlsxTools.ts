@@ -1,7 +1,7 @@
 import { TFile } from 'obsidian'
 import type { AgentTool } from '../client'
 import { GlobalStore } from '@/stores/GlobalStore'
-import { scopeOf, type ToolContext } from '../toolContext'
+import { appOf, scopeOf, type ToolContext } from '../toolContext'
 import { wordRevision as workbookRevision } from '@/ooxml/write'
 import { readOfficeBytes } from '@/ooxml/vaultAdapter'
 import {
@@ -82,7 +82,7 @@ export function createXlsxTools(): AgentTool[] {
         const file = namedWorkbook(params.path, ctx)
         if (typeof params.revision !== 'string' || !params.revision)
           throw new Error('Read with xlsx_read first and pass its revision')
-        const app = GlobalStore.getInstance().app
+        const app = appOf(ctx)
         const prepared = await prepareWorkbookChange(
           app,
           file,

@@ -1,7 +1,7 @@
 import { z } from 'zod'
 import type { AgentTool, AgentToolResult } from '../client'
 import { GlobalStore } from '@/stores/GlobalStore'
-import { scopeOf, type ToolContext } from '../toolContext'
+import { appOf, scopeOf, type ToolContext } from '../toolContext'
 import { guardChatWrite } from './chatWriteGuard'
 import { canvasPath, ObsidianCanvasStore } from '@/canvas/obsidianStore'
 import type { CanvasWriteTool, CanvasProposalOwner } from '@/canvas/documentRegistry'
@@ -46,7 +46,7 @@ async function recoverProposal(
   signal?: AbortSignal,
   ctx?: ToolContext
 ): Promise<AgentToolResult> {
-  const result = await new ObsidianCanvasStore(GlobalStore.getInstance().app).recover(
+  const result = await new ObsidianCanvasStore(GlobalStore.getInstance().app, appOf(ctx)).recover(
     key,
     params.revision,
     params.proposal,
@@ -187,7 +187,11 @@ export function createCanvasTools(): AgentTool[] {
           hostMetrics()
         )
         signal?.throwIfAborted()
-        await new ObsidianCanvasStore(GlobalStore.getInstance().app).create(key, graph, signal)
+        await new ObsidianCanvasStore(GlobalStore.getInstance().app, appOf(ctx)).create(
+          key,
+          graph,
+          signal
+        )
         scopeOf(ctx).addFile(key)
         return {
           ...answer({
@@ -217,7 +221,10 @@ export function createCanvasTools(): AgentTool[] {
         if ('recovery' in params) return recoverProposal('canvas_edit', key, params, signal, ctx)
         // Tool arguments are JSON; approval queues can wrap retained patch fields in Vue proxies.
         const operations = JSON.parse(JSON.stringify(params.ops)) as typeof params.ops
-        const result = await new ObsidianCanvasStore(GlobalStore.getInstance().app).change(
+        const result = await new ObsidianCanvasStore(
+          GlobalStore.getInstance().app,
+          appOf(ctx)
+        ).change(
           key,
           params.revision,
           (graph) => planCanvasEdit(graph, operations, hostMetrics()),
@@ -249,7 +256,10 @@ export function createCanvasTools(): AgentTool[] {
         guardChatWrite(key)
         if ('recovery' in params) return recoverProposal('canvas_layout', key, params, signal, ctx)
         const { path: _path, revision: _revision, ...options } = params
-        const result = await new ObsidianCanvasStore(GlobalStore.getInstance().app).change(
+        const result = await new ObsidianCanvasStore(
+          GlobalStore.getInstance().app,
+          appOf(ctx)
+        ).change(
           key,
           params.revision,
           (graph) => planCanvasLayout(graph, options, hostMetrics()),
@@ -284,7 +294,10 @@ export function createCanvasTools(): AgentTool[] {
         guardChatWrite(key)
         if ('recovery' in params) return recoverProposal('canvas_steps', key, params, signal, ctx)
         const operations = structuredClone(params.ops)
-        const result = await new ObsidianCanvasStore(GlobalStore.getInstance().app).change(
+        const result = await new ObsidianCanvasStore(
+          GlobalStore.getInstance().app,
+          appOf(ctx)
+        ).change(
           key,
           params.revision,
           (graph) => editCanvasSteps(graph, operations),
@@ -322,13 +335,17 @@ export function createCanvasTools(): AgentTool[] {
         const key = scoped(params.path, ctx),
           output = exportPath(params.output, params.format)
         guardChatWrite(output)
-        const result = await exportCanvas(GlobalStore.getInstance().app, {
-          ...params,
-          path: key,
-          output,
-          inScope: (path) => scopeOf(ctx).isInScope(path),
-          signal,
-        })
+        const result = await exportCanvas(
+          appOf(ctx),
+          {
+            ...params,
+            path: key,
+            output,
+            inScope: (path) => scopeOf(ctx).isInScope(path),
+            signal,
+          },
+          GlobalStore.getInstance().app
+        )
         scopeOf(ctx).addFile(result.file.path)
         const { file, ...details } = result
         return {

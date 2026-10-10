@@ -19,7 +19,8 @@ export async function exportCanvas(
     maxSide?: number
     inScope: (path: string) => boolean
     signal?: AbortSignal
-  }
+  },
+  sourceApp: App = app
 ) {
   const { signal, inScope, format } = options
   const path = canvasPath(options.path),
@@ -30,7 +31,7 @@ export async function exportCanvas(
     if (app.vault.getAbstractFileByPath(output)) throw new Error(`Output already exists: ${output}`)
   }
   check()
-  const snapshot = await new ObsidianCanvasStore(app).snapshot(path)
+  const snapshot = await new ObsidianCanvasStore(sourceApp).snapshot(path)
   const plan = planCanvasExport(snapshot.graph, options.maxSide)
   check()
   const picture = await canvasPicture(

@@ -1,7 +1,7 @@
 import type { AgentTool } from '../client'
 import { TemplateService } from '@/templates/TemplateService'
 import { parseTemplateVariables } from '@/templates/TemplateParser'
-import { scopeOf } from '../toolContext'
+import { appOf, scopeOf } from '../toolContext'
 
 export function createListTemplatesTool(): AgentTool {
   return {
@@ -134,7 +134,7 @@ export function createApplyTemplateTool(): AgentTool {
 
       console.debug('[apply_template] path:', path, 'variables:', Object.fromEntries(userValues))
 
-      const file = await service.createNoteFromTemplate(template, userValues, signal)
+      const file = await service.createNoteFromTemplate(template, userValues, signal, appOf(ctx))
       scopeOf(ctx).addFile(file.path)
 
       return {

@@ -149,7 +149,8 @@ export class TemplateService {
   async createNoteFromTemplate(
     template: UserTemplate,
     userValues: Map<string, string>,
-    signal?: AbortSignal
+    signal?: AbortSignal,
+    writeApp = GlobalStore.getInstance().app
   ): Promise<TFile> {
     signal?.throwIfAborted()
     // One snapshot and approval for body, properties, paths and callbacks.
@@ -166,7 +167,7 @@ export class TemplateService {
     const targetPath = await this.resolveTargetPath(settings, userValues, allowed)
 
     // Create file
-    const file = await this.createFileWithPath(targetPath, content, signal)
+    const file = await this.createFileWithPath(targetPath, content, signal, writeApp)
 
     // Execute callbacks
     if (allowed) await this.executeCallbacks(settings.callbacks, signal)
@@ -374,10 +375,9 @@ export class TemplateService {
   private async createFileWithPath(
     filePath: string,
     content: string,
-    signal?: AbortSignal
+    signal?: AbortSignal,
+    app = GlobalStore.getInstance().app
   ): Promise<TFile> {
-    const { app } = GlobalStore.getInstance()
-
     console.debug(content)
 
     await ensureVaultFolder(app.vault, getFolderFromPath(filePath), signal)

@@ -1,5 +1,5 @@
 import { TFile } from 'obsidian'
-import { GlobalStore } from '@/stores/GlobalStore'
+import { appOf } from '../toolContext'
 import { parseMarkers, resolveQuote } from '@/editor/commentMarkers'
 import { EDIT_SELECTION_TOOL } from '../types'
 import type { AgentTool } from '../client'
@@ -28,7 +28,7 @@ export function createEditSelectionTool(session: ChatSession): AgentTool {
       },
       required: ['text'],
     },
-    execute: async (_id, params) => {
+    execute: async (_id, params, _signal, ctx) => {
       const { text } = params as { text: string }
       if (text == null) throw new Error('Missing required parameter: text')
       // Blanking the passage would set the stored quote to '', and a comment with no quote is
@@ -45,7 +45,7 @@ export function createEditSelectionTool(session: ChatSession): AgentTool {
         throw new Error('edit_selection is only available inside a comment chat')
       }
 
-      const { app } = GlobalStore.getInstance()
+      const app = appOf(ctx)
       const file = app.vault.getAbstractFileByPath(anchor.note)
       if (!(file instanceof TFile)) throw new Error(`Note not found: ${anchor.note}`)
 

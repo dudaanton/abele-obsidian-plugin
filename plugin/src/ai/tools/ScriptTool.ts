@@ -15,8 +15,8 @@ export function createScriptTools(): AgentTool[] {
     label: script.meta.name,
     description: script.meta.description || `Run the "${script.meta.name}" script.`,
     parameters: buildJsonSchema(script.meta.params),
-    execute: async (_id, params, signal) => {
-      const outcome = await service.executeForAgent(script.path, params, signal)
+    execute: async (_id, params, signal, ctx) => {
+      const outcome = await service.executeForAgent(script.path, params, signal, ctx)
       return { content: [{ type: 'text', text: describe(outcome) }] }
     },
   }))

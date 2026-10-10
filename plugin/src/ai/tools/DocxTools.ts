@@ -1,7 +1,7 @@
 import { TFile } from 'obsidian'
 import type { AgentTool } from '../client'
 import { GlobalStore } from '@/stores/GlobalStore'
-import { scopeOf, type ToolContext } from '../toolContext'
+import { appOf, scopeOf, type ToolContext } from '../toolContext'
 import { wordRevision } from '@/word/write'
 import { readOfficeBytes } from '@/ooxml/vaultAdapter'
 import { loadWordBytes as openDocx, prepareWordChange, writeWordChange } from '@/word/vaultAdapter'
@@ -76,7 +76,7 @@ export function createDocxTools(): AgentTool[] {
           (typeof params.image_path !== 'string' || !scopeOf(ctx).isInScope(params.image_path))
         )
           throw new Error('Access denied: image is outside this chat’s scope')
-        const app = GlobalStore.getInstance().app
+        const app = appOf(ctx)
         const prepared = await prepareWordChange(
           app,
           file,

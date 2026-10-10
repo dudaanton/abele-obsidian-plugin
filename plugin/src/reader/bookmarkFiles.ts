@@ -7,7 +7,7 @@
  * The file changing on disk — another device's bookmarks arriving — is heard; the places file
  * set to another folder takes the bookmarks along.
  */
-import { Notice, normalizePath, TFile, type Plugin } from 'obsidian'
+import { Notice, normalizePath, TFile, type Plugin, type App } from 'obsidian'
 import { watch } from 'vue'
 import { settingsSlice } from '@/composables/settingsSlice'
 import { BookBookmarks, type BookmarkStorage } from './bookmarks'
@@ -81,3 +81,16 @@ export function initBookBookmarks(plugin: Plugin): BookBookmarks {
 
 /** The store, once the plugin has loaded; null before, and in tests that do not make one. */
 export const bookBookmarks = (): BookBookmarks | null => bookmarks
+
+/** Flush pending reader edits first; the agent's writer owns only its subsequent persistence. */
+export async function bookBookmarkWriter(app: App): Promise<BookBookmarks | null> {
+  if (!bookmarks) return null
+  await bookmarks.flush()
+  return new BookBookmarks(
+    bookmarkFiles(
+      app.vault.adapter,
+      `${app.vault.configDir}/plugins/abele`,
+      normalizePath(bookmarksPathOf(currentReaderSettings()))
+    )
+  )
+}

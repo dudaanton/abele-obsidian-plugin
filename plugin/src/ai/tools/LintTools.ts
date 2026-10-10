@@ -6,7 +6,7 @@
  */
 import { TFile, TFolder, normalizePath, type App } from 'obsidian'
 import type { AgentTool } from '../client'
-import { scopeOf, type ToolContext } from '../toolContext'
+import { appOf, scopeOf, type ToolContext } from '../toolContext'
 import { GlobalStore } from '@/stores/GlobalStore'
 import { LinterService } from '@/linter/LinterService'
 import { filesFor, fixFile, lintFiles, rulesFor } from '@/linter/engine'
@@ -128,7 +128,7 @@ export function createLintFixTool(): AgentTool {
       required: ['path'],
     },
     execute: async (_id, params, signal, ctx) => {
-      const { app } = GlobalStore.getInstance()
+      const app = appOf(ctx)
       const files = filesInScope(app, targetOf(app, params.path), ctx)
       const rules = await LinterService.getInstance().loadRules()
       const only =

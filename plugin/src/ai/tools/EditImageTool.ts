@@ -1,5 +1,5 @@
 import type { AgentTool } from '../client'
-import { scopeOf } from '../toolContext'
+import { appOf, scopeOf } from '../toolContext'
 import { readImageAsDataUrl, saveImageToVault } from './imageUtils'
 import { callImageApi, imageModelParameter } from './imageApi'
 
@@ -59,7 +59,7 @@ export function createEditImageTool(): AgentTool {
         }
       }
 
-      const savedPath = await saveImageToVault(result.dataUrl)
+      const savedPath = await saveImageToVault(result.dataUrl, undefined, _signal, appOf(ctx))
       scope.addFile(savedPath)
       const text = result.text
         ? `${result.text}\n\nEdited image saved: ${savedPath}`

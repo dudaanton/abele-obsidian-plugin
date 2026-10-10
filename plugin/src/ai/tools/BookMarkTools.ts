@@ -30,7 +30,8 @@ import {
 import { HIGHLIGHT_COLORS, type Highlight, type HighlightColor } from '@/reader/highlights'
 import { bookKey } from '@/reader/positions'
 import { mergedForms, notesPlaceOf } from '@/reader/vocab/highlightForms'
-import { bookBookmarks } from '@/reader/bookmarkFiles'
+import { bookBookmarks, bookBookmarkWriter } from '@/reader/bookmarkFiles'
+import { appOf } from '../toolContext'
 import type { BookPlace } from '@/reader/bookLinks'
 import { AbeleConfig } from '@/services/AbeleConfig'
 import { collapse, compare } from '@/vendor/foliate-js/epubcfi.js'
@@ -279,7 +280,7 @@ export function createBookHighlightTool(): AgentTool {
           ? { forms: formsFrom(params.forms) ?? known?.forms }
           : {}),
       }
-      const note = await saveHighlight(app(), file, where, h, await chatOf(h))
+      const note = await saveHighlight(appOf(ctx), file, where, h, await chatOf(h))
       const out = [
         `${known ? 'Changed the highlight' : 'Highlighted'} in ${h.color}: ${link(file, { cfi }, h.label)}`,
         quoted(short(h.text, 300)),
@@ -326,7 +327,7 @@ export function createBookHighlightEditTool(): AgentTool {
       }
       if (!h.plain) delete h.plain
       if (!h.forms?.length) delete h.forms
-      const saved = await saveHighlight(app(), file, where, h, await chatOf(h))
+      const saved = await saveHighlight(appOf(ctx), file, where, h, await chatOf(h))
       return {
         ...answer(
           [
@@ -363,7 +364,7 @@ export function createBookHighlightRemoveTool(): AgentTool {
           'This highlight carries a discussion; the person removes it in the reader, which asks whether to keep the chat.'
         )
       const note = notesOf(app(), file, where)[0]
-      await deleteHighlight(app(), file, where, found.cfi)
+      await deleteHighlight(appOf(ctx), file, where, found.cfi)
       return {
         ...answer(`Removed the ${found.color} highlight on "${short(found.text, 120)}".`),
         ...(note ? { details: { path: note.path } } : {}),
@@ -388,7 +389,7 @@ export function createBookBookmarkTool(): AgentTool {
       required: ['book'],
     },
     execute: async (_id, params, _signal, ctx) => {
-      const store = bookBookmarks()
+      const store = await bookBookmarkWriter(appOf(ctx))
       if (!store) throw new Error('Bookmarks are not available: the book reader is not loaded.')
       const { file, place } = namedBook(params.book, ctx)
       const loaded = await loadBookText(app(), file)
@@ -400,6 +401,8 @@ export function createBookBookmarkTool(): AgentTool {
         if (!mark)
           throw new Error('This book has no bookmark with that id; book_highlights lists them.')
         await store.remove(key, mark.id)
+        await store.flush()
+        await bookBookmarks()?.refresh()
         return answer(`Removed the bookmark at ${link(file, { cfi: mark.cfi }, mark.label)}.`)
       }
       if (!place) throw new Error('Give a link to the place to bookmark, not only the book.')
@@ -428,6 +431,8 @@ export function createBookBookmarkTool(): AgentTool {
       if (marks.some((m) => m.cfi === cfi))
         return answer(`That place is bookmarked already: ${link(file, { cfi }, label)}.`)
       const made = await store.add(key, { cfi, fraction, label, text: short(text, 200) })
+      await store.flush()
+      await bookBookmarks()?.refresh()
       return answer(`Bookmarked ${link(file, { cfi }, label)} (id ${made.id}).`)
     },
   }

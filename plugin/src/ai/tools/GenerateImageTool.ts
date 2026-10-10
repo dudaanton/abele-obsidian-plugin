@@ -1,5 +1,5 @@
 import type { AgentTool } from '../client'
-import { scopeOf } from '../toolContext'
+import { appOf, scopeOf } from '../toolContext'
 import { saveImageToVault } from './imageUtils'
 import { callImageApi, imageModelParameter } from './imageApi'
 
@@ -29,7 +29,7 @@ export function createGenerateImageTool(): AgentTool {
         return { content: [{ type: 'text', text: result.text || 'No image generated' }] }
       }
 
-      const savedPath = await saveImageToVault(result.dataUrl, undefined, signal)
+      const savedPath = await saveImageToVault(result.dataUrl, undefined, signal, appOf(ctx))
       scopeOf(ctx).addFile(savedPath)
       const text = result.text
         ? `${result.text}\n\nImage saved: ${savedPath}`

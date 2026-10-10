@@ -513,9 +513,10 @@ export class ScriptService {
   executeForAgent(
     path: string,
     params: Record<string, unknown>,
-    signal?: AbortSignal
+    signal?: AbortSignal,
+    toolContext?: import('@/ai/toolContext').ToolContext
   ): Promise<ScriptOutcome> {
-    return this.execution.executeForAgent(path, params, signal)
+    return this.execution.executeForAgent(path, params, signal, toolContext)
   }
 
   answerForm(runId: string, values: Record<string, string> | null): Promise<ScriptOutcome | null> {

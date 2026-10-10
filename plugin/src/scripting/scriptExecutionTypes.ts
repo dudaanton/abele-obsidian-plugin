@@ -15,6 +15,8 @@ import type { AutomationEvent } from '@/automations/types'
  * third place means the same as it always did — so nothing that called it before has to change.
  */
 export interface ExecuteOptions {
+  /** The initiating chat's call-local file facade, retained across suspended forms. */
+  toolContext?: import('@/ai/toolContext').ToolContext
   /** Explicit user gesture only. Agent, automation, nested and restored runs never prompt. */
   allowApprovalPrompt?: boolean
   signal?: AbortSignal

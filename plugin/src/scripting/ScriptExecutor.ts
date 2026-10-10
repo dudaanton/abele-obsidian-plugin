@@ -154,13 +154,15 @@ export class ScriptExecutor {
   async executeForAgent(
     path: string,
     params: Record<string, unknown>,
-    signal?: AbortSignal
+    signal?: AbortSignal,
+    toolContext?: import('@/ai/toolContext').ToolContext
   ): Promise<ScriptOutcome> {
     const channel = new FormChannel()
 
     const run = this.admission.execute(path, params, {
       signal,
       source: 'agent',
+      toolContext,
       formHandler: (fields, runId) =>
         new Promise((answer) => channel.ask({ runId, fields, answer })),
     })
@@ -337,6 +339,7 @@ export class ScriptExecutor {
     try {
       const handler = opts.formHandler
       const ctx = buildScriptContext({
+        toolContext: opts.toolContext,
         params,
         signal,
         logs,

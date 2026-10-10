@@ -105,7 +105,10 @@ interface LocalPublicationDecision {
 }
 export class ObsidianCanvasStore implements GraphStore {
   private readonly localReviews = new WeakMap<CanvasPublicationReview, LocalPublicationDecision>()
-  constructor(private readonly app: App) {}
+  constructor(
+    private readonly app: App,
+    private readonly writeApp: App = app
+  ) {}
   /** Read source independently of the draft/native preview, without observing or settling it. */
   async reviewPublication(
     file: TFile,
@@ -296,10 +299,11 @@ export class ObsidianCanvasStore implements GraphStore {
       let folder = ''
       for (const part of parts) {
         folder = folder ? `${folder}/${part}` : part
-        if (!this.app.vault.getAbstractFileByPath(folder)) await this.app.vault.createFolder(folder)
+        if (!this.app.vault.getAbstractFileByPath(folder))
+          await this.writeApp.vault.createFolder(folder)
       }
       signal?.throwIfAborted()
-      await this.app.vault.create(path, text)
+      await this.writeApp.vault.create(path, text)
     })
   }
   change(
@@ -429,7 +433,7 @@ export class ObsidianCanvasStore implements GraphStore {
         }
         signal?.throwIfAborted()
         let before: CanvasGraph | undefined, after: CanvasGraph | undefined
-        const published = await this.app.vault.process(file, (current) => {
+        const published = await this.writeApp.vault.process(file, (current) => {
           signal?.throwIfAborted()
           if (file.path !== path || this.app.vault.getAbstractFileByPath(path) !== file)
             throw new Error('Canvas renamed during publication; reread its current path')
