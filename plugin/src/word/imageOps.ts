@@ -1,4 +1,5 @@
-import { textPatches, type WordEdit } from './edit'
+import type { WordEdit } from './edit'
+import { textPatches } from './textEdits'
 import type { WordParagraph } from './package'
 import { A, PIC, WP } from './package'
 import { WordMutation, setAttribute } from './mutation'

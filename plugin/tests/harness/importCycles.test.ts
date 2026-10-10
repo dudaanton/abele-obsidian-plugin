@@ -2,7 +2,7 @@ import { describe, expect, it } from 'vitest'
 import { readFileSync } from 'node:fs'
 import { resolve } from 'node:path'
 import ts from 'typescript'
-import { cyclicComponents, runtimeImports } from '../../scripts/import-cycles.mjs'
+import { cyclicComponents, importGraph, runtimeImports } from '../../scripts/import-cycles.mjs'
 
 describe('runtime import graph', () => {
   it('excludes type-only, elided and dynamic imports but retains value re-exports', () => {
@@ -50,6 +50,10 @@ describe('runtime import graph', () => {
         ])
       )
     ).toEqual([['a', 'b', 'c'], ['e']])
+  })
+
+  it('keeps Word operation helpers independent of the edit dispatcher', () => {
+    expect(cyclicComponents(importGraph(resolve('src/word')))).toEqual([])
   })
 
   it('keeps the plugin entry point a type-only dependency of settings', () => {

@@ -1,5 +1,5 @@
 import type { WordEdit } from './edit'
-import { textPatches, validText } from './edit'
+import { textPatches, validText } from './textEdits'
 import type { WordParagraph } from './package'
 import { WordMutation } from './mutation'
 import {
