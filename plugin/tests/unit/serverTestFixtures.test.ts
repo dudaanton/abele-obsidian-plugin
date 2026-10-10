@@ -4,7 +4,7 @@ import { mkdtempSync, mkdirSync, writeFileSync, rmSync } from 'node:fs'
 import { createHash } from 'node:crypto'
 import { fileURLToPath } from 'node:url'
 import { join } from 'node:path'
-import { missingServerTests, serverTestFixtures } from '../../scripts/server-test-fixtures.mjs'
+import { missingServerTests } from '../../scripts/server-test-fixtures.mjs'
 import { locateSyncFixture, selectServerTests } from '../../scripts/test-server.mjs'
 
 const scratch = fileURLToPath(new URL('../../../.scratch/sync-inputs/', import.meta.url))
@@ -40,48 +40,27 @@ function archive(directory: string, name: string, commit: string) {
 describe('server-backed fast-tier fixture gate', () => {
   it('skips only the files that require an absent fixture', () => {
     const skipped = missingServerTests({})
-    expect(skipped).toHaveLength(20)
+    expect(skipped).toHaveLength(13)
     expect(skipped).not.toContain('tests/integration/scopedPublicationPush.test.ts')
     expect(skipped).toContain('tests/integration/tokenEngineServer.test.ts')
     expect(skipped).toContain('tests/integration/externalRepresentationServer.test.ts')
-    expect(skipped).toContain('tests/integration/ownerSharingContracts.test.ts')
     expect(skipped).toContain('tests/integration/productionSharingBuild.test.ts')
     expect(skipped).toContain('tests/integration/syncService.test.ts')
-    expect(skipped).toContain('tests/integration/groupJoinHttp.test.ts')
     expect(skipped).not.toContain('tests/unit/syncBuildInputs.test.ts')
     expect(skipped.every((file: string) => file.startsWith('tests/integration/'))).toBe(true)
   })
 
-  it('keeps independent fixture gates separate', () => {
-    const skipped = missingServerTests({ ABELE_SYNC_DIR: '/sample/fixture' })
-    expect(skipped).not.toContain('tests/integration/syncService.test.ts')
-    expect(skipped).not.toContain('tests/integration/externalRepresentationServer.test.ts')
-    expect(skipped).toContain('tests/integration/ownerHttpApi.test.ts')
-    expect(skipped).toContain('tests/integration/sponsoredHttpApi.test.ts')
-    expect(skipped).toContain('tests/integration/groupJoinHttp.test.ts')
-  })
-
-  it('runs every existing server-backed file when its variable is set', () => {
-    const env = Object.fromEntries(
-      Object.keys(serverTestFixtures).map((name) => [name, '/sample/fixture'])
-    )
-    expect(missingServerTests(env)).toEqual([])
-    expect(missingServerTests({ ...env, ABELE_GROUP_API_FIXTURE: '' })).toEqual([
-      'tests/integration/groupJoinHttp.test.ts',
-    ])
-  })
-
-  it('selects only registered touched tests and requires both owner contract fixtures', () => {
-    const file = 'tests/integration/ownerSharingContracts.test.ts'
+  it('runs every current token fixture when its explicit variable is set', () => {
+    expect(missingServerTests({ ABELE_SYNC_DIR: '/sample/fixture' })).toEqual([])
+    const file = 'tests/integration/tokenEngineServer.test.ts'
     expect(selectServerTests(['--tests', file])).toEqual({
       repository: undefined,
       files: [file],
-      variables: ['ABELE_SCOPED_API_FIXTURE', 'ABELE_OWNER_RELEASE_FIXTURE'],
+      variables: ['ABELE_SYNC_DIR'],
     })
     expect(() => selectServerTests(['--tests', 'tests/e2e/sync.e2e.test.ts'])).toThrow(/registered/)
-    expect(missingServerTests({ ABELE_SCOPED_API_FIXTURE: '/sample/fixture' })).toContain(file)
-    expect(missingServerTests({ ABELE_OWNER_RELEASE_FIXTURE: '/sample/release' })).toContain(file)
   })
+
   it('locates only a matching checksum-verified prepared archive', () => {
     const directory = fixtureCache()
     archive(directory, 'old', 'a'.repeat(40))

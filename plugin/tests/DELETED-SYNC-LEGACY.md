@@ -108,3 +108,14 @@ scoped raw/native database split and invitation creation API no longer exist.
 - `integration/externalScopedOwnership.test.ts`: all seven ownership/recovery guarantees are ported to token hosts; only scoped installation credentials, self-revocation and the old Leave queue are retired.
 - `integration/scopedPublicationPush.test.ts` (partial retirement): removed sponsor link snapshots and admitted-unit cleanup/schema. Token tests retain consent before enqueue, immutable bytes and request key across response loss, committed-versus-follow-up-failure distinction and interrupted cleanup retry.
 - `unit/scopedItemHolds.test.ts` (partial retirement): removed `ScopedState` and the two-slot scoped journal schema. Durable immutable source retention and abort-before-send are ported to token publication. The actual rejected-item retention gap remains `it.fails` with `BUG:` until publication is fixed.
+
+The historical server fixture gates no longer hide removed-product tests:
+
+- `tests/integration/ownerHttpApi.test.ts`: v1 owner account, vault and grant routes replaced by v2 token issuance.
+- `tests/integration/ownerSharingContracts.test.ts`: released and pinned v1 invitations, reader roles and sponsored-grant contracts removed.
+- `tests/integration/sponsoredHttpApi.test.ts`: v1 sponsor proofs and admitted-unit publication replaced by explicit v2 attachment publication.
+- `tests/integration/groupJoinHttp.test.ts`: v1 recipient account registration and scoped invitations replaced by tokens.
+- `tests/integration/groupOwnerHttp.test.ts`: v1 password-authorized owner group previews removed.
+- `tests/integration/sponsoredApiAvailability.test.ts`: availability of removed v1 sponsored-asset routes is no longer a product guarantee.
+- `tests/integration/replayProbeHttp.test.ts`: removed phone replay observation driver over v1 device commits; immutable request retry remains covered by token publication tests.
+- `tests/helpers/scopedApiServer.ts`: unused historical account/vault/invitation fixture after these removals.
