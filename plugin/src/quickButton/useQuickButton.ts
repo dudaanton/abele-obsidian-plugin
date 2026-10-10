@@ -257,6 +257,9 @@ export function useQuickButton(app: App, button: Ref<HTMLElement | null | undefi
     )
       schedule()
   })
+  const onLayoutMotion = (event: Event) => {
+    if (event.target instanceof Element && event.target.matches(layoutSelector)) schedule()
+  }
   const onVisibility = () => {
     if (doc.visibilityState !== 'hidden') refreshContext()
   }
@@ -282,6 +285,9 @@ export function useQuickButton(app: App, button: Ref<HTMLElement | null | undefi
       attributeFilter: ['class', 'style', 'hidden'],
     })
     doc.addEventListener('visibilitychange', onVisibility)
+    // Transforms can move a bar without resizing it; the native navbar slides in this way.
+    doc.addEventListener('transitionend', onLayoutMotion, true)
+    doc.addEventListener('animationend', onLayoutMotion, true)
     measureInsets()
     readKeyboard()
     readSelection()
@@ -302,6 +308,8 @@ export function useQuickButton(app: App, button: Ref<HTMLElement | null | undefi
     layoutWatch.disconnect()
     sizeWatch.disconnect()
     doc.removeEventListener('visibilitychange', onVisibility)
+    doc.removeEventListener('transitionend', onLayoutMotion, true)
+    doc.removeEventListener('animationend', onLayoutMotion, true)
     if (frame) window.cancelAnimationFrame(frame)
   })
 

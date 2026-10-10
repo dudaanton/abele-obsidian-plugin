@@ -127,6 +127,24 @@ describe('the quick button', () => {
     expect(queries).toHaveBeenCalled()
   })
 
+  it('places again when the navigation bar finishes moving without changing size', async () => {
+    viewIn(workspace.rootSplit)
+    const bar = document.body.createDiv({ cls: 'mobile-navbar' })
+    let top = 700
+    const box = () =>
+      ({ left: 0, right: 1000, top, bottom: top + 50, width: 1000, height: 50 }) as DOMRect
+    bar.getBoundingClientRect = box
+    bar.getClientRects = () => [box()] as unknown as DOMRectList
+    await mountButton()
+    const before = parseFloat(buttonEl()!.style.getPropertyValue('--abele-floating-button-top'))
+    top = 600
+    bar.dispatchEvent(new Event('transitionend', { bubbles: true }))
+    await settle()
+    expect(
+      parseFloat(buttonEl()!.style.getPropertyValue('--abele-floating-button-top'))
+    ).toBeLessThan(before)
+  })
+
   it('is there on a phone once switched on, and not while off', async () => {
     viewIn(workspace.rootSplit)
     await mountButton()
