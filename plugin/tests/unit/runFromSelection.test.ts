@@ -190,6 +190,22 @@ describe('one selection launch path', () => {
     )
   })
 
+  it('captures the preparation adapter too, rather than consulting a changed target after a form', async () => {
+    const { ports, target, prepare } = setup('// @param language string "Language"')
+    const form = deferred<Record<string, unknown>>()
+    ports.showParams = vi.fn(() => form.promise)
+    const launched = runFromSelection('Scripts/sample.js', target, ports)
+    await vi.waitFor(() => expect(ports.showParams).toHaveBeenCalled())
+    const other = vi
+      .fn()
+      .mockResolvedValue({ status: 'ready', anchorId: 'other', backlink: 'wrong source' })
+    target.prepare = other
+    form.resolve({ language: 'en' })
+    await launched
+    expect(prepare).toHaveBeenCalledOnce()
+    expect(other).not.toHaveBeenCalled()
+  })
+
   it('reports a stale revision explicitly, never executing with a success-shaped link', async () => {
     const { ports, target } = setup()
     target.prepare = vi

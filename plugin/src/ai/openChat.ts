@@ -33,7 +33,10 @@ export function chooseAnchorSource(paths: string[]): Promise<string | null> {
       text: 'Several copies of this conversation have the same identity. Choose the source to open; none is selected automatically.',
     })
     for (const path of paths) {
-      const button = modal.bodyEl.createEl('button', { text: path, cls: 'abele-anchor-source__choice' })
+      const button = modal.bodyEl.createEl('button', {
+        text: path,
+        cls: 'abele-anchor-source__choice',
+      })
       button.addEventListener('click', () => {
         chosen = path
         modal.close()
@@ -45,6 +48,83 @@ export function chooseAnchorSource(paths: string[]): Promise<string | null> {
   })
 }
 
+/** Validation conflicts are distinct from transport/storage errors. */
+export class SelectionCaptureConflict extends Error {}
+
+/** Capture source evidence synchronously; no identity or revision write until invoked. */
+export function captureSelectionSource(
+  session: ChatSession,
+  messageId: string,
+  quote: string,
+  start: number,
+  renderedText: string
+) {
+  const captured = session.allMessages.value.find((message) => message.id === messageId)
+  const file = session.currentChatFile.value
+  const content = captured?.content
+  const revisionId = captured?.selection?.revisionId
+  const revisions = captured?.revisions
+  const role = captured?.role ?? ''
+  const title = session.chatTitle.value || file?.basename || ''
+  const pathHint = file?.path ?? ''
+  return async (signal?: AbortSignal) => {
+    signal?.throwIfAborted()
+    const current = session.allMessages.value.find((message) => message.id === messageId)
+    if (
+      !file ||
+      file !== session.currentChatFile.value ||
+      !current ||
+      current.content !== content ||
+      current.role !== role ||
+      current.draft ||
+      current.selection?.revisionId !== revisionId ||
+      current.revisions !== revisions
+    )
+      throw new SelectionCaptureConflict(
+        'The captured selection changed. Select the passage again.'
+      )
+    if ((await replyMarkdownText(current.content)) !== renderedText)
+      throw new SelectionCaptureConflict(
+        'The rendered selection changed. Select the passage again.'
+      )
+    const checked = session.allMessages.value.find((message) => message.id === messageId)
+    if (
+      !checked ||
+      checked.content !== content ||
+      checked.selection?.revisionId !== revisionId ||
+      checked.revisions !== revisions
+    )
+      throw new SelectionCaptureConflict(
+        'The captured selection changed. Select the passage again.'
+      )
+    signal?.throwIfAborted()
+    const revision = await session.ensureSelectionRevision(messageId, {
+      nextId: nanoid,
+      project: (source) => {
+        if (source !== content)
+          throw new SelectionCaptureConflict(
+            'The captured selection changed. Select the passage again.'
+          )
+        return { version: CHAT_TEXT_PROJECTION_VERSION, text: renderedText }
+      },
+    })
+    const snapshot = captureChatSelection({
+      revision,
+      range: { space: 'rendered', start, end: start + quote.length },
+      role: role === 'user' ? 'user' : 'assistant',
+      author: role,
+      title,
+      pathHint,
+      sentence: renderedText,
+    })
+    if (snapshot.text !== quote)
+      throw new SelectionCaptureConflict(
+        'The captured selection changed. Select the passage again.'
+      )
+    return snapshot
+  }
+}
+
 /** Captured synchronously when the menu/bar is prepared; later selection/tab changes cannot retarget it. */
 export function captureSelectionLink(
   session: ChatSession,
@@ -53,56 +133,13 @@ export function captureSelectionLink(
   start: number,
   renderedText: string
 ): () => Promise<string> {
-  const captured = session.allMessages.value.find((message) => message.id === messageId)
+  const source = captureSelectionSource(session, messageId, quote, start, renderedText)
   const file = session.currentChatFile.value
-  const content = captured?.content
-  const revisionId = captured?.selection?.revisionId
-  const revisions = captured?.revisions
-  return async () => {
-    const current = session.allMessages.value.find((message) => message.id === messageId)
-    if (
-      !file ||
-      file !== session.currentChatFile.value ||
-      !current ||
-      current.content !== content ||
-      current.selection?.revisionId !== revisionId ||
-      current.revisions !== revisions
-    )
-      throw new Error('The captured selection changed. Select the passage again.')
-    if ((await replyMarkdownText(current.content)) !== renderedText)
-      throw new Error('The rendered selection changed. Select the passage again.')
-    const checked = session.allMessages.value.find((message) => message.id === messageId)
-    if (
-      !checked ||
-      checked.content !== content ||
-      checked.selection?.revisionId !== revisionId ||
-      checked.revisions !== revisions
-    )
-      throw new Error('The captured selection changed. Select the passage again.')
-    const revision = await session.ensureSelectionRevision(messageId, {
-      nextId: nanoid,
-      project: (source) => {
-        if (source !== content)
-          throw new Error('The captured selection changed. Select the passage again.')
-        return { version: CHAT_TEXT_PROJECTION_VERSION, text: renderedText }
-      },
-    })
-    const snapshot = captureChatSelection({
-      revision,
-      range: { space: 'rendered', start, end: start + quote.length },
-      role: current.role === 'user' ? 'user' : 'assistant',
-      author: current.role,
-      title: session.chatTitle.value || file.basename,
-      pathHint: file.path,
-      sentence: renderedText,
-    })
-    if (snapshot.text !== quote)
-      throw new Error('The captured selection changed. Select the passage again.')
-    return prepareSelectionBacklink(snapshot, {
+  return async () =>
+    prepareSelectionBacklink(await source(), {
       ensureAnchor: (selection) => session.ensureChatAnchor(selection),
-      path: () => file.path,
+      path: () => file!.path,
     })
-  }
 }
 
 let selectionReturnGeneration = 0

@@ -1,0 +1,27 @@
+// Keep the native suggestion columns; the pin belongs to the first title line, not to the
+// centre of the title plus description. Typography, colours and list scrolling remain native.
+.suggestion-item.mod-complex.abele-selection-script-choice {
+  .suggestion-aux {
+    align-self: flex-start;
+    height: 1lh;
+  }
+
+  .abele-book-script-pin {
+    height: 100%;
+    padding-block: 0;
+  }
+}
+
+.is-mobile .suggestion-item.mod-complex.abele-selection-script-choice {
+  .suggestion-aux {
+    min-height: var(--size-4-12);
+  }
+
+  .abele-book-script-pin {
+    min-width: var(--size-4-12);
+  }
+
+  .suggestion-title {
+    padding-block-start: max(0px, calc((var(--size-4-12) - 1lh) / 2));
+  }
+}

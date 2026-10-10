@@ -7,7 +7,12 @@ import { waitForScript } from './abort'
 export type SelectionRunSource = 'book' | 'chat-selection'
 
 export type PreparedChatSelection =
-  | { readonly status: 'ready'; readonly anchorId: string; readonly backlink: string }
+  | {
+      readonly status: 'ready'
+      readonly anchorId: string
+      readonly backlink: string
+      readonly snapshot?: ChatSelectionSnapshot
+    }
   | { readonly status: 'conflict'; readonly reason: string }
 
 /**
@@ -24,6 +29,21 @@ export interface ChatSelectionLaunchPort {
 export type SelectionLaunchTarget =
   | { readonly kind: 'book'; readonly book: BookScriptContext }
   | ({ readonly kind: 'chat'; readonly snapshot: ChatSelectionSnapshot } & ChatSelectionLaunchPort)
+  /** Legacy saved messages have no durable IDs yet. Capture source/revision evidence in the
+   * adapter before any UI; initialize IDs only after admission and the parameter form. */
+  | {
+      readonly kind: 'captured-chat'
+      readonly text: string
+      prepare(signal: AbortSignal): Promise<
+        | {
+            readonly status: 'ready'
+            readonly snapshot: ChatSelectionSnapshot
+            readonly anchorId: string
+            readonly backlink: string
+          }
+        | { readonly status: 'conflict'; readonly reason: string }
+      >
+    }
 
 export interface SelectionExecution {
   readonly source: SelectionRunSource
@@ -82,10 +102,14 @@ export async function runFromSelection(
   const book = target.kind === 'book' ? Object.freeze({ ...target.book }) : undefined
   const snapshot = target.kind === 'chat' ? captureSelection(target.snapshot) : undefined
   // Capture the adapter as well: changing a tab must not change which writer owns this run.
-  const prepare: ChatSelectionLaunchPort['prepare'] | undefined =
-    target.kind === 'chat' ? target.prepare.bind(target) : undefined
+  const prepare: ((signal: AbortSignal) => Promise<PreparedChatSelection>) | undefined =
+    target.kind === 'chat'
+      ? target.prepare.bind(target, snapshot!)
+      : target.kind === 'captured-chat'
+        ? target.prepare.bind(target)
+        : undefined
   const source = target.kind === 'book' ? 'book' : 'chat-selection'
-  const text = book?.text ?? snapshot!.text
+  const text = target.kind === 'captured-chat' ? target.text : (book?.text ?? snapshot!.text)
   try {
     const script = await waitForScript(() => ports.admit(path, source, signal), signal)
     let { params, missing } = selectionParams(script, text)
@@ -98,14 +122,14 @@ export async function runFromSelection(
     let selection: SelectionScriptContext
     if (book) selection = bookSelection(book)
     else {
-      const prepared = await waitForScript(() => prepare!(snapshot!, signal), signal)
+      const prepared = await waitForScript(() => prepare!(signal), signal)
       signal.throwIfAborted()
       if (prepared.status === 'conflict') return prepared
       // A broken adapter is not permission to hand a script an apparently usable source link.
       if (!prepared.anchorId || !prepared.backlink)
         throw new Error('Selection backlink was not saved')
       selection = captureSelection({
-        ...snapshot!,
+        ...(prepared.snapshot ?? snapshot!),
         anchorId: prepared.anchorId,
         backlink: prepared.backlink,
       })
