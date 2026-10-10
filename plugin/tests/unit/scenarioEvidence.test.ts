@@ -1,5 +1,19 @@
 import { expect, it } from 'vitest'
+import { readFileSync, readdirSync } from 'node:fs'
+import { resolve } from 'node:path'
 import { liveRequirements, runEvidence, evidenceManifest } from '../acceptance/evidence'
+
+it('includes every desktop liveCase mapping in aggregate scenario requirements', () => {
+  const root = resolve(__dirname, '../e2e')
+  for (const file of readdirSync(root).filter(
+    (one) => one.endsWith('.e2e.test.ts') && one !== 'syncPhone.e2e.test.ts'
+  ))
+    for (const match of readFileSync(resolve(root, file), 'utf8').matchAll(
+      /liveCase\(\s*'[^']+',\s*'[^']+',\s*\[([\d,\s]+)\]/g
+    ))
+      for (const id of match[1].split(',').map(Number))
+        expect(liveRequirements(id), file + ': ' + id).toContain('Mac')
+})
 
 it.each([24, 25, 26, 27, 28, 57, 58, 60, 61, 69, 70, 71, 72, 73, 74, 91, 110, 117])(
   'requires desktop evidence for mapped app scenario %s',

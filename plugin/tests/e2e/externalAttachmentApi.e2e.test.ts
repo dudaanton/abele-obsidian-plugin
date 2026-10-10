@@ -171,6 +171,7 @@ describe('v2 external attachments on live adapters', () => {
     TIMEOUT
   )
   // Preserve the existing expected phone failure until the driver supplies resident RSS.
+  // BUG: the phone driver exposes no Obsidian resident-RSS sampler. Keep the real bound assertion.
   ;(onPhone() ? it.fails : it)(
     'bounds resident-memory growth for the 200 MiB transfer',
     async () => {

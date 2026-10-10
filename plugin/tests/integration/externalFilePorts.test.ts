@@ -358,6 +358,22 @@ describe('external-file host coordination and filesystem effects', () => {
 
   for (const platform of ['mobile', 'desktop'] as const) {
     describe(platform + ' installer', () => {
+      it('preserves an occupied user file even when adapter copy would overwrite it', async () => {
+        const s = setup(platform),
+          artifact = await s.artifact()
+        const unsafeCopy = vi.fn(async (_from: string, to: string) => {
+          await s.fake.vault.adapter.writeBinary(to, new TextEncoder().encode('overwritten').buffer)
+        })
+        Object.assign(s.fake.vault.adapter, { copy: unsafeCopy })
+        await s.run(async (op) => {
+          await op.stage(artifact, base)
+          expect(await reason(op.install(artifact, source))).toBe('collision')
+        })
+        expect(unsafeCopy).not.toHaveBeenCalled()
+        expect(new TextDecoder().decode(await s.fake.vault.adapter.readBinary(source))).toBe(
+          'sample verified bytes'
+        )
+      })
       it('installs only from verified owned staging and preserves even a matching occupied target', async () => {
         const s = setup(platform),
           artifact = await s.artifact()

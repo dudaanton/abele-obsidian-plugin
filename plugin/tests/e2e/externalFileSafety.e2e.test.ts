@@ -88,8 +88,30 @@ describe.skipIf(!available)('external-file filesystem guarantees on the live ada
     }
   )
 
+  it('our production installer preserves an occupied user file on the live adapter', async () => {
+    const out = JSON.parse(
+      await evalLong(`(async()=>{
+      ${prelude}
+      const target=root+'/guard-user.bin',staging=root+'/.abele-external-live-guard.incoming';
+      await adapter.write(target,'user bytes');await adapter.write(staging,'incoming bytes');
+      const host=new window.__abeleTest.ExternalFileHost(app,{platform:${JSON.stringify(onPhone() ? 'mobile' : 'desktop')},assertOwned:()=>{if(window.__externalFsProbeOwner!==root)throw Error('Ownership lost')}});
+      try{
+        const fingerprint=await host.fingerprint(staging),artifact={operationId:'live-guard',path:staging,...fingerprint,role:'incoming'};
+        let refusal;try{await host.run({run:work=>work()},{operationId:'live-guard',fileId:'guard-file',paths:[target,staging],assertIntent:()=>{}},effects=>effects.install(artifact,target))}catch(error){refusal=error.reason}
+        return {refusal,target:await adapter.read(target),staging:await adapter.read(staging)}
+      }finally{host.close()}
+    })()`)
+    )
+    expect(out).toEqual({ refusal: 'collision', target: 'user bytes', staging: 'incoming bytes' })
+  })
   it('records the available queue, exclusive-install, handle and durability surfaces', async () => {
-    const out = evalJson(`(()=>{
+    const out = evalJson<{
+      undocumentedOpen: boolean
+      publicFsync: boolean
+      process: boolean
+      nativeOpen: boolean
+      exclusiveLink: boolean
+    }>(`(()=>{
       ${prelude}
       const fsp=adapter.fsPromises
       return {
