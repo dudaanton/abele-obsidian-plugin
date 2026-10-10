@@ -92,6 +92,27 @@ describe('Tabs', () => {
 })
 
 describe('Checkbox', () => {
+  it('does not switch while disabled, and says so', async () => {
+    const view = mount(Checkbox, { props: { isEnabled: false, disabled: true } })
+
+    expect(view.classes()).toEqual(
+      expect.arrayContaining(['is-disabled', 'abele-checkbox_disabled'])
+    )
+    expect(view.attributes('aria-disabled')).toBe('true')
+    expect(view.attributes('tabindex')).toBe('-1')
+    await view.trigger('click')
+    await view.trigger('keydown', { key: ' ' })
+    expect(view.emitted('toggle')).toBeUndefined()
+  })
+
+  it("takes Obsidian's small switch", () => {
+    const view = mount(Checkbox, { props: { isEnabled: true, size: 'small' } })
+
+    expect(view.classes()).toEqual(
+      expect.arrayContaining(['mod-small', 'abele-checkbox_small', 'abele-checkbox_enabled'])
+    )
+  })
+
   it('reports one pointer activation without activating its containing row', async () => {
     const parent = vi.fn()
     const toggle = vi.fn()
