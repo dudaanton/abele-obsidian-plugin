@@ -1,14 +1,14 @@
 <template>
-  <section class="abele-items" :aria-busy="state === 'loading'" :aria-label="title">
-    <div v-if="title" class="tree-item-self abele-items__heading">
-      <div class="tree-item-inner abele-items__title">{{ title }}</div>
-      <div class="tree-item-flair-outer abele-items__side">
+  <section class="abele-item-list" :class="`abele-item-list_${state}`" :aria-busy="state === 'loading'" :aria-label="title">
+    <div v-if="title" class="tree-item-self abele-item-list__heading">
+      <div class="tree-item-inner abele-item-list__title">{{ title }}</div>
+      <div class="tree-item-flair-outer abele-item-list__side">
         <span v-if="count !== undefined && state === 'ready'" class="tree-item-flair">{{
           count
         }}</span>
         <a
           v-if="more && state === 'ready'"
-          class="abele-items__more"
+          class="abele-item-list__more"
           href="#"
           @click.prevent="emit('more')"
           >{{ more }}</a
@@ -16,17 +16,17 @@
         <slot name="actions" />
       </div>
     </div>
-    <div v-if="state === 'loading'" class="search-empty-state abele-items__state" role="status">
+    <div v-if="state === 'loading'" class="search-empty-state abele-item-list__state" role="status">
       {{ loadingText }}
     </div>
-    <div v-else-if="state === 'error'" class="search-empty-state abele-items__state" role="alert">
+    <div v-else-if="state === 'error'" class="search-empty-state abele-item-list__state" role="alert">
       <span>{{ errorText }}</span>
-      <a href="#" class="abele-items__retry" @click.prevent="emit('retry')">Повторить</a>
+      <a href="#" class="abele-item-list__retry" @click.prevent="emit('retry')">Повторить</a>
     </div>
-    <div v-else-if="state === 'empty'" class="search-empty-state abele-items__state" role="status">
+    <div v-else-if="state === 'empty'" class="search-empty-state abele-item-list__state" role="status">
       {{ emptyText }}
     </div>
-    <div v-else class="abele-items__rows"><slot /></div>
+    <div v-else class="abele-item-list__rows"><slot /></div>
   </section>
 </template>
 
@@ -56,38 +56,38 @@ const emit = defineEmits<{ more: []; retry: [] }>()
 </script>
 
 <style>
-.abele-items + .abele-items {
+.abele-item-list + .abele-item-list {
   margin-top: var(--size-4-4);
 }
-.abele-items .abele-items__heading {
+.abele-item-list .abele-item-list__heading {
   padding-inline: var(--size-4-6) var(--size-4-2);
   align-items: baseline;
   color: var(--nav-heading-color);
 }
-.abele-items .abele-items__title {
+.abele-item-list .abele-item-list__title {
   font-weight: var(--nav-heading-weight);
 }
-.abele-items__side {
+.abele-item-list__side {
   gap: var(--size-4-2);
   align-items: baseline;
 }
-.abele-items__more,
-.abele-items__retry {
+.abele-item-list__more,
+.abele-item-list__retry {
   font-size: var(--font-ui-smaller);
   color: var(--text-muted);
   text-decoration: none;
 }
-.is-phone .abele-items__more,
-.is-phone .abele-items__retry {
+.is-phone .abele-item-list__more,
+.is-phone .abele-item-list__retry {
   display: inline-flex;
   align-items: center;
   min-height: var(--touch-size-m);
 }
-.abele-items__more:hover,
-.abele-items__retry:hover {
+.abele-item-list__more:hover,
+.abele-item-list__retry:hover {
   color: var(--text-accent);
 }
-.abele-items .abele-items__state {
+.abele-item-list .abele-item-list__state {
   display: flex;
   gap: var(--size-4-2);
   margin: var(--size-4-1) 0 0;

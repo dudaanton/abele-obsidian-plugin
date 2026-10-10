@@ -1,39 +1,44 @@
 <template>
-  <div class="tree-item abele-item">
+  <div
+    class="tree-item abele-item-row"
+    :class="{
+      'abele-item-row_selected': selected,
+      'abele-item-row_strong': strong,
+      'abele-item-row_unavailable': unavailable,
+      'abele-item-row_multiline': multiline,
+      'abele-item-row_static': !openable,
+    }"
+  >
     <div
-      class="tree-item-self abele-item__self"
-      :class="{
-        'is-clickable': openable,
-        'is-active': selected,
-        'mod-strong': strong,
-        'mod-unavailable': unavailable,
-        'mod-multiline': description || $slots.description || excerpt,
-      }"
+      class="tree-item-self abele-item-row__self"
+      :class="{ 'is-clickable': openable, 'is-active': selected }"
     >
       <button
         v-if="openable"
-        class="abele-item__hit"
+        class="abele-item-row__hit"
         type="button"
         :aria-label="label || title"
         :aria-current="selected ? 'true' : undefined"
         @click="emit('open')"
       />
-      <div v-if="icon || $slots.leading" class="tree-item-icon abele-item__icon">
+      <div v-if="icon || $slots.leading" class="tree-item-icon abele-item-row__leading">
         <slot name="leading"><Icon :icon="icon" no-hover /></slot>
       </div>
-      <div class="tree-item-inner abele-item__body">
-        <div class="abele-item__head">
-          <span class="abele-item__title"
+      <div class="tree-item-inner abele-item-row__body">
+        <div class="abele-item-row__head">
+          <span class="abele-item-row__title"
             ><slot name="title">{{ title }}</slot></span
           >
-          <span v-if="$slots.trailing" class="abele-item__trailing"><slot name="trailing" /></span>
+          <span v-if="$slots.trailing" class="abele-item-row__trailing"
+            ><slot name="trailing"
+          /></span>
         </div>
-        <div v-if="description || $slots.description" class="abele-item__description">
+        <div v-if="description || $slots.description" class="abele-item-row__description">
           <slot name="description">{{ description }}</slot>
         </div>
-        <div v-if="excerpt" class="abele-item__excerpt">{{ excerpt }}</div>
+        <div v-if="excerpt" class="abele-item-row__excerpt">{{ excerpt }}</div>
       </div>
-      <div v-if="$slots.actions" class="tree-item-flair-outer abele-item__actions">
+      <div v-if="$slots.actions" class="tree-item-flair-outer abele-item-row__actions">
         <slot name="actions" />
       </div>
     </div>
@@ -42,13 +47,15 @@
 
 <script setup lang="ts">
 // One object per row, laid out the way Nuxt UI lays out its list items: leading icon, title,
-// a muted description under it and a trailing fact on the title's own line. Everything else
-// about the look is Obsidian's tree item: padding, radius, hover and the selected background.
+// a muted description under it and a trailing fact on the title's own line. The look is
+// Obsidian's tree item (padding, radius, hover, selected background) and its variables; every
+// part and state also carries an `abele-item-row` BEM class, so a CSS snippet can restyle it.
 // Errors and loading belong to the list, not to a row; actions on the object belong to the
 // header of whatever the row opens, so `actions` is for one menu at most.
+import { computed, useSlots } from 'vue'
 import Icon from '@/components/obsidian/Icon.vue'
 
-withDefaults(
+const props = withDefaults(
   defineProps<{
     title: string
     description?: string
@@ -63,31 +70,33 @@ withDefaults(
   { openable: true }
 )
 const emit = defineEmits<{ open: [] }>()
+const slots = useSlots()
+const multiline = computed(() => !!(props.description || slots.description || props.excerpt))
 </script>
 
 <style>
-.abele-item .abele-item__self {
+.abele-item-row .abele-item-row__self {
   position: relative;
   padding: var(--nav-item-padding);
   align-items: flex-start;
 }
-.is-phone .abele-item .abele-item__self {
-  min-height: var(--touch-size-m);
-}
-.is-phone .abele-item .abele-item__self:not(.mod-multiline) {
-  /* Pad a one-line row up to the touch height instead of centring it: a title that still
-     wraps keeps its icon on the first line. */
-  padding-block: calc((var(--touch-size-m) - var(--nav-item-size) * var(--line-height-tight)) / 2);
-}
-.abele-item .abele-item__self.mod-multiline {
+.abele-item-row_multiline .abele-item-row__self {
   padding-block: var(--size-4-2);
 }
-.abele-item .abele-item__hit {
+.is-phone .abele-item-row .abele-item-row__self {
+  min-height: var(--touch-size-m);
+}
+/* Pad a one-line row up to the touch height instead of centring it: a title that still wraps
+   keeps its icon on the first line. */
+.is-phone .abele-item-row:not(.abele-item-row_multiline) .abele-item-row__self {
+  padding-block: calc((var(--touch-size-m) - var(--nav-item-size) * var(--line-height-tight)) / 2);
+}
+.abele-item-row .abele-item-row__hit {
   position: absolute;
-  min-height: 0;
   inset: 0;
   width: 100%;
   height: 100%;
+  min-height: 0;
   margin: 0;
   padding: 0;
   border: 0;
@@ -96,19 +105,19 @@ const emit = defineEmits<{ open: [] }>()
   box-shadow: none;
   cursor: var(--cursor);
 }
-.abele-item .abele-item__hit:hover {
+.abele-item-row .abele-item-row__hit:hover {
   background: none;
   box-shadow: none;
 }
-.abele-item .abele-item__hit:focus-visible {
+.abele-item-row .abele-item-row__hit:focus-visible {
   box-shadow: 0 0 0 2px var(--interactive-accent);
 }
-.abele-item .abele-item__icon {
-  /* Exactly one title line tall, so the glyph is centred on the first line of the title. */
+/* Exactly one title line tall, so the glyph is centred on the first line of the title. */
+.abele-item-row .abele-item-row__leading {
   height: calc(var(--nav-item-size) * var(--line-height-tight));
   line-height: var(--line-height-tight);
 }
-.abele-item .abele-item__body {
+.abele-item-row .abele-item-row__body {
   display: flex;
   flex-direction: column;
   gap: var(--size-2-1);
@@ -116,13 +125,13 @@ const emit = defineEmits<{ open: [] }>()
   min-width: 0;
   white-space: normal;
 }
-.abele-item__head {
+.abele-item-row__head {
   display: flex;
   align-items: baseline;
   gap: var(--size-4-2);
   min-width: 0;
 }
-.abele-item__title {
+.abele-item-row__title {
   flex: 1 1 auto;
   min-width: 0;
   color: var(--text-normal);
@@ -134,13 +143,13 @@ const emit = defineEmits<{ open: [] }>()
   overflow: hidden;
   overflow-wrap: anywhere;
 }
-.abele-item__self.mod-strong .abele-item__title {
+.abele-item-row_strong .abele-item-row__title {
   font-weight: var(--font-semibold);
 }
-.abele-item__self.mod-unavailable .abele-item__title {
+.abele-item-row_unavailable .abele-item-row__title {
   color: var(--text-faint);
 }
-.abele-item__trailing {
+.abele-item-row__trailing {
   flex: 0 0 auto;
   display: inline-flex;
   align-items: baseline;
@@ -150,11 +159,11 @@ const emit = defineEmits<{ open: [] }>()
   font-variant-numeric: tabular-nums;
   white-space: nowrap;
 }
-.abele-item__self:hover .abele-item__trailing {
+.abele-item-row__self:hover .abele-item-row__trailing {
   color: var(--text-muted);
 }
-.abele-item__description,
-.abele-item__excerpt {
+.abele-item-row__description,
+.abele-item-row__excerpt {
   min-width: 0;
   font-size: var(--font-ui-smaller);
   line-height: var(--line-height-tight);
@@ -162,13 +171,15 @@ const emit = defineEmits<{ open: [] }>()
   text-overflow: ellipsis;
   white-space: nowrap;
 }
-.abele-item__description {
+.abele-item-row__description {
   color: var(--text-muted);
 }
-.abele-item__excerpt {
+.abele-item-row__excerpt {
   color: var(--text-faint);
 }
-.abele-item .abele-item__actions {
+/* On a desktop the one menu takes the trailing fact's place while the pointer is on the row,
+   so trailing facts stay in one column down the list. A phone has no hover: it is always there. */
+.abele-item-row .abele-item-row__actions {
   position: absolute;
   z-index: 1;
   inset-block: 0;
@@ -177,26 +188,25 @@ const emit = defineEmits<{ open: [] }>()
   align-items: center;
   visibility: hidden;
 }
-/* On a desktop the one menu takes the trailing fact's place while the pointer is on the row,
-   so trailing facts stay in one column down the list. A phone has no hover: it is always there. */
-.abele-item__self:is(:hover, :focus-within) .abele-item__actions {
+.abele-item-row__self:is(:hover, :focus-within) .abele-item-row__actions {
   visibility: visible;
 }
-.abele-item__self:has(.abele-item__actions):is(:hover, :focus-within) .abele-item__trailing {
+.abele-item-row__self:has(.abele-item-row__actions):is(:hover, :focus-within)
+  .abele-item-row__trailing {
   visibility: hidden;
 }
-.is-mobile .abele-item .abele-item__actions {
+/* The touch-sized button is centred on the title's first line, not hung below it. */
+.is-mobile .abele-item-row .abele-item-row__actions {
   position: relative;
   inset: auto;
   align-self: flex-start;
-  /* The touch-sized button is centred on the title's first line, not hung below it. */
   margin-block: calc((var(--nav-item-size) * var(--line-height-tight) - var(--touch-size-m)) / 2);
   visibility: visible;
 }
-.is-mobile .abele-item__self:has(.abele-item__actions) .abele-item__trailing {
+.is-mobile .abele-item-row__self:has(.abele-item-row__actions) .abele-item-row__trailing {
   visibility: visible;
 }
-.abele-item__trailing :is(a, button, .clickable-icon) {
+.abele-item-row__trailing :is(a, button, .clickable-icon) {
   position: relative;
   z-index: 1;
 }

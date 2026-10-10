@@ -1,9 +1,9 @@
 <template>
-  <span class="abele-change" :class="`mod-${kind}`">
-    <span class="abele-change__kind">{{ words[kind] }}</span>
-    <span v-if="added || removed" class="abele-change__lines" :aria-label="linesLabel">
-      <span v-if="added" class="abele-change__added">+{{ added }}</span>
-      <span v-if="removed" class="abele-change__removed">−{{ removed }}</span>
+  <span class="abele-change-mark" :class="`abele-change-mark_${kind}`">
+    <span class="abele-change-mark__kind">{{ words[kind] }}</span>
+    <span v-if="added || removed" class="abele-change-mark__lines" :aria-label="linesLabel">
+      <span v-if="added" class="abele-change-mark__added">+{{ added }}</span>
+      <span v-if="removed" class="abele-change-mark__removed">−{{ removed }}</span>
     </span>
   </span>
 </template>
@@ -25,7 +25,7 @@ const linesLabel = computed(
 </script>
 
 <style>
-.abele-change {
+.abele-change-mark {
   display: inline-flex;
   align-items: baseline;
   gap: var(--size-4-2);
@@ -33,26 +33,26 @@ const linesLabel = computed(
   font-variant-numeric: tabular-nums;
   white-space: nowrap;
 }
-.abele-change.mod-modified .abele-change__kind {
+.abele-change-mark_modified .abele-change-mark__kind {
   color: var(--text-accent-hover);
 }
-.abele-change.mod-added .abele-change__kind {
+.abele-change-mark_added .abele-change-mark__kind {
   color: var(--text-success);
 }
-.abele-change.mod-deleted .abele-change__kind {
+.abele-change-mark_deleted .abele-change-mark__kind {
   color: var(--text-error);
 }
-.abele-change.mod-renamed .abele-change__kind {
+.abele-change-mark_renamed .abele-change-mark__kind {
   color: var(--text-muted);
 }
-.abele-change__lines {
+.abele-change-mark__lines {
   display: inline-flex;
   gap: var(--size-2-2);
 }
-.abele-change__added {
+.abele-change-mark__added {
   color: var(--text-success);
 }
-.abele-change__removed {
+.abele-change-mark__removed {
   color: var(--text-error);
 }
 </style>
