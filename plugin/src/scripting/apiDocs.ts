@@ -426,8 +426,31 @@ adapter validates the captured revision and durably saves the anchor after revie
 before execution receives a backlink. Conflicts and failed saves do not execute the script.
 Reruns retain that captured source, including its revision and anchor, rather than reading
 current selection or creating another anchor. Changing a message does not retarget a run.
-Ordinary selection execution does not edit message text. There is no \`selection.bind\`
-capability or chat-wide vocabulary marking here.
+Ordinary selection execution does not edit message text. Explicit \`await selection.bind(notePath)\`
+links only the captured occurrence to an existing card. Pass the actual path returned by
+\`create()\`, not the proposed filename. On books this delegates to vocabulary marking for
+the selected words in that book; chat-wide word-form marking is not supported.
+
+The result is \`{status, targetPath, backlink, operationId, recoverable, reason?}\`.
+Statuses are \`pending\`, \`applied\`, \`known-not-written\`, \`uncertain\`, \`undone\`.
+Only \`applied\` means the link was acknowledged or proven by atomically stored operation
+identity. The backlink addresses the source even on failure; it does not claim binding success.
+A stale source, unsafe Markdown mapping, code/existing-link selection or an unrepresentable
+target leaves the card intact. No nearest-occurrence fallback is used. The source conversation
+must still be open, including for a rerun; its captured revision must still be current.
+
+Card links in the conversation offer Open card, Copy source link and Remove link (Undo binding).
+Removal applies only the owned inverse; it never deletes the card or restores a stale message.
+Recovery offers Retry binding only for pending/known-not-written operations. It does not rerun
+translation or card creation. Uncertain publication requires inspection/reopen and cannot be
+blindly retried or acknowledged from matching bytes. If journaling fails, retain the returned
+card path; \`recoverable: false\` does not promise durable recovery. Active associations are
+projected separately as untrusted words-to-note references; card contents are never loaded
+into the model automatically.
+
+\`const card = await create('Cards/sample.md', selection.text + '\\n\\n' + selection.backlink)\`
+\`const binding = await selection.bind(card)\`
+\`if (binding.status !== 'applied') log(binding.targetPath + ': ' + binding.status)\`
 
 ### book — when run on words in a book
 

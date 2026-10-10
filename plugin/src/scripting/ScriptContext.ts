@@ -43,6 +43,7 @@ import { scriptVocabulary } from './vocabularyApi'
 import type { AutomationEvent } from '@/automations/types'
 import type { BookScriptContext } from './bookContext'
 import { bookSelection, captureSelection, type SelectionScriptContext } from './selectionContext'
+import { selectionBinding } from './selectionBinding'
 import { createBooksApi, type BooksHost } from './booksApi'
 import { booksDisposalFor } from './booksLifetime'
 import { bookPlaces } from '@/reader/places'
@@ -208,6 +209,22 @@ export function buildScriptContext(opts: {
     return null
   }
 
+  const capturedSelection = opts.selection
+    ? captureSelection(opts.selection)
+    : opts.book
+      ? bookSelection(opts.book)
+      : null
+  const selectionApi = capturedSelection
+    ? Object.freeze({
+        ...capturedSelection,
+        ...selectionBinding(capturedSelection, {
+          book: opts.book,
+          signal: s,
+          wrote: (path) => wrote(path),
+          track,
+        }),
+      })
+    : null
   const context = {
     params: opts.params,
     signal: s,
@@ -217,11 +234,7 @@ export function buildScriptContext(opts: {
     /** The words in a book the run was asked for from; `null` for every other run. */
     book: opts.book ? { ...opts.book } : null,
     /** Read-only selection source; book runs keep their legacy `book` API too. */
-    selection: opts.selection
-      ? captureSelection(opts.selection)
-      : opts.book
-        ? bookSelection(opts.book)
-        : null,
+    selection: selectionApi,
     /** Vault reader files and their already-stored reader data; unrelated to the selection `book`. */
     books: createBooksApi(
       (() => {

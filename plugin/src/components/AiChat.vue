@@ -143,6 +143,8 @@
       <!-- Over a comment on a message: the way down to it, every level a way back. -->
       <AiCommentTrail v-if="session" v-show="!composing" :session="session" />
 
+      <ChatBindingState v-if="session?.bindingRecoveries" v-show="!composing" :session="session" />
+
       <!-- Messages -->
       <!-- Hidden, not taken away, while the composer is opened out over it: the conversation
            keeps streaming into it and is where it was when the composer closes. -->
@@ -497,6 +499,7 @@ import type { MessageComment } from '@/ai/types'
 import { sameConversation, type ConversationOwner } from '@/ai/draftImports'
 import { revealAnchor, captureSelectionLink } from '@/ai/openChat'
 import { ScriptService } from '@/scripting/ScriptService'
+import ChatBindingState from './ChatBindingState.vue'
 import { selectionMenu } from '@/scripting/selectionMenuScripts'
 import { captureChatScriptTarget, chatScriptAction } from '@/scripting/runFromChat'
 import { discoverSkills } from '@/ai/tools/SkillTool'

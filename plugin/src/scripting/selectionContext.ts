@@ -5,7 +5,7 @@ import type {
 } from '@/selection/types'
 import type { BookScriptContext } from './bookContext'
 
-/** A backlink is exposed only after its source is addressable. No binding capability yet. */
+/** Persistable capture. The execution context adds its live binding capability separately. */
 export type SelectionScriptContext =
   | (BookSelectionSnapshot & { readonly backlink: string })
   | (ChatSelectionSnapshot & { readonly backlink: string; readonly anchorId: string })

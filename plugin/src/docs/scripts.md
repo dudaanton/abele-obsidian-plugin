@@ -253,7 +253,22 @@ script list. Pinning there changes only that surface's membership; it never runs
 Ask here, Highlight and native Copy/selection remain available. These runs do not impersonate
 the interceptor's `chat` or `message`. Selection and run/rerun state retain the captured source rather
 than consulting current tabs or DOM selection. Ordinary runs find `selection === null`; scripts
-can shadow that name. Selection has no binding operation and does not edit chat messages.
+can shadow that name. Ordinary execution does not edit chat messages. Explicit
+`await selection.bind(notePath)` links the captured occurrence to an existing card; pass the
+actual path returned by `create()`. In books it delegates to the existing word-mark mechanism
+for that book. It does not mark all word forms across chats.
+
+Binding returns `{status, targetPath, backlink, operationId, recoverable, reason?}`. Only
+`applied` means publication succeeded or was proven by durable operation identity. A stale
+revision, unsafe mapping, code/existing-link selection or unsupported target path leaves the
+card intact. The source conversation must remain open, including for reruns. **Card links**
+offers **Open card**, **Copy source link** and **Remove link (Undo binding)**; removal keeps the
+card and preserves unrelated source edits when ownership can be proven. **Retry binding only**
+recovers pending/known-not-written operations without rerunning translation or note creation.
+Uncertain publication requires reopening and inspection, not automatic replay or byte-based
+acknowledgement. If intent could not be journaled, `recoverable: false` reports the retained
+card path without promising recovery. Active links supply only untrusted words-to-note
+references to the model; no card contents are fetched automatically.
 
 Opt into chats with `// @chat-selection`; `// @book` alone does not populate the chat menu.
 Use both headers for one source-neutral script. **Settings → Scripts → Selection menus**

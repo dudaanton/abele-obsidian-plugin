@@ -93,8 +93,9 @@ captures the owning session and source evidence before menus/forms. After admiss
 completion, validation initializes legacy identities/versions and ensures a durable selection
 anchor before execution receives its backlink. Cancelling the initial form or declining review
 writes no selection metadata. Once execution begins, its anchor may remain even if the script
-later stops or fails. Message Markdown and provider history remain unchanged; note creation
-through script APIs is ordinary output, not automatic message/card binding.
+later stops or fails. Ordinary execution leaves message Markdown and provider history unchanged;
+note creation is ordinary output, not automatic binding. Explicit `selection.bind(actualCardPath)`
+is the separate opt-in decoration operation described below.
 
 ## Device-local GitHub comparison bases
 
@@ -1061,14 +1062,35 @@ regenerated replies have new message IDs and inherit no selection metadata; shar
 messages keep their anchors. Navigation and selection-script UI are separate adapters, not
 provided by this storage layer.
 
-The optional `decorationOperations` on messages and `bindingRecovery` in metadata are separate
-storage contracts for later explicit card binding. A decoration records operation/binding/anchor
-IDs, actual target path, captured/resulting revision references and a verified source patch.
-Recovery records that operation, actual card path, optional evidence, and a status (`pending`,
-`applied`, `known-not-written`, `uncertain`, or `undone`). Existing records are retained verbatim
-through saves and compaction, including unresolved evidence. This layer creates no binding,
-card, decoration, recovery workflow or provider annotation, and never replays these records.
-A later binding writer must persist operation evidence atomically with decorated message content.
+Explicit card binding stores a real `[[Cards/sample|selected words]]` in only the renderer-verified
+captured occurrence. `decorationOperations` records operation/binding/anchor IDs, actual target
+path, captured/resulting revision references and the verified source patch. `ownership` stores
+its proven inverse placement (`revision`, source `start`, current link `after`) on a retained
+version; source is kept once in `selection.versions`, not per operation. Decoration creates a
+fresh version and copies only proven current anchor placements because rendered text is unchanged.
+Highlights/comments keep their exact rendered offsets. Semantic reply revisions stay separate.
+
+Metadata `bindingRecovery` journals `id`, `anchorId`, captured `snapshot`, actual `targetPath`,
+optional published `operation`, optional `evidence`, and status (`pending`, `applied`,
+`known-not-written`, `uncertain`, `undone`). The actual created/existing card path is durable
+before message publication. If intent journaling fails the API reports the path but does not
+claim recoverability. The writer durably marks intent uncertain *before* attempting publication;
+message text, operation evidence and applied status publish atomically. Lost acknowledgement is
+settled only from operation identity in a valid log. An unresolved write blocks further local
+writes until reopen/inspection, so a later ordinary save cannot overwrite its evidence.
+Checked semantic/anchor writes keep their existing rollback policy; journaled binding writes
+retain published evidence after a returned I/O failure. A torn publication still recovers the
+prior committed source through the safety copy, with its uncertain journal intact.
+
+Recovery never executes a script, creates another card or blindly retries an uncertain operation.
+Pending/known-not-written retries revalidate the original capture. Equal source bytes alone are
+not acknowledgement. Remove link/Undo applies a proven owned inverse only, preserves unrelated
+edits/other bindings and never deletes the card. Unprovable inverses refuse instead of restoring
+an entire message. Card rename maintenance follows open and unopened chats through their
+existing writer/external-change guards; retained historical source remains immutable. Unresolved
+recovery and referenced versions survive compaction. Original provider records are unchanged;
+semantic corrections project undecorated text and active associations are separate untrusted
+user words-to-note annotations. No card-content read is issued for model projection.
 
 Format version remains 2. Legacy chats without these optional fields load unchanged and migrate
 on their first write. The v2 codec preserves additional fields when records pass through intact;

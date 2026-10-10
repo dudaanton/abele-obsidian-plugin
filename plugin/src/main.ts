@@ -105,6 +105,7 @@ import { SCRIPT_API_DOCS } from './scripting/apiDocs'
 import { SCRIPT_VIEW_DOCS } from './scripting/view/viewDocs'
 import { ScopeResolver } from './ai/ScopeResolver'
 import { ChatStorage } from './ai/ChatStorage'
+import { followChatBindingRename } from './ai/chatBindingRenames'
 import { renameDelegationIdentity } from './ai/delegationIdentity'
 import weekday from 'dayjs/plugin/weekday'
 import updateLocale from 'dayjs/plugin/updateLocale'
@@ -1443,9 +1444,18 @@ export default class AbelePlugin extends Plugin {
         // The lists folded under it stay folded, and as far down and as open as they were.
         moveFooterFolds(oldPath, file.path)
         moveFooterView(oldPath, file.path)
-        void CommentService.getInstance().handleRename(oldPath, file.path)
-        // The chats that wrote this note name it by path, in the index and in their files.
-        void ChatStorage.getInstance().handleNoteRename(oldPath, file.path)
+        // Keep binding rewrites behind existing maintenance of the same chat records.
+        void Promise.all([
+          CommentService.getInstance().handleRename(oldPath, file.path),
+          ChatStorage.getInstance().handleNoteRename(oldPath, file.path),
+        ])
+          .then(() => followChatBindingRename(oldPath, file.path))
+          .catch((error) => {
+            new Notice(
+              'Could not follow a card rename in chat links. Reopen the source before changing links.'
+            )
+            console.error('[Abele] Card link rename failed', error)
+          })
       })
     )
 

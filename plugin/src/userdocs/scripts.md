@@ -87,8 +87,20 @@ other header opt-ins follow alphabetically. An empty name uses the script's name
 icon uses its header icon, or a scroll. A script's header still opts it in after you remove its
 settings entry: remove that header line too to hide it from that menu.
 
-Chat choices can be saved and transferred now, but running scripts on a chat selection is not
-enabled yet. These settings do not change chat messages or add links to cards.
+Select words in a saved chat message or discussion to run a script. On a computer, use the
+selection menu; on a phone, use **Scripts…** after the selection handles settle. The searchable
+list's pin changes the menu without running the script. Ask here, Highlight and native Copy
+remain available. Forms keep the original words even if you switch tabs.
+
+A script may explicitly call `selection.bind(cardPath)` after creating or choosing a card.
+Only the captured occurrence becomes a real link in the message. Ordinary script execution
+and menu settings do not add links. Expand **Card links** for **Open card**, **Copy source link**
+and **Remove link (undo binding)**; removing the link never deletes its card.
+
+If linking fails, the card is kept. **Retry binding only** retries the saved link operation, not
+translation or card creation. An uncertain publication asks you to reopen and inspect the
+persisted source instead of replaying blindly. Card contents are not loaded into the model
+automatically, and other forms of the word elsewhere in the chat are not marked.
 
 ## Script runs
 

@@ -660,7 +660,7 @@ export interface ChatMessage {
   revisions?: ReplyRevision[]
   /** Durable selections, separate from semantic edits and model history. */
   selection?: ChatSelectionData
-  /** Reserved decoration evidence; anchor creation never populates it. */
+  /** Verified card-decoration evidence; anchor creation never populates it. */
   decorationOperations?: ChatDecorationOperation[]
   /** A side agent's proposal; never applied by the tool itself. */
   replyProposal?: ReplyProposal
