@@ -1,70 +1,71 @@
-import { afterEach, expect, it, vi } from 'vitest'
-import { IDBFactory } from 'fake-indexeddb'
-import { ScopedPluginHost } from '@/sync/scoped/scopedPluginHost'
+import { expect, it, vi } from 'vitest'
+import type { App } from 'obsidian'
+import { MemoryStateStore } from '@abele/sync-core'
+import { encodeAccessToken } from '@abele/sync-protocol'
+import { TokenEngineRuntime } from '@/sync/tokenEngineRuntime'
 import { ObsidianFileSystem } from '@/sync/ObsidianFileSystem'
-import { SCOPED_CONNECTION_KEY, type ScopedLocalConnection } from '@/sync/scoped/scopedJoin'
-import { AbeleConfig } from '@/services/AbeleConfig'
-import { secrets, setSecrets } from '@/secrets/SecretStore'
-import { useVault } from '../helpers/testEnv'
+import { ExecutableReview } from '@/sync/executableReview'
+import { AttachmentConsent } from '@/sync/attachmentConsent'
+import { buildFakeVault } from '../helpers/fakeVault'
 
-let host: ScopedPluginHost
-const closes: Array<() => void> = []
-afterEach(async () => {
-  await host?.close()
-  for (const close of closes.splice(0)) close()
-  setSecrets(null)
-  vi.restoreAllMocks()
-})
-
-it('arms automatic triggers before the first offline run and re-arms after manual recovery', async () => {
-  const app = useVault([])
-  setSecrets(null)
-  AbeleConfig.getInstance().applySettings()
-  const c: ScopedLocalConnection = {
-    version: 4,
-    facet: 'scoped',
-    issuer: 'https://sync.example',
-    vaultId: 'sample-vault',
-    grantId: 'sample-grant',
-    memberId: 'sample-member',
-    principalId: 'sample-install',
-    principalKind: 'installation',
-    role: 'editor',
-    rootFileId: 'sample-root',
-    tokenId: 'abele-scoped-installation-sample',
-    ledgerId: 'sample-ledger',
-    scriptPolicy: 'refuse',
-  }
-  const token = 'absi_' + 'a'.repeat(43)
-  secrets().setLocal(c.tokenId, token)
-  secrets().setLocal(c.tokenId + '-binding', JSON.stringify({ connection: c, token }))
-  app.saveLocalStorage(SCOPED_CONNECTION_KEY, c)
-  const factory = new IDBFactory()
-  const fetcher = vi.fn(async () => {
-    throw new Error('sample offline connection')
+it('arms automatic triggers before the first offline run and re-arms after recovery', async () => {
+  const app = buildFakeVault([]),
+    state = new MemoryStateStore(),
+    meta = new MemoryStateStore()
+  const scope = { kind: 'group' as const, id: 'sample-group', path: 'Groups/sample.md' }
+  let offline = true
+  const failed = vi.fn()
+  const fetcher = vi.fn(async (input: RequestInfo | URL) => {
+    if (offline) throw Error('sample offline connection')
+    const path = new URL(String(input)).pathname
+    if (path === '/v2/connection')
+      return Response.json({
+        protocol: 2,
+        token_id: 'sample-token',
+        space_id: 'sample-space',
+        scope,
+        status: 'scope_updating',
+        limits: { max_file_bytes: 1000000, quota_bytes: null },
+      })
+    throw Error('Unexpected file exchange while preparing')
   })
-  host = new ScopedPluginHost(app as never, fetcher as never, factory)
-  await (host as any).open(c, true)
-  await host.close()
-  host = new ScopedPluginHost(app as never, fetcher as never, factory)
+  const make = () =>
+    new TokenEngineRuntime({
+      id: 'sample-connection',
+      encoded: encodeAccessToken({
+        v: 1,
+        address: 'https://sync.example',
+        key: 'a'.repeat(43),
+        scope,
+      }),
+      state,
+      fs: new ObsidianFileSystem(app as unknown as App),
+      fetch: fetcher,
+      fallbackMs: 60000,
+      reviews: {
+        executables: new ExecutableReview(meta),
+        attachments: new AttachmentConsent(meta),
+        close: () => {},
+      },
+      covers: async () => false,
+      changed: () => {},
+      failed,
+    })
   const watch = vi.spyOn(ObsidianFileSystem.prototype, 'watch')
-  await expect(host.start()).rejects.toThrow(/server|offline|reach/i)
-  expect(watch).toHaveBeenCalledOnce()
-  expect((host as any).clock).not.toBeNull()
-  const r = (host as any).runtime
-  // A reachable but preparing view is a successful poll with no content effects.
-  vi.spyOn(r.client, 'state').mockResolvedValue({
-    state: 'preparing',
-    role: 'editor',
-    selector: { kind: 'group', root_file_id: 'sample-root' },
-  })
-  await host.sync()
-  expect(watch).toHaveBeenCalledOnce()
-  ;(host as any).unwatch()
-  ;(host as any).unwatch = null
-  window.clearInterval((host as any).clock)
-  ;(host as any).clock = null
-  await host.sync()
-  expect(watch).toHaveBeenCalledTimes(2)
-  expect((host as any).clock).not.toBeNull()
+  let runtime = make()
+  try {
+    await runtime.start()
+    await vi.waitFor(() => expect(failed).toHaveBeenCalled())
+    expect(watch).toHaveBeenCalledOnce()
+    offline = false
+    await expect(runtime.sync()).rejects.toMatchObject({ code: 'scope_updating' })
+    expect(watch).toHaveBeenCalledOnce()
+    await runtime.close()
+    runtime = make()
+    await runtime.start()
+    await vi.waitFor(() => expect(watch).toHaveBeenCalledTimes(2))
+  } finally {
+    await runtime.close()
+    vi.restoreAllMocks()
+  }
 })

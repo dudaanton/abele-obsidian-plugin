@@ -13,6 +13,7 @@ import {
   pollMsOf,
   type SyncServiceDeps,
 } from './environment'
+import { pendingTeardown, recordTeardown } from './teardownBarrier'
 import { RuntimeFence } from './external/recovery'
 import { ObsidianFileSystem } from './ObsidianFileSystem'
 import { coordinatedFileSystem, pathCoordinatorOf } from './pathCoordinator'
@@ -29,6 +30,7 @@ export class TokenEngines {
   private readonly live = new Map<string, TokenEngineRuntime>()
   private readonly pending = new Set<string>()
   private closed = false
+  private closing: Promise<void> | undefined
   private readonly localFiles: TokenAttachmentHost
   private readonly renameEvent: EventRef
   constructor(
@@ -50,12 +52,17 @@ export class TokenEngines {
   }
   start(): void {
     if (this.closed) return
+    const beforeOpening = pendingTeardown(this.app)
     const records = this.ui.registry
       .records()
       .filter((one) => one.secretReference && one.scope && !one.pending)
     this.engines.start(
       records.map((one) => one.id),
-      (id) => this.create(records.find((one) => one.id === id)),
+      (id) =>
+        this.create(
+          records.find((one) => one.id === id),
+          beforeOpening
+        ),
       (id, error) => this.failed(id, error)
     )
     this.refreshDestinations()
@@ -73,30 +80,36 @@ export class TokenEngines {
     )
     this.ui.publish(id, { error: connectionError(error) })
   }
-  private create(record: TokenConnectionRecord): ConnectionRuntime {
-    this.pending.add(record.id)
+  private create(record: TokenConnectionRecord, beforeOpening: Promise<void>): ConnectionRuntime {
     let active = true,
       runtime: TokenEngineRuntime | undefined
     let closeStore: (() => void) | undefined,
       closeCopies: (() => void) | undefined,
       unbind: (() => void) | undefined
-    const fence = new RuntimeFence(
-      this.app,
-      record.ledgerId,
-      () =>
-        active &&
-        !this.closed &&
-        this.ui.registry
-          .records()
-          .some(
-            (one) =>
-              one.id === record.id &&
-              one.ledgerId === record.ledgerId &&
-              one.secretReference === record.secretReference
-          )
-    )
+    let fence: RuntimeFence | undefined
+    const claim = () =>
+      new RuntimeFence(
+        this.app,
+        record.ledgerId,
+        () =>
+          active &&
+          !this.closed &&
+          this.ui.registry
+            .records()
+            .some(
+              (one) =>
+                one.id === record.id &&
+                one.ledgerId === record.ledgerId &&
+                one.secretReference === record.secretReference
+            )
+      )
     let starting: Promise<void> | undefined
     const start = async () => {
+      await beforeOpening
+      if (!active || this.closed) return
+      fence = claim()
+      this.pending.add(record.id)
+      this.refreshDestinations()
       const key = this.key(record.secretReference)
       if (!key || !record.scope) throw new Error('Connection needs its token')
       const state = await openTokenLedger(factoryOf(this.deps), this.ui.registry, record, () =>
@@ -105,12 +118,12 @@ export class TokenEngines {
       closeStore = () => state.close()
       state.onRecoveryRequired((error) => {
         active = false
-        fence.release()
+        fence?.release()
         this.failed(record.id, error)
       })
       state.onClosedElsewhere(() => {
         active = false
-        fence.release()
+        fence?.release()
         this.failed(record.id, new Error('Connection opened elsewhere'))
       })
       const ordinary = new ObsidianFileSystem(this.app, {
@@ -186,7 +199,7 @@ export class TokenEngines {
         apply: (candidate) => runtime.apply(candidate),
         disconnect: async () => {
           active = false
-          fence.release()
+          fence?.release()
           await runtime.disconnect()
           this.live.delete(record.id)
           unbind?.()
@@ -201,7 +214,7 @@ export class TokenEngines {
       start: () => {
         starting = start().catch(async (error) => {
           active = false
-          fence.release()
+          fence?.release()
           await runtime?.disconnect()
           this.pending.delete(record.id)
           this.live.delete(record.id)
@@ -216,7 +229,7 @@ export class TokenEngines {
       invalidate: () => {
         active = false
         runtime?.invalidate()
-        fence.release()
+        fence?.release()
       },
       close: async () => {
         await starting?.catch(() => {})
@@ -227,7 +240,7 @@ export class TokenEngines {
         unbind?.()
         closeCopies?.()
         closeStore?.()
-        fence.release()
+        fence?.release()
       },
     }
   }
@@ -266,10 +279,14 @@ export class TokenEngines {
     if (!this.closed && this.ui.registry.records().some((one) => one.id === id))
       this.ui.publish(id, activity)
   }
-  async close(): Promise<void> {
+  close(): Promise<void> {
+    if (this.closing !== undefined) return this.closing
+    const prior = pendingTeardown(this.app)
     this.closed = true
     this.app.vault.offref(this.renameEvent)
     this.ui.connectionsChanged = async () => {}
-    await this.engines.close()
+    this.closing = this.engines.close()
+    recordTeardown(this.app, Promise.all([prior, this.closing]))
+    return this.closing
   }
 }

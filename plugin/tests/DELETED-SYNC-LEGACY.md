@@ -64,3 +64,10 @@ Retired access and transfer fixtures after the core v2 update:
 
 | `integration/settingsToolsSync.test.ts` | Removed only the warning for manually changing a legacy vault/device/keychain identity. Token identity is fixed by the access token. Public address, pause, file filters, caps, origin restrictions, secret isolation and settings-write descriptions are ported to individual token connections. |
 | `integration/settingsToolsSyncChecks.test.ts` | Removed address-emptying-as-disconnect and manual vault-ID replacement; neither can retarget a token connection. Normalization, all filter/cap validation, actual stored-value reporting and startup-failure reporting remain. |
+
+| `unit/scopedContextGuards.test.ts` | The removed rule that a scoped receiver blocks personal enrollment entirely. Token root/folder/group connections coexist; executable approval and source identity tests retain execution restrictions. |
+
+`unit/scopedStoreIdentity.test.ts`, `unit/scopedAutomaticRecovery.test.ts` and
+`unit/scopedCreationBarrier.test.ts` are retained and ported to token ledger/review
+identity, production engine watchers and teardown/opening barriers. Their old
+scoped raw/native database split and invitation creation API no longer exist.

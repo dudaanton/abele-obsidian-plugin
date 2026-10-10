@@ -1,62 +1,60 @@
-import { afterEach, expect, it, vi } from 'vitest'
+import { expect, it, vi } from 'vitest'
 import { IDBFactory } from 'fake-indexeddb'
-import { ScopedPluginHost } from '@/sync/scoped/scopedPluginHost'
-import { SCOPED_CONNECTION_KEY, type ScopedLocalConnection } from '@/sync/scoped/scopedJoin'
+import { openTokenLedger } from '@/sync/tokenLedger'
+import { TokenConnectionRegistry } from '@/sync/tokenConnectionRegistry'
 import { IndexedDbStateStore } from '@/sync/IndexedDbStateStore'
-import { AbeleConfig } from '@/services/AbeleConfig'
-import { secrets, setSecrets } from '@/secrets/SecretStore'
-import { useVault } from '../helpers/testEnv'
+import { openDeviceReviews } from '@/sync/openDeviceReviews'
 
-let host: ScopedPluginHost
-setSecrets(null)
-afterEach(async () => {
-  await host?.close()
-  setSecrets(null)
-  vi.restoreAllMocks()
-})
-function setup() {
-  const app = useVault([])
-  setSecrets(null)
-  AbeleConfig.getInstance().applySettings()
-  const c: ScopedLocalConnection = {
-    version: 4,
-    facet: 'scoped',
-    issuer: 'https://sync.example',
-    vaultId: 'sample-vault',
-    grantId: 'sample-grant',
-    memberId: 'sample-member',
-    principalId: 'sample-install',
-    principalKind: 'installation',
-    role: 'editor',
-    rootFileId: 'sample-root',
-    tokenId: 'abele-scoped-installation-sample',
-    ledgerId: 'sample-ledger',
-    scriptPolicy: 'refuse',
-  }
-  const token = 'absi_' + 'a'.repeat(43)
-  secrets().setLocal(c.tokenId, token)
-  secrets().setLocal(c.tokenId + '-binding', JSON.stringify({ connection: c, token }))
-  app.saveLocalStorage(SCOPED_CONNECTION_KEY, c)
-  const factory = new IDBFactory()
-  host = new ScopedPluginHost(
-    app as never,
-    (() => {
-      throw new Error('No network in store identity test')
-    }) as never,
-    factory
+async function setup() {
+  const data = new Map<string, unknown>(),
+    registry = TokenConnectionRegistry.open({
+      loadLocalStorage: (key) => data.get(key),
+      saveLocalStorage: (key, value) => {
+        data.set(key, value)
+      },
+    })
+  const id = registry.add(),
+    scope = { kind: 'folder' as const, id: 'sample-root', path: '/' }
+  const keys = new Map<string, string>()
+  registry.attach(
+    id,
+    { v: 1, address: 'https://sync.example', key: 'a'.repeat(43), scope },
+    { protocol: 2, token_id: 'sample-token', space_id: 'sample-space', scope, status: 'active' },
+    {
+      get: (ref) => keys.get(ref) ?? null,
+      set: (ref, key) => {
+        keys.set(ref, key)
+      },
+    }
   )
-  return { c, factory }
+  const record = registry.records()[0],
+    factory = new IDBFactory()
+  const store = await openTokenLedger(factory, registry, record, () => {})
+  return { data, registry, record, factory, store }
 }
 
-it.each(['raw', 'meta'] as const)(
-  'persists the identity checked after a healthy WebKit-style %s reconnect',
-  async (which) => {
-    const { c } = setup()
-    const r = await (host as any).open(c, true)
-    const key = which === 'raw' ? 'scoped-plugin-identity-v4' : 'scoped-native-identity-v4'
-    const store = r[which] as IndexedDbStateStore
-    const expected = JSON.stringify({ connection: c, binding: r.client.binding })
-    expect(await store.getMeta(key)).toBe(expected)
+it('persists the device review identity checked after automatic reconnect', async () => {
+  const review = await openDeviceReviews(new IDBFactory(), 'sample-local-vault')
+  const store = (review.executables as any).documents.store as IndexedDbStateStore
+  try {
+    expect(await store.getMeta('device-review-identity-v1')).toBe('sample-local-vault')
+    const db = (store as any).connection.db as IDBDatabase
+    vi.spyOn(db, 'transaction').mockImplementationOnce(() => {
+      db.close()
+      throw new DOMException('Connection to Indexed Database server lost', 'UnknownError')
+    })
+    expect(await review.executables.pending()).toEqual([])
+    expect(store.permitsEngineEffects).toBe(true)
+  } finally {
+    review.close()
+  }
+})
+
+it('persists the identity checked after a healthy WebKit-style engine reconnect', async () => {
+  const { store } = await setup()
+  try {
+    const expected = await store.getMeta('token-engine-identity-v2')
+    expect(expected).not.toBeNull()
     await store.setMeta('sample-reconnect-data', 'sample retained value')
     const db = (store as any).connection.db as IDBDatabase
     vi.spyOn(db, 'transaction').mockImplementationOnce(() => {
@@ -64,65 +62,63 @@ it.each(['raw', 'meta'] as const)(
       throw new DOMException('Connection to Indexed Database server lost', 'UnknownError')
     })
     expect(await store.getMeta('sample-reconnect-data')).toBe('sample retained value')
+    expect(await store.getMeta('token-engine-identity-v2')).toBe(expected)
     expect(store.permitsEngineEffects).toBe(true)
+  } finally {
+    store.close()
   }
-)
+})
 
 it.each(['header', 'database'] as const)(
-  'holds recovery when the native %s is lost beside a durable scoped CREATE journal',
+  'holds recovery when the token %s is lost beside a durable CREATE journal',
   async (loss) => {
-    const { c, factory } = setup()
-    const r = await (host as any).open(c, true)
+    const { store, factory, registry, record } = await setup()
     const journal = {
-      kind: 'scoped',
-      binding: r.client.binding,
-      request_id: 'sample-create-request',
+      batchId: 'sample-batch',
+      idempotencyKey: 'sample-create-key',
       startedAt: new Date(0).toISOString(),
       ops: [
-        { op: 'create', path: 'Shared/sample-note.md', sha: 'a'.repeat(64), size: 10, mtime: 1000 },
+        {
+          op: 'create' as const,
+          path: 'Shared/sample.md',
+          sha: 'a'.repeat(64),
+          size: 10,
+          mtime: 1000,
+          kind: 'note' as const,
+        },
       ],
     }
-    await r.state.setJournal(journal)
-    if (loss === 'header') await r.meta.setMeta('scoped-native-identity-v4', null)
-    await host.close()
-    if (loss === 'database')
-      await IndexedDbStateStore.delete(factory, 'abele-scoped-native-' + c.ledgerId)
-    const fetcher = vi.fn(() => {
-      throw new Error('Unexpected network effect')
-    })
-    host = new ScopedPluginHost((host as any).app, fetcher as never, factory)
-    await expect((host as any).open(c, false)).rejects.toThrow(/recovery|identity/i)
-    expect(fetcher).not.toHaveBeenCalled()
-    const raw = await IndexedDbStateStore.open(factory, 'abele-scoped-' + c.ledgerId)
-    const meta = await IndexedDbStateStore.open(factory, 'abele-scoped-native-' + c.ledgerId)
+    await store.setJournal(journal)
+    if (loss === 'header') await store.setMeta('token-engine-identity-v2', null)
+    store.close()
+    if (loss === 'database') await IndexedDbStateStore.delete(factory, record.ledgerId)
+    await expect(openTokenLedger(factory, registry, record, () => {})).rejects.toThrow(
+      /recovery|identity/i
+    )
+    const raw = await IndexedDbStateStore.open(factory, record.ledgerId)
     try {
-      expect(JSON.parse((await raw.getMeta('scoped-v4-state'))!).journal).toEqual(journal)
-      expect(await meta.getMeta('scoped-native-identity-v4')).toBeNull()
+      expect(await raw.getMeta('token-engine-identity-v2')).toBeNull()
+      if (loss === 'header') expect(await raw.getJournal()).toEqual(journal)
+      expect(
+        registry.storage(record.id).loadLocalStorage('abele-sync-token-state:ledger-proof-v2')
+      ).not.toBeNull()
     } finally {
       raw.close()
-      meta.close()
     }
   }
 )
 
 it('never overwrites a changed identity header on a cold reopen', async () => {
-  const { c, factory } = setup()
-  const r = await (host as any).open(c, true)
-  await r.meta.setMeta('scoped-native-identity-v4', 'invented-foreign-binding')
-  await host.close()
-  const app = (host as any).app
-  host = new ScopedPluginHost(
-    app,
-    (() => {
-      throw new Error('No network')
-    }) as never,
-    factory
+  const { store, factory, registry, record } = await setup()
+  await store.setMeta('token-engine-identity-v2', 'invented-foreign-binding')
+  store.close()
+  await expect(openTokenLedger(factory, registry, record, () => {})).rejects.toThrow(
+    /identity|binding/i
   )
-  await expect((host as any).open(c, false)).rejects.toThrow(/identity|binding/i)
-  const meta = await IndexedDbStateStore.open(factory, 'abele-scoped-native-' + c.ledgerId)
+  const raw = await IndexedDbStateStore.open(factory, record.ledgerId)
   try {
-    expect(await meta.getMeta('scoped-native-identity-v4')).toBe('invented-foreign-binding')
+    expect(await raw.getMeta('token-engine-identity-v2')).toBe('invented-foreign-binding')
   } finally {
-    meta.close()
+    raw.close()
   }
 })
