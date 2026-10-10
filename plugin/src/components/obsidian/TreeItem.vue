@@ -109,13 +109,15 @@ watch(() => [props.icon, props.collapsible], draw, { flush: 'post' })
 <style lang="scss">
 .abele-tree-item__inner {
   display: flex;
-  align-items: center;
+  align-items: flex-start;
   gap: var(--size-4-1);
   min-width: 0;
 }
 
 .abele-tree-item__glyph {
   display: flex;
+  align-items: center;
+  height: 1lh;
   flex: 0 0 auto;
   color: var(--icon-color);
   opacity: var(--icon-opacity);
