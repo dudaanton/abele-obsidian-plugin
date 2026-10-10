@@ -1,27 +1,38 @@
 <template>
   <div class="abele-pair" :class="`abele-pair_${step}`">
     <template v-if="step === 'paste'">
-      <p class="abele-pair__text">On the other computer run</p>
-      <div class="abele-pair__command">
-        <code>abele-node pair invite</code>
-        <Icon
-          icon="copy"
-          size="xs"
-          tooltip="Copy the command"
-          @click="emit('copy', 'abele-node pair invite')"
-        />
+      <div class="abele-pair__where">
+        <div class="abele-pair__where-title">
+          <span class="abele-pair__step">1</span>On the computer with the node
+        </div>
+        <p class="abele-pair__text">
+          In Obsidian there, open the Node panel and choose Invite a device in its menu. Without
+          Obsidian, run this command:
+        </p>
+        <div class="abele-pair__command">
+          <code>abele-node pair invite</code>
+          <Icon
+            icon="copy"
+            size="xs"
+            tooltip="Copy the command"
+            @click="emit('copy', 'abele-node pair invite')"
+          />
+        </div>
       </div>
-      <p class="abele-pair__text">Then paste what it printed, or scan its QR code.</p>
-      <Input
-        v-model="text"
-        as-text-area
-        :rows="4"
-        :invalid="!!error"
-        placeholder="Invitation"
-        aria-label="Invitation"
-        class="abele-pair__invitation"
-      />
-      <div v-if="error" class="abele-pair__error" role="alert">{{ error }}</div>
+      <div class="abele-pair__where">
+        <div class="abele-pair__where-title"><span class="abele-pair__step">2</span>Here</div>
+        <p class="abele-pair__text">Scan the QR code it shows, or paste its text.</p>
+        <Input
+          v-model="text"
+          as-text-area
+          :rows="4"
+          :invalid="!!error"
+          placeholder="Invitation"
+          aria-label="Invitation"
+          class="abele-pair__invitation"
+        />
+        <div v-if="error" class="abele-pair__error" role="alert">{{ error }}</div>
+      </div>
       <div class="modal-button-container">
         <Button
           text="Scan QR"
@@ -72,18 +83,17 @@
     </template>
 
     <template v-else-if="step === 'waiting'">
-      <p class="abele-pair__text">Confirm this device on {{ invitation?.name }}:</p>
-      <div class="abele-pair__command">
-        <code>abele-node pair approve</code>
-        <Icon
-          icon="copy"
-          size="xs"
-          tooltip="Copy the command"
-          @click="emit('copy', 'abele-node pair approve')"
-        />
+      <div class="abele-pair__where">
+        <div class="abele-pair__where-title">
+          <span class="abele-pair__step">3</span>On {{ invitation?.name }}, let this device in
+        </div>
+        <p class="abele-pair__text">
+          Obsidian there asks about this device by itself. Without Obsidian, run
+          <code class="abele-pair__inline">abele-node pair approve</code>. Either way it shows this
+          code; let the device in only if it is the same:
+        </p>
+        <div class="abele-pair__code">{{ code }}</div>
       </div>
-      <p class="abele-pair__text">It will show this code:</p>
-      <div class="abele-pair__code">{{ code }}</div>
       <div class="abele-pair__waiting" role="status">
         <StatusDot tone="orange" pulse label="Waiting for confirmation" />
         <span>Waiting for confirmation…</span>
@@ -133,6 +143,44 @@ const groups = computed(() => props.invitation?.fingerprint.match(/.{1,4}/g) ?? 
   display: flex;
   flex-direction: column;
   gap: var(--size-4-2);
+}
+.abele-pair__where {
+  display: flex;
+  flex-direction: column;
+  gap: var(--size-4-1);
+
+  & + & {
+    margin-top: var(--size-4-2);
+  }
+}
+.abele-pair__where-title {
+  display: flex;
+  align-items: center;
+  gap: var(--size-4-2);
+  color: var(--text-normal);
+  font-size: var(--font-ui-small);
+  font-weight: var(--font-semibold);
+}
+// The step number as a small round mark, so the two places read as an order, not as a list.
+.abele-pair__step {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  width: var(--size-4-5);
+  height: var(--size-4-5);
+  border-radius: 50%;
+  background-color: var(--background-modifier-hover);
+  color: var(--text-muted);
+  font-size: var(--font-ui-smaller);
+}
+.abele-pair__where > :not(.abele-pair__where-title) {
+  --abele-pair-indent: calc(var(--size-4-5) + var(--size-4-2));
+  max-width: calc(100% - var(--abele-pair-indent));
+  margin-inline-start: var(--abele-pair-indent);
+}
+.abele-pair__inline {
+  font-family: var(--font-monospace);
+  font-size: var(--font-ui-smaller);
 }
 .abele-pair__text {
   margin: 0;

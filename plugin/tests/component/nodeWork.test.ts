@@ -60,12 +60,23 @@ describe('FolderPicker', () => {
             { name: 'repo', path: '~/repo', git: { branch: 'main', copies: 1 } },
           ],
         }
-      : { error: 'No such folder' }
+      : dir === '~/repo/'
+        ? { entries: [] }
+        : { error: 'No such folder' }
 
-  it('filters by what is typed and opens the highlighted folder', async () => {
+  it('highlights nothing under the pointer: the row is only pressed', async () => {
+    const view = mount(FolderPicker, { props: { browse, start: '~/' } })
+    const before = view.get('.abele-folder-picker__preview').text()
+    await view.findAll('.abele-folder-picker__row')[1].trigger('pointerenter')
+    expect(view.get('.abele-folder-picker__preview').text()).toBe(before)
+  })
+
+  it('filters by what is typed, goes into a folder on a press of its row, and opens the folder it is in', async () => {
     const view = mount(FolderPicker, { props: { browse } })
     await view.get('input').setValue('~/re')
     expect(view.findAll('.abele-folder-picker__name').map((n) => n.text())).toEqual(['repo'])
+    await view.get('.abele-folder-picker__row').trigger('click')
+    expect((view.get('input').element as HTMLInputElement).value).toBe('~/repo/')
     expect(view.get('.abele-folder-picker__preview').text()).toContain('Git repository · main')
     const open = view.findAll('button').find((b) => b.text() === 'Open')!
     await open.trigger('click')

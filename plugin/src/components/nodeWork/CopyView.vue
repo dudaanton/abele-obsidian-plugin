@@ -11,13 +11,14 @@
       </div>
       <h1 class="abele-copy-view__title">{{ folder.name }}</h1>
       <div v-if="folder.git && copy" class="abele-copy-view__git">
-        <Dropdown
+        <Button
           class="abele-copy-view__copy"
-          :options="copyOptions"
-          :model-value="copy.id"
-          aria-label="Working copy"
+          :text="copy.branch"
+          :icon="copyIcon"
+          trailing-icon="chevrons-up-down"
+          tooltip="Choose another copy of this folder"
           :disabled="offline"
-          @update:model-value="(id: string) => emit('switch-copy', id)"
+          @click="emit('choose-copy')"
         />
 
         <Icon
@@ -216,7 +217,6 @@
 // or the opened file; commits are grouped by day. Kinds of change are coloured glyphs, their
 // words in the tooltip.
 import { computed, nextTick, ref, watch } from 'vue'
-import Dropdown from '../obsidian/Dropdown.vue'
 import Icon from '../obsidian/Icon.vue'
 import Button from '../obsidian/Button.vue'
 import StatusDot from '../obsidian/StatusDot.vue'
@@ -257,7 +257,7 @@ const props = withDefaults(
 )
 
 const emit = defineEmits<{
-  (e: 'switch-copy', id: string): void
+  (e: 'choose-copy'): void
   (e: 'refresh'): void
   (e: 'enter', path: string): void
   (e: 'open-file', path: string): void
@@ -289,12 +289,12 @@ const changeLabel = (c: FileChange) =>
 const fileName = (path: string) => path.slice(path.lastIndexOf('/') + 1)
 const dirName = (path: string) => (path.includes('/') ? path.slice(0, path.lastIndexOf('/')) : '')
 
-const copyOptions = computed(() =>
-  props.folder.copies.map((c) => ({
-    value: c.id,
-    display: c.branch,
-    disabled: c.missing,
-  }))
+const copyIcon = computed(() =>
+  props.copy?.kind === 'project'
+    ? 'house'
+    : props.copy?.kind === 'detached'
+      ? 'git-commit-horizontal'
+      : 'git-branch'
 )
 
 const pathOf = (entry: FolderEntry) => [...props.dir, entry.name].join('/')
@@ -675,5 +675,21 @@ body.is-phone {
   .abele-copy-view__commit-row .abele-copy-view__meta {
     display: none;
   }
+}
+</style>
+
+<style lang="scss">
+// The copy chooser (CopySuggestModal): Obsidian's suggestion row with the kind glyph before it.
+.abele-copy-suggestion {
+  align-items: center;
+  gap: var(--size-4-3);
+}
+.abele-copy-suggestion__kind {
+  display: flex;
+  flex: 0 0 auto;
+  color: var(--icon-color);
+}
+.abele-copy-suggestion_current .suggestion-title {
+  color: var(--text-accent);
 }
 </style>

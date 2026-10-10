@@ -27,14 +27,12 @@
         :key="row.path"
         class="abele-folder-picker__row"
         :class="{
-          'is-selected': i === index,
+          'is-selected': keyboard && i === index,
           'abele-folder-picker__row_up': row.up,
         }"
         role="option"
         :aria-selected="i === index"
-        @pointerenter="index = i"
-        @click="row.up ? go(row.path) : choose(i)"
-        @dblclick="!row.up && go(row.path)"
+        @click="go(row.path)"
       >
         <span class="abele-folder-picker__icon"
           ><Icon
@@ -45,14 +43,6 @@
         <span class="abele-folder-picker__name">{{ row.up ? '..' : row.name }}</span>
         <span v-if="row.git" class="abele-folder-picker__branch">{{ row.git.branch }}</span>
         <StatusDot v-if="row.open" tone="accent" label="Already open" />
-        <Icon
-          v-if="!row.up"
-          class="abele-folder-picker__inside"
-          icon="chevron-right"
-          size="xs"
-          :tooltip="`Go into ${row.name}`"
-          @click.stop="go(row.path)"
-        />
       </div>
       <div v-if="!rows.length && !listing.error" class="abele-folder-picker__empty">
         No folders here
@@ -60,7 +50,7 @@
     </div>
 
     <div class="abele-folder-picker__preview" aria-live="polite">
-      <template v-if="target">
+      <template v-if="target && !listing.error">
         <Icon :icon="target.git ? 'folder-git-2' : 'folder'" size="xs" :interactive="false" />
         <span class="abele-folder-picker__preview-path">{{ target.path }}</span>
         <span class="abele-folder-picker__preview-facts">{{ facts(target) }}</span>
@@ -120,6 +110,8 @@ const emit = defineEmits<{
 
 const query = ref(props.start)
 const index = ref(0)
+// The highlight shows only once the arrows are used; the pointer marks rows by hover alone.
+const keyboard = ref(false)
 const field = ref<InstanceType<typeof Input>>()
 
 // The folder being listed is everything up to the last slash; the rest filters it.
@@ -146,16 +138,21 @@ const rows = computed<Row[]>(() => {
 watch(
   rows,
   () => {
-    // Keep the highlight on the first real folder after the list changes.
+    // The keyboard highlight starts again on the first folder after the list changes.
     index.value = rows.value[0]?.up && rows.value.length > 1 ? 1 : 0
   },
   { immediate: true }
 )
 
-// What Open would open: the highlighted folder.
+// What Open opens: the folder one stands in. Described under the list at all times, so the
+// line never comes and goes and the dialog keeps its height.
 const target = computed<NodeDirectory | null>(() => {
-  const row = rows.value[index.value]
-  return row && !row.up ? row : null
+  const path = dir.value.replace(/\/$/, '')
+  if (!path || path === '~') return null
+  const known = parent.value
+    ? props.browse(parent.value).entries?.find((e) => e.path === path)
+    : undefined
+  return known ?? { name: path.slice(path.lastIndexOf('/') + 1), path }
 })
 
 const facts = (d: NodeDirectory) =>
@@ -167,24 +164,23 @@ function go(path: string) {
   query.value = path.endsWith('/') ? path : `${path}/`
   void nextTick(() => field.value?.inputRef?.focus())
 }
-function choose(i: number) {
-  index.value = i
-}
 
 function onKey(e: KeyboardEvent) {
   const row = rows.value[index.value]
   if (e.key === 'ArrowDown' || e.key === 'ArrowUp') {
     e.preventDefault()
+    keyboard.value = true
     const n = rows.value.length || 1
     index.value = (index.value + (e.key === 'ArrowDown' ? 1 : -1) + n) % n
-  } else if (e.key === 'Tab' && row && !e.shiftKey) {
+  } else if (e.key === 'Tab' && row && !e.shiftKey && filter.value) {
     e.preventDefault()
     go(row.path)
   } else if (e.key === 'Enter') {
     e.preventDefault()
     if (e.metaKey || e.ctrlKey) {
       if (target.value) emit(target.value.open ? 'show' : 'open', target.value.path)
-    } else if (row) go(row.path)
+    } else if (row && keyboard.value) go(row.path)
+    else if (target.value) emit(target.value.open ? 'show' : 'open', target.value.path)
   } else if (e.key === 'Backspace' && !filter.value && parent.value) {
     e.preventDefault()
     go(parent.value)
@@ -226,6 +222,7 @@ onMounted(() => window.setTimeout(() => field.value?.inputRef?.focus()))
   font-size: var(--font-ui-small);
   cursor: var(--cursor);
 
+  &:hover,
   &.is-selected {
     background-color: var(--background-modifier-hover);
   }
@@ -257,10 +254,6 @@ body.is-phone .abele-folder-picker__row {
   font-family: var(--font-monospace);
   font-size: var(--font-ui-smaller);
 }
-.abele-folder-picker__inside {
-  flex: 0 0 auto;
-  margin-block: calc(-1 * var(--size-4-1));
-}
 .abele-folder-picker__empty {
   padding: var(--size-4-2);
   color: var(--text-muted);
@@ -272,7 +265,7 @@ body.is-phone .abele-folder-picker__row {
   display: flex;
   align-items: center;
   gap: var(--size-4-2);
-  min-height: var(--line-height-normal);
+  min-height: calc(var(--font-ui-smaller) * var(--line-height-normal));
   color: var(--text-muted);
   font-size: var(--font-ui-smaller);
 
