@@ -20,6 +20,7 @@ import { chatArtifactsFixture } from './chatArtifactsFixture'
 export interface DialogFixtureOptions {
   /** Inspect all synthetic recipient-row variants, without inheriting ambient rights. */
   recipientRows?: boolean
+  agentsState?: import('./agentsFixture').AgentsFixtureState
 }
 import TextCommentDialog from '@/components/TextCommentDialog.vue'
 import { textCommentFixture } from './textCommentFixture'
@@ -213,7 +214,7 @@ const DIALOGS: Record<string, (options?: DialogFixtureOptions) => void | Promise
       state: { expanded: [], scrollTop: 0 }, activeMessageId: 'answer-0', canGoBack: true,
     })
   },
-  'agents': () => mountAlone(AgentsListDialog, { source: agentsFixture() }),
+  'agents': (options) => mountAlone(AgentsListDialog, { source: agentsFixture(options?.agentsState) }),
   'agents-tabs': async () => {
     const completion = chooseAttentionTab(
       GlobalStore.getInstance().app,

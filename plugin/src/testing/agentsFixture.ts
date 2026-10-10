@@ -1,74 +1,116 @@
 import { ref } from 'vue'
 import type { AttentionRow } from '@/agents/attention'
 
-/** Invented states exercise narrow rows without opening conversations or providers. */
-export function agentsFixture() {
-  const rows: AttentionRow[] = [
-    {
-      key: 'sample-chat',
-      reference: { kind: 'local', path: 'Chats/sample.abchat' },
-      title: 'A long invented conversation title about a sample garden and its seasonal plants',
-      agent: 'Sample agent',
-      source: 'Чат',
-      reasons: ['one', 'two', 'three'].map((id) => ({
-        kind: 'approval',
-        id,
-        at: 1,
-        text: 'edit',
-        uncertain: true,
-      })),
-    },
-    {
-      key: 'sample-discussion',
-      reference: { kind: 'local', path: 'Comments/sample.abchat', commentId: 'sample' },
-      title: 'A sample discussion about an invented chapter',
-      agent: 'Sample editor',
-      source: 'Обсуждение · Notes/sample-chapter.md',
-      quote:
-        'An invented passage long enough to wrap onto several lines on a narrow screen without truncation.',
-      reasons: [
-        {
-          kind: 'error',
-          id: 'sample-error',
-          at: 2,
-          text: 'An invented failure description for a stopped run.',
-        },
-      ],
-    },
-    {
-      key: 'sample-working',
-      reference: { kind: 'local', path: 'Chats/working.abchat' },
-      title: 'Sample ongoing work',
-      agent: 'Sample worker',
-      source: 'Чат',
-      reasons: [{ kind: 'running', id: 'sample-run', at: 3 }],
-    },
-    {
-      key: 'sample-node',
-      reference: {
-        kind: 'node',
-        nodeId: 'sample-node',
-        registrationId: 'sample-registration',
-        sessionId: 'sample-session',
+export type AgentsFixtureState = 'empty' | 'waiting' | 'many' | 'working' | 'error' | 'mixed'
+/** Invented states exercise the real list without opening conversations or providers. */
+export function agentsFixture(state: AgentsFixtureState = 'mixed') {
+  const at = Date.now() - 15 * 60_000
+  const waiting: AttentionRow = {
+    key: 'sample-question',
+    reference: { kind: 'local', path: 'Chats/sample-question.abchat' },
+    title: 'Выбор папки для пробных заметок',
+    agent: 'Пробный исследователь',
+    model: 'Sample model',
+    folder: 'Sample work',
+    source: 'Чат · На этом устройстве',
+    reasons: [
+      {
+        kind: 'question',
+        id: 'sample-question',
+        at,
+        text: 'В какую папку сохранить пробные заметки?',
       },
-      title: 'Sample disconnected node',
-      agent: 'Sample provider',
-      source: 'Node · Sample node · Sample project',
-      reasons: [
-        {
-          kind: 'delivery',
-          id: 'sample-connection',
-          at: 4,
-          text: 'Обновляется · Последнее состояние недоступно',
-        },
-      ],
+    ],
+  }
+  const approval: AttentionRow = {
+    ...waiting,
+    key: 'sample-approvals',
+    reference: { kind: 'local', path: 'Chats/sample-approvals.abchat' },
+    title:
+      'Длинное пробное название разговора о саде, сезонных растениях и плане следующих наблюдений',
+    agent: 'Пробный помощник с длинным именем',
+    folder: 'Sample work/An intentionally long invented folder name',
+    reasons: ['one', 'two', 'three'].map((id) => ({
+      kind: 'approval',
+      id,
+      at,
+      text: 'Изменение пробного файла',
+    })),
+  }
+  const error: AttentionRow = {
+    ...waiting,
+    key: 'sample-discussion',
+    reference: { kind: 'local', path: 'Comments/sample.abchat', commentId: 'sample' },
+    title: 'Пробное обсуждение главы',
+    agent: 'Пробный редактор',
+    source: 'Обсуждение · Notes/sample-chapter.md',
+    quote:
+      'Пробный отрывок достаточно длинный, чтобы переноситься на несколько строк на узком экране без обрезания.',
+    reasons: [
+      {
+        kind: 'error',
+        id: 'sample-error',
+        at,
+        text: 'Не удалось прочитать пробный файл. Запуск остановлен.',
+      },
+    ],
+  }
+  const working: AttentionRow = {
+    ...waiting,
+    key: 'sample-working',
+    reference: { kind: 'local', path: 'Chats/working.abchat' },
+    title: 'Проверка пробных заметок',
+    agent: 'Пробный проверяющий',
+    reasons: [{ kind: 'running', id: 'sample-run', at }],
+  }
+  const node: AttentionRow = {
+    key: 'sample-node',
+    reference: {
+      kind: 'node',
+      nodeId: 'sample-node',
+      registrationId: 'sample-registration',
+      sessionId: '',
     },
-  ]
+    title: 'Пробный узел',
+    agent: 'Node',
+    source: 'Node · Пробный узел',
+    reasons: [
+      {
+        kind: 'delivery',
+        id: 'sample-connection',
+        at: 0,
+        text: 'Сводка сессий Node недоступна · Данные неполны',
+      },
+    ],
+  }
+  const rows =
+    state === 'empty'
+      ? []
+      : state === 'waiting'
+        ? [waiting]
+        : state === 'working'
+          ? [working]
+          : state === 'error'
+            ? [error]
+            : state === 'many'
+              ? [
+                  approval,
+                  {
+                    ...waiting,
+                    title:
+                      'Длинный пробный вопрос о выборе папки для черновиков и дальнейшего обсуждения главы',
+                    agent: 'Пробный исследователь с очень длинным именем',
+                  },
+                  error,
+                  working,
+                ]
+              : [waiting, working, node]
   return {
     rows: ref(rows),
-    incomplete: ref(true),
-    status: ref('Обновляется'),
+    incomplete: ref(state === 'mixed'),
+    status: ref(state === 'mixed' ? 'Данные Node неполны' : ''),
     open: async () => false,
     markSeen: async () => {},
+    reconnect: async () => {},
   }
 }
