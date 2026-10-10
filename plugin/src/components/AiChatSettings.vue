@@ -38,52 +38,37 @@
       />
     </Setting>
 
-    <h4 style="margin: var(--size-4-3) 0 var(--size-4-1)">System Prompt</h4>
-
-    <div class="abele-system-prompt-settings">
-      <div class="abele-system-prompt-settings__option">
-        <label>
-          <input
-            type="radio"
-            :checked="promptMode === 'default'"
-            @change="setPromptMode('default')"
-          />
-          Use global default
-        </label>
-      </div>
-
-      <div class="abele-system-prompt-settings__option">
-        <label>
-          <input type="radio" :checked="promptMode === 'note'" @change="setPromptMode('note')" />
-          From vault note
-        </label>
+    <Section title="System Prompt">
+      <Setting name="Source" desc="Use the global prompt, a vault note or text for this chat.">
+        <Dropdown
+          :model-value="promptMode"
+          :options="promptModes"
+          @update:model-value="setPromptMode($event as PromptMode)"
+        />
+      </Setting>
+      <Setting
+        v-if="promptMode === 'note'"
+        name="Note"
+        desc="Read the system prompt from this note."
+      >
         <Search
-          v-if="promptMode === 'note'"
           :model-value="notePath"
+          label="System prompt note"
           placeholder="Path to note..."
           :suggester="FileSuggest"
           @update:model-value="updateNotePath"
         />
-      </div>
-
-      <div class="abele-system-prompt-settings__option">
-        <label>
-          <input
-            type="radio"
-            :checked="promptMode === 'custom'"
-            @change="setPromptMode('custom')"
-          />
-          Custom for this chat
-        </label>
-        <textarea
-          v-if="promptMode === 'custom'"
-          class="abele-system-prompt-settings__textarea"
-          :value="customText"
+      </Setting>
+      <Setting v-if="promptMode === 'custom'" name="Prompt" desc="Only this chat uses this text.">
+        <Input
+          :model-value="customText"
+          as-text-area
+          aria-label="System prompt for this chat"
           placeholder="Enter system prompt..."
-          @input="updateCustomText(($event.target as HTMLTextAreaElement).value)"
+          @update:model-value="updateCustomText"
         />
-      </div>
-    </div>
+      </Setting>
+    </Section>
 
     <!-- Last, and on its own: everything above changes how this chat behaves and can be
            changed back. This one ends it. -->
@@ -135,6 +120,8 @@ import { interceptorChoices, SCRIPT_KEY } from './settings/ai/options'
 import AgentOverrideNotice from './AgentOverrideNotice.vue'
 import { AbeleConfig } from '@/services/AbeleConfig'
 import Dropdown from './obsidian/Dropdown.vue'
+import Input from './obsidian/Input.vue'
+import Section from './obsidian/Section.vue'
 
 const emit = defineEmits<{ close: [] }>()
 
@@ -283,6 +270,11 @@ const toggleHideReasoning = () => {
 // ── System prompt ──
 
 type PromptMode = 'default' | 'note' | 'custom'
+const promptModes = [
+  { value: 'default', display: 'Use global default' },
+  { value: 'note', display: 'From vault note' },
+  { value: 'custom', display: 'Custom for this chat' },
+]
 
 const promptMode = ref<PromptMode>(
   session.value?.customSystemPromptNotePath.value
@@ -328,45 +320,6 @@ function updateCustomText(value: string) {
 
 <style lang="scss">
 .abele-chat-settings {
-  padding: 8px 0;
-}
-
-.abele-system-prompt-settings {
-  display: flex;
-  flex-direction: column;
-  gap: 12px;
-}
-
-.abele-system-prompt-settings__option {
-  display: flex;
-  flex-direction: column;
-  gap: 6px;
-
-  label {
-    display: flex;
-    align-items: center;
-    gap: 8px;
-    cursor: pointer;
-  }
-
-  input[type='radio'] {
-    margin: 0;
-  }
-}
-
-.abele-system-prompt-settings__textarea {
-  width: 100%;
-  min-height: 120px;
-  padding: 8px;
-  font-size: var(--font-ui-small);
-  border: 1px solid var(--background-modifier-border);
-  border-radius: var(--radius-s);
-  background: var(--background-primary);
-  color: var(--text-normal);
-  resize: vertical;
-
-  &::placeholder {
-    color: var(--text-faint);
-  }
+  padding: var(--size-4-2) 0;
 }
 </style>

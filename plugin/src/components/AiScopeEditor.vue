@@ -10,47 +10,55 @@
 
     <template v-if="!fullVaultAccess">
       <!-- Add file -->
-      <div class="abele-scope-mgr__section">
-        <div class="abele-scope-mgr__label">Add file</div>
-        <input ref="fileInputEl" type="text" placeholder="Search for a file..." />
+      <Setting name="Add file">
+        <Search
+          model-value=""
+          label="Add file"
+          placeholder="Search for a file..."
+          :make-suggest="suggestFile"
+        />
         <Button
           v-if="showCurrentFile"
           :text="activeFilePath ? `Add current (${activeFileName})` : 'No file open'"
           :disabled="!activeFilePath"
+          tooltip="Add the current file to this scope"
           @click="addCurrentFile"
         />
-      </div>
+      </Setting>
 
       <!-- Add folder -->
-      <div class="abele-scope-mgr__section">
-        <div class="abele-scope-mgr__label">Add folder</div>
-        <input ref="folderInputEl" type="text" placeholder="Search for a folder..." />
-      </div>
+      <Setting name="Add folder">
+        <Search
+          model-value=""
+          label="Add folder"
+          placeholder="Search for a folder..."
+          :make-suggest="suggestFolder"
+        />
+      </Setting>
 
       <!-- Add group -->
-      <div class="abele-scope-mgr__section">
-        <div class="abele-scope-mgr__label">Add group</div>
-        <input ref="groupInputEl" type="text" placeholder="Search for a group note..." />
-      </div>
+      <Setting name="Add group">
+        <Search
+          model-value=""
+          label="Add group"
+          placeholder="Search for a group note..."
+          :make-suggest="suggestGroup"
+        />
+      </Setting>
 
       <!-- Add pattern -->
-      <div class="abele-scope-mgr__section">
-        <div class="abele-scope-mgr__label">Add pattern</div>
-        <div class="abele-scope-mgr__pattern-row">
-          <input
-            type="text"
-            :value="patternInput"
-            placeholder="e.g. Projects/**/*.md"
-            @input="patternInput = ($event.target as HTMLInputElement).value"
-            @keydown.enter="addPattern"
-          />
-          <Button text="Add" @click="addPattern" />
-        </div>
-      </div>
+      <Setting name="Add pattern">
+        <Input
+          v-model="patternInput"
+          aria-label="Scope pattern"
+          placeholder="e.g. Projects/**/*.md"
+          @keydown.enter="addPattern"
+        />
+        <Button text="Add" tooltip="Add this pattern to the scope" @click="addPattern" />
+      </Setting>
 
       <!-- Current scope entries -->
-      <div v-if="entries.length" class="abele-scope-mgr__entries">
-        <div class="abele-scope-mgr__label">Scope entries</div>
+      <Section v-if="entries.length" title="Scope entries" class="abele-scope-mgr__entries">
         <div
           v-for="(entry, idx) in entries"
           :key="idx"
@@ -60,7 +68,11 @@
           <Icon :icon="entryIcon(entry.type)" />
           <span class="abele-scope-mgr__entry-path">{{ entry.path }}</span>
           <span class="abele-scope-mgr__entry-type">{{ entry.type }}</span>
-          <Icon icon="x" @click.stop="removeEntry(entry)" />
+          <Icon
+            icon="x"
+            :tooltip="`Remove ${entry.path} from scope`"
+            @click.stop="removeEntry(entry)"
+          />
         </div>
         <!-- Preview for selected group -->
         <div v-if="previewEntry" class="abele-scope-mgr__preview">
@@ -71,14 +83,16 @@
             {{ p }}
           </div>
         </div>
-      </div>
+      </Section>
     </template>
   </div>
 </template>
 
 <script setup lang="ts">
-import { ref, computed, onMounted, onUnmounted } from 'vue'
-import type { AbstractInputSuggest } from 'obsidian'
+import { ref, computed } from 'vue'
+import Search from './obsidian/Search.vue'
+import Input from './obsidian/Input.vue'
+import Section from './obsidian/Section.vue'
 import Setting from './obsidian/Setting.vue'
 import Button from './obsidian/Button.vue'
 import Checkbox from './obsidian/Checkbox.vue'
@@ -117,9 +131,6 @@ const addCurrentFile = () => {
   }
 }
 
-const fileInputEl = ref<HTMLInputElement | null>(null)
-const folderInputEl = ref<HTMLInputElement | null>(null)
-const groupInputEl = ref<HTMLInputElement | null>(null)
 const patternInput = ref('')
 const previewEntry = ref<ScopeEntry | null>(null)
 
@@ -136,8 +147,6 @@ const removeEntry = (entry: ScopeEntry) => {
   if (previewEntry.value?.path === entry.path) previewEntry.value = null
 }
 
-const suggesters: AbstractInputSuggest<unknown>[] = []
-
 const attachSuggester = (
   inputEl: HTMLInputElement,
   Suggester: typeof FileSuggest | typeof FolderSuggest,
@@ -151,28 +160,17 @@ const attachSuggester = (
     onSelect(path)
     suggester.refresh()
   }
-  suggesters.push(suggester)
+  return suggester
 }
 
-onMounted(() => {
-  if (fileInputEl.value) {
-    attachSuggester(fileInputEl.value, FileSuggest, (path) => addEntry({ type: 'file', path }), {
-      allFileTypes: true,
-    })
-  }
-  if (folderInputEl.value) {
-    attachSuggester(folderInputEl.value, FolderSuggest, (path) =>
-      addEntry({ type: 'folder', path })
-    )
-  }
-  if (groupInputEl.value) {
-    attachSuggester(groupInputEl.value, FileSuggest, (path) => addEntry({ type: 'group', path }))
-  }
-})
-
-onUnmounted(() => {
-  for (const s of suggesters) s.close()
-})
+const suggestFile = (input: HTMLInputElement) =>
+  attachSuggester(input, FileSuggest, (path) => addEntry({ type: 'file', path }), {
+    allFileTypes: true,
+  })
+const suggestFolder = (input: HTMLInputElement) =>
+  attachSuggester(input, FolderSuggest, (path) => addEntry({ type: 'folder', path }))
+const suggestGroup = (input: HTMLInputElement) =>
+  attachSuggester(input, FileSuggest, (path) => addEntry({ type: 'group', path }))
 
 const entryIcon = (type: string) => {
   switch (type) {
@@ -214,26 +212,6 @@ const addPattern = () => {
   display: flex;
   flex-direction: column;
   gap: var(--size-4-3);
-}
-
-.abele-scope-mgr__section {
-  display: flex;
-  flex-direction: column;
-  gap: var(--size-4-1);
-}
-
-.abele-scope-mgr__label {
-  font-size: var(--font-small);
-  color: var(--text-muted);
-}
-
-.abele-scope-mgr__pattern-row {
-  display: flex;
-  gap: var(--size-4-1);
-
-  input {
-    flex: 1;
-  }
 }
 
 .abele-scope-mgr__entries {

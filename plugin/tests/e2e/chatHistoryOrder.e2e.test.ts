@@ -142,7 +142,7 @@ const script = `(async () => {
     await choose('created')
     report.byCreated = seen()
     report.expectCreated = chats.map((c) => day(c.first))
-    const search = modal().querySelector('.abele-chat-history__search')
+    const search = modal().querySelector('.abele-chat-history__search input')
     const scope = modal().querySelector('[role="switch"]')
     report.contentDefault = scope?.getAttribute('aria-checked') ?? null
     search.value = PREFIX
@@ -162,11 +162,11 @@ const script = `(async () => {
     report.saved = app.loadLocalStorage(KEY)
     if (!(await closeHistory())) throw new Error('the history did not close')
     await openHistory()
-    if (modal().querySelector('.abele-chat-history__search').value) throw new Error('the old history is still open')
+    if (modal().querySelector('.abele-chat-history__search input').value) throw new Error('the old history is still open')
     report.reopened = seen().titles
     const reopenedScope = modal().querySelector('[role="switch"]')
     report.contentRemembered = reopenedScope?.getAttribute('aria-checked') ?? null
-    const reopenedSearch = modal().querySelector('.abele-chat-history__search')
+    const reopenedSearch = modal().querySelector('.abele-chat-history__search input')
     reopenedSearch.value = 'plan'
     reopenedSearch.dispatchEvent(new Event('input', { bubbles: true }))
     await until(() => modal().querySelector('.abele-chat-history__snippet'), 6000)

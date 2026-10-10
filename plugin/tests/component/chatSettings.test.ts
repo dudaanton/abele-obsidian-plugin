@@ -85,6 +85,28 @@ beforeEach(() => {
   deleteChat.mockReset().mockResolvedValue(true)
 })
 
+describe('system prompt choices', () => {
+  it('uses a labelled kit selector and saves each prompt source without changing the others', async () => {
+    const session = seed({ save: vi.fn(async () => {}) })
+    const view = mountSettings()
+    expect(view.find('input[type="radio"]').exists()).toBe(false)
+    const mode = view.findAll('select').find((one) => one.text().includes('Use global default'))!
+    expect(mode.exists()).toBe(true)
+    await mode.setValue('custom')
+    await view.get('textarea').setValue('A fabricated prompt')
+    expect(session.customSystemPrompt.value).toBe('A fabricated prompt')
+    await mode.setValue('note')
+    expect(session.customSystemPrompt.value).toBe('')
+    expect(view.find('textarea').exists()).toBe(false)
+    await view.get('input[placeholder="Path to note..."]').setValue('Samples/Prompt.md')
+    expect(session.customSystemPromptNotePath.value).toBe('Samples/Prompt.md')
+    await mode.setValue('default')
+    expect(session.customSystemPromptNotePath.value).toBe('')
+    expect(session.save).toHaveBeenCalled()
+    view.unmount()
+  })
+})
+
 describe('throwing a chat away', () => {
   it('offers it as the destructive act it is', () => {
     seed()

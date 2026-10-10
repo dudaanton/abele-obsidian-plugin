@@ -14,6 +14,8 @@ import { describe, it, expect } from 'vitest'
 import { readFileSync, readdirSync, statSync } from 'node:fs'
 import { join, relative } from 'node:path'
 import { inspectDesign, inspectCss } from '../helpers/designParser'
+import { parse as parseSfc } from '@vue/compiler-sfc'
+import { baseParse, NodeTypes, type TemplateChildNode } from '@vue/compiler-dom'
 
 const ROOT = join(__dirname, '..', '..', 'src', 'components')
 const STYLES = join(__dirname, '..', '..', 'src', 'styles.css')
@@ -190,6 +192,36 @@ describe('parsed incremental design standard', () => {
     expect(
       STRICT_SCREENS.flatMap((file) =>
         inspectDesign(readFileSync(join(ROOT, file), 'utf8'), { screen: true })
+      )
+    ).toEqual([])
+  })
+})
+
+// Forms join this gate independently of the flat-list migration. Native controls belong in
+// the kit, including a hidden platform picker; aliases do not disguise raw HTML tags.
+const KIT_FORM_SCREENS = ['AiChatSettings.vue', 'AiScopeEditor.vue', 'AiChatHistory.vue']
+function rawFormControls(source: string): string[] {
+  const content = parseSfc(source).descriptor.template?.content ?? ''
+  const tags: string[] = []
+  const visit = (node: TemplateChildNode) => {
+    if (node.type !== NodeTypes.ELEMENT) return
+    if (['input', 'select', 'textarea'].includes(node.tag)) tags.push(node.tag)
+    node.children.forEach(visit)
+  }
+  baseParse(content).children.forEach(visit)
+  return tags
+}
+
+describe('migrated form controls', () => {
+  it('finds nested raw fields while allowing imported kit aliases', () => {
+    expect(
+      rawFormControls('<template><div><input /><select /><textarea /></div><KitInput /></template>')
+    ).toEqual(['input', 'select', 'textarea'])
+  })
+  it('keeps chat settings and filters on shared form controls', () => {
+    expect(
+      KIT_FORM_SCREENS.flatMap((file) =>
+        rawFormControls(readFileSync(join(ROOT, file), 'utf8')).map((tag) => `${file}: ${tag}`)
       )
     ).toEqual([])
   })

@@ -242,7 +242,7 @@ describe('searching the messages of every chat', () => {
   beforeEach(() => app.saveLocalStorage('abele-chat-history-content', true))
 
   const type = async (view: VueWrapper, words: string) => {
-    const field = view.find('.abele-chat-history__search')
+    const field = view.find('.abele-chat-history__search input')
     await field.setValue(words)
     // The search waits for typing to pause, then reads the chats.
     await advance(260)
@@ -304,7 +304,7 @@ describe('searching the messages of every chat', () => {
 
 describe('optional content search', () => {
   const type = async (view: VueWrapper, words: string) => {
-    await view.find('.abele-chat-history__search').setValue(words)
+    await view.find('.abele-chat-history__search input').setValue(words)
     await advance(260)
     await flushPromises()
   }
@@ -498,7 +498,7 @@ describe('the order of the history', () => {
   it('keeps the same order for what a search finds', async () => {
     app.saveLocalStorage('abele-chat-history-content', true)
     const view = await open()
-    await view.find('.abele-chat-history__search').setValue('plan')
+    await view.find('.abele-chat-history__search input').setValue('plan')
     await advance(260)
     await flushPromises()
     expect(titles(view)).toEqual(['Garden', 'Pond', 'Trip'])

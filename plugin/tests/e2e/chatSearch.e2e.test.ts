@@ -214,7 +214,7 @@ const script = (phone: boolean) => `(async () => {
 
     // ── Every chat, from the command ──
     app.commands.executeCommandById('abele:search-all-chats')
-    const history = await until(() => document.querySelector('.abele-chat-history__search'), 4000)
+    const history = await until(() => document.querySelector('.abele-chat-history__search input'), 4000)
     if (!history) throw new Error('the history did not open on its search')
     const contentSwitch = document.querySelector('.abele-chat-history [role="switch"]')
     if (contentSwitch?.getAttribute('aria-checked') !== 'true') contentSwitch?.click()

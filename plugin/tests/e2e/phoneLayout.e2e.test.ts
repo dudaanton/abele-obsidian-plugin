@@ -29,7 +29,14 @@
  */
 import { describe, it, expect, beforeAll, afterAll } from 'vitest'
 import { openBasePicker, basePickerGeometry } from './helpers/githubBasePicker'
-import { PRELUDE as BASE_PRELUDE, startFakeGithub, enableGithub, restoreGithub, evalAsync as evalBase, type FakeGithub } from './helpers/githubLive'
+import {
+  PRELUDE as BASE_PRELUDE,
+  startFakeGithub,
+  enableGithub,
+  restoreGithub,
+  evalAsync as evalBase,
+  type FakeGithub,
+} from './helpers/githubLive'
 import { BASE_SHA } from './helpers/fakeGithubRepo'
 import {
   activeVaultName,
@@ -181,7 +188,13 @@ interface Screen {
   canvasFits?: boolean
   ids?: string[]
   /** Direct and overflow header actions, measured while the native menu is open. */
-  header?: { direct: string[]; overflow: string[]; unreachable: string[]; clipped: string[]; findOpened: boolean }
+  header?: {
+    direct: string[]
+    overflow: string[]
+    unreachable: string[]
+    clipped: string[]
+    findOpened: boolean
+  }
   /** Where the picture went. */
   shot: string
   error: string
@@ -668,7 +681,7 @@ const probeScript = `(async () => {
       const modal = document.querySelector('.modal')
       await screen('history', modal, modal && modal.querySelector('.abele-modal__body'))
       const scope = modal.querySelector('.abele-chat-history [role="switch"]')
-      const searchField = modal.querySelector('.abele-chat-history__search')
+      const searchField = modal.querySelector('.abele-chat-history__search input')
       const sr = scope?.getBoundingClientRect()
       const fr = searchField?.getBoundingClientRect()
       report['history'].contentScope = {
@@ -1808,7 +1821,13 @@ describe.skipIf(!available)('the GitHub base picker on a phone', () => {
     await setMobile(false)
   }, 120000)
   it('shows the resolved SHA and keeps the native prompt and field ring within the phone', () => {
-    const result = evalBase<{ clipped: string[]; over: string[]; sha: string; width: number; shot: string }>(`(async () => {
+    const result = evalBase<{
+      clipped: string[]
+      over: string[]
+      sha: string
+      width: number
+      shot: string
+    }>(`(async () => {
       ${BASE_PRELUDE}
       ${openBasePicker(gh.web)}
       ${basePickerGeometry}
@@ -1889,7 +1908,7 @@ describe.skipIf(!available)('the node repository tab on a phone', () => {
       expect(result.clipped).toEqual([])
       expect(result.hitBoxes.every((box) => box.width >= 44 && box.height >= 44)).toBe(true)
       if (state === 'changed-on-disk' || state === 'conflict') {
-        expect(result.choices.map(choice => choice.text)).toEqual(['Reload', 'Keep mine'])
+        expect(result.choices.map((choice) => choice.text)).toEqual(['Reload', 'Keep mine'])
         expect(Math.abs(result.choices[0].top - result.choices[1].top)).toBeLessThanOrEqual(1)
       }
       expect(result.shot).toMatch(/\.png$/)
@@ -2305,25 +2324,32 @@ describe.skipIf(!available)('the chat dialogs on a phone', () => {
     }
   )
 
-  it.each(['chat', 'nested comment'])('%s: every header action stays reachable directly or in More', (label) => {
-    const header = report[label]?.header
-    expect(header?.direct).toEqual([
-      'Agents',
-      ...(label === 'chat' ? ['Artifacts — notes, images and scripts'] : []),
-      'Start a new chat', 'Open a chat you have had', 'More chat actions',
-    ])
-    expect(header?.overflow).toEqual([
-      ...(label === 'nested comment' ? [
-        'Back to the passage this is about', 'Turn this comment into an ordinary chat',
-      ] : []),
-      'Find in this chat', 'Navigation', 'Scope, skills, prompts, permissions and settings',
-    ])
-    expect(header?.unreachable).toEqual([])
-    expect(header?.clipped).toEqual([])
-    expect(header?.findOpened).toBe(true)
-    expect(report[label + ' header menu']?.error).toBe('')
-    expect(report[label + ' header menu']?.over).toEqual([])
-  })
+  it.each(['chat', 'nested comment'])(
+    '%s: every header action stays reachable directly or in More',
+    (label) => {
+      const header = report[label]?.header
+      expect(header?.direct).toEqual([
+        'Agents',
+        ...(label === 'chat' ? ['Artifacts — notes, images and scripts'] : []),
+        'Start a new chat',
+        'Open a chat you have had',
+        'More chat actions',
+      ])
+      expect(header?.overflow).toEqual([
+        ...(label === 'nested comment'
+          ? ['Back to the passage this is about', 'Turn this comment into an ordinary chat']
+          : []),
+        'Find in this chat',
+        'Navigation',
+        'Scope, skills, prompts, permissions and settings',
+      ])
+      expect(header?.unreachable).toEqual([])
+      expect(header?.clipped).toEqual([])
+      expect(header?.findOpened).toBe(true)
+      expect(report[label + ' header menu']?.error).toBe('')
+      expect(report[label + ' header menu']?.over).toEqual([])
+    }
+  )
 
   it.each(screens)('%s: nothing reaches past the edge of the screen', (label) => {
     expect(report[label]?.over ?? ['no report']).toEqual([])
@@ -2352,12 +2378,14 @@ describe.skipIf(!available)('the chat dialogs on a phone', () => {
       expect(s.spare, `${s.name} leaves ${s.spare}px blank under it`).toBeLessThanOrEqual(24)
   })
 
-  it.each([...sheets, 'agent editor access', 'agent editor interceptor', 'publication confirmation'])(
-    '%s: nothing cuts the focus ring off any field',
-    (label) => {
-      expect(report[label]?.clipped ?? ['no report']).toEqual([])
-    }
-  )
+  it.each([
+    ...sheets,
+    'agent editor access',
+    'agent editor interceptor',
+    'publication confirmation',
+  ])('%s: nothing cuts the focus ring off any field', (label) => {
+    expect(report[label]?.clipped ?? ['no report']).toEqual([])
+  })
 
   /**
    * The agent editor's Access tab, inside a dialog sized like the rest of the dialogs rather than
@@ -2552,8 +2580,20 @@ describe.skipIf(!available)('design catalogue phone contracts', () => {
     if (size?.[0]) await setWindowSize(size[0], size[1])
     await setMobile(false)
   }, 90_000)
-  it.each(['rows', 'states', 'details', 'swatches', 'images', 'events', 'artifact', 'comment', 'comment-thread', 'waiting'])('%s: inventories intended actions, target sizes and reachable footer', async page => {
-    const result = JSON.parse(await evalLong(`(async () => {
+  it.each([
+    'rows',
+    'states',
+    'details',
+    'swatches',
+    'images',
+    'events',
+    'artifact',
+    'comment',
+    'comment-thread',
+    'waiting',
+  ])('%s: inventories intended actions, target sizes and reachable footer', async (page) => {
+    const result = JSON.parse(
+      await evalLong(`(async () => {
       window.__abeleTest.openDesignCatalogue(${JSON.stringify(page)});
       await new Promise(r => setTimeout(r, 300));
       ${CATALOGUE_PROBE}

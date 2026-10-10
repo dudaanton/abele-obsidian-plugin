@@ -7,7 +7,8 @@
 </template>
 
 <script setup lang="ts">
-import { ref, onMounted, watch } from 'vue'
+import { ref, onMounted, onBeforeUnmount, watch } from 'vue'
+import type { AbstractInputSuggest } from 'obsidian'
 import { SearchComponent } from 'obsidian'
 import { GlobalStore } from '@/stores/GlobalStore'
 import { FolderSuggest } from '@/helpers/suggesters/FolderSuggester'
@@ -15,6 +16,8 @@ import { FileSuggest } from '@/helpers/suggesters/FileSuggester'
 
 const props = defineProps<{
   modelValue: string
+  /** Accessible name on the native field rather than the containing div. */
+  label?: string
   placeholder?: string
   suggester?: typeof FileSuggest | typeof FolderSuggest
   /** A suggester that needs more than the field to be built — the note picker's filtered one. */
@@ -26,10 +29,18 @@ const props = defineProps<{
 
 const el = ref<HTMLElement>()
 const search = ref<SearchComponent>()
+let suggest: { close: () => void } | undefined
+const closeSuggest = () => {
+  suggest?.close()
+  suggest = undefined
+}
+defineExpose({ focus: () => search.value?.inputEl.focus() })
+onBeforeUnmount(closeSuggest)
 
 const initSearch = () => {
   if (!el.value) return
-  // Clear previous instance
+  // The field owns its suggester, including a custom selection adapter.
+  closeSuggest()
   if (search.value) {
     el.value.empty()
     search.value = undefined
@@ -40,8 +51,15 @@ const initSearch = () => {
   search.value.inputEl.classList.add('abele-obsidian-search__base')
   search.value.clearButtonEl.classList.add('abele-obsidian-search__clear')
   // A field with nothing to suggest is still a field: a script's plain search box has none.
-  if (props.suggester) new props.suggester(GlobalStore.getInstance().app, search.value.inputEl)
-  else if (props.makeSuggest) props.makeSuggest(search.value.inputEl)
+  if (props.suggester)
+    suggest = new props.suggester(GlobalStore.getInstance().app, search.value.inputEl)
+  else if (props.makeSuggest) {
+    const created = props.makeSuggest(search.value.inputEl) as
+      | Partial<AbstractInputSuggest<unknown>>
+      | undefined
+    if (typeof created?.close === 'function') suggest = created as AbstractInputSuggest<unknown>
+  }
+  if (props.label) search.value.inputEl.setAttribute('aria-label', props.label)
   if (props.modelValue) {
     search.value.setValue(props.modelValue)
   }
@@ -66,6 +84,14 @@ watch(
     if (search.value.getValue() !== val) {
       search.value.setValue(val ?? '')
     }
+  }
+)
+
+watch(
+  () => props.label,
+  (label) => {
+    if (label) search.value?.inputEl.setAttribute('aria-label', label)
+    else search.value?.inputEl.removeAttribute('aria-label')
   }
 )
 

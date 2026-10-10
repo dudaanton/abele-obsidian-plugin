@@ -3,13 +3,12 @@
     <div class="abele-chat-history">
       <div class="abele-chat-history__bar">
         <div class="abele-chat-history__search-row">
-          <input
+          <Search
             ref="searchRef"
-            type="text"
+            v-model="query"
             class="abele-chat-history__search"
+            label="Search chats"
             placeholder="Search chats..."
-            :value="query"
-            @input="query = ($event.target as HTMLInputElement).value"
           />
           <div class="abele-chat-history__content">
             <span id="abele-chat-history-content-label">Content</span>
@@ -91,6 +90,7 @@ import Card from './obsidian/Card.vue'
 import Icon from './obsidian/Icon.vue'
 import Dropdown from './obsidian/Dropdown.vue'
 import Checkbox from './obsidian/Checkbox.vue'
+import Search from './obsidian/Search.vue'
 import DateDivider from './obsidian/DateDivider.vue'
 import {
   HISTORY_ORDERS,
@@ -122,7 +122,7 @@ const emit = defineEmits<{
   (e: 'select', file: TFile, found?: { query: string; messageId: string }): void
 }>()
 
-const searchRef = ref<HTMLInputElement>()
+const searchRef = ref<InstanceType<typeof Search>>()
 const listRef = ref<HTMLElement>()
 const allChats = ref<AiChatHistoryEntry[]>([])
 const query = ref('')
@@ -411,15 +411,9 @@ const remove = async (path: string) => {
 .abele-chat-history__search {
   flex: 1 1 auto;
   min-width: 0;
-  padding: var(--size-4-2) var(--size-4-3);
-  border: 1px solid var(--background-modifier-border);
-  border-radius: var(--radius-s);
-  background: var(--background-primary);
-  color: var(--text-normal);
-  font-size: var(--font-ui-medium);
-
-  &::placeholder {
-    color: var(--text-faint);
+  input {
+    width: 100%;
+    min-width: 0;
   }
 }
 
