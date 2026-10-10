@@ -263,17 +263,17 @@ export async function projectionEvidence(
     }
     return adapter.readBinary(path) // Stat-bounded portable/mobile candidate only.
   }
-  for (const path of paths) {
-    if (!includeControl && path === IGNORE_FILE) continue
+  const inspect = async (path: string) => {
+    if (!includeControl && path === IGNORE_FILE) return
     assertOwned()
     const before = await stat(path)
     assertOwned()
-    if (!before || before.type !== 'file' || before.size > MAX_PROJECTION_BYTES) continue
+    if (!before || before.type !== 'file' || before.size > MAX_PROJECTION_BYTES) return
     const old = previous.get(path)
     if (old && old.size === before.size && old.mtime === before.mtime) {
       inspected.push(old)
       if (old.marker && !ownedPaths.has(path.normalize('NFC').toLowerCase())) evidence ??= path
-      continue
+      return
     }
     let bytes: Uint8Array
     try {
@@ -284,7 +284,7 @@ export async function projectionEvidence(
           : new Uint8Array(read, 0, Math.min(read.byteLength, MAX_PROJECTION_BYTES))
     } catch (cause) {
       assertOwned()
-      if ((await stat(path)) === null) continue
+      if ((await stat(path)) === null) return
       throw cause
     }
     assertOwned()
@@ -295,6 +295,17 @@ export async function projectionEvidence(
     if (after?.type === 'file' && after.size === before.size && after.mtime === before.mtime)
       inspected.push({ path, size: before.size, mtime: before.mtime, marker })
   }
+  // Preserve hidden-file coverage, but cap concurrent adapter work instead of serial iOS stats.
+  const remaining = [...paths]
+  let next = 0
+  await Promise.all(
+    Array.from({ length: Math.min(8, remaining.length) }, async () => {
+      while (next < remaining.length) {
+        assertOwned()
+        await inspect(remaining[next++])
+      }
+    })
+  )
   assertOwned()
   persist(app, EXTERNAL_INSPECTION_KEY, { schema: 1, entries: inspected })
   return evidence
@@ -527,7 +538,8 @@ export async function requireExternalLifecycleSafety(
   factory: IDBFactory,
   database?: string,
   preserveActiveOffloads = false,
-  departingLedger?: string
+  departingLedger?: string,
+  assertCurrent: () => void = () => {}
 ): Promise<void> {
   if (app.loadLocalStorage(EXTERNAL_SWITCH_KEY) != null) throw new ExternalRecoveryRequired()
   const marker = activation(app)
@@ -661,6 +673,7 @@ export async function requireExternalLifecycleSafety(
       }
     }
   }
-  if (await projectionEvidence(app, () => {}, false, ownedPaths))
+  assertCurrent()
+  if (await projectionEvidence(app, assertCurrent, false, ownedPaths))
     throw new ExternalRecoveryRequired('unresolved projection evidence')
 }

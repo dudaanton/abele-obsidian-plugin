@@ -12,6 +12,7 @@ import type { openDeviceReviews } from './openDeviceReviews'
 import type { ReviewSource } from './reviewState'
 
 export function connectionError(error: unknown): string {
+  if (error instanceof ConnectStageError) return error.message
   if (error instanceof Error && /External files:|Sync recovery required/.test(error.message))
     return 'Sync recovery required. Files and connection have been kept.'
   const code = (error as { code?: string } | null)?.code
@@ -33,6 +34,58 @@ export function connectionError(error: unknown): string {
       } as Record<string, string>
     )[code ?? ''] ?? 'The action could not finish. Your files have been kept. Try again.'
   )
+}
+class ConnectStageError extends Error {}
+/** Bound an individual stage and revoke its permission to perform later effects. */
+export async function connectStage<T>(
+  name: string,
+  message: string,
+  work: (assertCurrent: () => void, signal: AbortSignal) => Promise<T>,
+  signal?: AbortSignal
+): Promise<T> {
+  const controller = new AbortController()
+  const failure = new ConnectStageError(message)
+  const assertCurrent = () => {
+    if (Date.now() - started >= 10000) controller.abort()
+    if (controller.signal.aborted) throw failure
+  }
+  const started = Date.now()
+  let timer: number | undefined
+  const cancel = () => controller.abort()
+  signal?.addEventListener('abort', cancel, { once: true })
+  if (signal?.aborted) cancel()
+  try {
+    return await Promise.race([
+      Promise.resolve().then(() => {
+        assertCurrent()
+        return work(assertCurrent, controller.signal)
+      }),
+      new Promise<never>((_, reject) => {
+        controller.signal.addEventListener('abort', () => reject(failure), { once: true })
+        if (controller.signal.aborted) reject(failure)
+        timer = window.setTimeout(cancel, 10000)
+      }),
+    ])
+  } catch (error) {
+    controller.abort()
+    if (
+      error instanceof V2ClientError ||
+      error instanceof ConnectStageError ||
+      /Sync recovery required|External files:/.test(String(error))
+    )
+      throw error
+    throw failure
+  } finally {
+    window.clearTimeout(timer)
+    signal?.removeEventListener('abort', cancel)
+    console.debug(
+      '[Abele Connect]',
+      name,
+      Date.now() - started,
+      'ms',
+      controller.signal.aborted ? 'failed' : 'complete'
+    )
+  }
 }
 export const scopeName = (scope: V2Scope | null) =>
   !scope
@@ -96,9 +149,14 @@ export interface TokenUiRuntime extends ExecutableApplyPort, ConsentResolvePort 
   ): Promise<import('@abele/sync-core').DeferredKept | null>
 }
 export type DeviceReviews = Awaited<ReturnType<typeof openDeviceReviews>>
+const noConnectionHost = async () => {}
 export class TokenUi {
-  connectionChangeGuard: (id?: string) => Promise<void> = async () => {}
-  connectionsChanged: () => Promise<void> = async () => {}
+  connectionChangeGuard: (id?: string, assertCurrent?: () => void) => Promise<void> = async () => {}
+  connectionsChanged: (assertCurrent?: () => void) => Promise<void> = noConnectionHost
+  retryConnection: (id: string, assertCurrent: () => void) => Promise<void> = async (
+    _,
+    assertCurrent
+  ) => this.connectionsChanged(assertCurrent)
   openFile: (path: string) => Promise<void> = async () => {}
   readonly rows = shallowRef<TokenConnectionRecord[]>([])
   readonly activity = shallowRef<Record<string, ConnectionActivity>>({})
@@ -168,24 +226,30 @@ export class TokenUi {
       }
     })
   }
-  async connect(text: string): Promise<void> {
+  async connect(text: string, signal?: AbortSignal): Promise<void> {
     // Validate with the server before adding a row. Failed paste leaves all existing rows intact.
     const token = decodeAccessToken(text),
       client = new V2Client(token, this.transport)
     if (typeof token.address !== 'string') throw new V2ClientError('bad-token')
-    await this.connectionChangeGuard()
-    const controller = new AbortController()
-    let timer: number | undefined
-    const authority = await Promise.race([
-      client.connection(controller.signal),
-      new Promise<never>((_, reject) => {
-        timer = window.setTimeout(() => {
-          reject(new V2ClientError('unreachable'))
-          controller.abort()
-        }, 10000)
-      }),
-    ]).finally(() => window.clearTimeout(timer))
-    await this.connectionChangeGuard()
+    const guard = () =>
+      connectStage(
+        'checking vault',
+        'Checking the vault could not finish. Try again.',
+        async (assertCurrent) => {
+          await this.connectionChangeGuard(undefined, assertCurrent)
+          assertCurrent()
+        },
+        signal
+      )
+    await guard()
+    const authority = await connectStage(
+      'checking server',
+      'The server is not reachable. Check your connection and try again.',
+      (_, stageSignal) => client.connection(stageSignal),
+      signal
+    )
+    await guard()
+    if (signal?.aborted) throw new ConnectStageError('Connection cancelled.')
     if (token.scope.kind !== authority.scope.kind || token.scope.id !== authority.scope.id)
       throw new V2ClientError('bad-token')
     const pending = this.registry
@@ -198,13 +262,58 @@ export class TokenUi {
           (one.pending ?? one).scope?.kind === authority.scope.kind &&
           (one.pending ?? one).scope?.id === authority.scope.id
       )
-    const id = pending?.id ?? this.registry.add()
-    try {
-      this.registry.attach(id, { ...token, address: token.address }, authority, this.secrets)
-    } finally {
-      this.refresh()
-    }
-    await this.connectionsChanged()
+    const id = await connectStage(
+      'saving connection',
+      'Saving the connection failed. Try again.',
+      async (assertCurrent, stageSignal) => {
+        let savedId = pending?.id
+        try {
+          assertCurrent()
+          savedId ??= this.registry.add()
+          assertCurrent()
+          this.registry.attach(
+            savedId,
+            { ...token, address: token.address },
+            authority,
+            this.secrets
+          )
+          return savedId
+        } catch (error) {
+          if (stageSignal.aborted && savedId && !pending) {
+            this.registry.beginForget(savedId)
+            this.registry.finishForgotten(this.secrets, savedId)
+          }
+          throw new ConnectStageError(
+            `Saving the connection failed. Try again. ${error instanceof Error ? error.message : ''}`
+          )
+        } finally {
+          this.refresh()
+        }
+      },
+      signal
+    )
+    if (this.connectionsChanged === noConnectionHost) return
+    if (!this.runtimes.has(id)) this.registry.setStatus(id, 'joining')
+    this.refresh()
+    void connectStage(
+      'starting sync',
+      'Could not finish starting sync. Try Sync now again.',
+      (assertCurrent) => this.connectionsChanged(assertCurrent)
+    )
+      .then(() => {
+        if (
+          !this.runtimes.has(id) &&
+          this.registry.records().find((one) => one.id === id)?.status === 'joining'
+        ) {
+          this.registry.setStatus(id, 'error')
+          this.publish(id, { error: 'Could not finish starting sync. Try Sync now again.' })
+        }
+      })
+      .catch((error) => {
+        if (!this.registry.records().some((one) => one.id === id)) return
+        this.registry.setStatus(id, 'error')
+        this.publish(id, { error: connectionError(error) })
+      })
   }
   async updateConnection(
     id: string,
@@ -242,7 +351,16 @@ export class TokenUi {
     const record = this.registry.records().find((one) => one.id === id)
     if (!record || record.paused) throw new Error('Sync is paused')
     const runtime = this.runtimes.get(id)
-    if (!runtime) throw new Error('File exchange is not available in this build')
+    if (!runtime) {
+      await connectStage(
+        'retry starting sync',
+        'Could not finish starting sync. Try Sync now again.',
+        (assertCurrent) => this.retryConnection(id, assertCurrent)
+      )
+      if (!this.runtimes.has(id))
+        throw new ConnectStageError('Could not finish starting sync. Try Sync now again.')
+      return
+    }
     await runtime.sync()
     this.refresh()
   }

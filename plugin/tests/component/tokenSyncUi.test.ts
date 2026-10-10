@@ -164,6 +164,44 @@ it.each(['close', 'scope', 'connection'] as const)(
     view.unmount()
   }
 )
+it('allows Close during a slow vault check and cancels enrollment', async () => {
+  const data = new Map<string, unknown>()
+  const registry = TokenConnectionRegistry.open({
+    loadLocalStorage: (key) => data.get(key) ?? null,
+    saveLocalStorage: (key, value) => {
+      data.set(key, value)
+    },
+  })
+  const transport = vi.fn<typeof fetch>()
+  const ui = new TokenUi(registry, { get: () => null, set: () => {}, remove: () => {} }, transport)
+  let release!: () => void
+  ui.connectionChangeGuard = () =>
+    new Promise((resolve) => {
+      release = resolve
+    })
+  const view = mount(TokenDialogs, {
+    props: { ui, mode: 'connect' },
+    global: { stubs: { Modal: modalStub } },
+  })
+  try {
+    await view.find('input:not([type=file])').setValue(sampleIssuedToken)
+    await view
+      .findAllComponents(Button)
+      .find((one) => one.props('text') === 'Connect')!
+      .trigger('click')
+    await flushPromises()
+    const close = view.findAllComponents(Button).find((one) => one.props('text') === 'Close')!
+    expect(close.props('disabled')).toBeFalsy()
+    await close.trigger('click')
+    expect(view.emitted('close')).toHaveLength(1)
+    release()
+    await flushPromises()
+    expect(transport).not.toHaveBeenCalled()
+    expect(registry.records()).toEqual([])
+  } finally {
+    view.unmount()
+  }
+})
 it('ends an unreachable connection attempt with a visible error and ignores its late answer', async () => {
   vi.useFakeTimers()
   const data = new Map<string, unknown>(),
@@ -204,6 +242,12 @@ it('ends an unreachable connection attempt with a visible error and ignores its 
     await button.trigger('click')
     await flushPromises()
     expect(button.props('disabled')).toBe(true)
+    expect(
+      view
+        .findAllComponents(Button)
+        .find((one) => one.props('text') === 'Close')!
+        .props('disabled')
+    ).toBeFalsy()
     await vi.advanceTimersByTimeAsync(10000)
     await flushPromises()
     expect(view.get('[role="alert"]').text()).toContain('not reachable')
@@ -288,7 +332,7 @@ it('uses the same explicit Connect action for a scanned token', async () => {
     .find((one) => one.props('text') === 'Connect')!
     .trigger('click')
   await flushPromises()
-  expect(connect).toHaveBeenCalledWith(sampleIssuedToken)
+  expect(connect).toHaveBeenCalledWith(sampleIssuedToken, expect.any(AbortSignal))
 })
 
 it('shows every connection, last sync, progress, refusals and the conflict copy without hiding an offline server', () => {

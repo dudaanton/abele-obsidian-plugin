@@ -56,6 +56,56 @@ const secondToken = encodeAccessToken({
   key: 'b'.repeat(43),
   scope: { kind: 'folder', id: 'root', path: '/' },
 })
+for (const stage of ['first guard', 'second guard', 'server']) {
+  it(`bounds a hung ${stage} without late enrollment`, async () => {
+    vi.useFakeTimers()
+    try {
+      const { ui, registry, keys, transport } = setup()
+      let release!: () => void
+      const hung = new Promise<void>((resolve) => {
+        release = resolve
+      })
+      let calls = 0
+      ui.connectionChangeGuard = async () => {
+        calls++
+        if (stage === 'first guard' || (stage === 'second guard' && calls === 2)) await hung
+      }
+      if (stage === 'server')
+        transport.mockImplementationOnce(async () => {
+          await hung
+          return new Response('{}')
+        })
+      const result = ui.connect(token).catch((error) => error)
+      await vi.advanceTimersByTimeAsync(10001)
+      expect(connectionError(await result)).toContain(stage === 'server' ? 'reachable' : 'vault')
+      release()
+      await vi.advanceTimersByTimeAsync(1)
+      expect(registry.records()).toEqual([])
+      expect(keys.size).toBe(0)
+    } finally {
+      vi.useRealTimers()
+    }
+  })
+}
+it('saves without waiting for startup and reports a hung engine', async () => {
+  vi.useFakeTimers()
+  try {
+    const { ui, registry } = setup()
+    ui.connectionsChanged = () => new Promise(() => {})
+    let finished = false
+    void ui.connect(token).then(() => {
+      finished = true
+    })
+    await vi.advanceTimersByTimeAsync(1)
+    expect(finished).toBe(true)
+    expect(registry.records()[0].status).toBe('joining')
+    await vi.advanceTimersByTimeAsync(10001)
+    expect(registry.records()[0].status).toBe('error')
+    expect(ui.activity.value[registry.records()[0].id].error).toContain('starting sync')
+  } finally {
+    vi.useRealTimers()
+  }
+})
 it('reuses an already connected token and its existing ledger when pasted again', async () => {
   const { ui, registry, keys } = setup()
   await ui.connect(token)

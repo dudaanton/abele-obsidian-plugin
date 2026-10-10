@@ -4,11 +4,88 @@ import { IDBFactory } from 'fake-indexeddb'
 import { MemoryStateStore } from '@abele/sync-core'
 import { encodeAccessToken } from '@abele/sync-protocol'
 import { TokenEngines } from '@/sync/tokenEngines'
-import { TokenUi } from '@/sync/tokenUi'
+import { TokenUi, connectionError } from '@/sync/tokenUi'
 import { TokenConnectionRegistry } from '@/sync/tokenConnectionRegistry'
 import { ExecutableReview } from '@/sync/executableReview'
 import { AttachmentConsent } from '@/sync/attachmentConsent'
 import { buildFakeVault } from '../helpers/fakeVault'
+import * as safety from '@/sync/external/pluginSafety'
+
+it('revokes a timed-out engine start and permits a later explicit retry', async () => {
+  vi.useFakeTimers()
+  let release!: () => void
+  const gate = new Promise<void>((resolve) => {
+    release = resolve
+  })
+  const inspection = vi
+    .spyOn(safety, 'activeExternalDocuments')
+    .mockImplementationOnce(async () => {
+      await gate
+      return []
+    })
+  const app = buildFakeVault([])
+  const registry = TokenConnectionRegistry.open(app)
+  const metadata = new MemoryStateStore()
+  const keys = new Map<string, string>()
+  const secrets = {
+    get: (ref: string) => keys.get(ref) ?? null,
+    set: (ref: string, key: string) => {
+      keys.set(ref, key)
+    },
+    remove: (ref: string) => {
+      keys.delete(ref)
+    },
+  }
+  const scope = { kind: 'folder' as const, id: 'root', path: '/' }
+  const transport: typeof fetch = async (input) =>
+    new URL(String(input)).pathname === '/v2/connection'
+      ? Response.json({
+          protocol: 2,
+          token_id: 'token',
+          space_id: 'space',
+          scope,
+          status: 'active',
+          limits: { max_file_bytes: 1000, quota_bytes: null },
+        })
+      : Response.json({ items: [], cursor: 1, next: null })
+  const ui = new TokenUi(registry, secrets, transport, {
+    executables: new ExecutableReview(metadata),
+    attachments: new AttachmentConsent(metadata),
+    close: () => {},
+  })
+  const host = new TokenEngines(app as unknown as App, ui, secrets.get, {
+    fetch: transport,
+    indexedDB: new IDBFactory(),
+    WebSocket: class {
+      constructor() {
+        throw new Error('No test socket')
+      }
+    } as unknown as typeof WebSocket,
+  })
+  try {
+    await ui.connect(
+      encodeAccessToken({ v: 1, address: 'https://sync.example', key: 'a'.repeat(43), scope })
+    )
+    const id = registry.records()[0].id
+    await vi.advanceTimersByTimeAsync(10001)
+    expect(registry.records()[0].status).toBe('error')
+    expect(ui.activity.value[id].error).toContain('starting sync')
+    const retry = ui.sync(id).catch((error) => error)
+    await vi.advanceTimersByTimeAsync(10001)
+    expect(connectionError(await retry)).toContain('starting sync')
+    release()
+    await vi.advanceTimersByTimeAsync(1)
+    expect(ui.runtimes.has(id)).toBe(false)
+    vi.useRealTimers()
+    await ui.sync(id)
+    expect(ui.runtimes.has(id)).toBe(true)
+  } finally {
+    release()
+    vi.useRealTimers()
+    inspection.mockRestore()
+    await host.close()
+  }
+})
 
 it.each(['revoked', 'forbidden', '503', 'network'] as const)(
   'keeps %s classification across reload without deleting local files',

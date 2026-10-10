@@ -7,6 +7,27 @@ import { useVault } from '../helpers/testEnv'
 afterEach(() => vi.restoreAllMocks())
 
 describe('bounded persisted external projection inspection', () => {
+  it('checks files concurrently with at most eight adapter operations in flight', async () => {
+    const app = useVault(
+      Array.from({ length: 24 }, (_, index) => ({ path: `Notes/${index}.md`, content: 'ordinary' }))
+    )
+    const stat = app.vault.adapter.stat.bind(app.vault.adapter)
+    let running = 0,
+      peak = 0
+    vi.spyOn(app.vault.adapter, 'stat').mockImplementation(async (path) => {
+      running++
+      peak = Math.max(peak, running)
+      await new Promise((resolve) => setTimeout(resolve, 1))
+      try {
+        return await stat(path)
+      } finally {
+        running--
+      }
+    })
+    expect(await projectionEvidence(app as never)).toBeNull()
+    expect(peak).toBeGreaterThan(1)
+    expect(peak).toBeLessThanOrEqual(8)
+  })
   it('never reads large files, including hidden/excluded files and multi-gigabyte video', async () => {
     const app = useVault([
       { path: 'Media/sample-video.bin', content: 'small synthetic fixture' },

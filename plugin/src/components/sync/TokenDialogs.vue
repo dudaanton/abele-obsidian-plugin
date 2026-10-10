@@ -174,12 +174,7 @@
         :disabled="busy"
         @click="run(disconnect)"
       />
-      <Button
-        text="Close"
-        tooltip="Close without making another decision"
-        :disabled="busy"
-        @click="close"
-      />
+      <Button text="Close" tooltip="Close without making another decision" @click="close" />
     </template>
   </Modal>
 </template>
@@ -209,6 +204,7 @@ const props = defineProps<{
   question?: AttachmentQuestion
 }>()
 const emit = defineEmits<{ close: [] }>()
+const enrollment = new AbortController()
 let generation = 0
 let alive = true
 function invalidate() {
@@ -220,11 +216,13 @@ function invalidate() {
   busy.value = false
 }
 function close() {
+  enrollment.abort()
   alive = false
   invalidate()
   emit('close')
 }
 onBeforeUnmount(() => {
+  enrollment.abort()
   alive = false
   invalidate()
 })
@@ -282,7 +280,7 @@ async function run(action: () => Promise<void>) {
   }
 }
 async function connect() {
-  await props.ui.connect(text.value)
+  await props.ui.connect(text.value, enrollment.signal)
   text.value = ''
   new Notice('Connection saved')
   emit('close')

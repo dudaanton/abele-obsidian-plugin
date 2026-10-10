@@ -4,7 +4,7 @@ import type { EngineStatus, SyncReport } from '@abele/sync-core'
 import { ConnectionEngines, type ConnectionRuntime } from './connectionEngines'
 import { TokenEngineRuntime } from './tokenEngineRuntime'
 import type { TokenConnectionRecord } from './tokenConnectionRegistry'
-import { TokenUi, connectionError } from './tokenUi'
+import { TokenUi, connectionError, connectStage } from './tokenUi'
 import {
   factoryOf,
   transportOf,
@@ -40,6 +40,7 @@ export class TokenEngines {
   private readonly engines = new ConnectionEngines()
   private readonly live = new Map<string, TokenEngineRuntime>()
   private readonly pending = new Set<string>()
+  private readonly retries = new Map<string, (assertCurrent: () => void) => Promise<void>>()
   private readonly activityEpoch = new Map<string, number>()
   private readonly offloadPorts = new Map<
     string,
@@ -64,11 +65,19 @@ export class TokenEngines {
     this.renameEvent = app.vault.on('rename', (file, from) =>
       this.localFiles.renamed(from, file.path)
     )
-    ui.connectionsChanged = async () => {
+    ui.connectionsChanged = async (assertCurrent = () => {}) => {
+      assertCurrent()
       this.start()
       await this.engines.settled()
     }
-    ui.connectionChangeGuard = async (id) => {
+    ui.retryConnection = async (id, assertCurrent) => {
+      assertCurrent()
+      const retry = this.retries.get(id)
+      if (retry) await retry(assertCurrent)
+      else await ui.connectionsChanged(assertCurrent)
+    }
+    ui.connectionChangeGuard = async (id, assertCurrent = () => {}) => {
+      assertCurrent()
       if (this.closed) throw new Error('Connection host closed; recovery required')
       if (id) await this.offloadPorts.get(id)?.prepareDisconnect()
       await requireExternalLifecycleSafety(
@@ -76,8 +85,10 @@ export class TokenEngines {
         factoryOf(this.deps),
         undefined,
         true,
-        id ? this.ui.registry.records().find((one) => one.id === id)?.ledgerId : undefined
+        id ? this.ui.registry.records().find((one) => one.id === id)?.ledgerId : undefined,
+        assertCurrent
       )
+      assertCurrent()
       if (this.closed) throw new Error('Connection host closed; recovery required')
     }
   }
@@ -227,6 +238,11 @@ export class TokenEngines {
             )
       )
     let starting: Promise<void> | undefined
+    let draining: Promise<void> | undefined
+    const assertActive = () => {
+      if (!active || this.closed) throw new Error('Sync startup cancelled')
+      fence?.assertOwned()
+    }
     const start = async () => {
       await beforeOpening
       if (!active || this.closed) return
@@ -240,6 +256,7 @@ export class TokenEngines {
       )
       stateHandle = state
       closeStore = () => state.close()
+      assertActive()
       state.onRecoveryRequired((error) => {
         active = false
         fence?.release()
@@ -255,6 +272,7 @@ export class TokenEngines {
         () => this.ownSettings?.arrived()
       )
       const binding = await tokenExternalBinding(record, key)
+      assertActive()
       await recoverExternalState(
         this.app,
         state,
@@ -275,6 +293,7 @@ export class TokenEngines {
         },
       })
       await ordinary.recover()
+      assertActive()
       fence.activate()
       const manager = tokenOffloadsOf(this.app.vault, pathCoordinatorOf(this.app.vault))
       const offloads = await tokenOffloadConnection({
@@ -301,6 +320,7 @@ export class TokenEngines {
         hydratedIdentity: (path) => this.localFiles.hydrated(path),
       })
       this.offloadPorts.set(record.id, offloads)
+      assertActive()
       const fs = coordinatedFileSystem(
         offloads.fs,
         pathCoordinatorOf(this.app.vault),
@@ -376,6 +396,7 @@ export class TokenEngines {
         () => fence.assertReady()
       )
       closeCopies = copies.close
+      assertActive()
       this.live.set(record.id, runtime)
       this.pending.delete(record.id)
       unbind = this.ui.bind(record.id, {
@@ -409,31 +430,63 @@ export class TokenEngines {
       })
       await runtime.start()
     }
+    const begin = () => {
+      active = true
+      this.ui.registry.setStatus(record.id, 'joining')
+      this.ui.refresh()
+      starting = connectStage(
+        'engine start',
+        'Could not finish starting sync. Try Sync now again.',
+        async (_, signal) => {
+          signal.addEventListener(
+            'abort',
+            () => {
+              active = false
+              runtime?.invalidate()
+              fence?.release()
+              unbind?.()
+              this.live.delete(record.id)
+            },
+            { once: true }
+          )
+          draining = start().catch(async (error) => {
+            active = false
+            fence?.release()
+            await runtime?.disconnect()
+            this.pending.delete(record.id)
+            this.live.delete(record.id)
+            this.refreshDestinations()
+            unbind?.()
+            closeCopies?.()
+            closeStore?.()
+            this.offloadPorts.get(record.id)?.close()
+            this.offloadPorts.delete(record.id)
+            throw error
+          })
+          await draining
+        }
+      )
+      return starting
+    }
+    this.retries.set(record.id, async (assertCurrent) => {
+      await draining?.catch(() => {})
+      assertCurrent()
+      if (this.closed) return
+      await begin().catch((error) => {
+        this.failed(record.id, error)
+      })
+    })
     return {
-      start: () => {
-        starting = start().catch(async (error) => {
-          active = false
-          fence?.release()
-          await runtime?.disconnect()
-          this.pending.delete(record.id)
-          this.live.delete(record.id)
-          this.refreshDestinations()
-          unbind?.()
-          closeCopies?.()
-          closeStore?.()
-          this.offloadPorts.get(record.id)?.close()
-          this.offloadPorts.delete(record.id)
-          throw error
-        })
-        return starting
-      },
+      start: begin,
       invalidate: () => {
         active = false
         runtime?.invalidate()
         fence?.release()
+        this.retries.delete(record.id)
       },
       close: async () => {
         await starting?.catch(() => {})
+        await draining?.catch(() => {})
         await runtime?.close()
         this.pending.delete(record.id)
         this.live.delete(record.id)
