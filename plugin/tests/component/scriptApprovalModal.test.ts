@@ -40,6 +40,33 @@ describe('script approval UI', () => {
     expect(answer).toHaveBeenCalledWith(true)
     wrapper.unmount()
   })
+  it('offers Stop without approving the script and rejects all approvals in the same run', async () => {
+    const onStop = vi.fn(),
+      controller = new AbortController()
+    const first = showScriptApproval(request, controller.signal, onStop)
+    const second = showScriptApproval(
+      { ...request, path: 'Scripts/other.js' },
+      controller.signal,
+      onStop
+    )
+    const dialog = scriptApprovalDialog.value!
+    const wrapper = mount(ScriptApprovalModal, {
+      props: { request: dialog },
+      global: { stubs: { ObsidianModal: { template: '<div><slot /></div>' } } },
+    })
+    try {
+      const stop = wrapper.findAll('button').find((b) => b.text() === 'Stop')!
+      expect(stop).toBeDefined()
+      expect(stop.classes()).not.toContain('mod-cta')
+      await stop.trigger('click')
+      expect(await first).toBe(false)
+      expect(await second).toBe(false)
+      expect(onStop).toHaveBeenCalledOnce()
+      expect(scriptApprovalDialog.value).toBeNull()
+    } finally {
+      wrapper.unmount()
+    }
+  })
   it('labels a recovery-only review as approval, not as running the script', () => {
     const wrapper = mount(ScriptApprovalModal, {
       props: { request: { ...request, recovery: true, reviewOnly: true, id: 1, answer: vi.fn() } },

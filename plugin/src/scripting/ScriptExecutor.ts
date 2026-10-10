@@ -234,8 +234,12 @@ export class ScriptExecutor {
       : book
         ? bookSelection(book)
         : undefined
+    const approvalController = new AbortController()
     const opts: ExecuteOptions = {
       ...given,
+      signal: given.signal
+        ? AbortSignal.any([given.signal, approvalController.signal])
+        : approvalController.signal,
       book,
       selection,
       formHandler: given.formHandler ?? formHandler,
@@ -245,7 +249,9 @@ export class ScriptExecutor {
     const script = await scriptForExecution(
       GlobalStore.getInstance().app,
       path,
-      opts.allowApprovalPrompt ? (request) => showScriptApproval(request, opts.signal) : undefined
+      opts.allowApprovalPrompt
+        ? (request) => showScriptApproval(request, opts.signal, () => approvalController.abort())
+        : undefined
     )
     if (script.meta.interceptor) {
       throw new Error(

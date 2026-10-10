@@ -5,11 +5,13 @@ import type { ScriptApprovalRequest } from './scriptExecutionGate'
 export interface ScriptApprovalDialog extends ScriptApprovalRequest {
   id: number
   answer(accepted: boolean): void
+  stop(): void
 }
 export const scriptApprovalDialog = shallowRef<ScriptApprovalDialog | null>(null)
 const waiting: ScriptApprovalDialog[] = []
 let nextId = 0
 const views = new Map<ScriptApprovalDialog, ComponentDialog>()
+const runs = new WeakMap<ScriptApprovalDialog, AbortSignal>()
 
 function present(dialog: ScriptApprovalDialog): void {
   const view = openComponentDialog(
@@ -26,7 +28,8 @@ function present(dialog: ScriptApprovalDialog): void {
 /** Explicit manual requests only; concurrent dialogs are queued, never overwritten. */
 export function showScriptApproval(
   request: ScriptApprovalRequest,
-  signal?: AbortSignal
+  signal?: AbortSignal,
+  onStop?: () => void
 ): Promise<boolean> {
   if (signal?.aborted) return Promise.resolve(false)
   return new Promise((resolve) => {
@@ -36,6 +39,17 @@ export function showScriptApproval(
       ...request,
       identity: { ...request.identity, binding: { ...request.identity.binding } },
       id: ++nextId,
+      stop() {
+        if (settled) return
+        // Stop the owning execution before resolving its approval promise.
+        onStop?.()
+        const pending = [
+          ...waiting,
+          ...(scriptApprovalDialog.value ? [scriptApprovalDialog.value] : []),
+        ]
+        for (const other of pending)
+          if (other === dialog || (signal && runs.get(other) === signal)) other.answer(false)
+      },
       answer(accepted) {
         if (settled) return
         settled = true
@@ -44,6 +58,7 @@ export function showScriptApproval(
         if (index >= 0) waiting.splice(index, 1)
         views.get(dialog)?.close()
         views.delete(dialog)
+        runs.delete(dialog)
         if (scriptApprovalDialog.value?.id === dialog.id) {
           scriptApprovalDialog.value = waiting.shift() ?? null
           if (scriptApprovalDialog.value) present(scriptApprovalDialog.value)
@@ -51,6 +66,7 @@ export function showScriptApproval(
         resolve(accepted)
       },
     }
+    if (signal) runs.set(dialog, signal)
     signal?.addEventListener('abort', abort, { once: true })
     if (scriptApprovalDialog.value) waiting.push(dialog)
     else {

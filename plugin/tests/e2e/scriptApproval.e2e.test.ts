@@ -43,7 +43,7 @@ const measure = (label: string) => String.raw`(async () => {
     const report = await screen(${JSON.stringify(label)}, root, root.querySelector('.abele-modal__body'))
     const buttons = [...root.querySelectorAll('.abele-script-approval button')]
     report.extra = {
-      buttons: buttons.length,
+      buttons: buttons.map(b => b.textContent.trim()),
       visible: buttons.every(b => { const r = b.getBoundingClientRect(); return r.width > 0 && r.left >= 0 && r.right <= innerWidth + 1 && r.top >= 0 && r.bottom <= innerHeight + 1 }),
       codeHeight: root.querySelector('pre').getBoundingClientRect().height,
       reviewHeight: (root.querySelector('.abele-script-approval__review') || root.querySelector('pre')).getBoundingClientRect().height,
@@ -66,7 +66,7 @@ describe('script approval with existing dialog geometry checks', () => {
     expect(screen.error).toBe('')
     expect(screen.over).toEqual([])
     expect(screen.clipped).toEqual([])
-    expect(screen.extra.buttons).toBe(2)
+    expect(screen.extra.buttons).toEqual(['Cancel', 'Approve and run', 'Stop'])
     expect(screen.extra.visible).toBe(true)
   })
   it('persists an exact-byte approval through the real native dialog and IndexedDB', () => {
@@ -133,7 +133,7 @@ describe('script approval with existing dialog geometry checks', () => {
     expect(screen.capped).toEqual([])
     expect(screen.scrollers).toHaveLength(1)
     expect(screen.extra.visible).toBe(true)
-    expect(screen.extra.buttons).toBe(2)
+    expect(screen.extra.buttons).toEqual(['Cancel', 'Approve and run', 'Stop'])
     expect(screen.extra.codeHeight).toBeGreaterThan(80)
     expect(screen.extra.reviewHeight).toBeGreaterThan(300)
     expect(screen.fill).toBeGreaterThan(0.8)

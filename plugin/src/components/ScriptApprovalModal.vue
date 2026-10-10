@@ -33,6 +33,13 @@
           :disabled="readOnly"
           @click="!readOnly && request.answer(true)"
         />
+        <Button
+          v-if="!request.reviewOnly"
+          text="Stop"
+          tooltip="Reject and stop the agent"
+          :disabled="readOnly"
+          @click="!readOnly && request.stop()"
+        />
       </div>
     </div>
   </ObsidianModal>

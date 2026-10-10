@@ -8,6 +8,8 @@ import { scriptForExecution, assertScriptContext } from '@/scripting/trust/scrip
 import { CONNECTION_KEY } from '@/sync/connection'
 import { ScriptProvenance } from '@/scripting/trust/ScriptProvenance'
 import { IndexedDbStateStore } from '@/sync/IndexedDbStateStore'
+import { ScriptExecutor } from '@/scripting/ScriptExecutor'
+import { scriptApprovalDialog, cancelScriptApprovals } from '@/scripting/trust/scriptApprovalPrompt'
 
 const path = 'Scripts/sample.js'
 const bytes = '// @name Sample\nreturn "approved"'
@@ -19,6 +21,7 @@ beforeEach(() => {
   vi.stubGlobal('indexedDB', factory)
 })
 afterEach(() => {
+  cancelScriptApprovals()
   vi.restoreAllMocks()
   vi.unstubAllGlobals()
 })
@@ -47,6 +50,31 @@ async function managed(facet: 'personal' | 'scoped' = 'personal', principal = 's
 }
 
 describe('exact-byte local script approval', () => {
+  it('stops the owning execution before settling its approval and never starts its script', async () => {
+    await managed()
+    let signal: AbortSignal | undefined
+    const executor = new ScriptExecutor({
+      admit: vi.fn(async (_path, _source, admittedSignal) => {
+        signal = admittedSignal
+        return {} as never
+      }),
+      execute: vi.fn(),
+      showParamForm: vi.fn(),
+    })
+    const run = vi.spyOn(executor as unknown as { run: () => Promise<never> }, 'run')
+    const result = executor
+      .execute(path, {}, { source: 'command', allowApprovalPrompt: true })
+      .then(
+        () => 'executed',
+        (error: Error) => error.message
+      )
+    await vi.waitFor(() => expect(scriptApprovalDialog.value).not.toBeNull())
+    scriptApprovalDialog.value!.stop()
+    expect(signal!.aborted).toBe(true)
+    expect(await result).toContain('approval')
+    expect(run).not.toHaveBeenCalled()
+    expect(scriptApprovalDialog.value).toBeNull()
+  })
   it('approves the shown version only on this device and runs its actual bytes', async () => {
     await managed()
     const confirm = vi.fn(async () => true)
