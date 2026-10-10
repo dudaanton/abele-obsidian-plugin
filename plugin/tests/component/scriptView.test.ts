@@ -178,7 +178,7 @@ describe('nodes', () => {
     ).toEqual(['cell'])
     expect(w.findComponent(KitButton).props('text')).toBe('go')
     expect(w.find('.abele-obsidian-icon').exists()).toBe(true)
-    expect((w.find('input.abele-obsidian-input').element as HTMLInputElement).value).toBe('val')
+    expect((w.find('input.abele-obsidian-input__base').element as HTMLInputElement).value).toBe('val')
   })
 
   it('puts the script own class on the root of the element', () => {

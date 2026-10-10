@@ -270,7 +270,7 @@ describe('find in a markdown file', () => {
   const find = async (w: VueWrapper, keys: { find: number }, q: string) => {
     keys.find++
     await flushPromises()
-    const input = w.find<HTMLInputElement>('.abele-github-find__input').element
+    const input = w.find<HTMLInputElement>('.abele-github-find__input input').element
     input.value = q
     input.dispatchEvent(new Event('input'))
     await advance(150)

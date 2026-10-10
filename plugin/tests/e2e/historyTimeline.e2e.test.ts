@@ -208,7 +208,7 @@ describe.skipIf(!available)('the history timeline of a base', () => {
           report.shots.push(await picture('timeline-desktop-light.png'))
 
           // A name typed in the go-to field picks that person.
-          const go = root.querySelector('.abele-timeline-base__go')
+          const go = root.querySelector('.abele-timeline-base__go input')
           go.value = 'Шекспир'
           go.dispatchEvent(new Event('input', { bubbles: true }))
           go.dispatchEvent(new KeyboardEvent('keydown', { key: 'Enter', bubbles: true }))
@@ -390,7 +390,7 @@ describe.skipIf(!available)('the history timeline of a base', () => {
         // Centuries: the bars of the Renaissance are wide enough for a finger.
         const tab = [...root.querySelectorAll('.abele-timeline-base__levels .abele-tabs__tab')].find((t) => t.textContent.trim() === 'Centuries')
         tab?.click()
-        const go = root.querySelector('.abele-timeline-base__go')
+        const go = root.querySelector('.abele-timeline-base__go input')
         go.value = '1580'
         go.dispatchEvent(new Event('input', { bubbles: true }))
         go.dispatchEvent(new KeyboardEvent('keydown', { key: 'Enter', bubbles: true }))

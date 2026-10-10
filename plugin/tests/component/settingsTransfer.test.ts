@@ -829,7 +829,7 @@ describe('sending without a camera', () => {
     await clickButton(modal, 'Copy the text')
 
     expect(Notice.shown.join(' ')).toContain('Could not copy the text')
-    const fallback = modal.find('textarea.abele-transfer-send__fallback')
+    const fallback = modal.find('.abele-transfer-send__fallback textarea')
     expect(fallback.exists()).toBe(true)
     expect((fallback.element as HTMLTextAreaElement).value).toBe(modal.props('text'))
   })

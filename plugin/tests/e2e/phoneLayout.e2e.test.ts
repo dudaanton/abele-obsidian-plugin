@@ -2344,7 +2344,7 @@ describe.skipIf(!available)('the chat dialogs on a phone', () => {
   it.each(screens)('%s: one thing scrolls inside the body, and it reaches the bottom', (label) => {
     // A settings page's prompt editors are fields that scroll their own text, by design.
     const scrollers = (report[label]?.scrollers ?? []).filter(
-      (s) => !(label.startsWith('settings') && s.name === 'abele-obsidian-input')
+      (s) => !(label.startsWith('settings') && s.name === 'abele-obsidian-input__base')
     )
     expect(scrollers.length, JSON.stringify(scrollers)).toBeLessThanOrEqual(1)
     if (prompts.has(label)) return

@@ -56,7 +56,7 @@ describe('find in the tab', () => {
 
     keys.find++
     await flushPromises()
-    const input = wrapper.find<HTMLInputElement>('.abele-github-find__input').element
+    const input = wrapper.find<HTMLInputElement>('.abele-github-find__input input').element
     expect(document.activeElement).toBe(input)
 
     await type(input, 'crash')
@@ -84,7 +84,7 @@ describe('find in the tab', () => {
       .find((i) => i.attributes('aria-label')?.startsWith('Find in this tab'))!
       .trigger('click')
     await flushPromises()
-    await type(wrapper.find<HTMLInputElement>('.abele-github-find__input').element, 'zebra')
+    await type(wrapper.find<HTMLInputElement>('.abele-github-find__input input').element, 'zebra')
     expect(wrapper.find('.abele-github-find__count').text()).toBe('No results')
   })
 })
@@ -138,7 +138,7 @@ describe('the code search panel', () => {
   }
 
   const search = async (wrapper: Awaited<ReturnType<typeof openPanel>>['wrapper'], q: string) => {
-    const input = wrapper.find<HTMLInputElement>('.abele-github-search__query')
+    const input = wrapper.find<HTMLInputElement>('.abele-github-search__query input')
     await input.setValue(q)
     key(input.element, 'Enter')
     // Submitting is not completing: hashes and archive decompression run on the host.
@@ -284,7 +284,7 @@ describe('the code search panel', () => {
   it('finds file names as they are typed', async () => {
     const { wrapper } = await openPanel()
     await wrapper.find<HTMLSelectElement>('.abele-github-search__scope select').setValue('names')
-    await wrapper.find<HTMLInputElement>('.abele-github-search__query').setValue('format')
+    await wrapper.find<HTMLInputElement>('.abele-github-search__query input').setValue('format')
     await vi.waitFor(() =>
       expect(wrapper.findAll('.abele-github-search__path').map((p) => p.text())).toEqual([
         'src/util/format.ts',

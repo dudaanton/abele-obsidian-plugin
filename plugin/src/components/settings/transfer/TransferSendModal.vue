@@ -180,7 +180,7 @@ const step = (by: number) => {
 const uncopied = ref(false)
 
 const selectFallback = () => {
-  const field = root.value?.querySelector<HTMLTextAreaElement>('.abele-transfer-send__fallback')
+  const field = root.value?.querySelector<HTMLTextAreaElement>('.abele-transfer-send__fallback .abele-obsidian-input__base')
   field?.focus()
   field?.select()
 }
@@ -321,7 +321,7 @@ onBeforeUnmount(stop)
   font-variant-numeric: tabular-nums;
 }
 
-.abele-transfer-send__fallback {
+.abele-transfer-send__fallback .abele-obsidian-input__base {
   font-family: var(--font-monospace);
   word-break: break-all;
 }

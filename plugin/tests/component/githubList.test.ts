@@ -72,7 +72,7 @@ describe('a list of pull requests', () => {
     const { wrapper, request, onTitle, model } = openTab('https://github.com/o/r/pulls', ROUTES)
     await loaded(wrapper)
 
-    expect((wrapper.find('.abele-github-list__query').element as HTMLInputElement).value).toBe(
+    expect((wrapper.find('.abele-github-list__query input').element as HTMLInputElement).value).toBe(
       'is:pr is:open'
     )
     const first = searches(request).find((u) => u.searchParams.get('per_page') !== '1')!
@@ -124,7 +124,7 @@ describe('a list of pull requests', () => {
   it('a typed query goes as it is', async () => {
     const { wrapper, onOpen } = openTab('https://github.com/o/r/pulls', ROUTES)
     await loaded(wrapper)
-    const input = wrapper.find('.abele-github-list__query')
+    const input = wrapper.find('.abele-github-list__query input')
     await input.setValue('is:pr is:open author:bob   label:bug')
     await input.trigger('keydown', { key: 'Enter' })
     expect(onOpen).toHaveBeenLastCalledWith(

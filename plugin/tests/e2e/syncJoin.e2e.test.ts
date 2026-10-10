@@ -278,7 +278,7 @@ describe.skipIf(why !== null)('joining a vault that already has files', () => {
       option.click()
       await sleep(200)
       const chosen = option.classList.contains('abele-card_selected')
-      typeInto(dialog.querySelector('input.abele-obsidian-input'), ${JSON.stringify(DEVICE)})
+      typeInto(dialog.querySelector('input.abele-obsidian-input__base'), ${JSON.stringify(DEVICE)})
       await press(dialog, 'Connect')
       if (!(await poll(() => !doc.querySelector('.abele-join-vault'), 40000)))
         throw new Error('the join dialog stayed open: ' + textOf(dialog.querySelector('.abele-join-vault__error')))

@@ -666,35 +666,98 @@ describe('tooltips', () => {
 })
 
 describe('Input', () => {
-  it('carries its own class, so its width rules actually apply', () => {
+  it('carries its own classes, so its width rules actually apply', () => {
     // The class used to sit on a wrapper this component never rendered, which left every
     // field at its intrinsic width and pushed narrow panes sideways.
     const view = mount(Input, { props: { modelValue: 'x' } })
 
     expect(view.classes()).toContain('abele-obsidian-input')
+    expect(view.find('input').classes()).toContain('abele-obsidian-input__base')
+  })
+
+  it("puts a caller's class on the field and every other attribute on the input", () => {
+    const view = mount(Input, {
+      props: { modelValue: 'x' },
+      attrs: { class: 'caller-place', 'aria-label': 'Название', name: 'title' },
+    })
+
+    expect(view.classes()).toContain('caller-place')
+    const input = view.find('input')
+    expect(input.classes()).not.toContain('caller-place')
+    expect(input.attributes('aria-label')).toBe('Название')
+    expect(input.attributes('name')).toBe('title')
+  })
+
+  it('shows a leading icon and makes room for it', () => {
+    const view = mount(Input, { props: { modelValue: '', icon: 'search' } })
+
+    expect(view.classes()).toContain('abele-obsidian-input_leading')
+    expect(view.find('.abele-obsidian-input__leading-icon').exists()).toBe(true)
+  })
+
+  it('puts a caller’s button or count in the trailing place', () => {
+    const view = mount(Input, {
+      props: { modelValue: 'abc' },
+      slots: { trailing: '<span class="count">3/40</span>' },
+    })
+
+    expect(view.classes()).toContain('abele-obsidian-input_trailing')
+    expect(view.find('.abele-obsidian-input__trailing .count').text()).toBe('3/40')
+  })
+
+  it('says it is loading with a spinner in place of the trailing content', () => {
+    const view = mount(Input, {
+      props: { modelValue: '', loading: true },
+      slots: { trailing: '<span class="count">0/40</span>' },
+    })
+
+    expect(view.find('.abele-obsidian-input__loading-icon').attributes('role')).toBe('status')
+    expect(view.find('.count').exists()).toBe(false)
+  })
+
+  it('marks a wrong value on the field and for a screen reader', () => {
+    const view = mount(Input, { props: { modelValue: 'x', invalid: true } })
+
+    expect(view.classes()).toContain('abele-obsidian-input_invalid')
+    expect(view.find('input').attributes('aria-invalid')).toBe('true')
+  })
+
+  it('takes the kind of value as a type', () => {
+    const view = mount(Input, { props: { modelValue: '', type: 'email' } })
+
+    expect(view.find('input').attributes('type')).toBe('email')
+  })
+
+  it('hands its input to a caller that needs to focus or select it', () => {
+    const view = mount(Input, { props: { modelValue: 'x' } })
+
+    expect((view.vm as unknown as { inputRef: HTMLInputElement }).inputRef).toBe(
+      view.find('input').element
+    )
   })
 
   it('marks a multi-line field so it can be given room', () => {
     const view = mount(Input, { props: { modelValue: 'x', asTextArea: true } })
 
-    expect(view.element.tagName).toBe('TEXTAREA')
+    expect(view.find('textarea').exists()).toBe(true)
     expect(view.classes()).toContain('abele-obsidian-input_multiline')
   })
 
   it('hides what is typed into a passphrase, and asks nothing to remember it', () => {
-    const hidden = mount(Input, { props: { modelValue: 'x', password: true } })
+    const hidden = mount(Input, { props: { modelValue: 'x', password: true } }).find('input')
     expect(hidden.attributes('type')).toBe('password')
     expect(hidden.attributes('autocomplete')).toBe('off')
 
-    const plain = mount(Input, { props: { modelValue: 'x' } })
+    const plain = mount(Input, { props: { modelValue: 'x' } }).find('input')
     expect(plain.attributes('type')).toBe('text')
   })
 
   it('asks for a date and a time with the platform’s own picker', () => {
     const view = mount(Input, { props: { modelValue: '2026-09-27T14:30', dateTime: true } })
+    const input = view.find('input')
 
-    expect(view.attributes('type')).toBe('datetime-local')
-    expect((view.element as HTMLInputElement).value).toBe('2026-09-27T14:30')
+    expect(input.attributes('type')).toBe('datetime-local')
+    expect((input.element as HTMLInputElement).value).toBe('2026-09-27T14:30')
   })
 
   /**
@@ -741,7 +804,7 @@ describe('Input as a textarea', () => {
     expect(field.attributes('rows')).toBe('2')
     // The six-line floor is for a field nobody sized; a sized one would only be pushed open
     // by it, and a one-line question would arrive looking like a form.
-    expect(field.classes()).toContain('abele-obsidian-input_sized')
+    expect(view.classes()).toContain('abele-obsidian-input_sized')
   })
 
   it('keeps the six-line floor for a textarea nobody sized', () => {
@@ -749,8 +812,8 @@ describe('Input as a textarea', () => {
 
     const field = view.find('textarea')
     expect(field.attributes('rows')).toBeUndefined()
-    expect(field.classes()).toContain('abele-obsidian-input_multiline')
-    expect(field.classes()).not.toContain('abele-obsidian-input_sized')
+    expect(view.classes()).toContain('abele-obsidian-input_multiline')
+    expect(view.classes()).not.toContain('abele-obsidian-input_sized')
   })
 
   it('does not size a single-line input', () => {

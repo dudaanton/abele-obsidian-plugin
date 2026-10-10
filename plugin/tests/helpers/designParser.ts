@@ -6,7 +6,7 @@ import { compileString } from 'sass-embedded'
 
 const DISCLOSURE_GLYPHS = /[▶▼▸▾►◀▲▽▴▵▿▹◂◃]/u
 const HOST_TOKEN =
-  /^--(?:size-(?:2-[0-8]|4-(?:[0-9]|10|11|12|16|18))|font-(?:interface|text|monospace|ui-(?:small|smaller|medium|large)|normal|medium|semibold|bold)|line-height-(?:normal|tight)|text-(?:normal|muted|faint|accent|error|warning)|icon-(?:size|color|color-hover)|color-(?:red|orange|yellow|green|cyan|blue|purple|pink)|background-(?:primary|secondary|modifier-(?:border|border-focus|active-hover|hover))|interactive-accent|radius-[sm]|cursor(?:-link)?|touch-size-[sml]|abele-touch-min)$/
+  /^--(?:size-(?:2-[0-8]|4-(?:[0-9]|10|11|12|16|18))|font-(?:interface|text|monospace|ui-(?:small|smaller|medium|large)|normal|medium|semibold|bold)|line-height-(?:normal|tight)|text-(?:normal|muted|faint|accent|error|warning)|icon-(?:size|stroke|color|color-hover|(?:xs|s|m|l|xl)(?:-stroke-width)?)|color-(?:red|orange|yellow|green|cyan|blue|purple|pink)|background-(?:primary|secondary|modifier-(?:border|border-focus|active-hover|hover))|interactive-accent|radius-[sm]|cursor(?:-link)?|touch-size-[sml]|abele-touch-min)$/
 const hasProp = (node: ElementNode, name: string) =>
   node.props.some((p) =>
     p.type === NodeTypes.ATTRIBUTE
@@ -150,7 +150,13 @@ export function inspectCss(
       return
     // Consuming a host token does not authorize redefining the host's palette/type scale.
     // The centralized, exact touch floor above is the only kit-owned static definition.
-    if (decl.prop.startsWith('--')) errors.push(`unapproved token definition: ${decl.prop}`)
+    // Obsidian sizes an icon by setting its own --icon-size and --icon-stroke on the element
+    // that holds it; taking one of its named steps that way is not a new scale.
+    const iconStep =
+      ['--icon-size', '--icon-stroke'].includes(decl.prop) &&
+      /^var\(--(?:icon-(?:xs|s|m|l|xl)(?:-stroke-width)?|search-icon-size)\)$/.test(value.trim())
+    if (decl.prop.startsWith('--') && !iconStep)
+      errors.push(`unapproved token definition: ${decl.prop}`)
     for (const match of value.matchAll(/var\((--[\w-]+)/g))
       if (!HOST_TOKEN.test(match[1])) errors.push(`unapproved token: ${match[1]}`)
     const literal = value

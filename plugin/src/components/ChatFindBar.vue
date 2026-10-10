@@ -80,7 +80,7 @@ const onKey = (e: KeyboardEvent) => {
 
 /** Puts the cursor in the field with what is there selected, for another Cmd+F. */
 const focus = () => {
-  const el = inputRef.value?.$el as HTMLInputElement | undefined
+  const el = inputRef.value?.inputRef as HTMLInputElement | undefined
   el?.focus()
   el?.select()
 }
