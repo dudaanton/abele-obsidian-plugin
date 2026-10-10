@@ -42,6 +42,7 @@
           <Icon
             v-if="commentSession"
             icon="corner-up-left"
+            class="abele-ai-chat__secondary-action"
             with-bg
             tooltip="Back to the passage this is about"
             @click="backToNote"
@@ -53,6 +54,7 @@
           <Icon
             v-if="commentSession"
             icon="messages-square"
+            class="abele-ai-chat__secondary-action"
             with-bg
             :disabled="blocked"
             :tooltip="blocked ? blockedTooltip : 'Turn this comment into an ordinary chat'"
@@ -62,14 +64,14 @@
           <Icon
             icon="search"
             with-bg
-            class="abele-ai-chat__find"
+            class="abele-ai-chat__find abele-ai-chat__secondary-action"
             tooltip="Find in this chat"
             @click="find.open()"
           />
           <Icon
             icon="list-tree"
             with-bg
-            class="abele-ai-chat__navigation"
+            class="abele-ai-chat__navigation abele-ai-chat__secondary-action"
             tooltip="Navigation"
             @click="openNavigation()"
           />
@@ -90,12 +92,24 @@
             tooltip="Artifacts — notes, images and scripts"
             @click="artifactsSession = session"
           />
-          <Icon icon="plus" with-bg tooltip="Start a new chat" @click="onNewChatMenu" />
+          <Icon
+            icon="plus"
+            class="abele-ai-chat__secondary-action"
+            with-bg
+            tooltip="Start a new chat"
+            @click="onNewChatMenu"
+          />
           <Icon
             icon="history"
             with-bg
             tooltip="Open a chat you have had"
             @click="historyOpen = true"
+          />
+          <SheetHeaderActions
+            class="abele-ai-chat__overflow"
+            :actions="headerOverflowActions"
+            overflow-label="More chat actions"
+            @action="onHeaderOverflowAction"
           />
         </div>
       </div>
@@ -438,6 +452,7 @@ import { ref, shallowRef, watch, watchEffect, nextTick, computed, onMounted, onU
 import { Notice, Platform, TFile } from 'obsidian'
 import Icon from './obsidian/Icon.vue'
 import AgentsButton from './AgentsButton.vue'
+import SheetHeaderActions, { type HeaderAction } from './obsidian/SheetHeaderActions.vue'
 import LocalAttentionPanel from './LocalAttentionPanel.vue'
 import Markdown from './obsidian/Markdown.vue'
 import AiChatMessage from './AiChatMessage.vue'
@@ -2499,6 +2514,45 @@ const newMenuPosition = () => {
 const onNewTab = () => newChatMenu(() => { chatService.newTab() }, newMenuPosition())
 const onNewChatMenu = () => newChatMenu(() => { void handleNewChat() }, newMenuPosition())
 
+// Keep the same actions on a narrow pane, without making the agent picker compete with
+// every icon. The existing sheet-header kit opens Obsidian's menu and restores focus.
+const headerOverflowActions = computed<HeaderAction[]>(() => [
+  ...(commentSession.value
+    ? [
+        { id: 'back', label: 'Back to the passage this is about', icon: 'corner-up-left' },
+        {
+          id: 'promote',
+          label: 'Turn this comment into an ordinary chat',
+          icon: 'messages-square',
+          disabled: blocked.value,
+          reason: blockedTooltip.value,
+        },
+      ]
+    : []),
+  { id: 'find', label: 'Find in this chat', icon: 'search' },
+  { id: 'navigation', label: 'Navigation', icon: 'list-tree' },
+  { id: 'new', label: 'Start a new chat', icon: 'plus' },
+])
+const onHeaderOverflowAction = (id: string) => {
+  switch (id) {
+    case 'back':
+      void backToNote()
+      break
+    case 'promote':
+      if (!blocked.value) void openAsChat()
+      break
+    case 'find':
+      find.open()
+      break
+    case 'navigation':
+      openNavigation()
+      break
+    case 'new':
+      onNewChatMenu()
+      break
+  }
+}
+
 const handleNewChat = async () => {
   const id = session.value?.id
   if (id) await chatService.startNewChat(id)
@@ -2581,12 +2635,28 @@ const showDebug = () => {
   gap: var(--size-4-1);
 }
 
+.abele-ai-chat__overflow {
+  display: none;
+}
+
+// Pane width, not device width: a narrow desktop split needs the same escape hatch.
+@container (max-width: 420px) {
+  .abele-ai-chat__header-actions > .abele-ai-chat__secondary-action {
+    display: none;
+  }
+
+  .abele-ai-chat__overflow {
+    display: flex;
+  }
+}
+
 .abele-ai-chat__header-actions {
   display: flex;
   align-items: center;
   gap: var(--size-4-1);
 
-  > .abele-obsidian-icon {
+  > .abele-obsidian-icon,
+  > .abele-ai-chat__overflow .abele-obsidian-icon {
     height: 2em;
     min-width: 2em;
     flex-shrink: 0;

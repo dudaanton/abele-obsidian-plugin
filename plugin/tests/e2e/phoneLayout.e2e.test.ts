@@ -179,6 +179,8 @@ interface Screen {
   stageTop?: number[]
   canvasFits?: boolean
   ids?: string[]
+  /** Direct and overflow header actions, measured while the native menu is open. */
+  header?: { direct: string[]; overflow: string[]; unreachable: string[]; clipped: string[] }
   /** Where the picture went. */
   shot: string
   error: string
@@ -365,6 +367,35 @@ const probeScript = `(async () => {
     await until(() => !document.querySelector('.modal, .modal-container .prompt, .menu'), 3000)
   }
 
+  const headerActions = async (label, root) => {
+    const entry = { direct: [], overflow: [], unreachable: [], clipped: [] }
+    const reachable = (el) => {
+      const r = el.getBoundingClientRect()
+      return r.width > 0 && r.height > 0 && r.left >= 0 && r.right <= window.innerWidth &&
+        r.top >= 0 && r.bottom <= window.innerHeight
+    }
+    for (const button of root.querySelectorAll('.abele-ai-chat__header-actions button')) {
+      if (!button.getBoundingClientRect().width) continue
+      const label = button.getAttribute('aria-label').split(' · ')[0]
+      entry.direct.push(label)
+      if (!reachable(button)) entry.unreachable.push(label)
+      button.focus(); entry.clipped.push(...ringClipped(button)); button.blur()
+    }
+    const more = root.querySelector('[aria-label="More chat actions"]')
+    if (!more || !reachable(more)) throw new Error('no reachable header overflow')
+    more.click()
+    await until(() => document.querySelector('.menu'), 3000)
+    const menu = document.querySelector('.menu')
+    await screen(label + ' header menu', menu, menu)
+    for (const item of menu.querySelectorAll('.menu-item')) {
+      const title = item.querySelector('.menu-item-title')?.textContent.trim()
+      entry.overflow.push(title)
+      if (!reachable(item)) entry.unreachable.push(title)
+    }
+    report[label].header = entry
+    await closeDialog()
+  }
+
   // Lists worth measuring: a vault with two skills shows nothing about how a list of twenty
   // stands in a sheet. These are written for the run and removed after it.
   const SEEDED = []
@@ -494,6 +525,7 @@ const probeScript = `(async () => {
 
     const chat = document.querySelector('.abele-ai-chat')
     await screen('chat', chat, chat)
+    await headerActions('chat', chat)
 
     // An unsent picture and the same preview used by sent pictures, with every action visible.
     {
@@ -639,6 +671,7 @@ const probeScript = `(async () => {
       await wait(400)
       const nested = document.querySelector('.abele-ai-chat')
       await screen('nested comment', nested, nested)
+      await headerActions('nested comment', nested)
       // Four levels: folded to one row, then opened by its ellipsis.
       await comments.showInSidebar('pnest3')
       await until(() => document.querySelector('.abele-ai-chat .abele-breadcrumbs__more'), 5000)
@@ -2185,6 +2218,25 @@ describe.skipIf(!available)('the chat dialogs on a phone', () => {
       }
     }
   )
+
+  it.each(['chat', 'nested comment'])('%s: every header action stays reachable directly or in More', (label) => {
+    const header = report[label]?.header
+    expect(header?.direct).toEqual([
+      'Agents', 'Scope, skills, prompts, permissions and settings',
+      ...(label === 'chat' ? ['Artifacts — notes, images and scripts'] : []),
+      'Open a chat you have had', 'More chat actions',
+    ])
+    expect(header?.overflow).toEqual([
+      ...(label === 'nested comment' ? [
+        'Back to the passage this is about', 'Turn this comment into an ordinary chat',
+      ] : []),
+      'Find in this chat', 'Navigation', 'Start a new chat',
+    ])
+    expect(header?.unreachable).toEqual([])
+    expect(header?.clipped).toEqual([])
+    expect(report[label + ' header menu']?.error).toBe('')
+    expect(report[label + ' header menu']?.over).toEqual([])
+  })
 
   it.each(screens)('%s: nothing reaches past the edge of the screen', (label) => {
     expect(report[label]?.over ?? ['no report']).toEqual([])
