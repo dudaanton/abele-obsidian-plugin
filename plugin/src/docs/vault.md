@@ -1086,8 +1086,13 @@ Recovery never executes a script, creates another card or blindly retries an unc
 Pending/known-not-written retries revalidate the original capture. Equal source bytes alone are
 not acknowledgement. Remove link/Undo applies a proven owned inverse only, preserves unrelated
 edits/other bindings and never deletes the card. Unprovable inverses refuse instead of restoring
-an entire message. Card rename maintenance follows open and unopened chats through their
-existing writer/external-change guards; retained historical source remains immutable. Unresolved
+an entire message. Correction Undo likewise proves that each active card link remains owned
+in both the current source and the restored source; otherwise it refuses without changing text,
+operation evidence or recovery status. Remove the owned link first when that proof is unavailable.
+Card rename maintenance follows open and unopened chats through their existing writer/external-change
+guards. A closed-chat rename transforms one recovery-aware read and checks those exact same bytes
+at publication, so a concurrent sync append cannot be replaced by an older parsed snapshot.
+Retained historical source remains immutable. Unresolved
 recovery and referenced versions survive compaction. Original provider records are unchanged;
 semantic corrections project undecorated text and active associations are separate untrusted
 user words-to-note annotations. No card-content read is issued for model projection.

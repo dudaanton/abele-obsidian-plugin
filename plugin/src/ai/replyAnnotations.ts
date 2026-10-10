@@ -1,5 +1,5 @@
 import { nanoid } from 'nanoid'
-import { undecoratedMessage } from './chatBindingProof'
+import { bindingProof, undecoratedMessage } from './chatBindingProof'
 import type { HighlightColor } from '@/reader/highlights'
 import { EMPTY_USAGE, type AssistantContentBlock, type Message } from './client'
 import type { ChatMessage } from './types'
@@ -124,6 +124,19 @@ export function undoRevision(message: ChatMessage, at: number): ChatMessage {
     },
     true
   ).content
+  // Semantic equality is not proof that a later decoration survives the inverse.
+  // Keep the current source and operation state intact unless both placements are owned.
+  for (const operation of message.decorationOperations ?? []) {
+    if (operation.undoneAt) continue
+    try {
+      bindingProof(message, operation)
+      bindingProof({ ...message, content: before }, operation)
+    } catch {
+      throw new Error(
+        'Cannot prove card links will be preserved by undoing this correction. Remove or resolve the card links first; nothing was changed.'
+      )
+    }
+  }
   revisions[index] = { ...revision, undoneAt: at }
   return {
     ...message,

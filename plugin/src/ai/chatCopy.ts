@@ -196,15 +196,23 @@ export async function inspectChat(app: App, file: TFile): Promise<ParsedChat> {
  * not touched yet — or one that outlived a rewrite that did finish.
  */
 export async function readChat(app: App, file: TFile): Promise<ParsedChat> {
-  let result: ParsedChat | undefined
-  const text = await readChatText(app, file, (text, content) => {
-    const parsed = parseChat(text)
-    const copy = parseChat(content)
-    const recover = recoverableChat(text, parsed, copy)
-    result = recover ? copy : parsed
+  return (await readChatSnapshot(app, file)).parsed
+}
+
+/** One recovery-aware read supplies both the transformation snapshot and its guard bytes. */
+export async function readChatSnapshot(
+  app: App,
+  file: TFile
+): Promise<{ content: string; parsed: ParsedChat }> {
+  let parsed: ParsedChat | undefined
+  const content = await readChatText(app, file, (text, backup) => {
+    const current = parseChat(text)
+    const copy = parseChat(backup)
+    const recover = recoverableChat(text, current, copy)
+    parsed = recover ? copy : current
     return recover
   })
-  return result ?? parseChat(text)
+  return { content, parsed: parsed ?? parseChat(content) }
 }
 
 /**

@@ -4,7 +4,7 @@ import { GlobalStore } from '@/stores/GlobalStore'
 import { ChatSelectionBindings } from './chatBindings'
 import { renameBoundMessage } from './chatBindingEdits'
 import { replyMarkdownText } from './replyMarkdown'
-import { readChat, transformChat } from './chatCopy'
+import { readChatSnapshot, rewriteChat } from './chatCopy'
 import { serializeChat } from './ChatLog'
 
 let renaming: Promise<void> = Promise.resolve()
@@ -23,7 +23,7 @@ export function followChatBindingRename(oldPath: string, newPath: string): Promi
         await new ChatSelectionBindings(session).rename(oldPath, newPath)
         continue
       }
-      const loaded = await readChat(app, file)
+      const { content: prior, parsed: loaded } = await readChatSnapshot(app, file)
       if (
         !loaded.metadata ||
         (!loaded.messages.some((m) =>
@@ -32,7 +32,6 @@ export function followChatBindingRename(oldPath: string, newPath: string): Promi
           !loaded.metadata.bindingRecovery?.some((e) => e.targetPath === oldPath))
       )
         continue
-      const prior = await app.vault.read(file)
       const messages = await Promise.all(
         loaded.messages.map((m) => renameBoundMessage(m, oldPath, newPath, replyMarkdownText))
       )
@@ -48,17 +47,21 @@ export function followChatBindingRename(oldPath: string, newPath: string): Promi
             }
           : entry
       )
-      await transformChat(app, file, (current) => {
-        if (current !== prior || owner(file.path))
-          throw new Error(
-            'The binding source changed during card rename. Reopen it before making changes.'
-          )
-        return serializeChat({
+      await rewriteChat(
+        app,
+        file,
+        serializeChat({
           metadata: { ...loaded.metadata!, bindingRecovery: recovery },
           messages,
           internalMessages: loaded.internalMessages,
-        })
-      })
+        }),
+        (current) => {
+          if (current !== prior || owner(file.path))
+            throw new Error(
+              'The binding source changed during card rename. Reopen it before making changes.'
+            )
+        }
+      )
     }
   })
   renaming = work.catch(() => {})

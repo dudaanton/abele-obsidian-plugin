@@ -441,6 +441,8 @@ must still be open, including for a rerun; its captured revision must still be c
 
 Card links in the conversation offer Open card, Copy source link and Remove link (Undo binding).
 Removal applies only the owned inverse; it never deletes the card or restores a stale message.
+Undoing a reply correction refuses if it cannot prove that active card links will be preserved.
+Remove the owned links first, then undo the correction; refusal leaves source and binding status unchanged.
 Recovery offers Retry binding only for pending/known-not-written operations. It does not rerun
 translation or card creation. Uncertain publication requires inspection/reopen and cannot be
 blindly retried or acknowledged from matching bytes. If journaling fails, retain the returned

@@ -12,6 +12,8 @@ import { acceptRevision, undoRevision } from '@/ai/replyAnnotations'
 import { captureChatSelection } from '@/selection/anchors'
 import type { RevisionPorts } from '@/selection/types'
 import { ChatSelectionBindings } from '@/ai/chatBindings'
+import { followChatBindingRename } from '@/ai/chatBindingRenames'
+import * as renderer from '@/ai/replyMarkdown'
 import { EMPTY_USAGE } from '@/ai/client'
 
 const PATH = 'AI/Chats/sample-anchor.abchat'
@@ -262,6 +264,210 @@ it('undoes a link without erasing a later semantic correction and keeps correcti
   await bindings().undo(result.operationId)
   expect((await disk()).messages[0].content).toBe(TEXT + ' More.')
   expect(undoRevision(session.allMessages.value[0], 3).content).toBe(TEXT)
+})
+
+it('does not overwrite a sync append arriving between the closed-chat snapshot and rename guard reads', async () => {
+  await app.vault.createFolder('Cards')
+  await app.vault.create('Cards/Sample.md', 'Sample')
+  await bind()
+  await app.vault.rename(
+    app.vault.getAbstractFileByPath('Cards/Sample.md') as TFile,
+    'Cards/Renamed.md'
+  )
+  session.destroy()
+  expect(ChatService.getInstance().getSessionByFile(PATH)).toBeNull()
+  vi.spyOn(renderer, 'replyMarkdownText').mockImplementation(async (source) =>
+    source.replace(/\[\[([^|\]]+)\|([^\]]+)\]\]/g, '$2')
+  )
+  const read = app.vault.read.bind(app.vault)
+  let synced = false
+  vi.spyOn(app.vault, 'read').mockImplementation(async (target) => {
+    const content = await read(target)
+    if (target.path === PATH && !synced) {
+      synced = true
+      const parsed = parseChat(content)
+      await app.vault.modify(
+        target,
+        serializeChat({
+          metadata: parsed.metadata!,
+          messages: [
+            ...parsed.messages,
+            {
+              id: 'sample-synced',
+              role: 'user',
+              content: 'A concurrent saved message.',
+              timestamp: 5,
+            },
+          ],
+          internalMessages: [
+            ...parsed.internalMessages,
+            {
+              role: 'user',
+              content: 'A concurrent saved message.',
+              timestamp: 5,
+              chatMessageId: 'sample-synced',
+            },
+          ],
+        })
+      )
+    }
+    return content
+  })
+  await expect(followChatBindingRename('Cards/Sample.md', 'Cards/Renamed.md')).rejects.toThrow(
+    /source changed/
+  )
+  const saved = parseChat(await read(file()))
+  expect(saved.messages.map((message) => message.id)).toEqual(['reply', 'sample-synced'])
+  expect(saved.internalMessages.at(-1)?.chatMessageId).toBe('sample-synced')
+  expect(saved.messages[0].content).toContain('[[Cards/Sample|lantern]]')
+  // Explicit revalidation transforms the newer snapshot without losing its append.
+  await followChatBindingRename('Cards/Sample.md', 'Cards/Renamed.md')
+  const renamed = parseChat(await read(file()))
+  expect(renamed.messages.map((message) => message.id)).toEqual(['reply', 'sample-synced'])
+  expect(renamed.internalMessages.at(-1)?.chatMessageId).toBe('sample-synced')
+  expect(renamed.messages[0].content).toContain('[[Cards/Renamed|lantern]]')
+})
+
+it('retains the closed-chat version check when sync appends during renderer verification', async () => {
+  await app.vault.createFolder('Cards')
+  await app.vault.create('Cards/Sample.md', 'Sample')
+  await bind()
+  await app.vault.rename(
+    app.vault.getAbstractFileByPath('Cards/Sample.md') as TFile,
+    'Cards/Renamed.md'
+  )
+  session.destroy()
+  let synced = false
+  vi.spyOn(renderer, 'replyMarkdownText').mockImplementation(async (source) => {
+    if (!synced) {
+      synced = true
+      await app.vault.append(
+        file(),
+        JSON.stringify({
+          k: 'msg',
+          id: 'sample-render-append',
+          role: 'user',
+          content: 'A message saved during verification.',
+          timestamp: 5,
+        }) + '\n'
+      )
+    }
+    return source.replace(/\[\[([^|\]]+)\|([^\]]+)\]\]/g, '$2')
+  })
+  await expect(followChatBindingRename('Cards/Sample.md', 'Cards/Renamed.md')).rejects.toThrow(
+    /source changed/
+  )
+  const saved = await disk()
+  expect(saved.messages.map((message) => message.id)).toEqual(['reply', 'sample-render-append'])
+  expect(saved.messages[0].content).toContain('[[Cards/Sample|lantern]]')
+})
+
+it('refuses correction Undo when A lamp becomes The lamp and a later lamp binding cannot be preserved', async () => {
+  const saved = await disk()
+  await app.vault.modify(
+    file(),
+    serializeChat({
+      metadata: saved.metadata!,
+      messages: [{ id: 'reply', role: 'assistant', content: 'A lamp.', timestamp: 1 }],
+      internalMessages: [],
+    })
+  )
+  await reopen()
+  await session.changeReply('reply', (message) =>
+    acceptRevision(
+      message,
+      {
+        id: 'sample-prefix',
+        parent: PATH,
+        message: 'reply',
+        before: 'A lamp.',
+        from: 0,
+        old: 'A',
+        text: 'The',
+        request: '',
+        author: 'Sample',
+        at: 2,
+        status: 'pending',
+      },
+      2
+    )
+  )
+  await app.vault.createFolder('Cards')
+  await app.vault.create('Cards/Sample.md', 'Sample')
+  const snapshot = captureChatSelection({
+    revision: await session.ensureSelectionRevision('reply', ports),
+    range: { space: 'rendered', start: 4, end: 8 },
+    role: 'assistant',
+    author: 'Sample',
+    sentence: 'The lamp.',
+    title: 'Sample',
+    pathHint: PATH,
+  })
+  const anchor = await session.ensureChatAnchor(snapshot, ports.nextId)
+  const result = await bindings().bind(snapshot, anchor.id, 'Cards/Sample.md')
+  expect(result.status).toBe('applied')
+  const beforeUndo = await app.vault.read(file())
+  await expect(session.undoReplyRevision('reply')).rejects.toThrow(/card links.*preserved/i)
+  expect(await app.vault.read(file())).toBe(beforeUndo)
+  expect(session.allMessages.value[0].content).toBe('The [[Cards/Sample|lamp]].')
+  expect(session.allMessages.value[0].decorationOperations?.[0].undoneAt).toBeUndefined()
+  expect(session.bindingRecoveries.value[0].status).toBe('applied')
+  await bindings().undo(result.operationId)
+  await session.undoReplyRevision('reply')
+  expect((await disk()).messages[0].content).toBe('A lamp.')
+  expect((await disk()).metadata?.bindingRecovery?.[0].status).toBe('undone')
+  expect(app.vault.getAbstractFileByPath('Cards/Sample.md')).toBeTruthy()
+})
+
+it('preserves a provably owned binding that predates a correction during correction Undo', async () => {
+  const saved = await disk()
+  await app.vault.modify(
+    file(),
+    serializeChat({
+      metadata: saved.metadata!,
+      messages: [{ id: 'reply', role: 'assistant', content: 'A lamp.', timestamp: 1 }],
+      internalMessages: [],
+    })
+  )
+  await reopen()
+  await app.vault.createFolder('Cards')
+  await app.vault.create('Cards/Sample.md', 'Sample')
+  const snapshot = captureChatSelection({
+    revision: await session.ensureSelectionRevision('reply', ports),
+    range: { space: 'rendered', start: 2, end: 6 },
+    role: 'assistant',
+    author: 'Sample',
+    sentence: 'A lamp.',
+    title: 'Sample',
+    pathHint: PATH,
+  })
+  const anchor = await session.ensureChatAnchor(snapshot, ports.nextId)
+  const result = await bindings().bind(snapshot, anchor.id, 'Cards/Sample.md')
+  expect(result.status).toBe('applied')
+  await session.changeReply('reply', (message) =>
+    acceptRevision(
+      message,
+      {
+        id: 'sample-prefix',
+        parent: PATH,
+        message: 'reply',
+        before: message.content,
+        from: 0,
+        old: 'A',
+        text: 'The',
+        request: '',
+        author: 'Sample',
+        at: 2,
+        status: 'pending',
+      },
+      2
+    )
+  )
+  await session.undoReplyRevision('reply')
+  expect((await disk()).messages[0].content).toBe('A [[Cards/Sample|lamp]].')
+  expect((await disk()).metadata?.bindingRecovery?.[0].status).toBe('applied')
+  await bindings().undo(result.operationId)
+  expect((await disk()).messages[0].content).toBe('A lamp.')
 })
 
 it('never retargets stale source and leaves card path recoverable when mapping fails', async () => {
