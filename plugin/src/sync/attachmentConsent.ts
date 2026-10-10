@@ -94,6 +94,9 @@ export class AttachmentConsent {
   ) {
     this.documents = new ReviewDocuments(store)
   }
+  updatePaths(paths: ExecutablePaths): void {
+    Object.assign(this.paths, paths)
+  }
   private eligible(source: ReviewSource, target: ConsentTarget): boolean {
     return (
       (target.kind === 'attachment' || target.kind === 'canvas') &&

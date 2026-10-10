@@ -40,6 +40,10 @@ export class ConnectionEngines {
   }
   async close(): Promise<void> {
     this.closed = true
+    await this.reset()
+  }
+  /** Drain old effects before a host configuration change opens replacement ledgers. */
+  async reset(): Promise<void> {
     for (const { runtime } of this.runtimes.values()) runtime.invalidate()
     const closing = [...this.runtimes.values()].map(async ({ runtime, starting }) => {
       const close = runtime.close()

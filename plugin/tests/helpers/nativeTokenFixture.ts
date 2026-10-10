@@ -1,3 +1,5 @@
+import { decodeAccessToken } from '@abele/sync-protocol'
+import type { SyncServiceDeps } from '@/sync/environment'
 import { vi } from 'vitest'
 import { IDBFactory } from 'fake-indexeddb'
 import type { App } from 'obsidian'
@@ -17,7 +19,9 @@ export async function nativeTokenFixture(
   encoded: string,
   transport: typeof fetch,
   factory = new IDBFactory(),
-  arrived: () => void = () => {}
+  arrived: () => void = () => {},
+  retryFirstFailure = false,
+  deps: SyncServiceDeps & { waitForIdle?: boolean } = {}
 ) {
   let device = devices.get(app)
   if (!device) devices.set(app, (device = { keys: new Map(), metadata: new MemoryStateStore() }))
@@ -39,7 +43,15 @@ export async function nativeTokenFixture(
   }
   const ui = new TokenUi(registry, secrets, transport, reviews)
   await ui.connect(encoded)
-  const id = registry.records()[0].id
+  const token = decodeAccessToken(encoded)
+  const id = registry
+    .records()
+    .find(
+      (one) =>
+        one.address === token.address &&
+        one.scope?.id === token.scope.id &&
+        keys.get(one.secretReference) === token.key
+    )!.id
   const host = new TokenEngines(
     app as unknown as App,
     ui,
@@ -54,15 +66,27 @@ export async function nativeTokenFixture(
           throw new Error('Fixture uses polling')
         }
       } as never,
+      ...deps,
     },
     'Scripts',
     { path: `${app.vault.configDir}/plugins/abele/data.json`, arrived }
   )
   host.start()
   await ui.connectionsChanged()
-  await vi.waitFor(() => expectReady())
+  if (deps.waitForIdle !== false)
+    await vi.waitFor(async () => {
+      if (
+        retryFirstFailure &&
+        registry.records().find((one) => one.id === id)!.status === 'error'
+      ) {
+        retryFirstFailure = false
+        await ui.sync(id)
+      }
+      expectReady()
+    })
   function expectReady() {
-    if (registry.records()[0].status !== 'idle') throw new Error('Waiting for first token sync')
+    if (registry.records().find((one) => one.id === id)!.status !== 'idle')
+      throw new Error('Waiting for first token sync')
   }
   const port = TokenSettingsPort.forConnection(ui, id, app as unknown as App)
   return {

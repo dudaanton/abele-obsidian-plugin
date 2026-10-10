@@ -1,53 +1,28 @@
-import { TokenUi } from '@/sync/tokenUi'
-import { TokenConnectionRegistry } from '@/sync/tokenConnectionRegistry'
-import { TokenEngines } from '@/sync/tokenEngines'
-import { encodeAccessToken } from '@abele/sync-protocol'
 import { afterEach, describe, expect, it, vi } from 'vitest'
-import { IDBFactory } from 'fake-indexeddb'
-import { Enrolment } from '@/sync/enrolment'
-import { ConnectionKeeper } from '@/sync/connectionKeeper'
-import { emptyConnection, writeConnection, CONNECTION_KEY } from '@/sync/connection'
-import { writeLedgerId, readLedgerId } from '@/sync/ledgerId'
-import { authorizeLedgerBootstrap, requireLedger } from '@/sync/ledgerRecovery'
-import { IndexedDbStateStore, stateDatabaseName } from '@/sync/IndexedDbStateStore'
-import { rememberLedgerCleanup } from '@/sync/ledgerCleanup'
+import { encodeAccessToken } from '@abele/sync-protocol'
+import { tokenHostFixture } from '../helpers/tokenHostFixture'
+import { openTokenLedger } from '@/sync/tokenLedger'
+import { tokenExternalBinding } from '@/sync/tokenExternalBinding'
 import { ExternalState } from '@/sync/external/state'
-import { sha256 } from '@abele/sync-core'
-import { AttachmentStore } from '@/sync/external/attachmentStore'
-import { ExternalFileHost } from '@/sync/external/ObsidianExternalFileHost'
-import { activateExternalFiles } from '@/sync/external/pluginSafety'
-import { EXTERNAL_RETIRED_KEY } from '@/sync/external/connectionSwitch'
-import { ScopedPluginHost } from '@/sync/scoped/scopedPluginHost'
-import { SCOPED_CONNECTION_KEY, type ScopedLocalConnection } from '@/sync/scoped/scopedJoin'
-import { scopedSecretPort } from '@/sync/scoped/scopedSecretSlots'
-import { AbeleConfig } from '@/services/AbeleConfig'
-import { bindDeviceToken } from '@/secrets/deviceSecret'
-import { secrets, setSecrets } from '@/secrets/SecretStore'
-import { useVault } from '../helpers/testEnv'
+import { requireExternalLifecycleSafety } from '@/sync/external/pluginSafety'
+import { EXTERNAL_STATE_KEY } from '@abele/sync-core'
 
-const cleanup: (() => Promise<void> | void)[] = []
+const close: (() => Promise<void>)[] = []
 afterEach(async () => {
-  for (const fn of cleanup.splice(0).reverse()) await fn()
+  for (const one of close.splice(0).reverse()) await one()
   vi.restoreAllMocks()
-  setSecrets(null)
 })
-async function external(
-  store: IndexedDbStateStore,
-  id: string,
-  mode: 'personal' | 'scoped' = 'personal',
-  availability: 'active' | 'deleted' | 'detached' | 'unavailable' = 'active'
-) {
-  const binding = {
-    endpoint: 'https://sync.example.invalid',
-    vaultId: 'sample-vault',
-    mode,
-    principalId: 'sample-principal',
-    principalType: mode === 'scoped' ? ('installation' as const) : ('device' as const),
-    grantId: mode === 'scoped' ? 'sample-grant' : null,
-    generation: 1,
-    credentialAssociation: 'sample-slot',
-  }
-  const state = await ExternalState.open(store, id, binding)
+async function fixture(availability: 'active' | 'deleted' | 'detached' | 'unavailable' = 'active') {
+  const fetcher = vi.fn(async () => {
+      throw new Error('Unexpected network before preparation')
+    }),
+    s = tokenHostFixture(fetcher as never)
+  close.push(() => s.host.close())
+  const record = s.registry.records()[0],
+    raw = await openTokenLedger(s.factory, s.registry, record, () => {})
+  close.push(async () => raw.close())
+  const binding = await tokenExternalBinding(record, s.keys.get(record.secretReference)!),
+    state = await ExternalState.open(raw, record.ledgerId, binding)
   await state.commit({
     expectedRevision: 0,
     files: [
@@ -55,7 +30,7 @@ async function external(
         expectedRevision: null,
         next: {
           schema: 1,
-          ledgerId: id,
+          ledgerId: record.ledgerId,
           binding,
           fileId: 'sample-file',
           representation: 'remote-only',
@@ -73,469 +48,105 @@ async function external(
       },
     ],
   })
-  return state.snapshot()
+  return { ...s, raw, state, record: s.registry.records()[0], fetcher }
 }
-async function personal(retired = false) {
-  const app = useVault([])
-  setSecrets(null)
-  AbeleConfig.getInstance().applySettings()
-  const factory = new IDBFactory()
-  const own = {
-    ...emptyConnection(),
-    serverUrl: 'https://sync.example.invalid',
-    enrolledUrl: 'https://sync.example.invalid',
-    vaultId: 'sample-vault',
-    deviceId: 'sample-principal',
-    deviceTokenId: 'abele-sync-device-sample',
-  }
-  bindDeviceToken(secrets().device, own.deviceTokenId, 'absd_sample', own.serverUrl)
-  writeConnection(app, own)
-  const keeper = new ConnectionKeeper(() => {})
-  keeper.read(app)
-  const ledger = { stateId: 'sample-ledger', vaultId: own.vaultId }
-  writeLedgerId(app, ledger)
-  authorizeLedgerBootstrap(app, ledger)
-  const store = await IndexedDbStateStore.open(factory, stateDatabaseName(ledger.stateId))
-  await requireLedger(app, store, ledger)
-  cleanup.push(() => store.close())
-  let target = store
-  if (retired) {
-    target = await IndexedDbStateStore.open(factory, stateDatabaseName('sample-retired'))
-    rememberLedgerCleanup(app, 'sample-retired')
-    cleanup.push(() => target.close())
-  }
-  const before = await external(target, retired ? 'sample-retired' : ledger.stateId)
-  const fetcher = vi.fn(async () => new Response(JSON.stringify({ revoked: true })))
-  const host = {
-    app: () => app,
-    factory: () => factory,
-    transport: () => fetcher,
-    note: () => {},
-    connection: () => keeper.connection.value,
-    saveConnection: keeper.save.bind(keeper),
-    serialise: async <T>(fn: () => Promise<T>) => fn(),
-    teardown: async () => {
-      store.close()
-      target.close()
-    },
-    reconcile: vi.fn(async () => {}),
-  }
-  const enrolment = new Enrolment(host as never)
-  const enrol = vi.fn(async () => ({
-    device_id: 'sample-new-device',
-    device_token: 'absd_sample_new',
-  }))
-  ;(enrolment as any).account = { enrolDevice: enrol }
-  ;(enrolment as any).accountUrl = own.serverUrl
-  return { app, factory, own, ledger, keeper, target, before, fetcher, host, enrolment, enrol }
-}
-
-describe('external dependency lifecycle refusals', () => {
-  it('scoped Leave retains its databases after materialized departure', async () => {
-    const app = useVault([]),
-      factory = new IDBFactory()
-    setSecrets(null)
-    AbeleConfig.getInstance().applySettings()
-    const c: ScopedLocalConnection = {
-      version: 4,
-      facet: 'scoped',
-      issuer: 'https://sync.example.invalid',
-      vaultId: 'sample-vault',
-      grantId: 'sample-grant',
-      memberId: 'sample-member',
-      principalId: 'sample-principal',
-      principalKind: 'installation',
-      role: 'reader',
-      rootFileId: 'sample-root',
-      tokenId: 'abele-scoped-installation-sample',
-      ledgerId: 'sample-scoped-ledger',
-      scriptPolicy: 'refuse',
-    }
-    const token = 'absi_' + 'a'.repeat(43),
-      road = scopedSecretPort(secrets())
-    road.set(c.tokenId, token)
-    road.set(c.tokenId + ':binding', JSON.stringify({ connection: c, token }))
-    app.saveLocalStorage(SCOPED_CONNECTION_KEY, c)
-    const fetcher = vi.fn(async () => new Response(JSON.stringify({ revoked: true })))
-    const host = new ScopedPluginHost(app, fetcher as never, factory)
-    cleanup.push(() => host.close())
-    const r = await (host as any).open(c, true)
-    const state = await activateExternalFiles(
-      app,
-      r.raw,
-      c.ledgerId,
-      'abele-scoped-' + c.ledgerId,
-      r.binding,
-      () => r.fence.assertReady()
-    )
-    const bytes = new TextEncoder().encode('sample materialized bytes'),
-      path = 'Media/sample.bin'
-    await app.vault.createFolder('Media')
-    await app.vault.adapter.writeBinary(path, bytes.buffer)
-    const base = {
-      fileId: 'sample-file',
-      versionId: 'sample-v1',
-      path,
-      sha: await sha256(bytes),
-      size: bytes.length,
-      mtime: 1000,
-    }
-    await r.raw.put({ ...base, wirePath: path })
-    await state.commit({
-      expectedRevision: 0,
-      files: [
-        {
-          expectedRevision: null,
-          next: {
-            schema: 1,
-            ledgerId: c.ledgerId,
-            binding: r.binding,
-            fileId: base.fileId,
-            representation: 'hydrated',
-            preference: 'on-demand',
-            pinned: false,
-            projectionPath: null,
-            projectionSha: null,
-            localRevision: 0,
-            pendingOperationId: null,
-            availability: 'active',
-            blockingReason: null,
-            lastProvenLocalBase: base,
-            retained: [],
-          },
-        },
-      ],
-    })
-    const api = await host.attachments()
-    expect((await api.materializeForDisconnect({ operationId: 'sample-departure' })).status).toBe(
-      'complete'
-    )
-    await host.leave()
-    expect(fetcher).toHaveBeenCalledOnce()
-    expect(app.loadLocalStorage(SCOPED_CONNECTION_KEY)).toBeNull()
-    expect(road.get(c.tokenId)).toBe('')
-    expect(await factory.databases()).toEqual(
-      expect.arrayContaining([
-        expect.objectContaining({ name: 'abele-scoped-' + c.ledgerId }),
-        expect.objectContaining({ name: 'abele-scoped-native-' + c.ledgerId }),
-      ])
-    )
-    expect(new Uint8Array(await app.vault.adapter.readBinary(path))).toEqual(bytes)
-  })
-  it.each(['disconnect', 'chooseVault', 'import'] as const)(
-    '%s completes after preparation while retaining the predecessor ledger',
-    async (verb) => {
-      const s = await personal()
-      const document = s.before,
-        file = document.files[0],
-        path = 'Media/sample.bin'
-      const bytes = new TextEncoder().encode('sample materialized bytes')
-      await s.app.vault.createFolder('Media')
-      await s.app.vault.adapter.writeBinary(path, bytes.buffer)
-      const base = {
-        fileId: file.fileId,
-        versionId: 'sample-v1',
-        path,
-        sha: await sha256(bytes),
-        size: bytes.length,
-        mtime: 1000,
-      }
-      await s.target.put({ ...base, wirePath: path })
-      const state = await activateExternalFiles(
-        s.app,
-        s.target,
-        s.ledger.stateId,
-        stateDatabaseName(s.ledger.stateId),
-        document.binding,
-        () => {}
-      )
-      await state.commit({
-        expectedRevision: document.revision,
-        files: [
-          {
-            expectedRevision: file.localRevision,
-            next: {
-              ...file,
-              localRevision: file.localRevision + 1,
-              representation: 'hydrated',
-              projectionPath: null,
-              projectionSha: null,
-              blockingReason: null,
-              lastProvenLocalBase: base,
-            },
-          },
-        ],
-      })
-      const host = new ExternalFileHost(s.app, { platform: 'mobile', assertOwned: () => {} })
-      cleanup.push(() => host.close())
-      const api = new AttachmentStore({
-        state,
-        ledger: s.target,
-        host,
-        binding: document.binding,
-        serial: { run: async (work) => work() },
-        assertOwned: () => {},
-        sync: async () => {},
-        verify: async () => {
-          throw Error('unexpected verification')
-        },
-        download: async () => {
-          throw Error('unexpected download')
-        },
-        scriptsFolder: () => 'Scripts',
-      })
-      expect((await api.materializeForDisconnect({ operationId: 'sample-departure' })).status).toBe(
-        'complete'
-      )
-      if (verb === 'disconnect') await s.enrolment.disconnect()
-      else if (verb === 'chooseVault')
-        await s.enrolment.chooseVault('sample-target', 'Sample device')
-      else
-        await s.enrolment.adoptTransferred(
-          {
-            serverUrl: s.own.serverUrl,
-            vaultId: 'sample-target',
-            vaultName: 'Sample vault',
-            deviceId: 'sample-import',
-            deviceName: 'Sample device',
-          },
-          'absd_sample_import',
-          s.own.selective
-        )
-      expect(s.app.loadLocalStorage(EXTERNAL_RETIRED_KEY)).not.toBeNull()
-      const reopened = await IndexedDbStateStore.open(
-        s.factory,
-        stateDatabaseName(s.ledger.stateId)
-      )
-      try {
-        expect(JSON.parse((await reopened.getExternalState())!).files[0].representation).toBe(
-          'hydrated'
-        )
-      } finally {
-        reopened.close()
-      }
-      expect(new Uint8Array(await s.app.vault.adapter.readBinary(path))).toEqual(bytes)
-      if (verb !== 'disconnect') {
-        expect(s.keeper.connection.value.vaultId).toBe('sample-target')
-        expect(s.keeper.connection.value.deviceTokenId).not.toBe(s.own.deviceTokenId)
-        expect(s.keeper.connection.value.pendingRevoke.length).toBe(1)
-        expect(s.fetcher).not.toHaveBeenCalled()
-        expect(readLedgerId(s.app).stateId).not.toBe(s.ledger.stateId)
-      }
-    }
-  )
-  it.each(['disconnect', 'forget', 'chooseVault', 'import'] as const)(
-    '%s preserves credentials, descriptor and durable inventory before any revoke/enrol',
-    async (verb) => {
-      const s = await personal()
-      const descriptor = s.app.loadLocalStorage(CONNECTION_KEY)
-      const run =
-        verb === 'chooseVault'
-          ? s.enrolment.chooseVault('other-vault', 'Sample device')
-          : verb === 'import'
-            ? s.enrolment.adoptTransferred(
-                {
-                  serverUrl: s.own.serverUrl,
-                  vaultId: 'other-vault',
-                  vaultName: 'Sample vault',
-                  deviceId: 'sample-import',
-                  deviceName: 'Sample device',
-                },
-                'absd_sample_import',
-                s.own.selective
-              )
-            : s.enrolment[verb]()
-      await expect(run).rejects.toThrow(/external|recovery|preparation/i)
+describe('token connection external dependency lifecycle', () => {
+  it.each(['active', 'deleted', 'detached', 'unavailable'] as const)(
+    'disconnect retains %s dependencies and its credential before preparation',
+    async (availability) => {
+      const s = await fixture(availability),
+        before = await s.raw.getMeta(EXTERNAL_STATE_KEY)
+      await expect(s.ui.disconnect(s.id)).rejects.toThrow(/external|recovery|preparation/i)
+      expect(s.registry.records()).toEqual([s.record])
+      expect(s.keys.get(s.record.secretReference)).toBe('a'.repeat(43))
+      expect(await s.raw.getMeta(EXTERNAL_STATE_KEY)).toBe(before)
       expect(s.fetcher).not.toHaveBeenCalled()
-      expect(s.enrol).not.toHaveBeenCalled()
-      expect(secrets().device.get(s.own.deviceTokenId)).toBe('absd_sample')
-      expect(s.app.loadLocalStorage(CONNECTION_KEY)).toEqual(descriptor)
-      expect(readLedgerId(s.app)).toEqual(s.ledger)
-      const reopened = await IndexedDbStateStore.open(
-        s.factory,
-        stateDatabaseName(s.ledger.stateId)
-      )
-      try {
-        expect(JSON.parse((await reopened.getExternalState())!)).toEqual(s.before)
-      } finally {
-        reopened.close()
-      }
     }
   )
-
-  it('Forget without telling the server checks orphan projections before deleting the last pending token', async () => {
-    const s = await personal()
-    await s.target.setMeta('external-files', null)
+  it('checks a copied or renamed orphan projection before forgetting the last credential', async () => {
+    const s = await fixture()
+    await s.raw.setMeta(EXTERNAL_STATE_KEY, null)
     await s.app.vault.adapter.write('sample-moved.txt', '{"format":"abele.external", broken')
-    const tokenId = 'abele-sync-device-revoke-sample'
-    bindDeviceToken(secrets().device, tokenId, 'absd_sample_last', s.own.serverUrl)
-    s.keeper.save({
-      pendingRevoke: [
-        {
-          tokenId,
-          serverUrl: s.own.serverUrl,
-          deviceId: s.own.deviceId,
-          deviceName: 'Sample device',
-          since: new Date().toISOString(),
-          plainHttp: false,
-        },
-      ],
-    })
-    secrets().device.remove(s.own.deviceTokenId)
-    await expect(Promise.resolve().then(() => s.enrolment.revoker.forget(tokenId))).rejects.toThrow(
-      /external|recovery/i
-    )
-    expect(secrets().device.get(tokenId)).toBe('absd_sample_last')
-    expect(s.keeper.connection.value.pendingRevoke).toHaveLength(1)
+    await expect(s.ui.disconnect(s.id)).rejects.toThrow(/external|recovery/i)
+    expect(s.registry.records()).toEqual([s.record])
+    expect(s.keys.size).toBe(1)
     expect(s.fetcher).not.toHaveBeenCalled()
   })
-
-  it('runs one inventory per successful Disconnect rather than scanning four times', async () => {
-    const s = await personal()
-    await s.target.setMeta('external-files', null)
-    await s.app.vault.adapter.write('sample.md', 'ordinary content')
+  it('inspects retained installation bytes even without an external document', async () => {
+    const s = await fixture()
+    await s.raw.setMeta(EXTERNAL_STATE_KEY, null)
+    const evidence = [{ target: 'Media/sample.bin', backup: 'Media/.abele-sync-abcd1234.old' }]
+    s.app.saveLocalStorage('abele-sync-recovered-writes', evidence)
+    await expect(s.ui.disconnect(s.id)).rejects.toThrow(/external|recovery/i)
+    expect(s.app.loadLocalStorage('abele-sync-recovered-writes')).toEqual(evidence)
+    expect(s.keys.size).toBe(1)
+  })
+  it('one successful disconnect performs one evidence inventory and keeps ordinary files and its ledger', async () => {
+    const s = await fixture()
+    await s.raw.setMeta(EXTERNAL_STATE_KEY, null)
+    await s.app.vault.adapter.write('sample.md', 'ordinary bytes')
     const list = vi.spyOn(s.app.vault.adapter, 'list'),
       read = vi.spyOn(s.app.vault.adapter, 'readBinary')
-    await s.enrolment.disconnect()
-    expect(list).toHaveBeenCalledTimes(2) // one evidence inventory plus publication catalogue listing
+    await s.ui.disconnect(s.id)
+    expect(list).toHaveBeenCalledOnce()
     expect(read).toHaveBeenCalledOnce()
-  })
-
-  it('retained installation evidence is part of the shared inventory even without an external document', async () => {
-    const s = await personal()
-    await s.target.setMeta('external-files', null)
-    s.app.saveLocalStorage('abele-sync-recovered-writes', [
-      { target: 'Media/sample.bin', backup: 'Media/.abele-sync-abcd1234.old' },
-    ])
-    await expect(s.enrolment.forget()).rejects.toThrow(/external|recovery|preparation/i)
-    expect(s.fetcher).not.toHaveBeenCalled()
-    expect(secrets().device.get(s.own.deviceTokenId)).toBe('absd_sample')
-    expect(s.app.loadLocalStorage('abele-sync-recovered-writes')).not.toBeNull()
-  })
-
-  it('does not install credentials from an enrollment that returns after its host was retired', async () => {
-    const s = await personal()
-    await s.target.setMeta('external-files', null)
-    let active = true,
-      answer = (_value: { device_id: string; device_token: string }) => {}
-    ;(s.host as any).stillCurrent = () => active
-    s.enrol.mockImplementationOnce(
-      () =>
-        new Promise((resolve) => {
-          answer = resolve
-        })
-    )
-    const choosing = s.enrolment.chooseVault('other-vault', 'Sample device')
-    await vi.waitFor(() => expect(s.enrol).toHaveBeenCalledOnce())
-    active = false
-    answer({ device_id: 'other-device', device_token: 'absd_other' })
-    await expect(choosing).rejects.toThrow(/closed|changed|recovery/i)
-    expect(secrets().device.get(s.own.deviceTokenId)).toBe('absd_sample')
-    expect(readLedgerId(s.app)).toEqual(s.ledger)
-    expect((s.app.loadLocalStorage(CONNECTION_KEY) as any).deviceId).toBe(s.own.deviceId)
-  })
-
-  it('includes deferred-retirement ledgers in the same gate before Forget revokes the current connection', async () => {
-    const s = await personal(true)
-    await expect(s.enrolment.forget()).rejects.toThrow(/external|recovery|preparation/i)
-    expect(s.fetcher).not.toHaveBeenCalled()
-    expect(secrets().device.get(s.own.deviceTokenId)).toBe('absd_sample')
+    expect(await s.app.vault.adapter.read('sample.md')).toBe('ordinary bytes')
     expect(await s.factory.databases()).toEqual(
-      expect.arrayContaining([
-        expect.objectContaining({ name: stateDatabaseName('sample-retired') }),
-      ])
+      expect.arrayContaining([expect.objectContaining({ name: s.record.ledgerId })])
     )
+    expect(s.keys.size).toBe(0)
   })
-
-  it('service-level vault replacement cannot save a new binding over unresolved state', async () => {
-    const s = await personal()
-    s.target.close()
-    const registry = TokenConnectionRegistry.open(s.app)
-    const ui = new TokenUi(
-      registry,
-      { get: () => null, set: () => {}, remove: () => {} },
-      s.fetcher as never
-    )
-    const host = new TokenEngines(s.app as never, ui, () => null, { indexedDB: s.factory })
-    cleanup.push(() => host.close())
-    const before = registry.records()
+  it('does not add a connection over unresolved recovery evidence', async () => {
+    const s = await fixture(),
+      before = s.registry.records()
     await expect(
-      ui.connect(
+      s.ui.connect(
         encodeAccessToken({
           v: 1,
           address: 'https://other.example',
-          key: 'a'.repeat(43),
+          key: 'b'.repeat(43),
           scope: { kind: 'folder', id: 'other-root', path: '/' },
         })
       )
-    ).rejects.toThrow(/external|recovery|preparation/i)
-    expect(registry.records()).toEqual(before)
-    expect(readLedgerId(s.app)).toEqual(s.ledger)
-    expect((s.app.loadLocalStorage(CONNECTION_KEY) as any).vaultId).toBe(s.own.vaultId)
+    ).rejects.toThrow(/external|recovery/i)
+    expect(s.registry.records()).toEqual(before)
+    expect(s.keys.size).toBe(1)
     expect(s.fetcher).not.toHaveBeenCalled()
   })
-
-  it('a retained activation/switch marker also fences synchronous connection edits before a replacement can be saved', async () => {
-    const s = await personal()
+  it('does not erase an unreadable activated journal or switch marker on disconnect', async () => {
+    const s = await fixture()
+    await s.raw.setMeta(EXTERNAL_STATE_KEY, 'broken journal')
+    await expect(s.ui.disconnect(s.id)).rejects.toThrow()
+    await s.raw.setMeta(EXTERNAL_STATE_KEY, null)
     for (const key of [
       'abele-sync-external-activation-v1',
       'abele-sync-external-connection-switch-v1',
     ]) {
       s.app.saveLocalStorage(key, { interrupted: true })
-      expect(() => s.keeper.save({ vaultId: 'other-vault' })).toThrow(
-        /external|recovery|preparation/i
-      )
+      await expect(s.ui.disconnect(s.id)).rejects.toThrow(/external|recovery/i)
       s.app.saveLocalStorage(key, null)
     }
-    expect(s.keeper.connection.value.vaultId).toBe(s.own.vaultId)
+    expect(s.keys.size).toBe(1)
+    expect(s.registry.records()).toEqual([s.record])
   })
-
-  it.each(['active', 'deleted', 'detached', 'unavailable'] as const)(
-    'scoped Leave retains %s dependencies even when the host was closed or access was removed',
-    async (availability) => {
-      const app = useVault([])
-      setSecrets(null)
-      AbeleConfig.getInstance().applySettings()
-      const factory = new IDBFactory()
-      const c: ScopedLocalConnection = {
-        version: 4,
-        facet: 'scoped',
-        issuer: 'https://sync.example.invalid',
-        vaultId: 'sample-vault',
-        grantId: 'sample-grant',
-        memberId: 'sample-member',
-        principalId: 'sample-principal',
-        principalKind: 'installation',
-        role: 'reader',
-        rootFileId: 'sample-root',
-        tokenId: 'abele-scoped-installation-sample',
-        ledgerId: 'sample-scoped-ledger',
-        scriptPolicy: 'refuse',
-      }
-      const token = 'absi_' + 'a'.repeat(43)
-      const road = scopedSecretPort(secrets())
-      road.set(c.tokenId, token)
-      road.set(c.tokenId + ':binding', JSON.stringify({ connection: c, token }))
-      app.saveLocalStorage(SCOPED_CONNECTION_KEY, c)
-      const fetcher = vi.fn(async () => new Response(JSON.stringify({ revoked: true })))
-      const host = new ScopedPluginHost(app as never, fetcher as never, factory)
-      cleanup.push(() => host.close())
-      const r = await (host as any).open(c, true)
-      const before = await external(r.raw, c.ledgerId, 'scoped', availability)
-      await host.close()
-      const cold = new ScopedPluginHost(app as never, fetcher as never, factory)
-      cleanup.push(() => cold.close())
-      if (availability !== 'active') cold.accessRemoved.value = 'Sample access unavailable'
-      await expect(cold.leave()).rejects.toThrow(/external|recovery|preparation/i)
-      expect(fetcher).not.toHaveBeenCalled()
-      expect(road.get(c.tokenId)).toBe(token)
-      expect(app.loadLocalStorage(SCOPED_CONNECTION_KEY)).toEqual(c)
-      const raw = await IndexedDbStateStore.open(factory, 'abele-scoped-' + c.ledgerId)
-      try {
-        expect(JSON.parse((await raw.getExternalState())!)).toEqual(before)
-      } finally {
-        raw.close()
-      }
-    }
-  )
+  it('a failed evidence read permits a safe later retry without erasing the connection', async () => {
+    const s = await fixture()
+    await s.raw.setMeta(EXTERNAL_STATE_KEY, null)
+    await s.app.vault.adapter.write('sample.md', 'ordinary bytes')
+    const read = vi
+      .spyOn(s.app.vault.adapter, 'readBinary')
+      .mockRejectedValueOnce(new Error('sample read failure'))
+    await expect(s.ui.disconnect(s.id)).rejects.toThrow('sample read failure')
+    expect(s.keys.size).toBe(1)
+    read.mockRestore()
+    await s.ui.disconnect(s.id)
+    expect(s.keys.size).toBe(0)
+  })
+  it('the shared read-only safety port finds device-local token ledgers', async () => {
+    const s = await fixture()
+    await expect(requireExternalLifecycleSafety(s.app as never, s.factory)).rejects.toThrow(
+      /external|recovery/i
+    )
+    expect(s.keys.size).toBe(1)
+  })
 })

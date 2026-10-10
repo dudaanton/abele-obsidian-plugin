@@ -2,6 +2,7 @@ import type { App } from 'obsidian'
 import { sha256 } from '@abele/sync-core'
 import { CommitOpSchema } from '@abele/sync-protocol'
 import { z } from 'zod'
+import { TokenConnectionRegistry } from '../tokenConnectionRegistry'
 import type { DeviceConnection } from '../connection'
 import { readLedgerId } from '../ledgerId'
 import { LEDGER_BOOTSTRAP_KEY, LEDGER_PROOF_KEY } from '../ledgerRecovery'
@@ -495,6 +496,7 @@ export async function requireExternalLifecycleSafety(
   if (installation.entries().length || installation.recovered().length)
     throw new ExternalRecoveryRequired('installation or retained-byte recovery is unfinished')
   const names = new Set<string>(database ? [database] : [])
+  for (const record of TokenConnectionRegistry.open(app).records()) names.add(record.ledgerId)
   const retired = retiredLedgers(app)
   const activatedLedgers = [...(marker?.ledgers ?? []), ...retired]
   for (const item of activatedLedgers) names.add(item.databaseName)
@@ -541,7 +543,9 @@ export async function requireExternalLifecycleSafety(
       if (database === name && externalInventory(doc).blocked) throw new ExternalRecoveryRequired()
       let proof: { revision?: number; operationId?: string }
       try {
-        proof = JSON.parse(String(found?.metadata.get('plugin:' + DISCONNECT_PROOF_KEY)))
+        const savedProof = found?.metadata.get('plugin:' + DISCONNECT_PROOF_KEY)
+        if (typeof savedProof !== 'string') throw new ExternalRecoveryRequired()
+        proof = JSON.parse(savedProof)
       } catch {
         throw new ExternalRecoveryRequired()
       }

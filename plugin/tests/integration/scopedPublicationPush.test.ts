@@ -1,154 +1,46 @@
-// @vitest-environment node
-import { afterEach, describe, expect, it, vi } from 'vitest'
-import { sha256 } from '@abele/sync-core'
-import { ScopedPushIntegration } from '@/sync/publication/scopedPushIntegration'
-import { LinkSnapshotStore } from '@/sync/publication/LinkSnapshotStore'
-import { scopedPushFixture } from '../helpers/scopedPushFixture'
-let f: Awaited<ReturnType<typeof scopedPushFixture>> | undefined
+import { afterEach, expect, it } from 'vitest'
+import { tokenPublicationFixture } from '../helpers/tokenPublicationFixture'
+let one: Awaited<ReturnType<typeof tokenPublicationFixture>> | undefined
 afterEach(async () => {
-  await f?.close()
-  f = undefined
+  await one?.runtime.disconnect()
+  one = undefined
 })
-async function setup() {
-  f = await scopedPushFixture()
-  const binding = {
-      localVault: 'sample-local',
-      issuer: f.client.binding.endpoint_identity,
-      vaultId: f.vault,
-      principal: f.a.key_id,
-      facet: 'scoped' as const,
-      grantId: f.grant.id,
-    },
-    meta = f.raw,
-    snapshots = new LinkSnapshotStore(meta, binding, () => true)
-  const observe = vi.fn(async (item: any, bytes: Uint8Array) => {
-    const source = new TextDecoder().decode(bytes),
-      cacheJson = '{"sample":true}'
-    return {
-      noteId: item.file_id,
-      versionId: item.version_id,
-      source,
-      origin: 'push' as const,
-      facts: [],
-      evidence: {
-        adapter: 'fixture',
-        runtime: 'fixture',
-        generation: '1',
-        noteId: item.file_id,
-        versionId: item.version_id,
-        sourceSha: item.sha,
-        cacheSha: await sha256(new TextEncoder().encode(cacheJson)),
-        cacheJson,
-        complete: true,
-      },
+it('a denied explicit publication creates no request, durable outbox or upload', async () => {
+  one = await tokenPublicationFixture(false)
+  await expect(one.runtime.publishAttachment('first')).rejects.toThrow(/approved/i)
+  expect(one.publish).not.toHaveBeenCalled()
+  expect(await one.state.getMeta('token-asset-outbox')).toBeNull()
+})
+it('response loss retains immutable bytes and the same request key for retry', async () => {
+  one = await tokenPublicationFixture()
+  one.publish.mockRejectedValueOnce(new Error('sample response loss'))
+  await expect(one.runtime.publishAttachment('first')).rejects.toThrow('sample response loss')
+  const request = one.publish.mock.calls[0]
+  await one.files.writeAtomic('first.bin', new TextEncoder().encode('new local version'), 2000)
+  await one.runtime.sync()
+  expect(one.publish.mock.calls[1]).toEqual(request)
+  expect(JSON.parse((await one.state.getMeta('token-asset-outbox')) ?? '[]')).toEqual([])
+})
+it('a commit whose follow-up fetch fails is not classified as a refused publication', async () => {
+  one = await tokenPublicationFixture()
+  one.wire.mockRejectedValue(new Error('sample follow-up failure'))
+  await expect(one.runtime.publishAttachment('first')).rejects.toThrow()
+  expect(one.publish).toHaveBeenCalledOnce()
+  expect(JSON.parse((await one.state.getMeta('token-asset-outbox')) ?? '[]')).toEqual([])
+})
+it('a lost acknowledgement of durable cleanup retries the identical settled request', async () => {
+  one = await tokenPublicationFixture()
+  const save = one.state.setMeta.bind(one.state)
+  one.state.setMeta = async (key, value) => {
+    if (key === 'token-asset-outbox' && value === '[]') {
+      one!.state.setMeta = save
+      throw new Error('sample cleanup failure')
     }
-  })
-  const make = (enabled = true) =>
-    new ScopedPushIntegration(meta, binding, snapshots, observe, () => enabled)
-  const bytes = new TextEncoder().encode('sample immutable note')
-  await f.fs.writeAtomic('Agents/sample.md', bytes, 1)
-  const ops = [
-    {
-      op: 'create' as const,
-      path: 'Agents/sample.md',
-      sha: await sha256(bytes),
-      size: bytes.length,
-      mtime: 1,
-    },
-  ]
-  return { binding, meta, snapshots, observe, make, bytes, ops }
-}
-describe('reviewed scoped push exact-version hook integration', () => {
-  it('is disabled by policy before any journal/upload/network operation', async () => {
-    const s = await setup(),
-      m = new ScopedPushIntegration(s.meta, s.binding, s.snapshots, s.observe, () => false)
-    await expect(m.push({ ...f!, ops: s.ops, stillHeld: () => true })).rejects.toThrow(/disabled/)
-    expect(await f!.state.getJournal()).toBeNull()
-    expect(f!.client.putBlob).not.toHaveBeenCalled()
-  })
-  it('survives death before upload and after file placement, reuses the real receipt and durable exact baseline', async () => {
-    const s = await setup()
-    const options = { ...f!, ops: s.ops, stillHeld: () => true }
-    await expect(
-      s.make().push({
-        ...options,
-        beforeUpload: async () => {
-          throw new Error('Synthetic before upload death')
-        },
-      })
-    ).rejects.toThrow(/before upload death/)
-    expect(f!.client.putBlob).not.toHaveBeenCalled()
-    const first = (await f!.state.getJournal())!.request_id
-    await expect(
-      s.make().push({
-        ...options,
-        onSettled: async () => {
-          throw new Error('Synthetic after placement death')
-        },
-      })
-    ).rejects.toThrow(/after placement death/)
-    const entry = await f!.state.getEntry('Agents/sample.md')
-    expect(entry).not.toBeNull()
-    expect(await f!.state.getJournal()).not.toBeNull()
-    const result = await s.make().push({ ...f!, stillHeld: () => true })
-    expect(result.requestId).toBe(first)
-    expect(await f!.state.getJournal()).toBeNull()
-    expect(f!.client.commit.mock.calls.every(([r]) => r.request_id === first)).toBe(true)
-    expect(
-      await f!.t.db
-        .selectFrom('versions')
-        .select('id')
-        .where('file_id', '=', entry!.fileId)
-        .execute()
-    ).toHaveLength(1)
-    expect(await s.snapshots.get(entry!.fileId)).toMatchObject({
-      kind: 'complete',
-      versionId: entry!.versionId,
-      sha: s.ops[0].sha,
-      origin: 'merge',
-      binding: s.binding,
-    })
-    expect(s.observe).toHaveBeenCalledTimes(2)
-  })
-  it('recovers completed unit cleanup after core retired its journal and the process stopped', async () => {
-    const s = await setup(),
-      original = s.meta.setMeta.bind(s.meta)
-    let fault = true
-    vi.spyOn(s.meta, 'setMeta').mockImplementation(async (key, value) => {
-      if (fault && value === null && key.startsWith('publication-scoped-unit-v1:')) {
-        fault = false
-        throw new Error('Synthetic death after journal retirement')
-      }
-      return original(key, value)
-    })
-    await expect(s.make().push({ ...f!, ops: s.ops, stillHeld: () => true })).rejects.toThrow(
-      /retirement/
-    )
-    expect(await f!.state.getJournal()).toBeNull()
-    const commits = f!.client.commit.mock.calls.length
-    await s.make().push({ ...f!, stillHeld: () => true })
-    expect(
-      [...(f!.raw as any).meta.entries()].filter(
-        ([key, value]: any) => key.startsWith('publication-scoped-unit-v1:') && value !== null
-      )
-    ).toEqual([])
-    expect(f!.client.commit).toHaveBeenCalledTimes(commits)
-  })
-  it('refuses a missing persisted unit on staged replay before a commit', async () => {
-    const s = await setup()
-    f!.client.commit.mockRejectedValueOnce(new Error('Synthetic network loss'))
-    await expect(s.make().push({ ...f!, ops: s.ops, stillHeld: () => true })).rejects.toThrow(
-      /network loss/
-    )
-    const id = (await f!.state.getJournal())!.request_id
-    const keys = [...(f!.raw as any).meta.keys()].filter((key: string) =>
-      key.startsWith('publication-scoped-unit-v1:')
-    )
-    for (const key of keys) await s.meta.setMeta(key, null)
-    await expect(s.make().push({ ...f!, stillHeld: () => true })).rejects.toThrow(
-      /missing|recovery/
-    )
-    expect(f!.client.commit).toHaveBeenCalledTimes(1)
-    expect((await f!.state.getJournal())!.request_id).toBe(id)
-  })
+    await save(key, value)
+  }
+  await expect(one.runtime.publishAttachment('first')).rejects.toThrow('sample cleanup failure')
+  const first = one.publish.mock.calls[0]
+  await one.runtime.sync()
+  expect(one.publish.mock.calls[1]).toEqual(first)
+  expect(JSON.parse((await one.state.getMeta('token-asset-outbox')) ?? '[]')).toEqual([])
 })

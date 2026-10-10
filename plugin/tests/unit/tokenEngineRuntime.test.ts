@@ -367,3 +367,54 @@ it.each(['same', 'different'])(
     }
   }
 )
+
+it('reviews a directory rename found by a fresh manifest using its durable identity', async () => {
+  const wire = await server('.obsidian/plugins/new', ''),
+    send = wire.fetch.getMockImplementation()!
+  wire.fetch.mockImplementation(async (input, init) => {
+    if (new URL(String(input)).pathname === '/v2/manifest')
+      return Response.json({
+        items: [
+          {
+            file_id: 'sample-directory',
+            version_id: 'new-version',
+            kind: 'directory',
+            path: '.obsidian/plugins/new',
+            mtime: 2000,
+          },
+        ],
+        cursor: 2,
+        next: null,
+      })
+    return send(input, init)
+  })
+  const one = runtime(wire, new MemoryFileSystem())
+  await one.state.setMeta(
+    'v2-directories',
+    JSON.stringify({
+      directories: [
+        {
+          file_id: 'sample-directory',
+          version_id: 'old-version',
+          kind: 'directory',
+          path: '.obsidian/plugins/old',
+          mtime: 1000,
+          identity: 'sample-local-folder',
+        },
+      ],
+      removals: [],
+    })
+  )
+  try {
+    await one.runtime.sync()
+    expect(await one.reviews.executables.pending()).toMatchObject([
+      {
+        operation: 'move_directory',
+        previousPath: '.obsidian/plugins/old',
+        path: '.obsidian/plugins/new',
+      },
+    ])
+  } finally {
+    await one.runtime.disconnect()
+  }
+})

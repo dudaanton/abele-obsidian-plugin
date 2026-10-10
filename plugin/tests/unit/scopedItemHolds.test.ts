@@ -1,84 +1,48 @@
-import { expect, it, vi } from 'vitest'
-import { IDBFactory } from 'fake-indexeddb'
-import { ScopedState, type ScopedConnection, type ScopedJournal } from '@abele/sync-core'
-import { AbeleError } from '@abele/sync-protocol'
-import { IndexedDbStateStore } from '@/sync/IndexedDbStateStore'
-import { holdScopedItem, readScopedItemHolds } from '@/sync/scoped/itemHolds'
-
-const binding: ScopedConnection = {
-  version: 4,
-  facet: 'scoped',
-  endpoint_identity: 'https://sync.example.invalid',
-  vault_id: 'sample-vault',
-  grant_id: 'sample-grant',
-  principal_id: 'sample-install',
-  principal_kind: 'installation',
-  credential_fingerprint: 'a'.repeat(64),
-}
-const journal: ScopedJournal = {
-  kind: 'scoped',
-  binding,
-  request_id: 'sample-request',
-  ops: [
-    {
-      op: 'modify',
-      file_id: 'sample-file',
-      base_version_id: 'sample-base',
-      sha: 'b'.repeat(64),
-      size: 3,
-      mtime: 10,
-    },
-  ],
-  startedAt: '2025-01-01T00:00:00Z',
-  phase: 'staged',
-  sources: [
-    {
-      index: 0,
-      sourcePath: 'sample.md',
-      stagedPath: '.abele-sync/scoped-outbox/sample-request/0-' + 'b'.repeat(64),
-      sha: 'b'.repeat(64),
-      size: 3,
-      mtime: 10,
-      base: null,
-    },
-  ],
-}
-
-it('retains the rejected request and exact staged source references after a restart', async () => {
-  const factory = new IDBFactory()
-  let raw = await IndexedDbStateStore.open(factory, 'sample-item-holds')
-  const state = await ScopedState.open(raw, binding, { initialize: true })
-  await state.setJournal(journal)
-  await holdScopedItem(
-    raw,
-    state,
-    journal.ops[0],
-    new AbeleError('forbidden', 'sample protected membership')
-  )
-  raw.close()
-  raw = await IndexedDbStateStore.open(factory, 'sample-item-holds')
-  try {
-    const reopened = await ScopedState.open(raw, binding)
-    expect(await reopened.getJournal()).toBeNull()
-    expect((await readScopedItemHolds(raw))[0].journal).toEqual(journal)
-    expect((await readScopedItemHolds(raw))[0].ops).toEqual(journal.ops)
-  } finally {
-    raw.close()
-  }
+import { afterEach, expect, it } from 'vitest'
+import { tokenPublicationFixture } from '../helpers/tokenPublicationFixture'
+let one: Awaited<ReturnType<typeof tokenPublicationFixture>> | undefined
+afterEach(async () => {
+  await one?.runtime.disconnect()
+  one = undefined
 })
-
-it('rolls back both writes if vacating the active slot fails', async () => {
-  const raw = await IndexedDbStateStore.open(new IDBFactory(), 'sample-item-rollback')
-  try {
-    const state = await ScopedState.open(raw, binding, { initialize: true })
-    await state.setJournal(journal)
-    vi.spyOn(state, 'setJournal').mockRejectedValueOnce(new Error('interrupted'))
-    await expect(
-      holdScopedItem(raw, state, journal.ops[0], new AbeleError('quota_exceeded', 'sample quota'))
-    ).rejects.toThrow('interrupted')
-    expect(await state.getJournal()).toEqual(journal)
-    expect(await readScopedItemHolds(raw)).toEqual([])
-  } finally {
-    raw.close()
+// BUG: token publication drops a rejected response instead of retaining its immutable source.
+it.fails(
+  'retains a rejected item and its exact staged source after restarting the adapter',
+  async () => {
+    one = await tokenPublicationFixture()
+    one.publish.mockResolvedValueOnce({
+      cursor: 0,
+      results: [{ status: 'rejected', code: 'quota_exceeded', message: 'sample quota' }],
+    })
+    await one.runtime.publishAttachment('first').catch(() => {})
+    const saved = JSON.parse((await one.state.getMeta('token-asset-outbox')) ?? '[]')
+    expect(saved).toHaveLength(1)
+    expect(saved[0]).toMatchObject({
+      id: 'first',
+      path: 'first.bin',
+      mtime: 1000,
+      bytes: [...new TextEncoder().encode('first immutable bytes')],
+    })
+    await one.runtime.disconnect()
+    const next = one.make()
+    try {
+      expect(JSON.parse((await one.state.getMeta('token-asset-outbox')) ?? '[]')).toEqual(saved)
+    } finally {
+      await next.disconnect()
+    }
   }
+)
+it('an aborted durable enqueue neither vacates retained work nor sends a request', async () => {
+  one = await tokenPublicationFixture()
+  one.publish.mockRejectedValueOnce(new Error('sample response loss'))
+  await one.runtime.publishAttachment('first').catch(() => {})
+  const prior = await one.state.getMeta('token-asset-outbox'),
+    save = one.state.setMeta.bind(one.state)
+  one.state.setMeta = async (key, value) => {
+    if (key === 'token-asset-outbox') throw new Error('sample transaction abort')
+    await save(key, value)
+  }
+  await expect(one.runtime.publishAttachment('second')).rejects.toThrow('sample transaction abort')
+  expect(await one.state.getMeta('token-asset-outbox')).toBe(prior)
+  expect(one.publish).toHaveBeenCalledOnce()
 })

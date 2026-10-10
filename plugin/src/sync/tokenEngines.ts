@@ -1,4 +1,4 @@
-import type { App, EventRef } from 'obsidian'
+import { Platform, type App, type EventRef } from 'obsidian'
 import { encodeAccessToken } from '@abele/sync-protocol'
 import type { EngineStatus, SyncReport } from '@abele/sync-core'
 import { ConnectionEngines, type ConnectionRuntime } from './connectionEngines'
@@ -25,6 +25,8 @@ import { requireExternalLifecycleSafety, recoverExternalState } from './external
 import { tokenExternalBinding } from './tokenExternalBinding'
 import { TokenSettingsPort } from './tokenSettingsPort'
 import { TokenAttachmentHost } from './tokenAttachmentHost'
+import type { IndexedDbStateStore } from './IndexedDbStateStore'
+import { readIgnore, ignoreFor, scopeKey } from './scope'
 import { OwnSettingsWatch } from './ownSettings'
 
 /** One native host, independent durable engines, and one vault-wide placement coordinator. */
@@ -32,8 +34,10 @@ export class TokenEngines {
   private readonly engines = new ConnectionEngines()
   private readonly live = new Map<string, TokenEngineRuntime>()
   private readonly pending = new Set<string>()
+  private readonly activityEpoch = new Map<string, number>()
   private closed = false
   private closing: Promise<void> | undefined
+  private rebuilding: Promise<void> = Promise.resolve()
   private readonly localFiles: TokenAttachmentHost
   private readonly renameEvent: EventRef
   constructor(
@@ -41,7 +45,7 @@ export class TokenEngines {
     private readonly ui: TokenUi,
     private readonly key: (reference: string) => string | null,
     private readonly deps: SyncServiceDeps = {},
-    private readonly scriptsFolder = 'Scripts',
+    private scriptsFolder = 'Scripts',
     private readonly ownSettings?: { path: string; arrived(): void }
   ) {
     this.localFiles = new TokenAttachmentHost(app)
@@ -52,7 +56,59 @@ export class TokenEngines {
       this.start()
       await this.engines.settled()
     }
-    ui.connectionChangeGuard = () => requireExternalLifecycleSafety(this.app, factoryOf(this.deps))
+    ui.connectionChangeGuard = async () => {
+      if (this.closed) throw new Error('Connection host closed; recovery required')
+      await requireExternalLifecycleSafety(this.app, factoryOf(this.deps))
+      if (this.closed) throw new Error('Connection host closed; recovery required')
+    }
+  }
+  updateScriptsFolder(folder: string): Promise<void> {
+    const work = this.rebuilding.then(async () => {
+      if (this.closed || folder === this.scriptsFolder) return
+      await this.engines.reset()
+      if (this.closed) return
+      this.scriptsFolder = folder
+      this.ui.reviews?.executables.updatePaths({ scriptsFolder: folder })
+      this.ui.reviews?.attachments.updatePaths({ scriptsFolder: folder })
+      this.announce()
+      this.start()
+      await this.engines.settled()
+    })
+    // A failed drain remains a recovery barrier rather than opening a new engine over it.
+    this.rebuilding = work
+    return work
+  }
+  /** Cold-start links wait before Obsidian has finished indexing the vault. */
+  announce(): void {
+    if (this.closed) return
+    for (const record of this.ui.registry.records())
+      if (record.secretReference && !record.paused && record.scope && !record.pending)
+        this.ui.registry.setStatus(record.id, 'joining')
+    this.ui.refresh()
+  }
+  presentReviews(): void {
+    if (this.closed) return
+    for (const id of this.live.keys()) {
+      const port = TokenSettingsPort.forConnection(this.ui, id, this.app)
+      port.heldPrompt.foreground()
+      port.settingsPrompt.foreground()
+    }
+  }
+  /** Resume/pocket events share the same engine operations as explicit Sync now. */
+  async foreground(visible: boolean): Promise<void> {
+    if (this.closed) return
+    if (visible) this.presentReviews()
+    if (!Platform.isMobile) return
+    await Promise.all(
+      [...this.live].map(async ([id, runtime]) => {
+        if (this.ui.registry.records().find((record) => record.id === id)?.paused) return
+        try {
+          await runtime.sync()
+        } catch (error) {
+          this.failed(id, error)
+        }
+      })
+    )
   }
   start(): void {
     if (this.closed) return
@@ -90,6 +146,8 @@ export class TokenEngines {
     let closeStore: (() => void) | undefined,
       closeCopies: (() => void) | undefined,
       unbind: (() => void) | undefined
+    let stateHandle: IndexedDbStateStore | undefined
+    const credential = this.key(record.secretReference)
     let fence: RuntimeFence | undefined
     const claim = () =>
       new RuntimeFence(
@@ -98,13 +156,20 @@ export class TokenEngines {
         () =>
           active &&
           !this.closed &&
+          (!stateHandle || stateHandle.permitsEngineEffects) &&
+          this.key(record.secretReference) === credential &&
           this.ui.registry
             .records()
             .some(
               (one) =>
                 one.id === record.id &&
                 one.ledgerId === record.ledgerId &&
-                one.secretReference === record.secretReference
+                one.secretReference === record.secretReference &&
+                one.address === record.address &&
+                one.spaceId === record.spaceId &&
+                one.tokenId === record.tokenId &&
+                one.scope?.kind === record.scope?.kind &&
+                one.scope?.id === record.scope?.id
             )
       )
     let starting: Promise<void> | undefined
@@ -119,6 +184,7 @@ export class TokenEngines {
       const state = await openTokenLedger(factoryOf(this.deps), this.ui.registry, record, () =>
         fence.assertOwned()
       )
+      stateHandle = state
       closeStore = () => state.close()
       state.onRecoveryRequired((error) => {
         active = false
@@ -168,6 +234,8 @@ export class TokenEngines {
         }
       )
       if (!this.ui.reviews) throw new Error('Device reviews are not available')
+      const current = this.ui.registry.records().find((one) => one.id === record.id)
+      fence.assertReady()
       runtime = new TokenEngineRuntime({
         id: record.id,
         encoded: encodeAccessToken({
@@ -178,12 +246,19 @@ export class TokenEngines {
         }),
         fs,
         state,
+        scopeInput: async (selective) => {
+          const text = await readIgnore(this.app)
+          return {
+            key: await scopeKey(selective, text),
+            ignore: ignoreFor(this.app.vault.configDir, text),
+          }
+        },
         reviews: this.ui.reviews,
         fetch: transportOf(this.deps),
         WebSocket: socketOf(this.deps),
         paths: { scriptsFolder: this.scriptsFolder, configRoots: [this.app.vault.configDir] },
-        paused: record.paused,
-        selective: record.selective,
+        paused: current.paused,
+        selective: current.selective,
         fallbackMs: fallbackMsOf(this.deps),
         expectedSource: reviewSourceOf(record),
         localFiles: this.localFiles,
@@ -216,6 +291,7 @@ export class TokenEngines {
       this.live.set(record.id, runtime)
       this.pending.delete(record.id)
       unbind = this.ui.bind(record.id, {
+        assertCurrent: () => fence.assertReady(),
         sync: () => runtime.sync(),
         pause: (paused) => runtime.pause(paused),
         updateSelective: (selective) => runtime.updateSelective(selective),
@@ -282,12 +358,16 @@ export class TokenEngines {
   }
   private async changed(id: string, status: EngineStatus, report?: SyncReport): Promise<void> {
     if (this.closed || !this.ui.registry.records().some((one) => one.id === id)) return
+    const epoch = (this.activityEpoch.get(id) ?? 0) + 1
+    this.activityEpoch.set(id, epoch)
     this.ui.registry.setStatus(id, status.state)
     const activity: Parameters<TokenUi['publish']>[1] = {
       pending: status.pending,
       heldDeletes: status.heldDeletes ?? 0,
       deferred: status.deferred ?? 0,
     }
+    if (status.state === 'offline')
+      activity.pending = (await this.live.get(id)?.pendingLocal()) ?? status.pending
     if (status.lastSyncAt) activity.lastSync = Date.parse(status.lastSyncAt)
     if (report) {
       activity.error = undefined
@@ -313,6 +393,7 @@ export class TokenEngines {
         one.status === 'conflict' ? [one.conflict_path] : []
       )
     }
+    if (this.activityEpoch.get(id) !== epoch) return
     if (!this.closed && this.ui.registry.records().some((one) => one.id === id))
       this.ui.publish(id, activity)
     if (!this.closed && this.ui.registry.records().some((one) => one.id === id))

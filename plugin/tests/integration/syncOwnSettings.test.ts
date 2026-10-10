@@ -1,17 +1,16 @@
 // @vitest-environment node
 import { afterEach, beforeAll, beforeEach, describe, expect, it, vi } from 'vitest'
 import { IDBFactory } from 'fake-indexeddb'
-import { Notice, Platform, type App } from 'obsidian'
-import type { VaultClient } from '@abele/sync-core'
-import type { JoinPrefer } from '@abele/sync-protocol'
-import { IndexedDbStateStore, stateDatabaseName } from '@/sync/IndexedDbStateStore'
+import { Notice, Platform } from 'obsidian'
+import { V2EngineClient, AccessClient } from '@abele/sync-core'
 import { AbeleConfig } from '@/services/AbeleConfig'
-import { SyncService } from '@/sync/SyncService'
+import { nativeTokenFixture } from '../helpers/nativeTokenFixture'
+import { createUser } from '@abele/sync-server/src/access/tokens.js'
 import { SecretStore, setSecrets, type Keychain } from '@/secrets/SecretStore'
 import type { SecretStoreFile } from '@/secrets/storeFile'
 import type AbelePlugin from '@/main'
 import { buildFakeVault, type FakeApp } from '../helpers/fakeVault'
-import { syncServer, type SyncServer } from '../helpers/syncServer'
+import { v2Server, type V2Server } from '@abele/sync-server/tests/helpers/v2Server.js'
 import { blob, seed } from '@abele/sync-test-seed'
 
 /**
@@ -29,17 +28,15 @@ import { blob, seed } from '@abele/sync-test-seed'
  * scenario needs it.
  */
 
-const EMAIL = 'device@test.io'
 const PATIENCE_MS = 10_000
 const DATA = '.obsidian/plugins/abele/data.json'
 const FAST = { iterations: 1000 }
 const PROVIDER_KEY = 'abele-provider-x'
 
-let server: SyncServer
+let server: V2Server
 let accountToken: string
-let vaultId: string
 /** The scenario's own device, for seeding and for reading history. */
-let other: VaultClient
+let other: V2EngineClient
 let devices: Device[] = []
 
 beforeAll(() => {
@@ -71,7 +68,7 @@ interface Device {
   config: AbeleConfig
   store: SecretStore
   keychain: FakeKeychain
-  service: SyncService
+  service: Awaited<ReturnType<typeof nativeTokenFixture>>
   /** `onExternalSettingsChange` calls, and the ones that reloaded anything. */
   calls: number
   reloads: number
@@ -83,6 +80,7 @@ interface Device {
   reloading: Promise<void>
   /** Where its ledger lives. */
   idb: IDBFactory
+  initialBytes: string | null
 }
 
 const encoder = new TextEncoder()
@@ -107,15 +105,15 @@ async function device(
   {
     reversed = false,
     settings,
-    prefer,
     beforeCommit,
+    beforeDownload,
     beforeReload,
   }: {
     reversed?: boolean
     settings?: Record<string, unknown>
-    prefer?: JoinPrefer | null
     /** Run before each commit this device sends reaches the server, with the request's body. */
     beforeCommit?: (app: FakeApp, body: string) => Promise<void>
+    beforeDownload?: (app: FakeApp, response: Response) => Promise<void>
     /** Run when the sync tells the plugin its settings file changed, before it is reloaded. */
     beforeReload?: () => Promise<void>
   } = {}
@@ -189,23 +187,32 @@ async function device(
   await config.loadSettings()
   await made.store.load()
 
-  made.service = new (SyncService as unknown as new () => SyncService)()
+  made.initialBytes = (await app.vault.adapter.exists(DATA))
+    ? new TextDecoder().decode(await app.vault.adapter.readBinary(DATA))
+    : null
   made.idb = new IDBFactory()
-  made.service.init(app as unknown as App, plugin as unknown as AbelePlugin, {
-    fetch: async (input, init) => {
-      const url = typeof input === 'string' ? input : input instanceof URL ? input.href : input.url
-      if (beforeCommit !== undefined && url.endsWith('/commit') && typeof init?.body === 'string') {
-        await beforeCommit(app, init.body)
-      }
-      return server.fetch(input, init)
-    },
-    WebSocket: server.WebSocket,
-    indexedDB: made.idb,
-    fallbackMs: 60_000,
-    pollMs: 60_000,
+  const transport: typeof fetch = async (input, init) => {
+    const url = typeof input === 'string' ? input : input instanceof URL ? input.href : input.url
+    if (beforeCommit !== undefined && url.endsWith('/commit') && typeof init?.body === 'string')
+      await beforeCommit(app, init.body)
+    const response = await globalThis.fetch(input, init)
+    if (beforeDownload && url.includes('/content')) await beforeDownload(app, response.clone())
+    return response
+  }
+  const issued = await AccessClient.fromToken(accountToken, { fetch: globalThis.fetch }).issue({
+    scope: { kind: 'folder', id: (await other.connection()).scope.id },
+    label: name,
   })
-  await made.service.connect(server.BASE_URL, EMAIL, server.TEST_PASSWORD)
-  await made.service.chooseVault(vaultId, name, prefer)
+  made.service = await nativeTokenFixture(
+    app,
+    issued.token,
+    transport,
+    made.idb,
+    () => {
+      void plugin.onExternalSettingsChange()
+    },
+    beforeDownload !== undefined
+  )
   await waitFor(`${name} to sync`, () => {
     const status = made.service.status.value
     return status.state === 'idle' && status.lastSyncAt !== null
@@ -284,7 +291,7 @@ async function commitSettings(text: string): Promise<void> {
 const REPLACED = /settings on this device were replaced by the vault's/i
 
 beforeEach(async () => {
-  server = await syncServer()
+  server = await v2Server()
   devices = []
   Notice.shown.length = 0
   tokens.values.clear()
@@ -301,10 +308,13 @@ beforeEach(async () => {
       now: () => Date.now(),
     })
   )
-  ;({ accountToken } = await server.account(EMAIL))
-  ;({ vaultId } = await server.vault(accountToken, 'Home'))
-  const { deviceToken } = await server.device(accountToken, vaultId, 'scenario')
-  other = server.clientFor(deviceToken, vaultId)
+  const user = await createUser(
+    { db: server.db, pepper: server.config.tokenPepper },
+    'Sample user',
+    server.address
+  )
+  accountToken = user.token
+  other = new V2EngineClient(user.token, { fetch: globalThis.fetch })
 })
 
 afterEach(async () => {
@@ -366,7 +376,7 @@ describe('Abele settings between two devices', () => {
     expect((await onDisk(b)).tasksFolder).toBe('Projects')
   })
 
-  it('a device joining with settings of its own takes the vault’s, and its own go to history', async () => {
+  it('first contact preserves local settings in one conflict file and takes the server variant', async () => {
     const a = await device('Laptop')
     a.config.tasksFolder = 'From the laptop'
     await a.config.saveSettings()
@@ -388,23 +398,20 @@ describe('Abele settings between two devices', () => {
     expect(a.store.get(PROVIDER_KEY)).toBe('sk-from-the-laptop')
     expect(b.store.status.value).toBe('locked')
 
-    const item = (await other.manifest(null)).items.find((held) => held.path === DATA)
-    const versions = await other.versions(item!.file_id)
-    const texts = await Promise.all(
-      versions.map(async (version) =>
-        new TextDecoder().decode(await other.versionBytes(item!.file_id, version.version_id))
-      )
+    const copies = (await b.app.vault.adapter.list('.obsidian/plugins/abele')).files.filter(
+      (path) => path.includes('Conflicted copy')
     )
-    expect(texts.some((text) => text.includes('From the phone'))).toBe(true)
-    // The phone is told, once, where its own went; the laptop's became the vault's, and it is
-    // told nothing.
-    const told = Notice.shown.filter((message) => REPLACED.test(message))
-    expect(told).toHaveLength(1)
-    expect(told[0]).toMatch(/version history/i)
-
+    expect(copies).toHaveLength(1)
+    expect(new TextDecoder().decode(await b.app.vault.adapter.readBinary(copies[0]))).toBe(
+      b.initialBytes
+    )
     await twoMoreCycles(a, b)
     expect([pushed(a), pushed(b)]).toEqual([0, 0])
-    expect(Notice.shown.filter((message) => REPLACED.test(message))).toHaveLength(1)
+    expect(
+      (await b.app.vault.adapter.list('.obsidian/plugins/abele')).files.filter((path) =>
+        path.includes('Conflicted copy')
+      )
+    ).toEqual(copies)
   })
 
   it('says nothing of a first contact whose file was already the vault’s', async () => {
@@ -423,7 +430,7 @@ describe('Abele settings between two devices', () => {
    * that left the file the same size. Taken for untouched, the head would be written over it and
    * the edit would be in no version anywhere.
    */
-  it('a same-size edit made while the first contact is in the air still reaches the history', async () => {
+  it('a same-size edit during first-contact download survives placement and retry', async () => {
     const a = await device('Laptop')
     a.config.tasksFolder = 'From the laptop'
     await a.config.saveSettings()
@@ -433,8 +440,8 @@ describe('Abele settings between two devices', () => {
     let edited = false
     const b = await device('Phone', {
       settings: { tasksFolder: 'From the phone' },
-      beforeCommit: async (app, body) => {
-        if (edited || !body.includes(DATA)) return
+      beforeDownload: async (app, response) => {
+        if (edited || !(await response.text()).includes('From the laptop')) return
         edited = true
         // The same number of bytes, saved a moment after the scan read the file.
         const was = new TextDecoder().decode(await app.vault.adapter.readBinary(DATA))
@@ -449,65 +456,16 @@ describe('Abele settings between two devices', () => {
     expect(edited).toBe(true)
 
     for (const one of [a, b]) expect((await onDisk(one)).tasksFolder).toBe('From the laptop')
-    const item = (await other.manifest(null)).items.find((held) => held.path === DATA)
-    const versions = await other.versions(item!.file_id)
-    const texts = await Promise.all(
-      versions.map(async (version) =>
-        new TextDecoder().decode(await other.versionBytes(item!.file_id, version.version_id))
-      )
+    const copies = (await b.app.vault.adapter.list('.obsidian/plugins/abele')).files.filter(
+      (path) => path.includes('Conflicted copy')
     )
-    expect(texts.some((text) => text.includes('From the phonE'))).toBe(true)
+    expect(copies).toHaveLength(1)
+    expect(new TextDecoder().decode(await b.app.vault.adapter.readBinary(copies[0]))).toContain(
+      'From the phonE'
+    )
 
     await twoMoreCycles(a, b)
     expect([pushed(a), pushed(b)]).toEqual([0, 0])
-  })
-
-  /**
-   * "This device wins" makes every file the joining device holds the head, whatever its age —
-   * and every Abele device holds a `data.json` from its first launch. So that one file is left out
-   * of the join, and taken up once the join is done the way a first contact is: the vault's wins.
-   */
-  it('a device joining with "this device wins" still takes the vault’s settings, and its own go to history', async () => {
-    const a = await device('Laptop')
-    a.config.tasksFolder = 'X'
-    await a.config.saveSettings()
-    await cycle(a)
-
-    await tick(20)
-    const b = await device('Phone', { settings: { tasksFolder: 'From the phone' }, prefer: 'mine' })
-    await settle(a, b)
-
-    for (const one of [a, b]) {
-      expect(one.config.tasksFolder).toBe('X')
-      expect((await onDisk(one)).tasksFolder).toBe('X')
-    }
-    expect(b.service.connection.value.join).toBeNull()
-    const item = (await other.manifest(null)).items.find((held) => held.path === DATA)
-    const versions = await other.versions(item!.file_id)
-    const texts = await Promise.all(
-      versions.map(async (version) =>
-        new TextDecoder().decode(await other.versionBytes(item!.file_id, version.version_id))
-      )
-    )
-    expect(texts.some((text) => text.includes('From the phone'))).toBe(true)
-    // The note both held went the way the phone asked: its copy is the head.
-    const note = (await other.manifest(null)).items.find((held) => held.path === 'Existing.md')
-    const head = await other.versionBytes(note!.file_id, note!.version_id)
-    expect(new TextDecoder().decode(head)).toBe('made on Phone')
-
-    // Left out while joining and back in after: nothing marks it as a file that went while out
-    // of scope, which is what would later read its absence as a delete.
-    const { stateId } = b.app.loadLocalStorage('abele-sync-ledger') as { stateId: string }
-    const store = await IndexedDbStateStore.open(b.idb, stateDatabaseName(stateId))
-    const marks = JSON.parse((await store.getMeta('out-of-scope-files')) ?? '[]') as string[]
-    store.close()
-    expect(marks).not.toContain(item!.file_id)
-
-    await twoMoreCycles(a, b)
-    expect([pushed(a), pushed(b)]).toEqual([0, 0])
-    const still = (await other.manifest(null)).items.find((held) => held.path === DATA)
-    expect(still?.file_id).toBe(item!.file_id)
-    expect((await onDisk(b)).tasksFolder).toBe('X')
   })
 
   it('settles even when something writes the settings back every time they are reloaded', async () => {

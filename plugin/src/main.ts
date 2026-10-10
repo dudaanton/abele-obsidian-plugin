@@ -1,6 +1,16 @@
 import { ChangeTracker } from '@/ai/rewind/ChangeTracker'
 import '@/helpers/deferredCleanup'
-import { MarkdownPostProcessorContext, Notice, Plugin, Platform } from 'obsidian'
+import {
+  Editor,
+  EventRef,
+  MarkdownPostProcessorContext,
+  MarkdownView,
+  Notice,
+  Plugin,
+  Platform,
+  TFile,
+  TFolder,
+} from 'obsidian'
 import { setKeyboardDiagnostics } from '@/helpers/keyboardDiagnostics'
 import { applySettingsLook } from '@/helpers/settingsLook'
 import './styles.css'
@@ -121,6 +131,7 @@ import { tokenUi, TokenUi } from './sync/tokenUi'
 import { historyConnection } from './sync/tokenHistory'
 import { openDeviceReviews } from './sync/openDeviceReviews'
 import { transportOf } from './sync/environment'
+import { watchTheFront } from './sync/phone'
 import { TokenEngines } from './sync/tokenEngines'
 import { renderStatus, DISCONNECTED_STATUS, type SyncStatus } from './sync/status'
 import { openAbeleSettings } from './components/settings/settingsTab'
@@ -141,6 +152,7 @@ const releaseVueSetters = claimVueSetters()
 
 export default class AbelePlugin extends Plugin {
   private tokenEngines: TokenEngines | null = null
+  private syncStarted = false
   private vueApp: VueApp | null = null
   private headerCommands: HeaderCommands | null = null
 
@@ -194,6 +206,7 @@ export default class AbelePlugin extends Plugin {
    * builds no engine, and the status bar item stays out of sight.
    */
   private initSync(): void {
+    this.syncStarted = true
     this.tokenEngines?.start()
 
     const statusEl = this.addStatusBarItem()
@@ -418,6 +431,26 @@ export default class AbelePlugin extends Plugin {
               },
             }
           )
+          this.register(
+            AbeleConfig.getInstance().onSaved(() => {
+              if (this.syncStarted)
+                void this.tokenEngines
+                  ?.updateScriptsFolder(AbeleConfig.getInstance().ai.scriptsFolder || 'Scripts')
+                  .catch(
+                    () =>
+                      new Notice(
+                        'Sync configuration could not be updated. Restart Obsidian to recover.'
+                      )
+                  )
+            })
+          )
+          this.tokenEngines.announce()
+          watchTheFront(this, Platform.isMobile, {
+            held: () => this.tokenEngines?.presentReviews(),
+            sync: (visible) => {
+              void this.tokenEngines?.foreground(visible)
+            },
+          })
           ui.openFile = (path) => this.app.workspace.openLinkText(path, '', false)
           this.register(() => {
             if (tokenUi.value === ui) tokenUi.value = null
@@ -748,6 +781,10 @@ export default class AbelePlugin extends Plugin {
     AgentRegistry.getInstance().notifyConfigReloaded()
     GlobalStore.getInstance().applySettings()
     this.syncAiFeatures()
+    if (this.syncStarted)
+      await this.tokenEngines?.updateScriptsFolder(
+        AbeleConfig.getInstance().ai.scriptsFolder || 'Scripts'
+      )
     applyQuickButton()
     applySettingsLook(AbeleConfig.getInstance())
   }

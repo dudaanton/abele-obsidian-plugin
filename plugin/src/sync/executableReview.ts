@@ -92,6 +92,9 @@ const deliveryIdentity = (one: ExecutableCandidate) =>
 
 /** Durable immutable staging, with the retained exact-review lane semantics and no UI. */
 export class ExecutableReview {
+  updatePaths(paths: ExecutablePaths): void {
+    Object.assign(this.paths, paths)
+  }
   private readonly documents: ReviewDocuments
   constructor(
     store: ReviewState,

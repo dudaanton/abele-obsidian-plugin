@@ -12,6 +12,8 @@ import type { openDeviceReviews } from './openDeviceReviews'
 import type { ReviewSource } from './reviewState'
 
 export function connectionError(error: unknown): string {
+  if (error instanceof Error && /External files:|Sync recovery required/.test(error.message))
+    return 'Sync recovery required. Files and connection have been kept.'
   const code = (error as { code?: string } | null)?.code
   return (
     (
@@ -69,6 +71,7 @@ export interface ConnectionActivity {
   error?: string
 }
 export interface TokenUiRuntime extends ExecutableApplyPort, ConsentResolvePort {
+  assertCurrent?(): void
   sync(): Promise<void>
   pause(paused: boolean): Promise<void>
   disconnect(): Promise<void>
@@ -94,7 +97,7 @@ export interface TokenUiRuntime extends ExecutableApplyPort, ConsentResolvePort 
 }
 export type DeviceReviews = Awaited<ReturnType<typeof openDeviceReviews>>
 export class TokenUi {
-  connectionChangeGuard: () => Promise<void> = async () => {}
+  connectionChangeGuard: (id?: string) => Promise<void> = async () => {}
   connectionsChanged: () => Promise<void> = async () => {}
   openFile: (path: string) => Promise<void> = async () => {}
   readonly rows = shallowRef<TokenConnectionRecord[]>([])
@@ -172,6 +175,7 @@ export class TokenUi {
     if (typeof token.address !== 'string') throw new V2ClientError('bad-token')
     await this.connectionChangeGuard()
     const authority = await client.connection()
+    await this.connectionChangeGuard()
     if (token.scope.kind !== authority.scope.kind || token.scope.id !== authority.scope.id)
       throw new V2ClientError('bad-token')
     const pending = this.registry
@@ -240,6 +244,12 @@ export class TokenUi {
   async disconnect(id: string): Promise<void> {
     const record = this.registry.records().find((one) => one.id === id)
     if (!record) return
+    this.runtimes.get(id)?.assertCurrent?.()
+    await this.connectionChangeGuard(id)
+    this.runtimes.get(id)?.assertCurrent?.()
+    const current = this.registry.records().find((one) => one.id === id)
+    if (JSON.stringify(current) !== JSON.stringify(record))
+      throw new Error('Connection changed while disconnecting')
     this.registry.beginForget(id)
     this.refresh()
     await this.runtimes.get(id)?.disconnect()

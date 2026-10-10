@@ -2,6 +2,8 @@ import {
   SyncEngine,
   V2EngineClient,
   selectiveDefaults,
+  scan,
+  isExcluded,
   applyStaged,
   ExpectedWrites,
   EngineError,
@@ -12,6 +14,7 @@ import {
   type SyncReport,
   type EngineStatus,
   type SelectiveSettings,
+  type PathMatcher,
 } from '@abele/sync-core'
 import {
   V2ManifestSchema,
@@ -42,6 +45,7 @@ export interface TokenEngineOptions {
   WebSocket?: typeof WebSocket
   paths?: ExecutablePaths
   ownSettingsPath?: string
+  scopeInput?(selective: SelectiveSettings): Promise<{ key: string; ignore: PathMatcher }>
   paused?: boolean
   selective?: SelectiveSettings
   fallbackMs?: number
@@ -62,6 +66,7 @@ export class TokenEngineRuntime implements ConnectionRuntime, TokenUiRuntime {
   readonly actions: TokenActions
   private active = true
   private permitted = true
+  private ignore: PathMatcher | null = null
   private authority: V2Connection | null = null
   private held = new Set<string>()
   private unstatus: () => void
@@ -118,6 +123,20 @@ export class TokenEngineRuntime implements ConnectionRuntime, TokenUiRuntime {
       fetch: transport,
       ...(options.WebSocket ? { WebSocket: options.WebSocket } : {}),
     })
+    const prepare = this.client.prepare.bind(this.client)
+    this.client.prepare = async (fs, state, excluded) => {
+      if (options.scopeInput) {
+        const input = await options.scopeInput(this.selective)
+        this.assertHeld()
+        const prior = await state.getMeta('scope')
+        this.ignore = input.ignore
+        if (prior !== input.key) {
+          await state.setCursor(0)
+          await state.setMeta('scope', input.key)
+        }
+      }
+      await prepare(fs, state, excluded)
+    }
     this.client.onRemoval = (_id, path) => options.covers(path)
     this.engine = new SyncEngine({
       client: this.client,
@@ -181,6 +200,7 @@ export class TokenEngineRuntime implements ConnectionRuntime, TokenUiRuntime {
   }
   private blocked(path: string): boolean {
     return (
+      (this.ignore?.ignores(path) ?? false) ||
       (!this.isRoot() && configurationPath(path, this.options.paths)) ||
       [...this.held].some((held) => path === held || path.startsWith(held + '/'))
     )
@@ -213,8 +233,24 @@ export class TokenEngineRuntime implements ConnectionRuntime, TokenUiRuntime {
       baseline.wirePath === item.path
     )
       return false
-    const from = previous ?? (baseline?.path !== item.path ? (baseline?.path ?? null) : null)
     const directory = item.kind === 'directory'
+    const directories = directory
+      ? (JSON.parse(
+          (await this.options.state.getMeta('v2-directories')) ?? '{"directories":[]}'
+        ) as { directories: { file_id: string; path: string }[] })
+      : null
+    const priorDirectory = directories?.directories.find(
+      (one) => one.file_id === item.file_id
+    )?.path
+    const from =
+      previous ??
+      (directory
+        ? priorDirectory !== item.path
+          ? (priorDirectory ?? null)
+          : null
+        : baseline?.path !== item.path
+          ? (baseline?.path ?? null)
+          : null)
     // Creating a directory cannot activate code. Executable files are reviewed individually;
     // directory moves and departures still require review of their affected code paths.
     if (directory && from === null) return false
@@ -351,6 +387,17 @@ export class TokenEngineRuntime implements ConnectionRuntime, TokenUiRuntime {
       Symbol.for('abele.sync.placement-v1')
     ] as ((paths: string[], work: () => Promise<void>) => Promise<void>) | undefined
     await (lease ? lease([item.path, copy], work) : work())
+  }
+  async pendingLocal(): Promise<number> {
+    this.assertHeld()
+    const result = await scan(this.options.fs, this.options.state, {
+      excluded: (path, size) =>
+        this.blocked(path) ||
+        !this.client.includes(path) ||
+        isExcluded(path, size, this.selective, this.options.paths?.scriptsFolder ?? 'Scripts'),
+    })
+    this.assertHeld()
+    return result.ops.length
   }
   async start(): Promise<void> {
     await this.refreshHolds()
