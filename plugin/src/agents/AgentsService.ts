@@ -27,6 +27,7 @@ import {
 
 const INDEX_KEY = 'abele-agents-index'
 const REVISIONS_KEY = 'abele-agents-revisions-v1'
+const STARTED_AT_KEY = 'abele-agents-started-at'
 type CheckedRevision = {
   mtime: number
   size: number
@@ -80,6 +81,7 @@ export class AgentsService {
   private savedIndex = ''
   private savedRevisions = ''
   private readonly live = new Map<ChatSession, WatchStopHandle>()
+  private startedAt?: number
   private started = false
   private disposed = false
   private refreshing?: Promise<void>
@@ -381,7 +383,21 @@ export class AgentsService {
         uncertain: row.uncertain || reasons.some((r) => r.uncertain),
       })
     }
-    this.rows.value = sortAttention([...rows.values()].filter((r) => r.reasons.length))
+    // Baseline historical notifications, not live requests or coverage failures. Keep the
+    // evidence ledger intact: a cutoff is a local viewing decision, not a disk resolution.
+    this.rows.value = sortAttention(
+      [...rows.values()]
+        .map((row) => ({
+          ...row,
+          reasons: row.reasons.filter(
+            (reason) =>
+              this.startedAt === undefined ||
+              !['error', 'interrupted'].includes(reason.kind) ||
+              reason.at >= this.startedAt
+          ),
+        }))
+        .filter((row) => row.reasons.length)
+    )
     if (this.started) {
       try {
         const index = [...this.files.values()]
@@ -414,6 +430,21 @@ export class AgentsService {
   async start(): Promise<void> {
     if (this.disposed) return
     if (this.started) return this.refresh()
+    // Written once, including upgrades that already have an index but no baseline.
+    // If storage fails, retain evidence and incomplete coverage rather than invent a cutoff.
+    try {
+      const app = GlobalStore.getInstance().app
+      const stored = app.loadLocalStorage(STARTED_AT_KEY)
+      if (typeof stored === 'number' && Number.isFinite(stored) && stored >= 0)
+        this.startedAt = stored
+      else {
+        const now = Date.now()
+        app.saveLocalStorage(STARTED_AT_KEY, now)
+        this.startedAt = now
+      }
+    } catch {
+      this.status.value = 'Could not save the agents list baseline'
+    }
     // Load durable evidence before enabling any publication, including node registry changes.
     // The last local copy is explicitly incomplete until the authoritative files are read.
     try {
@@ -433,7 +464,12 @@ export class AgentsService {
             title: path.split('/').pop()!,
             agent: 'Agent',
             source: 'Updating…',
-            reasons: reconcileAttentionReasons(entry.reasons, this.files.get(path)?.reasons ?? []),
+            reasons: reconcileAttentionReasons(
+              entry.reasons.map((reason: AttentionReason) =>
+                reason.kind === 'running' ? { ...reason, kind: 'interrupted' } : reason
+              ),
+              this.files.get(path)?.reasons ?? []
+            ),
           })
         }
     } catch {
@@ -566,6 +602,7 @@ export class AgentsService {
     )
     for (const path of new Set([...this.files.keys(), ...this.checked.keys()]))
       if (!paths.has(path)) this.deleted(path)
+    failed ||= this.startedAt === undefined
     this.localIncomplete.value = failed
     this.status.value = failed
       ? 'Some conversations could not be read. Open them to check their status.'
@@ -665,9 +702,44 @@ export class AgentsService {
     this.publish()
   }
 
+  /** Foreground presentation also acknowledges indexed failures whose file write was lost. */
+  async markChatSeen(session: ChatSession): Promise<void> {
+    const path = session.currentChatFile.value?.path
+    const reasons = path ? (this.files.get(path)?.reasons ?? []) : []
+    await session.markFailuresSeen(reasons.filter((r) => r.kind === 'error').map((r) => r.id))
+  }
+
+  /** Snapshot all rows, not just search matches. Live requests and coverage stay visible. */
+  async markAllSeen(): Promise<void> {
+    const targets = this.rows.value.flatMap((row) =>
+      row.reference.kind === 'local'
+        ? row.reasons
+            .filter((reason) => ['error', 'interrupted'].includes(reason.kind))
+            .map((reason) => ({ row, id: reason.id }))
+        : []
+    )
+    let failure: unknown
+    for (const { row, id } of targets) {
+      try {
+        await this.markSeen(row, id)
+      } catch (error) {
+        failure ??= error
+      }
+    }
+    if (failure) throw failure
+  }
+
   async markSeen(row: AttentionRow, id: string): Promise<void> {
     if (row.reference.kind !== 'local') return
     const { app } = GlobalStore.getInstance()
+    const sessionId = row.reference.sessionId
+    const unsaved = sessionId && [...this.live.keys()].find((session) => session.id === sessionId)
+    if (unsaved) {
+      await unsaved.markAttentionSeen(id)
+      if (unsaved.currentChatFile.value) await this.updateFile(unsaved.currentChatFile.value)
+      else this.publish()
+      return
+    }
     const file = app.vault.getAbstractFileByPath(row.reference.path)
     if (!(file instanceof TFile)) {
       this.deleted(row.key)
@@ -738,6 +810,8 @@ export class AgentsService {
       if (!chats.adoptSession(session, current)) return false
       await chats.revealSidebar({ focus: false, current })
       if (!chats.isForegroundPresentation(current)) return false
+      await this.markChatSeen(session)
+      if (!chats.isForegroundPresentation(current)) return false
       if (reason.target) chats.pendingReveal.value = reason.target
       chats.pendingAttentionReveal.value = {
         sessionId: session.id,
@@ -784,8 +858,15 @@ export class AgentsService {
       const current = this.liveRow(session)
       if (current?.uncertain)
         new Notice('Could not confirm the current status. Opened the saved conversation.')
-      // Opening is read-only. Missing index evidence is not recreated into the conversation.
-      if (!current?.reasons.some((r) => r.id === reason.id))
+      // A foreground opening acknowledges saved failures only, never questions or tools.
+      await this.markChatSeen(session)
+      if (
+        !chats.isForegroundPresentation(presentationCurrent) ||
+        chats.activeSession.value !== session
+      )
+        return false
+      // Missing index evidence is not recreated into the conversation.
+      if (reason.kind !== 'error' && !current?.reasons.some((r) => r.id === reason.id))
         new Notice('Already answered or request no longer active')
       const target =
         reason.target ||

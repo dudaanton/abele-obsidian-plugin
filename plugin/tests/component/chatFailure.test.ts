@@ -20,7 +20,10 @@ it('presents one retry error and acknowledges failures only when the chat is pre
     overrides: {
       error: ref('Synthetic failure'),
       retrying: ref(null),
-      attention: ref({ errors: [{ id: 'failure', at: 1, text: 'Synthetic failure' }] }),
+      attention: ref({
+        run: { id: 'failed-run', at: 1, status: 'interrupted' },
+        errors: [{ id: 'failure', at: 2, text: 'Synthetic failure' }],
+      }),
       markFailuresSeen: seen,
     },
   })

@@ -424,15 +424,31 @@ export class ChatSession implements SummarizerHost, InterceptorHost, AnchorStora
     this.dirty = true
   }
 
+  async markFailuresSeen(indexedIds: string[] = []): Promise<void> {
+    const settled = settledAttention(this.attention.value)
+    const ids = [
+      ...new Set([
+        ...(this.attention.value.errors ?? []).filter((e) => !e.seen).map((e) => e.id),
+        ...indexedIds.filter((id) => !settled.has(id)),
+      ]),
+    ]
+    if (ids.length) await this.acknowledgeAttention(ids)
+  }
+
   async markAttentionSeen(id: string): Promise<void> {
+    await this.acknowledgeAttention([id])
+  }
+
+  private async acknowledgeAttention(ids: string[]): Promise<void> {
     // The visible state and its ledger remain unresolved until storage confirms this ack.
-    this.attentionAcks.add(id)
+    for (const id of ids) this.attentionAcks.add(id)
     try {
       await this.save()
-      if (!settledAttention(this.committedAttention).has(id))
+      const settled = settledAttention(this.committedAttention)
+      if (ids.some((id) => !settled.has(id)))
         throw new Error('Could not save the acknowledgement. Try again.')
     } finally {
-      this.attentionAcks.delete(id)
+      for (const id of ids) this.attentionAcks.delete(id)
     }
   }
 
@@ -3790,6 +3806,10 @@ export class ChatSession implements SummarizerHost, InterceptorHost, AnchorStora
     this.bindingWriteBlocked = false
     const evidence = result.metadata?.attention ?? {}
     this.committedAttention = evidence
+    // Saved failures use the same retry block as an in-memory failure, not a second card.
+    const lastFailure = evidence.errors?.at(-1)
+    this.error.value =
+      lastFailure && (!evidence.run || evidence.run.at <= lastFailure.at) ? lastFailure.text : null
     this.attention.value = {
       ...evidence,
       run:

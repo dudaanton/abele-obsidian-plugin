@@ -490,6 +490,7 @@ import { CommentService } from '@/ai/CommentService'
 import TemplateVariablesModal from './TemplateVariablesModal.vue'
 import { AbeleConfig } from '@/services/AbeleConfig'
 import { ChatService, type PendingInput } from '@/ai/ChatService'
+import { AgentsService } from '@/agents/AgentsService'
 import { fileMentions } from '@/ai/fileMentions'
 import { GlobalStore } from '@/stores/GlobalStore'
 import { parseTemplateVariables, applyTemplateVariables } from '@/templates/TemplateParser'
@@ -560,6 +561,21 @@ const abortQuestions = () => {
 }
 const pendingToolCalls = computed(() => session.value?.pendingToolCalls.value ?? [])
 const error = computed(() => session.value?.error.value ?? null)
+// Only the presented chat is seen; background discovery/load never acknowledges failures.
+watch(
+  [session, () => session.value?.currentChatFile.value],
+  ([current]) => {
+    if (current)
+      void AgentsService.getInstance()
+        .markChatSeen(current)
+        .catch((error: unknown) =>
+          new Notice(
+            error instanceof Error ? error.message : 'Could not save the acknowledgements'
+          )
+        )
+  },
+  { immediate: true, flush: 'post' }
+)
 
 /** The run shown in the active tab, if this tab is a run rather than a chat. */
 const activeRun = computed(() => chatService.activeRun)

@@ -164,8 +164,9 @@ failure is separate from a tool error handled by the agent. Older files without 
 are not inferred to have failed. Loading does not execute tools or model requests; saved local
 work and questions without a process are interrupted, not working. Pending tool calls continue
 to use the existing approval mechanism. Seen flags acknowledge only their specific failure;
-opening or closing a tab is not acknowledgement. `resolved` is a monotonic array of retired
-request/run identities. `tools` records accepted calls as executing/interrupted/done; acceptance
+presenting a chat acknowledges its saved failures, while background loads and closing do not.
+The chat uses the ordinary error block with Retry, not an additional failure attention card.
+`resolved` is a monotonic array of retired request/run identities. `tools` records accepted calls as executing/interrupted/done; acceptance
 is saved before a tool starts, and an accepted call found without its process is not re-offered
 as a new approval. The approval path captures the call ID and a deep JSON snapshot of its
 arguments before awaiting persistence; execution never re-reads a different queue head.
@@ -184,6 +185,12 @@ references and reason/request/run IDs, timestamps, expiry and target message ref
 contains no conversation text, question text, titles or error text. It is an evidence ledger:
 live arrivals are unioned into it, and only a disk-confirmed resolution or proven file deletion
 may remove an identity. It loads before publication, including node-registry publication.
+The device-local `abele-agents-started-at` timestamp is written once before the first inventory,
+including upgrades from an index without this cutoff. Errors and interrupted work older than
+that baseline count as seen in this list, without changing chat files or deleting ledger evidence.
+Waiting questions, pending approvals and incomplete coverage are not hidden by the cutoff.
+Mark all as seen commits acknowledgements for all listed local failures/interrupted work, not
+only search matches; questions, approvals, working sessions and node coverage remain untouched.
 Startup inventories all `.abchat` files, including unopened discussions, without making sessions.
 The separate device-local `abele-agents-revisions-v1` cache records verified mtime/size pairs,
 terminal IDs, accepted-tool phases and an exact signature of the indexed reasons, including

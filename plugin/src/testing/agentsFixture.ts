@@ -111,6 +111,7 @@ export function agentsFixture(state: AgentsFixtureState = 'mixed') {
     status: ref(''),
     open: async () => false,
     markSeen: async () => {},
+    markAllSeen: async () => {},
     reconnect: async () => {},
   }
 }

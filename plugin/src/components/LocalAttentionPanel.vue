@@ -1,5 +1,5 @@
 <template>
-  <div v-if="interruptedRun || question || errors.length || failure" class="abele-local-attention">
+  <div v-if="interruptedRun || question || failure" class="abele-local-attention">
     <div
       v-if="interruptedRun"
       class="abele-ai-chat__error"
@@ -22,18 +22,6 @@
       </p>
       <button @click="composeAnswer">Continue with a message</button>
     </div>
-    <div
-      v-for="error in errors"
-      :key="error.id"
-      class="abele-ai-chat__error"
-      :data-attention-id="error.id"
-      tabindex="-1"
-    >
-      <span>Run failed · {{ new Date(error.at).toLocaleString() }}</span>
-      <span>{{ error.text }}</span>
-      <span v-if="error.seen">Seen</span>
-      <button v-else @click="seen(error.id)">Mark as seen</button>
-    </div>
     <p v-if="failure" role="alert">{{ failure }}</p>
   </div>
 </template>
@@ -47,17 +35,11 @@ const question = computed(() =>
   state.value.question?.status === 'interrupted' ? state.value.question : null
 )
 const interruptedRun = computed(() =>
-  state.value.run?.status === 'interrupted' && !question.value ? state.value.run : null
+  state.value.run?.status === 'interrupted' && !question.value && !props.session.error?.value
+    ? state.value.run
+    : null
 )
-const errors = computed(() => state.value.errors ?? [])
 const failure = ref('')
-const seen = async (id: string) => {
-  try {
-    await props.session.markAttentionSeen(id)
-  } catch (error) {
-    failure.value = error instanceof Error ? error.message : 'Could not save the acknowledgement'
-  }
-}
 const composeAnswer = () => {
   const saved = question.value
   if (!saved) return

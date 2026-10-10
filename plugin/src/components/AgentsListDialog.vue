@@ -7,6 +7,14 @@
         aria-label="Search conversations and agents"
         placeholder="Search conversations and agents"
       />
+      <Icon
+        class="abele-agents__all-seen"
+        icon="check-check"
+        text-right="Mark all as seen"
+        tooltip="Mark all as seen; waiting questions and permissions stay active"
+        :disabled="busy || !hasDismissible"
+        @click="allSeen"
+      />
       <EmptyState text="Click a title to open the conversation" />
       <EmptyState v-if="failure" variant="error" :text="failure" />
       <EmptyState v-if="feedback" :text="feedback" />
@@ -116,7 +124,7 @@ const actionLabel = (reason: AttentionReason) =>
 const unavailable = (row: AttentionRow) => row.reference.kind === 'node' && !row.reference.sessionId
 const props = defineProps<{
   source?: Pick<AgentsService, 'rows' | 'incomplete' | 'status' | 'open' | 'markSeen'> &
-    Partial<Pick<AgentsService, 'reconnect'>>
+    Partial<Pick<AgentsService, 'reconnect' | 'markAllSeen'>>
 }>()
 const source = props.source ?? AgentsService.getInstance()
 const emit = defineEmits<{ (e: 'close'): void }>()
@@ -201,6 +209,30 @@ const reconnect = async (row: AttentionRow) => {
     feedback.value = `${row.title} · Connected. Sessions may still be unavailable.`
   } catch (error) {
     failure.value = error instanceof Error ? error.message : 'Could not reconnect'
+  } finally {
+    busy.value = false
+  }
+}
+const hasDismissible = computed(() =>
+  source.rows.value.some(
+    (row) =>
+      row.reference.kind === 'local' &&
+      row.reasons.some((reason) => ['error', 'interrupted'].includes(reason.kind))
+  )
+)
+const allSeen = async () => {
+  busy.value = true
+  failure.value = ''
+  try {
+    if (source.markAllSeen) await source.markAllSeen()
+    else
+      for (const row of [...source.rows.value])
+        if (row.reference.kind === 'local')
+          for (const reason of row.reasons)
+            if (['error', 'interrupted'].includes(reason.kind))
+              await source.markSeen(row, reason.id)
+  } catch (error) {
+    failure.value = error instanceof Error ? error.message : 'Could not save the acknowledgements'
   } finally {
     busy.value = false
   }
