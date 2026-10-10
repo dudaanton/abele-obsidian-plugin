@@ -30,3 +30,17 @@ describe('Icon states', () => {
     expect(el.getAttribute('aria-hidden')).toBe('true')
   })
 })
+
+describe('Icon sizes', () => {
+  it('takes one of the host icon sizes by name, as a BEM modifier', () => {
+    for (const size of ['xs', 's', 'm', 'l', 'xl'] as const) {
+      const w = mount(Icon, { props: { icon: 'pin', size } })
+      expect((w.element as HTMLElement).classList.contains(`abele-obsidian-icon_size-${size}`)).toBe(true)
+    }
+  })
+
+  it('without a size, leaves the size to the place it sits in', () => {
+    const w = mount(Icon, { props: { icon: 'pin' } })
+    expect([...(w.element as HTMLElement).classList].some(c => c.includes('_size-'))).toBe(false)
+  })
+})

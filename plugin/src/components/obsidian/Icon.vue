@@ -16,6 +16,7 @@
       'abele-obsidian-icon_disabled': disabled,
       'abele-obsidian-icon_active': active,
       [`abele-obsidian-icon_color-${color}`]: color && color !== 'grey',
+      [`abele-obsidian-icon_size-${size}`]: !!size,
     }"
     @click="isInteractive && !disabled && emit('click', $event)"
   >
@@ -48,6 +49,8 @@ const props = withDefaults(
     color?: KitColor
     /** A toggle's state: on draws it pressed, as Obsidian draws its own search options. */
     active?: boolean
+    /** One of Obsidian's icon sizes; left unset, the icon takes the size of the place it sits in. */
+    size?: 'xs' | 's' | 'm' | 'l' | 'xl'
   }>(),
   // Left unset, an icon is not a toggle at all, rather than a toggle that is off.
   {
@@ -58,6 +61,7 @@ const props = withDefaults(
     color: undefined,
     active: undefined,
     interactive: undefined,
+    size: undefined,
   }
 )
 
@@ -145,6 +149,12 @@ watch(accessibleName, updateTooltip)
       color: var(--icon-color-hover);
       background-color: var(--background-modifier-hover);
     }
+  }
+}
+
+@each $size in 'xs', 's', 'm', 'l', 'xl' {
+  .abele-obsidian-icon.abele-obsidian-icon_size-#{$size} {
+    --icon-size: var(--icon-#{$size});
   }
 }
 
