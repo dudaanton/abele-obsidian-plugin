@@ -164,6 +164,46 @@ it('does not bypass settings review at first contact with an existing local conf
     await one.runtime.disconnect()
   }
 })
+it('does not hold an ordinary configuration-folder creation as executable code', async () => {
+  const wire = await server('.obsidian/app.json', '{"sample":true}'),
+    send = wire.fetch.getMockImplementation()!
+  wire.fetch.mockImplementation(async (input, init) => {
+    if (new URL(String(input)).pathname === '/v2/manifest')
+      return Response.json({
+        items: [
+          {
+            file_id: 'sample-directory',
+            version_id: 'sample-directory-version',
+            kind: 'directory',
+            path: '.obsidian',
+            mtime: 1000,
+          },
+          wire.item,
+        ],
+        cursor: 1,
+        next: null,
+      })
+    return send(input, init)
+  })
+  const fs = new MemoryFileSystem()
+  let made = false
+  Object.assign(fs, {
+    mkdir: async () => {
+      made = true
+    },
+    listDirectories: async function* () {
+      if (made) yield { path: '.obsidian', identity: 'sample-local-directory', mtime: 1000 }
+    },
+  })
+  const one = runtime(wire, fs)
+  try {
+    await one.runtime.sync()
+    expect(await one.reviews.executables.pending()).toEqual([])
+    expect(await one.runtime.deferred()).toMatchObject([{ path: '.obsidian/app.json' }])
+  } finally {
+    await one.runtime.disconnect()
+  }
+})
 
 it('applies the older reviewed executable candidate while a newer immutable candidate stays pending', async () => {
   const wire = await server('Scripts/sample.js', 'original content'),

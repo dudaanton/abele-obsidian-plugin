@@ -50,6 +50,20 @@ const token = encodeAccessToken({
   key: 'a'.repeat(43),
   scope: { kind: 'folder', id: 'root', path: '/' },
 })
+const secondToken = encodeAccessToken({
+  v: 1,
+  address: 'https://second.example',
+  key: 'b'.repeat(43),
+  scope: { kind: 'folder', id: 'root', path: '/' },
+})
+it('reuses an already connected token and its existing ledger when pasted again', async () => {
+  const { ui, registry, keys } = setup()
+  await ui.connect(token)
+  const before = registry.records()[0]
+  await ui.connect(token)
+  expect(registry.records()).toEqual([before])
+  expect(keys.size).toBe(1)
+})
 
 it('connects by token, persists the connection and does not retain pasted text in UI state', async () => {
   const { ui, registry, keys } = setup()
@@ -89,7 +103,7 @@ it('rejects changed selector hints before adding a connection row', async () => 
 })
 it('pauses independently and disconnects only the selected connection and its key', async () => {
   const { ui, registry, keys } = setup()
-  await ui.connect(token)
+  await ui.connect(secondToken)
   await ui.connect(token)
   const [first, second] = registry.records()
   await ui.pause(first.id, true)
@@ -108,7 +122,7 @@ it('uses plain reasons for connection errors', () => {
 
 it('resumes credential cleanup after disconnect is interrupted, without touching another connection', async () => {
   const { ui, registry, keys, transport } = setup()
-  await ui.connect(token)
+  await ui.connect(secondToken)
   await ui.connect(token)
   const [first, second] = registry.records()
   ui.bind(first.id, {

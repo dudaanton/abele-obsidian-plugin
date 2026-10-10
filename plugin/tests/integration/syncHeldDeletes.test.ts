@@ -2,14 +2,16 @@
 import { afterEach, beforeAll, beforeEach, describe, expect, it } from 'vitest'
 import { IDBFactory } from 'fake-indexeddb'
 import { Platform, type App } from 'obsidian'
-import type { VaultClient } from '@abele/sync-core'
+import type { EngineClient } from '@abele/sync-core'
 import { AbeleConfig } from '@/services/AbeleConfig'
-import { SyncService } from '@/sync/SyncService'
+import { nativeTokenFixture } from '../helpers/nativeTokenFixture'
+import { createUser } from '@abele/sync-server/src/access/tokens.js'
+import { V2EngineClient } from '@abele/sync-core'
 import { setSecrets } from '@/secrets/SecretStore'
 import { createPluginSecrets } from '@/secrets/host'
 import type AbelePlugin from '@/main'
 import { buildFakeVault, type FakeApp } from '../helpers/fakeVault'
-import { syncServer, type SyncServer } from '../helpers/syncServer'
+import { v2Server, type V2Server } from '@abele/sync-server/tests/helpers/v2Server.js'
 import { blob, create, seed } from '@abele/sync-test-seed'
 import { decidedNotice } from '@/sync/heldDeletes'
 
@@ -26,10 +28,10 @@ const EMAIL = 'device@test.io'
 const PATIENCE_MS = 10_000
 const NOTES = 100
 
-let server: SyncServer
+let server: V2Server
 let app: FakeApp
-let service: SyncService
-let other: VaultClient
+let service: Awaited<ReturnType<typeof nativeTokenFixture>>
+let other: V2EngineClient
 let vaultId: string
 /** Flipped by a test to make every request fail the way a lost network does. */
 let offline = false
@@ -67,31 +69,25 @@ async function remove(from: number, to: number): Promise<void> {
 
 beforeEach(async () => {
   offline = false
-  server = await syncServer()
+  server = await v2Server()
   Platform.isMobile = false
   AbeleConfig.getInstance().init(plugin)
   AbeleConfig.getInstance().applySettings(undefined)
   app = buildFakeVault([])
   setSecrets(createPluginSecrets({ ...plugin, app } as unknown as AbelePlugin))
-  const { accountToken } = await server.account(EMAIL)
-  ;({ vaultId } = await server.vault(accountToken, 'Home'))
-  const { deviceToken } = await server.device(accountToken, vaultId, 'Laptop')
-  other = server.clientFor(deviceToken, vaultId)
+  const user = await createUser(
+    { db: server.db, pepper: server.config.tokenPepper },
+    'Sample user',
+    server.address
+  )
+  other = new V2EngineClient(user.token, { fetch: globalThis.fetch })
   const ops = []
   for (let n = 0; n < NOTES; n++) ops.push(await create(other, note(n), `note ${n}`))
   await seed(other, ops)
 
-  service = SyncService.getInstance()
-  service.init(app as unknown as App, plugin, {
-    fetch: (input, init) =>
-      offline ? Promise.reject(new Error('the network is gone')) : server.fetch(input, init),
-    WebSocket: server.WebSocket,
-    indexedDB: new IDBFactory(),
-    fallbackMs: 60_000,
-    pollMs: 60_000,
-  })
-  await service.connect(server.BASE_URL, EMAIL, server.TEST_PASSWORD)
-  await service.chooseVault(vaultId, 'Desktop')
+  service = await nativeTokenFixture(app, user.token, (input, init) =>
+    offline ? Promise.reject(new Error('the network is gone')) : globalThis.fetch(input, init)
+  )
   await waitFor('the vault to arrive', async () => app.vault.adapter.exists(note(NOTES - 1)))
   await waitFor('the first sync', () => service.status.value.state === 'idle')
 })

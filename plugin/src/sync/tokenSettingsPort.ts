@@ -1,4 +1,5 @@
-import { computed } from 'vue'
+import { computed, ref } from 'vue'
+import type { App } from 'obsidian'
 import { GlobalStore } from '@/stores/GlobalStore'
 import { tokenUi, type TokenUi } from './tokenUi'
 import { historyConnection } from './tokenHistory'
@@ -7,7 +8,7 @@ import { HeldDeletesPrompt } from './heldDeletes'
 import { StagedSettingsPrompt, appliedPathsOf, keepAppliedPaths } from './stagedSettings'
 import { obsidianReloader } from './reload'
 import { executablePath } from './stagedPluginCode'
-import { DISCONNECTED_STATUS } from './status'
+import { DISCONNECTED_STATUS, statusOf } from './status'
 
 /** Thin per-connection settings actions; exchange and durable decisions remain in core. */
 export class TokenSettingsPort {
@@ -18,22 +19,27 @@ export class TokenSettingsPort {
     const id = historyConnection.value ?? ui.registry.selectedId
     return this.forConnection(ui, id)
   }
-  static forConnection(ui: TokenUi, id: string): TokenSettingsPort {
+  static forConnection(
+    ui: TokenUi,
+    id: string,
+    app = GlobalStore.getInstance().app
+  ): TokenSettingsPort {
     let instances = this.instances.get(ui)
     if (!instances) this.instances.set(ui, (instances = new Map()))
     let port = instances.get(id)
-    if (!port) instances.set(id, (port = new TokenSettingsPort(ui, id)))
+    if (!port) instances.set(id, (port = new TokenSettingsPort(ui, id, app)))
     return port
   }
   readonly connection
   readonly status
   readonly heldPrompt: HeldDeletesPrompt
   readonly settingsPrompt: StagedSettingsPrompt
+  readonly log = ref<string[]>([])
   private constructor(
     private readonly ui: TokenUi,
-    private readonly id: string
+    private readonly id: string,
+    app: App
   ) {
-    const app = GlobalStore.getInstance().app
     this.connection = computed(() => ({
       selective: ui.rows.value.find((one) => one.id === id)?.selective ?? defaultSelective(),
     }))
@@ -42,6 +48,13 @@ export class TokenSettingsPort {
         ({
           ...DISCONNECTED_STATUS,
           state: ui.rows.value.find((one) => one.id === id)?.status ?? 'disconnected',
+          lastSyncAt:
+            ui.activity.value[id]?.lastSync === undefined
+              ? null
+              : new Date(ui.activity.value[id].lastSync).toISOString(),
+          pending: ui.activity.value[id]?.pending ?? 0,
+          heldDeletes: ui.activity.value[id]?.heldDeletes ?? 0,
+          deferred: ui.activity.value[id]?.deferred ?? 0,
         }) as typeof DISCONNECTED_STATUS
     )
     const runtime = () => ui.runtimes.get(id)
@@ -49,8 +62,8 @@ export class TokenSettingsPort {
     this.heldPrompt = new HeldDeletesPrompt({
       list: async () => (await runtime()?.heldDeletes?.()) ?? [],
       visible,
-      decide: (kind, ids) => this.decideDeletes(kind, ids),
-      note: () => {},
+      decide: async (kind, ids) => (await runtime()?.decideDeletes?.(kind, ids)) ?? null,
+      note: (text) => this.note(text),
     })
     this.settingsPrompt = new StagedSettingsPrompt(
       {
@@ -69,7 +82,7 @@ export class TokenSettingsPort {
         keep: async (paths, ids) => (await runtime()?.keepLocal?.(paths, ids)) ?? null,
         appliedWaiting: () => appliedPathsOf(app),
         keepApplied: (paths) => keepAppliedPaths(app, paths),
-        note: () => {},
+        note: (text) => this.note(text),
         pause: () => {
           void runtime()?.pause(true)
         },
@@ -85,7 +98,7 @@ export class TokenSettingsPort {
     return this.ui.updateConnection(this.id, patch)
   }
   decideDeletes(kind: 'confirm' | 'restore', ids: readonly string[]) {
-    return this.ui.runtimes.get(this.id)?.decideDeletes?.(kind, ids) ?? Promise.resolve(null)
+    return this.heldPrompt.decide(kind, ids)
   }
   applySettingsAndReload(ids: readonly string[]) {
     return this.settingsPrompt.applyAndReload(ids)
@@ -96,5 +109,18 @@ export class TokenSettingsPort {
   reloadAppliedSettings() {
     return this.settingsPrompt.reloadApplied()
   }
-  note(_text: string): void {}
+  async noticed(
+    status: import('@abele/sync-core').EngineStatus,
+    report?: import('@abele/sync-core').SyncReport
+  ): Promise<void> {
+    await this.heldPrompt.noticed(statusOf(status))
+    await this.settingsPrompt.noticed(statusOf(status))
+    if (report) {
+      this.note(`sync: done (pushed ${report.push.applied})`)
+      await this.settingsPrompt.reported(report)
+    }
+  }
+  note(text: string): void {
+    this.log.value = [...this.log.value, text].slice(-500)
+  }
 }

@@ -162,6 +162,9 @@ export class TokenEngineRuntime implements ConnectionRuntime, TokenUiRuntime {
     })
     if (this.engine.status.state !== 'paused') await this.engine.rescan()
   }
+  written(path: string): void {
+    this.actions.written(path)
+  }
   private assertHeld(): void {
     if (!this.active) throw new EngineError('lost', 'Connection stopped')
     this.options.assertHeld?.()
@@ -212,6 +215,9 @@ export class TokenEngineRuntime implements ConnectionRuntime, TokenUiRuntime {
       return false
     const from = previous ?? (baseline?.path !== item.path ? (baseline?.path ?? null) : null)
     const directory = item.kind === 'directory'
+    // Creating a directory cannot activate code. Executable files are reviewed individually;
+    // directory moves and departures still require review of their affected code paths.
+    if (directory && from === null) return false
     if (
       item.kind !== 'script' &&
       ![item.path, from].some(

@@ -2,14 +2,15 @@
 import { afterEach, beforeAll, beforeEach, describe, expect, it } from 'vitest'
 import { IDBFactory } from 'fake-indexeddb'
 import { Platform, type App } from 'obsidian'
-import type { VaultClient } from '@abele/sync-core'
+import { V2EngineClient } from '@abele/sync-core'
 import { AbeleConfig } from '@/services/AbeleConfig'
-import { SyncService } from '@/sync/SyncService'
+import { nativeTokenFixture } from '../helpers/nativeTokenFixture'
+import { createUser } from '@abele/sync-server/src/access/tokens.js'
 import { setSecrets } from '@/secrets/SecretStore'
 import { createPluginSecrets } from '@/secrets/host'
 import type AbelePlugin from '@/main'
 import { buildFakeVault, type FakeApp } from '../helpers/fakeVault'
-import { syncServer, type SyncServer } from '../helpers/syncServer'
+import { v2Server, type V2Server } from '@abele/sync-server/tests/helpers/v2Server.js'
 import { blob, create, seed, shaOf } from '@abele/sync-test-seed'
 
 /**
@@ -29,13 +30,13 @@ const HOTKEYS = '.obsidian/hotkeys.json'
 const APP = '.obsidian/app.json'
 const OWN = '.obsidian/plugins/abele/data.json'
 
-let server: SyncServer
+let server: V2Server
 let app: FakeApp
-let service: SyncService
-let other: VaultClient
+let service: Awaited<ReturnType<typeof nativeTokenFixture>>
+let other: V2EngineClient
 let vaultId: string
 /** The account's token, for a test that makes a second vault. */
-let accountToken: string
+let encoded: string
 let indexedDB: IDBFactory
 /** How many times the prompt reloaded Obsidian through its seam. */
 let reloads = 0
@@ -108,7 +109,7 @@ async function serverSha(path: string): Promise<string | null> {
 
 /** Hands the prompt a reload that counts instead of reloading. */
 function seamReload(available = true): void {
-  service.codePrompt.reloader = service.settingsPrompt.reloader = {
+  service.settingsPrompt.reloader = {
     available: () => available,
     reload: () => {
       reloads++
@@ -121,19 +122,15 @@ function seamReload(available = true): void {
 const shown = (): string[] =>
   (service.settingsPrompt.asking.value?.changes ?? []).map((change) => change.version_id)
 
-function start(): void {
-  service.init(app as unknown as App, plugin, {
-    fetch: (input, init) => server.fetch(input, init),
-    WebSocket: server.WebSocket,
-    indexedDB,
-    fallbackMs: 60_000,
-    pollMs: 60_000,
+async function start(): Promise<void> {
+  service = await nativeTokenFixture(app, encoded, globalThis.fetch, indexedDB, () => {
+    ownArrived++
   })
   seamReload()
 }
 
 beforeEach(async () => {
-  server = await syncServer()
+  server = await v2Server()
   indexedDB = new IDBFactory()
   reloads = 0
   ownArrived = 0
@@ -146,15 +143,14 @@ beforeEach(async () => {
     { path: HOTKEYS, content: '{"here":true}', mtime: 1000, ctime: 1000 },
   ])
   setSecrets(createPluginSecrets({ ...plugin, app } as unknown as AbelePlugin))
-  ;({ accountToken } = await server.account(EMAIL))
-  ;({ vaultId } = await server.vault(accountToken, 'Home'))
-  const { deviceToken } = await server.device(accountToken, vaultId, 'Laptop')
-  other = server.clientFor(deviceToken, vaultId)
-
-  service = SyncService.getInstance()
-  start()
-  await service.connect(server.BASE_URL, EMAIL, server.TEST_PASSWORD)
-  await service.chooseVault(vaultId, 'Desktop')
+  const user = await createUser(
+    { db: server.db, pepper: server.config.tokenPepper },
+    'Sample user',
+    server.address
+  )
+  encoded = user.token
+  other = new V2EngineClient(encoded, { fetch: globalThis.fetch })
+  await start()
   await waitFor('the first sync', () => service.status.value.state === 'idle')
   await waitFor('the settings on the server', async () => (await serverSha(HOTKEYS)) !== null)
 })
@@ -166,10 +162,10 @@ afterEach(async () => {
 })
 
 describe('settings changed on another device', () => {
-  it('never applies another plugin’s code through the settings confirmation', async () => {
-    const code = '.obsidian/plugins/sample-tool/main.js'
-    const manifest = '.obsidian/plugins/sample-tool/manifest.json'
-    const data = '.obsidian/plugins/sample-tool/data.json'
+  it('never applies executable candidates through the settings confirmation', async () => {
+    const code = '.obsidian/plugins/sample-tool/main.js',
+      manifest = '.obsidian/plugins/sample-tool/manifest.json',
+      data = '.obsidian/plugins/sample-tool/data.json'
     await seed(other, [
       await create(other, code, 'module.exports = {}', Date.now()),
       await create(other, manifest, '{"name":"Sample tool","version":"2.0.0"}', Date.now()),
@@ -177,73 +173,56 @@ describe('settings changed on another device', () => {
     ])
     await modify(HOTKEYS, '{"there":true}')
     await service.syncNow()
-    await waitFor('all files staged', () => service.status.value.deferred === 4)
-
+    await waitFor('ordinary settings staged', () => service.status.value.deferred === 2)
     expect(service.settingsPrompt.staged.value.map((one) => one.path).sort()).toEqual(
       [HOTKEYS, data].sort()
     )
-    // Even a caller handing the generic action every staged version cannot install code.
     await service.applySettingsAndReload(
       (await service.stagedSettings()).map((one) => one.version_id)
     )
     expect(await app.vault.adapter.exists(code)).toBe(false)
     expect(await app.vault.adapter.exists(manifest)).toBe(false)
     expect(await read(data)).toBe('{"enabled":true}')
-    await service.codePrompt.refresh()
-    expect(service.codePrompt.names.value['sample-tool']).toBe(
-      'Sample tool (sample-tool) — New · Version 2.0.0'
+    expect(service.ui.candidates.value.map((one) => one.path).sort()).toEqual(
+      [code, manifest].sort()
     )
-    const codeVersions = service.codePrompt.staged.value.map((one) => one.version_id)
-    const result = await service.applyPluginCodeAndReload(codeVersions)
-    expect(result?.applied.sort()).toEqual([code, manifest].sort())
-    expect(result?.reloaded).toBe(true)
+    for (const candidate of [...service.ui.candidates.value]) await service.ui.approve(candidate)
     expect(await read(code)).toBe('module.exports = {}')
   })
-
-  it('keeps changed code and declines a new plugin across restart', async () => {
-    const code = '.obsidian/plugins/sample-tool/main.js'
-    const manifest = '.obsidian/plugins/sample-tool/manifest.json'
-    const fresh = '.obsidian/plugins/new-tool/main.js'
+  it('keeps existing code and declines new code across restart', async () => {
+    const code = '.obsidian/plugins/sample-tool/main.js',
+      fresh = '.obsidian/plugins/new-tool/main.js'
     await write(code, 'local code')
-    await write(manifest, '{"name":"Sample tool","version":"1.0.0"}')
     await service.syncNow()
     await modify(code, 'remote code')
-    await modify(manifest, '{"name":"Sample tool","version":"2.0.0"}')
     await seed(other, [await create(other, fresh, 'new code', Date.now())])
     await service.syncNow()
-    await service.codePrompt.refresh()
-    expect(service.codePrompt.names.value['sample-tool']).toBe(
-      'Sample tool (sample-tool) — Changed · Version 2.0.0'
-    )
-    service.codePrompt.later()
+    expect(service.ui.candidates.value).toHaveLength(2)
     await service.destroy()
-    service = SyncService.getInstance()
-    start()
-    await waitFor('code question after restart', () => service.codePrompt.asking.value !== null)
-    const versions = service.codePrompt.asking.value!.changes.map((one) => one.version_id)
-    const result = await service.keepLocalPluginCode(versions)
-    expect(result?.kept.sort()).toEqual([code, manifest].sort())
-    expect(result?.left).toEqual([fresh])
+    await start()
+    await service.ui.refreshReviews()
+    expect(service.ui.candidates.value).toHaveLength(2)
+    for (const candidate of [...service.ui.candidates.value]) await service.ui.reject(candidate)
     await service.syncNow()
     expect(await read(code)).toBe('local code')
-    expect(await read(manifest)).toContain('1.0.0')
     expect(await app.vault.adapter.exists(fresh)).toBe(false)
-    expect(service.codePrompt.staged.value).toEqual([])
+    expect(service.ui.candidates.value).toEqual([])
     expect(reloads).toBe(0)
   })
-
-  it('leaves a newer code version staged when an older confirmation is answered', async () => {
+  it('applies the exact reviewed code version while a newer candidate stays pending', async () => {
     const code = '.obsidian/plugins/sample-tool/main.js'
     await seed(other, [await create(other, code, 'first', Date.now())])
     await service.syncNow()
-    await service.codePrompt.refresh()
-    const versions = service.codePrompt.staged.value.map((one) => one.version_id)
+    const reviewed = service.ui.candidates.value[0]
     await modify(code, 'second')
     await service.syncNow()
-    const result = await service.applyPluginCodeAndReload(versions)
-    expect(result).toMatchObject({ applied: [], unshown: [code], reloaded: false })
-    expect(await app.vault.adapter.exists(code)).toBe(false)
-    expect(service.codePrompt.asking.value?.changes[0]?.version_id).not.toBe(versions[0])
+    await service.ui.approve(reviewed)
+    expect(await read(code)).toBe('first')
+    expect(service.ui.candidates.value.map((one) => one.versionId)).not.toContain(
+      reviewed.versionId
+    )
+    expect(service.ui.candidates.value).toHaveLength(1)
+    expect(reloads).toBe(0)
   })
 
   it('are staged rather than written, counted, and asked about once', async () => {
@@ -255,7 +234,7 @@ describe('settings changed on another device', () => {
     expect(service.status.value.deferred).toBe(1)
     const asked = service.settingsPrompt.asking.value!
     expect(asked.changes.map((change) => change.path)).toEqual([HOTKEYS])
-    expect(asked.changes[0]!.actor.name).toBe('Laptop')
+    expect(asked.changes[0]!.actor.id).toBe((await other.connection()).token_id)
     expect(service.settingsPrompt.staged.value).toHaveLength(1)
 
     // Another sync with nothing new asks nothing new.
@@ -392,8 +371,7 @@ describe('settings changed on another device', () => {
     service.settingsPrompt.later()
 
     await service.destroy()
-    service = SyncService.getInstance()
-    start()
+    await start()
     await waitFor(
       'the question after the start',
       () => service.settingsPrompt.asking.value !== null
@@ -406,14 +384,17 @@ describe('settings changed on another device', () => {
   })
 
   it('are staged at a join where the server wins, rather than written over this device’s', async () => {
-    await service.forget()
-    const { vaultId: joined } = await server.vault(accountToken, 'Work')
-    const { deviceToken } = await server.device(accountToken, joined, 'Laptop')
-    const there = server.clientFor(deviceToken, joined)
+    await service.destroy()
+    const user = await createUser(
+      { db: server.db, pepper: server.config.tokenPepper },
+      'Another sample space',
+      server.address
+    )
+    encoded = user.token
+    const there = new V2EngineClient(encoded, { fetch: globalThis.fetch })
     await seed(there, [await create(there, APP, '{"a":"there"}', Date.now())])
-
-    await service.connect(server.BASE_URL, EMAIL, server.TEST_PASSWORD)
-    await service.chooseVault(joined, 'Desktop', 'theirs')
+    app = buildFakeVault([{ path: APP, content: '{"a":1}', mtime: 1000 }])
+    await start()
     await waitFor('the question', () => service.settingsPrompt.asking.value !== null)
 
     expect(await read(APP)).toBe('{"a":1}')

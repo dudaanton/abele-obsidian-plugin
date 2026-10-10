@@ -21,7 +21,9 @@ import { editCopiesOf } from './editCopies'
 import { registerConnectionEditCopies } from './editCopyStore'
 import { openTokenLedger } from './tokenLedger'
 import { reviewSourceOf } from './reviewState'
-import { requireExternalLifecycleSafety } from './external/pluginSafety'
+import { requireExternalLifecycleSafety, recoverExternalState } from './external/pluginSafety'
+import { tokenExternalBinding } from './tokenExternalBinding'
+import { TokenSettingsPort } from './tokenSettingsPort'
 import { TokenAttachmentHost } from './tokenAttachmentHost'
 import { OwnSettingsWatch } from './ownSettings'
 
@@ -132,12 +134,25 @@ export class TokenEngines {
         this.ownSettings?.path ?? `${this.app.vault.configDir}/plugins/abele/data.json`,
         () => this.ownSettings?.arrived()
       )
+      const binding = await tokenExternalBinding(record, key)
+      await recoverExternalState(
+        this.app,
+        state,
+        record.ledgerId,
+        record.ledgerId,
+        binding,
+        fence,
+        factoryOf(this.deps)
+      )
       const ordinary = new ObsidianFileSystem(this.app, {
         runtimeFence: fence,
         ledger: state,
         preserveEmptyDirectories: true,
         pollMs: pollMsOf(this.deps),
-        onEngineWrite: (path) => own.noteWrite(path),
+        onEngineWrite: (path) => {
+          own.noteWrite(path)
+          runtime?.written(path)
+        },
       })
       await ordinary.recover()
       fence.activate()
@@ -268,7 +283,11 @@ export class TokenEngines {
   private async changed(id: string, status: EngineStatus, report?: SyncReport): Promise<void> {
     if (this.closed || !this.ui.registry.records().some((one) => one.id === id)) return
     this.ui.registry.setStatus(id, status.state)
-    const activity: Parameters<TokenUi['publish']>[1] = { pending: status.pending }
+    const activity: Parameters<TokenUi['publish']>[1] = {
+      pending: status.pending,
+      heldDeletes: status.heldDeletes ?? 0,
+      deferred: status.deferred ?? 0,
+    }
     if (status.lastSyncAt) activity.lastSync = Date.parse(status.lastSyncAt)
     if (report) {
       activity.error = undefined
@@ -296,6 +315,8 @@ export class TokenEngines {
     }
     if (!this.closed && this.ui.registry.records().some((one) => one.id === id))
       this.ui.publish(id, activity)
+    if (!this.closed && this.ui.registry.records().some((one) => one.id === id))
+      await TokenSettingsPort.forConnection(this.ui, id, this.app).noticed(status, report)
   }
   close(): Promise<void> {
     if (this.closing !== undefined) return this.closing

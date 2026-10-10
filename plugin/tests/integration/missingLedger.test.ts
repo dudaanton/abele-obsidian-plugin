@@ -3,6 +3,7 @@ import { tokenHostFixture } from '../helpers/tokenHostFixture'
 import { openTokenLedger } from '@/sync/tokenLedger'
 import { IndexedDbStateStore } from '@/sync/IndexedDbStateStore'
 import { ObsidianFileSystem } from '@/sync/ObsidianFileSystem'
+import { EXTERNAL_STATE_KEY } from '@abele/sync-core'
 
 it('requires explicit recovery before building any token sync or fabricating provenance', async () => {
   const fetcher = vi.fn(async () => {
@@ -31,6 +32,28 @@ it('requires explicit recovery before building any token sync or fabricating pro
     expect(ui.runtimes.has(id)).toBe(false)
   } finally {
     await host.close()
+    vi.restoreAllMocks()
+  }
+})
+it('holds unreadable external recovery evidence before transport or watchers can start', async () => {
+  const fetcher = vi.fn(async () => {
+      throw new Error('Unexpected transport')
+    }),
+    one = tokenHostFixture(fetcher as never)
+  const record = one.registry.records()[0],
+    state = await openTokenLedger(one.factory, one.registry, record, () => {})
+  await state.setMeta(EXTERNAL_STATE_KEY, 'not a recoverable document')
+  state.close()
+  const watch = vi.spyOn(ObsidianFileSystem.prototype, 'watch')
+  try {
+    one.host.start()
+    await one.ui.connectionsChanged()
+    expect(one.registry.records()[0].status).toBe('error')
+    expect(fetcher).not.toHaveBeenCalled()
+    expect(watch).not.toHaveBeenCalled()
+    expect(one.keys.size).toBe(1)
+  } finally {
+    await one.host.close()
     vi.restoreAllMocks()
   }
 })

@@ -58,6 +58,8 @@ export const statusName = (status: string) =>
     }) as Record<string, string>
   )[status] ?? 'Needs attention'
 export interface ConnectionActivity {
+  heldDeletes?: number
+  deferred?: number
   pending?: number
   lastSync?: number
   completed?: number
@@ -176,11 +178,11 @@ export class TokenUi {
       .records()
       .find(
         (one) =>
-          one.pending?.address === token.address &&
-          one.pending.spaceId === authority.space_id &&
-          one.pending.tokenId === authority.token_id &&
-          one.pending.scope.kind === authority.scope.kind &&
-          one.pending.scope.id === authority.scope.id
+          (one.pending ?? one).address === token.address &&
+          (one.pending ?? one).spaceId === authority.space_id &&
+          (one.pending ?? one).tokenId === authority.token_id &&
+          (one.pending ?? one).scope?.kind === authority.scope.kind &&
+          (one.pending ?? one).scope?.id === authority.scope.id
       )
     const id = pending?.id ?? this.registry.add()
     try {

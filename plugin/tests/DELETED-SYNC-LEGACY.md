@@ -95,3 +95,6 @@ scoped raw/native database split and invitation creation API no longer exist.
 - `component/publicationPrompt.test.ts`: Retired sponsor and paste-evidence automatic foreground prompt; token attachment questions originate only from the real note-open port, with durable per-connection consent.
 
 - `component/syncLog.test.ts`: Retired singleton sync-log screen and clipboard buffer; token connections expose independent progress, refusal and conflict state instead.
+
+- `integration/syncStagedSettings.test.ts` (partial): removed whole-plugin catalogue batches, device display-name lookup, and latest-only approval semantics. Token tests retain ordinary settings review/reload, exact immutable executable approval, later candidates, rejection and restart.
+- `integration/syncOwnSettings.test.ts` (partial): removed the personal join-choice case (`this device wins`), which has no token-model counterpart. First contact follows the fixed server-plus-local-conflict rule. Other reload, secret, concurrency and convergence guarantees remain.
