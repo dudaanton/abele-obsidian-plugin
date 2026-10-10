@@ -422,6 +422,12 @@ it.each(['revoked', 'forbidden', '503', 'network'] as const)(
       )
       let stopped = transport.mock.calls.length
       if (!revoked) {
+        await vi.waitFor(() =>
+          expect(ui.activity.value[registry.records()[0].id]?.refused).toContainEqual({
+            path: 'Private/keep.md',
+            reason: connectionError({ code: 'offline' }),
+          })
+        )
         await vi.waitFor(() => expect(transport.mock.calls.length).toBeGreaterThan(stopped), {
           timeout: 4000,
         })

@@ -10,6 +10,23 @@ import { TokenAttachmentHost } from '@/sync/tokenAttachmentHost'
 import { useVault } from '../helpers/testEnv'
 import { NativeSyncFailure } from '@/sync/mobileTransport'
 
+it('names unsent local files after an offline attempt so the phone can show file and reason', async () => {
+  const wire = await server('Notes/sample.md', 'note'),
+    fs = new MemoryFileSystem()
+  const one = runtime(wire, fs)
+  try {
+    await fs.writeAtomic('Notes/unsent.bin', new Uint8Array([1, 2]), 1000)
+    wire.fetch.mockRejectedValueOnce(new EngineError('offline', 'Network unavailable'))
+    await expect(one.runtime.sync()).rejects.toMatchObject({ code: 'offline' })
+    expect(await one.runtime.pendingLocalDetails()).toEqual({
+      count: 1,
+      paths: ['Notes/unsent.bin'],
+    })
+  } finally {
+    await one.runtime.disconnect()
+  }
+})
+
 it('keeps native pre-send failure details and error status through the classified core transport', async () => {
   const metadata = new MemoryStateStore()
   const changed = vi.fn()

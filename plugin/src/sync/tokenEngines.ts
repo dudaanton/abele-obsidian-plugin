@@ -748,11 +748,19 @@ export class TokenEngines {
       heldDeletes: status.heldDeletes ?? 0,
       deferred: status.deferred ?? 0,
     }
-    if (status.state === 'offline')
-      activity.pending = (await this.live.get(id)?.pendingLocal()) ?? status.pending
+    const unsent =
+      status.state === 'offline' ? await this.live.get(id)?.pendingLocalDetails() : undefined
+    if (unsent) activity.pending = unsent.count
     const publications = this.live.get(id)?.publications() ?? []
     activity.pending = (activity.pending ?? 0) + publications.length
     activity.refused = publications.map((one) => ({ path: one.path, reason: one.reason }))
+    if (unsent)
+      activity.refused.push(
+        ...unsent.paths.map((path) => ({
+          path,
+          reason: this.ui.activity.value[id]?.error ?? connectionError({ code: 'offline' }),
+        }))
+      )
     if (status.lastSyncAt) activity.lastSync = Date.parse(status.lastSyncAt)
     if (report) {
       activity.error = undefined

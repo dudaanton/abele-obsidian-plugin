@@ -6,6 +6,91 @@ targets('phone')
 const fixture = liveSuite(false)
 liveCase(
   'syncPhone',
+  '117 phone decodes a rendered sharing QR through the image scanner and connects',
+  [117],
+  async () => {
+    const s = fixture(),
+      a = s.primary,
+      owner = await s.connect(),
+      path = s.root + '/qr-phone.md'
+    const qr = await a.shareQr(owner)
+    expect(qr.image).toMatch(/^data:image\/png;base64,/)
+    await a.disconnect(owner)
+    await s.put(path, 'phone scanned QR receipt')
+    await s.connect(a, qr.token, qr.image)
+    expect(a.read(path)).toBe('phone scanned QR receipt')
+  },
+  fixture
+)
+liveCase(
+  'syncPhone',
+  '121 Deny keeps a private attachment local on the phone',
+  [121],
+  async () => {
+    const s = fixture(),
+      a = s.primary,
+      group = s.root + '/DenyGroup.md',
+      note = s.root + '/deny-member.md',
+      asset = s.root + '/denied.bin'
+    await s.put(group, 'deny group')
+    await s.put(note, '---\ngroups: ["[[' + s.root + '/DenyGroup]]"]\n---\n![[' + asset + ']]')
+    const root = (await s.items()).find((one) => one.path === group)!
+    a.create(asset, 'private denied bytes')
+    await s.connect(a, await s.server.issue({ kind: 'group', id: root.file_id }))
+    a.open(note)
+    await a.consent('Deny')
+    await a.syncNow()
+    expect(a.questions()).toHaveLength(0)
+    expect(a.read(asset)).toBe('private denied bytes')
+    expect((await s.items()).some((one) => one.path === asset)).toBe(false)
+    a.create(asset, 'private edit after denial')
+    await a.syncNow()
+    expect((await s.items()).some((one) => one.path === asset)).toBe(false)
+  },
+  fixture
+)
+liveCase(
+  'syncPhone',
+  '123 a phone transfer failure names the error and retains unsent bytes for retry',
+  [123],
+  async () => {
+    const s = fixture(),
+      a = s.primary,
+      path = s.root + '/unsent-phone.bin',
+      id = await s.connect()
+    await a.pause(id, true)
+    a.create(path, 'phone bytes awaiting transfer')
+    s.server.suspend()
+    try {
+      await a.pause(id, false)
+      await expect(a.syncNow(id)).rejects.toThrow()
+      expect(a.read(path)).toBe('phone bytes awaiting transfer')
+      expect(
+        a.run(
+          `const root=await openSyncTab();return [...root.querySelectorAll('[role=alert]')].some(one=>/unavailable|interrupted|reachable|timed out/i.test(textOf(one)))`
+        )
+      ).toBe(true)
+      expect(a.rows().find((one) => one.id === id)?.error).toMatch(
+        /unavailable|interrupted|reachable|timed out/i
+      )
+      expect(
+        a.run(
+          `const root=await openSyncTab();let refused;await poll(()=>refused=[...root.querySelectorAll('.setting-item')].find(one=>textOf(one.querySelector('.setting-item-name'))===${JSON.stringify(path)}&&textOf(one).includes('Not sent:')));return textOf(refused)`
+        )
+      ).toMatch(/Not sent:.*(?:unavailable|interrupted|reachable|timed out)/i)
+    } finally {
+      s.server.resume()
+    }
+    await a.syncNow(id)
+    const remote = (await s.items()).find((one) => one.path === path)!
+    expect(
+      new TextDecoder().decode(await s.client().versionBytes(remote.file_id, remote.version_id))
+    ).toBe('phone bytes awaiting transfer')
+  },
+  fixture
+)
+liveCase(
+  'syncPhone',
   '117 phone pastes a token and receives files without separate credentials',
   [117],
   async () => {
@@ -153,6 +238,12 @@ liveCase(
     await a.syncNow()
     expect(a.exists(path)).toBe(false)
     expect(a.candidates().find((one) => one.path === path)?.source.id).toBe(id)
+    const receipt = a.run<{ actual: string; expected: string; finite: boolean }>(
+      `const candidate=svc.candidates.value.find(one=>one.path===${JSON.stringify(path)});if(!candidate)throw new Error('Review missing');const root=await openSyncTab();const row=[...root.querySelectorAll('.setting-item')].find(one=>textOf(one.querySelector('.setting-item-name'))===${JSON.stringify(path)});icon(row,'eye');await poll(()=>modal('Review incoming code'));const box=modal('Review incoming code');const received=[...box.querySelectorAll('.setting-item')].find(one=>textOf(one.querySelector('.setting-item-name'))==='Received');const actual=textOf(received?.querySelector('.setting-item-description')),expected=new Date(candidate.receivedAt).toLocaleString();await press(box,'Close');await closeSettings();return {actual,expected,finite:Number.isFinite(candidate.receivedAt)}`
+    )
+    expect(receipt.finite).toBe(true)
+    expect(receipt.actual).toBe(receipt.expected)
+    expect(receipt.actual).not.toBe('')
     await a.review(path, 'Approve')
     expect(a.read(path)).toBe('// phone review one')
     await s.put(path, '// rejected phone update')

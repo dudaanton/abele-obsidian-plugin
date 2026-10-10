@@ -667,6 +667,9 @@ export class TokenEngineRuntime implements ConnectionRuntime, TokenUiRuntime {
     await (lease ? lease([item.path, copy], work) : work())
   }
   async pendingLocal(): Promise<number> {
+    return (await this.pendingLocalDetails()).count
+  }
+  async pendingLocalDetails(): Promise<{ count: number; paths: string[] }> {
     this.assertHeld()
     const result = await scan(this.options.fs, this.options.state, {
       excluded: (path, size) =>
@@ -675,7 +678,15 @@ export class TokenEngineRuntime implements ConnectionRuntime, TokenUiRuntime {
         isExcluded(path, size, this.selective, this.options.paths?.scriptsFolder ?? 'Scripts'),
     })
     this.assertHeld()
-    return result.ops.length
+    const paths = await Promise.all(
+      result.ops.map(async (op) =>
+        'path' in op ? op.path : 'to_path' in op ? op.to_path : await this.pathFor(op.file_id)
+      )
+    )
+    return {
+      count: result.ops.length,
+      paths: [...new Set(paths.filter((path): path is string => path !== null))],
+    }
   }
   async start(): Promise<void> {
     await this.refreshHolds()
