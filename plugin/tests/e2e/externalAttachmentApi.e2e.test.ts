@@ -4,6 +4,7 @@ import { beforeEach, afterEach, describe, expect, it } from 'vitest'
 import { TokenSyncLive } from './helpers/tokenSyncLive'
 import { fixtureFetch } from './helpers/syncServer'
 import { onPhone, targets } from './helpers/target'
+import { MOBILE_MAX_FILE_BYTES } from '../../src/sync/connection'
 import { allowFixtureAttachment } from './helpers/externalAttachmentFixture'
 
 targets('desktop', 'phone')
@@ -34,7 +35,7 @@ afterEach(async () => {
   await live?.close()
 }, TIMEOUT)
 
-async function attachment(folderToken = false, size = 26) {
+async function attachment(folderToken = false, size = 26, raiseCap = true) {
   const path = live.root + '/sample.bin'
   // Connect empty first: the large transfer has its own explicit operation budget.
   await live.put(live.root + '/seed.md', 'attachment fixture')
@@ -44,10 +45,17 @@ async function attachment(folderToken = false, size = 26) {
     : live.server.rootToken
   const id = await live.connect(live.primary, encoded)
   await live.primary.pause(id, true)
-  await live.primary.long(
-    'allow fixture attachment size',
-    `await (${allowFixtureAttachment.toString()})(svc,${JSON.stringify(id)},${size})`
-  )
+  if (!raiseCap) {
+    const cap = live.primary.run<number | null>(
+      `return svc.registry.records().find(one=>one.id===${JSON.stringify(id)}).selective.maxFileBytes`
+    )
+    expect(cap).toBe(onPhone() ? MOBILE_MAX_FILE_BYTES : null)
+  }
+  if (raiseCap)
+    await live.primary.long(
+      'allow fixture attachment size',
+      `await (${allowFixtureAttachment.toString()})(svc,${JSON.stringify(id)},${size})`
+    )
   const bytes = new Uint8Array(size).fill(90)
   const sha = await sha256(bytes)
   await live.client().putBlob(sha, bytes)
@@ -56,8 +64,8 @@ async function attachment(folderToken = false, size = 26) {
   return { id, path, sha, size, encoded, version }
 }
 
-async function roundTrip(folderToken = false, size = 26, departure = false) {
-  const file = await attachment(folderToken, size)
+async function roundTrip(folderToken = false, size = 26, departure = false, raiseCap = true) {
+  const file = await attachment(folderToken, size, raiseCap)
   const outcome = await live.primary.long<RoundTrip>(
     'v2 attachment eviction and hydration',
     `
@@ -143,6 +151,36 @@ describe('v2 external attachments on live adapters', () => {
         identical: true,
         disconnectReady: true,
       })
+    },
+    TIMEOUT
+  )
+  it(
+    'receives and hydrates the default phone size limit without raising the cap or reloading',
+    async () => {
+      const identity = () =>
+        live.primary.run<{ timeOrigin: number; loadId: string }>(`
+        window.__abeleAttachmentLoadId ??= crypto.randomUUID()
+        return {timeOrigin:performance.timeOrigin,loadId:window.__abeleAttachmentLoadId}
+      `)
+      const before = identity()
+      const result = await roundTrip(false, MOBILE_MAX_FILE_BYTES, false, false)
+      expect(identity(), 'Obsidian was reloaded during the case').toEqual(before)
+      expect(result).toMatchObject({
+        evicted: { status: 'complete', reclaimedBytes: MOBILE_MAX_FILE_BYTES },
+        missing: true,
+        sidecar: true,
+        retired: true,
+        identical: true,
+        verifiedRead: true,
+      })
+      const cap = live.primary.run<number | null>(
+        'return svc.registry.records()[0].selective.maxFileBytes'
+      )
+      expect(cap).toBe(onPhone() ? MOBILE_MAX_FILE_BYTES : null)
+      console.info(
+        '[attachment-default-limit]',
+        JSON.stringify({ size: MOBILE_MAX_FILE_BYTES, cap, before, after: identity() })
+      )
     },
     TIMEOUT
   )
