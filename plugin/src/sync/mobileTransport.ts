@@ -37,6 +37,13 @@ export class NativeSyncFailure extends EngineError {
     const network =
       phase === 'sending' &&
       /^(?:-1003|-1004|-1009|ENOTFOUND|ECONNREFUSED|ENETUNREACH)$/.test(nativeCode)
+    // Unknown bridge/encoding/body interruptions can change on retry. Only explicit
+    // local incompatibilities and redirect refusals are deterministic stopping errors.
+    const permanent =
+      (phase === 'encoding' && error instanceof SyntaxError) ||
+      /^(?:Unsupported (?:native sync request body|native sync response bytes|native sync response status|bytes)|sync transport refuses redirects before following|Native sync transport unexpectedly followed a redirect)$/i.test(
+        typeof native?.message === 'string' ? native.message : ''
+      )
     const label =
       phase === 'encoding'
         ? "Couldn't send changes"
@@ -44,7 +51,7 @@ export class NativeSyncFailure extends EngineError {
           ? 'Server unavailable'
           : 'Sync interrupted'
     super(
-      network ? 'offline' : 'io',
+      permanent ? 'io' : 'offline',
       `${label}. Native ${phase} (${nativeCode}): ${clean(native?.message ?? error)}`
     )
   }

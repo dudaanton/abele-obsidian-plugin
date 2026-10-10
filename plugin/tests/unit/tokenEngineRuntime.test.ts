@@ -1,5 +1,5 @@
 import { expect, it, vi } from 'vitest'
-import { MemoryFileSystem, MemoryStateStore, sha256 } from '@abele/sync-core'
+import { EngineError, MemoryFileSystem, MemoryStateStore, sha256 } from '@abele/sync-core'
 import { encodeAccessToken } from '@abele/sync-protocol'
 import { TokenEngineRuntime } from '@/sync/tokenEngineRuntime'
 import { PathCoordinator, coordinatedFileSystem } from '@/sync/pathCoordinator'
@@ -46,7 +46,70 @@ it('keeps native pre-send failure details and error status through the classifie
   }
 })
 
+it.each(['offline', 'sending', 'encoding', 'response'])(
+  'recovers from one %s failure on the same 2s backoff without user action',
+  async (phase) => {
+    vi.useFakeTimers()
+    const wire = await server('Notes/sample.md', 'note')
+    wire.fetch.mockImplementationOnce(async () => {
+      throw phase === 'offline'
+        ? new EngineError('offline', 'network interrupted')
+        : new NativeSyncFailure(phase, new Error('transient bridge failure'))
+    })
+    const one = runtime(wire, new MemoryFileSystem())
+    try {
+      await one.runtime.start()
+      await vi.advanceTimersByTimeAsync(0)
+      expect(wire.fetch).toHaveBeenCalledTimes(1)
+      expect(one.runtime.engine.status).toMatchObject({
+        state: 'offline',
+        lastError: expect.stringContaining(
+          phase === 'offline'
+            ? 'network interrupted'
+            : phase === 'encoding'
+              ? "Couldn't send changes"
+              : 'Sync interrupted'
+        ),
+      })
+      await vi.advanceTimersByTimeAsync(1999)
+      expect(wire.fetch).toHaveBeenCalledTimes(1)
+      await vi.advanceTimersByTimeAsync(1)
+      expect(wire.fetch.mock.calls.length).toBeGreaterThan(1)
+      // Retry is triggered at exactly 2s; native digest promises settle outside fake timers.
+      await vi.waitFor(() =>
+        expect(one.runtime.engine.status).toMatchObject({ state: 'idle', lastError: null })
+      )
+      expect(one.runtime.trace.snapshot().log).toContain('sync: retry')
+    } finally {
+      await one.runtime.disconnect()
+      vi.useRealTimers()
+    }
+  }
+)
+
 const scope = { kind: 'folder' as const, id: 'root', path: '/' }
+it('does not backoff-retry a deterministic unsupported request body', async () => {
+  vi.useFakeTimers()
+  const wire = await server('Notes/sample.md', 'note')
+  wire.fetch.mockImplementation(async () => {
+    throw new NativeSyncFailure('encoding', new Error('Unsupported native sync request body'))
+  })
+  const one = runtime(wire, new MemoryFileSystem())
+  try {
+    await one.runtime.start()
+    await vi.advanceTimersByTimeAsync(0)
+    expect(one.runtime.engine.status).toMatchObject({
+      state: 'error',
+      lastError: expect.stringContaining("Couldn't send changes"),
+    })
+    await vi.advanceTimersByTimeAsync(2000)
+    expect(wire.fetch).toHaveBeenCalledTimes(1)
+    expect(one.runtime.trace.snapshot().log).not.toContain('sync: retry')
+  } finally {
+    await one.runtime.disconnect()
+    vi.useRealTimers()
+  }
+})
 const token = (address: string) => encodeAccessToken({ v: 1, address, key: 'a'.repeat(43), scope })
 it('does not schedule watch exchanges for ignored activity between fallback polls', async () => {
   const wire = await server('Notes/sample.md', 'note')
