@@ -439,6 +439,20 @@ describe('Section', () => {
 })
 
 describe('EmptyState', () => {
+  it('stays one muted line on its own, and grows into a centred block with an icon and a title', () => {
+    const line = mount(EmptyState, { props: { text: 'Nothing here' } })
+    expect(line.classes()).not.toContain('abele-empty-state_centered')
+    expect(line.find('.abele-empty-state__description').text()).toBe('Nothing here')
+
+    const block = mount(EmptyState, {
+      props: { icon: 'files', title: 'No notes yet', text: 'Notes you write appear here' },
+    })
+    expect(block.classes()).toContain('abele-empty-state_centered')
+    expect(block.find('.abele-empty-state__icon').attributes('aria-hidden')).toBe('true')
+    expect(block.find('.abele-empty-state__title').text()).toBe('No notes yet')
+    expect(block.classes()).toContain('abele-empty-state_empty')
+  })
+
   it('says what is missing', () => {
     expect(mount(EmptyState, { props: { text: 'No agents yet.' } }).text()).toBe('No agents yet.')
   })
