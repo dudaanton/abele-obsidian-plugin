@@ -42,6 +42,9 @@ const PRELUDE = `${WAIT_PRELUDE}
   const select = async id => {
     const root = await until(() => visible('[data-ask-message="' + id + '"]'), 5000)
     if (!root) throw Error('Saved message did not render')
+    const focused = document.activeElement
+    if (focused instanceof HTMLElement) focused.blur()
+    if (!await until(() => parseFloat(getComputedStyle(document.body).getPropertyValue('--keyboard-height')) === 0, 5000)) throw Error('Keyboard did not close before selecting words')
     const word = await until(() => root.querySelector('strong'), 5000)
     if (!word) throw Error('Saved words did not render')
     // Native sheets finish closing after their DOM is removed. Wait for the message's
