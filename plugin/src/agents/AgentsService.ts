@@ -78,6 +78,7 @@ export class AgentsService {
   private readonly revisions = new Map<string, number>()
   /** Only disk-confirmed decisions may subtract from the evidence ledger. */
   private readonly truths = new Map<string, LocalAttention>()
+  private applyingDisk = false
   private savedIndex = ''
   private savedRevisions = ''
   private readonly live = new Map<ChatSession, WatchStopHandle>()
@@ -166,7 +167,9 @@ export class AgentsService {
       session,
       watch(
         [
-          session.currentChatFile,
+          // A TFile reaches the vault and app graph even through a shallowRef. Only its
+          // path belongs in this deep watch; the remaining sources are plain session data.
+          () => session.currentChatFile.value?.path,
           session.attention,
           session.pendingToolCalls,
           session.chatTitle,
@@ -175,7 +178,9 @@ export class AgentsService {
           session.activeModelId,
           () => session.kind,
         ],
-        () => this.publish(),
+        () => {
+          if (!this.applyingDisk) this.publish()
+        },
         { deep: true, flush: 'sync' }
       )
     )
@@ -237,9 +242,17 @@ export class AgentsService {
     const truth = mergeAttentionTruth(metadata.attention ?? {}, this.truths.get(path) ?? {})
     this.truths.set(path, truth)
     this.files.set(path, this.fileRow(path, { ...metadata, attention: truth }))
-    for (const session of this.live.keys())
-      if (session.currentChatFile.value?.path === path)
-        session.applyAttentionTruth({ ...metadata, attention: truth }, reconcileRequests)
+    // The caller publishes the completed disk batch. Applying truth can update several
+    // watched refs per holder; none should rebuild/sort/persist the entire list mid-batch.
+    const applyingDisk = this.applyingDisk
+    this.applyingDisk = true
+    try {
+      for (const session of this.live.keys())
+        if (session.currentChatFile.value?.path === path)
+          session.applyAttentionTruth({ ...metadata, attention: truth }, reconcileRequests)
+    } finally {
+      this.applyingDisk = applyingDisk
+    }
   }
   private unknown(path: string): void {
     this.checked.delete(path)

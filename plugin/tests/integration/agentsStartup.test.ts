@@ -1,5 +1,7 @@
 import { afterEach, beforeEach, expect, it, vi } from 'vitest'
+import { watch } from 'vue'
 import { AgentsService } from '@/agents/AgentsService'
+import { ChatSession } from '@/ai/ChatSession'
 import { ChatService } from '@/ai/ChatService'
 import { ChatStorage } from '@/ai/ChatStorage'
 import { CommentService } from '@/ai/CommentService'
@@ -20,6 +22,125 @@ afterEach(() => {
   AgentsService.destroyCurrent()
   ChatStorage.destroy()
   vi.restoreAllMocks()
+})
+
+it('never traverses the host graph of an open chat file', async () => {
+  const app = useVault(syntheticChats(1))
+  const chats = ChatService.getInstance()
+  const session = new ChatSession(chats)
+  chats.adoptSession(session)
+  const visited = vi.fn(() => ({ files: app.vault.getFiles(), app }))
+  const file = app.vault.getFiles()[0]
+  Object.defineProperty(file, 'vault', { enumerable: true, get: visited })
+  session.currentChatFile.value = file
+  session.attention.value = { errors: [{ id: 'sample-error', at: 1, text: 'Sample' }] }
+  await AgentsService.getInstance().start()
+  expect(visited).not.toHaveBeenCalled()
+})
+
+it('publishes one startup scan batch rather than each open session truth update', async () => {
+  const app = useVault(syntheticChats(12))
+  const chats = ChatService.getInstance()
+  for (const file of app.vault.getFiles()) {
+    const session = new ChatSession(chats)
+    chats.adoptSession(session)
+    session.currentChatFile.value = file
+  }
+  const agents = AgentsService.getInstance()
+  const published = vi.fn()
+  const stop = watch(agents.rows, published, { flush: 'sync' })
+  try {
+    await agents.start()
+    // Initial incomplete evidence, then the completed inventory (including all live holders).
+    expect(published).toHaveBeenCalledTimes(2)
+    expect(agents.badge.value.attention).toBe(2)
+    expect(agents.incomplete.value).toBe(false)
+  } finally {
+    stop()
+  }
+})
+
+it('keeps nested live attention and presentation changes synchronous after disk discovery', async () => {
+  const app = useVault(syntheticChats(2))
+  const chats = ChatService.getInstance()
+  const session = new ChatSession(chats)
+  chats.adoptSession(session)
+  session.currentChatFile.value = app.vault.getFiles()[1]
+  const agents = AgentsService.getInstance()
+  await agents.start()
+  session.attention.value = { errors: [{ id: 'live-error', at: 10, text: 'Before' }] }
+  session.attention.value.errors![0].text = 'After'
+  session.chatTitle.value = 'Live title'
+  session.anchor.value = { note: 'Notes/first.md', quote: 'Before' }
+  session.anchor.value.note = 'Samples/second.md'
+  session.anchor.value.quote = 'After'
+  session.pendingToolCalls.value.push({
+    id: 'live-call',
+    name: 'first_tool',
+    arguments: {},
+    type: 'toolCall',
+  })
+  session.pendingToolCalls.value[0].name = 'second_tool'
+  expect(
+    agents.rows.value.find((row) => row.key === session.currentChatFile.value!.path)
+  ).toMatchObject({
+    title: 'Live title',
+    folder: 'Samples',
+    quote: 'After',
+    reasons: expect.arrayContaining([
+      expect.objectContaining({ id: 'live-error', text: 'After' }),
+      expect.objectContaining({ id: 'live-call', text: 'second_tool' }),
+    ]),
+  })
+  session.currentChatFile.value = null
+  expect(agents.rows.value.some((row) => row.reference.sessionId === session.id)).toBe(true)
+})
+
+it('publishes a saved disk decision only after all holder refs have been reconciled', async () => {
+  const app = useVault(syntheticChats(1))
+  const chats = ChatService.getInstance()
+  const session = new ChatSession(chats)
+  chats.adoptSession(session)
+  const file = app.vault.getFiles()[0]
+  session.currentChatFile.value = file
+  session.pendingToolCalls.value = [
+    {
+      id: 'sample-call',
+      name: 'sample_tool',
+      arguments: {},
+      type: 'toolCall',
+    },
+  ]
+  const agents = AgentsService.getInstance()
+  await agents.start()
+  const published = vi.fn()
+  const stop = watch(agents.rows, published, { flush: 'sync' })
+  try {
+    await app.vault.modify(
+      file,
+      serializeChat({
+        metadata: {
+          type: 'abele-chat',
+          providerId: '',
+          modelId: '',
+          created: '',
+          attention: { resolved: ['sample-call'] },
+        },
+        messages: [],
+        internalMessages: [],
+      })
+    )
+    await agents.updateFile(file)
+    expect(session.pendingToolCalls.value).toEqual([])
+    expect(published).toHaveBeenCalledTimes(1)
+    expect(
+      agents.rows.value.flatMap((row) => row.reasons).some((r) => r.id === 'sample-call')
+    ).toBe(false)
+    session.recordAttentionError('A later live error')
+    expect(published).toHaveBeenCalledTimes(2)
+  } finally {
+    stop()
+  }
 })
 
 it('does not prepare ordinary transcripts during attention discovery', async () => {
