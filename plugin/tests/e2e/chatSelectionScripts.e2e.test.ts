@@ -44,11 +44,23 @@ const PRELUDE = `${WAIT_PRELUDE}
     if (!root) throw Error('Saved message did not render')
     const word = root.querySelector('strong')
     const bounds = word.getBoundingClientRect()
-    if (window.__e2eHost) await window.__e2eHost.longPress(bounds.left + bounds.width/2, bounds.top + bounds.height/2)
-    else { const range = document.createRange(); range.selectNodeContents(word); document.getSelection().removeAllRanges(); document.getSelection().addRange(range); document.dispatchEvent(new Event('selectionchange')) }
+    const events = [], tracking = new AbortController()
+    let touches = 0
+    for (const type of ['touchstart','touchend','touchcancel','pointerdown','pointerup','pointercancel','selectionchange']) document.addEventListener(type, e => {
+      if (e.touches) touches = e.touches.length
+      events.push({type, touches, pointerType:e.pointerType, target:e.target?.nodeName, selected:document.getSelection()?.toString()})
+    }, {capture:true,signal:tracking.signal})
+    try {
+      if (window.__e2eHost) await window.__e2eHost.longPress(bounds.left + bounds.width/2, bounds.top + bounds.height/2)
+      else { const range = document.createRange(); range.selectNodeContents(word); document.getSelection().removeAllRanges(); document.getSelection().addRange(range); document.dispatchEvent(new Event('selectionchange')) }
     if (app.isMobile) {
       const button = await until(() => visible('.abele-chat-selection_placed [aria-label="Run a script on these words…"]'), 5000)
-      if (!button) throw Error('Selection script button did not appear')
+      if (!button) {
+        const selection = document.getSelection(), range = selection?.rangeCount ? selection.getRangeAt(0) : null
+        const hit = document.elementFromPoint(bounds.left + bounds.width/2, bounds.top + bounds.height/2)
+        await shoot('selection-failure')
+        throw Error('Selection script button did not appear: ' + JSON.stringify({selection:selection?.toString(),range:range && {start:range.startOffset,end:range.endOffset,startNode:range.startContainer.parentElement?.outerHTML,endNode:range.endContainer.parentElement?.outerHTML},touchDown:touches,keyboardHeight:getComputedStyle(document.body).getPropertyValue('--keyboard-height'),hit:hit?.outerHTML,events}))
+      }
       await shoot('selection-bar')
       button.dispatchEvent(new PointerEvent('pointerdown', {bubbles:true}))
       document.getSelection().removeAllRanges()
@@ -65,6 +77,7 @@ const PRELUDE = `${WAIT_PRELUDE}
       document.getSelection().removeAllRanges()
       choice.click()
     }
+    } finally { tracking.abort() }
   }
   const anchorCount = () => chats.getSessionByFile(${JSON.stringify(CHAT)})?.allMessages.value.find(m => m.id === 'answer')?.selection?.anchors.length || 0
   const form = async () => {
@@ -77,7 +90,7 @@ const PRELUDE = `${WAIT_PRELUDE}
 const run = async <T>(code: string, timeout = 45_000): Promise<T> =>
   JSON.parse(
     await evalLong(
-      `(async () => { ${PRELUDE} try { ${code} } catch(error) { return JSON.stringify({error:String(error.stack || error)}) } })()`,
+      `(async () => { ${PRELUDE} try { ${code} } catch(error) { return JSON.stringify({error:String(error.message || error),stack:String(error.stack || '')}) } })()`,
       timeout
     )
   ) as T
