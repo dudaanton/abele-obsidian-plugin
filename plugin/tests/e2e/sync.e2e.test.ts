@@ -138,7 +138,9 @@ liveCase(
     await s.cycle()
     expect(a.read(path)).toBe('first version')
     expect(b.read(path)).toBe('first version')
-    a.run(`document.querySelector('.modal-close-button')?.click();return true`)
+    a.run(
+      `document.querySelector('.modal-close-button, .modal-header-button:has(svg.lucide-x)')?.click();return true`
+    )
     a.remove([path])
     await s.cycle()
     await a.trash()

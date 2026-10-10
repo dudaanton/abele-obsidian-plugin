@@ -137,7 +137,9 @@ liveCase(
   [56, 103],
   async () => {
     const { s, a, b, id, paths } = await heldFixture()
-    a.run(`document.querySelector('.modal-close-button')?.click();return true`)
+    a.run(
+      `document.querySelector('.modal-close-button, .modal-header-button:has(svg.lucide-x)')?.click();return true`
+    )
     await a.pause(id, true)
     a.run(
       `const root=await openSyncTab();icon(connectionRow(root,${JSON.stringify(id)}),'settings');await poll(()=>settingsDoc().querySelector('.abele-held-deletes'));const box=settingsDoc().querySelector('.abele-held-deletes');await press(box,'Delete everywhere');await poll(()=>modal('Delete 60 files everywhere?'));await press(modal('Delete 60 files everywhere?'),'Delete everywhere');await press(box,'Put them back');await closeSettings();return true`

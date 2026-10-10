@@ -158,13 +158,13 @@ export class SyncDriver {
   }
   async disconnect(id: string): Promise<void> {
     this.run(
-      `for(const doc of new Set([document,settingsDoc()]))for(const button of [...doc.querySelectorAll('.modal-close-button')].reverse())button.click(); const root=await openSyncTab(); icon(connectionRow(root,${JSON.stringify(id)}),'unlink'); await poll(()=>modal('Disconnect?')); await press(modal('Disconnect?'),'Disconnect'); await poll(()=>!svc.rows.value.some(one=>one.id===${JSON.stringify(id)})); await closeSettings(); return true`
+      `for(const doc of new Set([document,settingsDoc()]))for(const button of [...doc.querySelectorAll('.modal-close-button, .modal-header-button:has(svg.lucide-x)')].reverse())button.click(); const root=await openSyncTab(); icon(connectionRow(root,${JSON.stringify(id)}),'unlink'); await poll(()=>modal('Disconnect?')); await press(modal('Disconnect?'),'Disconnect'); await poll(()=>!svc.rows.value.some(one=>one.id===${JSON.stringify(id)})); await closeSettings(); return true`
     )
   }
   async resetTokenState(): Promise<void> {
     await this.long(
       'reset leased pool token state',
-      `await poll(()=>Object.keys(window).filter(key=>key.startsWith('__abeleSyncJob')&&key!==jobKey).every(key=>window[key]!==null),10000,'previous sync UI jobs to settle');for(const key of Object.keys(window).filter(key=>key.startsWith('__abeleSyncJob')&&key!==jobKey))delete window[key];for(const doc of new Set([document,settingsDoc()]))for(const button of [...doc.querySelectorAll('.modal-close-button')].reverse())button.click();await window.__abeleTest.resetSyncTokenState({vault:app.vault.getName(),confirm:'reset-sync-token-state'});return true`,
+      `await poll(()=>Object.keys(window).filter(key=>key.startsWith('__abeleSyncJob')&&key!==jobKey).every(key=>window[key]!==null),10000,'previous sync UI jobs to settle');for(const key of Object.keys(window).filter(key=>key.startsWith('__abeleSyncJob')&&key!==jobKey))delete window[key];for(const doc of new Set([document,settingsDoc()]))for(const button of [...doc.querySelectorAll('.modal-close-button, .modal-header-button:has(svg.lucide-x)')].reverse())button.click();await window.__abeleTest.resetSyncTokenState({vault:app.vault.getName(),confirm:'reset-sync-token-state'});return true`,
       false,
       20000,
       true
@@ -178,7 +178,7 @@ export class SyncDriver {
     // skip it: the port itself drains engines before any database is removed.
     await this.long(
       'guarded pool reset after polite cleanup failed',
-      `await window.__abeleTest.resetSyncTokenState({vault:app.vault.getName(),confirm:'reset-sync-token-state'});for(const key of Object.keys(window).filter(key=>key.startsWith('__abeleSyncJob')&&key!==jobKey))delete window[key];for(const doc of new Set([document,settingsDoc()]))for(const button of [...doc.querySelectorAll('.modal-close-button')].reverse())button.click();return true`,
+      `await window.__abeleTest.resetSyncTokenState({vault:app.vault.getName(),confirm:'reset-sync-token-state'});for(const key of Object.keys(window).filter(key=>key.startsWith('__abeleSyncJob')&&key!==jobKey))delete window[key];for(const doc of new Set([document,settingsDoc()]))for(const button of [...doc.querySelectorAll('.modal-close-button, .modal-header-button:has(svg.lucide-x)')].reverse())button.click();return true`,
       false,
       60000,
       true
@@ -243,7 +243,7 @@ export class SyncDriver {
   }
   async trash(): Promise<void> {
     this.run(
-      `await closeSettings();for(const doc of new Set([document,settingsDoc()]))for(const box of doc.querySelectorAll('.abele-deleted-files'))box.closest('.modal')?.querySelector('.modal-close-button')?.click();await poll(()=>!inWindows('.abele-deleted-files'),20000,'previous trash dialog to close');app.commands.executeCommandById('abele:sync-deleted-files');await poll(()=>inWindows('.abele-deleted-files'));return true`
+      `await closeSettings();for(const doc of new Set([document,settingsDoc()]))for(const box of doc.querySelectorAll('.abele-deleted-files'))box.closest('.modal')?.querySelector('.modal-close-button, .modal-header-button:has(svg.lucide-x)')?.click();await poll(()=>!inWindows('.abele-deleted-files'),20000,'previous trash dialog to close');app.commands.executeCommandById('abele:sync-deleted-files');await poll(()=>inWindows('.abele-deleted-files'));return true`
     )
   }
   async restore(selector: string, name: string): Promise<void> {
