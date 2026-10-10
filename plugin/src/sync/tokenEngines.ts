@@ -297,8 +297,7 @@ export class TokenEngines {
         () => fence.assertReady(),
         async (paths) => {
           const affected = new Set(paths)
-          for await (const info of ordinary.list())
-            if (paths.some((path) => info.path.startsWith(path + '/'))) affected.add(info.path)
+          for await (const info of ordinary.placementFiles(paths)) affected.add(info.path)
           await editCopiesOf(this.app.vault).capture(ordinary, [...affected])
         }
       )

@@ -1,5 +1,22 @@
-import { expect, it } from 'vitest'
+import { expect, it, vi } from 'vitest'
 import { VaultDirectories } from '@/sync/vaultDirectories'
+
+it('uses native nonrecursive directory removal instead of Obsidian rmdir(false), which raises EISDIR', async () => {
+  const removeEmpty = vi.fn(async (_path: string) => {})
+  const adapter = {
+    stat: async () => ({ type: 'folder', ctime: 1, mtime: 1, size: 0 }),
+    list: async () => ({ files: [], folders: [] }),
+    mkdir: async () => {},
+    rename: async () => {},
+    rmdir: async () => {
+      throw new Error('EISDIR')
+    },
+  }
+  const storage = { loadLocalStorage: () => [], saveLocalStorage: () => {} }
+  const folders = new VaultDirectories(adapter, storage, async () => false, removeEmpty)
+  await folders.remove('moved')
+  expect(removeEmpty).toHaveBeenCalledWith('moved')
+})
 
 it('preserves directory identity across rename/reload and removes only empty directories', async () => {
   const records = new Map<string, unknown>(),
@@ -46,6 +63,7 @@ it('preserves directory identity across rename/reload and removes only empty dir
   const b = new VaultDirectories(port, storage)
   expect((await list(b))[0].identity).toBe(before.identity)
   await expect(b.remove('Moved')).rejects.toThrow(/empty/)
+  await expect(b.remove('Moved')).rejects.toMatchObject({ code: 'ENOTEMPTY' })
   expect(files.has('Moved/sample.md')).toBe(true)
   files.clear()
   await b.remove('Moved')

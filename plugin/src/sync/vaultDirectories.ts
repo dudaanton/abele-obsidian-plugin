@@ -18,7 +18,9 @@ export class VaultDirectories {
   constructor(
     private readonly adapter: DirectoryAdapter,
     private readonly storage: LocalStorage,
-    private readonly symlink: (path: string) => Promise<boolean> = async () => false
+    private readonly symlink: (path: string) => Promise<boolean> = async () => false,
+    private readonly removeEmpty: (path: string) => Promise<void> = (path) =>
+      adapter.rmdir(path, false)
   ) {}
   private records() {
     return schema.parse(this.storage.loadLocalStorage(KEY) ?? [])
@@ -106,8 +108,9 @@ export class VaultDirectories {
       throw new EngineError('conflict', 'Directory path is occupied')
     const children = await this.adapter.list(path)
     if (children.files.length || children.folders.length)
-      throw new EngineError('conflict', 'Directory is not empty')
-    await this.adapter.rmdir(path, false)
+      // Core keeps a removed/moved directory when local children still need it.
+      throw Object.assign(new Error('Directory is not empty'), { code: 'ENOTEMPTY' })
+    await this.removeEmpty(path)
     this.save(this.records().filter((one) => one.path !== path))
   }
 }

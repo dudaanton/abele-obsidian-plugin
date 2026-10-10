@@ -23,6 +23,7 @@ export interface SyncStatus {
   status: string
   paused: boolean
   address: string
+  error?: string
 }
 export class SyncDriver {
   constructor(readonly vault: () => VaultCli) {}
@@ -58,15 +59,27 @@ export class SyncDriver {
   }
   rows(): SyncStatus[] {
     return this.run(
-      'return svc.rows.value.map(({id,status,paused,address})=>({id,status,paused,address}))'
+      'return svc.rows.value.map(({id,status,paused,address})=>({id,status,paused,address,error:svc.activity.value[id]?.error}))'
     )
   }
   async connect(token: string): Promise<string> {
-    return this.long(
+    return this.long<string>(
       'connect by token',
       `const before=new Set(svc.rows.value.map(one=>one.id)); const root=await openSyncTab(); await press(root,'Connect…'); await poll(()=>modal('Connect to a server')); const box=modal('Connect to a server'); typeInto(box.querySelector('input[placeholder="Paste your token"]'),${JSON.stringify(token)}); await press(box,'Connect'); await poll(()=>!modal('Connect to a server')); const added=svc.rows.value.find(one=>!before.has(one.id)); if(!added) throw new Error('No connection added'); await poll(()=>svc.runtimes.has(added.id)); await closeSettings(); return added.id`,
       true
-    )
+    ).catch(() => {
+      // Only product state is reported; private eval errors may contain the pasted token.
+      let details = 'No connection state available'
+      try {
+        details =
+          this.rows()
+            .map((one) => one.id + ' (' + one.status + '): ' + (one.error ?? 'No product error'))
+            .join('; ') || 'No connection added'
+      } catch {
+        /* The vault can be reloading; keep the confidential fallback. */
+      }
+      throw new Error('connect by token failed: ' + details)
+    })
   }
   async syncNow(id?: string): Promise<void> {
     await this.long(
@@ -81,7 +94,12 @@ export class SyncDriver {
       () => {
         const rows = this.rows().filter((one) => !id || one.id === id)
         if (rows.some((one) => one.status === 'error'))
-          throw new Error('Token exchange needs attention')
+          throw new Error(
+            rows
+              .filter((one) => one.status === 'error')
+              .map((one) => one.id + ': ' + (one.error ?? 'Token exchange needs attention'))
+              .join('; ')
+          )
         return rows.length > 0 && rows.every((one) => ['idle', 'paused'].includes(one.status))
       },
       60000

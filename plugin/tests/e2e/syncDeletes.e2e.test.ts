@@ -1,4 +1,5 @@
 import { expect } from 'vitest'
+import { holdRestore } from './helpers/holdRestore'
 import { liveSuite, liveCase } from './helpers/syncLiveCases'
 const fixture = liveSuite()
 async function heldFixture() {
@@ -24,7 +25,7 @@ liveCase(
     const { s, a, b, paths } = await heldFixture()
     expect((await s.items()).filter((one) => paths.includes(one.path))).toHaveLength(60)
     a.run(
-      `host.presentReviews();await poll(()=>document.querySelector('.abele-held-deletes'));await press(document.querySelector('.abele-held-deletes'),'Put them back');return true`
+      `host.presentReviews();await poll(()=>inWindows('.abele-held-deletes'));await press(inWindows('.abele-held-deletes'),'Put them back');return true`
     )
     await s.cycle()
     expect(a.filesUnder(s.root + '/bulk')).toHaveLength(60)
@@ -44,14 +45,14 @@ liveCase(
   async () => {
     const { s, a, b, paths } = await heldFixture()
     a.run(
-      `host.presentReviews();await poll(()=>document.querySelector('.abele-held-deletes'));await press(document.querySelector('.abele-held-deletes'),'Delete everywhere');await poll(()=>document.querySelector('.abele-confirm__message'));await press(document.querySelector('.abele-confirm__message').closest('.modal'),'Delete everywhere');return true`
+      `host.presentReviews();await poll(()=>inWindows('.abele-held-deletes'));await press(inWindows('.abele-held-deletes'),'Delete everywhere');await poll(()=>inWindows('.abele-confirm__message'));await press(inWindows('.abele-confirm__message').closest('.modal'),'Delete everywhere');return true`
     )
     await s.cycle()
     expect(a.filesUnder(s.root + '/bulk')).toHaveLength(0)
     expect(b.filesUnder(s.root + '/bulk')).toHaveLength(0)
     await a.trash()
     a.run(
-      `const root=document.querySelector('.abele-deleted-files');const row=root.querySelector('.abele-restore-since');const select=row.querySelector('select');select.value='hour';select.dispatchEvent(new Event('change',{bubbles:true}));await press(row,'Restore 60…');await poll(()=>document.querySelector('.abele-confirm__message'));await press(document.querySelector('.abele-confirm__message').closest('.modal'),'Restore');return true`
+      `const root=inWindows('.abele-deleted-files');const row=root.querySelector('.abele-restore-since');const select=row.querySelector('select');select.value='hour';select.dispatchEvent(new Event('change',{bubbles:true}));await press(row,'Restore 60…');await poll(()=>inWindows('.abele-confirm__message'));await press(inWindows('.abele-confirm__message').closest('.modal'),'Restore');return true`
     )
     await s.cycle()
     expect(a.filesUnder(s.root + '/bulk')).toHaveLength(paths.length)
@@ -96,7 +97,7 @@ liveCase(
     await s.cycle()
     await a.trash()
     a.run(
-      `const client=svc.runtimes.get(${JSON.stringify(id)}).historyClient;window.__abeleRestoreOriginal=client.restoreDeleted.bind(client);client.restoreDeleted=async(...args)=>{await new Promise(resolve=>window.__abeleRestoreRelease=resolve);client.restoreDeleted=window.__abeleRestoreOriginal;return client.restoreDeleted(...args)};const box=document.querySelector('.abele-deleted-files');const row=path=>[...box.querySelectorAll('.abele-card')].find(one=>textOf(one.querySelector('.abele-card__name'))===path);await press(row(${JSON.stringify(paths[0])}),'Restore');await poll(()=>window.__abeleRestoreRelease);await press(row(${JSON.stringify(paths[1])}),'Restore');return true`
+      `const client=svc.runtimes.get(${JSON.stringify(id)}).historyClient;window.__abeleRestoreRelease=(${holdRestore.toString()})(client);const box=inWindows('.abele-deleted-files');const row=path=>[...box.querySelectorAll('.abele-card')].find(one=>textOf(one.querySelector('.abele-card__name'))===path);await press(row(${JSON.stringify(paths[0])}),'Restore');await press(row(${JSON.stringify(paths[1])}),'Restore');return true`
     )
     try {
       expect(
@@ -105,9 +106,7 @@ liveCase(
         )
       ).toBe('Queued')
     } finally {
-      a.run(
-        `window.__abeleRestoreRelease();delete window.__abeleRestoreRelease;delete window.__abeleRestoreOriginal;return true`
-      )
+      a.run(`window.__abeleRestoreRelease();delete window.__abeleRestoreRelease;return true`)
     }
     await a.long(
       'queued restores finish',
@@ -159,7 +158,7 @@ liveCase(
     await a.syncNow()
     expect((await s.items()).filter((one) => paths.includes(one.path))).toHaveLength(60)
     a.run(
-      `host.presentReviews();await poll(()=>document.querySelector('.abele-held-deletes'));await press(document.querySelector('.abele-held-deletes'),'Put them back');return true`
+      `host.presentReviews();await poll(()=>inWindows('.abele-held-deletes'));await press(inWindows('.abele-held-deletes'),'Put them back');return true`
     )
     await s.cycle()
     expect(a.filesUnder(s.root + '/live-folder')).toHaveLength(60)

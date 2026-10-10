@@ -195,15 +195,24 @@ export class ObsidianFileSystem implements FileSystem {
         }
       },
     })
-    this.directories = new VaultDirectories(this.guardedAdapter, storageOf(app), async (path) => {
-      const adapter = app.vault.adapter as DataAdapter & {
-        getFullPath?(path: string): string
-        fsPromises?: { lstat(path: string): Promise<{ isSymbolicLink(): boolean }> }
+    this.directories = new VaultDirectories(
+      this.guardedAdapter,
+      storageOf(app),
+      async (path) => {
+        const adapter = app.vault.adapter as DataAdapter & {
+          getFullPath?(path: string): string
+          fsPromises?: { lstat(path: string): Promise<{ isSymbolicLink(): boolean }> }
+        }
+        return adapter.getFullPath && adapter.fsPromises?.lstat
+          ? (await adapter.fsPromises.lstat(adapter.getFullPath(path))).isSymbolicLink()
+          : false
+      },
+      async (path) => {
+        const native = this.native
+        if (native) await native.rmdirEmpty(path)
+        else await this.guardedAdapter.rmdir(path, false)
       }
-      return adapter.getFullPath && adapter.fsPromises?.lstat
-        ? (await adapter.fsPromises.lstat(adapter.getFullPath(path))).isSymbolicLink()
-        : false
-    })
+    )
     this.beforeEngineMutation = options.beforeEngineMutation ?? null
     this.ledger = options.ledger ?? null
     this.pollMs = options.pollMs ?? DEFAULT_POLL_MS
@@ -297,6 +306,20 @@ export class ObsidianFileSystem implements FileSystem {
       },
       () => this.runtimeFence?.assertOwned()
     )
+  }
+
+  /** Placement needs immutable copies of its targets, not another full vault scan. */
+  async *placementFiles(paths: readonly string[]): AsyncIterable<FileInfo> {
+    this.runtimeFence?.assertReady()
+    await this.recover()
+    for (const path of new Set(paths)) {
+      const stat = await this.adapter.stat(path)
+      if (stat?.type === 'folder') yield* this.walkConfig(path)
+      else if (stat?.type === 'file') {
+        const info = await this.fileAt(path)
+        if (info) yield info
+      }
+    }
   }
 
   async *list(): AsyncIterable<FileInfo> {

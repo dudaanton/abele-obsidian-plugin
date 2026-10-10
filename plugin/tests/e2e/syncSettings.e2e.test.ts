@@ -183,7 +183,7 @@ liveCase(
       await s.connect()
       await s.connect(b)
       b.run(
-        `host.presentReviews();await poll(()=>document.querySelector('.abele-staged-settings'));await press(document.querySelector('.abele-staged-settings'),'Later');return true`
+        `host.presentReviews();await poll(()=>inWindows('.abele-staged-settings'));await press(inWindows('.abele-staged-settings'),'Later');return true`
       )
       expect(b.read(path)).toBe(local)
       b.run(
@@ -194,7 +194,7 @@ liveCase(
       await s.put(path, incoming)
       await b.syncNow()
       b.run(
-        `host.presentReviews();await poll(()=>document.querySelector('.abele-staged-settings'));const root=document.querySelector('.abele-staged-settings');let button=[...root.querySelectorAll('button')].find(one=>/Reload now|Apply and reload/.test(textOf(one)));if(!button)throw new Error('Reload action unavailable');window.__abeleReviewBeforeReload=true;button.click();return true`
+        `host.presentReviews();await poll(()=>inWindows('.abele-staged-settings'));const root=inWindows('.abele-staged-settings');let button=[...root.querySelectorAll('button')].find(one=>/Reload now|Apply and reload/.test(textOf(one)));if(!button)throw new Error('Reload action unavailable');window.__abeleReviewBeforeReload=true;button.click();return true`
       )
       await waitFor(
         'reviewed settings reload to finish',

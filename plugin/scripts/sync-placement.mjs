@@ -124,6 +124,20 @@ export function syncPlacementPlugin() {
       } else if (file.endsWith('/v2Directories.js')) {
         code = replaceOnce(
           code,
+          'const op = moved\n',
+          `// A recursive server delete must not bypass the ordinary file delete guard.
+            // Settle tracked children (or hold/restore them) before deleting their parent.
+            if (!moved) {
+              let children = false;
+              for await (const entry of this.state.all()) {
+                if ((entry.wirePath ?? entry.path).startsWith(old.path + '/')) { children = true; break; }
+              }
+              if (children) continue;
+            }
+            const op = moved\n`
+        )
+        code = replaceOnce(
+          code,
           'async receive(item) {',
           `async receive(item) {
           const previous = (await this.read()).directories.find(one => one.file_id === item.file_id);
