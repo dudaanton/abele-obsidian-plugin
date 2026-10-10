@@ -1,13 +1,19 @@
-import { isWikilink, pathToWikilink, wikilinkToPath } from '@/helpers/pathsHelpers'
+import { isWikilink, wikilinkToPath } from '@/helpers/pathsHelpers'
 import { getBacklinksByPath } from '@/helpers/vaultUtils'
 import { AbeleConfig } from '@/services/AbeleConfig'
 import { GlobalStore } from '@/stores/GlobalStore'
 import { normalizePath, TFile } from 'obsidian'
-import { Task } from './Task'
-import { Transaction } from './Transaction'
-import { TimeEntry } from './TimeEntry'
-import { Log } from './Log'
-import { Note } from './Note'
+// Preserve the original dependency evaluation order after moving entity construction.
+import './Task'
+import type { Task } from './Task'
+import './Transaction'
+import type { Transaction } from './Transaction'
+import './TimeEntry'
+import type { TimeEntry } from './TimeEntry'
+import './Log'
+import type { Log } from './Log'
+import './Note'
+import type { Note } from './Note'
 import { markRaw, reactive, shallowRef, toRaw } from 'vue'
 import { Journal } from './Journal'
 import { acquireVaultNoteIndex } from './vaultNoteIndex'
@@ -15,6 +21,8 @@ import { acquireVaultRelationBatches } from './vaultRelationBatches'
 import type { RelationChange } from './RelationBatchRouter'
 import dayjs from '@/helpers/dateLibrary'
 import { DATE_FORMAT } from '@/constants/dates'
+import * as relationEntries from './relationEntries'
+import * as relationMembership from './relationMembership'
 
 export class NoteRelations {
   public filePath: string
@@ -112,108 +120,43 @@ export class NoteRelations {
   }
 
   private addTask(path: string) {
-    path = normalizePath(path)
-    if (!this.tasks.has(path)) {
-      const task = reactive(new Task({ wikilink: pathToWikilink(path) }))
-      task.load()
-      this.tasks.set(path, task as Task)
-    }
+    return relationEntries.addTask(this.tasks, path)
   }
 
   private removeTask(path: string) {
-    path = normalizePath(path)
-
-    const task = this.tasks.get(path)
-    if (task) {
-      task.cleanup()
-      this.tasks.delete(path)
-    }
-
-    return task
+    return relationEntries.removeTask(this.tasks, path)
   }
 
   private addTransaction(path: string) {
-    path = normalizePath(path)
-    if (!this.transactions.has(path)) {
-      const transaction = reactive(new Transaction({ wikilink: pathToWikilink(path) }))
-      transaction.load()
-      this.transactions.set(path, transaction as Transaction)
-    }
+    return relationEntries.addTransaction(this.transactions, path)
   }
 
   private removeTransaction(path: string) {
-    path = normalizePath(path)
-
-    const transaction = this.transactions.get(path)
-    if (transaction) {
-      transaction.cleanup()
-      this.transactions.delete(path)
-    }
-
-    return transaction
+    return relationEntries.removeTransaction(this.transactions, path)
   }
 
   private addTimeEntry(path: string) {
-    path = normalizePath(path)
-    if (!this.timeEntries.has(path)) {
-      const entry = reactive(new TimeEntry({ wikilink: pathToWikilink(path) }))
-      entry.load()
-      this.timeEntries.set(path, entry as TimeEntry)
-    }
+    return relationEntries.addTimeEntry(this.timeEntries, path)
   }
 
   private removeTimeEntry(path: string) {
-    path = normalizePath(path)
-
-    const entry = this.timeEntries.get(path)
-    if (entry) {
-      entry.cleanup()
-      this.timeEntries.delete(path)
-    }
-
-    return entry
+    return relationEntries.removeTimeEntry(this.timeEntries, path)
   }
 
   private addLog(path: string) {
-    path = normalizePath(path)
-    if (!this.logs.has(path)) {
-      const log = reactive(new Log(path, this.filePath))
-      log.load()
-      this.logs.set(path, log as Log)
-    }
+    return relationEntries.addLog(this.logs, path, this.filePath)
   }
 
   private removeLog(path: string) {
-    path = normalizePath(path)
-
-    const log = this.logs.get(path)
-    if (log) {
-      log.cleanup()
-      this.logs.delete(path)
-    }
-
-    return log
+    return relationEntries.removeLog(this.logs, path)
   }
 
   private addNote(path: string) {
-    path = normalizePath(path)
-    if (!this.notes.has(path)) {
-      const note = reactive(new Note(path))
-      note.load()
-      this.notes.set(path, note as Note)
-    }
+    return relationEntries.addNote(this.notes, path)
   }
 
   private removeNote(path: string) {
-    path = normalizePath(path)
-
-    const note = this.notes.get(path)
-    if (note) {
-      note.cleanup()
-      this.notes.delete(path)
-    }
-
-    return note
+    return relationEntries.removeNote(this.notes, path)
   }
 
   private hasPath(path: string): boolean {
@@ -368,31 +311,8 @@ export class NoteRelations {
     }
   }
 
-  /**
-   * Whether a note belongs to this journal's day — the one rule for it, used both when the
-   * journal is opened and when a note changes while it is open.
-   *
-   * A note belongs to the day of its `due`, else its `date`, else its `created`. The two used to
-   * be written separately and disagreed: a note changing later was taken in if *any* of those
-   * fell on the day. A task made today for next week therefore appeared in today's daily note
-   * the moment it was created and was gone the next time the note was opened.
-   *
-   * Another journal is never a log of this one, even when it is dated to the same day.
-   */
   private belongsToJournalDay(path: string, frontmatter: Record<string, any> | undefined): boolean {
-    if (!this.journalDate || !frontmatter) return false
-
-    const date = frontmatter.due ?? frontmatter.date ?? frontmatter.created
-    if (!date) return false
-
-    const parsedDate = dayjs(date, DATE_FORMAT)
-    if (!parsedDate.isValid() || !parsedDate.isSame(this.journalDate, 'date')) return false
-
-    const config = AbeleConfig.getInstance()
-    if (config.isLogType(frontmatter.type, path)) {
-      return !config.journals.some((j) => j.checkIfNotePathIsJournal(path))
-    }
-    return true
+    return relationMembership.belongsToJournalDay(path, frontmatter, this.journalDate)
   }
 
   /**
@@ -425,78 +345,12 @@ export class NoteRelations {
     // Stale descendants are reconciled once at the end of the resolved batch.
   }
 
-  /**
-   * Whether `path` belongs among this note's relations — `findRelations` asked backwards, and
-   * nothing looser, so a note changing while this one is open lands exactly where reopening
-   * this one would put it.
-   *
-   * Opening gathers what links to this note and walks on only into notes *grouped* into it (and
-   * into notes grouped into those). So a note belongs if it links to one of the notes that walk
-   * reaches, or — for a journal — if it is dated to the journal's day.
-   *
-   * This used to be a looser rule of its own: a note belonged if it linked to anything that
-   * linked here, or was grouped under anything that did. A task for next week filed under a
-   * meeting note that mentions today appeared in today's daily note the moment it was made, and
-   * was gone the next time the note was opened.
-   */
   private isRelatedPath(path: string): boolean {
-    const { app } = GlobalStore.getInstance()
-
-    path = normalizePath(path)
-    if (path === this.filePath) return false
-
-    const file = app.vault.getAbstractFileByPath(path)
-    if (!(file instanceof TFile)) return false
-
-    const frontmatter = app.metadataCache.getFileCache(file)?.frontmatter
-    if (this.belongsToJournalDay(path, frontmatter)) return true
-
-    // One set for the whole question, as `findRelations` keeps one for the whole walk: a note
-    // already looked at from one route has nothing new to say from another.
-    const visited = new Set<string>()
-    return this.linkedPaths(path).some((target) => this.isWalkedInto(target, visited))
+    return relationMembership.isRelatedPath(path, this.filePath, this.journalDate)
   }
 
-  /**
-   * Whether `findRelations` walks into `path` — this note itself, or a note grouped into one it
-   * walks into. Those are the notes whose backlinks all belong here.
-   */
   private isWalkedInto(path: string, visited: Set<string>): boolean {
-    if (path === this.filePath) return true
-    if (visited.has(path)) return false
-    visited.add(path)
-
-    const { app } = GlobalStore.getInstance()
-
-    const file = app.vault.getAbstractFileByPath(path)
-    if (!(file instanceof TFile)) return false
-
-    const groups = app.metadataCache.getFileCache(file)?.frontmatter?.groups
-    if (!Array.isArray(groups)) return false
-
-    const linked = this.linkedPaths(path)
-    for (const group of groups) {
-      if (!isWikilink(group)) continue
-
-      const groupFile = app.metadataCache.getFirstLinkpathDest(wikilinkToPath(group), file.path)
-      if (!groupFile) continue
-
-      const groupPath = normalizePath(groupFile.path)
-      // `findRelations` reaches this note as a backlink of the group, and walks into it because
-      // its groups name that group — both have to hold, and a note is never its own group.
-      if (groupPath === path || !linked.includes(groupPath)) continue
-      if (this.isWalkedInto(groupPath, visited)) return true
-    }
-
-    return false
-  }
-
-  /** What `path` links to, counted the way the backlink index counts it. */
-  private linkedPaths(path: string): string[] {
-    const { app } = GlobalStore.getInstance()
-
-    const targets = app.metadataCache.resolvedLinks[path] ?? {}
-    return Object.keys(targets).filter((target) => targets[target])
+    return relationMembership.isWalkedInto(path, visited, this.filePath)
   }
 
   /**
