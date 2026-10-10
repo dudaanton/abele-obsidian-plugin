@@ -120,7 +120,7 @@ describe('real agents list on synthetic states', () => {
         session.attention.value = {}
         chats.dropTab(id)
         session.destroy()
-        if (previous) chats.setActiveTab(previous)
+        if (previous) chats.switchTab(previous)
       }
     })()`)
     expect(JSON.parse(raw)).toEqual({
