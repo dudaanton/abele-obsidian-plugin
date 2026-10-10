@@ -1,27 +1,25 @@
 <template>
-  <ObsidianModal title="Агенты" @close="emit('close')">
+  <ObsidianModal title="Agents" @close="emit('close')">
     <div class="abele-agents">
       <Input
         v-model="query"
         type="search"
-        aria-label="Поиск разговоров и агентов"
-        placeholder="Поиск разговоров и агентов"
+        aria-label="Search conversations and agents"
+        placeholder="Search conversations and agents"
       />
-      <EmptyState
-        text="Ожидания и работа в разговорах. Цифры считают строки, не запросы. Нажми название, чтобы открыть разговор."
-      />
+      <EmptyState text="Click a title to open the conversation" />
       <EmptyState v-if="failure" variant="error" :text="failure" />
       <EmptyState v-if="feedback" :text="feedback" />
       <section v-for="section in sections" :key="section.title">
         <ListSectionHeader :text="section.title" :count="section.rows.length" />
         <EmptyState
-          v-if="section.title === 'Связь и доставка' && source.incomplete.value"
-          :text="source.status.value || 'Данные неполны'"
+          v-if="section.title === 'Connection and delivery' && source.status.value"
+          :text="source.status.value"
         />
         <EmptyState
           v-if="!section.rows.length"
           :variant="query ? 'no-matches' : 'empty'"
-          :text="query ? 'Нет совпадений' : 'Нет разговоров'"
+          :text="query ? 'No matches' : 'No conversations'"
         />
         <ListRow
           v-for="row in section.rows"
@@ -38,37 +36,35 @@
             <Icon
               v-if="primary(row).kind === 'question' && !unavailable(row)"
               icon="message-square"
-              text-right="Ответить в чате"
-              tooltip="Открыть чат на ожидающем вопросе и поставить курсор в поле ответа"
+              text-right="Reply in chat"
+              tooltip="Open the waiting question in chat and focus the reply field"
               :disabled="busy"
               @click="open(row, true)"
             />
             <Icon
               v-if="primary(row).kind === 'approval' && !unavailable(row)"
               icon="shield-check"
-              text-right="Рассмотреть в чате"
-              tooltip="Открыть разговор на запросе разрешения; ничего не разрешает из списка"
+              text-right="Review in chat"
+              tooltip="Open the permission request in chat; does not approve it"
               @click="open(row)"
             />
             <EmptyState
               v-if="row.reference.kind === 'node' && row.reasons.some((r) => r.kind === 'delivery')"
-              text="Только подключение к узлу; работа не перезапускается. Сводка сессий может остаться недоступной."
+              text="Reconnect to this node without restarting work."
             />
             <Icon
               v-if="row.reference.kind === 'node' && row.reasons.some((r) => r.kind === 'delivery')"
               icon="refresh-cw"
-              text-right="Восстановить связь"
-              tooltip="Повторное подключение к Node; не перезапускает работу"
+              text-right="Reconnect"
+              tooltip="Reconnect to this node; does not restart work"
               :disabled="busy"
               @click="reconnect(row)"
             />
             <Icon
               class="abele-agents__details-toggle"
               :icon="expanded.has(row.key) ? 'chevron-down' : 'chevron-right'"
-              :text-right="
-                primary(row).kind === 'error' ? 'Ошибка и отметка «Просмотрено»' : 'Детали и время'
-              "
-              tooltip="Показать или скрыть детали запроса и время"
+              :text-right="primary(row).kind === 'error' ? 'Error details' : 'Details and time'"
+              tooltip="Show or hide request details and time"
               :aria-expanded="expanded.has(row.key)"
               :aria-controls="`agents-detail-${row.key}`"
               @click="toggleDetails(row.key, !expanded.has(row.key))"
@@ -79,14 +75,14 @@
               <Quote v-if="row.quote" :text="row.quote" />
               <p class="setting-item-description">{{ age(row) }}</p>
               <p class="setting-item-description">
-                Папка — расположение разговора или заметки обсуждения.
+                Folder is where the conversation or discussion note is stored.
               </p>
               <Icon
                 v-for="reason in row.reasons.filter(canDismissAttention)"
                 :key="reason.id"
                 class="abele-agents__seen"
                 :icon="reason.kind === 'error' ? 'check' : 'x'"
-                :text-right="reason.kind === 'error' ? 'Просмотрено' : 'Убрать'"
+                :text-right="reason.kind === 'error' ? 'Mark as seen' : 'Dismiss'"
                 :tooltip="actionLabel(reason)"
                 :disabled="busy"
                 @click="seen(row, reason.id)"
@@ -116,7 +112,7 @@ import {
   type AttentionReason,
 } from '@/agents/attention'
 const actionLabel = (reason: AttentionReason) =>
-  `${reason.kind === 'error' ? 'Просмотрено' : 'Убрать'} · ${reasonLabel(reason)}`
+  `${reason.kind === 'error' ? 'Mark as seen' : 'Dismiss'} · ${reasonLabel(reason)}`
 const unavailable = (row: AttentionRow) => row.reference.kind === 'node' && !row.reference.sessionId
 const props = defineProps<{
   source?: Pick<AgentsService, 'rows' | 'incomplete' | 'status' | 'open' | 'markSeen'> &
@@ -134,10 +130,10 @@ const toggleDetails = (key: string, value: boolean) => {
   else expanded.value.delete(key)
 }
 const facts = (row: AttentionRow) => [
-  { key: 'agent', label: 'Агент', value: row.agent },
-  { key: 'model', label: 'Модель', value: row.model, required: true, unknown: 'Неизвестна' },
-  { key: 'where', label: 'Папка', value: row.folder, required: true, unknown: 'Неизвестна' },
-  { key: 'source', label: 'Источник', value: row.source },
+  { key: 'agent', label: 'Agent', value: row.agent },
+  { key: 'model', label: 'Model', value: row.model, required: true, unknown: 'Unknown' },
+  { key: 'where', label: 'Folder', value: row.folder, required: true, unknown: 'Unknown' },
+  { key: 'source', label: 'Source', value: row.source },
 ]
 const sections = computed(() => {
   const rows = source.rows.value.filter((r) =>
@@ -146,15 +142,15 @@ const sections = computed(() => {
       .includes(query.value.toLocaleLowerCase())
   )
   return [
-    { title: 'Нужно твоё действие', rows: rows.filter((r) => r.reasons.some(needsAttention)) },
+    { title: 'Needs your attention', rows: rows.filter((r) => r.reasons.some(needsAttention)) },
     {
-      title: 'Работают',
+      title: 'Working',
       rows: rows.filter(
         (r) => !r.reasons.some(needsAttention) && r.reasons.some((s) => s.kind === 'running')
       ),
     },
     {
-      title: 'Связь и доставка',
+      title: 'Connection and delivery',
       rows: rows.filter(
         (r) => !r.reasons.some(needsAttention) && !r.reasons.some((s) => s.kind === 'running')
       ),
@@ -177,14 +173,14 @@ const label = (row: AttentionRow) => {
   const approvals = row.reasons.filter((r) => r.kind === 'approval').length
   const reason = primary(row)
   if (reason.kind === 'question' && !reason.interrupted && !reason.uncertain)
-    return `Ждёт ответа · ${reasonLabel(reason)}`
-  return approvals > 1 ? `Ждёт ${approvals} разрешения` : reasonLabel(reason)
+    return `Waiting for a reply · ${reasonLabel(reason)}`
+  return approvals > 1 ? `Waiting for ${approvals} permissions` : reasonLabel(reason)
 }
 const age = (row: AttentionRow) => {
   const at = primary(row).at
   return at
-    ? `С ${new Date(at).toLocaleString()}${row.updatedAt ? ` · Последнее подтверждение: ${new Date(row.updatedAt).toLocaleString()}` : ''}`
-    : 'Время ожидания неизвестно'
+    ? `Since ${new Date(at).toLocaleString()}${row.updatedAt ? ` · Last confirmed: ${new Date(row.updatedAt).toLocaleString()}` : ''}`
+    : 'Waiting time unknown'
 }
 const open = async (row: AttentionRow, reply = false) => {
   failure.value = ''
@@ -194,7 +190,7 @@ const open = async (row: AttentionRow, reply = false) => {
       : await source.open(row, primary(row))
     if (opened) emit('close')
   } catch (error) {
-    failure.value = error instanceof Error ? error.message : 'Разговор недоступен'
+    failure.value = error instanceof Error ? error.message : 'Conversation unavailable'
   }
 }
 const reconnect = async (row: AttentionRow) => {
@@ -202,9 +198,9 @@ const reconnect = async (row: AttentionRow) => {
   failure.value = ''
   try {
     await (source.reconnect ?? ((r) => AgentsService.getInstance().reconnect(r)))(row)
-    feedback.value = `${row.title} · Связь восстановлена. Сводка сессий по-прежнему может быть неполной.`
+    feedback.value = `${row.title} · Connected. Sessions may still be unavailable.`
   } catch (error) {
-    failure.value = error instanceof Error ? error.message : 'Не удалось восстановить связь'
+    failure.value = error instanceof Error ? error.message : 'Could not reconnect'
   } finally {
     busy.value = false
   }
@@ -215,7 +211,7 @@ const seen = async (row: AttentionRow, id: string) => {
   try {
     await source.markSeen(row, id)
   } catch (error) {
-    failure.value = error instanceof Error ? error.message : 'Не удалось сохранить отметку'
+    failure.value = error instanceof Error ? error.message : 'Could not save the acknowledgement'
   } finally {
     busy.value = false
   }

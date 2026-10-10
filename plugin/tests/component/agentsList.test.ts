@@ -17,7 +17,7 @@ const rows: AttentionRow[] = [
     reference: { kind: 'local', path: 'Chats/sample.abchat' },
     title: 'An intentionally long sample conversation title for narrow screens',
     agent: 'Sample agent',
-    source: 'Чат',
+    source: 'Chat',
     reasons: [{ kind: 'error', id: 'error-1', at: 10, text: 'Sample failure' }],
   },
 ]
@@ -28,7 +28,7 @@ describe('agents dialog', () => {
     const source = {
       rows: ref(rows),
       incomplete: ref(true),
-      status: ref('Обновляется'),
+      status: ref('Updating…'),
       open: vi.fn(),
       markSeen: vi.fn(),
     }
@@ -36,10 +36,10 @@ describe('agents dialog', () => {
       props: { source },
       global: { stubs: { ObsidianModal: stub } },
     })
-    expect(wrapper.text()).toContain('Нужно твоё действие')
-    expect(wrapper.text()).toContain('Работают')
-    expect(wrapper.text()).toContain('Связь и доставка')
-    expect(wrapper.text()).toContain('Обновляется')
+    expect(wrapper.text()).toContain('Needs your attention')
+    expect(wrapper.text()).toContain('Working')
+    expect(wrapper.text()).toContain('Connection and delivery')
+    expect(wrapper.text()).toContain('Updating…')
     expect(wrapper.findAll('.abele-list-row__main')).toHaveLength(1)
     expect(wrapper.find('input').attributes('autofocus')).toBeUndefined()
     expect(wrapper.text()).not.toContain('Approve')
@@ -63,7 +63,7 @@ describe('agents dialog', () => {
     expect(source.markSeen).not.toHaveBeenCalled()
     expect(wrapper.find('.abele-agents__seen').exists()).toBe(false)
     await wrapper.get('.abele-agents__details-toggle').trigger('click')
-    expect(wrapper.find('.abele-agents__seen').element.textContent).toBe('Просмотрено')
+    expect(wrapper.find('.abele-agents__seen').element.textContent).toBe('Mark as seen')
     await wrapper.find('.abele-agents__seen').trigger('click')
     expect(source.markSeen).toHaveBeenCalledWith(rows[0], 'error-1')
     wrapper.unmount()
@@ -90,7 +90,7 @@ describe('agents dialog', () => {
     await wrapper.get('.abele-agents__details-toggle').trigger('click')
     const buttons = wrapper.findAll('.abele-agents__seen')
     expect(buttons).toHaveLength(3)
-    for (const button of buttons) expect(button.text()).toBe('Убрать')
+    for (const button of buttons) expect(button.text()).toBe('Dismiss')
     await buttons[0].trigger('click')
     expect(source.markSeen).toHaveBeenCalledWith(source.rows.value[0], 'stale-approval')
     wrapper.unmount()
@@ -131,7 +131,7 @@ describe('agents dialog', () => {
     await wrapper.get('.abele-agents__details-toggle').trigger('click')
     const action = wrapper.find('.abele-agents__seen')
     expect(action.classes()).toContain('clickable-icon')
-    expect(action.attributes('aria-label')).toContain('Просмотрено')
+    expect(action.attributes('aria-label')).toContain('Mark as seen')
     expect(action.attributes('aria-label')).toContain('Sample failure')
     expect(action.find('[data-icon="check"]').exists()).toBe(true)
     await row.trigger('click')
@@ -158,8 +158,8 @@ describe('agents dialog', () => {
     })
     const row = wrapper.getComponent(ListRow)
     expect(row.props('interactive')).toBe(true)
-    expect(row.text()).toContain('Модель: Sample model')
-    expect(row.text()).toContain('Папка: Chats')
+    expect(row.text()).toContain('Model: Sample model')
+    expect(row.text()).toContain('Folder: Chats')
     expect(row.get('.abele-list-row__status-icon [data-icon="triangle-alert"]').exists()).toBe(true)
     expect(row.get('.abele-list-row__opener [data-icon="chevron-right"]').exists()).toBe(true)
     wrapper.unmount()
@@ -185,9 +185,9 @@ describe('agents dialog', () => {
     })
     const reply = wrapper
       .findAllComponents(Icon)
-      .find((c) => c.props('textRight') === 'Ответить в чате')!
-    expect(reply.props('tooltip')).toContain('вопрос')
-    expect(reply.props('tooltip')).toContain('поле ответа')
+      .find((c) => c.props('textRight') === 'Reply in chat')!
+    expect(reply.props('tooltip')).toContain('waiting question')
+    expect(reply.props('tooltip')).toContain('focus the reply field')
     await reply.trigger('click')
     await flushPromises()
     expect(source.open).toHaveBeenCalledWith(row, reason, { focusComposer: true })
@@ -214,13 +214,13 @@ describe('agents dialog', () => {
       global: { stubs: { ObsidianModal: stub } },
     })
     const retry = wrapper.findAllComponents(Icon).find((c) => c.props('icon') === 'refresh-cw')!
-    expect(retry.props('textRight')).toBe('Восстановить связь')
-    expect(retry.props('tooltip')).toContain('не перезапускает работу')
-    expect(wrapper.text()).toContain('Только подключение к узлу; работа не перезапускается')
+    expect(retry.props('textRight')).toBe('Reconnect')
+    expect(retry.props('tooltip')).toContain('does not restart work')
+    expect(wrapper.text()).toContain('Reconnect to this node without restarting work')
     await retry.trigger('click')
     await flushPromises()
     expect(source.reconnect).toHaveBeenCalledWith(row)
-    expect(wrapper.text()).toContain('Связь восстановлена')
+    expect(wrapper.text()).toContain('Connected.')
     expect(source.open).not.toHaveBeenCalled()
     expect(source.markSeen).not.toHaveBeenCalled()
     expect(wrapper.emitted('close')).toBeUndefined()
@@ -240,11 +240,56 @@ describe('agents dialog', () => {
       global: { stubs: { ObsidianModal: stub } },
     })
     expect(wrapper.getComponent(ListRow).props('expanded')).toBeUndefined()
-    expect(wrapper.get('.abele-agents__details-toggle').text()).toContain('Ошибка и отметка')
+    expect(wrapper.get('.abele-agents__details-toggle').text()).toBe('Error details')
     expect(wrapper.get('.abele-agents__details-toggle').attributes('aria-expanded')).toBe('false')
-    expect(wrapper.text()).toContain('Цифры считают строки, не запросы')
+    expect(wrapper.text()).toContain('Click a title to open the conversation')
     await wrapper.get('.abele-agents__details-toggle').trigger('click')
-    expect(wrapper.find('.abele-agents__seen').text()).toBe('Просмотрено')
+    expect(wrapper.find('.abele-agents__seen').text()).toBe('Mark as seen')
+    wrapper.unmount()
+  })
+  it('uses one short opening hint and actionable English node copy', () => {
+    useVault([])
+    const source = {
+      rows: ref([
+        {
+          ...rows[0],
+          reference: {
+            kind: 'node' as const,
+            registrationId: 'sample',
+            nodeId: 'sample',
+            sessionId: '',
+          },
+          reasons: [
+            {
+              kind: 'delivery' as const,
+              id: 'sample',
+              at: 0,
+              text: "Can't load this node's sessions right now",
+            },
+          ],
+        },
+      ]),
+      incomplete: ref(true),
+      status: ref(''),
+      open: vi.fn(),
+      markSeen: vi.fn(),
+      reconnect: vi.fn(),
+    }
+    const wrapper = mount(AgentsListDialog, {
+      props: { source },
+      global: { stubs: { ObsidianModal: stub } },
+    })
+    expect(wrapper.attributes('title')).toBe('Agents')
+    expect(wrapper.text()).toContain('Click a title to open the conversation')
+    expect(wrapper.text()).not.toMatch(/count rows|not requests|data incomplete|session summary/i)
+    expect(wrapper.text()).toContain("Can't load this node's sessions right now")
+    expect(wrapper.get('input').attributes('placeholder')).toBe('Search conversations and agents')
+    expect(
+      wrapper
+        .findAllComponents(Icon)
+        .find((c) => c.props('icon') === 'refresh-cw')
+        ?.props('textRight')
+    ).toBe('Reconnect')
     wrapper.unmount()
   })
   it('owns one modal and releases it cleanly on command cleanup', async () => {
@@ -275,7 +320,7 @@ describe('agents dialog', () => {
     const wrapper = mount(AgentsButton)
     const button = wrapper.find('[role="button"]')
     expect(button.attributes('tabindex')).toBe('0')
-    expect(button.attributes('aria-label')).toContain('Агенты')
+    expect(button.attributes('aria-label')).toContain('Agents')
     wrapper.unmount()
   })
 })

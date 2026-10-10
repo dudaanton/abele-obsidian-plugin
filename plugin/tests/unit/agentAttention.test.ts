@@ -12,7 +12,7 @@ const row = (key: string, reasons: AttentionRow['reasons']): AttentionRow => ({
   reference: { kind: 'local', path: `${key}.abchat` },
   title: key,
   agent: 'Sample agent',
-  source: 'Чат',
+  source: 'Chat',
   reasons,
 })
 

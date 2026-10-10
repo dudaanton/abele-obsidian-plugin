@@ -20,7 +20,7 @@ describe('local attention history', () => {
       markAttentionSeen: vi.fn(),
     } as unknown as ChatSession
     const wrapper = mount(LocalAttentionPanel, { props: { session } })
-    expect(wrapper.text()).toContain('Работа прервалась')
+    expect(wrapper.text()).toContain('Work was interrupted')
     expect(wrapper.text()).toContain('Which sample?')
     expect(wrapper.text()).toContain('First')
     expect(wrapper.findAll('button')).toHaveLength(1)
@@ -39,7 +39,7 @@ describe('local attention history', () => {
     session.attention.value.errors![0].seen = true
     await wrapper.vm.$nextTick()
     expect(wrapper.text()).toContain('Sample failure')
-    expect(wrapper.text()).toContain('Просмотрено')
+    expect(wrapper.text()).toContain('Seen')
     expect(wrapper.find('button').exists()).toBe(false)
     wrapper.unmount()
   })

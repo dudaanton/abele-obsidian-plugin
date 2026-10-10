@@ -1342,8 +1342,8 @@ export default class AbelePlugin extends Plugin {
 
   registerAiFeatures() {
     const agents = AgentsService.getInstance()
-    this.addCommand({ id: 'agents', name: 'Агенты', icon: 'activity', callback: openAgents })
-    const ribbon = this.addRibbonIcon('activity', 'Агенты', openAgents)
+    this.addCommand({ id: 'agents', name: 'Agents', icon: 'activity', callback: openAgents })
+    const ribbon = this.addRibbonIcon('activity', 'Agents', openAgents)
     ribbon.addClass('abele-agents-ribbon')
     const badge = ribbon.createSpan({ cls: 'abele-agents-ribbon__badge' })
     this.register(

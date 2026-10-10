@@ -39,7 +39,7 @@ genuinely theirs to take. Every one is prefixed **Abele:** in the palette.
 ## Views
 
 - Show timeline sidebar · Show todo sidebar · Show AI chat sidebar
-- Агенты — lists conversations needing an explicit approval, an answer or acknowledgement of a
+- Agents — lists conversations needing an explicit approval, an answer or acknowledgement of a
   stopped-run error, plus current local work and incomplete connection coverage. The activity
   ribbon and shared chat header open the same modal. Counts conversations, not operations;
   returns to existing chats/discussions without running models or approving from the list.

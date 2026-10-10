@@ -56,7 +56,7 @@ alone does not increase the token budget.
 
 ## Agents needing attention
 
-Open **Агенты** (Agents) from the activity icon in the ribbon, the chat header, or the command
+Open **Agents** from the activity icon in the ribbon, the chat header, or the command
 palette. The command can be assigned to the mobile toolbar. There is no floating button.
 The number counts conversations needing attention, not operations: three approvals in one
 chat count as one. A dot means only work is running; a separate question mark means the
@@ -68,7 +68,7 @@ conversation and request; discussions remain discussions. Approvals are reviewed
 conversation, never granted from the list. Ordinary question marks in an answer do not count
 as explicit questions. An error handled by the agent while it continues is not an alert.
 
-Stopped-run errors remain until **Просмотрено** (Seen) is explicitly pressed. That mark
+Stopped-run errors remain until **Mark as seen** is explicitly pressed. That mark
 belongs only to that error; a later failure returns to the list. Opening or closing a tab does
 not dismiss an error. The list survives restart and includes unopened local chats and
 closed discussion tabs. Interrupted local work is labelled as interrupted and is never

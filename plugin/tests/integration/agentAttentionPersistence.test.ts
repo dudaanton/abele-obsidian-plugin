@@ -71,7 +71,7 @@ describe('persisted attention', () => {
       session.recordAttentionError('Concurrent sample failure')
       throw new Error('Sample disk unavailable')
     })
-    await expect(session.markAttentionSeen(id)).rejects.toThrow('Не удалось сохранить')
+    await expect(session.markAttentionSeen(id)).rejects.toThrow('Could not save')
     expect(session.attention.value.errors).toHaveLength(2)
     expect(session.attention.value.errors![0].seen).not.toBe(true)
   })

@@ -226,26 +226,26 @@ export function restoreIndexedErrors(
         id: reason.id,
         at: reason.at,
         target: reason.target,
-        text: reason.text ?? 'Подробности ошибки не сохранились.',
+        text: reason.text ?? 'Error details were not saved.',
       })
     }
   return errors
 }
 
 export function reasonLabel(reason: AttentionReason): string {
-  if (reason.uncertain) return 'Состояние не подтверждено · Данные запроса могли не сохраниться'
+  if (reason.uncertain) return 'Request status is uncertain. Open the conversation to check.'
   switch (reason.kind) {
     case 'approval':
-      return `Разрешение: ${reason.text ?? ''}`
+      return `Permission needed: ${reason.text ?? ''}`
     case 'question':
-      return `${reason.interrupted ? 'Работа прервалась · ' : ''}${reason.text ?? 'Ждёт ответа'}`
+      return `${reason.interrupted ? 'Work interrupted · ' : ''}${reason.text ?? 'Waiting for a reply'}`
     case 'error':
-      return `Запуск завершился с ошибкой: ${reason.text ?? ''}`
+      return `Run failed: ${reason.text ?? ''}`
     case 'interrupted':
-      return 'Работа прервалась'
+      return 'Work interrupted'
     case 'running':
-      return 'Работает · На этом устройстве'
+      return 'Working on this device'
     case 'delivery':
-      return reason.text ?? 'Обновляется'
+      return reason.text ?? 'Updating…'
   }
 }

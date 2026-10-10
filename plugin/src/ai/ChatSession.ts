@@ -417,7 +417,7 @@ export class ChatSession implements SummarizerHost, InterceptorHost, AnchorStora
     try {
       await this.save()
       if (!settledAttention(this.committedAttention).has(id))
-        throw new Error('Не удалось сохранить отметку. Повтори действие.')
+        throw new Error('Could not save the acknowledgement. Try again.')
     } finally {
       this.attentionAcks.delete(id)
     }
@@ -1967,7 +1967,7 @@ export class ChatSession implements SummarizerHost, InterceptorHost, AnchorStora
               (m) => m.toolCallId === tc.id,
               (m) => ({ ...m, toolStatus: 'pending' })
             )
-            throw new Error('Не удалось сохранить разрешение. Операция не началась.')
+            throw new Error('Could not save the permission. The operation did not start.')
           }
           if (controller.signal.aborted) {
             this.recordRefusal(tc, 'Operation stopped before starting')

@@ -8,17 +8,17 @@ export function agentsFixture(state: AgentsFixtureState = 'mixed') {
   const waiting: AttentionRow = {
     key: 'sample-question',
     reference: { kind: 'local', path: 'Chats/sample-question.abchat' },
-    title: 'Выбор папки для пробных заметок',
-    agent: 'Пробный исследователь',
+    title: 'Choose a folder for sample notes',
+    agent: 'Sample researcher',
     model: 'Sample model',
     folder: 'Sample work',
-    source: 'Чат · На этом устройстве',
+    source: 'Chat',
     reasons: [
       {
         kind: 'question',
         id: 'sample-question',
         at,
-        text: 'В какую папку сохранить пробные заметки?',
+        text: 'Which folder should I use for the sample notes?',
       },
     ],
   }
@@ -27,31 +27,31 @@ export function agentsFixture(state: AgentsFixtureState = 'mixed') {
     key: 'sample-approvals',
     reference: { kind: 'local', path: 'Chats/sample-approvals.abchat' },
     title:
-      'Длинное пробное название разговора о саде, сезонных растениях и плане следующих наблюдений',
-    agent: 'Пробный помощник с длинным именем',
+      'A long sample conversation about a garden, seasonal plants and plans for future observations',
+    agent: 'Sample helper with a long name',
     folder: 'Sample work/An intentionally long invented folder name',
     reasons: ['one', 'two', 'three'].map((id) => ({
       kind: 'approval',
       id,
       at,
-      text: 'Изменение пробного файла',
+      text: 'Edit a sample file',
     })),
   }
   const error: AttentionRow = {
     ...waiting,
     key: 'sample-discussion',
     reference: { kind: 'local', path: 'Comments/sample.abchat', commentId: 'sample' },
-    title: 'Пробное обсуждение главы',
-    agent: 'Пробный редактор',
-    source: 'Обсуждение · Notes/sample-chapter.md',
+    title: 'Sample chapter discussion',
+    agent: 'Sample editor',
+    source: 'Discussion · Notes/sample-chapter.md',
     quote:
-      'Пробный отрывок достаточно длинный, чтобы переноситься на несколько строк на узком экране без обрезания.',
+      'An invented passage long enough to wrap over several lines on a narrow screen without being cut off.',
     reasons: [
       {
         kind: 'error',
         id: 'sample-error',
         at,
-        text: 'Не удалось прочитать пробный файл. Запуск остановлен.',
+        text: 'Could not read the sample file. The run stopped.',
       },
     ],
   }
@@ -59,8 +59,8 @@ export function agentsFixture(state: AgentsFixtureState = 'mixed') {
     ...waiting,
     key: 'sample-working',
     reference: { kind: 'local', path: 'Chats/working.abchat' },
-    title: 'Проверка пробных заметок',
-    agent: 'Пробный проверяющий',
+    title: 'Review sample notes',
+    agent: 'Sample reviewer',
     reasons: [{ kind: 'running', id: 'sample-run', at }],
   }
   const node: AttentionRow = {
@@ -71,15 +71,15 @@ export function agentsFixture(state: AgentsFixtureState = 'mixed') {
       registrationId: 'sample-registration',
       sessionId: '',
     },
-    title: 'Пробный узел',
+    title: 'Sample node',
     agent: 'Node',
-    source: 'Node · Пробный узел',
+    source: 'Node · Sample node',
     reasons: [
       {
         kind: 'delivery',
         id: 'sample-connection',
         at: 0,
-        text: 'Сводка сессий Node недоступна · Данные неполны',
+        text: "Can't load this node's sessions right now",
       },
     ],
   }
@@ -98,8 +98,8 @@ export function agentsFixture(state: AgentsFixtureState = 'mixed') {
                   {
                     ...waiting,
                     title:
-                      'Длинный пробный вопрос о выборе папки для черновиков и дальнейшего обсуждения главы',
-                    agent: 'Пробный исследователь с очень длинным именем',
+                      'A long sample question about choosing a folder for drafts and continuing the chapter discussion',
+                    agent: 'Sample researcher with a very long name',
                   },
                   error,
                   working,
@@ -108,7 +108,7 @@ export function agentsFixture(state: AgentsFixtureState = 'mixed') {
   return {
     rows: ref(rows),
     incomplete: ref(state === 'mixed'),
-    status: ref(state === 'mixed' ? 'Данные Node неполны' : ''),
+    status: ref(''),
     open: async () => false,
     markSeen: async () => {},
     reconnect: async () => {},

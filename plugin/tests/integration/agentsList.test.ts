@@ -55,7 +55,7 @@ describe('one list independent of open tabs', () => {
     expect(agents.rows.value).toHaveLength(2)
     expect(
       agents.rows.value.find((r) => r.reference.path === 'Comments/sample.abchat')?.source
-    ).toBe('Обсуждение · Notes/sample.md')
+    ).toBe('Discussion · Notes/sample.md')
     expect(ChatService.getInstance().getAllSessions()).toHaveLength(0)
     expect(agents.badge.value.attention).toBe(2)
     expect(agents.incomplete.value).toBe(true)
@@ -324,7 +324,7 @@ describe('one list independent of open tabs', () => {
     const titles = vi.spyOn(ShellModal.prototype, 'setTitle')
     const opened = agents.open(agents.rows.value[0], agents.rows.value[0].reasons[0])
     const title = titles.mock.calls.at(-1)![0]
-    expect(title).toMatch(/закры/)
+    expect(title).toMatch(/close/)
     expect(title.length).toBeLessThanOrEqual(32)
     expect(chats.tabOrder.value).toEqual(original)
     const choice = document.querySelector<HTMLButtonElement>('.modal button')!
@@ -380,7 +380,7 @@ describe('one list independent of open tabs', () => {
     const agents = AgentsService.getInstance()
     await agents.start()
     expect(agents.badge.value.attention).toBe(1)
-    expect(agents.rows.value[0].reasons[0].text).toContain('не сохранились')
+    expect(agents.rows.value[0].reasons[0].text).toContain('were not saved')
     await agents.markSeen(agents.rows.value[0], 'unsaved-error')
     expect(agents.rows.value).toHaveLength(0)
   })

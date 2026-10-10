@@ -6,8 +6,8 @@
       :data-attention-id="interruptedRun.id"
       tabindex="-1"
     >
-      <span>Работа прервалась. Продолжение только по твоему действию.</span>
-      <button @click="retry">Продолжить</button>
+      <span>Work was interrupted. Continue when you are ready.</span>
+      <button @click="retry">Continue</button>
     </div>
     <div
       v-if="question"
@@ -15,12 +15,12 @@
       :data-attention-id="question.id"
       tabindex="-1"
     >
-      <span>Работа прервалась. Агент больше не ждёт ответ в прежнем запуске.</span>
+      <span>Work was interrupted. The agent is no longer waiting in the original run.</span>
       <p v-for="(item, index) in question.questions" :key="index">
         {{ item.question }} · {{ item.options.join(' · ') }}
-        <span v-if="question.answers[index]"> · Ответ: {{ question.answers[index] }}</span>
+        <span v-if="question.answers[index]"> · Answer: {{ question.answers[index] }}</span>
       </p>
-      <button @click="composeAnswer">Продолжить сообщением</button>
+      <button @click="composeAnswer">Continue with a message</button>
     </div>
     <div
       v-for="error in errors"
@@ -29,10 +29,10 @@
       :data-attention-id="error.id"
       tabindex="-1"
     >
-      <span>Запуск завершился с ошибкой · {{ new Date(error.at).toLocaleString() }}</span>
+      <span>Run failed · {{ new Date(error.at).toLocaleString() }}</span>
       <span>{{ error.text }}</span>
-      <span v-if="error.seen">Просмотрено</span>
-      <button v-else @click="seen(error.id)">Просмотрено</button>
+      <span v-if="error.seen">Seen</span>
+      <button v-else @click="seen(error.id)">Mark as seen</button>
     </div>
     <p v-if="failure" role="alert">{{ failure }}</p>
   </div>
@@ -55,7 +55,7 @@ const seen = async (id: string) => {
   try {
     await props.session.markAttentionSeen(id)
   } catch (error) {
-    failure.value = error instanceof Error ? error.message : 'Не удалось сохранить отметку'
+    failure.value = error instanceof Error ? error.message : 'Could not save the acknowledgement'
   }
 }
 const composeAnswer = () => {
@@ -64,14 +64,14 @@ const composeAnswer = () => {
   ChatService.getInstance().pendingInput.value = {
     tabId: props.session.id,
     focus: true,
-    text: `Ответ на вопрос «${saved.questions[saved.currentIndex]?.question ?? ''}»: `,
+    text: `Answer to "${saved.questions[saved.currentIndex]?.question ?? ''}": `,
   }
 }
 const retry = async () => {
   try {
     await props.session.retryRequest()
   } catch (error) {
-    failure.value = error instanceof Error ? error.message : 'Не удалось продолжить'
+    failure.value = error instanceof Error ? error.message : 'Could not continue'
   }
 }
 </script>

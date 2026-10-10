@@ -44,11 +44,11 @@ export class AgentsService {
       this.nodes.value.length > 0 ||
       this.rows.value.some((row) => row.uncertain)
   )
-  readonly status = ref('Обновляется')
+  readonly status = ref('Updating…')
   readonly badge = computed(() => attentionBadge(this.rows.value, this.incomplete.value))
   readonly tooltip = computed(
     () =>
-      `Агенты · Требуют внимания: ${this.badge.value.attention}. Работают: ${this.badge.value.running}${this.incomplete.value ? ' · Данные неполны' : ''}`
+      `Agents · Needs attention: ${this.badge.value.attention}. Working: ${this.badge.value.running}${this.incomplete.value ? ' · Some conversations could not be checked' : ''}`
   )
   private readonly files = new Map<string, AttentionRow>()
   private readonly removed = new Set<string>()
@@ -101,9 +101,9 @@ export class AgentsService {
         path,
         ...(isDiscussion(metadata) && metadata.commentId ? { commentId: metadata.commentId } : {}),
       },
-      title: metadata.title || path.split('/').pop() || 'Чат',
-      agent: AgentRegistry.getInstance().get(metadata.agentId ?? '')?.name || 'Агент',
-      source: isDiscussion(metadata) ? `Обсуждение · ${metadata.anchor?.note ?? ''}` : 'Чат',
+      title: metadata.title || path.split('/').pop() || 'Chat',
+      agent: AgentRegistry.getInstance().get(metadata.agentId ?? '')?.name || 'Agent',
+      source: isDiscussion(metadata) ? `Discussion · ${metadata.anchor?.note ?? ''}` : 'Chat',
       model: metadata.modelId || AgentRegistry.getInstance().get(metadata.agentId ?? '')?.modelId,
       folder: (metadata.anchor?.note || path).split('/').slice(0, -1).join('/') || '/',
       quote: metadata.anchor?.quote,
@@ -119,7 +119,7 @@ export class AgentsService {
     ).map((reason) => ({
       ...reason,
       ...(reason.kind === 'error' && !reason.text
-        ? { text: 'Подробности ошибки не сохранились.' }
+        ? { text: 'Error details were not saved.' }
         : {}),
       ...(!live && reason.kind === 'running' ? { kind: 'interrupted' as const } : {}),
     }))
@@ -152,7 +152,7 @@ export class AgentsService {
         reasons: row.reasons.map((r) => ({ ...r, uncertain: true })),
       })
     this.localIncomplete.value = true
-    this.status.value = 'Не все состояния подтверждены'
+    this.status.value = 'Some conversations could not be checked. Open them to check their status.'
   }
   /** Old tool-result records are positive resolutions too; absence of a call is not. */
   private async inspect(
@@ -247,7 +247,7 @@ export class AgentsService {
             kind: 'delivery',
             id: `node-coverage:${node.id}`,
             at: 0,
-            text: 'Сводка всех сессий Node недоступна · Данные неполны',
+            text: "Can't load this node's sessions right now",
           },
         ],
       })
@@ -261,7 +261,7 @@ export class AgentsService {
         session.attention.value.tools?.[reason.id] === 'executing'
           ? { ...reason, kind: 'running' as const, uncertain: false }
           : localSettled.has(reason.id) && !diskSettled.has(reason.id)
-            ? { ...reason, kind: 'delivery' as const, uncertain: true, text: 'Решение сохраняется' }
+            ? { ...reason, kind: 'delivery' as const, uncertain: true, text: 'Saving your decision…' }
             : reason
       )
       rows.set(row.key, {
@@ -294,7 +294,7 @@ export class AgentsService {
         }
       } catch {
         this.localIncomplete.value = true
-        this.status.value = 'Не удалось сохранить список'
+        this.status.value = 'Could not save the agents list'
       }
     }
   }
@@ -317,13 +317,13 @@ export class AgentsService {
             key: path,
             reference: entry.reference,
             title: path.split('/').pop()!,
-            agent: 'Агент',
-            source: 'Обновляется',
+            agent: 'Agent',
+            source: 'Updating…',
             reasons: reconcileAttentionReasons(entry.reasons, this.files.get(path)?.reasons ?? []),
           })
         }
     } catch {
-      this.status.value = 'Не удалось прочитать список'
+      this.status.value = 'Could not read the agents list'
     }
     const registered = GlobalStore.getInstance().app.loadLocalStorage('abele-node-registry')
     if (Array.isArray(registered))
@@ -387,7 +387,7 @@ export class AgentsService {
     )
     for (const path of this.files.keys()) if (!paths.has(path)) this.deleted(path)
     this.localIncomplete.value = failed
-    this.status.value = failed ? 'Не все разговоры удалось прочитать' : ''
+    this.status.value = failed ? 'Some conversations could not be read. Open them to check their status.' : ''
     this.publish()
   }
   /** A changed file costs one read, not a vault scan on every streamed token. */
@@ -494,7 +494,7 @@ export class AgentsService {
         file,
         (content) => {
           const metadata = parseChatMetadata(content)
-          if (!metadata) throw new Error('Разговор недоступен')
+          if (!metadata) throw new Error('Conversation unavailable')
           const state = metadata.attention ?? {}
           return (
             content +
@@ -517,7 +517,7 @@ export class AgentsService {
         },
         () => {
           if ([...this.live.keys()].some((s) => s.currentChatFile.value?.path === file.path))
-            throw new Error('Разговор открыт. Повтори действие.')
+            throw new Error('Conversation opened. Try again.')
         }
       )
     }
@@ -540,7 +540,7 @@ export class AgentsService {
     if (!ref.path && ref.sessionId) {
       const session = chats.getSession(ref.sessionId)
       if (!session) {
-        new Notice('Разговор больше недоступен')
+        new Notice('Conversation is no longer available')
         return false
       }
       const current = chats.contextualOpenGuard(session)
@@ -562,7 +562,7 @@ export class AgentsService {
     const file = GlobalStore.getInstance().app.vault.getAbstractFileByPath(ref.path)
     if (!(file instanceof TFile)) {
       this.deleted(row.key)
-      new Notice('Разговор больше недоступен')
+      new Notice('Conversation is no longer available')
       return false
     }
     const presentationCurrent = chats.fileOpenGuard(file)
@@ -581,10 +581,10 @@ export class AgentsService {
       if (!chats.isForegroundPresentation(presentationCurrent) || chats.activeSession.value !== session) return false
       const current = this.liveRow(session)
       if (current?.uncertain)
-        new Notice('Состояние не подтверждено. Открыта сохранённая версия разговора.')
+        new Notice('Could not confirm the current status. Opened the saved conversation.')
       // Opening is read-only. Missing index evidence is not recreated into the conversation.
       if (!current?.reasons.some((r) => r.id === reason.id))
-        new Notice('Ответ уже принят или запрос больше не действует')
+        new Notice('Already answered or request no longer active')
       const target =
         reason.target ||
         (reason.kind === 'approval'
@@ -612,7 +612,7 @@ export class AgentsService {
       GlobalStore.getInstance().app,
       chats.tabOrder.value.map((id) => ({
         id,
-        label: chats.getPresentation(id)?.label.value || 'Чат',
+        label: chats.getPresentation(id)?.label.value || 'Chat',
       })),
       (id) => chats.closeTab(id)
     )
@@ -638,12 +638,12 @@ export function chooseAttentionTab(
         if (!chosen) resolve(false)
       }
     })(app, {
-      title: 'Выбери вкладку для закрытия',
+      title: 'Choose a tab to close',
       size: 'tall',
       cls: ['abele-agents-tabs'],
     })
     modal.bodyEl.createEl('p', {
-      text: 'Все 20 вкладок открыты. Закроется только выбранная вкладка.',
+      text: 'All 20 tabs are open. Only the tab you choose will close.',
     })
     for (const tab of tabs) {
       const button = modal.bodyEl.createEl('button', { text: tab.label })
@@ -657,7 +657,7 @@ export function chooseAttentionTab(
           },
           (error) => {
             button.disabled = false
-            new Notice(error instanceof Error ? error.message : 'Не удалось закрыть вкладку')
+            new Notice(error instanceof Error ? error.message : 'Could not close the tab')
           }
         )
       })
