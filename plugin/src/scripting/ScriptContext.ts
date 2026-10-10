@@ -492,7 +492,11 @@ export function buildScriptContext(opts: {
     async createFromTemplate(templatePath: string): Promise<void> {
       const { getTemplateComposable } = await import('@/composables/useTemplates')
       s.throwIfAborted()
-      await getTemplateComposable().startCreateFlowWithTemplate(templatePath, s)
+      await getTemplateComposable().startCreateFlowWithTemplate(
+        templatePath,
+        s,
+        appOf(opts.toolContext)
+      )
     },
 
     // ── Network ──
@@ -664,7 +668,14 @@ export function buildScriptContext(opts: {
       const runOne = (message: string) => {
         s.throwIfAborted()
         return runSubAgent(
-          { systemPrompt, userMessage: message, tools, model, signal: s },
+          {
+            systemPrompt,
+            userMessage: message,
+            tools,
+            model,
+            signal: s,
+            app: appOf(opts.toolContext),
+          },
           target,
           // Each fan-out branch has its own cache and created-file grants.
           runScopeFor(target)
@@ -744,19 +755,19 @@ export function buildScriptContext(opts: {
     async setCover(notePath: string, mediaPath?: string) {
       wrote(notePath)
       const { setCoverFromMedia, findFirstMedia } = await import('@/commands/setCover')
-      const { app } = GlobalStore.getInstance()
+      const app = appOf(opts.toolContext)
       const noteFile = app.vault.getAbstractFileByPath(notePath)
       if (!(noteFile instanceof TFile)) throw new Error(`Note not found: ${notePath}`)
 
       if (mediaPath) {
         const mediaFile = app.vault.getAbstractFileByPath(mediaPath)
         if (!(mediaFile instanceof TFile)) throw new Error(`Media not found: ${mediaPath}`)
-        await setCoverFromMedia(mediaFile, noteFile, s)
+        await setCoverFromMedia(mediaFile, noteFile, s, app)
       } else {
         const content = await app.vault.cachedRead(noteFile)
-        const media = findFirstMedia(content, notePath)
+        const media = findFirstMedia(content, notePath, app)
         if (!media) throw new Error('No image or video found in note')
-        await setCoverFromMedia(media, noteFile, s)
+        await setCoverFromMedia(media, noteFile, s, app)
       }
     },
 

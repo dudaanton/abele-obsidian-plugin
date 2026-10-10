@@ -4,6 +4,7 @@ import type { AgentTool, ModelConfig, Message, TextContent } from './client'
 import { ScopeResolver } from './ScopeResolver'
 import type { AgentDefinition } from './agents/types'
 import type { ToolContext } from './toolContext'
+import type { App } from 'obsidian'
 import { WRITE_TOOLS, DECK_WRITE_TOOLS } from './types'
 import { skillNeedsApproval } from './tools/SkillTool'
 import { ReadGuard, withReadGuard } from './readGuard'
@@ -19,6 +20,8 @@ export interface SubAgentTask {
   tools: AgentTool[]
   model: ModelConfig
   signal?: AbortSignal
+  /** Invocation-owned IO only; scope and permissions still come from the target agent. */
+  app?: App
 }
 
 /** Same source-path checks as an ordinary chat; destination restrictions are separate policy. */
@@ -110,7 +113,8 @@ export async function runSubAgent(
   scope = runScopeFor(agent)
 ): Promise<string> {
   if (task.signal?.aborted) throw new Error('Aborted')
-  const app = GlobalStore.getInstance().app
+  const host = GlobalStore.getInstance().app
+  const app = task.app ?? host
   const agentId = agent.id
   const ctx: ToolContext = {
     scope,
@@ -119,7 +123,7 @@ export async function runSubAgent(
     app,
     validateWrite: () => {
       if (
-        GlobalStore.getInstance().app !== app ||
+        GlobalStore.getInstance().app !== host ||
         agent.id !== agentId ||
         AgentRegistry.getInstance().get(agentId) !== agent
       )

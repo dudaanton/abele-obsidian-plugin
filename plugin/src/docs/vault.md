@@ -1047,7 +1047,9 @@ session/turn identity); delegated branches retain their run identity in their ro
 Ownership is passed through a call-local file facade, never inferred from which chats happen
 to be running. A suspended script keeps that owner, including its journal directory and binary
 copies: late writes are saved under the captured chat key even after its host selects another
-chat or no chat. Each key has independent loading and persistence state. Unattributed writes through a global app
+chat or no chat. Each key has independent loading and persistence state. Built-in script agents,
+cover/thumbnail creation and interactive template creation carry that owned IO context too;
+a nested agent still uses its own permissions and scope, not the parent's approval. Unattributed writes through a global app
 or third-party command are not claimed by a chat. Restoring does not mute other recordings.
 `uncertain: true` on a change means another mutation overlapped its snapshot interval.
 Undo refuses those files, discontinuous histories (another writer edited between two changes),

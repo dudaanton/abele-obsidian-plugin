@@ -1,5 +1,5 @@
 import { ref } from 'vue'
-import { MarkdownView } from 'obsidian'
+import { MarkdownView, type App } from 'obsidian'
 import { GlobalStore } from '@/stores/GlobalStore'
 import { UserTemplate } from '@/templates/UserTemplate'
 import { TemplateService } from '@/templates/TemplateService'
@@ -20,7 +20,11 @@ export function useTemplates() {
   const initialValues = ref<Map<string, string>>(new Map())
   const action = ref<TemplateAction>('create')
   let flowSignal: AbortSignal | undefined
-  const setFlowSignal = (signal?: AbortSignal) => {
+  let flowApp: App | undefined
+  let flowGeneration = 0
+  const setFlowSignal = (signal?: AbortSignal, app?: App) => {
+    flowGeneration++
+    flowApp = app
     flowSignal?.removeEventListener('abort', closeModals)
     flowSignal = signal
     signal?.throwIfAborted()
@@ -75,6 +79,7 @@ export function useTemplates() {
    * Handle template selection from modal
    */
   async function onTemplateSelected(template: UserTemplate) {
+    const generation = ++flowGeneration
     selectedTemplate.value = template
     isSelectModalOpen.value = false
 
@@ -83,6 +88,7 @@ export function useTemplates() {
     signal?.throwIfAborted()
     const body = await template.getBody()
     signal?.throwIfAborted()
+    if (generation !== flowGeneration) throw new Error('Template flow changed before applying')
     const { userVariables: parsedVars } = parseTemplateVariables(body)
 
     // Also parse target_folder and target_name for variables
@@ -147,14 +153,19 @@ export function useTemplates() {
     const template = selectedTemplate.value
     if (!template) return
 
-    const { app } = GlobalStore.getInstance()
-
+    const app = flowApp ?? GlobalStore.getInstance().app
+    const generation = flowGeneration
     const signal = flowSignal
     try {
       signal?.throwIfAborted()
       switch (action.value) {
         case 'create': {
-          const file = await service.createNoteFromTemplate(template as UserTemplate, userValues, signal)
+          const file = await service.createNoteFromTemplate(
+            template as UserTemplate,
+            userValues,
+            signal,
+            app
+          )
           signal?.throwIfAborted()
           await openFile(file.path)
           break
@@ -182,7 +193,7 @@ export function useTemplates() {
     } catch (error) {
       console.error('Failed to apply template:', error)
     } finally {
-      resetState()
+      if (generation === flowGeneration) resetState()
     }
   }
 
@@ -211,8 +222,12 @@ export function useTemplates() {
   /**
    * Start create flow with a specific template path, skipping the selection modal
    */
-  async function startCreateFlowWithTemplate(templatePath: string, signal?: AbortSignal) {
-    setFlowSignal(signal)
+  async function startCreateFlowWithTemplate(
+    templatePath: string,
+    signal?: AbortSignal,
+    app?: App
+  ) {
+    setFlowSignal(signal, app)
     const service = TemplateService.getInstance()
     const template = service
       .discoverTemplates()

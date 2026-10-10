@@ -10,9 +10,11 @@ const MEDIA_EXTENSIONS = [...IMAGE_EXTENSIONS, ...VIDEO_EXTENSIONS]
  * Find the first image/video embed in a note's content.
  * Returns the resolved TFile or null.
  */
-export function findFirstMedia(content: string, sourcePath: string): TFile | null {
-  const { app } = GlobalStore.getInstance()
-
+export function findFirstMedia(
+  content: string,
+  sourcePath: string,
+  app = GlobalStore.getInstance().app
+): TFile | null {
   // Wikilink embeds: ![[path|alt]]
   const wikiRegex = /!\[\[([^\]|]+)/g
   let match: RegExpExecArray | null
@@ -91,9 +93,13 @@ async function generateVideoThumbnail(videoBuffer: ArrayBuffer): Promise<ArrayBu
  * Set a media file as the cover of a note.
  * For videos, generates a thumbnail first.
  */
-export async function setCoverFromMedia(mediaFile: TFile, noteFile: TFile, signal?: AbortSignal): Promise<void> {
+export async function setCoverFromMedia(
+  mediaFile: TFile,
+  noteFile: TFile,
+  signal?: AbortSignal,
+  app = GlobalStore.getInstance().app
+): Promise<void> {
   signal?.throwIfAborted()
-  const { app } = GlobalStore.getInstance()
 
   let coverPath: string
 
@@ -106,7 +112,7 @@ export async function setCoverFromMedia(mediaFile: TFile, noteFile: TFile, signa
       return
     }
 
-    const folder = await getAttachmentFolder(signal)
+    const folder = await getAttachmentFolder(signal, app)
     const baseName = mediaFile.basename + '-cover'
     const basePath = folder ? `${folder}/${baseName}.jpg` : `${baseName}.jpg`
 
