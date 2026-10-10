@@ -3,6 +3,8 @@ import { EngineError } from '@abele/sync-core'
 import type { LocalStorage } from './ledgerId'
 
 const KEY = 'abele-sync-local-directories-v1'
+const REMOVALS = 'abele-sync-empty-directory-removals-v1'
+const removalSchema = z.array(z.object({ path: z.string(), birth: z.number() }).strict())
 const schema = z.array(
   z.object({ path: z.string(), identity: z.string().min(1), birth: z.number() }).strict()
 )
@@ -29,6 +31,30 @@ export class VaultDirectories {
     this.storage.saveLocalStorage(KEY, records)
     if (JSON.stringify(this.storage.loadLocalStorage(KEY)) !== JSON.stringify(records))
       throw new Error('Local directory identity was not stored')
+  }
+  private removals() {
+    return removalSchema.parse(this.storage.loadLocalStorage(REMOVALS) ?? [])
+  }
+  private saveRemovals(removals: z.infer<typeof removalSchema>) {
+    this.storage.saveLocalStorage(REMOVALS, removals)
+    if (JSON.stringify(this.storage.loadLocalStorage(REMOVALS)) !== JSON.stringify(removals))
+      throw new Error('Pending empty-directory removal was not stored')
+  }
+  /** Only retry a requested departure, never prune unrelated deliberately empty folders. */
+  async removedChild(path: string): Promise<void> {
+    for (const pending of this.removals().sort((a, b) => b.path.length - a.path.length)) {
+      if (!path.startsWith(pending.path + '/')) continue
+      const stat = await this.adapter.stat(pending.path)
+      if (!stat || stat.ctime !== pending.birth) {
+        this.saveRemovals(this.removals().filter((one) => one.path !== pending.path))
+        continue
+      }
+      try {
+        await this.remove(pending.path)
+      } catch (error) {
+        if ((error as { code?: string }).code !== 'ENOTEMPTY') throw error
+      }
+    }
   }
   async *list(): AsyncIterable<{ path: string; identity: string; mtime: number }> {
     const found: { path: string; birth: number; mtime: number }[] = []
@@ -68,21 +94,28 @@ export class VaultDirectories {
       }
     })
     this.save(records)
-    for (const one of found)
+    const removals = this.removals()
+    for (const one of found) {
+      // A departed folder awaiting a held child must not be published as a new mkdir.
+      if (removals.some((pending) => pending.path === one.path && pending.birth === one.birth))
+        continue
       yield {
         path: one.path,
         identity: records.find((record) => record.path === one.path).identity,
         mtime: one.mtime,
       }
+    }
   }
   async mkdir(path: string): Promise<void> {
     const before = await this.adapter.stat(path)
     if (before) {
       if (before.type !== 'folder' || (await this.symlink(path)))
         throw new EngineError('conflict', 'Directory path is occupied')
+      this.saveRemovals(this.removals().filter((one) => one.path !== path))
       return
     }
     await this.adapter.mkdir(path)
+    this.saveRemovals(this.removals().filter((one) => one.path !== path))
   }
   async move(from: string, to: string): Promise<void> {
     if (await this.adapter.stat(to))
@@ -103,14 +136,23 @@ export class VaultDirectories {
   }
   async remove(path: string): Promise<void> {
     const stat = await this.adapter.stat(path)
-    if (!stat) return
+    if (!stat) {
+      this.saveRemovals(this.removals().filter((one) => one.path !== path))
+      return
+    }
     if (stat.type !== 'folder' || (await this.symlink(path)))
       throw new EngineError('conflict', 'Directory path is occupied')
     const children = await this.adapter.list(path)
-    if (children.files.length || children.folders.length)
-      // Core keeps a removed/moved directory when local children still need it.
+    if (children.files.length || children.folders.length) {
+      this.saveRemovals([
+        ...this.removals().filter((one) => one.path !== path),
+        { path, birth: stat.ctime },
+      ])
+      // Core forgets ENOTEMPTY removals; retain the intent until held children depart.
       throw Object.assign(new Error('Directory is not empty'), { code: 'ENOTEMPTY' })
+    }
     await this.removeEmpty(path)
     this.save(this.records().filter((one) => one.path !== path))
+    this.saveRemovals(this.removals().filter((one) => one.path !== path))
   }
 }

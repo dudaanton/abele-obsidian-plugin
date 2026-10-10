@@ -536,6 +536,7 @@ export class ObsidianFileSystem implements FileSystem {
     this.awaitingIndex.delete(from)
     this.awaitingIndex.add(to)
     this.wrote(from, to)
+    await this.directories.removedChild(from)
     if (!this.preserveEmptyDirectories)
       await pruneAbove(this.adapter, this.native, this.configDir, from)
   }
@@ -565,6 +566,7 @@ export class ObsidianFileSystem implements FileSystem {
     }
     this.awaitingIndex.delete(path)
     this.wrote(path)
+    await this.directories.removedChild(path)
     if (!this.preserveEmptyDirectories)
       await pruneAbove(this.adapter, this.native, this.configDir, path)
   }

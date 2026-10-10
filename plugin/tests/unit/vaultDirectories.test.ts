@@ -1,6 +1,34 @@
 import { expect, it, vi } from 'vitest'
 import { VaultDirectories } from '@/sync/vaultDirectories'
 
+it.each(['delete', 'move'])(
+  'finishes a deferred remote folder removal after a later child %s',
+  async (operation) => {
+    const { buildFakeVault } = await import('../helpers/fakeVault')
+    const { ObsidianFileSystem } = await import('@/sync/ObsidianFileSystem')
+    const app = buildFakeVault([{ path: 'Shared/from/sample.md', content: 'sample' }])
+    const rmdir = app.vault.adapter.rmdir.bind(app.vault.adapter)
+    app.vault.adapter.rmdir = async (path, recursive) => {
+      expect(recursive).toBe(false)
+      expect(await app.vault.adapter.list(path)).toEqual({ files: [], folders: [] })
+      await rmdir(path, true) // Fake adapter models desktop rmdir(false) as EISDIR.
+    }
+    const fs = new ObsidianFileSystem(app as never, { preserveEmptyDirectories: true })
+    await app.vault.rename(app.vault.getAbstractFileByPath('Shared/from')!, 'Shared/to')
+    // A directory departure may be processed while its tracked child is still held.
+    await expect(fs.removeDirectory('Shared/to')).rejects.toMatchObject({ code: 'ENOTEMPTY' })
+    const reloaded = new ObsidianFileSystem(app as never, { preserveEmptyDirectories: true })
+    const advertised = []
+    for await (const dir of reloaded.listDirectories()) advertised.push(dir.path)
+    expect(advertised).not.toContain('Shared/to')
+    expect(await app.vault.adapter.read('Shared/to/sample.md')).toBe('sample')
+    if (operation === 'delete') await reloaded.remove('Shared/to/sample.md')
+    else await reloaded.move('Shared/to/sample.md', 'Shared/kept.md')
+    expect(await app.vault.adapter.exists('Shared/to')).toBe(false)
+    expect(await app.vault.adapter.exists('Shared')).toBe(true)
+  }
+)
+
 it('uses native nonrecursive directory removal instead of Obsidian rmdir(false), which raises EISDIR', async () => {
   const removeEmpty = vi.fn(async (_path: string) => {})
   const adapter = {
