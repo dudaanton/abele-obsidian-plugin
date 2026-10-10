@@ -23,6 +23,7 @@ beforeAll(async () => {
     await app.vault.create(root + '/target.md', 'A fabricated target.\\n')
     await app.vault.create(root + '/source.md', 'A fabricated link to [[' + root + '/target]].\\n')
     for (let i = 0; i < 50 && !app.metadataCache.resolvedLinks[root + '/source.md']?.[root + '/target.md']; i++) await new Promise(r => setTimeout(r, 100))
+    await app.workspace.getLeaf('tab').openFile(app.vault.getAbstractFileByPath(root + '/target.md'))
     const leaf = app.workspace.getLeaf('tab')
     await leaf.setViewState({ type: 'backlink', state: { file: root + '/target.md' }, active: true })
     app.workspace.leftSplit.collapse()
@@ -55,7 +56,7 @@ describe('real agents list on synthetic states', () => {
         await document.fonts.ready
         const root = document.querySelector('.abele-agents')
         if (!root) throw new Error('Agents list did not mount')
-        const snapshot = ${designCaptureExpression('.modal.abele-modal', { nativeSelector: '.backlink-pane .tree-item-self' })}
+        const snapshot = ${designCaptureExpression('.modal.abele-modal', { nativeSelector: '.backlink-pane .search-result-file-title' })}
         const overflowing = [...root.querySelectorAll('*')].filter(el => {
           const r = el.getBoundingClientRect()
           return r.width && (r.left < 0 || r.right > innerWidth + 1)
