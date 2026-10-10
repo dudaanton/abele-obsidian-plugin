@@ -1,21 +1,30 @@
 <template>
-  <div class="abele-disclosure" :class="{ 'abele-disclosure_compact': compact }">
+  <div
+    class="abele-disclosure"
+    :class="{
+      'abele-disclosure_compact': compact,
+      'abele-disclosure_open': modelValue,
+      'abele-disclosure_disabled': disabled,
+    }"
+  >
     <button
       type="button"
       class="clickable-icon abele-disclosure__control"
       :aria-label="accessibleLabel"
       :aria-expanded="modelValue"
       :aria-controls="contentId"
+      :disabled="disabled"
       @click="emit('update:modelValue', !modelValue)"
     >
       <span
         ref="glyph"
-        class="collapse-icon"
+        class="collapse-icon abele-disclosure__icon"
         :class="{ 'is-collapsed': !modelValue }"
         aria-hidden="true"
       />
       <template v-if="!compact"
-        ><span>{{ label }}</span
+        ><span class="abele-disclosure__label"
+          ><slot name="label">{{ label }}</slot></span
         ><span v-if="count !== undefined" class="abele-disclosure__count">{{
           count
         }}</span></template
@@ -30,13 +39,20 @@
 import { ref, computed, onMounted, useId } from 'vue'
 import { setIcon } from 'obsidian'
 import './designKit.css'
+// Obsidian's own fold: its triangle and its icon button. What Nuxt UI calls a Collapsible.
 const props = defineProps<{
+  /** What is folded away, in a few words; also what a screen reader hears. */
   label: string
   modelValue: boolean
+  /** How many things are inside, beside the label. */
   count?: number
+  /** Only the triangle, for a row that already carries its own label. */
   compact?: boolean
+  /** The button alone; the content is somewhere else, named by `targetId`. */
   controlOnly?: boolean
   targetId?: string
+  /** Cannot be opened or closed now. */
+  disabled?: boolean
 }>()
 const emit = defineEmits<{ 'update:modelValue': [expanded: boolean] }>()
 const id = useId()
@@ -62,6 +78,13 @@ onMounted(() => {
   font-weight: var(--font-normal);
   white-space: normal;
   text-align: start;
+}
+/* As a disabled icon is drawn in the kit: faint, and no hover box. */
+.abele-disclosure .abele-disclosure__control:disabled,
+.abele-disclosure .abele-disclosure__control:disabled:hover {
+  color: var(--text-faint);
+  background-color: transparent;
+  cursor: default;
 }
 .abele-disclosure__count {
   color: var(--text-muted);

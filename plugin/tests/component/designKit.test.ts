@@ -162,6 +162,33 @@ describe('Disclosure', () => {
     )
   })
 })
+describe('Disclosure parts and states', () => {
+  it('names its parts and says when it is open', () => {
+    const view = mount(Disclosure, { props: { label: 'History', modelValue: true } })
+    expect(view.classes()).toContain('abele-disclosure_open')
+    expect(view.get('.abele-disclosure__icon').classes()).toContain('collapse-icon')
+    expect(view.get('.abele-disclosure__label').text()).toBe('History')
+  })
+
+  it('takes its own label content', () => {
+    const view = mount(Disclosure, {
+      props: { label: 'History', modelValue: false },
+      slots: { label: '<strong class="own">History</strong>' },
+    })
+    expect(view.get('.abele-disclosure__label .own').text()).toBe('History')
+    expect(view.get('button').attributes('aria-label')).toBe('History')
+  })
+
+  it('does not open while disabled', async () => {
+    const view = mount(Disclosure, {
+      props: { label: 'History', modelValue: false, disabled: true },
+    })
+    expect(view.classes()).toContain('abele-disclosure_disabled')
+    expect(view.get('button').attributes('disabled')).toBeDefined()
+    await view.get('button').trigger('click')
+    expect(view.emitted('update:modelValue')).toBeUndefined()
+  })
+})
 describe('EventList', () => {
   it('preserves chronology and exposes unavailable, pending and retryable failure separately', async () => {
     const view = mount(EventList, {
