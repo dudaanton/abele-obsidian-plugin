@@ -1,10 +1,11 @@
+import { tokenSettingsFixture } from '../helpers/tokenSettingsFixture'
+import { tokenUi } from '@/sync/tokenUi'
 /**
  * Device-local sync fields remain accessible through settings tools after moving out of
  * data.json. Writes go through the sync service so URL, keychain and token-origin checks
  * match the settings screen. Internal migration and revocation bookkeeping stays private.
  */
 import { describe, it, expect, beforeEach, afterEach, vi } from 'vitest'
-import type { App } from 'obsidian'
 import { PLAIN_HTTP_REFUSED } from '@abele/sync-protocol'
 import {
   createReadSettingsTool,
@@ -13,9 +14,8 @@ import {
 } from '@/ai/tools/SettingsTools'
 import { DEFAULT_AI_SETTINGS } from '@/ai/types'
 import { AbeleConfig } from '@/services/AbeleConfig'
-import { emptyConnection, writeConnection } from '@/sync/connection'
+import { emptyConnection } from '@/sync/connection'
 import { SyncService } from '@/sync/SyncService'
-import type AbelePlugin from '@/main'
 import { useVault } from '../helpers/testEnv'
 import type { FakeApp } from '../helpers/fakeVault'
 
@@ -32,10 +32,6 @@ const TOKEN_ID = 'abele-sync-device-abc123'
 
 let app: FakeApp
 
-const plugin = {
-  manifest: { id: 'abele' },
-  registerDomEvent: () => undefined,
-} as unknown as AbelePlugin
 let saved: number
 
 /** The connection as a device enrolled on `OLD` holds it; `token` puts its token in the keychain. */
@@ -65,6 +61,7 @@ beforeEach(() => {
 })
 
 afterEach(async () => {
+  tokenUi.value = null
   vi.restoreAllMocks()
   await SyncService.getInstance().destroy()
 })
@@ -93,6 +90,31 @@ describe('reading where this device syncs', () => {
 })
 
 describe('changing where this device syncs', () => {
+  it('cannot retarget a live token or expose its credentials and ledger through settings', async () => {
+    const token = tokenSettingsFixture(app)
+    token.bind()
+    const before = token.registry.records()
+    const reconcile = vi.fn(async () => {})
+    token.ui.connectionsChanged = reconcile
+    const result = await answer(write, {
+      path: token.path('address'),
+      value: 'https://other.example.com',
+    })
+    expect(result).toContain('was not changed')
+    expect(token.registry.records()).toEqual(before)
+    expect(reconcile).not.toHaveBeenCalled()
+    const view = await answer(read, { path: 'sync.connections' })
+    expect(view).toContain(OLD)
+    for (const field of ['secretReference', 'ledgerId', 'pending', 'key']) {
+      expect(view).not.toContain(`"${field}"`)
+      expect(await answer(read, { path: token.path(field) })).toBe(
+        `"${token.path(field)}" is not a valid field path.`
+      )
+    }
+    expect(view).not.toContain('a'.repeat(43))
+    expect(saved).toBe(0)
+  })
+
   it('refuses plain http to another machine with the https rule', async () => {
     const text = await answer(write, { path: 'sync.serverUrl', value: 'http://192.168.1.5' })
 
@@ -101,22 +123,17 @@ describe('changing where this device syncs', () => {
   })
 
   it('writes an https address through updateConnection, not data.json, and reconciles', async () => {
-    // Started, so a reconcile has an app to work on; filed where `init` reads the connection.
-    writeConnection(app as unknown as App, SyncService.getInstance().connection.value)
-    const service = SyncService.getInstance()
-    const runner = (service as unknown as { runner: { reconcile: () => Promise<void> } }).runner
-    const reconcile = vi.spyOn(runner, 'reconcile')
-    service.init(app as unknown as App, plugin)
-    // The start's own reconcile, out of the way, so the one counted below is the write's.
-    await vi.waitFor(() => expect(reconcile).toHaveBeenCalledTimes(1))
-    reconcile.mockClear()
-    const update = vi.spyOn(service, 'updateConnection')
-
-    const text = await answer(write, { path: 'sync.serverUrl', value: 'https://new.example.com' })
-
-    expect(update).toHaveBeenCalledWith({ serverUrl: 'https://new.example.com' })
-    expect(reconcile).toHaveBeenCalled()
-    expect(service.connection.value.serverUrl).toBe('https://new.example.com')
+    const token = tokenSettingsFixture(app)
+    const reconcile = vi.fn(async () => {})
+    token.ui.connectionsChanged = reconcile
+    const update = vi.spyOn(token.ui, 'updateConnection')
+    const text = await answer(write, {
+      path: token.path('address'),
+      value: 'https://new.example.com',
+    })
+    expect(update).toHaveBeenCalledWith(token.id, { address: 'https://new.example.com' })
+    expect(reconcile).toHaveBeenCalledOnce()
+    expect(token.registry.records()[0].address).toBe('https://new.example.com')
     expect(text).toContain(`"${OLD}" → "https://new.example.com"`)
     expect(saved).toBe(0)
   })

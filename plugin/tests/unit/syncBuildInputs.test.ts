@@ -25,7 +25,7 @@ describe('reproducible sync build inputs', () => {
   }
 
   it('accepts the selected archive, lockfile and installed payload', () => {
-    expect(verifySyncInputs(plugin).commit).toBe('b6d8066cc7a72ade3d1143985b6f0cd510e854e7')
+    expect(verifySyncInputs(plugin).commit).toBe('664759f8ab307c74804868bbe5bb8e3e3182d0e0')
   })
 
   it('rejects a deliberately mismatched archive and provenance revision', () => {
@@ -43,7 +43,7 @@ describe('reproducible sync build inputs', () => {
       provenance.commit = 'f927e62bb41817cd3cf0180e80f989e8c166ff1d'
       writeFileSync(path, JSON.stringify(provenance))
       expect(() => verifySyncInputs(root)).toThrow(/revision/i)
-      provenance.commit = 'b6d8066cc7a72ade3d1143985b6f0cd510e854e7'
+      provenance.commit = '664759f8ab307c74804868bbe5bb8e3e3182d0e0'
       writeFileSync(path, JSON.stringify(provenance))
       writeFileSync(
         resolve(root, 'vendor/sync', provenance.packages['@abele/sync-core'].archive),

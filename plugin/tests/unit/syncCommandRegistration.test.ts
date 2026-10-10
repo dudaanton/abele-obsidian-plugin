@@ -1,3 +1,7 @@
+import { takePendingTab } from '@/components/settings/settingsTab'
+import { tokenSettingsFixture } from '../helpers/tokenSettingsFixture'
+import { tokenUi } from '@/sync/tokenUi'
+import { flushPromises } from '@vue/test-utils'
 /**
  * The sync commands exist whether or not the agent is switched on.
  *
@@ -50,6 +54,7 @@ beforeEach(() => {
 })
 
 afterEach(() => {
+  tokenUi.value = null
   vi.restoreAllMocks()
 })
 
@@ -66,38 +71,40 @@ describe('the sync commands', () => {
     expect(commands.map((c) => c.id)).toEqual(expect.arrayContaining(SYNC_IDS))
   })
 
-  it('open what they name', () => {
+  it('open what they name', async () => {
     AbeleConfig.getInstance().ai = { ...DEFAULT_AI_SETTINGS, enabled: false } as AiSettings
-    const syncNow = vi.spyOn(SyncService.getInstance(), 'syncNow').mockResolvedValue()
+    const token = tokenSettingsFixture()
+    const runtime = token.bind()
     const { plugin, commands } = aPlugin()
+    const app = GlobalStore.getInstance().app as any
+    app.setting = { open: vi.fn(), openTabById: vi.fn() }
     ;(plugin as unknown as { initSync(): void }).initSync()
     const run = (id: string) => commands.find((c) => c.id === id)?.callback()
-    const store = GlobalStore.getInstance()
-    store.syncLogModalOpened.value = false
-    store.deletedFilesModalOpened.value = false
-
     run('sync-now')
     run('sync-log')
     run('sync-deleted-files')
-
-    expect(syncNow).toHaveBeenCalledOnce()
-    expect(store.syncLogModalOpened.value).toBe(true)
-    expect(store.deletedFilesModalOpened.value).toBe(true)
+    await flushPromises()
+    expect(runtime.sync).toHaveBeenCalledOnce()
+    expect(app.setting.open).toHaveBeenCalledOnce()
+    expect(app.setting.openTabById).toHaveBeenCalledWith('abele')
+    expect(takePendingTab()).toBe('sync')
+    expect(Notice.shown.at(-1)).toContain('Deleted-file history is not available')
   })
 
   it('says sync is paused when Sync now is run from the palette while it is', () => {
-    const sync = SyncService.getInstance()
-    vi.spyOn(sync, 'syncNow').mockResolvedValue()
-    const held = sync.connection.value
-    sync.connection.value = { ...held, paused: true }
+    const token = tokenSettingsFixture()
+    const runtime = token.bind()
+    token.registry.setPaused(token.id, true)
+    token.ui.refresh()
     Notice.shown.length = 0
     try {
       const { plugin, commands } = aPlugin()
       ;(plugin as unknown as { initSync(): void }).initSync()
       commands.find((c) => c.id === 'sync-now')?.callback()
       expect(Notice.shown).toEqual(['Sync is paused. Resume it to sync this device.'])
+      expect(runtime.sync).not.toHaveBeenCalled()
     } finally {
-      sync.connection.value = held
+      tokenUi.value = null
     }
   })
 })

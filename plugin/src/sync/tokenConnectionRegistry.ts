@@ -192,6 +192,22 @@ export class TokenConnectionRegistry {
       record.status = paused ? 'paused' : 'idle'
     this.write(TOKEN_REGISTRY_KEY, doc)
   }
+  setAddress(localId: string, address: string): void {
+    const problem = address === '' ? null : serverUrlProblem(address)
+    if (problem) throw new Error(problem)
+    const normal = address === '' ? '' : normalizeServerUrl(address)
+    if (normal === null) throw new Error('Invalid server address')
+    const doc = this.document(),
+      record = this.record(doc, localId)
+    if ((record.secretReference || record.pending) && normal !== record.address)
+      throw new Error(
+        'This token belongs to ' +
+          record.address +
+          '. Connect with a new token to use another server.'
+      )
+    record.address = normal
+    this.write(TOKEN_REGISTRY_KEY, doc)
+  }
   setStatus(localId: string, status: TokenConnectionRecord['status']): void {
     const doc = this.document(),
       record = this.record(doc, localId)

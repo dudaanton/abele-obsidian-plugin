@@ -1749,7 +1749,7 @@ aliases and changed endpoint URLs are refused with a request for a fresh call; t
 Sync access is being rebuilt around one token connection kind. Each token carries an address,
 a bearer key and a stable folder/group selector. Root `/` is an ordinary folder selector.
 Connection state and secrets remain device-only; settings transfer does not connect another
-device. The token engine adapter and connection UI are not active in this intermediate build.
+device. The native token UI and production v2 engine are active for root and folder connections. A self-hosted **abele-sync** server is required; there is no hosted service. Groups fail closed while their access is being prepared.
 See **Token connection registry** below for the local record and discard semantics.
 
 The retained file engine keeps its independent journals, immutable pending bytes, file/version
@@ -2034,8 +2034,7 @@ operations, an idempotency key and the accepted receipt until host settlement
 finishes. Use the registry's connection-bound storage port; this journal is
 device-local and never enters settings transfer. An uncertain response retains
 the original request, and a failed follow-up download retains its accepted
-receipt. The adapter boundary is not yet connected to the production file engine;
-upload byte staging remains the retained engine's responsibility.
+receipt. The production runtime uses core V2EngineClient and SyncEngine with per-connection IndexedDB state, shared placement coordination and durable executable staging. Upload byte staging remains the core engine's responsibility.
 
 ## Executable review and attachment consent
 
@@ -2076,6 +2075,6 @@ decoder; it populates the token field and still requires pressing Connect.
 
 Token issuance and revocation use v2 directly. Issued token text is held only while its
 dialog is open; it is never saved into settings, transfer, the registry or the sync log.
-The installed core has no v2 runtime binding yet. File exchange and executable approval
-remain unavailable until that adapter binds the sync, apply and local-identity ports;
-the UI does not start a legacy engine or fabricate completion.
+Each token connection uses the production v2 runtime. File exchange and exact-candidate executable approval are enabled for root and folder connections. Group local identities and attachment publication remain dependent on the group binding. No legacy engine is started.
+
+Agent settings tools expose device-only token preferences as `sync.connections.<local-id>.address` and `.paused`. Only an unprovisioned record may change address; a live token never moves to a different endpoint. Credentials, ledger identity and internal state are not exposed. Writes reconcile the token host and report startup failure beside the saved value.

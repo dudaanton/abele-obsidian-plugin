@@ -40,7 +40,8 @@ function archive(directory: string, name: string, commit: string) {
 describe('server-backed fast-tier fixture gate', () => {
   it('skips only the files that require an absent fixture', () => {
     const skipped = missingServerTests({})
-    expect(skipped).toHaveLength(20)
+    expect(skipped).toHaveLength(21)
+    expect(skipped).toContain('tests/integration/tokenEngineServer.test.ts')
     expect(skipped).toContain('tests/integration/externalRepresentationServer.test.ts')
     expect(skipped).toContain('tests/integration/ownerSharingContracts.test.ts')
     expect(skipped).toContain('tests/integration/productionSharingBuild.test.ts')

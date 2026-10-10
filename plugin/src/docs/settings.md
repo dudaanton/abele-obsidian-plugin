@@ -247,64 +247,30 @@ cache), so the lists show it without a network.
 
 ## Sync
 
-Abele Sync requires a self-hosted **abele-sync** server and an operator-created account; there
-is no hosted service. The Sync tab connects this device to that server.
+Abele Sync requires a self-hosted **abele-sync** server; there is no hosted service.
+Paste or scan a token in **Settings → Abele → Sync**. It includes the server and
+folder or group. Root `/` means the whole vault. Each connection works independently.
 
-`sync` holds only what every device on the vault shares: `sync.keySignature`, stored but not yet
-applied. The vault-wide policy — merge or conflict file, the server's size cap, how long history is
-kept — is on the server, not here.
+The connection registry, credentials, ledger identities, pending work and pause state are
+device-only. Synced settings and settings transfer never connect another device.
+`sync.keySignature` is shared configuration; it does not contain connection credentials.
 
-The settings file itself syncs with Abele Sync like any other plugin's, while **Plugin settings**
-is on: a change written here reaches the person's other devices and is reloaded there. Two devices
-changing settings at nearly the same moment — the later save wins, and the other is in the file's
-version history. A device that syncs the file for the first time takes the vault's copy, and its
-own goes to that history. A settings file that arrives and cannot be read is not loaded: saving is
-blocked until a readable one arrives, and the fix is an earlier copy from its version history, not
-a delete, which would reach every device.
+Agent settings tools can read `sync.connections` and write one preference as
+`sync.connections.<local-id>.address` or `.paused`. Only an unprovisioned connection may
+change its address; a live token stays with its original server. To connect elsewhere, use
+a new token. Writes go through the token controller and report startup failure beside the
+stored value. Credential slots, token keys, ledger identities and internal state are not settings.
 
-This device's connection is not a setting at all. Which server and vault it syncs, the device it
-enrolled as and the keychain slot its token is in (always named `abele-sync-device-…`), whether it
-is paused, and what of the vault it takes — the kinds of attachment, the folders it skips, its size
-cap, which parts of the config folder travel — are kept in Obsidian's local storage for this vault
-(see the vault reference), because `data.json` is exactly what a copy of the vault or a transfer
-hands to another device. They are changed on the Sync tab: signing in sets the connection,
-**Disconnect** and **Forget** clear it — and tell the server to stop accepting this device, so
-connecting again needs the password — and the switches under **What this device syncs** change
-what it takes. The Sync tab also lists the devices on this vault — this account's, from the server
-— and revokes any but this one, after asking; that is not a setting either, and no tool reaches
-it. While the device holds a token its server address cannot be pointed at
-another server — the token goes only to the server that minted it — so moving it means
-**Disconnect** and a new sign-in; the address it enrolled on and the revokes still waiting to be
-told are not settings at all, and are never written from outside. Neither is a join in progress
-(`join`): which side wins where this vault and the server both hold a file is asked of the person in
-the join dialog when the device connects, and kept with the connection until the join is done —
-`write_settings` cannot set it, and a device a transfer connected syncs nothing until the question
-is answered on the Sync tab. `read_settings` and `write_settings` reach it too, under `sync`: `sync.serverUrl`, `sync.vaultId`,
-`sync.deviceId`, `sync.deviceTokenId`, `sync.deviceName`, `sync.paused` and `sync.selective` with
-everything in it (`sync.selective.images`, `sync.selective.maxFileBytes`, …). A write there changes
-this device only, goes through the same checks as the Sync tab — an address it refuses, a keychain
-name it never uses, a new server while a token is held, a size cap that is not a positive whole
-number of bytes (`null` is no cap, on a phone too) or a folder list with anything but names in it
-comes back as the reason and nothing changes. An address is stored the way a sign-in stores it
-(lower-case host, no trailing slash), and the answer reports the value as stored, adding why sync
-could not start when the change left it unable to. The approval says where the token would be sent
-when the field decides that, and that emptying the address or the vault stops this device syncing
-while its token stays valid on the server until **Disconnect**.
-A transfer can also set it: its **Sync connection** section, sent with keys, gives
-the other device a device of its own on the same vault. A `data.json` that still names a server or a vault — written by an older version of
-Abele — has those fields dropped when it is read, and they are never written back.
+Sync now runs unpaused connections. Pause, Disconnect and Share act on the chosen connection.
+Disconnect leaves local files and other connections. Share issues an independent token;
+revoking an issued token closes its access. Root and folder file exchange and incoming
+executable review are active. Group exchange and attachment publication await the group binding.
+New executable files, changes, renames and deletions stay pending until the exact candidate is
+reviewed; a later candidate needs its own decision. Partial connections exclude `.obsidian`.
 
-The server address is an https one, or plain http to a server on this device (`localhost`,
-`127.0.0.1`, `[::1]`); any other plain-http address is refused, and a device saved with one does not
-sync until it signs in again. A phone that has not chosen a size cap takes files up to 50 MB; a
-desktop takes everything. Notes and canvases always sync; the config folder syncs only when it is
-`.obsidian`, and other hidden files and folders never sync from the plugin.
-
-Obsidian settings that arrive from another device — anything in the config folder but Abele's own
-settings — are not written until the person answers **Settings changed on another device**
-(**Reload now**, **Later** or **Keep this device's**); until then they wait, and the Sync tab shows
-**Settings waiting**. There is no setting for this: a settings file an agent changes on this device
-goes out as usual, and replaces the one that was waiting for it.
+The palette has **Sync now**, **Pause or resume sync**, **Open sync settings** and
+**Open deleted files**. Deleted-file history is not currently served by v2; the command
+explains that limitation. **Open sync settings** and the status bar both open the Sync tab.
 
 ## Synced keys
 

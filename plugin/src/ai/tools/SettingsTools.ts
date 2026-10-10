@@ -267,8 +267,8 @@ async function write(
 
   if (isDevicePath(path)) {
     if (op !== 'set') return 'Change device sync settings one field at a time with set.'
-    const next = parseValue(raw!)
-    const { before } = describeSettingsWrite(path, raw!)
+    const next = parseValue(raw)
+    const { before } = describeSettingsWrite(path, raw)
     const takes =
       deviceTypes(path) ?? (typeOf(found.value) === 'empty' ? null : [typeOf(found.value)])
     if (takes && !takes.includes(typeOf(next)))
@@ -277,7 +277,7 @@ async function write(
     if (refusal) return refusal
     // What the connection holds now, not what was asked: the address is stored normalised.
     const stored = JSON.stringify(redact(deviceValue(path), found.key)) ?? '(not set)'
-    const failure = startFailure()
+    const failure = startFailure(path)
     const line = `${path}: ${before} → ${stored}`
     return failure === null ? line : `${line} — sync could not start: ${failure}`
   }

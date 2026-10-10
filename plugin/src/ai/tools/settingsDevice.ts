@@ -1,3 +1,12 @@
+import {
+  isTokenPath,
+  tokenView,
+  validTokenPath,
+  tokenValue,
+  writeToken,
+  tokenNext,
+  tokenFailure,
+} from './settingsTokenConnection'
 import { normalizeServerUrl } from '@abele/sync-protocol'
 import { isPrototypeName } from '@/helpers/prototypeNames'
 import { defaultSelective } from '@/sync/connection'
@@ -45,7 +54,7 @@ function fieldOf(path: string): DeviceField | null {
 
 /** Whether `path` is one of this device's connection fields, or something under one. */
 export function isDevicePath(path: string): boolean {
-  return fieldOf(path) !== null
+  return isTokenPath(path) || fieldOf(path) !== null
 }
 
 /**
@@ -76,6 +85,7 @@ export function ownKey(object: unknown, key: string): boolean {
  */
 export function isValidDevicePath(path: string): boolean {
   if (reachesPrototype(path)) return false
+  if (isTokenPath(path)) return validTokenPath(path)
   const field = fieldOf(path)
   if (field === null) return false
   const rest = path.split('.').slice(2)
@@ -97,6 +107,7 @@ export function deviceView(): Record<string, unknown> {
   for (const field of DEVICE_FIELDS) {
     view[field] = JSON.parse(JSON.stringify(connection[field])) as unknown
   }
+  view.connections = tokenView()
   return view
 }
 
@@ -105,6 +116,7 @@ export function deviceView(): Record<string, unknown> {
  * undefined when the path names nothing.
  */
 export function deviceValue(path: string): unknown {
+  if (isTokenPath(path)) return tokenValue(path)
   if (!isValidDevicePath(path)) return undefined
   let holder: unknown = deviceView()
   for (const segment of path.split('.').slice(1)) {
@@ -123,6 +135,7 @@ export function deviceValue(path: string): unknown {
  * has that one value changed, so the rest of what this device takes stays as it was.
  */
 export async function writeDevice(path: string, next: unknown): Promise<string | null> {
+  if (isTokenPath(path)) return writeToken(path, next)
   const field = fieldOf(path)
   if (field === null) return `"${path}" is not a field of this device's connection.`
   if (!isValidDevicePath(path)) return invalidPath(path)
@@ -178,6 +191,7 @@ export function deviceTypes(path: string): readonly string[] | null {
  * address the way it will be stored (`ConnectionKeeper.check`), anything else as asked.
  */
 export function deviceNext(path: string, next: unknown): unknown {
+  if (isTokenPath(path)) return tokenNext(path, next)
   if (path !== 'sync.serverUrl' || typeof next !== 'string' || next === '') return next
   return normalizeServerUrl(next) ?? next
 }
@@ -187,7 +201,8 @@ export function deviceNext(path: string, next: unknown): unknown {
  * the address named a vault the token is not enrolled on, the server did not answer. The
  * error status never carries a secret.
  */
-export function startFailure(): string | null {
+export function startFailure(path = ''): string | null {
+  if (isTokenPath(path)) return tokenFailure(path)
   const status = SyncService.getInstance().status.value
   return status.state === 'error' ? (status.lastError ?? 'no reason was given') : null
 }
@@ -200,6 +215,10 @@ export function startFailure(): string | null {
  * token it holds stays valid on the server it was minted on until Disconnect tells that server.
  */
 export function deviceWarning(path: string, next: unknown): string | null {
+  if (isTokenPath(path))
+    return path.endsWith('.address')
+      ? 'A connected token stays with its original server. Use a new token for another server.'
+      : null
   const field = fieldOf(path)
   if (field === null || !MOVES_TOKEN.has(field)) return null
   const connection = SyncService.getInstance().connection.value

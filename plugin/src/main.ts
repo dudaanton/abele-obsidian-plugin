@@ -268,6 +268,10 @@ export default class AbelePlugin extends Plugin {
         // The service says so in the log and moves nothing; from the palette there is no
         // Sync tab in view to say it, so it is said here too.
         const ui = tokenUi.value
+        if (ui?.rows.value.length && ui.rows.value.every((one) => one.paused)) {
+          new Notice('Sync is paused. Resume it to sync this device.')
+          return
+        }
         if (ui)
           void Promise.allSettled(
             ui.rows.value.filter((one) => !one.paused).map((one) => ui.sync(one.id))

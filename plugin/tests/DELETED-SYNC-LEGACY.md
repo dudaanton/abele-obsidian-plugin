@@ -25,3 +25,14 @@ guarantees remain in the token UI, registry, transport, review, placement and en
 No registry, secret isolation, transport security, immutable review, attachment consent,
 shared placement, file/version journal or recovery guarantee is removed. Group-only
 integration expectations remain explicitly dependent on the group implementation.
+
+Further retired-product coverage:
+
+| File | Removed coverage and reason |
+|---|---|
+| `unit/scopedDialogLayout.test.ts` | Five layout assertions for deleted invitation, creation, owner folder/group and initial asset batch dialogs; native token dialogs use the shared modal kit. |
+| `unit/scopedDeparture.test.ts` | Departure through the deleted scoped host, server self-revoke, invitation transports and old scoped key/binding formats. Token Disconnect is local, preserves files and other connections, and does not revoke an issued token. |
+| `unit/publicationConnectionIdentity.test.ts` | Only the legacy singleton publication-sentinel variant: no old-client compatibility or descriptor migration exists. Current and retained identity/recovery assertions remain. |
+
+`unit/reviewedScopedInput.test.ts` remains, ported to the exact v2 input and its
+reviewed v2 client checksum; reproducibility and payload integrity are retained.

@@ -1,16 +1,16 @@
 // @vitest-environment node
 import { describe, expect, it } from 'vitest'
 import { readFileSync } from 'node:fs'
-describe('reviewed scoped input pin', () => {
-  it('uses the exact canonical revision without changing the reviewed scoped push payload', () => {
+describe('reviewed v2 input pin', () => {
+  it('uses the exact canonical revision without changing the reviewed v2 engine payload', () => {
     const provenance = JSON.parse(
       readFileSync(new URL('../../vendor/sync/provenance.json', import.meta.url), 'utf8')
     )
-    expect(provenance.commit).toBe('b6d8066cc7a72ade3d1143985b6f0cd510e854e7')
+    expect(provenance.commit).toBe('664759f8ab307c74804868bbe5bb8e3e3182d0e0')
     for (const pkg of Object.values(provenance.packages) as any[])
-      expect(pkg.archive).toContain('b6d8066cc7a7')
-    expect(provenance.packages['@abele/sync-core'].files['dist/scopedPush.js']).toBe(
-      '9e9c7888d8da1f7c96d8e9b1401ace2b8829af4899c948fd085364622e651983'
+      expect(pkg.archive).toContain('664759f8ab30')
+    expect(provenance.packages['@abele/sync-core'].files['dist/v2Client.js']).toBe(
+      '6ea2261be494055521644de1598c483e2090a291260998295430cf2c6f4f82b6'
     )
   })
 })

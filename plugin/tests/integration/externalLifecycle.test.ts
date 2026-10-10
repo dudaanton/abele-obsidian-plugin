@@ -1,8 +1,11 @@
+import { TokenUi } from '@/sync/tokenUi'
+import { TokenConnectionRegistry } from '@/sync/tokenConnectionRegistry'
+import { TokenEngines } from '@/sync/tokenEngines'
+import { encodeAccessToken } from '@abele/sync-protocol'
 import { afterEach, describe, expect, it, vi } from 'vitest'
 import { IDBFactory } from 'fake-indexeddb'
 import { Enrolment } from '@/sync/enrolment'
 import { ConnectionKeeper } from '@/sync/connectionKeeper'
-import { SyncService } from '@/sync/SyncService'
 import { emptyConnection, writeConnection, CONNECTION_KEY } from '@/sync/connection'
 import { writeLedgerId, readLedgerId } from '@/sync/ledgerId'
 import { authorizeLedgerBootstrap, requireLedger } from '@/sync/ledgerRecovery'
@@ -447,16 +450,26 @@ describe('external dependency lifecycle refusals', () => {
   it('service-level vault replacement cannot save a new binding over unresolved state', async () => {
     const s = await personal()
     s.target.close()
-    const service = SyncService.getInstance()
-    service.init(
-      s.app as never,
-      { manifest: { id: 'abele' }, registerDomEvent: () => {} } as never,
-      { indexedDB: s.factory, fetch: s.fetcher as never, WebSocket: class {} as never }
+    const registry = TokenConnectionRegistry.open(s.app)
+    const ui = new TokenUi(
+      registry,
+      { get: () => null, set: () => {}, remove: () => {} },
+      s.fetcher as never
     )
-    cleanup.push(() => service.destroy())
+    const host = new TokenEngines(s.app as never, ui, () => null, { indexedDB: s.factory })
+    cleanup.push(() => host.close())
+    const before = registry.records()
     await expect(
-      service.updateConnection({ vaultId: 'other-vault', deviceId: 'other-device' })
+      ui.connect(
+        encodeAccessToken({
+          v: 1,
+          address: 'https://other.example',
+          key: 'a'.repeat(43),
+          scope: { kind: 'folder', id: 'other-root', path: '/' },
+        })
+      )
     ).rejects.toThrow(/external|recovery|preparation/i)
+    expect(registry.records()).toEqual(before)
     expect(readLedgerId(s.app)).toEqual(s.ledger)
     expect((s.app.loadLocalStorage(CONNECTION_KEY) as any).vaultId).toBe(s.own.vaultId)
     expect(s.fetcher).not.toHaveBeenCalled()

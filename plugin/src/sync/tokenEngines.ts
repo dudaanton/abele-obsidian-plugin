@@ -20,6 +20,7 @@ import { editCopiesOf } from './editCopies'
 import { registerConnectionEditCopies } from './editCopyStore'
 import { openTokenLedger } from './tokenLedger'
 import { reviewSourceOf } from './reviewState'
+import { requireExternalLifecycleSafety } from './external/pluginSafety'
 
 /** One native host, independent durable engines, and one vault-wide placement coordinator. */
 export class TokenEngines {
@@ -36,7 +37,9 @@ export class TokenEngines {
   ) {
     ui.connectionsChanged = async () => {
       this.start()
+      await this.engines.settled()
     }
+    ui.connectionChangeGuard = () => requireExternalLifecycleSafety(this.app, factoryOf(this.deps))
   }
   start(): void {
     if (this.closed) return

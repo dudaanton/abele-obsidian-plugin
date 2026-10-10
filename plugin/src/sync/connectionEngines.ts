@@ -35,6 +35,9 @@ export class ConnectionEngines {
       this.runtimes.set(id, { runtime, starting })
     }
   }
+  async settled(): Promise<void> {
+    await Promise.all([...this.runtimes.values()].map((one) => one.starting))
+  }
   async close(): Promise<void> {
     this.closed = true
     for (const { runtime } of this.runtimes.values()) runtime.invalidate()

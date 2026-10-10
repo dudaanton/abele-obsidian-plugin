@@ -75,6 +75,7 @@ export interface TokenUiRuntime extends ExecutableApplyPort, ConsentResolvePort 
 }
 export type DeviceReviews = Awaited<ReturnType<typeof openDeviceReviews>>
 export class TokenUi {
+  connectionChangeGuard: () => Promise<void> = async () => {}
   connectionsChanged: () => Promise<void> = async () => {}
   openFile: (path: string) => Promise<void> = async () => {}
   readonly rows = shallowRef<TokenConnectionRecord[]>([])
@@ -149,6 +150,7 @@ export class TokenUi {
     const token = decodeAccessToken(text),
       client = new V2Client(token, this.transport)
     if (typeof token.address !== 'string') throw new V2ClientError('bad-token')
+    await this.connectionChangeGuard()
     const authority = await client.connection()
     if (token.scope.kind !== authority.scope.kind || token.scope.id !== authority.scope.id)
       throw new V2ClientError('bad-token')
@@ -169,6 +171,20 @@ export class TokenUi {
       this.refresh()
     }
     await this.connectionsChanged()
+  }
+  async updateConnection(id: string, patch: { address?: string; paused?: boolean }): Promise<void> {
+    if (patch.address !== undefined) {
+      await this.connectionChangeGuard()
+      this.registry.setAddress(id, patch.address)
+    }
+    if (patch.paused !== undefined) await this.pause(id, patch.paused)
+    this.refresh()
+    try {
+      await this.connectionsChanged()
+    } catch (error) {
+      this.registry.setStatus(id, 'error')
+      this.publish(id, { error: connectionError(error) })
+    }
   }
   client(id: string): V2Client {
     const record = this.registry.records().find((one) => one.id === id)

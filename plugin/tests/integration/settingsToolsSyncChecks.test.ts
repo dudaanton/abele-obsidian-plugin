@@ -1,3 +1,6 @@
+import { tokenSettingsFixture } from '../helpers/tokenSettingsFixture'
+import { tokenUi } from '@/sync/tokenUi'
+import { TokenEngines } from '@/sync/tokenEngines'
 /**
  * What the agent's writes to this device's connection are held to, past the type check.
  *
@@ -10,14 +13,8 @@ import { describe, it, expect, beforeEach, afterEach, vi } from 'vitest'
 import { Platform, type App } from 'obsidian'
 import { createWriteSettingsTool, describeSettingsWrite } from '@/ai/tools/SettingsTools'
 import { AbeleConfig } from '@/services/AbeleConfig'
-import {
-  emptyConnection,
-  MOBILE_MAX_FILE_BYTES,
-  writeConnection,
-  type DeviceConnection,
-} from '@/sync/connection'
+import { emptyConnection, MOBILE_MAX_FILE_BYTES, type DeviceConnection } from '@/sync/connection'
 import { SyncService } from '@/sync/SyncService'
-import type AbelePlugin from '@/main'
 import { useVault } from '../helpers/testEnv'
 import type { FakeApp } from '../helpers/fakeVault'
 
@@ -67,6 +64,7 @@ beforeEach(() => {
 })
 
 afterEach(async () => {
+  tokenUi.value = null
   vi.restoreAllMocks()
   Platform.isMobile = false
   await SyncService.getInstance().destroy()
@@ -170,11 +168,6 @@ describe('a vault changed under the connection', () => {
 })
 
 describe('a write that leaves sync unable to start', () => {
-  const plugin = {
-    manifest: { id: 'abele' },
-    registerDomEvent: () => undefined,
-  } as unknown as AbelePlugin
-
   /** A state database that will not open: the build fails the way a broken one does. */
   const brokenDatabase = {
     open: () => {
@@ -183,19 +176,26 @@ describe('a write that leaves sync unable to start', () => {
   } as unknown as IDBFactory
 
   it('says so in the answer, beside what was written', async () => {
-    // Filed where `init` reads it: no token yet, so the first reconcile builds nothing.
-    writeConnection(app as unknown as App, connection())
-    const service = SyncService.getInstance()
-    service.init(app as unknown as App, plugin, { indexedDB: brokenDatabase })
-    await vi.waitFor(() => expect(service.status.value.state).toBe('disconnected'))
-    app.secretStorage.setSecret(TOKEN_ID, 'the-device-token')
-
-    const text = await answer({ path: 'sync.deviceName', value: '"Desk"' })
-
-    expect(service.status.value.state).toBe('error')
-    expect(text).toContain('sync.deviceName: "Laptop" → "Desk"')
-    expect(text).toContain('sync could not start:')
-    expect(text).toContain(service.status.value.lastError ?? '(no error)')
-    expect(text).not.toContain('the-device-token')
+    const token = tokenSettingsFixture(app)
+    token.bind()
+    token.ui.runtimes.clear()
+    const host = new TokenEngines(
+      app as unknown as App,
+      token.ui,
+      (id) => token.keys.get(id) ?? null,
+      { indexedDB: brokenDatabase }
+    )
+    try {
+      const text = await answer({ path: token.path('paused'), value: 'true' })
+      expect(token.registry.records()[0].status).toBe('error')
+      expect(token.registry.records()[0].paused).toBe(true)
+      expect(text).toContain(token.path('paused') + ': false → true')
+      expect(text).toContain('sync could not start:')
+      expect(text).toContain(token.ui.activity.value[token.id].error!)
+      expect(text).not.toContain('a'.repeat(43))
+      expect(AbeleConfig.getInstance().saveSettings).not.toHaveBeenCalled()
+    } finally {
+      await host.close()
+    }
   })
 })

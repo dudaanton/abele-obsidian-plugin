@@ -153,21 +153,19 @@ genuinely theirs to take. Every one is prefixed **Abele:** in the palette.
 
 ## Sync
 
-These commands use a self-hosted **abele-sync** server configured on the Sync tab; there is
-no hosted service.
+These commands use a self-hosted **abele-sync** server; there is no hosted service.
+Connect with a token in **Settings → Abele → Sync**.
 
-- Sync now · Pause or resume sync
-- Open sync log — also a click on the sync item in the status bar
-- Open deleted files — what was deleted anywhere in the vault, each with a Restore, and
-  *Restore all deleted since…* for everything deleted since a moment
-- *Open version history (Abele)* when a file is right-clicked, while the device is connected
+- Sync now — runs every unpaused token connection independently; when all are paused it
+  explains how to resume.
+- Pause or resume sync — pauses all connections, or resumes them when all were paused.
+- Open sync settings — opens the Sync tab; the status bar opens it too.
+- Open deleted files — currently explains that deleted-file history is not served by v2.
 
-Connecting, disconnecting and choosing what a device syncs are on the Sync tab of the settings,
-and so are the devices on the vault. Three dialogs open by themselves rather than from a command:
-the join question when a device connects to a vault that already has files (from the vault it was
-picked on, or from the Sync tab for a device a transfer connected), *Deletions held back* when many
-files were deleted at once on this device, and *Settings changed on another device* when Obsidian
-settings arrived. The last two stay on the Sync tab until they are answered.
+Connections, sharing tokens, incoming executable review and private-file decisions are on
+the Sync tab. Each connection has its own status and last sync. Disconnect keeps local
+files and other connections. Groups remain unavailable until the server finishes preparing
+them. Incoming executable changes require approving the exact reviewed version.
 
 ## Other
 

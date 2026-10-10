@@ -293,7 +293,7 @@ it('does not apply stored consent from a previous principal to a new binding', a
   second.close()
 })
 
-it.each(['legacy', 'current', 'retired'] as const)(
+it.each(['current', 'retired'] as const)(
   'holds recovery when a %s sentinel outlives its descriptor',
   async (kind) => {
     const { app, host, factory, connection, open } = fixture()
@@ -304,13 +304,6 @@ it.each(['legacy', 'current', 'retired'] as const)(
     await resources.meta.setMeta('sample-retained-work', 'invented-pending-intent')
     runtime.close()
     app.saveLocalStorage('abele-owner-publication:' + identity, null)
-    if (kind === 'legacy') {
-      app.saveLocalStorage('abele-owner-publication-stores-v1', null)
-      await app.vault.adapter.rename(
-        '.abele-owner-publication-' + identity,
-        '.abele-owner-publication'
-      )
-    }
     if (kind === 'retired')
       connection.value = { ...connection.value, deviceId: 'sample-new-device' }
     await expect(open()).rejects.toThrow(/descriptor.*lost|recovery/i)

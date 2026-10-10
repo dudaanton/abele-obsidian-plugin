@@ -16,17 +16,23 @@ is updated; chart settings and data are unchanged.
 
 ## Sync
 
-Abele Sync requires a self-hosted **abele-sync** server; there is no hosted service. Enter
-that server's URL, sign in, and choose or create a vault on the Sync tab. This device keeps
-its connection and selective-sync choices locally. Notes and canvases always sync; other
-file types, folders, size limits and configuration sections can be selected separately.
-Disconnect revokes this device without deleting its notes. Version history and deleted files
-are kept on your server, under its retention policy.
+Abele Sync needs a self-hosted **abele-sync** server; there is no hosted service.
+Paste or scan a token on the Sync tab. It contains the server and the folder or group;
+**Whole vault** means `/`. Connections and credentials stay on this device. Copying
+settings to another device does not connect it.
 
-The command palette provides **Sync now**, **Pause or resume sync**, **Open sync log** and
-**Open deleted files**. Right-click a synced file for **Open version history**. Sharing,
-joining a shared vault and publishing selected linked material use the same server; review
-the proposed access before confirming.
+Each connection has its own status and last sync, with Sync now, Pause, Share and Disconnect.
+Disconnect keeps local files and the other connections. Share creates a token for another
+device or collaborator; revoke its token to close that access.
+
+Incoming scripts and plugin code wait for review. You can view the source and received
+time, then approve or reject that exact version. A later change waits for another decision.
+Root and folder exchange are active; groups are still being prepared by the server.
+A server error does not stop the other connections, and unsent files stay on the device.
+
+The command palette has **Sync now**, **Pause or resume sync**, **Open sync settings** and
+**Open deleted files**. The last explains that deleted-file history is not available yet.
+The status bar also opens sync settings.
 
 ## Tasks
 
