@@ -23,21 +23,48 @@
           v-model="text"
           as-text-area
           :rows="3"
-          :invalid="!!problem"
+          :invalid="!!badCode"
           placeholder="Paste the pairing code"
           aria-label="Pairing code"
           class="abele-pair__code-field"
         />
-        <div v-if="problem" class="abele-pair__error" role="alert">{{ problem }}</div>
+        <div v-if="badCode" class="abele-pair__error" role="alert">{{ badCode }}</div>
 
         <!-- What the code holds, read out of it at once, to be checked against the node. -->
-        <dl v-else-if="parsed" class="abele-pair__fields" aria-label="What the code holds">
+        <dl v-if="parsed && !badCode" class="abele-pair__fields" aria-label="What the code holds">
           <dt>Node</dt>
           <dd class="abele-pair__value_name">{{ parsed.name }}</dd>
-          <dt>Address</dt>
-          <dd>{{ parsed.host }}</dd>
-          <dt>Port</dt>
-          <dd>{{ parsed.port }}</dd>
+          <!-- Where to reach the node is taken from the code but can be changed: the same node
+               may be reached by another address from here (its local one, a VPN, a tunnel). -->
+          <dt><label for="abele-pair-host">Address</label></dt>
+          <dd class="abele-pair__editable">
+            <Input
+              id="abele-pair-host"
+              v-model="host"
+              :invalid="!host.trim()"
+              aria-label="Address"
+              autocomplete="off"
+              spellcheck="false"
+            />
+            <Icon
+              v-if="host !== parsed.host || port !== String(parsed.port)"
+              icon="rotate-ccw"
+              size="xs"
+              tooltip="Back to what the code says"
+              @click="reset"
+            />
+          </dd>
+          <dt><label for="abele-pair-port">Port</label></dt>
+          <dd class="abele-pair__editable">
+            <Input
+              id="abele-pair-port"
+              v-model="port"
+              :invalid="!portValid"
+              inputmode="numeric"
+              aria-label="Port"
+              autocomplete="off"
+            />
+          </dd>
           <dt>Key</dt>
           <dd class="abele-pair__fingerprint">
             <span v-for="(group, i) in groups" :key="i">{{ group }}</span>
@@ -45,8 +72,15 @@
           <dt>Valid</dt>
           <dd>{{ parsed.expires }}</dd>
         </dl>
+        <div
+          v-if="parsed && error && tried === `${host.trim()}:${port.trim()}`"
+          class="abele-pair__error"
+          role="alert"
+        >
+          {{ error }}
+        </div>
         <Setting
-          v-if="parsed && keyChanged && !problem"
+          v-if="parsed && keyChanged && !badCode"
           class="abele-pair__changed"
           name="The key is not the one from before"
           desc="This device knew this node by another key. Connect only if the node really got a new one."
@@ -66,9 +100,11 @@
         <Button
           text="Connect"
           accent
-          :disabled="!parsed || !!problem || (keyChanged && !confirmed)"
+          :disabled="
+            !parsed || !!badCode || !host.trim() || !portValid || (keyChanged && !confirmed)
+          "
           tooltip="Ask the node to let this device in"
-          @click="emit('connect', text)"
+          @click="connect"
         />
       </div>
     </template>
@@ -110,7 +146,7 @@
 // once and what it holds is shown to check: the node's name, where it is, its key. Connect asks the
 // node, and the owner lets the device in there, choosing it by the name shown here. The dialog
 // closes itself once the node agrees.
-import { computed, ref } from 'vue'
+import { computed, ref, watch } from 'vue'
 import { Platform } from 'obsidian'
 import Input from '../obsidian/Input.vue'
 import Icon from '../obsidian/Icon.vue'
@@ -138,7 +174,8 @@ const props = withDefaults(
 )
 
 const emit = defineEmits<{
-  (e: 'connect', text: string): void
+  /** The code, and where to reach the node: what the code says, or what was typed over it. */
+  (e: 'connect', text: string, at: { host: string; port: number }): void
   (e: 'scan'): void
   (e: 'back'): void
   (e: 'copy', text: string): void
@@ -149,8 +186,25 @@ const text = ref(props.initial)
 const confirmed = ref(false)
 const result = computed(() => (text.value.trim() ? props.parse(text.value.trim()) : null))
 const parsed = computed(() => (result.value && !('error' in result.value) ? result.value : null))
-const problem = computed(() =>
-  result.value && 'error' in result.value ? result.value.error : props.error
+// A code that cannot be read; a node that did not answer is said under the fields instead,
+// so the address can be changed right there.
+const badCode = computed(() => (result.value && 'error' in result.value ? result.value.error : ''))
+// The address the error is about; editing it away hides the error.
+const tried = ref(props.error && parsed.value ? `${parsed.value.host}:${parsed.value.port}` : '')
+function connect() {
+  tried.value = `${host.value.trim()}:${port.value.trim()}`
+  emit('connect', text.value, { host: host.value.trim(), port: Number(port.value) })
+}
+const host = ref('')
+const port = ref('')
+const reset = () => {
+  host.value = parsed.value?.host ?? ''
+  port.value = parsed.value ? String(parsed.value.port) : ''
+}
+// A new code fills the address and port again; edits stay until the code changes.
+watch(() => parsed.value && `${parsed.value.host}:${parsed.value.port}`, reset, { immediate: true })
+const portValid = computed(
+  () => /^\d{1,5}$/.test(port.value.trim()) && Number(port.value) > 0 && Number(port.value) < 65536
 )
 const groups = computed(() => parsed.value?.fingerprint.match(/.{1,4}/g) ?? [])
 </script>
@@ -223,7 +277,7 @@ const groups = computed(() => parsed.value?.fingerprint.match(/.{1,4}/g) ?? [])
   color: var(--text-error);
   font-size: var(--font-ui-smaller);
 }
-// The code read out: names muted on the left, values on the right, one line each.
+// The code read out: names muted on the left, values on the right, one line each; address and port in fields.
 .abele-pair__fields {
   display: grid;
   grid-template-columns: max-content 1fr;
@@ -244,6 +298,24 @@ const groups = computed(() => parsed.value?.fingerprint.match(/.{1,4}/g) ?? [])
     color: var(--text-normal);
     font-family: var(--font-monospace);
     font-size: var(--font-ui-smaller);
+  }
+  dt label {
+    cursor: inherit;
+  }
+  // The two values one may change sit in fields, the rest stay plain text.
+  .abele-pair__editable {
+    display: flex;
+    align-items: center;
+    gap: var(--size-4-1);
+    font-family: inherit;
+
+    input {
+      font-family: var(--font-monospace);
+      font-size: var(--font-ui-smaller);
+    }
+  }
+  dt:has(label) {
+    align-self: center;
   }
   .abele-pair__value_name {
     font-family: inherit;
