@@ -388,15 +388,19 @@ export class ChatSession implements SummarizerHost, InterceptorHost, AnchorStora
       this.attention.value = merged
       if (!reconcileRequests) return
       const settled = settledAttention(merged)
-      this.pendingToolCalls.value = this.pendingToolCalls.value.filter((tc) => !settled.has(tc.id))
+      const pending = this.pendingToolCalls.value.filter((tc) => !settled.has(tc.id))
+      // Scans can land during a selection return. An equal filtered list is not a local
+      // change: replacing it would trip the synchronous revision watcher on every scan.
+      if (pending.length !== this.pendingToolCalls.value.length) this.pendingToolCalls.value = pending
       if (
         !this.isBusy &&
         !this.pendingToolCalls.value.length &&
         metadata.pendingToolCalls?.length
       ) {
-        this.pendingToolCalls.value = metadata.pendingToolCalls
+        const restored = metadata.pendingToolCalls
           .filter((tc) => !settled.has(tc.id) && !merged.tools?.[tc.id])
           .map((tc) => ({ ...tc, type: 'toolCall' as const }))
+        if (restored.length) this.pendingToolCalls.value = restored
       }
     } finally {
       this.restoringAttention = previous
