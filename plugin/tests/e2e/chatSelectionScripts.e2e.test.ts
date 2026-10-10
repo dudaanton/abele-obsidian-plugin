@@ -42,13 +42,22 @@ const PRELUDE = `${WAIT_PRELUDE}
   const select = async id => {
     const root = await until(() => visible('[data-ask-message="' + id + '"]'), 5000)
     if (!root) throw Error('Saved message did not render')
-    const word = root.querySelector('strong')
+    const word = await until(() => root.querySelector('strong'), 5000)
+    if (!word) throw Error('Saved words did not render')
+    // Native sheets finish closing after their DOM is removed. Wait for the message's
+    // geometry and hit target to stay put before sending a gesture to WebKit.
+    let previous = '', stableSince = Date.now()
+    if (!await until(() => {
+      const r = word.getBoundingClientRect(), key = JSON.stringify([r.x,r.y,r.width,r.height])
+      if (key !== previous) {previous = key; stableSince = Date.now()}
+      return word.isConnected && r.width > 0 && document.elementFromPoint(r.left+r.width/2,r.top+r.height/2) === word && Date.now()-stableSince >= 600
+    }, 5000)) throw Error('Saved words did not become a stable gesture target')
     const bounds = word.getBoundingClientRect()
     const events = [], tracking = new AbortController()
     let touches = 0
-    for (const type of ['touchstart','touchend','touchcancel','pointerdown','pointerup','pointercancel','selectionchange']) document.addEventListener(type, e => {
+    for (const type of ['touchstart','touchend','touchcancel','pointerdown','pointerup','pointercancel','selectionchange','contextmenu']) document.addEventListener(type, e => {
       if (e.touches) touches = e.touches.length
-      events.push({type, touches, pointerType:e.pointerType, target:e.target?.nodeName, selected:document.getSelection()?.toString()})
+      events.push({type, touches, pointerType:e.pointerType, target:e.target?.nodeName, selected:document.getSelection()?.toString(), connected:word.isConnected, elapsed:performance.now(),prevented:e.defaultPrevented})
     }, {capture:true,signal:tracking.signal})
     try {
       if (window.__e2eHost) await window.__e2eHost.longPress(bounds.left + bounds.width/2, bounds.top + bounds.height/2)
@@ -59,7 +68,7 @@ const PRELUDE = `${WAIT_PRELUDE}
         const selection = document.getSelection(), range = selection?.rangeCount ? selection.getRangeAt(0) : null
         const hit = document.elementFromPoint(bounds.left + bounds.width/2, bounds.top + bounds.height/2)
         await shoot('selection-failure')
-        throw Error('Selection script button did not appear: ' + JSON.stringify({selection:selection?.toString(),range:range && {start:range.startOffset,end:range.endOffset,startNode:range.startContainer.parentElement?.outerHTML,endNode:range.endContainer.parentElement?.outerHTML},touchDown:touches,keyboardHeight:getComputedStyle(document.body).getPropertyValue('--keyboard-height'),hit:hit?.outerHTML,events}))
+        throw Error('Selection script button did not appear: ' + JSON.stringify({selection:selection?.toString(),range:range && {start:range.startOffset,end:range.endOffset,startNode:range.startContainer.parentElement?.outerHTML,endNode:range.endContainer.parentElement?.outerHTML},touchDown:touches,connected:word.isConnected,keyboardHeight:getComputedStyle(document.body).getPropertyValue('--keyboard-height'),hit:hit?.outerHTML,events}))
       }
       await shoot('selection-bar')
       button.dispatchEvent(new PointerEvent('pointerdown', {bubbles:true}))
