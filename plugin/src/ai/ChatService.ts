@@ -907,6 +907,7 @@ export class ChatService {
       id: model.id,
       name: model.name,
       baseUrl: provider.baseUrl,
+      clientName: provider.clientName,
       requestTimeoutSeconds: requestTimeoutSeconds(
         model.requestTimeoutSeconds,
         config.requestTimeoutSeconds
@@ -949,6 +950,7 @@ export class ChatService {
           id: model.id,
           name: model.name,
           baseUrl: provider.baseUrl,
+          clientName: provider.clientName,
           requestTimeoutSeconds: requestTimeoutSeconds(
             model.requestTimeoutSeconds,
             config.requestTimeoutSeconds
@@ -1072,6 +1074,7 @@ export class ChatService {
       id: model.id,
       name: model.name,
       baseUrl: provider.baseUrl,
+      clientName: provider.clientName,
       ...providerKey(provider.apiKeyId, provider.baseUrl, AbeleConfig.getInstance()),
       contextWindow: model.contextWindow,
       maxTokens: model.maxTokens,

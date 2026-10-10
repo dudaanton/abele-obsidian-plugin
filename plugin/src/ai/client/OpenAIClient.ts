@@ -2,6 +2,8 @@ import { request as requestUrl, withDeadline, readTextLimited, checkRequest } fr
 import { requestTimeoutSeconds } from '@/ai/requestTimeout'
 import { prepareImageForApi } from '@/ai/imagePrep'
 import { repairOpenAIToolHistory } from './toolHistory'
+import { clientHeaders } from './clientName'
+import { modelFetch } from './modelFetch'
 import type {
   AssistantMessage,
   AssistantContentBlock,
@@ -96,7 +98,7 @@ export class OpenAIClient {
   /**
    * Fetch available models from a provider's /models endpoint.
    */
-  async fetchModels(baseUrl: string, apiKey: string): Promise<RemoteModel[]> {
+  async fetchModels(baseUrl: string, apiKey: string, clientName?: string): Promise<RemoteModel[]> {
     const url = `${baseUrl.replace(/\/+$/, '')}/models`
 
     // `requestUrl` rather than `fetch`: it goes out from the main process, so a provider that
@@ -106,6 +108,7 @@ export class OpenAIClient {
       url,
       headers: {
         Authorization: `Bearer ${apiKey}`,
+        ...clientHeaders(clientName),
       },
       throw: false,
     })
@@ -163,21 +166,24 @@ export class OpenAIClient {
       const resolved = await OpenAIClient.resolveVaultImages(messages)
       const body = this.buildRequestBody(model, systemPrompt, resolved, tools, options)
       options.signal?.throwIfAborted()
-      checkRequest({
-        url: this.getUrl(model),
-        headers: { Authorization: `Bearer ${model.apiKey}` },
-      })
-      // Unlike requestUrl, fetch streams the answer and accepts Stop's abort signal.
+      const headers = {
+        'Content-Type': 'application/json',
+        Authorization: `Bearer ${model.apiKey}`,
+        ...clientHeaders(model.clientName),
+      }
+      checkRequest({ url: this.getUrl(model), headers })
+      // Both transports stream the answer and accept Stop's abort signal.
       const response = await withDeadline(
-        window.fetch(this.getUrl(model), {
-          method: 'POST',
-          headers: {
-            'Content-Type': 'application/json',
-            Authorization: `Bearer ${model.apiKey}`,
+        modelFetch(
+          this.getUrl(model),
+          {
+            method: 'POST',
+            headers,
+            body: JSON.stringify(body),
+            signal,
           },
-          body: JSON.stringify(body),
-          signal,
-        }),
+          model.clientName
+        ),
         timeoutMs,
         () => connection.abort()
       )

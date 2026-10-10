@@ -48,6 +48,8 @@ export interface AiProvider {
   id: string
   name: string
   baseUrl: string
+  /** Optional identifying User-Agent; empty preserves the transport default. */
+  clientName?: string
   apiKeyId: string // reference for Obsidian keychain
   models: AiModelConfig[]
 }
@@ -156,6 +158,7 @@ export interface ImageProvider {
   name: string
   apiType: ImageApiType
   endpoint: string // empty = default for apiType
+  clientName?: string
   apiKeyId: string // keychain reference
   models: ImageModelConfig2[]
 }
@@ -202,6 +205,7 @@ export interface InterceptorChatMessage {
 }
 
 export interface VoiceSettings {
+  clientName?: string
   modelId: string
   endpoint: string
   apiKeyId: string

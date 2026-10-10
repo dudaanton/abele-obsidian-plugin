@@ -34,6 +34,7 @@ export function transcriptionOptions(): TranscribeOptions {
   return {
     apiKey: keyFor(voiceKeyId(settings), settings.endpoint || DEFAULT_TRANSCRIPTION.endpoint, AbeleConfig.getInstance()),
     modelId: settings.modelId || DEFAULT_TRANSCRIPTION.modelId,
+    clientName: settings.clientName,
     endpoint: settings.endpoint || DEFAULT_TRANSCRIPTION.endpoint,
     language: settings.language || undefined,
   }

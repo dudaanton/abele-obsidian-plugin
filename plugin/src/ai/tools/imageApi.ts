@@ -1,4 +1,5 @@
 import { keyFor } from '@/secrets/destinations'
+import { clientHeaders } from '../client/clientName'
 import { request as requestUrl } from '@/helpers/http'
 import { AbeleConfig } from '@/services/AbeleConfig'
 import { IMAGE_API_DEFAULTS, ImageProvider, ImageModelConfig2, resolveImageModel } from '../types'
@@ -137,6 +138,7 @@ async function callOpenAi(
       headers: {
         Authorization: `Bearer ${apiKey}`,
         'Content-Type': contentType,
+        ...clientHeaders(provider.clientName),
       },
       body,
       throw: false,
@@ -158,6 +160,7 @@ async function callOpenAi(
       headers: {
         Authorization: `Bearer ${apiKey}`,
         'Content-Type': 'application/json',
+        ...clientHeaders(provider.clientName),
       },
       body: JSON.stringify(body),
       throw: false,
@@ -207,6 +210,7 @@ async function callOpenRouter(
     headers: {
       Authorization: `Bearer ${apiKey}`,
       'Content-Type': 'application/json',
+      ...clientHeaders(provider.clientName),
     },
     body: JSON.stringify({
       model: model.id,

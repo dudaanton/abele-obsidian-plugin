@@ -7,6 +7,7 @@
  * *answer* it instead, so the instruction is explicit and the temperature is nailed to zero.
  */
 import { request as requestUrl } from '@/helpers/http'
+import { clientHeaders } from './client/clientName'
 
 export interface TranscriptionModel {
   id: string
@@ -42,6 +43,7 @@ export const DEFAULT_TRANSCRIPTION = {
 }
 
 export interface TranscribeOptions {
+  clientName?: string
   apiKey: string
   modelId: string
   /** For a model somewhere other than OpenRouter. */
@@ -89,6 +91,7 @@ export async function transcribe(wav: Uint8Array, options: TranscribeOptions): P
     url: options.endpoint || DEFAULT_TRANSCRIPTION.endpoint,
     method: 'POST',
     headers: {
+      ...clientHeaders(options.clientName),
       Authorization: `Bearer ${options.apiKey}`,
       'Content-Type': 'application/json',
     },

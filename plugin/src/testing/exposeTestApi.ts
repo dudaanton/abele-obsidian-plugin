@@ -52,6 +52,8 @@ import { reviewKeyDestinations } from '@/secrets/destinationReview'
 import { approveScriptKeyRequest } from '@/secrets/requestApproval'
 import { desktopTransport, getDesktopNet } from '@/helpers/netTransport'
 import { request as networkRequest, setRequestTransport } from '@/helpers/http'
+import { OpenAIClient } from '@/ai/client/OpenAIClient'
+import { transcribe } from '@/ai/transcription'
 import { buildScriptContext } from '@/scripting/ScriptContext'
 import { prepareImageForApi } from '@/ai/imagePrep'
 import { importExternalFile, resolveAttachmentsForApi } from '@/ai/attachments'
@@ -290,6 +292,8 @@ interface AbeleTestApi {
   createRouteTool: typeof createRouteTool
   /** The GitHub tools, so a check can call them the way an agent would. */
   createGithubTools: typeof createGithubTools
+  OpenAIClient: typeof OpenAIClient
+  transcribe: typeof transcribe
   requestUrl: typeof requestUrl
   singleHopRequest: typeof singleHopRequest
   connectionApproval: typeof connectionApproval
@@ -869,6 +873,8 @@ export function exposeTestApi(plugin: Plugin): void {
     createPlacesTool,
     createRouteTool,
     createGithubTools,
+    OpenAIClient,
+    transcribe,
     requestUrl,
     singleHopRequest,
     connectionApproval,

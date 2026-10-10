@@ -3,6 +3,8 @@ import type { RequestUrlParam, RequestUrlResponse } from 'obsidian'
 export type RequestTransport = (params: RequestUrlParam) => Promise<RequestUrlResponse>
 
 interface NetResponse {
+  pause(): void
+  resume(): void
   statusCode: number
   headers: Record<string, string | string[]>
   on(event: 'data', listener: (chunk: Uint8Array) => void): void
