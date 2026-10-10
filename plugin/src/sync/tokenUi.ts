@@ -174,7 +174,17 @@ export class TokenUi {
       client = new V2Client(token, this.transport)
     if (typeof token.address !== 'string') throw new V2ClientError('bad-token')
     await this.connectionChangeGuard()
-    const authority = await client.connection()
+    const controller = new AbortController()
+    let timer: number | undefined
+    const authority = await Promise.race([
+      client.connection(controller.signal),
+      new Promise<never>((_, reject) => {
+        timer = window.setTimeout(() => {
+          reject(new V2ClientError('unreachable'))
+          controller.abort()
+        }, 10000)
+      }),
+    ]).finally(() => window.clearTimeout(timer))
     await this.connectionChangeGuard()
     if (token.scope.kind !== authority.scope.kind || token.scope.id !== authority.scope.id)
       throw new V2ClientError('bad-token')

@@ -1157,28 +1157,21 @@ phone lock described above. With the same fixture/evidence variables, run:
 
 ```bash
 export ABELE_PHONE_BACKGROUND=<manager-executable-that-presses-Home>
-export ABELE_SYNC_PHONE_HOST=<test-machine-LAN-address-or-hostname>
-export ABELE_SYNC_PHONE_TLS_CERT=<certificate-PEM-for-that-host>
-export ABELE_SYNC_PHONE_TLS_KEY=<matching-private-key-PEM>
-export ABELE_SYNC_PHONE_TLS_CA=<CA-PEM-trusted-by-the-phone>
 npm run test:e2e:phone -- tests/e2e/syncPhone.e2e.test.ts --maxWorkers=2
 npm run test:e2e:phone -- tests/e2e/syncScenarios.e2e.test.ts --maxWorkers=2
 ```
 
-Sync fixtures use direct LAN HTTPS and secure WebSocket connections. `ABELE_SYNC_PHONE_HOST`
-must name the test machine as reachable from the separate phone, without a scheme or port.
-Each isolated server's TLS front end listens on `0.0.0.0` (or `::` for a bracketed IPv6
-address) at a free port, forwarding HTTP and WebSocket upgrades to its loopback-only server.
-Its CLI-provisioned root token advertises `https://<host>:<port>`; folder/group tokens
-issued by that server carry the same endpoint. Both the phone and host-side assertions use
-this URL. Missing, loopback or wildcard advertised addresses fail setup. Allow those fixture
-ports through the test machine's firewall and keep both devices on a mutually reachable LAN.
-The certificate must include the advertised hostname/IP in its subject alternative names.
-Install and trust its issuing CA on the phone before the batch. `ABELE_SYNC_PHONE_TLS_CA`
-is optional if Node already trusts the issuer; TLS verification is never disabled. Plain
-LAN HTTP is rejected by the pinned token contract, so it cannot be used for this tier.
-These sync servers do not use the phone driver's `reverse` command; the separate phone
-automation host and other e2e helpers retain their existing driver transport.
+Phone sync fixtures default to loopback HTTP tokens. Every isolated server gets an
+`iphone reverse PORT` tunnel retained until case teardown, including additional servers.
+The phone checks an authenticated `/v2/events` WebSocket notification through that route
+before connecting. HTTP and WebSocket traffic use the same reversed port; no phone
+certificate or LAN configuration is required.
+
+Optional direct LAN TLS is selected by `ABELE_SYNC_PHONE_HOST`. Set
+`ABELE_SYNC_PHONE_TLS_CERT` and `ABELE_SYNC_PHONE_TLS_KEY` to matching PEM files for that
+hostname/IP. The phone must already trust the certificate issuer; host-side assertions can
+use `ABELE_SYNC_PHONE_TLS_CA` if Node does not already trust it. TLS verification stays enabled.
+This optional route forwards HTTP and WebSocket upgrades and does not use reverse tunnels.
 
 `syncPhone` maps scenarios 117–124: token paste, file operations, actual background/return,
 server outage/recovery, note-open attachment consent, executable approval/rejection,

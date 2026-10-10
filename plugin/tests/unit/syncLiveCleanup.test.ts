@@ -1,12 +1,67 @@
 // @vitest-environment node
 import { expect, it, vi, afterEach } from 'vitest'
 import { TokenSyncLive } from '../e2e/helpers/tokenSyncLive'
+import { spawnSyncServer } from '../e2e/helpers/syncServer'
+import { exposeToPhone } from '../e2e/helpers/phone'
+import { onPhone } from '../e2e/helpers/target'
+import { mkdtempSync } from 'node:fs'
+import { resolve, join } from 'node:path'
 vi.mock('../e2e/helpers/syncVault', () => ({ waitFor: vi.fn() }))
-vi.mock('../e2e/helpers/syncServer', () => ({ siblingMissing: vi.fn(), fixtureFetch: vi.fn() }))
+vi.mock('../e2e/helpers/syncServer', () => ({
+  siblingMissing: vi.fn(),
+  fixtureFetch: vi.fn(),
+  spawnSyncServer: vi.fn(),
+}))
 vi.mock('../e2e/helpers/obsidianCli', () => ({ vaultCli: vi.fn() }))
 vi.mock('../e2e/helpers/phone', () => ({ PHONE_VAULT: 'phone', exposeToPhone: vi.fn() }))
-vi.mock('../e2e/helpers/target', () => ({ onPhone: () => false }))
-afterEach(() => vi.unstubAllEnvs())
+vi.mock('../e2e/helpers/target', () => ({ onPhone: vi.fn(() => false) }))
+afterEach(() => {
+  vi.unstubAllEnvs()
+  vi.mocked(onPhone).mockReturnValue(false)
+})
+
+it('retains every phone reverse through the case and checks WebSockets on the device', async () => {
+  vi.mocked(onPhone).mockReturnValue(true)
+  const live = new TokenSyncLive(false)
+  ;(live as unknown as { work: string }).work = mkdtempSync(
+    join(resolve('../.scratch'), 'reverse-case-')
+  )
+  const stops = [vi.fn(), vi.fn()]
+  vi.mocked(exposeToPhone).mockResolvedValueOnce(stops[0]).mockResolvedValueOnce(stops[1])
+  const kills = [vi.fn(), vi.fn()]
+  const token = Buffer.from(
+    JSON.stringify({
+      v: 1,
+      address: 'http://127.0.0.1:12345',
+      key: 'a'.repeat(43),
+      scope: { kind: 'folder', id: 'root', path: '/' },
+    })
+  ).toString('base64')
+  for (let index = 0; index < 2; index++)
+    vi.mocked(spawnSyncServer).mockResolvedValueOnce({
+      url: `http://127.0.0.1:${12345 + index}`,
+      rootToken: token,
+      kill: kills[index],
+    } as unknown as Awaited<ReturnType<typeof spawnSyncServer>>)
+  const probe = vi.spyOn(live.primary, 'long').mockResolvedValue(true)
+  try {
+    await live.addServer()
+    await live.addServer()
+    expect(vi.mocked(exposeToPhone).mock.calls.slice(-2)).toEqual([[12345], [12346]])
+    expect(probe).toHaveBeenCalledTimes(2)
+    for (const [label, body, confidential] of probe.mock.calls) {
+      expect(label).toBe('phone fixture WebSocket route')
+      expect(body).toContain('/v2/events')
+      expect(body).toContain('new WebSocket')
+      expect(confidential).toBe(true)
+    }
+    for (const stop of stops) expect(stop).not.toHaveBeenCalled()
+  } finally {
+    await live.close()
+  }
+  for (const stop of stops) expect(stop).toHaveBeenCalledOnce()
+  for (const kill of kills) expect(kill).toHaveBeenCalledOnce()
+})
 
 it('shares one teardown when a timeout hook and its late body both close the same fixture', async () => {
   vi.stubEnv('OBSIDIAN_TEST_VAULT', 'primary-pool')

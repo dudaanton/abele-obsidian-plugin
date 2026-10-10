@@ -247,8 +247,8 @@ export class V2Client {
     } else if (response.status !== 200) throw new V2ClientError('invalid-response')
     return bytes
   }
-  connection(): Promise<wire.V2Connection> {
-    return this.request('connection', wire.V2ConnectionSchema)
+  connection(signal?: AbortSignal): Promise<wire.V2Connection> {
+    return this.request('connection', wire.V2ConnectionSchema, { signal })
   }
   issue(input: wire.V2IssueTokenRequest): Promise<wire.V2IssueTokenResponse> {
     return this.request('tokens', wire.V2IssueTokenResponseSchema, {

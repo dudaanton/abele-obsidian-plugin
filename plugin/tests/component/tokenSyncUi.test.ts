@@ -14,6 +14,70 @@ import { AttachmentConsent } from '@/sync/attachmentConsent'
 import { Notice } from '../mocks/obsidian'
 
 const modalStub = { template: '<div><slot /><slot name="footer" /></div>' }
+it('ends an unreachable connection attempt with a visible error and ignores its late answer', async () => {
+  vi.useFakeTimers()
+  const data = new Map<string, unknown>(),
+    keys = new Map<string, string>()
+  let answer!: (response: Response) => void
+  const transport = vi.fn<typeof fetch>(
+    () =>
+      new Promise<Response>((resolve) => {
+        answer = resolve
+      })
+  )
+  const registry = TokenConnectionRegistry.open({
+    loadLocalStorage: (key) => data.get(key) ?? null,
+    saveLocalStorage: (key, value) => {
+      data.set(key, value)
+    },
+  })
+  const ui = new TokenUi(
+    registry,
+    {
+      get: (key) => keys.get(key) ?? null,
+      set: (key, value) => {
+        keys.set(key, value)
+      },
+      remove: (key) => {
+        keys.delete(key)
+      },
+    },
+    transport
+  )
+  const view = mount(TokenDialogs, {
+    props: { ui, mode: 'connect' },
+    global: { stubs: { Modal: modalStub } },
+  })
+  try {
+    await view.find('input:not([type=file])').setValue(sampleIssuedToken)
+    const button = view.findAllComponents(Button).find((one) => one.props('text') === 'Connect')!
+    await button.trigger('click')
+    await flushPromises()
+    expect(button.props('disabled')).toBe(true)
+    await vi.advanceTimersByTimeAsync(10000)
+    await flushPromises()
+    expect(view.get('[role="alert"]').text()).toContain('not reachable')
+    expect(button.props('disabled')).toBe(false)
+    expect(transport.mock.calls[0][1]?.signal?.aborted).toBe(true)
+    answer(
+      Response.json({
+        protocol: 2,
+        token_id: 'late-token',
+        space_id: 'late-space',
+        scope: { kind: 'folder', id: 'root', path: '/' },
+        status: 'active',
+        limits: { max_file_bytes: 1000, quota_bytes: null },
+      })
+    )
+    await flushPromises()
+    expect(registry.records()).toEqual([])
+    expect(keys.size).toBe(0)
+    expect(view.emitted('close')).toBeUndefined()
+  } finally {
+    view.unmount()
+    vi.useRealTimers()
+  }
+})
 it('reports a failed review refresh without leaving an unhandled settings promise', async () => {
   const ui = tokenUiFixture(),
     before = Notice.shown.length

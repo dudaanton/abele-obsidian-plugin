@@ -176,7 +176,8 @@ export function syncFixtureNetwork(
 ): { url: string; phoneHost?: string } {
   if (env.E2E_TARGET !== 'phone') return { url: `http://127.0.0.1:${port}` }
   const host = env.ABELE_SYNC_PHONE_HOST?.trim()
-  if (!host || /[\s?#@]/.test(host) || host.includes('/') || host.includes('\\'))
+  if (!host) return { url: `http://127.0.0.1:${port}` }
+  if (/[\s?#@]/.test(host) || host.includes('/') || host.includes('\\'))
     throw new Error(
       'ABELE_SYNC_PHONE_HOST must name this machine’s LAN hostname or address (without scheme or port)'
     )

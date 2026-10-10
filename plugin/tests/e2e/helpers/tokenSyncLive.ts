@@ -7,7 +7,7 @@ import type { CommitOp, V2ManifestItem } from '@abele/sync-protocol'
 import { vaultCli } from './obsidianCli'
 import { SyncDriver } from './syncDriver'
 import { spawnSyncServer, siblingMissing, fixtureFetch, type SyncServer } from './syncServer'
-import { PHONE_VAULT } from './phone'
+import { PHONE_VAULT, exposeToPhone } from './phone'
 import { onPhone } from './target'
 import { waitFor } from './syncVault'
 import { syncFixtureRules } from './syncFixtureRules'
@@ -23,6 +23,7 @@ export class TokenSyncLive {
   readonly primary: SyncDriver
   readonly peer?: SyncDriver
   readonly servers: SyncServer[] = []
+  private readonly reverses: (() => void)[] = []
   readonly ids = new Map<SyncDriver, string[]>()
   private readonly saved = new Map<SyncDriver, { ignore: string | null; file: string | null }>()
   private work = ''
@@ -88,6 +89,19 @@ export class TokenSyncLive {
     mkdirSync(dir)
     const server = await spawnSyncServer(dir)
     this.servers.push(server)
+    if (onPhone()) {
+      const url = new URL(server.url)
+      if (url.protocol === 'http:' && url.hostname === '127.0.0.1')
+        this.reverses.push(await exposeToPhone(Number(url.port)))
+      // Check the actual device route, including WebSocket upgrades, before using this token.
+      const token = AccessClient.fromToken(server.rootToken, { fetch: fixtureFetch }).token
+      await this.primary.long(
+        'phone fixture WebSocket route',
+        `await new Promise((resolve,reject)=>{const socket=new WebSocket(${JSON.stringify(server.url.replace(/^http/, 'ws') + '/v2/events')});const timer=setTimeout(()=>finish(new Error('Fixture WebSocket did not answer through the phone route')),10000);function finish(error){clearTimeout(timer);socket.close();error?reject(error):resolve(true)}socket.onopen=()=>socket.send(JSON.stringify({token:${JSON.stringify(token.key)}}));socket.onerror=()=>finish(new Error('Fixture WebSocket is unreachable from the phone'));socket.onmessage=event=>{try{if(JSON.parse(event.data).type==='changes')finish()}catch(error){finish(error)}}});return true`,
+        true,
+        20000
+      )
+    }
     return server
   }
   get server(): SyncServer {
@@ -222,6 +236,12 @@ export class TokenSyncLive {
       }
     }
     this.saved.clear()
+    for (const stop of this.reverses.splice(0))
+      try {
+        stop()
+      } catch (error) {
+        failures.push(error)
+      }
     for (const server of this.servers.splice(0))
       try {
         await server.kill()

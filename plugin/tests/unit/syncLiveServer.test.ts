@@ -18,7 +18,6 @@ import { spawnSyncServer, fixtureFetch, syncFixtureNetwork } from '../e2e/helper
 import { defaultSelective } from '@/sync/connection'
 
 it.each([
-  '',
   '127.0.0.1',
   'localhost',
   '0.0.0.0',
@@ -31,6 +30,12 @@ it.each([
     syncFixtureNetwork(12345, { E2E_TARGET: 'phone', ABELE_SYNC_PHONE_HOST: host })
   ).toThrow('ABELE_SYNC_PHONE_HOST')
 })
+it('defaults phone tokens to loopback for the reverse tunnel', () => {
+  expect(syncFixtureNetwork(12345, { E2E_TARGET: 'phone' })).toEqual({
+    url: 'http://127.0.0.1:12345',
+  })
+})
+
 it('keeps a LAN hostname in the TLS endpoint and leaves desktop loopback unchanged', () => {
   expect(
     syncFixtureNetwork(12345, { E2E_TARGET: 'phone', ABELE_SYNC_PHONE_HOST: 'sync.example' })
