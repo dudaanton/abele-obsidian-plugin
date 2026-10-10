@@ -10,6 +10,80 @@ import { ExecutableReview } from '@/sync/executableReview'
 import { AttachmentConsent } from '@/sync/attachmentConsent'
 import { buildFakeVault } from '../helpers/fakeVault'
 import * as safety from '@/sync/external/pluginSafety'
+import { JOURNAL_KEY, WriteJournal } from '@/sync/writeJournal'
+import { ObsidianFileSystem } from '@/sync/ObsidianFileSystem'
+
+it('recovers interrupted installations before inspecting their bytes', async () => {
+  const fixture = inspectionFixture()
+  const { app, ui, host, registry, encoded, release, probe } = fixture
+  const recover = vi.spyOn(ObsidianFileSystem.prototype, 'recover')
+  try {
+    await ui.connect(encoded)
+    const id = registry.records()[0].id
+    await vi.waitFor(() => expect(ui.activity.value[id]?.inspection?.total).toBe(1))
+    release()
+    await vi.waitFor(() => expect(ui.runtimes.has(id)).toBe(true))
+    await host.close()
+    await app.vault.adapter.write('Notes/inflight.tmp', '{"format":"abele.external", broken')
+    app.saveLocalStorage(JOURNAL_KEY, [{ target: 'Notes/slow.txt', temp: 'Notes/inflight.tmp' }])
+    const next = new TokenEngines(app as unknown as App, ui, () => 'a'.repeat(43), {
+      fetch: fixture.transport,
+      indexedDB: fixture.factory,
+    })
+    recover.mockClear()
+    try {
+      next.start()
+      await vi.waitFor(() => expect(new WriteJournal(app).entries()).toEqual([]))
+      expect(recover).toHaveBeenCalled()
+      await vi.waitFor(() => expect(ui.runtimes.has(id)).toBe(true))
+    } finally {
+      await next.close()
+    }
+  } finally {
+    release()
+    await host.close()
+    probe.mockRestore()
+    recover.mockRestore()
+  }
+})
+
+it('retries a failed inspection with fresh ownership', async () => {
+  const { app, ui, host, registry, encoded, release, probe } = inspectionFixture(true)
+  try {
+    await ui.connect(encoded)
+    const id = registry.records()[0].id
+    release()
+    await vi.waitFor(() => expect(registry.records()[0].status).toBe('error'))
+    await app.vault.adapter.write('Notes/slow.txt', 'ordinary replacement note')
+    await ui.sync(id)
+    expect(ui.runtimes.has(id)).toBe(true)
+    expect(ui.activity.value[id].error).toBeUndefined()
+  } finally {
+    release()
+    await host.close()
+    probe.mockRestore()
+  }
+})
+
+it('leaves inspection running when disconnect is refused', async () => {
+  const { app, ui, host, registry, encoded, release, probe } = inspectionFixture()
+  try {
+    await ui.connect(encoded)
+    const id = registry.records()[0].id
+    await vi.waitFor(() => expect(ui.activity.value[id]?.inspection?.total).toBe(1))
+    const activity = ui.activity.value[id]
+    app.saveLocalStorage('abele-sync-external-connection-switch-v1', {})
+    await expect(ui.disconnect(id)).rejects.toThrow()
+    expect(ui.activity.value[id]).toEqual(activity)
+    app.saveLocalStorage('abele-sync-external-connection-switch-v1', null)
+    release()
+    await vi.waitFor(() => expect(ui.runtimes.has(id)).toBe(true))
+  } finally {
+    release()
+    await host.close()
+    probe.mockRestore()
+  }
+})
 
 function inspectionFixture(marker = false) {
   const app = buildFakeVault([
@@ -48,9 +122,10 @@ function inspectionFixture(marker = false) {
     attachments: new AttachmentConsent(metadata),
     close: () => {},
   })
+  const factory = new IDBFactory()
   const host = new TokenEngines(app as unknown as App, ui, secrets.get, {
     fetch: transport,
-    indexedDB: new IDBFactory(),
+    indexedDB: factory,
     WebSocket: class {
       constructor() {
         throw new Error('No test socket')
@@ -72,7 +147,7 @@ function inspectionFixture(marker = false) {
     key: 'a'.repeat(43),
     scope,
   })
-  return { app, registry, ui, host, transport, probe, release, encoded }
+  return { app, registry, ui, host, transport, probe, release, encoded, factory }
 }
 
 for (const action of ['pass', 'refuse', 'disconnect', 'unload']) {
@@ -134,7 +209,13 @@ for (const action of ['pass', 'refuse', 'disconnect', 'unload']) {
 }
 
 it('names and bounds a stalled inspection and retains its startup timings', async () => {
-  vi.useFakeTimers()
+  const original = ObsidianFileSystem.prototype.recover
+  const recover = vi
+    .spyOn(ObsidianFileSystem.prototype, 'recover')
+    .mockImplementationOnce(async function () {
+      await original.call(this)
+      vi.useFakeTimers()
+    })
   const { ui, host, registry, encoded, release, probe } = inspectionFixture()
   try {
     await ui.connect(encoded)
@@ -153,11 +234,16 @@ it('names and bounds a stalled inspection and retains its startup timings', asyn
         expect.objectContaining({ stage: 'Checking the vault', outcome: 'failed' }),
       ])
     )
+    vi.useRealTimers()
+    release()
+    await ui.sync(id)
+    expect(ui.runtimes.has(id)).toBe(true)
   } finally {
     vi.useRealTimers()
     release()
     await host.close()
     probe.mockRestore()
+    recover.mockRestore()
   }
 })
 

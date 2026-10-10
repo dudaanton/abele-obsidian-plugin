@@ -96,7 +96,6 @@ export class TokenEngines {
         return
       }
       const inspecting = this.startupCancels.has(id) && !ui.runtimes.has(id)
-      if (inspecting) this.startupCancels.get(id)?.()
       if (id) await this.offloadPorts.get(id)?.prepareDisconnect()
       await requireExternalLifecycleSafety(
         this.app,
@@ -110,6 +109,7 @@ export class TokenEngines {
       )
       assertCurrent()
       if (this.closed) throw new Error('Connection host closed; recovery required')
+      if (inspecting) this.startupCancels.get(id)?.()
     }
   }
   updateScriptsFolder(folder: string): Promise<void> {
@@ -381,7 +381,10 @@ export class TokenEngines {
             true,
             undefined,
             assertActive,
-            inspection
+            inspection,
+            false,
+            true,
+            true
           ),
         true
       )
@@ -420,6 +423,31 @@ export class TokenEngines {
         tokenExternalBinding(record, key)
       )
       assertActive()
+      const ordinary = new ObsidianFileSystem(this.app, {
+        runtimeFence: fence,
+        ledger: state,
+        preserveEmptyDirectories: true,
+        pollMs: pollMsOf(this.deps),
+        onEngineWrite: (path) => {
+          own.noteWrite(path)
+          runtime?.written(path)
+        },
+      })
+      await stage('Recovering local files', () => ordinary.recover())
+      await stage(
+        'Checking the vault',
+        () =>
+          requireExternalLifecycleSafety(
+            this.app,
+            factoryOf(this.deps),
+            undefined,
+            true,
+            undefined,
+            assertActive,
+            inspection
+          ),
+        true
+      )
       await stage(
         'Checking saved sync state',
         () =>
@@ -438,18 +466,6 @@ export class TokenEngines {
       assertActive()
       this.ui.publish(record.id, { inspection: undefined })
       {
-        assertActive()
-        const ordinary = new ObsidianFileSystem(this.app, {
-          runtimeFence: fence,
-          ledger: state,
-          preserveEmptyDirectories: true,
-          pollMs: pollMsOf(this.deps),
-          onEngineWrite: (path) => {
-            own.noteWrite(path)
-            runtime?.written(path)
-          },
-        })
-        await stage('Recovering local files', () => ordinary.recover())
         assertActive()
         fence.activate()
         const manager = tokenOffloadsOf(this.app.vault, pathCoordinatorOf(this.app.vault))
@@ -595,6 +611,12 @@ export class TokenEngines {
     }
     const begin = () => {
       active = true
+      fence = undefined
+      stateHandle = undefined
+      runtime = undefined
+      closeStore = undefined
+      closeCopies = undefined
+      unbind = undefined
       startup = new AbortController()
       this.startupCancels.set(record.id, cancel)
       this.ui.registry.setStatus(record.id, 'joining')

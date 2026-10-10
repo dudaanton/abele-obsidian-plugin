@@ -635,12 +635,15 @@ export async function requireExternalLifecycleSafety(
   assertCurrent: () => void = () => {},
   inspection: ProjectionInspection = {},
   inspectProjections = true,
-  metadataOnly = false
+  metadataOnly = false,
+  recoverInstallation = false
 ): Promise<void> {
   if (app.loadLocalStorage(EXTERNAL_SWITCH_KEY) != null) throw new ExternalRecoveryRequired()
   const marker = activation(app)
   const installation = new WriteJournal(app)
-  if (installation.entries().length || installation.recovered().length)
+  // Startup validates intents here, then recovers them before inspecting vault bytes.
+  // Enrollment and departure still require an empty installation journal.
+  if ((installation.entries().length && !recoverInstallation) || installation.recovered().length)
     throw new ExternalRecoveryRequired('installation or retained-byte recovery is unfinished')
   const names = new Set<string>(database ? [database] : [])
   for (const record of TokenConnectionRegistry.open(app).records()) names.add(record.ledgerId)
