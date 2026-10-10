@@ -109,6 +109,17 @@ liveCase(
       )
     ).toEqual([0, 255, 1, 2])
     expect((await s.items()).find((one) => one.path === path)?.mtime).toBe(1000)
+    b.run(
+      `await app.vault.adapter.writeBinary(${JSON.stringify(path)},Uint8Array.from([7,0,254,9,3]).buffer,{mtime:2000});return true`
+    )
+    await s.cycle()
+    for (const device of [a, b])
+      expect(
+        device.run(
+          `return [...new Uint8Array(await app.vault.adapter.readBinary(${JSON.stringify(path)}))]`
+        )
+      ).toEqual([7, 0, 254, 9, 3])
+    expect((await s.items()).find((one) => one.path === path)?.mtime).toBe(2000)
     b.rename(path, s.root + '/binary/renamed.bin')
     await s.cycle()
     expect(a.exists(path)).toBe(false)

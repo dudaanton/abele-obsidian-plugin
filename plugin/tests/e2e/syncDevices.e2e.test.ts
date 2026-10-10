@@ -137,6 +137,7 @@ liveCase(
       member = s.root + '/member.md'
     const id = await s.connect()
     a.create(folder + '/sample.md', 'folder content')
+    a.create(folder + '/linked.md', '[[' + folder + '/sample|Shared target]]')
     a.create(group, 'group root')
     a.create(member, '---\ngroups: ["[[' + s.root + '/Group]]","[[Unrelated group]]"]\n---\nmember')
     a.create(s.root + '/private.md', 'private')
@@ -145,6 +146,10 @@ liveCase(
       groupToken = await a.share(id, 'Group: Group')
     b.create(folder + '/local.md', 'local inside shared folder')
     b.create(s.root + '/outside.md', 'local outside shared folder')
+    b.create(
+      s.root + '/local-member.md',
+      '---\ngroups: ["[[' + s.root + '/Group]]"]\n---\npre-existing local member'
+    )
     await s.connect(b, folderToken)
     await s.connect(b, groupToken)
     await s.cycle()
@@ -152,12 +157,128 @@ liveCase(
     expect(b.read(member)).toContain('[[Unrelated group]]')
     expect(b.exists(s.root + '/private.md')).toBe(false)
     expect(a.read(folder + '/local.md')).toBe('local inside shared folder')
+    expect(a.read(s.root + '/local-member.md')).toContain('pre-existing local member')
+    expect(
+      b.run(
+        `await poll(()=>app.metadataCache.getFirstLinkpathDest(${JSON.stringify(folder + '/sample')},${JSON.stringify(folder + '/linked.md')}));await app.workspace.openLinkText(${JSON.stringify(folder + '/sample')},${JSON.stringify(folder + '/linked.md')},false);await poll(()=>app.workspace.getActiveFile()?.path===${JSON.stringify(folder + '/sample.md')});return app.workspace.getActiveFile().path`
+      )
+    ).toBe(folder + '/sample.md')
     expect((await s.items()).some((one) => one.path === s.root + '/outside.md')).toBe(false)
     b.create(member, b.read(member)! + '\nrecipient edit')
     await s.cycle()
     expect(a.read(member)).toContain('recipient edit')
     const onward = await b.share(s.ids.get(b)![0], 'Folder: ' + folder)
     expect(onward).toMatch(/^[A-Za-z0-9+/=_-]+$/)
+    await a.pause(id, true)
+    const thirdPath = folder + '/onward-recipient.md'
+    b.create(thirdPath, 'new content for third recipient')
+    await b.syncNow()
+    expect(a.exists(thirdPath)).toBe(false)
+    const third = await s.connect(a, onward)
+    expect(third).not.toBe(id)
+    expect(a.read(thirdPath)).toBe('new content for third recipient')
+    a.create(thirdPath, 'third recipient edit')
+    await a.syncNow(third)
+    await b.syncNow()
+    expect(b.read(thirdPath)).toBe('third recipient edit')
+  },
+  fixture
+)
+liveCase(
+  'syncDevices',
+  'root owner revokes access issued by another participant',
+  [19],
+  async () => {
+    const s = fixture(),
+      a = s.primary,
+      b = s.peer!,
+      folder = s.root + '/delegated',
+      path = folder + '/note.md'
+    const owner = await s.connect()
+    a.create(path, 'shared participant content')
+    await a.syncNow()
+    const participant = await s.connect(b, await a.share(owner, 'Folder: ' + folder))
+    const onward = await b.share(participant, 'Folder: ' + folder, 'Issued by participant')
+    await a.pause(owner, true)
+    const recipient = await s.connect(a, onward)
+    a.run(
+      `const root=await openSyncTab();icon(connectionRow(root,${JSON.stringify(owner)}),'share-2');await poll(()=>modal('Share access'));const box=modal('Share access');let row;await poll(()=>row=[...box.querySelectorAll('.setting-item')].find(one=>textOf(one.querySelector('.setting-item-name'))==='Issued by participant'));icon(row,'ban');await press(box,'Revoke');await press(box,'Close');await closeSettings();return true`
+    )
+    b.create(path, 'after root-owner revocation')
+    await b.syncNow(participant)
+    await expect(a.syncNow(recipient)).rejects.toThrow()
+    expect(a.read(path)).toBe('shared participant content')
+    expect(
+      (
+        await AccessClient.fromToken(s.server.rootToken, { fetch: fixtureFetch }).tokens()
+      ).items.find((one) => one.label === 'Issued by participant')?.revoked_at
+    ).toBeTruthy()
+  },
+  fixture
+)
+liveCase(
+  'syncDevices',
+  'several partial scopes on one server isolate private files while another root connection works',
+  [24, 25, 26],
+  async () => {
+    const s = fixture(),
+      a = s.primary,
+      b = s.peer!,
+      owner = await s.connect(),
+      left = s.root + '/left',
+      right = s.root + '/right',
+      group = s.root + '/IsolatedGroup.md'
+    a.create(left + '/left.md', 'left scope')
+    a.create(right + '/right.md', 'right scope')
+    a.create(group, 'group definition')
+    a.create(
+      s.root + '/group-member.md',
+      '---\ngroups: ["[[' + s.root + '/IsolatedGroup]]"]\n---\ngroup scope'
+    )
+    a.create(s.root + '/owner-private.md', 'owner private')
+    await a.syncNow()
+    const leftToken = await a.share(owner, 'Folder: ' + left),
+      rightToken = await a.share(owner, 'Folder: ' + right),
+      groupToken = await a.share(owner, 'Group: IsolatedGroup')
+    await s.connect(b, leftToken)
+    expect(b.read(left + '/left.md')).toBe('left scope')
+    expect(b.exists(right + '/right.md')).toBe(false)
+    await s.connect(b, rightToken)
+    await s.connect(b, groupToken)
+    expect(b.read(right + '/right.md')).toBe('right scope')
+    expect(b.read(s.root + '/group-member.md')).toContain('group scope')
+    expect(b.exists(s.root + '/owner-private.md')).toBe(false)
+    b.create(s.root + '/recipient-private.md', 'recipient private')
+    b.create(left + '/new.md', 'left edit')
+    await b.syncNow()
+    const own = await s.addServer()
+    await s.connect(b, own.rootToken)
+    await b.syncNow()
+    expect((await s.items()).some((one) => one.path === s.root + '/recipient-private.md')).toBe(
+      false
+    )
+    expect((await s.items(own)).some((one) => one.path === s.root + '/recipient-private.md')).toBe(
+      true
+    )
+    expect((await s.items(own)).some((one) => one.path === s.root + '/owner-private.md')).toBe(
+      false
+    )
+    const leftView = await new (await import('@abele/sync-core')).V2EngineClient(leftToken, {
+      fetch: fixtureFetch,
+    }).manifest(null)
+    expect(
+      leftView.items.some(
+        (one) => one.path.startsWith(right + '/') || one.path === s.root + '/group-member.md'
+      )
+    ).toBe(false)
+    const groupView = await new (await import('@abele/sync-core')).V2EngineClient(groupToken, {
+      fetch: fixtureFetch,
+    }).manifest(null)
+    expect(
+      groupView.items.some(
+        (one) => one.path.startsWith(left + '/') || one.path.startsWith(right + '/')
+      )
+    ).toBe(false)
   },
   fixture
 )
