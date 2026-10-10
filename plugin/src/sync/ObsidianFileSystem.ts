@@ -165,6 +165,7 @@ export class ObsidianFileSystem implements FileSystem {
           [
             'write',
             'writeBinary',
+            'appendBinary',
             'append',
             'process',
             'mkdir',
@@ -184,6 +185,7 @@ export class ObsidianFileSystem implements FileSystem {
           ![
             'write',
             'writeBinary',
+            'appendBinary',
             'append',
             'process',
             'mkdir',

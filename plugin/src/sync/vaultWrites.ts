@@ -3,6 +3,7 @@ import { EngineError } from '@abele/sync-core'
 import { caseKey } from '@abele/sync-protocol'
 import type { LocalStorage } from './ledgerId'
 import { WriteJournal, type JournalEntry } from './writeJournal'
+import { sha256 } from './external/hash'
 export { WriteJournal, JOURNAL_KEY, RECOVERED_WRITES_KEY, type JournalEntry } from './writeJournal'
 import type { NativeFs } from './nativeVaultFs'
 export { nativeOf, type NativeFs } from './nativeVaultFs'
@@ -90,7 +91,20 @@ export class VaultWriter {
     inFlight.add(temp)
     try {
       try {
-        await this.adapter.writeBinary(temp, bytes, { mtime })
+        // Mobile writeBinary base64-encodes its entire input. Keep each bridge
+        // message bounded, while the journal-owned staging file remains hidden.
+        const chunkSize = 1024 * 1024
+        if (
+          !this.deps.native &&
+          typeof this.adapter.appendBinary === 'function' &&
+          bytes.byteLength > chunkSize
+        ) {
+          for (let at = 0; at < bytes.byteLength; at += chunkSize) {
+            const chunk = bytes.slice(at, at + chunkSize)
+            if (at === 0) await this.adapter.writeBinary(temp, chunk, { mtime })
+            else await this.adapter.appendBinary(temp, chunk, { mtime })
+          }
+        } else await this.adapter.writeBinary(temp, bytes, { mtime })
       } catch (cause) {
         throw new EngineError('io', `cannot write ${path}`, cause)
       }
@@ -390,8 +404,7 @@ export class VaultWriter {
 }
 
 async function signature(bytes: ArrayBuffer): Promise<string> {
-  const digest = new Uint8Array(await crypto.subtle.digest('SHA-256', bytes))
-  return Array.from(digest, (byte) => byte.toString(16).padStart(2, '0')).join('')
+  return sha256(new Uint8Array(bytes))
 }
 
 /** The app as the vault's local storage, where the running plugin always has one. */

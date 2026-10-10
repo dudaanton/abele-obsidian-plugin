@@ -7,16 +7,79 @@
  * and is all the fake vault has, and the desktop's, which also holds Node's `fs.promises`
  * (`withDesktopFs`). A crash is a `writeBinary` or `rename` that stops half way and throws.
  */
-import { describe, it, expect } from 'vitest'
+import { describe, it, expect, vi } from 'vitest'
 import { Platform, type App } from 'obsidian'
 import { EngineError, type FileInfo } from '@abele/sync-core'
 import { ObsidianFileSystem } from '@/sync/ObsidianFileSystem'
 import { JOURNAL_KEY } from '@/sync/vaultWrites'
+import { RuntimeFence } from '@/sync/external/recovery'
 import { buildFakeVault, type FakeApp, type FakeFileSpec } from '../helpers/fakeVault'
 import { withDesktopFs } from '../helpers/fakeDesktopFs'
 
 const text = (value: string): Uint8Array => new TextEncoder().encode(value)
 const read = (bytes: Uint8Array | ArrayBuffer): string => new TextDecoder().decode(bytes)
+
+it('stages mobile writes in 1 MiB bridge buffers before installing the complete file', async () => {
+  const app = buildFakeVault([]),
+    adapter = app.vault.adapter
+  const originalWrite = adapter.writeBinary.bind(adapter)
+  const write = vi.spyOn(adapter, 'writeBinary')
+  const append = vi.fn(async (path: string, bytes: ArrayBuffer) => {
+    const old = new Uint8Array(await adapter.readBinary(path))
+    const complete = new Uint8Array(old.length + bytes.byteLength)
+    complete.set(old)
+    complete.set(new Uint8Array(bytes), old.length)
+    await originalWrite(path, complete.buffer)
+  })
+  adapter.appendBinary = append
+  const fs = new ObsidianFileSystem(app as unknown as App)
+  const digest = vi.spyOn(crypto.subtle, 'digest')
+  const bytes = new Uint8Array(3 * 1024 * 1024 + 17).fill(90)
+  await fs.writeAtomic('large.bin', bytes, 1000)
+  expect(write.mock.calls[0][1].byteLength).toBe(1024 * 1024)
+  expect(append.mock.calls.map(([, chunk]) => chunk.byteLength)).toEqual([
+    1024 * 1024,
+    1024 * 1024,
+    17,
+  ])
+  expect(write.mock.calls[0][2]).toEqual({ mtime: 1000 })
+  const installed = new Uint8Array(await adapter.readBinary('large.bin'))
+  expect(installed.length).toBe(bytes.length)
+  expect(installed.every((value, index) => value === bytes[index])).toBe(true)
+  expect(digest.mock.calls.some(([, input]) => input.byteLength > 1024 * 1024)).toBe(false)
+  digest.mockRestore()
+})
+
+it('an interrupted mobile append never installs partial bytes over the original', async () => {
+  const app = buildFakeVault([{ path: 'large.bin', content: 'original' }])
+  const append = vi.fn(async () => {
+    throw new Error('Native append interrupted')
+  })
+  app.vault.adapter.appendBinary = append
+  const fs = new ObsidianFileSystem(app as unknown as App)
+  await expect(fs.writeAtomic('large.bin', new Uint8Array(1024 * 1024 + 1), 1000)).rejects.toThrow(
+    'cannot write large.bin'
+  )
+  expect(append).toHaveBeenCalledOnce()
+  expect(await app.vault.adapter.read('large.bin')).toBe('original')
+})
+
+it('stops mobile staging appends when runtime ownership is lost', async () => {
+  const app = buildFakeVault([{ path: 'large.bin', content: 'original' }])
+  const fence = new RuntimeFence(app, 'mobile-write-test', () => true)
+  fence.activate()
+  const originalWrite = app.vault.adapter.writeBinary.bind(app.vault.adapter)
+  vi.spyOn(app.vault.adapter, 'writeBinary').mockImplementation(async (...args) => {
+    await originalWrite(...args)
+    fence.release()
+  })
+  const append = vi.fn(async () => {})
+  app.vault.adapter.appendBinary = append
+  const fs = new ObsidianFileSystem(app as unknown as App, { runtimeFence: fence })
+  await expect(fs.writeAtomic('large.bin', new Uint8Array(1024 * 1024 + 1), 1000)).rejects.toThrow()
+  expect(append).not.toHaveBeenCalled()
+  expect(await app.vault.adapter.read('large.bin')).toBe('original')
+})
 
 const VAULT: FakeFileSpec[] = [
   { path: 'Note.md', content: 'the whole old note', mtime: 1000, ctime: 900 },
