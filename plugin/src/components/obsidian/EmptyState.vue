@@ -30,7 +30,7 @@ const props = withDefaults(
     /** One line above the text that says what is missing. */
     title?: string
   }>(),
-  { variant: 'empty' }
+  { variant: 'empty', text: undefined, icon: undefined, title: undefined }
 )
 const labels = {
   empty: 'No items yet',

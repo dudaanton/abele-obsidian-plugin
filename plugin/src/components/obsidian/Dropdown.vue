@@ -3,14 +3,14 @@
     ref="el"
     class="abele-obsidian-dropdown"
     :class="[$attrs.class, { 'abele-obsidian-dropdown_disabled': disabled }]"
-    :style="$attrs.style as string | undefined"
+    :style="rootStyle"
   />
 </template>
 
 <script setup lang="ts">
 // Obsidian's own select, the dropdown of its settings: what Nuxt UI calls a Select. Obsidian
 // builds the element, so the attributes a caller gives (a label, an id) are handed to it.
-import { ref, onMounted, watch, useAttrs } from 'vue'
+import { computed, ref, onMounted, watch, useAttrs } from 'vue'
 import { DropdownComponent } from 'obsidian'
 
 defineOptions({ inheritAttrs: false })
@@ -24,6 +24,7 @@ const props = defineProps<{
 }>()
 
 const attrs = useAttrs()
+const rootStyle = computed(() => attrs.style as string | Record<string, string> | undefined)
 
 const el = ref<HTMLElement>()
 const dropdown = ref<DropdownComponent>()
@@ -38,9 +39,9 @@ const updateDropdown = () => {
     props.options.forEach((option) => {
       dropdown.value.addOption(option.value, option.display)
       if (option.disabled) {
-        const added = dropdown.value.selectEl.querySelector(
+        const added = dropdown.value.selectEl.querySelector<HTMLOptionElement>(
           `option[value="${CSS.escape(option.value)}"]`
-        ) as HTMLOptionElement | null
+        )
         if (added) added.disabled = true
       }
     })
@@ -64,7 +65,9 @@ const applyAttrs = () => {
   for (const [name, value] of Object.entries(attrs)) {
     if (name === 'class' || name === 'style' || name.startsWith('on')) continue
     if (value === false || value === undefined || value === null) select.removeAttribute(name)
-    else select.setAttribute(name, value === true ? '' : String(value))
+    else if (value === true) select.setAttribute(name, '')
+    else if (typeof value === 'string' || typeof value === 'number')
+      select.setAttribute(name, String(value))
   }
 }
 

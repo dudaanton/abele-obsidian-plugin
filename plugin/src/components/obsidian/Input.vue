@@ -4,20 +4,23 @@
     :class="[
       rootClass,
       {
-      'abele-obsidian-input_multiline': asTextArea,
-      'abele-obsidian-input_sized': asTextArea && rows !== undefined,
-      'abele-obsidian-input_leading': hasLeading,
-      'abele-obsidian-input_trailing': hasTrailing,
-      'abele-obsidian-input_invalid': invalid,
-      'abele-obsidian-input_disabled': disabled,
+        'abele-obsidian-input_multiline': asTextArea,
+        'abele-obsidian-input_sized': asTextArea && rows !== undefined,
+        'abele-obsidian-input_leading': hasLeading,
+        'abele-obsidian-input_trailing': hasTrailing,
+        'abele-obsidian-input_invalid': invalid,
+        'abele-obsidian-input_disabled': disabled,
         'abele-obsidian-input_loading': loading,
       },
     ]"
-    :style="[rootStyle, trailingWidth ? { '--abele-input-trailing-width': `${trailingWidth}px` } : {}]"
+    :style="[
+      rootStyle,
+      trailingWidth ? { '--abele-input-trailing-width': `${trailingWidth}px` } : {},
+    ]"
   >
     <span v-if="hasLeading" class="abele-obsidian-input__leading">
       <slot name="leading">
-        <span ref="leadingIcon" class="abele-obsidian-input__leading-icon" aria-hidden="true" />
+        <span ref="leadingIconEl" class="abele-obsidian-input__leading-icon" aria-hidden="true" />
       </slot>
     </span>
     <component
@@ -45,7 +48,7 @@
         aria-label="Загружаю"
       />
       <slot v-else name="trailing">
-        <span ref="trailingIcon" class="abele-obsidian-input__trailing-icon" aria-hidden="true" />
+        <span ref="trailingIconEl" class="abele-obsidian-input__trailing-icon" aria-hidden="true" />
       </slot>
     </span>
   </div>
@@ -119,14 +122,14 @@ const hasTrailing = computed(
 )
 
 const base = ref<HTMLInputElement>()
-const leadingIcon = ref<HTMLElement>()
-const trailingIcon = ref<HTMLElement>()
+const leadingIconEl = ref<HTMLElement>()
+const trailingIconEl = ref<HTMLElement>()
 const loadingIcon = ref<HTMLElement>()
 const trailing = ref<HTMLElement>()
-watch([leadingIcon, () => props.icon], ([el, name]) => el && name && setIcon(el, name), {
+watch([leadingIconEl, () => props.icon], ([el, name]) => el && name && setIcon(el, name), {
   immediate: true,
 })
-watch([trailingIcon, () => props.trailingIcon], ([el, name]) => el && name && setIcon(el, name), {
+watch([trailingIconEl, () => props.trailingIcon], ([el, name]) => el && name && setIcon(el, name), {
   immediate: true,
 })
 watch(loadingIcon, (el) => el && setIcon(el, 'loader-circle'), { immediate: true })
