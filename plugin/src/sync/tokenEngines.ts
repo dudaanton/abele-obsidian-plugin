@@ -21,7 +21,13 @@ import { editCopiesOf } from './editCopies'
 import { registerConnectionEditCopies } from './editCopyStore'
 import { openTokenLedger } from './tokenLedger'
 import { reviewSourceOf } from './reviewState'
-import { requireExternalLifecycleSafety, recoverExternalState } from './external/pluginSafety'
+import {
+  requireExternalLifecycleSafety,
+  recoverExternalState,
+  activeExternalDocuments,
+} from './external/pluginSafety'
+import { tokenOffloadsOf } from './tokenOffloadCoordinator'
+import { tokenOffloadConnection } from './tokenOffloadConnection'
 import { tokenExternalBinding } from './tokenExternalBinding'
 import { TokenSettingsPort } from './tokenSettingsPort'
 import { TokenAttachmentHost } from './tokenAttachmentHost'
@@ -35,6 +41,10 @@ export class TokenEngines {
   private readonly live = new Map<string, TokenEngineRuntime>()
   private readonly pending = new Set<string>()
   private readonly activityEpoch = new Map<string, number>()
+  private readonly offloadPorts = new Map<
+    string,
+    Awaited<ReturnType<typeof tokenOffloadConnection>>
+  >()
   private closed = false
   private closing: Promise<void> | undefined
   private rebuilding: Promise<void> = Promise.resolve()
@@ -48,7 +58,9 @@ export class TokenEngines {
     private scriptsFolder = 'Scripts',
     private readonly ownSettings?: { path: string; arrived(): void }
   ) {
-    this.localFiles = new TokenAttachmentHost(app)
+    this.localFiles = new TokenAttachmentHost(app, (path) =>
+      tokenOffloadsOf(app.vault, pathCoordinatorOf(app.vault)).isOffloaded(path)
+    )
     this.renameEvent = app.vault.on('rename', (file, from) =>
       this.localFiles.renamed(from, file.path)
     )
@@ -56,9 +68,16 @@ export class TokenEngines {
       this.start()
       await this.engines.settled()
     }
-    ui.connectionChangeGuard = async () => {
+    ui.connectionChangeGuard = async (id) => {
       if (this.closed) throw new Error('Connection host closed; recovery required')
-      await requireExternalLifecycleSafety(this.app, factoryOf(this.deps))
+      if (id) await this.offloadPorts.get(id)?.prepareDisconnect()
+      await requireExternalLifecycleSafety(
+        this.app,
+        factoryOf(this.deps),
+        undefined,
+        true,
+        id ? this.ui.registry.records().find((one) => one.id === id)?.ledgerId : undefined
+      )
       if (this.closed) throw new Error('Connection host closed; recovery required')
     }
   }
@@ -112,7 +131,32 @@ export class TokenEngines {
   }
   start(): void {
     if (this.closed) return
-    const beforeOpening = pendingTeardown(this.app)
+    const beforeOpening = pendingTeardown(this.app).then(async () => {
+      const manager = tokenOffloadsOf(this.app.vault, pathCoordinatorOf(this.app.vault))
+      for (const document of await activeExternalDocuments(this.app, factoryOf(this.deps)))
+        manager.remember(
+          document.ledgerId,
+          document.files
+            .filter((one) => one.representation !== 'hydrated')
+            .flatMap((one) =>
+              one.lastProvenLocalBase
+                ? [
+                    {
+                      path: one.lastProvenLocalBase.path,
+                      size: one.lastProvenLocalBase.size,
+                      mtime: one.lastProvenLocalBase.mtime,
+                    },
+                  ]
+                : []
+            ),
+          [
+            ...document.files.flatMap((one) => (one.projectionPath ? [one.projectionPath] : [])),
+            ...document.operations.flatMap((one) =>
+              one.ownedArtifacts.map((artifact) => artifact.path)
+            ),
+          ]
+        )
+    })
     const records = this.ui.registry
       .records()
       .filter((one) => one.secretReference && one.scope && !one.pending)
@@ -222,8 +266,33 @@ export class TokenEngines {
       })
       await ordinary.recover()
       fence.activate()
+      const manager = tokenOffloadsOf(this.app.vault, pathCoordinatorOf(this.app.vault))
+      const offloads = await tokenOffloadConnection({
+        app: this.app,
+        factory: factoryOf(this.deps),
+        state,
+        ledgerId: record.ledgerId,
+        binding,
+        fence,
+        fs: ordinary,
+        manager,
+        scriptsFolder: () => this.scriptsFolder,
+        client: () => runtime.client,
+        sync: () => runtime.sync(),
+        includes: (path) =>
+          runtime
+            ? runtime.covers(path)
+            : record.scope.kind === 'folder' &&
+              (record.scope.path === '/' ||
+                path === record.scope.path ||
+                path.startsWith(record.scope.path + '/')),
+        capture: (paths) => editCopiesOf(this.app.vault).capture(ordinary, paths),
+        rememberIdentity: (path) => this.localFiles.remember(path),
+        hydratedIdentity: (path) => this.localFiles.hydrated(path),
+      })
+      this.offloadPorts.set(record.id, offloads)
       const fs = coordinatedFileSystem(
-        ordinary,
+        offloads.fs,
         pathCoordinatorOf(this.app.vault),
         () => fence.assertReady(),
         async (paths) => {
@@ -246,6 +315,9 @@ export class TokenEngines {
         }),
         fs,
         state,
+        engineState: offloads.state,
+        engineClient: offloads.client,
+        preparePlacement: (paths) => manager.prepare(paths),
         scopeInput: async (selective) => {
           const text = await readIgnore(this.app)
           return {
@@ -314,6 +386,8 @@ export class TokenEngines {
           unbind?.()
           closeCopies?.()
           closeStore?.()
+          offloads.close()
+          this.offloadPorts.delete(record.id)
           this.refreshDestinations()
         },
       })
@@ -331,6 +405,8 @@ export class TokenEngines {
           unbind?.()
           closeCopies?.()
           closeStore?.()
+          this.offloadPorts.get(record.id)?.close()
+          this.offloadPorts.delete(record.id)
           throw error
         })
         return starting
@@ -349,12 +425,23 @@ export class TokenEngines {
         unbind?.()
         closeCopies?.()
         closeStore?.()
+        this.offloadPorts.get(record.id)?.close()
+        this.offloadPorts.delete(record.id)
         fence?.release()
       },
     }
   }
   private refreshDestinations(): void {
     editCopiesOf(this.app.vault).expect([...this.pending, ...this.live.keys()])
+  }
+  evict(id: string, path: string) {
+    const port = this.offloadPorts.get(id)
+    if (!port) throw new Error('Connection is unavailable')
+    return port.evict(path)
+  }
+  hydrate(path: string): Promise<void> {
+    const manager = tokenOffloadsOf(this.app.vault, pathCoordinatorOf(this.app.vault))
+    return manager.prepare([manager.originalPath(path)])
   }
   private async changed(id: string, status: EngineStatus, report?: SyncReport): Promise<void> {
     if (this.closed || !this.ui.registry.records().some((one) => one.id === id)) return

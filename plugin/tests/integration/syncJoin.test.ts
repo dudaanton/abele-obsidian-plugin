@@ -62,6 +62,135 @@ it('filled local vault uploads ordinary files and keeps their paths on an empty 
   expect(files).toMatchObject([{ path: 'Nested/sample.md', sha: await shaOf('local bytes') }])
   expect(await remote.trash()).toEqual([])
 })
+it('two token connections keep intentional absence, hydrate real bytes through the other source, and resume after restart', async () => {
+  const other = await v2Server(),
+    factory = new IDBFactory(),
+    bytes = 'sample binary bytes'
+  try {
+    const secondToken = (
+        await createUser(
+          { db: other.db, pepper: other.config.tokenPepper },
+          'Other sample',
+          other.address
+        )
+      ).token,
+      secondRemote = new V2EngineClient(secondToken, { fetch: globalThis.fetch })
+    await seed(remote, [await create(remote, 'Media/sample.bin', bytes, 1000)])
+    const app = buildFakeVault([])
+    Object.assign(app.workspace, { iterateAllLeaves: () => {} })
+    const first = await join(app, factory)
+    await first.ui.connect(secondToken)
+    const secondId = first.registry.records().find((one) => one.address === other.address)!.id
+    await first.ui.sync(secondId)
+    await expect(first.host.evict(first.id, 'Media/sample.bin')).resolves.toMatchObject({
+      status: 'complete',
+    })
+    expect(await app.vault.adapter.exists('Media/sample.bin')).toBe(false)
+    await first.ui.sync(secondId)
+    expect(await secondRemote.trash()).toEqual([])
+    expect(
+      (await secondRemote.manifest(null)).items.find((one) => one.path === 'Media/sample.bin')?.sha
+    ).toBe(await shaOf(bytes))
+    await first.destroy()
+    const transport: typeof fetch = (input, init) => {
+      if (new URL(String(input)).origin === new URL(server.address).origin)
+        throw new Error('sample source offline')
+      return globalThis.fetch(input, init)
+    }
+    // Reopen with the reachable token, retaining the independently fenced unavailable source.
+    const next = await nativeTokenFixture(app, secondToken, transport, factory)
+    hosts.push(next)
+    await next.host.hydrate('Media/sample.bin')
+    expect(await app.vault.adapter.read('Media/sample.bin')).toBe(bytes)
+    expect((await app.vault.adapter.stat('Media/sample.bin'))?.mtime).toBe(1000)
+    expect(await secondRemote.trash()).toEqual([])
+  } finally {
+    await other.close()
+  }
+})
+it('a user edit during hydration is never overwritten by the downloaded old version', async () => {
+  await seed(remote, [await create(remote, 'sample.bin', 'old bytes', 1000)])
+  const app = buildFakeVault([])
+  Object.assign(app.workspace, { iterateAllLeaves: () => {} })
+  let edit = false
+  const transport: typeof fetch = async (input, init) => {
+    const response = await globalThis.fetch(input, init)
+    if (edit && new URL(String(input)).pathname.includes('/content')) {
+      edit = false
+      await app.vault.adapter.write('sample.bin', 'new user bytes', { mtime: 2000 })
+    }
+    return response
+  }
+  const first = await join(app, new IDBFactory(), transport)
+  await expect(first.host.evict(first.id, 'sample.bin')).resolves.toMatchObject({
+    status: 'complete',
+  })
+  edit = true
+  await expect(first.host.hydrate('sample.bin')).rejects.toThrow(/hydration/i)
+  expect(await app.vault.adapter.read('sample.bin')).toBe('new user bytes')
+})
+it('disconnect materializes its offloaded file and preserves the local bytes', async () => {
+  await seed(remote, [await create(remote, 'sample.bin', 'retained bytes', 1000)])
+  const app = buildFakeVault([])
+  Object.assign(app.workspace, { iterateAllLeaves: () => {} })
+  const first = await join(app)
+  await expect(first.host.evict(first.id, 'sample.bin')).resolves.toMatchObject({
+    status: 'complete',
+  })
+  await expect(first.ui.disconnect(first.id)).resolves.toBeUndefined()
+  expect(await app.vault.adapter.read('sample.bin')).toBe('retained bytes')
+  expect(first.registry.records()).toEqual([])
+})
+it('an incoming edit hydrates the prior offloaded base before placement and then reaches the other token', async () => {
+  const other = await v2Server()
+  try {
+    const secondToken = (
+        await createUser(
+          { db: other.db, pepper: other.config.tokenPepper },
+          'Other sample',
+          other.address
+        )
+      ).token,
+      secondRemote = new V2EngineClient(secondToken, { fetch: globalThis.fetch })
+    await seed(remote, [await create(remote, 'sample.bin', 'old bytes', 1000)])
+    const app = buildFakeVault([])
+    Object.assign(app.workspace, { iterateAllLeaves: () => {} })
+    const first = await join(app)
+    await first.ui.connect(secondToken)
+    const secondId = first.registry.records().find((one) => one.address === other.address)!.id
+    await first.ui.sync(secondId)
+    await expect(first.host.evict(first.id, 'sample.bin')).resolves.toMatchObject({
+      status: 'complete',
+    })
+    const before = (await secondRemote.manifest(null)).items.find(
+        (one) => one.path === 'sample.bin'
+      )!,
+      bytes = new TextEncoder().encode('remote new bytes'),
+      sha = await shaOf('remote new bytes')
+    await secondRemote.putBlob(sha, bytes)
+    await secondRemote.commitRaw(
+      [
+        {
+          op: 'modify',
+          file_id: before.file_id,
+          base_version_id: before.version_id,
+          sha,
+          size: bytes.length,
+          mtime: 3000,
+        },
+      ],
+      crypto.randomUUID()
+    )
+    await first.ui.sync(secondId)
+    expect(await app.vault.adapter.read('sample.bin')).toBe('remote new bytes')
+    await first.syncNow()
+    expect((await remote.manifest(null)).items.find((one) => one.path === 'sample.bin')?.sha).toBe(
+      sha
+    )
+  } finally {
+    await other.close()
+  }
+})
 it('identical first-contact bytes produce one file and no conflict or redundant version', async () => {
   await seed(remote, [await create(remote, 'sample.md', 'same bytes', 1000)])
   const app = buildFakeVault([{ path: 'sample.md', content: 'same bytes', mtime: 2000 }]),

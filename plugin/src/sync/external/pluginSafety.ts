@@ -73,6 +73,26 @@ function retiredLedgers(storage: RecoveryStorage): Activation['ledgers'] {
   if (!parsed.success) throw new ExternalRecoveryRequired('retired ledger inventory is unreadable')
   return parsed.data.flatMap((item) => item.ledgers)
 }
+/** Only explicitly activated, identity-checked journals contribute a vault-wide absence view. */
+export async function activeExternalDocuments(storage: RecoveryStorage, factory: IDBFactory) {
+  const documents = []
+  for (const item of activation(storage)?.ledgers ?? []) {
+    const found = await inspectExistingLedger(factory, item.databaseName)
+    const raw = found?.metadata.get('plugin:external-files')
+    if (
+      !found ||
+      found.identity !== item.databaseIdentity ||
+      typeof raw !== 'string' ||
+      item.phase !== 'active'
+    )
+      throw new ExternalRecoveryRequired('activated evidence is unavailable')
+    const document = decodeExternalDocument(raw)
+    if (document.ledgerId !== item.ledgerId || !sameConnection(document.binding, item.binding))
+      throw new ExternalRecoveryRequired('activated evidence binding changed')
+    documents.push(document)
+  }
+  return documents
+}
 export async function retiredArtifactPaths(
   storage: RecoveryStorage,
   factory: IDBFactory | undefined,
@@ -352,9 +372,8 @@ export async function recoverExternalState(
   const marker = activation(app)
   const item = marker?.ledgers.find((value) => value.databaseName === databaseName)
   if (
-    marker &&
-    (!item ||
-      item.ledgerId !== ledgerId ||
+    item &&
+    (item.ledgerId !== ledgerId ||
       item.databaseIdentity !== store.databaseIdentity ||
       !sameConnection(item.binding, binding))
   )
@@ -369,6 +388,15 @@ export async function recoverExternalState(
   }
   if (raw === null && item) throw new ExternalRecoveryRequired('activated journal is missing')
   const ownedProjectionPaths = await retiredArtifactPaths(app, factory, () => fence.assertOwned())
+  if (factory && item?.phase !== 'preparing')
+    for (const document of await activeExternalDocuments(app, factory)) {
+      for (const file of document.files)
+        if (file.projectionPath)
+          ownedProjectionPaths.add(file.projectionPath.normalize('NFC').toLowerCase())
+      for (const op of document.operations)
+        for (const artifact of op.ownedArtifacts)
+          ownedProjectionPaths.add(artifact.path.normalize('NFC').toLowerCase())
+    }
   if (raw !== null) {
     const document = decodeExternalDocument(raw)
     if (document.ledgerId !== ledgerId || !sameConnection(document.binding, binding))
@@ -478,8 +506,17 @@ export async function activateExternalFiles(
   assertOwned()
   const state = await ExternalState.open(store, ledgerId, binding)
   assertOwned()
-  item.phase = 'active'
-  persist(app, EXTERNAL_ACTIVATION_KEY, marker)
+  // Another token may have activated while the durable journal was opening.
+  const latest = activation(app),
+    current = latest?.ledgers.find((value) => value.databaseName === databaseName)
+  if (
+    !current ||
+    current.databaseIdentity !== store.databaseIdentity ||
+    !sameConnection(current.binding, binding)
+  )
+    throw new ExternalRecoveryRequired('activation binding changed')
+  current.phase = 'active'
+  persist(app, EXTERNAL_ACTIVATION_KEY, latest)
   return state
 }
 
@@ -488,7 +525,9 @@ export async function activateExternalFiles(
 export async function requireExternalLifecycleSafety(
   app: App,
   factory: IDBFactory,
-  database?: string
+  database?: string,
+  preserveActiveOffloads = false,
+  departingLedger?: string
 ): Promise<void> {
   if (app.loadLocalStorage(EXTERNAL_SWITCH_KEY) != null) throw new ExternalRecoveryRequired()
   const marker = activation(app)
@@ -538,6 +577,28 @@ export async function requireExternalLifecycleSafety(
       )
         throw new ExternalRecoveryRequired('activation binding changed')
       if (!externalInventory(doc).blocked && !activated) continue
+      if (
+        preserveActiveOffloads &&
+        name !== departingLedger &&
+        activated &&
+        !retiredOnly &&
+        !database &&
+        doc.operations.every((op) => ['complete', 'remote-only', 'hydrated'].includes(op.phase)) &&
+        doc.files.every(
+          (file) =>
+            !file.pendingOperationId &&
+            !file.blockingReason &&
+            ['hydrated', 'remote-only'].includes(file.representation)
+        )
+      ) {
+        for (const file of doc.files)
+          if (file.projectionPath)
+            ownedPaths.add(file.projectionPath.normalize('NFC').toLowerCase())
+        for (const op of doc.operations)
+          for (const artifact of op.ownedArtifacts)
+            ownedPaths.add(artifact.path.normalize('NFC').toLowerCase())
+        continue
+      }
       // Deleting a database still owning retained evidence is never authorized by a
       // departure receipt. Readiness permits leaving, not purging recovery material.
       if (database === name && externalInventory(doc).blocked) throw new ExternalRecoveryRequired()

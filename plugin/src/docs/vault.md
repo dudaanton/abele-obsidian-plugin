@@ -2078,3 +2078,13 @@ dialog is open; it is never saved into settings, transfer, the registry or the s
 Each token connection uses the production v2 runtime. File exchange and exact-candidate executable approval are enabled for root and folder connections. Group local identities and attachment publication remain dependent on the group binding. No legacy engine is started.
 
 Agent settings tools expose device-only token preferences as `sync.connections.<local-id>.address` and `.paused`. Only an unprovisioned record may change address; a live token never moves to a different endpoint. Credentials, ledger identity and internal state are not exposed. Writes reconcile the token host and report startup failure beside the saved value.
+
+Explicit token-host eviction and hydration use the existing journalled external-file store.
+Activation proofs and external-file journals stay in the device-local ledger and local storage.
+All connections share the intentional-absence view; reference files are never uploaded as content.
+Hydration may use another live token only after verifying that token’s own file/version identity
+and the exact retained bytes. Downloads happen outside path leases; installation and removal
+use the shared path coordinator. Eviction preserves unfinished per-destination edits before
+removing local bytes. Disconnect materializes offloaded files and verifies retained evidence.
+The local consent identity survives an acknowledged hydration, while an unrelated replacement
+at the same path receives no inherited permission.

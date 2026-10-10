@@ -451,7 +451,10 @@ export default class AbelePlugin extends Plugin {
               void this.tokenEngines?.foreground(visible)
             },
           })
-          ui.openFile = (path) => this.app.workspace.openLinkText(path, '', false)
+          ui.openFile = async (path) => {
+            await this.tokenEngines?.hydrate(path)
+            await this.app.workspace.openLinkText(path, '', false)
+          }
           this.register(() => {
             if (tokenUi.value === ui) tokenUi.value = null
             void this.tokenEngines
@@ -462,8 +465,8 @@ export default class AbelePlugin extends Plugin {
           this.registerEvent(
             this.app.workspace.on('file-open', (file) => {
               if (file)
-                void ui
-                  .opened(file.path)
+                void Promise.resolve(this.tokenEngines?.hydrate(file.path))
+                  .then(() => ui.opened(file.path))
                   .catch(
                     () =>
                       new Notice(

@@ -7,7 +7,21 @@ const KEY = 'abele-token-local-files-v1'
 const records = z.array(z.object({ id: z.uuid(), path: z.string(), birth: z.number() }))
 /** Local identities never confer remote read or publication authority. */
 export class TokenAttachmentHost {
-  constructor(private readonly app: App) {}
+  constructor(
+    private readonly app: App,
+    private readonly offloaded: (path: string) => boolean = () => false
+  ) {}
+  remember(path: string): void {
+    const file = this.app.vault.getFileByPath(path)
+    if (file) this.identity(file)
+  }
+  hydrated(path: string): void {
+    const file = this.app.vault.getFileByPath(path)
+    if (file)
+      this.save(
+        this.rows().map((row) => (row.path === path ? { ...row, birth: file.stat.ctime } : row))
+      )
+  }
   private rows() {
     return records.parse(this.app.loadLocalStorage(KEY) ?? [])
   }
@@ -39,12 +53,14 @@ export class TokenAttachmentHost {
   resolve(id: string): ConsentTarget | null {
     const row = this.rows().find((one) => one.id === id),
       file = row && this.app.vault.getFileByPath(row.path)
-    if (!row || !file || file.stat.ctime !== row.birth) return null
+    if (!row || (!file && !this.offloaded(row.path)) || (file && file.stat.ctime !== row.birth))
+      return null
+    const path = file?.path ?? row.path,
+      extension = path.split('.').at(-1)
     return {
       id,
-      path: file.path,
-      kind:
-        file.extension === 'md' ? 'note' : file.extension === 'canvas' ? 'canvas' : 'attachment',
+      path,
+      kind: extension === 'md' ? 'note' : extension === 'canvas' ? 'canvas' : 'attachment',
     }
   }
   async note(path: string): Promise<{ id: string; targets: ConsentTarget[] } | null> {

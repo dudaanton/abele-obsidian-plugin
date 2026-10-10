@@ -91,6 +91,15 @@ export class AttachmentStore {
         sha: string,
         signal?: AbortSignal
       ): Promise<Uint8Array>
+      /** A different live token may authorize exactly the retained local base. This is
+       * hydration-only; it never supplies eviction or publication authority. */
+      authorizeHydration?(head: {
+        fileId: string
+        versionId: string
+        path: string
+        sha: string
+        size: number
+      }): Promise<void>
       scriptsFolder(): string
       excluded?(path: string, size: number): boolean
       scopedHead?(id: string): Promise<{
@@ -649,11 +658,13 @@ export class AttachmentStore {
         )
           return this.result('ineligible')
         if (this.eligible(head.path, head.size))
-          return this.result(this.eligible(head.path, head.size)!)
+          return this.result(this.eligible(head.path, head.size))
         if (await this.options.host.exists(head.path)) return this.result('collision')
         if (opts.signal?.aborted) return this.result('busy')
         try {
-          if (!(await this.verified(id, { ...head, path: head.wirePath })))
+          if (this.options.authorizeHydration)
+            await this.options.authorizeHydration({ ...head, path: head.wirePath })
+          else if (!(await this.verified(id, { ...head, path: head.wirePath })))
             return this.result('version-changed')
         } catch (error) {
           return this.reason(error)
@@ -890,7 +901,7 @@ export class AttachmentStore {
       const document = await this.document()
       for (const op of document.operations) {
         if (op.kind === 'hydration' && op.phase === 'cleanup-pending' && op.expected) {
-          const file = document.files.find((f) => f.fileId === op.expected!.fileId)
+          const file = document.files.find((f) => f.fileId === op.expected.fileId)
           const retired = op.ownedArtifacts.find((artifact) => artifact.role === 'retained')
           const head = await this.head(op.expected.fileId)
           // Installation was acknowledged and committed before retirement. Never infer

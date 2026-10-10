@@ -5,6 +5,7 @@ import { bytesOf } from '../vaultWrites'
 import { makeParents } from '../vaultFolders'
 import { sha256 as incremental } from '@noble/hashes/sha2'
 import { sha256 } from './hash'
+import type { PathCoordinator } from '../pathCoordinator'
 import {
   ExternalFileCoordination,
   type ExternalReservationRequest,
@@ -36,6 +37,9 @@ export interface ExternalHostOptions {
   /** Optional runtime effect tracker, so successor runtimes settle already-issued effects. */
   effect?<T>(work: () => T): T
   reconciled?(path: string): void
+  placement?: PathCoordinator
+  beforeRemoval?(path: string): Promise<void>
+  stagingMtime?(): number
 }
 export interface ExternalHostRequest extends ExternalReservationRequest {
   /** Backed by the committed operation and server-verified basis in the later attachment API. */
@@ -207,7 +211,20 @@ export class ExternalFileHost {
       get: (target, key) => {
         const value = Reflect.get(target, key)
         if (typeof value !== 'function') return value
-        return (...args: unknown[]) => this.effect(() => value.apply(target, args))
+        return (...args: unknown[]) => {
+          const work = async () => {
+            this.assertOwned()
+            if (key === 'remove') await this.options.beforeRemoval?.(args[0] as string)
+            return this.effect(() => value.apply(target, args))
+          }
+          const paths =
+            typeof args[0] === 'string'
+              ? [args[0], ...(key === 'rename' && typeof args[1] === 'string' ? [args[1]] : [])]
+              : []
+          return this.options.placement && paths.length
+            ? this.options.placement.run(paths, work, this.assertOwned)
+            : work()
+        }
       },
     })
     return {
@@ -226,7 +243,11 @@ export class ExternalFileHost {
           bytes.length <= chunkSize
         ) {
           assertEffect()
-          await this.effect(() => adapter.writeBinary(path, bytesOf(bytes)))
+          if (this.options.stagingMtime)
+            await mutateAdapter.writeBinary(path, bytesOf(bytes), {
+              mtime: this.options.stagingMtime(),
+            })
+          else await mutateAdapter.writeBinary(path, bytesOf(bytes))
           return
         }
         for (let at = 0; at < bytes.length; at += chunkSize) {
@@ -234,14 +255,21 @@ export class ExternalFileHost {
           const chunk = bytes.slice(at, at + chunkSize).buffer
           assertEffect()
           await this.effect(() =>
-            at === 0 ? adapter.writeBinary(path, chunk) : adapter.appendBinary(path, chunk)
+            at === 0
+              ? this.options.stagingMtime
+                ? mutateAdapter.writeBinary(path, chunk, { mtime: this.options.stagingMtime() })
+                : mutateAdapter.writeBinary(path, chunk)
+              : mutateAdapter.appendBinary(path, chunk)
           )
         }
       },
       install: async (from, to, assertEffect) => {
         if (installation === 'native-link') {
           assertEffect()
-          await this.effect(() => native.installExclusive(from, to))
+          const work = () => this.effect(() => native.installExclusive(from, to))
+          await (this.options.placement
+            ? this.options.placement.run([from, to], work, this.assertOwned)
+            : work())
           return
         }
         if (installation !== 'adapter-rename')
@@ -251,12 +279,12 @@ export class ExternalFileHost {
         // interval is NOT an atomic no-clobber guarantee; that residual risk is accepted.
         if (await adapter.exists(to)) throw new ExternalFilePortError('collision')
         assertEffect()
-        await this.effect(() => adapter.rename(from, to))
+        await mutateAdapter.rename(from, to)
       },
-      removeOriginal: (path) => this.effect(() => adapter.remove(path)),
+      removeOriginal: (path) => mutateAdapter.remove(path),
       moveOwned: async (from, to) => {
         if (await adapter.exists(to)) throw new ExternalFilePortError('collision')
-        await this.effect(() => adapter.rename(from, to))
+        await mutateAdapter.rename(from, to)
       },
       reconcile: async (paths) => {
         const raw = adapter as DataAdapter & {

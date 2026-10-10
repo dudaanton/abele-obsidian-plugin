@@ -45,6 +45,9 @@ export interface TokenEngineOptions {
   WebSocket?: typeof WebSocket
   paths?: ExecutablePaths
   ownSettingsPath?: string
+  preparePlacement?(paths: readonly string[]): Promise<void>
+  engineClient?(client: EngineClient): EngineClient
+  engineState?: StateStore
   scopeInput?(selective: SelectiveSettings): Promise<{ key: string; ignore: PathMatcher }>
   paused?: boolean
   selective?: SelectiveSettings
@@ -96,6 +99,11 @@ export class TokenEngineRuntime implements ConnectionRuntime, TokenUiRuntime {
           throw new EngineError('protocol', 'Token selector identity changed')
       } else if (url.pathname === '/v2/manifest') {
         const page = V2ManifestSchema.parse(await response.json())
+        const incomingPaths: string[] = []
+        for (const item of page.items)
+          if ((await options.state.byFileId(item.file_id))?.versionId !== item.version_id)
+            incomingPaths.push(item.path)
+        await options.preparePlacement?.(incomingPaths)
         const items: V2ManifestItem[] = []
         for (const item of page.items)
           if (!(await this.reviewItem(item, null, page.cursor))) {
@@ -106,6 +114,18 @@ export class TokenEngineRuntime implements ConnectionRuntime, TokenUiRuntime {
         return Response.json({ ...page, items }, { headers: response.headers })
       } else if (url.pathname === '/v2/changes') {
         const page = V2ChangesSchema.parse(await response.json())
+        const incomingPaths: string[] = []
+        for (const one of page.items)
+          if (
+            one.type !== 'content' ||
+            (await options.state.byFileId(one.item.file_id))?.versionId !== one.item.version_id
+          )
+            incomingPaths.push(
+              ...(one.type === 'content'
+                ? [one.item.path, ...(one.prev_path ? [one.prev_path] : [])]
+                : [one.path])
+            )
+        await options.preparePlacement?.(incomingPaths)
         const items: V2Change[] = []
         for (const event of page.items) {
           const reviewed =
@@ -139,7 +159,7 @@ export class TokenEngineRuntime implements ConnectionRuntime, TokenUiRuntime {
     }
     this.client.onRemoval = (_id, path) => options.covers(path)
     this.engine = new SyncEngine({
-      client: this.client,
+      client: options.engineClient?.(this.client) ?? this.client,
       fs: new Proxy(options.fs, {
         get: (target, name) => {
           if (name === 'writeAtomic')
@@ -151,7 +171,7 @@ export class TokenEngineRuntime implements ConnectionRuntime, TokenUiRuntime {
           return typeof value === 'function' ? value.bind(target) : value
         },
       }),
-      state: options.state,
+      state: options.engineState ?? options.state,
       selective: this.selective,
       stillHeld: () => this.active,
       ignore: { ignores: (path) => this.blocked(path) },
