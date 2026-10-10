@@ -528,18 +528,23 @@ export class ChatStorage {
   async rewriteDiscussion(
     file: TFile,
     content: string,
-    check: (previous: string) => void
+    check: (previous: string) => void,
+    retainPublication = false
   ): Promise<void> {
     const prepared = await this.withDiscussionFile(file, () =>
       this.prepareDiscussionLocked(file, undefined, false)
     )
     if (!prepared.identity) {
-      await rewriteChat(GlobalStore.getInstance().app, file, content, check, prepared.content)
+      await rewriteChat(
+        GlobalStore.getInstance().app, file, content, check, prepared.content, retainPublication
+      )
       return
     }
     await this.withDiscussionFile(file, async () => {
       const verified = await this.prepareDiscussionLocked(file, undefined, false)
-      await rewriteChat(GlobalStore.getInstance().app, file, content, check, verified.content)
+      await rewriteChat(
+        GlobalStore.getInstance().app, file, content, check, verified.content, retainPublication
+      )
       await this.prepareDiscussionLocked(file)
     })
   }

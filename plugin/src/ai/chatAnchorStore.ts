@@ -5,8 +5,6 @@ import type {
   ChatRevision,
   ChatSelectionSnapshot,
   RevisionPorts,
-  RevisionReference,
-  SourceRange,
 } from '@/selection/types'
 import type { ChatMessage } from './types'
 
@@ -17,26 +15,10 @@ export interface ChatSelectionData {
   anchors: ChatAnchor[]
 }
 
-/** Storage contracts only: later binding publication writes this beside decorated content. */
-export interface ChatDecorationOperation {
-  id: string
-  bindingId: string
-  anchorId: string
-  targetPath: string
-  captured: RevisionReference
-  patch: { range: SourceRange; before: string; after: string }
-  resulting: RevisionReference
-  undoneAt?: number
-}
-
-/** Separate from execution; retained verbatim until a later binding adapter settles it. */
-export interface ChatBindingRecovery {
-  operation: ChatDecorationOperation
-  status: 'pending' | 'applied' | 'known-not-written' | 'uncertain' | 'undone'
-  /** The actual created/existing card, not a proposed filename. */
-  targetPath: string
-  evidence?: string
-}
+export type {
+  SelectionBindingOperation as ChatDecorationOperation,
+  SelectionBindingRecovery as ChatBindingRecovery,
+} from '@/selection/bindings'
 
 export function prepareSelectionRevision(
   message: ChatMessage,

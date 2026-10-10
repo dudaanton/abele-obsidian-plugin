@@ -1,4 +1,5 @@
 import { nanoid } from 'nanoid'
+import { undecoratedMessage } from './chatBindingProof'
 import type { HighlightColor } from '@/reader/highlights'
 import { EMPTY_USAGE, type AssistantContentBlock, type Message } from './client'
 import type { ChatMessage } from './types'
@@ -107,19 +108,34 @@ export function undoRevision(message: ChatMessage, at: number): ChatMessage {
   const revisions = [...(message.revisions ?? [])]
   const index = revisions.findLastIndex((revision) => !revision.undoneAt)
   const revision = revisions[index]
-  if (!revision || revision.after !== message.content)
+  if (!revision) throw new Error('This revision can no longer be undone.')
+  const afterSemantic = undecoratedMessage({ ...message, content: revision.after }, true).content
+  if (
+    revision.after !== message.content &&
+    afterSemantic !== undecoratedMessage(message, true).content
+  )
     throw new Error('This revision can no longer be undone.')
+  // A separately removed decoration must not return with semantic Undo.
+  const before = undecoratedMessage(
+    {
+      ...message,
+      content: revision.before,
+      decorationOperations: message.decorationOperations?.filter((op) => op.undoneAt),
+    },
+    true
+  ).content
   revisions[index] = { ...revision, undoneAt: at }
   return {
     ...message,
-    content: revision.before,
+    content: before,
     highlights: revision.highlights,
     revisions,
     selection: message.selection
       ? {
           ...message.selection,
           // An older writer may have dropped the proof. Equal bytes are not an undo identity.
-          revisionId: revision.beforeRevisionId ?? nanoid(),
+          revisionId:
+            before === revision.before ? (revision.beforeRevisionId ?? nanoid()) : nanoid(),
         }
       : undefined,
   }
@@ -133,7 +149,16 @@ export function isReplyCorrection(message: Message): boolean {
 
 /** Pure projection: reply text keeps assistant priority, even after its original was compacted. */
 export function projectReplyHistory(replies: ChatMessage[], internal: Message[]): Message[] {
-  const edited = new Map(replies.filter((m) => m.revisions?.length).map((m) => [m.id, m]))
+  const edited = new Map(
+    replies
+      .filter((m) => m.revisions?.length)
+      .map((m) => [
+        m.id,
+        {
+          ...undecoratedMessage(m),
+        },
+      ])
+  )
   const seen = new Set<string>()
   const projected: Message[] = internal.map((message) => {
     const reply = message.chatMessageId ? edited.get(message.chatMessageId) : undefined

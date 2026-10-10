@@ -49,6 +49,8 @@ import type {
   RevisionReference,
 } from '@/selection/types'
 import { sameRevision } from '@/selection/revisionMapping'
+import { BindingWriteFailure, type BindingState, type BindingStateChange } from './chatBindingWrite'
+import { projectBindingHistory } from './chatBindingHistory'
 import {
   ChatLogWriter,
   parseChat,
@@ -284,7 +286,14 @@ export class ChatSession implements SummarizerHost, InterceptorHost, AnchorStora
     return file && this.chatIdentity && ownsDelegationIdentity(this.chatIdentity, file.path)
       ? this.chatIdentity : undefined
   }
-  private bindingRecovery: ChatBindingRecovery[] | undefined
+  public readonly bindingRecoveries = shallowRef<ChatBindingRecovery[]>([])
+  private get bindingRecovery(): ChatBindingRecovery[] | undefined {
+    return this.bindingRecoveries.value.length ? this.bindingRecoveries.value : undefined
+  }
+  private set bindingRecovery(value: ChatBindingRecovery[] | undefined) {
+    this.bindingRecoveries.value = value ?? []
+  }
+  private bindingWriteBlocked = false
   private backgroundAbort: AbortController | null = null
   private toolAbortController: AbortController | null = null
   /** Changes before replacing a conversation; saving its first file does not change it. */
@@ -1618,10 +1627,10 @@ export class ChatSession implements SummarizerHost, InterceptorHost, AnchorStora
     for (let i = internal.length - 1; i >= 0; i--) {
       const m = internal[i]
       if (m.role === 'system' && m.content.startsWith(ChatSummarizer.COMPACT_MARKER)) {
-        return projectReplyHistory(path, internal.slice(i))
+        return projectBindingHistory(path, projectReplyHistory(path, internal.slice(i)))
       }
     }
-    return projectReplyHistory(path, internal)
+    return projectBindingHistory(path, projectReplyHistory(path, internal))
   }
 
   /**
@@ -2764,6 +2773,7 @@ export class ChatSession implements SummarizerHost, InterceptorHost, AnchorStora
     this.chatIdentity = undefined
     this.commentIdentity = undefined
     this.bindingRecovery = undefined
+    this.bindingWriteBlocked = false
     this.lastModelId = ''
     this.customSystemPrompt.value = ''
     this.customSystemPromptNotePath.value = ''
@@ -3070,15 +3080,105 @@ export class ChatSession implements SummarizerHost, InterceptorHost, AnchorStora
       )
       return result
     })
+    this.writing = operation.then((): void => {}, (): void => {})
+    try { return await operation } finally { this.writing = null }
+  }
+
+  bindingState(): BindingState {
+    return { messages: this.allMessages.value, recovery: this.bindingRecoveries.value }
+  }
+
+  /** Binding intent and decoration share the serialized writer; only owned fields publish. */
+  async changeBindings<T>(
+    change: (state: BindingState) => Promise<BindingStateChange<T>>
+  ): Promise<T> {
+    const generation = this.generation
+    const file = this.currentChatFile.value
+    while (this.writing) await this.writing
+    const check = () => {
+      if (
+        !file ||
+        this.destroyed ||
+        generation !== this.generation ||
+        file !== this.currentChatFile.value ||
+        this.replyChanging ||
+        this.moving.value ||
+        this.kind === 'run'
+      )
+        throw new Error('The captured conversation changed. Reopen it before linking.')
+    }
+    let attempted = false
+    const operation = Promise.resolve().then(async () => {
+      check()
+      const changed = await change(this.bindingState())
+      check()
+      const snapshot = this.snapshot()
+      await this.rewriteReply(
+        file!,
+        {
+          ...snapshot,
+          metadata: { ...snapshot.metadata, bindingRecovery: changed.recovery },
+          messages: snapshot.messages.map((m) =>
+            m.id === changed.message?.id ? changed.message : m
+          ),
+          internalMessages: [...snapshot.internalMessages],
+        },
+        check,
+        () => {
+          attempted = true
+        }
+      )
+      check()
+      this.bindingRecovery = changed.recovery
+      if (changed.message)
+        this.updateChatMessage(
+          (m) => m.id === changed.message!.id,
+          (m) => ({
+            ...m,
+            content: changed.message!.content,
+            selection: changed.message!.selection,
+            decorationOperations: changed.message!.decorationOperations,
+          })
+        )
+      return changed.result
+    })
     this.writing = operation.then(
       (): void => {},
       (): void => {}
     )
     try {
       return await operation
+    } catch (error) {
+      if (attempted) this.bindingWriteBlocked = true
+      throw new BindingWriteFailure(attempted, error)
     } finally {
       this.writing = null
     }
+  }
+
+  /** Settlement is by atomic operation IDs in a valid log, never by matching message text. */
+  async inspectBindingWrite(operationId: string): Promise<boolean> {
+    const file = this.currentChatFile.value
+    if (!file) return false
+    const loaded = await readChat(GlobalStore.getInstance().app, file)
+    if (loaded.damaged || loaded.torn || loaded.metadata?.chatId !== this.chatIdentity) return false
+    const message = loaded.messages.find((m) =>
+      m.decorationOperations?.some((op) => op.id === operationId)
+    )
+    if (!message) return false
+    this.log.adopt(loaded)
+    this.bindingRecovery = loaded.metadata?.bindingRecovery
+    this.updateChatMessage(
+      (m) => m.id === message.id,
+      (m) => ({
+        ...m,
+        content: message.content,
+        selection: message.selection,
+        decorationOperations: message.decorationOperations,
+      })
+    )
+    this.bindingWriteBlocked = false
+    return true
   }
 
   /** Allocate the existing chat identity durably before an owner binds node authority.
@@ -3128,19 +3228,30 @@ export class ChatSession implements SummarizerHost, InterceptorHost, AnchorStora
   private async rewriteReply(
     file: TFile,
     snapshot: ChatSnapshot,
-    check?: () => void
+    check?: () => void,
+    onAttempt?: () => void
   ): Promise<void> {
+    if (this.bindingWriteBlocked)
+      throw new Error(
+        'A link publication is uncertain. Reopen this chat to inspect its persisted source before writing.'
+      )
     this.localRevision++
     const written = serializeChat(snapshot)
     const { app } = GlobalStore.getInstance()
     let attempted = false
     try {
-      await ChatStorage.getInstance().rewriteDiscussion(file, written, (content) => {
-        check?.()
-        if (!this.log.matches(parseChat(content)))
-          throw new Error('This chat changed elsewhere. Reopen it before making changes.')
-        attempted = true
-      })
+      await ChatStorage.getInstance().rewriteDiscussion(
+        file,
+        written,
+        (content) => {
+          check?.()
+          if (!this.log.matches(parseChat(content)))
+            throw new Error('This chat changed elsewhere. Reopen it before making changes.')
+          attempted = true
+          onAttempt?.()
+        },
+        Boolean(onAttempt)
+      )
     } catch (err) {
       if (attempted) {
         // Recover what actually reached the file, not the old cached records. If recovery
@@ -3282,7 +3393,7 @@ export class ChatSession implements SummarizerHost, InterceptorHost, AnchorStora
     // The owning flush handles failure and keeps the dirty state. Another waiter must
     // not leak that same rejection or start a concurrent write.
     while (this.writing) await this.writing.catch(() => {})
-    if (!this.dirty) return
+    if (!this.dirty || this.bindingWriteBlocked) return
 
     this.dirty = false
     this.writing = this.writeNow()
@@ -3644,6 +3755,7 @@ export class ChatSession implements SummarizerHost, InterceptorHost, AnchorStora
     this.delegationWakeStopped = false
     this.commentIdentity = result.metadata?.commentId
     this.bindingRecovery = result.metadata?.bindingRecovery
+    this.bindingWriteBlocked = false
     const evidence = result.metadata?.attention ?? {}
     this.committedAttention = evidence
     this.attention.value = {

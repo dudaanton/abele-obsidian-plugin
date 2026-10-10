@@ -35,7 +35,9 @@ export async function rewriteChat(
   file: TFile,
   content: string,
   check?: (previous: string) => void,
-  expected?: string
+  expected?: string,
+  /** A journaled annotation settles acknowledgement by operation evidence, not rollback. */
+  retainPublication = false
 ): Promise<void> {
   const adapter = app.vault.adapter
   const copy = chatCopyPath(app, file.path)
@@ -86,7 +88,7 @@ export async function rewriteChat(
       })
     else await app.vault.modify(file, content)
   } catch (err) {
-    if (previous !== undefined) {
+    if (previous !== undefined && !retainPublication) {
       // The write may have emptied or truncated the chat. Restore the committed conversation
       // while its already-durable copy stays untouched, even if restoration also fails.
       // Encode a legacy snapshot as v2, matching its recoverable rollback copy.
