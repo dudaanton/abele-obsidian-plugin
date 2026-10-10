@@ -1,7 +1,7 @@
 # Token engine integration
 
 The production plugin pins core and protocol to server commit
-`cf01a4abb764464a3bc4ab9ab3cb3d5bf1f0d62c`. The vendor script generated
+`695f4e7e070879bb33ed09ee7c502228d87a062d`. The vendor script generated
 the archives and provenance; package.json, package-lock.json and SERVER_TEST_COMMIT
 use the same input. No server source is changed.
 
