@@ -190,6 +190,9 @@ interface AbeleTestApi {
   syncScans(): {
     id: string
     scans: ReturnType<import('@/sync/exchangeTrace').ExchangeTrace['snapshot']>['scans']
+    firstSync:
+      | ReturnType<import('@/sync/exchangeTrace').ExchangeTrace['snapshot']>['firstSync']
+      | null
     active: ReturnType<import('@/sync/exchangeTrace').ExchangeTrace['snapshot']>['active']
   }[]
   canvasProbe: ReturnType<typeof createCanvasProbe>
@@ -807,6 +810,7 @@ export function exposeTestApi(plugin: Plugin): void {
       [...(tokenUi.value?.runtimes ?? [])].map(([id, runtime]) => ({
         id,
         scans: runtime.scanSnapshot?.().scans ?? [],
+        firstSync: runtime.scanSnapshot?.().firstSync ?? null,
         active: runtime.scanSnapshot?.().active.filter((one) => one.operation === 'fs list') ?? [],
       })),
     resetSyncTokenState: (request) => resetSyncTokenState(plugin, request),

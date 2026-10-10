@@ -68,7 +68,6 @@ export type RepresentationDecision =
       dirty: boolean
       base?: ExternalRecord['lastProvenLocalBase']
     }
-const MAX_INSPECTION_ENTRIES = 10000
 const key = caseKey
 const unexpectedKey = (id: string) => 'external-unexpected-original-v1:' + id
 const terminal = new Set([
@@ -87,6 +86,7 @@ export class ExternalRepresentation {
   private document!: ExternalDocument
   private readonly entries = new Map<string, StateEntry>()
   private inspectionDirty = false
+  private readonly inspectionCapacity: number
   private stopped = false
   private readonly unexpected = new Set<string>()
   private readonly inspected = new Map<
@@ -94,8 +94,10 @@ export class ExternalRepresentation {
     { path: string; size: number; mtime: number; marker: boolean }
   >()
   private constructor(private readonly options: RepresentationOptions) {
-    for (const entry of (options.inspection?.entries ?? []).slice(-MAX_INSPECTION_ENTRIES))
-      this.inspected.set(entry.path, entry)
+    this.inspectionCapacity = (options.inspection?.entries.length ?? 0) + 10000
+    // Keep the complete startup inventory. A smaller rolling cache thrashes when
+    // a scan walks more files than its capacity, rereading every file each cycle.
+    for (const entry of options.inspection?.entries ?? []) this.inspected.set(entry.path, entry)
   }
   static async open(options: RepresentationOptions): Promise<ExternalRepresentation> {
     const runtime = new ExternalRepresentation(options)
@@ -275,7 +277,7 @@ export class ExternalRepresentation {
     if (!supplied) {
       this.inspected.delete(path)
       this.inspected.set(path, { path, size: info.size, mtime: info.mtime, marker })
-      if (this.inspected.size > MAX_INSPECTION_ENTRIES)
+      if (this.inspected.size > this.inspectionCapacity)
         this.inspected.delete(this.inspected.keys().next().value)
       this.inspectionDirty = true
     }

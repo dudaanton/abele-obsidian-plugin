@@ -120,6 +120,7 @@ export const statusName = (status: string) =>
     }) as Record<string, string>
   )[status] ?? 'Needs attention'
 export interface ConnectionActivity {
+  comparison?: { completed: number; total: number }
   startup?: {
     stage: string
     completed: number
@@ -155,6 +156,8 @@ export function connectionStatusText(
   }
   if (activity?.inspection)
     return `Checking the vault… ${activity.inspection.completed}/${activity.inspection.total}`
+  if (activity?.comparison)
+    return `Comparing files ${activity.comparison.completed}/${activity.comparison.total}`
   if (
     row.status === 'offline' &&
     activity?.error === 'The server response was cut off before it finished. Try syncing again.'

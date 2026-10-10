@@ -8,8 +8,11 @@ import { ExecutableReview } from '@/sync/executableReview'
 import { AttachmentConsent } from '@/sync/attachmentConsent'
 import { buildFakeVault } from './fakeVault'
 
-export function tokenHostFixture(fetcher: typeof fetch) {
-  const app = buildFakeVault([]),
+export function tokenHostFixture(
+  fetcher: typeof fetch,
+  files: Parameters<typeof buildFakeVault>[0] = []
+) {
+  const app = buildFakeVault(files),
     registry = TokenConnectionRegistry.open(app),
     keys = new Map<string, string>()
   const secrets = {

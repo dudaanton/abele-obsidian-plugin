@@ -33,6 +33,65 @@ const entry = {
   mtime: 1000,
 }
 const cleanups: (() => void)[] = []
+it('retains startup evidence across repeated 12k-file engine listings without rereading', async () => {
+  const app = buildFakeVault(
+    Array.from({ length: 12000 }, (_, i) => ({ path: `Notes/${i}.md`, content: 'ordinary' }))
+  )
+  const entries = app.vault.getFiles().map((file) => ({
+    path: file.path,
+    size: file.stat.size,
+    mtime: file.stat.mtime,
+    marker: false,
+  }))
+  const fs = new ObsidianFileSystem(app as unknown as App, {
+    startupInventory: () => new Map(entries.map((file) => [file.path, file])),
+  })
+  const read = vi.spyOn(app.vault.adapter, 'readBinary')
+  const list = vi.spyOn(app.vault.adapter, 'list')
+  const save = vi.fn()
+  const ledger = new MemoryStateStore()
+  const representation = await ExternalRepresentation.open({
+    state: null,
+    emptyView: { ledgerId: 'sample-ledger', binding },
+    ledger,
+    fs,
+    assertOwned: () => {},
+    scriptsFolder: () => 'Scripts',
+    inspection: { entries, save },
+    verify: async () => {
+      throw Error('unexpected verification')
+    },
+    installProjection: async () => {
+      throw Error('unexpected install')
+    },
+  })
+  for (let cycle = 0; cycle < 2; cycle++) {
+    let count = 0
+    for await (const _file of representation.fileSystem().list()) count++
+    expect(count).toBe(12000)
+  }
+  expect(read.mock.calls.length).toBe(0)
+  expect(list.mock.calls.length).toBe(0)
+  expect(save.mock.calls.length).toBe(0)
+  const sha = await sha256(new TextEncoder().encode('ordinary'))
+  for (const file of entries)
+    await ledger.put({
+      ...file,
+      wirePath: file.path,
+      fileId: file.path,
+      versionId: 'sample-v1',
+      sha,
+    })
+  expect(
+    (
+      await scan(representation.fileSystem(), representation.stateStore(), {
+        excluded: () => false,
+      })
+    ).ops
+  ).toEqual([])
+  expect(read.mock.calls.length).toBe(0)
+  expect(list.mock.calls.length).toBe(0)
+})
 it('holds predecessor recovery bytes without adopting their file identity on a new connection', async () => {
   const retained = 'Media/.abele-external-sample-predecessor.incoming'
   const fake = buildFakeVault([{ path: retained, content: 'sample retained bytes' }])

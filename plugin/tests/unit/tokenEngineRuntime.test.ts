@@ -28,6 +28,10 @@ it('does not schedule watch exchanges for ignored activity between fallback poll
     notify(['Private/ignored.md'])
     await vi.advanceTimersByTimeAsync(2000)
     expect(wire.requests).toHaveLength(count)
+    expect(one.runtime.trace.snapshot().firstSync).toMatchObject({ complete: true })
+    expect(one.runtime.trace.snapshot().firstSync.stages.map((one) => one.stage)).toEqual(
+      expect.arrayContaining(['scan', 'transfer'])
+    )
     expect(one.runtime.trace.snapshot().log).not.toContain('sync: watch')
     expect(one.runtime.trace.snapshot().scans).toEqual(
       expect.arrayContaining([

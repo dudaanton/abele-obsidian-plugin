@@ -537,6 +537,7 @@ export class TokenEngines {
         fence.assertReady()
         runtime = new TokenEngineRuntime({
           id: record.id,
+          comparing: (comparison) => this.ui.publish(record.id, { comparison }),
           encoded: encodeAccessToken({
             v: 1,
             address: record.address,

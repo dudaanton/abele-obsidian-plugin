@@ -1,7 +1,6 @@
 import { expect } from 'vitest'
-import { execFileSync } from 'node:child_process'
 import { targets } from './helpers/target'
-import { driver } from './helpers/phone'
+import { driver, phoneHome } from './helpers/phone'
 import { liveSuite, liveCase } from './helpers/syncLiveCases'
 targets('phone')
 const fixture = liveSuite(false)
@@ -78,11 +77,8 @@ liveCase(
     await s.connect()
     await s.put(path, 'before background')
     await a.syncNow()
-    const background = process.env.ABELE_PHONE_BACKGROUND
-    if (!background)
-      throw new Error('The manager must supply ABELE_PHONE_BACKGROUND for a real Home action')
     try {
-      execFileSync(background, [], { timeout: 30000 })
+      phoneHome()
       await s.put(path, 'while backgrounded')
     } finally {
       driver(['launch', 'md.obsidian'])

@@ -17,6 +17,7 @@ import {
   type PathMatcher,
 } from '@abele/sync-core'
 import { ExchangeTrace } from './exchangeTrace'
+import { connectStage } from './tokenUi'
 import {
   V2ManifestSchema,
   V2ChangesSchema,
@@ -61,6 +62,7 @@ export interface TokenEngineOptions {
   fallbackMs?: number
   assertHeld?(): void
   changed(status: EngineStatus, report?: SyncReport): void
+  comparing?(progress?: { completed: number; total: number }): void
   failed(error: unknown): void
   covers(path: string): Promise<boolean>
   expectedSource?: ReviewSource
@@ -80,6 +82,7 @@ export class TokenEngineRuntime implements ConnectionRuntime, TokenUiRuntime {
   private permitted = true
   private ignore: PathMatcher | null = null
   private authority: V2Connection | null = null
+  private readonly compared = new Set<string>()
   private held = new Set<string>()
   private readonly manifestIds = new Set<string>()
   private readonly assetPaths = new Map<string, string>()
@@ -186,6 +189,7 @@ export class TokenEngineRuntime implements ConnectionRuntime, TokenUiRuntime {
     this.client.includes = (path) =>
       includes(path) || (this.active && this.permitted && this.assetPaths.has(normalisePath(path)))
     this.client.prepare = async (fs, state, excluded) => {
+      this.compared.clear()
       await this.trace.run('write recovery before placement', async () =>
         options.recoverPlacement?.()
       )
@@ -266,6 +270,7 @@ export class TokenEngineRuntime implements ConnectionRuntime, TokenUiRuntime {
                   yield info
                 }
               } finally {
+                trace.inventory(completed)
                 finish(completed)
               }
             }
@@ -275,7 +280,24 @@ export class TokenEngineRuntime implements ConnectionRuntime, TokenUiRuntime {
               this.trace.run('placement ' + paths.join(', '), () => value.call(target, paths, work))
           if ((name === 'read' || name === 'stat') && typeof value === 'function')
             return (path: string) =>
-              this.trace.run('fs ' + String(name) + ' ' + path, () => value.call(target, path))
+              this.trace.run('fs ' + String(name) + ' ' + path, async () => {
+                if (name === 'stat') return value.call(target, path)
+                const total = this.trace.snapshot().firstSync.total
+                if (this.compared.size === 0) options.comparing?.({ completed: 0, total })
+                const bytes = await connectStage(
+                  'Comparing files',
+                  'Comparing a local file could not finish. Try syncing again.',
+                  () => value.call(target, path)
+                )
+                this.compared.add(path)
+                if (
+                  this.compared.size <= 8 ||
+                  this.compared.size % 128 === 0 ||
+                  this.compared.size === total
+                )
+                  options.comparing?.({ completed: this.compared.size, total })
+                return bytes
+              })
           return typeof value === 'function' ? value.bind(target) : value
         },
       }),
@@ -290,10 +312,15 @@ export class TokenEngineRuntime implements ConnectionRuntime, TokenUiRuntime {
       ...(options.paths?.scriptsFolder ? { scriptsFolder: options.paths.scriptsFolder } : {}),
       ...(options.fallbackMs ? { fallbackMs: options.fallbackMs } : {}),
       onSync: (report) => {
+        options.comparing?.()
+        this.trace.finishFirstSync()
         options.changed(this.engine.status, report)
         void this.outbox.drain().catch(() => options.publicationChanged?.())
       },
-      onFail: (error) => options.failed(error),
+      onFail: (error) => {
+        options.comparing?.()
+        options.failed(error)
+      },
       log: (line) => this.trace.log(line),
     })
     this.unstatus = this.engine.onStatus((status) => options.changed(status))
