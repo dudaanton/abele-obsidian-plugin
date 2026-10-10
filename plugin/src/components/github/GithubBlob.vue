@@ -230,8 +230,9 @@ const reloadDraft = async () => {
   }
 }
 const editText = (text: string) => {
-  if (!props.writable) return
-  void props.editor?.editText(text).catch((e: unknown) => {
+  if (!props.writable || !props.editor) return
+  props.editor.editing.value = true
+  void props.editor.editText(text).catch((e: unknown) => {
     editorError.value = e instanceof Error ? e.message : 'The local draft could not be stored'
   })
 }

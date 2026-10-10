@@ -164,6 +164,43 @@ describe('node-backed shared repository tab', () => {
     frozen.wrapper.unmount()
     frozen.source.dispose()
   })
+  it('offers Save after typing when editing permission arrives after the file was loaded', async () => {
+    const client = new NodeClient(
+      { url: 'ws://127.0.0.1:7777/channel', profile: 'local-token-v1', token: 'a'.repeat(64) },
+      new MemoryClientStore()
+    )
+    const editor = new NodeFilesModel(
+      client,
+      identity.node,
+      identity.workspace,
+      undefined,
+      new NodeDocumentSource(client, identity.workspace, true)
+    )
+    const wrapper = mount(GithubBlob, {
+      props: {
+        text: 'before',
+        file: { ...repo, ref: WORKING_TREE, path: 'sample.ts' },
+        contentId: 'a'.repeat(64),
+        editor,
+        writable: false,
+      },
+    })
+    await flushPromises()
+    await wrapper.setProps({ writable: true })
+    const code = wrapper.findAllComponents(GithubCode).at(-1)!
+    expect(code.props('editable')).toBe(true)
+    code.vm.$emit('change', 'unsent')
+    await flushPromises()
+    expect(
+      wrapper
+        .findAll('button')
+        .some(
+          (button) => button.text() === 'Save file' && button.attributes('disabled') === undefined
+        )
+    ).toBe(true)
+    expect(wrapper.text()).toContain('Unsent edit')
+    wrapper.unmount()
+  })
   it('does not treat a confirmed save as an editable unsent draft when the current file becomes binary', async () => {
     const client = new NodeClient(
       { url: 'ws://127.0.0.1:7777/channel', profile: 'local-token-v1', token: 'a'.repeat(64) },

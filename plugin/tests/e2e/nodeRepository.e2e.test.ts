@@ -114,7 +114,9 @@ it('opens the real node repository in the shared tab, follows history, compares,
       if(code.contentEditable!=='true')throw Error('Current working file is not editable in the tab');
       const editor=api.codeView(code);editor.dispatch({changes:{from:0,to:editor.state.doc.length,insert:${JSON.stringify(draftText)}},selection:{anchor:10}});
       await until(()=>[...document.querySelectorAll('.abele-node-save button')].some(b=>b.textContent.trim()==='Save file'&&!b.disabled));
-      const scroller=code.closest('.abele-github-layout__main');scroller.scrollTop=400;await wait(100);
+      const scroller=code.closest('.abele-github-layout__main');
+      // A human scroll interrupts the refresh settling pin before choosing the fixture offset.
+      scroller.dispatchEvent(new WheelEvent('wheel',{bubbles:true,deltaY:400}));scroller.scrollTop=400;await wait(100);
       window.__sampleRepositoryScroll=scroller.scrollTop;if(scroller.scrollTop<100)throw Error('Scroll fixture was not tall enough');
       window.__sampleRepositoryCursor=editor.state.selection.main.anchor;return 'draft retained';
     })()`)

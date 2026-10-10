@@ -978,6 +978,7 @@ watch(
   () => {
     loadGeneration++
     cancellation.abort()
+    unpin()
     promoted.value = null
     main.clear()
     files.clear()
