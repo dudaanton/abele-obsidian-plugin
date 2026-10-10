@@ -5,8 +5,8 @@ import { GlobalStore } from '@/stores/GlobalStore'
 import type { View } from '@/scripting/view/View'
 import { ScriptViewService } from '@/scripting/view/ScriptViewService'
 
-export const SCRIPT_VIEW_TYPE = 'abele-script-view'
-export const SCRIPT_VIEW_ID_ATTR = 'abele-script-view-id'
+import { SCRIPT_VIEW_TYPE, SCRIPT_VIEW_ID_ATTR } from '@/scripting/view/constants'
+export { SCRIPT_VIEW_TYPE, SCRIPT_VIEW_ID_ATTR } from '@/scripting/view/constants'
 
 /** What the workspace layout keeps for this tab: enough to run the script again. */
 export interface SavedViewState {

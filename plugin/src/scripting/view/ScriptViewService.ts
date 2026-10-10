@@ -12,7 +12,8 @@ import { ScriptService } from '@/scripting/ScriptService'
 import { findScriptByName } from '@/scripting/runScript'
 import type { View, ViewHost, Placement, VaultChange } from './View'
 import { setDefaultViewHost } from './host'
-import { SCRIPT_VIEW_TYPE, type SavedViewState, type ScriptView } from '@/views/ScriptView'
+import type { SavedViewState, ScriptView } from '@/views/ScriptView'
+import { SCRIPT_VIEW_TYPE } from './constants'
 
 interface Bound {
   view: View

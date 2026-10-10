@@ -56,6 +56,11 @@ describe('runtime import graph', () => {
     expect(cyclicComponents(importGraph(resolve('src/word')))).toEqual([])
   })
 
+  it('does not load the concrete script view just to get its view type', () => {
+    const file = resolve('src/scripting/view/ScriptViewService.ts')
+    expect(runtimeImports(readFileSync(file, 'utf8'), file)).not.toContain('@/views/ScriptView')
+  })
+
   it('keeps the plugin entry point a type-only dependency of settings', () => {
     for (const file of ['services/AbeleConfig.ts', 'settings.ts']) {
       const source = ts.createSourceFile(
