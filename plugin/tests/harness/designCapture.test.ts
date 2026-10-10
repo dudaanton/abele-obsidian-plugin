@@ -157,6 +157,57 @@ describe('renderer design capture', () => {
     expect(s.native?.elements?.[0].selector).toContain('tree-item-self')
     expect(s.native?.variants).toHaveProperty('backlinks-section')
   })
+  it('uses a top-level file reference regardless of expanded nested rows and their icon completeness', () => {
+    fixture()
+    document.querySelector('#surface')!.insertAdjacentHTML(
+      'beforebegin',
+      `<div class="nav-folder"><div class="tree-item-children">
+        <div class="tree-item-self nav-file-title" data-path="Sample/Deep/nested.md"><svg></svg><span class="nav-file-title-content">Nested entry</span></div>
+      </div></div>
+      <div class="tree-item-self nav-file-title" data-path="sample.md"><span class="nav-file-title-content">Root entry</span></div>`
+    )
+    for (const el of document.querySelectorAll('*'))
+      if (!vi.isMockFunction(el.getBoundingClientRect))
+        vi.spyOn(el, 'getBoundingClientRect').mockReturnValue(new DOMRect(10, 10, 160, 24))
+    const base = vi.mocked(window.getComputedStyle).getMockImplementation()!
+    vi.mocked(window.getComputedStyle).mockImplementation(
+      (el) =>
+        ({
+          ...base(el),
+          paddingLeft: el.getAttribute('data-path')?.includes('/') ? '58px' : '24px',
+        }) as CSSStyleDeclaration
+    )
+    const expanded = captureDesign('#surface')
+    expect(expanded.native?.kind).toBe('nav-file:0')
+    expect(expanded.native?.metrics.padding?.[3]).toBe(24)
+    expect(expanded.native?.variants?.['nav-file:2'].padding?.[3]).toBe(58)
+    document.querySelector('.tree-item-children')!.setAttribute('style', 'display:none')
+    const collapsed = captureDesign('#surface')
+    expect(collapsed.native?.kind).toBe(expanded.native?.kind)
+    expect(collapsed.native?.metrics).toEqual(expanded.native?.metrics)
+    expect(collapsed.native?.elements).toEqual(expanded.native?.elements)
+    // An explicit selector still allows a deliberate depth-specific comparison.
+    document.querySelector('.tree-item-children')!.removeAttribute('style')
+    expect(
+      captureDesign('#surface', { nativeSelector: '[data-path="Sample/Deep/nested.md"]' }).native
+        ?.kind
+    ).toBe('nav-file:2')
+  })
+  it('does not silently substitute an indented file when no top-level native reference is visible', () => {
+    fixture()
+    document
+      .querySelector('#surface')!
+      .insertAdjacentHTML(
+        'beforebegin',
+        '<div class="tree-item-self nav-file-title" data-path="Sample/nested.md"><span class="nav-file-title-content">Nested entry</span></div>'
+      )
+    for (const el of document.querySelectorAll('.nav-file-title, .nav-file-title-content'))
+      vi.spyOn(el, 'getBoundingClientRect').mockReturnValue(new DOMRect(10, 10, 160, 24))
+    expect(captureDesign('#surface').native).toBeUndefined()
+    expect(
+      lintDesign(captureDesign('#surface'), { requireNative: true }).map((v) => v.rule)
+    ).toContain('native-reference-missing')
+  })
   it('classifies a compound native kit row once, without treating its wrapper or edge glyph as text', () => {
     fixture()
     document.querySelector('#surface')!.innerHTML =

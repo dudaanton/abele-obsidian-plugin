@@ -382,9 +382,12 @@ export function captureDesign(selector: string, options: CaptureOptions = {}): D
     : ['.backlink-pane .tree-item-self', '.nav-file-title', '.search-result-file-title'].flatMap(
         (s) => [...document.querySelectorAll(s)]
       )
-  const references = [...new Set(candidates)].filter(
-    (e) => visible(e) && !e.closest('.abele-list-row')
-  )
+  const fileDepth = (el: Element) => (el.getAttribute('data-path') ?? '').split('/').length - 1
+  const references = [...new Set(candidates)]
+    .filter((e) => visible(e) && !e.closest('.abele-list-row'))
+    .sort((a, b) =>
+      a.matches('.nav-file-title') && b.matches('.nav-file-title') ? fileDepth(a) - fileDepth(b) : 0
+    )
   for (const reference of references) {
     const nativeElements = collect(reference, true)
     const host = nativeElements[0],
@@ -400,6 +403,11 @@ export function captureDesign(selector: string, options: CaptureOptions = {}): D
         icon && title?.firstLine ? title.firstLine.x - icon.rect.x - icon.rect.width : undefined,
       lineHeight: title?.font.lineHeight,
     }
+    // Expanded explorer descendants retain their depth-specific variants, but must never
+    // become the generic row baseline. A caller can opt into one with an explicit selector.
+    const baseline =
+      options.nativeSelector || !reference.matches('.nav-file-title') || fileDepth(reference) === 0
+    if (!snapshot.native && !baseline) continue
     snapshot.native ??= {
       selector: nativeSelector,
       kind: host.kind,
@@ -409,7 +417,7 @@ export function captureDesign(selector: string, options: CaptureOptions = {}): D
     }
     const complete = (m: RowMetrics) =>
       m.iconSize !== undefined && m.iconTextGap !== undefined && m.lineHeight !== undefined
-    if (complete(metrics) && !complete(snapshot.native.metrics)) {
+    if (baseline && complete(metrics) && !complete(snapshot.native.metrics)) {
       snapshot.native.metrics = metrics
       snapshot.native.kind = host.kind
       snapshot.native.elements = nativeElements
