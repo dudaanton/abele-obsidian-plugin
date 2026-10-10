@@ -1,20 +1,30 @@
 <template>
-  <div class="tree-item abele-tree-item" :class="{ 'is-collapsed': collapsible && collapsed }">
+  <div
+    class="tree-item abele-tree-item"
+    :class="{
+      'is-collapsed': collapsible && collapsed,
+      'abele-tree-item_collapsed': collapsible && collapsed,
+      'abele-tree-item_active': active,
+      'abele-tree-item_disabled': disabled,
+      'abele-tree-item_plain': plain,
+    }"
+  >
     <div
       class="tree-item-self abele-tree-item__self"
-      :class="{ 'is-clickable': !plain, 'mod-collapsible': collapsible, 'is-active': active }"
+      :class="{ 'is-clickable': !inert, 'mod-collapsible': collapsible, 'is-active': active }"
       role="treeitem"
-      :tabindex="plain ? undefined : 0"
+      :tabindex="inert ? undefined : 0"
       :aria-expanded="collapsible ? !collapsed : undefined"
       :aria-current="active ? 'true' : undefined"
+      :aria-disabled="disabled || undefined"
       :data-path="path"
-      @click="plain || emit('click', $event)"
-      @keydown.enter.prevent="plain || emit('click', keyClick($event))"
+      @click="inert || emit('click', $event)"
+      @keydown.enter.prevent="inert || emit('click', keyClick($event))"
     >
       <div
         v-if="collapsible"
         ref="chevron"
-        class="tree-item-icon collapse-icon"
+        class="tree-item-icon collapse-icon abele-tree-item__toggle"
         :class="{ 'is-collapsed': collapsed }"
       />
       <div class="tree-item-inner abele-tree-item__inner">
@@ -23,7 +33,7 @@
         <span v-if="note" class="abele-tree-item__note">{{ note }}</span>
       </div>
       <div v-if="flair || $slots.actions || $slots.end" class="tree-item-flair-outer">
-        <span v-if="flair" class="tree-item-flair">{{ flair }}</span>
+        <span v-if="flair" class="tree-item-flair abele-tree-item__flair">{{ flair }}</span>
         <slot name="end" />
         <!-- Shown while the row is pointed at or focused; always on a phone, which cannot point. -->
         <span v-if="$slots.actions" class="abele-tree-item__actions"><slot name="actions" /></span>
@@ -36,7 +46,7 @@
 </template>
 
 <script setup lang="ts">
-import { onMounted, ref, watch } from 'vue'
+import { computed, onMounted, ref, watch } from 'vue'
 import { setIcon } from 'obsidian'
 
 /**
@@ -65,6 +75,8 @@ const props = withDefaults(
      * click. Without it every row is one more stop for the keyboard on the way to the buttons.
      */
     plain?: boolean
+    /** Seen but not open now: faint, no hover, no tab stop, no click. */
+    disabled?: boolean
   }>(),
   {
     icon: undefined,
@@ -75,8 +87,11 @@ const props = withDefaults(
     collapsed: false,
     path: undefined,
     plain: false,
+    disabled: false,
   }
 )
+
+const inert = computed(() => props.plain || props.disabled)
 
 const emit = defineEmits<{
   /** The row was clicked, or Enter pressed on it; the event says which modifier keys were held. */
@@ -126,6 +141,15 @@ watch(() => [props.icon, props.collapsible], draw, { flush: 'post' })
   .svg-icon {
     --icon-size: var(--icon-xs);
     --icon-stroke: var(--icon-xs-stroke-width);
+  }
+}
+
+.abele-tree-item_disabled > .abele-tree-item__self {
+  color: var(--text-faint);
+  cursor: default;
+
+  .abele-tree-item__glyph {
+    color: var(--text-faint);
   }
 }
 

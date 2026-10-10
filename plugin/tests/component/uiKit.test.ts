@@ -469,6 +469,30 @@ describe('EmptyState', () => {
 })
 
 describe('TreeItem', () => {
+  it('can be seen but not opened while disabled', async () => {
+    const view = mount(TreeItem, { props: { text: 'Archive', icon: 'folder', disabled: true } })
+    const self = view.get('.abele-tree-item__self')
+
+    expect(view.classes()).toContain('abele-tree-item_disabled')
+    expect(self.attributes('aria-disabled')).toBe('true')
+    expect(self.attributes('tabindex')).toBeUndefined()
+    await self.trigger('click')
+    await self.trigger('keydown.enter')
+    expect(view.emitted('click')).toBeUndefined()
+  })
+
+  it('names its states and parts', () => {
+    const view = mount(TreeItem, {
+      props: { text: 'Notes', collapsible: true, collapsed: true, active: true, flair: '12' },
+    })
+
+    expect(view.classes()).toEqual(
+      expect.arrayContaining(['abele-tree-item_collapsed', 'abele-tree-item_active'])
+    )
+    expect(view.find('.abele-tree-item__toggle').exists()).toBe(true)
+    expect(view.get('.abele-tree-item__flair').text()).toBe('12')
+  })
+
   it('draws a row that is only read as neither a tab stop nor a click target', async () => {
     const view = mount(TreeItem, { props: { text: 'Notes/a.md', plain: true } })
     const self = view.find('.tree-item-self')
