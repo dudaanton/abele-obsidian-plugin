@@ -19,6 +19,9 @@ export function connectionError(error: unknown): string {
         'bad-token': 'This token is damaged or incomplete. Paste the whole token again.',
         unreachable: 'The server is not reachable. Check your connection and try again.',
         revoked: 'Access is closed. Ask for a new token.',
+        unauthorized: 'Access is closed. Ask for a new token.',
+        offline: 'The server is not reachable. Check your connection and try again.',
+        scope_updating: 'The group is still being prepared. File exchange has not started.',
         quota_exceeded: 'The server is full. Your unsent files stay on this device.',
         too_large: 'This file is too large for the server. It stays on this device.',
         quota_waiting:
@@ -30,7 +33,15 @@ export function connectionError(error: unknown): string {
   )
 }
 export const scopeName = (scope: V2Scope | null) =>
-  scope ? (scope.kind === 'group' ? 'Group: ' : 'Folder: ') + scope.path : 'Not connected'
+  !scope
+    ? 'Not connected'
+    : scope.kind === 'group'
+      ? 'Group: ' + scope.path.split('/').pop().replace(/\.md$/i, '')
+      : scope.path === '/'
+        ? 'Whole vault'
+        : 'Folder: ' + scope.path
+export const connectionName = (record: Pick<TokenConnectionRecord, 'scope' | 'address'>) =>
+  scopeName(record.scope) + ' · ' + new URL(record.address).host
 export const statusName = (status: string) =>
   (
     ({
@@ -47,6 +58,7 @@ export const statusName = (status: string) =>
     }) as Record<string, string>
   )[status] ?? 'Needs attention'
 export interface ConnectionActivity {
+  pending?: number
   lastSync?: number
   completed?: number
   total?: number
@@ -63,6 +75,7 @@ export interface TokenUiRuntime extends ExecutableApplyPort, ConsentResolvePort 
 }
 export type DeviceReviews = Awaited<ReturnType<typeof openDeviceReviews>>
 export class TokenUi {
+  connectionsChanged: () => Promise<void> = async () => {}
   openFile: (path: string) => Promise<void> = async () => {}
   readonly rows = shallowRef<TokenConnectionRecord[]>([])
   readonly activity = shallowRef<Record<string, ConnectionActivity>>({})
@@ -155,6 +168,7 @@ export class TokenUi {
     } finally {
       this.refresh()
     }
+    await this.connectionsChanged()
   }
   client(id: string): V2Client {
     const record = this.registry.records().find((one) => one.id === id)

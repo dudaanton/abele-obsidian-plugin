@@ -55,7 +55,8 @@ it('uses the same explicit Connect action for a scanned token', async () => {
   view.findComponent(TokenQrReader).vm.$emit('token', sampleIssuedToken)
   await flushPromises()
   expect(view.text()).toContain('https://sync.example')
-  expect(view.text()).toContain('Folder: /')
+  expect(view.text()).toContain('Whole vault')
+  expect(view.text()).not.toContain('Folder: /')
   expect(connect).not.toHaveBeenCalled()
   await view
     .findAllComponents(Button)
@@ -75,6 +76,11 @@ it('shows every connection, last sync, progress, refusals and the conflict copy 
   expect(view.text()).toContain('820 of 2500 files')
   expect(view.text()).toContain('server is full')
   expect(view.text()).toContain('Conflict copy saved')
+  expect(view.text()).toContain('Group: Sample research group with a deliberately long name')
+  expect(view.text()).not.toContain('deliberately long name.md')
+  expect(
+    view.findAll('h3').some((heading) => heading.text() === 'Whole vault · sync.example')
+  ).toBe(true)
 })
 
 it('approves only the immutable code candidate displayed while a later version remains pending', async () => {

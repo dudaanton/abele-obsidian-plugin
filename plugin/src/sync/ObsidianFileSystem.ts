@@ -15,6 +15,7 @@ import { folderMutations } from './folderMutations'
 import { pathCoordinatorOf } from './pathCoordinator'
 import type { LocalStorage } from './ledgerId'
 import { makeParents, pruneAbove } from './vaultFolders'
+import { VaultDirectories } from './vaultDirectories'
 import {
   bytesOf,
   isAdapterTemp,
@@ -43,6 +44,7 @@ const CONFIG_WALK_DEPTH = 32
 const IGNORE_FILE = '.abele-sync-ignore'
 
 export interface ObsidianFileSystemOptions {
+  preserveEmptyDirectories?: boolean
   /** The startup/ownership fence, owned by the engine host. */
   runtimeFence?: RuntimeFence
   /** Durable restrictive provenance, completed before native bytes or paths change. */
@@ -116,6 +118,8 @@ export interface ObsidianFileSystemOptions {
  * paths it hands over; they go to the adapter exactly as they came.
  */
 export class ObsidianFileSystem implements FileSystem {
+  private readonly directories: VaultDirectories
+  private readonly preserveEmptyDirectories: boolean
   private readonly pollMs: number
   private readonly now: () => number
   private readonly onWatch: ((paths: string[]) => void) | null
@@ -145,6 +149,7 @@ export class ObsidianFileSystem implements FileSystem {
     private readonly app: App,
     options: ObsidianFileSystemOptions = {}
   ) {
+    this.preserveEmptyDirectories = options.preserveEmptyDirectories ?? false
     this.runtimeFence = options.runtimeFence ?? null
     this.externalCoordination = externalCoordinationOf(app.vault)
     const runtimeAdapter = this.runtimeFence
@@ -189,6 +194,15 @@ export class ObsidianFileSystem implements FileSystem {
           return value.apply(target, args)
         }
       },
+    })
+    this.directories = new VaultDirectories(this.guardedAdapter, storageOf(app), async (path) => {
+      const adapter = app.vault.adapter as DataAdapter & {
+        getFullPath?(path: string): string
+        fsPromises?: { lstat(path: string): Promise<{ isSymbolicLink(): boolean }> }
+      }
+      return adapter.getFullPath && adapter.fsPromises?.lstat
+        ? (await adapter.fsPromises.lstat(adapter.getFullPath(path))).isSymbolicLink()
+        : false
     })
     this.beforeEngineMutation = options.beforeEngineMutation ?? null
     this.ledger = options.ledger ?? null
@@ -246,6 +260,25 @@ export class ObsidianFileSystem implements FileSystem {
   }
 
   /** Existing installation recovery runs before scanner/watcher activation. */
+  listDirectories() {
+    this.runtimeFence?.assertReady()
+    return this.directories.list()
+  }
+  async mkdir(path: string): Promise<void> {
+    this.runtimeFence?.assertReady()
+    await this.beforeEngineMutation?.([path])
+    await this.directories.mkdir(path)
+  }
+  async moveDirectory(from: string, to: string): Promise<void> {
+    this.runtimeFence?.assertReady()
+    await this.beforeEngineMutation?.([from, to])
+    await this.directories.move(from, to)
+  }
+  async removeDirectory(path: string): Promise<void> {
+    this.runtimeFence?.assertReady()
+    await this.beforeEngineMutation?.([path])
+    await this.directories.remove(path)
+  }
   async recover(): Promise<void> {
     this.runtimeFence?.assertOwned()
     if (!this.journal.entries().length) return
@@ -452,7 +485,8 @@ export class ObsidianFileSystem implements FileSystem {
     this.awaitingIndex.delete(from)
     this.awaitingIndex.add(to)
     this.wrote(from, to)
-    await pruneAbove(this.adapter, this.native, this.configDir, from)
+    if (!this.preserveEmptyDirectories)
+      await pruneAbove(this.adapter, this.native, this.configDir, from)
   }
 
   async remove(path: string): Promise<void> {
@@ -480,7 +514,8 @@ export class ObsidianFileSystem implements FileSystem {
     }
     this.awaitingIndex.delete(path)
     this.wrote(path)
-    await pruneAbove(this.adapter, this.native, this.configDir, path)
+    if (!this.preserveEmptyDirectories)
+      await pruneAbove(this.adapter, this.native, this.configDir, path)
   }
 
   /** Tell the host what the engine changed on disk (`onEngineWrite`). */
@@ -524,6 +559,9 @@ export class ObsidianFileSystem implements FileSystem {
    */
   watch(cb: (paths: string[]) => void): () => void {
     this.runtimeFence?.assertReady()
+    const directoryRename = this.app.vault.on('rename', (file, previous) => {
+      if ('children' in file) this.directories.renamed(previous, file.path)
+    })
     const stopMutations = folderMutations(this.app.vault).watch()
     const watcher = watchVault(
       {
@@ -539,6 +577,7 @@ export class ObsidianFileSystem implements FileSystem {
     this.pollNow = watcher.kick
     return () => {
       watcher.stop()
+      this.app.vault.offref(directoryRename)
       stopMutations()
       if (this.pollNow === watcher.kick) this.pollNow = null
     }

@@ -532,35 +532,15 @@ describe('the design standard', () => {
     }
   })
 
-  // BUG: Retired access-screen fixture; original assertions await equivalent token-port coverage.
-  it.fails(
-    'keeps long join and held-delete dialog action rows in view without pinning settings actions',
-    () => {
-      const modal = styleBlock(readFileSync(join(ROOT, 'obsidian/Modal.vue'), 'utf8'))
-      const joinModal = readFileSync(join(ROOT, 'settings/sync/JoinVaultModal.vue'), 'utf8')
-      const held = readFileSync(join(ROOT, 'sync/HeldDeletesBlock.vue'), 'utf8')
-      expect(modal).toMatch(
-        /\.abele-modal__body \.abele-modal__actions\s*\{[^}]*position:\s*sticky;/
-      )
-      expect(modal).toMatch(
-        /body\.is-phone \.modal\.mod-lg \.abele-modal__body \.abele-modal__actions\s*\{[^}]*safe-area-inset-bottom/
-      )
-      expect(joinModal).toContain('abele-join-vault__actions abele-modal__actions')
-      expect(held).toContain('abele-held-deletes__actions abele-modal__actions')
-    }
-  )
-
-  // BUG: Retired access-screen fixture; original assertions await equivalent token-port coverage.
-  it.fails('scrolls long join choices above the buttons instead of behind them', () => {
-    const source = readFileSync(join(ROOT, 'settings/sync/JoinVaultModal.vue'), 'utf8')
-    const css = styleBlock(source)
-    expect(source).toContain(":size=\"question.kind === 'choose' ? 'tall' : undefined\"")
-    expect(source).toContain('class="abele-join-vault__content"')
-    expect(css).toMatch(
-      /\.abele-modal_tall \.abele-join-vault__content\s*\{[^}]*overflow-y:\s*auto;/
+  it('keeps the retained held-delete action row visible with safe-area space', () => {
+    const modal = styleBlock(readFileSync(join(ROOT, 'obsidian/Modal.vue'), 'utf8'))
+    const held = readFileSync(join(ROOT, 'sync/HeldDeletesBlock.vue'), 'utf8')
+    expect(modal).toMatch(/\.abele-modal__body \.abele-modal__actions\s*\{[^}]*position:\s*sticky;/)
+    expect(modal).toMatch(
+      /body\.is-phone \.modal\.mod-lg \.abele-modal__body \.abele-modal__actions\s*\{[^}]*safe-area-inset-bottom/
     )
+    expect(held).toContain('abele-held-deletes__actions abele-modal__actions')
   })
-
   it('scrolls held paths inside a tall dialog, not behind its answer row', () => {
     const dialog = readFileSync(join(ROOT, 'sync/HeldDeletesModal.vue'), 'utf8')
     const css = styleBlock(readFileSync(join(ROOT, 'sync/HeldDeletesBlock.vue'), 'utf8'))

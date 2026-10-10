@@ -82,7 +82,7 @@ import './editor/HeaderExtension'
 import { VaultWatcherWrapper } from './helpers/VaultWatcherWrapper'
 import { exposeTestApi } from '@/testing/exposeTestApi'
 import { observePhoneReplayTransport } from '@/testing/phoneReplay'
-import { transportOf, type SyncServiceDeps } from '@/sync/environment'
+import type { SyncServiceDeps } from '@/sync/environment'
 import { readFileContent } from './helpers/vaultUtils'
 import { runAfterSync } from './helpers/runAfterSync'
 import { handleProtocolAction } from './helpers/protocolHandler'
@@ -122,7 +122,9 @@ import { prepareTokenConnections } from './sync/tokenRegistryPreparation'
 import { tokenUi, TokenUi } from './sync/tokenUi'
 import { openDeviceReviews } from './sync/openDeviceReviews'
 import { transportOf } from './sync/environment'
-import { renderStatus, type SyncStatus } from './sync/status'
+import { TokenEngines } from './sync/tokenEngines'
+import { renderStatus, DISCONNECTED_STATUS, type SyncStatus } from './sync/status'
+import { openAbeleSettings } from './components/settings/settingsTab'
 // Keep the extracted section last so its dependencies do not reorder the existing styles.
 import { registerCoreCommands } from '@/startup/registerCoreCommands'
 import { registerViews } from '@/startup/registerViews'
@@ -139,6 +141,7 @@ markLoad('evalEnd')
 const releaseVueSetters = claimVueSetters()
 
 export default class AbelePlugin extends Plugin {
+  private tokenEngines: TokenEngines | null = null
   private vueApp: VueApp | null = null
   private headerCommands: HeaderCommands | null = null
   /** Application sharing ports, installed identically in production and development. */
@@ -194,10 +197,7 @@ export default class AbelePlugin extends Plugin {
    * builds no engine, and the status bar item stays out of sight.
    */
   private initSync(): void {
-    const sync = SyncService.getInstance()
-    // Stage-0 cutover must never start the retired personal/scoped adapters. The v2
-    // engine adapter and token UI are installed in subsequent rebuild stages.
-    sync.note('Sync is not connected')
+    this.tokenEngines?.start()
 
     const statusEl = this.addStatusBarItem()
     statusEl.addClass('mod-clickable')
@@ -205,7 +205,7 @@ export default class AbelePlugin extends Plugin {
     // question a click carries is *why* — which is what the log answers. Syncing on demand is
     // a command and a button in the settings, neither of which is one stray click away.
     this.registerDomEvent(statusEl, 'click', () => {
-      GlobalStore.getInstance().syncLogModalOpened.value = true
+      openAbeleSettings(this.app, 'sync')
     })
 
     // A vault that syncs with nothing shows nothing: most people never connect one, and a
@@ -214,8 +214,48 @@ export default class AbelePlugin extends Plugin {
       statusEl.toggle(status.state !== 'disconnected')
       renderStatus(statusEl, status)
     }
-    paint(sync.status.value)
-    this.register(sync.onStatusChange(paint))
+    this.register(
+      watch(
+        () => [
+          tokenUi.value?.rows.value,
+          tokenUi.value?.activity.value,
+          tokenUi.value?.candidates.value,
+        ],
+        () => {
+          const ui = tokenUi.value,
+            rows = ui?.rows.value ?? []
+          const status: SyncStatus = { ...DISCONNECTED_STATUS }
+          if (rows.length && ui) {
+            status.state = rows.some((one) => one.status === 'syncing')
+              ? 'syncing'
+              : rows.some((one) =>
+                    ['error', 'scope_updating', 'scope_unavailable', 'needs-token'].includes(
+                      one.status
+                    )
+                  )
+                ? 'error'
+                : rows.some((one) => one.status === 'offline')
+                  ? 'offline'
+                  : rows.every((one) => one.paused)
+                    ? 'paused'
+                    : 'idle'
+            status.pending = rows.reduce(
+              (sum, one) => sum + (ui.activity.value[one.id]?.pending ?? 0),
+              ui.candidates.value.length
+            )
+            status.lastError =
+              rows.map((one) => ui.activity.value[one.id]?.error).find(Boolean) ?? null
+            const stamps = rows
+              .map((one) => ui.activity.value[one.id]?.lastSync)
+              .filter((one): one is number => typeof one === 'number')
+            if (stamps.length === rows.length)
+              status.lastSyncAt = new Date(Math.min(...stamps)).toISOString()
+          }
+          paint(status)
+        },
+        { immediate: true }
+      )
+    )
 
     // Here, with the rest of sync, and not beside the agent's commands: those are registered
     // only once the agent is switched on, and sync has nothing to do with it — on a vault
@@ -227,9 +267,14 @@ export default class AbelePlugin extends Plugin {
       callback: () => {
         // The service says so in the log and moves nothing; from the palette there is no
         // Sync tab in view to say it, so it is said here too.
-        if (sync.connection.value.paused)
-          new Notice('Sync is paused. Resume it to sync this device.')
-        void sync.syncNow()
+        const ui = tokenUi.value
+        if (ui)
+          void Promise.allSettled(
+            ui.rows.value.filter((one) => !one.paused).map((one) => ui.sync(one.id))
+          ).then((results) => {
+            if (results.some((one) => one.status === 'rejected'))
+              new Notice('Some connections need attention. Open sync settings for details.')
+          })
       },
     })
 
@@ -238,17 +283,27 @@ export default class AbelePlugin extends Plugin {
       name: 'Pause or resume sync',
       icon: 'pause-circle',
       callback: () => {
-        if (sync.status.value.state === 'paused') sync.resume()
-        else sync.pause()
+        const ui = tokenUi.value
+        if (ui) {
+          const paused = !ui.rows.value.every((one) => one.paused)
+          void Promise.allSettled(ui.rows.value.map((one) => ui.pause(one.id, paused))).then(
+            (results) => {
+              if (results.some((one) => one.status === 'rejected'))
+                new Notice(
+                  'Some connections could not be paused or resumed. Open sync settings for details.'
+                )
+            }
+          )
+        }
       },
     })
 
     this.addCommand({
       id: 'sync-log',
-      name: 'Open sync log',
+      name: 'Open sync settings',
       icon: 'scroll-text',
       callback: () => {
-        GlobalStore.getInstance().syncLogModalOpened.value = true
+        openAbeleSettings(this.app, 'sync')
       },
     })
 
@@ -257,7 +312,7 @@ export default class AbelePlugin extends Plugin {
       name: 'Open deleted files',
       icon: 'trash-2',
       callback: () => {
-        GlobalStore.getInstance().deletedFilesModalOpened.value = true
+        new Notice('Deleted-file history is not available from the server yet.')
       },
     })
   }
@@ -336,6 +391,7 @@ export default class AbelePlugin extends Plugin {
             throw new Error('Device review identity requires recovery')
           const reviews = await openDeviceReviews(window.indexedDB, reviewId, {
             configRoots: [this.app.vault.configDir],
+            scriptsFolder: AbeleConfig.getInstance().ai.scriptsFolder || 'Scripts',
           })
           const ui = new TokenUi(
             registry,
@@ -348,10 +404,20 @@ export default class AbelePlugin extends Plugin {
             reviews
           )
           tokenUi.value = ui
+          this.tokenEngines = new TokenEngines(
+            this.app,
+            ui,
+            (reference) => secretStore.getLocal(reference) || null,
+            {},
+            AbeleConfig.getInstance().ai.scriptsFolder || 'Scripts'
+          )
           ui.openFile = (path) => this.app.workspace.openLinkText(path, '', false)
           this.register(() => {
             if (tokenUi.value === ui) tokenUi.value = null
-            reviews.close()
+            void this.tokenEngines
+              ?.close()
+              .catch(() => console.error('[Abele] token sync shutdown requires recovery'))
+              .finally(() => reviews.close())
           })
           this.registerEvent(
             this.app.workspace.on('file-open', (file) => {

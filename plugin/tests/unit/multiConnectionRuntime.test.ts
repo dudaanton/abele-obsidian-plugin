@@ -3,8 +3,14 @@ import { TokenConnectionRegistry } from '@/sync/tokenConnectionRegistry'
 import { ConnectionEngines } from '@/sync/connectionEngines'
 import { PathCoordinator } from '@/sync/pathCoordinator'
 import { V2Client } from '@/sync/v2/client'
-import { SyncEngine, MemoryFileSystem, MemoryStateStore, selectiveDefaults } from '@abele/sync-core'
-import type { VaultClient } from '@abele/sync-core'
+import {
+  SyncEngine,
+  V2EngineClient,
+  MemoryFileSystem,
+  MemoryStateStore,
+  selectiveDefaults,
+} from '@abele/sync-core'
+import { encodeAccessToken } from '@abele/sync-protocol'
 
 it('runs two token authorities over one host without a slow connection blocking the other', async () => {
   const data = new Map<string, unknown>(),
@@ -94,14 +100,12 @@ it('runs two token authorities over one host without a slow connection blocking 
   await engines.close()
 })
 
-// BUG: DEPENDS: core v2 binding; the pinned engine only accepts the legacy VaultClient feed.
-it.fails(
-  'runs the production SyncEngine against a v2 connection without a legacy state route',
-  async () => {
-    const scope = { kind: 'folder' as const, id: 'root', path: '/' }
-    const client = new V2Client(
-      { v: 1, address: 'https://sync.example', key: 'a'.repeat(43), scope },
-      async (url) => {
+it('runs the production SyncEngine against a v2 connection without a legacy state route', async () => {
+  const scope = { kind: 'folder' as const, id: 'root', path: '/' }
+  const client = new V2EngineClient(
+    encodeAccessToken({ v: 1, address: 'https://sync.example', key: 'a'.repeat(43), scope }),
+    {
+      fetch: async (url) => {
         if (new URL(String(url)).pathname !== '/v2/connection')
           return Response.json({ items: [], cursor: 1, next: null })
         return Response.json({
@@ -112,19 +116,18 @@ it.fails(
           status: 'active',
           limits: { max_file_bytes: 1000, quota_bytes: null },
         })
-      }
-    )
-    // Probe the actual pinned engine's incompatible boundary; production never uses this cast.
-    const engine = new SyncEngine({
-      client: client as unknown as VaultClient,
-      fs: new MemoryFileSystem(),
-      state: new MemoryStateStore(),
-      selective: selectiveDefaults(),
-    })
-    try {
-      await expect(engine.sync()).resolves.toMatchObject({ pull: { applied: 0, cursor: 1 } })
-    } finally {
-      await engine.stop()
+      },
     }
+  )
+  const engine = new SyncEngine({
+    client,
+    fs: new MemoryFileSystem(),
+    state: new MemoryStateStore(),
+    selective: selectiveDefaults(),
+  })
+  try {
+    await expect(engine.sync()).resolves.toMatchObject({ pull: { applied: 0, cursor: 1 } })
+  } finally {
+    await engine.stop()
   }
-)
+})

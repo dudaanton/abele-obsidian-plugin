@@ -1,0 +1,113 @@
+import { z } from 'zod'
+import { EngineError } from '@abele/sync-core'
+import type { LocalStorage } from './ledgerId'
+
+const KEY = 'abele-sync-local-directories-v1'
+const schema = z.array(
+  z.object({ path: z.string(), identity: z.string().min(1), birth: z.number() }).strict()
+)
+interface DirectoryAdapter {
+  stat(path: string): Promise<{ type: string; ctime: number; mtime: number; size: number } | null>
+  list(path: string): Promise<{ files: string[]; folders: string[] }>
+  mkdir(path: string): Promise<void>
+  rename(from: string, to: string): Promise<void>
+  rmdir(path: string, recursive: boolean): Promise<void>
+}
+/** Device-local identities and strictly nonrecursive directory effects. */
+export class VaultDirectories {
+  constructor(
+    private readonly adapter: DirectoryAdapter,
+    private readonly storage: LocalStorage,
+    private readonly symlink: (path: string) => Promise<boolean> = async () => false
+  ) {}
+  private records() {
+    return schema.parse(this.storage.loadLocalStorage(KEY) ?? [])
+  }
+  private save(records: z.infer<typeof schema>) {
+    this.storage.saveLocalStorage(KEY, records)
+    if (JSON.stringify(this.storage.loadLocalStorage(KEY)) !== JSON.stringify(records))
+      throw new Error('Local directory identity was not stored')
+  }
+  async *list(): AsyncIterable<{ path: string; identity: string; mtime: number }> {
+    const found: { path: string; birth: number; mtime: number }[] = []
+    const walk = async (path: string, depth: number) => {
+      if (depth > 32) throw new EngineError('io', 'Directory tree is too deep')
+      for (const folder of (await this.adapter.list(path)).folders) {
+        if (
+          ['.abele-sync', '.trash', '.git'].some(
+            (root) => folder === root || folder.startsWith(root + '/')
+          ) ||
+          (await this.symlink(folder))
+        )
+          continue
+        const stat = await this.adapter.stat(folder)
+        if (stat?.type !== 'folder') continue
+        found.push({ path: folder, birth: stat.ctime, mtime: Math.max(0, Math.round(stat.mtime)) })
+        await walk(folder, depth + 1)
+      }
+    }
+    await walk('', 0)
+    const old = this.records(),
+      occupied = new Set(found.map((one) => one.path))
+    const records = found.map((one) => {
+      const same = old.find((record) => record.path === one.path && record.birth === one.birth)
+      const renamed = old.filter(
+        (record) => !occupied.has(record.path) && record.birth === one.birth
+      )
+      // Offline rename recovery is accepted only with unique birth evidence on both sides.
+      const recovered =
+        renamed.length === 1 && found.filter((other) => other.birth === one.birth).length === 1
+          ? renamed[0]
+          : null
+      return {
+        path: one.path,
+        birth: one.birth,
+        identity: (same ?? recovered)?.identity ?? crypto.randomUUID(),
+      }
+    })
+    this.save(records)
+    for (const one of found)
+      yield {
+        path: one.path,
+        identity: records.find((record) => record.path === one.path).identity,
+        mtime: one.mtime,
+      }
+  }
+  async mkdir(path: string): Promise<void> {
+    const before = await this.adapter.stat(path)
+    if (before) {
+      if (before.type !== 'folder' || (await this.symlink(path)))
+        throw new EngineError('conflict', 'Directory path is occupied')
+      return
+    }
+    await this.adapter.mkdir(path)
+  }
+  async move(from: string, to: string): Promise<void> {
+    if (await this.adapter.stat(to))
+      throw new EngineError('conflict', 'Directory destination is occupied')
+    if ((await this.symlink(from)) || (await this.adapter.stat(from))?.type !== 'folder')
+      throw new EngineError('conflict', 'Directory source is unavailable')
+    await this.adapter.rename(from, to)
+    this.renamed(from, to)
+  }
+  renamed(from: string, to: string): void {
+    this.save(
+      this.records().map((one) =>
+        one.path === from || one.path.startsWith(from + '/')
+          ? { ...one, path: to + one.path.slice(from.length) }
+          : one
+      )
+    )
+  }
+  async remove(path: string): Promise<void> {
+    const stat = await this.adapter.stat(path)
+    if (!stat) return
+    if (stat.type !== 'folder' || (await this.symlink(path)))
+      throw new EngineError('conflict', 'Directory path is occupied')
+    const children = await this.adapter.list(path)
+    if (children.files.length || children.folders.length)
+      throw new EngineError('conflict', 'Directory is not empty')
+    await this.adapter.rmdir(path, false)
+    this.save(this.records().filter((one) => one.path !== path))
+  }
+}

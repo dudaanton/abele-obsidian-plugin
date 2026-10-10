@@ -1,8 +1,9 @@
 /** Server test input is independent of the installed core/protocol package pin. */
-export const SERVER_TEST_COMMIT = 'b6d8066cc7a72ade3d1143985b6f0cd510e854e7'
+export const SERVER_TEST_COMMIT = '664759f8ab307c74804868bbe5bb8e3e3182d0e0'
 /** Only fast-tier files whose setup uses a real, provenance-checked server archive. */
 export const serverTestFixtures = {
   ABELE_SYNC_DIR: [
+    'tokenEngineServer',
     'syncServer',
     'externalRepresentationServer',
     'syncService',

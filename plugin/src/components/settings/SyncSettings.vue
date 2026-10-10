@@ -41,14 +41,13 @@
         />
       </Setting>
       <p v-if="rows.length && !ui.available.value">
-        File exchange is not available in this build. Saved connections and sharing remain
-        available.
+        File exchange is opening. Connections that need attention keep their files here.
       </p>
     </Section>
     <Section
       v-for="row in activityRows"
       :key="'activity-' + row.id"
-      :title="scopeName(row.scope)"
+      :title="connectionName(row)"
       :desc="row.address"
     >
       <p v-if="errors[row.id] || activity[row.id]?.error" role="alert">
@@ -131,7 +130,14 @@ import Icon from '../obsidian/Icon.vue'
 import Button from '../obsidian/Button.vue'
 import EmptyState from '../obsidian/EmptyState.vue'
 import TokenDialogs from '../sync/TokenDialogs.vue'
-import { tokenUi, scopeName, statusName, connectionError, type TokenUi } from '@/sync/tokenUi'
+import {
+  tokenUi,
+  scopeName,
+  connectionName,
+  statusName,
+  connectionError,
+  type TokenUi,
+} from '@/sync/tokenUi'
 import type { TokenConnectionRecord } from '@/sync/tokenConnectionRegistry'
 import type { ExecutableCandidate } from '@/sync/executableReview'
 import type { AttachmentQuestion } from '@/sync/attachmentConsent'

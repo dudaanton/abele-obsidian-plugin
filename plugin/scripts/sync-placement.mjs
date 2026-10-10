@@ -148,6 +148,32 @@ export function syncPlacementPlugin() {
           'await this.state.setJournal(null);\n        });',
           'await this.state.setJournal(null);\n        }));\n        for (const path of stagedDownloads.values()) await this.recorder.fs.remove(path);'
         )
+      } else if (file.endsWith('/v2Directories.js')) {
+        code = replaceOnce(
+          code,
+          'async receive(item) {',
+          `async receive(item) {
+          const previous = (await this.read()).directories.find(one => one.file_id === item.file_id);
+          return coordinatePlacement(this.fs, [item.path, ...(previous ? [previous.path] : [])], () => this.receiveUnlocked(item));
+        }
+        async receiveUnlocked(item) {`
+        )
+        code = replaceOnce(
+          code,
+          'await this.fs.removeDirectory(path);',
+          'await coordinatePlacement(this.fs, [path], () => this.fs.removeDirectory(path));'
+        )
+      } else if (file.endsWith('/v2Client.js')) {
+        code = replaceOnce(
+          code,
+          "if (event.type === 'removal') {",
+          "if (event.type === 'removal') { await coordinatePlacement(this.ports.fs, [event.path], async () => {"
+        )
+        code = replaceOnce(
+          code,
+          'continue;\n                }\n                if (!entry)',
+          '}); continue;\n                }\n                if (!entry)'
+        )
       } else return null
       return { code: helper + code, map: null }
     },
