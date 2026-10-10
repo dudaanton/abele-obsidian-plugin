@@ -37,27 +37,30 @@ describe.skipIf(!available)('changelog in Obsidian', () => {
       await new Promise(r => setTimeout(r, 300))
       const reused = app.workspace.getLeavesOfType('abele-changelog').length === 1 && app.workspace.getLeavesOfType('abele-changelog')[0] === leaf
       const all = leaf.view.contentEl.querySelector('h1').textContent === 'All versions'
-      const oldest = () => [...leaf.view.contentEl.querySelectorAll('article h2')].pop()?.textContent
-      while (oldest() !== '0.0.1') {
-        const button = [...leaf.view.contentEl.querySelectorAll('button')].find(b => b.textContent.includes('Show older versions'))
-        if (!button) break
-        button.click(); await new Promise(r => setTimeout(r, 50))
-      }
-      const reachedOldest = oldest() === '0.0.1'
+      // Exhaustive paging is fast-tier coverage; keep the real DOM event boundary live.
+      const count = () => leaf.view.contentEl.querySelectorAll('article h2').length
+      const beforePage = count()
+      const button = [...leaf.view.contentEl.querySelectorAll('button')].find(b => b.textContent.includes('Show older versions'))
+      button.click()
+      const deadline = Date.now() + 5000
+      while (count() !== 20 && Date.now() < deadline) await new Promise(r => setTimeout(r, 50))
+      const afterPage = count()
       leaf.detach()
-      return JSON.stringify({ headings, reused, all, reachedOldest, clean: !document.querySelector('.abele-changelog-view') })
+      return JSON.stringify({ headings, reused, all, beforePage, afterPage, clean: !document.querySelector('.abele-changelog-view') })
     })()`)
     ) as {
       headings: string[]
       reused: boolean
       all: boolean
-      reachedOldest: boolean
+      beforePage: number
+      afterPage: number
       clean: boolean
     }
     expect(result.headings).toEqual(['1.58.0', '1.57.0'])
     expect(result.reused).toBe(true)
     expect(result.all).toBe(true)
-    expect(result.reachedOldest).toBe(true)
+    expect(result.beforePage).toBe(10)
+    expect(result.afterPage).toBe(20)
     expect(result.clean).toBe(true)
   })
 
