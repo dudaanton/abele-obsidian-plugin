@@ -113,7 +113,9 @@ export class TokenSyncLive {
         }
       },
       60000
-    )
+    ).catch((error) => {
+      throw device.failure('fixture token readiness', error)
+    })
     const before = new Set(device.rows().map((one) => one.id))
     let id: string
     try {

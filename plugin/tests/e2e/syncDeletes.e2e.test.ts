@@ -97,7 +97,7 @@ liveCase(
     await s.cycle()
     await a.trash()
     a.run(
-      `const client=svc.runtimes.get(${JSON.stringify(id)}).historyClient;window.__abeleRestoreRelease=(${holdRestore.toString()})(client);const box=inWindows('.abele-deleted-files');const row=path=>[...box.querySelectorAll('.abele-card')].find(one=>textOf(one.querySelector('.abele-card__name'))===path);await press(row(${JSON.stringify(paths[0])}),'Restore');await press(row(${JSON.stringify(paths[1])}),'Restore');return true`
+      `const client=svc.runtimes.get(${JSON.stringify(id)}).historyClient;window.__abeleRestoreRelease=(${holdRestore.toString()})(client);const box=inWindows('.abele-deleted-files');const row=path=>[...box.querySelectorAll('.abele-card')].find(one=>textOf(one.querySelector('.abele-card__name'))===path);await press(()=>row(${JSON.stringify(paths[0])}),'Restore');await press(()=>row(${JSON.stringify(paths[1])}),'Restore');return true`
     )
     try {
       expect(

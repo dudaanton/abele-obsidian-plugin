@@ -18,6 +18,68 @@ import { TokenEngines } from '@/sync/tokenEngines'
 import { openDeviceReviews } from '@/sync/openDeviceReviews'
 import { desktopTransport } from '@/sync/desktopTransport'
 import { nativeTokenFixture } from '../helpers/nativeTokenFixture'
+import { resetSyncTokenState } from '@/testing/resetSyncTokenState'
+import type { Plugin } from 'obsidian'
+import { projectionPath } from '@/sync/external/projection'
+
+it('a guarded pool reset and fixture cleanup after an unavailable offloaded source permit a fresh token connection', async () => {
+  const servers = await Promise.all([v2Server(), v2Server()])
+  const factory = new IDBFactory()
+  vi.stubGlobal('window', {
+    indexedDB: factory,
+    setTimeout,
+    clearTimeout,
+    setInterval,
+    clearInterval,
+  })
+  const app = buildFakeVault([])
+  Object.assign(app.workspace, { iterateAllLeaves: () => {} })
+  Object.assign(app.vault, { getName: () => 'leased-pool' })
+  app.saveLocalStorage('abele-sync-device-review-id-v1', crypto.randomUUID())
+  const users = await Promise.all(
+    servers.map((server) =>
+      createUser(
+        { db: server.db, pepper: server.config.tokenPepper },
+        'Sample user',
+        server.address
+      )
+    )
+  )
+  const s = await nativeTokenFixture(app, users[0].token, globalThis.fetch, factory)
+  const callbacks: (() => void)[] = []
+  const owner = {
+    app,
+    tokenEngines: s.host,
+    register: (callback: () => void) => callbacks.push(callback),
+  }
+  let stopped = false
+  try {
+    await app.vault.adapter.mkdir('Fixture')
+    await app.vault.adapter.write('Fixture/sample.bin', 'retained server bytes')
+    await s.ui.sync(s.id)
+    await s.host.evict(s.id, 'Fixture/sample.bin')
+    await servers[0].close()
+    stopped = true
+    await resetSyncTokenState(owner as unknown as Plugin, {
+      vault: 'leased-pool',
+      confirm: 'reset-sync-token-state',
+    })
+    // The reset must not delete notes, including the offload sidecar. Live teardown
+    // separately removes only the synthetic directory owned by this case.
+    expect(await app.vault.adapter.exists(projectionPath('Fixture/sample.bin'))).toBe(true)
+    await app.vault.adapter.rmdir('Fixture', true)
+    await s.ui.connect(users[1].token)
+    const next = s.registry.records()[0]
+    expect(next.address).toBe(servers[1].address)
+    await s.ui.sync(next.id)
+  } finally {
+    await owner.tokenEngines.close()
+    for (const close of callbacks) close()
+    if (!stopped) await servers[0].close()
+    await servers[1].close()
+    vi.unstubAllGlobals()
+  }
+}, 15000)
 
 it('connects two real servers before editing, then hydrates offloaded bytes from the surviving source', async () => {
   const servers = await Promise.all([v2Server(), v2Server()])

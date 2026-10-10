@@ -1,0 +1,65 @@
+import { expect, it, vi } from 'vitest'
+import { mkdirSync, writeFileSync } from 'node:fs'
+import { captureSyncFailure, SYNC_SNAPSHOT } from '../e2e/helpers/syncDiagnostics'
+vi.mock('node:fs', async (original) => {
+  const actual = await original<typeof import('node:fs')>()
+  const mkdirSync = vi.fn(),
+    writeFileSync = vi.fn()
+  return {
+    ...actual,
+    mkdirSync,
+    writeFileSync,
+    default: { ...actual.default, mkdirSync, writeFileSync },
+  }
+})
+vi.mock('../e2e/helpers/target', () => ({ onPhone: () => false }))
+vi.mock('../e2e/helpers/phone', () => ({ screenshot: vi.fn() }))
+
+it('snapshots a stuck engine and pending holds synchronously without reading a token or awaiting its ledger', () => {
+  const engine = {
+    state: 'syncing',
+    pending: 4,
+    heldDeletes: 60,
+    deferred: 1,
+    lastError: { code: 'io', message: 'private request data' },
+  }
+  const ui = {
+    rows: {
+      value: [
+        { id: 'sample', status: 'syncing', paused: false, secretReference: 'private-secret' },
+      ],
+    },
+    activity: { value: { sample: { heldDeletes: 60, error: 'Needs attention' } } },
+  }
+  const app = {
+    plugins: {
+      plugins: {
+        abele: {
+          tokenEngines: { ui, live: new Map([['sample', { engine: { status: engine } }]]) },
+        },
+      },
+    },
+    setting: {},
+  }
+  const snapshot = new Function('app', 'document', SYNC_SNAPSHOT + ';return syncSnapshot()')(
+    app,
+    document
+  )
+  expect(snapshot.connections[0]).toMatchObject({
+    id: 'sample',
+    holds: 60,
+    lastError: 'Needs attention',
+    engine: { state: 'syncing', lastErrorCode: 'io' },
+  })
+  expect(JSON.stringify(snapshot)).not.toContain('private')
+  const evalAwait = vi.fn().mockReturnValueOnce(snapshot).mockReturnValueOnce(true)
+  const report = captureSyncFailure({ evalAwait } as never, 'sync timeout')
+  expect(mkdirSync).toHaveBeenCalled()
+  expect(writeFileSync).toHaveBeenCalledWith(
+    expect.stringMatching(/\.json$/),
+    expect.stringContaining('"holds": 60')
+  )
+  expect(evalAwait.mock.calls[1][0]).toContain('capturePage')
+  expect(report).toContain('syncing')
+  expect(report).toContain('.png')
+})

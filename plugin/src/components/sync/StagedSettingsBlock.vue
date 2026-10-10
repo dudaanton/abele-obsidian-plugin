@@ -83,12 +83,13 @@ import { reasonOf } from '@/sync/format'
 const props = withDefaults(
   defineProps<{
     changes: ChangeItem[]
+    port?: TokenSettingsPort
     /** Plugin names by folder, where this device has the plugin's manifest. */
     names: Record<string, string>
     /** What the apply button says where Obsidian can reload itself. */
     applyText?: string
   }>(),
-  { applyText: 'Reload now' }
+  { applyText: 'Reload now', port: undefined }
 )
 
 const emit = defineEmits<{
@@ -96,7 +97,7 @@ const emit = defineEmits<{
   (e: 'decided'): void
 }>()
 
-const sync = TokenSettingsPort.getInstance()
+const sync = props.port ?? TokenSettingsPort.getInstance()
 
 const busy = ref(false)
 const error = ref<string | null>(null)

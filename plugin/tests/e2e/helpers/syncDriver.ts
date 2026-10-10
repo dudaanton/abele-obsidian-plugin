@@ -1,12 +1,14 @@
 import type { VaultCli } from './obsidianCli'
 import { waitFor } from './syncVault'
+import { captureSyncFailure, SYNC_SNAPSHOT } from './syncDiagnostics'
 export const SYNC_PRELUDE = `
+ ${SYNC_SNAPSHOT}
  const host = app.plugins.plugins.abele.tokenEngines
  if (!host) throw new Error('Token host is not ready')
  const svc = host.ui
  const sleep = ms => new Promise(resolve => setTimeout(resolve, ms))
  const textOf = el => el?.textContent?.trim() || ''
- const poll = async (fn, ms = 20000, label = 'expected live state') => { const until=Date.now()+ms; while(Date.now()<until) { if(await fn()) return true; await sleep(100) } throw new Error('Live sync condition did not complete: '+label) }
+ const poll = async (fn, ms = 20000, label = 'expected live state') => { const until=Date.now()+ms; while(Date.now()<until) { if(await fn()) return true; await sleep(100) } throw new Error('Live sync condition did not complete: '+label+'; observed '+JSON.stringify(syncSnapshot())) }
  const buttonIn = (root,text) => [...root.querySelectorAll('button')].find(el=>textOf(el)===text)
  const press = async (root,text) => { let button; await poll(()=> {const container=typeof root==='function'?root():root;button=container&&buttonIn(container,text); return button&&!button.disabled},20000,'enabled '+text+' button'); button.click(); await sleep(100) }
  const typeInto = (input,text) => { if(!input) throw new Error('Input unavailable'); input.value=text; input.dispatchEvent(new input.ownerDocument.defaultView.Event('input',{bubbles:true})) }
@@ -28,17 +30,36 @@ export interface SyncStatus {
 export class SyncDriver {
   constructor(readonly vault: () => VaultCli) {}
   run<T>(body: string): T {
-    return this.vault().evalAwait<T>(`(async()=>{${SYNC_PRELUDE}\n${body}})()`)
+    try {
+      return this.vault().evalAwait<T>(`(async()=>{${SYNC_PRELUDE}\n${body}})()`)
+    } catch (error) {
+      throw this.failure('live sync action', error)
+    }
+  }
+  failure(label: string, error: unknown): Error {
+    let observed: string
+    try {
+      observed = captureSyncFailure(this.vault(), label)
+    } catch {
+      observed = 'Diagnostic capture unavailable'
+    }
+    return Object.assign(
+      new Error(
+        label + ': ' + String((error as Error)?.message ?? error) + '; observed ' + observed,
+        { cause: error }
+      ),
+      { syncDiagnostic: observed }
+    )
   }
   async long<T>(what: string, body: string, confidential = false, timeoutMs = 90000): Promise<T> {
     const key = '__abeleSyncJob' + Math.random().toString(36).slice(2)
     const cli = this.vault()
     const evaluate = confidential ? cli.evalAwaitPrivate.bind(cli) : cli.evalAwait.bind(cli)
-    evaluate(
-      `(()=>{window[${JSON.stringify(key)}]=null;(async()=>{const jobKey=${JSON.stringify(key)};${SYNC_PRELUDE}\n${body}})().then(value=>window[${JSON.stringify(key)}]={ok:true,value:value===undefined?null:value},error=>window[${JSON.stringify(key)}]={ok:false,error:String(error?.message||error)});return true})()`
-    )
     let answer: { ok: boolean; value?: T; error?: string } | null = null
     try {
+      evaluate(
+        `(()=>{window[${JSON.stringify(key)}]=null;(async()=>{const jobKey=${JSON.stringify(key)};${SYNC_PRELUDE}\n${body}})().then(value=>window[${JSON.stringify(key)}]={ok:true,value:value===undefined?null:value},error=>window[${JSON.stringify(key)}]={ok:false,error:String(error?.message||error)});return true})()`
+      )
       await waitFor(
         what,
         () => {
@@ -54,7 +75,7 @@ export class SyncDriver {
       return result.value
     } catch (error) {
       // A timed-out native action may still be running. Fail the case rather than retrying it.
-      throw confidential ? new Error(what + ' failed') : error
+      throw this.failure(what, confidential ? new Error(what + ' failed') : error)
     }
   }
   rows(): SyncStatus[] {
@@ -67,7 +88,7 @@ export class SyncDriver {
       'connect by token',
       `const before=new Set(svc.rows.value.map(one=>one.id)); const root=await openSyncTab(); await press(root,'Connect…'); await poll(()=>modal('Connect to a server')); const box=modal('Connect to a server'); typeInto(box.querySelector('input[placeholder="Paste your token"]'),${JSON.stringify(token)}); await press(box,'Connect'); await poll(()=>!modal('Connect to a server')); const added=svc.rows.value.find(one=>!before.has(one.id)); if(!added) throw new Error('No connection added'); await poll(()=>svc.runtimes.has(added.id)); await closeSettings(); return added.id`,
       true
-    ).catch(() => {
+    ).catch((error: unknown) => {
       // Only product state is reported; private eval errors may contain the pasted token.
       let details = 'No connection state available'
       try {
@@ -78,7 +99,10 @@ export class SyncDriver {
       } catch {
         /* The vault can be reloading; keep the confidential fallback. */
       }
-      throw new Error('connect by token failed: ' + details)
+      const diagnostic = (error as { syncDiagnostic?: string })?.syncDiagnostic
+      throw new Error(
+        'connect by token failed: ' + details + (diagnostic ? '; observed ' + diagnostic : '')
+      )
     })
   }
   async syncNow(id?: string): Promise<void> {
@@ -103,7 +127,9 @@ export class SyncDriver {
         return rows.length > 0 && rows.every((one) => ['idle', 'paused'].includes(one.status))
       },
       60000
-    )
+    ).catch((error) => {
+      throw this.failure('token connection to settle', error)
+    })
   }
   async pause(id: string, paused: boolean): Promise<void> {
     this.run(

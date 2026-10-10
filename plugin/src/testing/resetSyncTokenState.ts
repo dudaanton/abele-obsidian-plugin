@@ -6,6 +6,7 @@ import { IndexedDbStateStore } from '../sync/IndexedDbStateStore'
 import { openDeviceReviews } from '../sync/openDeviceReviews'
 import type { DeviceTokenSecrets } from '../sync/tokenConnectionRegistry'
 import { resetTokenPool, type TokenPoolResetRequest } from './resetTokenPool'
+import { tokenPoolMarkers } from './tokenPoolMarkers'
 
 const JOURNAL = 'abele-sync-test-pool-ledgers-v1'
 const REVIEW_ID = 'abele-sync-device-review-id-v1'
@@ -91,22 +92,25 @@ async function performResetSyncTokenState(
   if (!old) throw new Error('Token host is not ready')
   const inputs = old as unknown as HostInputs
   const ui = inputs.ui
+  let clearMarkers: () => void
   const reviewsId: unknown = plugin.app.loadLocalStorage(REVIEW_ID)
   if (typeof reviewsId !== 'string' || !uuid.test(reviewsId))
     throw new Error('Device review identity requires recovery')
   await resetTokenPool(
     {
       vault: plugin.app.vault.getName(),
-      databases: async () => [
-        ...(await captureSyncTokenOwnership(plugin, request.vault)),
-        'abele-sync-reviews-' + reviewsId,
-      ],
+      databases: async () => {
+        const owned = await captureSyncTokenOwnership(plugin, request.vault)
+        clearMarkers = tokenPoolMarkers(plugin.app, owned)
+        return [...owned, 'abele-sync-reviews-' + reviewsId]
+      },
       stop: async () => {
         await old.close()
         ui.reviews?.close()
       },
       removeDatabase: (name) => IndexedDbStateStore.delete(window.indexedDB, name),
       forget: async () => {
+        clearMarkers()
         const secrets = (
           ui as unknown as { secrets: DeviceTokenSecrets & { remove(reference: string): void } }
         ).secrets

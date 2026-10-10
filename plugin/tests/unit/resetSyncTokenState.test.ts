@@ -10,6 +10,8 @@ import { IndexedDbStateStore } from '../../src/sync/IndexedDbStateStore'
 import { openDeviceReviews } from '../../src/sync/openDeviceReviews'
 import { TokenUi } from '../../src/sync/tokenUi'
 import { sha256 } from '@abele/sync-core'
+import { EXTERNAL_ACTIVATION_KEY } from '@/sync/external/recovery'
+import { tokenExternalBinding } from '@/sync/tokenExternalBinding'
 vi.mock('../../src/sync/tokenEngines', () => ({
   TokenEngines: class {
     start() {}
@@ -47,6 +49,18 @@ it('removes owned credentials, ledgers, edit snapshots and all review decisions 
     secrets
   )
   const record = registry.records()[0]
+  local.set(EXTERNAL_ACTIVATION_KEY, {
+    schema: 1,
+    ledgers: [
+      {
+        ledgerId: record.ledgerId,
+        databaseName: record.ledgerId,
+        databaseIdentity: record.ledgerId,
+        binding: await tokenExternalBinding(record, keys.get(record.secretReference)!),
+        phase: 'active',
+      },
+    ],
+  })
   const reviewId = crypto.randomUUID()
   local.set('abele-sync-device-review-id-v1', reviewId)
   const reviews = await openDeviceReviews(factory, reviewId)
@@ -91,6 +105,7 @@ it('removes owned credentials, ledgers, edit snapshots and all review decisions 
     ])
     expect(close).toHaveBeenCalledOnce()
     expect(registry.records()).toEqual([])
+    expect(local.get(EXTERNAL_ACTIVATION_KEY)).toBeNull()
     expect(keys).toEqual(new Map([['unrelated-key', 'keep']]))
     expect(local.get('other-plugin')).toEqual({ keep: true })
     expect(vault.notes).toEqual(new Map([['note.md', 'keep']]))

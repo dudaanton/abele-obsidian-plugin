@@ -4,7 +4,12 @@
     phone-sheet
     @close="emit('close', questionKey)"
   >
-    <StagedSettingsBlock :changes="changes" :names="names" @decided="emit('close', questionKey)">
+    <StagedSettingsBlock
+      :changes="changes"
+      :names="names"
+      :port="port"
+      @decided="emit('close', questionKey)"
+    >
       <template #actions="{ busy }">
         <Button
           text="Later"
@@ -24,11 +29,17 @@
  * they do.
  */
 import type { ChangeItem } from '@abele/sync-protocol'
+import type { TokenSettingsPort } from '@/sync/tokenSettingsPort'
 import ObsidianModal from '../obsidian/Modal.vue'
 import Button from '../obsidian/Button.vue'
 import StagedSettingsBlock from './StagedSettingsBlock.vue'
 
-defineProps<{ changes: ChangeItem[]; names: Record<string, string>; questionKey?: number }>()
+defineProps<{
+  changes: ChangeItem[]
+  names: Record<string, string>
+  questionKey?: number
+  port?: TokenSettingsPort
+}>()
 
 const emit = defineEmits<{ (e: 'close', questionKey?: number): void }>()
 </script>

@@ -1,4 +1,12 @@
 <template>
+  <template v-if="ui">
+    <TokenConnectionPrompts
+      v-for="row in ui.rows.value"
+      :key="row.id"
+      :ui="ui"
+      :connection-id="row.id"
+    />
+  </template>
   <TokenDialogs
     v-if="ui && question"
     :key="question.id"
@@ -11,6 +19,7 @@
 <script setup lang="ts">
 import { computed, ref, watch } from 'vue'
 import TokenDialogs from './TokenDialogs.vue'
+import TokenConnectionPrompts from './TokenConnectionPrompts.vue'
 import { tokenUi } from '@/sync/tokenUi'
 const ui = tokenUi
 const deferred = ref(new Set<string>())

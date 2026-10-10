@@ -83,14 +83,14 @@ import { reasonOf } from '@/sync/format'
 /** How many paths are listed; the rest are counted. */
 const LISTED = 20
 
-const props = defineProps<{ held: HeldDelete[] }>()
+const props = defineProps<{ held: HeldDelete[]; port?: TokenSettingsPort }>()
 
 const emit = defineEmits<{
   /** A decision was taken and handed to sync; what came of it has been said. */
   (e: 'decided'): void
 }>()
 
-const sync = TokenSettingsPort.getInstance()
+const sync = props.port ?? TokenSettingsPort.getInstance()
 
 const busy = ref(false)
 const confirming = ref(false)

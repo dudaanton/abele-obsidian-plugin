@@ -1,5 +1,9 @@
 import { expect, it, vi } from 'vitest'
 import { SyncDriver } from '../e2e/helpers/syncDriver'
+vi.mock('../e2e/helpers/syncDiagnostics', () => ({
+  SYNC_SNAPSHOT: '',
+  captureSyncFailure: () => '{"engine":"syncing","holds":60,"screenshot":"sample.png"}',
+}))
 vi.mock('../e2e/helpers/syncVault', () => ({
   waitFor: async (_label: string, check: () => unknown) => check(),
 }))
@@ -11,6 +15,19 @@ it('identifies the failed connection and its safe product reason instead of a ge
       }) as never
   )
   await expect(driver.waitIdle()).rejects.toThrow('connection-one: The server is full.')
+})
+it('captures a private action launch failure without printing its private eval error', async () => {
+  const driver = new SyncDriver(
+    () =>
+      ({
+        evalAwait: vi.fn(),
+        evalAwaitPrivate: () => {
+          throw new Error('PRIVATE-TOKEN')
+        },
+      }) as never
+  )
+  await expect(driver.long('connect', 'private body', true)).rejects.toThrow('sample.png')
+  await expect(driver.long('connect', 'private body', true)).rejects.not.toThrow('PRIVATE-TOKEN')
 })
 it('reports the connection state after a confidential connect fails without exposing the pasted token', async () => {
   const driver = new SyncDriver(() => ({}) as never)

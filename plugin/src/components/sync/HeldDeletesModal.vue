@@ -1,6 +1,6 @@
 <template>
   <ObsidianModal title="Deletions held back" size="tall" @close="emit('close')">
-    <HeldDeletesBlock :held="held" @decided="emit('close')">
+    <HeldDeletesBlock :held="held" :port="port" @decided="emit('close')">
       <template #actions="{ busy }">
         <Button
           text="Decide later"
@@ -20,11 +20,12 @@
  * question stays on the Sync tab for as long as they are.
  */
 import type { HeldDelete } from '@abele/sync-core'
+import type { TokenSettingsPort } from '@/sync/tokenSettingsPort'
 import ObsidianModal from '../obsidian/Modal.vue'
 import Button from '../obsidian/Button.vue'
 import HeldDeletesBlock from './HeldDeletesBlock.vue'
 
-defineProps<{ held: HeldDelete[] }>()
+defineProps<{ held: HeldDelete[]; port?: TokenSettingsPort }>()
 
 const emit = defineEmits<{ (e: 'close'): void }>()
 </script>
