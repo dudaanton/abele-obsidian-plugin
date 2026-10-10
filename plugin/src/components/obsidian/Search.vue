@@ -1,5 +1,9 @@
 <template>
-  <div ref="el" class="abele-obsidian-search" />
+  <div
+    ref="el"
+    class="abele-obsidian-search"
+    :class="{ 'abele-obsidian-search_disabled': disabled, 'abele-obsidian-search_filled': !!modelValue }"
+  />
 </template>
 
 <script setup lang="ts">
@@ -31,6 +35,10 @@ const initSearch = () => {
     search.value = undefined
   }
   search.value = new SearchComponent(el.value)
+  // Obsidian builds the parts; the names are ours, so a snippet can reach each one.
+  search.value.inputEl.parentElement?.classList.add('abele-obsidian-search__container')
+  search.value.inputEl.classList.add('abele-obsidian-search__base')
+  search.value.clearButtonEl.classList.add('abele-obsidian-search__clear')
   // A field with nothing to suggest is still a field: a script's plain search box has none.
   if (props.suggester) new props.suggester(GlobalStore.getInstance().app, search.value.inputEl)
   else if (props.makeSuggest) props.makeSuggest(search.value.inputEl)
@@ -74,3 +82,10 @@ const emit = defineEmits<{
   (e: 'update:model-value', value: string): void
 }>()
 </script>
+
+<style>
+/* A field that takes no input offers nothing to clear. */
+.abele-obsidian-search_disabled .abele-obsidian-search__clear {
+  display: none;
+}
+</style>

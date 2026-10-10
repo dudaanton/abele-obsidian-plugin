@@ -623,11 +623,19 @@ export class DropdownComponent {
 
 export class SearchComponent {
   inputEl: HTMLInputElement
+  clearButtonEl: HTMLElement
 
+  // Built as Obsidian builds it: the field and its clear button inside a search container.
   constructor(containerEl: HTMLElement) {
-    this.inputEl = containerEl.ownerDocument.createElement('input')
+    const doc = containerEl.ownerDocument
+    const container = doc.createElement('div')
+    container.className = 'search-input-container'
+    this.inputEl = doc.createElement('input')
     this.inputEl.type = 'search'
-    containerEl.appendChild(this.inputEl)
+    this.clearButtonEl = doc.createElement('div')
+    this.clearButtonEl.className = 'search-input-clear-button'
+    container.append(this.inputEl, this.clearButtonEl)
+    containerEl.appendChild(container)
   }
 
   getValue(): string {
