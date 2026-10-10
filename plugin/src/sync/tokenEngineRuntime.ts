@@ -81,17 +81,21 @@ export class TokenEngineRuntime implements ConnectionRuntime, TokenUiRuntime {
   private readonly outbox: TokenAssetOutbox
   private active = true
   private readonly requests = new AbortController()
-  private readonly transportObservers = new Set<(path: string, active: boolean) => void>()
-  observeTransport(listener: (path: string, active: boolean) => void): () => void {
+  private readonly transportObservers = new Set<
+    (path: string, active: boolean, successful?: boolean) => void
+  >()
+  observeTransport(
+    listener: (path: string, active: boolean, successful?: boolean) => void
+  ): () => void {
     this.transportObservers.add(listener)
     return () => {
       this.transportObservers.delete(listener)
     }
   }
-  private observeRequest(path: string, active: boolean): void {
+  private observeRequest(path: string, active: boolean, successful?: boolean): void {
     for (const listener of this.transportObservers) {
       try {
-        listener(path, active)
+        listener(path, active, successful)
       } catch {
         /* Diagnostics cannot affect an exchange. */
       }
@@ -119,6 +123,7 @@ export class TokenEngineRuntime implements ConnectionRuntime, TokenUiRuntime {
         async () => {
           this.assertHeld()
           let response: Response
+          let successful = false
           const path = new URL(
             typeof input === 'string' ? input : input instanceof URL ? input.href : input.url
           ).pathname
@@ -132,6 +137,7 @@ export class TokenEngineRuntime implements ConnectionRuntime, TokenUiRuntime {
           }
           try {
             response = await options.fetch(input, { ...init, signal: request.signal })
+            successful = response.ok
           } catch (error) {
             const native = nativeSyncFailure(error)
             if (native) {
@@ -139,7 +145,7 @@ export class TokenEngineRuntime implements ConnectionRuntime, TokenUiRuntime {
             }
             throw error
           } finally {
-            this.observeRequest(path, false)
+            this.observeRequest(path, false, successful)
             callerSignal?.removeEventListener('abort', abort)
             this.requests.signal.removeEventListener('abort', abort)
           }

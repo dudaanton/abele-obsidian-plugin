@@ -17,12 +17,21 @@ export function installFixtureHttpTrace(write, closeConnections = false) {
       const startedAt = Date.now()
       // Never record authorization, query strings, body bytes, or user-selected paths.
       const path = (request.url ?? '').split('?')[0]
-      const route =
-        path === '/v2/connection' || path === '/v2/commit' || path === '/healthz'
-          ? path
-          : path.startsWith('/v2/uploads/')
-            ? '/v2/uploads/:id'
-            : '/other'
+      const route = [
+        '/v2/connection',
+        '/v2/commit',
+        '/v2/changes',
+        '/v2/manifest',
+        '/healthz',
+      ].includes(path)
+        ? path
+        : path.startsWith('/v2/uploads/')
+          ? '/v2/uploads/:id'
+          : /^\/v2\/files\/[^/]+\/external\/verify$/.test(path)
+            ? '/v2/files/:id/external/verify'
+            : /^\/v2\/files\/[^/]+\/content$/.test(path)
+              ? '/v2/files/:id/content'
+              : '/other'
       const base = {
         connection,
         port: request.socket.localPort,
@@ -38,6 +47,7 @@ export function installFixtureHttpTrace(write, closeConnections = false) {
           ...base,
           event: 'finish',
           status: response.statusCode,
+          connectionClose: String(response.getHeader('Connection')).toLowerCase() === 'close',
           declaredBytes,
           bodyComplete: request.complete,
           durationMs: Date.now() - startedAt,

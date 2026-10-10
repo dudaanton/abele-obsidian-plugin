@@ -1,7 +1,26 @@
 import { expect, it, vi } from 'vitest'
 import { tokenSyncProbe } from '@/testing/tokenSyncProbe'
+it('waits for transient first-contact failures to recover before reporting fixture readiness', async () => {
+  vi.useFakeTimers()
+  try {
+    const sync = vi
+      .fn()
+      .mockRejectedValueOnce(Object.assign(new Error('Sync interrupted'), { code: 'offline' }))
+      .mockResolvedValue(undefined)
+    const probe = tokenSyncProbe(
+      { observeTransport: () => () => {}, sync, client: {}, engine: {} } as never,
+      () => {}
+    )
+    const result = probe.sync().catch((error) => error)
+    await vi.advanceTimersByTimeAsync(2000)
+    expect(await result).toBeUndefined()
+    expect(sync).toHaveBeenCalledTimes(2)
+  } finally {
+    vi.useRealTimers()
+  }
+})
 it('observes real transport counts without private options and releases its observer', () => {
-  let notify!: (path: string, active: boolean) => void
+  let notify!: (path: string, active: boolean, successful?: boolean) => void
   const stop = vi.fn()
   const runtime = {
     observeTransport: (listener: typeof notify) => {
@@ -14,7 +33,10 @@ it('observes real transport counts without private options and releases its obse
   }
   const probe = tokenSyncProbe(runtime as never, () => {})
   notify('/v2/files/sample/external/verify', true)
-  notify('/v2/files/sample/external/verify', false)
+  notify('/v2/files/sample/external/verify', false, false)
+  expect(probe.stats().verificationCount).toBe(0)
+  notify('/v2/files/sample/external/verify', true)
+  notify('/v2/files/sample/external/verify', false, true)
   notify('/v2/files/sample/content', true)
   notify('/v2/files/sample/content', false)
   expect(probe.stats()).toEqual({ verificationCount: 1, downloadCount: 1, peakDownloads: 1 })

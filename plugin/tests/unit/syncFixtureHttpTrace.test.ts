@@ -47,9 +47,41 @@ it('records server arrivals and finishes without credentials and prevents phone 
       declaredBytes: 12,
       bodyComplete: true,
       status: 200,
+      connectionClose: true,
     })
   } finally {
     agent.destroy()
+    await new Promise<void>((resolve) => server.close(() => resolve()))
+    restore()
+  }
+})
+
+it('identifies hydration and ranged content routes without recording file identities', async () => {
+  const entries: Record<string, unknown>[] = []
+  const restore = installFixtureHttpTrace(
+    (entry: Record<string, unknown>) => entries.push(entry),
+    true
+  )
+  const server = createServer((_incoming, outgoing) => outgoing.end('ok'))
+  await new Promise<void>((resolve) => server.listen(0, '127.0.0.1', resolve))
+  const port = (server.address() as import('node:net').AddressInfo).port
+  try {
+    for (const route of [
+      '/v2/files/private-id/external/verify',
+      '/v2/files/private-id/content',
+      '/v2/changes',
+    ]) {
+      const response = await globalThis.fetch(`http://127.0.0.1:${port}${route}`)
+      await response.text()
+      expect(response.headers.get('connection')).toBe('close')
+    }
+    expect(entries.filter((one) => one.event === 'arrival').map((one) => one.route)).toEqual([
+      '/v2/files/:id/external/verify',
+      '/v2/files/:id/content',
+      '/v2/changes',
+    ])
+    expect(JSON.stringify(entries)).not.toContain('private-id')
+  } finally {
     await new Promise<void>((resolve) => server.close(() => resolve()))
     restore()
   }

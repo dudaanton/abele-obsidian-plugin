@@ -4,6 +4,7 @@ import { beforeEach, afterEach, describe, expect, it } from 'vitest'
 import { TokenSyncLive } from './helpers/tokenSyncLive'
 import { fixtureFetch } from './helpers/syncServer'
 import { onPhone, targets } from './helpers/target'
+import { allowFixtureAttachment } from './helpers/externalAttachmentFixture'
 
 targets('desktop', 'phone')
 const TIMEOUT = 600000
@@ -43,6 +44,10 @@ async function attachment(folderToken = false, size = 26) {
     : live.server.rootToken
   const id = await live.connect(live.primary, encoded)
   await live.primary.pause(id, true)
+  await live.primary.long(
+    'allow fixture attachment size',
+    `await (${allowFixtureAttachment.toString()})(svc,${JSON.stringify(id)},${size})`
+  )
   const bytes = new Uint8Array(size).fill(90)
   const sha = await sha256(bytes)
   await live.client().putBlob(sha, bytes)

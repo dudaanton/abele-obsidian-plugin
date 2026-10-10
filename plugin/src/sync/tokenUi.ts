@@ -482,7 +482,10 @@ export class TokenUi {
     await this.connectionChangeGuard(id)
     this.runtimes.get(id)?.assertCurrent?.()
     const current = this.registry.records().find((one) => one.id === id)
-    if (JSON.stringify(current) !== JSON.stringify(record))
+    // Exchange status can change while materializing; authority and policy must not.
+    const identity = (one: typeof record | undefined) =>
+      one && { ...one, status: 'exchange-status' }
+    if (JSON.stringify(identity(current)) !== JSON.stringify(identity(record)))
       throw new Error('Connection changed while disconnecting')
     this.registry.beginForget(id)
     this.refresh()

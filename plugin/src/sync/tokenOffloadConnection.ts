@@ -9,6 +9,7 @@ import type { ConnectionBinding } from './external/records'
 import type { RuntimeFence } from './external/recovery'
 import type { IndexedDbStateStore } from './IndexedDbStateStore'
 import type { TokenOffloadCoordinator } from './tokenOffloadCoordinator'
+import { retryTransientOperation } from './transientOperation'
 
 /** Composition of the existing durable external-file state machine with token authority. */
 export async function tokenOffloadConnection(input: {
@@ -94,14 +95,22 @@ export async function tokenOffloadConnection(input: {
     includes: (path) => input.includes(path),
     assertOwned: () => fence.assertReady(),
     verify: async (head) => {
-      await input.client().verifyExternalFile(head.fileId, {
-        version_id: head.versionId,
-        path: head.wirePath,
-        sha: head.sha,
-        size: head.size,
-      })
+      await retryTransientOperation(
+        () =>
+          input.client().verifyExternalFile(head.fileId, {
+            version_id: head.versionId,
+            path: head.wirePath,
+            sha: head.sha,
+            size: head.size,
+          }),
+        () => fence.assertReady()
+      )
     },
-    download: (head) => input.client().versionBytes(head.fileId, head.versionId),
+    download: (head) =>
+      retryTransientOperation(
+        () => input.client().versionBytes(head.fileId, head.versionId),
+        () => fence.assertReady()
+      ),
   })
   const store = async () => {
     fence.assertReady()
@@ -126,7 +135,11 @@ export async function tokenOffloadConnection(input: {
         assertOwned: () => fence.assertReady(),
         sync: () => input.sync(),
         scriptsFolder: () => input.scriptsFolder(),
-        verify: (id, request) => input.client().verifyExternalFile(id, request),
+        verify: (id, request) =>
+          retryTransientOperation(
+            () => input.client().verifyExternalFile(id, request),
+            () => fence.assertReady()
+          ),
         authorizeHydration: (head) => manager.authorize(head),
         download: async (id, version, sha) => {
           const head = await state.byFileId(id)

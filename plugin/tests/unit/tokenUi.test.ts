@@ -66,6 +66,26 @@ const secondToken = encodeAccessToken({
   key: 'b'.repeat(43),
   scope: { kind: 'folder', id: 'root', path: '/' },
 })
+it('materializes before departure despite concurrent exchange status updates', async () => {
+  const { ui, registry } = setup()
+  await ui.connect(token)
+  const id = registry.records()[0].id
+  ui.connectionChangeGuard = async () => {
+    registry.setStatus(id, 'syncing')
+  }
+  await ui.disconnect(id)
+  expect(registry.records()).toEqual([])
+})
+it('still refuses departure when the connection policy changes during materialization', async () => {
+  const { ui, registry } = setup()
+  await ui.connect(token)
+  const id = registry.records()[0].id
+  ui.connectionChangeGuard = async () => {
+    registry.setPaused(id, true)
+  }
+  await expect(ui.disconnect(id)).rejects.toThrow('Connection changed')
+  expect(registry.records()).toHaveLength(1)
+})
 it('exposes safe synchronous startup timings and status for the test hook', async () => {
   const { ui } = setup()
   await ui.connect(token)
