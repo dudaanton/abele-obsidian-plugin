@@ -1,19 +1,20 @@
 <template>
   <details
     v-if="mode !== 'full' && expandable"
-    class="abele-path-label"
+    class="abele-path-label abele-path-label_expandable"
+    :class="{ 'abele-path-label_missing': missing }"
     @toggle="opened = ($event.target as HTMLDetailsElement).open"
   >
-    <summary>
+    <summary class="abele-path-label__summary">
       <span
         ref="glyph"
-        class="collapse-icon"
+        class="collapse-icon abele-path-label__toggle"
         :class="{ 'is-collapsed': !opened }"
         aria-hidden="true"
-      />{{ compact }}
+      /><span class="abele-path-label__path">{{ compact }}</span
+      ><span v-if="missing" class="abele-path-label__state">Unavailable on this device</span>
     </summary>
     <span v-if="workspace" class="abele-path-label__workspace">Workspace: {{ workspace }}</span>
-    <span v-if="missing" class="abele-path-label__state">Unavailable on this device</span>
     <div class="abele-path-label__full">{{ path }}</div>
     <div class="abele-path-label__actions">
       <Icon v-if="copyable" icon="copy" tooltip="Copy full path" @click="emit('copy', path)" /><Icon
@@ -26,9 +27,12 @@
       />
     </div>
   </details>
-  <span v-else class="abele-path-label"
+  <span
+    v-else
+    class="abele-path-label"
+    :class="{ 'abele-path-label_missing': missing, 'abele-path-label_full': mode === 'full' }"
     ><span v-if="workspace" class="abele-path-label__workspace">Workspace: {{ workspace }}</span
-    ><span :class="{ 'abele-path-label__full': mode === 'full' }">{{
+    ><span class="abele-path-label__path" :class="{ 'abele-path-label__full': mode === 'full' }">{{
       mode === 'full' ? path : compact
     }}</span
     ><span v-if="missing" class="abele-path-label__state">Unavailable on this device</span></span
@@ -95,6 +99,13 @@ const compact = computed(() => {
 .abele-path-label__workspace,
 .abele-path-label__state {
   display: block;
+}
+/* Folded, the missing file is said on the same line as its folder, so it is seen unopened. */
+.abele-path-label > summary > .abele-path-label__state {
+  display: inline;
+}
+.abele-path-label > summary > .abele-path-label__state::before {
+  content: ' · ';
 }
 .abele-path-label__full {
   display: block;

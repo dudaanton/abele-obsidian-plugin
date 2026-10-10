@@ -1,7 +1,7 @@
 <template>
   <span v-if="present.length" class="abele-meta-line">
     <template v-for="(fact, index) in present" :key="fact.key">
-      <template v-if="index"> · </template>
+      <span v-if="index" class="abele-meta-line__separator" aria-hidden="true"> · </span>
       <span class="abele-meta-line__fact"
         ><template v-if="fact.label">{{ fact.label }}: </template>{{ fact.value }}</span
       >

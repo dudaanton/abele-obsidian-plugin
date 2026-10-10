@@ -1,22 +1,23 @@
 <template>
-  <span class="abele-relative-time">
+  <span class="abele-relative-time" :class="{ 'abele-relative-time_unknown': !formatted.datetime }">
     <time
       v-if="formatted.datetime"
+      class="abele-relative-time__label"
       :datetime="formatted.datetime"
       :aria-label="formatted.exact"
       :title="formatted.exact"
       >{{ formatted.label }}</time
     >
-    <span v-else>{{ formatted.label }}</span>
+    <span v-else class="abele-relative-time__label">{{ formatted.label }}</span>
     <details
       v-if="formatted.datetime && formatted.label !== formatted.exact"
       class="abele-relative-time__detail"
       @toggle="opened = ($event.target as HTMLDetailsElement).open"
     >
-      <summary>
+      <summary class="abele-relative-time__summary">
         <span
           ref="glyph"
-          class="collapse-icon"
+          class="collapse-icon abele-relative-time__toggle"
           :class="{ 'is-collapsed': !opened }"
           aria-hidden="true"
         />Exact time

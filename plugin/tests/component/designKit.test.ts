@@ -144,6 +144,51 @@ describe('PathLabel', () => {
     expect(remote.text()).toContain('Unavailable')
   })
 })
+describe('PathLabel parts', () => {
+  it('names its parts and says when the file is missing', () => {
+    const folded = mount(PathLabel, { props: { path: 'Projects/Report.md', missing: true } })
+    expect(folded.classes()).toEqual(
+      expect.arrayContaining(['abele-path-label_expandable', 'abele-path-label_missing'])
+    )
+    expect(folded.find('.abele-path-label__summary .abele-path-label__toggle').exists()).toBe(true)
+    // Said on the folded line, not only once it is opened.
+    expect(folded.get('.abele-path-label__summary .abele-path-label__state').text()).toBe(
+      'Unavailable on this device'
+    )
+
+    const full = mount(PathLabel, { props: { path: 'Projects/Report.md', mode: 'full' } })
+    expect(full.classes()).toContain('abele-path-label_full')
+    expect(full.get('.abele-path-label__path').text()).toBe('Projects/Report.md')
+  })
+})
+describe('MetaLine and RelativeTime parts', () => {
+  it('names the separator between facts and keeps it from a screen reader', () => {
+    const view = mount(MetaLine, {
+      props: {
+        facts: [
+          { key: '0', value: 'a' },
+          { key: '1', value: 'b' },
+        ],
+      },
+    })
+    const separator = view.get('.abele-meta-line__separator')
+    expect(separator.attributes('aria-hidden')).toBe('true')
+    expect(view.text()).toBe('a · b')
+  })
+
+  it('names the label of a time and marks one it cannot read', () => {
+    const known = mount(RelativeTime, {
+      props: {
+        value: '2026-10-08T09:15:00Z',
+        now: new Date('2026-10-09T12:00:00Z'),
+        timeZone: 'UTC',
+      },
+    })
+    expect(known.get('time').classes()).toContain('abele-relative-time__label')
+    const unknown = mount(RelativeTime, { props: { value: null } })
+    expect(unknown.classes()).toContain('abele-relative-time_unknown')
+  })
+})
 describe('Disclosure', () => {
   it('requests expansion without opening an object or losing controlled state', async () => {
     const view = mount(Disclosure, {
