@@ -13,7 +13,7 @@ const probe = vi.hoisted(() => ({
     'icon-picker': 'sibling-overlap',
     confirm: 'sibling-overlap',
   } as Record<string, string>,
-  measurements: [] as { page: string; rules: unknown }[],
+  measurements: [] as { page: string; capture: unknown; rules: unknown }[],
 }))
 // Inject synthetic outstanding debt into the real registration path. The live catalogue
 // is clean, but capture errors, missing native references and unexpected BUG passes remain red.
@@ -26,15 +26,21 @@ vi.mock('../e2e/helpers/designCatalogueCases', async (importOriginal) => {
 vi.mock('../e2e/helpers/obsidianCli', () => ({
   evalJson: vi.fn(() => true),
   evalLong: vi.fn(async (code: string) =>
-    code.includes('openDesignCatalogue(') ? 'opened' : 'closed'
+    code.includes("return 'ready'")
+      ? 'ready'
+      : code.includes("return 'restored'")
+        ? 'restored'
+        : code.includes('openDesignCatalogue(')
+          ? 'opened'
+          : 'closed'
   ),
 }))
 vi.mock('../e2e/helpers/shots', () => ({ shotDir: () => 'fixture-evidence' }))
 vi.mock('../e2e/helpers/designLint', () => ({
   measureDesign: vi.fn(
-    async (_selector: string, directory: string, _capture: unknown, rules: unknown) => {
+    async (_selector: string, directory: string, capture: unknown, rules: unknown) => {
       const page = directory.split(/[\\/]/).at(-1)!
-      probe.measurements.push({ page, rules })
+      probe.measurements.push({ page, capture, rules })
       if (process.env.DESIGN_GATE_PROBE === 'capture-error' && page === 'states')
         throw new Error('Probe capture failed')
       const rule =
@@ -49,7 +55,7 @@ vi.mock('../e2e/helpers/designLint', () => ({
           native:
             process.env.DESIGN_GATE_PROBE === 'missing-reference'
               ? undefined
-              : { metrics: { padding: [4, 8, 4, 8] } },
+              : { kind: 'search-result', metrics: { padding: [4, 8, 4, 8] } },
         },
         violations: rule
           ? [{ rule, message: 'Synthetic measured violation', elements: ['fixture'], boxes: [] }]
@@ -66,6 +72,15 @@ it('measures all catalogue pages with the unchanged native-reference requirement
   expect(probe.measurements).toHaveLength(17)
   expect(
     probe.measurements.every((m) => JSON.stringify(m.rules) === '{"requireNative":true}')
+  ).toBe(true)
+  expect(
+    probe.measurements.every(
+      (m) =>
+        JSON.stringify(m.capture) ===
+        JSON.stringify({
+          nativeSelector: '[data-design-lint-reference] .backlink-pane .tree-item-self',
+        })
+    )
   ).toBe(true)
   expect(
     probe.measurements
