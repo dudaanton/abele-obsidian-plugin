@@ -64,63 +64,71 @@ export function liveCase(
   body: () => Promise<void>,
   fixture: () => TokenSyncLive
 ): void {
-  it(
-    name,
-    async () => {
-      const platform = onPhone() ? 'iPhone' : 'Mac',
-        key = caseKey(file, name),
-        output = evidenceDirectory(),
-        artifact = join(output, key + '-' + platform + '.png')
-      mkdirSync(output, { recursive: true })
-      let error: unknown
-      try {
-        const before = expect.getState().assertionCalls
-        await body()
-        if (expect.getState().assertionCalls === before)
-          throw new Error('Live case supplied no behavioral assertions')
-      } catch (one) {
-        error = one
-        for (const device of [fixture().primary, fixture().peer].filter(Boolean))
-          console.error(
-            device!.failure('live case failed', new Error('Inspect captured sync state')).message
-          )
-      }
-      try {
-        if (onPhone()) driver(['shot', artifact])
-        else
-          fixture().primary.run(
-            `const fs=require('fs'); const win=require('@electron/remote').getCurrentWindow(); fs.writeFileSync(${JSON.stringify(artifact)},(await win.webContents.capturePage()).toPNG());return true`
-          )
-      } catch (one) {
-        error ||= one
-      }
-      // A cleanup failure is a failed scenario, never verified evidence.
-      try {
-        await fixture().close()
-      } catch (one) {
-        error = error ? new AggregateError([error, one], 'Live case and cleanup failed') : one
-      }
-      for (const scenario of scenarios)
-        writeFileSync(
-          join(output, String(scenario).padStart(3, '0') + '-' + platform + '-' + key + '.json'),
-          JSON.stringify(
-            {
-              scenario: String(scenario).padStart(3, '0'),
-              platform,
-              driver: onPhone() ? 'physical-phone' : 'desktop',
-              case: { file, name },
-              runId: process.env.ABELE_SYNC_EVIDENCE_RUN || null,
-              status: error ? 'failed' : 'verified',
-              checks: [{ name, expected: true, actual: !error }],
-              artifacts: [artifact],
-              recordedAt: new Date().toISOString(),
-            },
-            null,
-            2
-          ) + '\n'
-        )
-      if (error) throw error
-    },
-    180000
-  )
+  it(name, () => runLiveCase(file, name, scenarios, body, fixture), 180000)
+}
+export async function runLiveCase(
+  file: string,
+  name: string,
+  scenarios: number[],
+  body: () => Promise<void>,
+  fixture: () => TokenSyncLive
+): Promise<void> {
+  // Vitest timeouts do not cancel the body. Never resolve a mutable suite getter
+  // after awaiting it: the next case may already own that getter's current fixture.
+  const current = fixture()
+  const platform = onPhone() ? 'iPhone' : 'Mac',
+    key = caseKey(file, name),
+    output = evidenceDirectory(),
+    artifact = join(output, key + '-' + platform + '.png')
+  mkdirSync(output, { recursive: true })
+  let error: unknown
+  try {
+    const before = expect.getState().assertionCalls
+    await body()
+    if (current.primary.ended || current.peer?.ended)
+      throw new Error('Live case ended before evidence was recorded')
+    if (expect.getState().assertionCalls === before)
+      throw new Error('Live case supplied no behavioral assertions')
+  } catch (one) {
+    error = one
+    for (const device of [current.primary, current.peer].filter(Boolean))
+      console.error(
+        device!.failure('live case failed', new Error('Inspect captured sync state')).message
+      )
+  }
+  try {
+    if (onPhone()) driver(['shot', artifact])
+    else
+      current.primary.run(
+        `const fs=require('fs'); const win=require('@electron/remote').getCurrentWindow(); fs.writeFileSync(${JSON.stringify(artifact)},(await win.webContents.capturePage()).toPNG());return true`
+      )
+  } catch (one) {
+    error ||= one
+  }
+  // A cleanup failure is a failed scenario, never verified evidence.
+  try {
+    await current.close()
+  } catch (one) {
+    error = error ? new AggregateError([error, one], 'Live case and cleanup failed') : one
+  }
+  for (const scenario of scenarios)
+    writeFileSync(
+      join(output, String(scenario).padStart(3, '0') + '-' + platform + '-' + key + '.json'),
+      JSON.stringify(
+        {
+          scenario: String(scenario).padStart(3, '0'),
+          platform,
+          driver: onPhone() ? 'physical-phone' : 'desktop',
+          case: { file, name },
+          runId: process.env.ABELE_SYNC_EVIDENCE_RUN || null,
+          status: error ? 'failed' : 'verified',
+          checks: [{ name, expected: true, actual: !error }],
+          artifacts: [artifact],
+          recordedAt: new Date().toISOString(),
+        },
+        null,
+        2
+      ) + '\n'
+    )
+  if (error) throw error
 }

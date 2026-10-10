@@ -27,6 +27,7 @@ export class TokenSyncLive {
   private readonly saved = new Map<SyncDriver, { ignore: string | null; file: string | null }>()
   private readonly reverses: (() => void)[] = []
   private work = ''
+  private closing?: Promise<void>
   constructor(peer = true) {
     const name = onPhone() ? PHONE_VAULT : process.env.OBSIDIAN_TEST_VAULT
     if (!name) throw new Error('An exclusively leased primary pool vault is required')
@@ -175,8 +176,12 @@ export class TokenSyncLive {
     if (result.body.results.some((one) => one.status === 'rejected'))
       throw new Error('Remote fixture commit was rejected')
   }
-  async close(): Promise<void> {
+  close(): Promise<void> {
+    return (this.closing ??= this.closeOwned())
+  }
+  private async closeOwned(): Promise<void> {
     const failures: unknown[] = []
+    for (const device of this.saved.keys()) device.retire()
     for (const [device, saved] of [...this.saved].reverse()) {
       try {
         await device.resetTokenState()
@@ -198,13 +203,14 @@ export class TokenSyncLive {
       }
       try {
         // Fixture files are the only notes this case owns. Reset itself never touches files.
-        device.remove([this.root])
+        device.remove([this.root], true)
       } catch (error) {
         failures.push(error)
       }
       try {
         device.run(
-          `if(${JSON.stringify(saved.ignore)}===null){if(await app.vault.adapter.exists('.abele-sync-ignore'))await app.vault.adapter.remove('.abele-sync-ignore')}else await app.vault.adapter.write('.abele-sync-ignore',${JSON.stringify(saved.ignore)});const old=${JSON.stringify(saved.file)};if(old&&app.vault.getFileByPath(old))await app.workspace.getLeaf(false).openFile(app.vault.getFileByPath(old));app.setting.close();return true`
+          `if(${JSON.stringify(saved.ignore)}===null){if(await app.vault.adapter.exists('.abele-sync-ignore'))await app.vault.adapter.remove('.abele-sync-ignore')}else await app.vault.adapter.write('.abele-sync-ignore',${JSON.stringify(saved.ignore)});const old=${JSON.stringify(saved.file)};if(old&&app.vault.getFileByPath(old))await app.workspace.getLeaf(false).openFile(app.vault.getFileByPath(old));app.setting.close();return true`,
+          true
         )
       } catch (error) {
         failures.push(error)
@@ -212,7 +218,8 @@ export class TokenSyncLive {
         try {
           if (!onPhone())
             device.run(
-              `for(const key of ['hidden','visibilityState']){const prior=window.__abeleSyncVisibility?.[key];if(prior)Object.defineProperty(document,key,prior);else delete document[key]}delete window.__abeleSyncVisibility;document.dispatchEvent(new Event('visibilitychange'));return true`
+              `for(const key of ['hidden','visibilityState']){const prior=window.__abeleSyncVisibility?.[key];if(prior)Object.defineProperty(document,key,prior);else delete document[key]}delete window.__abeleSyncVisibility;document.dispatchEvent(new Event('visibilitychange'));return true`,
+              true
             )
         } catch (error) {
           failures.push(error)

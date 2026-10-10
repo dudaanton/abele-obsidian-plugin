@@ -8,6 +8,29 @@ vi.mock('../e2e/helpers/phone', () => ({ PHONE_VAULT: 'phone', exposeToPhone: vi
 vi.mock('../e2e/helpers/target', () => ({ onPhone: () => false }))
 afterEach(() => vi.unstubAllEnvs())
 
+it('shares one teardown when a timeout hook and its late body both close the same fixture', async () => {
+  vi.stubEnv('OBSIDIAN_TEST_VAULT', 'primary-pool')
+  const live = new TokenSyncLive(false)
+  let release!: () => void
+  const waiting = new Promise<void>((resolve) => {
+    release = resolve
+  })
+  const reset = vi.spyOn(live.primary, 'resetTokenState').mockImplementation(async () => {
+    await waiting
+  })
+  vi.spyOn(live.primary, 'remove').mockImplementation(() => {})
+  vi.spyOn(live.primary, 'run').mockReturnValue(true)
+  const saved = (
+    live as unknown as { saved: Map<typeof live.primary, { ignore: null; file: null }> }
+  ).saved
+  saved.set(live.primary, { ignore: null, file: null })
+  const first = live.close(),
+    second = live.close()
+  release()
+  await Promise.all([first, second])
+  expect(reset).toHaveBeenCalledOnce()
+})
+
 it('attempts both pool resets and restores each pool even when the first reset fails', async () => {
   vi.stubEnv('OBSIDIAN_TEST_VAULT', 'primary-pool')
   vi.stubEnv('ABELE_SYNC_PEER_VAULT', 'peer-pool')
@@ -34,7 +57,7 @@ it('attempts both pool resets and restores each pool even when the first reset f
   expect(forced[0]).not.toHaveBeenCalled()
   for (let index = 0; index < devices.length; index++) {
     expect(resets[index]).toHaveBeenCalledOnce()
-    expect(removals[index]).toHaveBeenCalledWith([live.root])
+    expect(removals[index]).toHaveBeenCalledWith([live.root], true)
     expect(restorations[index].mock.calls.some(([body]) => body.includes('existing ignore'))).toBe(
       true
     )
@@ -76,6 +99,6 @@ it('reports both cleanup failures while still restoring the lease', async () => 
   ).saved
   saved.set(live.primary, { ignore: 'original ignore', file: null })
   await expect(live.close()).rejects.toThrow('polite blocked; guarded recovery required')
-  expect(remove).toHaveBeenCalledWith([live.root])
+  expect(remove).toHaveBeenCalledWith([live.root], true)
   expect(restore.mock.calls.some(([body]) => body.includes('original ignore'))).toBe(true)
 })

@@ -93,8 +93,19 @@ liveCase(
     await s.connect(b)
     for (const path of paths) a.create(path, 'queued restore content')
     await s.cycle()
-    a.remove(paths)
+    const targets = (await s.items()).filter((one) => paths.includes(one.path))
+    expect(targets).toHaveLength(2)
+    // This case exercises the UI restore queue. Seed actual trash explicitly;
+    // local deletion and its safety hold are exercised in the other cases.
+    await s.commit(
+      targets.map((one) => ({
+        op: 'delete',
+        file_id: one.file_id,
+        base_version_id: one.version_id,
+      }))
+    )
     await s.cycle()
+    expect((await s.client().trash()).filter((one) => paths.includes(one.path))).toHaveLength(2)
     await a.trash()
     a.run(
       `const client=svc.runtimes.get(${JSON.stringify(id)}).historyClient;window.__abeleRestoreRelease=(${holdRestore.toString()})(client);const box=inWindows('.abele-deleted-files');const row=path=>[...box.querySelectorAll('.abele-card')].find(one=>textOf(one.querySelector('.abele-card__name'))===path);await press(()=>row(${JSON.stringify(paths[0])}),'Restore');await press(()=>row(${JSON.stringify(paths[1])}),'Restore');return true`

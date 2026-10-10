@@ -162,10 +162,9 @@ liveCase(
   [83, 103],
   async () => {
     const s = fixture(),
-      a = s.primary,
       b = s.peer!,
       path = '.obsidian/hotkeys.json',
-      devices = [a, b]
+      devices = [b]
     const saved = devices.map((one) => one.read(path))
     const incoming = JSON.stringify({ 'editor:toggle-bold': [{ modifiers: ['Mod'], key: 'B' }] })
     const local = JSON.stringify({ 'editor:toggle-italic': [{ modifiers: ['Mod'], key: 'I' }] })
@@ -174,14 +173,14 @@ liveCase(
         device.run(
           `await app.vault.adapter.write('.abele-sync-ignore',${JSON.stringify(syncFixtureRules(s.root, [path]))});return true`
         )
-      a.run(
-        `await app.vault.adapter.write(${JSON.stringify(path)},${JSON.stringify(incoming)});return true`
-      )
       b.run(
         `await app.vault.adapter.write(${JSON.stringify(path)},${JSON.stringify(local)});return true`
       )
-      await s.connect()
       await s.connect(b)
+      // Deliver a new server version after the receiver owns its baseline. This
+      // isolates settings review from first-contact races between two live writers.
+      await s.put(path, incoming)
+      await b.syncNow()
       b.run(
         `host.presentReviews();await poll(()=>inWindows('.abele-staged-settings'));await press(inWindows('.abele-staged-settings'),'Later');return true`
       )

@@ -7,6 +7,16 @@ vi.mock('../e2e/helpers/syncDiagnostics', () => ({
 vi.mock('../e2e/helpers/syncVault', () => ({
   waitFor: async (_label: string, check: () => unknown) => check(),
 }))
+it('a timed-out case cannot launch UI actions after teardown has started', async () => {
+  const evalAwait = vi.fn(),
+    evalAwaitPrivate = vi.fn()
+  const driver = new SyncDriver(() => ({ evalAwait, evalAwaitPrivate }) as never)
+  driver.retire()
+  await expect(driver.long('connect', 'private token', true)).rejects.toThrow('case has ended')
+  expect(() => driver.run('create another connection')).toThrow('case has ended')
+  expect(evalAwait).not.toHaveBeenCalled()
+  expect(evalAwaitPrivate).not.toHaveBeenCalled()
+})
 it('identifies the failed connection and its safe product reason instead of a generic attention message', async () => {
   const driver = new SyncDriver(
     () =>

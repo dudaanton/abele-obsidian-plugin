@@ -28,8 +28,19 @@ export interface SyncStatus {
   error?: string
 }
 export class SyncDriver {
+  private retired = false
+  get ended(): boolean {
+    return this.retired
+  }
+  retire(): void {
+    this.retired = true
+  }
+  private assertActive(): void {
+    if (this.retired) throw new Error('Live sync case has ended; no further UI actions are allowed')
+  }
   constructor(readonly vault: () => VaultCli) {}
-  run<T>(body: string): T {
+  run<T>(body: string, cleanup = false): T {
+    if (!cleanup) this.assertActive()
     try {
       return this.vault().evalAwait<T>(`(async()=>{${SYNC_PRELUDE}\n${body}})()`)
     } catch (error) {
@@ -51,7 +62,14 @@ export class SyncDriver {
       { syncDiagnostic: observed }
     )
   }
-  async long<T>(what: string, body: string, confidential = false, timeoutMs = 90000): Promise<T> {
+  async long<T>(
+    what: string,
+    body: string,
+    confidential = false,
+    timeoutMs = 90000,
+    cleanup = false
+  ): Promise<T> {
+    if (!cleanup) this.assertActive()
     const key = '__abeleSyncJob' + Math.random().toString(36).slice(2)
     const cli = this.vault()
     const evaluate = confidential ? cli.evalAwaitPrivate.bind(cli) : cli.evalAwait.bind(cli)
@@ -63,6 +81,7 @@ export class SyncDriver {
       await waitFor(
         what,
         () => {
+          if (!cleanup) this.assertActive()
           answer = evaluate(
             `(()=>{const result=window[${JSON.stringify(key)}];if(result)delete window[${JSON.stringify(key)}];return result||null})()`
           )
@@ -70,6 +89,7 @@ export class SyncDriver {
         },
         timeoutMs
       )
+      if (!cleanup) this.assertActive()
       const result = answer as unknown as { ok: boolean; value: T; error?: string }
       if (!result.ok) throw new Error(confidential ? what + ' failed' : what + ': ' + result.error)
       return result.value
@@ -146,7 +166,8 @@ export class SyncDriver {
       'reset leased pool token state',
       `await poll(()=>Object.keys(window).filter(key=>key.startsWith('__abeleSyncJob')&&key!==jobKey).every(key=>window[key]!==null),10000,'previous sync UI jobs to settle');for(const key of Object.keys(window).filter(key=>key.startsWith('__abeleSyncJob')&&key!==jobKey))delete window[key];for(const doc of new Set([document,settingsDoc()]))for(const button of [...doc.querySelectorAll('.modal-close-button')].reverse())button.click();await window.__abeleTest.resetSyncTokenState({vault:app.vault.getName(),confirm:'reset-sync-token-state'});return true`,
       false,
-      20000
+      20000,
+      true
     )
   }
   captureTokenOwnership(): void {
@@ -159,7 +180,8 @@ export class SyncDriver {
       'guarded pool reset after polite cleanup failed',
       `await window.__abeleTest.resetSyncTokenState({vault:app.vault.getName(),confirm:'reset-sync-token-state'});for(const key of Object.keys(window).filter(key=>key.startsWith('__abeleSyncJob')&&key!==jobKey))delete window[key];for(const doc of new Set([document,settingsDoc()]))for(const button of [...doc.querySelectorAll('.modal-close-button')].reverse())button.click();return true`,
       false,
-      60000
+      60000,
+      true
     )
   }
   async share(id: string, scopeLabel: string, label = 'Sample recipient'): Promise<string> {
@@ -187,9 +209,10 @@ export class SyncDriver {
       `const file=app.vault.getAbstractFileByPath(${JSON.stringify(from)}); if(!file) throw new Error('Rename source unavailable'); const parts=${JSON.stringify(to)}.split('/').slice(0,-1); for(let i=1;i<=parts.length;i++){const dir=parts.slice(0,i).join('/'); if(!app.vault.getAbstractFileByPath(dir)) await app.vault.createFolder(dir)} await app.fileManager.renameFile(file,${JSON.stringify(to)}); return true`
     )
   }
-  remove(paths: string[]): void {
+  remove(paths: string[], cleanup = false): void {
     this.run(
-      `for(const path of ${JSON.stringify(paths)}){const file=app.vault.getAbstractFileByPath(path); if(file) await app.vault.delete(file,true)} return true`
+      `for(const path of ${JSON.stringify(paths)}){const file=app.vault.getAbstractFileByPath(path); if(file) await app.vault.delete(file,true)} return true`,
+      cleanup
     )
   }
   filesUnder(path: string): string[] {

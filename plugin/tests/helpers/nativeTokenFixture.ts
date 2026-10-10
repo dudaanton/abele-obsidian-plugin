@@ -73,7 +73,16 @@ export async function nativeTokenFixture(
   )
   host.start()
   await ui.connectionsChanged()
-  if (deps.waitForIdle !== false)
+  if (deps.waitForIdle !== false) {
+    // Runtime activation starts exchange asynchronously. Join its completion rather
+    // than treating a short polling allowance as a first-sync performance contract.
+    try {
+      await ui.sync(id)
+    } catch (error) {
+      if (!retryFirstFailure) throw error
+      retryFirstFailure = false
+      await ui.sync(id)
+    }
     await vi.waitFor(async () => {
       if (
         retryFirstFailure &&
@@ -84,6 +93,7 @@ export async function nativeTokenFixture(
       }
       expectReady()
     })
+  }
   function expectReady() {
     if (registry.records().find((one) => one.id === id)!.status !== 'idle')
       throw new Error('Waiting for first token sync')
