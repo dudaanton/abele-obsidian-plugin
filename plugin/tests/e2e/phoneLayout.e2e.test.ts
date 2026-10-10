@@ -65,6 +65,7 @@ import {
 } from './helpers/canvasPublicationReview'
 import { MESSAGE_ACTIONS_SETUP, MESSAGE_ACTIONS_CLEANUP } from './helpers/messageActions'
 import { SELECTION_PICKER_OPEN, SELECTION_PICKER_CLOSE } from './helpers/selectionScriptPicker'
+import { BINDING_SETUP, BINDING_PRELUDE, BINDING_CLEANUP } from './helpers/chatBindings'
 const CANVAS_SCREENS = ['canvas publication review', 'canvas publication confirmation']
 const WORD_SAMPLE = Buffer.from(sampleDocx()).toString('base64')
 
@@ -1884,6 +1885,43 @@ describe.skipIf(!available)('the chat dialogs on a phone', () => {
     if (size[0]) await setWindowSize(size[0], size[1])
     await setMobile(false)
   }, 120_000)
+
+  it('keeps card actions, removed links and binding-only recovery inside the phone viewport', async () => {
+    const result = JSON.parse(
+      await evalLong(
+        `(async()=>{
+      { ${BINDING_SETUP} }
+      ${BINDING_PRELUDE}
+      const wait=ms=>new Promise(resolve=>setTimeout(resolve,ms))
+      try {
+        const binding=await bindSample()
+        if(binding.status!=='applied')throw Error('Sample card was not bound: '+JSON.stringify(binding))
+        await wait(100)
+        const root=document.querySelector('.abele-chat-bindings');root.open=true
+        const states=[]
+        for(const status of ['applied','undone','known-not-written','uncertain']) {
+          owner.bindingRecoveries.value=owner.bindingRecoveries.value.map(entry=>({...entry,status,evidence:status==='uncertain'?'Sample unresolved publication.':undefined}))
+          await wait(100)
+          const boxes=[root,...root.querySelectorAll('button,.setting-item-description')].map(el=>{const r=el.getBoundingClientRect();return {left:r.left,right:r.right}})
+          const image=await require('@electron/remote').getCurrentWebContents().capturePage()
+          require('fs').writeFileSync(${JSON.stringify(SHOTS)}+'/card-binding-'+status+'.png',image.toPNG())
+          states.push({status,boxes})
+        }
+        return JSON.stringify({states})
+      } catch(error) { return JSON.stringify({error:String(error.stack||error)}) }
+      finally { ${BINDING_CLEANUP} }
+    })()`,
+        60000
+      )
+    )
+    expect(result.error).toBeUndefined()
+    expect(result.states).toHaveLength(4)
+    for (const state of result.states)
+      for (const box of state.boxes) {
+        expect(box.left, state.status).toBeGreaterThanOrEqual(0)
+        expect(box.right, state.status).toBeLessThanOrEqual(PHONE.width)
+      }
+  })
 
   const screens = [
     'chat',

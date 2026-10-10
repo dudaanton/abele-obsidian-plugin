@@ -1,6 +1,8 @@
 import { existsSync, mkdirSync, readFileSync, unlinkSync, writeFileSync } from 'node:fs'
 import { resolve, join } from 'node:path'
 import { evalLong } from './obsidianCli'
+import { onPhone } from './target'
+import { screenshot as phoneScreenshot } from './phone'
 import { designCaptureExpression, type CaptureOptions } from '../../helpers/designCapture'
 import { annotateDesign } from '../../helpers/designAnnotate'
 import {
@@ -25,8 +27,10 @@ export async function measureDesign(
 ): Promise<DesignReport> {
   const directory = resolve(outDir)
   mkdirSync(directory, { recursive: true })
-  const raw = await evalLong(
-    `(async () => {
+  const raw = onPhone()
+    ? await evalLong(`JSON.stringify(${designCaptureExpression(selector, capture)})`, 30_000)
+    : await evalLong(
+        `(async () => {
     const selector = ${JSON.stringify(selector)}
     const document = globalThis.document.querySelector(selector) ? globalThis.document : app.setting?.containerEl?.ownerDocument ?? globalThis.document
     const win = document.defaultView.require('@electron/remote').getCurrentWindow()
@@ -35,10 +39,11 @@ export async function measureDesign(
     require('fs').writeFileSync(${JSON.stringify(join(directory, 'capture.png'))}, image.toPNG())
     return JSON.stringify(snapshot)
   })()`,
-    30_000
-  )
+        30_000
+      )
   if (raw.startsWith('Error:')) throw new Error(raw)
   const snapshot = JSON.parse(raw) as DesignSnapshot
+  if (onPhone()) phoneScreenshot(join(directory, 'capture.png'))
   const violations = lintDesign(snapshot, rules)
   const reportFile = join(directory, 'report.json')
   if (existsSync(reportFile)) {
@@ -62,8 +67,17 @@ export async function measureDesign(
   ]
   const report = { snapshot, violations, directory, artifacts }
   writeFileSync(reportFile, JSON.stringify(report, null, 2) + '\n')
-  const rendered = await evalLong(
-    `(async () => {
+  const rendered = onPhone()
+    ? await evalLong(
+        `(async () => {
+    const artifacts = []
+    await (${annotateDesign.toString()})(${JSON.stringify(snapshot)}, ${JSON.stringify(violations)}, ${JSON.stringify('data:image/png;base64,' + readFileSync(join(directory, 'capture.png')).toString('base64'))}, (name, data) => artifacts.push({name, data}))
+    return JSON.stringify(artifacts)
+  })()`,
+        120_000
+      )
+    : await evalLong(
+        `(async () => {
     const fs = require('fs'), path = require('path')
     const report = JSON.parse(fs.readFileSync(${JSON.stringify(join(directory, 'report.json'))}, 'utf8'))
     const png = 'data:image/png;base64,' + fs.readFileSync(${JSON.stringify(join(directory, 'capture.png'))}).toString('base64')
@@ -72,8 +86,16 @@ export async function measureDesign(
     })
     return 'rendered'
   })()`,
-    120_000
-  )
-  if (rendered !== 'rendered') throw new Error(rendered)
+        120_000
+      )
+  if (onPhone()) {
+    for (const artifact of JSON.parse(rendered) as Array<{ name: string; data: string }>) {
+      if (!artifacts.includes(artifact.name)) throw new Error('Unknown design annotation artifact')
+      writeFileSync(
+        join(directory, artifact.name),
+        Buffer.from(artifact.data.split(',')[1], 'base64')
+      )
+    }
+  } else if (rendered !== 'rendered') throw new Error(rendered)
   return report
 }

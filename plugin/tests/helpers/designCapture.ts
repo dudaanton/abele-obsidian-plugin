@@ -309,7 +309,7 @@ export function captureDesign(selector: string, options: CaptureOptions = {}): D
                 color: native.color,
               }
             : undefined,
-        environmentPadding: el.matches('.modal')
+        environmentPadding: el.matches('.modal, .menu-scroll')
           ? [
               number(s.getPropertyValue('--safe-area-inset-top')),
               0,

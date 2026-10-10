@@ -79,6 +79,13 @@ describe('renderer design capture', () => {
     expect(s.elements.find((e) => e.role === 'control')?.selector).toBe('button')
     expect(document.querySelector('#surface')?.children).toHaveLength(1)
   })
+  it('records native mobile menu safe-area padding as environment rather than a spacing token', () => {
+    fixture()
+    const root = document.querySelector<HTMLElement>('#surface')!
+    root.className = 'menu-scroll'
+    root.style.setProperty('--safe-area-inset-bottom', '34px')
+    expect(captureDesign('#surface').elements[0].environmentPadding).toEqual([0, 0, 34, 0])
+  })
   it('detects painted Unicode disclosures even when excluded from the semantic text Range', () => {
     fixture()
     const meta = document.querySelector('[data-design-level="meta"]')!
