@@ -27,6 +27,7 @@ const run = <T>(body: string): T =>
 const until = async (expression: string) => {
   await expect.poll(() => run<boolean>(`return !!(${expression})`), { timeout: 20_000 }).toBe(true)
 }
+// Leave the pointer off new notices: hovering them pauses dismissal and covers the next export action.
 const press = async (expression: string) => {
   const geometry = `const el=${expression};if(!el)return null;const r=el.getBoundingClientRect();const x=Math.round(r.left+r.width/2),y=Math.round(r.top+r.height/2);if(!r.width||!r.height||x<0||y<0||x>=innerWidth||y>=innerHeight||!el.contains(document.elementFromPoint(x,y)))return null;return[x,y]`
   await expect.poll(() => run<number[] | null>(geometry), { timeout: 15_000 }).not.toBeNull()
@@ -36,7 +37,7 @@ const press = async (expression: string) => {
     await withNativeInput(() =>
       run(`
     const cdp=require('@electron/remote').getCurrentWebContents().debugger,owned=!cdp.isAttached();if(owned)cdp.attach('1.3')
-    try{await cdp.sendCommand('Input.dispatchMouseEvent',{type:'mousePressed',x:${x},y:${y},button:'left',buttons:1,clickCount:1});await cdp.sendCommand('Input.dispatchMouseEvent',{type:'mouseReleased',x:${x},y:${y},button:'left',buttons:0,clickCount:1})}finally{if(owned)cdp.detach()}return true
+    try{await cdp.sendCommand('Input.dispatchMouseEvent',{type:'mousePressed',x:${x},y:${y},button:'left',buttons:1,clickCount:1});await cdp.sendCommand('Input.dispatchMouseEvent',{type:'mouseReleased',x:${x},y:${y},button:'left',buttons:0,clickCount:1});await cdp.sendCommand('Input.dispatchMouseEvent',{type:'mouseMoved',x:1,y:innerHeight-1,buttons:0})}finally{if(owned)cdp.detach()}return true
   `)
     )
 }
