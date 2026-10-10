@@ -1,7 +1,10 @@
 import { AccessClient } from '@abele/sync-core'
 import { decodeAccessToken } from '@abele/sync-protocol'
+import { fixtureTlsFetch, syncFixtureTls } from './syncFixtureTls'
 export const fixtureFetch: typeof fetch = (input, init) =>
-  globalThis.fetch(input, { ...init, redirect: 'manual' })
+  String(input instanceof Request ? input.url : input).startsWith('https:')
+    ? fixtureTlsFetch(input, init)
+    : globalThis.fetch(input, { ...init, redirect: 'manual' })
 /** Pinned real server, isolated storage and CLI-provisioned root tokens. */
 import { spawn, spawnSync, type ChildProcess } from 'node:child_process'
 import { randomBytes } from 'node:crypto'
@@ -46,7 +49,7 @@ const READY_MS = 30_000
 const ADMIN_MS = 45_000
 
 export interface SyncServer {
-  /** Where the server listens: `http://127.0.0.1:<port>`. */
+  /** Advertised endpoint; LAN reachable in the phone tier. */
   url: string
   /** Provisioned locally with user create; never logged. */
   rootToken: string
@@ -89,6 +92,9 @@ export async function spawnSyncServer(dir: string): Promise<SyncServer> {
     throw new SiblingUnavailableError(`${SIBLING} has no built server or admin CLI`)
   }
   const port = await freePort()
+  const network = syncFixtureNetwork(port),
+    backend = `http://127.0.0.1:${port}`,
+    tls = network.phoneHost ? await syncFixtureTls(backend, network.phoneHost) : null
   const env: NodeJS.ProcessEnv = {
     ...process.env,
     ABELE_DATABASE_URL: `sqlite://${join(dir, 'abele.db')}`,
@@ -106,13 +112,14 @@ export async function spawnSyncServer(dir: string): Promise<SyncServer> {
   child.stdout?.on('data', (chunk: Buffer) => said.push(chunk.toString()))
   child.stderr?.on('data', (chunk: Buffer) => said.push(chunk.toString()))
 
-  const url = `http://127.0.0.1:${port}`
+  const url = tls?.url ?? network.url
   let killed = false
   const kill = async (): Promise<void> => {
     if (!killed) {
       killed = true
       child.kill('SIGTERM')
       await ended(child)
+      await tls?.close()
     }
     await rm(join(dir, 'blobs'), { recursive: true, force: true })
     for (const suffix of ['', '-wal', '-shm']) {
@@ -121,7 +128,9 @@ export async function spawnSyncServer(dir: string): Promise<SyncServer> {
   }
 
   try {
-    await ready(url, child, said)
+    await ready(backend, child, said)
+    if (tls && !(await fixtureFetch(tls.url + '/healthz')).ok)
+      throw new Error('Phone fixture TLS front end is unavailable')
   } catch (error) {
     await kill()
     throw error
@@ -157,6 +166,36 @@ export async function spawnSyncServer(dir: string): Promise<SyncServer> {
       (await AccessClient.fromToken(rootToken, { fetch: fixtureFetch }).issue({ scope, label }))
         .token,
   }
+}
+
+/** Sync uses a direct LAN endpoint on a separate phone, not a driver reverse tunnel.
+ * Require an explicit reachable Mac hostname/address rather than guessing an interface. */
+export function syncFixtureNetwork(
+  port: number,
+  env = process.env
+): { url: string; phoneHost?: string } {
+  if (env.E2E_TARGET !== 'phone') return { url: `http://127.0.0.1:${port}` }
+  const host = env.ABELE_SYNC_PHONE_HOST?.trim()
+  if (!host || /[\s?#@]/.test(host) || host.includes('/') || host.includes('\\'))
+    throw new Error(
+      'ABELE_SYNC_PHONE_HOST must name this machine’s LAN hostname or address (without scheme or port)'
+    )
+  let url: URL
+  try {
+    url = new URL(`https://${host}:${port}`)
+  } catch {
+    throw new Error('ABELE_SYNC_PHONE_HOST is not a valid LAN hostname or address')
+  }
+  if (
+    url.port !== String(port) ||
+    url.hostname === 'localhost' ||
+    /^127\./.test(url.hostname) ||
+    ['0.0.0.0', '[::]', '[::1]'].includes(url.hostname)
+  )
+    throw new Error(
+      'ABELE_SYNC_PHONE_HOST must be reachable from the separate phone, not loopback or a wildcard'
+    )
+  return { phoneHost: host, url: url.origin }
 }
 
 /** Waits for `/healthz`, or for the server to die trying. */

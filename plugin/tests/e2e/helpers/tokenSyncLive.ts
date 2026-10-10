@@ -7,7 +7,7 @@ import type { CommitOp, V2ManifestItem } from '@abele/sync-protocol'
 import { vaultCli } from './obsidianCli'
 import { SyncDriver } from './syncDriver'
 import { spawnSyncServer, siblingMissing, fixtureFetch, type SyncServer } from './syncServer'
-import { exposeToPhone, PHONE_VAULT } from './phone'
+import { PHONE_VAULT } from './phone'
 import { onPhone } from './target'
 import { waitFor } from './syncVault'
 import { syncFixtureRules } from './syncFixtureRules'
@@ -25,7 +25,6 @@ export class TokenSyncLive {
   readonly servers: SyncServer[] = []
   readonly ids = new Map<SyncDriver, string[]>()
   private readonly saved = new Map<SyncDriver, { ignore: string | null; file: string | null }>()
-  private readonly reverses: (() => void)[] = []
   private work = ''
   private closing?: Promise<void>
   constructor(peer = true) {
@@ -89,10 +88,6 @@ export class TokenSyncLive {
     mkdirSync(dir)
     const server = await spawnSyncServer(dir)
     this.servers.push(server)
-    if (onPhone())
-      this.reverses.push(
-        exposeToPhone(new URL(server.url).port ? Number(new URL(server.url).port) : 80)
-      )
     return server
   }
   get server(): SyncServer {
@@ -227,13 +222,6 @@ export class TokenSyncLive {
       }
     }
     this.saved.clear()
-    for (const reverse of this.reverses.splice(0)) {
-      try {
-        reverse()
-      } catch (error) {
-        failures.push(error)
-      }
-    }
     for (const server of this.servers.splice(0))
       try {
         await server.kill()
