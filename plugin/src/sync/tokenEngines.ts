@@ -317,6 +317,7 @@ export class TokenEngines {
         engineState: offloads.state,
         engineClient: offloads.client,
         preparePlacement: (paths) => manager.prepare(paths),
+        recoverPlacement: () => ordinary.recover(),
         scopeInput: async (selective) => {
           const text = await readIgnore(this.app)
           return {
@@ -361,7 +362,7 @@ export class TokenEngines {
         record.id,
         JSON.stringify([record.address, record.spaceId, record.tokenId, record.ledgerId]),
         state,
-        (path) => runtime.covers(path),
+        (path, size) => runtime.acceptsLocal(path, size),
         () => fence.assertReady()
       )
       closeCopies = copies.close

@@ -66,10 +66,23 @@ export class EditCopies {
   /** Called with all affected path leases held, before any placement can erase the current bytes. */
   async capture(fs: FileSystem, paths: readonly string[]): Promise<void> {
     if (!this.expected.length) return
+    const batches = new Map<
+      Destination,
+      { path: string; sha: string; mtime: number; bytes: Uint8Array }[]
+    >()
+    let retainedBytes = 0
     for (const path of new Set(paths)) {
       if (path === '.abele-sync' || path.startsWith('.abele-sync/')) continue
       const before = await fs.stat(path)
       if (!before) continue
+      const destinations: Destination[] = []
+      for (const id of this.expected) {
+        const destination = this.destinations.get(id)
+        if (!destination)
+          throw new Error('Destination local edit capture is not ready; placement held')
+        if (await destination.accepts(path, before.size)) destinations.push(destination)
+      }
+      if (!destinations.length) continue
       const bytes = await fs.read(path),
         sha = await sha256(bytes),
         after = await fs.stat(path)
@@ -80,46 +93,61 @@ export class EditCopies {
         bytes.length !== after.size
       )
         throw new Error('Local edit changed during capture; placement held')
-      for (const id of this.expected) {
-        const destination = this.destinations.get(id)
-        if (!destination)
-          throw new Error('Destination local edit capture is not ready; placement held')
-        if (!(await destination.accepts(path, bytes.length))) continue
+      for (const destination of destinations) {
         const { store } = destination
         if (!store.getMeta || !store.setMeta)
           throw new Error('Durable local edit capture unavailable')
-        const preserving = destination.tail.then(() =>
-          store.transaction(async () => {
+        const base = await store.get(path)
+        if (base?.sha === sha && base.mtime === before.mtime && base.size === bytes.length) continue
+        let batch = batches.get(destination)
+        if (!batch) batches.set(destination, (batch = []))
+        batch.push({ path, sha, mtime: before.mtime, bytes })
+      }
+      if (destinations.some((destination) => batches.get(destination)?.at(-1)?.path === path)) {
+        retainedBytes += bytes.length
+        if (retainedBytes > LIMIT)
+          throw new Error('Local edit capture budget reached; placement held')
+      }
+    }
+    // One serialized durable write per destination, rather than re-encoding and
+    // revalidating the entire accumulated archive for every installed plugin file.
+    for (const [destination, batch] of batches) {
+      const { store } = destination
+      const preserving = destination.tail.then(() =>
+        store.transaction(async () => {
+          const copies = await this.list(store)
+          let size = copies.reduce((total, copy) => total + copy.bytes.length, 0),
+            changed = false
+          for (const { path, sha, mtime, bytes } of batch) {
             const base = await store.get(path)
-            if (base?.sha === sha && base.mtime === before.mtime && base.size === bytes.length)
-              return
-            const copies = await this.list(store)
+            if (base?.sha === sha && base.mtime === mtime && base.size === bytes.length) continue
             if (
               copies.some(
                 (copy) =>
                   copy.path === path &&
                   copy.sha === sha &&
-                  copy.mtime === before.mtime &&
+                  copy.mtime === mtime &&
                   copy.base?.versionId === base?.versionId
               )
             )
-              return
-            if (copies.reduce((size, copy) => size + copy.bytes.length, bytes.length) > LIMIT)
-              throw new Error('Local edit capture budget reached; placement held')
+              continue
+            size += bytes.length
+            if (size > LIMIT) throw new Error('Local edit capture budget reached; placement held')
             copies.push({
               id: crypto.randomUUID(),
               path,
               sha,
-              mtime: before.mtime,
+              mtime,
               bytes: [...bytes],
               base,
             })
-            await store.setMeta(EDIT_COPIES_KEY, JSON.stringify(copies))
-          })
-        )
-        destination.tail = preserving.catch(() => {})
-        await preserving
-      }
+            changed = true
+          }
+          if (changed) await store.setMeta(EDIT_COPIES_KEY, JSON.stringify(copies))
+        })
+      )
+      destination.tail = preserving.catch(() => {})
+      await preserving
     }
   }
 }

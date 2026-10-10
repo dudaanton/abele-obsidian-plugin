@@ -16,6 +16,7 @@ import {
   type SelectiveSettings,
   type PathMatcher,
 } from '@abele/sync-core'
+import { ExchangeTrace } from './exchangeTrace'
 import {
   V2ManifestSchema,
   V2ChangesSchema,
@@ -49,6 +50,7 @@ export interface TokenEngineOptions {
   paths?: ExecutablePaths
   ownSettingsPath?: string
   preparePlacement?(paths: readonly string[]): Promise<void>
+  recoverPlacement?(): Promise<void>
   engineClient?(client: EngineClient): EngineClient
   engineState?: StateStore
   publicationChanged?(): void
@@ -68,6 +70,7 @@ export interface TokenEngineOptions {
 }
 /** Host wiring around the retained engine. All exchange and journaling belongs to core. */
 export class TokenEngineRuntime implements ConnectionRuntime, TokenUiRuntime {
+  readonly trace = new ExchangeTrace()
   readonly engine: SyncEngine
   readonly client: V2EngineClient
   readonly actions: TokenActions
@@ -84,70 +87,77 @@ export class TokenEngineRuntime implements ConnectionRuntime, TokenUiRuntime {
   constructor(private readonly options: TokenEngineOptions) {
     this.selective = structuredClone(options.selective ?? selectiveDefaults())
     this.token = decodeAccessToken(options.encoded)
-    const transport: typeof fetch = async (input, init) => {
-      this.assertHeld()
-      const response = await options.fetch(input, init)
-      this.assertHeld()
-      const url = new URL(
-        typeof input === 'string' ? input : input instanceof URL ? input.href : input.url
-      )
-      if (!response.ok) {
-        if (response.status === 401 || response.status === 403) this.permitted = false
-        return response
-      }
-      if (url.pathname === '/v2/connection') {
-        this.authority = V2ConnectionSchema.parse(await response.clone().json())
-        this.permitted = this.authority.status === 'active'
-        if (
-          this.authority.scope.kind !== this.token.scope.kind ||
-          this.authority.scope.id !== this.token.scope.id
-        )
-          throw new EngineError('protocol', 'Token selector identity changed')
-      } else if (url.pathname === '/v2/manifest') {
-        const page = V2ManifestSchema.parse(await response.json())
-        const incomingPaths: string[] = []
-        for (const item of page.items)
-          if ((await options.state.byFileId(item.file_id))?.versionId !== item.version_id)
-            incomingPaths.push(item.path)
-        await options.preparePlacement?.(incomingPaths)
-        const items: V2ManifestItem[] = []
-        for (const item of page.items)
-          if (!(await this.reviewItem(item, null, page.cursor))) {
-            await this.joinItem(item)
-            items.push(item)
-          }
-        await this.refreshHolds()
-        return Response.json({ ...page, items }, { headers: response.headers })
-      } else if (url.pathname === '/v2/changes') {
-        const page = V2ChangesSchema.parse(await response.json())
-        const incomingPaths: string[] = []
-        for (const one of page.items)
-          if (
-            one.type !== 'content' ||
-            (await options.state.byFileId(one.item.file_id))?.versionId !== one.item.version_id
+    const transport: typeof fetch = (input, init) =>
+      this.trace.run(
+        (init?.method ?? 'GET') +
+          ' ' +
+          new URL(typeof input === 'string' ? input : input instanceof URL ? input.href : input.url)
+            .pathname,
+        async () => {
+          this.assertHeld()
+          const response = await options.fetch(input, init)
+          this.assertHeld()
+          const url = new URL(
+            typeof input === 'string' ? input : input instanceof URL ? input.href : input.url
           )
-            incomingPaths.push(
-              ...(one.type === 'content'
-                ? [one.item.path, ...(one.prev_path ? [one.prev_path] : [])]
-                : [one.path])
+          if (!response.ok) {
+            if (response.status === 401 || response.status === 403) this.permitted = false
+            return response
+          }
+          if (url.pathname === '/v2/connection') {
+            this.authority = V2ConnectionSchema.parse(await response.clone().json())
+            this.permitted = this.authority.status === 'active'
+            if (
+              this.authority.scope.kind !== this.token.scope.kind ||
+              this.authority.scope.id !== this.token.scope.id
             )
-        await options.preparePlacement?.(incomingPaths)
-        const items: V2Change[] = []
-        for (const event of page.items) {
-          if (event.type !== 'content')
-            for (const [path, id] of this.assetPaths)
-              if (id === event.file_id) this.assetPaths.delete(path)
-          const reviewed =
-            event.type === 'content'
-              ? await this.reviewItem(event.item, event.prev_path, event.cursor)
-              : await this.reviewDeparture(event)
-          if (!reviewed) items.push(event)
+              throw new EngineError('protocol', 'Token selector identity changed')
+          } else if (url.pathname === '/v2/manifest') {
+            const page = V2ManifestSchema.parse(await response.json())
+            const incomingPaths: string[] = []
+            for (const item of page.items)
+              if ((await options.state.byFileId(item.file_id))?.versionId !== item.version_id)
+                incomingPaths.push(item.path)
+            await options.preparePlacement?.(incomingPaths)
+            const items: V2ManifestItem[] = []
+            for (const item of page.items)
+              if (!(await this.reviewItem(item, null, page.cursor))) {
+                await this.joinItem(item)
+                items.push(item)
+              }
+            await this.refreshHolds()
+            return Response.json({ ...page, items }, { headers: response.headers })
+          } else if (url.pathname === '/v2/changes') {
+            const page = V2ChangesSchema.parse(await response.json())
+            const incomingPaths: string[] = []
+            for (const one of page.items)
+              if (
+                one.type !== 'content' ||
+                (await options.state.byFileId(one.item.file_id))?.versionId !== one.item.version_id
+              )
+                incomingPaths.push(
+                  ...(one.type === 'content'
+                    ? [one.item.path, ...(one.prev_path ? [one.prev_path] : [])]
+                    : [one.path])
+                )
+            await options.preparePlacement?.(incomingPaths)
+            const items: V2Change[] = []
+            for (const event of page.items) {
+              if (event.type !== 'content')
+                for (const [path, id] of this.assetPaths)
+                  if (id === event.file_id) this.assetPaths.delete(path)
+              const reviewed =
+                event.type === 'content'
+                  ? await this.reviewItem(event.item, event.prev_path, event.cursor)
+                  : await this.reviewDeparture(event)
+              if (!reviewed) items.push(event)
+            }
+            await this.refreshHolds()
+            return Response.json({ ...page, items }, { headers: response.headers })
+          }
+          return response
         }
-        await this.refreshHolds()
-        return Response.json({ ...page, items }, { headers: response.headers })
-      }
-      return response
-    }
+      )
     this.client = new V2EngineClient(options.encoded, {
       fetch: transport,
       ...(options.WebSocket ? { WebSocket: options.WebSocket } : {}),
@@ -157,6 +167,9 @@ export class TokenEngineRuntime implements ConnectionRuntime, TokenUiRuntime {
     this.client.includes = (path) =>
       includes(path) || (this.active && this.permitted && this.assetPaths.has(normalisePath(path)))
     this.client.prepare = async (fs, state, excluded) => {
+      await this.trace.run('write recovery before placement', async () =>
+        options.recoverPlacement?.()
+      )
       this.assetPaths.clear()
       if (options.scopeInput) {
         const input = await options.scopeInput(this.selective)
@@ -168,7 +181,22 @@ export class TokenEngineRuntime implements ConnectionRuntime, TokenUiRuntime {
           await state.setMeta('scope', input.key)
         }
       }
-      await prepare(fs, state, excluded)
+      const localExcluded = (path: string, size: number) => this.localExcluded(path, size)
+      await prepare(
+        new Proxy(fs, {
+          get(target, name) {
+            if (name === 'list')
+              return async function* () {
+                for await (const info of target.list())
+                  if (!localExcluded(info.path, info.size)) yield info
+              }
+            const value = Reflect.get(target, name)
+            return typeof value === 'function' ? value.bind(target) : value
+          },
+        }),
+        state,
+        excluded
+      )
       if (this.token.scope.kind === 'group') {
         const identities = assetIdentitiesSchema.parse(
           JSON.parse((await options.state.getMeta(ASSET_IDENTITIES)) ?? '[]')
@@ -197,6 +225,23 @@ export class TokenEngineRuntime implements ConnectionRuntime, TokenUiRuntime {
               this.actions.written(path)
             }
           const value = Reflect.get(target, name)
+          if ((name === 'list' || name === 'listDirectories') && typeof value === 'function') {
+            const trace = this.trace
+            return async function* () {
+              const finish = trace.begin('fs ' + String(name))
+              try {
+                yield* value.call(target)
+              } finally {
+                finish()
+              }
+            }
+          }
+          if (name === PLACEMENT && typeof value === 'function')
+            return (paths: string[], work: () => Promise<unknown>) =>
+              this.trace.run('placement ' + paths.join(', '), () => value.call(target, paths, work))
+          if ((name === 'read' || name === 'stat') && typeof value === 'function')
+            return (path: string) =>
+              this.trace.run('fs ' + String(name) + ' ' + path, () => value.call(target, path))
           return typeof value === 'function' ? value.bind(target) : value
         },
       }),
@@ -215,6 +260,7 @@ export class TokenEngineRuntime implements ConnectionRuntime, TokenUiRuntime {
         void this.outbox.drain().catch(() => options.publicationChanged?.())
       },
       onFail: (error) => options.failed(error),
+      log: (line) => this.trace.log(line),
     })
     this.unstatus = this.engine.onStatus((status) => options.changed(status))
     this.actions = new TokenActions(this.engine, options.state, this.client)
@@ -502,6 +548,16 @@ export class TokenEngineRuntime implements ConnectionRuntime, TokenUiRuntime {
       this.permitted &&
       this.client.includes(path) &&
       !(!this.isRoot() && configurationPath(path, this.options.paths))
+    )
+  }
+  acceptsLocal(path: string, size: number): boolean {
+    return this.covers(path) && !this.localExcluded(path, size)
+  }
+  private localExcluded(path: string, size: number): boolean {
+    return (
+      (this.ignore?.ignores(path) ?? false) ||
+      (!this.isRoot() && configurationPath(path, this.options.paths)) ||
+      isExcluded(path, size, this.selective, this.options.paths?.scriptsFolder ?? 'Scripts')
     )
   }
   async pathFor(fileId: string): Promise<string | null> {

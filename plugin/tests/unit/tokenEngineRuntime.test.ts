@@ -5,6 +5,7 @@ import { TokenEngineRuntime } from '@/sync/tokenEngineRuntime'
 import { PathCoordinator, coordinatedFileSystem } from '@/sync/pathCoordinator'
 import { ExecutableReview } from '@/sync/executableReview'
 import { AttachmentConsent } from '@/sync/attachmentConsent'
+import { ignoreFor } from '@/sync/scope'
 
 const scope = { kind: 'folder' as const, id: 'root', path: '/' }
 const token = (address: string) => encodeAccessToken({ v: 1, address, key: 'a'.repeat(43), scope })
@@ -63,7 +64,8 @@ function runtime(
   wire: Awaited<ReturnType<typeof server>>,
   fs: MemoryFileSystem,
   state = new MemoryStateStore(),
-  locks = new PathCoordinator()
+  locks = new PathCoordinator(),
+  ignoreText: string | null = null
 ) {
   const metadata = new MemoryStateStore()
   const reviews = {
@@ -82,11 +84,34 @@ function runtime(
       changed: () => {},
       failed: () => {},
       covers: async () => false,
+      scopeInput: async () => ({ key: 'sample-scope', ignore: ignoreFor('.obsidian', ignoreText) }),
     }),
     state,
     reviews,
   }
 }
+it('captures only included local edits, leaving ignored installed code outside every destination', async () => {
+  const wire = await server('sample.md', 'incoming'),
+    fs = new MemoryFileSystem()
+  const one = runtime(
+    wire,
+    fs,
+    new MemoryStateStore(),
+    new PathCoordinator(),
+    '.obsidian/\n!.obsidian/plugins/review/main.js'
+  )
+  await one.runtime.sync()
+  expect(one.runtime.acceptsLocal('.obsidian/plugins/abele/main.js', 100)).toBe(false)
+  expect(one.runtime.acceptsLocal('.obsidian/plugins/review/main.js', 100)).toBe(true)
+  expect(one.runtime.acceptsLocal('sample.md', 100)).toBe(true)
+})
+it('retains a covering destination for local edits while an executable candidate waits for review', async () => {
+  const wire = await server('sample.js', '// incoming code')
+  const one = runtime(wire, new MemoryFileSystem())
+  await one.runtime.sync()
+  expect(await one.reviews.executables.pending()).toHaveLength(1)
+  expect(one.runtime.acceptsLocal('sample.js', 100)).toBe(true)
+})
 it('runs two production token engines through one coordinator with separate ledgers', async () => {
   const fs = new MemoryFileSystem(),
     locks = new PathCoordinator()
@@ -291,7 +316,7 @@ it('refuses a server that mutates an already captured executable version before 
   }
 })
 
-it('synchronizes a group token once the group binding is available', async () => {
+it('synchronizes a group token without reading excluded vault notes for group eligibility', async () => {
   const group = { kind: 'group' as const, id: 'sample-group', path: 'Groups/sample.md' }
   const wire = await server(
       'Groups/sample.md',
@@ -300,6 +325,8 @@ it('synchronizes a group token once the group binding is available', async () =>
       group as typeof scope
     ),
     fs = new MemoryFileSystem()
+  await fs.writeAtomic('Ignored/large.md', new TextEncoder().encode('private excluded note'), 2000)
+  const read = vi.spyOn(fs, 'read')
   const metadata = new MemoryStateStore(),
     runtime = new TokenEngineRuntime({
       id: 'sample-group-connection',
@@ -320,10 +347,12 @@ it('synchronizes a group token once the group binding is available', async () =>
       changed: () => {},
       failed: () => {},
       covers: async () => false,
+      scopeInput: async () => ({ key: 'group-scope', ignore: ignoreFor('.obsidian', 'Ignored/') }),
     })
   try {
     await runtime.sync()
     expect(await fs.stat('Groups/sample.md')).not.toBeNull()
+    expect(read.mock.calls.map(([path]) => path)).not.toContain('Ignored/large.md')
   } finally {
     await runtime.disconnect()
   }

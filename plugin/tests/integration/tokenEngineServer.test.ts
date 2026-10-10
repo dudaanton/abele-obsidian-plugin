@@ -22,6 +22,50 @@ import { resetSyncTokenState } from '@/testing/resetSyncTokenState'
 import type { Plugin } from 'obsidian'
 import { projectionPath } from '@/sync/external/projection'
 
+it('first root contact stages different existing hotkeys and exposes the review while Ready', async () => {
+  const server = await v2Server(),
+    factory = new IDBFactory()
+  vi.stubGlobal('window', {
+    indexedDB: factory,
+    setTimeout,
+    clearTimeout,
+    setInterval,
+    clearInterval,
+  })
+  vi.stubGlobal('document', { visibilityState: 'visible' })
+  let fixture: Awaited<ReturnType<typeof nativeTokenFixture>> | undefined
+  try {
+    const user = await createUser(
+      { db: server.db, pepper: server.config.tokenPepper },
+      'Root settings',
+      server.address
+    )
+    const remote = new V2EngineClient(user.token, { fetch: globalThis.fetch })
+    const bytes = new TextEncoder().encode('{"remote":true}'),
+      sha = await sha256(bytes)
+    await remote.putBlob(sha, bytes)
+    await remote.commitRaw(
+      [{ op: 'create', path: '.obsidian/hotkeys.json', sha, size: bytes.length, mtime: 1000 }],
+      crypto.randomUUID()
+    )
+    const app = buildFakeVault([{ path: '.obsidian/hotkeys.json', content: '{"local":true}' }])
+    await app.vault.adapter.write('.abele-sync-ignore', '*\n!.obsidian/hotkeys.json\n')
+    fixture = await nativeTokenFixture(app, user.token, globalThis.fetch, factory)
+    await fixture.ui.sync(fixture.id)
+    expect(await app.vault.adapter.read('.obsidian/hotkeys.json')).toBe('{"local":true}')
+    await vi.waitFor(() =>
+      expect(fixture!.port.settingsPrompt.asking.value?.changes).toMatchObject([
+        { path: '.obsidian/hotkeys.json' },
+      ])
+    )
+    expect(fixture.status.value.state).toBe('idle')
+  } finally {
+    await fixture?.host.close()
+    await server.close()
+    vi.unstubAllGlobals()
+  }
+})
+
 it('a guarded pool reset and fixture cleanup after an unavailable offloaded source permit a fresh token connection', async () => {
   const servers = await Promise.all([v2Server(), v2Server()])
   const factory = new IDBFactory()
@@ -174,148 +218,165 @@ it('holds all children of a deleted folder before any recursive directory commit
   }
 })
 
-it('the IndexedDB production host receives own executable code and ordinary notes without a stuck sync', async () => {
-  const server = await v2Server(),
-    factory = new IDBFactory()
-  vi.stubGlobal('window', {
-    indexedDB: factory,
-    setTimeout,
-    clearTimeout,
-    setInterval,
-    clearInterval,
-  })
-  const app = buildFakeVault([
-    ...Array.from({ length: 16 }, (_, i) => ({
-      path: `.obsidian/plugins/sample-${i}/main.js`,
-      content: '// installed code ' + i + '\n' + 'x'.repeat(512 * 1024),
-    })),
-    { path: '.obsidian/themes/Sample/theme.css', content: '/* theme */' + 'x'.repeat(256 * 1024) },
-    { path: '.obsidian/workspace.json', content: '{"open":0}' },
-  ])
-  let workspaceEdits = 0
-  const fetchPort = desktopTransport(undefined, {
-    session: {
-      fetch: async (input, init) => {
-        if (String(input).includes('/v2/uploads/'))
-          await app.vault.adapter.write(
-            '.obsidian/workspace.json',
-            JSON.stringify({ open: ++workspaceEdits }),
-            { mtime: 1000 + workspaceEdits }
-          )
-        return globalThis.fetch(input, init)
+it.each([false, true])(
+  'the IndexedDB production host receives own code and notes with realistic configuration (narrowed=%s)',
+  async (narrowed) => {
+    const server = await v2Server(),
+      factory = new IDBFactory()
+    vi.stubGlobal('window', {
+      indexedDB: factory,
+      setTimeout,
+      clearTimeout,
+      setInterval,
+      clearInterval,
+    })
+    const app = buildFakeVault([
+      {
+        path: '.obsidian/plugins/abele/main.js',
+        content: '// installed Abele code\n' + 'x'.repeat(1024 * 1024),
       },
-    },
-    bytes: (buffer) => new Uint8Array(buffer),
-    body: (buffer) => new Uint8Array(buffer),
-    controller: () => new AbortController(),
-  })
-  const registry = TokenConnectionRegistry.open(app),
-    keys = new Map<string, string>()
-  const secrets = {
-    get: (id: string) => keys.get(id) ?? null,
-    set: (id: string, value: string) => {
-      keys.set(id, value)
-    },
-    remove: (id: string) => {
-      keys.delete(id)
-    },
-  }
-  const reviews = await openDeviceReviews(factory, crypto.randomUUID())
-  const ui = new TokenUi(registry, secrets, fetchPort, reviews)
-  const host = new TokenEngines(app as unknown as App, ui, secrets.get, {
-    indexedDB: factory,
-    fetch: fetchPort,
-    WebSocket: class {
-      constructor() {
-        throw new Error('No fixture socket')
+      ...Array.from({ length: 16 }, (_, i) => ({
+        path: `.obsidian/plugins/sample-${i}/main.js`,
+        content: '// installed code ' + i + '\n' + 'x'.repeat(512 * 1024),
+      })),
+      {
+        path: '.obsidian/themes/Sample/theme.css',
+        content: '/* theme */' + 'x'.repeat(256 * 1024),
+      },
+      { path: '.obsidian/workspace.json', content: '{"open":0}' },
+    ])
+    if (narrowed)
+      await app.vault.adapter.write(
+        '.abele-sync-ignore',
+        '*\n!incoming.md\n!Group.md\n!member.md\n!private.bin\n!.obsidian/plugins/abele/incoming.js\n'
+      )
+    let workspaceEdits = 0
+    const fetchPort = desktopTransport(undefined, {
+      session: {
+        fetch: async (input, init) => {
+          if (String(input).includes('/v2/uploads/'))
+            await app.vault.adapter.write(
+              '.obsidian/workspace.json',
+              JSON.stringify({ open: ++workspaceEdits }),
+              { mtime: 1000 + workspaceEdits }
+            )
+          return globalThis.fetch(input, init)
+        },
+      },
+      bytes: (buffer) => new Uint8Array(buffer),
+      body: (buffer) => new Uint8Array(buffer),
+      controller: () => new AbortController(),
+    })
+    const registry = TokenConnectionRegistry.open(app),
+      keys = new Map<string, string>()
+    const secrets = {
+      get: (id: string) => keys.get(id) ?? null,
+      set: (id: string, value: string) => {
+        keys.set(id, value)
+      },
+      remove: (id: string) => {
+        keys.delete(id)
+      },
+    }
+    const reviews = await openDeviceReviews(factory, crypto.randomUUID())
+    const ui = new TokenUi(registry, secrets, fetchPort, reviews)
+    const host = new TokenEngines(app as unknown as App, ui, secrets.get, {
+      indexedDB: factory,
+      fetch: fetchPort,
+      WebSocket: class {
+        constructor() {
+          throw new Error('No fixture socket')
+        }
+      } as unknown as typeof WebSocket,
+    })
+    const failures: unknown[] = []
+    const errors = host as unknown as { failed(id: string, error: unknown): void }
+    const failed = errors.failed.bind(host)
+    vi.spyOn(errors, 'failed').mockImplementation((id, error) => {
+      failures.push(error)
+      failed(id, error)
+    })
+    try {
+      const user = await createUser(
+        { db: server.db, pepper: server.config.tokenPepper },
+        'Sample user',
+        server.address
+      )
+      const firstSyncStarted = performance.now()
+      await ui.connect(user.token)
+      const id = registry.records()[0].id
+      await vi.waitFor(() => {
+        expect(failures).toEqual([])
+        expect(ui.runtimes.has(id), JSON.stringify(ui.activity.value)).toBe(true)
+      })
+      await ui.sync(id)
+      if (narrowed) expect(workspaceEdits).toBe(0)
+      else expect(workspaceEdits).toBeGreaterThan(10)
+      console.info(
+        'Realistic root first sync completed in',
+        Math.round(performance.now() - firstSyncStarted),
+        'ms'
+      )
+      const remote = new V2EngineClient(user.token, { fetch: globalThis.fetch })
+      for (const [path, text] of [
+        ['.obsidian/plugins/abele/incoming.js', '// staged code'],
+        ['incoming.md', 'ordinary'],
+      ]) {
+        const bytes = new TextEncoder().encode(text),
+          sha = await sha256(bytes)
+        await remote.putBlob(sha, bytes)
+        await remote.commitRaw(
+          [{ op: 'create', path, sha, size: bytes.length, mtime: 2000 }],
+          crypto.randomUUID()
+        )
       }
-    } as unknown as typeof WebSocket,
-  })
-  const failures: unknown[] = []
-  const errors = host as unknown as { failed(id: string, error: unknown): void }
-  const failed = errors.failed.bind(host)
-  vi.spyOn(errors, 'failed').mockImplementation((id, error) => {
-    failures.push(error)
-    failed(id, error)
-  })
-  try {
-    const user = await createUser(
-      { db: server.db, pepper: server.config.tokenPepper },
-      'Sample user',
-      server.address
-    )
-    const firstSyncStarted = performance.now()
-    await ui.connect(user.token)
-    const id = registry.records()[0].id
-    await vi.waitFor(() => {
-      expect(failures).toEqual([])
-      expect(ui.runtimes.has(id), JSON.stringify(ui.activity.value)).toBe(true)
-    })
-    await ui.sync(id)
-    expect(workspaceEdits).toBeGreaterThan(10)
-    console.info(
-      'Realistic root first sync completed in',
-      Math.round(performance.now() - firstSyncStarted),
-      'ms'
-    )
-    const remote = new V2EngineClient(user.token, { fetch: globalThis.fetch })
-    for (const [path, text] of [
-      ['.obsidian/plugins/abele/incoming.js', '// staged code'],
-      ['incoming.md', 'ordinary'],
-    ]) {
-      const bytes = new TextEncoder().encode(text),
-        sha = await sha256(bytes)
-      await remote.putBlob(sha, bytes)
-      await remote.commitRaw(
-        [{ op: 'create', path, sha, size: bytes.length, mtime: 2000 }],
-        crypto.randomUUID()
+      await ui.sync(id)
+      expect((await reviews.executables.pending()).map((one) => one.path)).toContain(
+        '.obsidian/plugins/abele/incoming.js'
       )
+      expect(await app.vault.adapter.exists('.obsidian/plugins/abele/incoming.js')).toBe(false)
+      expect(await app.vault.adapter.read('incoming.md')).toBe('ordinary')
+      await ui.pause(id, true)
+      await app.vault.adapter.write('private.bin', 'private bytes')
+      for (const [path, text] of [
+        ['Group.md', 'group'],
+        ['member.md', '---\ngroups: ["[[Group]]"]\n---\nmember ![[private.bin]]'],
+      ]) {
+        const bytes = new TextEncoder().encode(text),
+          sha = await sha256(bytes)
+        await remote.putBlob(sha, bytes)
+        await remote.commitRaw(
+          [{ op: 'create', path, sha, size: bytes.length, mtime: 3000 }],
+          crypto.randomUUID()
+        )
+      }
+      const group = (await remote.manifest()).items.find((one) => one.path === 'Group.md')!
+      const issued = await AccessClient.fromToken(user.token, { fetch: fetchPort }).issue({
+        scope: { kind: 'group', id: group.file_id },
+        label: 'group',
+      })
+      await ui.connect(issued.token)
+      const second = registry.records().find((one) => one.id !== id)!.id
+      await ui.sync(second)
+      expect(ui.runtimes.size).toBe(2)
+      expect(await app.vault.adapter.read('member.md')).toContain('member')
+      expect(await reviews.attachments.pending()).toHaveLength(0)
+      expect((await remote.manifest()).items.some((one) => one.path === 'private.bin')).toBe(false)
+      await ui.opened('member.md')
+      const questions = await reviews.attachments.pending()
+      expect(questions).toHaveLength(1)
+      await ui.decide(questions[0], true)
+      await ui.sync(second)
+      expect((await remote.manifest()).items.some((one) => one.path === 'private.bin')).toBe(true)
+    } finally {
+      await host.close()
+      reviews.close()
+      await server.close()
+      vi.unstubAllGlobals()
     }
-    await ui.sync(id)
-    expect((await reviews.executables.pending()).map((one) => one.path)).toContain(
-      '.obsidian/plugins/abele/incoming.js'
-    )
-    expect(await app.vault.adapter.exists('.obsidian/plugins/abele/incoming.js')).toBe(false)
-    expect(await app.vault.adapter.read('incoming.md')).toBe('ordinary')
-    await ui.pause(id, true)
-    await app.vault.adapter.write('private.bin', 'private bytes')
-    for (const [path, text] of [
-      ['Group.md', 'group'],
-      ['member.md', '---\ngroups: ["[[Group]]"]\n---\nmember ![[private.bin]]'],
-    ]) {
-      const bytes = new TextEncoder().encode(text),
-        sha = await sha256(bytes)
-      await remote.putBlob(sha, bytes)
-      await remote.commitRaw(
-        [{ op: 'create', path, sha, size: bytes.length, mtime: 3000 }],
-        crypto.randomUUID()
-      )
-    }
-    const group = (await remote.manifest()).items.find((one) => one.path === 'Group.md')!
-    const issued = await AccessClient.fromToken(user.token, { fetch: fetchPort }).issue({
-      scope: { kind: 'group', id: group.file_id },
-      label: 'group',
-    })
-    await ui.connect(issued.token)
-    const second = registry.records().find((one) => one.id !== id)!.id
-    await ui.sync(second)
-    expect(ui.runtimes.size).toBe(2)
-    expect(await app.vault.adapter.read('member.md')).toContain('member')
-    expect(await reviews.attachments.pending()).toHaveLength(0)
-    expect((await remote.manifest()).items.some((one) => one.path === 'private.bin')).toBe(false)
-    await ui.opened('member.md')
-    const questions = await reviews.attachments.pending()
-    expect(questions).toHaveLength(1)
-    await ui.decide(questions[0], true)
-    await ui.sync(second)
-    expect((await remote.manifest()).items.some((one) => one.path === 'private.bin')).toBe(true)
-  } finally {
-    await host.close()
-    reviews.close()
-    await server.close()
-    vi.unstubAllGlobals()
-  }
-}, 30000)
+  },
+  30000
+)
 
 it('completes root first sync with large installed plugins and a changing workspace, then stages own code without blocking notes', async () => {
   const server = await v2Server()

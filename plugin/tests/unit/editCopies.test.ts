@@ -1,6 +1,35 @@
 import { expect, it } from 'vitest'
 import { MemoryFileSystem, MemoryStateStore } from '@abele/sync-core'
+import { vi } from 'vitest'
 import { EditCopies, EDIT_COPIES_KEY } from '@/sync/editCopies'
+
+it('preserves a large placement batch without rewriting every accumulated byte for each file', async () => {
+  const fs = new MemoryFileSystem(),
+    store = new MemoryStateStore(),
+    copies = new EditCopies()
+  copies.expect(['connection'])
+  copies.register('connection', store, () => true)
+  const paths = Array.from({ length: 4 }, (_, i) => 'plugin-' + i + '.js')
+  for (const path of paths) await fs.writeAtomic(path, new Uint8Array(65536).fill(255), 10)
+  const write = vi.spyOn(store, 'setMeta')
+  await copies.capture(fs, paths)
+  expect((await copies.list(store)).map((one) => one.path)).toEqual(paths)
+  const written = write.mock.calls
+    .filter(([key]) => key === EDIT_COPIES_KEY)
+    .reduce((total, [, value]) => total + value.length, 0)
+  expect(written).toBeLessThan(4 * 65536 * 6)
+})
+
+it('never reads excluded installed code while preserving a directory placement', async () => {
+  const fs = new MemoryFileSystem(),
+    copies = new EditCopies()
+  await fs.writeAtomic('.obsidian/plugins/abele/main.js', new Uint8Array([1]), 10)
+  copies.expect(['connection'])
+  copies.register('connection', new MemoryStateStore(), () => false)
+  const read = vi.spyOn(fs, 'read')
+  await copies.capture(fs, ['.obsidian/plugins/abele/main.js'])
+  expect(read).not.toHaveBeenCalled()
+})
 
 it('persists an independent immutable copy for every destination before a fast result replaces it', async () => {
   const fs = new MemoryFileSystem(),

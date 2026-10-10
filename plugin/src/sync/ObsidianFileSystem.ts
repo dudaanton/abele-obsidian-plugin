@@ -311,7 +311,17 @@ export class ObsidianFileSystem implements FileSystem {
   /** Placement needs immutable copies of its targets, not another full vault scan. */
   async *placementFiles(paths: readonly string[]): AsyncIterable<FileInfo> {
     this.runtimeFence?.assertReady()
-    await this.recover()
+    // Called with path leases held. Recovery takes the whole-vault lease, so it must
+    // run before placement; a different connection may have a live journal meanwhile.
+    for (const entry of this.journal.entries())
+      if (
+        paths.some((path) => {
+          const target = caseKey(entry.target),
+            key = caseKey(path)
+          return target === key || target.startsWith(key + '/') || key.startsWith(target + '/')
+        })
+      )
+        throw new EngineError('io', 'placement needs write recovery before acquiring its lease')
     for (const path of new Set(paths)) {
       const stat = await this.adapter.stat(path)
       if (stat?.type === 'folder') yield* this.walkConfig(path)
