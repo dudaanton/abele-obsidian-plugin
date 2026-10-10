@@ -80,6 +80,7 @@ export class TokenEngineRuntime implements ConnectionRuntime, TokenUiRuntime {
   readonly actions: TokenActions
   private readonly outbox: TokenAssetOutbox
   private active = true
+  private readonly requests = new AbortController()
   private permitted = true
   private ignore: PathMatcher | null = null
   private authority: V2Connection | null = null
@@ -102,14 +103,24 @@ export class TokenEngineRuntime implements ConnectionRuntime, TokenUiRuntime {
         async () => {
           this.assertHeld()
           let response: Response
+          const request = new AbortController()
+          const abort = () => request.abort()
+          const callerSignal = init?.signal ?? (input instanceof Request ? input.signal : undefined)
+          for (const signal of [callerSignal, this.requests.signal]) {
+            if (signal?.aborted) abort()
+            else signal?.addEventListener('abort', abort, { once: true })
+          }
           try {
-            response = await options.fetch(input, init)
+            response = await options.fetch(input, { ...init, signal: request.signal })
           } catch (error) {
             const native = nativeSyncFailure(error)
             if (native) {
               this.trace.log(native.message)
             }
             throw error
+          } finally {
+            callerSignal?.removeEventListener('abort', abort)
+            this.requests.signal.removeEventListener('abort', abort)
           }
           this.assertHeld()
           const url = new URL(
@@ -653,8 +664,10 @@ export class TokenEngineRuntime implements ConnectionRuntime, TokenUiRuntime {
   }
   invalidate(): void {
     this.active = false
+    this.requests.abort()
   }
   async close(): Promise<void> {
+    this.invalidate()
     await this.engine.stop()
     await this.outbox.close()
     this.unstatus()

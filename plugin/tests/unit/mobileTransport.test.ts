@@ -1,6 +1,31 @@
 import { describe, expect, it, vi } from 'vitest'
 import { fetchViaCapacitorHttp, exactNativeRequestBodies } from '@/sync/mobileTransport'
 import { connectionError } from '@/sync/tokenUi'
+it('bounds a native request that never answers and ignores its late response', async () => {
+  vi.useFakeTimers()
+  let answer!: (response: import('@/sync/mobileTransport').NativeHttpResponse) => void
+  const request = vi.fn(
+    () =>
+      new Promise<import('@/sync/mobileTransport').NativeHttpResponse>((resolve) => {
+        answer = resolve
+      })
+  )
+  try {
+    const attempt = fetchViaCapacitorHttp({ request })('https://sync.example/v2/connection')
+    const rejected = expect(attempt).rejects.toMatchObject({
+      code: 'offline',
+      phase: 'sending',
+      message: expect.stringContaining('Sync interrupted'),
+    })
+    await vi.advanceTimersByTimeAsync(30000)
+    await rejected
+    answer({ status: 200, headers: {}, data: '', url: 'https://sync.example/v2/connection' })
+    await vi.advanceTimersByTimeAsync(0)
+    expect(vi.getTimerCount()).toBe(0)
+  } finally {
+    vi.useRealTimers()
+  }
+})
 it.each([409, 412])(
   'returns HTTP %i for a tiny native upload instead of inventing a transport failure',
   async (status) => {

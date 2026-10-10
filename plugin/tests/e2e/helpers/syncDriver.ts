@@ -257,7 +257,7 @@ export class SyncDriver {
   }
   remove(paths: string[], cleanup = false): void {
     this.run(
-      `for(const path of ${JSON.stringify(paths)}){const file=app.vault.getAbstractFileByPath(path); if(file) await app.vault.delete(file,true)} return true`,
+      `for(const path of ${JSON.stringify(paths)}){const file=app.vault.getAbstractFileByPath(path); if(file) await app.vault.delete(file,true); else {const stat=await app.vault.adapter.stat(path);if(stat?.type==='file')await app.vault.adapter.remove(path);else if(stat)throw new Error('Unindexed directory requires explicit cleanup: '+path);if(await app.vault.adapter.exists(path))throw new Error('Deletion did not complete: '+path)}} return true`,
       cleanup
     )
   }

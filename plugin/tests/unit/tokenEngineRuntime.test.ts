@@ -88,6 +88,37 @@ it.each(['offline', 'sending', 'encoding', 'response'])(
 )
 
 const scope = { kind: 'folder' as const, id: 'root', path: '/' }
+it('aborts a blocked upload on close instead of waiting for its native timeout or retry', async () => {
+  const wire = await server('Notes/sample.md', 'note')
+  const send = wire.fetch.getMockImplementation()!
+  let started!: () => void
+  const uploading = new Promise<void>((resolve) => {
+    started = resolve
+  })
+  wire.fetch.mockImplementation(async (input, init) => {
+    if (String(input).includes('/v2/uploads/')) {
+      started()
+      return new Promise<Response>((_resolve, reject) => {
+        init?.signal?.addEventListener(
+          'abort',
+          () => reject(new DOMException('Stopped', 'AbortError')),
+          { once: true }
+        )
+      })
+    }
+    return send(input, init)
+  })
+  const fs = new MemoryFileSystem()
+  const one = runtime(wire, fs)
+  await one.runtime.start()
+  await one.runtime.sync()
+  await fs.writeAtomic('Notes/sample.md', new TextEncoder().encode('local edit'), 2000)
+  const sync = one.runtime.sync().catch(() => {})
+  await uploading
+  await one.runtime.close()
+  await sync
+  expect(one.runtime.engine.status.state).not.toBe('syncing')
+})
 it('does not backoff-retry a deterministic unsupported request body', async () => {
   vi.useFakeTimers()
   const wire = await server('Notes/sample.md', 'note')

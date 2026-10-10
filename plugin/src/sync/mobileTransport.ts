@@ -8,6 +8,8 @@ export interface NativeHttpOptions {
   headers: Record<string, string>
   disableRedirects: true
   responseType: 'arraybuffer'
+  connectTimeout?: number
+  readTimeout?: number
   data?: unknown
   dataType?: 'file'
 }
@@ -150,6 +152,8 @@ export function fetchViaCapacitorHttp(native: NativeHttp): typeof fetch {
         headers,
         disableRedirects: true,
         responseType: 'arraybuffer',
+        connectTimeout: 30000,
+        readTimeout: 30000,
       }
       const body = init?.body
       if (body !== undefined && body !== null) {
@@ -169,8 +173,15 @@ export function fetchViaCapacitorHttp(native: NativeHttp): typeof fetch {
         } else throw new Error('Unsupported native sync request body')
       }
       phase = 'sending'
+      let timer: ReturnType<typeof setTimeout> | undefined
+      const aborted = () => rejectRequest?.(abortError())
+      let rejectRequest: ((error: unknown) => void) | undefined
       const answer = await new Promise<NativeHttpResponse>((resolve, reject) => {
-        const aborted = () => reject(abortError())
+        rejectRequest = reject
+        timer = window.setTimeout(
+          () => reject(new Error('Native request did not answer within 30 seconds')),
+          30000
+        )
         signal?.addEventListener('abort', aborted, { once: true })
         Promise.resolve()
           .then(() => {
@@ -178,7 +189,9 @@ export function fetchViaCapacitorHttp(native: NativeHttp): typeof fetch {
             return native.request(options)
           })
           .then((value) => (signal?.aborted ? reject(abortError()) : resolve(value)), reject)
-          .finally(() => signal?.removeEventListener('abort', aborted))
+      }).finally(() => {
+        window.clearTimeout(timer)
+        signal?.removeEventListener('abort', aborted)
       })
       phase = 'response'
       if (answer.status >= 300 && answer.status < 400 && answer.status !== 304)
