@@ -1,22 +1,10 @@
 /**
- * Hears every change made to the vault while an agent's tool is running, and remembers what
- * each file was before it.
- *
- * Tools write in a dozen ways — the file tools through the vault, frontmatter through the file
- * manager, the reader's bookmarks and places straight through the adapter, a script through
- * whatever it likes — and a list of them kept by hand would be out of date with the next tool.
- * So the tracker sits under all of them: it wraps the running app's `vault`, its `adapter` and
- * its `fileManager`, and while a recording is open every call that changes something is
- * recorded into it, whoever made it.
- *
- * The layers call each other: renaming through the file manager renames through the vault,
- * which renames through the adapter. A path already being changed by an outer call is left to
- * that call, so one operation is one entry. Other paths an operation changes on the way — the
- * links Obsidian rewrites in other notes after a rename — are entries of their own.
- *
- * Nothing is recorded while no recording is open, and nothing ever for the config folder, the
- * trash, or chat files. What cannot be told apart is a change the person makes by hand while a
- * tool is running: it is recorded as the agent's, and a rewind shows it among the rest.
+ * Invocation-owned file facades over the vault, adapter and file manager. A chat receives only
+ * mutations issued through its facade, including native link updates. No async ambient owner
+ * is installed, so concurrent chats and human edits cannot borrow each other's identity.
+ * Nested layers share one tracker and suppress duplicate snapshots of the same path. The
+ * root observes unowned mutations only to invalidate overlapping snapshots; it does not send
+ * them to a chat. Configuration, trash and chat files are never recorded.
  */
 import type { App, TAbstractFile } from 'obsidian'
 import { guardTrashRevision, registerRevisionTrash } from '@/services/revisionTrash'
@@ -24,6 +12,7 @@ import { nanoid } from 'nanoid'
 import { contentHash } from '../readGuard'
 import { VaultFs, bytesHash, isTextPath } from './vaultFs'
 import type { After, Before, Change } from './types'
+import { checkedMutation } from './checkedMutation'
 
 /** Where an operation's changes go: a chat's log, which also keeps the copies of binaries. */
 export interface Recording {
@@ -93,6 +82,71 @@ const afterOf = (before: Before): After =>
 
 export class ChangeTracker {
   private static instance: ChangeTracker | null = null
+  private static readonly scopes = new WeakMap<App, ChangeTracker>()
+  private static readonly originals = new WeakMap<AnyFn, AnyFn>()
+  private active: { paths: string[]; uncertain: boolean }[] = []
+  private ownerRoot: ChangeTracker = this
+  private checks: Map<string, After> | null = null
+  private emptyFolders = new Set<string>()
+
+  checkedApp(expected: Map<string, After>, emptyFolders = new Set<string>()): App {
+    const scope = this.scope({ record: () => {} })
+    const tracker = ChangeTracker.scopes.get(scope.app)!
+    tracker.recordings.clear()
+    tracker.checks = expected
+    tracker.emptyFolders = emptyFolders
+    return scope.app
+  }
+
+  /** An invocation owns its file facade; no ambient async "current chat" is involved. */
+  scope(recording: Recording): { app: App; close: () => void } {
+    const app = Object.create(this.app) as App
+    const tracker = new ChangeTracker(this.app)
+    tracker.ownerRoot = this.ownerRoot
+    const layer = (
+      source: object,
+      ops: Record<string, (args: unknown[]) => Spec>,
+      name: string
+    ) => {
+      const facade = Object.create(source) as Record<string, unknown>
+      // Non-writing methods stay bound to the real host (including native private state).
+      tracker.wrap(facade, ops, name)
+      return facade
+    }
+    app.vault = layer(this.app.vault, VAULT_OPS, 'vault') as unknown as App['vault']
+    app.vault.adapter = layer(
+      this.app.vault.adapter,
+      ADAPTER_OPS,
+      'adapter'
+    ) as unknown as App['vault']['adapter']
+    app.fileManager = layer(
+      this.app.fileManager,
+      FILE_MANAGER_OPS,
+      'fileManager'
+    ) as unknown as App['fileManager']
+    const bindHost = (target: object) =>
+      Object.defineProperties(Object.create(target), {
+        app: { value: app },
+        vault: { value: app.vault },
+      })
+    Object.defineProperties(app.fileManager, {
+      app: { value: app },
+      vault: { value: app.vault },
+    })
+    // Native rename rewrites links through MetadataCache, not FileManager's vault field.
+    // Keep its shared indexes, but route those writes (including Canvas links) through the owner.
+    app.metadataCache = bindHost(this.app.metadataCache)
+    const cache = this.app.metadataCache as unknown as { linkUpdaters?: Record<string, object> }
+    if (cache.linkUpdaters)
+      Object.defineProperty(app.metadataCache, 'linkUpdaters', {
+        value: Object.fromEntries(
+          Object.entries(cache.linkUpdaters).map(([key, updater]) => [key, bindHost(updater)])
+        ),
+      })
+    ChangeTracker.scopes.set(app, tracker)
+    const close = tracker.open(recording)
+    return { app, close }
+  }
 
   private readonly fs: VaultFs
   private readonly recordings = new Map<Recording, number>()
@@ -122,7 +176,10 @@ export class ChangeTracker {
   }
 
   static get(app?: App): ChangeTracker | null {
-    return app && ChangeTracker.instance?.app !== app ? null : ChangeTracker.instance
+    return (
+      (app && ChangeTracker.scopes.get(app)) ??
+      (app && ChangeTracker.instance?.app !== app ? null : ChangeTracker.instance)
+    )
   }
 
   /** Keep an edit's original bytes before its final check, without another snapshot read later. */
@@ -147,8 +204,8 @@ export class ChangeTracker {
   /**
    * A create-only operation has a known-missing before-state: never snapshot a collision.
    * Validate inside the prepared operation, after tracker preparation and immediately before
-   * issuance. The public vault call is nested/suppressed normally; all open recordings still
-   * receive successful changes. Validation also runs while tracking is inactive or muted.
+   * issuance. The public vault call is nested/suppressed normally; the invocation's recording
+   * receives successful changes. Validation also runs while tracking is inactive or muted.
    */
   prepareCreate(
     path: string,
@@ -212,14 +269,30 @@ export class ChangeTracker {
       const original = target[name]
       if (typeof original !== 'function') continue
       const own = Object.prototype.hasOwnProperty.call(target, name)
-      const bound = (original as AnyFn).bind(target)
-      target[name] = (...args: unknown[]) =>
+      const raw = ChangeTracker.originals.get(original as AnyFn) ?? (original as AnyFn)
+      const bound = raw.bind(target)
+      const wrapped = (...args: unknown[]) =>
         this.around(`${layer}.${name}`, spec(args), () => {
           const mutate = () => Promise.resolve(bound(...args))
+          if (layer === 'adapter' && this.checks) {
+            const operation = spec(args)
+            return checkedMutation(
+              this.app.vault.adapter,
+              this.checks,
+              [
+                ...operation.paths,
+                ...(operation.move ? [operation.move.from, operation.move.to] : []),
+              ],
+              this.emptyFolders,
+              mutate
+            )
+          }
           return layer === 'adapter' && (name === 'trashLocal' || name === 'trashSystem')
             ? guardTrashRevision(target, pathOf(args[0]), mutate)
             : mutate()
         })
+      ChangeTracker.originals.set(wrapped, raw)
+      target[name] = wrapped
       this.restores.push(() => {
         if (own) target[name] = original
         else delete target[name]
@@ -245,7 +318,16 @@ export class ChangeTracker {
     run: () => Promise<T>,
     prepared?: PreparedBinary
   ): Promise<T> {
-    if (this.muted > 0 || this.recordings.size === 0) return run()
+    const touched = [...spec.paths, ...(spec.move ? [spec.move.from, spec.move.to] : [])]
+    const overlaps = (a: string, b: string) =>
+      a === b || a.startsWith(`${b}/`) || b.startsWith(`${a}/`)
+    const others = this.ownerRoot.active.filter((active) =>
+      active.paths.some((a) => touched.some((b) => overlaps(a, b)))
+    )
+    if (this.muted > 0 || this.recordings.size === 0) {
+      for (const other of others) other.uncertain = true
+      return run()
+    }
 
     const move = spec.move && !this.excluded(spec.move.from) ? spec.move : undefined
     const direct = spec.paths.filter((p) => !this.excluded(p))
@@ -255,6 +337,9 @@ export class ChangeTracker {
     if (!mine.length) return run()
 
     const recordings = [...this.recordings.keys()]
+    for (const other of others) other.uncertain = true
+    const active = { paths: mine, uncertain: others.length > 0 }
+    this.ownerRoot.active.push(active)
     for (const p of mine) this.inFlight.set(p, (this.inFlight.get(p) ?? 0) + 1)
     try {
       const blobs = new Map<string, ArrayBuffer>()
@@ -295,13 +380,20 @@ export class ChangeTracker {
           const changes: Change[] = []
           for (const [path, before] of befores) {
             const after = await this.fingerprint(path).catch((): After => null)
-            if (after !== afterOf(before)) changes.push({ path, before, after })
+            if (after !== afterOf(before))
+              changes.push({
+                path,
+                before,
+                after,
+                ...(active.uncertain || !completed ? { uncertain: true } : {}),
+              })
           }
           if (changes.length)
             for (const recording of recordings) recording.record(op, changes, blobs)
         }
       }
     } finally {
+      this.ownerRoot.active = this.ownerRoot.active.filter((item) => item !== active)
       for (const p of mine) {
         const left = (this.inFlight.get(p) ?? 1) - 1
         if (left > 0) this.inFlight.set(p, left)

@@ -908,8 +908,11 @@ export function buildFakeVault(specs: FakeFileSpec[]): FakeApp {
     // Deletion goes through the file manager so it honours the user's "Deleted files"
     // preference. The fake has no preference to honour, so it just drops the file.
     fileManager: {
+      get vault() {
+        return self.vault
+      },
       async trashFile(file: TFile) {
-        await self.vault.trash(file)
+        await this.vault.trash(file)
       },
       /**
        * Obsidian's frontmatter editor: the properties parsed, handed to `fn` to change in place,
@@ -950,7 +953,7 @@ export function buildFakeVault(specs: FakeFileSpec[]): FakeApp {
       async renameFile(file: TFile, to: string) {
         // Through the vault, as Obsidian's own does — which is also what a wrapper around the
         // vault sees of it.
-        await self.vault.rename(file, to)
+        await this.vault.rename(file, to)
       },
     },
     secretStorage: (() => {

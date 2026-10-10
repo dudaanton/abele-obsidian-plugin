@@ -1310,10 +1310,12 @@ export class ChatSession implements SummarizerHost, InterceptorHost, AnchorStora
             (tool.name !== 'node_propose_edit' &&
               (await this.turnPolicy.isApproved(id, tool.permissionKey, tool.destinationKey))),
         }
-        // Everything the call changes in the vault is remembered, so the turn can be taken back.
-        // A delegated run records nothing of its own: the chat's `delegate` call is open for as
-        // long as the run lasts, so what the run changes lands in the chat that asked for it.
-        const endRecording = this.kind === 'run' ? null : this.rewind.begin(tool.name)
+        // Delegated branches write to their root chat, with the branch's own run identity.
+        const recording = this.root.rewind.track(
+          tool.name,
+          `${this.id}:${this.currentTurnId() ?? id}`
+        )
+        ctx.app = recording.app
         try {
           // Before anything is written, so a refused call changes nothing at all.
           const refused = await this.readGuard.check(tool.name, params)
@@ -1342,7 +1344,7 @@ export class ChatSession implements SummarizerHost, InterceptorHost, AnchorStora
           }
           return result
         } finally {
-          await endRecording?.()
+          await recording.close()
         }
       },
     }))

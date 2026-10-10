@@ -46,7 +46,7 @@ describe('Word prepared bytes in agent rewind', () => {
     const log = new ChatRewind(app, { key: () => 'sample-chat', turn: () => 'sample-turn' }, store)
     const close = log.begin('docx_edit')
     try {
-      await writeWordChange(app, file, original, edited)
+      await writeWordChange(close.app, file, original, edited)
     } finally {
       await close()
     }
@@ -78,12 +78,16 @@ describe('Word prepared bytes in agent rewind', () => {
     const log = new ChatRewind(app, { key: () => 'sample-chat', turn: () => 'sample-turn' }, store)
     const close = log.begin('docx_edit')
     try {
-      await expect(writeWordChange(app, file, original, edited)).rejects.toThrow(
+      await expect(writeWordChange(close.app, file, original, edited)).rejects.toThrow(
         /changed while saving.*reopen/i
       )
     } finally {
       await close()
     }
+    expect(new Uint8Array(await app.vault.readBinary(file))).toEqual(competing)
+    const plan = await log.planTurn('sample-turn')
+    expect(plan.items[0].conflict).toBe(true)
+    expect((await log.apply(plan, { 'sample.docx': 'overwrite' })).skipped).toEqual(['sample.docx'])
     expect(new Uint8Array(await app.vault.readBinary(file))).toEqual(competing)
     const before = log.entries.value[0].changes[0].before
     if (before.t !== 'binary' || !before.blob)
@@ -101,8 +105,8 @@ describe('Word prepared bytes in agent rewind', () => {
     const log = new ChatRewind(app, { key: () => 'sample-chat', turn: () => 'sample-turn' }, store)
     const close = log.begin('docx_edit')
     try {
-      const run = tracker.prepareBinaryWrite(file.path, original, () => true)
-      await run(() => app.vault.modifyBinary(file, Uint8Array.from([2]).buffer))
+      const run = ChangeTracker.get(close.app)!.prepareBinaryWrite(file.path, original, () => true)
+      await run(() => close.app.vault.modifyBinary(file, Uint8Array.from([2]).buffer))
     } finally {
       await close()
     }

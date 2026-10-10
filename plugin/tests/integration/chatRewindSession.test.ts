@@ -15,7 +15,7 @@ import { AgentRegistry } from '@/ai/agents/AgentRegistry'
 import { AbeleConfig } from '@/services/AbeleConfig'
 import { ChangeTracker } from '@/ai/rewind/ChangeTracker'
 import { DEFAULT_AI_SETTINGS, type AiProvider } from '@/ai/types'
-import type { Message } from '@/ai/client'
+import type { AgentTool, Message } from '@/ai/client'
 import { useVault } from '../helpers/testEnv'
 import { destroyChatsAfterEach } from '../helpers/chatTeardown'
 
@@ -93,9 +93,66 @@ afterEach(() => {
 })
 
 describe('a chat’s turns and the files they change', () => {
+  it('keeps parallel calls in their own journals, including writes to the same file', async () => {
+    const other = new ChatSession(ChatService.getInstance())
+    const bind = (chat: ChatSession, tool: AgentTool) =>
+      (
+        chat as unknown as { wrapToolsForSession(tools: AgentTool[]): AgentTool[] }
+      ).wrapToolsForSession([tool])[0]
+    session.messages.value = [{ id: 'chat-a', role: 'user', content: 'a', timestamp: 1 }]
+    other.messages.value = [{ id: 'chat-b', role: 'user', content: 'b', timestamp: 1 }]
+    for (const chat of [session, other]) {
+      Object.assign(chat, { allChatMessages: [...chat.messages.value] })
+    }
+    let release!: () => void
+    const waiting = new Promise<void>((resolve) => {
+      release = resolve
+    })
+    let entered!: () => void
+    const ready = new Promise<void>((resolve) => {
+      entered = resolve
+    })
+    const tool: AgentTool = {
+      name: 'sample_write',
+      label: 'Sample write',
+      description: '',
+      parameters: {},
+      execute: async (_id, params, _signal, ctx) => {
+        if (params.wait) {
+          entered()
+          await waiting
+        }
+        const vault = ctx!.app!.vault
+        const file = vault.getAbstractFileByPath('Notes/Plan.md') as TFile
+        await vault.modify(file, String(params.text))
+        await vault.create(String(params.path), String(params.text))
+        return { content: [] }
+      },
+    }
+    const a = bind(session, tool).execute('a', { wait: true, text: 'alpha', path: 'Notes/A.md' })
+    await ready
+    await bind(other, tool).execute('b', { text: 'beta', path: 'Notes/B.md' })
+    release()
+    await a
+    const paths = (chat: ChatSession) =>
+      chat.rewind.entries.value.flatMap((e) => e.changes.map((c) => c.path))
+    expect(paths(session)).toEqual(['Notes/Plan.md', 'Notes/A.md'])
+    expect(paths(other)).toEqual(['Notes/Plan.md', 'Notes/B.md'])
+    await other.rewind.apply(await other.rewind.planSince(0), {})
+    expect(await read('Notes/Plan.md')).toBe('alpha')
+    expect(await read('Notes/A.md')).toBe('alpha')
+    expect(app.vault.getAbstractFileByPath('Notes/B.md')).toBeNull()
+    other.destroy()
+  })
+
   it('keeps each change under the message that asked for it', async () => {
     modelCalls([
-      [{ name: 'edit', args: { path: 'Notes/Plan.md', old_string: 'first', new_string: 'second' } }],
+      [
+        {
+          name: 'edit',
+          args: { path: 'Notes/Plan.md', old_string: 'first', new_string: 'second' },
+        },
+      ],
       [{ name: 'create', args: { path: 'Notes/New.md', content: 'made up' } }],
     ])
     await session.sendMessage('rewrite the plan')
@@ -111,7 +168,12 @@ describe('a chat’s turns and the files they change', () => {
 
   it('rewinds from a message: everything since it is put back', async () => {
     modelCalls([
-      [{ name: 'edit', args: { path: 'Notes/Plan.md', old_string: 'first', new_string: 'second' } }],
+      [
+        {
+          name: 'edit',
+          args: { path: 'Notes/Plan.md', old_string: 'first', new_string: 'second' },
+        },
+      ],
       [{ name: 'create', args: { path: 'Notes/New.md', content: 'made up' } }],
     ])
     await session.sendMessage('rewrite the plan')

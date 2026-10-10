@@ -40,7 +40,7 @@ describe('workbook prepared originals in existing chat rewind', () => {
       )
       const close = log.begin('xlsx_write')
       try {
-        await writeWorkbookChange(app, file, original, updated)
+        await writeWorkbookChange(close.app, file, original, updated)
       } finally {
         await close()
       }

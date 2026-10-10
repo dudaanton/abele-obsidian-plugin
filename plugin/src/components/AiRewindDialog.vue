@@ -22,15 +22,8 @@
             <Setting
               v-if="item.conflict"
               name="Changed since"
-              desc="Somebody changed this file after the agent's last change to it. Putting it back
-                loses that change."
-            >
-              <Dropdown
-                :model-value="choices[item.path] ?? 'skip'"
-                :options="CHOICES"
-                @update:model-value="choices[item.path] = $event as ConflictChoice"
-              />
-            </Setting>
+              desc="Another edit overlaps this undo. This file will be left untouched to preserve that work."
+            />
             <p class="abele-rewind__note">{{ explain(item) }}</p>
             <Diff v-if="item.diff" :text-left="item.diff.old" :text-right="item.diff.new" />
           </div>
@@ -79,23 +72,16 @@
 </template>
 
 <script setup lang="ts">
-import { computed, onMounted, reactive, ref } from 'vue'
+import { computed, onMounted, ref } from 'vue'
 import { Notice } from 'obsidian'
 import ObsidianModal from './obsidian/Modal.vue'
 import Button from './obsidian/Button.vue'
-import Dropdown from './obsidian/Dropdown.vue'
 import EmptyState from './obsidian/EmptyState.vue'
 import Setting from './obsidian/Setting.vue'
 import TreeItem from './obsidian/TreeItem.vue'
 import Diff from './Diff.vue'
 import type { ChatRewind } from '@/ai/rewind/ChatRewind'
-import type {
-  ConflictChoice,
-  ItemAction,
-  RestoreItem,
-  RestorePlan,
-  RestoreResult,
-} from '@/ai/rewind/types'
+import type { ItemAction, RestoreItem, RestorePlan, RestoreResult } from '@/ai/rewind/types'
 
 /**
  * Taking back what a chat's agent changed in the vault.
@@ -103,7 +89,7 @@ import type {
  * `since` is a rewind to a message: every change made from the moment it was sent, by any turn,
  * and the choice to go back in the conversation too. `turn` undoes what that message's turn
  * alone changed. Each file says what will happen to it, opens to the difference, and — when
- * somebody changed it after the agent — asks whether to leave it or put it back regardless.
+ * somebody changed it after the agent — explains why it must be left untouched.
  */
 const props = defineProps<{
   rewind: ChatRewind
@@ -129,20 +115,16 @@ const ICONS: Record<ItemAction, string> = {
   unrestorable: 'file-x',
 }
 
-const CHOICES = [
-  { value: 'skip', display: 'Leave as it is' },
-  { value: 'overwrite', display: 'Put it back anyway' },
-]
-
 const loading = ref(true)
 const busy = ref(false)
 const error = ref('')
 const plan = ref<RestorePlan | null>(null)
 const open = ref<string | null>(null)
-const choices = reactive<Record<string, ConflictChoice>>({})
 
 const items = computed(() => plan.value?.items ?? [])
-const restorable = computed(() => items.value.some((i) => i.action !== 'unrestorable'))
+const restorable = computed(() =>
+  items.value.some((i) => i.action !== 'unrestorable' && !i.conflict)
+)
 
 const title = computed(() => (props.mode === 'since' ? 'Rewind to here' : 'Undo changes'))
 const lead = computed(() =>
@@ -175,6 +157,8 @@ function flairOf(item: RestoreItem): string {
 }
 
 function explain(item: RestoreItem): string {
+  if (item.conflict)
+    return 'Undo will not change this file. The comparison below is for reference only.'
   switch (item.action) {
     case 'rewrite':
       return item.diff
@@ -224,7 +208,7 @@ async function finish(files: boolean, conversation: boolean): Promise<void> {
   error.value = ''
   try {
     if (files && plan.value && restorable.value) {
-      const result = await props.rewind.apply(plan.value, { ...choices })
+      const result = await props.rewind.apply(plan.value, {})
       report(result)
       if (result.failed.length && !conversation) {
         error.value = result.failed.map((f) => `${f.path}: ${f.error}`).join('\n')

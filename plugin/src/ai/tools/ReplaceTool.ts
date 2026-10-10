@@ -1,6 +1,6 @@
 import type { AgentTool } from '../client'
 import { guardChatWrite } from './chatWriteGuard'
-import { GlobalStore } from '@/stores/GlobalStore'
+import { appOf } from '../toolContext'
 import { scopeOf } from '../toolContext'
 import { ReplacementAction } from '@/entities/ReplacementAction'
 import { getNoteBody, replaceNoteBody } from '@/helpers/notesUtils'
@@ -86,7 +86,7 @@ export function createReplaceTool(opts?: { skipScope?: boolean }): AgentTool {
         throw new Error(`Access denied: ${path} is not in workspace scope`)
       }
 
-      const { app } = GlobalStore.getInstance()
+      const app = appOf(ctx)
       const file = app.vault.getAbstractFileByPath(path)
       if (!(file instanceof TFile)) throw new Error(`File not found: ${path}`)
       guardChatWrite(file.path)

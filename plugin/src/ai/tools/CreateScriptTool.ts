@@ -1,6 +1,6 @@
 import type { AgentTool } from '../client'
 import { AbeleConfig } from '@/services/AbeleConfig'
-import { GlobalStore } from '@/stores/GlobalStore'
+import { appOf } from '../toolContext'
 import { scopeOf } from '../toolContext'
 import { normalizePath } from 'obsidian'
 import { SCRIPT_API_DOCS } from '@/scripting/apiDocs'
@@ -57,7 +57,7 @@ export function createCreateScriptTool(): AgentTool {
       }
 
       const path = normalizePath(`${config.scriptsFolder}/${name}.js`)
-      const { app } = GlobalStore.getInstance()
+      const app = appOf(ctx)
 
       // Ensure folder exists
       const folderPath = path.substring(0, path.lastIndexOf('/'))

@@ -25,10 +25,15 @@ export interface Change {
   path: string
   before: Before
   after: After
+  /** Another writer overlapped snapshot capture; never restore this snapshot automatically. */
+  uncertain?: boolean
 }
 
 export interface RewindEntry {
   id: string
+  /** Invocation owner. Absent only in legacy logs. */
+  chat?: string
+  run?: string
   /** The user message whose turn made the change. */
   turn: string
   /** When the operation finished. */
@@ -76,6 +81,10 @@ export interface RestoreItem {
   from?: string
   /** Changed since the agent's last change to it, by somebody else. */
   conflict: boolean
+  /** State expected immediately before applying; not merely when the preview was opened. */
+  expected?: After
+  /** The move source is checked too, so a later edit there cannot be moved or removed. */
+  sourceExpected?: After
   /** Text now, and the text it will have — for the preview. Absent for binaries and folders. */
   diff?: { old: string; new: string }
   /** The state that will be put back. */
@@ -92,7 +101,7 @@ export interface RestorePlan {
   settled: string[]
 }
 
-/** What the person chose for a file that changed since: leave it, or put it back regardless. */
+/** Legacy caller choices. `overwrite` never overrides a conflict's safety check. */
 export type ConflictChoice = 'skip' | 'overwrite'
 
 export interface RestoreResult {

@@ -9,7 +9,8 @@
  * plugin's folder. Requires Obsidian with the development build — see docs/Testing.md.
  */
 import { describe, it, expect, beforeAll } from 'vitest'
-import { hasTestApi, isObsidianRunning } from './helpers/obsidianCli'
+import { hasTestApi, isObsidianRunning, evalJson, evalRaw, reloadApp } from './helpers/obsidianCli'
+import { shotDir } from './helpers/shots'
 import { evalAsync } from './helpers/githubLive'
 
 const available = isObsidianRunning() && hasTestApi()
@@ -24,6 +25,7 @@ interface Outcome {
 }
 
 const DIR = 'Rewind e2e'
+const SHOTS = shotDir('rewind')
 
 const script = `(async () => {
   const t = window.__abeleTest
@@ -48,12 +50,12 @@ const script = `(async () => {
     const log = new t.rewind.ChatRewind(app, { key: () => 'e2e', turn: () => 'e2e-turn' }, t.rewind.memoryStore())
     const end = log.begin('mv')
     // Obsidian moves only into a folder that is there, so the agent makes it first.
-    await app.vault.createFolder(dir + '/Moved')
-    await app.fileManager.renameFile(get(dir + '/Alpha.md'), dir + '/Moved/Alpha two.md')
-    await app.fileManager.processFrontMatter(get(dir + '/Other.md'), (fm) => { fm.status = 'done' })
-    await app.vault.createBinary(dir + '/pic.bin', new Uint8Array([1, 2, 3]).buffer)
-    await app.vault.create(dir + '/New.md', 'made up')
-    await app.fileManager.trashFile(get(dir + '/Gone.md'))
+    await end.app.vault.createFolder(dir + '/Moved')
+    await end.app.fileManager.renameFile(get(dir + '/Alpha.md'), dir + '/Moved/Alpha two.md')
+    await end.app.fileManager.processFrontMatter(get(dir + '/Other.md'), (fm) => { fm.status = 'done' })
+    await end.app.vault.createBinary(dir + '/pic.bin', new Uint8Array([1, 2, 3]).buffer)
+    await end.app.vault.create(dir + '/New.md', 'made up')
+    await end.app.fileManager.trashFile(get(dir + '/Gone.md'))
     await end()
 
     out.ops = log.entries.value.map((e) => e.op + ' ' + e.changes.map((c) => c.path).join(','))
@@ -118,7 +120,9 @@ describe.skipIf(!available)('rewind in the app', () => {
     const renames = (outcome.ops ?? []).filter((op) => op.includes('renameFile'))
     expect(renames).toHaveLength(1)
     // The link Obsidian rewrote in the other note after the rename is a change of its own.
-    expect((outcome.ops ?? []).some((op) => !op.includes('renameFile') && op.endsWith('/Other.md'))).toBe(true)
+    expect(
+      (outcome.ops ?? []).some((op) => op.startsWith('vault.process ') && op.endsWith('/Other.md'))
+    ).toBe(true)
   })
 
   it('puts every file back as it was', () => {
@@ -133,6 +137,58 @@ describe.skipIf(!available)('rewind in the app', () => {
     })
     expect(outcome.left).toBe(0)
   })
+})
+
+describe.skipIf(!available)('parallel chat undo in the app', () => {
+  it('keeps other chats and human changes, including a stale preview', () => {
+    const result = evalAsync<{
+      error?: string
+      own: boolean
+      same: string
+      other: string
+      refused: boolean
+      human: string
+    }>(
+      `(async () => {
+      const dir = ${JSON.stringify(DIR)}
+      const get = p => app.vault.getAbstractFileByPath(dir + '/' + p)
+      const read = p => app.vault.read(get(p))
+      try {
+        await app.vault.createFolder(dir)
+        await app.vault.create(dir + '/Shared.md', 'original')
+        const t = window.__abeleTest.rewind, store = t.memoryStore()
+        const a = new t.ChatRewind(app, { key: () => 'parallel-a', turn: () => 'a' }, store)
+        const b = new t.ChatRewind(app, { key: () => 'parallel-b', turn: () => 'b' }, store)
+        const left = a.track('write', 'run-a'), right = b.track('write', 'run-b')
+        await left.app.vault.modify(get('Shared.md'), 'alpha')
+        await right.app.vault.modify(get('Shared.md'), 'beta')
+        await Promise.all([
+          left.app.vault.create(dir + '/A.md', 'alpha only'),
+          right.app.vault.create(dir + '/B.md', 'beta only')
+        ])
+        await Promise.all([left.close(), right.close()])
+        const own = a.entries.value.every(e => e.chat === 'parallel-a' && e.run === 'run-a' && e.changes.every(c => !c.path.endsWith('/B.md'))) &&
+          b.entries.value.every(e => e.chat === 'parallel-b' && e.run === 'run-b' && e.changes.every(c => !c.path.endsWith('/A.md')))
+        await a.apply(await a.planSince(0), { [dir + '/Shared.md']: 'overwrite' })
+        const same = await read('Shared.md'), other = await read('B.md')
+        const plan = await b.planSince(0)
+        await app.vault.modify(get('Shared.md'), 'human words')
+        const undone = await b.apply(plan, {})
+        return { own, same, other, refused: undone.failed.some(f => f.path.endsWith('/Shared.md')), human: await read('Shared.md') }
+      } catch (error) { return { error: String(error.stack || error) } }
+      finally { const folder = app.vault.getAbstractFileByPath(dir); if (folder) await app.vault.delete(folder, true) }
+    })()`,
+      60_000
+    )
+    expect(result.error).toBeUndefined()
+    expect(result).toMatchObject({
+      own: true,
+      same: 'beta',
+      other: 'beta only',
+      refused: true,
+      human: 'human words',
+    })
+  }, 90_000)
 })
 
 describe.skipIf(!available)('the rewind dialog in the app', () => {
@@ -151,4 +207,67 @@ describe.skipIf(!available)('the rewind dialog in the app', () => {
     expect(outcome.after).toEqual({ 'Kept.md': 'as it was', 'Made.md': null })
     expect(outcome.left).toBe(0)
   })
+
+  it('shows a non-destructive conflict and an empty state at desktop and phone widths', async () => {
+    const size = evalJson<[number, number]>(
+      `require('@electron/remote').getCurrentWindow().getContentSize()`
+    )
+    try {
+      for (const mobile of [false, true]) {
+        await reloadApp(`app.emulateMobile(${mobile})`)
+        evalRaw(
+          `require('@electron/remote').getCurrentWindow().setContentSize(${mobile ? '390,844' : '1100,850'})`
+        )
+        for (const state of ['conflict', 'empty']) {
+          const result = evalAsync<{
+            error?: string
+            text: string
+            width: number
+            right: number
+            selects: number
+          }>(
+            `(async () => {
+            const dir = ${JSON.stringify(DIR)}, state = ${JSON.stringify(state)}
+            const wait = ms => new Promise(r => setTimeout(r, ms))
+            const get = p => app.vault.getAbstractFileByPath(p)
+            try {
+              if (get(dir)) await app.vault.delete(get(dir), true)
+              if (state === 'conflict') {
+                await app.vault.createFolder(dir)
+                const path = dir + '/A sample note with a deliberately long descriptive filename.md'
+                await app.vault.create(path, 'Original sample text.')
+                await window.__abeleTest.openRewind(path, dir + '/Created.md', true)
+                await wait(500)
+                document.querySelector('.abele-rewind .tree-item-self')?.click()
+              } else await window.__abeleTest.openRewind('', '')
+              await wait(500)
+              const dialog = document.querySelector('.abele-rewind')?.closest('.modal')
+              if (!dialog) throw new Error('Undo dialog did not open')
+              const image = await require('@electron/remote').getCurrentWebContents().capturePage()
+              require('fs').writeFileSync(${JSON.stringify(SHOTS + '/' + (mobile ? 'phone' : 'desktop') + '-')} + state + '.png', image.toPNG())
+              return { text: dialog.textContent, width: innerWidth, right: dialog.getBoundingClientRect().right, selects: dialog.querySelectorAll('select').length }
+            } catch (error) { return { error: String(error.stack || error) } }
+            finally {
+              document.querySelector('.abele-rewind')?.closest('.modal')?.querySelector('.modal-header-button, .modal-close-button')?.click()
+              await wait(300)
+              if (get(dir)) await app.vault.delete(get(dir), true)
+            }
+          })()`,
+            60_000
+          )
+          expect(result.error).toBeUndefined()
+          expect(result.right).toBeLessThanOrEqual(result.width + 1)
+          expect(result.selects).toBe(0)
+          expect(result.text).toContain(
+            state === 'conflict' ? 'left untouched' : 'changed no files'
+          )
+        }
+      }
+    } finally {
+      evalRaw(
+        `require('@electron/remote').getCurrentWindow().setContentSize(${size[0]},${size[1]})`
+      )
+      await reloadApp('app.emulateMobile(false)')
+    }
+  }, 180_000)
 })

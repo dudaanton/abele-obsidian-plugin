@@ -1,8 +1,7 @@
 import type { AgentTool } from '../client'
 import { guardChatWrite } from './chatWriteGuard'
 import { EDIT_DESCRIPTION } from './fileToolDescriptions'
-import { GlobalStore } from '@/stores/GlobalStore'
-import { scopeOf } from '../toolContext'
+import { appOf, scopeOf } from '../toolContext'
 import { TFile } from 'obsidian'
 import { contentHash } from '../readGuard'
 import { noteLocalScriptWrite } from '@/scripting/ScriptTrust'
@@ -35,7 +34,7 @@ export function createEditFileTool(opts?: { skipScope?: boolean }): AgentTool {
       if (!opts?.skipScope && !scopeOf(ctx).isInScope(path)) {
         throw new Error(`Access denied: ${path} is not in workspace scope`)
       }
-      const { app } = GlobalStore.getInstance()
+      const app = appOf(ctx)
       const file = app.vault.getAbstractFileByPath(path)
       if (!(file instanceof TFile)) throw new Error(`File not found: ${path}`)
       guardChatWrite(file.path)

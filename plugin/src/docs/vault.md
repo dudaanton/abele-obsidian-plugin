@@ -398,8 +398,8 @@ missing parents through normal vault APIs. There is no archive sidecar, new note
 schema or source mutation. Entry names describe virtual archive hierarchy, not vault scope.
 The successful tool result and rewind record refer to the saved output. ZIP outputs are
 not added to the chat touched-file list, which still includes only Markdown and scripts;
-packing does not fabricate text diffs or mark source contents as read by the model. Existing
-rewind recording remains broad across concurrent operations. Failed/stopped construction saves
+packing does not fabricate text diffs or mark source contents as read by the model. Rewind
+records only the invocation's own writes, including prepared ZIP creation. Failed/stopped construction saves
 no partial ZIP; parents already created before a later failure may remain. See `tools` topic
 **ZIP archives** for selection, permission, byte preservation and resource contracts.
 
@@ -1041,6 +1041,20 @@ chat ran, nothing more. It is kept under the
 size the **Rewind space** setting allows (100MB by default; 0 keeps nothing): the chats written
 to least recently lose theirs first, then the oldest changes of the chat being written. A change
 that has been put back leaves the log. Deleting this folder only takes away the way back.
+
+Version 1 log entries additionally carry `chat` (the first-message key) and `run` (the invoking
+session/turn identity); delegated branches retain their run identity in their root chat's log.
+Ownership is passed through a call-local file facade, never inferred from which chats happen
+to be running. A suspended script keeps that owner. Unattributed writes through a global app
+or third-party command are not claimed by a chat. Restoring does not mute other recordings.
+`uncertain: true` on a change means another mutation overlapped its snapshot interval.
+Undo refuses those files, discontinuous histories (another writer edited between two changes),
+and files whose current fingerprint differs from the recorded result. Conflicting files remain
+untouched and in the journal; there is no force-overwrite option. Preconditions are checked again
+when applying, including at the native adapter queue boundary. Adapters without that boundary
+refuse undo rather than risk a read/write race. Old entries without `chat`/`run` remain readable
+in their existing chat folder, with the same conflict checks. Legacy folder moves cannot prove
+ownership of their descendants and are left untouched.
 
 A tool result too long to send whole carries `stored`: its key and the whole text. The model was
 sent only the start of it; `read_result` reads the rest by that key, for as long as the chat file

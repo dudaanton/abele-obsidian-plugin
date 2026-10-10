@@ -4,7 +4,7 @@
  * Every path the chosen entries touched is taken back to the state it had before the first of
  * them — not undone step by step, which would pass through every state in between and trip on
  * a file the agent wrote twice. What it holds now is compared with what the last of them left:
- * a difference means somebody else changed it since, and that file is the person's to decide.
+ * a difference means somebody else changed it since, and that file is left untouched.
  */
 import type { VaultFs } from './vaultFs'
 import type {
@@ -28,16 +28,25 @@ const depth = (path: string) => path.split('/').length
 
 export async function planRestore(entries: RewindEntry[], fs: VaultFs): Promise<RestorePlan> {
   const ordered = [...entries].sort((a, b) => a.at - b.at)
-  const byPath = new Map<string, { target: Before; expected: After; refs: string[] }>()
+  const byPath = new Map<
+    string,
+    { target: Before; expected: After; refs: string[]; interrupted: boolean }
+  >()
   for (const entry of ordered) {
     entry.changes.forEach((change, index) => {
       const ref = `${entry.id}:${index}`
       const known = byPath.get(change.path)
       if (known) {
+        known.interrupted ||= known.expected !== beforeAfter(change.before) || !!change.uncertain
         known.expected = change.after
         known.refs.push(ref)
       } else {
-        byPath.set(change.path, { target: change.before, expected: change.after, refs: [ref] })
+        byPath.set(change.path, {
+          target: change.before,
+          expected: change.after,
+          refs: [ref],
+          interrupted: !!change.uncertain,
+        })
       }
     })
   }
@@ -50,15 +59,15 @@ export async function planRestore(entries: RewindEntry[], fs: VaultFs): Promise<
   /** Paths a move back empties, so they are not also sent to the trash. */
   const movedAway = new Set<string>()
 
-  for (const [path, { target, expected, refs }] of byPath) {
+  for (const [path, { target, expected, refs, interrupted }] of byPath) {
     const current = currents.get(path) as Current
     // Already as it was: nothing to do, and nothing to show — but it leaves the log all the same.
     if (currentAfter(current) === beforeAfter(target)) {
       settled.push(...refs)
       continue
     }
-    const conflict = currentAfter(current) !== expected
-    const base = { path, conflict, target, refs }
+    const conflict = interrupted || currentAfter(current) !== expected
+    const base = { path, conflict, target, refs, expected }
     const oldText = current.t === 'text' ? current.text : ''
 
     if (target.t === 'missing') {
@@ -74,11 +83,31 @@ export async function planRestore(entries: RewindEntry[], fs: VaultFs): Promise<
     const movedTo = target.movedTo
     if (movedTo && current.t === 'missing') {
       const there = currents.get(movedTo) ?? (await fs.current(movedTo))
-      const same =
-        target.t === 'folder' ? there.t === 'folder' : currentAfter(there) === target.hash
+      // Legacy folder snapshots do not identify their descendants. Moving a whole folder
+      // could take along another writer's additions, so leave it for manual recovery.
+      if (target.t === 'folder') {
+        items.push({ ...base, conflict: true, action: 'recreate-folder' })
+        continue
+      }
+      const destination = byPath.get(movedTo)
+      const safeDestination =
+        !destination?.interrupted && (!destination || currentAfter(there) === destination.expected)
+      if (
+        !safeDestination ||
+        (there.t !== 'missing' && currentAfter(there) !== target.hash && !destination)
+      ) {
+        items.push({ ...base, conflict: true, action: 'recreate' })
+        continue
+      }
+      const same = currentAfter(there) === target.hash
       if (same) {
         movedAway.add(movedTo)
-        items.push({ ...base, action: 'move-back', from: movedTo })
+        items.push({
+          ...base,
+          action: 'move-back',
+          from: movedTo,
+          sourceExpected: currentAfter(there),
+        })
         continue
       }
     }
@@ -128,16 +157,23 @@ export async function applyRestore(
     refs: [...plan.settled],
   }
   const chosen = plan.items.filter((item) => {
-    if (item.action === 'unrestorable' || (item.conflict && choices[item.path] !== 'overwrite')) {
+    // Retain the choices argument for older callers, but never permit destructive overwrite.
+    if (item.action === 'unrestorable' || item.conflict || choices[item.path] === 'skip') {
       result.skipped.push(item.path)
       return false
     }
     return true
   })
 
-  const run = async (item: RestoreItem, step: () => Promise<void>) => {
+  const run = async (item: RestoreItem, step: (safe: VaultFs) => Promise<void>) => {
     try {
-      await step()
+      if (currentAfter(await fs.current(item.path)) !== item.expected)
+        throw new Error('Changed since the undo snapshot: left untouched')
+      if (item.from && currentAfter(await fs.current(item.from)) !== item.sourceExpected)
+        throw new Error('Moved file changed since the undo snapshot: left untouched')
+      const expected = new Map([[item.path, item.expected ?? null]])
+      if (item.from) expected.set(item.from, item.sourceExpected ?? null)
+      await step(fs.checked(expected, new Set(item.action === 'remove-folder' ? [item.path] : [])))
       result.restored.push(item.path)
       result.refs.push(...item.refs)
     } catch (err) {
@@ -152,27 +188,29 @@ export async function applyRestore(
 
   // Folders first, shallowest first, so content has somewhere to go.
   for (const item of of('recreate-folder').sort((a, b) => depth(a.path) - depth(b.path))) {
-    await run(item, () => fs.ensureFolder(item.path))
+    await run(item, (safe) => safe.ensureFolder(item.path))
   }
   for (const item of of('rewrite', 'recreate')) {
-    await run(item, async () => {
+    await run(item, async (safe) => {
       const target = item.target
       const data = target.t === 'binary' && target.blob ? await blob(target.blob) : undefined
       if (target.t === 'binary' && !data) throw new Error('The kept copy is gone')
-      await fs.put(item.path, target, data ?? undefined)
+      if (currentAfter(await fs.current(item.path)) !== item.expected)
+        throw new Error('Changed since the undo snapshot: left untouched')
+      await safe.put(item.path, target, data ?? undefined, item.expected)
     })
   }
-  for (const item of of('remove')) await run(item, () => fs.remove(item.path))
+  for (const item of of('remove')) await run(item, (safe) => safe.remove(item.path))
   // Files before folders, and deepest first, so a folder moved back takes nothing stale along.
   const moves = of('move-back').sort(
     (a, b) =>
       Number(a.target.t === 'folder') - Number(b.target.t === 'folder') ||
       depth(b.path) - depth(a.path)
   )
-  for (const item of moves) await run(item, () => fs.move(item.from as string, item.path))
+  for (const item of moves) await run(item, (safe) => safe.move(item.from as string, item.path))
   for (const item of of('remove-folder').sort((a, b) => depth(b.path) - depth(a.path))) {
-    await run(item, async () => {
-      if (!(await fs.removeIfEmpty(item.path))) throw new Error('Not empty: kept')
+    await run(item, async (safe) => {
+      if (!(await safe.removeIfEmpty(item.path))) throw new Error('Not empty: kept')
     })
   }
   return result

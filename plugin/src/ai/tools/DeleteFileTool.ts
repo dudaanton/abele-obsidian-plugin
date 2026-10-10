@@ -1,5 +1,5 @@
 import type { AgentTool } from '../client'
-import { GlobalStore } from '@/stores/GlobalStore'
+import { appOf } from '../toolContext'
 import { scopeOf } from '../toolContext'
 import { TFile } from 'obsidian'
 
@@ -22,7 +22,7 @@ export function createDeleteFileTool(opts?: { skipScope?: boolean }): AgentTool 
       if (!opts?.skipScope && !scopeOf(ctx).isInScope(path)) {
         throw new Error(`Access denied: ${path} is not in workspace scope`)
       }
-      const { app } = GlobalStore.getInstance()
+      const app = appOf(ctx)
       const file = app.vault.getAbstractFileByPath(path)
       if (!(file instanceof TFile)) throw new Error(`File not found: ${path}`)
       await app.fileManager.trashFile(file)

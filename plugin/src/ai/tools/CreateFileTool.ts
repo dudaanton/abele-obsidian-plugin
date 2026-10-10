@@ -1,6 +1,6 @@
 import type { AgentTool } from '../client'
 import { guardChatWrite } from './chatWriteGuard'
-import { GlobalStore } from '@/stores/GlobalStore'
+import { appOf } from '../toolContext'
 import { scopeOf } from '../toolContext'
 import { toSafeVaultPath, describeRename } from '@/helpers/pathsHelpers'
 import { contentHash } from '../readGuard'
@@ -32,7 +32,7 @@ export function createCreateFileTool(opts?: { skipScope?: boolean }): AgentTool 
       guardChatWrite(safePath)
       const renamed = describeRename(path, safePath)
 
-      const { app } = GlobalStore.getInstance()
+      const app = appOf(ctx)
       if (app.vault.getAbstractFileByPath(safePath)) {
         throw new Error(`File already exists: ${safePath}`)
       }

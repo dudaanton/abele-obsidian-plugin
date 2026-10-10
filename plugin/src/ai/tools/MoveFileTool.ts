@@ -1,6 +1,6 @@
 import type { AgentTool } from '../client'
 import { guardChatWrite } from './chatWriteGuard'
-import { GlobalStore } from '@/stores/GlobalStore'
+import { appOf } from '../toolContext'
 import { scopeOf } from '../toolContext'
 import { toSafeVaultPath, describeRename } from '@/helpers/pathsHelpers'
 import { TFile } from 'obsidian'
@@ -32,7 +32,7 @@ export function createMoveFileTool(opts?: { skipScope?: boolean }): AgentTool {
       if (!opts?.skipScope && !scopeOf(ctx).isInScope(from)) {
         throw new Error(`Access denied: ${from} is not in workspace scope`)
       }
-      const { app } = GlobalStore.getInstance()
+      const app = appOf(ctx)
       const file = app.vault.getAbstractFileByPath(from)
       if (!(file instanceof TFile)) throw new Error(`File not found: ${from}`)
       if (app.vault.getAbstractFileByPath(safeTo)) {

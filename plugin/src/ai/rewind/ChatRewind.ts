@@ -1,10 +1,10 @@
 /**
  * One chat's rewind log: what its agent changed in the vault, turn by turn, and the way back.
  *
- * The chat opens a recording around every tool call it makes; the tracker sends into it every
- * change made meanwhile, which lands here as an entry under the user message whose turn it
- * was. The log is written after each call that changed something, in the plugin's folder on
- * this device (see `RewindStore`), and kept under the size the settings allow — the chats
+ * Each tool receives an owned file facade. Its changes land here under the chat, run and user
+ * message captured at invocation, never under whichever chat happens to be active later.
+ * The log is written after each change, in the plugin's folder on this device (see
+ * `RewindStore`), and kept under the size the settings allow — the chats
  * written to least recently go first.
  */
 import { shallowRef } from 'vue'
@@ -47,7 +47,6 @@ export class ChatRewind implements Recording {
   private loadedKey: string | null = null
   private loading: Promise<void> | null = null
   private pendingBlobs = new Map<string, ArrayBuffer>()
-  private currentTool: string | undefined
   private dirty = false
   private failureNotified = false
   private writing: Promise<void> = Promise.resolve()
@@ -58,22 +57,39 @@ export class ChatRewind implements Recording {
     private readonly store: RewindStore = adapterStore(app)
   ) {}
 
-  /** Starts recording for one tool call; the function returned stops it and writes the log. */
-  begin(tool: string): () => Promise<void> {
-    const tracker = ChangeTracker.get()
-    if (!tracker || rewindLimitBytes() === 0 || !this.host.key()) return async () => {}
-    const close = tracker.open(this)
-    const previous = this.currentTool
-    this.currentTool = tool
-    return async () => {
-      close()
-      this.currentTool = previous
-      await this.flush()
-    }
+  /** Call-local recording, passed explicitly through ToolContext.app. */
+  track(
+    tool: string,
+    run: string,
+    turn = this.host.turn()
+  ): { app: App; close: () => Promise<void> } {
+    const tracker = ChangeTracker.get(this.app)
+    const chat = this.host.key()
+    if (!tracker || rewindLimitBytes() === 0 || !chat || !turn)
+      return { app: this.app, close: async () => {} }
+    const scope = tracker.scope({
+      record: (op, changes, blobs) => {
+        this.record(op, changes, blobs, { chat, run, turn, tool })
+        void this.flush()
+      },
+    })
+    // A script may suspend on a form and keep this facade. Later writes retain their origin.
+    return { app: scope.app, close: () => this.flush() }
   }
 
-  record(op: string, changes: Change[], blobs: Map<string, ArrayBuffer>): void {
-    const turn = this.host.turn()
+  /** A standalone invocation. Only mutations through the returned app are attributed to it. */
+  begin(tool: string): (() => Promise<void>) & { app: App } {
+    const scope = this.track(tool, ChangeTracker.entryId())
+    return Object.assign(scope.close, { app: scope.app })
+  }
+
+  record(
+    op: string,
+    changes: Change[],
+    blobs: Map<string, ArrayBuffer>,
+    owner?: { chat: string; run: string; turn: string; tool: string }
+  ): void {
+    const turn = owner?.turn ?? this.host.turn()
     if (!turn) return
     for (const change of changes) {
       const before = change.before
@@ -86,7 +102,9 @@ export class ChatRewind implements Recording {
       id: ChangeTracker.entryId(),
       turn,
       at: Date.now(),
-      ...(this.currentTool ? { tool: this.currentTool } : {}),
+      chat: this.host.key() ?? undefined,
+      run: turn,
+      ...(owner ?? {}),
       op,
       changes,
     }
@@ -197,17 +215,30 @@ export class ChatRewind implements Recording {
 
   private async plan(select: (e: RewindEntry) => boolean): Promise<RestorePlan> {
     await this.load()
-    return planRestore(this.entries.value.filter(select), new VaultFs(this.app))
+    return planRestore(
+      this.entries.value.filter((e) => (!e.chat || e.chat === this.host.key()) && select(e)),
+      new VaultFs(this.app)
+    )
   }
 
   /** Puts the files back; what was restored leaves the log, what was skipped stays. */
-  async apply(plan: RestorePlan, choices: Record<string, ConflictChoice>): Promise<RestoreResult> {
+  async apply(plan: RestorePlan, choices: Record<string, ConflictChoice> = {}): Promise<RestoreResult> {
+    await this.load()
     const key = this.host.key()
-    const fs = new VaultFs(this.app)
+    const owned = new Set(
+      this.entries.value
+        .filter((entry) => !entry.chat || entry.chat === key)
+        .flatMap((entry) => entry.changes.map((_, index) => `${entry.id}:${index}`))
+    )
+    if (
+      [...plan.settled, ...plan.items.flatMap((item) => item.refs)].some((ref) => !owned.has(ref))
+    )
+      throw new Error('This undo plan no longer belongs to this chat; reopen it')
+    const tracker = ChangeTracker.get(this.app)
+    const fs = new VaultFs(this.app, tracker?.checkedApp.bind(tracker))
     const blob = (name: string) => (key ? this.store.readBlob(key, name) : Promise.resolve(null))
     const run = () => applyRestore(plan, choices, fs, blob)
-    const tracker = ChangeTracker.get()
-    const outcome = tracker ? await tracker.mute(run) : await run()
+    const outcome = await run()
 
     const done = new Set(outcome.refs)
     const kept: RewindEntry[] = []

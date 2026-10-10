@@ -30,9 +30,12 @@ const exists = (path: string) => !!app.vault.getAbstractFileByPath(path)
 /** Runs `fn` as one tool call of the chat's current turn. */
 async function asAgent(fn: () => Promise<unknown>, tool = 'write'): Promise<void> {
   const end = log.begin(tool)
+  const host = app
+  app = end.app
   try {
     await fn()
   } finally {
+    app = host
     await end()
   }
 }
@@ -285,9 +288,51 @@ describe('a file changed since the agent left it', () => {
     expect(log.entries.value).toHaveLength(1)
   })
 
-  it('is put back when the person chooses to overwrite it', async () => {
+  // BUG: the old overwrite contract destroyed edits belonging to other writers.
+  it.fails('is put back when the person chooses to overwrite it', async () => {
     await rewindSince(0, { 'Notes/Plan.md': 'overwrite' })
     expect(await text('Notes/Plan.md')).toBe('first draft')
+  })
+})
+
+describe('safe restore preconditions', () => {
+  it('refuses a file changed after the preview was opened', async () => {
+    await asAgent(() => app.vault.modify(file('Notes/Plan.md'), 'agent edit'))
+    const plan = await log.planSince(0)
+    await app.vault.modify(file('Notes/Plan.md'), 'later human edit')
+    const result = await log.apply(plan, {})
+    expect(await text('Notes/Plan.md')).toBe('later human edit')
+    expect(result.failed[0]?.error).toMatch(/changed/i)
+    expect(log.entries.value).toHaveLength(1)
+  })
+
+  it('refuses a discontinuous A then person then A history', async () => {
+    await asAgent(() => app.vault.modify(file('Notes/Plan.md'), 'alpha'))
+    await app.vault.modify(file('Notes/Plan.md'), 'human addition')
+    await asAgent(() => app.vault.modify(file('Notes/Plan.md'), 'human addition + alpha'))
+    const plan = await log.planSince(0)
+    expect(plan.items[0].conflict).toBe(true)
+    await log.apply(plan, { 'Notes/Plan.md': 'overwrite' })
+    expect(await text('Notes/Plan.md')).toBe('human addition + alpha')
+  })
+
+  it('keeps recording a scoped call while a different chat restores', async () => {
+    await asAgent(() => app.vault.modify(file('Notes/Plan.md'), 'alpha'))
+    const other = new ChatRewind(app, { key: () => 'chat-b', turn: () => 'b1' }, store)
+    const scope = other.track('write', 'run-b')
+    const original = app.vault.process.bind(app.vault)
+    vi.spyOn(app.vault, 'process').mockImplementationOnce(async (file, value) => {
+      await scope.app.vault.modify(
+        app.vault.getAbstractFileByPath('Notes/Other.md') as TFile,
+        'beta'
+      )
+      await original(file, value)
+    })
+    await log.apply(await log.planSince(0), {})
+    await scope.close()
+    expect(other.entries.value).toMatchObject([
+      { chat: 'chat-b', run: 'run-b', changes: [{ path: 'Notes/Other.md' }] },
+    ])
   })
 })
 
@@ -320,7 +365,7 @@ describe('the room the copies may take', () => {
     // What the old chat keeps is the long text the note had before its agent shortened it.
     await app.vault.modify(file('Notes/Other.md'), 'x'.repeat(4000))
     const end = older.begin('write')
-    await app.vault.modify(file('Notes/Other.md'), 'short')
+    await end.app.vault.modify(file('Notes/Other.md'), 'short')
     await end()
 
     AbeleConfig.getInstance().ai = { ...DEFAULT_AI_SETTINGS, rewindLimitMb: 0.003 }

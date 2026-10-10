@@ -8,7 +8,7 @@
  */
 import { TFile, TFolder, type App, type DataAdapter } from 'obsidian'
 import { contentHash } from '../readGuard'
-import type { Before, Current } from './types'
+import type { After, Before, Current } from './types'
 import { noteLocalScriptWrite } from '@/scripting/ScriptTrust'
 
 /** Extensions read and kept as text. Anything else is bytes. */
@@ -61,7 +61,16 @@ type Adapter = DataAdapter & {
 }
 
 export class VaultFs {
-  constructor(private readonly app: App) {}
+  constructor(
+    private readonly app: App,
+    private readonly checkedApp?: (expected: Map<string, After>, emptyFolders?: Set<string>) => App
+  ) {}
+
+  /** Fresh operation facade: revision guards are consumed only by this restore's writes. */
+  checked(expected: Map<string, After>, emptyFolders?: Set<string>): VaultFs {
+    if (!this.checkedApp) throw new Error('Revision-checked undo is not available')
+    return new VaultFs(this.checkedApp(expected, emptyFolders))
+  }
 
   private get adapter(): Adapter {
     return this.app.vault.adapter as Adapter
@@ -142,7 +151,7 @@ export class VaultFs {
   }
 
   /** Makes the path hold this content, creating it (and its folders) when it is not there. */
-  async put(path: string, before: Before, blob?: ArrayBuffer): Promise<void> {
+  async put(path: string, before: Before, blob?: ArrayBuffer, expected?: After): Promise<void> {
     const file = this.app.vault.getAbstractFileByPath(path)
     const vault = this.app.vault as App['vault'] & {
       modifyBinary?(file: TFile, data: ArrayBuffer): Promise<void>
@@ -150,6 +159,14 @@ export class VaultFs {
     if (before.t === 'text') {
       // Put back on this device, by the person's own rewind: a script stays confirmed here.
       await noteLocalScriptWrite(path, before.text)
+      if (file instanceof TFile && expected !== undefined) {
+        await this.app.vault.process(file, (current) => {
+          if (file.path !== path || contentHash(current) !== expected)
+            throw new Error('Changed since the undo snapshot: left untouched')
+          return before.text
+        })
+        return
+      }
       if (file instanceof TFile) return this.app.vault.modify(file, before.text)
       if (!(await this.adapter.exists(path)) && !path.startsWith('.')) {
         await this.ensureParent(path)

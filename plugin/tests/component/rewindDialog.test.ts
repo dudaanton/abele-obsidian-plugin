@@ -34,8 +34,14 @@ const file = (path: string) => app.vault.getAbstractFileByPath(path) as TFile
 
 async function agentWrites(fn: () => Promise<unknown>) {
   const end = rewind.begin('write')
-  await fn()
-  await end()
+  const host = app
+  app = end.app
+  try {
+    await fn()
+  } finally {
+    app = host
+    await end()
+  }
 }
 
 async function open(mode: 'since' | 'turn' = 'since') {
@@ -142,7 +148,8 @@ describe('a file changed since', () => {
     expect(await app.vault.read(file('Notes/Plan.md'))).toBe('my own words')
   })
 
-  it('is put back once the person says to', async () => {
+  // BUG: the old overwrite control allowed undo to destroy another writer's work.
+  it.fails('is put back once the person says to', async () => {
     const view = await open()
     await view.findComponent(TreeItem).find('.tree-item-self').trigger('click')
     view.findComponent(Dropdown).vm.$emit('update:modelValue', 'overwrite')
