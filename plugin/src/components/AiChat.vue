@@ -468,7 +468,8 @@ import ChatFindBar from './ChatFindBar.vue'
 import { useChatFind } from '@/composables/useChatFind'
 import { useFindKey } from '@/composables/useFindKey'
 import type { FindPart } from '@/ai/chatFind'
-import { useTailPagedList } from '@/composables/useTailPagedList'
+import { useChatScroll, AUTO_SCROLL_THRESHOLD_PX, type ReadingPlace } from '@/composables/useChatScroll'
+import { offsetOf } from '@/composables/useChatScrollAnchors'
 import { useChatKeyboardGap } from '@/composables/useChatKeyboardGap'
 import AiChatInput from './AiChatInput.vue'
 import AiChatTabs from './AiChatTabs.vue'
@@ -667,22 +668,22 @@ const onCloneChat = (messageId: string) => {
 }
 
 const onCreateBranch = (messageId: string) => {
-  shouldAutoScroll = false
+  scroll.shouldAutoScroll = false
   session.value?.createBranch(messageId)
 }
 
 const onSwitchBranch = (childId: string) => {
-  shouldAutoScroll = false
+  scroll.shouldAutoScroll = false
   session.value?.switchBranch(childId)
 }
 
 const onRepeatMessage = (messageId: string) => {
-  shouldAutoScroll = true
+  scroll.shouldAutoScroll = true
   session.value?.repeatMessage(messageId)
 }
 
 const onRetryMessage = (messageId: string) => {
-  shouldAutoScroll = true
+  scroll.shouldAutoScroll = true
   session.value?.retryFromMessage(messageId)
 }
 
@@ -811,7 +812,7 @@ const onRewind = (messageId: string, mode: 'since' | 'turn') => {
 // ── Interceptor handlers ──
 
 const onConfirmDraft = async (messageId: string) => {
-  shouldAutoScroll = true
+  scroll.shouldAutoScroll = true
   await session.value?.confirmDraft(messageId)
 }
 
@@ -1017,455 +1018,18 @@ let pendingPromptAllowsMethods = false
 const pendingPromptAllVars = ref<TemplateVariable[]>([])
 const pendingPromptUserVars = ref<TemplateVariable[]>([])
 
-const AUTO_SCROLL_THRESHOLD_PX = 60
-/** How close to the top counts as asking for the messages above. */
-const LOAD_OLDER_THRESHOLD_PX = 200
-let shouldAutoScroll = true
-
-/**
- * Where the code last left the scroll, for telling its own scrolling from the reader's.
- *
- * A position rather than a flag saying the next scroll event is the code's. That flag was
- * wrong whenever a scroll produced no event to spend it on — scrolling to the bottom of a
- * chat already at its bottom changes nothing, and nothing is what the browser reports — and
- * the reader's next scroll was then read as the code's and ignored, which is how a chat being
- * streamed into pulled them back down the moment they scrolled up to read something.
- */
-let codeScrollTop: number | null = null
-
-/** How far above the end of the conversation the reader is; kept across a change of box. */
-let bottomGap = 0
-
-/** Scrolls the container, remembering where the browser actually settled. */
-const scrollContainerTo = (el: HTMLElement, top: number) => {
-  el.scrollTop = top
-  codeScrollTop = el.scrollTop
-  bottomGap = el.scrollHeight - el.scrollTop - el.clientHeight
-}
-
-/**
- * Only the end of the conversation is mounted; scrolling back reveals the rest.
- *
- * Every message mounts a component, and an assistant message mounts a markdown renderer with
- * it, so a long conversation paid for all of it before showing anything.
- */
-const {
-  visible: visibleMessages,
-  hasMore: hasOlder,
-  hidden: olderCount,
-  showMore: showOlder,
-  reset: resetWindow,
-  showFrom: showMessagesFrom,
-} = useTailPagedList(() => messages.value)
-
-/**
- * What the reader was looking at while older messages are being revealed above it.
- *
- * A message rather than a height. Reading the growth of `scrollHeight` once, on the tick
- * after the page is revealed, corrects for nothing: a message renders its markdown
- * asynchronously — `MarkdownRenderer.render` is awaited, and a re-render is queued behind a
- * timeout — so at that point the messages just mounted are still nearly empty, and their real
- * height arrives afterwards and shoves the view down. Holding one element still is immune to
- * that, however late and however often the heights change.
- */
-let anchor: { el: HTMLElement; offset: number } | null = null
-
-/** How far the anchor sits below the top of the scroll container. Negative when above it. */
-const offsetOf = (el: HTMLElement, container: HTMLElement) =>
-  el.getBoundingClientRect().top - container.getBoundingClientRect().top
-
-/** Takes the topmost rendered message as the anchor: the page is revealed above it. */
-const captureAnchor = () => {
-  const container = messagesContainer.value
-  const first = container?.querySelector<HTMLElement>('.abele-chat-msg')
-  anchor = container && first ? { el: first, offset: offsetOf(first, container) } : null
-}
-
-/** Puts the anchor back where it was, whatever has grown around it since. */
-const holdAnchor = () => {
-  const container = messagesContainer.value
-  if (!container || !anchor) return
-  if (!anchor.el.isConnected) {
-    anchor = null
-    return
-  }
-
-  const drift = offsetOf(anchor.el, container) - anchor.offset
-  if (Math.abs(drift) < 1) return
-  scrollContainerTo(container, container.scrollTop + drift)
-}
-
-/**
- * The reader taking over, told from their input rather than from a scroll event.
- *
- * A scroll event says where the container is, not who put it there, and while the anchor is
- * held that is not enough: the reader scrolls, the hold puts the container back in the same
- * frame, and the browser reports the two as one event reading exactly the held position —
- * indistinguishable from the hold correcting itself. So the hold held on, and the chat
- * refused to scroll back for as long as it lasted. A wheel, a finger, a key or the scrollbar
- * being taken hold of says what the scroll event cannot.
- */
-const readerTakesOver = (event?: Event) => {
-  anchor = null
-  // Heading up, said before the frame reports any scroll: a piece of the reply landing in
-  // between used to take a reader still near the end back to it, flick after flick.
-  // By type rather than by class: a chat in a popped-out window gets that window's events.
-  const up =
-    event?.type === 'wheel'
-      ? (event as WheelEvent).deltaY < 0
-      : event?.type === 'keydown' && SCROLL_UP_KEYS.has((event as KeyboardEvent).key)
-  if (up) shouldAutoScroll = false
-}
-
-const SCROLL_UP_KEYS = new Set(['ArrowUp', 'PageUp', 'Home'])
-
-/**
- * A finger on the screen. Nothing is scrolled under it, whichever way it is about to move:
- * following the end resumes once it lets go at the end, as the scroll events then say.
- */
-let fingerDown = false
-const fingerOn = (event: Event) => {
-  fingerDown = true
-  readerTakesOver(event)
-}
-const fingerOff = () => {
-  fingerDown = false
-  // Where the finger left it, read now: the scroll it made may not have been reported yet, and
-  // the next piece of the reply would otherwise take a reader who went up for one still following.
-  const el = messagesContainer.value
-  if (!el) return
-  bottomGap = el.scrollHeight - el.scrollTop - el.clientHeight
-  shouldAutoScroll = bottomGap < AUTO_SCROLL_THRESHOLD_PX
-}
-
-/**
- * Reveals the previous page, keeping the reader where they are.
- *
- * The anchor is held for a moment rather than once, because that is how long the revealed
- * messages take to render themselves. Held with the frames rather than with a timer: a frame
- * is when layout has settled, and there is nothing to correct between them.
- */
-const ANCHOR_HOLD_MS = 1500
-
-const loadOlder = () => {
-  const el = messagesContainer.value
-  if (!el || !hasOlder.value) return
-
-  captureAnchor()
-  showOlder()
-  void nextTick(() => holdAnchorAWhile(el))
-}
-
-/**
- * The next frame, or a moment later when no frame comes. A window behind others draws none, and
- * whatever waited for one there — a reveal, a hold — waited until Obsidian was brought forward.
- */
-const nextFrame = (win: Window, run: () => void) => {
-  if (closed) return
-  let done = false
-  const once = () => {
-    if (done) return
-    done = true
-    pendingFrames.delete(cancel)
-    run()
-  }
-  const frame = win.requestAnimationFrame(once)
-  const timer = win.setTimeout(once, 50)
-  const cancel = () => {
-    done = true
-    win.cancelAnimationFrame(frame)
-    win.clearTimeout(timer)
-  }
-  pendingFrames.add(cancel)
-}
-
-/**
- * Frames still asked for, so a chat that closes stops asking. A hold runs on for a moment and
- * would otherwise go on moving a container that is no longer on the page.
- */
-const pendingFrames = new Set<() => void>()
-let closed = false
-onUnmounted(() => {
-  closed = true
-  anchor = null
-  for (const cancel of pendingFrames) cancel()
-  pendingFrames.clear()
-})
-
-/** Keeps the anchor where it is for as long as the messages around it take to render. */
-const holdAnchorAWhile = (el: HTMLElement) => {
-  // The chat can be in a popped-out window, whose frames and clock are not the main one's.
-  const win = el.win
-  const until = win.performance.now() + ANCHOR_HOLD_MS
-  const hold = () => {
-    if (!anchor) return
-    holdAnchor()
-    if (win.performance.now() < until) nextFrame(win, hold)
-    else anchor = null
-  }
-  nextFrame(win, hold)
-}
-
-/**
- * The reader's place while the conversation changes under it — a reply ending and becoming a
- * message, a tool call arriving, a message taking the place of another — for a reader who is
- * not following the end.
- *
- * Kept as the block at the top of the box, a paragraph or a chart of a message, and where it
- * sits in the conversation. Whatever moves that block up or down is layout, and is taken back
- * out of the scroll; the reader scrolling moves the box, not the block, so it is never fought.
- * That is what the browser's own scroll anchoring does too, and the two cannot both correct the
- * same change: the browser's is off for as long as this one holds.
- *
- * A reply that ended used to take the reader to the end of the chat. The message replacing it
- * started empty, the scroll range collapsed under the reader, the browser clamped them to the
- * new end, and a chat at its end follows it. The message now takes over what the reply drew
- * (`markdownParts.ts`), and this covers what still differs between the two: the reasoning
- * folded away, the message's own chrome.
- */
-const STEADY_MS = 1500
-let steady: { el: HTMLElement; at: number; until: number } | null = null
-
-/** Where an element sits in the conversation, whatever the scroll. */
-const placeOf = (el: HTMLElement, container: HTMLElement) =>
-  offsetOf(el, container) + container.scrollTop
-
-/** The block at the top of the box: the first of a message's rendered blocks still in view. */
-const blockAtTop = (container: HTMLElement): HTMLElement | null => {
-  const top = container.getBoundingClientRect().top
-  const inView = (el: Element) => el.getBoundingClientRect().bottom > top + 1
-  const item = Array.from(container.children).find(inView)
-  if (!item?.instanceOf(HTMLElement)) return null
-  const blocks = item.querySelectorAll<HTMLElement>('.abele-markdown > *')
-  return Array.from(blocks).find((b) => b.getClientRects().length && inView(b)) ?? item
-}
-
-const endSteady = (container?: HTMLElement | null) => {
-  steady = null
-  container?.classList.remove('abele-ai-chat__messages_steady')
-}
-
-/** Takes back out of the scroll whatever moved the block since it was last looked at. */
-const holdSteady = () => {
-  const container = messagesContainer.value
-  if (!container || !steady) return
-  const { el } = steady
-  if (
-    !el.isConnected ||
-    !el.getClientRects().length ||
-    container.win.performance.now() > steady.until
-  ) {
-    endSteady(container)
-    return
-  }
-  const at = placeOf(el, container)
-  const moved = at - steady.at
-  // Another hold is putting the reader back already — a page revealed above them.
-  if (!anchor && Math.abs(moved) >= 1) scrollContainerTo(container, container.scrollTop + moved)
-  steady.at = at
-}
-
-/**
- * The scroll range kept at least as long as it was before the page changed, until what changed
- * has drawn again.
- *
- * A reply that ends moves its text into the message that replaces it, and for a moment the
- * message is on the page with nothing drawn in it. WebKit, which a phone runs, clamps the scroll
- * position the moment anything reads the layout, and in that moment the conversation ends where
- * the reply began: a reader halfway down the reply was put there, on a short chat at its very
- * top, and nothing put them back. A desktop's browser clamps with the frame, when the text is
- * back, so it was seen on a phone only. A floor under the content, as tall as the content was,
- * leaves the browser nothing to clamp.
- */
-const FLOOR_CLASS = 'abele-ai-chat__messages_floor'
-const FLOOR_VAR = '--abele-chat-floor'
-let floorUntil = 0
-
-const releaseFloor = (container: HTMLElement) => {
-  container.classList.remove(FLOOR_CLASS)
-  container.style.removeProperty(FLOOR_VAR)
-}
-
-/** Where the content itself ends, below the top of the conversation, floor or no floor. */
-const contentEnd = (container: HTMLElement) => {
-  const last = container.lastElementChild
-  if (!last?.instanceOf(HTMLElement)) return 0
-  const pad = parseFloat(container.win.getComputedStyle(container).paddingBottom) || 0
-  return placeOf(last, container) + last.getBoundingClientRect().height + pad
-}
-
-const holdFloor = (container: HTMLElement) => {
-  const win = container.win
-  const fresh = !container.classList.contains(FLOOR_CLASS)
-  const floor = Math.max(
-    container.scrollHeight,
-    parseFloat(container.style.getPropertyValue(FLOOR_VAR)) || 0
-  )
-  container.style.setProperty(FLOOR_VAR, `${floor}px`)
-  container.classList.add(FLOOR_CLASS)
-  floorUntil = win.performance.now() + STEADY_MS
-  if (!fresh) return
-  const check = () => {
-    if (!container.classList.contains(FLOOR_CLASS)) return
-    const want = parseFloat(container.style.getPropertyValue(FLOOR_VAR)) || 0
-    if (closed || win.performance.now() > floorUntil || contentEnd(container) >= want - 1)
-      releaseFloor(container)
-    else nextFrame(win, check)
-  }
-  nextFrame(win, check)
-}
-
-/** Starts holding the reader's place, from before the change about to happen to the page. */
-const steadyReader = () => {
-  const container = messagesContainer.value
-  if (!container || shouldAutoScroll || closed) return
-  holdFloor(container)
-  const el = blockAtTop(container)
-  if (!el) return
-  const win = container.win
-  const fresh = !steady
-  steady = { el, at: placeOf(el, container), until: win.performance.now() + STEADY_MS }
-  container.classList.add('abele-ai-chat__messages_steady')
-  if (!fresh) return
-  const hold = () => {
-    if (!steady) return
-    holdSteady()
-    if (steady) nextFrame(win, hold)
-  }
-  nextFrame(win, hold)
-}
-
-// Before the page changes: a message added, removed or replaced, a reply starting or ending.
-watch(
-  [() => messages.value.map((m) => m.id).join(), () => !!streamingContent.value, isStreaming],
-  steadyReader,
-  { flush: 'pre' }
-)
-
-/**
- * Where the reader was in each tab they have left, so going back puts them there again.
- *
- * Every tab is read in the same container, and switching used to send each one to its end —
- * reading back through one conversation, looking at another and coming back lost the place.
- * Kept as the message at the top of the box and its distance from the top, plus how far back
- * the window had been opened, rather than as a pixel offset: the messages mount afresh on the
- * way back and render their markdown late, and a pixel offset would land on whatever was there
- * before they had grown. A reader who was at the end has no entry: they go back to the end,
- * including whatever arrived while they were away, as a messenger does. Memory only — a
- * restart opens every chat at its end, as before.
- */
-interface ReadingPlace {
-  messageId: string
-  offset: number
-  hidden: number
-}
-const places = new Map<string, ReadingPlace>()
-
-/** Notes where the reader is in the tab being left. The DOM still shows that tab. */
-const rememberPlace = (tabId: string) => {
-  places.delete(tabId)
-  const el = messagesContainer.value
-  // A tab a delegated run holds has no conversation on screen, and so no place in it.
-  if (!el) return
-  if (el.scrollHeight - el.scrollTop - el.clientHeight < AUTO_SCROLL_THRESHOLD_PX) return
-  const top = el.getBoundingClientRect().top
-  const first = [...el.querySelectorAll<HTMLElement>('[data-message-id]')].find(
-    (m) => m.getBoundingClientRect().bottom > top
-  )
-  const messageId = first?.dataset.messageId
-  if (!first || !messageId) return
-  places.set(tabId, { messageId, offset: offsetOf(first, el), hidden: olderCount.value })
-}
-
-/**
- * Takes the reader back to a remembered place, once the tab's messages are on the page.
- *
- * A message that is no longer there — a branch switched, the history compacted — leaves
- * nothing to go back to, and the chat opens at its end as any other would.
- */
-const returnTo = async (place: ReadingPlace) => {
-  const index = messages.value.findIndex((m) => m.id === place.messageId)
-  if (index >= 0) {
-    showMessagesFrom(Math.min(place.hidden, index))
-    await nextTick()
-    const el = messagesContainer.value
-    const target = el?.querySelector<HTMLElement>(
-      `[data-message-id="${CSS.escape(place.messageId)}"]`
-    )
-    if (el && target) {
-      anchor = { el: target, offset: place.offset }
-      holdAnchor()
-      // Measured here too: a place already in position is not scrolled to, and a keyboard
-      // opening next would otherwise keep the distance to the end of the tab just left.
-      bottomGap = el.scrollHeight - el.scrollTop - el.clientHeight
-      holdAnchorAWhile(el)
-      return
-    }
-  }
-  scrollOnUserSend()
-}
-
-const onMessagesScroll = () => {
-  const el = messagesContainer.value
-  if (!el) return
-  // The box has changed height and its observer has not run yet: this is the browser clamping
-  // the position to the new box, not the reader, and the observer is about to put the reader
-  // back where they were. The browser reports the clamp before it reports the resize.
-  if (boxHeight === null) boxHeight = el.clientHeight
-  if (el.clientHeight !== boxHeight) return
-  // The container is exactly where it was put, so nobody has moved it since.
-  if (codeScrollTop !== null && Math.abs(el.scrollTop - codeScrollTop) < 1) return
-  codeScrollTop = null
-  // The reader has taken over; whatever was being held is where they left it.
-  anchor = null
-  bottomGap = el.scrollHeight - el.scrollTop - el.clientHeight
-  shouldAutoScroll = bottomGap < AUTO_SCROLL_THRESHOLD_PX
-  if (el.scrollTop < LOAD_OLDER_THRESHOLD_PX) loadOlder()
-}
-
-const doScroll = () => {
-  if (!shouldAutoScroll || fingerDown) return
-  nextTick(() => {
-    const el = messagesContainer.value
-    // Asked again: the reader may have scrolled away in the tick between.
-    if (!el || !shouldAutoScroll || fingerDown) return
-    scrollContainerTo(el, el.scrollHeight)
-  })
-}
-
-const scrollOnUserSend = () => {
-  shouldAutoScroll = true
-  doScroll()
-}
-
-watch([messages, streamingContent, streamingThinking], () => {
-  // Markdown may still be waiting for its display slot. Keep the resize anchor current
-  // even when the conversation grows without a completed Markdown mutation in this tick.
-  keepGapCurrent()
-  doScroll()
-})
-
-/**
- * The composer opened out over the whole chat, for writing at length (`AiChatInput`). The
- * conversation is hidden under it, and put back where the reader left it when it closes — or
- * at its end, if that is where they were.
- */
 const composing = ref(false)
-let gapBeforeComposing = 0
-
-watch(composing, (open) => {
-  const el = messagesContainer.value
-  if (open) {
-    gapBeforeComposing = bottomGap
-    return
-  }
-  void nextTick(() => {
-    if (!el || !messagesContainer.value) return
-    boxHeight = el.clientHeight
-    if (shouldAutoScroll) scrollContainerTo(el, el.scrollHeight)
-    else scrollContainerTo(el, el.scrollHeight - el.clientHeight - gapBeforeComposing)
-  })
+const scroll = useChatScroll({
+  messagesContainer, messages, streamingContent, streamingThinking, isStreaming, composing,
 })
+const {
+  visibleMessages, olderCount, showMessagesFrom, resetWindow,
+  readerTakesOver, fingerOn, fingerOff, onMessagesScroll,
+  scrollOnUserSend, doScroll, holdInView, endSteady, clearAnchor,
+  rememberPlace, returnTo, places, nextFrame,
+} = scroll
+let closed = false
+onUnmounted(() => { closed = true })
 
 // Something the agent cannot go on without is shown in the conversation; it is not left
 // waiting under the composer. What was written stays in the field.
@@ -1535,11 +1099,7 @@ const revealMessage = async (
       if (session.value !== s || generation !== revealing || !target.isConnected) return
     } while (Date.now() < until)
   }
-  shouldAutoScroll = false
-  anchor = { el: selected ?? target, offset: REVEAL_OFFSET_PX }
-  holdAnchor()
-  bottomGap = el.scrollHeight - el.scrollTop - el.clientHeight
-  holdAnchorAWhile(el)
+  holdInView(selected ?? target, REVEAL_OFFSET_PX)
   if (!selected && !exact && flashWholeMessage) {
     target.classList.remove('abele-footnote-flash')
     void target.offsetWidth
@@ -1564,16 +1124,8 @@ const find = useChatFind({
   hidden: () => olderCount.value,
   mountFrom: (index) => showMessagesFrom(index),
   revealPart: (messageId: string, part: FindPart) => messageRefs.get(messageId)?.revealPart(part),
-  holdInView: (el, offset) => {
-    const box = messagesContainer.value
-    if (!box) return
-    // A reader taken to a match is reading back, not following the end.
-    shouldAutoScroll = false
-    anchor = { el, offset }
-    holdAnchor()
-    bottomGap = box.scrollHeight - box.scrollTop - box.clientHeight
-    holdAnchorAWhile(box)
-  },
+  // A reader taken to a match is reading back, not following the end.
+  holdInView,
 })
 
 // ── Navigation: memory only, never a branch selection or a send ──
@@ -1715,7 +1267,7 @@ const applyNavigationJump = async (owner: ChatSession, id: string, part?: FindPa
     const chosen = selectedNavigationFork(buildNavigationTree(owner.allMessages.value), navigationPath(owner.allMessages.value, id))
     rememberNavigationIndicator(owner, chosen ? { owner, version, parentId: chosen.fork.parentId } : null)
   }
-  shouldAutoScroll = false
+  scroll.shouldAutoScroll = false
   composing.value = false
   await revealMessage(id, undefined, undefined, true, true)
   if (session.value !== owner || owner.conversationVersion.value !== version || intent !== navigationIntent || !owner.messages.value.some(m => m.id === id)) return
@@ -1735,7 +1287,7 @@ const navigationLatest = () => {
   cancelPendingNavigation()
   saveNavigationReturn()
   navigationOpen.value = false
-  anchor = null
+  clearAnchor()
   endSteady(messagesContainer.value)
   scrollOnUserSend()
 }
@@ -1833,9 +1385,9 @@ const restoreNavigationPlace = async (saved: NavigationPlace) => {
   }
   navigationReturns.value = navigationReturns.value.filter((place) => place !== saved)
   rememberNavigationIndicator(owner, saved.indicator)
-  anchor = null
+  clearAnchor()
   endSteady(messagesContainer.value)
-  shouldAutoScroll = saved.place === null
+  scroll.shouldAutoScroll = saved.place === null
   if (saved.place) await returnTo(saved.place)
   else scrollOnUserSend()
 }
@@ -1967,13 +1519,13 @@ watch(
   ([tabId, version], [previousTabId]) => {
     // The DOM still shows the tab being left, so this is the moment to read its place.
     if (previousTabId) rememberPlace(previousTabId)
-    anchor = null
+    clearAnchor()
     // The words were looked for in the conversation being left.
     find.close()
     resetWindow()
     const place = tabId ? places.get(tabId) : undefined
     // Not following the end while the messages mount, or they would be scrolled past the place.
-    shouldAutoScroll = !place
+    scroll.shouldAutoScroll = !place
     // A tick later, once the window has settled on the new tab's messages and they are mounted.
     if (place) void nextTick(() => returnTo(place))
     else void nextTick(doScroll)
@@ -2065,98 +1617,6 @@ onMounted(() => {
   // The sidebar may have been opened for this very text.
   consumePendingInput()
 })
-
-/**
- * Following the conversation as it grows, and the box it is read in as that changes.
- *
- * Attached to the container element, not once on mount: the container is unmounted while a
- * delegated run holds the tab and mounted afresh when the chat is back, and an observer left
- * on the first element watched nothing at all — a chat that had been away on a run's tab no
- * longer followed its own replies once their markdown rendered.
- */
-let mutObserver: MutationObserver | null = null
-let sizeObserver: ResizeObserver | null = null
-/**
- * The container's height as last reported, for telling a change of box from a scroll. Null
- * until the observer has reported once: the first scroll to arrive before then measures it.
- */
-let boxHeight: number | null = null
-
-/**
- * Keeps the reader's place when the box around the conversation changes height.
- *
- * A phone's keyboard takes the lower half of the screen and the chat shrinks to sit above it,
- * and nothing scrolls on its own when a box shrinks: what was at the bottom — the message
- * being answered — went under the keyboard, and the reader found themselves at a line read a
- * minute before (2026-09-05, from the phone). At the end of the conversation they stay at the
- * end; anywhere above it they keep their distance from it, which is what the messages above
- * a composer do in every chat app, and the same in reverse when the keyboard goes.
- */
-const onBoxResized = () => {
-  const el = messagesContainer.value
-  // Hidden under the opened composer: a box of nothing is not a change the reader made.
-  if (!el || composing.value) return
-  if (el.clientHeight !== boxHeight) {
-    boxHeight = el.clientHeight
-    if (!shouldAutoScroll) scrollContainerTo(el, el.scrollHeight - el.clientHeight - bottomGap)
-  }
-  // A narrower box wraps the text longer; a reader at the end stays at the end.
-  doScroll()
-}
-
-/**
- * The distance to the end, measured again when the conversation grows or shrinks under a reader
- * who is not following it. A reply streaming in below adds to that distance without a scroll to
- * say so, and the box changing height afterwards — a row appearing under the chat on a phone —
- * put the reader back at the distance from before the reply grew: a jump down by all that had
- * streamed in since they scrolled. Not while the box itself has changed and its observer has not
- * run yet: the distance from before the change is the one it is to keep.
- */
-const keepGapCurrent = () => {
-  const el = messagesContainer.value
-  if (!el || shouldAutoScroll || fingerDown) return
-  if (boxHeight !== null && el.clientHeight !== boxHeight) return
-  bottomGap = el.scrollHeight - el.scrollTop - el.clientHeight
-}
-
-const observe = (el: HTMLElement) => {
-  mutObserver = new MutationObserver(() => {
-    // Hidden under the opened composer; it is put right when the composer closes.
-    if (composing.value) return
-    // A message that has just rendered its markdown changes the subtree and the layout
-    // with it — which is exactly when the anchor needs putting back.
-    holdAnchor()
-    holdSteady()
-    keepGapCurrent()
-    doScroll()
-  })
-  mutObserver.observe(el, {
-    childList: true,
-    subtree: true,
-    attributes: true,
-    attributeFilter: ['open'],
-  })
-  boxHeight = null
-  sizeObserver = new ResizeObserver(onBoxResized)
-  sizeObserver.observe(el)
-}
-
-const unobserve = () => {
-  mutObserver?.disconnect()
-  mutObserver = null
-  sizeObserver?.disconnect()
-  sizeObserver = null
-}
-
-watch(
-  messagesContainer,
-  (el) => {
-    unobserve()
-    if (el) observe(el)
-  },
-  { immediate: true, flush: 'post' }
-)
-onUnmounted(unobserve)
 
 /**
  * Puts the cursor in the composer, after whatever is already typed there, and goes on trying
