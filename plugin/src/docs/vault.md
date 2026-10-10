@@ -184,9 +184,18 @@ references and reason/request/run IDs, timestamps, expiry and target message ref
 contains no conversation text, question text, titles or error text. It is an evidence ledger:
 live arrivals are unioned into it, and only a disk-confirmed resolution or proven file deletion
 may remove an identity. It loads before publication, including node-registry publication.
-Startup reconciles all `.abchat` files, including unopened discussions, without making sessions.
+Startup inventories all `.abchat` files, including unopened discussions, without making sessions.
+The separate device-local `abele-agents-revisions-v1` cache records verified mtime/size pairs,
+terminal IDs, accepted-tool phases and an exact signature of the indexed reasons, including
+quiet files. Unchanged files reuse the ledger; changed or unverified files are read sequentially
+in idle time. Neither cache holds titles, question/error text, tool arguments or transcripts.
+Changed inventories invalidate cached discussion ownership hints; opening still uses the storage
+identity gate. Vault-load create/modify events are ignored before startup, and later events are
+coalesced per file. Large attention projections run in a disposable worker where available;
+the portable fallback yields between log chunks. Discovery does not assemble transcript arrays
+for log-format ordinary chats. Explicit refresh still rechecks files.
 Missing fields do not resolve indexed approvals/questions/runs/errors; such rows remain uncertain.
-Read-only discovery consults the existing safety-copy reader for a damaged main file, without
+Read-only discovery checks the existing safety copy for a damaged main file, without
 repairing or removing either copy. Backup-only or still-unreadable states retain their pointers
 as uncertain and do not retire entries. Renames move references before I/O, never delete and rebuild.
 Live projection may show an accepted tool as work, but transient projection cannot retire evidence.

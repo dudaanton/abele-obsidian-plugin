@@ -1374,7 +1374,7 @@ export default class AbelePlugin extends Plugin {
       if (!(file instanceof TFile) || file.extension !== 'abchat') return
       // An open tab is not authoritative over a synced file. The adapter applies disk
       // decisions read-only; its own writes use the same monotonic resolution rule.
-      void agents.updateFile(file)
+      agents.scheduleFile(file)
     }
     this.registerEvent(this.app.vault.on('create', onChatFileChanged))
     this.registerEvent(this.app.vault.on('modify', onChatFileChanged))

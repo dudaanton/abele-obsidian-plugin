@@ -7,7 +7,8 @@ import { DiscussionIdentityConflict, isDiscussion } from '@/ai/commentIdentity'
 import { CommentService } from '@/ai/CommentService'
 import type { ChatSession } from '@/ai/ChatSession'
 import { parseChatMetadata, serializeMetadata } from '@/ai/ChatLog'
-import { inspectChat, inspectMainChat } from '@/ai/chatCopy'
+import { AttentionReader } from './AttentionReader'
+import { chatCopyPath } from '@/ai/chatCopy'
 import { AgentRegistry } from '@/ai/agents/AgentRegistry'
 import type { ChatMetadata } from '@/ai/types'
 import { ShellModal } from '@/modal/ShellModal'
@@ -25,6 +26,25 @@ import {
 } from './attention'
 
 const INDEX_KEY = 'abele-agents-index'
+const REVISIONS_KEY = 'abele-agents-revisions-v1'
+type CheckedRevision = {
+  mtime: number
+  size: number
+  resolved: string[]
+  tools?: LocalAttention['tools']
+  reasons: string
+  discussion: boolean
+}
+const indexReasons = (reasons: AttentionReason[]) =>
+  reasons.map(({ kind, id, at, target, expires }) => ({ kind, id, at, target, expires }))
+
+function attentionIdle(): Promise<void> {
+  return new Promise((resolve) => {
+    if (typeof window.requestIdleCallback === 'function')
+      window.requestIdleCallback(() => resolve(), { timeout: 100 })
+    else window.setTimeout(resolve, 0)
+  })
+}
 /** Obsidian adapter. The file remains authoritative; the local index never contains a transcript. */
 export class AgentsService {
   private static instance: AgentsService | null = null
@@ -37,10 +57,12 @@ export class AgentsService {
   }
   readonly rows = shallowRef<AttentionRow[]>([])
   private readonly localIncomplete = ref(true)
+  private readonly updating = ref(false)
   private readonly nodes = shallowRef<{ id: string; label: string; expectedNodeId: string }[]>([])
   readonly incomplete = computed(
     () =>
       this.localIncomplete.value ||
+      this.updating.value ||
       this.nodes.value.length > 0 ||
       this.rows.value.some((row) => row.uncertain)
   )
@@ -56,10 +78,86 @@ export class AgentsService {
   /** Only disk-confirmed decisions may subtract from the evidence ledger. */
   private readonly truths = new Map<string, LocalAttention>()
   private savedIndex = ''
+  private savedRevisions = ''
   private readonly live = new Map<ChatSession, WatchStopHandle>()
   private started = false
   private disposed = false
   private refreshing?: Promise<void>
+  private readonly reader = new AttentionReader()
+  private readonly checked = new Map<string, CheckedRevision>()
+  private readonly pending = new Map<string, { file: TFile; after: number }>()
+  private changeTimer?: number
+  private draining = false
+  private drainingTask?: Promise<void>
+
+  /** Startup create events are inventory, not work. Later sync/stream bursts get one trailing read. */
+  scheduleFile(file: TFile): void {
+    if (!this.started || this.disposed) return
+    const path = file.path
+    this.removed.delete(path)
+    this.checked.delete(path)
+    this.revisions.set(path, (this.revisions.get(path) ?? 0) + 1)
+    this.pending.set(path, { file, after: Date.now() + 250 })
+    this.updating.value = true
+    this.schedulePending()
+  }
+  private schedulePending(): void {
+    if (this.disposed || this.draining || this.changeTimer !== undefined || !this.pending.size)
+      return
+    let after = Infinity
+    for (const entry of this.pending.values()) after = Math.min(after, entry.after)
+    this.changeTimer = window.setTimeout(
+      () => {
+        this.changeTimer = undefined
+        this.drainingTask = this.drainPending().finally(() => {
+          this.drainingTask = undefined
+        })
+      },
+      Math.max(0, after - Date.now())
+    )
+  }
+  private async drainPending(): Promise<void> {
+    this.draining = true
+    try {
+      // The initial scan owns the reader until it has finished, even if sync arrives meanwhile.
+      await this.refreshing
+      for (const [path, entry] of this.pending) {
+        if (this.disposed) return
+        if (entry.after > Date.now()) continue
+        this.pending.delete(path)
+        if (entry.file.path !== path || this.removed.has(path) || this.isChecked(entry.file))
+          continue
+        await attentionIdle()
+        if (!this.disposed && !this.removed.has(path) && entry.file.path === path)
+          await this.updateFile(entry.file)
+      }
+    } finally {
+      this.draining = false
+      this.updating.value = this.pending.size > 0
+      this.schedulePending()
+    }
+  }
+  private isChecked(file: TFile): boolean {
+    const checked = this.checked.get(file.path)
+    return (
+      !!checked &&
+      checked.mtime === file.stat.mtime &&
+      checked.size === file.stat.size &&
+      checked.reasons === JSON.stringify(indexReasons(this.files.get(file.path)?.reasons ?? []))
+    )
+  }
+  private rememberRevision(file: TFile): void {
+    const row = this.files.get(file.path)
+    if (row?.uncertain) return
+    this.checked.set(file.path, {
+      mtime: file.stat.mtime,
+      size: file.stat.size,
+      resolved: [...settledAttention(this.truths.get(file.path) ?? {})],
+      tools: this.truths.get(file.path)?.tools,
+      reasons: JSON.stringify(indexReasons(row?.reasons ?? [])),
+      discussion: row?.reference.kind === 'local' && !!row.reference.commentId,
+    })
+  }
 
   track(session: ChatSession): void {
     this.live.set(
@@ -118,9 +216,7 @@ export class AgentsService {
       this.truths.get(path)
     ).map((reason) => ({
       ...reason,
-      ...(reason.kind === 'error' && !reason.text
-        ? { text: 'Error details were not saved.' }
-        : {}),
+      ...(reason.kind === 'error' && !reason.text ? { text: 'Error details were not saved.' } : {}),
       ...(!live && reason.kind === 'running' ? { kind: 'interrupted' as const } : {}),
     }))
     row.uncertain =
@@ -144,6 +240,7 @@ export class AgentsService {
         session.applyAttentionTruth({ ...metadata, attention: truth }, reconcileRequests)
   }
   private unknown(path: string): void {
+    this.checked.delete(path)
     const row = this.files.get(path)
     if (row)
       this.files.set(path, {
@@ -159,12 +256,49 @@ export class AgentsService {
     file: TFile
   ): Promise<{ metadata: ChatMetadata; committed: boolean } | null> {
     const app = GlobalStore.getInstance().app
-    const main = await inspectMainChat(app, file)
-    let parsed = main ?? (await inspectChat(app, file))
-    let committed = main !== null
-    if (main) {
+    const yieldControl = async () => {
+      await attentionIdle()
+      if (this.disposed) throw new Error('Attention discovery stopped')
+    }
+    const text = await app.vault.read(file)
+    let parsed = await this.reader.read(text, yieldControl)
+    const main = !!parsed.metadata && !parsed.damaged && !parsed.torn
+    let committed = main
+    if (!main) {
+      const copyPath = chatCopyPath(app, file.path)
+      if (await app.vault.adapter.exists(copyPath)) {
+        const raw = await app.vault.adapter.read(copyPath)
+        const cut = raw.indexOf('\n')
+        if (cut !== -1 && raw.slice(0, cut) === file.path) {
+          const copy = await this.reader.read(raw.slice(cut + 1), yieldControl)
+          if (copy.version === 2 && !copy.torn && !copy.damaged && copy.records >= parsed.records)
+            parsed = copy
+        }
+      }
+    }
+    // Ordinary chats do not need discussion identity migration, recovery or repeated full reads.
+    if (main && isDiscussion(parsed.metadata)) {
       try {
-        parsed = (await ChatStorage.getInstance().prepareDiscussion(file)).snapshot
+        const prepared = (await ChatStorage.getInstance().prepareDiscussion(file)).snapshot
+        const resolved = prepared.messages
+          .filter(
+            (m) => m.toolCallId && (m.toolResult !== undefined || m.toolStatus === 'rejected')
+          )
+          .map((m) => m.toolCallId)
+        parsed = {
+          ...prepared,
+          metadata: prepared.metadata
+            ? {
+                ...prepared.metadata,
+                attention: {
+                  ...prepared.metadata.attention,
+                  resolved: [
+                    ...new Set([...(prepared.metadata.attention?.resolved ?? []), ...resolved]),
+                  ],
+                },
+              }
+            : null,
+        }
       } catch (error) {
         if (!(error instanceof DiscussionIdentityConflict)) throw error
         // Identity is unresolved, not the stored attention evidence. Keep it visible as
@@ -178,19 +312,7 @@ export class AgentsService {
       }
     }
     if (!parsed.metadata || parsed.damaged || parsed.torn) return null
-    const resolved = parsed.messages
-      .filter((m) => m.toolCallId && (m.toolResult !== undefined || m.toolStatus === 'rejected'))
-      .map((m) => m.toolCallId!)
-    return {
-      metadata: {
-        ...parsed.metadata,
-        attention: {
-          ...parsed.metadata.attention,
-          resolved: [...new Set([...(parsed.metadata.attention?.resolved ?? []), ...resolved])],
-        },
-      },
-      committed,
-    }
+    return { metadata: parsed.metadata, committed }
   }
   private liveRow(session: ChatSession, live = true): AttentionRow | null {
     const path = session.currentChatFile.value?.path ?? ''
@@ -261,7 +383,12 @@ export class AgentsService {
         session.attention.value.tools?.[reason.id] === 'executing'
           ? { ...reason, kind: 'running' as const, uncertain: false }
           : localSettled.has(reason.id) && !diskSettled.has(reason.id)
-            ? { ...reason, kind: 'delivery' as const, uncertain: true, text: 'Saving your decision…' }
+            ? {
+                ...reason,
+                kind: 'delivery' as const,
+                uncertain: true,
+                text: 'Saving your decision…',
+              }
             : reason
       )
       rows.set(row.key, {
@@ -279,18 +406,20 @@ export class AgentsService {
           )
           .map((row) => ({
             reference: row.reference,
-            reasons: row.reasons.map(({ kind, id, at, target, expires }) => ({
-              kind,
-              id,
-              at,
-              target,
-              expires,
-            })),
+            reasons: indexReasons(row.reasons),
           }))
         const encoded = JSON.stringify(index)
         if (encoded !== this.savedIndex) {
           GlobalStore.getInstance().app.saveLocalStorage(INDEX_KEY, index)
           this.savedIndex = encoded
+        }
+        // Keep revision hints separate from the evidence ledger, including chats with no work.
+        // No title, quote, tool arguments, error text or transcript is stored here.
+        const revisions = [...this.checked]
+        const encodedRevisions = JSON.stringify(revisions)
+        if (encodedRevisions !== this.savedRevisions) {
+          GlobalStore.getInstance().app.saveLocalStorage(REVISIONS_KEY, revisions)
+          this.savedRevisions = encodedRevisions
         }
       } catch {
         this.localIncomplete.value = true
@@ -299,6 +428,7 @@ export class AgentsService {
     }
   }
   async start(): Promise<void> {
+    if (this.disposed) return
     if (this.started) return this.refresh()
     // Load durable evidence before enabling any publication, including node registry changes.
     // The last local copy is explicitly incomplete until the authoritative files are read.
@@ -325,6 +455,42 @@ export class AgentsService {
     } catch {
       this.status.value = 'Could not read the agents list'
     }
+    try {
+      const stored = GlobalStore.getInstance().app.loadLocalStorage(REVISIONS_KEY)
+      if (Array.isArray(stored))
+        for (const entry of stored) {
+          if (!Array.isArray(entry) || entry.length !== 2) continue
+          const [path, revision] = entry
+          if (
+            typeof path !== 'string' ||
+            !Number.isFinite(revision?.mtime) ||
+            !Number.isFinite(revision?.size) ||
+            typeof revision?.reasons !== 'string' ||
+            typeof revision?.discussion !== 'boolean' ||
+            (revision.tools !== undefined &&
+              (!revision.tools ||
+                typeof revision.tools !== 'object' ||
+                Object.values(revision.tools).some(
+                  (phase) => phase !== 'executing' && phase !== 'interrupted' && phase !== 'done'
+                ))) ||
+            !Array.isArray(revision?.resolved) ||
+            !revision.resolved.every((id: unknown) => typeof id === 'string')
+          )
+            continue
+          this.checked.set(path, revision)
+          this.truths.set(path, { resolved: revision.resolved, tools: revision.tools })
+        }
+    } catch {
+      /* Missing or invalid hints mean a cold inventory, never lost evidence. */
+    }
+    // A changed inventory can introduce a second discussion owner. Never reuse ownership
+    // across that boundary; the existing identity gate must resolve it again.
+    const inventory = GlobalStore.getInstance()
+      .app.vault.getFiles()
+      .filter((f) => f.extension === 'abchat')
+    if (inventory.length !== this.checked.size || inventory.some((file) => !this.isChecked(file)))
+      for (const [path, revision] of this.checked)
+        if (revision.discussion) this.checked.delete(path)
     const registered = GlobalStore.getInstance().app.loadLocalStorage('abele-node-registry')
     if (Array.isArray(registered))
       this.setNodes(
@@ -337,29 +503,58 @@ export class AgentsService {
       )
     this.started = true
     this.publish()
-    await this.refresh()
+    await this.refresh(false)
   }
-  refresh(): Promise<void> {
+  refresh(force = true): Promise<void> {
     if (this.refreshing !== undefined) return this.refreshing
-    this.refreshing = this.scan().finally(() => {
+    const scan = this.drainingTask
+      ? this.drainingTask.then(() => this.scan(force))
+      : this.scan(force)
+    this.refreshing = scan.finally(() => {
       this.refreshing = undefined
     })
     return this.refreshing
   }
-  private async scan(): Promise<void> {
+  private async scan(force: boolean): Promise<void> {
     const { app } = GlobalStore.getInstance()
     let failed = false
     for (const file of app.vault.getFiles().filter((f) => f.extension === 'abchat')) {
+      if (this.disposed) return
+      if (!force && this.isChecked(file)) {
+        const row = this.files.get(file.path)
+        if (row)
+          this.files.set(file.path, {
+            ...row,
+            source:
+              row.reference.kind === 'local' && row.reference.commentId ? 'Discussion' : 'Chat',
+            reasons: row.reasons.map((reason) => ({
+              ...reason,
+              ...(reason.kind === 'running' ? { kind: 'interrupted' as const } : {}),
+              uncertain: false,
+              ...(reason.kind === 'error'
+                ? { text: 'Open the conversation for error details.' }
+                : {}),
+            })),
+          })
+        continue
+      }
       const path = file.path
       const revision = this.revisions.get(path) ?? 0
       try {
+        // Yield before the first file too; layout and input have priority over discovery.
+        if (!force) await attentionIdle()
+        if (this.disposed) return
+        const stamp = { ...file.stat }
         const metadata = await this.inspect(file)
         if (this.disposed) return
         if (file.path !== path || (this.revisions.get(path) ?? 0) !== revision) continue
         if (metadata?.metadata.type === 'abele-chat') {
           if (metadata.committed) {
             await this.reconcileDiscussionOwners(file.path, metadata.metadata)
+            if (file.path !== path || (this.revisions.get(path) ?? 0) !== revision) continue
             this.acceptDisk(file.path, metadata.metadata)
+            if (stamp.mtime === file.stat.mtime && stamp.size === file.stat.size)
+              this.rememberRevision(file)
           } else {
             this.files.set(path, this.fileRow(path, metadata.metadata))
             this.unknown(path)
@@ -375,8 +570,7 @@ export class AgentsService {
           failed = true
         }
       }
-      // Startup reading yields between files, never instantiates a session or starts a tool.
-      await new Promise((resolve) => window.setTimeout(resolve, 0))
+      if (force) await attentionIdle()
     }
     if (this.disposed) return
     const paths = new Set(
@@ -385,9 +579,12 @@ export class AgentsService {
         .filter((f) => f.extension === 'abchat')
         .map((f) => f.path)
     )
-    for (const path of this.files.keys()) if (!paths.has(path)) this.deleted(path)
+    for (const path of new Set([...this.files.keys(), ...this.checked.keys()]))
+      if (!paths.has(path)) this.deleted(path)
     this.localIncomplete.value = failed
-    this.status.value = failed ? 'Some conversations could not be read. Open them to check their status.' : ''
+    this.status.value = failed
+      ? 'Some conversations could not be read. Open them to check their status.'
+      : ''
     this.publish()
   }
   /** A changed file costs one read, not a vault scan on every streamed token. */
@@ -411,6 +608,8 @@ export class AgentsService {
       this.publish()
     }
     const path = file.path
+    this.checked.delete(path)
+    if (oldPath) this.checked.delete(oldPath)
     ChatStorage.getInstance().invalidateDiscussion(path)
     if (oldPath) ChatStorage.getInstance().invalidateDiscussion(oldPath)
     const revision = (this.revisions.get(path) ?? 0) + 1
@@ -418,12 +617,16 @@ export class AgentsService {
     this.removed.delete(path)
     try {
       if (oldPath) await CommentService.getInstance().handleConversationRename(file, oldPath)
+      const stamp = { ...file.stat }
       const metadata = await this.inspect(file)
       if (this.disposed || file.path !== path || this.revisions.get(path) !== revision) return
       if (metadata?.metadata.type === 'abele-chat') {
         if (metadata.committed) {
           await this.reconcileDiscussionOwners(file.path, metadata.metadata)
+          if (this.disposed || file.path !== path || this.revisions.get(path) !== revision) return
           this.acceptDisk(file.path, metadata.metadata)
+          if (stamp.mtime === file.stat.mtime && stamp.size === file.stat.size)
+            this.rememberRevision(file)
         } else {
           this.files.set(path, this.fileRow(path, metadata.metadata))
           this.unknown(path)
@@ -451,11 +654,14 @@ export class AgentsService {
     this.publish()
   }
   saved(path: string, metadata: ChatMetadata): void {
+    this.checked.delete(path)
     this.revisions.set(path, (this.revisions.get(path) ?? 0) + 1)
     this.acceptDisk(path, metadata, false)
     this.publish()
   }
   deleted(path: string): void {
+    this.checked.delete(path)
+    this.pending.delete(path)
     ChatStorage.getInstance().invalidateDiscussion(path)
     if (GlobalStore.getInstance().app.vault.getAbstractFileByPath(path)) {
       this.unknown(path)
@@ -569,16 +775,27 @@ export class AgentsService {
     chats.openingSelection.value = true
     try {
       if (ref.commentId) {
-        if (!(await CommentService.getInstance().revealForAttention(file, presentationCurrent))) return false
+        if (!(await CommentService.getInstance().revealForAttention(file, presentationCurrent)))
+          return false
       } else {
         await chats.openChatFile(file, presentationCurrent)
         await chats.revealSidebar({ focus: false, current: presentationCurrent })
       }
       const session = chats.activeSession.value
-      if (!chats.isForegroundPresentation(presentationCurrent) || !session || session.currentChatFile.value?.path !== ref.path) return false
+      if (
+        !chats.isForegroundPresentation(presentationCurrent) ||
+        !session ||
+        session.currentChatFile.value?.path !== ref.path
+      )
+        return false
       await this.updateFile(file)
-      if (!session.isMidTurn && !session.attentionBusy) await session.reconcileForSelectionReturn(presentationCurrent)
-      if (!chats.isForegroundPresentation(presentationCurrent) || chats.activeSession.value !== session) return false
+      if (!session.isMidTurn && !session.attentionBusy)
+        await session.reconcileForSelectionReturn(presentationCurrent)
+      if (
+        !chats.isForegroundPresentation(presentationCurrent) ||
+        chats.activeSession.value !== session
+      )
+        return false
       const current = this.liveRow(session)
       if (current?.uncertain)
         new Notice('Could not confirm the current status. Opened the saved conversation.')
@@ -619,6 +836,10 @@ export class AgentsService {
   }
   private destroy(): void {
     this.disposed = true
+    this.reader.destroy()
+    if (this.changeTimer !== undefined) window.clearTimeout(this.changeTimer)
+    this.pending.clear()
+    this.updating.value = false
     for (const stop of this.live.values()) stop()
     this.live.clear()
   }
