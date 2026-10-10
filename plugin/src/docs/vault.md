@@ -1049,7 +1049,9 @@ to be running. A suspended script keeps that owner. Unattributed writes through 
 or third-party command are not claimed by a chat. Restoring does not mute other recordings.
 `uncertain: true` on a change means another mutation overlapped its snapshot interval.
 Undo refuses those files, discontinuous histories (another writer edited between two changes),
-and files whose current fingerprint differs from the recorded result. Conflicting files remain
+and files whose current fingerprint differs from the recorded result. Rename sources and
+destinations (including chains of moves) are one restore unit: refusing any member also blocks
+mutating the others, and every member is rechecked before each native mutation. Conflicting files remain
 untouched and in the journal; there is no force-overwrite option. Preconditions are checked again
 when applying, including at the native adapter queue boundary. Adapters without that boundary
 refuse undo rather than risk a read/write race. Old entries without `chat`/`run` remain readable

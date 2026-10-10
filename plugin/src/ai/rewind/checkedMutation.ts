@@ -28,7 +28,9 @@ export async function checkedMutation<T>(
   const checks = paths.filter((path) => expected.has(path))
   if (!checks.length) return mutate()
   const run = async () => {
-    for (const path of checks) {
+    // A rename's source and destination form one precondition, even when this step only
+    // mutates one of them. Recheck every member inside the same native queue item.
+    for (const path of expected.keys()) {
       const stat = await inside(adapter, () => adapter.stat(path))
       let actual: After = null
       if (stat?.type === 'folder') actual = 'folder'

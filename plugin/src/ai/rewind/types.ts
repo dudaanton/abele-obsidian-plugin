@@ -93,8 +93,16 @@ export interface RestoreItem {
   refs: string[]
 }
 
+export interface RestoreUnit {
+  /** Connected rename paths are inseparable: a refusal on one blocks every member. */
+  paths: string[]
+  expected: Record<string, After>
+  refs: string[]
+}
+
 export interface RestorePlan {
   items: RestoreItem[]
+  units?: RestoreUnit[]
   /** Entries the plan covers. */
   entryIds: string[]
   /** Changes whose paths already are as they were: they leave the log with the restore. */

@@ -67,6 +67,30 @@ describe('native restore queue boundary', () => {
     expect(s.text()).toBe('another writer')
   })
 
+  it('checks the rename source inside the queue before mutating only its destination', async () => {
+    const s = storage()
+    const adapter = Object.assign(s.adapter, {
+      read: (path: string) =>
+        s.adapter.queue(async () => (path === 'source.md' ? 'human' : 'agent')),
+    })
+    let issued = false
+    await expect(
+      checkedMutation(
+        adapter as unknown as DataAdapter,
+        new Map([
+          ['source.md', contentHash('agent')],
+          ['destination.md', contentHash('agent')],
+        ]),
+        ['destination.md'],
+        new Set(),
+        async () => {
+          issued = true
+        }
+      )
+    ).rejects.toThrow(/changed/i)
+    expect(issued).toBe(false)
+  })
+
   it('refuses unsupported adapters before issuing a mutation', async () => {
     let issued = false
     await expect(

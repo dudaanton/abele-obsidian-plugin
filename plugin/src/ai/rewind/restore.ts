@@ -51,6 +51,19 @@ export async function planRestore(entries: RewindEntry[], fs: VaultFs): Promise<
     })
   }
 
+  // Preserve every rename edge, not only the first before-state retained for a path.
+  const groups: Set<string>[] = []
+  for (const path of byPath.keys()) groups.push(new Set([path]))
+  for (const entry of ordered)
+    for (const change of entry.changes) {
+      const to = change.before.t !== 'missing' ? change.before.movedTo : undefined
+      if (!to) continue
+      const connected = groups.filter((group) => group.has(change.path) || group.has(to))
+      const joined = new Set([change.path, to, ...connected.flatMap((group) => [...group])])
+      for (const group of connected) groups.splice(groups.indexOf(group), 1)
+      groups.push(joined)
+    }
+
   const currents = new Map<string, Current>()
   for (const path of byPath.keys()) currents.set(path, await fs.current(path))
 
@@ -62,7 +75,7 @@ export async function planRestore(entries: RewindEntry[], fs: VaultFs): Promise<
   for (const [path, { target, expected, refs, interrupted }] of byPath) {
     const current = currents.get(path) as Current
     // Already as it was: nothing to do, and nothing to show — but it leaves the log all the same.
-    if (currentAfter(current) === beforeAfter(target)) {
+    if (!interrupted && currentAfter(current) === beforeAfter(target)) {
       settled.push(...refs)
       continue
     }
@@ -137,7 +150,36 @@ export async function planRestore(entries: RewindEntry[], fs: VaultFs): Promise<
     else shown.push(item)
   }
 
+  const units = groups.map((paths) => {
+    const members = shown.filter((item) => paths.has(item.path))
+    if (
+      members.some((item) => item.conflict || item.action === 'unrestorable') ||
+      [...paths].some((path) => !byPath.has(path))
+    ) {
+      for (const item of members) item.conflict = true
+    }
+    return {
+      paths: [...paths],
+      expected: Object.fromEntries(
+        [...paths]
+          .filter((path) => byPath.has(path))
+          .map((path) => {
+            const state = byPath.get(path)!
+            const current = currentAfter(currents.get(path)!)
+            return [
+              path,
+              !state.interrupted && current === beforeAfter(state.target)
+                ? current
+                : state.expected,
+            ]
+          })
+      ),
+      refs: [...paths].flatMap((path) => byPath.get(path)?.refs ?? []),
+    }
+  })
+
   return {
+    units,
     items: shown.sort((a, b) => a.path.localeCompare(b.path)),
     entryIds: ordered.map((e) => e.id),
     settled,
@@ -154,11 +196,27 @@ export async function applyRestore(
     restored: [],
     skipped: [],
     failed: [],
-    refs: [...plan.settled],
+    refs: [],
+  }
+  const units = (
+    plan.units ??
+    plan.items.map((item) => ({
+      paths: [item.path, ...(item.from ? [item.from] : [])],
+      expected: {
+        [item.path]: item.expected ?? null,
+        ...(item.from ? { [item.from]: item.sourceExpected ?? null } : {}),
+      },
+      refs: item.refs,
+    }))
+  ).map((unit) => ({ ...unit, expected: new Map(Object.entries(unit.expected)), failed: false }))
+  const unitOf = (item: RestoreItem) => units.find((unit) => unit.paths.includes(item.path))!
+  for (const item of plan.items) {
+    if (item.action === 'unrestorable' || item.conflict || choices[item.path] === 'skip')
+      unitOf(item).failed = true
   }
   const chosen = plan.items.filter((item) => {
     // Retain the choices argument for older callers, but never permit destructive overwrite.
-    if (item.action === 'unrestorable' || item.conflict || choices[item.path] === 'skip') {
+    if (unitOf(item).failed) {
       result.skipped.push(item.path)
       return false
     }
@@ -166,17 +224,27 @@ export async function applyRestore(
   })
 
   const run = async (item: RestoreItem, step: (safe: VaultFs) => Promise<void>) => {
+    const unit = unitOf(item)
+    if (unit.failed) {
+      result.skipped.push(item.path)
+      return
+    }
     try {
-      if (currentAfter(await fs.current(item.path)) !== item.expected)
-        throw new Error('Changed since the undo snapshot: left untouched')
-      if (item.from && currentAfter(await fs.current(item.from)) !== item.sourceExpected)
-        throw new Error('Moved file changed since the undo snapshot: left untouched')
-      const expected = new Map([[item.path, item.expected ?? null]])
-      if (item.from) expected.set(item.from, item.sourceExpected ?? null)
-      await step(fs.checked(expected, new Set(item.action === 'remove-folder' ? [item.path] : [])))
+      for (const [path, expected] of unit.expected) {
+        if (currentAfter(await fs.current(path)) !== expected)
+          throw new Error(`Changed since the undo snapshot at ${path}: rename unit left untouched`)
+      }
+      await step(
+        fs.checked(
+          new Map(unit.expected),
+          new Set(item.action === 'remove-folder' ? [item.path] : [])
+        )
+      )
+      unit.expected.set(item.path, beforeAfter(item.target))
+      if (item.from) unit.expected.set(item.from, null)
       result.restored.push(item.path)
-      result.refs.push(...item.refs)
     } catch (err) {
+      unit.failed = true
       result.failed.push({
         path: item.path,
         error: err instanceof Error ? err.message : String(err),
@@ -213,5 +281,7 @@ export async function applyRestore(
       if (!(await safe.removeIfEmpty(item.path))) throw new Error('Not empty: kept')
     })
   }
+  for (const unit of units) if (!unit.failed) result.refs.push(...unit.refs)
+  if (!plan.units) result.refs.push(...plan.settled)
   return result
 }
