@@ -59,7 +59,7 @@
         error ||
         model.draftError.value ||
         (model.draft.value?.status === 'conflict'
-          ? 'Conflict · changed on disk.'
+          ? 'Conflict · on disk.'
           : 'Changed on disk.')
       }}</span>
       <Button

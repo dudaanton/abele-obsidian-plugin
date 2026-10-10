@@ -1863,7 +1863,8 @@ describe.skipIf(!available)('the node repository tab on a phone', () => {
         const shot=${JSON.stringify(SHOTS)}+'/node-repository-${state}.png';
         require('fs').mkdirSync(${JSON.stringify(SHOTS)},{recursive:true});
         const image=await require('@electron/remote').getCurrentWebContents().capturePage();require('fs').writeFileSync(shot,image.toPNG());
-        return JSON.stringify({width:box.width,left:box.left,right:box.right,clipped,hitBoxes,shot});
+        const choices=[...root.querySelectorAll('.abele-node-save__state button')].map(el=>({text:el.textContent.trim(),top:el.getBoundingClientRect().top}));
+        return JSON.stringify({width:box.width,left:box.left,right:box.right,clipped,hitBoxes,shot,choices});
       })()`)
       ) as {
         width: number
@@ -1872,12 +1873,17 @@ describe.skipIf(!available)('the node repository tab on a phone', () => {
         clipped: string[]
         hitBoxes: { width: number; height: number }[]
         shot: string
+        choices: { text: string; top: number }[]
       }
       expect(result.width).toBeGreaterThan(300)
       expect(result.left).toBeGreaterThanOrEqual(0)
       expect(result.right).toBeLessThanOrEqual(PHONE.width)
       expect(result.clipped).toEqual([])
       expect(result.hitBoxes.every((box) => box.width >= 44 && box.height >= 44)).toBe(true)
+      if (state === 'changed-on-disk' || state === 'conflict') {
+        expect(result.choices.map(choice => choice.text)).toEqual(['Reload', 'Keep mine'])
+        expect(Math.abs(result.choices[0].top - result.choices[1].top)).toBeLessThanOrEqual(1)
+      }
       expect(result.shot).toMatch(/\.png$/)
     }, 90000)
   }
