@@ -106,8 +106,14 @@ watch(accessibleName, updateTooltip)
   justify-content: center;
   min-height: var(--icon-size);
   color: var(--icon-color);
-  padding: var(--size-2-1) var(--size-2-2);
-  border-radius: var(--radius-s);
+
+  // A clickable icon takes Obsidian's own `.clickable-icon` box (4 by 6 around the glyph, its
+  // own radius), so it is the size of the host's icon buttons. Only a picture-only icon keeps
+  // the small box it always had, so nothing laid out around one moves.
+  &:not(.clickable-icon) {
+    padding: var(--size-2-1) var(--size-2-2);
+    border-radius: var(--radius-s);
+  }
 
   &_disabled {
     color: var(--text-faint);
