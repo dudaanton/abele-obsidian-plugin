@@ -690,7 +690,7 @@
 <script setup lang="ts">
 import { DEFAULT_REWIND_LIMIT_MB } from '@/ai/rewind/ChatRewind'
 import { mobileBackground } from '@/ai/mobileBackground'
-import { keyFor, keyDestinations, acceptIntroducedDestinations } from '@/secrets/destinations'
+import { keyDestinations, acceptIntroducedDestinations } from '@/secrets/destinations'
 import { reviewKeyDestinations } from '@/secrets/destinationReview'
 import { secrets as secretStore } from '@/secrets/SecretStore'
 import { MEMORY_PLACEHOLDER } from '@/ai/agents/memory'
@@ -715,7 +715,6 @@ import Icon from '../../obsidian/Icon.vue'
 import SecretField from '../SecretField.vue'
 import { copyKey } from '@/secrets/copyKey'
 import { AbeleConfig } from '@/services/AbeleConfig'
-import { collectEntries } from '@/transfer/entries'
 import { savedKeysWithIds } from '@/ai/savedKeyIds'
 import { TRANSCRIPTION_MODELS } from '@/ai/transcription'
 import { DEFAULT_RETRY, type RetrySettings } from '@/ai/retry'
@@ -724,9 +723,9 @@ import { CLIENT_NAME_DESCRIPTION } from '@/ai/client/clientName'
 import { ChatStorage } from '@/ai/ChatStorage'
 import { CommentService } from '@/ai/CommentService'
 import { AgentRegistry } from '@/ai/agents/AgentRegistry'
-import { OpenAIClient } from '@/ai/client'
-import type { RemoteModel } from '@/ai/client'
-import type { AiProvider, AiModelConfig, AiPrompts, AiSecret } from '@/ai/types'
+import { useAiProviderModels } from '@/composables/useAiProviderModels'
+import { useAiImageModels } from '@/composables/useAiImageModels'
+import type { AiProvider, AiPrompts, AiSecret } from '@/ai/types'
 import { DEFAULT_AI_SETTINGS } from '@/ai/types'
 import { requestTimeoutSeconds, MAX_REQUEST_TIMEOUT_SECONDS } from '@/ai/requestTimeout'
 
@@ -751,11 +750,7 @@ function askRemoval(title: string, message: string, run: () => void): void {
   pendingRemoval.value = { title, message, run }
 }
 
-const DEFAULT_CONTEXT_WINDOW = 128000
-const DEFAULT_MAX_TOKENS = 4096
-
 const config = AbeleConfig.getInstance()
-const client = new OpenAIClient()
 const migrating = ref(false)
 
 const migrateChats = async () => {
@@ -833,45 +828,12 @@ const onToolDescriptionUpdate = (toolName: string, value: string) => {
   save()
 }
 
-// Remote models state
-const remoteModels = reactive<Record<string, RemoteModel[]>>({})
-const fetchingModels = ref<number | null>(null)
-const fetchError = reactive<Record<string, string>>({})
-const modelFilter = reactive<Record<string, string>>({})
-
-const filteredRemoteModels = (providerId: string): RemoteModel[] => {
-  const all = remoteModels[providerId] || []
-  const filter = (modelFilter[providerId] || '').toLowerCase()
-  if (!filter) return all
-  return all.filter(
-    (m) => m.id.toLowerCase().includes(filter) || m.owned_by?.toLowerCase().includes(filter)
-  )
-}
-
-const auxModelKey = computed(() => {
-  if (!auxiliaryModelId.value) return ''
-  const choice = auxiliaryModelId.value
-  const [providerId, modelId] = choice.includes('::') ? choice.split('::') : ['', choice]
-  for (const p of providers.value) {
-    if ((!providerId || p.id === providerId) && p.models.some((m) => m.id === modelId)) {
-      return `${p.id}::${modelId}`
-    }
-  }
-  return ''
-})
-
-const modelOptions = computed(() => {
-  const options: { value: string; display: string }[] = []
-  for (const p of providers.value) {
-    for (const m of p.models) {
-      options.push({
-        value: `${p.id}::${m.id}`,
-        display: `${p.name} / ${m.name || m.id}`,
-      })
-    }
-  }
-  return options
-})
+const {
+  remoteModels, fetchingModels, fetchError, modelFilter, filteredRemoteModels,
+  auxModelKey, modelOptions, addProvider, askRemoveProvider, updateProvider, fetchModels,
+  isModelAdded, toggleRemoteModel, editingModel, addModel, openModelEdit, onModelSave,
+  removeModel, formatTokens, selectAuxModel,
+} = useAiProviderModels({ config, providers, auxiliaryModelId, save: () => save(), askRemoval })
 
 let pendingSave = false
 const write = () => {
@@ -1070,126 +1032,13 @@ const applyVoiceSecret = () => {
   saveVoice()
 }
 
-// ── Image providers ─────────────────────────────────────────
-
-const imgEndpointDefault = (apiType: string) => {
-  const defaults: Record<string, string> = {
-    openai: 'https://api.openai.com/v1/images/generations',
-    openrouter: 'https://openrouter.ai/api/v1/chat/completions',
-  }
-  return defaults[apiType] || ''
-}
-
-const imageModelOptions = computed(() => {
-  const options: { value: string; display: string }[] = []
-  for (const p of imageProviders.value) {
-    for (const m of p.models) {
-      options.push({
-        value: `${p.id}::${m.id}`,
-        display: `${p.name} / ${m.name || m.id}`,
-      })
-    }
-  }
-  return options
+const {
+  imgEndpointDefault, imageModelOptions, addImageProvider, askRemoveImageProvider,
+  updateImageProvider, applyImageProviderSecret, editingImageModel, addImageModel,
+  openImageModelEdit, onImageModelSave, removeImageModel, selectDefaultImageModel,
+} = useAiImageModels({
+  config, imageProviders, defaultImageModel, imgSecretInputs, voice, save, askRemoval,
 })
-
-const addImageProvider = () => {
-  const id = `img-${Date.now()}`
-  imageProviders.value.push({
-    id,
-    name: '',
-    apiType: 'openai',
-    endpoint: '',
-    apiKeyId: '',
-    models: [],
-  })
-  save()
-}
-
-const removeImageProvider = (idx: number) => {
-  const provider = imageProviders.value[idx]
-  imageProviders.value.splice(idx, 1)
-  save()
-  // Imported configurations can deliberately share a key across services. Only a key
-  // with no remaining setting references belongs exclusively to the removed provider.
-  const keyId = provider?.apiKeyId
-  const used = keyId && (voiceKeyId(voice.value) === keyId ||
-    collectEntries(config.exportSettings()).some((entry) => entry.secretIds?.includes(keyId)))
-  if (keyId && !used) secretStore().remove(keyId)
-}
-
-const askRemoveImageProvider = (idx: number) => {
-  const provider = imageProviders.value[idx]
-  askRemoval(
-    'Remove provider',
-    `Remove ${provider.name || provider.id || 'this provider'} and its ` +
-      `${provider.models.length} model(s)? This cannot be undone.`,
-    () => removeImageProvider(idx)
-  )
-}
-
-const updateImageProvider = (idx: number, key: string, val: string) => {
-  imageProviders.value[idx][key] = val
-  save()
-}
-
-const applyImageProviderSecret = (idx: number) => {
-  const provider = imageProviders.value[idx]
-  const val = imgSecretInputs[provider.id]
-  if (!val) return
-  const keyId = `abele-img-${provider.id.toLowerCase().replace(/[^a-z0-9-]/g, '')}`
-  provider.apiKeyId = keyId
-  secretStore().set(keyId, val)
-  imgSecretInputs[provider.id] = ''
-  save()
-}
-
-const editingImageModel = ref<{
-  pIdx: number
-  mIdx: number
-  model: any
-  isNew: boolean
-} | null>(null)
-
-const addImageModel = (pIdx: number) => {
-  const newModel = { id: '', name: '', size: '1024x1024', outputFormat: 'png', quality: 'medium' }
-  editingImageModel.value = {
-    pIdx,
-    mIdx: imageProviders.value[pIdx].models.length,
-    model: newModel,
-    isNew: true,
-  }
-}
-
-const openImageModelEdit = (pIdx: number, mIdx: number) => {
-  editingImageModel.value = {
-    pIdx,
-    mIdx,
-    model: { ...imageProviders.value[pIdx].models[mIdx] },
-    isNew: false,
-  }
-}
-
-const onImageModelSave = (pIdx: number, mIdx: number, model: any) => {
-  const models = imageProviders.value[pIdx].models
-  if (mIdx >= models.length) {
-    models.push(model)
-  } else {
-    models[mIdx] = model
-  }
-  save()
-}
-
-const removeImageModel = (pIdx: number, mIdx: number) => {
-  imageProviders.value[pIdx].models.splice(mIdx, 1)
-  editingImageModel.value = null
-  save()
-}
-
-const selectDefaultImageModel = (key: string) => {
-  defaultImageModel.value = key
-  save()
-}
 
 // ── User secrets ────────────────────────────────────────────
 
@@ -1304,152 +1153,6 @@ const applySecretValue = (idx: number) => {
   secrets.value = [...secrets.value]
   save()
   new Notice(`Saved ${secret.name || 'the secret'} to the keychain`)
-}
-
-// ── Provider management ─────────────────────────────────────
-
-const addProvider = () => {
-  const id = nanoid(8)
-  providers.value.push({
-    id,
-    name: '',
-    baseUrl: '',
-    apiKeyId: `abele-provider-${id.toLowerCase().replace(/[^a-z0-9-]/g, '')}`,
-    models: [],
-  })
-  save()
-}
-
-const askRemoveProvider = (idx: number) => {
-  const provider = providers.value[idx]
-  askRemoval(
-    'Remove provider',
-    `Remove ${provider.name || 'this provider'} and its ${provider.models.length} model(s)? ` +
-      'Agents pointing at those models will have no model until one is chosen again.',
-    () => removeProvider(idx)
-  )
-}
-
-const removeProvider = (idx: number) => {
-  const provider = providers.value[idx]
-  if (provider.apiKeyId?.startsWith('abele-')) {
-    // deleteSecret exists at runtime but is missing from obsidian.d.ts (as of 1.12.3)
-    secretStore().remove(provider.apiKeyId)
-  }
-  providers.value.splice(idx, 1)
-  delete remoteModels[provider.id]
-  delete fetchError[provider.id]
-  save()
-}
-
-const updateProvider = (idx: number, field: keyof AiProvider, value: string) => {
-  ;(providers.value[idx] as Record<string, unknown>)[field] = value
-  save()
-}
-
-const fetchModels = async (pIdx: number) => {
-  const provider = providers.value[pIdx]
-  if (!provider.baseUrl || !provider.apiKeyId) return
-  const apiKey = secretStore().get(provider.apiKeyId)
-  if (!apiKey) return
-
-  fetchingModels.value = pIdx
-  delete fetchError[provider.id]
-
-  try {
-    const models = await client.fetchModels(
-      provider.baseUrl,
-      keyFor(provider.apiKeyId, provider.baseUrl, config),
-      provider.clientName
-    )
-    remoteModels[provider.id] = models
-  } catch (err: unknown) {
-    fetchError[provider.id] = err instanceof Error ? err.message : String(err)
-  } finally {
-    fetchingModels.value = null
-  }
-}
-
-const isModelAdded = (pIdx: number, modelId: string): boolean => {
-  return providers.value[pIdx].models.some((m) => m.id === modelId)
-}
-
-const toggleRemoteModel = (pIdx: number, modelId: string) => {
-  const provider = providers.value[pIdx]
-  const existingIdx = provider.models.findIndex((m) => m.id === modelId)
-
-  if (existingIdx !== -1) {
-    provider.models.splice(existingIdx, 1)
-  } else {
-    provider.models.push({
-      id: modelId,
-      name: '',
-      contextWindow: DEFAULT_CONTEXT_WINDOW,
-      maxTokens: DEFAULT_MAX_TOKENS,
-      supportsReasoning: false,
-    })
-  }
-  save()
-}
-
-const editingModel = ref<{
-  pIdx: number
-  mIdx: number
-  model: AiModelConfig
-  isNew: boolean
-} | null>(null)
-
-const addModel = (providerIdx: number) => {
-  const model: AiModelConfig = {
-    id: '',
-    name: '',
-    contextWindow: 128000,
-    maxTokens: 4096,
-    supportsReasoning: false,
-  }
-  editingModel.value = {
-    pIdx: providerIdx,
-    mIdx: providers.value[providerIdx].models.length,
-    model,
-    isNew: true,
-  }
-}
-
-const openModelEdit = (pIdx: number, mIdx: number) => {
-  editingModel.value = {
-    pIdx,
-    mIdx,
-    model: { ...providers.value[pIdx].models[mIdx] },
-    isNew: false,
-  }
-}
-
-const onModelSave = (pIdx: number, mIdx: number, model: AiModelConfig) => {
-  const models = providers.value[pIdx].models
-  if (mIdx >= models.length) {
-    models.push(model)
-  } else {
-    models[mIdx] = model
-  }
-  save()
-}
-
-// The edit modal asks before it emits, so there is no second question here.
-const removeModel = (pIdx: number, mIdx: number) => {
-  providers.value[pIdx].models.splice(mIdx, 1)
-  editingModel.value = null
-  save()
-}
-
-const formatTokens = (n: number): string => {
-  if (n >= 1_000_000) return `${(n / 1_000_000).toFixed(1)}M`
-  if (n >= 1_000) return `${(n / 1_000).toFixed(0)}K`
-  return String(n)
-}
-
-const selectAuxModel = (key: string) => {
-  auxiliaryModelId.value = key
-  save()
 }
 
 const updateField = (field: string, value: string) => {
