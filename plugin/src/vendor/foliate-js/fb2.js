@@ -170,7 +170,8 @@ const parseXML = async blob => {
     return doc
 }
 
-const style = URL.createObjectURL(new Blob([`
+// Fixed library CSS needs no object URL or lifetime beyond its document.
+const style = `
 @namespace epub "http://www.idpf.org/2007/ops";
 body > img, section > img {
     display: block;
@@ -218,11 +219,11 @@ a[epub|type~="noteref"] {
 body:not(.notesBodyType) > .title, body:not(.notesBodyType) > .epigraph {
     margin: 3em 0;
 }
-`], { type: 'text/css' }))
+`
 
 const template = html => `<?xml version="1.0" encoding="utf-8"?>
 <html xmlns="http://www.w3.org/1999/xhtml">
-    <head><link href="${style}" rel="stylesheet" type="text/css"/></head>
+    <head><style>${style}</style></head>
     <body>${html}</body>
 </html>`
 
