@@ -67,9 +67,12 @@ export class TokenEngines {
     this.renameEvent = app.vault.on('rename', (file, from) =>
       this.localFiles.renamed(from, file.path)
     )
-    ui.connectionsChanged = async (assertCurrent = () => {}) => {
-      assertCurrent()
+    ui.connectionsChanged = async (assertCurrent) => {
+      assertCurrent?.()
       this.start()
+      // Enrollment supplies its cancellation check and detaches startup. Settings
+      // writers and recovery callers need the completed startup outcome.
+      if (!assertCurrent) await this.engines.settled()
     }
     ui.retryConnection = async (id, assertCurrent) => {
       assertCurrent()
@@ -198,6 +201,9 @@ export class TokenEngines {
         )
       }
     })
+    // Stages consume these barriers independently; observe rejection immediately.
+    void documents.catch(() => {})
+    void beforeOpening.catch(() => {})
     const records = this.ui.registry
       .records()
       .filter(
@@ -241,6 +247,7 @@ export class TokenEngines {
       closeCopies: (() => void) | undefined,
       unbind: (() => void) | undefined
     let stateHandle: IndexedDbStateStore | undefined
+    let opening: Promise<IndexedDbStateStore> | undefined
     const credential = this.key(record.secretReference)
     let fence: RuntimeFence | undefined
     const claim = () =>
@@ -298,17 +305,32 @@ export class TokenEngines {
       try {
         let result: T
         if (!progressing) {
-          result = await connectStage(
-            name,
-            `${name} could not finish starting sync. Try Sync now again.`,
-            async () => {
-              assertActive()
-              const value = await work()
-              assertActive()
-              return value
-            },
-            startup.signal
-          )
+          let workError: unknown
+          try {
+            result = await connectStage(
+              name,
+              `${name} could not finish starting sync. Try Sync now again.`,
+              async () => {
+                assertActive()
+                let value: T
+                try {
+                  value = await work()
+                } catch (error) {
+                  assertActive()
+                  workError = error
+                  throw error
+                }
+                assertActive()
+                return value
+              },
+              startup.signal
+            )
+          } catch (error) {
+            // Keep the diagnostic failure for recovery callers; timeout/cancel
+            // still wins over a late failure from revoked work.
+            if (workError !== undefined && !startup.signal.aborted) throw workError
+            throw error
+          }
         } else {
           result = await Promise.race([
             work(),
@@ -390,12 +412,8 @@ export class TokenEngines {
       )
       assertActive()
       const state = await stage('Opening sync storage', async () => {
-        const opened = await openTokenLedger(
-          factoryOf(this.deps),
-          this.ui.registry,
-          record,
-          assertActive
-        )
+        opening = openTokenLedger(factoryOf(this.deps), this.ui.registry, record, assertActive)
+        const opened = await opening
         if (startup.signal.aborted) {
           opened.close()
           assertActive()
@@ -649,26 +667,32 @@ export class TokenEngines {
       assertCurrent()
       this.ui.startupStage(record.id, 'Waiting to retry sync')
       this.ui.publish(record.id, { error: undefined })
+      let barrierError: unknown
       try {
         await connectStage(
           'retry opening sync',
           'Could not finish starting sync. Try Sync now again.',
           async (assertRetry) => {
             await draining?.catch(() => {})
-            await beforeOpening.ready
+            try {
+              await beforeOpening.ready
+            } catch (error) {
+              assertRetry()
+              barrierError = error
+              throw error
+            }
             assertRetry()
           }
         )
         this.ui.finishStartup(record.id, 'complete')
       } catch (error) {
-        this.failed(record.id, error)
-        throw error
+        const failure = barrierError ?? error
+        this.failed(record.id, failure)
+        throw failure
       }
       assertCurrent()
       if (this.closed) return
-      await begin().catch((error) => {
-        this.failed(record.id, error)
-      })
+      await begin()
     })
     return {
       start: begin,
@@ -680,6 +704,7 @@ export class TokenEngines {
       close: async () => {
         await starting?.catch(() => {})
         await draining?.catch(() => {})
+        await opening?.catch(() => {})
         await runtime?.close()
         this.pending.delete(record.id)
         this.live.delete(record.id)
