@@ -68,6 +68,61 @@ describe('captured copy-link adapter', () => {
     ).toBeUndefined()
   })
 
+  it('serializes overlapping source reconciliations without mistaking its own adoption for an edit', async () => {
+    const source = session.currentChatFile.value!
+    const saved = parseChat(await app.vault.read(source))
+    await app.vault.modify(
+      source,
+      serializeChat({
+        metadata: { ...saved.metadata!, title: 'Updated sample title' },
+        messages: saved.messages,
+        internalMessages: saved.internalMessages,
+      })
+    )
+    await Promise.all([
+      session.reconcileForSelectionReturn(),
+      session.reconcileForSelectionReturn(),
+    ])
+    expect(session.chatTitle.value).toBe('Updated sample title')
+    expect(session.allMessages.value[0].content).toBe('echo **echo**')
+  })
+
+  it('still rejects an actual local edit during a source read', async () => {
+    const source = session.currentChatFile.value!
+    const read = app.vault.read.bind(app.vault)
+    let release!: () => void, entered!: () => void
+    const blocked = new Promise<void>((resolve) => {
+      release = resolve
+    })
+    const started = new Promise<void>((resolve) => {
+      entered = resolve
+    })
+    let held = false
+    vi.spyOn(app.vault, 'read').mockImplementation(async (file) => {
+      if (file === source && !held) {
+        held = true
+        entered()
+        await blocked
+      }
+      return read(file)
+    })
+    const returning = session.reconcileForSelectionReturn()
+    await started
+    session.chatTitle.value = 'Unsaved sample title'
+    release()
+    await expect(returning).rejects.toThrow('This chat changed while returning')
+    expect(session.chatTitle.value).toBe('Unsaved sample title')
+  })
+
+  it('does not let an obsolete queued return adopt a new conversation', async () => {
+    let current = true
+    const first = session.reconcileForSelectionReturn()
+    const queued = session.reconcileForSelectionReturn(() => current)
+    current = false
+    await Promise.all([first, queued])
+    expect(session.allMessages.value[0].content).toBe('echo **echo**')
+  })
+
   it('exposes no backlink when saving the anchor fails', async () => {
     const prepare = captureSelectionLink(session, 'reply', 'echo', 5, 'echo echo')
     vi.spyOn(session, 'ensureChatAnchor').mockRejectedValue(new Error('anchor write failed'))

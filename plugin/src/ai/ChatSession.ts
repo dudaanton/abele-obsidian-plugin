@@ -3661,8 +3661,29 @@ export class ChatSession implements SummarizerHost, InterceptorHost, AnchorStora
     )
   }
 
+  private selectionReconciliation: Promise<void> | null = null
+
   /** Reconcile only an intact main file; backup recovery belongs to the ordinary open path. */
   async reconcileForSelectionReturn(isCurrent = () => true): Promise<void> {
+    const file = this.currentChatFile.value
+    const version = this.conversationVersion.value
+    const previous = this.selectionReconciliation
+    // Two opens may inspect the same external revision. The first adoption changes local
+    // refs; serialize the second read so it does not mistake that adoption for a user edit.
+    // Every caller still owns its own cancellation and source-version checks.
+    const operation = (async () => {
+      if (previous) await previous.catch(() => {})
+      if (!isCurrent()) return
+      if (this.destroyed || this.currentChatFile.value !== file || this.conversationVersion.value !== version)
+        throw new Error('The selection source changed. Open the link again.')
+      await this.reconcileSelectionSnapshot(isCurrent)
+    })()
+    this.selectionReconciliation = operation
+    try { await operation }
+    finally { if (this.selectionReconciliation === operation) this.selectionReconciliation = null }
+  }
+
+  private async reconcileSelectionSnapshot(isCurrent: () => boolean): Promise<void> {
     const file = this.currentChatFile.value
     const version = this.conversationVersion.value
     if (!file) throw new Error('The selection source is no longer open.')
