@@ -156,6 +156,8 @@ watch(accessibleName, updateTooltip)
 @each $size in 'xs', 'm', 'l', 'xl' {
   .abele-obsidian-icon.abele-obsidian-icon_size-#{$size} {
     --icon-size: var(--icon-#{$size});
+    // Obsidian thins the line as the icon grows; a size without its stroke looks heavy.
+    --icon-stroke: var(--icon-#{$size}-stroke-width);
   }
 }
 
