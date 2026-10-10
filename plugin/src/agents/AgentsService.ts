@@ -279,26 +279,10 @@ export class AgentsService {
     // Ordinary chats do not need discussion identity migration, recovery or repeated full reads.
     if (main && isDiscussion(parsed.metadata)) {
       try {
-        const prepared = (await ChatStorage.getInstance().prepareDiscussion(file)).snapshot
-        const resolved = prepared.messages
-          .filter(
-            (m) => m.toolCallId && (m.toolResult !== undefined || m.toolStatus === 'rejected')
-          )
-          .map((m) => m.toolCallId)
-        parsed = {
-          ...prepared,
-          metadata: prepared.metadata
-            ? {
-                ...prepared.metadata,
-                attention: {
-                  ...prepared.metadata.attention,
-                  resolved: [
-                    ...new Set([...(prepared.metadata.attention?.resolved ?? []), ...resolved]),
-                  ],
-                },
-              }
-            : null,
-        }
+        const initial = parsed
+        parsed = await ChatStorage.getInstance().prepareDiscussionAttention(file, (content) =>
+          content === text ? Promise.resolve(initial) : this.reader.read(content, yieldControl)
+        )
       } catch (error) {
         if (!(error instanceof DiscussionIdentityConflict)) throw error
         // Identity is unresolved, not the stored attention evidence. Keep it visible as

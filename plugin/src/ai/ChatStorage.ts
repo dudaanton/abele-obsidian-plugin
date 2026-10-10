@@ -30,7 +30,10 @@ import {
   type ChatSnapshot,
   type ChatWritePlan,
   type ParsedChat,
+  type ChatAttentionSnapshot,
 } from './ChatLog'
+
+type AttentionProjection = (content: string) => Promise<ChatAttentionSnapshot>
 
 function assertChatTarget(content: string): void {
   if (isRunTranscript(content))
@@ -310,10 +313,35 @@ export class ChatStorage {
     oldLogicalPath?: string,
     options: { recover?: boolean } = {}
   ): Promise<PreparedDiscussion> {
+    return this.prepareDiscussionWith(file, oldLogicalPath, options.recover ?? true)
+  }
+
+  /** Discovery uses the same exact-byte identity gate, but cannot expose a partial transcript
+   * to a writer. Its projection has already validated the log and collected terminal IDs. */
+  async prepareDiscussionAttention(
+    file: TFile,
+    project: AttentionProjection
+  ): Promise<ChatAttentionSnapshot> {
+    const { snapshot } = await this.prepareDiscussionWith(file, undefined, false, project)
+    return {
+      metadata: snapshot.metadata,
+      records: snapshot.records,
+      version: snapshot.version,
+      damaged: snapshot.damaged,
+      torn: snapshot.torn,
+    }
+  }
+
+  private prepareDiscussionWith(
+    file: TFile,
+    oldLogicalPath: string | undefined,
+    recover: boolean,
+    project?: AttentionProjection
+  ): Promise<PreparedDiscussion> {
     this.bindDiscussionVault()
     if (oldLogicalPath) this.noteDiscussionRename(file, oldLogicalPath)
     return this.withDiscussionFile(file, () =>
-      this.prepareDiscussionLocked(file, oldLogicalPath, options.recover ?? true)
+      this.prepareDiscussionLocked(file, oldLogicalPath, recover, project)
     ).catch((error) => {
       if (error instanceof DiscussionIdentityConflict) {
         const entry = this.discussionPaths.get(file.path)
@@ -330,7 +358,8 @@ export class ChatStorage {
   private async prepareDiscussionLocked(
     file: TFile,
     oldLogicalPath?: string,
-    recover = true
+    recover = true,
+    project?: AttentionProjection
   ): Promise<PreparedDiscussion> {
     this.bindDiscussionVault()
     file = toRaw(file)
@@ -338,7 +367,8 @@ export class ChatStorage {
     if (oldLogicalPath) this.invalidateDiscussion(oldLogicalPath)
     if (recover) await readChat(app, file)
     else {
-      const current = parseChat(await app.vault.read(file))
+      const text = await app.vault.read(file)
+      const current = project ? await project(text) : parseChat(text)
       if (
         (current.torn || current.damaged || !current.metadata) &&
         (await app.vault.adapter.exists(chatCopyPath(app, file.path)))
@@ -348,7 +378,9 @@ export class ChatStorage {
     for (let attempt = 0; attempt < 8; attempt++) {
       const path = canonicalDiscussionPath(file.path)
       const previous = await app.vault.read(file)
-      const snapshot = parseChat(previous)
+      const snapshot: ParsedChat = project
+        ? { ...(await project(previous)), messages: [], internalMessages: [] }
+        : parseChat(previous)
       const metadata = snapshot.metadata
       if (!metadata) {
         this.recordDiscussionObservation(path, {
@@ -426,7 +458,7 @@ export class ChatStorage {
         // Legacy JSON cannot accept a log record; encode its entire recognized snapshot.
         const content =
           snapshot.version === 1
-            ? serializeChat({ ...snapshot, metadata: next })
+            ? serializeChat({ ...(project ? parseChat(previous) : snapshot), metadata: next })
             : previous + (previous.endsWith('\n') ? '' : '\n') + serializeMetadata(next)
         let changed = false
         try {
@@ -447,6 +479,7 @@ export class ChatStorage {
           throw error
         }
         committed = content
+        if (project) Object.assign(snapshot, await project(content))
       }
       // The next trusted move starts at this committed checkpoint, even if another rename
       // arrived while the rewrite's cleanup or the following confirmation was awaiting I/O.
@@ -481,7 +514,12 @@ export class ChatStorage {
       if (toRaw(app.vault.getAbstractFileByPath(path)) !== file)
         throw new Error('The discussion was deleted while being prepared.')
       if (this.discussionRenames.get(file) === rename) this.discussionRenames.delete(file)
-      return { snapshot: parseChat(committed), identity, revision, content: committed }
+      return {
+        snapshot: project ? snapshot : parseChat(committed),
+        identity,
+        revision,
+        content: committed,
+      }
     }
     throw new Error('The discussion keeps changing. Reopen it after synchronization finishes.')
   }

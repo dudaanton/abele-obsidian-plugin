@@ -193,7 +193,8 @@ Changed inventories invalidate cached discussion ownership hints; opening still 
 identity gate. Vault-load create/modify events are ignored before startup, and later events are
 coalesced per file. Large attention projections run in a disposable worker where available;
 the portable fallback yields between log chunks. Discovery does not assemble transcript arrays
-for log-format ordinary chats. Explicit refresh still rechecks files.
+for log-format ordinary chats or normalized discussions. Identity normalization retains the
+existing checked writer, including full legacy-format migration. Explicit refresh still rechecks files.
 Missing fields do not resolve indexed approvals/questions/runs/errors; such rows remain uncertain.
 Read-only discovery checks the existing safety copy for a damaged main file, without
 repairing or removing either copy. Backup-only or still-unreadable states retain their pointers

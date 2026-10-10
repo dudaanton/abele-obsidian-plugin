@@ -6,6 +6,7 @@ import { CommentService } from '@/ai/CommentService'
 import { AbeleConfig } from '@/services/AbeleConfig'
 import { DEFAULT_AI_SETTINGS } from '@/ai/types'
 import { serializeChat } from '@/ai/ChatLog'
+import * as ChatLog from '@/ai/ChatLog'
 import { useVault } from '../helpers/testEnv'
 import { syntheticChats } from '../helpers/syntheticChats'
 
@@ -26,6 +27,66 @@ it('does not prepare ordinary transcripts during attention discovery', async () 
   const prepare = vi.spyOn(ChatStorage.getInstance(), 'prepareDiscussion')
   await AgentsService.getInstance().start()
   expect(prepare).not.toHaveBeenCalled()
+})
+
+it('checks normalized discussion ownership without constructing its transcript', async () => {
+  const path = 'SyntheticChats/discussion.abchat'
+  useVault([
+    {
+      path,
+      content: serializeChat({
+        metadata: {
+          type: 'abele-chat',
+          providerId: '',
+          modelId: '',
+          created: '',
+          kind: 'comment',
+          commentId: 'synthetic-discussion',
+          commentLocation: path,
+          anchor: { note: 'Notes/sample.md' },
+          attention: { errors: [{ id: 'synthetic-error', at: 1, text: 'Synthetic error' }] },
+        },
+        messages: [],
+        internalMessages: [],
+      }),
+    },
+  ])
+  const fullParse = vi.spyOn(ChatLog, 'parseChat')
+  await AgentsService.getInstance().start()
+  expect(AgentsService.getInstance().badge.value.attention).toBe(1)
+  expect(AgentsService.getInstance().incomplete.value).toBe(false)
+  expect(fullParse).not.toHaveBeenCalled()
+})
+
+it('preserves the complete legacy transcript when discovery must normalize a discussion', async () => {
+  const path = 'AI/Comments/sample-legacy.abchat'
+  const messages = [
+    { id: 'sample-message', role: 'assistant', content: 'Synthetic legacy message', timestamp: 1 },
+  ]
+  const internalMessages = [{ role: 'assistant', content: 'Synthetic internal message' }]
+  const app = useVault([
+    {
+      path,
+      content: JSON.stringify({
+        metadata: {
+          type: 'abele-chat',
+          providerId: '',
+          modelId: '',
+          created: '',
+          kind: 'comment',
+          anchor: { note: 'Notes/sample.md' },
+        },
+        messages,
+        internalMessages,
+      }),
+    },
+  ])
+  await AgentsService.getInstance().start()
+  const saved = ChatLog.parseChat(await app.vault.read(app.vault.getFileByPath(path)!))
+  expect(saved.metadata?.commentId).toBe('sample-legacy')
+  expect(saved.messages).toEqual(messages)
+  expect(saved.internalMessages).toEqual(internalMessages)
+  expect(saved.version).toBe(2)
 })
 
 it('reuses unchanged attention snapshots after restart, including quiet chats', async () => {
