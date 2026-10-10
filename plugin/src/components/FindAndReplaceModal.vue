@@ -1,5 +1,10 @@
 <template>
-  <ObsidianModal title="Find and replace" @close="emit('close')" @expose-id="setScrollContainer">
+  <ObsidianModal
+    size="wide"
+    title="Find and replace"
+    @close="emit('close')"
+    @expose-id="setScrollContainer"
+  >
     <div class="abele-sar-fm-modal">
       <div class="abele-sar-fm-modal__description">
         Enter note search conditions. Lists are separated by semicolons. Only notes matching all of
@@ -92,9 +97,6 @@ const goToNote = (path: string) => {
 </script>
 
 <style lang="scss">
-.modal:has(.abele-sar-fm-modal) {
-  width: 700px;
-}
 .abele-sar-fm-modal__description {
   margin-top: var(--p-spacing);
   margin-bottom: calc(var(--p-spacing) * 1.5);

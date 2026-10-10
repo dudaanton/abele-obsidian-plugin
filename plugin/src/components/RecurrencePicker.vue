@@ -3,15 +3,14 @@
     <div class="abele-recurrence-picker__interval">
       <div class="abele-recurrence-picker__interval-label">Repeat every</div>
       <div class="abele-recurrence-picker__interval-row">
-        <input
+        <Input
           type="number"
           min="1"
           max="99"
-          :value="intervalValue"
+          aria-label="Repeat interval"
+          :model-value="String(intervalValue)"
           class="abele-recurrence-picker__interval-input"
-          @input="
-            intervalValue = Math.max(1, parseInt(($event.target as HTMLInputElement).value) || 1)
-          "
+          @update:model-value="intervalValue = Math.max(1, parseInt($event) || 1)"
         />
         <ObsidianDropdown
           :model-value="intervalUnit"
@@ -29,7 +28,8 @@
           :key="day.value"
           :text-right="day.label"
           with-bg
-          :class="{ 'abele-recurrence-picker__day_active': selectedWeekdays.includes(day.value) }"
+          :active="selectedWeekdays.includes(day.value)"
+          :tooltip="`Repeat on ${day.label}`"
           @click="toggleWeekday(day.value)"
         />
       </div>
@@ -41,30 +41,28 @@
         <ObsidianIcon
           text-right="Specific days"
           with-bg
-          :class="{ 'abele-recurrence-picker__day_active': monthMode === 'days' }"
+          :active="monthMode === 'days'"
+          tooltip="Choose specific days of the month"
           @click="monthMode = 'days'"
         />
         <ObsidianIcon
           text-right="Weekday"
           with-bg
-          :class="{ 'abele-recurrence-picker__day_active': monthMode === 'positional' }"
+          :active="monthMode === 'positional'"
+          tooltip="Choose a weekday of the month"
           @click="monthMode = 'positional'"
         />
         <ObsidianIcon
           text-right="First/Last day"
           with-bg
-          :class="{ 'abele-recurrence-picker__day_active': monthMode === 'boundary' }"
+          :active="monthMode === 'boundary'"
+          tooltip="Choose the first or last day of the month"
           @click="monthMode = 'boundary'"
         />
       </div>
 
       <div v-if="monthMode === 'days'" class="abele-recurrence-picker__monthdays">
-        <input
-          type="text"
-          placeholder="e.g. 1, 15"
-          :value="monthDaysInput"
-          @input="monthDaysInput = ($event.target as HTMLInputElement).value"
-        />
+        <Input v-model="monthDaysInput" aria-label="Days of month" placeholder="e.g. 1, 15" />
       </div>
 
       <div v-if="monthMode === 'positional'" class="abele-recurrence-picker__positional">
@@ -119,6 +117,7 @@ import { ref, computed } from 'vue'
 import ObsidianIcon from './obsidian/Icon.vue'
 import ObsidianDropdown from './obsidian/Dropdown.vue'
 import Checkbox from './obsidian/Checkbox.vue'
+import Input from './obsidian/Input.vue'
 
 const props = defineProps<{
   initialPattern?: string | null
@@ -307,7 +306,8 @@ defineExpose({ confirm, canConfirm: computed(() => !!pattern.value) })
 }
 
 .abele-recurrence-picker__interval-input {
-  width: 60px;
+  flex: 0 1 calc(var(--size-4-18) * 2);
+  min-width: 0;
 }
 
 .abele-recurrence-picker__weekdays-row {
@@ -318,6 +318,7 @@ defineExpose({ confirm, canConfirm: computed(() => !!pattern.value) })
 
 .abele-recurrence-picker__month-modes {
   display: flex;
+  flex-wrap: wrap;
   gap: calc(var(--p-spacing) / 4);
   margin-bottom: calc(var(--p-spacing) / 2);
 }
@@ -346,11 +347,6 @@ defineExpose({ confirm, canConfirm: computed(() => !!pattern.value) })
 
 .abele-recurrence-picker__from-completion-label {
   font-size: var(--font-small);
-}
-
-.abele-recurrence-picker__day_active {
-  background-color: hsl(var(--accent-h), var(--accent-s), var(--accent-l)) !important;
-  color: var(--text-on-accent) !important;
 }
 
 .abele-recurrence-picker__preview {

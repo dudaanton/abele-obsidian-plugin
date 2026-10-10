@@ -1,26 +1,30 @@
 <template>
-  <ObsidianModal title="Select date range" @close="emit('cancel')">
+  <ObsidianModal title="Select date range" close-in-footer @close="emit('cancel')">
     <div class="abele-date-range-picker">
       <Setting name="From" desc="Start date of the range">
         <div class="abele-date-range-picker__input-row">
-          <input
-            type="text"
-            :value="fromDisplay"
+          <Input
+            :model-value="fromDisplay"
+            aria-label="Start date"
             placeholder="YYYY-MM-DD"
-            @change="onFromInput($event)"
+            @commit="onFromInput"
           />
-          <ObsidianIcon icon="calendar" @click="calendarTarget = 'from'" />
+          <ObsidianIcon
+            icon="calendar"
+            tooltip="Choose start date"
+            @click="calendarTarget = 'from'"
+          />
         </div>
       </Setting>
       <Setting name="To" desc="End date of the range">
         <div class="abele-date-range-picker__input-row">
-          <input
-            type="text"
-            :value="toDisplay"
+          <Input
+            :model-value="toDisplay"
+            aria-label="End date"
             placeholder="YYYY-MM-DD"
-            @change="onToInput($event)"
+            @commit="onToInput"
           />
-          <ObsidianIcon icon="calendar" @click="calendarTarget = 'to'" />
+          <ObsidianIcon icon="calendar" tooltip="Choose end date" @click="calendarTarget = 'to'" />
         </div>
       </Setting>
     </div>
@@ -38,9 +42,15 @@
       </div>
     </ObsidianModal>
     <template #footer>
-      <ObsidianButton text="Apply" accent :disabled="!fromDate || !toDate" @click="apply" />
-      <ObsidianButton text="Reset" @click="emit('reset')" />
-      <ObsidianButton text="Cancel" @click="emit('cancel')" />
+      <ObsidianButton
+        text="Apply"
+        tooltip="Apply this date range"
+        accent
+        :disabled="!fromDate || !toDate"
+        @click="apply"
+      />
+      <ObsidianButton text="Reset" tooltip="Reset the date range" @click="emit('reset')" />
+      <ObsidianButton text="Cancel" tooltip="Close without applying" @click="emit('cancel')" />
     </template>
   </ObsidianModal>
 </template>
@@ -54,6 +64,7 @@ import ObsidianButton from './obsidian/Button.vue'
 import ObsidianIcon from './obsidian/Icon.vue'
 import Setting from './obsidian/Setting.vue'
 import Calendar from './Calendar.vue'
+import Input from './obsidian/Input.vue'
 
 const props = defineProps<{
   initialFrom?: dayjs.Dayjs
@@ -73,14 +84,12 @@ const calendarTarget = ref<'from' | 'to' | null>(null)
 const fromDisplay = computed(() => fromDate.value?.format(DATE_FORMAT) ?? '')
 const toDisplay = computed(() => toDate.value?.format(DATE_FORMAT) ?? '')
 
-const onFromInput = (e: Event) => {
-  const val = (e.target as HTMLInputElement).value
+const onFromInput = (val: string) => {
   const d = dayjs(val, DATE_FORMAT)
   if (d.isValid()) fromDate.value = d
 }
 
-const onToInput = (e: Event) => {
-  const val = (e.target as HTMLInputElement).value
+const onToInput = (val: string) => {
   const d = dayjs(val, DATE_FORMAT)
   if (d.isValid()) toDate.value = d
 }
@@ -105,10 +114,6 @@ const apply = () => {
 </script>
 
 <style lang="scss">
-.modal:has(.abele-date-range-picker) {
-  width: 380px;
-}
-
 .abele-date-range-picker {
   display: flex;
   flex-direction: column;
@@ -120,8 +125,10 @@ const apply = () => {
   align-items: center;
   gap: var(--size-4-1);
 
-  input {
-    width: 120px;
+  min-width: 0;
+
+  .abele-obsidian-input {
+    flex: 1;
   }
 }
 

@@ -1,5 +1,5 @@
 <template>
-  <ObsidianModal title="Migrate from Toggl" @close="emit('close')">
+  <ObsidianModal size="wide" title="Migrate from Toggl" @close="emit('close')">
     <div class="abele-migrate-toggl-modal">
       <Setting name="API Token" desc="Find it in Toggl → Profile Settings → API Token.">
         <Input v-model="apiToken" placeholder="Enter your Toggl API token" />
@@ -101,10 +101,6 @@ const startMigration = async () => {
 </script>
 
 <style lang="scss">
-.modal:has(.abele-migrate-toggl-modal) {
-  width: 600px;
-}
-
 .abele-migrate-toggl-modal {
   display: flex;
   flex-direction: column;

@@ -2,34 +2,38 @@
   <div class="abele-datetime-picker">
     <Calendar :selected-date="selectedDate" show-tasks @date-selected="onDateSelected" />
 
-    <div v-if="selectedDate && tasksForDay.length" class="abele-datetime-picker__tasks-preview">
-      <div class="abele-datetime-picker__tasks-header">Scheduled tasks</div>
+    <Section
+      v-if="selectedDate && tasksForDay.length"
+      title="Scheduled tasks"
+      class="abele-datetime-picker__tasks-preview"
+    >
       <div v-for="task in tasksForDay" :key="task.id" class="abele-datetime-picker__task-item">
         <span v-if="getTaskTimeForDay(task)" class="abele-datetime-picker__task-time">
           {{ getTaskTimeForDay(task) }}
         </span>
         <span class="abele-datetime-picker__task-title">{{ task.title || task.taskName }}</span>
       </div>
-    </div>
+    </Section>
 
     <div class="abele-datetime-picker__time">
       <div class="abele-datetime-picker__time-label">Time (optional)</div>
       <div class="abele-datetime-picker__time-input-row">
-        <input
-          type="text"
+        <Input
+          v-model="timeDisplay"
+          aria-label="Time (optional)"
           placeholder="HH:mm"
           maxlength="5"
-          :value="timeDisplay"
           @beforeinput="onTimeBeforeInput"
-          @input="timeDisplay = ($event.target as HTMLInputElement).value"
         />
-        <ObsidianIcon icon="clock" @click="nativeTimeInput?.showPicker()" />
-        <input
+        <ObsidianIcon icon="clock" tooltip="Choose time" @click="nativeTimeInput?.showPicker()" />
+        <Input
           ref="nativeTimeInput"
           type="time"
           class="abele-datetime-picker__time-native"
-          :value="parseTime(timeDisplay) ?? ''"
-          @input="setTime(($event.target as HTMLInputElement).value || null)"
+          :model-value="parseTime(timeDisplay) ?? ''"
+          tabindex="-1"
+          aria-hidden="true"
+          @update:model-value="setTime($event || null)"
         />
       </div>
       <div class="abele-datetime-picker__time-choices">
@@ -38,7 +42,8 @@
           :key="time"
           :text-right="time"
           with-bg
-          :class="{ 'abele-datetime-picker__time-choice_active': timeDisplay === time }"
+          :active="timeDisplay === time"
+          :tooltip="`Set time to ${time}`"
           @click="setTime(timeDisplay === time ? null : time)"
         />
       </div>
@@ -51,6 +56,8 @@ import { ref, computed, unref } from 'vue'
 import dayjs from 'dayjs'
 import Calendar from './Calendar.vue'
 import ObsidianIcon from './obsidian/Icon.vue'
+import Input from './obsidian/Input.vue'
+import Section from './obsidian/Section.vue'
 import { GlobalStore } from '@/stores/GlobalStore'
 import { AbeleConfig } from '@/services/AbeleConfig'
 import { Task } from '@/entities/Task'
@@ -70,7 +77,7 @@ const emit = defineEmits<{
 
 const selectedDate = ref<dayjs.Dayjs | undefined>(props.initialDate ?? dayjs())
 const timeDisplay = ref<string>(props.initialTime ?? '')
-const nativeTimeInput = ref<HTMLInputElement | null>(null)
+const nativeTimeInput = ref<InstanceType<typeof Input> | null>(null)
 
 const timeChoices = AbeleConfig.getInstance().tasksTimeChoices
 
@@ -204,15 +211,8 @@ defineExpose({ confirm, canConfirm: computed(() => !!selectedDate.value) })
   padding: calc(var(--p-spacing) / 2);
   background-color: var(--background-secondary);
   border-radius: var(--radius-s);
-  max-height: 120px;
+  max-height: calc(var(--size-4-18) * 2);
   overflow-y: auto;
-}
-
-.abele-datetime-picker__tasks-header {
-  font-size: var(--font-small);
-  color: var(--text-muted);
-  font-weight: bold;
-  margin-bottom: calc(var(--p-spacing) / 4);
 }
 
 .abele-datetime-picker__task-item {
@@ -248,9 +248,8 @@ defineExpose({ confirm, canConfirm: computed(() => !!selectedDate.value) })
   align-items: center;
   gap: calc(var(--p-spacing) / 2);
 
-  input {
-    width: 80px;
-    min-width: 80px;
+  .abele-obsidian-input:not(.abele-datetime-picker__time-native) {
+    flex: 1;
   }
 }
 
@@ -266,10 +265,5 @@ defineExpose({ confirm, canConfirm: computed(() => !!selectedDate.value) })
   display: flex;
   gap: calc(var(--p-spacing) / 4);
   flex-wrap: wrap;
-}
-
-.abele-datetime-picker__time-choice_active {
-  background-color: hsl(var(--accent-h), var(--accent-s), var(--accent-l)) !important;
-  color: var(--text-on-accent) !important;
 }
 </style>

@@ -1,5 +1,5 @@
 <template>
-  <ObsidianModal :title="title" @close="emit('cancel')">
+  <ObsidianModal :title="title" close-in-footer @close="emit('cancel')">
     <DateTimePicker
       ref="picker"
       :initial-date="initialDate"
@@ -45,9 +45,3 @@ const emit = defineEmits<{
   (e: 'cancel'): void
 }>()
 </script>
-
-<style lang="scss">
-.modal:has(.abele-datetime-picker) {
-  width: 380px;
-}
-</style>

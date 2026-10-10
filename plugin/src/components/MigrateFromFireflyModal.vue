@@ -1,5 +1,5 @@
 <template>
-  <ObsidianModal title="Migrate from Firefly III" @close="emit('close')">
+  <ObsidianModal size="wide" title="Migrate from Firefly III" @close="emit('close')">
     <div class="abele-migrate-firefly-modal">
       <Setting name="Firefly III URL" desc="Base URL of your Firefly III instance.">
         <Input v-model="baseUrl" placeholder="e.g. https://firefly.example.com" />
@@ -277,10 +277,6 @@ const emit = defineEmits<{
 </script>
 
 <style lang="scss">
-.modal:has(.abele-migrate-firefly-modal) {
-  width: 600px;
-}
-
 .abele-migrate-firefly-modal__buttons {
   display: flex;
   gap: calc(var(--p-spacing) / 4);

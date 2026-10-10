@@ -1,5 +1,5 @@
 <template>
-  <ObsidianModal title="Recurrence" @close="emit('cancel')">
+  <ObsidianModal title="Recurrence" close-in-footer @close="emit('cancel')">
     <RecurrencePicker
       ref="picker"
       :initial-pattern="initialPattern"
@@ -39,9 +39,3 @@ const emit = defineEmits<{
   (e: 'cancel'): void
 }>()
 </script>
-
-<style lang="scss">
-.modal:has(.abele-recurrence-picker) {
-  width: 380px;
-}
-</style>

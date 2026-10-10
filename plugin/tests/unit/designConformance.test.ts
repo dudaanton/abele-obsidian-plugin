@@ -199,7 +199,14 @@ describe('parsed incremental design standard', () => {
 
 // Forms join this gate independently of the flat-list migration. Native controls belong in
 // the kit, including a hidden platform picker; aliases do not disguise raw HTML tags.
-const KIT_FORM_SCREENS = ['AiChatSettings.vue', 'AiScopeEditor.vue', 'AiChatHistory.vue']
+const KIT_FORM_SCREENS = [
+  'AiChatSettings.vue',
+  'AiScopeEditor.vue',
+  'AiChatHistory.vue',
+  'DateTimePicker.vue',
+  'DateRangePickerModal.vue',
+  'RecurrencePicker.vue',
+]
 function rawFormControls(source: string): string[] {
   const content = parseSfc(source).descriptor.template?.content ?? ''
   const tags: string[] = []
@@ -211,6 +218,37 @@ function rawFormControls(source: string): string[] {
   baseParse(content).children.forEach(visit)
   return tags
 }
+
+describe('migrated dialog sizing', () => {
+  it('keeps audited picker and import shells on shared sizes', () => {
+    const files = [
+      'DateTimePickerModal.vue',
+      'DateRangePickerModal.vue',
+      'RecurrencePickerModal.vue',
+      'FindAndReplaceModal.vue',
+      'MigrateFromFireflyModal.vue',
+      'MigrateFromTogglModal.vue',
+      'MigrateFromDataviewModal.vue',
+    ]
+    expect(
+      files.filter((file) =>
+        /\.modal[^{}]*\{[^{}]*\b(?:width|max-width|min-width)\s*:/.test(
+          styleBlock(readFileSync(join(ROOT, file), 'utf8'))
+        )
+      )
+    ).toEqual([])
+  })
+  it.fails('BUG: the unmigrated model editor still sizes its shell from a descendant', () => {
+    const offenders = walk(ROOT).filter(
+      (file) =>
+        !file.includes('/obsidian/') &&
+        /\.modal[^{}]*\{[^{}]*\b(?:width|max-width|min-width)\s*:/.test(
+          styleBlock(readFileSync(file, 'utf8'))
+        )
+    )
+    expect(offenders.map(name)).toEqual([])
+  })
+})
 
 describe('migrated form controls', () => {
   it('finds nested raw fields while allowing imported kit aliases', () => {

@@ -67,8 +67,18 @@ const props = defineProps<{
   modelValue?: string
   disabled?: boolean
   placeholder?: string
-  /** The kind of value, as the platform's input knows it. */
-  type?: 'text' | 'password' | 'email' | 'url' | 'number' | 'search' | 'tel' | 'datetime-local'
+  /** Native values stay strings; constraints and labels belong to the inner control. */
+  type?:
+    | 'text'
+    | 'password'
+    | 'email'
+    | 'url'
+    | 'number'
+    | 'search'
+    | 'tel'
+    | 'datetime-local'
+    | 'date'
+    | 'time'
   /** An icon before the text, by Lucide name. */
   icon?: string
   /** An icon after the text, by Lucide name. The trailing slot replaces it. */
@@ -161,7 +171,15 @@ function onEnter(e: KeyboardEvent): void {
   emit('commit', (e.target as HTMLInputElement).value)
 }
 
-defineExpose({ inputRef: base })
+defineExpose({
+  inputRef: base,
+  focus: () => base.value?.focus(),
+  // Keep platform picker activation synchronous with the caller's button gesture.
+  showPicker: () => {
+    const input = base.value
+    if (input && 'showPicker' in input) input.showPicker()
+  },
+})
 </script>
 
 <style lang="scss">
