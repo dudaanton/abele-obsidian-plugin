@@ -476,6 +476,8 @@ export class NodeFilesModel {
   readonly diffs: DiffSource
   private listingGeneration = 0
   private fileGeneration = 0
+  // Passive same-path refreshes must not cancel an owner's fresh-read reconciliation.
+  private fileSelectionGeneration = 0
   private diffGeneration = 0
   private logGeneration = 0
   private readonly submitting = ref(false)
@@ -511,6 +513,7 @@ export class NodeFilesModel {
     range?: CodeLineRange,
     loaded?: Awaited<ReturnType<CodeDocumentSource['read']>>
   ) {
+    if (path !== this.filePath.value) ++this.fileSelectionGeneration
     await this.persistingEdit.catch((e) => {
       if (!(e instanceof Error) || e.message !== draftConflict || path !== this.filePath.value)
         throw e
@@ -701,9 +704,9 @@ export class NodeFilesModel {
   }
   private async currentForReconciliation(shown: FileDraftSnapshot | null) {
     const path = this.filePath.value,
-      generation = this.fileGeneration
+      generation = this.fileSelectionGeneration
     const check = () => {
-      if (generation !== this.fileGeneration || path !== this.filePath.value)
+      if (generation !== this.fileSelectionGeneration || path !== this.filePath.value)
         throw new Error('File view changed before draft reconciliation')
       assertDraftRevision(this.draft.value, shown?.revision ?? null)
       if (
@@ -728,15 +731,16 @@ export class NodeFilesModel {
       // The visible failed-CAS copy is not the shared draft. Forget only that private copy,
       // after a successful current read, and load the other view's draft without deleting it.
       const path = this.filePath.value,
-        generation = this.fileGeneration
+        generation = this.fileSelectionGeneration
       const document = await this.documents.read(path)
-      if (generation !== this.fileGeneration) throw new Error('File view changed before reload')
+      if (generation !== this.fileSelectionGeneration)
+        throw new Error('File view changed before reload')
       await this.openFile(path, undefined, this.fileRange.value, document)
       return
     }
     const { path, generation, document } = await this.currentForReconciliation(shown)
     await this.documents.discard(path, shown?.revision ?? null)
-    if (generation !== this.fileGeneration) return
+    if (generation !== this.fileSelectionGeneration) return
     this.document.value = document
     this.draft.value = undefined
     this.draftText.value = document.text ?? ''
@@ -748,7 +752,7 @@ export class NodeFilesModel {
     if (!shown) throw new Error('There is no local draft to keep')
     const { path, generation, document } = await this.currentForReconciliation(shown)
     const draft = await this.documents.rebase(path, document, shown.revision)
-    if (generation !== this.fileGeneration) return
+    if (generation !== this.fileSelectionGeneration) return
     this.document.value = document
     this.draft.value = draft
     this.editing.value = true

@@ -191,7 +191,7 @@ it('opens the real node repository in the shared tab, follows history, compares,
       root.querySelector('.abele-node-save [aria-label="Reload current version"]').click();
       await until(()=>[...document.querySelectorAll('.modal button')].some(b=>b.textContent.trim()==='Cancel'));
       [...document.querySelectorAll('.modal button')].find(b=>b.textContent.trim()==='Cancel').click();
-      await until(()=>!document.querySelector('.modal'));
+      await until(()=>!document.querySelector('.modal')&&!root.querySelector('.abele-node-save [aria-label="Reload current version"]').disabled);
       if(!root.querySelector('.abele-github-blob > .abele-github-code').textContent.includes('value = 8'))throw Error('Cancel lost the draft');
       root.querySelector('.abele-node-save [aria-label="Reload current version"]').click();
       await until(()=>[...document.querySelectorAll('.modal button')].some(b=>b.textContent.trim()==='Reload'));

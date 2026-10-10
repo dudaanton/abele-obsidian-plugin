@@ -17,7 +17,8 @@ it('edits from the node code view, restores local drafts, and checks a lost save
   if (!cli) throw new Error('Set ABELE_NODE_CLI to the built daemon CLI')
   // The daemon reuses recovery directories only under a canonical state path; the
   // system temporary directory can itself be a symlink.
-  const dir = realpathSync(mkdtempSync('/tmp/abele-edit-')),
+  mkdirSync('../.scratch', { recursive: true })
+  const dir = realpathSync(mkdtempSync(resolve('../.scratch/edit-'))),
     repo = resolve(dir, 'repo'),
     state = resolve(dir, 'state')
   mkdirSync(repo)
@@ -42,7 +43,7 @@ it('edits from the node code view, restores local drafts, and checks a lost save
   const fake = resolve('tests/fixtures/nodeClaude.mjs')
   const token = spawnSync(
     process.execPath,
-    [cli, 'token', 'create', 'fixture', '--state-dir', state, '--claude-path', fake],
+    [cli, 'token', 'create', 'fixture', '--state-dir', state, '--claude-path', fake, '--json'],
     { encoding: 'utf8' }
   )
   expect(token.status, token.stderr).toBe(0)
@@ -53,7 +54,7 @@ it('edits from the node code view, restores local drafts, and checks a lost save
   try {
     child = spawn(
       process.execPath,
-      [cli, 'start', '--state-dir', state, '--port', '0', '--claude-path', fake],
+      [cli, 'start', '--state-dir', state, '--port', '0', '--claude-path', fake, '--json'],
       { stdio: ['ignore', 'pipe', 'pipe'] }
     )
     let output = '',

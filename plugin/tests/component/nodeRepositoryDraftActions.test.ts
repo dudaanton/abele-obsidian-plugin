@@ -132,6 +132,61 @@ it('presents just Reload and Keep mine and adopts the newly read disk base witho
     f.wrapper.unmount()
   }
 })
+it('allows a passive same-file refresh while Keep mine reads disk without adopting different text', async () => {
+  const f = await fixture()
+  try {
+    f.code().vm.$emit('change', 'mine')
+    await flushPromises()
+    f.setDisk()
+    await f.wrapper.setProps({ text: 'external', contentId: 'b'.repeat(64) })
+    await flushPromises()
+    let finish!: () => void
+    f.read.mockImplementationOnce(async () => {
+      await new Promise<void>((resolve) => {
+        finish = resolve
+      })
+      return { ...f.disk }
+    })
+    await f.button('Keep mine').trigger('click')
+    await flushPromises()
+    await f.model.openFile('sample.ts', undefined, undefined, f.disk)
+    finish()
+    await flushPromises()
+    expect(f.model.draft.value?.baseContentId).toBe('b'.repeat(64))
+    expect(f.model.draftText.value).toBe('mine')
+    expect(f.wrapper.text()).not.toContain('File view changed')
+  } finally {
+    f.wrapper.unmount()
+  }
+})
+it('rejects reconciliation after navigation away and back even when the same draft is visible again', async () => {
+  const f = await fixture()
+  try {
+    f.code().vm.$emit('change', 'mine')
+    await flushPromises()
+    f.setDisk()
+    await f.wrapper.setProps({ text: 'external', contentId: 'b'.repeat(64) })
+    await flushPromises()
+    let finish!: () => void
+    f.read.mockImplementationOnce(async () => {
+      await new Promise<void>((resolve) => {
+        finish = resolve
+      })
+      return { ...f.disk }
+    })
+    const reconciling = f.model.keepMine()
+    await flushPromises()
+    await f.model.openFile('other.ts', undefined, undefined, f.disk)
+    await f.model.openFile('sample.ts', undefined, undefined, f.disk)
+    finish()
+    await expect(reconciling).rejects.toThrow('File view changed')
+    await flushPromises()
+    expect(f.model.draft.value?.baseContentId).toBe('a'.repeat(64))
+    expect(f.model.draftText.value).toBe('mine')
+  } finally {
+    f.wrapper.unmount()
+  }
+})
 it('retains the draft when a fresh disk read fails instead of discarding it or adopting cached bytes', async () => {
   const f = await fixture()
   try {
