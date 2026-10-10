@@ -1,1 +1,10 @@
-["constants", "calendars", "word", "views", "analytics", "services", "archive"]
+[
+  "constants",
+  "calendars",
+  "word",
+  "views",
+  "analytics",
+  "services",
+  "archive",
+  "linter"
+]
