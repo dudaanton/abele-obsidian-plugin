@@ -6,5 +6,6 @@
   "analytics",
   "services",
   "archive",
-  "linter"
+  "linter",
+  "repository"
 ]
