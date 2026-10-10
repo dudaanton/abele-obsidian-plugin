@@ -192,6 +192,10 @@ const stateIcon = {
 .abele-list-row__main.is-clickable {
   cursor: var(--cursor-link);
 }
+/* A row that cannot be opened now says so with the pointer too, not only with its colour. */
+.abele-list-row__main.is-clickable:disabled {
+  cursor: default;
+}
 .abele-list-row__opener {
   flex: 0 0 auto;
   align-self: flex-start;
