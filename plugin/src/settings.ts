@@ -1,5 +1,5 @@
-import { App, PluginSettingTab } from 'obsidian'
-import AbelePlugin from './main'
+import { type App, PluginSettingTab } from 'obsidian'
+import type AbelePlugin from './main'
 import { GlobalStore } from './stores/GlobalStore'
 
 /**
