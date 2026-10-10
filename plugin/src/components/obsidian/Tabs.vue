@@ -5,28 +5,34 @@
     role="tablist"
   >
     <div
-      v-for="tab in tabs"
+      v-for="(tab, index) in tabs"
       :key="tab.id"
       :ref="(el) => applyTooltip(el, tab.tooltip)"
       class="abele-tabs__tab"
-      :class="{ 'abele-tabs__tab_active': tab.id === modelValue }"
+      :class="{
+        'abele-tabs__tab_active': tab.id === modelValue,
+        'abele-tabs__tab_disabled': tab.disabled,
+      }"
       role="tab"
-      tabindex="0"
+      :tabindex="index === focusable ? 0 : -1"
       :aria-selected="tab.id === modelValue"
-      @click="emit('update:modelValue', tab.id)"
+      :aria-disabled="tab.disabled || undefined"
+      @click="choose(tab)"
       @focus="showFocusedTab"
-      @keydown.enter.prevent="emit('update:modelValue', tab.id)"
-      @keydown.space.prevent="emit('update:modelValue', tab.id)"
+      @keydown.enter.prevent="choose(tab)"
+      @keydown.space.prevent="choose(tab)"
+      @keydown="move($event, index)"
     >
       <Icon v-if="tab.icon" :icon="tab.icon" no-hover class="abele-tabs__icon" />
       <span class="abele-tabs__label">{{ tab.label }}</span>
+      <span v-if="tab.badge !== undefined" class="abele-tabs__badge">{{ tab.badge }}</span>
       <Icon v-if="vertical" icon="chevron-right" no-hover class="abele-tabs__chevron" />
     </div>
   </div>
 </template>
 
 <script setup lang="ts">
-import type { ComponentPublicInstance } from 'vue'
+import { computed, type ComponentPublicInstance } from 'vue'
 import { setTooltip } from 'obsidian'
 import Icon from './Icon.vue'
 
@@ -37,6 +43,10 @@ export interface Tab {
   icon?: string
   /** What this tab is, in a few words, for the same reason. */
   tooltip?: string
+  /** A count beside the label: how many things wait inside. */
+  badge?: string | number
+  /** Seen but not open now. */
+  disabled?: boolean
 }
 
 /**
@@ -50,7 +60,7 @@ function applyTooltip(
   if (el instanceof HTMLElement) setTooltip(el, tooltip ?? '')
 }
 
-withDefaults(
+const props = withDefaults(
   defineProps<{
     tabs: Tab[]
     modelValue: string
@@ -74,6 +84,39 @@ function showFocusedTab(event: FocusEvent): void {
 const emit = defineEmits<{
   (e: 'update:modelValue', value: string): void
 }>()
+
+function choose(tab: Tab): void {
+  if (!tab.disabled) emit('update:modelValue', tab.id)
+}
+
+// One tab in the Tab order, the chosen one, as a tab list has it; the arrows walk the rest.
+const focusable = computed(() => {
+  const chosen = props.tabs.findIndex((t) => t.id === props.modelValue && !t.disabled)
+  return chosen >= 0 ? chosen : props.tabs.findIndex((t) => !t.disabled)
+})
+
+function move(event: KeyboardEvent, from: number): void {
+  const back = props.vertical ? 'ArrowUp' : 'ArrowLeft'
+  const forward = props.vertical ? 'ArrowDown' : 'ArrowRight'
+  const open = props.tabs.map((t, i) => (t.disabled ? -1 : i)).filter((i) => i >= 0)
+  if (!open.length) return
+  const after = open.find((i) => i > from) ?? open[0]
+  const before = [...open].reverse().find((i) => i < from) ?? open[open.length - 1]
+  const next =
+    event.key === forward
+      ? after
+      : event.key === back
+        ? before
+        : event.key === 'Home'
+          ? open[0]
+          : event.key === 'End'
+            ? open[open.length - 1]
+            : undefined
+  if (next === undefined) return
+  event.preventDefault()
+  const strip = (event.currentTarget as HTMLElement).parentElement
+  ;(strip?.children[next] as HTMLElement | undefined)?.focus()
+}
 </script>
 
 <style lang="scss">
@@ -110,6 +153,22 @@ const emit = defineEmits<{
   --icon-size: var(--icon-xs);
   height: auto;
   padding: 0;
+}
+
+.abele-tabs__badge {
+  flex: 0 0 auto;
+  color: var(--text-faint);
+  font-size: var(--font-ui-smaller);
+  font-variant-numeric: tabular-nums;
+}
+
+.abele-tabs .abele-tabs__tab_disabled {
+  &,
+  &:hover {
+    background-color: transparent;
+    color: var(--text-faint);
+    cursor: default;
+  }
 }
 
 .abele-tabs__label {

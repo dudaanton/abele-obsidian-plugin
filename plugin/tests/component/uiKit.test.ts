@@ -59,6 +59,40 @@ describe('Tabs', () => {
     expect(view.emitted('update:modelValue')).toEqual([['agents']])
   })
 
+  it('keeps one tab in the Tab order and walks the others with the arrows', async () => {
+    const tabs = [
+      ...TABS,
+      { id: 'locked', label: 'Locked', disabled: true },
+      { id: 'more', label: 'More' },
+    ]
+    const view = mount(Tabs, { props: { tabs, modelValue: 'agents' }, attachTo: document.body })
+    const rendered = view.findAll('.abele-tabs__tab')
+
+    expect(rendered.map((t) => t.attributes('tabindex'))).toEqual(['-1', '0', '-1', '-1'])
+    await rendered[1].trigger('keydown', { key: 'ArrowRight' })
+    expect(document.activeElement).toBe(rendered[3].element)
+    await rendered[3].trigger('keydown', { key: 'Home' })
+    expect(document.activeElement).toBe(rendered[0].element)
+    expect(view.emitted('update:modelValue')).toBeUndefined()
+    view.unmount()
+  })
+
+  it('shows a disabled tab that cannot be picked, and a count beside a label', async () => {
+    const tabs = [
+      { id: 'inbox', label: 'Inbox', badge: 3 },
+      { id: 'locked', label: 'Locked', disabled: true },
+    ]
+    const view = mount(Tabs, { props: { tabs, modelValue: 'inbox' } })
+    const rendered = view.findAll('.abele-tabs__tab')
+
+    expect(rendered[0].find('.abele-tabs__badge').text()).toBe('3')
+    expect(rendered[1].classes()).toContain('abele-tabs__tab_disabled')
+    expect(rendered[1].attributes('aria-disabled')).toBe('true')
+    await rendered[1].trigger('click')
+    await rendered[1].trigger('keydown.enter')
+    expect(view.emitted('update:modelValue')).toBeUndefined()
+  })
+
   it('is not built from button elements', () => {
     // Obsidian's `button:not(.clickable-icon)` outranks any single class of ours, so a tab
     // built from a button would render as a default grey button whatever we style it.
