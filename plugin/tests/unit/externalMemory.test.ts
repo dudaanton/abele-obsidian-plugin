@@ -19,9 +19,12 @@ describe('bounded attachment buffers', () => {
       })
     })
     await expect(
-      rangedBinaryTransport(send)('https://example.invalid/v1/blobs/' + 'a'.repeat(64), {
-        signal: abort.signal,
-      })
+      rangedBinaryTransport(send)(
+        'https://example.invalid/v2/files/' + 'a'.repeat(64) + '/content?version_id=sample-version',
+        {
+          signal: abort.signal,
+        }
+      )
     ).rejects.toMatchObject({ name: 'AbortError' })
     expect(send).toHaveBeenCalledTimes(1)
   })
@@ -41,7 +44,7 @@ describe('bounded attachment buffers', () => {
       }
     })
     const response = await rangedBinaryTransport(fetchViaCapacitorHttp({ request }))(
-      'https://example.invalid/v1/blobs/' + 'a'.repeat(64)
+      'https://example.invalid/v2/files/' + 'a'.repeat(64) + '/content?version_id=sample-version'
     )
     expect((await response.arrayBuffer()).byteLength).toBe(size)
     expect(request).toHaveBeenCalledTimes(3)
@@ -69,15 +72,19 @@ describe('bounded attachment buffers', () => {
         })
       })
       await expect(
-        rangedBinaryTransport(send)('https://example.invalid/v1/blobs/' + 'a'.repeat(64))
+        rangedBinaryTransport(send)(
+          'https://example.invalid/v2/files/' +
+            'a'.repeat(64) +
+            '/content?version_id=sample-version'
+        )
       ).rejects.toThrow()
       expect(send).toHaveBeenCalledTimes(2)
     }
   )
 
   it.each([
-    '/v1/blobs/' + 'a'.repeat(64),
-    '/v1/scoped/vaults/sample-vault/grants/sample-grant/files/sample-file/versions/sample-version',
+    '/v2/files/' + 'a'.repeat(64) + '/content?version_id=sample-version',
+    '/v2/files/sample-file/content?version_id=sample-version',
   ])('bounds every download response for %s', async (path) => {
     const size = 3 * CHUNK + 7
     const buffers: ArrayBuffer[] = []
@@ -116,7 +123,11 @@ describe('bounded attachment buffers', () => {
         })
       )
       await expect(
-        rangedBinaryTransport(send)('https://example.invalid/v1/blobs/' + 'a'.repeat(64))
+        rangedBinaryTransport(send)(
+          'https://example.invalid/v2/files/' +
+            'a'.repeat(64) +
+            '/content?version_id=sample-version'
+        )
       ).rejects.toThrow()
     }
   )
@@ -125,7 +136,9 @@ describe('bounded attachment buffers', () => {
     const response = binaryResponse(new Uint8Array(7), { status: 200 })
     const send = vi.fn<typeof fetch>(async () => response)
     expect(
-      await rangedBinaryTransport(send)('https://example.invalid/v1/blobs/' + 'a'.repeat(64))
+      await rangedBinaryTransport(send)(
+        'https://example.invalid/v2/files/' + 'a'.repeat(64) + '/content?version_id=sample-version'
+      )
     ).toBe(response)
     expect(send).toHaveBeenCalledTimes(1)
   })

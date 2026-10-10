@@ -2,7 +2,7 @@ import { describe, expect, it } from 'vitest'
 import type { ChangeItem } from '@abele/sync-protocol'
 import { codePluginIds, pluginCodeNames } from '@/sync/stagedPluginCode'
 import type { App } from 'obsidian'
-import type { VaultClient } from '@abele/sync-core'
+import type { EngineClient } from '@abele/sync-core'
 import { sha256 } from '@abele/sync-core'
 
 const change = (path: string, prev_path: string | null = null): ChangeItem =>
@@ -59,7 +59,7 @@ describe('the separate plugin code lane', () => {
         },
       },
     } as unknown as App
-    const client = { getBlob: async () => bytes } as unknown as VaultClient
+    const client = { getBlob: async () => bytes } as unknown as EngineClient
     expect(
       await pluginCodeNames(
         app,

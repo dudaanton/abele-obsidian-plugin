@@ -14,16 +14,14 @@ const prelude = `
   const digest=async bytes=>Array.from(new Uint8Array(await crypto.subtle.digest('SHA-256',bytes))).map(x=>x.toString(16).padStart(2,'0')).join('')
   // This suite exercises real IndexedDB and filesystem ports. Server proofs are a synthetic
   // port here; the separate server-backed integration suite tests actual HTTP verification.
-  async function fixture(label,scopedMode=false){
+  async function fixture(label){
     const folder=root+'/'+label;await app.vault.createFolder(folder)
     const database='sample-representation-'+crypto.randomUUID(),ledgerId='sample-ledger'
     const store=await persistence.IndexedDbStateStore.open(indexedDB,database)
-    const binding={endpoint:'https://sync.example.invalid',vaultId:'sample-vault',mode:scopedMode?'scoped':'personal',principalId:scopedMode?'sample-principal':'sample-device',principalType:scopedMode?'installation':'device',grantId:scopedMode?'sample-grant':null,generation:1,credentialAssociation:'sample-slot'}
+    const binding={endpoint:'https://sync.example.invalid',vaultId:'sample-space',mode:'token',principalId:'sample-token',principalType:'token',grantId:null,generation:1,credentialAssociation:'sample-slot'}
     const path=folder+'/sample.bin',bytes=encode('sample base'),sha=await digest(bytes)
     const base={fileId:'sample-file',versionId:'sample-v1',path,sha,size:bytes.byteLength,mtime:1000}
-    const scoped=scopedMode?await ports.ScopedState.open(store,{version:4,facet:'scoped',endpoint_identity:binding.endpoint,vault_id:binding.vaultId,grant_id:binding.grantId,principal_kind:'installation',principal_id:binding.principalId,credential_fingerprint:'c'.repeat(64)},{initialize:true}):null
     await store.put({...base,wirePath:path})
-    if(scoped)await scoped.putKnown({file_id:base.fileId,version_id:base.versionId,path,sha,size:base.size,mtime:base.mtime,state:'materialized',dirty:false,native:true})
     const state=await persistence.ExternalState.open(store,ledgerId,binding)
     const projection=encode(JSON.stringify({format:'abele.external',schema:1,vaultId:binding.vaultId,fileId:base.fileId,path,observedVersionId:base.versionId,sha256:sha,size:base.size,mime:'application/octet-stream',mtime:base.mtime})+'\\n')
     const sidecar=path+'.abele-ref'
@@ -32,12 +30,12 @@ const prelude = `
     const physical=new api.ObsidianFileSystem(app)
     // Restrict observation to this owned fixture; no other vault content enters the scenario.
     const fs=new Proxy(physical,{get(target,key){if(key==='list')return async function*(){const listed=await adapter.list(folder);for(const path of listed.files){const stat=await adapter.stat(path);if(stat?.type==='file')yield{path,size:stat.size,mtime:stat.mtime}}};const value=Reflect.get(target,key);return typeof value==='function'?value.bind(target):value}})
-    const context={folder,database,ledgerId,binding,store,state,base,path,sidecar,projection,scoped,fs,scripts:'Scripts',verifications:0}
+    const context={folder,database,ledgerId,binding,store,state,base,path,sidecar,projection,fs,scripts:'Scripts',verifications:0}
     context.verify=async(id,input)=>{context.verifications++;return{...input,file_id:id,verified:true}}
     context.open=async()=>{
       context.fence=new ports.RuntimeFence(app,database,()=>window.__representationOwner===root)
       context.fence.activate()
-      context.runtime=await ports.pluginRepresentation({app,factory:indexedDB,store:context.store,ledger:scoped?scoped.placementStore():context.store,scoped:scoped??undefined,ledgerId,binding,fence:context.fence,fs,verify:(...args)=>context.verify(...args),scriptsFolder:()=>context.scripts})
+      context.runtime=await ports.pluginRepresentation({app,factory:indexedDB,store:context.store,ledger:context.store,ledgerId,binding,fence:context.fence,fs,verify:(...args)=>context.verify(...args),scriptsFolder:()=>context.scripts})
     }
     await context.open()
     context.close=async()=>{context.fence.release();context.store.close();await persistence.IndexedDbStateStore.delete(indexedDB,database)}
@@ -91,13 +89,13 @@ describe.skipIf(!available)('external representation and durable jobs on live ho
 
   it('holds renamed/damaged projections during folder-native scan, while ordinary sidecars remain ordinary', async () => {
     const out = await probe(`
-      const c=await fixture('sample-scoped',true)
+      const c=await fixture('sample-scoped')
       try{
         const renamed=c.folder+'/sample-renamed.txt'
         await adapter.rename(c.sidecar,renamed)
         await adapter.writeBinary(c.sidecar,encode('sample damaged sidecar').buffer)
         await adapter.writeBinary(c.folder+'/sample-user.abele-ref',encode('sample ordinary file').buffer)
-        const ops=await ports.scanScopedChanges(c.runtime.fileSystem(),c.runtime.scopedState(c.scoped),c.folder+'/')
+        const {ops}=await ports.scan(c.runtime.fileSystem(),c.runtime.stateStore(),{excluded:()=>false})
         const held=await c.runtime.classify(renamed)
         return{ops:ops.map(op=>({op:op.op,path:op.path})),held:held.kind,originalPresent:await adapter.exists(c.path),damaged:await adapter.read(c.sidecar)}
       }finally{await c.close()}

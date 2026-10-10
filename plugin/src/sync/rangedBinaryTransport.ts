@@ -1,8 +1,7 @@
 import { binaryResponse } from './binaryResponse'
 
 const CHUNK = 8 * 1024 * 1024
-const binaryPath =
-  /\/v1\/(?:blobs\/[a-f0-9]{64}|(?:scoped\/)?vaults\/[^/]+\/(?:grants\/[^/]+\/)?files\/[^/]+\/versions\/[^/]+)$/
+const binaryPath = /\/v2\/files\/[^/]+\/content$/
 
 /** Keep native base64 response strings bounded for immutable blob/version reads.
  * The caller still checks final size and SHA against its server-verified intent. */

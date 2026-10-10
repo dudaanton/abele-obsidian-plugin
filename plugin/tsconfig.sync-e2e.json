@@ -11,6 +11,8 @@
     "tests/e2e/sync*.e2e.test.ts",
     "tests/e2e/personalBaseline.e2e.test.ts",
     "tests/e2e/githubRedirects.e2e.test.ts",
+    "tests/e2e/externalAttachmentApi.e2e.test.ts",
+    "tests/e2e/externalRepresentation.e2e.test.ts",
     "tests/e2e/helpers/sync*.ts",
     "tests/e2e/helpers/tokenSyncLive.ts",
     "src/**/*.d.ts"

@@ -44,7 +44,7 @@ describe('fetchViaRequestUrl', () => {
         answer({ status, headers: { location: 'https://elsewhere.example/' } })
       )
       await expect(
-        fetch('https://sync.example/v1/vaults', {
+        fetch('https://sync.example/v2/connection', {
           headers: { authorization: 'Bearer sample-device' },
         })
       ).rejects.toThrow(/refuses redirects/)
@@ -56,10 +56,10 @@ describe('fetchViaRequestUrl', () => {
       answer({ status: 200, arrayBuffer: bufferOf('{"ok":true}') })
     )
 
-    const response = await fetch('https://sync.example/v1/vaults')
+    const response = await fetch('https://sync.example/v2/connection')
 
     expect(seen).toHaveLength(1)
-    expect(seen[0].url).toBe('https://sync.example/v1/vaults')
+    expect(seen[0].url).toBe('https://sync.example/v2/connection')
     expect(seen[0].method).toBe('GET')
     expect(seen[0].body).toBeUndefined()
     // Never Obsidian's own throwing: a 4xx is an answer the engine reads, not a failure.
@@ -74,7 +74,7 @@ describe('fetchViaRequestUrl', () => {
       answer({ status: 201, arrayBuffer: bufferOf('{"id":"v1"}') })
     )
 
-    const response = await fetch('https://sync.example/v1/vaults', {
+    const response = await fetch('https://sync.example/v2/connection', {
       method: 'POST',
       headers: { 'content-type': 'application/json', authorization: 'Bearer abst_x' },
       body: JSON.stringify({ name: 'Notes' }),
@@ -95,7 +95,7 @@ describe('fetchViaRequestUrl', () => {
     const { fetch, seen } = fake(() => answer({ status: 201 }))
     const whole = new Uint8Array([1, 2, 3, 4, 5, 6])
 
-    await fetch('https://sync.example/v1/blobs/abc', {
+    await fetch('https://sync.example/v2/uploads/abc', {
       method: 'PUT',
       body: whole,
       headers: { 'content-type': 'application/octet-stream' },
@@ -111,7 +111,7 @@ describe('fetchViaRequestUrl', () => {
     // What a multipart upload sends: one part of a file already in memory.
     const part = new Uint8Array([1, 2, 3, 4, 5, 6]).subarray(2, 5)
 
-    await fetch('https://sync.example/v1/blobs/abc/upload/u1/0', { method: 'PUT', body: part })
+    await fetch('https://sync.example/v2/uploads/abc/parts/0', { method: 'PUT', body: part })
 
     expect(new Uint8Array(seen[0].body as ArrayBuffer)).toEqual(new Uint8Array([3, 4, 5]))
   })
@@ -122,7 +122,7 @@ describe('fetchViaRequestUrl', () => {
       answer({ status: 404, arrayBuffer: bufferOf('not this') })
     )
 
-    const response = await fetch('https://sync.example/v1/blobs/abc', { method: 'HEAD' })
+    const response = await fetch('https://sync.example/v2/uploads/abc', { method: 'HEAD' })
 
     expect(seen[0].method).toBe('HEAD')
     expect(seen[0].body).toBeUndefined()
@@ -141,7 +141,7 @@ describe('fetchViaRequestUrl', () => {
       return reply
     }
     const fetch = fetchViaRequestUrl(native)
-    const url = 'https://sync.example/v1/blobs/sample-sha'
+    const url = 'https://sync.example/v2/uploads/sample-sha'
     expect(
       (await fetch(url, { method: 'HEAD', headers: { authorization: 'Bearer first-device' } }))
         .status
@@ -161,7 +161,7 @@ describe('fetchViaRequestUrl', () => {
       })
     )
 
-    const response = await fetch('https://sync.example/v1/vaults/v1/commit', { method: 'POST' })
+    const response = await fetch('https://sync.example/v2/commit', { method: 'POST' })
 
     expect(response.status).toBe(409)
     expect(response.ok).toBe(false)
@@ -172,7 +172,7 @@ describe('fetchViaRequestUrl', () => {
   it('answers a 204 with an empty body rather than refusing to build one', async () => {
     const { fetch } = fake(() => answer({ status: 204, arrayBuffer: bufferOf('ignored') }))
 
-    const response = await fetch('https://sync.example/v1/devices/d1', { method: 'DELETE' })
+    const response = await fetch('https://sync.example/v2/tokens/d1', { method: 'DELETE' })
 
     expect(response.status).toBe(204)
     expect(await response.text()).toBe('')
@@ -193,7 +193,9 @@ describe('fetchViaRequestUrl', () => {
 
     // The engine reads a rejected fetch as being offline; anything else would be read as
     // an answer from a server that never spoke.
-    await expect(fetch('https://sync.example/v1/vaults')).rejects.toThrow('ERR_CONNECTION_REFUSED')
+    await expect(fetch('https://sync.example/v2/connection')).rejects.toThrow(
+      'ERR_CONNECTION_REFUSED'
+    )
   })
 
   it('refuses a body it cannot put on the wire', async () => {
@@ -208,9 +210,9 @@ describe('fetchViaRequestUrl', () => {
   it('takes a URL as well as a string', async () => {
     const { fetch, seen } = fake(() => answer())
 
-    await fetch(new URL('https://sync.example/v1/vaults?limit=2'))
+    await fetch(new URL('https://sync.example/v2/connection?limit=2'))
 
-    expect(seen[0].url).toBe('https://sync.example/v1/vaults?limit=2')
+    expect(seen[0].url).toBe('https://sync.example/v2/connection?limit=2')
   })
 
   it('refuses a Request, whose method and body it would silently drop', async () => {
@@ -229,7 +231,7 @@ describe('fetchViaRequestUrl', () => {
     for (const status of [0, 999]) {
       const { fetch } = fake(() => answer({ status, arrayBuffer: bufferOf('<html>nope</html>') }))
 
-      const response = await fetch('https://sync.example/v1/vaults')
+      const response = await fetch('https://sync.example/v2/connection')
 
       expect(response.status).toBe(502)
       // The protocol's own envelope, so the engine prints it rather than guessing at it.
