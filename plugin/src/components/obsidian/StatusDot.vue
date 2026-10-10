@@ -2,7 +2,7 @@
   <span
     ref="el"
     class="abele-status-dot"
-    :class="`abele-status-dot_${tone}`"
+    :class="[`abele-status-dot_${tone}`, { 'abele-status-dot_pulse': pulse }]"
     role="status"
     :aria-label="label"
   />
@@ -11,8 +11,10 @@
 import { onMounted, ref, watch } from 'vue'
 import { setTooltip } from 'obsidian'
 const props = defineProps<{
-  tone: 'green' | 'orange' | 'red' | 'faint'
+  tone: 'green' | 'orange' | 'red' | 'faint' | 'accent'
+  /** What the state means, in words. */
   label: string
+  /** Something is happening right now (connecting, running). */
   pulse?: boolean
 }>()
 const el = ref<HTMLElement>()
@@ -31,13 +33,14 @@ watch(() => props.label, tip)
   border-radius: 50%;
   background: var(--text-faint);
 }
-.abele-status-dot_green {
-  background: var(--color-green);
+.abele-status-dot_green { background-color: var(--color-green); }
+.abele-status-dot_orange { background-color: var(--color-orange); }
+.abele-status-dot_red { background-color: var(--color-red); }
+.abele-status-dot_faint { background-color: var(--text-faint); }
+.abele-status-dot_accent { background-color: var(--interactive-accent); }
+.abele-status-dot_pulse { animation: abele-status-dot-pulse 1.2s ease-in-out infinite; }
+@media (prefers-reduced-motion: reduce) {
+  .abele-status-dot_pulse { animation: none; }
 }
-.abele-status-dot_orange {
-  background: var(--color-orange);
-}
-.abele-status-dot_red {
-  background: var(--color-red);
-}
+@keyframes abele-status-dot-pulse { 50% { opacity: 0.35; } }
 </style>
