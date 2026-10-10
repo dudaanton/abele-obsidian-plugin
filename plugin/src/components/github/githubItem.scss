@@ -1,0 +1,107 @@
+// Live node refresh owns scroll restoration; native anchoring must not move it afterwards.
+.abele-github-layout__main:has(> .abele-github_node) {
+  overflow-anchor: none;
+}
+.abele-github {
+  // The bar over selected words is placed inside it, and scrolls with the text it is over.
+  position: relative;
+  padding: var(--size-4-4);
+  // Set from the GitHub settings (`pageWidth.ts`): the notes' line width, pixels, or the pane.
+  max-width: var(--abele-github-width, var(--file-line-width));
+  margin: 0 auto;
+  display: flex;
+  flex-direction: column;
+  gap: var(--size-4-3);
+
+  // Diffs want the width a code review wants, not a line of prose.
+  &:has(.abele-github-files, .abele-github-blob, .abele-github-pinned) {
+    max-width: none;
+  }
+
+  &__account {
+    max-width: 100%;
+    height: auto;
+    min-height: var(--input-height);
+    white-space: normal;
+    overflow-wrap: anywhere;
+  }
+
+  &__fallback,
+  &__error {
+    display: flex;
+    flex-direction: column;
+    align-items: flex-start;
+    gap: var(--size-4-2);
+  }
+
+  // A refusal is several lines — the cause, the permission, GitHub's own words — and reads as them.
+  &__error {
+    white-space: pre-line;
+    overflow-wrap: anywhere;
+  }
+
+  &__message {
+    overflow-wrap: anywhere;
+  }
+}
+
+body.is-phone .abele-github {
+  padding: var(--size-4-2);
+}
+body.is-phone .abele-github_node .abele-github-header .clickable-icon,
+body.is-phone .abele-github_node .abele-github-compare .clickable-icon,
+body.is-phone .abele-github_node .abele-tabs__tab,
+body.is-phone .abele-github_node .abele-github-file__path-link,
+body.is-phone .abele-github_node .abele-github-crumbs__link {
+  min-width: calc(var(--size-4-10) + var(--size-4-1));
+  min-height: calc(var(--size-4-10) + var(--size-4-1));
+}
+
+body.is-phone .abele-github_node .abele-github-file__path-link,
+body.is-phone .abele-github_node .abele-github-crumbs__link {
+  display: inline-flex;
+  align-items: center;
+}
+
+@container (max-width: 640px) {
+  .abele-github_node .abele-github-header__top {
+    flex-wrap: nowrap;
+  }
+  .abele-github_node .abele-github-header__repo {
+    flex-basis: 100%;
+  }
+  .abele-github_node .abele-github-header__repo:empty {
+    display: none;
+  }
+  .abele-github_node .abele-github-header__actions {
+    margin-inline-start: auto;
+  }
+}
+
+// Obsidian makes its whole interface unselectable and gives selection back only to a note; a
+// GitHub tab is there to be read and quoted, so it gives it back itself — titles, comments,
+// rendered files, code and diffs. Its controls stay unselectable, so a drag across them picks up
+// no labels, and so do the line numbers: a diff copies as its text, nothing beside it.
+.abele-github {
+  user-select: text;
+  -webkit-user-select: text;
+
+  .abele-obsidian-icon,
+  .abele-tabs,
+  button,
+  [role='button'],
+  .cm-gutters,
+  .abele-github-code__bar,
+  .abele-github-selection {
+    user-select: none;
+    -webkit-user-select: none;
+  }
+
+  // A changed file's head folds its diff, but its path is worth copying; a person swaps their
+  // name and login on a click, but the name is worth copying too.
+  .abele-github-file__path,
+  .abele-github-user {
+    user-select: text;
+    -webkit-user-select: text;
+  }
+}
