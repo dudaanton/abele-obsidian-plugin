@@ -49,8 +49,9 @@ const props = withDefaults(
     color?: KitColor
     /** A toggle's state: on draws it pressed, as Obsidian draws its own search options. */
     active?: boolean
-    /** One of Obsidian's icon sizes; left unset, the icon takes the size of the place it sits in. */
-    size?: 'xs' | 's' | 'm' | 'l' | 'xl'
+    /** One of Obsidian's icon sizes; left unset, the icon takes the size of the place it sits in.
+     *  Obsidian's `s` is left out: on a desktop it is the same 16px as `m`. */
+    size?: 'xs' | 'm' | 'l' | 'xl'
   }>(),
   // Left unset, an icon is not a toggle at all, rather than a toggle that is off.
   {
@@ -152,7 +153,7 @@ watch(accessibleName, updateTooltip)
   }
 }
 
-@each $size in 'xs', 's', 'm', 'l', 'xl' {
+@each $size in 'xs', 'm', 'l', 'xl' {
   .abele-obsidian-icon.abele-obsidian-icon_size-#{$size} {
     --icon-size: var(--icon-#{$size});
   }
