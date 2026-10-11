@@ -11,14 +11,14 @@ afterEach(() => {
   document.body.replaceChildren()
 })
 
-async function open(onAction: () => void = () => {}) {
+async function open(onAction: () => void = () => {}, focusTrigger = true) {
   const shown = vi.spyOn(Menu.prototype, 'showAtPosition')
   wrapper = mount(SheetHeaderActions, {
     attachTo: document.body,
     props: { actions: [{ id: 'find', label: 'Find in this chat' }], onAction },
   })
   const trigger = wrapper.get('button').element as HTMLButtonElement
-  trigger.focus()
+  if (focusTrigger) trigger.focus()
   await wrapper.get('button').trigger('click')
   menu = shown.mock.instances.at(-1)!
   menu.unload = vi.fn()
@@ -34,6 +34,31 @@ it('does not steal focus from the field an action opens when the menu finishes h
   expect(document.activeElement).toBe(field)
   menu!.hide()
   expect(document.activeElement).toBe(field)
+})
+
+it('returns focus after an action when a programmatic click left the earlier control focused', async () => {
+  const previous = document.createElement('button')
+  document.body.appendChild(previous)
+  previous.focus()
+  const trigger = await open(() => {}, false)
+  const items = (menu as unknown as { items: { handler: () => void }[] }).items
+  items[0].handler()
+  menu!.hide()
+  expect(document.activeElement).toBe(trigger)
+})
+
+it('does not steal focus when an action deliberately focuses the control that opened the menu', async () => {
+  const previous = document.createElement('input')
+  document.body.appendChild(previous)
+  previous.focus()
+  await open(() => previous.focus(), false)
+  const popup = document.createElement('button')
+  document.body.appendChild(popup)
+  popup.focus()
+  const items = (menu as unknown as { items: { handler: () => void }[] }).items
+  items[0].handler()
+  menu!.hide()
+  expect(document.activeElement).toBe(previous)
 })
 
 it('returns focus to the trigger when dismissal leaves focus on the page', async () => {

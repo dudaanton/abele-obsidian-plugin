@@ -56,6 +56,8 @@ function reset() {
   flex-wrap: wrap;
   gap: var(--size-2-2);
   margin: 0;
+  /* Native descriptions clip their contents; the reset action needs ring paint room. */
+  padding: var(--size-4-1);
 }
 
 .abele-override-notice__text {

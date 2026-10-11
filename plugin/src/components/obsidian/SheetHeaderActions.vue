@@ -44,6 +44,9 @@ const openMenu = () => {
   const trigger = overflow.value?.$el
   if (!trigger) return
   menu?.hide()
+  // Programmatic activation does not focus a button. Give the native menu the same
+  // return point as a pointer/keyboard activation, not the previously focused row.
+  trigger.focus()
   menu = new Menu().setUseNativeMenu(false)
   for (const action of props.actions ?? [])
     menu.addItem((item) => {
