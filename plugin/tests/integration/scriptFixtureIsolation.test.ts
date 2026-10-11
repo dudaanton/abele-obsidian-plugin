@@ -94,6 +94,22 @@ describe('script fixture prerequisites and ownership', () => {
     await expect(scriptForExecution(app as unknown as App, PATH)).rejects.toThrow(/provenance/)
   })
 
+  it('enrolls managed provenance without skipping the first optional script review', async () => {
+    const before = await run('return await saveScriptFixture()')
+    const verdict = await run(`
+      const saved = await saveScriptFixture()
+      try {
+        await enableScriptFixture('Sample scripts')
+        await approveScriptFixture(${JSON.stringify(PATH)}, ${JSON.stringify(SOURCE)}, false)
+        await window.__abeleTest.scriptTrust.load(app, ${JSON.stringify(PATH)})
+        const service = window.__abeleTest.ScriptService.getInstance()
+        return service.verdict(service.get(${JSON.stringify(PATH)}))
+      } finally { await restoreScriptFixture(saved) }
+    `)
+    expect(verdict).toBe('waiting')
+    expect(await run('return await saveScriptFixture()')).toEqual(before)
+  })
+
   it('restores after setup fails and refuses an unexpected source', async () => {
     const before = await run('return await saveScriptFixture()')
     await expect(

@@ -61,7 +61,7 @@ export const SCRIPT_FIXTURE = String.raw`
     await config.saveSettings()
     await T.ScriptService.getInstance().discover()
   }
-  async function approveScriptFixture(path, source) {
+  async function approveScriptFixture(path, source, confirmLegacy = true) {
     const T = window.__abeleTest
     const script = T.ScriptService.getInstance().get(path)
     if (!script || script.source !== source) throw new Error('Fixture source was not discovered: ' + path)
@@ -72,7 +72,9 @@ export const SCRIPT_FIXTURE = String.raw`
         throw new Error('Fixture source changed during approval: ' + path)
       return true
     })
-    T.ScriptService.getInstance().confirm(script)
+    // A review-flow fixture can enroll managed provenance while leaving the optional
+    // device-local review pending, so its first launch still exercises the real dialog.
+    if (confirmLegacy) T.ScriptService.getInstance().confirm(script)
     await T.scriptTrust.load(app, path)
   }
   async function restoreScriptFixture(snapshot) {
