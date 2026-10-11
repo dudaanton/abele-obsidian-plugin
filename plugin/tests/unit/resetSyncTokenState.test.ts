@@ -12,13 +12,16 @@ import { TokenUi } from '../../src/sync/tokenUi'
 import { sha256 } from '@abele/sync-core'
 import { EXTERNAL_ACTIVATION_KEY } from '@/sync/external/recovery'
 import { tokenExternalBinding } from '@/sync/tokenExternalBinding'
+import { buildFakeVault } from '../helpers/fakeVault'
+import { projectionEvidence } from '@/sync/external/pluginSafety'
+import { EXTERNAL_STATE_KEY } from '@/sync/external/state'
 vi.mock('../../src/sync/tokenEngines', () => ({
   TokenEngines: class {
     start() {}
   },
 }))
 
-it('removes owned credentials, ledgers, edit snapshots and all review decisions without touching notes or other vault data', async () => {
+it.each([false, true])('resets owned state and private artifacts (retry=%s)', async (retry) => {
   const factory = new IDBFactory()
   const descriptor = Object.getOwnPropertyDescriptor(window, 'indexedDB')
   Object.defineProperty(window, 'indexedDB', { configurable: true, value: factory })
@@ -66,6 +69,53 @@ it('removes owned credentials, ledgers, edit snapshots and all review decisions 
   const reviews = await openDeviceReviews(factory, reviewId)
   const ui = new TokenUi(registry, secrets, vi.fn(), reviews)
   const ledger = await IndexedDbStateStore.open(factory, record.ledgerId)
+  const staging = '.obsidian/plugins/abele/sync-staging/.abele-external-sample-reset.incoming'
+  const markerBytes = new TextEncoder().encode('{"format":"abele.external"}')
+  await ledger.setMeta(
+    EXTERNAL_STATE_KEY,
+    JSON.stringify({
+      schema: 1,
+      revision: 1,
+      ledgerId: record.ledgerId,
+      binding: await tokenExternalBinding(record, keys.get(record.secretReference)!),
+      files: [],
+      operations: [
+        {
+          schema: 1,
+          operationId: 'sample-reset',
+          kind: 'disconnect-preparation',
+          phase: 'complete',
+          revision: 0,
+          connectionGeneration: 1,
+          expected: null,
+          sourcePath: null,
+          targetPath: null,
+          previousRepresentation: null,
+          localBase: null,
+          desiredRepresentation: 'hydrated',
+          projectionDigest: null,
+          unresolvedOutcome: null,
+          cleanupReason: null,
+          ownedArtifacts: [
+            {
+              operationId: 'sample-reset',
+              path: staging,
+              role: 'projection',
+              sha: await sha256(markerBytes),
+              size: markerBytes.length,
+            },
+            {
+              operationId: 'sample-reset',
+              path: 'Notes/retained.bin',
+              role: 'incoming',
+              sha: await sha256(new TextEncoder().encode('keep retained')),
+              size: 13,
+            },
+          ],
+        },
+      ],
+    })
+  )
   const copyName =
     'abele-local-edit-copies-' +
     id +
@@ -83,7 +133,14 @@ it('removes owned credentials, ledgers, edit snapshots and all review decisions 
   const unrelated = await IndexedDbStateStore.open(factory, 'another-vault-ledger')
   await unrelated.setMeta('keep', 'yes')
   const registered: (() => void)[] = []
+  const fake = buildFakeVault([
+    { path: 'note.md', content: 'keep' },
+    { path: 'Notes/retained.bin', content: 'keep retained' },
+    { path: staging, content: new TextDecoder().decode(markerBytes) },
+    { path: '.obsidian/plugins/abele/sync-staging/unowned.bin', content: 'keep private bytes' },
+  ])
   const vault = {
+    ...fake.vault,
     getName: () => 'leased-pool',
     configDir: '.obsidian',
     notes: new Map([['note.md', 'keep']]),
@@ -114,12 +171,22 @@ it('removes owned credentials, ledgers, edit snapshots and all review decisions 
   } as unknown as Plugin
   try {
     await captureSyncTokenOwnership(plugin, 'leased-pool')
+    if (retry) {
+      vi.spyOn(vault.adapter, 'remove').mockRejectedValueOnce(new Error('sample removal failed'))
+      await expect(
+        resetSyncTokenState(plugin, { vault: 'leased-pool', confirm: 'reset-sync-token-state' })
+      ).rejects.toThrow('sample removal failed')
+      expect((await factory.databases()).map((one) => one.name)).toContain(record.ledgerId)
+      expect(registry.records()).toHaveLength(1)
+      expect(local.get(EXTERNAL_ACTIVATION_KEY)).not.toBeNull()
+      expect(await vault.adapter.exists(staging)).toBe(true)
+    }
     await Promise.all([
       resetSyncTokenState(plugin, { vault: 'leased-pool', confirm: 'reset-sync-token-state' }),
       resetSyncTokenState(plugin, { vault: 'leased-pool', confirm: 'reset-sync-token-state' }),
     ])
-    expect(cancelStartup).toHaveBeenCalledOnce()
-    expect(close).toHaveBeenCalledOnce()
+    expect(cancelStartup).toHaveBeenCalledTimes(retry ? 2 : 1)
+    expect(close).toHaveBeenCalledTimes(retry ? 2 : 1)
     expect(ui.activity.value).toEqual({})
     expect(ui.rows.value).toEqual([])
     expect(registry.records()).toEqual([])
@@ -127,6 +194,15 @@ it('removes owned credentials, ledgers, edit snapshots and all review decisions 
     expect(keys).toEqual(new Map([['unrelated-key', 'keep']]))
     expect(local.get('other-plugin')).toEqual({ keep: true })
     expect(vault.notes).toEqual(new Map([['note.md', 'keep']]))
+    // A completed native offload leaves its hard-linked staging projection behind.
+    // Resetting ownership without its bytes makes the next startup refuse recovery.
+    await expect(projectionEvidence(plugin.app)).resolves.toBeNull()
+    expect(await vault.adapter.exists(staging)).toBe(false)
+    expect(await vault.adapter.read('note.md')).toBe('keep')
+    expect(await vault.adapter.read('Notes/retained.bin')).toBe('keep retained')
+    expect(await vault.adapter.read('.obsidian/plugins/abele/sync-staging/unowned.bin')).toBe(
+      'keep private bytes'
+    )
     expect(await unrelated.getMeta('keep')).toBe('yes')
     expect((await factory.databases()).map((one) => one.name)).not.toContain(record.ledgerId)
     expect((await factory.databases()).map((one) => one.name)).not.toContain(copyName)

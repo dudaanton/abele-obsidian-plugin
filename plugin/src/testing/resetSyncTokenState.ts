@@ -7,6 +7,9 @@ import { openDeviceReviews } from '../sync/openDeviceReviews'
 import type { DeviceTokenSecrets } from '../sync/tokenConnectionRegistry'
 import { resetTokenPool, type TokenPoolResetRequest } from './resetTokenPool'
 import { tokenPoolMarkers } from './tokenPoolMarkers'
+import { inspectExistingLedger } from '../sync/external/pluginSafety'
+import { decodeExternalDocument, EXTERNAL_STATE_KEY } from '../sync/external/state'
+import { stagingDirectory } from '../sync/stagingDirectory'
 
 const JOURNAL = 'abele-sync-test-pool-ledgers-v1'
 const REVIEW_ID = 'abele-sync-device-review-id-v1'
@@ -63,7 +66,7 @@ export async function captureSyncTokenOwnership(plugin: Plugin, vault: string): 
   return ids
 }
 
-/** No filesystem, settings-transfer, server revocation or unrelated secret operations. */
+/** Only journal-owned private work files and owned token state are reset. */
 export async function resetSyncTokenState(
   plugin: Plugin,
   request: TokenPoolResetRequest
@@ -93,6 +96,7 @@ async function performResetSyncTokenState(
   const inputs = old as unknown as HostInputs
   const ui = inputs.ui
   let clearMarkers: () => void
+  let ownedDatabases: string[] = []
   const reviewsId: unknown = plugin.app.loadLocalStorage(REVIEW_ID)
   if (typeof reviewsId !== 'string' || !uuid.test(reviewsId))
     throw new Error('Device review identity requires recovery')
@@ -101,6 +105,7 @@ async function performResetSyncTokenState(
       vault: plugin.app.vault.getName(),
       databases: async () => {
         const owned = await captureSyncTokenOwnership(plugin, request.vault)
+        ownedDatabases = owned
         clearMarkers = tokenPoolMarkers(plugin.app, owned)
         return [...owned, 'abele-sync-reviews-' + reviewsId]
       },
@@ -108,6 +113,30 @@ async function performResetSyncTokenState(
         old.cancelStartup()
         await old.close()
         ui.reviews?.close()
+        // Native publication retains the incoming inode. Drain writers, then remove only
+        // private artifacts whose ownership is still provable before deleting the ledgers.
+        const paths = new Set<string>()
+        const directory = stagingDirectory(plugin.app.vault.configDir) + '/'
+        for (const name of ownedDatabases) {
+          const found = await inspectExistingLedger(window.indexedDB, name)
+          const raw = found?.metadata.get('plugin:' + EXTERNAL_STATE_KEY)
+          if (raw == null) continue
+          if (typeof raw !== 'string') throw new Error('Pool external journal requires recovery')
+          const document = decodeExternalDocument(raw)
+          for (const artifact of [
+            ...document.files.flatMap((file) => file.retained),
+            ...document.operations.flatMap((operation) => operation.ownedArtifacts),
+          ]) {
+            if (
+              artifact.path.startsWith(directory) &&
+              !artifact.path.split('/').some((part) => part === '..' || part === '.')
+            )
+              paths.add(artifact.path)
+          }
+        }
+        for (const path of paths)
+          if (await plugin.app.vault.adapter.exists(path))
+            await plugin.app.vault.adapter.remove(path)
       },
       removeDatabase: (name) => IndexedDbStateStore.delete(window.indexedDB, name),
       forget: async () => {
