@@ -31,6 +31,12 @@ const emit = defineEmits<{ menu: [event: MouseEvent, selection: string] }>()
   min-height: 0;
   display: flex;
   flex-direction: column;
+  box-sizing: border-box;
+}
+body.is-phone .abele-node-content__chat {
+  padding-block-end: calc(
+    var(--navbar-height, 0px) + var(--navbar-bottom-offset, 0px) + var(--size-4-2)
+  );
 }
 .abele-node-main {
   padding: var(--size-4-4);

@@ -16,8 +16,13 @@ import { setZen, zen } from '@/reader/zen'
 import { ScopeResolver } from '@/ai/ScopeResolver'
 import { ChatService } from '@/ai/ChatService'
 import { NodeService } from '@/node/NodeService'
+import { NodePathService } from '@/node/NodePathService'
 import { openNodeRepository } from '@/node/openRepository'
-import { openNodeRepositoryFixture, closeNodeRepositoryFixture, NODE_REPOSITORY_SCREENS } from './nodeRepositoryScreen'
+import {
+  openNodeRepositoryFixture,
+  closeNodeRepositoryFixture,
+  NODE_REPOSITORY_SCREENS,
+} from './nodeRepositoryScreen'
 import { NodeDeviceKeyStore } from '@/node/NodeDeviceKeyStore'
 import { generateIdentity, fingerprint, signProof, verifyProof } from '@abele/channel-protocol'
 import { pairedLoopbackTransport } from './nodePairedTransport'
@@ -250,6 +255,7 @@ interface AbeleTestApi {
   }
   ChatService: typeof ChatService
   NodeService: typeof NodeService
+  NodePathService: typeof NodePathService
   codeView: typeof codeView
   openNodeRepository: typeof openNodeRepository
   openNodeRepositoryFixture: typeof openNodeRepositoryFixture
@@ -845,6 +851,7 @@ export function exposeTestApi(plugin: Plugin): void {
     },
     ChatService,
     NodeService,
+    NodePathService,
     codeView,
     openNodeRepository,
     openNodeRepositoryFixture,

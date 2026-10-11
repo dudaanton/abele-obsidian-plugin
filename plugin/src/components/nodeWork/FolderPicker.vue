@@ -189,7 +189,7 @@ const target = computed<Row | null>(() => {
   const known = parent.value
     ? props.browse(parent.value).entries?.find((e) => e.path === path)
     : undefined
-  return known ?? { name: path.slice(path.lastIndexOf('/') + 1), path }
+  return known ?? { name: path.slice(path.lastIndexOf('/') + 1), path, inspected: false }
 })
 
 const facts = (d: Row) =>

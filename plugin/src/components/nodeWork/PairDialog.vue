@@ -91,7 +91,7 @@
         </Setting>
       </div>
 
-      <div class="modal-button-container">
+      <div class="modal-button-container abele-modal__actions">
         <Button
           v-if="phone && canScan"
           text="Scan"
@@ -138,7 +138,7 @@
         <StatusDot tone="orange" pulse label="Waiting for the node" />
         <span>Waiting for {{ parsed?.name ?? 'the node' }}…</span>
       </div>
-      <div class="modal-button-container">
+      <div class="modal-button-container abele-modal__actions">
         <Button text="Back" tooltip="Use another code" @click="emit('back')" />
       </div>
     </template>

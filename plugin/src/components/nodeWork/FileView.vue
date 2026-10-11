@@ -153,6 +153,20 @@ function onMenu(e: MouseEvent) {
   white-space: pre-wrap;
 }
 @container (max-width: 30em) {
+  .abele-file-view__title {
+    flex-wrap: wrap;
+  }
+  .abele-file-view__path {
+    flex: 1 1 12ch;
+    white-space: normal;
+    overflow: visible;
+    overflow-wrap: anywhere;
+  }
+  .abele-file-view__when {
+    flex-basis: 100%;
+    color: var(--text-muted);
+    font-weight: var(--font-normal);
+  }
   .abele-file-view__number {
     display: none;
   }
