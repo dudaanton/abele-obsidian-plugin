@@ -108,7 +108,7 @@ import EmptyState from './obsidian/EmptyState.vue'
 
 const props = defineProps<{ session: ChatSession }>()
 const parsed = computed(() =>
-  NodeScopeEntriesSchema.safeParse(props.session.overrides.value.nodeScope ?? [])
+  NodeScopeEntriesSchema.safeParse(props.session.overrides?.value.nodeScope ?? [])
 )
 const entries = computed(() => (parsed.value.success ? parsed.value.data : []))
 const nodes = ref<{ id: string; label: string; node_id?: string }[]>([])
