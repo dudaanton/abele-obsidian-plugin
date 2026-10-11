@@ -21,6 +21,24 @@ import { NodeClientStore } from '@/node/NodeClientStore'
 import { NodeScopeLedger } from '@/ai/nodeScope'
 import { createNodeAgentTools, type NodeAgentHost } from '@/ai/tools/node/agent'
 import type { ChatSession } from '@/ai/ChatSession'
+import { NodeRegistry, type PairedNode } from '@/node/NodeRegistry'
+import { nodeAgentHost, setObsidianChatNodeScope } from '@/ai/tools/node/owner'
+
+const owner = vi.hoisted(() => ({ service: null as unknown, app: null as unknown }))
+vi.mock('@/node/NodeService', () => ({ NodeService: { getInstance: () => owner.service } }))
+vi.mock('@/stores/GlobalStore', () => ({
+  GlobalStore: { getInstance: () => ({ app: owner.app }) },
+}))
+const registration: PairedNode = {
+  id: 'sample-registration',
+  label: 'Sample node',
+  expectedNodeId: 'sample-node',
+  url: 'wss://sample-node.sample.ts.net/channel',
+  profile: 'paired-wss-v1',
+  installationId: 'sample-installation',
+  nodeFingerprint: 'a'.repeat(64),
+  publicKey: { kty: 'EC', crv: 'P-256', x: 'a'.repeat(43), y: 'b'.repeat(43) },
+}
 
 const hash = (text: string) => bytesToHex(sha256(new TextEncoder().encode(text)))
 const args = {
@@ -32,7 +50,7 @@ const args = {
   expected_content_id: hash('old'),
   text: 'new',
 }
-async function setup() {
+async function setup(useOwner = false) {
   const idb = new IDBFactory()
   let store = new NodeClientStore('sample-mutation', idb)
   await store.transaction((state) => {
@@ -53,6 +71,8 @@ async function setup() {
     conversationVersion: { value: 0 },
     branchSelectionVersion: 0,
     permissionMode: { value: 'allow-edit' },
+    saveForRelease: vi.fn(async () => {}),
+    ensureDelegationParentId: vi.fn(async () => {}),
   } as unknown as ChatSession
   ledger.approve(session, { 'sample-node': 'sample-authority' })
   function buildClient() {
@@ -106,10 +126,46 @@ async function setup() {
     return client
   }
   let client = buildClient()
-  const host: NodeAgentHost = {
+  let host: NodeAgentHost = {
     ledger,
     nodes: () => [],
-    connection: () => ({ client, principal: () => 'sample-authority' }),
+    connection: () => ({ client, authorizationGeneration: 0, principal: () => 'sample-authority' }),
+  }
+  let savedRegistry: unknown = [],
+    generation = 0
+  const registryStorage = {
+    read: () => savedRegistry,
+    write: (value: unknown) => {
+      savedRegistry = value
+    },
+    getSecret: () => '',
+    setSecret: vi.fn(),
+    removeSecret: vi.fn(),
+  }
+  let registry = new NodeRegistry(registryStorage)
+  const local = new Map<string, unknown>()
+  const app = {
+    loadLocalStorage: (key: string) => local.get(key),
+    saveLocalStorage: (key: string, value: unknown) => {
+      local.set(key, value)
+    },
+  }
+  const buildService = () => ({
+    registry,
+    nodes: { value: registry.list() },
+    connection: () => ({
+      client,
+      get authorizationGeneration() {
+        return generation
+      },
+    }),
+  })
+  if (useOwner) {
+    registry.addPaired(registration)
+    owner.app = app
+    owner.service = buildService()
+    host = await nodeAgentHost()
+    await setObsidianChatNodeScope(session, session.overrides.value.nodeScope!)
   }
   const factory = () => host
   const callTool = (
@@ -126,6 +182,25 @@ async function setup() {
   return {
     ledger,
     session,
+    host: () => host,
+    rePair: async () => {
+      registry.addPaired(registration)
+      generation++
+      await setObsidianChatNodeScope(session, session.overrides.value.nodeScope!)
+    },
+    advanceGeneration: () => {
+      generation++
+    },
+    restart: async () => {
+      store.close()
+      store = new NodeClientStore('sample-mutation', idb)
+      client = buildClient()
+      generation = 0
+      registry = new NodeRegistry(registryStorage)
+      owner.service = buildService()
+      host = await nodeAgentHost()
+      return client
+    },
     call,
     callTool,
     client: () => client,
@@ -142,6 +217,152 @@ async function setup() {
   }
 }
 describe('node mutation identity after admission', () => {
+  it('recovers a mutation and its scope approval after re-pairing at a nonzero generation and restarting', async () => {
+    const fixture = await setup(true)
+    try {
+      const originalPrincipal = fixture.host().connection('sample-node').principal()
+      await fixture.rePair()
+      expect(fixture.host().connection('sample-node').authorizationGeneration).toBe(1)
+      const approvedPrincipal = fixture.host().connection('sample-node').principal()
+      expect(approvedPrincipal).not.toBe(originalPrincipal)
+      vi.spyOn(fixture.client(), 'flush').mockImplementation(async () => {
+        fixture.connected(false)
+        throw new ChannelError('disconnected')
+      })
+      const first = await fixture.call()
+      const operation_id = (first.details as { operation_id: string }).operation_id
+      expect(first.details).toMatchObject({ operation_id, state: 'outcome_unknown' })
+      expect((await fixture.client().pending()).map((entry) => entry.operation_id)).toEqual([
+        operation_id,
+      ])
+      const reopened = await fixture.restart()
+      expect(fixture.host().connection('sample-node').authorizationGeneration).toBe(0)
+      fixture.connected(true)
+      const receipt = FileMutationResultSchema.parse({
+        operation_id,
+        workspace_id: 'sample-folder',
+        path: 'sample.txt',
+        state: 'saved',
+        expected_content_id: hash('old'),
+        predecessor_content_id: hash('old'),
+        content_id: hash('new'),
+        recovery_path: null,
+      })
+      vi.spyOn(reopened, 'flush').mockImplementation(async () => {
+        await reopened.store.transaction((state) => {
+          expect(state.outbox.map((entry) => entry.operation_id)).toEqual([operation_id])
+          state.results[operation_id] = {
+            request: { method: 'workspace.write', params: state.outbox[0].params },
+            result: receipt,
+          }
+          state.outbox = []
+        })
+      })
+      const inspect = vi.spyOn(reopened, 'fileMutationResult')
+      const retry = await fixture.call('sample-restart-retry', {
+        ...args,
+        operation_id,
+      } as typeof args)
+      expect(retry.details).toMatchObject({
+        operation_id,
+        state: 'saved',
+        diff: { old: 'old', new: 'new' },
+      })
+      expect(inspect).toHaveBeenCalledWith(operation_id)
+      expect(reopened.readFile).not.toHaveBeenCalled()
+      expect(await reopened.pending()).toEqual([])
+      expect(fixture.host().connection('sample-node').principal()).toBe(approvedPrincipal)
+      expect(
+        fixture.host().ledger.approvedNode(fixture.session, 'sample-node', approvedPrincipal)
+      ).toBe(true)
+    } finally {
+      fixture.close()
+    }
+  })
+
+  it('fences an in-flight read on a generation change without changing its durable principal', async () => {
+    const fixture = await setup(true)
+    try {
+      const principal = fixture.host().connection('sample-node').principal()
+      const workspace = await fixture.client().getWorkspace('sample-folder')
+      vi.mocked(fixture.client().getWorkspace).mockImplementation(async () => {
+        fixture.advanceGeneration()
+        return workspace
+      })
+      await expect(fixture.callTool('node_read')).rejects.toThrow(/approval|authority/)
+      expect(fixture.client().readFile).not.toHaveBeenCalled()
+      expect(fixture.host().connection('sample-node').principal()).toBe(principal)
+      expect(fixture.host().ledger.approvedNode(fixture.session, 'sample-node', principal)).toBe(
+        true
+      )
+    } finally {
+      fixture.close()
+    }
+  })
+
+  it('retains an admitted write when the generation changes while flushing, without publishing a saved receipt', async () => {
+    const fixture = await setup(true)
+    try {
+      const principal = fixture.host().connection('sample-node').principal()
+      vi.spyOn(fixture.client(), 'flush').mockImplementation(async () => {
+        fixture.advanceGeneration()
+      })
+      const inspect = vi.spyOn(fixture.client(), 'fileMutationResult')
+      const result = await fixture.call()
+      const operation_id = (await fixture.client().pending())[0].operation_id
+      expect(result.details).toMatchObject({ operation_id, state: 'outcome_unknown' })
+      expect(result.details).not.toHaveProperty('diff')
+      expect(inspect).not.toHaveBeenCalled()
+      expect(fixture.host().connection('sample-node').principal()).toBe(principal)
+    } finally {
+      fixture.close()
+    }
+  })
+
+  it('never retries an old mutation under a newly approved registration authority', async () => {
+    const fixture = await setup(true)
+    try {
+      vi.spyOn(fixture.client(), 'flush').mockImplementation(async () => {
+        fixture.connected(false)
+        throw new ChannelError('disconnected')
+      })
+      const first = await fixture.call()
+      const operation_id = (first.details as { operation_id: string }).operation_id
+      await fixture.rePair()
+      fixture.connected(true)
+      const write = vi.spyOn(fixture.client(), 'writeFile')
+      const inspect = vi.spyOn(fixture.client(), 'fileMutationResult')
+      const retry = await fixture.call('sample-repaired-retry', {
+        ...args,
+        operation_id,
+      } as typeof args)
+      expect(retry.details).toMatchObject({ operation_id, state: 'outcome_unknown' })
+      expect(write).not.toHaveBeenCalled()
+      expect(inspect).not.toHaveBeenCalled()
+      expect((await fixture.client().pending()).map((entry) => entry.operation_id)).toEqual([
+        operation_id,
+      ])
+    } finally {
+      fixture.close()
+    }
+  })
+
+  it('fences a scope approval if the generation changes while saving', async () => {
+    const fixture = await setup(true)
+    try {
+      const principal = fixture.host().connection('sample-node').principal()
+      vi.mocked(fixture.session.saveForRelease).mockImplementation(async () => {
+        fixture.advanceGeneration()
+      })
+      await expect(
+        setObsidianChatNodeScope(fixture.session, fixture.session.overrides.value.nodeScope!)
+      ).rejects.toThrow(/identity|authority/)
+      expect(fixture.host().connection('sample-node').principal()).toBe(principal)
+    } finally {
+      fixture.close()
+    }
+  })
+
   for (const [tool, method] of [
     ['node_mv', 'fileMove'],
     ['node_cp', 'fileCopy'],

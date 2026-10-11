@@ -38,6 +38,7 @@ function setup() {
   const tab = { source, selection: () => 'Private sample bytes', open: vi.fn() }
   legacy.attach(tab)
   legacy.grant(session, 'sample-registration', 'other-project')
+  let generation = 0
   const factory = (): NodeAgentHost => ({
     ledger,
     nodes: () => [],
@@ -45,6 +46,9 @@ function setup() {
     connection: () => ({
       client: { connected: true } as never,
       principal: () => 'sample-principal',
+      get authorizationGeneration() {
+        return generation
+      },
     }),
   })
   const approve = vi.fn(async () => true)
@@ -64,7 +68,18 @@ function setup() {
         undefined,
         { session, interactive: true }
       )
-  return { session, source, legacy, ledger, approve, call, tab }
+  return {
+    session,
+    source,
+    legacy,
+    ledger,
+    approve,
+    call,
+    tab,
+    advanceGeneration: () => {
+      generation++
+    },
+  }
 }
 describe('configured node scope is a ceiling for every legacy node tool', () => {
   for (const entries of [
@@ -104,6 +119,21 @@ describe('configured node scope is a ceiling for every legacy node tool', () => 
       expect(JSON.stringify(await call(name))).toContain('Private sample bytes')
     expect(JSON.stringify(await call('node_views'))).toContain('Private sample bytes')
   })
+  it('fences a scoped legacy read when the connection reauthorizes during the read', async () => {
+    const { session, source, legacy, ledger, call, advanceGeneration } = setup()
+    session.overrides.value.nodeScope = [
+      { kind: 'project', node_id: 'sample-node', project_id: 'other-project', access: 'read' },
+    ]
+    ledger.approve(session, { 'sample-node': 'sample-principal' })
+    legacy.grant(session, 'sample-registration', 'other-project')
+    vi.mocked(source.compare).mockImplementation(async () => {
+      advanceGeneration()
+      return 'Private sample bytes' as never
+    })
+    await expect(call('node_compare')).rejects.toThrow(/authority/)
+    expect(ledger.approvedNode(session, 'sample-node', 'sample-principal')).toBe(true)
+  })
+
   it('revokes legacy authorization and retained cursors on configured-scope changes', async () => {
     const { session, legacy, call, source, tab } = setup()
     vi.mocked(source.compare).mockResolvedValue('sample '.repeat(9000) as never)

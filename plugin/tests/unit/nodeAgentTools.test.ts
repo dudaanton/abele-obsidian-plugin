@@ -74,7 +74,8 @@ function setup(mode = 'allow-edit') {
     save: vi.fn(),
     saveForRelease: vi.fn(),
   } as unknown as ChatSession
-  let principal = 'sample-pin:0'
+  let principal = 'sample-pin:0',
+    generation = 0
   const client = {
     store: new MemoryClientStore(),
     connected: true,
@@ -119,7 +120,13 @@ function setup(mode = 'allow-edit') {
     },
     ledger,
     nodes: () => [{ id: 'sample-node', label: 'Sample node' }],
-    connection: () => ({ client: client as unknown as NodeClient, principal: () => principal }),
+    connection: () => ({
+      client: client as unknown as NodeClient,
+      principal: () => principal,
+      get authorizationGeneration() {
+        return generation
+      },
+    }),
   }
   ledger.approve(session, { 'sample-node': principal })
   const factory = () => host
@@ -146,6 +153,9 @@ function setup(mode = 'allow-edit') {
     host,
     factory,
     call,
+    advanceGeneration: () => {
+      generation++
+    },
     principal: (value: string) => {
       principal = value
     },
@@ -580,6 +590,30 @@ describe('Obsidian chat node tools', () => {
     principal('replacement-pin:0')
     await expect(call('node_read', { path: 'sample.txt' })).rejects.toThrow()
   })
+  it('fences retained read continuations on reauthorization without changing the durable principal', async () => {
+    const { call, client, advanceGeneration } = setup()
+    vi.mocked(client.listProjects).mockImplementation(async () =>
+      Array.from({ length: 99 }, (_, index) => ({
+        ...project,
+        root_path: `sample-${index}-${'x'.repeat(512)}`,
+      }))
+    )
+    const first = await call('node_folders')
+    const cursor = (first.details as { cursor: string }).cursor
+    expect(cursor).toBeTruthy()
+    advanceGeneration()
+    await expect(call('node_folders', { cursor })).rejects.toThrow(/approval|identity/)
+  })
+
+  it('fences node enumeration when reauthorization occurs during describe', async () => {
+    const { call, client, advanceGeneration } = setup()
+    vi.mocked(client.describe).mockImplementation(async () => {
+      advanceGeneration()
+      return { node_id: 'sample-node', capabilities: { capabilities: {} } }
+    })
+    await expect(call('node_nodes')).rejects.toThrow(/approval|identity/)
+  })
+
   it('can resume a retained read after the chat rebuilds its toolset for the next turn', async () => {
     const { call, client, session, factory } = setup()
     const value = 'sample '.repeat(8000),

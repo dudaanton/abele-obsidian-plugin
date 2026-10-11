@@ -13,8 +13,7 @@ import type { NodeRegistry } from '@/node/NodeRegistry'
 
 export function nodeRegistrationPrincipal(
   registry: Pick<NodeRegistry, 'list' | 'authorizationId'>,
-  id: string,
-  generation: number
+  id: string
 ): string {
   const registration = registry.list().find((node) => node.id === id)
   if (!registration) throw new Error('Node registration was removed')
@@ -23,7 +22,6 @@ export function nodeRegistrationPrincipal(
     registry.authorizationId(id),
     'installationId' in registration ? registration.installationId : registration.id,
     'nodeFingerprint' in registration ? registration.nodeFingerprint : registration.url,
-    generation,
   ])
 }
 
@@ -66,20 +64,13 @@ export async function nodeAgentHost(): Promise<NodeAgentHost> {
     read: () => app.loadLocalStorage('abele-chat-node-scope-approvals'),
     write: (value) => app.saveLocalStorage('abele-chat-node-scope-approvals', value),
   })
-  const generations = new Map<string, number>()
   const connectionFor = (id: string): NodeAgentConnection => {
     const connection = service.connection(id)
     return {
       client: connection.client,
-      principal: () => {
-        const registration = service.registry.list().find((node) => node.id === id)
-        if (!registration) throw new Error('Node registration was removed')
-        const generation = connection.authorizationGeneration
-        const before = generations.get(id)
-        if (before !== undefined && before !== generation)
-          ledger.revokeNode(registration.expectedNodeId)
-        generations.set(id, generation)
-        return nodeRegistrationPrincipal(service.registry, id, generation)
+      principal: () => nodeRegistrationPrincipal(service.registry, id),
+      get authorizationGeneration() {
+        return connection.authorizationGeneration
       },
     }
   }
@@ -162,6 +153,9 @@ async function saveNodeScope(
   const principals = Object.fromEntries(
     [...connections].map(([id, connection]) => [id, connection.principal()])
   )
+  const generations = new Map(
+    [...connections].map(([id, connection]) => [id, connection.authorizationGeneration])
+  )
   session.overrides.value = { ...session.overrides.value, nodeScope: normalized }
   host.ledger.reconcile(session)
   await session.saveForRelease()
@@ -172,7 +166,10 @@ async function saveNodeScope(
   if (JSON.stringify(nodeScopeEntries(session)) !== JSON.stringify(normalized))
     throw new Error('Node scope changed while saving owner approval')
   for (const [id, connection] of connections)
-    if (principals[id] !== connection.principal())
+    if (
+      principals[id] !== connection.principal() ||
+      generations.get(id) !== connection.authorizationGeneration
+    )
       throw new Error('Node identity changed during scope approval')
   host.ledger.approve(session, principals, canonicalChosen)
 }

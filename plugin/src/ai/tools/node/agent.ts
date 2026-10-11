@@ -38,8 +38,10 @@ export const NODE_AGENT_TOOL_NAMES = [
 ]
 export interface NodeAgentConnection {
   client: NodeClient
-  /** Stable installation/pin and owner-controller generation, never a display label. */
+  /** Durable registration authority and installation/pin, never a display label. */
   principal(): string
+  /** Process-local reauthorization fence; never persisted in approvals or mutation records. */
+  readonly authorizationGeneration: number
 }
 export interface NodeAgentHost {
   ledger: NodeScopeLedger
@@ -274,7 +276,8 @@ export function createNodeAgentTools(factory: NodeAgentHostFactory): AgentTool[]
         if (!scopes.some((entry) => entry.node_id === node))
           throw new Error('This node is not in chat scope')
         const connection = host.connection(node, session),
-          principal = connection.principal()
+          principal = connection.principal(),
+          generation = connection.authorizationGeneration
         checks.push(host.ledger.guardNode(session, node, principal))
         const identity = session.nodeScopeIdentity,
           conversation = session.conversationVersion.value,
@@ -285,6 +288,7 @@ export function createNodeAgentTools(factory: NodeAgentHostFactory): AgentTool[]
             throw new Error('Node offline; reconnect before agent file operations')
           if (
             principal !== connection.principal() ||
+            generation !== connection.authorizationGeneration ||
             identity !== session.nodeScopeIdentity ||
             conversation !== session.conversationVersion.value ||
             branch !== session.branchSelectionVersion ||
@@ -308,11 +312,16 @@ export function createNodeAgentTools(factory: NodeAgentHostFactory): AgentTool[]
           const nodeId = host.nodeId?.(node.id) ?? node.id
           if (!scopes.some((entry) => entry.node_id === nodeId)) continue
           const connection = host.connection(node.id),
-            principal = connection.principal()
+            principal = connection.principal(),
+            generation = connection.authorizationGeneration
           if (!host.ledger.approvedNode(session, nodeId, principal)) continue
           checks.push(host.ledger.guardNode(session, nodeId, principal))
           checks.push(() => {
-            if (connection.principal() !== principal) throw new Error('Node identity changed')
+            if (
+              connection.principal() !== principal ||
+              connection.authorizationGeneration !== generation
+            )
+              throw new Error('Node identity changed')
           })
           if (!connection.client.connected) {
             result.push({ node: nodeId, label: node.label, connected: false })

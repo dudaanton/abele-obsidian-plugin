@@ -26,7 +26,7 @@ function setup() {
   }
   const registry = new NodeRegistry(host)
   registry.addPaired(node)
-  const binding = (registry: NodeRegistry) => nodeRegistrationPrincipal(registry, node.id, 0)
+  const binding = (registry: NodeRegistry) => nodeRegistrationPrincipal(registry, node.id)
   return { registry, host, binding }
 }
 describe('durable registration authority for node scope', () => {

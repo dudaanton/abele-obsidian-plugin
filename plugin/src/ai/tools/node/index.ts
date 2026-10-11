@@ -369,7 +369,8 @@ export function createNodeTools(
           if (identity.provider !== 'node') throw new Error('Expected a node source')
           const remote = await factory(),
             connection = remote.connection(identity.node, session)
-          const principal = connection.principal()
+          const principal = connection.principal(),
+            generation = connection.authorizationGeneration
           const checkScope = remote.ledger.guard(
             session,
             {
@@ -384,7 +385,8 @@ export function createNodeTools(
             if (
               scopeState(session) !== originalScope ||
               !connection.client.connected ||
-              connection.principal() !== principal
+              connection.principal() !== principal ||
+              connection.authorizationGeneration !== generation
             )
               throw new Error('Node scope or authority changed during the repository read')
             checkScope()
