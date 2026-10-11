@@ -115,7 +115,8 @@ export class NodeDocumentSource implements CodeDocumentSource {
   constructor(
     private client: NodeClient,
     private workspaceId: string,
-    private repository = false
+    private repository = false,
+    private readonly admitSave?: () => boolean
   ) {}
   private parseWrite(path: string, contentId: string | null, text: string) {
     const body = { path, expected_content_id: contentId, text }
@@ -190,7 +191,11 @@ export class NodeDocumentSource implements CodeDocumentSource {
   }
   async save(path: string, shown: FileDraftSnapshot | undefined = this.observed.get(path)) {
     if (!shown) return undefined
+    if (this.admitSave && !this.admitSave())
+      throw new Error('Reconnect before saving; your local draft is retained.')
     const draft = await this.transaction(path, (drafts, key) => {
+      if (this.admitSave && !this.admitSave())
+        throw new Error('Reconnect before saving; your local draft is retained.')
       const draft = drafts[key]
       assertDraftRevision(draft, shown.revision)
       if (!draft || draft.text !== shown.text || draft.baseContentId !== shown.baseContentId)
@@ -224,7 +229,22 @@ export class NodeDocumentSource implements CodeDocumentSource {
     // Identity/body were committed before outbox admission. Resume that same operation even
     // after reload or failure in the tiny gap between those local transactions.
     if (!draft.result && !(await this.client.operationResult(pending.operationId))) {
-      if ('worktree_id' in pending.params)
+      if (this.admitSave) {
+        const method = 'worktree_id' in pending.params ? 'repository.v1.write' : 'workspace.write'
+        await this.client.store.transaction((state) => {
+          if (!this.admitSave!())
+            throw new Error('Reconnect before saving; your local draft is retained.')
+          if (
+            !state.outbox.some((entry) => entry.operation_id === pending.operationId) &&
+            !state.results[pending.operationId]
+          ) {
+            state.operationRequests ??= {}
+            state.operationRequests[pending.operationId] = { method, params: pending.params }
+            state.outbox.push({ operation_id: pending.operationId, method, params: pending.params })
+          }
+        })
+        await this.client.flush()
+      } else if ('worktree_id' in pending.params)
         await this.client.repository.write(pending.params, pending.operationId)
       else await this.client.writeFile(pending.params, pending.operationId)
     }

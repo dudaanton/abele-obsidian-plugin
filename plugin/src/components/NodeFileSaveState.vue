@@ -24,6 +24,7 @@
         icon="save"
         :disabled="
           locked ||
+          offline ||
           busy ||
           !model.draftDirty.value ||
           !!model.draftError.value ||
@@ -58,9 +59,7 @@
       <span>{{
         error ||
         model.draftError.value ||
-        (model.draft.value?.status === 'conflict'
-          ? 'Conflict · on disk.'
-          : 'Changed on disk.')
+        (model.draft.value?.status === 'conflict' ? 'Conflict · on disk.' : 'Changed on disk.')
       }}</span>
       <Button
         text="Reload"

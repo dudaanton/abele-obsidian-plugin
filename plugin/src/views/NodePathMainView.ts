@@ -239,7 +239,12 @@ export class NodePathMainView extends ItemView {
         node.expectedNodeId,
         state.target.id,
         undefined,
-        new NodeDocumentSource(connection.client, state.target.id, state.target.kind === 'worktree')
+        new NodeDocumentSource(
+          connection.client,
+          state.target.id,
+          state.target.kind === 'worktree',
+          () => connection.state.value === 'connected' && connection.client.connected
+        )
       ))
       this.editorAllowed.value = state.target.kind === 'workspace'
       const permission = async () => {
