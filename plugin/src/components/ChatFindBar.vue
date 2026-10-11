@@ -68,7 +68,7 @@ const countText = computed(() => {
 })
 
 const onKey = (e: KeyboardEvent) => {
-  const field = inputRef.value?.$el as HTMLInputElement | undefined
+  const field = inputRef.value?.inputRef as HTMLInputElement | undefined
   if (!field?.isConnected || e.target !== field || e.isComposing) return
   if (e.key !== 'Enter' && e.key !== 'Escape') return
   // Before Obsidian's document keymap: on mobile it takes plain Enter before the input hears it.

@@ -40,6 +40,8 @@ describe('script view host registration', () => {
       registerDomEvent: vi.fn(),
       registerEvent: vi.fn(),
       register: vi.fn(),
+      addCommand: vi.fn(),
+      addRibbonIcon: vi.fn(),
     })
     plugin.registerViews()
     expect(defaultViewHost()).toBe(ScriptViewService.getInstance())
