@@ -43,6 +43,13 @@ const PairedNodeSchema = z
   })
   .strict()
 const NodeSchema = z.union([LocalNodeSchema, PairedNodeSchema])
+// Device-local authority incarnation, not part of the public node descriptor.
+const authority = { scopeAuthorizationId: z.string().min(1).max(128).optional() }
+const StoredNodeSchema = z.union([
+  LocalNodeSchema.extend(authority).strict(),
+  PairedNodeSchema.extend(authority).strict(),
+])
+type StoredNode = z.infer<typeof StoredNodeSchema>
 export type RegisteredNode = z.infer<typeof NodeSchema>
 export type PairedNode = z.infer<typeof PairedNodeSchema>
 export const isPairedNode = (node: RegisteredNode): node is PairedNode =>
@@ -70,12 +77,22 @@ export interface RegistryHost {
 
 /** Local preferences and independently revocable credentials, intentionally outside settings. */
 export class NodeRegistry {
-  private nodes: RegisteredNode[]
+  private nodes: StoredNode[]
   constructor(private readonly host: RegistryHost) {
-    this.nodes = z.array(NodeSchema).parse(host.read() ?? [])
+    const loaded = z.array(StoredNodeSchema).parse(host.read() ?? [])
+    this.nodes = loaded.map((node) => ({
+      ...node,
+      scopeAuthorizationId: node.scopeAuthorizationId ?? crypto.randomUUID(),
+    }))
+    if (loaded.some((node) => !node.scopeAuthorizationId)) host.write(this.nodes)
   }
   list(): RegisteredNode[] {
-    return this.nodes.map((node) => ({ ...node }))
+    return this.nodes.map(({ scopeAuthorizationId: _authority, ...node }) => NodeSchema.parse(node))
+  }
+  authorizationId(id: string): string {
+    const identity = this.nodes.find((node) => node.id === id)?.scopeAuthorizationId
+    if (!identity) throw new Error('Node registration authority is unavailable')
+    return identity
   }
   token(id: string): string {
     return this.host.getSecret(this.keyId(id))
@@ -89,7 +106,7 @@ export class NodeRegistry {
     if (this.nodes.some((n) => n.id === node.id))
       throw new Error('Node installation already registered')
     this.host.setSecret(this.keyId(node.id), token)
-    const next = [...this.nodes, node]
+    const next = [...this.nodes, { ...node, scopeAuthorizationId: crypto.randomUUID() }]
     try {
       this.host.write(next)
     } catch (error) {
@@ -108,8 +125,12 @@ export class NodeRegistry {
         'Installation changed; remove the old registration before enrolling a new device'
       )
     const next = existing
-      ? this.nodes.map((n) => (n.id === existing.id ? { ...node, id: existing.id } : n))
-      : [...this.nodes, node]
+      ? this.nodes.map((n) =>
+          n.id === existing.id
+            ? { ...node, id: existing.id, scopeAuthorizationId: crypto.randomUUID() }
+            : n
+        )
+      : [...this.nodes, { ...node, scopeAuthorizationId: crypto.randomUUID() }]
     this.host.write(next)
     this.nodes = next
   }

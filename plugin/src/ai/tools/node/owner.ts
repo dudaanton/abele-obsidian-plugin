@@ -9,6 +9,23 @@ import {
   type NodeScopeChat,
 } from '../../nodeScope'
 import type { NodeAgentHost, NodeAgentConnection } from './agent'
+import type { NodeRegistry } from '@/node/NodeRegistry'
+
+export function nodeRegistrationPrincipal(
+  registry: Pick<NodeRegistry, 'list' | 'authorizationId'>,
+  id: string,
+  generation: number
+): string {
+  const registration = registry.list().find((node) => node.id === id)
+  if (!registration) throw new Error('Node registration was removed')
+  return JSON.stringify([
+    registration.expectedNodeId,
+    registry.authorizationId(id),
+    'installationId' in registration ? registration.installationId : registration.id,
+    'nodeFingerprint' in registration ? registration.nodeFingerprint : registration.url,
+    generation,
+  ])
+}
 
 let ownerHost: NodeAgentHost | undefined
 let ownerApp: object | undefined
@@ -62,12 +79,7 @@ export async function nodeAgentHost(): Promise<NodeAgentHost> {
         if (before !== undefined && before !== generation)
           ledger.revokeNode(registration.expectedNodeId)
         generations.set(id, generation)
-        return JSON.stringify([
-          registration.expectedNodeId,
-          'installationId' in registration ? registration.installationId : registration.id,
-          'nodeFingerprint' in registration ? registration.nodeFingerprint : registration.url,
-          connection.authorizationGeneration,
-        ])
+        return nodeRegistrationPrincipal(service.registry, id, generation)
       },
     }
   }

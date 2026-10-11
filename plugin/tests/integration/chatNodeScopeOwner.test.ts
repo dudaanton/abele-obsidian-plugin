@@ -21,6 +21,7 @@ import { addNodeContextToObsidianChat, askNodeContextInObsidianChat } from '@/ai
 
 vi.mock('@/node/NodeService', () => {
   const registry = {
+    authorizationId: () => 'sample-authority',
     list: () => [
       {
         id: 'sample-registration',

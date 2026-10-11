@@ -936,7 +936,9 @@ with read/edit access. `overrides.nodeTarget` is this chat's selected remote tar
 permission. Both travel with the chat log and its sparse overrides. Whole-node scope includes
 future registered projects. A copied or synced configuration does not authorize itself:
 owner approvals live only in device-local preferences, bound to durable chat identity,
-normalized scope, node installation/key and owner authorization generation. Removing/changing
+exact scope entries, node installation/key, durable local registration authority and owner authorization generation.
+The local registration authority changes on re-pairing and on removal/recreation; it is retained
+across ordinary restarts and never travels with chat metadata. Removing/changing
 scope fences pending tool reads and new mutations. Node writes and their durable receipts stay
 on the daemon; successful edits retain before/after Diff text in the ordinary chat tool result.
 `node_propose_edit` remains a separate device-local draft, not an immediate disk writer.
