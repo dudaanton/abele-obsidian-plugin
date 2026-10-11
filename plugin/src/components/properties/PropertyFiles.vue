@@ -8,9 +8,11 @@
       :thumbnail="thumbnails[entry.value]"
       clickable
       class="abele-property-files__card"
-      @click="change(index)"
+      @click="phone ? actionsMenu(index, entry, $event) : change(index)"
     >
-      <template #actions>
+      <!-- On a phone the cell is too narrow for a name and two glyphs a finger can hit: the
+           card is the name, and a tap offers what the glyphs do. -->
+      <template v-if="!phone" #actions>
         <Icon
           v-if="entry.openable"
           icon="arrow-up-right"
@@ -45,7 +47,7 @@ import { openExternal } from '@/helpers/openExternal'
  * takes it out. Every change goes back as the property's value — a link, or a list of links.
  */
 import { computed, reactive, watch } from 'vue'
-import type { TFile } from 'obsidian'
+import { Menu, Platform, type TFile } from 'obsidian'
 import Card from '../obsidian/Card.vue'
 import Icon from '../obsidian/Icon.vue'
 import Button from '../obsidian/Button.vue'
@@ -125,6 +127,37 @@ const linkTo = (file: TFile) =>
 
 const pick = () => pickAnyFile(app, accepts)
 
+const phone = Platform.isPhone
+
+function actionsMenu(index: number, entry: Entry, event: MouseEvent | KeyboardEvent) {
+  const menu = new Menu()
+  if (entry.openable)
+    menu.addItem((item) =>
+      item
+        .setTitle('Open')
+        .setIcon('arrow-up-right')
+        .onClick(() => void open(entry))
+    )
+  menu.addItem((item) =>
+    item
+      .setTitle(props.imagesOnly ? 'Choose another picture' : 'Choose another file')
+      .setIcon('replace')
+      .onClick(() => void change(index))
+  )
+  menu.addItem((item) =>
+    item
+      .setTitle('Remove')
+      .setIcon('x')
+      .setWarning(true)
+      .onClick(() => remove(index))
+  )
+  if (event instanceof MouseEvent) menu.showAtMouseEvent(event)
+  else {
+    const r = (event.target as HTMLElement).getBoundingClientRect()
+    menu.showAtPosition({ x: r.left, y: r.bottom })
+  }
+}
+
 async function change(index: number) {
   const file = await pick()
   if (!file) return
@@ -189,8 +222,18 @@ function open(entry: Entry) {
     padding-inline-end: var(--size-4-2);
   }
 
+  // The picture fits inside the compact card: as tall as the card less its padding, so it
+  // neither sticks out of the bottom nor covers the next card's arrow and cross.
   &.abele-card_thumbed {
     min-height: var(--size-4-12);
+    padding-inline-end: calc(var(--size-4-10) + var(--size-4-1) + var(--size-4-2));
+
+    > .abele-card__thumbnail {
+      top: var(--size-4-1);
+      inset-inline-end: var(--size-4-1);
+      width: var(--size-4-10);
+      height: var(--size-4-10);
+    }
   }
 
   .abele-card__name {
@@ -210,14 +253,17 @@ function open(entry: Entry) {
   align-self: flex-start;
 }
 
-// On a phone, or in the sidebar, the picture takes less of the row, so the name has room to be read.
-@container (max-width: 280px) {
-  .abele-property-files .abele-card_thumbed.abele-property-files__card {
-    padding-inline-end: calc(var(--size-4-9) + var(--size-4-2));
-  }
 
-  .abele-property-files .abele-card_thumbed .abele-card__thumbnail {
-    width: var(--size-4-9);
+// Where the cell is too narrow for a name, the arrow, the cross and a picture, the picture goes:
+// the name is what tells the files apart.
+@container (max-width: 16em) {
+  .abele-property-files .abele-property-files__card.abele-card_thumbed {
+    min-height: 0;
+    padding-inline-end: var(--size-4-2);
+
+    > .abele-card__thumbnail {
+      display: none;
+    }
   }
 }
 </style>

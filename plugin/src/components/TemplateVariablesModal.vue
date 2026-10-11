@@ -3,7 +3,7 @@
     <div class="template-variables-modal">
       <div class="variables-list">
         <div v-for="variable in variables" :key="variable.name" class="variable-item">
-          <label class="variable-label">{{ variable.name }}</label>
+          <label class="variable-label">{{ labelOf(variable.name) }}</label>
 
           <!-- wiki_list: dynamic list with file suggest -->
           <div v-if="variable.type === 'wiki_list'" class="variable-wiki-list">
@@ -91,7 +91,7 @@
             v-else-if="variable.type === 'list'"
             :model-value="getTextareaValue(variable.name)"
             :as-text-area="true"
-            :placeholder="`One ${variable.name} per line`"
+            placeholder="One per line"
             @update:model-value="(v: string) => updateTextareaValue(variable.name, v)"
           />
 
@@ -106,8 +106,8 @@
       </div>
     </div>
     <template #footer>
-      <Button text="Cancel" @click="emit('close')" />
       <Button text="Apply" :accent="true" @click="confirmValues" />
+      <Button text="Cancel" @click="emit('close')" />
     </template>
   </Modal>
 </template>
@@ -136,6 +136,12 @@ const emit = defineEmits<{
   (e: 'close'): void
   (e: 'confirm', values: Map<string, string>): void
 }>()
+
+/** A variable's name read as words over its field: `plant_bed` is «Plant bed». */
+const labelOf = (name: string) => {
+  const words = name.replace(/[_-]+/g, ' ').trim()
+  return words.charAt(0).toUpperCase() + words.slice(1)
+}
 
 const values = ref<Map<string, string>>(new Map())
 const imageUrls = ref<Map<string, string>>(new Map())
@@ -303,9 +309,9 @@ function confirmValues() {
   gap: var(--size-4-1);
 }
 
+/* A field's name as a setting's: the text colour at the interface size, not a heading. */
 .variable-label {
-  font-weight: var(--font-medium);
-  font-size: var(--font-small);
+  font-size: var(--font-ui-small);
 }
 
 .variable-wiki-list {

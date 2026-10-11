@@ -162,4 +162,27 @@ describe('template variable input', () => {
     expect(importExternalFile).toHaveBeenCalledWith(external)
     expect(w.get('.variable-image__path').text()).toBe('imported.png')
   })
+
+  it('names each field in words, asks for a list one per line, and puts Apply first', async () => {
+    templateHarness()
+    const w = draw('{{plant_bed}} {{name}} {{seed-kinds::list}}')
+    await flushPromises()
+    expect(w.findAll('.variable-label').map((l) => l.text())).toEqual([
+      'Plant bed',
+      'Name',
+      'Seed kinds',
+    ])
+    expect(w.find('textarea[placeholder="One per line"]').exists()).toBe(true)
+    expect(
+      w
+        .findAll('button')
+        .map((b) => b.text())
+        .slice(-2)
+    ).toEqual(['Apply', 'Cancel'])
+    // The label is only what is shown: the value still goes under the variable's own name.
+    await w.findAll('.variable-item')[0].get('input').setValue('north corner')
+    await button(w, 'Apply').trigger('click')
+    expect(values(w).get('plant_bed')).toBe('north corner')
+    expect(values(w).has('Plant bed')).toBe(false)
+  })
 })

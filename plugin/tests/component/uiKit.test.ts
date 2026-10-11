@@ -339,7 +339,18 @@ describe('Card', () => {
 
     const live = mount(Card, { props: { ...props, clickable: true } })
     await live.trigger('click')
-    expect(live.emitted('click')).toEqual([[]])
+    expect(live.emitted('click')).toHaveLength(1)
+  })
+
+  it('hands on the press that opened it, so a menu can open where it happened', async () => {
+    const live = mount(Card, { props: { ...props, clickable: true } })
+    await live.trigger('click', { clientX: 12, clientY: 34 })
+    await live.trigger('keydown', { key: 'Enter' })
+    const [[click], [key]] = live.emitted('click') as [[MouseEvent], [KeyboardEvent]]
+    expect(click).toBeInstanceOf(MouseEvent)
+    expect([click.clientX, click.clientY]).toEqual([12, 34])
+    expect(key).toBeInstanceOf(KeyboardEvent)
+    expect(key.key).toBe('Enter')
   })
 
   /** A recap sentence in a footer list is a summary; unclamped, one card buries the next. */
@@ -367,7 +378,7 @@ describe('Card', () => {
     expect(view.emitted('click')).toBeUndefined()
 
     await view.find('.prose').trigger('click')
-    expect(view.emitted('click')).toEqual([[]])
+    expect(view.emitted('click')).toHaveLength(1)
   })
 
   it('does not open when an action inside it is pressed', async () => {

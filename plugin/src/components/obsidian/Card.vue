@@ -123,7 +123,8 @@ const props = withDefaults(
 )
 
 const emit = defineEmits<{
-  (e: 'click'): void
+  /** With the press, for a caller that opens a menu where it happened. */
+  (e: 'click', event: MouseEvent | KeyboardEvent): void
 }>()
 
 /**
@@ -144,7 +145,7 @@ const safeHref = computed(() =>
 const open = (event: Event) => {
   if (!props.clickable || fromControl(event)) return
   if (event instanceof KeyboardEvent) event.preventDefault()
-  emit('click')
+  emit('click', event as MouseEvent | KeyboardEvent)
 }
 </script>
 

@@ -5,10 +5,23 @@
 
       <!-- Breadcrumbs -->
       <div v-if="currentPath.length > 0 && !searchQuery" class="abele-template-select__breadcrumbs">
-        <span class="abele-template-select__breadcrumb-item" @click="navigateTo(-1)">All</span>
+        <span
+          class="abele-template-select__breadcrumb-item"
+          role="button"
+          tabindex="0"
+          @click="navigateTo(-1)"
+          @keydown.enter="navigateTo(-1)"
+          >All</span
+        >
         <template v-for="(segment, idx) in currentPath" :key="idx">
           <span class="abele-template-select__breadcrumb-separator">/</span>
-          <span class="abele-template-select__breadcrumb-item" @click="navigateTo(idx)">{{
+          <span
+            class="abele-template-select__breadcrumb-item"
+            role="button"
+            tabindex="0"
+            @click="navigateTo(idx)"
+            @keydown.enter="navigateTo(idx)"
+            >{{
             segment
           }}</span>
         </template>
@@ -22,8 +35,12 @@
             :key="template.file.path"
             class="abele-template-select__item"
             :class="{ 'abele-template-select__item_selected': selectedTemplate === template }"
+            role="option"
+            tabindex="0"
+            :aria-selected="selectedTemplate === template"
             @click="selectTemplate(template)"
             @dblclick="confirmSelection"
+            @keydown.enter="selectedTemplate === template ? confirmSelection() : selectTemplate(template)"
           >
             <div class="abele-template-select__item-info">
               <span class="abele-template-select__item-name">{{ template.name }}</span>
@@ -47,9 +64,12 @@
             v-for="folder in currentFolders"
             :key="'folder:' + folder"
             class="abele-template-select__item abele-template-select__item_folder"
+            role="button"
+            tabindex="0"
             @click="openFolder(folder)"
+            @keydown.enter="openFolder(folder)"
           >
-            <div class="abele-template-select__item-info abele-template-select__item-info_folder">
+            <div class="abele-template-select__item-info abele-template-select__item-info_row">
               <Icon icon="folder" class="abele-template-select__folder-icon" />
               <span class="abele-template-select__item-name">{{ folder }}</span>
             </div>
@@ -62,10 +82,15 @@
             :key="template.file.path"
             class="abele-template-select__item"
             :class="{ 'abele-template-select__item_selected': selectedTemplate === template }"
+            role="option"
+            tabindex="0"
+            :aria-selected="selectedTemplate === template"
             @click="selectTemplate(template)"
             @dblclick="confirmSelection"
+            @keydown.enter="selectedTemplate === template ? confirmSelection() : selectTemplate(template)"
           >
-            <div class="abele-template-select__item-info">
+            <div class="abele-template-select__item-info abele-template-select__item-info_row">
+              <Icon icon="file-text" no-hover class="abele-template-select__folder-icon" />
               <span class="abele-template-select__item-name">{{ template.name }}</span>
             </div>
             <span class="abele-template-select__item-type">{{ template.templateFor }}</span>
@@ -79,13 +104,13 @@
       </div>
     </div>
     <template #footer>
-      <Button text="Cancel" @click="emit('close')" />
       <Button
         text="Select"
         :disabled="!selectedTemplate"
         :accent="true"
         @click="confirmSelection"
       />
+      <Button text="Cancel" @click="emit('close')" />
     </template>
   </Modal>
 </template>
@@ -190,54 +215,54 @@ function confirmSelection() {
 </script>
 
 <style>
+/* Obsidian's own picker in a window: a field, where you are, and rows as its suggestion list
+   draws them, the chosen one tinted rather than filled, what a template is for faint on the right. */
 .abele-template-select {
   display: flex;
   flex-direction: column;
   gap: var(--size-4-2);
-  min-width: min(400px, 100%);
+  min-width: min(28em, 100%);
 }
 
 .abele-template-select__list {
-  max-height: 300px;
+  display: flex;
+  flex-direction: column;
+  max-height: min(24em, 60vh);
   overflow-y: auto;
-  border: 1px solid var(--background-modifier-border);
-  border-radius: var(--radius-s);
 }
 
 .abele-template-select__item {
   display: flex;
   justify-content: space-between;
   align-items: center;
+  gap: var(--size-4-2);
   padding: var(--size-4-2) var(--size-4-3);
-  cursor: pointer;
-  border-bottom: 1px solid var(--background-modifier-border);
+  border-radius: var(--radius-s);
+  cursor: var(--cursor);
 }
 
-.abele-template-select__item:last-child {
-  border-bottom: none;
-}
-
-.abele-template-select__item:hover {
+.abele-template-select__item:hover,
+.abele-template-select__item_selected {
   background: var(--background-modifier-hover);
 }
 
-.abele-template-select__item_selected {
-  background: var(--interactive-accent);
-  color: var(--text-on-accent);
+.abele-template-select__item_selected .abele-template-select__item-name {
+  color: var(--text-normal);
+  font-weight: var(--font-medium);
 }
 
 .abele-template-select__breadcrumbs {
   display: flex;
   align-items: center;
   gap: var(--size-2-1);
-  font-size: var(--font-smaller);
+  font-size: var(--font-ui-smaller);
   color: var(--text-muted);
 }
 
 .abele-template-select__breadcrumb-item {
-  cursor: pointer;
-  padding: 2px 4px;
+  padding: var(--size-2-1) var(--size-2-2);
   border-radius: var(--radius-s);
+  cursor: var(--cursor);
 }
 
 .abele-template-select__breadcrumb-item:hover {
@@ -246,44 +271,37 @@ function confirmSelection() {
 }
 
 .abele-template-select__breadcrumb-separator {
-  opacity: 0.5;
+  color: var(--text-faint);
 }
 
 .abele-template-select__item-info {
   display: flex;
   flex-direction: column;
-  gap: 2px;
+  gap: var(--size-2-1);
+  min-width: 0;
 }
 
-.abele-template-select__item-info_folder {
+.abele-template-select__item-info_row {
   flex-direction: row;
   align-items: center;
-  gap: var(--size-2-2);
+  gap: var(--size-4-2);
 }
 
-.abele-template-select__folder-count {
-  font-size: var(--font-smaller);
-  color: var(--text-muted);
+.abele-template-select__folder-icon {
+  color: var(--text-faint);
 }
 
 .abele-template-select__item-name {
-  font-weight: var(--font-medium);
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
 }
 
-.abele-template-select__item-path {
-  font-size: var(--font-smaller);
-  opacity: 0.7;
-}
-
+.abele-template-select__item-path,
+.abele-template-select__folder-count,
 .abele-template-select__item-type {
-  font-size: var(--font-smaller);
-  padding: 2px 6px;
-  background: var(--background-modifier-border);
-  border-radius: var(--radius-s);
-}
-
-.abele-template-select__item_selected .abele-template-select__item-type {
-  background: var(--text-on-accent);
-  color: var(--interactive-accent);
+  flex: 0 0 auto;
+  font-size: var(--font-ui-smaller);
+  color: var(--text-faint);
 }
 </style>
