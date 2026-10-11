@@ -139,7 +139,7 @@ export class VaultWriter {
         this.deps.journal.replace(entry, installed)
         entry = installed
         if (this.deps.native) {
-          this.deps.journal.preserve(entry)
+          await this.preserveBackup(entry)
           await this.dropQuietly(entry.temp)
         } else await this.adapter.remove(backup)
       })
@@ -224,7 +224,7 @@ export class VaultWriter {
         if (this.deps.native !== null) {
           // An unfenced adapter may have an open writer to the moved inode. Keep that copy
           // recoverable instead of claiming the original byte check excluded every writer.
-          this.deps.journal.preserve(entry)
+          await this.preserveBackup(entry)
           await this.dropQuietly(temp)
         } else {
           await this.dropQuietly(backup)
@@ -376,6 +376,14 @@ export class VaultWriter {
    * scans resume. An entry an IO step fails on stays for retry; live writes are left alone.
    */
   async recover(): Promise<void> {
+    if (this.deps.native?.archiveBackup) {
+      for (const retained of this.deps.journal.vaultRecovered()) {
+        if (inFlight.has(retained.backup))
+          throw new EngineError('io', 'scan held while a journalled replacement has a live backup')
+        const archived = await this.deps.native.archiveBackup(retained.backup)
+        this.deps.journal.relocateRecovered(retained.backup, archived)
+      }
+    }
     for (const entry of this.deps.journal.entries()) {
       if (entry.streaming && !entry.backup) continue
       if (entry.backup !== undefined && inFlight.has(entry.backup)) {
@@ -388,6 +396,8 @@ export class VaultWriter {
         continue
       }
       try {
+        if (entry.backup && this.deps.journal.protects(entry.backup))
+          await this.preserveBackup(entry)
         if (entry.backup !== undefined && (await this.there(entry.backup))) {
           if (this.deps.journal.protects(entry.backup)) {
             // A completed preservation decision outlives a later target edit/reversion/delete.
@@ -403,7 +413,7 @@ export class VaultWriter {
             else {
               // Do not overwrite the independent target or discard the old copy. Keep the
               // backup hidden (not a new uploadable identity), and persist its locator first.
-              this.deps.journal.preserve(entry)
+              await this.preserveBackup(entry)
               console.debug(
                 `[abele-sync] preserved previous bytes of ${entry.target} at ${entry.backup}; scanning can resume`
               )
@@ -479,6 +489,13 @@ export class VaultWriter {
       if (await this.there(path)) await this.adapter.remove(path)
     } catch (error) {
       console.debug(`[abele-sync] left ${path} behind`, error)
+    }
+  }
+  private async preserveBackup(entry: JournalEntry): Promise<void> {
+    this.deps.journal.preserve(entry)
+    if (entry.backup && this.deps.native?.archiveBackup) {
+      const retained = await this.deps.native.archiveBackup(entry.backup)
+      this.deps.journal.relocateRecovered(entry.backup, retained)
     }
   }
 }

@@ -277,7 +277,14 @@ export class ObsidianFileSystem implements FileSystem {
       ? fencedPort(
           native,
           this.runtimeFence,
-          ['rename', 'rmdirEmpty', 'replaceFenced', 'replaceFencedIdentity', 'installExclusive'],
+          [
+            'rename',
+            'rmdirEmpty',
+            'replaceFenced',
+            'replaceFencedIdentity',
+            'installExclusive',
+            'archiveBackup',
+          ],
           false
         )
       : native
@@ -321,7 +328,11 @@ export class ObsidianFileSystem implements FileSystem {
   }
   async recover(): Promise<void> {
     this.runtimeFence?.assertOwned()
-    if (!this.journal.entries().length) return
+    if (
+      !this.journal.entries().length &&
+      !(this.native?.archiveBackup && this.journal.vaultRecovered().length)
+    )
+      return
     await pathCoordinatorOf(this.app.vault).run(
       [''],
       async () => {
@@ -373,6 +384,15 @@ export class ObsidianFileSystem implements FileSystem {
     const indexed = new Set<string>()
     for (const file of this.app.vault.getFiles()) {
       if (isAdapterTemp(file.path)) continue
+      if (this.awaitingIndex.has(file.path)) {
+        const actual = await this.rawStat(file.path)
+        if (!actual || actual.type !== 'file') continue
+        if (actual.size === file.stat.size && stamp(actual.mtime) === stamp(file.stat.mtime))
+          this.awaitingIndex.delete(file.path)
+        indexed.add(caseKey(file.path))
+        yield { path: file.path, size: actual.size, mtime: stamp(actual.mtime) }
+        continue
+      }
       indexed.add(caseKey(file.path))
       yield { path: file.path, size: file.stat.size, mtime: stamp(file.stat.mtime) }
     }
@@ -384,7 +404,6 @@ export class ObsidianFileSystem implements FileSystem {
     }
     for (const path of candidates) {
       if (indexed.has(caseKey(path)) || path.startsWith(`${this.configDir}/`)) {
-        this.awaitingIndex.delete(path)
         continue
       }
       // stat alone on a case-folding disk would keep a phantom Report.md after a rename to
@@ -395,7 +414,8 @@ export class ObsidianFileSystem implements FileSystem {
         indexed.add(caseKey(info.path))
         yield info
       }
-      if (info === null || actual !== path) this.awaitingIndex.delete(path)
+      if ((info === null || actual !== path) && !this.app.vault.getFileByPath(path))
+        this.awaitingIndex.delete(path)
     }
     const configRevision = this.configRevision()
     if (this.cachedConfigRevision !== configRevision) {
@@ -667,7 +687,7 @@ export class ObsidianFileSystem implements FileSystem {
         throw new EngineError('conflict', `${to} is held by another file`)
       }
       await this.rename(from, to)
-      this.awaitingIndex.delete(from)
+      this.awaitingIndex.add(from)
       this.awaitingIndex.add(to)
       this.wrote(from, to)
       // Only a listing that says outright that the old spelling is still there sends this
@@ -678,7 +698,7 @@ export class ObsidianFileSystem implements FileSystem {
     }
     await makeParents(this.adapter, to)
     await this.rename(from, to)
-    this.awaitingIndex.delete(from)
+    this.awaitingIndex.add(from)
     this.awaitingIndex.add(to)
     this.wrote(from, to)
     await this.directories.removedChild(from)
@@ -709,7 +729,7 @@ export class ObsidianFileSystem implements FileSystem {
       if ((await this.rawStat(path)) === null) return
       throw new EngineError('io', `cannot remove ${path}`, cause)
     }
-    this.awaitingIndex.delete(path)
+    this.awaitingIndex.add(path)
     this.wrote(path)
     await this.directories.removedChild(path)
     if (!this.preserveEmptyDirectories)

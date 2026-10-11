@@ -32,6 +32,14 @@ ordinary verification. Without bounded reads, unknown local files above 50 MiB r
 read-dependent operations while retaining the original and any recovery artifacts. This
 read fallback does not cap streamed receipt or hydration; selective-download limits still apply.
 
+Native unfenced publication retains displaced inodes in a device-local recovery directory
+beside the vault, outside its indexed tree. The preserved-copy journal stores their absolute
+local locators. Exclusive hard links keep late writes through existing handles recoverable;
+publication removes the vault alias. Interrupted archival retries the deterministic locator
+and checks inode identity before unlinking an alias. These locators never travel with settings
+or sync. A recently published path continues to use disk metadata until the asynchronous
+Obsidian index agrees, so a stale row cannot become an apparent local edit or deleted-file echo.
+
 The reserved projection format is `abele.external`, schema 1, at most 16 KiB UTF-8. Its
 `.abele-ref` sidecar contains only vault/file identity, logical path, observed version, SHA-256,
 size, MIME, mtime and optional media dimensions/duration. Strict parsing, placement and local

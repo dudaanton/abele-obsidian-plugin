@@ -92,6 +92,17 @@ export class WriteJournal {
   protects(backup: string): boolean {
     return this.recovered().some((entry) => entry.backup === backup)
   }
+  vaultRecovered(): RecoveredWrite[] {
+    return this.recovered().filter(
+      (entry) => !entry.backup.startsWith('/') && !/^[A-Za-z]:[\\/]/.test(entry.backup)
+    )
+  }
+  relocateRecovered(from: string, to: string): void {
+    this.save(
+      RECOVERED_WRITES_KEY,
+      this.recovered().map((entry) => (entry.backup === from ? { ...entry, backup: to } : entry))
+    )
+  }
   preserve(entry: JournalEntry): void {
     if (!entry.backup) throw new EngineError('io', 'there is no backup to preserve')
     const entries = this.recovered()

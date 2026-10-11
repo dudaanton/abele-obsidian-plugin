@@ -3,6 +3,9 @@ import { EngineError } from '@abele/sync-core'
 import { sha256 } from '@noble/hashes/sha2'
 
 interface NodeFsPromises {
+  mkdir(path: string, options: { recursive: true }): Promise<unknown>
+  unlink(path: string): Promise<void>
+  stat(path: string): Promise<{ dev: number; ino: number }>
   rename(from: string, to: string): Promise<void>
   rmdir(path: string): Promise<void>
   readFile(path: string): Promise<Uint8Array>
@@ -21,6 +24,8 @@ interface NodeFsPromises {
   }>
 }
 export interface NativeFs {
+  /** Retain the displaced inode outside the vault, including late writes through open handles. */
+  archiveBackup?(path: string): Promise<string>
   rename(from: string, to: string): Promise<void>
   rmdirEmpty(folder: string): Promise<void>
   /** Final comparison and replacement share Obsidian's local-save queue. */
@@ -78,6 +83,42 @@ export function nativeOf(
       await rmdir(at(path))
       await reconcile(path)
     },
+  }
+  if (fsp.mkdir && fsp.stat && fsp.link && fsp.unlink) {
+    const hex = (value: string) =>
+      Array.from(sha256(new TextEncoder().encode(value)), (byte) =>
+        byte.toString(16).padStart(2, '0')
+      ).join('')
+    const root = at('').replace(/\\/g, '/').replace(/\/+$/, '')
+    const folder = root.slice(0, root.lastIndexOf('/')) + '/.abele-sync-recovery/' + hex(root)
+    native.archiveBackup = async (path) => {
+      assertEffect([path])
+      const source = at(path),
+        destination = folder + '/' + hex(source) + '.old'
+      await fsp.mkdir(folder, { recursive: true })
+      try {
+        await fsp.link(source, destination)
+      } catch (error) {
+        const code = (error as { code?: string }).code
+        if (code !== 'EEXIST' && code !== 'ENOENT') throw error
+        const retained = await fsp.stat(destination)
+        try {
+          const current = await fsp.stat(source)
+          if (current.dev !== retained.dev || current.ino !== retained.ino)
+            throw new EngineError('conflict', 'Recovery destination is occupied by another inode')
+        } catch (missing) {
+          if ((missing as { code?: string }).code !== 'ENOENT') throw missing
+        }
+      }
+      assertEffect([path])
+      try {
+        await fsp.unlink(source)
+      } catch (error) {
+        if ((error as { code?: string }).code !== 'ENOENT') throw error
+      }
+      await reconcile(path)
+      return destination
+    }
   }
   if (typeof raw.queue === 'function' && typeof fsp.open === 'function') {
     const queue = raw.queue.bind(adapter),
