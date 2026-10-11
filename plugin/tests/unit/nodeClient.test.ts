@@ -243,6 +243,30 @@ describe('node registry', () => {
     ])
       expect(() => registry.addPaired({ ...node, id: 'other', url })).toThrow()
   })
+  it('retains an explicitly selected TLS transport separately from the canonical paired endpoint', () => {
+    const registry = new NodeRegistry({
+      read: () => [],
+      write: () => {},
+      getSecret: () => '',
+      setSecret: () => {},
+      removeSecret: () => {},
+    })
+    registry.addPaired({
+      id: 'route-demo',
+      label: 'Sample route',
+      url: 'wss://sample.example.ts.net/channel',
+      transportUrl: 'wss://192.0.2.12:8443/channel',
+      expectedNodeId: 'sample-node',
+      profile: 'paired-wss-v1',
+      installationId: 'sample-installation',
+      nodeFingerprint: 'a'.repeat(64),
+      publicKey: { kty: 'EC', crv: 'P-256', x: 'a'.repeat(43), y: 'b'.repeat(43) },
+    })
+    expect(registry.list()[0]).toMatchObject({
+      url: 'wss://sample.example.ts.net/channel',
+      transportUrl: 'wss://192.0.2.12:8443/channel',
+    })
+  })
   it('uses only explicit loopback URLs', () => {
     expect(channelUrl('http://127.0.0.1:7777')).toBe('ws://127.0.0.1:7777/channel')
     for (const url of [

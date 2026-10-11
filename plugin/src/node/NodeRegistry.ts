@@ -1,5 +1,5 @@
 import { z } from 'zod'
-import { assertPairedEndpoint } from '@abele/channel-protocol'
+import { assertPairedEndpoint, assertPairedTransportEndpoint } from '@abele/channel-protocol'
 
 const LocalNodeSchema = z
   .object({
@@ -28,6 +28,18 @@ const PairedNodeSchema = z
         return false
       }
     }, 'Use a canonical Tailscale WSS endpoint'),
+    /** A selected reachable TLS route never replaces the signed canonical endpoint or pin. */
+    transportUrl: z
+      .string()
+      .refine((url) => {
+        try {
+          assertPairedTransportEndpoint(url)
+          return true
+        } catch {
+          return false
+        }
+      }, 'Use a TLS paired channel without credentials, query or fragment')
+      .optional(),
     expectedNodeId: z.string().min(1).max(128),
     profile: z.literal('paired-wss-v1'),
     installationId: z.string().min(1).max(128),

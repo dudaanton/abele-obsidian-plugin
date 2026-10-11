@@ -62,6 +62,8 @@ async function endpoint() {
         const frame = FrameCodec.decode(bytes)
         if (frame.kind === 'paired.begin') {
           deviceKey = frame.public_key
+          const inviteId = 'invite_id' in frame ? frame.invite_id : undefined
+          expect('invite' in frame).toBe(false)
           challenge = {
             kind: 'paired.challenge',
             profile: 'paired-wss-v1',
@@ -69,9 +71,9 @@ async function endpoint() {
             client_nonce: frame.client_nonce,
             node_id: invite.node_id,
             endpoint: url,
-            installation_id: frame.invite ? frame.invite.invite_id : 'sample-installation',
+            installation_id: inviteId ?? 'sample-installation',
             device_fingerprint: await fingerprint(deviceKey),
-            purpose: frame.invite ? 'claim' : 'connect',
+            purpose: inviteId ? 'claim' : 'connect',
             expires_at: Date.now() + 10000,
             node_key: identity.public_key,
             signature: '',
