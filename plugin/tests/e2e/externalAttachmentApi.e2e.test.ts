@@ -6,6 +6,7 @@ import { fixtureFetch } from './helpers/syncServer'
 import { onPhone, targets } from './helpers/target'
 import { MOBILE_MAX_FILE_BYTES } from '../../src/sync/connectionDefaults'
 import { allowFixtureAttachment } from './helpers/externalAttachmentFixture'
+import { residentMemorySampler } from './helpers/residentMemory'
 
 targets('desktop', 'phone')
 const TIMEOUT = 600000
@@ -70,11 +71,11 @@ async function roundTrip(folderToken = false, size = 26, departure = false, rais
     'v2 attachment eviction and hydration',
     `
     const id=${JSON.stringify(file.id)},path=${JSON.stringify(file.path)},size=${size},maximum=size===${MAXIMUM}
-    const memory=()=>typeof window.__abeleExternalMemoryBytes==='function'?window.__abeleExternalMemoryBytes():globalThis.process?.memoryUsage?.().rss
-    const sampling=maximum&&(typeof window.__abeleExternalMemoryBytes==='function'||typeof globalThis.process?.memoryUsage==='function')
-    let baseline=0,peakMemory=0,samples=0,memoryError=maximum&&!sampling?'Resident-memory sampler required':null,timer
-    const sample=()=>{const value=memory();if(!Number.isFinite(value)||value<=0){memoryError='Resident-memory sampler required';return}peakMemory=Math.max(peakMemory,value);samples++}
-    if(sampling){sample();baseline=peakMemory;timer=setInterval(sample,25)}
+    const memory=(${residentMemorySampler.toString()})(window)
+    const sampling=maximum&&memory!==null
+    let baseline=0,peakMemory=0,samples=0,memoryError=maximum&&!sampling?'Resident-memory sampler required':null,timer,samplingFlight=null
+    const sample=()=>samplingFlight??=Promise.resolve().then(memory).then(value=>{if(!Number.isFinite(value)||value<=0){memoryError='Resident-memory sampler required';return}peakMemory=Math.max(peakMemory,value);samples++}).catch(()=>{memoryError='Resident-memory sampler required'}).finally(()=>{samplingFlight=null})
+    if(sampling){await sample();baseline=peakMemory;timer=setInterval(()=>void sample(),25)}
     const adapter=app.vault.adapter,api=window.__abeleTest
     let probe
     const phase=stage=>{window.__abeleAttachmentStage={stage,startedAt:Date.now(),size}}
@@ -109,10 +110,10 @@ async function roundTrip(folderToken = false, size = 26, departure = false, rais
       phase('Checking hydrated attachment')
       let fingerprint;try{fingerprint=await externalHost.fingerprint(path)}finally{externalHost.close()}
       const actual=maximum?null:new Uint8Array(await adapter.readBinary(path))
-      if(sampling)sample()
+      if(sampling)await sample()
       const {peakDownloads,downloadCount,verificationCount}=probe.stats()
       return {evicted,missing,sidecar,retired:!await adapter.exists(path+'.abele-ref'),identical:fingerprint.sha===${JSON.stringify(file.sha)}&&fingerprint.size===size&&(maximum||actual.length===size&&actual.every(byte=>byte===90)),disconnectReady:!svc.rows.value.some(one=>one.id===id),baseline,peakMemory,samples,memoryError,peakDownloads,downloadCount,verificationCount,verifiedRead}
-    } finally {probe?.close();clearInterval(timer);delete window.__abeleAttachmentStage}
+    } finally {probe?.close();clearInterval(timer);await samplingFlight;delete window.__abeleAttachmentStage}
   `,
     false,
     TIMEOUT
@@ -208,12 +209,23 @@ describe('v2 external attachments on live adapters', () => {
     },
     TIMEOUT
   )
-  // Preserve the existing expected phone failure until the driver supplies resident RSS.
-  // BUG: the phone driver exposes no Obsidian resident-RSS sampler. Keep the real bound assertion.
+  // BUG: runtimes without native or injected resident RSS cannot prove this bound.
   ;(onPhone() ? it.fails : it)(
     'bounds resident-memory growth for the 200 MiB transfer',
-    async () => {
+    async (context) => {
       maximum ??= await roundTrip(false, MAXIMUM)
+      if (onPhone() && maximum.memoryError === null)
+        context.skip('The available native sampler is checked by the ordinary assertion below')
+      expect(maximum.memoryError).toBeNull()
+      expect(maximum.samples).toBeGreaterThan(2)
+      expect(maximum.peakMemory - maximum.baseline).toBeLessThanOrEqual(1024 * 1024 * 1024)
+    }
+  )
+  it.skipIf(!onPhone())(
+    'bounds resident-memory growth with the available native sampler',
+    async (context) => {
+      maximum ??= await roundTrip(false, MAXIMUM)
+      if (maximum.memoryError !== null) context.skip('BUG: resident-memory sampler is unavailable')
       expect(maximum.memoryError).toBeNull()
       expect(maximum.samples).toBeGreaterThan(2)
       expect(maximum.peakMemory - maximum.baseline).toBeLessThanOrEqual(1024 * 1024 * 1024)
