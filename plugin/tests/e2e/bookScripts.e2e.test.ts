@@ -26,6 +26,7 @@ import { buildRichEpub } from '../fixtures/books/richBook'
 import { buildPlainPdf } from '../fixtures/books/pdfFixture'
 import { shotDir } from './helpers/shots'
 import { WAIT_PRELUDE } from './helpers/wait'
+import { SCRIPT_FIXTURE, type ScriptFixtureSnapshot } from './helpers/scriptFixture'
 
 const available = isObsidianRunning() && hasTestApi()
 const DIR = 'Abele reader scripts e2e'
@@ -139,7 +140,7 @@ const run = <T>(body: string, timeout = 90_000): T =>
   )
 
 describe.skipIf(!available)('scripts on words in a book, and notes linking into it', () => {
-  let saved: { folder?: string; reader?: unknown; native?: boolean | null } = {}
+  let saved: { scripts?: ScriptFixtureSnapshot; reader?: unknown; native?: boolean | null } = {}
   let size: [number, number] = [0, 0]
   let card = ''
 
@@ -151,11 +152,12 @@ describe.skipIf(!available)('scripts on words in a book, and notes linking into 
     size = evalJson<[number, number]>(
       `require('@electron/remote').getCurrentWindow().getContentSize()`
     )
-    saved = evalJson(
-      `({ folder: window.__abeleTest.AbeleConfig.getInstance().ai?.scriptsFolder ?? '', reader: window.__abeleTest.AbeleConfig.getInstance().reader, native: app.vault.getConfig('nativeMenus') ?? null })`
+    saved = evalAsync(
+      `(async () => { ${SCRIPT_FIXTURE}; return { scripts: await saveScriptFixture(), reader: window.__abeleTest.AbeleConfig.getInstance().reader, native: app.vault.getConfig('nativeMenus') ?? null } })()`
     )
     evalRaw(
       `(async () => {
+        ${SCRIPT_FIXTURE}
         const old = app.vault.getAbstractFileByPath(${JSON.stringify(DIR)})
         if (old) await app.vault.delete(old, true)
         await app.vault.createFolder(${JSON.stringify(DIR)})
@@ -170,10 +172,13 @@ describe.skipIf(!available)('scripts on words in a book, and notes linking into 
           await app.vault.create(${JSON.stringify(SCRIPTS)} + '/echo-' + n + '.js', code)
         }
         const config = window.__abeleTest.AbeleConfig.getInstance()
-        config.ai.scriptsFolder = ${JSON.stringify(SCRIPTS)}
         config.reader = { ...config.reader, flow: 'paginated', pdfLayout: 'paginated', selectionScripts: [] }
-        await config.saveSettings()
-        await window.__abeleTest.ScriptService.getInstance().discover()
+        await enableScriptFixture(${JSON.stringify(SCRIPTS)})
+        await approveScriptFixture(${JSON.stringify(`${SCRIPTS}/card.js`)}, ${JSON.stringify(SCRIPT)})
+        for (const n of ${JSON.stringify(ECHOES)}) {
+          const code = ${JSON.stringify(ECHO('@@'))}.split('@@').join(n)
+          await approveScriptFixture(${JSON.stringify(SCRIPTS)} + '/echo-' + n + '.js', code)
+        }
         // A menu drawn by the page, not the system's: the system's cannot be read from here.
         app.vault.setConfig('nativeMenus', false)
         return 'ok'
@@ -192,19 +197,20 @@ describe.skipIf(!available)('scripts on words in a book, and notes linking into 
     }
     evalRaw(
       `(async () => {
+        ${SCRIPT_FIXTURE}
+        try {
         for (const leaf of app.workspace.getLeavesOfType('abele-book')) leaf.detach()
         for (const leaf of app.workspace.getLeavesOfType('markdown')) {
           if (leaf.view.file?.path.startsWith(${JSON.stringify(DIR)})) leaf.detach()
         }
         app.vault.setConfig('nativeMenus', ${JSON.stringify(saved.native ?? null)})
         const config = window.__abeleTest.AbeleConfig.getInstance()
-        config.ai.scriptsFolder = ${JSON.stringify(saved.folder ?? '')}
         config.reader = ${JSON.stringify(saved.reader ?? {})}
         await config.saveSettings()
         const dir = app.vault.getAbstractFileByPath(${JSON.stringify(DIR)})
         if (dir) await app.vault.delete(dir, true)
-        await window.__abeleTest.ScriptService.getInstance().discover()
         return 'ok'
+        } finally { await restoreScriptFixture(${JSON.stringify(saved.scripts ?? null)}) }
       })()`,
       60_000
     )

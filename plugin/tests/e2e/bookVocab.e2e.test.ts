@@ -19,12 +19,13 @@
  *   measured as the ratio of the two (the long chapter, where almost every word is underlined).
  */
 import { describe, it, expect, beforeAll, afterAll } from 'vitest'
-import { hasTestApi, isObsidianRunning, evalRaw, evalJson, evalLong } from './helpers/obsidianCli'
+import { hasTestApi, isObsidianRunning, evalRaw, evalLong } from './helpers/obsidianCli'
 import { evalAsync } from './helpers/githubLive'
 import { onPhone, targets } from './helpers/target'
 import { swipe, tap } from './helpers/phone'
 import { MADE_UP, VOCAB_COUNTS, buildVocabEpub } from '../fixtures/books/vocabBook'
 import { WAIT_PRELUDE } from './helpers/wait'
+import { SCRIPT_FIXTURE, type ScriptFixtureSnapshot } from './helpers/scriptFixture'
 
 targets('desktop', 'phone')
 
@@ -145,12 +146,12 @@ const runLong = async <T>(body: string, timeout: number): Promise<T> =>
   ) as T
 
 describe.skipIf(!available)('words underlined everywhere in a book', () => {
-  let saved: { reader?: unknown; native?: boolean | null; folder?: string } = {}
+  let saved: { reader?: unknown; native?: boolean | null; scripts?: ScriptFixtureSnapshot } = {}
 
   beforeAll(() => {
     const epub = Buffer.from(buildVocabEpub()).toString('base64')
-    saved = evalJson(
-      `({ reader: window.__abeleTest.AbeleConfig.getInstance().reader, native: app.vault.getConfig('nativeMenus') ?? null, folder: window.__abeleTest.AbeleConfig.getInstance().ai?.scriptsFolder ?? '' })`
+    saved = evalAsync(
+      `(async () => { ${SCRIPT_FIXTURE}; return { scripts: await saveScriptFixture(), reader: window.__abeleTest.AbeleConfig.getInstance().reader, native: app.vault.getConfig('nativeMenus') ?? null } })()`
     )
     evalRaw(
       `(async () => {
@@ -166,9 +167,9 @@ describe.skipIf(!available)('words underlined everywhere in a book', () => {
         await app.vault.createFolder(${JSON.stringify(SCRIPTS)})
         await app.vault.create(${JSON.stringify(`${SCRIPTS}/vocabulary.js`)}, ${JSON.stringify(SCRIPT)})
         await app.vault.create(${JSON.stringify(API_CARD)}, '**nams** — a house\\n')
-        config.ai.scriptsFolder = ${JSON.stringify(SCRIPTS)}
-        await config.saveSettings()
-        await window.__abeleTest.ScriptService.getInstance().discover()
+        ${SCRIPT_FIXTURE}
+        await enableScriptFixture(${JSON.stringify(SCRIPTS)})
+        await approveScriptFixture(${JSON.stringify(`${SCRIPTS}/vocabulary.js`)}, ${JSON.stringify(SCRIPT)})
         // A menu drawn by the page, not the system's: the system's cannot be read from here.
         app.vault.setConfig('nativeMenus', false)
         return 'ok'
@@ -180,18 +181,19 @@ describe.skipIf(!available)('words underlined everywhere in a book', () => {
   afterAll(() => {
     evalRaw(
       `(async () => {
+        ${SCRIPT_FIXTURE}
+        try {
         for (const leaf of app.workspace.getLeavesOfType('abele-book')) leaf.detach()
         for (const leaf of app.workspace.getLeavesOfType('markdown'))
           if (leaf.view.file?.path.startsWith(${JSON.stringify(DIR)})) leaf.detach()
         app.vault.setConfig('nativeMenus', ${JSON.stringify(saved.native ?? null)})
         const config = window.__abeleTest.AbeleConfig.getInstance()
         config.reader = ${JSON.stringify(saved.reader ?? {})}
-        config.ai.scriptsFolder = ${JSON.stringify(saved.folder ?? '')}
         await config.saveSettings()
         const dir = app.vault.getAbstractFileByPath(${JSON.stringify(DIR)})
         if (dir) await app.vault.delete(dir, true)
-        await window.__abeleTest.ScriptService.getInstance().discover()
         return 'ok'
+        } finally { await restoreScriptFixture(${JSON.stringify(saved.scripts ?? null)}) }
       })()`,
       120_000
     )
