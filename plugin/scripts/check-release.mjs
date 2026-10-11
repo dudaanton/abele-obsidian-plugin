@@ -1,4 +1,4 @@
-import { readFileSync, readdirSync } from 'node:fs'
+import { readFileSync } from 'node:fs'
 import { resolve } from 'node:path'
 import { pathToFileURL } from 'node:url'
 
@@ -25,6 +25,9 @@ if (process.argv[1] && import.meta.url === pathToFileURL(resolve(process.argv[1]
   const manifest = JSON.parse(readFileSync('../manifest.json', 'utf8'))
   const pkg = JSON.parse(readFileSync('package.json', 'utf8'))
   checkVersions(process.env.TAG ?? '', manifest, pkg)
-  checkBuild(readdirSync('build'), readFileSync('build/main.js', 'utf8'))
+  const { verifyArtifact } = await import('./build-artifact.mjs')
+  verifyArtifact(resolve('..'), resolve('build'), 'production', {
+    promotionTag: process.env.ABELE_PROMOTION_TAG,
+  })
   console.log(`Verified production release ${manifest.version}`)
 }

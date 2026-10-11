@@ -10,6 +10,7 @@ import { createRequire } from 'node:module'
 import { EVAL_START_INTRO } from './src/helpers/loadMarks'
 import { assertNoTestingModules } from './scripts/production-test-guard.mjs'
 import { testSharingBuildPlugin } from './scripts/test-sharing-build.mjs'
+import { buildArtifactPlugin } from './scripts/build-artifact.mjs'
 
 /**
  * Carry MapLibre's three ESM assets in the single plugin file. The main and worker assets
@@ -90,6 +91,7 @@ export default defineConfig(async ({ mode }) => {
     },
     plugins: [
       testSharingBuildPlugin(mode),
+      buildArtifactPlugin(path.resolve(__dirname, '..'), mode),
       vue(),
       maplibreAssetsPlugin(prod),
       {
