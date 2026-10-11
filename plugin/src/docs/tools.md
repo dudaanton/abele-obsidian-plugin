@@ -945,7 +945,9 @@ Each carries its own mode, so reading the settings and changing them are two per
 each setting decides is the `settings` section of this reference.
 # Node repositories
 
-The legacy repository-tab workflow below remains available when the chat has no node scope.
+The legacy repository-tab workflow below remains available when the chat has no `nodeScope` override.
+A configured override, including an empty list, constrains every node tool and legacy alias.
+Scope changes retire previous tab read grants; legacy reads also require exact locally approved scope.
 For persisted chat node scope and immediate disk edits, see **Node chat scope and files** below.
 
 Read-only tools require an explicit owner grant for the executing chat and node project,

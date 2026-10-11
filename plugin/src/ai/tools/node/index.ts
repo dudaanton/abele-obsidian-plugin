@@ -4,6 +4,9 @@ import type { RepositorySource, RepositoryIdentity, RepositoryTarget } from '@/r
 import { RepositoryWriteSchema } from '@abele/node-protocol'
 import { createNodeAgentTools, type NodeAgentHostFactory } from './agent'
 import { nodeAgentHost } from './owner'
+import { hasNodeScope } from '../../nodeScope'
+const scopeState = (session: ChatSession) =>
+  JSON.stringify([hasNodeScope(session), session.overrides?.value.nodeScope])
 export {
   giveObsidianChatAccess,
   setObsidianChatNodeScope,
@@ -48,7 +51,7 @@ export interface NodeRepositoryTab {
   ): void | Promise<void>
 }
 
-type Grant = { conversation: number; principals: Set<string> }
+type Grant = { conversation: number; scope: string; principals: Set<string> }
 type Pending = {
   session: ChatSession
   branchSelectionVersion: number
@@ -92,9 +95,14 @@ export class NodeRepositoryToolsHost {
     if (!grants) this.grants.set(session, (grants = new Map()))
     const key = this.key(node, project)
     const conversation = session.conversationVersion?.value ?? 0
-    if (approvedTab || grants.get(key)?.conversation !== conversation)
+    if (
+      approvedTab ||
+      grants.get(key)?.conversation !== conversation ||
+      grants.get(key)?.scope !== scopeState(session)
+    )
       grants.set(key, {
         conversation,
+        scope: scopeState(session),
         principals: new Set(
           (approvedTab ? [approvedTab] : [...this.tabs]).flatMap((t) => {
             const i = t.source.identity
@@ -156,6 +164,7 @@ export class NodeRepositoryToolsHost {
       i.provider === 'node' &&
       !!grant &&
       grant.conversation === (session.conversationVersion?.value ?? 0) &&
+      grant.scope === scopeState(session) &&
       grant.principals.has(this.principal(tab))
     )
   }
@@ -295,7 +304,7 @@ export function createNodeTools(
         // Only the executing context supplies identity; no active-tab/session fallback.
         const session = ctx?.session
         if (!session) throw new Error('An executing chat is required for a repository read grant')
-        if (session.overrides?.value.nodeScope?.length && scopeAliases[kind]) {
+        if (hasNodeScope(session) && scopeAliases[kind]) {
           const tool = remoteTools.find((tool) => tool.name === scopeAliases[kind])!
           return tool.execute(
             _id,
@@ -349,17 +358,59 @@ export function createNodeTools(
           if (signal?.aborted) throw new Error('Repository read cancelled')
           accessGuard()
         }
+        const scopedSourceGuard = async (sourceTab: NodeRepositoryTab): Promise<() => void> => {
+          const originalScope = scopeState(session)
+          if (!hasNodeScope(session))
+            return () => {
+              if (scopeState(session) !== originalScope)
+                throw new Error('Chat node scope changed during the repository read')
+            }
+          const identity = sourceTab.source.identity
+          if (identity.provider !== 'node') throw new Error('Expected a node source')
+          const remote = await factory(),
+            connection = remote.connection(identity.node, session)
+          const principal = connection.principal()
+          const checkScope = remote.ledger.guard(
+            session,
+            {
+              node_id: remote.nodeId?.(identity.node) ?? identity.node,
+              project_id: identity.project,
+              target: { kind: 'worktree', worktree_id: identity.workspace },
+            },
+            principal,
+            kind === 'propose_edit' ? 'edit' : 'read'
+          )
+          const check = () => {
+            if (
+              scopeState(session) !== originalScope ||
+              !connection.client.connected ||
+              connection.principal() !== principal
+            )
+              throw new Error('Node scope or authority changed during the repository read')
+            checkScope()
+            sourceTab.source.assertCurrent()
+          }
+          check()
+          return check
+        }
         let result: unknown, tab: NodeRepositoryTab | undefined
         if (kind === 'views') {
-          result = [...host.tabs]
-            .filter((t) => host.authorized(session, t))
-            .map((t) => {
-              const check = host.guard(session, t)
-              checks.push(check)
-              const target = t.target?.()
-              check()
-              return { source: t.source.identity, target, selection: t.selection() }
-            })
+          const entries: unknown[] = []
+          for (const t of host.tabs) {
+            if (!host.authorized(session, t)) continue
+            let scoped: () => void
+            try {
+              scoped = await scopedSourceGuard(t)
+            } catch {
+              continue
+            }
+            const check = host.guard(session, t)
+            checks.push(scoped, check)
+            const target = t.target?.()
+            guard()
+            entries.push({ source: t.source.identity, target, selection: t.selection() })
+          }
+          result = entries
         } else {
           const node = string(p, 'node'),
             project = string(p, 'project'),
@@ -374,6 +425,8 @@ export function createNodeTools(
             )
           })
           if (!tab) throw new Error('No repository source is available for these IDs')
+          checks.push(await scopedSourceGuard(tab))
+          guard()
           if (
             kind !== 'propose_edit' &&
             !host.authorized(session, tab) &&

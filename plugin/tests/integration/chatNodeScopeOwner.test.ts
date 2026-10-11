@@ -15,6 +15,8 @@ import {
 import { useVault } from '../helpers/testEnv'
 import { destroyChatsAfterEach } from '../helpers/chatTeardown'
 import { parseChat } from '@/ai/ChatLog'
+import { nodeRepositoryToolsHost } from '@/ai/tools/node'
+import type { RepositorySource } from '@/repository/source'
 import { addNodeContextToObsidianChat, askNodeContextInObsidianChat } from '@/ai/tools/node/context'
 
 vi.mock('@/node/NodeService', () => {
@@ -198,6 +200,33 @@ describe('owner node scope actions', () => {
         'edit'
       )
     ).not.toThrow()
+    session.destroy()
+  })
+  it('configured scope edits synchronously delete the legacy read grants', () => {
+    const session = new ChatSession(ChatService.getInstance())
+    const tab = {
+      source: {
+        identity: {
+          provider: 'node',
+          node: 'sample-registration',
+          project: 'other-project',
+          workspace: 'other-tree',
+          installation: 'sample-installation',
+        },
+        cacheNamespace: 'sample-source',
+        assertCurrent: () => {},
+      } as RepositorySource,
+      selection: () => null,
+      open: () => {},
+    }
+    const detach = nodeRepositoryToolsHost.attach(tab)
+    nodeRepositoryToolsHost.grant(session, 'sample-registration', 'other-project')
+    expect(nodeRepositoryToolsHost.authorized(session, tab)).toBe(true)
+    session.overrides.value.nodeScope = []
+    expect(nodeRepositoryToolsHost.authorized(session, tab)).toBe(false)
+    session.overrides.value = {}
+    expect(nodeRepositoryToolsHost.authorized(session, tab)).toBe(false)
+    detach()
     session.destroy()
   })
   it('the existing repository revoke action also revokes persisted node scope approvals', async () => {
