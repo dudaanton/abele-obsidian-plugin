@@ -33,15 +33,13 @@
       >
       <Icon
         class="abele-debug-panel__mode"
-        :class="{ 'is-active': session.mode === 'allow' }"
-        :icon="session.mode === 'allow' ? 'shield-off' : 'shield-check'"
-        :tooltip="
-          session.mode === 'allow'
-            ? 'The agent acts without asking, in this session · press to make it ask'
-            : 'The agent asks before each action · press to let it act freely in this session'
+        :class="{ 'is-active': modeKnown && session.mode === 'allow' }"
+        :icon="
+          !modeKnown ? 'circle-help' : session.mode === 'allow' ? 'shield-off' : 'shield-check'
         "
-        :disabled="!modeAvailable || locked || session.status === 'exited'"
-        :active="session.mode === 'allow'"
+        :tooltip="modeTooltip"
+        :disabled="!modeKnown || locked || session.status === 'exited'"
+        :active="modeKnown && session.mode === 'allow'"
         @click="emit('mode', session.mode === 'allow' ? 'ask' : 'allow')"
       />
     </div>
@@ -193,11 +191,22 @@ const props = withDefaults(
     session: DebugSession
     restartAvailable?: boolean
     modeAvailable?: boolean
+    modeUnavailableReason?: string
     busy?: boolean
   }>(),
-  { restartAvailable: false, modeAvailable: false, busy: false }
+  { restartAvailable: false, modeAvailable: false, modeUnavailableReason: '', busy: false }
 )
 const locked = computed(() => props.session.status === 'lost' || props.busy)
+const modeKnown = computed(
+  () => props.modeAvailable && props.session.mode !== 'unknown' && props.session.status !== 'lost'
+)
+const modeTooltip = computed(() =>
+  !modeKnown.value
+    ? `Agent mode: Unknown · ${props.modeUnavailableReason || (props.session.status === 'lost' ? 'A fresh live grant observation is required after reconnect' : 'No authoritative live agent grant is bound')}`
+    : props.session.mode === 'allow'
+      ? 'The agent acts without asking, in this session · press to make it ask'
+      : 'The agent asks before each action · press to let it act freely in this session'
+)
 
 const emit = defineEmits<{
   (e: 'command', action: string): void

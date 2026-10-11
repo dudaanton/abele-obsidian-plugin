@@ -1,9 +1,50 @@
 import { mount } from '@vue/test-utils'
 import { expect, it } from 'vitest'
-import { ref } from 'vue'
+import { ref, nextTick } from 'vue'
+import { debuggerSnapshot } from '../fixtures/debugger'
 import NodeDebugActions from '@/debugger/NodeDebugActions.vue'
 import { DebuggerService } from '@/debugger/DebuggerService'
 import { useVault } from '../helpers/testEnv'
+it.each(['expired', 'denied', 'done'] as const)(
+  'renders an external transition to %s even when disabled does not change',
+  async (status) => {
+    useVault([])
+    const presenter = {
+      reference: { registrationId: 'sample-registration', sessionId: 'sample-chat' },
+      connection: { state: ref('connected'), client: {} },
+    } as never
+    const service = DebuggerService.instance,
+      binding = service.binding(presenter)
+    binding.controller.observe({ observation: 'current', snapshot: debuggerSnapshot() })
+    const action = {
+      id: 'sample-action',
+      timestamp: 10,
+      kind: 'step-over',
+      at: '',
+      status: 'asked' as 'asked' | typeof status,
+      awaitingResult: status === 'done',
+      result: '',
+    }
+    binding.controller.actions = [action]
+    const w = mount(NodeDebugActions, { props: { presenter } })
+    try {
+      if (status === 'done') expect(w.text()).toContain('Awaiting result')
+      else expect(w.findAll('button')).toHaveLength(2)
+      action.status = status
+      action.awaitingResult = false
+      action.result = status === 'done' ? 'sample result' : ''
+      ++binding.revision.value
+      await nextTick()
+      expect(w.get('.abele-debug-action').classes()).toContain(`abele-debug-action_${status}`)
+      expect(w.findAll('button')).toHaveLength(0)
+      expect(w.text()).not.toContain('Awaiting result')
+      if (status === 'done') expect(w.text()).toContain('sample result')
+    } finally {
+      w.unmount()
+      service.destroy()
+    }
+  }
+)
 it('places action cards chronologically inside their chat-message interval', () => {
   useVault([])
   const presenter = {

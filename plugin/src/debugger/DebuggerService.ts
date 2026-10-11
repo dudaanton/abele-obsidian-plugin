@@ -4,6 +4,7 @@ import type { NodeChatPresenter } from '@/node/NodeChatPresenter'
 import { DebuggerSnapshotSchema } from '@abele/node-protocol'
 import { z } from 'zod'
 import { DebuggerController } from './DebuggerController'
+import { nodeDebuggerSupported } from '@/node/providers'
 
 /** One session's UI lifetime. The owner client never supplies agent tool authority. */
 export class DebuggerBinding {
@@ -15,6 +16,7 @@ export class DebuggerBinding {
   private disposed = false
   private refreshing?: Promise<void>
   private loadedEpoch?: number
+  private grantGeneration = 0
   constructor(
     readonly connection: NodeConnection,
     readonly conversationId: string,
@@ -47,11 +49,16 @@ export class DebuggerBinding {
   async open(sessionId: string) {
     if (this.disposed) return
     this.stopWatch()
+    this.controller.invalidate()
+    this.controller.clearGrant('Live agent grant is being loaded')
+    this.loadedEpoch = undefined
     const abort = (this.abort = new AbortController())
     try {
       const result = await this.connection.client.debugger.status(sessionId)
       if (abort.signal.aborted || this.disposed) return
       this.controller.observe(this.connection.client.debugger.current(sessionId))
+      await this.loadGrant(abort)
+      if (abort.signal.aborted || this.disposed) return
       await this.refresh()
       if (abort.signal.aborted) return
       void this.loop(
@@ -64,6 +71,42 @@ export class DebuggerBinding {
       })
     } catch (e) {
       if (!abort.signal.aborted) this.fail(e)
+    }
+  }
+  private async loadGrant(abort: AbortController) {
+    const snapshot = this.controller.snapshot
+    if (!snapshot || !this.controller.current || abort.signal.aborted) return
+    // Optional typed client extension. The current SDK has no grant reader; never guess a wire RPC.
+    const client = this.connection.client.debugger as typeof this.connection.client.debugger & {
+      liveGrant?: (sessionId: string) => Promise<unknown>
+    }
+    if (typeof client.liveGrant !== 'function') {
+      if (!this.controller.grantId)
+        this.controller.clearGrant('This node does not expose a live-grant read API')
+      return
+    }
+    const generation = ++this.grantGeneration
+    const current = () =>
+      !abort.signal.aborted &&
+      !this.disposed &&
+      generation === this.grantGeneration &&
+      this.controller.current &&
+      this.controller.snapshot?.debug_session_id === snapshot.debug_session_id &&
+      this.controller.snapshot.incarnation === snapshot.incarnation
+    try {
+      const grant = await client.liveGrant(snapshot.debug_session_id)
+      if (!current()) return
+      if (grant === null || grant === undefined)
+        this.controller.clearGrant('No live agent grant is available for this session')
+      else this.controller.bindGrant(grant)
+    } catch (error) {
+      if (!current()) return
+      console.debug('[debugger] Live grant unavailable', error)
+      this.controller.clearGrant(
+        error instanceof Error
+          ? `Live agent grant unavailable: ${error.message}`
+          : 'Live agent grant could not be verified'
+      )
     }
   }
   private async loop(
@@ -108,6 +151,8 @@ export class DebuggerBinding {
         return
       }
       if (result.reason === 'cancelled') return
+      await this.loadGrant(abort)
+      if (abort.signal.aborted) return
       await this.refresh()
       eventSeq = result.snapshot.event_seq
       incarnation = result.snapshot.incarnation
@@ -138,6 +183,7 @@ export class DebuggerBinding {
     this.controller.disconnected()
   }
   private stopWatch() {
+    ++this.grantGeneration
     this.abort?.abort()
     this.abort = undefined
     if (this.waitId && this.sessionId)
@@ -191,6 +237,8 @@ export class DebuggerService {
   }
   async sessions(presenter: NodeChatPresenter) {
     await presenter.connection.connect()
+    if (!nodeDebuggerSupported(await presenter.connection.client.describe()))
+      throw new Error('This node does not advertise debugger support')
     const result = await presenter.connection.client.request('debugger.v1.sessions', {
       conversation_id: presenter.reference.sessionId,
     })
@@ -266,7 +314,7 @@ export class DebuggerService {
     const binding = this.binding(presenter)
     return computed(() => {
       void binding.revision.value
-      return binding.controller.actions.slice()
+      return binding.controller.actions.map((action) => ({ ...action }))
     })
   }
   destroy() {

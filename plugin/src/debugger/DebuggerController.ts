@@ -35,6 +35,13 @@ export const ApprovalPageSchema = z
   })
   .strict()
 type Proposal = z.infer<typeof ProposalSchema>
+type Invocation = {
+  snapshot: DebuggerSnapshot
+  generation: number
+  frameHandles: string[]
+  frame: number
+  grantId?: string
+}
 export interface DebuggerTransport {
   rpc(method: string, params: unknown): Promise<unknown>
   command(method: string, params: unknown): Promise<unknown>
@@ -48,7 +55,7 @@ const empty = (): DebugSession => ({
   breakpoints: [],
   watches: [],
   output: '',
-  mode: 'ask',
+  mode: 'unknown',
 })
 
 /** Shared-control presentation, independent of Obsidian and provider authority.
@@ -59,10 +66,12 @@ export class DebuggerController {
   snapshot: DebuggerSnapshot | null = null
   error = ''
   grantId?: string
+  modeUnavailableReason = 'This node does not expose a live-grant read API'
   private proposals = new Map<string, Proposal>()
   private sources = new Map<string, string>()
-  private tail: Promise<unknown> = Promise.resolve()
+  private ownerTail: Promise<unknown> = Promise.resolve()
   private deciding = new Set<string>()
+  private submitted = new Set<string>()
   private historyAfter = 0
   private outputAfter = 0
   private inspections = new Map<string, { expression?: string; handle?: string }>()
@@ -77,14 +86,20 @@ export class DebuggerController {
     this.changed()
   }
   private enqueue<T>(work: () => Promise<T>): Promise<T> {
-    const result = this.tail.catch(() => {}).then(work)
-    this.tail = result
+    const result = this.ownerTail.catch(() => {}).then(work)
+    this.ownerTail = result
     return result
   }
   registerSource(sourceId: string, path: string) {
     this.sources.set(sourceId, path)
     for (const frame of this.session.frames) if (frame.file === sourceId) frame.file = path
     for (const b of this.session.breakpoints) if (b.file === sourceId) b.file = path
+    this.notify()
+  }
+  clearGrant(reason: string) {
+    this.grantId = undefined
+    this.session.mode = 'unknown'
+    this.modeUnavailableReason = reason
     this.notify()
   }
   bindGrant(raw: unknown) {
@@ -101,6 +116,7 @@ export class DebuggerController {
     )
       throw new Error('The agent grant is not live for this session')
     this.grantId = g.grant_id
+    this.modeUnavailableReason = ''
     this.session.mode = g.mode === 'allow-all' ? 'allow' : 'ask'
     this.notify()
   }
@@ -128,8 +144,11 @@ export class DebuggerController {
       s.incarnation !== this.snapshot.incarnation
     const moved = this.snapshot && (replaced || this.snapshot.stop_epoch !== s.stop_epoch)
     if (replaced) {
+      ++this.serial
+      this.markSubmittedUnknown('Target replaced; approval outcome unknown')
       this.session = empty()
       this.grantId = undefined
+      this.modeUnavailableReason = 'A live agent grant must be loaded for this target'
       this.frameHandles = []
       this.historyAfter = 0
       this.outputAfter = 0
@@ -184,31 +203,78 @@ export class DebuggerController {
     this.lost = true
     this.session.status = 'lost'
     this.expireLocal()
-    for (const a of this.actions)
-      if (a.awaitingResult && a.status === 'asked') {
-        a.status = 'expired'
-        a.awaitingResult = false
-        a.result = 'Outcome unknown; no action will be replayed'
-      }
+    this.markSubmittedUnknown('Outcome unknown; no action will be replayed')
     this.notify()
   }
   get current() {
     return !!this.snapshot && !this.lost
   }
-  private precondition() {
+  private invocation(): Invocation {
     if (!this.current || !this.snapshot) throw new Error('A fresh debugger snapshot is required')
     return {
-      debug_session_id: this.snapshot.debug_session_id,
-      incarnation: this.snapshot.incarnation,
-      expected_state_revision: this.snapshot.state_revision,
+      snapshot: this.snapshot,
+      generation: this.serial,
+      frameHandles: this.frameHandles.slice(),
+      frame: this.session.frame,
+      grantId: this.grantId,
+    }
+  }
+  private matches(invocation: Invocation) {
+    return (
+      this.current &&
+      invocation.generation === this.serial &&
+      invocation.snapshot.debug_session_id === this.snapshot?.debug_session_id &&
+      invocation.snapshot.incarnation === this.snapshot?.incarnation
+    )
+  }
+  private precondition(invocation = this.invocation()) {
+    const s = invocation.snapshot
+    return {
+      debug_session_id: s.debug_session_id,
+      incarnation: s.incarnation,
+      expected_state_revision: s.state_revision,
+    }
+  }
+  private markSubmittedUnknown(reason: string) {
+    for (const a of this.actions)
+      if (a.status === 'asked' && a.awaitingResult) {
+        a.status = 'unknown'
+        a.awaitingResult = false
+        a.result = reason
+      }
+  }
+  private applyReceipt(
+    action: DebugAction,
+    receipt: ReturnType<typeof DebuggerReceiptSchema.parse>,
+    deny: boolean
+  ) {
+    action.awaitingResult = receipt.outcome === 'pending'
+    if (receipt.outcome === 'completed') {
+      action.status = 'done'
+      action.result = undefined
+    } else if (receipt.outcome === 'pending') action.status = 'asked'
+    else if (
+      deny &&
+      receipt.outcome === 'rejected' &&
+      receipt.dispatch === 'not_dispatched' &&
+      ['denied', 'approval_denied'].includes(receipt.code ?? '')
+    )
+      action.status = 'denied'
+    else if (receipt.dispatch !== 'not_dispatched' || receipt.outcome === 'outcome_unknown') {
+      action.status = 'unknown'
+      action.result = `Execution outcome unknown · ${receipt.code ?? receipt.outcome}; no action will be replayed`
+    } else {
+      action.status = 'expired'
+      action.result = receipt.code ?? receipt.outcome
     }
   }
   private expireLocal() {
     for (const a of this.actions)
       if (a.status === 'asked' && !a.awaitingResult) a.status = 'expired'
   }
-  private async expireRemote(proposals: Proposal[]) {
+  private async expireRemote(proposals: Proposal[], invocation: Invocation) {
     for (const p of proposals) {
+      if (!this.matches(invocation)) return
       const hash = p.receipt.proposal_hash
       if (!hash) throw new Error('Missing exact proposal hash')
       const receipt = DebuggerReceiptSchema.parse(
@@ -219,6 +285,7 @@ export class DebuggerController {
           decision: 'deny',
         })
       )
+      if (!this.matches(invocation)) return
       if (
         receipt.outcome === 'pending' ||
         receipt.outcome === 'outcome_unknown' ||
@@ -229,35 +296,52 @@ export class DebuggerController {
         const action = this.actions.find((a) => this.proposals.get(a.id)?.key === p.key)
         if (action) {
           action.status = 'done'
-          action.result = 'Completed before retirement'
+          action.result = 'Agent action completed; retirement was not confirmed'
           this.notify()
         }
+        throw new Error(
+          'Debugger proposal retirement was not confirmed; a fresh observation is required'
+        )
       }
     }
   }
   /** Expire synchronously: even a click arriving before the RPC settles cannot run an old ask.
    * Retire exact node proposals before mode switches or mutations, not just their cards. */
-  private human<T>(work: () => Promise<T>): Promise<T | undefined> {
+  private human<T>(work: (invocation: Invocation) => Promise<T>): Promise<T | undefined> {
     if (!this.current) return Promise.resolve(undefined)
+    const invocation = this.invocation()
     const pending = this.actions
       .filter((a) => a.status === 'asked' && !a.awaitingResult)
       .map((a) => this.proposals.get(a.id))
       .filter((p): p is Proposal => !!p)
     this.expireLocal()
+    // Submitted approval is not a cancellable ask. Do not wait behind its RPC or claim no execution.
+    this.markSubmittedUnknown('Owner move requested; approved action retirement needs a node fence')
     this.notify()
     return this.enqueue(async () => {
-      if (!this.current) return undefined
+      if (!this.matches(invocation)) return undefined
       try {
         const fresh = await this.refreshApprovals()
         this.expireLocal()
         this.notify()
-        if (!this.current) return undefined
-        await this.expireRemote([
-          ...new Map([...pending, ...fresh].map((p) => [p.key, p])).values(),
-        ])
-        if (!this.current) return undefined
-        return await work()
+        if (!this.matches(invocation)) return undefined
+        await this.expireRemote(
+          [
+            ...new Map(
+              [...pending, ...fresh]
+                .filter(
+                  (p) =>
+                    !this.submitted.has(JSON.stringify([p.principal_key, p.receipt.operation_id]))
+                )
+                .map((p) => [p.key, p])
+            ).values(),
+          ],
+          invocation
+        )
+        if (!this.matches(invocation)) return undefined
+        return await work(invocation)
       } catch (e) {
+        if (!this.matches(invocation)) return undefined
         this.error = e instanceof Error ? e.message : 'Debugger request failed'
         this.disconnected()
         throw e
@@ -321,12 +405,13 @@ export class DebuggerController {
   }
   async refreshApprovals(): Promise<Proposal[]> {
     if (!this.current || !this.snapshot) return []
-    const generation = this.serial
+    const generation = this.serial,
+      sessionId = this.snapshot.debug_session_id
     const proposals: Proposal[] = []
     let after = ''
     do {
       const page = ApprovalPageSchema.parse(
-        await this.rpc('approvals', { debug_session_id: this.snapshot.debug_session_id, after })
+        await this.rpc('approvals', { debug_session_id: sessionId, after })
       )
       if (!this.current || generation !== this.serial) return []
       for (const p of page.proposals) {
@@ -353,11 +438,13 @@ export class DebuggerController {
       this.deciding.has(id)
     )
       return
+    const invocation = this.invocation()
     this.deciding.add(id)
     try {
-      await this.enqueue(async () => {
-        if (!this.current || a.status !== 'asked') return
+      await (async () => {
+        if (!this.matches(invocation) || a.status !== 'asked') return
         a.awaitingResult = true
+        this.submitted.add(id)
         this.notify()
         const result = DebuggerReceiptSchema.parse(
           await this.rpc('approve', {
@@ -367,19 +454,13 @@ export class DebuggerController {
             decision: allow ? 'approve' : 'deny',
           })
         )
-        // A human move can have expired this card during the network wait.
-        if (a.status !== 'asked') return
-        if (result.outcome !== 'pending') a.awaitingResult = false
-        if (!allow) a.status = 'denied'
-        else if (result.outcome === 'completed') a.status = 'done'
-        else if (result.outcome !== 'pending') {
-          a.status = 'expired'
-          a.result = result.code ?? result.outcome
-        }
+        if (!this.matches(invocation)) return
+        this.applyReceipt(a, result, !allow)
         this.observe({ observation: 'current', snapshot: result.snapshot })
         this.notify()
-      })
+      })()
     } catch (e) {
+      if (!this.matches(invocation)) return
       this.disconnected()
       throw e
     } finally {
@@ -395,8 +476,8 @@ export class DebuggerController {
       (action === 'pause' && this.session.status !== 'running')
     )
       return Promise.resolve()
-    return this.human(async () => {
-      const s = this.snapshot,
+    return this.human(async (invocation) => {
+      const s = invocation.snapshot,
         thread = s.selected_thread_id ?? s.threads.find((t) => t.status === 'stopped')?.thread_id
       const method = action.startsWith('step-')
         ? 'step'
@@ -406,7 +487,7 @@ export class DebuggerController {
             : 'detach'
           : action
       const params = {
-        ...this.precondition(),
+        ...this.precondition(invocation),
         operation_id: crypto.randomUUID(),
         ...(method === 'step'
           ? {
@@ -429,27 +510,28 @@ export class DebuggerController {
       this.notify()
       return Promise.resolve()
     }
-    return this.human(async () => {
+    return this.human(async (invocation) => {
       const generation = this.serial
       const result = await this.rpc('grant.setMode', {
-        grant_id: this.grantId,
+        grant_id: invocation.grantId,
         mode: mode === 'allow' ? 'allow-all' : 'ask',
       })
       if (!this.current || generation !== this.serial) return
       // Never change the owner policy/default: this switch belongs to one live grant.
       const grant = DebuggerGrantSchema.parse(result)
-      if (grant.grant_id !== this.grantId) throw new Error('Debugger grant identity changed')
+      if (grant.grant_id !== invocation.grantId || grant.grant_id !== this.grantId)
+        throw new Error('Debugger grant identity changed')
       this.bindGrant(grant)
     })
   }
   toggleBreakpoint(sourceId: string, line: number) {
-    return this.human(async () => {
-      const s = this.snapshot,
+    return this.human(async (invocation) => {
+      const s = invocation.snapshot,
         existing = s.breakpoints.find((b) => b.source_id === sourceId && b.line === line)
       const generation = this.serial
       const result = DebuggerReceiptSchema.parse(
         await this.transport.command('breakpoints.patch', {
-          ...this.precondition(),
+          ...this.precondition(invocation),
           operation_id: crypto.randomUUID(),
           expected_breakpoint_revision: s.breakpoint_revision,
           upsert: existing
@@ -510,8 +592,11 @@ export class DebuggerController {
           entry.outcome === 'outcome_unknown' ||
           entry.outcome === 'failed'
         ) {
-          a.status = 'expired'
-          a.result = typeof data?.code === 'string' ? data.code : entry.outcome.replaceAll('_', ' ')
+          a.status =
+            entry.outcome === 'outcome_unknown' || a.status === 'unknown' ? 'unknown' : 'expired'
+          const detail =
+            typeof data?.code === 'string' ? data.code : entry.outcome.replaceAll('_', ' ')
+          a.result = a.status === 'unknown' ? `Execution outcome unknown · ${detail}` : detail
         }
         if (entry.outcome === 'completed' && entry.payload_status === 'expired')
           a.result = 'Result is no longer retained'
@@ -571,13 +656,13 @@ export class DebuggerController {
     this.notify()
   }
   inspect(handle: string) {
-    return this.human(async () => {
+    return this.human(async (invocation) => {
       const operation_id = crypto.randomUUID(),
         generation = this.serial
       this.inspections.set(operation_id, { handle })
       const result = DebuggerReceiptSchema.parse(
         await this.transport.command('variables', {
-          ...this.precondition(),
+          ...this.precondition(invocation),
           operation_id,
           handle,
           start: 0,
@@ -628,8 +713,8 @@ export class DebuggerController {
     this.notify()
   }
   selectFrame(index: number) {
-    return this.human(async () => {
-      const frame_handle = this.frameHandles[index]
+    return this.human(async (invocation) => {
+      const frame_handle = invocation.frameHandles[index]
       if (!frame_handle) return
       const generation = this.serial,
         epoch = this.snapshot.stop_epoch
@@ -642,7 +727,7 @@ export class DebuggerController {
             .loose(),
         })
         .loose()
-        .parse(await this.rpc('scopes', { ...this.precondition(), frame_handle }))
+        .parse(await this.rpc('scopes', { ...this.precondition(invocation), frame_handle }))
       if (!this.current || generation !== this.serial || this.snapshot.stop_epoch !== epoch) return
       this.session.frame = index
       // No implicit getters, formatters or recursion. Scope handles need explicit inspection.
@@ -655,10 +740,10 @@ export class DebuggerController {
     })
   }
   watch(expression: string) {
-    return this.human(async () => {
+    return this.human(async (invocation) => {
       if (!this.session.watches.some((w) => w.expression === expression))
         this.session.watches.push({ expression })
-      const frame_handle = this.frameHandles[this.session.frame]
+      const frame_handle = invocation.frameHandles[invocation.frame]
       if (!frame_handle) {
         this.error = 'Select a current frame to evaluate this expression'
         this.notify()
@@ -669,7 +754,7 @@ export class DebuggerController {
       this.inspections.set(operation_id, { expression })
       const result = DebuggerReceiptSchema.parse(
         await this.transport.command('evaluate', {
-          ...this.precondition(),
+          ...this.precondition(invocation),
           operation_id,
           frame_handle,
           expression,

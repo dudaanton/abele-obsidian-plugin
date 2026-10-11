@@ -52,7 +52,7 @@ export interface DebugSession {
   watches: DebugWatch[]
   output: string
   /** ask: the agent asks before each action; allow: it acts by itself, in this session only. */
-  mode: 'ask' | 'allow'
+  mode: 'ask' | 'allow' | 'unknown'
 }
 
 /** An action the chat agent asks to take, or took, in the session. */
@@ -68,7 +68,7 @@ export interface DebugAction {
   exact?: string
   /** Where the program stood when it was asked ("total.ts:6"). */
   at: string
-  status: 'asked' | 'done' | 'denied' | 'expired'
+  status: 'asked' | 'done' | 'denied' | 'expired' | 'unknown'
   /** Already approved/dispatched: awaiting evidence, not another approvable request. */
   awaitingResult?: boolean
   /** What it gave back. */

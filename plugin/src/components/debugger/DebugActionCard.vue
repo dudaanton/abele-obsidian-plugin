@@ -80,7 +80,10 @@ const icons: Record<string, string> = {
   stop: 'square',
 }
 const stateIcon = computed(
-  () => ({ done: 'check', denied: 'x', expired: 'clock-alert', asked: '' })[props.action.status]
+  () =>
+    ({ done: 'check', denied: 'x', expired: 'clock-alert', unknown: 'circle-help', asked: '' })[
+      props.action.status
+    ]
 )
 const stateEl = ref<HTMLElement>()
 const tip = () =>
@@ -90,12 +93,13 @@ const tip = () =>
     {
       done: 'Done',
       denied: 'You denied it',
+      unknown: props.action.result ?? 'Execution outcome unknown; do not replay',
       expired: props.action.result ?? 'Not done: the program moved on before it was allowed',
       asked: '',
     }[props.action.status]
   )
 onMounted(tip)
-watch(() => props.action.status, tip, { flush: 'post' })
+watch(() => [props.action.status, props.action.result], tip, { flush: 'post' })
 </script>
 
 <style lang="scss">

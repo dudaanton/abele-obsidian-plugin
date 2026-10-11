@@ -11,7 +11,7 @@ import { promptAnswerStates, type PromptAnswerState } from './promptAnswers'
 import { FrameCodec } from '@abele/channel-protocol'
 import { NodeFilesModel, nodeResourceTarget, type CodeLineRange } from './NodeFilesModel'
 import { PromptSchema, validateParams } from '@abele/node-protocol'
-import { nodeProviders } from './providers'
+import { nodeProviders, nodeDebuggerSupported } from './providers'
 
 const NORMALIZED_ARTIFACT_EVENTS = new Set([
   'claude.message.final',
@@ -53,6 +53,14 @@ export class NodeChatPresenter implements ChatPresentationSession {
   readonly label = computed(() => this.reference.title)
   readonly provider = computed(() => this.projection.value.session?.provider ?? 'fake')
   readonly providerReports = ref<ReturnType<typeof nodeProviders>>([])
+  readonly nodeDescription = ref<unknown>()
+  readonly debuggerAvailable = computed(
+    () =>
+      this.connection.state.value === 'connected' &&
+      nodeDebuggerSupported(this.nodeDescription.value)
+  )
+  private descriptionGeneration = 0
+  private descriptionRequested = false
   readonly providerReport = computed(() =>
     this.providerReports.value.find((p) => p.provider === this.provider.value)
   )
@@ -102,6 +110,10 @@ export class NodeChatPresenter implements ChatPresentationSession {
         void this.refresh().catch((e: unknown) => this.report(e))
     })
     this.stopWatch = watch(connection.state, (state) => {
+      ++this.descriptionGeneration
+      this.nodeDescription.value = undefined
+      if (state === 'connected' && this.descriptionRequested)
+        void this.describe().catch((e: unknown) => this.report(e))
       if (state === 'connected')
         void connection.client
           .subscribe(reference.sessionId)
@@ -121,11 +133,25 @@ export class NodeChatPresenter implements ChatPresentationSession {
       await this.connection.connect()
       if (this.destroyed) return
       await this.connection.client.subscribe(this.reference.sessionId)
-      this.providerReports.value = nodeProviders(await this.connection.client.describe())
+      await this.describe()
       await this.refresh()
     } catch (error) {
       this.report(error)
     }
+  }
+
+  private async describe(): Promise<void> {
+    this.descriptionRequested = true
+    const generation = ++this.descriptionGeneration
+    const description = await this.connection.client.describe()
+    if (
+      this.destroyed ||
+      generation !== this.descriptionGeneration ||
+      this.connection.state.value !== 'connected'
+    )
+      return
+    this.nodeDescription.value = description
+    this.providerReports.value = nodeProviders(description)
   }
 
   refresh(): Promise<void> {
@@ -452,6 +478,8 @@ export class NodeChatPresenter implements ChatPresentationSession {
   }
   destroy(): void {
     this.destroyed = true
+    ++this.descriptionGeneration
+    this.nodeDescription.value = undefined
     this.stopEvent()
     this.stopWatch()
   }

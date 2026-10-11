@@ -1,6 +1,7 @@
 # Node debugger
 
-Debug opens a right-sidebar view for a node chat's debugger sessions. The program runs
+Debug is offered only when the node advertises `debugger_v1` support. It opens a
+right-sidebar view for that node chat's debugger sessions. The program runs
 on the node, not inside Obsidian. The view has one set of controls, with Variables,
 Call stack, Breakpoints, Watch and Output underneath. Agent proposals and their
 results appear as action cards between chat messages.
@@ -14,8 +15,13 @@ launch, attach, restart and source-export methods are not treated as available.
 Restart remains disabled. An empty session list does not start a process.
 
 The session-mode switch changes a bound live agent grant, never the node's default
-policy. It has exactly Ask and Allow all; without an authoritative live grant
-binding the switch is disabled. No model receives the human owner's RPC client.
+policy. Its permissions are exactly Ask and Allow all. Before authoritative live
+grant binding, or while disconnected, it displays Unknown and explains why it is
+disabled. On opening a session, a typed client's optional `liveGrant(sessionId)`
+reader is used if exposed; the current SDK/node have no such read API, so no grant
+RPC is guessed. Grants are schema-validated and checked against session, incarnation,
+target, conversation and expiry before showing a mode. No model receives the human
+owner's RPC client.
 
 ## Shared controls
 
@@ -27,9 +33,20 @@ is not labelled paused.
 
 An Ask card exposes the expression or value change and expandable exact normalized
 arguments. Allow supplies the node's exact proposal hash, principal key and operation
-ID. A pending or uncertain receipt is never presented as a completed action.
-A human move expires pending cards and retires exact outstanding proposals before
-sending a mutation or switching mode. An expired card cannot dispatch an approval.
+ID. A pending or uncertain receipt is never presented as a completed action. Deny is
+successful only with confirmed no-execution denial evidence; a completed action
+remains completed, pending remains awaiting its result, and uncertainty stays Unknown.
+Cards update as new receipts/history arrive.
+
+Each control retains its invocation's session, incarnation and execution precondition;
+replacement abandons queued work rather than retargeting it. Owner moves use a lane
+independent of approval RPCs. Unsubmitted exact asks are retired first and expired
+cards cannot approve. Already submitted approvals are not falsely called cancelled.
+The current node cannot invalidate an approved-but-not-dispatched action across owner
+channels: deny may join its original in-flight operation. Full cross-window retirement
+requires a node admission/physical-dispatch fence; the UI does not claim that guarantee.
+An already completed retirement race aborts the stale owner intent and requires fresh
+observation, rather than presenting execution as successful retirement.
 
 Disconnect retains the last observation and time, fades values, disables mutations
 and expires pending asks. Reconnect requires a fresh snapshot; it does not replay

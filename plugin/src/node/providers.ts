@@ -13,6 +13,17 @@ const Provider = z.object({
     .optional(),
   capabilities: z.record(z.string(), Capability).default({}),
 })
+const DebuggerDescription = z.object({
+  capabilities: z.object({
+    provider: z.literal('node').optional(),
+    capabilities: z.object({ debugger_v1: Capability.optional() }),
+  }),
+})
+/** Debugger support is a node/channel capability, not an individual model provider's feature. */
+export function nodeDebuggerSupported(description: unknown): boolean {
+  const result = DebuggerDescription.safeParse(description)
+  return result.success && result.data.capabilities.capabilities.debugger_v1?.status === 'supported'
+}
 export type NodeProvider = z.infer<typeof Provider>
 export type NodeProviderName = NodeProvider['provider']
 export const providerLabel = (name: string): string =>

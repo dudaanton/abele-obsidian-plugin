@@ -264,14 +264,15 @@ const openMenu = (event: MouseEvent | KeyboardEvent) => {
       .setIcon('terminal')
       .setDisabled(true)
   )
-  menu.addItem((i) =>
-    i
-      .setTitle('Debug')
-      .setIcon('bug-play')
-      .onClick(() => {
-        void openNodeDebugger(props.presenter)
-      })
-  )
+  if (props.presenter.debuggerAvailable?.value === true)
+    menu.addItem((i) =>
+      i
+        .setTitle('Debug')
+        .setIcon('bug-play')
+        .onClick(() => {
+          void openNodeDebugger(props.presenter)
+        })
+    )
   menu.addItem((i) =>
     i.setTitle('Projects and workspaces').setIcon('git-branch').onClick(workspaces)
   )

@@ -89,6 +89,48 @@ it.each([false, true])(
   }
 )
 
+it.each([false, true, undefined])(
+  'offers Debug only with advertised availability (%s)',
+  async (available) => {
+    useVault([])
+    const presenter = {
+      id: 'sample-gate',
+      label: ref('Sample session'),
+      messages: ref([]),
+      projection: ref({
+        messages: [],
+        prompts: [],
+        artifacts: [],
+        unknown: [],
+        state: 'idle',
+        activeRuns: [],
+      }),
+      state: ref('idle'),
+      queued: ref([]),
+      rejected: ref([]),
+      error: ref(''),
+      draft: ref({ text: '', attachments: [] }),
+      connection: { state: ref('connected'), error: ref('') },
+      debuggerAvailable: ref(available),
+      send: vi.fn(),
+      openResource: vi.fn(),
+    }
+    const shown = vi.spyOn(Menu.prototype, 'showAtPosition')
+    const w = mount(NodeChatView, {
+      props: { presenter: presenter as never },
+      global: { stubs: { AiChatInput: true } },
+    })
+    try {
+      await w.get('[aria-label="Node session menu"]').trigger('click')
+      expect((shown.mock.contexts.at(-1) as Menu).items.some((i) => i.title === 'Debug')).toBe(
+        available === true
+      )
+    } finally {
+      w.unmount()
+      shown.mockRestore()
+    }
+  }
+)
 it('uses the shared composer and renderer, labels offline queue and never offers local history controls', async () => {
   useVault([])
   const send = vi.fn()

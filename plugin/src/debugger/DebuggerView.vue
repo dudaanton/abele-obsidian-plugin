@@ -9,6 +9,7 @@
       <DebugPanel
         :session="session!"
         :mode-available="!!binding.controller.grantId"
+        :mode-unavailable-reason="binding.controller.modeUnavailableReason"
         :busy="busy"
         @command="run(() => binding!.controller.command($event))"
         @mode="run(() => binding!.controller.setMode($event))"

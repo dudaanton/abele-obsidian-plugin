@@ -97,7 +97,7 @@ function fixture() {
   const command = vi.fn(async () => receipt())
   const model = new DebuggerController({ rpc, command }, () => {})
   model.observe({ observation: 'current', snapshot: snapshot() })
-  model.addProposal({
+  const proposal = {
     key: 'sample-key',
     principal_key: 'sample-principal',
     actor: { kind: 'agent', principal_id: 'sample-agent', run_id: 'sample-run' },
@@ -111,10 +111,90 @@ function fixture() {
       kind: 'over',
     },
     receipt: receipt('pending'),
-  })
-  return { model, rpc, command }
+  }
+  model.addProposal(proposal)
+  return { model, rpc, command, proposal }
 }
 describe('debugger shared control', () => {
+  it.each(['session', 'incarnation', 'round-trip'])(
+    'drops an invocation after %s replacement during retirement',
+    async (replacement) => {
+      const { model, rpc, command } = fixture()
+      let resolve!: (v: unknown) => void
+      rpc.mockImplementationOnce(
+        () =>
+          new Promise((r) => {
+            resolve = r
+          }) as never
+      )
+      const pending = model.command('stop')
+      await vi.waitFor(() => expect(resolve).toBeTypeOf('function'))
+      model.observe({
+        observation: 'current',
+        snapshot: snapshot(
+          replacement === 'incarnation'
+            ? { incarnation: 'sample-new-incarnation' }
+            : { debug_session_id: 'sample-other-debug' }
+        ),
+      })
+      if (replacement === 'round-trip')
+        model.observe({ observation: 'current', snapshot: snapshot() })
+      resolve({ proposals: [], truncated: false, next: null })
+      await pending
+      expect(command).not.toHaveBeenCalled()
+      expect(rpc).not.toHaveBeenCalledWith('debugger.v1.approve', expect.anything())
+    }
+  )
+  it('submits an owner move while an earlier approval RPC is still awaiting its result', async () => {
+    const { model, rpc, command } = fixture()
+    let resolve!: (v: unknown) => void
+    rpc.mockImplementationOnce(
+      () =>
+        new Promise((r) => {
+          resolve = r
+        }) as never
+    )
+    const approval = model.decide(model.actions[0].id, true)
+    await vi.waitFor(() => expect(resolve).toBeTypeOf('function'))
+    const move = model.command('stop')
+    try {
+      await vi.waitFor(
+        () =>
+          expect(command).toHaveBeenCalledWith(
+            'terminate',
+            expect.objectContaining({ debug_session_id: 'sample-debug' })
+          ),
+        { timeout: 150 }
+      )
+    } finally {
+      resolve(receipt())
+      await approval
+      await move
+    }
+  })
+  it('does not join an in-flight approval through a raced proposal-page denial', async () => {
+    const { model, rpc, command, proposal } = fixture()
+    let resolve!: (v: unknown) => void
+    const submitted = new Promise((r) => {
+      resolve = r
+    })
+    rpc.mockImplementation(async (method) => {
+      if (method === 'debugger.v1.approve') return submitted as never
+      if (method === 'debugger.v1.approvals')
+        return { proposals: [proposal], truncated: false, next: null } as never
+      return [] as never
+    })
+    const approval = model.decide(model.actions[0].id, true)
+    const move = model.command('stop')
+    try {
+      await vi.waitFor(() => expect(command).toHaveBeenCalled(), { timeout: 150 })
+    } finally {
+      resolve(receipt())
+      await approval
+      await move
+    }
+    expect(rpc.mock.calls.filter((c) => c[0] === 'debugger.v1.approve')).toHaveLength(1)
+  })
   it('expires every pending request before a human move and never approves it later', async () => {
     const { model, rpc, command } = fixture()
     await model.command('step-over')
@@ -131,6 +211,39 @@ describe('debugger shared control', () => {
     await model.decide(model.actions[0].id, true)
     expect(rpc.mock.calls.length).toBe(count)
   })
+  it('does not call an already completed action successfully retired or dispatch the stale owner intent', async () => {
+    const { model, rpc, command } = fixture()
+    rpc.mockResolvedValueOnce({ proposals: [], truncated: false, next: null } as never)
+    rpc.mockResolvedValueOnce(receipt() as never)
+    await expect(model.command('stop')).rejects.toThrow('retirement')
+    expect(command).not.toHaveBeenCalled()
+    expect(model.actions[0].status).toBe('done')
+    expect(model.actions[0].result).toContain('not confirmed')
+  })
+  it.fails(
+    'BUG: an owner move cannot bypass a cross-window approved intent without a node retirement fence',
+    async () => {
+      const { model, rpc, command } = fixture()
+      let resolve!: (v: unknown) => void
+      rpc.mockImplementationOnce(
+        async () => ({ proposals: [], truncated: false, next: null }) as never
+      )
+      rpc.mockImplementationOnce(
+        () =>
+          new Promise((r) => {
+            resolve = r
+          }) as never
+      )
+      const move = model.command('stop')
+      await vi.waitFor(() => expect(resolve).toBeTypeOf('function'))
+      try {
+        await vi.waitFor(() => expect(command).toHaveBeenCalled(), { timeout: 150 })
+      } finally {
+        resolve(receipt())
+        await move.catch(() => {})
+      }
+    }
+  )
   it('sends no human effect unless every exact proposal retirement is terminal', async () => {
     const { model, rpc, command } = fixture()
     rpc.mockResolvedValueOnce({ proposals: [], truncated: false, next: null } as never)
@@ -167,6 +280,21 @@ describe('debugger shared control', () => {
     expect(command).not.toHaveBeenCalled()
     expect(model.session.status).toBe('lost')
   })
+  it.each([
+    ['completed', 'dispatched', 'done', false],
+    ['pending', 'not_dispatched', 'asked', true],
+    ['outcome_unknown', 'possible', 'unknown', false],
+    ['rejected', 'dispatched', 'unknown', false],
+  ])(
+    'Deny displays the actual %s/%s receipt, not denial success',
+    async (outcome, dispatch, status, awaiting) => {
+      const { model, rpc } = fixture()
+      rpc.mockResolvedValueOnce(receipt(outcome as string, { dispatch }) as never)
+      await model.decide(model.actions[0].id, false)
+      expect(model.actions[0].status).toBe(status)
+      expect(!!model.actions[0].awaitingResult).toBe(awaiting)
+    }
+  )
   it('uses the exact proposal hash, and only explicit deny becomes denied', async () => {
     const { model, rpc } = fixture()
     await model.decide(model.actions[0].id, false)
@@ -216,6 +344,18 @@ describe('debugger shared control', () => {
     await pending
     expect(model.session.frames[0].name).not.toBe('staleFrame')
   })
+  it('does not claim Ask without a live grant, and clears authority on replacement', () => {
+    const { model } = fixture()
+    expect(model.session.mode).toBe('unknown')
+    model.bindGrant(grant({ mode: 'ask' }))
+    expect(model.session.mode).toBe('ask')
+    model.observe({
+      observation: 'current',
+      snapshot: snapshot({ incarnation: 'sample-new-incarnation' }),
+    })
+    expect(model.session.mode).toBe('unknown')
+    expect(model.grantId).toBeUndefined()
+  })
   it('retires pending proposals before switching a live grant to allow-all', async () => {
     const { model, rpc } = fixture()
     model.grantId = 'sample-grant'
@@ -235,7 +375,7 @@ describe('debugger shared control', () => {
   })
   it('rejects a mode confirmation for a different grant', async () => {
     const { model, rpc } = fixture()
-    model.grantId = 'sample-grant'
+    model.bindGrant(grant({ mode: 'ask' }))
     rpc.mockResolvedValueOnce({ proposals: [], truncated: false, next: null } as never)
     rpc.mockResolvedValueOnce(
       receipt('rejected', { dispatch: 'not_dispatched', code: 'denied' }) as never
@@ -256,6 +396,38 @@ describe('debugger shared control', () => {
       expect.objectContaining({ debug_session_id: 'sample-debug' })
     )
   })
+  it.each(['outcome_unknown', 'rejected', 'failed'])(
+    'does not turn an uncertain decision into non-execution from %s history alone',
+    async (outcome) => {
+      const { model, rpc } = fixture()
+      rpc.mockResolvedValueOnce(receipt('outcome_unknown', { dispatch: 'possible' }) as never)
+      await model.decide(model.actions[0].id, false)
+      rpc.mockResolvedValueOnce({
+        entries: [
+          {
+            actor: { kind: 'agent', principal_id: 'sample-agent', run_id: 'sample-run' },
+            operation_id: 'sample-operation',
+            operation: 'step',
+            outcome,
+            debug_session_id: 'sample-debug',
+            history_seq: 1,
+            event_seq: 8,
+            stop: null,
+            observed_at: '2025-01-01T00:00:00.000Z',
+            incarnation: 'sample-incarnation',
+            stop_epoch: 3,
+            state_revision: 4,
+            target_id: 'sample-target',
+            build_identity: 'matched',
+            payload_status: 'absent',
+          },
+        ],
+        truncated_before: 0,
+      } as never)
+      await model.refreshHistory()
+      expect(model.actions[0].status).toBe('unknown')
+    }
+  )
   it('labels an evicted action result rather than presenting an empty success', async () => {
     const { model, rpc } = fixture()
     rpc.mockResolvedValueOnce({

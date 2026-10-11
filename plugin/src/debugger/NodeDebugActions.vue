@@ -22,11 +22,15 @@ const props = withDefaults(
 const binding = DebuggerService.instance.binding(props.presenter)
 const actions = computed(() => {
   binding.revision.value
-  return binding.controller.actions
-    .filter(
-      (a) => (a.timestamp ?? Infinity) >= props.after && (a.timestamp ?? Infinity) < props.before
-    )
-    .sort((a, b) => (a.timestamp ?? 0) - (b.timestamp ?? 0))
+  return (
+    binding.controller.actions
+      .filter(
+        (a) => (a.timestamp ?? Infinity) >= props.after && (a.timestamp ?? Infinity) < props.before
+      )
+      .sort((a, b) => (a.timestamp ?? 0) - (b.timestamp ?? 0))
+      // The protocol controller is plain data; fresh card props carry each revision into Vue.
+      .map((action) => ({ ...action }))
+  )
 })
 const current = computed(() => {
   binding.revision.value
