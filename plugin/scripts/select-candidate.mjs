@@ -1,7 +1,7 @@
 import { execFileSync } from 'node:child_process'
-import { appendFileSync, mkdtempSync, readFileSync, rmSync } from 'node:fs'
+import { appendFileSync, mkdtempSync, readFileSync, realpathSync, rmSync } from 'node:fs'
 import { tmpdir } from 'node:os'
-import { resolve, join } from 'node:path'
+import { join } from 'node:path'
 import { pathToFileURL } from 'node:url'
 
 /** A green branch name is not evidence. Only this recipe, all of its completed gates, the
@@ -37,7 +37,7 @@ export async function selectCandidate(revision, api) {
   return null
 }
 
-if (process.argv[1] && import.meta.url === pathToFileURL(resolve(process.argv[1])).href) {
+if (process.argv[1] && import.meta.url === pathToFileURL(realpathSync(process.argv[1])).href) {
   const repo = process.env.REPO
   if (!/^[\w.-]+\/[\w.-]+$/.test(repo ?? '')) throw new Error('Expected a repository')
   const gh = (args) =>

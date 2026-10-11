@@ -6,6 +6,7 @@
 import { build } from 'vite'
 import path from 'node:path'
 import { fileURLToPath } from 'node:url'
+import { realpathSync } from 'node:fs'
 import { verifyArtifact } from './build-artifact.mjs'
 export { packageOf, runtimeElements } from './build-report.mjs'
 
@@ -26,7 +27,7 @@ export async function measureBundle(artifact) {
   )
 }
 
-if (process.argv[1] && fileURLToPath(import.meta.url) === path.resolve(process.argv[1])) {
+if (process.argv[1] && fileURLToPath(import.meta.url) === realpathSync(process.argv[1])) {
   const at = process.argv.indexOf('--artifact')
   if (at !== -1 && (!process.argv[at + 1] || process.argv[at + 1].startsWith('--')))
     throw new Error('--artifact requires a directory')

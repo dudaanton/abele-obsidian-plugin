@@ -1,4 +1,4 @@
-import { readFileSync, readdirSync, writeFileSync } from 'node:fs'
+import { readFileSync, readdirSync, realpathSync, writeFileSync } from 'node:fs'
 import { dirname, resolve } from 'node:path'
 import { fileURLToPath } from 'node:url'
 import {
@@ -9,7 +9,7 @@ import {
   atomicJson,
 } from './build-inputs.mjs'
 import { runtimeElements, reportBundle } from './build-report.mjs'
-import { checkBuild } from './check-release.mjs'
+import { checkBuild } from './release-checks.mjs'
 import { assertNoTestingModules } from './production-test-guard.mjs'
 import { gitAt } from './changelog-git.mjs'
 
@@ -128,7 +128,7 @@ export function buildArtifactPlugin(root, mode) {
   }
 }
 
-if (process.argv[1] && fileURLToPath(import.meta.url) === resolve(process.argv[1])) {
+if (process.argv[1] && fileURLToPath(import.meta.url) === realpathSync(process.argv[1])) {
   const root = resolve(dirname(fileURLToPath(import.meta.url)), '../..')
   const dir = resolve(process.argv[2] ?? 'build')
   verifyArtifact(root, dir, process.argv[3] ?? 'production', {

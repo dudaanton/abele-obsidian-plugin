@@ -31,7 +31,8 @@ export function sourceIdentity(root) {
     }
     const stat = lstatSync(file)
     hash.update(`${stat.mode & 0o111}\0`)
-    hash.update(sha256(stat.isSymbolicLink() ? readlinkSync(file) : readFileSync(file)))
+    if (stat.isSymbolicLink()) hash.update(`${readlinkSync(file)}\0`)
+    hash.update(sha256(readFileSync(file)))
     hash.update('\0')
   }
   return hash.digest('hex')

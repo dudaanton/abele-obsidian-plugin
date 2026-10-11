@@ -1,6 +1,14 @@
 // @vitest-environment node
 import { afterEach, describe, expect, it } from 'vitest'
-import { mkdtempSync, mkdirSync, writeFileSync, rmSync, readFileSync, chmodSync } from 'node:fs'
+import {
+  mkdtempSync,
+  mkdirSync,
+  writeFileSync,
+  rmSync,
+  readFileSync,
+  chmodSync,
+  symlinkSync,
+} from 'node:fs'
 import { tmpdir } from 'node:os'
 import { join } from 'node:path'
 import { execFileSync } from 'node:child_process'
@@ -80,6 +88,15 @@ describe('matching type evidence', () => {
       run()
     }
   })
+  it('invalidates source links when their resolved bytes change', () => {
+    const root = fixture()
+    const target = join(root, 'plugin/node_modules/sample-types.d.ts')
+    writeFileSync(target, 'export const sample: 1')
+    symlinkSync('../node_modules/sample-types.d.ts', join(root, 'plugin/src/sample.ts'))
+    recordTypes(root, inputIdentity(root))
+    writeFileSync(target, 'export const sample: 2')
+    expect(() => requireTypes(root)).toThrow(/matching/)
+  })
   it('includes new source files and deletions, not just committed tree hashes', () => {
     const root = fixture()
     recordTypes(root, inputIdentity(root))
@@ -127,6 +144,7 @@ describe('exact emitted artifact evidence', () => {
         'build-inputs.mjs',
         'build-report.mjs',
         'check-release.mjs',
+        'release-checks.mjs',
         'changelog-git.mjs',
         'production-test-guard.mjs',
       ])
@@ -171,6 +189,36 @@ describe('exact emitted artifact evidence', () => {
     rmSync(join(dir, 'chunk.js'))
     execFileSync('git', ['-C', root, 'tag', '1.0.0'])
     expect(() => verifyArtifact(root, dir, 'production')).toThrow(/provenance/)
+  })
+  it('runs the release CLI to completion, including artifact checks', () => {
+    const root = fixture()
+    const scripts = join(root, 'plugin/scripts')
+    mkdirSync(scripts)
+    for (const name of [
+      'build-artifact.mjs',
+      'build-inputs.mjs',
+      'build-report.mjs',
+      'check-release.mjs',
+      'release-checks.mjs',
+      'changelog-git.mjs',
+      'production-test-guard.mjs',
+    ])
+      writeFileSync(
+        join(scripts, name),
+        readFileSync(new URL(`../../scripts/${name}`, import.meta.url))
+      )
+    const dir = artifact(root)
+    const run = (tag = '1.0.0') =>
+      execFileSync(process.execPath, [join(scripts, 'check-release.mjs')], {
+        cwd: join(root, 'plugin'),
+        env: { ...process.env, TAG: tag },
+        encoding: 'utf8',
+        stdio: 'pipe',
+      })
+    expect(run()).toContain('Verified production release 1.0.0')
+    expect(() => run('1.0.1')).toThrow()
+    writeFileSync(join(dir, 'main.js'), 'corrupt')
+    expect(() => run()).toThrow()
   })
   it('promotes only a newly attached matching lightweight tag on the exact pending bump', () => {
     const root = fixture()
