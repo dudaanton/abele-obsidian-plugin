@@ -346,6 +346,19 @@ describe('common external representation and durable remote projection work', ()
     expect(upload).not.toHaveBeenCalled()
     expect(await s.fake.vault.adapter.exists(target)).toBe(false)
   })
+  it('rejects projection publication through both new and reopened streaming stages', async () => {
+    const s = await setup(true),
+      target = 'Media/sample-new.png'
+    const fs = s.runtime.fileSystem()
+    const stage = await fs.beginAtomicWrite!(target, 1000, null)
+    await stage.append(0, s.projection)
+    await stage.seal({ size: s.projection.length, sha: await sha256(s.projection) })
+    await expect(stage.commit()).rejects.toThrow('projection')
+    const reopened = await fs.reopenStage!(stage.id)
+    await expect(reopened.commit()).rejects.toThrow('projection')
+    expect(await s.fake.vault.adapter.exists(target)).toBe(false)
+    await reopened.discard()
+  })
 
   it('recognizable renamed/damaged projections are never folder-native creates', async () => {
     const s = await setup()

@@ -1,6 +1,7 @@
 import { sha256 } from './hash'
 import {
   type FileSystem,
+  type AtomicStage,
   type FileInfo,
   type StateStore,
   type StateEntry,
@@ -294,6 +295,34 @@ export class ExternalRepresentation {
     }
     return { kind: 'ordinary' }
   }
+  private guardStage(stage: AtomicStage, path: string): AtomicStage {
+    const fs = this.options.fs
+    return new Proxy(stage, {
+      get: (stage, key) => {
+        if (key === 'commit')
+          return async (signal?: AbortSignal) => {
+            if ((await this.classify(path)).kind !== 'ordinary')
+              throw new ExternalRecoveryRequired(
+                'held representation cannot be mutated by ordinary sync'
+              )
+            const stat = await fs.stat(stage.id)
+            if (stat && stat.size <= MAX_PROJECTION_BYTES && fs.openRead) {
+              const source = await fs.openRead(stage.id)
+              try {
+                const bytes = await source.read(0, source.size, signal)
+                if ((await this.classify(path, undefined, bytes)).kind !== 'ordinary')
+                  throw new ExternalRecoveryRequired('projection bytes cannot be ordinary content')
+              } finally {
+                await source.close()
+              }
+            }
+            return stage.commit(signal)
+          }
+        const value = Reflect.get(stage, key)
+        return typeof value === 'function' ? value.bind(stage) : value
+      },
+    })
+  }
   fileSystem(): FileSystem {
     const fs = this.options.fs
     // Proxy closures deliberately retain their owner after the method returns.
@@ -310,6 +339,29 @@ export class ExternalRepresentation {
               // One bounded persistence write per scan, including interrupted enumerations.
               self.flushInspection()
             }
+          }
+        if (method === 'openRead' || method === 'fingerprint')
+          return async (path: string, ...args: unknown[]) => {
+            if ((await self.classify(path)).kind !== 'ordinary')
+              throw new ExternalRecoveryRequired('held representation is not ordinary content')
+            return Reflect.get(target, method).call(target, path, ...args)
+          }
+        if (method === 'beginAtomicWrite' && fs.beginAtomicWrite)
+          return async (...args: Parameters<NonNullable<FileSystem['beginAtomicWrite']>>) => {
+            const path = args[0]
+            if ((await self.classify(path)).kind !== 'ordinary')
+              throw new ExternalRecoveryRequired(
+                'held representation cannot be mutated by ordinary sync'
+              )
+            const stage = await fs.beginAtomicWrite(...args)
+            return self.guardStage(stage, path)
+          }
+        if (method === 'reopenStage' && fs.reopenStage)
+          return async (id: string) => {
+            const stage = (await fs.reopenStage(id)) as AtomicStage & { target?: string }
+            if (typeof stage.target !== 'string')
+              throw new ExternalRecoveryRequired('stage target is unavailable')
+            return self.guardStage(stage, stage.target)
           }
         if (method === 'read')
           return async (path: string) => {

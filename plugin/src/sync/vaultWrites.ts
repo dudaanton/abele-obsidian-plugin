@@ -64,6 +64,7 @@ export interface WriterDeps {
   /** Folders above `path` made. */
   makeParents(path: string): Promise<void>
   installed?(path: string): void
+  fingerprint?(path: string): Promise<{ size: number; sha: string }>
 }
 
 export class VaultWriter {
@@ -71,6 +72,76 @@ export class VaultWriter {
 
   private get adapter(): DataAdapter {
     return this.deps.adapter
+  }
+
+  /** Publish authenticated disk bytes without assembling either old or new contents. */
+  async publishStage(entry: JournalEntry): Promise<void> {
+    let notified = false
+    const notify = () => {
+      if (!notified) {
+        notified = true
+        this.deps.installed?.(entry.target)
+      }
+    }
+    const stream = entry.streaming
+    if (!entry.temp || !stream?.sealed || !this.deps.fingerprint)
+      throw new EngineError('io', 'unsealed streaming stage')
+    const matches = async (path: string, expected: { size: number; sha: string }) => {
+      const actual = await this.deps.fingerprint(path)
+      if (actual.size !== expected.size || actual.sha !== expected.sha)
+        throw new EngineError('conflict', `${path} changed before publication`)
+    }
+    await matches(entry.temp, stream.sealed)
+    const held = await this.held(entry.target)
+    if (stream.base === null) {
+      await this.takeFreeName(entry.temp, entry.target)
+    } else if (this.deps.native?.replaceFencedIdentity) {
+      await this.deps.native.replaceFencedIdentity(entry.temp, held, stream.base)
+    } else {
+      await matches(held, stream.base)
+      if (this.deps.native && !this.deps.native.installExclusive)
+        throw new EngineError('io', 'native replacement has no safe publication capability')
+      const backup = await this.freeName(held, 'old')
+      const swapping: JournalEntry = {
+        ...entry,
+        target: held,
+        backup,
+        replacementSha: stream.sealed.sha,
+        ...(this.deps.native ? { preserveBackup: true } : {}),
+      }
+      this.deps.journal.replace(entry, swapping)
+      entry = swapping
+      await this.holding(backup, async () => {
+        if (this.deps.native) await this.deps.native.rename(held, backup)
+        else await this.adapter.rename(held, backup)
+        try {
+          await matches(backup, stream.base)
+          if (this.deps.native) await this.deps.native.installExclusive(entry.temp, held)
+          else await this.adapter.rename(entry.temp, held)
+        } catch (error) {
+          try {
+            if (this.deps.native) await this.deps.native.installExclusive(backup, held)
+            else await this.adapter.rename(backup, held)
+            this.deps.journal.replace(entry, { ...entry, backup: undefined })
+          } catch {
+            console.debug(
+              `[abele-sync] ${held} is retained at ${backup} after stage publication failed`
+            )
+          }
+          throw error
+        }
+        notify()
+        const installed = { ...entry, installed: true }
+        this.deps.journal.replace(entry, installed)
+        entry = installed
+        if (this.deps.native) {
+          this.deps.journal.preserve(entry)
+          await this.dropQuietly(entry.temp)
+        } else await this.adapter.remove(backup)
+      })
+    }
+    notify()
+    this.deps.journal.drop(entry)
   }
 
   /**
@@ -301,6 +372,7 @@ export class VaultWriter {
    */
   async recover(): Promise<void> {
     for (const entry of this.deps.journal.entries()) {
+      if (entry.streaming && !entry.backup) continue
       if (entry.backup !== undefined && inFlight.has(entry.backup)) {
         throw new EngineError('io', 'scan held while a journalled replacement has a live backup')
       }
@@ -317,7 +389,9 @@ export class VaultWriter {
           } else if (await this.there(entry.target)) {
             const matchesReplacement =
               entry.replacementSha !== undefined &&
-              (await signature(await this.adapter.readBinary(entry.target))) ===
+              (this.deps.fingerprint
+                ? (await this.deps.fingerprint(entry.target)).sha
+                : await signature(await this.adapter.readBinary(entry.target))) ===
                 entry.replacementSha
             if (matchesReplacement && entry.preserveBackup !== true)
               await this.adapter.remove(entry.backup)

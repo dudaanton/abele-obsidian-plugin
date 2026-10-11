@@ -1,5 +1,12 @@
 import { sha256 } from './external/hash'
-import { type FileSystem, type StateEntry, type StateStore } from '@abele/sync-core'
+import {
+  type FileSystem,
+  type StateEntry,
+  type StateStore,
+  fingerprintFile,
+  receiveToStage,
+  TransferBudget,
+} from '@abele/sync-core'
 import { ConnectionRegistry, REGISTRY_KEY } from './connectionRegistry'
 import type { LocalStorage } from './ledgerId'
 
@@ -10,6 +17,7 @@ export interface EditCopy {
   sha: string
   mtime: number
   bytes: number[]
+  source?: { id: string; size: number }
   base: StateEntry | null
 }
 type Store = Pick<StateStore, 'get' | 'getMeta' | 'setMeta' | 'transaction'>
@@ -22,6 +30,7 @@ const LIMIT = 256 * 1024 * 1024
 
 /** Durable per-destination preservation. No upload routing or authority inference. */
 export class EditCopies {
+  private filesystem: FileSystem | null = null
   private expected: string[] = []
   private readonly destinations = new Map<string, Destination>()
   expect(ids: string[]): void {
@@ -58,18 +67,42 @@ export class EditCopies {
       throw new Error('Local edit capture requires recovery')
     let total = 0
     for (const value of values as EditCopy[]) {
-      total += value.bytes.length
-      if (total > LIMIT || (await sha256(Uint8Array.from(value.bytes))) !== value.sha)
+      total += value.source?.size ?? value.bytes.length
+      if (
+        value.source &&
+        (typeof value.source.id !== 'string' ||
+          !Number.isSafeInteger(value.source.size) ||
+          value.source.size < 0 ||
+          value.bytes.length !== 0)
+      )
+        throw new Error('Local edit capture requires recovery')
+      if (
+        total > LIMIT ||
+        (!value.source && (await sha256(Uint8Array.from(value.bytes))) !== value.sha)
+      )
         throw new Error('Local edit capture integrity requires recovery')
+      if (value.source) {
+        if (!this.filesystem) throw new Error('Local edit capture source requires recovery')
+        const identity = await fingerprintFile(this.filesystem, value.source.id, sha256)
+        if (identity.size !== value.source.size || identity.sha !== value.sha)
+          throw new Error('Local edit capture integrity requires recovery')
+      }
     }
     return values as EditCopy[]
   }
   /** Called with all affected path leases held, before any placement can erase the current bytes. */
   async capture(fs: FileSystem, paths: readonly string[]): Promise<void> {
+    this.filesystem = fs
     if (!this.expected.length) return
     const batches = new Map<
       Destination,
-      { path: string; sha: string; mtime: number; bytes: Uint8Array }[]
+      {
+        path: string
+        sha: string
+        mtime: number
+        bytes: Uint8Array
+        source?: { id: string; size: number }
+      }[]
     >()
     let retainedBytes = 0
     for (const path of new Set(paths)) {
@@ -84,28 +117,55 @@ export class EditCopies {
         if (await destination.accepts(path, before.size)) destinations.push(destination)
       }
       if (!destinations.length) continue
-      const bytes = await fs.read(path),
-        sha = await sha256(bytes),
-        after = await fs.stat(path)
+      const identity = await fingerprintFile(fs, path, sha256)
+      const sha = identity.sha
+      const needed: Destination[] = []
+      for (const destination of destinations) {
+        const base = await destination.store.get(path)
+        if (base?.sha !== sha || base.mtime !== before.mtime || base.size !== before.size)
+          needed.push(destination)
+      }
+      if (!needed.length) continue
+      let source: { id: string; size: number } | undefined
+      let bytes: Uint8Array
+      if (fs.openRead && fs.beginAtomicWrite) {
+        const incoming = await fs.openRead(path)
+        let stage
+        try {
+          stage = await fs.beginAtomicWrite(path, before.mtime, identity)
+        } catch (error) {
+          await incoming.close()
+          throw error
+        }
+        await receiveToStage(
+          incoming,
+          stage,
+          identity,
+          new TransferBudget({ maxActiveTransfers: 1 })
+        )
+        source = { id: stage.id, size: identity.size }
+        bytes = new Uint8Array()
+      } else bytes = await fs.read(path)
+      const after = await fs.stat(path)
       if (
         !after ||
         before.mtime !== after.mtime ||
         before.size !== after.size ||
-        bytes.length !== after.size
+        (source?.size ?? bytes.length) !== after.size
       )
         throw new Error('Local edit changed during capture; placement held')
-      for (const destination of destinations) {
+      for (const destination of needed) {
         const { store } = destination
         if (!store.getMeta || !store.setMeta)
           throw new Error('Durable local edit capture unavailable')
         const base = await store.get(path)
-        if (base?.sha === sha && base.mtime === before.mtime && base.size === bytes.length) continue
+        if (base?.sha === sha && base.mtime === before.mtime && base.size === before.size) continue
         let batch = batches.get(destination)
         if (!batch) batches.set(destination, (batch = []))
-        batch.push({ path, sha, mtime: before.mtime, bytes })
+        batch.push({ path, sha, mtime: before.mtime, bytes, ...(source ? { source } : {}) })
       }
       if (destinations.some((destination) => batches.get(destination)?.at(-1)?.path === path)) {
-        retainedBytes += bytes.length
+        retainedBytes += source?.size ?? bytes.length
         if (retainedBytes > LIMIT)
           throw new Error('Local edit capture budget reached; placement held')
       }
@@ -117,11 +177,19 @@ export class EditCopies {
       const preserving = destination.tail.then(() =>
         store.transaction(async () => {
           const copies = await this.list(store)
-          let size = copies.reduce((total, copy) => total + copy.bytes.length, 0),
+          let size = copies.reduce(
+              (total, copy) => total + (copy.source?.size ?? copy.bytes.length),
+              0
+            ),
             changed = false
-          for (const { path, sha, mtime, bytes } of batch) {
+          for (const { path, sha, mtime, bytes, source } of batch) {
             const base = await store.get(path)
-            if (base?.sha === sha && base.mtime === mtime && base.size === bytes.length) continue
+            if (
+              base?.sha === sha &&
+              base.mtime === mtime &&
+              base.size === (source?.size ?? bytes.length)
+            )
+              continue
             if (
               copies.some(
                 (copy) =>
@@ -132,7 +200,7 @@ export class EditCopies {
               )
             )
               continue
-            size += bytes.length
+            size += source?.size ?? bytes.length
             if (size > LIMIT) throw new Error('Local edit capture budget reached; placement held')
             copies.push({
               id: crypto.randomUUID(),
@@ -140,6 +208,7 @@ export class EditCopies {
               sha,
               mtime,
               bytes: [...bytes],
+              ...(source ? { source } : {}),
               base,
             })
             changed = true

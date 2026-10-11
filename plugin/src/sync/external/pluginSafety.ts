@@ -1,5 +1,6 @@
 import { sha256 } from './hash'
 import type { App } from 'obsidian'
+import { BoundedVaultIo } from '../boundedVaultIo'
 
 import { CommitOpSchema } from '@abele/sync-protocol'
 import { z } from 'zod'
@@ -643,7 +644,10 @@ export function requireExternalEnrollmentSafety(app: App): void {
   activation(app)
   retiredLedgers(app)
   const installation = new WriteJournal(app)
-  if (installation.entries().length || installation.recovered().length)
+  if (
+    installation.entries().some((entry) => !entry.streaming || entry.backup) ||
+    installation.recovered().length
+  )
     throw new ExternalRecoveryRequired('installation or retained-byte recovery is unfinished')
 }
 export async function requireExternalLifecycleSafety(
@@ -663,7 +667,11 @@ export async function requireExternalLifecycleSafety(
   const installation = new WriteJournal(app)
   // Startup validates intents here, then recovers them before inspecting vault bytes.
   // Enrollment and departure still require an empty installation journal.
-  if ((installation.entries().length && !recoverInstallation) || installation.recovered().length)
+  if (
+    (installation.entries().some((entry) => !entry.streaming || entry.backup) &&
+      !recoverInstallation) ||
+    installation.recovered().length
+  )
     throw new ExternalRecoveryRequired('installation or retained-byte recovery is unfinished')
   const names = new Set<string>(database ? [database] : [])
   for (const record of TokenConnectionRegistry.open(app).records()) names.add(record.ledgerId)
@@ -762,10 +770,10 @@ export async function requireExternalLifecycleSafety(
       // Enrollment checks durable recovery metadata only. Byte verification belongs to startup.
       if (metadataOnly) continue
       const verifyLocal = async (path: string, sha: string, size: number) => {
-        const bytes = new Uint8Array(
-          await inspectionRead(inspection, assertCurrent, () => app.vault.adapter.readBinary(path))
+        const identity = await inspectionRead(inspection, assertCurrent, () =>
+          new BoundedVaultIo(app.vault.adapter, assertCurrent).fingerprint(path)
         )
-        if (bytes.length !== size || (await sha256(bytes)) !== sha)
+        if (identity.size !== size || identity.sha !== sha)
           throw new ExternalRecoveryRequired('materialized or retained bytes changed')
       }
       for (const op of doc.operations)

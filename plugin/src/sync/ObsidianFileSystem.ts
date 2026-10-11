@@ -1,6 +1,16 @@
 import { sha256 } from './external/hash'
 import type { App, DataAdapter, ListedFiles, Stat } from 'obsidian'
-import { EngineError, type FileInfo, type FileSystem, type StateStore } from '@abele/sync-core'
+import {
+  EngineError,
+  type FileInfo,
+  type FileSystem,
+  type StateStore,
+  type AtomicStage,
+  type ContentIdentity,
+  type SourceStamp,
+} from '@abele/sync-core'
+import { BoundedVaultIo } from './boundedVaultIo'
+import type { JournalEntry } from './writeJournal'
 import { caseKey } from '@abele/sync-protocol'
 import { watchVault } from './vaultWatcher'
 import { fencedPort, type RuntimeFence } from './external/recovery'
@@ -37,6 +47,7 @@ const CONFIG_WALK_DEPTH = 32
  * notice it being edited.
  */
 const IGNORE_FILE = '.abele-sync-ignore'
+const stageOperations = new WeakMap<object, Set<string>>()
 
 export interface ObsidianFileSystemOptions {
   startupInventory?: () => ReadonlyMap<string, FileInfo> | undefined
@@ -141,6 +152,9 @@ export class ObsidianFileSystem implements FileSystem {
   /** Set while `watch` is running: what `kick` reaches for, and nothing when nobody watches. */
   private pollNow: (() => void) | null = null
   private readonly writer: VaultWriter
+  private readonly io: BoundedVaultIo
+  private readonly stages = new Map<string, JournalEntry>()
+  private readonly stageOperations: Set<string>
   private readonly journal: WriteJournal
   private readonly beforeEngineMutation: ((paths: string[]) => Promise<void>) | null
   private readonly runtimeFence: RuntimeFence | null
@@ -151,6 +165,8 @@ export class ObsidianFileSystem implements FileSystem {
     private readonly app: App,
     options: ObsidianFileSystemOptions = {}
   ) {
+    this.stageOperations = stageOperations.get(app.vault) ?? new Set<string>()
+    stageOperations.set(app.vault, this.stageOperations)
     this.configRevision = adapterConfigRevision(app.vault.adapter, app.vault.configDir)
     this.cachedConfigRevision = this.configRevision()
     this.preserveEmptyDirectories = options.preserveEmptyDirectories ?? false
@@ -230,10 +246,16 @@ export class ObsidianFileSystem implements FileSystem {
     this.journal = new WriteJournal(options.storage ?? storageOf(app), () =>
       this.runtimeFence?.assertOwned()
     )
+    this.io = new BoundedVaultIo(
+      this.guardedAdapter,
+      () => this.runtimeFence?.assertReady(),
+      (work) => (this.runtimeFence ? this.runtimeFence.effect(work) : work())
+    )
     this.writer = new VaultWriter({
       adapter: this.guardedAdapter,
       native: this.native,
       journal: this.journal,
+      fingerprint: (path) => this.io.fingerprint(path),
       indexed: (path) => app.vault.getAbstractFileByPath(path) !== null,
       makeParents: (path) => makeParents(this.adapter, path),
       installed: (path) => {
@@ -253,7 +275,7 @@ export class ObsidianFileSystem implements FileSystem {
       ? fencedPort(
           native,
           this.runtimeFence,
-          ['rename', 'rmdirEmpty', 'replaceFenced', 'installExclusive'],
+          ['rename', 'rmdirEmpty', 'replaceFenced', 'replaceFencedIdentity', 'installExclusive'],
           false
         )
       : native
@@ -322,6 +344,7 @@ export class ObsidianFileSystem implements FileSystem {
     // run before placement; a different connection may have a live journal meanwhile.
     for (const entry of this.journal.entries())
       if (
+        (!entry.streaming || entry.backup !== undefined) &&
         paths.some((path) => {
           const target = caseKey(entry.target),
             key = caseKey(path)
@@ -464,6 +487,119 @@ export class ObsidianFileSystem implements FileSystem {
       return bytes
     } catch (cause) {
       throw new EngineError('io', `cannot read ${path}`, cause)
+    }
+  }
+
+  openRead(path: string, expected?: SourceStamp) {
+    return this.io.openRead(path, expected)
+  }
+  async fingerprint(path: string, signal?: AbortSignal) {
+    const identity = await this.io.fingerprint(path, signal)
+    this.observedBases.set(caseKey(path), { sha: identity.sha })
+    return identity
+  }
+  async beginAtomicWrite(
+    path: string,
+    mtime: number,
+    expectedBase: ContentIdentity | null
+  ): Promise<AtomicStage> {
+    this.runtimeFence?.assertReady()
+    this.externalCoordination.assertEnginePaths([path])
+    await makeParents(this.adapter, path)
+    const temp = await this.writer.freeName(path, 'tmp')
+    const entry: JournalEntry = {
+      target: path,
+      temp,
+      streaming: {
+        mtime,
+        base: expectedBase ? { size: expectedBase.size, sha: expectedBase.sha } : null,
+      },
+    }
+    this.journal.add(entry)
+    this.stages.set(temp, entry)
+    await this.io.create(temp, mtime)
+    return this.reopenStage(temp)
+  }
+  async reopenStage(id: string): Promise<AtomicStage & { readonly target: string }> {
+    let entry =
+      this.journal.entries().find((one) => one.temp === id && one.streaming) ?? this.stages.get(id)
+    if (!entry?.streaming || entry.backup)
+      throw new EngineError('io', 'streaming stage is unavailable or awaiting recovery')
+    const stat = await this.rawStat(id)
+    if (!stat || stat.type !== 'file') throw new EngineError('io', 'streaming stage is missing')
+    let offset = stat.size,
+      busy = false,
+      finished = false
+    const exclusive = async <T>(work: () => Promise<T>): Promise<T> => {
+      if (busy || finished || this.stageOperations.has(id))
+        throw new EngineError('io', 'stage is busy or closed')
+      busy = true
+      this.stageOperations.add(id)
+      try {
+        this.runtimeFence?.assertReady()
+        if (this.journal.entries().some((one) => one.temp === id && one.backup))
+          throw new EngineError('io', 'stage publication is awaiting recovery')
+        return await work()
+      } finally {
+        busy = false
+        this.stageOperations.delete(id)
+      }
+    }
+    return {
+      id,
+      target: entry.target,
+      get offset() {
+        return offset
+      },
+      append: (at, bytes, signal) =>
+        exclusive(async () => {
+          if (entry.streaming.sealed || at !== offset)
+            throw new EngineError('io', 'invalid staging append')
+          try {
+            await this.io.append(id, offset, bytes, entry.streaming.mtime, signal)
+          } finally {
+            const standing = await this.rawStat(id)
+            if (standing?.type === 'file') offset = standing.size
+          }
+        }),
+      seal: (expected) =>
+        exclusive(async () => {
+          const identity = await this.io.fingerprint(id)
+          if (identity.size !== expected.size || identity.sha !== expected.sha)
+            throw new EngineError('protocol', 'streaming stage integrity mismatch')
+          const sealed = {
+            ...entry,
+            replacementSha: expected.sha,
+            streaming: { ...entry.streaming, sealed: { size: expected.size, sha: expected.sha } },
+          }
+          this.journal.replace(entry, sealed)
+          entry = sealed
+          this.stages.set(id, sealed)
+        }),
+      commit: (signal) =>
+        exclusive(async () => {
+          signal?.throwIfAborted()
+          const release = this.externalCoordination.beginEngineMutation([entry.target])
+          try {
+            await this.beforeEngineMutation?.([entry.target])
+            signal?.throwIfAborted()
+            await this.writer.holding(id, () => this.writer.publishStage(entry))
+            this.stages.delete(id)
+            this.observedBases.delete(caseKey(entry.target))
+            finished = true
+          } finally {
+            release()
+          }
+        }),
+      discard: () =>
+        finished
+          ? Promise.resolve()
+          : exclusive(async () => {
+              await this.adapter.remove(id)
+              this.journal.drop(entry)
+              this.stages.delete(id)
+              finished = true
+            }),
     }
   }
 
@@ -695,7 +831,12 @@ export class ObsidianFileSystem implements FileSystem {
       if (isAdapterTemp(path)) {
         // A temp of new bytes a killed write left behind goes; a backup is somebody's only
         // copy, and the write journal puts it back.
-        if (isDroppableTemp(path)) await this.sweep(path)
+        if (
+          isDroppableTemp(path) &&
+          !this.stages.has(path) &&
+          !this.journal.entries().some((entry) => entry.temp === path && entry.streaming)
+        )
+          await this.sweep(path)
         continue
       }
       const info = await this.fileAt(path)

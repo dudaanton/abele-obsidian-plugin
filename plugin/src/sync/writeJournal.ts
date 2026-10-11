@@ -11,6 +11,12 @@ export interface JournalEntry {
   installed?: boolean
   /** Unfenced old inode must survive even if target contains exact replacement bytes. */
   preserveBackup?: boolean
+  /** A resumable chunk stage; retained until the engine explicitly discards it. */
+  streaming?: {
+    mtime: number
+    base: { size: number; sha: string } | null
+    sealed?: { size: number; sha: string }
+  }
 }
 export interface RecoveredWrite {
   target: string
@@ -19,6 +25,16 @@ export interface RecoveredWrite {
 }
 const sameEntry = (a: JournalEntry, b: JournalEntry): boolean =>
   a.target === b.target && a.temp === b.temp && a.backup === b.backup
+const identity = (value: unknown): boolean => {
+  if (!value || typeof value !== 'object') return false
+  const held = value as { size: number; sha: string }
+  return (
+    Number.isSafeInteger(held.size) &&
+    held.size >= 0 &&
+    typeof held.sha === 'string' &&
+    /^[a-f0-9]{64}$/.test(held.sha)
+  )
+}
 
 /** Local-only write intents and preservation decisions; neither travels with the vault. */
 export class WriteJournal {
@@ -47,7 +63,13 @@ export class WriteJournal {
         typeof entry.target === 'string' &&
         (entry.temp === undefined || typeof entry.temp === 'string') &&
         (entry.backup === undefined || typeof entry.backup === 'string') &&
-        (entry.preserveBackup === undefined || typeof entry.preserveBackup === 'boolean')
+        (entry.preserveBackup === undefined || typeof entry.preserveBackup === 'boolean') &&
+        (entry.streaming === undefined ||
+          (entry.temp !== undefined &&
+            Number.isSafeInteger(entry.streaming?.mtime) &&
+            entry.streaming.mtime >= 0 &&
+            (entry.streaming.base === null || identity(entry.streaming.base)) &&
+            (entry.streaming.sealed === undefined || identity(entry.streaming.sealed))))
       )
     })
     if (entries.length !== raw.length)

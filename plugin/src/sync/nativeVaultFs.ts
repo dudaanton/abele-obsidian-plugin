@@ -1,11 +1,24 @@
 import type { DataAdapter } from 'obsidian'
 import { EngineError } from '@abele/sync-core'
+import { sha256 } from '@noble/hashes/sha2'
 
 interface NodeFsPromises {
   rename(from: string, to: string): Promise<void>
   rmdir(path: string): Promise<void>
   readFile(path: string): Promise<Uint8Array>
   link(from: string, to: string): Promise<void>
+  open(
+    path: string,
+    flags: string
+  ): Promise<{
+    read(
+      bytes: Uint8Array,
+      offset: number,
+      length: number,
+      position: number
+    ): Promise<{ bytesRead: number }>
+    close(): Promise<void>
+  }>
 }
 export interface NativeFs {
   rename(from: string, to: string): Promise<void>
@@ -14,6 +27,11 @@ export interface NativeFs {
   replaceFenced?: (temp: string, target: string, before: ArrayBuffer | null) => Promise<void>
   /** Atomic create-if-unoccupied, never overwrite a locally recreated target. */
   installExclusive?: (from: string, to: string) => Promise<void>
+  replaceFencedIdentity?: (
+    temp: string,
+    target: string,
+    before: { size: number; sha: string }
+  ) => Promise<void>
 }
 
 /** Optional native capabilities; mobile remains adapter-only, never a Node import. */
@@ -60,6 +78,36 @@ export function nativeOf(
       await rmdir(at(path))
       await reconcile(path)
     },
+  }
+  if (typeof raw.queue === 'function' && typeof fsp.open === 'function') {
+    const queue = raw.queue.bind(adapter),
+      open = fsp.open.bind(fsp)
+    native.replaceFencedIdentity = async (temp, target, before) => {
+      await queue(async () => {
+        const handle = await open(at(target), 'r')
+        try {
+          const bytes = new Uint8Array(1024 * 1024),
+            hash = sha256.create()
+          let size = 0
+          for (;;) {
+            const { bytesRead } = await handle.read(bytes, 0, bytes.length, size)
+            if (!bytesRead) break
+            size += bytesRead
+            hash.update(bytes.subarray(0, bytesRead))
+          }
+          const digest = Array.from(hash.digest(), (value) =>
+            value.toString(16).padStart(2, '0')
+          ).join('')
+          if (size !== before.size || digest !== before.sha)
+            throw new EngineError('conflict', `${target} changed before queued replacement`)
+          assertEffect([temp, target])
+          await rename(at(temp), at(target))
+          await reconcile(temp, target)
+        } finally {
+          await handle.close()
+        }
+      })
+    }
   }
   if (typeof raw.queue === 'function' && typeof fsp.readFile === 'function') {
     const queue = raw.queue.bind(adapter),

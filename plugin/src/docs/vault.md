@@ -2090,7 +2090,9 @@ The local consent identity survives an acknowledged hydration, while an unrelate
 at the same path receives no inherited permission.
 
 `plugin:token-asset-outbox` in each device-only ledger retains immutable approved attachment
-bytes, path, original mtime, source identity and request key. Unknown responses retry the same
+content, path, original mtime, source identity and request key. Streaming entries store an
+owned staging-file locator and size instead of a numeric byte array; older entries remain
+readable. Unknown responses retry the same
 request; known rejected items remain held while unrelated files and receiving continue.
 Sync now retries a known refusal with a new key and its retained bytes. A matching receipt,
 baseline adoption and queue removal commit together; a newer received baseline is never
@@ -2098,3 +2100,17 @@ downgraded by a late receipt. Settled/rejected receipt metadata remains device-o
 Accepted publication also retains the stable local file identity and server file identity in
 that ledger. Group attachment renames follow this recorded identity; replacements at the same
 path do not acquire consent, and scope departures remove the rename eligibility.
+
+The device-local `abele-sync-writes` journal also owns resumable hidden chunk stages beside
+their target. A streaming entry records mtime, the expected previous content identity (or
+absence), and the sealed replacement identity. Partial stages survive recovery without
+publication; append resumes from the actual disk length, and seal verifies the full digest.
+Publication still uses the write journal and the local-save fence or backup swap. A stage
+with an unresolved backup remains an installation blocker. Sealed retained sources are
+separate from unfinished publication, and are verified again before use.
+
+Local edit preservation records may likewise retain a sealed source locator and size, shared
+by the destinations that still need that immutable edit. These source files and their journal
+records are device-local recovery evidence, never ordinary sync inventory or server content
+identities. Failed or cancelled transfers retain their stages until explicit discard or
+successful publication; matching bytes alone do not retire an uncertain external operation.
