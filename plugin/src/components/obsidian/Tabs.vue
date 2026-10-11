@@ -134,7 +134,8 @@ function move(event: KeyboardEvent, from: number): void {
   display: flex;
   align-items: center;
   gap: var(--size-4-1);
-  padding: var(--size-4-1) var(--size-4-3);
+  // The word inset as a table cell's is, so a tab's word stands over its table's first column.
+  padding: var(--size-4-1) var(--size-4-2);
   border-radius: var(--radius-s);
   color: var(--text-muted);
   cursor: var(--cursor-link);
@@ -210,9 +211,15 @@ function move(event: KeyboardEvent, from: number): void {
   flex-shrink: 0;
   overflow-x: auto;
   scrollbar-width: none;
-  // Room for a focused tab's ring, which a scrolling box would otherwise cut. Not pulled back
-  // with a negative margin: the strip then stood past its dialog's edge and scrolled it.
-  padding: var(--size-2-2);
+  // Room above and below for a focused tab's ring, which a scrolling box would otherwise cut. Not
+  // at the sides: the first tab's light stood a few pixels in from everything under the strip.
+  // The ring is drawn inside the tab there instead, where no scrolling box can cut it.
+  padding: var(--size-2-2) 0;
+
+  .abele-tabs__tab:focus-visible {
+    outline: none;
+    box-shadow: inset 0 0 0 2px var(--background-modifier-border-focus);
+  }
 
   &::-webkit-scrollbar {
     display: none;

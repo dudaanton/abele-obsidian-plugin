@@ -105,6 +105,15 @@ watch(accessibleName, updateTooltip)
 </script>
 
 <style lang="scss">
+// A row of glyph buttons under a title: the first glyph's ink, not its button's box, starts where
+// the title starts — less the button's padding and the margin a glyph is drawn inside its box
+// with. A phone widens the button to a finger's size and centres the glyph in it, so the glyph is
+// held to the start there, or it lands a few pixels in from the title.
+.abele-glyph-row > .clickable-icon:first-child {
+  justify-content: flex-start;
+  margin-inline-start: calc(-1 * var(--size-2-3) - var(--icon-size) * 2 / 24);
+}
+
 .abele-obsidian-icon {
   display: flex;
   align-items: center;
