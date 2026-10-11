@@ -50,7 +50,12 @@ it('pairs through the real node UI, confirms locally, runs fake prompts and fenc
     }),
     { mode: 0o600 }
   )
-  const env = { ...process.env, ABELE_CLAUDE_PATH: resolve('tests/fixtures/nodeClaude.mjs') }
+  const env = {
+    ...process.env,
+    HOME: dir,
+    ABELE_CLAUDE_PATH: resolve('tests/fixtures/nodeClaude.mjs'),
+    ABELE_CODEX_PATH: '',
+  }
   let child: ChildProcess | undefined,
     registration = '',
     tab = ''
@@ -58,13 +63,29 @@ it('pairs through the real node UI, confirms locally, runs fake prompts and fenc
   const proxy = createServer()
   const command = async (...args: string[]) =>
     JSON.parse(
-      (await promisify(execFile)(process.execPath, [cli, ...args, '--state-dir', dir], { env }))
-        .stdout
+      (
+        await promisify(execFile)(process.execPath, [cli, ...args, '--json', '--state-dir', dir], {
+          env,
+        })
+      ).stdout
     )
   try {
     child = spawn(
       process.execPath,
-      [cli, 'start', '--port', '0', '--paired-config', config, '--state-dir', dir],
+      [
+        cli,
+        'start',
+        '--json',
+        '--no-codex',
+        '--node-name',
+        'Sample remote node',
+        '--port',
+        '0',
+        '--paired-config',
+        config,
+        '--state-dir',
+        dir,
+      ],
       { stdio: ['ignore', 'pipe', 'pipe'], env }
     )
     let output = '',
@@ -79,7 +100,9 @@ it('pairs through the real node UI, confirms locally, runs fake prompts and fenc
       if (child.exitCode !== null) throw Error(errors)
       await wait(20)
     }
-    const ready = JSON.parse(output.split('\n').find((line) => line.includes('"listening"'))!)
+    const listening = output.split('\n').find((line) => line.includes('"listening"'))
+    if (!listening) throw Error('Node did not emit JSON readiness: ' + errors)
+    const ready = JSON.parse(listening)
     expect(ready.paired_port).toBeGreaterThan(0)
     // Emulate only Serve's Host forwarding on loopback; preserve the real browser Origin.
     proxy.on('upgrade', (request, socket: Socket, head) => {
