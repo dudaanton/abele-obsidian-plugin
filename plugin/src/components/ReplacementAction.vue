@@ -31,7 +31,7 @@
         :placeholder="action.type === 'remove-from-list' ? 'Value to remove' : 'Value'"
       />
     </div>
-    <ObsidianIcon icon="cross" @click="emit('remove')" />
+    <ObsidianIcon icon="x" tooltip="Remove this change" @click="emit('remove')" />
   </div>
 </template>
 

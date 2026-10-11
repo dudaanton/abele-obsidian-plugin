@@ -16,7 +16,7 @@
         placeholder="Value"
       />
     </div>
-    <ObsidianIcon icon="cross" @click="emit('remove')" />
+    <ObsidianIcon icon="x" tooltip="Remove this condition" @click="emit('remove')" />
   </div>
 </template>
 

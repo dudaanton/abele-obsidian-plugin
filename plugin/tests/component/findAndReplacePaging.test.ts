@@ -45,7 +45,7 @@ for (const [name, component, prefix] of [
         expect(more, 'Remaining previews must have a paging control').toBeDefined()
         await more!.trigger('click')
       }
-      expect(rows().map((row) => row.find('a').text())).toEqual(
+      expect(rows().map((row) => row.find('a').attributes('title'))).toEqual(
         app.vault.getMarkdownFiles().map((file) => file.path)
       )
       expect(wrapper.findAll('button').some((button) => button.text() === 'Load more')).toBe(false)

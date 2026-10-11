@@ -21,7 +21,7 @@ const script = `(async () => {
     el.dispatchEvent(new Event('input', { bubbles: true }))
   }
   const button = (text, root = document) => [...root.querySelectorAll('button')].find((el) => el.textContent.trim() === text)
-  const apply = () => [...document.querySelectorAll('.abele-sar-fm-modal__result .abele-obsidian-icon')].find((el) => el.textContent.includes('Apply changes'))
+  const apply = () => [...document.querySelectorAll('.abele-sar-fm-modal__result .abele-obsidian-icon')].find((el) => (el.getAttribute('aria-label') ?? '').includes('Apply changes'))
   const close = async () => {
     document.body.dispatchEvent(new KeyboardEvent('keydown', { key: 'Escape', code: 'Escape', keyCode: 27, bubbles: true }))
     await until(() => !document.querySelector('.modal'))

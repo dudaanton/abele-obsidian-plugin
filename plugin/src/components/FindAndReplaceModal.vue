@@ -6,10 +6,11 @@
     @expose-id="setScrollContainer"
   >
     <div class="abele-sar-fm-modal">
-      <div class="abele-sar-fm-modal__description">
-        Enter note search conditions. Lists are separated by semicolons. Only notes matching all of
-        the following conditions will be found.
-      </div>
+      <Setting
+        heading
+        name="Which notes"
+        desc="Notes that match every condition. Lists are separated by semicolons."
+      />
       <div class="abele-sar-fm-modal__criteria">
         <CriterionView
           v-for="criterion in criteria"
@@ -17,10 +18,12 @@
           :criterion="criterion"
           @remove="removeCriterion(criterion.id)"
         />
-        <ObsidianIcon
+        <ObsidianButton
+          quiet
           icon="plus"
+          text="Add a condition"
+          tooltip="Another condition every note found must meet"
           class="abele-sar-fm-modal__add-button"
-          text-right="Add criterion"
           @click="addCriterion"
         />
       </div>
@@ -31,6 +34,7 @@
         preview-label="Search"
         :use-in-ai-disabled="!searchResults.length"
         :scroll-container="scrollContainer"
+        :inline-actions="false"
         @add-replacement="addReplacement"
         @remove-replacement="removeReplacement"
         @preview="search"
@@ -41,6 +45,28 @@
         @remove-result="removeSearchResult"
       />
     </div>
+    <template #footer>
+      <ObsidianButton
+        quiet
+        text="Use in AI"
+        tooltip="Hand the notes found to a chat with the agent"
+        :disabled="!searchResults.length"
+        @click="sendToAgent"
+      />
+      <ObsidianButton
+        text="Search"
+        tooltip="Find the notes and show what would change in each"
+        :accent="!searchResults.length"
+        @click="search"
+      />
+      <ObsidianButton
+        v-if="searchResults.length"
+        :text="`Replace in ${searchResults.length} ${searchResults.length === 1 ? 'note' : 'notes'}`"
+        tooltip="Make the changes in every note listed"
+        accent
+        @click="replace"
+      />
+    </template>
   </ObsidianModal>
 </template>
 
@@ -51,7 +77,8 @@ import { Criterion } from '@/entities/Criterion'
 import { GlobalStore } from '@/stores/GlobalStore'
 import { useReplacementPreview } from '@/composables/useReplacementPreview'
 import ObsidianModal from './obsidian/Modal.vue'
-import ObsidianIcon from './obsidian/Icon.vue'
+import ObsidianButton from './obsidian/Button.vue'
+import Setting from './obsidian/Setting.vue'
 import CriterionView from './Criterion.vue'
 import ReplacementPreviewPanel from './ReplacementPreviewPanel.vue'
 
@@ -97,23 +124,15 @@ const goToNote = (path: string) => {
 </script>
 
 <style lang="scss">
-.abele-sar-fm-modal__description {
-  margin-top: var(--p-spacing);
-  margin-bottom: calc(var(--p-spacing) * 1.5);
-}
 .abele-sar-fm-modal__criteria {
   display: flex;
   flex-direction: column;
-  gap: calc(var(--p-spacing) / 2);
-  margin-bottom: calc(var(--p-spacing) * 1.5);
+  gap: var(--size-4-2);
+  margin-bottom: var(--size-4-6);
 }
-.abele-sar-fm-modal__add-button {
-  width: fit-content;
+
+.abele-sar-fm-modal .abele-sar-fm-modal__add-button {
   align-self: flex-start;
-}
-@media (max-width: 845px) {
-  .abele-sar-fm-modal__criteria {
-    gap: var(--p-spacing);
-  }
+  margin-top: var(--size-2-2);
 }
 </style>
