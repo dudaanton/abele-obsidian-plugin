@@ -1,6 +1,7 @@
 import { expect } from 'vitest'
 import { holdRestore } from './helpers/holdRestore'
 import { liveSuite, liveCase } from './helpers/syncLiveCases'
+import { MOVE_DIAGNOSTICS } from './helpers/moveDiagnostics'
 const fixture = liveSuite()
 async function heldFixture() {
   const s = fixture(),
@@ -189,18 +190,36 @@ liveCase(
       a = s.primary,
       b = s.peer!,
       path = s.root + '/from/sample.md'
-    await s.connect()
+    const id = await s.connect()
     await s.connect(b)
-    a.create(path, 'sample')
-    await s.cycle()
-    b.rename(s.root + '/from', s.root + '/to')
-    await s.cycle()
-    expect(a.exists(path)).toBe(false)
-    expect(a.exists(s.root + '/from')).toBe(false)
-    expect(a.read(s.root + '/to/sample.md')).toBe('sample')
-    b.remove([s.root + '/to'])
-    await s.cycle()
-    expect(a.exists(s.root + '/to')).toBe(false)
+    const paths = [path, s.root + '/to/sample.md', s.root + '/from', s.root + '/to']
+    a.run(
+      `${MOVE_DIAGNOSTICS};window.__abeleMoveProbe=installMoveDiagnostics(host.live.get(${JSON.stringify(id)}),${JSON.stringify(s.root)});return true`
+    )
+    const diagnostic = (phase: string) =>
+      console.log(
+        '[sync-move-probe]',
+        phase,
+        JSON.stringify(
+          a.run(`return await window.__abeleMoveProbe.snapshot(${JSON.stringify(paths)})`)
+        )
+      )
+    try {
+      a.create(path, 'sample')
+      await s.cycle()
+      diagnostic('before peer rename')
+      b.rename(s.root + '/from', s.root + '/to')
+      await s.cycle()
+      diagnostic('after peer rename cycle')
+      expect(a.exists(path)).toBe(false)
+      expect(a.exists(s.root + '/from')).toBe(false)
+      expect(a.read(s.root + '/to/sample.md')).toBe('sample')
+      b.remove([s.root + '/to'])
+      await s.cycle()
+      expect(a.exists(s.root + '/to')).toBe(false)
+    } finally {
+      a.run('window.__abeleMoveProbe?.close();delete window.__abeleMoveProbe;return true', true)
+    }
   },
   fixture
 )
