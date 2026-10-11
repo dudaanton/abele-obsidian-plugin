@@ -14,9 +14,10 @@ reason-coded transport logs. Other packages are unmodified. The channel client's
 obsolete upstream source map is omitted rather than publishing inaccurate mappings.
 Their transitive Zod 3 dependency remains separate from the plugin's Zod 4.
 
-These payloads were built from a clean archive of the release tag, with `npm ci --ignore-scripts`
+The unpatched payloads were built from a clean archive of the release tag, with `npm ci --ignore-scripts`
 and `tsc -b packages/channel-protocol packages/node-protocol packages/channel-client packages/node-client`.
-No unreleased source overlay or package export changes were applied.
+No unreleased source overlay or package export changes were applied outside the documented
+channel-client patch.
 
 To refresh, build the desired released AbeleNode tag, then run from this plugin directory
 (replace `/path/to/node` with that checkout):
