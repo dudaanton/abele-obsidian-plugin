@@ -3,7 +3,8 @@ import { NodeSuggestModal } from '@/components/nodeWork/NodeSuggestModal'
 import { confirmAction } from '@/modal/confirm'
 import { GlobalStore } from '@/stores/GlobalStore'
 import { NodeService } from './NodeService'
-import { NodePathService } from './NodePathService'
+import { nodeProviders, providerAvailable, providerLabel } from './providers'
+import { bindPathTarget } from './nodePathChat'
 import { NodePathMutations } from './NodePathMutations'
 import { pathPages } from './NodePathClientPort'
 import { nodePathDialog, openNodeFolderPicker, openNodeWorktreeDialog } from './NodePathDialogs'
@@ -14,7 +15,7 @@ import {
   type NodePathContext,
 } from './NodePathOwnerActions'
 import type { NodePathModel, PathTarget } from './NodePathModel'
-import PairDialog from '@/components/nodeWork/PairDialog.vue'
+import { showNodePairingDialog } from './NodePairingDialogHost'
 import { h } from 'vue'
 
 const app = () => GlobalStore.getInstance().app
@@ -196,7 +197,9 @@ export function showNodePathRowMenu(model: NodePathModel, event: MouseEvent, id:
           if (observation.revision.kind !== 'working')
             throw new Error('The node did not return a current observation.')
           if (selected.kind === 'managed' && selected.workspace_id) {
-            const reservation = await connection.client.removeWorkspace(selected.workspace_id)
+            const reservation = await new NodePathMutations(connection.client).removeManaged(
+              selected.workspace_id
+            )
             new Notice(`Deletion accepted; refresh to check job ${reservation.job_id}.`)
           } else
             await new NodePathMutations(connection.client).delete(
@@ -300,16 +303,7 @@ export function showNodePathNodeMenu(model: NodePathModel, event: MouseEvent): v
   menu.showAtPosition(position(event))
 }
 export function openNodePathPairing(): void {
-  nodePathDialog('Connect node', () =>
-    h(PairDialog, {
-      step: 'paste',
-      device: 'This device',
-      parse: () => ({
-        error: 'Pairing-code support is waiting for the matching node-client package.',
-      }),
-      onCopy: (text: string) => nodePathAction(() => navigator.clipboard.writeText(text)),
-    })
-  )
+  showNodePairingDialog()
 }
 export async function newNodePathChat(
   model: NodePathModel,
@@ -320,15 +314,107 @@ export async function newNodePathChat(
     throw new Error(
       'Update this node to enable chats bound to root, plain and external folders. Existing managed sessions remain available.'
     )
-  throw new Error('Target execution is not available in this client package yet.')
+  const bound = Object.freeze({ ...target }),
+    connection = NodeService.getInstance().connection(model.registrationId)
+  const providers = nodeProviders(await connection.client.describe()).filter(providerAvailable)
+  new NodeSuggestModal(
+    app(),
+    providers.map((p) => ({
+      id: p.provider,
+      title: providerLabel(p.provider),
+      note: p.diagnostic,
+      icon: 'bot',
+      kind: 'Agent provider',
+    })),
+    'Choose the node agent',
+    (item) =>
+      nodePathAction(async () => {
+        if (!(await approveNodePathExecution(model, bound))) return
+        const provider = providers.find((p) => p.provider === item.id)
+        if (!provider) throw new Error('The selected provider is no longer available.')
+        const session = await new NodePathMutations(connection.client).session(
+          bound,
+          'New chat',
+          provider.provider
+        )
+        await model.refresh()
+        model.selectedChat.value = session.session_id
+        await openNodePathTab(
+          app().workspace,
+          { kind: 'chat', target: bound, sessionId: session.session_id, title: session.title },
+          Platform.isMobile
+        )
+      })
+  ).open()
 }
 export async function chooseSessionWorktree(
   model: NodePathModel,
-  _sessionId: string
+  sessionId: string
 ): Promise<void> {
   if (!model.capabilities.value.includes('node_path_execution'))
     throw new Error('Update this node to enable session worktree switching.')
-  throw new Error('Session switching is not available in this client package yet.')
+  const connection = NodeService.getInstance().connection(model.registrationId)
+  const session = await connection.client.getSession(sessionId)
+  if (session.native_session_id && !model.capabilities.value.includes('node_path_native_switching'))
+    throw new Error(
+      'This node cannot safely continue a provider-bound conversation in another worktree yet. Keep this chat in its current target.'
+    )
+  const binding = await connection.client.nodePath.sessionWorktreeGet({ session_id: sessionId })
+  const from = bindPathTarget(
+    { nodeId: model.nodeId, registrationId: model.registrationId },
+    binding.project_id,
+    binding.target
+  )
+  const targets = model.targets.value.filter(
+    (t) =>
+      t.projectId === from.projectId &&
+      (t.id !== from.id || t.kind !== from.kind) &&
+      !model.copy(t)?.missing
+  )
+  new NodeSuggestModal(
+    app(),
+    targets.map((t) => ({
+      id: t.id,
+      title:
+        model.copy(t)?.branch ??
+        model.folders.value.find((f) => f.id === t.projectId)?.name ??
+        'Folder',
+      note: model.copy(t)?.path,
+      icon: 'git-branch',
+      kind: 'Worktree',
+    })),
+    'Move this idle chat to a worktree',
+    (item) =>
+      nodePathAction(async () => {
+        const to = targets.find((t) => t.id === item.id)
+        if (!to || !(await approveNodePathExecution(model, to))) return
+        await new NodePathMutations(connection.client).switch(sessionId, from, to)
+        await model.refresh()
+      }),
+    'No other available worktree in this folder'
+  ).open()
+}
+async function approveNodePathExecution(
+  model: NodePathModel,
+  target: PathTarget
+): Promise<boolean> {
+  const connection = NodeService.getInstance().connection(model.registrationId)
+  if (connection.state.value !== 'connected')
+    throw new Error('Reconnect before approving agent execution.')
+  const folder = model.folders.value.find((f) => f.id === target.projectId),
+    copy = model.copy(target)
+  if (
+    !(await confirmAction(app(), {
+      title: 'Allow agent execution in this target?',
+      message: `Allow the node agent to execute in ${copy?.path ?? folder?.path ?? 'this target'}? This trusts its registered project and enables execution for this exact folder or worktree identity. Reading, listing or attaching alone never enables execution.`,
+      confirmText: 'Allow execution',
+    }))
+  )
+    return false
+  const mutations = new NodePathMutations(connection.client)
+  await mutations.trust(target.projectId)
+  await mutations.execution(target)
+  return true
 }
 export const openFolderForNode = (model: NodePathModel) =>
   openNodeFolderPicker(model, NodeService.getInstance().connection(model.registrationId))

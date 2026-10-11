@@ -19,6 +19,8 @@ import { registerDebugger } from '@/debugger/register'
 import { NodeSidebarView } from '@/views/NodeSidebarView'
 import { NodePathMainView } from '@/views/NodePathMainView'
 import { NodePathService } from '@/node/NodePathService'
+import { createNodePathObsidianActions } from '@/node/NodePathObsidianActions'
+import { installNodePathOwnerActions } from '@/node/NodePathOwnerActions'
 import {
   NODE_SIDEBAR_VIEW,
   NODE_FILE_VIEW,
@@ -56,6 +58,8 @@ export function registerViews(plugin: Plugin) {
     void openNode()
   })
   plugin.register(() => NodePathService.destroyCurrent())
+  const chatActions = createNodePathObsidianActions()
+  if (chatActions) plugin.register(installNodePathOwnerActions(chatActions))
   plugin.registerView(
     TIMELINE_SIDEBAR_VIEW_TYPE,
     (leaf) => new TimelineSidebarView(leaf, plugin.app)

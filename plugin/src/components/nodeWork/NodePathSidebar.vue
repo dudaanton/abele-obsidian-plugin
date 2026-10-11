@@ -7,7 +7,7 @@
     :git="model?.currentFolder.value?.git"
     :updated="node?.seen"
     :chat-available="model?.capabilities.value.includes('node_path_execution') ?? false"
-    :error="model?.error.value"
+    :error="error ?? model?.error.value"
     @connect="emit('connect')"
     @connect-other="emit('pair')"
     @open-folder="emit('open-folder')"
@@ -37,6 +37,20 @@
           />
         </template>
       </FolderTree>
+      <MetaLine
+        v-if="model.currentCopy.value"
+        class="abele-node-sidebar__facts"
+        :facts="[
+          {
+            key: 'lastCommit',
+            label: 'Last commit',
+            value: model.currentCopy.value.lastCommit,
+            required: true,
+          },
+          { key: 'ahead', value: model.currentCopy.value.ahead, required: true },
+          { key: 'behind', value: model.currentCopy.value.behind, required: true },
+        ]"
+      />
       <FileTree
         :key="model.current.value?.id"
         :entries="model.entries.value"
@@ -58,6 +72,7 @@ import NodePanel from './NodePanel.vue'
 import FolderTree from './FolderTree.vue'
 import FileTree from './FileTree.vue'
 import Icon from '../obsidian/Icon.vue'
+import MetaLine from '../obsidian/MetaLine.vue'
 import type { NodeSummary } from './types'
 withDefaults(
   defineProps<{
@@ -65,8 +80,9 @@ withDefaults(
     phase: 'looking' | 'found' | 'connecting' | 'not-found' | 'remote' | 'ready'
     node?: NodeSummary
     file?: string
+    error?: string
   }>(),
-  { model: undefined, node: undefined, file: undefined }
+  { model: undefined, node: undefined, file: undefined, error: undefined }
 )
 const emit = defineEmits<{
   connect: []
@@ -86,6 +102,9 @@ const emit = defineEmits<{
 }>()
 </script>
 <style lang="scss">
+.abele-node-sidebar__facts {
+  padding: var(--size-4-1) var(--size-4-3);
+}
 .abele-node-sidebar__error {
   padding: var(--size-4-2);
   color: var(--text-error);

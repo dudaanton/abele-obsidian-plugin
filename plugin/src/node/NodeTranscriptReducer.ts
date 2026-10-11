@@ -7,6 +7,8 @@ import { PiTranscript, piFailure } from './piTranscript'
 export type NodeSessionState = 'idle' | 'queued' | 'accepted' | 'running' | 'needs-attention'
 export interface NodeTranscript {
   messages: ChatMessage[]
+  /** Creation sequence binds messages to journal worktree transitions, including equal timestamps. */
+  messageSequences: Record<string, number>
   children: Record<string, ChatMessage[]>
   activeRuns: string[]
   queuedInputs: { id: string; text: string }[]
@@ -20,6 +22,8 @@ export interface NodeTranscript {
 /** The journal is canonical. Projection is disposable; replay never executes a plugin tool. */
 export function reduceTranscript(events: readonly JournalEvent[]): NodeTranscript {
   const messages = new Map<string, ChatMessage>()
+  const messageSequences: Record<string, number> = {}
+  let sequence = 0
   const prompts = new Map<string, Prompt>()
   const inputs = new Map<string, string>()
   const runs = new Set<string>()
@@ -35,6 +39,7 @@ export function reduceTranscript(events: readonly JournalEvent[]): NodeTranscrip
     if (!current) {
       current = { id, role, content: '', timestamp: at }
       messages.set(id, current)
+      messageSequences[id] = sequence
     }
     return current
   }
@@ -43,6 +48,7 @@ export function reduceTranscript(events: readonly JournalEvent[]): NodeTranscrip
   for (const event of [...events].sort((a, b) => a.seq - b.seq)) {
     if (seen.has(event.seq)) continue
     seen.add(event.seq)
+    sequence = event.seq
     const data =
       event.data && typeof event.data === 'object' ? (event.data as Record<string, unknown>) : {}
     const text = (key: string) => (typeof data[key] === 'string' ? (data[key] as string) : '')
@@ -148,6 +154,7 @@ export function reduceTranscript(events: readonly JournalEvent[]): NodeTranscrip
   return {
     messages: [...messages.values()].filter((m) => !m.parentId || !messages.has(m.parentId)),
     children,
+    messageSequences,
     activeRuns: [...runs],
     queuedInputs: [...inputs]
       .filter(([, state]) => ['accepted', 'queued'].includes(state))

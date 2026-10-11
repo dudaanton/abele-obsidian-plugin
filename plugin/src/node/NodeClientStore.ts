@@ -148,7 +148,9 @@ export class NodeClientStore implements ClientStore {
             result = structuredClone(await work(state))
             retainPromptAnswerIdentity(state, submitted)
             // Retain controller receipts, including approvals that settle after UI disconnection.
-            for (const entry of submitted.filter((e) => e.method.startsWith('delegation.'))) {
+            for (const entry of submitted.filter(
+              (e) => e.method.startsWith('delegation.') || e.method === 'workspace.remove'
+            )) {
               const receipt = state.results[entry.operation_id]
               if (receipt) receipt.request = { method: entry.method, params: entry.params }
             }

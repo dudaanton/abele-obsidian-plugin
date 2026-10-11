@@ -174,6 +174,52 @@ describe('node path model', () => {
     expect(model.folders.value[0].copies[1].chats).toEqual([])
     expect(model.changes.value).toHaveLength(1)
   })
+  it('does not resolve an owner refresh until the superseding catalogue has published', async () => {
+    const { model, port } = fake()
+    const catalogue = await port.catalogue()
+    let first!: (value: Awaited<ReturnType<NodePathPort['catalogue']>>) => void
+    let latest!: (value: Awaited<ReturnType<NodePathPort['catalogue']>>) => void
+    vi.mocked(port.catalogue)
+      .mockImplementationOnce(
+        () =>
+          new Promise((resolve) => {
+            first = resolve
+          })
+      )
+      .mockImplementationOnce(
+        () =>
+          new Promise((resolve) => {
+            latest = resolve
+          })
+      )
+    let settled = false
+    const owner = model.refresh().then(() => {
+      settled = true
+    })
+    const superseding = model.refresh()
+    first({ ...catalogue, targets: [], folders: [] })
+    await new Promise((resolve) => setTimeout(resolve, 0))
+    expect(settled).toBe(false)
+    latest(catalogue)
+    await Promise.all([owner, superseding])
+    expect(model.targets.value).toHaveLength(2)
+    model.destroy()
+  })
+  it('restores device-local display state without claiming a live connection or running agent', async () => {
+    const first = fake()
+    await first.model.refresh()
+    await first.model.select('one')
+    const restored = fake()
+    restored.model.online.value = false
+    restored.model.restoreSnapshot(first.model.snapshot())
+    expect(restored.model.selected.value).toBe('one')
+    expect(restored.model.entries.value[0].path).toBe('sample.ts')
+    expect(restored.model.receivedAt.value).toBe('2025-01-01T00:00:00.000Z')
+    expect(restored.model.currentCopy.value?.running).toBe(false)
+    expect(restored.model.capabilities.value).toEqual([])
+    first.model.destroy()
+    restored.model.destroy()
+  })
   it('retains the last known catalogue and files when a read fails; never labels it refreshed', async () => {
     const { model, port } = fake()
     await model.refresh()
@@ -184,6 +230,22 @@ describe('node path model', () => {
     expect(model.folders.value).toHaveLength(1)
     expect(model.entries.value).toHaveLength(1)
     expect(model.receivedAt.value).toBe(received)
+  })
+  it('can reopen retained bytes offline without reading or acknowledging a newer change', async () => {
+    const { model, port } = fake()
+    await model.refresh()
+    await model.select('one')
+    await model.openFile(target(), 'sample.ts')
+    vi.mocked(port.inspect).mockResolvedValueOnce({ entries: [], changes: [change('newer')] })
+    await model.reloadTarget(target())
+    model.online.value = false
+    const calls = vi.mocked(port.file).mock.calls.length
+    const retained = await model.openFile(target(), 'sample.ts')
+    expect(retained.text).toBe('new text')
+    expect(retained.note).toContain('retained')
+    expect(vi.mocked(port.file).mock.calls.length).toBe(calls)
+    expect(model.changes.value[0].unseen).toBe(true)
+    model.destroy()
   })
   it('does not mark a newer change seen when it arrives during a file load', async () => {
     const { model, port } = fake()

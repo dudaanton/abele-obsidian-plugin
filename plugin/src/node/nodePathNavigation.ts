@@ -51,6 +51,20 @@ export function nodePathTabKey(state: NodePathTabState): string {
     state.kind === 'editor' ? state.path : '',
   ])
 }
+export async function revealNodeDrawer(
+  workspace: Workspace,
+  registrationId?: string
+): Promise<void> {
+  const leaf = workspace.getLeavesOfType(NODE_SIDEBAR_VIEW)[0] ?? workspace.getLeftLeaf(false)
+  if (!leaf) throw new Error('A left sidebar leaf is not available.')
+  await leaf.setViewState({
+    type: NODE_SIDEBAR_VIEW,
+    active: true,
+    state: registrationId ? { registrationId } : {},
+  })
+  await workspace.revealLeaf(leaf)
+  workspace.leftSplit.expand()
+}
 export async function openNodePathTab(
   workspace: Workspace,
   raw: NodePathTabState,

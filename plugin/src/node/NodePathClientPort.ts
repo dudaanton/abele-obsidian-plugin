@@ -1,4 +1,6 @@
 import type { NodeClient } from '@abele/node-client'
+import { ChannelError } from '@abele/channel-protocol'
+import { bindPathTarget } from './nodePathChat'
 import type { RepositoryRevision, WorktreeEntry } from '@abele/node-protocol'
 import type { CommitSummary, FileChange, TreeEntry } from '@/components/nodeWork/types'
 import { formatTimestamp } from '@/helpers/displayFormat'
@@ -26,6 +28,7 @@ type ReadClient = Pick<
   | 'readContent'
   | 'onEvent'
   | 'subscribe'
+  | 'store'
 >
 export async function pathPages<T>(
   read: (
@@ -108,6 +111,7 @@ export function supportedNodePathCapabilities(description: unknown): string[] {
 export class NodePathClientPort implements NodePathPort {
   protected worktrees = new Map<string, WorktreeEntry>()
   protected capabilities: string[] = []
+  private subscribedSessions = new Set<string>()
   constructor(
     readonly client: ReadClient,
     readonly identity: { nodeId: string; registrationId: string }
@@ -184,23 +188,58 @@ export class NodePathClientPort implements NodePathPort {
         })
       }
     }
-    return {
-      folders,
-      targets,
-      capabilities: this.capabilities,
-      sessions: sessions.map((session) => ({
-        session,
-        target: session.workspace_id ? workspaceTargets.get(session.workspace_id) : undefined,
-      })),
+    const bound: PathCatalogue['sessions'] = []
+    for (const session of sessions) {
+      let target = session.workspace_id ? workspaceTargets.get(session.workspace_id) : undefined
+      if (this.capabilities.includes('node_path_execution')) {
+        try {
+          const binding = await this.client.nodePath.sessionWorktreeGet({
+            session_id: session.session_id,
+          })
+          target = bindPathTarget(this.identity, binding.project_id, binding.target)
+        } catch (error) {
+          if (!(error instanceof ChannelError && error.code === 'workspace_required')) throw error
+        }
+      }
+      if (target && !this.subscribedSessions.has(session.session_id)) {
+        await this.client.subscribe(session.session_id)
+        this.subscribedSessions.add(session.session_id)
+      }
+      const running = await this.client.store.transaction((state) => {
+        const runs = new Set<string>()
+        for (const event of state.events[session.session_id] ?? []) {
+          const data = record(event.data)
+          if (typeof data.run_id !== 'string') continue
+          if (event.type === 'run.started') runs.add(data.run_id)
+          else if (['run.completed', 'run.failed', 'run.interrupted'].includes(event.type))
+            runs.delete(data.run_id)
+        }
+        return runs.size > 0
+      })
+      bound.push({ session, target, running })
     }
+    return { folders, targets, capabilities: this.capabilities, sessions: bound }
   }
   async inspect(target: PathTarget, files = true): Promise<PathInspection> {
     if (target.kind === 'workspace')
       return { entries: files ? await this.plainTree(target.id) : [], changes: [] }
     const { revision } = await this.client.repository.observe({ worktree_id: target.id })
     const status = await this.status(target, revision)
+    const head = revision.kind === 'commit' ? revision.commit : revision.head
+    const last = head
+      ? (
+          await this.client.repository.history({
+            worktree_id: target.id,
+            revision: { kind: 'commit', commit: head },
+            limit: 1,
+          })
+        ).entries[0]
+      : undefined
     return {
       revision,
+      lastCommit: last
+        ? `${last.subject} · ${formatTimestamp(last.authored_at).label}`
+        : 'No commits yet',
       changes: status.map(pathStatus),
       entries: files ? await this.gitTree(target.id, revision) : [],
       ...(this.capabilities.includes('node_path_v2')
@@ -478,7 +517,18 @@ export class NodePathClientPort implements NodePathPort {
   }
   async subscribe(notify: () => void): Promise<() => void> {
     const stop = this.client.onEvent((event) => {
-      if (event.stream_id === 'catalog' || event.type === 'stream.redacted') notify()
+      if (
+        event.stream_id === 'catalog' ||
+        event.type === 'stream.redacted' ||
+        [
+          'run.started',
+          'run.completed',
+          'run.failed',
+          'run.interrupted',
+          'session.worktree.changed',
+        ].includes(event.type)
+      )
+        notify()
     })
     try {
       await this.client.subscribe('catalog')
@@ -549,9 +599,10 @@ export function reverseNodePatch(text: string, patch: string): string {
   const afterHasNewline = text.endsWith('\n')
   if (afterHasNewline) output.pop()
   const lines = patch.split('\n')
-  const hunks: { start: number; after: string[]; before: string[] }[] = []
+  const hunks: { start: number; after: string[]; before: string[]; beforeNoNewline?: boolean }[] =
+    []
   let current: (typeof hunks)[number] | undefined
-  let beforeHasNewline = true
+  let beforeHasNewline = afterHasNewline || !text
   for (let i = 0; i < lines.length; i++) {
     const line = lines[i],
       match = /^@@ -\d+(?:,\d+)? \+(\d+)(?:,(\d+))? @@/.exec(line)
@@ -562,7 +613,8 @@ export function reverseNodePatch(text: string, patch: string): string {
     }
     if (!current) continue
     if (line.startsWith('\\ No newline')) {
-      if (lines[i - 1]?.startsWith('-') || lines[i - 1]?.startsWith(' ')) beforeHasNewline = false
+      if (lines[i - 1]?.startsWith('-') || lines[i - 1]?.startsWith(' '))
+        current.beforeNoNewline = true
       continue
     }
     if (line.startsWith(' ')) {
@@ -571,8 +623,18 @@ export function reverseNodePatch(text: string, patch: string): string {
     } else if (line.startsWith('+')) current.after.push(line.slice(1))
     else if (line.startsWith('-')) current.before.push(line.slice(1))
   }
+  if (
+    !hunks.length &&
+    /^similarity index 100%$/m.test(patch) &&
+    /^rename from /m.test(patch) &&
+    /^rename to /m.test(patch)
+  )
+    return text
   if (!hunks.length && patch.trim()) throw new Error('No bounded text hunks in this patch.')
+  const afterLength = output.length
   for (const hunk of hunks.reverse()) {
+    if (hunk.start + hunk.after.length === afterLength && hunk.before.length)
+      beforeHasNewline = !hunk.beforeNoNewline
     if (
       output.slice(hunk.start, hunk.start + hunk.after.length).join('\n') !== hunk.after.join('\n')
     )

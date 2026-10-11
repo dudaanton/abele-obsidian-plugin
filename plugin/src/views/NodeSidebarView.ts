@@ -4,6 +4,11 @@ import { z } from 'zod'
 import { NodeService } from '@/node/NodeService'
 import { NodePathService } from '@/node/NodePathService'
 import { NodePathModel } from '@/node/NodePathModel'
+import {
+  createLocalNodeDiscovery,
+  localNodeRegistrationUrl,
+  type LocalNode,
+} from '@/node/localDiscovery'
 import { formatTimestamp } from '@/helpers/displayFormat'
 import { NODE_SIDEBAR_VIEW, openNodePathTab } from '@/node/nodePathNavigation'
 import {
@@ -22,6 +27,13 @@ export class NodeSidebarView extends ItemView {
   private ui?: VueApp
   private stop?: WatchStopHandle
   private readonly registrationId = shallowRef('')
+  private readonly local = shallowRef<LocalNode>()
+  private readonly localPhase = shallowRef<
+    'looking' | 'found' | 'connecting' | 'not-found' | 'remote'
+  >(Platform.isMobile ? 'remote' : 'looking')
+  private readonly localError = shallowRef('')
+  private readonly discovery = createLocalNodeDiscovery()
+  private discoveryController?: AbortController
   constructor(leaf: WorkspaceLeaf) {
     super(leaf)
   }
@@ -63,7 +75,9 @@ export class NodeSidebarView extends ItemView {
         const selected = () => model?.current.value
         return h(NodePathSidebar, {
           model,
-          phase: node ? 'ready' : Platform.isMobile ? 'remote' : 'not-found',
+          phase: node ? 'ready' : this.localPhase.value,
+          error: this.localError.value || undefined,
+          onConnect: () => this.connectLocal(),
           node:
             node && connection && model
               ? {
@@ -72,7 +86,13 @@ export class NodeSidebarView extends ItemView {
                   status: connection.state.value,
                   seen: formatTimestamp(model.receivedAt.value).label,
                 }
-              : undefined,
+              : this.local.value
+                ? {
+                    name: this.local.value.nodeName,
+                    status: 'offline',
+                    address: this.local.value.endpoint,
+                  }
+                : undefined,
           onPair: openNodePathPairing,
           onSelect: (id: string) => {
             if (model) nodePathAction(() => model.select(id))
@@ -142,8 +162,50 @@ export class NodeSidebarView extends ItemView {
       },
     })
     this.ui.mount(this.contentEl)
+    if (!Platform.isMobile) {
+      const configured: unknown = this.app.loadLocalStorage('abele-node-local-state-dir')
+      this.local.value = this.discovery.discover(
+        typeof configured === 'string' ? configured : undefined
+      )
+      this.localPhase.value = this.local.value ? 'found' : 'not-found'
+    }
+  }
+  private connectLocal(): void {
+    const found = this.local.value
+    if (!found || this.localPhase.value === 'connecting') return
+    this.discoveryController?.abort()
+    const controller = (this.discoveryController = new AbortController())
+    this.localPhase.value = 'connecting'
+    this.localError.value = ''
+    nodePathAction(async () => {
+      try {
+        const node = await this.discovery.connect(
+          found,
+          'Obsidian desktop',
+          {
+            add: (label, endpoint, token, expectedNodeId) =>
+              NodeService.getInstance().add(
+                label,
+                localNodeRegistrationUrl(endpoint),
+                token,
+                expectedNodeId,
+                () => !controller.signal.aborted
+              ),
+          },
+          controller.signal
+        )
+        if (!controller.signal.aborted) this.registrationId.value = node.id
+      } catch (error) {
+        if (!controller.signal.aborted) {
+          this.localPhase.value = 'found'
+          this.localError.value =
+            error instanceof Error ? error.message : 'Could not connect the local node.'
+        }
+      }
+    })
   }
   async onClose(): Promise<void> {
+    this.discoveryController?.abort()
     this.stop?.()
     this.stop = undefined
     this.ui?.unmount()

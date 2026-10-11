@@ -34,6 +34,7 @@
           Agents and folders live on a computer running AbeleNode. Pair this device with it.
         </div>
       </template>
+      <div v-if="error" class="abele-node-panel__notice" role="alert">{{ error }}</div>
       <div class="abele-node-panel__intro-actions">
         <Button
           v-if="phase === 'found' || phase === 'connecting'"

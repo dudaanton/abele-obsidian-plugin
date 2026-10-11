@@ -121,6 +121,7 @@ export interface NodeDirectory {
 /** What a pairing code from `abele-node pair` holds, read out of it. */
 export interface PairingCode {
   name: string
+  nodeId?: string
   host: string
   port: number
   fingerprint: string

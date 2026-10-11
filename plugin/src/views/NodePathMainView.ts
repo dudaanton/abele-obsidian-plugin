@@ -14,12 +14,15 @@ import { pathPages } from '@/node/NodePathClientPort'
 import { NodePathService } from '@/node/NodePathService'
 import { NodePathFileModel, pathTargetKey } from '@/node/NodePathModel'
 import { NodePathHistoryModel } from '@/node/NodePathHistoryModel'
-import { NodeFilesModel, NodeDocumentSource } from '@/node/NodeFilesModel'
+import { NodeFilesModel, NodeDocumentSource, nodeResourceTarget } from '@/node/NodeFilesModel'
+import { nodeChatSwitches } from '@/node/nodePathChat'
 import { NodeChatPresenter } from '@/node/NodeChatPresenter'
 import {
   NodePathTabSchema,
   nodePathViewType,
+  nodePathTabKey,
   openNodePathTab,
+  revealNodeDrawer,
   type NodePathTabState,
 } from '@/node/nodePathNavigation'
 import { showNodePathFileMenu, chooseSessionWorktree } from '@/node/NodePathController'
@@ -47,7 +50,7 @@ export class NodePathMainView extends ItemView {
     super(leaf)
     if (Platform.isMobile)
       this.addAction('arrow-left', 'Back to Node', () => {
-        this.app.workspace.leftSplit.expand()
+        this.act(() => revealNodeDrawer(this.app.workspace, this.saved?.target.registrationId))
       })
     if (viewType === 'abele-node-file') {
       this.addAction('file-diff', 'Toggle whole file / comparison', () => {
@@ -109,7 +112,7 @@ export class NodePathMainView extends ItemView {
       throw new Error('The node tab kind does not match its host.')
     // Revealing an existing chat/history/editor must not destroy drafts, frozen views or scroll.
     const same =
-      this.saved && parsed.kind !== 'file' && JSON.stringify(this.saved) === JSON.stringify(parsed)
+      this.saved && parsed.kind !== 'file' && nodePathTabKey(this.saved) === nodePathTabKey(parsed)
     this.saved = parsed
     if (!same) await this.bind(parsed)
     await super.setState(raw, result)
@@ -187,7 +190,11 @@ export class NodePathMainView extends ItemView {
         })
       )
       this.ui.mount(host)
-      await file.open(state.path, state.stage).catch(() => {})
+      if (model.online.value || !model.hasRetained(state.target, state.path, state.stage)) {
+        await connection.connect().catch(() => {})
+        await NodePathService.getInstance().ready(node.id)
+      }
+      if (lifetime === this.lifetime) await file.open(state.path, state.stage).catch(() => {})
     } else if (state.kind === 'history') {
       const history = (this.history = new NodePathHistoryModel(model.port, state.target))
       this.ui = createApp({
@@ -211,7 +218,9 @@ export class NodePathMainView extends ItemView {
           }),
       })
       this.ui.mount(host)
-      await history.load().catch(() => {})
+      await connection.connect().catch(() => {})
+      await NodePathService.getInstance().ready(node.id)
+      if (lifetime === this.lifetime) await history.load().catch(() => {})
     } else if (state.kind === 'editor') {
       const editor = (this.editor = new NodeFilesModel(
         connection.client,
@@ -245,10 +254,24 @@ export class NodePathMainView extends ItemView {
       })
       this.ui.mount(host)
       try {
-        await permission()
+        await connection.connect().catch(() => {})
         await editor.openFile(state.path)
+        if (!offline()) await permission()
         if (lifetime === this.lifetime && editor.fileEditable.value && this.editorAllowed.value)
           await editor.beginEditing()
+        if (!offline())
+          await model
+            .openFile(
+              state.target,
+              state.path,
+              undefined,
+              undefined,
+              (document) =>
+                lifetime === this.lifetime &&
+                document.contentId === editor.document.value?.contentId &&
+                editor.draftText.value === editor.document.value?.text
+            )
+            .catch(() => {})
       } catch (error) {
         if (lifetime === this.lifetime)
           this.error.value = error instanceof Error ? error.message : 'Could not open code editor'
@@ -284,6 +307,24 @@ export class NodePathMainView extends ItemView {
             worktree: copy,
             folder: folder?.name,
             canSwitchWorktree: model.capabilities.value.includes('node_path_execution'),
+            canSwitchNative: model.capabilities.value.includes('node_path_native_switching'),
+            currentTarget: target,
+            switches: nodeChatSwitches(
+              presenter.projection.value.unknown,
+              target,
+              state.sessionId,
+              (id) =>
+                model.folders.value.flatMap((f) => f.copies).find((c) => c.id === id)?.branch ??
+                'Unavailable worktree'
+            ),
+            openNodeResource: (resource: string, bound = target) =>
+              this.act(() =>
+                openNodePathTab(
+                  this.app.workspace,
+                  { kind: 'file', target: bound, path: nodeResourceTarget(resource).path },
+                  Platform.isMobile
+                )
+              ),
             onChooseWorktree: () => this.act(() => chooseSessionWorktree(model, state.sessionId)),
             onNewChat: () =>
               this.act(() =>
@@ -292,6 +333,15 @@ export class NodePathMainView extends ItemView {
           })
         },
       })
+      this.stops.push(
+        watch(model.sessions, (sessions) => {
+          const current = sessions.find((s) => s.session.session_id === state.sessionId)?.target
+          if (current && this.saved?.kind === 'chat') {
+            this.saved = { ...this.saved, target: current }
+            this.app.workspace.requestSaveLayout()
+          }
+        })
+      )
       this.ui.mount(host)
       await presenter.load()
     }

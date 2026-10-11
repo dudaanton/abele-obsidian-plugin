@@ -1,5 +1,5 @@
 import { describe, expect, it, vi } from 'vitest'
-import { NodePathClient, RepositoryClient } from '@abele/node-client'
+import { NodePathClient, RepositoryClient, MemoryClientStore } from '@abele/node-client'
 import { ProjectSchema, SessionSchema, WorkspaceSchema } from '@abele/node-protocol'
 import { NodePathClientPort, reverseNodePatch } from '@/node/NodePathClientPort'
 import { nodeRepositoryFixture, identity } from '../helpers/nodeRepositoryFixture'
@@ -39,6 +39,7 @@ function fake() {
   const f = nodeRepositoryFixture()
   const client = {
     ...f.client,
+    store: new MemoryClientStore(),
     describe: vi.fn(async () => ({})),
     nodePath: new NodePathClient(f.request, async () => {
       throw new Error('No mutation in this read fixture')
@@ -150,6 +151,18 @@ describe('exact reverse patch for staged and unstaged comparisons', () => {
   it('handles empty added and deleted files and missing final newlines', () => {
     expect(reverseNodePatch('new', '@@ -0,0 +1 @@\n+new\n\\ No newline at end of file\n')).toBe('')
     expect(reverseNodePatch('', '@@ -1 +0,0 @@\n-old\n\\ No newline at end of file\n')).toBe('old')
+  })
+  it('keeps exact bytes for a metadata-only rename and preserves an untouched missing final newline', () => {
+    expect(
+      reverseNodePatch(
+        'same bytes',
+        'diff --git a/old.txt b/new.txt\nsimilarity index 100%\nrename from old.txt\nrename to new.txt\n'
+      )
+    ).toBe('same bytes')
+    expect(reverseNodePatch('new\ntail', '@@ -1 +1 @@\n-old\n+new\n')).toBe('old\ntail')
+    expect(reverseNodePatch('new', '@@ -1 +1 @@\n-old\n+new\n\\ No newline at end of file\n')).toBe(
+      'old\n'
+    )
   })
   it('refuses stale patches rather than rendering a plausible but false comparison', () => {
     expect(() => reverseNodePatch('different\n', '@@ -1 +1 @@\n-old\n+new\n')).toThrow(

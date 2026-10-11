@@ -118,8 +118,15 @@ The Node drawer and its main-area file, history, chat and code-editor leaves ret
 registration/node/project IDs, an opaque workspace or worktree target, relative file paths
 and session IDs in the workspace layout. They never store node credentials or claim chat
 permissions. File navigation is bound to the leaf target, not the current drawer selection.
-Current drawer metadata and loaded file/history content remain in memory while disconnected;
-reconnect reloads mutable state without replacing editor drafts or frozen commit views.
+A bounded `abele-node-path-cache:<registration-id>` local-preference snapshot retains the
+last received drawer metadata, selected target and its file tree across restart (at most
+1 MiB). It contains neither credentials, file bytes nor chat authorization and never claims
+that a retained agent is still running. Loaded file text is additionally retained in a bounded
+4 MiB session-memory cache for offline reopening. History and editor drafts keep their existing
+lifetimes; reconnect reloads mutable state without replacing drafts or frozen commit views.
+`abele-node-local-state-dir` and `abele-node-device-name` are device-local discovery/enrollment
+preferences. An edited paired TLS route is stored separately as `transportUrl`; the signed
+canonical endpoint, node pin and non-extractable device key remain unchanged.
 
 `abele-node-path-seen` in local preferences records the last successfully opened observed
 change ID by node, target kind, target ID and relative path (bounded to 4,096 entries).

@@ -1,12 +1,18 @@
 <template>
-  <div class="abele-node-chat">
+  <div ref="chatRoot" class="abele-node-chat" :class="{ 'abele-keyboard-open': keyboardOpen }">
     <div class="abele-ai-chat__header">
       <span class="abele-node-chat__title" :title="title">{{ presenter.label.value }}</span>
       <WorktreeChip
         v-if="worktree"
         :folder="folder ?? ''"
         :copy="worktree"
-        :disabled="!canSwitchWorktree || offline || presenter.isStreaming.value"
+        :disabled="
+          !canSwitchWorktree ||
+          offline ||
+          presenter.isStreaming.value ||
+          presenter.queued.value.length > 0 ||
+          (!!presenter.nativeSessionId?.value && !canSwitchNative)
+        "
         @choose="emit('choose-worktree')"
       />
       <div class="abele-ai-chat__header-actions">
@@ -78,24 +84,31 @@
         :presenter="presenter"
         :before="presentation.messages[0]?.timestamp ?? Infinity"
       />
-      <NodeMessageTree
-        :messages="presentation.messages"
-        :children="presenter.projection.value.children || {}"
-        :queue-states="presentation.states"
-        :offline="offline"
-        :open-resource="openResource"
-        @cancel="presenter.cancelInput($event)"
-        @retry="retry"
-      >
-        <template #after-message="{ message, next }">
-          <NodeDebugActions
-            v-if="presenter.reference"
-            :presenter="presenter"
-            :after="message.timestamp"
-            :before="next?.timestamp ?? Infinity"
-          />
-        </template>
-      </NodeMessageTree>
+      <template v-for="(segment, index) in segments" :key="segment.switch?.seq ?? index">
+        <WorktreeSwitchLine
+          v-if="segment.switch"
+          :branch="segment.switch.branch"
+          :by="segment.switch.by"
+        />
+        <NodeMessageTree
+          :messages="segment.messages"
+          :children="presenter.projection.value.children || {}"
+          :queue-states="presentation.states"
+          :offline="offline"
+          :open-resource="(path) => openResource(path, segment.target)"
+          @cancel="presenter.cancelInput($event)"
+          @retry="retry"
+        >
+          <template #after-message="{ message }">
+            <NodeDebugActions
+              v-if="presenter.reference"
+              :presenter="presenter"
+              :after="message.timestamp"
+              :before="presentation.messages[presentation.messages.findIndex(m => m.id === message.id) + 1]?.timestamp ?? Infinity"
+            />
+          </template>
+        </NodeMessageTree>
+      </template>
       <div v-for="artifact in presenter.projection.value.artifacts" :key="artifact.artifactId">
         <Button text="Read stored output" @click="readArtifact(artifact.artifactId)" />
         <pre v-if="artifacts[artifact.artifactId]">{{ artifacts[artifact.artifactId] }}</pre>
@@ -165,6 +178,7 @@
       token-display=""
       scope-label=""
       @send="send"
+      @focus="onInputFocus"
     />
   </div>
 </template>
@@ -186,7 +200,11 @@ import Button from './obsidian/Button.vue'
 import { piFailure } from '@/node/piTranscript'
 import NodeDebugActions from '@/debugger/NodeDebugActions.vue'
 import { openNodeDebugger } from '@/debugger/register'
+import { useChatKeyboardGap } from '@/composables/useChatKeyboardGap'
 import WorktreeChip from './nodeWork/WorktreeChip.vue'
+import WorktreeSwitchLine from './nodeWork/WorktreeSwitchLine.vue'
+import { nodeChatSegments, type NodeChatSwitch } from '@/node/nodePathChat'
+import type { PathTarget } from '@/node/NodePathModel'
 import type { CopySummary } from './nodeWork/types'
 const props = withDefaults(
   defineProps<{
@@ -194,8 +212,20 @@ const props = withDefaults(
     worktree?: CopySummary
     folder?: string
     canSwitchWorktree?: boolean
+    canSwitchNative?: boolean
+    currentTarget?: PathTarget
+    switches?: NodeChatSwitch[]
+    openNodeResource?: (path: string, target?: PathTarget) => void
   }>(),
-  { worktree: undefined, folder: undefined, canSwitchWorktree: false }
+  {
+    worktree: undefined,
+    folder: undefined,
+    canSwitchWorktree: false,
+    canSwitchNative: false,
+    currentTarget: undefined,
+    switches: () => [],
+    openNodeResource: undefined,
+  }
 )
 const diagnostics = computed(() =>
   props.presenter.projection.value.unknown
@@ -256,6 +286,13 @@ const presentation = computed(
       {}
     )
 )
+const chatRoot = ref<HTMLElement | null>(null)
+const keyboardOpen = ref(false)
+const { measure: measureBottomGap } = useChatKeyboardGap(chatRoot)
+const onInputFocus = (focused: boolean) => {
+  if (focused) measureBottomGap()
+  keyboardOpen.value = focused
+}
 const expanded = ref(false),
   sending = ref(false),
   permissionFixture = ref(false)
@@ -266,7 +303,16 @@ const recordArtifact = (data: unknown): string => {
     data && typeof data === 'object' ? (data as Record<string, unknown>).artifact_id : undefined
   return typeof id === 'string' ? id : ''
 }
-const openResource = (path: string) => props.presenter.openResource(path)
+const segments = computed(() =>
+  nodeChatSegments(
+    presentation.value.messages,
+    props.presenter.projection.value.messageSequences,
+    props.switches,
+    props.currentTarget
+  )
+)
+const openResource = (path: string, target?: PathTarget) =>
+  props.openNodeResource ? props.openNodeResource(path, target) : props.presenter.openResource(path)
 const workspaces = () => {
   const node = NodeService.getInstance().nodes.value.find(
     (n) => n.id === props.presenter.reference.registrationId
@@ -447,6 +493,19 @@ watch(
     }
   }
   container-type: inline-size;
+  body.is-mobile &.abele-keyboard-open {
+    flex: 0 0 auto;
+    height: calc(100% - max(0px, var(--keyboard-height, 0px) - var(--abele-bottom-gap, 0px)));
+  }
+  body.is-mobile.mod-toolbar-open &.abele-keyboard-open {
+    height: calc(
+      100% - max(
+          0px,
+          var(--keyboard-height, 0px) +
+            var(--mobile-toolbar-height, 0px) - var(--abele-bottom-gap, 0px)
+        )
+    );
+  }
   .abele-chat-msg__diff,
   .abele-chat-msg__new-file {
     max-height: none;

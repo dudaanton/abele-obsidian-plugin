@@ -3,6 +3,7 @@ import { GlobalStore } from '@/stores/GlobalStore'
 import { NodeService } from './NodeService'
 import { NodePathModel } from './NodePathModel'
 import { NodePathClientPort } from './NodePathClientPort'
+import { NodePathSnapshotSchema } from './nodePathSnapshot'
 
 /** Device-local lifetime: tabs and the drawer share metadata, never each other's selection. */
 export class NodePathService {
@@ -16,6 +17,8 @@ export class NodePathService {
   }
   private models = new Map<string, NodePathModel>()
   private stops = new Map<string, WatchStopHandle>()
+  private loads = new Map<string, Promise<void>>()
+  private cacheStops = new Map<string, WatchStopHandle>()
   private readonly seen = new Map<string, string>()
   private stopNodes: WatchStopHandle
   private constructor() {
@@ -31,6 +34,10 @@ export class NodePathService {
           this.models.delete(id)
           this.stops.get(id)?.()
           this.stops.delete(id)
+          this.loads.delete(id)
+          this.cacheStops.get(id)?.()
+          this.cacheStops.delete(id)
+          app.saveLocalStorage(`abele-node-path-cache:${id}`, null)
         }
     })
   }
@@ -57,24 +64,50 @@ export class NodePathService {
         )
       },
     })
+    model.online.value = connection.state.value === 'connected'
+    const app = GlobalStore.getInstance().app,
+      cacheKey = `abele-node-path-cache:${registrationId}`
+    model.restoreSnapshot(app.loadLocalStorage(cacheKey))
+    this.cacheStops.set(
+      registrationId,
+      watch(
+        [model.folders, model.targets, model.inspections, model.selected, model.receivedAt],
+        () => {
+          const parsed = NodePathSnapshotSchema.safeParse(model.snapshot())
+          if (parsed.success && JSON.stringify(parsed.data).length <= 1024 * 1024)
+            app.saveLocalStorage(cacheKey, parsed.data)
+        }
+      )
+    )
     this.models.set(registrationId, model)
     this.stops.set(
       registrationId,
       watch(connection.state, (state) => {
+        model.online.value = state === 'connected'
         if (state === 'connected') void model.refresh().catch((e) => model.report(e))
       })
     )
-    void connection
-      .connect()
-      .then(() => model.start())
-      .catch((e) => model.report(e))
+    this.loads.set(
+      registrationId,
+      connection
+        .connect()
+        .then(() => model.start())
+        .catch((e) => model.report(e))
+    )
     return model
+  }
+  ready(registrationId: string): Promise<void> {
+    this.model(registrationId)
+    return this.loads.get(registrationId) ?? Promise.resolve()
   }
   destroy(): void {
     this.stopNodes()
     for (const stop of this.stops.values()) stop()
+    for (const stop of this.cacheStops.values()) stop()
     for (const model of this.models.values()) model.destroy()
     this.stops.clear()
     this.models.clear()
+    this.loads.clear()
+    this.cacheStops.clear()
   }
 }

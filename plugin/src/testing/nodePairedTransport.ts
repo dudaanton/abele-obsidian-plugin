@@ -1,5 +1,5 @@
 import { BrowserRecordTransport } from '@abele/channel-client'
-import { PairedWssConnector } from '@abele/node-client'
+import { NodePairingConnector } from '@/node/NodePairingConnector'
 import type { NodeService } from '@/node/NodeService'
 
 /** Test builds only: a loopback proxy emulates Serve without TLS or tailnet changes.
@@ -9,7 +9,7 @@ export function pairedLoopbackTransport(service: NodeService, url: string): void
   if (!/^ws:\/\/127\.0\.0\.1:\d+\/channel$/.test(url))
     throw new Error('Expected a loopback paired fixture')
   Object.defineProperty(service, 'pairedConnector', {
-    value: new PairedWssConnector(service.deviceKeys, async () => {
+    value: new NodePairingConnector(service.deviceKeys, async () => {
       const socket = new WebSocket(url)
       const transport = new BrowserRecordTransport(socket)
       await new Promise<void>((resolve, reject) => {

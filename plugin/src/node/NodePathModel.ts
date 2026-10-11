@@ -1,4 +1,6 @@
 import { computed, ref, shallowRef, markRaw } from 'vue'
+import { formatTimestamp } from '@/helpers/displayFormat'
+import { NodePathSnapshotSchema, emptySnapshotChange } from './nodePathSnapshot'
 import type { NodeClient } from '@abele/node-client'
 import type { RepositoryRevision } from '@abele/node-protocol'
 import type {
@@ -28,6 +30,7 @@ export interface PathInspection {
   ahead?: number
   behind?: number
   base?: string
+  lastCommit?: string
   revision?: RepositoryRevision
   note?: string
 }
@@ -82,6 +85,7 @@ export class NodePathModel {
   readonly receivedAt = ref('')
   readonly error = ref('')
   readonly busy = ref(false)
+  readonly online = ref(true)
   readonly capabilities = shallowRef<string[]>([])
   readonly inspections = shallowRef<Record<string, PathInspection>>({})
   readonly targets = shallowRef<PathTarget[]>([])
@@ -104,6 +108,8 @@ export class NodePathModel {
   readonly currentCopy = computed(() =>
     this.currentFolder.value?.copies.find((c) => c.id === this.selected.value)
   )
+  private retained = new Map<string, { document: PathDocument; bytes: number }>()
+  private retainedBytes = 0
   private disposed = false
   private catalogueGeneration = 0
   private selectionGeneration = 0
@@ -111,6 +117,7 @@ export class NodePathModel {
   private stopWatch?: () => void
   private stopCatalog?: () => void
   private refreshPromise?: Promise<void>
+  private latestRead?: Promise<void>
   private dirty = false
 
   constructor(
@@ -123,6 +130,62 @@ export class NodePathModel {
     markRaw(this)
   }
 
+  restoreSnapshot(raw: unknown): void {
+    const parsed = NodePathSnapshotSchema.safeParse(raw)
+    if (
+      !parsed.success ||
+      parsed.data.nodeId !== this.nodeId ||
+      parsed.data.registrationId !== this.registrationId
+    )
+      return
+    const value = parsed.data
+    this.folders.value = value.folders.map((f) => ({
+      ...f,
+      copies: f.copies.map((c) => ({
+        ...c,
+        running: false,
+        chats: c.chats?.map((chat) => ({ ...chat, running: false })),
+      })),
+      chats: f.chats?.map((chat) => ({ ...chat, running: false })),
+    }))
+    this.targets.value = value.targets
+    this.selected.value = value.selected
+    this.receivedAt.value = value.receivedAt
+    const selected = this.current.value
+    if (selected && value.inspection)
+      this.inspections.value = { [pathTargetKey(selected)]: this.mark(selected, value.inspection) }
+  }
+  snapshot(): unknown {
+    const cleanTree = (entries: TreeEntry[]): TreeEntry[] =>
+      entries.map((entry) => ({
+        ...entry,
+        ...(entry.change ? { change: emptySnapshotChange(entry.change) } : {}),
+        ...(entry.children ? { children: cleanTree(entry.children) } : {}),
+      }))
+    const inspection = this.inspection.value
+    return {
+      version: 1,
+      nodeId: this.nodeId,
+      registrationId: this.registrationId,
+      receivedAt: this.receivedAt.value,
+      selected: this.selected.value,
+      folders: this.folders.value,
+      targets: this.targets.value,
+      ...(inspection
+        ? {
+            inspection: {
+              entries: cleanTree(inspection.entries),
+              changes: inspection.changes.map(emptySnapshotChange),
+              ahead: inspection.ahead,
+              behind: inspection.behind,
+              base: inspection.base,
+              lastCommit: inspection.lastCommit,
+              note: inspection.note,
+            },
+          }
+        : {}),
+    }
+  }
   target(id: string): PathTarget {
     const target = this.targets.value.find(
       (t) => t.id === id || (t.kind === 'workspace' && t.projectId === id)
@@ -159,6 +222,20 @@ export class NodePathModel {
   }
   async refresh(): Promise<void> {
     const generation = ++this.catalogueGeneration
+    const read = this.refreshCatalogue(generation)
+    this.latestRead = read
+    try {
+      await read
+    } catch (error) {
+      if (generation === this.catalogueGeneration) throw error
+    }
+    while (!this.disposed && generation !== this.catalogueGeneration) {
+      const latest = this.latestRead
+      await latest
+      if (latest === this.latestRead) return
+    }
+  }
+  private async refreshCatalogue(generation: number): Promise<void> {
     this.busy.value = true
     try {
       const catalogue = await this.port.catalogue()
@@ -177,7 +254,7 @@ export class NodePathModel {
       this.receivedAt.value = this.now()
       this.error.value = ''
     } catch (error) {
-      this.report(error)
+      if (generation === this.catalogueGeneration) this.report(error)
       throw error
     } finally {
       if (generation === this.catalogueGeneration) this.busy.value = false
@@ -189,6 +266,12 @@ export class NodePathModel {
     this.selected.value = target.kind === 'workspace' ? target.projectId : id
     this.stopWatch?.()
     this.stopWatch = undefined
+    if (!this.online.value) {
+      if (!this.inspections.value[pathTargetKey(target)])
+        throw new Error('This target’s files were not retained. Reconnect to load them.')
+      this.mode.value = target.kind === 'worktree' && this.changes.value.length ? 'changed' : 'all'
+      return
+    }
     await this.reloadTarget(target)
     if (this.disposed || generation !== this.selectionGeneration) return
     this.mode.value = target.kind === 'worktree' && this.changes.value.length ? 'changed' : 'all'
@@ -226,15 +309,45 @@ export class NodePathModel {
   private seenKey(target: PathTarget, path: string) {
     return JSON.stringify([target.nodeId, target.kind, target.id, path])
   }
+  hasRetained(target: PathTarget, path: string, stage?: 'staged' | 'unstaged'): boolean {
+    return this.retained.has(JSON.stringify([pathTargetKey(target), path, stage, undefined]))
+  }
   async openFile(
     target: PathTarget,
     path: string,
     stage?: 'staged' | 'unstaged',
     revision?: RepositoryRevision,
-    publish: () => boolean = () => true
+    publish: (document: PathDocument) => boolean = () => true
   ): Promise<PathDocument> {
+    const cacheKey = JSON.stringify([pathTargetKey(target), path, stage, revision])
+    if (!this.online.value) {
+      const retained = this.retained.get(cacheKey)
+      if (!retained)
+        throw new Error('This file is not retained on this device. Reconnect to open it.')
+      return {
+        ...retained.document,
+        note: 'Offline · retained version. Reconnect to capture current bytes.',
+      }
+    }
     const file = await this.port.file({ ...target }, path, stage, revision)
-    if (this.disposed || !publish()) return file
+    if (this.disposed || !publish(file)) return file
+    const bytes = new TextEncoder().encode(
+      file.text + (file.change?.before ?? '') + (file.change?.after ?? '')
+    ).length
+    const previous = this.retained.get(cacheKey)
+    if (previous) {
+      this.retainedBytes -= previous.bytes
+      this.retained.delete(cacheKey)
+    }
+    if (bytes <= 4 * 1024 * 1024) {
+      this.retained.set(cacheKey, { document: file, bytes })
+      this.retainedBytes += bytes
+    }
+    while (this.retainedBytes > 4 * 1024 * 1024) {
+      const key = this.retained.keys().next().value!
+      this.retainedBytes -= this.retained.get(key)!.bytes
+      this.retained.delete(key)
+    }
     // Frozen commits are not evidence that the current working change has been reviewed.
     if (!revision && file.change?.changeId) {
       this.seen.set(this.seenKey(target, path), file.change.changeId)
@@ -256,7 +369,7 @@ export class NodePathModel {
               id: s.session.session_id,
               title: s.session.title,
               running: s.running,
-              when: s.session.created_at,
+              when: formatTimestamp(s.session.created_at).label,
             }))
         : undefined,
       copies: folder.copies.map((copy) => {
@@ -268,7 +381,7 @@ export class NodePathModel {
             id: s.session.session_id,
             title: s.session.title,
             running: s.running,
-            when: s.session.created_at,
+            when: formatTimestamp(s.session.created_at).label,
           }))
         return {
           ...copy,
@@ -280,6 +393,7 @@ export class NodePathModel {
                 unseen: inspection.changes.filter((c) => c.unseen).length,
                 ahead: inspection.ahead,
                 behind: inspection.behind,
+                lastCommit: inspection.lastCommit,
               }
             : {}),
         }
@@ -301,6 +415,8 @@ export class NodePathModel {
     this.stopWatch?.()
     this.stopCatalog?.()
     this.stopWatch = this.stopCatalog = undefined
+    this.retained.clear()
+    this.retainedBytes = 0
   }
 }
 

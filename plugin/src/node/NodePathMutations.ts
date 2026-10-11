@@ -1,5 +1,12 @@
 import type { ClientState, NodeClient, Project } from '@abele/node-client'
-import { NodePathMethodSchemas, type WorktreeEntry } from '@abele/node-protocol'
+import {
+  NodePathMethodSchemas,
+  MethodSchemas,
+  ResourceMethodSchemas,
+  WorkspaceJobResultSchema,
+  type WorktreeEntry,
+} from '@abele/node-protocol'
+import { wirePathTarget } from './nodePathChat'
 import type { PathTarget } from './NodePathModel'
 interface PathIntent {
   id: string
@@ -11,7 +18,10 @@ type IntentState = ClientState & { nodePathIntents?: Record<string, PathIntent> 
 
 /** Owner actions use the client's durable receipts and keep uncertain IDs across dialog reopen. */
 export class NodePathMutations {
-  constructor(readonly client: Pick<NodeClient, 'store' | 'nodePath'>) {}
+  constructor(
+    readonly client: Pick<NodeClient, 'store' | 'nodePath'> &
+      Partial<Pick<NodeClient, 'removeWorkspace' | 'flush' | 'operationResult'>>
+  ) {}
   private async intent<T>(
     method: string,
     params: unknown,
@@ -69,21 +79,96 @@ export class NodePathMutations {
       this.client.nodePath.createWorkspace(params, id)
     )
   }
-  delete(target: PathTarget, row: WorktreeEntry, observation: string) {
+  trust(project_id: string) {
+    const params = { project_id, trust: 'trusted' as const }
+    return this.intent('project.trust', params, (id) => this.client.nodePath.trust(params, id))
+  }
+  execution(target: PathTarget) {
+    const params = { project_id: target.projectId, target: wirePathTarget(target), enabled: true }
+    return this.intent('project.execution', params, (id) =>
+      this.client.nodePath.execution(params, id)
+    )
+  }
+  session(target: PathTarget, title: string, provider: 'fake' | 'claude' | 'pi') {
+    const params = { title, provider, target: wirePathTarget(target) }
+    return this.intent(
+      'session.create',
+      params,
+      (id, retained) =>
+        this.client.nodePath.createSession(MethodSchemas['session.create'].parse(retained), id),
+      { target: params.target, provider }
+    )
+  }
+  switch(session_id: string, expected: PathTarget, target: PathTarget) {
+    const params = {
+      session_id,
+      expected_target: wirePathTarget(expected),
+      target: wirePathTarget(target),
+    }
+    return this.intent(
+      'session.worktree.set',
+      params,
+      (id, retained) =>
+        this.client.nodePath.sessionWorktreeSet(
+          NodePathMethodSchemas['session.worktree.set'].parse(retained),
+          id
+        ),
+      { session_id, target: params.target }
+    )
+  }
+  async removeManaged(workspaceId: string) {
+    const matches = (request: { method: string; params: unknown }) => {
+      if (request.method !== 'workspace.remove') return false
+      const parsed = ResourceMethodSchemas['workspace.remove'].safeParse(request.params)
+      return parsed.success && parsed.data.workspace_id === workspaceId
+    }
+    const retained = await this.client.store.transaction((state) => {
+      const pending = state.outbox.find(matches)
+      if (pending) return { id: pending.operation_id, pending: true }
+      const receipt = Object.entries(state.results).find(
+        ([, result]) => result.request && matches(result.request)
+      )
+      return receipt ? { id: receipt[0], pending: false } : undefined
+    })
+    if (retained) {
+      if (retained.pending) await this.client.flush?.()
+      const receipt = await this.client.operationResult?.(retained.id)
+      if (!receipt)
+        throw new Error('Deletion outcome unknown. Reconnect and check the original removal.')
+      if (receipt.error)
+        throw new Error(
+          `The original removal was refused: ${receipt.error}. Its receipt is retained.`
+        )
+      return WorkspaceJobResultSchema.parse(receipt.result)
+    }
+    if (!this.client.removeWorkspace)
+      throw new Error('Managed worktree removal is not available in this client.')
+    return this.client.removeWorkspace(workspaceId)
+  }
+  async delete(target: PathTarget, row: WorktreeEntry, observation: string) {
     const params = {
       worktree_id: target.id,
       expected_head: row.head,
       expected_observation_id: observation,
     }
-    return this.intent('repository.v1.worktree.delete', params, async (id) => {
-      const result = await this.client.nodePath.deleteWorktree(params, id)
-      if (result.state !== 'deleted')
-        throw new Error(
-          result.state === 'outcome_unknown'
-            ? 'Deletion outcome unknown. Keep the target and check the same operation before trying again.'
-            : 'The worktree changed. Refresh and review it before deleting.'
+    const result = await this.intent(
+      'repository.v1.worktree.delete',
+      params,
+      async (id, retained) => {
+        const result = await this.client.nodePath.deleteWorktree(
+          NodePathMethodSchemas['repository.v1.worktree.delete'].parse(retained),
+          id
         )
-      return result
-    })
+        if (result.state === 'outcome_unknown')
+          throw new Error(
+            'Deletion outcome unknown. Keep the target and check the same operation before trying again.'
+          )
+        return result
+      },
+      { worktree_id: target.id }
+    )
+    if (result.state === 'conflict')
+      throw new Error('The worktree changed. Refresh and review it before deleting.')
+    return result
   }
 }

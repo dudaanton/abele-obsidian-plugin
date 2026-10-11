@@ -1,5 +1,5 @@
 import { describe, expect, it, vi } from 'vitest'
-import { nodePathTabKey, openNodePathTab } from '@/node/nodePathNavigation'
+import { nodePathTabKey, openNodePathTab, revealNodeDrawer } from '@/node/nodePathNavigation'
 const target = (id = 'tree-a') => ({
   nodeId: 'node-demo',
   registrationId: 'registration-demo',
@@ -22,6 +22,20 @@ describe('main area node leaves', () => {
   it('keeps one node chat leaf when its backend worktree binding changes', () => {
     const a = { kind: 'chat' as const, target: target(), sessionId: 'sample-chat', title: 'Sample' }
     expect(nodePathTabKey(a)).toBe(nodePathTabKey({ ...a, target: target('tree-b') }))
+  })
+  it('reveals the Node drawer tab before expanding instead of opening a different sidebar', async () => {
+    const leaf = { setViewState: vi.fn(async () => {}) }
+    const workspace = {
+      getLeavesOfType: vi.fn(() => [leaf]),
+      revealLeaf: vi.fn(async () => {}),
+      leftSplit: { expand: vi.fn() },
+    }
+    await revealNodeDrawer(workspace as never, 'sample-registration')
+    expect(workspace.revealLeaf).toHaveBeenCalledWith(leaf)
+    expect(workspace.leftSplit.expand).toHaveBeenCalledOnce()
+    expect(leaf.setViewState).toHaveBeenCalledWith(
+      expect.objectContaining({ state: { registrationId: 'sample-registration' } })
+    )
   })
   it('replaces the one file tab, reveals it and closes only the mobile left drawer', async () => {
     const leaf = {

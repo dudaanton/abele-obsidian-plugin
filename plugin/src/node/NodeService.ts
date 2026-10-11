@@ -1,8 +1,9 @@
 import { ref, type Ref } from 'vue'
 import { AgentsService } from '@/agents/AgentsService'
-import { NodeClient, PairedWssConnector } from '@abele/node-client'
+import { NodeClient } from '@abele/node-client'
+import { NodePairingConnector } from './NodePairingConnector'
 import { type PairingInvite, fingerprint, ChannelError } from '@abele/channel-protocol'
-import { NodeDeviceKeyStore } from './NodeDeviceKeyStore'
+import { NodeDeviceKeyStore, claimedEnrollment } from './NodeDeviceKeyStore'
 import { GlobalStore } from '@/stores/GlobalStore'
 import { secrets } from '@/secrets/SecretStore'
 import { NodeRegistry, channelUrl, isPairedNode, type RegisteredNode } from './NodeRegistry'
@@ -38,15 +39,17 @@ export class NodeConnection {
           this.delegationCards.value = cards
           const { ChatService } = await import('@/ai/ChatService')
           await this.delegation.wakeDelivered(cards, (parent, id) => {
-            const session = ChatService.getInstance().getAllSessions().find(
-              (s) => s.delegationParentId === parent
-            )
+            const session = ChatService.getInstance()
+              .getAllSessions()
+              .find((s) => s.delegationParentId === parent)
             if (!session) return false
             return session.wakeDelegationResult(id)
           })
         }
       }
-    })().finally(() => { this.refreshingDelegations = undefined }))
+    })().finally(() => {
+      this.refreshingDelegations = undefined
+    }))
   }
 
   connect(): Promise<void> {
@@ -74,22 +77,33 @@ export class NodeConnection {
         // revoked mailbox must not disable unrelated owner chats or strand the outbox.
         // This applies only AFTER authenticated admission; failed admission never sets
         // client.connected, and all requests still undergo node-side authorization.
-        if (!this.disposed && generation === this.generation && this.client.connected && error instanceof ChannelError && error.code === 'unauthorized') {
+        if (
+          !this.disposed &&
+          generation === this.generation &&
+          this.client.connected &&
+          error instanceof ChannelError &&
+          error.code === 'unauthorized'
+        ) {
           this.delegation.connectionChanged()
           // NodeClient stops cursor replay on the first unauthorized stream. Probe
           // each saved cursor independently and discard only rejected subscriptions;
           // retained events stay durable. The next reconnect can then replay B.
           const streams = await this.store.transaction((s) => Object.keys(s.cursors))
           for (const stream of streams) {
-            try { await this.client.subscribe(stream) }
-            catch (failure) {
-              if (!(failure instanceof ChannelError) || failure.code !== 'unauthorized') throw failure
-              await this.store.transaction((s) => { delete s.cursors[stream] })
+            try {
+              await this.client.subscribe(stream)
+            } catch (failure) {
+              if (!(failure instanceof ChannelError) || failure.code !== 'unauthorized')
+                throw failure
+              await this.store.transaction((s) => {
+                delete s.cursors[stream]
+              })
             }
           }
           await this.client.flush()
           this.state.value = 'connected'
-          this.error.value = 'A saved node stream is no longer authorized; retained child transcripts can still be opened.'
+          this.error.value =
+            'A saved node stream is no longer authorized; retained child transcripts can still be opened.'
           return
         }
         if (generation === this.generation) {
@@ -143,6 +157,8 @@ export class NodeConnection {
 
   destroy(): void {
     this.disposed = true
+    ++this.generation
+    this.state.value = 'offline'
     window.clearTimeout(this.timer)
     void this.client.disconnect().finally(() => this.store.close())
   }
@@ -154,7 +170,7 @@ export class NodeService {
   readonly nodes: Ref<RegisteredNode[]>
   readonly registry: NodeRegistry
   readonly deviceKeys = new NodeDeviceKeyStore()
-  readonly pairedConnector = new PairedWssConnector(this.deviceKeys)
+  readonly pairedConnector = new NodePairingConnector(this.deviceKeys)
   private readonly connections = new Map<string, NodeConnection>()
   private readonly installation: string
   private readonly foreground = () => {
@@ -194,14 +210,31 @@ export class NodeService {
     window.addEventListener('focus', this.foreground)
   }
 
-  async add(label: string, url: string, token: string): Promise<RegisteredNode> {
+  async add(
+    label: string,
+    url: string,
+    token: string,
+    expectedNodeId?: string,
+    current: () => boolean = () => true
+  ): Promise<RegisteredNode> {
     const id = crypto.randomUUID()
     const store = new NodeClientStore(`${this.installation}-${id}`)
-    const client = new NodeClient({ url: channelUrl(url), profile: 'local-token-v1', token }, store)
+    const client = new NodeClient(
+      {
+        url: channelUrl(url),
+        profile: 'local-token-v1',
+        token,
+        ...(expectedNodeId ? { expected_node_id: expectedNodeId } : {}),
+      },
+      store
+    )
     try {
       await client.connect()
-      const expectedNodeId = await store.transaction((state) => state.node_id!)
-      const node = { id, label, url, expectedNodeId }
+      const admittedNodeId = await store.transaction((state) => state.node_id!)
+      if (expectedNodeId && admittedNodeId !== expectedNodeId)
+        throw new Error('node_identity_mismatch')
+      if (!current()) throw new Error('local_discovery_cancelled')
+      const node = { id, label, url, expectedNodeId: admittedNodeId }
       this.registry.add(node, token)
       this.nodes.value = this.registry.list()
       AgentsService.getInstance().setNodes(this.nodes.value)
@@ -214,6 +247,56 @@ export class NodeService {
       store.close()
       throw error
     }
+  }
+
+  /** The foreground pairing model hands over only an authenticated candidate and its exact store. */
+  async adoptPaired(
+    label: string,
+    client: NodeClient,
+    store: NodeClientStore,
+    current: () => boolean = () => true
+  ): Promise<RegisteredNode> {
+    const target = client.target
+    if (!client.connected || target.profile !== 'paired-wss-v1' || client.store !== store)
+      throw new Error('Authenticated paired admission is required before registration.')
+    const nodeId = await store.transaction((state) => state.node_id)
+    if (!current()) throw new Error('pairing_cancelled')
+    if (nodeId !== target.expected_node_id) throw new Error('node_identity_mismatch')
+    const device = await this.deviceKeys.load(nodeId)
+    if (
+      !device ||
+      device.installation_id !== target.installation_id ||
+      device.node_fingerprint !== target.node_fingerprint ||
+      (device.transport_endpoint ?? device.endpoint) !== target.url ||
+      (await fingerprint(device.public_key)) !== (await fingerprint(target.public_key))
+    )
+      throw new Error('enrollment_changed')
+    await (await import('./NodePathObsidianActions')).revokeNodePathChatApprovals(nodeId)
+    if (!current() || !client.connected) throw new Error('pairing_cancelled')
+    const existing = this.registry
+      .list()
+      .find((node) => isPairedNode(node) && node.expectedNodeId === nodeId)
+    const id = existing?.id ?? crypto.randomUUID()
+    this.registry.addPaired({
+      id,
+      label,
+      url: device.endpoint,
+      ...(target.url !== device.endpoint ? { transportUrl: target.url } : {}),
+      expectedNodeId: nodeId!,
+      profile: 'paired-wss-v1',
+      installationId: target.installation_id,
+      nodeFingerprint: target.node_fingerprint,
+      publicKey: target.public_key,
+    })
+    this.connections.get(id)?.destroy()
+    const connection = new NodeConnection(client, store)
+    this.connections.set(id, connection)
+    this.nodes.value = this.registry.list()
+    AgentsService.getInstance().setNodes(this.nodes.value)
+    connection.start()
+    const enrollment = claimedEnrollment(device)
+    if (enrollment) await this.deviceKeys.finishEnrollment(nodeId, enrollment).catch(() => {})
+    return this.nodes.value.find((node) => node.id === id)!
   }
 
   /** Invitation secrets stay in device-local IndexedDB for lost-response recovery. */
@@ -230,6 +313,9 @@ export class NodeService {
       id,
       label,
       url: device.endpoint,
+      ...(device.transport_endpoint && device.transport_endpoint !== device.endpoint
+        ? { transportUrl: device.transport_endpoint }
+        : {}),
       expectedNodeId: device.node_id,
       profile: 'paired-wss-v1',
       installationId: device.installation_id,
@@ -263,7 +349,7 @@ export class NodeService {
       paired
         ? {
             profile: 'paired-wss-v1',
-            url: node.url,
+            url: node.transportUrl ?? node.url,
             expected_node_id: node.expectedNodeId,
             installation_id: node.installationId,
             node_fingerprint: node.nodeFingerprint,
@@ -302,11 +388,20 @@ export class NodeService {
   /** Restore durable mailboxes even when no node or parent chat tab is open. */
   resumeDelegations(): void {
     for (const node of this.nodes.value) {
-      try { this.connection(node.id) } catch { /* Registration remains visible for owner repair. */ }
+      try {
+        this.connection(node.id)
+      } catch {
+        /* Registration remains visible for owner repair. */
+      }
     }
   }
 
   remove(id: string): void {
+    const node = this.registry.list().find((node) => node.id === id)
+    if (node)
+      void import('./NodePathObsidianActions')
+        .then((module) => module.revokeNodePathChatApprovals(node.expectedNodeId))
+        .catch(() => {})
     this.connections.get(id)?.destroy()
     this.connections.delete(id)
     this.registry.remove(id)

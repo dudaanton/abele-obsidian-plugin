@@ -34,6 +34,10 @@
         <dl v-if="parsed && !badCode" class="abele-pair__fields" aria-label="What the code holds">
           <dt>Node</dt>
           <dd class="abele-pair__value_name">{{ parsed.name }}</dd>
+          <template v-if="parsed.nodeId"
+            ><dt>Node ID</dt>
+            <dd>{{ parsed.nodeId }}</dd></template
+          >
           <dt>Key</dt>
           <dd class="abele-pair__fingerprint">
             <span v-for="(group, i) in groups" :key="i">{{ group }}</span>
@@ -89,7 +93,7 @@
 
       <div class="modal-button-container">
         <Button
-          v-if="phone"
+          v-if="phone && canScan"
           text="Scan"
           icon="scan-qr-code"
           tooltip="Read the code with the camera"
@@ -98,8 +102,9 @@
         <Button
           text="Connect"
           accent
+          :loading="busy"
           :disabled="
-            !parsed || !!badCode || !host.trim() || !portValid || (keyChanged && !confirmed)
+            busy || !parsed || !!badCode || !host.trim() || !portValid || (keyChanged && !confirmed)
           "
           tooltip="Ask the node to let this device in"
           @click="connect"
@@ -126,6 +131,7 @@
         <div class="abele-pair__device">
           <Icon :icon="phone ? 'smartphone' : 'laptop'" size="xs" :interactive="false" />
           <span>{{ device }}</span>
+          <code v-if="deviceFingerprint">{{ deviceFingerprint }}</code>
         </div>
       </div>
       <div class="abele-pair__waiting" role="status">
@@ -167,8 +173,18 @@ const props = withDefaults(
     keyChanged?: boolean
     /** A code to start with. */
     initial?: string
+    busy?: boolean
+    deviceFingerprint?: string
+    canScan?: boolean
   }>(),
-  { error: undefined, keyChanged: false, initial: '' }
+  {
+    error: undefined,
+    keyChanged: false,
+    initial: '',
+    busy: false,
+    deviceFingerprint: undefined,
+    canScan: true,
+  }
 )
 
 const emit = defineEmits<{

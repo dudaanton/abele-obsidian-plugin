@@ -3,6 +3,7 @@ import { MemoryClientStore, NodePathClient } from '@abele/node-client'
 import { NodePathMutations } from '@/node/NodePathMutations'
 import { NodeClientStore } from '@/node/NodeClientStore'
 import { IDBFactory } from 'fake-indexeddb'
+import { WorktreePageSchema } from '@abele/node-protocol'
 
 describe('owner folder intents', () => {
   it('survives reopening the strict device-local client store after an unknown folder operation', async () => {
@@ -73,6 +74,81 @@ describe('owner folder intents', () => {
     await new NodePathMutations(client).mkdir('new-handle', 'created', '/sample')
     expect(mutations.mock.calls[1][1]).toEqual(mutations.mock.calls[0][1])
     expect(mutations.mock.calls[1][2]).toBe(mutations.mock.calls[0][2])
+  })
+  it('checks the same uncertain deletion after a fresh observation rather than submitting a new effect', async () => {
+    const target = {
+      nodeId: 'node-demo',
+      registrationId: 'registration-demo',
+      projectId: 'project-demo',
+      kind: 'worktree' as const,
+      id: 'tree-demo',
+    }
+    const row = WorktreePageSchema.parse({
+      entries: [
+        {
+          worktree_id: target.id,
+          project_id: target.projectId,
+          workspace_id: null,
+          kind: 'external',
+          path_label: '/sample/topic',
+          branch: 'topic',
+          detached: false,
+          head: 'a'.repeat(40),
+          availability: 'available',
+          locked: false,
+          prunable: false,
+          dirty: false,
+        },
+      ],
+      cursor: null,
+      incomplete: false,
+      omissions: [],
+    }).entries[0]
+    const mutations = vi
+      .fn()
+      .mockResolvedValueOnce({ worktree_id: target.id, state: 'outcome_unknown' })
+      .mockResolvedValueOnce({ worktree_id: target.id, state: 'deleted' })
+    const client = {
+      store: new MemoryClientStore(),
+      nodePath: new NodePathClient(async () => {}, mutations),
+    }
+    const model = new NodePathMutations(client)
+    await expect(model.delete(target, row, 'first-observation')).rejects.toThrow('unknown')
+    await model.delete(target, row, 'fresh-observation')
+    expect(mutations.mock.calls[1][1]).toEqual(mutations.mock.calls[0][1])
+    expect(mutations.mock.calls[1][2]).toBe(mutations.mock.calls[0][2])
+  })
+  it('recovers a managed deletion receipt after reconnect instead of creating another removal', async () => {
+    const store = new NodeClientStore('sample-managed-delete', new IDBFactory())
+    const operation = 'operation-delete'
+    await store.transaction((state) => {
+      state.outbox.push({
+        operation_id: operation,
+        method: 'workspace.remove',
+        params: { workspace_id: 'workspace-demo' },
+      })
+    })
+    await store.transaction((state) => {
+      state.results[operation] = { result: { workspace_id: 'workspace-demo', job_id: 'job-demo' } }
+      state.outbox = []
+    })
+    const removeWorkspace = vi.fn()
+    const model = new NodePathMutations({
+      store,
+      nodePath: new NodePathClient(
+        async () => {},
+        async () => {}
+      ),
+      removeWorkspace,
+      flush: vi.fn(),
+      operationResult: (id) => store.transaction((state) => state.results[id]),
+    })
+    expect(await model.removeManaged('workspace-demo')).toEqual({
+      workspace_id: 'workspace-demo',
+      job_id: 'job-demo',
+    })
+    expect(removeWorkspace).not.toHaveBeenCalled()
+    store.close()
   })
   it('never deletes a created directory when registration fails', async () => {
     const mutations = vi
