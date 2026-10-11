@@ -480,7 +480,7 @@ export class ScriptExecutor {
       required: p.required,
       default: p.selection && selection ? selection : p.default,
     }))
-    const result = await showFormModal(fields, undefined, signal)
+    const result = await showFormModal(fields, undefined, signal, script.meta.name)
     if (!result) return null
 
     const typed: Record<string, unknown> = {}

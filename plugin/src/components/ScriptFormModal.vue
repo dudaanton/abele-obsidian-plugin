@@ -2,7 +2,12 @@
   <!-- A document gets the wider column: a reference full of code reads badly in a form's. -->
   <ObsidianModal :title="title" :size="asksSomething ? 'default' : 'wide'" @close="onCancel">
     <form :id="formId" ref="formEl" class="abele-script-form" @submit.prevent="onSubmit">
-      <div v-for="field in fields" :key="field.name" class="abele-script-form__field">
+      <div
+        v-for="field in fields"
+        :key="field.name"
+        class="abele-script-form__field"
+        :class="{ 'abele-script-form__field_switch': field.type === 'boolean' }"
+      >
         <label v-if="field.label && field !== titleField" class="abele-script-form__label">
           {{ field.label }}
           <span v-if="field.required" class="abele-script-form__required">*</span>
@@ -84,6 +89,8 @@ import { genid } from '@/helpers/vueUtils'
 
 const props = defineProps<{
   fields: FormField[]
+  /** The script asking for these values, to name the window by. */
+  heading?: string
   resolve: (result: Record<string, string> | null) => void
 }>()
 
@@ -122,7 +129,7 @@ const ownHeading = computed(() => {
 
 /** "Script Parameters" is the wrong heading for something that asks for no parameters. */
 const title = computed(() => {
-  if (asksSomething.value) return 'Script Parameters'
+  if (asksSomething.value) return props.heading || 'Script Parameters'
   return titleField.value?.label || ownHeading.value || 'Script'
 })
 
@@ -205,8 +212,16 @@ function onCancel() {
   gap: var(--size-4-1);
 }
 
+/* A field's name as a setting's: the text colour at the interface size, not a heading. */
 .abele-script-form__label {
-  font-weight: var(--font-semibold);
+  font-size: var(--font-ui-small);
+}
+
+/* A switch stands beside its name, as a setting's toggle does. */
+.abele-script-form__field_switch {
+  flex-direction: row;
+  align-items: center;
+  justify-content: space-between;
 }
 
 /**
@@ -236,7 +251,7 @@ function onCancel() {
 }
 
 .abele-script-form__required {
-  color: var(--text-error);
+  color: var(--text-faint);
 }
 
 .abele-script-form__input,

@@ -36,8 +36,34 @@ describe('script approval UI', () => {
     expect(wrapper.text()).toContain('sample-file')
     expect(wrapper.find('pre').text()).toBe(request.source)
     expect(wrapper.find('img').exists()).toBe(false)
-    wrapper.findAll('button')[1].trigger('click')
+    wrapper
+      .findAll('button')
+      .find((b) => b.text() === 'Approve and run')!
+      .trigger('click')
     expect(answer).toHaveBeenCalledWith(true)
+    wrapper.unmount()
+  })
+  it('lists the facts as terms and sets Stop apart on the left, Cancel last', () => {
+    const wrapper = mount(ScriptApprovalModal, {
+      props: { request: { ...request, id: 1, answer: vi.fn(), stop: vi.fn() } },
+      global: { stubs: { ObsidianModal: { template: '<div><slot /></div>' } } },
+    })
+    const facts = wrapper.get('dl.abele-script-approval__facts')
+    expect(facts.findAll('dt').map((t) => t.text())).toEqual([
+      'File',
+      'Connection',
+      'Identity',
+      'SHA-256',
+    ])
+    expect(facts.findAll('dd').map((d) => d.text())).toEqual([
+      request.path,
+      request.identity.binding.endpoint,
+      request.identity.fileId,
+      request.sha,
+    ])
+    const buttons = wrapper.findAll('.abele-modal__actions button')
+    expect(buttons.map((b) => b.text())).toEqual(['Stop', 'Approve and run', 'Cancel'])
+    expect(buttons[0].classes()).toContain('abele-script-approval__stop')
     wrapper.unmount()
   })
   it('offers Stop without approving the script and rejects all approvals in the same run', async () => {
@@ -73,7 +99,11 @@ describe('script approval UI', () => {
       global: { stubs: { ObsidianModal: { template: '<div><slot /></div>' } } },
     })
     expect(wrapper.text()).toContain('Other unreviewed scripts stay blocked')
-    expect(wrapper.findAll('button')[1].text()).toBe('Approve')
+    // Only reviewing: nothing runs and no agent waits, so there is nothing to stop.
+    expect(wrapper.findAll('.abele-modal__actions button').map((b) => b.text())).toEqual([
+      'Approve',
+      'Cancel',
+    ])
     wrapper.unmount()
   })
   it('readonly native inspection never approves/runs while retaining exact facts and source', async () => {
@@ -82,9 +112,10 @@ describe('script approval UI', () => {
         props: { request: { ...request, id: 1, answer }, readOnly: true },
         global: { stubs: { ObsidianModal: { template: '<div><slot/></div>' } } },
       })
-    await w.findAll('button')[1].trigger('click')
+    const approve = w.findAll('button').find((b) => b.text() === 'Approve and run')!
+    await approve.trigger('click')
     expect(answer).not.toHaveBeenCalled()
-    expect(w.findAll('button')[1].attributes()).toHaveProperty('disabled')
+    expect(approve.attributes()).toHaveProperty('disabled')
     w.unmount()
   })
   it('queues concurrent requests and cancellation never accepts the next one', async () => {

@@ -18,25 +18,35 @@
         class="abele-runs__run"
         :class="`abele-runs__run_${run.status}`"
       >
-        <div class="abele-runs__row" @click="toggle(run.id)">
+        <!-- One row as the file explorer has them: the state as its glyph's colour, the name
+             with the whole width, and where it came from, when and how long in a quiet line
+             under it; while it runs, what the script last said takes that line. -->
+        <div
+          class="abele-runs__row"
+          role="button"
+          tabindex="0"
+          :aria-expanded="opened.has(run.id)"
+          @click="toggle(run.id)"
+          @keydown.enter.prevent="toggle(run.id)"
+        >
           <Icon
+            class="abele-runs__state"
             :icon="STATUS_ICON[run.status]"
             no-hover
             :class="{ 'abele-runs__spinner': run.status === 'running' }"
             :tooltip="STATUS_WORD[run.status]"
           />
-          <span class="abele-runs__name">{{ run.name }}</span>
-          <Badge v-if="run.source !== 'command'" :text="SOURCE_WORD[run.source]" />
-          <span class="abele-runs__when">{{ clock(run.startedAt) }}</span>
-          <span class="abele-runs__took">{{ took(run) }}</span>
-          <Icon
-            :icon="opened.has(run.id) ? 'chevron-down' : 'chevron-right'"
-            :tooltip="opened.has(run.id) ? 'Hide the detail' : 'Show the detail'"
-          />
-        </div>
-
-        <div v-if="run.note && run.status === 'running'" class="abele-runs__note">
-          {{ run.note }}
+          <span class="abele-runs__text">
+            <span class="abele-runs__name">{{ run.name }}</span>
+            <span class="abele-runs__meta">
+              <template v-if="run.note && run.status === 'running'">{{ run.note }} · </template>
+              <template v-else-if="run.source !== 'command'"
+                >{{ SOURCE_WORD[run.source] }} ·
+              </template>
+              <span :title="clock(run.startedAt)">{{ shortClock(run.startedAt) }}</span> ·
+              {{ took(run) }}
+            </span>
+          </span>
         </div>
 
         <div v-if="opened.has(run.id)" class="abele-runs__detail">
@@ -112,7 +122,6 @@ import { computed, onUnmounted, reactive, ref, toRef, watch } from 'vue'
 import { Notice, TFile } from 'obsidian'
 import Icon from './obsidian/Icon.vue'
 import Button from './obsidian/Button.vue'
-import Badge from './obsidian/Badge.vue'
 import EmptyState from './obsidian/EmptyState.vue'
 import Section from './obsidian/Section.vue'
 import { ScriptRuns, type ScriptRun } from '@/scripting/ScriptRuns'
@@ -194,6 +203,8 @@ const clock = (at: number) => {
   return `${pad(d.getHours())}:${pad(d.getMinutes())}:${pad(d.getSeconds())}`
 }
 
+/** Hours and minutes for the row; the seconds are under the pointer and in the log. */
+const shortClock = (at: number) => clock(at).slice(0, 5)
 const took = (run: ScriptRun) => {
   const ms = (run.finishedAt ?? now.value) - run.startedAt
   if (ms < 1000) return `${ms}ms`
@@ -289,7 +300,10 @@ const asNew = async (run: ScriptRun) => {
       required: param.required,
       default:
         run.params[param.name] !== undefined ? String(run.params[param.name]) : param.default,
-    }))
+    })),
+    undefined,
+    undefined,
+    run.name
   )
   if (!answers) return
 
@@ -315,75 +329,72 @@ const asNew = async (run: ScriptRun) => {
 .abele-runs__list {
   display: flex;
   flex-direction: column;
-  gap: var(--size-4-1);
-}
-
-.abele-runs__run {
-  border: 1px solid var(--background-modifier-border);
-  border-radius: var(--radius-m);
-  overflow: hidden;
-}
-
-/** The status is read from the stripe down the side before any of the words are. */
-.abele-runs__run_running {
-  border-left: 2px solid var(--interactive-accent);
-}
-
-.abele-runs__run_failed {
-  border-left: 2px solid var(--text-error);
-}
-
-.abele-runs__run_stopped {
-  border-left: 2px solid var(--text-faint);
-}
-
-.abele-runs__run_done {
-  border-left: 2px solid var(--color-green);
 }
 
 .abele-runs__row {
   display: flex;
-  align-items: center;
-  gap: var(--size-4-1);
-  padding: var(--size-4-1) var(--size-4-2);
-  cursor: var(--cursor-link);
+  align-items: flex-start;
+  gap: var(--size-4-2);
+  padding: var(--nav-item-padding);
+  padding-inline-start: var(--size-4-2);
+  border-radius: var(--radius-s);
+  color: var(--nav-item-color);
+  cursor: var(--cursor);
   min-width: 0;
 
   &:hover {
-    background-color: var(--background-modifier-hover);
+    background-color: var(--nav-item-background-hover);
+    color: var(--nav-item-color-hover);
   }
 }
 
-.abele-runs__name {
+/* The glyph sits on the name's line, and says the state by its colour. */
+.abele-runs__state {
+  height: 1lh;
+  font-size: var(--nav-item-size);
+  line-height: var(--line-height-tight);
+  color: var(--text-faint);
+}
+.abele-runs__run_running .abele-runs__state {
+  color: var(--interactive-accent);
+}
+.abele-runs__run_done .abele-runs__state {
+  color: var(--color-green);
+}
+.abele-runs__run_failed .abele-runs__state {
+  color: var(--text-error);
+}
+
+.abele-runs__text {
+  display: flex;
+  flex-direction: column;
   flex: 1 1 auto;
   min-width: 0;
+  line-height: var(--line-height-tight);
+}
+.abele-runs__name {
   overflow: hidden;
   text-overflow: ellipsis;
   white-space: nowrap;
-  font-size: var(--font-ui-small);
+  font-size: var(--nav-item-size);
 }
-
-.abele-runs__when,
-.abele-runs__took {
-  flex: 0 0 auto;
-  color: var(--text-muted);
-  font-size: var(--font-smallest);
+.abele-runs__meta {
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+  color: var(--text-faint);
+  font-size: var(--font-ui-smaller);
   font-variant-numeric: tabular-nums;
 }
 
-.abele-runs__note {
-  padding: 0 var(--size-4-2) var(--size-4-1) var(--size-4-8);
-  color: var(--text-muted);
-  font-size: var(--font-smallest);
-}
-
+/* What a run said and what can be done with it, under it as a folder's children are. */
 .abele-runs__detail {
   display: flex;
   flex-direction: column;
   gap: var(--size-4-2);
-  padding: var(--size-4-2);
-  border-top: 1px solid var(--background-modifier-border);
-  background-color: var(--background-secondary);
+  margin-inline-start: var(--size-4-4);
+  padding: var(--size-4-1) 0 var(--size-4-2) var(--size-4-4);
+  border-inline-start: var(--nav-indentation-guide-width) solid var(--nav-indentation-guide-color);
 }
 
 .abele-runs__path {
@@ -418,6 +429,9 @@ const asNew = async (run: ScriptRun) => {
 .abele-runs__log {
   display: flex;
   flex-direction: column;
+  padding: var(--size-4-1) var(--size-4-2);
+  border-radius: var(--radius-s);
+  background-color: var(--background-secondary);
   max-height: 16em;
   overflow-y: auto;
   font-family: var(--font-monospace);

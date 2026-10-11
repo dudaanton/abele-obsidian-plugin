@@ -19,7 +19,9 @@ const queues = new WeakMap<GlobalStore, FormRequest[]>()
 export function showFormModal(
   fields: FormField[],
   _runId?: string,
-  signal?: AbortSignal
+  signal?: AbortSignal,
+  /** The script asking, to name the window by: «Water the plants», not «Script Parameters». */
+  heading?: string
 ): Promise<Record<string, string> | null> {
   signal?.throwIfAborted()
   const store = GlobalStore.getInstance()
@@ -49,6 +51,7 @@ export function showFormModal(
           async () => (await import('@/components/ScriptFormModal.vue')).default,
           {
             fields,
+            heading,
             resolve: answer,
           },
           { onClosed: (error) => finish(null, false, error) }

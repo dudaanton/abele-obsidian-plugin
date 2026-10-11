@@ -20,11 +20,12 @@ vi.mock('@/editor/embeddedEditor', () => import('../helpers/fakeNoteEditor'))
 
 let resolved: Record<string, string> | null | undefined
 
-function openWith(fields: FormField[]) {
+function openWith(fields: FormField[], heading?: string) {
   resolved = undefined
   return mount(ScriptFormModal, {
     props: {
       fields,
+      heading,
       resolve: (result: Record<string, string> | null) => {
         resolved = result
       },
@@ -137,9 +138,9 @@ describe('a form that does ask something', () => {
 })
 
 /** The modal's own heading, as it was set on the Obsidian modal being opened. */
-function headingWhenOpening(fields: FormField[]): string | undefined {
+function headingWhenOpening(fields: FormField[], heading?: string): string | undefined {
   const setTitle = vi.spyOn(Modal.prototype, 'setTitle')
-  openWith(fields)
+  openWith(fields, heading)
   return setTitle.mock.calls.at(-1)?.[0]
 }
 
@@ -162,8 +163,29 @@ describe('the heading of a form with nothing to answer', () => {
 })
 
 describe('the heading of a form that does ask something', () => {
-  it('still says what is being asked for', () => {
+  it('is the name of the script asking', () => {
+    expect(headingWhenOpening([question, prose], 'Water the sample plants')).toBe(
+      'Water the sample plants'
+    )
+  })
+
+  it('still says what is being asked for when the script is not named', () => {
     expect(headingWhenOpening([question, prose])).toBe('Script Parameters')
+    expect(headingWhenOpening([question], '')).toBe('Script Parameters')
+  })
+
+  it('does not take the script name over a form that only shows something', () => {
+    expect(headingWhenOpening([prose], 'Water the sample plants')).toBe('What was found')
+  })
+
+  it('sets a yes-or-no question beside its name, as a setting has its switch', () => {
+    openWith([question, { name: 'dry', label: 'Dry run', type: 'boolean' }])
+
+    const fields = [...document.querySelectorAll('.abele-script-form__field')]
+    expect(fields.map((f) => f.classList.contains('abele-script-form__field_switch'))).toEqual([
+      false,
+      true,
+    ])
   })
 
   it('leaves the label of a markdown block beside the questions where it is', () => {

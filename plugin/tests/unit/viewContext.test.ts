@@ -15,6 +15,7 @@ import { Button } from '@/scripting/view/components'
 import { setDefaultViewHost } from '@/scripting/view/host'
 import { ScriptService } from '@/scripting/ScriptService'
 import { ScriptRuns } from '@/scripting/ScriptRuns'
+import { ScriptExecutor } from '@/scripting/ScriptExecutor'
 
 const { showFormModal } = vi.hoisted(() => ({ showFormModal: vi.fn(async () => ({ a: '1' })) }))
 vi.mock('@/scripting/formModal', () => ({ showFormModal }))
@@ -133,5 +134,30 @@ describe('form() in a script the service ran', () => {
       'unless a view is open'
     )
     expect(showFormModal).not.toHaveBeenCalled()
+  })
+})
+
+describe("a script's own parameters", () => {
+  it('are asked for in a window named after the script', async () => {
+    const executor = new ScriptExecutor({} as never)
+    await executor.showParamForm(
+      {
+        path: 'Scripts/water.js',
+        code: '',
+        commandId: '',
+        meta: {
+          name: 'Water the sample plants',
+          description: '',
+          params: [{ name: 'litres', type: 'number', required: true, description: 'Litres' }],
+        },
+      },
+      ''
+    )
+    expect(showFormModal).toHaveBeenCalledWith(
+      [expect.objectContaining({ name: 'litres', label: 'Litres' })],
+      undefined,
+      undefined,
+      'Water the sample plants'
+    )
   })
 })

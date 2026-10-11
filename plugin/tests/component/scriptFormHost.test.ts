@@ -1,4 +1,5 @@
-import { afterEach, beforeEach, expect, it } from 'vitest'
+import { afterEach, beforeEach, expect, it, vi } from 'vitest'
+import { Modal } from 'obsidian'
 import { showFormModal } from '@/scripting/formModal'
 import { closeComponentDialogs } from '@/modal/componentDialog'
 import { useVault } from '../helpers/testEnv'
@@ -57,4 +58,19 @@ it('settles every queued request on unload and never mounts a late form', async 
   await new Promise<void>((resolve) => queueMicrotask(resolve))
   expect(document.querySelector('[data-abele-dialog-host]')).toBeNull()
   expect(document.querySelector('.abele-script-form')).toBeNull()
+})
+
+it('names the window after the script that asks', async () => {
+  const setTitle = vi.spyOn(Modal.prototype, 'setTitle')
+  const answer = showFormModal(
+    [{ name: 'value', label: 'Value', type: 'text', default: 'sample' }],
+    undefined,
+    undefined,
+    'Water the sample plants'
+  )
+  await expect.poll(() => field()?.value).toBe('sample')
+  expect(setTitle.mock.calls.at(-1)?.[0]).toBe('Water the sample plants')
+  submit()
+  expect(await answer).toEqual({ value: 'sample' })
+  setTitle.mockRestore()
 })

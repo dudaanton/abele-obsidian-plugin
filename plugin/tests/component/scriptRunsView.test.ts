@@ -107,9 +107,39 @@ describe('the list', () => {
   })
 
   it('marks out a run that came from somewhere other than the palette', () => {
-    began({ source: 'agent' })
+    runs.finish(began({ source: 'agent', name: 'From agent' }), '')
+    runs.finish(began({ name: 'From palette' }), '')
+    const wrapper = open()
+    const meta = (name: string) =>
+      rowFor(wrapper, name)!.get('.abele-runs__meta').text().replace(/\s+/g, ' ')
 
-    expect(open().find('.abele-badge').text()).toBe('agent')
+    expect(wrapper.find('.abele-badge').exists()).toBe(false)
+    expect(meta('From agent')).toMatch(/^agent · \d\d:\d\d · \d+ms$/)
+    // The palette is where a run usually comes from, so it is not said.
+    expect(meta('From palette')).toMatch(/^\d\d:\d\d · \d+ms$/)
+  })
+
+  it('says what a running script last said in place of where it came from', () => {
+    const id = began({ source: 'agent' })
+    runs.setNote(id, 'Tagging the third note')
+    const meta = open().get('.abele-runs__meta').text().replace(/\s+/g, ' ')
+
+    expect(meta).toMatch(/^Tagging the third note · \d\d:\d\d · /)
+    expect(meta).not.toContain('agent')
+  })
+
+  it('opens and closes a run as a button, by click or Enter', async () => {
+    runs.finish(began(), '')
+    const wrapper = open()
+    const row = wrapper.get('.abele-runs__row')
+
+    expect(row.attributes('role')).toBe('button')
+    expect(row.attributes('aria-expanded')).toBe('false')
+    await row.trigger('keydown', { key: 'Enter' })
+    expect(row.attributes('aria-expanded')).toBe('true')
+    expect(wrapper.find('.abele-runs__detail').exists()).toBe(true)
+    await row.trigger('click')
+    expect(wrapper.find('.abele-runs__detail').exists()).toBe(false)
   })
 
   /** Stopped is a decision and failed is a fault; the row must not colour them alike. */
@@ -220,7 +250,7 @@ describe('running it again', () => {
       showFormModal.mockResolvedValue({ tag: 'later' })
       runs.finish(began({ source: 'chat-selection', selection }), '')
       const wrapper = open()
-      expect(wrapper.find('.abele-badge').text()).toBe('chat selection')
+      expect(wrapper.get('.abele-runs__meta').text()).toMatch(/^chat selection · /)
       await expand(wrapper, 'Tag notes')
       await press(wrapper, 'Tag notes', button)
       expect(execute).toHaveBeenCalledWith(
@@ -292,9 +322,13 @@ describe('running it as new', () => {
     await expand(wrapper, 'Tag notes')
     await press(wrapper, 'Tag notes', 'Run as new')
 
-    expect(showFormModal).toHaveBeenCalledWith([
-      expect.objectContaining({ name: 'tag', label: 'Tag to add', default: 'todo' }),
-    ])
+    // The window is named after the script, as when it was first run.
+    expect(showFormModal).toHaveBeenCalledWith(
+      [expect.objectContaining({ name: 'tag', label: 'Tag to add', default: 'todo' })],
+      undefined,
+      undefined,
+      'Tag notes'
+    )
   })
 
   it('runs with the answers given', async () => {
