@@ -260,7 +260,7 @@ describe.skipIf(!available)('drawing on a picture from where it is looked at', (
       const thumb = await until(() => leaf.view.containerEl.querySelector('.markdown-preview-view .abele-gallery__image'), 10000)
       if (!thumb) return { error: 'no gallery' }
       thumb.click()
-      const pen = await until(() => [...document.querySelectorAll('.abele-gallery-viewer__toolbar .abele-obsidian-icon')].find((el) => el.textContent.trim() === 'Draw'))
+      const pen = await until(() => [...document.querySelectorAll('.abele-gallery-viewer__toolbar .abele-obsidian-icon')].find((el) => el.getAttribute('aria-label') === 'Draw on this picture'))
       if (!pen) return { error: 'no pen in the viewer' }
       const label = pen.getAttribute('aria-label')
       pen.click()

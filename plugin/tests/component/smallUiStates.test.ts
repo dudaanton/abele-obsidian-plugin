@@ -40,8 +40,8 @@ describe('small UI states', () => {
         readonly,
       })
       view = mount(GalleryView, { props: { gallery } })
-      expect(view.findComponent(EmptyState).props('text')).toBe('No images')
-      expect(view.find('button[aria-label="Add images from the vault"]').exists()).toBe(!readonly)
+      expect(view.findComponent(EmptyState).props('title')).toBe('No pictures yet')
+      expect(view.findAll('button').some((b) => b.text() === 'Add pictures')).toBe(!readonly)
     }
   )
 })

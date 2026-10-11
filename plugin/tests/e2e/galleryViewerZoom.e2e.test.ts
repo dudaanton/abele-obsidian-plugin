@@ -86,7 +86,7 @@ describe.skipIf(!available)('shared gallery viewer', () => {
         if (!await until(() => scale() > before * 1.5)) throw Error('Zoom did not respond')
         const after = scale()
         const root = image.closest('.abele-gallery-viewer')
-        const controls = [...root.querySelectorAll('.abele-gallery-viewer__toolbar .abele-obsidian-icon')].map((el) => el.textContent.trim())
+        const controls = [...root.querySelectorAll('.abele-gallery-viewer__toolbar .abele-obsidian-icon')].map((el) => el.getAttribute('aria-label'))
         const probe = document.createElement('div'); probe.style.backgroundColor = 'var(--background-secondary)'; document.body.appendChild(probe)
         const themed = getComputedStyle(frame).backgroundColor === getComputedStyle(probe).backgroundColor
         probe.remove()
@@ -101,7 +101,13 @@ describe.skipIf(!available)('shared gallery viewer', () => {
       expect(report.after).toBeGreaterThan(report.before * 1.5)
       expect(report.shell).toBe(true)
       expect(report.controls).toEqual(
-        expect.arrayContaining(['Copy', 'Path', 'Draw', 'Rotate', 'More'])
+        expect.arrayContaining([
+          'Copy the picture',
+          'Copy its path in the vault',
+          'Draw on this picture',
+          'Turn a quarter to the right',
+          'More: reveal, strip metadata, reduce, cover',
+        ])
       )
       expect(report.themed).toBe(true)
       if (phone) expect([report.width, report.height]).toEqual([390, 844])

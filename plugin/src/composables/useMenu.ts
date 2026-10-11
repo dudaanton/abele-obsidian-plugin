@@ -11,6 +11,12 @@ export interface Choice {
   value?: string
   icon?: string
   subMenu?: Choice[]
+  /** A line before this choice, setting it apart from those above. */
+  separator?: boolean
+  /** The choice that cannot be taken back, in the warning colour. */
+  warning?: boolean
+  /** The value now in force, ticked as Obsidian ticks it. */
+  checked?: boolean
 }
 
 export function useMenu(
@@ -33,8 +39,11 @@ export function useMenu(
     allMenus.push(menu)
 
     for (const choice of menuChoices) {
+      if (choice.separator) menu.addSeparator()
       menu.addItem((item) => {
         item.setTitle(choice.title)
+        if (choice.warning) item.setWarning(true)
+        if (choice.checked !== undefined) item.setChecked(choice.checked)
         if (choice.icon) {
           item.setIcon(choice.icon)
         }

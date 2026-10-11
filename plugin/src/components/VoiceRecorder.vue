@@ -10,7 +10,7 @@
           @click="begin"
         />
         <span class="abele-voice__hint">{{ recorder.error.value || 'Tap to record' }}</span>
-        <Icon icon="x" tooltip="Close voice input" @click="emit('close')" />
+        <Icon v-if="closable" icon="x" tooltip="Close voice input" @click="emit('close')" />
       </div>
     </template>
 
@@ -34,7 +34,7 @@
       <div class="abele-voice__row">
         <Icon icon="loader" no-hover class="abele-voice__spinner" />
         <span class="abele-voice__hint">Waiting for the microphone…</span>
-        <Icon icon="x" tooltip="Close voice input" @click="discard" />
+        <Icon v-if="closable" icon="x" tooltip="Close voice input" @click="discard" />
       </div>
     </template>
 
@@ -42,6 +42,7 @@
       <div class="abele-voice__row">
         <Icon icon="loader" no-hover class="abele-voice__spinner" />
         <span class="abele-voice__hint">Transcribing…</span>
+        <Button text="Cancel" tooltip="Stop and keep the recording" @click="cancelWords" />
       </div>
     </template>
 
@@ -110,11 +111,14 @@ const props = withDefaults(
     /** The caller can keep the words without sending them anywhere — a comment can. */
     canNote?: boolean
     autoStart?: boolean
+    /** Its own close: off in a dialog, which has one already. */
+    closable?: boolean
   }>(),
   {
     canSend: false,
     canNote: false,
     autoStart: false,
+    closable: true,
   }
 )
 
@@ -206,17 +210,29 @@ const words = async (): Promise<string | null> => {
   const blob = recorder.recording.value
   if (!blob) return null
 
+  const mine = ++attempt
   busy.value = true
   failure.value = ''
   try {
     const wav = await toWav(blob, win() as Window & typeof window)
-    return await transcribe(wav, transcriptionOptions())
+    const text = await transcribe(wav, transcriptionOptions())
+    return mine === attempt ? text : null
   } catch (error) {
-    failure.value = error instanceof Error ? error.message : String(error)
+    if (mine === attempt) failure.value = error instanceof Error ? error.message : String(error)
     return null
   } finally {
-    busy.value = false
+    if (mine === attempt) busy.value = false
   }
+}
+
+/**
+ * Cancelled, the answer is let go when it comes and the recording is back as it was, to be
+ * sent again or thrown away. The request itself runs on: no provider can be told to stop.
+ */
+let attempt = 0
+const cancelWords = () => {
+  attempt++
+  busy.value = false
 }
 
 const toText = async () => {
@@ -274,6 +290,13 @@ onBeforeUnmount(() => {
   border: 1px solid var(--background-modifier-border);
   border-radius: var(--radius-m);
   background-color: var(--background-secondary);
+
+  // In a dialog the dialog is its frame: no card drawn inside it.
+  .modal-content & {
+    padding: 0;
+    border: none;
+    background-color: transparent;
+  }
 }
 
 .abele-voice__row {

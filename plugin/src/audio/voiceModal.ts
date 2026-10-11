@@ -29,6 +29,7 @@ class VoiceModal extends ShellModal {
 
     this.vue = createApp(VoiceRecorder, {
       autoStart: true,
+      closable: false,
       onText: (text: string) => {
         this.done(text)
         this.close()

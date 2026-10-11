@@ -1,34 +1,25 @@
 <template>
-  <ObsidianModal :title="currentImage.alt || 'Picture'" size="full" @close="close">
+  <ObsidianModal :title="title" size="full" @close="close">
     <div class="abele-gallery-viewer" @click.self="close">
-      <div class="abele-gallery-viewer__info">
-        <div class="abele-gallery-viewer__counter">
-          {{ currentIndex + 1 }} / {{ images.length }}
-        </div>
-        <div v-if="fileInfo" class="abele-gallery-viewer__file-info">
-          <span class="abele-gallery-viewer__filename">{{ fileInfo.name }}</span>
-          <span class="abele-gallery-viewer__meta"
-            >{{ fileInfo.size }} · {{ fileInfo.modified }}</span
-          >
-        </div>
-      </div>
+      <!-- Where in the gallery, and the file's size and date: one quiet line under the title. -->
+      <div class="abele-gallery-viewer__info">{{ facts }}</div>
 
-      <div
-        v-if="images.length > 1"
-        class="abele-gallery-viewer__nav abele-gallery-viewer__nav--prev"
-        @click.stop="prev"
-        @mousedown.prevent
-      >
-        <ObsidianIcon icon="chevron-left" no-hover />
-      </div>
-      <div
-        v-if="images.length > 1"
-        class="abele-gallery-viewer__nav abele-gallery-viewer__nav--next"
-        @click.stop="next"
-        @mousedown.prevent
-      >
-        <ObsidianIcon icon="chevron-right" no-hover />
-      </div>
+      <template v-if="images.length > 1">
+        <ObsidianIcon
+          icon="chevron-left"
+          tooltip="Previous picture (←)"
+          class="abele-gallery-viewer__nav abele-gallery-viewer__nav--prev"
+          @click.stop="prev"
+          @mousedown.prevent
+        />
+        <ObsidianIcon
+          icon="chevron-right"
+          tooltip="Next picture (→)"
+          class="abele-gallery-viewer__nav abele-gallery-viewer__nav--next"
+          @click.stop="next"
+          @mousedown.prevent
+        />
+      </template>
 
       <div
         ref="frame"
@@ -59,32 +50,38 @@
         {{ currentImage.description }}
       </div>
 
-      <div class="abele-gallery-viewer__toolbar" @click.stop>
-        <ObsidianIcon icon="copy" no-hover text-right="Copy" @click="copyImage" />
-        <ObsidianIcon icon="link" no-hover text-right="Path" @click="copyPath" />
+      <!-- What can be done with the picture, as glyphs in a row the way a tab's header has them. -->
+      <div class="abele-gallery-viewer__toolbar" role="toolbar" @click.stop>
+        <ObsidianIcon icon="copy" tooltip="Copy the picture" @click="copyImage" />
+        <ObsidianIcon
+          icon="link"
+          :tooltip="isLocal ? 'Copy its path in the vault' : 'Copy its address'"
+          @click="copyPath"
+        />
         <ObsidianIcon
           v-if="drawable"
           icon="pen-line"
-          no-hover
-          text-right="Draw"
           tooltip="Draw on this picture"
           @click="drawOnImage"
         />
         <ObsidianIcon
           v-if="isLocal"
           icon="rotate-cw"
-          no-hover
-          text-right="Rotate"
+          tooltip="Turn a quarter to the right"
           @click="rotateImage"
         />
         <ObsidianIcon
           v-if="!isLocal"
           icon="download"
-          no-hover
-          text-right="Download"
+          tooltip="Save it into the vault"
           @click="downloadImage"
         />
-        <ObsidianIcon icon="more-horizontal" no-hover text-right="More" @click="showMoreMenu" />
+        <ObsidianIcon
+          v-if="isLocal"
+          icon="more-horizontal"
+          tooltip="More: reveal, strip metadata, reduce, cover"
+          @click="showMoreMenu"
+        />
       </div>
     </div>
   </ObsidianModal>
@@ -145,11 +142,28 @@ const fileInfo = computed(() => {
       year: 'numeric',
       month: 'short',
       day: 'numeric',
-      hour: '2-digit',
-      minute: '2-digit',
     }),
   }
 })
+
+/**
+ * The file's name. Not the caption, which stands under the picture: a gallery's `alt` is the
+ * caption or, with none, the whole link, so it was the caption twice or a path in the title.
+ */
+const title = computed(
+  () =>
+    fileInfo.value?.name || nameOf(currentImage.value.path) || currentImage.value.alt || 'Picture'
+)
+const nameOf = (path: string) => path.slice(path.lastIndexOf('/') + 1)
+const facts = computed(() =>
+  [
+    props.images.length > 1 ? `${currentIndex.value + 1} / ${props.images.length}` : '',
+    fileInfo.value?.size ?? '',
+    fileInfo.value?.modified ?? '',
+  ]
+    .filter(Boolean)
+    .join(' · ')
+)
 
 /** A picture in the vault that can be drawn on: the pen opens it in a drawing tab. */
 const drawable = computed(() => isLocal.value && isDrawable(resolveFile()))
@@ -246,7 +260,7 @@ function convertToPng(src: string): Promise<Blob> {
       const canvas = createEl('canvas')
       canvas.width = img.naturalWidth
       canvas.height = img.naturalHeight
-      canvas.getContext('2d')!.drawImage(img, 0, 0)
+      canvas.getContext('2d').drawImage(img, 0, 0)
       canvas.toBlob((b) => (b ? resolve(b) : reject(new Error('toBlob failed'))), 'image/png')
     }
     img.onerror = reject
@@ -302,7 +316,7 @@ async function rotateImage() {
     const canvas = createEl('canvas')
     canvas.width = img.naturalHeight
     canvas.height = img.naturalWidth
-    const ctx = canvas.getContext('2d')!
+    const ctx = canvas.getContext('2d')
     ctx.translate(canvas.width / 2, canvas.height / 2)
     ctx.rotate(Math.PI / 2)
     ctx.drawImage(img, -img.naturalWidth / 2, -img.naturalHeight / 2)
@@ -338,7 +352,7 @@ async function stripMetadata() {
     const canvas = createEl('canvas')
     canvas.width = img.naturalWidth
     canvas.height = img.naturalHeight
-    const ctx = canvas.getContext('2d')!
+    const ctx = canvas.getContext('2d')
     ctx.drawImage(img, 0, 0)
 
     const mimeType = file.extension === 'png' ? 'image/png' : 'image/jpeg'
@@ -531,41 +545,26 @@ onUnmounted(() => {
   gap: var(--size-4-2);
   user-select: none;
 }
-.abele-gallery-viewer__info,
-.abele-gallery-viewer__file-info {
-  display: flex;
-  flex-direction: column;
-  align-items: center;
-  gap: var(--size-2-1);
+.abele-gallery-viewer__info {
+  min-height: 1lh;
+  color: var(--text-muted);
+  font-size: var(--font-ui-small);
+  font-variant-numeric: tabular-nums;
+  text-align: center;
   pointer-events: none;
 }
-.abele-gallery-viewer__counter {
-  color: var(--text-muted);
-  font-size: var(--font-ui-small);
-}
-.abele-gallery-viewer__filename {
-  color: var(--text-normal);
-  font-size: var(--font-ui-small);
-  max-width: 100%;
-  overflow: hidden;
-  text-overflow: ellipsis;
-  white-space: nowrap;
-}
-.abele-gallery-viewer__meta {
-  color: var(--text-muted);
-  font-size: var(--font-ui-smaller);
-}
-.abele-gallery-viewer__nav {
+// On a plate of the page's own colour, so the arrow reads over any picture.
+.abele-gallery-viewer .abele-gallery-viewer__nav {
   position: absolute;
   top: 50%;
-  transform: translateY(-50%);
-  display: flex;
-  align-items: center;
-  justify-content: center;
-  cursor: pointer;
   z-index: 1;
+  transform: translateY(-50%);
   background-color: var(--background-primary);
-  border-radius: var(--radius-s);
+  border: 1px solid var(--background-modifier-border);
+  &:hover {
+    background-color: var(--background-primary);
+    color: var(--icon-color-hover);
+  }
   &--prev {
     left: var(--size-4-2);
   }
@@ -603,6 +602,6 @@ onUnmounted(() => {
   display: flex;
   flex-wrap: wrap;
   justify-content: center;
-  gap: var(--size-2-1);
+  gap: var(--size-2-2);
 }
 </style>

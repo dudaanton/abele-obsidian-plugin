@@ -17,40 +17,36 @@
   flex-direction: column;
   align-items: center;
   justify-content: center;
-  gap: 0.5em;
-  min-height: 120px;
-  color: var(--text-accent);
-  font-weight: var(--font-semibold);
-  background: color-mix(in srgb, var(--background-primary) 88%, var(--interactive-accent));
-  border: 2px dashed var(--interactive-accent);
+  gap: var(--size-4-2);
+  min-height: 8em;
+  color: var(--text-muted);
+  background: var(--background-primary-alt);
+  border: 1px dashed var(--background-modifier-border-hover);
   border-radius: var(--radius-m);
   pointer-events: none;
 }
 
+// The header's glyphs keep their whole box and Obsidian's gap between a tab header's actions,
+// at the gallery's right edge: the first glyph's ink, not its box, sits on that edge.
 .abele-gallery__header {
   display: flex;
-  align-items: center;
-  justify-content: space-between;
-  padding: 2px 0;
-}
-
-.abele-gallery__header-right {
-  display: flex;
-  gap: 2px;
-  margin-left: auto;
+  justify-content: flex-end;
+  gap: var(--size-2-2);
+  margin-bottom: var(--size-4-1);
+  margin-inline-end: calc(-1 * var(--size-2-3));
 }
 
 .abele-gallery__grid {
   display: grid;
-  grid-template-columns: repeat(auto-fill, minmax(200px, 1fr));
-  gap: 4px;
+  grid-template-columns: repeat(auto-fill, minmax(12em, 1fr));
+  gap: var(--size-4-1);
   border-radius: var(--radius-m);
   overflow: hidden;
 
   &--column {
     display: flex;
     flex-direction: column;
-    gap: 4px;
+    gap: var(--size-4-1);
 
     .abele-gallery__item {
       aspect-ratio: unset;
@@ -70,18 +66,22 @@
 }
 
 /**
- * Narrow: a chat, a sidebar, a phone. A 200px column fits once there, so the grid was one
+ * Narrow: a chat, a sidebar, a phone. A 12em column fits once there, so the grid was one
  * picture per row, each a square the width of the chat — three pictures a screen and a half
  * tall. Here the grid keeps three to a row (two for two pictures, as `auto-fit` stretches what
  * is there), and a picture in the column layout is capped rather than as tall as it is wide.
  */
-@container (max-width: 480px) {
+@container (max-width: 30em) {
   .abele-gallery__grid:not(.abele-gallery__grid--column) {
-    grid-template-columns: repeat(auto-fit, minmax(calc((100% - 8px) / 3), 1fr));
+    grid-template-columns: repeat(auto-fit, minmax(calc((100% - 2 * var(--size-4-1)) / 3), 1fr));
   }
 
   .abele-gallery__grid--column .abele-gallery__image {
-    max-height: 240px;
+    max-height: 15em;
+  }
+
+  .abele-gallery__masonry {
+    columns: 2;
   }
 }
 
@@ -89,29 +89,34 @@
   width: 100%;
   height: 100%;
   object-fit: cover;
-  cursor: pointer;
 }
 
+// A picture opens the viewer; a video plays where it is.
+img.abele-gallery__image {
+  cursor: var(--cursor-link);
+}
+
+// Columns the browser fills in turn, each picture at its own height: three, two where narrow.
 .abele-gallery__masonry {
-  display: flex;
-  gap: 4px;
+  columns: 3;
+  column-gap: var(--size-4-1);
   border-radius: var(--radius-m);
   overflow: hidden;
-}
-
-.abele-gallery__masonry-col {
-  flex: 1;
-  display: flex;
-  flex-direction: column;
-  gap: 4px;
 
   .abele-gallery__item {
     aspect-ratio: unset;
+    margin-bottom: var(--size-4-1);
+    break-inside: avoid;
   }
 
   .abele-gallery__image {
+    display: block;
     width: 100%;
     height: auto;
+  }
+
+  .abele-gallery__image-error {
+    aspect-ratio: 1;
   }
 }
 
@@ -154,31 +159,26 @@
   object-fit: contain;
 }
 
-.abele-gallery__slider-nav {
+// On a plate of the page's own colour, so the arrow reads over any picture, light or dark.
+.abele-gallery .abele-gallery__slider-nav {
   position: absolute;
-  top: 0;
-  bottom: 0;
-  width: 48px;
-  display: flex;
-  align-items: center;
-  justify-content: center;
+  top: 50%;
   z-index: 1;
-  cursor: pointer;
+  transform: translateY(-50%);
+  background-color: var(--background-primary);
+  border: 1px solid var(--background-modifier-border);
 
-  .abele-obsidian-icon {
-    color: var(--text-muted);
-  }
-
-  &:hover .abele-obsidian-icon {
-    color: var(--text-normal);
+  &:hover {
+    background-color: var(--background-primary);
+    color: var(--icon-color-hover);
   }
 
   &--prev {
-    left: 0;
+    left: var(--size-4-2);
   }
 
   &--next {
-    right: 0;
+    right: var(--size-4-2);
   }
 }
 
@@ -187,11 +187,11 @@
   flex-direction: column;
   align-items: center;
   justify-content: center;
-  gap: 0.5em;
+  gap: var(--size-4-2);
   height: 100%;
   color: var(--text-muted);
   background: var(--background-secondary);
-  font-size: 0.85em;
+  font-size: var(--font-ui-small);
 
   span {
     text-overflow: ellipsis;
@@ -201,70 +201,23 @@
   }
 }
 
-/* Edit mode */
+/* Edit mode: the pictures as rows, each with its caption under it. */
 .abele-gallery__edit-list {
   display: flex;
   flex-direction: column;
-  gap: 4px;
 }
 
-.abele-gallery__edit-item {
-  display: flex;
-  align-items: center;
-  gap: 8px;
-  padding: 4px;
-  background: var(--background-secondary);
-  border-radius: var(--radius-s);
-}
-
-.abele-gallery__edit-thumb {
-  width: 48px;
-  height: 48px;
-  object-fit: cover;
-  border-radius: var(--radius-s);
-  flex-shrink: 0;
-
-  &--missing {
-    display: flex;
-    align-items: center;
-    justify-content: center;
-    background: var(--background-modifier-border);
-    color: var(--text-muted);
-  }
-}
-
-.abele-gallery__edit-fields {
-  flex: 1;
-  min-width: 0;
-  display: flex;
-  flex-direction: column;
-  gap: 2px;
-}
-
-.abele-gallery__edit-path {
-  font-size: var(--font-smallest);
-  color: var(--text-faint);
-  white-space: nowrap;
+.abele-gallery__edit-name {
+  display: block;
   overflow: hidden;
   text-overflow: ellipsis;
+  white-space: nowrap;
 }
 
-.abele-gallery__edit-description {
+.abele-gallery__edit-missing {
+  color: var(--text-error);
+}
+
+.abele-gallery .abele-gallery__edit-description {
   width: 100%;
-  padding: 2px 6px;
-  font-size: var(--font-smaller);
-  border: 1px solid var(--background-modifier-border);
-  border-radius: var(--radius-s);
-  background: var(--background-primary);
-  color: var(--text-normal);
-
-  &::placeholder {
-    color: var(--text-faint);
-  }
-}
-
-.abele-gallery__edit-actions {
-  display: flex;
-  gap: 2px;
-  flex-shrink: 0;
 }

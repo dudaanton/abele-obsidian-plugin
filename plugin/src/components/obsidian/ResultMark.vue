@@ -29,7 +29,8 @@ const glyph = computed(
 )
 const label = computed(
   () =>
-    props.text ?? { working: 'Working', done: 'Done', error: 'Failed', skipped: 'Left alone' }[props.state]
+    props.text ??
+    { working: 'Working', done: 'Done', error: 'Failed', skipped: 'Left alone' }[props.state]
 )
 const el = ref<HTMLElement>()
 watch([el, label], ([node, words]) => node && setTooltip(node, words), { immediate: true })

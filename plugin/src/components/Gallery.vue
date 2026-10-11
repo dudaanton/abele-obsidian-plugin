@@ -11,87 +11,125 @@
     @drop="onDrop"
   >
     <div v-if="draggingFiles" class="abele-gallery__drop-zone">
-      <ObsidianIcon icon="images" />
-      <span>Drop images and videos here</span>
+      <ObsidianIcon icon="images" no-hover />
+      <span>Drop pictures and videos here</span>
     </div>
+    <!-- Add, edit and everything else, as a tab's header has them; removing is in the last. -->
     <div v-if="!gallery.readonly" class="abele-gallery__header">
-      <div class="abele-gallery__header-right">
-        <ObsidianIcon ref="addBtnRef" icon="image-plus" @click="addMenu.open" />
-        <ObsidianIcon :icon="editMode ? 'check' : 'pencil'" @click="editMode = !editMode" />
-        <ObsidianIcon ref="layoutBtnRef" icon="settings" @click="layoutMenu.open" />
-        <ObsidianIcon ref="deleteBtnRef" icon="trash-2" @click="deleteMenu.open" />
-      </div>
+      <ObsidianIcon
+        ref="addBtnRef"
+        icon="image-plus"
+        tooltip="Add pictures: from the vault, the disk or the clipboard"
+        @click="addMenu.open"
+      />
+      <ObsidianIcon
+        :icon="editMode ? 'check' : 'pencil'"
+        :tooltip="editMode ? 'Done editing' : 'Edit: captions, order, cover'"
+        :active="editMode"
+        @click="editMode = !editMode"
+      />
+      <ObsidianIcon
+        ref="layoutBtnRef"
+        icon="more-horizontal"
+        tooltip="Layout, height, background, and removing the gallery"
+        @click="layoutMenu.open"
+      />
     </div>
 
-    <EmptyState v-if="gallery.images.length === 0" text="No images">
+    <EmptyState
+      v-if="gallery.images.length === 0"
+      icon="images"
+      title="No pictures yet"
+      text="Pictures added here show as a grid in the note."
+    >
       <template v-if="!gallery.readonly" #action>
-        <ObsidianIcon
-          icon="image-plus"
-          text-right="Add images"
-          tooltip="Add images from the vault"
-          @click="addFromVault"
-        />
+        <Button text="Add pictures" tooltip="Add pictures from the vault" @click="addFromVault" />
       </template>
     </EmptyState>
 
-    <div v-else-if="editMode && !gallery.readonly" class="abele-gallery__edit-list">
-      <div v-for="(image, index) in resolvedImages" :key="index" class="abele-gallery__edit-item">
-        <video
-          v-if="image.url && image.mediaType === 'video'"
-          :src="image.url"
-          class="abele-gallery__edit-thumb"
-          muted
-        />
-        <img v-else-if="image.url" :src="image.url" class="abele-gallery__edit-thumb" />
-        <div v-else class="abele-gallery__edit-thumb abele-gallery__edit-thumb--missing">
-          <ObsidianIcon icon="image-off" />
-        </div>
-        <div class="abele-gallery__edit-fields">
-          <div class="abele-gallery__edit-path">{{ image.path }}</div>
-          <input
-            class="abele-gallery__edit-description"
-            :value="gallery.images[index].description"
-            placeholder="Description..."
-            @change="updateDescription(index, ($event.target as HTMLInputElement).value)"
+    <div v-else-if="editMode && !gallery.readonly" class="abele-gallery__edit-list" role="list">
+      <EntryRow
+        v-for="(image, index) in resolvedImages"
+        :key="index"
+        role="listitem"
+        class="abele-gallery__edit-item"
+      >
+        <template #leading>
+          <FileThumb
+            :kind="image.url ? image.mediaType : 'other'"
+            :src="image.url ?? undefined"
+            :icon="image.url ? undefined : 'image-off'"
           />
-        </div>
-        <div class="abele-gallery__edit-actions">
-          <ObsidianIcon icon="image" title="Set as cover" @click="setAsCover(index)" />
-          <ObsidianIcon icon="arrow-up" :disabled="index === 0" @click="moveImage(index, -1)" />
+        </template>
+        <span class="abele-gallery__edit-name" :title="image.path">{{ nameOf(image.path) }}</span>
+        <template v-if="folderOf(image.path) || !image.url" #meta>
+          <span v-if="!image.url" class="abele-gallery__edit-missing">Not in the vault yet</span>
+          <span v-if="folderOf(image.path)">{{ folderOf(image.path) }}</span>
+        </template>
+        <template #actions>
+          <ObsidianIcon
+            icon="image"
+            tooltip="Make it the note's cover"
+            :disabled="!image.url || image.type !== 'local'"
+            @click="setAsCover(index)"
+          />
+          <ObsidianIcon
+            icon="arrow-up"
+            tooltip="Move up"
+            :disabled="index === 0"
+            @click="moveImage(index, -1)"
+          />
           <ObsidianIcon
             icon="arrow-down"
+            tooltip="Move down"
             :disabled="index === resolvedImages.length - 1"
             @click="moveImage(index, 1)"
           />
-          <ObsidianIcon icon="trash" @click="removeImage(index)" />
-        </div>
-      </div>
+          <ObsidianIcon
+            icon="x"
+            tooltip="Take out of the gallery; the file stays"
+            @click="removeImage(index)"
+          />
+        </template>
+        <template #detail>
+          <input
+            type="text"
+            class="abele-gallery__edit-description"
+            :value="gallery.images[index].description"
+            placeholder="Caption"
+            :aria-label="`Caption for ${nameOf(image.path)}`"
+            spellcheck="true"
+            @change="updateDescription(index, ($event.target as HTMLInputElement).value)"
+          />
+        </template>
+      </EntryRow>
     </div>
 
     <div v-else-if="gallery.layout === 'masonry'" class="abele-gallery__masonry">
-      <div v-for="(col, colIdx) in masonryColumns" :key="colIdx" class="abele-gallery__masonry-col">
-        <div v-for="imgIdx in col" :key="imgIdx" class="abele-gallery__item">
-          <video
-            v-if="resolvedImages[imgIdx].url && resolvedImages[imgIdx].mediaType === 'video'"
-            :src="resolvedImages[imgIdx].url"
-            class="abele-gallery__image"
-            controls
-            muted
-            preload="metadata"
-          />
-          <img
-            v-else-if="resolvedImages[imgIdx].url"
-            :src="resolvedImages[imgIdx].url"
-            :alt="resolvedImages[imgIdx].alt"
-            class="abele-gallery__image"
-            loading="lazy"
-            @click.stop.prevent="openViewer(imgIdx)"
-            @load="onImageLoad(imgIdx, $event)"
-          />
-          <div v-else class="abele-gallery__image-error">
-            <ObsidianIcon icon="image-off" />
-            <span>{{ resolvedImages[imgIdx].alt }}</span>
-          </div>
+      <div v-for="(image, index) in resolvedImages" :key="index" class="abele-gallery__item">
+        <video
+          v-if="image.url && image.mediaType === 'video'"
+          :src="image.url"
+          class="abele-gallery__image"
+          controls
+          muted
+          preload="metadata"
+        />
+        <img
+          v-else-if="image.url"
+          :src="image.url"
+          :alt="image.alt"
+          class="abele-gallery__image"
+          loading="lazy"
+          role="button"
+          tabindex="0"
+          :aria-label="`Open ${nameOf(image.path)}`"
+          @click.stop.prevent="openViewer(index)"
+          @keydown.enter.prevent="openViewer(index)"
+        />
+        <div v-else class="abele-gallery__image-error">
+          <ObsidianIcon icon="image-off" no-hover />
+          <span>{{ image.alt }}</span>
         </div>
       </div>
     </div>
@@ -121,26 +159,29 @@
             :alt="image.alt"
             class="abele-gallery__image abele-gallery__image--contain"
             loading="lazy"
+            role="button"
+            tabindex="0"
+            :aria-label="`Open ${nameOf(image.path)}`"
             @click.stop.prevent="openViewer(index)"
-            @load="onImageLoad(index, $event)"
+            @keydown.enter.prevent="openViewer(index)"
           />
         </div>
       </div>
       <template v-if="resolvedImages.length > 1">
-        <div
+        <ObsidianIcon
+          icon="chevron-left"
+          tooltip="Previous picture"
           class="abele-gallery__slider-nav abele-gallery__slider-nav--prev"
           @click.stop="slideBy(-1)"
           @mousedown.prevent
-        >
-          <ObsidianIcon icon="chevron-left" no-hover />
-        </div>
-        <div
+        />
+        <ObsidianIcon
+          icon="chevron-right"
+          tooltip="Next picture"
           class="abele-gallery__slider-nav abele-gallery__slider-nav--next"
           @click.stop="slideBy(1)"
           @mousedown.prevent
-        >
-          <ObsidianIcon icon="chevron-right" no-hover />
-        </div>
+        />
       </template>
     </div>
 
@@ -160,11 +201,14 @@
           :alt="image.alt"
           class="abele-gallery__image"
           loading="lazy"
+          role="button"
+          tabindex="0"
+          :aria-label="`Open ${nameOf(image.path)}`"
           @click.stop.prevent="openViewer(index)"
-          @load="onImageLoad(index, $event)"
+          @keydown.enter.prevent="openViewer(index)"
         />
         <div v-else class="abele-gallery__image-error">
-          <ObsidianIcon icon="image-off" />
+          <ObsidianIcon icon="image-off" no-hover />
           <span>{{ image.alt }}</span>
         </div>
       </div>
@@ -203,11 +247,15 @@ import { GlobalStore } from '@/stores/GlobalStore'
 import { useGalleryImports } from '@/composables/useGalleryImports'
 import ObsidianIcon from './obsidian/Icon.vue'
 import EmptyState from './obsidian/EmptyState.vue'
+import Button from './obsidian/Button.vue'
+import EntryRow from './obsidian/EntryRow.vue'
+import FileThumb from './obsidian/FileThumb.vue'
 import GalleryViewer, { type ViewerImage } from './GalleryViewer.vue'
 import { setCoverFromMedia } from '@/commands/setCover'
 import { Choice, useMenu } from '@/composables/useMenu'
 import { reduceImageFile, formatBytes } from '@/helpers/reduceImage'
 import { isMediaPath } from '@/helpers/galleryUtils'
+import { confirmAction } from '@/modal/confirm'
 
 const props = defineProps<{
   gallery: Gallery
@@ -219,7 +267,6 @@ const fileInputRef = ref<HTMLInputElement | null>(null)
 const gridEl = ref<HTMLElement | null>(null)
 const addBtnRef = ref<InstanceType<typeof ObsidianIcon> | null>(null)
 const layoutBtnRef = ref<InstanceType<typeof ObsidianIcon> | null>(null)
-const deleteBtnRef = ref<InstanceType<typeof ObsidianIcon> | null>(null)
 const {
   draggingFiles,
   addFromVault,
@@ -266,44 +313,16 @@ const resolvedImages = computed(() => {
   }))
 })
 
-// --- Image aspect ratios for masonry layout ---
-const imageRatios = ref<Record<number, number>>({})
-
-function onImageLoad(index: number, e: Event) {
-  const img = e.target as HTMLImageElement
-  if (img.naturalWidth && img.naturalHeight) {
-    imageRatios.value[index] = img.naturalWidth / img.naturalHeight
-  }
-}
-
-// --- Masonry column distribution ---
-const MASONRY_COLS = 3
-
-const masonryColumns = computed(() => {
-  const cols: number[][] = Array.from({ length: MASONRY_COLS }, () => [])
-  const heights = new Array(MASONRY_COLS).fill(0)
-
-  for (let i = 0; i < resolvedImages.value.length; i++) {
-    // Find shortest column
-    let shortest = 0
-    for (let c = 1; c < MASONRY_COLS; c++) {
-      if (heights[c] < heights[shortest]) shortest = c
-    }
-    cols[shortest].push(i)
-    // Estimate height: 1/aspectRatio (wider images are shorter)
-    const ratio = imageRatios.value[i] || 1
-    heights[shortest] += 1 / ratio
-  }
-
-  return cols
-})
+const nameOf = (path: string) => path.slice(path.lastIndexOf('/') + 1)
+const folderOf = (path: string) => path.slice(0, Math.max(0, path.lastIndexOf('/')))
 
 const viewerOpen = ref(false)
 const viewerStartIndex = ref(0)
 
 const viewerImages = computed<ViewerImage[]>(() =>
+  // The caption is read by the picture's own place in the gallery, before the missing ones are
+  // left out: counted after, every picture past a missing one showed its neighbour's.
   resolvedImages.value
-    .filter((img) => img.url)
     .map((img, i) => ({
       url: img.url,
       alt: img.alt,
@@ -311,6 +330,7 @@ const viewerImages = computed<ViewerImage[]>(() =>
       path: img.path,
       description: props.gallery.images[i]?.description || '',
     }))
+    .filter((img): img is ViewerImage => !!img.url)
 )
 
 function openViewer(index: number) {
@@ -349,15 +369,16 @@ const settingsChoices = computed<Choice[]>(() => [
       { title: 'Masonry', event: 'layout', value: 'masonry', icon: 'gallery-vertical-end' },
       { title: 'Column', event: 'layout', value: 'column', icon: 'rows-3' },
       { title: 'Slider', event: 'layout', value: 'slider', icon: 'gallery-horizontal' },
-    ],
+    ].map((c) => ({ ...c, checked: c.value === props.gallery.layout })),
   },
   {
     title: 'Height',
     icon: 'ruler',
     subMenu: [200, 300, 400, 500, 600].map((h) => ({
-      title: `${h}px${h === props.gallery.height ? ' ✓' : ''}`,
+      title: `${h}px`,
       event: 'height',
       value: String(h),
+      checked: h === props.gallery.height,
     })),
   },
   {
@@ -370,6 +391,9 @@ const settingsChoices = computed<Choice[]>(() => [
     event: 'reduce-size',
     icon: 'minimize-2',
   },
+  // Apart from the rest: these take the gallery out of the note.
+  { title: 'Remove gallery only', event: 'header', icon: 'minus', separator: true },
+  { title: 'Remove with pictures', event: 'all', icon: 'trash-2', warning: true },
 ])
 
 async function handleSettingsMenu(event: string, value: string) {
@@ -377,6 +401,7 @@ async function handleSettingsMenu(event: string, value: string) {
   else if (event === 'height') props.gallery.setHeight(parseInt(value))
   else if (event === 'bg') props.gallery.setBg(!props.gallery.bg)
   else if (event === 'reduce-size') await reduceAllImages()
+  else await handleDeleteMenu(event)
 }
 
 async function reduceAllImages() {
@@ -460,12 +485,7 @@ function updateDescription(index: number, description: string) {
   props.gallery.updateDescription(index, description)
 }
 
-// --- Delete menu ---
-
-const deleteChoices = computed<Choice[]>(() => [
-  { title: 'Remove gallery only', event: 'header', icon: 'minus' },
-  { title: 'Remove with images', event: 'all', icon: 'trash-2' },
-])
+// --- Removing ---
 
 async function handleDeleteMenu(event: string) {
   if (event === 'header') {
@@ -476,6 +496,17 @@ async function handleDeleteMenu(event: string) {
       .filter((img) => img.type === 'local')
       .map((img) => app.metadataCache.getFirstLinkpathDest(img.path, props.gallery.filePath))
       .filter((f): f is TFile => f instanceof TFile)
+    const n = localFiles.length
+    if (
+      n &&
+      !(await confirmAction(app, {
+        title: 'Remove the gallery and its pictures?',
+        message: `The gallery goes from the note and ${n} ${n === 1 ? 'picture goes' : 'pictures go'} to the trash. They can be taken back from there.`,
+        confirmText: 'Move to the trash',
+        confirmTooltip: 'Remove the gallery and move its pictures to the trash',
+      }))
+    )
+      return
 
     props.gallery.removeBlock()
 
@@ -484,8 +515,6 @@ async function handleDeleteMenu(event: string) {
     }
   }
 }
-
-const deleteMenu = useMenu(deleteBtnRef, deleteChoices, handleDeleteMenu)
 </script>
 
 <style lang="scss" src="./gallery/gallery.scss"></style>

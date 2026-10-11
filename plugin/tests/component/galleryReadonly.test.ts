@@ -125,6 +125,28 @@ describe('a picture that is not in the vault yet', () => {
     await flushPromises()
 
     expect(w.find('.abele-gallery__image-error').exists()).toBe(false)
-    expect(w.find('.abele-gallery__image').attributes('src')).toBe('app://vault/Attachments/a.jpg?1')
+    expect(w.find('.abele-gallery__image').attributes('src')).toBe(
+      'app://vault/Attachments/a.jpg?1'
+    )
+  })
+})
+
+describe('an empty gallery', () => {
+  const empty = (readonly: boolean) => {
+    const item = gallery(readonly)
+    item.images = []
+    return item
+  }
+
+  it('says there are no pictures yet and offers to add some', () => {
+    const w = mount(GalleryView, { props: { gallery: empty(false) } })
+    expect(w.get('.abele-empty-state__title').text()).toBe('No pictures yet')
+    expect(w.findAll('button').some((b) => b.text() === 'Add pictures')).toBe(true)
+  })
+
+  it('offers nothing to add where it cannot be changed', () => {
+    const w = mount(GalleryView, { props: { gallery: empty(true) } })
+    expect(w.get('.abele-empty-state__title').text()).toBe('No pictures yet')
+    expect(w.findAll('button').some((b) => b.text() === 'Add pictures')).toBe(false)
   })
 })

@@ -58,10 +58,13 @@
         />
       </div>
       <div class="abele-drawing-bar__group">
+        <!-- Always in its place, so the row does not jump; pale while nothing is picked. -->
         <Icon
-          v-if="model.picked"
           icon="trash-2"
-          tooltip="Delete what is picked"
+          :tooltip="
+            model.picked ? 'Delete what is picked' : 'Delete: pick something with the lasso first'
+          "
+          :disabled="!model.picked"
           class="abele-drawing-bar__delete"
           @click="emit('delete')"
         />
@@ -181,11 +184,14 @@ const zoomText = computed(() => `${Math.round(props.model.zoom * 100)}%`)
   border-bottom: 1px solid var(--background-modifier-border);
   background-color: var(--background-primary);
 
+  /* Each group after the first stands behind a hairline, as a toolbar's groups do. */
   &__group {
     display: flex;
     flex: 0 0 auto;
     align-items: center;
     gap: var(--size-2-1);
+    padding-inline-start: var(--size-4-2);
+    border-inline-start: 1px solid var(--background-modifier-border);
   }
 
   &__end {
@@ -193,11 +199,6 @@ const zoomText = computed(() => `${Math.round(props.model.zoom * 100)}%`)
     align-items: center;
     gap: var(--size-2-1);
     margin-left: auto;
-  }
-
-  /* Dots, narrower than the glyphs beside them. */
-  &__swatch.abele-obsidian-icon {
-    padding-inline: var(--size-2-1);
   }
 
   &__swatch svg {

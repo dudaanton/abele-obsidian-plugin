@@ -75,12 +75,11 @@ describe('the drawing bar', () => {
     expect(bar.emitted('tool')?.[0]).toEqual(['text'])
   })
 
-  it('offers to delete only while something is picked', async () => {
-    expect(
-      mount(DrawingBar, { props: { model: model({ on: true }) } })
-        .find('.abele-drawing-bar__delete')
-        .exists()
-    ).toBe(false)
+  it('keeps delete in its place, pale until something is picked', async () => {
+    const idle = mount(DrawingBar, { props: { model: model({ on: true }) } })
+    await idle.get('.abele-drawing-bar__delete').trigger('click')
+    expect(idle.get('.abele-drawing-bar__delete').attributes('aria-disabled')).toBe('true')
+    expect(idle.emitted('delete')).toBeUndefined()
     const bar = mount(DrawingBar, {
       props: { model: model({ on: true, tool: 'lasso', picked: 2 }) },
     })

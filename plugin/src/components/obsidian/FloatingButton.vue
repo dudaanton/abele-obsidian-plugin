@@ -113,10 +113,10 @@ body:not(.is-floating-nav) .abele-floating-button {
 // sits in the margin, clear of the text, and is still there to tap. Two classes, to outweigh
 // Obsidian's `.is-phone .mod-raised` background.
 .abele-floating-button.abele-floating-button_tucked {
-  // In the accent colour: a sliver of the frosted surface is lost against a white page.
+  // In the accent colour: a sliver of the frosted surface is lost against a white page. Solid,
+  // not see-through: the text under a translucent sliver showed through it as a smudge.
   background: var(--interactive-accent);
   color: var(--text-on-accent);
-  opacity: 0.6;
   transform: translateX(100%);
 }
 

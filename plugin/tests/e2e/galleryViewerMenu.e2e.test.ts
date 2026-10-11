@@ -91,7 +91,7 @@ const moreMenu = (): Hit =>
     const opened = await openViewer()
     if (opened.error) return { error: opened.error, menu: false }
     const more = Array.from(document.querySelectorAll('.abele-gallery-viewer__toolbar .abele-obsidian-icon'))
-      .find((el) => el.textContent.includes('More'))
+      .find((el) => el.getAttribute('aria-label')?.startsWith('More'))
     if (!more) return { error: 'no More button', menu: false }
     more.dispatchEvent(new MouseEvent('click', { bubbles: true, clientX: 10, clientY: 10 }))
     await until(() => document.querySelector('.menu'), 3000)
