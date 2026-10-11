@@ -7,6 +7,7 @@ import { fencedPort, type RuntimeFence } from './external/recovery'
 import { externalCoordinationOf } from './external/ObsidianExternalFileHost'
 import type { ExternalFileCoordination } from './external/coordination'
 import { folderMutations } from './folderMutations'
+import { adapterConfigRevision } from './adapterConfigChanges'
 import { pathCoordinatorOf } from './pathCoordinator'
 import type { LocalStorage } from './ledgerId'
 import { makeParents, pruneAbove } from './vaultFolders'
@@ -127,6 +128,8 @@ export class ObsidianFileSystem implements FileSystem {
   private readonly yielded = new Map<string, string>()
   private configInventory: FileInfo[] | null = null
   private inventoryConsumed = false
+  private readonly configRevision: () => number
+  private cachedConfigRevision: number
   private configPolled = false
   private readonly startupInventory?: () => ReadonlyMap<string, FileInfo> | undefined
   /** Last engine-visible byte/absence observation, not a fresh read inside a replacement.
@@ -148,6 +151,8 @@ export class ObsidianFileSystem implements FileSystem {
     private readonly app: App,
     options: ObsidianFileSystemOptions = {}
   ) {
+    this.configRevision = adapterConfigRevision(app.vault.adapter, app.vault.configDir)
+    this.cachedConfigRevision = this.configRevision()
     this.preserveEmptyDirectories = options.preserveEmptyDirectories ?? false
     this.startupInventory = options.startupInventory
     this.runtimeFence = options.runtimeFence ?? null
@@ -367,6 +372,11 @@ export class ObsidianFileSystem implements FileSystem {
       }
       if (info === null || actual !== path) this.awaitingIndex.delete(path)
     }
+    const configRevision = this.configRevision()
+    if (this.cachedConfigRevision !== configRevision) {
+      this.configInventory = null
+      this.inventoryConsumed = true
+    }
     if (!this.startupInventory) this.configInventory = null
     if (this.configInventory === null) {
       const inventory = this.inventoryConsumed ? undefined : this.startupInventory?.()
@@ -378,6 +388,7 @@ export class ObsidianFileSystem implements FileSystem {
             )
             .map((info) => ({ ...info, mtime: stamp(info.mtime) }))
         : await this.readConfigInventory()
+      this.cachedConfigRevision = configRevision
     }
     for (const info of this.configInventory) yield await this.told(info, true)
     if (mutations.revision !== revision) {
