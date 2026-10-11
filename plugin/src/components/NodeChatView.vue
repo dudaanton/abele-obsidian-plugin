@@ -2,6 +2,13 @@
   <div class="abele-node-chat">
     <div class="abele-ai-chat__header">
       <span class="abele-node-chat__title" :title="title">{{ presenter.label.value }}</span>
+      <WorktreeChip
+        v-if="worktree"
+        :folder="folder ?? ''"
+        :copy="worktree"
+        :disabled="!canSwitchWorktree || offline || presenter.isStreaming.value"
+        @choose="emit('choose-worktree')"
+      />
       <div class="abele-ai-chat__header-actions">
         <AgentsButton />
         <span class="abele-node-chat__indicator" role="status" :title="status" :aria-label="status">
@@ -179,7 +186,17 @@ import Button from './obsidian/Button.vue'
 import { piFailure } from '@/node/piTranscript'
 import NodeDebugActions from '@/debugger/NodeDebugActions.vue'
 import { openNodeDebugger } from '@/debugger/register'
-const props = defineProps<{ presenter: NodeChatPresenter }>()
+import WorktreeChip from './nodeWork/WorktreeChip.vue'
+import type { CopySummary } from './nodeWork/types'
+const props = withDefaults(
+  defineProps<{
+    presenter: NodeChatPresenter
+    worktree?: CopySummary
+    folder?: string
+    canSwitchWorktree?: boolean
+  }>(),
+  { worktree: undefined, folder: undefined, canSwitchWorktree: false }
+)
 const diagnostics = computed(() =>
   props.presenter.projection.value.unknown
     .filter((record) => record.type === 'pi.message.final')
@@ -192,7 +209,7 @@ const diagnostics = computed(() =>
     )
     .filter(Boolean)
 )
-const emit = defineEmits<{ (e: 'new-chat'): void }>()
+const emit = defineEmits<{ (e: 'new-chat'): void; (e: 'choose-worktree'): void }>()
 // The presenter owns resource identities; this thin view supplies Obsidian's dialog adapter.
 const stopFiles = props.presenter.setFilesOpener?.((model, path, range) =>
   openNodeFiles(model, props.presenter.connection, path, range)
@@ -417,6 +434,19 @@ watch(
   &__status-label {
     display: none;
   }
+  .abele-worktree-chip {
+    flex: 0 1 auto;
+  }
+  @container (max-width: 30em) {
+    .abele-ai-chat__header {
+      flex-wrap: wrap;
+    }
+    .abele-worktree-chip {
+      order: 2;
+      width: 100%;
+    }
+  }
+  container-type: inline-size;
   .abele-chat-msg__diff,
   .abele-chat-msg__new-file {
     max-height: none;

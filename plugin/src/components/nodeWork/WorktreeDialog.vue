@@ -62,9 +62,9 @@ const props = withDefaults(
     taken: string[]
     base: string
     /** Where the node keeps worktrees of this repository. */
-    home: string
+    home?: string
   }>(),
-  {}
+  { home: undefined }
 )
 
 const emit = defineEmits<{
@@ -87,7 +87,11 @@ const problem = computed(() =>
 const branchNote = computed(() =>
   existing.value ? 'This branch is already there; the worktree checks it out.' : 'A new branch.'
 )
-const where = computed(() => `${props.home}/${name.value || '…'}`)
+const where = computed(() =>
+  props.home
+    ? `${props.home}/${name.value || '…'}`
+    : 'The node chooses the folder for this worktree.'
+)
 
 function create() {
   if (name.value && !problem.value) emit('create', name.value, props.base)

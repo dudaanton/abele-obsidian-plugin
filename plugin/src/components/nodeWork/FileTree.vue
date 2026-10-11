@@ -65,7 +65,7 @@
               :active="selected === change.path"
               :path="change.path"
               :class="{ 'abele-file-tree__deleted': change.kind === 'deleted' }"
-              @click="emit('open', change.path)"
+              @click="emit('open', change.path, group.id === 'staged' ? 'staged' : 'unstaged')"
               @contextmenu.prevent="emit('menu', $event, change.path)"
             >
               <template #end><ChangeCodes :change="change" /></template>
@@ -124,7 +124,7 @@ const props = withDefaults(
 
 const emit = defineEmits<{
   (e: 'update:mode', mode: 'all' | 'changed'): void
-  (e: 'open', path: string): void
+  (e: 'open', path: string, stage?: 'staged' | 'unstaged'): void
   (e: 'menu', event: MouseEvent, path: string): void
 }>()
 
@@ -132,16 +132,18 @@ const query = ref('')
 
 // Folders start folded, except the ones that lead to the open file.
 const folded = reactive(new Set<string>())
+const knownFolders = new Set<string>()
 const foldAll = (list: TreeEntry[]) =>
   list.forEach((e) => {
     if (e.kind === 'folder') {
-      if (!props.selected?.startsWith(`${e.path}/`)) folded.add(e.path)
+      if (!knownFolders.has(e.path) && !props.selected?.startsWith(`${e.path}/`)) folded.add(e.path)
+      knownFolders.add(e.path)
       foldAll(e.children ?? [])
     }
   })
 watch(
   () => props.entries,
-  () => (folded.clear(), foldAll(props.entries)),
+  () => foldAll(props.entries),
   { immediate: true }
 )
 watch(

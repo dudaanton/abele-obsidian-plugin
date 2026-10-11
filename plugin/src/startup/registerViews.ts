@@ -16,10 +16,46 @@ import { openChat, openSelectionLink } from '@/ai/openChat'
 import { keepChatFilesOutOfLeaves, routeChatAnchorLinks } from '@/ai/chatFileLeaves'
 import type { Plugin } from 'obsidian'
 import { registerDebugger } from '@/debugger/register'
+import { NodeSidebarView } from '@/views/NodeSidebarView'
+import { NodePathMainView } from '@/views/NodePathMainView'
+import { NodePathService } from '@/node/NodePathService'
+import {
+  NODE_SIDEBAR_VIEW,
+  NODE_FILE_VIEW,
+  NODE_HISTORY_VIEW,
+  NODE_CHAT_VIEW,
+  NODE_EDITOR_VIEW,
+} from '@/node/nodePathNavigation'
 
 /** Startup section; called at its original lifecycle position. */
 export function registerViews(plugin: Plugin) {
   registerDebugger(plugin)
+  plugin.registerView(NODE_SIDEBAR_VIEW, (leaf) => new NodeSidebarView(leaf))
+  for (const type of [NODE_FILE_VIEW, NODE_HISTORY_VIEW, NODE_CHAT_VIEW, NODE_EDITOR_VIEW])
+    plugin.registerView(type, (leaf) => new NodePathMainView(leaf, type))
+  const openNode = async () => {
+    const leaf =
+      plugin.app.workspace.getLeavesOfType(NODE_SIDEBAR_VIEW)[0] ??
+      plugin.app.workspace.getLeftLeaf(false)
+    if (!leaf) return
+    await leaf.setViewState({
+      type: NODE_SIDEBAR_VIEW,
+      active: true,
+      state: leaf.getViewState().type === NODE_SIDEBAR_VIEW ? leaf.getViewState().state : {},
+    })
+    await plugin.app.workspace.revealLeaf(leaf)
+  }
+  plugin.addCommand({
+    id: 'open-node',
+    name: 'Open node',
+    callback: () => {
+      void openNode()
+    },
+  })
+  plugin.addRibbonIcon('server', 'Node', () => {
+    void openNode()
+  })
+  plugin.register(() => NodePathService.destroyCurrent())
   plugin.registerView(
     TIMELINE_SIDEBAR_VIEW_TYPE,
     (leaf) => new TimelineSidebarView(leaf, plugin.app)

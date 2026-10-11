@@ -137,6 +137,29 @@ function fake() {
 }
 
 describe('node path model', () => {
+  it('selects a plain folder by its displayed project row while reads use the opaque root workspace', async () => {
+    const { model, port } = fake()
+    vi.mocked(port.catalogue).mockResolvedValueOnce({
+      folders: [
+        {
+          id: 'plain-project',
+          name: 'Plain folder',
+          path: '/sample/plain',
+          git: false,
+          copies: [],
+        },
+      ],
+      targets: [{ ...target('root-workspace'), projectId: 'plain-project', kind: 'workspace' }],
+      sessions: [],
+      capabilities: [],
+    })
+    await model.refresh()
+    await model.select('plain-project')
+    expect(model.current.value?.id).toBe('root-workspace')
+    expect(vi.mocked(port.inspect).mock.lastCall?.[0].id).toBe('root-workspace')
+    expect(model.selected.value).toBe('plain-project')
+    model.destroy()
+  })
   it('groups schema-parsed chats under the backend target and counts partly-staged files once', async () => {
     const { model } = fake()
     await model.refresh()

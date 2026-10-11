@@ -194,15 +194,15 @@ export class NodePathClientPort implements NodePathPort {
       })),
     }
   }
-  async inspect(target: PathTarget): Promise<PathInspection> {
+  async inspect(target: PathTarget, files = true): Promise<PathInspection> {
     if (target.kind === 'workspace')
-      return { entries: await this.plainTree(target.id), changes: [] }
+      return { entries: files ? await this.plainTree(target.id) : [], changes: [] }
     const { revision } = await this.client.repository.observe({ worktree_id: target.id })
     const status = await this.status(target, revision)
     return {
       revision,
       changes: status.map(pathStatus),
-      entries: await this.gitTree(target.id, revision),
+      entries: files ? await this.gitTree(target.id, revision) : [],
       ...(this.capabilities.includes('node_path_v2')
         ? await this.divergence(target)
         : { note: 'Change times and branch divergence require an updated node.' }),

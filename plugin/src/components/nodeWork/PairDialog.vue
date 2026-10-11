@@ -182,6 +182,9 @@ const emit = defineEmits<{
 const phone = Platform.isPhone
 const text = ref(props.initial)
 const confirmed = ref(false)
+watch(text, () => {
+  confirmed.value = false
+})
 const result = computed(() => (text.value.trim() ? props.parse(text.value.trim()) : null))
 const parsed = computed(() => (result.value && !('error' in result.value) ? result.value : null))
 // A code that cannot be read; a node that did not answer is said under the fields instead,

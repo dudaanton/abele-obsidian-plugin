@@ -68,8 +68,14 @@
           <Icon
             class="nav-action-button"
             icon="message-square-plus"
-            :tooltip="here ? `New chat in ${here}` : 'Open a folder first'"
-            :disabled="!here || node.status !== 'connected'"
+            :tooltip="
+              !chatAvailable
+                ? 'Update the node to enable target-bound sessions'
+                : here
+                  ? `New chat in ${here}`
+                  : 'Open a folder first'
+            "
+            :disabled="!here || !chatAvailable || node.status !== 'connected'"
             @click="emit('new-chat')"
           />
           <Icon
@@ -113,6 +119,7 @@
         <Icon icon="rotate-cw" size="xs" tooltip="Try to reconnect" @click="emit('retry')" />
       </div>
 
+      <div v-if="error" class="abele-node-panel__notice" role="alert">{{ error }}</div>
       <div v-if="empty" class="abele-node-panel__intro abele-node-panel__intro_empty">
         <div class="abele-node-panel__intro-text">
           Open a folder on {{ node.name }} to see its files and changes.
@@ -162,6 +169,8 @@ const props = withDefaults(
     /** When anything last came from the node ("12 s ago"). */
     updated?: string
     installCommand?: string
+    chatAvailable?: boolean
+    error?: string
   }>(),
   {
     node: undefined,
@@ -170,6 +179,8 @@ const props = withDefaults(
     git: false,
     updated: undefined,
     installCommand: 'npm install -g abele-node && abele-node start',
+    chatAvailable: true,
+    error: undefined,
   }
 )
 

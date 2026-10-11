@@ -1,4 +1,4 @@
-import { computed, ref, shallowRef } from 'vue'
+import { computed, ref, shallowRef, markRaw } from 'vue'
 import type { NodeClient } from '@abele/node-client'
 import type { RepositoryRevision } from '@abele/node-protocol'
 import type {
@@ -53,7 +53,7 @@ export interface PathCatalogue {
 /** Transport-independent product port. Wire validation belongs to the node client. */
 export interface NodePathPort {
   catalogue(): Promise<PathCatalogue>
-  inspect(target: PathTarget): Promise<PathInspection>
+  inspect(target: PathTarget, files?: boolean): Promise<PathInspection>
   file(
     target: PathTarget,
     path: string,
@@ -86,7 +86,13 @@ export class NodePathModel {
   readonly inspections = shallowRef<Record<string, PathInspection>>({})
   readonly targets = shallowRef<PathTarget[]>([])
   readonly sessions = shallowRef<PathCatalogue['sessions']>([])
-  readonly current = computed(() => this.targets.value.find((t) => t.id === this.selected.value))
+  readonly current = computed(() =>
+    this.targets.value.find(
+      (t) =>
+        t.id === this.selected.value ||
+        (t.kind === 'workspace' && t.projectId === this.selected.value)
+    )
+  )
   readonly inspection = computed(() =>
     this.current.value ? this.inspections.value[pathTargetKey(this.current.value)] : undefined
   )
@@ -113,10 +119,14 @@ export class NodePathModel {
     readonly port: NodePathPort,
     private seen: SeenChanges,
     private now = () => new Date().toISOString()
-  ) {}
+  ) {
+    markRaw(this)
+  }
 
   target(id: string): PathTarget {
-    const target = this.targets.value.find((t) => t.id === id)
+    const target = this.targets.value.find(
+      (t) => t.id === id || (t.kind === 'workspace' && t.projectId === id)
+    )
     if (!target) throw new Error('This target is no longer available. Refresh its folder.')
     return { ...target }
   }
@@ -158,7 +168,11 @@ export class NodePathModel {
       this.capabilities.value = catalogue.capabilities
       this.folders.value = catalogue.folders
       this.decorate()
-      if (this.current.value) await this.reloadTarget(this.current.value)
+      for (const target of this.targets.value) {
+        const missing = this.copy(target)?.missing
+        if (!missing) await this.reloadTarget(target, this.current.value?.id === target.id)
+        if (this.disposed || generation !== this.catalogueGeneration) return
+      }
       if (this.disposed || generation !== this.catalogueGeneration) return
       this.receivedAt.value = this.now()
       this.error.value = ''
@@ -172,7 +186,7 @@ export class NodePathModel {
   async select(id: string): Promise<void> {
     const target = this.target(id)
     const generation = ++this.selectionGeneration
-    this.selected.value = id
+    this.selected.value = target.kind === 'workspace' ? target.projectId : id
     this.stopWatch?.()
     this.stopWatch = undefined
     await this.reloadTarget(target)
@@ -184,12 +198,14 @@ export class NodePathModel {
     if (this.disposed || generation !== this.selectionGeneration) stop()
     else this.stopWatch = stop
   }
-  async reloadTarget(target: PathTarget): Promise<void> {
+  async reloadTarget(target: PathTarget, files = true): Promise<void> {
     const key = pathTargetKey(target),
       generation = (this.targetGenerations.get(key) ?? 0) + 1
     this.targetGenerations.set(key, generation)
-    const inspection = await this.port.inspect(target)
+    const inspection = await this.port.inspect(target, files)
     if (this.disposed || generation !== this.targetGenerations.get(key)) return
+    if (!files && this.inspections.value[key])
+      inspection.entries = this.inspections.value[key].entries
     this.inspections.value = { ...this.inspections.value, [key]: this.mark(target, inspection) }
     this.receivedAt.value = this.now()
     this.decorate()
@@ -233,6 +249,16 @@ export class NodePathModel {
   private decorate(): void {
     this.folders.value = this.folders.value.map((folder) => ({
       ...folder,
+      chats: !folder.git
+        ? this.sessions.value
+            .filter((s) => s.target?.projectId === folder.id && s.target.kind === 'workspace')
+            .map((s) => ({
+              id: s.session.session_id,
+              title: s.session.title,
+              running: s.running,
+              when: s.session.created_at,
+            }))
+        : undefined,
       copies: folder.copies.map((copy) => {
         const target = this.targets.value.find((t) => t.id === copy.id)
         const inspection = target && this.inspections.value[pathTargetKey(target)]
@@ -291,6 +317,7 @@ export class NodePathFileModel {
     readonly target: PathTarget
   ) {
     this.target = Object.freeze({ ...target })
+    markRaw(this)
   }
   async open(path: string, stage?: 'staged' | 'unstaged'): Promise<void> {
     const generation = ++this.generation

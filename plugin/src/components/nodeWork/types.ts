@@ -54,6 +54,8 @@ export interface FolderSummary {
   /** A git repository; a plain folder has no copies and no git state. */
   git: boolean
   missing?: boolean
+  /** Chats bound to the root workspace of a plain folder. */
+  chats?: ChatSummary[]
   copies: CopySummary[]
 }
 
@@ -112,6 +114,8 @@ export interface NodeDirectory {
   path: string
   git?: { branch: string; copies: number }
   open?: boolean
+  /** False until opening/registration establishes whether this directory is a Git root. */
+  inspected?: boolean
 }
 
 /** What a pairing code from `abele-node pair` holds, read out of it. */

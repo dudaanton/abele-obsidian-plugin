@@ -11,7 +11,9 @@
       :text="folder.name"
       :icon="folder.missing ? 'folder-x' : folder.git ? 'folder-git-2' : 'folder'"
       :path="folder.path"
-      :collapsible="folder.git || (!!$slots.selected && selected === folder.id)"
+      :collapsible="
+        folder.git || !!folder.chats?.length || (!!$slots.selected && selected === folder.id)
+      "
       :collapsed="folder.git ? folded.has(folder.id) : selected !== folder.id"
       :active="!folder.git && selected === folder.id && !$slots.selected"
       :disabled="folder.missing"
@@ -60,6 +62,15 @@
         </TreeItem>
       </template>
       <slot v-else-if="$slots.selected && selected === folder.id" name="selected" />
+      <template v-else-if="showChats && !folder.git">
+        <ChatRow
+          v-for="chat in folder.chats ?? []"
+          :key="chat.id"
+          :chat="chat"
+          :active="selectedChat === chat.id"
+          @click="emit('open-chat', chat.id)"
+        />
+      </template>
     </TreeItem>
   </div>
 </template>

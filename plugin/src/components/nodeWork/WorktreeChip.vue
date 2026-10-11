@@ -1,17 +1,16 @@
 <template>
-  <div
+  <button
     ref="el"
+    type="button"
     class="abele-worktree-chip"
-    role="button"
-    tabindex="0"
+    :disabled="disabled"
     @click="emit('choose')"
-    @keydown.enter.prevent="emit('choose')"
   >
     <Icon :icon="copyIcon(copy)" size="xs" :interactive="false" />
     <span class="abele-worktree-chip__folder">{{ folder }}</span>
     <span class="abele-worktree-chip__branch">{{ copy.branch }}</span>
     <Icon icon="chevrons-up-down" size="xs" :interactive="false" />
-  </div>
+  </button>
 </template>
 
 <script setup lang="ts">
@@ -24,11 +23,18 @@ import Icon from '../obsidian/Icon.vue'
 import { copyIcon, copyKind } from './codes'
 import type { CopySummary } from './types'
 
-const props = defineProps<{ folder: string; copy: CopySummary }>()
+const props = withDefaults(
+  defineProps<{ folder: string; copy: CopySummary; disabled?: boolean }>(),
+  { disabled: false }
+)
 const emit = defineEmits<{ (e: 'choose'): void }>()
 const el = ref<HTMLElement>()
 const tip = () =>
-  el.value && setTooltip(el.value, `${copyKind(props.copy)} · ${props.copy.path} · press to switch`)
+  el.value &&
+  setTooltip(
+    el.value,
+    `${copyKind(props.copy)} · ${props.copy.path} · ${props.disabled ? 'Switching requires an idle session and target execution support' : 'press to switch'}`
+  )
 onMounted(tip)
 watch(() => props.copy, tip, { flush: 'post' })
 </script>
@@ -44,6 +50,10 @@ watch(() => props.copy, tip, { flush: 'post' })
   color: var(--text-muted);
   font-size: var(--font-ui-small);
   cursor: var(--cursor);
+  border: 0;
+  background: transparent;
+  box-shadow: none;
+  height: auto;
 
   &:hover {
     background-color: var(--background-modifier-hover);

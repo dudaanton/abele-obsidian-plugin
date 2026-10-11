@@ -26,12 +26,12 @@
       <div class="abele-history__branch">
         <Icon :icon="copy ? copyIcon(copy) : 'git-branch'" size="xs" :interactive="false" />
         <span class="abele-history__branch-name">{{ copy?.branch }}</span>
-        <span v-if="copy && copy.kind !== 'project'" class="abele-history__drift">
+        <span v-if="copy" class="abele-history__drift">
           <span ref="aheadEl" class="abele-history__count"
-            ><Icon icon="arrow-up" size="xs" :interactive="false" />{{ copy.ahead ?? 0 }}</span
+            ><Icon icon="arrow-up" size="xs" :interactive="false" />{{ copy.ahead ?? '?' }}</span
           >
           <span ref="behindEl" class="abele-history__count"
-            ><Icon icon="arrow-down" size="xs" :interactive="false" />{{ copy.behind ?? 0 }}</span
+            ><Icon icon="arrow-down" size="xs" :interactive="false" />{{ copy.behind ?? '?' }}</span
           >
         </span>
       </div>
@@ -83,7 +83,7 @@ const props = withDefaults(
     /** The folder's main branch, for the ahead and behind tooltips. */
     base?: string
   }>(),
-  { copy: undefined, open: undefined, more: false, base: 'main' }
+  { copy: undefined, open: undefined, more: false, base: undefined }
 )
 
 const emit = defineEmits<{
@@ -107,9 +107,19 @@ const aheadEl = ref<HTMLElement>()
 const behindEl = ref<HTMLElement>()
 const tips = () => {
   if (aheadEl.value)
-    setTooltip(aheadEl.value, `${plural(props.copy?.ahead ?? 0, 'commit')} ahead of ${props.base}`)
+    setTooltip(
+      aheadEl.value,
+      props.copy?.ahead === undefined
+        ? 'Ahead count unavailable; select a reference branch in repository settings.'
+        : `${plural(props.copy.ahead, 'commit')} ahead of ${props.base ?? 'the selected reference'}`
+    )
   if (behindEl.value)
-    setTooltip(behindEl.value, `${plural(props.copy?.behind ?? 0, 'commit')} behind ${props.base}`)
+    setTooltip(
+      behindEl.value,
+      props.copy?.behind === undefined
+        ? 'Behind count unavailable; select a reference branch in repository settings.'
+        : `${plural(props.copy.behind, 'commit')} behind ${props.base ?? 'the selected reference'}`
+    )
 }
 onMounted(tips)
 watch(() => [props.copy, props.open], tips, { flush: 'post' })

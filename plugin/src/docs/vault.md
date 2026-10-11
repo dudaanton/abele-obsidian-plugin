@@ -112,6 +112,23 @@ runtime-only. Immutable trees, blob text and endpoint indexes/counts are bounded
 caches scoped to credential generation and repository identity, with separate caller capability
 guards. Credential retirement clears them. No persistent private-source cache is added.
 
+## Node path views (device-local)
+
+The Node drawer and its main-area file, history, chat and code-editor leaves retain only
+registration/node/project IDs, an opaque workspace or worktree target, relative file paths
+and session IDs in the workspace layout. They never store node credentials or claim chat
+permissions. File navigation is bound to the leaf target, not the current drawer selection.
+Current drawer metadata and loaded file/history content remain in memory while disconnected;
+reconnect reloads mutable state without replacing editor drafts or frozen commit views.
+
+`abele-node-path-seen` in local preferences records the last successfully opened observed
+change ID by node, target kind, target ID and relative path (bounded to 4,096 entries).
+It is device-local, not a settings-transfer field. A newer change arriving during loading
+remains unread. Owner folder/worktree operations keep `nodePathIntents` in the existing
+installation-local node client IndexedDB state until a typed receipt is known. Reopening a
+folder picker reuses an unresolved operation's original parent handle, request and ID; it
+never guesses that an operation ID alone means the filesystem effect succeeded.
+
 ## Node repository tabs (device-local)
 
 The shared repository leaf (`abele-github`) stores a discriminated `sourceTarget` in Obsidian's

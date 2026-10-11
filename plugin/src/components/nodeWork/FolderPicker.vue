@@ -92,7 +92,7 @@
         v-else
         text="Open"
         accent
-        :disabled="!target"
+        :disabled="!target || !!listing.error"
         tooltip="Open this folder in Abele"
         @click="target && emit('open', target.path)"
       />
@@ -195,9 +195,11 @@ const target = computed<Row | null>(() => {
 const facts = (d: Row) =>
   d.create
     ? 'New folder'
-    : d.git
-      ? `Git repository · ${d.git.branch}${d.git.copies > 1 ? ` · ${d.git.copies} copies` : ''}`
-      : 'Plain folder · files only'
+    : d.inspected === false
+      ? 'Folder on the node · inspected when opened'
+      : d.git
+        ? `Git repository · ${d.git.branch}${d.git.copies > 1 ? ` · ${d.git.copies} copies` : ''}`
+        : 'Plain folder · files only'
 
 function go(path: string) {
   query.value = path.endsWith('/') ? path : `${path}/`
