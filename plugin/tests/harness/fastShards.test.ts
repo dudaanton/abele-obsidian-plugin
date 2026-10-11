@@ -63,6 +63,23 @@ describe('duration-balanced fast shards', () => {
     expect(selectShard(p, files, 1, 2)).toEqual(p.shards[0].files)
   })
 
+  it('keeps a sealed plan valid when a coordinator reorders JSON object keys', () => {
+    const p = plan()
+    const encoded = JSON.parse(
+      JSON.stringify(p, [
+        'digest',
+        'durationMs',
+        'expected',
+        'files',
+        'identity',
+        'schema',
+        'shards',
+      ])
+    )
+    expect(selectShard(encoded, files, 1, 2)).toEqual(p.shards[0].files)
+    expect(mergeInventories(encoded, parts(p)).expected).toEqual(files)
+  })
+
   it('rejects empty, duplicate, escaping, unknown and changed inventories', () => {
     for (const expected of [[], [files[0], files[0]], ['../sample.test.ts'], ['/sample.test.ts']])
       expect(() => makePlan(expected, {}, 2, 'sample-inputs')).toThrow()

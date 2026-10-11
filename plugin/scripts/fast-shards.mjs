@@ -3,7 +3,22 @@ import { readFileSync, writeFileSync, renameSync } from 'node:fs'
 import { isAbsolute, relative, resolve, sep } from 'node:path'
 import { fileURLToPath } from 'node:url'
 
-const digest = (value) => createHash('sha256').update(JSON.stringify(value)).digest('hex')
+// Coordinators may reserialize JSON with sorted keys. Seal logical objects canonically,
+// while preserving array order (shard indices and inventories remain meaningful).
+const canonical = (value) =>
+  Array.isArray(value)
+    ? value.map(canonical)
+    : value && typeof value === 'object'
+      ? Object.fromEntries(
+          Object.keys(value)
+            .sort()
+            .map((name) => [name, canonical(value[name])])
+        )
+      : value
+const digest = (value) =>
+  createHash('sha256')
+    .update(JSON.stringify(canonical(value)))
+    .digest('hex')
 const same = (a, b) => JSON.stringify(a) === JSON.stringify(b)
 function inventory(files) {
   if (!Array.isArray(files) || !files.length) throw new Error('Empty fast inventory')
