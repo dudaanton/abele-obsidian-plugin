@@ -2134,7 +2134,14 @@ records are device-local recovery evidence, never ordinary sync inventory or ser
 identities. Failed or cancelled transfers retain their stages until explicit discard or
 successful publication; matching bytes alone do not retire an uncertain external operation.
 
-Private sync staging files without an owning connection journal or publication journal are
-discarded before connection inspection. Active capability probes and writes remain reserved.
-Disconnect first materializes and verifies ordinary files, then relinquishes its private
-artifacts and removes them; retained user files and pending publication recovery stay intact.
+Private sync staging files without an owning connection or publication journal are
+moved into `sync-recovery` under the plugin configuration directory, never deleted as
+disposable work. Reset preserves owned private copies there before deleting its ledgers.
+Disconnect moves private copies there before releasing ownership; the move keeps the inode,
+so late saves through open descriptors survive. A crash before the ledger update can
+recognize the deterministic recovery destination and finish preparation without replaying
+the old bytes. Reused names preserve the earlier copy under a unique suffix.
+
+These recoverable copies are kept indefinitely, outside sync and projection inspection;
+a persistent notice gives their directory. Active stages and pending publication backups
+remain protected by their existing journals. No cleanup removes uncertain user bytes.

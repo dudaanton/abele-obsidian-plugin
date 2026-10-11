@@ -1,3 +1,9 @@
+import {
+  preservePrivateArtifacts,
+  privateArtifactRecovered,
+  privateRecoveryDirectory,
+  showPrivateRecoveryNotice,
+} from '../privateRecovery'
 import { sha256 } from './hash'
 import type { App } from 'obsidian'
 import { BoundedVaultIo } from '../boundedVaultIo'
@@ -231,9 +237,9 @@ async function inspectionRead<T>(
     inspection.signal?.removeEventListener('abort', cancel)
   }
 }
-/** Discard only private work with no reachable ledger or installation-journal owner.
+/** Preserve private work with no reachable ledger or installation-journal owner.
  * Inventory precedes ownership reads so a newly created stage cannot enter a stale snapshot. */
-export async function discardOrphanPrivateArtifacts(
+export async function recoverOrphanPrivateArtifacts(
   app: App,
   factory: IDBFactory,
   assertCurrent: () => void = () => {}
@@ -243,6 +249,7 @@ export async function discardOrphanPrivateArtifacts(
     [directory],
     async () => {
       assertCurrent()
+      await showPrivateRecoveryNotice(app)
       if (!(await app.vault.adapter.exists(directory))) return
       // Snapshot candidates first, then read fresh ownership. Newly created work is
       // either absent from this list or already journaled/reserved before creation.
@@ -320,8 +327,8 @@ export async function discardOrphanPrivateArtifacts(
           adapterWriteInFlight(path)
         )
           continue
-        console.debug('[abele-sync] discarding orphan private work', path)
-        if (await app.vault.adapter.exists(path)) await app.vault.adapter.remove(path)
+        console.debug('[abele-sync] preserving orphan private work', path)
+        await preservePrivateArtifacts(app, [path], assertCurrent)
       }
     },
     assertCurrent
@@ -343,7 +350,13 @@ export async function projectionEvidence(
     assertOwned()
   }
   const readOnly = <T>(work: () => Promise<T>) => inspectionRead(inspection, assertCurrent, work)
-  const indexed = new Map(app.vault.getFiles().map((file) => [file.path, file]))
+  const recoveryPrefix = privateRecoveryDirectory(app.vault.configDir) + '/'
+  const indexed = new Map(
+    app.vault
+      .getFiles()
+      .filter((file) => !file.path.startsWith(recoveryPrefix))
+      .map((file) => [file.path, file])
+  )
   const inventory = new Map<string, { path: string; size: number; mtime: number }>()
   const paths = new Set(indexed.keys())
   inspection.stage?.('Listing the vault')
@@ -357,6 +370,7 @@ export async function projectionEvidence(
     if (new TextEncoder().encode(folder.normalize('NFC')).byteLength > 1024 || seen.has(folder))
       throw new ExternalRecoveryRequired('projection inventory is incomplete')
     seen.add(folder)
+    if (folder === privateRecoveryDirectory(app.vault.configDir)) return
     const listed = await readOnly(() => app.vault.adapter.list(folder))
     assertCurrent()
     for (const file of listed.files) paths.add(file)
@@ -584,7 +598,7 @@ export async function recoverExternalState(
   inspection: ProjectionInspection = {}
 ): Promise<void> {
   fence.assertOwned()
-  if (factory) await discardOrphanPrivateArtifacts(app, factory, () => fence.assertOwned())
+  if (factory) await recoverOrphanPrivateArtifacts(app, factory, () => fence.assertOwned())
   const marker = activation(app)
   const item = marker?.ledgers.find((value) => value.databaseName === databaseName)
   if (
@@ -871,6 +885,7 @@ export async function requireExternalLifecycleSafety(
       // Enrollment checks durable recovery metadata only. Byte verification belongs to startup.
       if (metadataOnly) continue
       const verifyLocal = async (path: string, sha: string, size: number) => {
+        if (await privateArtifactRecovered(app, path)) return
         const identity = await inspectionRead(inspection, assertCurrent, () =>
           new BoundedVaultIo(
             app.vault.adapter,
@@ -922,7 +937,7 @@ export async function requireExternalLifecycleSafety(
   if (
     inspectProjections &&
     (await (async () => {
-      await discardOrphanPrivateArtifacts(app, factory, assertCurrent)
+      await recoverOrphanPrivateArtifacts(app, factory, assertCurrent)
       return projectionEvidence(app, assertCurrent, false, ownedPaths, inspection)
     })())
   )

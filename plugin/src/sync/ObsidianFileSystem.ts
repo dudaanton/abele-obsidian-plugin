@@ -1,3 +1,4 @@
+import { privateRecoveryDirectory } from './privateRecovery'
 import { sha256 } from './external/hash'
 import type { App, DataAdapter, ListedFiles, Stat } from 'obsidian'
 import {
@@ -435,7 +436,8 @@ export class ObsidianFileSystem implements FileSystem {
               (info) =>
                 info.path.startsWith(this.configDir + '/') &&
                 !isAdapterTemp(info.path) &&
-                !info.path.startsWith(stagingDirectory(this.configDir) + '/')
+                !info.path.startsWith(stagingDirectory(this.configDir) + '/') &&
+                !info.path.startsWith(privateRecoveryDirectory(this.configDir) + '/')
             )
             .map((info) => ({ ...info, mtime: stamp(info.mtime) }))
         : await this.readConfigInventory()
@@ -841,7 +843,11 @@ export class ObsidianFileSystem implements FileSystem {
     depth = 0,
     walked: Set<string> = new Set()
   ): AsyncIterable<FileInfo> {
-    if (folder === stagingDirectory(this.configDir)) return
+    if (
+      folder === stagingDirectory(this.configDir) ||
+      folder === privateRecoveryDirectory(this.configDir)
+    )
+      return
     if (depth > CONFIG_WALK_DEPTH || walked.has(folder)) {
       console.debug(`[abele-sync] not following ${folder} any further`)
       return

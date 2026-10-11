@@ -2,7 +2,7 @@ import { afterEach, expect, it, vi } from 'vitest'
 import { tokenBuildFixture } from '../helpers/tokenBuildFixture'
 import {
   activateExternalFiles,
-  discardOrphanPrivateArtifacts,
+  recoverOrphanPrivateArtifacts,
   recoverExternalState,
 } from '@/sync/external/pluginSafety'
 import { openTokenLedger } from '@/sync/tokenLedger'
@@ -34,6 +34,9 @@ it('starts a fresh connection after private projection staging loses its ledger 
       )
     ).resolves.toBeUndefined()
     expect(await s.app.vault.adapter.exists(path)).toBe(false)
+    expect(await s.app.vault.adapter.read(path.replace('/sync-staging/', '/sync-recovery/'))).toBe(
+      '{"format":"abele.external"}'
+    )
     expect(await s.app.vault.adapter.read('Media/sample.bin')).toBe('sample original')
   } finally {
     fence.release()
@@ -138,12 +141,12 @@ it('keeps pending publication recovery and active probe files while sweeping orp
   ])
   const release = reserveStagingPath(paths[2])
   try {
-    await discardOrphanPrivateArtifacts(s.app as never, s.factory)
+    await recoverOrphanPrivateArtifacts(s.app as never, s.factory)
     for (const path of paths.slice(0, 3)) expect(await s.app.vault.adapter.exists(path)).toBe(true)
     expect(await s.app.vault.adapter.exists(paths[3])).toBe(false)
   } finally {
     release()
   }
-  await discardOrphanPrivateArtifacts(s.app as never, s.factory)
+  await recoverOrphanPrivateArtifacts(s.app as never, s.factory)
   expect(await s.app.vault.adapter.exists(paths[2])).toBe(false)
 })

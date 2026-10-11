@@ -80,6 +80,8 @@ export class AttachmentStore {
       host: ExternalFileHost
       artifactPath?(name: string): string
       cleanupPrivateArtifacts?(): Promise<void>
+      preservePrivateArtifacts?(paths: string[]): Promise<void>
+      privateArtifactRecovered?(path: string): Promise<boolean>
       binding: ConnectionBinding
       serial: ExternalSerialization
       assertOwned(): void
@@ -1033,6 +1035,7 @@ export class AttachmentStore {
       }
       if (!(await this.options.host.matches(base))) blockers.push(file.fileId + ':local-changed')
       for (const artifact of file.retained) {
+        if (await this.options.privateArtifactRecovered?.(artifact.path)) continue
         if (!(await this.options.host.exists(artifact.path))) {
           blockers.push(file.fileId + ':retained-evidence-missing')
           continue
@@ -1048,6 +1051,7 @@ export class AttachmentStore {
       )
         blockers.push(op.operationId + ':recovery-required')
       for (const artifact of op.ownedArtifacts) {
+        if (await this.options.privateArtifactRecovered?.(artifact.path)) continue
         if (!(await this.options.host.exists(artifact.path))) continue
         if (!(await this.options.host.matches(artifact)))
           blockers.push(op.operationId + ':retained-evidence-changed')
@@ -1112,17 +1116,29 @@ export class AttachmentStore {
       if (result.status !== 'complete') return result
     }
     return this.options.serial.run(async () => {
-      const check = await this.disconnectInventory()
-      if (!check.safe) return this.result('disconnect-incomplete')
       const doc = await this.document(),
         op = doc.operations.find((item) => item.operationId === opts.operationId)
-      if (!op || doc.revision !== check.revision) return this.result('recovery-required')
+      if (!op) return this.result('recovery-required')
       this.owned()
-      // Readiness has verified every ordinary original. Relinquish only private
-      // copies durably before unlinking, so a crash leaves sweepable orphan work.
+      // Preserve private copies before readiness checks. Changed quarantine bytes
+      // are recoverable edits, never deletion authority or a reason to hold departure.
       const privatePrefix = this.options.artifactPath?.('')
       const keep = (artifact: ExternalOperation['ownedArtifacts'][number]) =>
-        !privatePrefix || !artifact.path.startsWith(privatePrefix)
+        !this.options.preservePrivateArtifacts ||
+        !privatePrefix ||
+        !artifact.path.startsWith(privatePrefix)
+      await this.options.preservePrivateArtifacts?.(
+        [
+          ...doc.files.flatMap((file) => file.retained),
+          ...doc.operations.flatMap((other) => other.ownedArtifacts),
+        ]
+          .filter((artifact) => !keep(artifact))
+          .map((artifact) => artifact.path)
+      )
+      this.owned()
+      const check = await this.disconnectInventory()
+      if (!check.safe) return this.result('disconnect-incomplete')
+      if (doc.revision !== check.revision) return this.result('recovery-required')
       await this.options.state.commit({
         expectedRevision: doc.revision,
         files: doc.files

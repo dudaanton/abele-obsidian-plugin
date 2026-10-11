@@ -1,4 +1,11 @@
 // @vitest-environment node
+import { IDBFactory } from 'fake-indexeddb'
+import {
+  preservePrivateArtifacts,
+  privateRecoveryPath,
+  privateArtifactRecovered,
+} from '@/sync/privateRecovery'
+import { recoverOrphanPrivateArtifacts } from '@/sync/external/pluginSafety'
 import { expect, it, vi } from 'vitest'
 import { promises as disk } from 'node:fs'
 import { join } from 'node:path'
@@ -322,6 +329,49 @@ it('holds a native streaming hydration before placement and preserves a concurre
     await stage.discard()
   } finally {
     gate.close()
+    await f.close()
+  }
+})
+
+it('preserves the original inode and late descriptor writes in private recovery', async () => {
+  const f = await fixture()
+  const app = f.app as unknown as App
+  const staging = '.obsidian/plugins/abele/sync-staging/sample-quarantine.bin'
+  await disk.mkdir(join(f.root, '.obsidian/plugins/abele/sync-staging'), { recursive: true })
+  await disk.writeFile(join(f.root, staging), 'sample projection')
+  const handle = await disk.open(join(f.root, staging), 'r+')
+  try {
+    const before = await handle.stat()
+    await preservePrivateArtifacts(app, [staging])
+    await handle.write(Buffer.from('sample late edits'), 0, 17, 0)
+    await handle.sync()
+    await recoverOrphanPrivateArtifacts(app, new IDBFactory())
+    const saved = join(f.root, privateRecoveryPath(app, staging)!)
+    expect((await disk.stat(saved)).ino).toBe(before.ino)
+    expect(await disk.readFile(saved, 'utf8')).toBe('sample late edits')
+    expect(await privateArtifactRecovered(app, staging)).toBe(true)
+  } finally {
+    await handle.close()
+    await f.close()
+  }
+})
+
+it('keeps both recovery copies when a private stage name is reused', async () => {
+  const f = await fixture()
+  const app = f.app as unknown as App
+  const staging = '.obsidian/plugins/abele/sync-staging/sample-reused.bin'
+  try {
+    await disk.mkdir(join(f.root, '.obsidian/plugins/abele/sync-staging'), { recursive: true })
+    await disk.writeFile(join(f.root, staging), 'sample earlier edit')
+    await preservePrivateArtifacts(app, [staging])
+    await disk.writeFile(join(f.root, staging), 'sample later edit')
+    await preservePrivateArtifacts(app, [staging])
+    const directory = join(f.root, '.obsidian/plugins/abele/sync-recovery')
+    const contents = await Promise.all(
+      (await disk.readdir(directory)).map((name) => disk.readFile(join(directory, name), 'utf8'))
+    )
+    expect(contents.sort()).toEqual(['sample earlier edit', 'sample later edit'])
+  } finally {
     await f.close()
   }
 })

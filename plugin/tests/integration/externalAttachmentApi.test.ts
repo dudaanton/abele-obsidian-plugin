@@ -1,3 +1,4 @@
+import { preservePrivateArtifacts, privateArtifactRecovered } from '@/sync/privateRecovery'
 import { describe, expect, it, vi } from 'vitest'
 import { IDBFactory } from 'fake-indexeddb'
 import type { App } from 'obsidian'
@@ -10,10 +11,11 @@ import { ObsidianFileSystem } from '@/sync/ObsidianFileSystem'
 import { AttachmentStore } from '@/sync/external/attachmentStore'
 import { desktopTransport } from '@/sync/desktopTransport'
 import {
-  discardOrphanPrivateArtifacts,
+  recoverOrphanPrivateArtifacts,
+  recoverExternalState,
   requireExternalLifecycleSafety,
 } from '@/sync/external/pluginSafety'
-import { EXTERNAL_ACTIVATION_KEY } from '@/sync/external/recovery'
+import { EXTERNAL_ACTIVATION_KEY, RuntimeFence } from '@/sync/external/recovery'
 import { EXTERNAL_RETIRED_KEY, stageConnectionSwitch } from '@/sync/external/connectionSwitch'
 import { emptyConnection, writeConnection } from '@/sync/connection'
 import { writeLedgerId } from '@/sync/ledgerId'
@@ -139,8 +141,12 @@ async function setup(
     ...(privateArtifacts
       ? {
           artifactPath: (name: string) => host.artifactPath(name),
+          preservePrivateArtifacts: (paths: string[]) =>
+            preservePrivateArtifacts(fake as unknown as App, paths),
+          privateArtifactRecovered: (path: string) =>
+            privateArtifactRecovered(fake as unknown as App, path),
           cleanupPrivateArtifacts: () =>
-            discardOrphanPrivateArtifacts(fake as unknown as App, factory),
+            recoverOrphanPrivateArtifacts(fake as unknown as App, factory),
         }
       : {}),
     refreshed: () => runtime.refresh(),
@@ -1594,37 +1600,102 @@ describe('manual attachment store', () => {
   })
 })
 
-it('cleans private owned transfer artifacts only after disconnect materializes originals', async () => {
-  const s = await setup('personal', false, false, true)
-  try {
-    s.fake.saveLocalStorage(EXTERNAL_ACTIVATION_KEY, {
-      schema: 1,
-      ledgers: [
-        {
-          ledgerId: 'sample-ledger',
-          databaseName: s.database,
-          databaseIdentity: s.store.databaseIdentity,
-          binding,
-          phase: 'active',
-        },
-      ],
-    })
-    await s.api.evict(s.base.fileId, {
-      operationId: 'sample-offload',
-      expectedRevision: 0,
-      expectedVersionId: s.base.versionId,
-    })
-    expect((await s.api.materializeForDisconnect({ operationId: 'sample-departure' })).status).toBe(
-      'complete'
-    )
-    expect(new Uint8Array(await s.fake.vault.adapter.readBinary(path))).toEqual(content)
-    expect((await s.fake.vault.adapter.list(hostPrivateDirectory(s))).files).toEqual([])
-    expect((await s.state.snapshot()).files.flatMap((file) => file.retained)).toEqual([])
-    expect(await s.api.inspectDisconnect()).toMatchObject({ safe: true })
-  } finally {
-    s.close()
+it.each([false, true, 'changed'])(
+  'preserves late private edits across disconnect (crash=%s)',
+  async (crash) => {
+    const s = await setup('personal', false, false, true)
+    try {
+      s.fake.saveLocalStorage(EXTERNAL_ACTIVATION_KEY, {
+        schema: 1,
+        ledgers: [
+          {
+            ledgerId: 'sample-ledger',
+            databaseName: s.database,
+            databaseIdentity: s.store.databaseIdentity,
+            binding,
+            phase: 'active',
+          },
+        ],
+      })
+      await s.api.evict(s.base.fileId, {
+        operationId: 'sample-offload',
+        expectedRevision: 0,
+        expectedVersionId: s.base.versionId,
+      })
+      if (crash === 'changed') {
+        expect(
+          (
+            await s.api.hydrate(s.base.fileId, {
+              operationId: 'sample-early-hydrate',
+              expectedVersionId: s.base.versionId,
+            })
+          ).status
+        ).toBe('complete')
+        const artifact = (await s.state.snapshot()).files[0].retained[0]
+        await s.fake.vault.adapter.write(artifact.path, 'sample unique preexisting edit')
+      }
+      const commit = s.state.commit.bind(s.state)
+      let latePath: string | undefined
+      let crashed = false
+      vi.spyOn(s.state, 'commit').mockImplementation(async (changes) => {
+        if (changes.operations?.some((change) => change.next.phase === 'disconnect-ready')) {
+          const retained = (await s.state.snapshot()).files.flatMap((file) => file.retained)[0]
+          latePath = retained?.path
+          if (latePath) {
+            const writePath = (await s.fake.vault.adapter.exists(latePath))
+              ? latePath
+              : latePath.replace('/sync-staging/', '/sync-recovery/')
+            await s.fake.vault.adapter.write(writePath, 'sample unique late edit')
+          }
+        }
+        if (
+          crash === true &&
+          !crashed &&
+          changes.operations?.some((change) => change.next.phase === 'disconnect-ready')
+        ) {
+          crashed = true
+          throw new Error('sample crash before acknowledgement')
+        }
+        return commit(changes)
+      })
+      if (crash === true) {
+        await expect(
+          s.api.materializeForDisconnect({ operationId: 'sample-departure' })
+        ).rejects.toThrow('sample crash')
+        expect((await s.state.snapshot()).files.flatMap((file) => file.retained)).not.toEqual([])
+        await recoverOrphanPrivateArtifacts(s.fake as unknown as App, s.factory)
+        const fence = new RuntimeFence(s.fake, 'sample-ledger', () => true)
+        try {
+          await recoverExternalState(
+            s.fake as unknown as App,
+            s.store,
+            'sample-ledger',
+            s.database,
+            binding,
+            fence,
+            s.factory
+          )
+        } finally {
+          fence.release()
+        }
+      }
+      expect(
+        (await s.api.materializeForDisconnect({ operationId: 'sample-departure' })).status
+      ).toBe('complete')
+      expect(latePath).toBeDefined()
+      if (latePath)
+        expect(
+          await s.fake.vault.adapter.read(latePath.replace('/sync-staging/', '/sync-recovery/'))
+        ).toBe('sample unique late edit')
+      expect(new Uint8Array(await s.fake.vault.adapter.readBinary(path))).toEqual(content)
+      expect((await s.fake.vault.adapter.list(hostPrivateDirectory(s))).files).toEqual([])
+      expect((await s.state.snapshot()).files.flatMap((file) => file.retained)).toEqual([])
+      expect(await s.api.inspectDisconnect()).toMatchObject({ safe: true })
+    } finally {
+      s.close()
+    }
   }
-})
+)
 function hostPrivateDirectory(s: Awaited<ReturnType<typeof setup>>) {
   return s.host.artifactPath('').replace(/\/$/, '')
 }
