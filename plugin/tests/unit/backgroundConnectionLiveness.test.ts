@@ -18,9 +18,11 @@ beforeEach(() => {
   vi.useFakeTimers()
   active = false
   runtime.backgroundActive = () => active
+  runtime.debug = (...args) => console.debug(...args)
 })
 afterEach(() => {
   runtime.backgroundActive = () => mobileBackground.active
+  runtime.debug = (...args) => console.debug(...args)
   mobileBackground.destroy()
   vi.useRealTimers()
   vi.restoreAllMocks()

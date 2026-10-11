@@ -37,7 +37,9 @@ package instead of the upstream channel client. The equivalent change is maintai
 in the node repository's channel-client source package. Keep this plugin patch until
 the next node release carrying that change is re-vendored here; remove it only in
 that re-vendor update. `RequestChannel.backgroundActive` defaults to
-false; the plugin binds it to admitted, still-playing background audio. Request
+false; the plugin binds it to admitted, still-playing background audio. Diagnostics
+are host-injected through `RequestChannel.debug` (silent by default); the plugin
+binds that sink to `console.debug`, leaving command-line JSON output untouched. Request
 timeouts remain `outcome_unknown` and never replay a mutation: a received pong keeps
 only the transport alive, not the timed-out request.
 

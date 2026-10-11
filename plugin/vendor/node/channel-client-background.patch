@@ -8,11 +8,11 @@
 -        ws.onerror = () => this.queue.end();
 +        ws.onclose = (event) => {
 +            const known = /^(heartbeat_timeout|idle_timeout|auth_timeout|slow_consumer|client_disconnect|disconnected|unauthorized|node_shutdown)$/;
-+            console.debug('[Abele node] socket closed', { code: event.code, clean: event.wasClean, reason: known.test(event.reason) ? event.reason : 'peer_close' });
++            RequestChannel.debug('[Abele node] socket closed', { code: event.code, clean: event.wasClean, reason: known.test(event.reason) ? event.reason : 'peer_close' });
 +            this.queue.end();
 +        };
 +        ws.onerror = () => {
-+            console.debug('[Abele node] socket error');
++            RequestChannel.debug('[Abele node] socket error');
 +            this.queue.end();
 +        };
      }
@@ -22,40 +22,42 @@
          return this.queue;
      }
      async close(reason) {
-+        console.debug('[Abele node] transport close', { reason });
++        RequestChannel.debug('[Abele node] transport close', { reason });
          this.queue.end();
          this.ws.close(1000, reason.slice(0, 100));
      }
-@@ -154,7 +162,11 @@
+@@ -154,7 +162,13 @@
      }
  }
  export class RequestChannel {
 +    /** Host policy, evaluated at the deadline, not cached at connection admission. */
 +    static backgroundActive = () => false;
++    /** Hosts opt into diagnostics without contaminating command-line response output. */
++    static debug = () => {};
      channel;
 +    probeTimer;
 +    probeDue = 0;
      pending = new Map();
      reader;
      heartbeat;
-@@ -171,6 +183,11 @@
+@@ -171,6 +185,11 @@
                  for await (const bytes of this.channel.transport.receive()) {
                      const frame = FrameCodec.decode(bytes);
                      this.lastRecord = Date.now();
 +                    if (this.probeTimer !== undefined) {
-+                        console.debug('[Abele node] heartbeat probe answered', { kind: frame.kind });
++                        RequestChannel.debug('[Abele node] heartbeat probe answered', { kind: frame.kind });
 +                        clearTimeout(this.probeTimer);
 +                        this.probeTimer = undefined;
 +                    }
                      if (frame.kind === 'response') {
                          const pending = this.pending.get(frame.request_id);
                          if (pending) {
-@@ -190,30 +207,69 @@
+@@ -190,30 +209,69 @@
                          throw new ChannelError('unexpected_record');
                  }
              }
 +            catch (error) {
-+                console.debug('[Abele node] channel reader ended', { reason: error instanceof ChannelError ? error.code : 'reader_failed' });
++                RequestChannel.debug('[Abele node] channel reader ended', { reason: error instanceof ChannelError ? error.code : 'reader_failed' });
 +            }
              finally {
 -                this.fail();
@@ -85,14 +87,14 @@
 +    }
 +    probe(reason) {
 +        if (this.stopped || this.probeTimer !== undefined) return;
-+        console.debug('[Abele node] heartbeat probe', { reason, idleMs: Date.now() - this.lastRecord });
++        RequestChannel.debug('[Abele node] heartbeat probe', { reason, idleMs: Date.now() - this.lastRecord });
 +        this.probeDue = Date.now() + 5000;
 +        this.probeTimer = setTimeout(() => {
 +            this.probeTimer = undefined;
 +            if (this.stopped) return;
 +            const lateMs = Date.now() - this.probeDue;
 +            if (RequestChannel.backgroundActive() && lateMs >= 1000) {
-+                console.debug('[Abele node] delayed heartbeat probe deadline', { lateMs });
++                RequestChannel.debug('[Abele node] delayed heartbeat probe deadline', { lateMs });
 +                this.probe('timer_delayed');
 +            } else void this.close('heartbeat_probe_timeout');
 +        }, 5000);
@@ -112,7 +114,7 @@
 +                if (!pending || this.stopped) return;
 +                const lateMs = Date.now() - due;
 +                if (RequestChannel.backgroundActive() && lateMs >= 1000) {
-+                    console.debug('[Abele node] delayed request deadline: receive grace', { method, lateMs });
++                    RequestChannel.debug('[Abele node] delayed request deadline: receive grace', { method, lateMs });
 +                    due = Date.now() + 1500;
 +                    pending.timer = setTimeout(expire, 1500);
 +                    return;
@@ -121,7 +123,7 @@
                  reject(new ChannelError('outcome_unknown'));
 -                void this.close();
 -            }, /^(project|workspace|review)\./.test(method) ? 30000 : 5000);
-+                console.debug('[Abele node] request timeout', { method });
++                RequestChannel.debug('[Abele node] request timeout', { method });
 +                if (RequestChannel.backgroundActive()) this.probe('request_timeout');
 +                else void this.close('request_timeout');
 +            };
@@ -129,7 +131,7 @@
              this.pending.set(request_id, { resolve, reject, timer });
              void this.channel.transport
                  .send(FrameCodec.encode({
-@@ -224,16 +280,19 @@
+@@ -224,16 +282,19 @@
                  params,
              }))
                  .catch((error) => {
@@ -144,14 +146,14 @@
 +    fail(reason) {
          if (this.stopped)
              return;
-+        console.debug('[Abele node] channel close', { reason, idleMs: Date.now() - this.lastRecord, backgroundAudio: RequestChannel.backgroundActive() });
++        RequestChannel.debug('[Abele node] channel close', { reason, idleMs: Date.now() - this.lastRecord, backgroundAudio: RequestChannel.backgroundActive() });
          this.stopped = true;
 +        clearTimeout(this.probeTimer);
 +        this.probeTimer = undefined;
          if (this.heartbeat)
              clearInterval(this.heartbeat);
          for (const p of this.pending.values()) {
-@@ -243,9 +302,11 @@
+@@ -243,9 +304,11 @@
          this.pending.clear();
          this.onClose();
      }
@@ -166,7 +168,7 @@
          await this.reader;
      }
  }
-@@ -271,4 +332,3 @@
+@@ -271,4 +334,3 @@
          }
      }
  }
@@ -174,18 +176,19 @@
 \ No newline at end of file
 --- a/dist/index.d.ts
 +++ b/dist/index.d.ts
-@@ -23,6 +23,10 @@
+@@ -23,6 +23,11 @@
      connect(target: NodeConnection): Promise<AuthenticatedChannel>;
  }
  export declare class RequestChannel {
 +    static backgroundActive: () => boolean;
++    static debug: (...args: unknown[]) => void;
 +    private probeTimer?;
 +    private probeDue;
 +    private probe;
      readonly channel: AuthenticatedChannel;
      private pending;
      private reader?;
-@@ -35,7 +39,7 @@
+@@ -35,7 +40,7 @@
      start(): void;
      request(method: string, params: unknown, operation_id?: string): Promise<unknown>;
      private fail;

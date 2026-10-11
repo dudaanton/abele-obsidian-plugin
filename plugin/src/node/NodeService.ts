@@ -14,6 +14,7 @@ import { NodeDelegationController } from './NodeDelegationController'
 import type { DelegationCard } from './delegation'
 
 RequestChannel.backgroundActive = () => mobileBackground.active
+RequestChannel.debug = (...args) => console.debug(...args)
 
 export type NodeConnectionState = 'connecting' | 'connected' | 'offline'
 export class NodeConnection {
