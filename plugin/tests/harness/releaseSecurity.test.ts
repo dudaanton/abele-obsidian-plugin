@@ -2,6 +2,8 @@ import { describe, expect, it } from 'vitest'
 import { readFileSync, mkdtempSync, mkdirSync, writeFileSync, chmodSync, rmSync } from 'node:fs'
 import { execFileSync } from 'node:child_process'
 import { createHash } from 'node:crypto'
+import { createRequire } from 'node:module'
+import { zipSync } from 'fflate'
 import { tmpdir } from 'node:os'
 import { join } from 'node:path'
 import { load } from 'js-yaml'
@@ -84,7 +86,7 @@ describe('least privilege release and checks', () => {
       writeFileSync(join(assets, 'main.js'), 'sample production')
       writeFileSync(join(build, 'main.js'), 'sample production')
       const archive = join(root, 'archive.zip')
-      execFileSync('zip', ['-q', archive, 'main.js'], { cwd: assets })
+      writeFileSync(archive, zipSync({ 'main.js': readFileSync(join(assets, 'main.js')) }))
       const digest = createHash('sha256').update(readFileSync(archive)).digest('hex')
       writeFileSync(
         join(tools, 'gh'),
@@ -95,6 +97,19 @@ describe('least privilege release and checks', () => {
       `
       )
       chmodSync(join(tools, 'gh'), 0o755)
+      // Exercise the workflow's extraction command without depending on host ZIP utilities.
+      const zipModule = createRequire(import.meta.url).resolve('fflate')
+      writeFileSync(
+        join(tools, 'unzip'),
+        `#!/usr/bin/env node
+        const fs = require('node:fs'); const {unzipSync} = require(${JSON.stringify(zipModule)});
+        const args = process.argv.slice(2);
+        if (args.length !== 4 || args[0] !== '-q' || args[2] !== '-d') process.exit(1);
+        for (const [name, bytes] of Object.entries(unzipSync(fs.readFileSync(args[1]))))
+          fs.writeFileSync(args[3] + '/' + name, bytes);
+      `
+      )
+      chmodSync(join(tools, 'unzip'), 0o755)
       const step = workflow('release').jobs.build.steps.find(
         (s: any) => s.name === 'Verify immutable production archive digest'
       )
