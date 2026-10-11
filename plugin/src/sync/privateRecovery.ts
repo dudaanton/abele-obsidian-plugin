@@ -22,9 +22,9 @@ export async function privateArtifactRecovered(app: App, path: string): Promise<
   )
 }
 const notified = new WeakSet<object>()
-export async function showPrivateRecoveryNotice(app: App): Promise<void> {
+export async function showPrivateRecoveryNotice(app: App, freshCopies = false): Promise<void> {
   if (
-    notified.has(app.vault) ||
+    (!freshCopies && notified.has(app.vault)) ||
     !(await app.vault.adapter.exists(privateRecoveryDirectory(app.vault.configDir)))
   )
     return
@@ -40,24 +40,27 @@ export async function preservePrivateArtifacts(
   assertCurrent: () => void = () => {}
 ): Promise<void> {
   let count = 0
-  for (const path of new Set(paths)) {
-    assertCurrent()
-    const recovery = privateRecoveryPath(app, path)
-    if (!recovery) throw new Error('Recovery copy is outside private staging')
-    if (!(await app.vault.adapter.exists(path))) continue
-    if (await app.vault.adapter.exists(recovery)) {
-      // Reused stage names must not overwrite earlier recovery or block new work.
-      const previous = recovery + '.previous-' + crypto.randomUUID()
-      if (await app.vault.adapter.exists(previous))
-        throw new Error('Recovery destination already exists; both copies have been kept')
+  try {
+    for (const path of new Set(paths)) {
       assertCurrent()
-      await app.vault.adapter.rename(recovery, previous)
+      const recovery = privateRecoveryPath(app, path)
+      if (!recovery) throw new Error('Recovery copy is outside private staging')
+      if (!(await app.vault.adapter.exists(path))) continue
+      if (await app.vault.adapter.exists(recovery)) {
+        // Reused stage names must not overwrite earlier recovery or block new work.
+        const previous = recovery + '.previous-' + crypto.randomUUID()
+        if (await app.vault.adapter.exists(previous))
+          throw new Error('Recovery destination already exists; both copies have been kept')
+        assertCurrent()
+        await app.vault.adapter.rename(recovery, previous)
+      }
+      await makeParents(app.vault.adapter, recovery)
+      assertCurrent()
+      await app.vault.adapter.rename(path, recovery)
+      count++
+      console.warn('[abele-sync] preserved recoverable copy', recovery)
     }
-    await makeParents(app.vault.adapter, recovery)
-    assertCurrent()
-    await app.vault.adapter.rename(path, recovery)
-    count++
-    console.warn('[abele-sync] preserved recoverable copy', recovery)
+  } finally {
+    if (count) await showPrivateRecoveryNotice(app, true)
   }
-  if (count) await showPrivateRecoveryNotice(app)
 }
