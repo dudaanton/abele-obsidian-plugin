@@ -43,10 +43,7 @@ export function phoneHome(): void {
  * CLI's `eval` does, so `evalRaw` and everything built on it read both alike: a string as it
  * is, anything else as JSON, `undefined` as `(no output)`, a throw as `Error: <message>`.
  */
-interface PhoneLoadIdentity {
-  timeOrigin: number
-  loadId: string
-}
+import { wasReloaded, type LoadIdentity as PhoneLoadIdentity } from './loadIdentity'
 let caseIdentity: PhoneLoadIdentity | undefined
 const loadIdentity = `window.__abelePhoneLoadIdentity ||= {timeOrigin:performance.timeOrigin,loadId:Math.random().toString(36).slice(2)}`
 
@@ -70,7 +67,7 @@ export function phoneEval(code: string, timeoutMs: number): string {
   // job, never a second gesture/write, and a replacement page executes nothing.
   const wrapped = `(async()=>{
     const identity=${loadIdentity},expected=${JSON.stringify(expected)},key=${JSON.stringify(key)};
-    if(identity.timeOrigin!==expected.timeOrigin||identity.loadId!==expected.loadId)return {identity};
+    if((${wasReloaded.toString()})(expected,identity))return {identity};
     if(window.__abelePhoneEvalReply?.key!==key)window.__abelePhoneEvalReply={key,promise:Promise.resolve().then(async()=>{
       try{const value=await eval(${JSON.stringify(code)});return {type:typeof value,value}}
       catch(error){return {thrown:String(error?.message||error)}}
@@ -93,10 +90,7 @@ export function phoneEval(code: string, timeoutMs: number): string {
       console.debug('[phone-webview]', { event: 'eval-retry', ...expected, at: Date.now() })
     }
   }
-  if (
-    packet!.identity.timeOrigin !== expected.timeOrigin ||
-    packet!.identity.loadId !== expected.loadId
-  )
+  if (wasReloaded(expected, packet!.identity))
     throw new Error(
       'Obsidian was reloaded during the case: ' +
         JSON.stringify({ before: expected, after: packet!.identity })

@@ -7,6 +7,7 @@ import { onPhone, targets } from './helpers/target'
 import { MOBILE_MAX_FILE_BYTES } from '../../src/sync/connectionDefaults'
 import { allowFixtureAttachment } from './helpers/externalAttachmentFixture'
 import { residentMemorySampler } from './helpers/residentMemory'
+import { wasReloaded } from './helpers/loadIdentity'
 
 targets('desktop', 'phone')
 const TIMEOUT = 600000
@@ -165,7 +166,7 @@ describe('v2 external attachments on live adapters', () => {
       `)
       const before = identity()
       const result = await roundTrip(false, MOBILE_MAX_FILE_BYTES, false, false)
-      expect(identity(), 'Obsidian was reloaded during the case').toEqual(before)
+      expect(wasReloaded(before, identity()), 'Obsidian was reloaded during the case').toBe(false)
       expect(result).toMatchObject({
         evicted: { status: 'complete', reclaimedBytes: MOBILE_MAX_FILE_BYTES },
         missing: true,
