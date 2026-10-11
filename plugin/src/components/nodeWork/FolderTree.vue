@@ -2,6 +2,7 @@
   <div
     class="abele-folder-tree"
     :class="{ 'abele-folder-tree_stale': stale }"
+    :style="{ '--abele-copy-count-digits': countDigits }"
     role="tree"
     :aria-label="label"
   >
@@ -100,7 +101,7 @@
 // is going on in it, in codes — a pulsing dot while an agent works there, an accent dot for changes
 // you have not seen, the number of changed files. A worktree opens under itself what belongs to it:
 // its chats, or (in the one-tree layout) its changes and files.
-import { reactive } from 'vue'
+import { computed, reactive } from 'vue'
 import TreeItem from '../obsidian/TreeItem.vue'
 import Icon from '../obsidian/Icon.vue'
 import ChatRow from './ChatRow.vue'
@@ -141,6 +142,16 @@ const slots = defineSlots<{
   actions?: (props: { id: string }) => unknown
 }>()
 
+// Every folder, copy and chat shares the widest count, including a folded folder's total.
+const countDigits = computed(() =>
+  Math.max(
+    3,
+    ...props.folders.flatMap((folder) => [
+      String(folder.copies.reduce((sum, copy) => sum + copy.changed, 0)).length,
+      ...folder.copies.map((copy) => String(copy.changed).length),
+    ])
+  )
+)
 const folded = reactive(new Set<string>())
 // A worktree that is picked again folds what it opened; picking another opens that one.
 const closed = reactive(new Set<string>())

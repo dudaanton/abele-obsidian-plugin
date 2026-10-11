@@ -161,6 +161,43 @@ describe('node design corrections', () => {
       ])
     }
   )
+  it('preserves internal blank lines when quoting selected diff text', async () => {
+    const view = keep(
+      mount(FileView, {
+        attachTo: document.body,
+        global: { stubs: { teleport: true } },
+        props: {
+          path: 'sample.ts',
+          text: 'new\n\nend',
+          change: {
+            path: 'sample.ts',
+            kind: 'modified',
+            added: 1,
+            removed: 1,
+            before: 'old\n\nend',
+            after: 'new\n\nend',
+          },
+        },
+      })
+    )
+    const first = view.get('.abele-diff__line_added .abele-diff__text').element
+    const last = view.findAll('.abele-diff__text').at(-1)!.element
+    const range = document.createRange()
+    range.setStart(first, 0)
+    range.setEnd(last, last.childNodes.length)
+    vi.spyOn(range, 'getBoundingClientRect').mockReturnValue({
+      top: 100,
+      bottom: 160,
+      left: 20,
+    } as DOMRect)
+    window.getSelection()!.addRange(range)
+    document.dispatchEvent(new Event('selectionchange'))
+    await flushPromises()
+    await view.get('.abele-file-view__selection button').trigger('click')
+    expect(view.emitted('ask')?.[0]).toEqual([
+      { text: 'new\n\nend', from: 1, to: 3, side: 'after' },
+    ])
+  })
   it('carries historical selection actions with their file path', () => {
     const view = keep(
       mount(HistoryView, {
@@ -224,6 +261,21 @@ describe('node design corrections', () => {
     await view.get('.tree-item-self').trigger('click')
     await view.get('[data-path="src/sample.ts"]').trigger('contextmenu')
     expect(view.emitted('menu')?.map((e) => e[1])).toEqual(['src/sample.ts'])
+  })
+  it('shares enough count-column space for large counts and folded folder totals', async () => {
+    const large = {
+      ...folder,
+      copies: [
+        { ...folder.copies[0], changed: 6200 },
+        { ...folder.copies[0], id: 'second-tree', branch: 'topic', changed: 6200 },
+      ],
+    }
+    const view = keep(mount(FolderTree, { props: { folders: [large] } }))
+    expect(view.attributes('style') ?? '').toContain('--abele-copy-count-digits: 5')
+    await view.get('.tree-item-self').trigger('click')
+    expect(view.get('.abele-copy-codes__count').text()).toBe('12400')
+    await view.setProps({ folders: [folder] })
+    expect(view.attributes('style') ?? '').toContain('--abele-copy-count-digits: 3')
   })
   it('reserves empty count and dot slots, exposes chat actions and stops nested context menus', async () => {
     const view = keep(mount(FolderTree, { props: { folders: [folder], selected: 'tree' } }))

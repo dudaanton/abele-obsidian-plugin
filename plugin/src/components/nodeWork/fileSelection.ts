@@ -51,7 +51,8 @@ export function fileSelection(
         ? 'before'
         : 'after'
     const line = Number(side === 'before' ? row.dataset.lineA : row.dataset.lineB)
-    if (picked.toString() && line) parts.push({ text: picked.toString(), line, side })
+    // Empty rows inside a selection still carry a newline in the quoted source.
+    if (!picked.collapsed && line) parts.push({ text: picked.toString(), line, side })
   }
   if (!parts.length) return null
   const text = parts.map((p) => p.text).join('\n')

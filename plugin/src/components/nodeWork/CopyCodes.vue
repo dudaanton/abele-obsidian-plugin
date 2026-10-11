@@ -55,10 +55,12 @@ watch(() => props.changed, tip, { flush: 'post' })
   justify-content: center;
   width: var(--size-4-2);
 }
-// Room for a three-figure count; the number starts at the column's left edge.
+// One panel-wide column, at least three figures; large counts must not shift only their row.
 .abele-copy-codes__count.tree-item-flair {
-  min-width: 3ch;
+  width: calc(var(--abele-copy-count-digits, 3) * 1ch);
+  min-width: calc(var(--abele-copy-count-digits, 3) * 1ch);
   text-align: start;
+  font-variant-numeric: tabular-nums;
 
   &:empty {
     visibility: hidden;
