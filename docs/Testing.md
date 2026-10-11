@@ -63,9 +63,15 @@ build info is not a successful type-check receipt. Both passes must succeed befo
 Lint runs two disjoint inventories with the same rules. Files in the configuration's explicit
 non-type-aware block use ESLint's content strategy, with configuration (including nested
 formatter settings), manifest, installed rule payloads, environment and toolchain in the
-namespace. Everything else uses that strategy **only inside a namespace for identical
-complete repository inputs**, including ignored generated sources. An imported type change
-therefore invalidates typed lint even if the consuming file did not change.
+namespace. **Typed lint currently runs cold on every invocation.** The plain TypeScript
+fingerprint cannot enumerate ESLint's Vue/default-project inputs, including declarations
+reachable only from a Vue component, so it never authorizes typed cache reuse. Compiler and
+non-type-aware content caches remain enabled.
+
+Each independent lint API invocation runs in a fresh Node process. Configuration and rule
+modules therefore reread the current manifest and other inputs rather than sealing a result
+computed with process-local state from a previous invocation. The ordinary CLI remains a
+single fresh process.
 
 Only successful, checksum-sealed cache output is reused. Corruption, interrupted publication
 or contention is a miss; concurrent runs never share writable cache files. Keep the same

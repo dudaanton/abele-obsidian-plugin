@@ -126,7 +126,8 @@ export function compilerCacheKey(root, program, options, dependencies = dependen
 function programInputIdentity(root) {
   // Read the resolved program closure too: imports/extended configs may live outside the
   // checkout or in otherwise generated directories. Constructing the graph does not run a
-  // semantic check, but binds every read source, declaration, config and resolution manifest.
+  // semantic check. This is an input-change guard only: ESLint's Vue/default-project
+  // programs can read inputs absent from this graph, so it cannot authorize typed reuse.
   const ts = createRequire(import.meta.url)('typescript')
   const reads = new Map()
   const readFile = (file) => {
@@ -155,7 +156,7 @@ function programInputIdentity(root) {
   return key([...reads].sort(([a], [b]) => (a < b ? -1 : a > b ? 1 : 0)))
 }
 
-export function lintCacheKeys(root) {
+export function lintCacheKeys(root, includeTypedGuard = true) {
   const common = {
     schema: 1,
     root: realpathSync(root),
@@ -167,12 +168,17 @@ export function lintCacheKeys(root) {
     ),
   }
   return {
+    // Fail closed until the actual ESLint program inputs (including Vue-only imports and
+    // resolution probes) can be enumerated. A plain TS graph is not sufficient evidence.
+    typedReusable: false,
     untyped: key(common),
-    typed: key({
-      ...common,
-      source: repositoryIdentity(root),
-      program: programInputIdentity(root),
-    }),
+    typed: includeTypedGuard
+      ? key({
+          ...common,
+          source: repositoryIdentity(root),
+          program: programInputIdentity(root),
+        })
+      : null,
   }
 }
 

@@ -66,6 +66,7 @@ describe('external check caches', () => {
   it('invalidates typed lint for imported source, new inputs, manifest and installed rule changes, not just linted-file contents', () => {
     const f = fixture()
     const before = lintCacheKeys(f.root)
+    expect(before.typedReusable).toBe(false)
     writeFileSync(join(f.plugin, 'src/checked/sample.ts'), 'export const value: string = null')
     const source = lintCacheKeys(f.root)
     expect(source.typed).not.toBe(before.typed)
