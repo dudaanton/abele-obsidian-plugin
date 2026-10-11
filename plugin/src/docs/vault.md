@@ -930,6 +930,17 @@ These are discovery state, not permissions; every request still filters tools by
 agent's and chat's settings. Reopening keeps this order; starting a new chat clears it.
 Do not edit these records by hand.
 
+Chat metadata `overrides.nodeScope` stores remote scope separately from vault paths:
+entries identify a whole node, registered project, or exact plain workspace/Git worktree,
+with read/edit access. `overrides.nodeTarget` is this chat's selected remote target, not a
+permission. Both travel with the chat log and its sparse overrides. Whole-node scope includes
+future registered projects. A copied or synced configuration does not authorize itself:
+owner approvals live only in device-local preferences, bound to durable chat identity,
+normalized scope, node installation/key and owner authorization generation. Removing/changing
+scope fences pending tool reads and new mutations. Node writes and their durable receipts stay
+on the daemon; successful edits retain before/after Diff text in the ordinary chat tool result.
+`node_propose_edit` remains a separate device-local draft, not an immediate disk writer.
+
 Chats are `.abchat` files under the chat folder, one JSON record per line. While one is being
 rewritten whole, a copy of the new content sits in the plugin's folder under `chat-backups/`, on
 this device only, and goes once the file is written; a file found cut short by a crash is put

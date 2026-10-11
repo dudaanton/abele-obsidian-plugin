@@ -2,6 +2,19 @@ import type { AgentTool, AgentToolResult } from '../../client'
 import type { ChatSession } from '../../ChatSession'
 import type { RepositorySource, RepositoryIdentity, RepositoryTarget } from '@/repository/source'
 import { RepositoryWriteSchema } from '@abele/node-protocol'
+import { createNodeAgentTools, type NodeAgentHostFactory } from './agent'
+import { nodeAgentHost } from './owner'
+export {
+  giveObsidianChatAccess,
+  setObsidianChatNodeScope,
+  removeObsidianChatNodeAccess,
+  revokeObsidianNodeScopeApprovals,
+} from './owner'
+export {
+  addNodeContextToObsidianChat,
+  askNodeContextInObsidianChat,
+  type ObsidianNodeContext,
+} from './context'
 export type RepositoryEditProposal = { path: string; expected_content_id: string; text: string }
 
 export type RepositoryReadApproval = (
@@ -196,8 +209,20 @@ const string = (p: Record<string, unknown>, key: string, fallback = ''): string 
 /** Results retain exact bytes per invocation, with no cross-chat or authority cache reuse. */
 export function createNodeTools(
   host = nodeRepositoryToolsHost,
-  approve?: RepositoryReadApproval
+  approve?: RepositoryReadApproval,
+  factory: NodeAgentHostFactory = nodeAgentHost
 ): AgentTool[] {
+  const remoteTools = createNodeAgentTools(factory)
+  const scopeAliases: Record<string, string> = {
+    worktrees: 'list_node_worktrees',
+    read: 'node_read',
+    file: 'node_read',
+    tree: 'node_ls',
+    search: 'node_search',
+    grep: 'node_search',
+    blame: 'node_git_blame',
+    commits: 'node_git_log',
+  }
   let pending = continuations.get(host)
   if (!pending) continuations.set(host, (pending = new Map()))
   const answer = (text: string, details?: unknown): AgentToolResult => ({
@@ -229,7 +254,7 @@ export function createNodeTools(
       { cursor }
     )
   }
-  return names.map(
+  const legacyTools = names.map(
     (kind): AgentTool => ({
       name: kind === 'worktrees' ? 'list_node_worktrees' : `node_${kind}`,
       label: `Node repository ${kind}`,
@@ -237,7 +262,7 @@ export function createNodeTools(
       description:
         kind === 'propose_edit'
           ? 'Propose an edit to one current working file. Requires a separate per-edit owner approval and an existing chat repository read grant. Supply exact path, expected_content_id from node_file, and complete proposed text. Retains a device-local draft only; the owner must explicitly Save in the repository tab. Historical versions, Git actions and automatic uncertain retries are not supported.'
-          : `Read-only node repository ${kind}. Requires an owner grant for the executing chat and project. Use opaque node/project/workspace IDs; revision defaults to the working tree. Continuations use cursor alone. ${kind === 'search' ? 'Mode code or path; query, regex, case_sensitive and glob select matches.' : ''}`,
+          : `With chat node scope, supply opaque node/project/workspace IDs (or omit them for the selected target), target_kind (worktree or workspace), and path for file text. node_read returns file bytes and content identity; node_search accepts literal/regex/filename modes. Without node scope, this is legacy read-only node repository ${kind}. Requires an owner grant for the executing chat and project. Use opaque node/project/workspace IDs; revision defaults to the working tree. Continuations use cursor alone. ${kind === 'search' ? 'Mode code or path; query, regex, case_sensitive and glob select matches.' : ''}`,
       parameters: {
         type: 'object',
         properties: {
@@ -248,6 +273,7 @@ export function createNodeTools(
               'workspace',
               'path',
               'revision',
+              'ref',
               'base',
               'query',
               'glob',
@@ -258,6 +284,8 @@ export function createNodeTools(
             ].map((key) => [key, { type: 'string' }])
           ),
           regex: { type: 'boolean' },
+          target_kind: { type: 'string', enum: ['workspace', 'worktree'] },
+          expected_content_id: { type: ['string', 'null'] },
           case_sensitive: { type: 'boolean' },
           start_line: { type: 'integer', minimum: 1 },
           end_line: { type: 'integer', minimum: 1 },
@@ -267,6 +295,31 @@ export function createNodeTools(
         // Only the executing context supplies identity; no active-tab/session fallback.
         const session = ctx?.session
         if (!session) throw new Error('An executing chat is required for a repository read grant')
+        if (session.overrides?.value.nodeScope?.length && scopeAliases[kind]) {
+          const tool = remoteTools.find((tool) => tool.name === scopeAliases[kind])!
+          return tool.execute(
+            _id,
+            {
+              ...p,
+              ...(p.revision && p.revision !== 'WORKTREE' && p.revision !== 'Working tree'
+                ? { ref: p.revision }
+                : {}),
+              ...(['search', 'grep'].includes(kind)
+                ? {
+                    mode: ['literal', 'regex', 'filename'].includes(String(p.mode))
+                      ? p.mode
+                      : p.mode === 'path'
+                        ? 'filename'
+                        : p.regex
+                          ? 'regex'
+                          : 'literal',
+                  }
+                : {}),
+            },
+            signal,
+            ctx
+          )
+        }
         const branchSelectionVersion = session.branchSelectionVersion ?? 0
         // Strings are captured before any grant/UI/storage await. Model flags never supply approval.
         const proposal =
@@ -496,4 +549,6 @@ export function createNodeTools(
       },
     })
   )
+  const existing = new Set(legacyTools.map((tool) => tool.name))
+  return [...legacyTools, ...remoteTools.filter((tool) => !existing.has(tool.name))]
 }

@@ -34,6 +34,8 @@ import type {
 import { ChatStorage } from './ChatStorage'
 import { cloneChatPath } from './chatClone'
 import { claimDelegationIdentity, ownsDelegationIdentity } from './delegationIdentity'
+import { NODE_AGENT_TOOL_NAMES, NODE_EDIT_TOOLS, NODE_FILE_OPERATIONS, NODE_MUTATION_TOOLS } from './tools/node/agent'
+import { revokeNodeScopeApproval } from './tools/node/owner'
 import { NodeService } from '@/node/NodeService'
 import {
   prepareSelectionRevision,
@@ -718,6 +720,11 @@ export class ChatSession implements SummarizerHost, InterceptorHost, AnchorStora
     this.effects = effectScope(true)
     this.effects.run(() => {
       watch(
+        () => JSON.stringify(this.overrides.value.nodeScope),
+        (_value, before) => { if (before !== undefined) revokeNodeScopeApproval(this) },
+        { flush: 'sync' }
+      )
+      watch(
         [
           this.chatTitle,
           this.agentId,
@@ -1186,7 +1193,11 @@ export class ChatSession implements SummarizerHost, InterceptorHost, AnchorStora
   }
 
   getToolMode(toolName: string, toolCallId?: string): ToolMode {
-    return this.toolModes.value[this.getToolPermissionKey(toolName, toolCallId)] ?? 'off'
+    const saved = this.toolModes.value[this.getToolPermissionKey(toolName, toolCallId)]
+    if (saved !== undefined) return saved
+    if (this.overrides.value.nodeScope?.length && NODE_AGENT_TOOL_NAMES.includes(toolName))
+      return this.needsApproval(toolName) ? 'ask' : 'auto'
+    return 'off'
   }
 
   // ── Tools with session scope ────────────────────────────────────
@@ -1242,7 +1253,12 @@ export class ChatSession implements SummarizerHost, InterceptorHost, AnchorStora
       !this.anchor.value.message &&
       !this.anchor.value.cfi &&
       (this.toolModes.value[EDIT_SELECTION_TOOL] ?? 'ask') !== 'off'
-    const withSelection = offered ? [...filtered, createEditSelectionTool(this)] : filtered
+    // Node scope is an explicit owner surface, independent of optional feature-tool defaults.
+    const withNode = this.overrides.value.nodeScope?.length
+      ? [...filtered, ...allTools.filter(tool => NODE_AGENT_TOOL_NAMES.includes(tool.name) &&
+          this.toolModes.value[tool.name] !== 'off' && !filtered.some(value => value.name === tool.name))]
+      : filtered
+    const withSelection = offered ? [...withNode, createEditSelectionTool(this)] : withNode
     if (this.kind === 'comment' && this.anchor.value?.message && this.anchor.value.quote)
       withSelection.push(createReplyRevisionTool(this))
 
@@ -1264,6 +1280,8 @@ export class ChatSession implements SummarizerHost, InterceptorHost, AnchorStora
     const core = new Set(CORE_TOOLS)
     // Context tools belong to the passage, not an optional feature permission.
     if (offered) core.add(EDIT_SELECTION_TOOL)
+    if (this.overrides.value.nodeScope?.length)
+      for (const name of NODE_AGENT_TOOL_NAMES) core.add(name)
     core.add(REPLY_REVISION_TOOL)
     if (this.bookAnchored()) for (const name of BOOK_READ_TOOLS) core.add(name)
     const discovered =
@@ -1294,8 +1312,8 @@ export class ChatSession implements SummarizerHost, InterceptorHost, AnchorStora
         const invocationParams =
           tool.name === 'zip'
             ? { ...snapshotZipRequest(params) }
-            : tool.name === 'node_propose_edit'
-              ? { ...params }
+            : tool.name === 'node_propose_edit' || NODE_MUTATION_TOOLS.includes(tool.name)
+              ? structuredClone(params)
               : params
         const ownerAgent = this.agent.value
         const version = this.conversationVersion.value
@@ -1396,6 +1414,9 @@ export class ChatSession implements SummarizerHost, InterceptorHost, AnchorStora
   needsApproval(toolName: string, args?: Record<string, unknown>, permissionKey?: string): boolean {
     if (toolName === 'node_propose_edit' || needsSecretApproval(toolName, args)) return true
     const mode = this.permissionMode.value
+    if (NODE_EDIT_TOOLS.includes(toolName)) return mode !== 'allow-edit' && mode !== 'allow-all'
+    if (NODE_FILE_OPERATIONS.includes(toolName)) return mode !== 'allow-all'
+    if (NODE_AGENT_TOOL_NAMES.includes(toolName)) return false
 
     // This tool only records a proposal. Accepting it is a separate owner action, never a
     // permission mode, tool call or automatic approval.
@@ -2652,7 +2673,7 @@ export class ChatSession implements SummarizerHost, InterceptorHost, AnchorStora
 
   /** Existing source-path approval widens access; ZIP's new output is granted only after saving. */
   private widenScopeFor(toolName: string, args: Record<string, unknown> | undefined): void {
-    if (toolName === 'zip' || !args) return
+    if (toolName === 'zip' || toolName.startsWith('node_') || toolName === 'list_node_worktrees' || !args) return
     const path = (args.path || args.from) as string
     if (path && !this.scopeResolver.isInScope(path)) this.scopeResolver.addFile(path)
   }
@@ -3627,7 +3648,8 @@ export class ChatSession implements SummarizerHost, InterceptorHost, AnchorStora
     if (
       this.allChatMessages.length === 0 &&
       !this.queuedMessages.value.length &&
-      !this.currentChatFile.value
+      !this.currentChatFile.value &&
+      !this.overrides.value.nodeScope?.length
     )
       return
 

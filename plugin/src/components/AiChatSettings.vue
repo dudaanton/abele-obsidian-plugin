@@ -119,6 +119,7 @@
 
 <script setup lang="ts">
 import { nodeRepositoryToolsHost } from '@/ai/tools/node'
+import { revokeObsidianChatNodeApproval } from '@/ai/tools/node/owner'
 import { ref, computed } from 'vue'
 import Setting from './obsidian/Setting.vue'
 import Button from './obsidian/Button.vue'
@@ -139,7 +140,10 @@ const emit = defineEmits<{ close: [] }>()
 
 const session = computed(() => ChatService.getInstance().activeSession.value)
 function revokeNodeReads() {
-  if (session.value) nodeRepositoryToolsHost.revokeAll(session.value)
+  const current = session.value
+  if (!current) return
+  nodeRepositoryToolsHost.revokeAll(current)
+  void revokeObsidianChatNodeApproval(current).catch(error => console.error('[Abele] Node scope revocation failed', error))
 }
 
 // ── Deleting this chat ──

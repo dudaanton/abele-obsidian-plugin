@@ -197,6 +197,7 @@ import { GlobalStore } from '@/stores/GlobalStore'
 import { AbeleConfig } from '@/services/AbeleConfig'
 import { TFile } from 'obsidian'
 import { WRITE_TOOLS, DECK_WRITE_TOOLS } from '@/ai/types'
+import { NODE_EDIT_TOOLS, NODE_MUTATION_TOOLS } from '@/ai/tools/node/agent'
 import type { ChatMessage } from '@/ai/types'
 import { prepareWordChange } from '@/word/vaultAdapter'
 import type { WordEdit } from '@/word/edit'
@@ -504,7 +505,7 @@ const approve = () => {
 const canApproveAllWrites = computed(() => {
   const s = session.value
   const name = props.message.toolName
-  if (!s || !name || !WRITE_TOOLS.includes(name)) return false
+  if (!s || !name || (!WRITE_TOOLS.includes(name) && !NODE_EDIT_TOOLS.includes(name))) return false
   if (DECK_WRITE_TOOLS.includes(name) && s.getToolMode(name) !== 'auto') return false
   return s.permissionMode.value === 'confirm-all'
 })
@@ -526,7 +527,7 @@ const approveAllWrites = () => {
  */
 const canAllowAll = computed(() => {
   const name = props.message.toolName
-  if (!name || name === 'node_propose_edit' || keyRequest.value) return false
+  if (!name || name === 'node_propose_edit' || NODE_MUTATION_TOOLS.includes(name) || keyRequest.value) return false
   const s = session.value
   if (!s) return false
   return s.getToolMode(name, props.message.toolCallId) === 'ask'

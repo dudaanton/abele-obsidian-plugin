@@ -40,6 +40,8 @@ describe('device-local node scope', () => {
     session.overrides.value.nodeScope = [entry]
     ledger.revoke(session)
     expect(check).toThrow()
+    ledger.approve(session, { 'sample-node': 'pin:1' })
+    expect(check).toThrow()
     ledger.approve(session, { 'sample-node': 'pin:2' })
     expect(() => ledger.guard(session, target, 'pin:1', 'read')).toThrow()
     const current = ledger.guard(session, target, 'pin:2', 'read')
@@ -64,6 +66,22 @@ describe('device-local node scope', () => {
       ledger.guard(session, { ...target, project_id: 'future-project' }, 'pin:1', 'read')
     ).not.toThrow()
     expect(() => ledger.guard(session, target, 'pin:1', 'edit')).toThrow()
+  })
+  it('durably revokes a node on registration replacement, even if the same principal returns later', () => {
+    let local: unknown
+    const storage = {
+      read: () => local,
+      write: (value: unknown) => {
+        local = value
+      },
+    }
+    const ledger = new NodeScopeLedger(storage),
+      session = chat()
+    ledger.approve(session, { 'sample-node': 'pin:0' })
+    const check = ledger.guardNode(session, 'sample-node', 'pin:0')
+    ledger.revokeNode('sample-node')
+    expect(check).toThrow()
+    expect(() => new NodeScopeLedger(storage).guardNode(session, 'sample-node', 'pin:0')).toThrow()
   })
   it('travels as configuration, while approval stays in a separate local store', () => {
     let local: unknown

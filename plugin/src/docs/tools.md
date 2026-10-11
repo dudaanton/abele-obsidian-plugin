@@ -945,6 +945,9 @@ Each carries its own mode, so reading the settings and changing them are two per
 each setting decides is the `settings` section of this reference.
 # Node repositories
 
+The legacy repository-tab workflow below remains available when the chat has no node scope.
+For persisted chat node scope and immediate disk edits, see **Node chat scope and files** below.
+
 Read-only tools require an explicit owner grant for the executing chat and node project,
 separate from delegation and generic tool approvals. Opening a tab grants no access.
 Actual node repository tabs register provider-neutral sources and the shared opener through
@@ -1016,3 +1019,56 @@ larger read. Provider coverage/truncation notes remain in the source result.
 Confirmed node installations have node-wide owner authority: chat grants constrain
 these plugin tools, not a compromised owner device. Already delivered bytes can remain
 in chat history after access is revoked.
+
+
+# Node chat scope and files
+
+Node scope is separate from vault scope: full vault access grants no node access. The owner
+chooses a node, registered folder, or exact worktree in the chat scope settings. Whole-node
+access also includes future registered folders. Read/edit scope travels in chat overrides;
+approval stays on this device and binds the chat identity and node installation/key generation.
+Loaded or copied scope must be approved locally. No open human tab is required. Scope does not
+turn on external browsing/editing, project trust or execution on the daemon.
+
+Use `node`, `project`, `workspace` (opaque target ID), and `target_kind` (`worktree` for Git,
+`workspace` for a plain folder). Omit all three IDs to use this chat's selected node target.
+Paths are relative to that target, never absolute or `.git` paths. No arbitrary filesystem
+picker, shell, stage, commit, push or delegation is exposed by this toolset.
+
+| Tool | Purpose |
+| --- | --- |
+| `node_nodes` | Locally approved nodes, labels and connection state |
+| `node_folders` | Registered folders and scoped plain-folder workspaces on an allowed node |
+| `list_node_worktrees` | Git worktrees, filtered to the executing chat's scope |
+| `node_ls` | Directory entries in current files (or an explicit Git `ref`) |
+| `node_read` | Exact bounded UTF-8 file text and content identity; supply `path` |
+| `node_edit` | Replace one unique exact `old_text` with `new_text` |
+| `node_replace` | Replace all exact `old_text` matches with `new_text` |
+| `node_write` | Write complete `text`; null `expected_content_id` means exclusive creation |
+| `node_mv` | Atomic single-file move from `from` to absent `to` within the target |
+| `node_cp` | Single-file copy from `from` to absent `to` within the target |
+| `node_rm` | Remove one regular file (`path`), never a directory |
+| `node_search` | Bounded literal, regex or filename search with `query`, `glob`, case sensitivity |
+| `node_git_status` | Current Git index/worktree status |
+| `node_git_diff` | Explicit staged/unstaged or endpoint comparison; `path` loads its patch |
+| `node_git_branches` | Paginated Git references |
+| `node_git_log` | Commit history, optionally restricted to `path` |
+| `node_git_blame` | Attribution for `path`, optionally `start` and `count` |
+| `node_worktree_switch` | Select an already scoped worktree inside this chat's current folder |
+
+Writes require edit scope and the exact full-file SHA-256 `expected_content_id` from a fresh
+read. They follow the chat's file-edit permission mode: Ask asks per edit, Edit files without
+asking permits edit/replace/write, and Everything without asking also permits move/copy/remove.
+They write immediately to node disk. A successful receipt renders the retained before/after
+Diff in chat; conflict, pending and unknown are not shown as saved. Never automatically retry
+an uncertain effect with a new operation ID. A live connection is required for mutation admission.
+New plain-folder search and file lifecycle operations require a compatible node/client; unsupported
+actions fail explicitly, with no shell fallback. Git tools reject plain folders.
+
+Switching selection grants nothing and does not move a node-agent session. The switch is
+recorded as a system line in this Obsidian chat. Existing `node_file`, `node_tree`, `node_commits`,
+`node_blame` and `node_grep` aliases use approved node scope when configured. The existing
+`node_propose_edit` keeps its separate approval and draft-only meaning.
+
+Large reads return a chat/tool-bound `cursor` (same tool, cursor alone), expire after ten minutes,
+and recheck scope, principal, selection, conversation and branch before publishing retained bytes.
