@@ -192,6 +192,11 @@
         ><Section title="No passage selected"><Quote text="" /></Section>
       </template>
       <template v-else-if="page === 'states'">
+        <Section title="Compact states">
+          <ListRow v-for="state in compactStates" :key="state.label" :title="state.label">
+            <template #leading><StatusDot :tone="state.tone" :label="state.label" /></template>
+          </ListRow>
+        </Section>
         <Section title="No attachments"
           ><EmptyState variant="empty" text="No files attached"
         /></Section>
@@ -573,6 +578,13 @@ import Calendar from '@/components/Calendar.vue'
 import Card from '@/components/obsidian/Card.vue'
 import CardGrid from '@/components/obsidian/CardGrid.vue'
 import Badge from '@/components/obsidian/Badge.vue'
+import StatusDot from '@/components/obsidian/StatusDot.vue'
+const compactStates = [
+  { tone: 'green', label: 'Running' },
+  { tone: 'orange', label: 'Paused' },
+  { tone: 'faint', label: 'Exited' },
+  { tone: 'red', label: 'Connection lost' },
+] as const
 import Avatar from '@/components/obsidian/Avatar.vue'
 import Markdown from '@/components/obsidian/Markdown.vue'
 import Table from '@/components/obsidian/Table.vue'

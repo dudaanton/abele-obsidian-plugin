@@ -37,9 +37,13 @@ describe('script view host registration', () => {
       app: useVault([]),
       registerView: vi.fn(),
       registerExtensions: vi.fn(),
+      registerDomEvent: vi.fn(),
+      registerEvent: vi.fn(),
       register: vi.fn(),
     })
     plugin.registerViews()
     expect(defaultViewHost()).toBe(ScriptViewService.getInstance())
+    expect(plugin.registerView).toHaveBeenCalledWith('abele-debug-view', expect.any(Function))
+    expect(plugin.registerDomEvent).toHaveBeenCalledWith(document, 'keydown', expect.any(Function))
   })
 })

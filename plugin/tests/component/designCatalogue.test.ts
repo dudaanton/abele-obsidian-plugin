@@ -13,6 +13,19 @@ describe('test-only design catalogue', () => {
     expect([...CATALOGUE_COMPONENTS].sort()).toEqual(kit)
     expect(CATALOGUE_PAGES).toEqual(expect.arrayContaining(['artifact', 'comment', 'waiting']))
   })
+  it('includes the named compact state indicators in the state recipes', () => {
+    const view = mount(DesignCatalogue, {
+      props: { page: 'states' },
+      global: { stubs: { Modal: { template: '<div><slot /></div>' } } },
+    })
+    expect(view.findAll('.abele-status-dot').map((dot) => dot.attributes('aria-label'))).toEqual([
+      'Running',
+      'Paused',
+      'Exited',
+      'Connection lost',
+    ])
+    view.unmount()
+  })
   it('keeps a comment draft while a swatch changes and exposes one primary action', async () => {
     const view = mount(DesignCatalogue, {
       props: { page: 'comment' },

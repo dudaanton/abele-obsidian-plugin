@@ -58,6 +58,7 @@ export const CATALOGUE_COMPONENTS = [
   'SheetHeaderActions',
   'SidebarPanel',
   'Slider',
+  'StatusDot',
   'SwatchPicker',
   'Table',
   'Tabs',
