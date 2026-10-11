@@ -47,12 +47,15 @@ const script = `(async () => {
     const quote='distant lantern glows', start=text.lastIndexOf(quote)
     report.occurrences=text.split(quote).length-1
     const child=await comments.createOnMessage(parent,'sample-reply',quote,start);ids.push(child.commentId)
+    report.sameWriter=chats.activeSession.value===child
     await child.addUserNote('An invented side question about these words.')
     const back=await until(()=>document.querySelector('.abele-ai-chat__header .lucide-corner-up-left'))
     back.closest('.abele-obsidian-icon').click()
     await until(()=>document.querySelector('[data-reply-return]'));await wait(250)
     report.back=measure();await shoot('back-to-selected-passage')
     const nested=await comments.createOnMessage(parent,'sample-reply',quote,start);ids.push(nested.commentId)
+    const saved=await window.__abeleTest.ChatStorage.getInstance().prepareDiscussion(child.currentChatFile.value)
+    report.savedQuestion=saved.snapshot.messages[0]?.content
     await nested.addUserNote('Another invented side question.')
     const crumb=await until(()=>document.querySelector('.abele-comment-trail .abele-breadcrumbs__item:not(.abele-breadcrumbs__item_current)'))
     crumb.click();await until(()=>document.querySelector('[data-reply-return]'));await wait(250)
@@ -60,8 +63,10 @@ const script = `(async () => {
     await wait(2700)
     report.cleared=!document.querySelector('[data-reply-return]')
   } catch(error) {report.error=String(error.stack||error)} finally {
-    for(const id of ids)if(id)await comments.remove(id)
-    const session=chats.getSessionByFile(PATH);if(session)await chats.closeTab(session.id)
+    const session=chats.getSessionByFile(PATH)
+    // Creation may fail during presentation after the child file and parent link were saved.
+    for(const id of new Set([...ids,...(session?.messageComments.value.map(c=>c.id)||[])]))if(id)await comments.remove(id)
+    if(session)await chats.closeTab(session.id)
     const file=app.vault.getAbstractFileByPath(PATH);if(file)await app.vault.delete(file)
     for(const dir of made){const f=app.vault.getAbstractFileByPath(dir);if(f&&!f.children.length)await app.vault.delete(f)}
     if(active)chats.switchTab(active)
@@ -91,6 +96,10 @@ describe.runIf(available)('returning from a comment to its reply passage', () =>
     }
   }, 90_000)
   it('completes without errors', () => expect(report.error).toBeUndefined())
+  it('keeps one writer and the saved question when replacing the contextual tab', () => {
+    expect(report.sameWriter).toBe(true)
+    expect(report.savedQuestion).toBe('An invented side question about these words.')
+  })
   it.each(['back', 'trail'])(
     '%s returns to the selected repeated passage, not the reply start',
     (action) => {

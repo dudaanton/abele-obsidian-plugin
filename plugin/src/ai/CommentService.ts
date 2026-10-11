@@ -572,13 +572,10 @@ export class CommentService implements CommentInfoSource {
       serializeChat({ metadata, messages: [], internalMessages: [] })
     )
 
-    const session = new ChatSession(ChatService.getInstance(), undefined, {
-      kind: 'comment',
-      agentId: agent?.id,
-      anchor,
-    })
-    await session.load(file)
-    this.adopt(session.commentId ?? id, session)
+    // Publishing the file can wake a marker's reader before creation resumes. Acquire its
+    // shared load instead of constructing a second writer with an independent checkpoint.
+    const session = await this.load(id, file)
+    if (!session) throw new Error('The new discussion could not be loaded.')
     return session
   }
 
