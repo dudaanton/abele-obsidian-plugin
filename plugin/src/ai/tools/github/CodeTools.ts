@@ -355,7 +355,7 @@ async function compare(
   })
   const again = `call github_commits again with base="${c.base}", head="${head}",`
   const out = [
-    `Compare ${repoName(repo)} ${c.base}...${head} — ${c.status}: ${c.aheadBy} ahead, ${c.behindBy} behind`,
+    `Compare ${repoName(repo)} ${c.base}...${head} — ${c.status}: ${c.aheadBy ?? 'unknown'} ahead, ${c.behindBy ?? 'unknown'} behind`,
     `URL: ${c.url}`,
     '',
   ]

@@ -1,4 +1,5 @@
 import { describe, expect, it, vi } from 'vitest'
+import { NodePathClient, RepositoryClient } from '@abele/node-client'
 import { ProjectSchema, SessionSchema, WorkspaceSchema } from '@abele/node-protocol'
 import { NodePathClientPort, reverseNodePatch } from '@/node/NodePathClientPort'
 import { nodeRepositoryFixture, identity } from '../helpers/nodeRepositoryFixture'
@@ -39,6 +40,9 @@ function fake() {
   const client = {
     ...f.client,
     describe: vi.fn(async () => ({})),
+    nodePath: new NodePathClient(f.request, async () => {
+      throw new Error('No mutation in this read fixture')
+    }),
     listProjects: vi.fn(async (after?: string) => (after ? [] : [project])),
     listSessions: vi.fn(async (after?: string) => (after ? [] : [session])),
     listWorkspaces: vi.fn(async (_project: string, after?: string) => (after ? [] : [workspace])),
@@ -81,6 +85,60 @@ describe('validated node path reads', () => {
     expect(calls.find((c) => c.method === 'repository.v1.history')?.params.revision.kind).toBe(
       'commit'
     )
+  })
+})
+describe('enriched node path reads', () => {
+  it('requests opt-in details, honours external selection and authoritative divergence', async () => {
+    const f = fake()
+    f.client.describe.mockResolvedValue({
+      capabilities: { capabilities: { node_path_v2: { status: 'supported' } } },
+    })
+    const request = async (method: string, params: unknown) => {
+      if (method === 'repository.v1.divergence')
+        return {
+          base_ref: 'trunk',
+          base_commit: 'a'.repeat(40),
+          head_commit: 'b'.repeat(40),
+          ahead: 23,
+          behind: 7,
+          reason: 'ok',
+        }
+      const raw = await f.request(method, params)
+      if (method === 'repository.v1.worktrees')
+        return {
+          ...(raw as object),
+          entries: (raw as { entries: object[] }).entries.map((e) => ({ ...e, listed: true })),
+        }
+      if (method === 'repository.v1.status')
+        return {
+          ...(raw as object),
+          entries: (raw as { entries: object[] }).entries.map((e, i) => ({
+            ...e,
+            kind: i === 1 ? 'A' : i === 2 ? 'D' : 'M',
+            stage: i ? 'unstaged' : 'partly',
+            change_id: `change-${i}`,
+            changed_at: '2025-01-01T00:00:00Z',
+            time_basis: 'observed',
+          })),
+        }
+      return raw
+    }
+    f.client.repository = new RepositoryClient(request)
+    f.client.nodePath = new NodePathClient(request, async () => {
+      throw new Error('No mutation')
+    })
+    const port = new NodePathClientPort(f.client, {
+      nodeId: identity.node,
+      registrationId: identity.installation,
+    })
+    const catalogue = await port.catalogue()
+    expect(catalogue.folders[0].copies).toHaveLength(2)
+    const inspection = await port.inspect(catalogue.targets[0])
+    expect(inspection).toMatchObject({ ahead: 23, behind: 7, base: 'trunk' })
+    expect(inspection.changes[0]).toMatchObject({ changeId: 'change-0', stage: 'partly' })
+    expect(
+      f.calls.find((c) => c.method === 'repository.v1.status')?.params.include_change_details
+    ).toBe(true)
   })
 })
 describe('exact reverse patch for staged and unstaged comparisons', () => {

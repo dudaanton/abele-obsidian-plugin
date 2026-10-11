@@ -14,13 +14,54 @@ const fixture = () => {
   }
 }
 describe('node repository source through the validated client contract', () => {
+  it('uses authoritative divergence rather than counting a truncated history page', async () => {
+    const f = nodeRepositoryFixture()
+    const { NodePathClient } = await import('@abele/node-client')
+    const nodePath = new NodePathClient(
+      async () => ({
+        base_ref: 'trunk',
+        base_commit: BASE,
+        head_commit: HEAD,
+        ahead: 42,
+        behind: 9,
+        reason: 'ok',
+      }),
+      async () => {
+        throw new Error('read only')
+      }
+    )
+    const source = new NodeRepositorySource({ ...f.client, nodePath }, identity, {
+      node: 'Sample',
+      project: 'Sample',
+    })
+    const compared = await source.compare(BASE, WORKING_TREE)
+    expect(compared.aheadBy).toBe(42)
+    expect(compared.behindBy).toBe(9)
+    source.dispose()
+  })
+  it('does not invent divergence when the legacy node has no divergence endpoint', async () => {
+    const { source } = fixture()
+    const compared = await source.compare(BASE, WORKING_TREE)
+    expect(compared.aheadBy).toBeNull()
+    expect(compared.behindBy).toBeNull()
+    source.dispose()
+  })
   it('refreshes all mutable consumers after a redacted catalogue event replaces a missed invalidation', async () => {
     const f = nodeRepositoryFixture()
-    const source = new NodeRepositorySource({ ...f.client, onEvent: listener => f.client.onEvent(event => {
-      if (event.type !== 'repository.invalidated') listener(event)
-    }) }, identity, { node: 'Sample', project: 'Sample' })
+    const source = new NodeRepositorySource(
+      {
+        ...f.client,
+        onEvent: (listener) =>
+          f.client.onEvent((event) => {
+            if (event.type !== 'repository.invalidated') listener(event)
+          }),
+      },
+      identity,
+      { node: 'Sample', project: 'Sample' }
+    )
     await source.startWatching()
-    const first = await source.resolve(WORKING_TREE), changed = vi.fn()
+    const first = await source.resolve(WORKING_TREE),
+      changed = vi.fn()
     source.subscribe(changed)
     f.change()
     expect(await source.resolve(WORKING_TREE)).toBe(first)
@@ -34,10 +75,18 @@ describe('node repository source through the validated client contract', () => {
   })
   it('fences pending reads across a catalogue redaction that may hide a permission change', async () => {
     const f = nodeRepositoryFixture()
-    const source = new NodeRepositorySource(f.client, identity, { node: 'Sample', project: 'Sample' })
+    const source = new NodeRepositorySource(f.client, identity, {
+      node: 'Sample',
+      project: 'Sample',
+    })
     await source.startWatching()
     let release!: (value: Awaited<ReturnType<typeof f.client.repository.refs>>) => void
-    f.client.repository.refs = vi.fn(() => new Promise(resolve => { release = resolve }))
+    f.client.repository.refs = vi.fn(
+      () =>
+        new Promise((resolve) => {
+          release = resolve
+        })
+    )
     const pending = source.refs()
     f.event('stream.redacted', { refresh_required: true })
     release({ entries: [], cursor: null, incomplete: false, omissions: [], default_branch: 'main' })
@@ -47,23 +96,23 @@ describe('node repository source through the validated client contract', () => {
   it('keeps authority subscriptions without a mutable lease in frozen views, then watches and releases live views', async () => {
     const { source, calls } = fixture()
     await source.startWatching(false)
-    expect(calls.filter(c => c.method.endsWith('.watch'))).toHaveLength(0)
+    expect(calls.filter((c) => c.method.endsWith('.watch'))).toHaveLength(0)
     await source.startWatching()
-    expect(calls.filter(c => c.method.endsWith('.watch'))).toHaveLength(1)
+    expect(calls.filter((c) => c.method.endsWith('.watch'))).toHaveLength(1)
     source.stopWatching()
-    expect(calls.filter(c => c.method.endsWith('.unwatch'))).toHaveLength(1)
+    expect(calls.filter((c) => c.method.endsWith('.unwatch'))).toHaveLength(1)
     await source.startWatching()
-    expect(calls.filter(c => c.method.endsWith('.watch'))).toHaveLength(2)
+    expect(calls.filter((c) => c.method.endsWith('.watch'))).toHaveLength(2)
     source.dispose()
   })
   it('retains immutable content-cache hits across working invalidations while dropping mutable aliases', async () => {
     const { source, calls, change } = fixture()
     await source.startWatching()
     await source.blob(HEAD, 'app.ts')
-    const transports = calls.filter(c => c.method.endsWith('.content')).length
+    const transports = calls.filter((c) => c.method.endsWith('.content')).length
     change()
     await source.blob(HEAD, 'app.ts')
-    expect(calls.filter(c => c.method.endsWith('.content'))).toHaveLength(transports)
+    expect(calls.filter((c) => c.method.endsWith('.content'))).toHaveLength(transports)
     expect((await source.blob(WORKING_TREE, 'app.ts')).text).toContain('84')
     source.dispose()
   })
@@ -82,14 +131,26 @@ describe('node repository source through the validated client contract', () => {
   it('loads a larger file only after an explicit larger request', async () => {
     const f = nodeRepositoryFixture()
     const original = f.client.repository.blob.bind(f.client.repository)
-    f.client.repository.blob = async params => params.larger ? original(params) : { content_id: null, size: 2 * 1024 * 1024, binary: false, requires_larger_load: true, too_large: false }
-    const source = new NodeRepositorySource(f.client, identity, { node: 'Sample', project: 'Sample' })
+    f.client.repository.blob = async (params) =>
+      params.larger
+        ? original(params)
+        : {
+            content_id: null,
+            size: 2 * 1024 * 1024,
+            binary: false,
+            requires_larger_load: true,
+            too_large: false,
+          }
+    const source = new NodeRepositorySource(f.client, identity, {
+      node: 'Sample',
+      project: 'Sample',
+    })
     const ordinary = await source.blob(WORKING_TREE, 'app.ts')
     expect(ordinary.canLoadLarge).toBe(true)
     expect(ordinary.text).toBe('')
     const larger = await source.largeBlob(ordinary.ref, ordinary.path)
     expect(larger.text).toContain('42')
-    expect(f.calls.find(c => c.method.endsWith('.blob'))?.params.larger).toBe(true)
+    expect(f.calls.find((c) => c.method.endsWith('.blob'))?.params.larger).toBe(true)
     source.dispose()
   })
   it('captures Working tree once, transports retained bytes and freezes branch reads', async () => {
@@ -229,18 +290,23 @@ describe('node repository source through the validated client contract', () => {
     source.dispose()
   })
   it('copies its identity so later input mutation cannot retarget reads or links', async () => {
-    const f = nodeRepositoryFixture(), input = { ...identity }
+    const f = nodeRepositoryFixture(),
+      input = { ...identity }
     const source = new NodeRepositorySource(f.client, input, { node: 'Sample', project: 'Sample' })
     input.workspace = 'other-worktree'
     await source.blob(WORKING_TREE, 'app.ts')
-    expect(f.calls.find(c => c.method.endsWith('.blob'))?.params.worktree_id).toBe(identity.workspace)
+    expect(f.calls.find((c) => c.method.endsWith('.blob'))?.params.worktree_id).toBe(
+      identity.workspace
+    )
     expect(parseNodeRepositoryLink(source.navigation.home())?.source).toEqual(identity)
     source.dispose()
   })
   it('bounds mutable ref aliases within one tab lifetime', async () => {
     const { source } = fixture()
     for (let i = 0; i < 80; i++) await source.resolve(`refs/heads/sample-${i}`)
-    expect((source as unknown as { aliases: Map<string, unknown> }).aliases.size).toBeLessThanOrEqual(64)
+    expect(
+      (source as unknown as { aliases: Map<string, unknown> }).aliases.size
+    ).toBeLessThanOrEqual(64)
     source.dispose()
   })
   it('checks authority both before requests and before publishing late results', async () => {

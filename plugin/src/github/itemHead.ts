@@ -57,7 +57,10 @@ export function itemHead(t: GithubTarget | null, data: ItemData | null): ItemHea
   }
   if (t.kind === 'compare') {
     const c = data as CompareData
-    const commits = `${c.aheadBy} commit${c.aheadBy === 1 ? '' : 's'} ahead`
+    const commits =
+      c.aheadBy === null
+        ? 'Ahead: unknown'
+        : `${c.aheadBy} commit${c.aheadBy === 1 ? '' : 's'} ahead`
     return {
       ...fallback,
       // A commit by its short SHA, as GitHub writes one; a branch or a tag as it is.
@@ -65,7 +68,7 @@ export function itemHead(t: GithubTarget | null, data: ItemData | null): ItemHea
       state: c.status || undefined,
       meta: [
         commits,
-        `${c.behindBy} behind`,
+        c.behindBy === null ? 'Behind: unknown' : `${c.behindBy} behind`,
         c.filesComplete || c.files.length ? `+${c.additions} −${c.deletions}` : '',
         c.mergeBaseSha ? `split at ${c.mergeBaseSha.slice(0, 7)}` : '',
       ].filter(Boolean),

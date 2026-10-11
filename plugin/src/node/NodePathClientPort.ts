@@ -16,6 +16,7 @@ import type {
 type ReadClient = Pick<
   NodeClient,
   | 'repository'
+  | 'nodePath'
   | 'describe'
   | 'listProjects'
   | 'listSessions'
@@ -46,12 +47,9 @@ export async function pathPages<T>(
   }
 }
 const branchName = (name: string | null) => name?.replace(/^refs\/heads\//, '') ?? 'Detached'
-export function pathStatus(entry: {
-  path: string
-  index: string
-  worktree: string
-  original_path?: string
-}): PathChange {
+export function pathStatus(
+  entry: Awaited<ReturnType<NodeClient['repository']['status']>>['entries'][number]
+): PathChange {
   const conflict =
     entry.index === 'U' ||
     entry.worktree === 'U' ||
@@ -72,6 +70,9 @@ export function pathStatus(entry: {
     kind,
     stage: conflict ? 'unstaged' : staged && unstaged ? 'partly' : staged ? 'staged' : 'unstaged',
     from: entry.original_path,
+    ...('change_id' in entry
+      ? { changeId: entry.change_id, when: `Observed ${formatTimestamp(entry.changed_at).label}` }
+      : {}),
     before: '',
     after: '',
     added: 0,
@@ -92,7 +93,18 @@ function commitSummary(
   }
 }
 
-/** Read-only baseline adapter. Enriched capabilities are wired through the pinned NodePathClient. */
+const record = (value: unknown): Record<string, unknown> =>
+  value && typeof value === 'object' && !Array.isArray(value)
+    ? (value as Record<string, unknown>)
+    : {}
+export function supportedNodePathCapabilities(description: unknown): string[] {
+  const capabilities = record(record(record(description).capabilities).capabilities)
+  return Object.entries(capabilities)
+    .filter(([, value]) => record(value).status === 'supported')
+    .map(([name]) => name)
+}
+
+/** Schema-validated node reads; enriched fields are explicitly capability-gated. */
 export class NodePathClientPort implements NodePathPort {
   protected worktrees = new Map<string, WorktreeEntry>()
   protected capabilities: string[] = []
@@ -104,6 +116,8 @@ export class NodePathClientPort implements NodePathPort {
     return { ...this.identity, projectId, kind, id }
   }
   async catalogue(): Promise<PathCatalogue> {
+    this.capabilities = supportedNodePathCapabilities(await this.client.describe())
+    const enriched = this.capabilities.includes('node_path_v2')
     const [projects, sessions] = await Promise.all([
       nodePages(
         (after) => this.client.listProjects(after),
@@ -124,10 +138,16 @@ export class NodePathClientPort implements NodePathPort {
       )
       if (project.repository_path) {
         const rows = await pathPages((cursor) =>
-          this.client.repository.worktrees({ project_id: project.project_id, cursor })
+          this.client.repository.worktrees({
+            project_id: project.project_id,
+            cursor,
+            ...(enriched ? { include_selection: true } : {}),
+          })
         )
         rows.sort((a, b) => Number(b.kind === 'root') - Number(a.kind === 'root'))
-        const listed = rows.filter((w) => w.kind !== 'external')
+        const listed = rows.filter((w) =>
+          enriched ? w.listed === true || w.kind === 'root' : w.kind !== 'external'
+        )
         for (const row of rows) this.worktrees.set(row.worktree_id, row)
         for (const row of listed) {
           const target = this.binding(project.project_id, 'worktree', row.worktree_id)
@@ -178,14 +198,42 @@ export class NodePathClientPort implements NodePathPort {
     if (target.kind === 'workspace')
       return { entries: await this.plainTree(target.id), changes: [] }
     const { revision } = await this.client.repository.observe({ worktree_id: target.id })
-    const status = await pathPages((cursor) =>
-      this.client.repository.status({ worktree_id: target.id, revision, cursor })
-    )
+    const status = await this.status(target, revision)
     return {
       revision,
       changes: status.map(pathStatus),
       entries: await this.gitTree(target.id, revision),
-      note: 'Change times and branch divergence require an updated node.',
+      ...(this.capabilities.includes('node_path_v2')
+        ? await this.divergence(target)
+        : { note: 'Change times and branch divergence require an updated node.' }),
+    }
+  }
+  protected status(target: PathTarget, revision: RepositoryRevision) {
+    return pathPages((cursor) =>
+      this.client.repository.status({
+        worktree_id: target.id,
+        revision,
+        cursor,
+        ...(this.capabilities.includes('node_path_v2') ? { include_change_details: true } : {}),
+      })
+    )
+  }
+  private async divergence(
+    target: PathTarget
+  ): Promise<Pick<PathInspection, 'ahead' | 'behind' | 'base' | 'note'>> {
+    const result = await this.client.nodePath.divergence({ worktree_id: target.id })
+    return {
+      ahead: result.ahead ?? undefined,
+      behind: result.behind ?? undefined,
+      base: result.base_ref ?? undefined,
+      ...(result.reason !== 'ok'
+        ? {
+            note:
+              result.reason === 'default_branch_required'
+                ? 'Choose the default branch in repository settings to compare divergence.'
+                : 'No commits yet on one side of this comparison.',
+          }
+        : {}),
     }
   }
   private async gitTree(
@@ -268,11 +316,13 @@ export class NodePathClientPort implements NodePathPort {
     path: string,
     mode: 'staged' | 'unstaged'
   ): Promise<string> {
-    if (revision.kind !== 'working' || !revision.head)
+    if (revision.kind !== 'working')
+      throw new Error('A working comparison requires an observation.')
+    if (!revision.head && !this.capabilities.includes('node_path_v2'))
       throw new Error('Unborn working-tree comparisons require an updated node.')
     const manifest = await this.client.repository.compare({
       worktree_id: target.id,
-      base: { kind: 'commit', commit: revision.head },
+      base: revision.head ? { kind: 'commit', commit: revision.head } : { kind: 'empty' },
       head: revision,
       mode,
     })
@@ -317,11 +367,7 @@ export class NodePathClientPort implements NodePathPort {
     }
     const revision =
       frozen ?? (await this.client.repository.observe({ worktree_id: target.id })).revision
-    const status = frozen
-      ? []
-      : await pathPages((cursor) =>
-          this.client.repository.status({ worktree_id: target.id, revision, cursor })
-        )
+    const status = frozen ? [] : await this.status(target, revision)
     const changed = status.find((e) => e.path === path)
     const change = changed && pathStatus(changed)
     const loaded =
@@ -445,30 +491,37 @@ export class NodePathClientPort implements NodePathPort {
     }
   }
   async watch(target: PathTarget, notify: () => void): Promise<() => void> {
-    if (target.kind === 'workspace') return () => {}
+    if (target.kind === 'workspace' && !this.capabilities.includes('node_path_v2')) return () => {}
+    const acquire = () =>
+      target.kind === 'workspace'
+        ? this.client.nodePath.watch({ workspace_id: target.id })
+        : this.client.repository.watch({ worktree_id: target.id })
+    const release = (subscription_id: string) =>
+      target.kind === 'workspace'
+        ? this.client.nodePath.unwatch({ workspace_id: target.id, subscription_id })
+        : this.client.repository.unwatch({ worktree_id: target.id, subscription_id })
     let stopped = false,
       timer: number | undefined
-    let lease = await this.client.repository.watch({ worktree_id: target.id })
+    let lease = await acquire()
     const stop = this.client.onEvent((event) => {
-      if (event.type === 'repository.invalidated' || event.type === 'stream.redacted') notify()
+      if (
+        event.type === 'repository.invalidated' ||
+        event.type === 'workspace.invalidated' ||
+        event.type === 'stream.redacted'
+      )
+        notify()
     })
     const renew = async () => {
       try {
-        const next = await this.client.repository.watch({ worktree_id: target.id })
+        const next = await acquire()
         if (stopped) {
-          await this.client.repository.unwatch({
-            worktree_id: target.id,
-            subscription_id: next.subscription_id,
-          })
+          await release(next.subscription_id)
           return
         }
         const previous = lease
         lease = next
         if (previous.subscription_id !== next.subscription_id)
-          await this.client.repository.unwatch({
-            worktree_id: target.id,
-            subscription_id: previous.subscription_id,
-          })
+          await release(previous.subscription_id)
         notify()
       } catch {
         notify()
@@ -485,9 +538,7 @@ export class NodePathClientPort implements NodePathPort {
       stopped = true
       window.clearTimeout(timer)
       stop()
-      void this.client.repository
-        .unwatch({ worktree_id: target.id, subscription_id: lease.subscription_id })
-        .catch(() => {})
+      void release(lease.subscription_id).catch(() => {})
     }
   }
 }

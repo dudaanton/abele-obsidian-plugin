@@ -35,13 +35,15 @@ import { readNodeText } from '@/node/NodeFilesModel'
 import { nodeRepositoryLink } from './nodeLinks'
 
 export const WORKING_TREE = 'Working tree'
+export const EMPTY_TREE = 'Empty tree'
 const workingPrefix = 'working-'
 export const nodeRevisionLabel = (ref: string): string =>
   ref === WORKING_TREE || ref.startsWith(workingPrefix) ? 'Current files' : ref
 export type NodeRepositoryClient = Pick<
   NodeClient,
   'repository' | 'onEvent' | 'subscribe' | 'connected'
->
+> &
+  Partial<Pick<NodeClient, 'nodePath' | 'describe'>>
 type NodeIdentity = Extract<RepositoryIdentity, { provider: 'node' }>
 type Page<T> = { entries: T[]; cursor: string | null; incomplete: boolean; omissions: string[] }
 type Commit = Awaited<ReturnType<RepositoryClient['commit']>>
@@ -335,6 +337,15 @@ export class NodeRepositorySource implements RepositorySource {
     }
   }
   async tree(ref: string): Promise<RepositoryTree> {
+    this.assertCurrent()
+    if (ref === EMPTY_TREE)
+      return {
+        root: { name: '', path: '', kind: 'dir', children: [] },
+        sha: EMPTY_TREE,
+        truncated: false,
+        expand: async () => {},
+        reveal: async () => {},
+      }
     const sha = await this.resolve(ref),
       revision = await this.at(sha)
     const root: TreeNode = { name: '', path: '', kind: 'dir' }
@@ -595,7 +606,7 @@ export class NodeRepositorySource implements RepositorySource {
     return ranges
   }
   private async manifest(base: string, head: string, mode: RepositoryComparisonMode = 'endpoint') {
-    const from = await this.at(base),
+    const from = base === EMPTY_TREE ? { kind: 'empty' as const } : await this.at(base),
       to = await this.at(head)
     const first = await this.read(() =>
       this.client.repository.compare({ ...this.target, base: from, head: to, mode })
@@ -636,7 +647,9 @@ export class NodeRepositorySource implements RepositorySource {
         deletions: 0,
         hash: e.path,
         blobUrl: this.navigation.file(
-          e.status.startsWith('D') ? this.remember(manifest.base) : ref,
+          e.status.startsWith('D') && manifest.base.kind !== 'empty'
+            ? this.remember(manifest.base)
+            : ref,
           e.path
         ),
         reviewComments: [],
@@ -673,7 +686,7 @@ export class NodeRepositorySource implements RepositorySource {
   ): Promise<CompareData> {
     const from = base ?? (await this.defaultBranch()),
       manifest = await this.manifest(from, head, mode ?? (direct ? 'endpoint' : 'merge-base'))
-    const baseSha = this.remember(manifest.base),
+    const baseSha = manifest.base.kind === 'empty' ? EMPTY_TREE : this.remember(manifest.base),
       headSha = this.remember(manifest.head)
     const headHistory =
       manifest.head.kind === 'working' && !manifest.head.head
@@ -681,19 +694,40 @@ export class NodeRepositorySource implements RepositorySource {
         : await this.read(() =>
             this.client.repository.history({ ...this.target, revision: manifest.head, limit: 100 })
           )
-    const baseHistory = await this.read(() =>
-      this.client.repository.history({ ...this.target, revision: manifest.base, limit: 100 })
-    )
+    const baseRevision = manifest.base
+    const baseHistory =
+      baseRevision.kind === 'empty'
+        ? { entries: [] as Commit[], cursor: null as string | null, incomplete: false }
+        : await this.read(() =>
+            this.client.repository.history({ ...this.target, revision: baseRevision, limit: 100 })
+          )
     const baseCommits = new Set(baseHistory.entries.map((c) => c.commit))
     const commits = headHistory.entries.filter((c) => !baseCommits.has(c.commit)).map(summary)
+    let divergence:
+      | Awaited<ReturnType<NonNullable<NodeRepositoryClient['nodePath']>['divergence']>>
+      | undefined
+    if (manifest.head.kind === 'working' && this.client.nodePath) {
+      const supported =
+        !this.client.describe ||
+        (await import('@/node/NodePathClientPort'))
+          .supportedNodePathCapabilities(await this.read(() => this.client.describe!()))
+          .includes('node_path_v2')
+      if (supported)
+        divergence = await this.read(() =>
+          this.client.nodePath!.divergence({
+            ...this.target,
+            ...(base && base !== EMPTY_TREE ? { base_ref: base } : {}),
+          })
+        )
+    }
     return {
       base: baseSha,
       head: headSha,
       direct: manifest.mode !== 'merge-base',
       mode: manifest.mode,
       status: manifest.entries.length ? 'changed' : 'identical',
-      aheadBy: commits.length,
-      behindBy: 0,
+      aheadBy: divergence?.ahead ?? null,
+      behindBy: divergence?.behind ?? null,
       totalCommits: commits.length,
       commits,
       commitsComplete:
@@ -719,7 +753,7 @@ export class NodeRepositorySource implements RepositorySource {
   async comparison(base: string, head: string, signal?: AbortSignal): Promise<ComparisonIndex> {
     if (signal?.aborted) throw new DOMException('Cancelled', 'AbortError')
     const manifest = await this.manifest(base, head),
-      baseSha = this.remember(manifest.base),
+      baseSha = manifest.base.kind === 'empty' ? EMPTY_TREE : this.remember(manifest.base),
       targetSha = this.remember(manifest.head)
     const before = await this.tree(baseSha),
       after = await this.tree(targetSha)

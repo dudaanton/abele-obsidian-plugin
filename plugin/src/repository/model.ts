@@ -3,7 +3,12 @@ import type { DiffFile } from '@/github/api'
 import type { NodeKind } from '@/github/tree/fileTree'
 import type { FileChange } from '@/github/comparison/trees'
 import type { BlobContent, TextDiff } from '@/github/comparison/text'
-import type { RepositoryTree, RepositoryWorkspace, RepositoryStatus, RepositoryComparisonMode } from './source'
+import type {
+  RepositoryTree,
+  RepositoryWorkspace,
+  RepositoryStatus,
+  RepositoryComparisonMode,
+} from './source'
 export type { DiffFile } from '@/github/api'
 
 export interface CommitSummary {
@@ -57,8 +62,9 @@ export interface CompareData {
   direct: boolean
   /** `ahead`, `behind`, `diverged` or `identical`. */
   status: string
-  aheadBy: number
-  behindBy: number
+  /** Null means the source cannot authoritatively count this comparison. */
+  aheadBy: number | null
+  behindBy: number | null
   totalCommits: number
   /** Oldest first, as GitHub lists them. */
   commits: CommitSummary[]
