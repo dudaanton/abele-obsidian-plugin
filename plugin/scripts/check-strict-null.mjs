@@ -28,7 +28,7 @@ export function checkedDiagnostics(program, sourceRoot, folders) {
   })
 }
 
-export function checkStrictNull(root = plugin) {
+export function checkStrictNull(root = plugin, buildInfo) {
   const folders = validateFolders(
     JSON.parse(readFileSync(resolve(root, 'strict-null-folders.json'), 'utf8'))
   )
@@ -43,6 +43,7 @@ export function checkStrictNull(root = plugin) {
       strictNullChecks: true,
       noEmit: true,
       skipLibCheck: true,
+      ...(buildInfo ? { incremental: true, tsBuildInfoFile: buildInfo } : {}),
     },
     configPath
   )
@@ -55,12 +56,53 @@ export function checkStrictNull(root = plugin) {
     )
       throw new Error(`Strict null folder has no TypeScript files: ${folder}`)
   }
-  const program = ts.createProgram(parsed.fileNames, parsed.options)
-  return { folders, diagnostics: checkedDiagnostics(program, resolve(root, 'src'), folders) }
+  const program = buildInfo
+    ? ts.createIncrementalProgram({
+        rootNames: parsed.fileNames,
+        options: parsed.options,
+        projectReferences: parsed.projectReferences,
+      })
+    : ts.createProgram({
+        rootNames: parsed.fileNames,
+        options: parsed.options,
+        projectReferences: parsed.projectReferences,
+      })
+  const diagnostics = checkedDiagnostics(program, resolve(root, 'src'), folders)
+  // noEmit still emits build info; using the builder for diagnostics preserves its cache.
+  if (buildInfo) program.emit()
+  return { folders, diagnostics }
 }
 
 if (process.argv[1] && resolve(process.argv[1]) === fileURLToPath(import.meta.url)) {
-  const { folders, diagnostics } = checkStrictNull()
+  const { cacheEntry, compilerCacheKey } = await import('./check-cache.mjs')
+  const configPath = resolve(plugin, 'tsconfig.json')
+  const config = ts.readConfigFile(configPath, ts.sys.readFile)
+  const parsed = ts.parseJsonConfigFileContent(
+    config.config ?? {},
+    ts.sys,
+    plugin,
+    { strictNullChecks: true, noEmit: true, skipLibCheck: true },
+    configPath
+  )
+  const cache =
+    process.env.ABELE_CHECK_CACHE_DIR && process.env.ABELE_CHECK_COLD !== '1'
+      ? cacheEntry(
+          resolve(plugin, '..'),
+          'strict-null',
+          compilerCacheKey(resolve(plugin, '..'), 'strict-null', {
+            options: parsed.options,
+            folders: readFileSync(resolve(plugin, 'strict-null-folders.json'), 'utf8'),
+          })
+        )
+      : null
+  let result
+  try {
+    result = checkStrictNull(plugin, cache?.path)
+    cache?.release(result.diagnostics.length === 0)
+  } finally {
+    cache?.release()
+  }
+  const { folders, diagnostics } = result
   if (diagnostics.length) {
     console.error(
       ts.formatDiagnosticsWithColorAndContext(diagnostics, {

@@ -60,7 +60,12 @@ describe('matching type evidence', () => {
     const root = fixture()
     const scripts = join(root, 'plugin/scripts')
     mkdirSync(scripts)
-    for (const name of ['checked-build.mjs', 'build-inputs.mjs', 'changelog-git.mjs'])
+    for (const name of [
+      'checked-build.mjs',
+      'build-inputs.mjs',
+      'check-cache.mjs',
+      'changelog-git.mjs',
+    ])
       writeFileSync(
         join(scripts, name),
         readFileSync(new URL(`../../scripts/${name}`, import.meta.url))
@@ -77,7 +82,8 @@ describe('matching type evidence', () => {
     )
     const run = (fail = '') =>
       execFileSync(process.execPath, [join(scripts, 'checked-build.mjs'), 'types'], {
-        env: { ...process.env, SAMPLE_FAIL: fail },
+        // This receipt test uses a fake compiler; real incremental programs have their own tests.
+        env: { ...process.env, ABELE_CHECK_COLD: '1', SAMPLE_FAIL: fail },
         stdio: 'pipe',
       })
     run()

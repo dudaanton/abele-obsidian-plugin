@@ -94,6 +94,16 @@ const relaxedTypeCheckedRules = {
   'import/no-extraneous-dependencies': 'off',
 }
 
+// These blocks explicitly disable every type-aware and external Obsidian rule. Shared with
+// the cached runner so content caching never covers a type-dependent source file.
+export const nonTypedPatterns = [
+  'plugin/tests/**',
+  'plugin/*.config.*',
+  'plugin/.prettierrc.mjs',
+  'plugin/eslint.review.mjs',
+  'plugin/version-bump.mjs',
+]
+
 export default [
   {
     ignores: [
@@ -118,7 +128,10 @@ export default [
   // they register (`json`, `depend`) attached to the rules they enable.
   ...obsidianmd.configs.recommended.map((entry) =>
     Array.isArray(entry.files) && entry.files.includes('package.json')
-      ? { ...entry, files: entry.files.map((f) => (f === 'package.json' ? 'plugin/package.json' : f)) }
+      ? {
+          ...entry,
+          files: entry.files.map((f) => (f === 'package.json' ? 'plugin/package.json' : f)),
+        }
       : entry
   ),
 
@@ -295,13 +308,7 @@ export default [
    * no TypeScript program here and would crash rather than report.
    */
   {
-    files: [
-      'plugin/tests/**',
-      'plugin/*.config.*',
-      'plugin/.prettierrc.mjs',
-      'plugin/eslint.review.mjs',
-      'plugin/version-bump.mjs',
-    ],
+    files: nonTypedPatterns,
     languageOptions: { parserOptions: { projectService: false, project: false } },
     rules: {
       ...tseslint.configs.disableTypeChecked.rules,
