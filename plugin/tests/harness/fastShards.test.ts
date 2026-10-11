@@ -1,7 +1,7 @@
 // @vitest-environment node
 import { describe, expect, it } from 'vitest'
 import fastConfig from '../../vitest.config'
-import { mkdtempSync, readFileSync, rmSync, writeFileSync } from 'node:fs'
+import { mkdirSync, mkdtempSync, readFileSync, realpathSync, rmSync, writeFileSync } from 'node:fs'
 import { execFileSync } from 'node:child_process'
 import { tmpdir } from 'node:os'
 import { join, resolve } from 'node:path'
@@ -87,9 +87,24 @@ describe('duration-balanced fast shards', () => {
   })
 
   it('drives the actual Vitest shard sequencer without duplicate or omitted modules', () => {
-    const selected = ['tests/unit/basicAuth.test.ts', 'tests/unit/pathsHelpers.test.ts']
+    const selected = ['tests/unit/sample-a.test.ts', 'tests/unit/sample-b.test.ts']
     const p = makePlan(selected, {}, 2, 'sample-inputs')
-    const directory = mkdtempSync(join(tmpdir(), 'sample-shards-'))
+    const directory = realpathSync(mkdtempSync(join(tmpdir(), 'sample-shards-')))
+    mkdirSync(join(directory, 'tests/unit'), { recursive: true })
+    for (const file of selected)
+      writeFileSync(join(directory, file), 'test("sample case", () => expect(1).toBe(1))')
+    const config = join(directory, 'vitest.config.mjs')
+    writeFileSync(
+      config,
+      `import FastSequencer from ${JSON.stringify(new URL('../../scripts/fast-sequencer.mjs', import.meta.url).href)}; export default { test: { globals: true, environment: 'node', include: ['tests/unit/**/*.test.ts'], sequence: { sequencer: FastSequencer } } }`
+    )
+    const command = [
+      resolve('node_modules/vitest/vitest.mjs'),
+      'run',
+      `--config=${config}`,
+      `--root=${directory}`,
+      '--maxWorkers=2',
+    ]
     const manifest = join(directory, 'plan.json')
     writeFileSync(manifest, JSON.stringify(p))
     try {
@@ -98,34 +113,26 @@ describe('duration-balanced fast shards', () => {
         // Vitest list deliberately ignores --shard; run two small suites to exercise sequencing.
         execFileSync(
           process.execPath,
-          [
-            resolve('node_modules/vitest/vitest.mjs'),
-            'run',
-            ...selected,
-            '--maxWorkers=2',
-            '--reporter=json',
-            `--outputFile=${output}`,
-            `--shard=${index}/2`,
-          ],
+          [...command, '--reporter=json', `--outputFile=${output}`, `--shard=${index}/2`],
           {
             env: { ...process.env, ABELE_FAST_SHARD_PLAN: manifest },
             stdio: 'pipe',
           }
         )
-        const collected = JSON.parse(readFileSync(output, 'utf8')).testResults.map((entry: any) =>
-          entry.name.replace(resolve('.') + '/', '')
+        const report = JSON.parse(readFileSync(output, 'utf8'))
+        expect(
+          report.testResults.every((entry: any) => entry.name.startsWith(directory + '/'))
+        ).toBe(true)
+        const collected = report.testResults.map((entry: any) =>
+          entry.name.replace(directory + '/', '')
         )
         expect(collected.sort()).toEqual(p.shards[index - 1].files)
       }
       expect(() =>
-        execFileSync(
-          process.execPath,
-          [resolve('node_modules/vitest/vitest.mjs'), 'run', ...selected, '--maxWorkers=2'],
-          {
-            env: { ...process.env, ABELE_FAST_SHARD_PLAN: manifest },
-            stdio: 'pipe',
-          }
-        )
+        execFileSync(process.execPath, command, {
+          env: { ...process.env, ABELE_FAST_SHARD_PLAN: manifest },
+          stdio: 'pipe',
+        })
       ).toThrow()
     } finally {
       rmSync(directory, { recursive: true, force: true })
