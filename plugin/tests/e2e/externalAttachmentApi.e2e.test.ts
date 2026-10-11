@@ -186,10 +186,12 @@ describe('v2 external attachments on live adapters', () => {
     TIMEOUT
   )
   let maximum: Awaited<ReturnType<typeof roundTrip>>
+  let maximumFlight: ReturnType<typeof roundTrip> | undefined
+  const maximumResult = () => (maximumFlight ??= roundTrip(false, MAXIMUM))
   it(
     'transfers a 200 MiB attachment and hydrates concurrent requests',
     async () => {
-      maximum = await roundTrip(false, MAXIMUM)
+      maximum = await maximumResult()
       expect(maximum).toMatchObject({
         evicted: { status: 'complete', reclaimedBytes: MAXIMUM },
         missing: true,
@@ -213,7 +215,7 @@ describe('v2 external attachments on live adapters', () => {
   ;(onPhone() ? it.fails : it)(
     'bounds resident-memory growth for the 200 MiB transfer',
     async (context) => {
-      maximum ??= await roundTrip(false, MAXIMUM)
+      maximum ??= await maximumResult()
       if (onPhone() && maximum.memoryError === null)
         context.skip('The available native sampler is checked by the ordinary assertion below')
       expect(maximum.memoryError).toBeNull()
@@ -224,7 +226,7 @@ describe('v2 external attachments on live adapters', () => {
   it.skipIf(!onPhone())(
     'bounds resident-memory growth with the available native sampler',
     async (context) => {
-      maximum ??= await roundTrip(false, MAXIMUM)
+      maximum ??= await maximumResult()
       if (maximum.memoryError !== null) context.skip('BUG: resident-memory sampler is unavailable')
       expect(maximum.memoryError).toBeNull()
       expect(maximum.samples).toBeGreaterThan(2)

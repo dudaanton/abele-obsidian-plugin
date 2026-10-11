@@ -110,6 +110,7 @@ import { resetSyncTokenState, captureSyncTokenOwnership } from './resetSyncToken
 import type { TokenPoolResetRequest } from './resetTokenPool'
 import { ExternalState } from '@/sync/external/state'
 import { ExternalFileHost } from '@/sync/external/ObsidianExternalFileHost'
+import { BoundedVaultIo } from '@/sync/boundedVaultIo'
 import { AttachmentStore } from '@/sync/external/attachmentStore'
 import { pluginRepresentation } from '@/sync/external/pluginRepresentation'
 import { RuntimeFence } from '@/sync/external/recovery'
@@ -229,6 +230,7 @@ interface AbeleTestApi {
   desktopTransport: typeof syncDesktopTransport
   ObsidianFileSystem: typeof ObsidianFileSystem
   ExternalFileHost: typeof ExternalFileHost
+  BoundedVaultIo: typeof BoundedVaultIo
   AttachmentStore: typeof AttachmentStore
   tokenSyncProbe(id: string): ReturnType<typeof tokenSyncProbe>
   holdTokenDownload(id: string): ReturnType<typeof holdTokenDownload>
@@ -834,6 +836,7 @@ export function exposeTestApi(plugin: Plugin): void {
     ObsidianFileSystem,
     externalState: { IndexedDbStateStore, ExternalState },
     ExternalFileHost,
+    BoundedVaultIo,
     AttachmentStore,
     tokenSyncProbe: (id) => {
       const host = (
