@@ -9,6 +9,7 @@ import { createUser } from '@abele/sync-server/src/access/tokens.js'
 import { buildFakeVault } from '../helpers/fakeVault'
 import { IndexedDbStateStore } from '@/sync/IndexedDbStateStore'
 import { ObsidianFileSystem } from '@/sync/ObsidianFileSystem'
+import { makeParents } from '@/sync/vaultFolders'
 import { ExternalState } from '@/sync/external/state'
 import { ExternalRepresentation } from '@/sync/external/representation'
 import { ExternalFileHost } from '@/sync/external/ObsidianExternalFileHost'
@@ -193,11 +194,13 @@ describe('two-device external attachment matrix', () => {
           const pending = document.operations.find(
             (op) => op.operationId === document.files[0].pendingOperationId
           )!
-          if (evidence === 'staging')
+          if (evidence === 'staging') {
+            await makeParents(fake.vault.adapter, pending.ownedArtifacts[0].path)
             await fake.vault.adapter.writeBinary(
               pending.ownedArtifacts[0].path,
               new TextEncoder().encode('sample retained evidence').buffer
             )
+          }
           if (evidence === 'sidecar')
             await fake.vault.adapter.writeBinary(
               initial.path + '.abele-ref',

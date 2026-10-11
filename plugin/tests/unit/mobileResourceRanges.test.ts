@@ -5,10 +5,14 @@ import { BoundedVaultIo } from '@/sync/boundedVaultIo'
 afterEach(() => vi.unstubAllGlobals())
 function setup(status = 206) {
   const files = new Map<string, Uint8Array>()
+  const folders = new Set<string>()
   const adapter = {
     getResourcePath: (path: string) =>
       'capacitor://localhost/_capacitor_file_/sample/' + path + '?v=123',
-    exists: async (path: string) => files.has(path),
+    exists: async (path: string) => files.has(path) || folders.has(path),
+    mkdir: async (path: string) => {
+      folders.add(path)
+    },
     writeBinary: async (path: string, data: ArrayBuffer) => {
       files.set(path, new Uint8Array(data))
     },
@@ -19,7 +23,7 @@ function setup(status = 206) {
   const arrayBuffer = vi.fn()
   const fetcher = vi.fn(async (url: string, init?: RequestInit) => {
     expect(url).not.toContain('?')
-    const data = files.get(url.split('/').at(-1)!)!
+    const data = files.get(url.split('/sample/')[1])!
     const range = new Headers(init?.headers).get('Range')
     let body = data,
       headers: Record<string, string> = {}

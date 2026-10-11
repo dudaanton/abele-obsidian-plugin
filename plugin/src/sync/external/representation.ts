@@ -32,6 +32,7 @@ import {
   projectionPath,
 } from './projection'
 import { ExternalRecoveryRequired } from './recovery'
+import { stagingDirectory } from '../stagingDirectory'
 
 export interface RepresentationOptions {
   retiredPaths?: ReadonlySet<string>
@@ -596,7 +597,11 @@ export class ExternalRepresentation {
           })
     const cut = expected.path.lastIndexOf('/')
     const incomingPath =
-      (cut < 0 ? '' : expected.path.slice(0, cut + 1)) +
+      (this.options.configDir
+        ? stagingDirectory(this.options.configDir) + '/'
+        : cut < 0
+          ? ''
+          : expected.path.slice(0, cut + 1)) +
       '.abele-external-' +
       operationId +
       '.incoming'

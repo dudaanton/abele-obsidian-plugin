@@ -14,6 +14,7 @@ describe('bounded vault I/O', () => {
     async (ranges, resource) => {
       const size = 3 * 1024 * MiB + 13
       const probes = new Map<string, Uint8Array>()
+      const folders = new Set<string>()
       const readBinary = vi.fn(() => {
         throw new Error('whole file')
       })
@@ -25,7 +26,10 @@ describe('bounded vault I/O', () => {
                 'capacitor://localhost/_capacitor_file_/sample/' + path + '?v=1',
             }
           : { getFullPath: (path: string) => 'file:///sample/' + path }),
-        exists: async (path: string) => probes.has(path),
+        exists: async (path: string) => probes.has(path) || folders.has(path),
+        mkdir: async (path: string) => {
+          folders.add(path)
+        },
         stat: async (path: string) => ({
           type: 'file',
           size: probes.get(path)?.length ?? size,

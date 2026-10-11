@@ -18,6 +18,9 @@ it('appends, fsyncs, dates and replaces a native stage with bounded buffers insi
     await fs.writeFile(join(root, 'sample.bin'), chunk)
     Object.assign(app.vault.adapter, {
       getFullPath: (path: string) => join(root, path),
+      mkdir: async (path: string) => {
+        await fs.mkdir(join(root, path), { recursive: true })
+      },
       fsPromises: {
         ...fs,
         open: async (path: string, flags: string) => {

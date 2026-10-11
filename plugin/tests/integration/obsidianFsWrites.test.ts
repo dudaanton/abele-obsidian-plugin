@@ -339,7 +339,9 @@ describe('ObsidianFileSystem writes on the desktop', () => {
     const fs = new ObsidianFileSystem(app as unknown as App)
     await fs.writeAtomic('Note.md', text('second'), 8000)
     expect(calls.renames).toHaveLength(1)
-    expect(calls.renames[0]![0]).toMatch(/^\.abele-sync-[a-z0-9]{8}\.tmp$/)
+    expect(calls.renames[0]![0]).toMatch(
+      /^\.obsidian\/plugins\/abele\/sync-staging\/\.abele-sync-[a-z0-9]{8}\.tmp$/
+    )
     expect(calls.renames[0]![1]).toBe('Note.md')
   })
 })

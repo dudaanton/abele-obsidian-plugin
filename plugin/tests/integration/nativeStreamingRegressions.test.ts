@@ -50,6 +50,7 @@ async function fixture(queued = true) {
       await disk.rename(join(root, from), join(root, to))
     },
     remove: async (path: string) => disk.unlink(join(root, path)),
+    rmdir: async (path: string) => disk.rmdir(join(root, path)),
     list: async (path: string) => {
       const entries = await disk.readdir(join(root, path), { withFileTypes: true })
       return {
@@ -66,6 +67,57 @@ async function fixture(queued = true) {
   const fs = new ObsidianFileSystem(app as unknown as App)
   return { root, fs, app, close: () => disk.rm(root, { recursive: true, force: true }) }
 }
+
+for (const mobile of [false, true])
+  it(`keeps streamed stages and displaced files out of user folders (${mobile ? 'adapter' : 'native'})`, async () => {
+    const f = await fixture(false)
+    try {
+      if (mobile)
+        Object.assign(f.app.vault.adapter, {
+          fsPromises: undefined,
+          readBinary: async (path: string) => {
+            const bytes = await disk.readFile(join(f.root, path))
+            if (bytes.length > 1024 * 1024) throw new Error('unbounded read')
+            return Uint8Array.from(bytes).buffer
+          },
+          writeBinary: async (path: string, bytes: ArrayBuffer) => {
+            if (bytes.byteLength > 1024 * 1024) throw new Error('unbounded write')
+            await disk.writeFile(join(f.root, path), new Uint8Array(bytes))
+          },
+          appendBinary: async (path: string, bytes: ArrayBuffer) => {
+            if (bytes.byteLength > 1024 * 1024) throw new Error('unbounded append')
+            await disk.appendFile(join(f.root, path), new Uint8Array(bytes))
+          },
+        })
+      await disk.mkdir(join(f.root, 'notes'))
+      await disk.writeFile(join(f.root, 'notes/sample.bin'), 'original')
+      const bytes = new TextEncoder().encode('replacement'),
+        sha = await sha256(bytes)
+      const stage = await f.fs.beginAtomicWrite(
+        'notes/sample.bin',
+        2000,
+        await f.fs.fingerprint('notes/sample.bin')
+      )
+      // readdir includes hidden entries; an indexed-file scan misses the regression.
+      expect(await disk.readdir(join(f.root, 'notes'))).toEqual(['sample.bin'])
+      const observer = new ObsidianFileSystem(f.app as unknown as App)
+      const inventory = []
+      for await (const file of observer.list()) inventory.push(file.path)
+      expect(inventory).not.toContain(stage.id)
+      expect((await disk.stat(join(f.root, stage.id))).isFile()).toBe(true)
+      await stage.append(0, bytes)
+      await stage.seal({ size: bytes.length, sha })
+      await stage.commit()
+      expect(await disk.readdir(join(f.root, 'notes'))).toEqual(['sample.bin'])
+      await f.fs.move('notes/sample.bin', 'moved/sample.bin')
+      if (mobile) expect(await disk.readdir(join(f.root, 'notes'))).toEqual([])
+      else await expect(disk.stat(join(f.root, 'notes'))).rejects.toMatchObject({ code: 'ENOENT' })
+      expect(await disk.readdir(join(f.root, 'moved'))).toEqual(['sample.bin'])
+      expect(await disk.readFile(join(f.root, 'moved/sample.bin'), 'utf8')).toBe('replacement')
+    } finally {
+      await f.close()
+    }
+  })
 
 it('streams a peer move and removes its old native file and empty directory', async () => {
   const f = await fixture()
@@ -140,6 +192,7 @@ it('streams a peer move and removes its old native file and empty directory', as
     for await (const file of f.fs.list()) after.push(file.path)
     expect(after).toEqual(['to/sample.md'])
     expect(await disk.readFile(join(f.root, 'to/sample.md'), 'utf8')).toBe('sample')
+    expect(await disk.readdir(join(f.root, 'to'))).toEqual(['sample.md'])
     await expect(disk.stat(join(f.root, 'from'))).rejects.toMatchObject({ code: 'ENOENT' })
   } finally {
     await f.close()
@@ -178,7 +231,8 @@ it('recovers an archived native inode when its locator acknowledgement fails', a
     retained = journal.recovered()[0].backup
     expect(journal.entries()).toEqual([])
     expect(await disk.readFile(retained, 'utf8')).toBe('original')
-    expect(await disk.readdir(f.root)).toEqual(['sample.bin'])
+    expect(await disk.readdir(f.root)).toEqual(['.obsidian', 'sample.bin'])
+    expect(await disk.readdir(join(f.root, '.obsidian/plugins/abele/sync-staging'))).toEqual([])
     expect(await disk.readFile(join(f.root, 'sample.bin'), 'utf8')).toBe('replacement')
   } finally {
     if (retained) await disk.rm(retained, { force: true })
@@ -221,7 +275,8 @@ it('keeps an unfenced displaced inode outside the vault after confirmed native p
     await stage.seal({ size: bytes.length, sha: await sha256(bytes) })
     await stage.commit()
     retained = new WriteJournal(f.app as never).recovered()[0]?.backup
-    expect(await disk.readdir(f.root)).toEqual(['sample.bin'])
+    expect(await disk.readdir(f.root)).toEqual(['.obsidian', 'sample.bin'])
+    expect(await disk.readdir(join(f.root, '.obsidian/plugins/abele/sync-staging'))).toEqual([])
     expect(retained).toBeDefined()
     expect(retained!.startsWith(f.root + '/')).toBe(false)
     await handle.write(new TextEncoder().encode('late edit'), 0, 9, 0)

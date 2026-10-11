@@ -10,6 +10,8 @@ import { bytesOf } from './vaultWrites'
 import { sha256 } from '@noble/hashes/sha2'
 import { probeSequentialFiles, type ProbeEvent } from './mobileSequentialSource'
 import { probeResourceRanges } from './mobileResourceRanges'
+import { stagingDirectory } from './stagingDirectory'
+import { makeParents } from './vaultFolders'
 
 const PHONE_FALLBACK_BYTES = 50 * 1024 * 1024
 interface Handle {
@@ -97,7 +99,8 @@ export class BoundedVaultIo {
     readonly adapter: DataAdapter,
     private readonly assertOwned: () => void = () => {},
     private readonly effect: <T>(work: () => T) => T = (work) => work(),
-    private readonly receiptScope: object = adapter
+    private readonly receiptScope: object = adapter,
+    private readonly configDir?: string
   ) {}
   private get receipts(): Map<string, WriteReceipt> {
     let receipts = writeReceipts.get(this.receiptScope)
@@ -189,7 +192,7 @@ export class BoundedVaultIo {
     this.resourceMobile =
       typeof window === 'undefined' || typeof window.fetch !== 'function'
         ? null
-        : await probeResourceRanges(this.adapter, window.fetch.bind(window), trace)
+        : await probeResourceRanges(this.adapter, window.fetch.bind(window), trace, this.configDir)
     if (this.resourceMobile) {
       console.debug('[abele-sync] WebView file ranges verified')
       return {}
@@ -202,16 +205,17 @@ export class BoundedVaultIo {
       readFileInChunks: typeof files?.readFileInChunks,
     })
     if ((!files?.readFile && !files?.readFileInChunks) || !files?.stat) return null
-    this.sequentialMobile = await probeSequentialFiles(this.adapter, files, trace)
+    this.sequentialMobile = await probeSequentialFiles(this.adapter, files, trace, this.configDir)
     if (this.sequentialMobile) {
       console.debug('[abele-sync] native filesystem sequential chunks verified')
       return { files }
     }
     if (!files.readFile) return null
-    const path = `.abele-sync-${Math.random().toString(36).slice(2, 10).padEnd(8, '0')}.tmp`
+    const path = `${stagingDirectory(this.configDir)}/.abele-sync-${Math.random().toString(36).slice(2, 10).padEnd(8, '0')}.tmp`
     let created = false
     try {
       if (await this.adapter.exists(path)) return null
+      await makeParents(this.adapter, path)
       this.assertOwned()
       trace({ step: 'create', path, bytes: 4 })
       await this.adapter.writeBinary(path, new Uint8Array([11, 37, 89, 143]).buffer)

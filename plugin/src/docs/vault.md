@@ -2117,8 +2117,11 @@ Accepted publication also retains the stable local file identity and server file
 that ledger. Group attachment renames follow this recorded identity; replacements at the same
 path do not acquire consent, and scope departures remove the rename eligibility.
 
-The device-local `abele-sync-writes` journal also owns resumable hidden chunk stages beside
-their target. A streaming entry records mtime, the expected previous content identity (or
+The device-local `abele-sync-writes` journal also owns resumable chunk stages in the plugin's
+`sync-staging` directory under the vault configuration directory. Temporary publication files,
+swap backups, external incoming files and capability probes use this private directory rather
+than user content folders. It is excluded from sync inventory; folder cleanup still checks all
+entries in user folders, including hidden files. A streaming entry records mtime, the expected previous content identity (or
 absence), and the sealed replacement identity. Partial stages survive recovery without
 publication; append resumes from the actual disk length, and seal verifies the full digest.
 Publication still uses the write journal and the local-save fence or backup swap. A stage

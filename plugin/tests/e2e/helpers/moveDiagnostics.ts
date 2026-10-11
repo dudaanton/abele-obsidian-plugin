@@ -24,6 +24,11 @@ const installMoveDiagnostics = (runtime, root) => {
    const files=[];
    for(const path of paths){
     const file={path,exists:await app.vault.adapter.exists(path),adapterStat:await app.vault.adapter.stat(path),indexed:app.vault.getFileByPath(path)?.stat||null,ledger:await opts.state.get(path)};
+    if(file.adapterStat?.type==='folder'){
+     file.entries=await app.vault.adapter.list(path);
+     const adapter=app.vault.adapter;
+     if(adapter.fsPromises?.readdir&&adapter.getFullPath)file.nativeEntries=await adapter.fsPromises.readdir(adapter.getFullPath(path));
+    }
     if(file.ledger)file.pending=await opts.state.getMeta('pull-write:'+file.ledger.fileId);
     try{file.engineStat=await originalFs.stat(path);if(file.engineStat)file.fingerprint=await originalFs.fingerprint(path)}catch(error){file.error=String(error?.message||error);file.cause=String(error?.cause?.message||'')}
     files.push(file);

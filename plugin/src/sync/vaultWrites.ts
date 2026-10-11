@@ -14,7 +14,7 @@ export { nativeOf, type NativeFs } from './nativeVaultFs'
  * The engine's `writeAtomic` asks for the old bytes or the new ones and nothing in between: a
  * short file is read by the next scan as an edit made here, and sent to every device (pi review
  * #1). `adapter.writeBinary` truncates the file and writes into it, so it cannot be used on the
- * file itself. The new bytes go to a temp name beside it instead, in full, and only then take the
+ * file itself. The new bytes go to a private staging name instead, in full, and only then take the
  * file's name.
  *
  * Obsidian's `adapter.rename` refuses a name that is taken, on the desktop and on a phone alike
@@ -56,6 +56,7 @@ export function isDroppableTemp(path: string): boolean {
 
 /** What `VaultWriter` is handed by the file system that owns it. */
 export interface WriterDeps {
+  stagingDirectory: string
   adapter: DataAdapter
   native: NativeFs | null
   journal: WriteJournal
@@ -438,12 +439,12 @@ export class VaultWriter {
   }
 
   /**
-   * A free name beside `path` to write or step aside through. Short, and not built on the file's
+   * A free private name to write or step aside through. Short, and not built on the file's
    * own name: a segment may already be at the 255 bytes a filesystem allows.
    */
   async freeName(path: string, kind: 'tmp' | 'old'): Promise<string> {
-    const cut = path.lastIndexOf('/')
-    const folder = cut === -1 ? '' : path.slice(0, cut)
+    const folder = this.deps.stagingDirectory
+    await this.deps.makeParents(`${folder}/placeholder`)
     for (let attempt = 0; attempt < 3; attempt++) {
       const stem = Math.random().toString(36).slice(2, 10).padEnd(8, '0')
       const name = `.abele-sync-${stem}.${kind}`

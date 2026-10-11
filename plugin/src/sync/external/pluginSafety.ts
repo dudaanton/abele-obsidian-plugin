@@ -771,7 +771,13 @@ export async function requireExternalLifecycleSafety(
       if (metadataOnly) continue
       const verifyLocal = async (path: string, sha: string, size: number) => {
         const identity = await inspectionRead(inspection, assertCurrent, () =>
-          new BoundedVaultIo(app.vault.adapter, assertCurrent).fingerprint(path)
+          new BoundedVaultIo(
+            app.vault.adapter,
+            assertCurrent,
+            undefined,
+            undefined,
+            app.vault.configDir
+          ).fingerprint(path)
         )
         if (identity.size !== size || identity.sha !== sha)
           throw new ExternalRecoveryRequired('materialized or retained bytes changed')

@@ -14,6 +14,7 @@ import type { JournalEntry } from './writeJournal'
 import { caseKey } from '@abele/sync-protocol'
 import { watchVault } from './vaultWatcher'
 import { fencedPort, type RuntimeFence } from './external/recovery'
+import { stagingDirectory } from './stagingDirectory'
 import { externalCoordinationOf } from './external/ObsidianExternalFileHost'
 import type { ExternalFileCoordination } from './external/coordination'
 import { folderMutations } from './folderMutations'
@@ -250,9 +251,11 @@ export class ObsidianFileSystem implements FileSystem {
       this.guardedAdapter,
       () => this.runtimeFence?.assertReady(),
       (work) => (this.runtimeFence ? this.runtimeFence.effect(work) : work()),
-      app.vault.adapter
+      app.vault.adapter,
+      this.configDir
     )
     this.writer = new VaultWriter({
+      stagingDirectory: stagingDirectory(this.configDir),
       adapter: this.guardedAdapter,
       native: this.native,
       journal: this.journal,
@@ -429,7 +432,10 @@ export class ObsidianFileSystem implements FileSystem {
       this.configInventory = inventory
         ? [...inventory.values()]
             .filter(
-              (info) => info.path.startsWith(this.configDir + '/') && !isAdapterTemp(info.path)
+              (info) =>
+                info.path.startsWith(this.configDir + '/') &&
+                !isAdapterTemp(info.path) &&
+                !info.path.startsWith(stagingDirectory(this.configDir) + '/')
             )
             .map((info) => ({ ...info, mtime: stamp(info.mtime) }))
         : await this.readConfigInventory()
@@ -835,6 +841,7 @@ export class ObsidianFileSystem implements FileSystem {
     depth = 0,
     walked: Set<string> = new Set()
   ): AsyncIterable<FileInfo> {
+    if (folder === stagingDirectory(this.configDir)) return
     if (depth > CONFIG_WALK_DEPTH || walked.has(folder)) {
       console.debug(`[abele-sync] not following ${folder} any further`)
       return

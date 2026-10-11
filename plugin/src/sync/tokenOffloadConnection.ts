@@ -165,6 +165,7 @@ export async function tokenOffloadConnection(input: {
         state: external,
         ledger: state,
         host,
+        artifactPath: (name) => host.artifactPath(name),
         binding: input.binding,
         serial: { run },
         assertOwned: () => fence.assertReady(),

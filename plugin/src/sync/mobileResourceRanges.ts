@@ -1,6 +1,8 @@
 import type { DataAdapter } from 'obsidian'
 import { EngineError, MAX_CHUNK_BYTES } from '@abele/sync-core'
 import type { ProbeEvent } from './mobileSequentialSource'
+import { stagingDirectory } from './stagingDirectory'
+import { makeParents } from './vaultFolders'
 
 function resourceUrl(adapter: DataAdapter, path: string): string {
   const url = new URL(adapter.getResourcePath(path))
@@ -18,9 +20,10 @@ function resourceUrl(adapter: DataAdapter, path: string): string {
 export async function probeResourceRanges(
   adapter: DataAdapter,
   fetcher: typeof fetch,
-  trace: (event: ProbeEvent) => void = () => {}
+  trace: (event: ProbeEvent) => void = () => {},
+  configDir?: string
 ) {
-  const name = `.abele-sync-${Math.random().toString(36).slice(2, 10).padEnd(8, '0')}.tmp`
+  const name = `${stagingDirectory(configDir)}/.abele-sync-${Math.random().toString(36).slice(2, 10).padEnd(8, '0')}.tmp`
   const bytes = new Uint8Array(20 * 1024)
   for (let i = 0; i < bytes.length; i++) bytes[i] = i % 251
   let created = false
@@ -117,6 +120,7 @@ export async function probeResourceRanges(
     const url = resourceUrl(adapter, name)
     trace({ step: 'resource-path', url, directory: null })
     if (await adapter.exists(name)) return null
+    await makeParents(adapter, name)
     await adapter.writeBinary(name, bytes.buffer)
     created = true
     trace({ step: 'create', path: name, bytes: bytes.length })

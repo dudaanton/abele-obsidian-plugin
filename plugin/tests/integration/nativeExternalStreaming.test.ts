@@ -13,11 +13,13 @@ it('stages and installs a streamed external file using real native handles and p
   const root = await fs.mkdtemp(join(tmpdir(), 'sample-external-'))
   const app = buildFakeVault([])
   const bytes = new Uint8Array(1024 * 1024 + 7).fill(31)
-  const staging = '.abele-external-sample.incoming',
-    target = 'sample.bin'
+  const target = 'notes/sample.bin'
   Object.assign(app.vault.adapter, {
     getFullPath: (path: string) => join(root, path),
     fsPromises: fs,
+    mkdir: async (path: string) => {
+      await fs.mkdir(join(root, path), { recursive: true })
+    },
     exists: async (path: string) =>
       fs.access(join(root, path)).then(
         () => true,
@@ -47,7 +49,9 @@ it('stages and installs a streamed external file using real native handles and p
     assertOwned: () => {},
   })
   const close = vi.fn(async () => {})
+  const staging = host.artifactPath('.abele-external-sample.incoming')
   try {
+    await fs.mkdir(join(root, 'notes'))
     const artifact = {
       operationId: 'sample',
       path: staging,
@@ -72,6 +76,7 @@ it('stages and installs a streamed external file using real native handles and p
             close,
           })
         ).toEqual({ status: 'staged' })
+        expect(await fs.readdir(join(root, 'notes'))).toEqual([])
         expect(await effects.install(artifact, target)).toEqual({
           status: 'installed',
           method: 'native-link',
@@ -80,6 +85,7 @@ it('stages and installs a streamed external file using real native handles and p
       }
     )
     expect(await fs.readFile(join(root, target))).toEqual(Buffer.from(bytes))
+    expect(await fs.readdir(join(root, 'notes'))).toEqual(['sample.bin'])
     expect(close).toHaveBeenCalledOnce()
   } finally {
     host.close()

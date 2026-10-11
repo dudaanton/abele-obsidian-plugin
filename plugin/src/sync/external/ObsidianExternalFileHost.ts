@@ -6,6 +6,7 @@ import { makeParents } from '../vaultFolders'
 import { sha256 as incremental } from '@noble/hashes/sha2'
 import { chunks, type ChunkSource } from '@abele/sync-core'
 import { BoundedVaultIo } from '../boundedVaultIo'
+import { stagingDirectory } from '../stagingDirectory'
 import { transferBudgetOf } from '../transferBudget'
 import { ExchangeTrace } from '../exchangeTrace'
 const fileOperations = new ExchangeTrace()
@@ -63,7 +64,13 @@ export class ExternalFileHost {
     private readonly options: ExternalHostOptions
   ) {
     this.coordination = externalCoordinationOf(app.vault)
-    this.io = new BoundedVaultIo(app.vault.adapter, this.assertOwned)
+    this.io = new BoundedVaultIo(
+      app.vault.adapter,
+      this.assertOwned,
+      undefined,
+      undefined,
+      app.vault.configDir
+    )
     const opened = (file?: { path?: string } | null) => {
       this.coordination.opened([...this.openPaths(), ...(file?.path ? [file.path] : [])])
     }
@@ -75,6 +82,9 @@ export class ExternalFileHost {
   private assertOwned = (): void => {
     if (this.closed) throw new ExternalFilePortError('recovery-required')
     this.options.assertOwned()
+  }
+  artifactPath(name: string): string {
+    return `${stagingDirectory(this.app.vault.configDir)}/${name}`
   }
   private effect<T>(work: () => T): T {
     this.assertOwned()
@@ -266,7 +276,8 @@ export class ExternalFileHost {
               assertEffect()
             },
             (work) => this.effect(work),
-            this.app.vault.adapter
+            this.app.vault.adapter,
+            this.app.vault.configDir
           )
           const mtime = this.options.stagingMtime?.() ?? Date.now()
           assertEffect()

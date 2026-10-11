@@ -1,4 +1,6 @@
 import type { DataAdapter } from 'obsidian'
+import { stagingDirectory } from './stagingDirectory'
+import { makeParents } from './vaultFolders'
 import { EngineError, MAX_CHUNK_BYTES, type ChunkSource } from '@abele/sync-core'
 
 export interface MobilePath {
@@ -258,15 +260,17 @@ function sequentialSource(
 export async function probeSequentialFiles(
   adapter: DataAdapter,
   files: SequentialFiles,
-  trace: (event: ProbeEvent) => void = () => {}
+  trace: (event: ProbeEvent) => void = () => {},
+  configDir?: string
 ) {
   if (!files.readFileInChunks) return null
-  const name = `.abele-sync-${Math.random().toString(36).slice(2, 10).padEnd(8, '0')}.tmp`
+  const name = `${stagingDirectory(configDir)}/.abele-sync-${Math.random().toString(36).slice(2, 10).padEnd(8, '0')}.tmp`
   const bytes = new Uint8Array(20 * 1024)
   for (let i = 0; i < bytes.length; i++) bytes[i] = i % 251
   if (await adapter.exists(name)) return null
   let created = false
   try {
+    await makeParents(adapter, name)
     trace({ step: 'create', path: name, bytes: bytes.length })
     await adapter.writeBinary(name, bytes.buffer)
     created = true
@@ -297,6 +301,9 @@ export async function probeSequentialFiles(
         await source?.close()
       }
     }
+    return null
+  } catch (error) {
+    trace({ step: 'error', message: error instanceof Error ? error.message : String(error) })
     return null
   } finally {
     if (created) {

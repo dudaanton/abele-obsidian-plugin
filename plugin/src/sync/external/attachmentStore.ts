@@ -78,6 +78,7 @@ export class AttachmentStore {
       state: ExternalState
       ledger: StateStore
       host: ExternalFileHost
+      artifactPath?(name: string): string
       binding: ConnectionBinding
       serial: ExternalSerialization
       assertOwned(): void
@@ -124,6 +125,10 @@ export class AttachmentStore {
   private owned(): void {
     this.options.assertOwned()
     if (this.stopped) throw new ExternalFilePortError('recovery-required')
+  }
+  private stagingPath(path: string, operationId: string): string {
+    const name = `.abele-external-${operationId}.incoming`
+    return this.options.artifactPath?.(name) ?? path.slice(0, path.lastIndexOf('/') + 1) + name
   }
   private async document(): Promise<ExternalDocument> {
     this.owned()
@@ -344,7 +349,7 @@ export class AttachmentStore {
     } catch {
       return this.result('collision')
     }
-    const staging = `${before.path.slice(0, before.path.lastIndexOf('/') + 1)}.abele-external-${opts.operationId}.incoming`
+    const staging = this.stagingPath(before.path, opts.operationId)
     let phase: 'none' | 'prepared' | 'delete-ready' = 'none'
     return this.options.host.run(
       this.options.serial,
@@ -448,7 +453,7 @@ export class AttachmentStore {
           mtime: head.mtime,
         })
         const digest = await sha256(bytes),
-          stagedPath = `${head.path.slice(0, head.path.lastIndexOf('/') + 1)}.abele-external-${opts.operationId}.incoming`
+          stagedPath = this.stagingPath(head.path, opts.operationId)
         const artifact = {
           operationId: opts.operationId,
           path: stagedPath,
@@ -555,7 +560,7 @@ export class AttachmentStore {
         return this.reason(error)
       }
     }
-    const staging = `${head.path.slice(0, head.path.lastIndexOf('/') + 1)}.abele-external-${opts.operationId}.incoming`
+    const staging = this.stagingPath(head.path, opts.operationId)
     const quarantine = staging.replace(/\.incoming$/, '.projection')
     let phase: 'none' | 'download-intent' | 'ready-to-install' | 'cleanup-pending' = 'none'
     return this.options.host.run(

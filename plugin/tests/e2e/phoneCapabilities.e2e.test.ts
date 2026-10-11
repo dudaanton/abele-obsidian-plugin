@@ -15,7 +15,7 @@ it('records native filesystem and vault adapter capabilities without invoking th
 
 it('records the plugin filesystem probe with WebView ranges, native callbacks and cleanup', () => {
   const findings = vaultCli(PHONE_VAULT).evalAwait(
-    'new window.__abeleTest.BoundedVaultIo(app.vault.adapter).diagnoseMobile()',
+    'new window.__abeleTest.BoundedVaultIo(app.vault.adapter,undefined,undefined,undefined,app.vault.configDir).diagnoseMobile()',
     180000
   )
   console.info('[phone-filesystem-probe]', JSON.stringify(findings))

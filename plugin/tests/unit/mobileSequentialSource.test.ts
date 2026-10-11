@@ -5,10 +5,14 @@ import { BoundedVaultIo } from '@/sync/boundedVaultIo'
 afterEach(() => vi.unstubAllGlobals())
 function setup(end: string | null = null) {
   const probe = new Map<string, Uint8Array>()
+  const folders = new Set<string>()
   const content = new Uint8Array(3 * 1024 * 1024 + 7).fill(73)
   const adapter = {
     getResourcePath: (path: string) => 'capacitor://localhost/_capacitor_file_/sample/' + path,
-    exists: async (path: string) => probe.has(path),
+    exists: async (path: string) => probe.has(path) || folders.has(path),
+    mkdir: async (path: string) => {
+      folders.add(path)
+    },
     writeBinary: async (path: string, bytes: ArrayBuffer) => {
       probe.set(path, new Uint8Array(bytes))
     },
