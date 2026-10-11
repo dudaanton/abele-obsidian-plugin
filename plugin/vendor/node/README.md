@@ -1,8 +1,9 @@
 # Node browser packages
 
 These four exact `0.0.0` npm tarballs contain the built browser packages from
-AbeleNode 0.3.1 browser contract (revision `83360f0`), including paired WSS, pi sessions,
-durable delegation mailboxes and versioned repository reads. They are kept in the
+AbeleNode 0.3.11 browser contract (revision `26f2ce6`), including paired WSS, pi sessions,
+durable delegation mailboxes, versioned repository reads and the gated `debugger.v1`
+human-channel client. This updates contracts, not adapter availability. They are kept in the
 repository so `npm ci` and the plugin build work in a clean clone without a sibling
 checkout, workspace link, daemon or private registry. `integrity.json` records npm's
 SHA-512 integrity and the packaged file list. Runtime source has not been modified.
