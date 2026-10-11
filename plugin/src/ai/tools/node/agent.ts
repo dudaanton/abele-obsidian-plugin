@@ -197,11 +197,13 @@ export function createNodeAgentTools(factory: NodeAgentHostFactory): AgentTool[]
         end_line: { type: 'integer', minimum: 1 },
       },
       additionalProperties: false,
+      ...(name === 'node_write' ? { required: ['path', 'expected_content_id', 'text'] } : {}),
     },
     execute: async (_id, raw, signal, ctx) => {
       const session = ctx?.session
       if (!session) throw new Error('An executing Obsidian chat is required')
       const params = structuredClone(raw)
+      if (name === 'node_write') z.string().parse(params.text)
       signal?.throwIfAborted()
       for (const [key, value] of pending) if (value.expires <= Date.now()) pending.delete(key)
       const cursor = text(params, 'cursor')
@@ -729,7 +731,7 @@ export function createNodeAgentTools(factory: NodeAgentHostFactory): AgentTool[]
               : undefined
           )
         }
-        let after = text(params, 'text')
+        let after = name === 'node_write' ? z.string().parse(params.text) : ''
         if (name !== 'node_write') {
           const old = z.string().min(1).parse(params.old_text),
             replacement = z.string().parse(params.new_text)

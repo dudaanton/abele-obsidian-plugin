@@ -271,6 +271,27 @@ describe('Obsidian chat node tools', () => {
       value
     )
   })
+  it('requires an explicit node_write text argument and never treats omission as an empty edit', async () => {
+    const { call, client, factory } = setup()
+    await expect(
+      call('node_write', { path: 'sample.txt', expected_content_id: hash })
+    ).rejects.toThrow()
+    expect(client.writeFile).not.toHaveBeenCalled()
+    expect(
+      createNodeAgentTools(factory).find((tool) => tool.name === 'node_write')!.parameters.required
+    ).toContain('text')
+  })
+  it('accepts an explicit empty node_write string as an intentional empty-file edit', async () => {
+    const { call, client } = setup()
+    client.fileMutationResult.mockResolvedValueOnce({
+      ...(await client.fileMutationResult()),
+      content_id: digest(''),
+    })
+    expect(
+      (await call('node_write', { path: 'sample.txt', expected_content_id: hash, text: '' }))
+        .details
+    ).toMatchObject({ diff: { old: 'old', new: '' }, state: 'saved' })
+  })
   it('writes immediately with exact preconditions and a retained chat Diff', async () => {
     const { call, client } = setup()
     const result = await call('node_edit', {

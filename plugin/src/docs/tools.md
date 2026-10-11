@@ -1060,6 +1060,9 @@ picker, shell, stage, commit, push or delegation is exposed by this toolset.
 | `node_git_blame` | Attribution for `path`, optionally `start` and `count` |
 | `node_worktree_switch` | Select an already scoped worktree inside this chat's current folder |
 
+`node_write` requires an explicitly supplied `text` string; `text: ""` is an intentional
+empty-file edit, while omitting it is invalid.
+
 Writes require edit scope and the exact full-file SHA-256 `expected_content_id` from a fresh
 read. They follow the chat's file-edit permission mode: Ask asks per edit, Edit files without
 asking permits edit/replace/write, and Everything without asking also permits move/copy/remove.
