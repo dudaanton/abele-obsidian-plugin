@@ -1,5 +1,5 @@
 import type { DataAdapter } from 'obsidian'
-import { stagingDirectory } from './stagingDirectory'
+import { stagingDirectory, reserveStagingPath } from './stagingDirectory'
 import { makeParents } from './vaultFolders'
 import { EngineError, MAX_CHUNK_BYTES, type ChunkSource } from '@abele/sync-core'
 
@@ -268,6 +268,7 @@ export async function probeSequentialFiles(
   const bytes = new Uint8Array(20 * 1024)
   for (let i = 0; i < bytes.length; i++) bytes[i] = i % 251
   if (await adapter.exists(name)) return null
+  const release = reserveStagingPath(name)
   let created = false
   try {
     await makeParents(adapter, name)
@@ -306,9 +307,13 @@ export async function probeSequentialFiles(
     trace({ step: 'error', message: error instanceof Error ? error.message : String(error) })
     return null
   } finally {
-    if (created) {
-      await adapter.remove(name)
-      trace({ step: 'delete', path: name })
+    try {
+      if (created) {
+        await adapter.remove(name)
+        trace({ step: 'delete', path: name })
+      }
+    } finally {
+      release()
     }
   }
 }

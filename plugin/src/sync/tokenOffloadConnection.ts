@@ -2,7 +2,7 @@ import type { App } from 'obsidian'
 import type { FileSystem, StateEntry, V2EngineClient } from '@abele/sync-core'
 import { AttachmentStore } from './external/attachmentStore'
 import { ExternalFileHost } from './external/ObsidianExternalFileHost'
-import { activateExternalFiles } from './external/pluginSafety'
+import { activateExternalFiles, discardOrphanPrivateArtifacts } from './external/pluginSafety'
 import { ExternalState } from './external/state'
 import { pluginRepresentation } from './external/pluginRepresentation'
 import type { ConnectionBinding } from './external/records'
@@ -166,6 +166,8 @@ export async function tokenOffloadConnection(input: {
         ledger: state,
         host,
         artifactPath: (name) => host.artifactPath(name),
+        cleanupPrivateArtifacts: () =>
+          discardOrphanPrivateArtifacts(input.app, input.factory, () => fence.assertReady()),
         binding: input.binding,
         serial: { run },
         assertOwned: () => fence.assertReady(),

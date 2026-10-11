@@ -1,7 +1,7 @@
 import type { DataAdapter } from 'obsidian'
 import { EngineError, MAX_CHUNK_BYTES } from '@abele/sync-core'
 import type { ProbeEvent } from './mobileSequentialSource'
-import { stagingDirectory } from './stagingDirectory'
+import { stagingDirectory, reserveStagingPath } from './stagingDirectory'
 import { makeParents } from './vaultFolders'
 
 function resourceUrl(adapter: DataAdapter, path: string): string {
@@ -115,6 +115,7 @@ export async function probeResourceRanges(
       }
     }
   }
+  const release = reserveStagingPath(name)
   try {
     // Resolve first so non-resource adapters neither create files nor attempt network requests.
     const url = resourceUrl(adapter, name)
@@ -180,9 +181,13 @@ export async function probeResourceRanges(
     })
     return null
   } finally {
-    if (created) {
-      await adapter.remove(name)
-      trace({ step: 'delete', path: name })
+    try {
+      if (created) {
+        await adapter.remove(name)
+        trace({ step: 'delete', path: name })
+      }
+    } finally {
+      release()
     }
   }
 }

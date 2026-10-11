@@ -1,6 +1,9 @@
 import { sha256 } from './hash'
 import type { App } from 'obsidian'
 import { BoundedVaultIo } from '../boundedVaultIo'
+import { stagingDirectory, stagingPathReserved } from '../stagingDirectory'
+import { adapterWriteInFlight } from '../vaultWrites'
+import { pathCoordinatorOf } from '../pathCoordinator'
 
 import { CommitOpSchema } from '@abele/sync-protocol'
 import { z } from 'zod'
@@ -228,6 +231,103 @@ async function inspectionRead<T>(
     inspection.signal?.removeEventListener('abort', cancel)
   }
 }
+/** Discard only private work with no reachable ledger or installation-journal owner.
+ * Inventory precedes ownership reads so a newly created stage cannot enter a stale snapshot. */
+export async function discardOrphanPrivateArtifacts(
+  app: App,
+  factory: IDBFactory,
+  assertCurrent: () => void = () => {}
+): Promise<void> {
+  const directory = stagingDirectory(app.vault.configDir)
+  await pathCoordinatorOf(app.vault).run(
+    [directory],
+    async () => {
+      assertCurrent()
+      if (!(await app.vault.adapter.exists(directory))) return
+      // Snapshot candidates first, then read fresh ownership. Newly created work is
+      // either absent from this list or already journaled/reserved before creation.
+      const files: string[] = []
+      const seen = new Set<string>()
+      const validPath = (path: string) =>
+        path.startsWith(directory + '/') &&
+        !path.split('/').some((part) => part === '..' || part === '.')
+      const walk = async (folder: string) => {
+        if (seen.has(folder)) throw new ExternalRecoveryRequired('private artifact directory loop')
+        seen.add(folder)
+        const listed = await app.vault.adapter.list(folder)
+        if ([...listed.files, ...listed.folders].some((path) => !validPath(path)))
+          throw new ExternalRecoveryRequired('private artifact path is outside its directory')
+        files.push(...listed.files)
+        for (const child of listed.folders) await walk(child)
+      }
+      await walk(directory)
+      const names = new Set(
+        TokenConnectionRegistry.open(app)
+          .records()
+          .flatMap((record) => [
+            record.ledgerId,
+            ...(record.pending ? [record.pending.ledgerId] : []),
+          ])
+      )
+      for (const item of [...(activation(app)?.ledgers ?? []), ...retiredLedgers(app)])
+        names.add(item.databaseName)
+      for (const key of [undefined, LEDGER_PROOF_KEY, LEDGER_BOOTSTRAP_KEY]) {
+        const id = readLedgerId(app, key).stateId
+        if (id) names.add(stateDatabaseName(id))
+      }
+      for (const id of ledgerCleanupIds(app)) names.add(stateDatabaseName(id))
+      const scoped = app.loadLocalStorage(SCOPED_CONNECTION_KEY) as { ledgerId?: string } | null
+      const pending = app.loadLocalStorage(SCOPED_JOIN_KEY) as {
+        connection?: { ledgerId?: string }
+      } | null
+      for (const id of [scoped?.ledgerId, pending?.connection?.ledgerId])
+        if (id) {
+          names.add('abele-scoped-' + id)
+          names.add('abele-scoped-native-' + id)
+        }
+      const owned = new Set<string>()
+      const protect = (path: string | undefined) => {
+        if (path) owned.add(path.normalize('NFC').toLowerCase())
+      }
+      const journal = new WriteJournal(app)
+      for (const entry of journal.entries()) {
+        protect(entry.temp)
+        protect(entry.backup)
+      }
+      for (const entry of journal.recovered()) protect(entry.backup)
+      for (const name of names) {
+        assertCurrent()
+        const found = await inspectExistingLedger(factory, name)
+        const raw = found?.metadata.get('plugin:external-files')
+        if (raw == null) continue
+        if (typeof raw !== 'string')
+          throw new ExternalRecoveryRequired('external journal is unreadable')
+        const doc = decodeExternalDocument(raw)
+        for (const file of doc.files) for (const artifact of file.retained) protect(artifact.path)
+        for (const op of doc.operations)
+          for (const artifact of op.ownedArtifacts) protect(artifact.path)
+      }
+      for (const path of files) {
+        assertCurrent()
+        if (
+          !path.startsWith(directory + '/') ||
+          path.split('/').some((part) => part === '..' || part === '.')
+        )
+          throw new ExternalRecoveryRequired('private artifact path is outside its directory')
+        if (
+          owned.has(path.normalize('NFC').toLowerCase()) ||
+          stagingPathReserved(path) ||
+          adapterWriteInFlight(path)
+        )
+          continue
+        console.debug('[abele-sync] discarding orphan private work', path)
+        if (await app.vault.adapter.exists(path)) await app.vault.adapter.remove(path)
+      }
+    },
+    assertCurrent
+  )
+}
+
 export async function projectionEvidence(
   app: App,
   assertOwned: () => void = () => {},
@@ -484,6 +584,7 @@ export async function recoverExternalState(
   inspection: ProjectionInspection = {}
 ): Promise<void> {
   fence.assertOwned()
+  if (factory) await discardOrphanPrivateArtifacts(app, factory, () => fence.assertOwned())
   const marker = activation(app)
   const item = marker?.ledgers.find((value) => value.databaseName === databaseName)
   if (
@@ -820,7 +921,10 @@ export async function requireExternalLifecycleSafety(
   assertCurrent()
   if (
     inspectProjections &&
-    (await projectionEvidence(app, assertCurrent, false, ownedPaths, inspection))
+    (await (async () => {
+      await discardOrphanPrivateArtifacts(app, factory, assertCurrent)
+      return projectionEvidence(app, assertCurrent, false, ownedPaths, inspection)
+    })())
   )
     throw new ExternalRecoveryRequired('unresolved projection evidence')
 }

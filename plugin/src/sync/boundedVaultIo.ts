@@ -10,7 +10,7 @@ import { bytesOf } from './vaultWrites'
 import { sha256 } from '@noble/hashes/sha2'
 import { probeSequentialFiles, type ProbeEvent } from './mobileSequentialSource'
 import { probeResourceRanges } from './mobileResourceRanges'
-import { stagingDirectory } from './stagingDirectory'
+import { stagingDirectory, reserveStagingPath } from './stagingDirectory'
 import { makeParents } from './vaultFolders'
 
 const PHONE_FALLBACK_BYTES = 50 * 1024 * 1024
@@ -213,6 +213,7 @@ export class BoundedVaultIo {
     if (!files.readFile) return null
     const path = `${stagingDirectory(this.configDir)}/.abele-sync-${Math.random().toString(36).slice(2, 10).padEnd(8, '0')}.tmp`
     let created = false
+    const release = reserveStagingPath(path)
     try {
       if (await this.adapter.exists(path)) return null
       await makeParents(this.adapter, path)
@@ -234,10 +235,14 @@ export class BoundedVaultIo {
       console.debug('[abele-sync] native filesystem ranges unavailable', error)
       return null
     } finally {
-      if (created) {
-        this.assertOwned()
-        await this.adapter.remove(path)
-        trace({ step: 'delete', path })
+      try {
+        if (created) {
+          this.assertOwned()
+          await this.adapter.remove(path)
+          trace({ step: 'delete', path })
+        }
+      } finally {
+        release()
       }
     }
   }

@@ -40,6 +40,9 @@ export { nativeOf, type NativeFs } from './nativeVaultFs'
  * second one (the join dialog counts files with its own) must not tidy away a live write.
  */
 const inFlight = new Set<string>()
+export function adapterWriteInFlight(path: string): boolean {
+  return inFlight.has(path)
+}
 
 /** `.abele-sync-<8>.tmp` holds new bytes (safe to drop); `.old` holds the only copy of a file. */
 const TEMP_NAME = /^\.abele-sync-[a-z0-9]{8}\.(tmp|old)$/

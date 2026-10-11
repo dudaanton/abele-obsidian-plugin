@@ -9,7 +9,10 @@ import { ExternalRepresentation } from '@/sync/external/representation'
 import { ObsidianFileSystem } from '@/sync/ObsidianFileSystem'
 import { AttachmentStore } from '@/sync/external/attachmentStore'
 import { desktopTransport } from '@/sync/desktopTransport'
-import { requireExternalLifecycleSafety } from '@/sync/external/pluginSafety'
+import {
+  discardOrphanPrivateArtifacts,
+  requireExternalLifecycleSafety,
+} from '@/sync/external/pluginSafety'
 import { EXTERNAL_ACTIVATION_KEY } from '@/sync/external/recovery'
 import { EXTERNAL_RETIRED_KEY, stageConnectionSwitch } from '@/sync/external/connectionSwitch'
 import { emptyConnection, writeConnection } from '@/sync/connection'
@@ -63,7 +66,8 @@ const binding = {
 async function setup(
   mode: 'personal' | 'scoped' = 'personal',
   discoveredLate = false,
-  holdRefresh = false
+  holdRefresh = false,
+  privateArtifacts = false
 ) {
   const identity =
     mode === 'personal'
@@ -132,6 +136,13 @@ async function setup(
   if (discoveredLate) await store.put(initialEntry)
   const api = new AttachmentStore({
     state,
+    ...(privateArtifacts
+      ? {
+          artifactPath: (name: string) => host.artifactPath(name),
+          cleanupPrivateArtifacts: () =>
+            discardOrphanPrivateArtifacts(fake as unknown as App, factory),
+        }
+      : {}),
     refreshed: () => runtime.refresh(),
     ledger: store,
     host,
@@ -1582,3 +1593,38 @@ describe('manual attachment store', () => {
     }
   })
 })
+
+it('cleans private owned transfer artifacts only after disconnect materializes originals', async () => {
+  const s = await setup('personal', false, false, true)
+  try {
+    s.fake.saveLocalStorage(EXTERNAL_ACTIVATION_KEY, {
+      schema: 1,
+      ledgers: [
+        {
+          ledgerId: 'sample-ledger',
+          databaseName: s.database,
+          databaseIdentity: s.store.databaseIdentity,
+          binding,
+          phase: 'active',
+        },
+      ],
+    })
+    await s.api.evict(s.base.fileId, {
+      operationId: 'sample-offload',
+      expectedRevision: 0,
+      expectedVersionId: s.base.versionId,
+    })
+    expect((await s.api.materializeForDisconnect({ operationId: 'sample-departure' })).status).toBe(
+      'complete'
+    )
+    expect(new Uint8Array(await s.fake.vault.adapter.readBinary(path))).toEqual(content)
+    expect((await s.fake.vault.adapter.list(hostPrivateDirectory(s))).files).toEqual([])
+    expect((await s.state.snapshot()).files.flatMap((file) => file.retained)).toEqual([])
+    expect(await s.api.inspectDisconnect()).toMatchObject({ safe: true })
+  } finally {
+    s.close()
+  }
+})
+function hostPrivateDirectory(s: Awaited<ReturnType<typeof setup>>) {
+  return s.host.artifactPath('').replace(/\/$/, '')
+}

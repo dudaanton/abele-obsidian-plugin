@@ -2133,3 +2133,8 @@ by the destinations that still need that immutable edit. These source files and 
 records are device-local recovery evidence, never ordinary sync inventory or server content
 identities. Failed or cancelled transfers retain their stages until explicit discard or
 successful publication; matching bytes alone do not retire an uncertain external operation.
+
+Private sync staging files without an owning connection journal or publication journal are
+discarded before connection inspection. Active capability probes and writes remain reserved.
+Disconnect first materializes and verifies ordinary files, then relinquishes its private
+artifacts and removes them; retained user files and pending publication recovery stay intact.

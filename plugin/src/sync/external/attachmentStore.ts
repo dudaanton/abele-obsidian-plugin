@@ -79,6 +79,7 @@ export class AttachmentStore {
       ledger: StateStore
       host: ExternalFileHost
       artifactPath?(name: string): string
+      cleanupPrivateArtifacts?(): Promise<void>
       binding: ConnectionBinding
       serial: ExternalSerialization
       assertOwned(): void
@@ -1117,9 +1118,38 @@ export class AttachmentStore {
         op = doc.operations.find((item) => item.operationId === opts.operationId)
       if (!op || doc.revision !== check.revision) return this.result('recovery-required')
       this.owned()
+      // Readiness has verified every ordinary original. Relinquish only private
+      // copies durably before unlinking, so a crash leaves sweepable orphan work.
+      const privatePrefix = this.options.artifactPath?.('')
+      const keep = (artifact: ExternalOperation['ownedArtifacts'][number]) =>
+        !privatePrefix || !artifact.path.startsWith(privatePrefix)
       await this.options.state.commit({
         expectedRevision: doc.revision,
+        files: doc.files
+          .filter((file) => file.retained.some((artifact) => !keep(artifact)))
+          .map((file) => ({
+            expectedRevision: file.localRevision,
+            next: {
+              ...file,
+              localRevision: file.localRevision + 1,
+              retained: file.retained.filter(keep),
+            },
+          })),
         operations: [
+          ...doc.operations
+            .filter(
+              (other) =>
+                other.operationId !== op.operationId &&
+                other.ownedArtifacts.some((artifact) => !keep(artifact))
+            )
+            .map((other) => ({
+              expectedRevision: other.revision,
+              next: {
+                ...other,
+                revision: other.revision + 1,
+                ownedArtifacts: other.ownedArtifacts.filter(keep),
+              },
+            })),
           {
             expectedRevision: op.revision,
             next: { ...op, revision: op.revision + 1, phase: 'disconnect-ready' },
@@ -1134,6 +1164,7 @@ export class AttachmentStore {
           ],
         },
       })
+      await this.options.cleanupPrivateArtifacts?.()
       return this.result('complete')
     })
   }
