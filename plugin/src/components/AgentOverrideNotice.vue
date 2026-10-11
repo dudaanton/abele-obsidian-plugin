@@ -54,6 +54,8 @@ function reset() {
   display: flex;
   align-items: center;
   flex-wrap: wrap;
+  // Native description rows clip text; this row also contains a focusable reset action.
+  overflow: visible;
   gap: var(--size-2-2);
   margin: 0;
 }

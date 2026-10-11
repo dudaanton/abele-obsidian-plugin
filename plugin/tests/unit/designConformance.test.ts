@@ -262,6 +262,11 @@ function localSmallUi(source: string): string[] {
   return errors
 }
 describe('migrated small UI', () => {
+  it('does not clip the reset action inside a native description row', () => {
+    expect(styleBlock(readFileSync(join(ROOT, 'AgentOverrideNotice.vue'), 'utf8'))).toMatch(
+      /\.abele-override-notice\s*\{[^}]*overflow:\s*visible/
+    )
+  })
   it('makes the period caption a named kit action rather than a clickable div', () => {
     const source = readFileSync(join(ROOT, 'obsidian/PeriodSelector.vue'), 'utf8')
     expect(template(source)).not.toMatch(/<div[^>]*__title[^>]*@click/)

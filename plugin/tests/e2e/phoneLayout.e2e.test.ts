@@ -1148,7 +1148,7 @@ const probeScript = `(async () => {
           // The native title is stationary over the scrolling settings page. At the point where
           // the Secrets introduction moves behind it, the title needs an opaque surface.
           const secretsIntro = () => [...document.querySelectorAll('.abele-settings__ai .abele-section__heading')]
-            .find((heading) => heading.textContent.trim() === 'Secrets')?.nextElementSibling
+            .find((heading) => heading.textContent.trim() === 'Secrets')?.closest('.abele-section')?.querySelector('.abele-section__desc')
           await until(secretsIntro, 5000)
           const intro = secretsIntro()
           const settingsModal = document.querySelector('.modal.mod-settings') || document.querySelector('.modal')
