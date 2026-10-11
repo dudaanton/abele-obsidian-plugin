@@ -287,6 +287,14 @@ describe.skipIf(!available)('drawing on a picture from where it is looked at', (
       path?: string
       bar?: { left: number; right: number; height: number }
       pressed?: unknown
+      touchProbe?: {
+        mobile: boolean
+        admitted: boolean
+        target: string | null
+        embed: boolean
+        menusBefore: number
+        menusAfter: number
+      }
     }>(`
       await until(() => app.workspace.layoutReady, 15000)
       closeInks()
@@ -319,13 +327,35 @@ describe.skipIf(!available)('drawing on a picture from where it is looked at', (
       await leaf.setViewState({ type: 'markdown', state: { file: NOTE, mode: 'source', source: false }, active: true })
       const imgs = await until(() => { const i = pictures(leaf, 'source'); return i.length === 2 && i }, 10000)
       let pressed = null
+      let touchProbe = null
       if (imgs) {
         const cdp = require('@electron/remote').getCurrentWebContents().debugger
         try { cdp.attach('1.3') } catch {}
-        const p = imgs[0].getBoundingClientRect()
+        const listenerResult = await cdp.sendCommand('Runtime.evaluate', {
+          expression: 'getEventListeners(document).touchstart?.map(entry => entry.listener.toString()) ?? []',
+          includeCommandLineAPI: true, returnByValue: true,
+        })
+        touchProbe = { mobile: app.isMobile, admitted: listenerResult.result.value.some(source => source.includes('this.pictureAt')), target: null, embed: false, menusBefore: document.querySelectorAll('.menu').length, menusAfter: 0 }
+        const recordTouch = evt => {
+          touchProbe.target = evt.target.tagName + '.' + evt.target.className
+          touchProbe.embed = !!evt.target.closest('.cm-editor .internal-embed.image-embed')
+        }
+        // The gallery uses a native modal now: its closing backdrop can still intercept
+        // touches after the viewer unmounts. Readiness includes the real hit target.
+        const p = await until(() => {
+          const box = imgs[0].getBoundingClientRect()
+          return document.elementFromPoint(Math.round(box.left + 20), Math.round(box.top + 20)) === imgs[0] && box
+        })
+        if (!p) throw new Error('Live-preview picture is not touch-reachable')
         const at = [{ x: Math.round(p.left + 20), y: Math.round(p.top + 20), id: 0 }]
-        await cdp.sendCommand('Input.dispatchTouchEvent', { type: 'touchStart', touchPoints: at })
-        await wait(1300)
+        document.addEventListener('touchstart', recordTouch, { capture: true, once: true })
+        try {
+          await cdp.sendCommand('Input.dispatchTouchEvent', { type: 'touchStart', touchPoints: at })
+          await wait(1300)
+          touchProbe.menusAfter = document.querySelectorAll('.menu').length
+        } finally {
+          document.removeEventListener('touchstart', recordTouch, { capture: true })
+        }
         await cdp.sendCommand('Input.dispatchTouchEvent', { type: 'touchEnd', touchPoints: [] })
         await wait(300)
         await shoot('long-press')
@@ -333,9 +363,18 @@ describe.skipIf(!available)('drawing on a picture from where it is looked at', (
         closeInks()
       }
       leaf.detach()
-      return { pressed, pen: { left: b.left, right: b.right, top: b.top, bottom: b.bottom, shown }, width: innerWidth, path: o?.path, bar: bb && { left: bb.left, right: bb.right, height: bb.height } }
+      return { pressed, touchProbe, pen: { left: b.left, right: b.right, top: b.top, bottom: b.bottom, shown }, width: innerWidth, path: o?.path, bar: bb && { left: bb.left, right: bb.right, height: bb.height } }
     `)
+    console.log('Live-preview long-press admission:', JSON.stringify(r.touchProbe))
     expect(r.error).toBeUndefined()
+    expect(r.touchProbe).toMatchObject({
+      mobile: true,
+      admitted: true,
+      target: expect.stringMatching(/^IMG\./),
+      embed: true,
+      menusBefore: 0,
+      menusAfter: 1,
+    })
     expect(r.pen!.shown).toBe(true)
     expect(r.pen!.left).toBeGreaterThanOrEqual(0)
     expect(r.pen!.right).toBeLessThanOrEqual(r.width!)
