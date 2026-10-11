@@ -130,5 +130,4 @@ const {
   timelineBaseInstances,
   settingsContainer,
 } = GlobalStore.getInstance()
-
 </script>

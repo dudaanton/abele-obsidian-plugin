@@ -1,17 +1,7 @@
 import { ChangeTracker } from '@/ai/rewind/ChangeTracker'
 import '@/helpers/deferredCleanup'
 import { openSyncedFile } from './sync/openSyncedFile'
-import {
-  Editor,
-  EventRef,
-  MarkdownPostProcessorContext,
-  MarkdownView,
-  Notice,
-  Plugin,
-  Platform,
-  TFile,
-  TFolder,
-} from 'obsidian'
+import { MarkdownPostProcessorContext, Notice, Plugin, Platform } from 'obsidian'
 import { setKeyboardDiagnostics } from '@/helpers/keyboardDiagnostics'
 import { applySettingsLook } from '@/helpers/settingsLook'
 import './styles.css'
@@ -92,15 +82,13 @@ import { AbeleSettingTab } from './settings'
 import './editor/HeaderExtension'
 import { VaultWatcherWrapper } from './helpers/VaultWatcherWrapper'
 import { exposeTestApi } from '@/testing/exposeTestApi'
-import { observePhoneReplayTransport } from '@/testing/phoneReplay'
-import type { SyncServiceDeps } from '@/sync/environment'
-import { readFileContent } from './helpers/vaultUtils'
-import { runAfterSync } from './helpers/runAfterSync'
-import { handleProtocolAction } from './helpers/protocolHandler'
-import { handleLinkAction } from './helpers/linkHandler'
-import { registerChartCodeblock } from './editor/ChartCodeblock'
-import { registerMapCodeblock } from './editor/MapCodeblock'
-import { registerMessageCardBlock } from './ai/messageCards'
+import './helpers/vaultUtils'
+import './helpers/runAfterSync'
+import './helpers/protocolHandler'
+import './helpers/linkHandler'
+import './editor/ChartCodeblock'
+import './editor/MapCodeblock'
+import './ai/messageCards'
 import { SnippetService } from './services/SnippetService'
 import { startCalendars } from './calendars/start'
 import '@/audio/voiceModal'
@@ -125,11 +113,10 @@ import { ChatSearchIndex } from '@/ai/ChatSearchIndex'
 import { applyQuickButton, setQuickButton } from '@/quickButton/mount'
 import '@/quickButton/open'
 import { HeaderCommands } from '@/headerButtons/viewActions'
-import { moveFooterFolds } from '@/composables/useFooterFold'
-import { moveFooterView } from '@/composables/useFooterView'
+import '@/composables/useFooterFold'
+import '@/composables/useFooterView'
 import { prepareTokenConnections } from './sync/tokenRegistryPreparation'
 import { tokenUi, TokenUi } from './sync/tokenUi'
-import { historyConnection } from './sync/tokenHistory'
 import { openDeviceReviews } from './sync/openDeviceReviews'
 import { transportOf } from './sync/environment'
 import { watchTheFront } from './sync/phone'

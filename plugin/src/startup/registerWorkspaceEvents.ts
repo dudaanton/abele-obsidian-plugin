@@ -11,7 +11,8 @@ import { ChatService } from '@/ai/ChatService'
 import { previewImage } from '@/commands/utilityDialogs'
 import { openChat } from '@/ai/openChat'
 
-import { SyncService } from '@/sync/SyncService'
+import { tokenUi } from '@/sync/tokenUi'
+import { historyConnection } from '@/sync/tokenHistory'
 import type { Plugin } from 'obsidian'
 
 /** Startup section; called at its original lifecycle position. */
@@ -91,12 +92,14 @@ export function registerWorkspaceEvents(plugin: Plugin) {
       // the plugin because Obsidian's own Sync puts an "Open version history" in plugin same
       // menu. Shown only on a device that is connected: on every other one the dialog could
       // only say so.
-      if (SyncService.getInstance().isConnected()) {
+      for (const row of tokenUi.value?.rows.value ?? []) {
+        if (!tokenUi.value?.runtimes.get(row.id)?.historyClient) continue
         menu.addItem((item) => {
           item
-            .setTitle('Open version history (Abele)')
+            .setTitle('Open version history (Abele) · ' + row.address)
             .setIcon('history')
             .onClick(() => {
+              historyConnection.value = row.id
               GlobalStore.getInstance().versionHistoryPath.value = file.path
             })
         })
