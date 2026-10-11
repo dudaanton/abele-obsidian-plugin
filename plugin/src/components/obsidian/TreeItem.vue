@@ -20,9 +20,11 @@
       <div class="tree-item-inner abele-tree-item__inner">
         <span ref="glyph" class="abele-tree-item__glyph" aria-hidden="true" />
         <span class="abele-tree-item__text">{{ text }}</span>
+        <span v-if="note" class="abele-tree-item__note">{{ note }}</span>
       </div>
-      <div v-if="flair || $slots.actions" class="tree-item-flair-outer">
+      <div v-if="flair || $slots.actions || $slots.end" class="tree-item-flair-outer">
         <span v-if="flair" class="tree-item-flair">{{ flair }}</span>
+        <slot name="end" />
         <!-- Shown while the row is pointed at or focused; always on a phone, which cannot point. -->
         <span v-if="$slots.actions" class="abele-tree-item__actions"><slot name="actions" /></span>
       </div>
@@ -45,6 +47,8 @@ import { setIcon } from 'obsidian'
 const props = withDefaults(
   defineProps<{
     text: string
+    /** Optional short location or secondary fact. */
+    note?: string
     /** A glyph before the name: `folder`, `file`. */
     icon?: string
     /** Muted text at the row's end: a size, a count. */
@@ -64,6 +68,7 @@ const props = withDefaults(
   }>(),
   {
     icon: undefined,
+    note: undefined,
     flair: undefined,
     active: false,
     collapsible: false,
@@ -124,6 +129,13 @@ watch(() => [props.icon, props.collapsible], draw, { flush: 'post' })
 
 .abele-tree-item__text {
   min-width: 0;
+  overflow-wrap: anywhere;
+}
+
+.abele-tree-item__note {
+  min-width: 0;
+  color: var(--text-muted);
+  font-size: var(--font-ui-smaller);
   overflow-wrap: anywhere;
 }
 

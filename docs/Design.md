@@ -127,6 +127,7 @@ state and accessibility tests before screens adopt them.
 | `Card` / `CardGrid` | Rich previews and explicit choices, not dense inventories. Card consumes `MetaLine` and optional `PathLabel`; subtitle is ordinary secondary prose. Covers/thumbnails and action slots remain. |
 | `TreeItem` / `FoldHeading` | Real hierarchies / folding list heading. Native tree classes, count and controlled folding. Plain trees have no artificial focus. |
 | `Badge` | Short status with host named colour and text. |
+| `StatusDot` | Compact host-colour state indicator with an accessible state label and native tooltip; never colour-only meaning. |
 | `Input`, `Dropdown`, `Checkbox`, `Search`, `Slider` | Host form controls. Password inputs do not offer remembrance; `Input` emits commit after editing. Sliders track input separately from committed changes. |
 | `Tabs`, `Breadcrumbs` | Native navigation; phone tabs may intentionally scroll with focused tab in view. Breadcrumbs expose folded trails. |
 | `NotePicker`, `IconPicker` | Host-styled choices with keyboard operation and named options. |
