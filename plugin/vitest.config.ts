@@ -3,6 +3,7 @@ import vue from '@vitejs/plugin-vue'
 import path from 'path'
 import { verifySyncFixture } from './scripts/verify-sync-inputs.mjs'
 import { missingServerTests } from './scripts/server-test-fixtures.mjs'
+import FastSequencer from './scripts/fast-sequencer.mjs'
 
 const skippedServerTests = missingServerTests()
 if (skippedServerTests.length)
@@ -48,12 +49,21 @@ export default defineConfig({
       // `instanceof TFile` works against fixtures built by tests/helpers/fakeVault.ts.
       { find: 'obsidian', replacement: path.resolve(__dirname, 'tests/mocks/obsidian.ts') },
       // Production embeds these ESM assets. Unit tests inject module/URL hosts instead of WebGL.
-      { find: 'virtual:maplibre-assets', replacement: path.resolve(__dirname, 'tests/mocks/maplibreAssets.ts') },
-      { find: 'virtual:abele-changelog', replacement: path.resolve(__dirname, 'tests/mocks/changelog.ts') },
+      {
+        find: 'virtual:maplibre-assets',
+        replacement: path.resolve(__dirname, 'tests/mocks/maplibreAssets.ts'),
+      },
+      {
+        find: 'virtual:abele-changelog',
+        replacement: path.resolve(__dirname, 'tests/mocks/changelog.ts'),
+      },
     ],
   },
   test: {
     globals: true,
+    // Bound process/memory pressure; the CLI can override this for a measured runner quota.
+    maxWorkers: 2,
+    ...(process.env.ABELE_FAST_SHARD_PLAN ? { sequence: { sequencer: FastSequencer } } : {}),
     // Vitest 4 keeps a re-used spy's call history. Each case still starts with fresh calls.
     clearMocks: true,
     environment: 'happy-dom',

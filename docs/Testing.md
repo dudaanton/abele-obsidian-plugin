@@ -49,6 +49,59 @@ carries Obsidian's own plugin rules and fails on any of them — see
 several of those rules read `manifest.json` from the working directory and the manifest lives
 in the root; the `lint` script changes directory for you.
 
+### Check caches
+
+`npm run types` and `npm run lint` accept `ABELE_CHECK_CACHE_DIR`, an absolute directory
+**outside the checkout**. Without it they remain cold. Set `ABELE_CHECK_COLD=1` for a reference
+run even when a cache directory is configured.
+
+Normal and strict-null TypeScript programs have separate incremental build info. Keys bind
+the canonical checkout path, parsed compiler options, configuration, installed dependency
+bytes and toolchain. TypeScript still checks changed sources and their dependants; cached
+build info is not a successful type-check receipt. Both passes must succeed before a build.
+
+Lint runs two disjoint inventories with the same rules. Files in the configuration's explicit
+non-type-aware block use ESLint's content strategy, with configuration (including nested
+formatter settings), manifest, installed rule payloads, environment and toolchain in the
+namespace. Everything else uses that strategy **only inside a namespace for identical
+complete repository inputs**, including ignored generated sources. An imported type change
+therefore invalidates typed lint even if the consuming file did not change.
+
+Only successful, checksum-sealed cache output is reused. Corruption, interrupted publication
+or contention is a miss; concurrent runs never share writable cache files. Keep the same
+canonical mount path across disposable containers to retain incremental reuse. Different
+checkout paths deliberately get different namespaces. Caches do not replace clean installs,
+fixture verification or complete verification receipts.
+
+### Balanced fast shards
+
+The default fast runner has an explicit worker limit and retains per-file isolation. A runner
+may override the limit with `--maxWorkers` after measuring its own CPU and memory budget.
+
+`plugin/scripts/fast-shards.mjs` produces a deterministic longest-processing-time plan from
+Vitest's complete `list --filesOnly` inventory and recorded module durations. Unknown files
+receive the median measured weight; every module has a minimum startup weight. Durations
+control placement only, never inclusion.
+
+From `plugin/`, a coordinator can use:
+
+```sh
+node scripts/fast-shards.mjs plan --expected=/tmp/sample-expected.json --plugin="$PWD" --count=2 --identity=sample-complete-input-digest --output=/tmp/sample-plan.json
+ABELE_FAST_SHARD_PLAN=/tmp/sample-plan.json npm test -- --shard=1/2
+ABELE_FAST_SHARD_PLAN=/tmp/sample-plan.json npm test -- --shard=2/2
+```
+
+The coordinator binds `identity` to its complete check-input digest, runs the shards in
+independent same-platform containers, and keeps reports and explicit collection/error
+attestations separate. **Vitest `list` ignores `--shard`**: list once before planning, then use
+the plan's file sets as each shard's expected inventory. Sequencing rejects changed, duplicate,
+missing or escaping modules and shard counts that differ from the sealed plan.
+
+The `merge` operation accepts only validated per-shard inventories with matching input and
+plan digests, successful exits, no unhandled errors and every expected file exactly once.
+Missing, interrupted or failed shards cannot earn a complete receipt. Keep the whole-run
+fixture exclusions alongside the merged inventory, not as omissions attributed to a shard.
+
 The repository guard runs first, both on commit and in CI: it refuses stray tool output,
 build results, big files, credentials and real home paths — see
 [Repository guard](Repository%20guard.md), which also says how to allow something on purpose.
