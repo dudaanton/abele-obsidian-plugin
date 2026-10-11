@@ -483,7 +483,13 @@ describe.skipIf(!available)('design catalogue desktop keyboard contracts', () =>
         win.webContents.sendInputEvent({type:'char',keyCode:' '});
         win.webContents.sendInputEvent({type:'keyUp',keyCode:'Space'}); await wait();
         if(control.getAttribute('aria-expanded') !== 'true') throw Error('Native Space did not expand detail');
-        const more = document.querySelector('.abele-design-catalogue .abele-sheet-header-actions [aria-haspopup="menu"]'); more.click(); await wait();
+        const more = document.querySelector('.abele-design-catalogue .abele-sheet-header-actions [aria-haspopup="menu"]');
+        // Programmatic click leaves focus on the preceding disclosure. Activate the trigger
+        // as a keyboard user does, so native dismissal has a real trigger to return to.
+        more.focus();
+        win.webContents.sendInputEvent({type:'keyDown',keyCode:'Enter'});
+        win.webContents.sendInputEvent({type:'char',keyCode:String.fromCharCode(13)});
+        win.webContents.sendInputEvent({type:'keyUp',keyCode:'Enter'}); await wait();
         const menu = document.querySelector('.menu'); if (!menu) throw Error('Native menu absent');
         const refresh = [...menu.querySelectorAll('.menu-item')].find(el=>el.textContent.includes('Refresh')); refresh.click(); await wait();
         if(document.activeElement !== more) throw Error('Menu did not return focus');

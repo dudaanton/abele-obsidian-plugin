@@ -85,7 +85,9 @@
 
 // --- Section ---
 
-.abele-finance-sidebar__section {
+.abele-finance-sidebar > .abele-finance-sidebar__section {
+  // This pane owns the gaps between its groups; Section's settings-page gap must not add up.
+  margin-top: 0;
   margin-bottom: var(--size-4-6);
 }
 
