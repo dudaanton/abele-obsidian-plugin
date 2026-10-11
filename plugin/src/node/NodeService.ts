@@ -288,9 +288,20 @@ export class NodeService {
       nodeFingerprint: target.node_fingerprint,
       publicKey: target.public_key,
     })
-    this.connections.get(id)?.destroy()
-    const connection = new NodeConnection(client, store)
-    this.connections.set(id, connection)
+    const previous = this.connections.get(id)
+    let connection: NodeConnection
+    if (previous) {
+      // Existing views, ports, subscriptions and chats retain this client/store identity.
+      await previous.refreshAuthorization()
+      Object.assign(previous.client.target, target)
+      await client.disconnect()
+      if (store !== previous.store) store.close()
+      connection = previous
+      await connection.connect()
+    } else {
+      connection = new NodeConnection(client, store)
+      this.connections.set(id, connection)
+    }
     this.nodes.value = this.registry.list()
     AgentsService.getInstance().setNodes(this.nodes.value)
     connection.start()
