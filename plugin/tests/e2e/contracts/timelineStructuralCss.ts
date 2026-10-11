@@ -1,19 +1,25 @@
-/** Keep the current scroller/chrome shell while comparing only frozen date-block styling. */
-export function timelineStructuralCss(
-  rules: Iterable<{ selectorText?: string; cssRules?: Iterable<any>; cssText: string }>
-): string {
-  const kept: string[] = []
-  for (const rule of rules) {
-    if (rule.selectorText) {
-      if (
-        rule.selectorText.includes('.abele-sidebar-panel') ||
-        rule.selectorText === '.abele-timeline__history'
-      )
-        kept.push(rule.cssText)
-    } else if (rule.cssRules) {
-      const nested = timelineStructuralCss(rule.cssRules)
-      if (nested) kept.push(rule.cssText.slice(0, rule.cssText.indexOf('{')) + '{' + nested + '}')
-    }
-  }
-  return kept.join('\n')
+import { parse, list } from 'postcss'
+
+/** Keep current chrome while replacing only the frozen date-block rules.
+ * Work from source text: CSSOM serialization loses a var()-based shorthand when a
+ * later longhand overrides it (for example sidebar padding plus padding-top).
+ */
+export function timelineStructuralCss(css: string, appearance = false): string {
+  const root = parse(css)
+  root.walkRules((rule) => {
+    const selectors = list.comma(rule.selector).filter((selector) => {
+      const dateBlock =
+        /\.(?:timeline__date\b|abele-timeline__(?:date-|block-content\b|tasks\b|no-tasks\b|completed-toggle\b))/.test(
+          selector
+        )
+      return dateBlock === appearance
+    })
+    if (!selectors.length) rule.remove()
+    else if (selectors.length !== list.comma(rule.selector).length)
+      rule.selector = selectors.join(', ')
+  })
+  root.walkAtRules((rule) => {
+    if (rule.nodes?.length === 0) rule.remove()
+  })
+  return root.toString()
 }
