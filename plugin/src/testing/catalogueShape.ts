@@ -49,6 +49,7 @@ export const CATALOGUE_COMPONENTS = [
   'PanelResizeHandle',
   'PathLabel',
   'PeriodSelector',
+  'Progress',
   'QrCode',
   'Quote',
   'RelativeTime',

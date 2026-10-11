@@ -39,6 +39,7 @@
         <ListRow
           v-for="(note, index) in page === 'rows' ? notes : notes.slice(0, 3)"
           :key="note.title"
+          v-model:expanded="note.expanded"
           :title="note.title"
           icon="file-text"
           preserve-extension
@@ -52,7 +53,6 @@
             { key: 'where', value: note.parent },
             { key: 'sources', value: note.sources },
           ]"
-          v-model:expanded="note.expanded"
           details-label="Sources"
           :details-count="note.sources"
           @open="select(note.title, index)"
@@ -192,6 +192,16 @@
         ><Section title="No passage selected"><Quote text="" /></Section>
       </template>
       <template v-else-if="page === 'states'">
+        <Section title="Progress">
+          <Setting name="Starting"><Progress label="Sample import starting" :value="0" /></Setting>
+          <Setting name="In progress"
+            ><Progress label="Sample import in progress" :value="50"
+          /></Setting>
+          <Setting name="Complete"
+            ><Progress label="Sample import complete" :value="100"
+          /></Setting>
+          <Setting name="Total unknown"><Progress label="Sample import total unknown" /></Setting>
+        </Section>
         <Section title="Compact states">
           <ListRow v-for="state in compactStates" :key="state.label" :title="state.label">
             <template #leading><StatusDot :tone="state.tone" :label="state.label" /></template>
@@ -247,6 +257,7 @@
       </template>
       <template v-else-if="page === 'waiting'">
         <ListRow
+          v-model:expanded="questionOpen"
           title="Sample researcher"
           icon="bot"
           :facts="[
@@ -254,7 +265,6 @@
             { key: 'where', value: 'Work' },
           ]"
           state="waiting"
-          v-model:expanded="questionOpen"
           details-label="Question"
           ><template #detail
             ><Quote text="Which folder should I use?" /><Button
@@ -557,6 +567,7 @@ import EventList from '@/components/obsidian/EventList.vue'
 import Quote from '@/components/obsidian/Quote.vue'
 import SwatchPicker from '@/components/obsidian/SwatchPicker.vue'
 import EmptyState from '@/components/obsidian/EmptyState.vue'
+import Progress from '@/components/obsidian/Progress.vue'
 import Image from '@/components/obsidian/Image.vue'
 import Icon from '@/components/obsidian/Icon.vue'
 import Button from '@/components/obsidian/Button.vue'

@@ -13,6 +13,16 @@ describe('test-only design catalogue', () => {
     expect([...CATALOGUE_COMPONENTS].sort()).toEqual(kit)
     expect(CATALOGUE_PAGES).toEqual(expect.arrayContaining(['artifact', 'comment', 'waiting']))
   })
+  it('renders named native progress states in the state recipes', () => {
+    const view = mount(DesignCatalogue, {
+      props: { page: 'states' },
+      global: { stubs: { Modal: { template: '<div><slot /></div>' } } },
+    })
+    const bars = view.findAll('progress')
+    expect(bars.map((bar) => bar.attributes('value'))).toEqual(['0', '50', '100', undefined])
+    expect(bars.every((bar) => !!bar.attributes('aria-label'))).toBe(true)
+    view.unmount()
+  })
   it('includes the named compact state indicators in the state recipes', () => {
     const view = mount(DesignCatalogue, {
       props: { page: 'states' },
