@@ -479,14 +479,30 @@ export class TokenUi {
   async disconnect(id: string): Promise<void> {
     const record = this.registry.records().find((one) => one.id === id)
     if (!record) return
+    // Snapshot authority and policy before waiting; successful exchanges persist
+    // progress independently of materialization. Credentials must be captured too.
+    const identity = (one: TokenConnectionRecord | undefined) =>
+      one && {
+        id: one.id,
+        kind: one.kind,
+        address: one.address,
+        spaceId: one.spaceId,
+        tokenId: one.tokenId,
+        scope: one.scope,
+        ledgerId: one.ledgerId,
+        secretReference: one.secretReference,
+        credential: this.secrets.get(one.secretReference),
+        pending: one.pending,
+        pendingCredential: one.pending && this.secrets.get(one.pending.secretReference),
+        paused: one.paused,
+        selective: one.selective,
+      }
+    const before = JSON.stringify(identity(record))
     this.runtimes.get(id)?.assertCurrent?.()
     await this.connectionChangeGuard(id)
     this.runtimes.get(id)?.assertCurrent?.()
     const current = this.registry.records().find((one) => one.id === id)
-    // Exchange status can change while materializing; authority and policy must not.
-    const identity = (one: typeof record | undefined) =>
-      one && { ...one, status: 'exchange-status' }
-    if (JSON.stringify(identity(current)) !== JSON.stringify(identity(record)))
+    if (JSON.stringify(identity(current)) !== before)
       throw new Error('Connection changed while disconnecting')
     this.registry.beginForget(id)
     this.refresh()

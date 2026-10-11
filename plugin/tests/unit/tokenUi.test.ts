@@ -1,6 +1,6 @@
 import { expect, it, vi } from 'vitest'
 import { TokenUi, connectionError } from '@/sync/tokenUi'
-import { TokenConnectionRegistry } from '@/sync/tokenConnectionRegistry'
+import { TokenConnectionRegistry, TOKEN_REGISTRY_KEY } from '@/sync/tokenConnectionRegistry'
 import { encodeAccessToken } from '@/sync/v2/contract'
 import { MemoryStateStore } from '@abele/sync-core'
 import { ExecutableReview } from '@/sync/executableReview'
@@ -360,4 +360,104 @@ it('asks only through the note-open port and persists denial for exactly that fi
   const other = { ...source, id: 'other-connection', address: 'https://other.example' }
   await reviews.attachments.observeNote(other, 'stable-local-note', [target.id])
   expect(await reviews.attachments.noteOpened(other, 'stable-local-note', runtime)).toHaveLength(1)
+})
+
+it('disconnects when an exchange persists progress while materialization is pending', async () => {
+  const { ui, registry } = setup()
+  await ui.connect(token)
+  const id = registry.records()[0].id
+  let entered!: () => void, release!: () => void
+  const waiting = new Promise<void>((resolve) => {
+    entered = resolve
+  })
+  const materialized = new Promise<void>((resolve) => {
+    release = resolve
+  })
+  ui.connectionChangeGuard = async () => {
+    entered()
+    await materialized
+  }
+  const departure = ui.disconnect(id)
+  await waiting
+  ui.publish(id, { lastSync: 123456 })
+  registry.storage(id).saveLocalStorage('abele-sync-token-state:cursor', 'sample-next-cursor')
+  registry.setStatus(id, 'syncing')
+  release()
+  await expect(departure).resolves.toBeUndefined()
+  expect(registry.records()).toEqual([])
+})
+
+it.each([
+  'server',
+  'space',
+  'token',
+  'scope kind',
+  'scope id',
+  'scope path',
+  'ledger',
+  'credential reference',
+  'credential',
+  'selective policy',
+  'pending binding',
+  'removed connection',
+])('refuses departure when %s changes during materialization', async (change) => {
+  const { ui, registry, data, keys } = setup()
+  await ui.connect(token)
+  const id = registry.records()[0].id
+  ui.connectionChangeGuard = async () => {
+    const document = structuredClone(data.get(TOKEN_REGISTRY_KEY)) as {
+      records: ReturnType<typeof registry.records>
+      selectedId: string
+    }
+    const record = document.records[0]
+    switch (change) {
+      case 'server':
+        record.address = 'https://changed.example'
+        break
+      case 'space':
+        record.spaceId = 'sample-changed-space'
+        break
+      case 'token':
+        record.tokenId = 'sample-changed-token'
+        break
+      case 'scope kind':
+        record.scope!.kind = 'group'
+        break
+      case 'scope id':
+        record.scope!.id = 'sample-changed-scope'
+        break
+      case 'scope path':
+        record.scope!.path = 'sample-folder'
+        break
+      case 'ledger':
+        record.ledgerId = 'sample-changed-ledger'
+        break
+      case 'credential reference':
+        record.secretReference += '-changed'
+        break
+      case 'credential':
+        keys.set(record.secretReference, 'b'.repeat(43))
+        break
+      case 'selective policy':
+        record.selective!.images = false
+        break
+      case 'pending binding':
+        record.pending = {
+          address: record.address,
+          spaceId: record.spaceId,
+          tokenId: record.tokenId,
+          scope: record.scope!,
+          secretReference: record.secretReference,
+          ledgerId: record.ledgerId,
+        }
+        break
+      case 'removed connection':
+        document.records = []
+        document.selectedId = ''
+        break
+    }
+    data.set(TOKEN_REGISTRY_KEY, document)
+  }
+  await expect(ui.disconnect(id)).rejects.toThrow('Connection changed while disconnecting')
+  if (change !== 'removed connection') expect(registry.records()).toHaveLength(1)
 })
