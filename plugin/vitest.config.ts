@@ -62,7 +62,7 @@ export default defineConfig({
   test: {
     globals: true,
     // Bound process/memory pressure; the CLI can override this for a measured runner quota.
-    maxWorkers: 2,
+    maxWorkers: 3,
     ...(process.env.ABELE_FAST_SHARD_PLAN ? { sequence: { sequencer: FastSequencer } } : {}),
     // Vitest 4 keeps a re-used spy's call history. Each case still starts with fresh calls.
     clearMocks: true,

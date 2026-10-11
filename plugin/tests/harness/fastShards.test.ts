@@ -1,5 +1,6 @@
 // @vitest-environment node
 import { describe, expect, it } from 'vitest'
+import fastConfig from '../../vitest.config'
 import { mkdtempSync, readFileSync, rmSync, writeFileSync } from 'node:fs'
 import { execFileSync } from 'node:child_process'
 import { tmpdir } from 'node:os'
@@ -42,6 +43,11 @@ const parts = (p: any) =>
   }))
 
 describe('duration-balanced fast shards', () => {
+  it('bounds workers explicitly while preserving per-file isolation', () => {
+    expect(fastConfig.test?.maxWorkers).toBe(3)
+    expect(fastConfig.test?.isolate).not.toBe(false)
+  })
+
   it('balances long files deterministically and assigns every expected file once', () => {
     const p = plan()
     expect(p.shards.map((s: any) => s.durationMs)).toEqual([10000, 9000])
