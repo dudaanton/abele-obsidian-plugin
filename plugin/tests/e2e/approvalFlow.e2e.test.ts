@@ -34,12 +34,13 @@ export const approvalScript = (screen: string) => `(async () => {
   if (app.vault.getAbstractFileByPath(root)) throw Error('sample folder already exists')
   let session, observer, frame = 0
   let plan = [], requested = false, stage = ''
-  const report = { listed: [], executed: [], cards: [], frames: [], persisted: [], shots: [], chatViews: 0, transportCalls: 0, correctHeader: false, redacted: false, readback: false, noPlaintext: false, mcpChangedPending: false, mcpSeparatelyAllowed: false, skippedWrite: false, unreadablePending: false, error: '' }
+  const report = { listed: [], executed: [], cards: [], frames: [], persisted: [], shots: [], chatViews: 0, transportCalls: 0, correctHeader: false, redacted: false, readback: false, noPlaintext: false, mcpChangedPending: false, mcpSeparatelyAllowed: false, skippedWrite: false, unreadablePending: false, error: '', transitions: [] }
+  const state = () => ({ stage, session: session?.id, active: chats.activeTabId.value, streaming: session?.isStreaming.value, executing: session?.isExecutingTool.value, compacting: session?.isCompacting.value, pending: session?.pendingToolCalls.value.map(c=>c.id) })
   const fake = 'https://sample-provider.invalid/v1'
   const wait = ms => new Promise(resolve => setTimeout(resolve, ms))
   const until = async fn => {
     const deadline = Date.now() + 5000
-    while (!fn()) { if (Date.now() > deadline) throw Error('sample transition timed out'); await wait(20) }
+    while (!fn()) { if (Date.now() > deadline) throw Error('sample transition timed out: ' + JSON.stringify(state())); await wait(20) }
   }
   const toolCall = (id, name, args) => ({ id, name, args })
   const keyArgs = { url: 'https://api.sample.example/data', basicAuth: { username: 'sample-user', password: '\${abele_key:sample}' } }
@@ -68,7 +69,9 @@ export const approvalScript = (screen: string) => `(async () => {
   const click = text => {
     const button = [...card().querySelectorAll('button')].find(b => b.textContent === text)
     if (!button) throw Error('missing sample action: ' + text)
+    report.transitions.push({ action: text, when: 'before', ...state() })
     button.click()
+    report.transitions.push({ action: text, when: 'after', ...state() })
   }
   const start = async (name, calls) => {
     stage = name; plan = calls; requested = false
@@ -213,7 +216,9 @@ describe('approval transitions in the running chat', () => {
           await reloadApp('app.emulateMobile(true)')
           evalRaw("require('@electron/remote').getCurrentWindow().setContentSize(390, 844)")
         }
-        const raw = await evalLong(approvalScript(screen), 35_000)
+        // Native screenshots have their own bounded host calls; the semantic waits above
+        // still fail after five seconds. Allow the complete probe to return that evidence.
+        const raw = await evalLong(approvalScript(screen), 180_000)
         if (raw.startsWith('Error:')) throw Error(raw)
         const report = JSON.parse(raw)
         console.info(JSON.stringify(report))
@@ -254,6 +259,6 @@ describe('approval transitions in the running chat', () => {
         if (screen === 'mobile') await restoreDesktopWindow()
       }
     },
-    90_000
+    240_000
   )
 })
