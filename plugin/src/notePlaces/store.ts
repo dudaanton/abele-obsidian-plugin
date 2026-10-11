@@ -20,6 +20,8 @@ export interface CursorPlace {
 export interface AnchorPlace {
   key: string
   offset: number
+  /** For a partly hidden row, preserve its trailing edge through lazy placeholder resizing. */
+  height?: number
 }
 
 /** A note's place: its scroll as the view reports it, the selection, and when it was saved. */
@@ -60,7 +62,13 @@ function placeFrom(raw: unknown): NotePlace | null {
     typeof a.offset === 'number' &&
     Number.isFinite(a.offset)
   )
-    place.anchor = { key: a.key, offset: a.offset }
+    place.anchor = {
+      key: a.key,
+      offset: a.offset,
+      ...(typeof a.height === 'number' && Number.isFinite(a.height) && a.height > 0
+        ? { height: a.height }
+        : {}),
+    }
   return place
 }
 
@@ -71,7 +79,12 @@ const samePos = (a: { line: number; ch: number }, b: { line: number; ch: number 
 export function samePlace(a: NotePlace | undefined, b: NotePlace | undefined): boolean {
   if (!a || !b) return a === b
   if (a.scroll !== b.scroll) return false
-  if (a.anchor?.key !== b.anchor?.key || a.anchor?.offset !== b.anchor?.offset) return false
+  if (
+    a.anchor?.key !== b.anchor?.key ||
+    a.anchor?.offset !== b.anchor?.offset ||
+    a.anchor?.height !== b.anchor?.height
+  )
+    return false
   if (!a.cursor || !b.cursor) return !a.cursor && !b.cursor
   return samePos(a.cursor.from, b.cursor.from) && samePos(a.cursor.to, b.cursor.to)
 }

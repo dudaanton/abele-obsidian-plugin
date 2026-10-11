@@ -177,6 +177,14 @@ in settings transfer, and the optional script-trust switch does not control temp
 Notice deduplication is session memory only and lasts only while a review notice is connected;
 a dismissed notice can be shown again on the next blocked application.
 
+## Device-local note positions
+
+Vault-scoped local storage `abele-note-places` keeps each note's scroll, cursor and optional
+footer-row anchor by note path. An anchor records its row key and top offset in pixels. A
+partly scrolled-past row also records its positive `height`, so restoration holds its visible
+trailing edge while lazy content replaces a shorter placeholder. Older anchors without height
+continue to align their top. These positions are device-local, not note contents or synced files.
+
 ## Local agent attention
 
 Chat metadata may contain `attention`: an explicit run identity, timestamp, target message and

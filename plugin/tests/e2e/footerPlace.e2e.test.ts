@@ -25,10 +25,12 @@ import {
   reloadApp,
 } from './helpers/obsidianCli'
 import { onPhone, targets } from './helpers/target'
+import { shotDir } from './helpers/shots'
 
 targets('desktop', 'phone')
 
 const FOLDER = 'Footer place probe'
+const SHOTS = shotDir('footer-place')
 const TASKS = 70
 /** The row looked at, by its place in the list: past the first two pages of twenty. */
 const ROW = 44
@@ -180,6 +182,12 @@ const script = `(async () => {
     const after = row ? topOf(row) : null
     const rowsAfter = rows().length
     report.reopened = editorSnapshot()
+    const picture = ${JSON.stringify(SHOTS)} + '/' + (app.isMobile ? 'phone' : 'desktop') + '-restored.png'
+    if (window.__e2eHost) await window.__e2eHost.shot(picture)
+    else {
+      const image = await require('@electron/remote').getCurrentWebContents().capturePage()
+      require('fs').writeFileSync(picture, image.toPNG())
+    }
     // A row draws its text once it is on screen: the opened one is brought into view to look.
     rowNamed(${OPENED})?.scrollIntoView({ block: 'center' })
     const opened = !!(await until(() => rowNamed(${OPENED})?.querySelector('.abele-task-view__description'), 3000))

@@ -36,7 +36,10 @@ export function anchorAt(root: HTMLElement, scroller: HTMLElement): AnchorPlace 
   }
   const key = best?.getAttribute('data-abele-anchor')
   if (!best || !key) return null
-  return { key, offset: Math.round(topIn(best, scroller)) }
+  const offset = Math.round(topIn(best, scroller))
+  // A partly hidden lazy row can reopen shorter, entirely above the viewport. Keep its
+  // visible trailing edge, so it can render and the rows below it stay where they were.
+  return { key, offset, ...(offset < 0 ? { height: best.getBoundingClientRect().height } : {}) }
 }
 
 function rowOf(root: HTMLElement, key: string): Element | null {
@@ -56,7 +59,9 @@ export function alignAnchor(
 ): boolean {
   const row = rowOf(root, anchor.key)
   if (!row) return false
-  const off = topIn(row, scroller) - anchor.offset
+  const heightChange =
+    anchor.height === undefined ? 0 : row.getBoundingClientRect().height - anchor.height
+  const off = topIn(row, scroller) + heightChange - anchor.offset
   if (Math.abs(off) > 1) scroller.scrollTop += off
   return true
 }
