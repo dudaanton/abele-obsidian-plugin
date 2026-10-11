@@ -99,6 +99,7 @@ const script = `(async () => {
     await until(message)
     phase='propose reply revision'
     child=await comments.createOnMessage(parent,'sample-reply','small lantern',2)
+    if(!child)throw Error('Revision discussion was not created')
     await child.addUserNote('Please clarify the selected description.')
     const tool=child.getTools().find(t=>t.name==='propose_reply_revision')
     child.handleAgentEvent({type:'tool_start',toolCallId:'sample-proposal',toolName:tool.name,args:{text:'bright lamp',request:'Please clarify the selected description.'}})
@@ -106,10 +107,17 @@ const script = `(async () => {
     child.handleAgentEvent({type:'tool_end',toolCallId:'sample-proposal',result,isError:false});await child.save()
     report.proposed=result.details.replyProposal.old
     report.unchanged=parent.messages.value[0].content===source
+    // Finish fixture writes before selecting the saved discussion whose controls are measured.
+    if(!await comments.showInSidebar(child.commentId))throw Error('Revision discussion was not presented')
     const review=await until(()=>[...document.querySelectorAll('.abele-ai-chat button')].find(b=>b.textContent.trim()==='Review reply revision'))
     review.click()
+    phase='opening revision dialog'
     const dialog=await until(()=>document.querySelector('.abele-reply-revision'))
-    await until(()=>dialog.querySelector('.cm-editor'));await wait(300)
+    phase='rendering passage diff'
+    await until(()=>{
+      const diff=dialog.querySelector('.abele-diff__body')
+      return diff && diff.textContent.includes('**small** lantern') && diff.textContent.includes('bright lamp')
+    });await wait(300)
     const modal=dialog.closest('.modal'), r=modal.getBoundingClientRect()
     report.dialog={left:r.left,right:r.right,bottom:r.bottom,width:innerWidth,height:innerHeight,buttons:[...modal.querySelectorAll('.abele-modal__footer button')].filter(b=>b.getBoundingClientRect().bottom<=innerHeight).map(b=>b.textContent.trim())}
     await shot('passage-diff')

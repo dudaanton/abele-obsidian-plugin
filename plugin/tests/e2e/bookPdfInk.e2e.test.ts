@@ -532,6 +532,8 @@ describe.skipIf(!available)('drawing on the pages of a PDF', () => {
         overflow: number
       }
       fits?: boolean
+      lastActionReachable?: boolean
+      scrolled?: boolean
       finger?: boolean
       paths?: number
       heard?: string[]
@@ -549,8 +551,17 @@ describe.skipIf(!available)('drawing on the pages of a PDF', () => {
       click(view, '.abele-book-reader__draw')
       const barEl = await until(() => q(view, '.abele-book-ink'))
       await ready(() => barEl.clientWidth > 0 && barEl.getBoundingClientRect().height > 0, 'phone ink bar layout')
-      const fits = barEl.scrollWidth <= barEl.clientWidth + 1
       const b = barEl.getBoundingClientRect()
+      const fits = b.left >= 0 && b.right <= innerWidth + 1 && getComputedStyle(barEl).overflowX === 'auto'
+      // Its contents intentionally overflow; the clipping viewport fits, and scrolling
+      // must bring even the final action into that viewport without moving the page.
+      const last = barEl.querySelector('.abele-book-ink__redo')
+      barEl.scrollLeft = barEl.scrollWidth
+      await wait(100)
+      const end = last.getBoundingClientRect()
+      const lastActionReachable = end.width > 0 && end.left >= b.left && end.right <= b.right + 1
+      const scrolled = barEl.scrollLeft > 0
+      barEl.scrollLeft = 0
       const finger = view.model.ink.finger
       const doc = await until(() => page(view, 2)?.querySelector('#canvas img') && page(view, 2))
       const f = frame(doc)
@@ -559,7 +570,7 @@ describe.skipIf(!available)('drawing on the pages of a PDF', () => {
       ears.stop()
       const paths = inked(doc)
       await shoot('phone')
-      return { line, fits, finger, paths, heard: ears.heard, bar: { height: b.height, top: b.top, bottom: b.bottom, window: window.innerHeight } }
+      return { line, fits, lastActionReachable, scrolled, finger, paths, heard: ears.heard, bar: { height: b.height, top: b.top, bottom: b.bottom, window: window.innerHeight } }
     `)
     expect(phone.error).toBeUndefined()
     const { foot, pen, mark, overflow } = phone.line!
@@ -568,6 +579,8 @@ describe.skipIf(!available)('drawing on the pages of a PDF', () => {
     expect(mark.right).toBeLessThanOrEqual(foot.right + 1)
     expect(pen.right).toBeLessThan(mark.left)
     expect(phone.fits).toBe(true)
+    expect(phone.lastActionReachable).toBe(true)
+    expect(phone.scrolled).toBe(true)
     expect(phone.finger).toBe(true)
     expect(phone.paths).toBe(1)
     expect(phone.heard).toEqual([])

@@ -72,7 +72,7 @@ describe.skipIf(!available)('one view of a chat’s artifacts', () => {
           const tc = { id: 'sample-' + name + '-' + session.allMessages.value.length, name, arguments: args }
           session.pendingToolCalls.value = [tc]
           session.ensurePendingToolCallMessage(tc)
-          await session.executeCurrentPendingTool(undefined, undefined, true)
+          await session.executeCurrentPendingTool(tc, args, undefined, true)
           session.updateVisibleMessages(); await session.save()
         }
         await execute('generate_image', { prompt: 'Synthetic square' })
