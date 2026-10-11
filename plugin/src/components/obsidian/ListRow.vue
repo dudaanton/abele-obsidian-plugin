@@ -196,7 +196,7 @@ const stateIcon = {
 .abele-list-row__main.is-clickable:disabled {
   cursor: default;
 }
-.abele-list-row__opener {
+.abele-list-row .abele-list-row__opener {
   flex: 0 0 auto;
   align-self: flex-start;
   padding: 0;
@@ -207,7 +207,7 @@ const stateIcon = {
   align-items: flex-start;
   gap: var(--size-4-1);
 }
-.abele-list-row__status-icon {
+.abele-list-row .abele-list-row__status-icon {
   flex: 0 0 auto;
   padding: 0;
   min-height: 1lh;
@@ -249,8 +249,16 @@ const stateIcon = {
   margin: 0;
 }
 .abele-list-row__actions .abele-obsidian-icon {
-  align-items: flex-start;
+  /* Keep the native horizontal inset, but centre the glyph on the row's first line. */
+  font: inherit;
+  min-height: 1lh;
+  align-items: center;
   padding-block: 0;
+}
+.abele-list-row__actions .abele-obsidian-icon__icon {
+  /* The phone hit box stays large; its paint still follows the title's first line. */
+  align-self: flex-start;
+  height: 1lh;
 }
 .abele-list-row__snippet,
 .abele-list-row__state {
