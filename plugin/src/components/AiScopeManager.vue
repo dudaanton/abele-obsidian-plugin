@@ -9,6 +9,8 @@
       @update:full-vault-access="scope?.setFullVaultAccess($event)"
     />
 
+    <AiNodeScopeEditor v-if="session" :key="session.id" :session="session" />
+
     <AgentOverrideNotice
       field="permissionMode"
       from-agent="Permission mode comes from this chat's agent."
@@ -29,6 +31,7 @@ import { computed } from 'vue'
 import Setting from './obsidian/Setting.vue'
 import Dropdown from './obsidian/Dropdown.vue'
 import AiScopeEditor from './AiScopeEditor.vue'
+import AiNodeScopeEditor from './AiNodeScopeEditor.vue'
 import AgentOverrideNotice from './AgentOverrideNotice.vue'
 import type { ScopeEntry } from '@/ai/ScopeResolver'
 import { ChatService } from '@/ai/ChatService'

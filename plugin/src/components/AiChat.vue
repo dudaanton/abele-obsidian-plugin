@@ -114,6 +114,8 @@
         </div>
       </div>
 
+      <AiNodeScopeChips v-if="session" :key="session.id" :session="session" />
+
       <ChatFindBar
         v-if="find.isOpen.value"
         v-show="!composing"
@@ -491,6 +493,7 @@ import { CommentService } from '@/ai/CommentService'
 import TemplateVariablesModal from './TemplateVariablesModal.vue'
 import { AbeleConfig } from '@/services/AbeleConfig'
 import { ChatService, type PendingInput } from '@/ai/ChatService'
+import AiNodeScopeChips from './AiNodeScopeChips.vue'
 import { AgentsService } from '@/agents/AgentsService'
 import { fileMentions } from '@/ai/fileMentions'
 import { GlobalStore } from '@/stores/GlobalStore'
