@@ -1,4 +1,4 @@
-import { describe, expect, it, vi } from 'vitest'
+import { afterEach, describe, expect, it, vi } from 'vitest'
 import type { App } from 'obsidian'
 import { sha256 } from '@abele/sync-core'
 import { ObsidianFileSystem } from '@/sync/ObsidianFileSystem'
@@ -13,6 +13,7 @@ const source = 'Media/sample.bin'
 const staging = 'Media/.abele-external-sample.incoming'
 const sidecar = source + '.abele-ref'
 const base = bytes('sample verified bytes')
+afterEach(() => vi.unstubAllGlobals())
 const request = {
   operationId: 'sample-operation',
   fileId: 'sample-file',
@@ -81,6 +82,58 @@ it('stages a chunk source without calling the whole-file read port', async () =>
   expect(read).not.toHaveBeenCalled()
   expect(close).toHaveBeenCalled()
   fixture.host.close()
+})
+
+it('verifies mobile resource paths through the guarded source staging adapter', async () => {
+  const fixture = setup()
+  const adapter = fixture.fake.vault.adapter
+  const nativePath = (path: string) => 'capacitor://localhost/_capacitor_file_/sample/' + path
+  adapter.getResourcePath = nativePath
+  vi.stubGlobal('Capacitor', {
+    Plugins: {
+      Filesystem: {
+        stat: async ({ path }: { path: string }) =>
+          adapter.stat(path.slice('file:///sample/'.length)),
+        readFile: async ({
+          path,
+          offset,
+          length,
+        }: {
+          path: string
+          offset: number
+          length: number
+        }) => {
+          const data = new Uint8Array(
+            await adapter.readBinary(path.slice('file:///sample/'.length))
+          )
+          return { data: btoa(String.fromCharCode(...data.slice(offset, offset + length))) }
+        },
+      },
+    },
+  })
+  adapter.appendBinary = async (path, chunk) => {
+    const before = new Uint8Array(await adapter.readBinary(path)),
+      next = new Uint8Array(before.length + chunk.byteLength)
+    next.set(before)
+    next.set(new Uint8Array(chunk), before.length)
+    await adapter.writeBinary(path, next.buffer)
+  }
+  try {
+    await fixture.host.requireTransfer(200 * 1024 * 1024)
+    const artifact = await fixture.artifact()
+    expect(
+      await fixture.run((effects) =>
+        effects.stageSource(artifact, {
+          size: base.length,
+          read: async (offset, length) => base.slice(offset, offset + length),
+          assertUnchanged: async () => {},
+          close: async () => {},
+        })
+      )
+    ).toEqual({ status: 'staged' })
+  } finally {
+    fixture.host.close()
+  }
 })
 
 async function reason(work: Promise<unknown>) {

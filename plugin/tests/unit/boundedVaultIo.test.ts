@@ -5,9 +5,13 @@ import { BoundedVaultIo } from '@/sync/boundedVaultIo'
 const MiB = 1024 * 1024
 afterEach(() => vi.unstubAllGlobals())
 describe('bounded vault I/O', () => {
-  it.each([true, false])(
-    'probes mobile path mapping and offset support before reading a virtual large file (ranges=%s)',
-    async (ranges) => {
+  it.each([
+    [true, false],
+    [false, false],
+    [true, true],
+  ])(
+    'probes mobile path mapping and offset support before reading a virtual large file (ranges=%s, resource=%s)',
+    async (ranges, resource) => {
       const size = 3 * 1024 * MiB + 13
       const probes = new Map<string, Uint8Array>()
       const readBinary = vi.fn(() => {
@@ -15,7 +19,12 @@ describe('bounded vault I/O', () => {
       })
       const calls: { offset: number; length: number; chunkSize: number; path: string }[] = []
       const adapter = {
-        getFullPath: (path: string) => 'file:///sample/' + path,
+        ...(resource
+          ? {
+              getResourcePath: (path: string) =>
+                'capacitor://localhost/_capacitor_file_/sample/' + path + '?v=1',
+            }
+          : { getFullPath: (path: string) => 'file:///sample/' + path }),
         exists: async (path: string) => probes.has(path),
         stat: async (path: string) => ({
           type: 'file',

@@ -197,6 +197,8 @@ export class ExternalFileHost {
       get: (target, key) => {
         const value = Reflect.get(target, key)
         if (typeof value !== 'function') return value
+        // Native filesystem calls require the adapter's synchronous path mapping.
+        if (key === 'getFullPath' || key === 'getResourcePath') return value.bind(target)
         return (...args: unknown[]) => {
           const work = async () => {
             this.assertOwned()

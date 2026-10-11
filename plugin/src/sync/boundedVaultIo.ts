@@ -146,15 +146,27 @@ export class BoundedVaultIo {
     if (!stat || stat.type !== 'file') throw new EngineError('io', `cannot read ${path}`)
     return stat
   }
-  /** No Directory is supplied: getFullPath's absolute vault path is used by Capacitor.
+  private mobilePath(path: string): string {
+    if (this.raw.getFullPath) return this.raw.getFullPath(path)
+    const resource = new URL(this.adapter.getResourcePath(path))
+    if (resource.protocol === 'file:') return new URL(resource.pathname, 'file://').href
+    const prefix = '/_capacitor_file_/'
+    if (
+      resource.hostname === 'localhost' &&
+      ['capacitor:', 'http:', 'https:'].includes(resource.protocol) &&
+      resource.pathname.startsWith(prefix)
+    )
+      return new URL(resource.pathname.slice(prefix.length - 1), 'file://').href
+    throw new EngineError('io', 'Native vault path mapping is unavailable')
+  }
+  /** No Directory is supplied: use the adapter's native path or Capacitor file resource URL.
    * Probe both mapping and offset/length against a tiny file, never against a large input. */
   private mobile(): Promise<MobileFiles | null> {
     return (this.rangedMobile ??= this.probeMobile())
   }
   private async probeMobile(): Promise<MobileFiles | null> {
     const files = mobileFiles()
-    if ((!files?.readFile && !files?.readFileInChunks) || !files?.stat || !this.raw.getFullPath)
-      return null
+    if ((!files?.readFile && !files?.readFileInChunks) || !files?.stat) return null
     const path = `.abele-sync-${Math.random().toString(36).slice(2, 10).padEnd(8, '0')}.tmp`
     let created = false
     try {
@@ -162,7 +174,7 @@ export class BoundedVaultIo {
       this.assertOwned()
       await this.adapter.writeBinary(path, new Uint8Array([11, 37, 89, 143]).buffer)
       created = true
-      const absolute = this.raw.getFullPath(path)
+      const absolute = this.mobilePath(path)
       const stat = await files.stat({ path: absolute })
       const bytes = await readMobileChunk(files, absolute, 1, 2)
       if (stat.size !== 4 || bytes.length !== 2 || bytes[0] !== 37 || bytes[1] !== 89) return null
@@ -235,7 +247,7 @@ export class BoundedVaultIo {
             received += bytesRead
           }
         } else if (files) {
-          bytes = await readMobileChunk(files, raw.getFullPath(path), offset, length, signal)
+          bytes = await readMobileChunk(files, this.mobilePath(path), offset, length, signal)
         } else bytes = fallback.slice(offset, offset + length)
         signal?.throwIfAborted()
         this.assertOwned()
