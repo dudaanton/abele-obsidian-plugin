@@ -55,20 +55,58 @@ export function generateChangelog(root = project, options = {}) {
   const packageVersion = readMetadata(packagePath).version
   if (target !== packageVersion || !version(target))
     fail('manifest and package versions differ or are invalid')
-  const isAncestor = (a, b) => {
+  // Read the reachable DAG once. Parents preserve merge-base and range semantics, while
+  // subjects and UTC dates no longer need one subprocess per release boundary.
+  const graph = new Map(
+    git('log', '--format=%H%x09%P%x09%cI%x09%ct%x09%s', head)
+      .split('\n')
+      .filter(Boolean)
+      .map((line) => {
+        const [, revision, parents, date, timestamp, subject] =
+          /^([^\t]+)\t([^\t]*)\t([^\t]+)\t(\d+)\t(.*)$/s.exec(line)
+        return [
+          revision,
+          { revision, parents: parents ? parents.split(' ') : [], date, timestamp, subject },
+        ]
+      })
+  )
+  const resolved = new Map()
+  const resolveRevision = (revision) => {
+    if (graph.has(revision) || /^[a-f0-9]{40}$/.test(revision)) return revision
+    if (resolved.has(revision)) return resolved.get(revision)
+    let value = null
     try {
-      git('merge-base', '--is-ancestor', a, b)
-      return true
+      value = git('rev-parse', '--verify', '--end-of-options', `${revision}^{commit}`)
     } catch {
-      return false
+      /* Missing historical boundary. */
     }
+    resolved.set(revision, value)
+    return value
+  }
+  const isAncestor = (a, b) => {
+    const ancestor = resolveRevision(a)
+    const start = resolveRevision(b)
+    if (!ancestor || !graph.has(ancestor) || !start) return false
+    const pending = [start]
+    const seen = new Set()
+    while (pending.length) {
+      const revision = pending.pop()
+      if (revision === ancestor) return true
+      if (seen.has(revision)) continue
+      seen.add(revision)
+      pending.push(...(graph.get(revision)?.parents ?? []))
+    }
+    return false
   }
   const tags = git('tag', '-l')
     .split('\n')
     .filter((name) => version(name) && compare(name, target) <= 0)
+  const tagRevisions = tags.length
+    ? git('rev-parse', ...tags.map((tag) => `refs/tags/${tag}^{commit}`)).split('\n')
+    : []
   const entries = new Map()
-  for (const tag of tags) {
-    const revision = git('rev-parse', `${tag}^{commit}`)
+  for (const [index, tag] of tags.entries()) {
+    const revision = tagRevisions[index]
     if (!isAncestor(revision, head)) continue
     const key = normalized(tag)
     if (entries.has(key)) fail(`conflicting tag aliases for ${key}`)
@@ -83,11 +121,7 @@ export function generateChangelog(root = project, options = {}) {
   }
   // The release script commits a version bump before attaching the lightweight tag. This
   // exact HEAD is the only untagged current version allowed to enter the catalog.
-  if (
-    !entries.has(target) &&
-    /^chore: bump version to /.test(git('show', '-s', '--format=%s', head)) &&
-    git('show', '-s', '--format=%s', head) === `chore: bump version to ${target}`
-  ) {
+  if (!entries.has(target) && graph.get(head).subject === `chore: bump version to ${target}`) {
     if (
       JSON.parse(git('show', `${head}:manifest.json`)).version !== target ||
       JSON.parse(git('show', `${head}:${packagePath}`)).version !== target
@@ -99,7 +133,11 @@ export function generateChangelog(root = project, options = {}) {
     fail(
       `current version ${target} has no release boundary; fetch missing tags or commit the release bump`
     )
-  const bumps = git('log', '--first-parent', '--format=%H%x09%s', head).split('\n')
+  const bumps = []
+  for (let revision = head; revision; revision = graph.get(revision)?.parents[0]) {
+    const commit = graph.get(revision)
+    bumps.push(`${revision}\t${commit.subject}`)
+  }
   for (const line of bumps) {
     const match = /^([^\t]+)\tchore: bump version to (\d+\.\d+\.\d+)$/.exec(line)
     if (!match || compare(match[2], target) > 0) continue
@@ -117,11 +155,13 @@ export function generateChangelog(root = project, options = {}) {
   }
   const changes = options.overrides ?? overrides
   const unrecognized = []
+  // Ordered boundaries are linear: the accumulated reachable set is precisely what Git
+  // excludes in previous..current, including all side-branch ancestors of older merges.
+  const included = new Set()
   const releases = ordered
-    .map((entry, i) => {
-      const utcDate =
-        entry.date ??
-        new Date(git('show', '-s', '--format=%cI', entry.revision)).toISOString().slice(0, 10)
+    .map((entry) => {
+      const revision = resolveRevision(entry.revision)
+      const utcDate = entry.date ?? new Date(graph.get(revision).date).toISOString().slice(0, 10)
       const result = {
         version: entry.version,
         date: utcDate,
@@ -130,14 +170,21 @@ export function generateChangelog(root = project, options = {}) {
         fixes: [],
         improvements: [],
       }
-      const range = i ? `${ordered[i - 1].revision}..${entry.revision}` : entry.revision
-      const commits = git('log', '--no-merges', '--format=%ct%x09%H%x09%s', range)
-        .split('\n')
-        .filter(Boolean)
-        .sort(
-          (a, b) =>
-            Number(a.split('\t')[0]) - Number(b.split('\t')[0]) || (a < b ? -1 : a > b ? 1 : 0)
-        )
+      const commits = []
+      const pending = [revision]
+      while (pending.length) {
+        const hash = pending.pop()
+        if (included.has(hash)) continue
+        included.add(hash)
+        const commit = graph.get(hash)
+        pending.push(...commit.parents)
+        if (commit.parents.length < 2)
+          commits.push(`${commit.timestamp}\t${hash}\t${commit.subject}`)
+      }
+      commits.sort(
+        (a, b) =>
+          Number(a.split('\t')[0]) - Number(b.split('\t')[0]) || (a < b ? -1 : a > b ? 1 : 0)
+      )
       for (const line of commits) {
         const [, hash, subject] = /^(\d+)\t([^\t]+)\t(.*)$/s.exec(line).slice(1)
         const bullet = subjectBullet(subject, changes[hash])

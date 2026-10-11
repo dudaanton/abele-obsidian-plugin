@@ -7,7 +7,7 @@
  * scrolls to the top. Mounting every message is exactly the cost this exists to avoid, so a
  * regression here is invisible to every other test and obvious to anyone opening a long chat.
  */
-import { describe, it, expect, beforeEach, afterEach, vi } from 'vitest'
+import { describe, it, expect, beforeAll, afterAll, beforeEach, afterEach, vi } from 'vitest'
 import { mount } from '@vue/test-utils'
 import { ref, nextTick } from 'vue'
 import AiChat from '@/components/AiChat.vue'
@@ -34,7 +34,28 @@ const messages = ref<ChatMessage[]>([])
 /** What the assistant is saying right now — the chat follows it while it grows. */
 const streaming = ref('')
 
+// Initial-state assertions are read-only scenarios: keep their independent test names but
+// mount each conversation only once. Interaction cases continue to get a fresh profile.
+let initial: { count: number; wrapper: ReturnType<typeof mount> | null } | null = null
+const ordinary: Array<ReturnType<typeof mount>> = []
+const mountChat = () => {
+  const wrapper = mount(AiChat)
+  ordinary.push(wrapper)
+  return wrapper
+}
+function initialConversation(count: number) {
+  beforeAll(() => {
+    initial = { count, wrapper: null }
+  })
+  afterAll(() => {
+    for (const wrapper of ordinary.splice(0)) wrapper.unmount()
+    initial = null
+    vi.restoreAllMocks()
+  })
+}
+
 beforeEach(() => {
+  if (initial?.wrapper) return
   useVault([])
   AbeleConfig.getInstance().ai = { ...DEFAULT_AI_SETTINGS }
   messages.value = []
@@ -44,9 +65,15 @@ beforeEach(() => {
   vi.spyOn(service, 'activeSession', 'get').mockReturnValue({
     value: fakeChatSession({ messages, kind: 'chat', overrides: { streamingContent: streaming } }),
   } as never)
+  if (initial) {
+    messages.value = conversation(initial.count)
+    initial.wrapper = mountChat()
+  }
 })
 
 afterEach(() => {
+  if (initial) return
+  for (const wrapper of ordinary.splice(0)) wrapper.unmount()
   vi.restoreAllMocks()
 })
 
@@ -56,57 +83,41 @@ const mounted = (wrapper: ReturnType<typeof mount>) =>
 
 describe('a conversation longer than a page', () => {
   const LENGTH = DEFAULT_TAIL_PAGE_SIZE * 3
+  initialConversation(LENGTH)
 
   it('mounts one page of it rather than all of it', () => {
-    messages.value = conversation(LENGTH)
-
-    const wrapper = mount(AiChat)
-
-    expect(mounted(wrapper)).toBe(DEFAULT_TAIL_PAGE_SIZE)
+    expect(mounted(initial!.wrapper!)).toBe(DEFAULT_TAIL_PAGE_SIZE)
   })
 
   it('mounts the end of it — the part being read', () => {
-    messages.value = conversation(LENGTH)
-
-    const wrapper = mount(AiChat)
-    const rendered = wrapper.findAllComponents(AiChatMessage)
+    const rendered = initial!.wrapper!.findAllComponents(AiChatMessage)
 
     expect(rendered.at(-1)?.props('message').id).toBe(`m${LENGTH}`)
   })
 
   it('says how many it is holding back', () => {
-    messages.value = conversation(LENGTH)
-
-    const wrapper = mount(AiChat)
-
-    expect(wrapper.find('.abele-ai-chat__older').text()).toContain(
+    expect(initial!.wrapper!.find('.abele-ai-chat__older').text()).toContain(
       `${LENGTH - DEFAULT_TAIL_PAGE_SIZE} earlier messages`
     )
   })
 })
 
 describe('a conversation that fits', () => {
+  initialConversation(5)
+
   it('mounts all of it', () => {
-    messages.value = conversation(5)
-
-    const wrapper = mount(AiChat)
-
-    expect(mounted(wrapper)).toBe(5)
+    expect(mounted(initial!.wrapper!)).toBe(5)
   })
 
   it('says nothing about earlier messages', () => {
-    messages.value = conversation(5)
-
-    const wrapper = mount(AiChat)
-
-    expect(wrapper.find('.abele-ai-chat__older').exists()).toBe(false)
+    expect(initial!.wrapper!.find('.abele-ai-chat__older').exists()).toBe(false)
   })
 })
 
 describe('scrolling back', () => {
   it('reveals the previous page when the reader reaches the top', async () => {
     messages.value = conversation(DEFAULT_TAIL_PAGE_SIZE * 3)
-    const wrapper = mount(AiChat)
+    const wrapper = mountChat()
     const container = wrapper.find('.abele-ai-chat__messages')
 
     // happy-dom lays nothing out, so the scroll position is set rather than performed.
@@ -119,7 +130,7 @@ describe('scrolling back', () => {
 
   it('does not reveal anything while the reader is in the middle', async () => {
     messages.value = conversation(DEFAULT_TAIL_PAGE_SIZE * 3)
-    const wrapper = mount(AiChat)
+    const wrapper = mountChat()
     const container = wrapper.find('.abele-ai-chat__messages')
 
     Object.defineProperty(container.element, 'scrollTop', { value: 5000, writable: true })
@@ -133,7 +144,7 @@ describe('scrolling back', () => {
 describe('a message arriving while the chat is open', () => {
   it('is mounted, however far back the reader has scrolled', async () => {
     messages.value = conversation(DEFAULT_TAIL_PAGE_SIZE * 2)
-    const wrapper = mount(AiChat)
+    const wrapper = mountChat()
 
     messages.value = [
       ...messages.value,

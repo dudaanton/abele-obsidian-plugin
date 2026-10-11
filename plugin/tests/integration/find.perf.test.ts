@@ -1,7 +1,7 @@
 /** Operation counts are the contract; timings are context, never pass/fail thresholds.
  * FIND_DISK_BENCH=1 also generates 50k notes in a temporary directory and reads real files.
  */
-import { afterEach, describe, expect, it, vi } from 'vitest'
+import { afterEach, beforeAll, describe, expect, it, vi } from 'vitest'
 import { mkdtemp, mkdir, readFile, rm, writeFile } from 'node:fs/promises'
 import { tmpdir } from 'node:os'
 import { join } from 'node:path'
@@ -11,6 +11,9 @@ import { GlobalStore } from '@/stores/GlobalStore'
 import { buildFakeVault, type FakeFileSpec } from '../helpers/fakeVault'
 
 const size = 50_000
+const paragraphs = Array.from({ length: 64 }, (_, i) =>
+  'Planning notes and follow-up questions. See [[Notes/Batch-0/Sample-00000]].\n'.repeat(16 + i)
+)
 const specs: FakeFileSpec[] = Array.from({ length: size }, (_, i) => {
   const path = `Notes/Batch-${Math.floor(i / 1000)}/Sample-${String(i).padStart(5, '0')}.md`
   const frontmatter = {
@@ -20,9 +23,7 @@ const specs: FakeFileSpec[] = Array.from({ length: size }, (_, i) => {
   }
   const body =
     `# Sample ${i}\n\n` +
-    'Planning notes and follow-up questions. See [[Notes/Batch-0/Sample-00000]].\n'.repeat(
-      16 + (i % 64)
-    ) +
+    paragraphs[i % 64] +
     (i % 10 === 0 ? '\nNeedle: follow up on the draft.\n' : '\nReview the next revision.\n')
   return {
     path,
@@ -31,10 +32,19 @@ const specs: FakeFileSpec[] = Array.from({ length: size }, (_, i) => {
   }
 })
 
+// These scenarios only read notes: allocate the same 50k-note fixture once, but reset every
+// observation counter, reader override and resolver between cases.
+let app: ReturnType<typeof buildFakeVault>
+let cachedRead: typeof app.vault.cachedRead
+beforeAll(() => {
+  app = buildFakeVault(specs)
+  cachedRead = app.vault.cachedRead
+})
 afterEach(() => vi.restoreAllMocks())
 
 function setup() {
-  const app = buildFakeVault(specs)
+  app.resetStats()
+  app.vault.cachedRead = cachedRead
   ;(GlobalStore.getInstance() as unknown as { _app: unknown })._app = app
   const scope = new ScopeResolver()
   scope.setFullVaultAccess(true)
@@ -138,20 +148,24 @@ describe('find — large vault work bounds', () => {
     let pending: (() => void)[] = []
     let rounds = 0
     let maxPending = 0
-    const pump = setInterval(() => {
-      if (!pending.length) return
-      rounds++
-      const batch = pending
-      pending = []
-      // Complete backwards to expose ordering bugs.
-      batch.reverse().forEach((done) => done())
-    }, 0)
+    let scheduled = false
     app.vault.cachedRead = (file) =>
-      new Promise((resolve) => {
+      new Promise((resolve, reject) => {
         pending.push(() => {
-          void read(file).then(resolve)
+          void read(file).then(resolve, reject)
         })
         maxPending = Math.max(maxPending, pending.length)
+        if (scheduled) return
+        scheduled = true
+        // One asynchronous I/O round per requested batch, with no host interval polling.
+        // Complete backwards to expose ordering bugs, just as cold unordered reads do.
+        queueMicrotask(() => {
+          scheduled = false
+          rounds++
+          const batch = pending
+          pending = []
+          batch.reverse().forEach((done) => done())
+        })
       })
     try {
       const start = performance.now()
@@ -176,7 +190,7 @@ describe('find — large vault work bounds', () => {
       expect(rounds).toBeLessThanOrEqual(Math.ceil(size / 16))
       expect(app.stats.getFiles).toBe(1)
     } finally {
-      clearInterval(pump)
+      app.vault.cachedRead = cachedRead
       scope.destroy()
     }
   }, 120_000)

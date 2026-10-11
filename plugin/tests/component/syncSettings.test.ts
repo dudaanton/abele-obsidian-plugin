@@ -119,8 +119,14 @@ const held = () => service.connection.value.selective
 /** What `init` does in the running plugin: the service hears about every settings save. */
 let unhook: () => void
 
-const open = <T>(component: T, props: Record<string, unknown> = {}) =>
-  mount(component as never, { props, global: { stubs: STUBS } })
+// Each profile owns its mounts. Leaving previous screens subscribed makes every subsequent
+// connection/profile reset redraw all the screens that earlier cases forgot to close.
+const screens: Array<ReturnType<typeof mount>> = []
+const open = <T>(component: T, props: Record<string, unknown> = {}) => {
+  const screen = mount(component as never, { props, global: { stubs: STUBS } })
+  screens.push(screen)
+  return screen
+}
 type Screen = ReturnType<typeof open>
 
 const headings = (screen: Screen): string[] =>
@@ -217,6 +223,7 @@ it.each([false, true])(
 )
 
 afterEach(() => {
+  for (const screen of screens.splice(0)) screen.unmount()
   unhook()
   AbeleConfig.getInstance().destroy()
   vi.restoreAllMocks()
