@@ -49,6 +49,16 @@ describe('external check caches', () => {
     expect(compilerCacheKey(f.root, 'normal', { noEmit: true })).not.toBe(key)
   })
 
+  it('separates compiler caches for different runtime module conditions', () => {
+    const f = fixture()
+    const script = `import { compilerCacheKey } from ${JSON.stringify(new URL('../../scripts/check-cache.mjs', import.meta.url).href)}; console.log(compilerCacheKey(${JSON.stringify(f.root)}, 'normal', { noEmit: true }))`
+    const run = (flags: string[]) =>
+      execFileSync(process.execPath, [...flags, '--input-type=module', '-e', script], {
+        encoding: 'utf8',
+      }).trim()
+    expect(run(['--conditions=sample-check'])).not.toBe(run([]))
+  })
+
   it('invalidates typed lint for imported source, new inputs, manifest and installed rule changes, not just linted-file contents', () => {
     const f = fixture()
     const before = lintCacheKeys(f.root)

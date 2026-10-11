@@ -17,7 +17,13 @@ import { createRequire } from 'node:module'
 
 const sha = (value) => createHash('sha256').update(value).digest('hex')
 const key = (value) => sha(JSON.stringify(value))
-const toolchain = () => ({ node: process.version, platform: process.platform, arch: process.arch })
+const toolchain = () => ({
+  node: process.version,
+  platform: process.platform,
+  arch: process.arch,
+  execArgv: process.execArgv,
+  nodeOptions: process.env.NODE_OPTIONS ?? '',
+})
 
 /** Includes executable rule/compiler code, not just lock metadata or declarations.
  * Mutable runner output is excluded; symlink cycles fail closed. */
