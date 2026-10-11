@@ -3,20 +3,32 @@
     v-for="v in values"
     :key="path(v)"
     :text="v.name"
-    :collapsible="!!v.children?.length"
-    :collapsed="!!v.children?.length && !openSet.has(path(v))"
+    :collapsible="!!v.children?.length || !!v.handle || v.value.length > 80"
+    :collapsed="!openSet.has(path(v))"
     :class="{ 'abele-debug-value_changed': v.changed }"
-    @click="v.children?.length && emit('toggle', `value:${path(v)}`)"
+    @click="activate(v)"
   >
     <template #end>
-      <span ref="valueEls" class="abele-debug-value" :data-tip="v.type ?? ''">{{ v.value }}</span>
+      <span
+        ref="valueEls"
+        class="abele-debug-value"
+        :data-tip="[v.type, v.value].filter(Boolean).join(' · ')"
+        >{{ v.value }}</span
+      >
     </template>
+    <pre
+      v-if="!v.children?.length && !v.handle && v.value.length > 80"
+      class="abele-debug-value__detail"
+      >{{ v.value }}</pre
+    >
     <DebugValues
       v-if="v.children?.length"
       :values="v.children"
       :folded="folded"
       :prefix="path(v)"
+      :disabled="disabled"
       @toggle="(id) => emit('toggle', id)"
+      @inspect="emit('inspect', $event)"
     />
   </TreeItem>
 </template>
@@ -30,10 +42,23 @@ import TreeItem from '../obsidian/TreeItem.vue'
 import type { DebugVariable } from './types'
 
 const props = withDefaults(
-  defineProps<{ values: DebugVariable[]; folded: Set<string>; prefix?: string }>(),
-  { prefix: '' }
+  defineProps<{
+    values: DebugVariable[]
+    folded: Set<string>
+    prefix?: string
+    disabled?: boolean
+  }>(),
+  { prefix: '', disabled: false }
 )
-const emit = defineEmits<{ (e: 'toggle', id: string): void }>()
+const emit = defineEmits<{
+  (e: 'toggle', id: string): void
+  (e: 'inspect', handle: string): void
+}>()
+function activate(v: DebugVariable) {
+  if (v.handle) {
+    if (!props.disabled) emit('inspect', v.handle)
+  } else if (v.children?.length || v.value.length > 80) emit('toggle', `value:${path(v)}`)
+}
 const path = (v: DebugVariable) => (props.prefix ? `${props.prefix}.${v.name}` : v.name)
 // Objects start folded; the set holds the ones opened.
 const openSet = computed(
@@ -64,11 +89,20 @@ watch(
   text-overflow: ellipsis;
   white-space: nowrap;
 }
+.abele-debug-value__detail {
+  margin: var(--size-4-2);
+  color: var(--text-muted);
+  font-family: var(--font-monospace);
+  font-size: var(--font-ui-small);
+  white-space: pre-wrap;
+  overflow-wrap: anywhere;
+  user-select: text;
+}
 .abele-debug-value_changed > .tree-item-self .abele-debug-value {
   color: var(--text-accent);
 }
 .abele-debug-panel .abele-tree-item__text {
-  flex: 0 0 auto;
-  overflow-wrap: normal;
+  flex: 0 1 auto;
+  overflow-wrap: anywhere;
 }
 </style>

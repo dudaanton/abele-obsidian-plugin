@@ -40,7 +40,8 @@
             ? 'The agent acts without asking, in this session · press to make it ask'
             : 'The agent asks before each action · press to let it act freely in this session'
         "
-        :disabled="session.status === 'lost' || session.status === 'exited'"
+        :disabled="!modeAvailable || locked || session.status === 'exited'"
+        :active="session.mode === 'allow'"
         @click="emit('mode', session.mode === 'allow' ? 'ask' : 'allow')"
       />
     </div>
@@ -59,7 +60,14 @@
         :collapsed="folded.has('variables')"
         @click="toggle('variables')"
       >
-        <DebugValues v-if="live" :values="session.variables" :folded="folded" @toggle="toggle" />
+        <DebugValues
+          v-if="live"
+          :values="session.variables"
+          :folded="folded"
+          :disabled="locked"
+          @toggle="toggle"
+          @inspect="emit('inspect', $event)"
+        />
         <div v-else class="abele-debug-panel__empty">{{ notPaused }}</div>
       </TreeItem>
 
@@ -78,7 +86,7 @@
             :text="f.name"
             :note="`${fileName(f.file)}:${f.line}`"
             :active="i === session.frame"
-            @click="emit('frame', i)"
+            @click="!locked && emit('frame', i)"
           />
         </template>
         <div v-else class="abele-debug-panel__empty">{{ notPaused }}</div>
@@ -104,6 +112,7 @@
               icon="x"
               size="xs"
               tooltip="Remove"
+              :disabled="locked"
               @click.stop="emit('breakpoint', b.file, b.line)"
             />
           </template>
@@ -130,12 +139,18 @@
             >
           </template>
           <template #actions>
-            <Icon icon="x" size="xs" tooltip="Remove" @click.stop="emit('unwatch', w.expression)" />
+            <Icon
+              icon="x"
+              tooltip="Remove"
+              :disabled="locked"
+              @click.stop="emit('unwatch', w.expression)"
+            />
           </template>
         </TreeItem>
         <div class="abele-debug-panel__add">
           <Input
             v-model="expression"
+            :disabled="locked"
             placeholder="Add an expression"
             aria-label="Expression to watch"
             spellcheck="false"
@@ -173,7 +188,16 @@ import BreakpointMark from './BreakpointMark.vue'
 import DebugValues from './DebugValues.vue'
 import type { DebugSession } from './types'
 
-const props = defineProps<{ session: DebugSession }>()
+const props = withDefaults(
+  defineProps<{
+    session: DebugSession
+    restartAvailable?: boolean
+    modeAvailable?: boolean
+    busy?: boolean
+  }>(),
+  { restartAvailable: false, modeAvailable: false, busy: false }
+)
+const locked = computed(() => props.session.status === 'lost' || props.busy)
 
 const emit = defineEmits<{
   (e: 'command', action: string): void
@@ -184,6 +208,7 @@ const emit = defineEmits<{
   (e: 'watch', expression: string): void
   (e: 'unwatch', expression: string): void
   (e: 'retry'): void
+  (e: 'inspect', handle: string): void
 }>()
 
 const fileName = (path: string) => path.slice(path.lastIndexOf('/') + 1)
@@ -214,18 +239,20 @@ const stateLabel = computed(() => {
       : s.status === 'starting'
         ? 'Starting…'
         : s.status === 'exited'
-          ? `Ended with code ${s.exitCode ?? 0}`
+          ? s.exitCode === undefined
+            ? 'Ended · Exit code unknown'
+            : `Ended with code ${s.exitCode}`
           : `No connection to the node · as of ${s.seen ?? 'a while ago'}`
 })
 
 // Controls in the order every debugger keeps them, with their keys in the tooltip.
 const buttons = computed(() => {
   const s = props.session.status
-  const can = s === 'paused'
-  const on = s === 'paused' || s === 'running' || s === 'starting'
+  const can = s === 'paused' && !locked.value
+  const on = !locked.value && (s === 'paused' || s === 'running' || s === 'starting')
   return [
     s === 'running'
-      ? { action: 'pause', icon: 'pause', tooltip: 'Pause (F6)', disabled: false }
+      ? { action: 'pause', icon: 'pause', tooltip: 'Pause (F6)', disabled: locked.value }
       : { action: 'continue', icon: 'play', tooltip: 'Continue (F5)', disabled: !can },
     { action: 'step-over', icon: 'redo-dot', tooltip: 'Step over (F10)', disabled: !can },
     { action: 'step-into', icon: 'arrow-down-to-dot', tooltip: 'Step into (F11)', disabled: !can },
@@ -238,8 +265,8 @@ const buttons = computed(() => {
     {
       action: 'restart',
       icon: 'rotate-ccw',
-      tooltip: 'Restart (Ctrl+Shift+F5)',
-      disabled: s === 'lost',
+      tooltip: props.restartAvailable ? 'Restart' : 'Restart is not available on this node',
+      disabled: locked.value || !props.restartAvailable,
     },
     { action: 'stop', icon: 'square', tooltip: 'Stop (Shift+F5)', disabled: !on },
   ]
@@ -257,7 +284,7 @@ watch(
 const expression = ref('')
 function watchIt() {
   const e = expression.value.trim()
-  if (e) emit('watch', e)
+  if (e && !locked.value) emit('watch', e)
   expression.value = ''
 }
 </script>
@@ -310,8 +337,29 @@ function watchIt() {
   color: var(--text-muted);
   font-size: var(--font-ui-smaller);
 }
+.abele-debug-panel .abele-tree-item__inner {
+  flex: 1;
+  flex-wrap: wrap;
+}
+.abele-debug-panel .tree-item-flair-outer {
+  flex-shrink: 1;
+  min-width: 0;
+  max-width: 50%;
+}
+.abele-debug-panel .tree-item-flair {
+  display: block;
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+.abele-debug-panel__notice > span {
+  min-width: 0;
+  overflow-wrap: anywhere;
+}
 .abele-debug-panel__groups {
   padding: 0 var(--size-4-2) var(--size-4-4);
+}
+.abele-debug-panel__groups_stale {
+  opacity: 0.65;
 }
 .abele-debug-panel__groups_stale .tree-item-self {
   color: var(--text-muted);

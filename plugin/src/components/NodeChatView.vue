@@ -66,6 +66,11 @@
       {{ presenter.error.value || presenter.connection.error.value }}
     </div>
     <div v-show="!expanded" ref="scroller" class="abele-ai-chat__messages">
+      <NodeDebugActions
+        v-if="presenter.reference"
+        :presenter="presenter"
+        :before="presentation.messages[0]?.timestamp ?? Infinity"
+      />
       <NodeMessageTree
         :messages="presentation.messages"
         :children="presenter.projection.value.children || {}"
@@ -74,7 +79,16 @@
         :open-resource="openResource"
         @cancel="presenter.cancelInput($event)"
         @retry="retry"
-      />
+      >
+        <template #after-message="{ message, next }">
+          <NodeDebugActions
+            v-if="presenter.reference"
+            :presenter="presenter"
+            :after="message.timestamp"
+            :before="next?.timestamp ?? Infinity"
+          />
+        </template>
+      </NodeMessageTree>
       <div v-for="artifact in presenter.projection.value.artifacts" :key="artifact.artifactId">
         <Button text="Read stored output" @click="readArtifact(artifact.artifactId)" />
         <pre v-if="artifacts[artifact.artifactId]">{{ artifacts[artifact.artifactId] }}</pre>
@@ -163,6 +177,8 @@ import Icon from './obsidian/Icon.vue'
 import AgentsButton from './AgentsButton.vue'
 import Button from './obsidian/Button.vue'
 import { piFailure } from '@/node/piTranscript'
+import NodeDebugActions from '@/debugger/NodeDebugActions.vue'
+import { openNodeDebugger } from '@/debugger/register'
 const props = defineProps<{ presenter: NodeChatPresenter }>()
 const diagnostics = computed(() =>
   props.presenter.projection.value.unknown
@@ -247,6 +263,14 @@ const openMenu = (event: MouseEvent | KeyboardEvent) => {
       .setTitle(providerLabel(props.presenter.provider?.value ?? 'fake'))
       .setIcon('terminal')
       .setDisabled(true)
+  )
+  menu.addItem((i) =>
+    i
+      .setTitle('Debug')
+      .setIcon('bug-play')
+      .onClick(() => {
+        void openNodeDebugger(props.presenter)
+      })
   )
   menu.addItem((i) =>
     i.setTitle('Projects and workspaces').setIcon('git-branch').onClick(workspaces)

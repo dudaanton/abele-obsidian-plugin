@@ -9,6 +9,8 @@ export interface DebugVariable {
   /** Shown in the tooltip ("number", "string", "Order"). */
   type?: string
   children?: DebugVariable[]
+  /** Opaque scope reference; inspection is an explicit approved action. */
+  handle?: string
   /** Changed by the last step. */
   changed?: boolean
 }
@@ -56,13 +58,19 @@ export interface DebugSession {
 /** An action the chat agent asks to take, or took, in the session. */
 export interface DebugAction {
   id: string
+  /** Node observation time, used to place cards between chat messages. */
+  timestamp?: number
   /** step-over, step-into, step-out, continue, pause, evaluate, set, breakpoint, restart, stop. */
   kind: string
   /** The exact action in code form ("price * quantity", "total = 72"). */
   detail?: string
+  /** Full normalized proposal, including complete resulting breakpoint intent. */
+  exact?: string
   /** Where the program stood when it was asked ("total.ts:6"). */
   at: string
   status: 'asked' | 'done' | 'denied' | 'expired'
+  /** Already approved/dispatched: awaiting evidence, not another approvable request. */
+  awaitingResult?: boolean
   /** What it gave back. */
   result?: string
 }

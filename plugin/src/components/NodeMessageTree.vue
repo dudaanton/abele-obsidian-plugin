@@ -1,5 +1,5 @@
 <template>
-  <div v-for="message in messages" :key="message.id">
+  <div v-for="(message, index) in messages" :key="message.id">
     <AiChatMessage
       :message="message"
       :read-only-history="true"
@@ -65,6 +65,7 @@
       />
       <pre v-else>{{ JSON.stringify(children[message.id], null, 2) }}</pre>
     </details>
+    <slot name="after-message" :message="message" :next="messages[index + 1]" />
   </div>
 </template>
 <script setup lang="ts">

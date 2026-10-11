@@ -1,0 +1,722 @@
+import { z } from 'zod'
+import {
+  DebuggerActorSchema,
+  DebuggerBreakpointRequestSchema,
+  DebuggerControlMethodSchemas,
+  DebuggerReceiptSchema,
+  DebuggerSnapshotSchema,
+  DebuggerHistoryResultSchema,
+  DebuggerReplayResultSchema,
+  DebuggerGrantSchema,
+  type DebuggerSnapshot,
+} from '@abele/node-protocol'
+import type { DebuggerObservationState } from '@abele/node-client'
+import type { DebugAction, DebugSession } from '@/components/debugger/types'
+import { formatTimestamp } from '@/helpers/displayFormat'
+
+const ProposalSchema = z
+  .object({
+    key: z.string(),
+    principal_key: z.string(),
+    actor: z.unknown().transform((raw) => DebuggerActorSchema.parse(raw)),
+    method: z.string(),
+    params: z.record(z.string(), z.unknown()),
+    effective_breakpoints: z
+      .array(z.unknown().transform((raw) => DebuggerBreakpointRequestSchema.parse(raw)))
+      .optional(),
+    receipt: z.unknown().transform((raw) => DebuggerReceiptSchema.parse(raw)),
+  })
+  .strict()
+export const ApprovalPageSchema = z
+  .object({
+    proposals: z.array(ProposalSchema).max(128),
+    truncated: z.boolean(),
+    next: z.string().nullable(),
+  })
+  .strict()
+type Proposal = z.infer<typeof ProposalSchema>
+export interface DebuggerTransport {
+  rpc(method: string, params: unknown): Promise<unknown>
+  command(method: string, params: unknown): Promise<unknown>
+}
+const empty = (): DebugSession => ({
+  program: 'Debug',
+  status: 'starting',
+  frames: [],
+  frame: 0,
+  variables: [],
+  breakpoints: [],
+  watches: [],
+  output: '',
+  mode: 'ask',
+})
+
+/** Shared-control presentation, independent of Obsidian and provider authority.
+ * No command outbox, automatic expression inspection or effect retry. */
+export class DebuggerController {
+  session = empty()
+  actions: DebugAction[] = []
+  snapshot: DebuggerSnapshot | null = null
+  error = ''
+  grantId?: string
+  private proposals = new Map<string, Proposal>()
+  private sources = new Map<string, string>()
+  private tail: Promise<unknown> = Promise.resolve()
+  private deciding = new Set<string>()
+  private historyAfter = 0
+  private outputAfter = 0
+  private inspections = new Map<string, { expression?: string; handle?: string }>()
+  private lost = false
+  private serial = 0
+  private frameHandles: string[] = []
+  constructor(
+    readonly transport: DebuggerTransport,
+    private readonly changed: () => void
+  ) {}
+  private notify() {
+    this.changed()
+  }
+  private enqueue<T>(work: () => Promise<T>): Promise<T> {
+    const result = this.tail.catch(() => {}).then(work)
+    this.tail = result
+    return result
+  }
+  registerSource(sourceId: string, path: string) {
+    this.sources.set(sourceId, path)
+    for (const frame of this.session.frames) if (frame.file === sourceId) frame.file = path
+    for (const b of this.session.breakpoints) if (b.file === sourceId) b.file = path
+    this.notify()
+  }
+  bindGrant(raw: unknown) {
+    const g = DebuggerGrantSchema.parse(raw),
+      s = this.snapshot
+    if (
+      !s ||
+      g.debug_session_id !== s.debug_session_id ||
+      g.incarnation !== s.incarnation ||
+      g.target_id !== s.target.target_id ||
+      g.conversation_id !== s.target.conversation_id ||
+      g.revoked ||
+      Date.parse(g.expires_at) <= Date.now()
+    )
+      throw new Error('The agent grant is not live for this session')
+    this.grantId = g.grant_id
+    this.session.mode = g.mode === 'allow-all' ? 'allow' : 'ask'
+    this.notify()
+  }
+  path(sourceId: string) {
+    return this.sources.get(sourceId)
+  }
+  private location() {
+    const s = this.snapshot
+    return s?.threads.find((t) => t.thread_id === s.selected_thread_id)?.stop?.location
+  }
+  observe(observation: DebuggerObservationState) {
+    if (!observation.snapshot || observation.observation !== 'current') {
+      this.disconnected()
+      return
+    }
+    const s = DebuggerSnapshotSchema.parse(observation.snapshot)
+    if (
+      this.snapshot?.debug_session_id === s.debug_session_id &&
+      s.event_seq < this.snapshot.event_seq
+    )
+      return
+    const replaced =
+      !this.snapshot ||
+      s.debug_session_id !== this.snapshot.debug_session_id ||
+      s.incarnation !== this.snapshot.incarnation
+    const moved = this.snapshot && (replaced || this.snapshot.stop_epoch !== s.stop_epoch)
+    if (replaced) {
+      this.session = empty()
+      this.grantId = undefined
+      this.frameHandles = []
+      this.historyAfter = 0
+      this.outputAfter = 0
+      this.sources.clear()
+      this.inspections.clear()
+    }
+    if (moved) {
+      this.expireLocal()
+      this.session.frames = []
+      this.session.variables = []
+      this.frameHandles = []
+    }
+    this.snapshot = s
+    this.lost = s.lifecycle === 'connection-lost'
+    this.session.status = this.lost
+      ? 'lost'
+      : ['terminated', 'detached', 'failed'].includes(s.lifecycle)
+        ? 'exited'
+        : s.execution === 'stopped'
+          ? 'paused'
+          : s.execution === 'running'
+            ? 'running'
+            : 'starting'
+    this.session.program = s.target.launch_configuration_id
+    this.session.seen = formatTimestamp(s.observed_at, { diagnostic: true }).label
+    const stop = s.threads.find((t) => t.thread_id === s.selected_thread_id)?.stop
+    this.session.reason = stop?.description ?? stop?.reason
+    this.session.breakpoints = s.breakpoints.map((b) => ({
+      file: this.sources.get(b.source_id) ?? b.source_id,
+      line: b.resolved_line ?? b.line,
+      state:
+        b.status === 'verified' || b.status === 'relocated'
+          ? 'set'
+          : b.status === 'rejected'
+            ? 'rejected'
+            : 'pending',
+      reason: b.message ?? undefined,
+    }))
+    if (!this.session.frames.length && stop?.location)
+      this.session.frames = [
+        {
+          name: s.threads.find((t) => t.thread_id === s.selected_thread_id)?.name ?? '',
+          file: this.sources.get(stop.location.source_id) ?? stop.location.source_id,
+          line: stop.location.line,
+        },
+      ]
+    if (this.lost) this.expireLocal()
+    this.notify()
+  }
+  disconnected() {
+    ++this.serial
+    this.lost = true
+    this.session.status = 'lost'
+    this.expireLocal()
+    for (const a of this.actions)
+      if (a.awaitingResult && a.status === 'asked') {
+        a.status = 'expired'
+        a.awaitingResult = false
+        a.result = 'Outcome unknown; no action will be replayed'
+      }
+    this.notify()
+  }
+  get current() {
+    return !!this.snapshot && !this.lost
+  }
+  private precondition() {
+    if (!this.current || !this.snapshot) throw new Error('A fresh debugger snapshot is required')
+    return {
+      debug_session_id: this.snapshot.debug_session_id,
+      incarnation: this.snapshot.incarnation,
+      expected_state_revision: this.snapshot.state_revision,
+    }
+  }
+  private expireLocal() {
+    for (const a of this.actions)
+      if (a.status === 'asked' && !a.awaitingResult) a.status = 'expired'
+  }
+  private async expireRemote(proposals: Proposal[]) {
+    for (const p of proposals) {
+      const hash = p.receipt.proposal_hash
+      if (!hash) throw new Error('Missing exact proposal hash')
+      const receipt = DebuggerReceiptSchema.parse(
+        await this.rpc('approve', {
+          principal_key: p.principal_key,
+          operation_id: p.receipt.operation_id,
+          proposal_hash: hash,
+          decision: 'deny',
+        })
+      )
+      if (
+        receipt.outcome === 'pending' ||
+        receipt.outcome === 'outcome_unknown' ||
+        receipt.dispatch === 'possible'
+      )
+        throw new Error('Debugger proposal retirement is not confirmed')
+      if (receipt.outcome === 'completed') {
+        const action = this.actions.find((a) => this.proposals.get(a.id)?.key === p.key)
+        if (action) {
+          action.status = 'done'
+          action.result = 'Completed before retirement'
+          this.notify()
+        }
+      }
+    }
+  }
+  /** Expire synchronously: even a click arriving before the RPC settles cannot run an old ask.
+   * Retire exact node proposals before mode switches or mutations, not just their cards. */
+  private human<T>(work: () => Promise<T>): Promise<T | undefined> {
+    if (!this.current) return Promise.resolve(undefined)
+    const pending = this.actions
+      .filter((a) => a.status === 'asked' && !a.awaitingResult)
+      .map((a) => this.proposals.get(a.id))
+      .filter((p): p is Proposal => !!p)
+    this.expireLocal()
+    this.notify()
+    return this.enqueue(async () => {
+      if (!this.current) return undefined
+      try {
+        const fresh = await this.refreshApprovals()
+        this.expireLocal()
+        this.notify()
+        if (!this.current) return undefined
+        await this.expireRemote([
+          ...new Map([...pending, ...fresh].map((p) => [p.key, p])).values(),
+        ])
+        if (!this.current) return undefined
+        return await work()
+      } catch (e) {
+        this.error = e instanceof Error ? e.message : 'Debugger request failed'
+        this.disconnected()
+        throw e
+      }
+    })
+  }
+  async rpc(method: string, params: unknown) {
+    const schema =
+      DebuggerControlMethodSchemas[
+        `debugger.v1.${method}` as keyof typeof DebuggerControlMethodSchemas
+      ]
+    if (!schema) throw new Error('Unsupported debugger operation')
+    return this.transport.rpc(`debugger.v1.${method}`, schema.parse(params))
+  }
+  addProposal(raw: unknown) {
+    const p = ProposalSchema.parse(raw)
+    const schema =
+      DebuggerControlMethodSchemas[
+        `debugger.v1.${p.method}` as keyof typeof DebuggerControlMethodSchemas
+      ]
+    if (!schema || !p.receipt.proposal_hash) throw new Error('Invalid debugger proposal')
+    schema.parse(p.params)
+    if (p.receipt.snapshot.debug_session_id !== this.snapshot?.debug_session_id)
+      throw new Error('Debugger proposal session mismatch')
+    const id = JSON.stringify([p.principal_key, p.receipt.operation_id])
+    this.proposals.set(id, p)
+    const existing = this.actions.find((a) => a.id === id)
+    if (existing) return
+    const stale =
+      !this.current ||
+      p.params.incarnation !== this.snapshot?.incarnation ||
+      p.params.expected_state_revision !== this.snapshot?.state_revision
+    this.actions.push({
+      id,
+      timestamp: Date.parse(p.receipt.completed_at),
+      kind:
+        p.method === 'step'
+          ? `step-${p.params.kind === 'over' ? 'over' : p.params.kind === 'in' ? 'into' : 'out'}`
+          : ({ setVariable: 'set', 'breakpoints.patch': 'breakpoint', terminate: 'stop' }[
+              p.method
+            ] ?? p.method),
+      detail:
+        typeof p.params.expression === 'string'
+          ? p.params.expression
+          : p.method === 'setVariable' &&
+              typeof p.params.name === 'string' &&
+              typeof p.params.value === 'string'
+            ? `${p.params.name} = ${p.params.value}`
+            : undefined,
+      // Exact normalized arguments and complete breakpoint intent remain available in the card.
+      exact: JSON.stringify({
+        params: p.params,
+        ...(p.effective_breakpoints ? { effective_breakpoints: p.effective_breakpoints } : {}),
+      }),
+      at: this.location()
+        ? `${this.path(this.location().source_id) ?? this.location().source_id}:${this.location().line}`
+        : '',
+      status: stale ? 'expired' : 'asked',
+    })
+    this.notify()
+  }
+  async refreshApprovals(): Promise<Proposal[]> {
+    if (!this.current || !this.snapshot) return []
+    const generation = this.serial
+    const proposals: Proposal[] = []
+    let after = ''
+    do {
+      const page = ApprovalPageSchema.parse(
+        await this.rpc('approvals', { debug_session_id: this.snapshot.debug_session_id, after })
+      )
+      if (!this.current || generation !== this.serial) return []
+      for (const p of page.proposals) {
+        this.addProposal(p)
+        proposals.push(p)
+      }
+      if (!page.truncated) break
+      if (!page.next || page.next === after)
+        throw new Error('Debugger approval cursor did not advance')
+      if (proposals.length >= 128) throw new Error('Too many pending debugger proposals')
+      after = page.next
+    } while (after !== '')
+    return proposals
+  }
+  async decide(id: string, allow: boolean) {
+    const a = this.actions.find((a) => a.id === id),
+      p = this.proposals.get(id)
+    if (
+      !this.current ||
+      !a ||
+      a.status !== 'asked' ||
+      a.awaitingResult ||
+      !p?.receipt.proposal_hash ||
+      this.deciding.has(id)
+    )
+      return
+    this.deciding.add(id)
+    try {
+      await this.enqueue(async () => {
+        if (!this.current || a.status !== 'asked') return
+        a.awaitingResult = true
+        this.notify()
+        const result = DebuggerReceiptSchema.parse(
+          await this.rpc('approve', {
+            principal_key: p.principal_key,
+            operation_id: p.receipt.operation_id,
+            proposal_hash: p.receipt.proposal_hash,
+            decision: allow ? 'approve' : 'deny',
+          })
+        )
+        // A human move can have expired this card during the network wait.
+        if (a.status !== 'asked') return
+        if (result.outcome !== 'pending') a.awaitingResult = false
+        if (!allow) a.status = 'denied'
+        else if (result.outcome === 'completed') a.status = 'done'
+        else if (result.outcome !== 'pending') {
+          a.status = 'expired'
+          a.result = result.code ?? result.outcome
+        }
+        this.observe({ observation: 'current', snapshot: result.snapshot })
+        this.notify()
+      })
+    } catch (e) {
+      this.disconnected()
+      throw e
+    } finally {
+      this.deciding.delete(id)
+    }
+  }
+  command(action: string) {
+    const paused = this.session.status === 'paused'
+    if (
+      !this.current ||
+      action === 'restart' ||
+      (['continue', 'step-over', 'step-into', 'step-out'].includes(action) && !paused) ||
+      (action === 'pause' && this.session.status !== 'running')
+    )
+      return Promise.resolve()
+    return this.human(async () => {
+      const s = this.snapshot,
+        thread = s.selected_thread_id ?? s.threads.find((t) => t.status === 'stopped')?.thread_id
+      const method = action.startsWith('step-')
+        ? 'step'
+        : action === 'stop'
+          ? s.target.process_ownership === 'owned'
+            ? 'terminate'
+            : 'detach'
+          : action
+      const params = {
+        ...this.precondition(),
+        operation_id: crypto.randomUUID(),
+        ...(method === 'step'
+          ? {
+              thread_id: thread,
+              kind: action === 'step-over' ? 'over' : action === 'step-into' ? 'in' : 'out',
+            }
+          : {}),
+      }
+      const generation = this.serial
+      const result = DebuggerReceiptSchema.parse(await this.transport.command(method, params))
+      if (!this.current || generation !== this.serial) return
+      this.observe({ observation: 'current', snapshot: result.snapshot })
+      if (result.outcome !== 'completed') this.error = result.code ?? result.outcome
+      this.notify()
+    })
+  }
+  setMode(mode: 'ask' | 'allow') {
+    if (!this.grantId) {
+      this.error = 'No live agent grant is bound to this debugger session'
+      this.notify()
+      return Promise.resolve()
+    }
+    return this.human(async () => {
+      const generation = this.serial
+      const result = await this.rpc('grant.setMode', {
+        grant_id: this.grantId,
+        mode: mode === 'allow' ? 'allow-all' : 'ask',
+      })
+      if (!this.current || generation !== this.serial) return
+      // Never change the owner policy/default: this switch belongs to one live grant.
+      const grant = DebuggerGrantSchema.parse(result)
+      if (grant.grant_id !== this.grantId) throw new Error('Debugger grant identity changed')
+      this.bindGrant(grant)
+    })
+  }
+  toggleBreakpoint(sourceId: string, line: number) {
+    return this.human(async () => {
+      const s = this.snapshot,
+        existing = s.breakpoints.find((b) => b.source_id === sourceId && b.line === line)
+      const generation = this.serial
+      const result = DebuggerReceiptSchema.parse(
+        await this.transport.command('breakpoints.patch', {
+          ...this.precondition(),
+          operation_id: crypto.randomUUID(),
+          expected_breakpoint_revision: s.breakpoint_revision,
+          upsert: existing
+            ? []
+            : [{ breakpoint_id: crypto.randomUUID(), source_id: sourceId, line }],
+          remove: existing ? [existing.breakpoint_id] : [],
+        })
+      )
+      if (!this.current || generation !== this.serial) return
+      this.observe({ observation: 'current', snapshot: result.snapshot })
+      if (result.outcome !== 'completed') this.error = result.code ?? result.outcome
+      this.notify()
+    })
+  }
+  async refreshHistory() {
+    if (!this.current || !this.snapshot) return
+    const generation = this.serial
+    const page = DebuggerHistoryResultSchema.parse(
+      await this.rpc('history', {
+        debug_session_id: this.snapshot.debug_session_id,
+        after: this.historyAfter,
+      })
+    )
+    if (!this.current || generation !== this.serial) return
+    for (const entry of page.entries) {
+      this.historyAfter = Math.max(this.historyAfter, entry.history_seq)
+      const data = entry.requested_data as Record<string, unknown> | undefined
+      if (entry.actor.kind === 'agent' && entry.operation_id) {
+        const actorKey = JSON.stringify(entry.actor),
+          historyId = JSON.stringify(['history', entry.actor, entry.operation_id])
+        let a = this.actions.find((a) => {
+          const proposal = this.proposals.get(a.id)
+          return (
+            (proposal?.receipt.operation_id === entry.operation_id &&
+              JSON.stringify(proposal.actor) === actorKey) ||
+            a.id === historyId
+          )
+        })
+        if (!a) {
+          a = {
+            id: historyId,
+            awaitingResult: true,
+            timestamp: Date.parse(entry.observed_at),
+            kind: entry.operation,
+            at: '',
+            status: 'asked',
+          }
+          this.actions.push(a)
+        }
+        if (
+          ['completed', 'denied', 'rejected', 'outcome_unknown', 'failed'].includes(entry.outcome)
+        )
+          a.awaitingResult = false
+        if (entry.outcome === 'completed') a.status = 'done'
+        if (entry.outcome === 'denied') a.status = 'denied'
+        if (
+          entry.outcome === 'rejected' ||
+          entry.outcome === 'outcome_unknown' ||
+          entry.outcome === 'failed'
+        ) {
+          a.status = 'expired'
+          a.result = typeof data?.code === 'string' ? data.code : entry.outcome.replaceAll('_', ' ')
+        }
+        if (entry.outcome === 'completed' && entry.payload_status === 'expired')
+          a.result = 'Result is no longer retained'
+        if (entry.outcome === 'proposed' && entry.stop?.location)
+          a.at = `${this.path(entry.stop.location.source_id) ?? entry.stop.location.source_id}:${entry.stop.location.line}`
+        if (data) {
+          if (entry.outcome === 'proposed') a.exact = JSON.stringify(data)
+          else if (entry.outcome === 'completed') a.result = JSON.stringify(data)
+        }
+      }
+      const inspection = entry.operation_id ? this.inspections.get(entry.operation_id) : undefined
+      if (inspection && entry.outcome === 'completed' && data) {
+        if (inspection.expression) {
+          const watch = this.session.watches.find((w) => w.expression === inspection.expression)
+          if (watch)
+            watch.value = typeof data.value === 'string' ? data.value : JSON.stringify(data)
+        } else if (inspection.handle && Array.isArray(data.items)) {
+          const page = z.array(z.object({ name: z.string(), value: z.string() })).parse(data.items)
+          this.session.variables = page.map((v) => ({
+            ...v,
+            type: `Observed at ${entry.observed_at}`,
+          }))
+        }
+        this.inspections.delete(entry.operation_id)
+      }
+    }
+    this.notify()
+  }
+  async refreshOutput() {
+    if (!this.current || !this.snapshot) return
+    const s = this.snapshot,
+      generation = this.serial
+    const page = DebuggerReplayResultSchema.parse(
+      await this.rpc('replay', {
+        cursor: {
+          debug_session_id: s.debug_session_id,
+          incarnation: s.incarnation,
+          event_seq: this.outputAfter,
+        },
+      })
+    )
+    if (!this.current || generation !== this.serial) return
+    if (page.kind === 'fresh_snapshot_required') {
+      this.outputAfter = page.cursor.event_seq
+      this.error = 'Earlier debugger output is unavailable; showing retained state'
+      this.observe({ observation: 'current', snapshot: page.snapshot })
+    } else {
+      for (const e of page.events) {
+        if (e.event_seq <= this.outputAfter) continue
+        if (e.kind === 'output') {
+          const data = z.object({ text: z.string() }).loose().parse(e.data)
+          this.session.output = (this.session.output + data.text).slice(-65536)
+        }
+        this.outputAfter = e.event_seq
+      }
+    }
+    this.notify()
+  }
+  inspect(handle: string) {
+    return this.human(async () => {
+      const operation_id = crypto.randomUUID(),
+        generation = this.serial
+      this.inspections.set(operation_id, { handle })
+      const result = DebuggerReceiptSchema.parse(
+        await this.transport.command('variables', {
+          ...this.precondition(),
+          operation_id,
+          handle,
+          start: 0,
+          count: 50,
+          depth: 0,
+          max_bytes: 8192,
+        })
+      )
+      if (!this.current || generation !== this.serial) return
+      this.observe({ observation: 'current', snapshot: result.snapshot })
+      await this.refreshApprovals()
+      await this.refreshHistory()
+    })
+  }
+  async loadStack() {
+    if (!this.current || this.session.status !== 'paused' || !this.snapshot?.selected_thread_id)
+      return
+    const s = this.snapshot,
+      epoch = s.stop_epoch,
+      generation = this.serial
+    const result = z
+      .object({
+        data: z
+          .object({
+            items: z.array(
+              z
+                .object({
+                  handle: z.string(),
+                  name: z.string(),
+                  source_id: z.string().nullable(),
+                  line: z.number(),
+                })
+                .loose()
+            ),
+          })
+          .loose(),
+      })
+      .loose()
+      .parse(await this.rpc('stack', { ...this.precondition(), thread_id: s.selected_thread_id }))
+    if (!this.current || generation !== this.serial || this.snapshot?.stop_epoch !== epoch) return
+    this.frameHandles = result.data.items.map((f) => f.handle)
+    this.session.frames = result.data.items.map((f) => ({
+      name: f.name,
+      file: f.source_id ? (this.path(f.source_id) ?? f.source_id) : '',
+      line: f.line,
+    }))
+    this.session.frame = 0
+    this.notify()
+  }
+  selectFrame(index: number) {
+    return this.human(async () => {
+      const frame_handle = this.frameHandles[index]
+      if (!frame_handle) return
+      const generation = this.serial,
+        epoch = this.snapshot.stop_epoch
+      const result = z
+        .object({
+          data: z
+            .object({
+              items: z.array(z.object({ name: z.string(), handle: z.string().nullable() }).loose()),
+            })
+            .loose(),
+        })
+        .loose()
+        .parse(await this.rpc('scopes', { ...this.precondition(), frame_handle }))
+      if (!this.current || generation !== this.serial || this.snapshot.stop_epoch !== epoch) return
+      this.session.frame = index
+      // No implicit getters, formatters or recursion. Scope handles need explicit inspection.
+      this.session.variables = result.data.items.map((s) => ({
+        name: s.name,
+        value: s.handle ? 'Expand to inspect' : 'Unavailable',
+        handle: s.handle ?? undefined,
+      }))
+      this.notify()
+    })
+  }
+  watch(expression: string) {
+    return this.human(async () => {
+      if (!this.session.watches.some((w) => w.expression === expression))
+        this.session.watches.push({ expression })
+      const frame_handle = this.frameHandles[this.session.frame]
+      if (!frame_handle) {
+        this.error = 'Select a current frame to evaluate this expression'
+        this.notify()
+        return
+      }
+      const generation = this.serial,
+        operation_id = crypto.randomUUID()
+      this.inspections.set(operation_id, { expression })
+      const result = DebuggerReceiptSchema.parse(
+        await this.transport.command('evaluate', {
+          ...this.precondition(),
+          operation_id,
+          frame_handle,
+          expression,
+        })
+      )
+      if (!this.current || generation !== this.serial) return
+      this.observe({ observation: 'current', snapshot: result.snapshot })
+      await this.refreshApprovals()
+      await this.refreshHistory()
+      this.notify()
+    })
+  }
+  unwatch(expression: string) {
+    return this.human(async () => {
+      this.session.watches = this.session.watches.filter((w) => w.expression !== expression)
+      this.notify()
+    })
+  }
+  invalidate() {
+    ++this.serial
+    this.disconnected()
+  }
+}
+
+export function debuggerKey(event: {
+  key: string
+  shiftKey?: boolean
+  ctrlKey?: boolean
+  altKey?: boolean
+  metaKey?: boolean
+  target?: EventTarget | null
+}): string | undefined {
+  // Popout elements belong to a different DOM realm; main-window instanceof is not a field test.
+  const target = event.target as Element | null | undefined
+  if (
+    event.ctrlKey ||
+    event.altKey ||
+    event.metaKey ||
+    (typeof target?.closest === 'function' &&
+      target.closest(
+        'input, textarea, select, [contenteditable]:not([contenteditable="false"]), [role="textbox"]'
+      ))
+  )
+    return
+  if (event.key === 'F5') return event.shiftKey ? 'stop' : 'continue'
+  if (event.shiftKey && event.key !== 'F11') return
+  return { F6: 'pause', F10: 'step-over', F11: event.shiftKey ? 'step-out' : 'step-into' }[
+    event.key
+  ]
+}

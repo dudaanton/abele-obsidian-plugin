@@ -9,14 +9,29 @@
         <Icon :icon="stateIcon" size="xs" :interactive="false" />
       </span>
     </div>
-    <div v-if="action.result && action.status === 'done'" class="abele-debug-action__result">
+    <details v-if="action.exact || action.detail" class="abele-debug-action__exact">
+      <summary>Exact action</summary>
+      <pre>{{ action.exact ?? action.detail }}</pre>
+    </details>
+    <div v-if="action.awaitingResult" class="abele-debug-action__result" role="status">
+      Awaiting result
+    </div>
+    <div v-if="action.result" class="abele-debug-action__result">
       {{ action.result }}
     </div>
-    <div v-if="action.status === 'asked'" class="abele-debug-action__buttons">
-      <Button text="Deny" tooltip="Do not let the agent do this" @click="emit('deny')" />
+    <div
+      v-if="action.status === 'asked' && !action.awaitingResult"
+      class="abele-debug-action__buttons"
+    >
+      <Button
+        text="Deny"
+        :disabled="disabled"
+        tooltip="Do not let the agent do this"
+        @click="emit('deny')"
+      />
       <Button
         text="Allow"
-        accent
+        :disabled="disabled"
         tooltip="Let the agent do exactly this, once"
         @click="emit('allow')"
       />
@@ -35,7 +50,9 @@ import Button from '../obsidian/Button.vue'
 import Icon from '../obsidian/Icon.vue'
 import type { DebugAction } from './types'
 
-const props = defineProps<{ action: DebugAction }>()
+const props = withDefaults(defineProps<{ action: DebugAction; disabled?: boolean }>(), {
+  disabled: false,
+})
 const emit = defineEmits<{ (e: 'allow'): void; (e: 'deny'): void }>()
 
 const names: Record<string, string> = {
@@ -73,7 +90,7 @@ const tip = () =>
     {
       done: 'Done',
       denied: 'You denied it',
-      expired: 'Not done: the program moved on before it was allowed',
+      expired: props.action.result ?? 'Not done: the program moved on before it was allowed',
       asked: '',
     }[props.action.status]
   )
@@ -146,6 +163,22 @@ watch(() => props.action.status, tip, { flush: 'post' })
   color: var(--text-muted);
   font-family: var(--font-monospace);
   font-size: var(--font-ui-smaller);
+}
+.abele-debug-action__exact {
+  color: var(--text-muted);
+  min-width: 0;
+  pre {
+    margin: var(--size-4-2) 0;
+    white-space: pre-wrap;
+    overflow-wrap: anywhere;
+  }
+}
+.abele-debug-action__head {
+  flex-wrap: wrap;
+}
+.abele-debug-action__result {
+  white-space: pre-wrap;
+  overflow-wrap: anywhere;
 }
 .abele-debug-action__buttons {
   display: flex;

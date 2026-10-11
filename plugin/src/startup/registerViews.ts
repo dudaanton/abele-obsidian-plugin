@@ -15,9 +15,11 @@ import { ScriptViewService } from '@/scripting/view/ScriptViewService'
 import { openChat, openSelectionLink } from '@/ai/openChat'
 import { keepChatFilesOutOfLeaves, routeChatAnchorLinks } from '@/ai/chatFileLeaves'
 import type { Plugin } from 'obsidian'
+import { registerDebugger } from '@/debugger/register'
 
 /** Startup section; called at its original lifecycle position. */
 export function registerViews(plugin: Plugin) {
+  registerDebugger(plugin)
   plugin.registerView(
     TIMELINE_SIDEBAR_VIEW_TYPE,
     (leaf) => new TimelineSidebarView(leaf, plugin.app)
