@@ -74,6 +74,41 @@ it('refuses ignored ranges and records the tiny whole response', async () => {
   )
   expect(f.files.size).toBe(0)
 })
+it('records response headers even when the WebView cannot expose the body', async () => {
+  const f = setup(200),
+    events: unknown[] = []
+  f.fetcher.mockImplementation(
+    async () =>
+      ({
+        status: 200,
+        headers: new Headers({ 'Content-Length': '20480' }),
+        arrayBuffer: async () => {
+          throw new Error('body unavailable')
+        },
+      }) as Response
+  )
+  expect(
+    await probeResourceRanges(f.adapter, f.fetcher as unknown as typeof fetch, (event) =>
+      events.push(event)
+    )
+  ).toBeNull()
+  expect(events).toEqual(
+    expect.arrayContaining([
+      expect.objectContaining({
+        step: 'resource-headers',
+        status: 200,
+        headers: { 'content-length': '20480' },
+      }),
+      expect.objectContaining({
+        step: 'resource-response',
+        status: 200,
+        bodyBytes: null,
+        message: 'body unavailable',
+      }),
+    ])
+  )
+  expect(f.files.size).toBe(0)
+})
 it('rejects a whole-file response on a large read before calling arrayBuffer', async () => {
   const f = setup()
   const access = await probeResourceRanges(f.adapter, f.fetcher as unknown as typeof fetch)

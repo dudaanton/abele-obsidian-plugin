@@ -56,8 +56,10 @@ export async function probeResourceRanges(
       response = await fetcher(url, { headers, signal: controller.signal, cache: 'no-store' })
       const actualHeaders: Record<string, string> = {}
       response.headers.forEach((value, key) => {
-        actualHeaders[key] = value
+        actualHeaders[key.toLowerCase()] = value
       })
+      if (diagnostic)
+        trace({ step: 'resource-headers', url, status: response.status, headers: actualHeaders })
       const contentRange =
         offset === undefined ? null : `bytes ${offset}-${offset + length - 1}/${size}`
       const valid =
@@ -70,7 +72,21 @@ export async function probeResourceRanges(
       // A large ignored Range must never reach arrayBuffer(). Diagnostic input is only 20 KiB.
       if (!valid && !diagnostic)
         throw new EngineError('io', 'WebView file range response is invalid')
-      const data = new Uint8Array(await response.arrayBuffer())
+      let data: Uint8Array
+      try {
+        data = new Uint8Array(await response.arrayBuffer())
+      } catch (error) {
+        if (diagnostic)
+          trace({
+            step: 'resource-response',
+            url,
+            status: response.status,
+            headers: actualHeaders,
+            bodyBytes: null,
+            message: error instanceof Error ? error.message : String(error),
+          })
+        throw error
+      }
       consumed = true
       if (diagnostic)
         trace({
