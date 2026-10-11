@@ -7,16 +7,22 @@ import { cacheEntry, lintCacheKeys } from './check-cache.mjs'
 
 const root = resolve(dirname(fileURLToPath(import.meta.url)), '../..')
 
-export async function runLint(checkout = root, env = process.env) {
+export async function runLint(checkout = root, env = process.env, oneShot = false) {
   const previousCwd = process.cwd()
+  const previousSingleRun = process.env.TSESTREE_SINGLE_RUN
+  // Repeated API calls are not ESLint fix iterations: single-run parsing would replace
+  // imported type information with an isolated program. The CLI is genuinely one-shot.
+  if (!oneShot) process.env.TSESTREE_SINGLE_RUN = 'false'
   process.chdir(checkout)
   const leases = []
+  let parser
   let success = false
   try {
     // Independent invocations must not inherit the parser's in-process program snapshot.
     // Resolve the parser through its owning declared dependency, not an assumed hoist.
     const require = createRequire(import.meta.url)
-    createRequire(require.resolve('typescript-eslint'))('@typescript-eslint/parser').clearCaches()
+    parser = createRequire(require.resolve('typescript-eslint'))('@typescript-eslint/parser')
+    parser.clearCaches()
     // Obsidian's rules read the manifest at import time, not only during linting.
     const { nonTypedPatterns } = await import(
       pathToFileURL(resolve(checkout, 'plugin/eslint.config.mjs')).href
@@ -52,12 +58,18 @@ export async function runLint(checkout = root, env = process.env) {
     success = errorCount === 0
     return { errorCount, files }
   } finally {
-    for (const lease of leases) lease.release(success)
-    process.chdir(previousCwd)
+    try {
+      for (const lease of leases) lease.release(success)
+    } finally {
+      parser?.clearCaches()
+      process.chdir(previousCwd)
+      if (previousSingleRun === undefined) delete process.env.TSESTREE_SINGLE_RUN
+      else process.env.TSESTREE_SINGLE_RUN = previousSingleRun
+    }
   }
 }
 
 if (process.argv[1] && resolve(process.argv[1]) === fileURLToPath(import.meta.url)) {
-  const result = await runLint()
+  const result = await runLint(root, process.env, true)
   if (result.errorCount) process.exitCode = 1
 }

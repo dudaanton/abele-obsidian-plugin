@@ -1,5 +1,5 @@
 // @vitest-environment node
-import { afterEach, describe, expect, it } from 'vitest'
+import { afterEach, describe, expect, it, vi } from 'vitest'
 import { mkdtempSync, mkdirSync, writeFileSync, rmSync, realpathSync } from 'node:fs'
 import { tmpdir } from 'node:os'
 import { join } from 'node:path'
@@ -9,7 +9,10 @@ import { execFileSync } from 'node:child_process'
 import { runLint } from '../../scripts/check-lint.mjs'
 
 const roots: string[] = []
-afterEach(() => roots.splice(0).forEach((root) => rmSync(root, { recursive: true, force: true })))
+afterEach(() => {
+  roots.splice(0).forEach((root) => rmSync(root, { recursive: true, force: true }))
+  vi.unstubAllEnvs()
+})
 function fixture() {
   const temp = realpathSync(mkdtempSync(join(tmpdir(), 'sample-lint-')))
   roots.push(temp)
@@ -64,6 +67,7 @@ describe('cached lint execution', () => {
   })
 
   it('rechecks unchanged consumers when an imported return type changes, matching a cold lint run', async () => {
+    vi.stubEnv('CI', 'true')
     const f = fixture()
     expect((await runLint(f.root, f.env)).errorCount).toBe(0)
     writeFileSync(
