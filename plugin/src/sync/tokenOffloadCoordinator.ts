@@ -7,6 +7,7 @@ type Provider = {
   ledger: StateStore
   assertOwned(): void
   includes(path: string): boolean
+  available?(): boolean
   verify(head: StateEntry): Promise<void>
   download(head: StateEntry): Promise<Uint8Array>
 }
@@ -45,7 +46,9 @@ export class TokenOffloadCoordinator {
   }
   async download(preferred: string, head: StateEntry): Promise<Uint8Array> {
     const candidates = [...this.providers].sort(
-      ([a], [b]) => Number(b === preferred) - Number(a === preferred)
+      ([a, first], [b, second]) =>
+        Number(second.available?.() ?? true) - Number(first.available?.() ?? true) ||
+        Number(b === preferred) - Number(a === preferred)
     )
     for (const [, provider] of candidates) {
       try {
@@ -66,7 +69,10 @@ export class TokenOffloadCoordinator {
     throw new Error('File content is unavailable through the current connections')
   }
   async authorize(head: { path: string; sha: string; size: number }): Promise<void> {
-    for (const provider of this.providers.values()) {
+    const candidates = [...this.providers.values()].sort(
+      (first, second) => Number(second.available?.() ?? true) - Number(first.available?.() ?? true)
+    )
+    for (const provider of candidates) {
       try {
         provider.assertOwned()
         const own = await provider.ledger.get(head.path)

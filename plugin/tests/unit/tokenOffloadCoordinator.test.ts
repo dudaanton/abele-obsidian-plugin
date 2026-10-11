@@ -4,6 +4,44 @@ import { TokenOffloadCoordinator } from '@/sync/tokenOffloadCoordinator'
 import { PathCoordinator } from '@/sync/pathCoordinator'
 import { deferred } from '../helpers/deferred'
 
+it('tries a reachable authorized source before the offline source backoff, even when offline is preferred', async () => {
+  const manager = new TokenOffloadCoordinator(new PathCoordinator())
+  const bytes = new TextEncoder().encode('retained bytes')
+  const head = {
+    fileId: 'a',
+    versionId: 'v',
+    path: 'sample.bin',
+    wirePath: 'sample.bin',
+    sha: await sha256(bytes),
+    size: bytes.length,
+    mtime: 1,
+  }
+  const ledger = new MemoryStateStore()
+  await ledger.put(head)
+  const slowOffline = vi.fn(async () => {
+    throw new Error('offline retry would wait six seconds')
+  })
+  manager.register('offline', {
+    ledger,
+    available: () => false,
+    assertOwned: () => {},
+    includes: () => true,
+    verify: slowOffline,
+    download: async () => bytes,
+  })
+  manager.register('online', {
+    ledger,
+    available: () => true,
+    assertOwned: () => {},
+    includes: () => true,
+    verify: async () => {},
+    download: async () => bytes,
+  })
+  await manager.authorize(head)
+  expect(await manager.download('offline', head)).toEqual(bytes)
+  expect(slowOffline).not.toHaveBeenCalled()
+})
+
 it('uses another authorized connection when the original source is offline, without a placement lease', async () => {
   const locks = new PathCoordinator(),
     manager = new TokenOffloadCoordinator(locks),

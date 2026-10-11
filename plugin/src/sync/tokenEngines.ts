@@ -508,6 +508,7 @@ export class TokenEngines {
             manager,
             scriptsFolder: () => this.scriptsFolder,
             client: () => runtime.client,
+            available: () => runtime?.engine.status.state !== 'offline',
             sync: () => runtime.sync(),
             includes: (path) =>
               runtime
@@ -700,6 +701,9 @@ export class TokenEngines {
       }
       assertCurrent()
       if (this.closed) return
+      // A Sync now pressed during startup joins that attempt; it must not replace the
+      // runtime that finished while we awaited draining and its recovery barrier.
+      if (this.ui.runtimes.has(record.id)) return
       await begin()
     })
     return {

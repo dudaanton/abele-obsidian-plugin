@@ -66,6 +66,17 @@ const secondToken = encodeAccessToken({
   key: 'b'.repeat(43),
   scope: { kind: 'folder', id: 'root', path: '/' },
 })
+it('Sync now waits for startup and completes an exchange instead of returning at activation', async () => {
+  const { ui, registry } = setup()
+  await ui.connect(token)
+  const id = registry.records()[0].id
+  const sync = vi.fn(async () => {})
+  ui.retryConnection = async () => {
+    ui.runtimes.set(id, { sync } as never)
+  }
+  await ui.sync(id)
+  expect(sync).toHaveBeenCalledOnce()
+})
 it('materializes before departure despite concurrent exchange status updates', async () => {
   const { ui, registry } = setup()
   await ui.connect(token)

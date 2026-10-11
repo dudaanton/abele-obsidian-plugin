@@ -51,7 +51,8 @@ export async function connectStage<T>(
   name: string,
   message: string,
   work: (assertCurrent: () => void, signal: AbortSignal) => Promise<T>,
-  signal?: AbortSignal
+  signal?: AbortSignal,
+  clock: Pick<Window, 'setTimeout' | 'clearTimeout'> = window
 ): Promise<T> {
   const controller = new AbortController()
   const failure = new ConnectStageError(message)
@@ -60,7 +61,7 @@ export async function connectStage<T>(
     if (controller.signal.aborted) throw failure
   }
   const started = Date.now()
-  let timer: number | undefined
+  let timer: ReturnType<typeof clock.setTimeout> | undefined
   const cancel = () => controller.abort()
   signal?.addEventListener('abort', cancel, { once: true })
   if (signal?.aborted) cancel()
@@ -73,7 +74,7 @@ export async function connectStage<T>(
       new Promise<never>((_, reject) => {
         controller.signal.addEventListener('abort', () => reject(failure), { once: true })
         if (controller.signal.aborted) reject(failure)
-        timer = window.setTimeout(cancel, 10000)
+        timer = clock.setTimeout(cancel, 10000)
       }),
     ])
   } catch (error) {
@@ -86,7 +87,7 @@ export async function connectStage<T>(
       throw error
     throw failure
   } finally {
-    window.clearTimeout(timer)
+    clock.clearTimeout(timer)
     signal?.removeEventListener('abort', cancel)
     console.debug(
       '[Abele Connect]',
@@ -457,15 +458,15 @@ export class TokenUi {
   async sync(id: string): Promise<void> {
     const record = this.registry.records().find((one) => one.id === id)
     if (!record || record.paused) throw new Error('Sync is paused')
-    const runtime = this.runtimes.get(id)
+    let runtime = this.runtimes.get(id)
     if (!runtime) {
       await this.retryConnection(id, () => {
         if (!this.registry.records().some((one) => one.id === id))
           throw new ConnectStageError('Connection cancelled.')
       })
-      if (!this.runtimes.has(id) && !this.activity.value[id]?.inspection)
+      runtime = this.runtimes.get(id)
+      if (!runtime)
         throw new ConnectStageError('Could not finish starting sync. Try Sync now again.')
-      return
     }
     await runtime.sync()
     this.refresh()

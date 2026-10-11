@@ -1,5 +1,5 @@
 // @vitest-environment node
-import { expect, it, vi } from 'vitest'
+import { beforeAll, expect, it, vi } from 'vitest'
 import { v2Server } from '@abele/sync-server/tests/helpers/v2Server.js'
 import { createUser } from '@abele/sync-server/src/access/tokens.js'
 import { AccessClient, MemoryStateStore, V2EngineClient, sha256 } from '@abele/sync-core'
@@ -21,6 +21,12 @@ import { nativeTokenFixture } from '../helpers/nativeTokenFixture'
 import { resetSyncTokenState } from '@/testing/resetSyncTokenState'
 import type { Plugin } from 'obsidian'
 import { projectionPath } from '@/sync/external/projection'
+
+// The app's timer host is explicit; source type imports must not initialize it accidentally.
+beforeAll(() => {
+  const host = globalThis as unknown as Record<string, unknown>
+  host.window ??= globalThis
+})
 
 it.each([false, true, 'touched', 'paged'])(
   'stages a remote executable deletion without revival after review and restart (approved=%s)',

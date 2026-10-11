@@ -25,6 +25,7 @@ export async function tokenOffloadConnection(input: {
   client(): V2EngineClient
   sync(): Promise<void>
   includes(path: string): boolean
+  available?(): boolean
   capture(paths: string[]): Promise<void>
   rememberIdentity(path: string): void
   hydratedIdentity(path: string): void
@@ -92,6 +93,7 @@ export async function tokenOffloadConnection(input: {
   }
   const unbind = manager.register(ledgerId, {
     ledger: state,
+    available: () => input.available?.() ?? true,
     includes: (path) => input.includes(path),
     assertOwned: () => fence.assertReady(),
     verify: async (head) => {

@@ -203,18 +203,40 @@ function inspectionFixture(marker = false) {
   }
   const metadata = new MemoryStateStore()
   const scope = { kind: 'folder' as const, id: 'root', path: '/' }
-  const transport = vi.fn<typeof fetch>(async (input) =>
-    new URL(String(input)).pathname === '/v2/connection'
-      ? Response.json({
-          protocol: 2,
-          token_id: 'token',
-          space_id: 'space',
-          scope,
-          status: 'active',
-          limits: { max_file_bytes: 1000, quota_bytes: null },
-        })
-      : Response.json({ items: [], cursor: 1, next: null })
-  )
+  let cursor = 1
+  const transport = vi.fn<typeof fetch>(async (input, init) => {
+    const path = new URL(String(input)).pathname
+    if (path === '/v2/connection')
+      return Response.json({
+        protocol: 2,
+        token_id: 'token',
+        space_id: 'space',
+        scope,
+        status: 'active',
+        limits: { max_file_bytes: 1000, quota_bytes: null },
+      })
+    if (path === '/v2/commit') {
+      const { ops } = JSON.parse(String(init?.body)) as {
+        ops: Array<{ path: string; sha?: string; size?: number; mtime?: number }>
+      }
+      cursor++
+      return Response.json({
+        cursor,
+        results: ops.map((op) => ({
+          status: 'applied',
+          file_id: crypto.randomUUID(),
+          version_id: crypto.randomUUID(),
+          seq: cursor,
+          path: op.path,
+          sha: op.sha ?? null,
+          size: op.size ?? 0,
+          mtime: op.mtime ?? 0,
+        })),
+      })
+    }
+    if (path.startsWith('/v2/uploads/')) return new Response(null, { status: 201 })
+    return Response.json({ items: [], cursor, next: null })
+  })
   const ui = new TokenUi(registry, secrets, transport, {
     executables: new ExecutableReview(metadata),
     attachments: new AttachmentConsent(metadata),
