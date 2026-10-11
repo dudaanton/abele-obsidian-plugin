@@ -1,14 +1,13 @@
 <template>
-  <div class="abele-runs">
-    <div class="abele-runs__head">
-      <span class="abele-runs__count">{{ heading }}</span>
+  <Section class="abele-runs" :title="heading">
+    <template #actions>
       <Icon
         v-if="runs.length"
         icon="eraser"
         tooltip="Clear the runs that have ended"
         @click="clearFinished"
       />
-    </div>
+    </template>
 
     <EmptyState v-if="!runs.length" text="Nothing has run yet this session." />
 
@@ -98,7 +97,7 @@
         </div>
       </div>
     </div>
-  </div>
+  </Section>
 </template>
 
 <script setup lang="ts">
@@ -115,6 +114,7 @@ import Icon from './obsidian/Icon.vue'
 import Button from './obsidian/Button.vue'
 import Badge from './obsidian/Badge.vue'
 import EmptyState from './obsidian/EmptyState.vue'
+import Section from './obsidian/Section.vue'
 import { ScriptRuns, type ScriptRun } from '@/scripting/ScriptRuns'
 import { ScriptService } from '@/scripting/ScriptService'
 import { ScriptWaitingError } from '@/scripting/ScriptTrust'
@@ -310,20 +310,6 @@ const asNew = async (run: ScriptRun) => {
   flex-direction: column;
   gap: var(--size-4-2);
   padding: var(--size-4-2);
-}
-
-.abele-runs__head {
-  display: flex;
-  align-items: center;
-  justify-content: space-between;
-  gap: var(--size-4-2);
-}
-
-.abele-runs__count {
-  color: var(--text-muted);
-  font-size: var(--font-ui-smaller);
-  text-transform: uppercase;
-  letter-spacing: 0.05em;
 }
 
 .abele-runs__list {

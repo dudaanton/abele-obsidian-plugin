@@ -33,9 +33,11 @@
             </div>
             <span class="abele-template-select__item-type">{{ template.templateFor }}</span>
           </div>
-          <div v-if="searchResults.length === 0" class="abele-template-select__empty">
-            No templates found
-          </div>
+          <EmptyState
+            v-if="searchResults.length === 0"
+            variant="no-matches"
+            text="No templates found"
+          />
         </template>
 
         <!-- Browse mode: folders + templates -->
@@ -69,12 +71,10 @@
             <span class="abele-template-select__item-type">{{ template.templateFor }}</span>
           </div>
 
-          <div
+          <EmptyState
             v-if="currentFolders.length === 0 && currentTemplates.length === 0"
-            class="abele-template-select__empty"
-          >
-            No templates available
-          </div>
+            text="No templates available"
+          />
         </template>
       </div>
     </div>
@@ -94,6 +94,7 @@
 import { ref, shallowRef, computed } from 'vue'
 import Modal from './obsidian/Modal.vue'
 import Input from './obsidian/Input.vue'
+import EmptyState from './obsidian/EmptyState.vue'
 import Button from './obsidian/Button.vue'
 import Icon from './obsidian/Icon.vue'
 import { UserTemplate } from '@/templates/UserTemplate'
@@ -284,11 +285,5 @@ function confirmSelection() {
 .abele-template-select__item_selected .abele-template-select__item-type {
   background: var(--text-on-accent);
   color: var(--interactive-accent);
-}
-
-.abele-template-select__empty {
-  padding: var(--size-4-4);
-  text-align: center;
-  opacity: 0.7;
 }
 </style>

@@ -23,14 +23,16 @@
       </div>
     </div>
 
-    <div
-      v-if="gallery.images.length === 0"
-      class="abele-gallery__empty"
-      @click="!gallery.readonly && addFromVault()"
-    >
-      <ObsidianIcon icon="image" />
-      <span>No images</span>
-    </div>
+    <EmptyState v-if="gallery.images.length === 0" text="No images">
+      <template v-if="!gallery.readonly" #action>
+        <ObsidianIcon
+          icon="image-plus"
+          text-right="Add images"
+          tooltip="Add images from the vault"
+          @click="addFromVault"
+        />
+      </template>
+    </EmptyState>
 
     <div v-else-if="editMode && !gallery.readonly" class="abele-gallery__edit-list">
       <div v-for="(image, index) in resolvedImages" :key="index" class="abele-gallery__edit-item">
@@ -200,6 +202,7 @@ import { Gallery } from '@/entities/Gallery'
 import { GlobalStore } from '@/stores/GlobalStore'
 import { useGalleryImports } from '@/composables/useGalleryImports'
 import ObsidianIcon from './obsidian/Icon.vue'
+import EmptyState from './obsidian/EmptyState.vue'
 import GalleryViewer, { type ViewerImage } from './GalleryViewer.vue'
 import { setCoverFromMedia } from '@/commands/setCover'
 import { Choice, useMenu } from '@/composables/useMenu'
@@ -218,8 +221,15 @@ const addBtnRef = ref<InstanceType<typeof ObsidianIcon> | null>(null)
 const layoutBtnRef = ref<InstanceType<typeof ObsidianIcon> | null>(null)
 const deleteBtnRef = ref<InstanceType<typeof ObsidianIcon> | null>(null)
 const {
-  draggingFiles, addFromVault, addFromDisk, addFromClipboard, onDragEnter,
-  onDragOver, onDragLeave, onDrop, onFilesSelected,
+  draggingFiles,
+  addFromVault,
+  addFromDisk,
+  addFromClipboard,
+  onDragEnter,
+  onDragOver,
+  onDragLeave,
+  onDrop,
+  onFilesSelected,
 } = useGalleryImports(props, fileInputRef)
 
 watch(editMode, (val) => {
@@ -295,9 +305,9 @@ const viewerImages = computed<ViewerImage[]>(() =>
   resolvedImages.value
     .filter((img) => img.url)
     .map((img, i) => ({
-      url: img.url!,
+      url: img.url,
       alt: img.alt,
-      type: img.type as 'local' | 'remote',
+      type: img.type,
       path: img.path,
       description: props.gallery.images[i]?.description || '',
     }))

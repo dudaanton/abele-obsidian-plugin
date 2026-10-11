@@ -1,7 +1,12 @@
 <template>
   <div class="abele-period-selector">
     <ObsidianIcon icon="chevron-left" tooltip="Previous month" @click="previousMonth" />
-    <div class="abele-period-selector__title" @click="pickerOpen = true">{{ label }}</div>
+    <ObsidianIcon
+      class="abele-period-selector__title"
+      :text-right="label"
+      tooltip="Choose date range"
+      @click="pickerOpen = true"
+    />
     <ObsidianIcon icon="chevron-right" tooltip="Next month" @click="nextMonth" />
 
     <DateRangePickerModal
@@ -39,8 +44,8 @@ const isCustomRange = computed(() => customFrom.value !== null && customTo.value
 
 const label = computed(() => {
   if (isCustomRange.value) {
-    const from = customFrom.value!.format('MMM D, YYYY')
-    const to = customTo.value!.format('MMM D, YYYY')
+    const from = customFrom.value.format('MMM D, YYYY')
+    const to = customTo.value.format('MMM D, YYYY')
     return `${from} — ${to}`
   }
   return dayjs().year(selectedYear.value).month(selectedMonth.value).format('MMMM YYYY')
@@ -48,12 +53,12 @@ const label = computed(() => {
 
 const computedStart = computed(() =>
   isCustomRange.value
-    ? customFrom.value!
+    ? customFrom.value
     : dayjs().year(selectedYear.value).month(selectedMonth.value).startOf('month')
 )
 const computedEnd = computed(() =>
   isCustomRange.value
-    ? customTo.value!
+    ? customTo.value
     : dayjs().year(selectedYear.value).month(selectedMonth.value).endOf('month')
 )
 
@@ -114,13 +119,6 @@ function onReset() {
 }
 
 .abele-period-selector__title {
-  font-size: var(--font-ui-small);
-  font-weight: var(--font-semibold);
-  color: var(--text-muted);
-  cursor: pointer;
-
-  &:hover {
-    color: var(--text-accent);
-  }
+  min-width: 0;
 }
 </style>

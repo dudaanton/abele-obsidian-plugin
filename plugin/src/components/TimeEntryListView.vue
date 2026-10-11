@@ -28,7 +28,11 @@
         </template>
         <div ref="scrollSentinel" class="abele-time-entries-list__sentinel" />
       </div>
-      <div v-if="!filtered.length" class="abele-time-entries-list__empty">No time entries.</div>
+      <EmptyState
+        v-if="!filtered.length"
+        class="abele-time-entries-list__empty"
+        text="No time entries."
+      />
     </template>
   </div>
 </template>
@@ -39,6 +43,7 @@ import { escapeHtml } from '@/helpers/escapeHtml'
 import { TimeEntry } from '@/entities/TimeEntry'
 import { DATE_FORMAT } from '@/constants/dates'
 import Chart from './obsidian/Chart.vue'
+import EmptyState from './obsidian/EmptyState.vue'
 import { getThemeColors, EChartsType } from '@/bases/echarts'
 import TimeEntryItem from './TimeEntryItem.vue'
 import DateDivider from './obsidian/DateDivider.vue'
@@ -216,10 +221,5 @@ function renderChart(chart: EChartsType) {
 
 .abele-time-entries-list__sentinel {
   height: 1px;
-}
-
-.abele-time-entries-list__empty {
-  font-style: italic;
-  color: var(--text-muted);
 }
 </style>

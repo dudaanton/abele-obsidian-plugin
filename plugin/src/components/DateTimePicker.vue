@@ -15,39 +15,40 @@
       </div>
     </Section>
 
-    <div class="abele-datetime-picker__time">
-      <div class="abele-datetime-picker__time-label">Time (optional)</div>
-      <div class="abele-datetime-picker__time-input-row">
-        <Input
-          v-model="timeDisplay"
-          aria-label="Time (optional)"
-          placeholder="HH:mm"
-          maxlength="5"
-          @beforeinput="onTimeBeforeInput"
-        />
-        <ObsidianIcon icon="clock" tooltip="Choose time" @click="nativeTimeInput?.showPicker()" />
-        <Input
-          ref="nativeTimeInput"
-          type="time"
-          class="abele-datetime-picker__time-native"
-          :model-value="parseTime(timeDisplay) ?? ''"
-          tabindex="-1"
-          aria-hidden="true"
-          @update:model-value="setTime($event || null)"
-        />
+    <Setting name="Time (optional)">
+      <div class="abele-datetime-picker__time">
+        <div class="abele-datetime-picker__time-input-row">
+          <Input
+            v-model="timeDisplay"
+            aria-label="Time (optional)"
+            placeholder="HH:mm"
+            maxlength="5"
+            @beforeinput="onTimeBeforeInput"
+          />
+          <ObsidianIcon icon="clock" tooltip="Choose time" @click="nativeTimeInput?.showPicker()" />
+          <Input
+            ref="nativeTimeInput"
+            type="time"
+            class="abele-datetime-picker__time-native"
+            :model-value="parseTime(timeDisplay) ?? ''"
+            tabindex="-1"
+            aria-hidden="true"
+            @update:model-value="setTime($event || null)"
+          />
+        </div>
+        <div class="abele-datetime-picker__time-choices">
+          <ObsidianIcon
+            v-for="time in timeChoices"
+            :key="time"
+            :text-right="time"
+            with-bg
+            :active="timeDisplay === time"
+            :tooltip="`Set time to ${time}`"
+            @click="setTime(timeDisplay === time ? null : time)"
+          />
+        </div>
       </div>
-      <div class="abele-datetime-picker__time-choices">
-        <ObsidianIcon
-          v-for="time in timeChoices"
-          :key="time"
-          :text-right="time"
-          with-bg
-          :active="timeDisplay === time"
-          :tooltip="`Set time to ${time}`"
-          @click="setTime(timeDisplay === time ? null : time)"
-        />
-      </div>
-    </div>
+    </Setting>
   </div>
 </template>
 
@@ -58,6 +59,7 @@ import Calendar from './Calendar.vue'
 import ObsidianIcon from './obsidian/Icon.vue'
 import Input from './obsidian/Input.vue'
 import Section from './obsidian/Section.vue'
+import Setting from './obsidian/Setting.vue'
 import { GlobalStore } from '@/stores/GlobalStore'
 import { AbeleConfig } from '@/services/AbeleConfig'
 import { Task } from '@/entities/Task'
@@ -233,14 +235,11 @@ defineExpose({ confirm, canConfirm: computed(() => !!selectedDate.value) })
 }
 
 .abele-datetime-picker__time {
+  width: 100%;
+  min-width: 0;
   display: flex;
   flex-direction: column;
   gap: calc(var(--p-spacing) / 2);
-}
-
-.abele-datetime-picker__time-label {
-  font-size: var(--font-small);
-  color: var(--text-muted);
 }
 
 .abele-datetime-picker__time-input-row {

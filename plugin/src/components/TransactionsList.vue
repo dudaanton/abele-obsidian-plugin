@@ -27,9 +27,12 @@
         </template>
         <div ref="scrollSentinel" class="abele-transactions-list__sentinel" />
       </div>
-      <div v-if="!sorted.length" class="abele-transactions-list__empty">
-        {{ search.terms.value.length ? 'Nothing matches the search.' : 'No transactions.' }}
-      </div>
+      <EmptyState
+        v-if="!sorted.length"
+        class="abele-transactions-list__empty"
+        :variant="search.terms.value.length ? 'no-matches' : 'empty'"
+        :text="search.terms.value.length ? 'Nothing matches the search.' : 'No transactions.'"
+      />
     </template>
   </div>
 </template>
@@ -44,6 +47,7 @@ import TransactionItem from './TransactionItem.vue'
 import DateDivider from './obsidian/DateDivider.vue'
 import ObsidianIcon from './obsidian/Icon.vue'
 import ListSectionHeader from './obsidian/ListSectionHeader.vue'
+import EmptyState from './obsidian/EmptyState.vue'
 import { createTransaction } from '@/commands/createTransaction'
 import { DATE_FORMAT } from '@/constants/dates'
 import { computed, ref, unref, watch } from 'vue'
@@ -222,10 +226,5 @@ function addTransaction() {
 
 .abele-transactions-list__sentinel {
   height: 1px;
-}
-
-.abele-transactions-list__empty {
-  font-style: italic;
-  color: var(--text-muted);
 }
 </style>

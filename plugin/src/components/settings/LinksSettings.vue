@@ -56,7 +56,7 @@
       </div>
     </div>
 
-    <div v-else class="abele-links__empty">No links configured.</div>
+    <EmptyState v-else text="No links configured." />
 
     <Button text="Add link" tooltip="Add another link to this list" @click="addLink" />
   </div>
@@ -72,6 +72,7 @@ import Dropdown from '../obsidian/Dropdown.vue'
 import Button from '../obsidian/Button.vue'
 import Icon from '../obsidian/Icon.vue'
 import Checkbox from '../obsidian/Checkbox.vue'
+import EmptyState from '../obsidian/EmptyState.vue'
 import { AbeleConfig, type LinkDefinition } from '@/services/AbeleConfig'
 import { ScriptService } from '@/scripting/ScriptService'
 import { pickScript, pickCommand, listCommands } from '@/helpers/suggesters/RunnablePicker'
@@ -186,11 +187,5 @@ const copyUrl = (link: LinkDefinition) => {
     text-overflow: ellipsis;
     white-space: nowrap;
   }
-}
-
-.abele-links__empty {
-  color: var(--text-muted);
-  font-size: var(--font-small);
-  margin-bottom: var(--size-4-3);
 }
 </style>

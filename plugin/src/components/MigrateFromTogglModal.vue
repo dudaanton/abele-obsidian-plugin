@@ -20,9 +20,7 @@
 
       <div v-if="migrating || completed" class="abele-migrate-toggl-modal__progress">
         <div class="abele-migrate-toggl-modal__status">{{ statusText }}</div>
-        <div class="abele-migrate-toggl-modal__bar-container">
-          <div class="abele-migrate-toggl-modal__bar" :style="{ width: progressPercent + '%' }" />
-        </div>
+        <Progress :value="progressPercent" :label="statusText || 'Import progress'" />
         <div class="abele-migrate-toggl-modal__counts">
           <span v-if="result.entriesCreated">Entries: {{ result.entriesCreated }}</span>
           <span v-if="result.notesCreated">Notes: {{ result.notesCreated }}</span>
@@ -30,8 +28,11 @@
         </div>
       </div>
 
-      <div v-if="result.errors.length > 0" class="abele-migrate-toggl-modal__errors">
-        <h4>Errors ({{ result.errors.length }})</h4>
+      <Section
+        v-if="result.errors.length > 0"
+        :title="`Errors (${result.errors.length})`"
+        class="abele-migrate-toggl-modal__errors"
+      >
         <div
           v-for="(err, i) in result.errors.slice(0, 20)"
           :key="i"
@@ -40,7 +41,7 @@
           {{ err }}
         </div>
         <div v-if="result.errors.length > 20">...and {{ result.errors.length - 20 }} more</div>
-      </div>
+      </Section>
     </div>
   </ObsidianModal>
 </template>
@@ -51,6 +52,8 @@ import ObsidianButton from './obsidian/Button.vue'
 import Setting from './obsidian/Setting.vue'
 import Input from './obsidian/Input.vue'
 import PeriodSelector from './obsidian/PeriodSelector.vue'
+import Progress from './obsidian/Progress.vue'
+import Section from './obsidian/Section.vue'
 import { ref } from 'vue'
 import { migrateFromToggl, type TogglMigrationResult } from '@/commands/migrateFromToggl'
 import dayjs from 'dayjs'
@@ -125,21 +128,6 @@ const startMigration = async () => {
   color: var(--text-muted);
 }
 
-.abele-migrate-toggl-modal__bar-container {
-  width: 100%;
-  height: 6px;
-  background-color: var(--background-modifier-border);
-  border-radius: 3px;
-  overflow: hidden;
-}
-
-.abele-migrate-toggl-modal__bar {
-  height: 100%;
-  background-color: var(--interactive-accent);
-  border-radius: 3px;
-  transition: width 0.3s ease;
-}
-
 .abele-migrate-toggl-modal__counts {
   display: flex;
   gap: var(--size-4-4);
@@ -149,11 +137,6 @@ const startMigration = async () => {
 
 .abele-migrate-toggl-modal__errors {
   margin-top: var(--size-4-2);
-
-  h4 {
-    margin: 0 0 var(--size-4-1) 0;
-    color: var(--text-error);
-  }
 }
 
 .abele-migrate-toggl-modal__error {

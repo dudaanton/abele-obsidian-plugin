@@ -143,6 +143,7 @@ const STRICT_KIT = [
   'FoldHeading',
   'Card',
   'Section',
+  'Progress',
 ]
 const STRICT_SCREENS: string[] = [] // Each migration must append its screen here.
 const MIGRATION_EXEMPTIONS = {
@@ -219,6 +220,74 @@ function rawFormControls(source: string): string[] {
   return tags
 }
 
+const EMPTY_STATE_SCREENS = [
+  'Gallery.vue',
+  'TimeEntryListView.vue',
+  'TimeTrackingSidebar.vue',
+  'TemplateSelectModal.vue',
+  'FinanceSidebar.vue',
+  'TransactionsList.vue',
+  'github/GithubComment.vue',
+  'AiChatHistory.vue',
+  'AiSkillPromptPicker.vue',
+  'settings/LinksSettings.vue',
+]
+const CAPTION_SCREENS = [
+  'AiChatSettings.vue',
+  'FinanceSidebar.vue',
+  'TimeTrackingSidebar.vue',
+  'ScriptRuns.vue',
+  'MigrateFromFireflyModal.vue',
+  'MigrateFromTogglModal.vue',
+]
+function localSmallUi(source: string): string[] {
+  const content = parseSfc(source).descriptor.template?.content ?? ''
+  const errors: string[] = []
+  const visit = (node: TemplateChildNode) => {
+    if (node.type !== NodeTypes.ELEMENT) return
+    if (
+      ['div', 'span', 'p'].includes(node.tag) &&
+      node.props.some(
+        (p) =>
+          p.type === NodeTypes.ATTRIBUTE &&
+          p.name === 'class' &&
+          /__(?:empty|chart-empty|pie-empty|bar(?:-container)?)\b/.test(p.value?.content ?? '')
+      )
+    )
+      errors.push('local empty or progress UI')
+    if (['h3', 'h4', 'progress'].includes(node.tag)) errors.push(`raw ${node.tag}`)
+    node.children.forEach(visit)
+  }
+  baseParse(content).children.forEach(visit)
+  return errors
+}
+describe('migrated small UI', () => {
+  it('makes the period caption a named kit action rather than a clickable div', () => {
+    const source = readFileSync(join(ROOT, 'obsidian/PeriodSelector.vue'), 'utf8')
+    expect(template(source)).not.toMatch(/<div[^>]*__title[^>]*@click/)
+    expect(template(source)).toContain('tooltip="Choose date range"')
+  })
+  it('detects nested handmade states, bars and captions without rejecting kit aliases', () => {
+    expect(
+      localSmallUi(
+        '<template><div><p class="abele-sample__empty">None</p><div class="abele-sample__bar"/><h3>Items</h3><progress /></div><KitEmptyState/><KitSection/><KitProgress/></template>'
+      )
+    ).toEqual([
+      'local empty or progress UI',
+      'local empty or progress UI',
+      'raw h3',
+      'raw progress',
+    ])
+  })
+  it('keeps empty states, progress and section captions in the kit', () => {
+    expect(
+      [...new Set([...EMPTY_STATE_SCREENS, ...CAPTION_SCREENS])].flatMap((file) =>
+        localSmallUi(readFileSync(join(ROOT, file), 'utf8')).map((error) => `${file}: ${error}`)
+      )
+    ).toEqual([])
+  })
+})
+
 describe('migrated theme colours', () => {
   it('does not keep a private highlight palette or dark-mode shades', () => {
     const css = readFileSync(STYLES, 'utf8')
@@ -241,6 +310,19 @@ describe('migrated theme colours', () => {
 })
 
 describe('migrated dialog sizing', () => {
+  it('does not add another descendant shell-size override beyond the recorded AI editor debt', () => {
+    expect(
+      walk(ROOT)
+        .filter(
+          (file) =>
+            !file.includes('/obsidian/') &&
+            /\.modal[^{}]*\{[^{}]*\b(?:width|max-width|min-width)\s*:/.test(
+              styleBlock(readFileSync(file, 'utf8'))
+            )
+        )
+        .map(name)
+    ).toEqual(['settings/ModelEditModal.vue'])
+  })
   it('keeps audited picker and import shells on shared sizes', () => {
     const files = [
       'DateTimePickerModal.vue',

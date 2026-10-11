@@ -123,12 +123,13 @@ state and accessibility tests before screens adopt them.
 | `Image` | Vault/URL picture; bounded `variant="thumbnail"` attachment slot with loading/missing/broken fallback and optional named preview action. Default contain; use cover only where cropping is safe. |
 | `EmptyState` | Search/backlinks empty section: empty, no-matches, loading and error variants; optional relevant action. Refresh retains existing content rather than replacing it with emptiness. |
 | `Icon` / `Button` | Native glyph action / labelled action. Tooltips use Obsidian `setTooltip`, not an invented popup. |
-| `Setting` / `Section` | Native labelled form row / settings group. Never replace forms with flat object rows. |
+| `Setting` / `Section` | Native labelled form row / settings group. Section actions sit beside its single heading, outside the content. Never replace forms with flat object rows. |
 | `Card` / `CardGrid` | Rich previews and explicit choices, not dense inventories. Card consumes `MetaLine` and optional `PathLabel`; subtitle is ordinary secondary prose. Covers/thumbnails and action slots remain. |
 | `TreeItem` / `FoldHeading` | Real hierarchies / folding list heading. Native tree classes, count and controlled folding. Plain trees have no artificial focus. |
 | `Badge` | Short status with host named colour and text. |
 | `StatusDot` | Compact host-colour state indicator with an accessible state label and native tooltip; never colour-only meaning. |
-| `Input`, `Dropdown`, `Checkbox`, `Search`, `Slider` | Host form controls. Password inputs do not offer remembrance; `Input` emits commit after editing. Sliders track input separately from committed changes. |
+| `Input`, `Dropdown`, `Checkbox`, `Search`, `Slider` | Host form controls. Password inputs do not offer remembrance; `Input` emits commit after editing and supports native number/date/time fields. `Search` names and focuses its native input and owns its suggester lifetime. Sliders track input separately from committed changes. |
+| `Progress` | Named native progress control in host colours; zero/completion are determinate, unknown totals omit the value. Screens never build percentage-width bars. |
 | `Tabs`, `Breadcrumbs` | Native navigation; phone tabs may intentionally scroll with focused tab in view. Breadcrumbs expose folded trails. |
 | `NotePicker`, `IconPicker` | Host-styled choices with keyboard operation and named options. |
 | `Modal`, `ConfirmModal` | Shared shell / explicit destructive confirmation. |

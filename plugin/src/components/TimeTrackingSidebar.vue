@@ -51,13 +51,13 @@
     <Tabs v-model="chartTab" :tabs="chartTabs" level="secondary" />
     <template v-if="chartTab === 'daily'">
       <Chart
-        v-if="dailyChartData.length"
+        v-if="dailyChartData.some(([, total]) => total > 0)"
         :active="active"
         :source="dailyChartData"
         :render="renderDailyChart"
         class="abele-time-tracking-sidebar__chart"
       />
-      <div v-else class="abele-time-tracking-sidebar__chart-empty">No data</div>
+      <EmptyState v-else text="No data" />
     </template>
     <template v-else-if="chartTab === 'groups'">
       <Chart
@@ -68,12 +68,11 @@
         :created="createGroupsPieChart"
         class="abele-time-tracking-sidebar__chart"
       />
-      <div v-else class="abele-time-tracking-sidebar__chart-empty">No data</div>
+      <EmptyState v-else text="No data" />
     </template>
 
     <!-- Entries list -->
-    <section class="abele-time-tracking-sidebar__section">
-      <h3 class="abele-time-tracking-sidebar__section-title">Entries</h3>
+    <Section title="Entries" class="abele-time-tracking-sidebar__section">
       <div v-if="visibleEntries.length" class="abele-time-tracking-sidebar__entries">
         <template v-for="(entry, idx) in visibleEntries" :key="entry.id">
           <DateDivider v-if="showDateBefore(idx)" :date="entryDate(entry)">
@@ -83,8 +82,8 @@
         </template>
         <div ref="scrollSentinel" class="abele-time-tracking-sidebar__sentinel" />
       </div>
-      <div v-else class="abele-time-tracking-sidebar__empty">No entries found</div>
-    </section>
+      <EmptyState v-else text="No entries found" />
+    </Section>
   </SidebarPanel>
 </template>
 
@@ -101,6 +100,8 @@ import { TFile } from 'obsidian'
 import { DATE_FORMAT } from '@/constants/dates'
 import Chart from './obsidian/Chart.vue'
 import SidebarPanel from './obsidian/SidebarPanel.vue'
+import EmptyState from './obsidian/EmptyState.vue'
+import Section from './obsidian/Section.vue'
 import { getThemeColors, EChartsType } from '@/bases/echarts'
 import {
   ensureWikilinkAlias,
@@ -514,25 +515,10 @@ function renderGroupsPieChart(groupsPieChart: EChartsType) {
   margin-top: var(--size-4-2);
 }
 
-.abele-time-tracking-sidebar__chart-empty {
-  height: 240px;
-  display: flex;
-  align-items: center;
-  justify-content: center;
-  color: var(--text-muted);
-  font-style: italic;
-  margin-top: var(--size-4-2);
-}
-
 .abele-time-tracking-sidebar__section {
   display: flex;
   flex-direction: column;
   margin-top: calc(var(--p-spacing) * 1.5);
-}
-
-.abele-time-tracking-sidebar__section-title {
-  margin: 0 0 var(--size-4-2) 0;
-  font-size: var(--font-ui-medium);
 }
 
 .abele-time-tracking-sidebar__entries {
@@ -542,10 +528,5 @@ function renderGroupsPieChart(groupsPieChart: EChartsType) {
 
 .abele-time-tracking-sidebar__sentinel {
   height: 1px;
-}
-
-.abele-time-tracking-sidebar__empty {
-  color: var(--text-muted);
-  font-style: italic;
 }
 </style>

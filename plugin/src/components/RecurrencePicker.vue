@@ -1,7 +1,6 @@
 <template>
   <div class="abele-recurrence-picker">
-    <div class="abele-recurrence-picker__interval">
-      <div class="abele-recurrence-picker__interval-label">Repeat every</div>
+    <Setting name="Repeat every">
       <div class="abele-recurrence-picker__interval-row">
         <Input
           type="number"
@@ -18,10 +17,13 @@
           @update:model-value="intervalUnit = $event as IntervalUnitType"
         />
       </div>
-    </div>
+    </Setting>
 
-    <div v-if="intervalUnit === 'week'" class="abele-recurrence-picker__weekdays">
-      <div class="abele-recurrence-picker__weekdays-label">On days</div>
+    <Section
+      v-if="intervalUnit === 'week'"
+      title="On days"
+      class="abele-recurrence-picker__weekdays"
+    >
       <div class="abele-recurrence-picker__weekdays-row">
         <ObsidianIcon
           v-for="day in weekdayOptions"
@@ -33,10 +35,13 @@
           @click="toggleWeekday(day.value)"
         />
       </div>
-    </div>
+    </Section>
 
-    <div v-if="intervalUnit === 'month'" class="abele-recurrence-picker__month-options">
-      <div class="abele-recurrence-picker__month-label">On</div>
+    <Section
+      v-if="intervalUnit === 'month'"
+      title="On"
+      class="abele-recurrence-picker__month-options"
+    >
       <div class="abele-recurrence-picker__month-modes">
         <ObsidianIcon
           text-right="Specific days"
@@ -86,10 +91,13 @@
         />
         <span class="abele-recurrence-picker__positional-label">day of month</span>
       </div>
-    </div>
+    </Section>
 
-    <div v-if="intervalUnit === 'year'" class="abele-recurrence-picker__year-options">
-      <div class="abele-recurrence-picker__month-label">On</div>
+    <Section
+      v-if="intervalUnit === 'year'"
+      title="On"
+      class="abele-recurrence-picker__year-options"
+    >
       <div class="abele-recurrence-picker__positional">
         <ObsidianDropdown
           :model-value="position"
@@ -98,17 +106,19 @@
         />
         <span class="abele-recurrence-picker__positional-label">day of year</span>
       </div>
-    </div>
+    </Section>
 
-    <div class="abele-recurrence-picker__from-completion">
-      <Checkbox :is-enabled="fromCompletion" @toggle="fromCompletion = !fromCompletion" />
-      <span class="abele-recurrence-picker__from-completion-label">From completion</span>
-    </div>
+    <Setting name="From completion">
+      <Checkbox
+        :is-enabled="fromCompletion"
+        aria-label="Repeat from completion"
+        @toggle="fromCompletion = !fromCompletion"
+      />
+    </Setting>
 
-    <div class="abele-recurrence-picker__preview">
-      <span class="abele-recurrence-picker__preview-label">Pattern:</span>
-      <code>{{ pattern }}</code>
-    </div>
+    <Setting name="Pattern"
+      ><code>{{ pattern }}</code></Setting
+    >
   </div>
 </template>
 
@@ -118,6 +128,8 @@ import ObsidianIcon from './obsidian/Icon.vue'
 import ObsidianDropdown from './obsidian/Dropdown.vue'
 import Checkbox from './obsidian/Checkbox.vue'
 import Input from './obsidian/Input.vue'
+import Setting from './obsidian/Setting.vue'
+import Section from './obsidian/Section.vue'
 
 const props = defineProps<{
   initialPattern?: string | null
@@ -291,22 +303,22 @@ defineExpose({ confirm, canConfirm: computed(() => !!pattern.value) })
   padding-top: var(--p-spacing);
 }
 
-.abele-recurrence-picker__interval-label,
-.abele-recurrence-picker__weekdays-label,
-.abele-recurrence-picker__month-label {
-  font-size: var(--font-small);
-  color: var(--text-muted);
-  margin-bottom: calc(var(--p-spacing) / 2);
-}
-
 .abele-recurrence-picker__interval-row {
+  width: 100%;
+  min-width: 0;
   display: flex;
   align-items: center;
   gap: calc(var(--p-spacing) / 2);
+
+  .abele-obsidian-dropdown {
+    flex: 1;
+    min-width: 0;
+    width: auto;
+  }
 }
 
 .abele-recurrence-picker__interval-input {
-  flex: 0 1 calc(var(--size-4-18) * 2);
+  flex: 0 1 var(--size-4-18);
   min-width: 0;
 }
 
@@ -337,31 +349,5 @@ defineExpose({ confirm, canConfirm: computed(() => !!pattern.value) })
   font-size: var(--font-small);
   color: var(--text-muted);
   white-space: nowrap;
-}
-
-.abele-recurrence-picker__from-completion {
-  display: flex;
-  align-items: center;
-  gap: calc(var(--p-spacing) / 2);
-}
-
-.abele-recurrence-picker__from-completion-label {
-  font-size: var(--font-small);
-}
-
-.abele-recurrence-picker__preview {
-  padding: calc(var(--p-spacing) / 2);
-  background-color: var(--background-secondary);
-  border-radius: var(--radius-s);
-  font-size: var(--font-small);
-
-  code {
-    color: var(--text-accent);
-  }
-}
-
-.abele-recurrence-picker__preview-label {
-  color: var(--text-muted);
-  margin-right: calc(var(--p-spacing) / 2);
 }
 </style>

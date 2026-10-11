@@ -1,7 +1,7 @@
 <template>
   <ObsidianModal title="Chat History" size="tall" @close="emit('close')">
     <div class="abele-chat-history">
-      <div class="abele-chat-history__bar">
+      <div class="abele-chat-history__toolbar">
         <div class="abele-chat-history__search-row">
           <Search
             ref="searchRef"
@@ -32,13 +32,19 @@
         />
       </div>
 
-      <div v-if="reading" class="abele-chat-history__status" aria-live="polite">
-        Searching the messages… {{ reading.done }} of {{ reading.total }} chats
-      </div>
+      <EmptyState
+        v-if="reading"
+        class="abele-chat-history__status"
+        variant="loading"
+        :text="`Searching the messages… ${reading.done} of ${reading.total} chats`"
+      />
 
-      <div v-if="filtered.length === 0 && !reading" class="abele-chat-history__empty">
-        {{ allChats.length === 0 ? 'No previous chats' : 'No matches' }}
-      </div>
+      <EmptyState
+        v-if="filtered.length === 0 && !reading"
+        class="abele-chat-history__empty"
+        :variant="allChats.length === 0 ? 'empty' : 'no-matches'"
+        :text="allChats.length === 0 ? 'No previous chats' : 'No matches'"
+      />
 
       <div ref="listRef" class="abele-chat-history__list">
         <template v-for="(chat, i) in visible" :key="chat.path">
@@ -91,6 +97,7 @@ import Icon from './obsidian/Icon.vue'
 import Dropdown from './obsidian/Dropdown.vue'
 import Checkbox from './obsidian/Checkbox.vue'
 import Search from './obsidian/Search.vue'
+import EmptyState from './obsidian/EmptyState.vue'
 import DateDivider from './obsidian/DateDivider.vue'
 import {
   HISTORY_ORDERS,
@@ -373,7 +380,7 @@ const remove = async (path: string) => {
   min-width: min(400px, 90vw);
 }
 
-.abele-chat-history__bar {
+.abele-chat-history__toolbar {
   display: flex;
   gap: var(--size-4-2);
   align-items: center;
@@ -437,12 +444,6 @@ const remove = async (path: string) => {
   flex: 0 0 auto;
 }
 
-.abele-chat-history__status {
-  padding: var(--size-4-1) var(--size-4-2);
-  color: var(--text-muted);
-  font-size: var(--font-ui-small);
-}
-
 /** The words found and a few either side, under the title of a chat found by its messages. */
 .abele-chat-history__snippet {
   font-family: var(--font-interface);
@@ -450,11 +451,5 @@ const remove = async (path: string) => {
   color: var(--text-muted);
   white-space: normal;
   overflow-wrap: anywhere;
-}
-
-.abele-chat-history__empty {
-  padding: var(--size-4-4);
-  text-align: center;
-  color: var(--text-muted);
 }
 </style>

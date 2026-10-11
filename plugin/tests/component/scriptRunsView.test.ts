@@ -96,14 +96,14 @@ describe('the list', () => {
   it('counts what is running at the top', () => {
     began()
 
-    expect(open().find('.abele-runs__count').text()).toBe('1 running')
+    expect(open().find('.abele-section__heading').text()).toBe('1 running')
   })
 
   it('says how many ran once they are all done', () => {
     runs.finish(began(), '')
     runs.finish(began(), '')
 
-    expect(open().find('.abele-runs__count').text()).toBe('2 runs')
+    expect(open().find('.abele-section__heading').text()).toBe('2 runs')
   })
 
   it('marks out a run that came from somewhere other than the palette', () => {
@@ -330,7 +330,7 @@ describe('clearing the list', () => {
     began({ name: 'Going' })
     const wrapper = open()
 
-    await wrapper.find('.abele-runs__head .abele-obsidian-icon').trigger('click')
+    await wrapper.find('.abele-section__actions .abele-obsidian-icon').trigger('click')
 
     expect(wrapper.findAll('.abele-runs__name').map((n) => n.text())).toEqual(['Going'])
   })

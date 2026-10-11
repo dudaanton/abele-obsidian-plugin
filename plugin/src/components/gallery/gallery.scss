@@ -40,23 +40,6 @@
   margin-left: auto;
 }
 
-.abele-gallery__empty {
-  display: flex;
-  flex-direction: column;
-  align-items: center;
-  justify-content: center;
-  gap: 0.5em;
-  padding: 2em;
-  color: var(--text-muted);
-  background: var(--background-secondary);
-  border-radius: var(--radius-m);
-  cursor: pointer;
-
-  &:hover {
-    background: var(--background-modifier-hover);
-  }
-}
-
 .abele-gallery__grid {
   display: grid;
   grid-template-columns: repeat(auto-fill, minmax(200px, 1fr));

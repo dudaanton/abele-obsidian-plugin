@@ -28,9 +28,7 @@
 
       <div v-if="migrating || completed" class="abele-migrate-firefly-modal__progress">
         <div class="abele-migrate-firefly-modal__status">{{ statusText }}</div>
-        <div class="abele-migrate-firefly-modal__bar-container">
-          <div class="abele-migrate-firefly-modal__bar" :style="{ width: progressPercent + '%' }" />
-        </div>
+        <Progress :value="progressPercent" :label="statusText || 'Migration progress'" />
         <div class="abele-migrate-firefly-modal__counts">
           <span v-if="result.accountsCreated">Accounts: {{ result.accountsCreated }}</span>
           <span v-if="result.categoriesCreated">Categories: {{ result.categoriesCreated }}</span>
@@ -42,8 +40,11 @@
       </div>
 
       <template v-if="completed && result.preview">
-        <div v-if="result.preview.accounts.length" class="abele-migrate-firefly-modal__preview">
-          <h4>Accounts ({{ result.preview.accounts.length }})</h4>
+        <Section
+          v-if="result.preview.accounts.length"
+          :title="`Accounts (${result.preview.accounts.length})`"
+          class="abele-migrate-firefly-modal__preview"
+        >
           <div
             v-for="(item, i) in result.preview.accounts"
             :key="'a' + i"
@@ -51,10 +52,13 @@
           >
             {{ item }}
           </div>
-        </div>
+        </Section>
 
-        <div v-if="result.preview.categories.length" class="abele-migrate-firefly-modal__preview">
-          <h4>Categories ({{ result.preview.categories.length }})</h4>
+        <Section
+          v-if="result.preview.categories.length"
+          :title="`Categories (${result.preview.categories.length})`"
+          class="abele-migrate-firefly-modal__preview"
+        >
           <div
             v-for="(item, i) in result.preview.categories"
             :key="'c' + i"
@@ -62,13 +66,13 @@
           >
             {{ item }}
           </div>
-        </div>
+        </Section>
 
-        <div v-if="result.preview.transactions.length" class="abele-migrate-firefly-modal__preview">
-          <h4>
-            Transactions ({{ result.transactionsCreated || result.preview.transactions.length
-            }}{{ result.preview.transactions.length >= 50 ? ', showing first 50' : '' }})
-          </h4>
+        <Section
+          v-if="result.preview.transactions.length"
+          :title="`Transactions (${result.transactionsCreated || result.preview.transactions.length}${result.preview.transactions.length >= 50 ? ', showing first 50' : ''})`"
+          class="abele-migrate-firefly-modal__preview"
+        >
           <div
             v-for="(item, i) in result.preview.transactions"
             :key="'t' + i"
@@ -76,14 +80,14 @@
           >
             {{ item }}
           </div>
-        </div>
+        </Section>
       </template>
 
-      <div
+      <Section
         v-if="completed && !dryRun && verificationResults.length > 0"
+        title="Balance verification"
         class="abele-migrate-firefly-modal__verification"
       >
-        <h4>Balance verification</h4>
         <div
           v-for="v in verificationResults"
           :key="v.account"
@@ -98,10 +102,13 @@
             Diff: {{ v.diff }} {{ v.currency }}
           </span>
         </div>
-      </div>
+      </Section>
 
-      <div v-if="result.errors.length > 0" class="abele-migrate-firefly-modal__errors">
-        <h4>Errors ({{ result.errors.length }})</h4>
+      <Section
+        v-if="result.errors.length > 0"
+        :title="`Errors (${result.errors.length})`"
+        class="abele-migrate-firefly-modal__errors"
+      >
         <div
           v-for="(err, i) in result.errors.slice(0, 20)"
           :key="i"
@@ -110,7 +117,7 @@
           {{ err }}
         </div>
         <div v-if="result.errors.length > 20">...and {{ result.errors.length - 20 }} more</div>
-      </div>
+      </Section>
     </div>
   </ObsidianModal>
 </template>
@@ -122,6 +129,8 @@ import ObsidianButton from './obsidian/Button.vue'
 import Setting from './obsidian/Setting.vue'
 import Input from './obsidian/Input.vue'
 import Checkbox from './obsidian/Checkbox.vue'
+import Progress from './obsidian/Progress.vue'
+import Section from './obsidian/Section.vue'
 import { ref } from 'vue'
 import { request as requestUrl } from '@/helpers/http'
 import { keyDestinations, acceptIntroducedDestinations } from '@/secrets/destinations'
@@ -292,21 +301,6 @@ const emit = defineEmits<{
   margin-bottom: calc(var(--p-spacing) / 4);
 }
 
-.abele-migrate-firefly-modal__bar-container {
-  height: 6px;
-  background: var(--background-modifier-border);
-  border-radius: 3px;
-  overflow: hidden;
-  margin-bottom: calc(var(--p-spacing) / 2);
-}
-
-.abele-migrate-firefly-modal__bar {
-  height: 100%;
-  background: var(--interactive-accent);
-  border-radius: 3px;
-  transition: width 0.3s ease;
-}
-
 .abele-migrate-firefly-modal__counts {
   display: flex;
   gap: var(--p-spacing);
@@ -316,10 +310,6 @@ const emit = defineEmits<{
 
 .abele-migrate-firefly-modal__verification {
   margin: var(--p-spacing) 0;
-
-  h4 {
-    margin: 0 0 calc(var(--p-spacing) / 2);
-  }
 }
 
 .abele-migrate-firefly-modal__verify-row {
@@ -349,11 +339,6 @@ const emit = defineEmits<{
 
 .abele-migrate-firefly-modal__errors {
   margin: var(--p-spacing) 0;
-
-  h4 {
-    margin: 0 0 calc(var(--p-spacing) / 2);
-    color: var(--text-error);
-  }
 }
 
 .abele-migrate-firefly-modal__error {
@@ -366,10 +351,6 @@ const emit = defineEmits<{
   margin: var(--p-spacing) 0;
   max-height: 300px;
   overflow-y: auto;
-
-  h4 {
-    margin: 0 0 calc(var(--p-spacing) / 4);
-  }
 }
 
 .abele-migrate-firefly-modal__preview-item {

@@ -34,7 +34,7 @@
       :repo="repo"
       as-document
     />
-    <div v-else class="abele-github-comment__empty">No text.</div>
+    <EmptyState v-else text="No text." />
 
     <div v-if="comment.replies?.length" class="abele-github-comment__replies">
       <GithubComment v-for="r in comment.replies" :key="r.id" :comment="r" :target="target" reply />
@@ -49,6 +49,7 @@
 <script setup lang="ts">
 import { computed, inject, onBeforeUnmount, onMounted, ref } from 'vue'
 import Badge from '../obsidian/Badge.vue'
+import EmptyState from '../obsidian/EmptyState.vue'
 import GithubText from './GithubText.vue'
 import GithubLinkActions from './GithubLinkActions.vue'
 import GithubUser from './GithubUser.vue'
@@ -193,7 +194,6 @@ onBeforeUnmount(() => {
     }
   }
 
-  &__empty,
   &__more {
     color: var(--text-faint);
     font-size: var(--font-ui-small);

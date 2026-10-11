@@ -89,29 +89,8 @@
   margin-bottom: var(--size-4-6);
 }
 
-.abele-finance-sidebar__section-header {
-  display: flex;
-  align-items: center;
-  justify-content: space-between;
-  gap: calc(var(--p-spacing) / 2);
-  margin: 0 0 var(--size-4-2) 0;
-
-  .abele-finance-sidebar__section-title {
-    margin: 0;
-  }
-}
-
 .abele-finance-sidebar__search {
   margin-bottom: var(--size-4-2);
-}
-
-.abele-finance-sidebar__section-title {
-  font-size: var(--font-ui-small);
-  font-weight: var(--font-semibold);
-  color: var(--text-muted);
-  text-transform: uppercase;
-  letter-spacing: 0.05em;
-  margin: 0 0 var(--size-4-2) 0;
 }
 
 // --- Tabs ---
@@ -163,16 +142,6 @@
 
 // --- Charts ---
 
-.abele-finance-sidebar__pie-empty {
-  height: 200px;
-  display: flex;
-  align-items: center;
-  justify-content: center;
-  color: var(--text-faint);
-  font-size: var(--font-ui-small);
-  font-style: italic;
-}
-
 .abele-finance-sidebar__pie-chart,
 .abele-finance-sidebar__calendar-chart,
 .abele-finance-sidebar__networth-chart {
@@ -195,12 +164,4 @@
 
 .abele-finance-sidebar__sentinel {
   height: 1px;
-}
-
-// --- Empty ---
-
-.abele-finance-sidebar__empty {
-  font-size: var(--font-ui-small);
-  color: var(--text-faint);
-  font-style: italic;
 }

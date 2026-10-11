@@ -15,7 +15,11 @@
             skill.description
           }}</span>
         </div>
-        <div v-if="filteredSkills.length === 0" class="abele-sp-picker__empty">No skills found</div>
+        <EmptyState
+          v-if="filteredSkills.length === 0"
+          :variant="search ? 'no-matches' : 'empty'"
+          text="No skills found"
+        />
       </template>
       <template v-else>
         <div
@@ -29,9 +33,11 @@
             prompt.description
           }}</span>
         </div>
-        <div v-if="filteredPrompts.length === 0" class="abele-sp-picker__empty">
-          No prompts found
-        </div>
+        <EmptyState
+          v-if="filteredPrompts.length === 0"
+          :variant="search ? 'no-matches' : 'empty'"
+          text="No prompts found"
+        />
       </template>
     </div>
   </div>
@@ -41,6 +47,7 @@
 import { ref, computed, onMounted, onBeforeUnmount, useTemplateRef } from 'vue'
 import { TFile } from 'obsidian'
 import Input from './obsidian/Input.vue'
+import EmptyState from './obsidian/EmptyState.vue'
 import { GlobalStore } from '@/stores/GlobalStore'
 import { discoverSkills, type SkillInfo } from '@/ai/tools/SkillTool'
 
@@ -177,12 +184,6 @@ const selectPrompt = (prompt: PromptItem) => {
 
 .abele-sp-picker__item-desc {
   font-size: var(--font-smaller);
-  color: var(--text-muted);
-}
-
-.abele-sp-picker__empty {
-  padding: var(--size-4-4);
-  text-align: center;
   color: var(--text-muted);
 }
 </style>

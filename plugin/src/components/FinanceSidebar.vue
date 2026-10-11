@@ -131,7 +131,7 @@
           :created="createPieChart"
           class="abele-finance-sidebar__pie-chart"
         />
-        <div v-else class="abele-finance-sidebar__pie-empty">No data</div>
+        <EmptyState v-else class="abele-finance-sidebar__pie-empty" text="No data" />
       </template>
       <template v-else-if="chartTab === 'calendar'">
         <Chart
@@ -153,9 +153,8 @@
     </section>
 
     <!-- Recent Transactions -->
-    <section class="abele-finance-sidebar__section">
-      <div class="abele-finance-sidebar__section-header">
-        <h3 class="abele-finance-sidebar__section-title">Recent Transactions</h3>
+    <Section title="Recent Transactions" class="abele-finance-sidebar__section">
+      <template #actions>
         <ObsidianIcon
           class="abele-finance-sidebar__search-toggle"
           icon="search"
@@ -163,7 +162,7 @@
           :tooltip="search.open.value ? 'Close the search' : 'Search all transactions'"
           @click="search.toggle"
         />
-      </div>
+      </template>
       <ObsidianSearch
         v-if="search.open.value"
         v-model="search.query.value"
@@ -185,10 +184,12 @@
         </template>
         <div ref="scrollSentinel" class="abele-finance-sidebar__sentinel" />
       </div>
-      <div v-else class="abele-finance-sidebar__empty">
-        {{ search.terms.value.length ? 'Nothing matches the search.' : 'No transactions found' }}
-      </div>
-    </section>
+      <EmptyState
+        v-else
+        :variant="search.terms.value.length ? 'no-matches' : 'empty'"
+        :text="search.terms.value.length ? 'Nothing matches the search.' : 'No transactions found'"
+      />
+    </Section>
   </SidebarPanel>
 </template>
 
@@ -206,6 +207,8 @@ import { AbeleConfig } from '@/services/AbeleConfig'
 import { DATE_FORMAT } from '@/constants/dates'
 import Chart from './obsidian/Chart.vue'
 import SidebarPanel from './obsidian/SidebarPanel.vue'
+import EmptyState from './obsidian/EmptyState.vue'
+import Section from './obsidian/Section.vue'
 import { openFile } from '@/helpers/vaultUtils'
 import ObsidianIcon from './obsidian/Icon.vue'
 import ObsidianSearch from './obsidian/Search.vue'
@@ -287,10 +290,22 @@ function onCustomApplied() {
 }
 
 const {
-  periodCurrencies, selectedPeriodCurrency, currencyTabs, periodTotals,
-  periodIncome, periodExpenses, periodLent, periodReturned, periodSavings,
+  periodCurrencies,
+  selectedPeriodCurrency,
+  currencyTabs,
+  periodTotals,
+  periodIncome,
+  periodExpenses,
+  periodLent,
+  periodReturned,
+  periodSavings,
 } = useFinancePeriodSummary({
-  active, accountsList, ledger, pinnedCurrenciesList, periodStart, periodEnd,
+  active,
+  accountsList,
+  ledger,
+  pinnedCurrenciesList,
+  periodStart,
+  periodEnd,
 })
 
 // --- Account Type Lookup ---
@@ -394,10 +409,20 @@ const networthData = pausedWhileHidden(active, () => {
 })
 
 const {
-  createPieChart, renderPieChart, renderCalendarChart, createNetworthChart, renderNetworthChart,
+  createPieChart,
+  renderPieChart,
+  renderCalendarChart,
+  createNetworthChart,
+  renderNetworthChart,
 } = useFinanceCharts({
-  pieData, calendarData, periodStart, periodEnd,
-  weekStartsOnMonday: store.weekStartsOnMonday, networthData, networthLegendSelected, openFile,
+  pieData,
+  calendarData,
+  periodStart,
+  periodEnd,
+  weekStartsOnMonday: store.weekStartsOnMonday,
+  networthData,
+  networthLegendSelected,
+  openFile,
 })
 
 // --- Recent Transactions ---

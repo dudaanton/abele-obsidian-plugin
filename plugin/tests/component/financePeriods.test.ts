@@ -97,7 +97,12 @@ let wrapper: VueWrapper | undefined
 let pinned: string
 const originalStubs = mountConfig.global.stubs
 beforeEach(() => {
-  mountConfig.global.stubs = { ...originalStubs, ListSectionHeader: false }
+  mountConfig.global.stubs = {
+    ...originalStubs,
+    ListSectionHeader: false,
+    Section: false,
+    EmptyState: false,
+  }
   vi.stubEnv('TZ', 'Europe/Moscow')
   vi.useFakeTimers({ toFake: ['Date', 'setTimeout', 'clearTimeout'] })
   vi.setSystemTime(new Date('2024-03-01T00:15:00+03:00'))

@@ -144,7 +144,7 @@ async function mountSidebar(active = true) {
   wrapper = mount(FinanceSidebar, {
     shallow: true,
     props: { active },
-    global: { stubs: { SidebarPanel: false } },
+    global: { stubs: { SidebarPanel: false, Section: false, EmptyState: false } },
   })
   await settle()
   return wrapper
