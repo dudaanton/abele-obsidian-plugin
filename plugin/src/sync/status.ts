@@ -7,9 +7,8 @@ import { formatWhen } from './format'
  *
  * The engine has five states and knows nothing about a device that was never set up, which is
  * the state a vault spends most of its life in: `disconnected` is the plugin's own. So is
- * `joining`: a device that took a connection from a transfer, with files here and on the server,
- * builds no engine until somebody says which side wins where both hold a file. Everything else is the engine's, spelled the same way, so a
- * reader comparing the status bar with the daemon's log is looking at one vocabulary.
+ * `joining`: a connection that is still starting. Everything else is the engine's,
+ * spelled the same way, so a reader comparing the status bar with the daemon's log is looking at one vocabulary.
  *
  * The labels are the user's words rather than the engine's — `idle` is what the engine calls a
  * device with nothing left to do, and what a person wants to read is *Fully synced*, which is
@@ -63,7 +62,7 @@ export const DISCONNECTED_STATUS: SyncStatus = Object.freeze({
 
 export const STATUS_LABEL: Record<SyncState, string> = {
   disconnected: 'Not connected',
-  joining: 'Choose how to join',
+  joining: 'Connecting',
   idle: 'Fully synced',
   syncing: 'Syncing',
   paused: 'Paused',
@@ -147,11 +146,6 @@ export function stagedLine(count: number): string {
   return `Settings waiting (${count}) — Apply and reload on the Sync tab.`
 }
 
-/** What the tooltip says of a join waiting for its question to be answered. */
-export const JOINING_LINE =
-  'This vault and the server both hold files. Nothing syncs until you choose, on the Sync tab, ' +
-  'which side is kept where both have a file.'
-
 /** How many changes, in words: `1 change is`, `3 changes are`. */
 export function changesAre(count: number): string {
   return count === 1 ? '1 change is' : `${count} changes are`
@@ -171,7 +165,7 @@ export function statusTooltip(status: SyncStatus): string {
   }
   if (status.heldDeletes > 0) lines.push(heldLine(status.heldDeletes))
   if (status.deferred > 0) lines.push(stagedLine(status.deferred))
-  if (status.state === 'joining') lines.push(JOINING_LINE)
+  if (status.state === 'joining') lines.push('Connecting to the sync server.')
   else if (status.state !== 'disconnected') {
     lines.push(`Last sync ${formatWhen(status.lastSyncAt)}`)
   }

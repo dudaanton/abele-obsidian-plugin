@@ -119,15 +119,11 @@ describe('the status vocabulary', () => {
     expect(statusTooltip(status({ lastSyncAt: null }))).toContain('Last sync never')
   })
 
-  /**
-   * A device that took a connection from a transfer, with files here and on the server, syncs
-   * nothing until somebody says which side wins. The status bar is where that is seen first.
-   */
-  it('says a join is waiting for a choice, and where to make it', () => {
+  it('shows a connection starting without asking for a legacy join choice', () => {
     const joining = status({ state: 'joining' })
-
-    expect(statusText(joining)).toBe('Choose how to join')
-    expect(statusTooltip(joining)).toContain('Nothing syncs until you choose, on the Sync tab')
+    expect(statusText(joining)).toBe('Connecting')
+    expect(statusTooltip(joining)).toContain('Connecting to the sync server.')
+    expect(statusTooltip(joining)).not.toContain('choose')
     expect(statusTooltip(joining)).not.toContain('Last sync')
   })
 
