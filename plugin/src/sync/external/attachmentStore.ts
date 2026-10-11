@@ -1119,6 +1119,17 @@ export class AttachmentStore {
       const doc = await this.document(),
         op = doc.operations.find((item) => item.operationId === opts.operationId)
       if (!op) return this.result('recovery-required')
+      if (
+        doc.operations.some(
+          (other) =>
+            other.kind !== 'disconnect-preparation' &&
+            !['hydrated', 'remote-only', 'complete'].includes(other.phase)
+        ) ||
+        doc.files.some(
+          (file) => file.pendingOperationId || file.blockingReason || file.projectionPath
+        )
+      )
+        return this.result('disconnect-incomplete')
       this.owned()
       // Preserve private copies before readiness checks. Changed quarantine bytes
       // are recoverable edits, never deletion authority or a reason to hold departure.

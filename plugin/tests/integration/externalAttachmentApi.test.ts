@@ -1699,3 +1699,45 @@ it.each([false, true, 'changed'])(
 function hostPrivateDirectory(s: Awaited<ReturnType<typeof setup>>) {
   return s.host.artifactPath('').replace(/\/$/, '')
 }
+
+it('keeps unresolved hydration quarantine in place so recovery can still settle after refused disconnect', async () => {
+  const s = await setup('personal', false, false, true)
+  try {
+    await s.api.evict(s.base.fileId, {
+      operationId: 'sample-evict',
+      expectedRevision: 0,
+      expectedVersionId: s.base.versionId,
+    })
+    const rename = s.fake.vault.adapter.rename.bind(s.fake.vault.adapter)
+    const interrupted = vi
+      .spyOn(s.fake.vault.adapter, 'rename')
+      .mockImplementation(async (from, to) => {
+        await rename(from, to)
+        if (from === path + '.abele-ref') throw new Error('sample interrupted retirement')
+      })
+    expect(
+      (
+        await s.api.hydrate(s.base.fileId, {
+          operationId: 'sample-hydrate',
+          expectedVersionId: s.base.versionId,
+        })
+      ).status
+    ).toBe('cleanup-pending')
+    interrupted.mockRestore()
+    const op = (await s.state.snapshot()).operations.find(
+      (op) => op.operationId === 'sample-hydrate'
+    )!
+    const quarantine = op.ownedArtifacts.find((artifact) => artifact.role === 'retained')!
+    const bytes = await s.fake.vault.adapter.readBinary(quarantine.path)
+    expect((await s.api.materializeForDisconnect({ operationId: 'sample-departure' })).status).toBe(
+      'disconnect-incomplete'
+    )
+    expect(await s.fake.vault.adapter.readBinary(quarantine.path)).toEqual(bytes)
+    expect((await s.api.recover()).pending).toBe(0)
+    expect((await s.api.materializeForDisconnect({ operationId: 'sample-departure' })).status).toBe(
+      'complete'
+    )
+  } finally {
+    s.close()
+  }
+})
