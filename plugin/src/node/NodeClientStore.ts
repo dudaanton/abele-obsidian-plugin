@@ -10,6 +10,8 @@ export interface NodeClientState extends ClientState {
   chatMutations?: Record<string, NodeMutationRecord>
   delegation?: DelegationStorage
   fileDrafts?: Record<string, FileDraft>
+  /** Owner folder/worktree intents retain one operation ID until a typed receipt is known. */
+  nodePathIntents?: Record<string, { id: string; method: string; params: unknown }>
   /** Replaceable artifact payload cache; journal references remain untouched. */
   artifactData?: Record<string, Record<string, unknown>>
   results: Record<
@@ -29,6 +31,14 @@ const StateSchema = z
     chatMutations: z.record(z.string(), NodeMutationRecordSchema).optional(),
     delegation: DelegationStorageSchema.optional(),
     fileDrafts: z.record(z.string(), FileDraftSchema).optional(),
+    nodePathIntents: z
+      .record(
+        z.string(),
+        z
+          .object({ id: z.string().min(1).max(128), method: z.string(), params: z.unknown() })
+          .strict()
+      )
+      .optional(),
     artifactData: z.record(z.string(), z.record(z.string(), z.unknown())).optional(),
     node_id: z.string().min(1).max(128).optional(),
     installation_id: z.string().min(1).max(128).optional(),
@@ -68,6 +78,8 @@ function readState(raw: unknown): NodeClientState {
       values.map((e) => NodeEventSchema.parse(e)),
     ])
   )
+  for (const intent of Object.values(state.nodePathIntents ?? {}))
+    validateParams(intent.method, intent.params)
   const outbox = state.outbox.map((entry) => {
     validateParams(entry.method, entry.params)
     // Validation may add defaults in a newer protocol. Never rewrite a retry's body.
