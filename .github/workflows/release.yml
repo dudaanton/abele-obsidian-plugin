@@ -9,7 +9,29 @@ permissions:
   contents: read
 
 jobs:
+  candidate:
+    runs-on: ubuntu-latest
+    permissions:
+      contents: read
+      actions: read
+    outputs:
+      run_id: ${{ steps.evidence.outputs.run_id }}
+      artifact_digest: ${{ steps.evidence.outputs.artifact_digest }}
+    steps:
+      - uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262 # v4.4.0
+        with:
+          persist-credentials: false
+      - name: Find completed exact-revision candidate evidence
+        id: evidence
+        env:
+          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+          REPO: ${{ github.repository }}
+          REVISION: ${{ github.sha }}
+        run: node plugin/scripts/select-candidate.mjs --github-output "$GITHUB_OUTPUT"
+
   test:
+    needs: candidate
+    if: ${{ needs.candidate.outputs.run_id == '' }}
     uses: ./.github/workflows/test.yml
     with:
       # One urgent key-destination release uses its curated regression set; every other tag
@@ -17,35 +39,63 @@ jobs:
       test_scope: ${{ github.ref_name == '1.69.0' && 'key-destinations' || 'all' }}
 
   build:
-    needs: test
+    needs: [candidate, test]
+    if: ${{ always() && needs.candidate.result == 'success' && (needs.test.result == 'success' || (needs.test.result == 'skipped' && needs.candidate.outputs.run_id != '')) }}
     runs-on: ubuntu-latest
     permissions:
       contents: read
+      actions: read
     steps:
       - uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262 # v4.4.0
         with:
           # The production build generates its changelog from the complete tagged history.
           fetch-depth: 0
           fetch-tags: true
+          persist-credentials: false
       - uses: actions/setup-node@49933ea5288caeca8642d1e84afbd3f7d6820020 # v4.4.0
         with:
           node-version: "22.x"
+
+      - uses: actions/download-artifact@d3f86a106a0bac45b974a628896c90dbdf5c8093 # v4.3.0
+        with:
+          name: production
+          path: plugin/build
+          run-id: ${{ needs.candidate.outputs.run_id || github.run_id }}
+          github-token: ${{ secrets.GITHUB_TOKEN }}
+
+      - name: Verify immutable production archive digest
+        env:
+          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+          REPO: ${{ github.repository }}
+          RUN_ID: ${{ needs.candidate.outputs.run_id || github.run_id }}
+          EXPECTED_ARTIFACT_DIGEST: ${{ needs.candidate.outputs.artifact_digest || needs.test.outputs.artifact_digest }}
+        run: |
+          [[ "$EXPECTED_ARTIFACT_DIGEST" =~ ^[a-f0-9]{64}$ ]]
+          artifact_id=$(gh api "repos/$REPO/actions/runs/$RUN_ID/artifacts" --jq '.artifacts[] | select(.name == "production" and .expired == false) | .id')
+          [[ "$artifact_id" =~ ^[0-9]+$ ]]
+          archive="$RUNNER_TEMP/production.zip"
+          gh api "repos/$REPO/actions/artifacts/$artifact_id/zip" > "$archive"
+          printf '%s  %s\n' "$EXPECTED_ARTIFACT_DIGEST" "$archive" | sha256sum -c -
+          mkdir "$RUNNER_TEMP/production-verified"
+          unzip -q "$archive" -d "$RUNNER_TEMP/production-verified"
+          diff -r "$RUNNER_TEMP/production-verified" plugin/build
 
       - name: Build and verify production assets
         working-directory: plugin
         env:
           TAG: ${{ github.ref_name }}
+          ABELE_PROMOTION_TAG: ${{ needs.candidate.outputs.run_id != '' && github.ref_name || '' }}
         run: |
-          npm ci --ignore-scripts
-          npm run build
+          # Project validation remains read-only; reuse the size-tested CI bytes.
           node scripts/check-release.mjs
 
       - name: Collect assets and checksums
         run: |
           mkdir release
-          cp plugin/build/main.js manifest.json release/
+          cp plugin/build/main.js plugin/build/manifest.json release/
           cp plugin/build/main.css release/styles.css
-          (cd release && sha256sum main.js manifest.json styles.css > SHA256SUMS)
+          cp plugin/build/build-report.json plugin/build/build-manifest.json release/
+          (cd release && sha256sum main.js manifest.json styles.css build-report.json build-manifest.json > SHA256SUMS)
 
       - uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02 # v4.6.2
         with:
@@ -57,6 +107,7 @@ jobs:
   # No package installation or project code runs with repository-write permissions.
   publish:
     needs: build
+    if: ${{ !cancelled() && needs.build.result == 'success' }}
     runs-on: ubuntu-latest
     permissions:
       contents: write
@@ -66,6 +117,7 @@ jobs:
       - uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262 # v4.4.0
         with:
           fetch-depth: 0
+          persist-credentials: false
       - uses: actions/download-artifact@d3f86a106a0bac45b974a628896c90dbdf5c8093 # v4.3.0
         with:
           name: release
@@ -80,6 +132,7 @@ jobs:
             release/main.js
             release/manifest.json
             release/styles.css
+            release/build-manifest.json
 
       - name: Publish release with checksums
         env:
@@ -102,4 +155,6 @@ jobs:
             release/main.js \
             release/manifest.json \
             release/styles.css \
+            release/build-report.json \
+            release/build-manifest.json \
             release/SHA256SUMS

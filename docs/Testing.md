@@ -59,12 +59,30 @@ CI uses read-only repository permissions and installs the exact locked dependenc
 install scripts. `npm audit --omit=dev --audit-level=moderate` checks shipped dependencies.
 
 A tag created by `release.sh` must match both `manifest.json` and `plugin/package.json`.
-The release builds with a read-only token; `plugin/scripts/check-release.mjs` rejects missing
-assets, extra chunks, the development test API and sourcemaps. A separate publishing job,
-which runs no npm commands, verifies SHA-256 checksums and attests build provenance.
-`SHA256SUMS` accompanies the three plugin assets. After downloading them, verify with
+The reusable test workflow builds once with read-only permissions and checks size against
+those emitted bytes. Build/size overlaps tests, lint and audit; the build-only stage first
+consumes matching evidence from both type-check passes. Publication waits for every gate and
+reuses the verified production artifact, never a separate rebuild.
+`plugin/scripts/check-release.mjs` rejects missing assets, extra chunks, the development test
+API, sourcemaps, changed inputs and checksum mismatches. A separate publishing job, which runs
+no npm commands or project code, verifies SHA-256 checksums and attests build provenance.
+`SHA256SUMS` accompanies the three plugin assets and their build report/provenance manifest.
+After downloading them, verify with
 `sha256sum -c SHA256SUMS` and `gh attestation verify main.js --repo <owner>/<repository>`.
 These checks require no change to the existing raw-version tag convention in `release.sh`.
+
+The candidate workflow accepts an exact 40-character revision SHA and runs the complete reusable
+verification workflow without publication. Dispatch it on the candidate branch at that exact
+revision: the checked tree and workflow recipe must have the same SHA. Its `candidate-verification`
+artifact and job summary record the checked revision and SHA-256 digest of the `production` archive.
+A branch name or a green run at another revision is not evidence.
+
+A tag release may reuse a completed successful candidate run only when the workflow path, event,
+checked revision, unexpired artifact inventory and recorded/API archive digests all match. It
+verifies the downloaded archive's digest again before promotion. Missing or unknown evidence
+runs the full tagged verification workflow instead; a mismatching selected artifact fails closed.
+Candidate artifacts expire after one day. All project code still runs without repository-write
+permissions, whether verification is fresh or reused.
 
 ## Policy
 
@@ -176,9 +194,9 @@ rather than by faking a window size.
 
 ## Bundle size — `tests/size/`
 
-`npm run test:size` builds the production bundle in memory (about 6 s, nothing is written to
-`build/`) and fails when `main.js` or the stylesheet is over its budget in
-`tests/size/budget.json`. Obsidian reads and compiles the whole of `main.js` on every start,
+`npm run test:size` builds the production bundle into `build/` unless an explicit verified
+artifact directory is supplied with `ABELE_BUILD_ARTIFACT`. It fails when `main.js` or the
+stylesheet is over its budget in `tests/size/budget.json`. Obsidian reads and compiles the whole of `main.js` on every start,
 phones included, so every byte is paid for at load whether the feature behind it is used or
 not. Raise the budget in its own commit explaining the growth; do not remove a feature to fit it.
 
@@ -203,6 +221,41 @@ and development markers rather than maintaining a second list of those checks.
 The build runs in a process of its own. Built inside Vitest, whose environment leaks into Vite
 and the Vue plugin, the same bundle came out 10–130 KB larger than the one `npm run build`
 ships.
+
+### Build and artifact reuse
+
+Standalone `npm run build` and `npm run build:test` still run both normal and strict-null type
+checks. Orchestrators can run `npm run types` once, then `npm run build:only` or
+`npm run build:test:only`. Build-only requires a successful receipt matching source contents,
+installed dependency metadata and the Node/platform identity. A missing, stale or interrupted
+type stage is not accepted. The receipt is `node_modules/.cache/abele/types.json`; it may travel
+between identical clean CI installations, but is not a substitute for either pass.
+
+Every build emits `main.js`, `main.css`, `manifest.json`, `build-report.json` and
+`build-manifest.json`. The report includes sizes, rendered-package attribution and runtime
+element counts. The manifest records source/toolchain/dependency identity, checked revision,
+Git history/tag fingerprints and SHA-256 checksums of all four other files. Verification checks
+the exact inventory, checksums, report measurements, mode and current source/history identity.
+It does not claim that a local checksum manifest is a signed attestation. Normal verification
+requires exact history/tag identity. For promotion, `ABELE_PROMOTION_TAG=<version>` permits only
+one change: a newly attached matching lightweight version tag on the exact committed pending bump.
+The revision, source, ancestry and every other tag must remain identical. This keeps the generated
+catalog unchanged and is not permission to reuse artifacts across arbitrary tag changes.
+
+```sh
+npm run types
+npm run build:only
+ABELE_BUILD_ARTIFACT=build npm run test:size
+node scripts/build-artifact.mjs build production
+```
+
+`bundle-size.mjs --artifact <directory>` reads the same report and bytes without building.
+All six size assertions still run. An explicit invalid artifact fails closed, rather than
+silently rebuilding. Both copy scripts accept `--artifact <directory>` (or
+`ABELE_BUILD_ARTIFACT`) and install the verified artifact's own version metadata. Without an
+artifact request they keep their standalone safe-build fallback. Production and `sharing-test`
+are distinct modes and remain two builds; preserve the first directory before building the
+second, since Vite empties `build/`.
 
 A dynamic `import()` does not make a dependency cheaper here: `inlineDynamicImports` keeps it in
 `main.js` (see *The test hook* below), so its bytes are still read and compiled at every start —

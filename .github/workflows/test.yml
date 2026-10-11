@@ -12,6 +12,17 @@ on:
         type: string
         required: false
         default: all
+      revision:
+        type: string
+        required: false
+        default: ''
+    outputs:
+      artifact_digest:
+        description: SHA-256 digest of the verified production artifact archive
+        value: ${{ jobs.build.outputs.artifact_digest }}
+      revision:
+        description: Exact checked revision
+        value: ${{ jobs.build.outputs.revision }}
 
 permissions:
   contents: read
@@ -26,6 +37,15 @@ jobs:
           # The guard reads every commit the push or pull request brings, not only the tip.
           fetch-depth: 0
           fetch-tags: true
+          ref: ${{ inputs.revision || github.sha }}
+          persist-credentials: false
+
+      - name: Verify exact revision
+        env:
+          REVISION: ${{ inputs.revision || github.sha }}
+        run: |
+          [[ "$REVISION" =~ ^[a-f0-9]{40}$ ]] && [ "$(git rev-parse HEAD)" = "$REVISION" ]
+          [ "$REVISION" = "$GITHUB_SHA" ]
 
       - uses: actions/setup-node@49933ea5288caeca8642d1e84afbd3f7d6820020 # v4.4.0
         with:
@@ -41,11 +61,13 @@ jobs:
           EVENT: ${{ github.event_name }}
           PR_BASE: ${{ github.event.pull_request.base.sha }}
           PUSH_BEFORE: ${{ github.event.before }}
+          CANDIDATE_REVISION: ${{ inputs.revision }}
         run: |
           node plugin/scripts/repo-guard.mjs --all
           base=""
           if [ "$EVENT" = "pull_request" ]; then base="$PR_BASE"; fi
           if [ "$EVENT" = "push" ]; then base="$PUSH_BEFORE"; fi
+          if [ -n "$CANDIDATE_REVISION" ]; then base=$(git merge-base origin/master HEAD); fi
           if [ -n "$base" ] && [ "$base" != "0000000000000000000000000000000000000000" ] \
             && git cat-file -e "$base^{commit}" 2>/dev/null; then
             node plugin/scripts/repo-guard.mjs --range "$base..HEAD"
@@ -63,10 +85,6 @@ jobs:
       - name: Dead-code inventory
         working-directory: plugin
         run: node scripts/dead-code.mjs
-
-      - name: Type check
-        working-directory: plugin
-        run: npm run types
 
       # Obsidian's own plugin rules, from eslint-plugin-obsidianmd. Warnings are pre-existing
       # TypeScript hygiene and do not fail the build; an error means a guideline was broken.
@@ -101,8 +119,93 @@ jobs:
             *) echo "Unknown test scope" >&2; exit 1 ;;
           esac
 
-      # Builds the production bundle and holds main.js and the stylesheet to the budget in
-      # plugin/tests/size/budget.json. Every byte of main.js is read and compiled at every start.
+  types:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262 # v4.4.0
+        with:
+          fetch-depth: 0
+          fetch-tags: true
+          ref: ${{ inputs.revision || github.sha }}
+          persist-credentials: false
+      - name: Verify exact revision
+        env:
+          REVISION: ${{ inputs.revision || github.sha }}
+        run: |
+          [[ "$REVISION" =~ ^[a-f0-9]{40}$ ]] && [ "$(git rev-parse HEAD)" = "$REVISION" ]
+          [ "$REVISION" = "$GITHUB_SHA" ]
+      - uses: actions/setup-node@49933ea5288caeca8642d1e84afbd3f7d6820020 # v4.4.0
+        with:
+          node-version: "22.x"
+          cache: npm
+          cache-dependency-path: plugin/package-lock.json
+      - name: Install dependencies
+        working-directory: plugin
+        run: npm ci --ignore-scripts
+      - name: Type check
+        working-directory: plugin
+        run: npm run types
+      - uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02 # v4.6.2
+        with:
+          name: types
+          path: plugin/node_modules/.cache/abele/types.json
+          include-hidden-files: true
+          if-no-files-found: error
+          retention-days: 1
+
+  # The type evidence gates build-only; build/size overlaps tests, lint and audit.
+  build:
+    needs: types
+    runs-on: ubuntu-latest
+    outputs:
+      artifact_digest: ${{ steps.artifact.outputs.artifact-digest }}
+      revision: ${{ steps.revision.outputs.revision }}
+    steps:
+      - uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262 # v4.4.0
+        with:
+          fetch-depth: 0
+          fetch-tags: true
+          ref: ${{ inputs.revision || github.sha }}
+          persist-credentials: false
+      - name: Verify exact revision
+        id: revision
+        env:
+          REVISION: ${{ inputs.revision || github.sha }}
+        run: |
+          [[ "$REVISION" =~ ^[a-f0-9]{40}$ ]] && [ "$(git rev-parse HEAD)" = "$REVISION" ]
+          [ "$REVISION" = "$GITHUB_SHA" ]
+          echo "revision=$REVISION" >> "$GITHUB_OUTPUT"
+      - uses: actions/setup-node@49933ea5288caeca8642d1e84afbd3f7d6820020 # v4.4.0
+        with:
+          node-version: "22.x"
+          cache: npm
+          cache-dependency-path: plugin/package-lock.json
+      - name: Install dependencies
+        working-directory: plugin
+        run: npm ci --ignore-scripts
+      - uses: actions/download-artifact@d3f86a106a0bac45b974a628896c90dbdf5c8093 # v4.3.0
+        with:
+          name: types
+          path: plugin/node_modules/.cache/abele
+      - name: Build production once
+        working-directory: plugin
+        run: npm run build:only
       - name: Bundle size
         working-directory: plugin
+        env:
+          ABELE_BUILD_ARTIFACT: build
         run: npm run test:size
+      - name: Verify production release assets
+        working-directory: plugin
+        env:
+          RELEASE_TAG: ${{ startsWith(github.ref, 'refs/tags/') && github.ref_name || '' }}
+        run: |
+          export TAG="${RELEASE_TAG:-$(node -p 'JSON.parse(require("fs").readFileSync("../manifest.json")).version')}"
+          node scripts/check-release.mjs
+      - uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02 # v4.6.2
+        id: artifact
+        with:
+          name: production
+          path: plugin/build/
+          if-no-files-found: error
+          retention-days: 1

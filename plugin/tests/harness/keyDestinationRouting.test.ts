@@ -44,7 +44,9 @@ describe('bounded one-release key-destination routing', () => {
     expect(release.jobs.test.with.test_scope).toBe(
       "${{ github.ref_name == '1.69.0' && 'key-destinations' || 'all' }}"
     )
-    expect(release.jobs.build.needs).toBe('test')
+    expect(release.jobs.build.needs).toEqual(['candidate', 'test'])
+    expect(release.jobs.test.needs).toBe('candidate')
+    expect(release.jobs.test.if).toBe("${{ needs.candidate.outputs.run_id == '' }}")
     expect(release.jobs.publish.needs).toBe('build')
     expect(
       release.jobs.build.steps.find((s: any) => s.name === 'Build and verify production assets').run
@@ -52,7 +54,7 @@ describe('bounded one-release key-destination routing', () => {
     expect(
       release.jobs.publish.steps.find((s: any) => s.name === 'Verify the downloaded assets').run
     ).toContain('sha256sum -c SHA256SUMS')
-    expect(workflow.jobs.test.steps.find((s: any) => s.name === 'Bundle size').run).toBe(
+    expect(workflow.jobs.build.steps.find((s: any) => s.name === 'Bundle size').run).toBe(
       'npm run test:size'
     )
   })
