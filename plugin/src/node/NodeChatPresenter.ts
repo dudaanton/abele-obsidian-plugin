@@ -3,6 +3,7 @@ import { z } from 'zod'
 import type { FakeStep, Prompt } from '@abele/node-client'
 import type { ChatPresentationSession, ChatReference } from '@/ai/ChatPresentationSession'
 import type { ChatDraft } from '@/ai/types'
+import { mobileBackground } from '@/ai/mobileBackground'
 import { reduceTranscript } from './NodeTranscriptReducer'
 import type { NodeConnection } from './NodeService'
 import type { NodeClientState } from './NodeClientStore'
@@ -98,6 +99,8 @@ export class NodeChatPresenter implements ChatPresentationSession {
   private dirty = false
   private readonly unusableArtifacts = new Set<string>()
   private readonly interruptingRuns = new Set<string>()
+  private readonly backgroundStoppedRuns = new Set<string>()
+  private endBackgroundTurn?: () => void
 
   constructor(
     readonly reference: Extract<ChatReference, { kind: 'node-session' }>,
@@ -210,6 +213,7 @@ export class NodeChatPresenter implements ChatPresentationSession {
         }
         if (this.destroyed) return
         this.projection.value = reduceTranscript(hydrated)
+        this.updateBackgroundTurn()
         this.rejected.value = rejected
         this.receipts.value = receipts
         this.queued.value = pending
@@ -230,6 +234,26 @@ export class NodeChatPresenter implements ChatPresentationSession {
       this.refreshing = undefined
     })
     return this.refreshing
+  }
+
+  /** An open chat owns its remote run's audio; queue/connection state is not a run. */
+  private updateBackgroundTurn(): void {
+    const runs = this.projection.value.activeRuns
+    for (const run of this.backgroundStoppedRuns)
+      if (!runs.includes(run)) this.backgroundStoppedRuns.delete(run)
+    const active = !this.destroyed && runs.some((run) => !this.backgroundStoppedRuns.has(run))
+    if (active && !this.endBackgroundTurn) {
+      console.debug('[Abele node] background audio turn acquired')
+      this.endBackgroundTurn = mobileBackground.beginTurn()
+    } else if (!active) this.releaseBackgroundTurn()
+  }
+
+  private releaseBackgroundTurn(): void {
+    if (!this.endBackgroundTurn) return
+    console.debug('[Abele node] background audio turn released')
+    const end = this.endBackgroundTurn
+    this.endBackgroundTurn = undefined
+    end()
   }
 
   async send(text: string, script?: FakeStep[], shownTarget?: PathTarget): Promise<void> {
@@ -369,6 +393,9 @@ export class NodeChatPresenter implements ChatPresentationSession {
   async interrupt(runId: string): Promise<void> {
     if (this.interruptingRuns.has(runId)) return
     this.interruptingRuns.add(runId)
+    // Stop ends this chat's local keep-alive even if the remote acknowledgement is lost.
+    this.backgroundStoppedRuns.add(runId)
+    this.updateBackgroundTurn()
     this.error.value = ''
     try {
       try {
@@ -511,6 +538,8 @@ export class NodeChatPresenter implements ChatPresentationSession {
   }
   destroy(): void {
     this.destroyed = true
+    this.releaseBackgroundTurn()
+    this.backgroundStoppedRuns.clear()
     ++this.descriptionGeneration
     this.nodeDescription.value = undefined
     this.stopEvent()

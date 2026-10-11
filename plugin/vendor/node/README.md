@@ -33,8 +33,10 @@ npm install --save-exact ./vendor/node/abele-channel-protocol-0.0.0.tgz \
 
 Before packing the channel client, apply `channel-client-background.patch` to its
 built package root with `patch -p1`, and remove `dist/index.js.map`. Pack that patched
-package instead of the upstream channel client. Keep the patch until the upstream
-package provides the equivalent API. `RequestChannel.backgroundActive` defaults to
+package instead of the upstream channel client. The equivalent change is maintained
+in the node repository's channel-client source package. Keep this plugin patch until
+the next node release carrying that change is re-vendored here; remove it only in
+that re-vendor update. `RequestChannel.backgroundActive` defaults to
 false; the plugin binds it to admitted, still-playing background audio. Request
 timeouts remain `outcome_unknown` and never replay a mutation: a received pong keeps
 only the transport alive, not the timed-out request.
