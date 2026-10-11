@@ -9,6 +9,117 @@ import VoiceRecorder from '@/components/VoiceRecorder.vue'
 import { useVault } from '../helpers/testEnv'
 import { reduceTranscript } from '@/node/NodeTranscriptReducer'
 import type { JournalEvent } from '@abele/channel-protocol'
+import { IDBFactory } from 'fake-indexeddb'
+import { NodeClient } from '@abele/node-client'
+import { NodeChatPresenter } from '@/node/NodeChatPresenter'
+import { NodeClientStore } from '@/node/NodeClientStore'
+import type { NodeConnection } from '@/node/NodeService'
+
+it.each(['offline', 'disconnect during admission'])(
+  'keeps a submission in the composer across closing and reload, and sends only on request (%s)',
+  async (mode) => {
+    useVault([])
+    const factory = new IDBFactory()
+    const reference = {
+      kind: 'node-session' as const,
+      nodeId: 'sample-node',
+      registrationId: 'sample-registration',
+      sessionId: 'sample-session',
+      title: 'Sample session',
+    }
+    const create = () => {
+      const store = new NodeClientStore('sample-draft', factory)
+      const client = new NodeClient(
+        { url: 'ws://127.0.0.1:7777/channel', profile: 'local-token-v1', token: 'sample-token' },
+        store
+      )
+      const connection = {
+        client,
+        state: ref('offline'),
+        error: ref(''),
+      } as unknown as NodeConnection
+      return { store, client, connection, presenter: new NodeChatPresenter(reference, connection) }
+    }
+    const mountChat = (presenter: NodeChatPresenter) =>
+      mount(NodeChatView, { props: { presenter }, global: { stubs: { VoiceRecorder: true } } })
+    let session = create()
+    let wrapper = mountChat(session.presenter)
+    const text = '  Sample offline words\nwith a second line  '
+    try {
+      await session.presenter.refresh()
+      let cursor: ReturnType<typeof vi.spyOn> | undefined
+      let online: ReturnType<typeof vi.spyOn> | undefined
+      if (mode === 'disconnect during admission') {
+        vi.spyOn(session.client, 'subscribe').mockResolvedValue(undefined)
+        online = vi.spyOn(session.client, 'connected', 'get').mockReturnValue(true)
+        session.connection.state.value = 'connected'
+        cursor = vi.spyOn(session.client, 'cursor').mockImplementation(async () => {
+          session.connection.state.value = 'offline'
+          return 3
+        })
+      }
+      await wrapper.get('textarea').setValue(text)
+      await wrapper.get('textarea').trigger('keydown', { key: 'Enter', shiftKey: true })
+      await vi.waitFor(() =>
+        expect(wrapper.find('.abele-node-chat__draft-note').exists()).toBe(true)
+      )
+      await vi.waitFor(() => expect(wrapper.find('[data-icon="loader"]').exists()).toBe(false))
+      expect(session.presenter.draft.value.text).toBe(text)
+      expect(wrapper.get('textarea').element.value).toBe(text)
+      expect(wrapper.get('[role="status"].abele-node-chat__draft-note').text()).toContain(
+        'not sent'
+      )
+      expect(wrapper.find('[role="alert"]').exists()).toBe(false)
+      expect(await session.client.pending()).toEqual([])
+      expect(wrapper.get('[aria-label="Send again"]').exists()).toBe(true)
+      cursor?.mockRestore()
+      online?.mockRestore()
+
+      wrapper.unmount()
+      session.presenter.destroy()
+      session.store.close()
+      session = create()
+      await session.presenter.refresh()
+      wrapper = mountChat(session.presenter)
+      expect(wrapper.get('textarea').element.value).toBe(text)
+      expect(wrapper.get('.abele-node-chat__draft-note').text()).toContain('offline')
+      const subscribe = vi.spyOn(session.client, 'subscribe').mockResolvedValue(undefined)
+      const connected = vi.spyOn(session.client, 'connected', 'get').mockReturnValue(true)
+      const flush = vi.spyOn(session.client, 'flush').mockImplementation(async () => {
+        await session.store.transaction((state) => {
+          const operation = state.outbox.shift()!
+          state.results[operation.operation_id] = { result: {} }
+        })
+      })
+      session.connection.state.value = 'connected'
+      await flushPromises()
+      expect(await session.client.pending()).toEqual([])
+      expect(flush).not.toHaveBeenCalled()
+      expect(wrapper.get('textarea').element.value).toBe(text)
+      await wrapper.get('textarea').trigger('keydown', { key: 'Enter', shiftKey: true })
+      await vi.waitFor(() => expect(wrapper.get('textarea').element.value).toBe(''))
+      await vi.waitFor(() => expect(wrapper.find('[data-icon="loader"]').exists()).toBe(false))
+      expect(flush).toHaveBeenCalledOnce()
+      expect(wrapper.find('.abele-node-chat__draft-note').exists()).toBe(false)
+      subscribe.mockRestore()
+      connected.mockRestore()
+      flush.mockRestore()
+      wrapper.unmount()
+      session.presenter.destroy()
+      await session.store.transaction(() => undefined)
+      const reopened = create()
+      await reopened.presenter.refresh()
+      expect(reopened.presenter.draft.value.text).toBe('')
+      reopened.presenter.destroy()
+      reopened.store.close()
+    } finally {
+      wrapper.unmount()
+      session.presenter.destroy()
+      session.store.close()
+      vi.restoreAllMocks()
+    }
+  }
+)
 
 it.each([false, true])(
   'shows a failed pi turn and resends its input (follow-up: %s)',

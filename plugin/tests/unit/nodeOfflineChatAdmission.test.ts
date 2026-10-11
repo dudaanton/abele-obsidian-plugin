@@ -78,3 +78,76 @@ it('rejects a disconnect that occurs while preparing a connected turn', async ()
   expect(presenter.draft.value.text).toBe('Sample racing turn')
   presenter.destroy()
 })
+
+it('does not restore an admitted draft when the chat closes while confirmation is pending', async () => {
+  const { presenter, client, store, connection } = await setup()
+  connection.state.value = 'connected'
+  vi.spyOn(client, 'connected', 'get').mockReturnValue(true)
+  let release!: () => void
+  const flushing = vi.spyOn(client, 'flush').mockImplementation(
+    () =>
+      new Promise<void>((resolve) => {
+        release = resolve
+      })
+  )
+  presenter.draft.value.text = 'Sample admitted turn'
+  const sending = presenter.send('Sample admitted turn')
+  await vi.waitFor(() => expect(flushing).toHaveBeenCalledOnce())
+  presenter.destroy()
+  const reopened = new NodeChatPresenter(reference, connection)
+  await reopened.refresh()
+  expect(reopened.draft.value.text).toBe('')
+  release()
+  await sending
+  expect(await store.transaction((s) => s.outbox)).toHaveLength(1)
+  reopened.destroy()
+})
+
+it('persists a refused turn even if its composer closes before the receipt arrives', async () => {
+  const { presenter, client, connection } = await setup()
+  connection.state.value = 'connected'
+  vi.spyOn(client, 'connected', 'get').mockReturnValue(true)
+  let release!: () => void
+  const flushing = vi.spyOn(client, 'flush').mockImplementation(
+    () =>
+      new Promise<void>((resolve) => {
+        release = resolve
+      })
+  )
+  vi.spyOn(client, 'operationResult').mockResolvedValue({ error: 'not_found' })
+  presenter.draft.value.text = 'Sample refused turn'
+  const sending = presenter.send('Sample refused turn')
+  await vi.waitFor(() => expect(flushing).toHaveBeenCalledOnce())
+  presenter.destroy()
+  release()
+  await sending
+  const reopened = new NodeChatPresenter(reference, connection)
+  await reopened.refresh()
+  expect(reopened.draft.value.text).toBe('Sample refused turn')
+  reopened.destroy()
+})
+
+it('keeps newer composer edits when an earlier turn is admitted', async () => {
+  const { presenter, client, connection } = await setup()
+  connection.state.value = 'connected'
+  vi.spyOn(client, 'connected', 'get').mockReturnValue(true)
+  let release!: () => void
+  const flushing = vi.spyOn(client, 'flush').mockImplementation(
+    () =>
+      new Promise<void>((resolve) => {
+        release = resolve
+      })
+  )
+  vi.spyOn(client, 'operationResult').mockResolvedValue({ result: {} })
+  presenter.draft.value.text = 'Sample first turn'
+  const sending = presenter.send('Sample first turn')
+  await vi.waitFor(() => expect(flushing).toHaveBeenCalledOnce())
+  presenter.draft.value.text = 'Sample next draft'
+  release()
+  await sending
+  presenter.destroy()
+  const reopened = new NodeChatPresenter(reference, connection)
+  await reopened.refresh()
+  expect(reopened.draft.value.text).toBe('Sample next draft')
+  reopened.destroy()
+})

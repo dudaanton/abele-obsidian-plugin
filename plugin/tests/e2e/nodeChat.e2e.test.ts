@@ -10,13 +10,28 @@ import {
   readFileSync,
 } from 'node:fs'
 import { resolve } from 'node:path'
+import { tmpdir } from 'node:os'
 import { createServer } from 'node:http'
-import { evalRaw, reloadPlugin } from './helpers/obsidianCli'
+import { evalRaw, evalJson, reloadPlugin, reloadApp } from './helpers/obsidianCli'
+import { shotDir } from './helpers/shots'
 import { evalAsync } from './helpers/githubLive'
 import { targets } from './helpers/target'
 
 targets('desktop')
 const cli = process.env.ABELE_NODE_CLI
+const shots = shotDir('abele-node-chat')
+const captureDraft = (label: string) =>
+  evalAsync(`(async () => {
+  const root = document.querySelector('.abele-node-chat');
+  const field = root.querySelector('textarea');
+  const note = root.querySelector('.abele-node-chat__draft-note');
+  if (!field?.value || !note || !root.querySelector('[aria-label="Send again"]')) throw new Error('Unsent draft controls are missing');
+  const box = note.getBoundingClientRect();
+  if (box.width <= 0 || box.left < 0 || box.right > innerWidth + 1) throw new Error('Draft note is clipped');
+  const image = await require('@electron/remote').getCurrentWebContents().capturePage();
+  require('fs').writeFileSync(${JSON.stringify(shots)} + '/' + ${JSON.stringify(label)} + '.png', image.toPNG());
+  return JSON.stringify(true);
+})()`)
 const wait = (ms: number) => new Promise((resolve) => setTimeout(resolve, ms))
 const PRELUDE = `const wait = ms => new Promise(r => setTimeout(r, ms));
 const until = async fn => { for (let i=0; i<200; i++) { if (fn()) return; await wait(50) } throw new Error('Node UI did not converge: ' + fn.toString()) };
@@ -29,124 +44,119 @@ const nodeMenu = async title => {
   await wait(100);
 };`
 
-// BUG: foreground offline admission rejects the retained outbox contract; the composer also
-// clears the promised local draft. Keep the durable-unsent-turn guarantee until it is resolved.
-it.fails(
-  'adds a node through settings, sends and answers a prompt, then restores offline outbox and history after reload',
-  async () => {
-    if (!cli) throw new Error('Set ABELE_NODE_CLI to the built daemon CLI for node live acceptance')
-    mkdirSync('../.scratch', { recursive: true })
-    const dir = mkdtempSync(resolve('../.scratch/n-'))
-    const fakeClaude = resolve(dir, 'fixture-claude.mjs')
-    copyFileSync(resolve('tests/fixtures/nodeClaude.mjs'), fakeClaude)
-    chmodSync(fakeClaude, 0o700)
-    const env = { ...process.env, HOME: dir, ABELE_CLAUDE_PATH: fakeClaude, ABELE_CODEX_PATH: '' }
-    const projectsRoot = mkdtempSync('/tmp/abele-node-ui-')
-    const projectPaths = ['one', 'two'].map((name) => resolve(projectsRoot, name))
-    for (const path of projectPaths) {
-      mkdirSync(path)
-      const git = (args: string[]) => {
-        const result = spawnSync('/usr/bin/git', args, { cwd: path, encoding: 'utf8' })
-        if (result.status) throw new Error(result.stderr)
+it('restores unsent offline drafts without auto-sending, then sends explicitly and checks workspace history', async () => {
+  if (!cli) throw new Error('Set ABELE_NODE_CLI to the built daemon CLI for node live acceptance')
+  const dir = mkdtempSync(resolve(tmpdir(), 'abele-node-ui-state-'))
+  const fakeClaude = resolve(dir, 'fixture-claude.mjs')
+  copyFileSync(resolve('tests/fixtures/nodeClaude.mjs'), fakeClaude)
+  chmodSync(fakeClaude, 0o700)
+  const env = { ...process.env, HOME: dir, ABELE_CLAUDE_PATH: fakeClaude, ABELE_CODEX_PATH: '' }
+  const projectsRoot = mkdtempSync(resolve(tmpdir(), 'abele-node-ui-'))
+  const projectPaths = ['one', 'two'].map((name) => resolve(projectsRoot, name))
+  for (const path of projectPaths) {
+    mkdirSync(path)
+    const git = (args: string[]) => {
+      const result = spawnSync('/usr/bin/git', args, { cwd: path, encoding: 'utf8' })
+      if (result.status) throw new Error(result.stderr)
+    }
+    git(['init', '--initial-branch=main'])
+    writeFileSync(resolve(path, 'sample.txt'), 'before\n')
+    git(['add', 'sample.txt'])
+    git([
+      '-c',
+      'user.name=Sample',
+      '-c',
+      'user.email=sample@example.invalid',
+      '-c',
+      'commit.gpgsign=false',
+      'commit',
+      '-m',
+      'sample',
+    ])
+  }
+  let child: ChildProcess | undefined
+  let port = 0
+  let registrationId = ''
+  const start = async () => {
+    child = spawn(
+      process.execPath,
+      [
+        cli,
+        'start',
+        '--json',
+        '--no-codex',
+        '--node-name',
+        'Sample node',
+        '--state-dir',
+        dir,
+        '--port',
+        String(port),
+      ],
+      {
+        stdio: ['ignore', 'pipe', 'pipe'],
+        env,
       }
-      git(['init', '--initial-branch=main'])
-      writeFileSync(resolve(path, 'sample.txt'), 'before\n')
-      git(['add', 'sample.txt'])
-      git([
-        '-c',
-        'user.name=Sample',
-        '-c',
-        'user.email=sample@example.invalid',
-        '-c',
-        'commit.gpgsign=false',
-        'commit',
-        '-m',
-        'sample',
-      ])
+    )
+    let output = '',
+      errors = ''
+    child.stdout!.on('data', (data) => {
+      output += data
+    })
+    child.stderr!.on('data', (data) => {
+      errors += data
+    })
+    for (let i = 0; i < 200 && !output.includes('"listening"'); i++) {
+      if (child.exitCode !== null) throw new Error(errors)
+      await wait(20)
     }
-    let child: ChildProcess | undefined
-    let port = 0
-    let registrationId = ''
-    const start = async () => {
-      child = spawn(
-        process.execPath,
-        [
-          cli,
-          'start',
-          '--json',
-          '--no-codex',
-          '--node-name',
-          'Sample node',
-          '--state-dir',
-          dir,
-          '--port',
-          String(port),
-        ],
-        {
-          stdio: ['ignore', 'pipe', 'pipe'],
-          env,
-        }
-      )
-      let output = '',
-        errors = ''
-      child.stdout!.on('data', (data) => {
-        output += data
+    const listening = output.split('\n').find((line) => line.includes('"listening"'))
+    if (!listening) throw Error('Node did not emit JSON readiness: ' + errors)
+    const ready = JSON.parse(listening)
+    port = ready.port
+  }
+  const stop = async () => {
+    if (!child || child.exitCode !== null) return
+    child.kill('SIGTERM')
+    await new Promise<void>((resolve) => child!.once('exit', () => resolve()))
+  }
+  try {
+    const credential = spawnSync(
+      process.execPath,
+      [cli, 'token', 'create', 'sample-desktop', '--json', '--state-dir', dir],
+      { encoding: 'utf8', env }
+    )
+    expect(credential.status, credential.stderr).toBe(0)
+    const { token } = JSON.parse(credential.stdout)
+    await start()
+
+    // Measure a real browser WebSocket Origin without intercepting shared Electron listeners.
+    // No authentication or token is ever sent to this one-request observer.
+    const observer = createServer()
+    const origin = new Promise<string | undefined>((resolve) =>
+      observer.once('upgrade', (request, socket) => {
+        resolve(request.headers.origin)
+        socket.end('HTTP/1.1 403 Forbidden\r\nConnection: close\r\n\r\n')
       })
-      child.stderr!.on('data', (data) => {
-        errors += data
-      })
-      for (let i = 0; i < 200 && !output.includes('"listening"'); i++) {
-        if (child.exitCode !== null) throw new Error(errors)
-        await wait(20)
-      }
-      const listening = output.split('\n').find((line) => line.includes('"listening"'))
-      if (!listening) throw Error('Node did not emit JSON readiness: ' + errors)
-      const ready = JSON.parse(listening)
-      port = ready.port
-    }
-    const stop = async () => {
-      if (!child || child.exitCode !== null) return
-      child.kill('SIGTERM')
-      await new Promise<void>((resolve) => child!.once('exit', () => resolve()))
-    }
+    )
+    await new Promise<void>((resolve) => observer.listen(0, '127.0.0.1', resolve))
     try {
-      const credential = spawnSync(
-        process.execPath,
-        [cli, 'token', 'create', 'sample-desktop', '--json', '--state-dir', dir],
-        { encoding: 'utf8', env }
+      const observerPort = (observer.address() as { port: number }).port
+      evalRaw(
+        `(() => { const socket = new WebSocket('ws://127.0.0.1:${observerPort}/'); socket.onerror = () => socket.close(); return 'started' })()`
       )
-      expect(credential.status, credential.stderr).toBe(0)
-      const { token } = JSON.parse(credential.stdout)
-      await start()
+      const actualOrigin = await Promise.race([
+        origin,
+        wait(5000).then(() => {
+          throw new Error('No browser Origin captured')
+        }),
+      ])
+      console.info('Desktop Obsidian WebSocket Origin:', actualOrigin)
+      expect(actualOrigin).toBe('app://obsidian.md')
+    } finally {
+      await new Promise<void>((resolve) => observer.close(() => resolve()))
+    }
 
-      // Measure a real browser WebSocket Origin without intercepting shared Electron listeners.
-      // No authentication or token is ever sent to this one-request observer.
-      const observer = createServer()
-      const origin = new Promise<string | undefined>((resolve) =>
-        observer.once('upgrade', (request, socket) => {
-          resolve(request.headers.origin)
-          socket.end('HTTP/1.1 403 Forbidden\r\nConnection: close\r\n\r\n')
-        })
-      )
-      await new Promise<void>((resolve) => observer.listen(0, '127.0.0.1', resolve))
-      try {
-        const observerPort = (observer.address() as { port: number }).port
-        evalRaw(
-          `(() => { const socket = new WebSocket('ws://127.0.0.1:${observerPort}/'); socket.onerror = () => socket.close(); return 'started' })()`
-        )
-        const actualOrigin = await Promise.race([
-          origin,
-          wait(5000).then(() => {
-            throw new Error('No browser Origin captured')
-          }),
-        ])
-        console.info('Desktop Obsidian WebSocket Origin:', actualOrigin)
-        expect(actualOrigin).toBe('app://obsidian.md')
-      } finally {
-        await new Promise<void>((resolve) => observer.close(() => resolve()))
-      }
-
-      registrationId = evalAsync<string>(`(async () => {
+    registrationId = evalAsync<string>(`(async () => {
       ${PRELUDE}
       app.setting.open(); app.setting.openTabById('abele');
       const settingsDoc = app.setting.activeTab.containerEl.ownerDocument;
@@ -175,56 +185,108 @@ it.fails(
       return JSON.stringify(node.id)
     })()`)
 
-      await stop()
-      const offline = evalAsync<{ queued: number; local: boolean }>(`(async () => {
+    await stop()
+    const offline = evalAsync<{
+      queued: number
+      local: boolean
+      draft: string
+      note: string
+    }>(`(async () => {
       ${PRELUDE}
       const presenter = chats.getNodeSession(chats.activeTabId.value);
       await until(() => presenter.connection.state.value === 'offline');
       const field = document.querySelector('.abele-node-chat textarea');
       field.value = 'Sample offline follow-up'; field.dispatchEvent(new Event('input',{bubbles:true}));
       field.dispatchEvent(new KeyboardEvent('keydown',{key:'Enter',shiftKey:true,bubbles:true}));
-      try {await until(() => presenter.queued.value.length === 1)}
+      try {await until(() => document.querySelector('.abele-node-chat__draft-note') && !document.querySelector('.abele-node-chat .abele-chat-input__spinner'))}
       catch(error){throw Error(String(error.message)+'; offline input: '+JSON.stringify({error:presenter.error.value,draft:presenter.draft.value,queued:presenter.queued.value,active:chats.activeTabId.value,presenter:presenter.id,focused:document.activeElement?.tagName,inputs:[...document.querySelectorAll('.abele-node-chat textarea')].map(e=>({value:e.value,visible:!!e.getClientRects().length}))}))}
-      return JSON.stringify({ queued: presenter.queued.value.length, local: chats.activeSession.value !== null })
+      const reference = { ...presenter.reference };
+      await chats.closeTab(chats.activeTabId.value);
+      await chats.openNodeSession(reference);
+      await until(() => document.querySelector('.abele-node-chat textarea')?.value === 'Sample offline follow-up');
+      const reopened = chats.getNodeSession(chats.activeTabId.value);
+      return JSON.stringify({ queued: reopened.queued.value.length, local: chats.activeSession.value !== null, draft: document.querySelector('.abele-node-chat textarea').value, note: document.querySelector('.abele-node-chat__draft-note').textContent.trim() })
     })()`)
-      expect(offline).toEqual({ queued: 1, local: false })
-      reloadPlugin()
-      const restored = evalAsync<{ queued: number; users: number }>(`(async () => {
+    const unsentNote = 'Draft not sent because the node is offline. Send again when connected.'
+    expect(offline).toEqual({
+      queued: 0,
+      local: false,
+      draft: 'Sample offline follow-up',
+      note: unsentNote,
+    })
+    reloadPlugin()
+    const restored = evalAsync<{
+      queued: number
+      users: number
+      draft: string
+      note: string
+    }>(`(async () => {
       ${PRELUDE}
-      await until(() => chats.getNodeSession(chats.activeTabId.value)?.queued.value.length === 1);
+      await until(() => document.querySelector('.abele-node-chat textarea')?.value === 'Sample offline follow-up');
       const presenter = chats.getNodeSession(chats.activeTabId.value);
-      return JSON.stringify({ queued: presenter.queued.value.length, users: presenter.messages.value.filter(m => m.role === 'user').length })
+      return JSON.stringify({ queued: presenter.queued.value.length, users: presenter.messages.value.filter(m => m.role === 'user').length, draft: document.querySelector('.abele-node-chat textarea').value, note: document.querySelector('.abele-node-chat__draft-note').textContent.trim() })
     })()`)
-      expect(restored).toEqual({ queued: 1, users: 1 })
-      await start()
-      evalAsync(`(async () => {
+    expect(restored).toEqual({
+      queued: 0,
+      users: 1,
+      draft: 'Sample offline follow-up',
+      note: unsentNote,
+    })
+    captureDraft('offline-desktop')
+    const [width, height] = evalJson<number[]>(
+      `require('@electron/remote').getCurrentWindow().getContentSize()`
+    )
+    try {
+      await reloadApp('app.emulateMobile(true)')
+      evalRaw(`require('@electron/remote').getCurrentWindow().setContentSize(390, 844)`)
+      evalAsync(
+        `(async () => { ${PRELUDE} await chats.revealSidebar({ focus: false }); await until(() => document.querySelector('.abele-node-chat textarea')?.value === 'Sample offline follow-up'); await wait(400); return JSON.stringify(true) })()`
+      )
+      captureDraft('offline-phone')
+    } finally {
+      evalRaw(`require('@electron/remote').getCurrentWindow().setContentSize(${width}, ${height})`)
+      await reloadApp('app.emulateMobile(false)')
+    }
+    await start()
+    const reconnected = evalAsync<{ queued: number; users: number; draft: string }>(`(async () => {
       ${PRELUDE}
       const presenter = chats.getNodeSession(chats.activeTabId.value);
+      await presenter.connection.connect();
+      await until(() => presenter.connection.state.value === 'connected');
+      await presenter.refresh(); await chats.revealSidebar({ focus: false }); await wait(500);
+      return JSON.stringify({ queued: presenter.queued.value.length, users: presenter.messages.value.filter(m => m.role === 'user').length, draft: document.querySelector('.abele-node-chat textarea').value })
+    })()`)
+    expect(reconnected).toEqual({ queued: 0, users: 1, draft: 'Sample offline follow-up' })
+    evalAsync(`(async () => {
+      ${PRELUDE}
+      const presenter = chats.getNodeSession(chats.activeTabId.value);
+      document.querySelector('.abele-node-chat [aria-label="Send again"]').click();
       await until(() => presenter.messages.value.some(m => m.role === 'assistant' && m.content === 'Sample offline follow-up'));
+      await until(() => document.querySelector('.abele-node-chat textarea').value === '' && !document.querySelector('.abele-node-chat__draft-note'));
       await until(() => presenter.queued.value.length === 0);
       return JSON.stringify(true)
     })()`)
-      reloadPlugin()
-      const final = evalAsync<{
-        users: string[]
-        replies: number
-        prompt: string
-        controls: string[]
-      }>(`(async () => {
+    reloadPlugin()
+    const final = evalAsync<{
+      users: string[]
+      replies: number
+      prompt: string
+      controls: string[]
+    }>(`(async () => {
       ${PRELUDE}
       await until(() => chats.getNodeSession(chats.activeTabId.value)?.messages.value.filter(m => m.role === 'assistant').length === 2);
       const presenter = chats.getNodeSession(chats.activeTabId.value);
       document.querySelector('.abele-node-chat .abele-chat-msg__icon').click(); await wait(100);
       return JSON.stringify({ users: presenter.messages.value.filter(m => m.role === 'user').map(m => m.content), replies: presenter.messages.value.filter(m => m.role === 'assistant').length, prompt: presenter.projection.value.prompts[0].choice, controls: [...document.querySelectorAll('.abele-node-chat .abele-chat-msg__branch-action')].map(e => e.textContent.trim()) })
     })()`)
-      expect(final).toEqual({
-        users: ['Sample permission question', 'Sample offline follow-up'],
-        replies: 2,
-        prompt: 'allow',
-        controls: [],
-      })
-      for (let i = 0; i < projectPaths.length; i++) {
-        evalAsync(`(async () => {
+    expect(final).toEqual({
+      users: ['Sample permission question', 'Sample offline follow-up'],
+      replies: 2,
+      prompt: 'allow',
+      controls: [],
+    })
+    for (let i = 0; i < projectPaths.length; i++) {
+      evalAsync(`(async () => {
         ${PRELUDE}
         const press = text => [...document.querySelectorAll('.abele-node-workspaces button')].find(b => b.textContent.trim() === text).click();
         const fill = (label, value) => { const field = document.querySelector('input[aria-label="' + label + '"]'); field.value = value; field.dispatchEvent(new Event('input', {bubbles:true})) };
@@ -251,13 +313,13 @@ it.fails(
         ${i === 0 ? "send('followup'); await until(() => presenter.projection.value.queuedInputs.length === 1);" : ''}
         return JSON.stringify(true)
       })()`)
-        reloadPlugin()
-        const result = evalAsync<{
-          provider: string
-          prompt: string
-          diff: string
-          evidenceCollapsed: boolean
-        }>(`(async () => {
+      reloadPlugin()
+      const result = evalAsync<{
+        provider: string
+        prompt: string
+        diff: string
+        evidenceCollapsed: boolean
+      }>(`(async () => {
         ${PRELUDE}
         await until(() => chats.getNodeSession(chats.activeTabId.value)?.projection.value.prompts.some(p => p.state === 'pending'));
         const presenter = chats.getNodeSession(chats.activeTabId.value);
@@ -274,16 +336,16 @@ it.fails(
         const rawControls = [...document.querySelectorAll('.abele-node-chat button')].filter(b => b.textContent.trim() === 'Read stored record');
         return JSON.stringify({ provider: presenter.provider.value, prompt: presenter.projection.value.prompts[0].choice, diff, evidenceCollapsed: rawControls.length > 0 && rawControls.every(b => b.closest('details') && !b.closest('details').open) })
       })()`)
-        expect(result.evidenceCollapsed).toBe(true)
-        expect(result.provider).toBe('claude')
-        expect(result.prompt).toBe(i === 0 ? 'allow' : 'deny')
-        if (i === 0) expect(result.diff).toContain('+after')
-        else expect(result.diff).toBe('No tracked changes')
-        expect(readFileSync(resolve(projectPaths[i], 'sample.txt'), 'utf8')).toBe('before\n')
-      }
-    } finally {
-      try {
-        evalAsync(`(async () => {
+      expect(result.evidenceCollapsed).toBe(true)
+      expect(result.provider).toBe('claude')
+      expect(result.prompt).toBe(i === 0 ? 'allow' : 'deny')
+      if (i === 0) expect(result.diff).toContain('+after')
+      else expect(result.diff).toBe('No tracked changes')
+      expect(readFileSync(resolve(projectPaths[i], 'sample.txt'), 'utf8')).toBe('before\n')
+    }
+  } finally {
+    try {
+      evalAsync(`(async () => {
         ${PRELUDE}
         for (const node of [...nodes.nodes.value].filter(n => n.id === ${JSON.stringify(registrationId)} || n.label === 'Sample acceptance node')) {
           for (const id of [...chats.tabOrder.value]) if (chats.getNodeSession(id)?.reference.registrationId === node.id) await chats.closeTab(id);
@@ -292,12 +354,10 @@ it.fails(
         app.setting.close();
         return JSON.stringify(true)
       })()`)
-      } finally {
-        await stop()
-        rmSync(dir, { recursive: true, force: true })
-        rmSync(projectsRoot, { recursive: true, force: true })
-      }
+    } finally {
+      await stop()
+      rmSync(dir, { recursive: true, force: true })
+      rmSync(projectsRoot, { recursive: true, force: true })
     }
-  },
-  180000
-)
+  }
+}, 180000)

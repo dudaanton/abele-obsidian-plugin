@@ -31,6 +31,7 @@ const NORMALIZED_ARTIFACT_EVENTS = new Set([
 ])
 /** Immutable bytes that cannot be projected; transport/storage failures are retryable. */
 class UnusableArtifactError extends Error {}
+class OfflineTurnError extends Error {}
 
 const NodeReferenceSchema = z
   .object({
@@ -70,6 +71,12 @@ export class NodeChatPresenter implements ChatPresentationSession {
   readonly workspaceId = computed(() => this.projection.value.session?.workspace_id)
   readonly nativeSessionId = computed(() => this.projection.value.session?.native_session_id)
   readonly draft = ref<ChatDraft>({ text: '', attachments: [] })
+  readonly draftNotice = ref('')
+  private draftLoaded = false
+  private draftRevision = 0
+  private restoringDraft = false
+  private draftWrite: Promise<void> = Promise.resolve()
+  private stopDraftWatch: WatchStopHandle
   readonly queued = ref<{ id: string; text: string }[]>([])
   readonly error = ref('')
   readonly rejected = ref<{ id: string; text: string; error: string }[]>([])
@@ -110,6 +117,15 @@ export class NodeChatPresenter implements ChatPresentationSession {
     const expected = connection.client.target.expected_node_id
     if (expected && expected !== reference.nodeId)
       throw new Error('Node tab identity does not match its registration')
+    this.stopDraftWatch = watch(
+      () => [this.draft.value.text, this.draftNotice.value],
+      () => {
+        if (this.restoringDraft) return
+        ++this.draftRevision
+        this.persistDraft()
+      },
+      { flush: 'sync' }
+    )
     this.stopEvent = connection.client.onEvent((event) => {
       if (event.stream_id === reference.sessionId)
         void this.refresh().catch((e: unknown) => this.report(e))
@@ -166,10 +182,12 @@ export class NodeChatPresenter implements ChatPresentationSession {
       while (this.dirty && !this.destroyed) {
         this.dirty = false
         const client = this.connection.client
-        const { history, pending, rejected, artifactData, receipts } =
+        const draftRevision = this.draftRevision
+        const { history, pending, rejected, artifactData, receipts, draft } =
           await client.store.transaction((raw) => {
             const state = raw as NodeClientState
             return {
+              draft: state.chatDrafts?.[this.reference.sessionId],
               receipts: state.results,
               artifactData: state.artifactData ?? {},
               history: state.events[this.reference.sessionId] ?? [],
@@ -180,6 +198,16 @@ export class NodeChatPresenter implements ChatPresentationSession {
             }
           })
         if (this.destroyed) return
+        if (!this.draftLoaded) {
+          this.draftLoaded = true
+          // A delayed read must not replace text entered while reopening the chat.
+          if (draft && this.draftRevision === draftRevision && this.draftRevision === 0) {
+            this.restoringDraft = true
+            this.draft.value.text = draft.text
+            this.draftNotice.value = draft.notice
+            this.restoringDraft = false
+          }
+        }
         this.answers.value = promptAnswerStates(
           { outbox: pending, results: receipts },
           this.reference.sessionId
@@ -256,14 +284,39 @@ export class NodeChatPresenter implements ChatPresentationSession {
     end()
   }
 
+  private persistDraft(onlyIfVacant = false): void {
+    const saved = { text: this.draft.value.text, notice: this.draftNotice.value }
+    this.draftWrite = this.draftWrite
+      .catch(() => {})
+      .then(() =>
+        this.connection.client.store.transaction((raw) => {
+          const state = raw as NodeClientState
+          state.chatDrafts ??= {}
+          const current = state.chatDrafts[this.reference.sessionId]
+          // A closed presenter must not overwrite another composer's newer draft.
+          if (onlyIfVacant && current && current.text !== saved.text) return
+          if (saved.text) state.chatDrafts[this.reference.sessionId] = saved
+          else delete state.chatDrafts[this.reference.sessionId]
+        })
+      )
+    void this.draftWrite.catch((error: unknown) => this.report(error))
+  }
+
   async send(text: string, script?: FakeStep[], shownTarget?: PathTarget): Promise<void> {
     this.error.value = ''
     const client = this.connection.client
-    let previous: Set<string> | undefined
+    const submittedDraft = this.draft.value.text.trim() === text ? this.draft.value.text : text
+    if (!this.draft.value.text) this.draft.value.text = text
+    let operationId: string | undefined
+    let retain = true
     try {
+      await this.draftWrite
       const online = () =>
         !this.destroyed && this.connection.state.value === 'connected' && client.connected
-      if (!online()) throw new Error('Reconnect before sending; this turn remains a local draft.')
+      if (!online())
+        throw new OfflineTurnError(
+          'Draft not sent because the node is offline. Send again when connected.'
+        )
       const captured = shownTarget && Object.freeze({ ...shownTarget })
       if (captured) {
         if (
@@ -288,38 +341,49 @@ export class NodeChatPresenter implements ChatPresentationSession {
         ...(script ? { script } : {}),
       })
       const operation_id = crypto.randomUUID()
-      previous = await client.store.transaction((s) => {
+      operationId = operation_id
+      await client.store.transaction((s) => {
         // The final fence runs under the store lock, not before an asynchronous SDK enqueue.
-        if (!online()) throw new Error('Reconnect before sending; this turn remains a local draft.')
-        const previous = new Set([
-          ...s.outbox.map((e) => e.operation_id),
-          ...Object.keys(s.results),
-        ])
+        if (!online())
+          throw new OfflineTurnError(
+            'Draft not sent because the node is offline. Send again when connected.'
+          )
         s.operationRequests ??= {}
         s.operationRequests[operation_id] = { method: 'session.send', params }
         s.outbox.push({ operation_id, method: 'session.send', params })
-        return previous
+        // Clear only this submission, atomically with admission, even if the view closes.
+        const state = s as NodeClientState
+        if (state.chatDrafts?.[this.reference.sessionId]?.text === submittedDraft)
+          delete state.chatDrafts[this.reference.sessionId]
       })
+      retain = false
       await client.flush()
       const receipt = await client.operationResult(operation_id)
       if (receipt?.error) {
         this.error.value = `Not accepted: ${receipt.error}`
-        this.draft.value.text = text
+        retain = true
       }
     } catch (error) {
-      this.report(error)
-      const persisted = previous
+      if (error instanceof OfflineTurnError) this.draftNotice.value = error.message
+      else this.report(error)
+      const persisted = operationId
         ? await client.store
-            .transaction((s) =>
-              [...s.outbox.map((e) => e.operation_id), ...Object.keys(s.results)].some(
-                (id) => !previous!.has(id)
-              )
+            .transaction(
+              (s) =>
+                s.outbox.some((entry) => entry.operation_id === operationId) ||
+                Object.hasOwn(s.results, operationId)
             )
             .catch(() => true)
         : false
       // A failed local commit keeps the draft; an unknown remote outcome stays in the outbox.
-      if (!persisted) this.draft.value.text = text
+      retain = !persisted
     } finally {
+      if (!retain && this.draft.value.text === submittedDraft) {
+        this.draft.value.text = ''
+        this.draftNotice.value = ''
+      }
+      if (retain) this.persistDraft(this.destroyed)
+      await this.draftWrite.catch((error: unknown) => this.report(error))
       await this.refresh().catch((error: unknown) => this.report(error))
     }
   }
@@ -544,5 +608,6 @@ export class NodeChatPresenter implements ChatPresentationSession {
     this.nodeDescription.value = undefined
     this.stopEvent()
     this.stopWatch()
+    this.stopDraftWatch()
   }
 }

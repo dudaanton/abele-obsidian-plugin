@@ -10,6 +10,8 @@ export interface NodeClientState extends ClientState {
   chatMutations?: Record<string, NodeMutationRecord>
   delegation?: DelegationStorage
   fileDrafts?: Record<string, FileDraft>
+  /** Unsent composer text is local only; reconnect never admits it to the outbox. */
+  chatDrafts?: Record<string, { text: string; notice: string }>
   /** Owner folder/worktree intents retain one operation ID until a typed receipt is known. */
   nodePathIntents?: Record<string, { id: string; method: string; params: unknown }>
   /** Replaceable artifact payload cache; journal references remain untouched. */
@@ -34,6 +36,9 @@ const StateSchema = z
     chatMutations: z.record(z.string(), NodeMutationRecordSchema).optional(),
     delegation: DelegationStorageSchema.optional(),
     fileDrafts: z.record(z.string(), FileDraftSchema).optional(),
+    chatDrafts: z
+      .record(z.string(), z.object({ text: z.string(), notice: z.string() }).strict())
+      .optional(),
     nodePathIntents: z
       .record(
         z.string(),

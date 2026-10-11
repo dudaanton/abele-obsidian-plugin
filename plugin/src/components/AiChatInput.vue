@@ -137,6 +137,7 @@
             icon="send-horizontal"
             with-bg
             :class="{ 'abele-chat-input__disabled': !text.trim() && !attachments.length }"
+            :tooltip="sendLabel ?? 'Send'"
             data-keeps-focus
             @click="send"
           />
@@ -183,6 +184,9 @@ const props = defineProps<{
   attachmentOwner?: ConversationOwner
   /** A session-owned object: neither mounting nor replacing an editor changes its lifetime. */
   conversationDraft?: ChatDraft
+  /** Admission-aware owners clear their draft only after a turn is durably admitted. */
+  sendClearing?: 'composer' | 'owner'
+  sendLabel?: string
   ownsConversation?: (owner?: ConversationOwner) => boolean
   isCurrentConversation?: (owner?: ConversationOwner) => boolean
   /** An adapter that outlives composer remounts; async completions cannot emit from a dead editor. */
@@ -289,6 +293,7 @@ const send = () => {
 
   const paths = attachments.value.map((f) => f.path)
   emit('send', msg, paths)
+  if (props.sendClearing === 'owner') return
   write('')
   attachments.value = []
   // What was written is sent; what comes next is the answer, and it needs the room.

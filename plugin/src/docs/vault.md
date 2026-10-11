@@ -341,6 +341,10 @@ paired history uses `abele-node-paired-<node id>-<installation id>` so same-prin
 re-pairing retains receipts/cursors without sharing them with a new principal. Both use
 version 1, object store `client`. Its `state` record holds pinned node/installation identity,
 stream cursors, cached journal events, immutable operation outbox entries and durable receipts.
+Optional `chatDrafts`, keyed by session ID, retains unsent composer text and a quiet offline
+submission note. Drafts survive closing a tab and reloading; they are not outbox entries and
+are never sent automatically on reconnect. Only an explicit Send admits a turn, and admitted
+text is removed from the draft without overwriting newer edits.
 Optional `delegation` in this same transactional `state` stores owner-approved grant selections
 and stable parent/task identities, the exact create request body, child links and last observed
 status. Parent IDs use the existing durable `chatId` metadata identity (allocated with a

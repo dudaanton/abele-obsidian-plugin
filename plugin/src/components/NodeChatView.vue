@@ -171,10 +171,18 @@
         </details>
       </div>
     </div>
+    <MetaLine
+      v-if="presenter.draftNotice?.value && presenter.draft.value.text"
+      class="abele-node-chat__draft-note"
+      role="status"
+      :facts="[{ key: '0', value: presenter.draftNotice.value }]"
+    />
     <AiChatInput
       :key="presenter.id"
       v-model:expanded="expanded"
       :conversation-draft="presenter.draft.value"
+      send-clearing="owner"
+      :send-label="presenter.draftNotice?.value ? 'Send again' : 'Send'"
       :is-streaming="false"
       :is-busy="sending"
       :text-only="true"
@@ -201,6 +209,7 @@ import AiChatInput from './AiChatInput.vue'
 import Icon from './obsidian/Icon.vue'
 import AgentsButton from './AgentsButton.vue'
 import Button from './obsidian/Button.vue'
+import MetaLine from './obsidian/MetaLine.vue'
 import { piFailure } from '@/node/piTranscript'
 import NodeDebugActions from '@/debugger/NodeDebugActions.vue'
 import { openNodeDebugger } from '@/debugger/register'
@@ -462,6 +471,10 @@ watch(
 .abele-node-chat {
   &__details-spacer {
     visibility: hidden;
+  }
+  &__draft-note {
+    flex-shrink: 0;
+    padding: var(--size-4-2);
   }
   display: flex;
   flex-direction: column;
