@@ -44,6 +44,10 @@ describe('external check caches', () => {
     expect(compilerCacheKey(f.root, 'strict-null', { noEmit: true })).not.toBe(key)
     writeFileSync(join(f.plugin, 'src/checked/sample.ts'), 'export const value: string = null')
     expect(compilerCacheKey(f.root, 'normal', { noEmit: true })).toBe(key)
+    for (const name of ['sample-source.ts', 'sample-archive.ts', 'configProvider.ts']) {
+      writeFileSync(join(f.plugin, 'src/checked', name), 'export const value = 1')
+      expect(compilerCacheKey(f.root, 'normal', { noEmit: true })).toBe(key)
+    }
     expect(compilerCacheKey(f.root, 'normal', { noEmit: false })).not.toBe(key)
     writeFileSync(join(f.plugin, 'node_modules/typescript/compiler.js'), 'changed compiler')
     expect(compilerCacheKey(f.root, 'normal', { noEmit: true })).not.toBe(key)
@@ -66,6 +70,9 @@ describe('external check caches', () => {
     const source = lintCacheKeys(f.root)
     expect(source.typed).not.toBe(before.typed)
     expect(source.untyped).toBe(before.untyped)
+    writeFileSync(join(f.plugin, 'src/checked/sample-source.ts'), 'export const value = 1')
+    expect(lintCacheKeys(f.root).untyped).toBe(before.untyped)
+    expect(lintCacheKeys(f.root).typed).not.toBe(source.typed)
     writeFileSync(join(f.plugin, 'tests/unit/new.test.ts'), 'another test')
     expect(lintCacheKeys(f.root).typed).not.toBe(source.typed)
     writeFileSync(join(f.root, 'manifest.json'), '{"version":"1"}')

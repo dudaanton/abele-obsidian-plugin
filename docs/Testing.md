@@ -56,7 +56,7 @@ in the root; the `lint` script changes directory for you.
 run even when a cache directory is configured.
 
 Normal and strict-null TypeScript programs have separate incremental build info. Keys bind
-the canonical checkout path, parsed compiler options, configuration, installed dependency
+the canonical checkout path, parsed compiler options, checker recipe, installed dependency
 bytes and toolchain. TypeScript still checks changed sources and their dependants; cached
 build info is not a successful type-check receipt. Both passes must succeed before a build.
 

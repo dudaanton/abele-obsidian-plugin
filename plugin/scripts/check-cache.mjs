@@ -12,7 +12,8 @@ import {
   statSync,
   writeFileSync,
 } from 'node:fs'
-import { basename, isAbsolute, relative, resolve, sep } from 'node:path'
+import { basename, dirname, isAbsolute, relative, resolve, sep } from 'node:path'
+import { fileURLToPath } from 'node:url'
 import { createRequire } from 'node:module'
 
 const sha = (value) => createHash('sha256').update(value).digest('hex')
@@ -81,7 +82,9 @@ function repositoryIdentity(root, configurationOnly = false) {
           configurationOnly &&
           /^plugin\/(?:src|tests)\//.test(name) &&
           /\.(?:[cm]?[jt]sx?|vue)$/.test(name) &&
-          !/(?:config|rc|ignore|package\.json)/i.test(basename(name))
+          !/^(?:\.prettierrc(?:\.|$)|(?:prettier|eslint)\.config\.|\.?eslint(?:rc|ignore)(?:\.|$)|tsconfig(?:\.|-|$)|\.editorconfig$)/i.test(
+            basename(name)
+          )
         )
           continue
         hash.update(`${name}\0`)
@@ -96,6 +99,16 @@ function repositoryIdentity(root, configurationOnly = false) {
 }
 const configurationIdentity = (root) => repositoryIdentity(root, true)
 
+function compilerRecipeIdentity() {
+  const directory = dirname(fileURLToPath(import.meta.url))
+  return key(
+    ['check-cache.mjs', 'checked-build.mjs', 'check-strict-null.mjs'].map((name) => [
+      name,
+      sha(readFileSync(resolve(directory, name))),
+    ])
+  )
+}
+
 export function compilerCacheKey(root, program, options, dependencies = dependencyIdentity(root)) {
   // TypeScript validates the source contents itself on every incremental run. Absolute root
   // and parsed options bind referenced/extended configs and resolution to the same program.
@@ -104,7 +117,7 @@ export function compilerCacheKey(root, program, options, dependencies = dependen
     root: realpathSync(root),
     program,
     options,
-    configuration: configurationIdentity(root),
+    recipe: compilerRecipeIdentity(),
     dependencies,
     toolchain: toolchain(),
   })
