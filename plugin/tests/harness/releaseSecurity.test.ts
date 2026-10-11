@@ -11,7 +11,7 @@ const workflow = (name: string): any =>
 
 describe('least privilege release and checks', () => {
   it('uses read-only defaults and immutable action references', () => {
-    for (const name of ['test', 'release', 'candidate']) {
+    for (const name of ['test', 'release', 'release-candidate']) {
       const file = workflow(name)
       expect(file.permissions).toEqual({ contents: 'read' })
       for (const job of Object.values(file.jobs) as any[]) {
@@ -133,7 +133,7 @@ describe('least privilege release and checks', () => {
     expect(types).toContain('npm run types')
     expect(types).toContain('types.json')
     const build = JSON.stringify(file.jobs.build.steps)
-    expect(build).toContain('npm run build:only')
+    expect(build).toContain('npm run build:verified')
     expect(build).toContain('ABELE_BUILD_ARTIFACT')
     expect(build).toContain('npm run test:size')
     expect(JSON.stringify(file.jobs.test.steps)).not.toContain('npm run types')
@@ -141,13 +141,29 @@ describe('least privilege release and checks', () => {
   })
 
   it('verifies an exact candidate revision through all gates without publishing', () => {
-    const candidate = workflow('candidate')
+    const candidate = workflow('release-candidate')
     expect(candidate.on.workflow_dispatch.inputs.revision.required).toBe(true)
     expect(candidate.jobs.verify.uses).toBe('./.github/workflows/test.yml')
     expect(candidate.jobs.verify.with.revision).toBe('${{ inputs.revision }}')
     expect(candidate.jobs.verify.with.test_scope).toBe('all')
     expect(candidate.jobs.record.needs).toBe('verify')
     expect(JSON.stringify(candidate.jobs.record)).toContain('artifact_digest')
+    const packageStep = candidate.jobs.record.steps.find(
+      (s: any) => s.name === 'Export verified candidate assets'
+    )
+    expect(packageStep.run).toContain('export-release-artifact.mjs')
+    const artifact = candidate.jobs.record.steps.find(
+      (s: any) => s.with?.name === 'release-candidate-${{ inputs.revision }}'
+    )
+    expect(artifact).toBeDefined()
+    // Release metadata remains available as CI evidence/attestation, not extra release assets.
+    const publish = workflow('release').jobs.publish.steps.find(
+      (s: any) => s.name === 'Publish release with checksums'
+    ).run
+    for (const name of ['main.js', 'styles.css', 'manifest.json', 'SHA256SUMS'])
+      expect(publish).toContain(`release/${name}`)
+    for (const extra of ['build-report.json', 'build-manifest.json', 'provenance.json'])
+      expect(publish).not.toContain(`release/${extra}`)
     expect(JSON.stringify(candidate)).not.toMatch(/contents":"write|gh release|publish/)
     const file = workflow('test')
     expect(file.on.workflow_call.outputs.artifact_digest).toBeDefined()

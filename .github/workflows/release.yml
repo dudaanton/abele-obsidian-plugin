@@ -45,6 +45,8 @@ jobs:
     permissions:
       contents: read
       actions: read
+    outputs:
+      provenance_sha256: ${{ steps.assets.outputs.provenance_sha256 }}
     steps:
       - uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262 # v4.4.0
         with:
@@ -90,12 +92,13 @@ jobs:
           node scripts/check-release.mjs
 
       - name: Collect assets and checksums
+        id: assets
+        env:
+          ABELE_PROMOTION_TAG: ${{ needs.candidate.outputs.run_id != '' && github.ref_name || '' }}
         run: |
-          mkdir release
-          cp plugin/build/main.js plugin/build/manifest.json release/
-          cp plugin/build/main.css release/styles.css
-          cp plugin/build/build-report.json plugin/build/build-manifest.json release/
-          (cd release && sha256sum main.js manifest.json styles.css build-report.json build-manifest.json > SHA256SUMS)
+          node plugin/scripts/export-release-artifact.mjs plugin/build release
+          (cd release && sha256sum -c SHA256SUMS)
+          echo "provenance_sha256=$(sha256sum release/provenance.json | cut -d' ' -f1)" >> "$GITHUB_OUTPUT"
 
       - uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02 # v4.6.2
         with:
@@ -124,7 +127,12 @@ jobs:
           path: release
 
       - name: Verify the downloaded assets
-        run: (cd release && sha256sum -c SHA256SUMS)
+        env:
+          EXPECTED_PROVENANCE_SHA256: ${{ needs.build.outputs.provenance_sha256 }}
+        run: |
+          (cd release && sha256sum -c SHA256SUMS)
+          [[ "$EXPECTED_PROVENANCE_SHA256" =~ ^[a-f0-9]{64}$ ]]
+          printf '%s  release/provenance.json\n' "$EXPECTED_PROVENANCE_SHA256" | sha256sum -c -
 
       - uses: actions/attest-build-provenance@4d101475d8b20a2381f78447822ac1eab6504dd8 # v4.2.2
         with:
@@ -132,7 +140,7 @@ jobs:
             release/main.js
             release/manifest.json
             release/styles.css
-            release/build-manifest.json
+            release/provenance.json
 
       - name: Publish release with checksums
         env:
@@ -155,6 +163,4 @@ jobs:
             release/main.js \
             release/manifest.json \
             release/styles.css \
-            release/build-report.json \
-            release/build-manifest.json \
             release/SHA256SUMS

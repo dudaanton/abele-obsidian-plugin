@@ -17,7 +17,7 @@ export async function selectCandidate(revision, api) {
       run.event !== 'workflow_dispatch' ||
       run.conclusion !== 'success' ||
       run.status !== 'completed' ||
-      run.path !== '.github/workflows/candidate.yml'
+      run.path !== '.github/workflows/release-candidate.yml'
     )
       continue
     try {
@@ -48,7 +48,7 @@ if (process.argv[1] && import.meta.url === pathToFileURL(realpathSync(process.ar
     selected = await selectCandidate(process.env.REVISION, {
       runs: async () =>
         api(
-          'actions/workflows/candidate.yml/runs?event=workflow_dispatch&status=success&per_page=100'
+          'actions/workflows/release-candidate.yml/runs?event=workflow_dispatch&status=success&per_page=100'
         ).workflow_runs,
       artifacts: async (id) => api(`actions/runs/${id}/artifacts?per_page=100`).artifacts,
       record: async (id) => {

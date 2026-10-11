@@ -14,7 +14,7 @@ const run = {
   event: 'workflow_dispatch',
   conclusion: 'success',
   status: 'completed',
-  path: '.github/workflows/candidate.yml',
+  path: '.github/workflows/release-candidate.yml',
 }
 function evidence() {
   return {

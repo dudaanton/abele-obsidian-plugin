@@ -1,0 +1,61 @@
+name: Verify release candidate
+
+on:
+  workflow_dispatch:
+    inputs:
+      revision:
+        description: Exact 40-character commit SHA of the release candidate
+        type: string
+        required: true
+
+permissions:
+  contents: read
+
+jobs:
+  verify:
+    uses: ./.github/workflows/test.yml
+    with:
+      revision: ${{ inputs.revision }}
+      test_scope: all
+
+  record:
+    needs: verify
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262 # v4.4.0
+        with:
+          fetch-depth: 0
+          fetch-tags: true
+          ref: ${{ inputs.revision }}
+          persist-credentials: false
+      - uses: actions/download-artifact@d3f86a106a0bac45b974a628896c90dbdf5c8093 # v4.3.0
+        with:
+          name: production
+          path: plugin/build
+      - name: Export verified candidate assets
+        run: node plugin/scripts/export-release-artifact.mjs plugin/build "$RUNNER_TEMP/release-candidate"
+      - uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02 # v4.6.2
+        id: candidate_artifact
+        with:
+          name: release-candidate-${{ inputs.revision }}
+          path: ${{ runner.temp }}/release-candidate/
+          if-no-files-found: error
+          retention-days: 1
+      - name: Record verified candidate and artifact digest
+        env:
+          REVISION: ${{ inputs.revision }}
+          VERIFIED_REVISION: ${{ needs.verify.outputs.revision }}
+          ARTIFACT_DIGEST: ${{ needs.verify.outputs.artifact_digest }}
+          CANDIDATE_DIGEST: ${{ steps.candidate_artifact.outputs.artifact-digest }}
+        run: |
+          [[ "$REVISION" =~ ^[a-f0-9]{40}$ ]] && [ "$REVISION" = "$VERIFIED_REVISION" ]
+          [[ "$ARTIFACT_DIGEST" =~ ^[a-f0-9]{64}$ ]]
+          [[ "$CANDIDATE_DIGEST" =~ ^[a-f0-9]{64}$ ]]
+          printf '{"revision":"%s","artifact_digest":"%s","candidate_digest":"%s"}\n' "$REVISION" "$ARTIFACT_DIGEST" "$CANDIDATE_DIGEST" > "$RUNNER_TEMP/candidate.json"
+          printf 'Verified revision: `%s`\n\nProduction artifact SHA-256: `%s`\n\nCandidate package SHA-256: `%s`\n' "$REVISION" "$ARTIFACT_DIGEST" "$CANDIDATE_DIGEST" >> "$GITHUB_STEP_SUMMARY"
+      - uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02 # v4.6.2
+        with:
+          name: candidate-verification
+          path: ${{ runner.temp }}/candidate.json
+          if-no-files-found: error
+          retention-days: 7

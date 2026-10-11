@@ -189,7 +189,7 @@ jobs:
           path: plugin/node_modules/.cache/abele
       - name: Build production once
         working-directory: plugin
-        run: npm run build:only
+        run: npm run build:verified
       - name: Bundle size
         working-directory: plugin
         env:

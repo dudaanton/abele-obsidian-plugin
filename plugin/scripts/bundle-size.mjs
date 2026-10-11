@@ -1,30 +1,32 @@
 #!/usr/bin/env node
-/** Measure verified emitted production bytes, building only when no artifact was requested.
+/** Measure verified emitted production bytes, reusing the build/report when present.
  * Usage: node scripts/bundle-size.mjs [--artifact directory] [--json]
  * Report attribution is approximate; see build-report.mjs. Run outside Vitest so the
  * runner's environment cannot change the bundle that gets measured and shipped. */
 import { build } from 'vite'
 import path from 'node:path'
 import { fileURLToPath } from 'node:url'
-import { realpathSync } from 'node:fs'
+import { existsSync, realpathSync } from 'node:fs'
 import { verifyArtifact } from './build-artifact.mjs'
 export { packageOf, runtimeElements } from './build-report.mjs'
 
 const root = path.resolve(path.dirname(fileURLToPath(import.meta.url)), '..')
-export async function measureBundle(artifact) {
-  if (!artifact) {
-    await build({
-      root,
-      configFile: path.join(root, 'vite.config.mts'),
+export async function readProductionReport(pluginRoot, artifact, buildProduction = build) {
+  const dir = path.resolve(pluginRoot, artifact ?? 'build')
+  if (!artifact && !existsSync(path.join(dir, 'build-manifest.json'))) {
+    await buildProduction({
+      root: pluginRoot,
+      configFile: path.join(pluginRoot, 'vite.config.mts'),
       mode: 'production',
       logLevel: 'silent',
     })
   }
-  return verifyArtifact(
-    path.resolve(root, '..'),
-    path.resolve(root, artifact ?? 'build'),
-    'production'
-  )
+  // An existing artifact must verify: never silently replace the just-built check input.
+  return verifyArtifact(path.resolve(pluginRoot, '..'), dir, 'production')
+}
+
+export async function measureBundle(artifact) {
+  return readProductionReport(root, artifact)
 }
 
 if (process.argv[1] && fileURLToPath(import.meta.url) === realpathSync(process.argv[1])) {

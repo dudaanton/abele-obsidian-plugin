@@ -66,16 +66,24 @@ reuses the verified production artifact, never a separate rebuild.
 `plugin/scripts/check-release.mjs` rejects missing assets, extra chunks, the development test
 API, sourcemaps, changed inputs and checksum mismatches. A separate publishing job, which runs
 no npm commands or project code, verifies SHA-256 checksums and attests build provenance.
-`SHA256SUMS` accompanies the three plugin assets and their build report/provenance manifest.
+`SHA256SUMS` accompanies exactly the three plugin assets. Rich build reports and provenance
+remain CI artifacts; the publishing job also attests the verified provenance.
 After downloading them, verify with
 `sha256sum -c SHA256SUMS` and `gh attestation verify main.js --repo <owner>/<repository>`.
 These checks require no change to the existing raw-version tag convention in `release.sh`.
 
-The candidate workflow accepts an exact 40-character revision SHA and runs the complete reusable
+The `release-candidate.yml` workflow accepts an exact 40-character `revision` SHA and runs the complete reusable
 verification workflow without publication. Dispatch it on the candidate branch at that exact
 revision: the checked tree and workflow recipe must have the same SHA. Its `candidate-verification`
-artifact and job summary record the checked revision and SHA-256 digest of the `production` archive.
-A branch name or a green run at another revision is not evidence.
+artifact and job summary record the checked revision and SHA-256 digests of the `production` archive
+and exported candidate package. A branch name or a green run at another revision is not evidence.
+
+The `release-candidate-<SHA>` artifact contains `main.js`, `styles.css`, `manifest.json`,
+`SHA256SUMS` and `provenance.json`. Checksums cover exactly the three plugin assets; provenance is
+`{"revision":"<full SHA>","files":{"main.js":"<SHA-256>","styles.css":"<SHA-256>","manifest.json":"<SHA-256>"}}`.
+`export-release-artifact.mjs` validates the rich production artifact before exporting this portable
+package, without rebuilding. Publication attaches only the three assets and `SHA256SUMS`;
+provenance and the complete build/size report stay available as CI evidence and attestations.
 
 A tag release may reuse a completed successful candidate run only when the workflow path, event,
 checked revision, unexpired artifact inventory and recorded/API archive digests all match. It
@@ -194,8 +202,10 @@ rather than by faking a window size.
 
 ## Bundle size — `tests/size/`
 
-`npm run test:size` builds the production bundle into `build/` unless an explicit verified
-artifact directory is supplied with `ABELE_BUILD_ARTIFACT`. It fails when `main.js` or the
+`npm run test:size` reuses and verifies the production report already emitted into `build/`.
+When no artifact manifest exists, it builds production there as a standalone fallback. An
+existing damaged, stale or wrong-mode artifact fails closed rather than being silently replaced.
+`ABELE_BUILD_ARTIFACT` can select another verified artifact directory. It fails when `main.js` or the
 stylesheet is over its budget in `tests/size/budget.json`. Obsidian reads and compiles the whole of `main.js` on every start,
 phones included, so every byte is paid for at load whether the feature behind it is used or
 not. Raise the budget in its own commit explaining the growth; do not remove a feature to fit it.
@@ -225,7 +235,8 @@ ships.
 ### Build and artifact reuse
 
 Standalone `npm run build` and `npm run build:test` still run both normal and strict-null type
-checks. Orchestrators can run `npm run types` once, then `npm run build:only` or
+checks. Orchestrators can run `npm run types` once, then `npm run build:verified` (also available
+as `build:only`) or
 `npm run build:test:only`. Build-only requires a successful receipt matching source contents,
 installed dependency metadata, declarations, package-resolution metadata, the TypeScript compiler
 payload and the Node/platform identity. A missing, stale or interrupted
@@ -245,8 +256,8 @@ catalog unchanged and is not permission to reuse artifacts across arbitrary tag 
 
 ```sh
 npm run types
-npm run build:only
-ABELE_BUILD_ARTIFACT=build npm run test:size
+npm run build:verified
+npm run test:size
 node scripts/build-artifact.mjs build production
 ```
 

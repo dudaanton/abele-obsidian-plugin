@@ -5,7 +5,8 @@
   "main": "main.js",
   "scripts": {
     "dev": "vite preview",
-    "build": "npm run types && npm run build:only",
+    "build": "npm run types && npm run build:verified",
+    "build:verified": "node scripts/checked-build.mjs build production",
     "build:only": "node scripts/checked-build.mjs build production",
     "build:test": "npm run types && npm run build:test:only",
     "build:test:only": "node scripts/checked-build.mjs build sharing-test",
