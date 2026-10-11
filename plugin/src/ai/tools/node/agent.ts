@@ -756,6 +756,13 @@ export function createNodeAgentTools(factory: NodeAgentHostFactory): AgentTool[]
         checks.push(permissionGuard)
         permissionGuard()
         if (!mutation) throw new Error('Node mutation context is missing')
+        // Preflight retries too: a local capability refusal has not submitted an RPC.
+        if (NODE_FILE_OPERATIONS.includes(name))
+          await nodePathMethod(
+            client,
+            name === 'node_mv' ? 'fileMove' : name === 'node_cp' ? 'fileCopy' : 'fileRemove',
+            safe
+          )
         const principal = connection.principal()
         const perform = async (record: NodeMutationRecord): Promise<AgentToolResult> => {
           try {
