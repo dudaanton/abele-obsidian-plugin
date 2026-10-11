@@ -5,13 +5,24 @@
       <h1>Abele</h1>
     </div>
 
-    <!-- Tab navigation -->
+    <div class="abele-settings__body" :class="{ 'abele-settings__body_phone': isPhone }">
+    <!-- The pages as Obsidian's own settings list them: a column by groups beside the page.
+         Nineteen words in a strip above the page broke onto three rows. -->
     <nav
       v-if="!isPhone || isMenuOpen"
       class="abele-settings__nav"
       :class="{ 'abele-settings__nav_phone': isPhone }"
     >
-      <Tabs v-model="activeTab" :tabs="tabs" :vertical="isPhone" @update:model-value="onSelect" />
+      <template v-for="group in groups" :key="group.title">
+        <div class="abele-settings__group">{{ group.title }}</div>
+        <Tabs
+          v-model="activeTab"
+          :tabs="group.tabs"
+          vertical
+          class="abele-settings__pages"
+          @update:model-value="onSelect"
+        />
+      </template>
     </nav>
 
     <!-- Tab content -->
@@ -28,6 +39,7 @@
         </div>
         <component :is="activeComponent" />
       </template>
+    </div>
     </div>
   </div>
 </template>
@@ -89,6 +101,18 @@ const tabs: SettingsTab[] = [
   { id: 'sync', label: 'Sync', component: markRaw(SyncSettings) },
   { id: 'other', label: 'Other', component: markRaw(OtherSettings) },
 ]
+
+const GROUPS: { title: string; ids: string[] }[] = [
+  { title: 'Notes', ids: ['tasks', 'journals', 'calendars', 'links', 'linter', 'reader'] },
+  { title: 'Money and time', ids: ['finance', 'time-tracking'] },
+  { title: 'Agents', ids: ['ai', 'scripts', 'nodes', 'github'] },
+  { title: 'Buttons', ids: ['quick-button', 'header-buttons'] },
+  { title: 'Data', ids: ['sync', 'transfer', 'logs', 'other'] },
+]
+const groups = GROUPS.map((g) => ({
+  title: g.title,
+  tabs: g.ids.map((id) => tabs.find((t) => t.id === id)!),
+}))
 
 // Opened on a tab from elsewhere — the quick menu's "Choose what this menu holds…" — it starts
 // there, and on a phone with that page open rather than the list of pages.
@@ -206,13 +230,49 @@ body.is-phone .modal:has(.abele-settings) .modal-header {
   margin-bottom: var(--size-4-2);
 }
 
-.abele-settings__nav {
-  padding: var(--size-4-2) var(--size-4-4);
-  border-bottom: 1px solid var(--background-modifier-border);
+.abele-settings__body {
+  flex: 1;
+  min-height: 0;
+  display: flex;
 
   &_phone {
-    border-bottom: none;
+    flex-direction: column;
+  }
+}
+
+.abele-settings__nav {
+  flex: 0 0 auto;
+  width: 12em;
+  overflow-y: auto;
+  padding: var(--size-4-2) var(--size-4-2) var(--size-4-4) var(--size-4-4);
+  border-right: 1px solid var(--background-modifier-border);
+
+  &_phone {
+    width: auto;
+    border-right: none;
     padding: 0;
+  }
+}
+
+// A group's name as Obsidian's settings name theirs: small, faint, above its pages.
+.abele-settings__group {
+  padding: var(--size-4-3) var(--size-4-2) var(--size-4-1);
+  font-size: var(--font-ui-smaller);
+  font-weight: var(--font-semibold);
+  color: var(--text-faint);
+}
+
+// On a desktop the pages are a list to pick from, not to descend into: no chevrons, a row as
+// Obsidian's own settings rows.
+.abele-settings__nav:not(.abele-settings__nav_phone) .abele-settings__pages {
+  .abele-tabs__chevron {
+    display: none;
+  }
+
+  .abele-tabs__tab {
+    padding: var(--size-4-1) var(--size-4-2);
+    border-radius: var(--radius-s);
+    font-size: var(--font-ui-small);
   }
 }
 

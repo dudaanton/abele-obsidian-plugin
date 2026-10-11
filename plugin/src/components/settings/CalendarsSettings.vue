@@ -37,11 +37,13 @@
         :title="feedLabel(feed)"
         :icon="feed.source === 'caldav' ? 'server' : 'calendar'"
         :description="statusText(feed)"
+        :class="`abele-calendars-settings__feed_${feed.color}`"
       >
+        <!-- The calendar's colour is its glyph's, as its events wear it; a state only when
+             something is off, as a dot with the words in its tooltip. -->
         <template #badges>
-          <Badge :text="KIT_COLOR_NAMES[feed.color]" :color="feed.color" />
-          <Badge v-if="!feed.enabled" text="Off" />
-          <Badge v-else-if="status(feed.id)?.error" text="Not read" color="red" />
+          <StatusDot v-if="!feed.enabled" tone="faint" label="Off" />
+          <StatusDot v-else-if="status(feed.id)?.error" tone="red" label="Not read" />
         </template>
         <template #actions>
           <Icon icon="trash" tooltip="Delete this calendar" @click="removing = feed" />
@@ -204,7 +206,6 @@ import Setting from '../obsidian/Setting.vue'
 import Input from '../obsidian/Input.vue'
 import Button from '../obsidian/Button.vue'
 import Icon from '../obsidian/Icon.vue'
-import Badge from '../obsidian/Badge.vue'
 import Card from '../obsidian/Card.vue'
 import CardGrid from '../obsidian/CardGrid.vue'
 import Checkbox from '../obsidian/Checkbox.vue'
@@ -216,6 +217,7 @@ import { AbeleConfig } from '@/services/AbeleConfig'
 import { secrets } from '@/secrets/SecretStore'
 import { keyDestinations, acceptIntroducedDestinations } from '@/secrets/destinations'
 import { KIT_COLORS, KIT_COLOR_NAMES, type KitColor } from '@/constants/colors'
+import StatusDot from '../obsidian/StatusDot.vue'
 import {
   DEFAULT_REFRESH_MINUTES,
   MIN_REFRESH_MINUTES,
@@ -445,5 +447,11 @@ const readAll = async () => {
   flex-wrap: wrap;
   align-items: center;
   gap: var(--size-4-1);
+}
+
+@each $color in red, orange, yellow, green, cyan, blue, purple, pink {
+  .abele-calendars-settings__feed_#{$color} .abele-card__icon {
+    color: var(--color-#{$color});
+  }
 }
 </style>

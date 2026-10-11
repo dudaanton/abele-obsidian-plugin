@@ -1,3 +1,4 @@
+import { Menu } from 'obsidian'
 import { mount, flushPromises } from '@vue/test-utils'
 import { ref, shallowRef } from 'vue'
 import { expect, it, vi } from 'vitest'
@@ -49,10 +50,12 @@ it('owner approval prepares only the chosen parent, not unrelated chats that may
     },
   })
   try {
-    await wrapper
-      .findAll('button')
-      .find((b) => b.text() === 'Delegation grants')!
-      .trigger('click')
+    // Delegation is one of the rarer things, in the row's ⋯ menu.
+    const show = vi.spyOn(Menu.prototype, 'showAtMouseEvent')
+    await wrapper.get('[aria-label="Pairing, delegation, remove"]').trigger('click')
+    const menu = show.mock.contexts.at(-1) as Menu
+    menu.items.find((i) => i.title === 'Delegation grants')!.handler!()
+    show.mockRestore()
     await flushPromises()
     expect(wrapper.find('[data-grants]').exists()).toBe(true)
     expect(current.ensureDelegationParentId).toHaveBeenCalledTimes(1)

@@ -3,30 +3,28 @@
     title="Nodes"
     desc="Connect to a local daemon or pair a remote AbeleNode over Tailscale. Choose projects and isolated workspaces, run Claude Code or pi when available, or open non-executing fake sessions. Connections, tokens, device keys and history caches stay on this device and never transfer with settings."
   >
+    <!-- A node as one row: its state as a dot, check, open; the rarer things in ⋯. -->
     <Setting
       v-for="node in service.nodes.value"
       :key="node.id"
       :name="node.label"
-      :desc="`${node.url} · ${service.connection(node.id).state.value}${service.connection(node.id).error.value ? ' · ' + service.connection(node.id).error.value : ''}`"
+      :desc="`${node.url}${service.connection(node.id).error.value ? ' · ' + service.connection(node.id).error.value : ''}`"
     >
-      <Button
-        v-if="isPairedNode(node)"
-        text="Pairing / re-pair"
-        tooltip="Review device pairing or use a fresh invitation"
-        @click="showPairing(node.expectedNodeId)"
+      <StatusDot
+        :tone="stateTone(service.connection(node.id).state.value)"
+        :label="stateLabel(service.connection(node.id).state.value)"
       />
-      <Button text="Check" tooltip="Check this device's node connection" @click="check(node.id)" />
+      <Icon
+        icon="refresh-cw"
+        tooltip="Check this device's node connection"
+        @click="check(node.id)"
+      />
       <Button
         text="Open session"
         tooltip="Pick a session or manage projects and workspaces"
         @click="open(node)"
       />
-      <Button text="Delegation grants" tooltip="Owner approval or revocation for plugin-agent delegation" @click="showGrants(node)" />
-      <Button
-        text="Remove"
-        tooltip="Forget only this device's connection and token"
-        @click="remove(node.id)"
-      />
+      <Icon icon="more-horizontal" tooltip="Pairing, delegation, remove" @click="more($event, node)" />
     </Setting>
     <Button
       text="Pair remote node"
@@ -47,7 +45,7 @@
       :resume-node-id="resumeNodeId"
       @close="pairing = false"
     />
-    <p>
+    <p class="setting-item-description">
       For a revoked device, ask the owner for a new invitation bound to the same installation and
       pair again. Revocation is performed on the node, not by removing this connection.
     </p>
@@ -95,6 +93,9 @@ import Section from '../obsidian/Section.vue'
 import Setting from '../obsidian/Setting.vue'
 import Input from '../obsidian/Input.vue'
 import Button from '../obsidian/Button.vue'
+import Icon from '../obsidian/Icon.vue'
+import StatusDot from '../obsidian/StatusDot.vue'
+import { Menu } from 'obsidian'
 const service = NodeService.getInstance()
 const grantNode = ref<RegisteredNode>()
 const parentChats = computed(() => {
@@ -171,6 +172,37 @@ const open = async (node: RegisteredNode) => {
     report(error)
   }
 }
+const stateTone = (state: string) =>
+  state === 'connected' ? 'green' : state === 'connecting' ? 'orange' : 'red'
+const stateLabel = (state: string) =>
+  state === 'connected' ? 'Connected' : state === 'connecting' ? 'Connecting…' : 'Not connected'
+
+const more = (event: MouseEvent, node: RegisteredNode) => {
+  const menu = new Menu()
+  if (isPairedNode(node))
+    menu.addItem((i) =>
+      i
+        .setTitle('Pairing / re-pair')
+        .setIcon('link')
+        .onClick(() => showPairing(node.expectedNodeId))
+    )
+  menu.addItem((i) =>
+    i
+      .setTitle('Delegation grants')
+      .setIcon('key-round')
+      .onClick(() => showGrants(node))
+  )
+  menu.addSeparator()
+  menu.addItem((i) =>
+    i
+      .setTitle('Remove')
+      .setIcon('trash-2')
+      .setWarning(true)
+      .onClick(() => remove(node.id))
+  )
+  menu.showAtMouseEvent(event)
+}
+
 const remove = async (id: string) => {
   const chats = ChatService.getInstance()
   for (const tab of [...chats.tabOrder.value])

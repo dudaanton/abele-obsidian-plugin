@@ -112,9 +112,8 @@ describe('the list of servers', () => {
     expect(cards.map((c) => c.find('.abele-card__name').text())).toEqual(['Context', 'Idle'])
     expect(cards[0].find('.abele-card__subtitle').text()).toBe('https://mcp.example/mcp')
     expect(cards[0].find('.abele-card__meta').text()).toContain('2 tools')
-    expect(cards[1].findAll('.abele-badge').map((b) => b.text())).toEqual(
-      expect.arrayContaining(['off', 'not fetched'])
-    )
+    // The state is a dot, its words in the label: a server switched off reads Off.
+    expect(cards[1].find('.abele-status-dot').attributes('aria-label')).toBe('Off')
   })
 
   it('removes a server once the removal is confirmed', async () => {

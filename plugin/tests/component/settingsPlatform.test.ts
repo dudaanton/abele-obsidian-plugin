@@ -62,7 +62,8 @@ describe('the settings screen', () => {
     const wrapper = openSettings()
 
     expect(wrapper.find('.abele-settings__nav').exists()).toBe(true)
-    expect(wrapper.find('.abele-tabs_vertical').exists()).toBe(false)
+    // A column of pages beside the page, as Obsidian's own settings: not the phone's list.
+    expect(wrapper.find('.abele-settings__nav_phone').exists()).toBe(false)
     expect(wrapper.find('.page-stub').exists()).toBe(true)
   })
 
@@ -78,11 +79,11 @@ describe('the settings screen', () => {
     pretendToBe('tablet')
     const wrapper = openSettings()
 
-    expect(wrapper.find('.abele-tabs_vertical').exists()).toBe(false)
+    expect(wrapper.find('.abele-settings__nav_phone').exists()).toBe(false)
     expect(wrapper.find('.page-stub').exists()).toBe(true)
 
     // Picking a page must not take the strip away: a tablet has no back button to bring it back.
-    await wrapper.findAll('.abele-tabs__tab')[2].trigger('click')
+    await wrapper.findAll('.abele-tabs__tab').find((t) => t.text() === 'Journals')!.trigger('click')
     expect(wrapper.find('.abele-settings__nav').exists()).toBe(true)
     expect(wrapper.find('.page-stub').exists()).toBe(true)
   })

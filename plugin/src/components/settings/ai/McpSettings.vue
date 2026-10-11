@@ -15,8 +15,8 @@
         @click="editing = { server, isNew: false }"
       >
         <template #badges>
-          <Badge v-if="!server.enabled" text="off" />
-          <Badge v-if="!server.fetchedAt" text="not fetched" color="orange" />
+          <!-- The server's state as a dot: on and its tools known, on but not asked yet, off. -->
+          <StatusDot :tone="serverTone(server)" :label="serverState(server)" />
         </template>
 
         <template #actions>
@@ -58,12 +58,12 @@
 </template>
 
 <script setup lang="ts">
+import StatusDot from '../../obsidian/StatusDot.vue'
 import { ref } from 'vue'
 import { nanoid } from 'nanoid'
 import Section from '../../obsidian/Section.vue'
 import Card from '../../obsidian/Card.vue'
 import CardGrid from '../../obsidian/CardGrid.vue'
-import Badge from '../../obsidian/Badge.vue'
 import Button from '../../obsidian/Button.vue'
 import Icon from '../../obsidian/Icon.vue'
 import EmptyState from '../../obsidian/EmptyState.vue'
@@ -146,6 +146,11 @@ function remove(id: string): void {
   pendingRemoval.value = null
   persist()
 }
+
+const serverState = (server: { enabled?: boolean; fetchedAt?: unknown }) =>
+  !server.enabled ? 'Off' : server.fetchedAt ? 'On' : 'On, tools not fetched yet'
+const serverTone = (server: { enabled?: boolean; fetchedAt?: unknown }) =>
+  !server.enabled ? 'faint' : server.fetchedAt ? 'green' : 'orange'
 </script>
 
 <style lang="scss">

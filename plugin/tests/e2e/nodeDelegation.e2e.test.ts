@@ -122,7 +122,10 @@ it('a normal plugin agent delegates through owner UI to both fake providers, sur
       [...doc.querySelectorAll('.abele-settings__nav .abele-tabs__tab')].find(t => t.textContent.trim()==='Nodes').click();
       await until(() => [...doc.querySelectorAll('.setting-item-name')].some(e=>e.textContent===node.label));
       const row = [...doc.querySelectorAll('.setting-item')].find(r=>r.querySelector('.setting-item-name')?.textContent===node.label);
-      [...row.querySelectorAll('button')].find(b=>b.textContent.trim()==='Delegation grants').click();
+      // Delegation is in the row's ⋯ menu.
+      row.querySelector('[aria-label="Pairing, delegation, remove"]').click();
+      await until(() => [...document.querySelectorAll('.menu-item-title'), ...doc.querySelectorAll('.menu-item-title')].find(t=>t.textContent.trim()==='Delegation grants'));
+      [...document.querySelectorAll('.menu-item-title'), ...doc.querySelectorAll('.menu-item-title')].find(t=>t.textContent.trim()==='Delegation grants').click();
       // A native settings window owns its modal document, not the main chat window.
       try { await until(() => doc.querySelector('[aria-label="Delegation provider"] option[value="pi"]')) }
       catch(e) { throw Error(String(e) + ' · owner UI status: ' + [...doc.querySelectorAll('.abele-settings__content [role="status"]')].map(p=>p.textContent).join(' · ') + ' · dialog: ' + doc.querySelector('.abele-node-grants')?.textContent) }
