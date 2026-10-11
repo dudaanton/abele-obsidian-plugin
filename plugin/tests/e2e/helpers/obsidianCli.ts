@@ -151,6 +151,10 @@ function runOnce(args: string[], timeoutMs: number, vault: string, reply?: strin
         stdout: result.stdout,
         stderr: result.stderr,
         signal: result.status === 124 ? 'SIGKILL' : result.signal,
+        code:
+          result.status === 124
+            ? 'ETIMEDOUT'
+            : (result.error as NodeJS.ErrnoException | undefined)?.code,
       })
     }
     return result.stdout.trim()
@@ -163,7 +167,7 @@ function runOnce(args: string[], timeoutMs: number, vault: string, reply?: strin
     if (err.code === 'ENOENT') {
       throw new ObsidianUnavailableError(`Obsidian CLI not found at ${CLI}`)
     }
-    if (err.signal === 'SIGKILL' && (reply !== undefined || err.code === 'ETIMEDOUT')) {
+    if (err.signal === 'SIGKILL' && err.code === 'ETIMEDOUT') {
       const stdout = String(err.stdout ?? '')
       const stderr = String(err.stderr ?? '')
       // Distinguish a missing renderer reply from a CLI process that printed its reply but
