@@ -119,9 +119,9 @@ const text = (value: unknown): string => {
   vertical-align: top;
 }
 
+/* The head reads apart by its colour and weight, at the cells' own size (rule 15). */
 .abele-table__head {
   color: var(--text-muted);
-  font-size: var(--font-ui-smaller);
   font-weight: var(--font-semibold);
 }
 
