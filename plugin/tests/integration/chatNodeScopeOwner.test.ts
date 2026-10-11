@@ -119,6 +119,87 @@ describe('owner node scope actions', () => {
     ])
     session.destroy()
   })
+  it('adding one entry approves only that entry, never other imported entries on the same node', async () => {
+    const session = new ChatSession(ChatService.getInstance())
+    const imported = {
+      kind: 'project' as const,
+      node_id: 'sample-node',
+      project_id: 'imported-project',
+      access: 'edit' as const,
+    }
+    session.overrides.value = { nodeScope: [imported] }
+    await giveObsidianChatAccess(session, { ...imported, project_id: 'chosen-project' })
+    const host = await nodeAgentHost(),
+      principal = host.connection('sample-node').principal()
+    expect(() =>
+      host.ledger.guard(
+        session,
+        {
+          node_id: 'sample-node',
+          project_id: 'chosen-project',
+          target: { kind: 'worktree', worktree_id: 'chosen-tree' },
+        },
+        principal,
+        'edit'
+      )
+    ).not.toThrow()
+    expect(() =>
+      host.ledger.guard(
+        session,
+        {
+          node_id: 'sample-node',
+          project_id: 'imported-project',
+          target: { kind: 'worktree', worktree_id: 'imported-tree' },
+        },
+        principal,
+        'edit'
+      )
+    ).toThrow()
+    session.destroy()
+  })
+  it('removing one imported entry never approves the remaining imported scope', async () => {
+    const session = new ChatSession(ChatService.getInstance())
+    const first = {
+      kind: 'project' as const,
+      node_id: 'sample-node',
+      project_id: 'first-project',
+      access: 'edit' as const,
+    }
+    session.overrides.value = { nodeScope: [first, { ...first, project_id: 'remaining-project' }] }
+    await removeObsidianChatNodeAccess(session, first)
+    const host = await nodeAgentHost(),
+      principal = host.connection('sample-node').principal()
+    expect(host.ledger.approvedNode(session, 'sample-node', principal)).toBe(false)
+    session.destroy()
+  })
+  it('removing a different entry preserves only already approved surviving entries', async () => {
+    const session = new ChatSession(ChatService.getInstance())
+    const chosen = {
+      kind: 'project' as const,
+      node_id: 'sample-node',
+      project_id: 'chosen-project',
+      access: 'edit' as const,
+    }
+    await giveObsidianChatAccess(session, chosen)
+    const imported = { ...chosen, project_id: 'imported-project' }
+    session.overrides.value = { ...session.overrides.value, nodeScope: [chosen, imported] }
+    await removeObsidianChatNodeAccess(session, imported)
+    const host = await nodeAgentHost(),
+      principal = host.connection('sample-node').principal()
+    expect(() =>
+      host.ledger.guard(
+        session,
+        {
+          node_id: 'sample-node',
+          project_id: 'chosen-project',
+          target: { kind: 'worktree', worktree_id: 'chosen-tree' },
+        },
+        principal,
+        'edit'
+      )
+    ).not.toThrow()
+    session.destroy()
+  })
   it('the existing repository revoke action also revokes persisted node scope approvals', async () => {
     const session = new ChatSession(ChatService.getInstance())
     await giveObsidianChatAccess(session, { kind: 'node', node_id: 'sample-node', access: 'read' })

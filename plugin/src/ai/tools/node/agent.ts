@@ -290,6 +290,7 @@ export function createNodeAgentTools(factory: NodeAgentHostFactory): AgentTool[]
         const node = host.nodeId?.(requested) ?? requested,
           connection = admittedConnection(node),
           result: unknown[] = []
+        const scopes = host.ledger.approvedEntries(session, node, connection.principal())
         let after: string | undefined
         for (let page = 0; page < 64; page++) {
           const projects = await safe(() => connection.client.listProjects(after))
@@ -378,6 +379,7 @@ export function createNodeAgentTools(factory: NodeAgentHostFactory): AgentTool[]
         const node = host.nodeId?.(requested) ?? requested,
           project = text(params, 'project', selected?.project_id)
         const connection = admittedConnection(node)
+        const scopes = host.ledger.approvedEntries(session, node, connection.principal())
         if (
           !scopes.some(
             (entry) =>

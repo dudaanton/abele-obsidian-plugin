@@ -32,6 +32,9 @@ export interface NodeScopeChat {
   readonly conversationVersion: { value: number }
   readonly branchSelectionVersion?: number
 }
+export function hasNodeScope(chat: NodeScopeChat): boolean {
+  return !!chat.overrides?.value && Object.hasOwn(chat.overrides.value, 'nodeScope')
+}
 export function nodeScopeEntries(chat: NodeScopeChat): NodeScopeEntry[] {
   return NodeScopeEntriesSchema.parse(chat.overrides?.value.nodeScope ?? [])
 }
@@ -67,8 +70,11 @@ export function coversNodeScope(
         nodeTargetId(entry.target) === nodeTargetId(target.target)))
   )
 }
+const EntryApprovalSchema = z
+  .object({ entry: NodeScopeEntrySchema, principal: z.string() })
+  .strict()
 const ApprovalSchema = z
-  .object({ scope: z.string(), principals: z.record(z.string(), z.string()), nonce: z.string() })
+  .object({ entries: z.record(z.string(), EntryApprovalSchema), nonce: z.string() })
   .strict()
 type Approval = z.infer<typeof ApprovalSchema>
 export interface NodeScopeStorage {
@@ -76,53 +82,81 @@ export interface NodeScopeStorage {
   write(value: unknown): void
 }
 
-/** Owner UI ledger. Synced configuration and generic tool approval cannot populate it. */
+/** Each exact entry requires its own explicit owner action. Legacy blanket records fail closed. */
 export class NodeScopeLedger {
   private approvals: Record<string, Approval>
   constructor(private readonly storage?: NodeScopeStorage) {
     const loaded = z.record(z.string(), ApprovalSchema).safeParse(storage?.read() ?? {})
     this.approvals = loaded.success ? loaded.data : {}
   }
-  approve(chat: NodeScopeChat, principals: Record<string, string>): void {
-    const identity = chat.nodeScopeIdentity
-    if (!identity) throw new Error('Save this chat before approving node scope')
-    const next = {
-      ...this.approvals,
-      [identity]: {
-        scope: normalized(chat),
-        principals: { ...principals },
-        nonce: crypto.randomUUID(),
-      },
-    }
+  private commit(next: Record<string, Approval>): void {
     this.storage?.write(next)
     this.approvals = next
+  }
+  /** Explicit confirmation of the supplied entries; default is the displayed complete configuration. */
+  approve(
+    chat: NodeScopeChat,
+    principals: Record<string, string>,
+    chosen = nodeScopeEntries(chat)
+  ): void {
+    const identity = chat.nodeScopeIdentity
+    if (!identity) throw new Error('Save this chat before approving node scope')
+    const current = new Set(nodeScopeEntries(chat).map(nodeScopeKey))
+    const entries = { ...this.approvals[identity]?.entries }
+    for (const [key] of Object.entries(entries)) if (!current.has(key)) delete entries[key]
+    for (const entry of chosen) {
+      const key = nodeScopeKey(entry),
+        principal = principals[entry.node_id]
+      if (!current.has(key) || !principal)
+        throw new Error(
+          'Owner approval must identify an exact configured scope entry and principal'
+        )
+      entries[key] = { entry: NodeScopeEntrySchema.parse(entry), principal }
+    }
+    this.commit({ ...this.approvals, [identity]: { entries, nonce: crypto.randomUUID() } })
+  }
+  /** Configuration changes fence continuations and prune lost grants, never create new grants. */
+  reconcile(chat: NodeScopeChat): void {
+    const identity = chat.nodeScopeIdentity
+    if (!identity || !this.approvals[identity]) return
+    const parsed = NodeScopeEntriesSchema.safeParse(chat.overrides?.value.nodeScope)
+    const current = new Set(parsed.success ? parsed.data.map(nodeScopeKey) : [])
+    const entries = Object.fromEntries(
+      Object.entries(this.approvals[identity].entries).filter(([key]) => current.has(key))
+    )
+    this.commit({ ...this.approvals, [identity]: { entries, nonce: crypto.randomUUID() } })
   }
   revoke(chat: NodeScopeChat): void {
     const next = { ...this.approvals }
     if (chat.nodeScopeIdentity) delete next[chat.nodeScopeIdentity]
-    this.storage?.write(next)
-    this.approvals = next
+    this.commit(next)
   }
   revokeNode(node: string): void {
     const next = { ...this.approvals }
     for (const [chat, approval] of Object.entries(next)) {
-      if (!(node in approval.principals)) continue
-      const principals = { ...approval.principals }
-      delete principals[node]
-      next[chat] = { ...approval, principals, nonce: crypto.randomUUID() }
+      const entries = Object.fromEntries(
+        Object.entries(approval.entries).filter(([, grant]) => grant.entry.node_id !== node)
+      )
+      if (Object.keys(entries).length !== Object.keys(approval.entries).length)
+        next[chat] = { entries, nonce: crypto.randomUUID() }
     }
-    this.storage?.write(next)
-    this.approvals = next
+    this.commit(next)
+  }
+  approvedEntries(chat: NodeScopeChat, node: string, principal: string): NodeScopeEntry[] {
+    const grant = chat.nodeScopeIdentity ? this.approvals[chat.nodeScopeIdentity] : undefined
+    return nodeScopeEntries(chat).filter(
+      (entry) =>
+        entry.node_id === node && grant?.entries[nodeScopeKey(entry)]?.principal === principal
+    )
   }
   approvedNode(chat: NodeScopeChat, node: string, principal: string): boolean {
-    const grant = chat.nodeScopeIdentity ? this.approvals[chat.nodeScopeIdentity] : undefined
-    return !!grant && grant.scope === normalized(chat) && grant.principals[node] === principal
+    return this.approvedEntries(chat, node, principal).length > 0
   }
   guardNode(chat: NodeScopeChat, node: string, principal: string): () => void {
-    const identity = chat.nodeScopeIdentity
-    const approval = identity ? this.approvals[identity] : undefined
-    const scope = normalized(chat)
-    const conversation = chat.conversationVersion.value,
+    const identity = chat.nodeScopeIdentity,
+      approval = identity ? this.approvals[identity] : undefined
+    const scope = normalized(chat),
+      conversation = chat.conversationVersion.value,
       branch = chat.branchSelectionVersion
     const check = () => {
       if (
@@ -148,26 +182,15 @@ export class NodeScopeLedger {
     principal: string,
     access: 'read' | 'edit'
   ): () => void {
-    const identity = chat.nodeScopeIdentity
-    const approval = identity ? this.approvals[identity] : undefined
-    const scope = normalized(chat),
-      conversation = chat.conversationVersion.value,
-      branch = chat.branchSelectionVersion
+    const nodeGuard = this.guardNode(chat, target.node_id, principal)
     const check = () => {
+      nodeGuard()
       if (
-        !identity ||
-        chat.nodeScopeIdentity !== identity ||
-        !approval ||
-        this.approvals[identity] !== approval ||
-        normalized(chat) !== scope ||
-        !this.approvedNode(chat, target.node_id, principal) ||
-        chat.conversationVersion.value !== conversation ||
-        chat.branchSelectionVersion !== branch ||
-        !nodeScopeEntries(chat).some((entry) => coversNodeScope(entry, target, access))
-      )
-        throw new Error(
-          'Local owner node scope approval is missing, changed or revoked for this chat'
+        !this.approvedEntries(chat, target.node_id, principal).some((entry) =>
+          coversNodeScope(entry, target, access)
         )
+      )
+        throw new Error('Local owner node scope approval is missing or revoked for this target')
     }
     check()
     return check

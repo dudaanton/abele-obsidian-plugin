@@ -16,6 +16,9 @@ let ownerService: object | undefined
 export function revokeNodeScopeApproval(session: ChatSession): void {
   ownerHost?.ledger.revoke(session)
 }
+export function reconcileNodeScopeApproval(session: ChatSession): void {
+  ownerHost?.ledger.reconcile(session)
+}
 export async function revokeObsidianChatNodeApproval(session: ChatSession): Promise<void> {
   revokeNodeScopeApproval(session)
   const { GlobalStore } = await import('@/stores/GlobalStore')
@@ -102,9 +105,16 @@ export async function nodeAgentHost(): Promise<NodeAgentHost> {
 /** Owner UI only. Whole-node scope intentionally includes future registered folders.
  * Credentials and installation IDs stay in the local ledger, never in chat metadata.
  */
-export async function setObsidianChatNodeScope(
+export function setObsidianChatNodeScope(
   session: ChatSession,
   entries: NodeScopeEntry[]
+): Promise<void> {
+  return saveNodeScope(session, entries, entries)
+}
+async function saveNodeScope(
+  session: ChatSession,
+  entries: NodeScopeEntry[],
+  toApprove: NodeScopeEntry[]
 ): Promise<void> {
   const raw = entries.map((entry) => NodeScopeEntrySchema.parse(entry)),
     version = session.conversationVersion.value
@@ -121,22 +131,30 @@ export async function setObsidianChatNodeScope(
       throw new Error('Chat changed while approving node scope')
   }
   check()
+  const chosen = toApprove.map((entry) => NodeScopeEntrySchema.parse(entry))
+  const canonicalChosen = chosen.map((entry) => ({
+    ...entry,
+    node_id: host.nodeId?.(entry.node_id) ?? entry.node_id,
+  }))
   const connections = new Map<string, NodeAgentConnection>()
-  // An explicit local picker/row choice wins over a synced stable-ID entry. A model cannot call this action.
-  for (let index = 0; index < raw.length; index++)
-    if (raw[index].node_id !== canonical[index].node_id)
-      connections.set(canonical[index].node_id, host.connection(raw[index].node_id, session))
-  for (const entry of normalized)
+  // Only explicitly chosen entries may bind an installation or create a grant.
+  for (let index = 0; index < chosen.length; index++)
+    if (chosen[index].node_id !== canonicalChosen[index].node_id)
+      connections.set(
+        canonicalChosen[index].node_id,
+        host.connection(chosen[index].node_id, session)
+      )
+  for (const entry of canonicalChosen)
     if (!connections.has(entry.node_id))
       connections.set(entry.node_id, host.connection(entry.node_id, session))
   const principals = Object.fromEntries(
     [...connections].map(([id, connection]) => [id, connection.principal()])
   )
-  host.ledger.revoke(session)
   session.overrides.value = { ...session.overrides.value, nodeScope: normalized }
+  host.ledger.reconcile(session)
   await session.saveForRelease()
   check()
-  if (!normalized.length) return
+  if (!canonicalChosen.length) return
   await session.ensureDelegationParentId()
   check()
   if (JSON.stringify(nodeScopeEntries(session)) !== JSON.stringify(normalized))
@@ -144,7 +162,7 @@ export async function setObsidianChatNodeScope(
   for (const [id, connection] of connections)
     if (principals[id] !== connection.principal())
       throw new Error('Node identity changed during scope approval')
-  host.ledger.approve(session, principals)
+  host.ledger.approve(session, principals, canonicalChosen)
 }
 
 /** Public Node-panel row-menu action. C supplies the explicitly chosen chat and immutable row identity.
@@ -153,10 +171,11 @@ export async function setObsidianChatNodeScope(
 export function giveObsidianChatAccess(session: ChatSession, raw: NodeScopeEntry): Promise<void> {
   const entry = NodeScopeEntrySchema.parse(raw),
     current = nodeScopeEntries(session)
-  return setObsidianChatNodeScope(session, [
-    ...current.filter((value) => nodeScopeKey(value) !== nodeScopeKey(entry)),
-    entry,
-  ])
+  return saveNodeScope(
+    session,
+    [...current.filter((value) => nodeScopeKey(value) !== nodeScopeKey(entry)), entry],
+    [entry]
+  )
 }
 
 /** Header removal fences pending work synchronously, before persistence or any network await. */
@@ -164,11 +183,10 @@ export async function removeObsidianChatNodeAccess(
   session: ChatSession,
   entry: NodeScopeEntry
 ): Promise<void> {
-  revokeNodeScopeApproval(session)
-  const host = await nodeAgentHost()
-  host.ledger.revoke(session)
-  return setObsidianChatNodeScope(
-    session,
-    nodeScopeEntries(session).filter((value) => nodeScopeKey(value) !== nodeScopeKey(entry))
+  const remaining = nodeScopeEntries(session).filter(
+    (value) => nodeScopeKey(value) !== nodeScopeKey(entry)
   )
+  session.overrides.value = { ...session.overrides.value, nodeScope: remaining }
+  reconcileNodeScopeApproval(session)
+  return saveNodeScope(session, remaining, [])
 }

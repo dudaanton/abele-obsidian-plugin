@@ -97,6 +97,7 @@ import {
 } from '@/ai/nodeScope'
 import {
   nodeAgentHost,
+  giveObsidianChatAccess,
   setObsidianChatNodeScope,
   removeObsidianChatNodeAccess,
 } from '@/ai/tools/node/owner'
@@ -272,9 +273,8 @@ function add() {
           access: access.value,
         }
       : { kind: 'project', node_id: node.value, project_id: project.value, access: access.value }
-  const chat = props.session,
-    next = [...entries.value.filter((value) => nodeScopeKey(value) !== nodeScopeKey(entry)), entry]
-  void perform(() => setObsidianChatNodeScope(chat, next))
+  const chat = props.session
+  void perform(() => giveObsidianChatAccess(chat, entry))
 }
 function clear() {
   const chat = props.session

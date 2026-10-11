@@ -35,7 +35,7 @@ import { ChatStorage } from './ChatStorage'
 import { cloneChatPath } from './chatClone'
 import { claimDelegationIdentity, ownsDelegationIdentity } from './delegationIdentity'
 import { NODE_AGENT_TOOL_NAMES, NODE_EDIT_TOOLS, NODE_FILE_OPERATIONS, NODE_MUTATION_TOOLS } from './tools/node/agent'
-import { revokeNodeScopeApproval } from './tools/node/owner'
+import { reconcileNodeScopeApproval } from './tools/node/owner'
 import { NodeService } from '@/node/NodeService'
 import {
   prepareSelectionRevision,
@@ -721,7 +721,7 @@ export class ChatSession implements SummarizerHost, InterceptorHost, AnchorStora
     this.effects.run(() => {
       watch(
         () => JSON.stringify(this.overrides.value.nodeScope),
-        (_value, before) => { if (before !== undefined) revokeNodeScopeApproval(this) },
+        (_value, before) => { if (before !== undefined) reconcileNodeScopeApproval(this) },
         { flush: 'sync' }
       )
       watch(

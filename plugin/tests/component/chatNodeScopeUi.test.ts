@@ -8,9 +8,10 @@ import Dropdown from '@/components/obsidian/Dropdown.vue'
 import Button from '@/components/obsidian/Button.vue'
 import Icon from '@/components/obsidian/Icon.vue'
 
-const mocks = vi.hoisted(() => ({ set: vi.fn(), remove: vi.fn(), host: vi.fn() }))
+const mocks = vi.hoisted(() => ({ set: vi.fn(), give: vi.fn(), remove: vi.fn(), host: vi.fn() }))
 vi.mock('@/ai/tools/node/owner', () => ({
   setObsidianChatNodeScope: mocks.set,
+  giveObsidianChatAccess: mocks.give,
   removeObsidianChatNodeAccess: mocks.remove,
   nodeAgentHost: mocks.host,
 }))
@@ -54,6 +55,26 @@ describe('node scope beside vault scope and in the header', () => {
           dropdown.props('options').some((option: { value: string }) => option.value === 'edit')
         )
     ).toBe(true)
+    view.unmount()
+  })
+  it('Add confirms only the chosen entry, not the entire existing configuration', async () => {
+    const session = setup(),
+      prior = mocks.set.mock.calls.length
+    const view = mount(AiNodeScopeEditor, { props: { session } })
+    await flushPromises()
+    view.findAllComponents(Dropdown)[0].vm.$emit('update:model-value', 'sample-node')
+    await flushPromises()
+    view
+      .findAllComponents(Button)
+      .find((button) => button.props('text') === 'Add access')!
+      .vm.$emit('click')
+    await flushPromises()
+    expect(mocks.give).toHaveBeenCalledWith(session, {
+      kind: 'node',
+      node_id: 'sample-node',
+      access: 'edit',
+    })
+    expect(mocks.set.mock.calls).toHaveLength(prior)
     view.unmount()
   })
   it('keeps malformed synced scope visible as an error rather than crashing the chat', async () => {

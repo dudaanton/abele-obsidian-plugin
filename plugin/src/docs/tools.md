@@ -1026,7 +1026,9 @@ in chat history after access is revoked.
 Node scope is separate from vault scope: full vault access grants no node access. The owner
 chooses a node, registered folder, or exact worktree in the chat scope settings. Whole-node
 access also includes future registered folders. Read/edit scope travels in chat overrides;
-approval stays on this device and binds the chat identity and node installation/key generation.
+approval stays on this device and binds each exact scope entry to the chat identity and node installation/key generation.
+Adding one entry approves only that entry; removing one never approves the remaining configuration.
+The explicit local confirmation action approves the displayed entries individually.
 Loaded or copied scope must be approved locally. No open human tab is required. Scope does not
 turn on external browsing/editing, project trust or execution on the daemon.
 
