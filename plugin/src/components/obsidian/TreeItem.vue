@@ -85,7 +85,6 @@ const props = withDefaults(
     icon: undefined,
     note: undefined,
     flair: undefined,
-    note: undefined,
     active: false,
     collapsible: false,
     collapsed: false,
