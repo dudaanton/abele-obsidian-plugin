@@ -109,7 +109,10 @@ describe('duration-balanced fast shards', () => {
     const directory = realpathSync(mkdtempSync(join(tmpdir(), 'sample-shards-')))
     mkdirSync(join(directory, 'tests/unit'), { recursive: true })
     for (const file of selected)
-      writeFileSync(join(directory, file), 'test("sample case", () => expect(1).toBe(1))')
+      writeFileSync(
+        join(directory, file),
+        'test("sample case", () => { expect(process.env.ABELE_FAST_SHARD_PLAN).toBeUndefined(); expect(1).toBe(1) })'
+      )
     const config = join(directory, 'vitest.config.mjs')
     writeFileSync(
       config,
