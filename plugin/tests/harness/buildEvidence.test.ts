@@ -88,6 +88,14 @@ describe('matching type evidence', () => {
       run()
     }
   })
+  it('invalidates changed dependency declarations even when install metadata is unchanged', () => {
+    const root = fixture()
+    const declaration = join(root, 'plugin/node_modules/sample-types.d.ts')
+    writeFileSync(declaration, 'export const sample: 1')
+    recordTypes(root, inputIdentity(root))
+    writeFileSync(declaration, 'export const sample: 2')
+    expect(() => requireTypes(root)).toThrow(/matching/)
+  })
   it('invalidates source links when their resolved bytes change', () => {
     const root = fixture()
     const target = join(root, 'plugin/node_modules/sample-types.d.ts')

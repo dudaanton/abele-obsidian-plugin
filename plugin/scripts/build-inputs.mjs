@@ -5,11 +5,14 @@ import {
   mkdirSync,
   readFileSync,
   readlinkSync,
+  readdirSync,
+  realpathSync,
+  statSync,
   renameSync,
   rmSync,
   writeFileSync,
 } from 'node:fs'
-import { dirname, resolve } from 'node:path'
+import { basename, dirname, resolve } from 'node:path'
 import { gitAt } from './changelog-git.mjs'
 
 export const sha256 = (bytes) => createHash('sha256').update(bytes).digest('hex')
@@ -38,12 +41,43 @@ export function sourceIdentity(root) {
   return hash.digest('hex')
 }
 
+/** Lock metadata alone cannot detect an edited declaration or compiler. Hash installed
+ * type sources, package resolution metadata and the compiler's own payload as well.
+ * Generated runner/build caches are not dependency inputs. */
+function installedTypeInputs(root) {
+  const hash = createHash('sha256')
+  const active = new Set()
+  const cacheNames = new Set(['.cache', '.vite', '.vite-temp', '.bin'])
+  const walk = (directory, relative = '') => {
+    const actual = realpathSync(directory)
+    if (active.has(actual))
+      throw new Error('Cyclic installed dependency link; type identity unknown')
+    active.add(actual)
+    for (const entry of readdirSync(directory, { withFileTypes: true }).sort((a, b) =>
+      a.name < b.name ? -1 : a.name > b.name ? 1 : 0
+    )) {
+      if (basename(directory) === 'node_modules' && cacheNames.has(entry.name)) continue
+      const file = resolve(directory, entry.name)
+      const name = relative ? `${relative}/${entry.name}` : entry.name
+      const stat = entry.isSymbolicLink() ? statSync(file) : entry
+      if (entry.isSymbolicLink()) hash.update(`${name}\0link\0${readlinkSync(file)}\0`)
+      if (stat.isDirectory()) walk(file, name)
+      else if (/\.[cm]?ts$|\.json$/i.test(name) || /(?:^|\/)typescript\//.test(name))
+        hash.update(`${name}\0${sha256(readFileSync(file))}\0`)
+    }
+    active.delete(actual)
+  }
+  walk(resolve(root, 'plugin/node_modules'))
+  return hash.digest('hex')
+}
+
 export function inputIdentity(root) {
   const installed = resolve(root, 'plugin/node_modules/.package-lock.json')
   if (!existsSync(installed)) throw new Error('Install dependencies before checking or building')
   return {
     source: sourceIdentity(root),
     dependencies: sha256(readFileSync(installed)),
+    typeInputs: installedTypeInputs(root),
     node: process.version,
     platform: process.platform,
     arch: process.arch,

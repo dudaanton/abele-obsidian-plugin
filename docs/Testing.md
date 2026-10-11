@@ -227,7 +227,8 @@ ships.
 Standalone `npm run build` and `npm run build:test` still run both normal and strict-null type
 checks. Orchestrators can run `npm run types` once, then `npm run build:only` or
 `npm run build:test:only`. Build-only requires a successful receipt matching source contents,
-installed dependency metadata and the Node/platform identity. A missing, stale or interrupted
+installed dependency metadata, declarations, package-resolution metadata, the TypeScript compiler
+payload and the Node/platform identity. A missing, stale or interrupted
 type stage is not accepted. The receipt is `node_modules/.cache/abele/types.json`; it may travel
 between identical clean CI installations, but is not a substitute for either pass.
 
