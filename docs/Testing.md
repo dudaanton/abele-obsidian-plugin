@@ -75,8 +75,9 @@ fixture verification or complete verification receipts.
 
 ### Balanced fast shards
 
-The default fast runner has an explicit worker limit and retains per-file isolation. A runner
-may override the limit with `--maxWorkers` after measuring its own CPU and memory budget.
+The default fast runner uses three workers, or four with a balanced shard plan, and retains
+per-file isolation. A runner may override the limit with `--maxWorkers` after measuring its own
+CPU and memory budget.
 
 `plugin/scripts/fast-shards.mjs` produces a deterministic longest-processing-time plan from
 Vitest's complete `list --filesOnly` inventory and recorded module durations. Unknown files

@@ -44,7 +44,7 @@ const parts = (p: any) =>
 
 describe('duration-balanced fast shards', () => {
   it('bounds workers explicitly while preserving per-file isolation', () => {
-    expect(fastConfig.test?.maxWorkers).toBe(3)
+    expect(fastConfig.test?.maxWorkers).toBe(process.env.ABELE_FAST_SHARD_PLAN ? 4 : 3)
     expect(fastConfig.test?.isolate).not.toBe(false)
   })
 
