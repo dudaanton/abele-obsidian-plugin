@@ -36,14 +36,14 @@ async function annotateOnPhone(
     }
     res.writeHead(200, { 'Content-Type': 'application/json', Connection: 'close' }).end(payload)
   })
-  let unexpose: (() => void) | undefined
+  let unexpose: Awaited<ReturnType<typeof exposeToPhone>> | undefined
   try {
     await new Promise<void>((resolve, reject) => {
       server.once('error', reject)
       server.listen(0, '127.0.0.1', resolve)
     })
     const port = (server.address() as AddressInfo).port
-    unexpose = exposeToPhone(port)
+    unexpose = await exposeToPhone(port)
     return await evalLong(
       `(async () => {
       const response = await requestUrl({url:${JSON.stringify(`http://127.0.0.1:${port}/${token}`)}, method:'GET'})
@@ -55,7 +55,7 @@ async function annotateOnPhone(
       120_000
     )
   } finally {
-    unexpose?.()
+    await unexpose?.()
     server.closeAllConnections()
     await new Promise<void>((resolve) => server.close(() => resolve()))
   }
