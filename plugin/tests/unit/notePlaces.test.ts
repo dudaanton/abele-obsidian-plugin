@@ -344,6 +344,17 @@ describe('the keeper', () => {
       expect(v.listeners.size).toBe(0)
     })
 
+    it('aligns an already drawn anchor in the same step as the initial line restore', () => {
+      make(anchored)
+      const v = view('group.md')
+      v.rows = new Set(['task:t.md'])
+      keeper.opened(v, 'group.md', false)
+      vi.advanceTimersByTime(RESTORE_STEP_MS)
+      expect(v.cursorSets).toBe(1)
+      expect(v.aligned).toContain('task:t.md')
+      expect(v.held).toBe(1)
+    })
+
     it('stops holding the moment the person scrolls', () => {
       make(anchored)
       const v = view('group.md')

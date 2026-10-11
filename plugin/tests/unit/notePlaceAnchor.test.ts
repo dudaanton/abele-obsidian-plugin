@@ -1,5 +1,5 @@
-import { describe, expect, it, vi } from 'vitest'
-import { alignAnchor, anchorAt } from '@/notePlaces/anchor'
+import { afterEach, describe, expect, it, vi } from 'vitest'
+import { alignAnchor, anchorAt, holdAnchor } from '@/notePlaces/anchor'
 import { NotePlaces } from '@/notePlaces/store'
 
 function fixture() {
@@ -35,7 +35,25 @@ function fixture() {
   }
 }
 
+afterEach(() => vi.unstubAllGlobals())
+
 describe('partly visible footer row anchors', () => {
+  it('observes the anchored row itself for before-paint corrections, not only the whole footer', () => {
+    const f = fixture(),
+      observed: Element[] = []
+    vi.stubGlobal(
+      'ResizeObserver',
+      class {
+        observe(el: Element) {
+          observed.push(el)
+        }
+        disconnect() {}
+      }
+    )
+    const release = holdAnchor(f.root, () => f.scroller, anchorAt(f.root, f.scroller)!)
+    expect(observed).toContain(f.row)
+    release()
+  })
   it('keeps the visible trailing edge when a lazy row returns with a shorter placeholder', () => {
     const f = fixture()
     const anchor = anchorAt(f.root, f.scroller)!

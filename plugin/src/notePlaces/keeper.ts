@@ -266,16 +266,25 @@ export class NotePlaceKeeper<V extends object> {
       return
     }
     p.before = now.scroll
+    let anchored = false
     this.applying = true
     try {
       this.io.apply(view, p.place, p.applied === 0)
       p.applied++
+      // The line is only an approximation inside the footer. If its row is already drawn,
+      // correct in this same task rather than painting a line overshoot and pulling back.
+      anchored = !!p.place.anchor && this.io.alignAnchor(view, p.place.anchor)
     } catch (e) {
       console.warn('[Abele] could not put the note back where it was left', e)
       this.finish(view, p)
       return
     } finally {
       this.applying = false
+    }
+    if (anchored) {
+      p.anchorWaited = 0
+      this.anchorStep(view, p)
+      return
     }
     p.waited += RESTORE_STEP_MS
     p.handle = this.env.schedule(() => this.attempt(view), RESTORE_STEP_MS)

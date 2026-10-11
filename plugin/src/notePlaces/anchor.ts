@@ -85,6 +85,8 @@ export function holdAnchor(
   const observer = new ResizeObserver(align)
   const footer = root.querySelector(FOOTER)
   if (footer) observer.observe(footer)
+  const row = rowOf(root, anchor.key)
+  if (row) observer.observe(row)
   const content = root.querySelector('.cm-content')
   if (content) observer.observe(content)
   let frame = 0
