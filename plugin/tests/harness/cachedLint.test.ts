@@ -74,7 +74,15 @@ describe('cached lint execution', () => {
       writeFileSync(
         join(f.root, 'plugin/tsconfig.json'),
         JSON.stringify({
-          compilerOptions: { strict: true, moduleResolution: 'bundler', module: 'ESNext' },
+          // The synthetic API uses no DOM or ambient packages. Keep the complete rule
+          // check, without repeatedly loading unrelated libraries in fresh processes.
+          compilerOptions: {
+            strict: true,
+            moduleResolution: 'bundler',
+            module: 'ESNext',
+            lib: ['ES2022'],
+            types: [],
+          },
           include: ['src/**/*.ts', 'src/**/*.vue'],
         })
       )
@@ -113,8 +121,10 @@ export default [
 assert.equal((await runLint(root, env)).errorCount, 0);
 assert.equal(existsSync(join(env.ABELE_CHECK_CACHE_DIR, 'lint-typed')), false, 'incomplete program inputs must never seed a typed cache');
 writeFileSync(${JSON.stringify(declaration)}, ${JSON.stringify(api + 'Plugin;')});
-const warm = await runLint(root, env);
-const cold = await runLint(root, { ...env, ABELE_CHECK_COLD: '1' });
+// Independent invocations read the same frozen inputs; their fresh workers may overlap.
+const [warm, cold] = await Promise.all([
+  runLint(root, env), runLint(root, { ...env, ABELE_CHECK_COLD: '1' })
+]);
 assert.equal(cold.errorCount, 1, 'cold lint must detect the Vue-only imported Plugin');
 assert.equal(warm.errorCount, cold.errorCount, 'warm lint must not reuse the old Component result');`
       )
@@ -141,8 +151,11 @@ export default [
       `
 assert.equal((await runLint(root, env)).errorCount, 0);
 writeFileSync(join(root, 'manifest.json'), '{"isDesktopOnly":false}');
-assert.equal((await runLint(root, env)).errorCount, 1, 'changed manifest must reload rule module state');
-assert.equal((await runLint(root, { ...env, ABELE_CHECK_COLD: '1' })).errorCount, 1);`
+const [warm, cold] = await Promise.all([
+  runLint(root, env), runLint(root, { ...env, ABELE_CHECK_COLD: '1' })
+]);
+assert.equal(warm.errorCount, 1, 'changed manifest must reload rule module state');
+assert.equal(cold.errorCount, 1);`
     )
   })
 
@@ -169,8 +182,10 @@ assert.equal((await runLint(root, { ...env, ABELE_CHECK_COLD: '1' })).errorCount
       join(f.root, 'plugin/src/service.ts'),
       'export async function sample(): Promise<void> {}'
     )
-    const warm = await runLint(f.root, f.env)
-    const cold = await runLint(f.root, { ...f.env, ABELE_CHECK_COLD: '1' })
+    const [warm, cold] = await Promise.all([
+      runLint(f.root, f.env),
+      runLint(f.root, { ...f.env, ABELE_CHECK_COLD: '1' }),
+    ])
     expect(warm.errorCount).toBe(1)
     expect(cold.errorCount).toBe(warm.errorCount)
   })
@@ -179,7 +194,11 @@ assert.equal((await runLint(root, { ...env, ABELE_CHECK_COLD: '1' })).errorCount
     const f = fixture()
     expect((await runLint(f.root, f.env)).errorCount).toBe(0)
     writeFileSync(join(f.root, 'plugin/tests/unit/sample.test.js'), 'unknownSample()')
-    expect((await runLint(f.root, f.env)).errorCount).toBe(1)
-    expect((await runLint(f.root, { ...f.env, ABELE_CHECK_COLD: '1' })).errorCount).toBe(1)
+    const [warm, cold] = await Promise.all([
+      runLint(f.root, f.env),
+      runLint(f.root, { ...f.env, ABELE_CHECK_COLD: '1' }),
+    ])
+    expect(warm.errorCount).toBe(1)
+    expect(cold.errorCount).toBe(1)
   })
 })
