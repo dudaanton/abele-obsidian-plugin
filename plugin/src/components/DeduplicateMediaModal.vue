@@ -1,84 +1,112 @@
 <template>
-  <ObsidianModal title="Deduplicate Media" @close="emit('close')">
-    <div class="abele-dedup">
-      <div class="abele-dedup__actions">
-        <Button text="Scan" :disabled="scanning" @click="scan" />
-        <Button
-          v-if="groups.length > 0"
-          :text="merging ? 'Merging...' : `Merge All (${groups.length} groups)`"
-          :disabled="merging || groups.length === 0"
-          @click="mergeAll"
-        />
-      </div>
-
-      <div v-if="scanning" class="abele-dedup__status">
-        Hashing... ({{ scannedFiles }}/{{ totalFiles }} files)
-      </div>
-
-      <div v-if="!scanning && scanned && groups.length === 0" class="abele-dedup__status">
-        No duplicates found.
-      </div>
-
-      <div v-if="groups.length > 0" class="abele-dedup__count">
-        {{ groups.length }} duplicate groups · {{ totalDuplicateSize }}
-      </div>
-
-      <div v-if="groups.length > 0" class="abele-dedup__list">
-        <div v-for="(group, gIdx) in groups" :key="gIdx" class="abele-dedup__group">
-          <div class="abele-dedup__group-header">
-            <span>{{ group.files.length }} files · {{ formatSize(group.size) }} each</span>
-            <Button v-if="group.status === 'pending'" text="Merge" @click="mergeGroup(gIdx)" />
-            <span v-else-if="group.status === 'done'" class="abele-dedup__done">merged</span>
-            <span v-else-if="group.status === 'error'" class="abele-dedup__error">{{
-              group.error
-            }}</span>
+  <ObsidianModal title="Duplicate media" @close="emit('close')">
+    <FoundList
+      class="abele-dedup"
+      icon="copy"
+      :state="scanning ? 'working' : scanned && groups.length === 0 ? 'none' : 'list'"
+      working-title="Comparing media files"
+      :working-text="`${scannedFiles} of ${totalFiles} read`"
+      :progress="{ done: scannedFiles, total: totalFiles }"
+      none-title="No duplicates"
+      none-text="No two media files in the vault hold the same bytes."
+      :summary="summary"
+      selectable
+      :chosen="chosenPending.length"
+      :total="pendingGroups.length"
+      @select-all="chooseAll(true)"
+      @clear="chooseAll(false)"
+    >
+      <EntryRow
+        v-for="(group, gIdx) in groups"
+        :key="group.hash + group.files[0].path"
+        :more="!!open[gIdx]"
+        @update:more="open[gIdx] = $event"
+        role="listitem"
+        more-label="copies"
+        class="abele-dedup__group"
+        :class="{ 'abele-dedup__group_done': group.status === 'done' }"
+      >
+        <template #leading>
+          <input
+            type="checkbox"
+            class="abele-dedup__check"
+            :checked="group.status === 'pending' && chosen.has(group.hash)"
+            :disabled="group.status !== 'pending'"
+            :aria-label="`Merge the copies of ${group.files[0].path}`"
+            @change="toggle(group)"
+          />
+          <FileThumb :kind="group.files[0].mediaType" :src="group.files[0].resourceUrl" />
+        </template>
+        <span class="abele-dedup__name" :title="group.files[0].path">{{
+          nameOf(group.files[0].path)
+        }}</span>
+        <template #meta>
+          <span>{{ group.files.length }} copies</span>
+          <span>saves {{ formatSize(group.size * (group.files.length - 1)) }}</span>
+        </template>
+        <template v-if="group.status !== 'pending'" #codes>
+          <ResultMark
+            :class="group.status === 'done' ? 'abele-dedup__done' : 'abele-dedup__error'"
+            :state="group.status === 'done' ? 'done' : 'error'"
+            :text="group.status === 'done' ? 'Merged into the one kept' : group.error"
+          />
+        </template>
+        <template #detail>
+          <div v-if="group.status === 'error'" class="abele-dedup__error-text" role="alert">
+            {{ group.error }}
           </div>
-
-          <div class="abele-dedup__side-by-side">
+          <!-- Every copy, the one that stays first: choosing another keeps that one instead. -->
+          <div v-show="open[gIdx]" class="abele-dedup__copies" role="radiogroup" :aria-label="'Which copy stays'">
             <div
               v-for="(file, fIdx) in group.files"
               :key="file.path"
-              class="abele-dedup__file"
-              :class="{
-                'abele-dedup__file_keep': fIdx === 0,
-                'abele-dedup__file_remove': fIdx > 0 && group.status === 'done',
-              }"
+              class="abele-dedup__copy"
+              :class="{ 'is-active': fIdx === 0 }"
+              role="radio"
+              :aria-checked="fIdx === 0"
+              :tabindex="group.status === 'pending' ? 0 : -1"
+              @click="keep(gIdx, fIdx)"
+              @keydown.enter.space.prevent="keep(gIdx, fIdx)"
             >
-              <div class="abele-dedup__preview">
-                <img
-                  v-if="file.mediaType === 'image'"
-                  :src="file.resourceUrl"
-                  class="abele-dedup__thumb"
-                />
-                <video
-                  v-else-if="file.mediaType === 'video'"
-                  :src="file.resourceUrl"
-                  class="abele-dedup__thumb"
-                  muted
-                  preload="metadata"
-                />
-                <div v-else class="abele-dedup__icon">
-                  <Icon :icon="file.mediaType === 'audio' ? 'music' : 'file'" />
-                </div>
-              </div>
-              <div class="abele-dedup__file-path">{{ file.path }}</div>
-              <div class="abele-dedup__file-refs">{{ file.refCount }} refs</div>
-              <div v-if="fIdx === 0" class="abele-dedup__keep-badge">keep</div>
+              <span class="abele-dedup__copy-path">{{ file.path }}</span>
+              <span class="abele-dedup__copy-meta">
+                {{ fIdx === 0 ? 'stays' : `${file.refCount} ${file.refCount === 1 ? 'link' : 'links'}` }}
+              </span>
             </div>
           </div>
-        </div>
-      </div>
-    </div>
+        </template>
+      </EntryRow>
+    </FoundList>
+    <template #footer>
+      <Button
+        text="Scan again"
+        tooltip="Compare the media files again"
+        :disabled="scanning || merging"
+        @click="scan"
+      />
+      <Button
+        v-if="pendingGroups.length"
+        :text="merging ? 'Merging…' : `Merge ${chosenPending.length} ${chosenPending.length === 1 ? 'group' : 'groups'}`"
+        tooltip="Keep one copy of each chosen file and point every link at it"
+        accent
+        :loading="merging"
+        :disabled="merging || chosenPending.length === 0"
+        @click="mergeAll"
+      />
+    </template>
   </ObsidianModal>
 </template>
 
 <script setup lang="ts">
-import { ref, computed } from 'vue'
+import { ref, computed, reactive } from 'vue'
 import { hashMediaBytes } from '@/media/contentHash'
 import { TFile } from 'obsidian'
 import ObsidianModal from './obsidian/Modal.vue'
 import Button from './obsidian/Button.vue'
-import Icon from './obsidian/Icon.vue'
+import EntryRow from './obsidian/EntryRow.vue'
+import FileThumb from './obsidian/FileThumb.vue'
+import FoundList from './obsidian/FoundList.vue'
+import ResultMark from './obsidian/ResultMark.vue'
 import { GlobalStore } from '@/stores/GlobalStore'
 import { vaultUrl } from '@/helpers/vaultUrl'
 import { equalMediaBytes, mergeMediaFiles } from '@/helpers/mediaDeduplication'
@@ -120,6 +148,34 @@ const totalDuplicateSize = computed(() => {
     .reduce((s, g) => s + g.size * (g.files.length - 1), 0)
   return formatSize(bytes)
 })
+
+// Every group found is chosen at first; one taken out of the choice is left as it is.
+const chosen = reactive(new Set<string>())
+const open = reactive<boolean[]>([])
+const pendingGroups = computed(() => groups.value.filter((g) => g.status === 'pending'))
+const chosenPending = computed(() => pendingGroups.value.filter((g) => chosen.has(g.hash)))
+const toggle = (group: DupGroup) => {
+  if (chosen.has(group.hash)) chosen.delete(group.hash)
+  else chosen.add(group.hash)
+}
+const chooseAll = (on: boolean) => {
+  chosen.clear()
+  if (on) for (const g of pendingGroups.value) chosen.add(g.hash)
+}
+const summary = computed(() => {
+  const n = groups.value.length
+  return `${n} ${n === 1 ? 'file' : 'files'} with copies · ${totalDuplicateSize.value} to save`
+})
+const nameOf = (path: string) => path.slice(path.lastIndexOf('/') + 1)
+
+/** The copy at `fIdx` is the one that stays: it moves to the front of its group. */
+const keep = (gIdx: number, fIdx: number) => {
+  const group = groups.value[gIdx]
+  if (group.status !== 'pending' || fIdx === 0) return
+  const files = [...group.files]
+  const [stays] = files.splice(fIdx, 1)
+  groups.value[gIdx] = { ...group, files: [stays, ...files] }
+}
 
 /** Count how many notes reference a given file path */
 const countRefs = (path: string): number => {
@@ -194,6 +250,7 @@ const scan = async () => {
 
     // Sort groups by total wasted size
     groups.value.sort((a, b) => b.size * (b.files.length - 1) - a.size * (a.files.length - 1))
+    chooseAll(true)
   } finally {
     scanning.value = false
     scanned.value = true
@@ -230,7 +287,7 @@ const mergeAll = async () => {
   merging.value = true
   try {
     for (let i = 0; i < groups.value.length; i++) {
-      if (groups.value[i].status === 'pending') {
+      if (groups.value[i].status === 'pending' && chosen.has(groups.value[i].hash)) {
         await mergeGroup(i)
       }
     }
@@ -244,131 +301,72 @@ scan()
 
 <style lang="scss">
 .abele-dedup {
-  min-width: min(500px, 100%);
+  min-width: min(28em, 100%);
 }
 
-.abele-dedup__actions {
-  display: flex;
-  gap: var(--size-4-2);
-  margin-bottom: var(--size-4-2);
+.abele-dedup__group_done .abele-entry-row__title,
+.abele-dedup__group_done .abele-file-thumb {
+  opacity: 0.5;
 }
 
-.abele-dedup__status {
-  color: var(--text-muted);
-  font-size: var(--font-small);
-  padding: var(--size-4-2) 0;
-}
+.abele-dedup .abele-dedup__check {
+  margin: 0;
 
-.abele-dedup__count {
-  font-size: var(--font-small);
-  color: var(--text-muted);
-  margin-bottom: var(--size-4-2);
-}
-
-.abele-dedup__list {
-  display: flex;
-  flex-direction: column;
-  gap: var(--size-4-3);
-  max-height: 450px;
-  overflow-y: auto;
-}
-
-.abele-dedup__group {
-  border: 1px solid var(--background-modifier-border);
-  border-radius: var(--radius-s);
-  padding: var(--size-4-2);
-}
-
-.abele-dedup__group-header {
-  display: flex;
-  align-items: center;
-  justify-content: space-between;
-  font-size: var(--font-small);
-  color: var(--text-muted);
-  margin-bottom: var(--size-4-2);
-}
-
-.abele-dedup__done {
-  color: var(--color-green);
-  font-size: var(--font-smaller);
-}
-
-.abele-dedup__error {
-  color: var(--text-error);
-  font-size: var(--font-smaller);
-}
-
-.abele-dedup__side-by-side {
-  display: flex;
-  gap: var(--size-4-2);
-  overflow-x: auto;
-}
-
-.abele-dedup__file {
-  display: flex;
-  flex-direction: column;
-  align-items: center;
-  gap: var(--size-2-1);
-  min-width: 120px;
-  max-width: 160px;
-  padding: var(--size-4-1);
-  border-radius: var(--radius-s);
-  position: relative;
-
-  &_keep {
-    background-color: rgba(var(--color-green-rgb), 0.08);
-  }
-
-  &_remove {
-    opacity: 0.3;
+  &:disabled {
+    visibility: hidden;
   }
 }
 
-.abele-dedup__preview {
-  width: 100px;
-  height: 100px;
-  display: flex;
-  align-items: center;
-  justify-content: center;
-  border-radius: var(--radius-s);
-  overflow: hidden;
-  background-color: var(--background-secondary);
-}
-
-.abele-dedup__thumb {
-  width: 100%;
-  height: 100%;
-  object-fit: cover;
-}
-
-.abele-dedup__icon {
-  color: var(--text-faint);
-}
-
-.abele-dedup__file-path {
-  font-size: var(--font-smaller);
-  color: var(--text-muted);
-  text-align: center;
+.abele-dedup__name {
+  display: block;
   overflow: hidden;
   text-overflow: ellipsis;
   white-space: nowrap;
-  width: 100%;
 }
 
-.abele-dedup__file-refs {
-  font-size: var(--font-smaller);
-  color: var(--text-faint);
+.abele-dedup__error-text {
+  color: var(--text-error);
+  font-size: var(--font-ui-smaller);
 }
 
-.abele-dedup__keep-badge {
-  position: absolute;
-  top: var(--size-2-1);
-  right: var(--size-2-1);
-  font-size: 10px;
-  padding: 1px var(--size-2-1);
-  background-color: var(--color-green);
-  color: var(--background-primary);
+// The copies as Obsidian's own list rows under the group: the one that stays lit.
+.abele-dedup__copies {
+  display: flex;
+  flex-direction: column;
+  gap: var(--size-2-1);
+  margin-inline-start: calc(-1 * var(--size-2-3));
+}
+
+.abele-dedup__copy {
+  display: flex;
+  align-items: baseline;
+  justify-content: space-between;
+  gap: var(--size-4-2);
+  padding: var(--size-2-2) var(--size-2-3);
   border-radius: var(--radius-s);
-  font-weight: 600;
+  color: var(--text-muted);
+  font-size: var(--font-ui-small);
+  cursor: var(--cursor);
+
+  &:hover,
+  &:focus-visible {
+    background-color: var(--background-modifier-hover);
+  }
+
+  &.is-active {
+    background-color: var(--background-modifier-hover);
+    color: var(--text-normal);
+  }
+}
+
+.abele-dedup__copy-path {
+  min-width: 0;
+  overflow-wrap: anywhere;
+}
+
+.abele-dedup__copy-meta {
+  flex: none;
+  color: var(--text-faint);
+  font-size: var(--font-ui-smaller);
 }
 </style>

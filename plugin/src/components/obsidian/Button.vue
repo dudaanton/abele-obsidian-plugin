@@ -10,6 +10,7 @@
       'abele-obsidian-button_loading': loading,
       'abele-obsidian-button_block': block,
       'abele-obsidian-button_disabled': disabled,
+      'abele-obsidian-button_quiet': quiet,
     }"
     :disabled="disabled"
     :aria-busy="loading || undefined"
@@ -46,6 +47,9 @@ const props = defineProps<{
   loading?: boolean
   /** As wide as the place it stands in. */
   block?: boolean
+  /** Muted words with no box, as Obsidian's own "Collapse all" over a list: a small action beside
+   *  a list's heading rather than a button of the window. */
+  quiet?: boolean
   disabled?: boolean
   /** What pressing this does, in a few words. Every button carries one — see docs/Design.md. */
   tooltip?: string
@@ -100,6 +104,24 @@ watch(
 </script>
 
 <style lang="scss">
+// Words, not a button: no box, no fill, muted until the pointer or the keyboard is on them.
+.abele-obsidian-button.abele-obsidian-button_quiet {
+  height: auto;
+  padding: 0;
+  border: none;
+  background: none;
+  box-shadow: none;
+  color: var(--text-muted);
+  font-size: inherit;
+  font-weight: var(--font-normal);
+
+  &:hover,
+  &:focus-visible {
+    background: none;
+    color: var(--text-normal);
+  }
+}
+
 .abele-obsidian-button {
   display: flex;
   // Obsidian's own icon-and-label control, `.text-icon-button`, keeps this gap.

@@ -40,9 +40,13 @@ const script = `(async () => {
     await until(() => app.metadataCache.resolvedLinks[root + '/sample-ref-two.md']?.[keepPath])
     await until(() => app.metadataCache.getFileCache(note)?.embeds?.length >= 2)
     window.__abeleTest.openDialog('dedup-media')
-    await until(() => document.querySelector('.abele-dedup') && !document.querySelector('.abele-dedup__status')?.textContent.includes('Hashing'))
+    await until(() => document.querySelector('.abele-dedup') && !document.querySelector('.abele-dedup[aria-busy="true"]'))
     const group = await until(() => [...document.querySelectorAll('.abele-dedup__group')].find((el) => el.textContent.includes(copyPath)))
-    button('Merge', group).click()
+    // Only this group is chosen, then the window's own Merge acts on it.
+    for (const box of document.querySelectorAll('.abele-dedup__check:checked')) box.click()
+    group.querySelector('.abele-dedup__check').click()
+    await until(() => [...document.querySelectorAll('.modal-button-container button, .modal button')].find((b) => b.textContent.trim() === 'Merge 1 group'))
+    ;[...document.querySelectorAll('.modal button')].find((b) => b.textContent.trim() === 'Merge 1 group').click()
     // Merge reads all reference sources twice before deleting, even for a tiny duplicate.
     // Thousands of native filesystem reads can exceed a UI-render wait on a real phone.
     await until(() => group.querySelector('.abele-dedup__done, .abele-dedup__error'), 60000)
@@ -55,9 +59,9 @@ const script = `(async () => {
     const chatMedia = await app.vault.createBinary(root + '/sample-chat.png', new Uint8Array([41, 59]).buffer)
     await app.vault.create(root + '/sample-chat.abchat', JSON.stringify({ v: 2, k: 'meta', title: 'Sample chat' }) + '\\n' + JSON.stringify({ k: 'msg', attachments: [chatMedia.path] }) + '\\n')
     window.__abeleTest.openDialog('unused-media')
-    await until(() => document.querySelector('.abele-unused-media') && !document.querySelector('.abele-unused-media__status')?.textContent.includes('Scanning'))
-    report.scanError = document.querySelector('.abele-unused-media__status')?.textContent.includes('Scan failed') ? document.querySelector('.abele-unused-media__status').textContent : ''
-    report.chatProtected = ![...document.querySelectorAll('.abele-unused-media__path')].some((el) => el.textContent === chatMedia.path)
+    await until(() => document.querySelector('.abele-unused-media') && !document.querySelector('.abele-unused-media[aria-busy="true"]'))
+    report.scanError = document.querySelector('.abele-unused-media .abele-empty-state_error')?.textContent ?? ''
+    report.chatProtected = ![...document.querySelectorAll('.abele-unused-media__path')].some((el) => el.title === chatMedia.path)
     await close()
 
     const replaceFile = await app.vault.create(root + '/sample-replace.md', '---\\nlabel: old\\n---\\n\\nSample body\\n')
