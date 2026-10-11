@@ -2,6 +2,7 @@ import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest'
 import { AgentLoop } from '@/ai/client/AgentLoop'
 import { OpenAIClient } from '@/ai/client/OpenAIClient'
 import { appSuspension, bindAppSuspension } from '@/ai/appSuspension'
+import { mobileBackground } from '@/ai/mobileBackground'
 import type { AgentEvent, AssistantMessage, Message, ModelConfig } from '@/ai/client'
 
 const model = { id: 'sample', baseUrl: 'https://model.example/v1' } as ModelConfig
@@ -37,6 +38,7 @@ beforeEach(() => {
 })
 afterEach(() => {
   unbind()
+  mobileBackground.destroy()
   vi.restoreAllMocks()
   vi.useRealTimers()
 })
@@ -66,6 +68,23 @@ function run(events: AgentEvent[] = [], tools: Parameters<AgentLoop['run']>[0]['
 }
 
 describe('an unfinished mobile request', () => {
+  it('recovers a real failure while audio is active without waiting for foreground or looping forever', async () => {
+    mobileBackground.install({ start: async () => {}, stop: () => {}, destroy: () => {} })
+    mobileBackground.configure(true, { whileAgents: false, always: true })
+    await flush()
+    let calls = 0
+    vi.spyOn(OpenAIClient.prototype, 'stream').mockImplementation(async function* () {
+      calls++
+      // Fail safely rather than letting an unbounded retry regression hang the test runner.
+      if (calls > 3) throw new Error('Unexpected extra retry')
+      hidden()
+      yield { type: 'error', error: 'Network connection lost' }
+    })
+    const { done } = run()
+    await done
+    expect(calls).toBe(2)
+  })
+
   it('waits for return, then resumes exactly the failed request once, discarding partial text', async () => {
     droppingProvider()
     const events: AgentEvent[] = []

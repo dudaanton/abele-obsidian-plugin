@@ -2,6 +2,7 @@ export interface BackgroundAudioPort {
   start(): Promise<void>
   stop(): void
   destroy(): void
+  isPlaying?(): boolean
 }
 
 export interface BackgroundSettings {
@@ -15,6 +16,8 @@ export class MobileBackground {
   private settings: BackgroundSettings = { whileAgents: false, always: false }
   private turns = 0
   private playing = false
+  private admitted = false
+  private generation = 0
   private stopTimer: number | null = null
   private audio: BackgroundAudioPort | null
 
@@ -22,10 +25,17 @@ export class MobileBackground {
     this.audio = audio
   }
 
+  /** Only successful, still-running playback admits background connection protection. */
+  get active(): boolean {
+    return this.admitted && this.audio?.isPlaying?.() !== false
+  }
+
   install(audio: BackgroundAudioPort): void {
+    ++this.generation
     this.audio?.destroy()
     this.audio = audio
     this.playing = false
+    this.admitted = false
     this.update()
   }
 
@@ -60,9 +70,21 @@ export class MobileBackground {
     if (wanted) {
       if (this.playing || !this.audio) return
       this.playing = true
-      void this.audio.start().catch(() => {
-        this.playing = false
-      })
+      const generation = ++this.generation
+      console.debug('[Abele background] audio start requested')
+      void this.audio
+        .start()
+        .then(() => {
+          if (generation !== this.generation) return
+          this.admitted = true
+          console.debug('[Abele background] audio active')
+        })
+        .catch(() => {
+          if (generation !== this.generation) return
+          this.playing = false
+          this.admitted = false
+          console.debug('[Abele background] audio unavailable')
+        })
     } else if (this.playing) {
       if (grace) this.stopTimer = window.setTimeout(() => this.stop(), 2000)
       else this.stop()
@@ -71,7 +93,10 @@ export class MobileBackground {
 
   private stop(): void {
     this.stopTimer = null
+    ++this.generation
     this.playing = false
+    this.admitted = false
+    console.debug('[Abele background] audio stop: no longer requested')
     this.audio?.stop()
   }
 
@@ -80,7 +105,10 @@ export class MobileBackground {
     this.stopTimer = null
     this.mobile = false
     this.settings = { whileAgents: false, always: false }
+    ++this.generation
     this.playing = false
+    this.admitted = false
+    console.debug('[Abele background] audio stop: destroyed')
     this.audio?.destroy()
     this.audio = null
   }

@@ -266,6 +266,7 @@ export class AgentLoop {
       timestamp: Date.now(),
     })
 
+    let resumedWhileHidden = false
     try {
       for (;;) {
         const request = new SuspendedRequest(options.signal)
@@ -291,12 +292,22 @@ export class AgentLoop {
         }
         result ??= empty('No response received')
 
-        if (request.shouldResume(result.stopReason, result.errorMessage)) {
+        if (
+          request.shouldResume(result.stopReason, result.errorMessage) &&
+          !(resumedWhileHidden && appSuspension.hidden && mobileBackground.active)
+        ) {
+          console.debug('[Abele model] reconnect: unfinished background request', {
+            reason: result.stopReason,
+            hidden: appSuspension.hidden,
+          })
           this.emit({
             type: 'reconnecting',
             state: appSuspension.hidden ? 'waiting' : 'connecting',
           })
           if (await appSuspension.waitForReturn(options.signal)) {
+            // A real background failure may recover without foreground when audio keeps
+            // us alive. Bound this recovery too: a broken network must not spin requests.
+            resumedWhileHidden = appSuspension.hidden && mobileBackground.active
             this.emit({ type: 'reconnecting', state: 'connecting' })
             // Only this unfinished response is requested again. The history includes all
             // completed tool calls/results; no tool from the abandoned stream was executed.

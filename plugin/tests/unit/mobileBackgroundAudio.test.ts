@@ -10,8 +10,15 @@ afterEach(() => {
 function setup(session?: { type: string }) {
   Object.defineProperty(navigator, 'audioSession', { value: session, configurable: true })
   const element = {
-    play: vi.fn().mockResolvedValue(undefined),
-    pause: vi.fn(),
+    addEventListener: vi.fn(),
+    paused: true,
+    ended: false,
+    play: vi.fn(async () => {
+      element.paused = false
+    }),
+    pause: vi.fn(() => {
+      element.paused = true
+    }),
     load: vi.fn(),
     setAttribute: vi.fn(),
     removeAttribute: vi.fn(),
@@ -46,7 +53,9 @@ it('plays unmuted silent samples in an ambient session and restores what it borr
   expect(element.loop).toBe(true)
   expect(element.muted).toBe(false)
   expect(element.volume).toBe(1)
+  expect(audio.isPlaying()).toBe(true)
   audio.stop()
+  expect(audio.isPlaying()).toBe(false)
   expect(element.pause).toHaveBeenCalledOnce()
   expect(session.type).toBe('auto')
   audio.destroy()

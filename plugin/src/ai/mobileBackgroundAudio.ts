@@ -42,6 +42,11 @@ export class SilentBackgroundAudio implements BackgroundAudioPort {
       this.audio.muted = false
       this.audio.volume = 1
       this.audio.setAttribute('playsinline', '')
+      this.audio.addEventListener('pause', () => console.debug('[Abele background] audio paused'))
+      this.audio.addEventListener('playing', () =>
+        console.debug('[Abele background] audio playing')
+      )
+      this.audio.addEventListener('error', () => console.debug('[Abele background] audio error'))
     }
     this.session = (navigator as Navigator & { audioSession?: WebAudioSession }).audioSession
     // Auto selects exclusive playback for HTML media on WebKit. Without a mixing API,
@@ -59,6 +64,10 @@ export class SilentBackgroundAudio implements BackgroundAudioPort {
       this.restoreSession()
       throw error
     }
+  }
+
+  isPlaying(): boolean {
+    return this.audio !== null && !this.audio.paused && !this.audio.ended
   }
 
   stop(): void {

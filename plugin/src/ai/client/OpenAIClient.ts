@@ -1,5 +1,6 @@
 import { request as requestUrl, withDeadline, readTextLimited, checkRequest } from '@/helpers/http'
 import { requestTimeoutSeconds } from '@/ai/requestTimeout'
+import { mobileBackground } from '@/ai/mobileBackground'
 import { prepareImageForApi } from '@/ai/imagePrep'
 import { repairOpenAIToolHistory } from './toolHistory'
 import { clientHeaders } from './clientName'
@@ -185,11 +186,21 @@ export class OpenAIClient {
           model.clientName
         ),
         timeoutMs,
-        () => connection.abort()
+        () => {
+          console.debug('[Abele model] close: response headers timeout')
+          connection.abort()
+        },
+        () => mobileBackground.active
       )
       if (!response.ok) {
-        const errorText = await withDeadline(readTextLimited(response, 64 * 1024), timeoutMs, () =>
-          connection.abort()
+        const errorText = await withDeadline(
+          readTextLimited(response, 64 * 1024),
+          timeoutMs,
+          () => {
+            console.debug('[Abele model] close: error response timeout')
+            connection.abort()
+          },
+          () => mobileBackground.active
         ).catch(() => 'Unreadable or oversized error response')
         throw new Error(`HTTP ${response.status}: ${errorText}`)
       }
@@ -298,6 +309,9 @@ export class OpenAIClient {
         }
       }
     } catch (err: unknown) {
+      console.debug('[Abele model] request ended', {
+        reason: options.signal?.aborted ? 'turn_signal' : 'transport_failure',
+      })
       if (currentBlock) yield* this.finishBlock(currentBlock, output)
 
       // Only Stop's signal is a user cancellation. A transport can also reject with
@@ -652,9 +666,15 @@ export class OpenAIClient {
       while (true) {
         signal?.throwIfAborted()
 
-        const { done, value } = await withDeadline(reader.read(), timeoutMs, () => {
-          void reader.cancel().catch(() => {})
-        })
+        const { done, value } = await withDeadline(
+          reader.read(),
+          timeoutMs,
+          () => {
+            console.debug('[Abele model] close: stream read timeout')
+            void reader.cancel().catch(() => {})
+          },
+          () => mobileBackground.active
+        )
         if (done) break
         bytes += value.byteLength
         if (bytes > 20 * 1024 * 1024) throw new Error('Chat response too large')
@@ -717,6 +737,9 @@ export class OpenAIClient {
           'Model response ended before completion; the connection may have timed out. Retry the request.'
         )
     } finally {
+      console.debug('[Abele model] stream close', {
+        reason: completed ? 'complete' : signal?.aborted ? 'aborted' : 'incomplete',
+      })
       void reader.cancel().catch(() => {})
       reader.releaseLock()
     }

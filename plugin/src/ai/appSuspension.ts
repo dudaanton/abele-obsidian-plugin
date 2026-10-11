@@ -1,3 +1,5 @@
+import { mobileBackground } from './mobileBackground'
+
 /** A host reports background/foreground edges; requests subscribe only for their own lifetime. */
 export class AppSuspension {
   enabled = false
@@ -10,16 +12,29 @@ export class AppSuspension {
   setHidden(hidden: boolean): void {
     if (!this.enabled || this.hidden === hidden) return
     this.frozenOnReturn =
-      !hidden && (this.backgroundGap || Date.now() - this.lastHeartbeat >= 10_000)
+      !hidden &&
+      !mobileBackground.active &&
+      (this.backgroundGap || Date.now() - this.lastHeartbeat >= 10_000)
     this.backgroundGap = false
     this.lastHeartbeat = Date.now()
     this.hidden = hidden
+    console.debug('[Abele lifecycle] visibility', {
+      hidden,
+      backgroundAudio: mobileBackground.active,
+      frozenOnReturn: this.frozenOnReturn,
+    })
     for (const listener of [...this.listeners]) listener()
   }
 
-  /** Some WebViews never hide the document. A timer gap still proves a suspended JS host. */
+  /** Some WebViews never hide. Without admitted audio, a timer gap signals suspension. */
   recoverIfFrozen(): boolean {
-    if (!this.enabled || this.hidden || Date.now() - this.lastHeartbeat < 10_000) return false
+    if (
+      !this.enabled ||
+      this.hidden ||
+      mobileBackground.active ||
+      Date.now() - this.lastHeartbeat < 10_000
+    )
+      return false
     this.setHidden(true)
     this.backgroundGap = true
     this.setHidden(false)
@@ -29,7 +44,8 @@ export class AppSuspension {
   heartbeat(): void {
     this.recoverIfFrozen()
     const now = Date.now()
-    if (this.hidden && now - this.lastHeartbeat >= 10_000) this.backgroundGap = true
+    if (this.hidden && !mobileBackground.active && now - this.lastHeartbeat >= 10_000)
+      this.backgroundGap = true
     this.lastHeartbeat = now
   }
 
@@ -40,7 +56,7 @@ export class AppSuspension {
 
   waitForReturn(signal?: AbortSignal): Promise<boolean> {
     if (!this.enabled || signal?.aborted) return Promise.resolve(false)
-    if (!this.hidden) return Promise.resolve(true)
+    if (!this.hidden || mobileBackground.active) return Promise.resolve(true)
     return new Promise((resolve) => {
       const finish = (ready: boolean) => {
         unsubscribe()

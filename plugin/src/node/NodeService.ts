@@ -2,6 +2,8 @@ import { ref, type Ref } from 'vue'
 import { AgentsService } from '@/agents/AgentsService'
 import { NodeClient } from '@abele/node-client'
 import { NodePairingConnector } from './NodePairingConnector'
+import { RequestChannel } from '@abele/channel-client'
+import { mobileBackground } from '@/ai/mobileBackground'
 import { type PairingInvite, fingerprint, ChannelError } from '@abele/channel-protocol'
 import { NodeDeviceKeyStore, claimedEnrollment } from './NodeDeviceKeyStore'
 import { GlobalStore } from '@/stores/GlobalStore'
@@ -10,6 +12,8 @@ import { NodeRegistry, channelUrl, isPairedNode, type RegisteredNode } from './N
 import { NodeClientStore } from './NodeClientStore'
 import { NodeDelegationController } from './NodeDelegationController'
 import type { DelegationCard } from './delegation'
+
+RequestChannel.backgroundActive = () => mobileBackground.active
 
 export type NodeConnectionState = 'connecting' | 'connected' | 'offline'
 export class NodeConnection {
@@ -52,25 +56,31 @@ export class NodeConnection {
     }))
   }
 
-  connect(): Promise<void> {
+  connect(reason = 'explicit'): Promise<void> {
     if (this.disposed) return Promise.reject(new Error('Node connection closed'))
     if (this.connecting) return this.connecting
     if (this.client.connected) {
       this.state.value = 'connected'
       return Promise.resolve()
     }
+    console.debug('[Abele node] connect/reconnect', {
+      reason,
+      backgroundAudio: mobileBackground.active,
+    })
     this.state.value = 'connecting'
     const generation = this.generation
     this.connecting = this.client
       .connect()
       .then(async () => {
         if (this.disposed || generation !== this.generation) {
+          console.debug('[Abele node] disconnect: stale admission')
           await this.client.disconnect()
           return
         }
         this.delegation.connectionChanged()
         this.error.value = ''
         this.state.value = 'connected'
+        console.debug('[Abele node] connected')
       })
       .catch(async (error: unknown) => {
         // NodeClient admits the transport before replaying cached stream cursors. A
@@ -106,6 +116,9 @@ export class NodeConnection {
             'A saved node stream is no longer authorized; retained child transcripts can still be opened.'
           return
         }
+        console.debug('[Abele node] connect failed', {
+          reason: error instanceof ChannelError ? error.code : 'connection_failed',
+        })
         if (generation === this.generation) {
           this.state.value = 'offline'
           this.error.value = error instanceof Error ? error.message : 'Connection failed'
@@ -133,6 +146,7 @@ export class NodeConnection {
     this.error.value = ''
     const old = this.connecting
     await old?.catch(() => {})
+    console.debug('[Abele node] disconnect: authorization refresh')
     await this.client.disconnect()
     this.connecting = undefined
   }
@@ -144,7 +158,7 @@ export class NodeConnection {
       if (this.disposed) return
       if (!this.client.connected) {
         this.state.value = 'offline'
-        await this.connect().catch(() => {})
+        await this.connect('retry_tick').catch(() => {})
       } else this.state.value = 'connected'
       await this.refreshDelegations().catch(() => {})
       if (!this.disposed && generation === this.generation)
@@ -160,6 +174,7 @@ export class NodeConnection {
     ++this.generation
     this.state.value = 'offline'
     window.clearTimeout(this.timer)
+    console.debug('[Abele node] disconnect: connection destroyed')
     void this.client.disconnect().finally(() => this.store.close())
   }
 }
@@ -175,7 +190,8 @@ export class NodeService {
   private readonly installation: string
   private readonly foreground = () => {
     if (document.visibilityState !== 'hidden')
-      for (const connection of this.connections.values()) void connection.connect().catch(() => {})
+      for (const connection of this.connections.values())
+        void connection.connect('foreground').catch(() => {})
   }
 
   static getInstance(): NodeService {
@@ -229,6 +245,10 @@ export class NodeService {
       store
     )
     try {
+      console.debug('[Abele node] connect/reconnect', {
+        reason: 'registration',
+        backgroundAudio: mobileBackground.active,
+      })
       await client.connect()
       const admittedNodeId = await store.transaction((state) => state.node_id!)
       if (expectedNodeId && admittedNodeId !== expectedNodeId)
@@ -243,6 +263,7 @@ export class NodeService {
       connection.start()
       return node
     } catch (error) {
+      console.debug('[Abele node] disconnect: registration failed')
       await client.disconnect()
       store.close()
       throw error

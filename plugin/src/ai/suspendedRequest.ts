@@ -1,5 +1,6 @@
 import { appSuspension, type AppSuspension } from './appSuspension'
 import { isTransient } from './retry'
+import { mobileBackground } from './mobileBackground'
 
 /** Recovery owns only a model transport, never a tool or the agent turn's Stop signal. */
 export class SuspendedRequest {
@@ -9,7 +10,10 @@ export class SuspendedRequest {
   private stale = false
   private timer: number | null = null
   private unsubscribe: () => void
-  private readonly abort = () => this.controller.abort()
+  private readonly abort = () => {
+    console.debug('[Abele model] close: turn aborted')
+    this.controller.abort()
+  }
 
   constructor(
     private readonly turnSignal?: AbortSignal,
@@ -22,12 +26,24 @@ export class SuspendedRequest {
       if (lifecycle.hidden) {
         this.crossedBackground = true
         this.clearTimer()
-      } else if (lifecycle.enabled && lifecycle.frozenOnReturn && this.crossedBackground) {
+      } else if (
+        lifecycle.enabled &&
+        lifecycle.frozenOnReturn &&
+        this.crossedBackground &&
+        !mobileBackground.active
+      ) {
         // Let buffered chunks arrive first. A live stream is not restarted on every switch.
         this.clearTimer()
         this.timer = window.setTimeout(() => {
           this.timer = null
-          if (!turnSignal?.aborted && Date.now() - this.lastProgress >= 10_000) {
+          if (
+            !turnSignal?.aborted &&
+            !mobileBackground.active &&
+            Date.now() - this.lastProgress >= 10_000
+          ) {
+            console.debug('[Abele model] close: stale stream after suspended host', {
+              idleMs: Date.now() - this.lastProgress,
+            })
             this.stale = true
             this.controller.abort()
           }

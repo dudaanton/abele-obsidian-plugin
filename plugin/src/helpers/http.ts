@@ -13,13 +13,29 @@ export const DEFAULT_TIMEOUT_MS = 30_000
 export const DEFAULT_MAX_BYTES = 20 * 1024 * 1024
 
 /** A deadline even for platform operations that cannot be cancelled. Never includes URL keys. */
-export function withDeadline<T>(work: Promise<T>, ms: number, onTimeout?: () => void): Promise<T> {
+export function withDeadline<T>(
+  work: Promise<T>,
+  ms: number,
+  onTimeout?: () => void,
+  backgroundActive?: () => boolean
+): Promise<T> {
   let timer: number
+  let due = Date.now() + ms
   const expiry = new Promise<never>((_, reject) => {
-    timer = window.setTimeout(() => {
+    const expire = () => {
+      const lateMs = Date.now() - due
+      if (backgroundActive?.() && lateMs >= 1000) {
+        // HTTP has no in-band ping. Keep the pending receive alive for a fresh event-loop
+        // window so buffered headers/chunks can settle before a throttled timer cancels it.
+        console.debug('[Abele network] delayed deadline: receive grace', { lateMs })
+        due = Date.now() + 1500
+        timer = window.setTimeout(expire, 1500)
+        return
+      }
       reject(new Error(`Request timed out after ${Math.round(ms / 1000)}s`))
       onTimeout?.()
-    }, ms)
+    }
+    timer = window.setTimeout(expire, ms)
   })
   return Promise.race([work, expiry]).finally(() => window.clearTimeout(timer))
 }

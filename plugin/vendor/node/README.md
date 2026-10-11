@@ -7,7 +7,11 @@ delegation mailboxes, versioned repository reads and the gated `debugger.v1` hum
 client. Capability checks still determine adapter availability. They are kept in the
 repository so `npm ci` and the plugin build work in a clean clone without a sibling
 checkout, workspace link, daemon or private registry. `integrity.json` records npm's
-SHA-512 integrity and the packaged file list. Runtime source has not been modified.
+SHA-512 integrity and the packaged file list. The channel client carries the small,
+reviewable `channel-client-background.patch`: an opt-in host liveness policy, a ping
+probe before background heartbeat settlement, delayed-deadline receive grace, and
+reason-coded transport logs. Other packages are unmodified. The channel client's
+obsolete upstream source map is omitted rather than publishing inaccurate mappings.
 Their transitive Zod 3 dependency remains separate from the plugin's Zod 4.
 
 These payloads were built from a clean archive of the release tag, with `npm ci --ignore-scripts`
@@ -26,6 +30,14 @@ npm install --save-exact ./vendor/node/abele-channel-protocol-0.0.0.tgz \
   ./vendor/node/abele-node-protocol-0.0.0.tgz \
   ./vendor/node/abele-channel-client-0.0.0.tgz ./vendor/node/abele-node-client-0.0.0.tgz
 ```
+
+Before packing the channel client, apply `channel-client-background.patch` to its
+built package root with `patch -p1`, and remove `dist/index.js.map`. Pack that patched
+package instead of the upstream channel client. Keep the patch until the upstream
+package provides the equivalent API. `RequestChannel.backgroundActive` defaults to
+false; the plugin binds it to admitted, still-playing background audio. Request
+timeouts remain `outcome_unknown` and never replay a mutation: a received pong keeps
+only the transport alive, not the timed-out request.
 
 Update this revision note and verify the lockfile integrity against the manifest.
 The TypeScript declaration paths in `tsconfig.json` support the plugin's existing
