@@ -209,24 +209,6 @@ function runOnPhone(args: string[], timeoutMs: number): string {
   }
 }
 
-/**
- * The CLI quotes some answers and not others, so the text is tried as it came and then with
- * the quotes taken off. The order matters for a string: `"one"` is already JSON, and stripped
- * it is not. So an expression answering with a numeric string (`String(5)`) comes back as the
- * number 5: return an object when the type matters.
- */
-function parseJson<T>(raw: string): T {
-  const candidates = [raw, raw.replace(/^'(.*)'$/s, '$1'), raw.replace(/^"(.*)"$/s, '$1')]
-  for (const candidate of candidates) {
-    try {
-      return JSON.parse(candidate) as T
-    } catch {
-      /* try the next spelling */
-    }
-  }
-  throw new Error(`Could not parse eval result as JSON: ${raw.slice(0, 400)}`)
-}
-
 function evalReply<T>(output: string, id: string): { value: T; hasValue: boolean; logs: string } {
   for (const match of output.matchAll(/(?:^|\n)=> /g)) {
     try {
@@ -344,12 +326,26 @@ export function activeVaultFileCount(): number {
  * never answers fails its test rather than the whole tier.
  */
 export function evalRaw(code: string, timeoutMs?: number): string {
-  return answerOf(run(['eval', `code=${code}`], timeoutMs))
+  return evalRawFramed(code, timeoutMs, false)
 }
 
 /** Only reads and absolute setters/cleanup that remain safe if the first call ran. */
 export function evalRawIdempotent(code: string, timeoutMs?: number): string {
-  return answerOf(run(['eval', `code=${code}`], timeoutMs, true))
+  return evalRawFramed(code, timeoutMs, true)
+}
+
+function evalRawFramed(code: string, timeoutMs: number | undefined, idempotent: boolean): string {
+  const id = randomBytes(16).toString('hex')
+  const wrapped = `(async () => {
+    let value
+    try { value = await window.eval(${JSON.stringify(code)}) }
+    catch (error) { value = 'Error: ' + String(error?.message ?? error) }
+    const rendered = value === undefined ? null : value === null ? 'null' : typeof value === 'object' ? JSON.stringify(value, null, 2) : String(value)
+    return JSON.stringify({ __abeleReply: ${JSON.stringify(id)}, hasValue: value !== undefined, value: rendered })
+  })()`
+  const output = run(['eval', `code=${wrapped}`], timeoutMs, idempotent, TARGET_VAULT, id)
+  const reply = evalReply<string>(output, id)
+  return reply.hasValue ? reply.value : reply.logs || '(no output)'
 }
 
 /**

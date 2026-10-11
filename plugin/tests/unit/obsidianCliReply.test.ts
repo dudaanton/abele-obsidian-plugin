@@ -4,10 +4,13 @@ import { mkdtempSync, writeFileSync, chmodSync, rmSync, readFileSync } from 'nod
 import { tmpdir } from 'node:os'
 import { join } from 'node:path'
 
+let defaultCli: typeof import('../e2e/helpers/obsidianCli') | undefined
+
 async function withCli(
   work: (
     cli: Awaited<ReturnType<(typeof import('../e2e/helpers/obsidianCli'))['vaultCli']>>,
-    pid: () => number
+    pid: () => number,
+    effects: () => number
   ) => void
 ): Promise<void> {
   const dir = mkdtempSync(join(tmpdir(), 'abele-cli-reply-'))
@@ -18,6 +21,7 @@ async function withCli(
     `#!/usr/bin/env node
 require('fs').writeFileSync(${JSON.stringify(pid)}, String(process.pid))
 global.window = globalThis
+global.require = require
 setInterval(() => {}, 1000)
 const code = process.argv.find((arg) => arg.startsWith('code='))?.slice(5) || ''
 process.stdout.write('=> ' + JSON.stringify({__abeleReply: 'not-this-request', hasValue: true, value: 'wrong'}) + '\\n')
@@ -34,8 +38,16 @@ Promise.resolve(eval(code)).then((reply) => {
   process.env.OBSIDIAN_CLI = executable
   vi.resetModules()
   try {
-    const { vaultCli } = await import('../e2e/helpers/obsidianCli')
-    work(vaultCli('sample-vault'), () => Number(readFileSync(pid, 'utf8')))
+    defaultCli = await import('../e2e/helpers/obsidianCli')
+    const { vaultCli } = defaultCli
+    work(
+      vaultCli('sample-vault'),
+      () => Number(readFileSync(pid, 'utf8')),
+      () =>
+        readFileSync(executable + '.effects', 'utf8')
+          .trim()
+          .split('\n').length
+    )
   } finally {
     if (before === undefined) delete process.env.OBSIDIAN_CLI
     else process.env.OBSIDIAN_CLI = before
@@ -76,6 +88,29 @@ describe('an Obsidian CLI reply independent of process exit', () => {
   it('does not accept a log as a missing reply, and kills the child on the unchanged deadline', async () => {
     await withCli((cli, pid) => {
       expect(() => cli.evalAwait('new Promise(() => {})', 1000)).toThrow(/gave no answer/)
+      expect(gone(pid())).toBe(true)
+    })
+  })
+
+  it('frames the default setup/teardown evals too, without replaying side effects', async () => {
+    await withCli((_vault, pid, effects) => {
+      // A fixture CLI never exits by itself; logs contain a misleading reply nonce.
+      // Each public helper must wait for its own completed reply and kill the child.
+      const cli = defaultCli!
+      expect(cli.evalRaw('"setup\\ncomplete"', 1000)).toBe('setup\ncomplete')
+      expect(cli.evalRawIdempotent('"cleanup"', 1000)).toBe('cleanup')
+      expect(cli.evalJson('({ count: 3 })', 1000)).toEqual({ count: 3 })
+      expect(cli.evalJsonIdempotent('null', 1000)).toBeNull()
+      expect(
+        cli.evalRaw(
+          `(() => { require('fs').appendFileSync(process.argv[1] + '.effects', 'once\\n'); return 'done' })()`,
+          1000
+        )
+      ).toBe('done')
+      expect(effects()).toBe(1)
+      expect(cli.evalRaw('Promise.reject(new Error("Sample setup failure"))', 1000)).toBe(
+        'Error: Sample setup failure'
+      )
       expect(gone(pid())).toBe(true)
     })
   })
