@@ -33,14 +33,32 @@ watch(() => props.label, tip)
   border-radius: 50%;
   background: var(--text-faint);
 }
-.abele-status-dot_green { background-color: var(--color-green); }
-.abele-status-dot_orange { background-color: var(--color-orange); }
-.abele-status-dot_red { background-color: var(--color-red); }
-.abele-status-dot_faint { background-color: var(--text-faint); }
-.abele-status-dot_accent { background-color: var(--interactive-accent); }
-.abele-status-dot_pulse { animation: abele-status-dot-pulse 1.2s ease-in-out infinite; }
-@media (prefers-reduced-motion: reduce) {
-  .abele-status-dot_pulse { animation: none; }
+.abele-status-dot_green {
+  background-color: var(--color-green);
 }
-@keyframes abele-status-dot-pulse { 50% { opacity: 0.35; } }
+.abele-status-dot_orange {
+  background-color: var(--color-orange);
+}
+.abele-status-dot_red {
+  background-color: var(--color-red);
+}
+.abele-status-dot_faint {
+  background-color: var(--text-faint);
+}
+.abele-status-dot_accent {
+  background-color: var(--interactive-accent);
+}
+.abele-status-dot_pulse {
+  animation: abele-status-dot-pulse 1.2s ease-in-out infinite;
+}
+@media (prefers-reduced-motion: reduce) {
+  .abele-status-dot_pulse {
+    animation: none;
+  }
+}
+@keyframes abele-status-dot-pulse {
+  50% {
+    opacity: 0.35;
+  }
+}
 </style>

@@ -5,7 +5,15 @@
     <div v-if="offline" role="status">Offline · retained version.</div>
     <template v-if="model.document.value">
       <div v-if="model.document.value.note" role="status">{{ model.document.value.note }}</div>
+      <NodePathDebugFile
+        v-if="debug"
+        v-show="model.mode.value === 'file'"
+        :key="JSON.stringify([debug.sourceId, debug.debugSessionId, debug.incarnation, debug.path])"
+        :context="{ ...debug, text: model.document.value.text }"
+        @reveal="model.mode.value = 'file'"
+      />
       <FileView
+        v-if="!debug || model.mode.value !== 'file'"
         :path="model.document.value.path"
         :text="model.document.value.text"
         :change="model.document.value.change"
@@ -18,7 +26,12 @@
 <script setup lang="ts">
 import type { NodePathFileModel } from '@/node/NodePathModel'
 import FileView from './FileView.vue'
-withDefaults(defineProps<{ model: NodePathFileModel; offline?: boolean }>(), { offline: false })
+import NodePathDebugFile from './NodePathDebugFile.vue'
+import type { DebugSourceContext } from '@/debugger/sourceExtension'
+withDefaults(
+  defineProps<{ model: NodePathFileModel; offline?: boolean; debug?: DebugSourceContext }>(),
+  { offline: false, debug: undefined }
+)
 const emit = defineEmits<{ menu: [event: MouseEvent, selection: string] }>()
 </script>
 <style lang="scss">

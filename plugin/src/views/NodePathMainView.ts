@@ -166,6 +166,15 @@ export class NodePathMainView extends ItemView {
           h(NodePathFilePane, {
             model: file,
             offline: offline(),
+            debug:
+              state.debug && file.document.value?.path === state.path
+                ? {
+                    ...state.debug,
+                    registrationId: state.target.registrationId,
+                    path: state.path,
+                    text: file.document.value.text,
+                  }
+                : undefined,
             onMenu: (event: MouseEvent, selection: string) => {
               const doc = file.document.value
               if (doc)
@@ -194,7 +203,10 @@ export class NodePathMainView extends ItemView {
         await connection.connect().catch(() => {})
         await NodePathService.getInstance().ready(node.id)
       }
-      if (lifetime === this.lifetime) await file.open(state.path, state.stage).catch(() => {})
+      if (lifetime === this.lifetime) {
+        await file.open(state.path, state.stage).catch(() => {})
+        if (state.debug) file.mode.value = 'file'
+      }
     } else if (state.kind === 'history') {
       const history = (this.history = new NodePathHistoryModel(model.port, state.target))
       this.ui = createApp({

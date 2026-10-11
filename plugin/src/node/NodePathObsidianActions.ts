@@ -1,4 +1,3 @@
-/// <reference types="vite/client" />
 import { h, shallowRef } from 'vue'
 import type { ChatSession } from '@/ai/ChatSession'
 import { NodeSuggestModal } from '@/components/nodeWork/NodeSuggestModal'
@@ -10,40 +9,26 @@ import { nodePathDialog } from './NodePathDialogs'
 import { NodePathService } from './NodePathService'
 import { wirePathTarget } from './nodePathChat'
 import type { NodePathContext, NodePathOwnerActions } from './NodePathOwnerActions'
+import { giveObsidianChatAccess, revokeObsidianNodeScopeApprovals } from '@/ai/tools/node/owner'
+import {
+  addNodeContextToObsidianChat,
+  askNodeContextInObsidianChat,
+  type ObsidianNodeContext,
+} from '@/ai/tools/node/context'
 
-/** Optional while the independent chat-scope change is being integrated. The public actions
- * validate their own schema and record owner approval; this adapter never grants via prompt text. */
-interface OwnerModule {
-  giveObsidianChatAccess(session: ChatSession, entry: unknown): Promise<void>
-  revokeObsidianNodeScopeApprovals(nodeId: string): Promise<void>
-}
-interface ContextModule {
-  addNodeContextToObsidianChat(
-    session: ChatSession,
-    reference: unknown,
-    text: string
-  ): Promise<void>
-  askNodeContextInObsidianChat(
-    session: ChatSession,
-    reference: unknown,
-    text: string
-  ): Promise<void>
-}
-const owners = import.meta.glob<OwnerModule>('../ai/tools/node/owner.ts')
-const contexts = import.meta.glob<ContextModule>('../ai/tools/node/context.ts')
-const owner = Object.values(owners)[0],
-  contextModule = Object.values(contexts)[0]
+/** The public chat actions validate scope and record owner approval; prompt text grants nothing. */
 export async function revokeNodePathChatApprovals(nodeId: string): Promise<void> {
-  if (owner) await (await owner()).revokeObsidianNodeScopeApprovals(nodeId)
+  await revokeObsidianNodeScopeApprovals(nodeId)
 }
-async function chooseChat(): Promise<ChatSession | undefined> {
+export async function chooseNodePathChat(): Promise<ChatSession | undefined> {
   const { ChatService } = await import('@/ai/ChatService')
   const sessions = ChatService.getInstance().getAllSessions()
   return new Promise((resolve) => {
     class Picker extends NodeSuggestModal {
       onClose(): void {
         super.onClose()
-        resolve(undefined)
+        // Native prompts may close synchronously before delivering their selected item.
+        queueMicrotask(() => resolve(undefined))
       }
     }
     new Picker(
@@ -60,13 +45,12 @@ async function chooseChat(): Promise<ChatSession | undefined> {
     ).open()
   })
 }
-export function createNodePathObsidianActions(): NodePathOwnerActions | undefined {
-  if (!owner || !contextModule) return undefined
+export function createNodePathObsidianActions(): NodePathOwnerActions {
   return {
     async grant(context) {
-      const session = await chooseChat()
+      const session = await chooseNodePathChat()
       if (!session) return
-      const access = shallowRef('edit'),
+      const access = shallowRef<'read' | 'edit'>('edit'),
         error = shallowRef(''),
         busy = shallowRef(false)
       return new Promise<void>((resolve) => {
@@ -94,7 +78,7 @@ export function createNodePathObsidianActions(): NodePathOwnerActions | undefine
                         { value: 'edit', display: 'Read and edit files' },
                       ],
                       'onUpdate:modelValue': (value: string) => {
-                        access.value = value
+                        if (value === 'read' || value === 'edit') access.value = value
                       },
                     }),
                 }
@@ -109,16 +93,13 @@ export function createNodePathObsidianActions(): NodePathOwnerActions | undefine
                   onClick: () => {
                     if (busy.value) return
                     busy.value = true
-                    void owner()
-                      .then((module) =>
-                        module.giveObsidianChatAccess(session, {
-                          kind: 'target',
-                          node_id: context.target.registrationId,
-                          project_id: context.target.projectId,
-                          target: wirePathTarget(context.target),
-                          access: access.value,
-                        })
-                      )
+                    void giveObsidianChatAccess(session, {
+                      kind: 'target',
+                      node_id: context.target.registrationId,
+                      project_id: context.target.projectId,
+                      target: wirePathTarget(context.target),
+                      access: access.value,
+                    })
                       .then(close)
                       .catch((failure: unknown) => {
                         error.value =
@@ -146,9 +127,9 @@ export function createNodePathObsidianActions(): NodePathOwnerActions | undefine
   }
 }
 async function add(captured: NodePathContext, ask: boolean): Promise<void> {
-  const session = await chooseChat()
-  if (!session || !contextModule) return
-  let reference = {
+  const session = await chooseNodePathChat()
+  if (!session) return
+  let reference: ObsidianNodeContext = {
     node_id: captured.target.registrationId,
     project_id: captured.target.projectId,
     target: wirePathTarget(captured.target),
@@ -174,9 +155,8 @@ async function add(captured: NodePathContext, ask: boolean): Promise<void> {
   }
   if (text === undefined)
     throw new Error('Open a retained file or commit before adding its context.')
-  const module = await contextModule()
-  if (ask) await module.askNodeContextInObsidianChat(session, reference, text)
-  else await module.addNodeContextToObsidianChat(session, reference, text)
+  if (ask) await askNodeContextInObsidianChat(session, reference, text)
+  else await addNodeContextToObsidianChat(session, reference, text)
   const { ChatService } = await import('@/ai/ChatService')
   await ChatService.getInstance().revealSidebar({ focus: ask })
 }

@@ -1,0 +1,44 @@
+import { EditorView } from '@codemirror/view'
+import {
+  mountDebugSource,
+  registerDebugSourceRevealer,
+  type DebugSourceContext,
+} from '@/debugger/sourceExtension'
+
+/** A file leaf admits an explicit source/build mapping; filenames never become source IDs. */
+export function mountNodePathDebugSource(
+  host: HTMLElement,
+  context: DebugSourceContext,
+  show: (line: number) => void
+) {
+  const captured = Object.freeze({ ...context })
+  const extension = mountDebugSource(host, captured)
+  const stop = registerDebugSourceRevealer((request) => {
+    if (
+      request.registrationId !== captured.registrationId ||
+      request.conversationId !== captured.conversationId ||
+      request.sourceId !== captured.sourceId ||
+      request.path !== captured.path
+    )
+      return false
+    show(request.line)
+    queueMicrotask(() => {
+      const element = host.querySelector<HTMLElement>('.cm-editor')
+      const editor = element && EditorView.findFromDOM(element)
+      if (editor) {
+        const line = editor.state.doc.line(
+          Math.max(1, Math.min(request.line, editor.state.doc.lines))
+        )
+        editor.dispatch({ effects: EditorView.scrollIntoView(line.from, { y: 'center' }) })
+      }
+    })
+    return true
+  })
+  return {
+    update: extension.update,
+    destroy: () => {
+      stop()
+      extension.destroy()
+    },
+  }
+}

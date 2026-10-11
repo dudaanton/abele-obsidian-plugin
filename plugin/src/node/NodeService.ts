@@ -309,6 +309,7 @@ export class NodeService {
       .list()
       .find((n) => isPairedNode(n) && n.expectedNodeId === invite.node_id)
     const id = existing?.id ?? crypto.randomUUID()
+    await (await import('./NodePathObsidianActions')).revokeNodePathChatApprovals(invite.node_id)
     this.registry.addPaired({
       id,
       label,

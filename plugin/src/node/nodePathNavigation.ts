@@ -16,6 +16,9 @@ const target = z
     id,
   })
   .strict()
+export const NodePathDebugMappingSchema = z
+  .object({ conversationId: id, sourceId: id, debugSessionId: id, incarnation: id })
+  .strict()
 export const NodePathTabSchema = z.discriminatedUnion('kind', [
   z
     .object({
@@ -23,6 +26,7 @@ export const NodePathTabSchema = z.discriminatedUnion('kind', [
       target,
       path: z.string().min(1).max(4096),
       stage: z.enum(['staged', 'unstaged']).optional(),
+      debug: NodePathDebugMappingSchema.optional(),
     })
     .strict(),
   z.object({ kind: z.literal('editor'), target, path: z.string().min(1).max(4096) }).strict(),

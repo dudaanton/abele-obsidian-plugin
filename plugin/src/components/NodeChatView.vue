@@ -104,7 +104,11 @@
               v-if="presenter.reference"
               :presenter="presenter"
               :after="message.timestamp"
-              :before="presentation.messages[presentation.messages.findIndex(m => m.id === message.id) + 1]?.timestamp ?? Infinity"
+              :before="
+                presentation.messages[
+                  presentation.messages.findIndex((m) => m.id === message.id) + 1
+                ]?.timestamp ?? Infinity
+              "
             />
           </template>
         </NodeMessageTree>
