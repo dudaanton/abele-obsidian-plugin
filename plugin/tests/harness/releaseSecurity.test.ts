@@ -1,5 +1,9 @@
 import { describe, expect, it } from 'vitest'
-import { readFileSync } from 'node:fs'
+import { readFileSync, mkdtempSync, mkdirSync, writeFileSync, chmodSync, rmSync } from 'node:fs'
+import { execFileSync } from 'node:child_process'
+import { createHash } from 'node:crypto'
+import { tmpdir } from 'node:os'
+import { join } from 'node:path'
 import { load } from 'js-yaml'
 
 const workflow = (name: string): any =>
@@ -68,6 +72,57 @@ describe('least privilege release and checks', () => {
     expect(publish).toContain('actions/attest-build-provenance')
     expect(publish).toContain('release/SHA256SUMS')
     expect(publish).not.toContain('npm ')
+  })
+
+  it('executes archive digest and extracted-byte verification with a fake API', () => {
+    const root = mkdtempSync(join(tmpdir(), 'sample-release-archive-'))
+    try {
+      const assets = join(root, 'assets')
+      const build = join(root, 'plugin/build')
+      const tools = join(root, 'tools')
+      for (const dir of [assets, build, tools]) mkdirSync(dir, { recursive: true })
+      writeFileSync(join(assets, 'main.js'), 'sample production')
+      writeFileSync(join(build, 'main.js'), 'sample production')
+      const archive = join(root, 'archive.zip')
+      execFileSync('zip', ['-q', archive, 'main.js'], { cwd: assets })
+      const digest = createHash('sha256').update(readFileSync(archive)).digest('hex')
+      writeFileSync(
+        join(tools, 'gh'),
+        `#!/usr/bin/env node
+        const fs = require('node:fs');
+        if (process.argv[3].endsWith('/zip')) process.stdout.write(fs.readFileSync(process.env.SAMPLE_ARCHIVE));
+        else console.log('42');
+      `
+      )
+      chmodSync(join(tools, 'gh'), 0o755)
+      const step = workflow('release').jobs.build.steps.find(
+        (s: any) => s.name === 'Verify immutable production archive digest'
+      )
+      const verify = (expected = digest) => {
+        const runner = join(root, 'runner')
+        rmSync(runner, { recursive: true, force: true })
+        mkdirSync(runner)
+        return execFileSync('bash', ['-e', '-o', 'pipefail', '-c', step.run], {
+          cwd: root,
+          stdio: 'pipe',
+          env: {
+            ...process.env,
+            PATH: `${tools}:${process.env.PATH}`,
+            REPO: 'sample/example',
+            RUN_ID: '7',
+            RUNNER_TEMP: runner,
+            EXPECTED_ARTIFACT_DIGEST: expected,
+            SAMPLE_ARCHIVE: archive,
+          },
+        })
+      }
+      expect(() => verify()).not.toThrow()
+      expect(() => verify('b'.repeat(64))).toThrow()
+      writeFileSync(join(build, 'main.js'), 'different downloaded bytes')
+      expect(() => verify()).toThrow()
+    } finally {
+      rmSync(root, { recursive: true, force: true })
+    }
   })
 
   it('builds and measures once, overlapping build/size with tests and lint after types', () => {

@@ -1,5 +1,9 @@
 // @vitest-environment node
 import { expect, it, vi } from 'vitest'
+import { execFileSync } from 'node:child_process'
+import { mkdtempSync, mkdirSync, writeFileSync, readFileSync, chmodSync, rmSync } from 'node:fs'
+import { tmpdir } from 'node:os'
+import { join, resolve } from 'node:path'
 import { selectCandidate } from '../../scripts/select-candidate.mjs'
 
 const revision = '1'.repeat(40)
@@ -50,6 +54,50 @@ it('fails closed on wrong revisions, recipes, event, scope evidence, expiry or d
   ]
   expect(await selectCandidate(revision, expired)).toBeNull()
 })
+it('runs the candidate CLI against a fake API and emits human output and bounded promotion fields', () => {
+  const root = mkdtempSync(join(tmpdir(), 'sample-candidate-cli-'))
+  try {
+    const tools = join(root, 'tools')
+    mkdirSync(tools)
+    const fake = `#!/usr/bin/env node
+      const fs = require('node:fs'); const args = process.argv.slice(2);
+      if (args[0] === 'api') console.log(JSON.stringify(args[1].includes('/runs?') ? {workflow_runs: JSON.parse(process.env.SAMPLE_RUNS)} : {artifacts: JSON.parse(process.env.SAMPLE_ARTIFACTS)}));
+      else if (args[0] === 'run' && args[1] === 'download') fs.writeFileSync(args[args.indexOf('--dir')+1] + '/candidate.json', process.env.SAMPLE_RECORD);
+      else process.exit(1);
+    `
+    writeFileSync(join(tools, 'gh'), fake)
+    chmodSync(join(tools, 'gh'), 0o755)
+    const output = join(root, 'outputs')
+    const invoke = (recordRevision = revision) =>
+      execFileSync(
+        process.execPath,
+        [resolve('scripts/select-candidate.mjs'), '--github-output', output],
+        {
+          encoding: 'utf8',
+          env: {
+            ...process.env,
+            PATH: `${tools}:${process.env.PATH}`,
+            REPO: 'sample/example',
+            REVISION: revision,
+            SAMPLE_RUNS: JSON.stringify([run]),
+            SAMPLE_ARTIFACTS: JSON.stringify([
+              { name: 'production', expired: false, digest },
+              { name: 'candidate-verification', expired: false },
+            ]),
+            SAMPLE_RECORD: JSON.stringify({ revision: recordRevision, artifact_digest: digest }),
+          },
+        }
+      )
+    expect(invoke()).toContain('Verified candidate run 7')
+    expect(readFileSync(output, 'utf8')).toBe(`run_id=7\nartifact_digest=${digest}\n`)
+    writeFileSync(output, '')
+    expect(invoke('2'.repeat(40))).toContain('full tagged verification required')
+    expect(readFileSync(output, 'utf8')).toBe('run_id=\nartifact_digest=\n')
+  } finally {
+    rmSync(root, { recursive: true, force: true })
+  }
+})
+
 it('unknown or interrupted evidence requires the full fallback gates', async () => {
   const api = evidence()
   api.record = vi.fn().mockRejectedValue(new Error('missing archive'))
