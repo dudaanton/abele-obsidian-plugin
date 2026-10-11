@@ -1,5 +1,5 @@
 import { describe, it, expect } from 'vitest'
-import { mount } from '@vue/test-utils'
+import { mount, flushPromises } from '@vue/test-utils'
 import DesignCatalogue from '@/testing/DesignCatalogue.vue'
 import { CATALOGUE_PAGES, CATALOGUE_COMPONENTS } from '@/testing/designCatalogue'
 import { readdirSync } from 'node:fs'
@@ -12,6 +12,22 @@ describe('test-only design catalogue', () => {
       .sort()
     expect([...CATALOGUE_COMPONENTS].sort()).toEqual(kit)
     expect(CATALOGUE_PAGES).toEqual(expect.arrayContaining(['artifact', 'comment', 'waiting']))
+  })
+  it('previews selection actions through the shared toolbar in the controls recipe', async () => {
+    const view = mount(DesignCatalogue, {
+      props: { page: 'controls' },
+      global: { stubs: { Modal: { template: '<div><slot /></div>' }, NotePicker: true } },
+    })
+    const button = view.findAll('button').find((button) => button.text() === 'Selection actions')!
+    expect(button).toBeDefined()
+    await button.trigger('click')
+    await flushPromises()
+    const toolbar = document.body.querySelector('.abele-selection-toolbar')!
+    expect(toolbar.getAttribute('aria-label')).toBe('Selection actions')
+    expect(toolbar.textContent).toContain('Ask here')
+    expect(toolbar.textContent).toContain('Add to chat')
+    view.unmount()
+    expect(document.body.querySelector('.abele-selection-toolbar')).toBeNull()
   })
   it('renders named native progress states in the state recipes', () => {
     const view = mount(DesignCatalogue, {

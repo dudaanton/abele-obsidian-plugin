@@ -410,6 +410,21 @@
         <Setting name="Related notes" desc="No related notes selected."
           ><NotePicker v-model="picked" disabled placeholder="Choose a note…"
         /></Setting>
+        <div ref="selectionAnchor">
+          <Button
+            text="Selection actions"
+            tooltip="Preview actions near selected text"
+            @click="previewSelection"
+          />
+        </div>
+        <SelectionToolbar
+          v-if="selectionPosition"
+          :top="selectionPosition.top"
+          :left="selectionPosition.left"
+        >
+          <Button text="Ask here" icon="message-circle-plus" @click="selectionPosition = null" />
+          <Button text="Add to chat" icon="message-square-plus" @click="selectionPosition = null" />
+        </SelectionToolbar>
       </template>
       <template v-else-if="page === 'navigation'">
         <Tabs
@@ -605,6 +620,7 @@ import Chart from '@/components/obsidian/Chart.vue'
 import SidebarPanel from '@/components/obsidian/SidebarPanel.vue'
 import PanelResizeHandle from '@/components/obsidian/PanelResizeHandle.vue'
 import FloatingButton from '@/components/obsidian/FloatingButton.vue'
+import SelectionToolbar from '@/components/obsidian/SelectionToolbar.vue'
 import IconPicker from '@/components/obsidian/IconPicker.vue'
 defineProps<{ page: CataloguePage; variant?: 'inline' | 'stacked' | 'disclosed' }>()
 const emit = defineEmits<{ close: []; navigate: [page: CataloguePage] }>()
@@ -738,6 +754,13 @@ const sampleImage =
   )
 const sampleMarkdown = 'A **sample** reading passage.\n\n> Keep the context beside the note.'
 const longQuote = 'The source explains the decision and records the next step. '.repeat(8)
+const selectionAnchor = ref<HTMLElement>()
+const selectionPosition = ref<{ top: number; left: number } | null>(null)
+function previewSelection() {
+  if (!selectionAnchor.value) return
+  const rect = selectionAnchor.value.getBoundingClientRect()
+  selectionPosition.value = { top: rect.bottom, left: rect.left }
+}
 const selected = ref(0),
   questionOpen = ref(true),
   preview = ref(false),

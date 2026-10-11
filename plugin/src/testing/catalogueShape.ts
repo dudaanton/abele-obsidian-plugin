@@ -55,6 +55,7 @@ export const CATALOGUE_COMPONENTS = [
   'RelativeTime',
   'Search',
   'Section',
+  'SelectionToolbar',
   'Setting',
   'SheetHeaderActions',
   'SidebarPanel',
