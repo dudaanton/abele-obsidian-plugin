@@ -9,6 +9,7 @@ import {
 import { bytesOf } from './vaultWrites'
 import { sha256 } from '@noble/hashes/sha2'
 import { probeSequentialFiles, type ProbeEvent } from './mobileSequentialSource'
+import { probeResourceRanges } from './mobileResourceRanges'
 
 const PHONE_FALLBACK_BYTES = 50 * 1024 * 1024
 interface Handle {
@@ -41,6 +42,9 @@ interface MobileFiles {
     options: { path: string; offset: number; length: number; chunkSize: number },
     callback: (chunk: { data: string | null } | null, error?: { message: string } | string) => void
   ): Promise<string>
+}
+interface MobileAccess {
+  files?: MobileFiles
 }
 const mobileFiles = (): MobileFiles | undefined =>
   typeof window === 'undefined'
@@ -79,8 +83,9 @@ function readMobileChunk(
 
 /** Native capabilities are discovered on the adapter, without loading Node on mobile. */
 export class BoundedVaultIo {
-  private rangedMobile: Promise<MobileFiles | null> | undefined
+  private rangedMobile: Promise<MobileAccess | null> | undefined
   private sequentialMobile: Awaited<ReturnType<typeof probeSequentialFiles>> = null
+  private resourceMobile: Awaited<ReturnType<typeof probeResourceRanges>> = null
   constructor(
     readonly adapter: DataAdapter,
     private readonly assertOwned: () => void = () => {},
@@ -124,7 +129,7 @@ export class BoundedVaultIo {
   }
   /** No Directory is supplied: use the adapter's native path or Capacitor file resource URL.
    * Probe both mapping and offset/length against a tiny file, never against a large input. */
-  private mobile(): Promise<MobileFiles | null> {
+  private mobile(): Promise<MobileAccess | null> {
     return (this.rangedMobile ??= this.probeMobile())
   }
   async diagnoseMobile() {
@@ -132,13 +137,27 @@ export class BoundedVaultIo {
     const available = await this.probeMobile((event) => events.push(event))
     return {
       available: available !== null,
-      mode: this.sequentialMobile ? 'sequential' : available ? 'ranged' : 'unavailable',
+      mode: this.resourceMobile
+        ? 'webview-ranges'
+        : this.sequentialMobile
+          ? 'sequential'
+          : available
+            ? 'ranged'
+            : 'unavailable',
       events,
     }
   }
   private async probeMobile(
     trace: (event: ProbeEvent) => void = () => {}
-  ): Promise<MobileFiles | null> {
+  ): Promise<MobileAccess | null> {
+    this.resourceMobile =
+      typeof window === 'undefined' || typeof window.fetch !== 'function'
+        ? null
+        : await probeResourceRanges(this.adapter, window.fetch.bind(window), trace)
+    if (this.resourceMobile) {
+      console.debug('[abele-sync] WebView file ranges verified')
+      return {}
+    }
     const files = mobileFiles()
     trace({
       step: 'capabilities',
@@ -150,7 +169,7 @@ export class BoundedVaultIo {
     this.sequentialMobile = await probeSequentialFiles(this.adapter, files, trace)
     if (this.sequentialMobile) {
       console.debug('[abele-sync] native filesystem sequential chunks verified')
-      return files
+      return { files }
     }
     if (!files.readFile) return null
     const path = `.abele-sync-${Math.random().toString(36).slice(2, 10).padEnd(8, '0')}.tmp`
@@ -169,7 +188,7 @@ export class BoundedVaultIo {
       trace({ step: 'result', method: 'ranged-read', bytes: Array.from(bytes) })
       if (stat.size !== 4 || bytes.length !== 2 || bytes[0] !== 37 || bytes[1] !== 89) return null
       console.debug('[abele-sync] native filesystem bounded ranges verified')
-      return files
+      return { files }
     } catch (error) {
       trace({ step: 'error', message: error instanceof Error ? error.message : String(error) })
       console.debug('[abele-sync] native filesystem ranges unavailable', error)
@@ -191,10 +210,13 @@ export class BoundedVaultIo {
       raw.fsPromises?.open && raw.getFullPath
         ? await raw.fsPromises.open(raw.getFullPath(path), 'r')
         : null
-    const files = handle ? null : await this.mobile()
-    const sequential = files && this.sequentialMobile?.open(path, original.size)
+    const access = handle ? null : await this.mobile()
+    const files = access?.files
+    const resource = access && this.resourceMobile
+    const sequential =
+      !resource && files ? this.sequentialMobile?.open(path, original.size) : undefined
     let fallback: Uint8Array | null = null
-    if (!handle && !files) {
+    if (!handle && !access) {
       if (original.size > PHONE_FALLBACK_BYTES)
         throw new EngineError(
           'io',
@@ -239,6 +261,8 @@ export class BoundedVaultIo {
             if (!bytesRead) throw new EngineError('io', 'truncated bounded file read')
             received += bytesRead
           }
+        } else if (resource) {
+          bytes = await resource.read(path, original.size, offset, length, signal)
         } else if (files) {
           bytes = sequential
             ? await sequential.read(offset, length, signal)
