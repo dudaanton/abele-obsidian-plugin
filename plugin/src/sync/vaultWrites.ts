@@ -65,6 +65,7 @@ export interface WriterDeps {
   makeParents(path: string): Promise<void>
   installed?(path: string): void
   fingerprint?(path: string): Promise<{ size: number; sha: string }>
+  adoptReceipt?(from: string, to: string): Promise<void>
 }
 
 export class VaultWriter {
@@ -114,6 +115,7 @@ export class VaultWriter {
       await this.holding(backup, async () => {
         if (this.deps.native) await this.deps.native.rename(held, backup)
         else await this.adapter.rename(held, backup)
+        await this.deps.adoptReceipt?.(held, backup)
         try {
           await matches(backup, stream.base)
           if (this.deps.native) await this.deps.native.installExclusive(entry.temp, held)
@@ -122,6 +124,7 @@ export class VaultWriter {
           try {
             if (this.deps.native) await this.deps.native.installExclusive(backup, held)
             else await this.adapter.rename(backup, held)
+            await this.deps.adoptReceipt?.(backup, held)
             this.deps.journal.replace(entry, { ...entry, backup: undefined })
           } catch {
             console.debug(
@@ -130,6 +133,7 @@ export class VaultWriter {
           }
           throw error
         }
+        await this.deps.adoptReceipt?.(entry.temp, held)
         notify()
         const installed = { ...entry, installed: true }
         this.deps.journal.replace(entry, installed)
@@ -140,6 +144,7 @@ export class VaultWriter {
         } else await this.adapter.remove(backup)
       })
     }
+    await this.deps.adoptReceipt?.(entry.temp, entry.target)
     notify()
     this.deps.journal.drop(entry)
   }

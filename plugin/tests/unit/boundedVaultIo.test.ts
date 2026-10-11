@@ -143,6 +143,59 @@ describe('bounded vault I/O', () => {
     await expect(new BoundedVaultIo(adapter).openRead('sample.bin')).rejects.toThrow('50 MiB')
     expect(readBinary).not.toHaveBeenCalled()
   })
+  it('accepts an existing file exactly at the portable read limit', async () => {
+    const readBinary = vi.fn(async () => new ArrayBuffer(50 * MiB))
+    const adapter = {
+      stat: async () => ({ type: 'file', size: 50 * MiB, mtime: 1, ctime: 1 }),
+      readBinary,
+    } as unknown as DataAdapter
+    const source = await new BoundedVaultIo(adapter).openRead('sample.bin')
+    expect(await source.read(50 * MiB - 1, 1)).toEqual(new Uint8Array([0]))
+    await source.close()
+    expect(readBinary).toHaveBeenCalledTimes(1)
+  })
+  it('retains oversized partial bytes but refuses recovery after an uncertain append or lost receipt', async () => {
+    const abort = new AbortController()
+    let cancelWithAcknowledgement = false
+    let size = 0,
+      mtime = 0,
+      uncertain = false
+    const readBinary = vi.fn(async () => {
+      throw new Error('whole file')
+    })
+    const adapter = {
+      stat: async () => ({ type: 'file', size, mtime, ctime: 1 }),
+      writeBinary: async () => {
+        size = 0
+        mtime++
+      },
+      appendBinary: async (_path: string, bytes: ArrayBuffer) => {
+        size += bytes.byteLength
+        mtime++
+        if (uncertain) throw new Error('acknowledgement lost')
+        if (cancelWithAcknowledgement) abort.abort(new Error('cancelled'))
+      },
+      readBinary,
+    } as unknown as DataAdapter
+    const io = new BoundedVaultIo(adapter),
+      chunk = new Uint8Array(MiB)
+    await io.create('sample.tmp', 1)
+    for (let at = 0; at < 50 * MiB; at += MiB) await io.append('sample.tmp', at, chunk, 1)
+    cancelWithAcknowledgement = true
+    await expect(io.append('sample.tmp', size, chunk, 1, abort.signal)).rejects.toThrow('cancelled')
+    cancelWithAcknowledgement = false
+    expect(await io.fingerprint('sample.tmp')).toMatchObject({ size: 51 * MiB })
+    // A process restart has no acknowledgement history, even when the path and stamp survive.
+    const restarted = new BoundedVaultIo(adapter, undefined, undefined, {})
+    await expect(restarted.fingerprint('sample.tmp')).rejects.toThrow('50 MiB')
+    uncertain = true
+    await expect(io.append('sample.tmp', size, chunk, 1)).rejects.toThrow('acknowledgement lost')
+    uncertain = false
+    await expect(io.append('sample.tmp', size, chunk, 1)).rejects.toThrow('50 MiB')
+    await expect(io.fingerprint('sample.tmp')).rejects.toThrow('50 MiB')
+    expect(size).toBe(52 * MiB)
+    expect(readBinary).not.toHaveBeenCalled()
+  })
   it('checks cancellation and rejects changes to an opened source', async () => {
     let mtime = 1
     const readBinary = vi.fn(async () => new Uint8Array(4).buffer)

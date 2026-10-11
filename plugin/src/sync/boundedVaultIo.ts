@@ -81,6 +81,13 @@ function readMobileChunk(
   })
 }
 
+interface WriteReceipt {
+  hash: ReturnType<typeof sha256.create>
+  stamp: SourceStamp
+}
+// Process-local acknowledgements only; changed or reopened files require ordinary reads.
+const writeReceipts = new WeakMap<object, Map<string, WriteReceipt>>()
+
 /** Native capabilities are discovered on the adapter, without loading Node on mobile. */
 export class BoundedVaultIo {
   private rangedMobile: Promise<MobileAccess | null> | undefined
@@ -89,8 +96,37 @@ export class BoundedVaultIo {
   constructor(
     readonly adapter: DataAdapter,
     private readonly assertOwned: () => void = () => {},
-    private readonly effect: <T>(work: () => T) => T = (work) => work()
+    private readonly effect: <T>(work: () => T) => T = (work) => work(),
+    private readonly receiptScope: object = adapter
   ) {}
+  private get receipts(): Map<string, WriteReceipt> {
+    let receipts = writeReceipts.get(this.receiptScope)
+    if (!receipts) writeReceipts.set(this.receiptScope, (receipts = new Map()))
+    return receipts
+  }
+  async requireWrite(size: number): Promise<void> {
+    if (
+      size <= PHONE_FALLBACK_BYTES ||
+      typeof this.adapter.appendBinary === 'function' ||
+      (this.raw.fsPromises?.open && this.raw.getFullPath)
+    )
+      return
+    throw new EngineError(
+      'io',
+      'Bounded staging writes are unavailable; the fallback limit is 50 MiB'
+    )
+  }
+  async adoptReceipt(from: string, to: string): Promise<void> {
+    const receipt = this.receipts.get(from)
+    if (!receipt) return
+    const stamp = stampOf(await this.stat(to))
+    if (stamp.size !== receipt.stamp.size || stamp.mtime !== receipt.stamp.mtime) {
+      this.receipts.delete(from)
+      throw new EngineError('conflict', 'Published file changed')
+    }
+    this.receipts.set(to, { hash: receipt.hash.clone(), stamp })
+    this.receipts.delete(from)
+  }
   private get raw(): NativeChunkAdapter {
     return this.adapter
   }
@@ -310,6 +346,19 @@ export class BoundedVaultIo {
         await handle.close()
       }
     }
+    signal?.throwIfAborted()
+    const receipt = this.receipts.get(path)
+    if (receipt) {
+      const stamp = stampOf(await this.stat(path))
+      if (stamp.generation === receipt.stamp.generation)
+        return {
+          ...stamp,
+          sha: Array.from(receipt.hash.clone().digest(), (byte) =>
+            byte.toString(16).padStart(2, '0')
+          ).join(''),
+        }
+      this.receipts.delete(path)
+    }
     const source = await this.openRead(path)
     const identity = await fingerprintSource(source, MAX_CHUNK_BYTES, signal)
     return { ...source.stamp, ...identity }
@@ -326,7 +375,11 @@ export class BoundedVaultIo {
         await handle.close()
       }
       await this.date(path, mtime)
-    } else await this.adapter.writeBinary(path, new ArrayBuffer(0), { mtime })
+    } else {
+      this.receipts.delete(path)
+      await this.adapter.writeBinary(path, new ArrayBuffer(0), { mtime })
+      this.receipts.set(path, { hash: sha256.create(), stamp: stampOf(await this.stat(path)) })
+    }
   }
   async append(
     path: string,
@@ -337,7 +390,7 @@ export class BoundedVaultIo {
   ): Promise<void> {
     signal?.throwIfAborted()
     this.assertOwned()
-    await this.requireTransfer(offset + bytes.length)
+    await this.requireWrite(offset + bytes.length)
     if (bytes.buffer.byteLength > MAX_CHUNK_BYTES || bytes.length > MAX_CHUNK_BYTES)
       throw new EngineError('io', 'oversized staging chunk')
     if ((await this.stat(path)).size !== offset)
@@ -361,6 +414,23 @@ export class BoundedVaultIo {
       }
       await this.date(path, mtime)
     } else {
+      const before = stampOf(await this.stat(path))
+      let receipt = this.receipts.get(path)
+      if (!receipt || receipt.stamp.generation !== before.generation) {
+        this.receipts.delete(path)
+        const hash = sha256.create()
+        const source = await this.openRead(path)
+        try {
+          for (let at = 0; at < source.size; at += MAX_CHUNK_BYTES)
+            hash.update(await source.read(at, Math.min(MAX_CHUNK_BYTES, source.size - at), signal))
+          await source.assertUnchanged()
+        } finally {
+          await source.close()
+        }
+        receipt = { hash, stamp: before }
+      }
+      // An uncertain append cannot contribute an acknowledged identity.
+      this.receipts.delete(path)
       if (typeof this.adapter.appendBinary === 'function')
         await this.adapter.appendBinary(path, bytesOf(bytes), { mtime })
       else {
@@ -376,6 +446,11 @@ export class BoundedVaultIo {
         this.assertOwned()
         await this.adapter.writeBinary(path, complete.buffer, { mtime })
       }
+      const stamp = stampOf(await this.stat(path))
+      if (stamp.size !== offset + bytes.length)
+        throw new EngineError('io', 'Staging append size is invalid')
+      receipt.hash.update(bytes)
+      this.receipts.set(path, { hash: receipt.hash, stamp })
     }
     signal?.throwIfAborted()
     this.assertOwned()

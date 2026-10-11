@@ -249,13 +249,15 @@ export class ObsidianFileSystem implements FileSystem {
     this.io = new BoundedVaultIo(
       this.guardedAdapter,
       () => this.runtimeFence?.assertReady(),
-      (work) => (this.runtimeFence ? this.runtimeFence.effect(work) : work())
+      (work) => (this.runtimeFence ? this.runtimeFence.effect(work) : work()),
+      app.vault.adapter
     )
     this.writer = new VaultWriter({
       adapter: this.guardedAdapter,
       native: this.native,
       journal: this.journal,
       fingerprint: (path) => this.io.fingerprint(path),
+      adoptReceipt: (from, to) => this.io.adoptReceipt(from, to),
       indexed: (path) => app.vault.getAbstractFileByPath(path) !== null,
       makeParents: (path) => makeParents(this.adapter, path),
       installed: (path) => {

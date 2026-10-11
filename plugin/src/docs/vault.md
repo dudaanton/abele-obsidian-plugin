@@ -24,6 +24,14 @@ heads remain in the ordinary personal/scoped ledger. Earlier proven local bases,
 artifact references and revision-checked operation phases are device-local recovery data;
 they do not travel in settings, manifests, transfers, server device records or projection JSON.
 
+On storage without bounded local reads, streamed receipt and hydration hash acknowledged
+append chunks and check the resulting size before publication. Their write identities and
+file stamps remain in process memory, never in the ledger or journal. Changed stamps,
+uncertain writes or a process restart invalidate that evidence: existing bytes then require
+ordinary verification. Without bounded reads, unknown local files above 50 MiB refuse
+read-dependent operations while retaining the original and any recovery artifacts. This
+read fallback does not cap streamed receipt or hydration; selective-download limits still apply.
+
 The reserved projection format is `abele.external`, schema 1, at most 16 KiB UTF-8. Its
 `.abele-ref` sidecar contains only vault/file identity, logical path, observed version, SHA-256,
 size, MIME, mtime and optional media dimensions/duration. Strict parsing, placement and local

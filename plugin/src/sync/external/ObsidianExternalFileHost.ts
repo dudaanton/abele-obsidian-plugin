@@ -113,7 +113,7 @@ export class ExternalFileHost {
   }
   async requireTransfer(size: number): Promise<void> {
     try {
-      await this.io.requireTransfer(size)
+      await this.io.requireWrite(size)
     } catch {
       throw new ExternalFilePortError('unsupported-storage')
     }
@@ -265,7 +265,8 @@ export class ExternalFileHost {
               this.assertOwned()
               assertEffect()
             },
-            (work) => this.effect(work)
+            (work) => this.effect(work),
+            this.app.vault.adapter
           )
           const mtime = this.options.stagingMtime?.() ?? Date.now()
           assertEffect()
@@ -302,11 +303,13 @@ export class ExternalFileHost {
         if (await adapter.exists(to)) throw new ExternalFilePortError('collision')
         assertEffect()
         await mutateAdapter.rename(from, to)
+        await this.io.adoptReceipt(from, to)
       },
       removeOriginal: (path) => mutateAdapter.remove(path),
       moveOwned: async (from, to) => {
         if (await adapter.exists(to)) throw new ExternalFilePortError('collision')
         await mutateAdapter.rename(from, to)
+        await this.io.adoptReceipt(from, to)
       },
       reconcile: async (paths) => {
         const raw = adapter as DataAdapter & {
