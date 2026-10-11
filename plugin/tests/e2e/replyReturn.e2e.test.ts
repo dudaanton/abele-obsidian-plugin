@@ -9,7 +9,11 @@ import {
 } from './helpers/obsidianCli'
 import { onPhone, targets } from './helpers/target'
 import { shotDir } from './helpers/shots'
-import { SELECTION_RETURN_SETUP, SELECTION_RETURN_CLEANUP, selectionReturnProbe } from './helpers/selectionReturn'
+import {
+  SELECTION_RETURN_SETUP,
+  SELECTION_RETURN_CLEANUP,
+  selectionReturnProbe,
+} from './helpers/selectionReturn'
 
 targets('desktop', 'phone')
 const available = isObsidianRunning() && hasTestApi()
@@ -62,7 +66,7 @@ const script = `(async () => {
     report.trail=measure();await shoot('trail-to-selected-passage')
     await wait(2700)
     report.cleared=!document.querySelector('[data-reply-return]')
-  } catch(error) {report.error=String(error.stack||error)} finally {
+  } catch(error) {report.error=String(error.message??error)+'\\n'+String(error.stack??'')} finally {
     const session=chats.getSessionByFile(PATH)
     // Creation may fail during presentation after the child file and parent link were saved.
     for(const id of new Set([...ids,...(session?.messageComments.value.map(c=>c.id)||[])]))if(id)await comments.remove(id)
@@ -116,7 +120,8 @@ describe.runIf(available)('returning from a comment to its reply passage', () =>
 })
 
 describe.runIf(available)('ordinary backlinks to durable selections', () => {
-  let size: number[] = [], report: any
+  let size: number[] = [],
+    report: any
   beforeAll(async () => {
     if (!onPhone()) {
       size = evalJson<number[]>(`require('@electron/remote').getCurrentWindow().getContentSize()`)
@@ -130,7 +135,10 @@ describe.runIf(available)('ordinary backlinks to durable selections', () => {
   afterAll(async () => {
     await evalLong(SELECTION_RETURN_CLEANUP)
     if (!onPhone()) {
-      if (size.length) evalRaw(`require('@electron/remote').getCurrentWindow().setContentSize(${size[0]},${size[1]})`)
+      if (size.length)
+        evalRaw(
+          `require('@electron/remote').getCurrentWindow().setContentSize(${size[0]},${size[1]})`
+        )
       await reloadApp('app.emulateMobile(false)')
     }
   }, 90_000)
@@ -143,11 +151,14 @@ describe.runIf(available)('ordinary backlinks to durable selections', () => {
     expect(report.renamed.keyboard).toBe(false)
     expect(report.cleared).toBe(true)
   })
-  it.runIf(onPhone())('keeps native touch selection and copies its durable link on the phone', () => {
-    expect(report.native.quote).toBe('echo')
-    expect(report.native.copied).toBe(true)
-    expect(report.native.link).toContain('#abele-selection=sample-source/sample-anchor')
-  })
+  it.runIf(onPhone())(
+    'keeps native touch selection and copies its durable link on the phone',
+    () => {
+      expect(report.native.quote).toBe('echo')
+      expect(report.native.copied).toBe(true)
+      expect(report.native.link).toContain('#abele-selection=sample-source/sample-anchor')
+    }
+  )
   it('reconciles a newly synced anchor while keeping the conversation open', () => {
     expect(report.syncedAnchor.sameSession).toBe(true)
     expect(report.syncedAnchor.available).toBe(true)

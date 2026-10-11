@@ -75,13 +75,16 @@ const script = `(async () => {
     const under = document.elementFromPoint(x, y)
     hits[name] = under === el || el.contains(under) ? 'on it' : 'covered by ' + (under ? under.className : 'nothing')
     if (!window.__e2eHost) return el.click()
+    const failures = []
     for (let attempt = 0; attempt < 3; attempt++) {
       try { await window.__e2eHost.tap(x, y); return } catch (e) {
+        failures.push(String(e && e.message || e))
         if (!String(e && e.message).includes('connection was lost')) throw e
         await wait(1500)
         if (opened()) return
       }
     }
+    throw new Error('Native tap exhausted: ' + name + '; ' + hits[name] + '; point=' + JSON.stringify({x,y}) + '; failures=' + JSON.stringify(failures))
   }
   const report = { mobile: !!app.isMobile }
   const created = []
@@ -142,7 +145,8 @@ const script = `(async () => {
       await openNotes(mode)
       const tabsBefore = mainTabs().length
       await act()
-      await until(() => !!svc.getSessionByFile(chatPath), 5000)
+      if (!await until(() => !!svc.getSessionByFile(chatPath), 5000))
+        throw new Error('Chat did not open after ' + name + '; hit=' + hits[name])
       await wait(1000)
       const attached = new Set(mainTabs())
       const group = middle().parent
@@ -259,7 +263,7 @@ const setWindowSize = async (width: number, height: number): Promise<void> => {
 
 /** The same three tabs, the middle one still in front, and the chat in the panel only. */
 const untouched = (road: Road | string | undefined) => {
-  expect(typeof road).toBe('object')
+  expect(typeof road, typeof road === 'string' ? road : JSON.stringify(road)).toBe('object')
   const r = road as Road
   expect(r.tabs).toEqual(NOTES.map((n) => `${n}.md`))
   expect(r.inFront).toBe(`${NOTES[1]}.md`)

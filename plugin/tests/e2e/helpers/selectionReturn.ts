@@ -96,7 +96,7 @@ export function selectionReturnProbe(shots: string): string {
     await close(nested);await close(moved);await app.vault.delete(file)
     await click(0);await until(()=>[...document.querySelectorAll('.notice')].some(n=>n.textContent.includes('selection source')))
     report.missing={notice:[...document.querySelectorAll('.notice')].map(n=>n.textContent).join(' '),replacementOpened:chats.activeSession.value?.currentChatFile.value?.path===path}
-  } catch(error){report.error=String(error.stack||error)} finally {leaf?.detach()}
+  } catch(error){report.error=String(error.message??error)+'\\n'+String(error.stack??'')} finally {leaf?.detach()}
   return report
 })()`
 }

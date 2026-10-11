@@ -12,7 +12,7 @@ describe.skipIf(!available)('note links with a presentation tab active', () => {
     const r = JSON.parse(
       await evalLong(`(async()=>{
       const wait=ms=>new Promise(r=>setTimeout(r,ms))
-      const until=async(fn)=>{const end=Date.now()+5000;while(Date.now()<end){if(fn())return true;await wait(50)}return false}
+      const until=async(fn)=>{const end=Date.now()+5000;while(Date.now()<end){if(await fn())return true;await wait(50)}return false}
       const dir='sample-slide-links',deckPath=dir+'/sample-deck.md',notePath=dir+'/sample-note.md',chatPath=dir+'/sample-links.abchat'
       const chats=window.__abeleTest.ChatService.getInstance(),layout=app.workspace.getLayout(),active=chats.activeTabId.value
       if(app.vault.getAbstractFileByPath(dir))throw Error('sample fixture already exists')
@@ -43,7 +43,7 @@ describe.skipIf(!available)('note links with a presentation tab active', () => {
         if(r.noteType!=='markdown') {r.failureShot=await shot('note-wrongly-in-deck');return JSON.stringify(r)}
         await leaf.setViewState({type:'markdown',state:{file:notePath,mode:'source'},active:true})
         leaf.view.editor.setValue(leaf.view.editor.getValue()+'\\nA sample edit.');await leaf.view.save()
-        r.editable=(await app.vault.read(note)).includes('A sample edit.')
+        r.editable=await until(async()=>(await app.vault.read(note)).includes('A sample edit.'))
         r.noteShot=await shot('chat-note-markdown')
         await leaf.openFile(deck);r.reopenedDeck=leaf.view.getViewType()==='abele-deck'
         const deckViewer=leaf.view.viewer;await deckViewer.go(1)
