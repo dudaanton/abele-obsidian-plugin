@@ -137,7 +137,11 @@ it.each([false, true])('resets owned state and private artifacts (retry=%s)', as
     { path: 'note.md', content: 'keep' },
     { path: 'Notes/retained.bin', content: 'keep retained' },
     { path: staging, content: new TextDecoder().decode(markerBytes) },
-    { path: '.obsidian/plugins/abele/sync-staging/unowned.bin', content: 'keep private bytes' },
+    {
+      path: '.obsidian/plugins/abele/sync-staging/orphan.incoming',
+      content: new TextDecoder().decode(markerBytes),
+    },
+    { path: '.obsidian/plugins/abele/sync-staging/unowned.bin', content: 'sample orphan bytes' },
   ])
   const vault = {
     ...fake.vault,
@@ -200,8 +204,11 @@ it.each([false, true])('resets owned state and private artifacts (retry=%s)', as
     expect(await vault.adapter.exists(staging)).toBe(false)
     expect(await vault.adapter.read('note.md')).toBe('keep')
     expect(await vault.adapter.read('Notes/retained.bin')).toBe('keep retained')
-    expect(await vault.adapter.read('.obsidian/plugins/abele/sync-staging/unowned.bin')).toBe(
-      'keep private bytes'
+    expect(await vault.adapter.exists('.obsidian/plugins/abele/sync-staging/unowned.bin')).toBe(
+      false
+    )
+    expect(await vault.adapter.exists('.obsidian/plugins/abele/sync-staging/orphan.incoming')).toBe(
+      false
     )
     expect(await unrelated.getMeta('keep')).toBe('yes')
     expect((await factory.databases()).map((one) => one.name)).not.toContain(record.ledgerId)

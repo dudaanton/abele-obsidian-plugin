@@ -7,7 +7,7 @@ import { openDeviceReviews } from '../sync/openDeviceReviews'
 import type { DeviceTokenSecrets } from '../sync/tokenConnectionRegistry'
 import { resetTokenPool, type TokenPoolResetRequest } from './resetTokenPool'
 import { tokenPoolMarkers } from './tokenPoolMarkers'
-import { inspectExistingLedger } from '../sync/external/pluginSafety'
+import { inspectExistingLedger, discardOrphanPrivateArtifacts } from '../sync/external/pluginSafety'
 import { decodeExternalDocument, EXTERNAL_STATE_KEY } from '../sync/external/state'
 import { stagingDirectory } from '../sync/stagingDirectory'
 
@@ -146,6 +146,7 @@ async function performResetSyncTokenState(
         ).secrets
         for (const record of ui.registry.records()) ui.registry.beginForget(record.id)
         ui.registry.finishForgotten(secrets)
+        await discardOrphanPrivateArtifacts(plugin.app, window.indexedDB)
         plugin.app.saveLocalStorage(JOURNAL, null)
         ui.runtimes.clear()
         ui.activity.value = {}
