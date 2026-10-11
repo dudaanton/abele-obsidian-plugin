@@ -1,5 +1,11 @@
 import { sha256 } from './external/hash'
-import { type FileSystem, type FileInfo, type StateStore, type StateEntry } from '@abele/sync-core'
+import {
+  type FileSystem,
+  type FileInfo,
+  type StateStore,
+  type StateEntry,
+  type ChunkSource,
+} from '@abele/sync-core'
 import { caseKey } from '@abele/sync-protocol'
 import type { PathCoordinator } from './pathCoordinator'
 
@@ -10,6 +16,7 @@ type Provider = {
   available?(): boolean
   verify(head: StateEntry): Promise<void>
   download(head: StateEntry): Promise<Uint8Array>
+  openVersion?(head: StateEntry, signal?: AbortSignal): Promise<ChunkSource>
 }
 /** A shared view of journalled intentional absence. Sources remain independently authorized;
  * content is never selected by digest alone and network work never owns a placement lease. */
@@ -64,6 +71,39 @@ export class TokenOffloadCoordinator {
         return bytes
       } catch {
         /* An independent authorized source may still be available. */
+      }
+    }
+    throw new Error('File content is unavailable through the current connections')
+  }
+  async openVersion(
+    preferred: string,
+    head: StateEntry,
+    signal?: AbortSignal
+  ): Promise<ChunkSource> {
+    const candidates = [...this.providers].sort(
+      ([a, first], [b, second]) =>
+        Number(second.available?.() ?? true) - Number(first.available?.() ?? true) ||
+        Number(b === preferred) - Number(a === preferred)
+    )
+    for (const [, provider] of candidates) {
+      try {
+        signal?.throwIfAborted()
+        provider.assertOwned()
+        if (!provider.includes(head.path) || !provider.openVersion) continue
+        const own = await provider.ledger.get(head.path)
+        if (!own || own.sha !== head.sha || own.size !== head.size) continue
+        await provider.verify(own)
+        provider.assertOwned()
+        const source = await provider.openVersion(own, signal)
+        try {
+          provider.assertOwned()
+          return source
+        } catch (error) {
+          await source.close()
+          throw error
+        }
+      } catch {
+        signal?.throwIfAborted()
       }
     }
     throw new Error('File content is unavailable through the current connections')
@@ -147,11 +187,11 @@ export class TokenOffloadCoordinator {
               : ((await target.stat(path)) ??
                 virtual().find((one) => caseKey(one.path) === caseKey(path)) ??
                 null)
-        if (method === 'read')
-          return async (path: string) => {
+        if (method === 'read' || method === 'openRead' || method === 'fingerprint')
+          return async (path: string, ...args: unknown[]) => {
             if (artifact(path)) throw new Error('Projection is not file content')
             if (!(await target.stat(path))) await this.prepare([path])
-            return target.read(path)
+            return Reflect.get(target, method).call(target, path, ...args)
           }
         const value = Reflect.get(target, method)
         return typeof value === 'function' ? value.bind(target) : value

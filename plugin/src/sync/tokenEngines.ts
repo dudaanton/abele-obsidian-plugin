@@ -18,6 +18,7 @@ import { RuntimeFence } from './external/recovery'
 import { ObsidianFileSystem } from './ObsidianFileSystem'
 import { coordinatedFileSystem, pathCoordinatorOf } from './pathCoordinator'
 import { editCopiesOf } from './editCopies'
+import { transferBudgetOf } from './transferBudget'
 import { registerConnectionEditCopies } from './editCopyStore'
 import { openTokenLedger } from './tokenLedger'
 import { reviewSourceOf } from './reviewState'
@@ -538,6 +539,7 @@ export class TokenEngines {
         const current = this.ui.registry.records().find((one) => one.id === record.id)
         fence.assertReady()
         runtime = new TokenEngineRuntime({
+          transferBudget: transferBudgetOf(this.app.vault),
           id: record.id,
           comparing: (comparison) => this.ui.publish(record.id, { comparison }),
           encoded: encodeAccessToken({

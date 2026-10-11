@@ -20,7 +20,7 @@ it('waits for transient first-contact failures to recover before reporting fixtu
   }
 })
 it('observes real transport counts without private options and releases its observer', () => {
-  let notify!: (path: string, active: boolean, successful?: boolean) => void
+  let notify!: (path: string, active: boolean, successful?: boolean, rangeOffset?: number) => void
   const stop = vi.fn()
   const runtime = {
     observeTransport: (listener: typeof notify) => {
@@ -39,6 +39,12 @@ it('observes real transport counts without private options and releases its obse
   notify('/v2/files/sample/external/verify', false, true)
   notify('/v2/files/sample/content', true)
   notify('/v2/files/sample/content', false)
+  expect(probe.stats()).toEqual({ verificationCount: 1, downloadCount: 1, peakDownloads: 1 })
+  probe.reset()
+  for (const offset of [0, 1024 * 1024, 2 * 1024 * 1024]) {
+    notify('/v2/files/sample/content', true, undefined, offset)
+    notify('/v2/files/sample/content', false, true, offset)
+  }
   expect(probe.stats()).toEqual({ verificationCount: 1, downloadCount: 1, peakDownloads: 1 })
   probe.reset()
   expect(probe.stats().downloadCount).toBe(0)

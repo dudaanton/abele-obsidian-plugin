@@ -65,6 +65,24 @@ function setup(platform: 'mobile' | 'desktop' = 'mobile') {
   }
 }
 
+it('stages a chunk source without calling the whole-file read port', async () => {
+  const fixture = setup()
+  const close = vi.fn(async () => {})
+  const incoming = {
+    size: base.length,
+    read: async (offset: number, length: number) => base.slice(offset, offset + length),
+    assertUnchanged: async () => {},
+    close,
+  }
+  const read = vi.spyOn(fixture.host, 'read').mockRejectedValue(new Error('whole-file port'))
+  const artifact = await fixture.artifact()
+  const result = await fixture.run((effects) => effects.stageSource(artifact, incoming))
+  expect(result.status).toBe('staged')
+  expect(read).not.toHaveBeenCalled()
+  expect(close).toHaveBeenCalled()
+  fixture.host.close()
+})
+
 async function reason(work: Promise<unknown>) {
   try {
     await work

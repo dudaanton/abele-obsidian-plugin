@@ -113,6 +113,39 @@ export async function tokenOffloadConnection(input: {
         () => input.client().versionBytes(head.fileId, head.versionId),
         () => fence.assertReady()
       ),
+    openVersion: (head, signal) =>
+      retryTransientOperation(
+        async () => {
+          const client = input.client()
+          if (typeof client.openVersion === 'function')
+            return client.openVersion(head.fileId, head.versionId, head, signal)
+          // Legacy/custom providers retain their small-file byte API only within the phone limit.
+          if (head.size > 50 * 1024 * 1024)
+            throw new Error('Bounded file reads are unavailable; the fallback limit is 50 MiB')
+          signal?.throwIfAborted()
+          let bytes: Uint8Array | null = await client.versionBytes(head.fileId, head.versionId)
+          return {
+            size: head.size,
+            signal,
+            read: async (offset: number, length: number, cancellation?: AbortSignal) => {
+              cancellation?.throwIfAborted()
+              signal?.throwIfAborted()
+              if (!bytes || length > 1024 * 1024) throw new Error('Invalid bounded source read')
+              return bytes.slice(offset, offset + length)
+            },
+            assertUnchanged: async () => {
+              signal?.throwIfAborted()
+            },
+            close: async () => {
+              bytes = null
+            },
+          }
+        },
+        () => {
+          fence.assertReady()
+          signal?.throwIfAborted()
+        }
+      ),
   })
   const store = async () => {
     fence.assertReady()
@@ -143,6 +176,17 @@ export async function tokenOffloadConnection(input: {
             () => fence.assertReady()
           ),
         authorizeHydration: (head) => manager.authorize(head),
+        openVersion: async (id, version, expected, signal) => {
+          const head = await state.byFileId(id)
+          if (
+            !head ||
+            head.versionId !== version ||
+            head.sha !== expected.sha ||
+            head.size !== expected.size
+          )
+            throw new Error('Offloaded source identity changed')
+          return manager.openVersion(ledgerId, head, signal)
+        },
         download: async (id, version, sha) => {
           const head = await state.byFileId(id)
           if (!head || head.versionId !== version || head.sha !== sha)

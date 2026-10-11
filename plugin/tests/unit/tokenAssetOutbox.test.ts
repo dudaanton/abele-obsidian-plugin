@@ -52,6 +52,33 @@ async function fixture() {
   }
   return { state, input, send, options, requests, receipt }
 }
+it('retains a source locator across restart and sends the same immutable request after a lost answer', async () => {
+  const one = await fixture()
+  const openSource = vi.fn(async () => ({
+    size: one.input.bytes.length,
+    read: async (offset: number, length: number) => one.input.bytes.slice(offset, offset + length),
+    assertUnchanged: async () => {},
+    close: async () => {},
+  }))
+  const sendSource = vi.fn(async () => one.receipt)
+  sendSource.mockRejectedValueOnce(new Error('answer lost'))
+  const options = { ...one.options, maxBytes: () => 100, openSource, sendSource }
+  const first = new TokenAssetOutbox(options)
+  const key = await first.enqueue({
+    ...one.input,
+    bytes: new Uint8Array(),
+    source: { id: '.abele-sync-sample00.tmp', size: 3 },
+  })
+  await expect(first.drain(false, key)).rejects.toThrow('answer lost')
+  const next = new TokenAssetOutbox(options)
+  await next.restore()
+  await next.drain(false, key)
+  expect(
+    sendSource.mock.calls.map((args) => (args as unknown as [{ key: string }])[0].key)
+  ).toEqual([key, key])
+  expect(one.send).not.toHaveBeenCalled()
+  expect(await one.state.get(one.input.path)).toMatchObject({ size: 3, sha: one.input.sha })
+})
 it('refuses an oversized item before any upload and exposes a clear state', async () => {
   const one = await fixture(),
     outbox = new TokenAssetOutbox(one.options)

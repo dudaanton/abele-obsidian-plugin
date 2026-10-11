@@ -9,7 +9,12 @@ import {
   applyStaged,
   ExpectedWrites,
   EngineError,
+  fingerprintFile,
+  downloadToStage,
+  TransferBudget,
+  receiveToStage,
   type FileSystem,
+  type ChunkSource,
   type StateStore,
   type EngineClient,
   type SyncReport,
@@ -49,6 +54,7 @@ export interface TokenEngineOptions {
   state: StateStore
   reviews: DeviceReviews
   fetch: typeof fetch
+  transferBudget?: TransferBudget
   WebSocket?: typeof WebSocket
   paths?: ExecutablePaths
   ownSettingsPath?: string
@@ -79,23 +85,29 @@ export class TokenEngineRuntime implements ConnectionRuntime, TokenUiRuntime {
   readonly client: V2EngineClient
   readonly actions: TokenActions
   private readonly outbox: TokenAssetOutbox
+  private readonly transferBudget: TransferBudget
   private active = true
   private readonly requests = new AbortController()
   private readonly transportObservers = new Set<
-    (path: string, active: boolean, successful?: boolean) => void
+    (path: string, active: boolean, successful?: boolean, rangeOffset?: number) => void
   >()
   observeTransport(
-    listener: (path: string, active: boolean, successful?: boolean) => void
+    listener: (path: string, active: boolean, successful?: boolean, rangeOffset?: number) => void
   ): () => void {
     this.transportObservers.add(listener)
     return () => {
       this.transportObservers.delete(listener)
     }
   }
-  private observeRequest(path: string, active: boolean, successful?: boolean): void {
+  private observeRequest(
+    path: string,
+    active: boolean,
+    successful?: boolean,
+    rangeOffset?: number
+  ): void {
     for (const listener of this.transportObservers) {
       try {
-        listener(path, active, successful)
+        listener(path, active, successful, rangeOffset)
       } catch {
         /* Diagnostics cannot affect an exchange. */
       }
@@ -112,6 +124,7 @@ export class TokenEngineRuntime implements ConnectionRuntime, TokenUiRuntime {
   private readonly token
   private readonly selective: SelectiveSettings
   constructor(private readonly options: TokenEngineOptions) {
+    this.transferBudget = options.transferBudget ?? new TransferBudget()
     this.selective = structuredClone(options.selective ?? selectiveDefaults())
     this.token = decodeAccessToken(options.encoded)
     const transport: typeof fetch = (input, init) =>
@@ -127,7 +140,9 @@ export class TokenEngineRuntime implements ConnectionRuntime, TokenUiRuntime {
           const path = new URL(
             typeof input === 'string' ? input : input instanceof URL ? input.href : input.url
           ).pathname
-          this.observeRequest(path, true)
+          const range = /^bytes=(\d+)-\d+$/.exec(new Headers(init?.headers).get('range') ?? '')
+          const rangeOffset = range ? Number(range[1]) : undefined
+          this.observeRequest(path, true, undefined, rangeOffset)
           const request = new AbortController()
           const abort = () => request.abort()
           const callerSignal = init?.signal ?? (input instanceof Request ? input.signal : undefined)
@@ -145,7 +160,7 @@ export class TokenEngineRuntime implements ConnectionRuntime, TokenUiRuntime {
             }
             throw error
           } finally {
-            this.observeRequest(path, false, successful)
+            this.observeRequest(path, false, successful, rangeOffset)
             callerSignal?.removeEventListener('abort', abort)
             this.requests.signal.removeEventListener('abort', abort)
           }
@@ -287,6 +302,7 @@ export class TokenEngineRuntime implements ConnectionRuntime, TokenUiRuntime {
     }
     this.client.onRemoval = (_id, path) => options.covers(path)
     this.engine = new SyncEngine({
+      transferBudget: this.transferBudget,
       client: options.engineClient?.(this.client) ?? this.client,
       fs: new Proxy(options.fs, {
         get: (target, name) => {
@@ -305,6 +321,22 @@ export class TokenEngineRuntime implements ConnectionRuntime, TokenUiRuntime {
             return async (path: string, bytes: Uint8Array, mtime: number) => {
               await target.writeAtomic(path, bytes, mtime)
               this.actions.written(path)
+            }
+          if (name === 'beginAtomicWrite' && target.beginAtomicWrite)
+            return async (...args: Parameters<NonNullable<FileSystem['beginAtomicWrite']>>) => {
+              const stage = await target.beginAtomicWrite(...args)
+              const written = () => this.actions.written(args[0])
+              return new Proxy(stage, {
+                get(target, key) {
+                  if (key === 'commit')
+                    return async (signal?: AbortSignal) => {
+                      await target.commit(signal)
+                      written()
+                    }
+                  const value = Reflect.get(target, key)
+                  return typeof value === 'function' ? value.bind(target) : value
+                },
+              })
             }
           const value = Reflect.get(target, name)
           if ((name === 'list' || name === 'listDirectories') && typeof value === 'function') {
@@ -384,7 +416,23 @@ export class TokenEngineRuntime implements ConnectionRuntime, TokenUiRuntime {
       },
       maxBytes: () => this.authority?.limits.max_file_bytes ?? 0,
       send: (one, bytes) =>
-        this.client.publishGroupAsset(normalisePath(one.path), bytes, one.mtime, one.key),
+        bytes.length <= this.transferBudget.maxChunkBytes
+          ? this.client.publishGroupAsset(normalisePath(one.path), bytes, one.mtime, one.key)
+          : this.publishAssetSource(one, {
+              size: bytes.length,
+              read: async (offset, length) => bytes.slice(offset, offset + length),
+              assertUnchanged: async () => {},
+              close: async () => {},
+            }),
+      openSource: (id) => {
+        if (!options.fs.openRead) throw new Error('Publication source is unavailable')
+        return options.fs.openRead(id)
+      },
+      sendSource: (one, source) => this.publishAssetSource(one, source),
+      discardSource: async (id) => {
+        if (!options.fs.reopenStage) throw new Error('Publication stage cleanup is unavailable')
+        await (await options.fs.reopenStage(id)).discard()
+      },
       changed: () => options.publicationChanged?.(),
     })
     const commit = this.client.commitRaw.bind(this.client)
@@ -404,6 +452,36 @@ export class TokenEngineRuntime implements ConnectionRuntime, TokenUiRuntime {
   }
   written(path: string): void {
     this.actions.written(path)
+  }
+  private publishAssetSource(
+    one: { path: string; sha: string; mtime: number; key: string },
+    source: ChunkSource
+  ): Promise<unknown> {
+    return this.transferBudget.run(async () => {
+      const expected = { sha: one.sha, size: source.size }
+      await this.client.putBlobSource(
+        expected,
+        source,
+        this.requests.signal,
+        this.transferBudget.maxChunkBytes
+      )
+      this.assertHeld()
+      const response = await this.options.fetch(new URL('/v2/group-assets', this.token.address), {
+        method: 'POST',
+        signal: this.requests.signal,
+        cache: 'no-store',
+        headers: {
+          authorization: 'Bearer ' + this.token.key,
+          'content-type': 'application/json',
+          'idempotency-key': one.key,
+        },
+        body: JSON.stringify({ path: normalisePath(one.path), ...expected, mtime: one.mtime }),
+      })
+      this.assertHeld()
+      if (!response.ok)
+        throw new EngineError('protocol', 'File publication response is unavailable')
+      return response.json()
+    }, this.requests.signal)
   }
   private assertHeld(): void {
     if (!this.active) throw new EngineError('lost', 'Connection stopped')
@@ -620,6 +698,14 @@ export class TokenEngineRuntime implements ConnectionRuntime, TokenUiRuntime {
     if (item.kind === 'directory' || (await this.options.state.get(item.path))) return
     const before = await this.options.fs.stat(item.path)
     if (!before) return
+    if (
+      this.options.fs.openRead &&
+      this.options.fs.fingerprint &&
+      this.options.fs.beginAtomicWrite
+    ) {
+      await this.joinStreamingItem(item, before)
+      return
+    }
     const local = await this.options.fs.read(item.path),
       hash = await sha256(local)
     if (hash === item.sha) return
@@ -665,6 +751,76 @@ export class TokenEngineRuntime implements ConnectionRuntime, TokenUiRuntime {
       Symbol.for('abele.sync.placement-v1')
     ] as ((paths: string[], work: () => Promise<void>) => Promise<void>) | undefined
     await (lease ? lease([item.path, copy], work) : work())
+  }
+  private async joinStreamingItem(
+    item: Exclude<V2ManifestItem, { kind: 'directory' }>,
+    before: { mtime: number; size: number }
+  ): Promise<void> {
+    const fs = this.options.fs
+    const local = await fs.fingerprint(item.path)
+    if (local.sha === item.sha) return
+    const dot = item.path.lastIndexOf('.'),
+      slash = item.path.lastIndexOf('/')
+    const stem = dot > slash ? item.path.slice(0, dot) : item.path,
+      ext = dot > slash ? item.path.slice(dot) : ''
+    const copy =
+      stem + ' (Conflicted copy local ' + before.mtime + ' ' + local.sha.slice(0, 12) + ')' + ext
+    const work = async () => {
+      this.assertHeld()
+      if (await this.options.state.get(item.path)) return
+      const actual = await fs.fingerprint(item.path)
+      if (actual.sha !== local.sha || actual.generation !== local.generation)
+        throw new EngineError('lost', 'Local file changed during first connection; retry required')
+      const incoming = await this.client.openVersion(
+        item.file_id,
+        item.version_id,
+        item,
+        this.requests.signal
+      )
+      let incomingStage
+      try {
+        incomingStage = await fs.beginAtomicWrite(item.path, item.mtime, local)
+      } catch (error) {
+        await incoming.close()
+        throw error
+      }
+      await receiveToStage(incoming, incomingStage, item, this.transferBudget, this.requests.signal)
+      const afterDownload = await fs.fingerprint(item.path)
+      if (afterDownload.sha !== local.sha || afterDownload.generation !== local.generation)
+        throw new EngineError('lost', 'Local file changed during first connection; retry required')
+      await this.options.state.setMeta(
+        'token-first-connection:' + item.file_id,
+        JSON.stringify({
+          path: item.path,
+          copy,
+          localSha: local.sha,
+          remoteSha: item.sha,
+          version: item.version_id,
+        })
+      )
+      if (await fs.stat(copy)) {
+        if ((await fs.fingerprint(copy)).sha !== local.sha)
+          throw new EngineError('lost', 'Conflict copy path is occupied')
+      } else {
+        const source = await fs.openRead(item.path, local)
+        let stage
+        try {
+          stage = await fs.beginAtomicWrite(copy, before.mtime, null)
+        } catch (error) {
+          await source.close()
+          throw error
+        }
+        await downloadToStage(source, stage, local, this.transferBudget, this.requests.signal)
+      }
+      this.assertHeld()
+      if ((await fs.fingerprint(item.path)).sha !== local.sha)
+        throw new EngineError('lost', 'Local file changed; preserved conflict copy remains')
+      await incomingStage.commit(this.requests.signal)
+    }
+    const placement = Reflect.get(fs, PLACEMENT) as
+      | ((paths: string[], work: () => Promise<void>) => Promise<void>)
+      | undefined
+    await (placement ? placement([item.path, copy], work) : work())
   }
   async pendingLocal(): Promise<number> {
     return (await this.pendingLocalDetails()).count
@@ -771,7 +927,10 @@ export class TokenEngineRuntime implements ConnectionRuntime, TokenUiRuntime {
     const source = this.source()
     for (const target of note.targets) {
       const received = await this.options.state.get(target.path)
-      if (received && received.sha === (await sha256(await this.options.fs.read(target.path))))
+      if (
+        received &&
+        received.sha === (await fingerprintFile(this.options.fs, target.path, sha256)).sha
+      )
         await this.options.reviews.attachments.recordReceived(source, target.id)
     }
     await this.options.reviews.attachments.observeNote(
@@ -793,6 +952,35 @@ export class TokenEngineRuntime implements ConnectionRuntime, TokenUiRuntime {
         before = await this.options.fs.stat(target.path)
       if (!current || current.path !== target.path || !before)
         throw new Error('File is no longer available')
+      if (this.options.fs.openRead && this.options.fs.beginAtomicWrite) {
+        const identity = await fingerprintFile(this.options.fs, target.path, sha256)
+        const source = await this.options.fs.openRead(target.path)
+        let stage
+        try {
+          stage = await this.options.fs.beginAtomicWrite(target.path, before.mtime, identity)
+        } catch (error) {
+          await source.close()
+          throw error
+        }
+        await receiveToStage(source, stage, identity, this.transferBudget, this.requests.signal)
+        const after = await this.options.fs.stat(target.path)
+        if (
+          !after ||
+          before.size !== after.size ||
+          before.mtime !== after.mtime ||
+          (await fingerprintFile(this.options.fs, target.path, sha256)).sha !== identity.sha ||
+          (await this.resolve(id))?.path !== target.path
+        )
+          throw new Error('File changed during publication capture; retry from the current file')
+        return {
+          id,
+          path: target.path,
+          bytes: new Uint8Array(),
+          source: { id: stage.id, size: identity.size },
+          sha: identity.sha,
+          mtime: before.mtime,
+        }
+      }
       const bytes = await this.options.fs.read(target.path),
         hash = await sha256(bytes),
         after = await this.options.fs.stat(target.path)
@@ -842,6 +1030,27 @@ export class TokenEngineRuntime implements ConnectionRuntime, TokenUiRuntime {
             throw new Error('Reviewed content changed')
           const localClient = new Proxy(this.client, {
             get(target, name) {
+              if (name === 'openVersion')
+                return async (
+                  fileId: string,
+                  versionId: string,
+                  expected: { size: number; sha: string }
+                ) => {
+                  if (
+                    fileId !== candidate.fileId ||
+                    versionId !== candidate.versionId ||
+                    expected.sha !== candidate.sha ||
+                    expected.size !== bytes?.length
+                  )
+                    throw new Error('Unreviewed content requested')
+                  return {
+                    size: bytes.length,
+                    read: async (offset: number, length: number) =>
+                      bytes.slice(offset, offset + length),
+                    assertUnchanged: async () => {},
+                    close: async () => {},
+                  }
+                }
               if (name === 'getBlob')
                 return async (sha: string) => {
                   if (sha !== candidate.sha || !bytes)

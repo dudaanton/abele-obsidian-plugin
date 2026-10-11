@@ -1,6 +1,6 @@
 import { sha256 } from './external/hash'
 import { z } from 'zod'
-import { type StateStore } from '@abele/sync-core'
+import { type StateStore, type ChunkSource, fingerprintSource } from '@abele/sync-core'
 import { V2CommitResponseSchema, normalisePath, validatePath } from '@abele/sync-protocol'
 
 const candidate = z
@@ -9,6 +9,10 @@ const candidate = z
     path: z.string().min(1),
     sha: z.string().regex(/^[a-f0-9]{64}$/),
     bytes: z.array(z.number().int().min(0).max(255)),
+    source: z
+      .object({ id: z.string().min(1), size: z.number().int().nonnegative() })
+      .strict()
+      .optional(),
     mtime: z.number().int().nonnegative(),
     key: z.string().min(1),
     binding: z.string().min(1),
@@ -27,6 +31,8 @@ export const assetIdentitiesSchema = z.array(
 const markerOf = (one: { id: string; path: string; sha: string; mtime: number }) =>
   'token-asset-publication:' + JSON.stringify([one.id, one.path, one.sha, one.mtime])
 const errorOf = (code: string, message: string) => Object.assign(new Error(message), { code })
+const sizeOf = (one: { bytes: { length: number }; source?: { size: number } }) =>
+  one.source?.size ?? one.bytes.length
 
 /** Independent per-file requests, serialized durable queue mutations, exact uncertain replay.
  * A known refusal is retained separately from uncertain work and never blocks receiving. */
@@ -45,6 +51,9 @@ export class TokenAssetOutbox {
       approved(id: string): Promise<boolean>
       maxBytes(): number
       send(one: Candidate, bytes: Uint8Array): Promise<unknown>
+      openSource?(id: string): Promise<ChunkSource>
+      sendSource?(one: Candidate, source: ChunkSource): Promise<unknown>
+      discardSource?(id: string): Promise<void>
       changed(): void
     }
   ) {}
@@ -88,10 +97,19 @@ export class TokenAssetOutbox {
       queue.some((one) => one.binding !== this.options.binding())
     )
       throw new Error('Publication recovery required: source identity changed')
-    for (const one of queue)
-      if ((await sha256(new Uint8Array(one.bytes))) !== one.sha)
+    for (const one of queue) {
+      let sha: string
+      if (one.source) {
+        if (one.bytes.length || !this.options.openSource)
+          throw new Error('Publication source requires recovery')
+        const identity = await fingerprintSource(await this.options.openSource(one.source.id))
+        if (identity.size !== one.source.size) throw new Error('Publication source size changed')
+        sha = identity.sha
+      } else sha = await sha256(new Uint8Array(one.bytes))
+      if (sha !== one.sha)
         throw new Error('Publication recovery required: retained content changed')
       else validatePath(normalisePath(one.path))
+    }
     this.options.assertOwned()
     return queue
   }
@@ -118,9 +136,10 @@ export class TokenAssetOutbox {
     path: string
     sha: string
     bytes: Uint8Array
+    source?: { id: string; size: number }
     mtime: number
   }): Promise<string> {
-    if (input.bytes.length > this.options.maxBytes()) {
+    if (sizeOf(input) > this.options.maxBytes()) {
       const reason = 'This file is too large for this server'
       this.refused.set(input.id, { path: input.path, reason, key: input.id })
       this.options.changed()
@@ -174,7 +193,7 @@ export class TokenAssetOutbox {
         this.options.assertOwned()
         // A changed limit cannot turn an unanswered request into a known refusal.
         // Reconcile that request with its original key before considering a new attempt.
-        if (one.uncertain === undefined && one.bytes.length > this.options.maxBytes()) {
+        if (one.uncertain === undefined && sizeOf(one) > this.options.maxBytes()) {
           const refusal = { code: 'too_large', message: 'This file is too large for this server' }
           await this.mutate(async (queue) => {
             const current = queue.find((item) => item.key === one.key)
@@ -210,9 +229,18 @@ export class TokenAssetOutbox {
           })
           attempted.add(one.key)
         }
-        const response = V2CommitResponseSchema.parse(
-          await this.options.send(one, new Uint8Array(one.bytes))
-        )
+        let answer: unknown
+        if (one.source) {
+          if (!this.options.sendSource || !this.options.openSource)
+            throw new Error('Publication source is unavailable')
+          const source = await this.options.openSource(one.source.id)
+          try {
+            answer = await this.options.sendSource(one, source)
+          } finally {
+            await source.close()
+          }
+        } else answer = await this.options.send(one, new Uint8Array(one.bytes))
+        const response = V2CommitResponseSchema.parse(answer)
         this.options.assertOwned()
         if (response.results.length !== 1)
           throw new Error('Publication response does not identify the retained candidate')
@@ -230,7 +258,7 @@ export class TokenAssetOutbox {
         if (
           result.path !== normalisePath(one.path) ||
           result.sha !== one.sha ||
-          result.size !== one.bytes.length ||
+          result.size !== sizeOf(one) ||
           result.mtime !== one.mtime ||
           !result.file_id ||
           !result.version_id
@@ -269,6 +297,13 @@ export class TokenAssetOutbox {
           if (index < 0) throw new Error('Publication candidate disappeared')
           queue.splice(index, 1)
         })
+        if (one.source && this.options.discardSource) {
+          try {
+            await this.options.discardSource(one.source.id)
+          } catch (error) {
+            console.debug('[abele-sync] retained publication stage cleanup pending', error)
+          }
+        }
       } catch (error) {
         errors.set(one.key, error)
         try {

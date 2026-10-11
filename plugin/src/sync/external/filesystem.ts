@@ -1,4 +1,5 @@
 import { sha256 } from './hash'
+import { type ChunkSource } from '@abele/sync-core'
 import { OwnedArtifactSchema, type ExternalOperation } from './records'
 import type { ExternalReservation } from './coordination'
 
@@ -26,6 +27,13 @@ export interface ExternalFilesystemPort {
   matches?(expected: ExternalByteExpectation): Promise<boolean>
   makeParents(path: string): Promise<void>
   writeStaging(path: string, bytes: Uint8Array, assertEffect: () => void): Promise<void>
+  writeStagingSource?(
+    path: string,
+    source: ChunkSource,
+    expected: ExternalByteExpectation,
+    assertEffect: () => void,
+    signal?: AbortSignal
+  ): Promise<void>
   /** Native link on desktop; final absent check plus adapter rename on mobile. */
   install(from: string, to: string, assertEffect: () => void): Promise<void>
   readonly installation: 'native-link' | 'adapter-rename' | 'unavailable'
@@ -132,6 +140,64 @@ export class ExternalFileEffects {
       } catch {
         return this.ambiguous([artifact.path], [artifact])
       }
+    })
+  }
+
+  /** The source is owned by this effect, including refusal and cancellation. */
+  stageSource(
+    input: OwnedArtifact,
+    source: ChunkSource,
+    signal?: AbortSignal
+  ): Promise<ExternalEffectResult> {
+    const original = source
+    let closed = false,
+      entered = false
+    source = {
+      size: original.size,
+      ...(original.stamp ? { stamp: original.stamp } : {}),
+      ...(original.signal ? { signal: original.signal } : {}),
+      read: (offset, length, cancellation) => original.read(offset, length, cancellation),
+      assertUnchanged: () => original.assertUnchanged(),
+      close: async () => {
+        if (!closed) {
+          closed = true
+          await original.close()
+        }
+      },
+    }
+    return this.track<ExternalEffectResult>(async () => {
+      entered = true
+      try {
+        const artifact = this.owned(input)
+        if (
+          !artifact.path.split('/').at(-1)?.startsWith('.abele-external-') ||
+          source.size !== artifact.size
+        )
+          throw new ExternalFilePortError('local-changed')
+        if (!this.fs.writeStagingSource) throw new ExternalFilePortError('unsupported-storage')
+        this.check([artifact.path], 'stage', artifact)
+        await this.fs.makeParents(artifact.path)
+        if (await this.fs.exists(artifact.path)) throw new ExternalFilePortError('collision')
+        this.check([artifact.path], 'stage', artifact)
+        try {
+          await this.fs.writeStagingSource(
+            artifact.path,
+            source,
+            artifact,
+            () => this.check([artifact.path], 'stage', artifact),
+            signal
+          )
+          if (!(await this.matches(artifact))) return this.ambiguous([artifact.path], [artifact])
+          this.check([artifact.path])
+          return { status: 'staged' }
+        } catch {
+          return this.ambiguous([artifact.path], [artifact])
+        }
+      } finally {
+        await source.close()
+      }
+    }).finally(async () => {
+      if (!entered) await source.close()
     })
   }
 

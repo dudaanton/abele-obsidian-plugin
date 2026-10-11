@@ -1,4 +1,5 @@
 import type { StateStore } from '@abele/sync-core'
+import type { ChunkSource } from '@abele/sync-core'
 import { sha256 } from './hash'
 import { ExternalVerifyResponseSchema, kindOf } from '@abele/sync-protocol'
 import { ExternalFileHost } from './ObsidianExternalFileHost'
@@ -91,6 +92,12 @@ export class AttachmentStore {
         sha: string,
         signal?: AbortSignal
       ): Promise<Uint8Array>
+      openVersion?(
+        fileId: string,
+        versionId: string,
+        expected: { size: number; sha: string },
+        signal?: AbortSignal
+      ): Promise<ChunkSource>
       /** A different live token may authorize exactly the retained local base. This is
        * hydration-only; it never supplies eviction or publication authority. */
       authorizeHydration?(head: {
@@ -541,6 +548,13 @@ export class AttachmentStore {
     if (!opts.operationId || !opts.expectedVersionId) return this.result('ineligible')
     const head = await this.head(id)
     if (!head || head.versionId !== opts.expectedVersionId) return this.result('version-changed')
+    if (this.options.openVersion && (await this.snapshot(id))?.representation !== 'hydrated') {
+      try {
+        await this.options.host.requireTransfer(head.size)
+      } catch (error) {
+        return this.reason(error)
+      }
+    }
     const staging = `${head.path.slice(0, head.path.lastIndexOf('/') + 1)}.abele-external-${opts.operationId}.incoming`
     const quarantine = staging.replace(/\.incoming$/, '.projection')
     let phase: 'none' | 'download-intent' | 'ready-to-install' | 'cleanup-pending' = 'none'
@@ -726,17 +740,30 @@ export class AttachmentStore {
         phase = 'download-intent'
         if (opts.signal?.aborted) return this.result('recovery-required')
         let bytes: Uint8Array | undefined
+        let source: ChunkSource | undefined
         try {
-          bytes = await this.options.download(id, head.versionId, head.sha, opts.signal)
+          if (this.options.openVersion)
+            source = await this.options.openVersion(id, head.versionId, head, opts.signal)
+          else bytes = await this.options.download(id, head.versionId, head.sha, opts.signal)
         } catch (error) {
           if (opts.signal?.aborted) return this.result('recovery-required')
           return this.reason(error)
         }
-        this.owned()
-        if (opts.signal?.aborted) return this.result('recovery-required')
-        if (bytes.length !== head.size || (await sha256(bytes)) !== head.sha)
+        try {
+          this.owned()
+        } catch (error) {
+          await source?.close()
+          throw error
+        }
+        if (opts.signal?.aborted) {
+          await source?.close()
+          return this.result('recovery-required')
+        }
+        if (bytes && (bytes.length !== head.size || (await sha256(bytes)) !== head.sha))
           return this.result('version-changed')
-        const stagingWork = effects.stage(artifact, bytes)
+        const stagingWork = source
+          ? effects.stageSource(artifact, source, opts.signal)
+          : effects.stage(artifact, bytes)
         bytes = undefined
         const staged = await stagingWork
         if (staged.status !== 'staged') return this.result('recovery-required')
@@ -922,13 +949,9 @@ export class AttachmentStore {
             !(await this.options.host.exists(head.path))
           )
             continue
-          const bytes = await this.options.host.read(retired.path),
-            original = await this.options.host.read(head.path)
           if (
-            bytes.length !== retired.size ||
-            (await sha256(bytes)) !== retired.sha ||
-            original.length !== head.size ||
-            (await sha256(original)) !== head.sha
+            !(await this.options.host.matches(retired)) ||
+            !(await this.options.host.matches({ ...head, path: head.path }))
           )
             continue
           const retained = [...file.retained, retired]

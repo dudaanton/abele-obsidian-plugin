@@ -5,11 +5,12 @@ export function tokenSyncProbe(runtime: TokenEngineRuntime, assertCurrent: () =>
     peakDownloads = 0,
     downloadCount = 0,
     verificationCount = 0
-  const close = runtime.observeTransport((path, active, successful) => {
+  const close = runtime.observeTransport((path, active, successful, rangeOffset) => {
     if (!active && successful && path.endsWith('/external/verify')) verificationCount++
     if (path.startsWith('/v2/files/') && path.endsWith('/content')) {
       activeDownloads += active ? 1 : -1
-      if (active) downloadCount++
+      // One logical download starts at byte zero; subsequent ranges retain backpressure.
+      if (active && (rangeOffset === undefined || rangeOffset === 0)) downloadCount++
       peakDownloads = Math.max(peakDownloads, activeDownloads)
     }
   })
