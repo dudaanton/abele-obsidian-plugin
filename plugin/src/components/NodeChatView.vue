@@ -418,7 +418,12 @@ const send = async (text: string) => {
   sending.value = true
   try {
     if (permissionFixture.value && props.presenter.provider?.value === 'fake')
-      await props.presenter.send(text, [{ kind: 'permission', ttl_ms: 60000 }, { kind: 'echo' }])
+      await props.presenter.send(
+        text,
+        [{ kind: 'permission', ttl_ms: 60000 }, { kind: 'echo' }],
+        props.currentTarget
+      )
+    else if (props.currentTarget) await props.presenter.send(text, undefined, props.currentTarget)
     else await props.presenter.send(text)
   } finally {
     sending.value = false

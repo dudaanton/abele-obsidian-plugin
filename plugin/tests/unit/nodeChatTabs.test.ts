@@ -286,7 +286,8 @@ it('keeps a terminally rejected input as a draft rather than an accepted message
     client,
     state: ref('connected'),
   } as unknown as NodeConnection)
-  vi.spyOn(client, 'send').mockResolvedValue({ operation_id: 'sample-operation' })
+  vi.spyOn(client, 'connected', 'get').mockReturnValue(true)
+  vi.spyOn(client, 'flush').mockResolvedValue(undefined)
   vi.spyOn(client, 'operationResult').mockResolvedValue({ error: 'not_found' })
   await presenter.send('Sample rejected input')
   expect(presenter.draft.value.text).toBe('Sample rejected input')

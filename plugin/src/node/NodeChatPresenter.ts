@@ -11,6 +11,8 @@ import { promptAnswerStates, type PromptAnswerState } from './promptAnswers'
 import { FrameCodec } from '@abele/channel-protocol'
 import { NodeFilesModel, nodeResourceTarget, type CodeLineRange } from './NodeFilesModel'
 import { PromptSchema, validateParams } from '@abele/node-protocol'
+import type { PathTarget } from './NodePathModel'
+import { wirePathTarget } from './nodePathChat'
 import { nodeProviders, nodeDebuggerSupported } from './providers'
 
 const NORMALIZED_ARTIFACT_EVENTS = new Set([
@@ -230,21 +232,52 @@ export class NodeChatPresenter implements ChatPresentationSession {
     return this.refreshing
   }
 
-  async send(text: string, script?: FakeStep[]): Promise<void> {
+  async send(text: string, script?: FakeStep[], shownTarget?: PathTarget): Promise<void> {
     this.error.value = ''
     const client = this.connection.client
     let previous: Set<string> | undefined
     try {
-      previous = await client.store.transaction(
-        (s) => new Set([...s.outbox.map((e) => e.operation_id), ...Object.keys(s.results)])
-      )
-      const result = await client.send(
-        this.reference.sessionId,
+      const online = () =>
+        !this.destroyed && this.connection.state.value === 'connected' && client.connected
+      if (!online()) throw new Error('Reconnect before sending; this turn remains a local draft.')
+      const captured = shownTarget && Object.freeze({ ...shownTarget })
+      if (captured) {
+        if (
+          captured.nodeId !== this.reference.nodeId ||
+          captured.registrationId !== this.reference.registrationId
+        )
+          throw new Error('The displayed worktree belongs to another node.')
+        const actual = await client.nodePath.sessionWorktreeGet({
+          session_id: this.reference.sessionId,
+        })
+        if (
+          actual.project_id !== captured.projectId ||
+          JSON.stringify(actual.target) !== JSON.stringify(wirePathTarget(captured))
+        )
+          throw new Error('The session worktree changed; review the current target before sending.')
+      }
+      const observed_seq = await client.cursor(this.reference.sessionId)
+      const params = validateParams('session.send', {
+        session_id: this.reference.sessionId,
         text,
-        await client.cursor(this.reference.sessionId),
-        script
-      )
-      const receipt = await client.operationResult(result.operation_id)
+        observed_seq,
+        ...(script ? { script } : {}),
+      })
+      const operation_id = crypto.randomUUID()
+      previous = await client.store.transaction((s) => {
+        // The final fence runs under the store lock, not before an asynchronous SDK enqueue.
+        if (!online()) throw new Error('Reconnect before sending; this turn remains a local draft.')
+        const previous = new Set([
+          ...s.outbox.map((e) => e.operation_id),
+          ...Object.keys(s.results),
+        ])
+        s.operationRequests ??= {}
+        s.operationRequests[operation_id] = { method: 'session.send', params }
+        s.outbox.push({ operation_id, method: 'session.send', params })
+        return previous
+      })
+      await client.flush()
+      const receipt = await client.operationResult(operation_id)
       if (receipt?.error) {
         this.error.value = `Not accepted: ${receipt.error}`
         this.draft.value.text = text
