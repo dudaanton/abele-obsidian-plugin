@@ -88,6 +88,7 @@ export function showNodePairingDialog(): void {
         port: Number(endpoint.port || 443),
         fingerprint: payload.invite.node_fingerprint,
         expires: formatTimestamp(payload.invite.expires_at, { mode: 'absolute' }).label,
+        expiresShort: `${Math.max(0, Math.ceil((payload.invite.expires_at - Date.now()) / 60000))} min`,
       }
     } catch {
       return { error: 'Paste the complete code printed by abele-node pair.' }

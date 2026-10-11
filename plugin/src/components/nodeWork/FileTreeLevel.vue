@@ -9,14 +9,18 @@
     :active="entry.kind === 'file' && selected === entry.path"
     :class="{ 'abele-file-tree__deleted': entry.change?.kind === 'deleted' }"
     @click="entry.kind === 'folder' ? emit('toggle', entry.path) : emit('open', entry.path)"
-    @contextmenu.prevent="emit('menu', $event, entry.path)"
+    @contextmenu.prevent.stop="emit('menu', $event, entry.path)"
   >
     <template v-if="entry.change" #end><ChangeCodes :change="entry.change" /></template>
     <template v-else-if="entry.kind === 'folder' && folded.has(entry.path) && inside(entry)" #end>
-      <StatusDot
-        :tone="inside(entry)!.unseen ? 'accent' : 'orange'"
-        :label="`${plural(inside(entry)!.count, 'changed file')} inside${inside(entry)!.unseen ? ', some you have not looked at' : ''}`"
-      />
+      <!-- In the glyph's column, where a file says what changed in it. -->
+      <span class="abele-change-codes"
+        ><span class="abele-change-codes__dot" /><span class="abele-change-codes__glyph">
+          <StatusDot
+            :tone="inside(entry)!.unseen ? 'accent' : 'orange'"
+            :label="`${plural(inside(entry)!.count, 'changed file')} inside${inside(entry)!.unseen ? ', some you have not looked at' : ''}`"
+          /> </span
+      ></span>
     </template>
     <FileTreeLevel
       v-if="entry.kind === 'folder'"

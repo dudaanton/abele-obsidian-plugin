@@ -127,4 +127,6 @@ export interface PairingCode {
   fingerprint: string
   /** How long the code stays good, in words ("10 more minutes"). */
   expires: string
+  /** Short validity readout; the full expiry remains in the tooltip. */
+  expiresShort?: string
 }

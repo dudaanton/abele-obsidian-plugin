@@ -27,13 +27,14 @@
         @select="emit('select', $event)"
         @open-chat="emit('open-chat', $event)"
         @menu="(event, id) => emit('row-menu', event, id)"
+        @chat-menu="(event, id) => emit('chat-menu', event, id)"
       >
         <template #actions="{ id }">
           <Icon
             icon="more-horizontal"
             size="xs"
             tooltip="Folder menu"
-            @click="emit('row-menu', $event, id)"
+            @click.stop="emit('row-menu', $event, id)"
           />
         </template>
       </FolderTree>
@@ -97,6 +98,7 @@ const emit = defineEmits<{
   select: [id: string]
   'open-chat': [id: string]
   'row-menu': [event: MouseEvent, id: string]
+  'chat-menu': [event: MouseEvent, id: string]
   'open-file': [path: string, stage?: 'staged' | 'unstaged']
   'file-menu': [event: MouseEvent, path: string]
 }>()

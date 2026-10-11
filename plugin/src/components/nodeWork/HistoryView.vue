@@ -18,6 +18,8 @@
         :text="file.after"
         :change="{ ...file, when: undefined, unseen: false, stage: undefined }"
         @menu="(e, selection) => emit('menu', e, file.path, selection)"
+        @ask="emit('ask', file.path, $event)"
+        @add="emit('add', file.path, $event)"
       />
     </template>
 
@@ -71,6 +73,7 @@ import Icon from '../obsidian/Icon.vue'
 import FileView from './FileView.vue'
 import { copyIcon, plural } from './codes'
 import type { CommitSummary, CopySummary } from './types'
+import type { FileSelection } from './fileSelection'
 
 const props = withDefaults(
   defineProps<{
@@ -90,6 +93,8 @@ const emit = defineEmits<{
   (e: 'open-commit', hash: string): void
   (e: 'more'): void
   (e: 'menu', event: MouseEvent, what: string, selection: string): void
+  (e: 'ask', path: string, selection: FileSelection): void
+  (e: 'add', path: string, selection: FileSelection): void
 }>()
 
 const commit = computed(() => props.commits.find((c) => c.hash === props.open))

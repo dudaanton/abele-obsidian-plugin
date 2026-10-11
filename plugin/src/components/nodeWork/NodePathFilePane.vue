@@ -19,6 +19,8 @@
         :change="model.document.value.change"
         :mode="model.mode.value"
         @menu="(event, selection) => emit('menu', event, selection)"
+        @ask="emit('ask', $event)"
+        @add="emit('add', $event)"
       />
     </template>
   </div>
@@ -32,7 +34,12 @@ withDefaults(
   defineProps<{ model: NodePathFileModel; offline?: boolean; debug?: DebugSourceContext }>(),
   { offline: false, debug: undefined }
 )
-const emit = defineEmits<{ menu: [event: MouseEvent, selection: string] }>()
+import type { FileSelection } from './fileSelection'
+const emit = defineEmits<{
+  menu: [event: MouseEvent, selection: string]
+  ask: [selection: FileSelection]
+  add: [selection: FileSelection]
+}>()
 </script>
 <style lang="scss">
 .abele-node-content__pane {

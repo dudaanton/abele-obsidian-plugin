@@ -46,7 +46,8 @@ describe('FolderTree', () => {
     const rows = view.findAll('.abele-tree-item__self').slice(1)
     expect(rows.map((r) => r.get('.abele-tree-item__text').text())).toEqual(['main', 'feature'])
     expect(rows[0].get('.abele-copy-codes__count').text()).toBe('2')
-    expect(rows[1].find('.abele-copy-codes__count').exists()).toBe(false)
+    // Empty counts reserve the same column as populated counts.
+    expect(rows[1].get('.abele-copy-codes__count').text()).toBe('')
     await rows[1].trigger('click')
     expect(view.emitted('select')).toEqual([['c2']])
   })

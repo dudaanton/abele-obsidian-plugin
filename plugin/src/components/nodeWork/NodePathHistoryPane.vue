@@ -12,6 +12,8 @@
       @open-commit="act(() => model.open($event))"
       @more="act(() => model.load(true))"
       @menu="(event, what, selection) => emit('menu', event, what, selection)"
+      @ask="(path, selection) => emit('ask', path, selection)"
+      @add="(path, selection) => emit('add', path, selection)"
     />
   </div>
 </template>
@@ -28,7 +30,12 @@ withDefaults(
   }>(),
   { copy: undefined, base: undefined, offline: false }
 )
-const emit = defineEmits<{ menu: [event: MouseEvent, what: string, selection: string] }>()
+import type { FileSelection } from './fileSelection'
+const emit = defineEmits<{
+  menu: [event: MouseEvent, what: string, selection: string]
+  ask: [path: string, selection: FileSelection]
+  add: [path: string, selection: FileSelection]
+}>()
 const act = (run: () => Promise<void>) => {
   void run().catch(() => {})
 }

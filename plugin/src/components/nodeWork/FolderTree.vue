@@ -19,12 +19,19 @@
       :disabled="folder.missing"
       class="abele-folder-tree__folder"
       @click="folder.git ? toggle(folder.id) : emit('select', folder.id)"
-      @contextmenu.prevent="emit('menu', $event, folder.id)"
+      @contextmenu.prevent.stop="emit('menu', $event, folder.id)"
     >
-      <template v-if="folder.git && folded.has(folder.id) && codesOf(folder.copies)" #end>
-        <CopyCodes v-bind="codesOf(folder.copies)!" />
+      <template #end>
+        <CopyCodes v-bind="folder.git && folded.has(folder.id) ? codesOf(folder.copies) : {}" />
       </template>
-      <template v-if="$slots.actions" #actions><slot :id="folder.id" name="actions" /></template>
+      <template #actions
+        ><slot :id="folder.id" name="actions"
+          ><Icon
+            icon="more-horizontal"
+            size="xs"
+            tooltip="Folder menu"
+            @click.stop="emit('menu', $event, folder.id)" /></slot
+      ></template>
 
       <template v-if="folder.git">
         <TreeItem
@@ -40,7 +47,7 @@
           :disabled="copy.missing"
           class="abele-folder-tree__copy"
           @click="pick(copy.id)"
-          @contextmenu.prevent="emit('menu', $event, copy.id)"
+          @contextmenu.prevent.stop="emit('menu', $event, copy.id)"
         >
           <template v-if="!open(copy) || !$slots.selected" #end>
             <CopyCodes
@@ -49,7 +56,14 @@
               :changed="copy.changed"
             />
           </template>
-          <template v-if="$slots.actions" #actions><slot :id="copy.id" name="actions" /></template>
+          <template #actions
+            ><slot :id="copy.id" name="actions"
+              ><Icon
+                icon="more-horizontal"
+                size="xs"
+                tooltip="Worktree menu"
+                @click.stop="emit('menu', $event, copy.id)" /></slot
+          ></template>
           <slot v-if="$slots.selected && selected === copy.id" name="selected" :copy="copy" />
           <template v-else-if="showChats">
             <ChatRow
@@ -58,6 +72,8 @@
               :chat="chat"
               :active="selectedChat === chat.id"
               @click="emit('open-chat', chat.id)"
+              @menu="(e) => emit('chat-menu', e, chat.id)"
+              @contextmenu.prevent.stop="emit('chat-menu', $event, chat.id)"
             />
           </template>
         </TreeItem>
@@ -70,6 +86,8 @@
           :chat="chat"
           :active="selectedChat === chat.id"
           @click="emit('open-chat', chat.id)"
+          @menu="(e) => emit('chat-menu', e, chat.id)"
+          @contextmenu.prevent.stop="emit('chat-menu', $event, chat.id)"
         />
       </template>
     </TreeItem>
@@ -84,6 +102,7 @@
 // its chats, or (in the one-tree layout) its changes and files.
 import { reactive } from 'vue'
 import TreeItem from '../obsidian/TreeItem.vue'
+import Icon from '../obsidian/Icon.vue'
 import ChatRow from './ChatRow.vue'
 import CopyCodes from './CopyCodes.vue'
 import { copyIcon } from './codes'
@@ -114,6 +133,7 @@ const emit = defineEmits<{
   (e: 'select', id: string): void
   (e: 'open-chat', id: string): void
   (e: 'menu', event: MouseEvent, id: string): void
+  (e: 'chat-menu', event: MouseEvent, id: string): void
 }>()
 
 const slots = defineSlots<{
@@ -147,7 +167,7 @@ function codesOf(copies: CopySummary[]) {
   const changed = copies.reduce((n, c) => n + c.changed, 0)
   const running = copies.some((c) => c.running || c.chats?.some((x) => x.running))
   const unseen = copies.reduce((n, c) => n + (c.unseen ?? 0), 0)
-  return changed || running || unseen ? { changed, running, unseen } : null
+  return { changed, running, unseen }
 }
 </script>
 

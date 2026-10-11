@@ -21,6 +21,27 @@ async function capture(name: string) {
   )
 }
 
+async function selectText(selector: string) {
+  await evalLong(
+    `(async()=>{${prelude}await until(()=>visible(${JSON.stringify(selector)}));const text=visible(${JSON.stringify(selector)});if(getComputedStyle(text).userSelect!=='text')throw Error('File text is not selectable');const range=document.createRange();range.selectNodeContents(text);window.getSelection().removeAllRanges();window.getSelection().addRange(range);document.dispatchEvent(new Event('selectionchange'));await until(()=>visible('.abele-file-view__selection'));const bar=visible('.abele-file-view__selection').getBoundingClientRect();if(bar.left<0||bar.right>innerWidth||bar.top<0||bar.bottom>innerHeight)throw Error('Selection actions are clipped');if(document.body.classList.contains('is-phone')&&bar.top<range.getBoundingClientRect().bottom)throw Error('Phone actions overlap the native selection menu');return 'selected'})()`
+  )
+}
+async function checkPanelColumns() {
+  await evalLong(
+    `(()=>{${prelude}const panel=visible('.abele-folder-tree');for(const selector of ['.abele-copy-codes__dot','.abele-copy-codes__count','.abele-tree-item__actions']){const columns=[...panel.querySelectorAll(selector)].map(el=>el.getBoundingClientRect().left);if(Math.max(...columns)-Math.min(...columns)>1)throw Error('Nested row codes are not aligned: '+selector+' '+columns.join(','))}return 'aligned'})()`
+  )
+}
+async function clearSelection() {
+  await evalLong(
+    `(()=>{window.getSelection().removeAllRanges();document.dispatchEvent(new Event('selectionchange'));return 'cleared'})()`
+  )
+}
+async function checkCodeGeometry() {
+  await evalLong(
+    `(async()=>{${prelude}await until(()=>visible('.abele-node-main .cm-line'));await wait(200);const line=visible('.abele-node-main .cm-line'),content=visible('.abele-node-main .cm-content');if(content.getBoundingClientRect().width<150)throw Error('Code content collapsed');if(line.getBoundingClientRect().height>parseFloat(getComputedStyle(line).lineHeight)*2)throw Error('A short code line wraps one character at a time');if(!line.querySelector('span[class]'))throw Error('Syntax colours missing');if(!visible('.abele-node-main .cm-lineNumbers'))throw Error('Line numbers missing');return 'code geometry'})()`
+  )
+}
+
 it('pairs and opens target-bound node files history editor and fake chats in the desktop and phone shells', async () => {
   if (!cli) throw new Error('Set ABELE_NODE_CLI to a built node CLI')
   const fixtureRoot = resolve(process.env.ABELE_NODE_PATH_FIXTURE_DIR || realpathSync(tmpdir()))
@@ -173,7 +194,7 @@ it('pairs and opens target-bound node files history editor and fake chats in the
     )
     await capture('desktop-pair-empty')
     await evalLong(
-      `(async()=>{${prelude}const field=visible('.abele-pair textarea');field.value=${JSON.stringify(invitation.code)};field.dispatchEvent(new Event('input',{bubbles:true}));await until(()=>visible('.abele-pair__fields'));return 'decoded locally'})()`
+      `(async()=>{${prelude}const field=visible('.abele-pair textarea');field.value=${JSON.stringify(invitation.code)};field.dispatchEvent(new Event('input',{bubbles:true}));await until(()=>visible('.abele-pair__card'));return 'decoded locally'})()`
     )
     await capture('desktop-pair-decoded')
     await evalLong(
@@ -223,10 +244,25 @@ it('pairs and opens target-bound node files history editor and fake chats in the
       `(async()=>{${prelude}const panel=visible('.abele-node-panel');const file=[...panel.querySelectorAll('.tree-item-self')].find(r=>r.textContent.includes('sample.ts'));file.click();await until(()=>visible('.abele-file-view')?.textContent.includes('value = 3'));const view=app.workspace.getLeavesOfType('abele-node-file')[0].view;if(view.file.mode.value!=='diff')throw Error('Changed file did not default to diff');if(JSON.stringify(view.getState()).includes('wss://'))throw Error('Transport URL leaked into layout');return 'diff'})()`
     )
     await capture('desktop-diff')
+    await selectText('.abele-file-view .abele-diff__line_added .abele-diff__text')
+    await capture('desktop-diff-selection')
+    await clearSelection()
     await evalLong(
-      `(async()=>{${prelude}const view=app.workspace.getLeavesOfType('abele-node-file')[0].view;const model=api.NodePathService.getInstance().model(${JSON.stringify(registration)});await model.select(${JSON.stringify(ids.external)});await view.file.step(1);if(view.file.target.id!==${JSON.stringify(ids.root)})throw Error('File arrows followed the sidebar');view.file.mode.value='file';return 'bound navigation'})()`
+      `(async()=>{${prelude}const view=app.workspace.getLeavesOfType('abele-node-file')[0].view;const model=api.NodePathService.getInstance().model(${JSON.stringify(registration)});await model.select(${JSON.stringify(ids.external)});await view.file.step(1);if(view.file.target.id!==${JSON.stringify(ids.root)})throw Error('File arrows followed the sidebar');await view.file.open('src/sample.ts');view.file.mode.value='file';return 'bound navigation'})()`
     )
     await capture('desktop-whole')
+    await checkCodeGeometry()
+    await selectText('.abele-file-view .cm-line')
+    await capture('desktop-file-selection')
+    await evalLong(
+      `(async()=>{${prelude}button(visible('.abele-file-view__selection'),'Add to chat').click();const id=window.__nodePathScopeChat;await until(()=>[...document.querySelectorAll('.suggestion-item')].some(i=>i.textContent.includes(id)));[...document.querySelectorAll('.suggestion-item')].find(i=>i.textContent.includes(id)).click();const chat=api.ChatService.getInstance().getAllSessions().find(s=>s.id===id);await until(()=>chat.draft.value.text.includes('src/sample.ts:1')&&chat.draft.value.text.includes('export const value = 3'));return 'quoted to Obsidian draft'})()`
+    )
+    await clearSelection()
+    await selectText('.abele-file-view .cm-line')
+    await evalLong(
+      `(async()=>{${prelude}button(visible('.abele-file-view__selection'),'Ask here').click();await until(()=>[...document.querySelectorAll('.suggestion-item')].some(i=>i.textContent.includes('Fake')));[...document.querySelectorAll('.suggestion-item')].find(i=>i.textContent.includes('Fake')).click();await until(()=>[...document.querySelectorAll('.modal button')].some(b=>b.textContent.trim()==='Allow execution'));[...document.querySelectorAll('.modal button')].find(b=>b.textContent.trim()==='Allow execution').click();await until(()=>app.workspace.getLeavesOfType('abele-node-chat').some(l=>l.view.presenter?.draft.value.text.includes('src/sample.ts:1')));const leaf=app.workspace.getLeavesOfType('abele-node-chat').find(l=>l.view.presenter?.draft.value.text.includes('src/sample.ts:1'));if(leaf.view.getState().target.id!==${JSON.stringify(ids.root)}||leaf.view.presenter.isStreaming.value)throw Error('Selected quote was sent or followed the drawer target');return 'quoted to target-bound node draft'})()`
+    )
+    await clearSelection()
     await open('file', {
       path: 'src/sample.ts',
       debug: {
@@ -249,10 +285,13 @@ it('pairs and opens target-bound node files history editor and fake chats in the
       `(async()=>{${prelude}visible('.abele-history__row').click();try{await until(()=>visible('.abele-history__commit-head'))}catch(error){throw Error(JSON.stringify(app.workspace.getLeavesOfType('abele-node-history').map(l=>({error:l.view.history?.error.value,busy:l.view.history?.busy.value,open:l.view.history?.openCommit.value}))))}return 'commit'})()`
     )
     await capture('desktop-commit')
-    await open('editor', { path: 'src/sample.ts' })
+    await evalLong(
+      `(async()=>{${prelude}const leaf=app.workspace.getLeavesOfType('abele-node-file').find(l=>l.view.getState().path==='src/sample.ts'&&!l.view.getState().debug);await app.workspace.revealLeaf(leaf);const action=leaf.containerEl.querySelector('[aria-label="Open in code editor"]');if(!action)throw Error('Code editor action missing');action.click();await until(()=>visible('.abele-node-main .cm-content')?.contentEditable==='true');return 'editor action'})()`
+    )
     await evalLong(
       `(async()=>{${prelude}await until(()=>visible('.abele-node-main .cm-content')?.contentEditable==='true');const editor=api.codeView(visible('.abele-node-main .cm-content'));editor.dispatch({changes:{from:0,to:editor.state.doc.length,insert:${JSON.stringify('export const value = 4\n')}}});await until(()=>button(visible('.abele-node-save'),'Save file')&&!button(visible('.abele-node-save'),'Save file').disabled);button(visible('.abele-node-save'),'Save file').click();await until(()=>visible('.abele-node-save')?.textContent.includes('Saved ·'));return 'saved'})()`
     )
+    await checkCodeGeometry()
     await capture('desktop-editor')
     await evalLong(
       `(async()=>{${prelude}const model=api.NodePathService.getInstance().model(${JSON.stringify(registration)});await model.select(${JSON.stringify(ids.root)});visible('.abele-node-panel [aria-label="Open folder"]').click();await until(()=>visible('.abele-folder-picker'));return 'picker'})()`
@@ -282,6 +321,11 @@ it('pairs and opens target-bound node files history editor and fake chats in the
     )
     await capture('desktop-chat-switch')
     await evalLong(
+      `(async()=>{${prelude}const model=api.NodePathService.getInstance().model(${JSON.stringify(registration)});model.selectedChat.value=${JSON.stringify(sessionId)};await model.select(${JSON.stringify(ids.external)});await until(()=>visible('.abele-chat-row'));visible('.abele-chat-row').scrollIntoView({block:'nearest'});return 'nested rows'})()`
+    )
+    await checkPanelColumns()
+    await capture('desktop-nested-panel')
+    await evalLong(
       `(async()=>{${prelude}const model=api.NodePathService.getInstance().model(${JSON.stringify(registration)});await model.select(${JSON.stringify(ids.plain)});return 'plain'})()`
     )
     await capture('desktop-plain')
@@ -294,11 +338,19 @@ it('pairs and opens target-bound node files history editor and fake chats in the
     )
     await capture('phone-changes')
     await evalLong(
+      `(async()=>{${prelude}const model=api.NodePathService.getInstance().model(${JSON.stringify(registration)});model.selectedChat.value=${JSON.stringify(sessionId)};await model.select(${JSON.stringify(ids.external)});await until(()=>visible('.abele-chat-row'));visible('.abele-chat-row').scrollIntoView({block:'nearest'});return 'nested phone rows'})()`
+    )
+    await checkPanelColumns()
+    await capture('phone-nested-panel')
+    await evalLong(
+      `(async()=>{${prelude}await api.NodePathService.getInstance().model(${JSON.stringify(registration)}).select(${JSON.stringify(ids.root)});return 'root'})()`
+    )
+    await evalLong(
       `(async()=>{${prelude}visible('.abele-node-panel__node-menu').click();await until(()=>[...document.querySelectorAll('.menu-item')].some(i=>i.textContent.includes('Connect another node')));[...document.querySelectorAll('.menu-item')].find(i=>i.textContent.includes('Connect another node')).click();await until(()=>visible('.abele-pair'));return 'phone pair'})()`
     )
     await capture('phone-pair-empty')
     await evalLong(
-      `(async()=>{${prelude}const field=visible('.abele-pair textarea');field.value=${JSON.stringify(invitation.code)};field.dispatchEvent(new Event('input',{bubbles:true}));await until(()=>visible('.abele-pair__fields'));return 'phone code fields'})()`
+      `(async()=>{${prelude}const field=visible('.abele-pair textarea');field.value=${JSON.stringify(invitation.code)};field.dispatchEvent(new Event('input',{bubbles:true}));await until(()=>visible('.abele-pair__card'));return 'phone code fields'})()`
     )
     await capture('phone-pair-decoded')
     await evalLong(
@@ -320,6 +372,16 @@ it('pairs and opens target-bound node files history editor and fake chats in the
       `(async()=>{${prelude}const panel=visible('.abele-node-panel');[...panel.querySelectorAll('.tree-item-self')].find(r=>r.textContent.includes('sample.ts')).click();await until(()=>visible('.abele-file-view'));if(app.workspace.leftSplit.collapsed===false)throw Error('File did not close the drawer');return JSON.stringify({width:innerWidth,height:innerHeight})})()`
     )
     await capture('phone-diff')
+    await selectText('.abele-file-view .abele-diff__line_added .abele-diff__text')
+    await capture('phone-diff-selection')
+    await clearSelection()
+    await evalLong(
+      `(async()=>{${prelude}const view=app.workspace.getLeavesOfType('abele-node-file').find(l=>l.view.contentEl.contains(visible('.abele-file-view'))).view;view.file.mode.value='file';await until(()=>visible('.abele-file-view .cm-line'));return 'whole file'})()`
+    )
+    await checkCodeGeometry()
+    await selectText('.abele-file-view .cm-line')
+    await capture('phone-file-selection')
+    await clearSelection()
     await open('file', {
       path: 'src/sample.ts',
       debug: {
@@ -359,6 +421,7 @@ it('pairs and opens target-bound node files history editor and fake chats in the
     await evalLong(
       `(async()=>{${prelude}app.workspace.leftSplit.collapse();await until(()=>visible('.abele-node-main .cm-content'));return 'phone editor'})()`
     )
+    await checkCodeGeometry()
     await capture('phone-editor')
     await evalLong(
       `(async()=>{${prelude}app.workspace.leftSplit.expand();const model=api.NodePathService.getInstance().model(${JSON.stringify(registration)});await model.select(${JSON.stringify(ids.plain)});return 'phone plain'})()`

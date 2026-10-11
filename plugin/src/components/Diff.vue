@@ -80,6 +80,8 @@
             v-for="side in ['left', 'right'] as const"
             :key="side"
             class="diff-line abele-diff__line"
+            :data-line-a="pair[side]?.lineA"
+            :data-line-b="pair[side]?.lineB"
             :class="[
               `abele-diff__line_${side}`,
               pair[side] ? lineClass(pair[side]!) : 'abele-diff__line_blank',

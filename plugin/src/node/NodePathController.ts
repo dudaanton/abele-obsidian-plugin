@@ -241,6 +241,40 @@ export function showNodePathRowMenu(model: NodePathModel, event: MouseEvent, id:
   )
   menu.showAtPosition(position(event))
 }
+export function showNodePathChatMenu(model: NodePathModel, event: MouseEvent, id: string): void {
+  const session = model.sessions.value.find((s) => s.session.session_id === id)
+  if (!session?.target) return
+  const target = Object.freeze({ ...session.target })
+  const menu = new Menu()
+  menu.addItem((item) =>
+    item
+      .setTitle('Open')
+      .setIcon('message-square')
+      .onClick(() =>
+        nodePathAction(() =>
+          openNodePathTab(
+            app().workspace,
+            {
+              kind: 'chat',
+              target,
+              sessionId: id,
+              title: session.session.title,
+            },
+            Platform.isMobile
+          )
+        )
+      )
+  )
+  // The current protocol has no session rename/delete mutation. Do not fake destructive success.
+  for (const title of ['Rename', 'Delete'])
+    menu.addItem((item) =>
+      item
+        .setTitle(`${title} (not supported by this node)`)
+        .setIcon(title === 'Rename' ? 'pencil' : 'trash')
+        .setDisabled(true)
+    )
+  menu.showAtPosition(position(event))
+}
 export function showNodePathNodeMenu(model: NodePathModel, event: MouseEvent): void {
   const menu = new Menu(),
     service = NodeService.getInstance()
@@ -307,7 +341,8 @@ export function openNodePathPairing(): void {
 }
 export async function newNodePathChat(
   model: NodePathModel,
-  target = model.current.value
+  target = model.current.value,
+  initialText?: string
 ): Promise<void> {
   if (!target) throw new Error('Choose a folder or worktree first.')
   if (!model.capabilities.value.includes('node_path_execution'))
@@ -344,6 +379,18 @@ export async function newNodePathChat(
           { kind: 'chat', target: bound, sessionId: session.session_id, title: session.title },
           Platform.isMobile
         )
+        if (initialText) {
+          const leaf = app()
+            .workspace.getLeavesOfType('abele-node-chat')
+            .find(
+              (leaf) =>
+                (leaf.getViewState().state as { sessionId?: string } | undefined)?.sessionId ===
+                session.session_id
+            )
+          ;(leaf?.view as unknown as { appendChatText?: (text: string) => void })?.appendChatText?.(
+            initialText
+          )
+        }
       })
   ).open()
 }

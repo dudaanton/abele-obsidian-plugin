@@ -123,6 +123,7 @@ state and accessibility tests before screens adopt them.
 | `Image` | Vault/URL picture; bounded `variant="thumbnail"` attachment slot with loading/missing/broken fallback and optional named preview action. Default contain; use cover only where cropping is safe. |
 | `EmptyState` | Search/backlinks empty section: empty, no-matches, loading and error variants; optional relevant action. Refresh retains existing content rather than replacing it with emptiness. |
 | `Icon` / `Button` | Native glyph action / labelled action. Tooltips use Obsidian `setTooltip`, not an invented popup. |
+| `SelectionToolbar` | Compact native actions positioned near selected text. Teleports to the source document's body, preserves selection on pointer press, and leaves viewport placement to the caller's tested geometry. |
 | `Setting` / `Section` | Native labelled form row / settings group. Section actions sit beside its single heading, outside the content. Never replace forms with flat object rows. |
 | `Card` / `CardGrid` | Rich previews and explicit choices, not dense inventories. Card consumes `MetaLine` and optional `PathLabel`; subtitle is ordinary secondary prose. Covers/thumbnails and action slots remain. |
 | `TreeItem` / `FoldHeading` | Real hierarchies / folding list heading. Native tree classes, count and controlled folding. Plain trees have no artificial focus. |

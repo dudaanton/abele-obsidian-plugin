@@ -31,20 +31,29 @@
         <div v-if="badCode" class="abele-pair__error" role="alert">{{ badCode }}</div>
 
         <!-- What the code holds, read out of it at once, to be checked against the node. -->
-        <dl v-if="parsed && !badCode" class="abele-pair__fields" aria-label="What the code holds">
-          <dt>Node</dt>
-          <dd class="abele-pair__value_name">{{ parsed.name }}</dd>
-          <template v-if="parsed.nodeId"
-            ><dt>Node ID</dt>
-            <dd>{{ parsed.nodeId }}</dd></template
-          >
-          <dt>Key</dt>
-          <dd class="abele-pair__fingerprint">
-            <span v-for="(group, i) in groups" :key="i">{{ group }}</span>
-          </dd>
-          <dt>Valid</dt>
-          <dd>{{ parsed.expires }}</dd>
-        </dl>
+        <!-- What the code holds, to check against the node: who it is, its key, how long the
+             code works. The name leads; the key is a grid of fours, read group by group. -->
+        <div v-if="parsed && !badCode" class="abele-pair__card" aria-label="What the code holds">
+          <span class="abele-pair__card-icon"><Icon icon="server" :interactive="false" /></span>
+          <div class="abele-pair__card-body">
+            <div class="abele-pair__card-head">
+              <span
+                ref="nameEl"
+                class="abele-pair__card-name"
+                :aria-label="
+                  parsed.nodeId ? `${parsed.name} · Node ID ${parsed.nodeId}` : parsed.name
+                "
+                >{{ parsed.name }}</span
+              >
+              <span ref="expiresEl" class="abele-pair__card-expires"
+                ><Icon icon="clock" size="xs" :interactive="false" />{{ shortExpiry }}</span
+              >
+            </div>
+            <div ref="keyEl" class="abele-pair__key" role="group" aria-label="Node key">
+              <span v-for="(group, i) in groups" :key="i">{{ group }}</span>
+            </div>
+          </div>
+        </div>
         <!-- Where to reach the node: read from the code, but the same node may be reached by
              another address from here (its local one, a VPN, a tunnel), so these are fields. -->
         <template v-if="parsed && !badCode">
@@ -151,7 +160,7 @@
 // node, and the owner lets the device in there, choosing it by the name shown here. The dialog
 // closes itself once the node agrees.
 import { computed, ref, watch } from 'vue'
-import { Platform } from 'obsidian'
+import { Platform, setTooltip } from 'obsidian'
 import Input from '../obsidian/Input.vue'
 import Icon from '../obsidian/Icon.vue'
 import Button from '../obsidian/Button.vue'
@@ -231,6 +240,30 @@ watch(() => parsed.value && `${parsed.value.host}:${parsed.value.port}`, reset, 
 const portValid = computed(
   () => /^\d{1,5}$/.test(port.value.trim()) && Number(port.value) > 0 && Number(port.value) < 65536
 )
+const shortExpiry = computed(() => {
+  return (
+    parsed.value?.expiresShort ??
+    `${parsed.value?.expires.match(/^(\d+) (?:more )?minutes?/i)?.[1] ?? '10'} min`
+  )
+})
+const expiresEl = ref<HTMLElement>()
+const keyEl = ref<HTMLElement>()
+const nameEl = ref<HTMLElement>()
+watch(
+  [nameEl, expiresEl, keyEl, parsed],
+  () => {
+    // The node's id is for telling two nodes of one name apart: under the pointer, not in the card.
+    if (nameEl.value)
+      setTooltip(nameEl.value, parsed.value?.nodeId ? `Node ID ${parsed.value.nodeId}` : '')
+    if (expiresEl.value) setTooltip(expiresEl.value, `Valid until ${parsed.value?.expires ?? ''}`)
+    if (keyEl.value)
+      setTooltip(
+        keyEl.value,
+        'The node key. The node printed the same one; check it group by group.'
+      )
+  },
+  { flush: 'post' }
+)
 const groups = computed(() => parsed.value?.fingerprint.match(/.{1,4}/g) ?? [])
 </script>
 
@@ -302,39 +335,75 @@ const groups = computed(() => parsed.value?.fingerprint.match(/.{1,4}/g) ?? [])
   color: var(--text-error);
   font-size: var(--font-ui-smaller);
 }
-// The code read out: names muted on the left, values on the right, one line each.
-.abele-pair__fields {
-  display: grid;
-  grid-template-columns: max-content 1fr;
-  gap: var(--size-4-1) var(--size-4-4);
-  margin: 0;
-  padding: var(--size-4-2) var(--size-4-3);
-  border-radius: var(--radius-s);
+// The code read out: the node as a card, its glyph beside a column of name and key.
+.abele-pair__card {
+  display: flex;
+  gap: var(--size-4-3);
+  padding: var(--size-4-3);
+  border-radius: var(--radius-m);
   background-color: var(--background-secondary);
-  font-size: var(--font-ui-small);
+}
+.abele-pair__card-icon {
+  display: flex;
+  flex: 0 0 auto;
+  align-self: flex-start;
+  align-items: center;
+  // As tall as the name's line, so the glyph sits beside the name, not in the card's middle.
+  height: calc(var(--font-ui-medium) * var(--line-height-normal));
+  color: var(--icon-color);
 
-  dt {
-    color: var(--text-muted);
-  }
-  dd {
-    min-width: 0;
-    margin: 0;
-    overflow-wrap: anywhere;
-    color: var(--text-normal);
-    font-family: var(--font-monospace);
-    font-size: var(--font-ui-smaller);
-  }
-  .abele-pair__value_name {
-    font-family: inherit;
-    font-size: inherit;
-    font-weight: var(--font-semibold);
+  .abele-obsidian-icon {
+    padding: 0;
+    --icon-size: var(--icon-m);
   }
 }
-// The key in groups of four, so it can be read aloud and compared group by group.
-.abele-pair__fingerprint {
+.abele-pair__card-body {
   display: flex;
-  flex-wrap: wrap;
-  gap: 0 var(--size-4-2);
+  flex: 1 1 auto;
+  flex-direction: column;
+  gap: var(--size-4-2);
+  min-width: 0;
+}
+.abele-pair__card-head {
+  display: flex;
+  align-items: center;
+  gap: var(--size-4-2);
+}
+.abele-pair__card-name {
+  flex: 1 1 auto;
+  min-width: 0;
+  overflow: hidden;
+  color: var(--text-normal);
+  font-size: var(--font-ui-medium);
+  font-weight: var(--font-semibold);
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+.abele-pair__card-expires {
+  display: inline-flex;
+  flex: 0 0 auto;
+  align-items: center;
+  gap: var(--size-2-2);
+  color: var(--text-faint);
+  font-size: var(--font-ui-smaller);
+
+  .abele-obsidian-icon {
+    padding: 0;
+  }
+}
+// The key in groups of four, four to a row, every group in its column.
+.abele-pair__key {
+  display: grid;
+  grid-template-columns: repeat(4, max-content);
+  justify-content: start;
+  gap: var(--size-2-2) var(--size-4-3);
+  color: var(--text-muted);
+  font-family: var(--font-monospace);
+  font-size: var(--font-ui-small);
+  font-variant-numeric: tabular-nums;
+}
+.abele-pair__code-field textarea {
+  word-break: break-all;
 }
 .abele-pair__device {
   display: flex;

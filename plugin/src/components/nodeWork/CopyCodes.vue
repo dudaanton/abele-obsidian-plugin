@@ -1,14 +1,15 @@
 <template>
+  <!-- Two places that are always there, so every row's dot and number stand in one column. -->
   <span class="abele-copy-codes">
-    <StatusDot v-if="running" tone="accent" pulse label="An agent is working here" />
-    <StatusDot
-      v-else-if="unseen"
-      tone="accent"
-      :label="`${plural(unseen, 'change')} since you looked`"
-    />
-    <span v-if="changed" ref="countEl" class="tree-item-flair abele-copy-codes__count">{{
-      changed
-    }}</span>
+    <span class="abele-copy-codes__dot">
+      <StatusDot v-if="running" tone="accent" pulse :label="runningLabel" />
+      <StatusDot
+        v-else-if="unseen"
+        tone="accent"
+        :label="unseenLabel ?? `${plural(unseen, 'change')} since you looked`"
+      />
+    </span>
+    <span ref="countEl" class="tree-item-flair abele-copy-codes__count">{{ changed || '' }}</span>
   </span>
 </template>
 
@@ -20,7 +21,22 @@ import { setTooltip } from 'obsidian'
 import StatusDot from '../obsidian/StatusDot.vue'
 import { plural } from './codes'
 
-const props = defineProps<{ running?: boolean; unseen?: number; changed?: number }>()
+const props = withDefaults(
+  defineProps<{
+    running?: boolean
+    unseen?: number
+    changed?: number
+    runningLabel?: string
+    unseenLabel?: string
+  }>(),
+  {
+    running: false,
+    unseen: 0,
+    changed: 0,
+    runningLabel: 'An agent is working here',
+    unseenLabel: undefined,
+  }
+)
 const countEl = ref<HTMLElement>()
 const tip = () =>
   countEl.value && setTooltip(countEl.value, `${plural(props.changed ?? 0, 'changed file')}`)
@@ -33,5 +49,19 @@ watch(() => props.changed, tip, { flush: 'post' })
   display: inline-flex;
   align-items: center;
   gap: var(--size-4-2);
+}
+.abele-copy-codes__dot {
+  display: inline-flex;
+  justify-content: center;
+  width: var(--size-4-2);
+}
+// Room for a three-figure count; the number starts at the column's left edge.
+.abele-copy-codes__count.tree-item-flair {
+  min-width: 3ch;
+  text-align: start;
+
+  &:empty {
+    visibility: hidden;
+  }
 }
 </style>

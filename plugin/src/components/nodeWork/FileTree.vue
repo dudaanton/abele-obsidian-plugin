@@ -38,7 +38,7 @@
           :active="selected === hit.path"
           :path="hit.path"
           @click="emit('open', hit.path)"
-          @contextmenu.prevent="emit('menu', $event, hit.path)"
+          @contextmenu.prevent.stop="emit('menu', $event, hit.path)"
         >
           <template v-if="hit.change" #end><ChangeCodes :change="hit.change" /></template>
         </TreeItem>
@@ -66,7 +66,7 @@
               :path="change.path"
               :class="{ 'abele-file-tree__deleted': change.kind === 'deleted' }"
               @click="emit('open', change.path, group.id === 'staged' ? 'staged' : 'unstaged')"
-              @contextmenu.prevent="emit('menu', $event, change.path)"
+              @contextmenu.prevent.stop="emit('menu', $event, change.path)"
             >
               <template #end><ChangeCodes :change="change" /></template>
             </TreeItem>

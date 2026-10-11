@@ -25,7 +25,13 @@ import {
   revealNodeDrawer,
   type NodePathTabState,
 } from '@/node/nodePathNavigation'
-import { showNodePathFileMenu, chooseSessionWorktree } from '@/node/NodePathController'
+import {
+  showNodePathFileMenu,
+  chooseSessionWorktree,
+  newNodePathChat,
+} from '@/node/NodePathController'
+import { nodePathOwnerActions, freezeNodePathContext } from '@/node/NodePathOwnerActions'
+import { selectionQuote, type FileSelection } from '@/components/nodeWork/fileSelection'
 import NodePathFilePane from '@/components/nodeWork/NodePathFilePane.vue'
 import NodePathHistoryPane from '@/components/nodeWork/NodePathHistoryPane.vue'
 import NodePathEditorPane from '@/components/nodeWork/NodePathEditorPane.vue'
@@ -60,7 +66,7 @@ export class NodePathMainView extends ItemView {
         this.act(() => this.file?.step(-1))
       )
       this.addAction('chevron-right', 'Next changed file', () => this.act(() => this.file?.step(1)))
-      this.addAction('file-code', 'Open in code editor', () => {
+      this.addAction('pencil', 'Open in code editor', () => {
         const file = this.file?.document.value
         if (file)
           this.act(() =>
@@ -175,6 +181,32 @@ export class NodePathMainView extends ItemView {
                     text: file.document.value.text,
                   }
                 : undefined,
+            onAsk: (selection: FileSelection) => {
+              const doc = file.document.value
+              if (doc)
+                this.act(() =>
+                  newNodePathChat(
+                    model,
+                    Object.freeze({ ...doc.target }),
+                    selectionQuote(doc.path, selection)
+                  )
+                )
+            },
+            onAdd: (selection: FileSelection) => {
+              const doc = file.document.value
+              const owner = nodePathOwnerActions()
+              if (doc && owner) {
+                const context = freezeNodePathContext({
+                  target: doc.target,
+                  path: doc.path,
+                  revision: doc.revision,
+                  contentId: doc.contentId,
+                  text: doc.text,
+                  selection: selectionQuote(doc.path, selection),
+                })
+                this.act(() => owner.add(context))
+              }
+            },
             onMenu: (event: MouseEvent, selection: string) => {
               const doc = file.document.value
               if (doc)
@@ -216,6 +248,24 @@ export class NodePathMainView extends ItemView {
             offline: offline(),
             copy: model.copy(state.target),
             base: model.inspections.value[pathTargetKey(state.target)]?.base,
+            onAsk: (path: string, selection: FileSelection) => {
+              const quote = selectionQuote(`${path} at ${history.openCommit.value}`, selection)
+              this.act(() => newNodePathChat(model, Object.freeze({ ...state.target }), quote))
+            },
+            onAdd: (path: string, selection: FileSelection) => {
+              const owner = nodePathOwnerActions()
+              const commit = history.openCommit.value
+              if (owner && commit) {
+                const context = freezeNodePathContext({
+                  target: state.target,
+                  path,
+                  commit,
+                  revision: { kind: 'commit', commit },
+                  selection: selectionQuote(path, selection),
+                })
+                this.act(() => owner.add(context))
+              }
+            },
             onMenu: (event: MouseEvent, what: string, selection: string) => {
               const commit = history.commits.value.find((c) => c.hash === history.openCommit.value)
               const file = commit?.files?.find((f) => f.path === what)
@@ -363,6 +413,12 @@ export class NodePathMainView extends ItemView {
       await presenter.load()
     }
     if (lifetime === this.lifetime) this.refreshHeader()
+  }
+  /** Append quoted file context without sending a provider turn or replacing an existing draft. */
+  appendChatText(text: string): void {
+    if (!this.presenter) return
+    const draft = this.presenter.draft.value
+    draft.text = draft.text ? `${draft.text}\n\n${text}` : text
   }
   private async toggleEditing(): Promise<void> {
     const state = this.saved

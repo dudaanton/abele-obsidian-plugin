@@ -18,6 +18,7 @@ import {
   newNodePathChat,
   showNodePathNodeMenu,
   showNodePathRowMenu,
+  showNodePathChatMenu,
   showNodePathFileMenu,
 } from '@/node/NodePathController'
 import NodePathSidebar from '@/components/nodeWork/NodePathSidebar.vue'
@@ -152,6 +153,9 @@ export class NodeSidebarView extends ItemView {
           },
           onRowMenu: (event: MouseEvent, id: string) => {
             if (model) showNodePathRowMenu(model, event, id)
+          },
+          onChatMenu: (event: MouseEvent, id: string) => {
+            if (model) showNodePathChatMenu(model, event, id)
           },
           onFileMenu: (event: MouseEvent, path: string) => {
             const target = selected()

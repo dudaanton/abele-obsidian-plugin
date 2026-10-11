@@ -1,10 +1,11 @@
 <template>
   <span class="abele-change-codes">
-    <StatusDot
-      v-if="change.unseen"
-      tone="accent"
-      :label="`Changed since you looked · ${change.when ?? ''}`"
-    />
+    <span class="abele-change-codes__dot"
+      ><StatusDot
+        v-if="change.unseen"
+        tone="accent"
+        :label="`Changed since you looked · ${change.when ?? ''}`"
+    /></span>
     <Icon
       :icon="changeGlyphs[change.kind].icon"
       :color="changeGlyphs[change.kind].color"
@@ -27,6 +28,16 @@ defineProps<{ change: FileChange }>()
 </script>
 
 <style lang="scss">
+.abele-change-codes__glyph {
+  display: inline-flex;
+  justify-content: center;
+  width: var(--icon-xs);
+}
+.abele-change-codes__dot {
+  display: inline-flex;
+  justify-content: center;
+  width: var(--size-4-2);
+}
 .abele-change-codes {
   display: inline-flex;
   align-items: center;
