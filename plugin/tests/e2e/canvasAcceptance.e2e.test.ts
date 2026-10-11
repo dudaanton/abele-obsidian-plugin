@@ -1,4 +1,5 @@
 import { afterAll, beforeAll, describe, expect, it, onTestFailed } from 'vitest'
+import { randomUUID } from 'node:crypto'
 import { evalAsync } from './helpers/githubLive'
 import {
   activeVaultName,
@@ -17,7 +18,7 @@ import { shotDir } from './helpers/shots'
 targets('desktop', 'phone')
 const available = isObsidianRunning() && hasTestApi()
 const mobile = process.env.CANVAS_ACCEPTANCE_MOBILE === '1'
-const DIR = 'Sample canvas acceptance'
+const DIR = `Sample canvas acceptance ${randomUUID()}`
 const SHOTS = shotDir('canvas-acceptance')
 const PRELUDE = `
   const path=${JSON.stringify(`${DIR}/Sample diagram.canvas`)}
@@ -86,9 +87,33 @@ const press = async (expression: string) => {
   await input(point!)
 }
 const click = (label: string) => press(`button(${JSON.stringify(label)})`)
-const type = async (text: string) => {
+const type = async (text: string, selector: string) => {
   if (onPhone()) {
-    await new Promise((r) => setTimeout(r, 500))
+    let previous = '',
+      stable = 0
+    await expect
+      .poll(
+        () => {
+          const evidence = run<{
+            focused: boolean
+            keyboard: number
+            viewport: number
+            top: number
+            bottom: number
+          }>(`
+        const el=document.querySelector(${JSON.stringify(selector)}),r=el?.getBoundingClientRect()
+        return {focused:!!el&&document.activeElement===el,keyboard:parseFloat(getComputedStyle(document.documentElement).getPropertyValue('--keyboard-height'))||0,
+          viewport:visualViewport.height,top:r?.top,bottom:r?.bottom}
+      `)
+          const signature = JSON.stringify(evidence)
+          stable =
+            evidence.focused && evidence.keyboard > 0 && signature === previous ? stable + 1 : 0
+          previous = signature
+          return { ...evidence, ready: stable >= 2 }
+        },
+        { timeout: 20_000, interval: 150 }
+      )
+      .toMatchObject({ focused: true, ready: true })
     typeText(text)
   } else
     await withNativeInput(() =>
@@ -169,8 +194,13 @@ describe.skipIf(!available)('shared human and agent canvas acceptance', () => {
     onTestFailed(() => shot('failure'))
     run("app.commands.executeCommandById('abele:new-canvas');return true")
     await press('document.querySelector(\'[aria-label="Canvas name"]\')')
-    await type('Sample diagram')
-    await until('document.querySelector(\'[aria-label="Canvas name"]\')?.value==="Sample diagram"')
+    await type('Sample diagram', '[aria-label="Canvas name"]')
+    await expect
+      .poll(
+        () => run<string>('return document.querySelector(\'[aria-label="Canvas name"]\')?.value'),
+        { timeout: 20_000 }
+      )
+      .toBe('Sample diagram')
     await press(
       '[...document.querySelectorAll(".abele-canvas-input button")].find(el=>el.textContent==="Create")'
     )
@@ -178,7 +208,7 @@ describe.skipIf(!available)('shared human and agent canvas acceptance', () => {
     expect(run<number>('return (await graph()).nodes.length')).toBe(0)
     await click('Add note or attachment')
     await press('document.querySelector(".prompt-input")')
-    await type('sample-note')
+    await type('sample-note', '.prompt-input')
     await press(
       `[...document.querySelectorAll('.suggestion-item')].find(el=>el.textContent.includes(${JSON.stringify(`${DIR}/sample-note.md`)}))`
     )
@@ -233,7 +263,7 @@ describe.skipIf(!available)('shared human and agent canvas acceptance', () => {
       `app.fileManager.promptForFileRename(app.vault.getAbstractFileByPath(${JSON.stringify(`${DIR}/sample-note.md`)}));return true`
     )
     await until('document.activeElement?.matches(".rename-textarea")')
-    await type('sample-renamed')
+    await type('sample-renamed', '.rename-textarea')
     expect(run<string>('return document.activeElement.value')).toBe('sample-renamed')
     await press(
       '[...document.querySelectorAll(".mod-file-rename button")].find(el=>el.textContent==="Save")'
