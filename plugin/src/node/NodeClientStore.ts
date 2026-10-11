@@ -4,8 +4,10 @@ import { z } from 'zod'
 import { retainPromptAnswerIdentity } from './promptAnswers'
 import { FileDraftSchema, type FileDraft } from './fileDrafts'
 import { DelegationStorageSchema, type DelegationStorage } from './delegation'
+import { NodeMutationRecordSchema, type NodeMutationRecord } from '@/ai/tools/node/mutations'
 
 export interface NodeClientState extends ClientState {
+  chatMutations?: Record<string, NodeMutationRecord>
   delegation?: DelegationStorage
   fileDrafts?: Record<string, FileDraft>
   /** Replaceable artifact payload cache; journal references remain untouched. */
@@ -24,6 +26,7 @@ export interface NodeClientState extends ClientState {
 
 const StateSchema = z
   .object({
+    chatMutations: z.record(z.string(), NodeMutationRecordSchema).optional(),
     delegation: DelegationStorageSchema.optional(),
     fileDrafts: z.record(z.string(), FileDraftSchema).optional(),
     artifactData: z.record(z.string(), z.record(z.string(), z.unknown())).optional(),
@@ -133,7 +136,7 @@ export class NodeClientStore implements ClientStore {
             result = structuredClone(await work(state))
             retainPromptAnswerIdentity(state, submitted)
             // Retain controller receipts, including approvals that settle after UI disconnection.
-            for (const entry of submitted.filter(e => e.method.startsWith('delegation.'))) {
+            for (const entry of submitted.filter((e) => e.method.startsWith('delegation.'))) {
               const receipt = state.results[entry.operation_id]
               if (receipt) receipt.request = { method: entry.method, params: entry.params }
             }

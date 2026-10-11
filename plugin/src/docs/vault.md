@@ -942,6 +942,10 @@ across ordinary restarts and never travels with chat metadata. Removing/changing
 scope fences pending tool reads and new mutations. Node writes and their durable receipts stay
 on the daemon; successful edits retain before/after Diff text in the ordinary chat tool result.
 `node_propose_edit` remains a separate device-local draft, not an immediate disk writer.
+The existing device-local node client database also retains `chatMutations`: immutable requests,
+operation IDs, executing-chat identity, pairing authority, before/after text and known receipts.
+These records do not travel with a chat. Pending/unknown mutations survive a disconnect or restart;
+explicit exact-request retry uses the same ID and cannot rebind it to changed arguments.
 
 Chats are `.abchat` files under the chat folder, one JSON record per line. While one is being
 rewritten whole, a copy of the new content sits in the plugin's folder under `chat-backups/`, on

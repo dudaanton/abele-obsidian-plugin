@@ -7,6 +7,7 @@ const contentHash = (value: string) => bytesToHex(sha256(new TextEncoder().encod
 import type { AgentTool, AgentToolResult } from '../../client'
 import type { ChatSession } from '../../ChatSession'
 import { readNodeText } from '@/node/NodeFilesModel'
+import { NodeMutationStore, nodeMutationKey, type NodeMutationRecord } from './mutations'
 import {
   type NodeScopeLedger,
   type NodeScopeTarget,
@@ -46,6 +47,8 @@ export interface NodeAgentHost {
   /** Registry aliases are device-local; persisted scope uses the stable daemon ID. */
   nodeId?(id: string): string
   connection(node: string, chat?: NodeScopeChat): NodeAgentConnection
+  /** Trusted operation-ID allocator; production uses random IDs. */
+  newOperationId?(tool: string): string
 }
 export type NodeAgentHostFactory = () => NodeAgentHost | Promise<NodeAgentHost>
 const answer = (value: unknown, details?: unknown): AgentToolResult => ({
@@ -62,6 +65,39 @@ const pathSchema = protocol.RelativePathSchema.refine(
   (p) => !p.split('/').some((s) => s.toLowerCase() === '.git')
 )
 const fileSchema = pathSchema.refine((p) => p.length > 0)
+function mutationArguments(name: string, params: Record<string, unknown>) {
+  const path = fileSchema.parse(
+    NODE_FILE_OPERATIONS.includes(name)
+      ? text(params, 'from', text(params, 'path'))
+      : text(params, 'path')
+  )
+  const expected_content_id = z
+    .string()
+    .regex(/^[a-f0-9]{64}$/)
+    .nullable()
+    .parse(params.expected_content_id)
+  return {
+    path,
+    expected_content_id,
+    ...(name === 'node_write' ? { text: z.string().parse(params.text) } : {}),
+    ...(['node_edit', 'node_replace'].includes(name)
+      ? {
+          old_text: z.string().min(1).parse(params.old_text),
+          new_text: z.string().parse(params.new_text),
+        }
+      : {}),
+    ...(['node_mv', 'node_cp'].includes(name) ? { to: fileSchema.parse(text(params, 'to')) } : {}),
+  }
+}
+function pendingMutation(
+  record: NodeMutationRecord,
+  state: 'pending' | 'outcome_unknown'
+): AgentToolResult {
+  return answer(
+    `Node mutation outcome is ${state}. Operation ID: ${record.operation_id}. Retry the exact request with operation_id ${record.operation_id}; never create a replacement operation.`,
+    { operation_id: record.operation_id, state }
+  )
+}
 const targetOf = (session: NodeScopeChat, params: Record<string, unknown>): NodeScopeTarget => {
   if (!params.node && !params.project && !params.workspace) {
     const selected = session.overrides.value.nodeTarget
@@ -186,6 +222,7 @@ export function createNodeAgentTools(factory: NodeAgentHostFactory): AgentTool[]
             'ref',
             'base',
             'cursor',
+            'operation_id',
           ].map((key) => [key, { type: 'string' }])
         ),
         expected_content_id: { type: ['string', 'null'] },
@@ -429,6 +466,30 @@ export function createNodeAgentTools(factory: NodeAgentHostFactory): AgentTool[]
       }
       const target = targetOf(session, params)
       target.node_id = host.nodeId?.(target.node_id) ?? target.node_id
+      let mutation:
+        | { store: NodeMutationStore; key: string; chat: string; retry?: NodeMutationRecord }
+        | undefined
+      if (NODE_MUTATION_TOOLS.includes(name)) {
+        if (params.ref || params.base)
+          throw new Error('Node writes only operate on current working files')
+        const chat = session.nodeScopeIdentity
+        if (!chat) throw new Error('A saved executing chat is required for node mutations')
+        const candidate = host.connection(target.node_id, session)
+        const store = new NodeMutationStore(
+          candidate.client.store,
+          host.newOperationId ? () => host.newOperationId!(name) : undefined
+        )
+        const key = nodeMutationKey(chat, name, target, mutationArguments(name, params))
+        const retry = await store.find(
+          chat,
+          key,
+          _id,
+          params.operation_id === undefined ? undefined : z.string().parse(params.operation_id)
+        )
+        mutation = { store, key, chat, retry }
+        if (retry && (!candidate.client.connected || candidate.principal() !== retry.principal))
+          return pendingMutation(retry, 'outcome_unknown')
+      }
       const connection = admittedConnection(target.node_id),
         client = connection.client
       const id = nodeTargetId(target.target),
@@ -685,8 +746,133 @@ export function createNodeAgentTools(factory: NodeAgentHostFactory): AgentTool[]
         }
         checks.push(permissionGuard)
         permissionGuard()
-        if (params.ref || params.base)
-          throw new Error('Node writes only operate on current working files')
+        if (!mutation) throw new Error('Node mutation context is missing')
+        const principal = connection.principal()
+        const perform = async (record: NodeMutationRecord): Promise<AgentToolResult> => {
+          try {
+            guard()
+            if (record.principal !== principal) return pendingMutation(record, 'outcome_unknown')
+            let receipt: unknown
+            if (NODE_EDIT_TOOLS.includes(name)) {
+              const operation = git
+                ? await repo.write(
+                    record.request.params as protocol.RepositoryParams<'repository.v1.write'>,
+                    record.operation_id
+                  )
+                : await client.writeFile(
+                    record.request.params as protocol.FileWrite,
+                    record.operation_id
+                  )
+              if (operation.operation_id !== record.operation_id)
+                throw new Error('Node returned a different operation identity')
+              guard()
+              receipt = git
+                ? await repo.mutationResult(record.operation_id)
+                : await client.fileMutationResult(record.operation_id)
+              if (receipt === undefined) {
+                await mutation!.store.settle(record, 'pending')
+                return pendingMutation(record, 'pending')
+              }
+              const result = git
+                ? protocol.RepositoryMutationResultSchema.parse(receipt)
+                : protocol.FileMutationResultSchema.parse(receipt)
+              const request = record.request.params as {
+                path: string
+                expected_content_id: string | null
+              }
+              if (
+                result.operation_id !== record.operation_id ||
+                result.path !== request.path ||
+                result.expected_content_id !== request.expected_content_id ||
+                (git
+                  ? !('worktree_id' in result) || result.worktree_id !== id
+                  : !('workspace_id' in result) || result.workspace_id !== id)
+              )
+                throw new Error('Node write receipt does not match the approved operation')
+              if (result.state === 'saved' && result.content_id !== contentHash(record.after))
+                throw new Error('Saved receipt content does not match the proposed text')
+              guard()
+              await mutation!.store.settle(record, result.state, result)
+              guard()
+              console.debug('[Abele node tools] Write receipt', result.operation_id, result.state)
+              return answer(result, {
+                ...result,
+                ...(result.state === 'saved'
+                  ? { diff: { old: record.before, new: record.after } }
+                  : {}),
+              })
+            }
+            const method =
+              name === 'node_mv' ? 'fileMove' : name === 'node_cp' ? 'fileCopy' : 'fileRemove'
+            const fn = await nodePathMethod(client, method, safe)
+            guard()
+            receipt = await fn(record.request.params, record.operation_id)
+            guard()
+            // NodePathClient validates the shared wire schema; this layer checks effect identity/disposition.
+            const result = z.record(z.string(), z.unknown()).parse(receipt)
+            const state = z.enum(['applied', 'conflict', 'outcome_unknown']).parse(result.state)
+            if (result.operation_id !== record.operation_id)
+              throw new Error('Node file-operation receipt does not match the admitted operation')
+            await mutation!.store.settle(record, state, result)
+            guard()
+            return answer(result, {
+              ...result,
+              ...(state === 'applied' ? { diff: { old: record.before, new: record.after } } : {}),
+            })
+          } catch (error) {
+            console.debug(
+              '[Abele node tools] Retained uncertain mutation',
+              record.operation_id,
+              error
+            )
+            const known = await Promise.resolve()
+              .then(() => client.operationResult(record.operation_id))
+              .catch((): undefined => undefined)
+            if (known?.error) {
+              await mutation!.store
+                .settle(record, 'rejected', { error: known.error })
+                .catch((failure) =>
+                  console.error(
+                    '[Abele node tools] Could not retain mutation rejection',
+                    record.operation_id,
+                    failure
+                  )
+                )
+              return answer(
+                { operation_id: record.operation_id, state: 'rejected', error: known.error },
+                { operation_id: record.operation_id, state: 'rejected' }
+              )
+            }
+            await mutation!.store
+              .settle(record, 'outcome_unknown')
+              .catch((failure) =>
+                console.error(
+                  '[Abele node tools] Could not retain mutation outcome',
+                  record.operation_id,
+                  failure
+                )
+              )
+            return pendingMutation(record, 'outcome_unknown')
+          }
+        }
+        if (mutation.retry) return perform(mutation.retry)
+        const reserve = async (
+          request: { method: string; params: unknown },
+          before: string,
+          after: string
+        ) => {
+          guard()
+          return mutation!.store.reserve({
+            key: mutation!.key,
+            chat_id: mutation!.chat,
+            call_id: _id,
+            principal,
+            tool: name as NodeMutationRecord['tool'],
+            request,
+            before,
+            after,
+          })
+        }
         const sourcePath = fileSchema.parse(
           NODE_FILE_OPERATIONS.includes(name) ? text(params, 'from', path) : path
         )
@@ -712,23 +898,15 @@ export function createNodeAgentTools(factory: NodeAgentHostFactory): AgentTool[]
               : { from: sourcePath, to: fileSchema.parse(text(params, 'to')) }),
             expected_content_id: expected,
           }
-          const result = await nodePathCall(client, method, request, safe)
-          const applied =
-            typeof result === 'object' &&
-            result !== null &&
-            'state' in result &&
-            result.state === 'applied'
-          return answer(
-            result,
-            applied
-              ? {
-                  diff: {
-                    old: name === 'node_cp' ? '' : before.text,
-                    new: name === 'node_rm' ? '' : before.text,
-                  },
-                  state: 'applied',
-                }
-              : undefined
+          // Unsupported actions fail before durable admission, without a shell fallback.
+          await nodePathMethod(client, method, safe)
+          const suffix = name === 'node_mv' ? 'move' : name === 'node_cp' ? 'copy' : 'remove'
+          return perform(
+            await reserve(
+              { method: `${git ? 'repository.v1' : 'workspace'}.file.${suffix}`, params: request },
+              name === 'node_cp' ? '' : before.text,
+              name === 'node_rm' ? '' : before.text
+            )
           )
         }
         let after = name === 'node_write' ? z.string().parse(params.text) : ''
@@ -756,41 +934,13 @@ export function createNodeAgentTools(factory: NodeAgentHostFactory): AgentTool[]
               expected_content_id: expected,
               text: after,
             })
-        guard()
-        // No offline admission and no automatic second-ID retry on uncertain effects.
-        const operation = await safe(() =>
-          git
-            ? repo.write(request as protocol.RepositoryParams<'repository.v1.write'>)
-            : client.writeFile(request as protocol.FileWrite)
+        return perform(
+          await reserve(
+            { method: git ? 'repository.v1.write' : 'workspace.write', params: request },
+            before.text,
+            after
+          )
         )
-        const receipt = git
-          ? await safe(() => repo.mutationResult(operation.operation_id))
-          : await safe(() => client.fileMutationResult(operation.operation_id))
-        if (!receipt)
-          return answer('Node write receipt is pending; do not retry with a new operation ID.', {
-            operation_id: operation.operation_id,
-            state: 'pending',
-            before: before.text,
-            after,
-          })
-        if (
-          receipt.operation_id !== operation.operation_id ||
-          receipt.path !== sourcePath ||
-          receipt.expected_content_id !== expected ||
-          (git
-            ? !('worktree_id' in receipt) || receipt.worktree_id !== id
-            : !('workspace_id' in receipt) || receipt.workspace_id !== id)
-        )
-          throw new Error('Node write receipt does not match the approved operation')
-        if (receipt.state === 'saved' && receipt.content_id !== contentHash(after))
-          throw new Error('Saved receipt content does not match the proposed text')
-        console.debug('[Abele node tools] Write receipt', receipt.operation_id, receipt.state)
-        return answer(receipt, {
-          ...receipt,
-          ...(receipt.state === 'saved'
-            ? { diff: { old: before.text, new: after } }
-            : { before: before.text, after }),
-        })
       }
       throw new Error('Unsupported node tool')
     },
@@ -804,6 +954,14 @@ async function nodePathCall<T>(
   params: unknown,
   safe: <V>(work: () => Promise<V>) => Promise<V>
 ): Promise<T> {
+  const fn = await nodePathMethod(client, method, safe)
+  return safe(() => fn(params) as Promise<T>)
+}
+async function nodePathMethod(
+  client: NodeClient,
+  method: string,
+  safe: <V>(work: () => Promise<V>) => Promise<V>
+): Promise<(params: unknown, operation?: string) => Promise<unknown>> {
   const adapter = (client as unknown as { nodePath?: Record<string, unknown> }).nodePath
   const fn = adapter?.[method]
   if (typeof fn !== 'function')
@@ -811,7 +969,7 @@ async function nodePathCall<T>(
   const capability = method === 'search' ? 'node_path_v2' : 'node_path_file_operations'
   if (!supportsCapability(await safe(() => client.describe()), capability))
     throw new Error(`This node does not support ${capability}; update the node`)
-  return safe(() => fn.call(adapter, params) as Promise<T>)
+  return (params, operation) => fn.call(adapter, params, operation) as Promise<unknown>
 }
 
 function supportsCapability(raw: unknown, name: string): boolean {

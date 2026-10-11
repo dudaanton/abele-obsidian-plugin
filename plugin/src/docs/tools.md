@@ -1067,8 +1067,14 @@ Writes require edit scope and the exact full-file SHA-256 `expected_content_id` 
 read. They follow the chat's file-edit permission mode: Ask asks per edit, Edit files without
 asking permits edit/replace/write, and Everything without asking also permits move/copy/remove.
 They write immediately to node disk. A successful receipt renders the retained before/after
-Diff in chat; conflict, pending and unknown are not shown as saved. Never automatically retry
-an uncertain effect with a new operation ID. A live connection is required for mutation admission.
+Diff in chat; conflict, pending and unknown are not shown as saved. The exact mutation intent
+and operation ID are retained locally before admission. A disconnect, cancellation or lost receipt
+returns pending/unknown with that ID, never an ordinary no-write failure. Retry with the original
+arguments and `operation_id`; changed target, path, precondition or text is rejected. Unresolved
+identical requests also reuse the retained ID across tool/store reconstruction. Retries do not
+re-read an already changed file and fabricate a new write. Known negative receipts report rejection;
+a new ordinary edit after a known outcome still reads the current source. A live connection is
+required for new mutation admission.
 New plain-folder search and file lifecycle operations require a compatible node/client; unsupported
 actions fail explicitly, with no shell fallback. Git tools reject plain folders.
 

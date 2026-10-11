@@ -76,6 +76,7 @@ function setup(mode = 'allow-edit') {
   } as unknown as ChatSession
   let principal = 'sample-pin:0'
   const client = {
+    store: new MemoryClientStore(),
     connected: true,
     describe: vi.fn(async () => ({ node_id: 'sample-node', capabilities: { capabilities: {} } })),
     getProject: vi.fn(async () => project),
@@ -110,7 +111,12 @@ function setup(mode = 'allow-edit') {
       })
     ),
   }
+  let operationCount = 0
   const host: NodeAgentHost = {
+    newOperationId: () => {
+      const base = 'repository' in client ? 'sample-git-write' : 'sample-write'
+      return ++operationCount === 1 ? base : `${base}-${operationCount}`
+    },
     ledger,
     nodes: () => [{ id: 'sample-node', label: 'Sample node' }],
     connection: () => ({ client: client as unknown as NodeClient, principal: () => principal }),
@@ -300,13 +306,20 @@ describe('Obsidian chat node tools', () => {
       old_text: 'old',
       new_text: 'new',
     })
-    expect(client.writeFile).toHaveBeenCalledWith({
-      workspace_id: workspace.workspace_id,
-      path: 'sample.txt',
-      expected_content_id: hash,
-      text: 'new',
+    expect(client.writeFile).toHaveBeenCalledWith(
+      {
+        workspace_id: workspace.workspace_id,
+        path: 'sample.txt',
+        expected_content_id: hash,
+        text: 'new',
+      },
+      'sample-write'
+    )
+    expect(result.details).toMatchObject({
+      operation_id: 'sample-write',
+      diff: { old: 'old', new: 'new' },
+      state: 'saved',
     })
-    expect(result.details).toMatchObject({ diff: { old: 'old', new: 'new' }, state: 'saved' })
   })
   it('asks in confirm-all, rejects stale text and never labels an operation ID as saved', async () => {
     const { call, client } = setup('confirm-all')
@@ -376,7 +389,8 @@ describe('Obsidian chat node tools', () => {
         workspace_id: workspace.workspace_id,
         text: 'new new',
         expected_content_id: expected,
-      })
+      }),
+      'sample-write'
     )
   })
   it('reads Git history and blame and writes Git text through exact typed receipts', async () => {
@@ -628,11 +642,17 @@ describe('Obsidian chat node tools', () => {
     >
     const calls: { method: string; params: unknown }[] = []
     vi.spyOn(
-      owner as unknown as { mutation(method: string, params: unknown): Promise<unknown> },
+      owner as unknown as {
+        mutation(method: string, params: unknown, operation?: string): Promise<unknown>
+      },
       'mutation'
-    ).mockImplementation(async (method, params) => {
+    ).mockImplementation(async (method, params, operation) => {
       calls.push({ method, params: schemas[method].parse(params) })
-      return { operation_id: 'sample-operation', state: 'applied', recovery_path: null }
+      return {
+        operation_id: operation ?? 'sample-operation',
+        state: 'applied',
+        recovery_path: null,
+      }
     })
     Object.assign(client, { nodePath })
     const capabilities = {
