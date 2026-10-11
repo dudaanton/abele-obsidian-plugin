@@ -22,14 +22,14 @@ it('saves distinct bytes when an equal-sized existing image has the same FNV has
     arrayBuffer: downloaded,
   } as never)
   const screen = mount(SaveMediaModal, {
-    global: { stubs: { AiScopeEditor: true, ObsidianModal: { template: '<div><slot /></div>' } } },
+    global: { stubs: { AiScopeEditor: true, ObsidianModal: { template: '<div><slot /><slot name="footer" /></div>' } } },
   })
   try {
     const button = (text: string) =>
       screen.findAllComponents(Button).find((item) => item.props('text') === text)!
-    await button('Scan').trigger('click')
+    await button('Look').trigger('click')
     await flushPromises()
-    await button('Download').trigger('click')
+    await button('Download 1').trigger('click')
     await flushPromises()
     const images = app.vault.getFiles().filter((file) => file.extension === 'png')
     expect(images).toHaveLength(2)
@@ -54,14 +54,14 @@ it('still reuses an equal-sized attachment with identical content', async () => 
     arrayBuffer: bytes,
   } as never)
   const screen = mount(SaveMediaModal, {
-    global: { stubs: { AiScopeEditor: true, ObsidianModal: { template: '<div><slot /></div>' } } },
+    global: { stubs: { AiScopeEditor: true, ObsidianModal: { template: '<div><slot /><slot name="footer" /></div>' } } },
   })
   try {
     const button = (text: string) =>
       screen.findAllComponents(Button).find((item) => item.props('text') === text)!
-    await button('Scan').vm.$emit('click')
+    await button('Look').vm.$emit('click')
     await flushPromises()
-    await button('Download').vm.$emit('click')
+    await button('Download 1').vm.$emit('click')
     await flushPromises()
     expect(app.vault.getFiles().filter((file) => file.extension === 'png')).toHaveLength(1)
     expect(await app.vault.read(app.vault.getFileByPath('sample-note.md')!)).toContain(
@@ -91,16 +91,16 @@ it('reads attachment contents only for files the size of the downloaded media', 
   } as never)
   const read = vi.spyOn(app.vault, 'readBinary')
   const screen = mount(SaveMediaModal, {
-    global: { stubs: { AiScopeEditor: true, ObsidianModal: { template: '<div><slot /></div>' } } },
+    global: { stubs: { AiScopeEditor: true, ObsidianModal: { template: '<div><slot /><slot name="footer" /></div>' } } },
   })
   try {
     const button = (text: string) =>
       screen.findAllComponents(Button).find((item) => item.props('text') === text)!
-    await button('Scan').vm.$emit('click')
+    await button('Look').vm.$emit('click')
     await flushPromises()
-    await button('Download').vm.$emit('click')
+    await button('Download 1').vm.$emit('click')
     await flushPromises()
-    expect(screen.text()).toContain('saved')
+    expect(screen.find('.abele-result-mark_done').exists()).toBe(true)
     expect(read).not.toHaveBeenCalled()
   } finally {
     screen.unmount()

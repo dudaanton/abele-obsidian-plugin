@@ -1,99 +1,130 @@
 <template>
-  <ObsidianModal title="Save Remote Media" @close="emit('close')">
+  <ObsidianModal title="Save remote media" @close="emit('close')">
     <div class="abele-save-media">
-      <AiScopeEditor
-        :entries="scopeEntries"
-        :full-vault-access="fullVaultAccess"
-        @update:entries="scopeEntries = $event"
-        @update:full-vault-access="fullVaultAccess = $event"
-      />
-
-      <!-- Frontmatter properties to check -->
-      <div class="abele-save-media__props">
-        <div class="abele-scope-mgr__label">Frontmatter properties</div>
-        <div class="abele-save-media__props-list">
-          <span v-for="(prop, idx) in mediaProps" :key="prop" class="abele-save-media__prop-chip">
-            {{ prop }}
-            <Icon icon="x" @click="mediaProps.splice(idx, 1)" />
-          </span>
-        </div>
-        <div class="abele-save-media__props-add">
-          <input
-            type="text"
-            :value="newProp"
-            placeholder="Add property..."
-            @input="newProp = ($event.target as HTMLInputElement).value"
-            @keydown.enter="addProp"
-          />
-          <Button text="Add" @click="addProp" />
-        </div>
-      </div>
-
-      <div class="abele-save-media__actions">
-        <Button text="Scan" :disabled="scanning" @click="scan" />
-        <Button
-          v-if="items.length > 0"
-          :text="downloadingAll ? `Downloading ${downloadProgress}...` : 'Download All'"
-          :disabled="downloadingAll || allDone"
-          @click="downloadAll"
+      <!-- What to look through: words in Obsidian's own setting rows. -->
+      <Setting
+        name="Look in"
+        desc="Folders, notes or patterns like Daily/**, separated by commas. Empty looks through every note."
+      >
+        <Input
+          :model-value="places"
+          placeholder="Every note"
+          @update:model-value="setPlaces($event ?? '')"
         />
-      </div>
+      </Setting>
+      <Setting name="Properties" desc="Pictures named in these properties are saved too.">
+        <Input
+          :model-value="mediaProps.join(', ')"
+          placeholder="cover, image"
+          @update:model-value="setProps($event ?? '')"
+        />
+      </Setting>
 
-      <div v-if="scanning" class="abele-save-media__status">
-        Scanning... ({{ scannedFiles }}/{{ totalFiles }} files)
-      </div>
-
-      <div v-if="!scanning && scanned && items.length === 0" class="abele-save-media__status">
-        No remote media found.
-      </div>
-
-      <template v-if="items.length > 0">
-        <div class="abele-save-media__toolbar">
-          <span class="abele-save-media__count">
-            {{ items.length }} media in {{ fileCount }} files
-            <template v-if="doneCount"> · {{ doneCount }} saved</template>
-          </span>
-        </div>
-
-        <div class="abele-save-media__list">
-          <template v-for="(group, filePath) in groupedItems" :key="filePath">
-            <div class="abele-save-media__file-header">{{ filePath }}</div>
-            <div
-              v-for="item in group"
-              :key="item.url + item.filePath"
-              class="abele-save-media__item"
-            >
-              <div class="abele-save-media__item-url">{{ item.url }}</div>
-              <div class="abele-save-media__item-info">
-                <span class="abele-save-media__item-type">{{ item.type }}</span>
-                <span v-if="item.status === 'done'" class="abele-save-media__item-done">saved</span>
-                <span v-else-if="item.status === 'error'" class="abele-save-media__item-error">{{
-                  item.error
-                }}</span>
-                <span
-                  v-else-if="item.status === 'downloading'"
-                  class="abele-save-media__item-loading"
-                  >downloading...</span
-                >
-                <Button v-else text="Download" @click="downloadItem(item)" />
-              </div>
-            </div>
-          </template>
-        </div>
-      </template>
+      <FoundList
+        v-if="scanning || scanned"
+        icon="image-down"
+        :state="scanning ? 'working' : items.length === 0 ? 'none' : 'list'"
+        working-title="Looking for pictures from the web"
+        :working-text="`${scannedFiles} of ${totalFiles} notes read`"
+        :progress="{ done: scannedFiles, total: totalFiles }"
+        none-title="Nothing to save"
+        none-text="Every picture these notes show is already in the vault."
+        :summary="summary"
+        selectable
+        :chosen="chosenPending.length"
+        :total="pendingItems.length"
+        @select-all="chooseAll(true)"
+        @clear="chooseAll(false)"
+      >
+        <template v-for="(group, filePath) in groupedItems" :key="filePath">
+          <GroupHeading :label="noteName(filePath)" class="abele-save-media__note">
+            {{ group.length }}
+          </GroupHeading>
+          <EntryRow
+            v-for="item in group"
+            :key="item.url + item.filePath"
+            role="listitem"
+            class="abele-save-media__item"
+            :class="{ 'abele-save-media__item_done': item.status === 'done' }"
+          >
+            <template #leading>
+              <input
+                type="checkbox"
+                class="abele-save-media__check"
+                :checked="(item.status === 'pending' || item.status === 'error') && chosen.has(keyOf(item))"
+                :disabled="item.status !== 'pending' && item.status !== 'error'"
+                :aria-label="`Save ${item.url}`"
+                @change="toggle(item)"
+              />
+              <FileThumb :kind="kindOf(item)" :src="item.type === 'image' ? item.url : undefined" />
+            </template>
+            <span class="abele-save-media__item-url" :title="item.url">{{ fileOf(item.url) }}</span>
+            <template #meta>
+              <span>{{ hostOf(item.url) }}</span>
+              <span v-if="item.type === 'property'">in properties</span>
+            </template>
+            <template v-if="item.status !== 'pending'" #codes>
+              <ResultMark
+                :state="
+                  item.status === 'downloading'
+                    ? 'working'
+                    : item.status === 'done'
+                      ? 'done'
+                      : 'error'
+                "
+                :text="
+                  item.status === 'downloading'
+                    ? 'Downloading'
+                    : item.status === 'done'
+                      ? `Saved as ${item.savedPath ?? 'a file in the vault'}`
+                      : item.error
+                "
+              />
+            </template>
+            <template v-if="item.status === 'error'" #detail>
+              <div class="abele-save-media__error" role="alert">{{ item.error }}</div>
+            </template>
+          </EntryRow>
+        </template>
+      </FoundList>
     </div>
+    <template #footer>
+      <Button
+        :text="scanned ? 'Look again' : 'Look'"
+        tooltip="Look through the notes for pictures from the web"
+        :accent="!scanned"
+        :disabled="scanning || downloadingAll"
+        @click="scan"
+      />
+      <Button
+        v-if="scanned && pendingItems.length"
+        :text="
+          downloadingAll ? `Downloading ${downloadProgress}…` : `Download ${chosenPending.length}`
+        "
+        tooltip="Save the chosen pictures into the vault and point the notes at them"
+        accent
+        :loading="downloadingAll"
+        :disabled="downloadingAll || chosenPending.length === 0"
+        @click="downloadAll"
+      />
+    </template>
   </ObsidianModal>
 </template>
 
 <script setup lang="ts">
-import { ref, computed } from 'vue'
+import { ref, computed, reactive } from 'vue'
 import { hashMediaBytes } from '@/media/contentHash'
 import { TFile, TFolder } from 'obsidian'
 import { request as requestUrl } from '@/helpers/http'
 import ObsidianModal from './obsidian/Modal.vue'
 import Button from './obsidian/Button.vue'
-import Icon from './obsidian/Icon.vue'
-import AiScopeEditor from './AiScopeEditor.vue'
+import EntryRow from './obsidian/EntryRow.vue'
+import FileThumb from './obsidian/FileThumb.vue'
+import FoundList from './obsidian/FoundList.vue'
+import GroupHeading from './obsidian/GroupHeading.vue'
+import Input from './obsidian/Input.vue'
+import ResultMark from './obsidian/ResultMark.vue'
+import Setting from './obsidian/Setting.vue'
 import { GlobalStore } from '@/stores/GlobalStore'
 import { createImportedBinary } from '@/media/importImageFile'
 import { ensureAttachmentFolder } from '@/media/attachmentFolder'
@@ -108,14 +139,31 @@ const { app } = GlobalStore.getInstance()
 const scopeEntries = ref<ScopeEntry[]>([])
 const fullVaultAccess = ref(true)
 const mediaProps = ref(['cover', 'thumbnail', 'image', 'banner', 'poster'])
-const newProp = ref('')
 
-const addProp = () => {
-  const p = newProp.value.trim().toLowerCase()
-  if (p && !mediaProps.value.includes(p)) {
-    mediaProps.value.push(p)
-  }
-  newProp.value = ''
+const splitList = (text: string) =>
+  text
+    .split(',')
+    .map((part) => part.trim())
+    .filter(Boolean)
+
+/** The places typed into "Look in": a pattern where it has a star, else a folder or a note. */
+const places = computed(() =>
+  fullVaultAccess.value ? '' : scopeEntries.value.map((e) => e.path).join(', ')
+)
+const setPlaces = (text: string) => {
+  const parts = splitList(text)
+  fullVaultAccess.value = parts.length === 0
+  scopeEntries.value = parts.map((path) => ({
+    type: path.includes('*')
+      ? ('pattern' as const)
+      : app.vault.getAbstractFileByPath(path) instanceof TFile
+        ? ('file' as const)
+        : ('folder' as const),
+    path,
+  }))
+}
+const setProps = (text: string) => {
+  mediaProps.value = [...new Set(splitList(text).map((p) => p.toLowerCase()))]
 }
 
 // ── State ──
@@ -137,12 +185,56 @@ const scannedFiles = ref(0)
 const totalFiles = ref(0)
 const downloadingAll = ref(false)
 
-const allDone = computed(
-  () => items.value.length > 0 && items.value.every((i) => i.status === 'done')
-)
 const doneCount = computed(() => items.value.filter((i) => i.status === 'done').length)
 const fileCount = computed(() => new Set(items.value.map((i) => i.filePath)).size)
 const downloadProgress = computed(() => `${doneCount.value}/${items.value.length}`)
+
+// Every picture found is chosen at first; one taken out of the choice stays a link to the web.
+const keyOf = (item: MediaItem) => `${item.filePath}\n${item.url}`
+const chosen = reactive(new Set<string>())
+const pendingItems = computed(() =>
+  items.value.filter((i) => i.status === 'pending' || i.status === 'error')
+)
+const chosenPending = computed(() => pendingItems.value.filter((i) => chosen.has(keyOf(i))))
+const toggle = (item: MediaItem) => {
+  const key = keyOf(item)
+  if (chosen.has(key)) chosen.delete(key)
+  else chosen.add(key)
+}
+const chooseAll = (on: boolean) => {
+  chosen.clear()
+  if (on) for (const i of pendingItems.value) chosen.add(keyOf(i))
+}
+const summary = computed(() => {
+  const n = items.value.length
+  const parts = [
+    `${n} ${n === 1 ? 'picture' : 'pictures'} in ${fileCount.value} ${fileCount.value === 1 ? 'note' : 'notes'}`,
+  ]
+  if (doneCount.value) parts.push(`${doneCount.value} saved`)
+  return parts.join(' · ')
+})
+const noteName = (path: string) => path.slice(path.lastIndexOf('/') + 1).replace(/\.md$/, '')
+const fileOf = (url: string) => {
+  try {
+    const name = decodeURIComponent(new URL(url).pathname.split('/').filter(Boolean).pop() ?? '')
+    return name || url
+  } catch {
+    return url
+  }
+}
+const hostOf = (url: string) => {
+  try {
+    return new URL(url).host
+  } catch {
+    return ''
+  }
+}
+const kindOf = (item: MediaItem): 'image' | 'video' | 'audio' | 'other' =>
+  item.type === 'image' || item.type === 'video' || item.type === 'audio'
+    ? item.type
+    : item.type === 'property'
+      ? 'image'
+      : 'other'
 
 const groupedItems = computed(() => {
   const map: Record<string, MediaItem[]> = {}
@@ -272,6 +364,7 @@ const scan = async () => {
   } finally {
     scanning.value = false
     scanned.value = true
+    chooseAll(true)
   }
 }
 
@@ -292,7 +385,11 @@ const equalAttachment = async (hash: string, data: ArrayBuffer): Promise<string 
     if (!(file instanceof TFile)) continue
     try {
       const candidate = new Uint8Array(await app.vault.readBinary(file))
-      if (candidate.length === wanted.length && candidate.every((byte, index) => byte === wanted[index])) return path
+      if (
+        candidate.length === wanted.length &&
+        candidate.every((byte, index) => byte === wanted[index])
+      )
+        return path
     } catch {
       // A missing or unreadable candidate cannot prove equality.
     }
@@ -415,7 +512,11 @@ const downloadItem = async (item: MediaItem) => {
         const basePath = folder ? `${folder}/${finalName}` : finalName
         localPath = getAvailablePath(basePath)
 
-        const saved = await createImportedBinary(app, localPath, new Blob([response.arrayBuffer], { type: contentType }))
+        const saved = await createImportedBinary(
+          app,
+          localPath,
+          new Blob([response.arrayBuffer], { type: contentType })
+        )
         localPath = saved.path
         indexAttachment(contentHash, localPath)
       }
@@ -475,11 +576,7 @@ const replaceAllInNote = async (filePath: string, url: string, localPath: string
 const downloadAll = async () => {
   downloadingAll.value = true
   try {
-    for (const item of items.value) {
-      if (item.status === 'pending') {
-        await downloadItem(item)
-      }
-    }
+    for (const item of [...chosenPending.value]) await downloadItem(item)
   } finally {
     downloadingAll.value = false
   }
@@ -488,133 +585,42 @@ const downloadAll = async () => {
 
 <style lang="scss">
 .abele-save-media {
-  min-width: min(450px, 100%);
+  min-width: min(30em, 100%);
 }
 
-.abele-save-media__props {
-  margin-top: var(--size-4-2);
-}
+// A note's name over the pictures found in it, a step apart from the note before.
+.abele-save-media .abele-save-media__note {
+  margin-top: var(--size-4-3);
+  margin-bottom: var(--size-2-2);
 
-.abele-save-media__props-list {
-  display: flex;
-  flex-wrap: wrap;
-  gap: var(--size-2-2);
-  margin: var(--size-4-1) 0;
-}
-
-.abele-save-media__prop-chip {
-  display: inline-flex;
-  align-items: center;
-  gap: var(--size-2-1);
-  padding: var(--size-2-1) var(--size-2-3);
-  background-color: var(--background-secondary);
-  border-radius: var(--radius-s);
-  font-size: var(--font-smaller);
-  color: var(--text-normal);
-
-  .clickable-icon {
-    cursor: pointer;
-    color: var(--text-faint);
-    &:hover {
-      color: var(--text-muted);
-    }
+  // The first note under the list's summary line: apart from it, close to its own pictures.
+  &:first-child {
+    margin-top: var(--size-4-2);
   }
 }
 
-.abele-save-media__props-add {
-  display: flex;
-  gap: var(--size-4-1);
+.abele-save-media .abele-save-media__check {
+  margin: 0;
 
-  input {
-    flex: 1;
-  }
-}
-
-.abele-save-media__actions {
-  display: flex;
-  gap: var(--size-4-2);
-  margin: var(--size-4-2) 0;
-}
-
-.abele-save-media__toolbar {
-  margin-bottom: var(--size-4-2);
-}
-
-.abele-save-media__count {
-  font-size: var(--font-small);
-  color: var(--text-muted);
-}
-
-.abele-save-media__status {
-  color: var(--text-muted);
-  font-size: var(--font-small);
-  padding: var(--size-4-2) 0;
-}
-
-.abele-save-media__list {
-  display: flex;
-  flex-direction: column;
-  gap: var(--size-2-1);
-  max-height: 400px;
-  overflow-y: auto;
-}
-
-.abele-save-media__file-header {
-  font-size: var(--font-small);
-  font-weight: 600;
-  color: var(--text-normal);
-  padding: var(--size-4-1) 0 var(--size-2-1);
-  border-bottom: 1px solid var(--background-modifier-border);
-
-  &:not(:first-child) {
-    margin-top: var(--size-4-1);
-  }
-}
-
-.abele-save-media__item {
-  display: flex;
-  flex-direction: column;
-  gap: var(--size-2-1);
-  padding: var(--size-2-1) var(--size-4-2);
-  border-radius: var(--radius-s);
-
-  &:hover {
-    background-color: var(--background-secondary);
+  &:disabled {
+    visibility: hidden;
   }
 }
 
 .abele-save-media__item-url {
-  font-size: var(--font-smaller);
-  font-family: var(--font-monospace);
+  display: block;
   overflow: hidden;
   text-overflow: ellipsis;
   white-space: nowrap;
-  color: var(--text-muted);
 }
 
-.abele-save-media__item-info {
-  display: flex;
-  align-items: center;
-  gap: var(--size-4-2);
+.abele-save-media__item_done .abele-entry-row__title,
+.abele-save-media__item_done .abele-file-thumb {
+  opacity: 0.5;
 }
 
-.abele-save-media__item-type {
-  font-size: var(--font-smaller);
-  color: var(--text-faint);
-}
-
-.abele-save-media__item-done {
-  font-size: var(--font-smaller);
-  color: var(--color-green);
-}
-
-.abele-save-media__item-error {
-  font-size: var(--font-smaller);
+.abele-save-media__error {
   color: var(--text-error);
-}
-
-.abele-save-media__item-loading {
-  font-size: var(--font-smaller);
-  color: var(--text-accent);
+  font-size: var(--font-ui-smaller);
 }
 </style>
