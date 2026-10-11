@@ -4,10 +4,11 @@ import { join } from 'node:path'
 import * as cli from '../e2e/helpers/obsidianCli'
 
 const exec = vi.hoisted(() => vi.fn())
-vi.mock('node:child_process', () => ({
-  default: { execFileSync: exec },
-  execFileSync: exec,
-}))
+vi.mock('node:child_process', async () => {
+  const { framedSpawn } = await import('../helpers/cliProtocolMock')
+  const methods = { execFileSync: exec, spawnSync: framedSpawn(exec) }
+  return { ...methods, default: methods }
+})
 vi.mock('../e2e/helpers/target', () => ({ onPhone: () => false }))
 vi.mock('node:os', async (importOriginal) => {
   const original = await importOriginal<typeof import('node:os')>()

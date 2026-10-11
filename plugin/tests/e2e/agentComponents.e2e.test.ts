@@ -32,6 +32,7 @@ import {
 } from './helpers/obsidianCli'
 import { onPhone } from './helpers/target'
 import { shotDir } from './helpers/shots'
+import { SCRIPT_FIXTURE } from './helpers/scriptFixture'
 
 const SHOTS = shotDir('abele-agent-components')
 const PHONE = { width: 390, height: 844 }
@@ -125,6 +126,7 @@ interface Report {
 
 /** Runs in the app. `label` names the pictures: `desktop` or `phone`. */
 const probe = (label: string) => `(async () => {
+  ${SCRIPT_FIXTURE}
   const wait = (ms) => new Promise((r) => setTimeout(r, ms))
   const until = async (fn, ms) => {
     const deadline = Date.now() + ms
@@ -142,6 +144,7 @@ const probe = (label: string) => `(async () => {
   const createdDirs = []
   const realFetch = window.fetch
   const trust = app.loadLocalStorage('mermaid-vault-trust')
+  const scriptSnapshot = await saveScriptFixture()
   const win = require('@electron/remote').getCurrentWindow()
   fs.mkdirSync(${JSON.stringify(SHOTS)}, { recursive: true })
 
@@ -212,7 +215,14 @@ const probe = (label: string) => `(async () => {
   // A diagram is drawn when it first comes into view, as in a note: bring it there and wait.
   const diagramDrawn = async (el) => {
     reveal(el.querySelector('.abele-mermaid'))
-    await until(() => drawn(el).diagram > 0, 10000)
+    if (!await until(() => drawn(el).diagram > 0, 10000))
+      throw Error('Diagram did not render after entering its scroll viewport')
+    // Desktop controls intentionally appear on hover or focus-within. Establish the
+    // no-interaction state explicitly, rather than inheriting the previous probe's pointer.
+    document.activeElement?.blur()
+    await win.webContents.debugger.sendCommand('Input.dispatchMouseEvent', {type:'mouseMoved',x:0,y:0})
+    if (!await until(() => !el.querySelector('.abele-mermaid:hover, .abele-mermaid:focus-within'), 5000))
+      throw Error('Diagram remained hovered or focused before measuring controls')
   }
   const png = async (colour) => {
     const c = document.createElement('canvas')
@@ -285,7 +295,8 @@ const probe = (label: string) => `(async () => {
     report.leftAfterChat = document.querySelectorAll('.abele-chat-msg .abele-chart-container, .abele-chat-msg .abele-map').length
 
     // ── the script view ──
-    const folder = t.AbeleConfig.getInstance().ai.scriptsFolder
+    const folder = DIR + '/Scripts'
+    await enableScriptFixture(folder)
     const path = folder + '/' + ${JSON.stringify(SCRIPT_NAME)} + '.js'
     if (!get(folder)) { await app.vault.createFolder(folder); createdDirs.unshift(folder) }
     if (get(path)) await app.vault.delete(get(path))
@@ -293,6 +304,7 @@ const probe = (label: string) => `(async () => {
     await t.ScriptService.getInstance().discover()
     const script = t.ScriptService.getInstance().getAll().find((s) => s.meta.name === ${JSON.stringify(SCRIPT_NAME)})
     if (!script) throw new Error('the script was not discovered')
+    await approveScriptFixture(path, ${JSON.stringify(SCRIPT)})
     await t.ScriptService.getInstance().execute(script.path, {}, { source: 'command' })
     const live = () => document.querySelector('.abele-script-view_live')
     await until(() => live() && settled(live()), 20000)
@@ -321,6 +333,8 @@ const probe = (label: string) => `(async () => {
     } catch (e) {
       report.error = report.error || 'cleanup: ' + String((e && e.message) || e)
     }
+    try { await restoreScriptFixture(scriptSnapshot) }
+    catch (error) { report.error = report.error || 'script fixture restoration: ' + String(error) }
     app.saveLocalStorage('mermaid-vault-trust', trust ?? null)
   }
   return JSON.stringify(report)
@@ -388,7 +402,7 @@ function expectEverythingDrawn(get: () => Report) {
   })
 
   it('puts no control over the diagram where they are always shown', () => {
-    // On a computer they show on hover only, which the probe never does.
+    // On a computer they show on hover/focus; the probe neutralizes both before measuring.
     expect(get().chat!.controlsOverDiagram).toBe(0)
     expect(get().view!.controlsOverDiagram).toBe(0)
   })

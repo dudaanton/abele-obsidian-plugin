@@ -1,4 +1,7 @@
-export const BINDING_DIR = 'Sample binding probe'
+import { randomUUID } from 'node:crypto'
+import { SCRIPT_FIXTURE } from './scriptFixture'
+
+export const BINDING_DIR = 'Sample binding probe-' + randomUUID()
 export const BINDING_CHAT = `${BINDING_DIR}/source.abchat`
 export const BINDING_CARD = `${BINDING_DIR}/Cards/A sample card with a deliberately long descriptive title.md`
 const script = `// @name Sample bind captured words
@@ -6,25 +9,27 @@ const script = `// @name Sample bind captured words
 const card = await create(${JSON.stringify(BINDING_CARD)}, selection.text + '\\n\\n' + selection.backlink)
 return await selection.bind(card)`
 
-export const BINDING_SETUP = `
+const bindingSetup = `
+  ${SCRIPT_FIXTURE}
   const config = window.__abeleTest.AbeleConfig.getInstance()
   const chats = window.__abeleTest.ChatService.getInstance()
-  const bindingOld = { ai:config.ai, trust:app.loadLocalStorage('abele-script-trust') ?? null, native:app.vault.getConfig('nativeMenus') ?? null }
-  app.vault.setConfig('nativeMenus',false)
+  const bindingOld = { scripts:await saveScriptFixture(), native:app.vault.getConfig('nativeMenus') ?? null, directory:${JSON.stringify(BINDING_DIR)}, ownsDirectory:false }
   window.__bindingOld = bindingOld
+  try {
+  app.vault.setConfig('nativeMenus',false)
   if(app.vault.getAbstractFileByPath(${JSON.stringify(BINDING_DIR)}))throw Error('Binding fixture already exists')
   await app.vault.createFolder(${JSON.stringify(BINDING_DIR)})
+  bindingOld.ownsDirectory=true
   await app.vault.createFolder(${JSON.stringify(BINDING_DIR + '/Cards')})
   await app.vault.createFolder(${JSON.stringify(BINDING_DIR + '/Scripts')})
   await app.vault.create(${JSON.stringify(BINDING_CHAT)},[
     {v:2,k:'meta',type:'abele-chat',providerId:'',modelId:'',created:'',title:'Sample binding source'},
     {k:'msg',id:'sample-reply',role:'assistant',content:'echo **echo**',timestamp:1}
   ].map(JSON.stringify).join('\\n')+'\\n')
-  config.ai={...config.ai,scriptsEnabled:true,scriptsFolder:${JSON.stringify(BINDING_DIR + '/Scripts')},confirmForeignScripts:false}
-  await config.saveSettings()
-  window.__abeleTest.ScriptTrust.getInstance().disarm()
+  await enableScriptFixture(${JSON.stringify(BINDING_DIR + '/Scripts')})
   await app.vault.create(${JSON.stringify(BINDING_DIR + '/Scripts/bind.js')},${JSON.stringify(script)})
   await window.__abeleTest.ScriptService.getInstance().discover()
+  await approveScriptFixture(${JSON.stringify(BINDING_DIR + '/Scripts/bind.js')},${JSON.stringify(script)})
   await chats.openChatFile(app.vault.getAbstractFileByPath(${JSON.stringify(BINDING_CHAT)}));await chats.revealSidebar()
 `
 
@@ -78,12 +83,26 @@ export const BINDING_PRELUDE = `
 `
 
 export const BINDING_CLEANUP = `
+  ${SCRIPT_FIXTURE}
   document.getSelection()?.removeAllRanges()
   document.body.dispatchEvent(new KeyboardEvent('keydown',{key:'Escape',bubbles:true}))
   const owner=window.__abeleTest.ChatService.getInstance().getSessionByFile(${JSON.stringify(BINDING_CHAT)})
   if(owner)await window.__abeleTest.ChatService.getInstance().closeTab(owner.id)
-  const folder=app.vault.getAbstractFileByPath(${JSON.stringify(BINDING_DIR)});if(folder)await app.vault.delete(folder,true)
   const old=window.__bindingOld
-  if(old){const config=window.__abeleTest.AbeleConfig.getInstance();config.ai=old.ai;await config.saveSettings();app.saveLocalStorage('abele-script-trust',old.trust);app.vault.setConfig('nativeMenus',old.native);window.__abeleTest.ScriptTrust.reset();await window.__abeleTest.ScriptService.getInstance().discover()}
-  delete window.__bindingOld
+  if(old?.directory===${JSON.stringify(BINDING_DIR)}){
+    const folder=app.vault.getAbstractFileByPath(${JSON.stringify(BINDING_DIR)});if(folder&&old.ownsDirectory)await app.vault.delete(folder,true)
+    await restoreScriptFixture(old.scripts)
+    app.vault.setConfig('nativeMenus',old.native)
+    delete window.__bindingOld
+  }
+`
+
+// Setup owns partial creation too: failure before returning the snapshot must clean up.
+export const BINDING_SETUP =
+  bindingSetup +
+  `
+  } catch(error) {
+    ${BINDING_CLEANUP}
+    throw error
+  }
 `

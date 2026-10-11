@@ -1,5 +1,6 @@
 /** Folded history and viewport anchoring in the task timeline's real scroll owners. */
 import { afterAll, beforeAll, describe, expect, it } from 'vitest'
+import { readFileSync } from 'node:fs'
 import {
   evalLong,
   evalRaw,
@@ -22,7 +23,7 @@ const available = isObsidianRunning() && hasTestApi()
 const FOLDER = 'Sample timeline probe'
 const SHOTS = shotDir('task-timeline')
 const PHASE = process.env.TIMELINE_SHOT_PHASE ?? 'after'
-let referenceCss = ''
+let comparisonCss = ''
 interface Probe {
   error?: string
   initial?: string[]
@@ -274,15 +275,13 @@ const script = (footer: boolean, short = false) => String.raw`(async function* (
         if (name === 'unchanged') {
           // Compare the ORIGINAL block in its real scroll owner, not a clone or a moved
           // camera. The frozen stylesheet is rendered on this very build/DOM/theme path.
-          // Keep the intentionally changed sticky banner and phone main-tab inset in both
-          // captures; neither is part of the old date block's appearance.
+          // Keep all current chrome and shared controls in both captures; only the date
+          // block's own rules come from the frozen reference.
           const sheet = [...document.querySelectorAll('style')].find(s => s.textContent.includes('.abele-timeline__date-block'))
           if (!sheet) throw Error('timeline stylesheet not found')
           const current = sheet.textContent
-          const structuralCss = ${timelineStructuralCss.toString()}
-          const retained = structuralCss(sheet.sheet.cssRules)
           try {
-            sheet.textContent = fs.readFileSync(${JSON.stringify(referenceCss)}, 'utf8') + '\n' + retained
+            sheet.textContent = ${JSON.stringify(comparisonCss)}
             const before = await capture('-before')
             sheet.textContent = current
             const after = await capture('-after')
@@ -569,7 +568,16 @@ describe.skipIf(!available)('task timeline scrolling', () => {
     shortMobile: Probe[] = []
   let state: { size: number[]; layout: unknown } | null = null
   beforeAll(async () => {
-    if (!onPhone()) referenceCss = await timelineStyleReference()
+    if (!onPhone()) {
+      const reference = readFileSync(await timelineStyleReference(), 'utf8')
+      const current = evalRaw(
+        `[...document.querySelectorAll('style')].find(s => s.textContent.includes('.abele-timeline__date-block')).textContent`
+      )
+      const appearance = timelineStructuralCss(reference, true)
+      if (!appearance.includes('.abele-timeline__date-block'))
+        throw Error('Frozen date-block rules missing')
+      comparisonCss = timelineStructuralCss(current) + '\n' + appearance
+    }
     state = JSON.parse(
       evalRaw(
         `JSON.stringify({ size: window.__e2eHost ? [] : require('@electron/remote').getCurrentWindow().getContentSize(), layout: app.workspace.getLayout() })`

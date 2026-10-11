@@ -189,8 +189,21 @@ describe.skipIf(!available)('a book on a phone', () => {
     drawer?: { left: number; right: number; rows: number } | null
     afterPick?: { panel: boolean; chapter: string }
     dialog?: { left: number; right: number; width: number } | null
-    search?: { hits: number; over: number; closeInside: boolean; stripInside: boolean; focusOutside: boolean; focusedRingInside: boolean }
-    bar?: { over: number; height: number } | null
+    search?: {
+      hits: number
+      over: number
+      closeInside: boolean
+      stripInside: boolean
+      focusOutside: boolean
+      focusedRingInside: boolean
+    }
+    bar?: {
+      over: number
+      height: number
+      left: number
+      scrolled: boolean
+      lastActionReachable: boolean
+    } | null
     speech?: { over: number; bottom: number; height: number; rows: number } | null
   } = {}
 
@@ -321,7 +334,7 @@ describe.skipIf(!available)('a book on a phone', () => {
       view.reading.stopSearch()
       await wait(300)
 
-      // Words selected: the bar of what can be done to them fits the screen, on one or two rows.
+      // Words selected: the bar viewport fits the screen; its single action row scrolls sideways.
       const doc = view.engine.renderer.getContents()[0].doc
       const p = doc.querySelector('p')
       const range = doc.createRange(); range.setStart(p.firstChild, 0); range.setEnd(p.firstChild, 5)
@@ -330,8 +343,18 @@ describe.skipIf(!available)('a book on a phone', () => {
       // The bar comes once the words have rested: it stays hidden while they are being selected.
       for (let i = 0; i < 30 && !view.contentEl.querySelector('.abele-book-selection'); i++) await wait(100)
       await wait(200)
-      const bar = view.contentEl.querySelector('.abele-book-selection')?.getBoundingClientRect()
-      report.bar = bar ? { over: edge('.abele-book-selection'), height: Math.round(bar.height) } : null
+      const barEl = view.contentEl.querySelector('.abele-book-selection')
+      const bar = barEl?.getBoundingClientRect()
+      if (bar) {
+        const last = [...barEl.querySelectorAll('[role="button"],button')].at(-1)
+        barEl.scrollLeft = barEl.scrollWidth
+        await wait(100)
+        const end = last?.getBoundingClientRect()
+        report.bar = { over: edge('.abele-book-selection', true), left:bar.left, height:Math.round(bar.height),
+          scrolled:barEl.scrollLeft > 0,
+          lastActionReachable:!!end && end.width > 0 && end.left >= bar.left && end.right <= bar.right + 1 }
+        barEl.scrollLeft = 0
+      } else report.bar = null
       await shoot('rich-selection')
       view.reading.clearSelection()
       await wait(300)
@@ -427,7 +450,10 @@ describe.skipIf(!available)('a book on a phone', () => {
     expect(overlays.search?.focusedRingInside).toBe(true)
     expect(overlays.bar).toBeTruthy()
     expect(overlays.bar!.over).toBeLessThanOrEqual(0)
-    // Two rows at most: the colours, and what can be done.
+    expect(overlays.bar!.left).toBeGreaterThanOrEqual(0)
+    expect(overlays.bar!.scrolled).toBe(true)
+    expect(overlays.bar!.lastActionReachable).toBe(true)
+    // The single scrollable row must not take extra page height.
     expect(overlays.bar!.height).toBeLessThan(110)
   })
 

@@ -10,6 +10,7 @@ import {
 import { onPhone, targets } from './helpers/target'
 import { shotDir } from './helpers/shots'
 import { WAIT_PRELUDE } from './helpers/wait'
+import { SCRIPT_FIXTURE } from './helpers/scriptFixture'
 
 targets('desktop', 'phone')
 const available = isObsidianRunning() && hasTestApi()
@@ -27,6 +28,7 @@ await new Promise(resolve => setTimeout(resolve, 800))
 await create(${JSON.stringify(NOTE)}, params.words + '\\n\\n' + selection.backlink)
 return selection.source.kind`
 const PRELUDE = `${WAIT_PRELUDE}
+  ${SCRIPT_FIXTURE}
   const config = window.__abeleTest.AbeleConfig.getInstance()
   let scripts = window.__abeleTest.ScriptService.getInstance()
   const chats = window.__abeleTest.ChatService.getInstance(), comments = window.__abeleTest.CommentService.getInstance()
@@ -132,8 +134,10 @@ for (const layout of onPhone() ? ['native phone'] : ['desktop', 'phone layout'])
         await reloadApp('app.emulateMobile(true)')
         evalRaw('require("@electron/remote").getCurrentWindow().setContentSize(390,844)')
       }
-      old = evalJson(
-        `({ai:window.__abeleTest.AbeleConfig.getInstance().ai, native:app.vault.getConfig('nativeMenus') ?? null, trust:app.loadLocalStorage('abele-script-trust') ?? null})`
+      old = JSON.parse(
+        await evalLong(
+          `(async()=>{${SCRIPT_FIXTURE}return JSON.stringify({scripts:await saveScriptFixture(),native:app.vault.getConfig('nativeMenus') ?? null})})()`
+        )
       )
       const result = await run<any>(`
       if (app.vault.getAbstractFileByPath(${JSON.stringify(DIR)})) throw Error('Fixture already exists')
@@ -142,13 +146,14 @@ for (const layout of onPhone() ? ['native phone'] : ['desktop', 'phone layout'])
         {k:'msg',id:'root',role:'user',content:'A sample request.',timestamp:1},
         {k:'msg',id:'answer',parentId:'root',role:'assistant',content:'echo **echo**',timestamp:2}]
       await app.vault.create(${JSON.stringify(CHAT)}, records.map(JSON.stringify).join('\\n') + '\\n')
-      config.ai = {...config.ai,scriptsEnabled:true,scriptsFolder:${JSON.stringify(SCRIPTS)},chatSelectionScripts:[]}
+      await enableScriptFixture(${JSON.stringify(SCRIPTS)})
+      config.ai = {...config.ai,chatSelectionScripts:[]}
       await config.saveSettings()
       scripts = window.__abeleTest.ScriptService.getInstance()
-      window.__abeleTest.ScriptTrust.getInstance().arm([])
       await app.vault.create(${JSON.stringify(SCRIPTS + '/capture.js')}, ${JSON.stringify(SCRIPT)})
       for (let i=0;i<35;i++) await app.vault.create(${JSON.stringify(SCRIPTS)}+'/sample-'+i+'.js', '// @name Sample long script '+i+' with a descriptive label\\n// @description More context for a source-neutral selection script.\\nreturn selection.text')
       await scripts.discover()
+      await approveScriptFixture(${JSON.stringify(SCRIPTS + '/capture.js')}, ${JSON.stringify(SCRIPT)}, false)
       app.vault.setConfig('nativeMenus',false)
       await chats.openChatFile(app.vault.getAbstractFileByPath(${JSON.stringify(CHAT)})); await chats.revealSidebar()
       const picker = new window.__abeleTest.SelectionScriptPicker(app,scripts.getAll(),()=>{},'chat')
@@ -167,8 +172,7 @@ for (const layout of onPhone() ? ['native phone'] : ['desktop', 'phone layout'])
       for (const path of [${JSON.stringify(CHAT)}, comment]) { const owner=chats.getSessionByFile(path);if(owner)await chats.closeTab(owner.id) }
       await comments.remove('sample-script-discussion')
       const folder=app.vault.getAbstractFileByPath(${JSON.stringify(DIR)});if(folder)await app.vault.delete(folder,true)
-      config.ai=${JSON.stringify(old.ai)}; await config.saveSettings(); await scripts.discover()
-      app.saveLocalStorage('abele-script-trust',${JSON.stringify(old.trust)});window.__abeleTest.ScriptTrust.reset()
+      await restoreScriptFixture(${JSON.stringify(old.scripts)})
       app.vault.setConfig('nativeMenus',${JSON.stringify(old.native)})
       return JSON.stringify({clean:true})
     `)

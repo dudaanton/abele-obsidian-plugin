@@ -23,7 +23,9 @@ it('a normal plugin agent delegates through owner UI to both fake providers, sur
   chmodSync(fake, 0o700)
   const env = {
     ...process.env,
+    HOME: dir,
     ABELE_CLAUDE_PATH: fake,
+    ABELE_CODEX_PATH: '',
     ABELE_PI_HOST: resolve('tests/fixtures/nodeDelegationPi.mjs'),
   }
   const repo = resolve(dir, 'repo')
@@ -47,10 +49,14 @@ it('a normal plugin agent delegates through owner UI to both fake providers, sur
     'sample'
   )
   const enroll = (label: string) => {
-    const r = spawnSync(process.execPath, [cli, 'token', 'create', label, '--state-dir', dir], {
-      encoding: 'utf8',
-      env,
-    })
+    const r = spawnSync(
+      process.execPath,
+      [cli, 'token', 'create', label, '--json', '--state-dir', dir],
+      {
+        encoding: 'utf8',
+        env,
+      }
+    )
     expect(r.status, r.stderr).toBe(0)
     return JSON.parse(r.stdout).token as string
   }
@@ -67,6 +73,10 @@ it('a normal plugin agent delegates through owner UI to both fake providers, sur
       [
         cli,
         'start',
+        '--json',
+        '--no-codex',
+        '--node-name',
+        'Sample delegation node',
         '--state-dir',
         dir,
         '--port',
@@ -165,8 +175,13 @@ it('a normal plugin agent delegates through owner UI to both fake providers, sur
     }
     for (let i = 0; i < 600; i++) {
       const histories = await Promise.all(children.map((c) => human!.history(c.sessionId)))
-      if (histories.every(h => h.some(e => e.type === 'run.completed'))) break
-      if (i === 599 || histories.some(h => h.some(e => ['run.failed', 'input.failed', 'input.delivery_unknown'].includes(e.type))))
+      if (histories.every((h) => h.some((e) => e.type === 'run.completed'))) break
+      if (
+        i === 599 ||
+        histories.some((h) =>
+          h.some((e) => ['run.failed', 'input.failed', 'input.delivery_unknown'].includes(e.type))
+        )
+      )
         throw Error('Offline delegated tasks did not complete: ' + JSON.stringify(histories))
       await wait(25)
     }

@@ -2,7 +2,11 @@ import { afterEach, beforeEach, expect, it, vi } from 'vitest'
 import { setBackgroundThrottling } from '../e2e/helpers/obsidianCli'
 
 const exec = vi.hoisted(() => vi.fn())
-vi.mock('node:child_process', () => ({ default: { execFileSync: exec }, execFileSync: exec }))
+vi.mock('node:child_process', async () => {
+  const { framedSpawn } = await import('../helpers/cliProtocolMock')
+  const methods = { execFileSync: exec, spawnSync: framedSpawn(exec) }
+  return { ...methods, default: methods }
+})
 vi.mock('../e2e/helpers/target', () => ({ onPhone: () => false }))
 beforeEach(() => exec.mockReset())
 afterEach(() => exec.mockReset())

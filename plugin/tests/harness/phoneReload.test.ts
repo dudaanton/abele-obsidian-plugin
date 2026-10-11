@@ -1,5 +1,6 @@
 import { afterEach, expect, it, vi } from 'vitest'
 import { reloadApp } from '../e2e/helpers/obsidianCli'
+import { evalSource, evalOutput } from '../helpers/cliProtocolMock'
 
 const phone = vi.hoisted(() => ({ eval: vi.fn(), install: vi.fn() }))
 vi.mock('../e2e/helpers/target', () => ({ onPhone: () => true }))
@@ -18,21 +19,23 @@ it('confirms a new ready generation rather than the old API or a fixed sleep', a
   let generation = 10,
     requestId: string | null = null,
     ready = false
-  phone.eval.mockImplementation((code) => {
+  phone.eval.mockImplementation((wrapped) => {
+    const code = evalSource(wrapped)
     if (code.includes('location.reload')) {
       requestId = /sessionStorage.setItem\('[^']+', "([^"]+)"\)/.exec(code)![1]
-      return '=> ' + requestId
+      return evalOutput(wrapped, '=> ' + requestId)
     }
-    return (
+    return evalOutput(
+      wrapped,
       '=> ' +
-      JSON.stringify({
-        owner: 'sample-vault',
-        generation,
-        requestId,
-        mobile: true,
-        apiReady: ready,
-        layoutReady: ready,
-      })
+        JSON.stringify({
+          owner: 'sample-vault',
+          generation,
+          requestId,
+          mobile: true,
+          apiReady: ready,
+          layoutReady: ready,
+        })
     )
   })
   const result = reloadApp()
@@ -50,16 +53,19 @@ it('confirms a new ready generation rather than the old API or a fixed sleep', a
 
 it('keeps the reload deadline when only the old generation answers', async () => {
   vi.useFakeTimers()
-  phone.eval.mockReturnValue(
-    '=> ' +
-      JSON.stringify({
-        owner: 'sample-vault',
-        generation: 10,
-        requestId: null,
-        mobile: true,
-        apiReady: true,
-        layoutReady: true,
-      })
+  phone.eval.mockImplementation((wrapped) =>
+    evalOutput(
+      wrapped,
+      '=> ' +
+        JSON.stringify({
+          owner: 'sample-vault',
+          generation: 10,
+          requestId: null,
+          mobile: true,
+          apiReady: true,
+          layoutReady: true,
+        })
+    )
   )
   const result = reloadApp().catch((error) => error)
   await vi.runAllTimersAsync()

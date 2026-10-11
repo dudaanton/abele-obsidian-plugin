@@ -22,6 +22,7 @@ import {
 import { evalAsync } from './helpers/githubLive'
 import { buildRichEpub } from '../fixtures/books/richBook'
 import { WAIT_PRELUDE, wait as pause } from './helpers/wait'
+import { correctiveScrollFrames } from './helpers/restoreCorrections'
 
 const available = isObsidianRunning() && hasTestApi()
 const DIR = 'Abele note places e2e'
@@ -274,8 +275,9 @@ const highlightWins = (): Record<string, Jump> & { error?: string } =>
 interface Settle {
   /** The line at the top of the note at every frame after it opened, to a tenth. */
   tops: number[]
-  /** The frames at which the note was scrolled to a place by code: the restore's own scrolls. */
+  /** Frames where a restore call actually changed the scroller, not an unlanded retry. */
   scrolled: number[]
+  attempts: number[]
   /** Frames at which the person's wheel turned, when it did. */
   wheelFrom?: number
   saved: number
@@ -301,23 +303,35 @@ const settles = (wheel: boolean): Record<string, Settle> & { error?: string } =>
       await noteDrawn(leaf, 'A short note.')
       // Every scroll made to the note from here on, by the frame it was made at: the restore's.
       let at = -1
-      const scrolled = []
-      const v = leaf.view
-      const renderer = v.previewMode.renderer
-      const own = { set: v.setEphemeralState, apply: renderer.applyScroll }
-      v.setEphemeralState = function (st) { if (st && st.scroll !== undefined) scrolled.push(at); return own.set.call(this, st) }
-      renderer.applyScroll = function (...a) { scrolled.push(at); return own.apply.apply(this, a) }
-      await leaf.openFile(file(${JSON.stringify(GROWING)}), { active: true })
+      const attempts = []
       const scroller = () => m === 'preview'
         ? leaf.view.containerEl.querySelector('.markdown-reading-view > .markdown-preview-view')
         : leaf.view.containerEl.querySelector('.cm-scroller')
-      const tops = []
-      const WHEEL_FROM = 12
+      const v = leaf.view
+      const renderer = v.previewMode.renderer
+      const own = { set: v.setEphemeralState, apply: renderer.applyScroll }
+      let applying = false
+      const measureApply = fn => {
+        if (applying) return fn()
+        attempts.push(at)
+        applying = true
+        try { return fn() }
+        finally { applying = false }
+      }
+      v.setEphemeralState = function (st) { return st && st.scroll !== undefined ? measureApply(() => own.set.call(this, st)) : own.set.call(this, st) }
+      renderer.applyScroll = function (...a) { return measureApply(() => own.apply.apply(this, a)) }
+      await leaf.openFile(file(${JSON.stringify(GROWING)}), { active: true })
+      const tops = [], pixels = []
+      let wheelFrom = null
       for (let i = 0; i < 150; i++) {
         at = i
         await frame()
         const s = scroller()
-        if (${wheel} && i >= WHEEL_FROM && i < WHEEL_FROM + 30) {
+        pixels.push(s.scrollTop)
+        // Start the person's interruption after the first restoration actually lands,
+        // not while a slow renderer is still at the top and has nowhere to scroll up.
+        if (${wheel} && wheelFrom === null && i >= 12 && scrollOf(leaf) > saved - 5) wheelFrom = i
+        if (${wheel} && wheelFrom !== null && i >= wheelFrom && i < wheelFrom + 30) {
           s.dispatchEvent(new WheelEvent('wheel', { deltaY: -40, bubbles: true, cancelable: true }))
           s.scrollTop -= 40
         }
@@ -327,7 +341,9 @@ const settles = (wheel: boolean): Record<string, Settle> & { error?: string } =>
       }
       delete v.setEphemeralState
       renderer.applyScroll = own.apply
-      out[m] = { tops, scrolled, saved, end: scrollOf(leaf), ...(${wheel} ? { wheelFrom: WHEEL_FROM } : {}) }
+      if (${wheel} && wheelFrom === null) throw Error('The wheel fixture never reached its initial saved place')
+      const scrolled = (${correctiveScrollFrames.toString()})(attempts, pixels)
+      out[m] = { tops, scrolled, attempts, saved, end: scrollOf(leaf), ...(${wheel} ? { wheelFrom } : {}) }
       leaf.detach()
       await until(() => !leaf.containerEl.isConnected)
     }
@@ -349,6 +365,7 @@ const expectSettles = (r: Record<string, Settle> & { error?: string }) => {
     expect(s.scrolled.length, trace).toBeGreaterThan(0)
     expect(s.scrolled.length, trace).toBeLessThanOrEqual(3)
     expect(Math.max(...s.scrolled), trace).toBeLessThan(30)
+    expect(Math.max(...s.attempts), trace).toBeLessThan(30)
     // Near the place, the note having moved it a little as it was measured.
     expect(Math.abs(s.end - s.saved), trace).toBeLessThan(5)
   }

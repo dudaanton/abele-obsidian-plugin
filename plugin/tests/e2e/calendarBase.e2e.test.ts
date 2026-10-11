@@ -26,8 +26,10 @@ const dayOf = (d: Date) => `${d.getFullYear()}-${pad(d.getMonth() + 1)}-${pad(d.
 const now = new Date()
 const today = dayOf(now)
 const plus = (n: number) => dayOf(new Date(now.getFullYear(), now.getMonth(), now.getDate() + n))
-/** A day of this month other than today, for the day that holds too much to show. */
-const busyDay = dayOf(new Date(now.getFullYear(), now.getMonth(), now.getDate() === 15 ? 16 : 15))
+/** A day of this month with only the six busy notes, never another fixture's inclusive span. */
+const busyDay = Array.from({ length: 28 }, (_, i) =>
+  dayOf(new Date(now.getFullYear(), now.getMonth(), i + 1))
+).find((day) => ![today, plus(1), plus(2), plus(3), plus(4)].includes(day))!
 
 const note = (fm: Record<string, string>) =>
   `---\ntype: task\n${Object.entries(fm)

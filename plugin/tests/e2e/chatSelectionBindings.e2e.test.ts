@@ -69,16 +69,19 @@ for (const layout of onPhone() ? ['native phone'] : ['desktop', 'phone layout'])
       await evalLong(`(async()=>{${BINDING_RESET}return 'reset'})()`, 45000)
     })
     afterAll(async () => {
-      if (saved)
-        await evalLong(
-          `(async()=>{window.__bindingOld=${saved};${BINDING_CLEANUP}return 'clean'})()`,
-          45000
-        )
-      if (size) {
-        evalRaw(
-          `require("@electron/remote").getCurrentWindow().setContentSize(${size[0]},${size[1]})`
-        )
-        await reloadApp('app.emulateMobile(false)')
+      try {
+        if (saved)
+          await evalLong(
+            `(async()=>{window.__bindingOld=${saved};${BINDING_CLEANUP}return 'clean'})()`,
+            45000
+          )
+      } finally {
+        if (size) {
+          evalRaw(
+            `require("@electron/remote").getCurrentWindow().setContentSize(${size[0]},${size[1]})`
+          )
+          await reloadApp('app.emulateMobile(false)')
+        }
       }
     })
 
