@@ -177,6 +177,13 @@ it('pairs and opens target-bound node files history editor and fake chats in the
     )
     await capture('desktop-pair-decoded')
     await evalLong(
+      `(async()=>{${prelude}const address=visible('.abele-pair input[aria-label="Address"]');address.value='invalid host name';address.dispatchEvent(new Event('input',{bubbles:true}));await wait(50);button(visible('.abele-pair'),'Connect').click();await until(()=>visible('.abele-pair .setting-item.is-invalid'));if(!visible('.abele-pair .setting-item.is-invalid').textContent.includes('Address'))throw Error('Pairing error was not on Address');return 'address error'})()`
+    )
+    await capture('desktop-pair-address-error')
+    await evalLong(
+      `(async()=>{${prelude}const address=visible('.abele-pair input[aria-label="Address"]');address.value='sample.example.ts.net';address.dispatchEvent(new Event('input',{bubbles:true}));return 'address restored'})()`
+    )
+    await evalLong(
       `(async()=>{${prelude}const field=visible('.abele-pair input[aria-label="Port"]');field.value='1e2';field.dispatchEvent(new Event('input',{bubbles:true}));await wait(100);if(!button(visible('.abele-pair'),'Connect').disabled)throw Error('Invalid port admitted');return 'invalid port'})()`
     )
     await capture('desktop-pair-error')
@@ -209,6 +216,10 @@ it('pairs and opens target-bound node files history editor and fake chats in the
       )
     await capture('desktop-changes')
     await evalLong(
+      `(async()=>{${prelude}const chats=api.ChatService.getInstance();const id=chats.newTab();const chat=chats.getAllSessions().find(s=>s.id===id);if(!chat)throw Error('Chat was not created');chat.chatTitle.value='Sample Obsidian chat '+id;window.__nodePathScopeChat=id;const row=[...visible('.abele-folder-tree').querySelectorAll('.abele-folder-tree__copy > .tree-item-self')].find(r=>r.textContent.includes('trunk'));row.dispatchEvent(new MouseEvent('contextmenu',{bubbles:true,cancelable:true,clientX:row.getBoundingClientRect().left,clientY:row.getBoundingClientRect().bottom}));await until(()=>[...document.querySelectorAll('.menu-item')].some(i=>i.textContent.includes('Give the Obsidian chat access')));[...document.querySelectorAll('.menu-item')].find(i=>i.textContent.includes('Give the Obsidian chat access')).click();await until(()=>[...document.querySelectorAll('.suggestion-item')].some(i=>i.textContent.includes(id)));[...document.querySelectorAll('.suggestion-item')].find(i=>i.textContent.includes(id)).click();await until(()=>[...document.querySelectorAll('.modal button')].some(b=>b.textContent.trim()==='Give access'));[...document.querySelectorAll('.modal button')].find(b=>b.textContent.trim()==='Give access').click();await until(()=>chat.overrides.value.nodeScope?.length===1&&!visible('.modal'));await chats.revealSidebar({focus:false});await until(()=>visible('[aria-label="Chat node access"]'));return 'scope granted by row menu'})()`
+    )
+    await capture('desktop-chat-scope-header')
+    await evalLong(
       `(async()=>{${prelude}const panel=visible('.abele-node-panel');const file=[...panel.querySelectorAll('.tree-item-self')].find(r=>r.textContent.includes('sample.ts'));file.click();await until(()=>visible('.abele-file-view')?.textContent.includes('value = 3'));const view=app.workspace.getLeavesOfType('abele-node-file')[0].view;if(view.file.mode.value!=='diff')throw Error('Changed file did not default to diff');if(JSON.stringify(view.getState()).includes('wss://'))throw Error('Transport URL leaked into layout');return 'diff'})()`
     )
     await capture('desktop-diff')
@@ -216,6 +227,19 @@ it('pairs and opens target-bound node files history editor and fake chats in the
       `(async()=>{${prelude}const view=app.workspace.getLeavesOfType('abele-node-file')[0].view;const model=api.NodePathService.getInstance().model(${JSON.stringify(registration)});await model.select(${JSON.stringify(ids.external)});await view.file.step(1);if(view.file.target.id!==${JSON.stringify(ids.root)})throw Error('File arrows followed the sidebar');view.file.mode.value='file';return 'bound navigation'})()`
     )
     await capture('desktop-whole')
+    await open('file', {
+      path: 'src/sample.ts',
+      debug: {
+        conversationId: 'sample-debug-chat',
+        sourceId: 'sample-source',
+        debugSessionId: 'sample-debug',
+        incarnation: 'sample-incarnation',
+      },
+    })
+    await evalLong(
+      `(async()=>{${prelude}await until(()=>visible('.abele-debug-source__margin'));return 'debug margin'})()`
+    )
+    await capture('desktop-file-debug-margin')
     await open('history')
     await evalLong(
       `(async()=>{${prelude}await until(()=>visible('.abele-history__row'));return 'history'})()`
@@ -278,6 +302,10 @@ it('pairs and opens target-bound node files history editor and fake chats in the
     )
     await capture('phone-pair-decoded')
     await evalLong(
+      `(async()=>{${prelude}const address=visible('.abele-pair input[aria-label="Address"]');address.value='invalid host name';address.dispatchEvent(new Event('input',{bubbles:true}));await wait(50);button(visible('.abele-pair'),'Connect').click();await until(()=>visible('.abele-pair .setting-item.is-invalid'));return 'phone address error'})()`
+    )
+    await capture('phone-pair-address-error')
+    await evalLong(
       `(async()=>{${prelude}const port=visible('.abele-pair input[aria-label="Port"]');port.value='0';port.dispatchEvent(new Event('input',{bubbles:true}));await wait(50);return 'phone error'})()`
     )
     await capture('phone-pair-error')
@@ -292,6 +320,23 @@ it('pairs and opens target-bound node files history editor and fake chats in the
       `(async()=>{${prelude}const panel=visible('.abele-node-panel');[...panel.querySelectorAll('.tree-item-self')].find(r=>r.textContent.includes('sample.ts')).click();await until(()=>visible('.abele-file-view'));if(app.workspace.leftSplit.collapsed===false)throw Error('File did not close the drawer');return JSON.stringify({width:innerWidth,height:innerHeight})})()`
     )
     await capture('phone-diff')
+    await open('file', {
+      path: 'src/sample.ts',
+      debug: {
+        conversationId: 'sample-debug-chat',
+        sourceId: 'sample-source',
+        debugSessionId: 'sample-debug',
+        incarnation: 'sample-incarnation',
+      },
+    })
+    await evalLong(
+      `(async()=>{${prelude}app.workspace.leftSplit.collapse();try{await until(()=>visible('.abele-debug-source__margin'))}catch(error){throw Error(JSON.stringify(app.workspace.getLeavesOfType('abele-node-file').map(l=>({state:l.view.getState(),mode:l.view.file?.mode.value,error:l.view.file?.error.value,document:l.view.file?.document.value,html:l.view.contentEl.innerHTML.slice(0,1800)}))))};return 'phone debug margin'})()`
+    )
+    await capture('phone-file-debug-margin')
+    await evalLong(
+      `(async()=>{${prelude}const chats=api.ChatService.getInstance();const chat=chats.getAllSessions().find(s=>s.overrides.value.nodeScope?.some(scope=>scope.node_id===${JSON.stringify(rootTarget.nodeId)}));if(!chat)throw Error('Scoped chat was not restored');chats.switchTab(chat.id);await chats.revealSidebar({focus:false});await until(()=>visible('[aria-label="Chat node access"]'));return 'phone scoped chat'})()`
+    )
+    await capture('phone-chat-scope-header')
     await open('history')
     await evalLong(
       `(async()=>{${prelude}app.workspace.leftSplit.collapse();await until(()=>visible('.abele-history__row'));return 'phone history'})()`

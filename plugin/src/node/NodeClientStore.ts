@@ -28,6 +28,9 @@ export interface NodeClientState extends ClientState {
 
 const StateSchema = z
   .object({
+    operationRequests: z
+      .record(z.string(), z.object({ method: z.string(), params: z.unknown() }).strict())
+      .optional(),
     chatMutations: z.record(z.string(), NodeMutationRecordSchema).optional(),
     delegation: DelegationStorageSchema.optional(),
     fileDrafts: z.record(z.string(), FileDraftSchema).optional(),
@@ -78,6 +81,8 @@ function readState(raw: unknown): NodeClientState {
       values.map((e) => NodeEventSchema.parse(e)),
     ])
   )
+  for (const request of Object.values(state.operationRequests ?? {}))
+    validateParams(request.method, request.params)
   for (const intent of Object.values(state.nodePathIntents ?? {}))
     validateParams(intent.method, intent.params)
   const outbox = state.outbox.map((entry) => {
