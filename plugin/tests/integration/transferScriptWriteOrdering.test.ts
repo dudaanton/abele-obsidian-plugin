@@ -33,6 +33,18 @@ afterEach(() => {
 })
 
 describe('explicitly selected script file transfers', () => {
+  it('hashes explicit native approval even when older checking is disarmed', async () => {
+    ScriptTrust.getInstance().disarm()
+    const hash = await sha256(source)
+    const digest = vi.spyOn(crypto.subtle, 'digest')
+    expect(await applyFiles(app as never, [entry], 'Automation')).toEqual({
+      written: 1,
+      failed: [],
+    })
+    expect(digest).toHaveBeenCalledExactlyOnceWith('SHA-256', new TextEncoder().encode(source))
+    expect(localScriptVersions(app as never)).toContainEqual({ path: target, sha: hash })
+  })
+
   it.each([false, true])(
     'persists the selected file before native approval hashing with older checking armed=%s',
     async (armed) => {

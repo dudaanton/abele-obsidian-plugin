@@ -1,5 +1,5 @@
 import type { App } from 'obsidian'
-import { sha256 } from '@abele/sync-core'
+import { sha256 } from '../ScriptTrust'
 import { newStateId } from '@/sync/ids'
 import { scriptTrustFor, SCRIPT_TRUST_KEY } from './scriptTrustStorage'
 import { rememberLocalScriptVersion } from './localScriptUpgrade'
@@ -22,7 +22,7 @@ export async function noteManagedLocalScriptWrite(
   const trust = await scriptTrustFor(app)
   try {
     if (trust && trust.provenance.binding.facet !== 'personal') return
-    const sha = await sha256(new TextEncoder().encode(source))
+    const sha = await sha256(source)
     if (await app.vault.adapter.exists(SCRIPT_CONTEXT_HOLD_FILE))
       throw new Error('Script execution blocked while a protected context is isolated')
     assertContext()
