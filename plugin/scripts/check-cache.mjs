@@ -191,6 +191,9 @@ export function cacheEntry(root, stage, identity, env = process.env) {
   const seal = resolve(directory, 'seal.json')
   const path = resolve(directory, `working-${process.pid}`)
   try {
+    // PIDs are reused, especially across containers. Never seed a run from an abandoned
+    // unsealed working file after the harness has safely reclaimed a dead owner's lease.
+    rmSync(path, { force: true })
     try {
       const previous = JSON.parse(readFileSync(seal, 'utf8'))
       if (previous.identity === identity && previous.sha256 === sha(readFileSync(stored)))

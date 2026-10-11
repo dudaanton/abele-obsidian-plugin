@@ -143,6 +143,19 @@ describe('external check caches', () => {
     corrupt.release()
   })
 
+  it('discards unsealed working residue when a process identifier is reused', () => {
+    const f = fixture()
+    const env = { ABELE_CHECK_CACHE_DIR: f.cache }
+    const previous = cacheEntry(f.root, 'normal', 'sample', env)
+    const abandoned = previous.path
+    previous.release()
+    // Simulate a dead owner after its lease was safely reclaimed, before output was sealed.
+    writeFileSync(abandoned, 'unsealed partial output')
+    const next = cacheEntry(f.root, 'normal', 'sample', env)
+    expect(existsSync(next.path)).toBe(false)
+    next.release()
+  })
+
   it('uses the normal incremental compiler without hiding changed imported types', () => {
     const f = fixture()
     writeFileSync(
