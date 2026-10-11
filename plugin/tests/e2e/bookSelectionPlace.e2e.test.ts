@@ -417,6 +417,13 @@ describe.skipIf(!available)('a word is selected where it is drawn', () => {
               const probe=window.__abeleSelectionProbe, live=observeDelivery(probe.capture,app.workspace.activeLeaf,window)
               const control=view().containerEl.querySelector('.abele-book-selection__actions svg.lucide-x')?.closest('.abele-obsidian-icon')
               if (!control || view().model.active || !view().model.selection) throw Error('owned public selection-dismiss control unavailable')
+              // The public selection bar scrolls horizontally on a narrow screen. Reveal its
+              // existing dismiss action before witnessing and sending the single cleanup tap.
+              control.scrollIntoView({block:'nearest',inline:'nearest',behavior:'instant'})
+              if (!await until(()=>{
+                const r=control.getBoundingClientRect(),top=document.elementFromPoint(r.left+r.width/2,r.top+r.height/2)
+                return r.width>0&&r.height>0&&r.left>=0&&r.right<=innerWidth&&(top===control||control.contains(top))
+              },5000)) throw Error('owned public selection-dismiss control did not become hittable')
               const r=control.getBoundingClientRect(), css={x:r.left+r.width/2,y:r.top+r.height/2}, top=document.elementFromPoint(css.x,css.y)
               return JSON.stringify({owned:live.ready&&live.owner===${JSON.stringify(pick.owner)}&&live.path===${JSON.stringify(BOOK)}&&Object.values(live.identities).every(Boolean),
                 hit:control.isConnected&&r.width>0&&r.height>0&&r.left>=0&&r.top>=0&&r.right<=innerWidth&&r.bottom<=innerHeight&&(top===control||control.contains(top)),
