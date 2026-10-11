@@ -21,7 +21,8 @@ vi.mock('../../src/sync/tokenEngines', () => ({
   },
 }))
 
-it.each([false, true])('resets owned state and private artifacts (retry=%s)', async (retry) => {
+const cases = [false, true, 'unresolved'] as const
+it.each(cases)('resets owned state and private artifacts (retry=%s)', async (retry) => {
   const factory = new IDBFactory()
   const descriptor = Object.getOwnPropertyDescriptor(window, 'indexedDB')
   Object.defineProperty(window, 'indexedDB', { configurable: true, value: factory })
@@ -84,7 +85,7 @@ it.each([false, true])('resets owned state and private artifacts (retry=%s)', as
           schema: 1,
           operationId: 'sample-reset',
           kind: 'disconnect-preparation',
-          phase: 'complete',
+          phase: retry === 'unresolved' ? 'disconnect-preparing' : 'complete',
           revision: 0,
           connectionGeneration: 1,
           expected: null,
@@ -136,7 +137,11 @@ it.each([false, true])('resets owned state and private artifacts (retry=%s)', as
   const fake = buildFakeVault([
     { path: 'note.md', content: 'keep' },
     { path: 'Notes/retained.bin', content: 'keep retained' },
-    { path: staging, content: new TextDecoder().decode(markerBytes) },
+    {
+      path: staging,
+      content:
+        retry === 'unresolved' ? 'sample unique late edit' : new TextDecoder().decode(markerBytes),
+    },
     {
       path: '.obsidian/plugins/abele/sync-staging/orphan.incoming',
       content: new TextDecoder().decode(markerBytes),
@@ -175,11 +180,13 @@ it.each([false, true])('resets owned state and private artifacts (retry=%s)', as
   } as unknown as Plugin
   try {
     await captureSyncTokenOwnership(plugin, 'leased-pool')
-    if (retry) {
-      vi.spyOn(vault.adapter, 'remove').mockRejectedValueOnce(new Error('sample removal failed'))
+    if (retry === true) {
+      vi.spyOn(vault.adapter, 'rename').mockRejectedValueOnce(
+        new Error('sample preservation failed')
+      )
       await expect(
         resetSyncTokenState(plugin, { vault: 'leased-pool', confirm: 'reset-sync-token-state' })
-      ).rejects.toThrow('sample removal failed')
+      ).rejects.toThrow('sample preservation failed')
       expect((await factory.databases()).map((one) => one.name)).toContain(record.ledgerId)
       expect(registry.records()).toHaveLength(1)
       expect(local.get(EXTERNAL_ACTIVATION_KEY)).not.toBeNull()
@@ -189,8 +196,8 @@ it.each([false, true])('resets owned state and private artifacts (retry=%s)', as
       resetSyncTokenState(plugin, { vault: 'leased-pool', confirm: 'reset-sync-token-state' }),
       resetSyncTokenState(plugin, { vault: 'leased-pool', confirm: 'reset-sync-token-state' }),
     ])
-    expect(cancelStartup).toHaveBeenCalledTimes(retry ? 2 : 1)
-    expect(close).toHaveBeenCalledTimes(retry ? 2 : 1)
+    expect(cancelStartup).toHaveBeenCalledTimes(retry === true ? 2 : 1)
+    expect(close).toHaveBeenCalledTimes(retry === true ? 2 : 1)
     expect(ui.activity.value).toEqual({})
     expect(ui.rows.value).toEqual([])
     expect(registry.records()).toEqual([])
@@ -210,6 +217,10 @@ it.each([false, true])('resets owned state and private artifacts (retry=%s)', as
     expect(await vault.adapter.exists('.obsidian/plugins/abele/sync-staging/orphan.incoming')).toBe(
       false
     )
+    if (retry === 'unresolved')
+      expect(await vault.adapter.read(staging.replace('/sync-staging/', '/sync-recovery/'))).toBe(
+        'sample unique late edit'
+      )
     expect(await unrelated.getMeta('keep')).toBe('yes')
     expect((await factory.databases()).map((one) => one.name)).not.toContain(record.ledgerId)
     expect((await factory.databases()).map((one) => one.name)).not.toContain(copyName)

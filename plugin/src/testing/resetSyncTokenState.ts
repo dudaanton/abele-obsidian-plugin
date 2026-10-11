@@ -1,3 +1,4 @@
+import { preservePrivateArtifacts } from '../sync/privateRecovery'
 import type { Plugin } from 'obsidian'
 import { sha256 } from '@abele/sync-core'
 import { TokenEngines } from '../sync/tokenEngines'
@@ -7,7 +8,7 @@ import { openDeviceReviews } from '../sync/openDeviceReviews'
 import type { DeviceTokenSecrets } from '../sync/tokenConnectionRegistry'
 import { resetTokenPool, type TokenPoolResetRequest } from './resetTokenPool'
 import { tokenPoolMarkers } from './tokenPoolMarkers'
-import { inspectExistingLedger, discardOrphanPrivateArtifacts } from '../sync/external/pluginSafety'
+import { inspectExistingLedger, recoverOrphanPrivateArtifacts } from '../sync/external/pluginSafety'
 import { decodeExternalDocument, EXTERNAL_STATE_KEY } from '../sync/external/state'
 import { stagingDirectory } from '../sync/stagingDirectory'
 
@@ -113,8 +114,9 @@ async function performResetSyncTokenState(
         old.cancelStartup()
         await old.close()
         ui.reviews?.close()
-        // Native publication retains the incoming inode. Drain writers, then remove only
-        // private artifacts whose ownership is still provable before deleting the ledgers.
+        // Native publication retains the incoming inode. Drain writers, then move
+        // private artifacts into recovery before deleting the ledgers. Ownership alone
+        // never proves these bytes disposable; independent writers may have edited them.
         const paths = new Set<string>()
         const directory = stagingDirectory(plugin.app.vault.configDir) + '/'
         for (const name of ownedDatabases) {
@@ -134,9 +136,7 @@ async function performResetSyncTokenState(
               paths.add(artifact.path)
           }
         }
-        for (const path of paths)
-          if (await plugin.app.vault.adapter.exists(path))
-            await plugin.app.vault.adapter.remove(path)
+        await preservePrivateArtifacts(plugin.app, paths)
       },
       removeDatabase: (name) => IndexedDbStateStore.delete(window.indexedDB, name),
       forget: async () => {
@@ -146,7 +146,7 @@ async function performResetSyncTokenState(
         ).secrets
         for (const record of ui.registry.records()) ui.registry.beginForget(record.id)
         ui.registry.finishForgotten(secrets)
-        await discardOrphanPrivateArtifacts(plugin.app, window.indexedDB)
+        await recoverOrphanPrivateArtifacts(plugin.app, window.indexedDB)
         plugin.app.saveLocalStorage(JOURNAL, null)
         ui.runtimes.clear()
         ui.activity.value = {}
