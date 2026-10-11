@@ -8,6 +8,7 @@ import {
 } from '@abele/sync-core'
 import { bytesOf } from './vaultWrites'
 import { sha256 } from '@noble/hashes/sha2'
+import { probeSequentialFiles, type ProbeEvent } from './mobileSequentialSource'
 
 const PHONE_FALLBACK_BYTES = 50 * 1024 * 1024
 interface Handle {
@@ -38,7 +39,7 @@ interface MobileFiles {
   stat(options: { path: string }): Promise<{ size: number }>
   readFileInChunks?(
     options: { path: string; offset: number; length: number; chunkSize: number },
-    callback: (chunk: { data: string } | null, error?: { message: string }) => void
+    callback: (chunk: { data: string | null } | null, error?: { message: string } | string) => void
   ): Promise<string>
 }
 const mobileFiles = (): MobileFiles | undefined =>
@@ -58,66 +59,28 @@ function decode(data: string, limit: number): Uint8Array {
   const binary = atob(data)
   return Uint8Array.from(binary, (character) => character.charCodeAt(0))
 }
-/** Ranged chunk callbacks end at the empty chunk. Only one bridge call is outstanding. */
 function readMobileChunk(
   files: MobileFiles,
   path: string,
   offset: number,
   length: number,
-  signal?: AbortSignal
+  signal?: AbortSignal,
+  trace: (event: ProbeEvent) => void = () => {}
 ): Promise<Uint8Array> {
-  if (!files.readFileInChunks)
-    return files.readFile({ path, offset, length }).then((result) => decode(result.data, length))
-  return new Promise((resolve, reject) => {
-    let received: Uint8Array | undefined
-    let failed = false
-    const cleanup = () => {
-      window.clearTimeout(timer)
-      signal?.removeEventListener('abort', abort)
-    }
-    const refuse = (error: unknown) => {
-      failed = true
-      received = undefined
-      cleanup()
-      reject(
-        error instanceof Error ? error : new Error('Native bounded read failed', { cause: error })
-      )
-    }
-    const abort = () => refuse(signal?.reason ?? new Error('cancelled'))
-    const timer = window.setTimeout(
-      () => refuse(new EngineError('io', 'Native bounded read did not finish')),
-      30000
-    )
-    signal?.addEventListener('abort', abort, { once: true })
-    if (signal?.aborted) {
-      abort()
-      return
-    }
-    void files
-      .readFileInChunks({ path, offset, length, chunkSize: length || 1 }, (chunk, error) => {
-        if (failed) return
-        try {
-          if (error) throw new Error(error.message)
-          if (!chunk || typeof chunk.data !== 'string') throw new Error('Invalid filesystem chunk')
-          if (chunk.data === '') {
-            failed = true
-            cleanup()
-            resolve(received ?? new Uint8Array())
-            return
-          }
-          if (received) throw new EngineError('io', 'Native filesystem ignored the bounded range')
-          received = decode(chunk.data, length)
-        } catch (error) {
-          refuse(error)
-        }
-      })
-      .catch(refuse)
+  signal?.throwIfAborted()
+  const options = { path, offset, length }
+  trace({ step: 'call', method: 'readFile', options })
+  return files.readFile(options).then((result) => {
+    trace({ step: 'result', method: 'readFile', result })
+    signal?.throwIfAborted()
+    return decode(result.data, length)
   })
 }
 
 /** Native capabilities are discovered on the adapter, without loading Node on mobile. */
 export class BoundedVaultIo {
   private rangedMobile: Promise<MobileFiles | null> | undefined
+  private sequentialMobile: Awaited<ReturnType<typeof probeSequentialFiles>> = null
   constructor(
     readonly adapter: DataAdapter,
     private readonly assertOwned: () => void = () => {},
@@ -164,29 +127,58 @@ export class BoundedVaultIo {
   private mobile(): Promise<MobileFiles | null> {
     return (this.rangedMobile ??= this.probeMobile())
   }
-  private async probeMobile(): Promise<MobileFiles | null> {
+  async diagnoseMobile() {
+    const events: ProbeEvent[] = []
+    const available = await this.probeMobile((event) => events.push(event))
+    return {
+      available: available !== null,
+      mode: this.sequentialMobile ? 'sequential' : available ? 'ranged' : 'unavailable',
+      events,
+    }
+  }
+  private async probeMobile(
+    trace: (event: ProbeEvent) => void = () => {}
+  ): Promise<MobileFiles | null> {
     const files = mobileFiles()
+    trace({
+      step: 'capabilities',
+      stat: typeof files?.stat,
+      readFile: typeof files?.readFile,
+      readFileInChunks: typeof files?.readFileInChunks,
+    })
     if ((!files?.readFile && !files?.readFileInChunks) || !files?.stat) return null
+    this.sequentialMobile = await probeSequentialFiles(this.adapter, files, trace)
+    if (this.sequentialMobile) {
+      console.debug('[abele-sync] native filesystem sequential chunks verified')
+      return files
+    }
+    if (!files.readFile) return null
     const path = `.abele-sync-${Math.random().toString(36).slice(2, 10).padEnd(8, '0')}.tmp`
     let created = false
     try {
       if (await this.adapter.exists(path)) return null
       this.assertOwned()
+      trace({ step: 'create', path, bytes: 4 })
       await this.adapter.writeBinary(path, new Uint8Array([11, 37, 89, 143]).buffer)
       created = true
       const absolute = this.mobilePath(path)
+      trace({ step: 'call', method: 'stat', options: { path: absolute } })
       const stat = await files.stat({ path: absolute })
-      const bytes = await readMobileChunk(files, absolute, 1, 2)
+      trace({ step: 'result', method: 'stat', result: stat })
+      const bytes = await readMobileChunk(files, absolute, 1, 2, undefined, trace)
+      trace({ step: 'result', method: 'ranged-read', bytes: Array.from(bytes) })
       if (stat.size !== 4 || bytes.length !== 2 || bytes[0] !== 37 || bytes[1] !== 89) return null
       console.debug('[abele-sync] native filesystem bounded ranges verified')
       return files
     } catch (error) {
+      trace({ step: 'error', message: error instanceof Error ? error.message : String(error) })
       console.debug('[abele-sync] native filesystem ranges unavailable', error)
       return null
     } finally {
       if (created) {
         this.assertOwned()
         await this.adapter.remove(path)
+        trace({ step: 'delete', path })
       }
     }
   }
@@ -200,6 +192,7 @@ export class BoundedVaultIo {
         ? await raw.fsPromises.open(raw.getFullPath(path), 'r')
         : null
     const files = handle ? null : await this.mobile()
+    const sequential = files && this.sequentialMobile?.open(path, original.size)
     let fallback: Uint8Array | null = null
     if (!handle && !files) {
       if (original.size > PHONE_FALLBACK_BYTES)
@@ -247,7 +240,9 @@ export class BoundedVaultIo {
             received += bytesRead
           }
         } else if (files) {
-          bytes = await readMobileChunk(files, this.mobilePath(path), offset, length, signal)
+          bytes = sequential
+            ? await sequential.read(offset, length, signal)
+            : await readMobileChunk(files, this.mobilePath(path), offset, length, signal)
         } else bytes = fallback.slice(offset, offset + length)
         signal?.throwIfAborted()
         this.assertOwned()
@@ -259,6 +254,7 @@ export class BoundedVaultIo {
         if (closed) return
         closed = true
         fallback = null
+        await sequential?.close()
         await handle?.close()
       },
     }

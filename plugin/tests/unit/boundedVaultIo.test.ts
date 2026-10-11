@@ -62,6 +62,18 @@ describe('bounded vault I/O', () => {
               size: probes.get(path.slice('file:///sample/'.length))?.length ?? size,
             }),
             readFileInChunks,
+            readFile: async (options: { path: string; offset: number; length: number }) => {
+              calls.push({ ...options, chunkSize: options.length })
+              const probe = probes.get(options.path.slice('file:///sample/'.length))
+              const part = probe
+                ? ranges
+                  ? probe.slice(options.offset, options.offset + options.length)
+                  : probe
+                : null
+              return {
+                data: part ? btoa(String.fromCharCode(...part)) : btoa('I'.repeat(options.length)),
+              }
+            },
           },
         },
       })
@@ -83,7 +95,7 @@ describe('bounded vault I/O', () => {
           expect(bytes[0]).toBe(73)
         }
         await source.close()
-        expect(calls).toHaveLength(4)
+        expect(calls.filter((call) => call.offset !== undefined)).toHaveLength(4)
       }
       expect(probes.size).toBe(0)
       expect(readBinary).not.toHaveBeenCalled()
