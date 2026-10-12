@@ -19,6 +19,7 @@ body.is-phone {
 body.is-phone
   :is(
     .abele-obsidian-icon.clickable-icon,
+    .abele-obsidian-button_plain,
     .abele-list-row__main,
     .abele-disclosure__control,
     .abele-swatch-picker__choice,

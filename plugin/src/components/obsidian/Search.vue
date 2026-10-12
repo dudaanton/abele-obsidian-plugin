@@ -28,6 +28,11 @@ const props = defineProps<{
   disabled?: boolean
   /** Puts the cursor in the field as it appears — for a field opened by pressing something. */
   autofocus?: boolean
+  /** A short result code in the native field's end, instead of its clear control. */
+  suffix?: string
+  suffixLabel?: string
+  /** Optional compatibility/style hook on the result code. */
+  suffixClass?: string
 }>()
 
 const el = ref<HTMLElement>()
@@ -37,7 +42,13 @@ const closeSuggest = () => {
   suggest?.close()
   suggest = undefined
 }
-defineExpose({ focus: () => search.value?.inputEl.focus() })
+defineExpose({
+  focus: () => search.value?.inputEl.focus(),
+  select: () => search.value?.inputEl.select(),
+  get inputRef() {
+    return search.value?.inputEl
+  },
+})
 onBeforeUnmount(closeSuggest)
 
 const initSearch = () => {
@@ -66,6 +77,7 @@ const initSearch = () => {
   if (props.modelValue) {
     search.value.setValue(props.modelValue)
   }
+  updateSuffix()
   search.value.onChange((value) => {
     emit('update:model-value', value)
   })
@@ -78,6 +90,26 @@ const initSearch = () => {
   if (props.autofocus) search.value.inputEl.focus()
 }
 
+const updateSuffix = () => {
+  const container = search.value?.inputEl.parentElement
+  if (!container) return
+  let suffix = container.querySelector<HTMLElement>('.abele-obsidian-search__suffix')
+  if (props.suffix === undefined) suffix?.remove()
+  else {
+    suffix ??= container.createSpan({ cls: 'abele-obsidian-search__suffix' })
+    suffix.className = ['abele-obsidian-search__suffix', props.suffixClass]
+      .filter(Boolean)
+      .join(' ')
+    suffix.textContent = props.suffix
+    suffix.setAttribute('aria-live', 'polite')
+    suffix.setAttribute('aria-label', props.suffixLabel ?? props.suffix)
+  }
+  container.classList.toggle(
+    'abele-obsidian-search__container_with-suffix',
+    props.suffix !== undefined
+  )
+}
+watch(() => [props.suffix, props.suffixLabel, props.suffixClass], updateSuffix)
 onMounted(initSearch)
 
 watch(
@@ -118,6 +150,22 @@ const emit = defineEmits<{
 </script>
 
 <style>
+.abele-obsidian-search__container_with-suffix .abele-obsidian-search__clear {
+  display: none;
+}
+.abele-obsidian-search__container_with-suffix input {
+  padding-inline-end: var(--size-4-12);
+}
+.abele-obsidian-search__suffix {
+  position: absolute;
+  inset-inline-end: var(--size-4-3);
+  top: 50%;
+  transform: translateY(-50%);
+  color: var(--text-muted);
+  font-size: var(--font-ui-smaller);
+  font-variant-numeric: tabular-nums;
+  pointer-events: none;
+}
 /* A field that takes no input offers nothing to clear. */
 .abele-obsidian-search_disabled .abele-obsidian-search__clear {
   display: none;

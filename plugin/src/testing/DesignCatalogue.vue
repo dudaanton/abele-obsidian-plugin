@@ -209,6 +209,16 @@
           /></Setting>
           <Setting name="Total unknown"><Progress label="Sample import total unknown" /></Setting>
         </Section>
+        <Section title="Requests">
+          <RequestCard waiting>
+            <span>Read the sample page?</span>
+            <Button text="Allow" tooltip="Allow the sample request" accent @click="announce('Sample allowed')" />
+          </RequestCard>
+          <RequestCard role="alert">
+            <span>Sample connection unavailable</span>
+            <Button text="Retry" tooltip="Retry the sample request" @click="announce('Sample retry')" />
+          </RequestCard>
+        </Section>
         <Section title="Compact states">
           <ListRow v-for="state in compactStates" :key="state.label" :title="state.label">
             <template #leading><StatusDot :tone="state.tone" :label="state.label" /></template>
@@ -646,6 +656,7 @@ import LabelDot from '@/components/obsidian/LabelDot.vue'
 import PeriodSelector from '@/components/obsidian/PeriodSelector.vue'
 import Calendar from '@/components/Calendar.vue'
 import Card from '@/components/obsidian/Card.vue'
+import RequestCard from '@/components/obsidian/RequestCard.vue'
 import CardGrid from '@/components/obsidian/CardGrid.vue'
 import Badge from '@/components/obsidian/Badge.vue'
 import StatusDot from '@/components/obsidian/StatusDot.vue'

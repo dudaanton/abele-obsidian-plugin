@@ -1,8 +1,11 @@
 <template>
   <button
     ref="el"
+    type="button"
     class="abele-obsidian-button"
     :class="{
+      'clickable-icon': plain,
+      'abele-obsidian-button_plain': plain,
       'mod-cta': accent,
       'mod-warning': warning,
       'abele-obsidian-button_accent': accent,
@@ -41,6 +44,8 @@ const props = defineProps<{
   /** An icon after the label: where the button leads, out of the app or into a menu. */
   trailingIcon?: string
   accent?: boolean
+  /** Native neutral row/glyph action rather than a filled form button. */
+  plain?: boolean
   /** For an action that destroys something. */
   warning?: boolean
   /** The action is running: a spinner takes the icon's place and a second press does nothing. */
@@ -53,6 +58,8 @@ const props = defineProps<{
   disabled?: boolean
   /** What pressing this does, in a few words. Every button carries one — see docs/Design.md. */
   tooltip?: string
+  /** Stable action name when the tooltip also carries contextual facts. */
+  label?: string
 }>()
 
 const emit = defineEmits<{
@@ -77,7 +84,10 @@ function onClick(): void {
 // Obsidian's own tooltip rather than the browser's `title`: it is styled with the theme and
 // appears without the second-long delay a native tooltip has.
 const applyTooltip = () => {
-  if (el.value) setTooltip(el.value, props.tooltip ?? '')
+  if (el.value) {
+    setTooltip(el.value, props.tooltip ?? props.text)
+    if (props.label) el.value.setAttribute('aria-label', props.label)
+  }
 }
 
 const applyIcons = () => {
@@ -96,7 +106,7 @@ onMounted(() => {
   applyTooltip()
   applyIcons()
 })
-watch(() => props.tooltip, applyTooltip)
+watch(() => [props.tooltip, props.label, props.text], applyTooltip)
 watch(
   () => [props.icon, props.trailingIcon, props.loading],
   () => void nextTick(applyIcons)
@@ -132,6 +142,13 @@ watch(
     display: flex;
     align-items: center;
   }
+}
+
+.abele-obsidian-button_plain {
+  text-align: start;
+  font-weight: var(--font-normal);
+  white-space: normal;
+  box-shadow: none;
 }
 
 .abele-obsidian-button_block {

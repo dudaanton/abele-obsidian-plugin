@@ -59,6 +59,7 @@ export const CATALOGUE_COMPONENTS = [
   'QrCode',
   'Quote',
   'RelativeTime',
+  'RequestCard',
   'ResultMark',
   'RunReport',
   'Search',
