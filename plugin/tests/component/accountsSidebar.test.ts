@@ -5,12 +5,21 @@
 import { describe, it, expect, beforeEach, afterEach, vi } from 'vitest'
 import { mount, flushPromises, type VueWrapper } from '@vue/test-utils'
 import { nextTick, toRaw } from 'vue'
+import { Menu, MenuItem } from 'obsidian'
 import AccountsSidebar from '@/components/AccountsSidebar.vue'
 import { GlobalStore } from '@/stores/GlobalStore'
 import { AbeleConfig } from '@/services/AbeleConfig'
 import { DEFAULT_ACCOUNTS_LIST } from '@/helpers/accountRows'
 import type { FakeFileSpec } from '../helpers/fakeVault'
 import { useVault } from '../helpers/testEnv'
+
+// Native menu labels are not represented by the shared test double yet.
+Object.assign(MenuItem.prototype, {
+  setIsLabel(this: MenuItem, isLabel: boolean) {
+    Object.assign(this, { isLabel })
+    return this
+  },
+})
 
 const opened: string[] = []
 vi.mock('@/helpers/vaultUtils', async (importOriginal) => ({
@@ -61,7 +70,7 @@ async function render() {
 const rowNames = (w: VueWrapper) =>
   w.findAll('.abele-accounts-sidebar__name').map((el) => el.text())
 
-const headings = (w: VueWrapper) => w.findAll('.abele-section__heading').map((el) => el.text())
+const headings = (w: VueWrapper) => w.findAll('.abele-group-heading__label').map((el) => el.text())
 
 beforeEach(() => {
   opened.length = 0
@@ -92,15 +101,24 @@ describe('accounts sidebar', () => {
 
     expect(headings(w)).toEqual(['Assets', 'Debts'])
     expect(rowNames(w)).toEqual(['Savings', 'Card', 'Mortgage', 'Lent to Bob'])
-    expect(w.text()).toContain('5,120.00')
+    // The head counts what is listed; a group's total stands at the end of its heading, an
+    // account's balance at the end of its row.
+    expect(w.get('.abele-list-section-header').text()).toMatch(/Accounts\s*4/)
+    expect(w.findAll('.abele-group-heading__summary')[0].text()).toContain('5,120.00')
+    const card = w.findAll('.abele-accounts-sidebar__row')[1]
+    expect(card.get('.abele-entry-row__codes .abele-accounts-sidebar__amount').text()).toBe(
+      '120.00 EUR'
+    )
     expect(w.text()).toContain('50.00')
   })
 
   it('opens the note of the account that was picked', async () => {
     const w = await render()
-    const rows = w.findAll('.abele-table__row')
+    const rows = w.findAll('.abele-accounts-sidebar__row')
     await rows[1].trigger('click')
     expect(opened).toEqual(['Accounts/Card.md'])
+    await rows[0].trigger('keydown', { key: 'Enter' })
+    expect(opened).toEqual(['Accounts/Card.md', 'Accounts/Savings.md'])
   })
 
   it('keeps the options it is given in settings', async () => {
@@ -108,9 +126,19 @@ describe('accounts sidebar', () => {
     const config = AbeleConfig.getInstance()
     const w = await render()
 
-    await w.find('.abele-accounts-sidebar__header .abele-obsidian-icon').trigger('click')
-    const grouping = w.findAll('.setting-item').find((row) => row.text().includes('Group by type'))!
-    await grouping.find('.checkbox-container').trigger('click')
+    const shown = vi.spyOn(Menu.prototype, 'showAtMouseEvent')
+    await w
+      .get('.abele-accounts-sidebar__header button[aria-label="What the list shows and its order"]')
+      .trigger('click')
+    const menu = shown.mock.contexts.at(-1) as Menu
+    // Obsidian's own menu: its parts under headings, the current choices ticked.
+    expect(
+      menu.items.filter((i) => (i as MenuItem & { isLabel?: boolean }).isLabel).map((i) => i.title)
+    ).toEqual(['Order', 'Show'])
+    expect(menu.items.find((i) => i.title === 'Size of balance')!.checked).toBe(true)
+    const grouping = menu.items.find((i) => i.title === 'Group by type')!
+    expect(grouping.checked).toBe(true)
+    grouping.handler!()
     await nextTick()
 
     expect(config.accountsList.groupByType).toBe(false)
@@ -134,5 +162,29 @@ describe('accounts sidebar', () => {
 
     await wrapper.setProps({ active: true })
     expect(spy).toHaveBeenCalled()
+  })
+
+  it('says how an account comes to be when there are none at all', async () => {
+    const store = GlobalStore.getInstance()
+    store.balanceIndex.value?.cleanup()
+    store.balanceIndex.value = null
+    store.transactionsList.value?.cleanup()
+    store.transactionsList.value = null
+    store.accountsList.value?.cleanup()
+    store.accountsList.value = null
+    useVault([])
+    store.initFinance()
+    const w = await render()
+    expect(w.get('.abele-empty-state__title').text()).toBe('No accounts yet')
+    expect(w.text()).toContain('A note with type: account shows here')
+  })
+
+  it('says only that none match when the options leave every account out', async () => {
+    const config = AbeleConfig.getInstance()
+    config.accountsList = { ...DEFAULT_ACCOUNTS_LIST, types: [] }
+    const w = await render()
+    expect(rowNames(w)).toEqual([])
+    expect(w.find('.abele-empty-state__title').exists()).toBe(false)
+    expect(w.text()).toContain('No accounts match these options.')
   })
 })

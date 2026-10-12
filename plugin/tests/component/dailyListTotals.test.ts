@@ -6,6 +6,7 @@ import TimeEntryListView from '@/components/TimeEntryListView.vue'
 import TimeTrackingSidebar from '@/components/TimeTrackingSidebar.vue'
 import { GlobalStore } from '@/stores/GlobalStore'
 import DateDivider from '@/components/obsidian/DateDivider.vue'
+import Chart from '@/components/obsidian/Chart.vue'
 import { configureAbele, useVault } from '../helpers/testEnv'
 import { installFakeIntersectionObserver } from '../helpers/fakeIntersectionObserver'
 
@@ -98,5 +99,51 @@ describe('daily totals over the complete filtered list', () => {
     expect(view.find('.abele-time-entries-list__header-total').text()).toBe('2h 30m')
     expect(view.findAllComponents(DateDivider).length).toBeGreaterThan(1)
     expect(starts).toBeLessThan(1000)
+  })
+})
+
+describe('the time spent in a period', () => {
+  const entry = (id: string, day: number, duration: number) => ({
+    id,
+    duration,
+    entryPath: `Samples/time-${id}.md`,
+    start: dayjs().startOf('month').add(day, 'day').hour(9),
+  })
+
+  it('charts every day of the period, the empty ones as zero', () => {
+    view = mount(TimeEntryListView, {
+      props: { timeEntries: [entry('a', 2, 3600), entry('b', 2, 1800)] as never },
+      global: { stubs: { TimeEntryItem: true } },
+    })
+    const source = view.findComponent(Chart).props('source') as { date: string; hours: number }[]
+    expect(source).toHaveLength(dayjs().daysInMonth())
+    expect(source.filter((d) => d.hours > 0)).toEqual([
+      { date: dayjs().startOf('month').add(2, 'day').format('YYYY-MM-DD'), hours: 1.5 },
+    ])
+  })
+
+  it('draws no chart when nothing was spent in the period', () => {
+    view = mount(TimeEntryListView, {
+      props: { timeEntries: [entry('a', 2, 0)] as never },
+      global: { stubs: { TimeEntryItem: true } },
+    })
+    expect(view.findComponent(Chart).exists()).toBe(false)
+  })
+
+  it("gives a day's total in its heading only when it has more than one entry", () => {
+    view = mount(TimeEntryListView, {
+      props: {
+        timeEntries: [entry('a', 2, 3600), entry('b', 2, 1800), entry('c', 4, 600)] as never,
+      },
+      global: { stubs: { TimeEntryItem: true } },
+    })
+    const headings = view.findAllComponents(DateDivider)
+    expect(headings).toHaveLength(2)
+    const total = (h: (typeof headings)[number]) =>
+      h.find('.abele-date-divider__summary').exists()
+        ? h.find('.abele-date-divider__summary').text()
+        : ''
+    // Newest first: the day with one entry says nothing more, the day with two their sum.
+    expect(headings.map(total)).toEqual(['', '1h 30m'])
   })
 })

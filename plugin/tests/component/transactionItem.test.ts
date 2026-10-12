@@ -50,7 +50,12 @@ afterEach(() => {
   vi.unstubAllGlobals()
 })
 async function show(txType: 'income' | 'expense' | 'transfer' = 'expense') {
-  wrapper = mount(TransactionItem, { shallow: true, props: { transaction: tx, txType } })
+  wrapper = mount(TransactionItem, {
+    shallow: true,
+    props: { transaction: tx, txType },
+    // The shared row draws the slots, so its codes, quiet line and chevron are on the page.
+    global: { stubs: { EntryRow: false } },
+  })
   await nextTick()
   await flushPromises()
 }
@@ -76,6 +81,11 @@ describe('TransactionItem', () => {
     expect(
       wrapper!.findAllComponents('.abele-transaction-view__link').map((c) => c.props('text'))
     ).toEqual(['[[Cash]]', '[[Food]]'])
+    // The amount stands at the end of the name's line, the accounts in the quiet line under it.
+    expect(wrapper!.find('.abele-entry-row__codes .abele-transaction-view__amount').exists()).toBe(
+      true
+    )
+    expect(wrapper!.findAll('.abele-entry-row__meta .abele-transaction-view__link')).toHaveLength(2)
     expect(wrapper!.find('.abele-transaction-view__description').exists()).toBe(false)
     await visible()
     expect(content).toHaveBeenCalledTimes(1)
@@ -86,11 +96,13 @@ describe('TransactionItem', () => {
     await visible()
     const icon = wrapper!.findComponent(Icon)
     expect(icon.props('icon')).toBe('chevron-down')
+    expect(icon.props('tooltip')).toBe('Show note')
     await icon.trigger('click')
     expect(wrapper!.findComponent('.abele-transaction-view__description').props('text')).toBe(
       'Apples and pears'
     )
     expect(icon.props('icon')).toBe('chevron-up')
+    expect(icon.props('tooltip')).toBe('Hide note')
     expect(openFile).not.toHaveBeenCalled()
     await icon.trigger('click')
     expect(wrapper!.find('.abele-transaction-view__description').exists()).toBe(false)

@@ -2,60 +2,61 @@
   <div v-if="transaction.transactionNotFound" class="abele-transaction-view">
     <em class="abele-transaction-view__content">Transaction not found</em>
   </div>
-  <div
+  <EntryRow
     v-else-if="transaction.loaded"
-    ref="txEl"
+    ref="rowEl"
     class="abele-transaction-view"
+    role="link"
+    tabindex="0"
+    :more="transaction.description ? showDescription : undefined"
+    more-label="note"
+    @update:more="toggleDescription"
     @click="onCardClick"
+    @keydown.enter.self="openFile(transaction.transactionPath)"
     @contextmenu.prevent="onContextMenu"
   >
-    <div class="abele-transaction-view__content">
-      <div class="abele-transaction-view__main">
+    <ObsidianMarkdown
+      v-if="contentLoaded"
+      trusted
+      :text="transaction.title ?? ''"
+      :file-path="transaction.transactionPath"
+      class="abele-transaction-view__title"
+    />
+    <!-- The amount on the name's line, in the column the day's total stands in. -->
+    <template #codes>
+      <span class="abele-transaction-view__amount" :class="amountClass"
+        >{{ txType === 'expense' ? '-' : '' }}{{ formatAmount(transaction.amount ?? 0) }}
+        <span class="abele-transaction-view__currency">{{ transaction.currency }}</span></span
+      >
+    </template>
+    <template v-if="transaction.from || transaction.to" #meta>
+      <span class="abele-transaction-view__accounts">
         <ObsidianMarkdown
+          v-if="transaction.from && contentLoaded"
           trusted
-          v-if="contentLoaded"
-          :text="transaction.title ?? ''"
+          :text="transaction.from"
           :file-path="transaction.transactionPath"
-          class="abele-transaction-view__title"
+          class="abele-transaction-view__link"
         />
-        <ObsidianIcon
-          v-if="transaction.description"
-          :icon="showDescription ? 'chevron-up' : 'chevron-down'"
-          @click.stop="toggleDescription"
+        <span v-if="transaction.from && transaction.to"> → </span>
+        <ObsidianMarkdown
+          v-if="transaction.to && contentLoaded"
+          trusted
+          :text="transaction.to"
+          :file-path="transaction.transactionPath"
+          class="abele-transaction-view__link"
         />
-      </div>
+      </span>
+    </template>
+    <template v-if="transaction.description && showDescription && contentLoaded" #detail>
       <ObsidianMarkdown
         trusted
-        v-if="transaction.description && showDescription && contentLoaded"
         :text="transaction.description"
         :file-path="transaction.transactionPath"
         class="abele-transaction-view__description"
       />
-      <div class="abele-transaction-view__info">
-        <span v-if="transaction.from || transaction.to" class="abele-transaction-view__accounts">
-          <ObsidianMarkdown
-            trusted
-            v-if="transaction.from && contentLoaded"
-            :text="transaction.from"
-            :file-path="transaction.transactionPath"
-            class="abele-transaction-view__link"
-          />
-          <span v-if="transaction.from && transaction.to"> → </span>
-          <ObsidianMarkdown
-            trusted
-            v-if="transaction.to && contentLoaded"
-            :text="transaction.to"
-            :file-path="transaction.transactionPath"
-            class="abele-transaction-view__link"
-          />
-        </span>
-      </div>
-    </div>
-    <span class="abele-transaction-view__amount" :class="amountClass">
-      {{ txType === 'expense' ? '-' : '' }}{{ formatAmount(transaction.amount ?? 0) }}
-      <span class="abele-transaction-view__currency">{{ transaction.currency }}</span>
-    </span>
-  </div>
+    </template>
+  </EntryRow>
 </template>
 
 <script setup lang="ts">
@@ -63,7 +64,7 @@ import { confirmAction } from '@/modal/confirm'
 import { GlobalStore } from '@/stores/GlobalStore'
 import { Transaction } from '@/entities/Transaction'
 import { computed, onMounted, ref, watch } from 'vue'
-import ObsidianIcon from './obsidian/Icon.vue'
+import EntryRow from './obsidian/EntryRow.vue'
 import ObsidianMarkdown from './obsidian/Markdown.vue'
 import { openFile } from '@/helpers/vaultUtils'
 import { useElementVisibility } from '@vueuse/core'
@@ -77,7 +78,8 @@ const props = defineProps<{
   txType: TransactionType
 }>()
 
-const txEl = ref(null)
+const rowEl = ref<{ $el: HTMLElement } | null>(null)
+const txEl = computed(() => rowEl.value?.$el ?? null)
 const isVisible = useElementVisibility(txEl)
 const contentLoaded = ref(false)
 
@@ -136,52 +138,18 @@ onMounted(() => {
 
 <style lang="scss">
 .abele-transaction-view {
-  display: flex;
-  align-items: center;
-  gap: var(--size-4-2);
-  margin-bottom: var(--size-4-1);
-  padding: var(--size-4-1) 0;
-  cursor: pointer;
-  border-radius: var(--radius-s);
-
-  &:hover {
-    background-color: var(--background-modifier-hover);
-  }
-
   p {
     margin: 0;
     word-break: break-word;
   }
 }
 
-.abele-transaction-view__content {
-  flex: 1;
-  overflow-wrap: break-word;
-  padding-top: 1px;
-  min-width: 0;
-}
-
-.abele-transaction-view__main {
-  display: flex;
-  align-items: flex-start;
-  gap: var(--size-4-2);
-}
-
-/*
- * Wide enough for its text and no wider. It used to take the whole row, which put the chevron
- * that expands the note against the right edge — a hand's breadth from the title it belongs to
- * and level with nothing, since the amount beside it is centred on the row rather than on the
- * first line. Only a title long enough to fill the row still pushes it there, and then it is
- * where the text ends anyway.
- */
 .abele-transaction-view__title {
-  flex: 0 1 auto;
-  min-width: 0;
-  overflow: hidden;
-  text-overflow: ellipsis;
+  display: block;
 }
 
 .abele-transaction-view__amount {
+  color: var(--text-normal);
   font-variant-numeric: tabular-nums;
   white-space: nowrap;
 
@@ -210,20 +178,16 @@ onMounted(() => {
   }
 }
 
-.abele-transaction-view__info {
-  display: flex;
-  flex-wrap: wrap;
-  justify-content: space-between;
-  margin-top: var(--size-4-1);
-  font-size: var(--font-ui-small);
-  gap: var(--size-4-1);
-  color: var(--text-muted);
-}
-
 .abele-transaction-view__accounts {
   display: inline-flex;
+  flex-wrap: wrap;
   align-items: center;
-  gap: var(--size-2-1);
+  column-gap: var(--size-2-1);
+
+  // A long pair wraps between the names, never inside one.
+  p {
+    word-break: normal;
+  }
 }
 
 .abele-transaction-view__link {
@@ -233,12 +197,14 @@ onMounted(() => {
     display: inline;
   }
 
+  // The accounts are where the money went, read in passing: muted, accent only under the pointer.
   .internal-link {
-    color: var(--text-accent);
+    color: var(--text-muted);
     cursor: pointer;
     text-decoration: none;
 
     &:hover {
+      color: var(--text-accent);
       text-decoration: underline;
     }
   }

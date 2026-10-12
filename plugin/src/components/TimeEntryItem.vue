@@ -2,43 +2,46 @@
   <div v-if="entry.entryNotFound" class="abele-time-entry-item">
     <em class="abele-time-entry-item__content">Time entry not found</em>
   </div>
-  <div
+  <EntryRow
     v-else-if="entry.loaded"
     class="abele-time-entry-item"
+    role="link"
+    tabindex="0"
     @click="onCardClick"
+    @keydown.enter.self="openFile(entry.entryPath)"
     @contextmenu.prevent="onContextMenu"
   >
-    <div class="abele-time-entry-item__content">
-      <span class="abele-time-entry-item__groups">
-        <template v-for="(group, idx) in entry.groups" :key="idx">
-          <ObsidianMarkdown
-            trusted
-            :text="ensureWikilinkAlias(group)"
-            :file-path="entry.entryPath"
-            class="abele-time-entry-item__link"
-          />
-          <span v-if="idx < entry.groups.length - 1">, </span>
-        </template>
-        <span v-if="!entry.groups.length" class="abele-time-entry-item__no-groups">Timer</span>
-      </span>
-    </div>
-    <div class="abele-time-entry-item__right">
+    <span class="abele-time-entry-item__groups">
+      <template v-for="(group, idx) in entry.groups" :key="idx">
+        <ObsidianMarkdown
+          trusted
+          :text="ensureWikilinkAlias(group)"
+          :file-path="entry.entryPath"
+          class="abele-time-entry-item__link"
+        />
+        <span v-if="idx < entry.groups.length - 1">, </span>
+      </template>
+      <span v-if="!entry.groups.length" class="abele-time-entry-item__no-groups">Timer</span>
+    </span>
+    <!-- How long, in the column the day's total stands in. -->
+    <template #codes>
       <span
         class="abele-time-entry-item__duration"
         :class="{ 'abele-time-entry-item__duration--active': entry.isActive }"
       >
         {{ entry.isActive ? elapsedText : durationText }}
       </span>
+    </template>
+    <template #meta>
       <span class="abele-time-entry-item__time-range">{{ timeRange }}</span>
-    </div>
-    <ObsidianIcon
-      v-if="entry.isActive"
-      icon="timer-off"
-      tooltip="Stop timer"
-      @click.stop="stopTimer"
-    />
-    <ObsidianIcon v-else icon="timer-reset" tooltip="Start new" @click.stop="startNew" />
-  </div>
+    </template>
+    <template v-if="entry.isActive" #actions>
+      <ObsidianIcon icon="timer-off" label="Stop timer" @click.stop="stopTimer" />
+    </template>
+    <template v-else #aside>
+      <ObsidianIcon icon="timer-reset" label="Start again" @click.stop="startNew" />
+    </template>
+  </EntryRow>
 </template>
 
 <script setup lang="ts">
@@ -47,12 +50,15 @@ import { GlobalStore } from '@/stores/GlobalStore'
 import { TimeEntry } from '@/entities/TimeEntry'
 import { computed, onMounted, onUnmounted, ref } from 'vue'
 import ObsidianIcon from './obsidian/Icon.vue'
+import EntryRow from './obsidian/EntryRow.vue'
 import ObsidianMarkdown from './obsidian/Markdown.vue'
 import { ensureWikilinkAlias } from '@/helpers/pathsHelpers'
 import { openFile } from '@/helpers/vaultUtils'
 import { createTimeEntry, stopActiveTimeEntry } from '@/commands/createTimeEntry'
 import { Menu } from 'obsidian'
 import dayjs from 'dayjs'
+// One way of saying a duration across the lists, so a day's total and its entries read alike.
+import { formatDuration } from '@/helpers/displayFormat'
 
 const props = defineProps<{
   entry: TimeEntry
@@ -78,14 +84,6 @@ onMounted(() => {
 onUnmounted(() => {
   if (interval) window.clearInterval(interval)
 })
-
-const formatDuration = (seconds: number): string => {
-  const h = Math.floor(seconds / 3600)
-  const m = Math.floor((seconds % 3600) / 60)
-  const pad = (n: number) => String(n).padStart(2, '0')
-  if (h > 0) return `${h}h ${pad(m)}m`
-  return `${m}m`
-}
 
 const durationText = computed(() => formatDuration(props.entry.duration))
 const elapsedText = computed(() => formatDuration(elapsed.value))
@@ -135,31 +133,10 @@ const onContextMenu = (e: MouseEvent) => {
 
 <style lang="scss">
 .abele-time-entry-item {
-  display: flex;
-  align-items: center;
-  gap: 0.5em;
-  margin-bottom: 0.25em;
-  padding: 0.25em 0;
-  cursor: pointer;
-  border-radius: var(--radius-s);
-
-  &:hover {
-    background-color: var(--background-modifier-hover);
-  }
-
   p {
     margin: 0;
     word-break: break-word;
   }
-}
-
-.abele-time-entry-item__content {
-  flex: 1;
-  min-width: 0;
-}
-
-.abele-time-entry-item__groups {
-  min-width: 0;
 }
 
 .abele-time-entry-item__no-groups {
@@ -174,39 +151,29 @@ const onContextMenu = (e: MouseEvent) => {
     display: inline;
   }
 
+  // What the time went to reads as the row's title; accent only under the pointer.
   .internal-link {
-    color: var(--text-accent);
+    color: var(--text-normal);
     cursor: pointer;
     text-decoration: none;
 
     &:hover {
+      color: var(--text-accent);
       text-decoration: underline;
     }
   }
 }
 
-.abele-time-entry-item__right {
-  display: flex;
-  flex-direction: column;
-  align-items: flex-end;
-  flex-shrink: 0;
-}
-
 .abele-time-entry-item__duration {
+  color: var(--text-normal);
   font-variant-numeric: tabular-nums;
-  white-space: nowrap;
-  color: var(--text-muted);
 
   &--active {
-    color: var(--text-success);
-    font-weight: var(--font-semibold);
+    color: var(--color-green);
   }
 }
 
 .abele-time-entry-item__time-range {
-  font-size: var(--font-ui-smaller);
   font-variant-numeric: tabular-nums;
-  white-space: nowrap;
-  color: var(--text-faint);
 }
 </style>

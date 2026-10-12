@@ -1,23 +1,25 @@
 <template>
   <SidebarPanel class="abele-time-tracking-sidebar">
-    <div class="abele-time-tracking-sidebar__header">
-      <div class="abele-time-tracking-sidebar__header-left">
-        <div class="abele-time-tracking-sidebar__header-text">Time Tracking</div>
-        <ObsidianIcon icon="timer" tooltip="Start empty timer" @click="startEmptyTimer" />
-      </div>
-    </div>
+    <!-- The pane's head as every list pane's: its name, and starting a timer as its action. -->
+    <ListSectionHeader
+      class-prefix="abele-time-tracking-sidebar"
+      text="Time"
+      :count="activeEntries.length"
+    >
+      <template #actions>
+        <ObsidianIcon icon="timer" label="Start a timer" @click="startEmptyTimer" />
+      </template>
+    </ListSectionHeader>
 
-    <!-- Active Timers -->
-    <div
+    <!-- A running timer is a row like the entries: a pulsing dot, what the time goes to, how
+         long, and stop. -->
+    <EntryRow
       v-for="active in activeEntries"
       :key="active.id"
       class="abele-time-tracking-sidebar__active"
     >
-      <div class="abele-time-tracking-sidebar__active-header">
-        <span class="abele-time-tracking-sidebar__active-label">Active Timer</span>
-        <ObsidianIcon icon="timer-off" tooltip="Stop timer" @click="stopSingle(active)" />
-      </div>
-      <div class="abele-time-tracking-sidebar__active-groups">
+      <template #leading><StatusDot tone="green" label="Running" pulse /></template>
+      <span class="abele-time-tracking-sidebar__active-groups">
         <template v-for="(group, idx) in active.groups" :key="idx">
           <ObsidianMarkdown
             trusted
@@ -28,13 +30,18 @@
           <span v-if="idx < active.groups.length - 1">, </span>
         </template>
         <span v-if="!active.groups.length" class="abele-time-tracking-sidebar__no-groups">
-          No groups
+          Timer
         </span>
-      </div>
-      <div class="abele-time-tracking-sidebar__active-elapsed">
-        <ElapsedTime :start="active.start" />
-      </div>
-    </div>
+      </span>
+      <template #codes>
+        <span class="abele-time-tracking-sidebar__active-elapsed"
+          ><ElapsedTime :start="active.start"
+        /></span>
+      </template>
+      <template #actions>
+        <ObsidianIcon icon="timer-off" label="Stop timer" @click="stopSingle(active)" />
+      </template>
+    </EntryRow>
 
     <!-- Period selector -->
     <PeriodSelector v-model:start="periodStart" v-model:end="periodEnd" />
@@ -116,6 +123,9 @@ import PeriodSelector from './obsidian/PeriodSelector.vue'
 import DateDivider from './obsidian/DateDivider.vue'
 import TimeEntryItem from './TimeEntryItem.vue'
 import ElapsedTime from './ElapsedTime.vue'
+import StatusDot from './obsidian/StatusDot.vue'
+import EntryRow from './obsidian/EntryRow.vue'
+import ListSectionHeader from './obsidian/ListSectionHeader.vue'
 import dayjs from 'dayjs'
 
 type ChartTab = 'daily' | 'groups'
@@ -406,54 +416,15 @@ function renderGroupsPieChart(groupsPieChart: EChartsType) {
   }
 }
 
-.abele-time-tracking-sidebar__header {
-  display: flex;
-  align-items: center;
-  justify-content: space-between;
-  margin-bottom: var(--p-spacing);
+.abele-time-tracking-sidebar__active-groups p {
+  display: inline;
+  margin: 0;
 }
 
-.abele-time-tracking-sidebar__header-left {
-  display: flex;
-  align-items: center;
-  gap: calc(var(--p-spacing) / 2);
-}
-
-.abele-time-tracking-sidebar__header-text {
-  font-weight: bold;
-}
-
-.abele-time-tracking-sidebar__active {
-  background: var(--background-secondary);
-  border-radius: var(--radius-m);
-  padding: var(--size-4-3);
-  display: flex;
-  flex-direction: column;
-  gap: var(--size-4-2);
-}
-
-.abele-time-tracking-sidebar__active-header {
-  display: flex;
-  justify-content: space-between;
-  align-items: center;
-}
-
-.abele-time-tracking-sidebar__active-label {
-  font-weight: var(--font-semibold);
-  color: var(--text-success);
+.abele-time-tracking-sidebar__active-elapsed {
+  color: var(--color-green);
   font-size: var(--font-ui-small);
-  text-transform: uppercase;
-  letter-spacing: 0.05em;
-}
-
-.abele-time-tracking-sidebar__active-groups {
-  display: flex;
-  flex-wrap: wrap;
-  gap: 0.25em;
-
-  p {
-    margin: 0;
-  }
+  font-variant-numeric: tabular-nums;
 }
 
 .abele-time-tracking-sidebar__link {
@@ -464,11 +435,12 @@ function renderGroupsPieChart(groupsPieChart: EChartsType) {
   }
 
   .internal-link {
-    color: var(--text-accent);
+    color: var(--text-normal);
     cursor: pointer;
     text-decoration: none;
 
     &:hover {
+      color: var(--text-accent);
       text-decoration: underline;
     }
   }
@@ -480,10 +452,9 @@ function renderGroupsPieChart(groupsPieChart: EChartsType) {
 }
 
 .abele-time-tracking-sidebar__active-elapsed {
-  font-size: var(--h2-size);
-  font-weight: var(--font-semibold);
+  flex-shrink: 0;
   font-variant-numeric: tabular-nums;
-  color: var(--text-success);
+  color: var(--text-muted);
 }
 
 .abele-time-tracking-sidebar__summary {

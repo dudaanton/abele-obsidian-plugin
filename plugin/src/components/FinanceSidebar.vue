@@ -3,7 +3,11 @@
     <div class="abele-finance-sidebar__header">
       <div class="abele-finance-sidebar__header-left">
         <div class="abele-finance-sidebar__header-text">Transactions</div>
-        <ObsidianIcon icon="banknote-arrow-down" @click="createTransaction()" />
+        <ObsidianIcon
+          icon="banknote-arrow-down"
+          tooltip="New transaction"
+          @click="createTransaction()"
+        />
         <ObsidianIcon
           icon="landmark"
           tooltip="Show every account and its balance"
@@ -325,11 +329,12 @@ const accountTypes = computed(
 
 type ChartTab = 'expenses' | 'income' | 'calendar' | 'networth'
 const chartTab = ref<ChartTab>('expenses')
+// Four words did not fit a panel's width and broke onto two rows: glyphs, the words in tooltips.
 const allChartTabs = [
-  { id: 'expenses' as ChartTab, label: 'Expenses' },
-  { id: 'income' as ChartTab, label: 'Income' },
-  { id: 'calendar' as ChartTab, label: 'Calendar' },
-  { id: 'networth' as ChartTab, label: 'Net Worth' },
+  { id: 'expenses' as ChartTab, label: 'Expenses', icon: 'pie-chart', tooltip: 'Expenses' },
+  { id: 'income' as ChartTab, label: 'Income', icon: 'piggy-bank', tooltip: 'Income' },
+  { id: 'calendar' as ChartTab, label: 'Calendar', icon: 'calendar-days', tooltip: 'Calendar' },
+  { id: 'networth' as ChartTab, label: 'Net Worth', icon: 'line-chart', tooltip: 'Net worth' },
 ]
 
 const chartTabs = computed(() =>

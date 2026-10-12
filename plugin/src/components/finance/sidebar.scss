@@ -103,6 +103,10 @@
 
 .abele-finance-sidebar__chart-tabs {
   margin-top: var(--size-4-4);
+
+  .abele-tabs__label {
+    display: none;
+  }
 }
 
 // --- Summary ---

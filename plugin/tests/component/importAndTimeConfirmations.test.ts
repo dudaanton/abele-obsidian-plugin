@@ -1,7 +1,9 @@
 import { afterEach, beforeEach, expect, it, vi } from 'vitest'
 import { mount, flushPromises, type VueWrapper } from '@vue/test-utils'
 import { Menu, Modal } from 'obsidian'
+import dayjs from 'dayjs'
 import TimeEntryItem from '@/components/TimeEntryItem.vue'
+import Icon from '@/components/obsidian/Icon.vue'
 import MigrateFromDataviewModal from '@/components/MigrateFromDataviewModal.vue'
 import { TimeEntry } from '@/entities/TimeEntry'
 import { AbeleConfig } from '@/services/AbeleConfig'
@@ -39,6 +41,20 @@ function answer(accepted: boolean, label: string, message: string) {
     .find((b) => b.textContent === (accepted ? label : 'Cancel'))!
     .click()
 }
+
+it('keeps a running timer stop visible outside the hover-only aside', async () => {
+  useVault([])
+  const entry = sampleEntry()
+  entry.start = dayjs()
+  view = mount(TimeEntryItem, {
+    props: { entry },
+    global: { stubs: { ObsidianMarkdown: true } },
+  })
+  await flushPromises()
+  expect(view.getComponent(Icon).props('icon')).toBe('timer-off')
+  expect(view.find('.abele-entry-row__actions button').exists()).toBe(true)
+  entry.cleanup()
+})
 
 it.each([false, true])(
   'time-entry removal waits for themed confirmation, accepted=%s',

@@ -1,90 +1,69 @@
 <template>
   <SidebarPanel inset class="abele-accounts-sidebar">
-    <div class="abele-accounts-sidebar__header">
-      <div class="abele-accounts-sidebar__title">Accounts</div>
-      <ObsidianIcon
-        icon="sliders-horizontal"
-        :tooltip="optionsOpen ? 'Hide list options' : 'Choose what the list shows and its order'"
-        :with-bg="optionsOpen"
-        @click="optionsOpen = !optionsOpen"
-      />
-    </div>
+    <!-- The pane's head as every list pane's; what it shows and in what order is a menu, as
+         Obsidian's file list keeps its sort. -->
+    <ListSectionHeader class-prefix="abele-accounts-sidebar" text="Accounts" :count="accountCount">
+      <template #actions>
+        <ObsidianIcon
+          icon="sliders-horizontal"
+          aria-haspopup="menu"
+          label="What the list shows and its order"
+          @click="optionsMenu"
+        />
+      </template>
+    </ListSectionHeader>
 
-    <div v-if="optionsOpen" class="abele-accounts-sidebar__options">
-      <Setting name="Sort by">
-        <Dropdown
-          :options="sortOptions"
-          :model-value="options.sort"
-          @update:model-value="update({ sort: $event as AccountsSort })"
-        />
-      </Setting>
-      <Setting name="Currency">
-        <Dropdown
-          :options="currencyOptions"
-          :model-value="options.currency || ALL"
-          @update:model-value="update({ currency: $event === ALL ? '' : $event })"
-        />
-      </Setting>
-      <Setting name="Group by type">
-        <Checkbox
-          :is-enabled="options.groupByType"
-          @toggle="update({ groupByType: !options.groupByType })"
-        />
-      </Setting>
-      <Setting name="Hide empty accounts" desc="Accounts whose balance is zero.">
-        <Checkbox
-          :is-enabled="options.hideZero"
-          @toggle="update({ hideZero: !options.hideZero })"
-        />
-      </Setting>
-      <Setting
-        name="Show accounts left out of totals"
-        desc="Listed either way when shown, never counted in a total."
-      >
-        <Checkbox
-          :is-enabled="options.showExcluded"
-          @toggle="update({ showExcluded: !options.showExcluded })"
-        />
-      </Setting>
-      <Setting v-for="type in ACCOUNT_TYPE_ORDER" :key="type" :name="ACCOUNT_TYPE_LABELS[type]">
-        <Checkbox :is-enabled="options.types.includes(type)" @toggle="toggleType(type)" />
-      </Setting>
-    </div>
-
-    <Section
+    <!-- A group as a heading with its total at the end; an account as a row with its balance. -->
+    <section
       v-for="group in groups"
       :key="group.type ?? 'all'"
-      :title="group.label || undefined"
-      :desc="totalsText(group.totals)"
       class="abele-accounts-sidebar__group"
     >
-      <Table :columns="columns" :rows="tableRows(group.rows)" clickable @row-click="openRow">
-        <template #cell="{ row, column }">
-          <div
-            v-if="column.key === 'balance'"
+      <GroupHeading v-if="group.label" :label="group.label">
+        <span v-for="t in group.totals" :key="t.currency"
+          >{{ formatAmount(t.amount) }}
+          <span class="abele-accounts-sidebar__currency">{{ t.currency }}</span></span
+        >
+      </GroupHeading>
+      <EntryRow
+        v-for="row in group.rows"
+        :key="row.path"
+        class="abele-accounts-sidebar__row"
+        role="link"
+        tabindex="0"
+        @click="openRow(row)"
+        @keydown.enter.self="openRow(row)"
+      >
+        <span
+          class="abele-accounts-sidebar__name"
+          :class="{ 'abele-accounts-sidebar__name_excluded': row.excluded }"
+          >{{ row.name }}</span
+        >
+        <template #codes>
+          <span
             class="abele-accounts-sidebar__amount"
-            :class="{ 'abele-accounts-sidebar__amount_negative': (row.amount as number) < 0 }"
+            :class="{ 'abele-accounts-sidebar__amount_negative': row.balance < 0 }"
+            >{{ formatAmount(row.balance) }}
+            <span class="abele-accounts-sidebar__currency">{{ row.currency }}</span></span
           >
-            {{ row.balance }}
-            <span class="abele-accounts-sidebar__currency">{{ row.currency }}</span>
-          </div>
-          <div
-            v-else
-            class="abele-accounts-sidebar__name"
-            :class="{ 'abele-accounts-sidebar__name_excluded': row.excluded }"
-          >
-            {{ row.name }}
-          </div>
         </template>
-      </Table>
-    </Section>
+      </EntryRow>
+    </section>
 
-    <EmptyState v-if="!groups.length" :text="emptyText" />
+    <!-- No accounts at all is a whole empty pane that says how one comes to be; none matching
+         the options is one quiet line. -->
+    <EmptyState
+      v-if="!groups.length && !accountsList?.accounts.size"
+      icon="landmark"
+      title="No accounts yet"
+      text="A note with type: account shows here with its balance."
+    />
+    <EmptyState v-else-if="!groups.length" :text="emptyText" />
   </SidebarPanel>
 </template>
 
 <script setup lang="ts">
-import { computed, reactive, ref, toRaw, toRef, unref } from 'vue'
+import { computed, reactive, toRaw, toRef, unref } from 'vue'
 import dayjs from 'dayjs'
 import { GlobalStore } from '@/stores/GlobalStore'
 import { AbeleConfig } from '@/services/AbeleConfig'
@@ -107,12 +86,11 @@ import { formatAmount } from '@/helpers/moneyFormat'
 import { wikilinkToPath } from '@/helpers/pathsHelpers'
 import { openFile } from '@/helpers/vaultUtils'
 import ObsidianIcon from './obsidian/Icon.vue'
-import Setting from './obsidian/Setting.vue'
-import Dropdown from './obsidian/Dropdown.vue'
-import Checkbox from './obsidian/Checkbox.vue'
-import Section from './obsidian/Section.vue'
 import SidebarPanel from './obsidian/SidebarPanel.vue'
-import Table from './obsidian/Table.vue'
+import ListSectionHeader from './obsidian/ListSectionHeader.vue'
+import GroupHeading from './obsidian/GroupHeading.vue'
+import EntryRow from './obsidian/EntryRow.vue'
+import { Menu } from 'obsidian'
 import EmptyState from './obsidian/EmptyState.vue'
 
 const props = withDefaults(
@@ -128,7 +106,6 @@ const ALL = '*'
 const store = GlobalStore.getInstance()
 const config = AbeleConfig.getInstance()
 
-const optionsOpen = ref(false)
 const options = reactive<AccountsListSettings>(normalizeAccountsList(config.accountsList))
 
 const sortOptions = [
@@ -195,30 +172,43 @@ const groups = pausedWhileHidden(toRef(props, 'active'), (): AccountGroup[] => {
   return groupAccountRows(rows, options.groupByType)
 })
 
-const columns = [
-  { key: 'name', label: 'Account' },
-  { key: 'balance', label: 'Balance' },
-]
+const accountCount = computed(() => groups.value.reduce((n, g) => n + g.rows.length, 0))
 
-function tableRows(rows: AccountRow[]): Record<string, unknown>[] {
-  return rows.map((row) => ({
-    path: row.path,
-    name: row.name,
-    balance: formatAmount(row.balance),
-    amount: row.balance,
-    currency: row.currency,
-    excluded: row.excluded,
-  }))
+/** What the list shows and in what order, as Obsidian's own menus say it: ticks and headings. */
+function optionsMenu(event: MouseEvent) {
+  const menu = new Menu()
+  const label = (title: string, section: string) =>
+    menu.addItem((i) => i.setTitle(title).setIsLabel(true).setSection(section))
+  const choice = (title: string, on: boolean, section: string, run: () => void) =>
+    menu.addItem((i) => i.setTitle(title).setChecked(on).setSection(section).onClick(run))
+
+  label('Order', 'order')
+  for (const o of sortOptions)
+    choice(o.display, options.sort === o.value, 'order', () =>
+      update({ sort: o.value as AccountsSort })
+    )
+  if (currencyOptions.value.length > 2) {
+    label('Currency', 'currency')
+    for (const c of currencyOptions.value)
+      choice(c.display, (options.currency || ALL) === c.value, 'currency', () =>
+        update({ currency: c.value === ALL ? '' : c.value })
+      )
+  }
+  label('Show', 'show')
+  for (const type of ACCOUNT_TYPE_ORDER)
+    choice(ACCOUNT_TYPE_LABELS[type], options.types.includes(type), 'show', () => toggleType(type))
+  choice('Empty accounts', !options.hideZero, 'show', () => update({ hideZero: !options.hideZero }))
+  choice('Accounts left out of totals', options.showExcluded, 'show', () =>
+    update({ showExcluded: !options.showExcluded })
+  )
+  choice('Group by type', options.groupByType, 'group', () =>
+    update({ groupByType: !options.groupByType })
+  )
+  menu.showAtMouseEvent(event)
 }
 
-function totalsText(totals: AccountGroup['totals']): string {
-  return totals
-    .map(({ currency, amount }) => `${formatAmount(amount)} ${currency}`.trim())
-    .join(' · ')
-}
-
-function openRow(row: Record<string, unknown>) {
-  void openFile(row.path as string)
+function openRow(row: AccountRow) {
+  void openFile(row.path)
 }
 
 const emptyText = computed(() =>
@@ -229,29 +219,19 @@ const emptyText = computed(() =>
 </script>
 
 <style lang="scss">
-.abele-accounts-sidebar__header {
-  display: flex;
-  align-items: center;
-  justify-content: space-between;
-  margin-bottom: var(--p-spacing);
-}
-
-.abele-accounts-sidebar__title {
-  font-weight: var(--font-bold);
-}
-
-.abele-accounts-sidebar__options {
-  margin-bottom: var(--size-4-4);
-  border-bottom: 1px solid var(--background-modifier-border);
-}
-
 .abele-accounts-sidebar__group {
-  margin-top: var(--size-4-6);
+  display: flex;
+  flex-direction: column;
+  gap: var(--size-2-1);
+
+  & + & {
+    margin-top: var(--size-4-4);
+  }
 }
 
 .abele-accounts-sidebar__amount {
-  text-align: right;
-  white-space: nowrap;
+  color: var(--text-normal);
+  font-size: var(--font-ui-small);
   font-variant-numeric: tabular-nums;
 }
 
@@ -262,10 +242,7 @@ const emptyText = computed(() =>
 .abele-accounts-sidebar__currency {
   color: var(--text-faint);
   font-size: var(--font-ui-smaller);
-}
-
-.abele-accounts-sidebar__name {
-  overflow-wrap: anywhere;
+  font-weight: var(--font-normal);
 }
 
 .abele-accounts-sidebar__name_excluded {

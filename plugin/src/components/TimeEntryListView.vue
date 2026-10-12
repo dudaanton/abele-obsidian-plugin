@@ -14,15 +14,18 @@
     <template v-if="!fold.collapsed.value">
       <PeriodSelector v-model:start="periodStart" v-model:end="periodEnd" />
       <Chart
-        v-if="dailyChartData.length"
+        v-if="dailyChartData.some((d) => d.hours > 0)"
         :source="dailyChartData"
         :render="renderChart"
         class="abele-time-entries-list__chart"
       />
       <div v-if="visible.length" class="abele-time-entries-list__items">
         <template v-for="(entry, idx) in visible" :key="entry.id">
+          <!-- The day's total only when it adds something: one entry already says it. -->
           <DateDivider v-if="showDateBefore(idx)" :date="entryDate(entry)">
-            {{ dayDuration(entryDate(entry)) }}
+            <template v-if="entriesOn(entryDate(entry)) > 1">{{
+              dayDuration(entryDate(entry))
+            }}</template>
           </DateDivider>
           <TimeEntryItem :entry="entry" :data-abele-anchor="'time:' + entry.id" />
         </template>
@@ -101,18 +104,23 @@ const showDateBefore = (idx: number): boolean => {
 
 const durations = computed(() => {
   const byDay = new Map<string, number>()
+  const countByDay = new Map<string, number>()
   let total = 0
   for (const entry of filtered.value) {
     const day = entryDate(entry)
     const seconds = entry.duration
     total += seconds
     byDay.set(day, (byDay.get(day) || 0) + seconds)
+    countByDay.set(day, (countByDay.get(day) || 0) + 1)
   }
-  return { byDay, total }
+  return { byDay, countByDay, total }
 })
 
 const dayDuration = (date: string): string => formatDuration(durations.value.byDay.get(date) ?? 0)
 const totalText = computed(() => formatDuration(durations.value.total))
+
+/** How many of the listed entries fall on a day, from the same buckets as the totals. */
+const entriesOn = (date: string) => durations.value.countByDay.get(date) ?? 0
 
 // --- Daily bar chart ---
 
@@ -126,9 +134,9 @@ const dailyChartData = computed(() => {
   while (d.isBefore(end) || d.isSame(end, 'day')) {
     const key = d.format(DATE_FORMAT)
     const secs = byDay.get(key) || 0
-    if (secs > 0) {
-      result.push({ date: key, hours: Math.round((secs / 3600) * 100) / 100 })
-    }
+    // Every day of the period, the empty ones too: the month reads as a calendar, a gap is a
+    // day off, and a single entry does not swell into a slab across the width.
+    result.push({ date: key, hours: Math.round((secs / 3600) * 100) / 100 })
     d = d.add(1, 'day')
   }
 
@@ -139,10 +147,11 @@ function renderChart(chart: EChartsType) {
   const colors = getThemeColors(chart.getDom?.())
   const data = dailyChartData.value
 
-  if (!data.length) {
+  if (!data.some((d) => d.hours > 0)) {
     chart.clear()
     return
   }
+  const today = dayjs().format(DATE_FORMAT)
 
   chart.setOption(
     {
@@ -153,34 +162,33 @@ function renderChart(chart: EChartsType) {
         confine: true,
         formatter: (params: any) => {
           const p = Array.isArray(params) ? params[0] : params
-          return `${escapeHtml(p.name)}<br/>${formatDuration(Math.round(p.value * 3600))}`
+          const day = data[p.dataIndex]?.date
+          return `${escapeHtml(day ? dayjs(day).format('ddd D MMM') : p.name)}<br/>${formatDuration(Math.round(p.value * 3600))}`
         },
       },
-      grid: { left: 40, right: 12, top: 8, bottom: 24 },
+      // A strip of the period's days: thin bars on a baseline, the hours only in the tooltip
+      // and the total in the heading, the day numbers under a few of them.
+      grid: { left: 0, right: 0, top: 4, bottom: 18, containLabel: false },
       xAxis: {
         type: 'category',
-        data: data.map((d) => dayjs(d.date).format('MMM D')),
+        data: data.map((d) => dayjs(d.date).format('D')),
+        axisTick: { show: false },
         axisLabel: {
           color: colors.textMuted,
-          interval: Math.max(Math.floor(data.length / 6) - 1, 0),
-          hideOverlap: true,
-          ...(data.length > 8 ? { rotate: 45 } : {}),
+          interval: (i: number) => i % 7 === 0 || i === data.length - 1,
         },
         axisLine: { lineStyle: { color: colors.border } },
       },
-      yAxis: {
-        type: 'value',
-        axisLabel: {
-          color: colors.textMuted,
-          formatter: (v: number) => `${v}h`,
-        },
-        splitLine: { lineStyle: { color: colors.border, type: 'dashed' } },
-      },
+      yAxis: { type: 'value', show: false },
       series: [
         {
           type: 'bar',
-          data: data.map((d) => d.hours),
-          itemStyle: { color: colors.accent, borderRadius: [2, 2, 0, 0] },
+          barMaxWidth: 6,
+          data: data.map((d) => ({
+            value: d.hours,
+            itemStyle: { color: colors.accent, opacity: d.date === today ? 1 : 0.7 },
+          })),
+          itemStyle: { borderRadius: [2, 2, 0, 0] },
           emphasis: { disabled: true },
         },
       ],
@@ -210,8 +218,9 @@ function renderChart(chart: EChartsType) {
 
 .abele-time-entries-list__chart {
   width: 100%;
-  height: 200px;
-  margin-bottom: var(--size-4-2);
+  height: calc(var(--size-4-12) + var(--size-4-8));
+  // Apart from the days under it by more than a day's heading is from its entries.
+  margin-bottom: var(--size-4-8);
 }
 
 .abele-time-entries-list__items {
