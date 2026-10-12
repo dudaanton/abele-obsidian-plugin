@@ -52,7 +52,7 @@ describe('workbook grid', () => {
     expect((wrapper.find('[aria-label="Number format"]').element as HTMLInputElement).value).toBe(
       'General'
     )
-    await wrapper.find('[aria-label="Bold"]').setValue(true)
+    await wrapper.find('[aria-label="Bold"]').trigger('click')
     await wrapper
       .findAll('button')
       .find((b) => b.text() === 'Apply formatting')!

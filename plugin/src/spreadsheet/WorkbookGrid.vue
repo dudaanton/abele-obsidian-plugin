@@ -1,112 +1,153 @@
 <template>
   <div class="abele-workbook-grid" :data-zoom="zoom">
+    <!--
+      The bar a spreadsheet app has: where you are (the cell's address, to type another into),
+      what is in it (its formula or value), then glyphs for zoom and editing, the sheet last.
+    -->
     <div class="abele-workbook-bar">
-      <label
-        >Sheet
-        <select v-model="sheetName" aria-label="Sheet" :disabled="busy">
-          <option v-for="s in book.sheets" :key="s.name" :value="s.name">
-            {{ s.name }}{{ s.hidden ? ' (hidden)' : '' }}
-          </option>
-        </select></label
+      <input
+        v-model="goAddress"
+        class="abele-workbook-address"
+        aria-label="Cell address"
+        spellcheck="false"
+        @keydown.enter="go"
+        @blur="goAddress = selected"
+      />
+      <div class="abele-workbook-formula" :class="{ 'mod-error': selectedCell?.formulaProblem }">
+        <span v-if="selectedCell?.formula" class="abele-workbook-fx">fx</span>
+        <span class="abele-workbook-formula__text">{{
+          selectedCell?.formulaProblem
+            ? 'Formula unavailable: ' + selectedCell.formulaProblem
+            : selectedCell?.formula
+              ? selectedCell.formula
+              : String(selectedCell?.value ?? '')
+        }}</span>
+        <span class="abele-workbook-formula__where">{{ selected }}</span>
+      </div>
+      <div class="abele-workbook-actions">
+        <Icon icon="zoom-out" tooltip="Zoom out" @click="setZoom(zoom / 1.2)" />
+        <Icon
+          :text-right="`${Math.round(zoom * 100)}%`"
+          label="Reset zoom"
+          tooltip="Reset zoom"
+          class="abele-workbook-zoom"
+          @click="setZoom(1)"
+        />
+        <Icon icon="zoom-in" tooltip="Zoom in" @click="setZoom(zoom * 1.2)" />
+        <template v-if="canEdit">
+          <Icon
+            icon="pencil"
+            tooltip="Edit this cell and its formatting"
+            class="abele-workbook-edit"
+            :active="editing"
+            @click="beginEdit"
+          />
+          <Icon
+            icon="refresh-cw"
+            :tooltip="
+              book.stale
+                ? 'Recalculate: the values shown may be out of date'
+                : 'Recalculate the formulas'
+            "
+            :disabled="busy"
+            @click="recalculate"
+          />
+          <Icon
+            ref="moreButton"
+            icon="more-horizontal"
+            tooltip="Rows: add one at the end, delete the last"
+            :disabled="busy"
+            @click="rowMenu"
+          />
+        </template>
+        <Icon
+          v-else
+          icon="lock"
+          no-hover
+          :tooltip="
+            book.readOnly
+              ? 'Read-only workbook'
+              : 'View and agent editing: change it here on a computer, or ask the agent'
+          "
+          class="abele-workbook-mode"
+          :text-right="
+            book.readOnly ? 'Read-only workbook' : mobile ? 'View and agent editing' : ''
+          "
+        />
+      </div>
+      <select
+        v-if="book.sheets.length > 1"
+        v-model="sheetName"
+        class="dropdown abele-workbook-sheet"
+        aria-label="Sheet"
+        :disabled="busy"
       >
-      <label
-        >Cell <input v-model="goAddress" aria-label="Cell address" @keydown.enter="go"
-      /></label>
-      <button @click="go">Go</button>
-      <button aria-label="Zoom out" @click="setZoom(zoom / 1.2)">−</button>
-      <button aria-label="Reset zoom" @click="setZoom(1)">{{ Math.round(zoom * 100) }}%</button>
-      <button aria-label="Zoom in" @click="setZoom(zoom * 1.2)">+</button>
-      <button v-if="canEdit" class="abele-workbook-edit" @click="beginEdit">Edit cell</button>
-      <button v-if="canEdit" :disabled="busy" @click="recalculate">Recalculate</button>
-      <button v-if="canEdit" :disabled="busy" @click="changeRow('row_add')">Append row</button>
-      <button v-if="canEdit" :disabled="busy" @click="changeRow('row_delete')">
-        Delete last row
-      </button>
-      <span>{{
-        book.readOnly
-          ? 'Read-only workbook'
-          : mobile
-            ? 'View and agent editing'
-            : 'Cached workbook values'
-      }}</span>
+        <option v-for="s in book.sheets" :key="s.name" :value="s.name">
+          {{ s.name }}{{ s.hidden ? ' (hidden)' : '' }}
+        </option>
+      </select>
     </div>
-    <div class="abele-workbook-status" role="status">
-      {{
-        error ||
-        book.calculationNote ||
-        (book.stale
-          ? 'Values may be stale. Recalculation is required.'
-          : 'Formula results are cached from the spreadsheet app.')
-      }}
+    <!-- Said only when there is something to say: an error, a note, values out of date. -->
+    <div
+      class="abele-workbook-status"
+      :class="{ 'mod-error': error }"
+      role="status"
+      :hidden="!statusText"
+    >
+      {{ statusText }}
     </div>
-    <div class="abele-workbook-formula">
-      {{ selected }}
-      {{
-        selectedCell?.formulaProblem
-          ? '[Formula unavailable: ' + selectedCell.formulaProblem + ']'
-          : selectedCell?.formula
-            ? '= ' + selectedCell.formula
-            : String(selectedCell?.value ?? '')
-      }}
-    </div>
+    <!-- Changing the cell, under the bar it was chosen in: what it is, its value, and how it looks. -->
     <form v-if="editing && canEdit" class="abele-workbook-editor" @submit.prevent="saveCell">
-      <span>{{ sheetName }}!{{ editAddress }}</span>
-      <label
-        >Type
-        <select v-model="editType" aria-label="Cell type">
+      <div class="abele-workbook-editor__row">
+        <span class="abele-workbook-editor__where">{{ sheetName }}!{{ editAddress }}</span>
+        <select v-model="editType" class="dropdown" aria-label="Cell type">
           <option value="text">Text</option>
           <option value="number">Number</option>
           <option value="boolean">Boolean</option>
           <option value="formula">Formula</option>
           <option value="clear">Clear</option>
-        </select></label
-      >
-      <label
-        >Value
+        </select>
         <textarea
           v-model="editValue"
           aria-label="Cell value"
+          rows="1"
           :disabled="editType === 'clear' || busy"
         />
-      </label>
-      <button type="submit" :disabled="busy">Save</button>
-      <fieldset class="abele-workbook-format">
-        <legend>Cell formatting</legend>
-        <label>Range <input v-model="formatRange" aria-label="Formatting range" /></label>
-        <label
-          ><input
-            v-model="formatBold"
-            type="checkbox"
-            aria-label="Bold"
-            @change="markFormat('bold')"
-          />Bold</label
-        >
-        <label
-          ><input
-            v-model="formatItalic"
-            type="checkbox"
-            aria-label="Italic"
-            @change="markFormat('italic')"
-          />Italic</label
-        >
-        <label
-          >Fill
-          <input
-            v-model="formatFill"
-            aria-label="Fill colour"
-            placeholder="#RRGGBB or empty"
-            @input="markFormat('fill')"
-        /></label>
-        <label
-          >Number format
-          <input
-            v-model="numberFormat"
-            aria-label="Number format"
-            @input="markFormat('number_format')"
-        /></label>
+      </div>
+      <div class="abele-workbook-editor__row abele-workbook-format">
+        <span class="abele-workbook-editor__where">Format</span>
+        <input v-model="formatRange" aria-label="Formatting range" spellcheck="false" />
+        <Icon
+          icon="bold"
+          tooltip="Bold"
+          :active="formatBold"
+          @click="((formatBold = !formatBold), markFormat('bold'))"
+        />
+        <Icon
+          icon="italic"
+          tooltip="Italic"
+          :active="formatItalic"
+          @click="((formatItalic = !formatItalic), markFormat('italic'))"
+        />
+        <input
+          v-model="formatFill"
+          aria-label="Fill colour"
+          placeholder="Fill, #RRGGBB"
+          spellcheck="false"
+          @input="markFormat('fill')"
+        />
+        <input
+          v-model="numberFormat"
+          aria-label="Number format"
+          spellcheck="false"
+          @input="markFormat('number_format')"
+        />
         <button type="button" :disabled="busy" @click="saveFormat">Apply formatting</button>
-      </fieldset>
-      <button type="button" :disabled="busy" @click="editing = false">Cancel</button>
+      </div>
+      <div class="abele-workbook-editor__foot">
+        <button type="button" :disabled="busy" @click="editing = false">Cancel</button>
+        <button type="submit" class="mod-cta" :disabled="busy">Save</button>
+      </div>
     </form>
     <div
       ref="viewport"
@@ -165,11 +206,15 @@
           </button>
         </template>
       </div>
+      <EmptyState v-else variant="loading" icon="sheet" :title="`Opening ${sheetName}`" />
     </div>
   </div>
 </template>
 <script setup lang="ts">
 import { computed, nextTick, onBeforeUnmount, onMounted, ref, shallowRef, watch } from 'vue'
+import { Menu } from 'obsidian'
+import Icon from '../components/obsidian/Icon.vue'
+import EmptyState from '../components/obsidian/EmptyState.vue'
 import { cellAddress, columnName, contains, parseCell } from './address'
 import { formatValue } from './styles'
 import type { Workbook, WorkbookSheet } from './package'
@@ -186,6 +231,13 @@ const props = defineProps<{
   editorState?: (open: boolean) => void
 }>()
 const book = computed(() => props.book)
+/** Only what is worth a line: an error, the workbook's note, values that may be out of date. */
+const statusText = computed(
+  () =>
+    error.value ||
+    props.book.calculationNote ||
+    (props.book.stale ? 'Values may be stale. Recalculation is required.' : '')
+)
 const sheetName = ref(
   props.book.sheets.find((s) => s.name === props.initialSheet)?.name ?? props.book.sheets[0].name
 )
@@ -322,6 +374,25 @@ async function saveFormat() {
     busy.value = false
   }
 }
+/** The rarer edits, in a menu under the bar's last glyph. */
+function rowMenu(event: MouseEvent) {
+  const menu = new Menu()
+  menu.addItem((item) =>
+    item
+      .setTitle('Append row')
+      .setIcon('between-horizontal-end')
+      .onClick(() => void changeRow('row_add'))
+  )
+  menu.addItem((item) =>
+    item
+      .setTitle('Delete last row')
+      .setIcon('trash-2')
+      .setWarning(true)
+      .onClick(() => void changeRow('row_delete'))
+  )
+  menu.showAtMouseEvent(event)
+}
+
 async function changeRow(operation: 'row_add' | 'row_delete') {
   if (!canEdit.value || busy.value) return
   busy.value = true
@@ -461,6 +532,11 @@ function rowCells(row: number) {
         fontWeight: cell?.style.bold ? 'bold' : undefined,
         fontStyle: cell?.style.italic ? 'italic' : undefined,
         backgroundColor: cell?.style.fill,
+        // Numbers and dates to the right, words to the left, as a spreadsheet app sets them.
+        textAlign:
+          typeof cell?.value === 'number' || typeof cell?.value === 'boolean'
+            ? ('end' as const)
+            : undefined,
         zIndex: row <= frozen.value ? 3 : undefined,
       },
     })
