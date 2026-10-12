@@ -189,6 +189,12 @@ export class Task {
     return parseLabels(this.oldProps?.[config.taskLabelProperty || DEFAULT_LABEL_PROPERTY])
   }
 
+  /** The task's groups as written. A task named among them is this one's parent. */
+  get groups(): string[] {
+    const groups = this.oldProps?.groups
+    return Array.isArray(groups) ? groups.filter((g): g is string => typeof g === 'string') : []
+  }
+
   /** Path to the task file with extension */
   get taskPath(): string {
     // Obsidian will automatically rewrite wikilinks with shortest path by default

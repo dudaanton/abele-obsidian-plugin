@@ -20,7 +20,7 @@ vi.mock('@/composables/useCalendarDays', () => ({ useCalendarDays: () => ref(new
 let view: VueWrapper | undefined
 const originalStubs = mountConfig.global.stubs
 beforeEach(() => {
-  mountConfig.global.stubs = { ...originalStubs, ListSectionHeader: false }
+  mountConfig.global.stubs = { ...originalStubs, ListSectionHeader: false, TaskBranch: false }
   useVault([])
   configureAbele()
   installFakeIntersectionObserver()

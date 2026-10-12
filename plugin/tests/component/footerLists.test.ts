@@ -82,7 +82,7 @@ function render(component: unknown, props: Record<string, unknown>): VueWrapper 
   wrapper = mount(component as never, {
     props,
     shallow: true,
-    global: { stubs: { ListSectionHeader: false } },
+    global: { stubs: { ListSectionHeader: false, TaskBranch: false } },
   }) as VueWrapper
   return wrapper
 }

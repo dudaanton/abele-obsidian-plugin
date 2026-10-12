@@ -790,14 +790,27 @@ The person gets the same links from **Copy link to lines** on the editor's menu.
 
 Priority orders the task list of tasks without a date, highest first; dated tasks stay in date
 order. Labels are free text: write them plainly, without a `#`. Colours for labels live in the
-settings, never on the task. There is no nesting: the task's own body is its description.
+settings, never on the task. The task's own body is its description.
+
+A subtask is a task with another task named among its `groups` — `groups: ["[[Tasks/Mount the
+station]]"]` — and nothing else: there is no `parent` property, and one task may be a subtask
+of several. Lists show it under its parent, the parent's row counting done of all; a parent the
+list does not show is named under the subtask instead. Completing a subtask updates its parent's
+count; the parent still has its own completion control. Tasks
+written into each other's groups (a circle) show flat. To make a subtask,
+add the link to the task's `groups`; to undo it, remove that link.
+
+Expanded subtask rows are remembered locally under `abele-subtasks-open`, as a list of task
+paths in Obsidian's local storage. This affects every task list on that device and does not
+change task notes or travel with settings.
 
 Completion is `completed` being set. Do not add a `done` or `status` property.
 
 Completing a repeating task through its header or card creates the same next occurrence:
 advance each existing `date` and `due` by `recurrence`, or calculate them from the instant of
 completion when the rule says `from completion`. Missing endpoints remain absent. The copy
-has no `completed` property and its subtasks are unchecked; undoing completion creates no copy.
+has no `completed` property; existing subtasks keep their completion state and group links.
+Undoing completion creates no copy.
 Counted rules skip inactive periods: `every 2 weeks on Monday` advances two weeks, and
 `every 2 months on 15` advances two months after the current month's 15th.
 

@@ -45,7 +45,11 @@ afterEach(() => {
   vi.unstubAllEnvs()
 })
 const render = async (atTimeline = false) => {
-  view = mount(TaskCard, { props: { task, atTimeline }, shallow: true })
+  view = mount(TaskCard, {
+    props: { task, atTimeline },
+    shallow: true,
+    global: { stubs: { EntryRow: false, LabelDot: false } },
+  })
   await flushPromises()
   return view
 }
@@ -57,8 +61,7 @@ const codes = () =>
     tooltip: icon.props('tooltip') as string | undefined,
     color: icon.props('color') as string | undefined,
   }))
-const codeOf = (tooltipStart: string) =>
-  codes().find((c) => c.tooltip?.startsWith(tooltipStart))
+const codeOf = (tooltipStart: string) => codes().find((c) => c.tooltip?.startsWith(tooltipStart))
 const reveal = async () => {
   expect(scrollIntoView(view.find('.abele-task-view').element)).toBeGreaterThan(0)
   await flushPromises()
@@ -155,17 +158,17 @@ describe('task card content and date presentation', () => {
     await render(true)
     expect(codeOf('Starts')?.text).toBe('11:05')
     expect(codeOf('Due')).toMatchObject({ text: '18:00', icon: 'calendar-clock' })
-    expect(view.find('.abele-task-view__time-left').text()).toBe('(in 01:05)')
+    expect(codeOf('Starts')?.tooltip).toBe('Starts in 01:05')
     expect(codeOf('Date ')).toBeUndefined()
     await vi.advanceTimersByTimeAsync(1000)
-    expect(view.text()).toContain('(in 01:04)')
+    expect(codeOf('Starts')?.tooltip).toBe('Starts in 01:04')
     task.completedAt = dayjs()
     await view.vm.$nextTick()
-    expect(view.text()).not.toContain('(in ')
+    expect(codes().some((c) => /in \d\d:\d\d/.test(c.tooltip ?? ''))).toBe(false)
     task.completedAt = null
     task.dateTime = dayjs('2028-01-31 09:00')
     await view.vm.$nextTick()
-    expect(view.text()).not.toContain('(in ')
+    expect(codes().some((c) => /in \d\d:\d\d/.test(c.tooltip ?? ''))).toBe(false)
     view.unmount()
     view = undefined
     expect(vi.getTimerCount()).toBe(0)
@@ -174,10 +177,10 @@ describe('task card content and date presentation', () => {
   it('shows no countdown without a time or outside the timeline', async () => {
     await task.load()
     await render(true)
-    expect(view.text()).not.toContain('(in ')
+    expect(codes().some((c) => /in \d\d:\d\d/.test(c.tooltip ?? ''))).toBe(false)
     task.dateTime = dayjs('2028-02-01 10:00')
     await view.setProps({ atTimeline: false })
-    expect(view.text()).not.toContain('(in ')
+    expect(codes().some((c) => /in \d\d:\d\d/.test(c.tooltip ?? ''))).toBe(false)
   })
 
   it('renders a missing task with an orphan-removal action and no checkbox', async () => {
@@ -224,11 +227,14 @@ describe('task card interactions', () => {
     const remove = vi.spyOn(task, 'remove').mockResolvedValue()
     await render()
     await view.trigger('contextmenu', { clientX: 12, clientY: 34 })
-    const item = (
+    const items = (
       shown.mock.contexts[0] as unknown as {
         items: Array<{ title: string; icon: string; handler: () => void }>
       }
-    ).items[0]
+    ).items
+    // Subtasks are made from the same menu, before the deletion set apart at its end.
+    expect(items.map((i) => i.title).slice(0, 2)).toEqual(['Add subtask', 'Make subtask of…'])
+    const item = items.find((i) => i.title === 'Delete')!
     expect(item.title).toBe('Delete')
     expect(item.icon).toBe('trash')
     item.handler()

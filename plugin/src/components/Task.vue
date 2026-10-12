@@ -3,122 +3,136 @@
     <em class="abele-task-view__content">Task not found</em>
     <ObsidianIcon icon="trash" @click="removeOrphaned" />
   </div>
-  <div
+  <EntryRow
     v-else-if="task.loaded"
-    ref="taskEl"
+    ref="rowEl"
     class="abele-task-view"
     :class="{ 'is-done': !!checked }"
     :data-abele-anchor="'task:' + task.taskPath"
     role="link"
     tabindex="0"
+    :more="task.description ? showDescription : undefined"
+    @update:more="toggleDescription"
     @click="onCardClick"
     @keydown.enter.self="openFile(task.taskPath)"
     @contextmenu.prevent="onContextMenu"
   >
-    <label class="task-list-label" contenteditable="false"
-      ><input
-        class="task-list-item-checkbox"
-        type="checkbox"
-        :checked="!!checked"
-        @click.stop="task.toggle"
-    /></label>
-    <div class="abele-task-view__content">
-      <div class="abele-task-view__line">
-        <div class="abele-task-view__title">
-          <ObsidianMarkdown
-            v-if="contentLoaded"
-            trusted
-            :text="task.title ?? ''"
-            :file-path="task.filePath"
-          />
-          <span
-            v-for="label in labels"
-            :key="label.text"
-            class="abele-task-view__label"
-            :class="`abele-task-view__label_${label.color}`"
-            >{{ label.text }}</span
-          >
-        </div>
-        <!-- State as codes on the first line, the words in each one's tooltip. -->
-        <div class="abele-task-view__codes">
-          <ObsidianIcon
-            v-if="priorityMark"
-            class="abele-task-view__priority"
-            :icon="priorityMark.icon"
-            :color="priorityMark.color"
-            :tooltip="priorityMark.label"
-            no-hover
-          />
-          <template v-if="atTimeline">
-            <ObsidianIcon
-              v-if="dateTimeText"
-              class="abele-task-view__code"
-              :text-right="dateTimeText"
-              :tooltip="timeLeftText ? `Starts ${timeLeftText}` : 'Starts'"
-              no-hover
-            />
-            <span v-if="timeLeftText" class="abele-task-view__time-left">{{ timeLeftText }}</span>
-            <ObsidianIcon
-              v-if="dueTimeText"
-              class="abele-task-view__code"
-              icon="calendar-clock"
-              :text-right="dueTimeText"
-              tooltip="Due"
-              no-hover
-            />
-          </template>
-          <template v-else-if="completedText">
-            <ObsidianIcon
-              class="abele-task-view__code"
-              icon="check"
-              :text-right="completedCode"
-              :tooltip="`Completed ${completedText}`"
-              no-hover
-            />
-          </template>
-          <template v-else>
-            <ObsidianIcon
-              v-if="dateText"
-              class="abele-task-view__code"
-              :text-right="dateCode"
-              :tooltip="`Date ${dateText} ${dateTimeText}`.trim() + diffWords(diffDateText)"
-              no-hover
-            />
-            <ObsidianIcon
-              v-if="dueText"
-              class="abele-task-view__code"
-              icon="calendar-clock"
-              :text-right="dueCode"
-              :color="isOverdue ? 'red' : undefined"
-              :tooltip="`Due ${dueText} ${dueTimeText}`.trim() + diffWords(diffDueText)"
-              no-hover
-            />
-          </template>
-          <ObsidianIcon
-            v-if="task.recurrence && !atTimeline"
-            class="abele-task-view__code"
-            icon="repeat"
-            :tooltip="`Repeats ${task.recurrence}`"
-            no-hover
-          />
-          <ObsidianIcon
-            v-if="task.description"
-            class="abele-task-view__more"
-            :icon="showDescription ? 'chevron-up' : 'chevron-down'"
-            :label="showDescription ? 'Hide description' : 'Show description'"
-            @click.stop="toggleDescription"
-          />
-        </div>
-      </div>
+    <template #leading>
+      <!-- Priority is the colour of the box to tick, the word in its tooltip. -->
+      <label
+        class="task-list-label"
+        :class="priorityMark ? `abele-task-view__check_${priorityMark.color}` : undefined"
+        :aria-label="priorityMark?.label"
+        contenteditable="false"
+        ><input
+          class="task-list-item-checkbox"
+          type="checkbox"
+          :checked="!!checked"
+          @click.stop="task.toggle"
+      /></label>
+    </template>
+    <div class="abele-task-view__title">
       <ObsidianMarkdown
-        v-if="task.description && showDescription && contentLoaded"
+        v-if="contentLoaded"
+        trusted
+        :text="task.title ?? ''"
+        :file-path="task.filePath"
+      />
+    </div>
+    <!-- State as codes, the words in each one's tooltip. -->
+    <template #codes>
+      <!-- Done of all the subtasks; pressed, they open under the row. -->
+      <ObsidianIcon
+        v-if="subtasks"
+        class="abele-task-view__code abele-task-view__subtasks"
+        :class="{ 'is-complete': subtasks.done === subtasks.total }"
+        icon="list-tree"
+        :text-right="`${subtasks.done}/${subtasks.total}`"
+        role="button"
+        :aria-expanded="!!subtasksOpen"
+        :tooltip="`${subtasks.done} of ${subtasks.total} subtasks done · ${subtasksOpen ? 'Hide' : 'Show'} them`"
+        @click.stop="emit('toggle-subtasks')"
+      />
+      <ObsidianIcon
+        v-if="circular?.length"
+        class="abele-task-view__code"
+        icon="alert-triangle"
+        color="red"
+        :tooltip="circularText"
+        no-hover
+      />
+      <template v-if="atTimeline">
+        <ObsidianIcon
+          v-if="dateTimeText"
+          class="abele-task-view__code"
+          :text-right="dateTimeText"
+          :tooltip="timeLeftText ? `Starts ${timeLeftText.replace(/[()]/g, '')}` : 'Starts'"
+          no-hover
+        />
+        <ObsidianIcon
+          v-if="dueTimeText"
+          class="abele-task-view__code"
+          icon="calendar-clock"
+          :text-right="dueTimeText"
+          tooltip="Due"
+          no-hover
+        />
+      </template>
+      <template v-else-if="completedText">
+        <ObsidianIcon
+          class="abele-task-view__code"
+          icon="check"
+          :text-right="completedCode"
+          :tooltip="`Completed ${completedText}`"
+          no-hover
+        />
+      </template>
+      <template v-else>
+        <ObsidianIcon
+          v-if="dateText"
+          class="abele-task-view__code"
+          :text-right="dateCode"
+          :tooltip="`Date ${dateText} ${dateTimeText}`.trim() + diffWords(diffDateText)"
+          no-hover
+        />
+        <ObsidianIcon
+          v-if="dueText"
+          class="abele-task-view__code"
+          icon="calendar-clock"
+          :text-right="dueCode"
+          :color="isOverdue ? 'red' : undefined"
+          :tooltip="`Due ${dueText} ${dueTimeText}`.trim() + diffWords(diffDueText)"
+          no-hover
+        />
+      </template>
+      <ObsidianIcon
+        v-if="task.recurrence && !atTimeline"
+        class="abele-task-view__code"
+        icon="repeat"
+        :tooltip="`Repeats ${task.recurrence}`"
+        no-hover
+      />
+    </template>
+    <!-- The labels under the name, quiet words each with a dot of its colour. -->
+    <template v-if="labels.length || parent?.length" #meta>
+      <span v-if="parent?.length" class="abele-task-view__parent">in {{ parent.join(', ') }}</span>
+      <LabelDot
+        v-for="label in labels"
+        :key="label.text"
+        class="abele-task-view__label"
+        :text="label.text"
+        :color="label.color"
+      />
+    </template>
+    <template v-if="task.description && showDescription && contentLoaded" #detail>
+      <ObsidianMarkdown
         trusted
         :text="task.description"
         :file-path="task.filePath"
         class="abele-task-view__description"
       />
-    </div>
-  </div>
+    </template>
+  </EntryRow>
 </template>
 
 <script setup lang="ts">
@@ -131,6 +145,8 @@ import dayjs from 'dayjs'
 import { computed, onMounted, ref, watch } from 'vue'
 import ObsidianIcon from './obsidian/Icon.vue'
 import ObsidianMarkdown from './obsidian/Markdown.vue'
+import EntryRow from './obsidian/EntryRow.vue'
+import LabelDot from './obsidian/LabelDot.vue'
 import { AbeleConfig } from '@/services/AbeleConfig'
 import { labelColor, type TaskPriority } from '@/helpers/taskMeta'
 import type { KitColor } from '@/constants/colors'
@@ -140,13 +156,33 @@ import { useDisplayClock } from '@/composables/useDisplayClock'
 import { useDate } from '@/composables/useDate'
 import { Menu } from 'obsidian'
 import { useFooterTaskOpen } from '@/composables/useFooterView'
+import { addSubtask, detachFrom, makeSubtaskOf } from '@/commands/subtasks'
 
 const props = defineProps<{
   task: Task
   atTimeline?: boolean
+  /** Done of all its subtasks, when it has any. */
+  subtasks?: { done: number; total: number } | null
+  subtasksOpen?: boolean
+  /** The other tasks in a circle of groups with this one. */
+  circular?: string[]
+  /** Its parents' names, when the list does not show it under them. */
+  parent?: string[]
+  /** Its parents, for the menu's way to leave one. */
+  parents?: Task[]
 }>()
+const emit = defineEmits<{ (e: 'toggle-subtasks'): void }>()
 
-const taskEl = ref<HTMLElement | null>(null)
+const circularText = computed(() => {
+  const others = props.circular ?? []
+  const me = props.task.title || props.task.taskName
+  return others.length === 1 && others[0] === me
+    ? `Circular: ${me} is in its own groups. Shown flat until the link is removed.`
+    : `Circular: ${me} and ${others.join(', ')} are in each other's groups. Shown flat until one of the links is removed.`
+})
+
+const rowEl = ref<{ $el: HTMLElement } | null>(null)
+const taskEl = computed(() => rowEl.value?.$el ?? null)
 const clockVisible = ref(true)
 const isVisible = useOwnerVisibility(taskEl, (visible) => {
   clockVisible.value = visible
@@ -334,6 +370,29 @@ const onCardClick = (e: MouseEvent) => {
 
 const onContextMenu = (e: MouseEvent) => {
   const menu = new Menu()
+  menu.addItem((item) =>
+    item
+      .setTitle('Add subtask')
+      .setIcon('list-plus')
+      .onClick(() => void addSubtask(props.task.taskPath))
+  )
+  menu.addItem((item) =>
+    item
+      .setTitle('Make subtask of…')
+      .setIcon('list-tree')
+      .onClick(() => {
+        const list = GlobalStore.getInstance().tasksList.value
+        makeSubtaskOf(props.task, [...(list?.tasks.values() ?? [])])
+      })
+  )
+  for (const parent of props.parents ?? [])
+    menu.addItem((item) =>
+      item
+        .setTitle(`Detach from ${parent.title || parent.taskName}`)
+        .setIcon('unlink')
+        .onClick(() => void detachFrom(props.task, parent))
+    )
+  menu.addSeparator()
   menu.addItem((item) => {
     item
       .setTitle('Delete')
@@ -363,32 +422,9 @@ onMounted(() => {
 
 <style lang="scss">
 .abele-task-view {
-  display: flex;
-  align-items: flex-start;
-  gap: var(--size-4-1);
-  padding: var(--size-2-2) var(--size-2-1);
-  cursor: pointer;
-  border-radius: var(--radius-s);
-
-  &:hover {
-    background-color: var(--background-modifier-hover);
-  }
-
   p {
     margin: 0;
     word-break: break-word;
-  }
-
-  .task-list-label {
-    padding: 0;
-    margin-inline-start: -0.25em;
-
-    input {
-      top: -0.1em;
-      vertical-align: middle;
-      margin-inline-start: var(--checkbox-margin-inline-start);
-      margin-inline-end: 0.25em;
-    }
   }
 
   // Done reads the way Obsidian draws a ticked list item.
@@ -398,98 +434,31 @@ onMounted(() => {
   }
 }
 
-.abele-task-view__content {
-  flex: 1;
-  min-width: 0;
-  overflow-wrap: anywhere;
-  padding-top: 1px;
-}
-
-.abele-task-view__line {
-  display: flex;
-  align-items: flex-start;
-  gap: var(--size-4-2);
-}
-
-// The labels follow the words in the same flow of text, as quiet words with a dot of their colour.
 .abele-task-view__title {
-  flex: 1;
-  min-width: 0;
-
   div,
   p {
     display: inline;
   }
 }
 
-.abele-task-view__label {
-  margin-inline-start: var(--size-4-2);
-  font-size: var(--font-smallest);
-  color: var(--text-muted);
-  white-space: nowrap;
-
-  &::before {
-    content: '';
-    display: inline-block;
-    width: 6px;
-    height: 6px;
-    margin-inline-end: var(--size-2-2);
-    border-radius: 50%;
-    vertical-align: middle;
-    background-color: var(--abele-task-label-color, var(--text-faint));
+// Priority as the colour of the box, the way a list of tasks elsewhere tells them apart.
+@each $name in red, orange, blue {
+  .abele-task-view__check_#{$name} {
+    --checkbox-border-color: var(--color-#{$name});
+    --checkbox-border-color-hover: var(--color-#{$name});
   }
 }
 
-@each $name in red, orange, yellow, green, cyan, blue, purple, pink {
-  .abele-task-view__label_#{$name} {
-    --abele-task-label-color: var(--color-#{$name});
-  }
-}
-
-// Codes stay on the first line at the end, however long the words get.
-.abele-task-view__codes {
-  flex: 0 0 auto;
-  display: flex;
-  align-items: center;
-  // As tall as the first line of words, so the codes sit level with it.
-  height: calc(var(--line-height-normal) * 1em);
-  gap: var(--size-2-2);
-
-  > * {
-    font-size: var(--font-smallest);
-  }
-
-  color: var(--text-muted);
-  white-space: nowrap;
-
-  .abele-obsidian-icon {
-    height: auto;
-    padding: 0;
-  }
-
-  .abele-obsidian-icon__icon {
-    height: auto;
-  }
-
-  svg {
-    width: var(--icon-xs);
-    height: var(--icon-xs);
-  }
-}
-
-.abele-task-view__more {
+.abele-task-view__parent {
   color: var(--text-faint);
 }
 
-.abele-task-view__time-left {
-  color: var(--text-faint);
+// All its subtasks done: the count says so in the colour of a ticked box.
+.abele-task-view__subtasks.is-complete {
+  color: var(--color-green);
 }
 
-.abele-task-view__description {
-  margin-top: var(--size-2-1);
-
-  p {
-    color: var(--text-muted);
-  }
+.abele-task-view__description p {
+  color: var(--text-muted);
 }
 </style>

@@ -34,10 +34,12 @@
     </ListSectionHeader>
     <template v-if="!fold.collapsed.value">
       <div ref="itemsEl" class="abele-todo-list__tasks">
-        <TaskView
+        <TaskBranch
           v-for="task in visible"
           :key="task.id"
-          :task="task"
+          :node="branches.node(task)"
+          :tree="branches.tree"
+          :owner="owner"
           class="abele-todo-list__task"
         />
         <div v-if="hasMore" ref="sentinel" class="abele-todo-list__sentinel" />
@@ -51,7 +53,9 @@
 
 <script setup lang="ts">
 import { Task } from '@/entities/Task'
-import TaskView from './Task.vue'
+import TaskBranch from './TaskBranch.vue'
+import { treeOf } from '@/commands/subtasks'
+import { GlobalStore } from '@/stores/GlobalStore'
 import ObsidianIcon from './obsidian/Icon.vue'
 import ListSectionHeader from './obsidian/ListSectionHeader.vue'
 import { ref, watch } from 'vue'
@@ -68,6 +72,8 @@ import { useFooterFold } from '@/composables/useFooterFold'
 const props = defineProps<{
   showAddButton?: boolean
   tasks: Task[]
+  /** The note the list stands under: its own subtasks do not name it again. */
+  owner?: string
 }>()
 
 const fold = useFooterFold('tasks')
@@ -92,11 +98,18 @@ const search = useListSearch(() => filtered.value, taskSearch)
 
 const shown = computed(() => sortByPriority(search.results.value))
 
+// Subtasks stand under their parents; who is whose is read from every task the vault has.
+const branches = computed(() => {
+  const all = [...(GlobalStore.getInstance().tasksList.value?.tasks.values() ?? [])]
+  return treeOf(shown.value, all.length ? all : props.tasks)
+})
+const roots = computed(() => branches.value.tree.roots.map((n) => n.task))
+
 const itemsEl = ref<HTMLElement | null>(null)
 useSearchHighlight(itemsEl, search.terms)
 
 const { visible, hasMore, sentinel, reset, followSearch } = usePagedList(
-  () => shown.value,
+  () => roots.value,
   undefined,
   useFooterPages('tasks')
 )

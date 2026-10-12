@@ -1,18 +1,17 @@
 /**
  * What a task card says about priority and labels.
  *
- * Priority is the first glyph among the codes at the end of the row, and only on tasks without
- * a date: the calendar already orders its tasks by when they happen, so a priority there would
- * say nothing the position does not. Labels follow the title in the same line, on every card,
- * as quiet words marked with the colour the settings give that label. Nothing but the title
- * sits beside the checkbox, left of the text.
+ * Priority is the colour of the box to tick, its word in that box's label, and only on tasks
+ * without a date: the calendar already orders its tasks by when they happen, so a priority there
+ * would say nothing the position does not. Labels stand on the line under the title, on every
+ * card, as quiet words marked with the colour the settings give that label. Nothing but the
+ * title sits on the first line, so it keeps the width.
  */
 import { describe, it, expect, beforeEach, afterEach } from 'vitest'
 import { mount, type VueWrapper } from '@vue/test-utils'
 import dayjs from 'dayjs'
 import { Task } from '@/entities/Task'
 import TaskCard from '@/components/Task.vue'
-import ObsidianIcon from '@/components/obsidian/Icon.vue'
 import { installFakeIntersectionObserver } from '../helpers/fakeIntersectionObserver'
 import { useVault, configureAbele } from '../helpers/testEnv'
 
@@ -27,12 +26,19 @@ function taskWith(props: Record<string, unknown>): Task {
 
 let view: VueWrapper | null = null
 const render = (task: Task, extra: Record<string, unknown> = {}) => {
-  view = mount(TaskCard, { props: { task, ...extra }, shallow: true })
+  view = mount(TaskCard, {
+    props: { task, ...extra },
+    shallow: true,
+    global: { stubs: { EntryRow: false, LabelDot: false } },
+  })
   return view
 }
 
-const priorityIcon = (v: VueWrapper) =>
-  v.findAllComponents(ObsidianIcon).find((c) => c.classes().includes('abele-task-view__priority'))
+const priorityIcon = (v: VueWrapper) => {
+  const box = v.find('.task-list-label')
+  const color = /abele-task-view__check_(\w+)/.exec(box.attributes('class') ?? '')?.[1]
+  return color ? { color, label: box.attributes('aria-label') } : undefined
+}
 
 describe('task card — priority and labels', () => {
   beforeEach(() => {
@@ -47,41 +53,37 @@ describe('task card — priority and labels', () => {
   })
 
   it.each([
-    ['high', 'chevron-up', 'red'],
-    ['medium', 'equal', 'orange'],
-    ['low', 'chevron-down', 'blue'],
-  ])('marks %s priority with its own glyph and colour', (priority, icon, color) => {
-    const card = render(taskWith({ priority }))
-
-    const glyph = priorityIcon(card)
-    expect(glyph?.props('icon')).toBe(icon)
-    expect(glyph?.props('color')).toBe(color)
-    expect(glyph?.props('tooltip')).toBe(
-      `${priority[0].toUpperCase()}${priority.slice(1)} priority`
-    )
+    ['high', 'red'],
+    ['medium', 'orange'],
+    ['low', 'blue'],
+  ])('marks %s priority by the colour of its box', (priority, color) => {
+    const mark = priorityIcon(render(taskWith({ priority })))
+    expect(mark?.color).toBe(color)
+    expect(mark?.label).toBe(`${priority[0].toUpperCase()}${priority.slice(1)} priority`)
   })
 
-  it('shows no glyph for a task without priority', () => {
+  it('shows no colour for a task without priority', () => {
     expect(priorityIcon(render(taskWith({})))).toBeUndefined()
   })
 
-  it('shows no glyph for a task with a date', () => {
+  it('shows no colour for a task with a date', () => {
     const task = taskWith({ priority: 'high' })
     task.date = dayjs('2026-05-01')
 
     expect(priorityIcon(render(task))).toBeUndefined()
   })
 
-  it('shows a label per label, in the configured colour or grey, after the title', () => {
+  it('shows a label per label, in the configured colour or grey, on the line under the title', () => {
     const config = configureAbele()
     config.taskLabelColors = [{ value: 'Work', color: 'green' }]
     const card = render(taskWith({ labels: ['work', 'home'] }))
 
-    const chips = card.findAll('.abele-task-view__title .abele-task-view__label')
+    expect(card.find('.abele-task-view__title .abele-task-view__label').exists()).toBe(false)
+    const chips = card.findAll('.abele-entry-row__meta .abele-task-view__label')
     expect(chips.map((c) => c.text())).toEqual(['work', 'home'])
     expect(chips.map((c) => c.classes())).toEqual([
-      ['abele-task-view__label', 'abele-task-view__label_green'],
-      ['abele-task-view__label', 'abele-task-view__label_grey'],
+      ['abele-label-dot', 'abele-label-dot_green', 'abele-task-view__label'],
+      ['abele-label-dot', 'abele-label-dot_grey', 'abele-task-view__label'],
     ])
     config.taskLabelColors = []
   })
@@ -97,22 +99,17 @@ describe('task card — priority and labels', () => {
     expect(render(taskWith({})).find('.abele-task-view__label').exists()).toBe(false)
   })
 
-  it('puts the glyph first among the codes, apart from the labels', () => {
+  it('keeps the labels off the title line and the codes', () => {
     const card = render(taskWith({ priority: 'high', labels: ['work', 'home'] }))
 
-    const codes = card.find('.abele-task-view__codes')
-    expect(codes.exists()).toBe(true)
-    expect(codes.element.children[0].classList.contains('abele-task-view__priority')).toBe(true)
-    expect(codes.findAll('.abele-task-view__label')).toHaveLength(0)
-    expect(card.findAll('.abele-task-view__title .abele-task-view__label')).toHaveLength(2)
+    expect(card.findAll('.abele-entry-row__codes .abele-task-view__label')).toHaveLength(0)
+    expect(card.findAll('.abele-entry-row__meta .abele-task-view__label')).toHaveLength(2)
   })
 
-  it('keeps the glyph among the codes when there are no labels', () => {
+  it('keeps the priority on the checkbox when there are no labels', () => {
     const card = render(taskWith({ priority: 'low' }))
-
-    const codes = card.find('.abele-task-view__codes')
-    expect(codes.element.children).toHaveLength(1)
-    expect(codes.element.children[0].classList.contains('abele-task-view__priority')).toBe(true)
+    expect(priorityIcon(card)).toEqual({ color: 'blue', label: 'Low priority' })
+    expect(card.find('.abele-entry-row__meta').exists()).toBe(false)
   })
 
   it('has nothing beside the checkbox but the title', () => {

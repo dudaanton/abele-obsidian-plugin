@@ -350,12 +350,16 @@ body.is-phone .abele-node-panel__link {
 <style lang="scss">
 // The node's choosers (NodeSuggestModal): Obsidian's suggestion row with the kind glyph before it.
 .abele-node-suggestion {
-  align-items: center;
+  align-items: flex-start;
   gap: var(--size-4-3);
 }
-.abele-node-suggestion .abele-node-suggestion__kind {
+// The kind's glyph stands on the middle of the name's line, not of the name and its note.
+.suggestion-item.mod-complex.abele-node-suggestion .suggestion-icon.abele-node-suggestion__kind {
   display: flex;
   flex: 0 0 auto;
+  align-items: center;
+  align-self: flex-start;
+  height: 1lh;
   color: var(--icon-color);
 }
 .abele-node-suggestion_current .suggestion-title {

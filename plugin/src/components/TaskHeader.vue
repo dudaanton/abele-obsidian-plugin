@@ -37,6 +37,19 @@
       :label="task.recurrence ? 'Change repeat' : 'Set repeat'"
       @click="recurrencePickerOpen = true"
     />
+    <!-- Its subtasks: done of all beside the glyph, and pressed, a new one under this task. -->
+    <Icon
+      class="abele-task-header-view__subtasks"
+      icon="list-plus"
+      :text-right="subtasks ? `${subtasks.done}/${subtasks.total}` : undefined"
+      label="Add subtask"
+      :tooltip="
+        subtasks
+          ? `${subtasks.done} of ${subtasks.total} subtasks done · Add subtask`
+          : 'Add subtask'
+      "
+      @click="addSubtask(task.filePath)"
+    />
     <Icon
       v-if="hasAnything"
       class="abele-task-header-view__clear"
@@ -84,6 +97,8 @@
 
 <script setup lang="ts">
 import { ref, computed, onMounted } from 'vue'
+import { GlobalStore } from '@/stores/GlobalStore'
+import { addSubtask, subtasksOfPath } from '@/commands/subtasks'
 import dayjs from 'dayjs'
 import { TaskHeader } from '@/entities/TaskHeader'
 import { DISPLAY_DATE_FORMAT } from '@/constants/dates'
@@ -95,6 +110,11 @@ import { useTimerButton } from '@/composables/useTimerButton'
 import { useScriptButtons } from '@/composables/useScriptButtons'
 
 const props = defineProps<{ task: TaskHeader }>()
+const subtasks = computed(() =>
+  subtasksOfPath(props.task.filePath, [
+    ...(GlobalStore.getInstance().tasksList.value?.tasks.values() ?? []),
+  ])
+)
 
 // --- Timer ---
 const taskFilePath = computed(() => props.task.filePath)
@@ -202,6 +222,12 @@ onMounted(() => {
 
   p {
     margin: 0;
+  }
+
+  // The first glyph's ink, not its button's box, starts where the title above starts: less the
+  // button's own padding and the margin a glyph is drawn inside its box with.
+  > .clickable-icon:first-child {
+    margin-inline-start: calc(-1 * var(--size-2-3) - var(--icon-size) * 2 / 24);
   }
 }
 

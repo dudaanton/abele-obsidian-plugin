@@ -1,6 +1,6 @@
 <template>
   <div v-if="footer.loaded" class="abele-footer-view">
-    <TodoList v-if="todoTasks.length" :tasks="todoTasks" />
+    <TodoList v-if="todoTasks.length" :tasks="todoTasks" :owner="footer.filePath" />
     <Timeline
       v-if="timelineTasks.length || dayEvents.size"
       :tasks="timelineTasks"

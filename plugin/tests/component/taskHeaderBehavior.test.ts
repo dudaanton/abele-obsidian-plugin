@@ -79,7 +79,13 @@ describe('task header controls', () => {
     async (mode) => {
       const shown = vi.spyOn(Menu.prototype, 'showAtPosition')
       await render()
-      expect(labels()).toEqual(['Mark done', 'Set date', 'Set due date', 'Set repeat'])
+      expect(labels()).toEqual([
+        'Mark done',
+        'Set date',
+        'Set due date',
+        'Set repeat',
+        'Add subtask',
+      ])
       expect(button('date').props('textRight')).toBeUndefined()
       expect(button('due').props('textRight')).toBeUndefined()
       await button(mode === 'event' ? 'date' : 'due').trigger('click')
