@@ -9,13 +9,25 @@ export const SCRIPT_FIXTURE = String.raw`
   const fixtureKeys = ['abele-script-trust', 'abele-script-local-upgrade', 'abele-script-provenance', 'abele-script-toolbar-offered']
   const fixtureMarker = '.abele-script-managed'
   const fixtureSyncKeys = ['abele-sync-connections-v2', 'abele-sync-connection']
+  const fixtureSyncOwner = Symbol.for('abele.test.script-fixture-sync')
   const fixtureClone = value => JSON.parse(JSON.stringify(value ?? null))
+  const fixtureDisconnected = () => {
+    const registry = app.loadLocalStorage(fixtureSyncKeys[0])
+    return registry?.version === 2 && registry.selectedId === '' &&
+      Array.isArray(registry.records) && registry.records.length === 0 &&
+      (!registry.cleanup || Array.isArray(registry.cleanup) && registry.cleanup.length === 0) &&
+      app.loadLocalStorage(fixtureSyncKeys[1]) == null
+  }
   const fixtureHostSettled = async () => { await app.plugins?.plugins?.abele?.tokenEngines?.rebuilding }
   const fixtureSyncActive = () => {
     const host = app.plugins?.plugins?.abele?.tokenEngines
+    const registry = app.loadLocalStorage(fixtureSyncKeys[0])
+    // A freshly attached connection can be active before a host is exposed or starts.
+    const activeRecord = registry?.records?.some(record => record.pending ||
+      ['idle', 'syncing', 'joining', 'paused', 'scope_unavailable', 'scope_updating'].includes(record.status))
     // Even idle/offline runtimes own watchers and may resume. Include queued startup
     // and draining hosts, not saved metadata or the status label alone.
-    return !!(host?.live?.size || host?.pending?.size || host?.startupCancels?.size ||
+    return !!(activeRecord || host?.live?.size || host?.pending?.size || host?.startupCancels?.size ||
       host?.engines?.runtimes?.size || host?.ui?.runtimes?.size)
   }
   function restoreFixtureConnections(sync) {
@@ -78,6 +90,13 @@ export const SCRIPT_FIXTURE = String.raw`
     // Snapshot reads can await IndexedDB; recheck before taking the disconnected context.
     await fixtureHostSettled()
     if (fixtureSyncActive()) throw new Error('Script fixture needs a disconnected, exclusively held vault')
+    // Repeated saves within one fixture must retain the pre-isolation values, including
+    // absent keys. Never adopt the temporary empty registry as the restoration baseline.
+    if (app[fixtureSyncOwner]) {
+      if (!fixtureDisconnected()) throw new Error('Script fixture disconnected context changed')
+      snapshot.sync = fixtureClone(app[fixtureSyncOwner])
+      return snapshot
+    }
     try {
       app.saveLocalStorage(fixtureSyncKeys[0], { version: 2, selectedId: '', records: [] })
       app.saveLocalStorage(fixtureSyncKeys[1], null)
@@ -85,10 +104,11 @@ export const SCRIPT_FIXTURE = String.raw`
           app.loadLocalStorage(fixtureSyncKeys[1]) != null)
         throw new Error('Script fixture disconnected context was not saved')
     } catch (error) {
-      try { restoreFixtureConnections(snapshot.sync) }
+      try { restoreFixtureConnections(snapshot.sync); delete app[fixtureSyncOwner] }
       catch (restoreError) { throw new AggregateError([error, restoreError], 'Script fixture setup and rollback failed') }
       throw error
     }
+    app[fixtureSyncOwner] = fixtureClone(snapshot.sync)
     return snapshot
   }
   async function enableScriptFixture(folder) {
@@ -153,7 +173,10 @@ export const SCRIPT_FIXTURE = String.raw`
     // Restore both keys even when script cleanup fails, and only after discovery
     // has finished in the disconnected context. Verification is read-only.
     try { await fixtureHostSettled() } catch (error) { errors.push(error) }
-    try { restoreFixtureConnections(snapshot.sync) } catch (error) { errors.push(error) }
+    try {
+      restoreFixtureConnections(snapshot.sync)
+      delete app[fixtureSyncOwner]
+    } catch (error) { errors.push(error) }
     if (errors.length === 1) throw errors[0]
     if (errors.length) throw new AggregateError(errors, 'Script fixture cleanup and connection restoration failed')
     const restored = await readScriptFixture()

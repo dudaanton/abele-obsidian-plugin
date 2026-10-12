@@ -82,6 +82,29 @@ it('restores absent keys without leaving an empty registry installed', async () 
   expect(f.local.get(registryKey)).toBeNull()
   expect(f.local.get(legacyKey)).toBeNull()
 })
+it.each([null, retained])(
+  'keeps the original connection baseline across repeated saves',
+  async (registry) => {
+    const f = fixture(registry, legacy)
+    const first = await f.saveScriptFixture()
+    const second = await f.saveScriptFixture()
+    expect(second).toEqual(first)
+    await f.restoreScriptFixture(second)
+    expect(f.local.get(registryKey)).toEqual(registry)
+    expect(f.local.get(legacyKey)).toEqual(legacy)
+    const fresh = await f.saveScriptFixture()
+    expect(fresh).toEqual(first)
+    await f.restoreScriptFixture(fresh)
+  }
+)
+it('does not overwrite changed connection state during a repeated save', async () => {
+  const f = fixture()
+  const saved = await f.saveScriptFixture()
+  f.local.set(registryKey, retained)
+  await expect(f.saveScriptFixture()).rejects.toThrow('disconnected context changed')
+  expect(f.local.get(registryKey)).toEqual(retained)
+  await f.restoreScriptFixture(saved)
+})
 it('restores connection keys even when script cleanup fails', async () => {
   const f = fixture(retained, legacy)
   const saved = await f.saveScriptFixture()
