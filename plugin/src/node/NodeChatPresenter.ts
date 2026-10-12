@@ -11,10 +11,17 @@ import { nodeQueueView } from './presentation'
 import { promptAnswerStates, type PromptAnswerState } from './promptAnswers'
 import { FrameCodec } from '@abele/channel-protocol'
 import { NodeFilesModel, nodeResourceTarget, type CodeLineRange } from './NodeFilesModel'
-import { PromptSchema, validateParams } from '@abele/node-protocol'
+import { PromptSchema, TargetChangedRefusalSchema, validateParams } from '@abele/node-protocol'
 import type { PathTarget } from './NodePathModel'
 import { wirePathTarget } from './nodePathChat'
 import { nodeProviders, nodeDebuggerSupported } from './providers'
+import {
+  chatMovedNotice,
+  supportsExpectedTarget,
+  readChatBinding,
+  expectedBinding,
+  type ChatBinding,
+} from './expectedTarget'
 
 const NORMALIZED_ARTIFACT_EVENTS = new Set([
   'claude.message.final',
@@ -58,12 +65,15 @@ export class NodeChatPresenter implements ChatPresentationSession {
   readonly provider = computed(() => this.projection.value.session?.provider ?? 'fake')
   readonly providerReports = ref<ReturnType<typeof nodeProviders>>([])
   readonly nodeDescription = ref<unknown>()
+  readonly binding = ref<ChatBinding | null>()
   readonly debuggerAvailable = computed(
     () =>
       this.connection.state.value === 'connected' &&
       nodeDebuggerSupported(this.nodeDescription.value)
   )
   private descriptionGeneration = 0
+  private describing?: { generation: number; promise: Promise<void> }
+  private bindingGeneration = 0
   private descriptionRequested = false
   readonly providerReport = computed(() =>
     this.providerReports.value.find((p) => p.provider === this.provider.value)
@@ -98,6 +108,7 @@ export class NodeChatPresenter implements ChatPresentationSession {
         : this.projection.value.state
   )
   private filesModel?: NodeFilesModel
+  private filesBindingKey?: string
   private filesOpener?: (model: NodeFilesModel, path?: string, range?: CodeLineRange) => void
   private stopEvent: () => void
   private stopWatch: WatchStopHandle
@@ -127,27 +138,35 @@ export class NodeChatPresenter implements ChatPresentationSession {
       { flush: 'sync' }
     )
     this.stopEvent = connection.client.onEvent((event) => {
-      if (event.stream_id === reference.sessionId)
+      if (event.stream_id === reference.sessionId) {
         void this.refresh().catch((e: unknown) => this.report(e))
+        if (['session.worktree.changed', 'session.updated'].includes(event.type))
+          void this.refreshBinding().catch((e: unknown) => this.report(e))
+      }
     })
-    this.stopWatch = watch(connection.state, (state) => {
-      ++this.descriptionGeneration
-      this.nodeDescription.value = undefined
-      if (state === 'connected' && this.descriptionRequested)
-        void this.describe().catch((e: unknown) => this.report(e))
-      if (state === 'connected')
-        void connection.client
-          .subscribe(reference.sessionId)
-          .then(() => this.refresh())
-          .catch((e: unknown) => this.report(e))
-      else void this.refresh().catch((e: unknown) => this.report(e))
-    })
+    this.stopWatch = watch(
+      connection.state,
+      (state) => {
+        ++this.descriptionGeneration
+        this.nodeDescription.value = undefined
+        if (state === 'connected' && this.descriptionRequested)
+          void this.describe().catch((e: unknown) => this.report(e))
+        if (state === 'connected')
+          void connection.client
+            .subscribe(reference.sessionId)
+            .then(() => this.refresh())
+            .catch((e: unknown) => this.report(e))
+        else void this.refresh().catch((e: unknown) => this.report(e))
+      },
+      { flush: 'sync' }
+    )
   }
   get id(): string {
     return `node:${this.reference.registrationId}:${this.reference.sessionId}`
   }
 
   async load(): Promise<void> {
+    this.descriptionRequested = true
     await this.refresh()
     if (this.destroyed) return
     try {
@@ -161,18 +180,39 @@ export class NodeChatPresenter implements ChatPresentationSession {
     }
   }
 
-  private async describe(): Promise<void> {
+  private describe(): Promise<void> {
     this.descriptionRequested = true
+    if (this.describing?.generation === this.descriptionGeneration) return this.describing.promise
     const generation = ++this.descriptionGeneration
-    const description = await this.connection.client.describe()
+    const promise = (async () => {
+      const description = await this.connection.client.describe()
+      if (
+        this.destroyed ||
+        generation !== this.descriptionGeneration ||
+        this.connection.state.value !== 'connected'
+      )
+        return
+      this.nodeDescription.value = description
+      this.providerReports.value = nodeProviders(description)
+      await this.refreshBinding()
+    })().finally(() => {
+      if (this.describing?.generation === generation) this.describing = undefined
+    })
+    this.describing = { generation, promise }
+    return promise
+  }
+
+  async refreshBinding(): Promise<void> {
+    if (!supportsExpectedTarget(this.nodeDescription.value)) return
+    const generation = this.descriptionGeneration
+    const read = ++this.bindingGeneration
+    const binding = await readChatBinding(this.connection.client, this.reference.sessionId)
     if (
-      this.destroyed ||
-      generation !== this.descriptionGeneration ||
-      this.connection.state.value !== 'connected'
+      !this.destroyed &&
+      generation === this.descriptionGeneration &&
+      read === this.bindingGeneration
     )
-      return
-    this.nodeDescription.value = description
-    this.providerReports.value = nodeProviders(description)
+      this.binding.value = binding
   }
 
   refresh(): Promise<void> {
@@ -198,7 +238,7 @@ export class NodeChatPresenter implements ChatPresentationSession {
             }
           })
         if (this.destroyed) return
-        if (!this.draftLoaded) {
+        if (!this.draftLoaded || (this.draftRevision === 0 && !this.draft.value.text && draft)) {
           this.draftLoaded = true
           // A delayed read must not replace text entered while reopening the chat.
           if (draft && this.draftRevision === draftRevision && this.draftRevision === 0) {
@@ -307,6 +347,13 @@ export class NodeChatPresenter implements ChatPresentationSession {
     const client = this.connection.client
     const submittedDraft = this.draft.value.text.trim() === text ? this.draft.value.text : text
     if (!this.draft.value.text) this.draft.value.text = text
+    // Capture before the first await: cursor/storage work must not adopt a newer target.
+    let guarded = supportsExpectedTarget(this.nodeDescription.value)
+    const captured = shownTarget && Object.freeze({ ...shownTarget })
+    const binding = this.binding.value
+    const expected = captured?.incarnation
+      ? { target: wirePathTarget(captured), incarnation: captured.incarnation }
+      : expectedBinding(binding)
     let operationId: string | undefined
     let retain = true
     try {
@@ -317,21 +364,39 @@ export class NodeChatPresenter implements ChatPresentationSession {
         throw new OfflineTurnError(
           'Draft not sent because the node is offline. Send again when connected.'
         )
-      const captured = shownTarget && Object.freeze({ ...shownTarget })
+      if (this.descriptionRequested && this.nodeDescription.value === undefined) {
+        await this.describe()
+        if (this.nodeDescription.value === undefined)
+          throw new Error(
+            'The node description is not ready. Nothing was sent. Reconnect before sending again.'
+          )
+      }
+      guarded = supportsExpectedTarget(this.nodeDescription.value)
+      if (guarded && !expected && binding !== null)
+        throw new Error(
+          'The chat target is not ready. Nothing was sent. Refresh before sending again.'
+        )
       if (captured) {
         if (
           captured.nodeId !== this.reference.nodeId ||
           captured.registrationId !== this.reference.registrationId
         )
           throw new Error('The displayed worktree belongs to another node.')
-        const actual = await client.nodePath.sessionWorktreeGet({
-          session_id: this.reference.sessionId,
-        })
-        if (
-          actual.project_id !== captured.projectId ||
-          JSON.stringify(actual.target) !== JSON.stringify(wirePathTarget(captured))
-        )
-          throw new Error('The session worktree changed; review the current target before sending.')
+        if (guarded) {
+          if (JSON.stringify(expected?.target) !== JSON.stringify(wirePathTarget(captured)))
+            throw new Error(chatMovedNotice)
+        } else {
+          const actual = await client.nodePath.sessionWorktreeGet({
+            session_id: this.reference.sessionId,
+          })
+          if (
+            actual.project_id !== captured.projectId ||
+            JSON.stringify(actual.target) !== JSON.stringify(wirePathTarget(captured))
+          )
+            throw new Error(
+              'The session worktree changed; review the current target before sending.'
+            )
+        }
       }
       const observed_seq = await client.cursor(this.reference.sessionId)
       const params = validateParams('session.send', {
@@ -339,6 +404,7 @@ export class NodeChatPresenter implements ChatPresentationSession {
         text,
         observed_seq,
         ...(script ? { script } : {}),
+        ...(guarded && expected ? { expected_target: expected } : {}),
       })
       const operation_id = crypto.randomUUID()
       operationId = operation_id
@@ -353,19 +419,33 @@ export class NodeChatPresenter implements ChatPresentationSession {
         s.outbox.push({ operation_id, method: 'session.send', params })
         // Clear only this submission, atomically with admission, even if the view closes.
         const state = s as NodeClientState
+        if (guarded && expected) {
+          state.turnDrafts ??= {}
+          state.turnDrafts[operation_id] = {
+            sessionId: this.reference.sessionId,
+            text: submittedDraft,
+          }
+        }
         if (state.chatDrafts?.[this.reference.sessionId]?.text === submittedDraft)
           delete state.chatDrafts[this.reference.sessionId]
       })
       retain = false
       await client.flush()
       const receipt = await client.operationResult(operation_id)
-      if (receipt?.error) {
+      if (TargetChangedRefusalSchema.safeParse(receipt?.result).success) {
+        retain = true
+        this.draftNotice.value = chatMovedNotice
+        await this.refreshBinding().catch((error: unknown) => this.report(error))
+      } else if (receipt?.error) {
         this.error.value = `Not accepted: ${receipt.error}`
         retain = true
       }
     } catch (error) {
       if (error instanceof OfflineTurnError) this.draftNotice.value = error.message
-      else this.report(error)
+      else if (error instanceof Error && error.message === chatMovedNotice) {
+        this.draftNotice.value = chatMovedNotice
+        await this.refreshBinding().catch((failure: unknown) => this.report(failure))
+      } else this.report(error)
       const persisted = operationId
         ? await client.store
             .transaction(
@@ -501,13 +581,32 @@ export class NodeChatPresenter implements ChatPresentationSession {
       this.error.value = 'This session has no workspace'
       return
     }
-    if (!this.filesModel || this.filesModel.workspaceId !== workspace)
+    const bindingKey = JSON.stringify(expectedBinding(this.binding.value))
+    if (
+      !this.filesModel ||
+      this.filesModel.workspaceId !== workspace ||
+      (this.filesBindingKey !== bindingKey &&
+        !this.filesModel.comments.value.length &&
+        !this.filesModel.pendingReview.value)
+    ) {
+      this.filesBindingKey = bindingKey
       this.filesModel = new NodeFilesModel(
         this.connection.client,
         this.reference.nodeId,
         workspace,
-        this.reference.sessionId
+        this.reference.sessionId,
+        undefined,
+        {
+          supported: supportsExpectedTarget(this.nodeDescription.value),
+          expected:
+            expectedBinding(this.binding.value) ?? (this.binding.value === null ? null : undefined),
+          onMoved: async () => {
+            this.draftNotice.value = chatMovedNotice
+            await this.refreshBinding()
+          },
+        }
       )
+    }
     if (this.filesOpener) this.filesOpener(this.filesModel, path, range)
     else this.error.value = 'Open this session in the chat to browse its files'
   }

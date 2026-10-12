@@ -1,6 +1,12 @@
 import { describe, expect, it, vi } from 'vitest'
 import { IDBFactory } from 'fake-indexeddb'
-import type { NodeClient, Delegation, DelegationGrant } from '@abele/node-client'
+import type {
+  NodeClient,
+  Delegation,
+  DelegationGrant,
+  DelegationSendResult,
+} from '@abele/node-client'
+import { chatMovedNotice } from '@/node/expectedTarget'
 import { NodeClientStore } from '@/node/NodeClientStore'
 import { NodeDelegationController } from '@/node/NodeDelegationController'
 import { deferred } from '../helpers/deferred'
@@ -51,7 +57,15 @@ function fixture() {
             { project_id: 'other-project', root_path: '/workspace/sample-other' },
           ]
     ),
+    nodePath: {
+      sessionWorktreeGet: vi.fn(async () => ({
+        project_id: 'project',
+        target: { kind: 'worktree' as const, worktree_id: 'sample-tree' },
+        incarnation: 'sample-displayed-binding',
+      })),
+    },
     describe: vi.fn(async () => ({
+      version: undefined as string | undefined,
       providers: [
         { provider: 'pi', available: true },
         { provider: 'fake', available: true },
@@ -68,7 +82,9 @@ function fixture() {
       mailbox_head_seq: 2,
       pending_human_prompts: 1,
     })),
-    sendDelegation: vi.fn(async () => ({ input_id: 'input', accepted_seq: 18 })),
+    sendDelegation: vi.fn(
+      async (): Promise<DelegationSendResult> => ({ input_id: 'input', accepted_seq: 18 })
+    ),
     cancelDelegation: vi.fn(async () => ({ ...child, state: 'cancelled' })),
     approveDelegationGrant: vi.fn(async () => grant),
     revokeDelegationGrant: vi.fn(async () => ({ ...grant, revoked: true })),
@@ -390,6 +406,78 @@ describe('trusted node delegation controller', () => {
     f.store.close()
   })
 
+  it('does not adopt an unobserved child target during a guarded send after reconnect', async () => {
+    const f = fixture()
+    await f.controller.approve({ parent_id: 'parent', project_ids: ['project'], providers: ['pi'] })
+    await f.controller.create('parent', task)
+    const description = await f.client.describe()
+    f.client.describe.mockResolvedValue({ ...description, version: '0.4.2' })
+    await expect(f.controller.send('parent', 'delegation', 'Sample unseen target')).rejects.toThrow('target is not ready')
+    expect(f.client.sendDelegation).not.toHaveBeenCalled()
+    await f.controller.status('parent', 'delegation')
+    await f.controller.send('parent', 'delegation', 'Sample observed target')
+    expect(f.client.sendDelegation).toHaveBeenCalledOnce()
+    f.store.close()
+  })
+  it.each([true, false])(
+    'pins delegated follow-ups to the observed child target and refreshes after refusal (supported: %s)',
+    async (supported) => {
+      const f = fixture()
+      const description = await f.client.describe()
+      f.client.describe.mockResolvedValue({
+        ...description,
+        version: supported ? '0.4.2' : '0.4.1',
+      })
+      await f.controller.approve({
+        parent_id: 'parent',
+        project_ids: ['project'],
+        providers: ['pi'],
+      })
+      await f.controller.create('parent', task)
+      f.client.nodePath.sessionWorktreeGet.mockResolvedValue({
+        project_id: 'project',
+        target: { kind: 'worktree', worktree_id: 'sample-tree-two' },
+        incarnation: 'sample-new-binding',
+      })
+      f.client.sendDelegation.mockResolvedValueOnce({
+        code: 'target_changed',
+        current_target: null,
+      })
+      await expect(
+        f.controller.send('parent', 'delegation', 'Sample delegated draft')
+      ).rejects.toThrow(chatMovedNotice)
+      if (supported)
+        expect(f.client.sendDelegation).toHaveBeenCalledWith(
+          'delegation',
+          'Sample delegated draft',
+          17,
+          {
+            target: { kind: 'worktree', worktree_id: 'sample-tree' },
+            incarnation: 'sample-displayed-binding',
+          }
+        )
+      else
+        expect(f.client.sendDelegation).toHaveBeenCalledWith(
+          'delegation',
+          'Sample delegated draft',
+          17
+        )
+      expect(f.client.sendDelegation).toHaveBeenCalledOnce()
+      // A distinct explicit follow-up may use the freshly observed binding; refusal never replays itself.
+      await f.controller.send('parent', 'delegation', 'Sample explicit follow-up')
+      if (supported)
+        expect(f.client.sendDelegation).toHaveBeenLastCalledWith(
+          'delegation',
+          'Sample explicit follow-up',
+          17,
+          {
+            target: { kind: 'worktree', worktree_id: 'sample-tree-two' },
+            incarnation: 'sample-new-binding',
+          }
+        )
+      f.store.close()
+    }
+  )
   it('fences foreign child IDs, uses the observed child revision, and never answers human prompts', async () => {
     const f = fixture()
     await f.controller.approve({ parent_id: 'parent', project_ids: ['project'], providers: ['pi'] })

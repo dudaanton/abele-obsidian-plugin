@@ -15,7 +15,7 @@ import { NodePathService } from '@/node/NodePathService'
 import { NodePathFileModel, pathTargetKey } from '@/node/NodePathModel'
 import { NodePathHistoryModel } from '@/node/NodePathHistoryModel'
 import { NodeFilesModel, NodeDocumentSource, nodeResourceTarget } from '@/node/NodeFilesModel'
-import { nodeChatSwitches } from '@/node/nodePathChat'
+import { nodeChatSwitches, bindPathTarget } from '@/node/nodePathChat'
 import { NodeChatPresenter } from '@/node/NodeChatPresenter'
 import {
   NodePathTabSchema,
@@ -368,9 +368,14 @@ export class NodePathMainView extends ItemView {
       ))
       this.ui = createApp({
         render: () => {
-          const target =
-            model.sessions.value.find((s) => s.session.session_id === state.sessionId)?.target ??
-            state.target
+          const binding = presenter.binding.value
+          const target = binding
+            ? {
+                ...bindPathTarget(state.target, binding.project_id, binding.target),
+                incarnation: binding.incarnation,
+              }
+            : (model.sessions.value.find((s) => s.session.session_id === state.sessionId)?.target ??
+              state.target)
           const folder = model.folders.value.find((f) => f.id === target.projectId)
           const copy = model.copy(target) ?? {
             id: target.id,
@@ -381,11 +386,11 @@ export class NodePathMainView extends ItemView {
           }
           return h(NodeChatView, {
             presenter,
-            worktree: copy,
+            worktree: binding === null ? undefined : copy,
             folder: folder?.name,
             canSwitchWorktree: model.capabilities.value.includes('node_path_execution'),
             canSwitchNative: model.capabilities.value.includes('node_path_native_switching'),
-            currentTarget: target,
+            currentTarget: binding === null ? undefined : target,
             switches: nodeChatSwitches(
               presenter.projection.value.unknown,
               target,

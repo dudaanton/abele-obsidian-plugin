@@ -18,6 +18,8 @@ export interface PathTarget {
   projectId: string
   kind: 'worktree' | 'workspace'
   id: string
+  /** Session binding incarnation, present only on an observed chat target. */
+  incarnation?: string
 }
 export const pathTargetKey = (target: PathTarget) =>
   JSON.stringify([target.nodeId, target.kind, target.id])

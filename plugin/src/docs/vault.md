@@ -357,7 +357,14 @@ stream cursors, cached journal events, immutable operation outbox entries and du
 Optional `chatDrafts`, keyed by session ID, retains unsent composer text and a quiet offline
 submission note. Drafts survive closing a tab and reloading; they are not outbox entries and
 are never sent automatically on reconnect. Only an explicit Send admits a turn, and admitted
-text is removed from the draft without overwriting newer edits.
+text is removed from the draft without overwriting newer edits. Optional `turnDrafts`, keyed
+by operation ID, retains the exact submitted composer bytes while a guarded turn's receipt is
+unknown. These bytes are not another sendable draft. A terminal target refusal restores them
+to `chatDrafts` with a no-send notice only when there is no newer draft, then removes the retained
+submission. A successful receipt removes the retained submission without restoring it. Target
+refusals never enqueue a fresh operation or automatically resend text. Observed node chat targets
+may carry an opaque session-binding `incarnation` in device-local tab layout and presentation
+snapshots; it is neither a path nor a Git revision and grants no authority.
 Optional `delegation` in this same transactional `state` stores owner-approved grant selections
 and stable parent/task identities, the exact create request body, child links and last observed
 status. Parent IDs use the existing durable `chatId` metadata identity (allocated with a

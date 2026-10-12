@@ -1,6 +1,7 @@
 import type { NodeClient } from '@abele/node-client'
 import { ChannelError } from '@abele/channel-protocol'
 import { bindPathTarget } from './nodePathChat'
+import { supportsExpectedTarget } from './expectedTarget'
 import type { RepositoryRevision, WorktreeEntry } from '@abele/node-protocol'
 import type { CommitSummary, FileChange, TreeEntry } from '@/components/nodeWork/types'
 import { formatTimestamp } from '@/helpers/displayFormat'
@@ -120,7 +121,9 @@ export class NodePathClientPort implements NodePathPort {
     return { ...this.identity, projectId, kind, id }
   }
   async catalogue(): Promise<PathCatalogue> {
-    this.capabilities = supportedNodePathCapabilities(await this.client.describe())
+    const description = await this.client.describe()
+    this.capabilities = supportedNodePathCapabilities(description)
+    const guarded = supportsExpectedTarget(description)
     const enriched = this.capabilities.includes('node_path_v2')
     const [projects, sessions] = await Promise.all([
       nodePages(
@@ -195,8 +198,12 @@ export class NodePathClientPort implements NodePathPort {
         try {
           const binding = await this.client.nodePath.sessionWorktreeGet({
             session_id: session.session_id,
+            ...(guarded ? { include_incarnation: true } : {}),
           })
-          target = bindPathTarget(this.identity, binding.project_id, binding.target)
+          target = {
+            ...bindPathTarget(this.identity, binding.project_id, binding.target),
+            ...(binding.incarnation ? { incarnation: binding.incarnation } : {}),
+          }
         } catch (error) {
           if (!(error instanceof ChannelError && error.code === 'workspace_required')) throw error
         }

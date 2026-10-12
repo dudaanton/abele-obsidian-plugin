@@ -72,6 +72,7 @@ const target = z
     projectId: id,
     kind: z.enum(['worktree', 'workspace']),
     id,
+    incarnation: id.optional(),
   })
   .strict()
 /** Presentation cache, not wire payloads, credentials, byte storage or chat authorization. */

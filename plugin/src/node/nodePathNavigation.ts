@@ -14,6 +14,7 @@ const target = z
     projectId: id,
     kind: z.enum(['worktree', 'workspace']),
     id,
+    incarnation: id.optional(),
   })
   .strict()
 export const NodePathDebugMappingSchema = z

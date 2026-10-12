@@ -1,5 +1,6 @@
 import type { ClientState, ClientStore } from '@abele/node-client'
-import { NodeEventSchema, validateParams } from '@abele/node-protocol'
+import { NodeEventSchema, TargetChangedRefusalSchema, validateParams } from '@abele/node-protocol'
+import { chatMovedNotice } from './expectedTarget'
 import { z } from 'zod'
 import { retainPromptAnswerIdentity } from './promptAnswers'
 import { FileDraftSchema, type FileDraft } from './fileDrafts'
@@ -12,6 +13,8 @@ export interface NodeClientState extends ClientState {
   fileDrafts?: Record<string, FileDraft>
   /** Unsent composer text is local only; reconnect never admits it to the outbox. */
   chatDrafts?: Record<string, { text: string; notice: string }>
+  /** Exact submitted bytes stay hidden until a guarded turn has a terminal receipt. */
+  turnDrafts?: Record<string, { sessionId: string; text: string }>
   /** Owner folder/worktree intents retain one operation ID until a typed receipt is known. */
   nodePathIntents?: Record<string, { id: string; method: string; params: unknown }>
   /** Replaceable artifact payload cache; journal references remain untouched. */
@@ -38,6 +41,12 @@ const StateSchema = z
     fileDrafts: z.record(z.string(), FileDraftSchema).optional(),
     chatDrafts: z
       .record(z.string(), z.object({ text: z.string(), notice: z.string() }).strict())
+      .optional(),
+    turnDrafts: z
+      .record(
+        z.string(),
+        z.object({ sessionId: z.string().min(1).max(128), text: z.string() }).strict()
+      )
       .optional(),
     nodePathIntents: z
       .record(
@@ -175,6 +184,16 @@ export class NodeClientStore implements ClientStore {
                   text: entry.method === 'review.submit' ? 'Review batch' : input.text,
                 }
               }
+            }
+            for (const [id, draft] of Object.entries(state.turnDrafts ?? {})) {
+              const receipt = state.results[id]
+              if (!receipt) continue
+              if (TargetChangedRefusalSchema.safeParse(receipt.result).success) {
+                state.chatDrafts ??= {}
+                if (!state.chatDrafts[draft.sessionId]?.text)
+                  state.chatDrafts[draft.sessionId] = { text: draft.text, notice: chatMovedNotice }
+              }
+              delete state.turnDrafts?.[id]
             }
             store.put(state, 'state')
             pending = false

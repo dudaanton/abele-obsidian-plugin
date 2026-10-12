@@ -1,5 +1,22 @@
 import { computed, readonly, ref, shallowRef, markRaw } from 'vue'
-import type { NodeClient, DiffMode, DiffSnapshot, ReviewAnchor } from '@abele/node-client'
+import type {
+  NodeClient,
+  DiffMode,
+  DiffSnapshot,
+  ReviewAnchor,
+  ExpectedExecutionTarget,
+} from '@abele/node-client'
+import {
+  chatMovedNotice,
+  supportsExpectedTarget,
+  readChatBinding,
+  expectedBinding,
+} from './expectedTarget'
+export interface ReviewTurnTarget {
+  supported: boolean
+  expected: ExpectedExecutionTarget | null | undefined
+  onMoved?: () => Promise<void>
+}
 import {
   selectedContext,
   decodePatchPath,
@@ -503,17 +520,34 @@ export class NodeFilesModel {
   private readonly submitting = ref(false)
   readonly reviewLocked = computed(() => this.submitting.value || !!this.pendingReview.value)
   private sentAnchors?: readonly ReviewAnchor[]
+  private reviewTarget?: ExpectedExecutionTarget
+  private reviewGuarded = false
+  private reviewTargetReady = false
   constructor(
     readonly client: NodeClient,
     readonly nodeId: string,
     readonly workspaceId: string,
     readonly sessionId?: string,
-    documents?: CodeDocumentSource
+    documents?: CodeDocumentSource,
+    private readonly turnTarget?: ReviewTurnTarget
   ) {
     // Models own explicit refs and transactional stores; Vue must not recursively proxy them.
     markRaw(this)
     this.documents = documents ?? new NodeDocumentSource(client, workspaceId)
     this.diffs = new NodeDiffSource(client, workspaceId)
+    if (turnTarget) {
+      this.reviewGuarded = turnTarget.supported
+      this.reviewTarget = turnTarget.expected ? structuredClone(turnTarget.expected) : undefined
+      this.reviewTargetReady = turnTarget.expected !== undefined || !turnTarget.supported
+    }
+  }
+  private async captureReviewTarget(): Promise<void> {
+    if (!this.sessionId || this.turnTarget || this.comments.value.length) return
+    const description = await this.client.describe?.()
+    this.reviewGuarded = supportsExpectedTarget(description)
+    const binding = this.reviewGuarded ? await readChatBinding(this.client, this.sessionId) : null
+    this.reviewTarget = expectedBinding(binding)
+    this.reviewTargetReady = binding === null || !!this.reviewTarget
   }
   async list(path = '', more = false, signal?: AbortSignal) {
     const generation = ++this.listingGeneration
@@ -816,6 +850,9 @@ export class NodeFilesModel {
   }
   async loadDiff(mode: DiffMode, commit?: string, signal?: AbortSignal) {
     const generation = ++this.diffGeneration
+    if (!this.turnTarget && this.client.describe && this.sessionId && !this.comments.value.length)
+      await this.captureReviewTarget()
+    if (generation !== this.diffGeneration || signal?.aborted) return
     const result = await this.diffs.capture(mode, commit)
     if (generation !== this.diffGeneration || signal?.aborted) return
     const document = Object.freeze({
@@ -910,12 +947,18 @@ export class NodeFilesModel {
     const anchors = Object.freeze(
       this.draftComments.value.map((anchor) => Object.freeze({ ...anchor }))
     )
+    const expected = this.reviewTarget && structuredClone(this.reviewTarget)
     this.submitting.value = true
     try {
+      if (this.reviewGuarded && !this.reviewTargetReady)
+        throw new Error(
+          'The chat target is not ready. Nothing was sent. Reopen the review before sending.'
+        )
       const { operation_id } = await this.client.submitReview({
         session_id: this.sessionId,
         observed_seq: await this.client.cursor(this.sessionId),
         anchors: anchors.map((anchor) => ({ ...anchor })),
+        ...(this.reviewGuarded && expected ? { expected_target: expected } : {}),
       })
       this.sentAnchors = anchors
       this.pendingReview.value = operation_id
@@ -940,7 +983,16 @@ export class NodeFilesModel {
         // A typed refusal is a durable no-send receipt, not an uncertain batch.
         this.pendingReview.value = ''
         this.sentAnchors = undefined
-        throw new Error(result.code)
+        this.reviewStatus.value = chatMovedNotice
+        const refresh =
+          this.turnTarget?.onMoved?.() ??
+          (this.sessionId && this.reviewGuarded
+            ? readChatBinding(this.client, this.sessionId)
+            : undefined)
+        await refresh?.catch(() => {
+          console.debug('[Abele node] review target refresh failed after refusal')
+        })
+        throw new Error(chatMovedNotice)
       }
       this.reviewStatus.value = result.stale.some(Boolean)
         ? 'Review accepted · the workspace changed or could not be rechecked; retained selections were sent and marked stale.'
@@ -953,6 +1005,7 @@ export class NodeFilesModel {
       this.pendingReview.value = ''
       this.sentAnchors = undefined
     } catch (e) {
+      if (this.pendingReview.value !== operation) throw e
       // Only a durable terminal rejection permits a new edited batch, never a read/storage error.
       const receipt = await this.client.operationResult(operation)
       if (receipt?.error && this.pendingReview.value === operation) {

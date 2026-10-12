@@ -84,7 +84,17 @@ export async function nodeFilesFixture(
     { commit: 'a'.repeat(40), subject: 'Update sample file' },
     { commit: 'b'.repeat(40), subject: 'Initial sample' },
   ]
-  const model = new NodeFilesModel(client, 'sample-node', 'sample-workspace', 'sample-session')
+  const model = new NodeFilesModel(
+    client,
+    'sample-node',
+    'sample-workspace',
+    'sample-session',
+    undefined,
+    {
+      supported: false,
+      expected: null,
+    }
+  )
   if (!fileView && view !== 'history') await model.loadDiff('head')
   if (fileView && view !== 'files') {
     await model.openFile(path)

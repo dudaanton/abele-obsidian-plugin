@@ -3,7 +3,17 @@ import type {
   DelegationGrantRequest,
   DelegationCreateRequest,
 } from '@abele/node-client'
-import { DelegationSchema, DelegationGrantSchema } from '@abele/node-protocol'
+import {
+  DelegationSchema,
+  DelegationGrantSchema,
+  type ExpectedExecutionTarget,
+} from '@abele/node-protocol'
+import {
+  supportsExpectedTarget,
+  readChatBinding,
+  expectedBinding,
+  chatMovedNotice,
+} from './expectedTarget'
 import type { NodeClientStore, NodeClientState } from './NodeClientStore'
 import {
   DelegationTaskInputSchema,
@@ -29,6 +39,7 @@ export class NodeDelegationController {
   private readonly denied = new Set<string>()
   private readonly stoppedParents = new Set<string>()
   private readonly wakeEpochs = new Map<string, number>()
+  private readonly targets = new Map<string, ExpectedExecutionTarget | null>()
   constructor(
     readonly client: NodeClient,
     readonly store: NodeClientStore
@@ -164,6 +175,7 @@ export class NodeDelegationController {
       })
       if (signal?.aborted) throw new Error('Delegation call cancelled')
       await this.client.subscribeDelegation(child)
+      await this.observeTarget(child.delegation_id, child.session_id)
       if (signal?.aborted) throw new Error('Delegation call cancelled')
       return this.publicChild(child)
     } finally {
@@ -230,10 +242,24 @@ export class NodeDelegationController {
       return task.child
     })
   }
+  private async observeTarget(id: string, session: string): Promise<void> {
+    if (!supportsExpectedTarget(await this.client.describe())) {
+      this.targets.delete(id)
+      return
+    }
+    const binding = await readChatBinding(this.client, session)
+    if (binding === null) this.targets.set(id, null)
+    else {
+      const expected = expectedBinding(binding)
+      if (!expected) throw new Error('The delegated chat target is not ready. Nothing was sent.')
+      this.targets.set(id, expected)
+    }
+  }
   async status(parent: string, id: string) {
     const wakeEpoch = this.wakeEpochs.get(parent) ?? 0
     await this.owned(parent, id, 'status')
     const status = await this.client.delegationStatus(id)
+    await this.observeTarget(id, status.session_id)
     await this.store.transaction((s) => {
       const task = Object.values(storage(s).tasks).find((t) => t.child?.delegation_id === id)!
       task.status = status
@@ -267,11 +293,29 @@ export class NodeDelegationController {
     }
   }
   async send(parent: string, id: string, text: string, signal?: AbortSignal) {
-    await this.owned(parent, id, 'send')
+    // Use the child binding last projected to its parent, not a send-time target lookup.
+    const displayed = this.targets.get(id)
+    const expected = displayed && structuredClone(displayed)
+    const child = await this.owned(parent, id, 'send')
     if (signal?.aborted) throw new Error('Delegation call cancelled')
+    const guarded = supportsExpectedTarget(await this.client.describe())
+    if (guarded && displayed === undefined) {
+      await this.observeTarget(id, child.session_id)
+      throw new Error('The delegated chat target is not ready. Nothing was sent. Check its status before sending again.')
+    }
     const status = await this.client.delegationStatus(id)
     if (signal?.aborted) throw new Error('Delegation call cancelled')
-    return this.client.sendDelegation(id, text, status.session_head_seq)
+    const result =
+      guarded && expected
+        ? await this.client.sendDelegation(id, text, status.session_head_seq, expected)
+        : await this.client.sendDelegation(id, text, status.session_head_seq)
+    if ('code' in result) {
+      await this.observeTarget(id, child.session_id).catch(() => {
+        console.debug('[Abele node] delegation target refresh failed after refusal')
+      })
+      throw new Error(chatMovedNotice)
+    }
+    return result
   }
   async cancel(parent: string, id: string) {
     const child = await this.owned(parent, id, 'cancel')
@@ -332,6 +376,7 @@ export class NodeDelegationController {
           if (current && ['completed', 'failed', 'cancelled', 'unknown'].includes(current)) return
           try {
             const status = await this.client.delegationStatus(child.delegation_id)
+            await this.observeTarget(child.delegation_id, child.session_id)
             await this.store.transaction((s) => {
               storage(s).tasks[child.delegation_key].status = status
             })

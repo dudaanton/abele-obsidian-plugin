@@ -10,7 +10,8 @@ import { useVault } from '../helpers/testEnv'
 import { reduceTranscript } from '@/node/NodeTranscriptReducer'
 import type { JournalEvent } from '@abele/channel-protocol'
 import { IDBFactory } from 'fake-indexeddb'
-import { NodeClient } from '@abele/node-client'
+import { NodeClient, MemoryClientStore } from '@abele/node-client'
+import { chatMovedNotice } from '@/node/expectedTarget'
 import { NodeChatPresenter } from '@/node/NodeChatPresenter'
 import { NodeClientStore } from '@/node/NodeClientStore'
 import type { NodeConnection } from '@/node/NodeService'
@@ -116,6 +117,96 @@ it.each(['offline', 'disconnect during admission'])(
       wrapper.unmount()
       session.presenter.destroy()
       session.store.close()
+      vi.restoreAllMocks()
+    }
+  }
+)
+
+it.each([true, false])(
+  'keeps a refused draft in the real composer without auto-resend (supported: %s)',
+  async (supported) => {
+    useVault([])
+    const store = new MemoryClientStore()
+    const client = new NodeClient(
+      { url: 'ws://127.0.0.1:7777/channel', profile: 'local-token-v1', token: 'sample-token' },
+      store
+    )
+    vi.spyOn(client, 'connected', 'get').mockReturnValue(true)
+    const connection = {
+      client,
+      state: ref('connected'),
+      error: ref(''),
+    } as unknown as NodeConnection
+    const presenter = new NodeChatPresenter(
+      {
+        kind: 'node-session',
+        nodeId: 'sample-node',
+        registrationId: 'sample-registration',
+        sessionId: 'sample-session',
+        title: 'Sample session',
+      },
+      connection
+    )
+    presenter.nodeDescription.value = { version: supported ? '0.4.2' : '0.4.1' }
+    const target = {
+      nodeId: 'sample-node',
+      registrationId: 'sample-registration',
+      projectId: 'sample-project',
+      kind: 'worktree' as const,
+      id: 'sample-tree',
+      incarnation: 'sample-old-binding',
+    }
+    const actual = {
+      project_id: target.projectId,
+      target: { kind: 'worktree' as const, worktree_id: target.id },
+      incarnation: 'sample-new-binding',
+    }
+    vi.spyOn(client.nodePath, 'sessionWorktreeGet').mockResolvedValue(actual)
+    const requests: unknown[] = []
+    const flush = vi.spyOn(client, 'flush').mockImplementation(async () => {
+      await store.transaction((state) => {
+        const operation = state.outbox.shift()!
+        requests.push(operation.params)
+        state.results[operation.operation_id] = {
+          result:
+            requests.length === 1
+              ? {
+                  code: 'target_changed',
+                  current_target: { target: actual.target, incarnation: actual.incarnation },
+                }
+              : { input_id: 'sample-input', accepted_seq: 1 },
+        }
+      })
+    })
+    const wrapper = mount(NodeChatView, {
+      props: { presenter, currentTarget: target },
+      global: { stubs: { VoiceRecorder: true } },
+    })
+    try {
+      const draft = '  Sample retained words\nwith another line  '
+      await wrapper.get('textarea').setValue(draft)
+      await wrapper.get('textarea').trigger('keydown', { key: 'Enter', shiftKey: true })
+      await vi.waitFor(() =>
+        expect(wrapper.get('.abele-node-chat__draft-note').text()).toBe(chatMovedNotice)
+      )
+      expect(wrapper.get('textarea').element.value).toBe(draft)
+      expect(wrapper.get('[aria-label="Send again"]').exists()).toBe(true)
+      expect(wrapper.find('[role="alert"]').exists()).toBe(false)
+      await flushPromises()
+      expect(flush).toHaveBeenCalledOnce()
+      expect(await client.pending()).toEqual([])
+      if (supported)
+        expect(requests[0]).toHaveProperty('expected_target.incarnation', 'sample-old-binding')
+      else expect(requests[0]).not.toHaveProperty('expected_target')
+      await wrapper.setProps({ currentTarget: { ...target, incarnation: actual.incarnation } })
+      await wrapper.get('textarea').trigger('keydown', { key: 'Enter', shiftKey: true })
+      await vi.waitFor(() => expect(wrapper.get('textarea').element.value).toBe(''))
+      expect(flush).toHaveBeenCalledTimes(2)
+      if (supported)
+        expect(requests[1]).toHaveProperty('expected_target.incarnation', 'sample-new-binding')
+    } finally {
+      wrapper.unmount()
+      presenter.destroy()
       vi.restoreAllMocks()
     }
   }
