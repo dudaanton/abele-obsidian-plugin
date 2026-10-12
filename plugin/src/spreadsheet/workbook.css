@@ -137,6 +137,14 @@
   outline: var(--size-2-1) solid var(--interactive-accent);
   outline-offset: calc(-1 * var(--size-2-1));
 }
+/* A cell being written in: the same box, a caret, the accent ring of a chosen cell. */
+.abele-workbook-grid .abele-workbook-cell__field {
+  z-index: 5;
+  outline: var(--size-2-1) solid var(--interactive-accent);
+  outline-offset: calc(-1 * var(--size-2-1));
+  text-overflow: clip;
+  cursor: text;
+}
 .abele-workbook-cell.is-frozen {
   z-index: 3;
 }

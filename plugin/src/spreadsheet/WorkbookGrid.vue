@@ -16,11 +16,13 @@
       <div class="abele-workbook-formula" :class="{ 'mod-error': selectedCell?.formulaProblem }">
         <span v-if="selectedCell?.formula" class="abele-workbook-fx">fx</span>
         <span class="abele-workbook-formula__text">{{
-          selectedCell?.formulaProblem
-            ? 'Formula unavailable: ' + selectedCell.formulaProblem
-            : selectedCell?.formula
-              ? selectedCell.formula
-              : String(selectedCell?.value ?? '')
+          inCell
+            ? inCellValue
+            : selectedCell?.formulaProblem
+              ? 'Formula unavailable: ' + selectedCell.formulaProblem
+              : selectedCell?.formula
+                ? selectedCell.formula
+                : String(selectedCell?.value ?? '')
         }}</span>
         <span class="abele-workbook-formula__where">{{ selected }}</span>
       </div>
@@ -192,18 +194,33 @@
           >
             {{ row }}
           </div>
-          <button
-            v-for="cell in rowCells(row)"
-            :key="cell.address"
-            class="abele-workbook-cell"
-            :class="{ 'is-selected': selected === cell.address, 'is-frozen': row <= frozen }"
-            :data-cell="cell.address"
-            :title="cell.formula ? '=' + cell.formula : cell.text"
-            :style="cell.css"
-            @click="selected = cell.address"
-          >
-            {{ cell.text }}
-          </button>
+          <template v-for="cell in rowCells(row)" :key="cell.address">
+            <!-- Written in where it stands, as in Excel: the field takes the cell's place. -->
+            <input
+              v-if="inCell === cell.address"
+              ref="inCellField"
+              v-model="inCellValue"
+              class="abele-workbook-cell abele-workbook-cell__field"
+              :data-cell="cell.address"
+              :style="cell.css"
+              :aria-label="`Cell ${cell.address}`"
+              @keydown="inCellKeys"
+              @blur="commitInCell()"
+            />
+            <button
+              v-else
+              class="abele-workbook-cell"
+              :class="{ 'is-selected': selected === cell.address, 'is-frozen': row <= frozen }"
+              :data-cell="cell.address"
+              :title="cell.formula ? '=' + cell.formula : cell.text"
+              :style="cell.css"
+              @click="selected = cell.address"
+              @dblclick="startInCell()"
+              @keydown="cellKeys"
+            >
+              {{ cell.text }}
+            </button>
+          </template>
         </template>
       </div>
       <EmptyState v-else variant="loading" icon="sheet" :title="`Opening ${sheetName}`" />
@@ -543,6 +560,120 @@ function rowCells(row: number) {
   }
   return result
 }
+/** The cell written in where it stands, and what is in its field. */
+const inCell = ref<string | null>(null)
+const inCellValue = ref('')
+const inCellField = ref<HTMLInputElement[] | HTMLInputElement>()
+
+async function startInCell(typed?: string) {
+  if (!canEdit.value || busy.value) return
+  const cell = selectedCell.value
+  inCell.value = selected.value
+  inCellValue.value =
+    typed ?? (cell?.formula !== undefined ? '=' + cell.formula : String(cell?.value ?? ''))
+  await nextTick()
+  const field = Array.isArray(inCellField.value) ? inCellField.value[0] : inCellField.value
+  field?.focus()
+  if (typed === undefined) field?.select()
+}
+
+/** What is typed is read as Excel reads it: =… a formula, a number, TRUE or FALSE, else text. */
+function typedValue(text: string): CellInput {
+  if (text.startsWith('=')) return { formula: text.slice(1) }
+  if (text.trim() === '') return null
+  if (/^(true|false)$/i.test(text.trim())) return text.trim().toLowerCase() === 'true'
+  const number = Number(text)
+  if (text.trim() !== '' && Number.isFinite(number)) return number
+  return { value: text }
+}
+
+let committing = false
+async function commitInCell(move?: { row: number; column: number }) {
+  const address = inCell.value
+  if (!address || committing) return
+  committing = true
+  const before = sheet.value?.cells.get(address)
+  const was = before?.formula !== undefined ? '=' + before.formula : String(before?.value ?? '')
+  const text = inCellValue.value
+  inCell.value = null
+  try {
+    if (text !== was) {
+      busy.value = true
+      error.value = ''
+      await props.save?.({ sheet: sheetName.value, range: address, values: [[typedValue(text)]] })
+    }
+    if (move) step(move.row, move.column)
+  } catch (e) {
+    error.value = (e as Error).message
+  } finally {
+    busy.value = false
+    committing = false
+  }
+  focusSelected()
+}
+
+function cancelInCell() {
+  inCell.value = null
+  focusSelected()
+}
+
+function step(rows: number, columns: number) {
+  const pos = parseCell(selected.value)
+  const row = Math.max(1, pos.row + rows)
+  const column = Math.max(1, pos.column + columns)
+  selected.value = cellAddress(row, column)
+}
+
+function focusSelected() {
+  void nextTick(() =>
+    viewport.value?.querySelector<HTMLElement>(`button[data-cell="${selected.value}"]`)?.focus()
+  )
+}
+
+/** On a chosen cell: arrows move, Enter or F2 writes in it, a letter starts it afresh. */
+function cellKeys(e: KeyboardEvent) {
+  const moves: Record<string, [number, number]> = {
+    ArrowUp: [-1, 0],
+    ArrowDown: [1, 0],
+    ArrowLeft: [0, -1],
+    ArrowRight: [0, 1],
+  }
+  if (moves[e.key]) {
+    e.preventDefault()
+    step(...moves[e.key])
+    focusSelected()
+  } else if (e.key === 'Enter' || e.key === 'F2') {
+    e.preventDefault()
+    void startInCell()
+  } else if (e.key === 'Tab') {
+    e.preventDefault()
+    step(0, e.shiftKey ? -1 : 1)
+    focusSelected()
+  } else if ((e.key === 'Delete' || e.key === 'Backspace') && canEdit.value) {
+    e.preventDefault()
+    inCell.value = selected.value
+    inCellValue.value = ''
+    void commitInCell()
+  } else if (e.key.length === 1 && !e.metaKey && !e.ctrlKey && !e.altKey) {
+    e.preventDefault()
+    void startInCell(e.key)
+  }
+}
+
+/** In the field: Enter keeps it and goes down, Tab right, Esc leaves the cell as it was. */
+function inCellKeys(e: KeyboardEvent) {
+  if (e.key === 'Enter') {
+    e.preventDefault()
+    void commitInCell({ row: e.shiftKey ? -1 : 1, column: 0 })
+  } else if (e.key === 'Tab') {
+    e.preventDefault()
+    void commitInCell({ row: 0, column: e.shiftKey ? -1 : 1 })
+  } else if (e.key === 'Escape') {
+    e.preventDefault()
+    cancelInCell()
+  }
+}
+
 function scroll() {
   scrollTop.value = viewport.value?.scrollTop ?? 0
   scrollLeft.value = viewport.value?.scrollLeft ?? 0
