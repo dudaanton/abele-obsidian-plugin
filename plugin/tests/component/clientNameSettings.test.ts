@@ -43,7 +43,11 @@ it('saves and clears independent native client-name rows beside each connection 
   initializeDestinations(config)
   const save = vi.spyOn(config, 'saveSettings').mockResolvedValue(undefined)
   const fetch = vi.spyOn(OpenAIClient.prototype, 'fetchModels').mockResolvedValue([])
-  screen = mount(GeneralSettings, { global: { stubs: { Dropdown: true, Search: true } } })
+  // The client name stands beside each connection, on the Models tab.
+  screen = mount(GeneralSettings, {
+    props: { page: 'models' },
+    global: { stubs: { Dropdown: true, Search: true } },
+  })
   // A provider's own fields are in its window, opened from the settings glyph on its row;
   // voice input keeps its row on the page.
   for (const change of screen

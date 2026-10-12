@@ -2,7 +2,9 @@
   <div class="abele-ai-settings">
     <Tabs v-model="active" :tabs="TABS" level="secondary" class="abele-ai-settings__tabs" />
 
-    <GeneralSettings v-if="active === 'general'" />
+    <GeneralSettings v-if="active === 'general'" page="general" />
+    <GeneralSettings v-else-if="active === 'models'" page="models" />
+    <GeneralSettings v-else-if="active === 'prompts'" page="prompts" />
     <McpSettings v-else-if="active === 'mcp'" />
     <AgentsSettings v-else />
   </div>
@@ -17,8 +19,10 @@ import McpSettings from './ai/McpSettings.vue'
 
 const TABS = [
   { id: 'general', label: 'General' },
+  { id: 'models', label: 'Models' },
   { id: 'agents', label: 'Agents' },
   { id: 'mcp', label: 'MCP' },
+  { id: 'prompts', label: 'Prompts' },
 ]
 
 const active = ref('general')

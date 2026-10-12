@@ -41,6 +41,8 @@ it('does not carry a removed secret editor or its revealed value onto the next r
   app.secretStorage.setSecret('sample-second-key', 'second value')
   vi.spyOn(config, 'saveSettings').mockResolvedValue(undefined)
   screen = mount(GeneralSettings, {
+    // Named secrets are on the agent settings' General tab.
+    props: { page: 'general' },
     global: { stubs: { Dropdown: true, Search: true } },
   })
   const card = (title: string) =>
@@ -85,6 +87,8 @@ it('keeps a key still used by voice input when its image provider is deleted', a
   app.secretStorage.setSecret('sample-shared-key', 'sample-value')
   vi.spyOn(config, 'saveSettings').mockResolvedValue(undefined)
   screen = mount(GeneralSettings, {
+    // Providers, models, keys and the request limits are on the agent settings' Models tab.
+    props: { page: 'models' },
     global: { stubs: { Input: true, Dropdown: true, Search: true } },
   })
   await deleteProvider(screen)
@@ -112,6 +116,8 @@ it('removes the stored key when an image provider is deleted', async () => {
   app.secretStorage.setSecret('sample-image-key', 'sample-value')
   vi.spyOn(config, 'saveSettings').mockResolvedValue(undefined)
   screen = mount(GeneralSettings, {
+    // Providers, models, keys and the request limits are on the agent settings' Models tab.
+    props: { page: 'models' },
     global: { stubs: { Input: true, Dropdown: true, Search: true } },
   })
   await deleteProvider(screen)

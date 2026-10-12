@@ -210,7 +210,7 @@ it('assembles chat and image provider fields once while preserving endpoints, mo
       models: [],
     },
   ]
-  const general = open(GeneralSettings)
+  const general = open(GeneralSettings, { page: 'models' })
   const providers = general.findAllComponents(ProviderSettings)
   expect(providers).toHaveLength(2)
   for (const provider of providers) {
@@ -274,7 +274,7 @@ it('lists each provider as a row saying whether its key is in and how many model
   ]
   config.ai.imageProviders = []
   app.secretStorage.setSecret('sample-keyed-key', 'sample-value')
-  const general = open(GeneralSettings)
+  const general = open(GeneralSettings, { page: 'models' })
   const rows = general.findAll('.abele-ai-provider')
   expect(rows.map((r) => r.find('.setting-item-name').text())).toEqual([
     'Sample keyed',

@@ -103,7 +103,7 @@ Each model has configurable properties:
 
 ### Which model runs where
 
-Chat models are chosen per agent, on the Agents tab. The **General** tab holds one model slot of
+Chat models are chosen per agent, on the Agents tab. The **Models** tab holds one model slot of
 its own: the **auxiliary** model, used for the plugin's own background work — naming chats and
 compacting long conversations. It has no tools, no scope and no prompt of its own, which is why it
 is a plain model rather than an agent.
@@ -425,7 +425,7 @@ Date variables (`{{ date }}`, `{{ date.format('YYYY-MM-DD') }}`, `{{ date.offset
 
 ### Tool Descriptions
 
-Each tool's description (sent to the model) can be customized in settings under "Tool Descriptions". This lets you fine-tune how the model understands and uses each tool.
+Each tool's description (sent to the model) can be customized on the **Prompts** tab, under "Tool descriptions": the tools as a tree by group, a dot on each one whose words were changed, and its words in a window of their own with a way back to the default. This lets you fine-tune how the model understands and uses each tool.
 
 ## Skills
 
@@ -573,7 +573,7 @@ Chat models are set per agent, on the Agents tab.
 
 Set per agent, on the Agents tab. A chat inherits them and can override them for itself.
 
-### Background Prompts (General)
+### Background Prompts (Prompts tab)
 
 | Setting | Default | Description |
 |---------|---------|-------------|
@@ -583,4 +583,4 @@ Set per agent, on the Agents tab. A chat inherits them and can override them for
 | Tool Descriptions | Built-in | What each tool tells the model about itself, shared by every agent |
 
 An agent's own instructions are its prompt blocks, on the Agents tab.
-| Tool Descriptions | Built-in | Per-tool descriptions sent to the model (expandable section) |
+| Tool Descriptions | Built-in | Per-tool descriptions sent to the model (a tree on the Prompts tab) |

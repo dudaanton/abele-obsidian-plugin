@@ -26,6 +26,8 @@ it('saves a timeout in seconds, rejects invalid values and follows incoming sett
   config.ai.enabled = true
   vi.spyOn(config, 'saveSettings').mockResolvedValue(undefined)
   screen = mount(GeneralSettings, {
+    // Providers, models, keys and the request limits are on the agent settings' Models tab.
+    props: { page: 'models' },
     global: { stubs: { Input: true, Dropdown: true, Search: true } },
   })
   const setting = screen
@@ -60,6 +62,8 @@ it('shows invalid global timeout input without saving a different value', async 
   config.ai.enabled = true
   const save = vi.spyOn(config, 'saveSettings').mockResolvedValue(undefined)
   screen = mount(GeneralSettings, {
+    // Providers, models, keys and the request limits are on the agent settings' Models tab.
+    props: { page: 'models' },
     global: { stubs: { Dropdown: true, Search: true } },
   })
   const setting = screen
@@ -106,6 +110,8 @@ it('saves the whole provider/model key selected for background work', async () =
   }))
   vi.spyOn(config, 'saveSettings').mockResolvedValue(undefined)
   screen = mount(GeneralSettings, {
+    // Providers, models, keys and the request limits are on the agent settings' Models tab.
+    props: { page: 'models' },
     global: { stubs: { Input: true, Dropdown: true, Search: true } },
   })
   const setting = screen
@@ -137,6 +143,8 @@ it('toggles a fetched model once from its checkbox and once from its label', asy
   vi.spyOn(config, 'saveSettings').mockResolvedValue(undefined)
   vi.spyOn(OpenAIClient.prototype, 'fetchModels').mockResolvedValue([{ id: 'sample-model' }])
   screen = mount(GeneralSettings, {
+    // Providers, models, keys and the request limits are on the agent settings' Models tab.
+    props: { page: 'models' },
     global: { stubs: { Input: true, Dropdown: true, Search: true } },
   })
   // The models are in the provider's own window, opened from its row.

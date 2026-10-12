@@ -142,8 +142,12 @@ describe('the AI settings', () => {
     app.secretStorage.setSecret(voiceKeyId(DEFAULT_VOICE_SETTINGS), 'fake-voice-value')
   })
 
-  const open = () =>
-    mount(GeneralSettings, { global: { stubs: { Search: true, Dropdown: true, Checkbox: true } } })
+  // The web search key is on the General tab; the provider, picture and voice keys on Models.
+  const open = (page: 'general' | 'models') =>
+    mount(GeneralSettings, {
+      props: { page },
+      global: { stubs: { Search: true, Dropdown: true, Checkbox: true } },
+    })
 
   it.each([
     ['provider', 'fake-provider-value'],
@@ -151,7 +155,7 @@ describe('the AI settings', () => {
     ['image provider', 'fake-image-value'],
     ['voice input', 'fake-voice-value'],
   ])('shows and copies the %s key where it is entered', async (_, value) => {
-    const view = open()
+    const view = open(_ === 'web search' ? 'general' : 'models')
     // A provider's key is in its own window, opened from the settings glyph on its row.
     for (const change of view
       .findAllComponents(Icon)
@@ -176,7 +180,7 @@ describe('the AI settings', () => {
       secrets: [{ name: 'Weather', keyId: 'abele-secret-1' }],
     }
     app.secretStorage.setSecret('abele-secret-1', 'fake-weather-value')
-    const view = open()
+    const view = open('general')
     await view
       .findAll('.abele-card')
       .find((c) => c.text().includes('Weather'))!

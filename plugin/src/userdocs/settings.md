@@ -66,11 +66,14 @@ Where time entries are saved and which notes get a timer. See [Time tracking](ti
 
 ## AI Agent
 
-The whole AI feature. **General** holds providers and models, the background model that names and
-summarises chats, the chat and comment folders, web search, image and voice models, and the
-background prompts. **Agents** holds your agents with their prompts, tools, scope, permissions,
-memory and interceptor. **MCP** connects MCP servers whose tools agents can use. See
-[AI chat and agents](ai-chat).
+The whole AI feature, over five tabs. **General** turns it on and holds where chats and comments
+are kept, the skills folder, web search and named secrets. **Models** holds providers and their
+models, the background model that names and summarises chats, image and voice models, and what
+happens when a request fails. **Agents** holds your agents with their prompts, tools, scope,
+permissions, memory and interceptor. **MCP** connects MCP servers whose tools agents can use.
+**Prompts** holds the words the plugin uses for its own work — what each tool tells the model, the
+memory template and the background prompts — each a row with a dot when it was changed, and its
+words in a window of their own. See [AI chat and agents](ai-chat).
 
 ## Scripts
 

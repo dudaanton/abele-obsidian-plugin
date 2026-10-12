@@ -1,10 +1,20 @@
 <template>
   <div class="abele-settings__ai">
-    <Setting name="AI Agent" desc="Enable AI agent features including the chat sidebar.">
+    <Setting
+      v-if="page === 'general'"
+      name="AI Agent"
+      desc="Enable AI agent features including the chat sidebar."
+    >
       <Checkbox :is-enabled="enabled" @toggle="toggleEnabled" />
     </Setting>
 
-    <template v-if="enabled">
+    <!-- The agent's own settings over three tabs: General for what it is and where its things
+         live, Models for what it talks to, Prompts for the words it uses — the rare part. -->
+    <EmptyState
+      v-if="!enabled && page !== 'general'"
+      text="The AI agent is off. Turn it on under General."
+    />
+    <template v-if="enabled && page === 'general'">
       <template v-if="Platform.isMobile">
         <Setting
           name="Keep running in background while agents work"
@@ -29,20 +39,161 @@
           @click="reviewKeyDestinations"
         />
       </Setting>
-      <Setting
-        name="Request timeout (seconds)"
-        desc="Wait for the model to connect or send the next response chunk, not for the whole answer. 1–3600 seconds; empty restores 60. Used for chat and background models without their own timeout."
-      >
-        <Input
-          :model-value="timeoutInput"
-          :aria-invalid="timeoutError ? 'true' : undefined"
-          placeholder="60"
-          @update:model-value="setRequestTimeout($event)"
-        />
-        <div v-if="timeoutError" class="setting-item-description" role="alert">
-          {{ timeoutError }}
+      <Section title="Chat Storage">
+        <Setting
+          name="Chat path template"
+          :desc="`Path template for chat files. Variables: ${NAME_TOKEN}, ${DATE_TOKEN}.`"
+        >
+          <Input
+            :model-value="chatFolder"
+            placeholder="AI/Chats"
+            @update:model-value="updateField('chatFolder', $event)"
+          />
+        </Setting>
+
+        <Setting
+          name="Rewind space (MB)"
+          desc="How much room, on this device, the copies may take that let a chat put back the
+            files its agent changed. Chats written to least recently lose theirs first. 0 keeps
+            nothing, and chats cannot rewind."
+        >
+          <Input
+            :model-value="String(rewindLimitMb)"
+            placeholder="100"
+            @update:model-value="updateField('rewindLimitMb', $event)"
+          />
+        </Setting>
+
+        <Setting
+          name="Migrate chats"
+          desc="Move existing chat files to match the current path template."
+        >
+          <Button
+            :text="migrating ? 'Migrating...' : 'Migrate'"
+            :disabled="migrating"
+            tooltip="Move existing chat files to match the template above"
+            @click="migrateChats"
+          />
+        </Setting>
+
+        <Setting
+          name="Comment agent"
+          desc="Which agent answers comment chats. Utility agents are offered too — the one
+            seeded for comments is one."
+        >
+          <Dropdown
+            :model-value="commentAgentId"
+            :options="commentAgentOptions"
+            @update:model-value="updateField('commentAgentId', $event)"
+          />
+        </Setting>
+
+        <Setting name="Comment folder" desc="Where comment chats are stored">
+          <Input
+            :model-value="commentFolder"
+            placeholder="AI/Comments"
+            @update:model-value="updateField('commentFolder', $event)"
+          />
+        </Setting>
+      </Section>
+
+      <Section title="Skills">
+        <Setting
+          name="Skills folder"
+          desc="Skills here are offered to every agent. Elsewhere, only skills in the chat's scope are offered; loading another skill asks first. The agent's skill selection still applies."
+        >
+          <Input
+            :model-value="skillsFolder"
+            placeholder="AI/Skills"
+            @update:model-value="updateField('skillsFolder', $event)"
+          />
+        </Setting>
+      </Section>
+
+      <Section title="Integrations">
+        <Setting name="Brave Search API Key" desc="Stored securely in keychain.">
+          <SecretField
+            :value="storedSecret(braveSearchApiKey)"
+            :model-value="braveSecretInput"
+            :placeholder="'BSA...'"
+            @update:model-value="braveSecretInput = $event"
+            @save="applyBraveSecret"
+          />
+        </Setting>
+      </Section>
+
+      <Section title="Secrets">
+        <template #desc>
+          Keys and tokens for API requests. AI agent uses <code>${abele_key:name}</code> in fetch
+          calls, which is replaced with the actual value. Stored securely in keychain.
+        </template>
+
+        <CardGrid>
+          <Card
+            v-for="(secret, sIdx) in secrets"
+            :key="secret.id"
+            :title="secret.name || '(unnamed)'"
+            :subtitle="
+              editingSecretIdx === sIdx ? undefined : getSecretDisplay(secret.keyId) || '(not set)'
+            "
+            :clickable="editingSecretIdx !== sIdx"
+            @click="startEditSecret(sIdx)"
+          >
+            <!--
+              Clicks inside the open editor must not reach the card, which would read them as
+              "open me". Save and Cancel both close the card, and the browser runs a microtask
+              checkpoint between two listeners of one click — long enough for Vue to re-render
+              the card as clickable again before the click finishes bubbling into it.
+            -->
+            <div v-if="editingSecretIdx === sIdx" class="abele-ai-secret__editor" @click.stop>
+              <Input
+                :model-value="secret.name"
+                placeholder="Secret name"
+                @update:model-value="(v: string) => updateSecretName(sIdx, v)"
+              />
+              <SecretField
+                :value="storedSecret(secret.keyId)"
+                :model-value="secretValueInputs[secret.id] || ''"
+                placeholder="Value..."
+                replace-placeholder="Value..."
+                @update:model-value="secretValueInputs[secret.id] = $event"
+                @save="applySecretValue(sIdx)"
+              />
+              <Setting
+                name="Allowed addresses"
+                desc="Add an address from a request's confirmation. Each saved-key request still asks."
+              >
+                <div>
+                  <div v-for="origin in secret.allowedOrigins || []" :key="origin">
+                    <span>{{ origin }}</span>
+                    <Button
+                      text="Remove"
+                      tooltip="Remove this address from the key's allowed list"
+                      @click="removeSecretOrigin(sIdx, origin)"
+                    />
+                  </div>
+                  <span v-if="!secret.allowedOrigins?.length">None yet</span>
+                </div>
+              </Setting>
+              <div class="abele-ai-secret__row">
+                <Icon icon="trash" tooltip="Remove this secret" @click="askRemoveSecret(sIdx)" />
+                <Icon
+                  icon="x"
+                  tooltip="Cancel — leave the stored value as it is"
+                  @click="cancelEditSecret(sIdx)"
+                />
+              </div>
+            </div>
+          </Card>
+        </CardGrid>
+
+        <div class="abele-settings__ai-actions">
+          <Button text="Add secret" tooltip="Add another named secret" @click="addSecret" />
         </div>
-      </Setting>
+      </Section>
+    </template>
+
+    <template v-if="enabled && page === 'models'">
       <Section title="Providers">
         <ProviderSettings
           v-for="(provider, pIdx) in providers"
@@ -185,89 +336,6 @@
         </Setting>
       </Section>
 
-      <Section title="Chat Storage">
-        <Setting
-          name="Chat path template"
-          :desc="`Path template for chat files. Variables: ${NAME_TOKEN}, ${DATE_TOKEN}.`"
-        >
-          <Input
-            :model-value="chatFolder"
-            placeholder="AI/Chats"
-            @update:model-value="updateField('chatFolder', $event)"
-          />
-        </Setting>
-
-        <Setting
-          name="Rewind space (MB)"
-          desc="How much room, on this device, the copies may take that let a chat put back the
-            files its agent changed. Chats written to least recently lose theirs first. 0 keeps
-            nothing, and chats cannot rewind."
-        >
-          <Input
-            :model-value="String(rewindLimitMb)"
-            placeholder="100"
-            @update:model-value="updateField('rewindLimitMb', $event)"
-          />
-        </Setting>
-
-        <Setting
-          name="Migrate chats"
-          desc="Move existing chat files to match the current path template."
-        >
-          <Button
-            :text="migrating ? 'Migrating...' : 'Migrate'"
-            :disabled="migrating"
-            tooltip="Move existing chat files to match the template above"
-            @click="migrateChats"
-          />
-        </Setting>
-
-        <Setting
-          name="Comment agent"
-          desc="Which agent answers comment chats. Utility agents are offered too — the one
-            seeded for comments is one."
-        >
-          <Dropdown
-            :model-value="commentAgentId"
-            :options="commentAgentOptions"
-            @update:model-value="updateField('commentAgentId', $event)"
-          />
-        </Setting>
-
-        <Setting name="Comment folder" desc="Where comment chats are stored">
-          <Input
-            :model-value="commentFolder"
-            placeholder="AI/Comments"
-            @update:model-value="updateField('commentFolder', $event)"
-          />
-        </Setting>
-      </Section>
-
-      <Section title="Skills">
-        <Setting
-          name="Skills folder"
-          desc="Skills here are offered to every agent. Elsewhere, only skills in the chat's scope are offered; loading another skill asks first. The agent's skill selection still applies."
-        >
-          <Input
-            :model-value="skillsFolder"
-            placeholder="AI/Skills"
-            @update:model-value="updateField('skillsFolder', $event)"
-          />
-        </Setting>
-      </Section>
-
-      <Section title="Integrations">
-        <Setting name="Brave Search API Key" desc="Stored securely in keychain.">
-          <SecretField
-            :value="storedSecret(braveSearchApiKey)"
-            :model-value="braveSecretInput"
-            :placeholder="'BSA...'"
-            @update:model-value="braveSecretInput = $event"
-            @save="applyBraveSecret"
-          />
-        </Setting>
-      </Section>
-
       <Section
         title="When a request fails"
         desc="Only failures that pass on their own are repeated — a rate limit, an overloaded provider, a dropped connection. A rejected key or a bad request is not tried again."
@@ -297,6 +365,20 @@
           />
         </Setting>
       </Section>
+      <Setting
+        name="Request timeout (seconds)"
+        desc="Wait for the model to connect or send the next response chunk, not for the whole answer. 1–3600 seconds; empty restores 60. Used for chat and background models without their own timeout."
+      >
+        <Input
+          :model-value="timeoutInput"
+          :aria-invalid="timeoutError ? 'true' : undefined"
+          placeholder="60"
+          @update:model-value="setRequestTimeout($event)"
+        />
+        <div v-if="timeoutError" class="setting-item-description" role="alert">
+          {{ timeoutError }}
+        </div>
+      </Setting>
 
       <Section
         title="Voice input"
@@ -458,169 +540,87 @@
           />
         </Setting>
       </Section>
+    </template>
 
-      <Section title="Secrets">
-        <template #desc>
-          Keys and tokens for API requests. AI agent uses <code>${abele_key:name}</code> in fetch
-          calls, which is replaced with the actual value. Stored securely in keychain.
-        </template>
-
-        <CardGrid>
-          <Card
-            v-for="(secret, sIdx) in secrets"
-            :key="secret.id"
-            :title="secret.name || '(unnamed)'"
-            :subtitle="
-              editingSecretIdx === sIdx ? undefined : getSecretDisplay(secret.keyId) || '(not set)'
-            "
-            :clickable="editingSecretIdx !== sIdx"
-            @click="startEditSecret(sIdx)"
-          >
-            <!--
-              Clicks inside the open editor must not reach the card, which would read them as
-              "open me". Save and Cancel both close the card, and the browser runs a microtask
-              checkpoint between two listeners of one click — long enough for Vue to re-render
-              the card as clickable again before the click finishes bubbling into it.
-            -->
-            <div v-if="editingSecretIdx === sIdx" class="abele-ai-secret__editor" @click.stop>
-              <Input
-                :model-value="secret.name"
-                placeholder="Secret name"
-                @update:model-value="(v: string) => updateSecretName(sIdx, v)"
-              />
-              <SecretField
-                :value="storedSecret(secret.keyId)"
-                :model-value="secretValueInputs[secret.id] || ''"
-                placeholder="Value..."
-                replace-placeholder="Value..."
-                @update:model-value="secretValueInputs[secret.id] = $event"
-                @save="applySecretValue(sIdx)"
-              />
-              <Setting
-                name="Allowed addresses"
-                desc="Add an address from a request's confirmation. Each saved-key request still asks."
-              >
-                <div>
-                  <div v-for="origin in secret.allowedOrigins || []" :key="origin">
-                    <span>{{ origin }}</span>
-                    <Button
-                      text="Remove"
-                      tooltip="Remove this address from the key's allowed list"
-                      @click="removeSecretOrigin(sIdx, origin)"
-                    />
-                  </div>
-                  <span v-if="!secret.allowedOrigins?.length">None yet</span>
-                </div>
-              </Setting>
-              <div class="abele-ai-secret__row">
-                <Icon icon="trash" tooltip="Remove this secret" @click="askRemoveSecret(sIdx)" />
-                <Icon
-                  icon="x"
-                  tooltip="Cancel — leave the stored value as it is"
-                  @click="cancelEditSecret(sIdx)"
-                />
-              </div>
-            </div>
-          </Card>
-        </CardGrid>
-
-        <div class="abele-settings__ai-actions">
-          <Button text="Add secret" tooltip="Add another named secret" @click="addSecret" />
-        </div>
+    <template v-if="enabled && page === 'prompts'">
+      <!-- What the plugin tells the models, rarely changed: a prompt a row, saying whether it is
+           still the plugin's own, and its words in a window of their own. -->
+      <Section
+        title="Prompts"
+        desc="What the plugin says to the models for its own work. Each starts as the plugin's own; change one only to change how that work comes out."
+      >
+        <Setting
+          name="Tool descriptions"
+          desc="What each tool tells the model about itself, shared by every agent. Which tools an agent may use is set per agent."
+        >
+          <StatusDot
+            v-if="toolDescriptionsChanged"
+            tone="accent"
+            :label="`${toolDescriptionsChanged} changed from the plugin's own`"
+          />
+          <Icon
+            icon="pencil"
+            tooltip="Change what the tools tell the model"
+            @click="editingTools = true"
+          />
+        </Setting>
+        <Setting v-for="row in PROMPT_ROWS" :key="row.key" :name="row.name" :desc="row.desc">
+          <StatusDot
+            v-if="isChanged(row.key)"
+            tone="accent"
+            label="Changed from the plugin's own words"
+          />
+          <Icon
+            icon="pencil"
+            :tooltip="`Change the ${row.name.toLowerCase()} prompt`"
+            @click="editPrompt(row)"
+          />
+        </Setting>
       </Section>
 
-      <Section
-        title="Tool Descriptions"
-        desc="What each tool tells the model about itself. Shared by every agent — which tools an
-          agent may use is set per agent, on the Agents tab."
-      >
-        <ToolModesEditor
-          :tool-modes="{}"
-          :descriptions-only="true"
-          :show-descriptions="true"
-          :tool-descriptions="customToolDescriptions"
-          @update-description="onToolDescriptionUpdate"
+      <ObsidianModal v-if="editingPrompt" :title="editingPrompt.name" @close="editingPrompt = null">
+        <p class="abele-ai-prompts__about">{{ editingPrompt.desc }}</p>
+        <Input
+          v-model="promptDraft"
+          as-text-area
+          class="abele-ai-prompts__text"
+          :rows="12"
+          :placeholder="defaultPrompts[editingPrompt.key]"
+          :aria-label="editingPrompt.name"
         />
-      </Section>
+        <template #footer>
+          <Button
+            text="Use the default"
+            tooltip="Go back to the plugin's own words"
+            :disabled="!promptDraft"
+            @click="promptDraft = ''"
+          />
+          <Button
+            text="Cancel"
+            tooltip="Close this and change nothing"
+            @click="editingPrompt = null"
+          />
+          <Button text="Save" tooltip="Use these words from now on" accent @click="savePrompt" />
+        </template>
+      </ObsidianModal>
 
-      <Section
-        title="Agent Memory"
-        desc="How what an agent was asked to remember is added to its system prompt. Shared by
-          every agent; each agent's own items are on its Memory tab. An agent that remembers
-          nothing gets nothing added."
+      <ObsidianModal
+        v-if="editingTools"
+        title="Tool descriptions"
+        size="wide"
+        @close="editingTools = false"
       >
-        <Setting
-          name="Memory Template"
-          :desc="`Use ${MEMORY_TOKEN} where the list of items goes. Empty uses the default.`"
-        >
-          <Input
-            :model-value="prompts.memoryTemplate || ''"
-            as-text-area
-            :placeholder="defaultPrompts.memoryTemplate"
-            @update:model-value="updatePrompt('memoryTemplate', $event)"
-          />
-        </Setting>
-      </Section>
+        <ToolDescriptions
+          :descriptions="customToolDescriptions"
+          @update="onToolDescriptionUpdate"
+        />
+        <template #footer>
+          <Button text="Done" tooltip="Close this window" accent @click="editingTools = false" />
+        </template>
+      </ObsidianModal>
+    </template>
 
-      <Section title="Background Prompts">
-        <Setting
-          name="Title Generation Prompt"
-          :desc="`Prompt for generating chat titles. Use ${MESSAGES_TOKEN} as placeholder.`"
-        >
-          <Input
-            :model-value="prompts.titleGeneration || ''"
-            as-text-area
-            :placeholder="defaultPrompts.titleGeneration"
-            @update:model-value="updatePrompt('titleGeneration', $event)"
-          />
-        </Setting>
-
-        <Setting
-          name="Chat Recap Prompt"
-          :desc="`Prompt for the sentence shown on a chat's card under a note it changed. Use ${MESSAGES_TOKEN} as placeholder.`"
-        >
-          <Input
-            :model-value="prompts.recapPrompt || ''"
-            as-text-area
-            :placeholder="defaultPrompts.recapPrompt"
-            @update:model-value="updatePrompt('recapPrompt', $event)"
-          />
-        </Setting>
-
-        <Setting
-          name="Chat Summary Prompt"
-          :desc="`Prompt for the short summary under a chat's title in the history. Use ${MESSAGES_TOKEN} as placeholder.`"
-        >
-          <Input
-            :model-value="prompts.summaryPrompt || ''"
-            as-text-area
-            :placeholder="defaultPrompts.summaryPrompt"
-            @update:model-value="updatePrompt('summaryPrompt', $event)"
-          />
-        </Setting>
-
-        <Setting name="Title System Prompt" desc="System prompt for the title generation model.">
-          <Input
-            :model-value="prompts.titleSystem || ''"
-            as-text-area
-            :placeholder="defaultPrompts.titleSystem"
-            @update:model-value="updatePrompt('titleSystem', $event)"
-          />
-        </Setting>
-
-        <Setting
-          name="Compact Prompt"
-          :desc="`Prompt for summarizing conversation history. Use ${MESSAGES_TOKEN} as placeholder.`"
-        >
-          <Input
-            :model-value="prompts.compactPrompt || ''"
-            as-text-area
-            :placeholder="defaultPrompts.compactPrompt"
-            @update:model-value="updatePrompt('compactPrompt', $event)"
-          />
-        </Setting>
-      </Section>
-
+    <template v-if="enabled">
       <ConfirmModal
         v-if="pendingRemoval"
         :title="pendingRemoval.title"
@@ -654,10 +654,12 @@ import CardGrid from '../../obsidian/CardGrid.vue'
 import Badge from '../../obsidian/Badge.vue'
 import EmptyState from '../../obsidian/EmptyState.vue'
 import ConfirmModal from '../../obsidian/ConfirmModal.vue'
-import ToolModesEditor from '../../ToolModesEditor.vue'
+import ToolDescriptions from './ToolDescriptions.vue'
+import ObsidianModal from '../../obsidian/Modal.vue'
 import ModelEditModal from '../ModelEditModal.vue'
 import ImageModelEditModal from '../ImageModelEditModal.vue'
 import Icon from '../../obsidian/Icon.vue'
+import StatusDot from '../../obsidian/StatusDot.vue'
 import SecretField from '../SecretField.vue'
 import ProviderSettings from './ProviderSettings.vue'
 import { AbeleConfig } from '@/services/AbeleConfig'
@@ -690,6 +692,14 @@ const IMAGE_API_TYPES = [
  * The question standing between a trash icon and something being gone. One slot: only one
  * dialog can be open, and holding the action itself keeps the wiring in one place.
  */
+withDefaults(
+  defineProps<{
+    /** Which tab of the agent's settings this is. */
+    page?: 'general' | 'models' | 'prompts'
+  }>(),
+  { page: 'general' }
+)
+
 const pendingRemoval = ref<{ title: string; message: string; run: () => void } | null>(null)
 
 function askRemoval(title: string, message: string, run: () => void): void {
@@ -1157,10 +1167,90 @@ const updatePrompt = (field: keyof Omit<AiPrompts, 'toolDescriptions'>, value: s
   save()
 }
 
+type PromptKey = keyof Omit<AiPrompts, 'toolDescriptions'>
+interface PromptRow {
+  key: PromptKey
+  name: string
+  desc: string
+}
+
+/** The plugin's own prompts, each in the words of the work it does. */
+const PROMPT_ROWS: PromptRow[] = [
+  {
+    key: 'memoryTemplate',
+    name: 'Agent memory',
+    desc: `How what an agent was asked to remember is added to its system prompt; ${MEMORY_TOKEN} is where the items go.`,
+  },
+  {
+    key: 'titleGeneration',
+    name: 'Chat titles',
+    desc: `Names a chat from its first messages; ${MESSAGES_TOKEN} is where they go.`,
+  },
+  {
+    key: 'titleSystem',
+    name: 'Chat titles, system',
+    desc: 'What the model that names chats is told it is.',
+  },
+  {
+    key: 'recapPrompt',
+    name: 'Chat recap',
+    desc: `The sentence on a chat's card under a note it changed; ${MESSAGES_TOKEN} is where the messages go.`,
+  },
+  {
+    key: 'summaryPrompt',
+    name: 'Chat summary',
+    desc: `The short line under a chat's title in the history; ${MESSAGES_TOKEN} is where the messages go.`,
+  },
+  {
+    key: 'compactPrompt',
+    name: 'Compacting',
+    desc: `How a long conversation is summed up so it can go on; ${MESSAGES_TOKEN} is where it goes.`,
+  },
+]
+
+const editingPrompt = ref<PromptRow | null>(null)
+const promptDraft = ref('')
+const editPrompt = (row: PromptRow) => {
+  promptDraft.value = prompts.value[row.key] || ''
+  editingPrompt.value = row
+}
+/** Saved as typed; left empty, the plugin's own words are used again. */
+const savePrompt = () => {
+  if (editingPrompt.value) updatePrompt(editingPrompt.value.key, promptDraft.value)
+  editingPrompt.value = null
+}
+
+const editingTools = ref(false)
+const toolDescriptionsChanged = computed(
+  () => Object.values(customToolDescriptions.value).filter(Boolean).length
+)
+
+/** Changed means other words than the plugin's own; the same words typed in are not a change. */
+const isChanged = (key: PromptKey) => {
+  const own = prompts.value[key]
+  return !!own && own.trim() !== (defaultPrompts[key] || '').trim()
+}
+
 const modelCount = (n: number) => (n === 1 ? '1 model' : `${n} models`)
 </script>
 
 <style lang="scss">
+.abele-ai-prompts__about {
+  margin-top: 0;
+  color: var(--text-muted);
+  font-size: var(--font-ui-small);
+}
+
+.abele-ai-prompts__text {
+  width: 100%;
+}
+
+.modal .abele-ai-prompts__text textarea.abele-obsidian-input__base {
+  width: 100%;
+  font-family: var(--font-monospace);
+  font-size: var(--font-ui-small);
+}
+
 /** Was a bare `<template>`; the wrapper keeps the card's own column layout. */
 .abele-ai-secret__editor {
   display: flex;

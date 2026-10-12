@@ -21,7 +21,8 @@ let app: FakeApp
 
 const STUBS = { Search: true, Dropdown: true, Input: true, Checkbox: true }
 
-const open = () => mount(GeneralSettings, { global: { stubs: STUBS } })
+// Voice input is on the agent settings' Models tab.
+const open = () => mount(GeneralSettings, { props: { page: 'models' }, global: { stubs: STUBS } })
 
 /** The dropdown whose options are the transcription models. */
 const modelPicker = (wrapper: ReturnType<typeof open>) =>
