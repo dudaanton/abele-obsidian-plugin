@@ -40,10 +40,13 @@ class RunnablePicker<T> extends FuzzySuggestModal<T> {
    * main window — and settings, since 1.13, can be a window of its own.
    */
   renderSuggestion(match: FuzzyMatch<T>, el: HTMLElement): void {
-    el.createDiv({ cls: 'suggestion-title', text: this.title(match.item) })
+    // `mod-complex` is what gives the note its quieter, smaller line under the name.
+    el.addClass('mod-complex')
+    const content = el.createDiv({ cls: 'suggestion-content' })
+    content.createDiv({ cls: 'suggestion-title', text: this.title(match.item) })
 
     const subtitle = this.subtitle(match.item)
-    if (subtitle) el.createDiv({ cls: 'suggestion-note', text: subtitle })
+    if (subtitle) content.createDiv({ cls: 'suggestion-note', text: subtitle })
   }
 
   onChooseItem(item: T): void {

@@ -1,6 +1,11 @@
 <template>
   <!-- A document gets the wider column: a reference full of code reads badly in a form's. -->
-  <ObsidianModal :title="title" :size="asksSomething ? 'default' : 'wide'" @close="onCancel">
+  <ObsidianModal
+    :title="title"
+    :size="asksSomething ? 'default' : 'wide'"
+    close-in-footer
+    @close="onCancel"
+  >
     <form :id="formId" ref="formEl" class="abele-script-form" @submit.prevent="onSubmit">
       <div
         v-for="field in fields"
@@ -53,8 +58,16 @@
       </div>
     </form>
     <!-- Under the body, in sight however long the form or the document runs: a reference runs to
-         thousands of pixels, and on a phone a long form ran under the keyboard with its Run. -->
+         thousands of pixels, and on a phone a long form ran under the keyboard with its Run.
+         Cancel first and the answer last, the order of every dialog's foot; with it there, the
+         header's own close would only say the same thing twice. -->
     <template #footer>
+      <Button
+        :text="asksSomething ? 'Cancel' : 'Close'"
+        type="button"
+        :tooltip="asksSomething ? 'Close this and run nothing' : 'Close this'"
+        @click="onCancel"
+      />
       <!-- Nothing to fill in means nothing to run: the form is something to read. -->
       <Button
         v-if="asksSomething"
@@ -63,12 +76,6 @@
         type="submit"
         :form="formId"
         tooltip="Run the script with these answers"
-      />
-      <Button
-        :text="asksSomething ? 'Cancel' : 'Close'"
-        type="button"
-        :tooltip="asksSomething ? 'Close this and run nothing' : 'Close this'"
-        @click="onCancel"
       />
     </template>
   </ObsidianModal>
@@ -238,6 +245,16 @@ function onCancel() {
   user-select: text;
   -webkit-user-select: text;
   overflow-wrap: break-word;
+
+  // The text starts under the title as a form's first field does, not a paragraph's margin
+  // further down, and ends at the foot's hairline the same way.
+  > :first-child > :first-child {
+    margin-top: 0;
+  }
+
+  > :last-child > :last-child {
+    margin-bottom: 0;
+  }
 
   // `overflow-wrap` above breaks a long line of code where it has to, so the only thing left
   // that cannot be made narrower is a table. Without this the modal is what scrolls sideways,

@@ -6,15 +6,18 @@
     height: 1lh;
   }
 
+  // The pin keeps its whole box, the press area a glyph button has everywhere; the margin
+  // takes the overhang back so it still sits on the title's line.
   .abele-book-script-pin {
-    height: 100%;
-    padding-block: 0;
+    margin-block: calc((1lh - var(--icon-size) - 2 * var(--size-2-2)) / 2);
   }
 }
 
 .is-mobile .suggestion-item.mod-complex.abele-selection-script-choice {
   .suggestion-aux {
     min-height: var(--size-4-12);
+    // The finger-sized pin reaches past the glyph; a step keeps it off the description.
+    margin-inline-start: var(--size-4-2);
   }
 
   .abele-book-script-pin {
