@@ -17,6 +17,7 @@ it.skipIf(process.env.ABELE_SYNC_RESET_CONFIRM !== 'reset-sync-token-state')(
           'reset explicitly leased pool',
           `await window.__abeleTest.resetSyncTokenState({vault:${JSON.stringify(name)},confirm:'reset-sync-token-state'});return true`
         )
+        device.assertTokenStateReset()
         expect(device.rows()).toEqual([])
         expect(device.candidates()).toEqual([])
         expect(device.questions()).toEqual([])

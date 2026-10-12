@@ -196,3 +196,50 @@ it('reports both cleanup failures while still restoring the lease', async () => 
   expect(remove).toHaveBeenCalledWith([live.root], true)
   expect(restore.mock.calls.some(([body]) => body.includes('original ignore'))).toBe(true)
 })
+
+it('uses the full reset fallback when a successful reset leaves persisted records', async () => {
+  vi.stubEnv('OBSIDIAN_TEST_VAULT', 'primary-pool')
+  const live = new TokenSyncLive(false)
+  const saved = (
+    live as unknown as { saved: Map<typeof live.primary, { ignore: null; file: null }> }
+  ).saved
+  saved.set(live.primary, { ignore: null, file: null })
+  let retained = true
+  vi.spyOn(live.primary, 'resetTokenState').mockResolvedValue()
+  const fallback = vi.spyOn(live.primary, 'forceResetTokenState').mockImplementation(async () => {
+    retained = false
+  })
+  const run = vi.spyOn(live.primary, 'run').mockImplementation((body) => {
+    if (body.includes("app.loadLocalStorage('abele-sync-connections-v2')") && retained)
+      throw new Error('Token pool reset left connection records')
+    return true as never
+  })
+  vi.spyOn(live.primary, 'remove').mockImplementation(() => {})
+  await live.close()
+  expect(fallback).toHaveBeenCalledOnce()
+  expect(
+    run.mock.calls.filter(([body]) =>
+      body.includes("app.loadLocalStorage('abele-sync-connections-v2')")
+    )
+  ).toHaveLength(2)
+})
+
+it('reports retained records after the fallback while still restoring the lease', async () => {
+  vi.stubEnv('OBSIDIAN_TEST_VAULT', 'primary-pool')
+  const live = new TokenSyncLive(false)
+  const saved = (
+    live as unknown as { saved: Map<typeof live.primary, { ignore: string; file: null }> }
+  ).saved
+  saved.set(live.primary, { ignore: 'sample original ignore', file: null })
+  vi.spyOn(live.primary, 'resetTokenState').mockResolvedValue()
+  vi.spyOn(live.primary, 'forceResetTokenState').mockResolvedValue()
+  const run = vi.spyOn(live.primary, 'run').mockImplementation((body) => {
+    if (body.includes("app.loadLocalStorage('abele-sync-connections-v2')"))
+      throw new Error('Token pool reset left connection records')
+    return true as never
+  })
+  const remove = vi.spyOn(live.primary, 'remove').mockImplementation(() => {})
+  await expect(live.close()).rejects.toThrow('Token pool reset left connection records')
+  expect(remove).toHaveBeenCalledWith([live.root], true)
+  expect(run.mock.calls.some(([body]) => body.includes('sample original ignore'))).toBe(true)
+})

@@ -225,6 +225,12 @@ export class SyncDriver {
       true
     )
   }
+  assertTokenStateReset(): void {
+    this.run(
+      `const registry=app.loadLocalStorage('abele-sync-connections-v2');if(!registry||registry.version!==2||!Array.isArray(registry.records)||registry.records.length||registry.selectedId!==''||(registry.cleanup&&(!Array.isArray(registry.cleanup)||registry.cleanup.length)))throw new Error('Token pool reset left connection records');if(svc.registry.records().length||svc.rows.value.length||svc.candidates.value.length||svc.questions.value.length)throw new Error('Token pool reset left live connection or review state');return true`,
+      true
+    )
+  }
   captureTokenOwnership(): void {
     this.run(`await window.__abeleTest.captureSyncTokenOwnership(app.vault.getName());return true`)
   }

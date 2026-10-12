@@ -224,9 +224,11 @@ export class TokenSyncLive {
     for (const [device, saved] of [...this.saved].reverse()) {
       try {
         await device.resetTokenState()
+        device.assertTokenStateReset()
       } catch (error) {
         try {
           await device.forceResetTokenState()
+          device.assertTokenStateReset()
           console.warn(
             'Live sync polite cleanup failed; guarded pool reset succeeded:',
             cleanupReason(error)
