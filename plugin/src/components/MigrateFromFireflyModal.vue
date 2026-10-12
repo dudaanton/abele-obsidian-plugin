@@ -1,124 +1,98 @@
 <template>
-  <ObsidianModal size="wide" title="Migrate from Firefly III" @close="emit('close')">
+  <ObsidianModal size="wide" title="Import from Firefly III" @close="emit('close')">
     <div class="abele-migrate-firefly-modal">
-      <Setting name="Firefly III URL" desc="Base URL of your Firefly III instance.">
-        <Input v-model="baseUrl" placeholder="e.g. https://firefly.example.com" />
+      <Setting name="Firefly III address" desc="Where your Firefly III opens in a browser.">
+        <Input v-model="baseUrl" placeholder="https://firefly.example.com" />
       </Setting>
-      <Setting name="Personal Access Token" desc="Generate in Firefly III → Profile → OAuth.">
-        <Input v-model="token" password placeholder="Enter your token" />
+      <Setting name="Personal access token" desc="In Firefly III: Profile, then OAuth.">
+        <Input v-model="token" password placeholder="Token" />
       </Setting>
       <Setting
-        name="Account name template"
-        desc="Template for account note names. Variables: {{name}}, {{currency}}, {{accountType}}."
+        name="Account note names"
+        desc="{{name}}, {{currency}} and {{accountType}} are filled in from each account."
       >
-        <Input v-model="accountNameTemplate" placeholder="e.g. {{name}} {{currency}}" />
+        <Input v-model="accountNameTemplate" placeholder="{{name}} {{currency}}" />
       </Setting>
-      <Setting name="Dry run" desc="Preview what will be created without writing files.">
+      <Setting name="Try first" desc="Shows what would be created and writes nothing.">
         <Checkbox :is-enabled="dryRun" @toggle="dryRun = !dryRun" />
       </Setting>
 
-      <div class="abele-migrate-firefly-modal__buttons">
-        <ObsidianButton
-          text="Start migration"
-          accent
-          :disabled="migrating || !baseUrl || !token"
-          @click="startMigration"
-        />
-      </div>
-
-      <div v-if="migrating || completed" class="abele-migrate-firefly-modal__progress">
-        <div class="abele-migrate-firefly-modal__status">{{ statusText }}</div>
-        <Progress :value="progressPercent" :label="statusText || 'Migration progress'" />
-        <div class="abele-migrate-firefly-modal__counts">
-          <span v-if="result.accountsCreated">Accounts: {{ result.accountsCreated }}</span>
-          <span v-if="result.categoriesCreated">Categories: {{ result.categoriesCreated }}</span>
-          <span v-if="result.transactionsCreated"
-            >Transactions: {{ result.transactionsCreated }}</span
-          >
-          <span v-if="result.skipped">Skipped: {{ result.skipped }}</span>
-        </div>
-      </div>
-
-      <template v-if="completed && result.preview">
-        <Section
-          v-if="result.preview.accounts.length"
-          :title="`Accounts (${result.preview.accounts.length})`"
-          class="abele-migrate-firefly-modal__preview"
-        >
-          <div
-            v-for="(item, i) in result.preview.accounts"
-            :key="'a' + i"
-            class="abele-migrate-firefly-modal__preview-item"
-          >
-            {{ item }}
-          </div>
-        </Section>
-
-        <Section
-          v-if="result.preview.categories.length"
-          :title="`Categories (${result.preview.categories.length})`"
-          class="abele-migrate-firefly-modal__preview"
-        >
-          <div
-            v-for="(item, i) in result.preview.categories"
-            :key="'c' + i"
-            class="abele-migrate-firefly-modal__preview-item"
-          >
-            {{ item }}
-          </div>
-        </Section>
-
-        <Section
-          v-if="result.preview.transactions.length"
-          :title="`Transactions (${result.transactionsCreated || result.preview.transactions.length}${result.preview.transactions.length >= 50 ? ', showing first 50' : ''})`"
-          class="abele-migrate-firefly-modal__preview"
-        >
-          <div
-            v-for="(item, i) in result.preview.transactions"
-            :key="'t' + i"
-            class="abele-migrate-firefly-modal__preview-item"
-          >
-            {{ item }}
-          </div>
-        </Section>
-      </template>
-
-      <Section
-        v-if="completed && !dryRun && verificationResults.length > 0"
-        title="Balance verification"
-        class="abele-migrate-firefly-modal__verification"
+      <RunReport
+        v-if="migrating || completed"
+        class="abele-migrate-firefly-modal__report"
+        :running="migrating"
+        :status="statusText"
+        :percent="progressPercent"
+        :facts="facts"
+        :errors="result.errors"
       >
+        <template v-if="completed && result.preview">
+          <ShortList
+            v-if="result.preview.accounts.length"
+            :heading="dryRun ? 'Accounts it would create' : 'Accounts'"
+            :items="result.preview.accounts.map((title) => ({ title }))"
+          />
+          <ShortList
+            v-if="result.preview.categories.length"
+            :heading="dryRun ? 'Categories it would create' : 'Categories'"
+            :items="result.preview.categories.map((title) => ({ title }))"
+          />
+          <ShortList
+            v-if="result.preview.transactions.length"
+            heading="Transactions, the first 50"
+            :items="result.preview.transactions.map((title) => ({ title }))"
+          />
+        </template>
+        <!-- Each account's balance as Firefly has it beside the one the notes add up to. -->
         <div
-          v-for="v in verificationResults"
-          :key="v.account"
-          class="abele-migrate-firefly-modal__verify-row"
-          :class="{ 'abele-migrate-firefly-modal__verify-row_mismatch': !v.match }"
+          v-if="completed && !dryRun && verificationResults.length > 0"
+          class="abele-migrate-firefly-modal__verification"
         >
-          <span class="abele-migrate-firefly-modal__verify-name">{{ v.account }}</span>
-          <span>Firefly: {{ v.fireflyBalance }} {{ v.currency }}</span>
-          <span>Calculated: {{ v.calculatedBalance }} {{ v.currency }}</span>
-          <span v-if="v.match" class="abele-migrate-firefly-modal__verify-ok">OK</span>
-          <span v-else class="abele-migrate-firefly-modal__verify-diff">
-            Diff: {{ v.diff }} {{ v.currency }}
-          </span>
+          <GroupHeading label="Balances checked">
+            {{ verificationResults.filter((v) => v.match).length }} of
+            {{ verificationResults.length }} agree
+          </GroupHeading>
+          <EntryRow
+            v-for="v in verificationResults"
+            :key="v.account"
+            class="abele-migrate-firefly-modal__verify-row"
+          >
+            {{ v.account }}
+            <template #codes>
+              <ResultMark
+                :state="v.match ? 'done' : 'error'"
+                :text="
+                  v.match
+                    ? 'The notes add up to Firefly\'s balance'
+                    : `The notes add up to ${v.diff} ${v.currency} more than Firefly`
+                "
+              />
+            </template>
+            <template #meta>
+              <span>Firefly {{ v.fireflyBalance }} {{ v.currency }}</span>
+              <span>notes {{ v.calculatedBalance }} {{ v.currency }}</span>
+              <span v-if="!v.match" class="abele-migrate-firefly-modal__verify-diff"
+                >differs by {{ v.diff }}</span
+              >
+            </template>
+          </EntryRow>
         </div>
-      </Section>
-
-      <Section
-        v-if="result.errors.length > 0"
-        :title="`Errors (${result.errors.length})`"
-        class="abele-migrate-firefly-modal__errors"
-      >
-        <div
-          v-for="(err, i) in result.errors.slice(0, 20)"
-          :key="i"
-          class="abele-migrate-firefly-modal__error"
-        >
-          {{ err }}
-        </div>
-        <div v-if="result.errors.length > 20">...and {{ result.errors.length - 20 }} more</div>
-      </Section>
+      </RunReport>
     </div>
+    <template #footer>
+      <ObsidianButton
+        :text="dryRun ? 'Try' : 'Import'"
+        :tooltip="
+          dryRun
+            ? 'See what would be created, writing nothing'
+            : 'Read accounts, categories and transactions from Firefly III and write them as notes'
+        "
+        accent
+        :loading="migrating"
+        :disabled="migrating || !baseUrl || !token"
+        @click="startMigration"
+      />
+    </template>
   </ObsidianModal>
 </template>
 
@@ -129,9 +103,12 @@ import ObsidianButton from './obsidian/Button.vue'
 import Setting from './obsidian/Setting.vue'
 import Input from './obsidian/Input.vue'
 import Checkbox from './obsidian/Checkbox.vue'
-import Progress from './obsidian/Progress.vue'
-import Section from './obsidian/Section.vue'
-import { ref } from 'vue'
+import EntryRow from './obsidian/EntryRow.vue'
+import GroupHeading from './obsidian/GroupHeading.vue'
+import ResultMark from './obsidian/ResultMark.vue'
+import RunReport from './obsidian/RunReport.vue'
+import ShortList from './obsidian/ShortList.vue'
+import { computed, ref } from 'vue'
 import { request as requestUrl } from '@/helpers/http'
 import { keyDestinations, acceptIntroducedDestinations } from '@/secrets/destinations'
 import { AbeleConfig } from '@/services/AbeleConfig'
@@ -175,6 +152,15 @@ interface VerificationRow {
 }
 
 const verificationResults = ref<VerificationRow[]>([])
+
+const facts = computed(() =>
+  [
+    { label: 'Accounts', value: result.value.accountsCreated },
+    { label: 'Categories', value: result.value.categoriesCreated },
+    { label: 'Transactions', value: result.value.transactionsCreated },
+    { label: 'Skipped', value: result.value.skipped },
+  ].filter((fact) => fact.value)
+)
 
 const startMigration = async () => {
   migrating.value = true
@@ -286,77 +272,20 @@ const emit = defineEmits<{
 </script>
 
 <style lang="scss">
-.abele-migrate-firefly-modal__buttons {
-  display: flex;
-  gap: calc(var(--p-spacing) / 4);
-  margin: var(--p-spacing) 0;
-}
-
-.abele-migrate-firefly-modal__progress {
-  margin: var(--p-spacing) 0;
-}
-
-.abele-migrate-firefly-modal__status {
-  color: var(--text-muted);
-  margin-bottom: calc(var(--p-spacing) / 4);
-}
-
-.abele-migrate-firefly-modal__counts {
-  display: flex;
-  gap: var(--p-spacing);
-  color: var(--text-muted);
-  font-size: var(--font-smallest);
+.abele-migrate-firefly-modal__report {
+  margin-top: var(--size-4-4);
 }
 
 .abele-migrate-firefly-modal__verification {
-  margin: var(--p-spacing) 0;
-}
-
-.abele-migrate-firefly-modal__verify-row {
   display: flex;
-  gap: var(--p-spacing);
-  padding: calc(var(--p-spacing) / 4) 0;
-  font-size: var(--font-smallest);
-  border-bottom: 1px solid var(--background-modifier-border);
-}
+  flex-direction: column;
 
-.abele-migrate-firefly-modal__verify-name {
-  font-weight: var(--font-semibold);
-  flex: 1;
-}
-
-.abele-migrate-firefly-modal__verify-ok {
-  color: var(--text-success);
+  .abele-group-heading {
+    margin-bottom: var(--size-2-2);
+  }
 }
 
 .abele-migrate-firefly-modal__verify-diff {
   color: var(--text-error);
-}
-
-.abele-migrate-firefly-modal__verify-row_mismatch {
-  color: var(--text-error);
-}
-
-.abele-migrate-firefly-modal__errors {
-  margin: var(--p-spacing) 0;
-}
-
-.abele-migrate-firefly-modal__error {
-  font-size: var(--font-smallest);
-  color: var(--text-error);
-  padding: calc(var(--p-spacing) / 8) 0;
-}
-
-.abele-migrate-firefly-modal__preview {
-  margin: var(--p-spacing) 0;
-  max-height: 300px;
-  overflow-y: auto;
-}
-
-.abele-migrate-firefly-modal__preview-item {
-  font-size: var(--font-smallest);
-  color: var(--text-muted);
-  padding: calc(var(--p-spacing) / 8) 0;
-  border-bottom: 1px solid var(--background-modifier-border);
 }
 </style>

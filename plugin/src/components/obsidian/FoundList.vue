@@ -124,6 +124,10 @@ const emit = defineEmits<{ 'select-all': []; clear: [] }>()
   margin-bottom: var(--size-2-2);
   padding-inline: var(--size-2-3);
   color: var(--text-muted);
+
+  .modal-content & {
+    padding-inline: 0;
+  }
   font-size: var(--font-ui-small);
 }
 

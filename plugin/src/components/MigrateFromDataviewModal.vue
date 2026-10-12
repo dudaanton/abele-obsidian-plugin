@@ -1,41 +1,80 @@
 <template>
-  <ObsidianModal title="Migrate from Dataview" @close="emit('close')">
+  <ObsidianModal title="Tasks from Dataview" @close="emit('close')">
     <div class="abele-migrate-dv-modal">
-      <div class="abele-migrate-dv-modal__description"></div>
       <Setting
         class="abele-migrate-dv-modal__setting"
-        name="Dataview ID"
-        desc="The ID of the Dataview plugin instance to migrate from."
+        name="Dataview plugin"
+        desc="Its ID, if it is installed under another one."
       >
-        <Input v-model="dataviewId" placeholder="'dataview' by default" />
+        <Input v-model="dataviewId" placeholder="dataview" />
       </Setting>
       <Setting
         class="abele-migrate-dv-modal__setting"
-        name="Tasks query"
-        desc="The Dataview query to find tasks to migrate."
+        name="Which tasks"
+        desc="A Dataview TASK query. Each task found becomes a note of its own and leaves a link in its place."
       >
-        <Input v-model="query" placeholder='e.g. TASK where contains(tags, "#task")' as-text-area />
+        <Input v-model="query" placeholder='TASK where contains(tags, "#task")' as-text-area />
       </Setting>
-      <div class="abele-migrate-dv-modal__buttons">
+
+      <RunReport
+        v-if="processing || completed"
+        class="abele-migrate-dv-modal__report"
+        :running="processing"
+        :percent="percent"
+        :status="processing ? processingText : 'Done.'"
+        :facts="facts"
+      />
+      <FoundList
+        v-else-if="searching || dvTasks || searchError"
+        class="abele-migrate-dv-modal__found"
+        icon="list-checks"
+        :state="searching ? 'working' : searchError ? 'error' : dvTasks?.length ? 'list' : 'none'"
+        working-title="Asking Dataview"
+        none-title="No tasks"
+        none-text="The query found no task."
+        error-title="The query did not run"
+        :error-text="searchError"
+        :summary="`${dvTasks?.length ?? 0} ${dvTasks?.length === 1 ? 'task' : 'tasks'} would become notes`"
+      >
+        <EntryRow
+          v-for="(task, i) in shownTasks"
+          :key="i"
+          role="listitem"
+          class="abele-migrate-dv-modal__task"
+        >
+          {{ task.text }}
+          <template #meta>
+            <span>{{ task.path.replace(/\.md$/, '') }}</span>
+          </template>
+        </EntryRow>
         <ObsidianButton
-          text="Search for tasks"
-          accent
-          :disabled="searching || processing"
-          @click="search"
+          v-if="(dvTasks?.length ?? 0) > shownTasks.length"
+          quiet
+          class="abele-migrate-dv-modal__more"
+          :text="`Show ${(dvTasks?.length ?? 0) - shownTasks.length} more`"
+          tooltip="Show every task the query found"
+          @click="allTasks = true"
         />
-        <ObsidianButton
-          v-if="dvTasks"
-          :disabled="searching || processing"
-          text="Create tasks notes and remove tasks"
-          @click="promptProceeding"
-        />
-        <div v-if="processing" class="abele-migrate-dv-modal__count">{{ processingText }}</div>
-        <div v-else-if="completed" class="abele-migrate-dv-modal__count">Completed!</div>
-        <div v-else-if="dvTasks" class="abele-migrate-dv-modal__count">
-          {{ dvTasks.length }} results
-        </div>
-      </div>
+      </FoundList>
     </div>
+    <template #footer>
+      <ObsidianButton
+        :text="dvTasks ? 'Search again' : 'Find the tasks'"
+        tooltip="Run the query and list the tasks it finds"
+        :accent="!dvTasks?.length"
+        :disabled="searching || processing"
+        @click="search"
+      />
+      <ObsidianButton
+        v-if="dvTasks?.length && !completed"
+        :text="`Make ${dvTasks.length} task ${dvTasks.length === 1 ? 'note' : 'notes'}`"
+        tooltip="Make a note of each task and leave a link where it was"
+        accent
+        :loading="processing"
+        :disabled="searching || processing"
+        @click="promptProceeding"
+      />
+    </template>
   </ObsidianModal>
 </template>
 
@@ -45,9 +84,12 @@ import ObsidianModal from './obsidian/Modal.vue'
 import ObsidianButton from './obsidian/Button.vue'
 import Setting from './obsidian/Setting.vue'
 import Input from './obsidian/Input.vue'
+import EntryRow from './obsidian/EntryRow.vue'
+import FoundList from './obsidian/FoundList.vue'
+import RunReport from './obsidian/RunReport.vue'
 import { computed, ref } from 'vue'
 import { GlobalStore } from '@/stores/GlobalStore'
-import { Notice, TFile } from 'obsidian'
+import { TFile } from 'obsidian'
 import { createTask } from '@/commands/createTask'
 import { createTaskEmbedded, getRecurrentTaskTitle } from '@/helpers/tasksUtils'
 import dayjs from 'dayjs'
@@ -90,6 +132,12 @@ const searching = ref(false)
 const processing = ref(false)
 const completed = ref(false)
 
+const searchError = ref('')
+const allTasks = ref(false)
+const shownTasks = computed(() =>
+  allTasks.value ? (dvTasks.value ?? []) : (dvTasks.value ?? []).slice(0, 8)
+)
+
 const search = async () => {
   searching.value = true
   processing.value = false
@@ -99,8 +147,10 @@ const search = async () => {
 
   const dv = (app as any).plugins?.plugins?.[dataviewId.value]
 
+  searchError.value = ''
+  dvTasks.value = null
   if (!dv) {
-    new Notice(`Dataview plugin with ID '${dataviewId.value}' not found.`)
+    searchError.value = `No plugin with the ID '${dataviewId.value}' is installed and on.`
     searching.value = false
     return
   }
@@ -115,7 +165,7 @@ const search = async () => {
 
     dvTasks.value = tasks
   } catch (e) {
-    new Notice('Error executing Dataview query. Check the console for details.')
+    searchError.value = e instanceof Error ? e.message : String(e)
     console.error(e)
   }
 
@@ -319,10 +369,23 @@ const createTasksNotes = async () => {
   completed.value = true
 }
 
+const percent = computed(() => {
+  const total = dvTasks.value?.length ?? 0
+  return total
+    ? Math.round(((processedTasksSuccessfully.value + processedTasksFailed.value) / total) * 100)
+    : undefined
+})
+const facts = computed(() =>
+  [
+    { label: 'Task notes made', value: processedTasksSuccessfully.value },
+    { label: 'Failed', value: processedTasksFailed.value },
+  ].filter((fact) => fact.value)
+)
+
 const processingText = computed(() => {
-  return `Processing... Completed: ${processedTasksSuccessfully.value}/${
+  return `Making task notes · ${processedTasksSuccessfully.value + processedTasksFailed.value} of ${
     dvTasks.value?.length || 0
-  }. Failed: ${processedTasksFailed.value}`
+  }`
 })
 
 const emit = defineEmits<{
@@ -331,19 +394,13 @@ const emit = defineEmits<{
 </script>
 
 <style lang="scss">
-.abele-migrate-dv-modal__buttons {
-  display: flex;
-  flex-wrap: wrap;
-  gap: calc(var(--p-spacing) / 4);
+.abele-migrate-dv-modal__report,
+.abele-migrate-dv-modal__found {
+  margin-top: var(--size-4-4);
 }
 
-.abele-migrate-dv-modal__setting {
-  margin: var(--p-spacing) 0;
-}
-
-.abele-migrate-dv-modal__count {
-  margin-left: calc(var(--p-spacing) / 2);
-  align-self: center;
-  color: var(--text-muted);
+.abele-migrate-dv-modal .abele-migrate-dv-modal__more {
+  align-self: flex-start;
+  margin-top: var(--size-2-2);
 }
 </style>

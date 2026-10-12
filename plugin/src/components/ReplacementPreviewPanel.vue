@@ -203,6 +203,10 @@ useInfiniteScroll(() => props.scrollContainer ?? null, loadMore, {
   padding-inline: var(--size-2-3);
   color: var(--text-muted);
   font-size: var(--font-ui-small);
+
+  .modal-content & {
+    padding-inline: 0;
+  }
 }
 
 .abele-replacement-preview__results {
@@ -229,5 +233,9 @@ useInfiniteScroll(() => props.scrollContainer ?? null, loadMore, {
   align-self: flex-start;
   margin-top: var(--size-4-2);
   padding-inline: var(--size-2-3);
+
+  .modal-content & {
+    padding-inline: 0;
+  }
 }
 </style>

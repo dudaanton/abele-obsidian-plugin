@@ -1,48 +1,33 @@
 <template>
-  <ObsidianModal size="wide" title="Migrate from Toggl" @close="emit('close')">
+  <ObsidianModal size="wide" title="Import from Toggl" @close="emit('close')">
     <div class="abele-migrate-toggl-modal">
-      <Setting name="API Token" desc="Find it in Toggl → Profile Settings → API Token.">
-        <Input v-model="apiToken" placeholder="Enter your Toggl API token" />
+      <Setting name="API token" desc="In Toggl: Profile settings, then API token.">
+        <Input v-model="apiToken" password placeholder="Toggl API token" />
       </Setting>
-
-      <Setting name="Period" desc="Date range to import time entries from.">
+      <Setting name="Period" desc="Time entries in these dates are imported.">
         <PeriodSelector v-model:start="periodStart" v-model:end="periodEnd" />
       </Setting>
 
-      <div class="abele-migrate-toggl-modal__buttons">
-        <ObsidianButton
-          text="Import"
-          accent
-          :disabled="migrating || !apiToken"
-          @click="startMigration"
-        />
-      </div>
-
-      <div v-if="migrating || completed" class="abele-migrate-toggl-modal__progress">
-        <div class="abele-migrate-toggl-modal__status">{{ statusText }}</div>
-        <Progress :value="progressPercent" :label="statusText || 'Import progress'" />
-        <div class="abele-migrate-toggl-modal__counts">
-          <span v-if="result.entriesCreated">Entries: {{ result.entriesCreated }}</span>
-          <span v-if="result.notesCreated">Notes: {{ result.notesCreated }}</span>
-          <span v-if="result.skipped">Skipped: {{ result.skipped }}</span>
-        </div>
-      </div>
-
-      <Section
-        v-if="result.errors.length > 0"
-        :title="`Errors (${result.errors.length})`"
-        class="abele-migrate-toggl-modal__errors"
-      >
-        <div
-          v-for="(err, i) in result.errors.slice(0, 20)"
-          :key="i"
-          class="abele-migrate-toggl-modal__error"
-        >
-          {{ err }}
-        </div>
-        <div v-if="result.errors.length > 20">...and {{ result.errors.length - 20 }} more</div>
-      </Section>
+      <RunReport
+        v-if="migrating || completed"
+        class="abele-migrate-toggl-modal__report"
+        :running="migrating"
+        :status="statusText"
+        :percent="progressPercent"
+        :facts="facts"
+        :errors="result.errors"
+      />
     </div>
+    <template #footer>
+      <ObsidianButton
+        :text="completed ? 'Import again' : 'Import'"
+        tooltip="Read the time entries from Toggl and write them into the vault"
+        accent
+        :loading="migrating"
+        :disabled="migrating || !apiToken"
+        @click="startMigration"
+      />
+    </template>
   </ObsidianModal>
 </template>
 
@@ -52,9 +37,8 @@ import ObsidianButton from './obsidian/Button.vue'
 import Setting from './obsidian/Setting.vue'
 import Input from './obsidian/Input.vue'
 import PeriodSelector from './obsidian/PeriodSelector.vue'
-import Progress from './obsidian/Progress.vue'
-import Section from './obsidian/Section.vue'
-import { ref } from 'vue'
+import RunReport from './obsidian/RunReport.vue'
+import { computed, ref } from 'vue'
 import { migrateFromToggl, type TogglMigrationResult } from '@/commands/migrateFromToggl'
 import dayjs from 'dayjs'
 
@@ -77,6 +61,14 @@ const result = ref<TogglMigrationResult>({
   skipped: 0,
   errors: [],
 })
+
+const facts = computed(() =>
+  [
+    { label: 'Time entries', value: result.value.entriesCreated },
+    { label: 'Notes', value: result.value.notesCreated },
+    { label: 'Skipped', value: result.value.skipped },
+  ].filter((fact) => fact.value)
+)
 
 const startMigration = async () => {
   migrating.value = true
@@ -104,45 +96,7 @@ const startMigration = async () => {
 </script>
 
 <style lang="scss">
-.abele-migrate-toggl-modal {
-  display: flex;
-  flex-direction: column;
-  gap: var(--size-4-2);
-}
-
-.abele-migrate-toggl-modal__buttons {
-  display: flex;
-  gap: var(--size-4-2);
-  margin-top: var(--size-4-2);
-}
-
-.abele-migrate-toggl-modal__progress {
-  display: flex;
-  flex-direction: column;
-  gap: var(--size-4-1);
-  margin-top: var(--size-4-2);
-}
-
-.abele-migrate-toggl-modal__status {
-  font-size: var(--font-ui-small);
-  color: var(--text-muted);
-}
-
-.abele-migrate-toggl-modal__counts {
-  display: flex;
-  gap: var(--size-4-4);
-  font-size: var(--font-ui-small);
-  color: var(--text-muted);
-}
-
-.abele-migrate-toggl-modal__errors {
-  margin-top: var(--size-4-2);
-}
-
-.abele-migrate-toggl-modal__error {
-  font-size: var(--font-ui-small);
-  color: var(--text-muted);
-  padding: var(--size-2-1) 0;
-  border-bottom: 1px solid var(--background-modifier-border);
+.abele-migrate-toggl-modal__report {
+  margin-top: var(--size-4-4);
 }
 </style>

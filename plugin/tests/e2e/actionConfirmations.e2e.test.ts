@@ -53,9 +53,9 @@ const probe = async (
       field.dispatchEvent(new Event('input', { bubbles: true }))
       await frame()
       const button = label => [...root.closest('.modal').querySelectorAll('button')].find(el => el.textContent.trim() === label)
-      button(${JSON.stringify(place === 'find-replace' ? 'Search' : 'Search for tasks')}).click()
+      button(${JSON.stringify(place === 'find-replace' ? 'Search' : 'Find the tasks')}).click()
       const action = await until(() => {
-        const el = button(${JSON.stringify(place === 'find-replace' ? 'Replace in 1 note' : 'Create tasks notes and remove tasks')})
+        const el = button(${JSON.stringify(place === 'find-replace' ? 'Replace in 1 note' : 'Make 1 task note')})
         return el && !el.disabled ? el : null
       })
       if (!action) throw Error('The action was not available')
