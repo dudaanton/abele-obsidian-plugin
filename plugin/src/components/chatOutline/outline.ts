@@ -64,14 +64,3 @@ export function dayLabel(at: number, now = Date.now()): string {
 }
 
 export const timeOf = (at: number) => dayjs(at).format('HH:mm')
-
-/** A question as the rail along the chat marks it. */
-export interface RailMark {
-  id: string
-  title: string
-  /** When it was asked, as the tooltip says it. */
-  when: string
-  /** Where it stands in the chat, from 0 at the top to 1 at the bottom. */
-  at: number
-  tone?: OutlineTone
-}

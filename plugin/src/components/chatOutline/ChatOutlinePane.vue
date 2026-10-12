@@ -1,39 +1,15 @@
 <template>
-  <div
-    ref="root"
-    class="abele-chat-outline"
-    :class="`abele-chat-outline_${place}`"
-    tabindex="-1"
-    @keydown="onKey"
-  >
-    <!-- In a side panel the buttons sit in its header, as the outline and search panes keep theirs. -->
-    <div v-if="place === 'view'" class="nav-header">
-      <div class="nav-buttons-container">
-        <Icon
-          v-for="b in buttons"
-          :key="b.icon"
-          class="nav-action-button"
-          :icon="b.icon"
-          :tooltip="b.label"
-          :active="b.active"
-          :disabled="b.disabled"
-          @click="b.run"
-        />
-      </div>
-    </div>
-
+  <div ref="root" class="abele-chat-outline" tabindex="-1" @keydown="onKey">
     <div class="abele-chat-outline__search">
-      <Search v-model="query" placeholder="Find in this chat…" :autofocus="place === 'dialog'" />
-      <template v-if="place === 'dialog'">
-        <Icon
-          v-for="b in toggles"
-          :key="b.icon"
-          :icon="b.icon"
-          :tooltip="b.label"
-          :active="b.active"
-          @click="b.run"
-        />
-      </template>
+      <Search v-model="query" placeholder="Find in this chat…" autofocus />
+      <Icon
+        v-for="b in toggles"
+        :key="b.icon"
+        :icon="b.icon"
+        :tooltip="b.label"
+        :active="b.active"
+        @click="b.run"
+      />
     </div>
 
     <!-- A branch chosen while the agent works waits for its turn to end; it can be taken back. -->
@@ -106,7 +82,7 @@
     </div>
 
     <!-- In a dialog the moves sit under the list, beside the keys, as the quick switcher shows its. -->
-    <div v-if="place === 'dialog'" class="abele-chat-outline__footer">
+    <div class="abele-chat-outline__footer">
       <Icon
         v-for="b in moves"
         :key="b.icon"
@@ -124,8 +100,8 @@
 
 <script setup lang="ts">
 // A chat's outline: the questions by day, what followed each folded under it, branches and
-// discussions, and a search over the chat. One body for both places it can live: a dialog over
-// the chat, closed by a jump, or a side panel beside it that stays and follows the reading.
+// discussions, and a search over the chat. A dialog over the chat in the right sidebar, opened
+// from the chat's header and closed by a jump.
 import {
   computed,
   nextTick,
@@ -179,14 +155,12 @@ const props = withDefaults(
     /** A fork to open and show first. */
     focusFork?: string
     preview: (id: string) => Promise<NavigationDiscussionData | null>
-    place?: 'dialog' | 'view'
   }>(),
   {
     allMessages: undefined,
     activeMessageId: undefined,
     pending: undefined,
     focusFork: undefined,
-    place: 'dialog',
   }
 )
 const emit = defineEmits<{
@@ -261,10 +235,6 @@ const toggles = computed(() => [
     active: discussions.value,
     run: () => (discussions.value = !discussions.value),
   },
-])
-const buttons = computed(() => [
-  ...moves.value.map((b) => ({ ...b, active: undefined })),
-  ...toggles.value.map((b) => ({ ...b, disabled: false })),
 ])
 
 // Discussions are read one by one in the background, a little after the typing stops.
@@ -371,16 +341,16 @@ onMounted(async () => {
     return
   }
   const here = box.querySelector<HTMLElement>('.tree-item-self.is-active')
-  if (here && props.place === 'dialog') here.scrollIntoView({ block: 'center' })
+  if (here) here.scrollIntoView({ block: 'center' })
   else box.scrollTop = props.state.scrollTop
-  if (props.place === 'dialog') root.value?.querySelector<HTMLInputElement>('input')?.focus()
+  root.value?.querySelector<HTMLInputElement>('input')?.focus()
 })
 
 // Arrows walk the rows, right and left open and fold, Enter goes, Escape closes the dialog.
 const onKey = (event: KeyboardEvent) => {
   const el = root.value
   if (!el) return
-  if (event.key === 'Escape' && props.place === 'dialog') {
+  if (event.key === 'Escape') {
     event.preventDefault()
     event.stopPropagation()
     emit('close')
@@ -434,9 +404,6 @@ const onKey = (event: KeyboardEvent) => {
     flex: 1 1 auto;
   }
 }
-.abele-chat-outline_view .abele-chat-outline__search {
-  padding: var(--size-4-2) var(--size-4-3) var(--size-4-1);
-}
 // One quiet line under the field: the waiting branch switch, or what the search found.
 .abele-chat-outline__note {
   display: flex;
@@ -449,9 +416,6 @@ const onKey = (event: KeyboardEvent) => {
   .abele-obsidian-icon {
     padding: 0;
   }
-}
-.abele-chat-outline_view .abele-chat-outline__note {
-  padding-inline: var(--size-4-4);
 }
 .abele-chat-outline__note-text {
   min-width: 0;
@@ -470,9 +434,6 @@ const onKey = (event: KeyboardEvent) => {
   min-height: 0;
   overflow-y: auto;
   padding-block: var(--size-4-2);
-}
-.abele-chat-outline_view .abele-chat-outline__list {
-  padding-inline: var(--size-4-3);
 }
 // Under the list, as the quick switcher keeps its keys: the moves first, the keys after.
 .abele-chat-outline__footer {
