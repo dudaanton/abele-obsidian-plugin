@@ -2,7 +2,7 @@ import { describe, expect, it, vi } from 'vitest'
 import { NodePathClient, RepositoryClient, MemoryClientStore } from '@abele/node-client'
 import { ProjectSchema, SessionSchema, WorkspaceSchema } from '@abele/node-protocol'
 import { NodePathClientPort, reverseNodePatch } from '@/node/NodePathClientPort'
-import { nodeRepositoryFixture, identity } from '../helpers/nodeRepositoryFixture'
+import { nodeRepositoryFixture, identity, BASE } from '../helpers/nodeRepositoryFixture'
 
 const project = ProjectSchema.parse({
   project_id: identity.project,
@@ -126,7 +126,7 @@ describe('bounded tree reads', () => {
         omissions: [],
       }
     })
-    const inspection = f.port.inspect(catalogue.targets[0])
+    const inspection = f.port.commit(catalogue.targets[0], BASE)
     try {
       for (let i = 0; i < 100; i++) await Promise.resolve()
       expect(peak).toBe(4)
@@ -134,10 +134,10 @@ describe('bounded tree reads', () => {
       release()
     }
     const result = await inspection
-    expect(result.entries).toHaveLength(12)
-    expect(
-      result.entries.every((entry) => entry.children?.[0].path === `${entry.path}/sample.ts`)
-    ).toBe(true)
+    expect(result.files).toHaveLength(12)
+    expect(result.files?.map((entry) => entry.path)).toEqual(
+      Array.from({ length: 12 }, (_, i) => `folder-${i}/sample.ts`)
+    )
     expect(peak).toBe(4)
   })
 })
@@ -173,7 +173,7 @@ describe('interactive read priority', () => {
       await treeGate
       return { entries: [], cursor: null, incomplete: false, omissions: [] }
     })
-    const inspection = f.port.inspect(catalogue.targets[0])
+    const inspection = f.port.commit(catalogue.targets[0], BASE)
     for (let i = 0; i < 100; i++) await Promise.resolve()
     const observe = f.client.repository.observe.bind(f.client.repository)
     vi.spyOn(f.client.repository, 'observe').mockImplementation(async (params) => {
@@ -191,6 +191,21 @@ describe('interactive read priority', () => {
     await Promise.all([inspection, file])
     expect(trees).toBe(12)
   })
+})
+
+it('ignores repository invalidations belonging to another watched target', async () => {
+  const f = fake(),
+    catalogue = await f.port.catalogue(),
+    notify = vi.fn()
+  const stop = await f.port.watch(catalogue.targets[0], notify)
+  try {
+    f.event('repository.invalidated', { worktree_id: 'other-worktree' })
+    expect(notify).not.toHaveBeenCalled()
+    f.event('repository.invalidated', { worktree_id: catalogue.targets[0].id })
+    expect(notify).toHaveBeenCalledTimes(1)
+  } finally {
+    stop()
+  }
 })
 
 describe('independent file reads', () => {

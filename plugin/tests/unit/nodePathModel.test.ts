@@ -163,6 +163,7 @@ describe('node path model', () => {
       changes: [],
     }
     try {
+      await new Promise((resolve) => setTimeout(resolve, 0))
       expect(port.inspect).toHaveBeenCalledTimes(1)
       first(initial)
       for (let i = 0; i < 20; i++) await Promise.resolve()
@@ -197,18 +198,19 @@ describe('node path model', () => {
         })
     )
     const listing = model.reloadTarget(target(), true)
+    await new Promise((resolve) => setTimeout(resolve, 0))
     vi.mocked(port.inspect).mockResolvedValueOnce({
       entries: [],
       changes: [change('newer-metadata')],
       lastCommit: 'Latest metadata',
     })
-    await model.reloadTarget(target(), false)
+    const metadata = model.reloadTarget(target(), false)
     finishTree({
       entries: [{ path: 'nested/sample.ts', name: 'sample.ts', kind: 'file' }],
       changes: [change('older-tree')],
       lastCommit: 'Older metadata',
     })
-    await listing
+    await Promise.all([listing, metadata])
     const inspection = model.inspections.value[JSON.stringify(['node-demo', 'worktree', 'one'])]
     expect(inspection.entries[0].path).toBe('nested/sample.ts')
     expect(inspection.changes[0].changeId).toBe('newer-metadata')
@@ -370,6 +372,7 @@ describe('node path model', () => {
         })
     )
     const one = model.select('one')
+    await new Promise((resolve) => setTimeout(resolve, 0))
     await model.select('two')
     finish({ changes: [], entries: [{ path: 'old.ts', name: 'old.ts', kind: 'file' }] })
     await one
@@ -404,6 +407,7 @@ describe('node path model', () => {
         })
     )
     const reload = model.reloadTarget(target())
+    await new Promise((resolve) => setTimeout(resolve, 0))
     model.destroy()
     finish({ changes: [], entries: [] })
     await reload

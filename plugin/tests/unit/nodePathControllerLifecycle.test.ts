@@ -1,6 +1,6 @@
 import { expect, it, vi } from 'vitest'
 import { shallowRef } from 'vue'
-import { newNodePathChat } from '@/node/NodePathController'
+import { newNodePathChat, attachNodePathWorktree } from '@/node/NodePathController'
 import type { NodePathModel } from '@/node/NodePathModel'
 
 const fixture = vi.hoisted(() => ({
@@ -33,6 +33,7 @@ vi.mock('@/node/providers', () => ({
 vi.mock('@/modal/confirm', () => ({ confirmAction: async () => true }))
 vi.mock('@/node/NodePathMutations', () => ({
   NodePathMutations: class {
+    async selection() {}
     async trust() {}
     async execution() {}
     async session() {
@@ -44,6 +45,35 @@ vi.mock('@/node/nodePathNavigation', () => ({ openNodePathTab: fixture.open }))
 vi.mock('@/node/NodePathDialogs', () => ({}))
 vi.mock('@/node/NodePairingDialogHost', () => ({}))
 vi.mock('@/node/NodePathOwnerActions', () => ({}))
+
+it('selects an attached worktree without waiting for the catalogue refresh', async () => {
+  const model = {
+    registrationId: 'sample-registration',
+    selectTarget: vi.fn(async () => {}),
+    refresh: vi.fn(() => new Promise<void>(() => {})),
+    report: vi.fn(),
+  }
+  const target = {
+    nodeId: 'sample-node',
+    registrationId: 'sample-registration',
+    projectId: 'sample-project',
+    kind: 'worktree' as const,
+    id: 'sample-root',
+  }
+  await attachNodePathWorktree(model as unknown as NodePathModel, target, {
+    worktree_id: 'sample-external',
+    project_id: 'sample-project',
+    kind: 'external',
+    branch: 'refs/heads/topic',
+    detached: false,
+    path_label: '/sample/copy',
+    availability: 'available',
+  } as any)
+  expect(model.selectTarget).toHaveBeenCalledWith(
+    { ...target, id: 'sample-external' },
+    expect.objectContaining({ id: 'sample-external', branch: 'topic' })
+  )
+})
 
 it('opens a newly created chat without waiting for the catalogue and recursive tree refresh', async () => {
   const refresh = vi.fn(() => new Promise<void>(() => {}))

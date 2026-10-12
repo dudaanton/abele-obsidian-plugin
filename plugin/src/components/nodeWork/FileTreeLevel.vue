@@ -27,9 +27,17 @@
       :entries="entry.children ?? []"
       :selected="selected"
       :folded="folded"
+      :cursors="cursors"
+      :changes="changes"
+      @more="(p) => emit('more', p)"
       @toggle="(p) => emit('toggle', p)"
       @open="(p) => emit('open', p)"
       @menu="(e, p) => emit('menu', e, p)"
+    />
+    <TreeItem
+      v-if="entry.kind === 'folder' && cursors?.[entry.path]"
+      text="Load more files"
+      @click.stop="emit('more', entry.path)"
     />
   </TreeItem>
 </template>
@@ -41,16 +49,29 @@ import TreeItem from '../obsidian/TreeItem.vue'
 import StatusDot from '../obsidian/StatusDot.vue'
 import ChangeCodes from './ChangeCodes.vue'
 import { plural } from './codes'
-import type { TreeEntry } from './types'
+import type { TreeEntry, FileChange } from './types'
 
-defineProps<{ entries: TreeEntry[]; selected?: string; folded: Set<string> }>()
+const props = defineProps<{
+  entries: TreeEntry[]
+  selected?: string
+  folded: Set<string>
+  cursors?: Record<string, string | null>
+  changes?: FileChange[]
+}>()
 const emit = defineEmits<{
   (e: 'toggle', path: string): void
   (e: 'open', path: string): void
   (e: 'menu', event: MouseEvent, path: string): void
+  (e: 'more', path: string): void
 }>()
 
 function inside(folder: TreeEntry): { count: number; unseen: boolean } | null {
+  if (props.changes) {
+    const changes = props.changes.filter((change) => change.path.startsWith(folder.path + '/'))
+    return changes.length
+      ? { count: changes.length, unseen: changes.some((change) => change.unseen) }
+      : null
+  }
   let count = 0
   let unseen = false
   const walk = (list: TreeEntry[]) =>

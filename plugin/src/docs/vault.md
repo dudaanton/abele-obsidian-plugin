@@ -140,8 +140,10 @@ chat uses an explicitly chosen Obsidian chat. Neither action sends a provider tu
 Obsidian chat scope. Drafts show a readable source citation and quoted text, not serialized
 routing metadata. Quotes use the existing chat-draft stores, not a new selection cache.
 A bounded `abele-node-path-cache:<registration-id>` local-preference snapshot retains the
-last received drawer metadata, selected target and its file tree across restart (at most
-1 MiB). It contains neither credentials, file bytes nor chat authorization and never claims
+last received drawer metadata, selected target and the loaded pages of its file tree across
+restart (at most 1 MiB). Unexpanded folders are not captured; this is not a complete repository
+index. Pagination cursors, working observations and active read progress are session-local and
+are not restored from that cache. It contains neither credentials, file bytes nor chat authorization and never claims
 that a retained agent is still running. Loaded file text is additionally retained in a bounded
 4 MiB session-memory cache for offline reopening. History and editor drafts keep their existing
 lifetimes; reconnect reloads mutable state without replacing drafts or frozen commit views.

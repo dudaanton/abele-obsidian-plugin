@@ -31,6 +31,9 @@ describe('product node sidebar', () => {
       currentFolder: ref({ name: 'Sample', git: true }),
       currentCopy: ref({ branch: 'trunk' }),
       entries: shallowRef([]),
+      treeCursors: shallowRef({}),
+      loadFolder: vi.fn(async () => {}),
+      loadMore: vi.fn(async () => {}),
       changes: shallowRef([
         {
           path: 'sample.ts',

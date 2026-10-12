@@ -1,4 +1,5 @@
 import { computed, ref, shallowRef, markRaw } from 'vue'
+import { ChannelError } from '@abele/channel-protocol'
 import { formatTimestamp } from '@/helpers/displayFormat'
 import { NodePathSnapshotSchema, emptySnapshotChange } from './nodePathSnapshot'
 import type { NodeClient } from '@abele/node-client'
@@ -45,6 +46,20 @@ export interface PathDocument {
   change?: PathChange
   note?: string
 }
+export interface PathTreePage {
+  entries: TreeEntry[]
+  cursor: string | null
+  revision?: RepositoryRevision
+}
+export interface KnownPathRead {
+  revision: RepositoryRevision
+  changes?: PathChange[]
+}
+export interface TreeProgress {
+  state: 'reading' | 'failed'
+  count: number
+  error: string
+}
 export interface PathCatalogue {
   folders: FolderSummary[]
   targets: PathTarget[]
@@ -58,12 +73,23 @@ export interface PathCatalogue {
 /** Transport-independent product port. Wire validation belongs to the node client. */
 export interface NodePathPort {
   catalogue(): Promise<PathCatalogue>
-  inspect(target: PathTarget, files?: boolean): Promise<PathInspection>
+  inspect(
+    target: PathTarget,
+    files?: boolean,
+    revision?: RepositoryRevision
+  ): Promise<PathInspection>
+  tree?(
+    target: PathTarget,
+    path: string,
+    cursor?: string,
+    revision?: RepositoryRevision
+  ): Promise<PathTreePage>
   file(
     target: PathTarget,
     path: string,
     stage?: 'staged' | 'unstaged',
-    revision?: RepositoryRevision
+    revision?: RepositoryRevision,
+    known?: KnownPathRead
   ): Promise<PathDocument>
   history(
     target: PathTarget,
@@ -102,6 +128,14 @@ export class NodePathModel {
   readonly inspection = computed(() =>
     this.current.value ? this.inspections.value[pathTargetKey(this.current.value)] : undefined
   )
+  private readonly progress = shallowRef<Record<string, TreeProgress | undefined>>({})
+  private readonly cursors = shallowRef<Record<string, Record<string, string | null>>>({})
+  readonly treeProgress = computed(() =>
+    this.current.value ? this.progress.value[pathTargetKey(this.current.value)] : undefined
+  )
+  readonly treeCursors = computed(() =>
+    this.current.value ? (this.cursors.value[pathTargetKey(this.current.value)] ?? {}) : {}
+  )
   readonly entries = computed(() => this.inspection.value?.entries ?? [])
   readonly changes = computed(() => this.inspection.value?.changes ?? [])
   readonly currentFolder = computed(() =>
@@ -123,6 +157,10 @@ export class NodePathModel {
   private refreshPromise?: Promise<void>
   private latestRead?: Promise<void>
   private dirty = false
+  private targetQueues = new Map<string, Promise<unknown>>()
+  private folderLoads = new Map<string, Promise<void>>()
+  private revisions = new Map<string, { at: number; read: KnownPathRead }>()
+  private pageRevisions = new Map<string, Map<string, RepositoryRevision | undefined>>()
 
   constructor(
     readonly nodeId: string,
@@ -206,7 +244,8 @@ export class NodePathModel {
     }
     this.stopCatalog = stop
     await this.refresh()
-    if (!this.selected.value && this.targets.value[0]) await this.select(this.targets.value[0].id)
+    const selected = this.current.value ?? this.targets.value[0]
+    if (selected) await this.select(selected.id)
   }
   private invalidate(): void {
     this.dirty = true
@@ -250,11 +289,6 @@ export class NodePathModel {
       this.capabilities.value = catalogue.capabilities
       this.folders.value = catalogue.folders
       this.decorate()
-      for (const target of this.targets.value) {
-        const missing = this.copy(target)?.missing
-        if (!missing) await this.reloadTarget(target, this.current.value?.id === target.id)
-        if (this.disposed || generation !== this.catalogueGeneration) return
-      }
       if (this.disposed || generation !== this.catalogueGeneration) return
       this.receivedAt.value = this.now()
       this.error.value = ''
@@ -266,9 +300,21 @@ export class NodePathModel {
     }
   }
   async select(id: string): Promise<void> {
-    const target = this.target(id)
+    return this.selectTarget(this.target(id))
+  }
+  async selectTarget(target: PathTarget, copy?: CopySummary): Promise<void> {
+    if (target.nodeId !== this.nodeId || target.registrationId !== this.registrationId)
+      throw new Error('This target belongs to another node registration.')
+    if (!this.targets.value.some((entry) => pathTargetKey(entry) === pathTargetKey(target)))
+      this.targets.value = [...this.targets.value, { ...target }]
+    if (copy)
+      this.folders.value = this.folders.value.map((folder) =>
+        folder.id === target.projectId
+          ? { ...folder, copies: [...folder.copies.filter((entry) => entry.id !== copy.id), copy] }
+          : folder
+      )
     const generation = ++this.selectionGeneration
-    this.selected.value = target.kind === 'workspace' ? target.projectId : id
+    this.selected.value = target.kind === 'workspace' ? target.projectId : target.id
     this.stopWatch?.()
     this.stopWatch = undefined
     if (!this.online.value) {
@@ -288,7 +334,8 @@ export class NodePathModel {
   }
   async reloadTarget(target: PathTarget, files = true): Promise<void> {
     if (this.disposed) return
-    if (!files) return this.readTarget(target, false)
+    if (!files) return this.serialTarget(target, () => this.readTarget(target, false))
+    this.revisions.delete(pathTargetKey(target))
     const key = pathTargetKey(target),
       pending = this.treeLoads.get(key)
     if (pending) {
@@ -303,7 +350,7 @@ export class NodePathModel {
       do {
         load.dirty = false
         try {
-          await this.readTarget(target, true)
+          await this.serialTarget(target, () => this.readTarget(target, true))
         } catch (error) {
           if (!load.dirty) throw error
         }
@@ -313,13 +360,157 @@ export class NodePathModel {
     })
     return load.promise
   }
+  private serialTarget<T>(target: PathTarget, read: () => Promise<T>): Promise<T> {
+    const key = pathTargetKey(target),
+      previous = this.targetQueues.get(key) ?? Promise.resolve()
+    const next = previous.catch(() => {}).then(read)
+    this.targetQueues.set(key, next)
+    void next
+      .finally(() => {
+        if (this.targetQueues.get(key) === next) this.targetQueues.delete(key)
+      })
+      .catch(() => {})
+    return next
+  }
+  private knownRead(target: PathTarget): KnownPathRead | undefined {
+    const known = this.revisions.get(pathTargetKey(target))
+    return known && Date.now() - known.at < 30000 ? known.read : undefined
+  }
+  private setProgress(target: PathTarget, state?: TreeProgress['state'], error = ''): void {
+    const count = (entries: TreeEntry[]): number =>
+      entries.reduce((total, entry) => total + 1 + count(entry.children ?? []), 0)
+    const key = pathTargetKey(target)
+    this.progress.value = {
+      ...this.progress.value,
+      [key]: state
+        ? { state, count: count(this.inspections.value[key]?.entries ?? []), error }
+        : undefined,
+    }
+  }
+  private publishPage(target: PathTarget, path: string, page: PathTreePage, append: boolean): void {
+    const key = pathTargetKey(target),
+      current = this.inspections.value[key] ?? { entries: [], changes: [] }
+    const merge = (previous: TreeEntry[]) =>
+      append
+        ? [...new Map([...previous, ...page.entries].map((entry) => [entry.path, entry])).values()]
+        : page.entries
+    const walk = (entries: TreeEntry[]): TreeEntry[] =>
+      entries.map((entry) =>
+        entry.path === path
+          ? { ...entry, children: merge(entry.children ?? []) }
+          : entry.children
+            ? { ...entry, children: walk(entry.children) }
+            : entry
+      )
+    const entries = path ? walk(current.entries) : merge(current.entries)
+    this.inspections.value = {
+      ...this.inspections.value,
+      [key]: this.mark(target, { ...current, entries }),
+    }
+    this.cursors.value = {
+      ...this.cursors.value,
+      [key]: { ...(path ? this.cursors.value[key] : {}), [path]: page.cursor },
+    }
+    const revisions = path
+      ? (this.pageRevisions.get(key) ?? new Map())
+      : new Map<string, RepositoryRevision | undefined>()
+    revisions.set(path, page.revision)
+    this.pageRevisions.set(key, revisions)
+    if (page.revision) {
+      const known = this.revisions.get(key)?.read
+      const changes =
+        known && JSON.stringify(known.revision) === JSON.stringify(page.revision)
+          ? known.changes
+          : undefined
+      this.revisions.set(key, {
+        at: Date.now(),
+        read: { revision: page.revision, ...(changes ? { changes } : {}) },
+      })
+    }
+    this.setProgress(target, 'reading')
+  }
+  loadFolder(path: string): Promise<void> {
+    return this.loadDirectory(path, false)
+  }
+  loadMore(path = ''): Promise<void> {
+    return this.loadDirectory(path, true)
+  }
+  private loadDirectory(path: string, more: boolean): Promise<void> {
+    const target = this.current.value
+    const tree = this.port.tree
+    if (!target || !tree) return Promise.resolve()
+    const key = pathTargetKey(target),
+      requestKey = JSON.stringify([key, path])
+    const pending = this.folderLoads.get(requestKey)
+    if (pending !== undefined) return pending
+    const cursor = this.cursors.value[key]?.[path]
+    if (more ? !cursor : cursor !== undefined) return Promise.resolve()
+    const retainedFolder = (entries: TreeEntry[]): TreeEntry | undefined => {
+      for (const entry of entries) {
+        if (entry.path === path) return entry
+        const nested = retainedFolder(entry.children ?? [])
+        if (nested) return nested
+      }
+    }
+    if (!more && retainedFolder(this.inspections.value[key]?.entries ?? [])?.children !== undefined)
+      return Promise.resolve()
+    const read = this.serialTarget(target, async () => {
+      if (this.disposed) return
+      if (!this.online.value) throw new Error('Reconnect to load this folder’s unretained entries.')
+      this.setProgress(target, 'reading')
+      const activeCursor = more ? this.cursors.value[key]?.[path] : undefined
+      if (more && !activeCursor) return
+      const revision = more
+        ? this.pageRevisions.get(key)?.get(path)
+        : this.knownRead(target)?.revision
+      if (more && target.kind === 'worktree' && !revision)
+        throw new Error('Refresh the folder before continuing its expired listing.')
+      const page = await tree.call(this.port, target, path, activeCursor ?? undefined, revision)
+      if (this.disposed) return
+      if (more && page.cursor === activeCursor) throw new Error('Node pagination did not advance')
+      this.publishPage(target, path, page, more)
+      this.setProgress(target)
+    })
+      .catch((error: unknown) => {
+        if (!this.disposed)
+          this.setProgress(
+            target,
+            'failed',
+            error instanceof Error ? error.message : 'Could not read folder'
+          )
+        throw error
+      })
+      .finally(() => this.folderLoads.delete(requestKey))
+    this.folderLoads.set(requestKey, read)
+    return read
+  }
   private async readTarget(target: PathTarget, files: boolean): Promise<void> {
+    if (this.disposed) return
+    if (files && this.port.tree) {
+      this.setProgress(target, 'reading')
+      try {
+        const page = await this.port.tree(target, '')
+        if (this.disposed) return
+        this.publishPage(target, '', page, false)
+        await this.readTarget(target, false)
+        if (!this.disposed) this.setProgress(target)
+      } catch (error) {
+        if (!this.disposed)
+          this.setProgress(
+            target,
+            'failed',
+            error instanceof Error ? error.message : 'Could not read folder'
+          )
+        throw error
+      }
+      return
+    }
     const key = pathTargetKey(target),
       generation = (this.targetGenerations.get(key) ?? 0) + 1
     this.targetGenerations.set(key, generation)
     const treeGeneration = files ? (this.treeGenerations.get(key) ?? 0) + 1 : undefined
     if (treeGeneration !== undefined) this.treeGenerations.set(key, treeGeneration)
-    let inspection = await this.port.inspect(target, files)
+    let inspection = await this.port.inspect(target, files, this.knownRead(target)?.revision)
     if (this.disposed) return
     const current = this.inspections.value[key]
     if (generation !== this.targetGenerations.get(key)) {
@@ -329,6 +520,11 @@ export class NodePathModel {
       if (current) inspection = { ...current, entries: inspection.entries }
     } else if (!files && current) inspection.entries = current.entries
     this.inspections.value = { ...this.inspections.value, [key]: this.mark(target, inspection) }
+    if (inspection.revision)
+      this.revisions.set(key, {
+        at: Date.now(),
+        read: { revision: inspection.revision, changes: inspection.changes },
+      })
     this.receivedAt.value = this.now()
     this.decorate()
   }
@@ -368,7 +564,25 @@ export class NodePathModel {
         note: 'Offline · retained version. Reconnect to capture current bytes.',
       }
     }
-    const file = await this.port.file({ ...target }, path, stage, revision)
+    const known = revision ? undefined : this.knownRead(target)
+    let file: PathDocument
+    try {
+      file = await this.port.file({ ...target }, path, stage, revision, known)
+    } catch (error) {
+      if (!known || !(error instanceof ChannelError) || error.code !== 'stale_revision') throw error
+      this.revisions.delete(pathTargetKey(target))
+      file = await this.port.file({ ...target }, path, stage, revision)
+    }
+    if (!revision && file.revision?.kind === 'working') {
+      const changes =
+        known && JSON.stringify(known.revision) === JSON.stringify(file.revision)
+          ? known.changes
+          : undefined
+      this.revisions.set(pathTargetKey(target), {
+        at: Date.now(),
+        read: { revision: file.revision, ...(changes ? { changes } : {}) },
+      })
+    }
     if (this.disposed || !publish(file)) return file
     const bytes = new TextEncoder().encode(
       file.text + (file.change?.before ?? '') + (file.change?.after ?? '')

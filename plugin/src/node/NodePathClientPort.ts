@@ -14,6 +14,8 @@ import type {
   PathDocument,
   PathInspection,
   PathTarget,
+  PathTreePage,
+  KnownPathRead,
 } from './NodePathModel'
 
 type ReadClient = Pick<
@@ -118,6 +120,7 @@ export class NodePathClientPort implements NodePathPort {
   private treeQueue: (() => void)[] = []
   private interactiveReads = 0
   private resumeTrees: (() => void)[] = []
+  private statusReads = new Map<string, ReturnType<NodePathClientPort['readStatus']>>()
   constructor(
     readonly client: ReadClient,
     readonly identity: { nodeId: string; registrationId: string }
@@ -244,10 +247,15 @@ export class NodePathClientPort implements NodePathPort {
     }
     return { folders, targets, capabilities: this.capabilities, sessions: bound }
   }
-  async inspect(target: PathTarget, files = true): Promise<PathInspection> {
+  async inspect(
+    target: PathTarget,
+    files = true,
+    observed?: RepositoryRevision
+  ): Promise<PathInspection> {
     if (target.kind === 'workspace')
-      return { entries: files ? await this.plainTree(target.id) : [], changes: [] }
-    const { revision } = await this.client.repository.observe({ worktree_id: target.id })
+      return { entries: files ? (await this.tree(target, '')).entries : [], changes: [] }
+    const revision =
+      observed ?? (await this.client.repository.observe({ worktree_id: target.id })).revision
     const status = await this.status(target, revision)
     const head = revision.kind === 'commit' ? revision.commit : revision.head
     const last = head
@@ -265,13 +273,25 @@ export class NodePathClientPort implements NodePathPort {
         ? `${last.subject} · ${formatTimestamp(last.authored_at).label}`
         : 'No commits yet',
       changes: status.map(pathStatus),
-      entries: files ? await this.gitTree(target.id, revision) : [],
+      entries: files ? (await this.tree(target, '', undefined, revision)).entries : [],
       ...(this.capabilities.includes('node_path_v2')
         ? await this.divergence(target)
         : { note: 'Change times and branch divergence require an updated node.' }),
     }
   }
   protected status(target: PathTarget, revision: RepositoryRevision) {
+    const key = JSON.stringify([target.nodeId, target.id, revision])
+    const previous = this.statusReads.get(key)
+    if (previous !== undefined) return previous
+    const read = this.readStatus(target, revision).catch((error: unknown) => {
+      this.statusReads.delete(key)
+      throw error
+    })
+    this.statusReads.set(key, read)
+    if (this.statusReads.size > 64) this.statusReads.delete(this.statusReads.keys().next().value)
+    return read
+  }
+  private readStatus(target: PathTarget, revision: RepositoryRevision) {
     return pathPages((cursor) =>
       this.client.repository.status({
         worktree_id: target.id,
@@ -340,33 +360,40 @@ export class NodePathClientPort implements NodePathPort {
     )
     return out.filter((entry): entry is TreeEntry => entry !== undefined)
   }
-  private async plainTree(id: string, path = '', budget = { count: 0 }): Promise<TreeEntry[]> {
-    const entries = [] as Awaited<ReturnType<NodeClient['listFiles']>>['entries']
-    const visited = new Set<string>()
-    let after: string | undefined
-    for (;;) {
-      const page = await this.treeRead(() => this.client.listFiles(id, path, after))
-      entries.push(...page.entries)
-      if (!page.next) break
-      if (visited.has(page.next)) throw new Error('Node pagination did not advance')
-      visited.add(page.next)
-      after = page.next
+  async tree(
+    target: PathTarget,
+    path = '',
+    cursor?: string,
+    observed?: RepositoryRevision
+  ): Promise<PathTreePage> {
+    const revision =
+      target.kind === 'worktree'
+        ? (observed ?? (await this.client.repository.observe({ worktree_id: target.id })).revision)
+        : undefined
+    const page =
+      target.kind === 'worktree'
+        ? await this.treeRead(() =>
+            this.client.repository.tree({
+              worktree_id: target.id,
+              revision: revision!,
+              path,
+              cursor,
+            })
+          )
+        : await this.treeRead(() => this.client.listFiles(target.id, path, cursor))
+    if ('incomplete' in page && page.incomplete)
+      throw new Error(page.omissions.join(' · ') || 'The node returned an incomplete listing')
+    return {
+      revision,
+      cursor: 'cursor' in page ? page.cursor : (page.next ?? null),
+      entries: page.entries.flatMap((entry): TreeEntry[] =>
+        entry.kind === 'file'
+          ? [{ path: entry.path, name: entry.name, kind: 'file' }]
+          : entry.kind === 'directory'
+            ? [{ path: entry.path, name: entry.name, kind: 'folder' }]
+            : []
+      ),
     }
-    const out = await Promise.all(
-      entries.map(async (entry): Promise<TreeEntry | undefined> => {
-        if (++budget.count > 10000)
-          throw new Error('This folder exceeds the 10,000-entry tree limit.')
-        if (entry.kind === 'file') return { path: entry.path, name: entry.name, kind: 'file' }
-        if (entry.kind === 'directory')
-          return {
-            path: entry.path,
-            name: entry.name,
-            kind: 'folder',
-            children: await this.plainTree(id, entry.path, budget),
-          }
-      })
-    )
-    return out.filter((entry): entry is TreeEntry => entry !== undefined)
   }
   protected async gitText(target: PathTarget, revision: RepositoryRevision, path: string) {
     const blob = await this.client.repository.blob({ worktree_id: target.id, revision, path })
@@ -439,15 +466,17 @@ export class NodePathClientPort implements NodePathPort {
     target: PathTarget,
     path: string,
     stage?: 'staged' | 'unstaged',
-    frozen?: RepositoryRevision
+    frozen?: RepositoryRevision,
+    known?: KnownPathRead
   ): Promise<PathDocument> {
-    return this.interactive(() => this.readFile(target, path, stage, frozen))
+    return this.interactive(() => this.readFile(target, path, stage, frozen, known))
   }
   private async readFile(
     target: PathTarget,
     path: string,
     stage?: 'staged' | 'unstaged',
-    frozen?: RepositoryRevision
+    frozen?: RepositoryRevision,
+    known?: KnownPathRead
   ): Promise<PathDocument> {
     if (target.kind === 'workspace') {
       const blob = await this.client.readFile(target.id, path)
@@ -465,14 +494,20 @@ export class NodePathClientPort implements NodePathPort {
     }
     await this.describe()
     const revision =
-      frozen ?? (await this.client.repository.observe({ worktree_id: target.id })).revision
+      frozen ??
+      known?.revision ??
+      (await this.client.repository.observe({ worktree_id: target.id })).revision
     // Both reads are pinned to the same observation. Status must not delay the blob/content
     // round trips; a missing blob is expected only for an authoritatively deleted file.
-    const status = frozen ? Promise.resolve([]) : this.status(target, revision)
-    const comparison = status.then(async (entries) => {
-      const changed = entries.find((entry) => entry.path === path)
-      if (!changed) return undefined
-      const change = pathStatus(changed)
+    const changes = frozen
+      ? Promise.resolve([])
+      : known?.changes
+        ? Promise.resolve(known.changes)
+        : this.status(target, revision).then((entries) => entries.map(pathStatus))
+    const comparison = changes.then(async (entries) => {
+      const observedChange = entries.find((entry) => entry.path === path)
+      if (!observedChange) return undefined
+      const change = { ...observedChange }
       if (change.kind === 'conflict')
         throw new Error(
           'Resolve the conflict in the code editor or repository browser; a single comparison would omit a side.'
@@ -633,8 +668,12 @@ export class NodePathClientPort implements NodePathPort {
     let lease = await acquire()
     const stop = this.client.onEvent((event) => {
       if (
-        event.type === 'repository.invalidated' ||
-        event.type === 'workspace.invalidated' ||
+        (event.type === 'repository.invalidated' &&
+          target.kind === 'worktree' &&
+          record(event.data).worktree_id === target.id) ||
+        (event.type === 'workspace.invalidated' &&
+          target.kind === 'workspace' &&
+          record(event.data).workspace_id === target.id) ||
         event.type === 'stream.redacted'
       )
         notify()

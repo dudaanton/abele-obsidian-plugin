@@ -1,4 +1,5 @@
 import { Menu, Notice, Platform } from 'obsidian'
+import type { WorktreeEntry } from '@abele/node-protocol'
 import { NodeSuggestModal } from '@/components/nodeWork/NodeSuggestModal'
 import { confirmAction } from '@/modal/confirm'
 import { GlobalStore } from '@/stores/GlobalStore'
@@ -142,13 +143,8 @@ export function showNodePathRowMenu(model: NodePathModel, event: MouseEvent, id:
           'Attach an existing worktree',
           (item) =>
             nodePathAction(async () => {
-              await new NodePathMutations(connection.client).selection(
-                target.projectId,
-                item.id,
-                true
-              )
-              await model.refresh()
-              await model.select(item.id)
+              const row = rows.find((entry) => entry.worktree_id === item.id)
+              if (row) await attachNodePathWorktree(model, target, row)
             })
         ).open()
       }
@@ -327,6 +323,28 @@ export function showNodePathNodeMenu(model: NodePathModel, event: MouseEvent): v
     )
   }
   menu.showAtPosition(position(event))
+}
+export async function attachNodePathWorktree(
+  model: NodePathModel,
+  target: PathTarget,
+  row: WorktreeEntry
+): Promise<void> {
+  if (row.project_id !== target.projectId)
+    throw new Error('The selected worktree belongs to another project.')
+  const connection = NodeService.getInstance().connection(model.registrationId)
+  await new NodePathMutations(connection.client).selection(target.projectId, row.worktree_id, true)
+  const selecting = model.selectTarget(
+    { ...target, kind: 'worktree', id: row.worktree_id },
+    {
+      id: row.worktree_id,
+      kind: row.kind === 'root' ? 'project' : row.detached ? 'detached' : 'worktree',
+      branch: row.branch?.replace(/^refs\/heads\//, '') ?? 'Detached',
+      path: row.path_label,
+      changed: 0,
+    }
+  )
+  void model.refresh().catch((error: unknown) => model.report(error))
+  await selecting
 }
 export function openNodePathPairing(): void {
   showNodePairingDialog()

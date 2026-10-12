@@ -81,10 +81,14 @@
           :entries="entries"
           :selected="selected"
           :folded="folded"
+          :cursors="cursors"
+          :changes="changes"
           @toggle="toggle"
+          @more="(path) => emit('more', path)"
           @open="(path) => emit('open', path)"
           @menu="(e, path) => emit('menu', e, path)"
         />
+        <TreeItem v-if="cursors?.['']" text="Load more files" @click="emit('more', '')" />
         <div v-if="!entries.length" class="search-empty-state">The folder is empty.</div>
       </template>
     </div>
@@ -118,14 +122,17 @@ const props = withDefaults(
     /** A repository; a plain folder has only its files, no changes to show. */
     git?: boolean
     label?: string
+    cursors?: Record<string, string | null>
   }>(),
-  { selected: undefined, stale: false, git: true, label: 'Files' }
+  { selected: undefined, stale: false, git: true, label: 'Files', cursors: undefined }
 )
 
 const emit = defineEmits<{
   (e: 'update:mode', mode: 'all' | 'changed'): void
   (e: 'open', path: string, stage?: 'staged' | 'unstaged'): void
   (e: 'menu', event: MouseEvent, path: string): void
+  (e: 'expand', path: string): void
+  (e: 'more', path: string): void
 }>()
 
 const query = ref('')
@@ -138,6 +145,7 @@ const foldAll = (list: TreeEntry[]) =>
     if (e.kind === 'folder') {
       if (!knownFolders.has(e.path) && !props.selected?.startsWith(`${e.path}/`)) folded.add(e.path)
       knownFolders.add(e.path)
+      if (!folded.has(e.path) && e.children === undefined) emit('expand', e.path)
       foldAll(e.children ?? [])
     }
   })
@@ -153,7 +161,12 @@ watch(
     if (path) [...folded].forEach((f) => path.startsWith(`${f}/`) && folded.delete(f))
   }
 )
-const toggle = (id: string) => (folded.has(id) ? folded.delete(id) : folded.add(id))
+const toggle = (id: string) => {
+  if (folded.has(id)) {
+    folded.delete(id)
+    if (knownFolders.has(id)) emit('expand', id)
+  } else folded.add(id)
+}
 
 const groups = computed(() => [
   {
