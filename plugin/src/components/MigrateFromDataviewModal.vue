@@ -1,27 +1,31 @@
 <template>
   <ObsidianModal title="Tasks from Dataview" @close="emit('close')">
     <div class="abele-migrate-dv-modal">
-      <Setting
-        class="abele-migrate-dv-modal__setting"
-        name="Dataview plugin"
-        desc="Its ID, if it is installed under another one."
-      >
-        <Input v-model="dataviewId" placeholder="dataview" />
-      </Setting>
-      <Setting
-        class="abele-migrate-dv-modal__setting"
-        name="Which tasks"
-        desc="A Dataview TASK query. Each task found becomes a note of its own and leaves a link in its place."
-      >
-        <Input v-model="query" placeholder='TASK where contains(tags, "#task")' as-text-area />
-      </Setting>
+      <!-- Which tasks, until they are made into notes: then the window is the report alone. -->
+      <template v-if="!processing && !completed">
+        <Setting
+          class="abele-migrate-dv-modal__setting"
+          name="Dataview plugin"
+          desc="Its ID, if it is installed under another one."
+        >
+          <Input v-model="dataviewId" placeholder="dataview" />
+        </Setting>
+        <Setting
+          class="abele-migrate-dv-modal__setting"
+          name="Which tasks"
+          desc="A Dataview TASK query. Each task found becomes a note of its own and leaves a link in its place."
+        >
+          <Input v-model="query" placeholder='TASK where contains(tags, "#task")' as-text-area />
+        </Setting>
+      </template>
 
       <RunReport
         v-if="processing || completed"
         class="abele-migrate-dv-modal__report"
         :running="processing"
         :percent="percent"
-        :status="processing ? processingText : 'Done.'"
+        :finished="completed"
+        :status="processing ? processingText : 'Made the task notes'"
         :facts="facts"
       />
       <FoundList
@@ -36,17 +40,17 @@
         :error-text="searchError"
         :summary="`${dvTasks?.length ?? 0} ${dvTasks?.length === 1 ? 'task' : 'tasks'} would become notes`"
       >
-        <EntryRow
+        <!-- A task a line: its words, and faint after them the note it sits in now. -->
+        <TreeItem
           v-for="(task, i) in shownTasks"
           :key="i"
+          :text="task.text"
+          :note="task.path.replace(/\.md$/, '')"
+          plain
+          flush
           role="listitem"
           class="abele-migrate-dv-modal__task"
-        >
-          {{ task.text }}
-          <template #meta>
-            <span>{{ task.path.replace(/\.md$/, '') }}</span>
-          </template>
-        </EntryRow>
+        />
         <ObsidianButton
           v-if="(dvTasks?.length ?? 0) > shownTasks.length"
           quiet
@@ -59,21 +63,30 @@
     </div>
     <template #footer>
       <ObsidianButton
-        :text="dvTasks ? 'Search again' : 'Find the tasks'"
-        tooltip="Run the query and list the tasks it finds"
-        :accent="!dvTasks?.length"
-        :disabled="searching || processing"
-        @click="search"
-      />
-      <ObsidianButton
-        v-if="dvTasks?.length && !completed"
-        :text="`Make ${dvTasks.length} task ${dvTasks.length === 1 ? 'note' : 'notes'}`"
-        tooltip="Make a note of each task and leave a link where it was"
+        v-if="completed"
+        text="Done"
+        tooltip="Close this window"
         accent
-        :loading="processing"
-        :disabled="searching || processing"
-        @click="promptProceeding"
+        @click="emit('close')"
       />
+      <template v-else>
+        <ObsidianButton
+          :text="dvTasks ? 'Search again' : 'Find the tasks'"
+          tooltip="Run the query and list the tasks it finds"
+          :accent="!dvTasks?.length"
+          :disabled="searching || processing"
+          @click="search"
+        />
+        <ObsidianButton
+          v-if="dvTasks?.length && !completed"
+          :text="`Make ${dvTasks.length} task ${dvTasks.length === 1 ? 'note' : 'notes'}`"
+          tooltip="Make a note of each task and leave a link where it was"
+          accent
+          :loading="processing"
+          :disabled="searching || processing"
+          @click="promptProceeding"
+        />
+      </template>
     </template>
   </ObsidianModal>
 </template>
@@ -84,7 +97,7 @@ import ObsidianModal from './obsidian/Modal.vue'
 import ObsidianButton from './obsidian/Button.vue'
 import Setting from './obsidian/Setting.vue'
 import Input from './obsidian/Input.vue'
-import EntryRow from './obsidian/EntryRow.vue'
+import TreeItem from './obsidian/TreeItem.vue'
 import FoundList from './obsidian/FoundList.vue'
 import RunReport from './obsidian/RunReport.vue'
 import { computed, ref } from 'vue'

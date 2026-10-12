@@ -1,26 +1,30 @@
 <template>
-  <ObsidianModal size="wide" title="Import from Firefly III" @close="emit('close')">
+  <ObsidianModal title="Import from Firefly III" @close="emit('close')">
     <div class="abele-migrate-firefly-modal">
-      <Setting name="Firefly III address" desc="Where your Firefly III opens in a browser.">
-        <Input v-model="baseUrl" placeholder="https://firefly.example.com" />
-      </Setting>
-      <Setting name="Personal access token" desc="In Firefly III: Profile, then OAuth.">
-        <Input v-model="token" password placeholder="Token" />
-      </Setting>
-      <Setting
-        name="Account note names"
-        desc="{{name}}, {{currency}} and {{accountType}} are filled in from each account."
-      >
-        <Input v-model="accountNameTemplate" placeholder="{{name}} {{currency}}" />
-      </Setting>
-      <Setting name="Try first" desc="Shows what would be created and writes nothing.">
-        <Checkbox :is-enabled="dryRun" @toggle="dryRun = !dryRun" />
-      </Setting>
+      <!-- Where from and how, until it has run: then the window is the report alone. -->
+      <template v-if="!migrating && !completed">
+        <Setting name="Firefly III address" desc="Where your Firefly III opens in a browser.">
+          <Input v-model="baseUrl" placeholder="https://firefly.example.com" />
+        </Setting>
+        <Setting name="Personal access token" desc="In Firefly III: Profile, then OAuth.">
+          <Input v-model="token" password placeholder="Token" />
+        </Setting>
+        <Setting
+          name="Account note names"
+          desc="{{name}}, {{currency}} and {{accountType}} are filled in from each account."
+        >
+          <Input v-model="accountNameTemplate" placeholder="{{name}} {{currency}}" />
+        </Setting>
+        <Setting name="Try first" desc="Shows what would be created and writes nothing.">
+          <Checkbox :is-enabled="dryRun" @toggle="dryRun = !dryRun" />
+        </Setting>
+      </template>
 
       <RunReport
         v-if="migrating || completed"
         class="abele-migrate-firefly-modal__report"
         :running="migrating"
+        :finished="completed"
         :status="statusText"
         :percent="progressPercent"
         :facts="facts"
@@ -52,13 +56,24 @@
             {{ verificationResults.filter((v) => v.match).length }} of
             {{ verificationResults.length }} agree
           </GroupHeading>
-          <EntryRow
+          <!-- An account a row: its balance in Firefly at the end, a tick when the notes add up
+               to it; where they do not, by how much, in red under the name. -->
+          <TreeItem
             v-for="v in verificationResults"
             :key="v.account"
+            :text="v.account"
+            :note="
+              v.match ? undefined : `notes ${v.calculatedBalance} ${v.currency}, ${v.diff} off`
+            "
+            plain
+            flush
             class="abele-migrate-firefly-modal__verify-row"
+            :class="{ 'abele-migrate-firefly-modal__verify-row_off': !v.match }"
           >
-            {{ v.account }}
-            <template #codes>
+            <template #end>
+              <span class="abele-migrate-firefly-modal__amount"
+                >{{ v.fireflyBalance }} {{ v.currency }}</span
+              >
               <ResultMark
                 :state="v.match ? 'done' : 'error'"
                 :text="
@@ -68,19 +83,34 @@
                 "
               />
             </template>
-            <template #meta>
-              <span>Firefly {{ v.fireflyBalance }} {{ v.currency }}</span>
-              <span>notes {{ v.calculatedBalance }} {{ v.currency }}</span>
-              <span v-if="!v.match" class="abele-migrate-firefly-modal__verify-diff"
-                >differs by {{ v.diff }}</span
-              >
-            </template>
-          </EntryRow>
+          </TreeItem>
         </div>
       </RunReport>
     </div>
     <template #footer>
+      <template v-if="completed">
+        <ObsidianButton
+          text="Back"
+          tooltip="Change the address, the token or the names and run it again"
+          @click="completed = false"
+        />
+        <ObsidianButton
+          v-if="dryRun"
+          text="Import"
+          tooltip="Now write the accounts, categories and transactions as notes"
+          accent
+          @click="importForReal"
+        />
+        <ObsidianButton
+          v-else
+          text="Done"
+          tooltip="Close this window"
+          accent
+          @click="emit('close')"
+        />
+      </template>
       <ObsidianButton
+        v-else
         :text="dryRun ? 'Try' : 'Import'"
         :tooltip="
           dryRun
@@ -103,8 +133,8 @@ import ObsidianButton from './obsidian/Button.vue'
 import Setting from './obsidian/Setting.vue'
 import Input from './obsidian/Input.vue'
 import Checkbox from './obsidian/Checkbox.vue'
-import EntryRow from './obsidian/EntryRow.vue'
 import GroupHeading from './obsidian/GroupHeading.vue'
+import TreeItem from './obsidian/TreeItem.vue'
 import ResultMark from './obsidian/ResultMark.vue'
 import RunReport from './obsidian/RunReport.vue'
 import ShortList from './obsidian/ShortList.vue'
@@ -162,6 +192,12 @@ const facts = computed(() =>
   ].filter((fact) => fact.value)
 )
 
+/** After a try, the same run again with writing on. */
+const importForReal = () => {
+  dryRun.value = false
+  void startMigration()
+}
+
 const startMigration = async () => {
   migrating.value = true
   completed.value = false
@@ -200,7 +236,11 @@ const startMigration = async () => {
 
   migrating.value = false
   completed.value = true
-  statusText.value = dryRun.value ? 'Dry run complete' : 'Migration complete'
+  statusText.value = dryRun.value
+    ? 'Nothing written yet: this is what it would make'
+    : result.value.errors.length
+      ? `Imported, with ${result.value.errors.length} ${result.value.errors.length === 1 ? 'error' : 'errors'}`
+      : 'Imported from Firefly III'
   progressPercent.value = 100
 }
 
@@ -285,7 +325,13 @@ const emit = defineEmits<{
   }
 }
 
-.abele-migrate-firefly-modal__verify-diff {
+.abele-migrate-firefly-modal__amount {
+  color: var(--text-muted);
+  font-size: var(--font-ui-small);
+  font-variant-numeric: tabular-nums;
+}
+
+.abele-migrate-firefly-modal__verify-row_off .abele-tree-item__note {
   color: var(--text-error);
 }
 </style>

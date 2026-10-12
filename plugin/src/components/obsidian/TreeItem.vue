@@ -7,12 +7,13 @@
       'abele-tree-item_active': active,
       'abele-tree-item_disabled': disabled,
       'abele-tree-item_plain': plain,
+      'abele-tree-item_flush': flush,
     }"
   >
     <div
       class="tree-item-self abele-tree-item__self"
       :class="{ 'is-clickable': !inert, 'mod-collapsible': collapsible, 'is-active': active }"
-      role="treeitem"
+      :role="flush ? undefined : 'treeitem'"
       :tabindex="inert ? undefined : 0"
       :aria-expanded="collapsible ? !collapsed : undefined"
       :aria-current="active ? 'true' : undefined"
@@ -82,6 +83,11 @@ const props = withDefaults(
      * click. Without it every row is one more stop for the keyboard on the way to the buttons.
      */
     plain?: boolean
+    /**
+     * A line of a flat list a window reports — not a branch of a tree: it starts at the list's
+     * edge, with no room kept for an arrow or a glyph it does not have.
+     */
+    flush?: boolean
     /** Seen but not open now: faint, no hover, no tab stop, no click. */
     disabled?: boolean
   }>(),
@@ -94,6 +100,7 @@ const props = withDefaults(
     collapsed: false,
     path: undefined,
     plain: false,
+    flush: false,
     disabled: false,
   }
 )
@@ -154,6 +161,14 @@ watch(() => [props.icon, props.collapsible], draw, { flush: 'post' })
 // A row with a check and no glyph starts its name right after the check.
 .abele-tree-item__leading + .abele-tree-item__glyph:empty {
   display: none;
+}
+
+.abele-tree-item_flush > .abele-tree-item__self {
+  padding-inline-start: 0;
+
+  .abele-tree-item__glyph:empty {
+    display: none;
+  }
 }
 
 .abele-tree-item__leading {

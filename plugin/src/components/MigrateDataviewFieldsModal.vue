@@ -2,6 +2,7 @@
   <ObsidianModal title="Dataview fields to properties" @close="emit('close')">
     <div class="abele-migrate-dvf-modal">
       <Setting
+        v-if="!running && !result"
         name="Try first"
         desc="Shows which notes would change and writes nothing. A note where a key repeats or is already a property is left as it is."
       >
@@ -12,8 +13,10 @@
         v-if="running || result"
         class="abele-migrate-dvf-modal__report"
         :running="running"
+        :finished="!!result"
         :status="status"
       >
+        <p v-if="reportNote" class="abele-migrate-dvf-modal__note">{{ reportNote }}</p>
         <ShortList
           v-if="result?.migratedPaths.length"
           :heading="dryRunUsed ? 'Would change' : 'Changed'"
@@ -27,7 +30,24 @@
       </RunReport>
     </div>
     <template #footer>
+      <template v-if="result && !running">
+        <ObsidianButton
+          v-if="dryRunUsed && result.migratedPaths.length"
+          text="Move the fields"
+          tooltip="Now move every inline field into its note's properties"
+          accent
+          @click="moveForReal"
+        />
+        <ObsidianButton
+          v-else
+          text="Done"
+          tooltip="Close this window"
+          accent
+          @click="emit('close')"
+        />
+      </template>
       <ObsidianButton
+        v-else
         :text="dryRun ? 'Try' : 'Move the fields'"
         :tooltip="
           dryRun
@@ -68,12 +88,27 @@ const status = computed(() => {
   if (!result.value) return ''
   if (!result.value.migratedPaths.length && !result.value.skippedPaths.length)
     return 'No note has an inline Dataview field.'
-  return `${dryRunUsed.value ? 'Nothing written yet' : 'Done'}. The report is in dataview-migration-report.md.`
+  return dryRunUsed.value
+    ? 'Nothing written yet: these notes would change'
+    : 'Moved the fields into properties'
 })
+
+/** Where the run wrote down what it did, said under the outcome. */
+const reportNote = computed(() =>
+  result.value && (result.value.migratedPaths.length || result.value.skippedPaths.length)
+    ? 'The full report is in dataview-migration-report.md.'
+    : ''
+)
 const asRow = (path: string) => ({
   title: path.slice(path.lastIndexOf('/') + 1).replace(/\.md$/, ''),
   meta: path.slice(0, Math.max(0, path.lastIndexOf('/'))) || undefined,
 })
+
+/** After a try, the same run with writing on. */
+function moveForReal() {
+  dryRun.value = false
+  void run()
+}
 
 async function run() {
   running.value = true
@@ -91,5 +126,11 @@ async function run() {
 <style lang="scss">
 .abele-migrate-dvf-modal__report {
   margin-top: var(--size-4-4);
+}
+
+.abele-migrate-dvf-modal__note {
+  margin: calc(-1 * var(--size-4-2)) 0 0;
+  color: var(--text-muted);
+  font-size: var(--font-ui-small);
 }
 </style>

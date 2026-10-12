@@ -4,15 +4,21 @@
       {{ items.length }}
     </GroupHeading>
     <div class="abele-short-list__rows" role="list">
-      <EntryRow v-for="(item, i) in shown" :key="i" role="listitem" class="abele-short-list__row">
+      <!-- A thing a line: its name, and faint after it where it is; an error leads with its mark. -->
+      <TreeItem
+        v-for="(item, i) in shown"
+        :key="i"
+        :text="item.title"
+        :note="item.meta"
+        plain
+        flush
+        role="listitem"
+        class="abele-short-list__row"
+      >
         <template v-if="tone === 'error'" #leading>
           <ResultMark state="error" :text="item.title" />
         </template>
-        <span class="abele-short-list__title">{{ item.title }}</span>
-        <template v-if="item.meta" #meta>
-          <span>{{ item.meta }}</span>
-        </template>
-      </EntryRow>
+      </TreeItem>
     </div>
     <Button
       v-if="items.length > shown.length"
@@ -29,11 +35,11 @@
 /**
  * A list a window reports rather than works with — what was found, what failed — kept to its
  * first few rows until asked for the rest, so a long report does not push the window's own
- * controls off the screen. Rows are a title and a quiet line under it; errors carry a red mark.
+ * controls off the screen. Rows are one line each, a title with where it is faint after it; errors carry a red mark.
  */
 import { computed, ref } from 'vue'
 import Button from './Button.vue'
-import EntryRow from './EntryRow.vue'
+import TreeItem from './TreeItem.vue'
 import GroupHeading from './GroupHeading.vue'
 import ResultMark from './ResultMark.vue'
 
@@ -72,8 +78,13 @@ const shown = computed(() => (all.value ? props.items : props.items.slice(0, pro
   flex-direction: column;
 }
 
-.abele-short-list__title {
-  overflow-wrap: anywhere;
+// Where the window is narrow, the faint part goes under the name rather than cutting it.
+.abele-short-list__row .abele-tree-item__inner {
+  flex-wrap: wrap;
+}
+
+.abele-short-list__row .abele-tree-item__note {
+  flex: 1 1 10em;
 }
 
 .abele-short-list .abele-short-list__more {

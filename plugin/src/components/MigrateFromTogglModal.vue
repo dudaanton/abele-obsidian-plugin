@@ -1,17 +1,21 @@
 <template>
-  <ObsidianModal size="wide" title="Import from Toggl" @close="emit('close')">
+  <ObsidianModal title="Import from Toggl" @close="emit('close')">
     <div class="abele-migrate-toggl-modal">
-      <Setting name="API token" desc="In Toggl: Profile settings, then API token.">
-        <Input v-model="apiToken" password placeholder="Toggl API token" />
-      </Setting>
-      <Setting name="Period" desc="Time entries in these dates are imported.">
-        <PeriodSelector v-model:start="periodStart" v-model:end="periodEnd" />
-      </Setting>
+      <!-- What to import, until it is imported: then the window is the report alone. -->
+      <template v-if="!migrating && !completed">
+        <Setting name="API token" desc="In Toggl: Profile settings, then API token.">
+          <Input v-model="apiToken" password placeholder="Toggl API token" />
+        </Setting>
+        <Setting name="Period" desc="Time entries in these dates are imported.">
+          <PeriodSelector v-model:start="periodStart" v-model:end="periodEnd" />
+        </Setting>
+      </template>
 
       <RunReport
         v-if="migrating || completed"
         class="abele-migrate-toggl-modal__report"
         :running="migrating"
+        :finished="completed"
         :status="statusText"
         :percent="progressPercent"
         :facts="facts"
@@ -19,8 +23,17 @@
       />
     </div>
     <template #footer>
+      <template v-if="completed">
+        <ObsidianButton
+          text="Back"
+          tooltip="Change the token or the dates and import again"
+          @click="completed = false"
+        />
+        <ObsidianButton text="Done" tooltip="Close this window" accent @click="emit('close')" />
+      </template>
       <ObsidianButton
-        :text="completed ? 'Import again' : 'Import'"
+        v-else
+        text="Import"
         tooltip="Read the time entries from Toggl and write them into the vault"
         accent
         :loading="migrating"
@@ -90,7 +103,9 @@ const startMigration = async () => {
 
   migrating.value = false
   completed.value = true
-  statusText.value = 'Import complete'
+  statusText.value = result.value.errors.length
+    ? `Imported, with ${result.value.errors.length} ${result.value.errors.length === 1 ? 'error' : 'errors'}`
+    : 'Imported from Toggl'
   progressPercent.value = 100
 }
 </script>
