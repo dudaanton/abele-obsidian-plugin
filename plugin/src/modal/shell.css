@@ -53,6 +53,8 @@
   overflow-y: auto;
   padding: var(--size-2-2);
   margin: calc(-1 * var(--size-2-2));
+  /* Tabbing scrolls a control into view with room left for its focus ring. */
+  scroll-padding-block: var(--size-2-2);
 }
 
 /* The row under the body, for a dialog's buttons: it stays in sight while the body scrolls. */

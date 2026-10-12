@@ -44,8 +44,11 @@ defineProps<{
   margin-inline-start: auto;
 }
 
+// Obsidian pads its settings' headings to its own groups' edge; the header here already stands
+// at the rows' text edge, so the heading takes no more.
 .abele-section .abele-section__heading {
   margin: 0;
+  padding-inline: 0;
   font-size: var(--font-ui-small);
   font-weight: var(--font-bold);
   line-height: var(--line-height-normal);
