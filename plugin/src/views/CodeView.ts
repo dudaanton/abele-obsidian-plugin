@@ -1,5 +1,6 @@
 import {
   setIcon,
+  setTooltip,
   TextFileView,
   WorkspaceLeaf,
   TFile,
@@ -62,7 +63,8 @@ export class CodeView extends TextFileView {
   private editor: EditorView | null = null
   private dirty = false
   private suppressDirty = false
-  private saveBtn: HTMLButtonElement | null = null
+  /** Save, in the tab's header beside Find, shown only while there is something to save. */
+  private saveAction: HTMLElement | null = null
   private modifyRef: EventRef | null = null
   /**
    * The chats linked to the script in this tab, listed under the code as a note lists them in
@@ -89,6 +91,14 @@ export class CodeView extends TextFileView {
     this.scope.register(['Mod', 'Shift'], 'z', () => undefined)
     this.scope.register(['Mod'], 'a', () => undefined)
     this.scope.register(['Mod'], 'd', () => undefined)
+
+    // Save and Find where a tab keeps what can be done with it, its header, as glyphs.
+    this.saveAction = this.addAction('save', 'Save the changes (Mod+S)', () => {
+      void this.save()
+      this.setDirty(false)
+    })
+    this.saveAction.toggle(false)
+    this.addAction('search', 'Find in the file (Mod+F)', () => this.toggleSearch())
   }
 
   /**
@@ -194,9 +204,7 @@ export class CodeView extends TextFileView {
 
   private setDirty(value: boolean) {
     this.dirty = value
-    if (this.saveBtn) {
-      this.saveBtn.disabled = !value
-    }
+    this.saveAction?.toggle(value)
   }
 
   private searchEl: HTMLElement | null = null
@@ -298,22 +306,6 @@ export class CodeView extends TextFileView {
     this.contentEl.empty()
 
     const header = this.contentEl.createDiv({ cls: 'abele-code-header' })
-    const toolbar = header.createDiv({ cls: 'abele-code-toolbar' })
-    this.saveBtn = toolbar.createEl('button', { cls: 'abele-code-save-btn' })
-    this.saveBtn.disabled = true
-    setIcon(this.saveBtn, 'save')
-    this.saveBtn.createSpan({ text: 'Save' })
-    this.saveBtn.addEventListener('click', () => {
-      this.save()
-      this.setDirty(false)
-    })
-
-    toolbar.createSpan({ cls: 'abele-code-toolbar__sep' })
-
-    const searchBtn = toolbar.createEl('button', { cls: 'abele-code-save-btn' })
-    setIcon(searchBtn, 'search')
-    searchBtn.createSpan({ text: 'Find' })
-    searchBtn.addEventListener('click', () => this.toggleSearch())
 
     // Search bar (hidden by default)
     this.searchEl = header.createDiv({ cls: 'abele-code-search abele-code-search_hidden' })
@@ -323,17 +315,25 @@ export class CodeView extends TextFileView {
     this.searchInput = searchComponent.inputEl
     this.searchCountEl = this.searchEl.createSpan({ cls: 'abele-code-search__count' })
 
-    const prevBtn = this.searchEl.createEl('button', { cls: 'abele-code-search__btn' })
-    setIcon(prevBtn, 'chevron-up')
-    prevBtn.addEventListener('click', () => this.goToPrev())
-
-    const nextBtn = this.searchEl.createEl('button', { cls: 'abele-code-search__btn' })
-    setIcon(nextBtn, 'chevron-down')
-    nextBtn.addEventListener('click', () => this.goToNext())
-
-    const closeBtn = this.searchEl.createEl('button', { cls: 'abele-code-search__btn' })
-    setIcon(closeBtn, 'x')
-    closeBtn.addEventListener('click', () => this.toggleSearch())
+    // Obsidian's own glyph buttons, each named by its tooltip.
+    const glyph = (icon: string, name: string, run: () => void) => {
+      const button = this.searchEl.createDiv({ cls: 'clickable-icon abele-code-search__btn' })
+      button.setAttr('role', 'button')
+      button.setAttr('tabindex', '0')
+      button.setAttr('aria-label', name)
+      setIcon(button, icon)
+      setTooltip(button, name)
+      button.addEventListener('click', run)
+      button.addEventListener('keydown', (e) => {
+        if (e.key === 'Enter' || e.key === ' ') {
+          e.preventDefault()
+          run()
+        }
+      })
+    }
+    glyph('arrow-up', 'Previous match (Shift+Enter)', () => this.goToPrev())
+    glyph('arrow-down', 'Next match (Enter)', () => this.goToNext())
+    glyph('x', 'Close the search (Escape)', () => this.toggleSearch())
 
     this.searchInput.addEventListener('input', () => this.doSearch())
     this.searchInput.addEventListener('keydown', (e) => {
