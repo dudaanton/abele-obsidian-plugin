@@ -114,7 +114,7 @@ liveCase(
     try {
       expect(
         a.run(
-          `const row=[...document.querySelectorAll('.abele-deleted-files .abele-deleted-files__row')].find(one=>one.dataset.path===${JSON.stringify(paths[1])});return row.querySelector('button.clickable-icon').getAttribute('aria-label')`
+          `const row=[...inWindows('.abele-deleted-files').querySelectorAll('.abele-deleted-files__row')].find(one=>one.dataset.path===${JSON.stringify(paths[1])});return row.querySelector('button.clickable-icon').getAttribute('aria-label')`
         )
       ).toBe('Restored as soon as the one before it is done')
     } finally {
