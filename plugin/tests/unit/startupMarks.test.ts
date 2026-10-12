@@ -58,6 +58,8 @@ describe('startup mark boundaries', () => {
       expect(events.at(-1)).toBe('onloadEnd')
       callbacks.forEach((fn) => fn())
       expect(instance.starting).toBe(false)
+      // Saved local/node presentations are independent of model execution being enabled.
+      expect(events.filter((event) => event === 'chat tabs')).toHaveLength(1)
       for (const name of [
         'evalStart',
         'evalEnd',

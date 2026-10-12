@@ -250,7 +250,7 @@ it('pairs and opens target-bound node files history editor and fake chats in the
     await new Promise<void>((resolve) => proxy.listen(0, '127.0.0.1', resolve))
     const port = (proxy.address() as { port: number }).port
     savedPreferences = evalRaw(
-      `JSON.stringify({directory:app.loadLocalStorage('abele-node-local-state-dir')??null,device:app.loadLocalStorage('abele-node-device-name')??null})`
+      `JSON.stringify({directory:app.loadLocalStorage('abele-node-local-state-dir')??null,device:app.loadLocalStorage('abele-node-device-name')??null,aiEnabled:window.__abeleTest.AbeleConfig.getInstance().ai.enabled})`
     )
     await evalLong(
       `(async()=>{${prelude}if(nodes.nodes.value.length)throw Error('Use a clean node registry fixture');app.saveLocalStorage('abele-node-local-state-dir',${JSON.stringify(state)});app.saveLocalStorage('abele-node-device-name','Sample device');require('@electron/remote').getCurrentWindow().setContentSize(1200,850);app.commands.executeCommandById('abele:open-node');try{await until(()=>visible('.abele-node-panel_found'))}catch(error){const leaf=app.workspace.getLeavesOfType('abele-node-sidebar')[0];const view=leaf?.view;let diagnostic='no view';try{view.discovery.inspect(view.discovery.load(),${JSON.stringify(state)});diagnostic='inspection succeeded'}catch(failure){diagnostic=failure.message}throw Error(JSON.stringify({phase:view?.localPhase?.value,desktop:view?.discovery?.desktop,diagnostic,body:visible('.abele-node-panel')?.textContent}))}return 'opened node'})()`
@@ -443,11 +443,15 @@ it('pairs and opens target-bound node files history editor and fake chats in the
       )
     )
     console.info('Node scoped chat before reload', JSON.stringify(scopeBeforeReload))
+    // Presentation restoration must not depend on optional model/tool execution being enabled.
+    await evalLong(
+      `(async()=>{window.__abeleTest.AbeleConfig.getInstance().ai.enabled=false;await app.plugins.plugins.abele.saveSettings();return 'optional AI disabled for restoration fixture'})()`
+    )
     // Reload into the real phone shell, then restore only this fixture's paired transport.
     await reloadApp('app.emulateMobile(true)')
     mobile = true
     await evalLong(
-      `(async()=>{${prelude}require('@electron/remote').getCurrentWindow().setContentSize(390,844);api.pairedLoopbackTransport(nodes,'ws://127.0.0.1:${port}/channel');await nodes.connection(${JSON.stringify(registration)}).refreshAuthorization();nodes.connection(${JSON.stringify(registration)}).start();await nodes.connection(${JSON.stringify(registration)}).connect();const model=api.NodePathService.getInstance().model(${JSON.stringify(registration)});await api.NodePathService.getInstance().ready(${JSON.stringify(registration)});await model.refresh();await model.select(${JSON.stringify(ids.root)});const sidebar=app.workspace.getLeavesOfType('abele-node-sidebar')[0]??app.workspace.getLeftLeaf(false);if(!sidebar)throw Error('No native left drawer leaf');await sidebar.setViewState({type:'abele-node-sidebar',active:true,state:{registrationId:${JSON.stringify(registration)}}});await app.workspace.revealLeaf(sidebar);app.workspace.leftSplit.expand();await until(()=>visible('.abele-node-panel'));return 'phone drawer'})()`,
+      `(async()=>{${prelude}require('@electron/remote').getCurrentWindow().setContentSize(390,844);if(api.AbeleConfig.getInstance().ai.enabled)throw Error('Restoration fixture unexpectedly enabled optional AI');api.pairedLoopbackTransport(nodes,'ws://127.0.0.1:${port}/channel');await nodes.connection(${JSON.stringify(registration)}).refreshAuthorization();nodes.connection(${JSON.stringify(registration)}).start();await nodes.connection(${JSON.stringify(registration)}).connect();const model=api.NodePathService.getInstance().model(${JSON.stringify(registration)});await api.NodePathService.getInstance().ready(${JSON.stringify(registration)});await model.refresh();await model.select(${JSON.stringify(ids.root)});const sidebar=app.workspace.getLeavesOfType('abele-node-sidebar')[0]??app.workspace.getLeftLeaf(false);if(!sidebar)throw Error('No native left drawer leaf');await sidebar.setViewState({type:'abele-node-sidebar',active:true,state:{registrationId:${JSON.stringify(registration)}}});await app.workspace.revealLeaf(sidebar);app.workspace.leftSplit.expand();await until(()=>visible('.abele-node-panel'));return 'phone drawer'})()`,
       60000
     )
     await reopenNodePane('phone-reopened-node')
@@ -565,7 +569,7 @@ it('pairs and opens target-bound node files history editor and fake chats in the
   } finally {
     try {
       await evalLong(
-        `(async()=>{${prelude}for(const type of ['abele-node-sidebar','abele-node-file','abele-node-history','abele-node-chat','abele-node-editor'])for(const leaf of app.workspace.getLeavesOfType(type))leaf.detach();for(const id of ${JSON.stringify([registration, localRegistration].filter(Boolean))})nodes.remove(id);const old=${savedPreferences || '{}'};app.saveLocalStorage('abele-node-local-state-dir',old.directory);app.saveLocalStorage('abele-node-device-name',old.device);app.workspace.requestSaveLayout();await wait(1000);return 'cleaned'})()`
+        `(async()=>{${prelude}for(const type of ['abele-node-sidebar','abele-node-file','abele-node-history','abele-node-chat','abele-node-editor'])for(const leaf of app.workspace.getLeavesOfType(type))leaf.detach();for(const id of ${JSON.stringify([registration, localRegistration].filter(Boolean))})nodes.remove(id);const old=${savedPreferences || '{}'};app.saveLocalStorage('abele-node-local-state-dir',old.directory);app.saveLocalStorage('abele-node-device-name',old.device);if(typeof old.aiEnabled==='boolean'){api.AbeleConfig.getInstance().ai.enabled=old.aiEnabled;await app.plugins.plugins.abele.saveSettings()}app.workspace.requestSaveLayout();await wait(1000);return 'cleaned'})()`
       )
     } catch {
       /* The daemon and proxy must still stop after a failed shell probe. */
