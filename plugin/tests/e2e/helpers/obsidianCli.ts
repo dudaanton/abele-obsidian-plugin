@@ -1,3 +1,4 @@
+import { evalJobSource } from './evalJob'
 /**
  * Thin wrapper around the `obsidian` CLI, which is what drives the app in the e2e tier.
  *
@@ -380,54 +381,48 @@ export async function evalLong(code: string, timeoutMs = 180_000): Promise<strin
   // never the action it contains (a tap, a write, or an async generator's next step).
   const id = 'job' + Date.now() + Math.random().toString(36).slice(2)
   // The transport owns the one bounded retry budget for this idempotent launch.
-  const launched = evalRawIdempotent(
-    `(() => {
-      const id = ${JSON.stringify(id)}
-      const jobs = (window.__e2eJobs = window.__e2eJobs || {})
-      if (jobs[id]) return id
-      jobs[id] = { done: false }
-      // Started from a timer, after this call has answered: begun in a microtask it could run
-      // on before the answer went out, and the call waited for the script it was only to start.
-      new Promise((ready) => setTimeout(ready, 0))
-        .then(() => (${code}))
-        .then(
-          (v) => { jobs[id] = { done: true, out: v === undefined ? '(no output)' : '=> ' + (typeof v === 'string' ? v : JSON.stringify(v, null, 2)) } },
-          (e) => { jobs[id] = { done: true, out: 'Error: ' + String((e && e.message) || e) } }
-        )
-      return id
-    })()`,
-    30_000
-  )
-  if (launched.startsWith('Error:')) throw new Error(`Could not launch eval job: ${launched}`)
-  const deadline = Date.now() + timeoutMs
-  let pollMs = 50
-  for (;;) {
-    await pauseAsync(pollMs)
-    pollMs = Math.min(1000, pollMs * 2)
-    // Reading must not delete the result: the reply itself may be lost.
-    const job = evalJsonIdempotent<{ done: boolean; out?: string } | null>(
-      `(window.__e2eJobs || {})[${JSON.stringify(id)}] ?? null`,
-      30_000
-    )
-    // Gone with the page: something in the script reloaded it.
-    if (!job) throw new Error('the script was lost: the page reloaded while it ran')
-    if (job.done) {
-      // Acknowledge only after the worker has the answer. Cleanup is idempotent, and a
-      // lost cleanup reply is not a failed probe; the page already has its result.
-      try {
-        evalRawIdempotent(
-          `(() => { delete (window.__e2eJobs || {})[${JSON.stringify(id)}]; return 'removed' })()`,
-          5_000
-        )
-      } catch (error) {
-        if (!/gave no answer/.test(String(error))) throw error
+  try {
+    const launched = evalRawIdempotent(evalJobSource(id, code), 30_000)
+    if (launched.startsWith('Error:')) throw new Error(`Could not launch eval job: ${launched}`)
+    const deadline = Date.now() + timeoutMs
+    let pollMs = 50
+    for (;;) {
+      await pauseAsync(pollMs)
+      pollMs = Math.min(1000, pollMs * 2)
+      // Reading must not delete the result: the reply itself may be lost.
+      const job = evalJsonIdempotent<{ done: boolean; out?: string } | null>(
+        `(window.__e2eJobs || {})[${JSON.stringify(id)}] ?? null`,
+        30_000
+      )
+      // Gone with the page: something in the script reloaded it.
+      if (!job) throw new Error('the script was lost: the page reloaded while it ran')
+      if (job.done) {
+        // Acknowledge only after the worker has the answer. Cleanup is idempotent, and a
+        // lost cleanup reply is not a failed probe; the page already has its result.
+        try {
+          evalRawIdempotent(
+            `(() => { delete (window.__e2eJobs || {})[${JSON.stringify(id)}]; return 'removed' })()`,
+            5_000
+          )
+        } catch (error) {
+          if (!/gave no answer/.test(String(error))) throw error
+        }
+        const out = job.out ?? ''
+        assertPhoneTransport(out)
+        if (out.startsWith('Error: ')) throw new Error(out.slice(7))
+        return out.startsWith('=> ') ? out.slice(3) : out
       }
-      const out = job.out ?? ''
-      assertPhoneTransport(out)
-      if (out.startsWith('Error: ')) throw new Error(out.slice(7))
-      return out.startsWith('=> ') ? out.slice(3) : out
+      if (Date.now() > deadline) throw new Error(`the script did not finish in ${timeoutMs} ms`)
     }
-    if (Date.now() > deadline) throw new Error(`the script did not finish in ${timeoutMs} ms`)
+  } finally {
+    try {
+      evalRawIdempotent(
+        `(() => { delete (window.__e2eJobs || {})[${JSON.stringify(id)}]; return 'removed' })()`,
+        5_000
+      )
+    } catch (error) {
+      console.warn('Eval job cleanup failed', String(error))
+    }
   }
 }
 
