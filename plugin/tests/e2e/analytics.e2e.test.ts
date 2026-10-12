@@ -69,6 +69,11 @@ describe.skipIf(!available)('analytics in the app', () => {
   beforeAll(async () => {
     vaultDir = evalAsync<string>(`JSON.stringify(app.vault.adapter.basePath)`)
     evalAsync<string>(`(async () => {
+      // An interrupted earlier run leaves its fixture behind; this suite owns the folder.
+      const left = app.vault.getAbstractFileByPath(${JSON.stringify(FOLDER)})
+      if (left) await app.vault.delete(left, true)
+      else if (await app.vault.adapter.exists(${JSON.stringify(FOLDER)}))
+        await app.vault.adapter.rmdir(${JSON.stringify(FOLDER)}, true)
       await app.vault.adapter.mkdir(${JSON.stringify(`${FOLDER}/Days`)})
       for (const d of ${JSON.stringify(DAYS)}) {
         await app.vault.create(${JSON.stringify(`${FOLDER}/Days/`)} + d.date + '.md',
