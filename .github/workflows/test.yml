@@ -143,6 +143,8 @@ jobs:
       # TypeScript hygiene and do not fail the build; an error means a guideline was broken.
       - name: Lint
         working-directory: plugin
+        env:
+          ABELE_LINT_CONCURRENCY: "2"
         run: npm run lint:ci
 
   review:

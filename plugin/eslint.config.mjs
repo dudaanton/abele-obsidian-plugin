@@ -138,9 +138,8 @@ export default [
   {
     languageOptions: {
       parserOptions: {
-        projectService: {
-          allowDefaultProject: ['plugin/*.mjs', 'plugin/*.mts', 'plugin/*.ts'],
-        },
+        project: './tsconfig.eslint.json',
+        extraFileExtensions: ['.vue'],
         tsconfigRootDir: import.meta.dirname,
       },
     },

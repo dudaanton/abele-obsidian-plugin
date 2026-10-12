@@ -8,6 +8,15 @@ import { cacheEntry, lintCacheKeys } from './check-cache.mjs'
 
 const root = resolve(dirname(fileURLToPath(import.meta.url)), '../..')
 
+export function lintConcurrency(env = process.env) {
+  const value = env.ABELE_LINT_CONCURRENCY ?? '4'
+  if (value === 'auto') return value
+  const workers = Number(value)
+  if (!/^\d+$/.test(value) || !Number.isSafeInteger(workers) || workers < 1)
+    throw new Error('ABELE_LINT_CONCURRENCY must be a positive integer or auto')
+  return workers
+}
+
 // Node module caches belong to a process, not a checkout or lint input key. Each API call
 // gets fresh rule/config state, just like independent CLI invocations.
 export function runLint(checkout = root, env = process.env) {
@@ -51,6 +60,7 @@ export function runLint(checkout = root, env = process.env) {
 }
 
 async function lintOnce(checkout = root, env = process.env) {
+  const concurrency = lintConcurrency(env)
   const previousCwd = process.cwd()
   process.chdir(checkout)
   const leases = []
@@ -78,6 +88,7 @@ async function lintOnce(checkout = root, env = process.env) {
         cached && reusable ? cacheEntry(checkout, `lint-${tier}`, before[tier], env) : null
       if (cache) leases.push(cache)
       const eslint = new ESLint({
+        concurrency,
         cwd: checkout,
         overrideConfigFile: resolve(checkout, 'plugin/eslint.config.mjs'),
         // These optional non-type blocks need not all exist in every checkout.

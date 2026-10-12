@@ -41,6 +41,7 @@ describe('parallel CI verification gates', () => {
     )
     expect(step('dependencies', 'Dead-code inventory').run).toBe('node scripts/dead-code.mjs')
     expect(step('lint', 'Lint').run).toBe('npm run lint:ci')
+    expect(step('lint', 'Lint').env.ABELE_LINT_CONCURRENCY).toBe('2')
     expect(step('review', "No suppressions of Obsidian's rules").run).toContain('lint:review')
     expect(step('types', 'Type check').run).toBe('npm run types')
     expect(step('build', 'Build production once').run).toBe('npm run build:verified')
@@ -165,13 +166,17 @@ describe('parallel CI verification gates', () => {
         fake,
         `console.log(JSON.stringify({cwd: process.cwd(), args: process.argv.slice(2), exec: process.execArgv})); process.exit(Number(process.env.SAMPLE_EXIT || 0));`
       )
-      const result = JSON.parse(shell(pkg.scripts['lint:ci'], {}, join(root, 'plugin')))
+      const result = JSON.parse(
+        shell(pkg.scripts['lint:ci'], { ABELE_LINT_CONCURRENCY: '2' }, join(root, 'plugin'))
+      )
       expect(result.cwd).toBe(realpathSync(root))
       expect(result.exec).toContain('--max-old-space-size=8192')
       expect(result.args).toEqual([
         '--no-config-lookup',
         '--config',
         'plugin/eslint.config.mjs',
+        '--concurrency',
+        '2',
         '.',
         '--cache',
         '--cache-strategy',

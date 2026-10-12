@@ -49,6 +49,12 @@ carries Obsidian's own plugin rules and fails on any of them — see
 several of those rules read `manifest.json` from the working directory and the manifest lives
 in the root; the `lint` script changes directory for you.
 
+Lint uses an explicit TypeScript project (`plugin/tsconfig.eslint.json`) and four ESLint
+workers by default, preserving all rules for TypeScript and Vue. Set
+`ABELE_LINT_CONCURRENCY` to a positive integer or `auto` to change the worker count; CI uses
+two workers to limit memory on four-core runners. New typed lint locations must be included
+in that project; a coverage test checks the resolved ESLint inventory.
+
 ### Check caches
 
 `npm run types` and `npm run lint` accept `ABELE_CHECK_CACHE_DIR`, an absolute directory
@@ -64,7 +70,7 @@ Lint runs two disjoint inventories with the same rules. Files in the configurati
 non-type-aware block use ESLint's content strategy, with configuration (including nested
 formatter settings), manifest, installed rule payloads, environment and toolchain in the
 namespace. **Typed lint currently runs cold on every invocation.** The plain TypeScript
-fingerprint cannot enumerate ESLint's Vue/default-project inputs, including declarations
+fingerprint cannot enumerate ESLint's Vue program inputs, including declarations
 reachable only from a Vue component, so it never authorizes typed cache reuse. Compiler and
 non-type-aware content caches remain enabled.
 
