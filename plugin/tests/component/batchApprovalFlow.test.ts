@@ -263,6 +263,12 @@ describe('the Always allow transition at the runtime and rendered chat seams', (
     expect(executed).toEqual([`${session.id}:first`])
     expect(mounted).toEqual(['first'])
     expect(frames).toEqual([])
-    expect(session.pendingToolCalls.value.map((tc) => tc.id)).toEqual(['second', 'third'])
+    // Stop retains the unused tail as settled history, never as executable approval cards.
+    expect({
+      pending: session.pendingToolCalls.value.map((tc) => tc.id),
+      notRun: session.messages.value
+        .filter((m) => m.toolExecution === 'not-run')
+        .map((m) => m.toolCallId),
+    }).toEqual({ pending: [], notRun: ['second', 'third'] })
   })
 })

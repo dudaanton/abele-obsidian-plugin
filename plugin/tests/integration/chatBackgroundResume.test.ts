@@ -126,7 +126,11 @@ it('leaves a stopped waiting turn stopped when the app returns', async () => {
   visibility(false)
   await done
   expect(requests).toHaveLength(1)
-  expect(session.messages.value.map((m) => m.role)).toEqual(['user'])
+  // Stop retains streamed text; returning to the app must still never resume the request.
+  expect(session.messages.value.map(({ role, content }) => ({ role, content }))).toEqual([
+    { role: 'user', content: 'Sample question' },
+    { role: 'assistant', content: 'unfinished response' },
+  ])
   expect(session.reconnecting.value).toBeNull()
 })
 
