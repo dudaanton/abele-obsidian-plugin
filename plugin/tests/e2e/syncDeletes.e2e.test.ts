@@ -143,7 +143,7 @@ liveCase(
     )
     await a.pause(id, true)
     a.run(
-      `const root=await openSyncTab();icon(connectionRow(root,${JSON.stringify(id)}),'settings');await poll(()=>settingsDoc().querySelector('.abele-held-deletes'));const box=settingsDoc().querySelector('.abele-held-deletes');await press(box,'Delete everywhere');await poll(()=>modal('Delete 60 files everywhere?'));await press(modal('Delete 60 files everywhere?'),'Delete everywhere');await press(box,'Put them back');await closeSettings();return true`
+      `const root=await openSyncTab();icon(connectionRow(root,${JSON.stringify(id)}),'settings');await poll(()=>inWindows('.abele-held-deletes'));const box=inWindows('.abele-held-deletes');await press(box,'Delete everywhere');await poll(()=>modal('Delete 60 files everywhere?'));await press(modal('Delete 60 files everywhere?'),'Delete everywhere');await press(box,'Put them back');await closeSettings();return true`
     )
     expect((await s.client().trash()).filter((one) => paths.includes(one.path))).toHaveLength(0)
     expect(a.filesUnder(s.root + '/bulk')).toHaveLength(0)

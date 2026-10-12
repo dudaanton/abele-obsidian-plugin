@@ -139,7 +139,7 @@ liveCase(
       expect(a.read(path)).toBe('only reachable pending bytes')
       expect(
         a.run(
-          `const root=await openSyncTab();return [...root.querySelectorAll('[role=alert]')].some(one=>/reachable|answer|unavailable|interrupted/i.test(textOf(one)))`
+          `const root=await openSyncTab();icon(connectionRow(root,${JSON.stringify(source)}),'settings');await poll(()=>inWindows('.abele-sync-window'));return [...inWindows('.abele-sync-window').querySelectorAll('[role=alert]')].some(one=>/reachable|answer|unavailable|interrupted/i.test(textOf(one)))`
         )
       ).toBe(true)
       await a.pause(other, false)

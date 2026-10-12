@@ -103,10 +103,12 @@ liveCase(
         expect(history.capped).toEqual([])
         expect(history.stranded).toEqual([])
         a.run(
-          `const box=document.querySelector('.abele-version-history');await press(box,'Load older');await poll(()=>box.querySelectorAll('.abele-version-history__row').length>50);return true`
+          `const box=inWindows('.abele-version-history');await press(box,'Load older');await poll(()=>box.querySelectorAll('.abele-version-history__row').length>50);return true`
         )
         expect(
-          a.run(`return document.querySelectorAll('.abele-version-history .abele-version-history__row').length`)
+          a.run(
+            `return inWindows('.abele-version-history').querySelectorAll('.abele-version-history__row').length`
+          )
         ).toBeGreaterThan(50)
         a.run(
           `const box=inWindows('.abele-version-history');let older=null;for(const row of [...box.querySelectorAll('.abele-version-history__row')].slice(1)){if(!row.classList.contains('is-active'))row.click();await poll(()=>row.querySelector('.abele-version-history__open'));if(buttonIn(row,'Restore')){older=row;break}row.click();await sleep(50)}if(!older)throw new Error('No restorable historical version');await poll(()=>box.querySelector('.abele-version-history__diff'));return true`
@@ -219,7 +221,7 @@ liveCase(
         for (const preset of ['hour', 'today', 'custom']) {
           // Use the actual native dropdown and date field, including the custom-date state.
           a.run(
-            `const select=document.querySelector('.abele-restore-since select');select.value=${JSON.stringify(preset)};select.dispatchEvent(new Event('change',{bubbles:true}));await sleep(100);return true`
+            `const select=inWindows('.abele-restore-since select');select.value=${JSON.stringify(preset)};select.dispatchEvent(new Event('change',{bubbles:true}));await sleep(100);return true`
           )
           const trash = await captureSyncScreen(
             a,
@@ -232,10 +234,10 @@ liveCase(
           expect(trash.stranded).toEqual([])
           expect(
             a.run(
-              `const row=document.querySelector('.abele-restore-since').getBoundingClientRect();return row.left>=0&&row.right<=innerWidth+1`
+              `const row=inWindows('.abele-restore-since').getBoundingClientRect();return row.left>=0&&row.right<=innerWidth+1`
             )
           ).toBe(true)
-          expect(a.run(`return !!document.querySelector('.abele-restore-since input')`)).toBe(
+          expect(a.run(`return !!inWindows('.abele-restore-since input')`)).toBe(
             preset === 'custom'
           )
         }

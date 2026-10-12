@@ -250,7 +250,7 @@ export class SyncDriver {
   async share(id: string, scopeLabel: string, label = 'Sample recipient'): Promise<string> {
     return this.long(
       'issue sharing token',
-      `const root=await openSyncTab(); icon(connectionRow(root,${JSON.stringify(id)}),'share-2'); await poll(()=>modal('Share access')); const box=modal('Share access'); const select=box.querySelector('select'); await poll(()=>select.options.length>0); const option=[...select.options].find(one=>one.textContent.trim()===${JSON.stringify(scopeLabel)}); if(!option) throw new Error('Scope choice unavailable'); select.value=option.value; select.dispatchEvent(new select.ownerDocument.defaultView.Event('change',{bubbles:true})); typeInto(box.querySelector('input[placeholder="For a new device or a collaborator"]'),${JSON.stringify(label)}); await press(box,'Get token'); await poll(()=>box.querySelector('textarea')); const token=box.querySelector('textarea').value; await press(box,'Close'); await closeSettings(); return token`,
+      `const root=await openSyncTab(); icon(connectionRow(root,${JSON.stringify(id)}),'share-2'); await poll(()=>modal('Share access')); const box=modal('Share access'); const select=box.querySelector('select'); await poll(()=>select.options.length>0); const option=[...select.options].find(one=>one.textContent.trim()===${JSON.stringify(scopeLabel)}); if(!option) throw new Error('Scope choice unavailable'); select.value=option.value; select.dispatchEvent(new select.ownerDocument.defaultView.Event('change',{bubbles:true})); typeInto(box.querySelector('input[placeholder="A second device, a colleague"]'),${JSON.stringify(label)}); await press(box,'Create token'); await poll(()=>box.querySelector('textarea')); const token=box.querySelector('textarea').value; await press(box,'Close'); await closeSettings(); return token`,
       true
     )
   }
@@ -262,7 +262,7 @@ export class SyncDriver {
       const box=modal('Share access');await poll(()=>box.querySelector('select').options.length>0);
       const select=box.querySelector('select'),option=[...select.options].find(one=>one.textContent.trim()==='Whole vault');if(!option)throw new Error('Root sharing unavailable');
       select.value=option.value;select.dispatchEvent(new select.ownerDocument.defaultView.Event('change',{bubbles:true}));
-      typeInto(box.querySelector('input[placeholder="For a new device or a collaborator"]'),'QR recipient');await press(box,'Get token');await poll(()=>box.querySelector('svg.abele-qr'));
+      typeInto(box.querySelector('input[placeholder="A second device, a colleague"]'),'QR recipient');await press(box,'Create token');await poll(()=>box.querySelector('svg.abele-qr'));
       const token=box.querySelector('textarea').value,svg=box.querySelector('svg.abele-qr').cloneNode(true);
       svg.setAttribute('xmlns','http://www.w3.org/2000/svg');svg.setAttribute('width','1024');svg.setAttribute('height','1024');svg.querySelector('rect').setAttribute('fill','white');svg.querySelector('path').setAttribute('fill','black');
       const url=URL.createObjectURL(new Blob([new XMLSerializer().serializeToString(svg)],{type:'image/svg+xml'}));let image;
@@ -319,17 +319,17 @@ export class SyncDriver {
   async history(path: string): Promise<void> {
     this.open(path)
     this.run(
-      `app.commands.executeCommandById('file-explorer:reveal-active-file'); let file;await poll(()=>file=document.querySelector('.nav-file-title[data-path='+CSS.escape(${JSON.stringify(path)})+']'));file.dispatchEvent(new MouseEvent('contextmenu',{bubbles:true,button:2}));let action;await poll(()=>action=[...document.querySelectorAll('.menu-item')].find(one=>textOf(one).includes('Open version history (Abele)')));action.click();await poll(()=>document.querySelector('.abele-version-history .abele-card'));return true`
+      `app.commands.executeCommandById('file-explorer:reveal-active-file'); let file;await poll(()=>file=document.querySelector('.nav-file-title[data-path='+CSS.escape(${JSON.stringify(path)})+']'));file.dispatchEvent(new MouseEvent('contextmenu',{bubbles:true,button:2}));let action;await poll(()=>action=[...document.querySelectorAll('.menu-item')].find(one=>textOf(one).includes('Open version history (Abele)')));action.click();await poll(()=>inWindows('.abele-version-history__row'));return true`
     )
   }
   async trash(): Promise<void> {
     this.run(
-      `await closeSettings();for(const doc of new Set([document,settingsDoc()]))for(const box of doc.querySelectorAll('.abele-deleted-files'))box.closest('.modal')?.querySelector('.modal-close-button, .modal-header-button:has(svg.lucide-x)')?.click();await poll(()=>!inWindows('.abele-deleted-files'),20000,'previous trash dialog to close');app.commands.executeCommandById('abele:sync-deleted-files');await poll(()=>inWindows('.abele-deleted-files'));return true`
+      `await closeSettings();for(const doc of new Set([document,settingsDoc()]))for(const box of doc.querySelectorAll('.abele-deleted-files'))box.closest('.modal')?.querySelector('.modal-close-button, .modal-header-button:has(svg.lucide-x)')?.click();await poll(()=>!inWindows('.abele-deleted-files'),20000,'previous trash dialog to close');const root=await openSyncTab();icon(connectionRow(root,svc.rows.value[0].id),'trash-2');await poll(()=>{const box=inWindows('.abele-deleted-files');return box&&!textOf(box).includes('Reading what has been deleted…')});return true`
     )
   }
   async restore(selector: string, name: string): Promise<void> {
     this.run(
-      `const root=document.querySelector(${JSON.stringify(selector)});let row;await poll(()=>row=[...root.querySelectorAll('.abele-card')].find(one=>textOf(one.querySelector('.abele-card__name'))===${JSON.stringify(name)}));await press(row,'Restore');if(${selector === '.abele-version-history'}){await poll(()=>document.querySelector('.abele-confirm__message'));const confirm=document.querySelector('.abele-confirm__message').closest('.modal');await press(confirm.querySelector('.abele-modal__footer'),'Restore')}return true`
+      `const root=inWindows(${JSON.stringify(selector)});let row;const history=${selector === '.abele-version-history'};await poll(()=>row=[...root.querySelectorAll(history?'.abele-version-history__row':'.abele-deleted-files__row')].find(one=>history?'#'+one.dataset.version===${JSON.stringify(name)}:one.dataset.path===${JSON.stringify(name)}));if(history){if(!row.classList.contains('is-active'))row.click();await press(row,'Restore');await poll(()=>inWindows('.abele-confirm__message'));await press(inWindows('.abele-confirm__message').closest('.modal').querySelector('.abele-modal__footer'),'Restore')}else{icon(row,'rotate-ccw')}return true`
     )
   }
   candidates(): {

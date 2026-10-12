@@ -14,6 +14,72 @@ import { MemoryStateStore, sha256 } from '@abele/sync-core'
 import { ExecutableReview } from '@/sync/executableReview'
 import { AttachmentConsent } from '@/sync/attachmentConsent'
 import { Notice } from '../mocks/obsidian'
+import { SyncDriver } from '../e2e/helpers/syncDriver'
+vi.mock('../e2e/helpers/syncVault', () => ({ waitFor: vi.fn() }))
+
+it('issues a token through the live driver selectors in the sharing dialog', async () => {
+  const ui = shareFixture(),
+    id = ui.rows.value[0].id
+  const issue = vi.fn(async () => ({ token: 'sample-access-code' }))
+  vi.spyOn(ui, 'client').mockReturnValue({ issue } as never)
+  const view = mount(TokenDialogs, {
+    props: { ui, mode: 'share', connectionId: id },
+    global: { stubs: { Modal: modalStub } },
+  })
+  await flushPromises()
+  const driver = new SyncDriver(() => {
+    throw new Error('No live vault expected')
+  })
+  const long = vi.spyOn(driver, 'long').mockImplementation(async (_label, code) => {
+    const poll = async (condition: () => unknown) => {
+      await flushPromises()
+      expect(condition()).toBeTruthy()
+    }
+    const press = async (root: Element, text: string) => {
+      await flushPromises()
+      const button = [...root.querySelectorAll('button')].find(
+        (one) => one.textContent?.trim() === text
+      )!
+      expect(button).toBeDefined()
+      expect(button.disabled).toBe(false)
+      button.click()
+      await flushPromises()
+    }
+    return new Function(
+      'openSyncTab',
+      'connectionRow',
+      'icon',
+      'poll',
+      'modal',
+      'typeInto',
+      'press',
+      'closeSettings',
+      `return (async()=>{${code}})()`
+    )(
+      async () => view.element,
+      (root: Element) => root,
+      vi.fn(),
+      poll,
+      () => view.element,
+      (input: HTMLInputElement, text: string) => {
+        input.value = text
+        input.dispatchEvent(new Event('input', { bubbles: true }))
+      },
+      press,
+      vi.fn()
+    )
+  })
+  try {
+    expect(await driver.share(id, 'Whole vault', 'Sample recipient')).toBe('sample-access-code')
+    expect(issue).toHaveBeenCalledWith({
+      scope: { kind: 'folder', id: 'root' },
+      label: 'Sample recipient',
+    })
+  } finally {
+    long.mockRestore()
+    view.unmount()
+  }
+})
 
 const modalStub = { template: '<div><slot /><slot name="footer" /></div>' }
 it('displays the exact path and server-size reason for an oversized unsent file', async () => {

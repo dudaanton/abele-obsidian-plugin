@@ -196,7 +196,7 @@ liveCase(
       )
       expect(b.read(path)).toBe(local)
       b.run(
-        `const root=await openSyncTab();icon(connectionRow(root,svc.rows.value[0].id),'settings');await poll(()=>settingsDoc().querySelector('.abele-staged-settings'));await press(settingsDoc().querySelector('.abele-staged-settings'),"Keep this device's");await closeSettings();return true`
+        `const root=await openSyncTab();icon(connectionRow(root,svc.rows.value[0].id),'settings');await poll(()=>inWindows('.abele-staged-settings'));await press(inWindows('.abele-staged-settings'),"Keep this device's");await closeSettings();return true`
       )
       await b.syncNow()
       expect(b.read(path)).toBe(local)

@@ -67,7 +67,7 @@ liveCase(
       expect(a.read(path)).toBe('phone bytes awaiting transfer')
       expect(
         a.run(
-          `const root=await openSyncTab();return [...root.querySelectorAll('[role=alert]')].some(one=>/unavailable|interrupted|reachable|timed out/i.test(textOf(one)))`
+          `const root=await openSyncTab();icon(connectionRow(root,${JSON.stringify(id)}),'settings');await poll(()=>inWindows('.abele-sync-window'));return [...inWindows('.abele-sync-window').querySelectorAll('[role=alert]')].some(one=>/unavailable|interrupted|reachable|timed out/i.test(textOf(one)))`
         )
       ).toBe(true)
       expect(a.rows().find((one) => one.id === id)?.error).toMatch(
@@ -75,7 +75,7 @@ liveCase(
       )
       expect(
         a.run(
-          `const root=await openSyncTab();let refused;await poll(()=>refused=[...root.querySelectorAll('.setting-item')].find(one=>textOf(one.querySelector('.setting-item-name'))===${JSON.stringify(path)}&&textOf(one).includes('Not sent:')),20000,'unsent phone file stays visible during retry');return textOf(refused)`
+          `const root=inWindows('.abele-sync-window');let refused;await poll(()=>refused=[...root.querySelectorAll('.setting-item')].find(one=>textOf(one.querySelector('.setting-item-name'))===${JSON.stringify(path)}),20000,'unsent phone file stays visible during retry');const section=refused.closest('.abele-section');return textOf(section.querySelector('.abele-section__heading'))+': '+textOf(refused)`
         )
       ).toMatch(/Not sent:.*(?:unavailable|interrupted|reachable|timed out)/i)
     } finally {
@@ -239,7 +239,7 @@ liveCase(
     expect(a.exists(path)).toBe(false)
     expect(a.candidates().find((one) => one.path === path)?.source.id).toBe(id)
     const receipt = a.run<{ actual: string; expected: string; finite: boolean }>(
-      `const candidate=svc.candidates.value.find(one=>one.path===${JSON.stringify(path)});if(!candidate)throw new Error('Review missing');const root=await openSyncTab();const row=[...root.querySelectorAll('.setting-item')].find(one=>textOf(one.querySelector('.setting-item-name'))===${JSON.stringify(path)});icon(row,'eye');await poll(()=>modal('Review incoming code'));const box=modal('Review incoming code');const received=[...box.querySelectorAll('.setting-item')].find(one=>textOf(one.querySelector('.setting-item-name'))==='Received');const actual=textOf(received?.querySelector('.setting-item-description')),expected=new Date(candidate.receivedAt).toLocaleString();await press(box,'Close');await closeSettings();return {actual,expected,finite:Number.isFinite(candidate.receivedAt)}`
+      `const candidate=svc.candidates.value.find(one=>one.path===${JSON.stringify(path)});if(!candidate)throw new Error('Review missing');const root=await openSyncTab();const row=[...root.querySelectorAll('.setting-item')].find(one=>textOf(one.querySelector('.setting-item-name'))===${JSON.stringify(path)});icon(row,'eye');await poll(()=>modal('Review incoming code'));const box=modal('Review incoming code');const received=[...box.querySelectorAll('.abele-token-dialog__facts dt')].find(one=>textOf(one)==='Received');const actual=textOf(received?.nextElementSibling),expected=new Date(candidate.receivedAt).toLocaleString();await press(box,'Close');await closeSettings();return {actual,expected,finite:Number.isFinite(candidate.receivedAt)}`
     )
     expect(receipt.finite).toBe(true)
     expect(receipt.actual).toBe(receipt.expected)

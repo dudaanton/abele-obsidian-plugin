@@ -28,6 +28,6 @@ export async function captureSyncScreen(
 }
 export function closeSyncScreens(sync: SyncDriver): void {
   sync.run(
-    `for(const doc of new Set([document,settingsDoc()]))for(const button of [...doc.querySelectorAll('.modal-close-button')].reverse())button.click();await closeSettings();return true`
+    `for(const doc of new Set([document,settingsDoc()]))for(const button of [...doc.querySelectorAll('.modal-close-button, .modal-header-button:has(svg.lucide-x)')].reverse())button.click();await closeSettings();return true`
   )
 }
