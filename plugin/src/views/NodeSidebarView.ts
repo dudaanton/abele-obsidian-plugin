@@ -52,7 +52,11 @@ export class NodeSidebarView extends ItemView {
   }
   async setState(raw: unknown, result: ViewStateResult): Promise<void> {
     const state = State.parse(raw ?? {})
-    this.registrationId.value = state.registrationId ?? ''
+    const nodes = NodeService.getInstance().nodes.value
+    const selected = state.registrationId ?? this.registrationId.value
+    this.registrationId.value = nodes.some((node) => node.id === selected)
+      ? selected
+      : (nodes[0]?.id ?? '')
     await super.setState(raw, result)
   }
   async onOpen(): Promise<void> {
