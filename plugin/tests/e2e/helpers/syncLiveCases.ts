@@ -14,15 +14,18 @@ export function liveSuite(peer = true): () => TokenSyncLive {
     await current.start()
   })
   afterEach(async (context) => {
-    if (current && context.task.result?.state === 'fail')
-      for (const device of [current.primary, current.peer].filter(Boolean))
-        console.error(
-          device!.failure(
-            'live case failed before teardown',
-            new Error('Inspect captured sync state')
-          ).message
-        )
-    if (current) await current.close()
+    try {
+      if (current && context.task.result?.state === 'fail')
+        for (const device of [current.primary, current.peer].filter(Boolean))
+          console.error(
+            device!.failure(
+              'live case failed before teardown',
+              new Error('Inspect captured sync state')
+            ).message
+          )
+    } finally {
+      if (current) await current.close()
+    }
   })
   return () => current
 }
@@ -91,10 +94,15 @@ export async function runLiveCase(
       throw new Error('Live case supplied no behavioral assertions')
   } catch (one) {
     error = one
-    for (const device of [current.primary, current.peer].filter(Boolean))
-      console.error(
-        device!.failure('live case failed', new Error('Inspect captured sync state')).message
-      )
+    for (const device of [current.primary, current.peer].filter(Boolean)) {
+      try {
+        console.error(
+          device!.failure('live case failed', new Error('Inspect captured sync state')).message
+        )
+      } catch (diagnostic) {
+        error = new AggregateError([error, diagnostic], 'Live case and diagnostics failed')
+      }
+    }
   }
   try {
     if (onPhone()) driver(['shot', artifact])

@@ -1,3 +1,4 @@
+import { closeOwnedWindows } from './closeOwnedWindows'
 /**
  * A throwaway vault in the running Obsidian, with this branch's build installed in it.
  *
@@ -360,30 +361,18 @@ async function closeAndForget(
       return -1
     }
   }
-  let closed = false
-  for (let attempt = 0; attempt < 3 && !closed; attempt++) {
-    try {
+  await closeOwnedWindows(
+    () => {
       host.evalRaw(`${windows}.forEach((w) => w.close()), "closing"`, 10_000)
-    } catch {
-      /* the host is busy; the next attempt asks again */
-    }
-    try {
-      await waitFor('the window to close', () => open() === 0, CLOSE_MS)
-      closed = true
-    } catch {
-      /* asked again below */
-    }
-  }
-  if (!closed) {
-    // Left exactly as it is. With the window open, Obsidian writes `.obsidian` back out a moment
-    // after the folder goes and refuses to take the vault off its list, so removing anything now
-    // would leave a stub folder and a list entry instead of one vault a person can close.
-    console.warn(
-      `the window on ${vault.name} would not close, so ${vault.path} is left in place: ` +
-        'close that window, remove the vault from the vault switcher, then delete the folder'
-    )
-    return
-  }
+    },
+    () => {
+      host.evalRaw(
+        `${windows}.forEach((w) => w.destroy()), "closing owned temporary windows"`,
+        10_000
+      )
+    },
+    () => waitFor('the window to close', () => open() === 0, CLOSE_MS)
+  )
   // Removed only once the window is gone, or Obsidian writes `.obsidian` back out a moment
   // after the folder was deleted. Three goes, in case one did anyway.
   for (let attempt = 0; attempt < 3 && existsSync(vault.path); attempt++) {

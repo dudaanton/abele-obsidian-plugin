@@ -65,3 +65,27 @@ it('a late timed-out body cleans its own fixture rather than the next case', asy
   expect(next.close).not.toHaveBeenCalled()
   expect(next.primary.run).not.toHaveBeenCalled()
 })
+
+it('cleans its fixture even when failure diagnostics throw', async () => {
+  const current = {
+    primary: {
+      run: vi.fn(),
+      failure: () => {
+        throw new Error('sample diagnostic failure')
+      },
+    },
+    close: vi.fn(async () => {}),
+  }
+  await expect(
+    runLiveCase(
+      'syncSettings',
+      'failed sample',
+      [1],
+      async () => {
+        throw new Error('sample body failure')
+      },
+      () => current as unknown as TokenSyncLive
+    )
+  ).rejects.toThrow()
+  expect(current.close).toHaveBeenCalledOnce()
+})
