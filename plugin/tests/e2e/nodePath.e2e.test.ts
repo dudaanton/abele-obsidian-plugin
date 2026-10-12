@@ -24,7 +24,7 @@ async function capture(name: string) {
 async function reopenNodePane(name: string) {
   try {
     await evalLong(
-      `(async()=>{${prelude}for(const leaf of app.workspace.getLeavesOfType('abele-node-sidebar'))leaf.detach();app.commands.executeCommandById('abele:open-node');await until(()=>app.workspace.getLeavesOfType('abele-node-sidebar').length===1);await app.workspace.revealLeaf(app.workspace.getLeavesOfType('abele-node-sidebar')[0]);app.workspace.leftSplit.expand();await until(()=>visible('.abele-node-panel_ready .abele-status-dot_green'));const view=app.workspace.getLeavesOfType('abele-node-sidebar')[0].view;if(!nodes.nodes.value.some(n=>n.id===view.getState().registrationId))throw Error('Reopened pane lost its registered node');if(visible('.abele-node-panel_found,.abele-node-panel_remote'))throw Error('Reopened pane asks to connect again');return 'registered pane reopened'})()`
+      `(async()=>{${prelude}for(const leaf of app.workspace.getLeavesOfType('abele-node-sidebar'))leaf.detach();app.commands.executeCommandById('abele:open-node');await until(()=>app.workspace.getLeavesOfType('abele-node-sidebar').length===1);await until(()=>visible('.abele-node-panel_ready .abele-status-dot_green'));const view=app.workspace.getLeavesOfType('abele-node-sidebar')[0].view;if(!nodes.nodes.value.some(n=>n.id===view.getState().registrationId))throw Error('Reopened pane lost its registered node');if(visible('.abele-node-panel_found,.abele-node-panel_remote'))throw Error('Reopened pane asks to connect again');return 'registered pane reopened'})()`
     )
   } catch (error) {
     await capture(name + '-error')

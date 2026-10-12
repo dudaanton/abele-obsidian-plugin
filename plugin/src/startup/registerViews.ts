@@ -17,6 +17,7 @@ import { keepChatFilesOutOfLeaves, routeChatAnchorLinks } from '@/ai/chatFileLea
 import type { Plugin } from 'obsidian'
 import { registerDebugger } from '@/debugger/register'
 import { NodeSidebarView } from '@/views/NodeSidebarView'
+import { revealSidebarView } from '@/views/revealSidebarView'
 import { NodePathMainView } from '@/views/NodePathMainView'
 import { NodePathService } from '@/node/NodePathService'
 import { createNodePathObsidianActions } from '@/node/NodePathObsidianActions'
@@ -45,7 +46,7 @@ export function registerViews(plugin: Plugin) {
       active: true,
       state: leaf.getViewState().type === NODE_SIDEBAR_VIEW ? leaf.getViewState().state : {},
     })
-    await plugin.app.workspace.revealLeaf(leaf)
+    await revealSidebarView(plugin.app, NODE_SIDEBAR_VIEW)
   }
   plugin.addCommand({
     id: 'open-node',
