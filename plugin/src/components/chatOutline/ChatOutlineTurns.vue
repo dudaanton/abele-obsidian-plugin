@@ -45,6 +45,10 @@
                 )
             "
             class="abele-chat-outline__code"
+            role="button"
+            tabindex="-1"
+            @click.stop="openTurn(turn)"
+            @keydown.enter.stop.prevent="openTurn(turn)"
             ><template v-if="forkAt(i)"
               ><Icon icon="git-branch" size="xs" :interactive="false" /><span
                 class="abele-chat-outline__num"
@@ -62,6 +66,10 @@
                 )
             "
             class="abele-chat-outline__code"
+            role="button"
+            tabindex="-1"
+            @click.stop="openTurn(turn)"
+            @keydown.enter.stop.prevent="openTurn(turn)"
             ><template v-if="turn.discussions.length"
               ><Icon icon="messages-square" size="xs" :interactive="false" /><span
                 class="abele-chat-outline__num"
@@ -73,6 +81,10 @@
             v-if="kinds.work"
             :ref="(el) => tip(el, turn.tools.length ? plural(turn.tools.length, 'tool call') : '')"
             class="abele-chat-outline__code abele-chat-outline__code_work"
+            role="button"
+            tabindex="-1"
+            @click.stop="openTurn(turn)"
+            @keydown.enter.stop.prevent="openTurn(turn)"
             ><template v-if="turn.tools.length"
               ><Icon icon="wrench" size="xs" :interactive="false" />{{
                 turn.tools.length
@@ -216,6 +228,12 @@ const hasBody = (turn: NavigationTurn, i: number) =>
 const tip = (el: unknown, text: string) => {
   if (el instanceof HTMLElement) setTooltip(el, text)
 }
+
+/** A code opens its question's row where it is, rather than jumping away and closing the outline. */
+function openTurn(turn: { message: { id: string } }) {
+  const key = `${turn.message.id}:turn`
+  if (!outline.isOpen(key)) outline.flip(key)
+}
 </script>
 
 <style lang="scss">
@@ -250,6 +268,14 @@ const tip = (el: unknown, text: string) => {
 }
 .abele-chat-outline__code {
   display: inline-flex;
+  border-radius: var(--radius-s);
+
+  // A code with something behind it opens the row there; it lights up as a button would.
+  &:has(> .abele-obsidian-icon):hover {
+    cursor: pointer;
+    color: var(--text-normal);
+    background-color: var(--background-modifier-hover);
+  }
   justify-content: flex-start;
   min-width: calc(var(--icon-xs) + var(--size-2-1) + 2ch);
   align-items: center;
