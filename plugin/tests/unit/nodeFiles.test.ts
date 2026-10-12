@@ -89,6 +89,21 @@ it('retains a rejected review for editing but fences an unknown outcome against 
   expect(s.model.pendingReview.value).toBe('')
   expect(s.model.comments.value).toHaveLength(1)
 })
+it('retains review comments and releases the submission lock on a typed target refusal', async () => {
+  const s = setup()
+  await s.model.loadDiff('head')
+  await addComment(s, 'sample.txt', { side: 'R', start: 2, end: 2 }, 'Sample retained review')
+  vi.mocked(s.client.reviewResult).mockResolvedValue({
+    code: 'target_changed',
+    current_target: null,
+  })
+  await expect(s.model.submit()).rejects.toThrow('target_changed')
+  expect(s.model.pendingReview.value).toBe('')
+  expect(s.model.reviewLocked.value).toBe(false)
+  expect(s.model.comments.value).toHaveLength(1)
+  expect(s.model.submittedReview.value).toEqual([])
+  expect(s.submitReview).toHaveBeenCalledOnce()
+})
 it('rejects outside-hunk selection and preserves retained comments when another mode is opened', async () => {
   const s = setup()
   await s.model.loadDiff('staged')

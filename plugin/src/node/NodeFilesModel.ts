@@ -936,6 +936,12 @@ export class NodeFilesModel {
           'Queued review · waiting for confirmation. Reconnect to check; do not send it again.'
         return
       }
+      if ('code' in result) {
+        // A typed refusal is a durable no-send receipt, not an uncertain batch.
+        this.pendingReview.value = ''
+        this.sentAnchors = undefined
+        throw new Error(result.code)
+      }
       this.reviewStatus.value = result.stale.some(Boolean)
         ? 'Review accepted · the workspace changed or could not be rechecked; retained selections were sent and marked stale.'
         : 'Review accepted as one session input.'

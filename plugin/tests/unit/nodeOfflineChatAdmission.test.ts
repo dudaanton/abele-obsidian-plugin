@@ -54,16 +54,21 @@ it('rejects a turn when the node session has moved away from the displayed workt
   expect(presenter.error.value).toContain('worktree')
   presenter.destroy()
 })
-// BUG: the released session.send schema has no server-enforced expected-target precondition.
-it.fails('carries the displayed target as an atomic node-side turn precondition', () => {
+it('carries the displayed target and incarnation as an atomic node-side turn precondition', () => {
   expect(
     validateParams('session.send', {
       session_id: reference.sessionId,
       text: 'Sample atomic turn',
       observed_seq: 3,
-      expected_target: { kind: 'worktree', worktree_id: shown.id },
+      expected_target: {
+        target: { kind: 'worktree', worktree_id: shown.id },
+        incarnation: 'sample-incarnation',
+      },
     })
-  ).toHaveProperty('expected_target.worktree_id', shown.id)
+  ).toHaveProperty('expected_target', {
+    target: { kind: 'worktree', worktree_id: shown.id },
+    incarnation: 'sample-incarnation',
+  })
 })
 it('rejects a disconnect that occurs while preparing a connected turn', async () => {
   const { presenter, client, store, connection } = await setup()
@@ -127,6 +132,24 @@ it('persists a refused turn even if its composer closes before the receipt arriv
   reopened.destroy()
 })
 
+// BUG: guarded chat sends await an advertised node capability; typed refusals still look accepted.
+it.fails('keeps the composer draft when the node returns a typed target refusal', async () => {
+  const { presenter, client, connection } = await setup()
+  connection.state.value = 'connected'
+  vi.spyOn(client, 'connected', 'get').mockReturnValue(true)
+  vi.spyOn(client, 'flush').mockResolvedValue(undefined)
+  vi.spyOn(client, 'operationResult').mockResolvedValue({
+    result: { code: 'target_changed', current_target: null },
+  })
+  presenter.draft.value.text = 'Sample target-bound draft'
+  try {
+    await presenter.send('Sample target-bound draft')
+    expect(presenter.draft.value.text).toBe('Sample target-bound draft')
+    expect(presenter.draftNotice.value).toContain('Nothing was sent')
+  } finally {
+    presenter.destroy()
+  }
+})
 it('keeps newer composer edits when an earlier turn is admitted', async () => {
   const { presenter, client, connection } = await setup()
   connection.state.value = 'connected'
