@@ -11,11 +11,12 @@ import HeaderButtonsEditor from '@/components/settings/scripts/HeaderButtonsEdit
 import Button from '@/components/obsidian/Button.vue'
 import Icon from '@/components/obsidian/Icon.vue'
 import Input from '@/components/obsidian/Input.vue'
-import Badge from '@/components/obsidian/Badge.vue'
 import Dropdown from '@/components/obsidian/Dropdown.vue'
 import IconPicker from '@/components/obsidian/IconPicker.vue'
 import Setting from '@/components/obsidian/Setting.vue'
 import Checkbox from '@/components/obsidian/Checkbox.vue'
+import ObsidianModal from '@/components/obsidian/Modal.vue'
+import ConfirmModal from '@/components/obsidian/ConfirmModal.vue'
 import { AbeleConfig, normalizeHeaderButton } from '@/services/AbeleConfig'
 import { GlobalStore } from '@/stores/GlobalStore'
 import * as RunnablePicker from '@/helpers/suggesters/RunnablePicker'
@@ -62,6 +63,22 @@ function open() {
   return wrapper
 }
 
+/**
+ * The list, with the first button's window opened from the settings glyph on its row, as its
+ * fields are only there. With no buttons yet there is nothing to open: Add button opens the new one.
+ */
+async function openEditing() {
+  const wrapper = open()
+  const change = wrapper.findAll('button[aria-label="Change this button"]')
+  if (change.length) await change[0].trigger('click')
+  await nextTick()
+  return wrapper
+}
+
+/** What is on screen: the list, and the button's window, which Obsidian puts in the body. */
+const seen = (wrapper: ReturnType<typeof mount>) =>
+  `${wrapper.text()} ${document.body.textContent ?? ''}`
+
 function buttonWith(wrapper: ReturnType<typeof mount>, text: string) {
   const button = wrapper.findAllComponents(Button).find((b) => b.props('text') === text)
   if (!button) {
@@ -73,7 +90,7 @@ function buttonWith(wrapper: ReturnType<typeof mount>, text: string) {
 
 describe('the icon of a header button', () => {
   it('is shown as itself, and pressing it opens the grid on it', async () => {
-    const wrapper = open()
+    const wrapper = await openEditing()
 
     const choose = buttonWith(wrapper, 'download')
     expect(choose.props('icon')).toBe('download')
@@ -85,7 +102,7 @@ describe('the icon of a header button', () => {
   })
 
   it('is what was picked, saved, and the grid closes', async () => {
-    const wrapper = open()
+    const wrapper = await openEditing()
     await buttonWith(wrapper, 'download').trigger('click')
 
     wrapper.findComponent(IconPicker).vm.$emit('choose', 'calendar')
@@ -97,7 +114,7 @@ describe('the icon of a header button', () => {
   })
 
   it('stays as it was when the grid is closed without a choice', async () => {
-    const wrapper = open()
+    const wrapper = await openEditing()
     await buttonWith(wrapper, 'download').trigger('click')
 
     wrapper.findComponent(IconPicker).vm.$emit('close')
@@ -123,7 +140,7 @@ describe('the properties a header button asks for', () => {
       .filter((d) => d.classes().includes('abele-header-buttons__test'))
 
   it('start with none, and one is added by a button', async () => {
-    const wrapper = open()
+    const wrapper = await openEditing()
     expect(conditionInputs(wrapper)).toHaveLength(0)
 
     await buttonWith(wrapper, 'Add condition').trigger('click')
@@ -135,7 +152,7 @@ describe('the properties a header button asks for', () => {
   })
 
   it('are written as they are typed and chosen', async () => {
-    const wrapper = open()
+    const wrapper = await openEditing()
     await buttonWith(wrapper, 'Add condition').trigger('click')
 
     await conditionInputs(wrapper)[0].vm.$emit('update:model-value', 'status')
@@ -149,14 +166,14 @@ describe('the properties a header button asks for', () => {
 
   it('ask for no value where the test does not compare one', async () => {
     config.headerButtons[0].conditions = [{ property: 'due', test: 'filled', value: '' }]
-    const wrapper = open()
+    const wrapper = await openEditing()
 
     expect(conditionInputs(wrapper)).toHaveLength(1)
     expect(valueInputs(wrapper)).toHaveLength(0)
   })
 
   it('offer all-or-any only once there are two', async () => {
-    const wrapper = open()
+    const wrapper = await openEditing()
     const modeDropdown = () =>
       wrapper
         .findAllComponents(Dropdown)
@@ -177,7 +194,7 @@ describe('the properties a header button asks for', () => {
       { property: 'status', test: 'equals', value: 'todo' },
       { property: 'due', test: 'filled', value: '' },
     ]
-    const wrapper = open()
+    const wrapper = await openEditing()
 
     const remove = wrapper
       .findAllComponents(Icon)
@@ -193,33 +210,48 @@ describe('the properties a header button asks for', () => {
 // Reported as «I added a button for tasks and it does not show»: a button set up for a type no
 // note has, or a folder that is not there, showed nowhere and nothing said so.
 describe('a header button that would show nowhere', () => {
-  const badges = (wrapper: ReturnType<typeof mount>) =>
-    wrapper.findAllComponents(Badge).map((b) => b.props('text'))
+  /** The warning on the button's row in the list, before anything is opened. */
+  const warning = (wrapper: ReturnType<typeof mount>) =>
+    wrapper.find('.abele-header-buttons__row .mod-warning')
 
-  it('says which of its types no note in the vault has, and which types there are', () => {
+  it('says which of its types no note in the vault has, and which types there are', async () => {
     config.headerButtons[0].noteTypes = ['tasks']
     const wrapper = open()
 
-    expect(wrapper.text()).toContain('No note in this vault has the type "tasks"')
-    expect(wrapper.text()).toContain('task')
-    expect(badges(wrapper)).toContain('Shows nowhere')
+    expect(warning(wrapper).text()).toMatch(/^Shows nowhere · /)
+    await wrapper.get('button[aria-label="Change this button"]').trigger('click')
+    expect(seen(wrapper)).toContain('No note in this vault has the type "tasks"')
+    expect(seen(wrapper)).toContain('Types in use: movie, task')
   })
 
-  it('says which of its folders are not in the vault', () => {
+  it('says which of its folders are not in the vault', async () => {
     config.headerButtons[0].noteTypes = []
     config.headerButtons[0].folders = ['Filmz']
     const wrapper = open()
 
-    expect(wrapper.text()).toContain('No folder "Filmz" in this vault')
-    expect(badges(wrapper)).toContain('Shows nowhere')
+    expect(warning(wrapper).text()).toMatch(/^Shows nowhere · /)
+    await wrapper.get('button[aria-label="Change this button"]').trigger('click')
+    expect(seen(wrapper)).toContain('No folder "Filmz" in this vault')
   })
 
-  it('says nothing of the kind when it shows on real notes', () => {
+  it('says nothing of the kind when it shows on real notes', async () => {
     config.headerButtons[0].noteTypes = ['task']
     const wrapper = open()
 
-    expect(wrapper.text()).not.toContain('No note in this vault')
-    expect(badges(wrapper)).not.toContain('Shows nowhere')
+    expect(warning(wrapper).exists()).toBe(false)
+    await wrapper.get('button[aria-label="Change this button"]').trigger('click')
+    expect(seen(wrapper)).not.toContain('No note in this vault')
+  })
+
+  it('says nothing of it while the button is switched off', () => {
+    config.headerButtons[0].noteTypes = ['tasks']
+    config.headerButtons[0].enabled = false
+    const wrapper = open()
+
+    expect(warning(wrapper).exists()).toBe(false)
+    expect(wrapper.find('.abele-header-buttons__row').classes()).toContain(
+      'abele-header-buttons__row_off'
+    )
   })
 })
 
@@ -243,7 +275,7 @@ describe('a header button that runs a command', () => {
 
   it('is what a new button is, shown on every note until told otherwise', async () => {
     config.headerButtons = []
-    const wrapper = open()
+    const wrapper = await openEditing()
 
     await buttonWith(wrapper, 'Add button').trigger('click')
 
@@ -256,7 +288,7 @@ describe('a header button that runs a command', () => {
   it('takes its command from the searchable list, and its name and icon with it', async () => {
     vi.spyOn(RunnablePicker, 'pickCommand').mockResolvedValue(BOLD as never)
     config.headerButtons = []
-    const wrapper = open()
+    const wrapper = await openEditing()
     await buttonWith(wrapper, 'Add button').trigger('click')
 
     await buttonWith(wrapper, 'Choose command...').trigger('click')
@@ -275,7 +307,7 @@ describe('a header button that runs a command', () => {
     config.headerButtons = [
       normalizeHeaderButton({ id: 'c', name: 'Mine', icon: 'star', runs: 'command' }),
     ]
-    const wrapper = open()
+    const wrapper = await openEditing()
 
     await buttonWith(wrapper, 'Choose command...').trigger('click')
     await flushPromises()
@@ -287,7 +319,7 @@ describe('a header button that runs a command', () => {
     config.headerButtons = [
       normalizeHeaderButton({ id: 'c', runs: 'command', commandId: BOLD.id, scriptName: 'Fetch' }),
     ]
-    const wrapper = open()
+    const wrapper = await openEditing()
 
     await runsDropdown(wrapper).vm.$emit('update:model-value', 'script')
     expect(config.headerButtons[0].runs).toBe('script')
@@ -300,7 +332,7 @@ describe('a header button that runs a command', () => {
 
   it('offers files other than notes, for a command button only', async () => {
     config.headerButtons = [normalizeHeaderButton({ id: 'c', runs: 'command' })]
-    const wrapper = open()
+    const wrapper = await openEditing()
 
     await settingNamed(wrapper, 'Also on other files')!.findComponent(Checkbox).vm.$emit('toggle')
     expect(config.headerButtons[0].otherFiles).toBe(true)
@@ -311,7 +343,7 @@ describe('a header button that runs a command', () => {
 
   it('is placed by tags, typed as a list', async () => {
     config.headerButtons = [normalizeHeaderButton({ id: 'c', runs: 'command' })]
-    const wrapper = open()
+    const wrapper = await openEditing()
 
     await settingNamed(wrapper, 'Tags')!
       .findComponent(Input)
@@ -320,14 +352,76 @@ describe('a header button that runs a command', () => {
     expect(config.headerButtons[0].tags).toEqual(['#work', 'project/site'])
   })
 
-  it('says it shows nowhere while its command is not there — its plugin switched off', () => {
+  it('says it shows nowhere while its command is not there — its plugin switched off', async () => {
     config.headerButtons = [
       normalizeHeaderButton({ id: 'c', runs: 'command', commandId: 'dataview:refresh' }),
     ]
-    const wrapper = open()
+    const wrapper = await openEditing()
 
-    expect(wrapper.findAllComponents(Badge).map((b) => b.props('text'))).toContain('Shows nowhere')
-    expect(wrapper.text()).toContain('not available')
+    const warning = wrapper.get('.abele-header-buttons__row .mod-warning')
+    expect(warning.text()).toMatch(/^Shows nowhere · /)
+    expect(warning.attributes('title')).toContain('not available')
     expect(buttonWith(wrapper, 'dataview:refresh').exists()).toBe(true)
+  })
+})
+
+describe('the list of header buttons', () => {
+  const second = normalizeHeaderButton({ id: 'b2', name: 'Refresh poster', runs: 'command' })
+  const names = (wrapper: ReturnType<typeof mount>) =>
+    wrapper.findAll('.abele-header-buttons__name').map((n) => n.text())
+
+  it('is one row a button, in header order, moved up and down from its row', async () => {
+    config.headerButtons = [config.headerButtons[0], second]
+    const wrapper = open()
+    expect(names(wrapper)).toEqual(['Fetch', 'Refresh poster'])
+    const rows = wrapper.findAll('.abele-header-buttons__row')
+    // The first cannot go earlier, nor the last later.
+    expect(rows[0].get('button[aria-label^="Move earlier"]').attributes('disabled')).toBeDefined()
+    expect(rows[1].get('button[aria-label^="Move later"]').attributes('disabled')).toBeDefined()
+
+    await rows[1].get('button[aria-label="Move earlier in the header"]').trigger('click')
+    expect(config.headerButtons.map((b) => b.id)).toEqual(['b2', 'b1'])
+    expect(names(wrapper)).toEqual(['Refresh poster', 'Fetch'])
+    // Nothing opened for it.
+    expect(wrapper.findComponent(ObsidianModal).exists()).toBe(false)
+  })
+
+  it('switches a button off from its row', async () => {
+    const wrapper = open()
+    await wrapper.get('.abele-header-buttons__row').findComponent(Checkbox).vm.$emit('toggle')
+    expect(config.headerButtons[0].enabled).toBe(false)
+  })
+
+  it('opens a button in a window named after it, what it runs first and where it shows after', async () => {
+    const wrapper = await openEditing()
+    expect(wrapper.findComponent(ObsidianModal).props('title')).toBe('Fetch')
+    const headings = wrapper
+      .findAllComponents(Setting)
+      .filter((st) => st.props('heading'))
+      .map((st) => st.props('name'))
+    expect(headings).toEqual(['What it runs', 'Where it shows'])
+    await buttonWith(wrapper, 'Done').trigger('click')
+    expect(wrapper.findComponent(ObsidianModal).exists()).toBe(false)
+  })
+
+  it('deletes a button from its window only once that is confirmed', async () => {
+    const wrapper = await openEditing()
+    await buttonWith(wrapper, 'Delete').trigger('click')
+    expect(config.headerButtons).toHaveLength(1)
+    const confirm = wrapper.findComponent(ConfirmModal)
+    expect(confirm.props('message')).toContain('Fetch')
+    confirm.vm.$emit('confirm')
+    await nextTick()
+    expect(config.headerButtons).toEqual([])
+    expect(wrapper.findComponent(ObsidianModal).exists()).toBe(false)
+  })
+
+  it('opens a new button in its window as soon as it is added', async () => {
+    config.headerButtons = []
+    const wrapper = open()
+    expect(wrapper.text()).toContain('No header buttons yet')
+    await buttonWith(wrapper, 'Add button').trigger('click')
+    expect(config.headerButtons).toHaveLength(1)
+    expect(wrapper.findComponent(ObsidianModal).props('title')).toBe('New button')
   })
 })

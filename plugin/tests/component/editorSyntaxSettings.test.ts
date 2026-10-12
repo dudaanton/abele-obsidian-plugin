@@ -3,6 +3,7 @@ import { nextTick } from 'vue'
 import { expect, it } from 'vitest'
 import OtherSettings from '@/components/settings/OtherSettings.vue'
 import Setting from '@/components/obsidian/Setting.vue'
+import Section from '@/components/obsidian/Section.vue'
 import Checkbox from '@/components/obsidian/Checkbox.vue'
 import { AbeleConfig } from '@/services/AbeleConfig'
 import { FakeSettings } from '../helpers/fakeSettings'
@@ -64,5 +65,50 @@ it('toggles the current setting even when a version update has not rendered yet'
   } finally {
     screen.unmount()
     config.destroy()
+  }
+})
+
+it('sets the other settings out under headings by what they are about', () => {
+  useVault([])
+  AbeleConfig.getInstance().applySettings(undefined)
+  const screen = mount(OtherSettings)
+  try {
+    const sections = screen.findAllComponents(Section)
+    expect(sections.map((s) => s.props('title'))).toEqual([
+      'Look',
+      'Drawn by Abele in a note',
+      'Opening notes',
+      'Maps',
+      'The plugin',
+    ])
+    const under = (title: string) =>
+      sections
+        .find((s) => s.props('title') === title)!
+        .findAllComponents(Setting)
+        .map((s) => s.props('name'))
+    expect(under('Look')).toEqual([
+      'Full-width sidebars',
+      'Half-width sidebars on tablet',
+      'CSS snippets folder',
+    ])
+    expect(under('Drawn by Abele in a note')).toEqual(
+      expect.arrayContaining([
+        'Own drawing of properties',
+        'Counter properties',
+        'Mermaid viewer',
+        'Open canvases in Abele',
+        'Editor syntax highlighting',
+      ])
+    )
+    expect(under('Opening notes')).toEqual(['Remember where notes were left'])
+    expect(under('Maps')).toEqual(['Coordinates property', 'Map style URL'])
+    expect(under('The plugin')).toEqual(['Changelog', 'Keyboard diagnostics'])
+    // Nothing was dropped on the way: every setting is under one of the headings.
+    const all = screen.findAllComponents(Setting).map((s) => s.props('name'))
+    expect(
+      sections.flatMap((s) => s.findAllComponents(Setting).map((x) => x.props('name')))
+    ).toEqual(all)
+  } finally {
+    screen.unmount()
   }
 })

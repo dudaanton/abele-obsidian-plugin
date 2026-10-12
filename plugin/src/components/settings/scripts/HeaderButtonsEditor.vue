@@ -1,244 +1,257 @@
 <template>
   <Section title="Header buttons">
     <template #desc>
-      Buttons in the header of a note. One that runs a command — any command Obsidian has: its own,
-      another plugin's, this plugin's or a script's — sits among the icons at the top right of the
-      note; on a phone the ones after the first {{ phoneRoom }} go into the note's menu. One that
-      runs a script sits in the header inside the note and can hand the script parameters. A button
-      shows on notes of its types, with its tags, in its folders, or on every note, and only where
-      the note's properties fit its conditions, in the order listed here. Script parameters accept
-      <code>{{ variableExamples }}</code> and any frontmatter field of the note, such as
-      <code>{{ frontmatterExample }}</code
-      >.
+      Buttons above a note's text that run a command or a script, on the notes you choose, in this
+      order. A script can be handed the note's values: <code>{{ variableExamples }}</code> or any
+      property, <code>{{ frontmatterExample }}</code>.
     </template>
 
-    <EmptyState v-if="!buttons.length" text="No header buttons yet." />
-
-    <CardGrid v-else stack>
-      <Card
-        v-for="(button, idx) in buttons"
-        :key="button.id"
-        :title="button.name || 'Unnamed button'"
-        :icon="button.icon || 'play'"
-        :subtitle="subtitleOf(button)"
-      >
-        <template #badges>
-          <Badge v-if="button.enabled === false" text="Off" />
-          <Badge v-else-if="problemsOf(button).nowhere" text="Shows nowhere" color="orange" />
-        </template>
-        <template #actions>
-          <Icon
-            icon="arrow-up"
-            :disabled="idx === 0"
-            :tooltip="idx === 0 ? 'Move earlier — already the first' : 'Move earlier in the header'"
-            @click="move(idx, -1)"
-          />
-          <Icon
-            icon="arrow-down"
-            :disabled="idx === buttons.length - 1"
-            :tooltip="
-              idx === buttons.length - 1
-                ? 'Move later — already the last'
-                : 'Move later in the header'
-            "
-            @click="move(idx, 1)"
-          />
-          <Icon icon="trash" tooltip="Delete this button" @click="pendingRemoval = button" />
-        </template>
-
-        <p
-          v-if="button.enabled !== false && problemsOf(button).nowhere"
-          class="setting-item-description abele-header-buttons__warning"
+    <!-- One row per button, in the order they stand in the header: its glyph and name, what it
+         runs and where in a quiet line (or that it shows nowhere), moved up and down, on or off,
+         and the rest in a window of its own. -->
+    <Setting
+      v-for="(button, idx) in buttons"
+      :key="button.id"
+      class="abele-header-buttons__row"
+      :class="{ 'abele-header-buttons__row_off': button.enabled === false }"
+    >
+      <template #name>
+        <span class="abele-header-buttons__name"
+          ><Icon :icon="button.icon || 'play'" no-hover class="abele-header-buttons__glyph" />{{
+            button.name || 'Unnamed button'
+          }}</span
         >
-          {{ problemsOf(button).nowhere }}
-        </p>
+      </template>
+      <template #desc>
+        <span
+          v-if="button.enabled !== false && problemsOf(button).nowhere"
+          class="mod-warning"
+          :title="problemsOf(button).nowhere"
+          >Shows nowhere · {{ subtitleOf(button) }}</span
+        >
+        <template v-else>{{ subtitleOf(button) }}</template>
+      </template>
+      <Icon
+        icon="arrow-up"
+        :disabled="idx === 0"
+        :tooltip="idx === 0 ? 'Move earlier — already the first' : 'Move earlier in the header'"
+        @click="move(idx, -1)"
+      />
+      <Icon
+        icon="arrow-down"
+        :disabled="idx === buttons.length - 1"
+        :tooltip="
+          idx === buttons.length - 1 ? 'Move later — already the last' : 'Move later in the header'
+        "
+        @click="move(idx, 1)"
+      />
+      <Icon icon="settings" tooltip="Change this button" @click="editing = idx" />
+      <Checkbox
+        :is-enabled="button.enabled !== false"
+        @toggle="updateFlag(idx, 'enabled', button.enabled === false)"
+      />
+    </Setting>
+    <Setting
+      :name="buttons.length ? 'Add another button' : 'No header buttons yet'"
+      desc="A command or a script, on the notes you choose."
+    >
+      <Button text="Add button" tooltip="Add a header button and set it up" @click="addAndEdit" />
+    </Setting>
 
-        <Setting name="Show this button" desc="Off keeps it set up here without showing it.">
-          <Checkbox
-            :is-enabled="button.enabled !== false"
-            @toggle="updateFlag(idx, 'enabled', button.enabled === false)"
+    <ObsidianModal
+      v-if="editing !== null && edited"
+      :title="edited.name || 'New button'"
+      @close="editing = null"
+    >
+      <Setting heading name="What it runs" />
+      <Setting name="Runs" desc="A command from anywhere in Obsidian, or one of your scripts.">
+        <Dropdown
+          class="abele-header-buttons__runs"
+          :options="RUNS_OPTIONS"
+          :model-value="runsOf(edited)"
+          @update:model-value="updateRuns(editing, $event)"
+        />
+      </Setting>
+      <Setting
+        name="Name"
+        :desc="
+          isCommand(edited)
+            ? 'Shown as the button\'s tooltip, and in the menu where it does not fit.'
+            : 'Shown on the button, or as its tooltip when it is icon only.'
+        "
+      >
+        <Input
+          :model-value="edited.name"
+          placeholder="e.g. Fetch details"
+          @update:model-value="updateField(editing, 'name', $event)"
+        />
+      </Setting>
+      <Setting name="Icon" desc="Shown on the button in the header.">
+        <Button
+          :icon="edited.icon || 'play'"
+          :text="edited.icon || 'play'"
+          tooltip="Choose the icon from the whole set, by picture or by name"
+          @click="pickingIconFor = editing"
+        />
+      </Setting>
+      <Setting v-if="isCommand(edited)" name="Command" desc="Command the button runs.">
+        <Button
+          :text="edited.commandId ? commandName(edited.commandId) : 'Choose command...'"
+          tooltip="Search every command Obsidian has for the one this button runs"
+          @click="chooseCommand(editing)"
+        />
+      </Setting>
+      <Setting
+        v-if="!isCommand(edited)"
+        name="Icon only"
+        desc="Leave the name off the header, for a header already full."
+      >
+        <Checkbox
+          :is-enabled="edited.iconOnly === true"
+          @toggle="updateFlag(editing, 'iconOnly', !edited.iconOnly)"
+        />
+      </Setting>
+      <Setting v-if="!isCommand(edited)" name="Script" desc="Script the button runs.">
+        <Button
+          :text="edited.scriptName || 'Choose script...'"
+          tooltip="Search the scripts for the one this button runs"
+          @click="chooseScript(editing)"
+        />
+      </Setting>
+
+      <template v-for="param in isCommand(edited) ? [] : paramsOf(edited)" :key="param.name">
+        <Setting :name="param.name" :desc="paramDescription(param)">
+          <Input
+            :model-value="edited.params[param.name] || ''"
+            :placeholder="param.default || ''"
+            @update:model-value="updateParam(editing, param.name, $event)"
           />
         </Setting>
-        <Setting name="Runs" desc="A command from anywhere in Obsidian, or one of your scripts.">
-          <Dropdown
-            class="abele-header-buttons__runs"
-            :options="RUNS_OPTIONS"
-            :model-value="runsOf(button)"
-            @update:model-value="updateRuns(idx, $event)"
+      </template>
+      <p
+        v-if="!isCommand(edited) && edited.scriptName && !paramsOf(edited).length"
+        class="setting-item-description"
+      >
+        This script takes no parameters.
+      </p>
+
+      <Setting heading name="Where it shows" />
+      <Setting name="On every note" desc="Whatever its type, tags or folder.">
+        <Checkbox
+          :is-enabled="edited.allNotes === true"
+          @toggle="updateFlag(editing, 'allNotes', !edited.allNotes)"
+        />
+      </Setting>
+      <template v-if="!edited.allNotes">
+        <Setting name="Note types" :desc="typesDescription(edited)">
+          <Input
+            :model-value="edited.noteTypes.join(', ')"
+            placeholder="e.g. movie, book"
+            @update:model-value="updateList(editing, 'noteTypes', $event)"
+          />
+        </Setting>
+        <Setting name="Folders" :desc="foldersDescription(edited)">
+          <Input
+            :model-value="(edited.folders ?? []).join(', ')"
+            placeholder="e.g. Films, Library/Books"
+            @update:model-value="updateList(editing, 'folders', $event)"
           />
         </Setting>
         <Setting
-          name="Name"
-          :desc="
-            isCommand(button)
-              ? 'Shown as the button\'s tooltip, and in the menu where it does not fit.'
-              : 'Shown on the button, or as its tooltip when it is icon only.'
-          "
+          name="Tags"
+          desc="Comma-separated, with or without #. Notes with one of these, or a tag nested under it, show the button too."
         >
           <Input
-            :model-value="button.name"
-            placeholder="e.g. Fetch details"
-            @update:model-value="updateField(idx, 'name', $event)"
+            :model-value="(edited.tags ?? []).join(', ')"
+            placeholder="e.g. work, project/site"
+            @update:model-value="updateList(editing, 'tags', $event)"
           />
         </Setting>
-        <Setting name="Icon" desc="Shown on the button in the header.">
-          <Button
-            :icon="button.icon || 'play'"
-            :text="button.icon || 'play'"
-            tooltip="Choose the icon from the whole set, by picture or by name"
-            @click="pickingIconFor = idx"
-          />
-        </Setting>
-        <Setting v-if="isCommand(button)" name="Command" desc="Command the button runs.">
-          <Button
-            :text="button.commandId ? commandName(button.commandId) : 'Choose command...'"
-            tooltip="Search every command Obsidian has for the one this button runs"
-            @click="chooseCommand(idx)"
-          />
-        </Setting>
-        <Setting
-          v-if="!isCommand(button)"
-          name="Icon only"
-          desc="Leave the name off the header, for a header already full."
-        >
-          <Checkbox
-            :is-enabled="button.iconOnly === true"
-            @toggle="updateFlag(idx, 'iconOnly', !button.iconOnly)"
-          />
-        </Setting>
-        <Setting v-if="!isCommand(button)" name="Script" desc="Script the button runs.">
-          <Button
-            :text="button.scriptName || 'Choose script...'"
-            tooltip="Search the scripts for the one this button runs"
-            @click="chooseScript(idx)"
-          />
-        </Setting>
+      </template>
+      <Setting
+        v-if="isCommand(edited)"
+        name="Also on other files"
+        desc="PDFs, canvases, books and other files opened in a tab, as far as its folders and tags reach. They have no type or properties."
+      >
+        <Checkbox
+          :is-enabled="edited.otherFiles === true"
+          @toggle="updateFlag(editing, 'otherFiles', !edited.otherFiles)"
+        />
+      </Setting>
 
-        <template v-for="param in isCommand(button) ? [] : paramsOf(button)" :key="param.name">
-          <Setting :name="param.name" :desc="paramDescription(param)">
-            <Input
-              :model-value="button.params[param.name] || ''"
-              :placeholder="param.default || ''"
-              @update:model-value="updateParam(idx, param.name, $event)"
-            />
-          </Setting>
-        </template>
-        <p
-          v-if="!isCommand(button) && button.scriptName && !paramsOf(button).length"
-          class="setting-item-description"
-        >
-          This script takes no parameters.
-        </p>
-
-        <Setting name="On every note" desc="Whatever its type, tags or folder.">
-          <Checkbox
-            :is-enabled="button.allNotes === true"
-            @toggle="updateFlag(idx, 'allNotes', !button.allNotes)"
+      <Setting
+        name="Only when its properties"
+        :desc="
+          edited.conditions?.length
+            ? 'The note must also have these in its frontmatter.'
+            : 'Show it only on notes whose frontmatter fits, a status or a filled-in date, say.'
+        "
+      >
+        <Button
+          text="Add condition"
+          tooltip="Ask for one more property of the note"
+          @click="addCondition(editing)"
+        />
+      </Setting>
+      <Setting
+        v-if="(edited.conditions?.length ?? 0) > 1"
+        name="Conditions needed"
+        desc="Whether the note has to fit every condition below or any one of them."
+      >
+        <Dropdown
+          class="abele-header-buttons__mode"
+          :options="MODE_OPTIONS"
+          :model-value="edited.conditionMode ?? 'all'"
+          @update:model-value="updateMode(editing, $event)"
+        />
+      </Setting>
+      <Setting
+        v-for="(condition, cIdx) in edited.conditions ?? []"
+        :key="cIdx"
+        :name="condition.property.trim() || 'Property'"
+        :desc="describeCondition(condition)"
+      >
+        <div class="abele-header-buttons__condition">
+          <Input
+            class="abele-header-buttons__property"
+            :model-value="condition.property"
+            placeholder="e.g. status"
+            @update:model-value="updateCondition(editing, cIdx, { property: $event })"
           />
-        </Setting>
-        <template v-if="!button.allNotes">
-          <Setting name="Note types" :desc="typesDescription(button)">
-            <Input
-              :model-value="button.noteTypes.join(', ')"
-              placeholder="e.g. movie, book"
-              @update:model-value="updateList(idx, 'noteTypes', $event)"
-            />
-          </Setting>
-          <Setting name="Folders" :desc="foldersDescription(button)">
-            <Input
-              :model-value="(button.folders ?? []).join(', ')"
-              placeholder="e.g. Films, Library/Books"
-              @update:model-value="updateList(idx, 'folders', $event)"
-            />
-          </Setting>
-          <Setting
-            name="Tags"
-            desc="Comma-separated, with or without #. Notes with one of these, or a tag nested under it, show the button too."
-          >
-            <Input
-              :model-value="(button.tags ?? []).join(', ')"
-              placeholder="e.g. work, project/site"
-              @update:model-value="updateList(idx, 'tags', $event)"
-            />
-          </Setting>
-        </template>
-        <Setting
-          v-if="isCommand(button)"
-          name="Also on other files"
-          desc="PDFs, canvases, books and other files opened in a tab, as far as its folders and tags reach. They have no type or properties."
-        >
-          <Checkbox
-            :is-enabled="button.otherFiles === true"
-            @toggle="updateFlag(idx, 'otherFiles', !button.otherFiles)"
-          />
-        </Setting>
-
-        <Setting
-          name="Only when its properties"
-          :desc="
-            button.conditions?.length
-              ? 'The note must also have these in its frontmatter.'
-              : 'Show it only on notes whose frontmatter fits, a status or a filled-in date, say.'
-          "
-        >
-          <Button
-            text="Add condition"
-            tooltip="Ask for one more property of the note"
-            @click="addCondition(idx)"
-          />
-        </Setting>
-        <Setting
-          v-if="(button.conditions?.length ?? 0) > 1"
-          name="Conditions needed"
-          desc="Whether the note has to fit every condition below or any one of them."
-        >
           <Dropdown
-            class="abele-header-buttons__mode"
-            :options="MODE_OPTIONS"
-            :model-value="button.conditionMode ?? 'all'"
-            @update:model-value="updateMode(idx, $event)"
+            class="abele-header-buttons__test"
+            :options="TEST_OPTIONS"
+            :model-value="condition.test"
+            @update:model-value="updateCondition(editing, cIdx, { test: $event as PropertyTest })"
           />
-        </Setting>
-        <Setting
-          v-for="(condition, cIdx) in button.conditions ?? []"
-          :key="cIdx"
-          :name="condition.property.trim() || 'Property'"
-          :desc="describeCondition(condition)"
-        >
-          <div class="abele-header-buttons__condition">
-            <Input
-              class="abele-header-buttons__property"
-              :model-value="condition.property"
-              placeholder="e.g. status"
-              @update:model-value="updateCondition(idx, cIdx, { property: $event })"
-            />
-            <Dropdown
-              class="abele-header-buttons__test"
-              :options="TEST_OPTIONS"
-              :model-value="condition.test"
-              @update:model-value="updateCondition(idx, cIdx, { test: $event as PropertyTest })"
-            />
-            <Input
-              v-if="comparesValue(condition.test)"
-              class="abele-header-buttons__value"
-              :model-value="condition.value"
-              placeholder="e.g. todo"
-              @update:model-value="updateCondition(idx, cIdx, { value: $event })"
-            />
-            <Icon
-              class="abele-header-buttons__remove"
-              icon="x"
-              tooltip="Remove this condition"
-              @click="removeCondition(idx, cIdx)"
-            />
-          </div>
-        </Setting>
-      </Card>
-    </CardGrid>
-
-    <div class="abele-header-buttons__actions">
-      <Button text="Add button" tooltip="Add another header button" @click="addButton" />
-    </div>
+          <Input
+            v-if="comparesValue(condition.test)"
+            class="abele-header-buttons__value"
+            :model-value="condition.value"
+            placeholder="e.g. todo"
+            @update:model-value="updateCondition(editing, cIdx, { value: $event })"
+          />
+          <Icon
+            class="abele-header-buttons__remove"
+            icon="x"
+            tooltip="Remove this condition"
+            @click="removeCondition(editing, cIdx)"
+          />
+        </div>
+      </Setting>
+      <template #footer>
+        <div class="abele-modal__actions">
+          <Button
+            text="Delete"
+            warning
+            tooltip="Delete this button"
+            class="abele-header-buttons__delete"
+            @click="pendingRemoval = edited"
+          />
+          <Button text="Done" accent tooltip="Close this window; changes are kept as you make them" @click="editing = null" />
+        </div>
+      </template>
+    </ObsidianModal>
 
     <IconPicker
       v-if="pickingIconFor !== null && buttons[pickingIconFor]"
@@ -260,7 +273,7 @@
 </template>
 
 <script setup lang="ts">
-import { ref } from 'vue'
+import { computed, ref } from 'vue'
 import { nanoid } from 'nanoid'
 import Setting from '../../obsidian/Setting.vue'
 import Section from '../../obsidian/Section.vue'
@@ -268,10 +281,7 @@ import Checkbox from '../../obsidian/Checkbox.vue'
 import Input from '../../obsidian/Input.vue'
 import Button from '../../obsidian/Button.vue'
 import Icon from '../../obsidian/Icon.vue'
-import Card from '../../obsidian/Card.vue'
-import CardGrid from '../../obsidian/CardGrid.vue'
-import Badge from '../../obsidian/Badge.vue'
-import EmptyState from '../../obsidian/EmptyState.vue'
+import ObsidianModal from '../../obsidian/Modal.vue'
 import ConfirmModal from '../../obsidian/ConfirmModal.vue'
 import Dropdown from '../../obsidian/Dropdown.vue'
 import IconPicker from '../../obsidian/IconPicker.vue'
@@ -287,7 +297,7 @@ import { TFolder } from 'obsidian'
 import { findScriptByName } from '@/scripting/runScript'
 import { pickCommand, pickScript } from '@/helpers/suggesters/RunnablePicker'
 import { buttonRuns } from '@/helpers/headerButtons'
-import { PHONE_ROOM, hasCommand } from '@/headerButtons/viewActions'
+import { hasCommand } from '@/headerButtons/viewActions'
 import { GlobalStore } from '@/stores/GlobalStore'
 import { useSettingsSave } from '@/composables/useSettingsSave'
 import type { ScriptParam } from '@/scripting/types'
@@ -328,7 +338,6 @@ const vaultShape = ((): VaultShape => {
   }
 })()
 
-const phoneRoom = PHONE_ROOM
 
 const RUNS_OPTIONS = [
   { value: 'command', display: 'A command' },
@@ -458,7 +467,17 @@ const addButton = () => {
 const remove = (id: string) => {
   buttons.value = buttons.value.filter((b) => b.id !== id)
   pendingRemoval.value = null
+  editing.value = null
   save()
+}
+
+/** The button open in its window, by its place in the list. */
+const editing = ref<number | null>(null)
+const edited = computed(() => (editing.value === null ? null : buttons.value[editing.value]))
+
+const addAndEdit = () => {
+  addButton()
+  editing.value = buttons.value.length - 1
 }
 
 /** The order here is the order in the header. */
@@ -580,12 +599,31 @@ const updateParam = (idx: number, name: string, value: string) => {
 </script>
 
 <style lang="scss">
-.abele-header-buttons__actions {
-  margin-top: var(--size-4-3);
+.abele-header-buttons__name {
+  display: inline-flex;
+  align-items: center;
+  gap: var(--size-4-2);
 }
 
-.abele-header-buttons__warning {
-  color: var(--text-warning);
+.abele-header-buttons__glyph {
+  flex: 0 0 auto;
+  --icon-size: var(--icon-s);
+}
+
+// Off reads as off: the name quieter, the switch says the rest.
+.abele-header-buttons__row_off .abele-header-buttons__name {
+  color: var(--text-muted);
+}
+
+// Order, change and on at the end of the row, which stays one line.
+.abele-header-buttons__row > .setting-item-control {
+  flex-wrap: nowrap;
+  justify-content: flex-end;
+  gap: var(--size-2-2);
+}
+
+.abele-header-buttons__delete {
+  margin-inline-end: auto;
 }
 
 /**

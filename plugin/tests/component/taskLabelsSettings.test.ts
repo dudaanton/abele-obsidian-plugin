@@ -8,7 +8,7 @@ import { mount, type VueWrapper } from '@vue/test-utils'
 import { nextTick } from 'vue'
 import TaskLabelsSettings from '@/components/settings/TaskLabelsSettings.vue'
 import Setting from '@/components/obsidian/Setting.vue'
-import Badge from '@/components/obsidian/Badge.vue'
+import LabelDot from '@/components/obsidian/LabelDot.vue'
 import Button from '@/components/obsidian/Button.vue'
 import { AbeleConfig } from '@/services/AbeleConfig'
 import { GlobalStore } from '@/stores/GlobalStore'
@@ -50,13 +50,15 @@ afterEach(() => {
 const rows = (v: VueWrapper) =>
   v
     .findAllComponents(Setting)
-    .filter((s) => s.findComponent(Badge).exists())
-    .map((s) => s.findComponent(Badge).props('text'))
+    .filter((s) => s.findComponent(LabelDot).exists())
+    .map((s) => s.findComponent(LabelDot).props('text'))
 
 const rowFor = (v: VueWrapper, label: string) => {
   const row = v
     .findAllComponents(Setting)
-    .find((s) => s.findComponent(Badge).exists() && s.findComponent(Badge).props('text') === label)
+    .find(
+      (s) => s.findComponent(LabelDot).exists() && s.findComponent(LabelDot).props('text') === label
+    )
   if (!row) throw new Error(`no row for ${label}: ${rows(v).join(', ')}`)
   return row
 }
@@ -71,8 +73,15 @@ describe('task label settings screen', () => {
   it('previews each label in its colour', () => {
     view = mount(TaskLabelsSettings)
 
-    expect(rowFor(view, 'Urgent').findComponent(Badge).props('color')).toBe('red')
-    expect(rowFor(view, 'work').findComponent(Badge).props('color')).toBe('grey')
+    expect(rowFor(view, 'Urgent').findComponent(LabelDot).props('color')).toBe('red')
+    expect(rowFor(view, 'work').findComponent(LabelDot).props('color')).toBe('grey')
+    // As a task row draws it: a dot of the colour beside the word, nothing else in the row's
+    // control but the colour to choose.
+    const urgent = rowFor(view, 'Urgent')
+    expect(urgent.get('.abele-label-dot').classes()).toContain('abele-label-dot_red')
+    expect(urgent.get('.abele-label-dot').text()).toBe('Urgent')
+    expect(urgent.findAll('select')).toHaveLength(1)
+    expect(urgent.findAll('input, button')).toHaveLength(0)
   })
 
   it('stores a colour chosen for a label', async () => {

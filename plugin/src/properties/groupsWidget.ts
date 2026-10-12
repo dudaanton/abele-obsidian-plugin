@@ -8,7 +8,7 @@
  * An empty property has no type of its own yet and is drawn as text; it gets the list editor
  * here too, so the first group goes in the way the rest do.
  */
-import { SuggestModal, setIcon, TFile, type App } from 'obsidian'
+import { SuggestModal, TFile, type App } from 'obsidian'
 import './kinds.css'
 import {
   addGroup,
@@ -137,11 +137,20 @@ export function renderGroups(
     ctx.onChange(next)
   }
 
-  const button = el.createDiv({
-    cls: 'clickable-icon abele-property-groups__pick',
-    attr: { role: 'button', 'aria-label': 'Add a group' },
+  // Quiet words after the last group, where the labels say "Add label": not a glyph at the far
+  // end of the cell, a hand's breadth from the groups it adds to.
+  const pills = el.querySelector<HTMLElement>('.multi-select-container') ?? el
+  const button = pills.createDiv({
+    cls: 'abele-property-groups__pick',
+    text: 'Add group',
+    attr: { role: 'button', tabindex: '0', 'aria-label': 'Add a group' },
   })
-  setIcon(button, 'layers')
+  button.addEventListener('keydown', (e) => {
+    if (e.key === 'Enter' || e.key === ' ') {
+      e.preventDefault()
+      button.click()
+    }
+  })
   button.addEventListener('click', (e) => {
     e.preventDefault()
     e.stopPropagation()

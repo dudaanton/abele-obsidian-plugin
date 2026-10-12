@@ -124,4 +124,37 @@ defineProps<{
     }
   }
 }
+
+/**
+ * Settings one after another read as Obsidian's own group: one card, a hairline between the
+ * rows, the round corners only at the ends. On its own Obsidian draws every row as a card of its
+ * own with a gap, and a page of them was a stack of slabs whose words started at a different
+ * edge from the heading above. Done here, on the run of siblings, so every list of settings in
+ * the plugin is grouped without each place wrapping its rows.
+ */
+.abele-obsidian-setting:not(.setting-item-heading) {
+  padding: var(--setting-items-padding-y) var(--setting-items-padding-x);
+  margin-bottom: 0;
+  border-radius: 0;
+
+  &:not(:has(+ .abele-obsidian-setting:not(.setting-item-heading))) {
+    border-end-start-radius: var(--setting-items-radius);
+    border-end-end-radius: var(--setting-items-radius);
+    margin-bottom: var(--size-4-2);
+  }
+
+  &:not(.abele-obsidian-setting:not(.setting-item-heading) + &) {
+    border-start-start-radius: var(--setting-items-radius);
+    border-start-end-radius: var(--setting-items-radius);
+  }
+
+  & + &::before {
+    content: '';
+    position: absolute;
+    top: 0;
+    inset-inline: var(--setting-items-padding-x);
+    border-top: var(--setting-items-divider-width, 1px) solid
+      var(--setting-items-divider-color, var(--background-modifier-border));
+  }
+}
 </style>

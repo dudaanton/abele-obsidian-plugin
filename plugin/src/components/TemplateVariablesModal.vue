@@ -168,7 +168,7 @@ onMounted(() => {
   // Resolve preview URLs for pre-filled image values
   for (const v of props.variables) {
     if (v.type === 'image' && values.value.has(v.name)) {
-      resolveImageUrl(v.name, values.value.get(v.name)!)
+      resolveImageUrl(v.name, values.value.get(v.name))
     }
   }
 })
@@ -300,13 +300,14 @@ function confirmValues() {
 .variables-list {
   display: flex;
   flex-direction: column;
-  gap: var(--size-4-2);
+  /* A name is close to its own field and well apart from the field above it. */
+  gap: var(--size-4-4);
 }
 
 .variable-item {
   display: flex;
   flex-direction: column;
-  gap: var(--size-4-1);
+  gap: var(--size-2-3);
 }
 
 /* A field's name as a setting's: the text colour at the interface size, not a heading. */
@@ -342,8 +343,10 @@ function confirmValues() {
   color: var(--text-muted);
   font-size: var(--font-small);
   align-self: flex-start;
-  padding: 2px 6px;
+  padding: var(--size-2-1) var(--size-2-3);
   border-radius: var(--radius-s);
+  /* Its glyph, not its box, on the fields' edge. */
+  margin-inline-start: calc(-1 * var(--size-2-3) - 1px);
 }
 
 .variable-image {
@@ -386,6 +389,8 @@ function confirmValues() {
 .variable-image__actions {
   display: flex;
   gap: var(--size-4-1);
+  /* The first glyph, not its button's box, on the fields' edge. */
+  margin-inline-start: calc(-1 * var(--size-4-2) - 1px);
 }
 
 .variable-image__actions .clickable-icon {
@@ -393,7 +398,7 @@ function confirmValues() {
   align-items: center;
   gap: var(--size-4-1);
   font-size: var(--font-small);
-  padding: 2px 8px;
+  padding: var(--size-2-1) var(--size-4-2);
   border-radius: var(--radius-s);
   color: var(--text-muted);
 }

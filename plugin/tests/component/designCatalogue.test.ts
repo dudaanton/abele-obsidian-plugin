@@ -64,4 +64,23 @@ describe('test-only design catalogue', () => {
     expect(view.text()).not.toContain('Add comment')
     view.unmount()
   })
+  it('shows list entries under a group heading, with codes, label dots and an unfolding note', async () => {
+    const view = mount(DesignCatalogue, {
+      props: { page: 'navigation' },
+      global: { stubs: { Modal: { template: '<div><slot /></div>' } } },
+    })
+    expect(view.findAll('.abele-group-heading__label').map((l) => l.text())).toContain('Garden')
+    const rows = view.findAll('.abele-entry-row')
+    expect(rows).toHaveLength(2)
+    expect(rows[0].classes()).toContain('is-active')
+    expect(rows[0].get('.abele-entry-row__codes').text()).toBe('09:30')
+    expect(rows[1].findAll('.abele-label-dot').map((d) => d.classes())).toEqual([
+      expect.arrayContaining(['abele-label-dot_orange']),
+      ['abele-label-dot'],
+    ])
+    expect(rows[0].find('.abele-entry-row__detail').exists()).toBe(false)
+    await rows[0].get('button[aria-label="Show note"]').trigger('click')
+    expect(rows[0].get('.abele-entry-row__detail').text()).toBe('Both beds by the shed.')
+    view.unmount()
+  })
 })

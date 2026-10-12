@@ -9,7 +9,12 @@
       />
     </template>
 
-    <EmptyState v-if="!runs.length" text="Nothing has run yet this session." />
+    <EmptyState
+      v-if="!runs.length"
+      icon="scroll-text"
+      title="Nothing has run yet"
+      text="Each script run this session shows here: what it said as it went and what came of it."
+    />
 
     <div v-else class="abele-runs__list">
       <div
@@ -50,59 +55,52 @@
         </div>
 
         <div v-if="opened.has(run.id)" class="abele-runs__detail">
-          <div v-if="run.trigger" class="abele-runs__path">{{ run.trigger }}</div>
-          <div class="abele-runs__path">{{ run.path }}</div>
-
-          <div v-if="paramList(run).length" class="abele-runs__params">
-            <span v-for="[name, value] in paramList(run)" :key="name" class="abele-runs__param">
-              <span class="abele-runs__param-name">{{ name }}</span>
-              {{ value }}
-            </span>
+          <!-- Where it came from and with what, as one quiet line of facts. -->
+          <div class="abele-runs__facts">
+            <span v-if="run.trigger">{{ run.trigger }}</span>
+            <span class="abele-runs__path">{{ run.path }}</span>
+            <span v-for="[name, value] in paramList(run)" :key="name" class="abele-runs__param"
+              >{{ name }}: <span class="abele-runs__param-value">{{ value }}</span></span
+            >
           </div>
 
           <!-- The log is what the script said as it went; the result is what it handed back. -->
           <div v-if="run.log.length" class="abele-runs__log">
-            <div v-for="(line, i) in run.log" :key="i" class="abele-runs__line">
+            <p v-for="(line, i) in run.log" :key="i" class="abele-runs__line">
               <span class="abele-runs__line-at">{{ clock(line.at) }}</span>
-              <span class="abele-runs__line-text">{{ line.text }}</span>
-            </div>
+              {{ line.text }}
+            </p>
           </div>
 
           <div v-if="run.error" class="abele-runs__error">{{ run.error }}</div>
           <div v-else-if="finalResult(run)" class="abele-runs__result">{{ finalResult(run) }}</div>
 
+          <!-- What can be done with it, as glyphs in a row; the words are in their tooltips. -->
           <div class="abele-runs__actions">
-            <Icon icon="file-code-2" tooltip="Open the script" @click="openScript(run)" />
-            <div class="abele-runs__buttons">
-              <Button
-                v-if="run.status === 'running'"
-                text="Stop"
-                warning
-                tooltip="Stop this run"
-                @click="stop(run)"
+            <Icon
+              v-if="run.status === 'running'"
+              class="abele-runs__stop"
+              icon="square"
+              label="Stop this run"
+              @click="stop(run)"
+            />
+            <!-- An interceptor ran on a message a chat sent; without one there is nothing to run it on. -->
+            <template v-else-if="run.source !== 'interceptor'">
+              <Icon icon="rotate-ccw" label="Run again with the same values" @click="again(run)" />
+              <Icon
+                icon="sliders-horizontal"
+                label="Run again, asking for the values"
+                @click="asNew(run)"
               />
-              <template v-else>
-                <Icon
-                  icon="x"
-                  tooltip="Take this run off the list"
-                  @click="ScriptRuns.getInstance().forget(run.id)"
-                />
-                <!-- An interceptor ran on a message a chat sent; without one there is nothing to run it on. -->
-                <template v-if="run.source !== 'interceptor'">
-                  <Button
-                    text="Run again"
-                    tooltip="Run it once more with the same values"
-                    @click="again(run)"
-                  />
-                  <Button
-                    text="Run as new"
-                    accent
-                    tooltip="Ask for the values again, starting from these"
-                    @click="asNew(run)"
-                  />
-                </template>
-              </template>
-            </div>
+            </template>
+            <Icon icon="file-code-2" label="Open the script" @click="openScript(run)" />
+            <Icon
+              v-if="run.status !== 'running'"
+              class="abele-runs__forget"
+              icon="x"
+              label="Take this run off the list"
+              @click="ScriptRuns.getInstance().forget(run.id)"
+            />
           </div>
         </div>
       </div>
@@ -121,7 +119,6 @@
 import { computed, onUnmounted, reactive, ref, toRef, watch } from 'vue'
 import { Notice, TFile } from 'obsidian'
 import Icon from './obsidian/Icon.vue'
-import Button from './obsidian/Button.vue'
 import EmptyState from './obsidian/EmptyState.vue'
 import Section from './obsidian/Section.vue'
 import { ScriptRuns, type ScriptRun } from '@/scripting/ScriptRuns'
@@ -397,62 +394,42 @@ const asNew = async (run: ScriptRun) => {
   border-inline-start: var(--nav-indentation-guide-width) solid var(--nav-indentation-guide-color);
 }
 
-.abele-runs__path {
-  color: var(--text-faint);
-  font-family: var(--font-monospace);
-  font-size: var(--font-smallest);
-  overflow-wrap: anywhere;
-}
-
-.abele-runs__params {
+.abele-runs__facts {
   display: flex;
   flex-wrap: wrap;
-  gap: var(--size-4-1);
-}
-
-.abele-runs__param {
-  padding: 0 var(--size-2-2);
-  border-radius: var(--radius-s);
-  background-color: var(--background-modifier-hover);
-  font-size: var(--font-smallest);
+  column-gap: var(--size-4-2);
+  color: var(--text-muted);
+  font-size: var(--font-ui-smaller);
   overflow-wrap: anywhere;
 }
 
-.abele-runs__param-name {
-  color: var(--text-muted);
-
-  &::after {
-    content: ': ';
-  }
+.abele-runs__path {
+  color: var(--text-faint);
 }
 
+.abele-runs__param-value {
+  color: var(--text-normal);
+}
+
+// The log reads as text: each line wraps across the whole width, its time a faint word before it.
 .abele-runs__log {
-  display: flex;
-  flex-direction: column;
-  padding: var(--size-4-1) var(--size-4-2);
-  border-radius: var(--radius-s);
-  background-color: var(--background-secondary);
   max-height: 16em;
   overflow-y: auto;
-  font-family: var(--font-monospace);
-  font-size: var(--font-smallest);
+  font-size: var(--font-ui-smaller);
+  line-height: var(--line-height-tight);
   user-select: text;
 }
 
 .abele-runs__line {
-  display: flex;
-  gap: var(--size-4-2);
+  margin: 0 0 var(--size-2-2);
+  white-space: pre-wrap;
+  overflow-wrap: anywhere;
 }
 
 .abele-runs__line-at {
-  flex: 0 0 auto;
+  margin-inline-end: var(--size-2-3);
   color: var(--text-faint);
   font-variant-numeric: tabular-nums;
-}
-
-.abele-runs__line-text {
-  white-space: pre-wrap;
-  overflow-wrap: anywhere;
 }
 
 .abele-runs__result,
@@ -472,14 +449,17 @@ const asNew = async (run: ScriptRun) => {
 .abele-runs__actions {
   display: flex;
   align-items: center;
-  gap: var(--size-4-2);
+  gap: var(--size-2-1);
+  // The first glyph's own box starts at the text's edge, not inside it.
+  margin-inline-start: calc(-1 * var(--size-2-3));
 }
 
-.abele-runs__buttons {
-  display: flex;
-  align-items: center;
-  gap: var(--size-4-1);
-  margin-left: auto;
+.abele-runs__stop {
+  color: var(--text-error);
+}
+
+.abele-runs__forget {
+  margin-inline-start: auto;
 }
 
 .abele-runs__spinner {

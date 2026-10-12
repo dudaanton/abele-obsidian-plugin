@@ -1,5 +1,5 @@
 /**
- * The row of a date property: a day back, Obsidian's own date field, a day on, how far away the
+ * The row of a date property: a day back, the date that opens the plugin's own date window, a day on, how far away the
  * date is, and a button to the daily note of that day. Drawn whole by the plugin, like the
  * counter, so nothing Obsidian redraws inside the cell can take the buttons away.
  *
@@ -8,6 +8,9 @@
  * — for the distance only; that property is never written.
  */
 import { Keymap, setIcon, TFile } from 'obsidian'
+import dayjs from 'dayjs'
+import { openComponentDialog } from '@/modal/componentDialog'
+import { DISPLAY_DATE_FORMAT } from '@/constants/dates'
 import './kinds.css'
 import { formatDay, parseDateValue, relativeTime, stepDate, timeOf, withDay } from './dates'
 import { openDailyNote } from './dailyNote'
@@ -44,8 +47,11 @@ export function renderDate(el: HTMLElement, value: unknown, ctx: WidgetContext, 
   let current = value
   const row = el.createDiv({ cls: 'abele-property-date' })
   const earlier = iconButton(row, 'abele-property-date__earlier', 'chevron-left', 'Previous day')
+  // The date as text that opens the plugin's date window, the one a task's dates use, not the
+  // system's own picker, which looks different on every platform.
   const input = row.createEl('input', {
     cls: 'metadata-input metadata-input-text mod-date abele-property-date__value',
+    attr: { readonly: 'true', 'aria-haspopup': 'dialog', placeholder: 'Empty' },
   })
   const later = iconButton(row, 'abele-property-date__later', 'chevron-right', 'Next day')
   // Together, so a narrow cell wraps them onto the next line as one rather than leaving the
@@ -57,9 +63,12 @@ export function renderDate(el: HTMLElement, value: unknown, ctx: WidgetContext, 
   const show = (v: unknown) => {
     const parsed = parseDateValue(v)
     const timed = !!parsed?.time
-    input.type = timed ? 'datetime-local' : 'date'
+    input.type = 'text'
     input.toggleClass('mod-datetime', timed)
-    input.value = parsed ? `${String(v).trim().slice(0, 10)}${timed ? `T${parsed.time}` : ''}` : ''
+    const day = parsed ? dayjs(String(v).trim().slice(0, 10)) : null
+    input.value = day?.isValid()
+      ? `${day.format(DISPLAY_DATE_FORMAT)}${timed ? ` ${parsed.time}` : ''}`
+      : ''
     const text = relativeTime(v, new Date(), siblingTime(ctx))
     relative.setText(text ?? '')
     relative.toggle(!!text)
@@ -77,15 +86,35 @@ export function renderDate(el: HTMLElement, value: unknown, ctx: WidgetContext, 
 
   earlier.addEventListener('click', () => step(-1))
   later.addEventListener('click', () => step(1))
-  input.addEventListener('change', () => {
-    const picked = input.value.trim()
-    if (!picked) {
-      if (!isEmpty(current)) write(null)
-      return
-    }
-    const [day, time] = picked.split('T')
-    const next = withDay(current, day, time ?? null)
-    if (next !== current) write(next)
+  const pick = () => {
+    const parsed = parseDateValue(current)
+    const day = parsed ? dayjs(String(current).trim().slice(0, 10)) : undefined
+    const dialog = openComponentDialog(
+      async () => (await import('@/components/DateTimePickerModal.vue')).default,
+      {
+        mode: 'event',
+        title: ctx.key,
+        initialDate: day?.isValid() ? day : undefined,
+        initialTime: parsed?.time ?? null,
+        onConfirm: ({ date, time }: { date: dayjs.Dayjs; time: string | null }) => {
+          const next = withDay(current, date.format('YYYY-MM-DD'), time)
+          if (next !== current) write(next)
+          dialog.close()
+        },
+        onClear: () => {
+          if (!isEmpty(current)) write(null)
+          dialog.close()
+        },
+        onCancel: () => dialog.close(),
+      },
+      { document: el.ownerDocument }
+    )
+  }
+  input.addEventListener('click', pick)
+  input.addEventListener('keydown', (e) => {
+    if (e.key !== 'Enter' && e.key !== ' ') return
+    e.preventDefault()
+    pick()
   })
   daily.addEventListener('click', (e) => {
     const parsed = parseDateValue(current)

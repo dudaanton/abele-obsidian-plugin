@@ -467,6 +467,33 @@
             :selected-date="selectedDay"
             @date-selected="selectedDay = $event" /><DateDivider :date="selectedDayKey"
         /></Section>
+        <Section title="Entries"
+          ><GroupHeading label="Garden" strong>2 open</GroupHeading
+          ><EntryRow
+            v-for="entry in listEntries"
+            :key="entry.title"
+            v-model:more="entry.open"
+            role="button"
+            tabindex="0"
+            more-label="note"
+            :active="entry.active"
+            @click="announce(entry.title)"
+            ><template #leading><Icon icon="circle" no-hover /></template>{{ entry.title }}
+            <template #codes
+              ><span>{{ entry.when }}</span></template
+            >
+            <template #meta
+              ><LabelDot v-for="label in entry.labels" :key="label.text" v-bind="label"
+            /></template>
+            <template #aside
+              ><Icon
+                icon="x"
+                :label="`Remove ${entry.title}`"
+                @click.stop="announce(`Removed ${entry.title}`)"
+            /></template>
+            <template v-if="entry.open" #detail>{{ entry.note }}</template></EntryRow
+          ></Section
+        >
         <Section title="Reporting period"
           ><PeriodSelector v-model:start="rangeStart" v-model:end="rangeEnd"
         /></Section>
@@ -599,6 +626,9 @@ import Breadcrumbs from '@/components/obsidian/Breadcrumbs.vue'
 import TreeItem from '@/components/obsidian/TreeItem.vue'
 import FoldHeading from '@/components/obsidian/FoldHeading.vue'
 import DateDivider from '@/components/obsidian/DateDivider.vue'
+import EntryRow from '@/components/obsidian/EntryRow.vue'
+import GroupHeading from '@/components/obsidian/GroupHeading.vue'
+import LabelDot from '@/components/obsidian/LabelDot.vue'
 import PeriodSelector from '@/components/obsidian/PeriodSelector.vue'
 import Calendar from '@/components/Calendar.vue'
 import Card from '@/components/obsidian/Card.vue'
@@ -783,6 +813,25 @@ const selected = ref(0),
   rangeStart = ref(dayjs('2026-04-01')),
   rangeEnd = ref(dayjs('2026-04-30'))
 const selectedDayKey = computed(() => selectedDay.value.format('YYYY-MM-DD')) // calendar storage key, not display
+// List entries as the panes draw them: a name, its codes, a quiet line of labels, a way out.
+const listEntries = ref([
+  {
+    title: 'Water the sample beds',
+    when: '09:30',
+    labels: [{ text: 'garden', color: 'green' }],
+    note: 'Both beds by the shed.',
+    open: false,
+    active: true,
+  },
+  {
+    title: 'Order sample seeds with a name long enough to wrap in a narrow pane',
+    when: '12.04',
+    labels: [{ text: 'errands', color: 'orange' }, { text: 'someday' }],
+    note: 'Ask about the late varieties.',
+    open: true,
+    active: false,
+  },
+])
 const announce = (value: string) => {
   feedback.value = value
 }

@@ -17,6 +17,7 @@ import HeaderButtonsEditor from '@/components/settings/scripts/HeaderButtonsEdit
 import ScriptsGeneral from '@/components/settings/scripts/ScriptsGeneral.vue'
 import LinksSettings from '@/components/settings/LinksSettings.vue'
 import Button from '@/components/obsidian/Button.vue'
+import ObsidianModal from '@/components/obsidian/Modal.vue'
 import { AbeleConfig } from '@/services/AbeleConfig'
 import { ScriptService } from '@/scripting/ScriptService'
 import type { ParsedScript } from '@/scripting/types'
@@ -110,6 +111,12 @@ function buttonWith(wrapper: ReturnType<typeof mount>, text: string) {
   return button
 }
 
+/** Opens an entry's window from the settings glyph on its row, where its fields are. */
+async function change(wrapper: ReturnType<typeof mount>, label: string, index = 0) {
+  await wrapper.findAll(`button[aria-label="${label}"]`)[index].trigger('click')
+  await nextTick()
+}
+
 /** Presses a button and lets the picker's promise settle. */
 async function press(button: ReturnType<typeof buttonWith>) {
   await button.trigger('click')
@@ -131,11 +138,16 @@ describe('the script a header button runs', () => {
     ]
   })
 
-  const open = () => mountScreen(HeaderButtonsEditor, { global: { stubs: STUBS } })
+  /** The editor with the button's own window open, where what it runs is chosen. */
+  const open = async () => {
+    const wrapper = mountScreen(HeaderButtonsEditor, { global: { stubs: STUBS } })
+    await change(wrapper, 'Change this button')
+    return wrapper
+  }
 
   it('is asked for rather than listed, so a folder of scripts is searchable', async () => {
     pickScript.mockResolvedValue(rename)
-    const wrapper = open()
+    const wrapper = await open()
 
     await press(buttonWith(wrapper, 'Choose script...'))
 
@@ -145,7 +157,7 @@ describe('the script a header button runs', () => {
 
   it('is what the button then shows, and what is saved', async () => {
     pickScript.mockResolvedValue(rename)
-    const wrapper = open()
+    const wrapper = await open()
 
     await press(buttonWith(wrapper, 'Choose script...'))
 
@@ -156,7 +168,7 @@ describe('the script a header button runs', () => {
   it('is left alone when the picker is closed without a choice', async () => {
     config.headerButtons[0].scriptName = 'Fetch details'
     pickScript.mockResolvedValue(null)
-    const wrapper = open()
+    const wrapper = await open()
 
     await press(buttonWith(wrapper, 'Fetch details'))
 
@@ -165,7 +177,7 @@ describe('the script a header button runs', () => {
 
   it('writes an edit that is still waiting when the settings screen closes', async () => {
     vi.mocked(config.saveSettings).mockClear()
-    const wrapper = open()
+    const wrapper = await open()
 
     await press(buttonWith(wrapper, 'Add button'))
 
@@ -181,7 +193,7 @@ describe('the script a header button runs', () => {
     config.headerButtons[0].scriptName = 'Fetch details'
     config.headerButtons[0].params = { query: '{{title}}' }
     pickScript.mockResolvedValue(fetchDetails)
-    const wrapper = open()
+    const wrapper = await open()
 
     await press(buttonWith(wrapper, 'Fetch details'))
 
@@ -192,7 +204,7 @@ describe('the script a header button runs', () => {
     config.headerButtons[0].scriptName = 'Fetch details'
     config.headerButtons[0].params = { query: '{{title}}' }
     pickScript.mockResolvedValue(rename)
-    const wrapper = open()
+    const wrapper = await open()
 
     await press(buttonWith(wrapper, 'Fetch details'))
 
@@ -202,7 +214,7 @@ describe('the script a header button runs', () => {
   // Settings reloaded from disk — sync from another device — while this screen is open. The
   // list it copied when it opened is the old one, and the next edit would save it back.
   it('follows settings that changed while it was open', async () => {
-    const wrapper = open()
+    const wrapper = await open()
     expect(buttonWith(wrapper, 'Choose script...').exists()).toBe(true)
 
     config.headerButtons = [{ ...config.headerButtons[0], scriptName: 'Rename' }]
@@ -215,20 +227,18 @@ describe('the script a header button runs', () => {
   })
 
   it('keeps an edit of its own that is still waiting to be saved', async () => {
-    const wrapper = open()
+    const wrapper = await open()
     await press(buttonWith(wrapper, 'Add button'))
 
     config.version.value++
     await nextTick()
 
     expect(config.headerButtons).toHaveLength(2)
-    // The one added is a command button, the one it had still waits for its script.
-    expect(
-      wrapper.findAllComponents(Button).filter((b) => b.props('text') === 'Choose script...')
-    ).toHaveLength(1)
-    expect(
-      wrapper.findAllComponents(Button).filter((b) => b.props('text') === 'Choose command...')
-    ).toHaveLength(1)
+    // The one added is a command button, open in its window; the one it had still waits for
+    // its script.
+    expect(buttonWith(wrapper, 'Choose command...').exists()).toBe(true)
+    await change(wrapper, 'Change this button', 0)
+    expect(buttonWith(wrapper, 'Choose script...').exists()).toBe(true)
   })
 })
 
@@ -247,7 +257,12 @@ describe('the scripts folder', () => {
 })
 
 describe('what a link runs', () => {
-  const open = () => mountScreen(LinksSettings, { global: { stubs: STUBS } })
+  /** The links with the first one's window open, where what it runs is chosen. */
+  const open = async () => {
+    const wrapper = mountScreen(LinksSettings, { global: { stubs: STUBS } })
+    await change(wrapper, 'Change this link')
+    return wrapper
+  }
 
   it('offers the scripts to search, and saves the one taken', async () => {
     config.links = [
@@ -261,9 +276,9 @@ describe('what a link runs', () => {
       },
     ]
     pickScript.mockResolvedValue(fetchDetails)
-    const wrapper = open()
+    const wrapper = await open()
 
-    await press(buttonWith(wrapper, 'Choose script...'))
+    await press(buttonWith(wrapper, 'Choose a script…'))
 
     // Every script, including the one no header button may run: a link is not a tool.
     expect(pickScript).toHaveBeenCalledWith(expect.anything(), [fetchDetails, rename, legacy])
@@ -275,15 +290,15 @@ describe('what a link runs', () => {
       { id: 'l1', name: 'bold', type: 'command', scriptName: '', commandId: '', waitForSync: true },
     ]
     pickCommand.mockResolvedValue(BOLD)
-    const wrapper = open()
+    const wrapper = await open()
 
-    await press(buttonWith(wrapper, 'Choose command...'))
+    await press(buttonWith(wrapper, 'Choose a command…'))
 
     expect(config.links[0].commandId).toBe('editor:toggle-bold')
     expect(buttonWith(wrapper, 'Toggle bold').exists()).toBe(true)
   })
 
-  it('falls back to the id of a command that is no longer installed', () => {
+  it('falls back to the id of a command that is no longer installed', async () => {
     config.links = [
       {
         id: 'l1',
@@ -296,6 +311,11 @@ describe('what a link runs', () => {
     ]
 
     const wrapper = mountScreen(LinksSettings, { global: { stubs: STUBS } })
+    // Said on the row too, as what it runs.
+    expect(wrapper.find('.abele-links__row').text()).toContain(
+      'Runs the command removed-plugin:do-thing'
+    )
+    await change(wrapper, 'Change this link')
 
     expect(buttonWith(wrapper, 'removed-plugin:do-thing').exists()).toBe(true)
   })
@@ -311,5 +331,54 @@ describe('the scripts screen while the folder is being read', () => {
     await nextTick()
 
     expect(wrapper.text()).toContain('2 scripts discovered')
+  })
+})
+
+describe('the list of links', () => {
+  const link = (id: string, name: string) => ({
+    id,
+    name,
+    type: 'script' as const,
+    scriptName: 'Fetch details',
+    commandId: '',
+    waitForSync: true,
+  })
+
+  it('is a row a link, saying what it runs, its address copied from the row', async () => {
+    config.links = [link('l1', 'add-movie')]
+    const writeText = vi.fn(async () => {})
+    vi.stubGlobal('navigator', { ...navigator, clipboard: { writeText } })
+    const wrapper = mountScreen(LinksSettings, { global: { stubs: STUBS } })
+    const row = wrapper.get('.abele-links__row')
+    expect(row.text()).toContain('add-movie')
+    expect(row.text()).toContain('Runs the script Fetch details')
+    await row.get('button[aria-label="Copy the link\'s address"]').trigger('click')
+    expect(writeText).toHaveBeenCalledWith('obsidian://abele?vault=Vault&name=add-movie')
+    expect(wrapper.findComponent(ObsidianModal).exists()).toBe(false)
+    vi.unstubAllGlobals()
+  })
+
+  it('opens a link in a window named after it, and deletes it from there at once', async () => {
+    config.links = [link('l1', 'add-movie'), link('l2', 'add-book')]
+    const wrapper = mountScreen(LinksSettings, { global: { stubs: STUBS } })
+    await change(wrapper, 'Change this link', 1)
+    expect(wrapper.findComponent(ObsidianModal).props('title')).toBe('add-book')
+    await press(buttonWith(wrapper, 'Delete'))
+    expect(wrapper.findComponent(ObsidianModal).exists()).toBe(false)
+    expect(wrapper.findAll('.abele-links__row').map((r) => r.text())).toEqual([
+      expect.stringContaining('add-movie'),
+    ])
+    wrapper.unmount()
+    expect(config.links.map((l) => l.id)).toEqual(['l1'])
+  })
+
+  it('opens a new link in its window as soon as it is added, and Done closes it', async () => {
+    const wrapper = mountScreen(LinksSettings, { global: { stubs: STUBS } })
+    expect(wrapper.text()).toContain('No links yet')
+    await press(buttonWith(wrapper, 'Add link'))
+    expect(wrapper.findComponent(ObsidianModal).props('title')).toBe('New link')
+    await press(buttonWith(wrapper, 'Done'))
+    expect(wrapper.findComponent(ObsidianModal).exists()).toBe(false)
+    expect(wrapper.findAll('.abele-links__row')).toHaveLength(1)
   })
 })

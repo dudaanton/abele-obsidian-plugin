@@ -26,8 +26,9 @@
         @update:model-value="priorityPropertyChanged"
       />
     </Setting>
-    <Setting v-for="row in rows" :key="row.key" :name="row.label">
-      <Badge :text="row.label" :color="row.color" />
+    <!-- A label as a task row draws it, a dot of its colour and the word, its colour beside it. -->
+    <Setting v-for="row in rows" :key="row.key" class="abele-task-labels__label">
+      <template #name><LabelDot :text="row.label" :color="row.color" /></template>
       <Dropdown
         :options="colorOptions"
         :model-value="row.color"
@@ -53,7 +54,7 @@ import Setting from '../obsidian/Setting.vue'
 import Input from '../obsidian/Input.vue'
 import Dropdown from '../obsidian/Dropdown.vue'
 import Button from '../obsidian/Button.vue'
-import Badge from '../obsidian/Badge.vue'
+import LabelDot from '../obsidian/LabelDot.vue'
 import { AbeleConfig } from '@/services/AbeleConfig'
 import { GlobalStore } from '@/stores/GlobalStore'
 import { KIT_COLORS, KIT_COLOR_NAMES, isKitColor } from '@/constants/colors'

@@ -1,14 +1,14 @@
 <template>
   <Section
     title="Nodes"
-    desc="Connect to a local daemon or pair a remote AbeleNode over Tailscale. Choose projects and isolated workspaces, run Claude Code or pi when available, or open non-executing fake sessions. Connections, tokens, device keys and history caches stay on this device and never transfer with settings."
+    desc="Computers the agent can work on for you: open one, pick a project, and watch and answer here. Their keys and history stay on this device."
   >
     <!-- A node as one row: its state as a dot, check, open; the rarer things in ⋯. -->
     <Setting
       v-for="node in service.nodes.value"
       :key="node.id"
       :name="node.label"
-      :desc="`${node.url}${service.connection(node.id).error.value ? ' · ' + service.connection(node.id).error.value : ''}`"
+      :desc="nodeLine(node)"
     >
       <StatusDot
         :tone="stateTone(service.connection(node.id).state.value)"
@@ -26,11 +26,20 @@
       />
       <Icon icon="more-horizontal" tooltip="Pairing, delegation, remove" @click="more($event, node)" />
     </Setting>
-    <Button
-      text="Pair remote node"
-      tooltip="Scan or paste an invitation; re-pair or verify a changed node key"
-      @click="showPairing()"
-    />
+    <!-- Adding a node is a row like the nodes: what it is, and the one button that starts it. -->
+    <Setting
+      name="Pair a node on another computer"
+      desc="A remote desktop or a server, by an invitation from it. A device that was revoked pairs again the same way."
+    >
+      <Button
+        text="Pair"
+        tooltip="Scan or paste an invitation; re-pair or verify a changed node key"
+        @click="showPairing()"
+      />
+    </Setting>
+    <Setting name="Add the node on this computer" desc="One running here, by the token it gives.">
+      <Button text="Add" tooltip="Name the node here and paste its token" @click="addingLocal = true" />
+    </Setting>
     <NodeDelegationGrantsDialog
       v-if="grantNode"
       :label="grantNode.label"
@@ -45,37 +54,37 @@
       :resume-node-id="resumeNodeId"
       @close="pairing = false"
     />
-    <p class="setting-item-description">
-      For a revoked device, ask the owner for a new invitation bound to the same installation and
-      pair again. Revocation is performed on the node, not by removing this connection.
+    <!-- What the last check, open or add said, under the list it was about. -->
+    <p v-if="message && !addingLocal" class="setting-item-description" role="status">
+      {{ message }}
     </p>
-    <Setting name="Label" desc="A name for this node on this device.">
-      <Input v-model="label" placeholder="Local node" aria-label="Node label" />
-    </Setting>
-    <Setting
-      name="URL"
-      desc="Local-token connections use only the explicit loopback address. Use Pair remote node for a phone or a remote desktop."
-    >
-      <Input v-model="url" placeholder="http://127.0.0.1:7777" aria-label="Node URL" />
-    </Setting>
-    <Setting
-      name="Installation token"
-      desc="Paste the token returned by abele-node token create. Stored only in this device's keychain, never in the synced secret store."
-    >
-      <Input
-        v-model="token"
-        password
-        placeholder="Paste token"
-        aria-label="Node installation token"
-      />
-    </Setting>
-    <Button
-      text="Add node"
-      tooltip="Authenticate and pin the local node identity on this device"
-      :disabled="busy || !label.trim() || !token.trim()"
-      @click="add"
-    />
-    <p v-if="message" role="status">{{ message }}</p>
+    <ObsidianModal v-if="addingLocal" title="Add the node on this computer" @close="addingLocal = false">
+      <Setting name="Name" desc="What this node is called on this device.">
+        <Input v-model="label" placeholder="Local node" aria-label="Node label" />
+      </Setting>
+      <Setting name="Address" desc="Only this computer's own address; another computer is paired.">
+        <Input v-model="url" placeholder="http://127.0.0.1:7777" aria-label="Node URL" />
+      </Setting>
+      <Setting
+        name="Token"
+        desc="The one abele-node token create prints. Kept in this device's keychain only."
+      >
+        <Input v-model="token" password placeholder="Paste token" aria-label="Node installation token" />
+      </Setting>
+      <p v-if="message" class="setting-item-description" role="status">{{ message }}</p>
+      <template #footer>
+        <div class="abele-modal__actions">
+          <Button
+            text="Add"
+            accent
+            tooltip="Authenticate and pin the local node identity on this device"
+            :disabled="busy || !label.trim() || !token.trim()"
+            @click="add"
+          />
+          <Button text="Cancel" tooltip="Close this and add nothing" @click="addingLocal = false" />
+        </div>
+      </template>
+    </ObsidianModal>
   </Section>
 </template>
 
@@ -95,6 +104,7 @@ import Input from '../obsidian/Input.vue'
 import Button from '../obsidian/Button.vue'
 import Icon from '../obsidian/Icon.vue'
 import StatusDot from '../obsidian/StatusDot.vue'
+import ObsidianModal from '../obsidian/Modal.vue'
 import { Menu } from 'obsidian'
 const service = NodeService.getInstance()
 const grantNode = ref<RegisteredNode>()
@@ -137,6 +147,7 @@ const add = async () => {
     await service.add(label.value.trim(), url.value.trim(), token.value.trim())
     token.value = ''
     message.value = 'Connected. Open a session here or from the new chat menu.'
+    addingLocal.value = false
   } catch (error) {
     report(error)
   } finally {
@@ -174,6 +185,16 @@ const open = async (node: RegisteredNode) => {
 }
 const stateTone = (state: string) =>
   state === 'connected' ? 'green' : state === 'connecting' ? 'orange' : 'red'
+/** The add window for the node on this computer. */
+const addingLocal = ref(false)
+
+/** Under a node's name: how it is in words, then where it is; a code from the node in words too. */
+const nodeLine = (node: RegisteredNode) => {
+  const conn = service.connection(node.id)
+  const error = conn.error.value ? conn.error.value.replace(/_/g, ' ') : ''
+  return [error || stateLabel(conn.state.value), node.url].join(' · ')
+}
+
 const stateLabel = (state: string) =>
   state === 'connected' ? 'Connected' : state === 'connecting' ? 'Connecting…' : 'Not connected'
 

@@ -96,14 +96,28 @@ onUnmounted(() => {
 
 <style lang="scss">
 .abele-script-view {
-  padding: var(--size-4-4);
+  padding: var(--file-margins, var(--size-4-8));
   outline: none;
 }
 
+// A script's page reads as a note does: a column at Obsidian's readable width in the middle of
+// the tab, whatever the script puts in it. A table is as wide as its columns need, a field as
+// wide as its words, so nothing a script draws stretches across a wide window for no reason.
 .abele-script-view__body {
   display: flex;
   flex-direction: column;
   gap: var(--size-4-3);
+  max-width: var(--file-line-width);
+  margin-inline: auto;
+
+  table {
+    width: auto;
+    max-width: 100%;
+  }
+
+  .abele-obsidian-setting > .setting-item-control select.dropdown {
+    width: auto;
+  }
 }
 
 .abele-script-view__failed {

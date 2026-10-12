@@ -112,6 +112,21 @@ const iconWith = (wrapper: VueWrapper, tooltip: string) => {
   if (!icon) throw new Error(`No icon with tooltip "${tooltip}"`)
   return icon
 }
+/** A header button's row in the list, by the name it shows. */
+const rowNamed = (wrapper: VueWrapper, name: string) => {
+  const row = wrapper
+    .findAll('.abele-header-buttons__row')
+    .find((r) => r.find('.abele-header-buttons__name').text() === name)
+  if (!row) throw new Error(`No header button row named "${name}"`)
+  return row
+}
+const rowNames = (wrapper: VueWrapper) =>
+  wrapper.findAll('.abele-header-buttons__name').map((n) => n.text())
+/** Opens a header button's own window from the settings glyph on its row. */
+const change = async (wrapper: VueWrapper, name: string) => {
+  await rowNamed(wrapper, name).get('button[aria-label="Change this button"]').trigger('click')
+  await nextTick()
+}
 const settingNamed = (wrapper: VueWrapper, name: string) =>
   wrapper.findAllComponents(Setting).find((s) => s.props('name') === name)
 
@@ -311,7 +326,7 @@ describe('the scripts page', () => {
     await nextTick()
 
     expect(wrapper.findComponent(HeaderButtonsEditor).exists()).toBe(true)
-    expect(cards(wrapper).map((c) => c.props('title'))).toEqual(['Archive'])
+    expect(rowNames(wrapper)).toEqual(['Archive'])
   })
 })
 
@@ -322,33 +337,33 @@ describe('the header buttons', () => {
     config.headerButtons = [button({ id: 'a', name: 'First' }), button({ id: 'b', name: 'Second' })]
     const wrapper = open()
 
-    await cardTitled(wrapper, 'First')
-      .findAllComponents(Icon)
-      .find((i) => i.props('tooltip') === 'Move later in the header')!
+    await rowNamed(wrapper, 'First')
+      .get('button[aria-label="Move later in the header"]')
       .trigger('click')
 
     expect(config.headerButtons.map((b) => b.name)).toEqual(['Second', 'First'])
+    expect(rowNames(wrapper)).toEqual(['Second', 'First'])
   })
 
   it('cannot move the first button earlier or the last one later', () => {
     config.headerButtons = [button({ id: 'a', name: 'First' }), button({ id: 'b', name: 'Second' })]
     const wrapper = open()
 
-    const up = cardTitled(wrapper, 'First')
-      .findAllComponents(Icon)
-      .find((i) => i.props('tooltip')?.startsWith('Move earlier'))!
-    const down = cardTitled(wrapper, 'Second')
-      .findAllComponents(Icon)
-      .find((i) => i.props('tooltip')?.startsWith('Move later'))!
-    expect(up.props('disabled')).toBe(true)
-    expect(down.props('disabled')).toBe(true)
+    const up = rowNamed(wrapper, 'First').get('button[aria-label^="Move earlier"]')
+    const down = rowNamed(wrapper, 'Second').get('button[aria-label^="Move later"]')
+    expect(up.attributes('disabled')).toBeDefined()
+    expect(down.attributes('disabled')).toBeDefined()
   })
 
   it('asks before deleting a button, and deletes it only when told to', async () => {
     config.headerButtons = [button({ name: 'Fetch' })]
     const wrapper = open()
 
-    await iconWith(wrapper, 'Delete this button').trigger('click')
+    await change(wrapper, 'Fetch')
+    await wrapper
+      .findAllComponents(Button)
+      .find((b) => b.props('text') === 'Delete')!
+      .trigger('click')
     expect(config.headerButtons).toHaveLength(1)
 
     const confirm = wrapper.findComponent(ConfirmModal)
@@ -363,15 +378,17 @@ describe('the header buttons', () => {
     config.headerButtons = [button()]
     const wrapper = open()
 
-    await settingNamed(wrapper, 'Show this button')!.findComponent(Checkbox).trigger('click')
+    // The switch on the button's own row, without opening it.
+    await rowNamed(wrapper, 'Fetch').findComponent(Checkbox).trigger('click')
 
     expect(config.headerButtons[0]).toMatchObject({ enabled: false, noteTypes: ['movie'] })
-    expect(cardTitled(wrapper, 'Fetch').text()).toContain('Off')
+    expect(rowNamed(wrapper, 'Fetch').classes()).toContain('abele-header-buttons__row_off')
   })
 
   it('shows only the icon when asked to', async () => {
     config.headerButtons = [button()]
     const wrapper = open()
+    await change(wrapper, 'Fetch')
 
     await settingNamed(wrapper, 'Icon only')!.findComponent(Checkbox).trigger('click')
 
@@ -381,6 +398,7 @@ describe('the header buttons', () => {
   it('puts a button on every note, and stops asking which then', async () => {
     config.headerButtons = [button()]
     const wrapper = open()
+    await change(wrapper, 'Fetch')
 
     await settingNamed(wrapper, 'On every note')!.findComponent(Checkbox).trigger('click')
 
@@ -392,6 +410,7 @@ describe('the header buttons', () => {
   it('takes folders as a comma-separated list', async () => {
     config.headerButtons = [button()]
     const wrapper = open()
+    await change(wrapper, 'Fetch')
 
     await settingNamed(wrapper, 'Folders')!
       .findComponent(Input)
@@ -409,6 +428,8 @@ describe('the header buttons', () => {
       .trigger('click')
 
     expect(config.headerButtons).toHaveLength(1)
-    expect(cardTitled(wrapper, 'Unnamed button').props('subtitle')).toBe('No command chosen yet')
+    expect(rowNamed(wrapper, 'Unnamed button').get('.setting-item-description').text()).toContain(
+      'No command chosen yet'
+    )
   })
 })

@@ -6,40 +6,40 @@
     </div>
 
     <div class="abele-settings__body" :class="{ 'abele-settings__body_phone': isPhone }">
-    <!-- The pages as Obsidian's own settings list them: a column by groups beside the page.
+      <!-- The pages as Obsidian's own settings list them: a column by groups beside the page.
          Nineteen words in a strip above the page broke onto three rows. -->
-    <nav
-      v-if="!isPhone || isMenuOpen"
-      class="abele-settings__nav"
-      :class="{ 'abele-settings__nav_phone': isPhone }"
-    >
-      <template v-for="group in groups" :key="group.title">
-        <div class="abele-settings__group">{{ group.title }}</div>
-        <Tabs
-          v-model="activeTab"
-          :tabs="group.tabs"
-          vertical
-          class="abele-settings__pages"
-          @update:model-value="onSelect"
-        />
-      </template>
-    </nav>
-
-    <!-- Tab content -->
-    <div class="abele-settings__content" :class="{ 'abele-settings__content_phone': isPhone }">
-      <template v-if="!isPhone || !isMenuOpen">
-        <!-- Small and inside the page it documents, not a button above the tab strip. -->
-        <div class="abele-settings__docs">
-          <Icon
-            icon="life-buoy"
-            text-right="Documentation"
-            tooltip="Close the settings and read what this tab is for"
-            @click="openDocs"
+      <nav
+        v-if="!isPhone || isMenuOpen"
+        class="abele-settings__nav"
+        :class="{ 'abele-settings__nav_phone': isPhone }"
+      >
+        <template v-for="group in groups" :key="group.title">
+          <div class="abele-settings__group">{{ group.title }}</div>
+          <Tabs
+            v-model="activeTab"
+            :tabs="group.tabs"
+            vertical
+            class="abele-settings__pages"
+            @update:model-value="onSelect"
           />
-        </div>
-        <component :is="activeComponent" />
-      </template>
-    </div>
+        </template>
+      </nav>
+
+      <!-- Tab content -->
+      <div class="abele-settings__content" :class="{ 'abele-settings__content_phone': isPhone }">
+        <template v-if="!isPhone || !isMenuOpen">
+          <!-- Small and inside the page it documents, not a button above the tab strip. -->
+          <div class="abele-settings__docs">
+            <Icon
+              icon="life-buoy"
+              text-right="Documentation"
+              tooltip="Close the settings and read what this tab is for"
+              @click="openDocs"
+            />
+          </div>
+          <component :is="activeComponent" />
+        </template>
+      </div>
     </div>
   </div>
 </template>
@@ -111,7 +111,7 @@ const GROUPS: { title: string; ids: string[] }[] = [
 ]
 const groups = GROUPS.map((g) => ({
   title: g.title,
-  tabs: g.ids.map((id) => tabs.find((t) => t.id === id)!),
+  tabs: g.ids.map((id) => tabs.find((t) => t.id === id)),
 }))
 
 // Opened on a tab from elsewhere — the quick menu's "Choose what this menu holds…" — it starts
@@ -157,7 +157,7 @@ onUnmounted(() => restoreHeaderRoom?.())
 // Phone back button handling
 onMounted(() => {
   if (Platform.isPhone) {
-    const backBtn = settingsDoc().querySelector('.modal-setting-back-button') as HTMLElement
+    const backBtn = settingsDoc().querySelector('.modal-setting-back-button')
     if (backBtn) {
       const pane = settingsContainer.value?.closest<HTMLElement>('.vertical-tab-content')
       const header = backBtn.parentElement
@@ -175,7 +175,7 @@ watch(
   () => {
     if (!Platform.isPhone) return
 
-    const backBtn = settingsDoc().querySelector('.modal-setting-back-button') as HTMLElement
+    const backBtn = settingsDoc().querySelector('.modal-setting-back-button')
     if (!backBtn) return
 
     const titleEl = backBtn.parentElement?.lastChild as HTMLElement
@@ -286,6 +286,17 @@ body.is-phone .modal:has(.abele-settings) .modal-header {
     padding: var(--size-4-2);
   }
 }
+// Obsidian centres a settings page in a column of its own width. Ours brings its own list of pages, and
+// centred the two of them floated in the middle of the pane with an empty field on the left:
+// the list starts at the pane's edge instead, the page beside it keeps Obsidian's width.
+body:not(.is-phone) .modal.mod-settings .vertical-tab-content:has(.abele-settings) {
+  padding-inline: 0;
+}
+
+body:not(.is-phone) .abele-settings__content > * {
+  max-width: var(--setting-group-max-width);
+}
+
 // The native phone pane otherwise extends behind its floating header. Keep that header's
 // own theme and geometry, but give the scrolling pane only the room below it.
 body.is-phone .modal.mod-settings .vertical-tab-content.abele-settings-pane_phone {

@@ -6,12 +6,27 @@
  *
  * The registry is a stand-in shaped like Obsidian's, as in `propertyWidgets.test.ts`.
  */
-import { describe, it, expect, beforeEach, afterEach } from 'vitest'
+import { describe, it, expect, beforeEach, afterEach, vi } from 'vitest'
+import dayjs from 'dayjs'
 import { AbstractInputSuggest, type App } from 'obsidian'
 import { PropertyWidgets, type TypeWidget } from '@/properties/widgets'
 import { AbeleConfig } from '@/services/AbeleConfig'
 import { formatDay } from '@/properties/dates'
 import { useVault } from '../helpers/testEnv'
+
+// The date opens the plugin's own date window; what it is opened with, and how it is closed,
+// is all this screen decides, so the window is a stand-in that keeps both.
+const dialogs = vi.hoisted(
+  () => [] as { props: Record<string, unknown>; close: ReturnType<typeof vi.fn> }[]
+)
+vi.mock('@/modal/componentDialog', async (importOriginal) => ({
+  ...(await importOriginal<typeof import('@/modal/componentDialog')>()),
+  openComponentDialog: (_load: unknown, props: Record<string, unknown>) => {
+    const dialog = { props, close: vi.fn() }
+    dialogs.push(dialog)
+    return dialog
+  },
+}))
 
 interface Ctx {
   app: App
@@ -55,6 +70,7 @@ const click = (el: HTMLElement, selector: string) =>
   el.querySelector<HTMLElement>(selector)!.dispatchEvent(new MouseEvent('click', { bubbles: true }))
 
 beforeEach(() => {
+  dialogs.length = 0
   const fake = useVault([
     { path: 'Task.md', content: '', frontmatter: { due: '2026-05-10', dueTime: '14:30' } },
     { path: 'Plain.md', content: '', frontmatter: { date: '2026-05-10' } },
@@ -92,21 +108,24 @@ describe('a date property', () => {
     const changes: unknown[] = []
     const el = draw('date', '2026-01-31', ctx('due', changes))
     expect(row(el)).not.toBeNull()
-    expect(input(el).type).toBe('date')
-    expect(input(el).value).toBe('2026-01-31')
+    // The day as the plugin writes days everywhere else, in text that is not typed into.
+    expect(input(el).type).toBe('text')
+    expect(input(el).readOnly).toBe(true)
+    expect(input(el).value).toBe('31.01.2026')
     click(el, '.abele-property-date__later')
     expect(changes).toEqual(['2026-02-01'])
     click(el, '.abele-property-date__earlier')
     click(el, '.abele-property-date__earlier')
     expect(changes).toEqual(['2026-02-01', '2026-01-31', '2026-01-30'])
-    expect(input(el).value).toBe('2026-01-30')
+    expect(input(el).value).toBe('30.01.2026')
   })
 
   it('keeps the time of a date and time', () => {
     const changes: unknown[] = []
     const el = draw('datetime', '2026-05-10T09:30', ctx('date', changes))
-    expect(input(el).type).toBe('datetime-local')
-    expect(input(el).value).toBe('2026-05-10T09:30')
+    expect(input(el).type).toBe('text')
+    expect(input(el).classList.contains('mod-datetime')).toBe(true)
+    expect(input(el).value).toBe('10.05.2026 09:30')
     click(el, '.abele-property-date__later')
     expect(changes).toEqual(['2026-05-11T09:30'])
   })
@@ -135,15 +154,56 @@ describe('a date property', () => {
     )
   })
 
-  it('takes a day picked in the field, and an emptied field as empty', () => {
+  it('takes a day picked in the date window, and a cleared one as empty', () => {
     const changes: unknown[] = []
     const el = draw('datetime', '2026-05-10 09:30', ctx('date', changes))
-    input(el).value = '2026-06-01T10:15'
-    input(el).dispatchEvent(new Event('change'))
+    click(el, 'input')
+    expect(dialogs).toHaveLength(1)
+    const { props, close } = dialogs[0]
+    expect(props).toMatchObject({ mode: 'event', title: 'date', initialTime: '09:30' })
+    expect(dayjs.isDayjs(props.initialDate)).toBe(true)
+    expect((props.initialDate as dayjs.Dayjs).format('YYYY-MM-DD')).toBe('2026-05-10')
+
+    // The value keeps the shape the note had it in: a space before the time, as written.
+    ;(props.onConfirm as (v: unknown) => void)({ date: dayjs('2026-06-01'), time: '10:15' })
     expect(changes).toEqual(['2026-06-01 10:15'])
-    input(el).value = ''
-    input(el).dispatchEvent(new Event('change'))
+    expect(close).toHaveBeenCalledOnce()
+    expect(input(el).value).toBe('01.06.2026 10:15')
+
+    click(el, 'input')
+    ;(dialogs[1].props.onClear as () => void)()
     expect(changes).toEqual(['2026-06-01 10:15', null])
+    expect(dialogs[1].close).toHaveBeenCalledOnce()
+    expect(input(el).value).toBe('')
+  })
+
+  it('keeps a date a date when a day is picked, and writes nothing when the window is left', () => {
+    const changes: unknown[] = []
+    const el = draw('date', '2026-05-10', ctx('due', changes))
+    input(el).dispatchEvent(new KeyboardEvent('keydown', { key: 'Enter', bubbles: true }))
+    expect(dialogs).toHaveLength(1)
+    expect(dialogs[0].props).toMatchObject({ title: 'due', initialTime: null })
+    ;(dialogs[0].props.onConfirm as (v: unknown) => void)({ date: dayjs('2026-05-12'), time: null })
+    expect(changes).toEqual(['2026-05-12'])
+
+    input(el).dispatchEvent(new KeyboardEvent('keydown', { key: ' ', bubbles: true }))
+    expect(dialogs).toHaveLength(2)
+    ;(dialogs[1].props.onCancel as () => void)()
+    expect(dialogs[1].close).toHaveBeenCalledOnce()
+    expect(changes).toEqual(['2026-05-12'])
+    // Any other key is not a press of the field.
+    input(el).dispatchEvent(new KeyboardEvent('keydown', { key: 'a', bubbles: true }))
+    expect(dialogs).toHaveLength(2)
+  })
+
+  it('opens an empty date at no day, and picking one there writes it', () => {
+    const changes: unknown[] = []
+    const el = draw('text', null, ctx('date', changes))
+    expect(input(el).placeholder).toBe('Empty')
+    click(el, 'input')
+    expect(dialogs[0].props.initialDate).toBeUndefined()
+    ;(dialogs[0].props.onConfirm as (v: unknown) => void)({ date: dayjs('2026-05-12'), time: null })
+    expect(changes).toEqual(['2026-05-12'])
   })
 
   it('leaves a value that is not a date, and a name not listed, to Obsidian', () => {

@@ -214,8 +214,20 @@ it('assembles chat and image provider fields once while preserving endpoints, mo
   const providers = general.findAllComponents(ProviderSettings)
   expect(providers).toHaveLength(2)
   for (const provider of providers) {
-    expect(provider.findAll('.setting-item-name').map((name) => name.text())).toContain('API Key')
-    expect(provider.find('.abele-ai-provider__models-header').text()).toBe('Models')
+    // On the list, one row a provider; its fields are in its own window.
+    expect(provider.findAllComponents(Input)).toHaveLength(0)
+    await provider
+      .findAllComponents(Icon)
+      .find((icon) => icon.props('tooltip') === 'Change this provider and its models')!
+      .trigger('click')
+    const names = provider.findAllComponents(Setting).map((item) => item.props('name'))
+    expect(names).toContain('API key')
+    // The models under a heading of their own in that window.
+    expect(
+      provider
+        .findAllComponents(Setting)
+        .find((item) => item.props('heading') && item.props('name') === 'Models')
+    ).toBeDefined()
     await row(provider, 'Name')
       .findComponent(Input)
       .vm.$emit('update:model-value', 'Renamed sample')
@@ -239,4 +251,40 @@ it('assembles chat and image provider fields once while preserving endpoints, mo
   for (const id of ['sample-chat-key', 'sample-image-key']) {
     expect(entries.some((entry) => entry.secretIds?.includes(id))).toBe(true)
   }
+})
+
+it('lists each provider as a row saying whether its key is in and how many models it brings', async () => {
+  const app = useVault([])
+  const config = AbeleConfig.getInstance()
+  config.ai.providers = [
+    {
+      id: 'sample-keyed',
+      name: 'Sample keyed',
+      baseUrl: 'https://sample.invalid/v1',
+      apiKeyId: 'sample-keyed-key',
+      models: [{ id: 'sample-one' }, { id: 'sample-two' }] as never,
+    },
+    {
+      id: 'sample-bare',
+      name: 'Sample bare',
+      baseUrl: 'https://sample.invalid/v1',
+      apiKeyId: 'sample-bare-key',
+      models: [],
+    },
+  ]
+  config.ai.imageProviders = []
+  app.secretStorage.setSecret('sample-keyed-key', 'sample-value')
+  const general = open(GeneralSettings)
+  const rows = general.findAll('.abele-ai-provider')
+  expect(rows.map((r) => r.find('.setting-item-name').text())).toEqual([
+    'Sample keyed',
+    'Sample bare',
+  ])
+  const descs = rows.map((r) => r.find('.setting-item-description span'))
+  expect(descs[0].text()).toMatch(/^Key saved · 2 models$/)
+  expect(descs[0].classes()).not.toContain('mod-warning')
+  expect(descs[1].text()).toMatch(/^No key yet/)
+  expect(descs[1].classes()).toContain('mod-warning')
+  // Added from a row of its own at the end of the list.
+  expect(row(general, 'Add another provider')).toBeDefined()
 })

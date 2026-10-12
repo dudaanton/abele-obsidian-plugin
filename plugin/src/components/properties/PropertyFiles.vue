@@ -28,14 +28,24 @@
         />
       </template>
     </Card>
-    <Button
+    <!-- Quiet words where the value would be, as Obsidian's own "Empty", not a filled button. -->
+    <button
       v-if="multiple || cards.length === 0"
-      :text="multiple ? 'Add file' : 'Choose file'"
-      icon="plus"
-      :tooltip="imagesOnly ? 'Pick a picture from the vault' : 'Pick a file from the vault'"
+      type="button"
       class="abele-property-files__add"
+      :aria-label="imagesOnly ? 'Pick a picture from the vault' : 'Pick a file from the vault'"
       @click="add"
-    />
+    >
+      {{
+        cards.length
+          ? 'Add file'
+          : imagesOnly
+            ? 'Choose a picture'
+            : multiple
+              ? 'Add file'
+              : 'Choose file'
+      }}
+    </button>
   </div>
 </template>
 
@@ -50,7 +60,6 @@ import { computed, reactive, watch } from 'vue'
 import { Menu, Platform, type TFile } from 'obsidian'
 import Card from '../obsidian/Card.vue'
 import Icon from '../obsidian/Icon.vue'
-import Button from '../obsidian/Button.vue'
 import { GlobalStore } from '@/stores/GlobalStore'
 import { isExternalSource, resolveVaultFile } from '@/helpers/resourceUrl'
 import { pickAnyFile } from '@/helpers/suggesters/VaultFilePicker'
@@ -198,15 +207,24 @@ function open(entry: Entry) {
   container-type: inline-size;
 }
 
-// A property row is one line tall; the card keeps to a compact version of itself there.
+// A file in a property reads as a link does in Obsidian's own property values: one quiet line,
+// no box around it. A picture is a small square at the start of the line in place of the icon,
+// the open and remove glyphs come under the pointer. A boxed card with the picture pinned to its
+// corner looked like a pasted-in widget.
 .abele-property-files .abele-property-files__card {
-  justify-content: center;
-  padding-block: var(--size-4-1);
-  padding-inline-start: var(--size-4-2);
+  position: relative;
   min-height: 0;
+  padding: var(--size-2-1) var(--size-2-3);
+  margin-inline: calc(-1 * var(--size-2-3));
+  border: none;
+  border-radius: var(--radius-s);
+  background: none;
+  box-shadow: none;
 
-  // One line: a long name is cut rather than pushing the arrow and the cross under it, which
-  // in the narrow sidebar and on a phone made every card twice as tall.
+  &:hover {
+    background-color: var(--background-modifier-hover);
+  }
+
   .abele-card__head {
     flex-wrap: nowrap;
     align-items: center;
@@ -215,25 +233,8 @@ function open(entry: Entry) {
   .abele-card__title {
     flex: 1 1 auto;
     flex-wrap: nowrap;
+    align-items: center;
     min-width: 0;
-  }
-
-  &:not(.abele-card_thumbed) {
-    padding-inline-end: var(--size-4-2);
-  }
-
-  // The picture fits inside the compact card: as tall as the card less its padding, so it
-  // neither sticks out of the bottom nor covers the next card's arrow and cross.
-  &.abele-card_thumbed {
-    min-height: var(--size-4-12);
-    padding-inline-end: calc(var(--size-4-10) + var(--size-4-1) + var(--size-4-2));
-
-    > .abele-card__thumbnail {
-      top: var(--size-4-1);
-      inset-inline-end: var(--size-4-1);
-      width: var(--size-4-10);
-      height: var(--size-4-10);
-    }
   }
 
   .abele-card__name {
@@ -244,26 +245,52 @@ function open(entry: Entry) {
     white-space: nowrap;
   }
 
+  &.abele-card_thumbed {
+    padding-inline-start: calc(var(--size-2-3) + var(--size-4-6) + var(--size-4-2));
+
+    .abele-card__icon {
+      display: none;
+    }
+
+    > .abele-card__thumbnail {
+      position: absolute;
+      top: 50%;
+      inset-inline-start: var(--size-2-3);
+      width: var(--size-4-6);
+      height: var(--size-4-6);
+      transform: translateY(-50%);
+      border-radius: var(--radius-s);
+      object-fit: cover;
+    }
+  }
+
   .abele-card__actions {
     flex: 0 0 auto;
+    visibility: hidden;
+  }
+
+  &:hover .abele-card__actions,
+  &:focus-within .abele-card__actions {
+    visibility: visible;
   }
 }
 
-.abele-property-files__add {
+.abele-property-files .abele-property-files__add {
   align-self: flex-start;
-}
+  height: auto;
+  padding: 0;
+  border: none;
+  background: none;
+  box-shadow: none;
+  color: var(--text-faint);
+  font-size: var(--metadata-input-font-size, var(--font-small));
+  font-weight: var(--font-normal);
+  cursor: var(--cursor);
 
-
-// Where the cell is too narrow for a name, the arrow, the cross and a picture, the picture goes:
-// the name is what tells the files apart.
-@container (max-width: 16em) {
-  .abele-property-files .abele-property-files__card.abele-card_thumbed {
-    min-height: 0;
-    padding-inline-end: var(--size-4-2);
-
-    > .abele-card__thumbnail {
-      display: none;
-    }
+  &:hover,
+  &:focus-visible {
+    color: var(--text-muted);
+    background: none;
   }
 }
 </style>

@@ -1,4 +1,4 @@
-import { mount } from '@vue/test-utils'
+import { flushPromises, mount } from '@vue/test-utils'
 import { describe, expect, it, vi, afterEach } from 'vitest'
 import ScriptApprovalModal from '@/components/ScriptApprovalModal.vue'
 import {
@@ -25,7 +25,7 @@ const request: ScriptApprovalRequest = {
 }
 afterEach(cancelScriptApprovals)
 describe('script approval UI', () => {
-  it('shows exact identity/hash and inert source and makes acceptance explicit', () => {
+  it('shows exact identity/hash and inert source and makes acceptance explicit', async () => {
     const answer = vi.fn()
     const wrapper = mount(ScriptApprovalModal, {
       props: { request: { ...request, id: 1, answer } },
@@ -34,7 +34,12 @@ describe('script approval UI', () => {
     expect(wrapper.text()).toContain('this device only')
     expect(wrapper.text()).toContain(request.sha)
     expect(wrapper.text()).toContain('sample-file')
-    expect(wrapper.find('pre').text()).toBe(request.source)
+    await flushPromises()
+    // The code goes to Obsidian's renderer as a fenced block, which shows it as code and never
+    // as markup; the test renderer writes what it is handed as text.
+    expect(wrapper.get('.abele-script-approval__source').text()).toBe(
+      '```js\n' + request.source + '\n```'
+    )
     expect(wrapper.find('img').exists()).toBe(false)
     wrapper
       .findAll('button')
@@ -136,5 +141,60 @@ describe('script approval UI', () => {
     controller.abort()
     expect(await decision).toBe(false)
     expect(scriptApprovalDialog.value).toBeNull()
+  })
+
+  it('fences the code longer than any backticks in it, in the language of its file', async () => {
+    const source = 'const sample = `a ${"```"} b`'
+    const wrapper = mount(ScriptApprovalModal, {
+      props: {
+        request: { ...request, path: 'Scripts/sample.ts', source, id: 1, answer: vi.fn() },
+      },
+      global: { stubs: { ObsidianModal: { template: '<div><slot /></div>' } } },
+    })
+    await flushPromises()
+    expect(wrapper.get('.abele-script-approval__source').text()).toBe(
+      '````ts\n' + source + '\n````'
+    )
+    wrapper.unmount()
+  })
+  it('shows what changed since the approved version first, and the whole script a tab away', async () => {
+    const previousSource = 'console.log("sample one")'
+    const wrapper = mount(ScriptApprovalModal, {
+      props: {
+        request: {
+          ...request,
+          source: 'console.log("sample two")',
+          previousSource,
+          id: 1,
+          answer: vi.fn(),
+        },
+      },
+      global: { stubs: { ObsidianModal: { template: '<div><slot /></div>' } } },
+    })
+    await flushPromises()
+    const tabs = () => wrapper.findAll('[role="tab"]')
+    expect(tabs().map((t) => [t.text(), t.attributes('aria-selected')])).toEqual([
+      ['What changed', 'true'],
+      ['Whole script', 'false'],
+    ])
+    expect(wrapper.get('.abele-script-approval__diff .abele-diff__line_removed').text()).toContain(
+      'sample one'
+    )
+    expect(wrapper.find('.abele-script-approval__source').exists()).toBe(false)
+
+    await tabs()[1].trigger('click')
+    await flushPromises()
+    expect(wrapper.find('.abele-script-approval__diff').exists()).toBe(false)
+    expect(wrapper.get('.abele-script-approval__source').text()).toContain('sample two')
+    wrapper.unmount()
+  })
+  it('offers no comparison for a script never approved before', () => {
+    const wrapper = mount(ScriptApprovalModal, {
+      props: { request: { ...request, id: 1, answer: vi.fn() } },
+      global: { stubs: { ObsidianModal: { template: '<div><slot /></div>' } } },
+    })
+    expect(wrapper.find('[role="tab"]').exists()).toBe(false)
+    expect(wrapper.find('.abele-script-approval__diff').exists()).toBe(false)
+    wrapper.unmount()
   })
 })

@@ -7,15 +7,14 @@
   min-width: 0;
 }
 
-/* As wide as the number, or its placeholder when empty, so + stays next to it rather than across
-   the row. A fixed width cut the placeholder off on a phone, whose field has more padding.
-   Outranks the phone's own `.is-mobile input[type="text"] { width: 100% }`. */
+/* One width whatever the number, so − and + never move as it counts: room for five digits at
+   the figures' own width. Outranks the phone's own `.is-mobile input[type="text"] { width: 100% }`. */
 .abele-property-counter .abele-property-counter__value.metadata-input-number {
-  flex: 0 1 auto;
-  width: auto;
-  min-width: 4ch;
-  field-sizing: content;
+  flex: 0 0 auto;
+  width: calc(5ch + 2 * var(--size-4-2));
+  field-sizing: fixed;
   text-align: center;
+  font-variant-numeric: tabular-nums;
 }
 
 .abele-property-counter .clickable-icon {

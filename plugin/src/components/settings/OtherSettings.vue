@@ -1,106 +1,119 @@
 <template>
+  <!-- What is left once every feature has its page, grouped by what it changes: how Obsidian
+       looks, what Abele draws in a note in place of Obsidian, how notes open, maps, and the
+       plugin itself. -->
   <div class="abele-settings__other">
-    <Setting name="Changelog" desc="See what changed in every plugin version, newest first.">
-      <Button text="Open changelog" tooltip="Open the plugin changelog" @click="showChangelog" />
-    </Setting>
-    <Setting
-      name="CSS snippets folder"
-      desc="Vault folder with .css files to auto-apply as style snippets. Leave empty to disable."
-    >
-      <Input
-        :model-value="snippetsFolder"
-        placeholder="e.g. snippets"
-        @update:model-value="updateSnippetsFolder"
-      />
-    </Setting>
-    <Setting name="Full-width sidebars" desc="Make sidebars take the full screen width on a phone.">
-      <Checkbox :is-enabled="fullWidthSidebars" @toggle="toggleFullWidthSidebars" />
-    </Setting>
-    <Setting
-      name="Half-width sidebars on tablet"
-      desc="Make sidebars take half the screen width on a tablet."
-    >
-      <Checkbox :is-enabled="halfWidthSidebars" @toggle="toggleHalfWidthSidebars" />
-    </Setting>
-    <Setting
-      name="Mermaid viewer"
-      desc="Draw mermaid diagrams at the width of the note, with zoom, drag and a full-screen view, instead of Obsidian's own drawing."
-    >
-      <Checkbox :is-enabled="mermaidViewer" @toggle="toggleMermaidViewer" />
-    </Setting>
-    <Setting
-      name="Open canvases in Abele"
-      desc="Open diagrams in the read-only viewer with walkthrough steps. Use Open in Obsidian Canvas in its header to edit a diagram in the native canvas."
-    >
-      <Checkbox :is-enabled="canvasViewer" @toggle="toggleCanvasViewer" />
-    </Setting>
-    <Setting
-      name="Editor syntax highlighting"
-      desc="Highlight more fenced-code languages in Source and Live Preview, using Obsidian's own theme. Native highlighting and rendered blocks stay unchanged. Extra highlighting is limited to blocks of 32,768 characters and 1,000 lines."
-    >
-      <Checkbox :is-enabled="editorSyntaxHighlight" @toggle="toggleEditorSyntaxHighlight" />
-    </Setting>
-    <Setting
-      name="Own drawing of properties"
-      desc="In a note's properties: a wallet's balance beside a link to it, sums worked out in number fields, and cards for File and Files properties and for the cover. Off is Obsidian's own drawing."
-    >
-      <Checkbox :is-enabled="propertyWidgets" @toggle="togglePropertyWidgets" />
-    </Setting>
-    <Setting
-      name="Remember where notes were left"
-      desc="Open each note at the scroll and cursor it was left at, kept on this device. A link to a heading or block, a search result or a book's highlight still goes to its own place."
-    >
-      <Checkbox :is-enabled="rememberNotePlaces" @toggle="toggleRememberNotePlaces" />
-    </Setting>
-    <Setting
-      name="Counter properties"
-      desc="Comma-separated property names drawn as a number with − and + buttons. An empty value counts as 0. Needs own drawing of properties on."
-    >
-      <Input
-        :model-value="counterProperties"
-        placeholder="e.g. reps, glasses"
-        @update:model-value="updateCounterProperties"
-      />
-    </Setting>
-    <Setting
-      v-for="list in propertyLists"
-      :key="list.key"
-      :class="`abele-other-settings__${list.key}`"
-      :name="list.name"
-      :desc="list.desc"
-    >
-      <Input
-        :model-value="list.text.value"
-        :placeholder="list.placeholder"
-        @update:model-value="(value: string) => list.update(value)"
-      />
-    </Setting>
-    <Setting
-      name="Keyboard diagnostics"
-      desc="Show, at the top of the screen, what the app reports about the on-screen keyboard — for a screenshot when a dialog ends up under it. Stays on this device."
-    >
-      <Checkbox :is-enabled="keyboardDiagnostics" @toggle="toggleKeyboardDiagnostics" />
-    </Setting>
-    <Setting
-      name="Coordinates property"
-      desc="Note property holding a place as 'lat, lon'. The agent is told to write into this one."
-    >
-      <Input
-        :model-value="mapCoordinatesProperty"
-        placeholder="coordinates"
-        @update:model-value="updateMapProperty"
-      />
-    </Setting>
-    <Setting
-      name="Map style URL"
-      desc="MapLibre style for maps in notes and chats. Empty uses the free OpenFreeMap tiles."
-    >
-      <Input
-        :model-value="mapStyleUrl"
-        placeholder="https://tiles.openfreemap.org/styles/bright"
-        @update:model-value="updateMapStyle"
-      />
-    </Setting>
+    <Section title="Look">
+      <Setting name="Full-width sidebars" desc="Make sidebars take the full screen width on a phone.">
+        <Checkbox :is-enabled="fullWidthSidebars" @toggle="toggleFullWidthSidebars" />
+      </Setting>
+      <Setting
+        name="Half-width sidebars on tablet"
+        desc="Make sidebars take half the screen width on a tablet."
+      >
+        <Checkbox :is-enabled="halfWidthSidebars" @toggle="toggleHalfWidthSidebars" />
+      </Setting>
+      <Setting
+        name="CSS snippets folder"
+        desc="Vault folder with .css files to auto-apply as style snippets. Leave empty to disable."
+      >
+        <Input
+          :model-value="snippetsFolder"
+          placeholder="e.g. snippets"
+          @update:model-value="updateSnippetsFolder"
+        />
+      </Setting>
+    </Section>
+    <Section title="Drawn by Abele in a note" desc="Each one in place of Obsidian's own drawing.">
+      <Setting
+        name="Own drawing of properties"
+        desc="In a note's properties: a wallet's balance beside a link to it, sums worked out in number fields, and cards for File and Files properties and for the cover. Off is Obsidian's own drawing."
+      >
+        <Checkbox :is-enabled="propertyWidgets" @toggle="togglePropertyWidgets" />
+      </Setting>
+      <Setting
+        name="Counter properties"
+        desc="Comma-separated property names drawn as a number with − and + buttons. An empty value counts as 0. Needs own drawing of properties on."
+      >
+        <Input
+          :model-value="counterProperties"
+          placeholder="e.g. reps, glasses"
+          @update:model-value="updateCounterProperties"
+        />
+      </Setting>
+      <Setting
+        v-for="list in propertyLists"
+        :key="list.key"
+        :class="`abele-other-settings__${list.key}`"
+        :name="list.name"
+        :desc="list.desc"
+      >
+        <Input
+          :model-value="list.text.value"
+          :placeholder="list.placeholder"
+          @update:model-value="(value: string) => list.update(value)"
+        />
+      </Setting>
+      <Setting
+        name="Mermaid viewer"
+        desc="Draw mermaid diagrams at the width of the note, with zoom, drag and a full-screen view, instead of Obsidian's own drawing."
+      >
+        <Checkbox :is-enabled="mermaidViewer" @toggle="toggleMermaidViewer" />
+      </Setting>
+      <Setting
+        name="Open canvases in Abele"
+        desc="Open diagrams in the read-only viewer with walkthrough steps. Use Open in Obsidian Canvas in its header to edit a diagram in the native canvas."
+      >
+        <Checkbox :is-enabled="canvasViewer" @toggle="toggleCanvasViewer" />
+      </Setting>
+      <Setting
+        name="Editor syntax highlighting"
+        desc="Highlight more fenced-code languages in Source and Live Preview, using Obsidian's own theme. Native highlighting and rendered blocks stay unchanged. Extra highlighting is limited to blocks of 32,768 characters and 1,000 lines."
+      >
+        <Checkbox :is-enabled="editorSyntaxHighlight" @toggle="toggleEditorSyntaxHighlight" />
+      </Setting>
+    </Section>
+    <Section title="Opening notes">
+      <Setting
+        name="Remember where notes were left"
+        desc="Open each note at the scroll and cursor it was left at, kept on this device. A link to a heading or block, a search result or a book's highlight still goes to its own place."
+      >
+        <Checkbox :is-enabled="rememberNotePlaces" @toggle="toggleRememberNotePlaces" />
+      </Setting>
+    </Section>
+    <Section title="Maps">
+      <Setting
+        name="Coordinates property"
+        desc="Note property holding a place as 'lat, lon'. The agent is told to write into this one."
+      >
+        <Input
+          :model-value="mapCoordinatesProperty"
+          placeholder="coordinates"
+          @update:model-value="updateMapProperty"
+        />
+      </Setting>
+      <Setting
+        name="Map style URL"
+        desc="MapLibre style for maps in notes and chats. Empty uses the free OpenFreeMap tiles."
+      >
+        <Input
+          :model-value="mapStyleUrl"
+          placeholder="https://tiles.openfreemap.org/styles/bright"
+          @update:model-value="updateMapStyle"
+        />
+      </Setting>
+    </Section>
+    <Section title="The plugin">
+      <Setting name="Changelog" desc="See what changed in every plugin version, newest first.">
+        <Button text="Open changelog" tooltip="Open the plugin changelog" @click="showChangelog" />
+      </Setting>
+      <Setting
+        name="Keyboard diagnostics"
+        desc="Show, at the top of the screen, what the app reports about the on-screen keyboard — for a screenshot when a dialog ends up under it. Stays on this device."
+      >
+        <Checkbox :is-enabled="keyboardDiagnostics" @toggle="toggleKeyboardDiagnostics" />
+      </Setting>
+    </Section>
   </div>
 </template>
 
@@ -108,6 +121,7 @@
 import { computed, ref } from 'vue'
 import { debounce } from 'obsidian'
 import Setting from '../obsidian/Setting.vue'
+import Section from '../obsidian/Section.vue'
 import Input from '../obsidian/Input.vue'
 import Checkbox from '../obsidian/Checkbox.vue'
 import Button from '../obsidian/Button.vue'

@@ -14,6 +14,9 @@ import { GroupPicker } from '@/properties/groupsWidget'
 import type { GroupNote } from '@/properties/groups'
 import { useVault } from '../helpers/testEnv'
 
+/** Whether the stock list draws its pills in a `.multi-select-container`, as Obsidian's does. */
+let withContainer = true
+
 const stock = (type: string): TypeWidget => ({
   type,
   name: () => type,
@@ -21,6 +24,7 @@ const stock = (type: string): TypeWidget => ({
   validate: () => true,
   render(el, value) {
     const marker = el.createDiv({ cls: `stock-${type}`, text: JSON.stringify(value ?? null) })
+    if (type === 'multitext' && withContainer) el.createDiv({ cls: 'multi-select-container' })
     return {
       containerEl: el,
       type,
@@ -59,6 +63,7 @@ const press = (el: HTMLElement): GroupPicker => {
 }
 
 beforeEach(() => {
+  withContainer = true
   const fake = useVault([
     { path: 'Projects/Garden.md', content: '' },
     { path: 'Projects/Kitchen.md', content: '' },
@@ -96,6 +101,39 @@ describe('a groups property', () => {
       expect(el.querySelector('.stock-multitext')).not.toBeNull()
       expect(button(el)).not.toBeNull()
     }
+  })
+
+  it('says "Add group" in quiet words at the end of the list itself, with no glyph', () => {
+    const el = draw('multitext', ['[[Garden]]'], ctx('groups'))
+    const pick = button(el)!
+    expect(pick.parentElement!.classList.contains('multi-select-container')).toBe(true)
+    expect(pick.textContent).toBe('Add group')
+    expect(pick.getAttribute('aria-label')).toBe('Add a group')
+    expect(pick.getAttribute('role')).toBe('button')
+    expect(pick.getAttribute('tabindex')).toBe('0')
+    expect(pick.classList.contains('clickable-icon')).toBe(false)
+    expect(pick.querySelector('svg')).toBeNull()
+  })
+
+  it('sits in the cell itself where the list has no container of its own', () => {
+    withContainer = false
+    const el = draw('multitext', ['[[Garden]]'], ctx('groups'))
+    expect(button(el)!.parentElement).toBe(el)
+  })
+
+  it.each(['Enter', ' '])('opens the picker from the keyboard with %j as with a click', (key) => {
+    const el = draw('multitext', ['[[Garden]]'], ctx('groups'))
+    const event = new KeyboardEvent('keydown', { key, bubbles: true, cancelable: true })
+    button(el)!.dispatchEvent(event)
+    expect(event.defaultPrevented).toBe(true)
+    expect(GroupPicker.last).not.toBeNull()
+  })
+
+  it('opens nothing on another key', () => {
+    GroupPicker.last?.close()
+    const el = draw('multitext', ['[[Garden]]'], ctx('groups'))
+    button(el)!.dispatchEvent(new KeyboardEvent('keydown', { key: 'a', bubbles: true }))
+    expect(GroupPicker.last).toBeNull()
   })
 
   it('draws an empty or missing value held as text with the list editor too', () => {

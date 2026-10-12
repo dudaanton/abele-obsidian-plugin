@@ -152,9 +152,15 @@ describe('the AI settings', () => {
     ['voice input', 'fake-voice-value'],
   ])('shows and copies the %s key where it is entered', async (_, value) => {
     const view = open()
+    // A provider's key is in its own window, opened from the settings glyph on its row.
+    for (const change of view
+      .findAllComponents(Icon)
+      .filter((i) => i.props('tooltip') === 'Change this provider and its models'))
+      await change.trigger('click')
     const field = fieldHolding(view, value)
     expect(field).toBeDefined()
     expect(view.text()).not.toContain(value)
+    expect(document.body.textContent).not.toContain(value)
 
     await icon(field!, 'Show the key')!.trigger('click')
     expect(field!.text()).toContain(value)

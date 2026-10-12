@@ -1,5 +1,5 @@
 <template>
-  <ObsidianModal title="Review script execution" size="tall" @close="request.answer(false)">
+  <ObsidianModal title="Review script execution" @close="request.answer(false)">
     <div class="abele-script-approval">
       <div class="abele-script-approval__review">
         <p class="abele-script-approval__lead">
@@ -24,7 +24,25 @@
             <code>{{ request.sha }}</code>
           </dd>
         </dl>
-        <pre class="abele-script-approval__source"><code>{{ request.source }}</code></pre>
+        <!-- Changed since it was approved: what changed comes first, the whole script a tab away. -->
+        <Tabs
+          v-if="request.previousSource !== undefined"
+          v-model="shown"
+          class="abele-script-approval__tabs"
+          :tabs="[
+            { id: 'changes', label: 'What changed' },
+            { id: 'whole', label: 'Whole script' },
+          ]"
+        />
+        <Diff
+          v-if="request.previousSource !== undefined && shown === 'changes'"
+          class="abele-script-approval__diff"
+          :text-left="request.previousSource"
+          :text-right="request.source"
+          layout="auto"
+        />
+        <!-- The code as Obsidian draws a code block, coloured by its own highlighter. -->
+        <ObsidianMarkdown v-else class="abele-script-approval__source" :text="fenced" />
       </div>
       <!-- Stopping the agent is a different decision from leaving this one script blocked, so
            it stands apart on the left. -->
@@ -58,9 +76,23 @@
 <script setup lang="ts">
 import ObsidianModal from './obsidian/Modal.vue'
 import Button from './obsidian/Button.vue'
+import Tabs from './obsidian/Tabs.vue'
+import ObsidianMarkdown from './obsidian/Markdown.vue'
+import Diff from './Diff.vue'
+import { computed, ref } from 'vue'
 import type { ScriptApprovalDialog } from '@/scripting/trust/scriptApprovalPrompt'
-withDefaults(defineProps<{ request: ScriptApprovalDialog; readOnly?: boolean }>(), {
+const props = withDefaults(defineProps<{ request: ScriptApprovalDialog; readOnly?: boolean }>(), {
   readOnly: false,
+})
+
+const shown = ref('changes')
+
+// A fence longer than any run of backticks in the code, so the code can never close it early.
+const fenced = computed(() => {
+  const longest = Math.max(2, ...(props.request.source.match(/`+/g) ?? []).map((r) => r.length))
+  const fence = '`'.repeat(longest + 1)
+  const lang = /\.(ts|tsx)$/.test(props.request.path) ? 'ts' : 'js'
+  return `${fence}${lang}\n${props.request.source}\n${fence}`
 })
 </script>
 
@@ -111,15 +143,22 @@ withDefaults(defineProps<{ request: ScriptApprovalDialog; readOnly?: boolean }>(
   overflow: auto;
 }
 .abele-script-approval__source {
-  margin: 0;
-  padding: var(--size-4-2) var(--size-4-3);
-  border-radius: var(--radius-m);
-  background-color: var(--code-background);
-  font-size: var(--code-size);
-  // Long code must wrap rather than push the native sheet sideways.
-  white-space: pre-wrap;
-  overflow-wrap: anywhere;
+  // Long code wraps rather than push the native sheet sideways.
+  pre,
+  code {
+    white-space: pre-wrap;
+    overflow-wrap: anywhere;
+  }
+
+  pre {
+    margin: 0;
+  }
 }
+
+.abele-script-approval__tabs {
+  margin-bottom: var(--size-4-2);
+}
+
 .abele-script-approval .abele-modal__actions {
   display: flex;
   flex-wrap: wrap;

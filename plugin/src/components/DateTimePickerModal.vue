@@ -31,13 +31,15 @@ import Button from './obsidian/Button.vue'
 
 const props = defineProps<{
   mode: 'event' | 'due'
+  /** The window's name when it is not a task's date: the property it sets. */
+  title?: string
   initialDate?: dayjs.Dayjs
   initialTime?: string | null
 }>()
 
 const picker = useTemplateRef<InstanceType<typeof DateTimePicker>>('picker')
 
-const title = computed(() => (props.mode === 'event' ? 'Event Date' : 'Due Date'))
+const title = computed(() => props.title ?? (props.mode === 'event' ? 'Event Date' : 'Due Date'))
 
 const emit = defineEmits<{
   (e: 'confirm', result: { date: dayjs.Dayjs; time: string | null }): void

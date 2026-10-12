@@ -31,6 +31,8 @@ export interface ScriptApprovalRequest {
   path: string
   sha: string
   source: string
+  /** The bytes approved last time on this device, when it keeps them, to show what changed. */
+  previousSource?: string
   identity: ManagedScript
   recovery?: boolean
   reviewOnly?: boolean
@@ -139,9 +141,9 @@ async function checkedScriptForExecution(
   let permission: CheckedPermission | null = null
   let versionToRemember: string | null = null
   try {
-    const recoveredIdentity = recovered as ManagedScript | null
+    const recoveredIdentity = recovered
     if (recoveredIdentity && trust) {
-      await trust.provenance.record(path, recoveredIdentity.fileId!)
+      await trust.provenance.record(path, recoveredIdentity.fileId)
       await trust.provenance.approve(path, recoveredIdentity, await sha256(bytes))
     }
     if (trust) {
@@ -199,14 +201,14 @@ async function checkedScriptForExecution(
       // The older device-local EXACT approval remains a decision even when a managed
       // descriptor already existed before the newer upgrade snapshot was introduced.
       if (!localFallback && legacy.exact) {
-        await trust.provenance.approve(path, identity!, sha)
+        await trust.provenance.approve(path, identity, sha)
       }
-      const alreadyApproved = localFallback || (await trust.provenance.approved(identity!, sha))
+      const alreadyApproved = localFallback || (await trust.provenance.approved(identity, sha))
       trust.provenance.assertRevision(path, initialGeneration)
       if (!alreadyApproved) {
         if (!confirm) throw new Error('This exact script version needs device-local approval')
         trust.store.close()
-        const accepted = await confirm({ path, sha, source: decode(bytes), identity: identity! })
+        const accepted = await confirm({ path, sha, source: decode(bytes), identity: identity })
         if (!accepted) throw new Error('This exact script version needs device-local approval')
         if (!equal(bytes, await read()))
           throw new Error('Script changed while its approval was open')
@@ -219,12 +221,12 @@ async function checkedScriptForExecution(
         trust.provenance.assertRevision(path, initialGeneration)
         if (
           !current ||
-          current.fileId !== identity!.fileId ||
-          !sameBinding(current.binding, identity!.binding)
+          current.fileId !== identity.fileId ||
+          !sameBinding(current.binding, identity.binding)
         ) {
           throw new Error('Script identity or policy changed while its approval was open')
         }
-        await trust.provenance.approve(path, identity!, sha)
+        await trust.provenance.approve(path, identity, sha)
       }
       if (!equal(bytes, await read())) {
         throw new Error('Script changed during the execution check; run it again')
@@ -253,7 +255,7 @@ async function checkedScriptForExecution(
             )
         } else if (
           !current ||
-          current.fileId !== identity!.fileId ||
+          current.fileId !== identity.fileId ||
           !(await live.provenance.approved(current, sha))
         ) {
           throw new Error('Script provenance changed during the execution check')

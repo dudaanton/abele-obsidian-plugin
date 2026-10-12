@@ -51,6 +51,7 @@
           :client-name="provider.clientName"
           :secret-value="storedSecret(provider.apiKeyId)"
           :secret-input="secretInputs[provider.id] || ''"
+          :summary="modelCount(provider.models?.length ?? 0)"
           @update:name="updateProvider(pIdx, 'name', $event)"
           @update:client-name="updateProvider(pIdx, 'clientName', $event)"
           @update:secret-input="secretInputs[provider.id] = $event"
@@ -147,13 +148,16 @@
           />
         </ProviderSettings>
 
-        <div class="abele-settings__ai-actions">
+        <Setting
+          :name="providers.length ? 'Add another provider' : 'No providers yet'"
+          desc="Any service that speaks the OpenAI API: its address, a key and its models."
+        >
           <Button
-            text="Add Provider"
+            text="Add provider"
             tooltip="Add another OpenAI-compatible provider"
             @click="addProvider"
           />
-        </div>
+        </Setting>
       </Section>
 
       <Section
@@ -366,6 +370,7 @@
           :client-name="ip.clientName"
           :secret-value="storedSecret(ip.apiKeyId)"
           :secret-input="imgSecretInputs[ip.id] || ''"
+          :summary="modelCount(ip.models?.length ?? 0)"
           @update:name="updateImageProvider(ipIdx, 'name', $event)"
           @update:client-name="updateImageProvider(ipIdx, 'clientName', $event)"
           @update:secret-input="imgSecretInputs[ip.id] = $event"
@@ -434,13 +439,16 @@
           />
         </ProviderSettings>
 
-        <div class="abele-settings__ai-actions">
+        <Setting
+          :name="imageProviders.length ? 'Add another image provider' : 'No image providers yet'"
+          desc="A service that makes pictures from words, for the agent to draw with."
+        >
           <Button
-            text="Add Image Provider"
+            text="Add image provider"
             tooltip="Add another image generation provider"
             @click="addImageProvider"
           />
-        </div>
+        </Setting>
 
         <Setting name="Default Image Model" desc="Used when agent doesn't specify a model.">
           <Dropdown
@@ -1148,6 +1156,8 @@ const updatePrompt = (field: keyof Omit<AiPrompts, 'toolDescriptions'>, value: s
   prompts.value = { ...prompts.value, [field]: value }
   save()
 }
+
+const modelCount = (n: number) => (n === 1 ? '1 model' : `${n} models`)
 </script>
 
 <style lang="scss">

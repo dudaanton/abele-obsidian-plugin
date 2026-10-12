@@ -56,4 +56,12 @@ defineProps<{
   color: var(--text-muted);
   font-size: var(--font-ui-small);
 }
+
+// Over a group of settings the heading and its words start where the words in the rows do.
+.abele-section:has(> .abele-obsidian-setting) {
+  > .abele-section__header,
+  > .abele-section__desc {
+    padding-inline: var(--size-4-5);
+  }
+}
 </style>

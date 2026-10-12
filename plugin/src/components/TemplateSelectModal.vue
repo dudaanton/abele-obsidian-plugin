@@ -21,13 +21,12 @@
             tabindex="0"
             @click="navigateTo(idx)"
             @keydown.enter="navigateTo(idx)"
-            >{{
-            segment
-          }}</span>
+            >{{ segment }}</span
+          >
         </template>
       </div>
 
-      <div class="abele-template-select__list">
+      <div class="abele-template-select__list" role="listbox" aria-label="Templates">
         <!-- Search mode: flat list -->
         <template v-if="searchQuery">
           <div
@@ -40,7 +39,9 @@
             :aria-selected="selectedTemplate === template"
             @click="selectTemplate(template)"
             @dblclick="confirmSelection"
-            @keydown.enter="selectedTemplate === template ? confirmSelection() : selectTemplate(template)"
+            @keydown.enter="
+              selectedTemplate === template ? confirmSelection() : selectTemplate(template)
+            "
           >
             <div class="abele-template-select__item-info">
               <span class="abele-template-select__item-name">{{ template.name }}</span>
@@ -87,7 +88,9 @@
             :aria-selected="selectedTemplate === template"
             @click="selectTemplate(template)"
             @dblclick="confirmSelection"
-            @keydown.enter="selectedTemplate === template ? confirmSelection() : selectTemplate(template)"
+            @keydown.enter="
+              selectedTemplate === template ? confirmSelection() : selectTemplate(template)
+            "
           >
             <div class="abele-template-select__item-info abele-template-select__item-info_row">
               <Icon icon="file-text" no-hover class="abele-template-select__folder-icon" />

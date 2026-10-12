@@ -28,158 +28,181 @@
       </Setting>
     </Section>
 
-    <EmptyState v-if="!settings.feeds.length" text="No calendars yet." />
-
-    <CardGrid v-else stack>
-      <Card
+    <!-- One row per calendar, as Obsidian lists its plugins: the name in its colour, how it
+         is doing in a quiet line, on or off, and the rest in a window of its own. -->
+    <Section title="Your calendars">
+      <Setting
         v-for="feed in settings.feeds"
         :key="feed.id"
-        :title="feedLabel(feed)"
-        :icon="feed.source === 'caldav' ? 'server' : 'calendar'"
-        :description="statusText(feed)"
+        class="abele-calendars-settings__feed"
         :class="`abele-calendars-settings__feed_${feed.color}`"
       >
-        <!-- The calendar's colour is its glyph's, as its events wear it; a state only when
-             something is off, as a dot with the words in its tooltip. -->
-        <template #badges>
-          <StatusDot v-if="!feed.enabled" tone="faint" label="Off" />
-          <StatusDot v-else-if="status(feed.id)?.error" tone="red" label="Not read" />
+        <template #name>
+          <span class="abele-calendars-settings__name"
+            ><Icon
+              :icon="feed.source === 'caldav' ? 'server' : 'calendar'"
+              no-hover
+              class="abele-calendars-settings__glyph"
+            />{{ feedLabel(feed) }}</span
+          >
         </template>
-        <template #actions>
-          <Icon icon="trash" tooltip="Delete this calendar" @click="removing = feed" />
+        <template #desc>
+          <span :class="{ 'mod-warning': feed.enabled && status(feed.id)?.error }">{{
+            feed.enabled && status(feed.id)?.error ? 'Not read: ' + status(feed.id)?.error : statusText(feed)
+          }}</span>
         </template>
+        <Icon icon="settings" tooltip="Change this calendar" @click="editing = feed" />
+        <Checkbox
+          :is-enabled="feed.enabled"
+          @toggle="update(feed, { enabled: !feed.enabled })"
+        />
+      </Setting>
+      <Setting
+        :name="settings.feeds.length ? 'Add another calendar' : 'No calendars yet'"
+        desc="A secret link from Google, iCloud or Outlook, or a CalDAV account."
+      >
+        <Button text="Add calendar" tooltip="Add a calendar to show beside the tasks" @click="addAndEdit" />
+      </Setting>
+    </Section>
 
-        <p v-if="feed.enabled && status(feed.id)?.error" class="setting-item-description">
-          {{ status(feed.id)?.error }}
+    <ObsidianModal
+      v-if="editing"
+      :title="feedLabel(editing)"
+      @close="editing = null"
+    >
+      <Setting name="Name" desc="Shown beside each of its events.">
+        <Input
+          :model-value="editing.name"
+          placeholder="e.g. Work"
+          @update:model-value="updateLater(editing, { name: $event })"
+        />
+      </Setting>
+      <Setting name="Colour" desc="Its events are marked with it.">
+        <Dropdown
+          :options="colorOptions"
+          :model-value="editing.color"
+          @update:model-value="update(editing, { color: $event as KitColor })"
+        />
+      </Setting>
+      <Setting
+        name="Connected by"
+        desc="A secret link to the calendar, or a CalDAV account with its username and password."
+      >
+        <Dropdown
+          :options="sourceOptions"
+          :model-value="editing.source"
+          @update:model-value="changeSource(editing, $event as CalendarSource)"
+        />
+      </Setting>
+
+      <template v-if="editing.source === 'ics'">
+        <Setting name="Link" :desc="LINK_HELP">
+          <SecretField
+            :model-value="typed[editing.id] ?? ''"
+            :value="stored(editing)"
+            placeholder="https://… or webcal://…"
+            replace-placeholder="New link..."
+            save-tooltip="Save the link"
+            what="The link"
+            @update:model-value="type(editing, $event)"
+            @save="saveSecret(editing)"
+          >
+            <template #actions>
+              <Icon
+                icon="trash-2"
+                with-bg
+                tooltip="Forget the link"
+                @click="forgetSecret(editing)"
+              />
+            </template>
+          </SecretField>
+        </Setting>
+        <p v-if="problem[editing.id]" class="setting-item-description mod-warning">
+          {{ problem[editing.id] }}
         </p>
+      </template>
 
-        <Setting name="Show this calendar" desc="Off keeps it set up here without reading it.">
-          <Checkbox :is-enabled="feed.enabled" @toggle="update(feed, { enabled: !feed.enabled })" />
-        </Setting>
-        <Setting name="Name" desc="Shown beside each of its events.">
-          <Input
-            :model-value="feed.name"
-            placeholder="e.g. Work"
-            @update:model-value="updateLater(feed, { name: $event })"
-          />
-        </Setting>
-        <Setting name="Colour" desc="Its events are marked with it.">
-          <Dropdown
-            :options="colorOptions"
-            :model-value="feed.color"
-            @update:model-value="update(feed, { color: $event as KitColor })"
-          />
-        </Setting>
+      <template v-else>
         <Setting
-          name="Connected by"
-          desc="A secret link to the calendar, or a CalDAV account with its username and password."
+          name="Server"
+          desc="The CalDAV address: https://caldav.icloud.com for iCloud, https://caldav.fastmail.com for Fastmail, your Nextcloud's address for Nextcloud."
         >
-          <Dropdown
-            :options="sourceOptions"
-            :model-value="feed.source"
-            @update:model-value="changeSource(feed, $event as CalendarSource)"
+          <Input
+            :model-value="editing.server"
+            placeholder="https://caldav.icloud.com"
+            @update:model-value="updateLater(editing, { server: $event.trim() })"
           />
         </Setting>
-
-        <template v-if="feed.source === 'ics'">
-          <Setting name="Link" :desc="LINK_HELP">
-            <SecretField
-              :model-value="typed[feed.id] ?? ''"
-              :value="stored(feed)"
-              placeholder="https://… or webcal://…"
-              replace-placeholder="New link..."
-              save-tooltip="Save the link"
-              what="The link"
-              @update:model-value="type(feed, $event)"
-              @save="saveSecret(feed)"
-            >
-              <template #actions>
-                <Icon
-                  icon="trash-2"
-                  with-bg
-                  tooltip="Forget the link"
-                  @click="forgetSecret(feed)"
-                />
-              </template>
-            </SecretField>
-          </Setting>
-          <p v-if="problem[feed.id]" class="setting-item-description mod-warning">
-            {{ problem[feed.id] }}
-          </p>
-        </template>
-
-        <template v-else>
-          <Setting
-            name="Server"
-            desc="The CalDAV address: https://caldav.icloud.com for iCloud, https://caldav.fastmail.com for Fastmail, your Nextcloud's address for Nextcloud."
+        <Setting name="Username" desc="For iCloud, the email of the Apple Account.">
+          <Input
+            :model-value="editing.username"
+            placeholder="name@example.com"
+            @update:model-value="updateLater(editing, { username: $event.trim() })"
+          />
+        </Setting>
+        <Setting name="Password" :desc="PASSWORD_HELP">
+          <SecretField
+            :model-value="typed[editing.id] ?? ''"
+            :value="stored(editing)"
+            placeholder="App-specific password"
+            replace-placeholder="New password..."
+            save-tooltip="Save the password"
+            what="The password"
+            @update:model-value="type(editing, $event)"
+            @save="saveSecret(editing)"
           >
-            <Input
-              :model-value="feed.server"
-              placeholder="https://caldav.icloud.com"
-              @update:model-value="updateLater(feed, { server: $event.trim() })"
-            />
-          </Setting>
-          <Setting name="Username" desc="For iCloud, the email of the Apple Account.">
-            <Input
-              :model-value="feed.username"
-              placeholder="name@example.com"
-              @update:model-value="updateLater(feed, { username: $event.trim() })"
-            />
-          </Setting>
-          <Setting name="Password" :desc="PASSWORD_HELP">
-            <SecretField
-              :model-value="typed[feed.id] ?? ''"
-              :value="stored(feed)"
-              placeholder="App-specific password"
-              replace-placeholder="New password..."
-              save-tooltip="Save the password"
-              what="The password"
-              @update:model-value="type(feed, $event)"
-              @save="saveSecret(feed)"
-            >
-              <template #actions>
-                <Icon
-                  icon="trash-2"
-                  with-bg
-                  tooltip="Forget the password"
-                  @click="forgetSecret(feed)"
-                />
-              </template>
-            </SecretField>
-          </Setting>
-          <p v-if="problem[feed.id]" class="setting-item-description mod-warning">
-            {{ problem[feed.id] }}
-          </p>
-          <Setting
-            name="Calendar"
-            desc="One calendar of the account, or all of them. Find calendars asks the server which there are."
-          >
-            <div class="abele-calendars-settings__row">
-              <Dropdown
-                :options="calendarOptions(feed)"
-                :model-value="feed.calendarUrl"
-                @update:model-value="update(feed, { calendarUrl: $event })"
+            <template #actions>
+              <Icon
+                icon="trash-2"
+                with-bg
+                tooltip="Forget the password"
+                @click="forgetSecret(editing)"
               />
-              <Button
-                text="Find calendars"
-                :disabled="finding === feed.id || !feed.server || !feed.username || !stored(feed)"
-                :tooltip="
-                  !feed.server || !feed.username || !stored(feed)
-                    ? 'Set the server, the username and the password first'
-                    : 'Ask the server which calendars this account has'
-                "
-                @click="find(feed)"
-              />
-            </div>
-          </Setting>
-          <p v-if="found[feed.id]?.message" class="setting-item-description">
-            {{ found[feed.id]?.message }}
-          </p>
-        </template>
-      </Card>
-    </CardGrid>
-
-    <Button text="Add calendar" tooltip="Add a calendar to show beside the tasks" @click="add" />
+            </template>
+          </SecretField>
+        </Setting>
+        <p v-if="problem[editing.id]" class="setting-item-description mod-warning">
+          {{ problem[editing.id] }}
+        </p>
+        <Setting
+          name="Calendar"
+          desc="One calendar of the account, or all of them. Find calendars asks the server which there are."
+        >
+          <div class="abele-calendars-settings__row">
+            <Dropdown
+              :options="calendarOptions(editing)"
+              :model-value="editing.calendarUrl"
+              @update:model-value="update(editing, { calendarUrl: $event })"
+            />
+            <Button
+              text="Find calendars"
+              :disabled="finding === editing.id || !editing.server || !editing.username || !stored(editing)"
+              :tooltip="
+                !editing.server || !editing.username || !stored(editing)
+                  ? 'Set the server, the username and the password first'
+                  : 'Ask the server which calendars this account has'
+              "
+              @click="find(editing)"
+            />
+          </div>
+        </Setting>
+        <p v-if="found[editing.id]?.message" class="setting-item-description">
+          {{ found[editing.id]?.message }}
+        </p>
+      </template>
+      <template #footer>
+        <div class="abele-modal__actions abele-calendars-settings__actions">
+          <Button
+            text="Delete"
+            warning
+            tooltip="Delete this calendar from the settings and its key from the keychain"
+            class="abele-calendars-settings__delete"
+            @click="removing = editing"
+          />
+          <Button text="Done" accent tooltip="Close this window; changes are kept as you make them" @click="editing = null" />
+        </div>
+      </template>
+    </ObsidianModal>
 
     <ConfirmModal
       v-if="removing"
@@ -206,18 +229,15 @@ import Setting from '../obsidian/Setting.vue'
 import Input from '../obsidian/Input.vue'
 import Button from '../obsidian/Button.vue'
 import Icon from '../obsidian/Icon.vue'
-import Card from '../obsidian/Card.vue'
-import CardGrid from '../obsidian/CardGrid.vue'
+import ObsidianModal from '../obsidian/Modal.vue'
 import Checkbox from '../obsidian/Checkbox.vue'
 import Dropdown from '../obsidian/Dropdown.vue'
-import EmptyState from '../obsidian/EmptyState.vue'
 import ConfirmModal from '../obsidian/ConfirmModal.vue'
 import SecretField from './SecretField.vue'
 import { AbeleConfig } from '@/services/AbeleConfig'
 import { secrets } from '@/secrets/SecretStore'
 import { keyDestinations, acceptIntroducedDestinations } from '@/secrets/destinations'
 import { KIT_COLORS, KIT_COLOR_NAMES, type KitColor } from '@/constants/colors'
-import StatusDot from '../obsidian/StatusDot.vue'
 import {
   DEFAULT_REFRESH_MINUTES,
   MIN_REFRESH_MINUTES,
@@ -251,6 +271,8 @@ const problem = reactive<Record<string, string>>({})
 const found = reactive<Record<string, { calendars: CaldavCalendar[]; message: string }>>({})
 const finding = ref<string | null>(null)
 const removing = ref<CalendarFeed | null>(null)
+/** The calendar open in its window. */
+const editing = ref<CalendarFeed | null>(null)
 const reading = ref(false)
 
 const colorOptions = KIT_COLORS.filter((c) => c !== 'grey').map((color) => ({
@@ -353,10 +375,17 @@ const add = () => {
   void save()
 }
 
+/** A new calendar opens straight in its window, where its link or account is filled in. */
+const addAndEdit = () => {
+  add()
+  editing.value = settings.feeds[settings.feeds.length - 1] ?? null
+}
+
 const remove = (feed: CalendarFeed) => {
   if (feed.keyId) secrets().set(feed.keyId, '')
   settings.feeds = settings.feeds.filter((f) => f.id !== feed.id)
   removing.value = null
+  editing.value = null
   void save()
 }
 
@@ -449,9 +478,32 @@ const readAll = async () => {
   gap: var(--size-4-1);
 }
 
+// A calendar's name with its glyph in the calendar's own colour, as its events wear it.
+.abele-calendars-settings__name {
+  display: inline-flex;
+  align-items: center;
+  gap: var(--size-4-2);
+}
+
+.abele-calendars-settings__glyph {
+  flex: 0 0 auto;
+  --icon-size: var(--icon-s);
+}
+
 @each $color in red, orange, yellow, green, cyan, blue, purple, pink {
-  .abele-calendars-settings__feed_#{$color} .abele-card__icon {
+  .abele-calendars-settings__feed_#{$color} .abele-calendars-settings__glyph {
     color: var(--color-#{$color});
   }
+}
+
+// On and the way in to change it, at the end of the row; the row stays one line.
+.abele-calendars-settings__feed > .setting-item-control {
+  flex-wrap: nowrap;
+  justify-content: flex-end;
+  gap: var(--size-4-2);
+}
+
+.abele-calendars-settings__delete {
+  margin-inline-end: auto;
 }
 </style>

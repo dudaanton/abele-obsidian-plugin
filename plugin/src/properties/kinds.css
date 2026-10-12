@@ -134,49 +134,70 @@
   box-shadow: none;
 }
 
-/* A label with a colour of its own is drawn in it, as a task's labels are. Obsidian draws a
-   property's pills bare, without padding, and in the value's own colour
-   (`.metadata-property-value .multi-select-pill`): a tint needs its padding back, and the
-   colour has to outrank that rule. */
-.abele-property-labels .multi-select-pill.abele-property-labels__pill.is-tinted {
-  --pill-padding-x: var(--tag-padding-x);
+/* Every label alike, as on a task: a dot of its colour and the word, grey when it has none — not
+   one filled chip among bare words. The cross to take it off waits under the pointer or the
+   keyboard; a phone cannot point, so there it stays. */
+.abele-property-labels {
+  column-gap: var(--size-4-3);
 }
 
-.abele-property-labels .multi-select-pill.abele-property-labels__pill_red {
-  --pill-color: var(--color-red);
-  --pill-background: rgba(var(--color-red-rgb), 0.15);
-}
-.abele-property-labels .multi-select-pill.abele-property-labels__pill_orange {
-  --pill-color: var(--color-orange);
-  --pill-background: rgba(var(--color-orange-rgb), 0.15);
-}
-.abele-property-labels .multi-select-pill.abele-property-labels__pill_yellow {
-  --pill-color: var(--color-yellow);
-  --pill-background: rgba(var(--color-yellow-rgb), 0.15);
-}
-.abele-property-labels .multi-select-pill.abele-property-labels__pill_green {
-  --pill-color: var(--color-green);
-  --pill-background: rgba(var(--color-green-rgb), 0.15);
-}
-.abele-property-labels .multi-select-pill.abele-property-labels__pill_cyan {
-  --pill-color: var(--color-cyan);
-  --pill-background: rgba(var(--color-cyan-rgb), 0.15);
-}
-.abele-property-labels .multi-select-pill.abele-property-labels__pill_blue {
-  --pill-color: var(--color-blue);
-  --pill-background: rgba(var(--color-blue-rgb), 0.15);
-}
-.abele-property-labels .multi-select-pill.abele-property-labels__pill_purple {
-  --pill-color: var(--color-purple);
-  --pill-background: rgba(var(--color-purple-rgb), 0.15);
-}
-.abele-property-labels .multi-select-pill.abele-property-labels__pill_pink {
-  --pill-color: var(--color-pink);
-  --pill-background: rgba(var(--color-pink-rgb), 0.15);
+.abele-property-labels .multi-select-pill.abele-property-labels__pill {
+  --pill-padding-x: 0;
+  --pill-background: transparent;
+  --pill-color: var(--text-normal);
+  gap: var(--size-2-1);
 }
 
-/* The groups button sits after Obsidian's own list editor, at the height of its first line. */
+.abele-property-labels .abele-property-labels__pill .multi-select-pill-content::before {
+  content: '';
+  display: inline-block;
+  width: var(--size-2-3);
+  height: var(--size-2-3);
+  margin-inline-end: var(--size-2-2);
+  border-radius: 50%;
+  vertical-align: middle;
+  background-color: var(--abele-label-color, var(--text-faint));
+}
+
+body:not(.is-phone) .abele-property-labels__pill:not(:hover):not(:focus-within) .multi-select-pill-remove-button {
+  visibility: hidden;
+}
+
+.abele-property-labels .abele-property-labels__pill_red {
+  --abele-label-color: var(--color-red);
+}
+.abele-property-labels .abele-property-labels__pill_orange {
+  --abele-label-color: var(--color-orange);
+}
+.abele-property-labels .abele-property-labels__pill_yellow {
+  --abele-label-color: var(--color-yellow);
+}
+.abele-property-labels .abele-property-labels__pill_green {
+  --abele-label-color: var(--color-green);
+}
+.abele-property-labels .abele-property-labels__pill_cyan {
+  --abele-label-color: var(--color-cyan);
+}
+.abele-property-labels .abele-property-labels__pill_blue {
+  --abele-label-color: var(--color-blue);
+}
+.abele-property-labels .abele-property-labels__pill_purple {
+  --abele-label-color: var(--color-purple);
+}
+.abele-property-labels .abele-property-labels__pill_pink {
+  --abele-label-color: var(--color-pink);
+}
+
+/* Adding a group reads as adding a label does: faint words after the last one. */
 .abele-property-groups__pick {
   flex: none;
-  align-self: flex-start;
+  align-self: center;
+  color: var(--text-faint);
+  font-size: var(--metadata-input-font-size, var(--font-small));
+  cursor: var(--cursor);
+}
+
+.abele-property-groups__pick:hover,
+.abele-property-groups__pick:focus-visible {
+  color: var(--text-muted);
 }

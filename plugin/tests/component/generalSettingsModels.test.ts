@@ -1,5 +1,5 @@
 import { afterEach, expect, it, vi } from 'vitest'
-import { flushPromises, mount } from '@vue/test-utils'
+import { DOMWrapper, flushPromises, mount } from '@vue/test-utils'
 import GeneralSettings from '@/components/settings/ai/GeneralSettings.vue'
 import Icon from '@/components/obsidian/Icon.vue'
 import Dropdown from '@/components/obsidian/Dropdown.vue'
@@ -139,12 +139,17 @@ it('toggles a fetched model once from its checkbox and once from its label', asy
   screen = mount(GeneralSettings, {
     global: { stubs: { Input: true, Dropdown: true, Search: true } },
   })
+  // The models are in the provider's own window, opened from its row.
+  await screen
+    .findAllComponents(Icon)
+    .find((icon) => icon.props('tooltip') === 'Change this provider and its models')!
+    .trigger('click')
   await screen
     .findAllComponents(Icon)
     .find((icon) => icon.props('tooltip') === 'Fetch models from API')!
     .vm.$emit('click')
   await flushPromises()
-  const row = screen.find('.abele-ai-provider__remote-item')
+  const row = new DOMWrapper(document.querySelector('.abele-ai-provider__remote-item')!)
   expect(row.exists()).toBe(true)
   await row.find('.checkbox-container').trigger('click')
   expect(config.ai.providers[0].models.map((model) => model.id)).toEqual(['sample-model'])

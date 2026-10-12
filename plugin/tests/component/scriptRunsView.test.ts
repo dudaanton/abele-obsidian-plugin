@@ -9,7 +9,6 @@ import { describe, it, expect, beforeEach, vi } from 'vitest'
 import { mount, flushPromises } from '@vue/test-utils'
 import { Notice } from 'obsidian'
 import ScriptRunsView from '@/components/ScriptRuns.vue'
-import Button from '@/components/obsidian/Button.vue'
 import { ScriptRuns } from '@/scripting/ScriptRuns'
 import { ScriptService } from '@/scripting/ScriptService'
 import type { ParsedScript } from '@/scripting/types'
@@ -43,13 +42,19 @@ const expand = async (wrapper: Screen, name: string) => {
   await rowFor(wrapper, name)?.find('.abele-runs__row').trigger('click')
 }
 
-const press = async (wrapper: Screen, name: string, text: string) => {
-  await rowFor(wrapper, name)
-    ?.findAllComponents(Button)
-    .find((b) => b.props('text') === text)
-    ?.trigger('click')
+/** The run's actions are glyphs; each is pressed by the words it carries for a screen reader. */
+const press = async (wrapper: Screen, name: string, label: string) => {
+  await rowFor(wrapper, name)?.get(`button[aria-label="${label}"]`).trigger('click')
   await flushPromises()
 }
+const actionsOf = (wrapper: Screen, name: string) =>
+  rowFor(wrapper, name)!
+    .findAll('.abele-runs__actions button')
+    .map((b) => b.attributes('aria-label'))
+
+const STOP = 'Stop this run'
+const AGAIN = 'Run again with the same values'
+const AS_NEW = 'Run again, asking for the values'
 
 const began = (over: Partial<Parameters<ScriptRuns['start']>[0]> = {}) =>
   runs.start({
@@ -77,7 +82,9 @@ beforeEach(() => {
 
 describe('with nothing run yet', () => {
   it('says so rather than showing an empty box', () => {
-    expect(open().text()).toContain('Nothing has run yet')
+    const view = open()
+    expect(view.get('.abele-empty-state__title').text()).toBe('Nothing has run yet')
+    expect(view.text()).toContain('Each script run this session shows here')
   })
 })
 
@@ -162,8 +169,9 @@ describe('opening a run', () => {
 
     await expand(wrapper, 'Tag notes')
 
-    expect(wrapper.find('.abele-runs__line-text').text()).toBe('reading 12 notes')
-    expect(wrapper.find('.abele-runs__line-at').text()).toMatch(/^\d\d:\d\d:\d\d$/)
+    const line = wrapper.get('p.abele-runs__line')
+    expect(line.get('.abele-runs__line-at').text()).toMatch(/^\d\d:\d\d:\d\d$/)
+    expect(line.text()).toMatch(/^\d\d:\d\d:\d\d\s+reading 12 notes$/)
   })
 
   /** `execute` returns the printed lines and the result together; the lines are already above. */
@@ -184,7 +192,9 @@ describe('opening a run', () => {
 
     await expand(wrapper, 'Tag notes')
 
-    expect(wrapper.find('.abele-runs__params').text()).toContain('todo')
+    const facts = wrapper.get('.abele-runs__facts')
+    expect(facts.get('.abele-runs__path').text()).toBe('Scripts/tag.js')
+    expect(facts.get('.abele-runs__param').text()).toBe('tag: todo')
   })
 
   it('shows why it failed, and shows it as an error', async () => {
@@ -204,7 +214,10 @@ describe('stopping a run', () => {
     const wrapper = open()
 
     await expand(wrapper, 'Tag notes')
-    await press(wrapper, 'Tag notes', 'Stop')
+    expect(rowFor(wrapper, 'Tag notes')!.find('.abele-runs__stop').exists()).toBe(true)
+    // While it goes there is nothing to run again or take off the list.
+    expect(actionsOf(wrapper, 'Tag notes')).toEqual([STOP, 'Open the script'])
+    await press(wrapper, 'Tag notes', STOP)
 
     expect(stop).toHaveBeenCalled()
   })
@@ -215,16 +228,29 @@ describe('stopping a run', () => {
 
     await expand(wrapper, 'Tag notes')
 
-    expect(
-      rowFor(wrapper, 'Tag notes')
-        ?.findAllComponents(Button)
-        .map((b) => b.props('text'))
-    ).toEqual(['Run again', 'Run as new'])
+    expect(actionsOf(wrapper, 'Tag notes')).toEqual([
+      AGAIN,
+      AS_NEW,
+      'Open the script',
+      'Take this run off the list',
+    ])
   })
 })
 
 describe('running it again', () => {
-  it.each(['Run again', 'Run as new'])(
+  it('is not offered for a run an interceptor made, which had a message to run on', async () => {
+    runs.finish(began({ source: 'interceptor' }), '')
+    const wrapper = open()
+
+    await expand(wrapper, 'Tag notes')
+
+    expect(actionsOf(wrapper, 'Tag notes')).toEqual([
+      'Open the script',
+      'Take this run off the list',
+    ])
+  })
+
+  it.each([AGAIN, AS_NEW])(
     'keeps the captured chat identity and backlink for %s',
     async (button) => {
       const selection = {
@@ -267,7 +293,7 @@ describe('running it again', () => {
     const wrapper = open()
 
     await expand(wrapper, 'Tag notes')
-    await press(wrapper, 'Tag notes', 'Run again')
+    await press(wrapper, 'Tag notes', AGAIN)
 
     expect(execute).toHaveBeenCalledWith(
       'Scripts/tag.js',
@@ -282,7 +308,7 @@ describe('running it again', () => {
     const wrapper = open()
 
     await expand(wrapper, 'Tag notes')
-    await press(wrapper, 'Tag notes', 'Run again')
+    await press(wrapper, 'Tag notes', AGAIN)
 
     expect(runs.runs.value).toHaveLength(1)
   })
@@ -295,7 +321,7 @@ describe('running it as new', () => {
     runs.finish(began(), '')
     const wrapper = open()
     await expand(wrapper, 'Tag notes')
-    await press(wrapper, 'Tag notes', 'Run as new')
+    await press(wrapper, 'Tag notes', AS_NEW)
     expect(Notice.shown).toContain('Script not found: Scripts/tag.js')
     expect(showFormModal).not.toHaveBeenCalled()
     expect(execute).not.toHaveBeenCalled()
@@ -307,7 +333,7 @@ describe('running it as new', () => {
     runs.finish(began({ source: 'chat-selection' }), '')
     const wrapper = open()
     await expand(wrapper, 'Tag notes')
-    await press(wrapper, 'Tag notes', 'Run as new')
+    await press(wrapper, 'Tag notes', AS_NEW)
     expect(admit).toHaveBeenCalledWith('Scripts/tag.js', 'chat-selection')
     expect(showFormModal).not.toHaveBeenCalled()
     expect(execute).not.toHaveBeenCalled()
@@ -320,7 +346,7 @@ describe('running it as new', () => {
     const wrapper = open()
 
     await expand(wrapper, 'Tag notes')
-    await press(wrapper, 'Tag notes', 'Run as new')
+    await press(wrapper, 'Tag notes', AS_NEW)
 
     // The window is named after the script, as when it was first run.
     expect(showFormModal).toHaveBeenCalledWith(
@@ -337,7 +363,7 @@ describe('running it as new', () => {
     const wrapper = open()
 
     await expand(wrapper, 'Tag notes')
-    await press(wrapper, 'Tag notes', 'Run as new')
+    await press(wrapper, 'Tag notes', AS_NEW)
 
     expect(execute).toHaveBeenCalledWith(
       'Scripts/tag.js',
@@ -352,7 +378,7 @@ describe('running it as new', () => {
     const wrapper = open()
 
     await expand(wrapper, 'Tag notes')
-    await press(wrapper, 'Tag notes', 'Run as new')
+    await press(wrapper, 'Tag notes', AS_NEW)
 
     expect(execute).not.toHaveBeenCalled()
   })

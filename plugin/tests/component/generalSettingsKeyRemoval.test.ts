@@ -4,6 +4,7 @@ import GeneralSettings from '@/components/settings/ai/GeneralSettings.vue'
 import Icon from '@/components/obsidian/Icon.vue'
 import ConfirmModal from '@/components/obsidian/ConfirmModal.vue'
 import Card from '@/components/obsidian/Card.vue'
+import Button from '@/components/obsidian/Button.vue'
 import { AbeleConfig } from '@/services/AbeleConfig'
 import { useVault } from '../helpers/testEnv'
 
@@ -13,6 +14,18 @@ afterEach(() => {
   screen = null
   vi.restoreAllMocks()
 })
+
+/** A provider is deleted from its own window, opened from the settings glyph on its row. */
+async function deleteProvider(view: ReturnType<typeof mount>) {
+  await view
+    .findAllComponents(Icon)
+    .find((icon) => icon.props('tooltip') === 'Change this provider and its models')!
+    .trigger('click')
+  await view
+    .findAllComponents(Button)
+    .find((b) => b.props('text') === 'Delete')!
+    .trigger('click')
+}
 
 it('does not carry a removed secret editor or its revealed value onto the next row', async () => {
   const app = useVault([])
@@ -74,10 +87,7 @@ it('keeps a key still used by voice input when its image provider is deleted', a
   screen = mount(GeneralSettings, {
     global: { stubs: { Input: true, Dropdown: true, Search: true } },
   })
-  await screen
-    .findAllComponents(Icon)
-    .find((icon) => icon.props('tooltip') === 'Remove this provider and its models')!
-    .vm.$emit('click')
+  await deleteProvider(screen)
   await screen.findComponent(ConfirmModal).vm.$emit('confirm')
   expect(config.ai.imageProviders).toEqual([])
   expect(app.secretStorage.getSecret('sample-shared-key')).toBe('sample-value')
@@ -104,10 +114,7 @@ it('removes the stored key when an image provider is deleted', async () => {
   screen = mount(GeneralSettings, {
     global: { stubs: { Input: true, Dropdown: true, Search: true } },
   })
-  await screen
-    .findAllComponents(Icon)
-    .find((icon) => icon.props('tooltip') === 'Remove this provider and its models')!
-    .vm.$emit('click')
+  await deleteProvider(screen)
   await screen.findComponent(ConfirmModal).vm.$emit('confirm')
   expect(config.ai.imageProviders).toEqual([])
   expect(app.secretStorage.getSecret('sample-image-key')).toBe('')
