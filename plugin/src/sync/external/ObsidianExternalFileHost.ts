@@ -144,7 +144,8 @@ export class ExternalFileHost {
     return fileOperations.run('fingerprint', () => this.fingerprintBytes(path), true)
   }
   private async fingerprintBytes(path: string): Promise<{ size: number; sha: string }> {
-    return this.io.fingerprint(path)
+    const { size, sha } = await this.io.fingerprint(path)
+    return { size, sha }
   }
   acquireUse(fileId: string): { release(): void } {
     this.assertOwned()

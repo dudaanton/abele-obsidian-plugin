@@ -66,6 +66,34 @@ function setup(platform: 'mobile' | 'desktop' = 'mobile') {
   }
 }
 
+it.each(['mobile', 'desktop'] as const)(
+  'refuses an occupied target using a public %s fingerprint as the artifact identity',
+  async (platform) => {
+    const fixture = setup(platform)
+    const adapter = fixture.fake.vault.adapter
+    try {
+      await adapter.writeBinary(staging, base.buffer as ArrayBuffer)
+      const fingerprint = await fixture.host.fingerprint(staging)
+      const artifact = {
+        operationId: request.operationId,
+        path: staging,
+        ...fingerprint,
+        role: 'incoming' as const,
+      }
+      await expect(
+        fixture.run((effects) => effects.install(artifact, source))
+      ).rejects.toMatchObject({
+        reason: 'collision',
+      })
+      expect(Object.keys(fingerprint).sort()).toEqual(['sha', 'size'])
+      expect(new Uint8Array(await adapter.readBinary(source))).toEqual(base)
+      expect(new Uint8Array(await adapter.readBinary(staging))).toEqual(base)
+    } finally {
+      fixture.host.close()
+    }
+  }
+)
+
 it('stages a chunk source without calling the whole-file read port', async () => {
   const fixture = setup()
   const close = vi.fn(async () => {})
