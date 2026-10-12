@@ -1,4 +1,5 @@
 import { EditorView } from '@codemirror/view'
+import { sourceQuote } from '@/helpers/sourceQuote'
 
 export interface FileSelection {
   text: string
@@ -70,5 +71,5 @@ export function selectionQuote(path: string, selection: FileSelection): string {
   const lines =
     selection.from === selection.to ? `${selection.from}` : `${selection.from}-${selection.to}`
   const side = selection.side === 'after' ? '' : ` (${selection.side})`
-  return `${path}:${lines}${side}\n\n${selection.text}`
+  return sourceQuote(`${path}:${lines}${side}`, selection.text)
 }

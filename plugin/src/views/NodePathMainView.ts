@@ -202,7 +202,12 @@ export class NodePathMainView extends ItemView {
                   revision: doc.revision,
                   contentId: doc.contentId,
                   text: doc.text,
-                  selection: selectionQuote(doc.path, selection),
+                  selection: selection.text,
+                  lines: {
+                    start: Math.min(selection.from, selection.to),
+                    end: Math.max(selection.from, selection.to),
+                  },
+                  side: selection.side,
                 })
                 this.act(() => owner.add(context))
               }
@@ -261,7 +266,12 @@ export class NodePathMainView extends ItemView {
                   path,
                   commit,
                   revision: { kind: 'commit', commit },
-                  selection: selectionQuote(path, selection),
+                  selection: selection.text,
+                  lines: {
+                    start: Math.min(selection.from, selection.to),
+                    end: Math.max(selection.from, selection.to),
+                  },
+                  side: selection.side,
                 })
                 this.act(() => owner.add(context))
               }

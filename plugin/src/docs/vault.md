@@ -121,7 +121,8 @@ permissions. File navigation is bound to the leaf target, not the current drawer
 Selected file or comparison text can be quoted into a chat draft with its relative path, line
 range and comparison side. Ask here creates a node chat bound to that file's target; Add to
 chat uses an explicitly chosen Obsidian chat. Neither action sends a provider turn or grants
-Obsidian chat scope. Quotes use the existing chat-draft stores, not a new selection cache.
+Obsidian chat scope. Drafts show a readable source citation and quoted text, not serialized
+routing metadata. Quotes use the existing chat-draft stores, not a new selection cache.
 A bounded `abele-node-path-cache:<registration-id>` local-preference snapshot retains the
 last received drawer metadata, selected target and its file tree across restart (at most
 1 MiB). It contains neither credentials, file bytes nor chat authorization and never claims

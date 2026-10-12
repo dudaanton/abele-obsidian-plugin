@@ -8,6 +8,8 @@ export interface NodePathContext {
   contentId?: string | null
   text?: string
   selection?: string
+  lines?: { start: number; end: number }
+  side?: 'before' | 'after' | 'diff'
   commit?: string
 }
 export interface NodePathOwnerActions {
@@ -29,4 +31,5 @@ export const freezeNodePathContext = (context: NodePathContext): NodePathContext
     ...context,
     target: Object.freeze({ ...context.target }),
     ...(context.revision ? { revision: Object.freeze({ ...context.revision }) } : {}),
+    ...(context.lines ? { lines: Object.freeze({ ...context.lines }) } : {}),
   })

@@ -4,6 +4,7 @@ import type { RepositoryRevision } from '@abele/node-client'
 import type { ChatSession } from '../../ChatSession'
 import { NodeScopeTargetSchema, type NodeScopeTarget } from '../../nodeScope'
 import { nodeAgentHost } from './owner'
+import { sourceQuote } from '@/helpers/sourceQuote'
 
 /** An immutable reference to the owner's displayed snapshot, not the current sidebar selection. */
 export interface ObsidianNodeContext extends NodeScopeTarget {
@@ -11,6 +12,7 @@ export interface ObsidianNodeContext extends NodeScopeTarget {
   revision?: RepositoryRevision
   content_id?: string
   lines?: { start: number; end: number }
+  side?: 'before' | 'after' | 'diff'
 }
 
 /** Owner UI only. Adds quoted displayed bytes to this chat's draft, without sending or granting scope. */
@@ -56,7 +58,20 @@ export async function addNodeContextToObsidianChat(
   if (session.conversationVersion.value !== version)
     throw new Error('Chat changed while adding node context')
   snapshot.node_id = host.nodeId?.(snapshot.node_id) ?? snapshot.node_id
-  const quote = JSON.stringify({ node_context: snapshot, text: bytes }, null, 2)
+  const lines = snapshot.lines
+    ? `:${snapshot.lines.start}${snapshot.lines.end === snapshot.lines.start ? '' : `-${snapshot.lines.end}`}`
+    : ''
+  const side =
+    captured.side && captured.side !== 'after'
+      ? ` (${z.enum(['before', 'after', 'diff']).parse(captured.side)})`
+      : ''
+  const revision = snapshot.revision?.kind === 'commit' ? ` at ${snapshot.revision.commit}` : ''
+  const nodes = host.nodes()
+  const node =
+    nodes.find((entry) => entry.id === captured.node_id) ??
+    nodes.find((entry) => entry.node_id === snapshot.node_id)
+  const place = `${snapshot.path ?? 'Node selection'}${lines}${side}${revision}`
+  const quote = sourceQuote(node?.label ? `${node.label} · ${place}` : place, bytes)
   const before = session.draft.value
   session.draft.value = { ...before, text: before.text ? `${before.text}\n\n${quote}` : quote }
 }

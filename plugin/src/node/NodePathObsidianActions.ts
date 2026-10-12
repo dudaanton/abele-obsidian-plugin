@@ -136,6 +136,8 @@ async function add(captured: NodePathContext, ask: boolean): Promise<void> {
     ...(captured.path ? { path: captured.path } : {}),
     ...(captured.revision ? { revision: captured.revision } : {}),
     ...(captured.contentId ? { content_id: captured.contentId } : {}),
+    ...(captured.lines ? { lines: { ...captured.lines } } : {}),
+    ...(captured.side ? { side: captured.side } : {}),
   }
   let text = captured.selection || captured.text
   if (text === undefined && captured.path) {
@@ -151,7 +153,11 @@ async function add(captured: NodePathContext, ask: boolean): Promise<void> {
     const commit = await NodePathService.getInstance()
       .model(captured.target.registrationId)
       .port.commit(captured.target, captured.commit)
-    text = JSON.stringify(commit, null, 2)
+    text = [
+      commit.subject,
+      `${commit.author} · ${commit.day}, ${commit.when}`,
+      ...(commit.files ?? []).flatMap((file) => [file.path, file.after || file.before]),
+    ].join('\n\n')
   }
   if (text === undefined)
     throw new Error('Open a retained file or commit before adding its context.')

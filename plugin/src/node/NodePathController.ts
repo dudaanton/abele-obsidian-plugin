@@ -265,14 +265,6 @@ export function showNodePathChatMenu(model: NodePathModel, event: MouseEvent, id
         )
       )
   )
-  // The current protocol has no session rename/delete mutation. Do not fake destructive success.
-  for (const title of ['Rename', 'Delete'])
-    menu.addItem((item) =>
-      item
-        .setTitle(`${title} (not supported by this node)`)
-        .setIcon(title === 'Rename' ? 'pencil' : 'trash')
-        .setDisabled(true)
-    )
   menu.showAtPosition(position(event))
 }
 export function showNodePathNodeMenu(model: NodePathModel, event: MouseEvent): void {

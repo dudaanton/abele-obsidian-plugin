@@ -114,6 +114,7 @@ const bar = ref<InstanceType<typeof SelectionToolbar>>()
 const picked = ref<{ selection: FileSelection; top: number; left: number } | null>(null)
 let owner = document
 let frame = window
+let resize: ResizeObserver | undefined
 watch(
   () => bar.value?.element,
   () => {
@@ -129,15 +130,31 @@ function onSelection() {
     return
   }
   const rect = sel.getRangeAt(0).getBoundingClientRect()
+  if (rect.bottom <= rect.top) {
+    picked.value = null
+    return
+  }
   const width = bar.value?.element?.offsetWidth || 240
   const height = bar.value?.element?.offsetHeight || 36
   const phone = Platform.isPhone || owner.body.classList.contains('is-phone')
+  const header = root.value?.querySelector('.abele-file-view__header, .abele-diff__header')
+  const content = root.value?.querySelector('.abele-file-view__code, .abele-diff__body')
+  const contentTop = Math.max(
+    8,
+    header?.getBoundingClientRect().bottom ?? 0,
+    content?.getBoundingClientRect().top ?? 0
+  )
+  const above = rect.top - height - 8
+  const desiredTop = phone || above < contentTop ? rect.bottom + 8 : above
+  const lastTop = frame.innerHeight - height - 8
+  if (lastTop < contentTop) {
+    picked.value = null
+    return
+  }
   picked.value = {
     selection,
-    top: Math.max(
-      8,
-      Math.min(phone ? rect.bottom + 8 : rect.top - height - 8, frame.innerHeight - height - 8)
-    ),
+    // A first-line selection has no space above it inside the content, so use the space below.
+    top: Math.max(contentTop, Math.min(desiredTop, lastTop)),
     left: Math.max(8, Math.min(rect.left, frame.innerWidth - width - 8)),
   }
 }
@@ -147,12 +164,17 @@ onMounted(() => {
   owner.addEventListener('selectionchange', onSelection)
   frame.addEventListener('scroll', onSelection, true)
   frame.addEventListener('resize', onSelection)
+  resize = new frame.ResizeObserver(onSelection)
+  if (root.value) resize.observe(root.value)
+  const header = root.value?.querySelector('.abele-file-view__header, .abele-diff__header')
+  if (header) resize.observe(header)
 })
 onBeforeUnmount(() => {
   stopped = true
   owner.removeEventListener('selectionchange', onSelection)
   frame.removeEventListener('scroll', onSelection, true)
   frame.removeEventListener('resize', onSelection)
+  resize?.disconnect()
   viewer?.destroy()
 })
 

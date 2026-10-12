@@ -80,13 +80,17 @@ describe('owner node scope actions', () => {
       target: { kind: 'worktree' as const, worktree_id: 'sample-tree' },
       path: 'sample.txt',
       content_id: 'a'.repeat(64),
+      lines: { start: 4, end: 5 },
     }
     const addition = addNodeContextToObsidianChat(session, reference, 'Selected sample bytes')
     reference.path = 'changed-selection.txt'
     await addition
     expect(session.draft.value.text).toContain('Sample draft')
-    expect(session.draft.value.text).toContain('sample-node')
-    expect(session.draft.value.text).toContain('sample.txt')
+    // Context is readable in the composer; opaque routing metadata must stay out of it.
+    expect(session.draft.value.text).toContain('sample.txt:4-5\n\n> Selected sample bytes')
+    expect(session.draft.value.text).not.toContain('sample-node')
+    expect(session.draft.value.text).not.toContain('node_context')
+    expect(session.draft.value.text).not.toContain('content_id')
     expect(session.draft.value.text).not.toContain('changed-selection.txt')
     expect(session.overrides.value.nodeScope).toBeUndefined()
     expect(session.isStreaming.value).toBe(false)
@@ -95,6 +99,8 @@ describe('owner node scope actions', () => {
       { ...reference, path: 'sample.txt' },
       'Sample question context'
     )
+    expect(session.draft.value.text).toContain('> Sample question context')
+    expect(session.draft.value.text).not.toContain('node_context')
     expect(ChatService.getInstance().pendingInput.value).toMatchObject({
       tabId: session.id,
       focus: true,

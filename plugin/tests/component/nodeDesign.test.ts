@@ -78,6 +78,30 @@ describe('node design corrections', () => {
     await flushPromises()
     expect(view.get('.cm-content').text()).toContain('value = 2')
   })
+  it('places first-line selection actions below the selection instead of over the file header', async () => {
+    const view = keep(
+      mount(FileView, {
+        attachTo: document.body,
+        global: { stubs: { teleport: true } },
+        props: { path: 'sample.ts', text: 'export const sample = 1', mode: 'file' },
+      })
+    )
+    await flushPromises()
+    vi.spyOn(view.get('.abele-file-view__header').element, 'getBoundingClientRect').mockReturnValue(
+      { top: 60, bottom: 100 } as DOMRect
+    )
+    const range = document.createRange()
+    range.selectNodeContents(view.get('.cm-line').element)
+    vi.spyOn(range, 'getBoundingClientRect').mockReturnValue({
+      top: 100,
+      bottom: 120,
+      left: 20,
+    } as DOMRect)
+    window.getSelection()!.addRange(range)
+    document.dispatchEvent(new Event('selectionchange'))
+    await flushPromises()
+    expect(view.get('.abele-file-view__selection').attributes('style')).toContain('top: 128px')
+  })
   it('does not quote a selection outside this file through its context menu', async () => {
     const view = keep(
       mount(FileView, {

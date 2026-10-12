@@ -89,7 +89,7 @@ describe('selected node file context', () => {
       to: 5,
       side: 'before',
     })
-    expect(quote).toBe('src/sample.ts:4-5 (before)\n\n  const sample = 1')
+    expect(quote).toBe('src/sample.ts:4-5 (before)\n\n>   const sample = 1')
     await newNodePathChat(model(), target, quote)
     expect(f.append).not.toHaveBeenCalled()
     f.choose!({ id: 'fake' })
@@ -108,13 +108,10 @@ describe('selected node file context', () => {
     const menu = show.mock.instances[0] as unknown as {
       items: { title: string; handler: (() => void) | null }[]
     }
-    expect(menu.items.map((i) => i.title)).toEqual([
-      'Open',
-      'Rename (not supported by this node)',
-      'Delete (not supported by this node)',
-    ])
-    expect(menu.items.slice(1).every((i) => !i.handler)).toBe(true)
-    expect(disable.mock.calls).toEqual([[true], [true]])
+    // Only supported actions belong in the menu, not disabled placeholders.
+    expect(menu.items.map((i) => i.title)).toEqual(['Open'])
+    expect(menu.items[0].handler).toBeTruthy()
+    expect(disable).not.toHaveBeenCalled()
   })
   it.fails(
     'BUG: chat rename and delete require session mutations not yet exposed by the node protocol',
@@ -122,9 +119,13 @@ describe('selected node file context', () => {
       const show = vi.spyOn(Menu.prototype, 'showAtPosition')
       showNodePathChatMenu(model(), new MouseEvent('contextmenu'), 'sample-session')
       const menu = show.mock.instances[0] as unknown as {
-        items: { handler: (() => void) | null }[]
+        items: { title: string; handler: (() => void) | null }[]
       }
-      expect(menu.items.slice(1).every((i) => !!i.handler)).toBe(true)
+      expect(
+        ['Rename', 'Delete'].every((title) =>
+          menu.items.some((item) => item.title === title && !!item.handler)
+        )
+      ).toBe(true)
     }
   )
 })
