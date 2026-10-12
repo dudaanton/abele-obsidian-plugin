@@ -159,26 +159,64 @@ img.abele-gallery__image {
   object-fit: contain;
 }
 
-// On a plate of the page's own colour, so the arrow reads over any picture, light or dark.
+// The slider turns from its edges: each is a clear strip the picture's full height, so a press
+// anywhere near the side turns it. Pointed at, the strip shades towards the edge in the page's
+// own colour and its arrow comes up, so it reads over any picture without covering it.
 .abele-gallery .abele-gallery__slider-nav {
   position: absolute;
-  top: 50%;
+  top: 0;
+  bottom: 0;
   z-index: 1;
-  transform: translateY(-50%);
-  background-color: var(--background-primary);
-  border: 1px solid var(--background-modifier-border);
+  width: 4em;
+  height: auto;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  border-radius: 0;
+  background: transparent;
+  color: var(--icon-color);
+  opacity: var(--icon-opacity);
+  transition:
+    opacity 120ms ease,
+    background-color 120ms ease;
 
-  &:hover {
-    background-color: var(--background-primary);
+  &:hover,
+  &:focus-visible {
+    background-color: transparent;
     color: var(--icon-color-hover);
+    opacity: 1;
+  }
+
+  // The strip stands at the slider's clipped edge, so its focus ring is drawn inside it.
+  &:focus-visible {
+    outline: none;
+    box-shadow: inset 0 0 0 2px var(--background-modifier-border-focus);
   }
 
   &--prev {
-    left: var(--size-4-2);
+    left: 0;
+
+    &:hover,
+    &:focus-visible {
+      background-image: linear-gradient(
+        to right,
+        color-mix(in srgb, var(--background-primary) 70%, transparent),
+        transparent
+      );
+    }
   }
 
   &--next {
-    right: var(--size-4-2);
+    right: 0;
+
+    &:hover,
+    &:focus-visible {
+      background-image: linear-gradient(
+        to left,
+        color-mix(in srgb, var(--background-primary) 70%, transparent),
+        transparent
+      );
+    }
   }
 }
 
