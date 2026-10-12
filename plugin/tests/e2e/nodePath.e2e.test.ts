@@ -420,6 +420,11 @@ it('pairs and opens target-bound node files history editor and fake chats in the
       `(async()=>{${prelude}const model=api.NodePathService.getInstance().model(${JSON.stringify(registration)});await model.select(${JSON.stringify(ids.plain)});return 'plain'})()`
     )
     await capture('desktop-plain')
+    // A phone registry contains paired nodes, not a desktop-only loopback registration.
+    await evalLong(
+      `(()=>{window.__abeleTest.NodeService.getInstance().remove(${JSON.stringify(localRegistration)});return 'desktop registration removed'})()`
+    )
+    localRegistration = ''
     // Reload into the real phone shell, then restore only this fixture's paired transport.
     await reloadApp('app.emulateMobile(true)')
     mobile = true
