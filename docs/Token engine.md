@@ -18,8 +18,8 @@ and sets URLRequest.timeoutInterval in [CapacitorUrlRequest.swift](https://githu
 The native bridge exposes no byte-progress callback; the JS bound is a conservative
 throughput allowance, not a direct progress measurement. Close still aborts host waiting.
 
-The production plugin pins core and protocol to server commit
-`c5d4ccbf83fc4b2812f8cc131d1918851546295e`. The vendor script generated
+The production plugin pins core and protocol to server release v0.3.1, commit
+`6a667ea07d9b389d6cfea9ca16761e083fad9153`. The vendor script generated
 the archives and provenance; package.json, package-lock.json and SERVER_TEST_COMMIT
 use the same input. This revision preserves classified host transport errors and tolerates
 transient server SQLite snapshot contention. Mobile transport emits classified EngineErrors;
