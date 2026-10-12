@@ -6,8 +6,7 @@
         <span class="abele-calendar-base__agenda-range">{{ range }}</span>
       </span>
       <div class="abele-calendar-base__agenda-actions">
-        <Button
-          text="Week"
+        <Icon
           icon="calendar-range"
           tooltip="Show this week by the hour"
           class="abele-calendar-base__agenda-week"
@@ -21,6 +20,7 @@
         <CalendarChip
           :placed="row.placed"
           with-time
+          time-column
           class="abele-calendar-base__agenda-item"
           @open="(p, e) => emit('open', p, e)"
           @hover="(p, e) => emit('hover', p, e)"
@@ -39,7 +39,7 @@
  */
 import { computed } from 'vue'
 import dayjs from 'dayjs'
-import Button from '../obsidian/Button.vue'
+import Icon from '../obsidian/Icon.vue'
 import EmptyState from '../obsidian/EmptyState.vue'
 import CalendarChip from './CalendarChip.vue'
 import { compareItems, type CalendarItem, type PlacedItem } from '@/bases/calendarLayout'
@@ -102,8 +102,10 @@ const rows = computed(() => {
 .abele-calendar-base__life-row {
   display: flex;
   align-items: baseline;
-  gap: var(--size-4-2);
+  gap: 0;
   min-width: 0;
+  // The day in a column of its own, its words on the list's edge, the row's rows after it.
+  padding-inline-start: var(--size-2-3);
 
   .abele-calendar-chip {
     flex: 1 1 auto;

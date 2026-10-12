@@ -96,7 +96,12 @@ describe('completion where external events are drawn', () => {
     const events = pastEvents()
     const event = events.find((event) => event.uid === 'sample-past')!
     view = mount(Timeline, { props: { tasks: [], events: service.byDay() } })
-    expect(view.find('.abele-timeline__history').text()).toContain('0 unfinished')
+    expect(view.find('.abele-timeline__history-count').attributes('aria-label')).toBe(
+      '0 unfinished'
+    )
+    expect(view.find('.abele-timeline__history-count').classes()).not.toContain(
+      'abele-timeline__history-count_overdue'
+    )
     expect(view.find('.abele-timeline__date-indicator_overdue').exists()).toBe(false)
     await view.find('.abele-timeline__history').trigger('click')
     expect(view.findAllComponents(CalendarEventView)).toHaveLength(4)
@@ -115,7 +120,12 @@ describe('completion where external events are drawn', () => {
     expect(view.findAllComponents(CalendarEventView)).toHaveLength(3)
     await view.find('.abele-timeline__completed-toggle').trigger('click')
     expect(view.findAllComponents(CalendarEventView)).toHaveLength(4)
-    expect(view.find('.abele-timeline__history').text()).toContain('0 unfinished')
+    expect(view.find('.abele-timeline__history-count').attributes('aria-label')).toBe(
+      '0 unfinished'
+    )
+    expect(view.find('.abele-timeline__history-count').classes()).not.toContain(
+      'abele-timeline__history-count_overdue'
+    )
   })
 
   it('keeps an optional checkbox without marking an unchecked event as a pending task', () => {
@@ -147,7 +157,12 @@ describe('completion where external events are drawn', () => {
     task.date = dayjs('2026-04-07')
     task.due = dayjs('2026-04-08')
     view = mount(Timeline, { props: { tasks: [task], events: service.byDay() } })
-    expect(view.find('.abele-timeline__history').text()).toContain('1 unfinished')
+    expect(view.find('.abele-timeline__history-count').attributes('aria-label')).toBe(
+      '1 unfinished'
+    )
+    expect(view.find('.abele-timeline__history-count').classes()).toContain(
+      'abele-timeline__history-count_overdue'
+    )
     await view.find('.abele-timeline__history').trigger('click')
     const blocks = view.findAll('.abele-timeline__date-block')
     expect(

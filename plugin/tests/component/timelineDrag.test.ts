@@ -71,10 +71,10 @@ afterEach(() => {
 
 describe('timeline task dragging', () => {
   it.each([
-    ['en', true, 'Sa', 'Su', 'Mo'],
-    ['en', false, 'Sa', 'Su', 'Mo'],
-    ['ru', true, 'сб', 'вс', 'пн'],
-    ['ru', false, 'сб', 'вс', 'пн'],
+    ['en', true, 'Sat', 'Sun', 'Mon'],
+    ['en', false, 'Sat', 'Sun', 'Mon'],
+    ['ru', true, 'сбт', 'вск', 'пнд'],
+    ['ru', false, 'сбт', 'вск', 'пнд'],
   ] as const)(
     'always labels dates briefly in locale %s with Monday-first=%s without changing links during drag',
     async (locale, monday, saturday, sunday, mondayName) => {
@@ -85,7 +85,7 @@ describe('timeline task dragging', () => {
       const label = (day: string) =>
         view.find(`[data-abele-anchor="date:${day}"] .timeline__date`).attributes('text')
       const normal = label('2030-06-15')
-      expect(normal).toContain(` · ${saturday} `)
+      expect(normal).toBe(`[[2030-06-15|Today · ${saturday} 15.06]]`)
       await pointer('pointerdown', 80, 190, row().element)
       await pointer('pointermove', 80, 205)
       for (const [day, weekday] of [
@@ -93,7 +93,7 @@ describe('timeline task dragging', () => {
         ['2030-06-16', sunday],
         ['2030-06-17', mondayName],
       ]) {
-        expect(label(day)).toContain(` · ${weekday} `)
+        expect(label(day)).toContain(`${weekday} ${day.slice(8)}.06]]`)
         expect(label(day)).toContain(`[[${day}|`)
       }
       expect(label('2030-06-15')).toBe(normal)
@@ -109,8 +109,8 @@ describe('timeline task dragging', () => {
     )
     const labels = view.findAll('.timeline__date').map((date) => date.attributes('text'))
     expect(labels).toHaveLength(7)
-    for (const [i, weekday] of ['Mo', 'Tu', 'We', 'Th', 'Fr', 'Sa', 'Su'].entries())
-      expect(labels[i]).toContain(`[[2030-06-${17 + i}|${17 + i}.06.2030 · ${weekday} `)
+    for (const [i, weekday] of ['Mon', 'Tue', 'Wed', 'Thu', 'Fri', 'Sat', 'Sun'].entries())
+      expect(labels[i]).toBe(`[[2030-06-${17 + i}|${weekday} ${17 + i}.06]]`)
   })
 
   it('leaves a click alone and expands every calendar date only after movement exceeds the threshold', async () => {

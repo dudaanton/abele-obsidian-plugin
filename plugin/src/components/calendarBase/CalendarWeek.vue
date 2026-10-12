@@ -263,6 +263,19 @@ watch(() => props.days[0], scrollToStart)
   overflow-y: auto;
 }
 
+// The hours scroll and the rows over them do not: each keeps the same gutter for the scrollbar,
+// so a day's column stands under its own date.
+.abele-calendar-week__hours,
+.abele-calendar-week__head,
+.abele-calendar-week__all-day {
+  scrollbar-gutter: stable;
+}
+
+.abele-calendar-week__head,
+.abele-calendar-week__all-day {
+  overflow-y: hidden;
+}
+
 .abele-calendar-week__hour-label {
   height: var(--abele-calendar-hour);
   padding-inline-end: var(--size-2-3);
@@ -301,13 +314,11 @@ watch(() => props.days[0], scrollToStart)
 .abele-calendar-week__chip {
   height: 100%;
   align-items: flex-start;
+  // The lines of a tall block stand at its top: the box, the time and the title's first line together.
+  align-content: flex-start;
   flex-wrap: wrap;
   overflow: hidden;
   white-space: normal;
-  background-color: var(--background-primary-alt);
-  border-top: 1px solid var(--background-modifier-border);
-  border-bottom: 1px solid var(--background-modifier-border);
-  border-inline-end: 1px solid var(--background-modifier-border);
 }
 
 .abele-calendar-week__now {

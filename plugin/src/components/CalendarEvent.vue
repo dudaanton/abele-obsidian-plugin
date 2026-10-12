@@ -1,46 +1,43 @@
 <template>
-  <div
+  <EntryRow
     class="abele-calendar-event"
     :class="[`abele-calendar-event_color-${feed.color}`, { 'is-checked': done }]"
     :data-task="done ? 'x' : undefined"
     role="button"
     tabindex="0"
     :aria-label="`${event.title}, ${timeText}, from ${calendarName}`"
+    :more="event.description ? showDescription : undefined"
+    @update:more="showDescription = $event"
     @click="openMenu"
     @contextmenu.prevent="openMenu"
     @keydown.enter="openMenu"
   >
-    <label class="task-list-label" contenteditable="false">
-      <input
-        class="task-list-item-checkbox"
-        type="checkbox"
-        :checked="done"
-        :aria-label="`${done ? 'Mark undone' : 'Mark done'}: ${event.title}`"
-        @click.stop.prevent="toggleEventDone(event)"
-        @keydown.stop
-      />
-    </label>
-    <div class="abele-calendar-event__bar" />
-    <div class="abele-calendar-event__content">
-      <div class="abele-calendar-event__title">{{ event.title }}</div>
-      <div class="abele-calendar-event__info">
-        <b>{{ timeText }}</b>
-        <span v-if="event.location" class="abele-calendar-event__location">{{
-          event.location
-        }}</span>
-        <Badge :text="calendarName" :color="feed.color" />
-      </div>
-      <div v-if="showDescription && event.description" class="abele-calendar-event__description">
-        {{ event.description }}
-      </div>
-    </div>
-    <ObsidianIcon
-      v-if="event.description"
-      :icon="showDescription ? 'chevron-up' : 'chevron-down'"
-      :tooltip="showDescription ? 'Hide the description' : 'Show the description'"
-      @click.stop="showDescription = !showDescription"
-    />
-  </div>
+    <template #leading>
+      <label class="task-list-label" contenteditable="false">
+        <input
+          class="task-list-item-checkbox"
+          type="checkbox"
+          :checked="done"
+          :aria-label="`${done ? 'Mark undone' : 'Mark done'}: ${event.title}`"
+          @click.stop.prevent="toggleEventDone(event)"
+          @keydown.stop
+        />
+      </label>
+    </template>
+    <div class="abele-calendar-event__title">{{ event.title }}</div>
+    <!-- The same codes as a task row: when, and which calendar as a dot of its colour. -->
+    <template #codes>
+      <span class="abele-calendar-event__time" :aria-label="`From ${calendarName}`">
+        <span class="abele-calendar-event__bar" />{{ timeText }}
+      </span>
+    </template>
+    <template v-if="event.location" #meta>
+      <span class="abele-calendar-event__location">{{ event.location }}</span>
+    </template>
+    <template v-if="showDescription && event.description" #detail>
+      <div class="abele-calendar-event__description">{{ event.description }}</div>
+    </template>
+  </EntryRow>
 </template>
 
 <script setup lang="ts">
@@ -49,8 +46,7 @@
  * calendar edit. Pressing the card offers that mark, a meeting note and its link.
  */
 import { computed, ref } from 'vue'
-import ObsidianIcon from './obsidian/Icon.vue'
-import Badge from './obsidian/Badge.vue'
+import EntryRow from './obsidian/EntryRow.vue'
 import type { CalendarEvent } from '@/calendars/events'
 import { eventDays, localDay } from '@/calendars/events'
 import { feedLabel, type CalendarFeed } from '@/calendars/settings'
@@ -88,33 +84,19 @@ const openMenu = (e: MouseEvent | KeyboardEvent) => openEventMenu(props.event, p
 </script>
 
 <style lang="scss">
-.abele-calendar-event {
-  display: flex;
-  align-items: flex-start;
-  gap: 0.5em;
-  margin-bottom: 0.25em;
-  padding: 0.25em 0;
-  cursor: pointer;
-  border-radius: var(--radius-s);
-
-  &:hover {
-    background-color: var(--background-modifier-hover);
-  }
-}
-
 .abele-calendar-event.is-checked .abele-calendar-event__title {
   text-decoration: var(--checklist-done-decoration);
   color: var(--checklist-done-color);
 }
 
-// A calendar's colour remains visible beside the owner's checkbox.
+// The calendar's colour, as a dot before the time; its name is in the row's label.
 .abele-calendar-event__bar {
-  flex: 0 0 auto;
-  align-self: stretch;
-  width: var(--size-2-2);
-  margin-inline-start: var(--size-2-2);
-  margin-inline-end: var(--size-2-1);
-  border-radius: var(--radius-s);
+  display: inline-block;
+  width: var(--size-2-3);
+  height: var(--size-2-3);
+  margin-inline-end: var(--size-2-2);
+  border-radius: 50%;
+  vertical-align: middle;
   background-color: var(--text-faint);
 }
 
@@ -125,30 +107,7 @@ $colors: red, orange, yellow, green, cyan, blue, purple, pink;
   }
 }
 
-.abele-calendar-event__content {
-  flex: 1;
-  min-width: 0;
-  // `anywhere`, not `break-word`: only it lets a long run count as breakable when the list
-  // measures how narrow the event can get, so a title, place or link without spaces wraps.
-  overflow-wrap: anywhere;
-}
-
-.abele-calendar-event__info {
-  display: flex;
-  flex-wrap: wrap;
-  align-items: center;
-  gap: var(--size-2-2);
-  margin-top: var(--size-2-1);
-  font-size: var(--font-smaller);
-  color: var(--text-muted);
-}
-
-.abele-calendar-event__location {
-  min-width: 0;
-}
-
 .abele-calendar-event__description {
-  margin-top: var(--size-2-2);
   white-space: pre-wrap;
   color: var(--text-muted);
   font-size: var(--font-smaller);

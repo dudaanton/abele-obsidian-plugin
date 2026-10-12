@@ -1,3 +1,4 @@
+import { readFileSync } from 'node:fs'
 /**
  * The calendar view of a base, drawn: notes on their days in a month, on their hours in a week,
  * as a tint in a year; the moves between them; what pressing a note, a day or an hour asks the
@@ -200,7 +201,9 @@ describe('a month', () => {
     instance.groups.value = [{ label: 'Health', color: 'green' }] as never
     instance.undated.value = 2
     const view = render(instance)
-    expect(view.find('.abele-calendar-base__legend .abele-badge').text()).toBe('Health')
+    const group = view.find('.abele-calendar-base__legend .abele-calendar-base__group')
+    expect(group.text()).toBe('Health')
+    expect(group.classes()).toContain('abele-calendar-base__group_green')
     expect(view.find('.abele-calendar-base__undated').text()).toBe('2 notes have no date')
     expect(cell(view, '2026-09-26').find('.abele-calendar-chip').classes()).toContain(
       'abele-calendar-chip_color-green'
@@ -446,5 +449,14 @@ describe('the layouts', () => {
     await tabs[2].trigger('click')
     expect(instance.setMode).toHaveBeenCalledWith('year')
     expect(view.find('.abele-calendar-year').exists()).toBe(true)
+  })
+})
+
+describe('calendar colour presentation', () => {
+  it('uses a dot and wash instead of a coloured side rail', () => {
+    const chip = readFileSync('src/components/calendarBase/CalendarChip.vue', 'utf8')
+    expect(chip).toContain('abele-calendar-chip__dot')
+    expect(chip).not.toMatch(/border-inline-start:\s*var\(--size-2-1\) solid/)
+    expect(chip).toContain('color-mix')
   })
 })

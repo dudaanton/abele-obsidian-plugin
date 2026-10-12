@@ -56,7 +56,7 @@ const probe = (footer: boolean) => String.raw`(async () => {
     report.initialState={padding:root.querySelector('.abele-timeline__blocks').style.paddingTop,space:root.querySelector('.abele-timeline__anchor-space').style.height}
     const initial=dates()
     const labels=()=>[...root.querySelectorAll('.timeline__date')].map(el=>({day:el.closest('.abele-timeline__date-block').dataset.abeleAnchor,text:el.textContent,height:el.getBoundingClientRect().height}))
-    const shortWeekdays=()=>labels().every(label=>/ · (Mo|Tu|We|Th|Fr|Sa|Su) /.test(label.text))
+    const shortWeekdays=()=>labels().every(label=>/(Mon|Tue|Wed|Thu|Fri|Sat|Sun) \d\d\.\d\d/.test(label.text))
     const initialLabels=labels()
     report.initialWeekdays=shortWeekdays()
     report.fitsWidth=[...root.querySelectorAll('.timeline__date')].every(el=>el.scrollWidth<=el.clientWidth+1)

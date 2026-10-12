@@ -166,7 +166,9 @@ describe('a life in weeks', () => {
   it('walks the weeks with the arrows, and comes back to this one with Today', async () => {
     const view = render(makeInstance([]))
     const week = () => view.find('.abele-calendar-base__life-week').attributes('data-week')
-    const icons = view.findAll('.abele-calendar-base__controls .abele-obsidian-icon')
+    const icons = view.findAll(
+      '.abele-calendar-base__controls .abele-obsidian-icon:not(.abele-calendar-base__completed-toggle)'
+    )
     await icons[icons.length - 1].trigger('click')
     expect(week()).toBe(String(THIS_WEEK + 1))
     await view.find('canvas').trigger('keydown', { key: 'ArrowUp' })

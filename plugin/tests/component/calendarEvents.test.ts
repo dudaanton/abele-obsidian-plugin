@@ -164,7 +164,9 @@ describe('an event in a list', () => {
     expect(view.classes()).toContain('abele-calendar-event_color-green')
     expect(view.text()).toContain('09:00–09:30')
     expect(view.text()).toContain('Main street 4')
-    expect(view.text()).toContain('Family')
+    expect(view.find('.abele-calendar-event__location').text()).toBe('Main street 4')
+    expect(view.attributes('aria-label')).toContain('from Family')
+    expect(view.find('.abele-calendar-event__time').attributes('aria-label')).toBe('From Family')
   })
 
   it('says where a night-long event stands on each of its days', () => {

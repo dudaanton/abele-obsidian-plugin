@@ -33,6 +33,9 @@
           :data-day="day.startsWith(m.prefix) ? day : undefined"
           :data-drop-day="day.startsWith(m.prefix) ? day : undefined"
           :aria-label="day.startsWith(m.prefix) ? `${day}: ${counts.get(day) ?? 0}` : undefined"
+          :role="day.startsWith(m.prefix) ? 'gridcell' : undefined"
+          :tabindex="day.startsWith(m.prefix) ? -1 : undefined"
+          :aria-selected="day.startsWith(m.prefix) ? day === selected : undefined"
         >
           {{ day.startsWith(m.prefix) ? Number(day.slice(8)) : '' }}
         </div>
@@ -98,6 +101,21 @@ const onDayClick = (event: MouseEvent) => {
   display: grid;
   grid-template-columns: repeat(auto-fill, minmax(10em, 1fr));
   gap: var(--size-4-4) var(--size-4-5);
+}
+
+// A month's days are centred in their columns, so its first letter stands in from the column's
+// edge. The days move out by that much and the name stays, so the name, the first letter and the
+// rest of the view all start at one edge.
+.abele-calendar-year__month {
+  container-type: inline-size;
+
+  > * {
+    --abele-year-inset: calc((100cqw - 6 * var(--size-2-1)) / 14 - var(--font-smallest) * 0.32);
+  }
+}
+
+.abele-calendar-year__grid {
+  margin-inline: calc(-1 * var(--abele-year-inset)) var(--abele-year-inset);
 }
 
 .abele-calendar-year__month-name {

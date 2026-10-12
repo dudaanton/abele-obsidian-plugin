@@ -7,6 +7,7 @@
       'abele-calendar-chip_done': placed.item.completed,
       'abele-calendar-chip_from-before': placed.fromBefore,
       'abele-calendar-chip_goes-on': placed.goesOn,
+      'abele-calendar-chip_row': timeColumn,
     }"
     role="button"
     tabindex="0"
@@ -26,16 +27,19 @@
       @keydown.stop
       @click.stop.prevent="toggleDone"
     />
-    <span v-if="time" class="abele-calendar-chip__time">{{ time }}</span>
+    <!-- A note's group colour as a dot where an event has its box to tick. -->
+    <span v-else class="abele-calendar-chip__dot" aria-hidden="true" />
+    <span v-if="time || timeColumn" class="abele-calendar-chip__time">{{ time }}</span>
     <span class="abele-calendar-chip__title">{{ placed.item.title }}</span>
   </div>
 </template>
 
 <script setup lang="ts">
 /**
- * One thing on the calendar: a note or an event, as a short line with the colour of its group
- * (or of its calendar) down the side — the same bar the timeline gives an event. A span that
- * goes on past the day loses its rounded corners on that side.
+ * One thing on the calendar: a note or an event, as a short line on a light wash of the colour
+ * of its group (or of its calendar), a note led by a dot of that colour and an event by its box
+ * to tick. No bar down the side. A span that goes on past the day loses its rounded corners on
+ * that side, so the days read as one.
  */
 import { computed } from 'vue'
 import { clock, type PlacedItem } from '@/bases/calendarLayout'
@@ -47,6 +51,8 @@ const props = defineProps<{
   placed: PlacedItem
   /** Show the start time before the title; the week's hour grid says it by position instead. */
   withTime?: boolean
+  /** A list of the day keeps a column for the time, empty where there is none, so titles line up. */
+  timeColumn?: boolean
 }>()
 
 const emit = defineEmits<{
@@ -77,14 +83,15 @@ const label = computed(() =>
 
 <style lang="scss">
 .abele-calendar-chip {
+  // The colour of its group or calendar; a wash of it behind, a dot of it in front.
+  --abele-chip-color: var(--interactive-accent);
   display: flex;
   align-items: baseline;
   gap: var(--size-2-2);
   min-width: 0;
-  padding: 0 var(--size-2-2) 0 var(--size-4-1);
-  border-inline-start: var(--size-2-1) solid var(--interactive-accent);
+  padding: 0 var(--size-2-3);
   border-radius: var(--radius-s);
-  background-color: var(--background-modifier-hover);
+  background-color: color-mix(in srgb, var(--abele-chip-color) 12%, transparent);
   font-size: var(--font-smaller);
   line-height: 1.6;
   cursor: var(--cursor-link);
@@ -96,7 +103,51 @@ const label = computed(() =>
 
   &:hover,
   &:focus-visible {
-    background-color: var(--background-modifier-active-hover);
+    background-color: color-mix(in srgb, var(--abele-chip-color) 22%, transparent);
+  }
+
+  // The box sits on the words' line, the size of the dot's column.
+  > .task-list-item-checkbox {
+    flex: 0 0 auto;
+    align-self: center;
+    margin: 0;
+  }
+}
+
+.abele-calendar-chip__dot {
+  display: flex;
+  flex: 0 0 auto;
+  align-self: center;
+  justify-content: center;
+
+  &::before {
+    content: '';
+    width: var(--size-4-2);
+    height: var(--size-4-2);
+    border-radius: 50%;
+    background-color: var(--abele-chip-color);
+  }
+}
+
+// In a list of the day: rows, not washes. The dot stands in the box's column, the time in a
+// column of its own, so every title starts at one edge.
+.abele-calendar-chip_row {
+  gap: var(--size-4-2);
+  padding: var(--size-2-2) var(--size-2-3);
+  background-color: transparent;
+  font-size: var(--font-ui-small);
+
+  &:hover,
+  &:focus-visible {
+    background-color: var(--background-modifier-hover);
+  }
+
+  .abele-calendar-chip__dot {
+    width: var(--checkbox-size);
+  }
+
+  .abele-calendar-chip__time {
+    min-width: 5ch;
   }
 }
 
@@ -104,9 +155,9 @@ const label = computed(() =>
   opacity: 0.4;
 }
 
-.abele-calendar-chip_event {
-  background-color: transparent;
-  border-inline-start-color: var(--text-faint);
+// An event without a calendar colour washes quiet grey.
+.abele-calendar-chip_event:not([class*='abele-calendar-chip_color-']) {
+  --abele-chip-color: var(--text-faint);
 }
 
 .abele-calendar-chip_from-before {
@@ -139,7 +190,7 @@ const label = computed(() =>
 $colors: red, orange, yellow, green, cyan, blue, purple, pink;
 @each $name in $colors {
   .abele-calendar-chip_color-#{$name} {
-    border-inline-start-color: var(--color-#{$name});
+    --abele-chip-color: var(--color-#{$name});
   }
 }
 </style>

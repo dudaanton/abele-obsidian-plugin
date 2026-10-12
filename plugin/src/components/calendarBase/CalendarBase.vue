@@ -15,9 +15,11 @@
           @click="goToday"
         />
         <Icon icon="chevron-right" :tooltip="`Next ${stepName}`" @click="step(1)" />
-        <Button
+        <Icon
           class="abele-calendar-base__completed-toggle"
-          :text="showCompleted ? 'Hide completed' : 'Show completed'"
+          :icon="showCompleted ? 'list-todo' : 'list-checks'"
+          role="switch"
+          :aria-checked="showCompleted"
           :tooltip="
             showCompleted ? 'Hide completed notes and events' : 'Show completed notes and events'
           "
@@ -34,7 +36,13 @@
     </div>
 
     <div v-if="groups.length || undated" class="abele-calendar-base__legend">
-      <Badge v-for="g in groups" :key="g.label" :text="g.label" :color="g.color" />
+      <span
+        v-for="g in groups"
+        :key="g.label"
+        class="abele-calendar-base__group"
+        :class="`abele-calendar-base__group_${g.color}`"
+        >{{ g.label }}</span
+      >
       <span v-if="undated" class="abele-calendar-base__undated">
         {{ undated === 1 ? '1 note has' : `${undated} notes have` }} no date
       </span>
@@ -97,16 +105,14 @@
       <div class="abele-calendar-base__agenda-head">
         <span class="abele-calendar-base__agenda-date">{{ agendaTitle }}</span>
         <div class="abele-calendar-base__agenda-actions">
-          <Button
-            text="Week"
+          <Icon
             icon="calendar-range"
             tooltip="Show the week of this day"
             class="abele-calendar-base__agenda-week"
             @click="zoomToWeek(selected)"
           />
-          <Button
+          <Icon
             v-if="canCreate"
-            text="New note"
             icon="plus"
             tooltip="Make a note on this day"
             class="abele-calendar-base__agenda-new"
@@ -120,6 +126,7 @@
           :key="p.item.id"
           :placed="p"
           with-time
+          time-column
           class="abele-calendar-base__agenda-item"
           @open="open"
           @hover="hover"
@@ -155,7 +162,6 @@ import dayjs from 'dayjs'
 import Tabs, { type Tab } from '../obsidian/Tabs.vue'
 import Icon from '../obsidian/Icon.vue'
 import Button from '../obsidian/Button.vue'
-import Badge from '../obsidian/Badge.vue'
 import EmptyState from '../obsidian/EmptyState.vue'
 import CalendarChip from './CalendarChip.vue'
 import CalendarMonth from './CalendarMonth.vue'
@@ -403,6 +409,30 @@ watch(anchorMonth, () => {
 </script>
 
 <style lang="scss">
+// A group as a quiet word with a dot of its colour, the way a task's labels read.
+.abele-calendar-base__group {
+  font-size: var(--font-smallest);
+  color: var(--text-muted);
+  white-space: nowrap;
+
+  &::before {
+    content: '';
+    display: inline-block;
+    width: var(--size-2-3);
+    height: var(--size-2-3);
+    margin-inline-end: var(--size-2-2);
+    border-radius: 50%;
+    vertical-align: middle;
+    background-color: var(--abele-calendar-group-color, var(--text-faint));
+  }
+}
+
+@each $name in red, orange, yellow, green, cyan, blue, purple, pink {
+  .abele-calendar-base__group_#{$name} {
+    --abele-calendar-group-color: var(--color-#{$name});
+  }
+}
+
 .abele-calendar-base {
   display: flex;
   flex-direction: column;
@@ -462,23 +492,19 @@ watch(anchorMonth, () => {
   font-weight: bold;
 }
 
-// The buttons stay side by side; on a phone they drop under the date together.
+// Glyphs at the date's end, as a list section's own actions; the words in their tooltips.
 .abele-calendar-base__agenda-actions {
   display: flex;
   flex: 0 0 auto;
-  gap: var(--size-2-3);
+  gap: var(--size-2-1);
 }
 
+// The day's rows, close as a list in Obsidian's own panes.
 .abele-calendar-base__agenda-list {
   display: flex;
   flex-direction: column;
-  gap: var(--size-4-1);
-}
-
-// A row a finger can press: the chip at the size of body text.
-.abele-calendar-base__agenda-item {
-  padding-block: var(--size-4-1);
-  font-size: var(--font-ui-small);
+  gap: var(--size-2-1);
+  margin-inline: calc(-1 * var(--size-2-3));
 }
 
 // Where a dragged note would land, and the note itself under the pointer.
@@ -501,7 +527,7 @@ watch(anchorMonth, () => {
   overflow: hidden;
   text-overflow: ellipsis;
   white-space: nowrap;
-  border-inline-start: var(--size-2-1) solid var(--interactive-accent);
+  border: 1px solid var(--background-modifier-border);
   border-radius: var(--radius-s);
   background-color: var(--background-primary);
   box-shadow: var(--shadow-s);

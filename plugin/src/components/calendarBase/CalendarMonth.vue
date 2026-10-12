@@ -17,6 +17,9 @@
         }"
         :data-day="day"
         :data-drop-day="day"
+        role="gridcell"
+        tabindex="-1"
+        :aria-selected="day === selected"
         @click="emit('select', day)"
       >
         <div class="abele-calendar-month__day-head">
@@ -129,6 +132,12 @@ const weekdayNames = computed(() =>
 </script>
 
 <style lang="scss">
+// A month cell is too narrow for a box and a title both: an event shows its title, and is
+// ticked off from the menu it opens, as on the week and the agenda it keeps its box.
+.abele-calendar-month .abele-calendar-chip_event .task-list-item-checkbox {
+  display: none;
+}
+
 .abele-calendar-month__weekdays,
 .abele-calendar-month__grid {
   display: grid;
@@ -136,8 +145,10 @@ const weekdayNames = computed(() =>
 }
 
 .abele-calendar-month__weekday {
+  // On the day numbers' edge: the cell's inset and the number's own.
   padding-bottom: var(--size-4-1);
-  text-align: center;
+  padding-inline-start: calc(var(--size-2-2) + var(--size-2-3));
+  text-align: start;
   font-weight: bold;
   color: var(--text-muted);
   font-size: var(--font-ui-small);
@@ -179,9 +190,9 @@ const weekdayNames = computed(() =>
 
 .abele-calendar-month__day-number {
   min-width: 1.8em;
-  padding: 0 var(--size-2-2);
+  padding: 0 var(--size-2-3);
   border-radius: var(--radius-s);
-  text-align: center;
+  text-align: start;
   font-size: var(--font-ui-small);
   font-variant-numeric: tabular-nums;
   cursor: var(--cursor-link);
