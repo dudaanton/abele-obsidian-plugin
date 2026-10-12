@@ -20,6 +20,7 @@ export const CATALOGUE_PAGES = [
 ] as const
 export type CataloguePage = (typeof CATALOGUE_PAGES)[number]
 export const CATALOGUE_COMPONENTS = [
+  'AnchoredCard',
   'Avatar',
   'Badge',
   'Breadcrumbs',
