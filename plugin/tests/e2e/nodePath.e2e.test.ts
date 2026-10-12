@@ -445,7 +445,7 @@ it('pairs and opens target-bound node files history editor and fake chats in the
     console.info('Node scoped chat before reload', JSON.stringify(scopeBeforeReload))
     // Presentation restoration must not depend on optional model/tool execution being enabled.
     await evalLong(
-      `(async()=>{window.__abeleTest.AbeleConfig.getInstance().ai.enabled=false;await app.plugins.plugins.abele.saveSettings();return 'optional AI disabled for restoration fixture'})()`
+      `(async()=>{const config=window.__abeleTest.AbeleConfig.getInstance();config.editSettings(()=>{config.ai.enabled=false});await config.saveSettings();return 'optional AI disabled for restoration fixture'})()`
     )
     // Reload into the real phone shell, then restore only this fixture's paired transport.
     await reloadApp('app.emulateMobile(true)')
@@ -569,7 +569,7 @@ it('pairs and opens target-bound node files history editor and fake chats in the
   } finally {
     try {
       await evalLong(
-        `(async()=>{${prelude}for(const type of ['abele-node-sidebar','abele-node-file','abele-node-history','abele-node-chat','abele-node-editor'])for(const leaf of app.workspace.getLeavesOfType(type))leaf.detach();for(const id of ${JSON.stringify([registration, localRegistration].filter(Boolean))})nodes.remove(id);const old=${savedPreferences || '{}'};app.saveLocalStorage('abele-node-local-state-dir',old.directory);app.saveLocalStorage('abele-node-device-name',old.device);if(typeof old.aiEnabled==='boolean'){api.AbeleConfig.getInstance().ai.enabled=old.aiEnabled;await app.plugins.plugins.abele.saveSettings()}app.workspace.requestSaveLayout();await wait(1000);return 'cleaned'})()`
+        `(async()=>{${prelude}for(const type of ['abele-node-sidebar','abele-node-file','abele-node-history','abele-node-chat','abele-node-editor'])for(const leaf of app.workspace.getLeavesOfType(type))leaf.detach();for(const id of ${JSON.stringify([registration, localRegistration].filter(Boolean))})nodes.remove(id);const old=${savedPreferences || '{}'};app.saveLocalStorage('abele-node-local-state-dir',old.directory);app.saveLocalStorage('abele-node-device-name',old.device);if(typeof old.aiEnabled==='boolean'){const config=api.AbeleConfig.getInstance();config.editSettings(()=>{config.ai.enabled=old.aiEnabled});await config.saveSettings()}app.workspace.requestSaveLayout();await wait(1000);return 'cleaned'})()`
       )
     } catch {
       /* The daemon and proxy must still stop after a failed shell probe. */
