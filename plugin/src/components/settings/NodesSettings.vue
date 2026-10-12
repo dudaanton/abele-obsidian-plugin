@@ -24,7 +24,11 @@
         tooltip="Pick a session or manage projects and workspaces"
         @click="open(node)"
       />
-      <Icon icon="more-horizontal" tooltip="Pairing, delegation, remove" @click="more($event, node)" />
+      <Icon
+        icon="more-horizontal"
+        tooltip="Pairing, delegation, remove"
+        @click="more($event, node)"
+      />
     </Setting>
     <!-- Adding a node is a row like the nodes: what it is, and the one button that starts it. -->
     <Setting
@@ -38,7 +42,11 @@
       />
     </Setting>
     <Setting name="Add the node on this computer" desc="One running here, by the token it gives.">
-      <Button text="Add" tooltip="Name the node here and paste its token" @click="addingLocal = true" />
+      <Button
+        text="Add"
+        tooltip="Name the node here and paste its token"
+        @click="addingLocal = true"
+      />
     </Setting>
     <NodeDelegationGrantsDialog
       v-if="grantNode"
@@ -58,7 +66,11 @@
     <p v-if="message && !addingLocal" class="setting-item-description" role="status">
       {{ message }}
     </p>
-    <ObsidianModal v-if="addingLocal" title="Add the node on this computer" @close="addingLocal = false">
+    <ObsidianModal
+      v-if="addingLocal"
+      title="Add the node on this computer"
+      @close="addingLocal = false"
+    >
       <Setting name="Name" desc="What this node is called on this device.">
         <Input v-model="label" placeholder="Local node" aria-label="Node label" />
       </Setting>
@@ -69,11 +81,17 @@
         name="Token"
         desc="The one abele-node token create prints. Kept in this device's keychain only."
       >
-        <Input v-model="token" password placeholder="Paste token" aria-label="Node installation token" />
+        <Input
+          v-model="token"
+          password
+          placeholder="Paste token"
+          aria-label="Node installation token"
+        />
       </Setting>
       <p v-if="message" class="setting-item-description" role="status">{{ message }}</p>
       <template #footer>
         <div class="abele-modal__actions">
+          <Button text="Cancel" tooltip="Close this and add nothing" @click="addingLocal = false" />
           <Button
             text="Add"
             accent
@@ -81,7 +99,6 @@
             :disabled="busy || !label.trim() || !token.trim()"
             @click="add"
           />
-          <Button text="Cancel" tooltip="Close this and add nothing" @click="addingLocal = false" />
         </div>
       </template>
     </ObsidianModal>
@@ -110,9 +127,11 @@ const service = NodeService.getInstance()
 const grantNode = ref<RegisteredNode>()
 const parentChats = computed(() => {
   const chats = ChatService.getInstance()
-  return chats.tabOrder.value.flatMap(id => {
+  return chats.tabOrder.value.flatMap((id) => {
     const parent = chats.getSession(id)
-    return parent?.delegationParentId ? [{ id: parent.delegationParentId, title: parent.chatTitle.value || 'Untitled chat' }] : []
+    return parent?.delegationParentId
+      ? [{ id: parent.delegationParentId, title: parent.chatTitle.value || 'Untitled chat' }]
+      : []
   })
 })
 const showGrants = async (node: RegisteredNode) => {
@@ -124,7 +143,9 @@ const showGrants = async (node: RegisteredNode) => {
     const parent = chats.activeSession.value
     if (parent?.currentChatFile.value) await parent.ensureDelegationParentId()
     grantNode.value = node
-  } catch (error) { report(error) }
+  } catch (error) {
+    report(error)
+  }
 }
 const pairing = ref(false)
 const resumeNodeId = ref<string>()

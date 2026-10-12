@@ -3,7 +3,8 @@
     <template #desc>
       Buttons above a note's text that run a command or a script, on the notes you choose, in this
       order. A script can be handed the note's values: <code>{{ variableExamples }}</code> or any
-      property, <code>{{ frontmatterExample }}</code>.
+      property, <code>{{ frontmatterExample }}</code
+      >.
     </template>
 
     <!-- One row per button, in the order they stand in the header: its glyph and name, what it
@@ -248,7 +249,12 @@
             class="abele-header-buttons__delete"
             @click="pendingRemoval = edited"
           />
-          <Button text="Done" accent tooltip="Close this window; changes are kept as you make them" @click="editing = null" />
+          <Button
+            text="Done"
+            accent
+            tooltip="Close this window; changes are kept as you make them"
+            @click="editing = null"
+          />
         </div>
       </template>
     </ObsidianModal>
@@ -337,7 +343,6 @@ const vaultShape = ((): VaultShape => {
     hasCommand: (id) => hasCommand(app, id),
   }
 })()
-
 
 const RUNS_OPTIONS = [
   { value: 'command', display: 'A command' },
@@ -434,7 +439,8 @@ const paramsOf = (button: HeaderButtonDefinition): ScriptParam[] =>
 
 const paramDescription = (param: ScriptParam): string => {
   const described = param.description || 'No description.'
-  return param.default ? `${described} Defaults to "${param.default}".` : described
+  // A description written as a label has no full stop: the default joins it as a second fact.
+  return param.default ? `${described} · defaults to ${param.default}` : described
 }
 
 /** Scripts a header button may run: not the ones switched off in their own header. */

@@ -70,18 +70,19 @@
       text="Another connection uses the same account on this server. You can still save it."
     />
     <GithubAccessReport v-if="report" :report="report" />
+    <!-- As Obsidian's dialogs order them: Cancel, then the answer last. -->
     <template #footer>
+      <Button
+        text="Cancel"
+        tooltip="Discard this draft without changing settings or the keychain"
+        @click="close"
+      />
       <Button
         text="Save"
         tooltip="Store this connection and its token, then close the editor"
         accent
         :disabled="!draft.name.trim() || !validServer"
         @click="save"
-      />
-      <Button
-        text="Cancel"
-        tooltip="Discard this draft without changing settings or the keychain"
-        @click="close"
       />
     </template>
   </Modal>

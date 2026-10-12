@@ -39,6 +39,7 @@ export function reviewKeyDestinations(): ShellModal {
     title: 'Review key destinations',
     footer: true,
   })
+  modal.modalEl.addClass('abele-key-destinations')
   let address = '',
     choice = '',
     name = '',

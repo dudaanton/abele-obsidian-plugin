@@ -50,6 +50,14 @@ const setting = (name: string) =>
 const button = (text: string) =>
   wrapper!.findAllComponents(Button).find((b) => b.props('text') === text)!
 
+/** The window's Add, wherever its footer puts it: Cancel comes first there. */
+const addButton = (modal: {
+  findAllComponents: (c: typeof Button) => { props: (k: string) => unknown }[]
+}) =>
+  modal.findAllComponents(Button).find((b) => b.props('text') === 'Add') as never as ReturnType<
+    typeof modal.findAllComponents
+  >[number] & { trigger: (e: string) => Promise<void> }
+
 it('says how each node is doing and where it is, an error code in words', () => {
   screen()
   expect(setting('Sample desk').props('desc')).toBe('Connected · http://127.0.0.1:7777')
@@ -74,19 +82,20 @@ it('asks for the local node in a window, and closes it once the node is added', 
     'Token',
   ])
   const footer = modal.findAllComponents(Button).map((b) => [b.props('text'), b.props('accent')])
+  // As Obsidian's dialogs order them: Cancel, then the answer last.
   expect(footer).toEqual([
-    ['Add', true],
     ['Cancel', false],
+    ['Add', true],
   ])
   // Nothing to add with no token.
-  expect(modal.findAllComponents(Button)[0].props('disabled')).toBe(true)
+  expect(addButton(modal).props('disabled')).toBe(true)
   const token = document.querySelector<HTMLInputElement>(
     'input[aria-label="Node installation token"]'
   )!
   token.value = 'sample-token'
   token.dispatchEvent(new Event('input'))
   await flushPromises()
-  await modal.findAllComponents(Button)[0].trigger('click')
+  await addButton(modal).trigger('click')
   await flushPromises()
   expect(add).toHaveBeenCalledWith('Local node', 'http://127.0.0.1:7777', 'sample-token')
   expect(wrapper!.findComponent(ObsidianModal).exists()).toBe(false)
@@ -101,7 +110,7 @@ it('keeps the window open and says why when the node cannot be added', async () 
   token.value = 'sample-token'
   token.dispatchEvent(new Event('input'))
   await flushPromises()
-  await wrapper!.findComponent(ObsidianModal).findAllComponents(Button)[0].trigger('click')
+  await addButton(wrapper!.findComponent(ObsidianModal)).trigger('click')
   await flushPromises()
   expect(wrapper!.findComponent(ObsidianModal).exists()).toBe(true)
   expect(document.body.textContent).toContain('Sample token refused')

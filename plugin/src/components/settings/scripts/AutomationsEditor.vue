@@ -205,7 +205,8 @@ const paramsOf = (rule: AutomationRule): ScriptParam[] =>
 const paramDescription = (param: ScriptParam): string => {
   const said = param.description.trim()
   const described = !said ? 'No description.' : /[.!?]$/.test(said) ? said : `${said}.`
-  return param.default ? `${described} Defaults to "${param.default}".` : described
+  // A description written as a label has no full stop: the default joins it as a second fact.
+  return param.default ? `${described} · defaults to ${param.default}` : described
 }
 
 const list = (value: string): string[] =>
