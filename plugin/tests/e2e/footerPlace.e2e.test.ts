@@ -72,7 +72,9 @@ interface Report {
 
 const script = `(async () => {
   const wait = (ms) => new Promise((r) => setTimeout(r, ms))
-  const frame = () => new Promise((r) => requestAnimationFrame(r))
+  // ResizeObserver aligns after animation-frame callbacks and before paint. Sample the
+  // completed rendering step, not the intermediate geometry that nobody sees on screen.
+  const frame = () => new Promise((r) => requestAnimationFrame(() => setTimeout(r, 0)))
   const until = async (fn, ms = 10000) => {
     const deadline = Date.now() + ms
     while (Date.now() < deadline) {
