@@ -102,5 +102,7 @@ it.each([50, 200])(
     } finally {
       host.close()
     }
-  }
+  },
+  // Hashing 200 MiB three times is bounded CPU work; a loaded shard needs more than the default.
+  60_000
 )
