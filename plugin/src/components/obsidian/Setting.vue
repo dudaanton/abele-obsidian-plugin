@@ -125,6 +125,12 @@ defineProps<{
   }
 }
 
+// In a window the rows stand at its edge, so a heading among them does too: Obsidian insets a
+// heading for a card of settings that is not there.
+.modal:not(.mod-settings) .abele-obsidian-setting.setting-item-heading:where(:not(.setting-group *)) {
+  padding-inline: 0;
+}
+
 /**
  * Settings one after another read as Obsidian's own group: one card, a hairline between the
  * rows, the round corners only at the ends. On its own Obsidian draws every row as a card of its
@@ -146,6 +152,16 @@ defineProps<{
   &:not(.abele-obsidian-setting:not(.setting-item-heading) + &) {
     border-start-start-radius: var(--setting-items-radius);
     border-start-end-radius: var(--setting-items-radius);
+  }
+
+  // In a window Obsidian draws its own hairline between rows, the whole width: not a second one.
+  .modal & + &::before {
+    content: none;
+  }
+
+  // Nor a card: there a row's top is that hairline, and the card's round corners bent its ends.
+  .modal:not(.mod-settings) &#{&}:where(:not(.setting-group *)) {
+    border-radius: 0;
   }
 
   & + &::before {

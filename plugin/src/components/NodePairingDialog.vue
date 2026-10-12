@@ -330,7 +330,7 @@ onUnmounted(() => {
     display: flex;
     flex-wrap: wrap;
     gap: var(--size-4-2);
-    padding: var(--size-4-1);
+    padding-block: var(--size-4-1);
   }
   &__verification {
     display: flex;
