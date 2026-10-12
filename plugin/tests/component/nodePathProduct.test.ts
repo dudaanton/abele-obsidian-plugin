@@ -5,6 +5,7 @@ import NodePathSidebar from '@/components/nodeWork/NodePathSidebar.vue'
 import PairDialog from '@/components/nodeWork/PairDialog.vue'
 import FileTree from '@/components/nodeWork/FileTree.vue'
 import HistoryView from '@/components/nodeWork/HistoryView.vue'
+import NodePanel from '@/components/nodeWork/NodePanel.vue'
 
 const parse = () => ({
   name: 'Sample node',
@@ -102,6 +103,70 @@ describe('product node sidebar', () => {
     const matches = view.findAll('.tree-item-self').filter((r) => r.text().includes('sample.ts'))
     await matches[1].trigger('click')
     expect(view.emitted('open')?.[0]).toEqual(['sample.ts', 'staged'])
+    view.unmount()
+  })
+})
+describe('file lookup and exclusions', () => {
+  it('matches pasted relative paths, ranks names first, and does not duplicate hits', async () => {
+    const view = mount(FileTree, {
+      props: {
+        mode: 'all',
+        changes: [],
+        entries: [
+          { path: 'topic/other.txt', name: 'other.txt', kind: 'file' },
+          { path: 'src/topic.txt', name: 'topic.txt', kind: 'file' },
+        ],
+      },
+    })
+    await view.find('input').setValue('topic')
+    expect(view.findAll('.tree-item-self').map((r) => r.text())).toEqual([
+      'topic.txtsrc',
+      'other.txttopic',
+    ])
+    await view.find('input').setValue(' TOPIC/OTHER.TXT ')
+    expect(view.findAll('.tree-item-self')).toHaveLength(1)
+    expect(view.text()).toContain('other.txt')
+    view.unmount()
+  })
+  it('states the full match count when the rendered list is capped and updates on refinement', async () => {
+    const view = mount(FileTree, {
+      props: {
+        mode: 'all',
+        changes: [],
+        entries: Array.from({ length: 73 }, (_, i) => ({
+          path: `item-${i}.txt`,
+          name: `item-${i}.txt`,
+          kind: 'file' as const,
+        })),
+      },
+    })
+    await view.find('input').setValue('item')
+    expect(view.findAll('.tree-item-self')).toHaveLength(50)
+    expect(view.text()).toContain('50 of 73 · type more to narrow')
+    await view.find('input').setValue('item-72')
+    expect(view.text()).not.toContain('type more')
+    view.unmount()
+  })
+  it('explains ignored-file exclusion for Git all-files and lookup, not plain folders or changes', async () => {
+    const view = mount(FileTree, { props: { mode: 'all', entries: [], changes: [] } })
+    expect(view.text()).toContain('Ignored files are not shown.')
+    await view.setProps({ mode: 'changed' })
+    expect(view.text()).not.toContain('Ignored files are not shown.')
+    await view.find('input').setValue('ignored')
+    expect(view.text()).toContain('Ignored files are not shown.')
+    await view.setProps({ git: false })
+    expect(view.text()).not.toContain('Ignored files are not shown.')
+    view.unmount()
+  })
+})
+describe('native node installation', () => {
+  it('shows and copies the supported installer command without running it', async () => {
+    const view = mount(NodePanel, { props: { phase: 'not-found' } })
+    const command =
+      'curl -fsSL https://raw.githubusercontent.com/dudaanton/abele-node/main/install.sh | sh'
+    expect(view.find('code').text()).toBe(command)
+    await view.find('[aria-label="Copy the command"]').trigger('click')
+    expect(view.emitted('copy')?.[0]).toEqual([command])
     view.unmount()
   })
 })

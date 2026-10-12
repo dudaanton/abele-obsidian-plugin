@@ -5,7 +5,7 @@
         v-model="query"
         class="abele-file-tree__search"
         placeholder="Find a file"
-        aria-label="Find a file by name"
+        aria-label="Find a file by name or path"
       />
       <Icon
         v-if="git"
@@ -43,6 +43,9 @@
           <template v-if="hit.change" #end><ChangeCodes :change="hit.change" /></template>
         </TreeItem>
         <div v-if="!found.length" class="search-empty-state">No file matches.</div>
+        <div v-if="matches.length > found.length" class="abele-file-tree__note" role="status">
+          {{ found.length }} of {{ matches.length }} · type more to narrow
+        </div>
       </template>
 
       <!-- Only what changed, in two groups: not yet staged, and staged for the commit. -->
@@ -91,6 +94,9 @@
         <TreeItem v-if="cursors?.['']" text="Load more files" @click="emit('more', '')" />
         <div v-if="!entries.length" class="search-empty-state">The folder is empty.</div>
       </template>
+      <div v-if="git && (mode === 'all' || query.trim())" class="abele-file-tree__note">
+        Ignored files are not shown.
+      </div>
     </div>
   </div>
 </template>
@@ -188,10 +194,16 @@ const files = computed(() => {
   walk(props.entries)
   return out
 })
-const found = computed(() => {
+const matches = computed(() => {
   const q = query.value.trim().toLowerCase()
-  return files.value.filter((f) => f.name.toLowerCase().includes(q)).slice(0, 50)
+  const byName = files.value.filter((f) => f.name.toLowerCase().includes(q))
+  const named = new Set(byName)
+  return [
+    ...byName,
+    ...files.value.filter((f) => !named.has(f) && f.path.toLowerCase().includes(q)),
+  ]
 })
+const found = computed(() => matches.value.slice(0, 50))
 </script>
 
 <style lang="scss">
@@ -230,6 +242,11 @@ const found = computed(() => {
 }
 .abele-file-tree .search-empty-state {
   padding: var(--size-4-2) var(--size-4-3);
+}
+.abele-file-tree__note {
+  padding: var(--size-4-1) var(--size-4-3);
+  color: var(--text-faint);
+  font-size: var(--font-ui-smaller);
 }
 body.is-phone .abele-file-tree .tree-item-self {
   min-height: var(--touch-size-m);

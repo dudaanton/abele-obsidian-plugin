@@ -179,7 +179,8 @@ const props = withDefaults(
     here: undefined,
     git: false,
     updated: undefined,
-    installCommand: 'npm install -g abele-node && abele-node start',
+    installCommand:
+      'curl -fsSL https://raw.githubusercontent.com/dudaanton/abele-node/main/install.sh | sh',
     chatAvailable: true,
     error: undefined,
   }
