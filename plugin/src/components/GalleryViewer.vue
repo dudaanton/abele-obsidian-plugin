@@ -4,46 +4,51 @@
       <!-- Where in the gallery, and the file's size and date: one quiet line under the title. -->
       <div class="abele-gallery-viewer__info">{{ facts }}</div>
 
-      <template v-if="images.length > 1">
-        <ObsidianIcon
-          icon="chevron-left"
-          tooltip="Previous picture (←)"
+      <!-- The picture's frame, with the strips that turn it along its sides. -->
+      <div class="abele-gallery-viewer__stage">
+        <template v-if="images.length > 1">
+          <ObsidianIcon
+            icon="chevron-left"
+            tooltip="Previous picture (←)"
+            no-hover
           class="abele-gallery-viewer__nav abele-gallery-viewer__nav--prev"
-          @click.stop="prev"
-          @mousedown.prevent
-        />
-        <ObsidianIcon
-          icon="chevron-right"
-          tooltip="Next picture (→)"
+            @click.stop="prev"
+            @mousedown.prevent
+          />
+          <ObsidianIcon
+            icon="chevron-right"
+            tooltip="Next picture (→)"
+            no-hover
           class="abele-gallery-viewer__nav abele-gallery-viewer__nav--next"
-          @click.stop="next"
-          @mousedown.prevent
-        />
-      </template>
+            @click.stop="next"
+            @mousedown.prevent
+          />
+        </template>
 
-      <div
-        ref="frame"
-        class="abele-gallery-viewer__image-wrap"
-        tabindex="0"
-        data-ignore-swipe="true"
-        @wheel="onWheel"
-        @pointerdown="onPointerDown"
-        @pointermove="onPointerMove"
-        @pointerup="onPointerUp"
-        @pointercancel="onPointerUp"
-        @dblclick="onDoubleClick"
-        @click.self="close"
-      >
-        <img
-          ref="imageEl"
-          :src="displayUrl"
-          :alt="currentImage.alt"
-          class="abele-gallery-viewer__image"
-          :style="imageStyle"
-          draggable="false"
-          @click.stop
-          @load="fit"
-        />
+        <div
+          ref="frame"
+          class="abele-gallery-viewer__image-wrap"
+          tabindex="0"
+          data-ignore-swipe="true"
+          @wheel="onWheel"
+          @pointerdown="onPointerDown"
+          @pointermove="onPointerMove"
+          @pointerup="onPointerUp"
+          @pointercancel="onPointerUp"
+          @dblclick="onDoubleClick"
+          @click.self="close"
+        >
+          <img
+            ref="imageEl"
+            :src="displayUrl"
+            :alt="currentImage.alt"
+            class="abele-gallery-viewer__image"
+            :style="imageStyle"
+            draggable="false"
+            @click.stop
+            @load="fit"
+          />
+        </div>
       </div>
 
       <div v-if="currentImage.description" class="abele-gallery-viewer__caption">
@@ -553,24 +558,66 @@ onUnmounted(() => {
   text-align: center;
   pointer-events: none;
 }
-// On a plate of the page's own colour, so the arrow reads over any picture.
+// The viewer turns from its edges, as the slider does: a clear strip down each side, so a press
+// anywhere near the side turns it. Pointed at, the strip shades towards the edge in the page's
+// own colour and its arrow comes up; nothing covers the picture.
 .abele-gallery-viewer .abele-gallery-viewer__nav {
   position: absolute;
-  top: 50%;
+  top: 0;
+  bottom: 0;
   z-index: 1;
-  transform: translateY(-50%);
-  background-color: var(--background-primary);
-  border: 1px solid var(--background-modifier-border);
-  &:hover {
-    background-color: var(--background-primary);
+  width: 5em;
+  height: auto;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  border-radius: 0;
+  background: transparent;
+  color: var(--icon-color);
+  opacity: var(--icon-opacity);
+  transition:
+    opacity 120ms ease,
+    background-color 120ms ease;
+  &:hover,
+  &:focus-visible {
+    background-color: transparent;
     color: var(--icon-color-hover);
+    opacity: 1;
+  }
+  &:focus-visible {
+    outline: none;
+    box-shadow: inset 0 0 0 2px var(--background-modifier-border-focus);
   }
   &--prev {
-    left: var(--size-4-2);
+    left: 0;
+    &:hover,
+    &:focus-visible {
+      background-image: linear-gradient(
+        to right,
+        color-mix(in srgb, var(--background-primary) 70%, transparent),
+        transparent
+      );
+    }
   }
   &--next {
-    right: var(--size-4-2);
+    right: 0;
+    &:hover,
+    &:focus-visible {
+      background-image: linear-gradient(
+        to left,
+        color-mix(in srgb, var(--background-primary) 70%, transparent),
+        transparent
+      );
+    }
   }
+}
+.abele-gallery-viewer__stage {
+  position: relative;
+  flex: 1 1 auto;
+  min-height: 0;
+  display: flex;
+  overflow: hidden;
+  border-radius: var(--radius-m);
 }
 .abele-gallery-viewer__image-wrap {
   position: relative;
