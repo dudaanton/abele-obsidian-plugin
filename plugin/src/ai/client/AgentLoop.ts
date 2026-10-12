@@ -1,4 +1,5 @@
 import { OpenAIClient } from './OpenAIClient'
+import { interruptedToolResult, type ToolInterruption } from './toolInterruption'
 import { mobileBackground } from '../mobileBackground'
 import { appSuspension } from '../appSuspension'
 import { SuspendedRequest } from '../suspendedRequest'
@@ -229,6 +230,23 @@ export class AgentLoop {
         })
       }
     } finally {
+      if (signal.aborted) {
+        // Settle every outstanding request, including the unexecuted tail of a batch and
+        // calls in an aborted stream. Pairing is history only: never execute or undo here.
+        const pending = new Map<string, ToolCallContent>()
+        for (const message of messages.slice(opts.messages.length)) {
+          if (message.role === 'assistant')
+            for (const block of message.content)
+              if (block.type === 'toolCall') pending.set(block.id, block)
+          if (message.role === 'toolResult') pending.delete(message.toolCallId)
+        }
+        for (const call of pending.values()) {
+          const result = this.interruptTool(call, 'not-run')
+          messages.push(result)
+          this.emit({ type: 'message_end', message: result })
+        }
+        this._pausedToolCalls = null
+      }
       messages.push(...injected)
       externalSignal?.removeEventListener('abort', onExternalAbort)
       this._isRunning = false
@@ -271,6 +289,9 @@ export class AgentLoop {
       for (;;) {
         const request = new SuspendedRequest(options.signal)
         let result: AssistantMessage | null = null
+        const partial = empty()
+        let block: AssistantMessage['content'][number] | undefined
+        let partialArguments = ''
         this.emit({ type: 'message_start', message: empty() })
         try {
           for await (const event of this.client.stream(model, systemPrompt, messages, toolDefs, {
@@ -281,6 +302,42 @@ export class AgentLoop {
             else if (event.type === 'error') result = event.message ?? empty(event.error)
             else {
               request.progress()
+              // Some transports throw on abort rather than returning their assembled turn.
+              // Keep what was actually streamed even in that case.
+              if (event.type === 'text_delta' || event.type === 'thinking_delta') {
+                const type = event.type === 'text_delta' ? 'text' : 'thinking'
+                if (block?.type !== type) {
+                  block = type === 'text' ? { type, text: '' } : { type, thinking: '' }
+                  partial.content.push(block)
+                }
+                if (block.type === 'text') block.text += event.delta
+                if (block.type === 'thinking') block.thinking += event.delta
+              } else if (event.type === 'tool_call_start') {
+                block = {
+                  type: 'toolCall',
+                  id: event.toolCallId,
+                  name: event.toolName,
+                  arguments: {},
+                }
+                partial.content.push(block)
+                partialArguments = ''
+              } else if (event.type === 'tool_call_delta' && block?.type === 'toolCall') {
+                partialArguments += event.delta
+                try {
+                  const args: unknown = JSON.parse(partialArguments)
+                  if (args && typeof args === 'object' && !Array.isArray(args))
+                    block.arguments = args as Record<string, unknown>
+                } catch {
+                  /* Unfinished arguments stay unexecuted, never repaired into an operation. */
+                }
+              } else if (event.type === 'tool_call_end') {
+                const index = partial.content.findIndex(
+                  (b) => b.type === 'toolCall' && b.id === event.toolCall.id
+                )
+                if (index < 0) partial.content.push(event.toolCall)
+                else partial.content[index] = event.toolCall
+                block = undefined
+              }
               this.emit({ type: 'reconnecting', state: null })
               this.emit({ type: 'stream_event', event })
             }
@@ -291,6 +348,14 @@ export class AgentLoop {
           request.dispose()
         }
         result ??= empty('No response received')
+        if (options.signal?.aborted) {
+          result = {
+            ...result,
+            content: result.content.length ? result.content : partial.content,
+            stopReason: 'aborted',
+            errorMessage: undefined,
+          }
+        }
 
         if (
           request.shouldResume(result.stopReason, result.errorMessage) &&
@@ -313,7 +378,8 @@ export class AgentLoop {
             // completed tool calls/results; no tool from the abandoned stream was executed.
             continue
           }
-          // Stop/unload while waiting must not publish an incomplete tool call or retry it.
+          // Stop retains the streamed turn but never retries or executes its calls.
+          if (options.signal?.aborted) return { ...partial, stopReason: 'aborted' }
           return { ...empty(), stopReason: 'error' }
         }
         this.emit({
@@ -332,6 +398,12 @@ export class AgentLoop {
     } finally {
       this.emit({ type: 'reconnecting', state: null })
     }
+  }
+
+  private interruptTool(call: ToolCallContent, interruption: ToolInterruption): ToolResultMessage {
+    console.debug('[Abele AI] tool stopped', { toolCallId: call.id, interruption })
+    this.emit({ type: 'tool_interrupted', call, interruption })
+    return interruptedToolResult(call, interruption)
   }
 
   /**
@@ -388,6 +460,7 @@ export class AgentLoop {
           tc.permissionKey === undefined
             ? await beforeToolCall(tc.name, tc.id, args)
             : await beforeToolCall(tc.name, tc.id, args, tc.permissionKey, tc.destinationKey)
+        if (signal.aborted) return this.interruptTool(tc, 'not-run')
         if (hookResult) {
           if (hookResult.pause) {
             return null // Signal caller to pause
@@ -408,6 +481,7 @@ export class AgentLoop {
           }
         }
       } catch (err: unknown) {
+        if (signal.aborted) return this.interruptTool(tc, 'not-run')
         const msg = err instanceof Error ? err.message : String(err)
         const result = makeResult(`Hook error: ${msg}`, true)
         this.emit({
@@ -424,18 +498,22 @@ export class AgentLoop {
     const refusedAfterApproval = identityRefusal()
     if (refusedAfterApproval) return makeResult(refusedAfterApproval, true)
 
-    // Execute
+    // Approval may have yielded. Do not announce execution until admission is certain.
+    if (signal.aborted) return this.interruptTool(tc, 'not-run')
     this.emit({ type: 'tool_start', toolCallId: tc.id, toolName: tc.name, args })
 
     let toolResult: AgentToolResult
     let isError = false
+    let started = false
 
     try {
       // Approval can have waited for input or an interceptor. Stop during that wait must
       // not admit a request or mutation, even for a tool that cannot cancel once started.
       signal.throwIfAborted()
+      started = true
       toolResult = await tool.execute(tc.id, args, signal)
     } catch (err: unknown) {
+      if (signal.aborted) return this.interruptTool(tc, started ? 'interrupted' : 'not-run')
       const msg = err instanceof Error ? err.message : String(err)
       toolResult = { content: [{ type: 'text', text: msg }] }
       isError = true

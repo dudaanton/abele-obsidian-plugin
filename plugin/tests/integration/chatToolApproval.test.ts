@@ -177,7 +177,8 @@ describe('stopping from an approval', () => {
           expect.objectContaining({
             toolCallId,
             toolStatus: 'rejected',
-            toolResult: 'User stopped the agent',
+            toolExecution: 'not-run',
+            toolResult: undefined,
           })
         )
       )

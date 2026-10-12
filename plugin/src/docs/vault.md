@@ -1050,6 +1050,16 @@ use the file's creation time when neither a first turn nor a stored creation dat
 same fields but is not in the index, so it appears in no footer until it is opened as a full chat.
 Renaming a note or a script rewrites the path in both places. Do not edit these fields by hand.
 
+Stopping an agent keeps completed tool-call/result pairs and already streamed text in the
+chat log. Unfinished tool-call message records carry `toolExecution: "interrupted"`; requested
+calls that never executed carry `toolExecution: "not-run"`. Neither outcome invents a
+`toolResult`. Their internal tool-result records carry the same phase as `interruption` and
+explicitly tell the next model request that the call was interrupted by the user. These are
+history pairings, not tool-produced output or permission to retry. A tool that finishes despite
+cancellation retains its real completed result. Stop does not restore files or replay calls.
+Node chats retain completed work in the daemon journal; replay marks unfinished calls when a
+run is interrupted without executing tools locally.
+
 Completed tool-call message records may carry `toolImagePath`, copied from the tool’s own
 `details.imagePath` only after successful execution. Generation and editing set that detail
 after saving the image; text-only responses set no saved path. The field survives normal log

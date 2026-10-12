@@ -100,6 +100,24 @@ describe('a failed tool call', () => {
   })
 })
 
+describe('a stopped tool call', () => {
+  it.each([
+    ['interrupted', 'interrupted'],
+    ['not-run', 'not run'],
+  ] as const)('labels %s without a spinner or fake result', (toolExecution, label) => {
+    const wrapper = render({
+      role: 'tool-call',
+      toolName: 'sample_read',
+      toolStatus: 'rejected',
+      toolExecution,
+    })
+    expect(wrapper.find('.abele-chat-msg__tool-err-badge').text()).toBe(label)
+    expect(wrapper.find('.abele-chat-msg__tool-spinner').exists()).toBe(false)
+    expect(wrapper.text()).not.toContain('unavailable')
+    wrapper.unmount()
+  })
+})
+
 describe('the icon beside a message', () => {
   // Both the alignment and the per-role offsets are written as `.abele-chat-msg_<role> >
   // .abele-chat-msg__icon`. A child selector stops matching the moment the icon gains a

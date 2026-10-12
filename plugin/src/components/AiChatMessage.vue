@@ -66,14 +66,20 @@
             {{ message.toolResult }}
           </span>
           <Icon
-            v-if="message.toolStatus === 'approved' && !message.toolResult"
+            v-if="
+              message.toolStatus === 'approved' && !message.toolResult && !message.toolExecution
+            "
             icon="loader"
             no-hover
             class="abele-chat-msg__tool-spinner"
           />
-          <span v-if="message.toolStatus === 'rejected'" class="abele-chat-msg__tool-err-badge"
-            >failed</span
-          >
+          <span v-if="message.toolStatus === 'rejected'" class="abele-chat-msg__tool-err-badge">{{
+            message.toolExecution === 'interrupted'
+              ? 'interrupted'
+              : message.toolExecution === 'not-run'
+                ? 'not run'
+                : 'failed'
+          }}</span>
           <slot name="tool-note" />
         </span>
         <!-- A delegated run: the whole sub-conversation, right where it was dispatched. -->

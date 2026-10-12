@@ -11,6 +11,7 @@ import { TFile, Notice } from 'obsidian'
 import { mergeAttentionTruth, settledAttention, type LocalAttention } from '@/agents/attention'
 import { AgentsService } from '@/agents/AgentsService'
 import { needsSecretApproval } from './tools/secretUtils'
+import { interruptedToolResult, type ToolInterruption } from './client/toolInterruption'
 import { nanoid } from 'nanoid'
 import dayjs from 'dayjs'
 import { AbeleConfig } from '@/services/AbeleConfig'
@@ -1557,7 +1558,7 @@ export class ChatSession implements SummarizerHost, InterceptorHost, AnchorStora
           this.streamingThinking.value = ''
           this.streamStartTime = 0
         } else if (msg.role === 'toolResult') {
-          if (msg.isError) {
+          if (msg.isError && !msg.interruption) {
             const chatMsg: ChatMessage = {
               id: nanoid(),
               role: 'tool-result',
@@ -1570,6 +1571,11 @@ export class ChatSession implements SummarizerHost, InterceptorHost, AnchorStora
             this.updateVisibleMessages()
           }
         }
+        break
+      }
+
+      case 'tool_interrupted': {
+        this.showInterruptedCall(event.call, event.interruption)
         break
       }
 
@@ -2049,7 +2055,7 @@ export class ChatSession implements SummarizerHost, InterceptorHost, AnchorStora
             throw new Error('Could not save the permission. The operation did not start.')
           }
           if (controller.signal.aborted) {
-            this.recordRefusal(tc, 'Operation stopped before starting')
+            this.settleInterruptedCall(tc, 'not-run')
             this.markDirty()
             return
           }
@@ -2101,6 +2107,26 @@ export class ChatSession implements SummarizerHost, InterceptorHost, AnchorStora
     }
     this.appendChatMessage(chatMsg)
     this.updateVisibleMessages()
+  }
+
+  private showInterruptedCall(tc: ToolCallContent, interruption: ToolInterruption): void {
+    this.ensurePendingToolCallMessage(tc)
+    this.updateChatMessage(
+      (m) => m.role === 'tool-call' && m.toolCallId === tc.id,
+      (m) => ({ ...m, toolStatus: 'rejected', toolExecution: interruption, toolResult: undefined })
+    )
+  }
+
+  private settleInterruptedCall(tc: ToolCallContent, interruption: ToolInterruption): void {
+    this.showInterruptedCall(tc, interruption)
+    const chatMessageId = this.allChatMessages.find((m) => m.toolCallId === tc.id)?.id
+    this.rememberInternal({ ...interruptedToolResult(tc, interruption), chatMessageId })
+    this.pendingToolCalls.value = this.pendingToolCalls.value.filter((call) => call.id !== tc.id)
+    this.attention.value = {
+      ...this.attention.value,
+      tools: { ...this.attention.value.tools, [tc.id]: 'done' },
+    }
+    this.markDirty()
   }
 
   private samePendingCall(call: ToolCallContent): boolean {
@@ -2170,6 +2196,10 @@ export class ChatSession implements SummarizerHost, InterceptorHost, AnchorStora
     // Execute
     let toolResult: AgentToolResult
     let isError = false
+    if (signal?.aborted) {
+      this.settleInterruptedCall(tc, 'not-run')
+      return
+    }
     try {
       toolResult = await tool.execute(tc.id, args, signal, {
         scope: this.scopeResolver,
@@ -2177,6 +2207,10 @@ export class ChatSession implements SummarizerHost, InterceptorHost, AnchorStora
         approved,
       })
     } catch (err: unknown) {
+      if (signal?.aborted) {
+        this.settleInterruptedCall(tc, 'interrupted')
+        return
+      }
       toolResult = {
         content: [{ type: 'text', text: err instanceof Error ? err.message : String(err) }],
       }
@@ -2624,10 +2658,6 @@ export class ChatSession implements SummarizerHost, InterceptorHost, AnchorStora
     }
     // Fence loops, scripts, retries and delegated wakes before settling any call.
     this.abort()
-    for (const tc of pending) {
-      this.ensurePendingToolCallMessage(tc)
-      this.recordRefusal(tc, 'User stopped the agent')
-    }
     this.markDirty()
   }
 
@@ -2832,6 +2862,12 @@ export class ChatSession implements SummarizerHost, InterceptorHost, AnchorStora
     // A script deciding about a message stops too; the message is kept back as a draft.
     this.interceptor.abort()
     this.turnPolicy.clear()
+    // A displayed approval queue belongs to a finished loop. Settle it here; a running
+    // manual call settles when its execution returns, preserving any completed result.
+    for (const call of this.destroyed ? [] : [...this.pendingToolCalls.value]) {
+      if (this.attention.value.tools?.[call.id] !== 'executing')
+        this.settleInterruptedCall(call, 'not-run')
+    }
     // Stay busy until the old loop has committed its partial history and released its tools.
     // Stopping stops what was lined up behind it too. Whoever stopped it keeps the text —
     // the chat hands it back to the input rather than dropping it.

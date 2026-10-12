@@ -60,6 +60,8 @@ export interface ToolResultMessage {
   timestamp: number
   /** Messages to inject after this tool result (e.g. user message with image) */
   injectMessages?: Message[]
+  /** Synthetic stop pairing, never presented as a tool-produced result. */
+  interruption?: import('./toolInterruption').ToolInterruption
   chatMessageId?: string
   /** What this call showed the agent of a file, or left in it. See `ReadMark`. */
   reads?: ReadMark[]
@@ -225,6 +227,11 @@ export type AgentEvent =
   | { type: 'message_end'; message: Message }
   | { type: 'stream_event'; event: StreamEvent }
   | { type: 'tool_start'; toolCallId: string; toolName: string; args: Record<string, unknown> }
+  | {
+      type: 'tool_interrupted'
+      call: ToolCallContent
+      interruption: import('./toolInterruption').ToolInterruption
+    }
   | {
       type: 'tool_end'
       toolCallId: string

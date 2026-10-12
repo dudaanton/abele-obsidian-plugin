@@ -639,6 +639,8 @@ export interface ChatMessage {
   toolName?: string
   toolParams?: Record<string, unknown>
   toolStatus?: 'pending' | 'approved' | 'rejected' | 'modified'
+  /** Stop outcome is separate from the result: an unfinished call has no fake result. */
+  toolExecution?: import('./client/toolInterruption').ToolInterruption
   toolResult?: string
   /** A successfully saved image, copied from the tool's own result details, never model text. */
   toolImagePath?: string

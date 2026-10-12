@@ -32,7 +32,7 @@ function probe(mode: string) {
     }
     const madeDirs = []
     const madeFiles = []
-    const report = { error: '', rejected: [], content: '', status: '', visible: false, histories: [], writes: 0, shot: '' }
+    const report = { error: '', rejected: [], content: '', status: '', visible: false, histories: [], writes: 0, shot: '', kept: [] }
     let leaf, session, release, scriptRun, fixture
     const realFetch = window.fetch
     const root = 'Sample stop fixture'
@@ -127,6 +127,64 @@ function probe(mode: string) {
         session.cancelAutoRetry()
         await session.retryRequest()
       }
+
+      // Stop a real streamed response and reopen the saved chat before continuing.
+      // All requests stay on the in-page fake provider; no external model is contacted.
+      for (const state of ['stream', 'tool', 'approval']) {
+        const prefix = 'kept-' + state + '-'
+        let requests = 0, executions = 0, nextHistory
+        session.needsApproval = (_name, args) => state === 'approval' && args?.ask === true
+        session.getTools = () => [{ name: 'sample_read', description: 'Read a fixture', parameters: {}, execute: async (id) => {
+          executions++
+          if (state === 'tool' && id === prefix + '3') {
+            session.abort()
+            throw new DOMException('Stopped', 'AbortError')
+          }
+          return { content: [{ type: 'text', text: 'Sample result ' + id }] }
+        } }]
+        const chunk = (delta, finish_reason) => 'data: ' + JSON.stringify({choices: [{delta, finish_reason}]}) + '\n\n'
+        window.fetch = async (url, init) => {
+          if (typeof url !== 'string' || !url.startsWith(fake)) return realFetch(url, init)
+          requests++
+          if (requests === 1) {
+            const count = state === 'stream' ? 2 : 4
+            const tool_calls = Array.from({length: count}, (_, i) => ({index: i, id: prefix + (i + 1), function: {name: 'sample_read', arguments: JSON.stringify({path: 'sample-note.md', ask: i >= 2})}}))
+            return new Response(chunk({content: 'Sample updates are ready.'}) + chunk({tool_calls}, 'tool_calls') + 'data: [DONE]\n\n')
+          }
+          if (state === 'stream' && requests === 2) return new Response(new ReadableStream({start(controller) {
+            controller.enqueue(new TextEncoder().encode(chunk({content: 'Both completed results are kept.'})))
+            init.signal.addEventListener('abort', () => controller.error(new DOMException('Stopped', 'AbortError')), {once: true})
+          }}))
+          nextHistory = JSON.parse(init.body).messages
+          return new Response(chunk({content: 'Continue without replay.'}, 'stop') + 'data: [DONE]\n\n')
+        }
+        const sending = session.sendMessage('Inspect the sample: ' + state)
+        if (state === 'stream') {
+          await until(() => session.streamingContent.value.includes('Both completed results'))
+          session.abort()
+        }
+        await sending
+        if (state === 'approval') session.stopFromApproval()
+        await session.flush()
+        const kept = session.messages.value.filter(m => m.toolCallId?.startsWith(prefix))
+        const partial = session.messages.value.some(m => m.content === 'Both completed results are kept.')
+        const saved = session.currentChatFile.value
+        await session.load(saved)
+        const reopened = session.messages.value.filter(m => m.toolCallId?.startsWith(prefix))
+        await chats.revealSidebar({focus: false})
+        await wait(350)
+        const scroller = document.querySelector('.abele-ai-chat__messages')
+        if (scroller) scroller.scrollTop = scroller.scrollHeight
+        await wait(200)
+        const stoppedShot = ${JSON.stringify(shots)} + '/' + ${JSON.stringify(mode)} + '-kept-' + state + '.png'
+        if (window.__e2eHost) await window.__e2eHost.shot(stoppedShot)
+        else {
+          const image = await require('@electron/remote').getCurrentWindow().webContents.capturePage()
+          require('fs').writeFileSync(stoppedShot, image.toPNG())
+        }
+        await session.sendMessage('Continue the sample: ' + state)
+        report.kept.push({state, kept, reopened, partial, executions, nextHistory, stoppedShot})
+      }
     } catch (e) { report.error = String(e && e.stack || e) }
     finally {
       try {
@@ -179,6 +237,34 @@ describe.runIf(available).each(onPhone() ? ['phone'] : ['desktop', 'emulated'])(
       expect(report.status).toBe('stopped')
       expect(report.visible).toBe(true)
     })
+    it.each(['stream', 'tool', 'approval'])(
+      'persists the stopped %s turn without replay or missing history pairs',
+      (state) => {
+        const kept = report.kept.find((item: any) => item.state === state)
+        expect(kept).toBeTruthy()
+        expect(kept.reopened).toEqual(kept.kept)
+        expect(kept.kept.slice(0, 2).map((m: any) => m.toolResult)).toEqual([
+          'Sample result kept-' + state + '-1',
+          'Sample result kept-' + state + '-2',
+        ])
+        if (state === 'stream') expect(kept.partial).toBe(true)
+        else {
+          expect(kept.kept.slice(2).map((m: any) => m.toolExecution)).toEqual([
+            state === 'tool' ? 'interrupted' : 'not-run',
+            'not-run',
+          ])
+          expect(kept.kept.slice(2).every((m: any) => m.toolResult === undefined)).toBe(true)
+        }
+        const results = kept.nextHistory.filter(
+          (m: any) => m.role === 'tool' && m.tool_call_id.startsWith('kept-' + state)
+        )
+        expect(results).toHaveLength(state === 'stream' ? 2 : 4)
+        expect(results.slice(2).every((m: any) => /interrupted by the user/i.test(m.content))).toBe(
+          true
+        )
+        expect(kept.executions).toBe(state === 'tool' ? 3 : 2)
+      }
+    )
     it.each(['network', 'stop'])(
       'keeps completed tool calls/results when retrying after %s',
       (failure) => {
