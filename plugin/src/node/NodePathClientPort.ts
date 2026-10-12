@@ -447,7 +447,7 @@ export class NodePathClientPort implements NodePathPort {
     revision: RepositoryRevision,
     path: string,
     blob: Awaited<ReturnType<NodeClient['repository']['blob']>>
-  ) {
+  ): Promise<Pick<PathDocument, 'text' | 'contentId' | 'image'>> {
     if (isNodeImagePath(path)) {
       if (blob.size > NODE_IMAGE_MAX_BYTES || blob.too_large)
         throw new Error('Image preview is limited to 4 MiB.')
