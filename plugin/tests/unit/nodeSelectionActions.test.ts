@@ -8,7 +8,7 @@ const f = vi.hoisted(() => ({
   choose: undefined as undefined | ((item: { id: string }) => void),
   append: vi.fn(),
   open: vi.fn(),
-  refresh: vi.fn(),
+  refresh: vi.fn(async () => {}),
   execution: vi.fn(),
   session: vi.fn(),
 }))
@@ -75,6 +75,7 @@ function model() {
     folders: ref([]),
     copy: () => undefined,
     refresh: f.refresh,
+    report: vi.fn(),
     selectedChat: ref(''),
     sessions: ref([{ session: { session_id: 'sample-session', title: 'Sample chat' }, target }]),
   } as never
