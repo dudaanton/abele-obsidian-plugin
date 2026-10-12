@@ -240,12 +240,12 @@ it('pairs and opens target-bound node files history editor and fake chats in the
     )
     console.info('Node file open timing', timings)
     const measurement = JSON.parse(timings)
-    // Catalogue refreshes may issue tree reads concurrently; file-only reads are pinned in
-    // the client unit test. The leaf must open promptly even while that refresh is unfinished.
-    for (const name of ['observe', 'status', 'blob', 'content'])
-      expect(measurement.records.some((record: { name: string }) => record.name === name)).toBe(
-        true
-      )
+    // The selected target already has a fresh working observation and change metadata.
+    // An unchanged file needs only its blob and retained content, not another repository scan.
+    expect(measurement.records.map((record: { name: string }) => record.name)).toEqual([
+      'blob',
+      'content',
+    ])
     expect(measurement.shellMs).toBeLessThan(500)
     await capture('desktop-changes')
     await evalLong(
