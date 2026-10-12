@@ -374,6 +374,12 @@ describe('the list of header buttons', () => {
     config.headerButtons = [config.headerButtons[0], second]
     const wrapper = open()
     expect(names(wrapper)).toEqual(['Fetch', 'Refresh poster'])
+    expect(
+      wrapper
+        .findAllComponents(Setting)
+        .filter((row) => row.classes().includes('abele-header-buttons__row'))
+        .map((row) => row.props('name'))
+    ).toEqual(['Fetch', 'Refresh poster'])
     const rows = wrapper.findAll('.abele-header-buttons__row')
     // The first cannot go earlier, nor the last later.
     expect(rows[0].get('button[aria-label^="Move earlier"]').attributes('disabled')).toBeDefined()

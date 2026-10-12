@@ -13,6 +13,7 @@
     <Setting
       v-for="(button, idx) in buttons"
       :key="button.id"
+      :name="button.name || 'Unnamed button'"
       class="abele-header-buttons__row"
       :class="{ 'abele-header-buttons__row_off': button.enabled === false }"
     >
