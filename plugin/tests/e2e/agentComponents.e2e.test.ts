@@ -108,6 +108,7 @@ interface Drawn {
   /** Rows the gallery's three pictures take up, and its height over its width. */
   galleryRows: number
   galleryAspect: number
+  galleryWidth: number
   /** Pixels of the diagram's frame a control covers, on screen. */
   controlsOverDiagram: number
 }
@@ -146,6 +147,7 @@ const probe = (label: string) => `(async () => {
   const trust = app.loadLocalStorage('mermaid-vault-trust')
   const scriptSnapshot = await saveScriptFixture()
   const win = require('@electron/remote').getCurrentWindow()
+  const sidebarSize = app.workspace.rightSplit.size
   fs.mkdirSync(${JSON.stringify(SHOTS)}, { recursive: true })
 
   // Scrolled by hand in its own scroller: \`scrollIntoView\` also moves the chat's outer panes.
@@ -204,6 +206,7 @@ const probe = (label: string) => `(async () => {
     }
     return {
       galleryRows: tops.size,
+      galleryWidth: gr?.width ?? 0,
       galleryAspect: gr && gr.width ? Math.round((gr.height / gr.width) * 100) / 100 : 0,
       controlsOverDiagram: covered,
     }
@@ -261,6 +264,7 @@ const probe = (label: string) => `(async () => {
     const meta = { v: 2, k: 'meta', type: 'abele-chat', title: 'Agent components', providerId: '', modelId: '', created: '2026-09-27' }
     await chats.openChatFile(await app.vault.create(CHAT, JSON.stringify(meta) + '\\n'))
     await chats.revealSidebar()
+    if (!app.isMobile) app.workspace.rightSplit.setSize(420)
     session = chats.getSessionByFile(CHAT)
     if (!session) throw new Error('the chat did not open')
     session.resolveModel = () => ({ id: 'fake', name: 'Fake', baseUrl: FAKE, apiKey: 'none', contextWindow: 100000, maxTokens: 1000, supportsReasoning: false })
@@ -273,6 +277,8 @@ const probe = (label: string) => `(async () => {
     await until(() => reply() && settled(reply()), 20000)
     const el = reply()
     if (!el) throw new Error('no reply on screen')
+    if (!await until(() => { const width = measure(el).galleryWidth; return width > 0 && width <= 480 }, 5000))
+      throw Error('The narrow-chat fixture did not reach its gallery width: ' + measure(el).galleryWidth)
     await diagramDrawn(el)
     await wait(800)
     report.chat = drawn(el)
@@ -336,6 +342,7 @@ const probe = (label: string) => `(async () => {
     try { await restoreScriptFixture(scriptSnapshot) }
     catch (error) { report.error = report.error || 'script fixture restoration: ' + String(error) }
     app.saveLocalStorage('mermaid-vault-trust', trust ?? null)
+    if (!app.isMobile && typeof sidebarSize === 'number') app.workspace.rightSplit.setSize(sidebarSize)
   }
   return JSON.stringify(report)
 })()`
@@ -397,6 +404,8 @@ function expectEverythingDrawn(get: () => Report) {
   })
 
   it('lays three pictures side by side in a narrow chat, not one under another', () => {
+    expect(get().chat!.galleryWidth).toBeGreaterThan(0)
+    expect(get().chat!.galleryWidth).toBeLessThanOrEqual(480)
     expect(get().chat!.galleryRows).toBe(1)
     expect(get().chat!.galleryAspect).toBeLessThan(0.5)
   })

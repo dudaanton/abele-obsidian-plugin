@@ -17,7 +17,14 @@
  * and nothing else.
  */
 import { describe, it, expect, beforeAll, afterAll } from 'vitest'
-import { hasTestApi, isObsidianRunning, evalLong, evalRaw, reloadApp } from './helpers/obsidianCli'
+import {
+  hasTestApi,
+  isObsidianRunning,
+  evalJson,
+  evalLong,
+  evalRaw,
+  reloadApp,
+} from './helpers/obsidianCli'
 import { onPhone, targets } from './helpers/target'
 import {
   HISTORY_COVERS,
@@ -173,11 +180,27 @@ interface Phone {
 
 describe.skipIf(!available)('the history timeline of a base', () => {
   let size: [number, number] = [0, 0]
+  let layout: unknown
   let desktop: Desktop = {}
   let perf: Perf = {}
   let phone: Phone = {}
 
   beforeAll(async () => {
+    layout = evalJson('app.workspace.getLayout()')
+    if (!onPhone()) {
+      size = evalJson<[number, number]>(
+        `require('@electron/remote').getCurrentWindow().getContentSize()`
+      )
+      await setWindowSize(1100, 850)
+      await evalLong(`(async () => {
+        const layout = app.workspace.getLayout()
+        await app.workspace.changeLayout({ ...layout,
+          main: { ...layout.main, children: [{ type: 'tabs', children: [{ type: 'leaf', state: { type: 'empty' } }] }] },
+          left: { ...layout.left, collapsed: true }, right: { ...layout.right, collapsed: true },
+        })
+        return true
+      })()`)
+    }
     evalAsync(`(async () => {
       for (const dir of ${JSON.stringify([FOLDER, `${FOLDER}/Notes`, `${FOLDER}/Covers`])})
         if (!(await app.vault.adapter.exists(dir))) await app.vault.adapter.mkdir(dir)
@@ -280,8 +303,10 @@ describe.skipIf(!available)('the history timeline of a base', () => {
 
           // New note: made through the base, with the year written into the start.
           const known = new Set(app.vault.getMarkdownFiles().map((f) => f.path))
-          const button = root.querySelector('.abele-timeline-base__new')
-          button?.click()
+          const button = [...root.querySelectorAll('.abele-timeline-base__new, .abele-timeline-base__new-icon')]
+            .find(el => el.getBoundingClientRect().width > 0 && el.getBoundingClientRect().height > 0)
+          if (!button) throw Error('No visible new-note control in the timeline fixture')
+          button.click()
           const made = await until(() => app.vault.getMarkdownFiles().find((f) => !known.has(f.path)), 5000)
           if (made) {
             await until(() => app.metadataCache.getFileCache(made)?.frontmatter, 3000)
@@ -342,9 +367,6 @@ describe.skipIf(!available)('the history timeline of a base', () => {
         )
       ) as Perf
 
-      size = JSON.parse(
-        evalRaw(`JSON.stringify(require('@electron/remote').getCurrentWindow().getContentSize())`)
-      ) as [number, number]
       await reloadApp('app.emulateMobile(true)')
       await setWindowSize(PHONE.width, PHONE.height)
       await reloadApp('window.location.reload()')
@@ -454,6 +476,8 @@ describe.skipIf(!available)('the history timeline of a base', () => {
       if (size[0]) await setWindowSize(size[0], size[1])
       await reloadApp('app.emulateMobile(false)')
     }
+    if (layout)
+      await evalLong(`app.workspace.changeLayout(${JSON.stringify(layout)}).then(() => true)`)
   }, 240_000)
 
   it.skipIf(onPhone())('draws the rows, the eras, and BC where it falls', () => {
