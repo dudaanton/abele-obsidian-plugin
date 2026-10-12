@@ -13,6 +13,8 @@ export interface DebugVariable {
   handle?: string
   /** Changed by the last step. */
   changed?: boolean
+  /** The whole value, when the row can only show its start: a long string, a document. */
+  full?: string
 }
 
 export interface DebugFrame {
@@ -32,6 +34,8 @@ export interface DebugBreakpoint {
 export interface DebugWatch {
   expression: string
   value?: string
+  /** The whole value, when the row can only show its start. */
+  full?: string
   error?: string
 }
 

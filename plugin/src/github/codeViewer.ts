@@ -309,7 +309,8 @@ export function mountCode(
   range?: LineRange,
   hooks: SelectionHooks = {},
   focus?: number,
-  onChange?: (text: string) => void
+  onChange?: (text: string) => void,
+  wrap = true
 ): CodeViewer {
   const lines = (r?: LineRange) => {
     const out: number[] = []
@@ -329,7 +330,7 @@ export function mountCode(
       ...languageFor(path),
     ],
     focus ?? (range ? range.start : null),
-    true,
+    wrap,
     onChange
   )
   return {

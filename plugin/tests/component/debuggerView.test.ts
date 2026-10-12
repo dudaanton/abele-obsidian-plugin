@@ -91,6 +91,20 @@ it('reveals a long inert scalar in place without evaluating it', async () => {
   expect(w.get('pre').text()).toBe(value.trim())
   w.unmount()
 })
+it('opens a document the row shows only the start of whole, by the row alone', async () => {
+  const full = '<?xml version="1.0"?><sample>' + '<line/>'.repeat(40) + '</sample>'
+  const w = mount(DebugValues, {
+    props: {
+      values: [{ name: 'exported', value: '"<?xml version=…', type: 'string', full }],
+      folded: new Set<string>(),
+    },
+  })
+  expect(w.find('.abele-tree-item__actions').exists()).toBe(false)
+  await w.get('[role="treeitem"]').trigger('click')
+  expect(w.emitted('open')).toEqual([['exported', full, 'string']])
+  expect(w.emitted('toggle')).toBeUndefined()
+  w.unmount()
+})
 it('shows exact long proposal details and disables approval offline', () => {
   const w = mount(DebugActionCard, {
     props: {
@@ -106,5 +120,15 @@ it('shows exact long proposal details and disables approval offline', () => {
   })
   expect(w.get('details').text()).toContain('sample '.repeat(300).trim())
   expect(w.findAll('button').every((b) => b.attributes('disabled') !== undefined)).toBe(true)
+  w.unmount()
+})
+it('opens a complete observed document without a separate full-value field', async () => {
+  const value = JSON.stringify({ sample: 'value '.repeat(40) })
+  const w = mount(DebugValues, {
+    props: { values: [{ name: 'payload', value }], folded: new Set<string>() },
+  })
+  await w.get('[role="treeitem"]').trigger('click')
+  expect(w.emitted('open')).toEqual([['payload', value, undefined]])
+  expect(w.emitted('inspect')).toBeUndefined()
   w.unmount()
 })

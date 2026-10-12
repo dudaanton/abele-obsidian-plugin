@@ -65,6 +65,7 @@
           :disabled="locked"
           @toggle="toggle"
           @inspect="emit('inspect', $event)"
+          @open="(n, v, t) => emit('open-value', n, v, t)"
         />
         <div v-else class="abele-debug-panel__empty">{{ notPaused }}</div>
       </TreeItem>
@@ -128,7 +129,13 @@
         :collapsed="folded.has('watch')"
         @click="toggle('watch')"
       >
-        <TreeItem v-for="w in session.watches" :key="w.expression" :text="w.expression">
+        <!-- A watch whose value is longer than its row opens whole by the row, like a variable. -->
+        <TreeItem
+          v-for="w in session.watches"
+          :key="w.expression"
+          :text="w.expression"
+          @click="openWatch(w)"
+        >
           <template #end>
             <span
               class="abele-debug-panel__value"
@@ -184,7 +191,8 @@ import StatusDot from '../obsidian/StatusDot.vue'
 import TreeItem from '../obsidian/TreeItem.vue'
 import BreakpointMark from './BreakpointMark.vue'
 import DebugValues from './DebugValues.vue'
-import type { DebugSession } from './types'
+import type { DebugSession, DebugWatch } from './types'
+import { wholeValue } from './valueFormat'
 
 const props = withDefaults(
   defineProps<{
@@ -218,12 +226,18 @@ const emit = defineEmits<{
   (e: 'unwatch', expression: string): void
   (e: 'retry'): void
   (e: 'inspect', handle: string): void
+  /** A value too long for its row, to be read whole in a tab of its own. */
+  (e: 'open-value', name: string, value: string, type?: string): void
 }>()
 
 const fileName = (path: string) => path.slice(path.lastIndexOf('/') + 1)
 const paused = computed(() => props.session.status === 'paused')
 // The last values stay readable while the node is away, faded.
 const live = computed(() => paused.value || props.session.status === 'lost')
+function openWatch(w: DebugWatch) {
+  const value = wholeValue(w.value ?? '', w.full)
+  if (live.value && !w.error && value !== undefined) emit('open-value', w.expression, value)
+}
 const stale = computed(() => props.session.status === 'lost')
 const top = computed(() => props.session.frames[props.session.frame] ?? props.session.frames[0])
 const frameName = computed(() => (live.value ? top.value?.name : undefined))

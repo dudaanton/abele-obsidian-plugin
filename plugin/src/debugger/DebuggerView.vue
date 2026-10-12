@@ -15,6 +15,7 @@
         @mode="run(() => binding!.controller.setMode($event))"
         @frame="run(() => binding!.controller.selectFrame($event))"
         @inspect="run(() => binding!.controller.inspect($event))"
+        @open-value="openValue"
         @watch="run(() => binding!.controller.watch($event))"
         @unwatch="run(() => binding!.controller.unwatch($event))"
         @breakpoint="breakpoint"
@@ -29,6 +30,7 @@ import { computed, ref } from 'vue'
 import DebugPanel from '@/components/debugger/DebugPanel.vue'
 import EmptyState from '@/components/obsidian/EmptyState.vue'
 import { DebuggerService } from './DebuggerService'
+import { openDebugValue } from './DebugValueTab'
 const service = DebuggerService.instance
 const binding = service.active
 const session = computed(() => {
@@ -40,6 +42,9 @@ const error = computed(() => {
   return binding.value?.controller.error
 })
 const busy = ref(false)
+function openValue(name: string, value: string, type?: string) {
+  void openDebugValue(name, value, type).catch((e) => binding.value?.fail(e))
+}
 async function run(work: () => Promise<unknown>) {
   if (busy.value || !binding.value) return
   busy.value = true
