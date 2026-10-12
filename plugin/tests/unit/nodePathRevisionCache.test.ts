@@ -2,6 +2,7 @@ import { afterEach, expect, it, vi } from 'vitest'
 import { ChannelError } from '@abele/channel-protocol'
 import {
   NodePathModel,
+  NodePathFileModel,
   type NodePathPort,
   type PathDocument,
   type PathTarget,
@@ -106,6 +107,7 @@ it('does not let a late file result roll a refreshed shared observation backward
   await f.model.reloadTarget(target)
   finish(document(a))
   await old
+  expect(f.model.hasRetained(target, 'sample.ts')).toBe(true)
   expect((await f.model.openFile(target, 'next.ts')).text).toBe('sample-b')
 })
 it('does not seed the shared revision cache from a rejected view publication', async () => {
@@ -113,6 +115,7 @@ it('does not seed the shared revision cache from a rejected view publication', a
   vi.setSystemTime(origin + 31000)
   f.latest(b)
   await f.model.openFile(target, 'sample.ts', undefined, undefined, () => false)
+  expect(f.model.hasRetained(target, 'sample.ts')).toBe(false)
   await f.model.openFile(target, 'next.ts')
   expect(vi.mocked(f.port.file).mock.calls[1][4]).toBeUndefined()
 })
@@ -150,6 +153,44 @@ it('keeps the requested target binding immutable during an in-flight file read',
   await pending
   await f.model.openFile(mutable, 'next.ts')
   expect(vi.mocked(f.port.file).mock.lastCall?.[4]).toBeUndefined()
+})
+
+it('retains an accepted plain-workspace file displayed after a target refresh for offline reopening', async () => {
+  const f = fixture()
+  models.push(f.model)
+  const plain: PathTarget = { ...target, kind: 'workspace', id: 'sample-workspace' }
+  vi.mocked(f.port.tree!).mockResolvedValue({
+    entries: [{ name: 'sample.txt', path: 'sample.txt', kind: 'file' }],
+    cursor: null,
+  })
+  vi.mocked(f.port.inspect).mockResolvedValue({ entries: [], changes: [] })
+  await f.model.refresh()
+  await f.model.selectTarget(plain)
+  let finish!: (file: PathDocument) => void
+  vi.mocked(f.port.file).mockImplementationOnce(
+    () =>
+      new Promise((resolve) => {
+        finish = resolve
+      })
+  )
+  const leaf = new NodePathFileModel(f.model, plain)
+  const opened = leaf.open('sample.txt')
+  await f.model.reloadTarget(plain)
+  finish({
+    target: plain,
+    path: 'sample.txt',
+    text: 'Displayed sample content',
+    contentId: 'sample-plain-content',
+  })
+  await opened
+  expect(leaf.document.value?.text).toBe('Displayed sample content')
+  expect(f.model.hasRetained(plain, 'sample.txt')).toBe(true)
+  f.model.online.value = false
+  await leaf.open('sample.txt')
+  expect(leaf.document.value?.text).toBe('Displayed sample content')
+  expect(leaf.document.value?.note).toContain('Offline')
+  expect(f.port.file).toHaveBeenCalledTimes(1)
+  leaf.destroy()
 })
 
 it('expires a reused observation after the original freshness bound', async () => {

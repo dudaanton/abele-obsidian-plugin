@@ -605,7 +605,7 @@ export class NodePathModel {
       epoch = this.revisionEpochs.get(key) ?? 0
       file = await this.port.file({ ...target }, path, stage, revision, known)
     }
-    if (this.disposed || epoch !== (this.revisionEpochs.get(key) ?? 0)) return file
+    if (this.disposed) return file
     if (
       pathTargetKey(file.target) !== key ||
       file.target.projectId !== target.projectId ||
@@ -613,7 +613,13 @@ export class NodePathModel {
     )
       throw new Error('The file response belongs to another target.')
     if (!publish(file)) return file
-    if (!revision && file.revision?.kind === 'working') {
+    // An accepted display still owns its retained bytes even if target metadata advanced.
+    // Only promotion into the shared working-revision cache is fenced by that epoch.
+    if (
+      !revision &&
+      file.revision?.kind === 'working' &&
+      epoch === (this.revisionEpochs.get(key) ?? 0)
+    ) {
       const changes =
         known && JSON.stringify(known.revision) === JSON.stringify(file.revision)
           ? known.changes
