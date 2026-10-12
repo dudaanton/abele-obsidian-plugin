@@ -82,8 +82,11 @@ const script = `(async () => {
     return artifacts()
   }
   const closeArtifacts = async () => {
-    if (!artifacts()) return
-    escape()
+    const view = artifacts()
+    if (!view) return
+    const close = view.closest('.modal')?.querySelector('.modal-close-button, .modal-header-button')
+    if (!close) throw new Error('Files view has no native dismiss action')
+    close.click()
     if (!(await until(() => !artifacts()))) throw new Error('Artifacts view did not close')
   }
   const press = async (host, title) => {
