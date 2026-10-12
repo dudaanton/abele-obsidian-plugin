@@ -1,5 +1,5 @@
 import { createApp } from 'vue'
-import { MarkdownView, Notice, SuggestModal, TFile, type App } from 'obsidian'
+import { MarkdownView, Notice, Platform, SuggestModal, TFile, type App } from 'obsidian'
 import { ChatStorage } from '@/ai/ChatStorage'
 import { newCommentId, parseMarkers, resolveQuote, stripMarkers } from '@/editor/commentMarkers'
 import {
@@ -24,6 +24,12 @@ export class TextComments implements CommentInfoSource {
   private readonly errors = new Set<string>()
   private readonly dialogs = new Set<() => void>()
   private dead = false
+  /** What was pressed last, so a thread opened from its mark stands by that mark. */
+  private pressed: Element | null = null
+  private readonly onPress = (e: PointerEvent) => {
+    const target = e.target as Node | null
+    this.pressed = target?.instanceOf(Element) ? (target as Element) : null
+  }
 
   constructor(readonly app: App) {
     this.repository = new VaultCommentRepository(app, () => ChatStorage.commentsFolder())
@@ -33,6 +39,7 @@ export class TextComments implements CommentInfoSource {
       () => new Date().toISOString(),
       newCommentId
     )
+    document.addEventListener('pointerdown', this.onPress, true)
   }
   get(id: string): CommentInfo | undefined {
     if (!this.human.has(id)) return undefined
@@ -183,6 +190,7 @@ export class TextComments implements CommentInfoSource {
       orphan = !marker
       unresolved = !marker || !resolveQuote(text, marker, initial.thread.anchor.quote)
     }
+    const anchor = this.anchor()
     const host = document.body.createDiv()
     const close = () => {
       if (!this.dialogs.delete(close)) return
@@ -195,6 +203,7 @@ export class TextComments implements CommentInfoSource {
       ...options,
       unresolved,
       orphan,
+      anchor,
       beforeWrite: options.beforeWrite ?? (() => this.flushNote(note)),
       changed: (saved: ThreadSnapshot | null) => {
         const id = saved?.thread.id ?? initial?.thread.id
@@ -206,7 +215,28 @@ export class TextComments implements CommentInfoSource {
     this.dialogs.add(close)
     vue.mount(host)
   }
+  /** Where the passage is: the selected words, else the mark that was pressed; a phone has
+   * no place beside it and opens the sheet. The card lines up with the start of the text. */
+  private anchor(): { left: number; top: number; bottom: number } | undefined {
+    if (Platform.isPhone) return undefined
+    const selection = document.getSelection()
+    const range = selection && !selection.isCollapsed ? selection.getRangeAt(0) : null
+    const rects = range ? Array.from(range.getClientRects()) : []
+    const pressed = this.pressed?.closest('.abele-comment-marker, mark, .cm-line, p, li') ?? null
+    const box =
+      rects.length > 0
+        ? { top: rects[0].top, bottom: rects[rects.length - 1].bottom }
+        : pressed?.getBoundingClientRect()
+    if (!box || (box.top === 0 && box.bottom === 0)) return undefined
+    const node = range?.startContainer ?? pressed
+    const line = (node?.instanceOf(Element) ? (node as Element) : node?.parentElement)?.closest(
+      '.cm-content, .markdown-preview-sizer, .markdown-rendered'
+    )
+    const left = line?.getBoundingClientRect().left ?? rects[0]?.left ?? 0
+    return { left, top: box.top, bottom: box.bottom }
+  }
   destroy(): void {
+    document.removeEventListener('pointerdown', this.onPress, true)
     this.dead = true
     for (const close of [...this.dialogs]) close()
     this.cache.clear()

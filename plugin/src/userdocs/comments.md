@@ -7,20 +7,26 @@ in a chat, or words in a book.
 
 Select text in an ordinary note and choose **Add comment** in the editor menu or run
 **Abele: Add comment**. In reading mode, select the words and use the command palette.
-Choose a highlight colour or **Underline**, write in the full note editor, then press **Save**
+A card opens under the passage: write in the note editor at its foot and press the arrow
 (or Cmd/Ctrl+Enter). Enter starts a new line. This needs no AI provider, model or enabled AI.
+On a phone the comments open as a sheet from the bottom, with the passage quoted at its top.
 
 A square speech-bubble mark opens the comments in both Live Preview and reading mode. The
 round speech bubble still opens **Ask here**; if a passage has both, each has its own mark and
-count. Add another entry in the same dialog to keep several comments stacked together.
-Selecting the same passage again opens its existing thread.
+count. Write another reply in the same card to keep several comments stacked together; the
+card opens at the latest one. Selecting the same passage again opens its existing thread.
 
-Each entry shows its local creation date and time, and its edit time when changed. **Edit**
-changes only that entry; **Delete** asks for confirmation. Removing the last entry removes the
-mark, not the words in your note. Save a colour change without adding a new entry, too.
-Closing with unsaved text or appearance asks before discarding it. A failed save keeps your
-text in the dialog; a comment changed elsewhere must be reopened before you can overwrite it.
-Text typed while deletion is in progress stays in the dialog, even if the thread was deleted.
+The round dot at the card's top is how the passage is marked: press it for the highlight
+colours and **Underline**; the mark in the note changes at once. **⋯** copies the passage or
+deletes the whole thread.
+
+Each comment shows its short date and time, and *edited* when changed. Point at a comment for
+its pencil and bin: the pencil turns the comment into a field where it stands, with **Cancel**
+and **Save**; the bin asks for confirmation. Removing the last comment removes the mark, not the
+words in your note. Escape or a press outside closes the card; a reply you have not sent stays
+in its field for the next time you open the thread. A failed save keeps your text in the field;
+a comment changed elsewhere must be reopened before you can overwrite it. Text typed while
+deletion is in progress stays in the field, even if the thread was deleted.
 
 The mark follows insertions before the passage and note/folder renames. If the words change
 or disappear, the dimmed mark still opens the comment, but no longer claims a highlight over
@@ -29,7 +35,7 @@ remains available without guessing which repeated text to highlight.
 
 Comments are kept in separate `.abcomment` files in the configured comments folder (default
 `AI/Comments`), not in chat history. If you remove a mark by hand, its comment file stays and
-can be opened from that folder. **Republish marker** restores an unlinked saved thread without
+can be opened from that folder. **Put the mark back** restores an unlinked saved thread without
 creating another entry. For repeated passages, select the exact occurrence in the note and
 choose **Add comment** to reopen that thread and republish there. If the original words no longer
 exist, restore them first or create a new comment; recovery does not guess a replacement passage. Sync other file types in Obsidian Sync so these files reach

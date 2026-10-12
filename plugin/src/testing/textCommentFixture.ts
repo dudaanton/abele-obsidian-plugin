@@ -2,7 +2,14 @@ import { TextCommentService, type ThreadSnapshot } from '@/comments/service'
 import { decodeThread, encodeThread, type CommentThread } from '@/comments/model'
 
 /** Synthetic dialog state; no fixture save can touch the real vault. */
-export function textCommentFixture(existing = false) {
+/** Made-up comments on the passage, short and long, as a thread grows. */
+const BODIES = [
+  'Check this against the rain gauge before trusting it.',
+  'Measured again on Sunday: same reading, so it holds.',
+  "**Still unsure** about the second week. A long invented comment with a [sample link](https://example.com) and several words that wrap on a narrow screen.\n\n- First point\n- Second point",
+]
+
+export function textCommentFixture(existing = false, count = 8) {
   const thread: CommentThread = {
     version: 1,
     id: 'aaaaaa',
@@ -11,9 +18,9 @@ export function textCommentFixture(existing = false) {
       quote: 'An invented passage with enough words to wrap on a narrow screen.',
     },
     appearance: 'yellow',
-    entries: Array.from({ length: 8 }, (_, i) => ({
+    entries: Array.from({ length: count }, (_, i) => ({
       id: String(i + 1).padStart(6, '0'),
-      body: `**Sample entry ${i + 1}**\n\nA long invented comment with a [sample link](https://example.com) and several words that wrap on a narrow screen.\n\n- First point\n- Second point`,
+      body: BODIES[i % BODIES.length],
       createdAt: '2025-01-02T03:04:05.000Z',
       ...(i === 0 ? { editedAt: '2025-01-03T04:05:06.000Z' } : {}),
     })),
