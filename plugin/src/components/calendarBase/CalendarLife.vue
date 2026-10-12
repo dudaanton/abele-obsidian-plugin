@@ -79,7 +79,6 @@ const props = defineProps<{
   selected: number | null
 }>()
 
-
 const emit = defineEmits<{
   (e: 'week', index: number): void
 }>()

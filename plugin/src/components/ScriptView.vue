@@ -143,4 +143,25 @@ onUnmounted(() => {
   flex: 1 1 auto;
   min-width: 0;
 }
+
+// A script's tab reads as a note, not as the settings pane: its settings are rows at the text's
+// edge with a hairline between them, as in a window, and a heading over them stands there too.
+.abele-script-view {
+  .abele-obsidian-setting:not(.setting-item-heading) {
+    padding-inline: 0;
+    background-color: transparent;
+    border-radius: 0;
+
+    & + .abele-obsidian-setting::before {
+      inset-inline: 0;
+    }
+  }
+
+  .abele-section:has(> .abele-obsidian-setting) {
+    > .abele-section__header,
+    > .abele-section__desc {
+      padding-inline: 0;
+    }
+  }
+}
 </style>
