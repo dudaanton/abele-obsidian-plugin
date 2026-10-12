@@ -70,7 +70,10 @@ describe('the list of contemporaries', () => {
     const w = mount(TimelinePanel, { props: { selected: shakespeare, items, lang: 'en' } })
     await w.findAll('.abele-timeline-panel__row')[1].trigger('click')
     expect(w.emitted('select')?.[0]).toEqual([kepler])
-    await w.find('.abele-obsidian-button').trigger('click')
-    expect(w.emitted('open')?.[0]).toEqual([shakespeare, null])
+    // The note opens from the pick's own glyph in its header, beside letting go.
+    await w.find('.abele-timeline-panel__head [aria-label="Open this note"]').trigger('click')
+    expect(w.emitted('open')?.[0]).toEqual([shakespeare, expect.any(MouseEvent)])
+    await w.find('[aria-label="Let go of the pick"]').trigger('click')
+    expect(w.emitted('close')).toHaveLength(1)
   })
 })
