@@ -373,10 +373,12 @@ function watchIt() {
 .abele-debug-panel__groups_stale .tree-item-self {
   color: var(--text-muted);
 }
+// The weight through the row's own variable: set straight on the row, the hover took it back to
+// normal and the heading jumped under the pointer.
 .abele-debug-panel__group > .tree-item-self {
   color: var(--text-muted);
   font-size: var(--font-ui-smaller);
-  font-weight: var(--font-semibold);
+  --abele-tree-item-weight: var(--font-semibold);
 }
 .abele-debug-panel__empty {
   padding: var(--size-4-1) var(--size-4-3) var(--size-4-2);

@@ -5,6 +5,7 @@
     :text="v.name"
     :collapsible="!!v.children?.length || !!v.handle || v.value.length > 80"
     :collapsed="!openSet.has(path(v))"
+    class="abele-debug-value_row"
     :class="{ 'abele-debug-value_changed': v.changed }"
     @click="activate(v)"
   >
@@ -104,5 +105,12 @@ watch(
 .abele-debug-panel .abele-tree-item__text {
   flex: 0 1 auto;
   overflow-wrap: anywhere;
+}
+// A value gives way before the row's edge: it shrinks and ends in an ellipsis inside the row's
+// light instead of running past it. The whole value is in its tooltip and opens below the row.
+.abele-debug-panel .abele-debug-value_row > .tree-item-self > .tree-item-flair-outer,
+.abele-debug-panel .abele-debug-value_row > .tree-item-self .abele-tree-item__end {
+  flex-shrink: 1;
+  min-width: 0;
 }
 </style>

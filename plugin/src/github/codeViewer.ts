@@ -123,6 +123,12 @@ function mount(
             ]
           : readOnly),
         ...(wrap ? [EditorView.lineWrapping] : []),
+        // Obsidian makes its interface unselectable; code is there to be read and quoted, so the
+        // text takes selection back wherever a viewer is placed. Line numbers stay out of a copy.
+        EditorView.baseTheme({
+          '.cm-content': { userSelect: 'text', WebkitUserSelect: 'text' },
+          '.cm-gutters': { userSelect: 'none', WebkitUserSelect: 'none' },
+        }),
         ...extensions,
         // Go to definition, for a viewer inside a tab that knows its repository.
         codeNavAddon(),
