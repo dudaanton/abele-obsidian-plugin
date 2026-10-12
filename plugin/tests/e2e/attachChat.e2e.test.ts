@@ -178,8 +178,12 @@ const script = `(async () => {
     // ── from the note: the command for the note in front, then the chat picker ──
     // Its "more options" item is Obsidian's own menu, native on a Mac and out of reach of the
     // page; that it is offered there is the unit tier's to say.
+    // File-review dismissal returns focus to its chat trigger. Select the note again before
+    // invoking a command whose target is the active note, as a person would.
+    app.workspace.setActiveLeaf(leaf, { focus: true })
+    await until(() => app.workspace.getActiveFile()?.path === notePath)
     app.commands.executeCommandById('abele:attach-chat-to-current-note')
-    await until(() => document.querySelector('.prompt .prompt-input'))
+    if (!(await until(() => document.querySelector('.prompt .prompt-input')))) throw new Error('The active-note command did not open its chat picker')
     const input = document.querySelector('.prompt .prompt-input')
     input.value = ${JSON.stringify(CHAT)}
     input.dispatchEvent(new Event('input', { bubbles: true }))
