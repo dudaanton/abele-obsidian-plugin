@@ -46,7 +46,8 @@ const script = `(async () => {
   const until = async (fn, ms = 5000) => {
     const deadline = Date.now() + ms
     while (Date.now() < deadline) {
-      if (fn()) return true
+      const found = fn()
+      if (found) return found
       await wait(100)
     }
     return false

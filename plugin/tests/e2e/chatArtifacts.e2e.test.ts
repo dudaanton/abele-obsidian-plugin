@@ -161,7 +161,7 @@ describe.skipIf(!available)('one view of a chat’s artifacts', () => {
         const moved = app.vault.getAbstractFileByPath(created[1]); await app.vault.rename(moved, directory + '/sample-moved.png')
         await until(() => missing(card(created[1])))
         observations.missing = (await menuOf(card(created[1]))).some(el => el.textContent.trim() === 'Show in chat')
-        document.body.dispatchEvent(new KeyboardEvent('keydown', { key: 'Escape', bubbles: true })); await wait(100)
+        document.body.dispatchEvent(new KeyboardEvent('keydown', { key: 'Escape', code: 'Escape', keyCode: 27, bubbles: true, cancelable: true })); await wait(100)
         document.querySelector('.menu')?.remove()
         await press(card(upload.path), 'Show in chat')
         await until(() => !root())
@@ -205,6 +205,7 @@ describe.skipIf(!available)('one view of a chat’s artifacts', () => {
         45_000
       )
     )
+    console.info(JSON.stringify(result))
     expect(result.error).toBeUndefined()
     expect(result.sections).toEqual(['Notes (1)', 'Images (3)', 'Scripts (1)'])
     expect(result.images).toBe(3)
