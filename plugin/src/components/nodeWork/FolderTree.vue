@@ -189,8 +189,4 @@ function codesOf(copies: CopySummary[]) {
 .abele-folder-tree_stale .tree-item-self {
   color: var(--text-muted);
 }
-body.is-phone .abele-folder-tree .tree-item-self {
-  min-height: var(--touch-size-m);
-  align-items: center;
-}
 </style>

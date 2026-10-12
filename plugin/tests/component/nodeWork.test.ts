@@ -54,6 +54,18 @@ describe('FolderTree', () => {
 })
 
 describe('FileTree', () => {
+  it('does not call a reading folder empty and retries failed reads', async () => {
+    const view = mount(FileTree, {
+      props: { entries: [], changes: [], mode: 'all', progress: { state: 'reading' } },
+    })
+    expect(view.text()).toContain('Reading the files')
+    expect(view.text()).not.toContain('The folder is empty.')
+    await view.setProps({ progress: { state: 'failed', error: 'Sample read error' } })
+    expect(view.text()).toContain("Couldn't read the files.")
+    await view.get('[aria-label="Try again"]').trigger('click')
+    expect(view.emitted('retry')).toHaveLength(1)
+  })
+
   const change = (path: string, stage: FileChange['stage']): FileChange => ({
     path,
     kind: 'modified',

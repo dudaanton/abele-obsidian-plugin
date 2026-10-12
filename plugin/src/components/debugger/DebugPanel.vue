@@ -431,8 +431,4 @@ function watchIt() {
   font-size: var(--font-ui-smaller);
   white-space: pre-wrap;
 }
-body.is-phone .abele-debug-panel .tree-item-self {
-  min-height: var(--touch-size-m);
-  align-items: center;
-}
 </style>

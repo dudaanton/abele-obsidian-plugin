@@ -365,4 +365,31 @@ body.is-phone .abele-node-panel__link {
 .abele-node-suggestion_current .suggestion-title {
   color: var(--text-accent);
 }
+// What the chooser cannot show yet, between the field and the list: its glyph where the rows'
+// kind glyphs stand, quiet words, the one button at the end, a hairline under it.
+.abele-node-suggest-hint {
+  display: flex;
+  align-items: center;
+  gap: var(--size-4-3);
+  padding: var(--size-4-2) calc(var(--size-4-2) + var(--size-4-3));
+  border-bottom: var(--border-width) solid var(--background-modifier-border);
+  color: var(--text-muted);
+  font-size: var(--font-ui-small);
+}
+.abele-node-suggest-hint__glyph {
+  display: flex;
+  flex: 0 0 auto;
+  color: var(--icon-color);
+}
+.abele-node-suggest-hint__text {
+  flex: 1 1 auto;
+  color: var(--text-muted);
+  min-width: 0;
+}
+.abele-node-suggest-hint button {
+  flex: 0 0 auto;
+}
+body.is-phone .abele-node-suggest-hint {
+  flex-wrap: wrap;
+}
 </style>

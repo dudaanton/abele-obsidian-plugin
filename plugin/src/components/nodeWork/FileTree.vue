@@ -28,6 +28,34 @@
     </div>
 
     <div class="abele-file-tree__body" role="tree" :aria-label="label">
+      <!-- The files are still being read, or reading them failed: said over what is there so
+           far, never as an empty folder. -->
+      <div
+        v-if="progress && (mode === 'all' || !git) && !query.trim()"
+        class="abele-file-tree__status"
+        :class="{ 'abele-file-tree__status_failed': progress.state === 'failed' }"
+        role="status"
+      >
+        <template v-if="progress.state === 'failed'">
+          <Icon
+            class="abele-file-tree__status-mark"
+            icon="alert-triangle"
+            :interactive="false"
+            size="xs"
+            :tooltip="progress.error"
+          />
+          <span class="abele-file-tree__status-text">Couldn't read the files.</span>
+          <Icon icon="rotate-ccw" size="xs" tooltip="Try again" @click="emit('retry')" />
+        </template>
+        <template v-else>
+          <ResultMark state="working" text="Reading the files" />
+          <span class="abele-file-tree__status-text"
+            >Reading the files…<template v-if="progress.count">
+              {{ progress.count.toLocaleString() }} so far</template
+            ></span
+          >
+        </template>
+      </div>
       <!-- A name typed: every file that matches, flat, wherever it lies. -->
       <template v-if="query.trim()">
         <TreeItem
@@ -42,9 +70,18 @@
         >
           <template v-if="hit.change" #end><ChangeCodes :change="hit.change" /></template>
         </TreeItem>
-        <div v-if="!found.length" class="search-empty-state">No file matches.</div>
-        <div v-if="matches.length > found.length" class="abele-file-tree__note" role="status">
-          {{ found.length }} of {{ matches.length }} · type more to narrow
+        <div v-if="matches.length > found.length" class="abele-file-tree__note">
+          {{ found.length }} of {{ matches.length.toLocaleString() }} · type more to narrow
+        </div>
+        <div v-if="!found.length && !progress" class="search-empty-state">No file matches.</div>
+        <div v-if="progress" class="abele-file-tree__note">
+          {{
+            progress.state === 'failed'
+              ? 'Searched only the files read so far.'
+              : found.length
+                ? 'Still reading the files; more may match.'
+                : 'Still reading the files…'
+          }}
         </div>
       </template>
 
@@ -92,7 +129,9 @@
           @menu="(e, path) => emit('menu', e, path)"
         />
         <TreeItem v-if="cursors?.['']" text="Load more files" @click="emit('more', '')" />
-        <div v-if="!entries.length" class="search-empty-state">The folder is empty.</div>
+        <div v-if="!entries.length && !progress" class="search-empty-state">
+          The folder is empty.
+        </div>
       </template>
       <div v-if="git && (mode === 'all' || query.trim())" class="abele-file-tree__note">
         Ignored files are not shown.
@@ -111,6 +150,7 @@ import { computed, reactive, ref, watch } from 'vue'
 import Icon from '../obsidian/Icon.vue'
 import Search from '../obsidian/Search.vue'
 import TreeItem from '../obsidian/TreeItem.vue'
+import ResultMark from '../obsidian/ResultMark.vue'
 import ChangeCodes from './ChangeCodes.vue'
 import FileTreeLevel from './FileTreeLevel.vue'
 import { dirName, fileName } from './codes'
@@ -128,9 +168,17 @@ const props = withDefaults(
     /** A repository; a plain folder has only its files, no changes to show. */
     git?: boolean
     label?: string
+    progress?: { state: 'reading' | 'failed'; count?: number; error?: string }
     cursors?: Record<string, string | null>
   }>(),
-  { selected: undefined, stale: false, git: true, label: 'Files', cursors: undefined }
+  {
+    selected: undefined,
+    stale: false,
+    git: true,
+    label: 'Files',
+    cursors: undefined,
+    progress: undefined,
+  }
 )
 
 const emit = defineEmits<{
@@ -139,6 +187,7 @@ const emit = defineEmits<{
   (e: 'menu', event: MouseEvent, path: string): void
   (e: 'expand', path: string): void
   (e: 'more', path: string): void
+  (e: 'retry'): void
 }>()
 
 const query = ref('')
@@ -229,9 +278,9 @@ const found = computed(() => matches.value.slice(0, 50))
   padding: 0 var(--size-4-2) var(--size-4-4);
 }
 .abele-file-tree__group > .tree-item-self {
+  --abele-tree-item-weight: var(--font-semibold);
   color: var(--text-muted);
   font-size: var(--font-ui-smaller);
-  font-weight: var(--font-semibold);
 }
 .abele-file-tree__deleted > .tree-item-self .abele-tree-item__text {
   color: var(--text-muted);
@@ -251,5 +300,27 @@ const found = computed(() => matches.value.slice(0, 50))
 body.is-phone .abele-file-tree .tree-item-self {
   min-height: var(--touch-size-m);
   align-items: center;
+}
+// One line over the tree, its glyph where a row's glyph stands and its words on the rows' text.
+.abele-file-tree__status {
+  display: flex;
+  align-items: center;
+  gap: var(--size-4-2);
+  padding: var(--size-4-1) var(--size-4-2) var(--size-4-1) var(--size-4-3);
+  color: var(--text-muted);
+  font-size: var(--font-ui-small);
+}
+.abele-file-tree__status-text {
+  flex: 1 1 auto;
+  color: inherit;
+  min-width: 0;
+}
+.abele-file-tree__status_failed {
+  color: var(--text-normal);
+
+  .abele-file-tree__status-mark {
+    padding: 0;
+    color: var(--text-error);
+  }
 }
 </style>

@@ -1,4 +1,11 @@
-import { ItemView, Notice, Platform, type ViewStateResult, type WorkspaceLeaf } from 'obsidian'
+import {
+  ItemView,
+  type Menu,
+  Notice,
+  Platform,
+  type ViewStateResult,
+  type WorkspaceLeaf,
+} from 'obsidian'
 import {
   createApp,
   h,
@@ -55,29 +62,33 @@ export class NodePathMainView extends ItemView {
     private readonly viewType: string
   ) {
     super(leaf)
-    if (Platform.isMobile)
-      this.addAction('arrow-left', 'Back to Node', () => {
-        this.act(() => revealNodeDrawer(this.app.workspace, this.saved?.target.registrationId))
-      })
+    // On a phone the title row keeps the file's name: one glyph beside it, the rest in the view's
+    // own menu (onPaneMenu), and the way back to the node is the drawer's button on the left.
+    if (Platform.isMobile && !Platform.isPhone)
+      this.addAction('arrow-left', 'Back to node', () => this.backToNode())
     if (viewType === 'abele-node-file') {
       this.addAction('file-diff', 'Toggle whole file / comparison', () => {
         if (this.file) this.file.mode.value = this.file.mode.value === 'diff' ? 'file' : 'diff'
       })
-      this.addAction('chevron-left', 'Previous changed file', () =>
-        this.act(() => this.file?.step(-1))
-      )
-      this.addAction('chevron-right', 'Next changed file', () => this.act(() => this.file?.step(1)))
-      this.addAction('pencil', 'Open in code editor', () => {
-        const file = this.file?.document.value
-        if (file)
-          this.act(() =>
-            openNodePathTab(
-              this.app.workspace,
-              { kind: 'editor', target: file.target, path: file.path },
-              Platform.isMobile
+      if (!Platform.isPhone) {
+        this.addAction('chevron-left', 'Previous changed file', () =>
+          this.act(() => this.file?.step(-1))
+        )
+        this.addAction('chevron-right', 'Next changed file', () =>
+          this.act(() => this.file?.step(1))
+        )
+        this.addAction('pencil', 'Open in code editor', () => {
+          const file = this.file?.document.value
+          if (file)
+            this.act(() =>
+              openNodePathTab(
+                this.app.workspace,
+                { kind: 'editor', target: file.target, path: file.path },
+                Platform.isMobile
+              )
             )
-          )
-      })
+        })
+      }
     }
     if (viewType === 'abele-node-editor')
       this.addAction('shield-check', 'Toggle external worktree editing', () =>
@@ -85,6 +96,58 @@ export class NodePathMainView extends ItemView {
       )
     if (viewType === 'abele-node-history')
       this.addAction('arrow-left', 'Back to commits', () => this.history?.back())
+  }
+  private backToNode(): void {
+    this.act(() => revealNodeDrawer(this.app.workspace, this.saved?.target.registrationId))
+  }
+  private step(by: 1 | -1): void {
+    this.act(() => this.file?.step(by))
+  }
+  private openEditor(): void {
+    const file = this.file?.document.value
+    if (file)
+      this.act(() =>
+        openNodePathTab(
+          this.app.workspace,
+          { kind: 'editor', target: file.target, path: file.path },
+          Platform.isMobile
+        )
+      )
+  }
+  onPaneMenu(menu: Menu, source: string): void {
+    if (Platform.isPhone && source === 'more-options') {
+      if (this.viewType === 'abele-node-file') {
+        menu.addItem((i) =>
+          i
+            .setTitle('Previous changed file')
+            .setIcon('chevron-left')
+            .setSection('action')
+            .onClick(() => this.step(-1))
+        )
+        menu.addItem((i) =>
+          i
+            .setTitle('Next changed file')
+            .setIcon('chevron-right')
+            .setSection('action')
+            .onClick(() => this.step(1))
+        )
+        menu.addItem((i) =>
+          i
+            .setTitle('Open in code editor')
+            .setIcon('file-code')
+            .setSection('action')
+            .onClick(() => this.openEditor())
+        )
+      }
+      menu.addItem((i) =>
+        i
+          .setTitle('Back to node')
+          .setIcon('server')
+          .setSection('action')
+          .onClick(() => this.backToNode())
+      )
+    }
+    super.onPaneMenu(menu, source)
   }
   getViewType(): string {
     return this.viewType

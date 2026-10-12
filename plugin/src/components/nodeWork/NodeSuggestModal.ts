@@ -16,13 +16,30 @@ export interface NodeSuggestion {
   current?: boolean
 }
 
+/**
+ * Something the list cannot show until the owner allows it — worktrees outside the node's own
+ * folders — said once above the list, with the way to allow it in place.
+ */
+export interface NodeSuggestHint {
+  text: string
+  /** The button's words. */
+  action: string
+  /** What the button does in its tooltip. */
+  tooltip?: string
+  /** Asks for it; the list is filled again with `setItems` once it is allowed. */
+  onAction: () => void
+}
+
 export class NodeSuggestModal extends SuggestModal<NodeSuggestion> {
+  private hintEl?: HTMLElement
+
   constructor(
     app: App,
     private items: NodeSuggestion[],
     placeholder: string,
     private onChoose: (item: NodeSuggestion) => void,
-    empty = 'Nothing matches'
+    empty = 'Nothing matches',
+    hint?: NodeSuggestHint
   ) {
     super(app)
     this.setPlaceholder(placeholder)
@@ -32,6 +49,33 @@ export class NodeSuggestModal extends SuggestModal<NodeSuggestion> {
       { command: 'esc', purpose: 'to dismiss' },
     ])
     this.emptyStateText = empty
+    if (hint) this.showHint(hint)
+  }
+
+  /** The hint sits between the field and the list, a quiet line with its one button. */
+  private showHint(hint: NodeSuggestHint): void {
+    const el = createDiv({ cls: 'abele-node-suggest-hint' })
+    const glyph = el.createSpan({ cls: 'abele-node-suggest-hint__glyph' })
+    setIcon(glyph, 'eye-off')
+    el.createSpan({ cls: 'abele-node-suggest-hint__text', text: hint.text })
+    const button = el.createEl('button', { text: hint.action })
+    if (hint.tooltip) setTooltip(button, hint.tooltip)
+    button.addEventListener('click', () => {
+      button.disabled = true
+      button.setText('Waiting for the node…')
+      hint.onAction()
+    })
+    this.resultContainerEl.before(el)
+    this.hintEl = el
+  }
+
+  /** The list again, once what the hint asked for is allowed; the hint goes. */
+  setItems(items: NodeSuggestion[], empty?: string): void {
+    this.items = items
+    if (empty) this.emptyStateText = empty
+    this.hintEl?.remove()
+    this.hintEl = undefined
+    this.inputEl.dispatchEvent(new Event('input'))
   }
 
   getSuggestions(query: string): NodeSuggestion[] {

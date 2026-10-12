@@ -115,6 +115,14 @@ export interface CommitSummary {
   day: string
   /** The files the commit changed, for its own page. */
   files?: FileChange[]
+  /** How much it changed, when its files are not loaded: files, lines added, lines removed. */
+  stats?: { files: number; added: number; removed: number }
+  /** The agent that made it; none for a person. */
+  agent?: string
+  /** Not in the folder's main branch yet. */
+  only?: boolean
+  /** Came in since this history was last looked at. */
+  unseen?: boolean
 }
 
 /** One folder on the node as the Open folder dialog lists it. */

@@ -1,6 +1,6 @@
 import { afterEach, expect, it, vi } from 'vitest'
 import { shallowRef } from 'vue'
-import type { WorkspaceLeaf } from 'obsidian'
+import { Platform, type WorkspaceLeaf } from 'obsidian'
 import { NodePathMainView } from '@/views/NodePathMainView'
 
 const fixture = vi.hoisted(() => ({
@@ -18,6 +18,7 @@ vi.mock('obsidian', async (original) => {
         return this.containerEl.children[1] as HTMLElement
       }
       addAction() {}
+      onPaneMenu() {}
     },
   }
 })
@@ -188,3 +189,44 @@ it.each(['file', 'history'])(
     expect(fixture.ready).not.toHaveBeenCalled()
   }
 )
+
+it('keeps phone file actions in the pane menu', () => {
+  const previous = Platform.isPhone
+  Platform.isPhone = true
+  try {
+    const view = new NodePathMainView({} as WorkspaceLeaf, 'abele-node-file')
+    views.push(view)
+    const titles: string[] = []
+    const item = {
+      setTitle(title: string) {
+        titles.push(title)
+        return this
+      },
+      setIcon() {
+        return this
+      },
+      setSection() {
+        return this
+      },
+      onClick() {
+        return this
+      },
+    }
+    view.onPaneMenu(
+      {
+        addItem(callback: (i: typeof item) => void) {
+          callback(item)
+        },
+      } as never,
+      'more-options'
+    )
+    expect(titles).toEqual([
+      'Previous changed file',
+      'Next changed file',
+      'Open in code editor',
+      'Back to node',
+    ])
+  } finally {
+    Platform.isPhone = previous
+  }
+})

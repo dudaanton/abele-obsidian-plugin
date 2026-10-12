@@ -33,6 +33,7 @@ describe('product node sidebar', () => {
       currentCopy: ref({ branch: 'trunk' }),
       entries: shallowRef([]),
       treeCursors: shallowRef({}),
+      treeProgress: shallowRef(undefined),
       loadFolder: vi.fn(async () => {}),
       loadMore: vi.fn(async () => {}),
       changes: shallowRef([
