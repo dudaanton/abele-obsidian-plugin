@@ -192,6 +192,13 @@
         ><Section title="No passage selected"><Quote text="" /></Section>
       </template>
       <template v-else-if="page === 'states'">
+        <Section title="Run report">
+          <RunReport finished status="Import complete" :facts="[{ label: 'Notes', value: 3 }]" />
+          <ShortList
+            heading="Skipped"
+            :items="[{ title: 'sample-note.md', meta: 'Already imported' }]"
+          />
+        </Section>
         <Section title="Progress">
           <Setting name="Starting"><Progress label="Sample import starting" :value="0" /></Setting>
           <Setting name="In progress"
@@ -411,12 +418,27 @@
           ><NotePicker v-model="picked" disabled placeholder="Choose a note…"
         /></Setting>
         <div ref="selectionAnchor">
+          <p data-selection-sample>Select these sample words to preview selection actions.</p>
+          <SelectionBar :scope="selectionAnchor" :actions="[ASK, ADD, NOTE]" @pick="announce" />
+          <Button
+            text="Anchored card"
+            tooltip="Preview context beside its source"
+            @click="previewAnchor"
+          />
           <Button
             text="Selection actions"
             tooltip="Preview actions near selected text"
             @click="previewSelection"
           />
         </div>
+        <AnchoredCard
+          v-if="cardAnchor"
+          :anchor="cardAnchor"
+          label="Sample context"
+          @close="cardAnchor = null"
+        >
+          Sample context beside the selected passage.
+        </AnchoredCard>
         <SelectionToolbar
           v-if="selectionPosition"
           :top="selectionPosition.top"
@@ -651,6 +673,11 @@ import SidebarPanel from '@/components/obsidian/SidebarPanel.vue'
 import PanelResizeHandle from '@/components/obsidian/PanelResizeHandle.vue'
 import FloatingButton from '@/components/obsidian/FloatingButton.vue'
 import SelectionToolbar from '@/components/obsidian/SelectionToolbar.vue'
+import AnchoredCard, { type CardAnchor } from '@/components/obsidian/AnchoredCard.vue'
+import RunReport from '@/components/obsidian/RunReport.vue'
+import ShortList from '@/components/obsidian/ShortList.vue'
+import SelectionBar from '@/components/obsidian/SelectionBar.vue'
+import { ASK, ADD, NOTE } from '@/components/obsidian/selectionActions'
 import IconPicker from '@/components/obsidian/IconPicker.vue'
 defineProps<{ page: CataloguePage; variant?: 'inline' | 'stacked' | 'disclosed' }>()
 const emit = defineEmits<{ close: []; navigate: [page: CataloguePage] }>()
@@ -785,6 +812,12 @@ const sampleImage =
 const sampleMarkdown = 'A **sample** reading passage.\n\n> Keep the context beside the note.'
 const longQuote = 'The source explains the decision and records the next step. '.repeat(8)
 const selectionAnchor = ref<HTMLElement>()
+const cardAnchor = ref<CardAnchor | null>(null)
+function previewAnchor() {
+  if (!selectionAnchor.value) return
+  const { left, top, bottom } = selectionAnchor.value.getBoundingClientRect()
+  cardAnchor.value = { left, top, bottom }
+}
 const selectionPosition = ref<{ top: number; left: number } | null>(null)
 function previewSelection() {
   if (!selectionAnchor.value) return

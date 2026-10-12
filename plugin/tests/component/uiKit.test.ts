@@ -459,7 +459,11 @@ describe('EmptyState', () => {
       props: { icon: 'files', title: 'No notes yet', text: 'Notes you write appear here' },
     })
     expect(block.classes()).toContain('abele-empty-state_centered')
-    expect(block.find('.abele-empty-state__icon').attributes('aria-hidden')).toBe('true')
+    expect(block.find('.abele-empty-state__mark').attributes('aria-hidden')).toBe('true')
+    expect(block.find('.abele-empty-state__mark .abele-empty-state__icon').exists()).toBe(true)
+    expect(block.find('.abele-empty-state__badge').exists()).toBe(false)
+    const off = mount(EmptyState, { props: { icon: 'github', badge: 'power-off', title: 'Off' } })
+    expect(off.find('.abele-empty-state__badge').exists()).toBe(true)
     expect(block.find('.abele-empty-state__title').text()).toBe('No notes yet')
     expect(block.classes()).toContain('abele-empty-state_empty')
   })

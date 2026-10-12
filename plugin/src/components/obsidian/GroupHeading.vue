@@ -29,9 +29,19 @@ defineProps<{
   gap: var(--size-4-2);
   // In line with the words of the rows under it, which keep their own inset for the light.
   padding-inline: var(--size-2-3);
+  // As far from its first row as the rows are from each other, so every row reads as the
+  // heading's and not just the first.
+  margin-bottom: var(--size-4-2);
   color: var(--text-muted);
   font-size: var(--font-ui-small);
-  font-weight: var(--font-semibold);
+  // Not bold: a bold line over rows of normal names fought them for the eye. A group is told by
+  // its place and its colour.
+  font-weight: var(--font-normal);
+
+  // In a window, in line with the window's text, as the rows under it are there.
+  .modal-content & {
+    padding-inline: 0;
+  }
 
   // In a window, in line with the window's text, as the rows under it are there.
   .modal-content & {

@@ -32,6 +32,10 @@ export interface HeaderAction {
   icon?: string
   disabled?: boolean
   reason?: string
+  /** Obsidian's menu section: items of one section stand together, a line between sections. */
+  section?: string
+  /** Ends or removes something: drawn in the menu's warning colour. */
+  warning?: boolean
 }
 const props = withDefaults(
   defineProps<{ context?: HeaderAction; actions?: HeaderAction[]; overflowLabel?: string }>(),
@@ -59,6 +63,8 @@ const openMenu = () => {
           if (!action.disabled) emit('action', action.id)
         })
       if (action.icon) item.setIcon(action.icon)
+      if (action.section) item.setSection(action.section)
+      if (action.warning) item.setWarning(true)
     })
   menu.onHide(() => {
     // Hiding may finish after the chosen action focuses a search field or opens a dialog.

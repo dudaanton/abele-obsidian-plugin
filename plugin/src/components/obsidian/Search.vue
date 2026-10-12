@@ -2,7 +2,10 @@
   <div
     ref="el"
     class="abele-obsidian-search"
-    :class="{ 'abele-obsidian-search_disabled': disabled, 'abele-obsidian-search_filled': !!modelValue }"
+    :class="{
+      'abele-obsidian-search_disabled': disabled,
+      'abele-obsidian-search_filled': !!modelValue,
+    }"
   />
 </template>
 
@@ -85,6 +88,11 @@ watch(
       search.value.setValue(val ?? '')
     }
   }
+)
+
+watch(
+  () => props.placeholder,
+  (placeholder) => search.value?.setPlaceholder(placeholder ?? '')
 )
 
 watch(

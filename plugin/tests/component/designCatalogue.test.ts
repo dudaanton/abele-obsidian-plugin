@@ -5,6 +5,25 @@ import { CATALOGUE_PAGES, CATALOGUE_COMPONENTS } from '@/testing/designCatalogue
 import { readdirSync } from 'node:fs'
 
 describe('test-only design catalogue', () => {
+  it('previews the new reports, short lists, anchored cards and selection bar', async () => {
+    const options = {
+      global: { stubs: { Modal: { template: '<div><slot /></div>' }, NotePicker: true } },
+    }
+    const states = mount(DesignCatalogue, { ...options, props: { page: 'states' } })
+    expect(states.find('.abele-run-report').exists()).toBe(true)
+    expect(states.find('.abele-short-list').exists()).toBe(true)
+    states.unmount()
+    const controls = mount(DesignCatalogue, { ...options, props: { page: 'controls' } })
+    expect(controls.find('[data-selection-sample]').exists()).toBe(true)
+    const button = controls.findAll('button').find((button) => button.text() === 'Anchored card')!
+    await button.trigger('click')
+    await flushPromises()
+    expect(document.body.querySelector('.abele-anchored-card')?.textContent).toContain(
+      'Sample context'
+    )
+    controls.unmount()
+    expect(document.body.querySelector('.abele-anchored-card')).toBeNull()
+  })
   it('inventories every shared Vue primitive, so new kit entries cannot escape review', () => {
     const kit = readdirSync('src/components/obsidian')
       .filter((name) => name.endsWith('.vue'))

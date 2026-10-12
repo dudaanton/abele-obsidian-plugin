@@ -1,7 +1,8 @@
 <template>
   <div
+    ref="root"
     class="abele-diff diff-view"
-    :class="[`abele-diff_${layout}`, { 'abele-diff_empty': !changed }]"
+    :class="[`abele-diff_${shown}`, { 'abele-diff_empty': !changed }]"
     :style="{ '--abele-diff-digits': digits }"
   >
     <div v-if="title || $slots.title || changed" class="abele-diff__header">
@@ -16,16 +17,32 @@
           >+{{ stats.added }}</span
         >
       </span>
+      <span v-if="changed && (layout === 'auto' || folded)" class="abele-diff__actions">
+        <Icon
+          v-if="folded"
+          icon="unfold-vertical"
+          size="xs"
+          tooltip="Show all lines"
+          @click="unfoldAll"
+        />
+        <Icon
+          v-if="layout === 'auto'"
+          :icon="shown === 'split' ? 'rows-2' : 'columns-2'"
+          size="xs"
+          :tooltip="shown === 'split' ? 'One under the other' : 'Side by side'"
+          @click="chosen = shown === 'split' ? 'unified' : 'split'"
+        />
+      </span>
     </div>
     <div
-      v-if="changed && layout === 'split' && (labelBefore || labelAfter)"
+      v-if="changed && shown === 'split' && (labelBefore || labelAfter)"
       class="abele-diff__labels"
     >
       <div class="abele-diff__label">{{ labelBefore }}</div>
       <div class="abele-diff__label">{{ labelAfter }}</div>
     </div>
     <div v-if="!changed" class="abele-diff__empty">{{ emptyText }}</div>
-    <div v-else-if="layout === 'unified'" class="abele-diff__body">
+    <div v-else-if="shown === 'unified'" class="abele-diff__body">
       <template v-for="(row, index) in rows" :key="index">
         <div
           v-if="row.kind === 'fold'"
@@ -118,6 +135,7 @@
 // success colour, the changed words inside them stronger, unchanged stretches folded away.
 // A sign before each line says the same without colour.
 import { computed, ref, watch } from 'vue'
+import { useResizeObserver } from '@vueuse/core'
 import { diffLines, foldUnchanged, pairRows, type DiffLine, type DiffRow } from './diffModel'
 import Icon from './obsidian/Icon.vue'
 
@@ -127,8 +145,12 @@ const props = withDefaults(
     textLeft: string
     /** The text as it is now, or would be. */
     textRight: string
-    /** One column, as Obsidian shows it; or the two versions side by side, for a wide place. */
-    layout?: 'unified' | 'split'
+    /**
+     * One column, as Obsidian shows it; or the two versions side by side, for a wide place; or
+     * whichever fits where it is drawn, side by side whenever there is room, with a glyph in the
+     * header to switch.
+     */
+    layout?: 'unified' | 'split' | 'auto'
     /** Unchanged lines kept around each change before the rest folds away. */
     context?: number
     /** Column headings for the side-by-side layout. */
@@ -160,6 +182,27 @@ watch(
   { immediate: true }
 )
 const pairs = computed(() => pairRows(rows.value))
+const folded = computed(() => rows.value.some((r) => r.kind === 'fold'))
+
+// Side by side needs about two short lines of text across; narrower than that, as a sidebar
+// usually is, the two versions go one under the other.
+const SPLIT_EMS = 34
+const root = ref<HTMLElement>()
+const roomy = ref(false)
+const chosen = ref<'unified' | 'split' | null>(null)
+useResizeObserver(root, ([entry]) => {
+  const el = root.value
+  if (!el) return
+  const em = parseFloat(el.win.getComputedStyle(el).fontSize) || 16
+  roomy.value = entry.contentRect.width >= SPLIT_EMS * em
+})
+const shown = computed(() =>
+  props.layout !== 'auto' ? props.layout : (chosen.value ?? (roomy.value ? 'split' : 'unified'))
+)
+
+function unfoldAll(): void {
+  rows.value = rows.value.flatMap((r) => (r.kind === 'fold' ? r.lines : [r]))
+}
 const stats = computed(() => ({
   removed: lines.value.filter((l) => l.kind === 'removed').length,
   added: lines.value.filter((l) => l.kind === 'added').length,
@@ -238,6 +281,12 @@ const lineClass = (line: DiffLine) => ({
   font-family: var(--font-monospace);
   font-size: var(--font-ui-smaller);
   font-variant-numeric: tabular-nums;
+}
+.abele-diff__actions {
+  display: flex;
+  align-self: center;
+  gap: var(--size-2-1);
+  margin-block: calc(-1 * var(--size-2-2));
 }
 .abele-diff__stat_removed {
   color: var(--text-error);

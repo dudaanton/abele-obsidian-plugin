@@ -12,7 +12,8 @@ export function usePanelResize(layout: Ref<HTMLElement | undefined>, key: string
   const available = ref(0)
   const em = ref(14)
   const narrow = computed(() => available.value <= 640)
-  const max = computed(() => Math.min(available.value * 0.4, em.value * 36))
+  // No cap of its own: a panel inside a tab may take the whole of it, as Obsidian's sidebars may.
+  const max = computed(() => available.value)
   const min = computed(() => Math.min(em.value * 12, max.value))
   const clamp = (value: number) => Math.max(min.value, Math.min(max.value, value))
   const current = computed(() => clamp(width.value ?? em.value * defaultEm))

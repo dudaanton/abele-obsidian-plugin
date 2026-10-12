@@ -80,10 +80,14 @@ watch(() => props.collapsible, draw, { flush: 'post' })
   }
 }
 
-// The arrow sits at the start of the row, as in Obsidian's backlinks pane, so the title lines up
-// with nothing moved when the list opens or folds.
+// The arrow hangs in the margin before the title, as Obsidian's own fold arrows on headings do,
+// so the title starts on the same edge as the rows under it and nothing moves as it folds.
 .abele-fold-heading__arrow {
   flex: 0 0 auto;
+}
+
+.abele-fold-heading.is-collapsible {
+  margin-inline-start: calc(-1 * (var(--icon-xs) + var(--size-4-1)));
 }
 
 .abele-fold-heading__count {

@@ -53,7 +53,7 @@ const emit = defineEmits<{ 'update:more': [open: boolean] }>()
   container-type: inline-size;
   display: flex;
   align-items: flex-start;
-  gap: var(--size-4-1);
+  gap: var(--size-2-3);
   padding: var(--size-2-2) var(--size-2-3);
   border-radius: var(--radius-s);
   line-height: var(--line-height-normal);
@@ -83,6 +83,23 @@ const emit = defineEmits<{ 'update:more': [open: boolean] }>()
   & + & {
     margin-top: var(--size-2-1);
   }
+
+  // Entries end at a hairline, from the words' edge to the row's end, as Obsidian's own group of
+  // settings does between rows: whitespace alone ran the line under one name into the name of the
+  // next, and in a narrow pane every entry is two lines, its codes under the name. Drawn in the
+  // 2px between the rows, under neither one's light.
+  & + & {
+    position: relative;
+
+    &::before {
+      content: '';
+      position: absolute;
+      top: calc(-1 * var(--size-2-1) / 2);
+      inset-inline: var(--size-2-3);
+      border-top: 1px solid var(--background-modifier-border);
+      pointer-events: none;
+    }
+  }
 }
 
 .abele-entry-row__leading {
@@ -91,6 +108,12 @@ const emit = defineEmits<{ 'update:more': [open: boolean] }>()
   align-items: center;
   // A check and a file's picture side by side, a step apart.
   gap: var(--size-4-2);
+
+  // A check belongs to its words: Obsidian's own margin after it, added to the row's gap, held it
+  // further from them than from the line above the row.
+  input[type='checkbox'] {
+    margin-inline-end: 0;
+  }
   min-height: calc(var(--line-height-normal) * 1em);
 }
 
@@ -148,8 +171,8 @@ const emit = defineEmits<{ 'update:more': [open: boolean] }>()
   display: flex;
   align-items: center;
   height: calc(var(--line-height-normal) * 1em);
-  // Close to the codes it belongs with: the button's own padding is the gap.
-  padding-inline-start: 0;
+  // A step from the codes, so the button's box never touches them.
+  padding-inline-start: var(--size-2-2);
 
   &:empty {
     display: none;
@@ -161,12 +184,20 @@ const emit = defineEmits<{ 'update:more': [open: boolean] }>()
 }
 
 // A button's padding above and below made its box taller than the line, so the box sat centred
-// and its glyph hung lower than the codes beside it. Only the glyph is centred on the line; the
-// padding stays at the sides, where it is what the pointer finds.
+// and its glyph hung lower than the codes beside it. Pressing the padding out flattened the button
+// against the codes; a negative margin keeps the box whole and the glyph on the line.
 .abele-entry-row__actions .clickable-icon,
 .abele-entry-row__aside .clickable-icon {
-  padding-block: 0;
-  height: auto;
+  // The whole box stays — it is what the pointer and the finger find — and its height is taken
+  // back by a margin as tall as its padding, so the line does not grow and the glyph stays on it.
+  margin-block: calc(-1 * var(--size-2-2));
+  // Scrolled to by the keyboard, it stops with room to spare, not flush with the edge; its focus
+  // ring is drawn inside the box, so no edge of a scrolling list cuts it.
+  scroll-margin-block: var(--size-2-3);
+
+  &:focus-visible {
+    box-shadow: inset 0 0 0 var(--size-2-1) var(--background-modifier-border-focus);
+  }
 
   svg {
     width: var(--icon-xs);
@@ -221,6 +252,12 @@ const emit = defineEmits<{ 'update:more': [open: boolean] }>()
       'title title actions'
       'codes meta aside'
       'detail detail detail';
+  }
+
+  // On the quiet line's baseline: codes and words of different sizes still read as one line.
+  .abele-entry-row__codes,
+  .abele-entry-row__meta {
+    align-self: baseline;
   }
 
   .abele-entry-row__codes {

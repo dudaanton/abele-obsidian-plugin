@@ -187,7 +187,14 @@ const open = (event: Event) => {
  * holds; the minimum height keeps it from being a sliver beside a card of one line.
  */
 .abele-card_thumbed {
-  min-height: var(--size-4-16);
+  position: relative;
+  min-height: calc(var(--size-4-16) + 2 * var(--size-4-4));
+  padding-inline-end: calc(var(--size-4-16) + var(--size-4-4) + var(--size-4-3));
+}
+.abele-card_thumbed > .abele-card__thumbnail {
+  position: absolute;
+  top: var(--size-4-4);
+  inset-inline-end: var(--size-4-4);
 }
 
 /**
@@ -278,11 +285,22 @@ const open = (event: Event) => {
   overflow-wrap: anywhere;
 }
 
+/* An icon's hover box stays its own height: pulled into the title's line it lit up over the
+   words under it. The card is a little taller with an action; nothing is covered. */
 .abele-card__actions {
   display: flex;
-  align-items: center;
+  align-items: flex-start;
   gap: var(--size-2-1);
   flex: 0 0 auto;
+}
+
+/* A glyph button keeps its whole box, the press area it has everywhere; the margin takes the
+   overhang back so its glyph stands on the middle of the title's first line, not under it. */
+.abele-card__actions {
+  font-size: var(--font-ui-small);
+}
+.abele-card__actions > .clickable-icon {
+  margin-block: calc((1lh - var(--icon-size) - 2 * var(--size-2-2)) / 2);
 }
 
 .abele-card__subtitle {

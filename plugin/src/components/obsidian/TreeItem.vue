@@ -27,6 +27,7 @@
         ref="chevron"
         class="tree-item-icon collapse-icon abele-tree-item__toggle"
         :class="{ 'is-collapsed': collapsed }"
+        @click="foldApart && ($event.stopPropagation(), emit('toggle'))"
       />
       <div class="tree-item-inner abele-tree-item__inner">
         <!-- A choice the row stands for, ahead of its name: a check in a list of what to send. -->
@@ -88,6 +89,11 @@ const props = withDefaults(
     flush?: boolean
     /** Seen but not open now: faint, no hover, no tab stop, no click. */
     disabled?: boolean
+    /**
+     * The arrow folds and the row does something else, as a heading in the outline jumps to its
+     * place: the arrow then sends `toggle` instead of the row's `click`.
+     */
+    foldApart?: boolean
   }>(),
   {
     icon: undefined,
@@ -100,6 +106,7 @@ const props = withDefaults(
     plain: false,
     flush: false,
     disabled: false,
+    foldApart: false,
   }
 )
 
@@ -108,6 +115,8 @@ const inert = computed(() => props.plain || props.disabled)
 const emit = defineEmits<{
   /** The row was clicked, or Enter pressed on it; the event says which modifier keys were held. */
   click: [event: MouseEvent]
+  /** The arrow was clicked, on a row that folds apart from its click. */
+  toggle: []
 }>()
 
 /** Enter on a focused row is a click, with the keys the keyboard event held. */
@@ -139,6 +148,19 @@ watch(() => [props.icon, props.collapsible], draw, { flush: 'post' })
   align-items: flex-start;
   gap: var(--size-4-1);
   min-width: 0;
+}
+
+// A row keeps its weight under the pointer. Obsidian's rows take another weight on hover, which
+// knocks a bold heading back to normal and makes the text jump; a row that should be bold says so
+// with `--abele-tree-item-weight`, and the hover keeps it.
+.abele-tree-item__self {
+  // A row the keyboard brings to the edge of its list stops short of it, so its focus ring shows whole.
+  scroll-margin-block: var(--size-4-1);
+  --abele-tree-item-weight: var(--nav-item-weight);
+  font-weight: var(--abele-tree-item-weight);
+}
+body:not(.is-grabbing) .abele-tree-item__self.is-clickable:hover {
+  font-weight: var(--abele-tree-item-weight);
 }
 
 .abele-tree-item__glyph {
@@ -205,6 +227,12 @@ watch(() => [props.icon, props.collapsible], draw, { flush: 'post' })
   flex: 1 1 auto;
   align-items: baseline;
 }
+// The glyph has no text to give a baseline, so it keeps to the top of the name's first line,
+// the line the codes at the row's end are measured against.
+.abele-tree-item__inner:has(.abele-tree-item__note) > .abele-tree-item__glyph,
+.abele-tree-item__inner:has(.abele-tree-item__note) > .abele-tree-item__leading {
+  align-self: flex-start;
+}
 
 .abele-tree-item__end {
   display: flex;
@@ -214,6 +242,25 @@ watch(() => [props.icon, props.collapsible], draw, { flush: 'post' })
   .abele-obsidian-icon {
     padding: 0;
   }
+}
+
+// What stands at the row's end — a count, a dot, a glyph, the hover actions — lines up with the
+// first line of the name, not with the middle of a row the name has wrapped onto two lines: the
+// row aligns to its top, and the end is one text line tall with its contents centred in it.
+.abele-tree-item__self {
+  align-items: flex-start;
+}
+.abele-tree-item__self > .tree-item-flair-outer {
+  display: flex;
+  align-self: flex-start;
+  align-items: center;
+  height: 1lh;
+  font-size: inherit;
+  line-height: inherit;
+}
+// A phone's row reaches the touch size by its padding, so a name on one line is still centred.
+body.is-phone .abele-tree-item__self {
+  padding-block: max(var(--size-4-1), calc((var(--touch-size-m) - 1lh) / 2));
 }
 
 .abele-tree-item__self .tree-item-flair {
@@ -230,8 +277,50 @@ watch(() => [props.icon, props.collapsible], draw, { flush: 'post' })
     visibility: visible;
   }
 
-  .abele-obsidian-icon {
-    padding: 0 var(--size-2-1);
+  // Obsidian's whole button box, its height taken back by a margin so the row does not grow.
+  .abele-obsidian-icon.clickable-icon {
+    margin-block: calc(-1 * var(--size-2-2));
+    scroll-margin-block: var(--size-2-3);
   }
+
+  // In line on a phone: a step from the count or the date before it.
+  body.is-phone & {
+    margin-inline-start: var(--size-2-2);
+  }
+}
+// With a pointer the actions take no room until wanted: they come up over the row's end codes
+// on hover, so a name is not cut short by buttons nobody sees. A phone shows them always, in line.
+body:not(.is-phone) .abele-tree-item__self > .tree-item-flair-outer {
+  position: relative;
+}
+// The row's own light over the pane's colour: solid, so no letters show through the buttons. A
+// tree in a dialog or the main area stands on the primary colour, a sidebar's on the secondary.
+.abele-tree-item {
+  --abele-tree-item-ground: var(--background-secondary);
+  --abele-tree-item-tint: var(--nav-item-background-hover);
+}
+.mod-root .abele-tree-item,
+.modal .abele-tree-item {
+  --abele-tree-item-ground: var(--background-primary);
+}
+.abele-tree-item__self.is-active {
+  --abele-tree-item-tint: var(--nav-item-background-active);
+}
+body:not(.is-phone) .abele-tree-item__actions {
+  position: absolute;
+  inset-inline-end: 0;
+  top: 50%;
+  translate: 0 -50%;
+  border-radius: var(--radius-s);
+  background:
+    linear-gradient(var(--abele-tree-item-tint), var(--abele-tree-item-tint)),
+    var(--abele-tree-item-ground);
+}
+// A code the buttons take the place of under the pointer: gone while they show, so nothing of it
+// peeks out beside them.
+body:not(.is-phone)
+  .abele-tree-item__self:is(:hover, :focus-within)
+  .abele-tree-item__under-actions {
+  visibility: hidden;
 }
 </style>

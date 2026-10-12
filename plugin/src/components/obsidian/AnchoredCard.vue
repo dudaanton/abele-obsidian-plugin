@@ -4,6 +4,7 @@
   <Teleport :to="to">
     <div
       ref="card"
+      v-bind="$attrs"
       class="abele-anchored-card"
       role="dialog"
       :aria-label="label"
@@ -20,6 +21,9 @@ import { computed, nextTick, onBeforeUnmount, onMounted, ref } from 'vue'
 
 /** Where the place in the text is on the screen, in the window's pixels. */
 export type CardAnchor = { left: number; top: number; bottom: number }
+
+// The card is drawn into the window, so what the caller sets on it goes on the card itself.
+defineOptions({ inheritAttrs: false })
 
 const props = defineProps<{
   anchor: CardAnchor

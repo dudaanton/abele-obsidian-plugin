@@ -43,8 +43,8 @@ const initial = computed(() => props.name.trim().charAt(0).toUpperCase())
   align-items: center;
   justify-content: center;
   flex: 0 0 auto;
-  width: var(--size-4-5);
-  height: var(--size-4-5);
+  width: var(--abele-avatar-size, var(--size-4-5));
+  height: var(--abele-avatar-size, var(--size-4-5));
   border-radius: 50%;
   overflow: hidden;
   background-color: var(--background-modifier-hover);

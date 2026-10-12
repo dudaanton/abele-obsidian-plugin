@@ -122,11 +122,16 @@ watch(accessibleName, updateTooltip)
   color: var(--icon-color);
 
   // A clickable icon takes Obsidian's own `.clickable-icon` box (4 by 6 around the glyph, its
-  // own radius), so it is the size of the host's icon buttons. Only a picture-only icon keeps
-  // the small box it always had, so nothing laid out around one moves.
-  &:not(.clickable-icon) {
-    padding: var(--size-2-1) var(--size-2-2);
+  // own radius), so it is the size of the host's icon buttons. A picture-only icon is the glyph
+  // and nothing more: a margin of its own put space before every icon that the layout around it
+  // never asked for. Kept at no weight, so a place that wants a box can give it one.
+  &:where(:not(.clickable-icon)) {
     border-radius: var(--radius-s);
+  }
+
+  &:where(:not(.clickable-icon)).abele-obsidian-icon_with-bg,
+  &:where(:not(.clickable-icon)).abele-obsidian-icon_active {
+    padding: var(--size-2-1) var(--size-2-2);
   }
 
   &_disabled {
@@ -186,11 +191,12 @@ watch(accessibleName, updateTooltip)
   user-select: none;
   font-size: var(--font-ui-smaller);
 
-  &:first-child {
+  // Only the side that faces the glyph: words with no glyph beside them are not pushed in.
+  &:first-child:not(:last-child) {
     margin-right: var(--size-2-2);
   }
 
-  &:last-child {
+  &:last-child:not(:first-child) {
     margin-left: var(--size-2-2);
   }
 }
