@@ -79,7 +79,7 @@ const script = `(async () => {
   return out
 })()`
 
-/** The dialog opened over two changes, and its "Files only" pressed. */
+/** The dialog opened over two changes, "Go back in chat" switched off and Rewind pressed. */
 const dialogScript = `(async () => {
   const t = window.__abeleTest
   const wait = (ms) => new Promise((r) => setTimeout(r, ms))
@@ -93,8 +93,15 @@ const dialogScript = `(async () => {
     await t.openRewind(dir + '/Kept.md', dir + '/Made.md')
     await wait(500)
     const rows = [...document.querySelectorAll('.modal .abele-rewind .tree-item-self')]
-    out.planned = rows.map((r) => [r.dataset.path, r.querySelector('.tree-item-flair')?.textContent || ''])
-    const button = [...document.querySelectorAll('.modal .abele-modal__footer button')].find((b) => b.textContent.trim() === 'Files only')
+    // What happens to a file is its glyph's tooltip.
+    out.planned = rows.map((r) => [r.dataset.path, r.querySelector('.abele-tree-item__glyph')?.getAttribute('aria-label') || ''])
+    const setting = [...document.querySelectorAll('.modal .abele-rewind .setting-item')].find((el) => el.querySelector('.setting-item-name')?.textContent.trim() === 'Go back in chat')
+    setting.querySelector('.checkbox-container').click()
+    // Files go back only with their own switch turned on, from the button that says so.
+    const files = [...document.querySelectorAll('.modal .abele-rewind .setting-item')].find((el) => el.querySelector('.setting-item-name')?.textContent.trim() === 'Put files back')
+    files.querySelector('.checkbox-container').click()
+    await wait(100)
+    const button = [...document.querySelectorAll('.modal .abele-modal__footer button')].find((b) => b.textContent.trim() === 'Put files back')
     button.click()
     await wait(800)
     out.after = { 'Kept.md': get(dir + '/Kept.md') ? await app.vault.read(get(dir + '/Kept.md')) : null, 'Made.md': get(dir + '/Made.md') ? 'there' : null }
@@ -266,8 +273,8 @@ describe.skipIf(!available)('the rewind dialog in the app', () => {
   it('lists the files and puts them back when asked', () => {
     expect(outcome.error).toBeUndefined()
     expect(outcome.planned).toEqual([
-      [`${DIR}/Kept.md`, 'put back'],
-      [`${DIR}/Made.md`, 'to the trash'],
+      [`${DIR}/Kept.md`, 'Text put back'],
+      [`${DIR}/Made.md`, 'To the trash'],
     ])
     expect(outcome.after).toEqual({ 'Kept.md': 'as it was', 'Made.md': null })
     expect(outcome.left).toBe(0)
@@ -327,7 +334,7 @@ describe.skipIf(!available)('the rewind dialog in the app', () => {
             state === 'legacy'
               ? 'no chat owner'
               : state === 'conflict'
-                ? 'left untouched'
+                ? 'will not change this file'
                 : 'changed no files'
           )
         }

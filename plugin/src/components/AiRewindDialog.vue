@@ -1,32 +1,49 @@
 <template>
-  <ObsidianModal :title="title" size="tall" @close="emit('close')">
+  <!-- The files the agent changed, as tree rows: what happens to each is its glyph, a dot when
+       it has to be left as it is; a row opens to the difference. A rewind is one button: the
+       two switches above say whether it puts the files back, goes back in the chat, or both. -->
+  <ObsidianModal :title="title" size="tall" close-in-footer @close="emit('close')">
     <div class="abele-rewind">
-      <p class="abele-rewind__lead">{{ lead }}</p>
+      <template v-if="mode === 'since'">
+        <Setting name="Put files back" :desc="restorable ? '' : 'Nothing here can be put back'">
+          <Checkbox
+            :is-enabled="files && restorable"
+            :disabled="!restorable || busy"
+            @toggle="files = !files"
+          />
+        </Setting>
+        <Setting name="Go back in chat" desc="To this message, as editing it does">
+          <Checkbox
+            :is-enabled="conversation"
+            :disabled="busy"
+            @toggle="conversation = !conversation"
+          />
+        </Setting>
+      </template>
 
       <EmptyState v-if="loading" text="Reading the files…" />
-      <EmptyState v-else-if="!items.length" :text="emptyText" />
+      <EmptyState v-else-if="!items.length" icon="file-check" :text="emptyText" />
 
       <div v-else class="abele-rewind__files">
+        <ListSectionHeader :text="lead" :count="items.length" />
         <TreeItem
           v-for="item in items"
           :key="item.path"
-          :text="item.path"
+          :ref="(row) => describe(row, item)"
+          :text="item.path.split('/').pop() ?? item.path"
+          :note="
+            item.path.includes('/') ? item.path.slice(0, item.path.lastIndexOf('/')) : undefined
+          "
           :icon="ICONS[item.action]"
-          :flair="flairOf(item)"
           :path="item.path"
           collapsible
           :collapsed="open !== item.path"
           @click="open = open === item.path ? null : item.path"
         >
+          <template v-if="stateOf(item)" #end>
+            <StatusDot :tone="stateOf(item)!.tone" :label="stateOf(item)!.label" />
+          </template>
           <div class="abele-rewind__detail">
-            <Setting
-              v-if="item.conflict"
-              :name="item.reason ? 'Cannot verify ownership' : 'Changed since'"
-              :desc="
-                item.reason ??
-                'Another edit overlaps this undo. This file will be left untouched to preserve that work.'
-              "
-            />
             <p class="abele-rewind__note">{{ explain(item) }}</p>
             <Diff
               v-if="item.diff"
@@ -38,42 +55,25 @@
         </TreeItem>
       </div>
 
-      <p v-if="error" class="abele-rewind__error">{{ error }}</p>
+      <p v-if="error" class="abele-rewind__error" role="alert">{{ error }}</p>
     </div>
 
     <template #footer>
-      <template v-if="mode === 'since'">
-        <Button
-          text="Conversation only"
-          tooltip="Go back to this message in the chat and leave the files as they are"
-          :disabled="busy"
-          @click="finish(false, true)"
-        />
-        <Button
-          text="Files only"
-          :tooltip="filesTooltip"
-          :disabled="busy || loading || !restorable"
-          @click="finish(true, false)"
-        />
-        <Button
-          text="Files and conversation"
-          :tooltip="
-            restorable
-              ? 'Put the files back and go back to this message in the chat'
-              : 'Nothing to put back: this goes back in the chat only'
-          "
-          accent
-          :disabled="busy || loading"
-          @click="finish(true, true)"
-        />
-      </template>
       <Button
-        v-else
-        text="Undo changes"
-        :tooltip="filesTooltip"
-        accent
-        :disabled="busy || loading || !restorable"
-        @click="finish(true, false)"
+        text="Cancel"
+        tooltip="Leave the conversation and files unchanged"
+        :disabled="busy"
+        @click="emit('close')"
+      />
+      <!-- Files go back only by a button that says so, red, in the window that lists them: going
+           back in the chat alone is the quiet accent one. -->
+      <Button
+        :text="actionText"
+        :tooltip="actionTooltip"
+        :accent="!puttingBack"
+        :warning="puttingBack"
+        :disabled="busy || loading || !acting"
+        @click="mode === 'since' ? finish(files && restorable, conversation) : finish(true, false)"
       />
     </template>
   </ObsidianModal>
@@ -81,11 +81,14 @@
 
 <script setup lang="ts">
 import { computed, onMounted, ref } from 'vue'
-import { Notice } from 'obsidian'
+import { Notice, setTooltip } from 'obsidian'
 import ObsidianModal from './obsidian/Modal.vue'
 import Button from './obsidian/Button.vue'
 import EmptyState from './obsidian/EmptyState.vue'
 import Setting from './obsidian/Setting.vue'
+import Checkbox from './obsidian/Checkbox.vue'
+import ListSectionHeader from './obsidian/ListSectionHeader.vue'
+import StatusDot from './obsidian/StatusDot.vue'
 import TreeItem from './obsidian/TreeItem.vue'
 import Diff from './Diff.vue'
 import type { ChatRewind } from '@/ai/rewind/ChatRewind'
@@ -128,6 +131,9 @@ const busy = ref(false)
 const error = ref('')
 const plan = ref<RestorePlan | null>(null)
 const open = ref<string | null>(null)
+// Files are put back only when asked for here: the switch starts off.
+const files = ref(false)
+const conversation = ref(true)
 
 const items = computed(() => plan.value?.items ?? [])
 const restorable = computed(() =>
@@ -136,36 +142,70 @@ const restorable = computed(() =>
 
 const title = computed(() => (props.mode === 'since' ? 'Rewind to here' : 'Undo changes'))
 const lead = computed(() =>
-  props.mode === 'since'
-    ? 'The files the agent changed from this message on, as they will be put back.'
-    : "The files this message's turn changed, as they will be put back."
+  props.mode === 'since' ? 'Changed from here on' : 'Changed by this turn'
 )
 const emptyText = computed(() =>
   props.mode === 'since'
     ? 'The agent changed no files from here on.'
     : 'This turn changed no files that are still to be put back.'
 )
-const filesTooltip = computed(() =>
-  restorable.value ? 'Put the files back as they were' : 'Nothing here can be put back'
+/** One button does what the switches say; with both off there is nothing for it to do. */
+const acting = computed(() =>
+  props.mode === 'since'
+    ? conversation.value || (files.value && restorable.value)
+    : restorable.value
 )
+/** The button puts files back: it says so and is drawn as the dangerous one. */
+const puttingBack = computed(() => restorable.value && (props.mode === 'turn' || files.value))
+const actionText = computed(() => {
+  if (!puttingBack.value) return 'Go back in chat'
+  return props.mode === 'since' && conversation.value
+    ? 'Put files back and go back'
+    : 'Put files back'
+})
+const actionTooltip = computed(() => {
+  if (props.mode === 'turn')
+    return restorable.value ? 'Put the files back as they were' : 'Nothing here can be put back'
+  const doFiles = files.value && restorable.value
+  if (doFiles && conversation.value) return 'Put the files back and go back to this message'
+  if (doFiles) return 'Put the files back; the chat stays as it is'
+  if (conversation.value) return 'Go back to this message; the files stay as they are'
+  return 'Switch on what to take back'
+})
+
+/** A file that cannot follow the rewind says so with a dot; the words are its tooltip. */
+function stateOf(item: RestoreItem): { tone: 'orange' | 'red'; label: string } | undefined {
+  if (item.action === 'unrestorable') return { tone: 'red', label: 'Cannot be put back' }
+  if (item.reason) return { tone: 'orange', label: `Left as it is: ${item.reason}` }
+  if (item.conflict) return { tone: 'orange', label: 'Changed since; left as it is' }
+}
+
+function describe(row: unknown, item: RestoreItem): void {
+  const el = (row as { $el?: unknown } | null)?.$el
+  const self =
+    el instanceof HTMLElement ? el.querySelector<HTMLElement>('.abele-tree-item__glyph') : null
+  if (self) setTooltip(self, flairOf(item))
+}
 
 function flairOf(item: RestoreItem): string {
-  if (item.action === 'unrestorable') return 'cannot be put back'
-  if (item.reason) return 'unverified owner'
-  if (item.conflict) return 'changed since'
+  if (item.action === 'unrestorable') return 'Cannot be put back'
+  if (item.reason) return 'Owner not verified'
+  if (item.conflict) return 'Changed since'
   const words: Record<ItemAction, string> = {
-    rewrite: 'put back',
-    recreate: 'made again',
-    remove: 'to the trash',
-    'move-back': 'moved back',
-    'remove-folder': 'removed if empty',
-    'recreate-folder': 'made again',
+    rewrite: 'Text put back',
+    recreate: 'Made again',
+    remove: 'To the trash',
+    'move-back': 'Moved back',
+    'remove-folder': 'Removed if empty',
+    'recreate-folder': 'Made again',
     unrestorable: '',
   }
   return words[item.action]
 }
 
 function explain(item: RestoreItem): string {
+  // The dot's tooltip is out of reach on a touch screen: the opened row says why too.
+  if (item.reason) return item.reason
   if (item.conflict)
     return 'Undo will not change this file. The comparison below is for reference only.'
   switch (item.action) {
@@ -244,7 +284,6 @@ async function finish(files: boolean, conversation: boolean): Promise<void> {
   gap: var(--size-4-2);
 }
 
-.abele-rewind__lead,
 .abele-rewind__note {
   margin: 0;
   color: var(--text-muted);
