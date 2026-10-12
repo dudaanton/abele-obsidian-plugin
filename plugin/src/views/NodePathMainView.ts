@@ -119,7 +119,10 @@ export class NodePathMainView extends ItemView {
       throw new Error('The node tab kind does not match its host.')
     // Revealing an existing chat/history/editor must not destroy drafts, frozen views or scroll.
     const same =
-      this.saved && parsed.kind !== 'file' && nodePathTabKey(this.saved) === nodePathTabKey(parsed)
+      this.ui &&
+      this.saved &&
+      parsed.kind !== 'file' &&
+      nodePathTabKey(this.saved) === nodePathTabKey(parsed)
     this.saved = parsed
     if (!same) this.startBinding(parsed)
     await super.setState(raw, result)

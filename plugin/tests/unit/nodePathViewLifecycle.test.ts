@@ -115,6 +115,21 @@ it('shows binding failures instead of leaving an admitted tab blank', async () =
   expect(view.containerEl.textContent).toContain('Sample node is unavailable')
 })
 
+it('retries the same tab state if its previous binding failed before mounting', async () => {
+  fixture.model = new Error('Sample node is unavailable')
+  const view = new NodePathMainView({} as WorkspaceLeaf, 'abele-node-history')
+  views.push(view)
+  view.app = { workspace: {} } as any
+  const state = { kind: 'history', target }
+  await view.setState(state, {})
+  fixture.connect.mockResolvedValue(undefined)
+  const history = vi.fn(async () => ({ entries: [], cursor: null }))
+  fixture.model = { port: { history }, copy: () => undefined }
+  await view.setState(state, {})
+  for (let i = 0; i < 20; i++) await Promise.resolve()
+  expect(history).toHaveBeenCalledTimes(1)
+})
+
 it.each(['file', 'history', 'editor', 'chat'])(
   'restores a %s shell without waiting for a node connection',
   async (kind) => {
