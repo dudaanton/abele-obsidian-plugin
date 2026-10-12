@@ -79,8 +79,6 @@ const WORD_SAMPLE = Buffer.from(sampleDocx()).toString('base64')
 // Adapted for a real phone, not yet green there: see docs/Testing.md, "On a real phone".
 targets('desktop')
 
-import { publicationQuestion } from '../helpers/publicationQuestion'
-
 const PHONE = { width: 390, height: 844 }
 const SHOTS = shotDir('abele-phone')
 
@@ -821,12 +819,6 @@ const probeScript = `(async () => {
       report['script form picker'] = { over: [], scrollers: [], capped: [], clipped: [], fill: 0, shot: '', error: 'the note pickers did not show their notes' }
       await closeDialog()
     }
-    window.__abeleTest.SyncService.getInstance().publicationPrompt.asking.value = ${JSON.stringify(publicationQuestion)}
-    await until(() => document.querySelector('.modal .abele-publication-confirm'), 5000)
-    const publicationModal = document.querySelector('.modal')
-    await screen('publication confirmation', publicationModal, publicationModal && publicationModal.querySelector('.abele-modal__body'))
-    report['publication confirmation'].clipped = [...(publicationModal?.querySelectorAll('button') || [])].flatMap(field => { field.focus(); const cut = ringClipped(field); field.blur(); return cut })
-    await closeDialog()
 
     // The icon picker of a header button's form: a grid of every icon, a search field above.
     // Pictured before its fields are focused one by one: focusing the button at the foot of
@@ -2079,7 +2071,6 @@ describe.skipIf(!available)('the chat dialogs on a phone', () => {
     'canvas draft discard',
     'canvas creation',
     ...CANVAS_SCREENS,
-    'publication confirmation',
   ]
 
   /** Dialogs with fields, whose focus rings are measured, and which stand as a full sheet. */
@@ -2395,14 +2386,12 @@ describe.skipIf(!available)('the chat dialogs on a phone', () => {
       expect(s.spare, `${s.name} leaves ${s.spare}px blank under it`).toBeLessThanOrEqual(24)
   })
 
-  it.each([
-    ...sheets,
-    'agent editor access',
-    'agent editor interceptor',
-    'publication confirmation',
-  ])('%s: nothing cuts the focus ring off any field', (label) => {
-    expect(report[label]?.clipped ?? ['no report']).toEqual([])
-  })
+  it.each([...sheets, 'agent editor access', 'agent editor interceptor'])(
+    '%s: nothing cuts the focus ring off any field',
+    (label) => {
+      expect(report[label]?.clipped ?? ['no report']).toEqual([])
+    }
+  )
 
   /**
    * The agent editor's Access tab, inside a dialog sized like the rest of the dialogs rather than

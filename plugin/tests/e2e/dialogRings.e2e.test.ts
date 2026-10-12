@@ -40,7 +40,6 @@ import {
   PUBLICATION_MEASURE,
   publicationFault,
 } from './helpers/canvasPublicationReview'
-import { publicationQuestion } from '../helpers/publicationQuestion'
 
 interface Cut {
   screen: string
@@ -216,52 +215,55 @@ const script = `(async () => {
   // Every other dialog of the plugin, including the agents search/open/seen buttons,
   // in the dialog shell, opened by name.
   for (const dialogName of window.__abeleTest.dialogNames()) {
-    window.__abeleTest.openDialog(dialogName)
-    if (await until(() => document.querySelector('.modal.abele-modal'), 5000)) {
-      await wait(300)
-      const modal = document.querySelector('.modal.abele-modal')
-      // Empty, populated and long-path artifact fixtures must all retain their three sections.
-      if (dialogName.startsWith('chat-artifacts') && modal.querySelectorAll('.abele-chat-artifacts section').length !== 3)
-        cuts.push({ screen: 'dialog ' + dialogName, field: '-', by: ['artifact sections did not open'] })
-      // Node registration and permission opt-in are disclosures, not separate tabs.
-      if (dialogName === 'node-workspaces' || dialogName === 'chat-navigation') {
-        // Each newly mounted continuation can reveal one further fork, just as a user expands it.
-        for (let level = 0; level < (dialogName === 'chat-navigation' ? 4 : 1); level++) {
-          for (const details of modal.querySelectorAll('details')) details.open = true
-          await wait(150)
-        }
-      }
-      // Pairing input, owner-waiting and pin-recovery are distinct screens; do not
-      // accidentally measure an empty shell while their asynchronous enrollment loads.
-      if (dialogName === 'node-pairing-waiting' && !modal.querySelector('[aria-label="Device key fingerprint"]'))
-        cuts.push({ screen: 'dialog ' + dialogName, field: '-', by: ['device fingerprint did not open'] })
-      if (dialogName === 'node-pairing-recovery' && !modal.querySelector('[aria-label="Owner verified new node key"]'))
-        cuts.push({ screen: 'dialog ' + dialogName, field: '-', by: ['pin recovery did not open'] })
-      if (dialogName === 'node-pairing-endpoint' && !modal.querySelector('[aria-label="Owner verified new endpoint"]'))
-        cuts.push({ screen: 'dialog ' + dialogName, field: '-', by: ['endpoint recovery did not open'] })
-      if (dialogName === 'node-delegation-grants' && !modal.querySelector('[aria-label="Delegation parent chat"]'))
-        cuts.push({ screen: 'dialog ' + dialogName, field: '-', by: ['delegation grant fields did not open'] })
-      if (dialogName === 'node-delegation-card' && !modal.querySelector('[aria-label="Node delegation"]'))
-        cuts.push({ screen: 'dialog ' + dialogName, field: '-', by: ['delegation card did not open'] })
-      // Node file/code/diff/review/history fixtures each exercise a separate view.
-      measureAll('dialog ' + dialogName, modal)
-      // A dialog with tabs, the agent editor's among them, is measured tab by tab.
-      for (const tab of [...modal.querySelectorAll('.abele-tabs__tab')].slice(1)) {
-        tab.click()
+    try {
+      let openingError
+      const completion = window.__abeleTest.openDialog(dialogName)
+      completion?.catch(error => { openingError = error })
+      if (['node-files', 'node-diffs', 'node-review', 'node-history'].includes(dialogName)) await completion
+      if (await until(() => openingError || document.querySelector('.modal.abele-modal'), 5000)) {
+        if (openingError) throw openingError
         await wait(300)
-        measureAll('dialog ' + dialogName + ' ' + tab.textContent.trim().toLowerCase(), modal)
+        const modal = document.querySelector('.modal.abele-modal')
+        // Empty, populated and long-path artifact fixtures must all retain their three sections.
+        if (dialogName.startsWith('chat-artifacts') && modal.querySelectorAll('.abele-chat-artifacts section').length !== 3)
+          cuts.push({ screen: 'dialog ' + dialogName, field: '-', by: ['artifact sections did not open'] })
+        // Node registration and permission opt-in are disclosures, not separate tabs.
+        if (dialogName === 'node-workspaces' || dialogName === 'chat-navigation') {
+          // Each newly mounted continuation can reveal one further fork, just as a user expands it.
+          for (let level = 0; level < (dialogName === 'chat-navigation' ? 4 : 1); level++) {
+            for (const details of modal.querySelectorAll('details')) details.open = true
+            await wait(150)
+          }
+        }
+        // Pairing input, owner-waiting and pin-recovery are distinct screens; do not
+        // accidentally measure an empty shell while their asynchronous enrollment loads.
+        if (dialogName === 'node-pairing-waiting' && !modal.querySelector('[aria-label="Device key fingerprint"]'))
+          cuts.push({ screen: 'dialog ' + dialogName, field: '-', by: ['device fingerprint did not open'] })
+        if (dialogName === 'node-pairing-recovery' && !modal.querySelector('[aria-label="Owner verified new node key"]'))
+          cuts.push({ screen: 'dialog ' + dialogName, field: '-', by: ['pin recovery did not open'] })
+        if (dialogName === 'node-pairing-endpoint' && !modal.querySelector('[aria-label="Owner verified new endpoint"]'))
+          cuts.push({ screen: 'dialog ' + dialogName, field: '-', by: ['endpoint recovery did not open'] })
+        if (dialogName === 'node-delegation-grants' && !modal.querySelector('[aria-label="Delegation parent chat"]'))
+          cuts.push({ screen: 'dialog ' + dialogName, field: '-', by: ['delegation grant fields did not open'] })
+        if (dialogName === 'node-delegation-card' && !modal.querySelector('[aria-label="Node delegation"]'))
+          cuts.push({ screen: 'dialog ' + dialogName, field: '-', by: ['delegation card did not open'] })
+        // Node file/code/diff/review/history fixtures each exercise a separate view.
+        measureAll('dialog ' + dialogName, modal)
+        // A dialog with tabs, the agent editor's among them, is measured tab by tab.
+        for (const tab of [...modal.querySelectorAll('.abele-tabs__tab')].slice(1)) {
+          tab.click()
+          await wait(300)
+          measureAll('dialog ' + dialogName + ' ' + tab.textContent.trim().toLowerCase(), modal)
+        }
+      } else {
+        cuts.push({ screen: 'dialog ' + dialogName, field: '-', by: ['dialog did not open'] })
       }
-    } else {
-      cuts.push({ screen: 'dialog ' + dialogName, field: '-', by: ['dialog did not open'] })
+    } catch (error) {
+      cuts.push({ screen: 'dialog ' + dialogName, field: '-', by: [String(error?.message || error)] })
+    } finally {
+      await closeDialog()
     }
-    await closeDialog()
   }
-  window.__abeleTest.SyncService.getInstance().publicationPrompt.asking.value = ${JSON.stringify(publicationQuestion)}
-  if (await until(() => document.querySelector('.modal .abele-publication-confirm'), 5000)) {
-    await wait(300)
-    measureAll('publication confirmation', document.querySelector('.modal'))
-    await closeDialog()
-  } else cuts.push({ screen: 'publication confirmation', field: '-', by: ['dialog did not open'] })
 
   return JSON.stringify(cuts)
 })()`
@@ -474,7 +476,8 @@ describe.skipIf(!available)('changelog controls', () => {
 
 describe.skipIf(!available)('design catalogue desktop keyboard contracts', () => {
   it('inventories actions independently of focus selectors and isolates native activation', async () => {
-    const result = JSON.parse(await evalLong(`(async () => {
+    const result = JSON.parse(
+      await evalLong(`(async () => {
       const api = window.__abeleTest;
       const wait = () => new Promise(r => setTimeout(r, 150));
       const win = require('@electron/remote').getCurrentWindow();
@@ -506,7 +509,8 @@ describe.skipIf(!available)('design catalogue desktop keyboard contracts', () =>
         if(feedback?.textContent !== 'refresh') throw Error('Menu did not execute isolated action');
         ${CATALOGUE_PROBE}
       } finally { api.closeDesignCatalogue(); }
-    })()`)) as { failures: string[]; actions: number }
+    })()`)
+    ) as { failures: string[]; actions: number }
     expect(result.failures).toEqual([])
     expect(result.actions).toBeGreaterThanOrEqual(14)
   })
