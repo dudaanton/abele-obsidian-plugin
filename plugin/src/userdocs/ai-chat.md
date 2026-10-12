@@ -144,8 +144,8 @@ It never silently moves an existing binding after a connection failure. A lost p
 owner re-enrollment, not a copied key or transferable configuration.
 Foreground reconnect/replay is supported; background socket survival on a phone is not promised.
 
-After adding a node, the chat's **+** menu offers **Local chat** and **Session on…** for each
-node. Pick an existing session, create a **fake session (non-executing)**, or open **Projects
+After adding a node, **+** still opens an ordinary new chat; while it is empty, its agent list
+ends with **On <node>…** for each node. Pick an existing session, create a **fake session (non-executing)**, or open **Projects
 and workspaces…**. Register an existing absolute path on the node, choose whether you trust
 it for execution, and create a managed workspace from a branch or commit. Git provisioning
 is a durable job: its state and phase remain visible after restarting. A coding session can

@@ -12,6 +12,8 @@ import { AgentRegistry } from '@/ai/agents/AgentRegistry'
 import { AbeleConfig } from '@/services/AbeleConfig'
 import { DEFAULT_AI_SETTINGS, type AiProvider } from '@/ai/types'
 import { useVault } from '../helpers/testEnv'
+import { NodeService } from '@/node/NodeService'
+import * as openSession from '@/node/openSession'
 
 const provider: AiProvider = {
   id: 'p1',
@@ -102,6 +104,33 @@ describe('the agent picker', () => {
     await view.findComponent({ name: 'Dropdown' }).vm.$emit('update:modelValue', writer.id)
 
     expect(session.agentId.value).toBe(writer.id)
+  })
+
+  it('in a new chat, ends with the nodes, and picking one goes on to its sessions', async () => {
+    const node = { id: 'n1', label: 'Sample node' }
+    vi.spyOn(NodeService, 'getInstance').mockReturnValue({ nodes: { value: [node] } } as never)
+    const pick = vi.spyOn(openSession, 'pickNodeSession').mockResolvedValue()
+    const view = mount(AiAgentSelector, { shallow: true })
+    const dropdown = view.findComponent({ name: 'Dropdown' })
+    expect((dropdown.props('options') as Array<{ display: string }>).map((o) => o.display)).toEqual(
+      ['Researcher', 'Writer', 'On Sample node…']
+    )
+
+    await dropdown.vm.$emit('update:modelValue', 'node:n1')
+
+    expect(pick).toHaveBeenCalledWith(node)
+  })
+
+  it('once a chat has started, offers no node to move it to', () => {
+    vi.spyOn(NodeService, 'getInstance').mockReturnValue({
+      nodes: { value: [{ id: 'n1', label: 'Sample node' }] },
+    } as never)
+    session.messages.value = [{ id: 'm1', role: 'user', content: 'Hello' } as never]
+    const view = mount(AiAgentSelector, { shallow: true })
+    const options = view.findComponent({ name: 'Dropdown' }).props('options') as Array<{
+      display: string
+    }>
+    expect(options.map((o) => o.display)).toEqual(['Researcher', 'Writer'])
   })
 
   it('says so when there is no agent to choose', () => {

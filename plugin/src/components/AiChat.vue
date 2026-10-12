@@ -481,7 +481,6 @@ import AiRunView from './AiRunView.vue'
 import EmptyState from './obsidian/EmptyState.vue'
 import NodeChatView from './NodeChatView.vue'
 import NodeDelegations from './NodeDelegations.vue'
-import { newChatMenu } from '@/node/openSession'
 import AiToolApproval from './AiToolApproval.vue'
 import AiAgentSelector from './AiAgentSelector.vue'
 import AiChatHistory from './AiChatHistory.vue'
@@ -1668,12 +1667,9 @@ const onContinue = async () => {
   await session.value?.sendMessage('Continue')
 }
 
-const newMenuPosition = () => {
-  const rect = chatContainer.value?.getBoundingClientRect()
-  return { x: rect?.left ?? 0, y: (rect?.top ?? 0) + 40 }
-}
-const onNewTab = () => newChatMenu(() => { chatService.newTab() }, newMenuPosition())
-const onNewChatMenu = () => newChatMenu(() => { void handleNewChat() }, newMenuPosition())
+// A new chat is the ordinary one at once; working on a node is picked in it, from its agents.
+const onNewTab = () => chatService.newTab()
+const onNewChatMenu = () => void handleNewChat()
 
 // Keep the same actions on a narrow pane, without making the agent picker compete with
 // every icon. The existing sheet-header kit opens Obsidian's menu and restores focus.

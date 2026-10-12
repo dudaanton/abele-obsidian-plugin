@@ -27,6 +27,18 @@ import Dropdown from './obsidian/Dropdown.vue'
 import AgentOverrideNotice from './AgentOverrideNotice.vue'
 import { ChatService } from '@/ai/ChatService'
 import { AgentRegistry } from '@/ai/agents/AgentRegistry'
+import { NodeService } from '@/node/NodeService'
+import { pickNodeSession } from '@/node/openSession'
+
+const NODE = 'node:'
+/** The nodes this vault is connected to; none when node connections did not load. */
+const nodes = () => {
+  try {
+    return NodeService.getInstance().nodes.value
+  } catch {
+    return []
+  }
+}
 
 const chatService = ChatService.getInstance()
 const registry = AgentRegistry.getInstance()
@@ -49,6 +61,10 @@ const options = computed(() => {
     listed.unshift({ value: own.id, display: own.name })
   }
 
+  // A chat with nothing in it yet can still go to a node: its agents are picked there.
+  if (session.value && !session.value.messages.value.length)
+    for (const node of nodes()) listed.push({ value: `${NODE}${node.id}`, display: `On ${node.label}…` })
+
   return listed
 })
 
@@ -70,6 +86,14 @@ const modelOverridden = computed(() => session.value?.isOverridden('modelId') ??
 const onSelect = (agentId: string) => {
   const s = session.value
   if (!s || agentId === s.agentId.value) return
+  if (agentId.startsWith(NODE)) {
+    const node = nodes().find((n) => `${NODE}${n.id}` === agentId)
+    if (node)
+      void pickNodeSession(node).catch(
+        (error: unknown) => new Notice(error instanceof Error ? error.message : 'Node unavailable')
+      )
+    return
+  }
 
   // Overrides were expressed against the previous agent, so switching drops them. Said out
   // loud rather than silently, since it can undo a scope somebody narrowed on purpose.
