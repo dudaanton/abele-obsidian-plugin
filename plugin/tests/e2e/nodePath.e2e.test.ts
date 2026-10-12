@@ -21,6 +21,38 @@ async function capture(name: string) {
   )
 }
 
+async function reopenNodePane(name: string) {
+  await evalLong(
+    `(async()=>{${prelude}for(const leaf of app.workspace.getLeavesOfType('abele-node-sidebar'))leaf.detach();app.commands.executeCommandById('abele:open-node');await until(()=>app.workspace.getLeavesOfType('abele-node-sidebar').length===1);await app.workspace.revealLeaf(app.workspace.getLeavesOfType('abele-node-sidebar')[0]);app.workspace.leftSplit.expand();await until(()=>visible('.abele-node-panel_ready .abele-status-dot_green'));const view=app.workspace.getLeavesOfType('abele-node-sidebar')[0].view;if(!nodes.nodes.value.some(n=>n.id===view.getState().registrationId))throw Error('Reopened pane lost its registered node');if(visible('.abele-node-panel_found,.abele-node-panel_remote'))throw Error('Reopened pane asks to connect again');return 'registered pane reopened'})()`
+  )
+  await capture(name)
+}
+async function checkFileLookup(prefix: string) {
+  await evalLong(
+    `(async()=>{${prelude}visible('.abele-file-tree [aria-label="All files"]').click();await until(()=>visible('.abele-file-tree')?.textContent.includes('Ignored files are not shown.'));if(visible('.abele-file-tree').textContent.includes('hidden.txt'))throw Error('Ignored content was included');return 'all files'})()`
+  )
+  await capture(prefix + '-all-files')
+  await evalLong(
+    `(async()=>{${prelude}const input=visible('.abele-file-tree input');input.value='lookup';input.dispatchEvent(new Event('input',{bubbles:true}));await until(()=>visible('.abele-file-tree')?.textContent.includes('50 of 73 · type more to narrow'));if(visible('.abele-file-tree').querySelectorAll('.tree-item-self').length!==50)throw Error('Lookup cap changed');visible('.abele-file-tree__note').scrollIntoView({block:'center'});return 'bounded lookup'})()`
+  )
+  await capture(prefix + '-lookup-limit')
+  await evalLong(
+    `(async()=>{${prelude}const tree=visible('.abele-file-tree'),input=tree.querySelector('input');input.value='src/sample.ts';input.dispatchEvent(new Event('input',{bubbles:true}));input.scrollIntoView({block:'center'});await until(()=>tree.querySelectorAll('.tree-item-self').length===1&&tree.textContent.includes('sample.ts'));return 'path lookup'})()`
+  )
+  await capture(prefix + '-lookup-path')
+  await evalLong(
+    `(async()=>{${prelude}const input=visible('.abele-file-tree input');input.value='no-such-fixture';input.dispatchEvent(new Event('input',{bubbles:true}));await until(()=>visible('.abele-file-tree')?.textContent.includes('No file matches.'));return 'missing lookup'})()`
+  )
+  await capture(prefix + '-lookup-missing')
+  await evalLong(
+    `(async()=>{${prelude}const input=visible('.abele-file-tree input');input.value='';input.dispatchEvent(new Event('input',{bubbles:true}));visible('.abele-file-tree [aria-label^="Only changed files"]').click();return 'changes restored'})()`
+  )
+}
+async function checkMixedCommit() {
+  await evalLong(
+    `(async()=>{${prelude}await until(()=>visible('.abele-history__commit-head'));const history=visible('.abele-history');if(!history.textContent.includes('sample.bin')||!history.textContent.includes('Binary file · no text diff.'))throw Error('Binary metadata missing');if(!history.textContent.includes('Updated sample repository')||!history.querySelector('.abele-diff'))throw Error('Text diff in mixed commit is unavailable');if(visible('.abele-node-main [role="alert"]'))throw Error('Mixed commit failed');return 'mixed commit readable'})()`
+  )
+}
 async function selectText(selector: string) {
   await evalLong(
     `(async()=>{${prelude}await until(()=>visible(${JSON.stringify(selector)}));const text=visible(${JSON.stringify(selector)});if(getComputedStyle(text).userSelect!=='text')throw Error('File text is not selectable');const range=document.createRange();range.selectNodeContents(text);window.getSelection().removeAllRanges();window.getSelection().addRange(range);document.dispatchEvent(new Event('selectionchange'));await until(()=>visible('.abele-file-view__selection'));const bar=visible('.abele-file-view__selection').getBoundingClientRect();if(bar.left<0||bar.right>innerWidth||bar.top<0||bar.bottom>innerHeight)throw Error('Selection actions are clipped');const header=text.closest('.abele-file-view').querySelector('.abele-file-view__header,.abele-diff__header');if(header&&bar.top<header.getBoundingClientRect().bottom)throw Error('Selection actions cover the file header');if(document.body.classList.contains('is-phone')&&bar.top<range.getBoundingClientRect().bottom)throw Error('Phone actions overlap the native selection menu');return 'selected'})()`
@@ -60,6 +92,18 @@ it('pairs and opens target-bound node files history editor and fake chats in the
   mkdirSync(resolve(repo, 'src'))
   writeFileSync(resolve(repo, 'src/sample.ts'), 'export const value = 1\n')
   writeFileSync(resolve(repo, 'sample.md'), '# Sample repository\n')
+  writeFileSync(resolve(repo, 'sample.bin'), Buffer.from([0, 1, 2, 3]))
+  writeFileSync(
+    resolve(repo, 'sample-image.png'),
+    Buffer.from(
+      'iVBORw0KGgoAAAANSUhEUgAAAAEAAAABCAQAAAC1HAwCAAAAC0lEQVR42mNk+A8AAQUBAScY42YAAAAASUVORK5CYII=',
+      'base64'
+    )
+  )
+  mkdirSync(resolve(repo, 'lookup'))
+  for (let i = 0; i < 73; i++)
+    writeFileSync(resolve(repo, `lookup/lookup-${i}.txt`), 'Lookup fixture\n')
+  writeFileSync(resolve(repo, '.gitignore'), 'ignored/\n')
   await git('add', '.')
   await git(
     '-c',
@@ -72,6 +116,22 @@ it('pairs and opens target-bound node files history editor and fake chats in the
     '-m',
     'Add sample files'
   )
+  writeFileSync(resolve(repo, 'sample.md'), '# Updated sample repository\n')
+  writeFileSync(resolve(repo, 'sample.bin'), Buffer.from([0, 4, 5, 6]))
+  await git('add', 'sample.md', 'sample.bin')
+  await git(
+    '-c',
+    'user.name=Sample',
+    '-c',
+    'user.email=sample@example.invalid',
+    '-c',
+    'commit.gpgsign=false',
+    'commit',
+    '-m',
+    'Update document and binary'
+  )
+  mkdirSync(resolve(repo, 'ignored'))
+  writeFileSync(resolve(repo, 'ignored/hidden.txt'), 'Ignored fixture\n')
   writeFileSync(resolve(repo, 'src/sample.ts'), 'export const value = 2\n')
   await git('add', 'src/sample.ts')
   writeFileSync(resolve(repo, 'src/sample.ts'), 'export const value = 3\n')
@@ -183,6 +243,13 @@ it('pairs and opens target-bound node files history editor and fake chats in the
     await evalLong(
       `(async()=>{${prelude}if(nodes.nodes.value.length)throw Error('Use a clean node registry fixture');app.saveLocalStorage('abele-node-local-state-dir',${JSON.stringify(state)});app.saveLocalStorage('abele-node-device-name','Sample device');require('@electron/remote').getCurrentWindow().setContentSize(1200,850);app.commands.executeCommandById('abele:open-node');try{await until(()=>visible('.abele-node-panel_found'))}catch(error){const leaf=app.workspace.getLeavesOfType('abele-node-sidebar')[0];const view=leaf?.view;let diagnostic='no view';try{view.discovery.inspect(view.discovery.load(),${JSON.stringify(state)});diagnostic='inspection succeeded'}catch(failure){diagnostic=failure.message}throw Error(JSON.stringify({phase:view?.localPhase?.value,desktop:view?.discovery?.desktop,diagnostic,body:visible('.abele-node-panel')?.textContent}))}return 'opened node'})()`
     )
+    await evalLong(
+      `(async()=>{${prelude}const view=app.workspace.getLeavesOfType('abele-node-sidebar')[0].view;view.localPhase.value='not-found';await until(()=>visible('.abele-node-panel_not-found code'));if(!visible('.abele-node-panel_not-found code').textContent.includes('install.sh | sh'))throw Error('Unsupported installer command');return 'installer'})()`
+    )
+    await capture('desktop-installer')
+    await evalLong(
+      `(async()=>{${prelude}app.workspace.getLeavesOfType('abele-node-sidebar')[0].view.localPhase.value='found';await until(()=>visible('.abele-node-panel_found'));return 'local discovery restored'})()`
+    )
     await capture('desktop-found')
     localRegistration = await evalLong(
       `(async()=>{${prelude}button(visible('.abele-node-panel'),'Connect').click();await until(()=>nodes.nodes.value.length===1&&visible('.abele-node-panel_ready'));return nodes.nodes.value[0].id})()`
@@ -247,7 +314,12 @@ it('pairs and opens target-bound node files history editor and fake chats in the
       'content',
     ])
     expect(measurement.shellMs).toBeLessThan(500)
+    await reopenNodePane('desktop-reopened-node')
+    await evalLong(
+      `(async()=>{const view=app.workspace.getLeavesOfType('abele-node-sidebar')[0].view;await view.setState({registrationId:${JSON.stringify(registration)}},{});return 'selected paired fixture'})()`
+    )
     await capture('desktop-changes')
+    await checkFileLookup('desktop')
     await evalLong(
       `(async()=>{${prelude}const chats=api.ChatService.getInstance();const id=chats.newTab();const chat=chats.getAllSessions().find(s=>s.id===id);if(!chat)throw Error('Chat was not created');chat.chatTitle.value='Sample Obsidian chat '+id;window.__nodePathScopeChat=id;const row=[...visible('.abele-folder-tree').querySelectorAll('.abele-folder-tree__copy > .tree-item-self')].find(r=>r.textContent.includes('trunk'));row.dispatchEvent(new MouseEvent('contextmenu',{bubbles:true,cancelable:true,clientX:row.getBoundingClientRect().left,clientY:row.getBoundingClientRect().bottom}));await until(()=>[...document.querySelectorAll('.menu-item')].some(i=>i.textContent.includes('Give the Obsidian chat access')));[...document.querySelectorAll('.menu-item')].find(i=>i.textContent.includes('Give the Obsidian chat access')).click();await until(()=>[...document.querySelectorAll('.suggestion-item')].some(i=>i.textContent.includes(id)));[...document.querySelectorAll('.suggestion-item')].find(i=>i.textContent.includes(id)).click();await until(()=>[...document.querySelectorAll('.modal button')].some(b=>b.textContent.trim()==='Give access'));[...document.querySelectorAll('.modal button')].find(b=>b.textContent.trim()==='Give access').click();await until(()=>chat.overrides.value.nodeScope?.length===1&&!visible('.modal'));await chats.revealSidebar({focus:false});await until(()=>visible('[aria-label="Chat node access"]'));return 'scope granted by row menu'})()`
     )
@@ -297,7 +369,13 @@ it('pairs and opens target-bound node files history editor and fake chats in the
     await evalLong(
       `(async()=>{${prelude}visible('.abele-history__row').click();try{await until(()=>visible('.abele-history__commit-head'))}catch(error){throw Error(JSON.stringify(app.workspace.getLeavesOfType('abele-node-history').map(l=>({error:l.view.history?.error.value,busy:l.view.history?.busy.value,open:l.view.history?.openCommit.value}))))}return 'commit'})()`
     )
+    await checkMixedCommit()
     await capture('desktop-commit')
+    await open('file', { path: 'sample-image.png' })
+    await evalLong(
+      `(async()=>{${prelude}await until(()=>visible('.abele-file-view img.abele-image')?.naturalWidth===1);return 'image rendered'})()`
+    )
+    await capture('desktop-image')
     await evalLong(
       `(async()=>{${prelude}const leaf=app.workspace.getLeavesOfType('abele-node-file').find(l=>l.view.getState().path==='src/sample.ts'&&!l.view.getState().debug);await app.workspace.revealLeaf(leaf);const action=leaf.containerEl.querySelector('[aria-label="Open in code editor"]');if(!action)throw Error('Code editor action missing');action.click();await until(()=>visible('.abele-node-main .cm-content')?.contentEditable==='true');return 'editor action'})()`
     )
@@ -349,7 +427,12 @@ it('pairs and opens target-bound node files history editor and fake chats in the
       `(async()=>{${prelude}require('@electron/remote').getCurrentWindow().setContentSize(390,844);api.pairedLoopbackTransport(nodes,'ws://127.0.0.1:${port}/channel');await nodes.connection(${JSON.stringify(registration)}).refreshAuthorization();nodes.connection(${JSON.stringify(registration)}).start();await nodes.connection(${JSON.stringify(registration)}).connect();const model=api.NodePathService.getInstance().model(${JSON.stringify(registration)});await api.NodePathService.getInstance().ready(${JSON.stringify(registration)});await model.refresh();await model.select(${JSON.stringify(ids.root)});const sidebar=app.workspace.getLeavesOfType('abele-node-sidebar')[0]??app.workspace.getLeftLeaf(false);if(!sidebar)throw Error('No native left drawer leaf');await sidebar.setViewState({type:'abele-node-sidebar',active:true,state:{registrationId:${JSON.stringify(registration)}}});await app.workspace.revealLeaf(sidebar);app.workspace.leftSplit.expand();await until(()=>visible('.abele-node-panel'));return 'phone drawer'})()`,
       60000
     )
+    await reopenNodePane('phone-reopened-node')
+    await evalLong(
+      `(async()=>{${prelude}const sidebar=app.workspace.getLeavesOfType('abele-node-sidebar')[0];await sidebar.view.setState({registrationId:${JSON.stringify(registration)}},{});await app.workspace.revealLeaf(sidebar);app.workspace.leftSplit.expand();await until(()=>visible('.abele-node-panel_ready'));return 'paired drawer'})()`
+    )
     await capture('phone-changes')
+    await checkFileLookup('phone')
     await evalLong(
       `(async()=>{${prelude}const model=api.NodePathService.getInstance().model(${JSON.stringify(registration)});model.selectedChat.value=${JSON.stringify(sessionId)};await model.select(${JSON.stringify(ids.external)});await until(()=>visible('.abele-chat-row'));visible('.abele-chat-row').scrollIntoView({block:'nearest'});return 'nested phone rows'})()`
     )
@@ -420,7 +503,13 @@ it('pairs and opens target-bound node files history editor and fake chats in the
     await evalLong(
       `(async()=>{${prelude}visible('.abele-history__row').click();await until(()=>visible('.abele-history__commit-head'));return 'phone commit'})()`
     )
+    await checkMixedCommit()
     await capture('phone-commit')
+    await open('file', { path: 'sample-image.png' })
+    await evalLong(
+      `(async()=>{${prelude}app.workspace.leftSplit.collapse();await until(()=>visible('.abele-file-view img.abele-image')?.naturalWidth===1);return 'phone image rendered'})()`
+    )
+    await capture('phone-image')
     await open(
       'chat',
       { sessionId, title: 'Sample fake chat' },
