@@ -8,6 +8,8 @@ import { describe, it, expect, beforeEach, afterEach, vi } from 'vitest'
 import { flushPromises, mount, type VueWrapper } from '@vue/test-utils'
 import AiChatHistory from '@/components/AiChatHistory.vue'
 import Card from '@/components/obsidian/Card.vue'
+import { Menu, type MenuItem } from 'obsidian'
+import { HISTORY_ORDERS } from '@/ai/chatHistoryOrder'
 import { ChatService } from '@/ai/ChatService'
 import { ChatStorage } from '@/ai/ChatStorage'
 import { AgentRegistry } from '@/ai/agents/AgentRegistry'
@@ -242,7 +244,7 @@ describe('searching the messages of every chat', () => {
   beforeEach(() => app.saveLocalStorage('abele-chat-history-content', true))
 
   const type = async (view: VueWrapper, words: string) => {
-    const field = view.find('.abele-chat-history__search input')
+    const field = view.find('input.abele-chat-history__search')
     await field.setValue(words)
     // The search waits for typing to pause, then reads the chats.
     await advance(260)
@@ -304,16 +306,16 @@ describe('searching the messages of every chat', () => {
 
 describe('optional content search', () => {
   const type = async (view: VueWrapper, words: string) => {
-    await view.find('.abele-chat-history__search input').setValue(words)
+    await view.find('input.abele-chat-history__search').setValue(words)
     await advance(260)
     await flushPromises()
   }
-  const toggle = (view: VueWrapper) => view.find('[role="switch"]')
+  const toggle = (view: VueWrapper) => view.get('button.abele-chat-history__content')
 
   it('defaults to titles and descriptions without preparing the message index', async () => {
     const view = await open()
     const prepare = vi.spyOn(ChatSearchIndex.getInstance(), 'prepare')
-    expect(toggle(view).attributes('aria-checked')).toBe('false')
+    expect(toggle(view).attributes('aria-pressed')).toBe('false')
     await type(view, 'lightest')
     expect(view.findAllComponents(Card)).toHaveLength(0)
     expect(prepare).not.toHaveBeenCalled()
@@ -347,32 +349,37 @@ describe('optional content search', () => {
     view.unmount()
     wrapper = null
     const reopened = await open()
-    expect(toggle(reopened).attributes('aria-checked')).toBe('true')
+    expect(toggle(reopened).attributes('aria-pressed')).toBe('true')
     await type(reopened, 'lightest')
-    await toggle(reopened).trigger('keydown', { key: ' ' })
+    await toggle(reopened).trigger('click')
     expect(reopened.findAllComponents(Card)).toHaveLength(0)
     expect(reopened.find('.abele-chat-history__snippet').exists()).toBe(false)
     expect(app.loadLocalStorage('abele-chat-history-content')).toBe(false)
     reopened.unmount()
     wrapper = null
-    expect(toggle(await open()).attributes('aria-checked')).toBe('false')
+    expect(toggle(await open()).attributes('aria-pressed')).toBe('false')
   })
 
   it.each([' ', 'Enter'])(
-    'changes Content once with %j, retains its label, and persists the search choice',
+    'changes the message search once with %j, says so, and persists the choice',
     async (key) => {
       const view = await open()
       await type(view, 'lightest')
       const save = vi.spyOn(app, 'saveLocalStorage')
       const control = toggle(view)
-      expect(control.attributes('aria-labelledby')).toBe('abele-chat-history-content-label')
-      expect(view.get('#abele-chat-history-content-label').text()).toBe('Content')
+      expect(control.attributes('aria-label')).toBe('Search in messages too')
       const event = new KeyboardEvent('keydown', { key, bubbles: true, cancelable: true })
       control.element.dispatchEvent(event)
+      // The semantic button leaves activation to the browser. Happy DOM does not perform
+      // Enter/Space's default click, so deliver that native activation explicitly here.
+      expect(control.element.tagName).toBe('BUTTON')
+      expect(control.attributes('type')).toBe('button')
+      expect(event.defaultPrevented).toBe(false)
+      expect(save).not.toHaveBeenCalled()
+      await control.trigger('click')
       await advance(260)
       await flushPromises()
-      expect(event.defaultPrevented).toBe(true)
-      expect(control.attributes('aria-checked')).toBe('true')
+      expect(control.attributes('aria-pressed')).toBe('true')
       expect(save.mock.calls.filter(([name]) => name === 'abele-chat-history-content')).toEqual([
         ['abele-chat-history-content', true],
       ])
@@ -380,7 +387,7 @@ describe('optional content search', () => {
       expect(view.find('.abele-chat-history__snippet').exists()).toBe(true)
       save.mockClear()
       await control.trigger('click')
-      expect(control.attributes('aria-checked')).toBe('false')
+      expect(control.attributes('aria-pressed')).toBe('false')
       expect(save.mock.calls.filter(([name]) => name === 'abele-chat-history-content')).toEqual([
         ['abele-chat-history-content', false],
       ])
@@ -462,8 +469,14 @@ describe('the order of the history', () => {
     view.findAllComponents(Card).map((c) => c.props('title') as string)
   const days = (view: VueWrapper) =>
     view.findAll('.abele-chat-history .abele-date-divider').map((d) => d.text())
+  /** Picks an order from the menu the sort glyph opens, as Obsidian would show it. */
   const choose = async (view: VueWrapper, order: string) => {
-    await view.find('.abele-chat-history__order select').setValue(order)
+    const spy = vi.spyOn(Menu.prototype, 'showAtMouseEvent')
+    await view.find('.abele-chat-history__order').trigger('click')
+    const menu = spy.mock.contexts[0] as unknown as { items: MenuItem[] }
+    spy.mockRestore()
+    const display = HISTORY_ORDERS.find((o) => o.value === order)!.display
+    menu.items.find((i) => i.title === display)!.handler?.()
     await flushPromises()
   }
 
@@ -498,7 +511,7 @@ describe('the order of the history', () => {
   it('keeps the same order for what a search finds', async () => {
     app.saveLocalStorage('abele-chat-history-content', true)
     const view = await open()
-    await view.find('.abele-chat-history__search input').setValue('plan')
+    await view.find('input.abele-chat-history__search').setValue('plan')
     await advance(260)
     await flushPromises()
     expect(titles(view)).toEqual(['Garden', 'Pond', 'Trip'])

@@ -557,14 +557,14 @@ the older messages not shown yet, the agent's reasoning and what its tools retur
 whatever they are folded away in. **Esc** closes it.
 
 The chat history lists the chats newest first, by when each was last written in, under a date
-for each day; the list beside its search orders them by when each was started instead, and the
+for each day; the sort glyph's menu offers **Last message** and **Date created**, and the
 choice stays on that device. Renaming a chat, a summary written later, tool records and system
 dividers do not move it. If no sent message has a date, its creation date stands in, never the
 file's modification time.
 
 To look through every chat, type into the search of the chat history (the clock over the chat),
 or run **Search all chats** from the command palette. By default, it searches the title and the
-description under it. Turn on **Content** beside the field to also find what you and the agent
+description under it. Press the **Search in messages too** glyph beside the field to find what you and the agent
 said in the chats. This switch starts off and remembers your choice on this device only; it
 does not affect finding words inside a single chat.
 

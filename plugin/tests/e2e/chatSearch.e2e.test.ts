@@ -218,8 +218,8 @@ const script = (phone: boolean) => `(async () => {
     app.commands.executeCommandById('abele:search-all-chats')
     const history = await until(() => document.querySelector('.abele-chat-history__search input'), 4000)
     if (!history) throw new Error('the history did not open on its search')
-    const contentSwitch = document.querySelector('.abele-chat-history [role="switch"]')
-    if (contentSwitch?.getAttribute('aria-checked') !== 'true') contentSwitch?.click()
+    const contentSwitch = document.querySelector('button.abele-chat-history__content')
+    if (contentSwitch?.getAttribute('aria-pressed') !== 'true') contentSwitch?.click()
     history.value = WORD
     history.dispatchEvent(new Event('input', { bubbles: true }))
     await until(() => document.querySelectorAll('.abele-chat-history .abele-card').length && document.querySelector('.abele-chat-history__snippet'), 6000)

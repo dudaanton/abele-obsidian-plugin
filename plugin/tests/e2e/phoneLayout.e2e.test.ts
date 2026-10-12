@@ -710,12 +710,13 @@ const probeScript = `(async () => {
       await wait(300)
       const modal = document.querySelector('.modal')
       await screen('history', modal, modal && modal.querySelector('.abele-modal__body'))
-      const scope = modal.querySelector('.abele-chat-history [role="switch"]')
+      const scope = modal.querySelector('button.abele-chat-history__content')
       const searchField = modal.querySelector('.abele-chat-history__search input')
       const sr = scope?.getBoundingClientRect()
       const fr = searchField?.getBoundingClientRect()
       report['history'].contentScope = {
-        label: scope?.getAttribute('aria-labelledby') && document.getElementById(scope.getAttribute('aria-labelledby'))?.textContent.trim(),
+        label: scope?.getAttribute('aria-label'),
+        searchesMessages: app.loadLocalStorage('abele-chat-history-content') === true,
         visible: !!sr && sr.width > 0 && sr.height > 0,
         besideSearch: !!sr && !!fr && sr.left >= fr.right && sr.top < fr.bottom && sr.bottom > fr.top,
         searchWidth: fr?.width ?? 0,
@@ -748,22 +749,25 @@ const probeScript = `(async () => {
       await screen('nested comment opened', deep, deep)
       await comments.hideFromSidebar('pnest3')
     }
-    // Attaching a chat to a note: Artifacts and the two pickers — a note for a
+    // Attaching a chat to a note: Files from this chat and the two pickers — a note for a
     // chat, and a chat for a note. Keep the attachment choices reachable from the new view.
     const probeChat = app.vault.getAbstractFileByPath(SEEDED.find((p) => p.endsWith('.abchat')))
     const chats = window.__abeleTest.ChatService.getInstance()
     await window.__abeleTest.ChatStorage.getInstance().refreshHistory()
     await chats.openChatFile(probeChat)
-    const link = () => document.querySelector('.abele-ai-chat .abele-ai-chat__artifacts')
-    await until(() => link() && !link().classList.contains('abele-obsidian-icon_disabled'), 5000)
-    if (link()) {
-      link().click()
+    // "Files from this chat" is an item of the header's overflow menu.
+    const more = () => document.querySelector('.abele-ai-chat .abele-ai-chat__overflow [aria-haspopup="menu"]')
+    await until(more, 5000)
+    if (more()) more().click()
+    const link = more() && await until(() => [...document.querySelectorAll('.menu .menu-item')].find((el) => el.textContent.trim() === 'Files from this chat'), 3000)
+    if (link) {
+      link.click()
       await until(() => document.querySelector('.abele-chat-artifacts'), 3000)
       await wait(300)
       const modal = document.querySelector('.abele-chat-artifacts').closest('.modal')
       await screen('chat artifacts', modal, modal.querySelector('.abele-modal__body'))
       const pick = [...modal.querySelectorAll('button')].find(
-        (el) => el.textContent.trim() === 'Attach to a note…' && !el.disabled
+        (el) => el.textContent.trim() === 'Attach a note…' && !el.disabled
       )
       if (pick) pick.click()
       else document.body.dispatchEvent(new KeyboardEvent('keydown', { key: 'Escape', bubbles: true }))
@@ -2422,7 +2426,7 @@ describe.skipIf(!available)('the chat dialogs on a phone', () => {
         'Outline of this chat',
         ...(label === 'nested comment' ? ['Turn this comment into an ordinary chat'] : []),
         'Scope, skills, prompts, permissions and settings',
-        ...(label === 'chat' ? ['Artifacts: notes, images and scripts'] : []),
+        ...(label === 'chat' ? ['Files from this chat'] : []),
         'Agents',
       ])
       expect(header?.unreachable).toEqual([])
@@ -2524,13 +2528,16 @@ describe.skipIf(!available)('the chat dialogs on a phone', () => {
       report['history'] as Screen & {
         contentScope?: {
           label: string
+          searchesMessages: boolean
           visible: boolean
           besideSearch: boolean
           searchWidth: number
         }
       }
     )?.contentScope
-    expect(scope?.label).toBe('Content')
+    expect(scope?.label).toBe(
+      scope?.searchesMessages ? 'Searching messages too' : 'Search in messages too'
+    )
     expect(scope?.visible).toBe(true)
     expect(scope?.besideSearch).toBe(true)
     expect(scope?.searchWidth).toBeGreaterThanOrEqual(120)
@@ -2544,11 +2551,10 @@ describe.skipIf(!available)('the chat dialogs on a phone', () => {
     expect((report['mcp server'] as Screen & { onScreen?: string[] })?.onScreen).toContain('Save')
   })
 
-  it('rewind: its three buttons stand on screen without scrolling', () => {
+  it('rewind: its buttons stand on screen without scrolling', () => {
     expect((report['rewind'] as Screen & { onScreen?: string[] })?.onScreen).toEqual([
-      'Conversation only',
-      'Files only',
-      'Files and conversation',
+      'Cancel',
+      'Go back in chat',
     ])
   })
 

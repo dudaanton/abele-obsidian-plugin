@@ -1,50 +1,60 @@
 <template>
-  <ObsidianModal title="Chat History" size="tall" @close="emit('close')">
-    <div class="abele-chat-history">
-      <div class="abele-chat-history__toolbar">
-        <div class="abele-chat-history__search-row">
-          <Search
-            ref="searchRef"
-            v-model="query"
-            class="abele-chat-history__search"
-            label="Search chats"
-            placeholder="Search chats..."
-          />
-          <div class="abele-chat-history__content">
-            <span id="abele-chat-history-content-label">Content</span>
-            <Checkbox
-              :is-enabled="contentSearch"
-              role="switch"
-              tabindex="0"
-              aria-labelledby="abele-chat-history-content-label"
-              :aria-checked="contentSearch"
-              @toggle="setContentSearch(!contentSearch)"
-            />
-          </div>
-        </div>
-        <!-- Which date the list goes by: the last message, or when the chat was started. -->
-        <Dropdown
+  <ObsidianModal title="Chat history" size="tall" @close="emit('close')">
+    <!-- Every chat had, by day, newest first. Obsidian's own search field on top, and beside it
+         as glyphs, the way its search pane has them: searching the messages too, and the order. -->
+    <div class="abele-chat-history" @keydown.down="intoList">
+      <div class="abele-chat-history__head search-row">
+        <Search
+          ref="searchRef"
+          v-model="query"
+          class="abele-chat-history__search abele-chat-history__field"
+          :placeholder="contentSearch ? 'Search titles and messages…' : 'Search titles…'"
+          label="Search chats"
+          input-class="abele-chat-history__search"
+        />
+        <Icon
+          icon="text-search"
+          class="abele-chat-history__content"
+          :active="contentSearch"
+          :label="contentSearch ? 'Searching messages too' : 'Search in messages too'"
+          @click="setContentSearch(!contentSearch)"
+        />
+        <Icon
+          icon="arrow-down-wide-narrow"
           class="abele-chat-history__order"
-          aria-label="Order the chats by"
-          :options="HISTORY_ORDERS"
-          :model-value="order"
-          @update:model-value="setOrder"
+          aria-haspopup="menu"
+          :label="`Sorted by ${orderLabel.toLowerCase()}`"
+          @click="orderMenu"
+        />
+      </div>
+
+      <!-- The first search in the messages reads every chat once: a quiet line while it does. -->
+      <div v-if="reading" class="abele-chat-history__status" aria-live="polite">
+        <Icon icon="loader" size="xs" :interactive="false" class="abele-chat-history__spinner" />
+        <span>Reading chats</span>
+        <MetaLine
+          class="abele-chat-history__progress"
+          :aria-label="`${reading.done} of ${reading.total}`"
+          :facts="[{ key: '0', value: `${reading.done}/${reading.total}` }]"
         />
       </div>
 
       <EmptyState
-        v-if="reading"
-        class="abele-chat-history__status"
-        variant="loading"
-        :text="`Searching the messages… ${reading.done} of ${reading.total} chats`"
-      />
-
-      <EmptyState
-        v-if="filtered.length === 0 && !reading"
+        v-if="filtered.length === 0 && !reading && allChats.length === 0"
         class="abele-chat-history__empty"
-        :variant="allChats.length === 0 ? 'empty' : 'no-matches'"
-        :text="allChats.length === 0 ? 'No previous chats' : 'No matches'"
+        icon="history"
+        text="No chats yet"
       />
+      <EmptyState
+        v-else-if="filtered.length === 0 && !reading"
+        class="abele-chat-history__empty"
+        variant="no-matches"
+        text="No matches"
+      >
+        <template v-if="!contentSearch" #action>
+          <Button text="Search in messages" @click="setContentSearch(true)" />
+        </template>
+      </EmptyState>
 
       <div ref="listRef" class="abele-chat-history__list">
         <template v-for="(chat, i) in visible" :key="chat.path">
@@ -52,6 +62,7 @@
           <DateDivider v-if="dayOf(chat) !== dayOf(visible[i - 1])" :date="dayOf(chat)" />
           <Card
             :ref="(card) => watchCard(card, chat)"
+            class="abele-chat-history__card"
             :data-path="chat.path"
             :title="chat.title || chat.path"
             :description="hits.get(chat.path) ? undefined : describe(chat)"
@@ -59,6 +70,16 @@
             clickable
             @click="select(chat.path)"
           >
+            <template v-if="tabState(chat.path)" #badges>
+              <StatusDot
+                :tone="tabState(chat.path) === 'waiting' ? 'orange' : 'accent'"
+                :label="
+                  tabState(chat.path) === 'waiting'
+                    ? 'Open in a tab, waiting for you'
+                    : 'Open in a tab'
+                "
+              />
+            </template>
             <template v-if="hits.get(chat.path)" #subtitle>
               <span class="abele-chat-history__snippet"
                 >{{ hits.get(chat.path)!.snippet.before
@@ -69,7 +90,12 @@
               >
             </template>
             <template #actions>
-              <Icon icon="trash" tooltip="Delete chat" @click="remove(chat.path)" />
+              <Icon
+                class="abele-chat-history__delete"
+                icon="trash"
+                tooltip="Delete chat"
+                @click="remove(chat.path)"
+              />
             </template>
           </Card>
         </template>
@@ -90,14 +116,16 @@ import {
   watch,
   type ComponentPublicInstance,
 } from 'vue'
-import { TFile } from 'obsidian'
+import { Menu, TFile } from 'obsidian'
 import ObsidianModal from './obsidian/Modal.vue'
 import Card from './obsidian/Card.vue'
 import Icon from './obsidian/Icon.vue'
-import Dropdown from './obsidian/Dropdown.vue'
-import Checkbox from './obsidian/Checkbox.vue'
+import Button from './obsidian/Button.vue'
 import Search from './obsidian/Search.vue'
+import { formatTimestamp } from '@/helpers/displayFormat'
 import EmptyState from './obsidian/EmptyState.vue'
+import MetaLine from './obsidian/MetaLine.vue'
+import StatusDot from './obsidian/StatusDot.vue'
 import DateDivider from './obsidian/DateDivider.vue'
 import {
   HISTORY_ORDERS,
@@ -158,6 +186,39 @@ const setOrder = (value: string) => {
   if (!isHistoryOrder(value)) return
   order.value = value
   GlobalStore.getInstance().app.saveLocalStorage(HISTORY_ORDER_KEY, value)
+}
+const orderLabel = computed(
+  () => HISTORY_ORDERS.find((o) => o.value === order.value)?.display ?? ''
+)
+/** The orders as Obsidian's menu, the one in force checked. */
+const orderMenu = (event: MouseEvent) => {
+  const menu = new Menu()
+  for (const option of HISTORY_ORDERS)
+    menu.addItem((item) =>
+      item
+        .setTitle(option.display)
+        .setChecked(option.value === order.value)
+        .onClick(() => setOrder(option.value))
+    )
+  menu.showAtMouseEvent(event)
+}
+
+/** Down from the field goes to the first chat, as in Obsidian's own lists. */
+const intoList = (event: KeyboardEvent) => {
+  if (event.target !== searchRef.value?.inputRef) return
+  const first = listRef.value?.querySelector<HTMLElement>('.abele-card')
+  if (!first) return
+  event.preventDefault()
+  first.focus()
+}
+
+/** A chat already open in a tab, and whether it waits there for an answer from you. */
+const tabState = (path: string): 'open' | 'waiting' | null => {
+  const session = ChatService.getInstance().getSessionByFile(path)
+  if (!session) return null
+  return session.pendingToolCalls.value.length || session.pendingQuestions.value
+    ? 'waiting'
+    : 'open'
 }
 
 /** Every chat in the order chosen, newest first; what the search narrows keeps that order. */
@@ -276,7 +337,10 @@ const metaOf = (chat: AiChatHistoryEntry): string[] => {
   const hit = hits.value.get(chat.path)
   if (!hit) return [formatDate(chat)]
   const matches = hit.count === 1 ? '1 match' : `${hit.count} matches`
-  return [dayjs(hit.timestamp).format('D MMM YYYY, HH:mm'), matches]
+  // The message found may be from another day than the one the chat stands under.
+  const sameDay = dayjs(hit.timestamp).format(DATE_FORMAT) === dayOf(chat)
+  const at = formatTimestamp(hit.timestamp, { mode: 'absolute' })
+  return [matches, sameDay && at.datetime ? at.exact.split(', ')[1] : at.exact]
 }
 
 const { visible, hasMore, sentinel } = usePagedList(() => filtered.value, PAGE_SIZE)
@@ -325,11 +389,11 @@ onBeforeUnmount(() => {
   backfill.dispose()
 })
 
-/** Only the date, small, under the summary: the one the list goes by. */
+/** Only the time, small: the day already stands over the card. */
 const formatDate = (chat: AiChatHistoryEntry) => {
   const at = dateOf(chat)
-  if (at) return dayjs(at).format('D MMM YYYY, HH:mm')
-  return chat.created || ''
+  const time = formatTimestamp(at ?? chat.created, { mode: 'absolute' })
+  return time.datetime ? time.exact.split(', ')[1] : time.label
 }
 
 const select = (path: string) => {
@@ -369,8 +433,8 @@ const remove = async (path: string) => {
 <style lang="scss">
 /**
  * A tall dialog, a column: the search stays put and the cards scroll under it. Cards with a
- * summary under the title are three times the height of the old one-line rows, so a list capped
- * at a desktop box would show three of them; on a phone it is the whole sheet.
+ * summary under the title are three times the height of one-line rows, so a list capped at a
+ * desktop box would show three of them; on a phone it is the whole sheet.
  */
 .abele-chat-history {
   display: flex;
@@ -380,48 +444,51 @@ const remove = async (path: string) => {
   min-width: min(400px, 90vw);
 }
 
-.abele-chat-history__toolbar {
+/** Obsidian's search row: the field takes the room, the glyphs keep theirs beside it. */
+.abele-chat-history__head {
   display: flex;
-  gap: var(--size-4-2);
   align-items: center;
-  flex-wrap: wrap;
-  margin-bottom: var(--size-4-2);
+  gap: var(--size-4-1);
+  margin: var(--size-4-3) 0 var(--size-4-4);
+  padding-inline: 0;
 }
 
-/** Keep the scope beside the field; the date selector wraps below them on a narrow sheet. */
-.abele-chat-history__search-row {
-  display: flex;
-  align-items: center;
-  gap: var(--size-4-2);
-  flex: 1 1 18em;
+.abele-chat-history__field {
+  flex: 1 1 auto;
   min-width: 0;
-}
-
-.abele-chat-history__content {
-  display: flex;
-  align-items: center;
-  gap: var(--size-4-2);
-  flex: 0 0 auto;
-  white-space: nowrap;
-}
-
-/** The order's own width, whole: the search field is the one that gives way on a phone. */
-.abele-chat-history__order {
-  flex: 0 0 auto;
-
-  select {
-    width: auto;
-    max-width: none;
-  }
 }
 
 .abele-chat-history__search {
-  flex: 1 1 auto;
-  min-width: 0;
-  input {
-    width: 100%;
-    min-width: 0;
+  width: 100%;
+}
+
+.abele-chat-history__status {
+  display: flex;
+  align-items: center;
+  gap: var(--size-4-2);
+  padding: var(--size-4-1) var(--size-4-2);
+  color: var(--text-muted);
+  font-size: var(--font-ui-small);
+}
+
+.abele-chat-history__spinner svg {
+  animation: abele-chat-history-spin 1.2s linear infinite;
+}
+@keyframes abele-chat-history-spin {
+  to {
+    transform: rotate(360deg);
   }
+}
+@media (prefers-reduced-motion: reduce) {
+  .abele-chat-history__spinner svg {
+    animation: none;
+  }
+}
+
+.abele-chat-history__progress {
+  color: var(--text-faint);
+  font-size: var(--font-ui-smaller);
+  font-variant-numeric: tabular-nums;
 }
 
 /**
@@ -437,6 +504,13 @@ const remove = async (path: string) => {
   overflow-y: auto;
   padding: var(--size-2-2);
   margin: calc(-1 * var(--size-2-2));
+}
+
+/** Deleting is there under the pointer; a phone, which cannot point, keeps it in sight. */
+body:not(.is-mobile)
+  .abele-chat-history__card:not(:hover):not(:focus-within)
+  .abele-chat-history__delete {
+  opacity: 0;
 }
 
 .abele-chat-history__sentinel {
