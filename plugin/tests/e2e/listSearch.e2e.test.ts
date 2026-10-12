@@ -301,10 +301,8 @@ const probeScript = (tag: string): string => `(async () => {
     report['transactions'].query = ownTitle
 
     await app.commands.executeCommandById('abele:show-finance-sidebar')
-    const sidebarList = () => {
-      const header = document.querySelector('.abele-finance-sidebar__section-header')
-      return header && header.parentElement
-    }
+    const sidebarList = () => [...document.querySelectorAll('.abele-finance-sidebar .abele-section')]
+      .find(section => section.querySelector(':scope > .abele-section__header > .abele-section__heading')?.textContent.trim() === 'Recent Transactions') ?? null
     if (!(await until(() => sidebarList() && sidebarList().querySelector('.abele-transaction-view'), 30000)))
       throw new Error('the finance sidebar never listed a transaction')
     await wait(1500)

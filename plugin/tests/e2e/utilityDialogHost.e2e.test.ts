@@ -36,22 +36,24 @@ describe.skipIf(!available)('on-demand utility dialogs', () => {
           title: string
         }>(`(async () => {
           ${WAIT_PRELUDE}
+          const doc = typeof activeDocument === 'undefined' ? document : activeDocument
           const command = ${JSON.stringify('abele:' + command)}
           if (!app.commands.executeCommandById(command)) throw Error('Command unavailable: ' + command)
-          const root = await until(() => document.querySelector(${JSON.stringify(selector)}))
+          const root = await until(() => doc.querySelector(${JSON.stringify(selector)}))
           if (!root) throw Error('Command dialog did not mount')
           app.commands.executeCommandById(command)
           await new Promise((resolve) => requestAnimationFrame(() => requestAnimationFrame(resolve)))
           const modal = root.closest('.abele-modal')
           if (!modal) throw Error('No shared shell')
           if (!await until(() => modal.closest('.modal-container').getAnimations({ subtree: true }).every((animation) => animation.playState !== 'running'))) throw Error('Dialog did not settle')
-          const shells = document.querySelectorAll(${JSON.stringify(selector)}).length
-          const hosts = document.querySelectorAll('[data-abele-dialog-host]').length
+          const shells = doc.querySelectorAll(${JSON.stringify(selector)}).length
+          const hosts = doc.querySelectorAll('[data-abele-dialog-host]').length
           const title = modal.querySelector('.modal-title').textContent
-          const image = await require('@electron/remote').getCurrentWebContents().capturePage()
-          require('fs').writeFileSync(${JSON.stringify(`${SHOTS}/${phone ? 'phone' : 'desktop'}-${command}.png`)}, image.resize({ width: innerWidth, height: innerHeight }).toPNG())
+          const owner = doc.defaultView
+          const image = await owner.require('@electron/remote').getCurrentWebContents().capturePage()
+          require('fs').writeFileSync(${JSON.stringify(`${SHOTS}/${phone ? 'phone' : 'desktop'}-${command}.png`)}, image.resize({ width: owner.innerWidth, height: owner.innerHeight }).toPNG())
           modal.querySelector('.modal-close-button, .modal-header-button.mod-raised').click()
-          if (!await until(() => !root.isConnected && !document.querySelector('[data-abele-dialog-host]'))) throw Error('Dialog host was not released')
+          if (!await until(() => !root.isConnected && !doc.querySelector('[data-abele-dialog-host]'))) throw Error('Dialog host was not released')
           return { shells, hosts, title, removed: !root.isConnected }
         })()`)
         expect(report.shells, command).toBe(1)
@@ -64,18 +66,19 @@ describe.skipIf(!available)('on-demand utility dialogs', () => {
     it(`keeps two script forms separate on ${phone ? 'phone' : 'desktop'}`, () => {
       const report = evalAsync<unknown[]>(`(async () => {
         ${WAIT_PRELUDE}
+        const doc = typeof activeDocument === 'undefined' ? document : activeDocument
         const answers = []
         const first = window.__abeleTest.showFormModal([{ name: 'value', label: 'First', type: 'text', default: 'one' }]).then((answer) => answers.push(answer))
         const second = window.__abeleTest.showFormModal([{ name: 'value', label: 'Second', type: 'text', default: 'two' }]).then((answer) => answers.push(answer))
-        const field = () => document.querySelector('.abele-script-form__input')
+        const field = () => doc.querySelector('.abele-script-form__input')
         if (!await until(() => field()?.value === 'one')) throw Error('First form missing')
-        field().value = 'first answer'; field().dispatchEvent(new Event('input', { bubbles: true }))
-        document.querySelector('.abele-script-form').requestSubmit()
+        field().value = 'first answer'; field().dispatchEvent(new doc.defaultView.Event('input', { bubbles: true }))
+        doc.querySelector('.abele-script-form').requestSubmit()
         await first
         if (!await until(() => field()?.value === 'two')) throw Error('Second form reused first values')
-        document.querySelector('.abele-script-form').requestSubmit()
+        doc.querySelector('.abele-script-form').requestSubmit()
         await second
-        if (!await until(() => !document.querySelector('[data-abele-dialog-host]'))) throw Error('Form host remained mounted')
+        if (!await until(() => !doc.querySelector('[data-abele-dialog-host]'))) throw Error('Form host remained mounted')
         return answers
       })()`)
       expect(report).toEqual([{ value: 'first answer' }, { value: 'two' }])

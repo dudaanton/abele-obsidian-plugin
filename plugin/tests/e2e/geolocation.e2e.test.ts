@@ -32,7 +32,7 @@ const cleanup = `(() => {
   if (state.original) Object.defineProperty(navigator, 'geolocation', state.original)
   else delete navigator.geolocation
   delete window.__locationE2E
-  for (const notice of document.querySelectorAll('.notice')) {
+  for (const notice of (typeof activeDocument === 'undefined' ? document : activeDocument).querySelectorAll('.notice')) {
     if (notice.textContent.startsWith('Location ')) notice.remove()
   }
   return 'ok'
@@ -94,7 +94,7 @@ describe.skipIf(!available)('device location on a real map', () => {
       const button = state.root.querySelector('button[aria-label="Show my location"]')
       button.click()
       await new Promise(resolve => setTimeout(resolve, 500))
-      return { message: [...document.querySelectorAll('.notice')].map(n => n.textContent).find(t => t.startsWith('Location ')), dot: !!state.root.querySelector('.maplibregl-user-location-dot'), retry: !button.disabled }
+      return { message: [...(typeof activeDocument === 'undefined' ? document : activeDocument).querySelectorAll('.notice')].map(n => n.textContent).find(t => t.startsWith('Location ')), dot: !!state.root.querySelector('.maplibregl-user-location-dot'), retry: !button.disabled }
     })()`)
       )
       expect(result.message).toMatch(

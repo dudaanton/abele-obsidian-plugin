@@ -62,7 +62,16 @@ afterAll(async () => {
     for(const leaf of app.workspace.getLeavesOfType('abele-deck'))if(leaf.view.file?.path===${JSON.stringify(PATH)})leaf.detach()
     const file=app.vault.getAbstractFileByPath(${JSON.stringify(PATH)});if(file)await app.vault.delete(file)
     const script=app.vault.getAbstractFileByPath(${JSON.stringify(scriptPath)});if(script)await app.vault.delete(script)
-    await app.workspace.changeLayout(${JSON.stringify(layout)});return true
+    await app.workspace.changeLayout(${JSON.stringify(layout)})
+    if (!${onPhone()}) {
+      const win = require('@electron/remote').getCurrentWindow()
+      win.show();win.focus()
+      const deadline = Date.now() + 5000
+      while (typeof activeDocument !== 'undefined' && activeDocument !== document && Date.now() < deadline)
+        await new Promise(resolve => setTimeout(resolve,50))
+      if (typeof activeDocument !== 'undefined' && activeDocument !== document) throw Error('Main window did not regain the active document')
+    }
+    return true
   })()`)
 })
 describe.skipIf(!available)('live slide lifecycle', () => {
@@ -109,7 +118,12 @@ describe.skipIf(!available)('live slide lifecycle', () => {
       try {
         await view.startPresenter()
         return JSON.stringify({extra:count()-before,index:view.show.index})
-      } finally {view.show?.end();await app.vault.modify(file,${JSON.stringify(SOURCE)})}
+      } finally {
+        view.show?.end()
+        app.workspace.setActiveLeaf(leaf,{focus:true})
+        require('@electron/remote').getCurrentWindow().focus()
+        await app.vault.modify(file,${JSON.stringify(SOURCE)})
+      }
     })()`)
       ) as { extra: number; index: number }
       expect(result).toEqual({ extra: 0, index: 2 })
@@ -132,7 +146,11 @@ describe.skipIf(!available)('live slide lifecycle', () => {
         await viewer.go(3)
         const live=await (async()=>{for(let i=0;i<30;i++){if(viewer.viewport.querySelector('.abele-slide:not([hidden]) .abele-script-view_live button'))return true;await new Promise(r=>setTimeout(r,100))}return false})()
         return JSON.stringify({frame:!!frame,preview:!!preview,live,scriptPreview:!!view.presenter.current.viewport.querySelector('.abele-script-view_live')})
-      } finally {view.show?.end()}
+      } finally {
+        view.show?.end()
+        app.workspace.setActiveLeaf(leaf,{focus:true})
+        require('@electron/remote').getCurrentWindow().focus()
+      }
     })()`)
       ) as Record<string, boolean>
       expect(result).toEqual({ frame: true, preview: false, live: true, scriptPreview: false })

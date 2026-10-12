@@ -172,16 +172,12 @@ describe.skipIf(why !== null)('settings that travel between devices', () => {
   }, 300_000)
 
   afterAll(async () => {
-    try {
-      if (vault !== null) {
-        sync.frontAsIs()
-        sync.run(`svc.resume(); await svc.forget(); return 'ok'`)
-      }
-    } catch (error) {
-      console.warn(`could not disconnect the test device: ${String(error)}`)
-    }
+    // Closing from the leased host unloads the plugin and its sync connection. Do not
+    // wait for a failed fixture's renderer or pending settings dialog before that close.
     try {
       await vault?.dispose()
+      if (vault)
+        expect(existsSync(vault.path), 'owned temporary vault closed and removed').toBe(false)
     } finally {
       await server?.kill()
       if (workspace !== '') rmSync(workspace, { recursive: true, force: true })

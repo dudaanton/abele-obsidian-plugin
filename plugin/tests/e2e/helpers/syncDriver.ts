@@ -70,7 +70,7 @@ export const SYNC_PRELUDE = `
   }
   const sectionTitled = (root, title) =>
     [...root.querySelectorAll('.abele-section')].find(
-      (s) => textOf(s.querySelector(':scope > .abele-section__heading')) === title
+      (s) => textOf(s.querySelector(':scope > .abele-section__header > .abele-section__heading')) === title
     ) || null
   const modalOf = (selector, doc) => {
     const el = (doc || document).querySelector(selector)
