@@ -96,9 +96,11 @@ describe.skipIf(!available)('external-file production filesystem ports on the li
       const target=root+'/sample-free.bin',stage=root+'/.abele-external-free.incoming',data=encode('sample incoming'),a=await artifact(stage,data)
       const write=adapter.writeBinary.bind(adapter),copy=adapter.copy.bind(adapter),rename=adapter.rename.bind(adapter)
       let writes=[],copies=0,renames=0
-      adapter.writeBinary=async(path,...args)=>{writes.push(path);return write(path,...args)}
-      adapter.copy=async(...args)=>{copies++;throw Error('Copy is not an installer')}
-      adapter.rename=async(...args)=>{renames++;return rename(...args)}
+      // Observe this fixture's effects without intercepting independent sync staging.
+      const ours=path=>typeof path==='string'&&path.startsWith(root+'/')
+      adapter.writeBinary=async(path,...args)=>{if(ours(path))writes.push(path);return write(path,...args)}
+      adapter.copy=async(...args)=>{if(args.slice(0,2).some(ours)){copies++;throw Error('Copy is not an installer')}return copy(...args)}
+      adapter.rename=async(...args)=>{if(args.slice(0,2).some(ours))renames++;return rename(...args)}
       try{
         return await host.run(serial,request([target,stage]),async op=>{
           await op.stage(a,data)
