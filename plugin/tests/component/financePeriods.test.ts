@@ -81,6 +81,7 @@ function fixture(): FakeFileSpec[] {
     account('Borrowed', 'liability', { currency: 'EUR', startingBalance: -5 }),
     account('Food', 'expense', { startingBalanceDate: '2024-03-02' }),
     account('Salary', 'revenue'),
+    account('Portfolio', 'computed'),
     tx('income', 'Salary', 'Cash', 100),
     tx('expense a', 'Cash', 'Food', 0.1),
     tx('expense b', 'Cash', 'Food', 0.2),
@@ -382,9 +383,10 @@ describe('footer transaction creation context', () => {
 
   it.each([
     { accountPath: 'Salary.md', from: '[[Salary|Salary]]', to: undefined },
-    { accountPath: 'Cash.md', from: undefined, to: '[[Cash|Cash]]' },
+    { accountPath: 'Cash.md', from: '[[Cash|Cash]]', to: undefined },
     { accountPath: 'Lent.md', from: undefined, to: '[[Lent|Lent]]' },
     { accountPath: 'Food.md', from: undefined, to: '[[Food|Food]]' },
+    { accountPath: 'Portfolio.md', from: undefined, to: '[[Portfolio|Portfolio]]' },
     { accountPath: 'Missing.md', from: undefined, to: undefined },
     { accountPath: null, from: undefined, to: undefined },
   ])('prefills the date and correct side for $accountPath', async ({ accountPath, from, to }) => {

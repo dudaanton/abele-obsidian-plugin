@@ -181,7 +181,7 @@ function addTransaction() {
 
   if (account) {
     const wikilink = pathToWikilink(props.accountPath)
-    if (account.accountType === 'revenue') {
+    if (account.accountType === 'asset' || account.accountType === 'revenue') {
       from = wikilink
     } else {
       to = wikilink
