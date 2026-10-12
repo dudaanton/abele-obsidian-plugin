@@ -160,6 +160,7 @@ export class NodePathModel {
   private targetQueues = new Map<string, Promise<unknown>>()
   private folderLoads = new Map<string, Promise<void>>()
   private revisions = new Map<string, { at: number; read: KnownPathRead }>()
+  private revisionEpochs = new Map<string, number>()
   private pageRevisions = new Map<string, Map<string, RepositoryRevision | undefined>>()
 
   constructor(
@@ -340,7 +341,7 @@ export class NodePathModel {
   async reloadTarget(target: PathTarget, files = true): Promise<void> {
     if (this.disposed) return
     if (!files) return this.serialTarget(target, () => this.readTarget(target, false))
-    this.revisions.delete(pathTargetKey(target))
+    this.invalidateRevision(target)
     const key = pathTargetKey(target),
       pending = this.treeLoads.get(key)
     if (pending) {
@@ -376,6 +377,31 @@ export class NodePathModel {
       })
       .catch(() => {})
     return next
+  }
+  private invalidateRevision(target: PathTarget): void {
+    const key = pathTargetKey(target)
+    this.revisions.delete(key)
+    this.revisionEpochs.set(key, (this.revisionEpochs.get(key) ?? 0) + 1)
+  }
+  private rememberRevision(target: PathTarget, read: KnownPathRead): void {
+    const key = pathTargetKey(target),
+      previous = this.revisions.get(key)
+    const same =
+      previous && JSON.stringify(previous.read.revision) === JSON.stringify(read.revision)
+    if (
+      previous?.read.revision.kind === 'working' &&
+      read.revision.kind === 'working' &&
+      Date.parse(read.revision.observed_at) < Date.parse(previous.read.revision.observed_at)
+    )
+      return
+    // Reading bytes, another page, or metadata for A does not make A a new observation.
+    const changes = read.changes ?? (same ? previous.read.changes : undefined)
+    if (same && changes === previous.read.changes) return
+    this.revisions.set(key, {
+      at: same ? previous.at : Date.now(),
+      read: { revision: read.revision, ...(changes ? { changes } : {}) },
+    })
+    this.revisionEpochs.set(key, (this.revisionEpochs.get(key) ?? 0) + 1)
   }
   private knownRead(target: PathTarget): KnownPathRead | undefined {
     const known = this.revisions.get(pathTargetKey(target))
@@ -414,11 +440,12 @@ export class NodePathModel {
     }
     this.cursors.value = {
       ...this.cursors.value,
-      [key]: { ...(path ? this.cursors.value[key] : {}), [path]: page.cursor },
+      [key]: { ...(path || append ? this.cursors.value[key] : {}), [path]: page.cursor },
     }
-    const revisions = path
-      ? (this.pageRevisions.get(key) ?? new Map())
-      : new Map<string, RepositoryRevision | undefined>()
+    const revisions =
+      path || append
+        ? (this.pageRevisions.get(key) ?? new Map())
+        : new Map<string, RepositoryRevision | undefined>()
     revisions.set(path, page.revision)
     this.pageRevisions.set(key, revisions)
     if (page.revision) {
@@ -427,10 +454,7 @@ export class NodePathModel {
         known && JSON.stringify(known.revision) === JSON.stringify(page.revision)
           ? known.changes
           : undefined
-      this.revisions.set(key, {
-        at: Date.now(),
-        read: { revision: page.revision, ...(changes ? { changes } : {}) },
-      })
+      this.rememberRevision(target, { revision: page.revision, ...(changes ? { changes } : {}) })
     }
     this.setProgress(target, 'reading')
   }
@@ -526,10 +550,7 @@ export class NodePathModel {
     } else if (!files && current) inspection.entries = current.entries
     this.inspections.value = { ...this.inspections.value, [key]: this.mark(target, inspection) }
     if (inspection.revision)
-      this.revisions.set(key, {
-        at: Date.now(),
-        read: { revision: inspection.revision, changes: inspection.changes },
-      })
+      this.rememberRevision(target, { revision: inspection.revision, changes: inspection.changes })
     this.receivedAt.value = this.now()
     this.decorate()
   }
@@ -559,6 +580,7 @@ export class NodePathModel {
     revision?: RepositoryRevision,
     publish: (document: PathDocument) => boolean = () => true
   ): Promise<PathDocument> {
+    target = Object.freeze({ ...target })
     const cacheKey = JSON.stringify([pathTargetKey(target), path, stage, revision])
     if (!this.online.value) {
       const retained = this.retained.get(cacheKey)
@@ -569,26 +591,35 @@ export class NodePathModel {
         note: 'Offline · retained version. Reconnect to capture current bytes.',
       }
     }
-    const known = revision ? undefined : this.knownRead(target)
+    const key = pathTargetKey(target)
+    let known = revision ? undefined : this.knownRead(target)
+    let epoch = this.revisionEpochs.get(key) ?? 0
     let file: PathDocument
     try {
       file = await this.port.file({ ...target }, path, stage, revision, known)
     } catch (error) {
       if (!known || !(error instanceof ChannelError) || error.code !== 'stale_revision') throw error
-      this.revisions.delete(pathTargetKey(target))
-      file = await this.port.file({ ...target }, path, stage, revision)
+      // An error from A must not delete B if a refresh won the race while A was in flight.
+      if (epoch === (this.revisionEpochs.get(key) ?? 0)) this.invalidateRevision(target)
+      known = this.knownRead(target)
+      epoch = this.revisionEpochs.get(key) ?? 0
+      file = await this.port.file({ ...target }, path, stage, revision, known)
     }
+    if (this.disposed || epoch !== (this.revisionEpochs.get(key) ?? 0)) return file
+    if (
+      pathTargetKey(file.target) !== key ||
+      file.target.projectId !== target.projectId ||
+      file.target.registrationId !== target.registrationId
+    )
+      throw new Error('The file response belongs to another target.')
+    if (!publish(file)) return file
     if (!revision && file.revision?.kind === 'working') {
       const changes =
         known && JSON.stringify(known.revision) === JSON.stringify(file.revision)
           ? known.changes
           : undefined
-      this.revisions.set(pathTargetKey(target), {
-        at: Date.now(),
-        read: { revision: file.revision, ...(changes ? { changes } : {}) },
-      })
+      this.rememberRevision(target, { revision: file.revision, ...(changes ? { changes } : {}) })
     }
-    if (this.disposed || !publish(file)) return file
     const bytes = new TextEncoder().encode(
       file.text + (file.change?.before ?? '') + (file.change?.after ?? '')
     ).length
