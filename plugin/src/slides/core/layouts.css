@@ -133,22 +133,57 @@
   pointer-events: none;
 }
 
+/* The deck's look: a slide is set on a grid, as Keynote and Google Slides set theirs. Generous
+   margins on a 1280 × 720 canvas, one dominant thing per slide, words left-aligned on one edge,
+   a type scale large enough to read from the back of a room. Fonts and colours are the theme's;
+   the accent is spent once per slide at most: the rule over a title, a list's markers.
+   Sizes are in em of the slide's own text (28 logical pixels), so the whole canvas scales as one. */
+.abele-slide {
+  --slide-margin-x: 2.9em;
+  --slide-margin-top: 2.4em;
+  --slide-margin-bottom: 2.3em;
+  --slide-gap: 1.15em;
+}
+
 /* The content layout's slide root has the same class; only style the inner surface. */
 .abele-slide > .abele-slide-content {
   position: relative;
   height: 100%;
-  padding: var(--size-4-12);
+  padding: var(--slide-margin-top) var(--slide-margin-x) var(--slide-margin-bottom);
   box-sizing: border-box;
   display: flex;
   flex-direction: column;
-  gap: var(--size-4-4);
+  gap: var(--slide-gap);
   font-family: inherit;
   font-size: inherit;
-  line-height: inherit;
+  line-height: 1.4;
   letter-spacing: 0;
   text-rendering: inherit;
   /* Empty foreground space must not cover a background video's native controls. */
   pointer-events: none;
+}
+
+/* Where the deck is: the slide's number, small and faint at the foot, as a printed page has it.
+   Not on the opening slide or a section's, which stand on their own. */
+.abele-slide::before {
+  content: attr(data-slide);
+  position: absolute;
+  right: var(--slide-margin-x);
+  bottom: calc(var(--slide-margin-bottom) * 0.45);
+  z-index: 3;
+  color: var(--text-faint);
+  font-family: var(--font-interface);
+  font-size: 0.6em;
+  font-variant-numeric: tabular-nums;
+  line-height: 1;
+  pointer-events: none;
+}
+
+.abele-slide-title::before,
+.abele-slide-section::before,
+.abele-slide-image::before,
+.abele-deck-inspection .abele-slide::before {
+  content: none;
 }
 
 .abele-slide-region > div {
@@ -159,32 +194,28 @@
 .abele-slide-content h2,
 .abele-slide-content h3 {
   font-family: var(--font-heading, var(--font-text));
-  line-height: 1.12;
-  margin-block: 0 0.55em;
+  margin-block: 0 0.5em;
+  text-wrap: balance;
 }
 
-/* Headings and bold take the note's own colours and weights, so a deck reads like the theme. */
-.abele-slide-content h1 {
-  font-size: 2.2em;
+/* A slide's title: the one big thing at its top, in the theme's heading colour and weight. */
+.abele-slide-content h1,
+.abele-slide-content h2 {
+  font-size: 1.85em;
+  line-height: 1.12;
   font-weight: var(--h1-weight);
   color: var(--h1-color);
 }
 
-.abele-slide-content h2 {
-  font-size: 1.7em;
-  font-weight: var(--h2-weight);
-  color: var(--h2-color);
-}
-
 .abele-slide-content h3 {
-  font-size: 1.25em;
+  font-size: 1.1em;
+  line-height: 1.25;
   font-weight: var(--h3-weight);
   color: var(--h3-color);
 }
 
-/* A sub-heading over a column or cell is quieter than the slide's own heading. */
-.abele-slide-region h3 {
-  color: var(--text-muted);
+.abele-slide-content-heading :is(h1, h2) {
+  margin-bottom: 0;
 }
 
 .abele-slide-content strong {
@@ -193,7 +224,8 @@
 }
 
 .abele-slide-content p {
-  margin-block: 0 0.75em;
+  margin-block: 0 0.7em;
+  max-width: 36em;
 }
 
 .abele-slide-content p,
@@ -218,14 +250,18 @@
   justify-content: center;
 }
 
+/* Lists: room between points, the marker in the accent, hung in the margin so every point's
+   words start on one edge. */
 .abele-slide-content ul,
 .abele-slide-content ol {
-  margin-block: 0 0.75em;
-  padding-inline-start: 1.25em;
+  margin-block: 0 0.7em;
+  padding-inline-start: 1.1em;
+  max-width: 36em;
 }
 
 .abele-slide-content li {
-  margin-block: 0.3em;
+  margin-block: 0 0.55em;
+  padding-inline-start: 0.2em;
 }
 
 .abele-slide-content ul > li,
@@ -234,70 +270,151 @@
   margin-inline-start: 0;
 }
 
+.abele-slide-content li::marker {
+  color: var(--text-accent);
+}
+
+.abele-slide-content ol > li::marker {
+  font-variant-numeric: tabular-nums;
+}
+
+/* The theme's own bullet glyph would sit beside the marker: a slide keeps one. */
+.abele-slide-content .list-bullet {
+  display: none;
+}
+
+/* A table on a slide is read across a room: no cage of lines, rows apart by a hairline, the head
+   by a firmer one, figures in even columns. */
 .abele-slide-content table {
   width: 100%;
   border-collapse: collapse;
-  font-size: 0.9em;
+  font-size: 0.85em;
 }
 
 .abele-slide-content th,
 .abele-slide-content td {
-  border: 1px solid var(--table-border-color, var(--background-modifier-border));
-  padding: 0.45em 0.65em;
+  border: none;
+  border-bottom: 1px solid var(--background-modifier-border);
+  padding: 0.55em 0.9em 0.55em 0;
+  background: none;
   font-size: inherit;
+  text-align: start;
 }
 
 .abele-slide-content th {
-  --table-column-alt-background: var(--background-secondary);
-  background: var(--table-header-background, var(--background-secondary));
-  font-weight: var(--table-header-weight, var(--font-semibold));
-  color: var(--table-header-color, var(--text-normal));
+  --table-column-alt-background: transparent;
+  border-bottom: 2px solid var(--background-modifier-border-hover);
+  color: var(--text-muted);
+  font-weight: var(--font-semibold);
 }
 
 .abele-slide-content td {
   font-variant-numeric: tabular-nums;
 }
 
+.abele-slide-content tr:nth-child(2n) td {
+  background: none;
+}
+
+/* Code: a calm panel of the sidebar's colour, rounded like Obsidian's own code blocks. */
+.abele-slide-content pre {
+  margin: 0 0 0.7em;
+  padding: 0.8em 1em;
+  border-radius: 0.3em;
+  background: var(--code-background, var(--background-secondary));
+  font-size: 0.72em;
+  line-height: 1.5;
+}
+
 /* Grey and straight, as rule 37 keeps a quote's line. */
 .abele-slide-content blockquote {
-  margin: 0 0 0.75em;
-  padding: 0.15em 0 0.15em 0.9em;
+  margin: 0 0 0.7em;
+  padding: 0.1em 0 0.1em 0.9em;
   border-inline-start: var(--blockquote-border-thickness, 2px) solid
     var(--background-modifier-border-hover);
   font-style: var(--blockquote-font-style);
 }
 
+/* The opening slide: the deck's name large in the lower part of the slide, left on the grid, its
+   line under it quiet, and a short rule in the accent over it — the one mark of colour. */
+.abele-slide-title .abele-slide-content {
+  justify-content: flex-end;
+  padding-bottom: calc(var(--slide-margin-bottom) * 1.6);
+}
+
 .abele-slide-title h1 {
-  font-size: 3em;
+  font-size: 2.9em;
+  line-height: 1.04;
+  max-width: 13em;
+}
+
+.abele-slide-title h1::before,
+.abele-slide-section :is(h1, h2)::before {
+  content: '';
+  display: block;
+  width: 1.1em;
+  height: 0.07em;
+  margin-bottom: 0.45em;
+  border-radius: 0.035em;
+  background: var(--interactive-accent);
 }
 
 .abele-slide-title p {
   color: var(--text-muted);
-  font-size: 1.15em;
+  font-size: 1.05em;
+  max-width: 28em;
+}
+
+/* A section: a pause in the deck. The slide takes the sidebar's colour, so it reads apart from
+   the slides around it, and its title stands large, left, at the middle. */
+.abele-slide-section {
+  background: var(--background-secondary);
 }
 
 .abele-slide-section h1,
 .abele-slide-section h2 {
-  font-size: 2.7em;
+  font-size: 2.5em;
+  line-height: 1.06;
+  max-width: 14em;
 }
 
-/* A quote standing alone on its slide needs no line: the size and the space say it. */
+/* A quote alone on its slide: large, left on the grid, opened by a big quotation mark in the
+   accent instead of a line; who said it, quiet under it. */
 .abele-slide-quote blockquote {
+  position: relative;
   margin: 0;
   padding: 0;
   border: none;
-  font-size: 1.9em;
-  line-height: 1.25;
-  text-align: center;
+  font-size: 2em;
+  line-height: 1.22;
+  font-style: normal;
+  text-align: start;
+  max-width: 19em;
+}
+
+.abele-slide-quote blockquote::before {
+  content: '\201C';
+  display: block;
+  height: 0.55em;
+  color: var(--text-accent);
+  font-family: var(--font-heading, var(--font-text));
+  font-size: 2.6em;
+  line-height: 1;
 }
 
 .abele-slide-quote blockquote p {
   margin: 0;
+  max-width: none;
+}
+
+.abele-slide-quote blockquote p + p {
+  margin-top: 0.8em;
+  color: var(--text-muted);
+  font-size: 0.55em;
 }
 
 .abele-slide-quote .abele-slide-content > .abele-slide-region {
-  max-width: 1000px;
-  align-self: center;
+  align-self: stretch;
 }
 
 .abele-slide-has-sources .abele-slide-content {
@@ -367,11 +484,10 @@
   object-fit: contain;
 }
 
-.abele-slide-title .abele-slide-content,
 .abele-slide-section .abele-slide-content,
 .abele-slide-quote .abele-slide-content {
   justify-content: center;
-  text-align: center;
+  text-align: start;
 }
 
 .abele-slide-title .abele-slide-region,
@@ -386,6 +502,40 @@
   grid-template-columns: repeat(var(--deck-columns, 2), minmax(0, 1fr));
   grid-template-rows: auto;
   grid-auto-rows: minmax(0, 1fr);
+  column-gap: 1.8em;
+  row-gap: var(--slide-gap);
+  align-content: start;
+}
+
+/* Two columns side by side: each opens with its own head over a hairline, so the two read as a
+   comparison, not as one list broken in two. */
+.abele-slide-split .abele-slide-region-left h3,
+.abele-slide-split .abele-slide-region-right h3 {
+  padding-bottom: 0.45em;
+  margin-bottom: 0.7em;
+  border-bottom: 1px solid var(--background-modifier-border);
+}
+
+/* Cells of a grid: each a panel of the sidebar's colour, the same height in its row, its head
+   first and its words quiet under it. A row is as tall as its fullest cell, not the slide. */
+.abele-slide-grid .abele-slide-content {
+  grid-auto-rows: auto;
+}
+
+.abele-slide-grid .abele-slide-region-cell {
+  padding: 0.9em 1em;
+  border-radius: 0.45em;
+  background: var(--background-secondary);
+}
+
+.abele-slide-grid .abele-slide-region-cell h3 {
+  margin-bottom: 0.4em;
+}
+
+.abele-slide-grid .abele-slide-region-cell p {
+  color: var(--text-muted);
+  font-size: 0.85em;
+  margin: 0;
 }
 
 .abele-slide-split .abele-slide-region-body,
