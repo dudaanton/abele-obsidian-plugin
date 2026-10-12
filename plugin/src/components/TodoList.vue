@@ -10,9 +10,6 @@
       placeholder="Search tasks…"
       group-actions
     >
-      <template #leading
-        ><ObsidianIcon v-if="showAddButton" icon="square-plus" @click="createTask()"
-      /></template>
       <template #actions>
         <ObsidianIcon
           v-if="labelOptions.length"
@@ -26,6 +23,12 @@
           class="abele-todo-list__completed-toggle"
           :text-right="hideCompleted ? 'Show completed' : 'Hide completed'"
           @click="hideCompleted = !hideCompleted"
+        />
+        <ObsidianIcon
+          v-if="showAddButton"
+          icon="square-plus"
+          label="New task"
+          @click="createTask()"
         />
       </template>
     </ListSectionHeader>

@@ -7,11 +7,14 @@
     v-else-if="task.loaded"
     ref="taskEl"
     class="abele-task-view"
+    :class="{ 'is-done': !!checked }"
     :data-abele-anchor="'task:' + task.taskPath"
+    role="link"
+    tabindex="0"
     @click="onCardClick"
+    @keydown.enter.self="openFile(task.taskPath)"
     @contextmenu.prevent="onContextMenu"
   >
-    <div v-if="isOverdue && !atTimeline" class="abele-task-view__indicator" />
     <label class="task-list-label" contenteditable="false"
       ><input
         class="task-list-item-checkbox"
@@ -20,58 +23,101 @@
         @click.stop="task.toggle"
     /></label>
     <div class="abele-task-view__content">
-      <ObsidianMarkdown
-        trusted
-        v-if="contentLoaded"
-        :text="task.title ?? ''"
-        :file-path="task.filePath"
-      />
-      <div v-if="labels.length || priorityMark" class="abele-task-view__labels">
-        <ObsidianIcon
-          v-if="priorityMark"
-          class="abele-task-view__priority"
-          :icon="priorityMark.icon"
-          :color="priorityMark.color"
-          :tooltip="priorityMark.label"
-          no-hover
-        />
-        <Badge v-for="label in labels" :key="label.text" :text="label.text" :color="label.color" />
+      <div class="abele-task-view__line">
+        <div class="abele-task-view__title">
+          <ObsidianMarkdown
+            v-if="contentLoaded"
+            trusted
+            :text="task.title ?? ''"
+            :file-path="task.filePath"
+          />
+          <span
+            v-for="label in labels"
+            :key="label.text"
+            class="abele-task-view__label"
+            :class="`abele-task-view__label_${label.color}`"
+            >{{ label.text }}</span
+          >
+        </div>
+        <!-- State as codes on the first line, the words in each one's tooltip. -->
+        <div class="abele-task-view__codes">
+          <ObsidianIcon
+            v-if="priorityMark"
+            class="abele-task-view__priority"
+            :icon="priorityMark.icon"
+            :color="priorityMark.color"
+            :tooltip="priorityMark.label"
+            no-hover
+          />
+          <template v-if="atTimeline">
+            <ObsidianIcon
+              v-if="dateTimeText"
+              class="abele-task-view__code"
+              :text-right="dateTimeText"
+              :tooltip="timeLeftText ? `Starts ${timeLeftText}` : 'Starts'"
+              no-hover
+            />
+            <span v-if="timeLeftText" class="abele-task-view__time-left">{{ timeLeftText }}</span>
+            <ObsidianIcon
+              v-if="dueTimeText"
+              class="abele-task-view__code"
+              icon="calendar-clock"
+              :text-right="dueTimeText"
+              tooltip="Due"
+              no-hover
+            />
+          </template>
+          <template v-else-if="completedText">
+            <ObsidianIcon
+              class="abele-task-view__code"
+              icon="check"
+              :text-right="completedCode"
+              :tooltip="`Completed ${completedText}`"
+              no-hover
+            />
+          </template>
+          <template v-else>
+            <ObsidianIcon
+              v-if="dateText"
+              class="abele-task-view__code"
+              :text-right="dateCode"
+              :tooltip="`Date ${dateText} ${dateTimeText}`.trim() + diffWords(diffDateText)"
+              no-hover
+            />
+            <ObsidianIcon
+              v-if="dueText"
+              class="abele-task-view__code"
+              icon="calendar-clock"
+              :text-right="dueCode"
+              :color="isOverdue ? 'red' : undefined"
+              :tooltip="`Due ${dueText} ${dueTimeText}`.trim() + diffWords(diffDueText)"
+              no-hover
+            />
+          </template>
+          <ObsidianIcon
+            v-if="task.recurrence && !atTimeline"
+            class="abele-task-view__code"
+            icon="repeat"
+            :tooltip="`Repeats ${task.recurrence}`"
+            no-hover
+          />
+          <ObsidianIcon
+            v-if="task.description"
+            class="abele-task-view__more"
+            :icon="showDescription ? 'chevron-up' : 'chevron-down'"
+            :label="showDescription ? 'Hide description' : 'Show description'"
+            @click.stop="toggleDescription"
+          />
+        </div>
       </div>
       <ObsidianMarkdown
-        trusted
         v-if="task.description && showDescription && contentLoaded"
+        trusted
         :text="task.description"
         :file-path="task.filePath"
         class="abele-task-view__description"
       />
-      <div v-if="atTimeline" class="abele-task-view__info">
-        <span v-if="dateTimeText"
-          >at <b>{{ dateTimeText }}</b></span
-        >
-        <span v-if="timeLeftText" class="abele-task-view__time-left">{{ timeLeftText }}</span>
-        <span v-if="dueTimeText"
-          >due <b>{{ dueTimeText }}</b></span
-        >
-      </div>
-      <div v-else>
-        <div v-if="dateText" class="abele-task-view__info">
-          Date: <b>{{ dateText }} {{ dateTimeText }}</b>
-          <span v-if="diffDateText && !completedText">{{ diffDateText }}</span>
-        </div>
-        <div v-if="dueText" class="abele-task-view__info">
-          Due: <b>{{ dueText }} {{ dueTimeText }}</b>
-          <span v-if="diffDueText && !completedText">{{ diffDueText }}</span>
-        </div>
-        <div v-if="completedText" class="abele-task-view__info">
-          <b>Completed: </b>{{ completedText }}
-        </div>
-      </div>
     </div>
-    <ObsidianIcon
-      v-if="task.description"
-      :icon="showDescription ? 'chevron-up' : 'chevron-down'"
-      @click.stop="toggleDescription"
-    />
   </div>
 </template>
 
@@ -79,12 +125,12 @@
 import { confirmAction } from '@/modal/confirm'
 import { GlobalStore } from '@/stores/GlobalStore'
 import { DISPLAY_DATE_FORMAT } from '@/constants/dates'
+import { compactDate } from '@/helpers/datesHelper'
 import { Task } from '@/entities/Task'
 import dayjs from 'dayjs'
 import { computed, onMounted, ref, watch } from 'vue'
 import ObsidianIcon from './obsidian/Icon.vue'
 import ObsidianMarkdown from './obsidian/Markdown.vue'
-import Badge from './obsidian/Badge.vue'
 import { AbeleConfig } from '@/services/AbeleConfig'
 import { labelColor, type TaskPriority } from '@/helpers/taskMeta'
 import type { KitColor } from '@/constants/colors'
@@ -234,6 +280,29 @@ const diffDateText = computed(() => {
   return getDiffText(props.task.date)
 })
 
+// A date as a code: the near days by name, the rest as the short date the other lists use.
+const dayCode = (date: dayjs.Dayjs | null, time: dayjs.Dayjs | null) => {
+  if (!date) return ''
+  const diff = date.startOf('day').diff(today.value.startOf('day'), 'day')
+  const day =
+    diff === 0
+      ? 'Today'
+      : diff === 1
+        ? 'Tomorrow'
+        : diff === -1
+          ? 'Yesterday'
+          : compactDate(date, today.value)
+  return time ? `${day} ${time.format('HH:mm')}` : day
+}
+
+const dateCode = computed(() => dayCode(props.task.date, props.task.dateTime))
+const dueCode = computed(() => dayCode(props.task.due, props.task.dueTime))
+const completedCode = computed(() =>
+  props.task.completedAt ? dayCode(props.task.completedAt, null) : ''
+)
+
+const diffWords = (diff: string) => (diff ? `, ${diff.replace(/[()]/g, '').toLowerCase()}` : '')
+
 const completedText = computed(() => {
   if (!props.task.completedAt) return ''
 
@@ -296,9 +365,8 @@ onMounted(() => {
 .abele-task-view {
   display: flex;
   align-items: flex-start;
-  gap: 0.5em;
-  margin-bottom: 0.25em;
-  padding: 0.25em 0;
+  gap: var(--size-4-1);
+  padding: var(--size-2-2) var(--size-2-1);
   cursor: pointer;
   border-radius: var(--radius-s);
 
@@ -322,6 +390,12 @@ onMounted(() => {
       margin-inline-end: 0.25em;
     }
   }
+
+  // Done reads the way Obsidian draws a ticked list item.
+  &.is-done .abele-task-view__title p {
+    color: var(--checklist-done-color, var(--text-muted));
+    text-decoration: var(--checklist-done-decoration, line-through);
+  }
 }
 
 .abele-task-view__content {
@@ -331,19 +405,67 @@ onMounted(() => {
   padding-top: 1px;
 }
 
-.abele-task-view__labels {
+.abele-task-view__line {
   display: flex;
-  flex-wrap: wrap;
-  align-items: center;
-  gap: var(--size-2-2);
-  margin-top: var(--size-2-1);
+  align-items: flex-start;
+  gap: var(--size-4-2);
 }
 
-// Sized to the chips beside it, so a row with a glyph is no taller than one without.
-.abele-task-view__labels .abele-task-view__priority {
+// The labels follow the words in the same flow of text, as quiet words with a dot of their colour.
+.abele-task-view__title {
+  flex: 1;
+  min-width: 0;
+
+  div,
+  p {
+    display: inline;
+  }
+}
+
+.abele-task-view__label {
+  margin-inline-start: var(--size-4-2);
+  font-size: var(--font-smallest);
+  color: var(--text-muted);
+  white-space: nowrap;
+
+  &::before {
+    content: '';
+    display: inline-block;
+    width: 6px;
+    height: 6px;
+    margin-inline-end: var(--size-2-2);
+    border-radius: 50%;
+    vertical-align: middle;
+    background-color: var(--abele-task-label-color, var(--text-faint));
+  }
+}
+
+@each $name in red, orange, yellow, green, cyan, blue, purple, pink {
+  .abele-task-view__label_#{$name} {
+    --abele-task-label-color: var(--color-#{$name});
+  }
+}
+
+// Codes stay on the first line at the end, however long the words get.
+.abele-task-view__codes {
   flex: 0 0 auto;
-  height: auto;
-  padding: 0;
+  display: flex;
+  align-items: center;
+  // As tall as the first line of words, so the codes sit level with it.
+  height: calc(var(--line-height-normal) * 1em);
+  gap: var(--size-2-2);
+
+  > * {
+    font-size: var(--font-smallest);
+  }
+
+  color: var(--text-muted);
+  white-space: nowrap;
+
+  .abele-obsidian-icon {
+    height: auto;
+    padding: 0;
+  }
 
   .abele-obsidian-icon__icon {
     height: auto;
@@ -355,27 +477,17 @@ onMounted(() => {
   }
 }
 
-.abele-task-view__indicator {
-  width: 3px;
-  background-color: var(--background-modifier-error);
-  border-radius: 2px;
-  align-self: stretch;
+.abele-task-view__more {
+  color: var(--text-faint);
 }
 
-.abele-task-view__info {
-  display: flex;
-  flex-wrap: wrap;
-  margin-top: 0.25em;
-  font-size: 0.85em;
-  gap: 0.25em;
-  color: var(--text-muted);
-
-  b {
-    font-weight: 700;
-  }
+.abele-task-view__time-left {
+  color: var(--text-faint);
 }
 
 .abele-task-view__description {
+  margin-top: var(--size-2-1);
+
   p {
     color: var(--text-muted);
   }

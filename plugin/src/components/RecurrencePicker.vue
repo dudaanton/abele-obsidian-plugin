@@ -19,9 +19,9 @@
       </div>
     </Setting>
 
-    <Section
+    <Setting
       v-if="intervalUnit === 'week'"
-      title="On days"
+      name="On days"
       class="abele-recurrence-picker__weekdays"
     >
       <div class="abele-recurrence-picker__weekdays-row">
@@ -35,7 +35,7 @@
           @click="toggleWeekday(day.value)"
         />
       </div>
-    </Section>
+    </Setting>
 
     <Section
       v-if="intervalUnit === 'month'"
@@ -117,7 +117,7 @@
     </Setting>
 
     <Setting name="Pattern"
-      ><code>{{ pattern }}</code></Setting
+      ><span class="abele-recurrence-picker__pattern">{{ pattern }}</span></Setting
     >
   </div>
 </template>
@@ -324,6 +324,7 @@ defineExpose({ confirm, canConfirm: computed(() => !!pattern.value) })
 
 .abele-recurrence-picker__weekdays-row {
   display: flex;
+  justify-content: flex-end;
   gap: calc(var(--p-spacing) / 4);
   flex-wrap: wrap;
 }
@@ -349,5 +350,9 @@ defineExpose({ confirm, canConfirm: computed(() => !!pattern.value) })
   font-size: var(--font-small);
   color: var(--text-muted);
   white-space: nowrap;
+}
+
+.abele-recurrence-picker__pattern {
+  color: var(--text-muted);
 }
 </style>

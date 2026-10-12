@@ -3,46 +3,60 @@
     <em class="abele-task-header-view__content">Task not found</em>
   </div>
   <div v-else-if="task.loaded" class="abele-task-header-view">
-    <Icon :text-right="toggleText" :icon="toggleIcon" with-bg @click="task.toggle()" />
+    <!-- One row of glyphs, as Obsidian's own navigation: a set value is a code beside its glyph,
+         the words are in the tooltips. -->
     <Icon
-      v-if="showAddDate"
-      ref="addDateButton"
-      :text-right="addDateText"
-      with-bg
-      icon="calendar"
-      @click="openDatePicker"
+      class="abele-task-header-view__toggle"
+      :icon="toggleIcon"
+      :label="task.completedAt ? 'Mark not done' : 'Mark done'"
+      role="switch"
+      :aria-checked="!!task.completedAt"
+      @click="task.toggle()"
     />
     <Icon
-      v-if="showEditDate && task.date"
-      text-right="Edit Event Date"
-      with-bg
+      class="abele-task-header-view__date"
       icon="calendar-days"
+      :text-right="dateCode"
+      :label="task.date ? 'Change date' : 'Set date'"
+      :tooltip="task.date ? `Date ${fullDate(task.date, task.dateTime)}` : 'Set date'"
       @click="openDatePickerForMode('event')"
     />
     <Icon
-      v-if="showEditDate && task.due"
-      text-right="Edit Due Date"
-      with-bg
+      class="abele-task-header-view__due"
       icon="calendar-clock"
+      :text-right="dueCode"
+      :color="isOverdue ? 'red' : undefined"
+      :label="task.due ? 'Change due date' : 'Set due date'"
+      :tooltip="task.due ? `Due ${fullDate(task.due, task.dueTime)}` : 'Set due date'"
       @click="openDatePickerForMode('due')"
     />
-    <Icon text-right="Recurrence" icon="repeat" with-bg @click="recurrencePickerOpen = true" />
-    <Icon text-right="Clear" with-bg @click="clear" />
+    <Icon
+      class="abele-task-header-view__recurrence"
+      icon="repeat"
+      :text-right="task.recurrence || undefined"
+      :label="task.recurrence ? 'Change repeat' : 'Set repeat'"
+      @click="recurrencePickerOpen = true"
+    />
+    <Icon
+      v-if="hasAnything"
+      class="abele-task-header-view__clear"
+      icon="eraser"
+      label="Clear dates, repeat and done"
+      @click="clear"
+    />
     <Icon
       v-for="button in scriptButtons"
       :key="button.id"
       :icon="button.icon || 'play'"
       :text-right="button.iconOnly ? undefined : button.name"
       :tooltip="button.iconOnly ? button.name : `Run ${button.scriptName}`"
-      with-bg
       @click="runButton(button)"
     />
     <Icon
       v-if="showTimerButton"
       :icon="isTimerActiveForNote ? 'timer-off' : 'timer'"
-      :text-right="isTimerActiveForNote ? timerElapsedText : 'Start timer'"
-      :tooltip="isTimerActiveForNote ? 'Stop timer' : 'Start timer for this note'"
-      with-bg
+      :text-right="isTimerActiveForNote ? timerElapsedText : undefined"
+      :label="isTimerActiveForNote ? 'Stop timer' : 'Start timer for this note'"
       @click="toggleTimer"
     />
 
@@ -72,7 +86,8 @@
 import { ref, computed, onMounted } from 'vue'
 import dayjs from 'dayjs'
 import { TaskHeader } from '@/entities/TaskHeader'
-import { Menu } from 'obsidian'
+import { DISPLAY_DATE_FORMAT } from '@/constants/dates'
+import { compactDate } from '@/helpers/datesHelper'
 import Icon from './obsidian/Icon.vue'
 import DateTimePickerModal from './DateTimePickerModal.vue'
 import RecurrencePickerModal from './RecurrencePickerModal.vue'
@@ -92,55 +107,42 @@ const { showTimerButton, isTimerActiveForNote, timerElapsedText, toggleTimer } =
 // Script buttons configured for tasks — or for every note, or for the task's folder.
 const { scriptButtons, runButton } = useScriptButtons(taskFilePath, taskType)
 
-const addDateButton = ref<InstanceType<typeof Icon> | null>(null)
-
 const datePickerOpen = ref(false)
 const datePickerMode = ref<'event' | 'due'>('event')
 
-const toggleText = computed(() => (props.task.completedAt ? 'Undone' : 'Complete'))
 const toggleIcon = computed(() => (props.task.completedAt ? 'check-square' : 'square'))
-
-const showAddDate = computed(() => !props.task.due || !props.task.date)
-const showEditDate = computed(() => props.task.due || props.task.date)
-const addDateText = computed(() => {
-  if (!props.task.due && !props.task.date) return 'Add Date'
-  return props.task.due ? 'Add Event Date' : 'Add Due Date'
-})
 
 const formatTime = (time: dayjs.Dayjs | null): string | null => {
   if (!time) return null
   return time.format('HH:mm')
 }
 
-const openDatePickerForMode = (mode: 'event' | 'due') => {
-  datePickerMode.value = mode
-  datePickerOpen.value = true
+// The date as a code beside its glyph: the near days by name, the rest as a short date.
+const dayCode = (date: dayjs.Dayjs | null, time: dayjs.Dayjs | null) => {
+  if (!date) return undefined
+  const diff = date.startOf('day').diff(dayjs().startOf('day'), 'day')
+  const day =
+    diff === 0 ? 'Today' : diff === 1 ? 'Tomorrow' : diff === -1 ? 'Yesterday' : compactDate(date)
+  return time ? `${day} ${time.format('HH:mm')}` : day
 }
 
-const openDatePicker = () => {
-  if (!props.task.due && !props.task.date) {
-    const menu = new Menu()
-    menu.setUseNativeMenu(false)
-    menu.addItem((item) => {
-      item.setTitle('Event date')
-      item.setIcon('calendar-days')
-      item.onClick(() => openDatePickerForMode('event'))
-    })
-    menu.addItem((item) => {
-      item.setTitle('Due date')
-      item.setIcon('calendar-clock')
-      item.onClick(() => openDatePickerForMode('due'))
-    })
-    const el = addDateButton.value?.$el
-    if (el) {
-      const rect = el.getBoundingClientRect()
-      menu.showAtPosition({ x: rect.left, y: rect.bottom })
-    } else {
-      menu.showAtMouseEvent(new MouseEvent('click'))
-    }
-    return
-  }
-  datePickerMode.value = props.task.due ? 'event' : 'due'
+const fullDate = (date: dayjs.Dayjs, time: dayjs.Dayjs | null) =>
+  `${date.format(DISPLAY_DATE_FORMAT)}${time ? ' ' + time.format('HH:mm') : ''}`
+
+const dateCode = computed(() => dayCode(props.task.date, props.task.dateTime))
+const dueCode = computed(() => dayCode(props.task.due, props.task.dueTime))
+const isOverdue = computed(
+  () =>
+    !!props.task.due &&
+    !props.task.completedAt &&
+    props.task.due.startOf('day').isBefore(dayjs().startOf('day'))
+)
+const hasAnything = computed(
+  () => !!(props.task.date || props.task.due || props.task.recurrence || props.task.completedAt)
+)
+
+const openDatePickerForMode = (mode: 'event' | 'due') => {
+  datePickerMode.value = mode
   datePickerOpen.value = true
 }
 
@@ -191,14 +193,28 @@ onMounted(() => {
 <style lang="scss">
 .abele-task-header-view {
   display: flex;
-  align-items: flex-start;
-  gap: var(--size-4-2);
+  align-items: center;
+  gap: var(--size-2-2);
   margin-bottom: var(--p-spacing);
   padding-bottom: var(--size-4-2);
   flex-wrap: wrap;
+  color: var(--text-muted);
 
   p {
     margin: 0;
+  }
+}
+
+// A phone keeps the row to one line: the repeat rule is in its tooltip and its window there.
+.is-phone .abele-task-header-view {
+  gap: 0;
+
+  .abele-obsidian-icon {
+    padding-inline: var(--size-2-3);
+  }
+
+  .abele-task-header-view__recurrence .abele-obsidian-icon__text {
+    display: none;
   }
 }
 
@@ -207,12 +223,5 @@ onMounted(() => {
   min-width: 0;
   overflow-wrap: anywhere;
   padding-top: 1px;
-}
-
-.abele-task-header-view__indicator {
-  width: 3px;
-  background-color: var(--background-modifier-error);
-  border-radius: 2px;
-  height: 100%;
 }
 </style>
