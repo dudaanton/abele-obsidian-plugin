@@ -6,11 +6,16 @@
       :count="notes.length"
       :fold="fold"
     >
-      <template #actions
-        ><button class="abele-notes-list__sort-btn clickable-icon" @click="toggleSort">
-          {{ sortBy === 'created' ? 'created' : 'updated' }}
-        </button></template
-      >
+      <!-- The order as a glyph, as in the chat history; the words are in its menu. -->
+      <template #actions>
+        <Icon
+          icon="arrow-down-wide-narrow"
+          class="abele-notes-list__order"
+          aria-haspopup="menu"
+          :label="sortBy === 'created' ? 'Newest written first' : 'Last changed first'"
+          @click="orderMenu"
+        />
+      </template>
     </ListSectionHeader>
     <template v-if="!fold.collapsed.value">
       <div class="abele-notes-list__notes">
@@ -41,6 +46,8 @@ import { openFile } from '@/helpers/vaultUtils'
 import { compactDate } from '@/helpers/datesHelper'
 import { resourceUrl } from '@/helpers/resourceUrl'
 import Card from './obsidian/Card.vue'
+import Icon from './obsidian/Icon.vue'
+import { Menu } from 'obsidian'
 import ListSectionHeader from './obsidian/ListSectionHeader.vue'
 import { useFooterFold } from '@/composables/useFooterFold'
 import { usePagedList } from '@/composables/usePagedList'
@@ -79,8 +86,25 @@ const { visible, hasMore, sentinel, reset } = usePagedList(
   useFooterPages('backlinks')
 )
 
-function toggleSort() {
-  sortBy.value = sortBy.value === 'created' ? 'updated' : 'created'
+const ORDERS: { value: SortBy; title: string }[] = [
+  { value: 'created', title: 'Newest written first' },
+  { value: 'updated', title: 'Last changed first' },
+]
+function orderMenu(event: MouseEvent) {
+  const menu = new Menu()
+  for (const option of ORDERS)
+    menu.addItem((item) =>
+      item
+        .setTitle(option.title)
+        .setChecked(option.value === sortBy.value)
+        .onClick(() => setSort(option.value))
+    )
+  menu.showAtMouseEvent(event)
+}
+
+function setSort(next: SortBy) {
+  if (next === sortBy.value) return
+  sortBy.value = next
   // A different sort is a different list; keeping the expanded window would strand the
   // reader in the middle of an order they never scrolled through.
   reset()
@@ -120,14 +144,6 @@ function openNote(note: Note) {
   gap: calc(var(--p-spacing) / 2);
   font-weight: bold;
   margin-bottom: var(--p-spacing);
-}
-
-.abele-notes-list__sort-btn {
-  font-size: var(--font-smallest);
-  color: var(--text-muted);
-  font-weight: normal;
-  padding: 2px 6px;
-  border-radius: var(--radius-s);
 }
 
 .abele-notes-list__sentinel {

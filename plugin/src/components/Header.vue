@@ -42,7 +42,8 @@
       <Icon icon="chevron-last" :disabled="doesNextJournalNoteExist" @click="goToNextJournalNote" />
     </div>
   </div>
-  <div v-if="scriptButtons.length" class="abele-header-view">
+  <!-- The note's own buttons and its timer are one row of actions, not a row each. -->
+  <div v-if="scriptButtons.length || showTimerButton" class="abele-header-view">
     <Icon
       v-for="button in scriptButtons"
       :key="button.id"
@@ -51,12 +52,11 @@
       :tooltip="button.iconOnly ? button.name : `Run ${button.scriptName}`"
       @click="runButton(button)"
     />
-  </div>
-  <div v-if="showTimerButton" class="abele-header-view">
     <Icon
+      v-if="showTimerButton"
       :icon="isTimerActiveForNote ? 'timer-off' : 'timer'"
-      :text-right="isTimerActiveForNote ? timerElapsedText : 'Start timer'"
-      :tooltip="isTimerActiveForNote ? 'Stop timer' : 'Start timer for this note'"
+      :text-right="isTimerActiveForNote ? timerElapsedText : undefined"
+      :label="isTimerActiveForNote ? 'Stop timer' : 'Start timer for this note'"
       @click="toggleTimer"
     />
   </div>
@@ -329,6 +329,12 @@ onMounted(() => {
 
   p {
     margin: 0;
+  }
+
+  // The first glyph's ink, not its button's box, starts where the title above starts: less the
+  // button's own padding and the margin a glyph is drawn inside its box with.
+  > .clickable-icon:first-child {
+    margin-inline-start: calc(-1 * var(--size-2-3) - var(--icon-size) * 2 / 24);
   }
 }
 

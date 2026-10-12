@@ -4,6 +4,7 @@ import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest'
 import { mount, type VueWrapper } from '@vue/test-utils'
 import { nextTick } from 'vue'
 import dayjs from 'dayjs'
+import { Menu, type MenuItem } from 'obsidian'
 import NotesList from '@/components/NotesList.vue'
 import Card from '@/components/obsidian/Card.vue'
 import { Note } from '@/entities/Note'
@@ -15,6 +16,16 @@ import {
   resetFakeIntersectionObservers,
   scrollIntoView,
 } from '../helpers/fakeIntersectionObserver'
+
+/** Picks an order from the menu the order glyph opens, as Obsidian would show it. */
+const order = async (v: VueWrapper, title: string) => {
+  const spy = vi.spyOn(Menu.prototype, 'showAtMouseEvent')
+  await v.find('.abele-notes-list__order').trigger('click')
+  const menu = spy.mock.contexts[0] as unknown as { items: MenuItem[] }
+  spy.mockRestore()
+  menu.items.find((i) => i.title === title)!.handler?.()
+  await nextTick()
+}
 
 const make = (name: string, created?: string, updated?: string) =>
   Object.assign(new Note(`Notes/${name}.md`), {
@@ -62,10 +73,10 @@ describe('backlink list — ordering, metadata and restored pages', () => {
     const before = [...notes]
     const v = render(notes)
     expect(titles()).toEqual(['New', 'Tie', 'Old', 'Undated'])
-    await v.find('button').trigger('click')
+    await order(v, 'Last changed first')
     expect(titles()).toEqual(['Old', 'New', 'Tie', 'Undated'])
-    expect(v.find('button').text()).toBe('updated')
-    await v.find('button').trigger('click')
+    expect(v.find('.abele-notes-list__order').attributes('aria-label')).toBe('Last changed first')
+    await order(v, 'Newest written first')
     expect(titles()).toEqual(['New', 'Tie', 'Old', 'Undated'])
     expect(notes).toEqual(before)
   })
@@ -100,7 +111,8 @@ describe('backlink list — ordering, metadata and restored pages', () => {
     expect(scrollIntoView(v.find('.abele-notes-list__sentinel').element)).toBe(1)
     await nextTick()
     expect(titles()).toHaveLength(150)
-    await v.find('.abele-notes-list__sort-btn').trigger('click')
+    // Another order is a different list.
+    await order(v, 'Last changed first')
     expect(titles()).toHaveLength(50)
     expect(app.loadLocalStorage(FOOTER_VIEW_KEY)).toEqual({})
   })

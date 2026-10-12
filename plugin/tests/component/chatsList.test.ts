@@ -11,7 +11,10 @@ import { readFileSync } from 'node:fs'
 import { join } from 'node:path'
 import { mount, type VueWrapper } from '@vue/test-utils'
 import { nextTick } from 'vue'
+import dayjs from 'dayjs'
+import * as obsidian from 'obsidian'
 import ChatsList from '@/components/ChatsList.vue'
+import { compactDate } from '@/helpers/datesHelper'
 import { ChatLink } from '@/entities/ChatLink'
 import { useChatLinks } from '@/composables/useChatLinks'
 import { ChatService } from '@/ai/ChatService'
@@ -160,7 +163,7 @@ describe('which chats a note lists', () => {
 })
 
 describe('a card in the list', () => {
-  it('shows the title, the recap and the date this note was written', () => {
+  it("shows the title, the recap and the date this note was written, short as the backlinks' are", () => {
     seedHistory([entry()])
 
     const view = render(links())
@@ -169,16 +172,19 @@ describe('a card in the list', () => {
     expect(view.find('.abele-card__description').text()).toBe(
       'Tidied the note and checked its links.'
     )
-    expect(view.find('.abele-card__meta').text()).toContain('01.09.2026')
+    expect(view.find('.abele-card__meta').text()).toContain(compactDate(dayjs('2026-09-01')))
   })
 
-  it('names the agent the chat ran on', () => {
+  it("names the agent the chat ran on, in the card's tooltip", () => {
     const agent = AgentRegistry.getInstance().create({ name: 'Editor' })
     seedHistory([entry({ agentId: agent.id })])
+    const tip = vi.spyOn(obsidian, 'setTooltip')
 
     const view = render(links())
 
-    expect(view.find('.abele-badge').text()).toBe('Editor')
+    expect(view.find('.abele-badge').exists()).toBe(false)
+    expect(tip).toHaveBeenCalledWith(view.find('.abele-card').element, 'Agent: Editor')
+    tip.mockRestore()
   })
 
   it('opens that chat in the sidebar when it is pressed', async () => {

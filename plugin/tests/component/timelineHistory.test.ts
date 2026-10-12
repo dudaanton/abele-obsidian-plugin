@@ -89,7 +89,7 @@ describe('folded timeline history', () => {
       open()
       await flushPromises()
       expect(days()).toEqual(before.filter((date) => date !== 'date:2030-06-14'))
-      expect(view.find('.abele-timeline__history').text()).toContain('Show all')
+      expect(view.find('.abele-timeline__history').attributes('aria-expanded')).toBe('false')
     } finally {
       config.rememberNotePlaces = remembered
       resetFooterView()
@@ -172,7 +172,13 @@ describe('folded timeline history', () => {
       task('sample-today', '2030-06-15'),
     ])
     expect(days()).toEqual(['date:2030-06-15'])
-    expect(view.find('.abele-timeline__history').text()).toContain('2 unfinished')
+    expect(view.find('.abele-timeline__history').text()).toBe('Overdue2')
+    expect(
+      view
+        .find('.abele-timeline__history')
+        .find('.abele-timeline__history-count')
+        .attributes('aria-label')
+    ).toBe('2 unfinished')
   })
 
   it('reveals every past day on one banner click, never on upward or downward scrolling', async () => {
@@ -183,7 +189,10 @@ describe('folded timeline history', () => {
     ])
     await flushPromises()
     const strip = view.find('.abele-timeline__history')
-    expect(strip.text()).toContain('2 unfinished')
+    expect(strip.text()).toBe('Overdue2')
+    expect(strip.find('.abele-timeline__history-count').attributes('aria-label')).toBe(
+      '2 unfinished'
+    )
     await view.trigger('wheel', { deltaY: 80 })
     await view.trigger('wheel', { deltaY: -80 })
     await flushPromises()
@@ -191,11 +200,19 @@ describe('folded timeline history', () => {
     await strip.trigger('click')
     await flushPromises()
     expect(days()).toEqual(['date:2030-06-13', 'date:2030-06-14', 'date:2030-06-15'])
-    expect(strip.text()).toContain('2 unfinished · Hide all')
+    expect(strip.text()).toBe('Overdue2')
+    expect(strip.find('.abele-timeline__history-count').attributes('aria-label')).toBe(
+      '2 unfinished'
+    )
+    expect(strip.attributes('aria-expanded')).toBe('true')
     await strip.trigger('click')
     await flushPromises()
     expect(days()).toEqual(['date:2030-06-15'])
-    expect(strip.text()).toContain('2 unfinished · Show all')
+    expect(strip.text()).toBe('Overdue2')
+    expect(strip.find('.abele-timeline__history-count').attributes('aria-label')).toBe(
+      '2 unfinished'
+    )
+    expect(strip.attributes('aria-expanded')).toBe('false')
   })
 
   it('does not reset future pages or unfold old completed-only days on a completed toggle', async () => {
@@ -213,7 +230,7 @@ describe('folded timeline history', () => {
     await flushPromises()
     expect(days()).toHaveLength(40)
     expect(days()[0]).toBe('date:2030-06-15')
-    expect(view.find('.abele-timeline__history').text()).toContain('0 unfinished')
+    expect(view.find('.abele-timeline__history').text()).toBe('Past days')
   })
 
   it('keeps revealed history when completed-only days appear between it and today', async () => {
@@ -250,7 +267,13 @@ describe('folded timeline history', () => {
     await view.trigger('wheel', { deltaY: -80 })
     await flushPromises()
     expect(days()).toEqual(['date:2030-06-15'])
-    expect(view.find('.abele-timeline__history').text()).toContain('1 unfinished')
+    expect(view.find('.abele-timeline__history').text()).toBe('Overdue1')
+    expect(
+      view
+        .find('.abele-timeline__history')
+        .find('.abele-timeline__history-count')
+        .attributes('aria-label')
+    ).toBe('1 unfinished')
   })
 
   it('keeps a past-only list folded on touch and reveals it all on a click', async () => {
@@ -261,15 +284,35 @@ describe('folded timeline history', () => {
     await view.trigger('touchmove', { touches: [{ clientY: 150 }] })
     await flushPromises()
     expect(days()).toEqual([])
-    expect(view.find('.abele-timeline__history').text()).toContain('2 unfinished')
+    expect(view.find('.abele-timeline__history').text()).toBe('Overdue2')
+    expect(
+      view
+        .find('.abele-timeline__history')
+        .find('.abele-timeline__history-count')
+        .attributes('aria-label')
+    ).toBe('2 unfinished')
     await view.find('.abele-timeline__history').trigger('click')
     await flushPromises()
     expect(days()).toEqual(['date:2030-06-12', 'date:2030-06-14'])
-    expect(view.find('.abele-timeline__history').text()).toContain('2 unfinished · Hide all')
+    expect(view.find('.abele-timeline__history').text()).toBe('Overdue2')
+    expect(
+      view
+        .find('.abele-timeline__history')
+        .find('.abele-timeline__history-count')
+        .attributes('aria-label')
+    ).toBe('2 unfinished')
+    expect(view.find('.abele-timeline__history').attributes('aria-expanded')).toBe('true')
     await view.find('.abele-timeline__history').trigger('click')
     await flushPromises()
     expect(days()).toEqual([])
-    expect(view.find('.abele-timeline__history').text()).toContain('2 unfinished · Show all')
+    expect(view.find('.abele-timeline__history').text()).toBe('Overdue2')
+    expect(
+      view
+        .find('.abele-timeline__history')
+        .find('.abele-timeline__history-count')
+        .attributes('aria-label')
+    ).toBe('2 unfinished')
+    expect(view.find('.abele-timeline__history').attributes('aria-expanded')).toBe('false')
   })
 
   it.each([false, true])(
@@ -297,7 +340,14 @@ describe('folded timeline history', () => {
       await view.setProps({ tasks: [task('sample-arrival', '2019-01-01'), ...tasks] })
       await flushPromises()
       expect(days()[0]).toBe('date:2019-01-01')
-      expect(view.find('.abele-timeline__history').text()).toContain('2 unfinished · Hide all')
+      expect(view.find('.abele-timeline__history').text()).toBe('Overdue2')
+      expect(
+        view
+          .find('.abele-timeline__history')
+          .find('.abele-timeline__history-count')
+          .attributes('aria-label')
+      ).toBe('2 unfinished')
+      expect(view.find('.abele-timeline__history').attributes('aria-expanded')).toBe('true')
       await view.find('.abele-timeline__history').trigger('click')
       await flushPromises()
       expect(days()).toEqual(['date:2030-06-15'])

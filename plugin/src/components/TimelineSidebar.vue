@@ -88,8 +88,11 @@ const onDateRightClick = (date: dayjs.Dayjs, event: MouseEvent) => {
 const container = ref<HTMLElement>()
 const visible = useOwnerVisibility(container)
 const { now } = useDate(visible, () => container.value?.ownerDocument ?? document)
-// Past events are history, not something to do: the list of what is coming starts today.
-const calendarDays = useCalendarDays((day) => day >= now.value.format(DATE_FORMAT))
+// The past is folded under "Past days" in the list; opened, a day there reads whole, with its
+// meetings beside the tasks left over from it. A month back is as far as that history goes.
+const calendarDays = useCalendarDays(
+  (day) => day >= now.value.subtract(30, 'day').format(DATE_FORMAT)
+)
 const upcomingEvents = pausedWhileHidden(active, () => calendarDays.value)
 
 // const todoTasks = computed(() => tasks.value.filter((t) => !t.taskNotFound && !t.dates.length))

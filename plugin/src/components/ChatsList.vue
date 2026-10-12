@@ -1,19 +1,16 @@
 <template>
   <div class="abele-chats-list" data-abele-anchor="section:chats">
-    <div class="abele-chats-list__header">
-      <FoldHeading
-        class="abele-chats-list__header-text"
-        text="Chats"
-        :count="fold.enabled ? chats.length : undefined"
-        :collapsible="fold.enabled"
-        :collapsed="fold.collapsed.value"
-        @toggle="fold.toggle"
-      />
-    </div>
+    <ListSectionHeader
+      class-prefix="abele-chats-list"
+      text="Chats"
+      :count="chats.length"
+      :fold="fold"
+    />
     <div v-if="!fold.collapsed.value" class="abele-chats-list__chats">
       <Card
         v-for="chat in visible"
         :key="chat.path"
+        :ref="(card) => describe(card, chat)"
         :data-abele-anchor="'chat:' + chat.path"
         :title="chat.title"
         :description="chat.recap || undefined"
@@ -22,9 +19,6 @@
         clickable
         @click="chat.open()"
       >
-        <template v-if="chat.agentName" #badges>
-          <Badge :text="chat.agentName" />
-        </template>
         <!-- Visible rather than behind a right-click, which a phone does not have. Detaching
              takes the card away and nothing else: the chat itself is untouched. -->
         <template #actions>
@@ -45,14 +39,14 @@
 import { computed } from 'vue'
 import type { ChatLink } from '@/entities/ChatLink'
 import Card from './obsidian/Card.vue'
-import FoldHeading from './obsidian/FoldHeading.vue'
+import ListSectionHeader from './obsidian/ListSectionHeader.vue'
+import { setTooltip } from 'obsidian'
 import { useFooterFold } from '@/composables/useFooterFold'
-import Badge from './obsidian/Badge.vue'
 import Icon from './obsidian/Icon.vue'
 import { detachNote } from '@/ai/chatNoteLinks'
 import { usePagedList } from '@/composables/usePagedList'
 import { useFooterPages } from '@/composables/useFooterView'
-import { DISPLAY_DATE_FORMAT } from '@/constants/dates'
+import { compactDate } from '@/helpers/datesHelper'
 
 const props = withDefaults(
   defineProps<{
@@ -68,8 +62,13 @@ const fold = useFooterFold('chats')
 /** Already ordered by `useChatLinks`; kept as a getter so paging follows a refiltered list. */
 const sorted = computed(() => props.chats)
 
-const metaOf = (chat: ChatLink): string[] =>
-  chat.touchedAt ? [chat.touchedAt.format(DISPLAY_DATE_FORMAT)] : []
+const metaOf = (chat: ChatLink): string[] => (chat.touchedAt ? [compactDate(chat.touchedAt)] : [])
+
+/** Who the chat is with is a fact for the pointer, not a coloured label on every card. */
+const describe = (card: unknown, chat: ChatLink) => {
+  const el = (card as { $el?: unknown } | null)?.$el
+  if (el instanceof HTMLElement && chat.agentName) setTooltip(el, `Agent: ${chat.agentName}`)
+}
 
 const detach = (chat: ChatLink) => {
   void detachNote(chat.path, chat.notePath).catch((e: unknown) => {
@@ -85,14 +84,6 @@ const { visible, hasMore, sentinel } = usePagedList(
 </script>
 
 <style lang="scss">
-.abele-chats-list__header {
-  display: flex;
-  align-items: center;
-  gap: calc(var(--p-spacing) / 2);
-  font-weight: bold;
-  margin-bottom: var(--p-spacing);
-}
-
 .abele-chats-list__sentinel {
   height: 1px;
 }

@@ -91,7 +91,10 @@ describe('the chats under a script', () => {
     await nextTick()
 
     expect(titles()).toEqual(['One'])
-    expect(host.querySelector('.abele-chats-list__header')?.textContent).toBe('Chats')
+    // The same heading as every other list: the name, then how many.
+    const heading = host.querySelector('.abele-chats-list__header-text')
+    expect(heading?.querySelector('.abele-fold-heading__count')?.textContent?.trim()).toBe('1')
+    expect(heading?.textContent?.replace(/\d+$/, '').trim()).toBe('Chats')
   })
 
   it('draws nothing for a script no chat worked on', async () => {
