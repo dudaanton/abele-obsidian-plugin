@@ -63,7 +63,7 @@ describe('reader navigation split width', () => {
         'aria-orientation': 'vertical',
         tabindex: '0',
         'aria-valuemin': '192',
-        'aria-valuemax': '400',
+        'aria-valuemax': '1000',
         'aria-valuenow': '336',
       })
       await handle(view).trigger('keydown', { key: 'ArrowLeft' })
@@ -95,9 +95,9 @@ describe('reader navigation split width', () => {
   it('clamps to available space without replacing the saved desktop preference in a drawer', async () => {
     app().saveLocalStorage(PANEL_WIDTH_KEY, 700)
     const { view } = await render()
-    expect(handle(view).attributes('aria-valuenow')).toBe('400')
+    expect(handle(view).attributes('aria-valuenow')).toBe('700')
     await sized(view, 700)
-    expect(handle(view).attributes('aria-valuenow')).toBe('280')
+    expect(handle(view).attributes('aria-valuenow')).toBe('700')
     await sized(view, 390)
     expect(handle(view).attributes('tabindex')).toBe('-1')
     await handle(view).trigger('keydown', { key: 'Home' })

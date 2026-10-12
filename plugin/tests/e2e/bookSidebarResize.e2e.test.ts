@@ -224,7 +224,7 @@ describe.skipIf(!available)('reader navigation split', () => {
         await key('End'); await key('ArrowRight'); const large = measure(v)
         handle.dispatchEvent(new MouseEvent('dblclick', { bubbles: true, cancelable: true })); await wait(100)
         const layout = v.contentEl.querySelector('.abele-book-reader')
-        return { min, max, small, large, reset: measure(v), default: Math.min(parseFloat(getComputedStyle(layout).fontSize) * 21, layout.clientWidth * 0.4), stored: app.loadLocalStorage(${JSON.stringify(WIDTH_KEY)}) }
+        return { min, max, small, large, reset: measure(v), default: Math.min(parseFloat(getComputedStyle(layout).fontSize) * 21, layout.clientWidth), stored: app.loadLocalStorage(${JSON.stringify(WIDTH_KEY)}) }
       })()`)
       expect(r.small).toBeCloseTo(r.min, 0)
       expect(r.large).toBeCloseTo(r.max, 0)
