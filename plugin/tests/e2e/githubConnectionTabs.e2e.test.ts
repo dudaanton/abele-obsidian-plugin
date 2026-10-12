@@ -29,7 +29,7 @@ describe.skipIf(!available)('connection-aware GitHub tabs', () => {
       return 'ok'
     })()`)
   })
-  afterAll(() => {
+  afterAll(async () => {
     try {
       restoreGithub()
     } finally {

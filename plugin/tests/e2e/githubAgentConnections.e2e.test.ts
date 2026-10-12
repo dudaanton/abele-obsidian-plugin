@@ -31,7 +31,7 @@ describe.skipIf(!available)('execution-agent GitHub connection boundary', () => 
       return 'ok'
     })()`)
   })
-  afterAll(() => {
+  afterAll(async () => {
     try {
       evalRaw(
         `(()=>{const r=window.__abeleTest.AgentRegistry.getInstance();for(const id of window.__connectionAgents||[])r.remove(id);delete window.__connectionAgents;delete window.__connectionSelectedToken;return 'ok'})()`

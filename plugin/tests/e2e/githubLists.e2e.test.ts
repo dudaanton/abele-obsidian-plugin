@@ -67,7 +67,7 @@ describe.skipIf(!available)("a repository's lists", () => {
     )
   })
 
-  afterAll(() => {
+  afterAll(async () => {
     if (!available) return
     try {
       restoreGithub()

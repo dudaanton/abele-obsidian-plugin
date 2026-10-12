@@ -19,7 +19,7 @@ describe('live GitHub credential changes during code search', () => {
     gh = await startFakeGithub({ mode: 'accounts' })
     enableGithub(gh.origin)
   })
-  afterAll(() => {
+  afterAll(async () => {
     try {
       restoreGithub()
     } finally {

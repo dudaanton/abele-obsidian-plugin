@@ -109,7 +109,7 @@ describe.skipIf(!available)('GitHub links in a note', () => {
     })()`)
   }, 60_000)
 
-  afterAll(() => {
+  afterAll(async () => {
     if (!available) return
     try {
       evalAsync(`(async () => {

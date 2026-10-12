@@ -91,7 +91,7 @@ describe.skipIf(!available)('folders of a repository in a GitHub tab', () => {
     )
   })
 
-  afterAll(() => {
+  afterAll(async () => {
     if (!available) return
     try {
       restoreGithub()

@@ -109,7 +109,7 @@ describe.skipIf(!available)('GitHub notifications', () => {
     enableGithub(gh.origin, !onPhone())
   }, 60_000)
 
-  afterAll(() => {
+  afterAll(async () => {
     if (!available) return
     try {
       closeAll()

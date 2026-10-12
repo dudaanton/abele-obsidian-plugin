@@ -43,7 +43,7 @@ describe.skipIf(!available)('searching a GitHub tab', () => {
     )
   }, 60_000)
 
-  afterAll(() => {
+  afterAll(async () => {
     if (!available) return
     try {
       restoreGithub()

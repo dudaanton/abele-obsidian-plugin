@@ -50,7 +50,7 @@ for (const mode of ['legacy', 'no-raw'] as const) {
       })()`)
     }, 60_000)
 
-    afterAll(() => {
+    afterAll(async () => {
       if (!available) return
       try {
         evalAsync(`(() => {

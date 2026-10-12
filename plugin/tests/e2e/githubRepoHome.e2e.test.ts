@@ -78,7 +78,7 @@ describe.skipIf(!available)("a repository's front page", () => {
     )
   })
 
-  afterAll(() => {
+  afterAll(async () => {
     if (!available) return
     try {
       restoreGithub()

@@ -23,7 +23,7 @@ describe.skipIf(!available)('exact pinned-base GitHub links', () => {
     gh = await startFakeGithub({ mode: 'pinned' })
     enableGithub(gh.origin, false)
   }, 60000)
-  afterAll(() => {
+  afterAll(async () => {
     if (!available) return
     try {
       evalAsync(`(async () => {

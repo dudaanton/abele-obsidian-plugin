@@ -39,7 +39,7 @@ describe.skipIf(!available)('words selected in a discussion comment', () => {
     })()`)
   }, 60_000)
 
-  afterAll(() => {
+  afterAll(async () => {
     if (!available) return
     try {
       evalAsync(`(async () => {

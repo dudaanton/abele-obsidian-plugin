@@ -108,7 +108,7 @@ describe.skipIf(!available)('the Open GitHub link or item picker', () => {
     )
   }, 60_000)
 
-  afterAll(() => {
+  afterAll(async () => {
     if (!available) return
     try {
       restoreGithub()
