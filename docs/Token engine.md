@@ -18,6 +18,13 @@ and sets URLRequest.timeoutInterval in [CapacitorUrlRequest.swift](https://githu
 The native bridge exposes no byte-progress callback; the JS bound is a conservative
 throughput allowance, not a direct progress measurement. Close still aborts host waiting.
 
+An explicit native connection-lost error gets at most one immediate retry for GET/HEAD
+or a POST to `/v2/commit` with an idempotency key and a repeatable string body. Both
+attempts use the same captured endpoint, headers, key and body. Each attempt keeps
+the existing deadline; cancellation, unresolved timeouts, HTTP refusals and other
+mutations are not retried by the native transport. Request traces retain each attempt
+and a sanitized retry marker.
+
 The production plugin pins core and protocol to server release v0.3.1, commit
 `6a667ea07d9b389d6cfea9ca16761e083fad9153`. The vendor script generated
 the archives and provenance; package.json, package-lock.json and SERVER_TEST_COMMIT

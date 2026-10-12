@@ -28,6 +28,7 @@ export interface NativeHttp {
   request(options: NativeHttpOptions): Promise<NativeHttpResponse>
 }
 export class NativeSyncFailure extends EngineError {
+  readonly connectionLost: boolean
   constructor(
     readonly phase: string,
     error: unknown
@@ -61,6 +62,13 @@ export class NativeSyncFailure extends EngineError {
       permanent ? 'io' : 'offline',
       `${label}. Native ${phase} (${nativeCode}): ${clean(native?.message ?? error)}`
     )
+    // Some iOS bridge versions expose the domain rather than the numeric NSError code.
+    this.connectionLost =
+      phase === 'sending' &&
+      (native?.code === -1005 ||
+        native?.code === '-1005' ||
+        (native?.code === 'NSURLErrorDomain' &&
+          native?.message === 'The network connection was lost.'))
   }
 }
 /** Find a sanitized native diagnosis, including failures nested by host callers. */
@@ -131,7 +139,7 @@ export function exactNativeRequestBodies(native: NativeHttp): NativeHttp {
 /** Exact native bytes and explicit pre-follow refusal, measured through the real iOS bridge. */
 export function fetchViaCapacitorHttp(native: NativeHttp): typeof fetch {
   const send = capacitorFetch(native)
-  return (input, init) => {
+  return async (input, init) => {
     const url = new URL(
       typeof input === 'string' ? input : input instanceof URL ? input.href : input.url
     )
@@ -148,10 +156,38 @@ export function fetchViaCapacitorHttp(native: NativeHttp): typeof fetch {
       )
         ? masked
         : '/other'
-    return nativeRequests.run(
-      `${(init?.method ?? (input instanceof Request ? input.method : 'GET')).toUpperCase()} ${path}${range ? ' ' + range : ''}`,
-      () => send(input, init)
-    )
+    const method = (init?.method ?? (input instanceof Request ? input.method : 'GET')).toUpperCase()
+    const signal = init?.signal ?? (input instanceof Request ? input.signal : null)
+    const safeRead = (method === 'GET' || method === 'HEAD') && init?.body == null
+    // Commit receipts are bound to the key and exact body. Leave other mutations
+    // and non-repeatable bodies to their protocol's recovery path.
+    const keyedCommit =
+      method === 'POST' &&
+      url.pathname === '/v2/commit' &&
+      !!headers.get('idempotency-key')?.trim() &&
+      typeof init?.body === 'string'
+    // A caller can mutate its init object while native work is pending. Capture the
+    // endpoint, authority, key and repeatable body once for both attempts.
+    const captured: RequestInit = { ...init, method, headers, signal }
+    const operation = `${method} ${path}${range ? ' ' + range : ''}`
+    for (let attempt = 0; ; attempt++) {
+      try {
+        return await nativeRequests.run(operation, () => send(url.href, captured))
+      } catch (error) {
+        if (
+          attempt ||
+          !(safeRead || keyedCommit) ||
+          signal?.aborted ||
+          !(error instanceof NativeSyncFailure) ||
+          !error.connectionLost
+        )
+          throw error
+        // Each settled send retains its existing deadline. Never retry an unresolved
+        // native timeout, a decoding failure, or a protocol/HTTP refusal.
+        nativeRequests.log('Retrying connection-lost request: ' + operation)
+        console.debug('[Abele Sync native retry]', { operation, attempt: 1 })
+      }
+    }
   }
 }
 function capacitorFetch(native: NativeHttp): typeof fetch {

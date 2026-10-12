@@ -1,6 +1,143 @@
 import { describe, expect, it, vi } from 'vitest'
 import { fetchViaCapacitorHttp, exactNativeRequestBodies } from '@/sync/mobileTransport'
 import { connectionError } from '@/sync/tokenUi'
+
+describe('bounded native connection-lost retry', () => {
+  const url = 'https://sync.example/v2/connection'
+  const lost = () =>
+    Object.assign(new Error('The network connection was lost.'), { code: 'NSURLErrorDomain' })
+  it.each(['GET', 'HEAD'])(
+    'retries %s once after the bridge connection-lost error',
+    async (method) => {
+      const request = vi
+        .fn()
+        .mockRejectedValueOnce(lost())
+        .mockResolvedValue({ status: 200, headers: {}, data: '', url })
+      await expect(fetchViaCapacitorHttp({ request })(url, { method })).resolves.toHaveProperty(
+        'status',
+        200
+      )
+      expect(request).toHaveBeenCalledTimes(2)
+      expect(request.mock.calls[1][0]).toEqual(request.mock.calls[0][0])
+    }
+  )
+  it('replays a keyed commit with identical native bytes and key', async () => {
+    const commit = 'https://sync.example/v2/commit'
+    const seen: import('@/sync/mobileTransport').NativeHttpOptions[] = []
+    const request = vi.fn(async (options: import('@/sync/mobileTransport').NativeHttpOptions) => {
+      seen.push(structuredClone(options))
+      if (seen.length === 1) throw lost()
+      return { status: 200, headers: {}, data: btoa('{}'), url: commit }
+    })
+    await fetchViaCapacitorHttp(exactNativeRequestBodies({ request }))(commit, {
+      method: 'POST',
+      headers: { 'content-type': 'application/json', 'idempotency-key': 'sample-key' },
+      body: '{"ops":[],"sample":true}',
+    })
+    expect(seen).toHaveLength(2)
+    expect(seen[1]).toEqual(seen[0])
+    expect(atob(seen[1].data as string)).toBe('{"ops":[],"sample":true}')
+  })
+  it('snapshots the key and body before a keyed commit can be retried', async () => {
+    const commit = 'https://sync.example/v2/commit'
+    const init = {
+      method: 'POST',
+      headers: { 'idempotency-key': 'sample-original-key' },
+      body: 'sample original bytes',
+    }
+    const request = vi.fn(async (options: import('@/sync/mobileTransport').NativeHttpOptions) => {
+      if (request.mock.calls.length === 1) {
+        init.headers['idempotency-key'] = 'sample-replacement-key'
+        init.body = 'sample replacement bytes'
+        throw lost()
+      }
+      return { status: 200, headers: {}, data: '', url: options.url }
+    })
+    await fetchViaCapacitorHttp({ request })(commit, init)
+    expect(request.mock.calls[1][0].headers['idempotency-key']).toBe('sample-original-key')
+    expect(request.mock.calls[1][0].data).toBe('sample original bytes')
+  })
+  it('does not retry an unkeyed commit or an unrelated keyed POST', async () => {
+    for (const [path, headers] of [
+      ['/v2/commit', {}],
+      ['/v2/tokens', { 'idempotency-key': 'sample-key' }],
+    ] as const) {
+      const request = vi.fn().mockRejectedValue(lost())
+      await expect(
+        fetchViaCapacitorHttp({ request })('https://sync.example' + path, {
+          method: 'POST',
+          headers,
+          body: '{}',
+        })
+      ).rejects.toThrow('Sync interrupted')
+      expect(request).toHaveBeenCalledOnce()
+    }
+  })
+  it('keeps the second connection-lost failure and never attempts a third send', async () => {
+    const request = vi.fn().mockRejectedValue(lost())
+    await expect(fetchViaCapacitorHttp({ request })(url)).rejects.toThrow('Sync interrupted')
+    expect(request).toHaveBeenCalledTimes(2)
+  })
+  it('does not retry cancellation or an unrelated native error', async () => {
+    for (const error of [
+      new DOMException('sample abort', 'AbortError'),
+      Object.assign(new Error('The request timed out.'), { code: 'NSURLErrorDomain' }),
+    ]) {
+      const request = vi.fn().mockRejectedValue(error)
+      await expect(fetchViaCapacitorHttp({ request })(url)).rejects.toThrow()
+      expect(request).toHaveBeenCalledOnce()
+    }
+  })
+  it.each([-1005, '-1005'])('recognizes numeric connection-lost code %s', async (code) => {
+    const request = vi
+      .fn()
+      .mockRejectedValueOnce(Object.assign(new Error('sample native error'), { code }))
+      .mockResolvedValue({ status: 200, headers: {}, data: '', url })
+    await expect(fetchViaCapacitorHttp({ request })(new Request(url))).resolves.toHaveProperty(
+      'status',
+      200
+    )
+    expect(request).toHaveBeenCalledTimes(2)
+  })
+  it('does not start a second native send when cancellation accompanies connection loss', async () => {
+    const controller = new AbortController()
+    const request = vi.fn(async () => {
+      controller.abort()
+      throw lost()
+    })
+    await expect(
+      fetchViaCapacitorHttp({ request })(url, { signal: controller.signal })
+    ).rejects.toThrow()
+    expect(request).toHaveBeenCalledOnce()
+  })
+  it('bounds the second send and releases its timer after a late first connection loss', async () => {
+    vi.useFakeTimers()
+    let fail!: (error: unknown) => void
+    const request = vi
+      .fn()
+      .mockImplementationOnce(
+        () =>
+          new Promise((_, reject) => {
+            fail = reject
+          })
+      )
+      .mockImplementationOnce(() => new Promise(() => {}))
+    try {
+      const result = fetchViaCapacitorHttp({ request })(url)
+      const rejected = expect(result).rejects.toThrow(
+        'Native request did not answer within 30 seconds'
+      )
+      await vi.advanceTimersByTimeAsync(29000)
+      fail(lost())
+      await vi.advanceTimersByTimeAsync(30000)
+      await rejected
+      expect(request).toHaveBeenCalledTimes(2)
+      expect(vi.getTimerCount()).toBe(0)
+    } finally {
+      vi.useRealTimers()
+    }
+  })
+})
 it('rejects an oversized native range before decoding or allocating its whole body', async () => {
   const decode = vi.spyOn(window, 'atob')
   const url = 'https://sync.example/v2/files/id/content'
