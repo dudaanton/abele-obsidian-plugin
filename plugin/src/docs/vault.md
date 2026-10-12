@@ -1053,8 +1053,11 @@ Renaming a note or a script rewrites the path in both places. Do not edit these 
 Stopping an agent keeps completed tool-call/result pairs and already streamed text in the
 chat log. Unfinished tool-call message records carry `toolExecution: "interrupted"`; requested
 calls that never executed carry `toolExecution: "not-run"`. Neither outcome invents a
-`toolResult`. Their internal tool-result records carry the same phase as `interruption` and
-explicitly tell the next model request that the call was interrupted by the user. These are
+`toolResult`. Their model-facing tool-result records carry the same phase as `interruption` and
+explicitly tell the next model request that the call was interrupted by the user. Completed
+messages are checkpointed individually, even while a later call is still settling. In that
+case request projection derives missing pairings from the persisted stop outcomes, without
+waiting for the abandoned runtime. A real late result replaces the stop outcome. These are
 history pairings, not tool-produced output or permission to retry. A tool that finishes despite
 cancellation retains its real completed result. Stop does not restore files or replay calls.
 Node chats retain completed work in the daemon journal; replay marks unfinished calls when a

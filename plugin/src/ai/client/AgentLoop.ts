@@ -29,6 +29,8 @@ export interface AgentLoopOptions {
   getTools?: () => AgentTool[]
   messages: Message[]
   streamOptions?: StreamOptions
+  /** Publish accumulated history after each completed message, not only a whole tool batch. */
+  onHistory?: (messages: Message[]) => void
   /** Called before tool execution. Return { block, pause, modifiedArgs } to control. */
   beforeToolCall?: (
     toolName: string,
@@ -158,6 +160,7 @@ export class AgentLoop {
          */
         if (assistantMsg.stopReason !== 'error') messages.push(assistantMsg)
         this.emit({ type: 'message_end', message: assistantMsg })
+        opts.onHistory?.(messages)
 
         // Stop conditions
         if (assistantMsg.stopReason === 'error' || assistantMsg.stopReason === 'aborted') break
@@ -198,6 +201,7 @@ export class AgentLoop {
 
           messages.push(resultMsg)
           this.emit({ type: 'message_end', message: resultMsg })
+          opts.onHistory?.(messages)
 
           // Inject extra messages (e.g. image content from read_image tool)
           if (resultMsg.injectMessages?.length) {
@@ -248,6 +252,7 @@ export class AgentLoop {
         this._pausedToolCalls = null
       }
       messages.push(...injected)
+      opts.onHistory?.(messages)
       externalSignal?.removeEventListener('abort', onExternalAbort)
       this._isRunning = false
       this.abortController = null

@@ -11,7 +11,7 @@ import { TFile, Notice } from 'obsidian'
 import { mergeAttentionTruth, settledAttention, type LocalAttention } from '@/agents/attention'
 import { AgentsService } from '@/agents/AgentsService'
 import { needsSecretApproval } from './tools/secretUtils'
-import { interruptedToolResult, type ToolInterruption } from './client/toolInterruption'
+import { interruptedToolResult, projectInterruptedTools, type ToolInterruption } from './client/toolInterruption'
 import { nanoid } from 'nanoid'
 import dayjs from 'dayjs'
 import { AbeleConfig } from '@/services/AbeleConfig'
@@ -1605,6 +1605,7 @@ export class ChatSession implements SummarizerHost, InterceptorHost, AnchorStora
             return {
               ...m,
               toolResult: resultText,
+              toolExecution: undefined,
               toolDiff: diff ? { old: diff.old, new: diff.new } : undefined,
               toolMap: (event.result.details as ToolMapDetails)?.map,
               replyProposal: (event.result.details as { replyProposal?: ReplyProposal })
@@ -1698,7 +1699,12 @@ export class ChatSession implements SummarizerHost, InterceptorHost, AnchorStora
     const path = this.activeLeafId
       ? getPathToLeaf(this.allChatMessages, this.activeLeafId)
       : this.allChatMessages
-    const internal = getInternalMessagesForPath(path, this.allInternalMessages)
+    const internal = projectInterruptedTools(
+      getInternalMessagesForPath(path, this.allInternalMessages),
+      new Map(
+        path.flatMap((m) => (m.toolCallId && m.toolExecution ? [[m.toolCallId, m.toolExecution]] : []))
+      )
+    )
 
     for (let i = internal.length - 1; i >= 0; i--) {
       const m = internal[i]
@@ -1868,6 +1874,11 @@ export class ChatSession implements SummarizerHost, InterceptorHost, AnchorStora
         tools,
         getTools: () => this.getTools(),
         messages: toSend,
+        onHistory: (messages) => {
+          if (this.destroyed || generation !== this.generation) return
+          checkpoint(messages)
+          this.markDirty()
+        },
         streamOptions: {
           ...(model.reasoningEffort ? { reasoningEffort: model.reasoningEffort } : {}),
           signal: controller.signal,
@@ -2230,6 +2241,7 @@ export class ChatSession implements SummarizerHost, InterceptorHost, AnchorStora
         return {
           ...m,
           toolResult: resultText,
+          toolExecution: undefined,
           toolImagePath: !isError && typeof imagePath === 'string' ? imagePath : undefined,
           toolDiff: diff ? { old: diff.old, new: diff.new } : undefined,
           toolMap: (toolResult.details as ToolMapDetails)?.map,
@@ -2867,6 +2879,25 @@ export class ChatSession implements SummarizerHost, InterceptorHost, AnchorStora
     for (const call of this.destroyed ? [] : [...this.pendingToolCalls.value]) {
       if (this.attention.value.tools?.[call.id] !== 'executing')
         this.settleInterruptedCall(call, 'not-run')
+    }
+    if (!this.destroyed && (this.isStreaming.value || this.isExecutingTool.value)) {
+      // A non-cancellable call can still be settling. Save completed work and stop outcomes
+      // now, without waiting for it or manufacturing a tool-produced result.
+      const path = this.messages.value
+      const outstanding = new Map<string, ToolCallContent>()
+      for (const message of getInternalMessagesForPath(path, this.allInternalMessages)) {
+        if (message.role === 'assistant')
+          for (const block of message.content)
+            if (block.type === 'toolCall') outstanding.set(block.id, block)
+        if (message.role === 'toolResult') outstanding.delete(message.toolCallId)
+      }
+      for (const call of outstanding.values()) {
+        const shown = path.find((m) => m.toolCallId === call.id)
+        const phase =
+          shown?.toolExecution ?? (shown?.toolStatus === 'approved' ? 'interrupted' : 'not-run')
+        this.showInterruptedCall(call, phase)
+      }
+      this.markDirty()
     }
     // Stay busy until the old loop has committed its partial history and released its tools.
     // Stopping stops what was lined up behind it too. Whoever stopped it keeps the text —

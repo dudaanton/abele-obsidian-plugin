@@ -1,6 +1,32 @@
-import type { ToolCallContent, ToolResultMessage } from './types'
+import type { Message, ToolCallContent, ToolResultMessage } from './types'
 
 export type ToolInterruption = 'interrupted' | 'not-run'
+
+/** Reopening a stopped chat need not wait for its old runtime to release a tool. */
+export function projectInterruptedTools(
+  messages: Message[],
+  stopped: ReadonlyMap<string, ToolInterruption>
+): Message[] {
+  const output: Message[] = []
+  const pending = new Map<string, { call: ToolCallContent; timestamp: number }>()
+  const finish = () => {
+    for (const [id, { call, timestamp }] of pending) {
+      const phase = stopped.get(id)
+      if (phase) output.push({ ...interruptedToolResult(call, phase), timestamp })
+    }
+    pending.clear()
+  }
+  for (const message of messages) {
+    if (message.role === 'toolResult') pending.delete(message.toolCallId)
+    else finish()
+    output.push(message)
+    if (message.role === 'assistant')
+      for (const call of message.content)
+        if (call.type === 'toolCall') pending.set(call.id, { call, timestamp: message.timestamp })
+  }
+  finish()
+  return output
+}
 
 /** A history pairing, not a tool-produced result or permission to replay the call. */
 export function interruptedToolResult(

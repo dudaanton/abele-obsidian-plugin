@@ -19,7 +19,7 @@ const reply = (content: AssistantMessage['content']): AssistantMessage => ({
   usage: { input: 1, output: 1, cacheRead: 0, cacheWrite: 0, totalTokens: 2 },
   stopReason: content.some((b) => b.type === 'toolCall') ? 'toolUse' : 'stop',
 })
-const calls = ['one', 'two', 'three'].map((id) => ({
+const calls = ['one', 'two', 'three', 'four'].map((id) => ({
   type: 'toolCall' as const,
   id,
   name: 'sample_write',
@@ -111,9 +111,9 @@ afterEach(async () => {
 })
 
 async function reopen() {
+  await session.flush()
   const file = session.currentChatFile.value!
   expect(file).toBeTruthy()
-  await session.flush()
   const opened = new ChatSession(ChatService.getInstance())
   sessions.push(opened)
   await opened.load(file)
@@ -237,6 +237,39 @@ describe('durable stopped turns', () => {
       }),
     ])
     expect(execute).toHaveBeenCalledTimes(2)
+  })
+
+  it('persists completed work and stopped call states while a non-cancellable call is still settling', async () => {
+    const entered = deferred(),
+      release = deferred()
+    execute.mockImplementation(async (id, _args, signal) => {
+      if (id !== 'three') return { content: [{ type: 'text', text: 'Saved ' + id }] }
+      entered.resolve()
+      await release.promise
+      signal!.throwIfAborted()
+      throw Error('unreachable')
+    })
+    streamBatch(4)
+    const sending = session.sendMessage('Update the sample notes')
+    await entered.promise
+    session.abort()
+    try {
+      const opened = await reopen()
+      expect(opened.messages.value.filter((m) => m.toolCallId).map((m) => m.toolResult)).toEqual([
+        'Saved one',
+        'Saved two',
+        undefined,
+        undefined,
+      ])
+      expectStopped(opened, 'three', 'interrupted')
+      expectStopped(opened, 'four', 'not-run')
+      const next = await continueWithRealClient(opened)
+      expect(next.filter((m) => m.role === 'tool')).toHaveLength(4)
+      expect(execute).toHaveBeenCalledTimes(3)
+    } finally {
+      release.resolve()
+      await sending
+    }
   })
 
   it('keeps a real result when a non-cancellable tool finishes after Stop', async () => {
