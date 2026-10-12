@@ -538,3 +538,33 @@ describe('putting an old version back', () => {
     expect(message).toContain('the move itself is not undone')
   })
 })
+
+it('releases retained preview text when the preview collapses', async () => {
+  const screen = open()
+  await flushPromises()
+  await cardFor(screen, 4)?.trigger('click')
+  await flushPromises()
+  const state = screen.vm.$.setupState as { diff: string[] }
+  expect(state.diff.length).toBeGreaterThan(0)
+  await cardFor(screen, 4)?.trigger('click')
+  await flushPromises()
+  expect(state.diff).toEqual([])
+})
+
+it('does not rebuild preview text after the dialog unmounts during a download', async () => {
+  let release!: (bytes: Uint8Array) => void
+  client.versionBytes.mockReturnValueOnce(
+    new Promise((resolve) => {
+      release = resolve
+    })
+  )
+  const screen = open()
+  await flushPromises()
+  await cardFor(screen, 4)?.trigger('click')
+  const state = screen.vm.$.setupState as { diff: string[]; selected: string | null }
+  screen.unmount()
+  release(bytesOf('sample late version text'))
+  await flushPromises()
+  expect(state.selected).toBeNull()
+  expect(state.diff).toEqual([])
+})

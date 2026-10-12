@@ -103,7 +103,7 @@
  * without failing — a 200 carrying `rejected` — which is why the answer is read rather than
  * discarded.
  */
-import { computed, onMounted, ref, useTemplateRef } from 'vue'
+import { computed, onMounted, onBeforeUnmount, ref, useTemplateRef } from 'vue'
 import { Notice } from 'obsidian'
 import type { V2EngineClient } from '@abele/sync-core'
 import type { VersionInfo, VersionOp } from '@abele/sync-protocol'
@@ -181,6 +181,11 @@ const diff = ref<string[]>([])
 const previewNote = ref<string | null>(null)
 const confirming = ref<VersionInfo | null>(null)
 const busy = ref(false)
+onBeforeUnmount(() => {
+  selected.value = null
+  diff.value = []
+  previewNote.value = null
+})
 
 const root = useTemplateRef<HTMLElement>('root')
 
@@ -278,6 +283,8 @@ async function select(version: VersionInfo): Promise<void> {
   if (!isText.value || client === null) return
   if (selected.value === version.version_id) {
     selected.value = null
+    diff.value = []
+    previewNote.value = null
     return
   }
   selected.value = version.version_id

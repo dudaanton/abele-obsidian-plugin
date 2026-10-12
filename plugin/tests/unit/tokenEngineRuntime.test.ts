@@ -732,3 +732,20 @@ it('reviews a directory rename found by a fresh manifest using its durable ident
     await one.runtime.disconnect()
   }
 })
+
+it('releases transport observers and connection inventories on close even after stop fails', async () => {
+  const one = runtime(await server('Notes/sample.md', 'sample'), new MemoryFileSystem())
+  const internals = one.runtime as unknown as {
+    transportObservers: Set<unknown>
+    compared: Set<string>
+    assetPaths: Map<string, string>
+  }
+  one.runtime.observeTransport(() => {})
+  internals.compared.add('sample-id')
+  internals.assetPaths.set('sample-id', 'sample.bin')
+  vi.spyOn(one.runtime.engine, 'stop').mockRejectedValueOnce(new Error('sample stop failure'))
+  await expect(one.runtime.close()).rejects.toThrow('sample stop failure')
+  expect(internals.transportObservers.size).toBe(0)
+  expect(internals.compared.size).toBe(0)
+  expect(internals.assetPaths.size).toBe(0)
+})

@@ -94,6 +94,7 @@ export class TokenEngineRuntime implements ConnectionRuntime, TokenUiRuntime {
   observeTransport(
     listener: (path: string, active: boolean, successful?: boolean, rangeOffset?: number) => void
   ): () => void {
+    if (!this.active) return () => {}
     this.transportObservers.add(listener)
     return () => {
       this.transportObservers.delete(listener)
@@ -862,9 +863,31 @@ export class TokenEngineRuntime implements ConnectionRuntime, TokenUiRuntime {
   }
   async close(): Promise<void> {
     this.invalidate()
-    await this.engine.stop()
-    await this.outbox.close()
-    this.unstatus()
+    const failures: unknown[] = []
+    try {
+      await this.engine.stop()
+    } catch (error) {
+      failures.push(error)
+    }
+    try {
+      await this.outbox.close()
+    } catch (error) {
+      failures.push(error)
+    }
+    try {
+      this.unstatus()
+    } catch (error) {
+      failures.push(error)
+    }
+    this.transportObservers.clear()
+    this.compared.clear()
+    this.held.clear()
+    this.manifestIds.clear()
+    this.assetPaths.clear()
+    this.authority = null
+    this.ignore = null
+    if (failures.length === 1) throw failures[0]
+    if (failures.length) throw new AggregateError(failures, 'Sync runtime cleanup failed')
   }
   async disconnect(): Promise<void> {
     this.invalidate()
