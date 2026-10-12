@@ -2,7 +2,11 @@
   <div class="abele-timeline-panel" :data-selected="selected.path">
     <div class="abele-timeline-panel__head">
       <div class="abele-timeline-panel__title">{{ selected.title }}</div>
-      <Icon icon="x" tooltip="Let go of the pick" @click="emit('close')" />
+      <!-- The pick's own glyphs, as a pane's header has them: open the note, let go. -->
+      <div class="abele-timeline-panel__glyphs">
+        <Icon icon="file-text" tooltip="Open this note" @click="emit('open', selected, $event)" />
+        <Icon icon="x" tooltip="Let go of the pick" @click="emit('close')" />
+      </div>
     </div>
     <div class="abele-timeline-panel__dates">{{ summary }}</div>
 
@@ -26,16 +30,6 @@
         and {{ rows.length - shown.length }} more
       </div>
     </div>
-
-    <div class="abele-timeline-panel__actions">
-      <Button
-        text="Open note"
-        icon="file-text"
-        accent
-        tooltip="Open this note"
-        @click="emit('open', selected, null)"
-      />
-    </div>
   </div>
 </template>
 
@@ -48,7 +42,6 @@
  * neighbour costs nothing.
  */
 import { computed } from 'vue'
-import Button from '../obsidian/Button.vue'
 import Icon from '../obsidian/Icon.vue'
 import type { HistLang } from '@/bases/historyDates'
 import { ageAt, isPoint, lifeOf, together, type TimelineItem } from '@/bases/timelineLayout'
@@ -150,6 +143,10 @@ const dotClass = (item: TimelineItem) =>
 .abele-timeline-panel__list {
   display: flex;
   flex-direction: column;
+  // Rows that light up under the pointer keep a step apart, so two lit rows never run together.
+  gap: var(--size-2-1);
+  // The rows' light reaches past the text by their padding; their ink stands at its edge.
+  margin-inline: calc(-1 * var(--size-2-3));
   flex: 1 1 auto;
   min-height: 0;
   overflow-y: auto;
@@ -217,10 +214,11 @@ $colors: red, orange, yellow, green, cyan, blue, purple, pink;
   color: var(--text-faint);
 }
 
-.abele-timeline-panel__actions {
+.abele-timeline-panel__glyphs {
   display: flex;
-  flex-wrap: wrap;
-  gap: var(--size-2-3);
+  flex: 0 0 auto;
+  align-items: center;
+  gap: var(--size-2-1);
 }
 
 // Under the drawing on a narrow view: a sheet of its own, half the height at most.
@@ -228,5 +226,11 @@ $colors: red, orange, yellow, green, cyan, blue, purple, pink;
   flex: 1 1 0;
   padding-block-start: var(--size-4-2);
   border-block-start: var(--border-width) solid var(--background-modifier-border);
+
+  // Never squeezed to nothing by the drawing above it: a few of the contemporaries stay in
+  // sight and the rest scroll.
+  .abele-timeline-panel__list {
+    min-height: calc(var(--line-height-normal) * 1em * 6);
+  }
 }
 </style>

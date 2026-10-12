@@ -11,14 +11,6 @@
         placeholder="Go to 1812, 490 BC or a name"
         @keydown.enter.prevent="go"
       />
-      <Icon
-        v-if="canCreate && narrow"
-        class="abele-timeline-base__new-icon"
-        icon="plus"
-        with-bg
-        tooltip="Make a note at the year in the middle of the screen"
-        @click="createInMiddle"
-      />
       <Tabs
         class="abele-timeline-base__levels"
         level="secondary"
@@ -27,9 +19,16 @@
         @update:model-value="(l) => setLevel(l as ZoomLevel)"
       />
       <Button
-        v-if="canCreate && !narrow"
+        v-if="canCreate && !stacked"
         class="abele-timeline-base__new"
         text="New note"
+        icon="plus"
+        tooltip="Make a note at the year in the middle of the screen"
+        @click="createInMiddle"
+      />
+      <Icon
+        v-if="canCreate && stacked"
+        class="abele-timeline-base__new-icon"
         icon="plus"
         tooltip="Make a note at the year in the middle of the screen"
         @click="createInMiddle"
@@ -61,7 +60,7 @@
         :narrow="narrow"
         :today="today"
         :can-create="canCreate"
-        @update:view="(v) => (view = v)"
+        @update:view="moveTo"
         @select="(item) => select(item, false)"
         @open="(item, event) => instance.open(item, event)"
         @hover="onHover"
@@ -217,10 +216,25 @@ const onSize = (w: number) => {
   }
 }
 
+/**
+ * Whether the person has moved the view yet. Until then the view is the first look at the
+ * whole base, and a pane still settling its width — a sidebar opening, the window laid out —
+ * draws everything again rather than leaving the far end cut off.
+ */
+let moved = false
+const moveTo = (v: Viewport) => {
+  moved = true
+  view.value = v
+}
+
 // The drawing narrowed or widened — the list opened beside it, the window resized: the year in
-// the middle stays in the middle.
+// the middle stays in the middle once the person has looked somewhere of their own.
 watch(areaWidth, (w, old) => {
   if (!fitted || !old || w === old) return
+  if (!moved) {
+    fit()
+    return
+  }
   view.value = { t0: view.value.t0 + (old - w) / 2 / view.value.ppy, ppy: view.value.ppy }
 })
 
@@ -261,11 +275,11 @@ const level = computed(() => nearestLevel(view.value.ppy, areaWidth.value))
 
 const setLevel = (l: ZoomLevel) => {
   const ppy = clampPpy(levelPpy(l, areaWidth.value), limits.value)
-  view.value = zoomAt(view.value, areaWidth.value / 2, ppy)
+  moveTo(zoomAt(view.value, areaWidth.value / 2, ppy))
 }
 
 const centreOn = (t: number) => {
-  view.value = { t0: t - areaWidth.value / 2 / view.value.ppy, ppy: view.value.ppy }
+  moveTo({ t0: t - areaWidth.value / 2 / view.value.ppy, ppy: view.value.ppy })
 }
 
 // ---- going somewhere --------------------------------------------------------------------
@@ -307,7 +321,7 @@ const select = (item: TimelineItem | null, reveal = true) => {
   const span = item.to - item.from
   if (reveal) {
     const ppy = span > 0 ? clampPpy((w * 0.35) / span, limits.value) : v.ppy
-    view.value = { t0: (item.from + item.to) / 2 - w / 2 / ppy, ppy }
+    moveTo({ t0: (item.from + item.to) / 2 - w / 2 / ppy, ppy })
     return
   }
   const x0 = (item.from - v.t0) * v.ppy
@@ -315,7 +329,7 @@ const select = (item: TimelineItem | null, reveal = true) => {
   if (x0 >= 0 && x1 <= w) return
   const fits = span * v.ppy < w * 0.8
   const t0 = fits ? (item.from + item.to) / 2 - w / 2 / v.ppy : item.from - (w * 0.1) / v.ppy
-  view.value = { t0, ppy: v.ppy }
+  moveTo({ t0, ppy: v.ppy })
 }
 
 // ---- the card under the pointer --------------------------------------------------------------
@@ -380,6 +394,7 @@ function createInMiddle() {
 
 .abele-timeline-base__new-icon {
   flex: 0 0 auto;
+  margin-inline-start: auto;
 }
 
 .abele-timeline-base__legend {
@@ -416,8 +431,9 @@ function createInMiddle() {
     flex: 1 1 0;
   }
 
-  // The steps in one row a finger scrolls, under the field.
+  // The steps in one row a finger scrolls, under the field and its new-note glyph.
   .abele-timeline-base__levels {
+    order: 1;
     flex: 1 1 100%;
     flex-wrap: nowrap;
     overflow-x: auto; // five steps do not fit a phone's width; they scroll rather than wrap

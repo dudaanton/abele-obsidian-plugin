@@ -1,5 +1,5 @@
 import { afterEach, describe, expect, it, vi } from 'vitest'
-import { echartsInit, getThemeColors } from '@/bases/echarts'
+import { echartsInit, getThemeColors, themePalette } from '@/bases/echarts'
 const engine = vi.hoisted(() => ({ init: vi.fn(), registerTheme: vi.fn(), use: vi.fn() }))
 vi.mock('echarts/core', () => engine)
 afterEach(() => vi.restoreAllMocks())
@@ -29,6 +29,7 @@ describe('chart theme', () => {
       ].map((key) => `chart:${key}`)
     )
     expect(options.tooltip.extraCssText).toContain('chart:--radius-s')
+    expect(themePalette(doc)).toEqual(options.color)
     expect(options.tooltip.extraCssText).toContain('chart:--shadow-s')
     expect(getComputedStyle).toHaveBeenCalledWith(doc.body)
     expect(getThemeColors(el).bgPrimary).toBe('chart:--background-primary')
@@ -40,5 +41,10 @@ describe('chart theme', () => {
     } as CSSStyleDeclaration)
     expect(getThemeColors().income).toBe('sample:--color-green')
     expect(getThemeColors().expense).toBe('sample:--color-red')
+    expect(themePalette(document).slice(0, 3)).toEqual([
+      'sample:--interactive-accent',
+      'sample:--color-green',
+      'sample:--color-red',
+    ])
   })
 })

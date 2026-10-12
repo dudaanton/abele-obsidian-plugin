@@ -38,6 +38,17 @@ function themeReader(doc: Document) {
   return (name: string) => style.getPropertyValue(name).trim()
 }
 
+/** The colours series are drawn in, in order: the theme's accent first, then its named ones. */
+export function themePalette(doc: Document): string[] {
+  const css = themeReader(doc)
+  return [
+    css('--interactive-accent'),
+    css('--text-success') || css('--color-green'),
+    css('--text-error') || css('--color-red'),
+    ...['orange', 'purple', 'cyan', 'pink', 'blue'].map((name) => css(`--color-${name}`)),
+  ]
+}
+
 function buildTheme(doc: Document): Record<string, any> {
   const css = themeReader(doc)
   const textColor = css('--text-normal')

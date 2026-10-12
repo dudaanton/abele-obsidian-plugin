@@ -242,10 +242,7 @@ body.is-mobile .abele-footnote-ref-link {
 
 /* Bases views — shared */
 .abele-bases-chart__empty {
-  padding: 24px;
-  text-align: center;
-  color: var(--text-faint);
-  font-style: italic;
+  padding-block: var(--size-4-12);
 }
 
 /* The code of a script waiting to be confirmed (`reviewScript.ts`), read-only, in the theme's own font. */

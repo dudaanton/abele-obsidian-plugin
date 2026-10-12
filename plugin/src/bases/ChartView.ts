@@ -1,8 +1,9 @@
 import { escapeHtml } from '@/helpers/escapeHtml'
 import { BasesView, BasesPropertyId, NullValue, QueryController } from 'obsidian'
-import { echartsInit, EChartsType } from './echarts'
+import { echartsInit, themePalette, EChartsType } from './echarts'
 import { GlobalStore } from '@/stores/GlobalStore'
-import { watch } from 'vue'
+import { createApp, watch, type App } from 'vue'
+import EmptyState from '@/components/obsidian/EmptyState.vue'
 import dayjs from 'dayjs'
 
 export const CHART_VIEW_ID = 'abele-chart'
@@ -61,6 +62,8 @@ export class ChartView extends BasesView {
   }
 
   onunload(): void {
+    this.empty?.unmount()
+    this.empty = null
     this.chart?.dispose()
     this.chart = null
     this.stopThemeWatch?.()
@@ -83,13 +86,16 @@ export class ChartView extends BasesView {
     const valueProps = allOrder.filter((p) => !excludeSet.has(p))
 
     if (!valueProps.length) {
-      this.showEmpty('Add properties to display on chart')
+      this.showEmpty(
+        'Nothing to draw',
+        "Pick the number properties to draw in this view's Properties."
+      )
       return
     }
 
     const entries = this.data.data
     if (!entries.length) {
-      this.showEmpty('No data')
+      this.showEmpty('No notes', "The base's filters leave no notes to draw.")
       return
     }
 
@@ -133,7 +139,7 @@ export class ChartView extends BasesView {
     }
 
     if (!points.length) {
-      this.showEmpty('No numeric data found')
+      this.showEmpty('No numbers', 'The properties picked hold no numbers in these notes.')
       return
     }
 
@@ -178,7 +184,12 @@ export class ChartView extends BasesView {
     for (const group of allGroups) {
       for (const prop of valueProps) {
         const propName = this.config.getDisplayName(prop)
-        const name = hasGroups ? `${group} — ${propName}` : propName
+        // One property drawn by group: the group alone names its line.
+        const name = hasGroups
+          ? valueProps.length > 1
+            ? `${group} — ${propName}`
+            : group
+          : propName
 
         if (timeAxis) {
           const data: [string, number][] = []
@@ -214,7 +225,7 @@ export class ChartView extends BasesView {
     }
 
     if (!seriesList.length) {
-      this.showEmpty('No data to chart')
+      this.showEmpty('No numbers', 'The properties picked hold no numbers in these notes.')
       return
     }
 
@@ -245,22 +256,26 @@ export class ChartView extends BasesView {
           : {
               type: 'category',
               data: xLabels,
-              axisLabel: {
-                interval: Math.max(Math.floor(xLabels.length / 6) - 1, 0),
-                hideOverlap: true,
-                ...(xLabels.length > 8 ? { rotate: 45 } : {}),
-              },
+              // Level, as a chart in Obsidian's own pane reads: as many dates as fit, the rest
+              // left out rather than tilted into a slope of text.
+              axisLabel: { interval: 'auto', hideOverlap: true },
             },
         yAxis:
           dualAxis && seriesList.length > 1
-            ? seriesList.map((_, i) => ({
-                type: logScale ? 'log' : 'value',
-                scale: true,
-                position: i % 2 === 0 ? 'left' : 'right',
-                axisLine: { show: true },
-                axisLabel: { show: i < 2 },
-                splitLine: { show: i === 0 },
-              }))
+            ? // Each scale in its series' colour, so which numbers belong to which line is
+              // read off the side they stand on.
+              seriesList.map((_, i) => {
+                const palette = themePalette(this.containerEl.ownerDocument)
+                const color = palette[i % palette.length]
+                return {
+                  type: logScale ? 'log' : 'value',
+                  scale: true,
+                  position: i % 2 === 0 ? 'left' : 'right',
+                  axisLine: { show: true, lineStyle: { color } },
+                  axisLabel: { show: i < 2, color },
+                  splitLine: { show: i === 0 },
+                }
+              })
             : { type: logScale ? 'log' : 'value' },
         series: seriesList.map((s, i) => ({
           name: s.name,
@@ -302,7 +317,12 @@ export class ChartView extends BasesView {
     for (const group of allGroups) {
       for (const prop of valueProps) {
         const propName = this.config.getDisplayName(prop)
-        const name = hasGroups ? `${group} — ${propName}` : propName
+        // One property drawn by group: the group alone names its line.
+        const name = hasGroups
+          ? valueProps.length > 1
+            ? `${group} — ${propName}`
+            : group
+          : propName
 
         if (timeAxis) {
           const data: [string, number][] = []
@@ -334,7 +354,7 @@ export class ChartView extends BasesView {
     }
 
     if (!seriesList.length) {
-      this.showEmpty('No data to chart')
+      this.showEmpty('No numbers', 'The properties picked hold no numbers in these notes.')
       return
     }
 
@@ -376,11 +396,9 @@ export class ChartView extends BasesView {
           : {
               type: 'category',
               data: xLabels,
-              axisLabel: {
-                interval: Math.max(Math.floor(xLabels.length / 6) - 1, 0),
-                hideOverlap: true,
-                ...(xLabels.length > 8 ? { rotate: 45 } : {}),
-              },
+              // Level, as a chart in Obsidian's own pane reads: as many dates as fit, the rest
+              // left out rather than tilted into a slope of text.
+              axisLabel: { interval: 'auto', hideOverlap: true },
             },
         yAxis: { type: logScale ? 'log' : 'value' },
         series: seriesList.map((s) => ({
@@ -395,15 +413,28 @@ export class ChartView extends BasesView {
     )
   }
 
-  private showEmpty(text: string): void {
+  private empty: App | null = null
+
+  /** In place of the chart, what is missing and where to put it right, as an empty pane says. */
+  private showEmpty(title: string, text: string): void {
+    this.chart?.dispose()
+    this.chart = null
+    this.clear()
+    const host = this.containerEl.createDiv({ cls: 'abele-bases-chart__empty' })
+    this.empty = createApp(EmptyState, { icon: 'chart-line', title, text, centered: true })
+    this.empty.mount(host)
+  }
+
+  private clear(): void {
+    this.empty?.unmount()
+    this.empty = null
     this.containerEl.empty()
-    this.containerEl.createDiv({ text, cls: 'abele-bases-chart__empty' })
   }
 
   private ensureChart(): void {
     const height = (this.config.get('chartHeight') as number) || 500
 
-    this.containerEl.empty()
+    this.clear()
     const chartDiv = this.containerEl.createDiv({ cls: 'abele-bases-echart' })
     chartDiv.style.height = `${height}px`
 
