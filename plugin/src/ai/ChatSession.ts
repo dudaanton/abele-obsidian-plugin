@@ -1686,7 +1686,13 @@ export class ChatSession implements SummarizerHost, InterceptorHost, AnchorStora
       } else if (msg.role === 'toolResult') {
         const chatMsg = runChatMsgs.find((m) => m.toolCallId === msg.toolCallId)
         if (chatMsg) msg.chatMessageId = chatMsg.id
-        if (msg.chatMessageId) lastLinkedId = msg.chatMessageId
+        if (msg.chatMessageId) {
+          lastLinkedId = msg.chatMessageId
+          // Results checkpoint before their injections enter history. Bind ownership now,
+          // while the result is present, so later checkpoints and persisted branches keep it.
+          for (const injected of msg.injectMessages ?? [])
+            injected.chatMessageId = msg.chatMessageId
+        }
       } else if (!msg.chatMessageId && lastLinkedId) {
         // Batch injections follow all results, but still belong to their originating call.
         const owner = newMsgs.find(

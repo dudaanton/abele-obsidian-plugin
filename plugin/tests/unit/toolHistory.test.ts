@@ -229,6 +229,28 @@ it('keeps a batched image attached to its originating call when rewinding the ne
   expect(getInternalMessagesForPath(path.slice(0, -1), messages)).toContain(image)
 })
 
+it('keeps deferred image injections off branches before their separately checkpointed result', () => {
+  const image: Message = { role: 'user', content: 'Sample image', timestamp: 3 }
+  const first = result('one')
+  if (first.role !== 'toolResult') throw Error('Expected a result')
+  first.injectMessages = [image]
+  const path = [
+    { id: 'q', role: 'user' },
+    { id: 'a', role: 'assistant' },
+    { id: 't1', role: 'tool-call', toolCallId: 'one' },
+  ] as ChatMessage[]
+  const call = assistant(['one'])
+  const link = (ChatSession.prototype as unknown as { linkInternalMessages(m: Message[]): void })
+    .linkInternalMessages
+  const holder = { messages: { value: path } }
+  link.call(holder, [call, first])
+  link.call(holder, [image])
+  const internal = [user, call, first, image]
+  expect(getInternalMessagesForPath(path.slice(0, 2), internal)).not.toContain(image)
+  expect(image.chatMessageId).toBe('t1')
+  expect(getInternalMessagesForPath(path, internal)).toContain(image)
+})
+
 it.each(['pause', 'error'])(
   'retains an injected image after a later call encounters %s',
   async (outcome) => {

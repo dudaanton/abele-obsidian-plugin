@@ -354,6 +354,97 @@ describe('durable stopped turns', () => {
     expect(execute).not.toHaveBeenCalled()
   })
 
+  it.each(['current', 'reopened'] as const)(
+    'keeps an injected image owned and completed approval results paired in the %s chat',
+    async (state) => {
+      const image: Message = {
+        role: 'user',
+        content: [{ type: 'image_url', image_url: { url: 'data:image/png;base64,AAA' } }],
+        timestamp: 2,
+      }
+      const readImage = vi.fn<AgentTool['execute']>(async () => ({
+        content: [{ type: 'text', text: 'Loaded sample-image.png' }],
+        injectMessages: [image],
+      }))
+      const internals = session as unknown as {
+        getTools(): AgentTool[]
+        needsApproval(name: string): boolean
+      }
+      vi.mocked(internals.getTools).mockReturnValue([
+        {
+          name: 'read_image',
+          label: 'Sample image',
+          description: '',
+          parameters: {},
+          execute: readImage,
+        },
+        { name: 'sample_write', label: 'Sample write', description: '', parameters: {}, execute },
+      ])
+      vi.mocked(internals.needsApproval).mockImplementation((name) => name === 'sample_write')
+      vi.spyOn(OpenAIClient.prototype, 'stream').mockImplementation(async function* () {
+        yield {
+          type: 'done',
+          message: reply([
+            {
+              type: 'toolCall',
+              id: 'image-call',
+              name: 'read_image',
+              arguments: { path: 'Samples/sample-image.png' },
+            },
+            { type: 'toolCall', id: 'approved-call', name: 'sample_write', arguments: {} },
+            { type: 'toolCall', id: 'stopped-call', name: 'sample_write', arguments: {} },
+          ]),
+        }
+      })
+
+      await session.sendMessage('Inspect the sample image and update the sample note')
+      expect(session.pendingToolCalls.value.map((call) => call.id)).toEqual([
+        'approved-call',
+        'stopped-call',
+      ])
+      await session.approveToolCall()
+      expect(session.pendingToolCalls.value.map((call) => call.id)).toEqual(['stopped-call'])
+      session.stopFromApproval('stopped-call')
+      const holder = state === 'reopened' ? await reopen() : session
+      const imageRow = holder.messages.value.find((m) => m.toolCallId === 'image-call')!
+      const beforeRead = holder.messages.value[0].id
+      const stoppedLeaf = holder.branchLeafId!
+      const storedImage = holder
+        .messagesForModel()
+        .find((m) => m.role === 'user' && Array.isArray(m.content))!
+
+      const next = await continueWithRealClient(holder)
+      expect(next.filter((m) => m.role === 'tool')).toEqual([
+        expect.objectContaining({ tool_call_id: 'image-call', content: 'Loaded sample-image.png' }),
+        expect.objectContaining({ tool_call_id: 'approved-call', content: 'Saved approved-call' }),
+        expect.objectContaining({
+          tool_call_id: 'stopped-call',
+          content: expect.stringMatching(/interrupted by the user/i),
+        }),
+      ])
+      expect(storedImage.chatMessageId).toBe(imageRow.id)
+      const imageIndex = next.findIndex((m) => Array.isArray(m.content))
+      expect(imageIndex).toBeGreaterThan(next.findIndex((m) => m.tool_call_id === 'stopped-call'))
+      expect(next[imageIndex]).toMatchObject({ content: image.content })
+
+      holder.createBranch(beforeRead)
+      expect(holder.messagesForModel()).toHaveLength(1)
+      expect(holder.messagesForModel()[0]).toMatchObject({
+        role: 'user',
+        content: 'Inspect the sample image and update the sample note',
+      })
+      expect(holder.switchBranch(stoppedLeaf, false)).toBe(true)
+      expect(holder.messagesForModel()).toContainEqual(
+        expect.objectContaining({ chatMessageId: imageRow.id, content: image.content })
+      )
+      expect(readImage).toHaveBeenCalledTimes(1)
+      expect(execute).toHaveBeenCalledTimes(1)
+      expect(await app.vault.read(app.vault.getAbstractFileByPath('Samples/sample-note.md')!)).toBe(
+        'saved approved-call'
+      )
+    }
+  )
+
   it('settles a displayed approval queue as not run without continuing', async () => {
     const internals = session as unknown as { needsApproval(): boolean }
     vi.mocked(internals.needsApproval).mockReturnValue(true)
