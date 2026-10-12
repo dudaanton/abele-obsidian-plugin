@@ -7,65 +7,70 @@
   >
     <Section
       v-if="mode === 'connect'"
-      desc="Paste the token you received. It already contains the server and the folder or group."
+      desc="Paste the token you were given, or scan its QR code. It already names the server and what it opens."
     >
-      <Setting name="Connection token"
+      <Setting name="Token" :error="error"
         ><Input v-model="text" password :disabled="busy" placeholder="Paste your token"
       /></Setting>
       <TokenQrReader @token="text = $event" />
-      <Setting v-if="preview" name="Server" :desc="preview.address" />
-      <Setting v-if="preview" name="Shared files" :desc="scopeName(preview.scope)" />
+      <dl v-if="preview" class="abele-token-dialog__facts">
+        <dt>Server</dt>
+        <dd>{{ preview.address }}</dd>
+        <dt>Opens</dt>
+        <dd>{{ scopeName(preview.scope) }}</dd>
+      </dl>
     </Section>
-    <Section
-      v-if="mode === 'share'"
-      :desc="scopeName(connection?.scope ?? null) + ' · ' + connection?.address"
-    >
-      <Setting
-        name="Folder or group"
-        desc="Choose what to share. Choose / for another device of your own."
+    <template v-if="mode === 'share'">
+      <Section
+        desc="Give someone a folder or group, or connect another device of yours to the whole vault."
       >
-        <Dropdown
-          v-model="selected"
-          :options="
-            choices.map((one, index) => ({ value: String(index), display: scopeName(one) }))
-          "
-        />
-      </Setting>
-      <Setting name="Name" desc="A name to recognise this access later."
-        ><Input v-model="label" maxlength="200" placeholder="For a new device or a collaborator"
-      /></Setting>
-      <Setting name="Create access"
-        ><Button
-          text="Get token"
-          tooltip="Create a separate token for the chosen folder or group"
-          :disabled="busy || !label.trim() || !choices.length"
-          @click="run(issue)"
-      /></Setting>
+        <Setting name="What to share" desc="Whole vault is for your own devices.">
+          <Dropdown
+            v-model="selected"
+            :options="
+              choices.map((one, index) => ({ value: String(index), display: scopeName(one) }))
+            "
+          />
+        </Setting>
+        <Setting name="Name" desc="Who or what it is for, to know it later."
+          ><Input v-model="label" maxlength="200" placeholder="A second device, a colleague"
+        /></Setting>
+        <Setting name="Token">
+          <Button
+            text="Create token"
+            tooltip="Create a separate token for the chosen folder or group"
+            :disabled="busy || !label.trim() || !choices.length"
+            @click="run(issue)"
+          />
+        </Setting>
+      </Section>
       <Section
         v-if="issued"
         title="New token"
-        desc="Anyone with this token can read and change the shared files. Send it privately."
+        desc="Anyone with this token can read and change what it opens. Send it privately."
       >
-        <Setting name="Token"
-          ><Input :model-value="issued" as-text-area :rows="4" readonly
-        /></Setting>
-        <Setting name="Copy token"
-          ><Button text="Copy" tooltip="Copy this token to the clipboard" @click="run(copy)"
-        /></Setting>
+        <Input :model-value="issued" as-text-area :rows="3" readonly />
+        <div class="abele-token-dialog__copy">
+          <Button text="Copy" tooltip="Copy this token to the clipboard" @click="run(copy)" />
+        </div>
         <QrCode :text="issued" label="Scan to connect to these shared files" />
       </Section>
-      <Section title="Access tokens" desc="Revoking access keeps the recipient’s local files.">
-        <EmptyState v-if="!tokens.length" text="No access tokens to show." />
+      <Section
+        title="Tokens given"
+        desc="Revoking stops the exchange. What the other side already has stays with them."
+      >
+        <EmptyState v-if="!tokens.length" text="No tokens given yet." />
         <Setting
           v-for="one in tokens"
           :key="one.id"
           :name="one.label || scopeName(one.scope)"
+          :class="{ 'abele-token-dialog__revoked': one.revoked_at }"
           :desc="scopeName(one.scope) + ' · ' + (one.revoked_at ? 'Revoked' : 'Active')"
         >
           <Icon
             v-if="!one.revoked_at"
             icon="ban"
-            tooltip="Review revoking this access"
+            tooltip="Revoke this access…"
             :disabled="busy"
             @click="revoking = one"
           />
@@ -73,8 +78,9 @@
         <Setting
           v-if="revoking"
           :name="'Revoke ' + revoking.label + '?'"
-          desc="This token will stop receiving and sending changes. Other tokens keep working."
+          desc="This token stops receiving and sending changes. Other tokens keep working."
         >
+          <Button text="Keep access" tooltip="Cancel revocation" @click="revoking = null" />
           <Button
             text="Revoke"
             warning
@@ -82,25 +88,30 @@
             :disabled="busy"
             @click="run(revoke)"
           />
-          <Button text="Keep access" tooltip="Cancel revocation" @click="revoking = null" />
         </Setting>
       </Section>
-    </Section>
+    </template>
     <Section
       v-if="mode === 'review' && candidate"
       :title="candidate.path"
       :desc="candidate.source.address + ' · ' + scopeName(candidate.source.scope)"
     >
-      <Setting
-        name="Change"
-        :desc="
-          operationName(candidate.operation) +
-          (candidate.previousPath ? ' · From ' + candidate.previousPath : '')
-        "
-      />
-      <Setting name="Received" :desc="time(candidate.receivedAt)" />
-      <Setting name="File changed" :desc="time(candidate.mtime)" />
-      <p>This exact version is waiting. Approving it does not approve a later change.</p>
+      <dl class="abele-token-dialog__facts">
+        <dt>Change</dt>
+        <dd>
+          {{
+            operationName(candidate.operation) +
+            (candidate.previousPath ? ' · From ' + candidate.previousPath : '')
+          }}
+        </dd>
+        <dt>Received</dt>
+        <dd>{{ time(candidate.receivedAt) }}</dd>
+        <dt>File changed</dt>
+        <dd>{{ time(candidate.mtime) }}</dd>
+      </dl>
+      <p class="abele-token-dialog__note">
+        This exact version is waiting. Approving it does not approve a later change.
+      </p>
       <pre v-if="candidate.bytes !== null" class="token-sync-content">{{ content }}</pre>
       <p v-else>
         {{
@@ -119,16 +130,22 @@
         This opened note links to a private file. Allow this connection to share the file and its
         future changes?
       </p>
-      <p>Other private files and other connections are unaffected.</p>
+      <p class="abele-token-dialog__note">Other private files and other connections are unaffected.</p>
     </Section>
     <Section
       v-if="mode === 'disconnect'"
       :desc="scopeName(connection?.scope ?? null) + ' · ' + connection?.address"
     >
-      <p>This connection will stop syncing. All local files and other connections stay.</p>
+      <p>
+        This connection stops syncing. Every file stays on this device, and other connections keep
+        working.
+      </p>
     </Section>
-    <p v-if="error" role="alert">{{ error }}</p>
+    <p v-if="error && mode !== 'connect'" class="abele-token-dialog__error" role="alert">
+      {{ error }}
+    </p>
     <template #footer>
+      <Button text="Close" tooltip="Close without making another decision" @click="close" />
       <Button
         v-if="mode === 'connect'"
         text="Connect"
@@ -139,25 +156,18 @@
       />
       <Button
         v-if="mode === 'review'"
-        text="Approve"
-        tooltip="Apply only the version shown here"
-        :disabled="busy || !ui.runtimes.has(candidate?.source.id ?? '')"
-        accent
-        @click="run(approve)"
-      />
-      <Button
-        v-if="mode === 'review'"
         text="Reject"
         tooltip="Keep the current local version"
         :disabled="busy"
         @click="run(reject)"
       />
       <Button
-        v-if="mode === 'attachment'"
-        text="Allow"
-        tooltip="Allow this file through this connection"
-        :disabled="busy"
-        @click="run(() => decide(true))"
+        v-if="mode === 'review'"
+        text="Approve"
+        tooltip="Apply only the version shown here"
+        :disabled="busy || !ui.runtimes.has(candidate?.source.id ?? '')"
+        accent
+        @click="run(approve)"
       />
       <Button
         v-if="mode === 'attachment'"
@@ -167,6 +177,14 @@
         @click="run(() => decide(false))"
       />
       <Button
+        v-if="mode === 'attachment'"
+        text="Allow"
+        accent
+        tooltip="Allow this file through this connection"
+        :disabled="busy"
+        @click="run(() => decide(true))"
+      />
+      <Button
         v-if="mode === 'disconnect'"
         text="Disconnect"
         warning
@@ -174,7 +192,6 @@
         :disabled="busy"
         @click="run(disconnect)"
       />
-      <Button text="Close" tooltip="Close without making another decision" @click="close" />
     </template>
   </Modal>
 </template>
@@ -366,5 +383,35 @@ watch(
 .token-sync-content {
   white-space: pre-wrap;
   overflow-wrap: anywhere;
+}
+/* What a token opens, or what a change is, as facts: a quiet name and its value. */
+.abele-token-dialog__facts {
+  display: grid;
+  grid-template-columns: max-content minmax(0, 1fr);
+  gap: var(--size-2-3) var(--size-4-4);
+  margin: var(--size-4-3) 0;
+}
+.abele-token-dialog__facts dt {
+  color: var(--text-muted);
+}
+.abele-token-dialog__facts dd {
+  margin: 0;
+  overflow-wrap: anywhere;
+}
+.abele-token-dialog__note {
+  color: var(--text-muted);
+  font-size: var(--font-ui-small);
+}
+.abele-token-dialog__error {
+  margin-block: var(--size-2-2) 0;
+  color: var(--text-error);
+}
+.abele-token-dialog__copy {
+  display: flex;
+  justify-content: flex-end;
+  margin-block: var(--size-4-2);
+}
+.abele-token-dialog__revoked .setting-item-name {
+  color: var(--text-muted);
 }
 </style>

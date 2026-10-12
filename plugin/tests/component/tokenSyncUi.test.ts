@@ -28,14 +28,19 @@ it('displays the exact path and server-size reason for an oversized unsent file'
       },
     ],
   })
-  const view = mount(SyncSettings, { props: { model: ui } })
+  const view = mount(SyncSettings, {
+    props: { model: ui },
+    global: { stubs: { Modal: modalStub, SelectiveSync: true } },
+  })
+  await flushPromises()
+  await view.find('.abele-sync-row').trigger('click')
   await flushPromises()
   const row = view
     .findAll('.setting-item')
     .find((one) => one.find('.setting-item-name').text() === 'Media/oversized.bin')
   expect(row).toBeDefined()
   expect(row!.find('.setting-item-description').text()).toBe(
-    'Not sent: This file is too large for the server. It stays on this device.'
+    'This file is too large for the server. It stays on this device.'
   )
   view.unmount()
 })
@@ -137,7 +142,7 @@ it.each(['close', 'scope', 'connection'] as const)(
     await view.find('input').setValue('Sample access')
     await view
       .findAllComponents(Button)
-      .find((one) => one.props('text') === 'Get token')!
+      .find((one) => one.props('text') === 'Create token')!
       .trigger('click')
     if (change === 'close') view.findComponent(Modal).vm.$emit('close')
     else if (change === 'scope') view.findComponent(Dropdown).vm.$emit('update:model-value', '1')
@@ -370,21 +375,37 @@ it('uses the same explicit Connect action for a scanned token', async () => {
   expect(connect).toHaveBeenCalledWith(sampleIssuedToken, expect.any(AbortSignal))
 })
 
-it('shows every connection, last sync, progress, refusals and the conflict copy without hiding an offline server', () => {
+it('shows every connection as one row and opens its window with progress, refusals and the conflict copy', async () => {
   const ui = tokenUiFixture(),
-    view = mount(SyncSettings, { props: { model: ui } })
-  expect(view.text()).toContain('https://sync.example')
-  expect(view.text()).toContain('https://unavailable.example')
-  expect(view.text()).toContain('https://collaboration.example')
-  expect(view.text()).toContain('Last synced')
-  expect(view.text()).toContain('820 of 2500 files')
-  expect(view.text()).toContain('server is full')
-  expect(view.text()).toContain('Conflict copy saved')
+    view = mount(SyncSettings, {
+      props: { model: ui },
+      global: { stubs: { Modal: modalStub, SelectiveSync: true } },
+    })
+  const rows = view.findAll('.abele-sync-row')
+  expect(rows).toHaveLength(3)
+  expect(rows[0].text()).toContain('sync.example')
+  expect(rows[0].text()).toContain('820 of 2500 files')
+  expect(rows[1].text()).toContain('unavailable.example')
+  expect(rows[1].text()).toContain('Server unavailable, retrying')
+  expect(rows[2].text()).toContain('collaboration.example')
   expect(view.text()).toContain('Group: Sample research group with a deliberately long name')
   expect(view.text()).not.toContain('deliberately long name.md')
-  expect(
-    view.findAll('h3').some((heading) => heading.text() === 'Whole vault · sync.example')
-  ).toBe(true)
+  await rows[0].trigger('click')
+  await flushPromises()
+  expect(view.text()).toContain('server is full')
+  expect(view.text()).toContain('Conflict copies')
+  expect(view.text()).toContain('Sample note (Conflicted copy sample-device).md')
+})
+
+it('shows what waits for a decision above the connections only while something waits', () => {
+  const ui = tokenUiFixture(),
+    view = mount(SyncSettings, { props: { model: ui } })
+  expect(view.findAll('h3')[0].text()).toBe('Waiting for you')
+  ui.candidates.value = []
+  ui.questions.value = []
+  return flushPromises().then(() => {
+    expect(view.text()).not.toContain('Waiting for you')
+  })
 })
 
 it('approves only the immutable code candidate displayed while a later version remains pending', async () => {

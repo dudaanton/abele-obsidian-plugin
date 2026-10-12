@@ -67,4 +67,12 @@ defineProps<{
     padding-inline: var(--size-4-5);
   }
 }
+// In a dialog the rows are not cards: their words stand at the dialog's text edge, and so do the
+// heading's.
+.modal:not(.mod-settings) .abele-section:has(> .abele-obsidian-setting) {
+  > .abele-section__header,
+  > .abele-section__desc {
+    padding-inline: 0;
+  }
+}
 </style>

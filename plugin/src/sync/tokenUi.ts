@@ -149,6 +149,8 @@ export interface ConnectionActivity {
   refused?: { path: string; reason: string }[]
   conflicts?: string[]
   error?: string
+  /** The last few things that happened to the connection, oldest first, in the person's words. */
+  events?: { at: number; text: string }[]
 }
 export function connectionStatusText(
   row: Pick<TokenConnectionRecord, 'status' | 'paused'>,

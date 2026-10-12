@@ -761,8 +761,9 @@ body.is-mobile .abele-comment-marker_pending::after {
   display: inline-flex;
 }
 
-/* The one state that needs somebody: deletions held back until they are decided. The theme's
+/* The states that need somebody: deletions held back, conflict copies to open. The theme's
    own warning colour, so it is a warning in every theme. */
-.abele-sync-status_warning {
+.abele-sync-status_warning,
+.view-action.abele-sync-header-action.mod-warning {
   color: var(--text-warning);
 }

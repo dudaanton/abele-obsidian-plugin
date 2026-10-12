@@ -121,7 +121,9 @@ import { openDeviceReviews } from './sync/openDeviceReviews'
 import { transportOf } from './sync/environment'
 import { watchTheFront } from './sync/phone'
 import { TokenEngines } from './sync/tokenEngines'
-import { renderStatus, DISCONNECTED_STATUS, type SyncStatus } from './sync/status'
+import { renderStatus, type SyncStatus } from './sync/status'
+import { tokenStatus } from './sync/tokenStatus'
+import { mountPhoneSyncAction } from './sync/phoneSyncAction'
 import { openAbeleSettings } from './components/settings/settingsTab'
 // Keep the extracted section last so its dependencies do not reorder the existing styles.
 import { registerCoreCommands } from '@/startup/registerCoreCommands'
@@ -208,9 +210,13 @@ export default class AbelePlugin extends Plugin {
 
     // A vault that syncs with nothing shows nothing: most people never connect one, and a
     // status bar reading "Not connected" for ever is a line of chrome doing no work.
+    const phone = Platform.isPhone
+      ? mountPhoneSyncAction(this, () => openAbeleSettings(this.app, 'sync'))
+      : null
     const paint = (status: SyncStatus): void => {
       statusEl.toggle(status.state !== 'disconnected')
       renderStatus(statusEl, status)
+      phone?.(status)
     }
     this.register(
       watch(
@@ -218,37 +224,10 @@ export default class AbelePlugin extends Plugin {
           tokenUi.value?.rows.value,
           tokenUi.value?.activity.value,
           tokenUi.value?.candidates.value,
+          tokenUi.value?.questions.value,
         ],
         () => {
-          const ui = tokenUi.value,
-            rows = ui?.rows.value ?? []
-          const status: SyncStatus = { ...DISCONNECTED_STATUS }
-          if (rows.length && ui) {
-            status.state = rows.some((one) => one.status === 'syncing')
-              ? 'syncing'
-              : rows.some((one) =>
-                    ['error', 'scope_updating', 'scope_unavailable', 'needs-token'].includes(
-                      one.status
-                    )
-                  )
-                ? 'error'
-                : rows.some((one) => one.status === 'offline')
-                  ? 'offline'
-                  : rows.every((one) => one.paused)
-                    ? 'paused'
-                    : 'idle'
-            status.pending = rows.reduce(
-              (sum, one) => sum + (ui.activity.value[one.id]?.pending ?? 0),
-              ui.candidates.value.length
-            )
-            status.lastError =
-              rows.map((one) => ui.activity.value[one.id]?.error).find(Boolean) ?? null
-            const stamps = rows
-              .map((one) => ui.activity.value[one.id]?.lastSync)
-              .filter((one): one is number => typeof one === 'number')
-            if (stamps.length === rows.length)
-              status.lastSyncAt = new Date(Math.min(...stamps)).toISOString()
-          }
+          const status = tokenStatus(tokenUi.value)
           paint(status)
         },
         { immediate: true }

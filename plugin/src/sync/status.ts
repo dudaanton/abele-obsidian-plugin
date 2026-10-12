@@ -46,6 +46,10 @@ export interface SyncStatus {
    * waiting for Reload now or Keep this device's (phase 3b, decision 11); 0 when none are.
    */
   deferred: number
+  /** Conflict copies saved beside the files they came from, still in the vault; 0 when none. */
+  conflicts?: number
+  /** Incoming code and private files waiting for the person's decision; 0 when none. */
+  review?: number
 }
 
 /** A device that has not been set up: no engine, nothing to report, nothing wrong. */
@@ -106,6 +110,21 @@ export const HELD_LABEL = 'Deletions held'
 const leadsWithHeld = (status: SyncStatus): boolean =>
   status.heldDeletes > 0 && status.state === 'idle'
 
+/** A settled sync with conflict copies leads with them: they are what the person has to open. */
+const leadsWithConflicts = (status: SyncStatus): boolean =>
+  !leadsWithHeld(status) && (status.conflicts ?? 0) > 0 && status.state === 'idle'
+
+/** A settled sync with something to decide leads with how much waits. */
+const leadsWithReview = (status: SyncStatus): boolean =>
+  !leadsWithHeld(status) &&
+  !leadsWithConflicts(status) &&
+  (status.review ?? 0) > 0 &&
+  status.state === 'idle'
+
+/** Whether the status bar wears the warning colour. */
+export const statusWarns = (status: SyncStatus): boolean =>
+  leadsWithHeld(status) || leadsWithConflicts(status)
+
 /** The tooltip's line for held deletions: how many, and where they are decided. */
 export function heldLine(count: number): string {
   const files =
@@ -123,6 +142,8 @@ export function heldLine(count: number): string {
  */
 export function statusLabel(status: SyncStatus): string {
   if (leadsWithHeld(status)) return HELD_LABEL
+  if (leadsWithConflicts(status)) return status.conflicts === 1 ? '1 conflict' : `${status.conflicts} conflicts`
+  if (leadsWithReview(status)) return 'To review'
   if (status.state === 'idle' && status.pending > 0) return 'Waiting'
   return STATUS_LABEL[status.state]
 }
@@ -138,6 +159,8 @@ export function statusLabel(status: SyncStatus): string {
 export function statusText(status: SyncStatus): string {
   const label = statusLabel(status)
   if (leadsWithHeld(status)) return `${label} (${status.heldDeletes})`
+  if (leadsWithConflicts(status)) return label
+  if (leadsWithReview(status)) return `${label} (${status.review})`
   return status.state === 'idle' && status.pending > 0 ? `${label} (${status.pending})` : label
 }
 
@@ -164,6 +187,12 @@ export function statusTooltip(status: SyncStatus): string {
     lines.push(`${changesAre(status.pending)} waiting to be sent`)
   }
   if (status.heldDeletes > 0) lines.push(heldLine(status.heldDeletes))
+  if ((status.conflicts ?? 0) > 0)
+    lines.push(
+      `${status.conflicts === 1 ? '1 conflict copy was' : `${status.conflicts} conflict copies were`} saved beside the original. Open them on the Sync tab.`
+    )
+  if ((status.review ?? 0) > 0)
+    lines.push(`${status.review} waiting for your decision on the Sync tab.`)
   if (status.deferred > 0) lines.push(stagedLine(status.deferred))
   if (status.state === 'joining') lines.push('Connecting to the sync server.')
   else if (status.state !== 'disconnected') {
@@ -183,14 +212,16 @@ export function statusTooltip(status: SyncStatus): string {
 export function renderStatus(el: HTMLElement, status: SyncStatus): void {
   el.empty()
   el.addClass('abele-sync-status')
-  el.toggleClass('abele-sync-status_warning', leadsWithHeld(status))
+  el.toggleClass('abele-sync-status_warning', statusWarns(status))
   const icon = el.createSpan({ cls: 'abele-sync-status-icon' })
   // A tick beside *Waiting* would say the opposite of the word.
   setIcon(
     icon,
-    leadsWithHeld(status)
+    statusWarns(status)
       ? 'alert-triangle'
-      : status.state === 'idle' && status.pending > 0
+      : leadsWithReview(status)
+        ? 'eye'
+        : status.state === 'idle' && status.pending > 0
         ? 'clock'
         : STATUS_ICON[status.state]
   )

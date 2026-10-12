@@ -1,97 +1,16 @@
 <template>
   <div v-if="ui" class="token-sync-settings">
+    <!-- What waits for the person, above everything else, and only while something does. -->
     <Section
-      title="Connections"
-      desc="Each connection works independently. Disconnecting keeps all local files."
+      v-if="candidates.length || questions.length"
+      title="Waiting for you"
+      desc="Code that came from another device and private files a shared note links to."
     >
-      <Setting name="Add a connection"
-        ><Button
-          text="Connect…"
-          tooltip="Paste a token for a server, folder or group"
-          @click="dialog = { mode: 'connect' }"
-      /></Setting>
-      <EmptyState v-if="!rows.length" text="No connections yet. Ask for a token to connect." />
-      <Setting
-        v-for="row in rows"
-        :key="row.id"
-        :name="scopeName(row.scope)"
-        :desc="description(row)"
-      >
-        <Icon
-          icon="refresh-cw"
-          tooltip="Sync this connection now"
-          :disabled="row.paused || !!activity[row.id]?.inspection || busy.has(row.id)"
-          @click="act(row.id, () => ui!.sync(row.id))"
-        />
-        <Icon
-          :icon="row.paused ? 'play' : 'pause'"
-          :tooltip="row.paused ? 'Resume this connection' : 'Pause this connection'"
-          :disabled="busy.has(row.id)"
-          @click="act(row.id, () => ui!.pause(row.id, !row.paused))"
-        />
-        <Icon
-          icon="share-2"
-          tooltip="Share a folder or group, or connect another device"
-          @click="dialog = { mode: 'share', connectionId: row.id }"
-        />
-        <Icon
-          icon="unlink"
-          tooltip="Review disconnecting this connection"
-          @click="dialog = { mode: 'disconnect', connectionId: row.id }"
-        />
-        <Icon
-          icon="trash-2"
-          tooltip="Open this connection's deleted files"
-          @click="openTrash(row.id)"
-        />
-        <Icon
-          icon="settings"
-          tooltip="What this device syncs and changes waiting for review"
-          @click="configure(row.id)"
-        />
-      </Setting>
-      <p v-if="rows.length && !ui.available.value">
-        File exchange is opening. Connections that need attention keep their files here.
-      </p>
-    </Section>
-    <Section
-      v-for="row in activityRows"
-      :key="'activity-' + row.id"
-      :title="connectionName(row)"
-      :desc="row.address"
-    >
-      <p v-if="errors[row.id] || activity[row.id]?.error" role="alert">
-        {{ errors[row.id] || activity[row.id]?.error }}
-      </p>
-      <Setting
-        v-if="activity[row.id]?.total !== undefined"
-        name="Progress"
-        :desc="(activity[row.id]?.completed ?? 0) + ' of ' + activity[row.id]?.total + ' files'"
-      />
-      <Setting
-        v-for="item in activity[row.id]?.refused ?? []"
-        :key="item.path"
-        :name="item.path"
-        :desc="'Not sent: ' + item.reason"
-      />
-      <Setting
-        v-for="path in activity[row.id]?.conflicts ?? []"
-        :key="path"
-        name="Conflict copy saved"
-        :desc="path"
-        ><Icon icon="file-text" tooltip="Open the conflict copy" @click="openFile(path)"
-      /></Setting>
-    </Section>
-    <Section
-      title="Incoming code"
-      desc="New code, changes, renames and deletions wait for your decision."
-    >
-      <EmptyState v-if="!candidates.length" text="No code changes waiting." />
       <Setting
         v-for="candidate in candidates"
         :key="candidate.id"
         :name="candidate.path"
-        :desc="candidate.source.address + ' · ' + new Date(candidate.receivedAt).toLocaleString()"
+        :desc="'Code from ' + host(candidate.source.address) + ' · ' + when(candidate.receivedAt)"
       >
         <Icon
           icon="eye"
@@ -99,19 +18,11 @@
           @click="dialog = { mode: 'review', candidate }"
         />
       </Setting>
-    </Section>
-    <Section v-if="questions.length" title="Private files">
       <Setting
         v-for="question in questions"
         :key="question.id"
         :name="question.path"
-        :desc="
-          'Share through ' +
-          question.source.address +
-          ' · ' +
-          scopeName(question.source.scope) +
-          '?'
-        "
+        :desc="'Private file · share with ' + scopeName(question.source.scope) + '?'"
       >
         <Icon
           icon="eye"
@@ -120,6 +31,68 @@
         />
       </Setting>
     </Section>
+    <Section
+      title="Connections"
+      desc="Each connection works on its own. Disconnecting keeps every file on this device."
+    >
+      <EmptyState
+        v-if="!rows.length"
+        icon="cloud"
+        title="No connections yet"
+        text="Paste a token or scan a QR code to connect."
+      />
+      <!-- A connection as one row: its state as a dot, sync now, the rest in ⋯; the row opens it. -->
+      <Setting
+        v-for="row in rows"
+        :key="row.id"
+        :name="scopeName(row.scope)"
+        role="button"
+        tabindex="0"
+        class="abele-sync-row"
+        @click="opened = row.id"
+        @keydown.enter.self="opened = row.id"
+      >
+        <template #desc
+          ><span class="abele-sync-row__line" :class="{ 'mod-warning': tone(row) === 'red' }">{{
+            line(row)
+          }}</span
+          ><span class="abele-sync-row__server"> · {{ host(row.address) }}</span></template
+        >
+        <StatusDot :tone="tone(row)" :label="line(row)" :pulse="tone(row) === 'accent'" />
+        <Icon
+          icon="refresh-cw"
+          tooltip="Sync this connection now"
+          :disabled="row.paused || connectionBusy(row, activity[row.id]) || busy.has(row.id)"
+          @click.stop="act(row.id, () => ui!.sync(row.id))"
+        />
+        <Icon
+          icon="more-horizontal"
+          tooltip="Pause, share, deleted files, disconnect"
+          @click.stop="more($event, row)"
+        />
+      </Setting>
+      <Setting name="Connect to a server" desc="By a token you were given, pasted or scanned.">
+        <Button
+          text="Connect…"
+          tooltip="Paste a token for a server, folder or group"
+          @click="dialog = { mode: 'connect' }"
+        />
+      </Setting>
+      <p v-if="rows.length && !ui.available.value" class="setting-item-description">
+        File exchange is opening. Connections that need attention keep their files here.
+      </p>
+    </Section>
+    <ConnectionWindow
+      v-if="opened && rows.some((one) => one.id === opened)"
+      :key="opened"
+      :ui="ui"
+      :connection-id="opened"
+      :error="errors[opened]"
+      @close="opened = null"
+      @open="openFile"
+      @share="dialog = { mode: 'share', connectionId: opened! }"
+      @disconnect="dialog = { mode: 'disconnect', connectionId: opened! }"
+    />
     <TokenDialogs
       v-if="dialog"
       :key="
@@ -127,72 +100,27 @@
       "
       :ui="ui"
       v-bind="dialog"
-      @close="dialog = null"
+      @close="closeDialog"
     />
-    <Modal
-      v-if="preferences"
-      :title="preferences.name"
-      size="tall"
-      phone-sheet
-      @close="preferences = null"
-    >
-      <HeldDeletesBlock v-if="preferences.held.length" :held="preferences.held" />
-      <StagedSettingsBlock
-        v-if="preferences.changes.length"
-        :changes="preferences.changes"
-        :names="{}"
-      />
-      <SelectiveSync />
-    </Modal>
   </div>
   <EmptyState v-else text="Sync is opening. If it cannot open, restart Obsidian and try again." />
 </template>
 <script setup lang="ts">
 import { computed, onMounted, onUnmounted, ref } from 'vue'
-import { Notice } from 'obsidian'
+import { Menu, Notice } from 'obsidian'
 import Section from '../obsidian/Section.vue'
 import Setting from '../obsidian/Setting.vue'
 import Icon from '../obsidian/Icon.vue'
 import Button from '../obsidian/Button.vue'
 import EmptyState from '../obsidian/EmptyState.vue'
+import StatusDot from '../obsidian/StatusDot.vue'
 import TokenDialogs from '../sync/TokenDialogs.vue'
-import Modal from '../obsidian/Modal.vue'
-import SelectiveSync from './sync/SelectiveSync.vue'
-import HeldDeletesBlock from '../sync/HeldDeletesBlock.vue'
-import StagedSettingsBlock from '../sync/StagedSettingsBlock.vue'
-import { TokenSettingsPort } from '@/sync/tokenSettingsPort'
-const preferences = ref<{
-  name: string
-  held: import('@abele/sync-core').HeldDelete[]
-  changes: import('@abele/sync-protocol').ChangeItem[]
-} | null>(null)
-async function configure(id: string) {
-  if (!ui.value) return
-  await act(id, async () => {
-    historyConnection.value = id
-    const port = TokenSettingsPort.forConnection(ui.value, id)
-    await port.settingsPrompt.refresh()
-    preferences.value = {
-      name: connectionName(rows.value.find((row) => row.id === id)),
-      held: (await ui.value.runtimes.get(id)?.heldDeletes?.()) ?? [],
-      changes: port.settingsPrompt.staged.value,
-    }
-  })
-}
+import ConnectionWindow from '../sync/ConnectionWindow.vue'
 import { historyConnection } from '@/sync/tokenHistory'
 import { GlobalStore } from '@/stores/GlobalStore'
-function openTrash(id: string) {
-  historyConnection.value = id
-  GlobalStore.getInstance().deletedFilesModalOpened.value = true
-}
-import {
-  tokenUi,
-  scopeName,
-  connectionName,
-  connectionStatusText,
-  connectionError,
-  type TokenUi,
-} from '@/sync/tokenUi'
+import { tokenUi, scopeName, connectionError, type TokenUi } from '@/sync/tokenUi'
+import { connectionBusy, connectionLine, connectionTone } from '@/sync/connectionLine'
+import { formatWhen } from '@/sync/format'
 import type { TokenConnectionRecord } from '@/sync/tokenConnectionRegistry'
 import type { ExecutableCandidate } from '@/sync/executableReview'
 import type { AttachmentQuestion } from '@/sync/attachmentConsent'
@@ -200,35 +128,70 @@ const props = defineProps<{ model?: TokenUi }>()
 const ui = computed(() => props.model ?? tokenUi.value)
 const rows = computed(() => ui.value?.rows.value ?? [])
 const activity = computed(() => ui.value?.activity.value ?? {})
-const activityRows = computed(() =>
-  rows.value.filter(
-    (row) =>
-      errors.value[row.id] ||
-      activity.value[row.id]?.error ||
-      activity.value[row.id]?.total !== undefined ||
-      activity.value[row.id]?.refused?.length ||
-      activity.value[row.id]?.conflicts?.length
-  )
-)
 const candidates = computed(() => ui.value?.candidates.value ?? [])
 const questions = computed(() => ui.value?.questions.value ?? [])
 const errors = ref<Record<string, string>>({}),
   busy = ref(new Set<string>())
+/** The connection whose window is open. */
+const opened = ref<string | null>(null)
 const dialog = ref<{
   mode: 'connect' | 'share' | 'disconnect' | 'review' | 'attachment'
   connectionId?: string
   candidate?: ExecutableCandidate
   question?: AttachmentQuestion
 } | null>(null)
-function description(row: TokenConnectionRecord) {
-  const last = activity.value[row.id]?.lastSync
-  return (
-    row.address +
-    ' · ' +
-    connectionStatusText(row, activity.value[row.id]) +
-    ' · ' +
-    (last ? 'Last synced ' + new Date(last).toLocaleString() : 'Not synced yet')
+const host = (address: string) => new URL(address).host
+const when = (at: number) => formatWhen(new Date(at).toISOString())
+const tone = (row: TokenConnectionRecord) =>
+  errors.value[row.id] ? 'red' : connectionTone(row, activity.value[row.id])
+const line = (row: TokenConnectionRecord) =>
+  errors.value[row.id] ?? connectionLine(row, activity.value[row.id])
+function closeDialog() {
+  // A disconnected connection has no window left to go back to.
+  if (dialog.value?.mode === 'disconnect' && !rows.value.some((one) => one.id === opened.value))
+    opened.value = null
+  dialog.value = null
+}
+function openTrash(id: string) {
+  historyConnection.value = id
+  GlobalStore.getInstance().deletedFilesModalOpened.value = true
+}
+/** The rarer things to do to a connection, with disconnecting apart at the end. */
+function more(event: MouseEvent, row: TokenConnectionRecord) {
+  const menu = new Menu()
+  menu.addItem((item) =>
+    item
+      .setTitle(row.paused ? 'Resume' : 'Pause')
+      .setIcon(row.paused ? 'play' : 'pause')
+      .onClick(() => act(row.id, () => ui.value!.pause(row.id, !row.paused)))
   )
+  menu.addItem((item) =>
+    item
+      .setTitle('Share…')
+      .setIcon('share-2')
+      .onClick(() => (dialog.value = { mode: 'share', connectionId: row.id }))
+  )
+  menu.addItem((item) =>
+    item
+      .setTitle('Deleted files')
+      .setIcon('trash-2')
+      .onClick(() => openTrash(row.id))
+  )
+  menu.addItem((item) =>
+    item
+      .setTitle('What this device syncs')
+      .setIcon('settings')
+      .onClick(() => (opened.value = row.id))
+  )
+  menu.addSeparator()
+  menu.addItem((item) =>
+    item
+      .setTitle('Disconnect…')
+      .setIcon('unlink')
+      .setWarning(true)
+      .onClick(() => (dialog.value = { mode: 'disconnect', connectionId: row.id }))
+  )
+  menu.showAtMouseEvent(event)
 }
 async function act(id: string, action: () => Promise<void>) {
   if (busy.value.has(id)) return
@@ -264,3 +227,21 @@ onMounted(() => {
   })
 })
 </script>
+<style lang="scss">
+// The whole row opens its connection; the glyphs at its end do their own thing.
+.abele-sync-row {
+  cursor: var(--cursor);
+  border-radius: var(--radius-s);
+
+  &:hover,
+  &:focus-visible {
+    background-color: var(--background-modifier-hover);
+  }
+}
+.abele-sync-row__line.mod-warning {
+  color: var(--text-error);
+}
+.abele-sync-row__server {
+  color: var(--text-faint);
+}
+</style>
