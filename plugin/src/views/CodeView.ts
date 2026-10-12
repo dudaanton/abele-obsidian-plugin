@@ -308,16 +308,17 @@ export class CodeView extends TextFileView {
     const header = this.contentEl.createDiv({ cls: 'abele-code-header' })
 
     // Search bar (hidden by default)
-    this.searchEl = header.createDiv({ cls: 'abele-code-search abele-code-search_hidden' })
-    const searchComponent = new TextComponent(this.searchEl)
+    const search = header.createDiv({ cls: 'abele-code-search abele-code-search_hidden' })
+    this.searchEl = search
+    const searchComponent = new TextComponent(search)
     searchComponent.setPlaceholder('Find...')
     searchComponent.inputEl.addClass('abele-code-search__input')
     this.searchInput = searchComponent.inputEl
-    this.searchCountEl = this.searchEl.createSpan({ cls: 'abele-code-search__count' })
+    this.searchCountEl = search.createSpan({ cls: 'abele-code-search__count' })
 
     // Obsidian's own glyph buttons, each named by its tooltip.
     const glyph = (icon: string, name: string, run: () => void) => {
-      const button = this.searchEl.createDiv({ cls: 'clickable-icon abele-code-search__btn' })
+      const button = search.createDiv({ cls: 'clickable-icon abele-code-search__btn' })
       button.setAttr('role', 'button')
       button.setAttr('tabindex', '0')
       button.setAttr('aria-label', name)
