@@ -18,7 +18,7 @@
     </div>
 
     <div class="canvas-controls abele-canvas-chrome__view">
-      <div class="canvas-control-group">
+      <div class="canvas-control-group abele-canvas-chrome__zoom">
         <ControlItem icon="plus" tooltip="Zoom in" @click="zoom(1.25)" />
         <ControlItem icon="rotate-ccw" :tooltip="`Reset zoom (${percent}%)`" @click="zoomTo(1)" />
         <ControlItem icon="maximize" tooltip="Zoom to fit" @click="viewer.fit()" />
@@ -733,7 +733,7 @@ const watchCamera = () => {
     tick.value++
     placeField()
   }
-  frame = requestAnimationFrame(watchCamera)
+  frame = window.requestAnimationFrame(watchCamera)
 }
 const off = shallowRef<() => void>()
 const blur = () => {
@@ -746,7 +746,7 @@ onMounted(() => {
     placeField()
   })
   c.textField().addEventListener('blur', blur)
-  frame = requestAnimationFrame(watchCamera)
+  frame = window.requestAnimationFrame(watchCamera)
 })
 onBeforeUnmount(() => {
   off.value?.()
@@ -795,6 +795,12 @@ onBeforeUnmount(() => {
 
   > * {
     pointer-events: auto;
+  }
+
+  // Nothing to undo or redo yet: the glyph stays, faint, and is no longer something to press.
+  .canvas-control-item.is-disabled {
+    cursor: default;
+    opacity: 0.4;
   }
 }
 
@@ -873,6 +879,11 @@ onBeforeUnmount(() => {
 
 .abele-canvas-chrome__tool.is-active {
   color: var(--color-accent);
+}
+
+// On a phone two fingers zoom; the column keeps only undo and redo.
+.is-phone-layout .abele-canvas-chrome__zoom {
+  display: none;
 }
 
 // Obsidian draws no card menu on a phone; this one stays, along the foot over the bar.
