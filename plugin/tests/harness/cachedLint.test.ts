@@ -1,6 +1,6 @@
 // @vitest-environment node
-import { afterEach, describe, expect, it, vi } from 'vitest'
-import { mkdtempSync, mkdirSync, writeFileSync, rmSync, realpathSync } from 'node:fs'
+import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest'
+import { existsSync, mkdtempSync, mkdirSync, writeFileSync, rmSync, realpathSync } from 'node:fs'
 import { tmpdir } from 'node:os'
 import { join } from 'node:path'
 import { createRequire } from 'node:module'
@@ -13,6 +13,9 @@ afterEach(() => {
   roots.splice(0).forEach((root) => rmSync(root, { recursive: true, force: true }))
   vi.unstubAllEnvs()
 })
+function dependency(name: string) {
+  return pathToFileURL(createRequire(import.meta.url).resolve(name)).href
+}
 function fixture() {
   const temp = realpathSync(mkdtempSync(join(tmpdir(), 'sample-lint-')))
   roots.push(temp)
@@ -24,13 +27,12 @@ function fixture() {
   writeFileSync(join(root, 'plugin/node_modules/.package-lock.json'), '{}')
   writeFileSync(
     join(root, 'plugin/tsconfig.json'),
-    '{"compilerOptions":{"strict":true},"include":["src/**/*.ts"]}'
+    '{"compilerOptions":{"strict":true,"lib":["ES2022"],"types":[]},"include":["src/**/*.ts"]}'
   )
-  const dependency = pathToFileURL(createRequire(import.meta.url).resolve('typescript-eslint')).href
   writeFileSync(
     join(root, 'plugin/eslint.config.mjs'),
     `
-import tseslint from ${JSON.stringify(dependency)}
+import tseslint from ${JSON.stringify(dependency('typescript-eslint'))}
 if (process.cwd() !== ${JSON.stringify(root)}) throw new Error('Configuration loaded before entering repository root')
 export const nonTypedPatterns = ['plugin/tests/**']
 export default [
@@ -49,33 +51,28 @@ export default [
   execFileSync('git', ['init', '-q', root])
   return { root, env: { ABELE_CHECK_CACHE_DIR: join(temp, 'cache') } }
 }
-
-function dependency(name: string) {
-  return pathToFileURL(createRequire(import.meta.url).resolve(name)).href
+type Fixture = ReturnType<typeof fixture>
+async function comparison(f: Fixture) {
+  // The source is frozen for both independent invocations; their fresh workers may overlap.
+  return Promise.all([runLint(f.root, f.env), runLint(f.root, { ...f.env, ABELE_CHECK_COLD: '1' })])
 }
-
-function probe(root: string, env: object, body: string) {
-  const script = `import assert from 'node:assert/strict';
-import { existsSync, writeFileSync } from 'node:fs';
-import { join } from 'node:path';
-import { runLint } from ${JSON.stringify(new URL('../../scripts/check-lint.mjs', import.meta.url).href)};
-const root = ${JSON.stringify(root)};
-const env = ${JSON.stringify(env)};
-${body}`
-  execFileSync(process.execPath, ['--input-type=module', '-e', script], { stdio: 'pipe' })
-}
+const api = `export declare class Component { unload(): void }
+export declare class Plugin extends Component { id: string }
+export declare class MarkdownRenderer { static render(app: unknown, text: string, element: unknown, path: string, component: Component): Promise<void> }
+export declare const sampleComponent: `
 
 describe('cached lint execution', () => {
-  it.each(['generated', 'external'])(
-    'rechecks Vue-only declarations in %s inputs omitted by plain TypeScript',
-    (location) => {
-      const f = fixture()
+  // Setup and the comparison each retain a five-second deadline. Seeding is a checked
+  // fixture prerequisite, not three serial full parser bootstraps inside one assertion phase.
+  describe.each(['generated', 'external'])('Vue-only %s declarations', (location) => {
+    let f: Fixture
+    let declaration: string
+    beforeEach(async () => {
+      f = fixture()
       mkdirSync(join(f.root, 'plugin/build'))
       writeFileSync(
         join(f.root, 'plugin/tsconfig.json'),
         JSON.stringify({
-          // The synthetic API uses no DOM or ambient packages. Keep the complete rule
-          // check, without repeatedly loading unrelated libraries in fresh processes.
           compilerOptions: {
             strict: true,
             moduleResolution: 'bundler',
@@ -86,11 +83,7 @@ describe('cached lint execution', () => {
           include: ['src/**/*.ts', 'src/**/*.vue'],
         })
       )
-      const api = `export declare class Component { unload(): void }
-export declare class Plugin extends Component { id: string }
-export declare class MarkdownRenderer { static render(app: unknown, text: string, element: unknown, path: string, component: Component): Promise<void> }
-export declare const sampleComponent: `
-      const declaration =
+      declaration =
         location === 'generated'
           ? join(f.root, 'plugin/build/sample-api.d.ts')
           : join(f.root, '../sample-api.d.ts')
@@ -114,91 +107,93 @@ export default [
  { files: ['plugin/src/**/*.vue'], languageOptions: { parser: vueParser, parserOptions: { parser: tseslint.parser, projectService: true, tsconfigRootDir: ${JSON.stringify(f.root + '/plugin')}, extraFileExtensions: ['.vue'] } }, plugins: { obsidianmd: obsidianmd.plugin ?? obsidianmd }, rules: { 'obsidianmd/no-plugin-as-component': 'error' } }
 ];`
       )
-      probe(
-        f.root,
-        f.env,
-        `
-assert.equal((await runLint(root, env)).errorCount, 0);
-assert.equal(existsSync(join(env.ABELE_CHECK_CACHE_DIR, 'lint-typed')), false, 'incomplete program inputs must never seed a typed cache');
-writeFileSync(${JSON.stringify(declaration)}, ${JSON.stringify(api + 'Plugin;')});
-// Independent invocations read the same frozen inputs; their fresh workers may overlap.
-const [warm, cold] = await Promise.all([
-  runLint(root, env), runLint(root, { ...env, ABELE_CHECK_COLD: '1' })
-]);
-assert.equal(cold.errorCount, 1, 'cold lint must detect the Vue-only imported Plugin');
-assert.equal(warm.errorCount, cold.errorCount, 'warm lint must not reuse the old Component result');`
-      )
-    }
-  )
+      expect((await runLint(f.root, f.env)).errorCount).toBe(0)
+      expect(existsSync(join(f.env.ABELE_CHECK_CACHE_DIR, 'lint-typed'))).toBe(false)
+      writeFileSync(declaration, api + 'Plugin;')
+    }, 5000)
+    it('rechecks imported types omitted by plain TypeScript against cold lint', async () => {
+      const [warm, cold] = await comparison(f)
+      expect(cold.errorCount).toBe(1)
+      expect(warm.errorCount).toBe(cold.errorCount)
+    })
+  })
 
-  it('reloads manifest-dependent rule state before computing and sealing a new input result', () => {
-    const f = fixture()
-    writeFileSync(join(f.root, 'manifest.json'), '{"isDesktopOnly":true}')
-    writeFileSync(join(f.root, 'plugin/src/sample.js'), 'export const sample = /(?<=sample)text/')
-    writeFileSync(
-      join(f.root, 'plugin/eslint.config.mjs'),
-      `
+  describe('manifest-dependent rule state', () => {
+    let f: Fixture
+    beforeEach(async () => {
+      f = fixture()
+      writeFileSync(join(f.root, 'manifest.json'), '{"isDesktopOnly":true}')
+      writeFileSync(join(f.root, 'plugin/src/sample.js'), 'export const sample = /(?<=sample)text/')
+      writeFileSync(
+        join(f.root, 'plugin/eslint.config.mjs'),
+        `
 import obsidianmd from ${JSON.stringify(dependency('eslint-plugin-obsidianmd'))};
 export const nonTypedPatterns = ['plugin/tests/**'];
 export default [
  { ignores: ['plugin/node_modules/**', 'plugin/eslint.config.mjs'] },
  { files: ['plugin/src/**/*.js'], plugins: { obsidianmd: obsidianmd.plugin ?? obsidianmd }, rules: { 'obsidianmd/regex-lookbehind': 'error' } }
 ];`
-    )
-    probe(
-      f.root,
-      f.env,
-      `
-assert.equal((await runLint(root, env)).errorCount, 0);
-writeFileSync(join(root, 'manifest.json'), '{"isDesktopOnly":false}');
-const [warm, cold] = await Promise.all([
-  runLint(root, env), runLint(root, { ...env, ABELE_CHECK_COLD: '1' })
-]);
-assert.equal(warm.errorCount, 1, 'changed manifest must reload rule module state');
-assert.equal(cold.errorCount, 1);`
-    )
+      )
+      expect((await runLint(f.root, f.env)).errorCount).toBe(0)
+      writeFileSync(join(f.root, 'manifest.json'), '{"isDesktopOnly":false}')
+    }, 5000)
+    it('reloads rule state before computing and sealing a new input result', async () => {
+      const [warm, cold] = await comparison(f)
+      expect(warm.errorCount).toBe(1)
+      expect(cold.errorCount).toBe(1)
+    })
   })
 
-  it('loads root-sensitive configuration only after changing directory and retains disjoint complete coverage', async () => {
-    const f = fixture()
-    const original = process.cwd()
-    const result = await runLint(f.root, f.env)
-    expect(process.cwd()).toBe(original)
-    expect(result.errorCount).toBe(0)
-    expect(result.files.sort()).toEqual([
-      'plugin/src/consumer.ts',
-      'plugin/src/service.ts',
-      'plugin/tests/unit/sample.test.js',
-    ])
-    expect(new Set(result.files).size).toBe(result.files.length)
-    expect((await runLint(f.root, f.env)).files.sort()).toEqual(result.files.sort())
+  describe('root-sensitive configuration', () => {
+    let f: Fixture
+    let first: Awaited<ReturnType<typeof runLint>>
+    beforeEach(async () => {
+      f = fixture()
+      const original = process.cwd()
+      first = await runLint(f.root, f.env)
+      expect(process.cwd()).toBe(original)
+      expect(first.errorCount).toBe(0)
+      expect(first.files.sort()).toEqual([
+        'plugin/src/consumer.ts',
+        'plugin/src/service.ts',
+        'plugin/tests/unit/sample.test.js',
+      ])
+      expect(new Set(first.files).size).toBe(first.files.length)
+    }, 5000)
+    it('retains disjoint complete coverage on repeated calls', async () => {
+      expect((await runLint(f.root, f.env)).files.sort()).toEqual(first.files.sort())
+    })
   })
 
-  it('rechecks unchanged consumers when an imported return type changes, matching a cold lint run', async () => {
-    vi.stubEnv('CI', 'true')
-    const f = fixture()
-    expect((await runLint(f.root, f.env)).errorCount).toBe(0)
-    writeFileSync(
-      join(f.root, 'plugin/src/service.ts'),
-      'export async function sample(): Promise<void> {}'
-    )
-    const [warm, cold] = await Promise.all([
-      runLint(f.root, f.env),
-      runLint(f.root, { ...f.env, ABELE_CHECK_COLD: '1' }),
-    ])
-    expect(warm.errorCount).toBe(1)
-    expect(cold.errorCount).toBe(warm.errorCount)
+  describe('imported return type changes', () => {
+    let f: Fixture
+    beforeEach(async () => {
+      vi.stubEnv('CI', 'true')
+      f = fixture()
+      expect((await runLint(f.root, f.env)).errorCount).toBe(0)
+      writeFileSync(
+        join(f.root, 'plugin/src/service.ts'),
+        'export async function sample(): Promise<void> {}'
+      )
+    }, 5000)
+    it('rechecks unchanged consumers, matching cold results', async () => {
+      const [warm, cold] = await comparison(f)
+      expect(warm.errorCount).toBe(1)
+      expect(cold.errorCount).toBe(warm.errorCount)
+    })
   })
 
-  it('rechecks edited non-type files by content, matching cold results', async () => {
-    const f = fixture()
-    expect((await runLint(f.root, f.env)).errorCount).toBe(0)
-    writeFileSync(join(f.root, 'plugin/tests/unit/sample.test.js'), 'unknownSample()')
-    const [warm, cold] = await Promise.all([
-      runLint(f.root, f.env),
-      runLint(f.root, { ...f.env, ABELE_CHECK_COLD: '1' }),
-    ])
-    expect(warm.errorCount).toBe(1)
-    expect(cold.errorCount).toBe(1)
+  describe('non-type file changes', () => {
+    let f: Fixture
+    beforeEach(async () => {
+      f = fixture()
+      expect((await runLint(f.root, f.env)).errorCount).toBe(0)
+      writeFileSync(join(f.root, 'plugin/tests/unit/sample.test.js'), 'unknownSample()')
+    }, 5000)
+    it('rechecks edited files by content, matching cold results', async () => {
+      const [warm, cold] = await comparison(f)
+      expect(warm.errorCount).toBe(1)
+      expect(cold.errorCount).toBe(1)
+    })
   })
 })
