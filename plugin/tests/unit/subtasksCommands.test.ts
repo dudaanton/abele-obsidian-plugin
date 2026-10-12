@@ -58,7 +58,14 @@ describe('subtask parent chooser', () => {
     expect(tree.children.get(node(copy))).toEqual([node(child)])
   })
 
-  it.fails('BUG: completing the last subtask also completes its parent', async () => {
+  it('completing the last subtask also completes its parent', async () => {
+    useVault([
+      {
+        path: 'Tasks/Sample parent.md',
+        frontmatter: { type: 'task' },
+        content: 'Sample parent body',
+      },
+    ])
     const parent = task('Sample parent')
     const child = task('Sample final step', ['[[Sample parent]]'])
     child.content = 'Sample task body'
@@ -67,7 +74,7 @@ describe('subtask parent chooser', () => {
     list.tasks.set(parent.taskPath, parent)
     list.tasks.set(child.taskPath, child)
     try {
-      await child.toggleCompletion()
+      await child.toggle()
       expect(child.completedAt).not.toBeNull()
       expect(parent.completedAt).not.toBeNull()
     } finally {

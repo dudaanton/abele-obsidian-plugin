@@ -795,14 +795,22 @@ settings, never on the task. The task's own body is its description.
 A subtask is a task with another task named among its `groups` — `groups: ["[[Tasks/Mount the
 station]]"]` — and nothing else: there is no `parent` property, and one task may be a subtask
 of several. Lists show it under its parent, the parent's row counting done of all; a parent the
-list does not show is named under the subtask instead. Completing a subtask updates its parent's
-count; the parent still has its own completion control. Tasks
-written into each other's groups (a circle) show flat. To make a subtask,
+list does not show is named under the subtask instead. Closing the last open subtask automatically
+closes its parent and eligible ancestors. Unticking a subtask reopens only ancestors whose
+current completion was automatic; manually completed parents stay closed. Tasks
+written into each other's groups (a circle) show flat and never participate in automatic completion
+or reopening, including propagation to their external parents. To make a subtask,
 add the link to the task's `groups`; to undo it, remove that link.
 
 Expanded subtask rows are remembered locally under `abele-subtasks-open`, as a list of task
 paths in Obsidian's local storage. This affects every task list on that device and does not
 change task notes or travel with settings.
+
+An automatically completed parent stores `abeleAutoCompleted` alongside `completed`, with the
+same date value. This provenance travels with the task note. Reopening removes both properties;
+an explicit completion toggle clears the marker. A changed completion date or a missing marker
+prevents automatic reopening. Parent writes change only completion fields and preserve the
+current body and other properties, including unsaved content in an open editor.
 
 Completion is `completed` being set. Do not add a `done` or `status` property.
 

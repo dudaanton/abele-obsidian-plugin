@@ -161,10 +161,11 @@ export function parentsClosedBy<T extends TreeNode>(
 ): T[] {
   const closed: T[] = []
   const walk = (t: T) => {
+    if (tree.circular.has(t)) return
     for (const p of tree.parents.get(t) ?? []) {
-      if (isDone(p) || closed.includes(p)) continue
+      if (tree.circular.has(p) || isDone(p) || closed.includes(p)) continue
       const subs = tree.subtasks.get(p) ?? []
-      if (subs.every((s) => isDone(s) || closed.includes(s))) {
+      if (subs.every((s) => !tree.circular.has(s) && (isDone(s) || closed.includes(s)))) {
         closed.push(p)
         walk(p)
       }
@@ -172,4 +173,26 @@ export function parentsClosedBy<T extends TreeNode>(
   }
   walk(task)
   return closed
+}
+
+/** Reopen only ancestors whose current completion was automatic, never through a circle. */
+export function parentsReopenedBy<T extends TreeNode>(
+  tree: TaskTree<T>,
+  task: T,
+  isDone: (t: T) => boolean,
+  isAutomatic: (t: T) => boolean
+): T[] {
+  const opened: T[] = []
+  const walk = (t: T) => {
+    if (tree.circular.has(t)) return
+    for (const p of tree.parents.get(t) ?? []) {
+      if (tree.circular.has(p) || !isDone(p) || !isAutomatic(p) || opened.includes(p)) continue
+      if ((tree.subtasks.get(p) ?? []).some((s) => !isDone(s) || opened.includes(s))) {
+        opened.push(p)
+        walk(p)
+      }
+    }
+  }
+  walk(task)
+  return opened
 }

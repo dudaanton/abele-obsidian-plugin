@@ -1,4 +1,5 @@
 import { createTask } from '@/commands/createTask'
+import { AUTO_COMPLETED, completeTaskParents } from '@/commands/taskCompletion'
 import { DATE_FORMAT } from '@/constants/dates'
 import { applyTimeToDate, parseDateOrNull, parseDateTimeOrNull } from '@/helpers/datesHelper'
 import { FileWatcher } from '@/helpers/FileWatcher'
@@ -255,6 +256,7 @@ export class Task {
 
   /** Shared completion transition; each surface persists the original note in its own way. */
   async toggleCompletion() {
+    delete this.oldProps[AUTO_COMPLETED]
     if (this.completedAt) {
       this.completedAt = null
     } else {
@@ -268,7 +270,8 @@ export class Task {
 
   async toggle() {
     await this.toggleCompletion()
-    return this.writeTaskToFile()
+    await this.writeTaskToFile()
+    await completeTaskParents(this)
   }
 
   async writeTaskToFile(focus = false, overwrite = true) {

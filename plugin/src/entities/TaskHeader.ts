@@ -9,6 +9,7 @@ import { TaskNoteTemplate } from '@/templates/TaskNoteTemplate'
 import dayjs from 'dayjs'
 import { debounce } from 'obsidian'
 import { Task } from './Task'
+import { AUTO_COMPLETED, completeTaskParents } from '@/commands/taskCompletion'
 
 export class TaskHeader {
   public readonly id: string
@@ -82,7 +83,8 @@ export class TaskHeader {
     try {
       await task.toggleCompletion()
       this.completedAt = task.completedAt
-      return await this.writeContentToEditor()
+      await this.writeContentToEditor(true)
+      await completeTaskParents(task)
     } finally {
       task.cleanup()
     }
@@ -205,7 +207,7 @@ export class TaskHeader {
     return this.writeContentToEditor()
   }
 
-  async writeContentToEditor() {
+  async writeContentToEditor(manualCompletion = false) {
     const { app } = GlobalStore.getInstance()
 
     const file = getFileByPath(this.filePath)
@@ -213,6 +215,7 @@ export class TaskHeader {
     if (!editor) return
 
     const currentContent = await parseNoteContent(file, editor.getValue())
+    if (manualCompletion) delete currentContent[AUTO_COMPLETED]
 
     console.debug(this.createdAt)
 
