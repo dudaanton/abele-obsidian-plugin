@@ -87,7 +87,7 @@ const script = `(async () => {
     if (!(await until(() => !artifacts()))) throw new Error('Artifacts view did not close')
   }
   const press = async (host, title) => {
-    const button = () => [...host.querySelectorAll('button')].find((el) => el.textContent.trim() === title)
+    const button = () => [...(host.closest('.modal') || host).querySelectorAll('button')].find((el) => el.textContent.trim() === title)
     if (!(await until(() => button() && !button().disabled)))
       throw new Error('no enabled Artifacts button "' + title + '"')
     button().click()

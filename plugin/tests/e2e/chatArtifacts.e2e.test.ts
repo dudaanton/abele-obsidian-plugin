@@ -28,6 +28,13 @@ describe.skipIf(!available)('one view of a chat’s artifacts', () => {
       const created = [], observations = {}, cuts = [], over = []
       const close = async () => { document.querySelector('.modal-close-button')?.click(); await wait(100) }
       const root = () => document.querySelector('.abele-chat-artifacts')
+      const openArtifacts = async () => {
+        const overflow = await until(() => document.querySelector('.abele-ai-chat__overflow [aria-haspopup="menu"]'))
+        overflow.click()
+        const item = await until(() => [...document.querySelectorAll('.menu .menu-item')].find(el => el.textContent.trim() === 'Files from this chat'))
+        item.click()
+        await until(root)
+      }
       // A note or script is a tree row, a picture a tile; both carry the file's path.
       const card = path => [...root().querySelectorAll('.abele-chat-artifacts__row, .abele-chat-artifacts__image')].find(el => (el.matches('[data-path]') ? el : el.querySelector('[data-path]'))?.getAttribute('data-path') === path)
       const missing = el => el.matches('.abele-chat-artifacts__row_missing, .abele-chat-artifacts__image_missing')
@@ -161,8 +168,12 @@ describe.skipIf(!available)('one view of a chat’s artifacts', () => {
         const moved = app.vault.getAbstractFileByPath(created[1]); await app.vault.rename(moved, directory + '/sample-moved.png')
         await until(() => missing(card(created[1])))
         observations.missing = (await menuOf(card(created[1]))).some(el => el.textContent.trim() === 'Show in chat')
-        document.body.dispatchEvent(new KeyboardEvent('keydown', { key: 'Escape', code: 'Escape', keyCode: 27, bubbles: true, cancelable: true })); await wait(100)
-        document.querySelector('.menu')?.remove()
+        // Execute the source action to dismiss its menu normally; synthetic Escape can also
+        // close the native modal. Reopen the files view for the independent upload-source check.
+        const missingSource = [...document.querySelectorAll('.menu .menu-item')].find(el => el.textContent.trim() === 'Show in chat')
+        missingSource.click()
+        await until(() => !root())
+        await openArtifacts()
         await press(card(upload.path), 'Show in chat')
         await until(() => !root())
         const sourceVisible = () => {
