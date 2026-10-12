@@ -1,13 +1,35 @@
 /**
  * Script fixtures own feature flags and exact-source decisions, including managed vaults.
  * Keep the serializable snapshot in the test process across reloads. The vault must be
- * exclusively held and disconnected: a running sync host could mutate the same trust store.
+ * exclusively held with no running sync session: the fixture temporarily owns a disconnected
+ * registry because a running sync host could mutate the same trust store.
  * These functions run inside the app, also in probes that have a single try/finally.
  */
 export const SCRIPT_FIXTURE = String.raw`
   const fixtureKeys = ['abele-script-trust', 'abele-script-local-upgrade', 'abele-script-provenance', 'abele-script-toolbar-offered']
   const fixtureMarker = '.abele-script-managed'
+  const fixtureSyncKeys = ['abele-sync-connections-v2', 'abele-sync-connection']
   const fixtureClone = value => JSON.parse(JSON.stringify(value ?? null))
+  const fixtureHostSettled = async () => { await app.plugins?.plugins?.abele?.tokenEngines?.rebuilding }
+  const fixtureSyncActive = () => {
+    const host = app.plugins?.plugins?.abele?.tokenEngines
+    // Even idle/offline runtimes own watchers and may resume. Include queued startup
+    // and draining hosts, not saved metadata or the status label alone.
+    return !!(host?.live?.size || host?.pending?.size || host?.startupCancels?.size ||
+      host?.engines?.runtimes?.size || host?.ui?.runtimes?.size)
+  }
+  function restoreFixtureConnections(sync) {
+    const errors = []
+    for (const key of fixtureSyncKeys) {
+      try {
+        app.saveLocalStorage(key, sync[key])
+        if (JSON.stringify(fixtureClone(app.loadLocalStorage(key))) !== JSON.stringify(sync[key]))
+          throw new Error('Script fixture connection state was not restored')
+      } catch (error) { errors.push(error) }
+    }
+    if (errors.length === 1) throw errors[0]
+    if (errors.length) throw new AggregateError(errors, 'Script fixture connection restoration failed')
+  }
   const fixtureDatabase = async (id, work) => {
     const db = await new Promise((resolve, reject) => {
       const request = indexedDB.open('abele-script-provenance-' + id)
@@ -31,15 +53,7 @@ export const SCRIPT_FIXTURE = String.raw`
     tx.oncomplete = () => resolve(result)
     tx.onerror = tx.onabort = () => reject(tx.error ?? new Error('Fixture provenance transaction failed'))
   })
-  async function saveScriptFixture() {
-    const registry = app.loadLocalStorage('abele-sync-connections-v2')
-    const connection = app.loadLocalStorage('abele-sync-connection')
-    const connected = registry != null
-      ? registry.version !== 2 || !Array.isArray(registry.records) || registry.records.some(record =>
-          record.secretReference || record.pending || record.address || record.spaceId || record.tokenId || record.scope)
-      : connection && (connection.serverUrl || connection.enrolledUrl || connection.vaultId || connection.deviceId)
-    if (connected)
-      throw new Error('Script fixture needs a disconnected, exclusively held vault')
+  async function readScriptFixture() {
     const local = Object.fromEntries(fixtureKeys.map(key => [key, fixtureClone(app.loadLocalStorage(key))]))
     const id = local['abele-script-provenance']?.id
     const snapshot = {
@@ -47,6 +61,7 @@ export const SCRIPT_FIXTURE = String.raw`
       marker: await app.vault.adapter.exists(fixtureMarker) ? [...new Uint8Array(await app.vault.adapter.readBinary(fixtureMarker))] : null,
       meta: id ? await fixtureDatabase(id, db => fixtureMeta(db)) : null,
       phone: fixtureClone(app.vault.getConfig('mobileToolbarCommands')),
+      sync: Object.fromEntries(fixtureSyncKeys.map(key => [key, fixtureClone(app.loadLocalStorage(key))])),
     }
     console.info('[script fixture baseline]', JSON.stringify({
       ai: snapshot.ai.enabled, scripts: snapshot.ai.scriptsEnabled, folder: snapshot.ai.scriptsFolder,
@@ -54,6 +69,26 @@ export const SCRIPT_FIXTURE = String.raw`
       localContext: local['abele-script-provenance']?.binding?.endpoint === 'local:',
       marker: snapshot.marker !== null,
     }))
+    return snapshot
+  }
+  async function saveScriptFixture() {
+    await fixtureHostSettled()
+    if (fixtureSyncActive()) throw new Error('Script fixture needs a disconnected, exclusively held vault')
+    const snapshot = await readScriptFixture()
+    // Snapshot reads can await IndexedDB; recheck before taking the disconnected context.
+    await fixtureHostSettled()
+    if (fixtureSyncActive()) throw new Error('Script fixture needs a disconnected, exclusively held vault')
+    try {
+      app.saveLocalStorage(fixtureSyncKeys[0], { version: 2, selectedId: '', records: [] })
+      app.saveLocalStorage(fixtureSyncKeys[1], null)
+      if (JSON.stringify(app.loadLocalStorage(fixtureSyncKeys[0])) !== JSON.stringify({ version: 2, selectedId: '', records: [] }) ||
+          app.loadLocalStorage(fixtureSyncKeys[1]) != null)
+        throw new Error('Script fixture disconnected context was not saved')
+    } catch (error) {
+      try { restoreFixtureConnections(snapshot.sync) }
+      catch (restoreError) { throw new AggregateError([error, restoreError], 'Script fixture setup and rollback failed') }
+      throw error
+    }
     return snapshot
   }
   async function enableScriptFixture(folder) {
@@ -84,6 +119,8 @@ export const SCRIPT_FIXTURE = String.raw`
   }
   async function restoreScriptFixture(snapshot) {
     if (!snapshot) return
+    const errors = []
+    try {
     const T = window.__abeleTest, config = T.AbeleConfig.getInstance()
     // Stop fixture watchers before restoring durable authority or rediscovering the old folder.
     config.ai = { ...config.ai, scriptsEnabled: false, startupScriptsPaused: true }
@@ -112,7 +149,14 @@ export const SCRIPT_FIXTURE = String.raw`
     T.ScriptTrust.reset()
     app.vault.setConfig('mobileToolbarCommands', snapshot.phone ?? undefined)
     await app.vault.saveConfig()
-    const restored = await saveScriptFixture()
+    } catch (error) { errors.push(error) }
+    // Restore both keys even when script cleanup fails, and only after discovery
+    // has finished in the disconnected context. Verification is read-only.
+    try { await fixtureHostSettled() } catch (error) { errors.push(error) }
+    try { restoreFixtureConnections(snapshot.sync) } catch (error) { errors.push(error) }
+    if (errors.length === 1) throw errors[0]
+    if (errors.length) throw new AggregateError(errors, 'Script fixture cleanup and connection restoration failed')
+    const restored = await readScriptFixture()
     if (JSON.stringify(restored) !== JSON.stringify(snapshot))
       throw new Error('Script fixture did not restore its feature flags and approval state')
   }
@@ -124,4 +168,5 @@ export interface ScriptFixtureSnapshot {
   marker: number[] | null
   meta: unknown[] | null
   phone: unknown
+  sync: Record<string, unknown>
 }
