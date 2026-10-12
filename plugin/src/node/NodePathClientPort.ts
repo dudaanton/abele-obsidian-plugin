@@ -438,6 +438,7 @@ export class NodePathClientPort implements NodePathPort {
       }
     return { ...(await this.textBlob(target, blob)), binary: false }
   }
+<<<<<<< HEAD
   private async gitPreview(target: PathTarget, revision: RepositoryRevision, path: string) {
     const blob = await this.client.repository.blob({ worktree_id: target.id, revision, path })
     return this.previewBlob(target, revision, path, blob)
@@ -448,6 +449,14 @@ export class NodePathClientPort implements NodePathPort {
     path: string,
     blob: Awaited<ReturnType<NodeClient['repository']['blob']>>
   ): Promise<Pick<PathDocument, 'text' | 'contentId' | 'image'>> {
+=======
+  private async gitPreview(
+    target: PathTarget,
+    revision: RepositoryRevision,
+    path: string
+  ): Promise<Pick<PathDocument, 'text' | 'contentId' | 'image'>> {
+    let blob = await this.client.repository.blob({ worktree_id: target.id, revision, path })
+>>>>>>> ac97a0078 (fix(node): avoid substituting working bytes in staged image previews)
     if (isNodeImagePath(path)) {
       if (blob.size > NODE_IMAGE_MAX_BYTES || blob.too_large)
         throw new Error('Image preview is limited to 4 MiB.')
@@ -580,8 +589,15 @@ export class NodePathClientPort implements NodePathPort {
           'Resolve the conflict in the code editor or repository browser; a single comparison would omit a side.'
         )
       const mode = stage ?? (change.stage === 'staged' ? 'staged' : 'unstaged')
+      if (
+        change.kind === 'deleted' && mode === 'staged' &&
+        revision.kind === 'working' && revision.head && isNodeImagePath(path)
+      ) {
+        const base = await this.gitPreview(target, { kind: 'commit', commit: revision.head }, path)
+        if (base.image) return { change, mode, unstaged: '', diff: '', base }
+      }
       const metadata = await blob.catch(() => undefined)
-      if (metadata?.binary)
+      if (metadata?.binary || (metadata?.requires_larger_load && isNodeImagePath(path)))
         return { change, mode, unstaged: '', diff: '' }
       const [unstaged, staged] = await Promise.all([
         change.stage !== 'staged' ? this.patch(target, revision, path, 'unstaged') : '',
@@ -597,16 +613,22 @@ export class NodePathClientPort implements NodePathPort {
       ),
     ])
     let loaded: Pick<PathDocument, 'text' | 'contentId' | 'image'>
-    if (compared?.change.kind === 'deleted') loaded = { text: '', contentId: null }
+    const base = compared && 'base' in compared ? compared.base : undefined
+    if (base) loaded = base
+    else if (compared?.change.kind === 'deleted') loaded = { text: '', contentId: null }
     else if ('error' in bytes) throw bytes.error
     else loaded = bytes.value
+    if (loaded.image && compared?.mode === 'staged' && compared.change.stage === 'partly')
+      throw new Error(
+        'Staged image preview requires a Git index blob read, which this connection does not support.'
+      )
     if (loaded.image)
       return {
         ...loaded,
         target,
         path,
         revision,
-        ...(compared ? { change: { ...compared.change, binary: true } } : {}),
+        ...(compared ? { change: { ...compared.change, stage: compared.mode, binary: true } } : {}),
       }
     if (!compared) return { ...loaded, target, path, revision }
     const { change, mode, unstaged, diff } = compared

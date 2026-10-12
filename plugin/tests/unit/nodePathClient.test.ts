@@ -482,6 +482,129 @@ describe('bounded node image reads', () => {
       expect(f.calls.some((c) => c.method === 'repository.v1.patch')).toBe(false)
     }
   )
+  function stagedImage(index: string, worktree: string) {
+    const f = fake()
+    const versions = {
+      head: new Uint8Array([...bytes, 11]),
+      index: new Uint8Array([...bytes, 22]),
+      working: new Uint8Array([...bytes, 33]),
+    }
+    const ids = {
+      head: 'head-image-content',
+      index: 'index-image-content',
+      working: 'working-image-content',
+    }
+    const request = async (method: string, params: any) => {
+      if (method === 'repository.v1.status')
+        return {
+          cursor: null,
+          incomplete: false,
+          omissions: [],
+          entries: [{ path: 'sample-image.png', index, worktree }],
+        }
+      if (method === 'repository.v1.blob') {
+        // The pinned protocol exposes commit and working revisions only. The index's
+        // distinct bytes cannot be recovered from a binary-diff metadata summary.
+        const side =
+          params.revision.kind === 'commit'
+            ? 'head'
+            : worktree === ' ' && index !== 'D'
+              ? 'index'
+              : 'working'
+        return {
+          content_id: ids[side],
+          size: versions[side].length,
+          binary: true,
+          requires_larger_load: false,
+          too_large: false,
+        }
+      }
+      if (method === 'repository.v1.content' && Object.values(ids).includes(params.content_id)) {
+        const side = Object.keys(ids).find(
+          (side) => ids[side as keyof typeof ids] === params.content_id
+        ) as keyof typeof ids
+        const value = versions[side]
+        return {
+          offset: params.offset ?? 0,
+          total: value.length,
+          base64: btoa(String.fromCharCode(...value)),
+        }
+      }
+      if (method === 'repository.v1.compare') {
+        const page = (await f.request(method, params)) as object
+        return {
+          ...page,
+          entries: [
+            { path: 'sample-image.png', status: index === 'D' ? 'D' : 'M', index, worktree },
+          ],
+        }
+      }
+      if (method === 'repository.v1.patch') {
+        const patch =
+          'diff --git a/sample-image.png b/sample-image.png\nindex 1111111..2222222 100644\nBinary files a/sample-image.png and b/sample-image.png differ\n'
+        return {
+          content_id: 'binary-summary',
+          size: patch.length,
+          binary: false,
+          requires_larger_load: false,
+          too_large: false,
+        }
+      }
+      if (method === 'repository.v1.content' && params.content_id === 'binary-summary') {
+        const patch =
+          'diff --git a/sample-image.png b/sample-image.png\nindex 1111111..2222222 100644\nBinary files a/sample-image.png and b/sample-image.png differ\n'
+        return { offset: params.offset ?? 0, total: patch.length, base64: btoa(patch) }
+      }
+      return f.request(method, params)
+    }
+    f.client.repository = new RepositoryClient(request)
+    return { ...f, versions, ids }
+  }
+  // BUG: The pinned repository protocol lacks index/comparison-side blob reads.
+  it.fails(
+    'shows index bytes for a partly staged image instead of its later working-tree bytes',
+    async () => {
+      const f = stagedImage('M', 'M')
+      const file = await f.port.file(target, 'sample-image.png', 'staged')
+      expect(file.image?.bytes).toEqual(f.versions.index)
+      expect(file.contentId).toBe(f.ids.index)
+      expect(file.change?.stage).toBe('staged')
+    }
+  )
+  it('still previews current bytes for the unstaged side of a partly staged image', async () => {
+    const f = stagedImage('M', 'M')
+    const file = await f.port.file(target, 'sample-image.png', 'unstaged')
+    expect(file.image?.bytes).toEqual(f.versions.working)
+    expect(file.change?.stage).toBe('unstaged')
+  })
+  it.each(['staged', undefined] as const)(
+    'previews a staged-only image when the working tree still equals the index (stage=%s)',
+    async (stage) => {
+      const f = stagedImage('M', ' ')
+      const file = await f.port.file(target, 'sample-image.png', stage)
+      expect(file.image?.bytes).toEqual(f.versions.index)
+      expect(file.change?.stage).toBe('staged')
+    }
+  )
+  it('refuses to substitute working-tree bytes when a staged image needs an unavailable index read', async () => {
+    const f = stagedImage('M', 'M')
+    await expect(f.port.file(target, 'sample-image.png', 'staged')).rejects.toThrow(
+      'Git index blob'
+    )
+  })
+  it('uses HEAD image bytes as the base preview of a staged deletion', async () => {
+    const f = stagedImage('D', ' ')
+    const blob = vi.spyOn(f.client.repository, 'blob')
+    const file = await f.port.file(target, 'sample-image.png', 'staged')
+    expect(file.image?.bytes).toEqual(f.versions.head)
+    expect(file.contentId).toBe(f.ids.head)
+    expect(file.change?.stage).toBe('staged')
+    expect(blob).toHaveBeenCalledWith({
+      worktree_id: target.id,
+      revision: { kind: 'commit', commit: HEAD },
+      path: 'sample-image.png',
+    })
+  })
   it('loads an image above the default text threshold only after checking the image cap', async () => {
     const f = image()
     vi.mocked(f.client.repository.blob).mockResolvedValueOnce({
