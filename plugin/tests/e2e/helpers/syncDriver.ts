@@ -18,8 +18,10 @@ export const SYNC_PRELUDE = `
  const inWindows = selector => [...new Set([settingsDoc(),document])].map(doc=>doc.querySelector(selector)).find(Boolean)
  const modal = title => [...new Set([document,settingsDoc()])].flatMap(doc=>[...doc.querySelectorAll('.modal')]).find(el=>textOf(el.querySelector('.modal-title'))===title)
  const openSyncTab = async () => { app.setting.open(); app.setting.openTabById('abele'); await sleep(300); let root=app.setting.activeTab.containerEl; if(root.querySelector('.token-sync-settings'))return root; const tab=[...root.querySelectorAll('[role="tab"],.abele-tabs__tab')].find(el=>textOf(el)==='Sync'); if(tab)tab.click(); else app.commands.executeCommandById('abele:sync-log'); await poll(()=>{root=app.setting.activeTab.containerEl;return root.querySelector('.token-sync-settings')}); return root }
- const connectionRow = (root,id) => { const index=svc.rows.value.findIndex(one=>one.id===id); const rows=[...root.querySelectorAll('.setting-item')].filter(one=>one.querySelector('svg.lucide-unlink')); if(index<0||!rows[index]) throw new Error('Connection row unavailable'); return rows[index] }
- const icon = (root,name) => { const el=root.querySelector('svg.lucide-'+name)?.closest('.abele-obsidian-icon'); if(!el||el.classList.contains('abele-obsidian-icon_disabled')) throw new Error('Action unavailable: '+name); el.click() }
+ const connectionRow = (root,id) => { const index=svc.rows.value.findIndex(one=>one.id===id); const rows=[...root.querySelectorAll('.abele-sync-row')]; if(index<0||!rows[index]) throw new Error('Connection row unavailable'); return rows[index] }
+ // A connection row keeps only sync now on its face: opening it is a click on the row, and the
+ // rarer actions sit in its ⋯ menu under the glyph the row once showed.
+ const icon = (root,name) => { if(root.classList.contains('abele-sync-row')&&name==='settings') { root.click(); return } if(root.classList.contains('abele-sync-row')&&name!=='refresh-cw') { icon(root,'more-horizontal'); const item=[...new Set([document,settingsDoc()])].flatMap(doc=>[...doc.querySelectorAll('.menu .menu-item')]).find(el=>el.querySelector('svg.lucide-'+name)); if(!item) throw new Error('Menu action unavailable: '+name); item.click(); return } const el=root.querySelector('svg.lucide-'+name)?.closest('.abele-obsidian-icon'); if(!el||el.classList.contains('abele-obsidian-icon_disabled')) throw new Error('Action unavailable: '+name); el.click() }
  const closeSettings = async () => { app.setting.close(); await sleep(100) }
 `
 export interface SyncStatus {
