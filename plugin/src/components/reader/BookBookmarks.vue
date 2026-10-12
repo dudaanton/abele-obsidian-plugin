@@ -5,23 +5,32 @@
         v-if="!bookmarks.length"
         text="No bookmarks yet. Tap the bookmark under the page to mark it."
       />
-      <div
+      <EntryRow
         v-for="b in bookmarks"
         :key="b.id"
         class="abele-book-bookmarks__item"
-        :class="{ 'is-active': here.has(b.id) }"
+        :active="here.has(b.id)"
         role="button"
         tabindex="0"
         @click="emit('go', b)"
         @keydown.enter.prevent="emit('go', b)"
       >
-        <div class="abele-book-bookmarks__head">
-          <span class="abele-book-bookmarks__label">{{ b.label || 'Untitled' }}</span>
-          <Icon icon="trash-2" tooltip="Remove this bookmark" @click.stop="emit('remove', b)" />
-        </div>
-        <div v-if="b.text" class="abele-book-bookmarks__text">{{ shortText(b.text) }}</div>
-        <div class="abele-book-bookmarks__date">{{ dateOf(b.created) }}</div>
-      </div>
+        <span class="abele-book-bookmarks__label">{{ b.label || 'Untitled' }}</span>
+        <template #codes>
+          <span class="abele-book-bookmarks__date">{{ dateOf(b.created) }}</span>
+        </template>
+        <template v-if="b.text" #meta>
+          <span class="abele-book-bookmarks__text">{{ shortText(b.text) }}</span>
+        </template>
+        <template #aside>
+          <Icon
+            class="abele-book-bookmarks__remove"
+            icon="trash-2"
+            tooltip="Remove this bookmark"
+            @click.stop="emit('remove', b)"
+          />
+        </template>
+      </EntryRow>
     </div>
   </div>
 </template>
@@ -35,8 +44,11 @@
 import { computed } from 'vue'
 import EmptyState from '../obsidian/EmptyState.vue'
 import Icon from '../obsidian/Icon.vue'
+import EntryRow from '../obsidian/EntryRow.vue'
 import { shortText } from '@/reader/model'
 import type { Bookmark } from '@/reader/bookmarks'
+import dayjs from 'dayjs'
+import { compactDate } from '@/helpers/datesHelper'
 
 const props = defineProps<{
   bookmarks: Bookmark[]
@@ -51,8 +63,8 @@ const emit = defineEmits<{
 
 const here = computed(() => new Set(props.current))
 
-const dateOf = (ms: number) =>
-  new Date(ms).toLocaleDateString(undefined, { day: 'numeric', month: 'short', year: 'numeric' })
+// The short date the other lists use: the day and month this year, the year added before it.
+const dateOf = (ms: number) => compactDate(dayjs(ms))
 </script>
 
 <style lang="scss">
@@ -66,52 +78,22 @@ const dateOf = (ms: number) =>
     flex: 1 1 auto;
     min-height: 0;
     overflow-y: auto;
+    display: flex;
+    flex-direction: column;
+    gap: var(--size-2-1);
     padding: var(--size-4-2);
   }
 
-  &__item {
-    margin-bottom: var(--size-4-2);
-    padding: var(--size-4-1) var(--size-4-2);
-    border-inline-start: var(--size-2-1) solid var(--background-modifier-border);
-    border-radius: var(--radius-s);
-    cursor: var(--cursor);
-
-    &:hover,
-    &:focus-visible {
-      background-color: var(--background-modifier-hover);
-    }
-
-    &.is-active {
-      border-inline-start-color: var(--interactive-accent);
-    }
-  }
-
-  &__head {
-    display: flex;
-    align-items: center;
-    justify-content: space-between;
-    gap: var(--size-4-1);
-  }
-
   &__label {
-    min-width: 0;
+    display: -webkit-box;
+    -webkit-box-orient: vertical;
+    -webkit-line-clamp: 2;
     overflow: hidden;
-    white-space: nowrap;
-    text-overflow: ellipsis;
     font-size: var(--font-ui-small);
-    font-weight: var(--font-semibold);
-  }
-
-  &__text {
-    margin-top: var(--size-2-1);
-    font-size: var(--font-ui-smaller);
-    color: var(--text-muted);
   }
 
   &__date {
-    margin-top: var(--size-2-1);
-    font-size: var(--font-ui-smaller);
-    color: var(--text-faint);
+    font-variant-numeric: tabular-nums;
   }
 }
 </style>

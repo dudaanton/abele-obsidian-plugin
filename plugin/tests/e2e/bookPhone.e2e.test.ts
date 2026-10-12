@@ -304,11 +304,11 @@ describe.skipIf(!available)('a book on a phone', () => {
       }
       const searchPanel = view.contentEl.querySelector('.abele-book-reader__panel')
       const head = searchPanel.querySelector('.abele-book-reader__panel-head')
-      const close = head.querySelector('.abele-obsidian-icon')?.getBoundingClientRect()
-      const strip = head.querySelector('.abele-tabs')?.getBoundingClientRect()
+      const close = head.querySelector(':scope > .abele-obsidian-icon')?.getBoundingClientRect()
+      const strip = head.querySelector('.abele-book-reader__panel-tabs')?.getBoundingClientRect()
       const panelRight = searchPanel.getBoundingClientRect().right
-      const tabStrip = head.querySelector('.abele-tabs')
-      const lastTab = tabStrip.querySelector('.abele-tabs__tab:last-child')
+      const tabStrip = head.querySelector('.abele-book-reader__panel-tabs')
+      const lastTab = tabStrip.querySelector('.abele-book-reader__panel-tab:last-child')
       const scrollBefore = tabStrip.scrollLeft
       document.activeElement?.blur()
       tabStrip.scrollLeft = 0
@@ -446,7 +446,8 @@ describe.skipIf(!available)('a book on a phone', () => {
     expect(overlays.search?.over).toBeLessThanOrEqual(0)
     expect(overlays.search?.stripInside).toBe(true)
     expect(overlays.search?.closeInside).toBe(true)
-    expect(overlays.search?.focusOutside).toBe(true)
+    // The tabs are a row of glyphs now: the last one is in view without scrolling the row.
+    expect(overlays.search?.focusOutside).toBe(false)
     expect(overlays.search?.focusedRingInside).toBe(true)
     expect(overlays.bar).toBeTruthy()
     expect(overlays.bar!.over).toBeLessThanOrEqual(0)

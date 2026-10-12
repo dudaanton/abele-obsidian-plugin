@@ -1,5 +1,5 @@
 /**
- * A note opened from a book that was not open before — the highlights note from "Open the note",
+ * A note opened from a book that was not open before — the highlights note from the panel note glyph,
  * a note linking into the book from a tap on its words — in the running app: it comes up at the
  * line, flashed, in reading view and in the editor. It is the case a person meets most, and the
  * one where the note is still being loaded when it is asked to show the line; a note read before
@@ -112,7 +112,7 @@ describe.skipIf(!available)('a note not open, opened at a line from a book', () 
     )
   }, 60_000)
 
-  it('the highlights note, from "Open the note", flashed on screen in both modes', () => {
+  it('the highlights note, from the panel note glyph, flashed on screen in both modes', () => {
     const r = run<{ error?: string; out?: Record<string, Seen> }>(`
       const { view } = await openBook()
       await view.engine.goTo(2)

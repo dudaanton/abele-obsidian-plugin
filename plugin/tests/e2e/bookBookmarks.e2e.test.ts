@@ -307,19 +307,19 @@ describe.skipIf(!available)('bookmarks in the reader', () => {
         const button = rect(view.contentEl.querySelector('.abele-book-reader__bookmark'))
         view.model.panelTab = 'bookmarks'; view.model.panel = true
         if (!await until(() => {
-          const active = view.contentEl.querySelector('.abele-book-reader__panel-head .abele-tabs__tab_active')
-          if (!active || active.textContent.trim() !== 'Bookmarks') return false
+          const active = view.contentEl.querySelector('.abele-book-reader__panel-head .abele-book-reader__panel-tab[aria-selected="true"]')
+          if (!active || active.getAttribute('aria-label') !== 'Bookmarks') return false
           const tab = active.getBoundingClientRect(), strip = active.parentElement.getBoundingClientRect()
           return view.contentEl.querySelectorAll('.abele-book-bookmarks__item').length === 2 &&
             tab.width > 0 && tab.left >= strip.left && tab.right <= strip.right
         })) throw new Error('bookmark drawer did not become ready')
         await shoot('list')
         const drawer = rect(view.contentEl.querySelector('.abele-book-reader__panel'))
-        const tabEls = [...view.contentEl.querySelectorAll('.abele-book-reader__panel-head .abele-tabs__tab')]
-        const active = view.contentEl.querySelector('.abele-book-reader__panel-head .abele-tabs__tab_active')
+        const tabEls = [...view.contentEl.querySelectorAll('.abele-book-reader__panel-head .abele-book-reader__panel-tab')]
+        const active = view.contentEl.querySelector('.abele-book-reader__panel-head .abele-book-reader__panel-tab[aria-selected="true"]')
         const s = active.parentElement
         const strip = { ...rect(s), sw: s.scrollWidth, cw: s.clientWidth, sl: s.scrollLeft, head: rect(s.parentElement), css: getComputedStyle(s).overflowX + ' ' + getComputedStyle(s).flex }
-        const tabs = { right: rect(active).right, left: rect(active).left, label: active.textContent.trim(), rows: new Set(tabEls.map((t) => rect(t).top)).size, strip }
+        const tabs = { right: rect(active).right, left: rect(active).left, label: active.getAttribute('aria-label'), rows: new Set(tabEls.map((t) => rect(t).top)).size, strip }
         const rows = [...view.contentEl.querySelectorAll('.abele-book-bookmarks__item')].map(rect)
         view.model.panel = false
         await until(() => !view.contentEl.querySelector('.abele-book-reader__panel'))
@@ -334,7 +334,7 @@ describe.skipIf(!available)('bookmarks in the reader', () => {
       expect(r.button!.left).toBeGreaterThanOrEqual(0)
       expect(r.button!.right).toBeLessThanOrEqual(r.screen!.width)
       expect(r.button!.bottom).toBeLessThanOrEqual(r.screen!.height)
-      // The strip scrolls sideways on a phone; the tab showing is in view.
+      // The row of tab glyphs fits on one line on a phone; the tab showing is in view.
       expect(r.tabs!.label).toBe('Bookmarks')
       expect(r.tabs!.rows).toBe(1)
       expect(r.tabs!.left).toBeGreaterThanOrEqual(r.tabs!.strip.left)

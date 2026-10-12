@@ -4,18 +4,18 @@
  * With the rich book and the plain PDF and a scripts folder of the run's own (all written for the
  * run and removed after it):
  *
- * - a script whose header says `@book` has a button on the selection bar; pressed on selected
+ * - a script whose header says `@book` has an action in the selection menu; chosen on selected
  *   words it runs with `book` — the words, their sentence, a link to the place — and its
  *   `selection` parameter filled, and here makes a card note holding the link;
  * - the words the card links to are marked (a dotted underline) and a tap on them opens the card;
  *   a second note linking to the same place makes the tap a menu of both; deleting the notes
  *   takes the mark away;
- * - "Run a script on these words" lists every script;
- * - the book menu: a pin in that list puts a script on the bar without running it, before the
- *   book header's; past three they fold into one button whose menu runs the one tapped, in an
+ * - "Run a script…" lists every script;
+ * - the book menu: a pin in that list puts a script in More without running it, before the
+ *   book header's; the menu runs the one tapped, in an
  *   EPUB and in a PDF;
  * - in a PDF the same card is marked over the page, and a tap opens it;
- * - on a phone (390×844, `emulateMobile`) the bar with the script's button is one row, pictured to
+ * - on a phone (390×844, `emulateMobile`) the bar with the More button is one row, pictured to
  *   `/tmp/abele-phone/book-scripts-bar.png`; so are the folded button, its menu, the list with its
  *   pins and the book menu's settings, none reaching past the screen's edge.
  */
@@ -90,6 +90,21 @@ const PRELUDE = `
     }, 15000))) throw Error('The script page did not draw')
     return { leaf, view: leaf.view }
   }
+  const moreItems = async (bar) => {
+    bar.querySelector('.abele-book-selection__more').click()
+    const items = await until(() => {
+      const rows = [...document.querySelectorAll('.menu .menu-item')]
+      return rows.length ? rows : null
+    }, 3000)
+    if (!items) throw Error('The selection menu did not open')
+    return items
+  }
+  const menuChoice = async (bar, title) => {
+    const item = (await moreItems(bar)).find(row => row.querySelector('.menu-item-title')?.textContent.trim() === title)
+    if (!item) throw Error('Missing selection action: ' + title)
+    return item
+  }
+  const closeMenu = () => document.body.dispatchEvent(new KeyboardEvent('keydown', { key: 'Escape', bubbles: true }))
   const docOf = (view) => view.engine.renderer.getContents()[0].doc
   const paragraph = (doc) => [...doc.querySelectorAll('p')].find((x) => x.textContent.length > 40)
   const closePanel = async (view) => {
@@ -228,7 +243,7 @@ describe.skipIf(!available)('scripts on words in a book, and notes linking into 
       const { view } = await open(${JSON.stringify(BOOK)})
       await closePanel(view)
       await selectIn(view, 2, 0, 5)
-      const button = await until(() => view.contentEl.querySelector('.abele-book-selection [data-script="E2E word card"]'), 5000)
+      const button = await menuChoice(view.contentEl.querySelector('.abele-book-selection'), 'Run E2E word card')
       if (!button) return { button: false }
       button.click()
       const card = await until(() => app.vault.getFiles().find((f) => f.path.startsWith(${JSON.stringify(CARDS)}))?.path, 10000)
@@ -296,7 +311,7 @@ describe.skipIf(!available)('scripts on words in a book, and notes linking into 
 
       // Every script is offered by the picker.
       await selectIn(view, 2, 0, 5)
-      view.contentEl.querySelector('.abele-book-selection__run-script').click()
+      ;(await menuChoice(view.contentEl.querySelector('.abele-book-selection'), 'Run a script…')).click()
       const picker = await until(() => titles('.prompt .suggestion-item'), 3000)
       document.querySelector('.prompt')?.closest('.modal-container')?.querySelector('.modal-bg')?.click()
       document.querySelector('.prompt input')?.dispatchEvent(new KeyboardEvent('keydown', { key: 'Escape', bubbles: true }))
@@ -314,7 +329,7 @@ describe.skipIf(!available)('scripts on words in a book, and notes linking into 
     expect(r.after).toBe(0)
   })
 
-  it('the book menu: pinned from the list without running, then folded into one menu past three', () => {
+  it('the book menu: pinned from the picker without running, then run through More', () => {
     const r = run<{
       error?: string
       stillOpen?: boolean
@@ -333,7 +348,7 @@ describe.skipIf(!available)('scripts on words in a book, and notes linking into 
       await selectIn(view, 2, 0, 5)
 
       // A pin in the list of every script puts one on the bar, and runs nothing.
-      bar().querySelector('.abele-book-selection__run-script').click()
+      ;(await menuChoice(bar(), 'Run a script…')).click()
       const rows = await until(() => { const r = [...document.querySelectorAll('.prompt .suggestion-item')]; return r.length ? r : null }, 3000)
       const row = rows.find((r) => r.querySelector('.suggestion-title')?.textContent === 'E2E echo one')
       const before = runs().length
@@ -346,8 +361,8 @@ describe.skipIf(!available)('scripts on words in a book, and notes linking into 
       document.querySelector('.prompt input')?.dispatchEvent(new KeyboardEvent('keydown', { key: 'Escape', bubbles: true }))
       await until(() => !document.querySelector('.prompt'), 2000)
       if (!bar()) await selectIn(view, 2, 0, 5)
-      await until(() => bar()?.querySelector('[data-script="E2E echo one"]'), 3000)
-      const order = [...bar().querySelectorAll('.abele-book-selection__script')].map((b) => b.dataset.script)
+      const order = (await moreItems(bar())).map(row => row.querySelector('.menu-item-title')?.textContent.trim()).filter(title => title.startsWith('Run ') && title !== 'Run a script…')
+      closeMenu()
 
       // Four on the menu: one button, whose menu runs the one tapped.
       config.reader = { ...config.reader, selectionScripts: [
@@ -356,11 +371,11 @@ describe.skipIf(!available)('scripts on words in a book, and notes linking into 
         { script: 'E2E echo three', name: 'Third', icon: 'star' },
       ] }
       await config.saveSettings()
-      const folded = await until(() => bar()?.querySelector('.abele-book-selection__scripts'), 3000)
+      const folded = await until(() => bar()?.querySelector('.abele-book-selection__more'), 3000)
       if (!folded) return { stillOpen, ranOnPin, order, menu: null }
       folded.click()
       const menu = await until(() => titles('.menu .menu-item-title'), 3000)
-      ;[...document.querySelectorAll('.menu .menu-item')].find((i) => i.textContent.trim() === 'Third')?.click()
+      ;[...document.querySelectorAll('.menu .menu-item')].find((i) => i.textContent.trim() === 'Run Third')?.click()
       const done = await until(() => runs().find((x) => x.name === 'E2E echo three' && x.status !== 'running'), 8000)
       view.reading.clearSelection()
 
@@ -376,7 +391,7 @@ describe.skipIf(!available)('scripts on words in a book, and notes linking into 
         const range = doc.createRange(); range.setStart(span.firstChild, 0); range.setEnd(span.firstChild, 5)
         doc.getSelection().removeAllRanges(); doc.getSelection().addRange(range)
         await until(() => pdf.model.selection, 3000)
-        pdfFolded = !!(await until(() => pdf.contentEl.querySelector('.abele-book-selection .abele-book-selection__scripts'), 3000))
+        pdfFolded = !!(await until(() => pdf.contentEl.querySelector('.abele-book-selection .abele-book-selection__more'), 3000))
         pdf.reading.clearSelection()
       }
       bookLeaf()?.detach()
@@ -387,13 +402,16 @@ describe.skipIf(!available)('scripts on words in a book, and notes linking into 
     expect(r.error).toBeUndefined()
     expect(r.stillOpen).toBe(true)
     expect(r.ranOnPin).toBe(0)
-    expect(r.order).toEqual(['E2E echo one', 'E2E word card'])
+    expect(r.order).toEqual(['Run E2E echo one', 'Run E2E word card'])
     expect(r.menu).toEqual([
-      'E2E echo one',
-      'E2E echo two',
-      'Third',
-      'E2E word card',
-      'Other script…',
+      'Read aloud from here',
+      'Copy a link to this place',
+      'Quote into the last note',
+      'Run E2E echo one',
+      'Run E2E echo two',
+      'Run Third',
+      'Run E2E word card',
+      'Run a script…',
     ])
     expect(r.ran).toEqual({ source: 'book', result: 'three Plain' })
     expect(r.pdfFolded).toBe(true)
@@ -412,7 +430,7 @@ describe.skipIf(!available)('scripts on words in a book, and notes linking into 
       const range = doc.createRange(); range.setStart(span.firstChild, 0); range.setEnd(span.firstChild, 5)
       doc.getSelection().removeAllRanges(); doc.getSelection().addRange(range)
       await until(() => view.model.selection, 3000)
-      const button = await until(() => view.contentEl.querySelector('.abele-book-selection [data-script="E2E word card"]'), 3000)
+      const button = await menuChoice(view.contentEl.querySelector('.abele-book-selection'), 'Run E2E word card')
       button.click()
       const card = await until(() => app.vault.getFiles().find((f) => f.path.startsWith(${JSON.stringify(CARDS)}))?.path, 10000)
       view.reading.clearSelection()
@@ -474,7 +492,8 @@ describe.skipIf(!available)('scripts on words in a book, and notes linking into 
       const bar = view.contentEl.querySelector('.abele-book-selection')
       await settledLayout(bar)
       const foot = view.contentEl.querySelector('.abele-book-reader__foot')
-      const button = !!bar.querySelector('[data-script="E2E word card"]')
+      const button = !!(await menuChoice(bar, 'Run E2E word card'))
+      closeMenu()
       const img = await require('@electron/remote').getCurrentWebContents().capturePage()
       require('fs').mkdirSync(${JSON.stringify(SHOTS)}, { recursive: true })
       require('fs').writeFileSync(${JSON.stringify(SHOTS)} + '/book-scripts-bar.png', img.toPNG())
@@ -491,7 +510,7 @@ describe.skipIf(!available)('scripts on words in a book, and notes linking into 
       const barRow = bar.getBoundingClientRect().height
 
       // The list of every script, a pin at the end of each row.
-      bar.querySelector('.abele-book-selection__run-script').click()
+      ;(await menuChoice(bar, 'Run a script…')).click()
       const prompt = await until(() => document.querySelector('.prompt .suggestion-item') && document.querySelector('.prompt'), 3000)
       await shot('book-scripts-picker', prompt)
       const pickerOver = prompt ? over(prompt) : ['no list']
@@ -507,7 +526,7 @@ describe.skipIf(!available)('scripts on words in a book, and notes linking into 
       ] }
       await config.saveSettings()
       if (!view.contentEl.querySelector('.abele-book-selection')) await selectIn(view, 2, 0, 5)
-      const folded = await until(() => view.contentEl.querySelector('.abele-book-selection__scripts'), 3000)
+      const folded = await until(() => view.contentEl.querySelector('.abele-book-selection__more'), 3000)
       const bar2 = view.contentEl.querySelector('.abele-book-selection')
       await shot('book-scripts-folded', bar2)
       const foldedRow = bar2 ? bar2.getBoundingClientRect().height : 0

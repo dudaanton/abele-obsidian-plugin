@@ -332,7 +332,8 @@ describe.skipIf(!available)('words underlined everywhere in a book', () => {
       await view.reading.highlight('green')
       const h = await until(() => view.model.highlights.find((x) => x.text === 'kaķis'), 5000)
       view.model.active = h
-      const button = await until(() => view.contentEl.querySelector('.abele-book-selection__forms'), 3000)
+      ;(await until(() => view.contentEl.querySelector('.abele-book-selection__more'), 3000)).click()
+      const button = await until(() => [...document.querySelectorAll('.menu-item')].find(item => /^(Underline this word|Change the words)/.test(item.querySelector('.menu-item-title')?.textContent)), 3000)
       button.click()
       const input = await until(() => document.querySelector('.abele-book-forms textarea'), 3000)
       const prefilled = input.value
@@ -419,7 +420,8 @@ describe.skipIf(!available)('words underlined everywhere in a book', () => {
       const afterCard = await until(() => vocab(view).count() === ${VOCAB_COUNTS.kakis} ? vocab(view).count() : null, 5000)
       const h = view.model.highlights.find((x) => x.text === 'kaķis')
       view.model.active = h
-      ;(await until(() => view.contentEl.querySelector('.abele-book-selection__forms'), 3000)).click()
+      ;(await until(() => view.contentEl.querySelector('.abele-book-selection__more'), 3000)).click()
+      ;(await until(() => [...document.querySelectorAll('.menu-item')].find(item => /^(Underline this word|Change the words)/.test(item.querySelector('.menu-item-title')?.textContent)), 3000)).click()
       const stop = await until(() => [...document.querySelectorAll('.modal button')].find((b) => b.textContent.trim() === 'Stop underlining'), 3000)
       stop.click()
       await ready(() => vocab(view).count() === 0 && lines(view) === 0, 'vocabulary lines removed', 5000)

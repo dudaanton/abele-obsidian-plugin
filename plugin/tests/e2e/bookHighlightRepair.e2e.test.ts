@@ -13,16 +13,20 @@ const available = isObsidianRunning() && hasTestApi()
 describe.skipIf(!available)('confirming repairs on a real EPUB', () => {
   beforeAll(() => {
     const bytes = Buffer.from(buildJustifiedEpub()).toString('base64')
-    evalRaw(`(async () => {
+    evalRaw(
+      `(async () => {
       if (app.vault.getAbstractFileByPath(${JSON.stringify(DIR)})) throw new Error('Fixture already exists')
       await app.vault.createFolder(${JSON.stringify(DIR)})
       await app.vault.createBinary(${JSON.stringify(BOOK)}, Uint8Array.from(atob(${JSON.stringify(bytes)}), c => c.charCodeAt(0)).buffer)
       return 'ok'
-    })()`, 60_000)
+    })()`,
+      60_000
+    )
   }, 90_000)
 
   afterAll(() => {
-    evalRaw(`(async () => {
+    evalRaw(
+      `(async () => {
       for (const leaf of app.workspace.getLeavesOfType('abele-book'))
         if (leaf.view?.file?.path === ${JSON.stringify(BOOK)}) leaf.detach()
       for (const leaf of app.workspace.getLeavesOfType('markdown'))
@@ -30,11 +34,15 @@ describe.skipIf(!available)('confirming repairs on a real EPUB', () => {
       const dir = app.vault.getAbstractFileByPath(${JSON.stringify(DIR)})
       if (dir) await app.vault.delete(dir, true)
       return 'ok'
-    })()`, 60_000)
+    })()`,
+      60_000
+    )
   }, 90_000)
 
   it('keeps the note unchanged until confirmation, then changes only the saved CFI spans', async () => {
-    const report = JSON.parse(await evalLong(`(async () => {
+    const report = JSON.parse(
+      await evalLong(
+        `(async () => {
       const wait = ms => new Promise(resolve => setTimeout(resolve, ms))
       const until = async (fn, timeout = 15000) => {
         const end = Date.now() + timeout
@@ -74,7 +82,7 @@ describe.skipIf(!available)('confirming repairs on a real EPUB', () => {
         if (before !== noteText) throw new Error('Detection modified note')
         const menu = async (all) => {
           opened.reading.marks.open(opened.model.highlights.find(h => h.cfi === pairs[0].old) || opened.model.highlights[0])
-          const action = await until(() => document.querySelector('[aria-label="Repair highlight link…"]'))
+          const action = await until(() => document.querySelector('.abele-book-selection__more'))
           action.click()
           const options = await until(() => [...document.querySelectorAll('.menu-item')].filter(el => el.textContent.includes('Repair')))
           const option = options.find(el => el.textContent.includes(all ? 'all found' : 'this highlight'))
@@ -95,7 +103,7 @@ describe.skipIf(!available)('confirming repairs on a real EPUB', () => {
         if (once !== expectedOne) throw new Error('First repair changed unexpected bytes')
         // A still-unrepaired mark now offers an all-found action for the two remaining links.
         opened.reading.marks.open(opened.model.highlights.find(h => h.cfi === pairs[1].old))
-        const action = await until(() => document.querySelector('[aria-label="Repair highlight link…"]'))
+        const action = await until(() => document.querySelector('.abele-book-selection__more'))
         action.click()
         const all = await until(() => [...document.querySelectorAll('.menu-item')].find(el => el.textContent.includes('all found')))
         all.click()
@@ -106,8 +114,24 @@ describe.skipIf(!available)('confirming repairs on a real EPUB', () => {
         return JSON.stringify({ before: before === noteText, cancelled: cancelled === noteText, copy: shown.includes(pairs[0].words), one: once === expectedOne, all: (await app.vault.read(file)) === expected })
       } catch (error) { return JSON.stringify({ error: String(error?.stack || error) }) }
       finally { if (leaf?.view?.file?.path === ${JSON.stringify(BOOK)}) leaf.detach() }
-    })()`, 180_000)) as { error?: string; before: boolean; cancelled: boolean; copy: boolean; one: boolean; all: boolean }
+    })()`,
+        180_000
+      )
+    ) as {
+      error?: string
+      before: boolean
+      cancelled: boolean
+      copy: boolean
+      one: boolean
+      all: boolean
+    }
     expect(report.error).toBeUndefined()
-    expect(report).toMatchObject({ before: true, cancelled: true, copy: true, one: true, all: true })
+    expect(report).toMatchObject({
+      before: true,
+      cancelled: true,
+      copy: true,
+      one: true,
+      all: true,
+    })
   }, 240_000)
 })

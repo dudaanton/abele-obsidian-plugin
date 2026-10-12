@@ -17,7 +17,9 @@
           @keydown.enter.prevent="emit('go', hit)"
         >
           <span>{{ hit.excerpt.pre }}</span
-          ><mark class="abele-book-search__match">{{ hit.excerpt.match }}</mark
+          ><mark class="abele-book-search__match search-result-file-matched-text">{{
+            hit.excerpt.match
+          }}</mark
           ><span>{{ hit.excerpt.post }}</span>
         </div>
       </div>
@@ -120,7 +122,7 @@ const status = computed(() => {
   }
 
   &__match {
-    background-color: var(--text-highlight-bg);
+    background-color: var(--highlight-background, var(--text-highlight-bg));
     color: var(--text-normal);
   }
 }

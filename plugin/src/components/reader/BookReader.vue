@@ -10,12 +10,21 @@
       <div class="abele-book-reader__backdrop" @click="emit('panel', false)" />
       <div class="abele-book-reader__panel abele-resizable-panel">
         <div ref="panelHead" class="abele-book-reader__panel-head">
-          <Tabs
-            :tabs="panelTabs"
-            :model-value="model.panelTab"
-            level="secondary"
-            @update:model-value="emit('panel-tab', $event as PanelTab)"
-          />
+          <!-- The lists as a row of glyphs, the way Obsidian's own side panes switch: the
+               names are in the tooltips, the one open is pressed. -->
+          <div class="abele-book-reader__panel-tabs" role="tablist">
+            <Icon
+              v-for="tab in panelTabs"
+              :key="tab.id"
+              class="abele-book-reader__panel-tab"
+              role="tab"
+              :icon="tab.icon"
+              :tooltip="tab.label"
+              :active="model.panelTab === tab.id"
+              :aria-selected="model.panelTab === tab.id"
+              @click="emit('panel-tab', tab.id as PanelTab)"
+            />
+          </div>
           <Icon icon="x" tooltip="Close the panel" @click="emit('panel', false)" />
         </div>
         <BookContents
@@ -90,10 +99,10 @@
           :highlight="model.active"
           :repairable="!!model.active && model.repairableCfis.includes(model.active.cfi)"
           :repair-count="model.repairableCfis.length"
-          @repair="emit('repair-highlight', $event ? undefined : model.active!)"
           :can-ask="model.canAsk"
           :scripts="pinnedScripts"
           :can-run-scripts="hasScripts"
+          @repair="emit('repair-highlight', $event ? undefined : model.active!)"
           @script="emit('run-script', quoteTarget(), $event)"
           @ask="emit('ask', quoteTarget())"
           @read-aloud="emit('read-aloud')"
@@ -204,7 +213,6 @@ import BookInkBar from './BookInkBar.vue'
 import BookEink from './BookEink.vue'
 import type { InkToolName } from '@/reader/ink/inkModel'
 import type { InkColor } from '@/reader/ink/stroke'
-import Tabs from '../obsidian/Tabs.vue'
 import type { Highlight, HighlightColor } from '@/reader/highlights'
 import ReaderSettingsForm from './ReaderSettingsForm.vue'
 import BookNotesSettings from './BookNotesSettings.vue'
@@ -274,10 +282,10 @@ const emit = defineEmits<{
 const onZoomMenu = (at: { x: number; y: number }, steps: boolean) => emit('zoom-menu', at, steps)
 
 const panelTabs = [
-  { id: 'contents', label: 'Contents' },
-  { id: 'search', label: 'Search' },
-  { id: 'highlights', label: 'Highlights' },
-  { id: 'bookmarks', label: 'Bookmarks' },
+  { id: 'contents', label: 'Contents', icon: 'list-tree' },
+  { id: 'search', label: 'Search', icon: 'search' },
+  { id: 'highlights', label: 'Highlights', icon: 'highlighter' },
+  { id: 'bookmarks', label: 'Bookmarks', icon: 'bookmark' },
 ]
 
 /** The words or highlight the bar is about, for a link. */
@@ -459,6 +467,12 @@ watch(
     display: none;
   }
 
+  &__panel-tabs {
+    display: flex;
+    align-items: center;
+    gap: var(--size-2-2);
+  }
+
   &__panel-head {
     display: flex;
     align-items: center;
@@ -494,6 +508,9 @@ watch(
     min-height: 0;
     overflow-y: auto;
     overscroll-behavior: contain;
+    // Room for the fields' focus rings at the edge of the scroll, without moving the rows.
+    padding: var(--size-2-2);
+    margin: calc(-1 * var(--size-2-2));
   }
 
   &__note-stage {

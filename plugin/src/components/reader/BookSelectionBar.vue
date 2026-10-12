@@ -54,70 +54,15 @@
         "
         @click="emit('ask')"
       />
+      <!-- Everything else in one menu, as Obsidian keeps a file's: the bar keeps what is done
+           most to words, the colour, a comment and asking about them. -->
       <Icon
-        v-if="!highlight"
-        icon="audio-lines"
-        tooltip="Read aloud from here"
-        @click="emit('read-aloud')"
+        class="abele-book-selection__more"
+        icon="more-horizontal"
+        aria-haspopup="menu"
+        :tooltip="highlight ? 'More for this highlight' : 'More for these words'"
+        @click="openMore"
       />
-      <Icon icon="link" tooltip="Copy a link to this place" @click="emit('copy-link')" />
-      <Icon
-        icon="text-quote"
-        tooltip="Quote these words with a link into the note you were last in"
-        @click="emit('quote')"
-      />
-      <template v-if="folded">
-        <Icon
-          icon="scroll-text"
-          tooltip="Scripts for these words…"
-          class="abele-book-selection__scripts"
-          @click="openScripts"
-        />
-      </template>
-      <template v-else>
-        <Icon
-          v-for="s in scripts ?? []"
-          :key="s.script"
-          :icon="s.icon"
-          :tooltip="`Run ${s.label} on these words`"
-          class="abele-book-selection__script"
-          :data-script="s.script"
-          @click="emit('script', s.script)"
-        />
-        <Icon
-          v-if="canRunScripts"
-          icon="terminal"
-          tooltip="Run a script on these words…"
-          class="abele-book-selection__run-script"
-          @click="emit('script')"
-        />
-      </template>
-      <template v-if="highlight">
-        <Icon
-          v-if="repairable"
-          icon="wrench"
-          tooltip="Repair highlight link…"
-          aria-label="Repair highlight link…"
-          @click="openRepairMenu"
-        />
-        <Icon
-          icon="underline"
-          :active="!!highlight.forms?.length"
-          :tooltip="
-            highlight.forms?.length
-              ? 'Change the words underlined everywhere in the book'
-              : 'Underline this word everywhere in the book'
-          "
-          class="abele-book-selection__forms"
-          @click="emit('forms')"
-        />
-        <Icon
-          icon="file-text"
-          tooltip="Open the highlights note"
-          @click="emit('open-note', $event)"
-        />
-        <Icon icon="trash-2" tooltip="Remove the highlight" @click="emit('delete')" />
-      </template>
       <Icon
         icon="x"
         :tooltip="highlight ? 'Close' : 'Clear the selection'"
@@ -131,14 +76,12 @@
 /**
  * What can be done to words selected on the page — highlight them in a colour, comment, link to
  * them, quote them into a note, run a script on them — or to a highlight that was tapped: recolour it, comment, link,
- * open its note, remove it. A row of glyphs, so it fits a phone: past three scripts they fold
- * into one button with a menu.
+ * open its note, remove it. Frequent actions stay on the bar; the rest use a native menu.
  */
 import { computed } from 'vue'
 import { Menu } from 'obsidian'
 import Icon from '../obsidian/Icon.vue'
 import { HIGHLIGHT_COLORS, type Highlight, type HighlightColor } from '@/reader/highlights'
-import { BOOK_BAR_BUTTONS } from '@/scripting/bookMenuScripts'
 import { eink, einkShape, type EinkShape } from '@/reader/eink'
 
 /** On e-ink, what each shape a highlight takes is called, for its tooltip. */
@@ -160,8 +103,7 @@ const props = defineProps<{
   repairable?: boolean
   repairCount?: number
   /**
-   * The book menu's scripts, chosen in the settings or by their header: a button each while
-   * they are few, one button with a menu of them once they are more.
+   * The book menu's scripts, chosen in the settings or by their header, listed in More.
    */
   scripts?: { script: string; label: string; icon: string }[]
   /** There are scripts to pick one from. */
@@ -183,35 +125,40 @@ const emit = defineEmits<{
   (e: 'close'): void
 }>()
 
-const openRepairMenu = (event: MouseEvent) => {
+/** The rest of what can be done to the words, in sections as Obsidian's own menus have them. */
+const openMore = (event: MouseEvent) => {
   const menu = new Menu()
-  menu.addItem((item) => item.setTitle('Repair this highlight link…').setIcon('wrench').onClick(() => emit('repair', false)))
-  if ((props.repairCount ?? 0) > 1)
-    menu.addItem((item) => item.setTitle(`Repair all found highlight links (${props.repairCount})…`).setIcon('wrench').onClick(() => emit('repair', true)))
-  menu.showAtMouseEvent(event)
-}
-
-/** More scripts than the bar has room for on a phone: one button, and a menu of them. */
-const folded = computed(() => (props.scripts?.length ?? 0) > BOOK_BAR_BUTTONS)
-
-/** The menu of the book menu's scripts, with any other script to pick at its end. */
-const openScripts = (event: MouseEvent) => {
-  const menu = new Menu()
-  for (const s of props.scripts ?? []) {
+  const add = (section: string, title: string, icon: string, run: () => void, warning = false) =>
     menu.addItem((item) =>
-      item
-        .setTitle(s.label)
-        .setIcon(s.icon)
-        .onClick(() => emit('script', s.script))
+      item.setTitle(title).setIcon(icon).setSection(section).setWarning(warning).onClick(run)
     )
+  if (!props.highlight)
+    add('words', 'Read aloud from here', 'audio-lines', () => emit('read-aloud'))
+  add('words', 'Copy a link to this place', 'link', () => emit('copy-link'))
+  add('words', 'Quote into the last note', 'text-quote', () => emit('quote'))
+  for (const s of props.scripts ?? [])
+    add('scripts', `Run ${s.label}`, s.icon, () => emit('script', s.script))
+  if (props.canRunScripts) add('scripts', 'Run a script…', 'terminal', () => emit('script'))
+  const h = props.highlight
+  if (h) {
+    add(
+      'highlight',
+      h.forms?.length
+        ? 'Change the words underlined in the book'
+        : 'Underline this word in the book',
+      'underline',
+      () => emit('forms')
+    )
+    add('highlight', 'Open the highlights note', 'file-text', () => emit('open-note', event))
+    if (props.repairable) {
+      add('highlight', 'Repair this highlight link…', 'wrench', () => emit('repair', false))
+      if ((props.repairCount ?? 0) > 1)
+        add('highlight', `Repair all found links (${props.repairCount})…`, 'wrench', () =>
+          emit('repair', true)
+        )
+    }
+    add('remove', 'Remove the highlight', 'trash-2', () => emit('delete'), true)
   }
-  menu.addSeparator()
-  menu.addItem((item) =>
-    item
-      .setTitle('Other script…')
-      .setIcon('terminal')
-      .onClick(() => emit('script'))
-  )
   menu.showAtMouseEvent(event)
 }
 </script>

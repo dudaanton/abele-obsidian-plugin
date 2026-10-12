@@ -67,8 +67,7 @@ import { escLeavesZen, setZen, zen } from './zen'
 import { ZenChrome, type MobileNavbar } from './zenChrome'
 
 /** The reader's settings as this device reads them: e-ink mode keeps pages and paper. */
-const readerSettings = (): ReaderSettings =>
-  withEink(currentReaderSettings(), eink().on)
+const readerSettings = (): ReaderSettings => withEink(currentReaderSettings(), eink().on)
 
 /** The settings a PDF's layout is decided by when it opens. */
 const pdfLayoutKey = (s: { pdfLayout: string; pdfTwoPages: boolean }) =>
@@ -191,7 +190,7 @@ export class BookView extends FileView {
 
     this.addAction('audio-lines', 'Read aloud', () => this.reading?.speech.toggle())
     this.addAction('search', 'Search in the book', () => this.openSearch())
-    this.addAction('list', 'Contents', () => this.showPanel('contents'))
+    this.addAction('panel-right', 'Book panel', () => this.setPanel(!this.model.panel))
     this.addAction('a-large-small', 'Text and layout', () => (this.model.settingsOpen = true))
 
     const stopSettings = watch(
@@ -582,7 +581,7 @@ export class BookView extends FileView {
       this.reading = new BookReading(
         this.app,
         file,
-        reader as unknown as ConstructorParameters<typeof BookReading>[2],
+        reader,
         this.model,
         this.contentEl,
         this.isPdf ? (opened.book as unknown as PdfBookExtras) : null,
@@ -627,11 +626,13 @@ export class BookView extends FileView {
       this.model.canGoBack = false
       this.model.status = 'ready'
       await bookPlaces()?.opened(this.key, file.path, {
-        title: nameOf(meta?.title), author: nameOf(meta?.author),
+        title: nameOf(meta?.title),
+        author: nameOf(meta?.author),
       })
       if (reader.isFixedLayout && token === this.loadToken)
         await bookPlaces()?.measured(this.key, file.path, {
-          kind: 'pages', count: opened.book.sections.length,
+          kind: 'pages',
+          count: opened.book.sections.length,
         })
       if (this.app.workspace.getActiveViewOfType(BookView) === this) this.takeFocus()
     } catch (e) {
@@ -665,9 +666,13 @@ export class BookView extends FileView {
       const count = this.reader?.isFixedLayout
         ? (detail.section?.total ?? this.opened?.book.sections.length)
         : detail.location?.total
-      const measure = typeof count === 'number' && Number.isSafeInteger(count) && count > 0
-        ? { kind: this.reader?.isFixedLayout ? 'pages' as const : 'locations' as const, count }
-        : undefined
+      const measure =
+        typeof count === 'number' && Number.isSafeInteger(count) && count > 0
+          ? {
+              kind: this.reader?.isFixedLayout ? ('pages' as const) : ('locations' as const),
+              count,
+            }
+          : undefined
       if (detail.cfi && mine)
         void bookPlaces()?.set(this.key, {
           cfi: detail.cfi,

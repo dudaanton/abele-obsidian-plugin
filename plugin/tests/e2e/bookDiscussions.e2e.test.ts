@@ -324,16 +324,18 @@ describe.skipIf(!available)('discussions in books', () => {
       view.model.panelTab = 'highlights'; view.model.panel = true
       const items = () => view.contentEl.querySelectorAll('.abele-book-highlights__item')
       if (!(await until(() => items().length === view.model.highlights.length &&
-        view.contentEl.querySelector('.abele-book-highlights__filter select'))))
+        view.contentEl.querySelector('.abele-book-highlights__filter'))))
         throw Error('The discussion panel did not list the highlights')
       const all = items().length
-      const select = view.contentEl.querySelector('.abele-book-highlights__filter select')
-      select.value = 'discussions'; select.dispatchEvent(new Event('change', { bubbles: true }))
+      view.contentEl.querySelector('.abele-book-highlights__filter').click()
+      const choice = await until(() => [...document.querySelectorAll('.menu-item')].find(item => item.querySelector('.menu-item-title')?.textContent.trim() === 'Discussions'))
+      if (!choice) throw Error('The discussion filter did not open its menu')
+      choice.click()
       if (!(await until(() => items().length === view.model.highlights.filter(h => h.discussion).length &&
-        [...items()].every(item => item.querySelector('.abele-book-highlights__label .abele-obsidian-icon')))))
+        [...items()].every(item => item.querySelector('.abele-entry-row__aside .abele-obsidian-icon')))))
         throw Error('The discussion filter did not show the discussions')
       const only = items().length
-      view.contentEl.querySelector('.abele-book-highlights__item_discussion .abele-book-highlights__label .abele-obsidian-icon').click()
+      view.contentEl.querySelector('.abele-book-highlights__item_discussion .abele-entry-row__aside .abele-obsidian-icon').click()
       const opened = await until(() => comments.open.value, 5000)
       view.model.panel = false
       return { all, only, opened }

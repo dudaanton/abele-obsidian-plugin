@@ -6,6 +6,7 @@
 import { describe, it, expect, beforeEach, vi } from 'vitest'
 import { mount, flushPromises } from '@vue/test-utils'
 import { reactive } from 'vue'
+import { Menu } from 'obsidian'
 import BookReader from '@/components/reader/BookReader.vue'
 import ReaderSettingsForm from '@/components/reader/ReaderSettingsForm.vue'
 import { AbeleConfig } from '@/services/AbeleConfig'
@@ -255,8 +256,22 @@ describe('the panel', () => {
     const model = readyModel({ panel: true })
     const view = mount(BookReader, { props: { model } })
     await flushPromises()
-    const tabs = view.findAll('.abele-book-reader__panel-head .abele-tabs__tab')
-    expect(tabs.map((t) => t.text())).toEqual(['Contents', 'Search', 'Highlights', 'Bookmarks'])
+    const tabs = view.findAll('.abele-book-reader__panel-tabs .abele-book-reader__panel-tab')
+    expect(tabs.map((t) => t.attributes('aria-label'))).toEqual([
+      'Contents',
+      'Search',
+      'Highlights',
+      'Bookmarks',
+    ])
+    expect(tabs.map((t) => t.attributes('role'))).toEqual(['tab', 'tab', 'tab', 'tab'])
+    // The open one is pressed.
+    expect(tabs.map((t) => t.attributes('aria-selected'))).toEqual([
+      'true',
+      'false',
+      'false',
+      'false',
+    ])
+    expect(tabs[0].classes()).toContain('abele-obsidian-icon_active')
     await tabs[1].trigger('click')
     expect(view.emitted('panel-tab')).toEqual([['search']])
   })
@@ -358,16 +373,19 @@ describe('highlights', () => {
     const icons = bar.findAll('.abele-obsidian-icon')
     await icons[2].trigger('click') // the third colour, blue
     expect(view.emitted('highlight')).toEqual([['blue']])
-    const action = (label: string) =>
-      bar
-        .findAll('.abele-book-selection__actions .abele-obsidian-icon')
-        .find((el) => el.attributes('aria-label') === label)!
-    await action('Copy a link to this place').trigger('click')
+    const show = vi.spyOn(Menu.prototype, 'showAtMouseEvent')
+    await bar.find('.abele-book-selection__more').trigger('click')
+    const menu = show.mock.contexts[0] as unknown as {
+      items: { title: string; handler: () => void }[]
+    }
+    const action = (label: string) => menu.items.find((item) => item.title === label)!.handler()
+    action('Copy a link to this place')
     expect(view.emitted('copy-link')).toEqual([[selection]])
-    await action('Quote these words with a link into the note you were last in').trigger('click')
+    action('Quote into the last note')
     expect(view.emitted('quote')).toEqual([[{ cfi: 'c', label: 'Chapter 1', text: 'Words' }]])
-    await action('Read aloud from here').trigger('click')
+    action('Read aloud from here')
     expect(view.emitted('read-aloud')).toHaveLength(1)
+    show.mockRestore()
   })
 
   it('once tapped, can be recoloured, commented, underlined everywhere, removed and closed', async () => {
@@ -376,16 +394,21 @@ describe('highlights', () => {
     await bar.findAll('.abele-book-selection__colors .abele-obsidian-icon')[0].trigger('click')
     expect(view.emitted('recolor')).toEqual([[h, 'yellow']])
     const actions = bar.findAll('.abele-book-selection__actions .abele-obsidian-icon')
-    expect(actions).toHaveLength(7)
+    expect(actions).toHaveLength(3)
     await actions[0].trigger('click')
     expect(view.emitted('edit-comment')).toEqual([[h]])
-    expect(actions[3].attributes('aria-label')).toBe('Underline this word everywhere in the book')
-    await actions[3].trigger('click')
+    const show = vi.spyOn(Menu.prototype, 'showAtMouseEvent')
+    await actions[1].trigger('click')
+    const menu = show.mock.contexts[0] as unknown as {
+      items: { title: string; handler: () => void }[]
+    }
+    menu.items.find((item) => item.title === 'Underline this word in the book')!.handler()
     expect(view.emitted('edit-forms')).toEqual([[h]])
-    await actions[5].trigger('click')
+    menu.items.find((item) => item.title === 'Remove the highlight')!.handler()
     expect(view.emitted('delete-highlight')).toEqual([[h]])
-    await actions[6].trigger('click')
+    await actions[2].trigger('click')
     expect(view.emitted('close-active')).toHaveLength(1)
+    show.mockRestore()
   })
 
   it('opens the dialog of forms with the highlighted word, and saves what is written', async () => {
@@ -556,9 +579,9 @@ describe('bookmarks', () => {
   it('has a tab of its own beside the contents, which says how to make one while there are none', async () => {
     const model = readyModel({ panel: true })
     const view = mount(BookReader, { props: { model } })
-    const tabs = view.findAll('.abele-book-reader__panel-head .abele-tabs__tab')
-    expect(tabs.map((t) => t.text())).toContain('Bookmarks')
-    await tabs.find((t) => t.text() === 'Bookmarks')!.trigger('click')
+    const tabs = view.findAll('.abele-book-reader__panel-head .abele-book-reader__panel-tab')
+    expect(tabs.map((t) => t.attributes('aria-label'))).toContain('Bookmarks')
+    await tabs.find((t) => t.attributes('aria-label') === 'Bookmarks')!.trigger('click')
     expect(view.emitted('panel-tab')).toEqual([['bookmarks']])
     model.panelTab = 'bookmarks'
     await view.vm.$nextTick()
@@ -579,12 +602,15 @@ describe('bookmarks', () => {
     expect(rows[0].find('.abele-book-bookmarks__text').text()).toBe(
       'It was a bright cold day in April'
     )
-    expect(rows[0].find('.abele-book-bookmarks__date').text()).toMatch(/2026/)
+    // The short date of the other lists, on the head line: day and month, the year when not this one.
+    expect(rows[0].find('.abele-entry-row__codes .abele-book-bookmarks__date').text()).toMatch(
+      /^20\.09(\.2026)?$/
+    )
     expect(rows[1].find('.abele-book-bookmarks__text').exists()).toBe(false)
     expect(rows.map((r) => r.classes().includes('is-active'))).toEqual([false, true])
     await rows[0].trigger('click')
     expect(view.emitted('go-bookmark')?.[0]?.[0]).toMatchObject({ id: 'a' })
-    await rows[1].find('.abele-obsidian-icon').trigger('click')
+    await rows[1].find('.abele-book-bookmarks__remove').trigger('click')
     expect(view.emitted('remove-bookmark')?.[0]?.[0]).toMatchObject({ id: 'bb' })
     // Removing is not going there.
     expect(view.emitted('go-bookmark')).toHaveLength(1)
