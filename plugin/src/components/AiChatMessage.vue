@@ -4,8 +4,11 @@
     :class="[`abele-chat-msg_${message.role}`, { 'abele-chat-msg--draft': message.draft }]"
     @click.capture="onMessageClick"
   >
-    <!-- Icon — clickable to expand details -->
+    <!-- A tool call keeps its glyph in line, by the kind of work, and opens its details by it. A
+         question or an answer has no glyph column: who speaks is plain from the bubble, and its
+         actions are in the line under it. -->
     <button
+      v-if="message.role !== 'user' && message.role !== 'assistant'"
       type="button"
       class="clickable-icon abele-chat-msg__icon"
       aria-label="Message actions and details"
@@ -13,9 +16,7 @@
       @pointerdown="comments.captureFresh"
       @click="expanded = !expanded"
     >
-      <Icon v-if="message.role === 'user'" icon="user" />
-      <Icon v-else-if="message.role === 'assistant'" icon="bot" />
-      <Icon v-else-if="message.role === 'tool-call'" icon="terminal" />
+      <Icon v-if="message.role === 'tool-call'" :icon="KIND_ICON[toolKind(message.toolName)]" />
       <Icon v-else-if="message.role === 'tool-result'" icon="check" />
       <Icon v-else icon="info" />
     </button>
@@ -25,8 +26,9 @@
            message rather than under a long answer. The buttons come first: the params and the
            result below them can be tall. -->
       <AiChatMessageDetails
-        v-if="expanded"
+        v-if="expanded && message.role !== 'tool-call'"
         :message="message"
+        :actions="message.role !== 'user' && message.role !== 'assistant'"
         :read-only-history="readOnlyHistory"
         :can-comment="canComment"
         :capture-selection="comments.capture"
@@ -40,10 +42,14 @@
       />
 
       <!-- Thinking (collapsible) -->
-      <details v-if="message.thinking" class="abele-chat-msg__thinking">
-        <summary>Thinking</summary>
-        <Markdown :text="message.thinking" :resource-opener="resourceOpener" data-find-part="thinking" />
-      </details>
+      <ChatThinking
+        v-if="message.thinking"
+        ref="thinking"
+        class="abele-chat-msg__thinking"
+        :text="message.thinking"
+        :live="liveTurn"
+        :resource-opener="resourceOpener"
+      />
 
       <!-- Tool call — compact one-liner + inline diff -->
       <template v-if="message.role === 'tool-call'">
@@ -82,12 +88,34 @@
           }}</span>
           <slot name="tool-note" />
         </span>
+        <AiChatMessageDetails
+          v-if="expanded"
+          :message="message"
+          actions
+          :read-only-history="readOnlyHistory"
+          :can-comment="canComment"
+          :capture-selection="comments.capture"
+          :ask-here="comments.askHere"
+          @copy="copyMessage"
+          @actions="showActions"
+          @edit-message="emit('edit-message', $event)"
+          @retry-message="emit('retry-message', $event)"
+          @insert-into-note="emit('insert-into-note', $event)"
+          @remove-highlight="(id, highlight) => emit('remove-highlight', id, highlight)"
+        />
         <!-- A delegated run: the whole sub-conversation, right where it was dispatched. -->
         <AiSubAgentRun v-if="message.subAgentRun" :run="message.subAgentRun" />
         <div v-if="message.replyProposal" class="abele-chat-msg__revision">
           <Button
-            v-if="message.replyProposal.status === 'pending' || message.replyProposal.application === 'pending'"
-            :text="message.replyProposal.application === 'pending' ? 'Finish accepted revision' : 'Review reply revision'"
+            v-if="
+              message.replyProposal.status === 'pending' ||
+              message.replyProposal.application === 'pending'
+            "
+            :text="
+              message.replyProposal.application === 'pending'
+                ? 'Finish accepted revision'
+                : 'Review reply revision'
+            "
             icon="git-compare"
             tooltip="Compare the selected passage before accepting or rejecting the replacement"
             @click="emit('review-revision', message.id)"
@@ -152,7 +180,11 @@
         <template v-if="message.content.length > 100">
           <span class="abele-chat-msg__compact-label">── Conversation compacted ──</span>
           <div v-if="expanded" class="abele-chat-msg__compact-summary">
-            <Markdown :text="message.content" :resource-opener="resourceOpener" data-find-part="summary" />
+            <Markdown
+              :text="message.content"
+              :resource-opener="resourceOpener"
+              data-find-part="summary"
+            />
           </div>
         </template>
         <span v-else class="abele-chat-msg__compact-label"
@@ -175,7 +207,12 @@
         @rendered="onReplyRendered"
         @contextmenu="onContentMenu"
       />
-      <Markdown v-else-if="message.content" :text="message.content" :resource-opener="resourceOpener" data-find-part="content" />
+      <Markdown
+        v-else-if="message.content"
+        :text="message.content"
+        :resource-opener="resourceOpener"
+        data-find-part="content"
+      />
       <slot name="metadata" />
 
       <div v-if="lastRevision" class="abele-chat-msg__revision">
@@ -183,7 +220,11 @@
           >Edited by {{ lastRevision.author }} · {{ formatTime(lastRevision.at)
           }}{{ lastRevision.undoneAt ? ' · undone' : '' }}</span
         >
-        <Button text="View original" tooltip="Read the original reply or undo the last revision" @click="originalOpen = true" />
+        <Button
+          text="View original"
+          tooltip="Read the original reply or undo the last revision"
+          @click="originalOpen = true"
+        />
       </div>
       <AiReplyOriginalDialog
         v-if="originalOpen"
@@ -195,16 +236,16 @@
       <!-- Attachments -->
       <div v-if="message.attachments?.length" class="abele-chat-msg__attachments">
         <template v-for="path in message.attachments" :key="path">
-        <ChatPicture v-if="isImagePath(path)" :path="path" />
-        <span
-          v-else
-          class="abele-chat-msg__attachment-chip"
-          @click="openAttachment(path)"
-          @contextmenu.prevent="onAttachmentContextMenu($event, path)"
-        >
-          <Icon :icon="getAttachmentIcon(path)" />
-          {{ attachmentName(path) }}
-        </span>
+          <ChatPicture v-if="isImagePath(path)" :path="path" />
+          <span
+            v-else
+            class="abele-chat-msg__attachment-chip"
+            @click="openAttachment(path)"
+            @contextmenu.prevent="onAttachmentContextMenu($event, path)"
+          >
+            <Icon :icon="getAttachmentIcon(path)" />
+            {{ attachmentName(path) }}
+          </span>
         </template>
       </div>
     </div>
@@ -218,17 +259,36 @@
       @close="contentPicture = null"
     />
 
-    <!-- Timestamp — always visible, right-aligned -->
-    <span
-      v-if="message.role === 'user' || message.role === 'assistant'"
-      class="abele-chat-msg__time"
+    <ChatMessageBar
+      v-if="
+        (message.role === 'user' || (message.role === 'assistant' && message.content.trim())) &&
+        !message.draft
+      "
+      :message="message"
+      :read-only="readOnlyHistory"
+      :can-comment="canComment"
+      :expanded="expanded"
+      :capture-selection="comments.capture"
+      :ask-here="comments.askHere"
+      @copy="copyMessage"
+      @actions="showActions"
+      @edit-message="emit('edit-message', $event)"
+      @retry-message="emit('retry-message', $event)"
+      @insert-into-note="emit('insert-into-note', $event)"
+      @details="expanded = !expanded"
     >
-      {{ shortTime(message.timestamp) }}
-    </span>
-
-    <!-- The switch stands on the message that differs from its siblings. -->
+      <ChatBranchSwitch
+        v-if="branches"
+        class="abele-chat-msg__branches"
+        :choices="branches.choices"
+        :index="branches.index"
+        :can-add="!!message.parentId && !readOnlyHistory"
+        @switch="(id) => emit('switch-branch', id)"
+        @new="message.parentId && emit('create-branch', message.parentId)"
+      />
+    </ChatMessageBar>
     <ChatBranchSwitch
-      v-if="branches"
+      v-else-if="branches"
       class="abele-chat-msg__branches"
       :choices="branches.choices"
       :index="branches.index"
@@ -236,7 +296,10 @@
     />
 
     <!-- Draft actions -->
-    <div v-if="message.draft && !interceptorStreaming && !readOnlyHistory" class="abele-chat-msg__draft-actions">
+    <div
+      v-if="message.draft && !interceptorStreaming && !readOnlyHistory"
+      class="abele-chat-msg__draft-actions"
+    >
       <button
         class="abele-chat-msg__draft-btn abele-chat-msg__draft-btn--send"
         @click="emit('confirm-draft', message.id)"
@@ -266,7 +329,7 @@
 import { ref, computed, watch } from 'vue'
 import { flashMessagePassage, flashExactSelection } from '@/ai/messageComments'
 import type { ChatRevision, RenderedRange } from '@/selection/types'
-import dayjs from 'dayjs'
+import { formatTimestamp } from '@/helpers/displayFormat'
 import { Menu, Notice, Platform } from 'obsidian'
 import Icon from './obsidian/Icon.vue'
 import Button from './obsidian/Button.vue'
@@ -277,6 +340,8 @@ import { HIGHLIGHT_COLORS, type HighlightColor } from '@/reader/highlights'
 import ChatPicture from './ChatPicture.vue'
 import { isImagePath } from '@/ai/tools/ReadImageTool'
 import Markdown from './obsidian/Markdown.vue'
+import ChatThinking from './ChatThinking.vue'
+import { KIND_ICON, toolKind } from '@/ai/toolRuns'
 import AbeleMap from './AbeleMap.vue'
 import Diff from './Diff.vue'
 import AiSubAgentRun from './AiSubAgentRun.vue'
@@ -286,6 +351,7 @@ import { ChatService } from '@/ai/ChatService'
 import type { ChatMessage, MessageComment } from '@/ai/types'
 import type { BranchSwitch } from '@/ai/chatBranches'
 import ChatBranchSwitch from './ChatBranchSwitch.vue'
+import ChatMessageBar from './ChatMessageBar.vue'
 import { useMessageComments } from '@/composables/useMessageComments'
 import { useChatMessageMedia } from '@/composables/useChatMessageMedia'
 import type { FindPart } from '@/ai/chatFind'
@@ -296,6 +362,8 @@ const props = defineProps<{
   readOnlyHistory?: boolean
   /** Local chats only; node/provider-native sessions cannot be cloned into a vault chat. */
   canClone?: boolean
+  /** Part of the turn the agent is still working on: its thinking stays open. */
+  liveTurn?: boolean
   /** Node histories keep successful tool previews behind the existing detail toggle. */
   compactToolDetails?: boolean
   resourceOpener?: (path: string) => void
@@ -379,6 +447,20 @@ function showActions(event: MouseEvent) {
   const menu = new Menu()
   const add = (title: string, icon: string, section: string, action: () => void) =>
     menu.addItem((item) => item.setTitle(title).setIcon(icon).setSection(section).onClick(action))
+  // A phone shows only the ⋯ under a message, so everything is in its menu there.
+  if (Platform.isMobile && (props.message.role === 'user' || props.message.role === 'assistant')) {
+    add('Copy', 'copy', 'direct', () => void copyMessage())
+    if (!props.readOnlyHistory) {
+      if (props.message.role === 'user')
+        add('Edit', 'pencil', 'direct', () => emit('edit-message', props.message.id))
+      else add('Retry', 'rotate-cw', 'direct', () => emit('retry-message', props.message.id))
+      add('Insert into note', 'file-input', 'direct', () =>
+        emit('insert-into-note', props.message.id)
+      )
+      if (props.canComment) add('Ask here', 'message-square', 'direct', () => comments.askHere())
+    }
+  }
+  if (props.readOnlyHistory) return menu.showAtMouseEvent(event)
   if (props.message.role === 'user')
     add('Repeat', 'repeat', 'message', () => emit('repeat-message', props.message.id))
   add('Branch from here', 'git-branch', 'conversation', () => branchFromHere())
@@ -398,10 +480,20 @@ function showActions(event: MouseEvent) {
 }
 
 const {
-  mapConfig, toolSummary, toolFilePath, openToolFile,
-  imagePath, imageUrl, viewerOpen, viewerImages, contentPicture,
-  previewContentImage, openImagePreview, onAttachmentContextMenu,
-  onImageContextMenu, openAttachment,
+  mapConfig,
+  toolSummary,
+  toolFilePath,
+  openToolFile,
+  imagePath,
+  imageUrl,
+  viewerOpen,
+  viewerImages,
+  contentPicture,
+  previewContentImage,
+  openImagePreview,
+  onAttachmentContextMenu,
+  onImageContextMenu,
+  openAttachment,
 } = useChatMessageMedia(props)
 
 const originalOpen = ref(false)
@@ -462,6 +554,7 @@ const branchFromHere = () => {
 }
 
 const expanded = ref(false)
+const thinking = ref<InstanceType<typeof ChatThinking>>()
 
 /**
  * Unfolds whatever keeps a part of this message out of sight, for a match found in it: the
@@ -471,6 +564,7 @@ const expanded = ref(false)
  */
 const revealPart = (part: FindPart) => {
   if (part === 'params' || part === 'result' || part === 'summary') expanded.value = true
+  if (part === 'thinking') thinking.value?.reveal()
   if (
     part === 'interceptor' &&
     !props.message.draft &&
@@ -480,7 +574,12 @@ const revealPart = (part: FindPart) => {
 }
 
 const replyRendered = ref(false)
-watch(() => props.message.content, () => { replyRendered.value = false })
+watch(
+  () => props.message.content,
+  () => {
+    replyRendered.value = false
+  }
+)
 function onReplyRendered() {
   comments.paint()
   replyRendered.value = true
@@ -492,18 +591,22 @@ function revealPassage(quote: string, start?: number): HTMLElement | null | unde
   return root ? flashMessagePassage(root, quote, start) : null
 }
 
-function revealSelection(revision: ChatRevision, range: RenderedRange): HTMLElement | null | undefined {
+function revealSelection(
+  revision: ChatRevision,
+  range: RenderedRange
+): HTMLElement | null | undefined {
   if (!replyRendered.value) return undefined
   const root = comments.content.value?.$el as HTMLElement | undefined
-  return root && props.message.content === revision.content &&
+  return root &&
+    props.message.content === revision.content &&
     props.message.selection?.revisionId === revision.reference.revisionId
-    ? flashExactSelection(root, revision.projection, range) : null
+    ? flashExactSelection(root, revision.projection, range)
+    : null
 }
 
 defineExpose({ revealPart, revealPassage, revealSelection })
 
-const formatTime = (ts: number) => dayjs(ts).format('YYYY-MM-DD HH:mm:ss')
-const shortTime = (ts: number) => dayjs(ts).format('HH:mm')
+const formatTime = (ts: number) => formatTimestamp(ts, { diagnostic: true }).exact
 </script>
 
 <style lang="scss" src="../styles/chatMessage/index.scss" />

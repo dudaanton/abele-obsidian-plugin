@@ -214,7 +214,7 @@ const script = (layout: string) => `(async () => {
     await until(() => modal().querySelectorAll('[data-nav-item]').length === 2)
     modal().querySelectorAll('[data-nav-item]')[1].click()
     await until(() => item(tool.id)?.querySelector('[data-find-part="result"]'))
-    report.searchPart = document.querySelector('.abele-chat-find__count')?.textContent.trim() === '2 of 2'
+    report.searchPart = document.querySelector('.abele-chat-find__count')?.textContent.trim() === '2/2'
     // Other-branch selection changes the send context, follows the earliest later fork, and
     // restores both the original path and its reading position without any rollback.
     document.querySelector('.abele-chat-find input')?.dispatchEvent(new KeyboardEvent('keydown', { key: 'Escape', bubbles: true }))
@@ -261,7 +261,7 @@ const script = (layout: string) => `(async () => {
     report.unavailable = modal().textContent.includes('Unavailable discussion') && modal().textContent.includes('Missing sample passage')
     await capture('navigation-search-discussions')
     await choose('How much shade')
-    await until(() => chats.activeSession.value?.commentId === 'navd02' && document.querySelector('.abele-chat-find__count')?.textContent.trim() === '1 of 1')
+    await until(() => chats.activeSession.value?.commentId === 'navd02' && document.querySelector('.abele-chat-find__count')?.textContent.trim() === '1/1')
     report.discussionSearch = true
     await capture('navigation-discussion-result')
     await open(); await choose('Back to place'); await until(() => chats.activeSession.value === owner)

@@ -49,49 +49,61 @@ afterEach(() => {
   vi.restoreAllMocks()
 })
 describe('the compact chat header', () => {
-  it('keeps new chat direct and moves settings into the overflow kit', async () => {
+  it('keeps find, outline, history and new chat direct, the rest in the overflow kit', async () => {
     view = mountChat()
+    for (const tooltip of [
+      'Find in this chat',
+      'Outline of this chat',
+      'Open a chat you have had',
+      'Start a new chat',
+    ])
+      expect(view.find(`[tooltip="${tooltip}"]`).exists()).toBe(true)
     const overflow = view.findComponent(SheetHeaderActions)
-    expect(overflow.exists()).toBe(true)
     expect(overflow.props('actions')).toEqual([
-      { id: 'find', label: 'Find in this chat', icon: 'search' },
-      { id: 'navigation', label: 'Navigation', icon: 'list-tree' },
       {
         id: 'setup',
         label: 'Scope, skills, prompts, permissions and settings',
         icon: 'sliders-horizontal',
       },
+      { id: 'artifacts', label: 'Artifacts: notes, images and scripts', icon: 'boxes' },
+      { id: 'agents', label: 'Agents', icon: 'activity' },
     ])
-    expect(view.get('[tooltip="Start a new chat"]').classes()).not.toContain(
-      'abele-ai-chat__secondary-action'
-    )
     overflow.vm.$emit('action', 'setup')
     await nextTick()
     expect(view.findComponent(AiChatSetup).exists()).toBe(true)
-    overflow.vm.$emit('action', 'find')
+    await view.get('[tooltip="Find in this chat"]').trigger('click')
     await nextTick()
     expect(view.findComponent(ChatFindBar).exists()).toBe(true)
-    overflow.vm.$emit('action', 'navigation')
+    await view.get('[tooltip="Outline of this chat"]').trigger('click')
     await nextTick()
     expect(view.findComponent(ChatNavigation).exists()).toBe(true)
   })
   it('also offers both comment actions without losing the blocked promotion state', () => {
-    active.value = fakeChatSession({ kind: 'comment', overrides: { moving: ref(true) } }) as ChatSession
+    active.value = fakeChatSession({
+      kind: 'comment',
+      overrides: { moving: ref(true) },
+    }) as ChatSession
     view = mountChat()
     const actions = view.findComponent(SheetHeaderActions).props('actions')
-    expect(actions).toEqual(expect.arrayContaining([
-      { id: 'back', label: 'Back to the passage this is about', icon: 'corner-up-left' },
-      expect.objectContaining({ id: 'promote', icon: 'messages-square', disabled: true }),
-    ]))
+    expect(view.find('[tooltip="Back to the passage this is about"]').exists()).toBe(true)
+    expect(actions).toEqual(
+      expect.arrayContaining([
+        expect.objectContaining({ id: 'promote', icon: 'messages-square', disabled: true }),
+      ])
+    )
+    expect(actions.some((a) => a.id === 'artifacts')).toBe(false)
   })
 })
 
 describe('the artifacts header entry', () => {
-  it('opens from one enabled button, including an unsaved chat, and closes on tab change', async () => {
+  const openArtifacts = async () => {
+    view.findComponent(SheetHeaderActions).vm.$emit('action', 'artifacts')
+    await nextTick()
+  }
+  it('opens from the overflow menu, including an unsaved chat, and closes on tab change', async () => {
     view = mountChat()
-    expect(view.findAll('.abele-ai-chat__artifacts')).toHaveLength(1)
     expect(view.find('.abele-ai-chat__notes').exists()).toBe(false)
-    await view.find('.abele-ai-chat__artifacts').trigger('click')
+    await openArtifacts()
     expect(view.findComponent(ChatArtifacts).props('session')).toBe(active.value)
     active.value = fakeChatSession({ kind: 'chat' }) as ChatSession
     await nextTick()
@@ -104,7 +116,7 @@ describe('the artifacts header entry', () => {
     await nextTick()
     expect(view.classes()).toContain('abele-ai-chat--composing')
     expect(view.find('.abele-ai-chat__messages').attributes('style')).toContain('display: none')
-    await view.find('.abele-ai-chat__artifacts').trigger('click')
+    await openArtifacts()
     view.findComponent(ChatArtifacts).vm.$emit('reveal', 'sample-source')
     await nextTick()
     expect(view.classes()).not.toContain('abele-ai-chat--composing')
@@ -115,14 +127,16 @@ describe('the artifacts header entry', () => {
   })
   it('reveals the chat panel without focusing input when navigating back from an artifact', async () => {
     view = mountChat()
-    await view.find('.abele-ai-chat__artifacts').trigger('click')
+    await openArtifacts()
     view.findComponent(ChatArtifacts).vm.$emit('reveal', 'sample-source')
     await nextTick()
-    expect(ChatService.getInstance().revealSidebar).toHaveBeenCalledExactlyOnceWith({ focus: false })
+    expect(ChatService.getInstance().revealSidebar).toHaveBeenCalledExactlyOnceWith({
+      focus: false,
+    })
   })
   it('closes when the originating session disappears', async () => {
     view = mountChat()
-    await view.find('.abele-ai-chat__artifacts').trigger('click')
+    await openArtifacts()
     active.value = undefined
     await nextTick()
     expect(view.findComponent(ChatArtifacts).exists()).toBe(false)

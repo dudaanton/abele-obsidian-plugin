@@ -199,7 +199,14 @@ export function useChatScrollAnchors(options: ChatScrollAnchorsOptions) {
     const check = () => {
       if (!container.classList.contains(FLOOR_CLASS)) return
       const want = parseFloat(container.style.getPropertyValue(FLOOR_VAR)) || 0
-      if (closed || win.performance.now() > floorUntil || contentEnd(container) >= want - 1)
+      // A chat left with no messages (a new one, or another opened in its place) has nothing
+      // to hold a place in, and its floor would only scroll its greeting out of sight.
+      if (
+        closed ||
+        win.performance.now() > floorUntil ||
+        contentEnd(container) >= want - 1 ||
+        !container.querySelector('.abele-chat-msg')
+      )
         releaseFloor(container)
       else nextFrame(win, check)
     }

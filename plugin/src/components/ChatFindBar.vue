@@ -1,14 +1,16 @@
 <template>
   <div class="abele-chat-find" role="search">
-    <Input
+    <Search
       ref="inputRef"
       class="abele-chat-find__input"
       :model-value="query"
       placeholder="Find in this chat"
-      aria-label="Find in this chat"
+      label="Find in this chat"
+      suffix-class="abele-chat-find__count"
+      :suffix="countText"
+      :suffix-label="countLabel"
       @update:model-value="emit('update:query', $event)"
     />
-    <span class="abele-chat-find__count" aria-live="polite">{{ countText }}</span>
     <div class="abele-chat-find__actions">
       <Icon
         icon="arrow-up"
@@ -29,7 +31,7 @@
 
 <script setup lang="ts">
 import { computed, onMounted, onUnmounted, ref, watch } from 'vue'
-import Input from './obsidian/Input.vue'
+import Search from './obsidian/Search.vue'
 import Icon from './obsidian/Icon.vue'
 
 /**
@@ -59,13 +61,14 @@ const emit = defineEmits<{
   (e: 'close'): void
 }>()
 
-const inputRef = ref<InstanceType<typeof Input>>()
+const inputRef = ref<InstanceType<typeof Search>>()
 
-const countText = computed(() => {
-  if (!props.query.trim()) return ''
-  if (!props.count) return 'No results'
-  return `${props.position} of ${props.count}`
-})
+const countText = computed(() =>
+  props.query.trim() ? (props.count ? `${props.position}/${props.count}` : '0') : ''
+)
+const countLabel = computed(() =>
+  props.query.trim() ? (props.count ? `${props.position} of ${props.count}` : 'No results') : ''
+)
 
 const onKey = (e: KeyboardEvent) => {
   const field = inputRef.value?.inputRef as HTMLInputElement | undefined
@@ -82,7 +85,7 @@ const onKey = (e: KeyboardEvent) => {
 const focus = () => {
   const el = inputRef.value?.inputRef as HTMLInputElement | undefined
   el?.focus()
-  el?.select()
+  inputRef.value?.select()
 }
 
 let keyWindow: Window | null = null
@@ -114,12 +117,7 @@ defineExpose({ focus })
     flex: 1 1 auto;
   }
 
-  &__count {
-    flex-shrink: 0;
-    color: var(--text-muted);
-    font-size: var(--font-ui-small);
-    text-align: right;
-    font-variant-numeric: tabular-nums;
+  &__input .abele-obsidian-search__suffix {
     white-space: nowrap;
   }
 

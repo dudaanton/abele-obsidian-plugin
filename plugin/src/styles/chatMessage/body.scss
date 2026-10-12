@@ -2,8 +2,9 @@
   display: flex;
   flex-wrap: wrap;
   align-items: flex-start;
-  gap: var(--size-4-2);
-  padding: var(--size-4-2) 0;
+  // A message's text and its row of time and actions belong together: close.
+  gap: var(--size-2-2) var(--size-4-2);
+  padding: 0;
   line-height: 1.5;
 
   &_user .abele-chat-msg__body {
@@ -77,7 +78,9 @@
 // WebKit touch panes can inherit user-select:none. Desktop emulation permits scripted
 // ranges regardless, so opt the actual rendered words into native selection explicitly.
 .abele-chat-msg__body [data-ask-message],
-.abele-chat-msg__body [data-ask-message] :not(button, .abele-comment-marker, .abele-comment-marker *) {
+.abele-chat-msg__body
+  [data-ask-message]
+  :not(button, .abele-comment-marker, .abele-comment-marker *) {
   user-select: text;
   -webkit-user-select: text;
   -webkit-touch-callout: default;
@@ -193,21 +196,8 @@ body.is-phone
 }
 
 .abele-chat-msg__thinking {
-  margin-top: 0;
-  margin-bottom: var(--size-4-2);
-  border: 1px solid var(--background-modifier-border);
-  border-radius: var(--radius-s);
-  padding: var(--size-4-1) var(--size-4-2);
-  font-size: var(--font-small);
-  overflow: hidden;
   overflow-wrap: break-word;
   word-break: break-word;
-
-  summary {
-    cursor: pointer;
-    color: var(--text-muted);
-    font-style: italic;
-  }
 
   pre {
     position: relative;
@@ -287,4 +277,29 @@ body.is-phone
   border-top: 1px solid var(--background-modifier-border);
   padding-top: var(--size-4-1);
   margin-top: var(--size-4-1);
+}
+
+/*
+ * The rhythm of the conversation, in three steps (proximity): inside a message tight (above);
+ * between the parts of one answer — its runs of work, its text, a card — a middle step; before a
+ * new question a wide one. The run of work just before an answer's text is that text's, so it
+ * sits close to it.
+ */
+.abele-ai-chat__messages > * + * {
+  margin-top: var(--size-4-3);
+}
+.abele-ai-chat__messages > * + .abele-chat-msg_user {
+  margin-top: var(--size-4-8);
+}
+.abele-ai-chat__messages > .abele-chat-run + .abele-chat-msg_assistant {
+  margin-top: var(--size-2-2);
+}
+
+// A chart, a map or a picture in an answer keeps a paragraph's distance from what is around it;
+// they have no margins of their own and stood flush against each other.
+.abele-chat-msg__body .abele-markdown {
+  [class*='block-language-'],
+  div:has(> p > img:only-child) {
+    margin-block: var(--p-spacing);
+  }
 }

@@ -6,8 +6,12 @@
   color: var(--text-muted);
   overflow: hidden;
 
-  code {
-    color: var(--text-accent);
+  // The tool's name is a faint code; what it worked on is the line's subject.
+  // Doubled so it outranks the theme's inline code inside a rendered message.
+  &#{&} code {
+    color: var(--text-faint);
+    background: none;
+    padding: 0;
     font-size: var(--font-smaller);
     flex-shrink: 0;
     white-space: nowrap;
@@ -136,11 +140,15 @@
 }
 
 .abele-chat-msg__details {
-  margin-bottom: var(--size-4-1);
+  // Under the line it is about: its actions and time on one row, then what went in and what came
+  // back, each under a quiet label, full width.
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  column-gap: var(--size-4-2);
+  margin-block: var(--size-2-2) var(--size-4-2);
   font-size: var(--font-smaller);
   color: var(--text-muted);
-  border-bottom: 1px solid var(--background-modifier-border);
-  padding-bottom: var(--size-2-1);
 
   pre {
     background-color: var(--background-secondary);
@@ -148,66 +156,42 @@
     padding: var(--size-4-1) var(--size-4-2);
     max-height: 200px;
     overflow: auto;
-    margin: var(--size-2-1) 0 var(--size-4-1);
+    margin: 0;
     font-size: var(--font-smaller);
     white-space: pre-wrap;
     word-break: break-word;
   }
 }
 
+.abele-chat-msg__details > .abele-chat-msg__actions {
+  flex: 1 1 auto;
+}
+
 .abele-chat-msg__detail-row {
+  flex-basis: 100%;
   display: flex;
-  gap: var(--size-4-2);
-  margin-bottom: var(--size-4-1);
+  flex-direction: column;
+  gap: var(--size-2-1);
+  margin-top: var(--size-4-1);
+  min-width: 0;
 }
 
 .abele-chat-msg__detail-label {
-  font-weight: bold;
-  margin-right: var(--size-4-1);
-  flex-shrink: 0;
-  white-space: nowrap;
+  color: var(--text-faint);
+  font-size: var(--font-ui-smaller);
 }
 
 .abele-chat-msg__detail-time {
+  margin-inline-start: auto;
   color: var(--text-faint);
+  font-variant-numeric: tabular-nums;
 }
 
-.abele-chat-msg__branch-nav {
-  display: flex;
-  align-items: center;
-  justify-content: center;
-  gap: var(--size-2-1);
+// A tool call's branches, which have no line of their own: under it, at its end.
+.abele-chat-msg > .abele-chat-msg__branches {
   flex-basis: 100%;
-  color: var(--text-faint);
-  font-size: var(--font-smaller);
-
-  .clickable-icon {
-    cursor: pointer;
-    &:hover {
-      color: var(--text-muted);
-    }
-  }
-}
-
-.abele-chat-msg__branch-label {
-  white-space: nowrap;
-  min-width: 20px;
-  text-align: center;
-}
-
-.abele-chat-msg__branch-disabled {
-  opacity: 0.3;
-  pointer-events: none;
-}
-
-.abele-chat-msg__branch-add {
-  margin-left: var(--size-2-1);
-  cursor: pointer;
-  color: var(--text-faint);
-
-  &:hover {
-    color: var(--text-muted);
-  }
+  justify-content: flex-end;
+  margin-top: calc(-1 * var(--size-4-1));
 }
 
 .abele-chat-msg__actions {
@@ -216,7 +200,6 @@
   gap: var(--size-4-1);
   // Theme focus rings paint outside each button, including inside the clipped message body.
   padding: var(--size-4-1);
-  margin-bottom: var(--size-4-1);
 }
 
 body.is-mobile .abele-chat-msg__actions button,
@@ -225,14 +208,23 @@ body.is-mobile button.abele-chat-msg__icon {
   min-height: 44px;
 }
 
-button.abele-chat-msg__icon {
-  padding: 0;
+// The finger's box is centred on the message's first line and reaches past it, so the glyph
+// stays level with the words and a one-line tool row keeps its own height.
+body.is-mobile button.abele-chat-msg__icon:not(.abele-chat-msg__time) {
+  margin-block: calc((1lh - 44px) / 2);
+  margin-inline-start: calc((var(--icon-size) - 44px) / 2);
 }
 
-@container (max-width: 450px) {
-  .abele-chat-msg__time {
-    display: none;
-  }
+// The glyph keeps its place on the line and in the words' column; the button keeps Obsidian's
+// whole box around it, taken back by margins as wide as its padding, so it is not a glyph-sized
+// target pressed flat against the line.
+button.abele-chat-msg__icon:not(.abele-chat-msg__time) {
+  height: auto;
+  padding: var(--size-2-2) var(--size-2-3);
+  margin-block: calc(-1 * var(--size-2-2));
+  margin-inline-start: calc(-1 * var(--size-2-3));
+  // At the end the box stays clear of the words beside it by Obsidian's 2px.
+  margin-inline-end: calc(-1 * var(--size-2-1));
 }
 
 // ── Draft ──

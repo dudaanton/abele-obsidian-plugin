@@ -73,6 +73,12 @@ export const approvalScript = (screen: string) => `(async () => {
     button.click()
     report.transitions.push({ action: text, when: 'after', ...state() })
   }
+  const chooseInMenu = async title => {
+    card().querySelector('.abele-tool-approval__more').click()
+    await until(() => [...document.querySelectorAll('.menu .menu-item')].some(item => title.test(item.textContent.trim())))
+    const item = [...document.querySelectorAll('.menu .menu-item')].find(item => title.test(item.textContent.trim()))
+    item.click()
+  }
   const start = async (name, calls) => {
     stage = name; plan = calls; requested = false
     await session.sendMessage('Run the ' + name + ' sample')
@@ -149,7 +155,7 @@ export const approvalScript = (screen: string) => `(async () => {
     await start('batch', [toolCall('batch-first', 'eval_js', { code: 'sample-first' }), toolCall('batch-second', 'eval_js', { code: 'sample-second' }), toolCall('batch-third', 'eval_js', { code: 'sample-third' }), toolCall('uncovered', 'fetch', { ...keyArgs, url: 'https://other.example/data' })])
     await until(() => !!card())
     await shot('batch')
-    click('Always allow')
+    await chooseInMenu(/^Always allow (?!writes in scope$)/)
     await until(() => session.pendingToolCalls.value[0]?.id === 'uncovered' && !session.isExecutingTool.value)
     await wait(100)
     await shot('uncovered')

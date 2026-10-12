@@ -179,18 +179,11 @@ body.is-mobile .abele-chat-input__textarea {
   white-space: nowrap;
 }
 
-.abele-chat-input__scope-badge {
-  font-size: var(--font-smaller);
+// The count beside the access glyph is a code, small and muted like the figures in a tree row.
+.abele-chat-input__scope .abele-obsidian-icon__text {
   color: var(--text-muted);
-  background-color: var(--background-secondary);
-  padding: var(--size-2-1) var(--size-2-3);
-  border-radius: var(--radius-s);
-  cursor: pointer;
-  white-space: nowrap;
-
-  &:hover {
-    background-color: var(--background-modifier-hover);
-  }
+  font-size: var(--font-ui-smaller);
+  font-variant-numeric: tabular-nums;
 }
 
 .abele-chat-input__continue {

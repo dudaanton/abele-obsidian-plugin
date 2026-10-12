@@ -274,7 +274,7 @@ const expectFound = (get: () => Report) => {
 
   it('counts every match, mounted or not, folded or not, and starts at the reader', () => {
     const typed = get().typed!
-    expect(typed.count).toBe('4 of 4')
+    expect(typed.count).toBe('4/4')
     expect(typed.message).toBe('m80')
     expect(typed.inView).toBe(true)
   })
@@ -282,9 +282,9 @@ const expectFound = (get: () => Report) => {
   it("walks up into a tool's result, an answer's reasoning, and a message far above", () => {
     const { up1, up2, up3 } = get()
     expect([up1, up2, up3].map((s) => [s!.count, s!.message, s!.part])).toEqual([
-      ['3 of 4', 'm60', 'result'],
-      ['2 of 4', 'm20', 'thinking'],
-      ['1 of 4', 'm3', 'content'],
+      ['3/4', 'm60', 'result'],
+      ['2/4', 'm20', 'thinking'],
+      ['1/4', 'm3', 'content'],
     ])
     for (const s of [up1, up2, up3]) {
       expect(s!.text.toLowerCase()).toBe('marigold')
@@ -294,9 +294,9 @@ const expectFound = (get: () => Report) => {
   })
 
   it('walks back down, and wraps round from the first to the last', () => {
-    expect(get().down1!.count).toBe('2 of 4')
+    expect(get().down1!.count).toBe('2/4')
     expect(get().down1!.inView).toBe(true)
-    expect(get().wrapped!.count).toBe('4 of 4')
+    expect(get().wrapped!.count).toBe('4/4')
     expect(get().wrapped!.inView).toBe(true)
   })
 
@@ -314,7 +314,7 @@ const expectFound = (get: () => Report) => {
     expect(get().openedChat).toBe(SHORT)
     const landed = get().landed!
     expect(landed.message).toBe('m2')
-    expect(landed.count).toBe('1 of 1')
+    expect(landed.count).toBe('1/1')
     expect(landed.text).toBe('marigold')
     expect(landed.inView).toBe(true)
   })

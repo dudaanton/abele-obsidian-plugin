@@ -1,14 +1,14 @@
 import { describe, it, expect, vi } from 'vitest'
 import { mount } from '@vue/test-utils'
 import { ref } from 'vue'
+import { ALWAYS_TOOL, ALWAYS_WRITES, approvalMenu } from '../helpers/approvalCard'
 import AiToolApproval from '@/components/AiToolApproval.vue'
-import Button from '@/components/obsidian/Button.vue'
 import { ChatService } from '@/ai/ChatService'
 import type { ChatMessage } from '@/ai/types'
 import { useVault } from '../helpers/testEnv'
 
 describe('node writes use chat file-edit permission choices', () => {
-  it('offers unattended file edits, but never a misleading per-tool Auto override', () => {
+  it('offers unattended file edits, but never a misleading per-tool Auto override', async () => {
     useVault([])
     const permissionMode = ref('confirm-all')
     vi.spyOn(ChatService, 'getInstance').mockReturnValue({
@@ -45,11 +45,12 @@ describe('node writes use chat file-edit permission choices', () => {
         toolStatus: 'pending',
       }
       const view = mount(AiToolApproval, { props: { message } })
-      const labels = view.findAllComponents(Button).map((button) => button.props('text'))
-      expect(labels.some((label) => label?.includes('Always allow writes'))).toBe(
+      // The rarer answers are in the card's menu.
+      const titles = (await approvalMenu(view)).map((item) => item.title)
+      expect(titles.includes(ALWAYS_WRITES)).toBe(
         ['node_write', 'node_edit', 'node_replace'].includes(toolName)
       )
-      expect(labels.includes('Always allow')).toBe(false)
+      expect(titles.some((title) => ALWAYS_TOOL.test(title))).toBe(false)
       view.unmount()
     }
     vi.restoreAllMocks()

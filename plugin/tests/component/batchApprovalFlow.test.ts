@@ -12,6 +12,7 @@ import type { AgentTool, ToolCallContent } from '@/ai/client'
 import { useVault } from '../helpers/testEnv'
 import { deferred } from '../helpers/deferred'
 import { destroyChatsAfterEach } from '../helpers/chatTeardown'
+import { ALWAYS_TOOL, ALWAYS_WRITES, chooseApproval } from '../helpers/approvalCard'
 
 let batches: ToolCallContent[][]
 vi.mock('@/ai/client/OpenAIClient', () => ({
@@ -178,7 +179,7 @@ afterEach(() => {
 describe('the Always allow transition at the runtime and rendered chat seams', () => {
   it('never exposes covered queued calls even for one mounted frame', async () => {
     await start(call('first'), call('second'), call('third'))
-    await button('Always allow').trigger('click')
+    await chooseApproval(view, ALWAYS_TOOL)
     await flushPromises()
     expect(executed).toEqual(['first', 'second', 'third'].map((id) => `${session.id}:${id}`))
     expect(mounted).toEqual(['first'])
@@ -189,7 +190,7 @@ describe('the Always allow transition at the runtime and rendered chat seams', (
   it('also never exposes automatic calls in the next sequential model batch', async () => {
     await start(call('first'), call('second'))
     batches.push([call('next-first'), call('next-second')])
-    await button('Always allow').trigger('click')
+    await chooseApproval(view, ALWAYS_TOOL)
     await flushPromises()
     expect(executed).toEqual(
       ['first', 'second', 'next-first', 'next-second'].map((id) => `${session.id}:${id}`)
@@ -208,13 +209,13 @@ describe('the Always allow transition at the runtime and rendered chat seams', (
     call('uncovered', 'create', { path: 'Unrelated/hidden.md', content: 'sample' }),
   ])('still mounts the uncovered $name call, in order', async (uncovered) => {
     await start(call('first'), call('covered'), uncovered, call('after'))
-    await button('Always allow').trigger('click')
+    await chooseApproval(view, ALWAYS_TOOL)
     await flushPromises()
     expect(executed).toEqual(['first', 'covered'].map((id) => `${session.id}:${id}`))
     expect(mounted).toEqual(['first', 'uncovered'])
     expect(pendingStates).not.toContain('covered')
     expect(session.pendingToolCalls.value.map((tc) => tc.id)).toEqual(['uncovered', 'after'])
-    await button('Reject').trigger('click')
+    await button('Deny').trigger('click')
     await flushPromises()
     expect(executed).toEqual(['first', 'covered', 'after'].map((id) => `${session.id}:${id}`))
     expect(mounted).toEqual(['first', 'uncovered'])
@@ -228,7 +229,7 @@ describe('the Always allow transition at the runtime and rendered chat seams', (
       write('covered'),
       call('delete', 'rm', { path: 'Sample/visible.md' })
     )
-    await button('Always allow writes').trigger('click')
+    await chooseApproval(view, ALWAYS_WRITES)
     await flushPromises()
     expect(executed).toEqual(['first', 'covered'].map((id) => `${session.id}:${id}`))
     expect(mounted).toEqual(['first', 'delete'])
@@ -243,7 +244,7 @@ describe('the Always allow transition at the runtime and rendered chat seams', (
     batches = [[call('other-first'), call('other-second')]]
     await other.sendMessage('Use other sample tools')
     await start(call('first'), call('second'))
-    await button('Always allow').trigger('click')
+    await chooseApproval(view, ALWAYS_TOOL)
     await flushPromises()
     expect(executed).toEqual(['first', 'second'].map((id) => `${session.id}:${id}`))
     expect(mounted).toEqual(['first'])
@@ -255,7 +256,7 @@ describe('the Always allow transition at the runtime and rendered chat seams', (
   it('can cancel an approved batch without running later calls or showing their cards', async () => {
     await start(call('first'), call('second'), call('third'))
     hold = deferred()
-    await button('Always allow').trigger('click')
+    await chooseApproval(view, ALWAYS_TOOL)
     await nextTick()
     session.abortToolExecution()
     hold.resolve()

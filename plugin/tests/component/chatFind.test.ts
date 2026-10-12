@@ -29,8 +29,10 @@ describe('the find bar', () => {
   it('says where the match shown stands, and when there is none', () => {
     expect(
       bar({ query: 'pond', count: 7, position: 3 }).find('.abele-chat-find__count').text()
-    ).toBe('3 of 7')
-    expect(bar({ query: 'pond' }).find('.abele-chat-find__count').text()).toBe('No results')
+    ).toBe('3/7')
+    const empty = bar({ query: 'pond' }).find('.abele-chat-find__count')
+    expect(empty.text()).toBe('0')
+    expect(empty.attributes('aria-label')).toBe('No results')
     expect(bar().find('.abele-chat-find__count').text()).toBe('')
   })
 
@@ -192,27 +194,27 @@ describe('finding in a long chat', () => {
     expect(mounted(view, 'm1').exists()).toBe(false)
     await search(view, 'pond')
     // The question, the reasoning, and the tool's result.
-    expect(count(view)).toMatch(/ of 3$/)
+    expect(count(view)).toMatch(/\/3$/)
   })
 
   it('walks down and up through them, wrapping round', async () => {
     const view = await open()
     await search(view, 'pond')
     // It starts at the reader: the tool result is the one near the end, which is on screen.
-    expect(count(view)).toBe('3 of 3')
+    expect(count(view)).toBe('3/3')
     await view.find('.abele-chat-find input').trigger('keydown', { key: 'Enter' })
     await flushPromises()
-    expect(count(view)).toBe('1 of 3')
+    expect(count(view)).toBe('1/3')
     await view.find('.abele-chat-find input').trigger('keydown', { key: 'Enter', shiftKey: true })
     await flushPromises()
-    expect(count(view)).toBe('3 of 3')
+    expect(count(view)).toBe('3/3')
   })
 
   it('mounts the message a match is in when it is above what is shown', async () => {
     const view = await open()
     await search(view, 'where should')
     await pause(50)
-    expect(count(view)).toBe('1 of 1')
+    expect(count(view)).toBe('1/1')
     expect(mounted(view, 'm1').exists()).toBe(true)
   })
 
@@ -220,8 +222,9 @@ describe('finding in a long chat', () => {
     const view = await open()
     await search(view, 'needs shade')
     await pause(50)
-    const details = mounted(view, 'm6').find('details').element as HTMLDetailsElement
-    expect(details.open).toBe(true)
+    const thinking = mounted(view, 'm6').find('[data-find-part="thinking"]')
+    expect(thinking.exists()).toBe(true)
+    expect(thinking.text()).toContain('needs shade')
   })
 
   it("opens a tool call's details for a match in its result", async () => {
@@ -254,7 +257,7 @@ describe('finding in a long chat', () => {
       },
     ]
     await flushPromises()
-    expect(count(view)).toMatch(/ of 4$/)
+    expect(count(view)).toMatch(/\/4$/)
   })
 
   it('opens with Cmd/Ctrl+F pressed inside the chat, and leaves the key alone elsewhere', async () => {

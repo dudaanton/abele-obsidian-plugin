@@ -14,6 +14,7 @@ import { McpService } from '@/ai/mcp/McpService'
 import { mcpPermissionKey, mcpDestinationKey } from '@/ai/mcp/permissions'
 import { useVault } from '../helpers/testEnv'
 import { destroyChatsAfterEach } from '../helpers/chatTeardown'
+import { ALWAYS_TOOL, chooseApproval } from '../helpers/approvalCard'
 
 const server = (id: string, name: string) =>
   createMcpServer({
@@ -99,15 +100,18 @@ const showPending = async () => {
   view = mount(AiToolApproval, { props: { message } })
   await flushPromises()
 }
-const click = async (label: string) => {
-  const button = view.findAll('button').find((b) => b.text() === label)!
-  expect(button).toBeDefined()
-  await button.trigger('click')
+const click = async (label: 'Allow' | 'Always allow') => {
+  if (label === 'Always allow') await chooseApproval(view, ALWAYS_TOOL)
+  else {
+    const button = view.findAll('button').find((b) => b.text() === label)!
+    expect(button).toBeDefined()
+    await button.trigger('click')
+  }
   await flushPromises()
 }
 
 describe('pending MCP call identity', () => {
-  it.each(['Approve', 'Always allow'])(
+  it.each(['Allow', 'Always allow'] as const)(
     'refuses a changed destination before %s without changing permissions',
     async (label) => {
       await showPending()
@@ -124,13 +128,13 @@ describe('pending MCP call identity', () => {
   it('also refuses a changed endpoint path on the same host', async () => {
     await showPending()
     AbeleConfig.getInstance().ai.mcpServers![0].url = 'https://sample.example/other-mcp'
-    await click('Approve')
+    await click('Allow')
     expect(execute).not.toHaveBeenCalled()
     expect(session.messages.value.find((m) => m.toolCallId === 'call-1')?.toolStatus).toBe(
       'rejected'
     )
   })
-  it.each(['Approve', 'Always allow'])(
+  it.each(['Allow', 'Always allow'] as const)(
     'refuses alias reassignment before %s without granting or executing the replacement',
     async (label) => {
       await showPending()
@@ -209,7 +213,7 @@ describe('pending MCP call identity', () => {
   it('refuses legacy pending calls with no recorded identity instead of inferring one on click', async () => {
     await showPending()
     delete session.pendingToolCalls.value[0].permissionKey
-    await click('Approve')
+    await click('Allow')
     expect(execute).not.toHaveBeenCalled()
     expect(session.messages.value.find((m) => m.toolCallId === 'call-1')?.toolStatus).toBe(
       'rejected'

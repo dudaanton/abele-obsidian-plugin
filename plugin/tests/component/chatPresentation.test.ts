@@ -1,0 +1,198 @@
+import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest'
+import { flushPromises, mount, type VueWrapper } from '@vue/test-utils'
+import { computed, ref, shallowRef } from 'vue'
+import AiChat from '@/components/AiChat.vue'
+import ChatToolRun from '@/components/ChatToolRun.vue'
+import ChatQuestionCard from '@/components/ChatQuestionCard.vue'
+import ChatThinking from '@/components/ChatThinking.vue'
+import { ChatService } from '@/ai/ChatService'
+import { AgentsService } from '@/agents/AgentsService'
+import { AbeleConfig } from '@/services/AbeleConfig'
+import { DEFAULT_AI_SETTINGS, type ChatMessage } from '@/ai/types'
+import { fakeChatSession } from '../helpers/fakeChatSession'
+import { useVault } from '../helpers/testEnv'
+
+const calls = (): ChatMessage[] => [
+  { id: 'sample-question', role: 'user', content: 'Find a sample page', timestamp: 1 },
+  {
+    id: 'sample-read',
+    role: 'tool-call',
+    content: '',
+    toolName: 'read',
+    toolStatus: 'approved',
+    toolResult: 'Sample page content',
+    timestamp: 2,
+  },
+]
+let view: VueWrapper | undefined
+beforeEach(() => {
+  useVault([])
+  AbeleConfig.getInstance().ai = { ...DEFAULT_AI_SETTINGS }
+})
+afterEach(() => {
+  view?.unmount()
+  view = undefined
+  vi.restoreAllMocks()
+  document.body.replaceChildren()
+})
+const render = async (
+  active: ReturnType<typeof fakeChatSession> | ReturnType<typeof shallowRef>
+) => {
+  const service = ChatService.getInstance()
+  vi.spyOn(service, 'ensureInitialized').mockImplementation(() => {})
+  vi.spyOn(service, 'activeSession', 'get').mockReturnValue(
+    ('value' in active ? computed(() => active.value) : { value: active }) as never
+  )
+  view = mount(AiChat, { attachTo: document.body })
+  await flushPromises()
+  return view
+}
+
+describe('conversation presentation', () => {
+  it('unfolds live calls and folds them when they settle, unless the reader chose otherwise', async () => {
+    const messages = ref(calls())
+    messages.value[1].toolResult = undefined
+    const chat = await render(fakeChatSession({ kind: 'chat', messages }))
+    expect(chat.findComponent(ChatToolRun).props('open')).toBe(true)
+    messages.value[1].toolResult = 'Sample finished'
+    await flushPromises()
+    expect(chat.findComponent(ChatToolRun).props('open')).toBe(false)
+    await chat.find('.abele-chat-run > .tree-item-self').trigger('click')
+    expect(chat.findComponent(ChatToolRun).props('open')).toBe(true)
+  })
+  it('does not carry disclosure choices into another conversation that reuses a message id', async () => {
+    const active = shallowRef(fakeChatSession({ kind: 'chat', messages: ref(calls()) }))
+    const chat = await render(active)
+    await chat.find('.abele-chat-run > .tree-item-self').trigger('click')
+    expect(chat.findComponent(ChatToolRun).props('open')).toBe(true)
+    active.value = fakeChatSession({
+      kind: 'chat',
+      messages: ref(calls()),
+      overrides: { id: 'second-sample-session' },
+    })
+    await flushPromises()
+    expect(chat.findComponent(ChatToolRun).props('open')).toBe(false)
+  })
+  it('shows thinking while tools are executing even when provider text has paused', async () => {
+    const messages = ref(calls())
+    messages.value.splice(1, 0, {
+      id: 'sample-thought',
+      role: 'assistant',
+      content: '',
+      thinking: 'Checking the sample source',
+      timestamp: 2,
+    })
+    const session = fakeChatSession({
+      kind: 'chat',
+      messages,
+      overrides: { isExecutingTool: ref(true) },
+    })
+    const chat = await render(session)
+    expect(chat.findComponent(ChatThinking).props('live')).toBe(true)
+    expect(chat.find('[data-find-part="thinking"]').text()).toContain('Checking the sample source')
+  })
+  it('names every reachable place in the access tooltip and counts nodes too', async () => {
+    const chat = await render(
+      fakeChatSession({
+        kind: 'chat',
+        overrides: {
+          scopeResolver: {
+            summary: ref('1 file, 1 folder'),
+            entries: ref([
+              { type: 'file', path: 'Sample/reference.md' },
+              { type: 'folder', path: 'Sample/Pages' },
+            ]),
+          },
+          overrides: ref({
+            nodeScope: [
+              {
+                kind: 'target',
+                node_id: 'sample-node',
+                project_id: 'sample-project',
+                target: { kind: 'workspace', workspace_id: 'sample-workspace' },
+                access: 'read',
+              },
+            ],
+          }),
+        },
+      })
+    )
+    const input = chat.findComponent({ name: 'AiChatInput' })
+    expect(input.props('scopeCode')).toBe('3')
+    expect(input.props('scopeLabel')).toBe(
+      'Access: file: Sample/reference.md · folder: Sample/Pages · sample-node / sample-project / sample-workspace, read'
+    )
+  })
+  it('keeps an empty access set discoverable for editing', async () => {
+    const chat = await render(fakeChatSession({ kind: 'chat' }))
+    const input = chat.findComponent({ name: 'AiChatInput' })
+    expect(input.props('scopeLabel')).toBe('Access: No files')
+    expect(input.props('scopeIcon')).toBe('folder-lock')
+    expect(input.props('scopeCode')).toBe('0')
+  })
+  it('counts other waiting chats, not the active approval or a running-only chat', async () => {
+    const rows = AgentsService.getInstance().rows
+    rows.value = [
+      {
+        key: 'active',
+        reference: { kind: 'local', sessionId: 'session-1', path: '' },
+        title: 'Sample active',
+        agent: 'Sample',
+        source: 'Chat',
+        folder: '/',
+        reasons: [{ kind: 'approval', id: 'a', at: 1 }],
+      },
+      {
+        key: 'other',
+        reference: { kind: 'local', sessionId: 'other-session', path: '' },
+        title: 'Sample other',
+        agent: 'Sample',
+        source: 'Chat',
+        folder: '/',
+        reasons: [{ kind: 'question', id: 'q', at: 1 }],
+      },
+      {
+        key: 'working',
+        reference: { kind: 'local', sessionId: 'working-session', path: '' },
+        title: 'Sample working',
+        agent: 'Sample',
+        source: 'Chat',
+        folder: '/',
+        reasons: [{ kind: 'running', id: 'r', at: 1 }],
+      },
+    ]
+    try {
+      const chat = await render(fakeChatSession({ kind: 'chat' }))
+      expect(chat.findComponent({ name: 'AgentsButton' }).props('count')).toBe(1)
+      rows.value = [rows.value[0], rows.value[2]]
+      await flushPromises()
+      expect(chat.findComponent({ name: 'AgentsButton' }).exists()).toBe(false)
+    } finally {
+      rows.value = []
+    }
+  })
+})
+
+describe('the question card', () => {
+  it('answers by row or digit, exposes progress, and lets an own answer focus the composer', async () => {
+    view = mount(ChatQuestionCard, {
+      props: { question: 'Pick a sample route', options: ['Short', 'Scenic'], index: 0, count: 2 },
+    })
+    expect(view.get('[aria-label="Question 1 of 2"]').text()).toBe('1/2')
+    await view.get('.abele-chat-question__option').trigger('click')
+    await view.get('.abele-chat-question').trigger('keydown', { key: '2' })
+    expect(view.emitted('answer')).toEqual([['Short'], ['Scenic']])
+    await view.get('.abele-chat-question__option_own').trigger('click')
+    expect(view.emitted('own')).toHaveLength(1)
+    await view.get('.abele-chat-question').trigger('keydown', { key: 'Escape' })
+    expect(view.emitted('skip')).toHaveLength(1)
+  })
+  it('does not answer from a composing, repeated or modified key', async () => {
+    view = mount(ChatQuestionCard, {
+      props: { question: 'Sample?', options: ['Yes'], index: 0, count: 1 },
+    })
+    for (const event of [{ isComposing: true }, { repeat: true }, { metaKey: true }])
+      await view.get('.abele-chat-question').trigger('keydown', { key: '1', ...event })
+    expect(view.emitted('answer')).toBeUndefined()
+  })
+})

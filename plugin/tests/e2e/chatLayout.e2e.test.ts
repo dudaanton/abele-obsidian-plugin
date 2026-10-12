@@ -42,15 +42,16 @@ const probe = (width: number, font: number) => `(() => {
   host.style.cssText =
     'position:fixed;left:-9999px;top:0;width:${width}px;font-size:${font}px'
 
-  // The shape AiChatMessage.vue emits: the icon and the timestamp are siblings of the body,
-  // and the icon is the kit's, which brings its own box.
-  const icon = '<div class="abele-chat-msg__icon"><div class="abele-obsidian-icon">' +
-    '<div class="abele-obsidian-icon__icon"><svg class="svg-icon" width="16" height="16">' +
-    '</svg></div></div></div>'
-  const time = '<span class="abele-chat-msg__time">12:30</span>'
+  // Text messages have their actions and time on the line below the words. Tool calls keep
+  // their action glyph beside the first line. Match the real component's native button boxes.
+  const glyph = '<span class="abele-obsidian-icon__icon"><svg class="svg-icon" width="16" height="16"></svg></span>'
+  const icon = '<button type="button" class="clickable-icon abele-chat-msg__icon"><span class="abele-obsidian-icon">' + glyph + '</span></button>'
+  const bar = '<div class="abele-chat-msg__bar"><span class="abele-chat-msg__quick">' +
+    '<button type="button" class="clickable-icon abele-obsidian-icon abele-chat-msg__bar-action">' + glyph + '</button></span>' +
+    '<button type="button" class="clickable-icon abele-obsidian-button abele-chat-msg__icon abele-chat-msg__time"><span class="abele-obsidian-button__label"><time>12:30</time></span></button></div>'
   const row = (role, body) =>
-    '<div class="abele-chat-msg abele-chat-msg_' + role + '">' + icon +
-    '<div class="abele-chat-msg__body">' + body + '</div>' + time + '</div>'
+    '<div class="abele-chat-msg abele-chat-msg_' + role + '">' + (role === 'tool-call' ? icon : '') +
+    '<div class="abele-chat-msg__body">' + body + '</div>' + (role === 'tool-call' ? '' : bar) + '</div>'
 
   host.innerHTML =
     row('assistant', '<p>An assistant line of text</p>') +
@@ -58,7 +59,7 @@ const probe = (width: number, font: number) => `(() => {
     row('tool-call',
       '<span class="abele-chat-msg__tool-line"><code>edit</code>' +
       '<span class="abele-chat-msg__tool-summary">' +
-      'Notes/English Study Test/English study system.md</span>' +
+      'Sample/Long folder/Notes/sample-reference-with-a-long-name.md</span>' +
       '<span class="abele-chat-msg__tool-err-badge">failed</span></span>')
   document.body.appendChild(host)
 
@@ -82,9 +83,12 @@ const probe = (width: number, font: number) => `(() => {
     const role = el.className.replace('abele-chat-msg abele-chat-msg_', '')
     const text = lines(firstText(el.querySelector('.abele-chat-msg__body')))[0]
     const badge = el.querySelector('.abele-chat-msg__tool-err-badge')
+    const time = el.querySelector('.abele-chat-msg__time')
+    const action = el.querySelector('.abele-chat-msg__bar-action')
+    const timeText = time ? lines(firstText(time))[0] : null
     report[role] = {
-      iconOffset: round(boxMiddle(el.querySelector('.abele-chat-msg__icon')) - middle(text)),
-      timeOffset: round(boxMiddle(el.querySelector('.abele-chat-msg__time')) - middle(text)),
+      iconOffset: round(boxMiddle(action || el.querySelector('.abele-chat-msg__icon')) - middle(timeText || text)),
+      timeOffset: time ? round(boxMiddle(time) - middle(timeText)) : 0,
       badgeLines: badge ? lines(firstText(badge)).length : 0,
     }
   }
@@ -121,7 +125,7 @@ describe.skipIf(!available)('a chat message', () => {
         return found
       }
 
-      it('sits its icon on the first line of the message, whatever the message is', () => {
+      it('aligns tool glyphs with their first line and message actions with their time line', () => {
         const offsets = Object.fromEntries(
           Object.entries(report()).map(([role, r]) => [role, r.iconOffset])
         )
@@ -130,7 +134,7 @@ describe.skipIf(!available)('a chat message', () => {
         expect(Object.fromEntries(off), `offsets: ${JSON.stringify(offsets)}`).toEqual({})
       })
 
-      it('puts the timestamp on that line too', () => {
+      it('centres the timestamp on its action line', () => {
         const off = Object.entries(report()).filter(([, r]) => Math.abs(r.timeOffset) > 2)
 
         expect(Object.fromEntries(off)).toEqual({})

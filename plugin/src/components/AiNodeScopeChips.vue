@@ -1,11 +1,11 @@
 <template>
   <div
-    v-if="entries.length || !parsed.success"
+    v-if="(!errorsOnly && entries.length) || !parsed.success || error"
     class="abele-node-scope-chips"
     aria-label="Chat node access"
   >
     <div
-      v-for="entry in entries"
+      v-for="entry in errorsOnly ? [] : entries"
       :key="nodeScopeKey(entry)"
       class="abele-node-scope-chips__entry"
       :title="label(entry)"
@@ -18,7 +18,7 @@
         @click="remove(entry)"
       />
     </div>
-    <Badge v-if="selected" :text="`Current: ${nodeTargetId(selected.target)}`" />
+    <Badge v-if="selected && !errorsOnly" :text="`Current: ${nodeTargetId(selected.target)}`" />
     <EmptyState
       v-if="!parsed.success"
       variant="error"
@@ -42,7 +42,11 @@ import { nodeAgentHost, removeObsidianChatNodeAccess } from '@/ai/tools/node/own
 import Badge from './obsidian/Badge.vue'
 import Icon from './obsidian/Icon.vue'
 import EmptyState from './obsidian/EmptyState.vue'
-const props = defineProps<{ session: ChatSession }>()
+const props = defineProps<{
+  session: ChatSession
+  /** Only what is wrong with the access; the entries themselves are shown elsewhere. */
+  errorsOnly?: boolean
+}>()
 const parsed = computed(() =>
   NodeScopeEntriesSchema.safeParse(props.session.overrides?.value.nodeScope ?? [])
 )

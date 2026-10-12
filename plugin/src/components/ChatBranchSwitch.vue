@@ -42,8 +42,17 @@ import Icon from './obsidian/Icon.vue'
 import type { BranchChoice } from '@/ai/chatBranches'
 import { timeOf } from './chatOutline/outline'
 
-const props = defineProps<{ choices: BranchChoice[]; index: number }>()
-const emit = defineEmits<{ (e: 'switch', id: string): void }>()
+const props = defineProps<{
+  choices: BranchChoice[]
+  index: number
+  /** The branches part from an earlier message, so one more can be started from it. */
+  canAdd?: boolean
+}>()
+const emit = defineEmits<{
+  (e: 'switch', id: string): void
+  /** Another way from the same place, beside the ones there: what is typed next starts it. */
+  (e: 'new'): void
+}>()
 
 const count = ref<HTMLElement>()
 onMounted(() => count.value && setTooltip(count.value, 'Show all branches from here'))
@@ -78,6 +87,16 @@ function showAll() {
         .onClick(() => i !== props.index && emit('switch', choice.id))
     )
   })
+  if (props.canAdd) {
+    menu.addSeparator()
+    menu.addItem((item) =>
+      item
+        .setTitle('New branch from here')
+        .setIcon('git-branch-plus')
+        .onClick(() => emit('new'))
+    )
+  }
+  if (!count.value) return
   const box = count.value.getBoundingClientRect()
   menu.showAtPosition({ x: box.left, y: box.bottom })
 }

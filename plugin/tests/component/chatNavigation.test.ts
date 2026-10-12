@@ -422,7 +422,7 @@ describe('navigation in the chat header', () => {
     await flushPromises()
     root().querySelectorAll<HTMLElement>('[data-nav-item]')[1].click()
     await pause(100)
-    expect(wrapper.find('.abele-chat-find__count').text()).toBe('2 of 2')
+    expect(wrapper.find('.abele-chat-find__count').text()).toBe('2/2')
     expect(wrapper.find('[data-message-id="tool"] [data-find-part="result"]').text()).toBe(
       'Sample liner'
     )

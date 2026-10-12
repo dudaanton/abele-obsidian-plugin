@@ -177,6 +177,15 @@ different expertise within the same access. Do not delegate what is one tool cal
 
 ## Chats
 
+The conversation presents reasoning as a Thinking/Thought disclosure and consecutive tool
+calls as one work line grouped by kind. These are presentation only: every call retains its
+own arguments, result and approval identity. The person opens the work line and a call's
+icon to inspect that evidence. Approval cards use Deny, Allow and Stop; permanent tool/write
+choices and argument editing are in the card's menu, not additional permissions. A question
+card offers options or an answer typed in the composer. Skipping ends the pending questions.
+The access glyph opens the chat's existing scope settings; its count includes node grants
+but does not expand or replace any grant. An empty access set is still visible for editing.
+
 Chats live in the vault as `.abchat` files, so they survive a restart and can be searched. A
 long chat can be compacted: the older turns are replaced by a summary and the conversation
 carries on. Compaction uses the background model.

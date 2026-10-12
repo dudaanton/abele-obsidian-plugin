@@ -97,3 +97,32 @@ it('opens a remote image from rendered reply content without granting it a vault
     },
   ])
 })
+
+// Another agent's or a server's file tools go by their own names and put the path under their
+// own key; a verb in the name says a file is behind it.
+it.each([
+  ['edit_note', { note_path: 'Sample/edited.md' }, 'Sample/edited.md'],
+  ['write_file', { file_path: 'Sample/written.md' }, 'Sample/written.md'],
+  ['notes-append', { notePath: 'Sample/appended.md' }, 'Sample/appended.md'],
+  ['Read', { filePath: 'Sample/read.md' }, 'Sample/read.md'],
+  ['server_create_page', { path: 'Sample/created.md' }, 'Sample/created.md'],
+])('opens the file an unknown %s tool worked on', async (toolName, toolParams, path) => {
+  const opener = vi.fn()
+  const wrapper = render({ toolName, toolParams }, opener)
+  const summary = wrapper.get('.abele-chat-msg__tool-summary')
+  expect(summary.classes()).toContain('abele-chat-msg__tool-link')
+  await summary.trigger('click')
+  expect(opener).toHaveBeenCalledExactlyOnceWith(path)
+})
+
+it.each(['editorial_summary', 'run_command'])(
+  'leaves a %s tool without a file verb unopenable, whatever its params say',
+  async (toolName) => {
+    const opener = vi.fn()
+    const wrapper = render({ toolName, toolParams: { path: 'Sample/elsewhere.md' } }, opener)
+    const summary = wrapper.get('.abele-chat-msg__tool-summary')
+    expect(summary.classes()).not.toContain('abele-chat-msg__tool-link')
+    await summary.trigger('click')
+    expect(opener).not.toHaveBeenCalled()
+  }
+)

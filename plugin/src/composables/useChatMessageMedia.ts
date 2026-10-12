@@ -19,6 +19,7 @@ interface ChatMessageMediaProps {
 }
 
 export function useChatMessageMedia(props: ChatMessageMediaProps) {
+  const FILE_VERB = /(^|[_-])(write|edit|create|read|append|patch|update|multiedit)([_-]|$)/i
   const FILE_TOOLS = [
     'read',
     'edit',
@@ -51,12 +52,19 @@ export function useChatMessageMedia(props: ChatMessageMediaProps) {
   /** Path to open when clicking the tool summary (result path for mv/cp, otherwise path param) */
   const toolFilePath = computed(() => {
     const name = props.message.toolName
-    if (!name || !FILE_TOOLS.includes(name)) return ''
+    if (!name) return ''
     const p = props.message.toolParams
     if (!p) return ''
-    if (name === 'mv' || name === 'cp') return String(p.to || '')
-    if (name === 'apply_template') return extractResultPath(props.message.toolResult)
-    return String(p.path || '')
+    if (FILE_TOOLS.includes(name)) {
+      if (name === 'mv' || name === 'cp') return String(p.to || '')
+      if (name === 'apply_template') return extractResultPath(props.message.toolResult)
+      return String(p.path || '')
+    }
+    // Another agent's or a server's file tools (Write, edit_note, read_file…): whatever made,
+    // changed or read a file opens it, by whichever name its path came under.
+    if (!FILE_VERB.test(name)) return ''
+    const path = p.path ?? p.file_path ?? p.filePath ?? p.note_path ?? p.notePath
+    return typeof path === 'string' ? path : ''
   })
 
   const openToolFile = () => {

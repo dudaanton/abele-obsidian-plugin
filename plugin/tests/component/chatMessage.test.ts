@@ -119,20 +119,29 @@ describe('a stopped tool call', () => {
 })
 
 describe('the icon beside a message', () => {
-  // Both the alignment and the per-role offsets are written as `.abele-chat-msg_<role> >
+  // The alignment and the per-role offsets are written as `.abele-chat-msg_<role> >
   // .abele-chat-msg__icon`. A child selector stops matching the moment the icon gains a
   // wrapper, and the role class has to be on the element the icon hangs off.
+  it('hangs directly off a tool call row', () => {
+    const wrapper = render({ role: 'tool-call', content: 'text', toolName: 'edit' })
+    const row = wrapper.element as HTMLElement
+
+    expect(row.classList.contains('abele-chat-msg_tool-call')).toBe(true)
+    expect(row.querySelector('.abele-chat-msg__icon')?.parentElement).toBe(row)
+  })
+
+  // A question and an answer have no icon beside them: their actions and their time sit on a
+  // line under the words, which the branch rules also find as a direct child.
   it.each([
     ['user', 'abele-chat-msg_user'],
     ['assistant', 'abele-chat-msg_assistant'],
-    ['tool-call', 'abele-chat-msg_tool-call'],
-  ])('hangs directly off the %s row', (role, roleClass) => {
-    const wrapper = render({ role: role as ChatMessage['role'], content: 'text', toolName: 'edit' })
+  ])('a %s row carries its actions on a line under the words', (role, roleClass) => {
+    const wrapper = render({ role: role as ChatMessage['role'], content: 'text' })
     const row = wrapper.element as HTMLElement
 
     expect(row.classList.contains(roleClass)).toBe(true)
-    const icon = row.querySelector('.abele-chat-msg__icon')
-    expect(icon?.parentElement).toBe(row)
+    expect(row.querySelector('.abele-chat-msg__bar')?.parentElement).toBe(row)
+    expect(row.querySelector(':scope > .abele-chat-msg__icon')).toBeNull()
   })
 })
 

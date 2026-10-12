@@ -9,7 +9,14 @@
         :title="tab.label || 'New chat'"
         @click="emit('select', tab.id)"
       >
-        <span v-if="tab.isStreaming && !tab.isActive" class="abele-chat-tabs__dot" />
+        <!-- A chat in another tab says where it is by a dot: waiting for you, or at work. -->
+        <span
+          v-if="!tab.isActive && (tab.waiting || tab.isStreaming)"
+          class="abele-chat-tabs__dot"
+          :class="{ 'abele-chat-tabs__dot_waiting': tab.waiting }"
+          role="img"
+          :aria-label="tab.waiting ? 'Waiting for you' : 'The agent is working'"
+        />
         <span class="abele-chat-tabs__label">{{ tab.label || 'New chat' }}</span>
         <Icon icon="x" class="abele-chat-tabs__close" @click.stop="emit('close', tab.id)" />
       </div>
@@ -33,6 +40,8 @@ export interface TabInfo {
   id: string
   label: string
   isStreaming: boolean
+  /** Asks you something or waits for your approval. */
+  waiting?: boolean
   isActive: boolean
 }
 
@@ -163,6 +172,12 @@ const emit = defineEmits<{
   background-color: var(--interactive-accent);
   flex-shrink: 0;
   animation: abele-pulse 1.5s ease-in-out infinite;
+}
+
+/* Waiting for you does not pulse: it stays until you answer. */
+.abele-chat-tabs__dot_waiting {
+  background-color: var(--color-orange);
+  animation: none;
 }
 
 @keyframes abele-pulse {

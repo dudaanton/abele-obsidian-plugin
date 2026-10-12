@@ -22,7 +22,12 @@
       @close="anchorHistory = null"
     />
     <AiRunView v-if="activeRun" :run="activeRun" />
-    <NodeChatView v-else-if="nodeSession" :key="nodeSession.id" :presenter="nodeSession" @new-chat="onNewTab" />
+    <NodeChatView
+      v-else-if="nodeSession"
+      :key="nodeSession.id"
+      :presenter="nodeSession"
+      @new-chat="onNewTab"
+    />
 
     <EmptyState
       v-else-if="session?.preparingClone?.value"
@@ -34,70 +39,39 @@
       <!-- Header -->
       <div class="abele-ai-chat__header">
         <AiAgentSelector />
+        <!-- What is used all the time, in sight: find, the outline, the history, a new chat.
+             Everything else this chat is set up with is in ⋯. Other chats waiting for you show
+             as a count only while they are waiting. -->
         <div class="abele-ai-chat__header-actions">
-          <AgentsButton />
+          <AgentsButton v-if="agentsNeedYou" :count="agentsNeedYou" />
           <!-- Only over a comment: the way back to the passage it was written against. It
                points back the way it came rather than being a panel glyph, because what it
                does is scroll a note, not move a pane. -->
           <Icon
             v-if="commentSession"
             icon="corner-up-left"
-            class="abele-ai-chat__secondary-action"
             with-bg
             tooltip="Back to the passage this is about"
             @click="backToNote"
           />
-          <!-- Only for a comment still being a comment: the promotion into an ordinary chat,
-               with the default agent, a place in the history and no anchor to answer to. Not a
-               panel glyph: on a phone the comment is already in the sidebar, and a panel icon
-               there read as "open in the sidebar" and made no sense (2026-09-05). -->
-          <Icon
-            v-if="commentSession"
-            icon="messages-square"
-            class="abele-ai-chat__secondary-action"
-            with-bg
-            :disabled="blocked"
-            :tooltip="blocked ? blockedTooltip : 'Turn this comment into an ordinary chat'"
-            @click="openAsChat"
-          />
           <!-- Find words in this conversation; Cmd/Ctrl+F does the same from inside the chat. -->
+          <!-- A phone's header is a finger per button: find and the outline go into ⋯ there,
+               so the agent's name is not cut down to a letter. -->
           <Icon
+            v-if="!phone"
             icon="search"
             with-bg
-            class="abele-ai-chat__find abele-ai-chat__secondary-action"
+            class="abele-ai-chat__find"
             tooltip="Find in this chat"
             @click="find.open()"
           />
           <Icon
+            v-if="!phone"
             icon="list-tree"
             with-bg
-            class="abele-ai-chat__navigation abele-ai-chat__secondary-action"
-            tooltip="Navigation"
+            class="abele-ai-chat__navigation"
+            tooltip="Outline of this chat"
             @click="openNavigation()"
-          />
-          <!-- One button for everything this chat is set up with: scope, skills, prompts,
-               tool permissions, its own settings, and the two things that are neither —
-               reading the file again and copying what the chat is made of. -->
-          <Icon
-            icon="sliders-horizontal"
-            class="abele-ai-chat__secondary-action"
-            with-bg
-            tooltip="Scope, skills, prompts, permissions and settings"
-            @click="openSetup()"
-          />
-          <Icon
-            v-if="!commentSession"
-            class="abele-ai-chat__artifacts"
-            icon="boxes"
-            with-bg
-            tooltip="Artifacts — notes, images and scripts"
-            @click="artifactsSession = session"
-          />
-          <Icon
-            icon="plus"
-            with-bg
-            tooltip="Start a new chat"
-            @click="onNewChatMenu"
           />
           <Icon
             icon="history"
@@ -105,6 +79,7 @@
             tooltip="Open a chat you have had"
             @click="historyOpen = true"
           />
+          <Icon icon="plus" with-bg tooltip="Start a new chat" @click="onNewChatMenu" />
           <SheetHeaderActions
             class="abele-ai-chat__overflow"
             :actions="headerOverflowActions"
@@ -114,7 +89,9 @@
         </div>
       </div>
 
-      <AiNodeScopeChips v-if="session" :key="session.id" :session="session" />
+      <!-- Node access is counted in the composer's access button; above the messages only what
+           is wrong with it. -->
+      <AiNodeScopeChips v-if="session" :key="session.id" :session="session" errors-only />
 
       <ChatFindBar
         v-if="find.isOpen.value"
@@ -162,78 +139,74 @@
         @mousedown="readerTakesOver"
         @keydown="readerTakesOver"
       >
-        <div v-if="messages.length === 0" class="abele-ai-chat__empty">
-          <Icon icon="tree-deciduous" no-hover class="abele-ai-chat__empty-icon" />
-          <span class="abele-ai-chat__empty-text">What's on your mind?</span>
-        </div>
+        <EmptyState
+          v-if="messages.length === 0"
+          class="abele-ai-chat__empty"
+          icon="tree-deciduous"
+          :title="session?.agent.value?.name"
+        >
+          {{ session?.agent.value?.description || "What's on your mind?" }}
+          <template v-if="scopeSummary" #action>
+            <Icon
+              class="abele-ai-chat__empty-scope"
+              :icon="access.icon"
+              :text-right="scopeSummary"
+              tooltip="What the agent can reach"
+              @click="openSetup('scope')"
+            />
+          </template>
+        </EmptyState>
 
         <div v-if="olderCount" class="abele-ai-chat__older">
           <Icon icon="chevron-up" no-hover />
           <span>{{ olderCount }} earlier messages</span>
         </div>
 
-        <AiChatMessage
-          v-for="msg in visibleMessages"
-          :key="msg.id"
-          :ref="(c) => keepMessageRef(msg.id, c)"
-          :data-message-id="msg.id"
-          :message="msg"
-          :branches="branchSwitchMap.get(msg.id)"
-          :interceptor-streaming="
-            msg.draft ? interceptorStreaming || interceptorWorking : replyReviews[msg.id]?.streaming
-          "
-          :interceptor-streaming-content="
-            msg.draft ? interceptorStreamingContent : replyReviews[msg.id]?.streamingContent
-          "
-          :interceptor-error="msg.draft ? interceptorError : replyReviews[msg.id]?.error"
-          :comments="commentsOn.get(msg.id)"
-          :can-comment="canComment"
-          :capture-link="captureLink"
-          :capture-script="captureScript"
-          :script-menu="selectionScripts"
-          :can-rewind="canRewind && msg.role === 'user' && !msg.draft"
-          :changed-files="changedTurns.has(msg.id)"
-          :can-clone="!!session"
-          @clone-chat="onCloneChat"
-          @create-branch="onCreateBranch"
-          @switch-branch="onSwitchBranch"
-          @repeat-message="onRepeatMessage"
-          @retry-message="onRetryMessage"
-          @insert-into-note="onInsertIntoNote"
-          @ask-here="onAskHere"
-          @highlight="onHighlight"
-          @remove-highlight="onRemoveHighlight"
-          @recolor-highlight="onRecolorHighlight"
-          @review-revision="onReviewRevision"
-          @undo-revision="onUndoRevision"
-          @edit-message="onEditMessage"
-          @rewind="onRewind"
-          @confirm-draft="onConfirmDraft"
-          @edit-draft="onEditDraft"
-          @send-interceptor="onSendInterceptor"
-          @toggle-interceptor="onToggleInterceptor"
-          @retry-interceptor="onRetryInterceptor"
-        />
+        <template
+          v-for="block in blocks"
+          :key="block.kind === 'run' ? `run:${block.id}` : block.message.id"
+        >
+          <ChatToolRun
+            v-if="block.kind === 'run'"
+            :id="block.id"
+            :calls="block.calls"
+            :open="runOpen(block)"
+            @update:open="(open) => setRunOpen(block.id, open)"
+          >
+            <AiChatMessage
+              v-for="msg in block.messages"
+              :key="msg.id"
+              :ref="(c) => keepMessageRef(msg.id, c)"
+              :data-message-id="msg.id"
+              v-bind="messageProps(msg)"
+              v-on="messageHandlers"
+            />
+          </ChatToolRun>
+          <AiChatMessage
+            v-else
+            :ref="(c) => keepMessageRef(block.message.id, c)"
+            :data-message-id="block.message.id"
+            v-bind="messageProps(block.message)"
+            v-on="messageHandlers"
+          />
+        </template>
 
-        <NodeDelegations v-if="session?.delegationParentId" :parent-id="session.delegationParentId" />
+        <NodeDelegations
+          v-if="session?.delegationParentId"
+          :parent-id="session.delegationParentId"
+        />
 
         <!-- Streaming indicator -->
         <div v-if="isStreaming" class="abele-ai-chat__streaming">
-          <div v-if="streamingThinking" class="abele-ai-chat__streaming-thinking">
-            <details v-if="!hideReasoning" open>
-              <summary>Thinking...</summary>
-              <Markdown :text="streamingThinking" streaming />
-            </details>
-            <div v-else class="abele-ai-chat__streaming-thinking-hidden">
-              <Icon icon="lightbulb" no-hover class="abele-ai-chat__spinner" />
-              <span>Thinking...</span>
-            </div>
-          </div>
+          <ChatThinking
+            v-if="streamingThinking"
+            class="abele-ai-chat__streaming-thinking"
+            :text="hideReasoning ? undefined : streamingThinking"
+            :streaming="!streamingContent"
+            :live="isStreaming"
+          />
           <div v-if="streamingContent" class="abele-ai-chat__streaming-content">
             <div class="abele-chat-msg abele-chat-msg_assistant">
-              <div class="abele-chat-msg__icon">
-                <Icon icon="bot" />
-              </div>
               <div class="abele-chat-msg__body">
                 <Markdown :text="streamingContent" streaming />
               </div>
@@ -249,7 +222,7 @@
         <!-- Waiting to be sent: typed while the agent was working -->
         <div v-if="queuedMessages.length" class="abele-ai-chat__queued">
           <div v-for="q in queuedMessages" :key="q.id" class="abele-ai-chat__queued-item">
-            <Icon icon="clock" no-hover class="abele-ai-chat__queued-icon" />
+            <Icon icon="clock" size="xs" :interactive="false" class="abele-ai-chat__queued-icon" />
             <span class="abele-ai-chat__queued-text">
               {{ q.content }}
               <span v-if="q.attachments?.length">
@@ -258,12 +231,14 @@
             </span>
             <Icon
               icon="pencil"
+              size="xs"
               tooltip="Edit queued message"
               class="abele-ai-chat__queued-edit"
               @click="onEditQueued(q.id)"
             />
             <Icon
               icon="x"
+              size="xs"
               tooltip="Remove from the queue"
               class="abele-ai-chat__queued-remove"
               @click="onRemoveQueued(q.id)"
@@ -285,65 +260,85 @@
         <AiToolApproval v-if="pendingApprovalMessage" :message="pendingApprovalMessage" />
 
         <!-- Questions tool -->
-        <div
-          v-if="currentQuestion"
-          class="abele-ai-chat__questions"
+        <ChatQuestionCard
+          v-if="currentQuestion && pendingQuestions"
           :data-attention-id="session?.attention?.value.question?.id"
-        >
-          <div class="abele-ai-chat__questions-question">{{ currentQuestion.question }}</div>
-          <div class="abele-ai-chat__questions-options">
-            <button
-              v-for="(opt, i) in currentQuestion.options"
-              :key="i"
-              class="abele-ai-chat__questions-option"
-              @click="answerQuestion(opt)"
-            >
-              {{ opt }}
-            </button>
-          </div>
-          <div class="abele-ai-chat__questions-footer">
-            <span class="abele-ai-chat__questions-progress">
-              {{ questionsProgress }}
-            </span>
-            <button class="abele-ai-chat__questions-abort" @click="abortQuestions">Abort</button>
-          </div>
-        </div>
+          :question="currentQuestion.question"
+          :options="currentQuestion.options"
+          :index="pendingQuestions.currentIndex"
+          :count="pendingQuestions.questions.length"
+          @answer="answerQuestion"
+          @skip="abortQuestions"
+          @own="focusComposer()"
+        />
 
         <div v-if="reconnecting" class="setting-item-description" role="status" aria-live="polite">
-          {{ reconnecting === 'waiting' ? 'Waiting to reconnect when the app returns…' : 'Reconnecting…' }}
+          {{
+            reconnecting === 'waiting'
+              ? 'Waiting to reconnect when the app returns…'
+              : 'Reconnecting…'
+          }}
         </div>
         <LocalAttentionPanel v-if="session" :session="session" />
 
         <!-- Error -->
-        <div v-if="error" class="abele-ai-chat__error">
+        <RequestCard v-if="error" class="abele-ai-chat__error" role="alert">
           <div class="abele-ai-chat__error-line">
-            <Icon icon="alert-triangle" />
-            <span>{{ error }}</span>
-          </div>
-          <div v-if="retrying" class="abele-ai-chat__error-line">
-            <span>
-              Trying again in {{ retrying.secondsLeft }}s ({{ retrying.attempt }} of
-              {{ retrying.of }})
-            </span>
+            <span class="abele-ai-chat__error-dot" aria-hidden="true" />
+            <span class="abele-ai-chat__error-text">{{ error }}</span>
+            <span
+              v-if="retrying"
+              class="abele-ai-chat__error-retry"
+              :aria-label="`Trying again in ${retrying.secondsLeft}s, attempt ${retrying.attempt} of ${retrying.of}`"
+              >{{ retrying.secondsLeft }}s · {{ retrying.attempt }}/{{ retrying.of }}</span
+            >
           </div>
           <div class="abele-ai-chat__error-actions">
-            <button @click="onRetryRequest">{{ retrying ? 'Retry now' : 'Retry' }}</button>
-            <button v-if="retrying" @click="session?.cancelAutoRetry()">Stop trying</button>
-            <button v-if="hasFallbackModel" @click="onRetryWithFallback">
-              Retry on {{ fallbackModelName }}
-            </button>
+            <Button v-if="retrying" text="Stop trying" @click="session?.cancelAutoRetry()" />
+            <Button
+              v-if="hasFallbackModel"
+              :text="`Retry on ${fallbackModelName}`"
+              @click="onRetryWithFallback"
+            />
+            <Button :text="retrying ? 'Retry now' : 'Retry'" accent @click="onRetryRequest" />
           </div>
-        </div>
+        </RequestCard>
       </div>
 
-      <div v-if="pendingNavigation || branchingAfter" class="abele-ai-chat__branch-note" aria-live="polite">
-        <Icon icon="git-branch" size="xs" :interactive="false" />
-        <span class="abele-ai-chat__branch-note-text">{{ pendingNavigation ? pendingNavigation.label : 'New branch after this answer' }}</span>
+      <div
+        v-if="pendingNavigation || branchingAfter || editingId"
+        class="abele-ai-chat__branch-note"
+        aria-live="polite"
+      >
+        <Icon
+          :icon="editingId && !pendingNavigation ? 'pencil' : 'git-branch'"
+          size="xs"
+          :interactive="false"
+        />
+        <span class="abele-ai-chat__branch-note-text">{{
+          pendingNavigation
+            ? pendingNavigation.label
+            : editingId
+              ? 'Editing your message: sending starts a new branch'
+              : 'New branch after this answer'
+        }}</span>
         <Icon
           icon="x"
           size="xs"
-          :label="pendingNavigation ? 'Cancel branch switch' : 'Back to where the chat went on'"
-          @click="pendingNavigation ? cancelPendingNavigation() : cancelNewBranch()"
+          :label="
+            pendingNavigation
+              ? 'Cancel branch switch'
+              : editingId
+                ? 'Cancel editing'
+                : 'Back to where the chat went on'
+          "
+          @click="
+            pendingNavigation
+              ? cancelPendingNavigation()
+              : editingId
+                ? cancelEdit()
+                : cancelNewBranch()
+          "
         />
       </div>
       <!-- Input -->
@@ -359,7 +354,9 @@
         :attachment-ready="importBridge.ready"
         :can-continue="showContinue"
         :token-display="tokenDisplay"
-        :scope-label="scopeCompact"
+        :scope-label="access.label"
+        :scope-icon="access.icon"
+        :scope-code="access.code"
         :can-note="commentSession"
         :note-blocked="midTurn"
         @send="onSend"
@@ -399,7 +396,7 @@
       @cancel-pending="cancelPendingNavigation"
       @close="navigationOpen = false"
       @jump="navigationJump"
-      @start="navigationJump(messages.find(m => !m.draft)?.id ?? '')"
+      @start="navigationJump(messages.find((m) => !m.draft)?.id ?? '')"
       @latest="navigationLatest"
       @back="navigationBack"
       @discussion="navigationDiscussion"
@@ -432,13 +429,17 @@
 </template>
 
 <script setup lang="ts">
-import { ref, shallowRef, watch, nextTick, computed, onMounted, onUnmounted } from 'vue'
+import { ref, shallowRef, watch, nextTick, computed, onMounted, onUnmounted, reactive } from 'vue'
 import { Notice, Platform, TFile } from 'obsidian'
 import Icon from './obsidian/Icon.vue'
 import AgentsButton from './AgentsButton.vue'
+import { AgentsService } from '@/agents/AgentsService'
+import { openAgents } from '@/agents/openAgents'
 import SheetHeaderActions, { type HeaderAction } from './obsidian/SheetHeaderActions.vue'
 import LocalAttentionPanel from './LocalAttentionPanel.vue'
 import Markdown from './obsidian/Markdown.vue'
+import Button from './obsidian/Button.vue'
+import RequestCard from './obsidian/RequestCard.vue'
 import AiChatMessage from './AiChatMessage.vue'
 import ChatSelectionBar from './ChatSelectionBar.vue'
 import ChatAnchorHistory from './ChatAnchorHistory.vue'
@@ -451,8 +452,6 @@ import { useChatFind } from '@/composables/useChatFind'
 import { useFindKey } from '@/composables/useFindKey'
 import type { FindPart } from '@/ai/chatFind'
 import { useChatScroll } from '@/composables/useChatScroll'
-import { branchSwitches, newBranchAfter } from '@/ai/chatBranches'
-import { navigationTitle } from '@/ai/chatNavigation'
 import { useChatNavigation } from '@/composables/useChatNavigation'
 export type { BranchInfo } from '@/composables/useChatBranchInfo'
 import { useChatKeyboardGap } from '@/composables/useChatKeyboardGap'
@@ -466,6 +465,12 @@ import AiToolApproval from './AiToolApproval.vue'
 import AiAgentSelector from './AiAgentSelector.vue'
 import AiChatHistory from './AiChatHistory.vue'
 import ChatNavigation from './ChatNavigation.vue'
+import { navigationTitle } from '@/ai/chatNavigation'
+import { branchSwitches, newBranchAfter } from '@/ai/chatBranches'
+import { callState, chatBlocks, type ChatBlock } from '@/ai/toolRuns'
+import ChatToolRun from './ChatToolRun.vue'
+import ChatThinking from './ChatThinking.vue'
+import ChatQuestionCard from './ChatQuestionCard.vue'
 import AiRewindDialog from './AiRewindDialog.vue'
 import AiChatSetup from './AiChatSetup.vue'
 import AiCommentTrail from './AiCommentTrail.vue'
@@ -474,13 +479,13 @@ import TemplateVariablesModal from './TemplateVariablesModal.vue'
 import { AbeleConfig } from '@/services/AbeleConfig'
 import { ChatService, type PendingInput } from '@/ai/ChatService'
 import AiNodeScopeChips from './AiNodeScopeChips.vue'
-import { AgentsService } from '@/agents/AgentsService'
+import { NodeScopeEntriesSchema, nodeTargetId } from '@/ai/nodeScope'
 import { fileMentions } from '@/ai/fileMentions'
 import { GlobalStore } from '@/stores/GlobalStore'
 import { parseTemplateVariables, applyTemplateVariables } from '@/templates/TemplateParser'
 import { allowTemplateExecution } from '@/templates/TemplateTrust'
 import type { TemplateVariable } from '@/templates/TemplateParser'
-import type { MessageComment } from '@/ai/types'
+import type { ChatDraft, ChatMessage, MessageComment } from '@/ai/types'
 import { sameConversation, type ConversationOwner } from '@/ai/draftImports'
 import { revealAnchor, captureSelectionLink } from '@/ai/openChat'
 import { ScriptService } from '@/scripting/ScriptService'
@@ -496,7 +501,9 @@ import type { ChatSession } from '@/ai/ChatSession'
 const chatService = ChatService.getInstance()
 chatService.ensureInitialized()
 const session = computed(() => chatService.activeSession.value)
-const nodeSession = computed(() => chatService.activeTabId.value ? chatService.getNodeSession(chatService.activeTabId.value) : null)
+const nodeSession = computed(() =>
+  chatService.activeTabId.value ? chatService.getNodeSession(chatService.activeTabId.value) : null
+)
 const attachmentOwner = computed<ConversationOwner | undefined>(() => {
   const id = chatService.activeTabId.value
   return id ? { sessionId: id, version: session.value?.conversationVersion?.value ?? 0 } : undefined
@@ -531,11 +538,6 @@ const currentQuestion = computed(() => {
   if (!pq) return null
   return pq.questions[pq.currentIndex]
 })
-const questionsProgress = computed(() => {
-  const pq = pendingQuestions.value
-  if (!pq) return ''
-  return `${pq.currentIndex + 1} / ${pq.questions.length}`
-})
 const answerQuestion = (answer: string) => {
   session.value?.answerCurrentQuestion(answer)
 }
@@ -551,10 +553,11 @@ watch(
     if (current)
       void AgentsService.getInstance()
         .markChatSeen(current)
-        .catch((error: unknown) =>
-          new Notice(
-            error instanceof Error ? error.message : 'Could not save the acknowledgements'
-          )
+        .catch(
+          (error: unknown) =>
+            new Notice(
+              error instanceof Error ? error.message : 'Could not save the acknowledgements'
+            )
         )
   },
   { immediate: true, flush: 'post' }
@@ -588,6 +591,90 @@ const tabInfos = computed(() =>
 )
 
 const branchSwitchMap = computed(() => branchSwitches(allMessages.value, messages.value))
+
+const blocks = computed(() => chatBlocks(visibleMessages.value))
+const runChoice = reactive(new Map<string, boolean>())
+const runsShowing = reactive(new Set<string>())
+watch(
+  [() => session.value?.id, () => attachmentOwner.value?.version],
+  () => {
+    runChoice.clear()
+    runsShowing.clear()
+  },
+  { flush: 'sync' }
+)
+const runOpen = (block: Extract<ChatBlock, { kind: 'run' }>) =>
+  runChoice.get(block.id) ??
+  (runsShowing.has(block.id) ||
+    block.calls.some((c) => callState(c) === 'running' || c.toolStatus === 'pending') ||
+    block.messages.some((m) => m.id === find.current.value?.messageId))
+const setRunOpen = (id: string, open: boolean) => runChoice.set(id, open)
+const showInRun = (messageId: string): boolean => {
+  const run = blocks.value.find(
+    (b): b is Extract<ChatBlock, { kind: 'run' }> =>
+      b.kind === 'run' && b.messages.some((m) => m.id === messageId)
+  )
+  if (!run || runOpen(run)) return false
+  runChoice.delete(run.id)
+  runsShowing.add(run.id)
+  return true
+}
+
+const messageProps = (msg: ChatMessage) => ({
+  message: msg,
+  branches: branchSwitchMap.value.get(msg.id),
+  interceptorStreaming: msg.draft
+    ? interceptorStreaming.value || interceptorWorking.value
+    : replyReviews.value[msg.id]?.streaming,
+  interceptorStreamingContent: msg.draft
+    ? interceptorStreamingContent.value
+    : replyReviews.value[msg.id]?.streamingContent,
+  interceptorError: msg.draft ? interceptorError.value : replyReviews.value[msg.id]?.error,
+  comments: commentsOn.value.get(msg.id),
+  canComment: canComment.value,
+  captureLink,
+  captureScript,
+  scriptMenu: selectionScripts,
+  canRewind: canRewind.value && msg.role === 'user' && !msg.draft,
+  changedFiles: changedTurns.value.has(msg.id),
+  canClone: !!session.value,
+  liveTurn: liveTurn.value.has(msg.id),
+})
+/** What the agent has done since the last question, while it is still at it. */
+const liveTurn = computed(() => {
+  if (
+    !isStreaming.value &&
+    !isExecutingTool.value &&
+    !pendingApprovalMessage.value &&
+    !currentQuestion.value
+  )
+    return new Set<string>()
+  const list = messages.value
+  let start = list.length
+  while (start > 0 && list[start - 1].role !== 'user') start--
+  return new Set(list.slice(start).map((m) => m.id))
+})
+const messageHandlers = {
+  'clone-chat': (id: string) => onCloneChat(id),
+  'create-branch': (id: string) => onCreateBranch(id),
+  'switch-branch': (id: string) => onSwitchBranch(id),
+  'repeat-message': (id: string) => onRepeatMessage(id),
+  'retry-message': (id: string) => onRetryMessage(id),
+  'insert-into-note': (id: string) => onInsertIntoNote(id),
+  'ask-here': (...a: Parameters<typeof onAskHere>) => onAskHere(...a),
+  highlight: (...a: Parameters<typeof onHighlight>) => onHighlight(...a),
+  'remove-highlight': (...a: Parameters<typeof onRemoveHighlight>) => onRemoveHighlight(...a),
+  'recolor-highlight': (...a: Parameters<typeof onRecolorHighlight>) => onRecolorHighlight(...a),
+  'review-revision': (...a: Parameters<typeof onReviewRevision>) => onReviewRevision(...a),
+  'undo-revision': (...a: Parameters<typeof onUndoRevision>) => onUndoRevision(...a),
+  'edit-message': (id: string) => onEditMessage(id),
+  rewind: (...a: Parameters<typeof onRewind>) => onRewind(...a),
+  'confirm-draft': (...a: Parameters<typeof onConfirmDraft>) => onConfirmDraft(...a),
+  'edit-draft': (...a: Parameters<typeof onEditDraft>) => onEditDraft(...a),
+  'send-interceptor': (...a: Parameters<typeof onSendInterceptor>) => onSendInterceptor(...a),
+  'toggle-interceptor': (...a: Parameters<typeof onToggleInterceptor>) => onToggleInterceptor(...a),
+  'retry-interceptor': (...a: Parameters<typeof onRetryInterceptor>) => onRetryInterceptor(...a),
+}
 const branchingAfter = computed(() =>
   newBranchAfter(allMessages.value, messages.value, session.value?.branchLeafId ?? null)
 )
@@ -677,7 +764,11 @@ const captureLink = (id: string, quote: string, start: number, text: string) => 
   const s = session.value
   if (!s) return undefined
   const prepare = captureSelectionLink(s, id, quote, start, text)
-  return () => { void prepare().then((link) => navigator.clipboard.writeText(link)).catch(reportReplyError) }
+  return () => {
+    void prepare()
+      .then((link) => navigator.clipboard.writeText(link))
+      .catch(reportReplyError)
+  }
 }
 // Read at menu capture: changing the scripts folder can replace the service singleton.
 const selectionScripts = () => {
@@ -695,7 +786,9 @@ const captureScript = (id: string, quote: string, start: number, text: string) =
   const target = captureChatScriptTarget(owner, id, quote, start, text)
   return target ? chatScriptAction(GlobalStore.getInstance().app, target) : undefined
 }
-const anchorHistory = shallowRef<{ anchor: ChatAnchor; resolution: ChatAnchorResolution } | null>(null)
+const anchorHistory = shallowRef<{ anchor: ChatAnchor; resolution: ChatAnchorResolution } | null>(
+  null
+)
 let anchorReturnGeneration = 0
 
 const onHighlight = (id: string, quote: string, start: number, color: HighlightColor) => {
@@ -713,15 +806,42 @@ const onUndoRevision = (id: string) => {
 const onReviewRevision = (id: string) => {
   const owner = session.value
   const proposal = owner?.allMessages.value.find((message) => message.id === id)?.replyProposal
-  if (!owner || !proposal || (proposal.status !== 'pending' && proposal.application !== 'pending')) return
+  if (!owner || !proposal || (proposal.status !== 'pending' && proposal.application !== 'pending'))
+    return
   replyReview.value = { proposal, decide: (accept) => owner.decideReplyProposal(id, accept) }
 }
+
+/** The message being edited: its text is in the field, the chat stands before it. */
+const editingId = ref<string | null>(null)
+let editReturn: { leaf: string; text: string } | null = null
+const clearEdit = () => {
+  editingId.value = null
+  editReturn = null
+}
+/** Cancel only the edit: keep the prior draft and return to the exact continuation. */
+const cancelEdit = () => {
+  const saved = editReturn
+  clearEdit()
+  if (!saved) return
+  chatInput.value?.setText(saved.text)
+  onSwitchBranch(saved.leaf)
+}
+watch([() => session.value?.id, () => attachmentOwner.value?.version], clearEdit, { flush: 'sync' })
+// Sent, or the chat moved on another way: the edit is over.
+watch(branchingAfter, (after) => {
+  if (!after) clearEdit()
+})
 
 const onEditMessage = (messageId: string) => {
   const s = session.value
   if (!s) return
   const msg = s.allMessages.value.find((m) => m.id === messageId)
   if (!msg || msg.role !== 'user') return
+  editReturn ??= {
+    leaf: s.branchLeafId ?? messageId,
+    text: chatInput.value?.takeDraft().text ?? '',
+  }
+  editingId.value = messageId
 
   // Branch from parent so user message and everything below disappears
   if (msg.parentId) {
@@ -828,17 +948,40 @@ const tokenDisplay = computed(() => {
   return ctx ? `${fmt(t)}/${fmt(ctx)}` : fmt(t)
 })
 
-const scopeCompact = computed(() => {
+/** What a new chat works with, said in full under the agent: «Full vault», «2 files, 1 folder». */
+const scopeSummary = computed(() => {
+  const s = session.value?.scopeResolver?.summary.value
+  return s && s !== 'No files' ? s : ''
+})
+
+/**
+ * What the agent may reach, for the composer's access button: the whole vault is a glyph alone;
+ * places of its own (files, folders, patterns, groups, nodes) are another glyph with their
+ * count, and the full list goes into its tooltip.
+ */
+const nodeAccess = computed(() => {
+  const parsed = NodeScopeEntriesSchema.safeParse(session.value?.overrides?.value.nodeScope ?? [])
+  return parsed.success ? parsed.data : []
+})
+const access = computed(() => {
   const scope = session.value?.scopeResolver
-  if (!scope) return ''
-  const s = scope.summary.value
-  if (!s || s === 'No files') return ''
-  if (s === 'Full vault') return 'vault'
-  return s
-    .replace(/ files?/, 'f')
-    .replace(/ folders?/, 'd')
-    .replace(/ patterns?/, 'p')
-    .replace(/,\s*/g, ' ')
+  const summary = scope?.summary.value ?? ''
+  if (!scope) return { label: '', icon: 'vault', code: '' }
+  const full = summary === 'Full vault'
+  const files = full
+    ? summary
+    : (scope.entries?.value ?? []).map((entry) => `${entry.type}: ${entry.path}`).join(' · ')
+  const nodes = nodeAccess.value.map(
+    (entry) =>
+      `${[entry.node_id, entry.kind === 'node' ? '' : entry.project_id, entry.kind === 'target' ? nodeTargetId(entry.target) : ''].filter(Boolean).join(' / ')}, ${entry.access}`
+  )
+  const said = [files, ...nodes].filter(Boolean).join(' · ') || 'No files'
+  const places = (full ? 0 : (scope?.entries?.value.length ?? 0)) + nodes.length
+  return {
+    label: `Access: ${said}`,
+    icon: full && !nodes.length ? 'vault' : 'folder-lock',
+    code: full && !nodes.length ? '' : String(places),
+  }
 })
 
 const chatContainer = ref<HTMLElement | null>(null)
@@ -967,13 +1110,30 @@ const pendingPromptUserVars = ref<TemplateVariable[]>([])
 
 const composing = ref(false)
 const scroll = useChatScroll({
-  messagesContainer, messages, streamingContent, streamingThinking, isStreaming, composing,
+  messagesContainer,
+  messages,
+  streamingContent,
+  streamingThinking,
+  isStreaming,
+  composing,
 })
 const {
-  visibleMessages, olderCount, showMessagesFrom, resetWindow,
-  readerTakesOver, fingerOn, fingerOff, onMessagesScroll,
-  scrollOnUserSend, doScroll, holdInView, clearAnchor,
-  rememberPlace, returnTo, places, nextFrame,
+  visibleMessages,
+  olderCount,
+  showMessagesFrom,
+  resetWindow,
+  readerTakesOver,
+  fingerOn,
+  fingerOff,
+  onMessagesScroll,
+  scrollOnUserSend,
+  doScroll,
+  holdInView,
+  clearAnchor,
+  rememberPlace,
+  returnTo,
+  places,
+  nextFrame,
 } = scroll
 
 // Something the agent cannot go on without is shown in the conversation; it is not left
@@ -1028,6 +1188,8 @@ const revealMessage = async (
   if (index < 0) return
   // A few before it too, so it does not sit flush against the top with nothing to scroll to.
   showMessagesFrom(Math.max(0, index - REVEAL_CONTEXT))
+  // A call folded in a run of the agent's work opens with it.
+  showInRun(messageId)
   await nextTick()
   const el = messagesContainer.value
   const target = el?.querySelector<HTMLElement>(`[data-message-id="${CSS.escape(messageId)}"]`)
@@ -1038,9 +1200,9 @@ const revealMessage = async (
     do {
       selected = exact
         ? messageRefs.get(messageId)?.revealSelection(exact.revision, exact.placement.range)
-        : messageRefs.get(messageId)?.revealPassage(passage!.quote, passage!.start)
+        : messageRefs.get(messageId)?.revealPassage(passage.quote, passage.start)
       if (selected !== undefined) break
-      await new Promise<void>(resolve => el.win.setTimeout(resolve, 30))
+      await new Promise<void>((resolve) => el.win.setTimeout(resolve, 30))
       if (session.value !== s || generation !== revealing || !target.isConnected) return
     } while (Date.now() < until)
   }
@@ -1068,18 +1230,40 @@ const find = useChatFind({
   container: () => messagesContainer.value,
   hidden: () => olderCount.value,
   mountFrom: (index) => showMessagesFrom(index),
-  revealPart: (messageId: string, part: FindPart) => messageRefs.get(messageId)?.revealPart(part),
+  revealPart: (messageId: string, part: FindPart) => {
+    if (showInRun(messageId)) void nextTick(() => messageRefs.get(messageId)?.revealPart(part))
+    else messageRefs.get(messageId)?.revealPart(part)
+  },
   // A reader taken to a match is reading back, not following the end.
   holdInView,
 })
 
 const {
-  navigationOpen, navigationActiveMessage, navigationState, navigationFocusFork,
-  branchBlocked, deferNavigation, pendingNavigation, navigationReturns, cancelPendingNavigation,
-  openNavigation, navigationJump, navigationLatest, navigationDiscussion, navigationBack,
+  navigationOpen,
+  navigationActiveMessage,
+  navigationState,
+  navigationFocusFork,
+  branchBlocked,
+  deferNavigation,
+  pendingNavigation,
+  navigationReturns,
+  cancelPendingNavigation,
+  openNavigation,
+  navigationJump,
+  navigationLatest,
+  navigationDiscussion,
+  navigationBack,
 } = useChatNavigation({
-  session, chatService, messagesContainer, composing, attachmentOwner, scroll,
-  revealMessage, messageRefs, find, reportReplyError,
+  session,
+  chatService,
+  messagesContainer,
+  composing,
+  attachmentOwner,
+  scroll,
+  revealMessage,
+  messageRefs,
+  find,
+  reportReplyError,
 })
 
 // The command that finds in the chat in front, taken by whichever chat is on screen.
@@ -1143,7 +1327,10 @@ watch(
     if (target.resolution.status === 'current') {
       const selected = await revealMessage(target.messageId, undefined, target.resolution)
       if (session.value === s && generation === anchorReturnGeneration && !selected)
-        anchorHistory.value = { anchor: target.anchor, resolution: { status: 'unresolved', snapshot: target.anchor.snapshot } }
+        anchorHistory.value = {
+          anchor: target.anchor,
+          resolution: { status: 'unresolved', snapshot: target.anchor.snapshot },
+        }
     } else {
       await revealMessage(target.messageId, undefined, undefined, false)
       if (session.value === s && generation === anchorReturnGeneration) anchorHistory.value = target
@@ -1151,22 +1338,35 @@ watch(
   },
   { immediate: true, flush: 'post' }
 )
-watch(session, () => { anchorHistory.value = null; anchorReturnGeneration++ })
+watch(session, () => {
+  anchorHistory.value = null
+  anchorReturnGeneration++
+})
 
 watch(
-  () => [chatService.pendingAttentionReveal?.value, session.value, messagesContainer.value] as const,
+  () =>
+    [chatService.pendingAttentionReveal?.value, session.value, messagesContainer.value] as const,
   async ([request, s, el]) => {
     if (!request || !s || !el || request.sessionId !== s.id) return
     chatService.pendingAttentionReveal.value = null
     composing.value = false
     await nextTick()
     if (session.value !== s || messagesContainer.value !== el) return
-    const target = [...el.querySelectorAll<HTMLElement>('[data-attention-id]')].find(e => e.dataset.attentionId === request.id)
-      ?? el.querySelector<HTMLElement>(request.kind === 'approval' ? '.abele-tool-approval' : '.abele-ai-chat__questions')
+    const target =
+      [...el.querySelectorAll<HTMLElement>('[data-attention-id]')].find(
+        (e) => e.dataset.attentionId === request.id
+      ) ??
+      el.querySelector<HTMLElement>(
+        request.kind === 'approval' ? '.abele-tool-approval' : '.abele-ai-chat__questions'
+      )
     target?.scrollIntoView({ block: 'center' })
     // Only an explicit Reply to this exact question takes the keyboard. A stale list
     // entry must not focus the composer for another question that arrived meanwhile.
-    if (request.focusComposer && request.kind === 'question' && target?.dataset.attentionId === request.id) {
+    if (
+      request.focusComposer &&
+      request.kind === 'question' &&
+      target?.dataset.attentionId === request.id
+    ) {
       await nextTick()
       if (session.value === s && messagesContainer.value === el) focusComposer()
     }
@@ -1179,7 +1379,8 @@ watch(
   ([messageId, s, el]) => {
     if (!messageId || !s || !el) return
     const passage = chatService.pendingPassage.value
-    if (passage && passage.message === messageId && passage.path !== s.currentChatFile.value?.path) return
+    if (passage && passage.message === messageId && passage.path !== s.currentChatFile.value?.path)
+      return
     chatService.pendingReveal.value = null
     chatService.pendingPassage.value = null
     composing.value = false
@@ -1212,7 +1413,8 @@ watch(
     // Drafts are session-owned. The editor only rebinds to the session; there is no view-local
     // snapshot to restore or replace, even if a run or a closed panel destroyed the editor.
     void nextTick(() => {
-      if (chatService.activeTabId.value !== tabId || attachmentOwner.value?.version !== version) return
+      if (chatService.activeTabId.value !== tabId || attachmentOwner.value?.version !== version)
+        return
       consumePendingInput()
     })
   }
@@ -1227,7 +1429,11 @@ function filesOf(paths: string[] | undefined): TFile[] {
 }
 
 /** Inserted links and files alone join the draft; new-chat text still replaces it. */
-function pendingDraft(pending: PendingInput, saved?: ChatDraft, incoming = filesOf(pending.attachments)): ChatDraft {
+function pendingDraft(
+  pending: PendingInput,
+  saved?: ChatDraft,
+  incoming = filesOf(pending.attachments)
+): ChatDraft {
   const join = pending.append || (!pending.text && !!pending.attachments?.length)
   const before = saved?.text ?? ''
   const attachments = [...(saved?.attachments ?? [])]
@@ -1247,7 +1453,10 @@ function pendingFor(tabId: string | null | undefined): PendingInput | null {
   const pending = chatService.pendingInput.value
   if (!pending || !tabId) return null
   if (pending.tabId && pending.tabId !== tabId) return null
-  if (pending.conversationVersion !== undefined && pending.conversationVersion !== attachmentOwner.value?.version) {
+  if (
+    pending.conversationVersion !== undefined &&
+    pending.conversationVersion !== attachmentOwner.value?.version
+  ) {
     if (chatService.pendingInput.value === pending) chatService.pendingInput.value = null
     new Notice('The conversation changed. Attach the saved picture to the intended chat.')
     return null
@@ -1530,11 +1739,14 @@ const onPromptVariablesConfirm = async (values: Map<string, string>) => {
 const importBridge = computed(() => {
   const origin = session.value
   const expected = attachmentOwner.value
-  const owns = (owner?: ConversationOwner): boolean => !!origin && !origin.isDestroyed &&
-    sameConversation(owner, expected) && (origin.conversationVersion?.value ?? 0) === expected?.version
+  const owns = (owner?: ConversationOwner): boolean =>
+    !!origin &&
+    !origin.isDestroyed &&
+    sameConversation(owner, expected) &&
+    (origin.conversationVersion?.value ?? 0) === expected?.version
   const ready = (path: string, owner?: ConversationOwner): void => {
     // Chat logs are supplied as conversation text, never granted as files in scope.
-    if (owns(owner) && !isChatLog(path)) origin!.scopeResolver.addFile(path)
+    if (owns(owner) && !isChatLog(path)) origin.scopeResolver.addFile(path)
   }
   return { owns, ready }
 })
@@ -1665,12 +1877,17 @@ const onContinue = async () => {
 const onNewTab = () => chatService.newTab()
 const onNewChatMenu = () => void handleNewChat()
 
-// Keep the same actions on a narrow pane, without making the agent picker compete with
-// every icon. The existing sheet-header kit opens Obsidian's menu and restores focus.
+// What the chat is set up with and the rarer ways out of it, in the header's ⋯ menu.
+const phone = Platform.isPhone
 const headerOverflowActions = computed<HeaderAction[]>(() => [
+  ...(phone
+    ? [
+        { id: 'find', label: 'Find in this chat', icon: 'search' },
+        { id: 'outline', label: 'Outline of this chat', icon: 'list-tree' },
+      ]
+    : []),
   ...(commentSession.value
     ? [
-        { id: 'back', label: 'Back to the passage this is about', icon: 'corner-up-left' },
         {
           id: 'promote',
           label: 'Turn this comment into an ordinary chat',
@@ -1680,14 +1897,29 @@ const headerOverflowActions = computed<HeaderAction[]>(() => [
         },
       ]
     : []),
-  { id: 'find', label: 'Find in this chat', icon: 'search' },
-  { id: 'navigation', label: 'Navigation', icon: 'list-tree' },
   {
     id: 'setup',
     label: 'Scope, skills, prompts, permissions and settings',
     icon: 'sliders-horizontal',
   },
+  ...(commentSession.value
+    ? []
+    : [{ id: 'artifacts', label: 'Artifacts: notes, images and scripts', icon: 'boxes' }]),
+  ...(agentsNeedYou.value ? [] : [{ id: 'agents', label: 'Agents', icon: 'activity' }]),
 ])
+/** Some other conversation waits for an answer from you. */
+const agentsNeedYou = computed(() => {
+  const current = session.value
+  const path = current?.currentChatFile.value?.path
+  return AgentsService.getInstance().rows.value.filter((row) => {
+    if (
+      row.reference.kind === 'local' &&
+      (row.reference.sessionId === current?.id || (!!path && row.reference.path === path))
+    )
+      return false
+    return row.reasons.some((reason) => reason.kind === 'approval' || reason.kind === 'question')
+  }).length
+})
 const onHeaderOverflowAction = (id: string) => {
   switch (id) {
     case 'back':
@@ -1699,11 +1931,17 @@ const onHeaderOverflowAction = (id: string) => {
     case 'find':
       find.open()
       break
-    case 'navigation':
+    case 'outline':
       openNavigation()
       break
     case 'setup':
       openSetup()
+      break
+    case 'artifacts':
+      artifactsSession.value = session.value ?? null
+      break
+    case 'agents':
+      openAgents()
       break
   }
 }
@@ -1790,21 +2028,6 @@ const showDebug = () => {
   gap: var(--size-4-1);
 }
 
-.abele-ai-chat__overflow {
-  display: none;
-}
-
-// Pane width, not device width: a narrow desktop split needs the same escape hatch.
-@container (max-width: 420px) {
-  .abele-ai-chat__header-actions > .abele-ai-chat__secondary-action {
-    display: none;
-  }
-
-  .abele-ai-chat__overflow {
-    display: flex;
-  }
-}
-
 .abele-ai-chat__header-actions {
   display: flex;
   align-items: center;
@@ -1874,46 +2097,32 @@ const showDebug = () => {
   visibility: hidden;
 }
 
+/* In the middle of the pane, as Obsidian's own empty tab: the agent, what it is for, and what
+   it can reach as a quiet chip that opens the access tab. */
 .abele-ai-chat__empty {
-  display: flex;
-  flex-direction: column;
-  align-items: center;
+  min-height: 100%;
   justify-content: center;
-  height: 100%;
-  gap: var(--size-4-3);
-}
+  padding-bottom: var(--size-4-12);
 
-.abele-ai-chat__empty-icon {
-  color: var(--background-modifier-border);
+  .abele-empty-state__description {
+    max-width: 30em;
+    text-wrap: balance;
+  }
 
-  svg {
-    width: 64px;
-    height: 64px;
-    stroke-width: 1;
+  .abele-empty-state__action {
+    margin-top: var(--size-4-3);
   }
 }
 
-.abele-ai-chat__empty-text {
-  display: block;
-  margin-top: var(--size-4-4);
-  color: var(--background-modifier-border);
-  font-size: var(--font-small);
+.abele-ai-chat__empty-scope {
+  gap: var(--size-2-2);
+  color: var(--text-faint);
+  font-size: var(--font-ui-smaller);
 }
 
 .abele-ai-chat__streaming-thinking {
-  margin: var(--size-4-2) 0;
-  border: 1px solid var(--background-modifier-border);
-  border-radius: var(--radius-s);
-  padding: var(--size-4-1) var(--size-4-2);
-  font-size: var(--font-small);
   overflow-wrap: break-word;
   word-break: break-word;
-
-  summary {
-    cursor: pointer;
-    color: var(--text-muted);
-    font-style: italic;
-  }
 
   pre {
     position: relative;
@@ -1957,36 +2166,48 @@ const showDebug = () => {
 
 /**
  * Messages waiting their turn. They are not in the conversation yet — the agent has not been
- * shown them — so they read as pending rather than as sent: muted, dashed, and each with a
- * way out of the queue.
+ * shown them — so each is a quiet line with a clock, as a run of the agent's work is, cut to one
+ * line, with a way to change it and a way out of the queue at its end.
  */
 .abele-ai-chat__queued {
   display: flex;
   flex-direction: column;
-  gap: var(--size-4-1);
-  padding: var(--size-4-2) var(--size-4-3);
+  margin-block: var(--size-2-1);
 }
 
 .abele-ai-chat__queued-item {
   display: flex;
-  align-items: flex-start;
+  align-items: center;
   gap: var(--size-4-2);
-  padding: var(--size-4-2);
-  border: 1px dashed var(--background-modifier-border);
-  border-radius: var(--radius-m);
+  min-height: calc(var(--font-ui-small) * var(--line-height-tight) + 2 * var(--size-2-3));
+  padding-inline: var(--size-4-1);
+  border-radius: var(--radius-s);
   color: var(--text-muted);
-  font-size: var(--font-small);
+  font-size: var(--font-ui-small);
+
+  .abele-obsidian-icon {
+    flex: none;
+  }
 }
 
 .abele-ai-chat__queued-icon {
-  flex-shrink: 0;
+  color: var(--icon-color);
 }
 
 .abele-ai-chat__queued-text {
   flex: 1;
   min-width: 0;
-  white-space: pre-wrap;
-  overflow-wrap: anywhere;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+/* The way to change it and out show under the pointer; a phone, which cannot point, keeps them. */
+body:not(.is-mobile) .abele-ai-chat__queued-item:not(:hover):not(:focus-within) {
+  .abele-ai-chat__queued-edit,
+  .abele-ai-chat__queued-remove {
+    opacity: 0;
+  }
 }
 
 .abele-ai-chat__aux-status {
@@ -2033,34 +2254,43 @@ const showDebug = () => {
   }
 }
 
+/* Something went wrong: the debugger's card in a neutral frame, a red dot saying so. */
 .abele-ai-chat__error {
-  display: flex;
-  flex-direction: column;
-  gap: var(--size-4-2);
-  padding: var(--size-4-2) var(--size-4-3);
-  color: var(--text-muted);
-  background-color: var(--background-secondary);
-  border-left: 3px solid var(--text-error);
-  border-radius: var(--radius-s);
   margin: var(--size-4-2) 0;
-  font-size: var(--font-small);
-  word-break: break-word;
 }
 
 .abele-ai-chat__error-line {
   display: flex;
   align-items: flex-start;
   gap: var(--size-4-2);
+  min-width: 0;
+}
+
+.abele-ai-chat__error-dot {
+  flex: none;
+  width: var(--size-4-2);
+  height: var(--size-4-2);
+  /* On the first line of the text, whatever its height. */
+  margin-block: calc((1lh - var(--size-4-2)) / 2);
+  border-radius: 50%;
+  background-color: var(--color-red);
+}
+
+.abele-ai-chat__error-text {
+  flex: 1 1 auto;
+  min-width: 0;
+}
+
+.abele-ai-chat__error-retry {
+  color: var(--text-faint);
+  font-size: var(--font-ui-smaller);
+  font-variant-numeric: tabular-nums;
 }
 
 .abele-ai-chat__error-actions {
   display: flex;
   flex-wrap: wrap;
+  justify-content: flex-end;
   gap: var(--size-4-2);
-
-  button {
-    font-size: var(--font-smallest);
-    padding: var(--size-2-1) var(--size-4-2);
-  }
 }
 </style>

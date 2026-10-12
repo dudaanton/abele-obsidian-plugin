@@ -1,6 +1,6 @@
 <template>
   <div class="abele-chat-msg__details">
-    <div class="abele-chat-msg__actions" role="group" aria-label="Message actions">
+    <div v-if="actions" class="abele-chat-msg__actions" role="group" aria-label="Message actions">
       <button type="button" class="clickable-icon" aria-label="Copy message" @click="emit('copy')">
         <Icon icon="copy" tooltip="Copy message" no-hover />
       </button>
@@ -83,19 +83,24 @@
 </template>
 
 <script setup lang="ts">
-import dayjs from 'dayjs'
+import { formatTimestamp } from '@/helpers/displayFormat'
 import Icon from './obsidian/Icon.vue'
 import Button from './obsidian/Button.vue'
 import type { ChatMessage } from '@/ai/types'
 import { toolParamsText, toolResultText } from '@/ai/toolLine'
 
-defineProps<{
-  message: ChatMessage
-  readOnlyHistory?: boolean
-  canComment?: boolean
-  captureSelection: () => void
-  askHere: () => void
-}>()
+withDefaults(
+  defineProps<{
+    message: ChatMessage
+    /** The row of actions; a question or an answer has them in the line under it instead. */
+    actions?: boolean
+    readOnlyHistory?: boolean
+    canComment?: boolean
+    captureSelection: () => void
+    askHere: () => void
+  }>(),
+  { actions: true }
+)
 const emit = defineEmits<{
   (event: 'copy'): void
   (event: 'actions', mouse: MouseEvent): void
@@ -104,5 +109,6 @@ const emit = defineEmits<{
   (event: 'insert-into-note', id: string): void
   (event: 'remove-highlight', id: string, highlight: string): void
 }>()
-const formatTime = (timestamp: number) => dayjs(timestamp).format('YYYY-MM-DD HH:mm:ss')
+// Short, as the time under a message: today the time alone, another day its date as well.
+const formatTime = (timestamp: number) => formatTimestamp(timestamp, { diagnostic: true }).exact
 </script>

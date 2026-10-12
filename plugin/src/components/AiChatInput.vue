@@ -83,7 +83,13 @@
            move out from under the finger before the click lands (see fieldFocus.ts). -->
       <div class="abele-chat-input__toolbar-right" @mousedown.prevent>
         <template v-if="!isBusy && !importing">
-          <Icon v-if="!textOnly" icon="paperclip" with-bg tooltip="Attach a file" @click="showAttachMenu" />
+          <Icon
+            v-if="!textOnly"
+            icon="paperclip"
+            with-bg
+            tooltip="Attach a file"
+            @click="showAttachMenu"
+          />
           <Icon
             icon="mic"
             with-bg
@@ -109,11 +115,24 @@
             @click="emit('abort')"
           />
         </template>
-        <Icon v-else-if="isBusy || importing" icon="loader" no-hover class="abele-chat-input__spinner" />
+        <Icon
+          v-else-if="isBusy || importing"
+          icon="loader"
+          no-hover
+          class="abele-chat-input__spinner"
+        />
         <template v-else>
-          <div v-if="scopeLabel" class="abele-chat-input__scope-badge" @click="emit('openScope')">
-            {{ scopeLabel }}
-          </div>
+          <!-- What the agent may reach, as a glyph with a count: the whole vault, or so many
+               places of its own; the full list is in the tooltip and in the access settings. -->
+          <Icon
+            v-if="scopeLabel"
+            :icon="scopeIcon ?? 'vault'"
+            with-bg
+            :text-right="scopeCode || undefined"
+            :tooltip="scopeLabel"
+            class="abele-chat-input__scope"
+            @click="emit('openScope')"
+          />
           <!-- Only over a comment, which is a place in a note as much as it is a chat: the
                words are kept and nothing is asked of anybody. -->
           <Icon
@@ -167,11 +186,7 @@ import { isImagePath } from '@/ai/tools/ReadImageTool'
 import { discoverSkills } from '@/ai/tools/SkillTool'
 import { useChatInputAttachments } from '@/composables/useChatInputAttachments'
 import { useChatInputEditor } from '@/composables/useChatInputEditor'
-import {
-  getAttachmentIcon,
-  fileName as attachmentName,
-  ALLOWED_ACCEPT,
-} from '@/ai/attachments'
+import { getAttachmentIcon, fileName as attachmentName, ALLOWED_ACCEPT } from '@/ai/attachments'
 import type { ChatDraft } from '@/ai/types'
 import { sameConversation, type ConversationOwner } from '@/ai/draftImports'
 
@@ -193,7 +208,12 @@ const props = defineProps<{
   attachmentReady?: (path: string, owner?: ConversationOwner) => void
   canContinue: boolean
   tokenDisplay: string
+  /** What the agent may reach, said in full: the access button's tooltip; empty hides it. */
   scopeLabel: string
+  /** The access button's glyph: `vault` for all of it, `folder-lock` for places of its own. */
+  scopeIcon?: string
+  /** How many places of its own the agent may reach, beside the glyph. */
+  scopeCode?: string
   /**
    * This conversation has a place in a note to keep words against — it is a comment.
    *
@@ -231,11 +251,18 @@ const draft = ref<ChatDraft>(props.conversationDraft ?? { text: '', attachments:
 let draftOwner = props.attachmentOwner
 let boundToSession = !!props.conversationDraft
 const importing = computed(() => !!draft.value.imports?.pending.size)
-const text = computed({ get: () => draft.value.text, set: (value) => { draft.value.text = value } })
+const text = computed({
+  get: () => draft.value.text,
+  set: (value) => {
+    draft.value.text = value
+  },
+})
 const fileInputEl = ref<HTMLInputElement | null>(null)
 const attachments = computed({
   get: () => draft.value.attachments,
-  set: (files: TFile[]) => { draft.value.attachments = files },
+  set: (files: TFile[]) => {
+    draft.value.attachments = files
+  },
 })
 
 /**
@@ -245,10 +272,24 @@ const attachments = computed({
  */
 const expanded = defineModel<boolean>('expanded', { default: false })
 const {
-  inputEl, editorHost, fallback, write, autoResize, onInput, syncText, focus,
-  hasFocus, onKeydown, onEmptyPress, onEditorDrop,
+  inputEl,
+  editorHost,
+  fallback,
+  write,
+  autoResize,
+  onInput,
+  syncText,
+  focus,
+  hasFocus,
+  onKeydown,
+  onEmptyPress,
+  onEditorDrop,
 } = useChatInputEditor({
-  props, text, expanded, send: () => send(), keepNote: () => keepNote(),
+  props,
+  text,
+  expanded,
+  send: () => send(),
+  keepNote: () => keepNote(),
   emitFocus: (focused) => emit('focus', focused),
 })
 const expandLabel = computed(() =>
@@ -273,7 +314,8 @@ const send = () => {
   // Streaming is deliberately not a guard: the session queues that message and gives it to
   // the loop at its next iteration. An auxiliary task the user chose to run on its own still
   // holds the input, because that is what running it sequentially means.
-  if (props.isBusy || importing.value || !(props.isCurrentConversation?.(draftOwner) ?? true)) return
+  if (props.isBusy || importing.value || !(props.isCurrentConversation?.(draftOwner) ?? true))
+    return
 
   const msg = text.value.trim()
   if (!msg && !attachments.value.length) return
@@ -350,10 +392,20 @@ const onVoiceNote = (dictated: string) => {
 }
 
 const {
-  showAttachMenu, onFileSelected, onPaste, isDragging, onDragOver, onDragLeave,
-  onDrop, addAttachment, importFiles,
+  showAttachMenu,
+  onFileSelected,
+  onPaste,
+  isDragging,
+  onDragOver,
+  onDragLeave,
+  onDrop,
+  addAttachment,
+  importFiles,
 } = useChatInputAttachments({
-  props, draft, owner: () => draftOwner, fileInputEl,
+  props,
+  draft,
+  owner: () => draftOwner,
+  fileInputEl,
   emitAttachFile: (path, owner) => emit('attachFile', path, owner),
 })
 
@@ -395,14 +447,18 @@ const putDraft = (incoming: ChatDraft) => {
 }
 
 // Binding a different session is not retirement: its imports continue in its own draft.
-watch(() => [props.conversationDraft, props.attachmentOwner] as const, ([owned, owner]) => {
-  if (!owned && !boundToSession) return
-  if (owned) boundToSession = true
-  draftOwner = owner
-  draft.value = owned ?? { text: '', attachments: [] }
-  write(draft.value.text)
-  nextTick(autoResize)
-}, { flush: 'post' })
+watch(
+  () => [props.conversationDraft, props.attachmentOwner] as const,
+  ([owned, owner]) => {
+    if (!owned && !boundToSession) return
+    if (owned) boundToSession = true
+    draftOwner = owner
+    draft.value = owned ?? { text: '', attachments: [] }
+    write(draft.value.text)
+    nextTick(autoResize)
+  },
+  { flush: 'post' }
+)
 
 // Text can arrive while no composer exists. When one is mounted, it mirrors the session,
 // without echoing edits the embedded editor already made or moving their cursor.
@@ -410,8 +466,16 @@ watch(text, syncText)
 
 const isDraftFor = (owner?: ConversationOwner) => sameConversation(draftOwner, owner)
 
-defineExpose({ setText, addAttachment, importFiles, focus, hasFocus, takeDraft, putDraft, isDraftFor })
-
+defineExpose({
+  setText,
+  addAttachment,
+  importFiles,
+  focus,
+  hasFocus,
+  takeDraft,
+  putDraft,
+  isDraftFor,
+})
 </script>
 
 <style lang="scss" src="./chat/input.scss"></style>

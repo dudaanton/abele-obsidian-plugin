@@ -233,7 +233,7 @@ describe.skipIf(!available)('agent deck authoring and inspection', () => {
         await new Promise(r=>setTimeout(r,500))
         card.scrollIntoView({block:'center'});await new Promise(r=>setTimeout(r,300))
         const box=card.getBoundingClientRect(),buttons=[...card.querySelectorAll('button')]
-        const approve=buttons.find(b=>b.textContent.trim()==='Approve'),r=approve.getBoundingClientRect()
+        const approve=buttons.find(b=>b.textContent.trim()==='Allow'),r=approve.getBoundingClientRect()
         if(window.__e2eHost)await window.__e2eHost.shot(${JSON.stringify(SHOTS + '/deck-approval.png')})
         else {const fs=require('fs');fs.mkdirSync(${JSON.stringify(SHOTS)},{recursive:true});fs.writeFileSync(${JSON.stringify(SHOTS + '/deck-approval.png')},(await require('@electron/remote').getCurrentWindow().capturePage()).toPNG())}
         return JSON.stringify({diff:card.textContent.includes('Proposed title'),over:Math.max(0,-box.left,box.right-innerWidth),approveVisible:r.top>=0&&r.bottom<=innerHeight,unchanged:before===await app.vault.read(app.vault.getAbstractFileByPath(${JSON.stringify(PATH)}))})

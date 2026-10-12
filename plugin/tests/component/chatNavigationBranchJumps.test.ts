@@ -425,7 +425,9 @@ describe('branch jumps from navigation', () => {
   it('keeps reading available on the current branch while busy and cancels a deferred switch explicitly', async () => {
     session.isExecutingTool.value = true
     await chooseOther()
-    await wrapper.find('.abele-ai-chat__branch-note [aria-label="Cancel branch switch"]').trigger('click')
+    await wrapper
+      .find('.abele-ai-chat__branch-note [aria-label="Cancel branch switch"]')
+      .trigger('click')
     await open()
     modal().querySelector<HTMLElement>('[data-question="q"]')!.click()
     await pause(80)
@@ -456,6 +458,6 @@ describe('branch jumps from navigation', () => {
       .vm.$emit('discussion', 'sample-discussion', 'a', 'content', 'answer')
     await pause(100)
     expect(show.mock.lastCall?.[1]).toEqual(expect.any(Function))
-    expect(wrapper.find('.abele-chat-find__count').text()).toBe('1 of 1')
+    expect(wrapper.find('.abele-chat-find__count').text()).toBe('1/1')
   })
 })

@@ -2,14 +2,10 @@
   <Icon
     icon="activity"
     with-bg
-    role="button"
-    tabindex="0"
     :aria-label="agents.tooltip.value"
     :tooltip="agents.tooltip.value"
     :text-right="mark || undefined"
     @click="openAgents"
-    @keydown.enter.prevent="openAgents"
-    @keydown.space.prevent="openAgents"
   />
 </template>
 <script setup lang="ts">
@@ -17,8 +13,12 @@ import { computed } from 'vue'
 import Icon from './obsidian/Icon.vue'
 import { AgentsService } from '@/agents/AgentsService'
 import { openAgents } from '@/agents/openAgents'
+const props = defineProps<{ count?: number }>()
 const agents = AgentsService.getInstance()
+// How many conversations wait for you, as a number; the rest is in the tooltip.
 const mark = computed(() =>
-  `${agents.badge.value.mark}${agents.badge.value.incomplete ? ' ?' : ''}`.trim()
+  (props.count ?? agents.badge.value.attention)
+    ? String(props.count ?? agents.badge.value.attention)
+    : ''
 )
 </script>

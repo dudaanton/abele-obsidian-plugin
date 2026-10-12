@@ -9,7 +9,7 @@
  * file does not exist yet, so plain content is the whole truth and a diff would be a lie.
  */
 import { describe, it, expect, beforeEach, afterEach, vi } from 'vitest'
-import { mount } from '@vue/test-utils'
+import { flushPromises, mount } from '@vue/test-utils'
 import { nextTick, ref } from 'vue'
 import AiToolApproval from '@/components/AiToolApproval.vue'
 import Diff from '@/components/Diff.vue'
@@ -22,6 +22,13 @@ import { DEFAULT_AI_SETTINGS } from '@/ai/types'
 import { allowSecretOrigin } from '@/ai/tools/secretUtils'
 import { initializeDestinations } from '@/secrets/destinations'
 import type { FakeApp } from '../helpers/fakeVault'
+import {
+  ALWAYS_TOOL,
+  ALWAYS_WRITES,
+  approvalChoice,
+  approvalMenu,
+  chooseApproval,
+} from '../helpers/approvalCard'
 
 const EXISTING = 'Notes/Existing.md'
 
@@ -59,7 +66,7 @@ async function settled(wrapper: ReturnType<typeof approval>) {
   return wrapper
 }
 
-it('offers a keyboard-reachable Stop with Reject weight and stops the request session', async () => {
+it('offers a keyboard-reachable Stop with Deny weight and stops the request session', async () => {
   const stopFromApproval = vi.fn()
   vi.spyOn(ChatService.getInstance(), 'activeSession', 'get').mockReturnValue({
     value: { stopFromApproval, getToolMode: () => 'ask', permissionMode: ref('confirm-all') },
@@ -68,7 +75,7 @@ it('offers a keyboard-reachable Stop with Reject weight and stops the request se
   try {
     const stop = buttonSaying(wrapper, 'Stop')!
     expect(stop).toBeDefined()
-    expect(stop.props('tooltip')).toBe('Reject and stop the agent')
+    expect(stop.props('tooltip')).toBe('Deny and stop the agent')
     expect(stop.find('button').attributes('disabled')).toBeUndefined()
     expect(stop.find('button').classes()).not.toContain('mod-cta')
     await stop.find('button').trigger('click')
@@ -269,9 +276,11 @@ function sessionIn(mode: PermissionMode, toolMode: ToolMode = 'off') {
 
 const buttonSaying = (wrapper: ReturnType<typeof approval>, text: string) =>
   wrapper.findAllComponents(Button).find((b) => b.props('text') === text)
+const offered = (wrapper: ReturnType<typeof approval>, title: string | RegExp) =>
+  approvalChoice(wrapper, title)
 
 describe('being offered to stop confirming every write', () => {
-  it('shows the exact node proposal and never offers automatic edit permission', () => {
+  it('shows the exact node proposal and never offers automatic edit permission', async () => {
     sessionIn('allow-all', 'ask')
     const wrapper = approval('node_propose_edit', {
       node: 'node-sample',
@@ -285,48 +294,49 @@ describe('being offered to stop confirming every write', () => {
     expect(wrapper.text()).toContain('a'.repeat(64))
     expect(wrapper.text()).toContain('export const sample = 42')
     expect(wrapper.text()).toContain('Save in the repository tab is a separate owner action')
-    expect(buttonSaying(wrapper, 'Always allow')).toBeUndefined()
-    expect(buttonSaying(wrapper, 'Always allow writes')).toBeUndefined()
+    expect(await offered(wrapper, ALWAYS_TOOL)).toBeUndefined()
+    expect(await offered(wrapper, ALWAYS_WRITES)).toBeUndefined()
     expect(app.stats.read).toBe(0)
     wrapper.unmount()
   })
-  it('does not offer general write allowance for a deck tool still in Ask mode', () => {
+  it('does not offer general write allowance for a deck tool still in Ask mode', async () => {
     sessionIn('confirm-all', 'ask')
     const wrapper = approval('deck_create', {
       path: 'Decks/new.md',
       content: '---\ntype: presentation\n---\n# Sample',
     })
-    expect(buttonSaying(wrapper, 'Always allow writes')).toBeUndefined()
-    expect(buttonSaying(wrapper, 'Always allow')).toBeDefined()
+    expect(await offered(wrapper, ALWAYS_WRITES)).toBeUndefined()
+    expect(await offered(wrapper, ALWAYS_TOOL)).toBeDefined()
     wrapper.unmount()
   })
-  it('is offered on a write, while each one is still being confirmed', () => {
+  it('is offered on a write, while each one is still being confirmed', async () => {
     sessionIn('confirm-all')
 
     const wrapper = approval('create', { path: 'Notes/New.md', content: 'x' })
 
-    expect(buttonSaying(wrapper, 'Always allow writes')).toBeDefined()
+    expect(await offered(wrapper, ALWAYS_WRITES)).toBeDefined()
   })
 
-  it('turns on the mode and approves the call that asked', () => {
+  it('turns on the mode and approves the call that asked', async () => {
     const { permissionMode, approvals } = sessionIn('confirm-all')
     const wrapper = approval('write', { path: EXISTING, content: 'x' })
 
-    buttonSaying(wrapper, 'Always allow writes')?.vm.$emit('click')
+    await chooseApproval(wrapper, ALWAYS_WRITES)
+    await flushPromises()
 
     expect(permissionMode.value).toBe('allow-edit')
     expect(approvals).toEqual(['approved'])
   })
 
-  it('is not offered again once writes already go through', () => {
+  it('is not offered again once writes already go through', async () => {
     sessionIn('allow-edit')
 
     const wrapper = approval('write', { path: EXISTING, content: 'x' })
 
-    expect(buttonSaying(wrapper, 'Always allow writes')).toBeUndefined()
+    expect(await offered(wrapper, ALWAYS_WRITES)).toBeUndefined()
   })
 
-  it('is not offered for what the mode would not cover — deleting, moving, running code', () => {
+  it('is not offered for what the mode would not cover — deleting, moving, running code', async () => {
     sessionIn('confirm-all')
 
     for (const [tool, params] of [
@@ -334,80 +344,75 @@ describe('being offered to stop confirming every write', () => {
       ['mv', { from: EXISTING, to: 'Notes/Moved.md' }],
       ['eval_js', { code: 'x' }],
     ] as const) {
-      expect(buttonSaying(approval(tool, params), 'Always allow writes')).toBeUndefined()
+      expect(await offered(approval(tool, params), ALWAYS_WRITES)).toBeUndefined()
     }
   })
 })
 
 /**
- * The button that stops a tool being asked about, and what it says it does.
+ * The answer that stops a tool being asked about, and what it says it does.
  *
  * It was labelled "Allow all", which was read as "let the agent get on with everything" — the
  * natural reading with twenty calls queued behind the prompt. What it actually does is put
  * this one tool on automatic; the next call to anything else asks again, which looks like the
- * button not having worked. Both buttons now name their scope on their face.
+ * answer not having worked. So it names the one tool it covers on its face, in the card's menu.
  */
 describe('being offered to stop confirming one tool', () => {
   const SCRIPT = 'script_english-word-card'
 
-  it('is offered while that tool is still being asked about', () => {
+  it('is offered while that tool is still being asked about', async () => {
     sessionIn('confirm-all', 'ask')
 
     const wrapper = approval(SCRIPT, { word: 'ellipsis' })
 
-    expect(buttonSaying(wrapper, 'Always allow')).toBeDefined()
+    expect(await offered(wrapper, ALWAYS_TOOL)).toBeDefined()
   })
 
-  it('does not claim to allow everything', () => {
+  it('does not claim to allow everything', async () => {
     sessionIn('confirm-all', 'ask')
 
     const wrapper = approval(SCRIPT, { word: 'ellipsis' })
 
+    const titles = (await approvalMenu(wrapper)).map((i) => i.title)
+    expect(titles.some((t) => /allow all/i.test(t))).toBe(false)
     expect(buttonSaying(wrapper, 'Allow all')).toBeUndefined()
   })
 
-  it('names the tool it would stop asking about', () => {
+  it('names the one tool it would stop asking about', async () => {
     sessionIn('confirm-all', 'ask')
 
     const wrapper = approval(SCRIPT, { word: 'ellipsis' })
 
-    expect(buttonSaying(wrapper, 'Always allow')?.props('tooltip')).toContain(SCRIPT)
+    expect((await offered(wrapper, ALWAYS_TOOL))?.title).toBe(`Always allow ${SCRIPT}`)
   })
 
-  it('says that everything else still asks', () => {
-    sessionIn('confirm-all', 'ask')
-
-    const wrapper = approval(SCRIPT, { word: 'ellipsis' })
-
-    expect(buttonSaying(wrapper, 'Always allow')?.props('tooltip')).toMatch(/still ask/i)
-  })
-
-  it('puts that tool on automatic and approves the call that asked', () => {
+  it('puts that tool on automatic and approves the call that asked', async () => {
     const { toolModes, approvals } = sessionIn('confirm-all', 'ask')
     const wrapper = approval(SCRIPT, { word: 'ellipsis' })
 
-    buttonSaying(wrapper, 'Always allow')?.vm.$emit('click')
+    await chooseApproval(wrapper, ALWAYS_TOOL)
+    await flushPromises()
 
     expect(toolModes.value).toEqual({ [SCRIPT]: 'auto' })
     expect(approvals).toEqual(['approved'])
   })
 
-  it('is not offered once that tool already goes through', () => {
+  it('is not offered once that tool already goes through', async () => {
     sessionIn('confirm-all', 'auto')
 
     const wrapper = approval(SCRIPT, { word: 'ellipsis' })
 
-    expect(buttonSaying(wrapper, 'Always allow')).toBeUndefined()
+    expect(await offered(wrapper, ALWAYS_TOOL)).toBeUndefined()
   })
 })
 
-describe('the button that stops confirming every write', () => {
-  it('says on its face that writes are all it covers', () => {
+describe('the answer that stops confirming every write', () => {
+  it('says on its face that writes in scope are all it covers', async () => {
     sessionIn('confirm-all')
 
     const wrapper = approval('write', { path: EXISTING, content: 'x' })
 
-    expect(buttonSaying(wrapper, 'Always allow writes')).toBeDefined()
+    expect(await offered(wrapper, ALWAYS_WRITES)).toBeDefined()
     expect(buttonSaying(wrapper, 'Approve all')).toBeUndefined()
   })
 })

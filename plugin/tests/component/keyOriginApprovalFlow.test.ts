@@ -464,7 +464,7 @@ describe('trusting the current saved-key origin', () => {
     planned = [call('other')]
     await other.sendMessage('Use another sample request')
     await start(call('first'), call('second'))
-    await button('Approve').trigger('click')
+    await button('Allow').trigger('click')
     await flushPromises()
     expect(executed).toEqual([`${session.id}:first`])
     expect(session.pendingToolCalls.value[0].id).toBe('second')

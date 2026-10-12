@@ -110,7 +110,7 @@ const probe = (desktopChecks: boolean, label: string) => `(async () => {
     const card = await until(() => document.querySelector('.abele-tool-approval'))
     if (window.__e2eHost) await ${RESTORE_PHONE_SCRIPT}
     card.scrollIntoView({block: 'center'}); await wait(400)
-    const approve = [...card.querySelectorAll('button')].find(el => el.textContent.trim() === 'Approve')
+    const approve = [...card.querySelectorAll('button')].find(el => el.textContent.trim() === 'Allow')
     if (!approve) throw new Error('Memory approval button absent')
     const rect = approve.getBoundingClientRect()
     report.visible = rect.width > 0 && rect.top >= 0 && rect.bottom <= innerHeight

@@ -34,7 +34,7 @@ it('presents one retry error and acknowledges failures only when the chat is pre
   await flushPromises()
   expect(wrapper.findAll('.abele-ai-chat__error')).toHaveLength(1)
   expect(wrapper.get('.abele-ai-chat__error').text()).toContain('Synthetic failure')
-  expect(wrapper.get('.abele-ai-chat__error button').text()).toBe('Retry')
+  expect(wrapper.get('.abele-ai-chat__error button.mod-cta').text()).toBe('Retry')
   expect(seen).toHaveBeenCalledOnce()
   wrapper.unmount()
 })

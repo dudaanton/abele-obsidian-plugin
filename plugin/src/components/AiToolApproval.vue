@@ -1,8 +1,18 @@
 <template>
-  <div class="abele-tool-approval">
+  <!-- What the agent asks to do, said as the debugger's card says it: a glyph of the kind of
+       action and what it is, the exact thing in code under it, Deny and Allow at the end. The
+       rarer answers (always, edit first) are in the card's menu, not more buttons. -->
+  <RequestCard class="abele-tool-approval" waiting>
     <div class="abele-tool-approval__header">
-      <Icon icon="shield-alert" />
-      <span>{{ headerText }}</span>
+      <Icon :icon="KIND_ICON[toolKind(message.toolName)]" size="xs" :interactive="false" />
+      <span class="abele-tool-approval__what">{{ headerText }}</span>
+      <Icon
+        class="abele-tool-approval__more"
+        icon="more-horizontal"
+        size="xs"
+        label="More ways to answer"
+        @click="moreMenu"
+      />
     </div>
 
     <!-- Create: the file does not exist yet, so its content is all there is to show -->
@@ -119,6 +129,11 @@
       </div>
     </template>
 
+    <!-- One thing asked, a command or a path: that thing, as code. -->
+    <template v-else-if="soleParam !== null">
+      <pre class="abele-tool-approval__code"><code>{{ soleParam }}</code></pre>
+    </template>
+
     <!-- Fallback: readable key-value -->
     <template v-else>
       <div v-for="(val, key) in params" :key="key" class="abele-tool-approval__param">
@@ -156,30 +171,25 @@
       {{ parseError }}
     </div>
     <div class="abele-tool-approval__actions">
+      <Button text="Deny" tooltip="Do not let the agent do this" @click="reject" />
       <Button
-        :text="keyInfo && !keyInfo.missing.length ? 'Send once' : 'Approve'"
+        :text="
+          keyInfo && !keyInfo.missing.length ? 'Send once' : isEditing ? 'Allow as edited' : 'Allow'
+        "
+        accent
         :disabled="keyApprovalBusy"
+        tooltip="Let the agent do exactly this, once"
         @click="approve"
       />
-      <Button text="Edit" @click="toggleEdit" />
-      <Button text="Reject" @click="reject" />
-      <Button text="Stop" tooltip="Reject and stop the agent" @click="stop" />
+      <!-- Stop ends the agent's turn as well as denying this; it stands apart, on the left. -->
       <Button
-        v-if="canApproveAllWrites"
-        text="Always allow writes"
-        :disabled="keyApprovalBusy"
-        tooltip="Stop asking about writes inside the scope. Anything outside it still asks."
-        @click="approveAllWrites"
-      />
-      <Button
-        v-if="canAllowAll"
-        text="Always allow"
-        :disabled="keyApprovalBusy"
-        :tooltip="`Stop asking about ${message.toolName}. Every other tool still asks.`"
-        @click="allowAll"
+        class="abele-tool-approval__stop"
+        text="Stop"
+        tooltip="Deny and stop the agent"
+        @click="stop"
       />
     </div>
-  </div>
+  </RequestCard>
 </template>
 
 <script setup lang="ts">
@@ -194,10 +204,12 @@ import Icon from './obsidian/Icon.vue'
 import Button from './obsidian/Button.vue'
 import Input from './obsidian/Input.vue'
 import Diff from './Diff.vue'
+import RequestCard from './obsidian/RequestCard.vue'
 import { ChatService } from '@/ai/ChatService'
 import { GlobalStore } from '@/stores/GlobalStore'
 import { AbeleConfig } from '@/services/AbeleConfig'
-import { TFile } from 'obsidian'
+import { Menu, TFile } from 'obsidian'
+import { KIND_ICON, toolKind } from '@/ai/toolRuns'
 import { WRITE_TOOLS, DECK_WRITE_TOOLS } from '@/ai/types'
 import { NODE_EDIT_TOOLS, NODE_MUTATION_TOOLS } from '@/ai/tools/node/agent'
 import type { ChatMessage } from '@/ai/types'
@@ -236,7 +248,7 @@ const keyInfo = computed(() => {
   void keyRevision.value
   if (!keyRequest.value) return null
   try {
-    return secretRequestInfo(resolvedKeyRequest.value!)
+    return secretRequestInfo(resolvedKeyRequest.value)
   } catch {
     return null
   }
@@ -331,6 +343,45 @@ const allowKeyAddress = async () => {
   }
 }
 
+/** A request of one plain value, a command or a path: shown as that value, in code. */
+const soleParam = computed(() => {
+  const values = Object.values(params.value)
+  return values.length === 1 && typeof values[0] === 'string' ? values[0] : null
+})
+
+/** Answers asked for less often than Allow and Deny: in the card's menu. */
+function moreMenu(event?: MouseEvent) {
+  const menu = new Menu()
+  if (canAllowAll.value)
+    menu.addItem((i) =>
+      i
+        .setTitle(`Always allow ${props.message.toolName}`)
+        .setIcon('check-check')
+        .setDisabled(keyApprovalBusy.value)
+        .onClick(() => void allowAll())
+    )
+  if (canApproveAllWrites.value)
+    menu.addItem((i) =>
+      i
+        .setTitle('Always allow writes in scope')
+        .setIcon('pencil-line')
+        .setDisabled(keyApprovalBusy.value)
+        .onClick(() => void approveAllWrites())
+    )
+  menu.addItem((i) =>
+    i
+      .setTitle(isEditing.value ? 'Stop editing' : 'Edit before allowing')
+      .setIcon('braces')
+      .onClick(() => toggleEdit())
+  )
+  if (event) {
+    const button = event.currentTarget as HTMLElement
+    const rect = button.getBoundingClientRect()
+    menu.onHide(() => button.focus({ preventScroll: true }))
+    menu.showAtPosition({ x: rect.left, y: rect.bottom })
+  }
+}
+
 const headerText = computed(() => {
   switch (props.message.toolName) {
     case 'create':
@@ -347,8 +398,11 @@ const headerText = computed(() => {
       return 'Execute JavaScript'
     case 'write_settings':
       return 'Change a setting'
-    default:
-      return `Execute ${props.message.toolName}`
+    default: {
+      // A tool's own name, said as words: run_command → Run command.
+      const words = (props.message.toolName ?? 'tool').replace(/_/g, ' ')
+      return words.charAt(0).toUpperCase() + words.slice(1)
+    }
   }
 })
 
@@ -529,7 +583,13 @@ const approveAllWrites = () => {
  */
 const canAllowAll = computed(() => {
   const name = props.message.toolName
-  if (!name || name === 'node_propose_edit' || NODE_MUTATION_TOOLS.includes(name) || keyRequest.value) return false
+  if (
+    !name ||
+    name === 'node_propose_edit' ||
+    NODE_MUTATION_TOOLS.includes(name) ||
+    keyRequest.value
+  )
+    return false
   const s = session.value
   if (!s) return false
   return s.getToolMode(name, props.message.toolCallId) === 'ask'
@@ -567,21 +627,35 @@ const toggleEdit = () => {
 </script>
 
 <style lang="scss">
+// The debugger's card: a thin frame in the accent while it waits for you, small text.
 .abele-tool-approval {
-  border: 1px solid var(--background-modifier-border);
-  border-radius: var(--radius-s);
-  padding: var(--size-4-3);
   margin: var(--size-4-2) 0;
-  background-color: var(--background-secondary);
+
+  > * {
+    margin-bottom: 0;
+  }
 }
 
 .abele-tool-approval__header {
   display: flex;
   align-items: center;
   gap: var(--size-4-2);
-  margin-bottom: var(--size-4-2);
-  font-weight: 600;
+  min-width: 0;
   color: var(--text-normal);
+
+  .abele-obsidian-icon {
+    padding: 0;
+    color: var(--icon-color);
+  }
+}
+
+.abele-tool-approval__what {
+  flex: 1 1 auto;
+  min-width: 0;
+}
+
+.abele-tool-approval .abele-tool-approval__more {
+  padding: var(--size-2-1);
 }
 
 .abele-tool-approval__path {
@@ -592,15 +666,16 @@ const toggleEdit = () => {
 }
 
 .abele-tool-approval__code {
-  background-color: var(--background-primary);
+  margin: 0;
+  background-color: var(--code-background);
   border-radius: var(--radius-s);
-  padding: var(--size-4-2);
+  padding: var(--size-4-1) var(--size-4-2);
   max-height: 300px;
   overflow: auto;
-  margin-bottom: var(--size-4-2);
 
   code {
-    font-size: var(--font-small);
+    color: var(--code-normal);
+    font-size: var(--font-ui-smaller);
     white-space: pre-wrap;
     word-break: break-word;
   }
@@ -685,12 +760,12 @@ const toggleEdit = () => {
 .abele-tool-approval__actions {
   display: flex;
   flex-wrap: wrap;
-  gap: var(--size-4-1);
+  justify-content: flex-end;
+  gap: var(--size-4-2);
 
-  // Keep the four one-shot actions together in a narrow sidebar or phone drawer.
-  // Native button height, type and colours stay with the theme.
-  button {
-    padding-inline: var(--size-4-2);
+  .abele-tool-approval__stop {
+    order: -1;
+    margin-inline-end: auto;
   }
 }
 </style>

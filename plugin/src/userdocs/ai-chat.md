@@ -59,8 +59,11 @@ alone does not increase the token budget.
 Open **Agents** from the activity icon in the ribbon, the chat header, or the command
 palette. The command can be assigned to the mobile toolbar. There is no floating button.
 The number counts conversations needing attention, not operations: three approvals in one
-chat count as one. A dot means only work is running; a separate question mark means the
-available information is incomplete, not that there are definitely no requests.
+chat count as one. In the chat header, the activity button appears only when another
+conversation has an approval or question waiting; otherwise **Agents** is in **More chat
+actions**. The number never counts tool operations or the request already on screen.
+Incomplete coverage remains explained in the agents list; an absent number is not proof that
+all conversations could be checked.
 
 The list has **Needs your action**, **Working**, and **Connection and delivery** sections,
 with search and ordinary keyboard-accessible buttons. Opening a row returns to its existing
@@ -321,7 +324,7 @@ compare the two modes; neither mode changes your permissions.
 
 When the agent substitutes a saved key into a request, it always asks first, including in
 Auto mode and discussions in the margin. The confirmation names the keys and the destination;
-**Allow this address for these keys** adds a recipient, then **Approve** sends the request.
+**Allow this address for these keys** adds a recipient, then **Allow** sends the request.
 Allowing an address does not stop future requests asking. This also covers MCP headers that
 substitute saved named keys. Agent policies and delegated runs cannot approve these requests
 silently. Requests without saved keys keep their existing permissions.
@@ -344,6 +347,11 @@ links to notes remain available.
 Type your message and press **Shift+Enter** or **Cmd/Ctrl+Enter** to send it; **Enter** starts a
 new line. The paperclip attaches files from the vault or from disk, pictures included, and other
 agent chats; files can also be dropped or pasted onto the message box.
+
+The agent's tool calls in a row show as one line saying what it did, such as
+"Searched 2 · Read", with the number of calls. Its glyph turns while the work is going on, and a
+dot marks a run where something waits for you or was refused or failed. Click the line to see
+the calls one by one.
 
 Attached pictures show a thumbnail before sending. Tap it, or a picture in a sent message,
 to open Abele's preview. **Draw** opens the picture to draw on; **Send back to the chat** in
@@ -394,11 +402,37 @@ does not count as a new model reply that has read your latest message or tool re
 Results not yet included in reported usage are estimated; if the provider
 returns no usage, the text of the context is estimated instead.
 
+## Reading the conversation
+
+The header keeps the agent, find, outline, history, new chat and **More chat actions** together.
+On a phone, find and outline are in More so the agent's name keeps its room. Settings,
+artifacts and agents are there too. A new empty conversation names the agent, describes its
+purpose and offers access settings from its scope summary.
+
+Reasoning is **Thinking** while it is arriving and **Thought** afterwards. It opens during
+the turn and folds when the work finishes, unless you chose its disclosure yourself.
+Consecutive tool calls form one work line such as **Searched 2 · Read**; press it to see the
+individual calls, then a call's glyph for its parameters and result. A running glyph moves;
+a status dot names waiting, refused or failed work in its tooltip.
+
+Questions are cards with answer rows. Choose a row, use its numbered key while the card
+has keyboard focus, or press **Your own answer** and type in the message field. The cross
+skips the pending questions. An error retains your question and offers **Retry** and, when
+configured, **Retry on** the fallback model. Automatic retry shows its countdown and attempt
+number. Background chat tabs distinguish working and waiting with labelled dots.
+
+The input's access button shows a vault glyph for full access, or a locked folder and the
+number of selected places, including node grants. Its tooltip names all those places; press
+it to edit the existing access settings. An empty access set remains available as zero places.
+Only access errors, not a second list of node grants, appear over the messages.
+
 ## Message actions and a new chat from here
 
-Click or tap the icon beside a message to open its actions and details. The icon buttons
-copy the message, edit your own message or retry an answer, insert it into a note, and
-**Ask here** where discussions are available. Each has a tooltip and a keyboard focus target.
+Each sent question and answer has a quiet action line below its words. On desktop its
+buttons appear on hover or keyboard focus: copy, edit your message or retry an answer,
+insert into a note, and **Ask here** where discussions are available. On a phone those
+actions are in **More message actions**. The time is always visible; press it for details,
+including the full date, token usage and highlights. Each action is keyboard accessible.
 **More message actions** opens Obsidian's own menu, grouped by message, conversation and
 file changes. Repeat, **Branch from here**, **Rewind** and **Undo changes** remain there.
 Selection scripts, highlights, revision review and draft Send/Edit keep their existing places.
@@ -449,7 +483,7 @@ properties. Property text is not part of a body search.
 
 ## Navigating a conversation
 
-**Navigation** (the list button beside the magnifier) opens a table of contents in a standard
+**Outline of this chat** (the list button beside the magnifier, or in More on a phone) opens a table of contents in a standard
 Obsidian dialog, on desktop and phone. Your sent messages are the main rows, oldest first,
 with day separators and times. Titles come from the beginning of your text; textless messages
 show an image, file or attachment count. Drafts and queued messages are not listed.
@@ -584,7 +618,7 @@ Select words in a finished model reply. On a computer, right-click and choose **
 on a phone, lift your finger and wait for the selection bar, then tap **Highlight**. New
 highlights are yellow. Click or tap an existing highlight to change its colour or remove it.
 The six colours are the same as in books, using the note highlight styling. You can also press
-the message's icon to see its highlights and their **Remove** buttons.
+the message's time to see its highlights and their **Remove** buttons.
 
 You can add, recolour and remove highlights on earlier replies while the agent is working.
 The answer still being streamed becomes available for highlighting once it finishes.
@@ -615,7 +649,7 @@ an accepted replacement again, select its new words and start a new comment.
 ## Rewind
 
 Everything an agent changes in your vault from a chat is remembered, so you can take it back.
-Press the icon beside one of your messages, open **More message actions**, and pick:
+Open **More message actions** under one of your messages and pick:
 
 - **Rewind** — shows every file the agent changed from that message on, each with what will
   happen to it: put back as it was, sent to the trash (a file the agent made), made again (one it
@@ -660,10 +694,12 @@ An agent's permission mode decides what it may change without asking:
 - **Everything without asking**
 
 Every tool can also be set to off, ask or automatic, for example to keep web access off for one
-agent. When a change needs your approval, the chat shows exactly what would change, and you can
-approve it, edit it or refuse with a reason. **Reject** refuses only that call and lets the
-agent continue. **Stop** rejects every pending call in the run and stops the agent; queued
-human messages return to the draft instead of starting another turn.
+agent. When a change needs your approval, the chat shows a card with what the agent would do,
+the command, path or change itself, and **Deny** and **Allow**. **Deny** refuses only that call
+and lets the agent continue. **Stop** on the left of the card refuses every pending call in the
+run and stops the agent; queued messages return to the draft instead of starting another turn.
+The card's **⋯** menu has the rarer answers: always allow that tool, always allow writes in
+scope, and edit before allowing.
 
 ## Tools
 
@@ -729,7 +765,7 @@ automatic. These choices travel with settings transfer.
 A pending tool call belongs to the exact server and tool it originally requested. If a
 rename, changed tool list or changed server address makes it point somewhere else, approving it is refused
 with a message asking for a fresh call. This also applies to older pending calls without
-a recorded tool and destination identity; **Always allow** never grants a replacement server or
+a recorded tool and destination identity; **Always allow** in the card's menu never grants a replacement server or
 changed destination permission.
 
 ## Skills and prompts
@@ -817,7 +853,7 @@ If the agent cannot see the note, this one chat is given access to it.
 
 ## Chat artifacts
 
-The **Artifacts** button (boxes) in a local chat’s header opens one view of its **Notes**,
+**Artifacts: notes, images and scripts** in a local chat's **More chat actions** opens one view of its **Notes**,
 **Images** and **Scripts**, with counts, paths and available dates. It updates while the chat
 runs and includes saved messages from every retained branch, not unsent drafts or queued messages.
 

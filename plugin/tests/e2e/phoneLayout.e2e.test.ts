@@ -2412,19 +2412,18 @@ describe.skipIf(!available)('the chat dialogs on a phone', () => {
     (label) => {
       const header = report[label]?.header
       expect(header?.direct).toEqual([
-        'Agents',
-        ...(label === 'chat' ? ['Artifacts — notes, images and scripts'] : []),
-        'Start a new chat',
+        ...(label === 'nested comment' ? ['Back to the passage this is about'] : []),
         'Open a chat you have had',
+        'Start a new chat',
         'More chat actions',
       ])
       expect(header?.overflow).toEqual([
-        ...(label === 'nested comment'
-          ? ['Back to the passage this is about', 'Turn this comment into an ordinary chat']
-          : []),
         'Find in this chat',
-        'Navigation',
+        'Outline of this chat',
+        ...(label === 'nested comment' ? ['Turn this comment into an ordinary chat'] : []),
         'Scope, skills, prompts, permissions and settings',
+        ...(label === 'chat' ? ['Artifacts: notes, images and scripts'] : []),
+        'Agents',
       ])
       expect(header?.unreachable).toEqual([])
       expect(header?.clipped).toEqual([])
