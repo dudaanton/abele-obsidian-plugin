@@ -8,7 +8,17 @@ vi.mock('node:child_process', async (original) => {
   const actual = await original<typeof import('node:child_process')>()
   return { ...actual, ...calls, default: { ...actual, ...calls } }
 })
-import { exposeToPhone, waitForPhoneRoute } from '../e2e/helpers/phone'
+import { exposeToPhone, waitForPhoneRoute, phoneReverseStatus } from '../e2e/helpers/phone'
+it('reports only reverse membership and never raw driver status or errors', () => {
+  calls.execFileSync.mockReturnValueOnce('{"reverse":[54321],"credential":"private"}')
+  expect(phoneReverseStatus(54321)).toBe('listed')
+  calls.execFileSync.mockReturnValueOnce('{"reverse":[]}')
+  expect(phoneReverseStatus(54321)).toBe('absent')
+  calls.execFileSync.mockImplementationOnce(() => {
+    throw new Error('Bearer private')
+  })
+  expect(phoneReverseStatus(54321)).toBe('unavailable')
+})
 it('retries authenticated readiness and keeps only a sanitized probe error', async () => {
   const probe = vi.fn().mockRejectedValueOnce(new Error('route not ready')).mockResolvedValue(true)
   await waitForPhoneRoute(probe)

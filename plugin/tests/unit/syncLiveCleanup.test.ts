@@ -2,7 +2,7 @@
 import { expect, it, vi, afterEach } from 'vitest'
 import { TokenSyncLive } from '../e2e/helpers/tokenSyncLive'
 import { spawnSyncServer } from '../e2e/helpers/syncServer'
-import { exposeToPhone } from '../e2e/helpers/phone'
+import { exposeToPhone, phoneReverseStatus } from '../e2e/helpers/phone'
 import { onPhone } from '../e2e/helpers/target'
 import { mkdtempSync, mkdirSync } from 'node:fs'
 import { resolve, join } from 'node:path'
@@ -17,6 +17,10 @@ vi.mock('../e2e/helpers/phone', async (original) => ({
   ...(await original<typeof import('../e2e/helpers/phone')>()),
   PHONE_VAULT: 'phone',
   exposeToPhone: vi.fn(),
+  phoneReverseStatus: vi.fn(() => 'listed'),
+  waitForPhoneRoute: async (probe: () => Promise<unknown>) => {
+    await probe()
+  },
 }))
 vi.mock('../e2e/helpers/target', () => ({ onPhone: vi.fn(() => false) }))
 afterEach(() => {
@@ -48,7 +52,7 @@ it('retains every phone reverse through the case and checks WebSockets on the de
       rootToken: token,
       kill: kills[index],
     } as unknown as Awaited<ReturnType<typeof spawnSyncServer>>)
-  const probe = vi.spyOn(live.primary, 'long').mockResolvedValue(true)
+  const probe = vi.spyOn(live.primary, 'long').mockResolvedValue({ ok: true })
   try {
     await live.addServer()
     await live.addServer()
@@ -61,6 +65,33 @@ it('retains every phone reverse through the case and checks WebSockets on the de
       expect(confidential).toBe(true)
     }
     for (const stop of stops) expect(stop).not.toHaveBeenCalled()
+    probe.mockResolvedValueOnce({
+      ok: false,
+      stage: 'upgrade',
+      cause: 'close',
+      code: 1006,
+      clean: false,
+    })
+    vi.mocked(spawnSyncServer).mockResolvedValueOnce({
+      url: 'http://127.0.0.1:12347',
+      rootToken: token,
+      kill: vi.fn(),
+    } as unknown as Awaited<ReturnType<typeof spawnSyncServer>>)
+    vi.mocked(exposeToPhone).mockResolvedValueOnce(vi.fn())
+    await expect(live.addServer()).rejects.toThrow(
+      'port=12347 reverse=listed stage=upgrade cause=close code=1006 clean=false'
+    )
+    expect(phoneReverseStatus).toHaveBeenCalledWith(12347)
+    probe.mockRejectedValueOnce(new Error('Bearer sample-private-key; observed private snapshot'))
+    vi.mocked(spawnSyncServer).mockResolvedValueOnce({
+      url: 'http://127.0.0.1:12348',
+      rootToken: token,
+      kill: vi.fn(),
+    } as unknown as Awaited<ReturnType<typeof spawnSyncServer>>)
+    vi.mocked(exposeToPhone).mockResolvedValueOnce(vi.fn())
+    await expect(live.addServer()).rejects.toThrow(
+      'port=12348 reverse=listed stage=unknown cause=private-job'
+    )
   } finally {
     await live.close()
   }

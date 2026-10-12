@@ -13,8 +13,10 @@ import {
   endPhoneCase,
   exposeToPhone,
   waitForPhoneRoute,
+  phoneReverseStatus,
 } from './phone'
 import { onPhone } from './target'
+import { phoneRouteProbe, phoneRouteDetail, type PhoneRouteResult } from './phoneRouteProbe'
 import { waitFor } from './syncVault'
 import { syncFixtureRules } from './syncFixtureRules'
 function cleanupReason(error: unknown, depth = 0): string {
@@ -102,14 +104,27 @@ export class TokenSyncLive {
         this.reverses.push(await exposeToPhone(Number(url.port)))
       // Check the actual device route, including WebSocket upgrades, before using this token.
       const token = AccessClient.fromToken(server.rootToken, { fetch: fixtureFetch }).token
-      await waitForPhoneRoute(() =>
-        this.primary.long(
-          'phone fixture WebSocket route',
-          `await new Promise((resolve,reject)=>{const socket=new WebSocket(${JSON.stringify(server.url.replace(/^http/, 'ws') + '/v2/events')});const timer=setTimeout(()=>finish(new Error('Fixture WebSocket did not answer through the phone route')),5000);function finish(error){clearTimeout(timer);socket.close();error?reject(error):resolve(true)}socket.onopen=()=>socket.send(JSON.stringify({token:${JSON.stringify(token.key)}}));socket.onerror=()=>finish(new Error('Fixture WebSocket is unreachable from the phone'));socket.onmessage=event=>{try{if(JSON.parse(event.data).type==='changes')finish()}catch(error){finish(error)}}});return true`,
-          true,
-          7000
-        )
-      )
+      await waitForPhoneRoute(async () => {
+        const port = Number(url.port)
+        const result = await this.primary
+          .long<PhoneRouteResult>(
+            'phone fixture WebSocket route',
+            `return await (${phoneRouteProbe.toString()})(${JSON.stringify(server.url.replace(/^http/, 'ws') + '/v2/events')},${JSON.stringify(token.key)})`,
+            true,
+            7000
+          )
+          .catch(() => {
+            // A private job can fail outside the socket probe. Never echo its error or snapshot.
+            const detail = `port=${port} reverse=${phoneReverseStatus(port)} stage=unknown cause=private-job`
+            console.debug('[phone-route]', detail)
+            throw new Error('phone fixture WebSocket route: ' + detail)
+          })
+        if (!result.ok) {
+          const detail = phoneRouteDetail(result, port, phoneReverseStatus(port))
+          console.debug('[phone-route]', detail)
+          throw new Error('phone fixture WebSocket route: ' + detail)
+        }
+      })
     }
     return server
   }

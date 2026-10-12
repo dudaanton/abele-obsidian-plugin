@@ -240,6 +240,20 @@ export async function exposeToPhone(port: number): Promise<() => Promise<void>> 
   }
 }
 
+/** Inspect only membership; never return the driver's full device status. */
+export function phoneReverseStatus(port: number): 'listed' | 'absent' | 'unavailable' {
+  try {
+    const status = JSON.parse(driver(['status'], 2000)) as { reverse?: number[] }
+    return Array.isArray(status.reverse)
+      ? status.reverse.includes(port)
+        ? 'listed'
+        : 'absent'
+      : 'unavailable'
+  } catch {
+    return 'unavailable'
+  }
+}
+
 /** Retry authenticated route readiness; never preserve tokens or device snapshots in errors. */
 export async function waitForPhoneRoute(
   probe: () => Promise<unknown>,
