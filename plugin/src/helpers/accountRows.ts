@@ -1,4 +1,5 @@
 import { addMoney } from '@/helpers/moneySum'
+import { isCategoryType } from '@/finance/accountTypes'
 import type { Account, AccountType } from '@/entities/Account'
 
 export type AccountsSort = 'size' | 'balance' | 'name'
@@ -32,6 +33,7 @@ export const ACCOUNT_TYPE_ORDER: AccountType[] = [
   'computed',
   'expense',
   'revenue',
+  'mixed',
 ]
 
 export const ACCOUNT_TYPE_LABELS: Record<AccountType, string> = {
@@ -40,6 +42,7 @@ export const ACCOUNT_TYPE_LABELS: Record<AccountType, string> = {
   computed: 'Computed',
   expense: 'Expenses',
   revenue: 'Income',
+  mixed: 'Mixed',
 }
 
 /** Fills in whatever a stored copy lacks, and drops anything it should not hold. */
@@ -71,7 +74,7 @@ export interface AccountRow {
 export interface BalanceSource {
   /** An asset or liability account's balance, in its own currency. */
   balance(path: string): number
-  /** The currencies an expense or revenue account has moved money in. */
+  /** The currencies a category account has moved money in. */
   currencies(path: string): string[]
   balanceIn(path: string, currency: string): number
   /** A link from a computed account's note to one of the accounts it adds up. */
@@ -82,7 +85,7 @@ export interface BalanceSource {
 const cents = (n: number): number => Math.round(n * 100) / 100
 
 /**
- * One row per account and currency. An expense or revenue account has no currency of its
+ * One row per account and currency. An expense, revenue or mixed account has no currency of its
  * own, so it gets a row for each currency it has seen — what it totals, all time.
  */
 export function accountRows(
@@ -104,10 +107,11 @@ export function accountRows(
       excluded: account.excludeFromTotal,
     }
 
-    if (type === 'expense' || type === 'revenue') {
+    if (isCategoryType(type)) {
       for (const currency of source.currencies(path)) {
         // Money leaving an expense account is a refund; the natural reading is what was
-        // spent or earned, which is the other way round for revenue.
+        // spent or earned, which is the other way round for revenue. Mixed shows signed
+        // net category flow (in minus out), not a wallet balance.
         const raw = source.balanceIn(path, currency)
         rows.push({ ...base, currency, balance: cents(type === 'revenue' ? -raw : raw) })
       }

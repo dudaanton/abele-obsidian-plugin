@@ -103,6 +103,23 @@ describe('the skills folder travelling', () => {
   })
 })
 
+describe('mixed account list settings travelling', () => {
+  it('round-trips mixed type filters in the existing finance block', () => {
+    const source = settings({
+      accountsList: {
+        sort: 'name',
+        groupByType: true,
+        types: ['mixed'],
+        hideZero: false,
+        showExcluded: true,
+        currency: 'EUR',
+      },
+    })
+    const entry = collectEntries(source).find((e) => e.section === 'finance')!
+    expect(applyEntries([entry], settings()).accountsList).toEqual(source.accountsList)
+  })
+})
+
 describe('what the sending side offers', () => {
   it('makes an entry of every provider, named the way the settings name it', () => {
     const entries = collectEntries(settings())

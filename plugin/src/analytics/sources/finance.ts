@@ -17,8 +17,11 @@ import { ImpliedRates, type RateObservation } from '../rates'
 import { parseDate, parseNumber, type Column, type Row, type Table } from '../table'
 import { readBalances } from './financeBalances'
 
+import { transactionKind, type TransactionKind } from '@/finance/accountTypes'
+
 export type FinanceMeasure = 'transactions' | 'flow' | 'balance'
-export type TxKind = 'income' | 'expense' | 'transfer'
+
+export type TxKind = TransactionKind
 
 export interface FinanceSource {
   kind: 'finance'
@@ -176,9 +179,7 @@ export class Ledger {
   }
 
   kindOf(tx: Tx): TxKind {
-    if (this.typeOf(tx.to) === 'expense') return 'expense'
-    if (this.typeOf(tx.from) === 'revenue') return 'income'
-    return 'transfer'
+    return transactionKind(this.typeOf(tx.from), this.typeOf(tx.to))
   }
 
   /** A computed account (`accounts:` list) expanded into the accounts it adds up. */

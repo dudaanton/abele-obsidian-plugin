@@ -14,7 +14,8 @@ import { GlobalStore } from '@/stores/GlobalStore'
 import dayjs from '@/helpers/dateLibrary'
 import { debounce } from 'obsidian'
 
-export type AccountType = 'asset' | 'expense' | 'revenue' | 'liability' | 'computed'
+import type { AccountType } from '@/finance/accountTypes'
+export type { AccountType } from '@/finance/accountTypes'
 
 export class Account {
   public readonly id: string

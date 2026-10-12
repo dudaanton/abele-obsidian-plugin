@@ -59,6 +59,19 @@ const sample: Spec[] = [
 ]
 
 describe('accountRows', () => {
+  it('lists mixed categories by currency as signed net flow and retains their type in settings', () => {
+    const { accounts, source } = world([
+      { name: 'Sample exchange', type: 'mixed', byCurrency: { EUR: -18, USD: 4 } },
+    ])
+    const options = normalizeAccountsList({ types: ['mixed'], hideZero: false })
+    expect(options.types).toEqual(['mixed'])
+    const rows = accountRows(accounts, source, options)
+    expect(rows.map((r) => [r.currency, r.balance])).toEqual([
+      ['EUR', -18],
+      ['USD', 4],
+    ])
+    expect(groupAccountRows(rows, true)[0].label).toBe('Mixed')
+  })
   it('sorts by the size of the balance by default, debts included', () => {
     const { accounts, source } = world(sample)
     expect(names(accountRows(accounts, source, settings()))).toEqual([

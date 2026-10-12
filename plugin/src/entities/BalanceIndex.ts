@@ -1,4 +1,5 @@
 import { addMoney } from '@/helpers/moneySum'
+import { isCategoryType } from '@/finance/accountTypes'
 import { DATE_FORMAT } from '@/constants/dates'
 import { wikilinkToPath } from '@/helpers/pathsHelpers'
 import { GlobalStore } from '@/stores/GlobalStore'
@@ -64,7 +65,7 @@ export class BalanceIndex {
 
   /**
    * The currency an account holds money in, or null when it holds none of its own.
-   * Only asset and liability accounts have one: expense and revenue accounts are categories,
+   * Only asset and liability accounts have one: expense, revenue and mixed accounts are categories,
    * which is why they are keyed per currency instead.
    */
   private walletCurrency(accountPath: string | null): string | null {
@@ -109,14 +110,14 @@ export class BalanceIndex {
     this.version.value++
   }
 
-  private isExpenseOrRevenue(accountPath: string): boolean {
+  private isCategory(accountPath: string): boolean {
     const account = this.accountsList.accounts.get(accountPath)
     const t = account?.accountType
-    return t === 'expense' || t === 'revenue'
+    return isCategoryType(t)
   }
 
   private getEntryKey(accountPath: string, currency?: string): string {
-    if (currency && this.isExpenseOrRevenue(accountPath)) {
+    if (currency && this.isCategory(accountPath)) {
       return `${accountPath}|${currency}`
     }
     return accountPath

@@ -22,12 +22,20 @@ Where new transactions go, and which template they are made from, is set in
 
 ## Accounts
 
-An account is a note with a `type`: `asset`, `revenue`, `expense` or `liability`. The accounts on
-each side of a transaction decide what it means:
+An account is a note with `type: account` and an `accountType`: `asset`, `revenue`, `expense`,
+`liability`, `computed` or `mixed`. The accounts on each side of a transaction decide what it means:
 
 - `revenue` to `asset` is income;
 - `asset` to `expense` is spending;
+- `mixed` to `asset` or `liability` is income;
+- `asset` or `liability` to `mixed` is spending;
+- `mixed` to `mixed` is a neutral transfer;
 - `asset` to `asset` is a transfer, and changes no total.
+
+Mixed accounts are categories with no fixed currency. The same category appears in income and
+expenses according to each transaction's direction, and never in net worth. Its account chart
+shows both directions separately. Its accounts-list row is signed net category flow, per
+currency. Set `accountType` to `mixed` in the note's ordinary Properties editor.
 
 Account notes live in the accounts folder (`Finance/Accounts` by default). An account note shows
 its balance over time and its transactions under the text.

@@ -2,12 +2,9 @@
   <div class="abele-account-balance-chart">
     <div class="abele-account-balance-chart__header">
       <div class="abele-account-balance-chart__header-text">
-        {{ isExpenseRevenue ? 'Spending' : 'Balance' }}
+        {{ isMixed ? 'Activity' : isCategory ? 'Spending' : 'Balance' }}
       </div>
-      <div
-        v-if="isExpenseRevenue && monthTotals.length"
-        class="abele-account-balance-chart__totals"
-      >
+      <div v-if="isCategory && monthTotals.length" class="abele-account-balance-chart__totals">
         <span v-for="t in monthTotals" :key="t.currency">
           {{ t.formatted }}
           <span class="abele-account-balance-chart__currency">{{ t.currency }}</span>
@@ -34,6 +31,7 @@ import PeriodSelector from './obsidian/PeriodSelector.vue'
 import dayjs from 'dayjs'
 import { toRaw, unref } from 'vue'
 import { formatAmount } from '@/helpers/moneyFormat'
+import { isCategoryType, financeDirections } from '@/finance/accountTypes'
 
 const props = defineProps<{
   accountPath: string
@@ -53,11 +51,16 @@ interface ChartSeries {
   data: number[]
 }
 
-const isExpenseRevenue = computed(() => {
+const isCategory = computed(() => {
   const al = unref(store.accountsList) as AccountsList | null
   const account = al?.accounts.get(props.accountPath)
   const t = account?.accountType
-  return t === 'expense' || t === 'revenue'
+  return isCategoryType(t)
+})
+
+const isMixed = computed(() => {
+  const al = unref(store.accountsList) as AccountsList | null
+  return al?.accounts.get(props.accountPath)?.accountType === 'mixed'
 })
 
 const isComputed = computed(() => {
@@ -86,7 +89,7 @@ const chartData = computed(() => {
 
   const seriesList: ChartSeries[] = []
 
-  if (isExpenseRevenue.value) {
+  if (isCategory.value) {
     const tl = toRaw(unref(store.transactionsList)) as TransactionsList | null
     if (!tl) return { dates, seriesList, chartType: 'bar' as const }
 
@@ -118,7 +121,16 @@ const chartData = computed(() => {
 
       if (fromPath !== props.accountPath && toPath !== props.accountPath) continue
 
-      const cur = raw.currency
+      let cur = raw.currency
+      if (isMixed.value) {
+        const { income, expense } = financeDirections(
+          fromPath ? al.accounts.get(fromPath)?.accountType : null,
+          toPath ? al.accounts.get(toPath)?.accountType : null
+        )
+        if (fromPath === props.accountPath && income) cur = `Income ${cur}`
+        else if (toPath === props.accountPath && expense) cur = `Expenses ${cur}`
+        else continue
+      }
       if (!dailyByCurrency.has(cur)) dailyByCurrency.set(cur, new Map())
       const daily = dailyByCurrency.get(cur)
       daily.set(dateStr, addMoney(daily.get(dateStr) || 0, raw.amount))

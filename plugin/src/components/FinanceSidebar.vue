@@ -194,6 +194,7 @@
 </template>
 
 <script setup lang="ts">
+import { financeDirections, transactionKind } from '@/finance/accountTypes'
 import { useFinanceCharts } from '@/composables/useFinanceCharts'
 import { useFinancePeriodSummary } from '@/composables/useFinancePeriodSummary'
 import { addMoney } from '@/helpers/moneySum'
@@ -310,20 +311,15 @@ const {
 
 // --- Account Type Lookup ---
 
-const accountTypeSets = computed(() => {
-  const al = accountsList.value
-  const asset = new Set<string>()
-  const expense = new Set<string>()
-  const revenue = new Set<string>()
-  if (!al) return { asset, expense, revenue }
-
-  for (const [path, account] of al.accounts) {
-    if (account.accountType === 'asset') asset.add(path)
-    if (account.accountType === 'expense') expense.add(path)
-    if (account.accountType === 'revenue') revenue.add(path)
-  }
-  return { asset, expense, revenue }
-})
+const accountTypes = computed(
+  () =>
+    new Map(
+      Array.from(accountsList.value?.accounts ?? [], ([path, account]) => [
+        path,
+        account.accountType,
+      ])
+    )
+)
 
 // --- Charts ---
 
@@ -354,7 +350,6 @@ const pieData = computed(() =>
 // --- Calendar Heatmap ---
 
 const calendarData = computed(() => {
-  const { expense: expPaths, revenue: revPaths } = accountTypeSets.value
   const startStr = periodStart.value.format(DATE_FORMAT)
   const endStr = periodEnd.value.format(DATE_FORMAT)
   const dayMap = new Map<string, { expense: number; income: number }>()
@@ -366,8 +361,12 @@ const calendarData = computed(() => {
     if (!dayMap.has(entry.date)) dayMap.set(entry.date, { expense: 0, income: 0 })
     const day = dayMap.get(entry.date)
 
-    if (entry.to && expPaths.has(entry.to)) day.expense = addMoney(day.expense, entry.amount)
-    if (entry.from && revPaths.has(entry.from)) day.income = addMoney(day.income, entry.amount)
+    const { income, expense } = financeDirections(
+      accountTypes.value.get(entry.from),
+      accountTypes.value.get(entry.to)
+    )
+    if (expense) day.expense = addMoney(day.expense, entry.amount)
+    if (income) day.income = addMoney(day.income, entry.amount)
   }
 
   return dayMap
@@ -437,10 +436,7 @@ const sortedTransactions = computed(() => {
 })
 
 function transactionType(entry: LedgerEntry): 'income' | 'expense' | 'transfer' {
-  const { expense, revenue } = accountTypeSets.value
-  if (entry.to && expense.has(entry.to)) return 'expense'
-  if (entry.from && revenue.has(entry.from)) return 'income'
-  return 'transfer'
+  return transactionKind(accountTypes.value.get(entry.from), accountTypes.value.get(entry.to))
 }
 
 /**
@@ -477,9 +473,10 @@ const showTxDateBefore = (idx: number): boolean => {
   return visibleTransactions.value[idx].date !== visibleTransactions.value[idx - 1].date
 }
 
-const isAssetToAsset = (entry: LedgerEntry): boolean => {
-  const { asset } = accountTypeSets.value
-  return !!(entry.to && asset.has(entry.to) && entry.from && asset.has(entry.from))
+const isNeutralPair = (entry: LedgerEntry): boolean => {
+  const from = accountTypes.value.get(entry.from)
+  const to = accountTypes.value.get(entry.to)
+  return (from === 'asset' && to === 'asset') || (from === 'mixed' && to === 'mixed')
 }
 
 /**
@@ -496,7 +493,7 @@ const dayTotals = computed(() => {
   const byDay = new Map<string, Map<string, number>>()
   for (const entry of listedTransactions.value) {
     if (entry.date < lastDay) break
-    if (isAssetToAsset(entry)) continue
+    if (isNeutralPair(entry)) continue
     let byCurrency = byDay.get(entry.date)
     if (!byCurrency) byDay.set(entry.date, (byCurrency = new Map()))
     const cur = entry.currency || '?'

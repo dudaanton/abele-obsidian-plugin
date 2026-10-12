@@ -106,6 +106,37 @@ async function period(start: string, end: string) {
 }
 
 describe('AccountBalanceChart — data handed to ECharts', () => {
+  it('shows mixed activity as separate income and expense series, not a wallet balance', async () => {
+    store.balanceIndex.value!.cleanup()
+    store.transactionsList.value!.cleanup()
+    store.accountsList.value!.cleanup()
+    store.balanceIndex.value = null
+    store.transactionsList.value = null
+    store.accountsList.value = null
+    VaultWatcherWrapper.destroy()
+    useVault([
+      account('Sample wallet'),
+      account('Sample exchange', { accountType: 'mixed', currency: null }),
+      account('Other exchange', { accountType: 'mixed', currency: null }),
+      tx('received sample', { from: '[[Sample exchange]]', to: '[[Sample wallet]]', amount: 30 }),
+      tx('given sample', { from: '[[Sample wallet]]', to: '[[Sample exchange]]', amount: 12 }),
+      tx('neutral sample', { from: '[[Sample exchange]]', to: '[[Other exchange]]', amount: 100 }),
+    ])
+    store.initFinance()
+    await show('Sample exchange.md')
+    expect(wrapper!.find('.abele-account-balance-chart__header-text').text()).toBe('Activity')
+    expect(
+      option().series.map((s: { name: string; type: string; data: number[] }) => [
+        s.name,
+        s.type,
+        s.data[0],
+      ])
+    ).toEqual([
+      ['Income EUR', 'bar', 30],
+      ['Expenses EUR', 'bar', 12],
+    ])
+    expect(option().series[0].data.slice(1)).toEqual(Array(30).fill(0))
+  })
   it('draws an inclusive local-month balance line and emits its initial period', async () => {
     await show('Cash.md')
     expect(wrapper!.find('.abele-account-balance-chart__header-text').text()).toBe('Balance')

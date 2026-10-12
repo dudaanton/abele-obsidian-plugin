@@ -870,10 +870,18 @@ Whether a transaction counts as income, spending or a neutral transfer is decide
 
 ## Accounts
 
-Account notes are what `from` and `to` point at. An account's `type` is one of `asset`,
-`revenue`, `expense`, `liability`, `computed`. Money moving from a `revenue` account to an
-`asset` account is income; `asset` to `expense` is spending; `asset` to `asset` is a transfer
-and changes no balance.
+Account notes have `type: account` and are what `from` and `to` point at. Their `accountType`
+is one of `asset`, `revenue`, `expense`, `liability`, `computed`, `mixed`. Money moving from a
+`revenue` account is income; money moving to an `expense` account is spending. A `mixed`
+account is a category that can act on either side: `mixed` to `asset` or `liability` is income;
+`asset` or `liability` to `mixed` is spending. `mixed` to `mixed` is a neutral transfer, as is
+`asset` to `asset` (which changes the individual balances, not net worth).
+
+Like expense and revenue categories, mixed accounts have no fixed currency or wallet balance.
+Their activity is tracked per transaction currency. They are excluded from net worth. The
+account chart shows separate income and expense activity; the accounts list shows signed net
+category flow (money into the category minus money out). Edit `accountType` in the note's
+ordinary Properties editor.
 
 ## Time entries
 

@@ -13,8 +13,9 @@ currency? }`.
 
 - `measure: "transactions"` (the default): one row per transaction — `date`, `amount`, `currency`,
   `kind` (`income` when it comes from a revenue account, `expense` when it goes to an expense
-  account, otherwise `transfer` — as the finance sidebar decides), `from`, `to`, `category`,
-  `groups`, `path`. `amount` is always positive.
+  account; `mixed` to asset/liability is income, asset/liability to `mixed` is expense;
+  otherwise `transfer`, including mixed-to-mixed — as the finance sidebar decides), `from`, `to`,
+  `category`, `groups`, `path`. `amount` is always positive.
 - `measure: "flow"`: the money in and out of the listed `accounts` — one row per transaction per
   listed account, `amount` signed (+ in, − out) in that account's own currency, with `account`,
   `counterparty`, `kind`. A transfer between two listed accounts nets to zero in any total.
@@ -22,8 +23,8 @@ currency? }`.
 - `measure: "balance"`: balances over time — one row per day a balance changed, plus the first and
   last day of the range, with `account` and `balance`. An account has no balance before its
   `startingBalanceDate`. Without `accounts` it is net worth: every asset and liability not
-  excluded from totals. Only asset, liability and computed accounts have a balance; ask a category
-  or an expense account for its `flow` or `transactions` instead. Balances are levels: over a
+  excluded from totals. Only asset, liability and computed accounts have a balance; ask a mixed,
+  revenue or expense account for its `flow` or `transactions` instead. Balances are levels: over a
   period they take the last value, and an empty period carries the previous one. Several
   accounts asked for at once are added up per period (each carrying its own last balance) unless
   grouped with `by: "account"`.

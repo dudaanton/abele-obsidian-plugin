@@ -82,6 +82,7 @@ function fixture(): FakeFileSpec[] {
     account('Food', 'expense', { startingBalanceDate: '2024-03-02' }),
     account('Salary', 'revenue'),
     account('Portfolio', 'computed'),
+    account('Sample exchange', 'mixed'),
     tx('income', 'Salary', 'Cash', 100),
     tx('expense a', 'Cash', 'Food', 0.1),
     tx('expense b', 'Cash', 'Food', 0.2),
@@ -176,6 +177,68 @@ async function period(start: string, end: string) {
 }
 
 describe('finance sidebar — period money and charts', () => {
+  it('counts a mixed category on both pies and the calendar without counting category transfers', async () => {
+    store.balanceIndex.value!.cleanup()
+    store.transactionsList.value!.cleanup()
+    store.accountsList.value!.cleanup()
+    store.balanceIndex.value = null
+    store.transactionsList.value = null
+    store.accountsList.value = null
+    VaultWatcherWrapper.destroy()
+    useVault([
+      account('Sample wallet', 'asset', { currency: 'EUR' }),
+      account('Sample debt', 'liability', { currency: 'EUR' }),
+      account('Sample exchange', 'mixed'),
+      account('Other exchange', 'mixed'),
+      tx('sample received', 'Sample exchange', 'Sample wallet', 30),
+      tx('sample given', 'Sample wallet', 'Sample exchange', 12),
+      tx('debt received', 'Sample exchange', 'Sample debt', 5),
+      tx('debt given', 'Sample debt', 'Sample exchange', 2),
+      tx('category transfer', 'Sample exchange', 'Other exchange', 100),
+    ])
+    store.initFinance()
+    await sidebar()
+    expect(summary()).toMatchObject({
+      Income: formatAmount(35),
+      Expenses: formatAmount(14),
+      Savings: formatAmount(21),
+    })
+    expect(option().series[0].data).toEqual([
+      { name: 'Sample exchange', path: 'Sample exchange.md', value: 14 },
+    ])
+    await chartTab('income')
+    expect(option().series[0].data).toEqual([
+      { name: 'Sample exchange', path: 'Sample exchange.md', value: 35 },
+    ])
+    const types = Object.fromEntries(
+      wrapper!
+        .findAllComponents({ name: 'TransactionItem' })
+        .map((c) => [c.props('transaction').transactionPath, c.props('txType')])
+    )
+    expect(types).toMatchObject({
+      'sample received.md': 'income',
+      'sample given.md': 'expense',
+      'debt received.md': 'income',
+      'debt given.md': 'expense',
+      'category transfer.md': 'transfer',
+    })
+    expect(wrapper!.findComponent(DateDivider).text()).toContain(`+${formatAmount(21)} EUR`)
+    await chartTab('calendar')
+    expect(option().series[0].data[0]).toEqual(['2024-03-01', 14])
+    expect(option().tooltip.formatter({ data: ['2024-03-01'] })).toContain(`+${formatAmount(35)}`)
+    expect(option().tooltip.formatter({ data: ['2024-03-01'] })).toContain(`-${formatAmount(14)}`)
+    wrapper!.unmount()
+    wrapper = mount(TransactionsList, {
+      shallow: true,
+      props: { transactions: [...store.transactionsList.value!.transactions.values()] },
+      global: { renderStubDefaultSlot: true },
+    })
+    await settle()
+    expect(wrapper!.findComponent(DateDivider).text()).toContain(`+${formatAmount(21)} EUR`)
+    expect(
+      wrapper!.findAllComponents({ name: 'TransactionItem' }).map((c) => c.props('txType'))
+    ).toEqual(expect.arrayContaining(['income', 'expense', 'transfer']))
+  })
   it('counts income, expenses and debt directions from notes, not opening balances or category cutoffs', async () => {
     await sidebar()
     expect(summary()).toEqual({
@@ -387,6 +450,11 @@ describe('footer transaction creation context', () => {
     { accountPath: 'Lent.md', from: undefined, to: '[[Lent|Lent]]' },
     { accountPath: 'Food.md', from: undefined, to: '[[Food|Food]]' },
     { accountPath: 'Portfolio.md', from: undefined, to: '[[Portfolio|Portfolio]]' },
+    {
+      accountPath: 'Sample exchange.md',
+      from: undefined,
+      to: '[[Sample exchange|Sample exchange]]',
+    },
     { accountPath: 'Missing.md', from: undefined, to: undefined },
     { accountPath: null, from: undefined, to: undefined },
   ])('prefills the date and correct side for $accountPath', async ({ accountPath, from, to }) => {

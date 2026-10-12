@@ -34,8 +34,9 @@ reference agents read is `src/docs/analytics.md` (`query_docs` section `analytic
   opened. Links resolve from the transaction's own note, as `BalanceIndex` resolves them. What a
   wallet sees of a cross-currency transfer is `entities/walletAmount.ts`, extracted from
   `BalanceIndex` so both use one rule; the balance test compares the two. `kind` follows the
-  finance sidebar: to an expense account is spending, from a revenue account is income, anything
-  else a transfer.
+  shared `finance/accountTypes.ts` rule used by the sidebar: to an expense account is spending,
+  from a revenue account is income; mixed to asset/liability is income, asset/liability to mixed
+  is spending. Mixed-to-mixed and other directions are transfers.
 - **Currency conversion** (`rates.ts`) has no rate table to use: the plugin has none. It takes the
   rates the vault's two-currency transactions imply, nearest on or before the date (else after),
   direct, inverted or through one third currency, and reports every rate it used. What it cannot

@@ -38,6 +38,7 @@
 </template>
 
 <script setup lang="ts">
+import { transactionKind } from '@/finance/accountTypes'
 import { addMoney } from '@/helpers/moneySum'
 import { Transaction } from '@/entities/Transaction'
 import { AccountsList } from '@/entities/AccountsList'
@@ -70,19 +71,9 @@ const props = defineProps<{
 const store = GlobalStore.getInstance()
 const fold = useFooterFold('transactions')
 
-const accountTypeSets = computed(() => {
+const accountTypes = computed(() => {
   const al = unref(store.accountsList) as AccountsList | null
-  const asset = new Set<string>()
-  const expense = new Set<string>()
-  const revenue = new Set<string>()
-  if (!al) return { asset, expense, revenue }
-
-  for (const [path, account] of al.accounts) {
-    if (account.accountType === 'asset') asset.add(path)
-    if (account.accountType === 'expense') expense.add(path)
-    if (account.accountType === 'revenue') revenue.add(path)
-  }
-  return { asset, expense, revenue }
+  return new Map(Array.from(al?.accounts ?? [], ([path, account]) => [path, account.accountType]))
 })
 
 function resolveWikilink(wikilink: string): string | null {
@@ -93,13 +84,10 @@ function resolveWikilink(wikilink: string): string | null {
 }
 
 function getType(tx: Transaction): 'income' | 'expense' | 'transfer' {
-  const { expense, revenue } = accountTypeSets.value
   const toPath = tx.to ? resolveWikilink(tx.to) : null
   const fromPath = tx.from ? resolveWikilink(tx.from) : null
 
-  if (toPath && expense.has(toPath)) return 'expense'
-  if (fromPath && revenue.has(fromPath)) return 'income'
-  return 'transfer'
+  return transactionKind(accountTypes.value.get(fromPath), accountTypes.value.get(toPath))
 }
 
 // Over every transaction the list was handed — the note's own, not the vault's — however many
@@ -141,17 +129,18 @@ const showDateBefore = (idx: number): boolean => {
   return txDate(visible.value[idx]) !== txDate(visible.value[idx - 1])
 }
 
-const isAssetToAsset = (tx: Transaction): boolean => {
-  const { asset } = accountTypeSets.value
+const isNeutralPair = (tx: Transaction): boolean => {
   const toPath = tx.to ? resolveWikilink(tx.to) : null
   const fromPath = tx.from ? resolveWikilink(tx.from) : null
-  return !!(toPath && asset.has(toPath) && fromPath && asset.has(fromPath))
+  const from = accountTypes.value.get(fromPath)
+  const to = accountTypes.value.get(toPath)
+  return (from === 'asset' && to === 'asset') || (from === 'mixed' && to === 'mixed')
 }
 
 const totalsByDay = computed(() => {
   const days = new Map<string, Map<string, number>>()
   for (const tx of sorted.value) {
-    if (isAssetToAsset(tx)) continue
+    if (isNeutralPair(tx)) continue
     const date = txDate(tx)
     let byCurrency = days.get(date)
     if (!byCurrency) days.set(date, (byCurrency = new Map()))

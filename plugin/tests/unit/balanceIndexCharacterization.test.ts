@@ -48,6 +48,24 @@ afterEach(() => {
 })
 
 describe('BalanceIndex — dates, prefix sums and currencies', () => {
+  it('keys a mixed category per transaction currency and leaves it out of net worth', () => {
+    build([
+      account('Cash'),
+      account('Sample exchange', { accountType: 'mixed', currency: null }),
+      tx('sample received', { from: '[[Sample exchange]]', to: '[[Cash]]', amount: 30 }),
+      tx('sample given', { from: '[[Cash]]', to: '[[Sample exchange]]', amount: 12 }),
+      tx('sample dollars', {
+        from: '[[Sample exchange]]',
+        to: '[[Cash]]',
+        amount: 5,
+        currency: 'USD',
+      }),
+    ])
+    expect(bi.getCurrenciesForAccount('Sample exchange.md')).toEqual(['EUR', 'USD'])
+    expect(bi.getBalanceAtDateByCurrency('Sample exchange.md', at, 'EUR')).toBe(-18)
+    expect(bi.getBalanceAtDateByCurrency('Sample exchange.md', at, 'USD')).toBe(-5)
+    expect(bi.getNetWorthAtDate(at)).toBe(bi.getBalanceAtDate('Cash.md', at))
+  })
   it('has zero totals and empty currency lists for an empty vault', () => {
     build([])
     expect(bi.version.value).toBe(1)

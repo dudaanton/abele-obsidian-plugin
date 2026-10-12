@@ -1,4 +1,5 @@
 import { ref, watch, type Ref } from 'vue'
+import { financeDirections } from '@/finance/accountTypes'
 import type { Dayjs } from 'dayjs'
 import type { AccountsList } from '@/entities/AccountsList'
 import type { LedgerEntry } from './useFinanceLedger'
@@ -41,13 +42,9 @@ export function useFinancePeriodSummary(options: PeriodSummaryOptions) {
     const startStr = periodStart.value.format(DATE_FORMAT)
     const endStr = periodEnd.value.format(DATE_FORMAT)
 
-    const expensePaths = new Set<string>()
-    const revenuePaths = new Set<string>()
     const liabilityPaths = new Set<string>()
     const accountNames = new Map<string, string>()
     for (const [path, account] of al.accounts) {
-      if (account.accountType === 'expense') expensePaths.add(path)
-      if (account.accountType === 'revenue') revenuePaths.add(path)
       if (account.accountType === 'liability') liabilityPaths.add(path)
       accountNames.set(path, account.accountName || account.title || path.split('/').pop() || path)
     }
@@ -77,7 +74,11 @@ export function useFinancePeriodSummary(options: PeriodSummaryOptions) {
       const cur = entry.currency
       const { from: fromPath, to: toPath, amount } = entry
 
-      if (toPath && expensePaths.has(toPath)) {
+      const { income, expense } = financeDirections(
+        fromPath ? al.accounts.get(fromPath)?.accountType : null,
+        toPath ? al.accounts.get(toPath)?.accountType : null
+      )
+      if (toPath && expense) {
         const key = `${cur}|${toPath}`
         expenseMap.set(key, addMoney(expenseMap.get(key) || 0, amount))
       }
@@ -85,7 +86,7 @@ export function useFinancePeriodSummary(options: PeriodSummaryOptions) {
         getOrCreate(cur).lent = addMoney(getOrCreate(cur).lent, amount)
       }
 
-      if (fromPath && revenuePaths.has(fromPath)) {
+      if (fromPath && income) {
         const key = `${cur}|${fromPath}`
         incomeMap.set(key, addMoney(incomeMap.get(key) || 0, amount))
       }

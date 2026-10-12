@@ -95,6 +95,49 @@ const money = (t: Table, column: string) => {
 }
 
 describe('finance: transactions', () => {
+  it('uses mixed directions for report and script filters and keeps mixed transfers neutral', async () => {
+    const app = useVault([
+      account('Sample wallet', { accountType: 'asset', currency: 'EUR' }),
+      account('Sample debt', { accountType: 'liability', currency: 'EUR' }),
+      account('Sample exchange', { accountType: 'mixed' }),
+      account('Other exchange', { accountType: 'mixed' }),
+      ...[
+        ['Sample exchange', 'Sample wallet', 30],
+        ['Sample wallet', 'Sample exchange', 12],
+        ['Sample exchange', 'Sample debt', 5],
+        ['Sample debt', 'Sample exchange', 2],
+        ['Sample exchange', 'Other exchange', 100],
+      ].map(([from, to, amount], i) => ({
+        path: `Sample transaction ${i}.md`,
+        frontmatter: {
+          type: 'transaction',
+          date: '2024-03-01',
+          from: `[[${from}]]`,
+          to: `[[${to}]]`,
+          amount,
+          currency: 'EUR',
+        },
+      })),
+    ])
+    const deps = { app: app as never, inScope: everywhere, today: '2024-03-31' }
+    const read = (only?: 'income' | 'expense' | 'transfer') =>
+      readFinance({ kind: 'finance', only }, deps)
+    expect(read().rows.map((r) => r.kind)).toEqual([
+      'income',
+      'expense',
+      'income',
+      'expense',
+      'transfer',
+    ])
+    expect(money(read('income'), 'amount')).toEqual([30, 5])
+    expect(money(read('expense'), 'amount')).toEqual([12, 2])
+    expect(money(read('transfer'), 'amount')).toEqual([100])
+    const report = await analyzeTable(read('income'), { by: 'from' }, noOther)
+    expect(report.groups).toEqual([{ group: 'Sample exchange', count: 2, sum: 35, share: 100 }])
+    expect(() =>
+      readFinance({ kind: 'finance', measure: 'balance', accounts: ['Sample exchange'] }, deps)
+    ).toThrow(/mixed account.*no balance/)
+  })
   it('classifies each one as the sidebar does', () => {
     const t = finance({})
     expect(t.rows).toHaveLength(7)
