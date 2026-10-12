@@ -2100,7 +2100,11 @@ export class ChatSession implements SummarizerHost, InterceptorHost, AnchorStora
     tc: ToolCallContent,
     status: 'pending' | 'approved' = 'pending'
   ): void {
-    const exists = this.allChatMessages.some((m) => m.toolCallId === tc.id)
+    // Provider IDs may repeat across responses. Only reuse a row from this response's
+    // visible batch; an older completed call must never become the stopped request.
+    const path = this.messages.value
+    const assistantIndex = path.findLastIndex((m) => m.role === 'assistant')
+    const exists = path.slice(assistantIndex + 1).some((m) => m.toolCallId === tc.id)
     if (exists) {
       if (status === 'approved')
         this.updateChatMessage(
@@ -2134,7 +2138,7 @@ export class ChatSession implements SummarizerHost, InterceptorHost, AnchorStora
 
   private settleInterruptedCall(tc: ToolCallContent, interruption: ToolInterruption): void {
     this.showInterruptedCall(tc, interruption)
-    const chatMessageId = this.allChatMessages.find((m) => m.toolCallId === tc.id)?.id
+    const chatMessageId = this.messages.value.findLast((m) => m.toolCallId === tc.id)?.id
     this.rememberInternal({ ...interruptedToolResult(tc, interruption), chatMessageId })
     this.pendingToolCalls.value = this.pendingToolCalls.value.filter((call) => call.id !== tc.id)
     this.attention.value = {
@@ -2896,7 +2900,8 @@ export class ChatSession implements SummarizerHost, InterceptorHost, AnchorStora
         if (message.role === 'toolResult') outstanding.delete(message.toolCallId)
       }
       for (const call of outstanding.values()) {
-        const shown = path.find((m) => m.toolCallId === call.id)
+        const assistantIndex = path.findLastIndex((m) => m.role === 'assistant')
+        const shown = path.slice(assistantIndex + 1).findLast((m) => m.toolCallId === call.id)
         const phase =
           shown?.toolExecution ?? (shown?.toolStatus === 'approved' ? 'interrupted' : 'not-run')
         this.showInterruptedCall(call, phase)

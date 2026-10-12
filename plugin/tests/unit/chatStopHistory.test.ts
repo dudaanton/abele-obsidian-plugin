@@ -272,6 +272,28 @@ describe('durable stopped turns', () => {
     }
   })
 
+  it('does not overwrite an earlier completed call when a stopped request reuses its provider ID', async () => {
+    let n = 0
+    vi.spyOn(OpenAIClient.prototype, 'stream').mockImplementation(async function* () {
+      n++
+      if (n === 2)
+        yield { type: 'done', message: reply([{ type: 'text', text: 'First turn complete.' }]) }
+      else {
+        if (n === 3) session.abort()
+        yield { type: 'done', message: reply([calls[0]]) }
+      }
+    })
+    await session.sendMessage('Complete the first sample')
+    await session.sendMessage('Request another sample')
+    const visible = session.messages.value.filter((m) => m.toolCallId === 'one')
+    expect(visible).toHaveLength(2)
+    expect(visible[0]).toMatchObject({ toolResult: 'Saved one', toolStatus: 'approved' })
+    expect(visible[0].toolExecution).toBeUndefined()
+    expect(visible[1]).toMatchObject({ toolExecution: 'not-run', toolResult: undefined })
+    await reopen()
+    expect(execute).toHaveBeenCalledTimes(1)
+  })
+
   it('keeps a real result when a non-cancellable tool finishes after Stop', async () => {
     execute.mockImplementation(async () => {
       session.abort()
