@@ -116,6 +116,7 @@ export class NodePathModel {
   private catalogueGeneration = 0
   private selectionGeneration = 0
   private targetGenerations = new Map<string, number>()
+  private treeGenerations = new Map<string, number>()
   private stopWatch?: () => void
   private stopCatalog?: () => void
   private refreshPromise?: Promise<void>
@@ -196,6 +197,7 @@ export class NodePathModel {
     return { ...target }
   }
   async start(): Promise<void> {
+    if (this.disposed) return
     const stop = await this.port.subscribe(() => this.invalidate())
     if (this.disposed) {
       stop()
@@ -287,10 +289,17 @@ export class NodePathModel {
     const key = pathTargetKey(target),
       generation = (this.targetGenerations.get(key) ?? 0) + 1
     this.targetGenerations.set(key, generation)
-    const inspection = await this.port.inspect(target, files)
-    if (this.disposed || generation !== this.targetGenerations.get(key)) return
-    if (!files && this.inspections.value[key])
-      inspection.entries = this.inspections.value[key].entries
+    const treeGeneration = files ? (this.treeGenerations.get(key) ?? 0) + 1 : undefined
+    if (treeGeneration !== undefined) this.treeGenerations.set(key, treeGeneration)
+    let inspection = await this.port.inspect(target, files)
+    if (this.disposed) return
+    const current = this.inspections.value[key]
+    if (generation !== this.targetGenerations.get(key)) {
+      // A metadata-only read must not cancel the only in-flight file listing. Keep the
+      // newer metadata, but admit this tree unless another full listing superseded it.
+      if (!files || treeGeneration !== this.treeGenerations.get(key)) return
+      if (current) inspection = { ...current, entries: inspection.entries }
+    } else if (!files && current) inspection.entries = current.entries
     this.inspections.value = { ...this.inspections.value, [key]: this.mark(target, inspection) }
     this.receivedAt.value = this.now()
     this.decorate()

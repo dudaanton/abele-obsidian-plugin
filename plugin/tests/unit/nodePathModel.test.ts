@@ -137,6 +137,40 @@ function fake() {
 }
 
 describe('node path model', () => {
+  it('does not subscribe if connection admission finishes after owner disposal', async () => {
+    const { model, port } = fake()
+    model.destroy()
+    await model.start()
+    expect(port.subscribe).not.toHaveBeenCalled()
+    expect(port.catalogue).not.toHaveBeenCalled()
+  })
+  it('does not lose an in-flight tree when a newer metadata-only refresh finishes first', async () => {
+    const { model, port } = fake()
+    let finishTree!: (inspection: any) => void
+    vi.mocked(port.inspect).mockImplementationOnce(
+      () =>
+        new Promise((resolve) => {
+          finishTree = resolve
+        })
+    )
+    const listing = model.reloadTarget(target(), true)
+    vi.mocked(port.inspect).mockResolvedValueOnce({
+      entries: [],
+      changes: [change('newer-metadata')],
+      lastCommit: 'Latest metadata',
+    })
+    await model.reloadTarget(target(), false)
+    finishTree({
+      entries: [{ path: 'nested/sample.ts', name: 'sample.ts', kind: 'file' }],
+      changes: [change('older-tree')],
+      lastCommit: 'Older metadata',
+    })
+    await listing
+    const inspection = model.inspections.value[JSON.stringify(['node-demo', 'worktree', 'one'])]
+    expect(inspection.entries[0].path).toBe('nested/sample.ts')
+    expect(inspection.changes[0].changeId).toBe('newer-metadata')
+    expect(inspection.lastCommit).toBe('Latest metadata')
+  })
   it('selects a plain folder by its displayed project row while reads use the opaque root workspace', async () => {
     const { model, port } = fake()
     vi.mocked(port.catalogue).mockResolvedValueOnce({
