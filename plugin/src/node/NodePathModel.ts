@@ -117,6 +117,7 @@ export class NodePathModel {
   private selectionGeneration = 0
   private targetGenerations = new Map<string, number>()
   private treeGenerations = new Map<string, number>()
+  private treeLoads = new Map<string, { dirty: boolean; promise: Promise<void> }>()
   private stopWatch?: () => void
   private stopCatalog?: () => void
   private refreshPromise?: Promise<void>
@@ -286,6 +287,33 @@ export class NodePathModel {
     else this.stopWatch = stop
   }
   async reloadTarget(target: PathTarget, files = true): Promise<void> {
+    if (this.disposed) return
+    if (!files) return this.readTarget(target, false)
+    const key = pathTargetKey(target),
+      pending = this.treeLoads.get(key)
+    if (pending) {
+      pending.dirty = true
+      return pending.promise
+    }
+    // Never continually supersede a large listing before it can publish. Burst invalidations
+    // share this read and request one fresh observation afterwards, without losing freshness.
+    const load = { dirty: false, promise: Promise.resolve() }
+    this.treeLoads.set(key, load)
+    load.promise = (async () => {
+      do {
+        load.dirty = false
+        try {
+          await this.readTarget(target, true)
+        } catch (error) {
+          if (!load.dirty) throw error
+        }
+      } while (load.dirty && !this.disposed)
+    })().finally(() => {
+      this.treeLoads.delete(key)
+    })
+    return load.promise
+  }
+  private async readTarget(target: PathTarget, files: boolean): Promise<void> {
     const key = pathTargetKey(target),
       generation = (this.targetGenerations.get(key) ?? 0) + 1
     this.targetGenerations.set(key, generation)

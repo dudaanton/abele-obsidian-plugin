@@ -137,6 +137,49 @@ function fake() {
 }
 
 describe('node path model', () => {
+  it('coalesces repeated full listings into one in-flight read and one trailing refresh', async () => {
+    const { model, port } = fake()
+    let first!: (value: Awaited<ReturnType<NodePathPort['inspect']>>) => void
+    let last!: (value: Awaited<ReturnType<NodePathPort['inspect']>>) => void
+    vi.mocked(port.inspect).mockImplementationOnce(
+      () =>
+        new Promise((resolve) => {
+          first = resolve
+        })
+    )
+    vi.mocked(port.inspect).mockImplementationOnce(
+      () =>
+        new Promise((resolve) => {
+          last = resolve
+        })
+    )
+    const requests = Array.from({ length: 8 }, () => model.reloadTarget(target()))
+    const initial = {
+      entries: [{ path: 'first.ts', name: 'first.ts', kind: 'file' as const }],
+      changes: [],
+    }
+    const latest = {
+      entries: [{ path: 'latest.ts', name: 'latest.ts', kind: 'file' as const }],
+      changes: [],
+    }
+    try {
+      expect(port.inspect).toHaveBeenCalledTimes(1)
+      first(initial)
+      for (let i = 0; i < 20; i++) await Promise.resolve()
+      expect(port.inspect).toHaveBeenCalledTimes(2)
+      expect(
+        model.inspections.value[JSON.stringify(['node-demo', 'worktree', 'one'])].entries[0].path
+      ).toBe('first.ts')
+    } finally {
+      first(initial)
+      last?.(latest)
+    }
+    await Promise.all(requests)
+    expect(port.inspect).toHaveBeenCalledTimes(2)
+    expect(
+      model.inspections.value[JSON.stringify(['node-demo', 'worktree', 'one'])].entries[0].path
+    ).toBe('latest.ts')
+  })
   it('does not subscribe if connection admission finishes after owner disposal', async () => {
     const { model, port } = fake()
     model.destroy()
