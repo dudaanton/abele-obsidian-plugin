@@ -163,21 +163,33 @@
   margin-block: 0 0.55em;
 }
 
+/* Headings and bold take the note's own colours and weights, so a deck reads like the theme. */
 .abele-slide-content h1 {
   font-size: 2.2em;
+  font-weight: var(--h1-weight);
+  color: var(--h1-color);
 }
 
 .abele-slide-content h2 {
   font-size: 1.7em;
+  font-weight: var(--h2-weight);
+  color: var(--h2-color);
 }
 
 .abele-slide-content h3 {
   font-size: 1.25em;
-  color: var(--text-accent, var(--interactive-accent));
+  font-weight: var(--h3-weight);
+  color: var(--h3-color);
+}
+
+/* A sub-heading over a column or cell is quieter than the slide's own heading. */
+.abele-slide-region h3 {
+  color: var(--text-muted);
 }
 
 .abele-slide-content strong {
-  color: var(--text-accent, var(--interactive-accent));
+  font-weight: var(--bold-weight);
+  color: var(--bold-color);
 }
 
 .abele-slide-content p {
@@ -230,26 +242,33 @@
 
 .abele-slide-content th,
 .abele-slide-content td {
-  border: 1px solid var(--background-modifier-border);
+  border: 1px solid var(--table-border-color, var(--background-modifier-border));
   padding: 0.45em 0.65em;
   font-size: inherit;
 }
 
 .abele-slide-content th {
   --table-column-alt-background: var(--background-secondary);
-  background: var(--background-secondary);
-  font-weight: var(--font-semibold);
+  background: var(--table-header-background, var(--background-secondary));
+  font-weight: var(--table-header-weight, var(--font-semibold));
+  color: var(--table-header-color, var(--text-normal));
 }
 
+.abele-slide-content td {
+  font-variant-numeric: tabular-nums;
+}
+
+/* Grey and straight, as rule 37 keeps a quote's line. */
 .abele-slide-content blockquote {
   margin: 0 0 0.75em;
   padding: 0.15em 0 0.15em 0.9em;
-  border-inline-start: 4px solid var(--text-accent, var(--interactive-accent));
+  border-inline-start: var(--blockquote-border-thickness, 2px) solid
+    var(--background-modifier-border-hover);
+  font-style: var(--blockquote-font-style);
 }
 
 .abele-slide-title h1 {
   font-size: 3em;
-  letter-spacing: -0.02em;
 }
 
 .abele-slide-title p {
@@ -262,10 +281,18 @@
   font-size: 2.7em;
 }
 
+/* A quote standing alone on its slide needs no line: the size and the space say it. */
 .abele-slide-quote blockquote {
-  font-size: 1.55em;
-  line-height: 1.2;
-  text-align: start;
+  margin: 0;
+  padding: 0;
+  border: none;
+  font-size: 1.9em;
+  line-height: 1.25;
+  text-align: center;
+}
+
+.abele-slide-quote blockquote p {
+  margin: 0;
 }
 
 .abele-slide-quote .abele-slide-content > .abele-slide-region {
@@ -459,6 +486,35 @@
 .abele-deck-tab {
   padding: 0;
   overflow: hidden;
+}
+
+/* In a tab the slide is a sheet on a grey desk, as a slide editor shows it: the slide keeps the
+   note's background, the desk under the controls is the sidebar's, and a hairline marks the
+   slide's edge. The viewer fits the slide inside the desk's padding. */
+.abele-deck-tab > .abele-deck:not(.abele-deck-presenting) .abele-deck-viewport {
+  padding: var(--size-4-6);
+  background: var(--background-secondary);
+}
+
+/* A phone's column is narrow: the slide takes nearly all of it. */
+.is-phone .abele-deck-tab > .abele-deck:not(.abele-deck-presenting) .abele-deck-viewport {
+  padding: var(--size-4-2);
+}
+
+.abele-deck-tab > .abele-deck:not(.abele-deck-presenting) .abele-slide {
+  border-radius: calc(var(--radius-m) / var(--abele-slide-scale, 1));
+}
+
+/* The edge is drawn over the slide, so a full-bleed picture does not hide it. */
+.abele-deck-tab > .abele-deck:not(.abele-deck-presenting) .abele-slide::after {
+  content: '';
+  position: absolute;
+  inset: 0;
+  z-index: 4;
+  border-radius: inherit;
+  box-shadow: inset 0 0 0 calc(1px / var(--abele-slide-scale, 1))
+    var(--background-modifier-border);
+  pointer-events: none;
 }
 
 .abele-deck-presenting .abele-deck-editor-action,

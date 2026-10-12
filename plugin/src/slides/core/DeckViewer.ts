@@ -641,15 +641,22 @@ export class DeckViewer {
 
   private scale(): void {
     if (!this.deck) return
+    // The canvas fits inside the viewport's padding: the space a tab leaves around its slide.
+    const style = this.viewport.ownerDocument.defaultView?.getComputedStyle(this.viewport)
+    const pad = (side: string) => parseFloat(style?.getPropertyValue(`padding-${side}`) ?? '') || 0
+    const left = pad('left')
+    const top = pad('top')
     const size = fitSlide(
-      this.viewport.clientWidth,
-      this.viewport.clientHeight,
+      this.viewport.clientWidth - left - pad('right'),
+      this.viewport.clientHeight - top - pad('bottom'),
       this.deck.settings.aspect
     )
     for (const { element } of this.slides.values()) {
       element.style.width = `${size.width}px`
       element.style.height = `${size.height}px`
-      element.style.transform = `translate(${size.x}px, ${size.y}px) scale(${size.scale})`
+      element.style.transform = `translate(${size.x + left}px, ${size.y + top}px) scale(${size.scale})`
+      // The slide's edge in a tab stays one screen pixel at any scale.
+      element.style.setProperty('--abele-slide-scale', String(size.scale || 1))
     }
   }
 
