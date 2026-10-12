@@ -13,51 +13,107 @@
         <Checkbox :is-enabled="withKeys" @toggle="withKeys = !withKeys" />
       </Setting>
 
-      <!-- What can travel, a group a heading with "Select all" at its end, a thing a row with a
-           check, as the found lists of the vault's other windows. -->
-      <div v-for="group in groups" :key="group.section" class="abele-transfer__group">
-        <div class="abele-transfer__group-head">
-          <GroupHeading :label="group.label">{{ counted(group) }}</GroupHeading>
-          <Button
-            v-if="group.entries.length > 1"
-            quiet
-            class="abele-transfer__all"
-            :text="allChosen(group) ? 'Clear' : 'Select all'"
-            :tooltip="
-              allChosen(group)
-                ? `Send none of the ${group.label.toLowerCase()}`
-                : `Send all of the ${group.label.toLowerCase()}`
-            "
-            @click="toggleGroup(group)"
-          />
-        </div>
-        <div role="list">
-          <EntryRow
-            v-for="entry in group.entries"
-            :key="key(entry)"
-            role="listitem"
-            class="abele-transfer__entry"
-            @click="toggle(entry)"
-          >
-            <template #leading>
-              <input
-                type="checkbox"
-                class="abele-transfer__check"
-                :checked="chosen.has(key(entry))"
-                :aria-label="`Send ${entry.label}`"
-                @click.stop
-                @change="toggle(entry)"
-              />
-            </template>
-            {{ entry.label }}
-            <template v-if="details(entry).length" #meta>
-              <span v-for="(fact, i) in details(entry)" :key="i">{{ fact }}</span>
-            </template>
-            <template v-if="withKeys && carriesKey(entry)" #codes>
-              <Icon icon="key-round" :interactive="false" tooltip="Carries a key" />
-            </template>
-          </EntryRow>
-        </div>
+      <!-- What can travel as one tree, a group a row: its check takes all of it, its count says
+           how much is chosen, and only a group of several opens to its things. A group of one
+           thing is that thing's row. -->
+      <div v-if="groups.length" class="abele-transfer__head">
+        <GroupHeading label="What to send">{{ chosenCount }}</GroupHeading>
+        <Button
+          quiet
+          class="abele-transfer__all"
+          :text="everythingChosen ? 'Clear' : 'Select all'"
+          :tooltip="everythingChosen ? 'Send nothing' : 'Send everything listed here'"
+          @click="toggleEverything"
+        />
+      </div>
+      <div v-if="groups.length" class="abele-transfer__tree" role="tree">
+        <!-- The first level is the settings' own: the groups their pages sit under, on the left. -->
+        <TreeItem
+          v-for="page in pages"
+          :key="page.title"
+          :text="page.title"
+          :flair="countOf(page.entries)"
+          collapsible
+          :collapsed="!open.has(page.title)"
+          class="abele-transfer__page"
+          @click="fold(page.title)"
+        >
+          <template #leading>
+            <input
+              type="checkbox"
+              class="abele-transfer__check"
+              :checked="allOf(page.entries)"
+              :indeterminate="someOf(page.entries) && !allOf(page.entries)"
+              :data-indeterminate="someOf(page.entries) && !allOf(page.entries)"
+              :aria-label="`Send everything under ${page.title}`"
+              @change="toggleAll(page.entries)"
+            />
+          </template>
+          <template v-for="group in page.groups" :key="group.section">
+            <TreeItem
+              v-if="group.entries.length === 1"
+              :text="group.label"
+              :note="leafNote(group)"
+              class="abele-transfer__entry"
+              @click="toggle(group.entries[0])"
+            >
+              <template #leading>
+                <input
+                  type="checkbox"
+                  class="abele-transfer__check"
+                  :checked="chosen.has(key(group.entries[0]))"
+                  :aria-label="`Send ${group.entries[0].label}`"
+                  @change="toggle(group.entries[0])"
+                />
+              </template>
+              <template v-if="withKeys && carriesKey(group.entries[0])" #end>
+                <Icon icon="key-round" :interactive="false" tooltip="Carries a key" />
+              </template>
+            </TreeItem>
+            <TreeItem
+              v-else
+              :text="group.label"
+              :flair="countOf(group.entries)"
+              collapsible
+              :collapsed="!open.has(group.section)"
+              class="abele-transfer__group"
+              @click="fold(group.section)"
+            >
+              <template #leading>
+                <input
+                  type="checkbox"
+                  class="abele-transfer__check"
+                  :checked="allOf(group.entries)"
+                  :indeterminate="someOf(group.entries) && !allOf(group.entries)"
+                  :data-indeterminate="someOf(group.entries) && !allOf(group.entries)"
+                  :aria-label="`Send all of the ${group.label.toLowerCase()}`"
+                  @change="toggleAll(group.entries)"
+                />
+              </template>
+              <TreeItem
+                v-for="entry in group.entries"
+                :key="key(entry)"
+                :text="entry.label"
+                :note="details(entry).join(' · ')"
+                class="abele-transfer__entry"
+                @click="toggle(entry)"
+              >
+                <template #leading>
+                  <input
+                    type="checkbox"
+                    class="abele-transfer__check"
+                    :checked="chosen.has(key(entry))"
+                    :aria-label="`Send ${entry.label}`"
+                    @change="toggle(entry)"
+                  />
+                </template>
+                <template v-if="withKeys && carriesKey(entry)" #end>
+                  <Icon icon="key-round" :interactive="false" tooltip="Carries a key" />
+                </template>
+              </TreeItem>
+            </TreeItem>
+          </template>
+        </TreeItem>
       </div>
 
       <EmptyState v-if="!groups.length" text="Nothing here can be transferred yet." />
@@ -128,7 +184,7 @@ import { Notice } from 'obsidian'
 import Section from '../obsidian/Section.vue'
 import Setting from '../obsidian/Setting.vue'
 import Checkbox from '../obsidian/Checkbox.vue'
-import EntryRow from '../obsidian/EntryRow.vue'
+import TreeItem from '../obsidian/TreeItem.vue'
 import GroupHeading from '../obsidian/GroupHeading.vue'
 import Button from '../obsidian/Button.vue'
 import Icon from '../obsidian/Icon.vue'
@@ -203,11 +259,95 @@ const toggle = (entry: TransferEntry) => {
   chosen.value = next
 }
 
-const allChosen = (group: Group) => group.entries.every((entry) => chosen.value.has(key(entry)))
-
 const plural = (count: number, word: string) => `${count} ${word}${count === 1 ? '' : 's'}`
 
-const counted = (group: Group) => plural(group.entries.length, 'item')
+const allOf = (list: TransferEntry[]) => list.every((entry) => chosen.value.has(key(entry)))
+const someOf = (list: TransferEntry[]) => list.some((entry) => chosen.value.has(key(entry)))
+
+/** How much of a branch goes: its size while none of it is chosen, then "2 of 3". */
+const countOf = (list: TransferEntry[]) => {
+  const count = list.filter((entry) => chosen.value.has(key(entry))).length
+  return count ? `${count} of ${list.length}` : String(list.length)
+}
+
+const toggleAll = (list: TransferEntry[]) => {
+  const next = new Set(chosen.value)
+  const removing = allOf(list)
+  for (const entry of list) {
+    if (removing) next.delete(key(entry))
+    else next.add(key(entry))
+  }
+  chosen.value = next
+}
+
+/** Where each section's settings are found, by the titles of the settings' own left column. */
+const PAGE_OF: Record<SectionId, string> = {
+  tasks: 'Notes',
+  journals: 'Notes',
+  calendars: 'Notes',
+  links: 'Notes',
+  linter: 'Notes',
+  reader: 'Notes',
+  maps: 'Notes',
+  finance: 'Money and time',
+  'time-tracking': 'Money and time',
+  'ai-general': 'Agents',
+  'ai-providers': 'Agents',
+  'ai-image-providers': 'Agents',
+  'ai-agents': 'Agents',
+  'ai-secrets': 'Agents',
+  'ai-prompts': 'Agents',
+  'ai-voice': 'Agents',
+  'ai-mcp-servers': 'Agents',
+  scripts: 'Agents',
+  'script-files': 'Agents',
+  'skill-notes': 'Agents',
+  'prompt-notes': 'Agents',
+  github: 'Agents',
+  'github-connections': 'Agents',
+  'quick-button': 'Buttons',
+  'header-buttons': 'Buttons',
+  automations: 'Buttons',
+  sync: 'Data',
+  connection: 'Data',
+  other: 'Data',
+}
+const PAGES = ['Notes', 'Money and time', 'Agents', 'Buttons', 'Data']
+
+const pages = computed(() =>
+  PAGES.map((title) => {
+    const own = groups.value.filter((group) => PAGE_OF[group.section] === title)
+    return { title, groups: own, entries: own.flatMap((group) => group.entries) }
+  }).filter((page) => page.entries.length)
+)
+
+/** A group of one thing is that thing: its own name when it has one, then what it holds. */
+const leafNote = (group: Group) => {
+  const entry = group.entries[0]
+  const facts = details(entry)
+  if (entry.label !== group.label) facts.unshift(entry.label)
+  return facts.join(' · ')
+}
+
+const open = ref(new Set<string>())
+
+const fold = (branch: string) => {
+  const next = new Set(open.value)
+  if (!next.delete(branch)) next.add(branch)
+  open.value = next
+}
+
+const everythingChosen = computed(
+  () => entries.value.length > 0 && entries.value.every((entry) => chosen.value.has(key(entry)))
+)
+
+const toggleEverything = () => {
+  chosen.value = everythingChosen.value ? new Set() : new Set(entries.value.map(key))
+}
+
+const chosenCount = computed(() =>
+  chosen.value.size ? `${chosen.value.size} of ${entries.value.length}` : ''
+)
 
 const carriesKey = (entry: TransferEntry) => !!entry.secretIds?.length || !!entry.sensitive
 
@@ -223,7 +363,6 @@ const details = (entry: TransferEntry): string[] => {
   if (isFileSection(entry.section)) {
     const file = entry.data as TransferFile
     facts.push(file.base ? `${file.base}/${file.path}` : file.path)
-    facts.push(`${file.content.length} characters`)
     return facts
   }
   if (typeof data.baseUrl === 'string' && data.baseUrl) facts.push(data.baseUrl)
@@ -232,16 +371,6 @@ const details = (entry: TransferEntry): string[] => {
   if (!facts.length) facts.push(plural(Object.keys(data).length, 'setting'))
 
   return facts
-}
-
-const toggleGroup = (group: Group) => {
-  const next = new Set(chosen.value)
-  const removing = allChosen(group)
-  for (const entry of group.entries) {
-    if (removing) next.delete(key(entry))
-    else next.add(key(entry))
-  }
-  chosen.value = next
 }
 
 const picked = computed(() => entries.value.filter((entry) => chosen.value.has(key(entry))))
@@ -325,16 +454,13 @@ const onApplied = ({ items, keysRefused, filesRefused }: Applied) => {
 </script>
 
 <style lang="scss">
-.abele-transfer__group {
-  margin-top: var(--size-4-4);
-}
-
-// The group's name with its count, and choosing all of it at the end of the same line.
-.abele-transfer__group-head {
+// The list's name with how much is chosen, and choosing all of it at the end of the same line.
+.abele-transfer__head {
   display: flex;
   align-items: baseline;
   justify-content: space-between;
   gap: var(--size-4-2);
+  margin-top: var(--size-4-4);
   margin-bottom: var(--size-2-2);
 
   .abele-group-heading {
@@ -353,15 +479,26 @@ const onApplied = ({ items, keysRefused, filesRefused }: Applied) => {
   font-size: var(--font-ui-small);
 }
 
-.abele-transfer__entry {
-  cursor: var(--cursor);
+.abele-transfer__tree {
+  margin-bottom: var(--size-4-4);
 
-  &:hover {
-    background-color: var(--background-modifier-hover);
+  // A name is never cut inside a word: where the row is narrow, what it holds goes under it,
+  // starting where the name starts.
+  .abele-tree-item__inner {
+    flex-wrap: wrap;
   }
-}
 
-.abele-transfer .abele-transfer__check {
-  margin: 0;
+  .abele-tree-item__text {
+    flex: 0 1 auto;
+    overflow-wrap: normal;
+  }
+
+  .abele-tree-item__note {
+    flex: 1 1 14em;
+  }
+
+  .abele-tree-item__leading ~ .abele-tree-item__note {
+    margin-inline-start: 0;
+  }
 }
 </style>

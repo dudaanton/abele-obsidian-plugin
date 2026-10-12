@@ -28,6 +28,10 @@
         :class="{ 'is-collapsed': collapsed }"
       />
       <div class="tree-item-inner abele-tree-item__inner">
+        <!-- A choice the row stands for, ahead of its name: a check in a list of what to send. -->
+        <span v-if="$slots.leading" class="abele-tree-item__leading" @click.stop
+          ><slot name="leading"
+        /></span>
         <span ref="glyph" class="abele-tree-item__glyph" aria-hidden="true" />
         <span class="abele-tree-item__text">{{ text }}</span>
         <span v-if="note" class="abele-tree-item__note">{{ note }}</span>
@@ -144,6 +148,22 @@ watch(() => [props.icon, props.collapsible], draw, { flush: 'post' })
   .svg-icon {
     --icon-size: var(--icon-xs);
     --icon-stroke: var(--icon-xs-stroke-width);
+  }
+}
+
+// A row with a check and no glyph starts its name right after the check.
+.abele-tree-item__leading + .abele-tree-item__glyph:empty {
+  display: none;
+}
+
+.abele-tree-item__leading {
+  display: flex;
+  align-items: center;
+  height: 1lh;
+  flex: 0 0 auto;
+
+  input[type='checkbox'] {
+    margin: 0;
   }
 }
 

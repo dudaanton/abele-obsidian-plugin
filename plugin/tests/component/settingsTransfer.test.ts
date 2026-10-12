@@ -81,9 +81,20 @@ afterEach(() => {
   vi.restoreAllMocks()
 })
 
-/** The cards of the sending screen, by the name each one shows. */
-const rowNamed = (wrapper: ReturnType<typeof mount>, name: string) =>
-  wrapper.findAll('.abele-transfer__entry').find((row) => row.text().includes(name))
+/** The rows of the sending screen, by the name each one shows, with every branch opened. */
+const rowNamed = async (wrapper: ReturnType<typeof mount>, name: string) => {
+  for (let shut = closedBranch(wrapper); shut; shut = closedBranch(wrapper)) {
+    await shut.trigger('click')
+  }
+  return wrapper
+    .findAll('.abele-transfer__entry > .tree-item-self')
+    .find((row) => row.text().includes(name))
+}
+
+const closedBranch = (wrapper: ReturnType<typeof mount>) =>
+  wrapper.find('.abele-transfer__tree .tree-item.is-collapsed > .tree-item-self').exists()
+    ? wrapper.find('.abele-transfer__tree .tree-item.is-collapsed > .tree-item-self')
+    : undefined
 
 const clickButton = async (wrapper: ReturnType<typeof mount>, text: string) => {
   const button = wrapper.findAllComponents(Button).find((b) => b.props('text') === text)
@@ -349,10 +360,10 @@ describe('the receiving review key count', () => {
 })
 
 describe('choosing what to send', () => {
-  it('offers what the settings actually hold', () => {
+  it('offers what the settings actually hold', async () => {
     const wrapper = open(TransferSettings)
 
-    expect(rowNamed(wrapper, 'openwebui')).toBeTruthy()
+    expect(await rowNamed(wrapper, 'openwebui')).toBeTruthy()
   })
 
   it('will not make a transfer out of nothing', () => {
@@ -365,7 +376,7 @@ describe('choosing what to send', () => {
   it('says how many codes the selection comes to', async () => {
     const wrapper = open(TransferSettings)
 
-    await rowNamed(wrapper, 'openwebui')?.trigger('click')
+    await (await rowNamed(wrapper, 'openwebui'))?.trigger('click')
     await flushPromises()
 
     expect(wrapper.text()).toContain('Fits in one code')
@@ -374,7 +385,7 @@ describe('choosing what to send', () => {
   it('shows the codes, with a one-time code because a key is going along', async () => {
     const wrapper = open(TransferSettings)
 
-    await rowNamed(wrapper, 'openwebui')?.trigger('click')
+    await (await rowNamed(wrapper, 'openwebui'))?.trigger('click')
     await clickButton(wrapper, 'Send')
     await waitFor(() => wrapper.findComponent(TransferSendModal).exists())
 
@@ -389,7 +400,7 @@ describe('choosing what to send', () => {
 
     // The first checkbox on the screen is the one that decides about keys.
     await wrapper.findComponent(Checkbox).vm.$emit('toggle')
-    await rowNamed(wrapper, 'openwebui')?.trigger('click')
+    await (await rowNamed(wrapper, 'openwebui'))?.trigger('click')
     await clickButton(wrapper, 'Send')
 
     expect(wrapper.findComponent(TransferSendModal).props('code')).toBeUndefined()
@@ -399,7 +410,7 @@ describe('choosing what to send', () => {
 describe('the preview of what will be sent', () => {
   const openPreview = async () => {
     const wrapper = open(TransferSettings)
-    await rowNamed(wrapper, 'openwebui')?.trigger('click')
+    await (await rowNamed(wrapper, 'openwebui'))?.trigger('click')
     await flushPromises()
     await clickButton(wrapper, 'Preview')
     return wrapper
@@ -435,7 +446,7 @@ describe('the preview of what will be sent', () => {
   it('shows no keys block at all when they are being left behind', async () => {
     const wrapper = open(TransferSettings)
     await wrapper.findComponent(Checkbox).vm.$emit('toggle')
-    await rowNamed(wrapper, 'openwebui')?.trigger('click')
+    await (await rowNamed(wrapper, 'openwebui'))?.trigger('click')
     await flushPromises()
     await clickButton(wrapper, 'Preview')
 
@@ -450,7 +461,7 @@ describe('reading a transfer on the other device', () => {
   /** What the sending screen produced, handed over the way a camera would deliver it. */
   const framesFor = async () => {
     const wrapper = open(TransferSettings)
-    await rowNamed(wrapper, 'openwebui')?.trigger('click')
+    await (await rowNamed(wrapper, 'openwebui'))?.trigger('click')
     // Keys off: the locked case has its own test, and this one is about what arrives.
     await wrapper.findComponent(Checkbox).vm.$emit('toggle')
     await flushPromises()
@@ -515,7 +526,7 @@ describe('the scripts, skills and prompts themselves', () => {
   const sendFile = async (name: string) => {
     const wrapper = open(TransferSettings)
     await flushPromises()
-    await rowNamed(wrapper, name)?.trigger('click')
+    await (await rowNamed(wrapper, name))?.trigger('click')
     // Nothing here needs a key, so the transfer stays open and needs no code.
     await wrapper.findComponent(Checkbox).vm.$emit('toggle')
     await flushPromises()
@@ -529,14 +540,14 @@ describe('the scripts, skills and prompts themselves', () => {
     const wrapper = open(TransferSettings)
     await flushPromises()
 
-    expect(rowNamed(wrapper, 'tally.js')).toBeTruthy()
+    expect(await rowNamed(wrapper, 'tally.js')).toBeTruthy()
   })
 
   it('offers a skill by the name it calls itself', async () => {
     const wrapper = open(TransferSettings)
     await flushPromises()
 
-    expect(rowNamed(wrapper, 'writing')).toBeTruthy()
+    expect(await rowNamed(wrapper, 'writing')).toBeTruthy()
   })
 
   it('writes an arriving script into this vault', async () => {
@@ -596,7 +607,7 @@ describe('choosing between keeping and replacing', () => {
   const arrive = async () => {
     const wrapper = open(TransferSettings)
     await flushPromises()
-    await rowNamed(wrapper, 'openwebui')?.trigger('click')
+    await (await rowNamed(wrapper, 'openwebui'))?.trigger('click')
     await wrapper.findComponent(Checkbox).vm.$emit('toggle')
     await flushPromises()
     await clickButton(wrapper, 'Send')
@@ -662,7 +673,7 @@ describe('choosing between keeping and replacing', () => {
 describe('a transfer that carries a key', () => {
   const lockedFrames = async () => {
     const wrapper = open(TransferSettings)
-    await rowNamed(wrapper, 'openwebui')?.trigger('click')
+    await (await rowNamed(wrapper, 'openwebui'))?.trigger('click')
     await clickButton(wrapper, 'Send')
     await waitFor(() => wrapper.findComponent(TransferSendModal).exists())
     const shown = wrapper.findComponent(TransferSendModal)
@@ -721,7 +732,8 @@ describe('a transfer that carries a key', () => {
       })
 
     const wrapper = open(TransferSettings)
-    for (const name of ['openwebui', 'other']) await rowNamed(wrapper, name)?.trigger('click')
+    for (const name of ['openwebui', 'other'])
+      await (await rowNamed(wrapper, name))?.trigger('click')
     await clickButton(wrapper, 'Send')
     await waitFor(() => wrapper.findComponent(TransferSendModal).exists())
     const shown = wrapper.findComponent(TransferSendModal)
@@ -780,7 +792,7 @@ describe('sending without a camera', () => {
 
   const send = async () => {
     const wrapper = open(TransferSettings)
-    await rowNamed(wrapper, 'openwebui')?.trigger('click')
+    await (await rowNamed(wrapper, 'openwebui'))?.trigger('click')
     // Keys off: what is being asked here is how the transfer travels, not how it is locked.
     await wrapper.findComponent(Checkbox).vm.$emit('toggle')
     await flushPromises()
@@ -913,7 +925,7 @@ describe('reading a transfer out of a file', () => {
 
   const transferText = async () => {
     const wrapper = open(TransferSettings)
-    await rowNamed(wrapper, 'openwebui')?.trigger('click')
+    await (await rowNamed(wrapper, 'openwebui'))?.trigger('click')
     await wrapper.findComponent(Checkbox).vm.$emit('toggle')
     await flushPromises()
     await clickButton(wrapper, 'Send')
