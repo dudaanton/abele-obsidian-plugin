@@ -2,7 +2,7 @@
  * Attaching a chat to a note by hand, in the running app, from both ends and back.
  *
  * The unit tier proves the link lands in the chat file and the index; what only the app can
- * show is the rest of the road: the Artifacts button in the chat's header opening the attachment
+ * show is the rest of the road: the chat header's "Files from this chat" opening the attachment
  * controls, the note's *Attach a chat…* command and its picker choosing one,
  * the card appearing under the note and going again when it is detached — and all of it still
  * there once the chat and the note have been closed and opened again.
@@ -24,8 +24,8 @@ interface Step {
   cards: string[]
   /** What the chat file's last metadata record lists in `touched`. */
   file: string[]
-  /** The linked-note count in the Artifacts view. */
-  count: string
+  /** The linked-note rows in the "Files from this chat" view (the section is hidden at none). */
+  count: number
 }
 
 interface Report {
@@ -71,9 +71,12 @@ const script = `(async () => {
   const artifacts = () => document.querySelector('.abele-chat-artifacts')
   const openArtifacts = async () => {
     if (artifacts()) return artifacts()
-    if (!(await until(() => document.querySelector('.abele-ai-chat__artifacts'), 8000)))
-      throw new Error('no Artifacts header control')
-    document.querySelector('.abele-ai-chat__artifacts').click()
+    const more = await until(() => document.querySelector('.abele-ai-chat__overflow [aria-haspopup="menu"]'), 8000)
+    if (!more) throw new Error('no chat overflow control')
+    more.click()
+    const item = await until(() => [...document.querySelectorAll('.menu .menu-item')].find((el) => el.textContent.trim() === 'Files from this chat'))
+    if (!item) throw new Error('no "Files from this chat" in the overflow')
+    item.click()
     if (!(await until(artifacts))) throw new Error('no Artifacts view')
     return artifacts()
   }
@@ -99,7 +102,7 @@ const script = `(async () => {
     const result = {
       cards: cards(),
       file: await inFile(chatPath),
-      count: root.querySelector('section[aria-label="Notes"] h3')?.textContent.trim(),
+      count: root.querySelectorAll('section[aria-label="Notes"] .abele-chat-artifacts__row').length,
     }
     await closeArtifacts()
     return result
@@ -147,7 +150,7 @@ const script = `(async () => {
     // the file most recently in front, which is what "the note in front" means from there.
 
     // ── from the chat: attach to the note in front ──
-    await press(await openArtifacts(), 'Attach to current note')
+    await press(await openArtifacts(), 'Attach current note')
     await until(() => cards().includes(${JSON.stringify(CHAT)}))
     report.chatToNote = await step(chatPath)
 
@@ -181,16 +184,22 @@ const script = `(async () => {
     await until(() => cards().includes(${JSON.stringify(CHAT)}))
     report.noteToChat = await step(chatPath)
 
-    // ── from the chat: the linked note's Artifacts card ──
+    // ── from the chat: the linked note's row, its ⋯ menu ──
     const root = await openArtifacts()
-    report.chatArtifacts = [...root.querySelectorAll('section[aria-label="Notes"] .abele-card__name')]
+    report.chatArtifacts = [...root.querySelectorAll('section[aria-label="Notes"] .abele-chat-artifacts__row .abele-tree-item__text')]
       .map((el) => el.textContent.trim())
-    const card = [...root.querySelectorAll('.abele-card')].find((el) =>
-      el.querySelector('.abele-card__subtitle')?.textContent === notePath)
-    if (!card) throw new Error('no linked note card in Artifacts')
-    await press(card, 'Unlink')
+    const row = [...root.querySelectorAll('.abele-chat-artifacts__row')].find((el) =>
+      el.querySelector('[data-path]')?.getAttribute('data-path') === notePath)
+    if (!row) throw new Error('no linked note row in "Files from this chat"')
+    // The row's ⋯ is Obsidian's menu; off native for this step so the page can reach it.
+    const oldNative = app.vault.getConfig('nativeMenus')
+    app.vault.setConfig('nativeMenus', false)
+    try { row.querySelector('.abele-chat-artifacts__more').click() } finally { app.vault.setConfig('nativeMenus', oldNative) }
+    const unlink = await until(() => [...document.querySelectorAll('.menu .menu-item')].find((el) => el.textContent.trim() === 'Unlink from chat'))
+    if (!unlink) throw new Error('no "Unlink from chat" in the row menu')
+    unlink.click()
     await until(() => cards().length === 0)
-    await until(() => !root.querySelector('section[aria-label="Notes"] .abele-card'))
+    await until(() => !root.querySelector('section[aria-label="Notes"] .abele-chat-artifacts__row'))
     report.detachFromChat = await step(chatPath)
     report.detachedNoteKept = !!app.vault.getAbstractFileByPath(notePath)
   } catch (e) {
@@ -230,7 +239,7 @@ describe.skipIf(!available)('attaching a chat to a note, in the app', () => {
   })
 
   it('from the chat: attaches it to the note in front, and the card appears', () => {
-    expect(report.chatToNote).toEqual({ cards: [CHAT], file: [`${NOTE}.md`], count: 'Notes (1)' })
+    expect(report.chatToNote).toEqual({ cards: [CHAT], file: [`${NOTE}.md`], count: 1 })
   })
 
   it('is still attached once the chat and the note are opened again', () => {
@@ -239,16 +248,16 @@ describe.skipIf(!available)('attaching a chat to a note, in the app', () => {
   })
 
   it('from the note: the card’s unlink button detaches it', () => {
-    expect(report.detachFromNote).toEqual({ cards: [], file: [], count: 'Notes (0)' })
+    expect(report.detachFromNote).toEqual({ cards: [], file: [], count: 0 })
   })
 
   it('from the note: the command picks a chat and attaches it', () => {
-    expect(report.noteToChat).toEqual({ cards: [CHAT], file: [`${NOTE}.md`], count: 'Notes (1)' })
+    expect(report.noteToChat).toEqual({ cards: [CHAT], file: [`${NOTE}.md`], count: 1 })
   })
 
-  it('from the chat: Artifacts lists the note, and unlinks without deleting it', () => {
+  it('from the chat: Files from this chat lists the note, and unlinks without deleting it', () => {
     expect(report.chatArtifacts).toEqual([NOTE])
-    expect(report.detachFromChat).toEqual({ cards: [], file: [], count: 'Notes (0)' })
+    expect(report.detachFromChat).toEqual({ cards: [], file: [], count: 0 })
     expect(report.detachedNoteKept).toBe(true)
   })
 })

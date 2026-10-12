@@ -256,16 +256,6 @@ body.is-phone
   }
 }
 
-.abele-chat-msg__revision {
-  display: flex;
-  flex-wrap: wrap;
-  gap: var(--size-4-1);
-  align-items: center;
-  margin-top: var(--size-4-1);
-  color: var(--text-muted);
-  font-size: var(--font-small);
-}
-
 .abele-chat-msg__compact-label {
   color: var(--text-faint);
   font-size: var(--font-small);

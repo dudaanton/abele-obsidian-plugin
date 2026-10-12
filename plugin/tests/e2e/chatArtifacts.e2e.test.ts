@@ -28,8 +28,24 @@ describe.skipIf(!available)('one view of a chat’s artifacts', () => {
       const created = [], observations = {}, cuts = [], over = []
       const close = async () => { document.querySelector('.modal-close-button')?.click(); await wait(100) }
       const root = () => document.querySelector('.abele-chat-artifacts')
-      const card = path => [...root().querySelectorAll('.abele-card')].find(el => el.querySelector('.abele-card__subtitle')?.textContent === path)
-      const press = (host, text) => { const button = [...host.querySelectorAll('button')].find(b => b.textContent.trim() === text); if (!button || button.disabled) throw Error('Missing enabled button: ' + text); button.click() }
+      // A note or script is a tree row, a picture a tile; both carry the file's path.
+      const card = path => [...root().querySelectorAll('.abele-chat-artifacts__row, .abele-chat-artifacts__image')].find(el => (el.matches('[data-path]') ? el : el.querySelector('[data-path]'))?.getAttribute('data-path') === path)
+      const missing = el => el.matches('.abele-chat-artifacts__row_missing, .abele-chat-artifacts__image_missing')
+      const heading = el => el.querySelector('.abele-fold-heading__text').textContent.trim() + ' (' + el.querySelector('.abele-fold-heading__count').textContent.trim() + ')'
+      const headings = () => [...root().querySelectorAll('.abele-fold-heading')].map(heading)
+      // What the ⋯ of a row (or a right click on a picture) holds; nativeMenus is off for the run.
+      const menuOf = async host => {
+        const more = host.querySelector('.abele-chat-artifacts__more')
+        if (more) more.click()
+        else host.dispatchEvent(new MouseEvent('contextmenu', { bubbles: true, cancelable: true, clientX: 10, clientY: 10 }))
+        return [...(await until(() => document.querySelector('.menu'))).querySelectorAll('.menu-item')]
+      }
+      const press = async (host, text) => {
+        const item = (await menuOf(host)).find(el => el.textContent.trim() === text)
+        if (!item || item.classList.contains('is-disabled')) throw Error('Missing enabled menu item: ' + text)
+        item.click(); await wait(50)
+      }
+      const oldNative = app.vault.getConfig('nativeMenus')
       const capture = async name => {
         const path = ${JSON.stringify(SHOTS + '/chat-artifacts-')} + name + '.png'
         if (${onPhone()}) await window.__e2eHost.shot(path)
@@ -88,14 +104,18 @@ describe.skipIf(!available)('one view of a chat’s artifacts', () => {
         session = chats.getSessionByFile(chatFile.path); tab = session.id
         config.ai.scriptsEnabled = false
         await chats.revealSidebar()
-        await until(() => document.querySelector('.abele-ai-chat__artifacts'))
+        app.vault.setConfig('nativeMenus', false)
+        const overflow = () => document.querySelector('.abele-ai-chat__overflow [aria-haspopup="menu"]')
+        await until(overflow)
         document.querySelector('.abele-chat-input__expand').click()
         await until(() => document.querySelector('.abele-ai-chat--composing'))
-        document.querySelector('.abele-ai-chat__artifacts').click()
+        overflow().click()
+        ;(await until(() => [...document.querySelectorAll('.menu .menu-item')].find(el => el.textContent.trim() === 'Files from this chat'))).click()
         await until(root)
-        observations.sections = [...root().querySelectorAll('h3')].map(el => el.textContent)
+        observations.sections = headings()
         observations.images = root().querySelectorAll('.abele-chat-picture img').length
-        observations.origins = root().textContent
+        // A picture says where it came from in its tooltip.
+        observations.origins = [...root().querySelectorAll('.abele-chat-artifacts__image')].map(el => el.getAttribute('aria-label')).join(' | ')
         const body = root().closest('.abele-modal__body')
         const measure = () => {
           for (const el of root().querySelectorAll('*')) { const r = el.getBoundingClientRect(); if (r.width && r.right > root().getBoundingClientRect().right + 1) over.push(el.className) }
@@ -114,13 +134,13 @@ describe.skipIf(!available)('one view of a chat’s artifacts', () => {
         measure(); body.scrollTop = 0
         observations.shot = await capture('populated')
         const script = directory + '/Scripts/sample-script.js'
-        press(card(script), 'Open'); await wait(200)
+        card(script).querySelector('.tree-item-self').click(); await wait(200)
         observations.opened = app.workspace.getLeavesOfType('abele-code').some(leaf => leaf.view.file?.path === script)
-        press(card(script), 'Reveal'); await wait(200)
+        await press(card(script), 'Reveal in explorer'); await wait(200)
         observations.revealRows = [...document.querySelectorAll('.nav-file')].filter(el => el.dataset.path === script || el.querySelector('[data-path]')?.dataset.path === script).map(el => ({ cls: el.className + ' ' + el.querySelector('.nav-file-title')?.className, path: el.dataset.path, text: el.textContent }))
         observations.revealed = observations.revealRows.some(row => /is-selected|is-active/.test(row.cls))
         const note = directory + '/sample-note.md'
-        press(card(note), 'Unlink'); await until(() => !card(note))
+        await press(card(note), 'Unlink from chat'); await until(() => !card(note))
         observations.noteKept = !!app.vault.getAbstractFileByPath(note)
         observations.scriptKept = !!app.vault.getAbstractFileByPath(script)
         // A running turn adds a completed result to the already-open view.
@@ -128,20 +148,22 @@ describe.skipIf(!available)('one view of a chat’s artifacts', () => {
         const extra = await app.vault.createBinary(directory + '/sample-later.png', await blob.arrayBuffer())
         session.appendChatMessage({ id: 'sample-later', role: 'tool-call', content: '', toolName: 'generate_image', toolStatus: 'approved', toolResult: 'Image saved: ' + extra.path, toolImagePath: extra.path, timestamp: 20 })
         session.updateVisibleMessages()
-        await until(() => root().textContent.includes('Images (4)'))
+        await until(() => headings().includes('Images (4)'))
         session.isStreaming.value = false
         observations.live = true
         const invalidPath = '/' + upload.path
         session.appendChatMessage({ id: 'sample-invalid-path', role: 'user', content: '', attachments: [invalidPath], timestamp: 21 })
         session.updateVisibleMessages()
         await until(() => card(invalidPath))
-        observations.invalidUnavailable = card(invalidPath).textContent.includes('Unavailable') &&
-          [...card(invalidPath).querySelectorAll('button')].find(button => button.textContent.trim() === 'Open')?.disabled &&
+        observations.invalidUnavailable = missing(card(invalidPath)) &&
+          card(invalidPath).querySelector('.abele-status-dot')?.getAttribute('aria-label') === 'File missing' &&
           !card(invalidPath).querySelector('img')
-        const missing = app.vault.getAbstractFileByPath(created[1]); await app.vault.rename(missing, directory + '/sample-moved.png')
-        await until(() => card(created[1]).textContent.includes('Unavailable'))
-        observations.missing = card(created[1]).textContent.includes('Show in chat')
-        press(card(upload.path), 'Show in chat')
+        const moved = app.vault.getAbstractFileByPath(created[1]); await app.vault.rename(moved, directory + '/sample-moved.png')
+        await until(() => missing(card(created[1])))
+        observations.missing = (await menuOf(card(created[1]))).some(el => el.textContent.trim() === 'Show in chat')
+        document.body.dispatchEvent(new KeyboardEvent('keydown', { key: 'Escape', bubbles: true })); await wait(100)
+        document.querySelector('.menu')?.remove()
+        await press(card(upload.path), 'Show in chat')
         await until(() => !root())
         const sourceVisible = () => {
           const source = document.querySelector('[data-message-id="sample-upload"]')
@@ -162,6 +184,7 @@ describe.skipIf(!available)('one view of a chat’s artifacts', () => {
         // Tools and code views can save the temporary settings. Restore durably before any
         // workspace cleanup that could fail, so the next file never inherits scripts off.
         try {
+        app.vault.setConfig('nativeMenus', oldNative)
         config.ai = fixtureClone(scriptFixture.ai)
         await config.saveSettings()
         if (session) { session.isStreaming.value = false; if (getTools) session.getTools = getTools }
@@ -185,8 +208,8 @@ describe.skipIf(!available)('one view of a chat’s artifacts', () => {
     expect(result.error).toBeUndefined()
     expect(result.sections).toEqual(['Notes (1)', 'Images (3)', 'Scripts (1)'])
     expect(result.images).toBe(3)
-    expect(result.origins).toContain('Generated')
-    expect(result.origins).toContain('Edited')
+    expect(result.origins).toContain('Made by the agent')
+    expect(result.origins).toContain('Edited by the agent')
     expect(result.origins).toContain('Uploaded')
     expect(result.opened).toBe(true)
     expect(result.revealed, JSON.stringify(result.revealRows)).toBe(true)

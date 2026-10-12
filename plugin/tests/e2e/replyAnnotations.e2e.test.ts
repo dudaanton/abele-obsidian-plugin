@@ -109,7 +109,7 @@ const script = `(async () => {
     report.unchanged=parent.messages.value[0].content===source
     // Finish fixture writes before selecting the saved discussion whose controls are measured.
     if(!await comments.showInSidebar(child.commentId))throw Error('Revision discussion was not presented')
-    const review=await until(()=>[...document.querySelectorAll('.abele-ai-chat button')].find(b=>b.textContent.trim()==='Review reply revision'))
+    const review=await until(()=>document.querySelector('.abele-ai-chat .abele-chat-msg__proposal .tree-item-self'))
     review.click()
     phase='opening revision dialog'
     const dialog=await until(()=>document.querySelector('.abele-reply-revision'))
@@ -127,9 +127,11 @@ const script = `(async () => {
     report.original=parent.messages.value[0].revisions[0].before
     await until(()=>!document.querySelector('.abele-reply-revision'))
     chats.switchTab(parent.id);await until(message);await wait(300);await shot('edited-reply')
-    ;[...document.querySelectorAll('.abele-ai-chat button')].find(b=>b.textContent.trim()==='View original').click()
-    await until(()=>document.querySelector('.modal .abele-markdown'));await wait(300);await shot('original-reply')
-    ;[...document.querySelectorAll('.modal button')].find(b=>b.textContent.trim()==='Undo last revision').click()
+    ;document.querySelector('.abele-ai-chat .abele-chat-msg__edited').click()
+    const original=await until(()=>document.querySelector('.modal .abele-reply-original'))
+    ;[...original.querySelectorAll('.abele-tabs__tab')].find(t=>t.textContent.trim()==='Original').click()
+    await until(()=>original.querySelector('.abele-markdown'));await wait(300);await shot('original-reply')
+    ;[...document.querySelectorAll('.modal button')].find(b=>b.textContent.trim()==='Undo last change').click()
     await until(()=>parent.messages.value[0].content===source)
     report.undone=parent.messages.value[0].highlights.length
   } catch(error) {
@@ -207,7 +209,8 @@ describe.runIf(available)('reply annotations in phone layout', () => {
     expect(report.dialog.left).toBeGreaterThanOrEqual(0)
     expect(report.dialog.right).toBeLessThanOrEqual(report.dialog.width)
     expect(report.dialog.bottom).toBeLessThanOrEqual(report.dialog.height)
-    expect(report.dialog.buttons).toEqual(['Accept', 'Reject', 'Later'])
+    // Deciding later is closing the dialog; only the two decisions are buttons.
+    expect(report.dialog.buttons).toEqual(['Reject', 'Accept'])
   })
   it('changes only the passage, retains the original and undoes it with its highlights', () => {
     expect(report.accepted).toBe('A bright lamp lights the garden path. A lantern stays nearby.')

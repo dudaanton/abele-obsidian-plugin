@@ -1,14 +1,17 @@
 <template>
   <div
     class="abele-chat-msg"
-    :class="[`abele-chat-msg_${message.role}`, { 'abele-chat-msg--draft': message.draft }]"
+    :class="[
+      `abele-chat-msg_${message.role}`,
+      { 'abele-chat-msg--draft': message.draft, 'abele-chat-msg_line': ownLine(message) },
+    ]"
     @click.capture="onMessageClick"
   >
     <!-- A tool call keeps its glyph in line, by the kind of work, and opens its details by it. A
          question or an answer has no glyph column: who speaks is plain from the bubble, and its
          actions are in the line under it. -->
     <button
-      v-if="message.role !== 'user' && message.role !== 'assistant'"
+      v-if="message.role !== 'user' && message.role !== 'assistant' && !ownLine(message)"
       type="button"
       class="clickable-icon abele-chat-msg__icon"
       aria-label="Message actions and details"
@@ -53,7 +56,7 @@
 
       <!-- Tool call — compact one-liner + inline diff -->
       <template v-if="message.role === 'tool-call'">
-        <span class="abele-chat-msg__tool-line" data-find-part="tool">
+        <span v-if="!ownLine(message)" class="abele-chat-msg__tool-line" data-find-part="tool">
           <code>{{ message.toolName }}</code>
           <span
             class="abele-chat-msg__tool-summary"
@@ -88,6 +91,14 @@
           }}</span>
           <slot name="tool-note" />
         </span>
+        <span
+          v-if="ownLine(message) && expanded"
+          class="abele-chat-msg__tool-line"
+          data-find-part="tool"
+        >
+          <code>{{ message.toolName }}</code
+          ><span>{{ toolSummary }}</span>
+        </span>
         <AiChatMessageDetails
           v-if="expanded"
           :message="message"
@@ -105,23 +116,18 @@
         />
         <!-- A delegated run: the whole sub-conversation, right where it was dispatched. -->
         <AiSubAgentRun v-if="message.subAgentRun" :run="message.subAgentRun" />
-        <div v-if="message.replyProposal" class="abele-chat-msg__revision">
-          <Button
-            v-if="
-              message.replyProposal.status === 'pending' ||
-              message.replyProposal.application === 'pending'
-            "
-            :text="
-              message.replyProposal.application === 'pending'
-                ? 'Finish accepted revision'
-                : 'Review reply revision'
-            "
-            icon="git-compare"
-            tooltip="Compare the selected passage before accepting or rejecting the replacement"
-            @click="emit('review-revision', message.id)"
-          />
-          <span v-else>Reply revision {{ message.replyProposal.status }}</span>
-        </div>
+        <TreeItem
+          v-if="message.replyProposal"
+          class="abele-chat-run abele-chat-msg__proposal"
+          icon="git-compare"
+          :text="proposalText(message.replyProposal)"
+          :disabled="!proposalOpen(message.replyProposal)"
+          @click="emit('review-revision', message.id)"
+        >
+          <template v-if="proposalOpen(message.replyProposal)" #end>
+            <StatusDot tone="orange" label="Waiting for your decision" />
+          </template>
+        </TreeItem>
 
         <div
           v-if="message.toolStatus === 'approved' && imageUrl"
@@ -215,17 +221,6 @@
       />
       <slot name="metadata" />
 
-      <div v-if="lastRevision" class="abele-chat-msg__revision">
-        <span
-          >Edited by {{ lastRevision.author }} · {{ formatTime(lastRevision.at)
-          }}{{ lastRevision.undoneAt ? ' · undone' : '' }}</span
-        >
-        <Button
-          text="View original"
-          tooltip="Read the original reply or undo the last revision"
-          @click="originalOpen = true"
-        />
-      </div>
       <AiReplyOriginalDialog
         v-if="originalOpen"
         :message="message"
@@ -277,6 +272,14 @@
       @insert-into-note="emit('insert-into-note', $event)"
       @details="expanded = !expanded"
     >
+      <Icon
+        v-if="lastRevision"
+        class="abele-chat-msg__edited"
+        icon="pencil-line"
+        size="xs"
+        :label="editedLabel"
+        @click="originalOpen = true"
+      />
       <ChatBranchSwitch
         v-if="branches"
         class="abele-chat-msg__branches"
@@ -332,7 +335,8 @@ import type { ChatRevision, RenderedRange } from '@/selection/types'
 import { formatTimestamp } from '@/helpers/displayFormat'
 import { Menu, Notice, Platform } from 'obsidian'
 import Icon from './obsidian/Icon.vue'
-import Button from './obsidian/Button.vue'
+import TreeItem from './obsidian/TreeItem.vue'
+import StatusDot from './obsidian/StatusDot.vue'
 import AiReplyOriginalDialog from './AiReplyOriginalDialog.vue'
 import AiChatMessageDetails from './AiChatMessageDetails.vue'
 import AiChatMessageInterceptor from './AiChatMessageInterceptor.vue'
@@ -341,7 +345,8 @@ import ChatPicture from './ChatPicture.vue'
 import { isImagePath } from '@/ai/tools/ReadImageTool'
 import Markdown from './obsidian/Markdown.vue'
 import ChatThinking from './ChatThinking.vue'
-import { KIND_ICON, toolKind } from '@/ai/toolRuns'
+import { KIND_ICON, ownLine, toolKind } from '@/ai/toolRuns'
+import type { ReplyProposal } from '@/ai/replyAnnotations'
 import AbeleMap from './AbeleMap.vue'
 import Diff from './Diff.vue'
 import AiSubAgentRun from './AiSubAgentRun.vue'
@@ -505,6 +510,19 @@ const diffPath = computed(() => {
   const path = params?.path ?? params?.file_path
   return typeof path === 'string' ? path : undefined
 })
+const editedLabel = computed(() => {
+  const revision = lastRevision.value
+  if (!revision) return ''
+  const state = revision.undoneAt ? 'Change undone' : `Edited by ${revision.author}`
+  return `${state} · ${formatTimestamp(revision.at, { diagnostic: true }).exact} · the reply before`
+})
+const proposalOpen = (proposal: ReplyProposal) =>
+  proposal.status === 'pending' || proposal.application === 'pending'
+const proposalText = (proposal: ReplyProposal) => {
+  if (proposal.application === 'pending') return 'Accepted change, not applied yet'
+  if (proposal.status === 'pending') return 'Proposed change to a reply'
+  return proposal.status === 'accepted' ? 'Change accepted' : 'Change rejected'
+}
 
 function onMessageClick(event: MouseEvent) {
   previewContentImage(event)
@@ -563,7 +581,13 @@ const thinking = ref<InstanceType<typeof ChatThinking>>()
  * opens on the page.
  */
 const revealPart = (part: FindPart) => {
-  if (part === 'params' || part === 'result' || part === 'summary') expanded.value = true
+  if (
+    part === 'params' ||
+    part === 'result' ||
+    part === 'summary' ||
+    (part === 'tool' && ownLine(props.message))
+  )
+    expanded.value = true
   if (part === 'thinking') thinking.value?.reveal()
   if (
     part === 'interceptor' &&
@@ -605,8 +629,6 @@ function revealSelection(
 }
 
 defineExpose({ revealPart, revealPassage, revealSelection })
-
-const formatTime = (ts: number) => formatTimestamp(ts, { diagnostic: true }).exact
 </script>
 
 <style lang="scss" src="../styles/chatMessage/index.scss" />

@@ -243,8 +243,10 @@ From a user message the person can **rewind**: every change made since that mess
 turn, is put back — files the agent made go to the trash, deleted ones come back, moved ones
 move back — and, if they choose, the conversation goes back to that message as well, with the
 message in the box to send again. **Undo changes** takes back one turn's changes alone. A file
-somebody changed after the agent last did is shown as such and left alone unless the person says
-to overwrite it. What the person types into a note *while* a tool is running cannot be told from
+somebody changed after the agent last did is shown as such and left alone; conflicting or
+unverified work is not overwritten. The dialog starts with file restoration off. Only its
+explicit file-restoration button applies the displayed plan. Branching and conversation-only
+navigation never restore files. What the person types into a note *while* a tool is running cannot be told from
 the agent's change and is recorded with it.
 
 The copies live on this device only — see *Chats* in the vault section — so a chat opened on

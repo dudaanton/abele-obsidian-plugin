@@ -261,7 +261,9 @@ const script = `(async () => {
         await settle(() => document.querySelector('.modal.abele-modal'))
         const modal = document.querySelector('.modal.abele-modal')
         // Empty, populated and long-path artifact fixtures must all retain their three sections.
-        if (dialogName.startsWith('chat-artifacts') && modal.querySelectorAll('.abele-chat-artifacts section').length !== 3)
+        if (dialogName.startsWith('chat-artifacts') && !(dialogName === 'chat-artifacts-empty'
+          ? modal.querySelectorAll('.abele-chat-artifacts section').length === 0 && modal.querySelector('.abele-chat-artifacts .abele-empty-state')
+          : modal.querySelectorAll('.abele-chat-artifacts section').length === 3))
           cuts.push({ screen: 'dialog ' + dialogName, field: '-', by: ['artifact sections did not open'] })
         // Node registration and permission opt-in are disclosures, not separate tabs.
         if (dialogName === 'node-workspaces' || dialogName === 'chat-navigation') {

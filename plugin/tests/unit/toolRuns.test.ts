@@ -1,5 +1,5 @@
 import { describe, expect, it } from 'vitest'
-import { chatBlocks, runKind, runState, runSummary, toolKind } from '@/ai/toolRuns'
+import { chatBlocks, ownLine, runKind, runState, runSummary, toolKind } from '@/ai/toolRuns'
 import type { ChatMessage } from '@/ai/types'
 
 let n = 0
@@ -91,5 +91,38 @@ describe('a chat as drawn', () => {
   it('starts a new run after anything said between calls', () => {
     const blocks = chatBlocks([call('web_search'), say('assistant', 'Next'), call('read_note')])
     expect(blocks.map((x) => x.kind)).toEqual(['run', 'message', 'run'])
+  })
+
+  it('gives a helper agent a line of its own, closing the run before it', () => {
+    const before = call('web_search')
+    const delegate = call('delegate', {
+      subAgentRun: {
+        runId: 'r1',
+        agentId: 'a1',
+        agentName: 'Worker',
+        path: 'Runs/r1.abchat',
+        status: 'running',
+        branchCount: 1,
+      },
+    })
+    const after = call('read_note')
+    const blocks = chatBlocks([before, delegate, after])
+    expect(blocks.map((x) => x.kind)).toEqual(['run', 'message', 'run'])
+    expect(blocks[0].kind === 'run' && blocks[0].calls).toEqual([before])
+    expect(blocks[1].kind === 'message' && blocks[1].message).toBe(delegate)
+    expect(blocks[2].kind === 'run' && blocks[2].calls).toEqual([after])
+  })
+
+  it('gives a proposed change to a reply a line of its own', () => {
+    const proposal = call('propose_reply_change', {
+      replyProposal: { id: 'p', status: 'pending' } as ChatMessage['replyProposal'],
+    })
+    expect(ownLine(proposal)).toBe(true)
+    expect(ownLine(call('web_search'))).toBe(false)
+    expect(ownLine(say('assistant', 'Plain'))).toBe(false)
+    expect(chatBlocks([call('web_search'), proposal]).map((x) => x.kind)).toEqual([
+      'run',
+      'message',
+    ])
   })
 })

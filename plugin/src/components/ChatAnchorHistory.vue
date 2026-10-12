@@ -1,15 +1,17 @@
 <template>
-  <ObsidianModal title="Saved selection" @close="emit('close')">
+  <!-- Words saved from a reply that has changed since: where they were found, on one quiet line;
+       the words; and, when they belong to an earlier version, that version with them lit. -->
+  <ObsidianModal title="Saved selection" size="tall" @close="emit('close')">
     <div class="abele-anchor-history">
-      <p v-if="resolution.status === 'historical'">
-        This selection belongs to an earlier version of the message. The saved version below is
-        read-only; the current reply is unchanged.
+      <p class="abele-anchor-history__state">
+        <Icon :icon="historical ? 'history' : 'search-x'" size="xs" no-hover />
+        {{
+          historical
+            ? 'From an earlier version of this reply'
+            : 'Could not find it in the reply as it is now'
+        }}
       </p>
-      <p v-else>
-        The exact placement cannot be verified. The original selected words are kept below; no
-        occurrence in the current message has been highlighted.
-      </p>
-      <blockquote>{{ anchor.snapshot.text }}</blockquote>
+      <Quote :text="anchor.snapshot.text" />
       <Markdown
         v-if="resolution.status === 'historical'"
         ref="retained"
@@ -17,19 +19,20 @@
         @rendered="onRendered"
       />
     </div>
-    <template #footer><Button text="Close" @click="emit('close')" /></template>
   </ObsidianModal>
 </template>
 
 <script setup lang="ts">
-import { ref } from 'vue'
+import { computed, ref } from 'vue'
 import ObsidianModal from './obsidian/Modal.vue'
 import Markdown from './obsidian/Markdown.vue'
-import Button from './obsidian/Button.vue'
+import Icon from './obsidian/Icon.vue'
+import Quote from './obsidian/Quote.vue'
 import type { ChatAnchor, ChatAnchorResolution } from '@/selection/types'
 import { flashExactSelection } from '@/ai/messageComments'
 const props = defineProps<{ anchor: ChatAnchor; resolution: ChatAnchorResolution }>()
 const emit = defineEmits<{ (e: 'close'): void }>()
+const historical = computed(() => props.resolution.status === 'historical')
 const retained = ref<InstanceType<typeof Markdown>>()
 function onRendered() {
   const root = retained.value?.$el as HTMLElement | undefined
@@ -42,7 +45,21 @@ function onRendered() {
 }
 </script>
 
-<style>
+<style lang="scss">
+.abele-anchor-history {
+  display: flex;
+  flex-direction: column;
+  gap: var(--size-4-2);
+  min-width: 0;
+}
+.abele-anchor-history__state {
+  display: flex;
+  align-items: center;
+  gap: var(--size-4-1);
+  margin: 0;
+  color: var(--text-muted);
+  font-size: var(--font-ui-small);
+}
 .abele-anchor-source__choice {
   white-space: normal;
   overflow-wrap: anywhere;

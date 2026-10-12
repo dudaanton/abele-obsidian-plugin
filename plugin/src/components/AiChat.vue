@@ -1907,7 +1907,7 @@ const headerOverflowActions = computed<HeaderAction[]>(() => [
   },
   ...(commentSession.value
     ? []
-    : [{ id: 'artifacts', label: 'Artifacts: notes, images and scripts', icon: 'boxes' }]),
+    : [{ id: 'artifacts', label: 'Files from this chat', icon: 'boxes' }]),
   ...(agentsNeedYou.value ? [] : [{ id: 'agents', label: 'Agents', icon: 'activity' }]),
 ])
 /** Some other conversation waits for an answer from you. */

@@ -18,7 +18,11 @@ const proposal: ReplyProposal = {
   status: 'pending',
 }
 const stubs = {
-  ObsidianModal: { template: '<div><slot /><slot name="footer" /></div>' },
+  ObsidianModal: {
+    emits: ['close'],
+    template:
+      '<div><button class="modal-close-button" @click="$emit(\'close\')" /><slot /><slot name="footer" /></div>',
+  },
   Diff: {
     props: ['textLeft', 'textRight'],
     template: '<pre>{{ textLeft }} → {{ textRight }}</pre>',
@@ -36,7 +40,8 @@ describe('owner review of a reply passage', () => {
     expect(view.text()).toContain('small → bright')
     expect(view.text()).toContain('Please rewrite this.')
     expect(decide).not.toHaveBeenCalled()
-    await button(view, 'Later').trigger('click')
+    expect(view.findAllComponents(Button).map((b) => b.props('text'))).toEqual(['Reject', 'Accept'])
+    await view.find('.modal-close-button').trigger('click')
     expect(decide).not.toHaveBeenCalled()
     expect(view.emitted('close')).toHaveLength(1)
   })

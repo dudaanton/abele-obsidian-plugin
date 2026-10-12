@@ -26,7 +26,7 @@ interface BadgeMeasure {
 
 const available = isObsidianRunning() && hasTestApi()
 
-describe.skipIf(!available)('chat Artifacts control and linked-note counts', () => {
+describe.skipIf(!available)('chat files control and linked-note counts', () => {
   let size: [number, number]
 
   beforeAll(() => {
@@ -57,19 +57,21 @@ describe.skipIf(!available)('chat Artifacts control and linked-note counts', () 
     let root
     try {
       await chats.revealSidebar()
-      const control = await until(() => document.querySelector('.abele-ai-chat__header-actions .abele-ai-chat__artifacts'))
+      // "Files from this chat" is an item of the header's overflow menu, its last control.
+      const control = await until(() => document.querySelector('.abele-ai-chat__header-actions .abele-ai-chat__overflow [aria-haspopup="menu"]'))
       await wait(500)
       const button = control.getBoundingClientRect()
       const icon = control.querySelector('svg').getBoundingClientRect()
-      const previous = control.previousElementSibling.getBoundingClientRect()
-      const next = control.nextElementSibling.getBoundingClientRect()
+      const previous = control.closest('.abele-ai-chat__overflow').previousElementSibling.getBoundingClientRect()
       const header = {
         inside: icon.left >= button.left - 1 && icon.right <= button.right + 1,
-        separate: previous.right <= button.left + 1 && button.right <= next.left + 1,
+        separate: previous.right <= button.left + 1,
         width: button.width,
-        onScreen: previous.left >= -1 && next.right <= innerWidth + 1 && button.width > 0,
+        onScreen: previous.left >= -1 && button.right <= innerWidth + 1 && button.width > 0,
       }
       control.click()
+      const item = await until(() => [...document.querySelectorAll('.menu .menu-item')].find((el) => el.textContent.trim() === 'Files from this chat'))
+      item.click()
       root = await until(() => document.querySelector('.abele-chat-artifacts'))
       const results = []
       for (const count of [1, 11, 999]) {
@@ -77,17 +79,19 @@ describe.skipIf(!available)('chat Artifacts control and linked-note counts', () 
         // Missing synthetic resources still have membership; no vault files are written.
         session.touched.value = Array.from({ length: count }, (_, i) => ({ path: 'Sample count note ' + i + '.md' }))
         const expected = 'Notes (' + count + ')'
+        const said = (el) => el.querySelector('.abele-fold-heading__text')?.textContent.trim() + ' (' + el.querySelector('.abele-fold-heading__count')?.textContent.trim() + ')'
         const heading = await until(() => {
-          const el = root.querySelector('section[aria-label="Notes"] h3')
-          return el?.textContent.trim() === expected ? el : null
+          const el = root.querySelector('section[aria-label="Notes"] .abele-fold-heading')
+          return el && said(el) === expected ? el : null
         })
-        const range = document.createRange(); range.selectNodeContents(heading)
+        const range = document.createRange(); range.selectNodeContents(heading.querySelector('.abele-fold-heading__count'))
         const number = range.getBoundingClientRect(), box = root.getBoundingClientRect()
-        const nextHeading = root.querySelector('section[aria-label="Images"] h3').getBoundingClientRect()
+        // Empty sections are hidden: the count is checked against the first row under it.
+        const firstRow = root.querySelector('section[aria-label="Notes"] .abele-chat-artifacts__row').getBoundingClientRect()
         results.push({
-          ...header, expected, count: heading.textContent.trim(),
+          ...header, expected, count: said(heading),
           countInside: number.left >= box.left - 1 && number.right <= box.right + 1,
-          countSeparate: number.bottom <= nextHeading.top + 1,
+          countSeparate: number.bottom <= firstRow.top + 1,
         })
       }
       if (document.body.classList.contains('is-mobile')) {
@@ -120,15 +124,14 @@ describe.skipIf(!available)('chat Artifacts control and linked-note counts', () 
     }
   }
 
-  it('keeps the desktop header control separate and shows one-, two- and three-digit counts in Artifacts', async () => {
+  it('keeps the desktop header control separate and shows one-, two- and three-digit counts in Files from this chat', async () => {
     check(await measure())
   })
 
-  it('keeps the phone-width header control separate and shows one-, two- and three-digit counts in Artifacts', async () => {
+  it('keeps the phone-width header control separate and shows one-, two- and three-digit counts in Files from this chat', async () => {
     await reloadApp('app.emulateMobile(true)')
     evalRaw("require('@electron/remote').getCurrentWindow().setContentSize(390, 844)")
     await new Promise((resolve) => setTimeout(resolve, 1500))
     check(await measure())
   })
-
 })

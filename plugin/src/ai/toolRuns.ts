@@ -91,6 +91,10 @@ export function runSummary(calls: readonly ChatMessage[]): string {
     .join(' · ')
 }
 
+/** Helper transcripts and reply decisions remain visible instead of being folded into a run. */
+export const ownLine = (message: ChatMessage): boolean =>
+  message.role === 'tool-call' && !!(message.subAgentRun || message.replyProposal)
+
 /** A chat's messages as drawn: each on its own, and the agent's calls in a row as one run. */
 export type ChatBlock =
   | { kind: 'message'; message: ChatMessage }
@@ -101,7 +105,8 @@ export function chatBlocks(messages: readonly ChatMessage[]): ChatBlock[] {
   const out: ChatBlock[] = []
   for (const message of messages) {
     const last = out.at(-1)
-    if (message.role === 'tool-call') {
+    if (ownLine(message)) out.push({ kind: 'message', message })
+    else if (message.role === 'tool-call') {
       if (last?.kind === 'run') {
         last.calls.push(message)
         last.messages.push(message)

@@ -626,18 +626,20 @@ Highlights stay with the chat when it is reopened or synced. They are visual ann
 they do not alter what the model reads.
 
 To ask for a revision, select the passage and choose **Ask here**. In that side discussion,
-explicitly ask the agent to rewrite or clarify those words. Its proposal has a **Review reply
-revision** button: you see the old passage and the proposed replacement before choosing
-**Accept**, **Reject**, or **Later**. Nothing changes just because the agent proposes it, even
+explicitly ask the agent to rewrite or clarify those words. Its proposal stays visible as a
+**Proposed change to a reply** tree line with a waiting dot. Press it to compare the old passage
+and replacement, then choose **Reject** or **Accept**. Close the dialog to decide later. Nothing changes just because the agent proposes it, even
 when tools are allowed to run automatically.
 
 Accept changes that passage in the parent reply and marks it with the editing agent and time.
-The parent agent reads the revised wording from then on. **View original** shows the original
-reply; **Undo last revision** restores the previous version. The original and undo history travel
+The parent agent reads the revised wording from then on. The pencil beside its time opens
+**Original reply**, starting on **Changes**; **Original** shows the retained reply.
+**Undo last change** restores the previous version. The original and undo history travel
 with the chat, unlike file rewind. Highlights stay with the old version and return on undo;
 mark the revised version afresh.
 
-If applying an accepted revision is interrupted, **Finish accepted revision** resumes it.
+If applying an accepted revision is interrupted, reopen its visible change line and choose
+**Finish applying**.
 Your Accept is kept before the parent is changed; it cannot turn into Reject afterward. Once
 applied, use the parent reply's undo to put it back.
 
@@ -653,14 +655,16 @@ Open **More message actions** under one of your messages and pick:
 
 - **Rewind** — shows every file the agent changed from that message on, each with what will
   happen to it: put back as it was, sent to the trash (a file the agent made), made again (one it
-  deleted) or moved back. Tap a file to see the difference. Then choose **Files only**, **Files
-  and conversation** — the chat goes back to that message too, with it in the box to send again,
-  and the rest of the conversation kept as a branch — or **Conversation only**.
+  deleted) or moved back. Tap a file to see the difference. **Put files back** starts off;
+  **Go back in chat** returns to that message with its text in the composer, keeping later
+  messages as another branch. Choose the switches explicitly, then press the button named for
+  that action. The file-restoration button is a warning action; **Cancel** changes nothing.
 - **Undo changes** — takes back what that one message's turn changed and nothing else. Offered
   only where the turn changed something.
 
-A file you changed yourself after the agent did is marked _changed since_ and left alone, unless
-you choose to put it back anyway. The copies that make this possible are kept on this device
+A file changed after the agent, or whose ownership cannot be verified, is marked and left
+untouched. The expanded row explains why; conflicts are not overwritten. Reading the dialog,
+branching, switching branches and conversation-only navigation never restore files. The copies that make this possible are kept on this device
 only, in the plugin's folder, not in the chat — a chat opened on another device cannot be
 rewound there. How much room they may take is **Rewind space** in the AI settings, under Chat
 Storage; the least recently used chats lose theirs first, and 0 turns it off. Something you
@@ -853,26 +857,28 @@ If the agent cannot see the note, this one chat is given access to it.
 
 ## Chat artifacts
 
-**Artifacts: notes, images and scripts** in a local chat's **More chat actions** opens one view of its **Notes**,
+**Files from this chat** in a local chat's **More chat actions** opens one view of its **Notes**,
 **Images** and **Scripts**, with counts, paths and available dates. It updates while the chat
 runs and includes saved messages from every retained branch, not unsent drafts or queued messages.
 
 Notes and scripts are the chat’s current links, whether attached by hand or linked by a
-successful write. **Open** opens the note or the script’s code view; it never runs or approves
-code. **Reveal** shows the file in Obsidian’s explorer. **Unlink** removes only the chat’s link,
-not the file. Old calls do not restore an unlinked card; a later successful write links it again.
+successful write. Click a tree row to open the note or script's code view; this never runs or
+approves code. Its glyph shows created, changed or linked work. **More** or a right click offers
+**Show in chat**, **Reveal in explorer**, and **Unlink from chat**. Unlink removes only this
+chat's link, never the file. Old calls do not restore an unlinked row; a later write links it again.
 Scripts remain listed when script execution is disabled.
 
 Images include sent uploads and completed image-tool results: generated and edited pictures,
 screenshots, downloads, viewed pictures and drawings, each labelled by origin. Tap a thumbnail
-to preview it. Images have **Open** and **Reveal**, but no unlink or delete action. **Show in chat**
+to preview it. Their context menu offers reveal and source navigation, but no unlink or delete.
+**Show in chat**
 returns to a source message, switching branches and revealing earlier messages when necessary.
 It is also offered for notes and scripts where saved results prove the source, and closes an
 expanded message editor so the conversation is visible.
 
-**Attach to current note** and **Attach to a note…** keep the existing attachment choices.
+**Attach current note** and **Attach a note…** in the footer keep the existing attachment choices.
 Only link changes need a saved chat in the history. Missing files remain visible as
-**Unavailable**, with any source navigation and unlink action still available. Moved images
+a **File missing** dot, with any source navigation and unlink action still available. Moved images
 are not guessed from filenames. Absolute or parent-traversing paths are unavailable, not
 rewritten to another file. Older chats work with the links and evidence they actually saved;
 no missing links are reconstructed. Generated and edited pictures require a saved-file
@@ -884,5 +890,5 @@ this view. Switching to another chat closes the view.
 
 A chat that changes a note is listed under that note, in the **Chats** list of its footer. You can
 also put one there yourself: **Attach a chat to note** in the command palette or a note's
-context menu, or the attachment controls in the chat’s **Artifacts** view. The unlink button on a chat's card
+context menu, or the attachment controls in **Files from this chat**. The unlink button on a chat's card
 takes it away again. Scripts can have chats attached the same way.

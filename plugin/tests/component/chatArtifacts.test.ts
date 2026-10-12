@@ -1,6 +1,9 @@
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest'
 import { mount, type VueWrapper } from '@vue/test-utils'
 import { defineComponent, h, nextTick, ref, shallowRef } from 'vue'
+import { Menu, type MenuItem } from 'obsidian'
+import ListSectionHeader from '@/components/obsidian/ListSectionHeader.vue'
+import StatusDot from '@/components/obsidian/StatusDot.vue'
 import ChatArtifacts from '@/components/ChatArtifacts.vue'
 import type { ChatSession } from '@/ai/ChatSession'
 import { useVault } from '../helpers/testEnv'
@@ -10,7 +13,9 @@ import * as links from '@/ai/chatNoteLinks'
 import * as opening from '@/ai/openChat'
 import { ChatStorage } from '@/ai/ChatStorage'
 
-vi.mock('@/components/obsidian/Modal.vue', () => ({ default: { template: '<div><slot /></div>' } }))
+vi.mock('@/components/obsidian/Modal.vue', () => ({
+  default: { template: '<div><slot /><slot name="footer" /></div>' },
+}))
 vi.mock('@/components/ChatPicture.vue', () => ({
   default: { props: ['path', 'chatId', 'version'], template: '<button>Preview</button>' },
 }))
@@ -54,33 +59,59 @@ afterEach(() => {
   view = undefined
   vi.restoreAllMocks()
 })
-const press = async (text: string) => {
-  const button = view!.findAll('button').find((b) => b.text() === text)
-  expect(button, text).toBeDefined()
-  await button!.trigger('click')
+const headers = () =>
+  view!.findAllComponents(ListSectionHeader).map((h) => `${h.props('text')} (${h.props('count')})`)
+const row = (path: string) => view!.find(`.abele-chat-artifacts__row [data-path="${path}"]`)
+/** Opens a row's ⋯ menu and hands back what it holds. */
+const menuOf = async (target: ReturnType<VueWrapper['find']>, how: 'more' | 'contextmenu') => {
+  const spy = vi.spyOn(Menu.prototype, 'showAtMouseEvent')
+  if (how === 'more') await target.find('.abele-chat-artifacts__more').trigger('click')
+  else await target.trigger('contextmenu')
+  const shown = spy.mock.contexts.at(-1) as Menu | undefined
+  spy.mockRestore()
+  expect(shown, 'menu shown').toBeDefined()
+  return shown!.items as (MenuItem & { disabled: boolean; warning: boolean })[]
 }
+const item = (items: Awaited<ReturnType<typeof menuOf>>, title: string) =>
+  items.find((i) => i.title === title)
 describe('chat artifacts dialog', () => {
   it('shows all sections, attachment controls and scripts while execution is disabled', () => {
     mountView()
-    expect(view!.findAll('h3').map((h) => h.text())).toEqual([
-      'Notes (1)',
-      'Images (1)',
-      'Scripts (1)',
-    ])
-    expect(view!.text()).toContain('Attach to current note')
-    expect(view!.text()).toContain('Attach to a note…')
+    expect(headers()).toEqual(['Notes (1)', 'Images (1)', 'Scripts (1)'])
+    expect(view!.text()).toContain('Attach current note')
+    expect(view!.text()).toContain('Attach a note…')
     expect(view!.text()).toContain('sample.js')
+  })
+  it('says so, rather than showing empty sections, when the chat has nothing', () => {
+    session.touched.value = []
+    session.allMessages.value = []
+    mountView()
+    expect(headers()).toEqual([])
+    expect(view!.text()).toContain('Nothing from this chat yet')
   })
   it('isolates unlink from opening and never deletes files', async () => {
     const unlink = vi.spyOn(links, 'detachNote').mockResolvedValue(true)
     const open = vi.spyOn(opening, 'openVaultFile').mockResolvedValue()
     mountView()
-    await press('Unlink')
+    const items = await menuOf(row('Notes/sample.md'), 'more')
+    const unlinkItem = item(items, 'Unlink from chat')!
+    expect(unlinkItem).toMatchObject({ section: 'danger', warning: true, disabled: false })
+    unlinkItem.handler!()
     expect(unlink).toHaveBeenCalledWith('Chats/sample.abchat', 'Notes/sample.md')
     expect(open).not.toHaveBeenCalled()
     expect(app.vault.getAbstractFileByPath('Notes/sample.md')).not.toBeNull()
-    await press('Open')
+    await row('Notes/sample.md').trigger('click')
     expect(open).toHaveBeenCalledWith('Notes/sample.md')
+  })
+  it('opens the same menu on a right click, and says what the chat did to the file', async () => {
+    mountView()
+    const glyph = row('Notes/sample.md').find('.abele-tree-item__end .abele-obsidian-icon')
+    expect(glyph.attributes('aria-hidden')).toBe('true')
+    expect(
+      row('Notes/sample.md').find('.abele-chat-artifacts__more').attributes('aria-label')
+    ).toBe('More for sample')
+    const items = await menuOf(row('Notes/sample.md'), 'contextmenu')
+    expect(items.map((i) => i.title)).toEqual(['Reveal in explorer', 'Unlink from chat'])
   })
   it('updates in place without reading note or script bodies', async () => {
     mountView()
@@ -94,17 +125,18 @@ describe('chat artifacts dialog', () => {
       attachments: ['Pictures/missing.png'],
     })
     await nextTick()
-    expect(view!.findAll('h3').map((h) => h.text())).toEqual([
-      'Notes (0)',
-      'Images (2)',
-      'Scripts (0)',
-    ])
-    expect(view!.text()).toContain('Unavailable')
+    expect(headers()).toEqual(['Images (2)'])
+    const tiles = view!.findAll('.abele-chat-artifacts__image')
+    expect(tiles[1].classes()).toContain('abele-chat-artifacts__image_missing')
+    expect(tiles[1].findComponent(StatusDot).props('label')).toBe('File missing')
     expect(app.stats.read).toBe(0)
-    await press('Show in chat')
+    const items = await menuOf(tiles[0], 'contextmenu')
+    expect(item(items, 'Unlink from chat')).toBeUndefined()
+    item(items, 'Show in chat')!.handler!()
     expect(view!.emitted('reveal')?.[0]).toEqual(['image'])
   })
   it('keeps missing links unlinkable and source navigation available', async () => {
+    const open = vi.spyOn(opening, 'openVaultFile').mockResolvedValue()
     session.touched.value = [{ path: 'Notes/missing.md', at: '2025-01-01' }]
     session.allMessages.value.push({
       id: 'change',
@@ -118,29 +150,38 @@ describe('chat artifacts dialog', () => {
       toolResult: 'Edited',
     })
     mountView()
-    const card = view!.findAll('.abele-card')[0]
-    expect(card.text()).toContain('Unavailable')
-    expect(
-      card
-        .findAll('button')
-        .find((b) => b.text() === 'Open')!
-        .attributes('disabled')
-    ).toBeDefined()
-    expect(
-      card
-        .findAll('button')
-        .find((b) => b.text() === 'Unlink')!
-        .attributes('disabled')
-    ).toBeUndefined()
+    const missing = view!.findAll('.abele-chat-artifacts__row')[0]
+    expect(missing.classes()).toContain('abele-chat-artifacts__row_missing')
+    expect(missing.findComponent(StatusDot).props()).toMatchObject({
+      tone: 'red',
+      label: 'File missing',
+    })
+    await missing.find('.tree-item-self').trigger('click')
+    expect(open).not.toHaveBeenCalled()
+    const items = await menuOf(missing, 'more')
+    expect(item(items, 'Reveal in explorer')).toBeUndefined()
+    expect(item(items, 'Unlink from chat')!.disabled).toBe(false)
+    item(items, 'Show in chat')!.handler!()
+    expect(view!.emitted('reveal')?.[0]).toEqual(['change'])
   })
-  it('disables only attachment mutations without a saved indexed chat', () => {
+  it('disables only attachment mutations without a saved indexed chat', async () => {
+    const open = vi.spyOn(opening, 'openVaultFile').mockResolvedValue()
+    const unlink = vi.spyOn(links, 'detachNote').mockResolvedValue(true)
     session.currentChatFile.value = null
     mountView()
     const buttons = view!.findAll('button')
+    const attach = buttons.find((b) => b.text() === 'Attach a note…')!
+    expect(attach.attributes('disabled')).toBeDefined()
+    expect(attach.attributes('aria-label')).toBe('Save the chat first')
     expect(
-      buttons.find((b) => b.text() === 'Attach to a note…')!.attributes('disabled')
+      buttons.find((b) => b.text() === 'Attach current note')!.attributes('disabled')
     ).toBeDefined()
-    expect(buttons.find((b) => b.text() === 'Open')!.attributes('disabled')).toBeUndefined()
+    const items = await menuOf(row('Notes/sample.md'), 'more')
+    expect(item(items, 'Unlink from chat')!.disabled).toBe(true)
+    item(items, 'Unlink from chat')!.handler!()
+    expect(unlink).not.toHaveBeenCalled()
+    await row('Notes/sample.md').trigger('click')
+    expect(open).toHaveBeenCalledWith('Notes/sample.md')
   })
   it('subscribes to availability events, ignores unrelated files, and disposes on close', async () => {
     const on = vi.spyOn(app.vault, 'on')
@@ -148,10 +189,11 @@ describe('chat artifacts dialog', () => {
     session.touched.value.push({ path: 'Notes/later.md', at: '2025-01-01' })
     mountView()
     expect(on.mock.calls.map((c) => c[0])).toEqual(['create', 'modify', 'rename', 'delete'])
+    expect(view!.find('.abele-chat-artifacts__row_missing').exists()).toBe(true)
     const created = await app.vault.create('Notes/later.md', '')
     app.emit('vault', 'create', created)
     await nextTick()
-    expect(view!.text()).not.toContain('Unavailable')
+    expect(view!.find('.abele-chat-artifacts__row_missing').exists()).toBe(false)
     view!.unmount()
     view = undefined
     expect(off).toHaveBeenCalledTimes(4)

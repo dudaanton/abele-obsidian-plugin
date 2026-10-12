@@ -1,26 +1,43 @@
 <template>
-  <div class="abele-run" :class="`abele-run_${run.status}`">
-    <div class="abele-run__head" @click="toggle">
-      <Icon :icon="expanded ? 'chevron-down' : 'chevron-right'" no-hover />
-      <Icon :icon="statusIcon" no-hover class="abele-run__status-icon" />
-
-      <span class="abele-run__agent">{{ run.agentName }}</span>
-      <span class="abele-run__summary">{{ summary }}</span>
-
+  <!-- Another agent at work on this one's behalf, told like a run of tools: a quiet tree line
+       with who and how many tasks, a dot for how it goes, and a way to its own tab. Open while it
+       works, so what it does is in sight; folded once it is done. -->
+  <TreeItem
+    class="abele-chat-run abele-run"
+    :class="[`abele-chat-run_${state}`, `abele-run_${run.status}`]"
+    :icon="run.status === 'running' ? 'loader' : 'bot'"
+    :text="summary"
+    collapsible
+    :collapsed="!expanded"
+    @click="toggle"
+  >
+    <template #end>
+      <span class="abele-chat-run__codes">
+        <span
+          ref="dot"
+          class="abele-chat-run__dot"
+          :class="state !== 'done' && `abele-chat-run__dot_${state}`"
+          :role="state !== 'done' ? 'img' : undefined"
+          :aria-label="state !== 'done' ? STATE_LABEL[state] : undefined"
+        />
+      </span>
+    </template>
+    <template #actions>
       <Icon
         icon="external-link"
         class="abele-run__open"
+        size="xs"
         tooltip="Open this run in its own tab"
         @click.stop="openInTab"
       />
-    </div>
+    </template>
 
-    <div v-if="expanded" class="abele-run__body">
-      <EmptyState v-if="loading" text="Loading the transcript..." />
+    <div class="abele-run__body">
+      <EmptyState v-if="loading" text="Loading the transcript…" />
       <EmptyState v-else-if="!branches.length" text="Nothing was recorded for this run." />
 
       <template v-else>
-        <!-- One item: straight to its messages, with no list to click through. -->
+        <!-- One task: straight to its messages, with no list to click through. -->
         <AiRunBranch
           v-if="branches.length === 1"
           :branch="branches[0]"
@@ -40,13 +57,14 @@
         </template>
       </template>
     </div>
-  </div>
+  </TreeItem>
 </template>
 
 <script setup lang="ts">
-import { computed, ref, watch } from 'vue'
-import { Notice } from 'obsidian'
+import { computed, onMounted, ref, watch, watchEffect } from 'vue'
+import { Notice, setTooltip } from 'obsidian'
 import Icon from './obsidian/Icon.vue'
+import TreeItem from './obsidian/TreeItem.vue'
 import EmptyState from './obsidian/EmptyState.vue'
 import AiRunBranch from './AiRunBranch.vue'
 import { ChatService } from '@/ai/ChatService'
@@ -59,7 +77,7 @@ const PAGE_SIZE = 5
 
 const props = withDefaults(defineProps<{ run: SubAgentRunRef; depth?: number }>(), { depth: 0 })
 
-const expanded = ref(false)
+const expanded = ref(props.run.status === 'running')
 const loading = ref(false)
 const branches = ref<RunBranch[]>([])
 
@@ -69,23 +87,27 @@ const {
   sentinel,
 } = usePagedList(() => branches.value, PAGE_SIZE)
 
-const statusIcon = computed(
+type State = 'running' | 'failed' | 'aborted' | 'done'
+const STATE_LABEL: Record<State, string> = {
+  running: 'Working on it',
+  failed: 'Finished with errors',
+  aborted: 'Interrupted',
+  done: '',
+}
+const state = computed<State>(
   () =>
-    ({
-      running: 'loader',
-      done: 'check',
-      error: 'alert-triangle',
-      aborted: 'ban',
-    })[props.run.status] ?? 'bot'
+    (({ running: 'running', error: 'failed', aborted: 'aborted' }) as Record<string, State>)[
+      props.run.status
+    ] ?? 'done'
 )
-
 const summary = computed(() => {
   const count = props.run.branchCount
-  const scale = count > 1 ? `${count} tasks` : '1 task'
-  if (props.run.status === 'running') return `${scale} — running`
-  if (props.run.status === 'error') return `${scale} — finished with errors`
-  if (props.run.status === 'aborted') return `${scale} — interrupted`
-  return scale
+  return `${props.run.agentName} · ${count === 1 ? '1 task' : `${count} tasks`}`
+})
+const dot = ref<HTMLElement>()
+watchEffect(() => dot.value && setTooltip(dot.value, STATE_LABEL[state.value]))
+onMounted(() => {
+  if (expanded.value) void load()
 })
 
 async function toggle(): Promise<void> {
@@ -103,11 +125,14 @@ async function load(): Promise<void> {
   }
 }
 
-// A run that finishes while expanded has more to show than when it was opened.
+// A run that finishes has more to show than when it was opened; it folds, as thinking does.
 watch(
   () => props.run.status,
-  async (status) => {
-    if (expanded.value && status !== 'running') await load()
+  async (status, before) => {
+    if (before === 'running' && status !== 'running') {
+      expanded.value = false
+      branches.value = []
+    } else if (expanded.value) await load()
   }
 )
 
@@ -118,64 +143,12 @@ async function openInTab(): Promise<void> {
 </script>
 
 <style lang="scss">
-.abele-run {
-  border: 1px solid var(--background-modifier-border);
-  border-radius: var(--radius-s);
-  margin: var(--size-4-1) 0;
-  overflow: hidden;
-}
-
-.abele-run__head {
-  display: flex;
-  align-items: center;
-  gap: var(--size-2-2);
-  padding: var(--size-2-2) var(--size-4-2);
-  cursor: pointer;
-  min-width: 0;
-
-  &:hover {
-    background: var(--background-modifier-hover);
-  }
-}
-
-.abele-run__agent {
-  font-weight: var(--font-medium);
-  white-space: nowrap;
-}
-
-.abele-run__summary {
-  flex: 1 1 auto;
-  min-width: 0;
-  color: var(--text-muted);
-  font-size: var(--font-smallest);
-  overflow: hidden;
-  text-overflow: ellipsis;
-  white-space: nowrap;
-}
-
-.abele-run__open {
-  flex: 0 0 auto;
-}
-
-.abele-run_error .abele-run__status-icon {
-  color: var(--text-error);
-}
-
-.abele-run_running .abele-run__status-icon {
-  animation: abele-run-spin 1.4s linear infinite;
-}
-
-@keyframes abele-run-spin {
-  to {
-    transform: rotate(360deg);
-  }
-}
-
 .abele-run__body {
-  border-top: 1px solid var(--background-modifier-border);
-  padding: var(--size-4-2);
+  padding-inline-start: var(--size-4-4);
 }
-
+.abele-chat-run__dot_aborted {
+  background-color: var(--text-faint);
+}
 .abele-run__sentinel {
   height: 1px;
 }

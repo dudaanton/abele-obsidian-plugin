@@ -1,30 +1,37 @@
 <template>
   <div class="abele-run-msg" :class="`abele-run-msg_${message.role}`">
-    <div class="abele-run-msg__icon">
+    <div v-if="message.role !== 'tool-call'" class="abele-run-msg__icon">
       <Icon :icon="icon" no-hover />
     </div>
 
     <div class="abele-run-msg__body">
       <template v-if="message.role === 'tool-call'">
-        <div class="abele-run-msg__tool">
-          <span class="abele-run-msg__tool-name">{{ message.toolName }}</span>
-          <span v-if="params" class="abele-run-msg__tool-params">{{ params }}</span>
-        </div>
+        <!-- A call as the chat shows one: a quiet line with what it was given, opening to what
+             came back. -->
+        <TreeItem
+          v-if="!message.subAgentRun"
+          class="abele-chat-run abele-run-msg__tool"
+          :icon="KIND_ICON[toolKind(message.toolName)]"
+          :text="message.toolName ?? 'tool'"
+          :note="params"
+          :collapsible="!!message.toolResult"
+          :collapsed="!resultOpen"
+          :plain="!message.toolResult"
+          @click="resultOpen = !resultOpen"
+        >
+          <pre class="abele-run-msg__result">{{ message.toolResult }}</pre>
+        </TreeItem>
 
         <!-- A run that delegated further opens the same way its own branch did. -->
         <AiSubAgentRun
-          v-if="message.subAgentRun && depth < MAX_NESTING"
+          v-else-if="depth < MAX_NESTING"
           :run="message.subAgentRun"
           :depth="depth + 1"
         />
-        <div v-else-if="message.subAgentRun" class="abele-run-msg__note">
-          Nested {{ message.subAgentRun.agentName }} run — open it in its own tab to go deeper.
-        </div>
-
-        <details v-else-if="message.toolResult" class="abele-run-msg__result">
-          <summary>Result</summary>
-          <pre>{{ message.toolResult }}</pre>
-        </details>
+        <p v-else class="abele-run-msg__note">
+          {{ message.subAgentRun.agentName }} went on further; open the run in its own tab to
+          follow.
+        </p>
       </template>
 
       <Markdown v-else-if="message.content" :text="message.content" />
@@ -33,8 +40,10 @@
 </template>
 
 <script setup lang="ts">
-import { computed } from 'vue'
+import { computed, ref } from 'vue'
 import Icon from './obsidian/Icon.vue'
+import TreeItem from './obsidian/TreeItem.vue'
+import { KIND_ICON, toolKind } from '@/ai/toolRuns'
 import Markdown from './obsidian/Markdown.vue'
 import AiSubAgentRun from './AiSubAgentRun.vue'
 import type { ChatMessage } from '@/ai/types'
@@ -48,6 +57,7 @@ import type { ChatMessage } from '@/ai/types'
 const MAX_NESTING = 2
 
 const props = withDefaults(defineProps<{ message: ChatMessage; depth?: number }>(), { depth: 0 })
+const resultOpen = ref(false)
 
 const icon = computed(() => {
   switch (props.message.role) {
@@ -97,25 +107,22 @@ const params = computed(() => {
   color: var(--text-muted);
 }
 
-.abele-run-msg__tool {
-  display: flex;
-  flex-wrap: wrap;
-  gap: var(--size-2-2);
-  align-items: baseline;
+.abele-run-msg__tool .abele-tree-item__inner {
+  min-width: 0;
+}
+.abele-run-msg__tool .abele-tree-item__text {
+  flex: none;
+  white-space: nowrap;
+}
+.abele-run-msg__tool .abele-tree-item__note {
+  min-width: 0;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
 }
 
-.abele-run-msg__tool-name {
-  font-family: var(--font-monospace);
-  font-size: var(--font-smallest);
-}
-
-.abele-run-msg__tool-params {
-  color: var(--text-faint);
-  font-size: var(--font-smallest);
-  overflow-wrap: anywhere;
-}
-
-.abele-run-msg__result pre {
+.abele-run-msg__result {
+  margin: var(--size-2-1) 0;
   max-height: 16em;
   overflow: auto;
   font-size: var(--font-smallest);

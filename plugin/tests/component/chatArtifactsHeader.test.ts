@@ -65,7 +65,7 @@ describe('the compact chat header', () => {
         label: 'Scope, skills, prompts, permissions and settings',
         icon: 'sliders-horizontal',
       },
-      { id: 'artifacts', label: 'Artifacts: notes, images and scripts', icon: 'boxes' },
+      { id: 'artifacts', label: 'Files from this chat', icon: 'boxes' },
       { id: 'agents', label: 'Agents', icon: 'activity' },
     ])
     overflow.vm.$emit('action', 'setup')

@@ -131,7 +131,7 @@ const script = `(async () => {
     report.tooSoon = !!bar()
     const shown = await until(() => bar(), 3000)
     await wait(150)
-    if (shown) report.bar = { ...box(shown), text: shown.textContent.trim() }
+    if (shown) report.bar = { ...box(shown), text: [...shown.querySelectorAll('button')].map((b) => b.getAttribute('aria-label')).join(' ') }
     report.words = box(document.getSelection().getRangeAt(0))
     await shoot('settled')
 
@@ -141,7 +141,7 @@ const script = `(async () => {
     report.duringHandle = !!bar()
     report.afterHandle = !!(await until(() => bar(), 3000))
 
-    const copyButton=[...bar().querySelectorAll('button')].find(button=>button.textContent.trim()==='Copy link to selection')
+    const copyButton=bar().querySelector('button[aria-label="Copy link to selection"]')
     const write=navigator.clipboard.writeText.bind(navigator.clipboard)
     let copied=''
     try {
@@ -156,7 +156,7 @@ const script = `(async () => {
     select(range('night','Vilnius'));await until(()=>bar(),3000)
     const b = bar()
     if (b) {
-      const r = b.querySelector('button').getBoundingClientRect()
+      const r = b.querySelector('button[aria-label="Ask here"]').getBoundingClientRect()
       const before = chats.activeSession.value
       await touch('touchStart', r.left + r.width / 2, r.top + r.height / 2)
       await wait(60)

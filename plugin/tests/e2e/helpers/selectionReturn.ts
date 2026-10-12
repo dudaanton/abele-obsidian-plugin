@@ -84,13 +84,13 @@ export function selectionReturnProbe(shots: string): string {
     await click(0);await until(()=>document.querySelector('.abele-anchor-history'))
     report.historical={explanation:document.querySelector('.abele-anchor-history').textContent,quote:document.querySelector('.abele-anchor-history blockquote')?.textContent,editable:!!document.querySelector('.abele-anchor-history input, .abele-anchor-history textarea'),keyboard:keyboard(),currentHighlighted:document.querySelector('[data-message-id="answer"]')?.classList.contains('abele-footnote-flash')||!!document.querySelector('[data-ask-message="answer"] [data-selection-return]')}
     await shoot('selection-return-history')
-    ;[...document.querySelectorAll('.modal button')].find(b=>b.textContent==='Close').click()
+    ;document.querySelector('.modal .modal-close-button').click()
     await until(()=>!document.querySelector('.abele-anchor-history'))
     const editingSession=chats.getSessionByFile(moved)
     await app.vault.append(file,JSON.stringify({...original,content:'echo edited elsewhere echo',selection:{...original.selection,revisionId:'remote-version'}})+'\\n')
     await click(0);await until(()=>document.querySelector('.abele-anchor-history'))
     report.syncedEdit={sameSession:chats.getSessionByFile(moved)===editingSession,content:editingSession.allMessages.value.find(m=>m.id==='answer')?.content,explanation:document.querySelector('.abele-anchor-history').textContent,currentHighlighted:document.querySelector('[data-message-id="answer"]')?.classList.contains('abele-footnote-flash')||!!document.querySelector('[data-ask-message="answer"] [data-selection-return]')}
-    ;[...document.querySelectorAll('.modal button')].find(b=>b.textContent==='Close').click()
+    ;document.querySelector('.modal .modal-close-button').click()
     await click(1);await until(()=>chats.activeSession.value?.kind==='comment'&&document.querySelector('[data-selection-return]'))
     await wait(600);report.nested=measure();await shoot('selection-return-nested')
     await close(nested);await close(moved);await app.vault.delete(file)

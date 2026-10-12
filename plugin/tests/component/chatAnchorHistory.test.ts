@@ -56,7 +56,7 @@ describe('read-only retained selection', () => {
       props: { anchor, resolution: { status: 'unresolved', snapshot } },
       global: { stubs: { ObsidianModal: { template: '<div><slot/><slot name="footer"/></div>' } } },
     })
-    expect(wrapper.text()).toContain('cannot be verified')
+    expect(wrapper.text()).toContain('Could not find it in the reply as it is now')
     expect(wrapper.find('blockquote').text()).toBe('original quote')
     expect(wrapper.find('[data-selection-return]').exists()).toBe(false)
     wrapper.unmount()

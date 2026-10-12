@@ -8,38 +8,31 @@
     @pointerdown="onPress"
     @mousedown.prevent
   >
-    <Button
-      text="Ask here"
-      icon="message-circle-plus"
-      tooltip="Start a comment on the selected words, kept with them in this chat"
-      @click="ask"
-    />
-    <Button v-if="shown.copyLink" text="Copy link to selection" icon="link" @click="copyLink" />
+    <!-- Glyphs in one row, as Obsidian's own toolbar on a phone; the words are their labels. -->
+    <Icon icon="message-circle-plus" label="Ask here" @click="ask" />
+    <Icon v-if="shown.copyLink" icon="link" label="Copy link to selection" @click="copyLink" />
     <template v-if="shown.script">
-      <Button
+      <Icon
         v-for="item in pinned"
         :key="item.script"
-        :text="item.label"
-        :icon="item.icon"
+        :icon="item.icon || 'scroll-text'"
         :data-script="item.script"
-        :aria-label="`Run ${item.label} on these words`"
-        :tooltip="`Run ${item.label} on these words`"
+        :label="`Run ${item.label} on these words`"
         @click="script(item.script)"
       />
-      <Button
-        :text="pinned.length ? 'Other script…' : 'Scripts…'"
+      <Icon
         icon="scroll-text"
-        aria-label="Run a script on these words…"
-        tooltip="Run a script on these words…"
+        :label="
+          pinned.length ? 'Run another script on these words…' : 'Run a script on these words…'
+        "
         @click="script()"
       />
     </template>
-    <Button
+    <Icon
       v-if="shown.highlight"
-      text="Highlight"
       icon="highlighter"
       data-highlight-action="true"
-      tooltip="Highlight the selected words in yellow"
+      label="Highlight the selected words"
       @click="highlight"
     />
   </div>
@@ -48,7 +41,7 @@
 <script setup lang="ts">
 import { computed, nextTick, onBeforeUnmount, onMounted, reactive, ref, shallowRef } from 'vue'
 import { Platform } from 'obsidian'
-import Button from './obsidian/Button.vue'
+import Icon from './obsidian/Icon.vue'
 import type { HighlightColor } from '@/reader/highlights'
 import { selectionAnchor, messageRenderedText } from '@/ai/messageComments'
 import { SettledSelection } from '@/helpers/settledSelection'
@@ -247,9 +240,9 @@ onBeforeUnmount(() => {
   position: absolute;
   z-index: var(--layer-popover);
   display: flex;
-  flex-wrap: wrap;
+  flex-wrap: nowrap;
   max-width: calc(100% - var(--size-4-2));
-  gap: var(--size-4-1);
+  gap: var(--size-2-1);
   padding: var(--size-4-1);
   background: var(--background-primary);
   border: 1px solid var(--background-modifier-border);
