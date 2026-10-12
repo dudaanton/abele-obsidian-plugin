@@ -199,6 +199,9 @@ describe('durable stopped turns', () => {
     expect(session.messages.value.at(-1)?.content).toBe('Already saved both notes.')
     const opened = await reopen()
     const next = await continueWithRealClient(opened)
+    expect(next).toContainEqual(
+      expect.objectContaining({ role: 'assistant', content: 'Already saved both notes.' })
+    )
     expect(next.filter((m) => m.role === 'tool').map((m) => m.content)).toEqual([
       'Saved one',
       'Saved two',

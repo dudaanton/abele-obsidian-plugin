@@ -247,8 +247,15 @@ describe.runIf(available).each(onPhone() ? ['phone'] : ['desktop', 'emulated'])(
           'Sample result kept-' + state + '-1',
           'Sample result kept-' + state + '-2',
         ])
-        if (state === 'stream') expect(kept.partial).toBe(true)
-        else {
+        if (state === 'stream') {
+          expect(kept.partial).toBe(true)
+          expect(kept.nextHistory).toContainEqual(
+            expect.objectContaining({
+              role: 'assistant',
+              content: 'Both completed results are kept.',
+            })
+          )
+        } else {
           expect(kept.kept.slice(2).map((m: any) => m.toolExecution)).toEqual([
             state === 'tool' ? 'interrupted' : 'not-run',
             'not-run',

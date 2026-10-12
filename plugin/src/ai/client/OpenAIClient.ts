@@ -475,9 +475,11 @@ export class OpenAIClient {
       }
 
       if (msg.role === 'assistant') {
-        // Error/aborted messages: insert placeholder to preserve turn structure
+        // Only an empty stopped answer needs a placeholder. Streamed words remain history.
         if (
-          (msg.stopReason === 'error' || msg.stopReason === 'aborted') &&
+          (msg.stopReason === 'error' ||
+            (msg.stopReason === 'aborted' &&
+              !msg.content.some((block) => block.type === 'text' && block.text.trim()))) &&
           !msg.content.some((block) => block.type === 'toolCall')
         ) {
           result.push({ role: 'assistant', content: '[Response interrupted]' })
