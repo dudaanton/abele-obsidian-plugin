@@ -33,6 +33,11 @@ defineProps<{
   font-size: var(--font-ui-small);
   font-weight: var(--font-semibold);
 
+  // In a window, in line with the window's text, as the rows under it are there.
+  .modal-content & {
+    padding-inline: 0;
+  }
+
   &_strong {
     color: var(--text-normal);
   }

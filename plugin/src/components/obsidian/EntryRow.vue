@@ -73,6 +73,12 @@ const emit = defineEmits<{ 'update:more': [open: boolean] }>()
     background-color: var(--nav-item-background-active, var(--background-modifier-hover));
   }
 
+  // In a window the words of a row stand at the window's text edge, as in a note: the inset that
+  // holds them off the row's light hangs out into the margin.
+  .modal-content & {
+    margin-inline: calc(-1 * var(--size-2-3));
+  }
+
   // Two lit rows never run together into one slab: apart by Obsidian's own 2px.
   & + & {
     margin-top: var(--size-2-1);

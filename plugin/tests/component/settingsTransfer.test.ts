@@ -83,7 +83,7 @@ afterEach(() => {
 
 /** The cards of the sending screen, by the name each one shows. */
 const rowNamed = (wrapper: ReturnType<typeof mount>, name: string) =>
-  wrapper.findAll('.abele-card').find((card) => card.text().includes(name))
+  wrapper.findAll('.abele-transfer__entry').find((row) => row.text().includes(name))
 
 const clickButton = async (wrapper: ReturnType<typeof mount>, text: string) => {
   const button = wrapper.findAllComponents(Button).find((b) => b.props('text') === text)

@@ -13,10 +13,15 @@
         <Checkbox :is-enabled="withKeys" @toggle="withKeys = !withKeys" />
       </Setting>
 
-      <template v-for="group in groups" :key="group.section">
-        <Setting :name="group.label" :desc="counted(group)">
+      <!-- What can travel, a group a heading with "Select all" at its end, a thing a row with a
+           check, as the found lists of the vault's other windows. -->
+      <div v-for="group in groups" :key="group.section" class="abele-transfer__group">
+        <div class="abele-transfer__group-head">
+          <GroupHeading :label="group.label">{{ counted(group) }}</GroupHeading>
           <Button
             v-if="group.entries.length > 1"
+            quiet
+            class="abele-transfer__all"
             :text="allChosen(group) ? 'Clear' : 'Select all'"
             :tooltip="
               allChosen(group)
@@ -25,24 +30,35 @@
             "
             @click="toggleGroup(group)"
           />
-        </Setting>
-
-        <CardGrid wide>
-          <Card
+        </div>
+        <div role="list">
+          <EntryRow
             v-for="entry in group.entries"
             :key="key(entry)"
-            :title="entry.label"
-            :meta="details(entry)"
-            clickable
-            :selected="chosen.has(key(entry))"
+            role="listitem"
+            class="abele-transfer__entry"
             @click="toggle(entry)"
           >
-            <template #badges>
-              <Badge v-if="withKeys && carriesKey(entry)" text="key" />
+            <template #leading>
+              <input
+                type="checkbox"
+                class="abele-transfer__check"
+                :checked="chosen.has(key(entry))"
+                :aria-label="`Send ${entry.label}`"
+                @click.stop
+                @change="toggle(entry)"
+              />
             </template>
-          </Card>
-        </CardGrid>
-      </template>
+            {{ entry.label }}
+            <template v-if="details(entry).length" #meta>
+              <span v-for="(fact, i) in details(entry)" :key="i">{{ fact }}</span>
+            </template>
+            <template v-if="withKeys && carriesKey(entry)" #codes>
+              <Icon icon="key-round" :interactive="false" tooltip="Carries a key" />
+            </template>
+          </EntryRow>
+        </div>
+      </div>
 
       <EmptyState v-if="!groups.length" text="Nothing here can be transferred yet." />
 
@@ -112,10 +128,10 @@ import { Notice } from 'obsidian'
 import Section from '../obsidian/Section.vue'
 import Setting from '../obsidian/Setting.vue'
 import Checkbox from '../obsidian/Checkbox.vue'
-import Card from '../obsidian/Card.vue'
-import CardGrid from '../obsidian/CardGrid.vue'
+import EntryRow from '../obsidian/EntryRow.vue'
+import GroupHeading from '../obsidian/GroupHeading.vue'
 import Button from '../obsidian/Button.vue'
-import Badge from '../obsidian/Badge.vue'
+import Icon from '../obsidian/Icon.vue'
 import EmptyState from '../obsidian/EmptyState.vue'
 import SecretStoreSettings from './SecretStoreSettings.vue'
 import TransferPreviewModal from './transfer/TransferPreviewModal.vue'
@@ -313,37 +329,39 @@ const onApplied = ({ items, keysRefused, filesRefused }: Applied) => {
   margin-top: var(--size-4-4);
 }
 
+// The group's name with its count, and choosing all of it at the end of the same line.
 .abele-transfer__group-head {
   display: flex;
-  align-items: center;
+  align-items: baseline;
+  justify-content: space-between;
   gap: var(--size-4-2);
-  padding-bottom: var(--size-4-1);
-  border-bottom: 1px solid var(--background-modifier-border);
-}
+  margin-bottom: var(--size-2-2);
 
-.abele-transfer__group-name {
-  font-weight: var(--font-medium);
-  color: var(--text-normal);
-}
+  .abele-group-heading {
+    flex: 1;
+    justify-content: flex-start;
+  }
 
-.abele-transfer__entry {
-  display: flex;
-  align-items: center;
-  gap: var(--size-4-2);
-  padding: var(--size-4-1) 0 var(--size-4-1) var(--size-4-4);
-  cursor: pointer;
-
-  &:hover .abele-transfer__entry-name {
-    color: var(--text-normal);
+  .abele-group-heading__summary {
+    color: var(--text-faint);
+    font-weight: var(--font-normal);
   }
 }
 
-.abele-transfer__entry-name {
-  color: var(--text-muted);
-  overflow-wrap: anywhere;
+.abele-transfer .abele-transfer__all {
+  flex: none;
+  font-size: var(--font-ui-small);
 }
 
-.abele-transfer__entry-key {
-  color: var(--text-faint);
+.abele-transfer__entry {
+  cursor: var(--cursor);
+
+  &:hover {
+    background-color: var(--background-modifier-hover);
+  }
+}
+
+.abele-transfer .abele-transfer__check {
+  margin: 0;
 }
 </style>
