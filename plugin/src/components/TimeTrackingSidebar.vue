@@ -1,11 +1,7 @@
 <template>
   <SidebarPanel class="abele-time-tracking-sidebar">
     <!-- The pane's head as every list pane's: its name, and starting a timer as its action. -->
-    <ListSectionHeader
-      class-prefix="abele-time-tracking-sidebar"
-      text="Time"
-      :count="activeEntries.length"
-    >
+    <ListSectionHeader class-prefix="abele-time-tracking-sidebar" text="Time">
       <template #actions>
         <ObsidianIcon icon="timer" label="Start a timer" @click="startEmptyTimer" />
       </template>

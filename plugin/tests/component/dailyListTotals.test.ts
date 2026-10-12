@@ -103,6 +103,16 @@ describe('daily totals over the complete filtered list', () => {
 })
 
 describe('the time spent in a period', () => {
+  it('does not count running timers beside the pane name', () => {
+    GlobalStore.getInstance().timeEntryList.value = {
+      entries: new Map(),
+      activeEntries: [{ id: 'sample-timer', groups: [], start: dayjs() }],
+    } as never
+    view = mount(TimeTrackingSidebar, { global: { stubs: { ElapsedTime: true } } })
+    expect(view.get('.abele-time-tracking-sidebar__header').text()).toBe('Time')
+    expect(view.findAll('.abele-time-tracking-sidebar__active')).toHaveLength(1)
+  })
+
   const entry = (id: string, day: number, duration: number) => ({
     id,
     duration,
