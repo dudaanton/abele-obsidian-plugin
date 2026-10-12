@@ -264,6 +264,10 @@ export class NodePathModel {
       this.refreshPromise = undefined
     })
   }
+  async refreshCurrent(): Promise<void> {
+    const target = this.current.value
+    await Promise.all([this.refresh(), target ? this.reloadTarget(target) : Promise.resolve()])
+  }
   async refresh(): Promise<void> {
     const generation = ++this.catalogueGeneration
     const read = this.refreshCatalogue(generation)
@@ -323,7 +327,8 @@ export class NodePathModel {
       this.mode.value = target.kind === 'worktree' && this.changes.value.length ? 'changed' : 'all'
       return
     }
-    await this.reloadTarget(target)
+    const pending = this.treeLoads.get(pathTargetKey(target))
+    await (pending?.promise ?? this.reloadTarget(target))
     if (this.disposed || generation !== this.selectionGeneration) return
     this.mode.value = target.kind === 'worktree' && this.changes.value.length ? 'changed' : 'all'
     const stop = await this.port.watch(target, () => {

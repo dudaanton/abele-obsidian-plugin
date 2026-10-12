@@ -142,11 +142,11 @@ export class NodeSidebarView extends ItemView {
           },
           onRefresh: () => {
             if (model && connection)
-              nodePathAction(() => connection.connect().then(() => model.refresh()))
+              nodePathAction(() => connection.connect().then(() => model.refreshCurrent()))
           },
           onRetry: () => {
             if (connection && model)
-              nodePathAction(() => connection.connect().then(() => model.refresh()))
+              nodePathAction(() => connection.connect().then(() => model.refreshCurrent()))
           },
           onNodeMenu: (event: MouseEvent) => {
             if (model) showNodePathNodeMenu(model, event)

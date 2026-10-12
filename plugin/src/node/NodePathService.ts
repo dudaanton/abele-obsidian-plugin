@@ -84,7 +84,7 @@ export class NodePathService {
       registrationId,
       watch(connection.state, (state) => {
         model.online.value = state === 'connected'
-        if (state === 'connected') void model.refresh().catch((e) => model.report(e))
+        if (state === 'connected') void model.refreshCurrent().catch((e) => model.report(e))
       })
     )
     this.loads.set(

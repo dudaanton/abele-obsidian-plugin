@@ -168,6 +168,36 @@ it('loads only an expanded folder, joins duplicate expansion, and appends one co
   expect(port.tree.mock.lastCall).toEqual([target, 'src', 'sample-next', revision])
   model.destroy()
 })
+it('joins repeated selection of the same target without scheduling another observation', async () => {
+  const { model, port } = fixture()
+  await model.refresh()
+  let finish!: (value: any) => void
+  port.tree.mockImplementationOnce(
+    () =>
+      new Promise((resolve) => {
+        finish = resolve
+      })
+  )
+  const first = model.select(target.id),
+    second = model.select(target.id)
+  await ticks()
+  finish({ entries: [folder], cursor: null, revision })
+  await Promise.all([first, second])
+  expect(port.tree).toHaveBeenCalledTimes(1)
+  model.destroy()
+})
+
+it('retries the selected root independently of a stalled catalogue refresh', async () => {
+  const { model, port } = fixture()
+  await model.refresh()
+  await model.select(target.id)
+  port.catalogue.mockReturnValueOnce(new Promise(() => {}))
+  void model.refreshCurrent()
+  await ticks()
+  expect(port.tree).toHaveBeenCalledTimes(2)
+  model.destroy()
+})
+
 it('retains loaded rows and reports failed progress after a folder-page failure', async () => {
   const { model, port } = fixture()
   await model.refresh()
