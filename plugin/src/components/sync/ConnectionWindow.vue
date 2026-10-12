@@ -41,8 +41,8 @@
       </Section>
 
       <Section v-if="held.length || changes.length" title="Waiting for you">
-        <HeldDeletesBlock v-if="held.length" :held="held" />
-        <StagedSettingsBlock v-if="changes.length" :changes="changes" :names="{}" />
+        <HeldDeletesBlock v-if="held.length" :held="held" :port="port" />
+        <StagedSettingsBlock v-if="changes.length" :changes="changes" :names="{}" :port="port" />
       </Section>
 
       <SelectiveSync />
@@ -118,6 +118,7 @@ const failure = computed(() => props.error || activity.value?.error || '')
 const refused = computed(() => activity.value?.refused ?? [])
 const conflicts = computed(() => activity.value?.conflicts ?? [])
 const events = computed(() => [...(activity.value?.events ?? [])].reverse().slice(0, 8))
+const port = shallowRef<TokenSettingsPort>()
 const held = shallowRef<HeldDelete[]>([])
 const changes = ref<ChangeItem[]>([])
 
@@ -127,9 +128,9 @@ const when = (at: number) =>
 onMounted(async () => {
   historyConnection.value = props.connectionId
   try {
-    const port = TokenSettingsPort.forConnection(props.ui, props.connectionId)
-    await port.settingsPrompt.refresh()
-    changes.value = port.settingsPrompt.staged.value
+    port.value = TokenSettingsPort.forConnection(props.ui, props.connectionId)
+    await port.value.settingsPrompt.refresh()
+    changes.value = port.value.settingsPrompt.staged.value
     held.value = (await props.ui.runtimes.get(props.connectionId)?.heldDeletes?.()) ?? []
   } catch {
     // The window still says what the row knows; what waits is shown again on the next open.
@@ -141,6 +142,12 @@ onMounted(async () => {
 .abele-sync-window {
   .abele-section:first-of-type {
     margin-top: var(--size-4-6);
+  }
+
+  // This block is part of the scrolling connection body, rather than the body itself.
+  // A sticky answer row here covers paths still in the block above it.
+  .abele-held-deletes__actions {
+    position: static;
   }
 }
 .abele-sync-window__state {
