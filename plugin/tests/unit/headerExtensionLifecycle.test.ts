@@ -26,6 +26,22 @@ it('coalesces editor updates and cancels the pending metadata timer on destroy',
   expect(clear).toHaveBeenCalledWith(pending)
 })
 
+it('waits for the last update in a burst before reading metadata', () => {
+  vi.useFakeTimers()
+  view = new EditorView({
+    state: EditorState.create({ extensions: [editorInfoField, createHeaderExtension()] }),
+  })
+  view.dispatch({ changes: { from: 0, insert: 'x' } })
+  vi.advanceTimersByTime(200)
+  view.dispatch({ changes: { from: 0, insert: 'y' } })
+  const state = vi.spyOn(view, 'state', 'get')
+  vi.advanceTimersByTime(100)
+  expect(state).not.toHaveBeenCalled()
+  vi.advanceTimersByTime(200)
+  expect(state).toHaveBeenCalledTimes(1)
+  state.mockRestore()
+})
+
 it('disposes live headers on owner unload even if the host has not destroyed the editor', () => {
   vi.useFakeTimers()
   let unload!: () => void

@@ -24,6 +24,7 @@ export function createHeaderExtension(registerCleanup?: (cleanup: () => void) =>
 
       private destroyed = false
       private timer?: number
+      private refreshAt = 0
       /** A table cell's editor: it carries the note's file, but the header is the note's alone. */
       private readonly nested: boolean
 
@@ -74,10 +75,17 @@ export function createHeaderExtension(registerCleanup?: (cleanup: () => void) =>
 
       update() {
         // metadata cache is not updated immediately
-        if (this.nested || this.destroyed || this.timer !== undefined) return
-        this.timer = window.setTimeout(() => {
+        if (this.nested || this.destroyed) return
+        this.refreshAt = Date.now() + 300
+        if (this.timer !== undefined) return
+        const refresh = () => {
           this.timer = undefined
           if (this.destroyed || (this.view as unknown as { destroyed: boolean }).destroyed) return
+          const remaining = this.refreshAt - Date.now()
+          if (remaining > 0) {
+            this.timer = window.setTimeout(refresh, remaining)
+            return
+          }
           // A host can detach an editor before CodeMirror calls this plugin's destroy.
           // Its state getter itself may no longer be valid, not only the metadata field.
           let state
@@ -114,7 +122,8 @@ export function createHeaderExtension(registerCleanup?: (cleanup: () => void) =>
             this.destroyWidget()
             this.createWidget()
           }
-        }, 300)
+        }
+        this.timer = window.setTimeout(refresh, 300)
       }
 
       destroy() {
