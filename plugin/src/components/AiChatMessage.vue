@@ -226,23 +226,14 @@
       {{ shortTime(message.timestamp) }}
     </span>
 
-    <!-- Branch navigation — below message, full width -->
-    <div v-if="branchInfo && branchInfo.total > 1" class="abele-chat-msg__branch-nav">
-      <Icon
-        icon="chevron-left"
-        :class="{ 'abele-chat-msg__branch-disabled': displayIndex <= 0 }"
-        @click.stop="switchPrev"
-      />
-      <span class="abele-chat-msg__branch-label"
-        >{{ displayIndex + 1 }}/{{ branchInfo.total }}</span
-      >
-      <Icon
-        icon="chevron-right"
-        :class="{ 'abele-chat-msg__branch-disabled': displayIndex >= branchInfo.total - 1 }"
-        @click.stop="switchNext"
-      />
-      <Icon icon="plus" class="abele-chat-msg__branch-add" @click.stop="branchFromHere" />
-    </div>
+    <!-- The switch stands on the message that differs from its siblings. -->
+    <ChatBranchSwitch
+      v-if="branches"
+      class="abele-chat-msg__branches"
+      :choices="branches.choices"
+      :index="branches.index"
+      @switch="(id) => emit('switch-branch', id)"
+    />
 
     <!-- Draft actions -->
     <div v-if="message.draft && !interceptorStreaming && !readOnlyHistory" class="abele-chat-msg__draft-actions">
@@ -293,7 +284,8 @@ import GalleryViewer from './GalleryViewer.vue'
 import { getAttachmentIcon, fileName as attachmentName } from '@/ai/attachments'
 import { ChatService } from '@/ai/ChatService'
 import type { ChatMessage, MessageComment } from '@/ai/types'
-import type { BranchInfo } from './AiChat.vue'
+import type { BranchSwitch } from '@/ai/chatBranches'
+import ChatBranchSwitch from './ChatBranchSwitch.vue'
 import { useMessageComments } from '@/composables/useMessageComments'
 import { useChatMessageMedia } from '@/composables/useChatMessageMedia'
 import type { FindPart } from '@/ai/chatFind'
@@ -307,7 +299,7 @@ const props = defineProps<{
   /** Node histories keep successful tool previews behind the existing detail toggle. */
   compactToolDetails?: boolean
   resourceOpener?: (path: string) => void
-  branchInfo?: BranchInfo
+  branches?: BranchSwitch
   interceptorStreaming?: boolean
   interceptorStreamingContent?: string
   interceptorError?: string | null
@@ -463,31 +455,6 @@ const sendInterceptorReply = () => {
   if (!text) return
   emit('send-interceptor', props.message.id, text)
   interceptorText.value = ''
-}
-
-// -1 = "new unsent branch" = last position (after all existing children)
-const displayIndex = computed(() => {
-  if (!props.branchInfo) return 0
-  return props.branchInfo.activeChildIndex === -1
-    ? props.branchInfo.total - 1
-    : props.branchInfo.activeChildIndex
-})
-
-const switchPrev = () => {
-  if (!props.branchInfo || displayIndex.value <= 0) return
-  emit('switch-branch', props.branchInfo.childIds[displayIndex.value - 1])
-}
-
-const switchNext = () => {
-  if (!props.branchInfo) return
-  const idx = displayIndex.value
-  if (idx >= props.branchInfo.total - 1) return
-  // Going forward into "new branch" = create branch
-  if (idx + 1 >= props.branchInfo.childIds.length) {
-    emit('create-branch', props.message.id)
-  } else {
-    emit('switch-branch', props.branchInfo.childIds[idx + 1])
-  }
 }
 
 const branchFromHere = () => {

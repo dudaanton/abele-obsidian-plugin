@@ -456,6 +456,8 @@ export function useChatNavigation(options: ChatNavigationOptions) {
   )
 
   return {
+    branchBlocked,
+    deferNavigation,
     navigationOpen,
     navigationActiveMessage,
     navigationState,

@@ -231,8 +231,8 @@ const script = (layout: string) => `(async () => {
     await wait(100)
     modal().querySelector('[data-continuation="other"] > button').click()
     await until(() => owner.branchLeafId === 'other-first')
-    report.branchJump = document.querySelector('.abele-ai-chat__continuation')?.textContent.includes('Continuation 2 of 2')
-    document.querySelector('.abele-ai-chat__continuation button').click(); await until(modal)
+    report.branchJump = document.querySelector('[data-message-id="other"] .abele-chat-branch')?.textContent.includes('2/2')
+    await open()
     await choose('Back to place'); await until(() => owner.branchLeafId === originalLeaf)
     await wait(1800)
     report.branchReturn = owner.branchLeafId === originalLeaf
@@ -242,7 +242,7 @@ const script = (layout: string) => `(async () => {
     // The fork stayed expanded in this session.
     modal().querySelector('[data-continuation="other"] > button').click()
     await wait(150)
-    report.branchDeferred = owner.branchLeafId === originalLeaf && !!document.querySelector('.abele-ai-chat__navigation-pending')
+    report.branchDeferred = owner.branchLeafId === originalLeaf && !!document.querySelector('.abele-ai-chat__branch-note')
     owner.isExecutingTool.value = false
     await until(() => owner.branchLeafId === 'other-first')
     await open(); await choose('Back to place'); await until(() => owner.branchLeafId === originalLeaf)

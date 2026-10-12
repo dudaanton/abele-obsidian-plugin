@@ -75,11 +75,13 @@ describe('branch jumps from navigation', () => {
   it('switches for the next send, displays the selected fork, and restores the exact old branch without losing the draft', async () => {
     await chooseOther()
     expect(session.messages.value.map((m) => m.id)).toEqual(['q', 'b', 'b1'])
-    expect(wrapper.find('.abele-ai-chat__continuation').text()).toContain('Continuation 2 of 2')
+    expect(wrapper.find('[data-message-id="b"] .abele-chat-branch').text()).toContain('2/2')
     expect(session.draft.value.text).toBe('An unfinished sample message')
-    await wrapper.find('.abele-ai-chat__continuation button').trigger('click')
+    await open()
+    const fork = modal().querySelector<HTMLDetailsElement>('[data-fork-id="q"]')!
+    if (!fork.open) fork.querySelector<HTMLElement>('summary')!.click()
     await flushPromises()
-    expect(modal().querySelector<HTMLDetailsElement>('[data-fork-id="q"]')!.open).toBe(true)
+    expect(fork.open).toBe(true)
     const back = [...modal().querySelectorAll('button')].find(
       (b) => b.textContent === 'Back to place'
     )!
@@ -106,7 +108,7 @@ describe('branch jumps from navigation', () => {
       if (state === 'action') session.isExecutingTool.value = true
       await chooseOther()
       expect(session.branchLeafId).toBe('a2')
-      expect(wrapper.find('.abele-ai-chat__navigation-pending').text()).toContain(
+      expect(wrapper.find('.abele-ai-chat__branch-note').text()).toContain(
         'when the agent finishes'
       )
       session.pendingToolCalls.value = []
@@ -223,7 +225,7 @@ describe('branch jumps from navigation', () => {
     active.value = first
     chats.activeTabId.value = first.id
     await pause(80)
-    expect(wrapper.find('.abele-ai-chat__continuation').text()).toContain('Continuation 2 of 2')
+    expect(wrapper.find('[data-message-id="b"] .abele-chat-branch').text()).toContain('2/2')
   })
 
   it('resumes a deferred choice after an unfinished reply operation fails without publishing a message update', async () => {
@@ -423,7 +425,7 @@ describe('branch jumps from navigation', () => {
   it('keeps reading available on the current branch while busy and cancels a deferred switch explicitly', async () => {
     session.isExecutingTool.value = true
     await chooseOther()
-    await wrapper.find('.abele-ai-chat__navigation-pending button').trigger('click')
+    await wrapper.find('.abele-ai-chat__branch-note [aria-label="Cancel branch switch"]').trigger('click')
     await open()
     modal().querySelector<HTMLElement>('[data-question="q"]')!.click()
     await pause(80)
@@ -441,7 +443,7 @@ describe('branch jumps from navigation', () => {
     session.isExecutingTool.value = false
     await pause(100)
     expect(session.branchLeafId).toBe('a2')
-    expect(wrapper.find('.abele-ai-chat__navigation-pending').exists()).toBe(false)
+    expect(wrapper.find('.abele-ai-chat__branch-note').exists()).toBe(false)
   })
 
   it('opens discussion search results at their exact message and part through the existing comment path', async () => {

@@ -58,17 +58,6 @@
       />
       <template v-else>
         <div v-if="!sent.length" class="search-empty-state">Nothing sent yet.</div>
-        <ChatOutlineFork
-          v-if="rootFork"
-          :fork="rootFork"
-          :tree="tree"
-          :current-ids="currentIds"
-          :comments="comments"
-          :active-message-id="activeMessageId"
-          :ancestors="[]"
-          @jump="(id, part) => emit('jump', id, part)"
-          @discussion="(id) => emit('discussion', id)"
-        />
         <ChatOutlineTurns
           :messages="messages"
           :comments="comments"
@@ -115,7 +104,6 @@ import {
 import Icon from '../obsidian/Icon.vue'
 import Search from '../obsidian/Search.vue'
 import ChatOutlineTurns from './ChatOutlineTurns.vue'
-import ChatOutlineFork from './ChatOutlineFork.vue'
 import ChatOutlineResults from './ChatOutlineResults.vue'
 import { provideOutline } from './context'
 import { plural } from '../nodeWork/codes'
@@ -124,11 +112,7 @@ import {
   searchChatNavigation,
   type NavigationState,
 } from '@/ai/chatNavigation'
-import {
-  buildNavigationTree,
-  navigationBranchLabels,
-  navigationFork,
-} from '@/ai/chatNavigationBranches'
+import { buildNavigationTree, navigationBranchLabels } from '@/ai/chatNavigationBranches'
 import {
   searchNavigationDiscussions,
   type DiscussionNavigationHit,
@@ -191,7 +175,6 @@ const discussions = ref(false)
 const sent = computed(() => props.messages.filter((m) => !m.draft))
 const tree = computed(() => buildNavigationTree(props.allMessages ?? props.messages))
 const currentIds = computed(() => props.messages.map((m) => m.id))
-const rootFork = computed(() => navigationFork(tree.value, undefined, currentIds.value))
 const labels = computed(() => navigationBranchLabels(tree.value))
 const searchedMessages = computed(() =>
   everyBranch.value ? [...tree.value.byId.values()] : props.messages
@@ -328,16 +311,17 @@ onMounted(async () => {
   const box = list.value
   if (!box) return
   if (props.focusFork) {
-    // The fork is under the question it follows: that one opens too.
-    const owner = buildChatNavigation(props.messages, props.comments).find((t) =>
-      [t.message, ...t.answers, ...t.tools].some((m) => m.id === props.focusFork)
+    // The other ways show under the question the path takes from that place: it opens.
+    const here = props.messages.find(
+      (m) =>
+        m.role === 'user' &&
+        m.parentId === (props.focusFork === 'roots' ? undefined : props.focusFork)
     )
-    if (owner) open.add(`${owner.message.id}:turn`)
-    open.add(`fork:${props.focusFork}`)
+    if (here) open.add(`${here.id}:turn`)
     await nextTick()
-    const fork = box.querySelector<HTMLElement>(`[data-fork-id="${CSS.escape(props.focusFork)}"]`)
-    fork?.scrollIntoView({ block: 'center' })
-    fork?.querySelector<HTMLElement>('.tree-item-self')?.focus({ preventScroll: true })
+    const row = here && box.querySelector<HTMLElement>(`[data-question="${CSS.escape(here.id)}"]`)
+    row?.scrollIntoView({ block: 'center' })
+    row?.querySelector<HTMLElement>('.tree-item-self')?.focus({ preventScroll: true })
     return
   }
   const here = box.querySelector<HTMLElement>('.tree-item-self.is-active')

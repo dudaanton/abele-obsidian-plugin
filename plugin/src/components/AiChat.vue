@@ -167,27 +167,6 @@
           <span class="abele-ai-chat__empty-text">What's on your mind?</span>
         </div>
 
-        <!-- The conversation's beginnings, when there is more than one. A repeat of the first
-             message starts a second one, and with no parent to hang the usual switcher on the
-             first looked deleted rather than put aside (2026-09-05, on both phone and desktop). -->
-        <div v-if="rootBranches" class="abele-ai-chat__roots abele-chat-msg__branch-nav">
-          <Icon
-            icon="chevron-left"
-            :class="{ 'abele-chat-msg__branch-disabled': rootBranches.index <= 0 }"
-            @click="switchRoot(-1)"
-          />
-          <span class="abele-chat-msg__branch-label"
-            >{{ rootBranches.index + 1 }}/{{ rootBranches.ids.length }}</span
-          >
-          <Icon
-            icon="chevron-right"
-            :class="{
-              'abele-chat-msg__branch-disabled': rootBranches.index >= rootBranches.ids.length - 1,
-            }"
-            @click="switchRoot(1)"
-          />
-        </div>
-
         <div v-if="olderCount" class="abele-ai-chat__older">
           <Icon icon="chevron-up" no-hover />
           <span>{{ olderCount }} earlier messages</span>
@@ -199,7 +178,7 @@
           :ref="(c) => keepMessageRef(msg.id, c)"
           :data-message-id="msg.id"
           :message="msg"
-          :branch-info="branchInfoMap.get(msg.id)"
+          :branches="branchSwitchMap.get(msg.id)"
           :interceptor-streaming="
             msg.draft ? interceptorStreaming || interceptorWorking : replyReviews[msg.id]?.streaming
           "
@@ -357,14 +336,15 @@
         </div>
       </div>
 
-      <div v-if="navigationBadge" class="abele-ai-chat__continuation setting-item-description">
-        <button type="button" @click="openNavigation(navigationBadge.fork.id)">
-          Continuation {{ navigationBadge.index + 1 }} of {{ navigationBadge.fork.choices.length }} · Show fork
-        </button>
-      </div>
-      <div v-if="pendingNavigation" class="abele-ai-chat__navigation-pending setting-item-description" aria-live="polite">
-        {{ pendingNavigation.label }}
-        <button type="button" @click="cancelPendingNavigation">Cancel branch switch</button>
+      <div v-if="pendingNavigation || branchingAfter" class="abele-ai-chat__branch-note" aria-live="polite">
+        <Icon icon="git-branch" size="xs" :interactive="false" />
+        <span class="abele-ai-chat__branch-note-text">{{ pendingNavigation ? pendingNavigation.label : 'New branch after this answer' }}</span>
+        <Icon
+          icon="x"
+          size="xs"
+          :label="pendingNavigation ? 'Cancel branch switch' : 'Back to where the chat went on'"
+          @click="pendingNavigation ? cancelPendingNavigation() : cancelNewBranch()"
+        />
       </div>
       <!-- Input -->
       <AiChatInput
@@ -471,7 +451,8 @@ import { useChatFind } from '@/composables/useChatFind'
 import { useFindKey } from '@/composables/useFindKey'
 import type { FindPart } from '@/ai/chatFind'
 import { useChatScroll } from '@/composables/useChatScroll'
-import { useChatBranchInfo } from '@/composables/useChatBranchInfo'
+import { branchSwitches, newBranchAfter } from '@/ai/chatBranches'
+import { navigationTitle } from '@/ai/chatNavigation'
 import { useChatNavigation } from '@/composables/useChatNavigation'
 export type { BranchInfo } from '@/composables/useChatBranchInfo'
 import { useChatKeyboardGap } from '@/composables/useChatKeyboardGap'
@@ -606,13 +587,14 @@ const tabInfos = computed(() =>
   })
 )
 
-const { branchInfoMap, rootBranches } = useChatBranchInfo(allMessages, messages)
-
-const switchRoot = (step: number) => {
-  const roots = rootBranches.value
-  if (!roots) return
-  const id = roots.ids[roots.index + step]
-  if (id) onSwitchBranch(id)
+const branchSwitchMap = computed(() => branchSwitches(allMessages.value, messages.value))
+const branchingAfter = computed(() =>
+  newBranchAfter(allMessages.value, messages.value, session.value?.branchLeafId ?? null)
+)
+const cancelNewBranch = () => {
+  const after = branchingAfter.value
+  const back = after && allMessages.value.filter((m) => m.parentId === after.id && !m.draft).at(-1)
+  if (back) onSwitchBranch(back.id)
 }
 
 const onCloneChat = (messageId: string) => {
@@ -626,8 +608,20 @@ const onCreateBranch = (messageId: string) => {
 }
 
 const onSwitchBranch = (childId: string) => {
+  const owner = session.value
+  if (!owner) return
   scroll.shouldAutoScroll = false
-  session.value?.switchBranch(childId)
+  if (branchBlocked(owner)) {
+    const target = owner.allMessages.value.find((m) => m.id === childId)
+    deferNavigation(owner, async () => void owner.switchBranch(childId))
+    if (target && pendingNavigation.value)
+      pendingNavigation.value = {
+        ...pendingNavigation.value,
+        label: `Switches to «${navigationTitle(target)}» when the agent finishes`,
+      }
+    return
+  }
+  owner.switchBranch(childId)
 }
 
 const onRepeatMessage = (messageId: string) => {
@@ -1081,7 +1075,7 @@ const find = useChatFind({
 
 const {
   navigationOpen, navigationActiveMessage, navigationState, navigationFocusFork,
-  navigationBadge, pendingNavigation, navigationReturns, cancelPendingNavigation,
+  branchBlocked, deferNavigation, pendingNavigation, navigationReturns, cancelPendingNavigation,
   openNavigation, navigationJump, navigationLatest, navigationDiscussion, navigationBack,
 } = useChatNavigation({
   session, chatService, messagesContainer, composing, attachmentOwner, scroll,
@@ -1824,9 +1818,18 @@ const showDebug = () => {
   }
 }
 
-/** Between beginnings: the same strip a message carries under it, at the top of the list. */
-.abele-ai-chat__roots {
-  margin-bottom: var(--size-4-2);
+.abele-ai-chat__branch-note {
+  display: flex;
+  align-items: center;
+  gap: var(--size-4-2);
+  padding: var(--size-4-1) var(--size-4-2);
+  color: var(--text-muted);
+  font-size: var(--font-ui-smaller);
+}
+.abele-ai-chat__branch-note-text {
+  flex: 1 1 auto;
+  min-width: 0;
+  overflow-wrap: anywhere;
 }
 
 /** The marker above the oldest rendered message, saying what scrolling further would show. */

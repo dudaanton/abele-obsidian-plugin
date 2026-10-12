@@ -49,10 +49,10 @@ beforeEach(() => {
 afterEach(() => vi.restoreAllMocks())
 
 describe('a chat with two beginnings', () => {
-  it('shows which beginning is on screen, above the messages', () => {
+  it('shows which beginning is on screen, on its first message', () => {
     const wrapper = mount(AiChat)
 
-    expect(wrapper.find('.abele-ai-chat__roots').text()).toBe('2/2')
+    expect(wrapper.find('[data-message-id="r2"] .abele-chat-branch').text()).toContain('2/2')
   })
 
   it('switches to the other beginning', async () => {
@@ -60,7 +60,7 @@ describe('a chat with two beginnings', () => {
 
     const back = wrapper
       .findAllComponents(Icon)
-      .find((i) => i.props('icon') === 'chevron-left' && i.element.closest('.abele-ai-chat__roots'))
+      .find((i) => i.props('icon') === 'chevron-left' && i.element.closest('.abele-chat-branch'))
     await back!.trigger('click')
 
     expect(switchBranch).toHaveBeenCalledWith('r1')
@@ -71,6 +71,6 @@ describe('a chat with two beginnings', () => {
     visible.value = [...all.value]
     const wrapper = mount(AiChat)
 
-    expect(wrapper.find('.abele-ai-chat__roots').exists()).toBe(false)
+    expect(wrapper.find('.abele-chat-branch').exists()).toBe(false)
   })
 })

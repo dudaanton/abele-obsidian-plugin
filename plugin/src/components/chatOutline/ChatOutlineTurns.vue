@@ -35,12 +35,20 @@
                has none, so the numbers stand in columns. -->
           <span
             v-if="kinds.fork"
-            :ref="(el) => tip(el, forkCount(i) ? `${forkCount(i)} branches go on from here` : '')"
+            :ref="
+              (el) =>
+                tip(
+                  el,
+                  forkAt(i)
+                    ? `One of ${forkAt(i)!.choices.length} ways the chat went from here`
+                    : ''
+                )
+            "
             class="abele-chat-outline__code"
-            ><template v-if="forkCount(i)"
-              ><Icon icon="split" size="xs" :interactive="false" /><span
+            ><template v-if="forkAt(i)"
+              ><Icon icon="git-branch" size="xs" :interactive="false" /><span
                 class="abele-chat-outline__num"
-                >{{ forkCount(i) }}</span
+                >{{ forkAt(i)!.choices.length }}</span
               ></template
             ></span
           >
@@ -79,6 +87,17 @@
           />
         </span>
       </template>
+      <ChatOutlineBranches
+        v-if="forkAt(i)"
+        :fork="forkAt(i)!"
+        :here="turn.message.id"
+        :tree="tree"
+        :current-ids="currentIds"
+        :comments="comments"
+        :active-message-id="activeMessageId"
+        @jump="(id, part) => emit('jump', id, part)"
+        @discussion="(id) => emit('discussion', id)"
+      />
       <ChatOutlineTurnBody
         :turn="turn"
         :forks="forks(i)"
@@ -116,6 +135,7 @@ import TreeItem from '../obsidian/TreeItem.vue'
 import Icon from '../obsidian/Icon.vue'
 import ChatOutlineTurnBody from './ChatOutlineTurnBody.vue'
 import ChatOutlineFork from './ChatOutlineFork.vue'
+import ChatOutlineBranches from './ChatOutlineBranches.vue'
 import { useOutline } from './context'
 import { dayKey, dayLabel, timeOf, toneLabel, toneOf } from './outline'
 import { plural } from '../nodeWork/codes'
@@ -156,23 +176,42 @@ const forksIn = (messages: readonly ChatMessage[]) =>
   messages
     .map((message) => navigationFork(props.tree, message.id, props.currentIds))
     .filter((fork) => !!fork)
-// Every fork from the question to the next one: a hidden successful result can own one too.
+const questions = computed(() => new Set(turns.value.map((t) => t.message.id)))
+/**
+ * The place this question is one of several ways from: the chat was asked differently there.
+ * It shows on the question itself, as the chat shows it; a branch's own first question is its row.
+ */
+const forkAt = (i: number) => {
+  if (props.hideFirst && i === 0) return null
+  const message = turns.value[i].message
+  const fork = navigationFork(props.tree, message.parentId, props.currentIds)
+  return fork?.choices.some((c) => c.message.id === message.id) ? fork : null
+}
+// Every other fork from the question to the next one, where the ways are not questions of this
+// list: a retried answer, a hidden successful result.
 const forks = (i: number) => {
   const start = i === 0 ? 0 : (positions.value.get(turns.value[i].message.id) ?? 0)
   const next = turns.value[i + 1]
   const end = next ? positions.value.get(next.message.id) : props.messages.length
-  return forksIn(props.messages.slice(start, end))
+  return forksIn(props.messages.slice(start, end)).filter(
+    (fork) => !fork.choices.some((c) => questions.value.has(c.message.id))
+  )
 }
-const forkCount = (i: number) => forks(i).reduce((n, f) => n + f.choices.length, 0)
 const orphanForks = computed(() => (turns.value.length ? [] : forksIn(props.messages)))
 // Which codes any question of this list has: those get a column, the others none.
 const kinds = computed(() => ({
-  fork: turns.value.some((_, i) => forkCount(i) > 0),
+  fork: turns.value.some((_, i) => !!forkAt(i)),
   discussions: turns.value.some((t) => t.discussions.length > 0),
   work: turns.value.some((t) => t.tools.length > 0),
 }))
 const hasBody = (turn: NavigationTurn, i: number) =>
-  !!(turn.answers.length || turn.tools.length || turn.discussions.length || forks(i).length)
+  !!(
+    turn.answers.length ||
+    turn.tools.length ||
+    turn.discussions.length ||
+    forks(i).length ||
+    forkAt(i)
+  )
 
 const tip = (el: unknown, text: string) => {
   if (el instanceof HTMLElement) setTooltip(el, text)

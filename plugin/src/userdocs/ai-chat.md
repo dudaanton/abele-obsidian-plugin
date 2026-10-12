@@ -403,7 +403,14 @@ copy the message, edit your own message or retry an answer, insert it into a not
 file changes. Repeat, **Branch from here**, **Rewind** and **Undo changes** remain there.
 Selection scripts, highlights, revision review and draft Send/Edit keep their existing places.
 
-**Branch from here** continues inside the same chat. **New chat from here**, next to it in
+**Branch from here** continues inside the same chat: the chat stops at that message and a
+line above the input says the next message starts a new branch after it; its cross goes back
+to where the chat went on. Where a chat went more than one way, the message that differs
+carries the branch switch at its end: arrows to the neighbouring branches and **2/3**, which
+lists every branch from that place with how it begins, how many questions it holds, its time
+and a dot when something there waits for approval or was refused.
+
+**New chat from here**, next to **Branch from here** in
 the menu, creates a separate chat file and opens it in a new chat tab. It copies the current
 branch from the beginning through that message, including its reasoning, tool results,
 pictures and other attachments, but not sibling branches or later messages. Its title is
@@ -461,13 +468,14 @@ Expanding a heading does not change the conversation.
 
 Choosing a message on another continuation selects that branch for the next send and jumps
 to the message. Later forks use their earliest continuation, as the chat's existing branch
-arrows do. A shared message already on the selected path keeps that path. Above the input,
-**Continuation 2 of 3 · Show fork** identifies the chosen fork and opens Navigation at it.
-This changes the conversation the agent will receive; it never rolls back files.
+arrows do. A shared message already on the selected path keeps that path. In the chat the
+message where the ways part carries the branch switch, **2/3**, so the chosen way is marked
+where it starts. This changes the conversation the agent will receive; it never rolls back files.
 
 If the agent is answering, executing an action, compacting, retrying, waiting for an approval
 or waiting for your answer, an off-path selection waits until the turn finishes. The pending
-choice is visible above the input and in Navigation, with **Cancel branch switch**. Reading
+choice is one line above the input, naming the branch, with **Cancel branch switch**. The
+branch arrows under a message wait the same way. Reading
 messages on the current branch remains available. Choosing another message, switching chats
 or replacing the conversation invalidates the old pending choice.
 
