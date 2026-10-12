@@ -17,6 +17,7 @@ import { describe, it, expect, beforeAll, afterAll } from 'vitest'
 import { hasTestApi, isObsidianRunning, evalRaw, evalJson, reloadApp } from './helpers/obsidianCli'
 import { evalAsync } from './helpers/githubLive'
 import { shotDir } from './helpers/shots'
+import { SCRIPT_FIXTURE, type ScriptFixtureSnapshot } from './helpers/scriptFixture'
 
 const available = isObsidianRunning() && hasTestApi()
 const DIR = 'Abele header commands e2e'
@@ -65,16 +66,15 @@ const run = <T>(body: string, timeout = 90_000): T =>
   )
 
 describe.skipIf(!available)('command buttons in the note header', () => {
-  let saved: { folder: string; buttons: unknown } = { folder: '', buttons: [] }
+  let saved: { scripts?: ScriptFixtureSnapshot; buttons: unknown } = { buttons: [] }
   let size: [number, number] = [0, 0]
 
   beforeAll(() => {
     size = evalJson<[number, number]>(
       `require('@electron/remote').getCurrentWindow().getContentSize()`
     )
-    saved = evalJson(
-      `({ folder: window.__abeleTest.AbeleConfig.getInstance().ai.scriptsFolder ?? '',
-          buttons: window.__abeleTest.AbeleConfig.getInstance().headerButtons })`
+    saved = evalAsync(
+      `(async () => { ${SCRIPT_FIXTURE}; return { scripts: await saveScriptFixture(), buttons: window.__abeleTest.AbeleConfig.getInstance().headerButtons } })()`
     )
     evalRaw(
       `(async () => {
@@ -83,10 +83,9 @@ describe.skipIf(!available)('command buttons in the note header', () => {
         for (const f of [${JSON.stringify(DIR)}, ${JSON.stringify(SCRIPTS)}, ${JSON.stringify(`${DIR}/Inside`)}, ${JSON.stringify(`${DIR}/Outside`)}]) await app.vault.createFolder(f)
         await app.vault.create(${JSON.stringify(`${SCRIPTS}/header.js`)}, ${JSON.stringify(SCRIPT)})
         for (const p of [${JSON.stringify(INSIDE)}, ${JSON.stringify(INSIDE_TOO)}, ${JSON.stringify(OUTSIDE)}]) await app.vault.create(p, 'Some words.\\n')
-        const config = window.__abeleTest.AbeleConfig.getInstance()
-        config.ai = { ...config.ai, scriptsFolder: ${JSON.stringify(SCRIPTS)} }
-        await config.saveSettings()
-        await window.__abeleTest.ScriptService.getInstance().discover()
+        ${SCRIPT_FIXTURE}
+        await enableScriptFixture(${JSON.stringify(SCRIPTS)})
+        await approveScriptFixture(${JSON.stringify(`${SCRIPTS}/header.js`)}, ${JSON.stringify(SCRIPT)})
         await new Promise((r) => setTimeout(r, 300))
         return 'ok'
       })()`,
@@ -103,18 +102,19 @@ describe.skipIf(!available)('command buttons in the note header', () => {
     }
     evalRaw(
       `(async () => {
+        ${SCRIPT_FIXTURE}
+        try {
         for (const leaf of app.workspace.getLeavesOfType('markdown')) {
           if (leaf.view.file?.path.startsWith(${JSON.stringify(DIR)})) leaf.detach()
         }
         const config = window.__abeleTest.AbeleConfig.getInstance()
         config.headerButtons = ${JSON.stringify(saved.buttons)}
-        config.ai = { ...config.ai, scriptsFolder: ${JSON.stringify(saved.folder)} }
         config.version.value++
         await config.saveSettings()
         const dir = app.vault.getAbstractFileByPath(${JSON.stringify(DIR)})
         if (dir) await app.vault.delete(dir, true)
-        await window.__abeleTest.ScriptService.getInstance().discover()
         return 'ok'
+        } finally { await restoreScriptFixture(${JSON.stringify(saved.scripts ?? null)}) }
       })()`,
       60_000
     )
