@@ -116,7 +116,7 @@ describe.skipIf(!available)('single-screen desktop presentation', () => {
       const native=require('@electron/remote').getCurrentWindow()
       const isFullscreen=()=>native.isFullScreen() || native.isSimpleFullScreen()
       const probe={before:isFullscreen()}
-      const button=[...viewer.toolbar.querySelectorAll('button')].find(b=>b.textContent==='Play')
+      const button=viewer.toolbar.querySelector('button[aria-label="Play"]')
       const r=button.getBoundingClientRect(),x=r.left+r.width/2,y=r.top+r.height/2
       await cdp.sendCommand('Input.dispatchMouseEvent',{type:'mousePressed',x,y,button:'left',clickCount:1})
       await cdp.sendCommand('Input.dispatchMouseEvent',{type:'mouseReleased',x,y,button:'left',clickCount:1})

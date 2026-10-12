@@ -21,11 +21,13 @@
   display: none;
 }
 
+/* Back, where, on, play; then, at the far end, presenting and editing: glyphs, as a tab's header
+   has them. */
 .abele-deck-toolbar {
   display: flex;
   flex-wrap: wrap;
   align-items: center;
-  gap: var(--size-4-2);
+  gap: var(--size-2-2);
   padding: var(--size-4-2);
   flex: none;
 }
@@ -34,8 +36,14 @@
   flex: none;
 }
 
+.abele-deck-toolbar .abele-deck-presenter-action {
+  margin-inline-start: auto;
+}
+
 .abele-deck-count {
+  margin-inline: var(--size-2-3);
   color: var(--text-muted);
+  font-size: var(--font-ui-small);
   white-space: nowrap;
   font-variant-numeric: tabular-nums;
 }

@@ -3,6 +3,7 @@ import {
   Notice,
   Platform,
   Scope,
+  setIcon,
   type TFile,
   type ViewStateResult,
   type WorkspaceLeaf,
@@ -181,23 +182,24 @@ export class DeckView extends FileView {
         fullscreen: !Platform.isMobile,
         fullscreenHost: desktopFullscreen(this.contentEl),
         presentationHost: Platform.isMobile
-          ? mobilePresentation(this.contentEl.ownerDocument.defaultView!)
+          ? mobilePresentation(this.contentEl.ownerDocument.defaultView)
           : undefined,
         onExit: () => this.show?.end(),
         onNotes: () => {
           if (Platform.isMobile) void this.startPresenter()
         },
+        icon: setIcon,
       }
     )
     if (audienceBootstraps.has(this.leaf) || this.positioning > 0) this.viewer.suspendMedia(true)
     this.viewer
-      .button('Present', () => void this.startPresenter())
+      .button('Present: with notes and a clock', () => void this.startPresenter(), 'presentation')
       .classList.add('abele-deck-presenter-action')
     this.viewer
-      .button('Edit source', () => void this.edit(false))
+      .button('Edit the source', () => void this.edit(false), 'code-2')
       .classList.add('abele-deck-editor-action')
     this.viewer
-      .button('Edit beside', () => void this.edit(true))
+      .button('Edit the source beside the slides', () => void this.edit(true), 'columns-2')
       .classList.add('abele-deck-editor-action')
   }
 

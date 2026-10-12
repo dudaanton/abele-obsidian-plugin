@@ -290,7 +290,7 @@ describe.skipIf(!available)('presentation notes in the running app', () => {
     const r = JSON.parse(
       await evalLong(`(async () => { ${PRELUDE}
       await viewer.go(1);
-      [...viewer.toolbar.querySelectorAll('button')].find(b=>b.textContent==='Edit beside').click()
+      viewer.toolbar.querySelector('button[aria-label="Edit the source beside the slides"]').click()
       if(!await until(()=>app.workspace.getLeavesOfType('markdown').some(l=>l.view.file?.path===${JSON.stringify(PATH)})))throw Error('source editor did not open')
       const source=app.workspace.getLeavesOfType('markdown').find(l=>l.view.file?.path===${JSON.stringify(PATH)})
       source.view.editor.setValue(source.view.editor.getValue().replace('Two sides','Updated sides'))

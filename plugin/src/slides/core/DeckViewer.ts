@@ -86,6 +86,11 @@ export class DeckViewer {
       slideOffset?: number
       onExit?: () => void
       onNotes?: () => void
+      /**
+       * Draws a named glyph into a toolbar button, the host's own icons. Without one the
+       * buttons say their names in words.
+       */
+      icon?: (el: HTMLElement, name: string) => void
     } = {}
   ) {
     const doc = host.ownerDocument
@@ -105,24 +110,36 @@ export class DeckViewer {
     this.stylesheet = doc.createElement('style')
     this.toolbar = doc.createElement('div')
     this.toolbar.className = 'abele-deck-toolbar'
-    this.previous = this.button('Previous slide', () => {
-      void this.go('previous')
-      this.root.focus()
-    })
-    this.previous.textContent = '←'
+    this.previous = this.button(
+      'Previous slide',
+      () => {
+        void this.go('previous')
+        this.root.focus()
+      },
+      'chevron-left'
+    )
+    if (!options.icon) this.previous.textContent = '←'
     this.count = doc.createElement('span')
     this.count.className = 'abele-deck-count'
     this.count.setAttribute('aria-live', 'polite')
     this.toolbar.append(this.count)
-    this.next = this.button('Next slide', () => {
-      void this.go('next')
-      this.root.focus()
-    })
-    this.next.textContent = '→'
-    this.play = this.button('Play', () => {
-      if (this.placeholder) this.exitPresenting()
-      else void this.present(options.fullscreen !== false)
-    })
+    this.next = this.button(
+      'Next slide',
+      () => {
+        void this.go('next')
+        this.root.focus()
+      },
+      'chevron-right'
+    )
+    if (!options.icon) this.next.textContent = '→'
+    this.play = this.button(
+      'Play',
+      () => {
+        if (this.placeholder) this.exitPresenting()
+        else void this.present(options.fullscreen !== false)
+      },
+      'play'
+    )
     this.viewport = doc.createElement('div')
     this.viewport.className = 'abele-deck-viewport'
     this.root.append(label, this.stylesheet, this.toolbar, this.viewport)
@@ -166,11 +183,15 @@ export class DeckViewer {
     )
   }
 
-  button(label: string, action: () => void): HTMLButtonElement {
+  /** A toolbar button: the host's glyph when it gave a way to draw one and a name, else words. */
+  button(label: string, action: () => void, icon?: string): HTMLButtonElement {
     const button = this.root.ownerDocument.createElement('button')
     button.type = 'button'
-    button.textContent = label
     button.setAttribute('aria-label', label)
+    if (icon && this.options.icon) {
+      button.className = 'clickable-icon'
+      this.options.icon(button, icon)
+    } else button.textContent = label
     button.addEventListener('click', action, { signal: this.abort.signal })
     this.toolbar.append(button)
     return button
@@ -304,7 +325,7 @@ export class DeckViewer {
   }
 
   private update(): Promise<void> {
-    const deck = this.deck!
+    const deck = this.deck
     const wanted = [this.index - 1, this.index, this.index + 1].filter(
       (i) => i >= 0 && i < deck.slides.length
     )
@@ -322,10 +343,12 @@ export class DeckViewer {
       entry.element.setAttribute('aria-hidden', String(i !== this.index))
       if (i !== this.index) this.pause(entry)
     }
-    this.count.textContent = `${this.index + 1} / ${deck.slides.length}`
+    this.count.textContent = deck.slides.length
+      ? `${this.index + 1} / ${deck.slides.length}`
+      : 'No slides yet'
     this.applySteps()
     this.scale()
-    return Promise.all(wanted.map((i) => this.slides.get(i)!.ready)).then(() => {
+    return Promise.all(wanted.map((i) => this.slides.get(i).ready)).then(() => {
       if (this.closed) return
       const active = this.slides.get(this.index)
       if (active) {
@@ -560,7 +583,7 @@ export class DeckViewer {
         !this.mediaSuspended
       if (block.type === 'html') {
         // The opaque-origin frame is recreated on every entry; removing it kills its timers and audio.
-        const network = (await this.renderer.allowNetwork?.(this.deck!)) ?? false
+        const network = (await this.renderer.allowNetwork?.(this.deck)) ?? false
         if (!current()) return
         frame = target.ownerDocument.createElement('iframe')
         frame.setAttribute('sandbox', network ? 'allow-scripts' : '')
@@ -641,7 +664,8 @@ export class DeckViewer {
       this.root.classList.add('abele-deck-presenting')
       this.hideControls()
       void this.options.presentationHost?.enter()
-      this.play.textContent = 'Exit'
+      if (this.options.icon) this.options.icon(this.play, 'x')
+      else this.play.textContent = 'Exit'
       this.play.setAttribute('aria-label', 'Exit presentation')
       this.scale()
     }
@@ -676,7 +700,8 @@ export class DeckViewer {
     this.toolbar.inert = false
     this.toolbar.removeAttribute('aria-hidden')
     void this.options.presentationHost?.exit()
-    this.play.textContent = 'Play'
+    if (this.options.icon) this.options.icon(this.play, 'play')
+    else this.play.textContent = 'Play'
     this.play.setAttribute('aria-label', 'Play')
     if (this.fullscreenOwned) {
       if (this.options.fullscreenHost) void this.options.fullscreenHost.exit().catch(() => {})

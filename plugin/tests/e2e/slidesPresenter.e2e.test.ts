@@ -207,7 +207,7 @@ describe.skipIf(!available)('shared presenter show', () => {
       }
       await wait(350)
       await picture('phone-deck-entry')
-      const present=[...view.viewer.toolbar.querySelectorAll('button')].find(b=>b.textContent==='Present')
+      const present=view.viewer.toolbar.querySelector('button[aria-label^="Present"]')
       await tap(present)
       if(!await until(()=>view.presenter)) {
         const b=present.getBoundingClientRect()
