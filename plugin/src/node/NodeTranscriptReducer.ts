@@ -91,7 +91,8 @@ export function reduceTranscript(events: readonly JournalEvent[]): NodeTranscrip
         if (event.type.endsWith('.tool.call')) startedTools.add(id)
         if (event.type.endsWith('.tool.result')) {
           completedTools.add(id)
-          delete messages.get(id)!.toolExecution
+          const tool = messages.get(id)
+          if (tool) delete tool.toolExecution
         }
       }
       if (event.type === 'pi.message.final' && piFailure(data)) unknown.unshift(event)
@@ -117,7 +118,8 @@ export function reduceTranscript(events: readonly JournalEvent[]): NodeTranscrip
       if (event.type === 'run.interrupted') {
         for (const [id, run] of toolRuns) {
           if (run !== currentRun || completedTools.has(id)) continue
-          const tool = messages.get(id)!
+          const tool = messages.get(id)
+          if (!tool) continue
           tool.toolExecution = startedTools.has(id) ? 'interrupted' : 'not-run'
           tool.toolStatus = 'rejected'
         }

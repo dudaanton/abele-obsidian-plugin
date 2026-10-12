@@ -11,7 +11,11 @@ import { TFile, Notice } from 'obsidian'
 import { mergeAttentionTruth, settledAttention, type LocalAttention } from '@/agents/attention'
 import { AgentsService } from '@/agents/AgentsService'
 import { needsSecretApproval } from './tools/secretUtils'
-import { interruptedToolResult, projectInterruptedTools, type ToolInterruption } from './client/toolInterruption'
+import {
+  interruptedToolResult,
+  projectInterruptedTools,
+  type ToolInterruption,
+} from './client/toolInterruption'
 import { nanoid } from 'nanoid'
 import dayjs from 'dayjs'
 import { AbeleConfig } from '@/services/AbeleConfig'
