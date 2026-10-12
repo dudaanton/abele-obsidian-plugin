@@ -10,7 +10,10 @@
   >
     <div v-if="error !== null" class="abele-mermaid__error">
       <div class="abele-mermaid__error-head">
-        <div class="abele-mermaid__error-title">This diagram could not be drawn</div>
+        <div class="abele-mermaid__error-title">
+          <Icon icon="alert-triangle" color="red" :interactive="false" />
+          This diagram could not be drawn
+        </div>
         <div class="abele-mermaid__error-actions">
           <Icon v-if="edit" icon="code-2" tooltip="Edit the diagram's source" @click="edit()" />
           <Icon icon="copy" tooltip="Copy the diagram's source" @click="copySource" />
@@ -640,9 +643,11 @@ defineExpose({ openCopyMenu })
   flex: 0 0 auto;
 }
 
+// In the same frame a drawn diagram has: one red glyph says what went wrong, and Mermaid's
+// own words follow quietly, not a second alarm around them.
 .abele-mermaid__error {
   padding: var(--size-4-3);
-  border: var(--border-width) solid var(--background-modifier-error);
+  border: var(--border-width) solid var(--background-modifier-border);
   border-radius: var(--radius-m);
 }
 
@@ -654,8 +659,10 @@ defineExpose({ openCopyMenu })
 }
 
 .abele-mermaid__error-title {
-  color: var(--text-error);
-  font-weight: var(--font-semibold);
+  display: flex;
+  align-items: center;
+  gap: var(--size-4-2);
+  color: var(--text-normal);
 }
 
 .abele-mermaid__error-actions {
@@ -663,8 +670,13 @@ defineExpose({ openCopyMenu })
   gap: var(--size-2-1);
 }
 
-.abele-mermaid__error-text {
+// Not the note's code block: a preformatted line in a note is drawn as one, and this is the
+// error's words, not code to read.
+.abele-mermaid .abele-mermaid__error-text {
   margin: var(--size-4-2) 0 0;
+  padding: 0;
+  background: none;
+  border: none;
   white-space: pre-wrap;
   overflow-wrap: anywhere;
   font-family: var(--font-monospace);
