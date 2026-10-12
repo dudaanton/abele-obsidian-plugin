@@ -194,7 +194,7 @@ export class ChartView extends BasesView {
         if (timeAxis) {
           const data: [string, number][] = []
           for (const point of points) {
-            if (point.group !== group) continue
+            if (hasGroups && point.group !== group) continue
             const val = point.values.get(prop)
             if (val !== undefined) {
               data.push([point.date, val])
@@ -206,7 +206,7 @@ export class ChartView extends BasesView {
         } else {
           const data: (number | null)[] = new Array(allDates.length).fill(null)
           for (const point of points) {
-            if (point.group !== group) continue
+            if (hasGroups && point.group !== group) continue
             const val = point.values.get(prop)
             if (val !== undefined) {
               const idx = dateIndex.get(point.date)
@@ -327,7 +327,7 @@ export class ChartView extends BasesView {
         if (timeAxis) {
           const data: [string, number][] = []
           for (const point of points) {
-            if (point.group !== group) continue
+            if (hasGroups && point.group !== group) continue
             const val = point.values.get(prop)
             if (val !== undefined) {
               data.push([point.date, val])
@@ -339,7 +339,7 @@ export class ChartView extends BasesView {
         } else {
           const data: [number, number][] = []
           for (const point of points) {
-            if (point.group !== group) continue
+            if (hasGroups && point.group !== group) continue
             const val = point.values.get(prop)
             if (val !== undefined) {
               const xIdx = allDates.indexOf(point.date)
