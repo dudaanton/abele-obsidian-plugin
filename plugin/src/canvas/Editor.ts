@@ -4,9 +4,9 @@
  */
 import { nanoid } from 'nanoid'
 import { editCanvas, type CanvasOperation, type NodeInput } from './core/edit'
-import { canvasFingerprint, SHAPES, type Shape } from './core/model'
-import { linesOf } from './core/primitives'
-import { allInkEntries, inkEntries } from './core/ink'
+import { bounds, canvasFingerprint, SHAPES, type Rect, type Shape } from './core/model'
+import { lineBounds, linesOf } from './core/primitives'
+import { allInkEntries, inkBounds, inkEntries } from './core/ink'
 import { canvasVisibility } from './core/visibility'
 import type { CanvasSession, GraphTransform } from './core/session'
 import { CanvasSessionError } from './core/session'
@@ -45,6 +45,25 @@ export interface CanvasEditorPorts {
   handoffChoice(): Promise<'stay' | 'retain' | 'discard'>
   notice(message: string): void
 }
+/** What is picked, for a bar of actions standing over it. */
+export interface CanvasPicked {
+  ids: string[]
+  kinds: ('text' | 'shape' | 'file' | 'link' | 'group' | 'connection' | 'line' | 'stroke')[]
+  /** Around all of it, in the canvas's own units. */
+  rect: Rect | null
+}
+/** Fields the editor reads its next action's values from, by what they hold. */
+export type CanvasField =
+  | 'ink-color'
+  | 'ink-size'
+  | 'shape'
+  | 'shape-color'
+  | 'label'
+  | 'from-end'
+  | 'to-end'
+  | 'routing'
+  | 'connection-color'
+
 export class CanvasEditor {
   private selected = new Set<string>()
   private multiple = false
@@ -83,6 +102,34 @@ export class CanvasEditor {
   private readonly status: HTMLElement
   private readonly buttons = new Map<string, HTMLButtonElement>()
   private readonly off: (() => void)[] = []
+  private readonly watchers = new Set<() => void>()
+  /**
+   * The editor as toolbars drawn apart from its own rows of buttons see it: an action is pressed
+   * by its label and read back with whether it may run now and whether it is on, so every rule of
+   * when an action may run stays here.
+   */
+  readonly controls = {
+    watch: (fn: () => void): (() => void) => {
+      this.watchers.add(fn)
+      return () => this.watchers.delete(fn)
+    },
+    tool: (): CanvasInputTool => this.tool,
+    state: (label: string) => {
+      const b = this.buttons.get(label)
+      return b
+        ? { disabled: b.disabled, hidden: b.hidden, on: b.getAttribute('aria-pressed') === 'true' }
+        : { disabled: true, hidden: true, on: false }
+    },
+    press: (label: string): void => this.buttons.get(label)?.click(),
+    value: (field: CanvasField): string => this.field(field).value,
+    set: (field: CanvasField, value: string): void => {
+      this.field(field).value = value
+      this.refresh()
+    },
+    picked: (): CanvasPicked => this.picked(),
+    editing: (): string | null => this.editing,
+    textField: (): HTMLTextAreaElement => this.text,
+  }
 
   constructor(
     readonly viewer: CanvasViewer,
@@ -888,6 +935,52 @@ export class CanvasEditor {
     document.releaseWriter(true)
     return true
   }
+  private field(field: CanvasField): HTMLSelectElement | HTMLInputElement {
+    return {
+      'ink-color': this.inkColor,
+      'ink-size': this.inkSize,
+      shape: this.shape,
+      'shape-color': this.shapeColor,
+      label: this.label,
+      'from-end': this.fromEnd,
+      'to-end': this.toEnd,
+      routing: this.routing,
+      'connection-color': this.color,
+    }[field]
+  }
+  private picked(): CanvasPicked {
+    const graph = this.ports.document()?.session.graph ?? { nodes: [], edges: [] }
+    const kinds: CanvasPicked['kinds'] = [],
+      rects: Rect[] = []
+    for (const id of this.selected) {
+      const node = graph.nodes.find((n) => n.id === id)
+      if (node) {
+        kinds.push(
+          node.type === 'text' && node.styleAttributes?.shape ? 'shape' : (node.type as 'text')
+        )
+        rects.push(node)
+        continue
+      }
+      const edge = graph.edges.find((e) => e.id === id)
+      if (edge) {
+        kinds.push('connection')
+        rects.push(...graph.nodes.filter((n) => n.id === edge.fromNode || n.id === edge.toNode))
+        continue
+      }
+      const line = linesOf(graph).find((l) => l.id === id)
+      if (line) {
+        kinds.push('line')
+        rects.push(lineBounds(line))
+        continue
+      }
+      const ink = allInkEntries(graph).find((e) => e.stroke.id === id)
+      if (ink) {
+        kinds.push('stroke')
+        rects.push(inkBounds(ink))
+      }
+    }
+    return { ids: [...this.selected], kinds, rect: rects.length ? bounds(rects) : null }
+  }
   refresh(): void {
     if (this.destroyed) return
     this.inputAdapter?.validate()
@@ -1131,6 +1224,7 @@ export class CanvasEditor {
                     : this.tool === 'line' || this.tool === 'arrow'
                       ? 'Drag to draw a free line or arrow.'
                       : ''
+    for (const fn of this.watchers) fn()
   }
   private key(event: KeyboardEvent): boolean {
     if (
