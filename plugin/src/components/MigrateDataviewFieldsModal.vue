@@ -1,32 +1,40 @@
 <template>
   <ObsidianModal title="Dataview fields to properties" @close="emit('close')">
     <div class="abele-migrate-dvf-modal">
-      <Setting
-        v-if="!running && !result"
-        name="Try first"
-        desc="Shows which notes would change and writes nothing. A note where a key repeats or is already a property is left as it is."
-      >
-        <Checkbox :is-enabled="dryRun" @toggle="dryRun = !dryRun" />
-      </Setting>
+      <template v-if="!running && !result">
+        <p class="abele-migrate-dvf-modal__intro">
+          Fields written in a note's text, <code>key:: value</code>, become properties of that note.
+        </p>
+        <Setting
+          name="Try first"
+          desc="Shows which notes would change and writes nothing. A note where a key repeats or is already a property is left as it is."
+        >
+          <Checkbox :is-enabled="dryRun" @toggle="dryRun = !dryRun" />
+        </Setting>
+      </template>
 
+      <!-- A try ends in a plain line, nothing having happened yet; only a real run gets its tick. -->
       <RunReport
         v-if="running || result"
-        class="abele-migrate-dvf-modal__report"
         :running="running"
-        :finished="!!result"
+        :finished="!!result && !dryRunUsed && found"
         :status="status"
       >
-        <p v-if="reportNote" class="abele-migrate-dvf-modal__note">{{ reportNote }}</p>
         <ShortList
           v-if="result?.migratedPaths.length"
           :heading="dryRunUsed ? 'Would change' : 'Changed'"
+          icon="file"
           :items="result.migratedPaths.map(asRow)"
         />
         <ShortList
           v-if="result?.skippedPaths.length"
           heading="Left as they are"
+          icon="file"
           :items="result.skippedPaths.map(asRow)"
         />
+        <p v-if="found" class="abele-migrate-dvf-modal__note">
+          Every note and key is also listed in dataview-migration-report.md.
+        </p>
       </RunReport>
     </div>
     <template #footer>
@@ -83,22 +91,19 @@ const running = ref(false)
 const result = ref<MigrateDataviewFieldsResult | null>(null)
 const dryRunUsed = ref(true)
 
+const found = computed(
+  () => !!result.value && !!(result.value.migratedPaths.length || result.value.skippedPaths.length)
+)
+
 const status = computed(() => {
   if (running.value) return 'Reading the notes…'
   if (!result.value) return ''
-  if (!result.value.migratedPaths.length && !result.value.skippedPaths.length)
-    return 'No note has an inline Dataview field.'
+  if (!found.value) return 'No note has an inline Dataview field.'
   return dryRunUsed.value
-    ? 'Nothing written yet: these notes would change'
+    ? 'Nothing written yet. Move the fields once the list looks right.'
     : 'Moved the fields into properties'
 })
 
-/** Where the run wrote down what it did, said under the outcome. */
-const reportNote = computed(() =>
-  result.value && (result.value.migratedPaths.length || result.value.skippedPaths.length)
-    ? 'The full report is in dataview-migration-report.md.'
-    : ''
-)
 const asRow = (path: string) => ({
   title: path.slice(path.lastIndexOf('/') + 1).replace(/\.md$/, ''),
   meta: path.slice(0, Math.max(0, path.lastIndexOf('/'))) || undefined,
@@ -124,13 +129,14 @@ async function run() {
 </script>
 
 <style lang="scss">
-.abele-migrate-dvf-modal__report {
-  margin-top: var(--size-4-4);
+.abele-migrate-dvf-modal__intro {
+  margin: 0 0 var(--size-4-2);
+  color: var(--text-muted);
 }
 
 .abele-migrate-dvf-modal__note {
-  margin: calc(-1 * var(--size-4-2)) 0 0;
-  color: var(--text-muted);
-  font-size: var(--font-ui-small);
+  margin: 0;
+  color: var(--text-faint);
+  font-size: var(--font-ui-smaller);
 }
 </style>

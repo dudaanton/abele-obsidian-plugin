@@ -63,8 +63,6 @@ import { setIcon } from 'obsidian'
 const props = withDefaults(
   defineProps<{
     text: string
-    /** Optional short location or secondary fact. */
-    note?: string
     /** A glyph before the name: `folder`, `file`. */
     icon?: string
     /** Muted text at the row's end: a size, a count. */

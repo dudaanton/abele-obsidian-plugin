@@ -1,21 +1,23 @@
 <template>
   <ObsidianModal title="Tasks from Dataview" @close="emit('close')">
     <div class="abele-migrate-dv-modal">
-      <!-- Which tasks, until they are made into notes: then the window is the report alone. -->
+      <!-- Which tasks, until they are made into notes: then the window is the report alone. The
+           plugin's ID is asked for only when Dataview was not found under its usual one. -->
       <template v-if="!processing && !completed">
-        <Setting
-          class="abele-migrate-dv-modal__setting"
-          name="Dataview plugin"
-          desc="Its ID, if it is installed under another one."
-        >
-          <Input v-model="dataviewId" placeholder="dataview" />
-        </Setting>
         <Setting
           class="abele-migrate-dv-modal__setting"
           name="Which tasks"
           desc="A Dataview TASK query. Each task found becomes a note of its own and leaves a link in its place."
         >
           <Input v-model="query" placeholder='TASK where contains(tags, "#task")' as-text-area />
+        </Setting>
+        <Setting
+          v-if="missingPlugin"
+          class="abele-migrate-dv-modal__setting"
+          name="Dataview's ID"
+          desc="If it is installed under another one."
+        >
+          <Input v-model="dataviewId" placeholder="dataview" />
         </Setting>
       </template>
 
@@ -36,16 +38,17 @@
         working-title="Asking Dataview"
         none-title="No tasks"
         none-text="The query found no task."
-        error-title="The query did not run"
+        :error-title="missingPlugin ? 'Dataview is not on' : 'The query did not run'"
         :error-text="searchError"
-        :summary="`${dvTasks?.length ?? 0} ${dvTasks?.length === 1 ? 'task' : 'tasks'} would become notes`"
+        :summary="summary"
       >
-        <!-- A task a line: its words, and faint after them the note it sits in now. -->
+        <!-- A task a line: an open ring, its words, and faint after them the note it sits in. -->
         <TreeItem
           v-for="(task, i) in shownTasks"
           :key="i"
           :text="task.text"
-          :note="task.path.replace(/\.md$/, '')"
+          :note="noteName(task.path)"
+          icon="circle"
           plain
           flush
           role="listitem"
@@ -146,10 +149,22 @@ const processing = ref(false)
 const completed = ref(false)
 
 const searchError = ref('')
+/** Dataview was not found under the ID tried, so the window asks for the one it has. */
+const missingPlugin = ref(false)
 const allTasks = ref(false)
 const shownTasks = computed(() =>
   allTasks.value ? (dvTasks.value ?? []) : (dvTasks.value ?? []).slice(0, 8)
 )
+
+/** The note a task sits in, by its name alone: the row has room for the words first. */
+const noteName = (path: string) => path.slice(path.lastIndexOf('/') + 1).replace(/\.md$/, '')
+
+/** How many tasks, and from how many notes. */
+const summary = computed(() => {
+  const tasks = dvTasks.value?.length ?? 0
+  const notes = new Set(dvTasks.value?.map((task) => task.path)).size
+  return `${tasks} ${tasks === 1 ? 'task' : 'tasks'} in ${notes} ${notes === 1 ? 'note' : 'notes'} would become notes`
+})
 
 const search = async () => {
   searching.value = true
@@ -162,8 +177,9 @@ const search = async () => {
 
   searchError.value = ''
   dvTasks.value = null
+  missingPlugin.value = !dv
   if (!dv) {
-    searchError.value = `No plugin with the ID '${dataviewId.value}' is installed and on.`
+    searchError.value = `No plugin with the ID '${dataviewId.value}' is installed and on. Turn Dataview on in Community plugins, or give the ID it is installed under.`
     searching.value = false
     return
   }
@@ -409,11 +425,36 @@ const emit = defineEmits<{
 <style lang="scss">
 .abele-migrate-dv-modal__report,
 .abele-migrate-dv-modal__found {
-  margin-top: var(--size-4-4);
+  margin-top: var(--size-4-2);
+}
+
+// The task's words are what is read; the note it sits in stays faint after them, and goes under
+// them where the window is narrow rather than squeezing beside them.
+.abele-migrate-dv-modal__task {
+  .abele-tree-item__inner {
+    flex-wrap: wrap;
+  }
+
+  // Never wider than what is left beside the ring, so a long task wraps by it, not under it.
+  .abele-tree-item__text {
+    max-width: calc(100% - var(--icon-xs) - var(--size-4-1));
+    color: var(--text-normal);
+  }
+
+  .abele-tree-item__note {
+    flex: 1 1 10em;
+  }
+
+  // On a phone the note always takes a line of its own, starting under the words, not the ring.
+  body.is-phone & .abele-tree-item__note {
+    flex-basis: 100%;
+    padding-inline-start: calc(var(--icon-xs) + var(--size-4-1));
+  }
 }
 
 .abele-migrate-dv-modal .abele-migrate-dv-modal__more {
   align-self: flex-start;
   margin-top: var(--size-2-2);
+  font-size: var(--font-ui-small);
 }
 </style>

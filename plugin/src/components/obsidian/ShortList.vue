@@ -10,6 +10,7 @@
         :key="i"
         :text="item.title"
         :note="item.meta"
+        :icon="tone === 'error' ? undefined : icon"
         plain
         flush
         role="listitem"
@@ -51,8 +52,10 @@ const props = withDefaults(
     tone?: 'plain' | 'error'
     /** How many rows show before "Show N more". */
     limit?: number
+    /** What every row is, as a glyph ahead of its name: `file`, `square`. */
+    icon?: string
   }>(),
-  { heading: undefined, tone: 'plain', limit: 5 }
+  { heading: undefined, tone: 'plain', limit: 5, icon: undefined }
 )
 const all = ref(false)
 const shown = computed(() => (all.value ? props.items : props.items.slice(0, props.limit)))
@@ -87,10 +90,25 @@ const shown = computed(() => (all.value ? props.items : props.items.slice(0, pro
   flex: 1 1 10em;
 }
 
+// On a phone where it is always takes a line of its own: under the name, not under the glyph.
+body.is-phone .abele-short-list__row .abele-tree-item__glyph:not(:empty) ~ .abele-tree-item__note {
+  flex-basis: 100%;
+  padding-inline-start: calc(var(--icon-xs) + var(--size-4-1));
+}
+
+// A tree's rows are muted all through; here the name is what is read, and where it is stays faint.
+.abele-short-list__row .abele-tree-item__text {
+  // Never wider than what is left beside the glyph, so a long name wraps by it, not under it.
+  max-width: calc(100% - var(--icon-xs) - var(--size-4-1));
+  color: var(--text-normal);
+}
+
 .abele-short-list .abele-short-list__more {
   align-self: flex-start;
   margin-top: var(--size-2-2);
   padding-inline: var(--size-2-3);
+  // Asking for the rest is a quiet line under the rows, the size of their faint part, not a heading.
+  font-size: var(--font-ui-small);
 
   .modal-content & {
     padding-inline: 0;
