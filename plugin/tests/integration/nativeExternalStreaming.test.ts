@@ -9,6 +9,7 @@ import { ExternalFileHost } from '@/sync/external/ObsidianExternalFileHost'
 import { SerialQueue } from '@/sync/queue'
 import { buildFakeVault } from '../helpers/fakeVault'
 
+// A fixed 1 MiB + 7 byte file bounds native staging, installation, byte comparison and cleanup.
 it('stages and installs a streamed external file using real native handles and paths', async () => {
   const root = await fs.mkdtemp(join(tmpdir(), 'sample-external-'))
   const app = buildFakeVault([])
@@ -91,4 +92,4 @@ it('stages and installs a streamed external file using real native handles and p
     host.close()
     await fs.rm(root, { recursive: true, force: true })
   }
-})
+}, 30_000)

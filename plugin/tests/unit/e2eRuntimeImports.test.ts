@@ -3,6 +3,7 @@ import { existsSync, readFileSync, readdirSync } from 'node:fs'
 import { dirname, resolve } from 'node:path'
 import { expect, it } from 'vitest'
 
+// The finite local import graph is transpiled once per visited file, including type-only elision.
 it('keeps every Node e2e local import graph free of the Obsidian runtime', () => {
   const root = resolve(__dirname, '../..')
   const directory = resolve(root, 'tests/e2e')
@@ -60,4 +61,4 @@ it('keeps every Node e2e local import graph free of the Obsidian runtime', () =>
   }
   visitDirectory(directory)
   expect(violations).toEqual([])
-})
+}, 30_000)

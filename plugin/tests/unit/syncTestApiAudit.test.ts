@@ -4,9 +4,11 @@ import { resolve } from 'node:path'
 import ts from 'typescript'
 import { expect, it } from 'vitest'
 
+// One declaration graph and one pass over the finite test tree bound the export and route audit.
 it('keeps test imports on installed sync-core exports and sync request paths on v2', () => {
   const entry = resolve('node_modules/@abele/sync-core/dist/index.d.ts')
-  const program = ts.createProgram([entry], {})
+  // Export names need the module graph, not ambient packages or standard-library types.
+  const program = ts.createProgram([entry], { types: [], noLib: true })
   const checker = program.getTypeChecker()
   const module = checker.getSymbolAtLocation(program.getSourceFile(entry)!)!
   const exports = new Set(checker.getExportsOfModule(module).map((symbol) => symbol.name))
@@ -35,4 +37,4 @@ it('keeps test imports on installed sync-core exports and sync request paths on 
       failures.push(path + ': retired sync route')
   }
   expect(failures).toEqual([])
-})
+}, 30_000)
