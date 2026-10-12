@@ -114,7 +114,15 @@ it('recovers interrupted installations before inspecting their bytes', async () 
     recover.mockClear()
     try {
       next.start()
-      await vi.waitFor(() => expect(new WriteJournal(app).entries()).toEqual([]))
+      // Recovery retires the interrupted entry; the restarted engine may already journal
+      // its own fresh streaming write for the same file, so only the old entry must go.
+      await vi.waitFor(
+        () =>
+          expect(
+            new WriteJournal(app).entries().filter((entry) => entry.temp === 'Notes/inflight.tmp')
+          ).toEqual([]),
+        { timeout: 10_000 }
+      )
       expect(recover).toHaveBeenCalled()
       await vi.waitFor(() => expect(ui.runtimes.has(id)).toBe(true))
     } finally {
