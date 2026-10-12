@@ -2285,7 +2285,9 @@ body:not(.is-mobile) .abele-ai-chat__queued-item:not(:hover):not(:focus-within) 
 }
 
 .abele-ai-chat__error-retry {
-  color: var(--text-faint);
+  flex: none;
+  white-space: nowrap;
+  color: var(--text-muted);
   font-size: var(--font-ui-smaller);
   font-variant-numeric: tabular-nums;
 }

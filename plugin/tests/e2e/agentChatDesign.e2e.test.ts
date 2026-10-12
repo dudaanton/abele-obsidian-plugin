@@ -125,7 +125,7 @@ const probe = (screen: string) => `(async () => {
     await shot('approval', '.abele-tool-approval')
 
     set([q])
-    session.pendingQuestions.value = { questions: [{ question: 'Which version of the sample checklist should I prepare?', options: ['A short version for a quick visit', 'A detailed version with seasonal notes and a longer explanation'] }, { question: 'Include the source links?', options: ['Yes', 'No'] }], currentIndex: 0, resolve: () => {} }
+    session.pendingQuestions.value = { questions: [{ question: 'Which version of the sample checklist should I prepare?', options: ['A short version for a quick visit', 'A detailed version with seasonal notes and a longer explanation'] }, { question: 'Include the source links?', options: ['Yes', 'No'] }], currentIndex: 0, answers: [], resolve: () => {} }
     await until(() => root()?.querySelector('.abele-chat-question__progress'))
     const progress = root().querySelector('.abele-chat-question__progress')
     const progressRange = document.createRange()
@@ -137,11 +137,15 @@ const probe = (screen: string) => `(async () => {
     session.error.value = 'The sample service could not complete the response. Your question is still here; try again when the connection returns.'
     session.retrying.value = { secondsLeft: 5, attempt: 1, of: 3 }
     session.resolveModel = () => ({ name: 'Sample fallback', contextWindow: 100000 })
+    await until(() => root()?.querySelector('.abele-ai-chat__error-retry'))
+    const retryRange = document.createRange()
+    retryRange.selectNodeContents(root().querySelector('.abele-ai-chat__error-retry'))
+    if (retryRange.getClientRects().length !== 1) throw Error('Retry countdown wrapped instead of staying one code')
     await shot('error', '.abele-ai-chat__error')
 
     set([q, { id: 'sample-answer', role: 'assistant', parentId: q.id, timestamp: time + 2000, content: ${JSON.stringify(sampleReply)}, usage: { input: 120, output: 80, total: 200 } }])
     working.isStreaming.value = true
-    waiting.pendingQuestions.value = { questions: [{ question: 'Sample choice?', options: ['Continue', 'Wait'] }], currentIndex: 0, resolve: () => {} }
+    waiting.pendingQuestions.value = { questions: [{ question: 'Sample choice?', options: ['Continue', 'Wait'] }], currentIndex: 0, answers: [], resolve: () => {} }
     waiting.attention.value = { question: { id: 'sample-attention', status: 'waiting', at: time, questions: waiting.pendingQuestions.value.questions, currentIndex: 0 } }
     await shot('tabs', '.abele-chat-msg__bar')
     if (${JSON.stringify(screen)} === 'desktop') {

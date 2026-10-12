@@ -14,16 +14,16 @@
       disabled-reason="This is the first branch"
       @click="emit('switch', choices[index - 1].id)"
     />
-    <button
+    <Button
       ref="count"
-      type="button"
-      class="clickable-icon abele-chat-branch__count"
-      :aria-label="`Branch ${index + 1} of ${choices.length}. Show all branches`"
+      plain
+      icon="git-branch"
+      class="abele-chat-branch__count"
+      :text="`${index + 1}/${choices.length}`"
+      :label="`Branch ${index + 1} of ${choices.length}`"
+      tooltip="Show all branches from here"
       @click="showAll"
-    >
-      <Icon icon="git-branch" size="xs" />
-      <span>{{ index + 1 }}/{{ choices.length }}</span>
-    </button>
+    />
     <Icon
       icon="chevron-right"
       size="xs"
@@ -36,11 +36,12 @@
 </template>
 
 <script setup lang="ts">
-import { ref, onMounted } from 'vue'
-import { Menu, setIcon, setTooltip } from 'obsidian'
+import { ref } from 'vue'
+import { Menu, setIcon } from 'obsidian'
 import Icon from './obsidian/Icon.vue'
 import type { BranchChoice } from '@/ai/chatBranches'
-import { timeOf } from './chatOutline/outline'
+import Button from './obsidian/Button.vue'
+import { formatTimestamp } from '@/helpers/displayFormat'
 
 const props = defineProps<{
   choices: BranchChoice[]
@@ -54,8 +55,7 @@ const emit = defineEmits<{
   (e: 'new'): void
 }>()
 
-const count = ref<HTMLElement>()
-onMounted(() => count.value && setTooltip(count.value, 'Show all branches from here'))
+const count = ref<InstanceType<typeof Button>>()
 
 const toneLabel = { waiting: 'Waiting for your approval', failed: 'Refused or failed' } as const
 
@@ -73,7 +73,11 @@ function showAll() {
     })
     setIcon(questions.createSpan({ cls: 'abele-chat-branch__glyph' }), 'message-circle-question')
     questions.createSpan({ text: String(choice.questions) })
-    facts.createSpan({ text: timeOf(choice.timestamp) })
+    const time = formatTimestamp(choice.timestamp, { diagnostic: true })
+    facts.createEl('time', {
+      text: time.datetime ? time.exact.split(', ')[1].slice(0, 5) : time.label,
+      attr: { ...(time.datetime ? { datetime: time.datetime } : {}), 'aria-label': time.exact },
+    })
     if (choice.tone)
       facts.createSpan({
         cls: `abele-chat-branch__dot abele-chat-branch__dot_${choice.tone}`,
@@ -97,7 +101,11 @@ function showAll() {
     )
   }
   if (!count.value) return
-  const box = count.value.getBoundingClientRect()
+  const button = count.value.$el as HTMLElement
+  const box = button.getBoundingClientRect()
+  menu.onHide(() => {
+    if (button.isConnected) button.focus({ preventScroll: true })
+  })
   menu.showAtPosition({ x: box.left, y: box.bottom })
 }
 </script>

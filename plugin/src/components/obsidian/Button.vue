@@ -58,7 +58,7 @@ const props = defineProps<{
   disabled?: boolean
   /** What pressing this does, in a few words. Every button carries one — see docs/Design.md. */
   tooltip?: string
-  /** Stable action name when the tooltip also carries contextual facts. */
+  /** Action name preceding any contextual facts in the native tooltip label. */
   label?: string
 }>()
 
@@ -85,8 +85,10 @@ function onClick(): void {
 // appears without the second-long delay a native tooltip has.
 const applyTooltip = () => {
   if (el.value) {
-    setTooltip(el.value, props.tooltip ?? props.text)
-    if (props.label) el.value.setAttribute('aria-label', props.label)
+    const text = props.label
+      ? [props.label, props.tooltip].filter(Boolean).join(' · ')
+      : (props.tooltip ?? props.text)
+    setTooltip(el.value, text)
   }
 }
 

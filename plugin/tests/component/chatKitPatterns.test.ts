@@ -27,6 +27,18 @@ describe('shared conversation patterns', () => {
     expect(row.emitted('click')).toHaveLength(1)
     row.unmount()
   })
+  it('keeps the action name and contextual facts together in the native tooltip label', () => {
+    const row = mount(Button, {
+      props: {
+        text: '12:30',
+        label: 'Message details',
+        tooltip: 'Sample date · 20 tokens',
+        plain: true,
+      },
+    })
+    expect(row.attributes('aria-label')).toBe('Message details · Sample date · 20 tokens')
+    row.unmount()
+  })
   it('keeps a named search suffix updated inside the native field and can select its words', async () => {
     const field = mount(Search, {
       props: { modelValue: 'sample', suffix: '2/3', suffixLabel: 'Match 2 of 3' },

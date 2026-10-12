@@ -3,6 +3,7 @@ import { mount } from '@vue/test-utils'
 import { Menu } from 'obsidian'
 import AiChatMessage from '@/components/AiChatMessage.vue'
 import type { ChatMessage } from '@/ai/types'
+import { formatTimestamp } from '@/helpers/displayFormat'
 import { useVault } from '../helpers/testEnv'
 
 beforeEach(() => useVault([]))
@@ -19,7 +20,9 @@ describe('message action controls', () => {
   it('keeps the frequent actions on a line under the message, with the time opening the details', async () => {
     const wrapper = render('user')
     const time = wrapper.get('button.abele-chat-msg__time')
-    expect(time.attributes('aria-label')).toBe('Message details')
+    expect(time.attributes('aria-label')).toBe(
+      `Message details · ${formatTimestamp(1, { diagnostic: true }).exact}`
+    )
     await time.trigger('click')
     expect(time.attributes('aria-expanded')).toBe('true')
     expect(wrapper.find('.abele-chat-msg__details').exists()).toBe(true)
