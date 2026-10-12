@@ -8,8 +8,10 @@ import {
   MAX_RESTORED_PAGES,
   footerViewFrom,
   isOpen,
+  logsCalendarOf,
   pagesOf,
   renameFooterView,
+  setLogsCalendar,
   setOpen,
   setPages,
   setTimelinePast,
@@ -95,5 +97,21 @@ describe('the record', () => {
       })
     ).toEqual({ 'a.md': { pages: { tasks: 3 }, open: ['T.md'] } })
     expect(footerViewFrom(null)).toEqual({})
+  })
+})
+
+describe('a note whose logs are read as a calendar', () => {
+  it('is remembered, and forgotten again when switched back to the list', () => {
+    const on = setLogsCalendar({}, 'Habits/Water.md', true)
+    expect(logsCalendarOf(on, 'Habits/Water.md')).toBe(true)
+    expect(logsCalendarOf(footerViewFrom(JSON.parse(JSON.stringify(on))), 'Habits/Water.md')).toBe(
+      true
+    )
+    expect(setLogsCalendar(on, 'Habits/Water.md', false)).toEqual({})
+  })
+
+  it('follows the note when it moves', () => {
+    const moved = renameFooterView(setLogsCalendar({}, 'a.md', true), 'a.md', 'b.md')
+    expect(logsCalendarOf(moved, 'b.md')).toBe(true)
   })
 })

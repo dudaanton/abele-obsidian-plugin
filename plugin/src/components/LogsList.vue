@@ -5,11 +5,22 @@
       text="Logs"
       :count="logs.length"
       :fold="fold"
-      :search="search"
+      :search="calendar ? undefined : search"
       search-tooltip="Search logs by name and text"
       placeholder="Search logs…"
-    />
-    <template v-if="!fold.collapsed.value">
+    >
+      <!-- List or month, remembered for this note: a log read by its days opens on them. -->
+      <template #actions>
+        <Icon
+          :icon="calendar ? 'list' : 'calendar-days'"
+          class="abele-logs-list__view"
+          :tooltip="calendar ? 'Show as a list' : 'Show as a calendar'"
+          @click="setCalendar(!calendar)"
+        />
+      </template>
+    </ListSectionHeader>
+    <LogsCalendar v-if="calendar && !fold.collapsed.value" :logs="logs" />
+    <template v-else-if="!fold.collapsed.value">
       <div ref="itemsEl" class="abele-logs-list__logs">
         <LogView
           v-for="log in visible"
@@ -31,9 +42,11 @@
 import { Log } from '@/entities/Log'
 import LogView from './Log.vue'
 import ListSectionHeader from './obsidian/ListSectionHeader.vue'
+import Icon from './obsidian/Icon.vue'
+import LogsCalendar from './LogsCalendar.vue'
 import { computed, ref, watch } from 'vue'
 import { usePagedList } from '@/composables/usePagedList'
-import { useFooterPages } from '@/composables/useFooterView'
+import { useFooterLogsView, useFooterPages } from '@/composables/useFooterView'
 import { logSearch, useListSearch } from '@/composables/useListSearch'
 import { useSearchHighlight } from '@/composables/useSearchHighlight'
 import { useFooterFold } from '@/composables/useFooterFold'
@@ -43,6 +56,13 @@ const props = defineProps<{
 }>()
 
 const fold = useFooterFold('logs')
+
+const view = useFooterLogsView()
+const calendar = ref(view.initial)
+const setCalendar = (on: boolean) => {
+  calendar.value = on
+  view.record(on)
+}
 
 const search = useListSearch(() => props.logs, logSearch)
 
@@ -55,7 +75,7 @@ const sortedLogs = computed(() => {
   })
 })
 
-const { visible, hasMore, sentinel, reset, followSearch } = usePagedList(
+const { visible, hasMore, sentinel, followSearch } = usePagedList(
   () => sortedLogs.value,
   undefined,
   useFooterPages('logs')

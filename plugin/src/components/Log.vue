@@ -2,11 +2,11 @@
   <div ref="logEl" class="abele-log">
     <div class="abele-log__line" />
     <div class="abele-log__content">
-      <div class="abele-log__links">
+      <div v-if="!hideSource" class="abele-log__links">
         <ObsidianMarkdown trusted class="abele-log__file-link" :text="log.wikilink" />
         <ObsidianMarkdown
-          trusted
           v-if="dateLink && shoudShowDate"
+          trusted
           class="abele-log__file-date"
           :text="dateLink"
         />
@@ -42,6 +42,8 @@ import { useElementVisibility } from '@vueuse/core'
 
 const props = defineProps<{
   log: Log
+  /** The note it was written in is already named above it, as the day of a calendar. */
+  hideSource?: boolean
 }>()
 
 const MAX_LINES = 10
@@ -105,7 +107,8 @@ onMounted(() => {
   width: 2px;
   border-radius: 1px;
   margin-top: var(--size-2-2);
-  background-color: hsl(var(--accent-h), var(--accent-s), calc(var(--accent-l) + 20%));
+  // A neutral rule, not the accent: the entry is a quote of the log, not a selection.
+  background-color: var(--background-modifier-border);
   align-self: stretch;
   flex-shrink: 0;
 }
@@ -114,16 +117,20 @@ onMounted(() => {
   margin-bottom: calc(var(--p-spacing) / 2);
 }
 
-/*.abele-log__file-link,*/
+// Where the entry was written is a quiet line above it, as a reference under a quote: muted,
+// small, no underline. The words of the entry are what the eye lands on.
+.abele-log__file-link,
 .abele-log__file-date {
   .internal-link {
-    color: var(--text-faint);
+    color: var(--text-muted);
+    font-size: var(--font-ui-small);
+    text-decoration: none;
   }
 }
 
 .abele-log__file-date {
   .internal-link {
-    font-size: var(--font-smaller);
+    color: var(--text-faint);
   }
 }
 

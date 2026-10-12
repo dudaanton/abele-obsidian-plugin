@@ -17,6 +17,8 @@ export interface NoteFooterView {
   open?: string[]
   /** All past timeline days revealed, so a saved past-row anchor can be drawn again. */
   calendarPast?: true
+  /** The note's logs shown as a month with marks rather than as a list. */
+  logsCalendar?: true
 }
 
 /** Note path → how its lists were left. Insertion order is recency: oldest first. */
@@ -32,7 +34,27 @@ export const FOOTER_VIEW_LIMIT = 500
 export const MAX_RESTORED_PAGES = 10
 
 const isEmpty = (v: NoteFooterView) =>
-  !(v.pages && Object.keys(v.pages).length) && !(v.open && v.open.length) && !v.calendarPast
+  !(v.pages && Object.keys(v.pages).length) &&
+  !(v.open && v.open.length) &&
+  !v.calendarPast &&
+  !v.logsCalendar
+
+export function logsCalendarOf(state: FooterViewState, path: string): boolean {
+  return state[path]?.logsCalendar === true
+}
+
+/** The record with `path`'s logs shown as a calendar or as a list; a list leaves no entry. */
+export function setLogsCalendar(
+  state: FooterViewState,
+  path: string,
+  calendar: boolean
+): FooterViewState {
+  if (logsCalendarOf(state, path) === calendar) return state
+  const view = { ...state[path] }
+  if (calendar) view.logsCalendar = true
+  else delete view.logsCalendar
+  return put(state, path, view)
+}
 
 export function timelinePastOf(state: FooterViewState, path: string): boolean {
   return state[path]?.calendarPast === true
@@ -125,6 +147,7 @@ export function footerViewFrom(raw: unknown): FooterViewState {
       open?: unknown
       calendarPast?: unknown
       calendarStart?: unknown
+      logsCalendar?: unknown
     }
     const view: NoteFooterView = {}
     if (v.pages && typeof v.pages === 'object') {
@@ -145,6 +168,7 @@ export function footerViewFrom(raw: unknown): FooterViewState {
       (typeof v.calendarStart === 'string' && /^\d{4}-\d{2}-\d{2}$/.test(v.calendarStart))
     )
       view.calendarPast = true
+    if (v.logsCalendar === true) view.logsCalendar = true
     if (!isEmpty(view)) state[path] = view
   }
   return state

@@ -1,5 +1,5 @@
 <template>
-  <div ref="clockEl" class="abele-calendar">
+  <div ref="clockEl" class="abele-calendar" :class="{ 'abele-calendar_marks': marks }">
     <div class="abele-calendar__header">
       <div class="abele-calendar__header-month-year">
         {{ dayjs().month(selectedMonth).format('MMMM') }} {{ selectedYear }}
@@ -35,7 +35,50 @@
           @touchmove="onTouchEnd"
         >
           <div class="abele-calendar__day-number">{{ day.dayNumber }}</div>
-          <div v-if="journal || showTasks" class="abele-calendar__day-marks">
+          <div v-if="journal || showTasks || marks" class="abele-calendar__day-marks">
+            <!-- A log's day: a dot for an entry; for a log kept as a checkbox, a small box
+                 filled and ticked in the accent like Obsidian's own, or left empty. -->
+            <svg
+              v-if="marks?.get(day.formatedDate) === 'entry'"
+              class="abele-calendar__day-dot abele-calendar__day-log"
+              viewBox="0 0 10 10"
+              xmlns="http://www.w3.org/2000/svg"
+            >
+              <circle cx="5" cy="5" r="4" fill="currentColor" />
+            </svg>
+            <svg
+              v-else-if="marks?.get(day.formatedDate) === 'done'"
+              class="abele-calendar__day-dot abele-calendar__day-log abele-calendar__day-log_done"
+              viewBox="0 0 10 10"
+              xmlns="http://www.w3.org/2000/svg"
+            >
+              <rect x="0.5" y="0.5" width="9" height="9" rx="2" fill="currentColor" />
+              <path
+                d="M2.6 5.2 4.3 6.9 7.5 3.3"
+                fill="none"
+                stroke="var(--checkbox-marker-color)"
+                stroke-width="1.4"
+                stroke-linecap="round"
+                stroke-linejoin="round"
+              />
+            </svg>
+            <svg
+              v-else-if="marks?.get(day.formatedDate) === 'open'"
+              class="abele-calendar__day-dot abele-calendar__day-log abele-calendar__day-log_open"
+              viewBox="0 0 10 10"
+              xmlns="http://www.w3.org/2000/svg"
+            >
+              <rect
+                x="1"
+                y="1"
+                width="8"
+                height="8"
+                rx="2"
+                fill="none"
+                stroke="currentColor"
+                stroke-width="1.2"
+              />
+            </svg>
             <svg
               v-if="journal?.isJournalNoteCreated(day.day)"
               class="abele-calendar__day-dot"
@@ -95,6 +138,7 @@ import { Task } from '@/entities/Task'
 import { Journal } from '@/entities/Journal'
 import { useCalendarDays } from '@/composables/useCalendarDays'
 import type { KitColor } from '@/constants/colors'
+import type { LogDayMark } from '@/logs/logDays'
 
 const clockEl = ref<HTMLElement>()
 const visible = useOwnerVisibility(clockEl)
@@ -103,6 +147,8 @@ const props = defineProps<{
   selectedDate?: dayjs.Dayjs
   journal?: Journal
   showTasks?: boolean
+  /** A mark for each day by `YYYY-MM-DD`: the days a note's log was written on. */
+  marks?: Map<string, LogDayMark>
 }>()
 const selectedMonth = ref(
   props.selectedDate ? props.selectedDate.get('month') : today.value.get('month')
@@ -273,7 +319,13 @@ const eventColors = computed(() => {
 const emit = defineEmits<{
   (e: 'date-selected', date: dayjs.Dayjs): void
   (e: 'date-right-clicked', date: dayjs.Dayjs, event: MouseEvent): void
+  /** The month shown changed: its first day. */
+  (e: 'month-changed', first: dayjs.Dayjs): void
 }>()
+
+watch([selectedMonth, selectedYear], () =>
+  emit('month-changed', dayjs().year(selectedYear.value).month(selectedMonth.value).date(1))
+)
 </script>
 
 <style lang="scss">
@@ -289,8 +341,8 @@ const emit = defineEmits<{
   justify-content: space-between;
   align-items: center;
   .abele-calendar__header-month-year {
-    font-size: var(--font-large);
-    font-weight: bold;
+    font-size: var(--font-ui-medium);
+    font-weight: var(--font-semibold);
   }
   .abele-calendar__header-controls {
     display: flex;
@@ -317,10 +369,11 @@ const emit = defineEmits<{
 .abele-calendar__weekdays {
   display: grid;
   grid-template-columns: repeat(7, 1fr);
+  // Quiet column labels, as a calendar's weekdays are: the dates are what is read.
   .abele-calendar__weekday {
     text-align: center;
-    font-weight: bold;
-    color: var(--text-muted);
+    font-size: var(--font-ui-smaller);
+    color: var(--text-faint);
   }
 }
 
@@ -390,6 +443,43 @@ const emit = defineEmits<{
 // Twice as wide as a dot, so it reads as a different mark rather than one more dot.
 .abele-calendar__day-event {
   width: calc(var(--size-2-1) * 4);
+  color: var(--text-faint);
+}
+
+// A month of a note's log: the mark is what is read, so it sits under the number in the flow at
+// a size a box can be told from a dot by, and the chosen day is lit the way Obsidian lights the
+// open file in its list rather than filled with the accent the ticked boxes are drawn in.
+.abele-calendar_marks {
+  .abele-calendar__day {
+    padding-block: var(--size-2-2);
+    gap: var(--size-2-1);
+  }
+
+  .abele-calendar__day-marks {
+    position: static;
+    height: auto;
+    min-height: 0.6em;
+  }
+
+  .abele-calendar__day_selected,
+  .abele-calendar__day_selected:hover {
+    background-color: var(--nav-item-background-active);
+    color: var(--nav-item-color-active);
+    font-weight: var(--font-semibold);
+  }
+}
+
+.abele-calendar__day-log {
+  width: 0.6em;
+  height: 0.6em;
+  color: var(--text-muted);
+}
+
+.abele-calendar__day-log_done {
+  color: var(--checkbox-color);
+}
+
+.abele-calendar__day-log_open {
   color: var(--text-faint);
 }
 

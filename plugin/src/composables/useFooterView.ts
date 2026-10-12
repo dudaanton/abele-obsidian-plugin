@@ -5,8 +5,10 @@ import type { FooterSection } from '@/helpers/footerFolds'
 import {
   footerViewFrom,
   isOpen,
+  logsCalendarOf,
   pagesOf,
   renameFooterView,
+  setLogsCalendar,
   setOpen,
   setPages,
   setTimelinePast,
@@ -68,6 +70,20 @@ export function useFooterTimeline() {
     recordPast: (revealed: boolean) => {
       if (path) write(setTimelinePast(current(), path(), revealed))
     },
+  }
+}
+
+/**
+ * Whether a note's logs open as a calendar. Remembered whatever the setting for reopening notes
+ * where they were left: it is the way this note's log is read, not a place in it. A list
+ * outside a note's footer is always a list.
+ */
+export function useFooterLogsView(): { initial: boolean; record: (calendar: boolean) => void } {
+  const path = inject(FOOTER_FOLD, null)
+  if (!path) return { initial: false, record: () => {} }
+  return {
+    initial: logsCalendarOf(current(), path()),
+    record: (calendar) => write(setLogsCalendar(current(), path(), calendar)),
   }
 }
 
