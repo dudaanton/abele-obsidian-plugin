@@ -11,7 +11,7 @@ import { targets } from './helpers/target'
 
 targets('desktop')
 const cli = process.env.ABELE_NODE_CLI
-const shots = process.env.ABELE_NODE_PATH_SCREENSHOTS
+const shots = process.env.ABELE_NODE_PATH_SCREENSHOTS ?? process.env.ABELE_E2E_SHOTS
 const wait = (ms: number) => new Promise((resolve) => setTimeout(resolve, ms))
 const prelude = `const api=window.__abeleTest,nodes=api.NodeService.getInstance();const wait=ms=>new Promise(r=>setTimeout(r,ms));const until=async f=>{for(let i=0;i<400;i++){if(f())return;await wait(50)}throw Error('Node path did not settle: '+f.toString())};const visible=selector=>[...document.querySelectorAll(selector)].find(el=>el.getBoundingClientRect().width>0&&getComputedStyle(el).visibility!=='hidden'&&!el.closest('.workspace-leaf.mod-hidden')); const button=(root,text)=>[...root.querySelectorAll('button')].find(b=>b.textContent.trim()===text);`
 async function capture(name: string) {
@@ -22,9 +22,17 @@ async function capture(name: string) {
 }
 
 async function reopenNodePane(name: string) {
-  await evalLong(
-    `(async()=>{${prelude}for(const leaf of app.workspace.getLeavesOfType('abele-node-sidebar'))leaf.detach();app.commands.executeCommandById('abele:open-node');await until(()=>app.workspace.getLeavesOfType('abele-node-sidebar').length===1);await app.workspace.revealLeaf(app.workspace.getLeavesOfType('abele-node-sidebar')[0]);app.workspace.leftSplit.expand();await until(()=>visible('.abele-node-panel_ready .abele-status-dot_green'));const view=app.workspace.getLeavesOfType('abele-node-sidebar')[0].view;if(!nodes.nodes.value.some(n=>n.id===view.getState().registrationId))throw Error('Reopened pane lost its registered node');if(visible('.abele-node-panel_found,.abele-node-panel_remote'))throw Error('Reopened pane asks to connect again');return 'registered pane reopened'})()`
-  )
+  try {
+    await evalLong(
+      `(async()=>{${prelude}for(const leaf of app.workspace.getLeavesOfType('abele-node-sidebar'))leaf.detach();app.commands.executeCommandById('abele:open-node');await until(()=>app.workspace.getLeavesOfType('abele-node-sidebar').length===1);await app.workspace.revealLeaf(app.workspace.getLeavesOfType('abele-node-sidebar')[0]);app.workspace.leftSplit.expand();await until(()=>visible('.abele-node-panel_ready .abele-status-dot_green'));const view=app.workspace.getLeavesOfType('abele-node-sidebar')[0].view;if(!nodes.nodes.value.some(n=>n.id===view.getState().registrationId))throw Error('Reopened pane lost its registered node');if(visible('.abele-node-panel_found,.abele-node-panel_remote'))throw Error('Reopened pane asks to connect again');return 'registered pane reopened'})()`
+    )
+  } catch (error) {
+    await capture(name + '-error')
+    const diagnostic = await evalLong(
+      `(()=>{${prelude}return JSON.stringify({mobile:app.isMobile,drawer:{collapsed:app.workspace.leftSplit.collapsed,width:app.workspace.leftSplit.containerEl?.offsetWidth},nodes:nodes.nodes.value.map(n=>({id:n.id,state:nodes.connection(n.id).state.value})),views:app.workspace.getLeavesOfType('abele-node-sidebar').map(l=>({state:l.view.getState(),phase:l.view.localPhase?.value,hidden:l.containerEl.classList.contains('mod-hidden')})),panels:[...document.querySelectorAll('.abele-node-panel')].map(el=>({class:el.className,rect:el.getBoundingClientRect().toJSON(),visibility:getComputedStyle(el).visibility,text:el.textContent.slice(0,300)}))})})()`
+    )
+    throw new Error(`${error instanceof Error ? error.message : String(error)}\n${diagnostic}`)
+  }
   await capture(name)
 }
 async function checkFileLookup(prefix: string) {
