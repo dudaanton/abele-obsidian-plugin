@@ -1245,7 +1245,7 @@ const modelCount = (n: number) => (n === 1 ? '1 model' : `${n} models`)
   width: 100%;
 }
 
-.modal .abele-ai-prompts__text textarea.abele-obsidian-input__base {
+.abele-ai-prompts__text textarea.abele-obsidian-input__base {
   width: 100%;
   font-family: var(--font-monospace);
   font-size: var(--font-ui-small);

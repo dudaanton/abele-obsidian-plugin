@@ -143,7 +143,7 @@ const save = () => {
   width: 100%;
 }
 
-.modal .abele-tool-descriptions__text textarea.abele-obsidian-input__base {
+.abele-tool-descriptions__text textarea.abele-obsidian-input__base {
   width: 100%;
   font-family: var(--font-monospace);
   font-size: var(--font-ui-small);
