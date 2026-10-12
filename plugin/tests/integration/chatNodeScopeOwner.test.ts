@@ -39,6 +39,7 @@ vi.mock('@/node/NodeService', () => {
   return {
     NodeService: {
       getInstance: () => service,
+      destroyCurrent: () => {},
       stopDelegationWaiters: async () => {},
       resumeDelegationWaiters: () => {},
     },
@@ -56,6 +57,19 @@ beforeEach(() => {
 })
 
 describe('owner node scope actions', () => {
+  it('restores an empty scoped chat from its saved tab reference after service restart', async () => {
+    const service = ChatService.getInstance()
+    const id = service.newTab()
+    const session = service.getSession(id)!
+    const entry = { kind: 'node' as const, node_id: 'sample-node', access: 'read' as const }
+    await giveObsidianChatAccess(session, entry)
+    const path = session.currentChatFile.value!.path
+    service.destroy()
+    const restored = ChatService.getInstance()
+    await restored.restoreTabs()
+    const chat = restored.getAllSessions().find((chat) => chat.currentChatFile.value?.path === path)
+    expect(chat?.overrides.value.nodeScope).toEqual([entry])
+  })
   it('saves even an empty chat before binding local owner approval to its durable identity', async () => {
     const session = new ChatSession(ChatService.getInstance())
     const entry = { kind: 'node' as const, node_id: 'sample-node', access: 'edit' as const }

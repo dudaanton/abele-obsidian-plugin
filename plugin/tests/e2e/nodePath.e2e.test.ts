@@ -437,6 +437,12 @@ it('pairs and opens target-bound node files history editor and fake chats in the
       `(()=>{window.__abeleTest.NodeService.getInstance().remove(${JSON.stringify(localRegistration)});return 'desktop registration removed'})()`
     )
     localRegistration = ''
+    const scopeBeforeReload = JSON.parse(
+      await evalLong(
+        `(async()=>{${prelude}const chats=api.ChatService.getInstance();const chat=chats.getAllSessions().find(s=>s.overrides.value.nodeScope?.some(scope=>scope.node_id===${JSON.stringify(rootTarget.nodeId)}));if(!chat)throw Error('Scoped chat missing before reload');const file=chat.currentChatFile.value;return JSON.stringify({path:file?.path??null,scope:chat.overrides.value.nodeScope,tabs:app.loadLocalStorage('abele-agent-tabs'),stored:file?(await api.ChatStorage.getInstance().loadChat(file)).metadata?.overrides?.nodeScope:null})})()`
+      )
+    )
+    console.info('Node scoped chat before reload', JSON.stringify(scopeBeforeReload))
     // Reload into the real phone shell, then restore only this fixture's paired transport.
     await reloadApp('app.emulateMobile(true)')
     mobile = true
@@ -509,7 +515,7 @@ it('pairs and opens target-bound node files history editor and fake chats in the
     )
     await capture('phone-file-debug-margin')
     await evalLong(
-      `(async()=>{${prelude}const chats=api.ChatService.getInstance();const chat=chats.getAllSessions().find(s=>s.overrides.value.nodeScope?.some(scope=>scope.node_id===${JSON.stringify(rootTarget.nodeId)}));if(!chat)throw Error('Scoped chat was not restored');chats.switchTab(chat.id);await chats.revealSidebar({focus:false});await until(()=>visible('[aria-label="Chat node access"]'));return 'phone scoped chat'})()`
+      `(async()=>{${prelude}const chats=api.ChatService.getInstance();const chat=chats.getAllSessions().find(s=>s.overrides.value.nodeScope?.some(scope=>scope.node_id===${JSON.stringify(rootTarget.nodeId)}));if(!chat){const expectedPath=${JSON.stringify(scopeBeforeReload.path)},file=expectedPath?app.vault.getAbstractFileByPath(expectedPath):null;throw Error('Scoped chat was not restored '+JSON.stringify({before:${JSON.stringify(scopeBeforeReload)},tabs:app.loadLocalStorage('abele-agent-tabs'),restoring:chats.restoringTabs,sessions:chats.getAllSessions().map(s=>({path:s.currentChatFile.value?.path,scope:s.overrides.value.nodeScope})),stored:file?(await api.ChatStorage.getInstance().loadChat(file)).metadata?.overrides?.nodeScope:null}))}chats.switchTab(chat.id);await chats.revealSidebar({focus:false});await until(()=>visible('[aria-label="Chat node access"]'));return 'phone scoped chat'})()`
     )
     await capture('phone-chat-scope-header')
     await open('history')
