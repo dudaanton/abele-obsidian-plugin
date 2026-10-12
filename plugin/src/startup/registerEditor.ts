@@ -29,7 +29,7 @@ export function registerEditor(plugin: Plugin) {
   registerColumns(plugin)
   plugin.registerEditorExtension(taskStateField)
   plugin.registerEditorExtension(galleryExtensions)
-  plugin.registerEditorExtension(createHeaderExtension())
+  plugin.registerEditorExtension(createHeaderExtension((cleanup) => plugin.register(cleanup)))
   plugin.registerEditorExtension(footnoteExtensions)
   plugin.registerEditorExtension(highlightStateField)
   plugin.registerEditorExtension(commentExtensions)

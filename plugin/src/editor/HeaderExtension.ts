@@ -6,7 +6,14 @@ import { TaskHeaderWidget } from './TaskHeaderWidget'
 import { GlobalStore } from '@/stores/GlobalStore'
 import { isNestedEditor } from '@/helpers/editorHelpers'
 
-export function createHeaderExtension(): Extension {
+export function createHeaderExtension(registerCleanup?: (cleanup: () => void) => void): Extension {
+  const instances = new Set<{ destroy(): void }>()
+  let disposed = false
+  registerCleanup?.(() => {
+    disposed = true
+    for (const instance of instances) instance.destroy()
+    instances.clear()
+  })
   return ViewPlugin.fromClass(
     class {
       private file: TFile | null
@@ -16,6 +23,7 @@ export function createHeaderExtension(): Extension {
       private wiget?: HeaderWidget | TaskHeaderWidget
 
       private destroyed = false
+      private timer?: number
       /** A table cell's editor: it carries the note's file, but the header is the note's alone. */
       private readonly nested: boolean
 
@@ -24,6 +32,9 @@ export function createHeaderExtension(): Extension {
         this.view = view
         this.nested = isNestedEditor(view.state)
         this.file = this.nested ? null : (view.state.field(editorInfoField)?.file ?? null)
+        this.destroyed = disposed
+        if (disposed) return
+        instances.add(this)
         if (!this.file) return
 
         const cache = GlobalStore.getInstance().app.metadataCache.getFileCache(this.file)
@@ -63,11 +74,24 @@ export function createHeaderExtension(): Extension {
 
       update() {
         // metadata cache is not updated immediately
-        if (this.nested) return
-        window.setTimeout(() => {
-          if (this.destroyed) return
-
-          const currentFile = this.view.state.field(editorInfoField)?.file ?? null
+        if (this.nested || this.destroyed || this.timer !== undefined) return
+        this.timer = window.setTimeout(() => {
+          this.timer = undefined
+          if (this.destroyed || (this.view as unknown as { destroyed: boolean }).destroyed) return
+          // A host can detach an editor before CodeMirror calls this plugin's destroy.
+          // Its state getter itself may no longer be valid, not only the metadata field.
+          let state
+          try {
+            state = this.view.state
+          } catch {
+            this.destroy()
+            return
+          }
+          if (!state) {
+            this.destroy()
+            return
+          }
+          const currentFile = state.field(editorInfoField, false)?.file ?? null
 
           // File changed — recreate widget for the new file
           if (currentFile?.path !== this.file?.path) {
@@ -94,7 +118,11 @@ export function createHeaderExtension(): Extension {
       }
 
       destroy() {
+        if (this.destroyed) return
         this.destroyed = true
+        window.clearTimeout(this.timer)
+        this.timer = undefined
+        instances.delete(this)
         this.destroyWidget()
       }
     }
