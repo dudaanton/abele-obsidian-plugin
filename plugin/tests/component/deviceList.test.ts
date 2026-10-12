@@ -1,8 +1,7 @@
 /**
- * The devices on this vault, on the Sync tab (phase 3b, controller ruling after the task-4
- * review, #2b): name, platform, who enrolled it and when it was last seen; this device marked and
- * never offered Revoke; every other device revoked only after a confirmation that says it stops
- * syncing and keeps its files.
+ * Devices on a synced vault: names, platforms, enrollment provenance and last-seen state.
+ * The current device is marked and cannot be revoked. Other devices require confirmation;
+ * revocation stops synchronization and preserves their files.
  */
 import { describe, it, expect, beforeEach, afterEach, vi } from 'vitest'
 import { ref } from 'vue'
@@ -34,7 +33,13 @@ const device = (over: Partial<DeviceInfo>): DeviceInfo => ({
 const DEVICES = [
   device({ id: 'd-mac', name: 'Mac', last_seen_at: new Date().toISOString() }),
   device({ id: 'd-phone', name: 'Phone', platform: 'mobile', enrolled_by: 'd-mac' }),
-  device({ id: 'd-sidings', name: 'sidings', platform: 'daemon', enrolled_by: 'd-gone' }),
+  device({
+    id: 'd-service-example',
+    name: 'sample-server',
+    platform: 'daemon',
+    created_at: '2024-02-03T04:05:00.000Z',
+    enrolled_by: 'd-retired-example',
+  }),
 ]
 
 const service = {
@@ -80,7 +85,7 @@ describe('the devices on this vault', () => {
     expect(row(view, 'Phone').props('desc')).toBe(
       'Phone or tablet · connected by Mac · never seen syncing'
     )
-    expect(row(view, 'sidings').props('desc')).toBe(
+    expect(row(view, 'sample-server').props('desc')).toBe(
       'Command-line client · connected by a device no longer on this vault · never seen syncing'
     )
   })
@@ -157,10 +162,7 @@ describe('the devices on this vault', () => {
     expect(view.findComponent(EmptyState).props('text')).toMatch(/not connected/)
   })
 
-  /**
-   * Review of task 12, #7: opened while the engine was still being built — a start, a join just
-   * answered — the section said "not connected" for as long as the tab stayed open.
-   */
+  /** A section opened during connection setup must refresh once synchronization is ready. */
   it('reads the list again once the engine that was being built is running', async () => {
     service.status.value = { state: 'disconnected' }
     service.listDevices.mockResolvedValueOnce(null)
