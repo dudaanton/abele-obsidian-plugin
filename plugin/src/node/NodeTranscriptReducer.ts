@@ -34,12 +34,21 @@ export function reduceTranscript(events: readonly JournalEvent[]): NodeTranscrip
   let failed = false
   let session: NodeTranscript['session']
   let at = 0
+  let currentRun = ''
+  const toolRuns = new Map<string, string>()
+  const startedTools = new Set<string>()
+  const completedTools = new Set<string>()
+  let touchedTools: string[] = []
   const message = (id: string, role: ChatMessage['role']): ChatMessage => {
     let current = messages.get(id)
     if (!current) {
       current = { id, role, content: '', timestamp: at }
       messages.set(id, current)
       messageSequences[id] = sequence
+    }
+    if (role === 'tool-call' && currentRun) {
+      toolRuns.set(id, currentRun)
+      touchedTools.push(id)
     }
     return current
   }
@@ -53,6 +62,8 @@ export function reduceTranscript(events: readonly JournalEvent[]): NodeTranscrip
       event.data && typeof event.data === 'object' ? (event.data as Record<string, unknown>) : {}
     const text = (key: string) => (typeof data[key] === 'string' ? (data[key] as string) : '')
     at = Date.parse(event.at)
+    currentRun = text('run_id')
+    touchedTools = []
     if (event.type === 'session.created' || event.type === 'session.updated') {
       const parsed = SessionSchema.safeParse(data)
       if (parsed.success) session = parsed.data
@@ -72,8 +83,17 @@ export function reduceTranscript(events: readonly JournalEvent[]): NodeTranscrip
         })
       continue
     }
-    if (event.type.startsWith('claude.') && claude.apply(event.type, data)) continue
-    if (event.type.startsWith('pi.') && pi.apply(event.type, data, runInputs.get(text('run_id')))) {
+    const native =
+      (event.type.startsWith('claude.') && claude.apply(event.type, data)) ||
+      (event.type.startsWith('pi.') && pi.apply(event.type, data, runInputs.get(currentRun)))
+    if (native) {
+      for (const id of touchedTools) {
+        if (event.type.endsWith('.tool.call')) startedTools.add(id)
+        if (event.type.endsWith('.tool.result')) {
+          completedTools.add(id)
+          delete messages.get(id)!.toolExecution
+        }
+      }
       if (event.type === 'pi.message.final' && piFailure(data)) unknown.unshift(event)
       continue
     }
@@ -94,6 +114,14 @@ export function reduceTranscript(events: readonly JournalEvent[]): NodeTranscrip
       const input = runInputs.get(text('run_id'))
       if (input) inputs.set(input, event.type.slice(4))
       failed = event.type !== 'run.completed'
+      if (event.type === 'run.interrupted') {
+        for (const [id, run] of toolRuns) {
+          if (run !== currentRun || completedTools.has(id)) continue
+          const tool = messages.get(id)!
+          tool.toolExecution = startedTools.has(id) ? 'interrupted' : 'not-run'
+          tool.toolStatus = 'rejected'
+        }
+      }
     } else if (event.type === 'content.delta') {
       const current = message(`run:${text('run_id')}`, 'assistant')
       if (text('artifact_id'))
@@ -126,11 +154,14 @@ export function reduceTranscript(events: readonly JournalEvent[]): NodeTranscrip
           ? (data.params as Record<string, unknown>)
           : {}
       current.toolStatus = 'approved'
+      startedTools.add(current.id)
     } else if (event.type === 'tool.completed' || event.type === 'tool.failed') {
       const current = message(`tool:${text('tool_call_id')}`, 'tool-call')
       current.toolResult =
         typeof data.result === 'string' ? data.result : JSON.stringify(data.result)
       current.toolStatus = event.type === 'tool.failed' ? 'rejected' : 'approved'
+      completedTools.add(current.id)
+      delete current.toolExecution
     } else unknown.push(event)
   }
   const attention =

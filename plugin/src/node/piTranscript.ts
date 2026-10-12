@@ -72,7 +72,9 @@ export class PiTranscript {
       const hadPartial = [...(this.blocks.get(id)?.values() ?? [])].some(
         (b) => b.text || b.thinking
       )
-      this.blocks.set(id, blocks)
+      // An empty cancellation snapshot is not a retraction of already streamed words.
+      if (snapshot.stopReason !== 'aborted' || snapshot.content.length || !hadPartial)
+        this.blocks.set(id, blocks)
       if (hadPartial || [...blocks.values()].some((b) => b.text || b.thinking)) render()
       const error = type === 'pi.message.final' ? piFailure(data) : ''
       if (error) {
