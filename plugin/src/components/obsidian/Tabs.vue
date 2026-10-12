@@ -218,7 +218,7 @@ function move(event: KeyboardEvent, from: number): void {
 
   .abele-tabs__tab:focus-visible {
     outline: none;
-    box-shadow: inset 0 0 0 2px var(--background-modifier-border-focus);
+    box-shadow: inset 0 0 0 var(--size-2-1) var(--background-modifier-border-focus);
   }
 
   &::-webkit-scrollbar {

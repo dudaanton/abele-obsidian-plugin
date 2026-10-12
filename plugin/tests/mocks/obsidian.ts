@@ -84,7 +84,14 @@ export class MenuItem {
     this.icon = icon
     return this
   }
-  setDisabled(): this {
+  disabled = false
+  warning = false
+  setDisabled(disabled = true): this {
+    this.disabled = disabled
+    return this
+  }
+  setWarning(warning = true): this {
+    this.warning = warning
     return this
   }
   setSection(section: string): this {

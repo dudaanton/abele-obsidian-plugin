@@ -83,6 +83,8 @@ const emit = defineEmits<{ 'update:more': [open: boolean] }>()
   flex: 0 0 auto;
   display: flex;
   align-items: center;
+  // A check and a file's picture side by side, a step apart.
+  gap: var(--size-4-2);
   min-height: calc(var(--line-height-normal) * 1em);
 }
 

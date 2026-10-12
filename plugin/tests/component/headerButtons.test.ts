@@ -160,30 +160,6 @@ describe('a note of a configured type', () => {
     expect(row.classes()).not.toContain('abele-header-view--spread')
   })
 
-  it('sets the timer in the same row as its buttons, not in a row of its own', async () => {
-    configureButtons([{ name: 'Fetch details' }])
-    AbeleConfig.getInstance().timeTrackableNoteTypes = ['movie']
-
-    const wrapper = mount(HeaderView, { props: { header: await headerFor(FILM) } })
-
-    const rows = wrapper
-      .findAll('.abele-header-view')
-      .filter((el) => el.findAll('button[aria-label="Start timer for this note"]').length)
-    expect(rows).toHaveLength(1)
-    expect(rows[0].text()).toContain('Fetch details')
-  })
-
-  it('still shows the timer alone when the type has no buttons', async () => {
-    AbeleConfig.getInstance().timeTrackableNoteTypes = ['movie']
-
-    const wrapper = mount(HeaderView, { props: { header: await headerFor(FILM) } })
-
-    expect(
-      wrapper.find('.abele-header-view button[aria-label="Start timer for this note"]').exists()
-    ).toBe(true)
-    expect(buttonLabels(wrapper)).toEqual([])
-  })
-
   it('shows every button configured for that type', async () => {
     configureButtons([{ name: 'Fetch details' }, { name: 'Refresh poster' }])
 

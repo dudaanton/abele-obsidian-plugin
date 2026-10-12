@@ -19,6 +19,7 @@ import CalendarsSettings from '@/components/settings/CalendarsSettings.vue'
 import SecretField from '@/components/settings/SecretField.vue'
 import Button from '@/components/obsidian/Button.vue'
 import Icon from '@/components/obsidian/Icon.vue'
+import ObsidianModal from '@/components/obsidian/Modal.vue'
 import ConfirmModal from '@/components/obsidian/ConfirmModal.vue'
 import { Task } from '@/entities/Task'
 import { AbeleConfig } from '@/services/AbeleConfig'
@@ -244,6 +245,13 @@ describe('the settings screen', () => {
 
   const button = (view: VueWrapper, text: string) =>
     view.findAllComponents(Button).find((b) => b.props('text') === text)!
+  /** What is on screen: the settings, and the calendar's window, which Obsidian puts in the body. */
+  const seen = (view: VueWrapper) => `${view.text()} ${document.body.textContent ?? ''}`
+  /** Opens a calendar's window from the settings glyph on its row. */
+  const change = async (view: VueWrapper, index = 0) => {
+    await view.findAll('button[aria-label="Change this calendar"]')[index].trigger('click')
+    await flushPromises()
+  }
 
   it('keeps a pasted link in the keychain, as https, and only its name in the settings', async () => {
     wrapper = mount(CalendarsSettings)
@@ -314,11 +322,11 @@ describe('the settings screen', () => {
     await pasteAndSave(wrapper, 'https://calendar.google.com/calendar/u/0/r')
 
     expect(config.calendars.feeds[0].keyId).toBe('')
-    expect(wrapper.text()).toContain('not a calendar feed')
-    expect(wrapper.text()).toContain('Secret address in iCal format')
+    expect(seen(wrapper)).toContain('not a calendar feed')
+    expect(seen(wrapper)).toContain('Secret address in iCal format')
 
     await wrapper.findComponent(SecretField).find('input').setValue('webcal://example.com/a')
-    expect(wrapper.text()).not.toContain('not a calendar feed')
+    expect(seen(wrapper)).not.toContain('not a calendar feed')
   })
 
   it('says so when the keychain will not keep the link', async () => {
@@ -332,17 +340,17 @@ describe('the settings screen', () => {
     await pasteAndSave(wrapper, 'https://example.com/secret/abc.ics')
 
     expect(config.calendars.feeds[0].keyId).toBe('')
-    expect(wrapper.text()).toContain('No secure storage on this device')
+    expect(seen(wrapper)).toContain('No secure storage on this device')
   })
 
   it('asks before deleting a calendar, and takes its link out of the keychain', async () => {
     config.calendars = { refreshMinutes: 30, feeds: [{ ...feed, keyId: calendarKeyId('f') }] }
     secrets().set(calendarKeyId('f'), 'https://example.com/secret/family.ics')
     wrapper = mount(CalendarsSettings)
-    const trash = wrapper
-      .findAllComponents(Icon)
-      .find((i) => i.props('tooltip') === 'Delete this calendar')!
-    await trash.trigger('click')
+    await change(wrapper)
+    await button(wrapper, 'Delete').trigger('click')
+    // Pressing Delete in the window only asks; nothing is gone yet.
+    expect(config.calendars.feeds).toHaveLength(1)
     const confirm = wrapper.findComponent(ConfirmModal)
     expect(confirm.props('message')).toContain('Family')
     confirm.vm.$emit('confirm')
@@ -354,8 +362,46 @@ describe('the settings screen', () => {
   it('shows the CalDAV fields for a CalDAV account', async () => {
     config.calendars = { refreshMinutes: 30, feeds: [{ ...feed, source: 'caldav' }] }
     wrapper = mount(CalendarsSettings)
-    expect(wrapper.text()).toContain('Server')
-    expect(wrapper.text()).toContain('Username')
+    // On the list only the row; the fields are in the calendar's own window.
+    expect(wrapper.findComponent(ObsidianModal).exists()).toBe(false)
+    await change(wrapper)
+    expect(seen(wrapper)).toContain('Server')
+    expect(seen(wrapper)).toContain('Username')
     expect(button(wrapper, 'Find calendars').props('disabled')).toBe(true)
+  })
+
+  it('lists each calendar as a row with its state, a way to change it and a switch', async () => {
+    config.calendars = {
+      refreshMinutes: 30,
+      feeds: [feed, { ...feed, id: 'g', name: 'Garden club', source: 'caldav', enabled: false }],
+    }
+    wrapper = mount(CalendarsSettings)
+    const rows = wrapper.findAll('.abele-calendars-settings__feed')
+    expect(rows.map((r) => r.get('.abele-calendars-settings__name').text())).toEqual([
+      'Family',
+      'Garden club',
+    ])
+    expect(rows[1].find('.setting-item-description').text()).toBe('Not shown')
+    expect(rows[1].findComponent(Icon).props('icon')).toBe('server')
+    // Turning one off is the switch on its row, without opening anything.
+    await rows[0].find('.checkbox-container').trigger('click')
+    expect(config.calendars.feeds[0].enabled).toBe(false)
+    expect(wrapper.findComponent(ObsidianModal).exists()).toBe(false)
+
+    await change(wrapper, 1)
+    const modal = wrapper.findComponent(ObsidianModal)
+    expect(modal.props('title')).toBe('Garden club')
+    await button(wrapper, 'Done').trigger('click')
+    expect(wrapper.findComponent(ObsidianModal).exists()).toBe(false)
+  })
+
+  it('opens a new calendar in its own window as soon as it is added', async () => {
+    wrapper = mount(CalendarsSettings)
+    expect(wrapper.text()).toContain('No calendars yet')
+    await button(wrapper, 'Add calendar').trigger('click')
+    await flushPromises()
+    expect(config.calendars.feeds).toHaveLength(1)
+    expect(wrapper.findComponent(ObsidianModal).exists()).toBe(true)
+    expect(wrapper.findComponent(SecretField).exists()).toBe(true)
   })
 })
