@@ -25,7 +25,7 @@ export function assertFreshStandBaseline(
         value.vaultId === ''
       )
         continue
-      throw new Error('Retained durable sync state left untouched')
+      throw new Error('Retained durable sync state left untouched: ' + key)
     }
   if (marker != null) throw new Error('Retained managed sentinel left untouched')
 }

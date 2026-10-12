@@ -12,6 +12,7 @@ describe('stand fixture original-state preservation', () => {
     expect(() => assertFreshStandBaseline(original, null, { vaultId: '' })).toThrow(
       /retained|existing/i
     )
+    expect(() => assertFreshStandBaseline(original, null, { vaultId: '' })).toThrow(key)
     expect(JSON.stringify(original)).toBe(snapshot)
   })
   it('refuses an independent managed sentinel and saved revocation/token state', () => {
