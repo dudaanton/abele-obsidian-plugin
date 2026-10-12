@@ -22,6 +22,8 @@ const props = defineProps<{
   /** Accessible name on the native field rather than the containing div. */
   label?: string
   placeholder?: string
+  /** Optional class on the actual native input for a composition's stable hook. */
+  inputClass?: string
   suggester?: typeof FileSuggest | typeof FolderSuggest
   /** A suggester that needs more than the field to be built — the note picker's filtered one. */
   makeSuggest?: (inputEl: HTMLInputElement) => unknown
@@ -63,6 +65,7 @@ const initSearch = () => {
   // Obsidian builds the parts; the names are ours, so a snippet can reach each one.
   search.value.inputEl.parentElement?.classList.add('abele-obsidian-search__container')
   search.value.inputEl.classList.add('abele-obsidian-search__base')
+  if (props.inputClass) search.value.inputEl.classList.add(props.inputClass)
   search.value.clearButtonEl.classList.add('abele-obsidian-search__clear')
   // A field with nothing to suggest is still a field: a script's plain search box has none.
   if (props.suggester)
@@ -132,6 +135,18 @@ watch(
   (label) => {
     if (label) search.value?.inputEl.setAttribute('aria-label', label)
     else search.value?.inputEl.removeAttribute('aria-label')
+  }
+)
+
+watch(
+  () => props.placeholder,
+  (placeholder) => search.value?.setPlaceholder(placeholder ?? '')
+)
+watch(
+  () => props.inputClass,
+  (next, before) => {
+    if (before) search.value?.inputEl.classList.remove(before)
+    if (next) search.value?.inputEl.classList.add(next)
   }
 )
 

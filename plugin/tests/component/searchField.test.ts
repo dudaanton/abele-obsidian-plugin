@@ -24,6 +24,19 @@ describe('Search', () => {
     expect(document.activeElement).toBe(wrapper.get('input').element)
   })
 
+  it('updates the native placeholder and optional input hook without replacing the field', async () => {
+    wrapper = mount(Search, {
+      props: { modelValue: 'sample', placeholder: 'Titles', inputClass: 'sample-search-input' },
+    })
+    const input = wrapper.get('input')
+    expect(input.classes()).toContain('sample-search-input')
+    await wrapper.setProps({ placeholder: 'Titles and messages', inputClass: 'sample-search-next' })
+    expect(wrapper.get('input').element).toBe(input.element)
+    expect(input.attributes('placeholder')).toBe('Titles and messages')
+    expect(input.classes()).not.toContain('sample-search-input')
+    expect(input.classes()).toContain('sample-search-next')
+  })
+
   it('closes a custom suggester when its conditional field goes away', () => {
     const close = vi.fn()
     wrapper = mount(Search, { props: { modelValue: '', makeSuggest: () => ({ close }) } })
