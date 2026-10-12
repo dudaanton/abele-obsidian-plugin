@@ -573,6 +573,7 @@ async function startInCell(typed?: string) {
     typed ?? (cell?.formula !== undefined ? '=' + cell.formula : String(cell?.value ?? ''))
   await nextTick()
   const field = Array.isArray(inCellField.value) ? inCellField.value[0] : inCellField.value
+  field?.scrollIntoView({ block: 'nearest', inline: 'nearest' })
   field?.focus()
   if (typed === undefined) field?.select()
 }
