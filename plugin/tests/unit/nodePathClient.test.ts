@@ -2,7 +2,8 @@ import { describe, expect, it, vi } from 'vitest'
 import { NodePathClient, RepositoryClient, MemoryClientStore } from '@abele/node-client'
 import { ProjectSchema, SessionSchema, WorkspaceSchema } from '@abele/node-protocol'
 import { NodePathClientPort, reverseNodePatch } from '@/node/NodePathClientPort'
-import { nodeRepositoryFixture, identity, BASE } from '../helpers/nodeRepositoryFixture'
+import { nodeRepositoryFixture, identity, HEAD, BASE } from '../helpers/nodeRepositoryFixture'
+import { NodePathHistoryModel } from '@/node/NodePathHistoryModel'
 
 const project = ProjectSchema.parse({
   project_id: identity.project,
@@ -325,6 +326,198 @@ describe('enriched node path reads', () => {
     expect(
       f.calls.find((c) => c.method === 'repository.v1.status')?.params.include_change_details
     ).toBe(true)
+  })
+})
+describe('binary-safe commit detail', () => {
+  const target = {
+    nodeId: identity.node,
+    registrationId: identity.installation,
+    projectId: identity.project,
+    kind: 'worktree' as const,
+    id: identity.workspace,
+  }
+  function mixed(initial = false) {
+    const f = fake()
+    const request = async (method: string, params: any) => {
+      if (method === 'repository.v1.compare') {
+        const page = (await f.request(method, params)) as object
+        return {
+          ...page,
+          entries: [
+            { path: 'asset.bin', status: 'M', index: ' ', worktree: ' ' },
+            { path: 'README.md', status: 'M', index: ' ', worktree: ' ' },
+            { path: 'removed.bin', status: 'D', index: ' ', worktree: ' ' },
+            { path: 'created.bin', status: 'A', index: ' ', worktree: ' ' },
+          ],
+        }
+      }
+      if (method === 'repository.v1.tree' && initial) {
+        const page = (await f.request(method, params)) as object
+        return {
+          ...page,
+          entries: [
+            { name: 'asset.bin', path: 'asset.bin', kind: 'file', oid: HEAD, size: 3 },
+            { name: 'README.md', path: 'README.md', kind: 'file', oid: HEAD, size: 10 },
+          ],
+        }
+      }
+      if (method === 'repository.v1.blob' && params.path.endsWith('.bin'))
+        return {
+          content_id: 'c'.repeat(64),
+          size: 3,
+          binary: true,
+          requires_larger_load: false,
+          too_large: false,
+        }
+      return f.request(method, params)
+    }
+    f.client.repository = new RepositoryClient(request)
+    return f
+  }
+  it('opens a mixed commit and leaves each binary as metadata without requesting its bytes', async () => {
+    const f = mixed()
+    const model = new NodePathHistoryModel(f.port, target)
+    await model.open(HEAD)
+    expect(model.openCommit.value).toBe(HEAD)
+    expect(model.error.value).toBe('')
+    const files = model.commits.value[0].files!
+    expect(files.find((f) => f.path === 'README.md')?.after).toContain('# Sample project')
+    expect(files.filter((f) => f.path.endsWith('.bin'))).toEqual([
+      expect.objectContaining({
+        path: 'asset.bin',
+        binary: true,
+        before: '',
+        after: '',
+        kind: 'modified',
+      }),
+      expect.objectContaining({ path: 'removed.bin', binary: true, kind: 'deleted' }),
+      expect.objectContaining({ path: 'created.bin', binary: true, kind: 'added' }),
+    ])
+    expect(
+      f.calls.some(
+        (c) => c.method === 'repository.v1.content' && c.params.content_id === 'c'.repeat(64)
+      )
+    ).toBe(false)
+  })
+  it('also opens binary entries in the initial commit', async () => {
+    const f = mixed(true)
+    const detail = await f.port.commit(target, BASE)
+    expect(detail.files).toEqual([
+      expect.objectContaining({ path: 'asset.bin', binary: true, kind: 'added' }),
+      expect.objectContaining({
+        path: 'README.md',
+        after: expect.stringContaining('# Sample project'),
+      }),
+    ])
+  })
+  it('keeps oversized unclassified entries as honest metadata instead of failing the mixed commit', async () => {
+    const f = mixed()
+    const blob = f.client.repository.blob.bind(f.client.repository)
+    vi.spyOn(f.client.repository, 'blob').mockImplementation(async (params) =>
+      params.path.endsWith('.bin')
+        ? {
+            content_id: null,
+            size: 2 * 1024 * 1024,
+            binary: false,
+            requires_larger_load: true,
+            too_large: false,
+          }
+        : blob(params)
+    )
+    const detail = await f.port.commit(target, HEAD)
+    expect(detail.files?.find((f) => f.path === 'asset.bin')).toMatchObject({
+      before: '',
+      after: '',
+      previewNote: 'This file needs an explicit larger load in the repository browser.',
+    })
+    expect(detail.files?.find((f) => f.path === 'asset.bin')?.binary).not.toBe(true)
+    expect(detail.files?.find((f) => f.path === 'README.md')?.after).toContain('# Sample project')
+  })
+  it('still reports a real text-read failure instead of disguising it as binary metadata', async () => {
+    const f = mixed()
+    vi.spyOn(f.client.repository, 'blob').mockRejectedValue(new Error('disconnected'))
+    await expect(f.port.commit(target, HEAD)).rejects.toThrow('disconnected')
+  })
+})
+describe('bounded node image reads', () => {
+  const target = {
+    nodeId: identity.node,
+    registrationId: identity.installation,
+    projectId: identity.project,
+    kind: 'worktree' as const,
+    id: identity.workspace,
+  }
+  const bytes = new Uint8Array([137, 80, 78, 71, 13, 10, 26, 10, 0, 1, 2, 3])
+  function image(size = bytes.length) {
+    const f = fake()
+    const blob = {
+      content_id: 'c'.repeat(64),
+      size,
+      binary: true,
+      requires_larger_load: false,
+      too_large: false,
+    }
+    vi.spyOn(f.client.repository, 'blob').mockResolvedValue(blob)
+    const content = vi.spyOn(f.client.repository, 'content').mockResolvedValue({
+      offset: 0,
+      total: bytes.length,
+      base64: btoa(String.fromCharCode(...bytes)),
+    })
+    return { ...f, content, blob }
+  }
+  it.each([false, true])(
+    'returns raster bytes for the file pane, including changed images (changed=%s)',
+    async (changed) => {
+      const f = image()
+      if (changed)
+        vi.spyOn(f.client.repository, 'status').mockResolvedValue({
+          cursor: null,
+          incomplete: false,
+          omissions: [],
+          entries: [{ path: 'sample-image.png', index: ' ', worktree: 'M' }],
+        })
+      const file = await f.port.file(target, 'sample-image.png')
+      expect(file.image).toEqual({ bytes, mime: 'image/png' })
+      expect(file.text).toBe('')
+      expect(f.calls.some((c) => c.method === 'repository.v1.patch')).toBe(false)
+    }
+  )
+  it('loads an image above the default text threshold only after checking the image cap', async () => {
+    const f = image()
+    vi.mocked(f.client.repository.blob).mockResolvedValueOnce({
+      ...f.blob,
+      content_id: null,
+      binary: false,
+      size: 2 * 1024 * 1024,
+      requires_larger_load: true,
+    })
+    const file = await f.port.file(target, 'sample-image.png')
+    expect(file.image?.mime).toBe('image/png')
+    expect(f.client.repository.blob).toHaveBeenLastCalledWith(
+      expect.objectContaining({ larger: true })
+    )
+  })
+  it('also supports images in plain folders', async () => {
+    const f = image()
+    f.client.readFile.mockResolvedValue({ ...f.blob, large: false })
+    f.client.readContent.mockResolvedValue({
+      offset: 0,
+      total: bytes.length,
+      base64: btoa(String.fromCharCode(...bytes)),
+    })
+    const file = await f.port.file({ ...target, kind: 'workspace' }, 'sample-image.png')
+    expect(file.image).toEqual({ bytes, mime: 'image/png' })
+  })
+  it('refuses oversized images before reading their bytes and retains arbitrary binary refusal', async () => {
+    const f = image(4 * 1024 * 1024 + 1)
+    await expect(f.port.file(target, 'sample-image.png')).rejects.toThrow('4 MiB')
+    expect(f.content).not.toHaveBeenCalled()
+    await expect(f.port.file(target, 'sample.bin')).rejects.toThrow('Binary file')
+  })
+  it('bounds actual content totals even when blob metadata undercounts', async () => {
+    const f = image()
+    f.content.mockResolvedValue({ offset: 0, total: 4 * 1024 * 1024 + 1, base64: 'AA==' })
+    await expect(f.port.file(target, 'sample-image.png')).rejects.toThrow('too large')
   })
 })
 describe('exact reverse patch for staged and unstaged comparisons', () => {

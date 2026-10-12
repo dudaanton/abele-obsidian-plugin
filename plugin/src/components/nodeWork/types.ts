@@ -78,6 +78,15 @@ export interface FileChange {
   removed: number
   before: string
   after: string
+  /** Metadata only: neither endpoint can be rendered as a text diff. */
+  binary?: boolean
+  /** Content omitted by a bounded read; its type may not be known. */
+  previewNote?: string
+}
+
+export interface NodeImagePreview {
+  bytes: Uint8Array<ArrayBuffer>
+  mime: string
 }
 
 export interface FolderEntry {

@@ -95,10 +95,10 @@ export interface ReviewSelection {
   readonly context: string
 }
 /** Bounded byte assembly, not per-chunk decoding (a chunk can split a UTF-8 character). */
-export async function readNodeText(
+export async function readNodeBytes(
   read: (offset: number) => Promise<{ offset: number; total: number; base64: string }>,
   maxBytes: number
-): Promise<string> {
+): Promise<Uint8Array<ArrayBuffer>> {
   const chunks: Uint8Array[] = []
   let offset = 0,
     total: number | undefined
@@ -125,7 +125,13 @@ export async function readNodeText(
     all.set(chunk, start)
     start += chunk.length
   }
-  return new TextDecoder('utf-8', { fatal: true }).decode(all)
+  return all
+}
+export async function readNodeText(
+  read: (offset: number) => Promise<{ offset: number; total: number; base64: string }>,
+  maxBytes: number
+): Promise<string> {
+  return new TextDecoder('utf-8', { fatal: true }).decode(await readNodeBytes(read, maxBytes))
 }
 export class NodeDocumentSource implements CodeDocumentSource {
   private readonly observed = new Map<string, FileDraft | undefined>()

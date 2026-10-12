@@ -216,6 +216,24 @@ describe('node path model', () => {
     expect(inspection.changes[0].changeId).toBe('newer-metadata')
     expect(inspection.lastCommit).toBe('Latest metadata')
   })
+  it('counts image bytes against the retained-document budget and reuses retained images offline', async () => {
+    const { model, port } = fake()
+    const image = { bytes: new Uint8Array(3 * 1024 * 1024), mime: 'image/png' }
+    vi.mocked(port.file).mockImplementation(async (target, path) => ({
+      target,
+      path,
+      text: '',
+      contentId: 'c'.repeat(64),
+      image,
+    }))
+    await model.openFile(target(), 'first-image.png')
+    await model.openFile(target(), 'second-image.png')
+    model.online.value = false
+    expect(model.hasRetained(target(), 'first-image.png')).toBe(false)
+    await expect(model.openFile(target(), 'first-image.png')).rejects.toThrow('not retained')
+    expect((await model.openFile(target(), 'second-image.png')).image).toEqual(image)
+    model.destroy()
+  })
   it('selects a plain folder by its displayed project row while reads use the opaque root workspace', async () => {
     const { model, port } = fake()
     vi.mocked(port.catalogue).mockResolvedValueOnce({

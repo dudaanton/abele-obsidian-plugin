@@ -9,6 +9,7 @@ import type {
   CopySummary,
   FileChange,
   FolderSummary,
+  NodeImagePreview,
   TreeEntry,
 } from '@/components/nodeWork/types'
 
@@ -42,6 +43,7 @@ export interface PathDocument {
   path: string
   text: string
   contentId: string | null
+  image?: NodeImagePreview
   revision?: RepositoryRevision
   change?: PathChange
   note?: string
@@ -626,9 +628,10 @@ export class NodePathModel {
           : undefined
       this.rememberRevision(target, { revision: file.revision, ...(changes ? { changes } : {}) })
     }
-    const bytes = new TextEncoder().encode(
-      file.text + (file.change?.before ?? '') + (file.change?.after ?? '')
-    ).length
+    const bytes =
+      (file.image?.bytes.byteLength ?? 0) +
+      new TextEncoder().encode(file.text + (file.change?.before ?? '') + (file.change?.after ?? ''))
+        .length
     const previous = this.retained.get(cacheKey)
     if (previous) {
       this.retainedBytes -= previous.bytes

@@ -7,6 +7,7 @@ import type { CommitSummary, FileChange, TreeEntry } from '@/components/nodeWork
 import { formatTimestamp } from '@/helpers/displayFormat'
 import { nodePages } from './NodeWorkspaceModel'
 import { readNodeText } from './NodeFilesModel'
+import { readNodeImage, isNodeImagePath, NODE_IMAGE_MAX_BYTES } from './nodeImagePreview'
 import type {
   NodePathPort,
   PathCatalogue,
@@ -397,6 +398,12 @@ export class NodePathClientPort implements NodePathPort {
   }
   protected async gitText(target: PathTarget, revision: RepositoryRevision, path: string) {
     const blob = await this.client.repository.blob({ worktree_id: target.id, revision, path })
+    return this.textBlob(target, blob)
+  }
+  private async textBlob(
+    target: PathTarget,
+    blob: Awaited<ReturnType<NodeClient['repository']['blob']>>
+  ) {
     if (!blob.content_id || blob.binary || blob.requires_larger_load || blob.too_large)
       throw new Error(
         blob.binary
@@ -414,6 +421,55 @@ export class NodePathClientPort implements NodePathPort {
         1024 * 1024
       ),
       contentId: blob.content_id,
+    }
+  }
+  private async commitText(
+    target: PathTarget,
+    revision: RepositoryRevision,
+    path: string
+  ): Promise<{ text: string; binary: boolean; previewNote?: string }> {
+    const blob = await this.client.repository.blob({ worktree_id: target.id, revision, path })
+    if (blob.binary) return { text: '', binary: true }
+    if (blob.requires_larger_load || blob.too_large)
+      return {
+        text: '',
+        binary: false,
+        previewNote: 'This file needs an explicit larger load in the repository browser.',
+      }
+    return { ...(await this.textBlob(target, blob)), binary: false }
+  }
+  private async gitPreview(target: PathTarget, revision: RepositoryRevision, path: string) {
+    const blob = await this.client.repository.blob({ worktree_id: target.id, revision, path })
+    return this.previewBlob(target, revision, path, blob)
+  }
+  private async previewBlob(
+    target: PathTarget,
+    revision: RepositoryRevision,
+    path: string,
+    blob: Awaited<ReturnType<NodeClient['repository']['blob']>>
+  ) {
+    if (isNodeImagePath(path)) {
+      if (blob.size > NODE_IMAGE_MAX_BYTES || blob.too_large)
+        throw new Error('Image preview is limited to 4 MiB.')
+      if (blob.requires_larger_load)
+        blob = await this.client.repository.blob({
+          worktree_id: target.id,
+          revision,
+          path,
+          larger: true,
+        })
+    }
+    if (!blob.binary) return this.textBlob(target, blob)
+    return {
+      text: '',
+      contentId: blob.content_id,
+      image: await readNodeImage(path, blob, (offset) =>
+        this.client.repository.content({
+          worktree_id: target.id,
+          content_id: blob.content_id!,
+          offset,
+        })
+      ),
     }
   }
   protected async patch(
@@ -480,7 +536,17 @@ export class NodePathClientPort implements NodePathPort {
   ): Promise<PathDocument> {
     if (target.kind === 'workspace') {
       const blob = await this.client.readFile(target.id, path)
-      if (!blob.content_id || blob.binary || blob.large || blob.too_large)
+      if (blob.binary)
+        return {
+          target,
+          path,
+          text: '',
+          contentId: blob.content_id,
+          image: await readNodeImage(path, blob, (offset) =>
+            this.client.readContent(target.id, blob.content_id!, offset)
+          ),
+        }
+      if (!blob.content_id || blob.large || blob.too_large)
         throw new Error('This file cannot be previewed as bounded text.')
       return {
         target,
@@ -504,6 +570,7 @@ export class NodePathClientPort implements NodePathPort {
       : known?.changes
         ? Promise.resolve(known.changes)
         : this.status(target, revision).then((entries) => entries.map(pathStatus))
+    const blob = this.client.repository.blob({ worktree_id: target.id, revision, path })
     const comparison = changes.then(async (entries) => {
       const observedChange = entries.find((entry) => entry.path === path)
       if (!observedChange) return undefined
@@ -513,6 +580,9 @@ export class NodePathClientPort implements NodePathPort {
           'Resolve the conflict in the code editor or repository browser; a single comparison would omit a side.'
         )
       const mode = stage ?? (change.stage === 'staged' ? 'staged' : 'unstaged')
+      const metadata = await blob.catch(() => undefined)
+      if (metadata?.binary)
+        return { change, mode, unstaged: '', diff: '' }
       const [unstaged, staged] = await Promise.all([
         change.stage !== 'staged' ? this.patch(target, revision, path, 'unstaged') : '',
         mode === 'staged' ? this.patch(target, revision, path, 'staged') : '',
@@ -521,15 +591,23 @@ export class NodePathClientPort implements NodePathPort {
     })
     const [compared, bytes] = await Promise.all([
       comparison,
-      this.gitText(target, revision, path).then(
+      blob.then((value) => this.previewBlob(target, revision, path, value)).then(
         (value) => ({ value }),
         (error: unknown) => ({ error })
       ),
     ])
-    let loaded: { text: string; contentId: string | null }
+    let loaded: Pick<PathDocument, 'text' | 'contentId' | 'image'>
     if (compared?.change.kind === 'deleted') loaded = { text: '', contentId: null }
     else if ('error' in bytes) throw bytes.error
     else loaded = bytes.value
+    if (loaded.image)
+      return {
+        ...loaded,
+        target,
+        path,
+        revision,
+        ...(compared ? { change: { ...compared.change, binary: true } } : {}),
+      }
     if (!compared) return { ...loaded, target, path, revision }
     const { change, mode, unstaged, diff } = compared
     const indexText = unstaged ? reverseNodePatch(loaded.text, unstaged) : loaded.text
@@ -591,11 +669,13 @@ export class NodePathClientPort implements NodePathPort {
       )
       for (const entry of changed) {
         const before = entry.status.startsWith('A')
-          ? ''
-          : (await this.gitText(target, base, entry.path)).text
+          ? { text: '', binary: false }
+          : await this.commitText(target, base, entry.path)
         const after = entry.status.startsWith('D')
-          ? ''
-          : (await this.gitText(target, revision, entry.path)).text
+          ? { text: '', binary: false }
+          : await this.commitText(target, revision, entry.path)
+        const binary = before.binary || after.binary
+        const previewNote = before.previewNote ?? after.previewNote
         files.push({
           path: entry.path,
           kind: entry.status.startsWith('A')
@@ -603,8 +683,10 @@ export class NodePathClientPort implements NodePathPort {
             : entry.status.startsWith('D')
               ? 'deleted'
               : 'modified',
-          before,
-          after,
+          before: binary || previewNote ? '' : before.text,
+          after: binary || previewNote ? '' : after.text,
+          ...(binary ? { binary: true } : {}),
+          ...(previewNote ? { previewNote } : {}),
           added: 0,
           removed: 0,
         })
@@ -613,15 +695,19 @@ export class NodePathClientPort implements NodePathPort {
       const walk = async (entries: TreeEntry[]): Promise<void> => {
         for (const entry of entries) {
           if (entry.kind === 'folder') await walk(entry.children ?? [])
-          else
+          else {
+            const loaded = await this.commitText(target, revision, entry.path)
             files.push({
               path: entry.path,
               kind: 'added',
               before: '',
-              after: (await this.gitText(target, revision, entry.path)).text,
+              after: loaded.text,
+              ...(loaded.binary ? { binary: true } : {}),
+              ...(loaded.previewNote ? { previewNote: loaded.previewNote } : {}),
               added: 0,
               removed: 0,
             })
+          }
         }
       }
       await walk(await this.gitTree(target.id, revision))

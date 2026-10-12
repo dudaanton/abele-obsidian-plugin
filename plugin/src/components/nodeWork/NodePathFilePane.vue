@@ -16,6 +16,7 @@
         v-if="!debug || model.mode.value !== 'file'"
         :path="model.document.value.path"
         :text="model.document.value.text"
+        :image="model.document.value.image"
         :change="model.document.value.change"
         :mode="model.mode.value"
         @menu="(event, selection) => emit('menu', event, selection)"

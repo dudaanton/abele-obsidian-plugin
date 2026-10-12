@@ -1,7 +1,7 @@
 <template>
   <div ref="root" class="abele-file-view" @contextmenu="onMenu">
     <Diff
-      v-if="mode === 'diff' && change"
+      v-if="!image && !metadataNote && mode === 'diff' && change"
       :text-left="change.before"
       :text-right="change.after"
       :layout="layout"
@@ -25,10 +25,22 @@
           <span class="abele-file-view__path">{{ path }}</span>
           <span v-if="change?.when" class="abele-file-view__when">{{ change.when }}</span>
         </span>
-        <span class="abele-file-view__size">{{ plural(text.split('\n').length, 'line') }}</span>
+        <span v-if="!metadataNote || image" class="abele-file-view__size">
+          {{
+            image ? plural(image.bytes.byteLength, 'byte') : plural(text.split('\n').length, 'line')
+          }}
+        </span>
       </div>
+      <div v-if="metadataNote && !image" class="abele-file-view__metadata abele-file-view__size">
+        {{ metadataNote }}
+      </div>
+      <Image v-if="imageUrl" :src="imageUrl" :alt="path" fit="contain" />
       <!-- The plugin's code viewer: the file's own colours, line numbers, selection, search. -->
-      <div ref="code" class="abele-github-code abele-file-view__code" />
+      <div
+        v-else-if="!metadataNote && !image"
+        ref="code"
+        class="abele-github-code abele-file-view__code"
+      />
     </div>
 
     <!-- Over selected text, the way a note offers it: ask the agent about it, or hand it over. -->
@@ -61,7 +73,7 @@
 // code editor and the arrows to the previous and next changed file. Selected text — in the
 // comparison or in the file — gets a small bar over it to ask the agent about it or add it to the
 // chat, on a phone as on a computer; the context menu offers the same.
-import { nextTick, onBeforeUnmount, onMounted, ref, watch } from 'vue'
+import { computed, nextTick, onBeforeUnmount, onMounted, ref, watch } from 'vue'
 import { Platform } from 'obsidian'
 import { fileSelection, type FileSelection } from './fileSelection'
 import { mountCode, type CodeViewer } from '@/github/codeViewer'
@@ -69,8 +81,9 @@ import Diff from '../Diff.vue'
 import Button from '../obsidian/Button.vue'
 import SelectionToolbar from '../obsidian/SelectionToolbar.vue'
 import ChangeCodes from './ChangeCodes.vue'
+import Image from '../obsidian/Image.vue'
 import { plural } from './codes'
-import type { FileChange } from './types'
+import type { FileChange, NodeImagePreview } from './types'
 
 const props = withDefaults(
   defineProps<{
@@ -78,10 +91,11 @@ const props = withDefaults(
     /** The file as it is now; the last version, for a deleted file. */
     text: string
     change?: FileChange
+    image?: NodeImagePreview
     mode?: 'diff' | 'file'
     layout?: 'unified' | 'split'
   }>(),
-  { change: undefined, mode: 'diff', layout: 'unified' }
+  { change: undefined, image: undefined, mode: 'diff', layout: 'unified' }
 )
 
 const emit = defineEmits<{
@@ -91,6 +105,23 @@ const emit = defineEmits<{
   (e: 'ask', selection: FileSelection): void
   (e: 'add', selection: FileSelection): void
 }>()
+
+const metadataNote = computed(() =>
+  props.change?.binary ? 'Binary file · no text diff.' : props.change?.previewNote
+)
+const imageUrl = ref('')
+const releaseImage = () => {
+  if (imageUrl.value) URL.revokeObjectURL(imageUrl.value)
+  imageUrl.value = ''
+}
+watch(
+  () => props.image,
+  (image) => {
+    releaseImage()
+    if (image) imageUrl.value = URL.createObjectURL(new Blob([image.bytes], { type: image.mime }))
+  },
+  { immediate: true }
+)
 
 const root = ref<HTMLElement>()
 const code = ref<HTMLElement>()
@@ -106,7 +137,7 @@ async function draw() {
   if (code.value) viewer = mountCode(code.value, props.text, props.path)
 }
 onMounted(draw)
-watch(() => [props.text, props.path, props.mode, props.change], draw)
+watch(() => [props.text, props.path, props.mode, props.change, props.image], draw)
 
 // The selection bar: shown while text inside this view is selected, under the selection on a
 // phone (the system's own menu sits over it), over it elsewhere.
@@ -123,6 +154,10 @@ watch(
   { flush: 'post' }
 )
 function onSelection() {
+  if (props.image || metadataNote.value) {
+    picked.value = null
+    return
+  }
   const sel = owner.getSelection()
   const selection = root.value ? fileSelection(root.value, sel) : null
   if (!sel || !selection) {
@@ -171,6 +206,7 @@ onMounted(() => {
 })
 onBeforeUnmount(() => {
   stopped = true
+  releaseImage()
   owner.removeEventListener('selectionchange', onSelection)
   frame.removeEventListener('scroll', onSelection, true)
   frame.removeEventListener('resize', onSelection)
@@ -260,6 +296,9 @@ function onMenu(e: MouseEvent) {
   flex: 0 0 auto;
   color: var(--text-faint);
   font-size: var(--font-ui-smaller);
+}
+.abele-file-view__metadata {
+  padding: var(--size-4-2) var(--size-4-3);
 }
 .abele-file-view__code {
   font-family: var(--font-monospace);
