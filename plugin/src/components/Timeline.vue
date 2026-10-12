@@ -42,17 +42,20 @@
         @keydown.enter.prevent="togglePast"
         @keydown.space.prevent="togglePast"
       >
-        <ObsidianIcon
-          class="abele-timeline__history-glyph"
-          :icon="pastRevealed ? 'chevron-down' : 'chevron-right'"
-          no-hover
-        />
-        <span class="abele-timeline__history-text">Past days</span>
+        <div
+          class="abele-timeline__date-indicator"
+          :class="{ 'abele-timeline__date-indicator_overdue': pastHasTasks }"
+        >
+          <div class="abele-timeline__date-icon abele-timeline__date-icon_overdue">
+            <ObsidianIcon icon="flame" no-hover />
+          </div>
+          <div class="abele-timeline__date-icon abele-timeline__date-icon_upcoming">
+            <ObsidianIcon icon="calendar" no-hover />
+          </div>
+        </div>
         <span
-          class="abele-timeline__history-count"
-          :class="{ 'abele-timeline__history-count_overdue': pastUnfinished > 0 }"
-          :aria-label="`${pastUnfinished} unfinished`"
-          >{{ pastUnfinished }}</span
+          >Past days · {{ pastUnfinished }} unfinished ·
+          {{ pastRevealed ? 'Hide all' : 'Show all' }}</span
         >
       </div>
       <div ref="itemsEl" class="abele-timeline__blocks">
@@ -63,25 +66,23 @@
           :class="{ 'abele-timeline__drop-target': drag.targetDay.value === date }"
           :data-abele-anchor="'date:' + date"
         >
-          <div class="abele-timeline__block-content">
-            <!-- The day as a quiet heading; overdue says so in red, with a flame. -->
-            <div
-              class="abele-timeline__date-indicator"
-              :class="{
-                'abele-timeline__date-indicator_overdue':
-                  dayjs(date).isBefore(now, 'day') && dateItems.some((item) => !!item.task),
-                'abele-timeline__date-indicator_today': dayjs(date).isSame(now, 'day'),
-              }"
-            >
-              <ObsidianIcon
-                v-if="dayjs(date).isBefore(now, 'day') && dateItems.some((item) => !!item.task)"
-                class="abele-timeline__date-icon"
-                icon="flame"
-                label="Overdue"
-                no-hover
-              />
-              <ObsidianMarkdown trusted class="timeline__date" :text="getDateWikilink(date)" />
+          <div
+            class="abele-timeline__date-indicator"
+            :class="{
+              'abele-timeline__date-indicator_overdue':
+                dayjs(date).isBefore(now, 'day') && dateItems.some((item) => !!item.task),
+            }"
+          >
+            <div class="abele-timeline__date-icon abele-timeline__date-icon_overdue">
+              <ObsidianIcon icon="flame" no-hover />
             </div>
+            <div class="abele-timeline__date-icon abele-timeline__date-icon_upcoming">
+              <ObsidianIcon icon="calendar" no-hover />
+            </div>
+            <div class="abele-timeline__date-line" />
+          </div>
+          <div class="abele-timeline__block-content">
+            <ObsidianMarkdown trusted class="timeline__date" :text="getDateWikilink(date)" />
             <div class="abele-timeline__tasks">
               <template v-for="item in dateItems" :key="item.key">
                 <CalendarEventView
@@ -124,7 +125,7 @@ import ObsidianIcon from './obsidian/Icon.vue'
 import ObsidianMarkdown from './obsidian/Markdown.vue'
 import ListSectionHeader from './obsidian/ListSectionHeader.vue'
 import dayjs from 'dayjs'
-import { DATE_FORMAT } from '@/constants/dates'
+import { DATE_FORMAT, DISPLAY_DATE_FORMAT } from '@/constants/dates'
 import { useOwnerVisibility } from '@/composables/useOwnerVisibility'
 import { useDate } from '@/composables/useDate'
 import { useTimelineDays } from '@/composables/useTimelineDays'
@@ -289,6 +290,10 @@ const visible = computed(() => {
   }
   return [...window].sort(([a], [b]) => a.localeCompare(b))
 })
+// Past events are history, not overdue work. Keep the existing indication for task days.
+const pastHasTasks = computed(() =>
+  past.value.some(([, items]) => items.some((item) => !!item.task))
+)
 const pastUnfinished = computed(() => {
   const keys = new Set<string>()
   for (const [, items] of past.value)
@@ -317,14 +322,21 @@ watch([labelSelection, hideCompleted, search.terms, pastRevealed], () => {
   drag.landing.value = null
 })
 
-// The day as a code: the near ones by name, then the weekday and the short date.
 const getDateWikilink = (dateStr: string) => {
   const date = dayjs(dateStr, DATE_FORMAT)
   const diff = date.startOf('day').diff(now.value.startOf('day'), 'day')
-  const near = diff === 0 ? 'Today' : diff === 1 ? 'Tomorrow' : diff === -1 ? 'Yesterday' : ''
-  const short = date.format(date.isSame(now.value, 'year') ? 'ddd DD.MM' : 'ddd DD.MM.YYYY')
+
+  let suffix = ''
+  if (diff === 0) suffix = '(Today)'
+  if (diff === 1) suffix = '(Tomorrow)'
+  if (diff === -1) suffix = '(Yesterday)'
+  if (diff > 1) suffix = `(${diff} days left)`
+  if (diff < -1) suffix = `(${Math.abs(diff)} days ago)`
+
+  const dateToShow = date.format(DISPLAY_DATE_FORMAT)
+  const weekday = ` · ${date.format('dd')}`
   // TODO: handle user defined daily note format and location
-  return `[[${dateStr}|${near ? `${near} · ${short}` : short}]]`
+  return `[[${dateStr}|${dateToShow}${weekday} ${suffix}]]`
 }
 </script>
 
@@ -364,8 +376,8 @@ const getDateWikilink = (dateStr: string) => {
   z-index: 1;
   display: flex;
   align-items: center;
-  gap: var(--size-2-2);
-  padding: var(--size-2-2) var(--size-2-1);
+  gap: var(--size-4-2);
+  padding: var(--size-4-2);
   margin-bottom: var(--size-4-2);
   border-radius: var(--radius-s);
   background-color: var(--interactive-accent);
@@ -375,20 +387,6 @@ const getDateWikilink = (dateStr: string) => {
 
   &:focus-visible {
     box-shadow: var(--input-shadow);
-  }
-
-  .abele-obsidian-icon {
-    height: auto;
-    padding: 0;
-    color: var(--text-faint);
-  }
-}
-
-.abele-timeline__history-count {
-  font-size: var(--font-smallest);
-
-  &_overdue {
-    color: var(--color-red);
   }
 }
 
@@ -426,45 +424,78 @@ const getDateWikilink = (dateStr: string) => {
   gap: calc(var(--p-spacing) / 2);
 }
 
-.abele-timeline__date-block {
-  margin-bottom: var(--size-4-3);
+.timeline__date {
+  margin-left: calc(var(--checkbox-margin-inline-start) - 0.25em);
+  margin-top: calc(var(--icon-size) / 4 + (var(--icon-size) - var(--font-text-size)) / 2);
+  margin-bottom: calc(var(--p-spacing) / 2);
+  .internal-link {
+    color: var(--text-faint);
+    font-size: var(--font-small);
+  }
 }
 
-// A day reads as a quiet heading over its rows, like a group in Obsidian's search results.
+.abele-timeline__date-block {
+  display: flex;
+  gap: var(--size-4-2);
+  margin-bottom: var(--size-4-2);
+}
+
 .abele-timeline__date-indicator {
   display: flex;
+  flex-direction: column;
   align-items: center;
   gap: var(--size-2-2);
-  padding-inline: var(--size-2-1);
-  color: var(--text-muted);
 
-  .internal-link {
-    color: inherit;
-    font-size: var(--font-ui-small);
-    // Not bold, as every group heading: a bold line fought the rows' names for the eye.
-    font-weight: var(--font-normal);
-    text-decoration: none;
-  }
-
-  &_today {
-    color: var(--text-normal);
-  }
-
-  // Overdue is a warning, said in Obsidian's red, not in the accent that means "selected".
   &_overdue {
-    color: var(--color-red);
+    .abele-timeline__date-icon {
+      background-color: hsl(var(--accent-h), var(--accent-s), var(--accent-l));
+      .abele-obsidian-icon {
+        color: var(--background-primary);
+      }
+      &_upcoming {
+        display: none;
+      }
+      &_overdue {
+        display: flex;
+      }
+    }
+    .abele-timeline__date-line {
+      background-color: hsl(var(--accent-h), var(--accent-s), var(--accent-l));
+    }
+  }
+
+  &:not(.abele-timeline__date-indicator_overdue) {
+    .abele-timeline__date-icon {
+      &_overdue {
+        display: none;
+      }
+    }
+    .abele-timeline__date-line {
+      background-color: var(--background-secondary);
+    }
   }
 }
 
 .abele-timeline__date-icon {
-  height: auto;
-  padding: 0;
-  color: inherit;
+  width: calc(var(--icon-size) * 1.7);
+  height: calc(var(--icon-size) * 1.7);
+  border-radius: 50%;
+  background-color: var(--background-secondary);
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  flex-shrink: 0;
 
-  svg {
-    width: var(--icon-xs);
-    height: var(--icon-xs);
+  .abele-obsidian-icon {
+    color: var(--text-faint);
   }
+}
+
+.abele-timeline__date-line {
+  width: 2px;
+  height: 100%;
+  border-radius: 1px;
+  margin-top: var(--size-2-2);
 }
 
 .abele-timeline__block-content {

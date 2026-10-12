@@ -469,7 +469,7 @@ const script = (footer: boolean, short = false) => String.raw`(async function* (
     await settleUI()
     report.collapseAnchor = [beforeCollapse, row(25).getBoundingClientRect().top]
     report.collapsed = dates()
-    report.collapseSummary = strip() ? strip().querySelector('.abele-timeline__history-count')?.getAttribute('aria-label') + ' · ' + strip().getAttribute('aria-label') : null
+    report.collapseSummary = strip()?.textContent.trim() ?? null
     const beforeRereveal = row(25).getBoundingClientRect().top
     await revealClick()
     await settleUI()
@@ -669,7 +669,7 @@ describe.skipIf(!available)('task timeline scrolling', () => {
           const p = probe()
           expect(p.error).toBeUndefined()
           expect(p.collapsed!.every((date) => date >= p.initial![0])).toBe(true)
-          expect(p.collapseSummary).toBe('90 unfinished · Show all past days')
+          expect(p.collapseSummary).toContain('90 unfinished · Show all')
           for (const pair of [p.collapseAnchor, p.rerevealAnchor, p.removedPastAnchor]) {
             expect(pair).toHaveLength(2)
             expect(Math.abs(pair![1] - pair![0])).toBeLessThanOrEqual(1)

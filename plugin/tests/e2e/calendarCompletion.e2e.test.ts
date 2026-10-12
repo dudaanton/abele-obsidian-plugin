@@ -138,7 +138,7 @@ describe.skipIf(!available)('single external occurrence completion in the runnin
         app.workspace.setActiveLeaf(dailyLeaf, { focus: true })
         const daily = await until(() => dailyLeaf.view.containerEl.querySelector('.abele-footer-view .abele-timeline'), 'past daily timeline')
         const history = await until(() => daily.querySelector('.abele-timeline__history'), 'past daily history')
-        if (history.querySelector('.abele-timeline__history-count')?.getAttribute('aria-label') !== '0 unfinished') throw Error('Past occurrence counted as unfinished')
+        if (!history.textContent.includes('0 unfinished')) throw Error('Past occurrence counted as unfinished')
         if (history.getAttribute('aria-expanded') !== 'true') history.click()
         const pastRow = await until(() => daily.querySelector('[data-timeline-item="event:' + pastEvent.id + '"]'), 'past daily row')
         if (pastRow.hasAttribute('data-task')) throw Error('Past occurrence marked as a pending task')
