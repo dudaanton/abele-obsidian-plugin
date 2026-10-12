@@ -49,6 +49,16 @@ const render = async (atTimeline = false) => {
   await flushPromises()
   return view
 }
+// The codes on the row's right, read from each glyph's props: what it shows and what it says.
+const codes = () =>
+  view.findAllComponents(Icon).map((icon) => ({
+    icon: icon.props('icon') as string | undefined,
+    text: icon.props('textRight') as string | undefined,
+    tooltip: icon.props('tooltip') as string | undefined,
+    color: icon.props('color') as string | undefined,
+  }))
+const codeOf = (tooltipStart: string) =>
+  codes().find((c) => c.tooltip?.startsWith(tooltipStart))
 const reveal = async () => {
   expect(scrollIntoView(view.find('.abele-task-view').element)).toBeGreaterThan(0)
   await flushPromises()
@@ -87,40 +97,52 @@ describe('task card content and date presentation', () => {
   })
 
   it.each([
-    ['2028-01-31', '(Today)'],
-    ['2028-02-01', '(Tomorrow)'],
-    ['2028-01-30', '(Yesterday)'],
-    ['2028-02-03', '(3 days left)'],
-    ['2028-01-28', '(3 days ago)'],
-  ])('formats event and due date %s as %s', async (date, label) => {
+    ['2028-01-31', 'Today', 'today'],
+    ['2028-02-01', 'Tomorrow', 'tomorrow'],
+    ['2028-01-30', 'Yesterday', 'yesterday'],
+    ['2028-02-03', '03.02', '3 days left'],
+    ['2028-01-28', '28.01', '3 days ago'],
+  ])('formats event and due date %s as the code %s', async (date, code, words) => {
     await task.load()
     task.date = dayjs(date)
     task.due = dayjs(date)
     await render()
-    expect(view.text().split(label)).toHaveLength(3)
-    expect(view.text()).toContain(`Date: ${dayjs(date).format('DD.MM.YYYY')}`)
-    expect(view.text()).toContain(`Due: ${dayjs(date).format('DD.MM.YYYY')}`)
+    const full = dayjs(date).format('DD.MM.YYYY')
+    expect(codeOf('Date ')).toMatchObject({ text: code, tooltip: `Date ${full}, ${words}` })
+    expect(codeOf('Due ')).toMatchObject({
+      text: code,
+      icon: 'calendar-clock',
+      tooltip: `Due ${full}, ${words}`,
+    })
   })
 
   it('shows overdue only before today, not earlier today, completed, or in a timeline', async () => {
     await task.load()
     task.due = dayjs('2028-01-31 08:00')
     await render()
-    expect(view.find('.abele-task-view__indicator').exists()).toBe(false)
+    const overdue = () => codes().some((c) => c.color === 'red')
+    expect(overdue()).toBe(false)
     task.due = dayjs('2028-01-30')
     await view.vm.$nextTick()
-    expect(view.find('.abele-task-view__indicator').exists()).toBe(true)
+    expect(overdue()).toBe(true)
+    expect(codeOf('Due ')?.color).toBe('red')
     await view.setProps({ atTimeline: true })
-    expect(view.find('.abele-task-view__indicator').exists()).toBe(false)
+    expect(overdue()).toBe(false)
     await view.setProps({ atTimeline: false })
     task.completedAt = dayjs('2028-01-31')
     await view.vm.$nextTick()
-    expect(view.find('.abele-task-view__indicator').exists()).toBe(false)
-    expect(view.text()).toContain('Completed: 31.01.2028')
-    expect(view.text()).not.toContain('(Yesterday)')
+    expect(overdue()).toBe(false)
+    expect(codeOf('Completed ')).toMatchObject({
+      icon: 'check',
+      text: 'Today',
+      tooltip: 'Completed 31.01.2028',
+    })
+    expect(codes().map((c) => c.text)).not.toContain('Yesterday')
+    expect(view.find('.abele-task-view').classes()).toContain('is-done')
     expect((view.find('input').element as HTMLInputElement).checked).toBe(true)
     task.completedAt = null
     await view.vm.$nextTick()
+    expect(view.find('.abele-task-view').classes()).not.toContain('is-done')
     expect((view.find('input').element as HTMLInputElement).checked).toBe(false)
   })
 
@@ -131,10 +153,10 @@ describe('task card content and date presentation', () => {
     task.due = dayjs('2028-01-31 18:00')
     task.dueTime = task.due
     await render(true)
-    expect(view.text()).toContain('at 11:05')
-    expect(view.text()).toContain('due 18:00')
-    expect(view.text()).toContain('(in 01:05)')
-    expect(view.text()).not.toContain('Date:')
+    expect(codeOf('Starts')?.text).toBe('11:05')
+    expect(codeOf('Due')).toMatchObject({ text: '18:00', icon: 'calendar-clock' })
+    expect(view.find('.abele-task-view__time-left').text()).toBe('(in 01:05)')
+    expect(codeOf('Date ')).toBeUndefined()
     await vi.advanceTimersByTimeAsync(1000)
     expect(view.text()).toContain('(in 01:04)')
     task.completedAt = dayjs()

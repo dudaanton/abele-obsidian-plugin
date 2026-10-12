@@ -39,7 +39,7 @@ const props = defineProps<{
 
 const picker = useTemplateRef<InstanceType<typeof DateTimePicker>>('picker')
 
-const title = computed(() => props.title ?? (props.mode === 'event' ? 'Event Date' : 'Due Date'))
+const title = computed(() => props.title ?? (props.mode === 'event' ? 'Event date' : 'Due date'))
 
 const emit = defineEmits<{
   (e: 'confirm', result: { date: dayjs.Dayjs; time: string | null }): void

@@ -99,13 +99,9 @@ const probeScript = (label: string, keyboard: number): string => `(async () => {
   const openDialog = async () => {
     const header = [...document.querySelectorAll('.abele-task-header-view')].find((el) => el.getBoundingClientRect().height > 0)
     if (!header) throw new Error('no task header')
-    const add = [...header.querySelectorAll('*')].find((el) => el.textContent.trim() === 'Add Date' && el.children.length < 3)
-    if (!add) throw new Error('no Add Date button')
+    const add = header.querySelector('.abele-task-header-view__date')
+    if (!add) throw new Error('no event date button')
     add.click()
-    await until(() => document.querySelector('.menu .menu-item'), 3000)
-    const item = [...document.querySelectorAll('.menu .menu-item')].find((m) => m.textContent === 'Event date')
-    if (!item) throw new Error('no Event date item')
-    item.click()
     await until(() => document.querySelector('.modal .abele-datetime-picker'), 3000)
     for (const el of document.querySelectorAll('.modal, .modal-container')) { el.style.transition = 'none'; el.style.animation = 'none' }
     await wait(300)

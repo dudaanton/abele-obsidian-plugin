@@ -191,7 +191,7 @@ const script = `(async () => {
         }, typing)
       const expand = (at, typing) =>
         measure(at, (row) => ({
-          target: [...row.children].find((c) => c.classList.contains('abele-obsidian-icon')),
+          target: row.querySelector('.abele-task-view__more') ?? undefined,
           settled: () => !!row.querySelector('.abele-task-view__description'),
         }), typing)
       out.tick = await tick(false)

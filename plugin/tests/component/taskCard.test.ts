@@ -1,18 +1,17 @@
 /**
  * What a task card says about priority and labels.
  *
- * Priority is a glyph at the start of the label row under the title, and only on tasks without
+ * Priority is the first glyph among the codes at the end of the row, and only on tasks without
  * a date: the calendar already orders its tasks by when they happen, so a priority there would
- * say nothing the position does not. Labels are chips in that row, on every card, tinted with
- * the colour the settings give that label. The owner asked for the glyph there rather than
- * beside the checkbox, left of the text.
+ * say nothing the position does not. Labels follow the title in the same line, on every card,
+ * as quiet words marked with the colour the settings give that label. Nothing but the title
+ * sits beside the checkbox, left of the text.
  */
 import { describe, it, expect, beforeEach, afterEach } from 'vitest'
 import { mount, type VueWrapper } from '@vue/test-utils'
 import dayjs from 'dayjs'
 import { Task } from '@/entities/Task'
 import TaskCard from '@/components/Task.vue'
-import Badge from '@/components/obsidian/Badge.vue'
 import ObsidianIcon from '@/components/obsidian/Icon.vue'
 import { installFakeIntersectionObserver } from '../helpers/fakeIntersectionObserver'
 import { useVault, configureAbele } from '../helpers/testEnv'
@@ -73,45 +72,47 @@ describe('task card — priority and labels', () => {
     expect(priorityIcon(render(task))).toBeUndefined()
   })
 
-  it('shows a chip per label, in the configured colour or grey', () => {
+  it('shows a label per label, in the configured colour or grey, after the title', () => {
     const config = configureAbele()
     config.taskLabelColors = [{ value: 'Work', color: 'green' }]
     const card = render(taskWith({ labels: ['work', 'home'] }))
 
-    const chips = card.findAllComponents(Badge)
-    expect(chips.map((c) => c.props('text'))).toEqual(['work', 'home'])
-    expect(chips.map((c) => c.props('color'))).toEqual(['green', 'grey'])
+    const chips = card.findAll('.abele-task-view__title .abele-task-view__label')
+    expect(chips.map((c) => c.text())).toEqual(['work', 'home'])
+    expect(chips.map((c) => c.classes())).toEqual([
+      ['abele-task-view__label', 'abele-task-view__label_green'],
+      ['abele-task-view__label', 'abele-task-view__label_grey'],
+    ])
     config.taskLabelColors = []
   })
 
-  it('shows chips on calendar cards too', () => {
+  it('shows labels on calendar cards too', () => {
     const task = taskWith({ labels: ['work'] })
     task.date = dayjs('2026-05-01')
 
-    expect(render(task, { atTimeline: true }).findAllComponents(Badge)).toHaveLength(1)
+    expect(render(task, { atTimeline: true }).findAll('.abele-task-view__label')).toHaveLength(1)
   })
 
-  it('has no chip row without labels', () => {
-    expect(render(taskWith({})).find('.abele-task-view__labels').exists()).toBe(false)
+  it('has no label without labels', () => {
+    expect(render(taskWith({})).find('.abele-task-view__label').exists()).toBe(false)
   })
 
-  it('puts the glyph in the label row, before the chips', () => {
+  it('puts the glyph first among the codes, apart from the labels', () => {
     const card = render(taskWith({ priority: 'high', labels: ['work', 'home'] }))
 
-    const row = card.find('.abele-task-view__labels')
-    expect(row.exists()).toBe(true)
-    const children = row.element.children
-    expect(children[0].classList.contains('abele-task-view__priority')).toBe(true)
-    expect(row.findAllComponents(Badge)).toHaveLength(2)
+    const codes = card.find('.abele-task-view__codes')
+    expect(codes.exists()).toBe(true)
+    expect(codes.element.children[0].classList.contains('abele-task-view__priority')).toBe(true)
+    expect(codes.findAll('.abele-task-view__label')).toHaveLength(0)
+    expect(card.findAll('.abele-task-view__title .abele-task-view__label')).toHaveLength(2)
   })
 
-  it('keeps the label row for the glyph when there are no labels', () => {
+  it('keeps the glyph among the codes when there are no labels', () => {
     const card = render(taskWith({ priority: 'low' }))
 
-    const row = card.find('.abele-task-view__labels')
-    expect(row.exists()).toBe(true)
-    expect(row.element.children).toHaveLength(1)
-    expect(row.element.children[0].classList.contains('abele-task-view__priority')).toBe(true)
+    const codes = card.find('.abele-task-view__codes')
+    expect(codes.element.children).toHaveLength(1)
+    expect(codes.element.children[0].classList.contains('abele-task-view__priority')).toBe(true)
   })
 
   it('has nothing beside the checkbox but the title', () => {

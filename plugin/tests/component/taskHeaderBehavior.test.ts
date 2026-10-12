@@ -47,40 +47,43 @@ const render = async () => {
   view = mount(TaskHeaderView, { props: { task }, shallow: true })
   await flushPromises()
 }
-const button = (text: string) =>
-  view.findAllComponents(Icon).find((icon) => icon.props('textRight') === text)!
-const texts = () => view.findAllComponents(Icon).map((icon) => icon.props('textRight'))
+// The header is a row of glyphs; each is found by its place in the row and named by its label.
+const button = (name: 'toggle' | 'date' | 'due' | 'recurrence' | 'clear') =>
+  view
+    .findAllComponents(Icon)
+    .find((icon) => icon.classes().includes(`abele-task-header-view__${name}`))!
+const labels = () => view.findAllComponents(Icon).map((icon) => icon.props('label'))
 
 describe('task header controls', () => {
   it('loads on mount and toggles completion/undo through the note editor', async () => {
     const load = vi.spyOn(task, 'load')
     await render()
     expect(load).toHaveBeenCalledOnce()
-    expect(button('Complete').props('icon')).toBe('square')
-    await button('Complete').trigger('click')
+    expect(button('toggle').props()).toMatchObject({ icon: 'square', label: 'Mark done' })
+    expect(button('toggle').attributes('aria-checked')).toBe('false')
+    await button('toggle').trigger('click')
     await flushPromises()
-    expect(button('Undone').props('icon')).toBe('check-square')
+    expect(button('toggle').props()).toMatchObject({
+      icon: 'check-square',
+      label: 'Mark not done',
+    })
+    expect(button('toggle').attributes('aria-checked')).toBe('true')
     expect(await parseNoteContent(env.file, env.text())).toHaveProperty('completed', '2028-01-31')
-    await button('Undone').trigger('click')
+    await button('toggle').trigger('click')
     await flushPromises()
     expect(await parseNoteContent(env.file, env.text())).not.toHaveProperty('completed')
   })
 
   it.each(['event', 'due'] as const)(
-    'offers a menu for an undated task and routes the %s choice to the picker',
+    'opens the picker in %s mode straight from its glyph on an undated task',
     async (mode) => {
       const shown = vi.spyOn(Menu.prototype, 'showAtPosition')
       await render()
-      expect(texts()).toEqual(['Complete', 'Add Date', 'Recurrence', 'Clear'])
-      await button('Add Date').trigger('click')
-      const items = (
-        shown.mock.contexts[0] as unknown as {
-          items: Array<{ title: string; handler: () => void }>
-        }
-      ).items
-      expect(items.map((item) => item.title)).toEqual(['Event date', 'Due date'])
-      items[mode === 'event' ? 0 : 1].handler()
-      await view.vm.$nextTick()
+      expect(labels()).toEqual(['Mark done', 'Set date', 'Set due date', 'Set repeat'])
+      expect(button('date').props('textRight')).toBeUndefined()
+      expect(button('due').props('textRight')).toBeUndefined()
+      await button(mode === 'event' ? 'date' : 'due').trigger('click')
+      expect(shown).not.toHaveBeenCalled()
       const picker = view.findComponent(DateTimePickerModal)
       expect(picker.props('mode')).toBe(mode)
       picker.vm.$emit('confirm', { date: dayjs('2028-02-29'), time: '08:30' })
@@ -89,7 +92,14 @@ describe('task header controls', () => {
       expect((mode === 'event' ? task.date : task.due).format('YYYY-MM-DD HH:mm')).toBe(
         '2028-02-29 08:30'
       )
-      expect(texts()).toContain(mode === 'event' ? 'Add Due Date' : 'Add Event Date')
+      const set = button(mode === 'event' ? 'date' : 'due')
+      expect(set.props()).toMatchObject({
+        label: mode === 'event' ? 'Change date' : 'Change due date',
+        textRight: '29.02 08:30',
+      })
+      const other = button(mode === 'event' ? 'due' : 'date')
+      expect(other.props('label')).toBe(mode === 'event' ? 'Set due date' : 'Set date')
+      expect(button('clear')).toBeDefined()
     }
   )
 
@@ -100,7 +110,9 @@ describe('task header controls', () => {
       if (mode === 'event') await task.setEventDate(dayjs('2028-02-01'), '10:15')
       else await task.setDueDate(dayjs('2028-02-01'), '10:15')
       await render()
-      await button(mode === 'event' ? 'Edit Event Date' : 'Edit Due Date').trigger('click')
+      const glyph = () => button(mode === 'event' ? 'date' : 'due')
+      expect(glyph().props('textRight')).toBe('Tomorrow 10:15')
+      await glyph().trigger('click')
       const picker = view.findComponent(DateTimePickerModal)
       expect(picker.props('mode')).toBe(mode)
       expect(picker.props('initialDate').format('YYYY-MM-DD')).toBe('2028-02-01')
@@ -108,45 +120,57 @@ describe('task header controls', () => {
       picker.vm.$emit('clear')
       await flushPromises()
       expect(mode === 'event' ? task.date : task.due).toBeNull()
-      expect(texts()).toContain('Add Date')
+      expect(glyph().props('label')).toBe(mode === 'event' ? 'Set date' : 'Set due date')
+      expect(glyph().props('textRight')).toBeUndefined()
       expect(view.findComponent(DateTimePickerModal).exists()).toBe(false)
     }
   )
 
-  it('adds the missing endpoint directly, cancels without writing and hides Add when both exist', async () => {
+  it('opens the missing endpoint directly, cancels without writing and shows both once set', async () => {
     await task.load()
     await task.setEventDate(dayjs('2028-02-01'))
     await render()
-    await button('Add Due Date').trigger('click')
+    expect(button('due').props('label')).toBe('Set due date')
+    await button('due').trigger('click')
     expect(view.findComponent(DateTimePickerModal).props('mode')).toBe('due')
     view.findComponent(DateTimePickerModal).vm.$emit('cancel')
     await flushPromises()
     expect(task.due).toBeNull()
-    await task.setDueDate(dayjs('2028-02-02'))
+    await task.setDueDate(dayjs('2028-01-29'))
     await view.vm.$nextTick()
-    expect(texts()).not.toContain('Add Date')
-    expect(texts()).not.toContain('Add Due Date')
-    expect(texts()).toContain('Edit Event Date')
-    expect(texts()).toContain('Edit Due Date')
+    expect(labels()).not.toContain('Set date')
+    expect(labels()).not.toContain('Set due date')
+    expect(button('date').props()).toMatchObject({ label: 'Change date', textRight: 'Tomorrow' })
+    expect(button('due').props()).toMatchObject({
+      label: 'Change due date',
+      textRight: '29.01',
+      color: 'red',
+    })
   })
 
   it('confirms, cancels and clears recurrence through its modal', async () => {
     await render()
-    await button('Recurrence').trigger('click')
+    expect(button('recurrence').props('label')).toBe('Set repeat')
+    await button('recurrence').trigger('click')
     expect(view.findComponent(RecurrencePickerModal).props('initialPattern')).toBeNull()
     view.findComponent(RecurrencePickerModal).vm.$emit('confirm', 'every last day of month')
     await flushPromises()
     expect(task.recurrence).toBe('every last day of month')
     expect(view.findComponent(RecurrencePickerModal).exists()).toBe(false)
-    await button('Recurrence').trigger('click')
+    expect(button('recurrence').props()).toMatchObject({
+      label: 'Change repeat',
+      textRight: 'every last day of month',
+    })
+    await button('recurrence').trigger('click')
     expect(view.findComponent(RecurrencePickerModal).props('initialPattern')).toBe(task.recurrence)
     view.findComponent(RecurrencePickerModal).vm.$emit('cancel')
     await flushPromises()
     expect(task.recurrence).toBe('every last day of month')
-    await button('Recurrence').trigger('click')
+    await button('recurrence').trigger('click')
     view.findComponent(RecurrencePickerModal).vm.$emit('clear')
     await flushPromises()
     expect(task.recurrence).toBeNull()
+    expect(button('recurrence').props('label')).toBe('Set repeat')
   })
 
   it.each([false, true])(
@@ -162,13 +186,15 @@ describe('task header controls', () => {
       }
       await render()
       const toggle = vi.spyOn(task, 'toggle')
-      await button('Clear').trigger('click')
+      expect(button('clear').props('label')).toBe('Clear dates, repeat and done')
+      await button('clear').trigger('click')
       await flushPromises()
       expect(toggle).toHaveBeenCalledTimes(completed ? 1 : 0)
       const data = await parseNoteContent(env.file, env.text())
       for (const prop of ['date', 'dateTime', 'due', 'dueTime', 'completed', 'recurrence'])
         expect(data).not.toHaveProperty(prop)
       expect(data.content).toContain('Water seedlings')
+      expect(button('clear')).toBeUndefined()
     }
   )
 

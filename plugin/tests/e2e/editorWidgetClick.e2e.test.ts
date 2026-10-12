@@ -178,7 +178,7 @@ const script = `(async () => {
     // The task drawn in place of its link: tick, untick while writing, open or close twice.
     await open(hostPath)
     const box = () => widget()?.querySelector('input.task-list-item-checkbox')
-    const chevron = () => [...(widget()?.children ?? [])].find((c) => c.classList.contains('abele-obsidian-icon'))
+    const chevron = () => widget()?.querySelector('.abele-task-view__more') ?? undefined
     const described = () => !!widget()?.querySelector('.abele-task-view__description')
     // Whether the description was showing when the chevron was found: a task scrolled out of
     // the editor and back is drawn afresh, closed.
