@@ -1,7 +1,7 @@
 /**
  * Picking a template: rows as Obsidian's own suggestion list draws them, worked from the
  * keyboard as well as by pointer. Enter picks a template and, on the one already picked, uses
- * it; Enter on a folder or a breadcrumb goes there. Select comes first in the footer.
+ * it; Enter on a folder or a breadcrumb goes there. Cancel comes first in the footer and Select, the answer, last.
  */
 import { afterEach, describe, expect, it } from 'vitest'
 import { defineComponent } from 'vue'
@@ -41,11 +41,11 @@ const option = (name: string) =>
 const enter = { key: 'Enter' }
 
 describe('the template picker', () => {
-  it('puts Select first, as the accent, and Cancel after it', () => {
+  it('puts Cancel first and Select, the accent, last', () => {
     draw()
     const footer = wrapper!.findAll('button').slice(-2)
-    expect(footer.map((b) => b.text())).toEqual(['Select', 'Cancel'])
-    expect(footer[0].classes()).toContain('mod-cta')
+    expect(footer.map((b) => b.text())).toEqual(['Cancel', 'Select'])
+    expect(footer[1].classes()).toContain('mod-cta')
   })
 
   it('picks a template with Enter, and uses the picked one on the next Enter', async () => {

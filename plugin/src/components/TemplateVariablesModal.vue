@@ -18,20 +18,20 @@
                 placeholder="Search for a note..."
                 @update:model-value="(v: string) => updateListItem(variable.name, idx, v)"
               />
-              <button
-                class="variable-wiki-list__remove clickable-icon"
+              <ObsidianIcon
+                class="variable-wiki-list__remove"
+                icon="x"
+                tooltip="Take this note off the list"
                 @click="removeListItem(variable.name, idx)"
-              >
-                <ObsidianIcon icon="x" />
-              </button>
+              />
             </div>
-            <button
-              class="variable-wiki-list__add clickable-icon"
+            <ObsidianIcon
+              class="variable-wiki-list__add"
+              icon="plus"
+              text-right="Add"
+              tooltip="Add another note"
               @click="addListItem(variable.name)"
-            >
-              <ObsidianIcon icon="plus" />
-              <span>Add</span>
-            </button>
+            />
           </div>
 
           <!-- wikilink: single file picker -->
@@ -63,26 +63,32 @@
               <span class="variable-image__path">{{
                 getFileName(values.get(variable.name)!)
               }}</span>
-              <button
-                class="variable-image__clear clickable-icon"
+              <ObsidianIcon
+                class="variable-image__clear"
+                icon="x"
+                tooltip="Take the picture off"
                 @click="clearImage(variable.name)"
-              >
-                <ObsidianIcon icon="x" />
-              </button>
+              />
             </div>
             <div class="variable-image__actions">
-              <button class="clickable-icon" @click="pickImageFromVault(variable.name)">
-                <ObsidianIcon icon="vault" />
-                <span>Vault</span>
-              </button>
-              <button class="clickable-icon" @click="pickImageFromDisk(variable.name)">
-                <ObsidianIcon icon="hard-drive" />
-                <span>Disk</span>
-              </button>
-              <button class="clickable-icon" @click="pickImageFromClipboard(variable.name)">
-                <ObsidianIcon icon="clipboard-paste" />
-                <span>Clipboard</span>
-              </button>
+              <ObsidianIcon
+                icon="vault"
+                text-right="Vault"
+                tooltip="Pick a picture from this vault"
+                @click="pickImageFromVault(variable.name)"
+              />
+              <ObsidianIcon
+                icon="hard-drive"
+                text-right="Disk"
+                tooltip="Pick a picture from this device's files"
+                @click="pickImageFromDisk(variable.name)"
+              />
+              <ObsidianIcon
+                icon="clipboard-paste"
+                text-right="Clipboard"
+                tooltip="Paste the picture that was copied"
+                @click="pickImageFromClipboard(variable.name)"
+              />
             </div>
           </div>
 
@@ -106,8 +112,8 @@
       </div>
     </div>
     <template #footer>
-      <Button text="Apply" :accent="true" @click="confirmValues" />
       <Button text="Cancel" @click="emit('close')" />
+      <Button text="Apply" :accent="true" @click="confirmValues" />
     </template>
   </Modal>
 </template>
@@ -343,10 +349,9 @@ function confirmValues() {
   color: var(--text-muted);
   font-size: var(--font-small);
   align-self: flex-start;
-  padding: var(--size-2-1) var(--size-2-3);
+  /* Its glyph on the fields' edge: no inset to hang past the dialog's own. */
+  padding: var(--size-2-1) 0;
   border-radius: var(--radius-s);
-  /* Its glyph, not its box, on the fields' edge. */
-  margin-inline-start: calc(-1 * var(--size-2-3) - 1px);
 }
 
 .variable-image {
@@ -365,8 +370,8 @@ function confirmValues() {
 }
 
 .variable-image__thumb {
-  width: 40px;
-  height: 40px;
+  width: calc(2 * var(--size-4-5));
+  height: calc(2 * var(--size-4-5));
   object-fit: cover;
   border-radius: var(--radius-s);
   flex-shrink: 0;
@@ -388,9 +393,7 @@ function confirmValues() {
 
 .variable-image__actions {
   display: flex;
-  gap: var(--size-4-1);
-  /* The first glyph, not its button's box, on the fields' edge. */
-  margin-inline-start: calc(-1 * var(--size-4-2) - 1px);
+  gap: var(--size-4-4);
 }
 
 .variable-image__actions .clickable-icon {
@@ -398,7 +401,8 @@ function confirmValues() {
   align-items: center;
   gap: var(--size-4-1);
   font-size: var(--font-small);
-  padding: var(--size-2-1) var(--size-4-2);
+  /* The first glyph on the fields' edge; the words between keep them apart. */
+  padding: var(--size-2-1) 0;
   border-radius: var(--radius-s);
   color: var(--text-muted);
 }

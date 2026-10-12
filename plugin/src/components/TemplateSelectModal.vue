@@ -107,13 +107,13 @@
       </div>
     </div>
     <template #footer>
+      <Button text="Cancel" @click="emit('close')" />
       <Button
         text="Select"
         :disabled="!selectedTemplate"
         :accent="true"
         @click="confirmSelection"
       />
-      <Button text="Cancel" @click="emit('close')" />
     </template>
   </Modal>
 </template>

@@ -163,7 +163,7 @@ describe('template variable input', () => {
     expect(w.get('.variable-image__path').text()).toBe('imported.png')
   })
 
-  it('names each field in words, asks for a list one per line, and puts Apply first', async () => {
+  it('names each field in words, asks for a list one per line, and puts Cancel first and Apply last', async () => {
     templateHarness()
     const w = draw('{{plant_bed}} {{name}} {{seed-kinds::list}}')
     await flushPromises()
@@ -178,7 +178,7 @@ describe('template variable input', () => {
         .findAll('button')
         .map((b) => b.text())
         .slice(-2)
-    ).toEqual(['Apply', 'Cancel'])
+    ).toEqual(['Cancel', 'Apply'])
     // The label is only what is shown: the value still goes under the variable's own name.
     await w.findAll('.variable-item')[0].get('input').setValue('north corner')
     await button(w, 'Apply').trigger('click')
