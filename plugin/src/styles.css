@@ -767,3 +767,18 @@ body.is-mobile .abele-comment-marker_pending::after {
 .view-action.abele-sync-header-action.mod-warning {
   color: var(--text-warning);
 }
+
+/*
+ * In a note, the words of a list start on the note's own edge, as its paragraphs and headings
+ * do: a row's light, and the inset that keeps the words off the light's edge, hang out into the
+ * margin. In a pane the rows keep their inset inside it instead.
+ */
+:is(.markdown-reading-view, .markdown-source-view, .abele-footer-widget-container)
+  :is(
+    .abele-entry-row,
+    .abele-group-heading,
+    .abele-timeline__history,
+    .abele-timeline__date-indicator
+  ) {
+  margin-inline: calc(-1 * var(--size-2-3));
+}
