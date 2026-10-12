@@ -156,6 +156,7 @@ export class NodePathMainView extends ItemView {
       if (lifetime !== this.lifetime) return
       this.error.value = error instanceof Error ? error.message : 'Could not load node tab'
       console.debug('[Abele node] tab load failed', this.error.value)
+      if (!this.ui) this.contentEl.setText(this.error.value)
     })
     this.refreshHeader()
   }

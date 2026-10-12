@@ -38,7 +38,15 @@ vi.mock('@/node/NodeService', () => ({
   },
 }))
 vi.mock('@/node/NodePathService', () => ({
-  NodePathService: { getInstance: () => ({ model: () => fixture.model, ready: fixture.ready }) },
+  NodePathService: {
+    getInstance: () => ({
+      model: () => {
+        if (fixture.model instanceof Error) throw fixture.model
+        return fixture.model
+      },
+      ready: fixture.ready,
+    }),
+  },
 }))
 vi.mock('@/node/NodePathController', () => ({
   showNodePathFileMenu: vi.fn(),
@@ -95,6 +103,16 @@ it('appends quoted context after an asynchronously restored chat draft', async (
 afterEach(async () => {
   for (const view of views.splice(0)) await view.onClose()
   vi.clearAllMocks()
+})
+
+it('shows binding failures instead of leaving an admitted tab blank', async () => {
+  fixture.model = new Error('Sample node is unavailable')
+  const view = new NodePathMainView({} as WorkspaceLeaf, 'abele-node-history')
+  views.push(view)
+  view.app = { workspace: {} } as any
+  await view.setState({ kind: 'history', target }, {})
+  for (let i = 0; i < 10; i++) await Promise.resolve()
+  expect(view.containerEl.textContent).toContain('Sample node is unavailable')
 })
 
 it.each(['file', 'history', 'editor', 'chat'])(
