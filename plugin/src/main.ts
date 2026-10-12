@@ -522,9 +522,8 @@ export default class AbelePlugin extends Plugin {
         startupStep('time tracking index', () => GlobalStore.getInstance().initTimeTracking())
         void startupStepAsync('css snippets', () => SnippetService.getInstance().init())
         startupStep('node mailboxes', () => NodeService.getInstance().resumeDelegations())
-        if (AbeleConfig.getInstance().ai.enabled) {
-          void startupStepAsync('chat tabs', () => ChatService.getInstance().restoreTabs())
-        }
+        // Restore saved presentations without enabling model execution or optional AI tools.
+        void startupStepAsync('chat tabs', () => ChatService.getInstance().restoreTabs())
       })
 
       this.addSettingTab(new AbeleSettingTab(this.app, this))
