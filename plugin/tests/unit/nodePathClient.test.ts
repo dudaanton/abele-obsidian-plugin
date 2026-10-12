@@ -88,6 +88,176 @@ describe('validated node path reads', () => {
     )
   })
 })
+describe('bounded tree reads', () => {
+  it('loads sibling directories concurrently with no more than four requests in flight', async () => {
+    const f = fake()
+    const catalogue = await f.port.catalogue()
+    let release!: () => void
+    const gate = new Promise<void>((resolve) => {
+      release = resolve
+    })
+    let active = 0,
+      peak = 0
+    f.client.repository = new RepositoryClient(async (method, params: any) => {
+      if (method !== 'repository.v1.tree') return f.request(method, params)
+      if (!params.path)
+        return {
+          entries: Array.from({ length: 12 }, (_, i) => ({
+            name: `folder-${i}`,
+            path: `folder-${i}`,
+            kind: 'directory',
+            oid: null,
+            size: null,
+          })),
+          cursor: null,
+          incomplete: false,
+          omissions: [],
+        }
+      active++
+      peak = Math.max(peak, active)
+      await gate
+      active--
+      return {
+        entries: [
+          { name: 'sample.ts', path: `${params.path}/sample.ts`, kind: 'file', oid: null, size: 5 },
+        ],
+        cursor: null,
+        incomplete: false,
+        omissions: [],
+      }
+    })
+    const inspection = f.port.inspect(catalogue.targets[0])
+    try {
+      for (let i = 0; i < 100; i++) await Promise.resolve()
+      expect(peak).toBe(4)
+    } finally {
+      release()
+    }
+    const result = await inspection
+    expect(result.entries).toHaveLength(12)
+    expect(
+      result.entries.every((entry) => entry.children?.[0].path === `${entry.path}/sample.ts`)
+    ).toBe(true)
+    expect(peak).toBe(4)
+  })
+})
+
+describe('interactive read priority', () => {
+  it('pauses queued background tree reads until an interactive file read settles', async () => {
+    const f = fake()
+    const catalogue = await f.port.catalogue()
+    let releaseTrees!: () => void, releaseFile!: () => void
+    const treeGate = new Promise<void>((resolve) => {
+      releaseTrees = resolve
+    })
+    const fileGate = new Promise<void>((resolve) => {
+      releaseFile = resolve
+    })
+    let trees = 0
+    f.client.repository = new RepositoryClient(async (method, params: any) => {
+      if (method !== 'repository.v1.tree') return f.request(method, params)
+      if (!params.path)
+        return {
+          entries: Array.from({ length: 12 }, (_, i) => ({
+            name: `folder-${i}`,
+            path: `folder-${i}`,
+            kind: 'directory',
+            oid: null,
+            size: null,
+          })),
+          cursor: null,
+          incomplete: false,
+          omissions: [],
+        }
+      trees++
+      await treeGate
+      return { entries: [], cursor: null, incomplete: false, omissions: [] }
+    })
+    const inspection = f.port.inspect(catalogue.targets[0])
+    for (let i = 0; i < 100; i++) await Promise.resolve()
+    const observe = f.client.repository.observe.bind(f.client.repository)
+    vi.spyOn(f.client.repository, 'observe').mockImplementation(async (params) => {
+      await fileGate
+      return observe(params)
+    })
+    const file = f.port.file(catalogue.targets[0], 'README.md')
+    releaseTrees()
+    try {
+      for (let i = 0; i < 100; i++) await Promise.resolve()
+      expect(trees).toBe(4)
+    } finally {
+      releaseFile()
+    }
+    await Promise.all([inspection, file])
+    expect(trees).toBe(12)
+  })
+})
+
+describe('independent file reads', () => {
+  it('reads file bytes while status is pending, without listing the tree', async () => {
+    const f = fake()
+    const catalogue = await f.port.catalogue()
+    let finish!: (entries: []) => void
+    const status = vi.spyOn(f.client.repository, 'status').mockImplementation(
+      () =>
+        new Promise((resolve) => {
+          finish = () => resolve({ entries: [], cursor: null, incomplete: false, omissions: [] })
+        })
+    )
+    const blob = vi.spyOn(f.client.repository, 'blob')
+    const tree = vi.spyOn(f.client.repository, 'tree')
+    const file = f.port.file(catalogue.targets[0], 'app.ts')
+    for (let i = 0; i < 20; i++) await Promise.resolve()
+    expect(status).toHaveBeenCalledTimes(1)
+    expect(blob).toHaveBeenCalledTimes(1)
+    finish([])
+    await file
+    expect(tree).not.toHaveBeenCalled()
+  })
+  it('captures a changed-file comparison while file content is still in flight', async () => {
+    const f = fake()
+    const catalogue = await f.port.catalogue()
+    let release!: () => void
+    const gate = new Promise<void>((resolve) => {
+      release = resolve
+    })
+    const content = f.client.repository.content.bind(f.client.repository)
+    vi.spyOn(f.client.repository, 'content').mockImplementation(async (params) => {
+      await gate
+      return content(params)
+    })
+    const compare = vi.spyOn(f.client.repository, 'compare')
+    const file = f.port.file(catalogue.targets[0], 'app.ts')
+    try {
+      for (let i = 0; i < 100; i++) await Promise.resolve()
+      expect(compare).toHaveBeenCalledTimes(1)
+    } finally {
+      release()
+    }
+    const document = await file
+    expect(document.change).toMatchObject({
+      before: 'export const answer = 1\n',
+      after: 'export const answer = 42\n',
+      stage: 'unstaged',
+    })
+  })
+  it('loads capabilities for a direct file read without waiting for the catalogue', async () => {
+    const f = fake()
+    await f.port.file(
+      {
+        nodeId: identity.node,
+        registrationId: identity.installation,
+        projectId: identity.project,
+        kind: 'worktree',
+        id: identity.workspace,
+      },
+      'app.ts'
+    )
+    expect(f.client.describe).toHaveBeenCalledTimes(1)
+    expect(f.client.listProjects).not.toHaveBeenCalled()
+  })
+})
+
 describe('enriched node path reads', () => {
   it('requests opt-in details, honours external selection and authoritative divergence', async () => {
     const f = fake()

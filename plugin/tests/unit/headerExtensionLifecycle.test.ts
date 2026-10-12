@@ -53,6 +53,19 @@ it('does not read metadata on a host view that has lost its state', () => {
   expect(() => vi.advanceTimersByTime(300)).not.toThrow()
   state.mockRestore()
 })
+it('tolerates a state getter whose host internals were already released', () => {
+  vi.useFakeTimers()
+  view = new EditorView({
+    state: EditorState.create({ extensions: [editorInfoField, createHeaderExtension()] }),
+  })
+  view.dispatch({ changes: { from: 0, insert: 'x' } })
+  const state = vi.spyOn(view, 'state', 'get').mockImplementation(() => {
+    throw new TypeError('Editor state is unavailable')
+  })
+  expect(() => vi.advanceTimersByTime(300)).not.toThrow()
+  state.mockRestore()
+})
+
 afterEach(() => {
   view?.destroy()
   view = undefined

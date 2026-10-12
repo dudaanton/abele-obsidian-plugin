@@ -364,7 +364,9 @@ export async function newNodePathChat(
           'New chat',
           provider.provider
         )
-        await model.refresh()
+        // The returned session already carries this exact target. Refresh drawer metadata
+        // in the background; recursively listing its files is not part of opening a chat.
+        void model.refresh().catch((error: unknown) => model.report(error))
         model.selectedChat.value = session.session_id
         await openNodePathTab(
           app().workspace,

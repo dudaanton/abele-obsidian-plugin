@@ -235,6 +235,18 @@ it('pairs and opens target-bound node files history editor and fake chats in the
       evalLong(
         `(async()=>{const leaf=app.workspace.getLeaf('tab');await leaf.setViewState({type:${JSON.stringify('abele-node-' + kind)},active:true,state:${JSON.stringify({ kind, target, ...extra })}});await app.workspace.revealLeaf(leaf);return 'opened'})()`
       )
+    const timings = await evalLong(
+      `(async()=>{${prelude}const connection=nodes.connection(${JSON.stringify(registration)}),client=connection.client,records=[];const methods=['observe','status','blob','content','compare','patch','tree','history'];const originals=methods.map(name=>[name,client.repository[name]]);for(const [name,original] of originals)client.repository[name]=async function(...args){const start=performance.now();try{return await original.apply(this,args)}finally{records.push({name,ms:Math.round(performance.now()-start)})}};try{const start=performance.now(),leaf=app.workspace.getLeaf('tab');await leaf.setViewState({type:'abele-node-file',active:true,state:${JSON.stringify({ kind: 'file', target: rootTarget, path: 'sample.md' })}});const shellMs=Math.round(performance.now()-start);await until(()=>leaf.view.file?.document.value);await until(()=>leaf.containerEl.querySelector('.cm-line'));const totalMs=Math.round(performance.now()-start);leaf.detach();return JSON.stringify({shellMs,totalMs,records})}finally{for(const [name,original] of originals)client.repository[name]=original}})()`
+    )
+    console.info('Node file open timing', timings)
+    const measurement = JSON.parse(timings)
+    // Catalogue refreshes may issue tree reads concurrently; file-only reads are pinned in
+    // the client unit test. The leaf must open promptly even while that refresh is unfinished.
+    for (const name of ['observe', 'status', 'blob', 'content'])
+      expect(measurement.records.some((record: { name: string }) => record.name === name)).toBe(
+        true
+      )
+    expect(measurement.shellMs).toBeLessThan(500)
     await capture('desktop-changes')
     await evalLong(
       `(async()=>{${prelude}const chats=api.ChatService.getInstance();const id=chats.newTab();const chat=chats.getAllSessions().find(s=>s.id===id);if(!chat)throw Error('Chat was not created');chat.chatTitle.value='Sample Obsidian chat '+id;window.__nodePathScopeChat=id;const row=[...visible('.abele-folder-tree').querySelectorAll('.abele-folder-tree__copy > .tree-item-self')].find(r=>r.textContent.includes('trunk'));row.dispatchEvent(new MouseEvent('contextmenu',{bubbles:true,cancelable:true,clientX:row.getBoundingClientRect().left,clientY:row.getBoundingClientRect().bottom}));await until(()=>[...document.querySelectorAll('.menu-item')].some(i=>i.textContent.includes('Give the Obsidian chat access')));[...document.querySelectorAll('.menu-item')].find(i=>i.textContent.includes('Give the Obsidian chat access')).click();await until(()=>[...document.querySelectorAll('.suggestion-item')].some(i=>i.textContent.includes(id)));[...document.querySelectorAll('.suggestion-item')].find(i=>i.textContent.includes(id)).click();await until(()=>[...document.querySelectorAll('.modal button')].some(b=>b.textContent.trim()==='Give access'));[...document.querySelectorAll('.modal button')].find(b=>b.textContent.trim()==='Give access').click();await until(()=>chat.overrides.value.nodeScope?.length===1&&!visible('.modal'));await chats.revealSidebar({focus:false});await until(()=>visible('[aria-label="Chat node access"]'));return 'scope granted by row menu'})()`

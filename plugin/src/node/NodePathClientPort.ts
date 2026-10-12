@@ -113,6 +113,11 @@ export class NodePathClientPort implements NodePathPort {
   protected worktrees = new Map<string, WorktreeEntry>()
   protected capabilities: string[] = []
   private subscribedSessions = new Set<string>()
+  private description?: ReturnType<ReadClient['describe']>
+  private treeReads = 0
+  private treeQueue: (() => void)[] = []
+  private interactiveReads = 0
+  private resumeTrees: (() => void)[] = []
   constructor(
     readonly client: ReadClient,
     readonly identity: { nodeId: string; registrationId: string }
@@ -120,9 +125,21 @@ export class NodePathClientPort implements NodePathPort {
   protected binding(projectId: string, kind: PathTarget['kind'], id: string): PathTarget {
     return { ...this.identity, projectId, kind, id }
   }
+  private describe(refresh = false): ReturnType<ReadClient['describe']> {
+    if (refresh) this.description = undefined
+    return (this.description ??= this.client
+      .describe()
+      .then((description) => {
+        this.capabilities = supportedNodePathCapabilities(description)
+        return description
+      })
+      .catch((error: unknown) => {
+        this.description = undefined
+        throw error
+      }))
+  }
   async catalogue(): Promise<PathCatalogue> {
-    const description = await this.client.describe()
-    this.capabilities = supportedNodePathCapabilities(description)
+    const description = await this.describe(true)
     const guarded = supportsExpectedTarget(description)
     const enriched = this.capabilities.includes('node_path_v2')
     const [projects, sessions] = await Promise.all([
@@ -282,6 +299,20 @@ export class NodePathClientPort implements NodePathPort {
         : {}),
     }
   }
+  /** Bound the recursive browser across concurrent refreshes, not just within one folder. */
+  private async treeRead<T>(read: () => Promise<T>): Promise<T> {
+    if (this.treeReads >= 4) await new Promise<void>((resolve) => this.treeQueue.push(resolve))
+    else ++this.treeReads
+    try {
+      while (this.interactiveReads)
+        await new Promise<void>((resolve) => this.resumeTrees.push(resolve))
+      return await read()
+    } finally {
+      const next = this.treeQueue.shift()
+      if (next) next()
+      else --this.treeReads
+    }
+  }
   private async gitTree(
     id: string,
     revision: RepositoryRevision,
@@ -289,51 +320,53 @@ export class NodePathClientPort implements NodePathPort {
     budget = { count: 0 }
   ): Promise<TreeEntry[]> {
     const entries = await pathPages((cursor) =>
-      this.client.repository.tree({ worktree_id: id, revision, path, cursor })
+      this.treeRead(() => this.client.repository.tree({ worktree_id: id, revision, path, cursor }))
     )
-    const out: TreeEntry[] = []
-    for (const entry of entries) {
-      if (++budget.count > 10000)
-        throw new Error(
-          'This folder exceeds the 10,000-entry tree limit. Use the repository browser for paginated browsing.'
-        )
-      if (entry.kind === 'file') out.push({ path: entry.path, name: entry.name, kind: 'file' })
-      else if (entry.kind === 'directory')
-        out.push({
-          path: entry.path,
-          name: entry.name,
-          kind: 'folder',
-          children: await this.gitTree(id, revision, entry.path, budget),
-        })
-    }
-    return out
+    const out = await Promise.all(
+      entries.map(async (entry): Promise<TreeEntry | undefined> => {
+        if (++budget.count > 10000)
+          throw new Error(
+            'This folder exceeds the 10,000-entry tree limit. Use the repository browser for paginated browsing.'
+          )
+        if (entry.kind === 'file') return { path: entry.path, name: entry.name, kind: 'file' }
+        if (entry.kind === 'directory')
+          return {
+            path: entry.path,
+            name: entry.name,
+            kind: 'folder',
+            children: await this.gitTree(id, revision, entry.path, budget),
+          }
+      })
+    )
+    return out.filter((entry): entry is TreeEntry => entry !== undefined)
   }
   private async plainTree(id: string, path = '', budget = { count: 0 }): Promise<TreeEntry[]> {
     const entries = [] as Awaited<ReturnType<NodeClient['listFiles']>>['entries']
     const visited = new Set<string>()
     let after: string | undefined
     for (;;) {
-      const page = await this.client.listFiles(id, path, after)
+      const page = await this.treeRead(() => this.client.listFiles(id, path, after))
       entries.push(...page.entries)
       if (!page.next) break
       if (visited.has(page.next)) throw new Error('Node pagination did not advance')
       visited.add(page.next)
       after = page.next
     }
-    const out: TreeEntry[] = []
-    for (const entry of entries) {
-      if (++budget.count > 10000)
-        throw new Error('This folder exceeds the 10,000-entry tree limit.')
-      if (entry.kind === 'file') out.push({ path: entry.path, name: entry.name, kind: 'file' })
-      else if (entry.kind === 'directory')
-        out.push({
-          path: entry.path,
-          name: entry.name,
-          kind: 'folder',
-          children: await this.plainTree(id, entry.path, budget),
-        })
-    }
-    return out
+    const out = await Promise.all(
+      entries.map(async (entry): Promise<TreeEntry | undefined> => {
+        if (++budget.count > 10000)
+          throw new Error('This folder exceeds the 10,000-entry tree limit.')
+        if (entry.kind === 'file') return { path: entry.path, name: entry.name, kind: 'file' }
+        if (entry.kind === 'directory')
+          return {
+            path: entry.path,
+            name: entry.name,
+            kind: 'folder',
+            children: await this.plainTree(id, entry.path, budget),
+          }
+      })
+    )
+    return out.filter((entry): entry is TreeEntry => entry !== undefined)
   }
   protected async gitText(target: PathTarget, revision: RepositoryRevision, path: string) {
     const blob = await this.client.repository.blob({ worktree_id: target.id, revision, path })
@@ -391,7 +424,26 @@ export class NodePathClientPort implements NodePathPort {
       8 * 1024 * 1024
     )
   }
-  async file(
+  private async interactive<T>(read: () => Promise<T>): Promise<T> {
+    ++this.interactiveReads
+    try {
+      return await read()
+    } finally {
+      if (!--this.interactiveReads) {
+        const waiting = this.resumeTrees.splice(0)
+        for (const resume of waiting) resume()
+      }
+    }
+  }
+  file(
+    target: PathTarget,
+    path: string,
+    stage?: 'staged' | 'unstaged',
+    frozen?: RepositoryRevision
+  ): Promise<PathDocument> {
+    return this.interactive(() => this.readFile(target, path, stage, frozen))
+  }
+  private async readFile(
     target: PathTarget,
     path: string,
     stage?: 'staged' | 'unstaged',
@@ -411,25 +463,41 @@ export class NodePathClientPort implements NodePathPort {
         ),
       }
     }
+    await this.describe()
     const revision =
       frozen ?? (await this.client.repository.observe({ worktree_id: target.id })).revision
-    const status = frozen ? [] : await this.status(target, revision)
-    const changed = status.find((e) => e.path === path)
-    const change = changed && pathStatus(changed)
-    const loaded =
-      change?.kind === 'deleted'
-        ? { text: '', contentId: null }
-        : await this.gitText(target, revision, path)
-    if (!change) return { ...loaded, target, path, revision }
-    if (change.kind === 'conflict')
-      throw new Error(
-        'Resolve the conflict in the code editor or repository browser; a single comparison would omit a side.'
-      )
-    const mode = stage ?? (change.stage === 'staged' ? 'staged' : 'unstaged')
-    const unstaged =
-      change.stage !== 'staged' ? await this.patch(target, revision, path, 'unstaged') : ''
+    // Both reads are pinned to the same observation. Status must not delay the blob/content
+    // round trips; a missing blob is expected only for an authoritatively deleted file.
+    const status = frozen ? Promise.resolve([]) : this.status(target, revision)
+    const comparison = status.then(async (entries) => {
+      const changed = entries.find((entry) => entry.path === path)
+      if (!changed) return undefined
+      const change = pathStatus(changed)
+      if (change.kind === 'conflict')
+        throw new Error(
+          'Resolve the conflict in the code editor or repository browser; a single comparison would omit a side.'
+        )
+      const mode = stage ?? (change.stage === 'staged' ? 'staged' : 'unstaged')
+      const [unstaged, staged] = await Promise.all([
+        change.stage !== 'staged' ? this.patch(target, revision, path, 'unstaged') : '',
+        mode === 'staged' ? this.patch(target, revision, path, 'staged') : '',
+      ])
+      return { change, mode, unstaged, diff: mode === 'unstaged' ? unstaged : staged }
+    })
+    const [compared, bytes] = await Promise.all([
+      comparison,
+      this.gitText(target, revision, path).then(
+        (value) => ({ value }),
+        (error: unknown) => ({ error })
+      ),
+    ])
+    let loaded: { text: string; contentId: string | null }
+    if (compared?.change.kind === 'deleted') loaded = { text: '', contentId: null }
+    else if ('error' in bytes) throw bytes.error
+    else loaded = bytes.value
+    if (!compared) return { ...loaded, target, path, revision }
+    const { change, mode, unstaged, diff } = compared
     const indexText = unstaged ? reverseNodePatch(loaded.text, unstaged) : loaded.text
-    const diff = mode === 'unstaged' ? unstaged : await this.patch(target, revision, path, 'staged')
     const after = mode === 'unstaged' ? loaded.text : indexText
     const before = diff ? reverseNodePatch(after, diff) : after
     change.before = before
@@ -448,7 +516,10 @@ export class NodePathClientPort implements NodePathPort {
       change,
     }
   }
-  async history(target: PathTarget, cursor?: string, frozen?: RepositoryRevision) {
+  history(target: PathTarget, cursor?: string, frozen?: RepositoryRevision) {
+    return this.interactive(() => this.readHistory(target, cursor, frozen))
+  }
+  private async readHistory(target: PathTarget, cursor?: string, frozen?: RepositoryRevision) {
     if (target.kind !== 'worktree') throw new Error('A plain folder has no Git history.')
     const observed =
       frozen ?? (await this.client.repository.observe({ worktree_id: target.id })).revision

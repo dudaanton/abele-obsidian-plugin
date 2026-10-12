@@ -44,6 +44,7 @@ export class NodePathMainView extends ItemView {
   private file?: NodePathFileModel
   private history?: NodePathHistoryModel
   private presenter?: NodeChatPresenter
+  private chatLoad?: Promise<void>
   private editor?: NodeFilesModel
   private saved?: NodePathTabState
   private lifetime = 0
@@ -110,7 +111,7 @@ export class NodePathMainView extends ItemView {
   }
   async onOpen(): Promise<void> {
     this.contentEl.addClass('abele-node-content')
-    if (this.saved && !this.ui) await this.bind(this.saved)
+    if (this.saved && !this.ui) this.startBinding(this.saved)
   }
   async setState(raw: unknown, result: ViewStateResult): Promise<void> {
     const parsed = NodePathTabSchema.parse(raw)
@@ -120,7 +121,7 @@ export class NodePathMainView extends ItemView {
     const same =
       this.saved && parsed.kind !== 'file' && nodePathTabKey(this.saved) === nodePathTabKey(parsed)
     this.saved = parsed
-    if (!same) await this.bind(parsed)
+    if (!same) this.startBinding(parsed)
     await super.setState(raw, result)
   }
   private act(run: () => Promise<unknown> | undefined): void {
@@ -143,8 +144,20 @@ export class NodePathMainView extends ItemView {
     this.file = undefined
     this.history = undefined
     this.presenter = undefined
+    this.chatLoad = undefined
     this.editor = undefined
     this.contentEl.empty()
+  }
+  /** Obsidian's deferred leaf admission must never wait for remote reads. */
+  private startBinding(state: NodePathTabState): void {
+    const loading = this.bind(state)
+    const lifetime = this.lifetime
+    void loading.catch((error: unknown) => {
+      if (lifetime !== this.lifetime) return
+      this.error.value = error instanceof Error ? error.message : 'Could not load node tab'
+      console.debug('[Abele node] tab load failed', this.error.value)
+    })
+    this.refreshHeader()
   }
   private async bind(state: NodePathTabState): Promise<void> {
     this.clearBinding()
@@ -236,10 +249,9 @@ export class NodePathMainView extends ItemView {
         })
       )
       this.ui.mount(host)
-      if (model.online.value || !model.hasRetained(state.target, state.path, state.stage)) {
+      file.busy.value = true
+      if (model.online.value || !model.hasRetained(state.target, state.path, state.stage))
         await connection.connect().catch(() => {})
-        await NodePathService.getInstance().ready(node.id)
-      }
       if (lifetime === this.lifetime) {
         await file.open(state.path, state.stage).catch(() => {})
         if (state.debug) file.mode.value = 'file'
@@ -290,8 +302,8 @@ export class NodePathMainView extends ItemView {
           }),
       })
       this.ui.mount(host)
+      history.busy.value = true
       await connection.connect().catch(() => {})
-      await NodePathService.getInstance().ready(node.id)
       if (lifetime === this.lifetime) await history.load().catch(() => {})
     } else if (state.kind === 'editor') {
       const editor = (this.editor = new NodeFilesModel(
@@ -332,7 +344,9 @@ export class NodePathMainView extends ItemView {
       this.ui.mount(host)
       try {
         await connection.connect().catch(() => {})
+        if (lifetime !== this.lifetime) return
         await editor.openFile(state.path)
+        if (lifetime !== this.lifetime) return
         if (!offline()) await permission()
         if (lifetime === this.lifetime && editor.fileEditable.value && this.editorAllowed.value)
           await editor.beginEditing()
@@ -425,15 +439,25 @@ export class NodePathMainView extends ItemView {
         })
       )
       this.ui.mount(host)
-      await presenter.load()
+      this.chatLoad = presenter.load()
+      await this.chatLoad
     }
     if (lifetime === this.lifetime) this.refreshHeader()
   }
   /** Append quoted file context without sending a provider turn or replacing an existing draft. */
   appendChatText(text: string): void {
-    if (!this.presenter) return
-    const draft = this.presenter.draft.value
-    draft.text = draft.text ? `${draft.text}\n\n${text}` : text
+    const presenter = this.presenter,
+      lifetime = this.lifetime
+    if (!presenter) return
+    const append = () => {
+      if (lifetime !== this.lifetime) return
+      const draft = presenter.draft.value
+      draft.text = draft.text ? `${draft.text}\n\n${text}` : text
+    }
+    // setState admits the shell before load restores its durable draft. Never let that
+    // restoration overwrite newly quoted context, or append it to a subsequently rebound tab.
+    if (this.chatLoad !== undefined) void this.chatLoad.then(append).catch(() => {})
+    else append()
   }
   private async toggleEditing(): Promise<void> {
     const state = this.saved
