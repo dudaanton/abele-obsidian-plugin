@@ -197,7 +197,8 @@ const script = (phone: boolean) => `(async () => {
     report.up1 = await settle(report.typed)
     key(input(), { key: 'Enter', shiftKey: true })
     report.up2 = await settle(report.up1)
-    report.thinkingOpen = !!box().querySelector('[data-message-id="m20"] details')?.open
+    const thought = box().querySelector('[data-message-id="m20"] .abele-chat-thinking')
+    report.thinkingOpen = thought?.querySelector('.tree-item-self')?.getAttribute('aria-expanded') === 'true' && !!thought?.querySelector('[data-find-part="thinking"]')?.getClientRects().length
     key(input(), { key: 'Enter', shiftKey: true })
     report.up3 = await settle(report.up2)
     key(input(), { key: 'Enter' })

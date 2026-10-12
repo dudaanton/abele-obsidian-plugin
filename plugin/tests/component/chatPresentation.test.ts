@@ -123,6 +123,44 @@ describe('conversation presentation', () => {
       'Access: file: Sample/reference.md · folder: Sample/Pages · sample-node / sample-project / sample-workspace, read'
     )
   })
+  it('passes background question and approval state to the tab dots', async () => {
+    const active = fakeChatSession({ kind: 'chat' })
+    const waiting = fakeChatSession({ kind: 'chat', overrides: { id: 'sample-waiting-tab' } })
+    waiting.pendingQuestions.value = {
+      questions: [{ question: 'Sample?', options: ['Yes'] }],
+      currentIndex: 0,
+    }
+    const chats = ChatService.getInstance()
+    const beforeOrder = chats.tabOrder.value
+    const beforeId = chats.activeTabId.value
+    chats.tabOrder.value = [active.id, waiting.id]
+    chats.activeTabId.value = active.id
+    vi.spyOn(chats, 'getSession').mockImplementation(
+      (id) => (id === waiting.id ? waiting : active) as never
+    )
+    vi.spyOn(chats, 'getPresentation').mockImplementation(
+      (id) => ({ label: ref(id), isStreaming: ref(false) }) as never
+    )
+    try {
+      const chat = await render(active)
+      const tab = () =>
+        chat
+          .findComponent({ name: 'AiChatTabs' })
+          .props('tabs')
+          .find((item) => item.id === waiting.id)
+      expect(tab().waiting).toBe(true)
+      waiting.pendingQuestions.value = null
+      waiting.pendingToolCalls.value = [{ id: 'sample-call' }]
+      await flushPromises()
+      expect(tab().waiting).toBe(true)
+      waiting.pendingToolCalls.value = []
+      await flushPromises()
+      expect(tab().waiting).toBe(false)
+    } finally {
+      chats.tabOrder.value = beforeOrder
+      chats.activeTabId.value = beforeId
+    }
+  })
   it('keeps an empty access set discoverable for editing', async () => {
     const chat = await render(fakeChatSession({ kind: 'chat' }))
     const input = chat.findComponent({ name: 'AiChatInput' })

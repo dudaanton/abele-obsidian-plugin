@@ -77,8 +77,8 @@ const script = (layout: string) => `(async () => {
       const overflow = [...document.querySelectorAll('.abele-ai-chat__overflow [aria-haspopup="menu"]')].find(el => el.getClientRects().length)
       if (!overflow) throw Error('No visible chat navigation action')
       overflow.click()
-      await until(() => [...document.querySelectorAll('.menu-item')].some(item => item.textContent.trim() === 'Navigation'))
-      ;[...document.querySelectorAll('.menu-item')].find(item => item.textContent.trim() === 'Navigation').click()
+      await until(() => [...document.querySelectorAll('.menu-item')].some(item => item.textContent.trim() === 'Outline of this chat'))
+      ;[...document.querySelectorAll('.menu-item')].find(item => item.textContent.trim() === 'Outline of this chat').click()
     }
     await until(modal)
     await wait(100)

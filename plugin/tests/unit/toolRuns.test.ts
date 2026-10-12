@@ -44,6 +44,15 @@ describe('a run of calls', () => {
     ).toBe('search')
   })
 
+  it('does not describe an unapproved call as completed work', () => {
+    expect(
+      runSummary([
+        call('read'),
+        call('run_command', { toolStatus: 'pending', toolResult: undefined }),
+      ])
+    ).toBe('Read · Run requested')
+  })
+
   it('says the kind still under way as going on', () => {
     const calls = [call('web_search'), call('read_note', { toolResult: undefined })]
     expect(runSummary(calls)).toBe('Searched · Reading')

@@ -219,7 +219,10 @@ body.is-mobile button.abele-chat-msg__icon:not(.abele-chat-msg__time) {
 // whole box around it, taken back by margins as wide as its padding, so it is not a glyph-sized
 // target pressed flat against the line.
 button.abele-chat-msg__icon:not(.abele-chat-msg__time) {
-  height: auto;
+  // The row supplies the line height. Include the native padding before taking it back with
+  // margins: an auto-height button centres on its fixed-size glyph, not on a zoomed text line.
+  height: calc(1lh + 2 * var(--size-2-2));
+  line-height: inherit;
   padding: var(--size-2-2) var(--size-2-3);
   margin-block: calc(-1 * var(--size-2-2));
   margin-inline-start: calc(-1 * var(--size-2-3));

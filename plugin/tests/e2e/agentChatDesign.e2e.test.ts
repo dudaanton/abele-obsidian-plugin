@@ -126,6 +126,11 @@ const probe = (screen: string) => `(async () => {
 
     set([q])
     session.pendingQuestions.value = { questions: [{ question: 'Which version of the sample checklist should I prepare?', options: ['A short version for a quick visit', 'A detailed version with seasonal notes and a longer explanation'] }, { question: 'Include the source links?', options: ['Yes', 'No'] }], currentIndex: 0, resolve: () => {} }
+    await until(() => root()?.querySelector('.abele-chat-question__progress'))
+    const progress = root().querySelector('.abele-chat-question__progress')
+    const progressRange = document.createRange()
+    progressRange.selectNodeContents(progress)
+    if (progressRange.getClientRects().length !== 1) throw Error('Question progress wrapped instead of staying one code')
     await shot('question', '.abele-chat-question')
 
     set([q])

@@ -26,14 +26,14 @@ export const KIND_ICON: Record<ToolKind, string> = {
   other: 'wrench',
 }
 
-const KIND_WORDS: Record<ToolKind, [string, string]> = {
-  search: ['Searched', 'Searching'],
-  read: ['Read', 'Reading'],
-  write: ['Wrote', 'Writing'],
-  delete: ['Deleted', 'Deleting'],
-  run: ['Ran', 'Running'],
-  ask: ['Asked', 'Asking'],
-  other: ['Used a tool', 'Using a tool'],
+const KIND_WORDS: Record<ToolKind, [string, string, string]> = {
+  search: ['Searched', 'Searching', 'Search requested'],
+  read: ['Read', 'Reading', 'Read requested'],
+  write: ['Wrote', 'Writing', 'Write requested'],
+  delete: ['Deleted', 'Deleting', 'Delete requested'],
+  run: ['Ran', 'Running', 'Run requested'],
+  ask: ['Asked', 'Asking', 'Question requested'],
+  other: ['Used a tool', 'Using a tool', 'Tool requested'],
 }
 
 /** Where a run stands: running, waiting for you, refused or failed somewhere in it, or done. */
@@ -79,10 +79,13 @@ export function runSummary(calls: readonly ChatMessage[]): string {
   }
   const running = calls.find((c) => callState(c) === 'running')
   const going = running ? toolKind(running.toolName) : null
+  const waiting = new Set(
+    calls.filter((call) => callState(call) === 'waiting').map((call) => toolKind(call.toolName))
+  )
   return order
     .map((kind) => {
       const n = counts.get(kind)
-      const word = KIND_WORDS[kind][kind === going ? 1 : 0]
+      const word = KIND_WORDS[kind][kind === going ? 1 : waiting.has(kind) ? 2 : 0]
       return n > 1 ? `${word} ${n}` : word
     })
     .join(' · ')

@@ -132,7 +132,9 @@ function onKey(event: KeyboardEvent) {
   overflow-wrap: break-word;
 }
 .abele-chat-question__progress {
-  color: var(--text-faint);
+  flex: none;
+  white-space: nowrap;
+  color: var(--text-muted);
   font-size: var(--font-ui-smaller);
   font-variant-numeric: tabular-nums;
   line-height: inherit;

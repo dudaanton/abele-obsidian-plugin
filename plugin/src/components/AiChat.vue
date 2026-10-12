@@ -581,10 +581,13 @@ const tabInfos = computed(() =>
 
     const s = chatService.getPresentation(id)
     const label = s?.label.value || 'New chat'
+    const local = chatService.getSession(id)
     return {
       id,
       label,
       isStreaming: s?.isStreaming.value ?? false,
+      waiting:
+        !!local && (local.pendingToolCalls.value.length > 0 || !!local.pendingQuestions.value),
       isActive: id === chatService.activeTabId.value,
     }
   })
