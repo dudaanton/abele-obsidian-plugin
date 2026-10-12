@@ -482,6 +482,60 @@ describe('bounded node image reads', () => {
       expect(f.calls.some((c) => c.method === 'repository.v1.patch')).toBe(false)
     }
   )
+  it('reuses known revision and changes for an image without observing, listing, or loading text patches', async () => {
+    const f = image()
+    const observe = vi.spyOn(f.client.repository, 'observe')
+    const status = vi.spyOn(f.client.repository, 'status')
+    const tree = vi.spyOn(f.client.repository, 'tree')
+    const patch = vi.spyOn(f.client.repository, 'patch')
+    const revision = {
+      kind: 'working' as const,
+      observation_id: 'sample-observation',
+      head: HEAD,
+      observed_at: '2025-01-01T00:00:00Z',
+    }
+    const file = await f.port.file(target, 'sample-image.png', 'unstaged', undefined, {
+      revision,
+      changes: [
+        {
+          path: 'sample-image.png',
+          kind: 'modified',
+          stage: 'partly',
+          before: '',
+          after: '',
+          added: 0,
+          removed: 0,
+        },
+      ],
+    })
+    expect(file.image?.bytes).toEqual(bytes)
+    expect(file.revision).toEqual(revision)
+    expect(file.change?.stage).toBe('unstaged')
+    expect(observe).not.toHaveBeenCalled()
+    expect(status).not.toHaveBeenCalled()
+    expect(tree).not.toHaveBeenCalled()
+    expect(patch).not.toHaveBeenCalled()
+  })
+  it('does not request text patches for a changed image above the initial blob threshold', async () => {
+    const f = image()
+    vi.mocked(f.client.repository.blob).mockResolvedValueOnce({
+      ...f.blob,
+      content_id: null,
+      binary: false,
+      size: 2 * 1024 * 1024,
+      requires_larger_load: true,
+    })
+    vi.spyOn(f.client.repository, 'status').mockResolvedValue({
+      cursor: null,
+      incomplete: false,
+      omissions: [],
+      entries: [{ path: 'sample-image.png', index: ' ', worktree: 'M' }],
+    })
+    const patch = vi.spyOn(f.client.repository, 'patch')
+    const file = await f.port.file(target, 'sample-image.png', 'unstaged')
+    expect(file.image?.bytes).toEqual(bytes)
+    expect(patch).not.toHaveBeenCalled()
+  })
   function stagedImage(index: string, worktree: string) {
     const f = fake()
     const versions = {

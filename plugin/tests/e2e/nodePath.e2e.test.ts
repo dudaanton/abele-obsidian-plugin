@@ -40,6 +40,10 @@ async function checkFileLookup(prefix: string) {
     `(async()=>{${prelude}visible('.abele-file-tree [aria-label="All files"]').click();await until(()=>visible('.abele-file-tree')?.textContent.includes('Ignored files are not shown.'));if(visible('.abele-file-tree').textContent.includes('hidden.txt'))throw Error('Ignored content was included');return 'all files'})()`
   )
   await capture(prefix + '-all-files')
+  // The fixture's nested entries are now loaded by expansion, not by an eager repository walk.
+  await evalLong(
+    `(async()=>{${prelude}for(const [folder,file] of [['lookup','lookup-72.txt'],['src','sample.ts']]){const tree=visible('.abele-file-tree');const row=[...tree.querySelectorAll('.tree-item-self')].find(el=>el.querySelector('.abele-tree-item__text')?.textContent===folder);if(!row)throw Error('Fixture folder missing: '+folder);if(row.getAttribute('aria-expanded')==='false')row.click();await until(()=>[...tree.querySelectorAll('.abele-tree-item__text')].some(el=>el.textContent===file))}return 'fixture directories loaded lazily'})()`
+  )
   await evalLong(
     `(async()=>{${prelude}const input=visible('.abele-file-tree input');input.value='lookup';input.dispatchEvent(new Event('input',{bubbles:true}));await until(()=>visible('.abele-file-tree')?.textContent.includes('50 of 73 · type more to narrow'));if(visible('.abele-file-tree').querySelectorAll('.tree-item-self').length!==50)throw Error('Lookup cap changed');visible('.abele-file-tree__note').scrollIntoView({block:'center'});return 'bounded lookup'})()`
   )

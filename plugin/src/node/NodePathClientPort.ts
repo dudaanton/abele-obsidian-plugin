@@ -438,8 +438,11 @@ export class NodePathClientPort implements NodePathPort {
       }
     return { ...(await this.textBlob(target, blob)), binary: false }
   }
-<<<<<<< HEAD
-  private async gitPreview(target: PathTarget, revision: RepositoryRevision, path: string) {
+  private async gitPreview(
+    target: PathTarget,
+    revision: RepositoryRevision,
+    path: string
+  ): Promise<Pick<PathDocument, 'text' | 'contentId' | 'image'>> {
     const blob = await this.client.repository.blob({ worktree_id: target.id, revision, path })
     return this.previewBlob(target, revision, path, blob)
   }
@@ -449,14 +452,6 @@ export class NodePathClientPort implements NodePathPort {
     path: string,
     blob: Awaited<ReturnType<NodeClient['repository']['blob']>>
   ): Promise<Pick<PathDocument, 'text' | 'contentId' | 'image'>> {
-=======
-  private async gitPreview(
-    target: PathTarget,
-    revision: RepositoryRevision,
-    path: string
-  ): Promise<Pick<PathDocument, 'text' | 'contentId' | 'image'>> {
-    let blob = await this.client.repository.blob({ worktree_id: target.id, revision, path })
->>>>>>> ac97a0078 (fix(node): avoid substituting working bytes in staged image previews)
     if (isNodeImagePath(path)) {
       if (blob.size > NODE_IMAGE_MAX_BYTES || blob.too_large)
         throw new Error('Image preview is limited to 4 MiB.')
@@ -590,13 +585,16 @@ export class NodePathClientPort implements NodePathPort {
         )
       const mode = stage ?? (change.stage === 'staged' ? 'staged' : 'unstaged')
       if (
-        change.kind === 'deleted' && mode === 'staged' &&
-        revision.kind === 'working' && revision.head && isNodeImagePath(path)
+        change.kind === 'deleted' &&
+        mode === 'staged' &&
+        revision.kind === 'working' &&
+        revision.head &&
+        isNodeImagePath(path)
       ) {
         const base = await this.gitPreview(target, { kind: 'commit', commit: revision.head }, path)
         if (base.image) return { change, mode, unstaged: '', diff: '', base }
       }
-      const metadata = await blob.catch(() => undefined)
+      const metadata = await blob.catch((): undefined => undefined)
       if (metadata?.binary || (metadata?.requires_larger_load && isNodeImagePath(path)))
         return { change, mode, unstaged: '', diff: '' }
       const [unstaged, staged] = await Promise.all([
@@ -607,10 +605,12 @@ export class NodePathClientPort implements NodePathPort {
     })
     const [compared, bytes] = await Promise.all([
       comparison,
-      blob.then((value) => this.previewBlob(target, revision, path, value)).then(
-        (value) => ({ value }),
-        (error: unknown) => ({ error })
-      ),
+      blob
+        .then((value) => this.previewBlob(target, revision, path, value))
+        .then(
+          (value) => ({ value }),
+          (error: unknown) => ({ error })
+        ),
     ])
     let loaded: Pick<PathDocument, 'text' | 'contentId' | 'image'>
     const base = compared && 'base' in compared ? compared.base : undefined
