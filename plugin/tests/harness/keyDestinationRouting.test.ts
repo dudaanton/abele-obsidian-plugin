@@ -10,8 +10,8 @@ const pkg = JSON.parse(read('../../package.json'))
 const step = workflow.jobs.test.steps.find((s: any) => s.name === 'Unit and integration tests')
 
 // Run the actual workflow selector with a shell-function fixture, never npm or the suite.
-function select(scope?: string) {
-  const env = { ...process.env }
+function select(scope?: string, shard = 1) {
+  const env = { ...process.env, SHARD: String(shard), SHARD_COUNT: '4' }
   if (scope === undefined) delete env.TEST_SCOPE
   else env.TEST_SCOPE = scope
   return execFileSync('bash', ['-c', `set -e\nnpm() { printf '%s\\n' "$*"; }\n${step.run}`], {
@@ -31,11 +31,15 @@ describe('bounded one-release key-destination routing', () => {
     expect(workflow.on.push.branches).toEqual(['master'])
     expect(workflow.on).toHaveProperty('pull_request')
     expect(step.env.TEST_SCOPE).toBe("${{ inputs.test_scope || 'all' }}")
-    expect(select()).toBe('test')
-    expect(select('all')).toBe('test')
+    expect(select()).toBe('test -- --shard=1/4 --maxWorkers=2')
+    for (const shard of [1, 2, 3, 4])
+      expect(select('all', shard)).toBe(`test -- --shard=${shard}/4 --maxWorkers=2`)
   })
   it('allows only the exact focused scope and fails closed on unexpected input', () => {
-    expect(select('key-destinations')).toBe('run test:key-destinations')
+    for (const shard of [1, 2, 3, 4])
+      expect(select('key-destinations', shard)).toBe(
+        `run test:key-destinations -- --shard=${shard}/4 --maxWorkers=2`
+      )
     for (const invalid of ['other', 'key-destinations; echo unsafe', 'KEY-DESTINATIONS']) {
       expect(() => select(invalid)).toThrow()
     }

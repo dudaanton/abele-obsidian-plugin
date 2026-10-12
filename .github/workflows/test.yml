@@ -28,7 +28,7 @@ permissions:
   contents: read
 
 jobs:
-  test:
+  guard:
     runs-on: ubuntu-latest
 
     steps:
@@ -50,8 +50,6 @@ jobs:
       - uses: actions/setup-node@49933ea5288caeca8642d1e84afbd3f7d6820020 # v4.4.0
         with:
           node-version: "22.x"
-          cache: npm
-          cache-dependency-path: plugin/package-lock.json
 
       # Nothing extraneous and no credentials: the tree as it is, then each new commit on its
       # own, because a secret added in one commit and deleted in the next is still published.
@@ -73,6 +71,26 @@ jobs:
             node plugin/scripts/repo-guard.mjs --range "$base..HEAD"
           fi
 
+  dependencies:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262 # v4.4.0
+        with:
+          fetch-depth: 0
+          fetch-tags: true
+          ref: ${{ inputs.revision || github.sha }}
+          persist-credentials: false
+      - name: Verify exact revision
+        env:
+          REVISION: ${{ inputs.revision || github.sha }}
+        run: |
+          [[ "$REVISION" =~ ^[a-f0-9]{40}$ ]] && [ "$(git rev-parse HEAD)" = "$REVISION" ]
+          [ "$REVISION" = "$GITHUB_SHA" ]
+      - uses: actions/setup-node@49933ea5288caeca8642d1e84afbd3f7d6820020 # v4.4.0
+        with:
+          node-version: "22.x"
+          cache: npm
+          cache-dependency-path: plugin/package-lock.json
       - name: Install dependencies
         working-directory: plugin
         run: npm ci --ignore-scripts
@@ -86,15 +104,74 @@ jobs:
         working-directory: plugin
         run: node scripts/dead-code.mjs
 
+  lint:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262 # v4.4.0
+        with:
+          fetch-depth: 0
+          fetch-tags: true
+          ref: ${{ inputs.revision || github.sha }}
+          persist-credentials: false
+      - name: Verify exact revision
+        env:
+          REVISION: ${{ inputs.revision || github.sha }}
+        run: |
+          [[ "$REVISION" =~ ^[a-f0-9]{40}$ ]] && [ "$(git rev-parse HEAD)" = "$REVISION" ]
+          [ "$REVISION" = "$GITHUB_SHA" ]
+      - uses: actions/setup-node@49933ea5288caeca8642d1e84afbd3f7d6820020 # v4.4.0
+        id: node
+        with:
+          node-version: "22.x"
+          cache: npm
+          cache-dependency-path: plugin/package-lock.json
+      - name: Install dependencies
+        working-directory: plugin
+        run: npm ci --ignore-scripts
+      # Typed rules also read imported declarations and external rule inputs. A per-file
+      # content cache alone is not safe: reuse only for an identical complete checkout,
+      # locked dependencies and runtime, never a fallback key from another tree.
+      - name: Fingerprint complete lint inputs
+        id: lint_inputs
+        run: echo "tree=$(git rev-parse HEAD^{tree})" >> "$GITHUB_OUTPUT"
+      - uses: actions/cache@0057852bfaa89a56745cba8c7296529d2fc39830 # v4.3.0
+        with:
+          path: plugin/node_modules/.cache/eslint/ci
+          key: eslint-content-v1-${{ runner.os }}-${{ runner.arch }}-${{ steps.node.outputs.node-version }}-${{ hashFiles('plugin/package-lock.json') }}-${{ hashFiles('plugin/eslint.config.mjs', 'plugin/.prettierrc.mjs') }}-${{ steps.lint_inputs.outputs.tree }}
+
       # Obsidian's own plugin rules, from eslint-plugin-obsidianmd. Warnings are pre-existing
       # TypeScript hygiene and do not fail the build; an error means a guideline was broken.
       - name: Lint
         working-directory: plugin
-        run: npm run lint
+        run: npm run lint:ci
+
+  review:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262 # v4.4.0
+        with:
+          fetch-depth: 0
+          fetch-tags: true
+          ref: ${{ inputs.revision || github.sha }}
+          persist-credentials: false
+      - name: Verify exact revision
+        env:
+          REVISION: ${{ inputs.revision || github.sha }}
+        run: |
+          [[ "$REVISION" =~ ^[a-f0-9]{40}$ ]] && [ "$(git rev-parse HEAD)" = "$REVISION" ]
+          [ "$REVISION" = "$GITHUB_SHA" ]
+      - uses: actions/setup-node@49933ea5288caeca8642d1e84afbd3f7d6820020 # v4.4.0
+        with:
+          node-version: "22.x"
+          cache: npm
+          cache-dependency-path: plugin/package-lock.json
+      - name: Install dependencies
+        working-directory: plugin
+        run: npm ci --ignore-scripts
 
       # Obsidian's preset exactly as the community review runs it. Only the suppression rules
       # are gated: the review reports an `eslint-disable` of one of its own rules as a Risk and
-      # rejects the submission, and a green `npm run lint` above does not catch that.
+      # rejects the submission, and a green main lint gate does not catch that.
       - name: No suppressions of Obsidian's rules
         working-directory: plugin
         run: |
@@ -106,16 +183,47 @@ jobs:
           fi
           echo "No suppressions of Obsidian's rules."
 
+  test:
+    name: test (${{ matrix.shard }}/4)
+    runs-on: ubuntu-latest
+    strategy:
+      fail-fast: false
+      matrix:
+        shard: [1, 2, 3, 4]
+    steps:
+      - uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262 # v4.4.0
+        with:
+          fetch-depth: 0
+          fetch-tags: true
+          ref: ${{ inputs.revision || github.sha }}
+          persist-credentials: false
+      - name: Verify exact revision
+        env:
+          REVISION: ${{ inputs.revision || github.sha }}
+        run: |
+          [[ "$REVISION" =~ ^[a-f0-9]{40}$ ]] && [ "$(git rev-parse HEAD)" = "$REVISION" ]
+          [ "$REVISION" = "$GITHUB_SHA" ]
+      - uses: actions/setup-node@49933ea5288caeca8642d1e84afbd3f7d6820020 # v4.4.0
+        with:
+          node-version: "22.x"
+          cache: npm
+          cache-dependency-path: plugin/package-lock.json
+      - name: Install dependencies
+        working-directory: plugin
+        run: npm ci --ignore-scripts
+
       # Unit and integration tiers only. The e2e tier drives a running Obsidian desktop app
       # through its CLI and has no meaning on a headless runner.
       - name: Unit and integration tests
         working-directory: plugin
         env:
           TEST_SCOPE: ${{ inputs.test_scope || 'all' }}
+          SHARD: ${{ matrix.shard }}
+          SHARD_COUNT: 4
         run: |
           case "${TEST_SCOPE:-all}" in
-            all) npm test ;;
-            key-destinations) npm run test:key-destinations ;;
+            all) npm test -- --shard="$SHARD/$SHARD_COUNT" --maxWorkers=2 ;;
+            key-destinations) npm run test:key-destinations -- --shard="$SHARD/$SHARD_COUNT" --maxWorkers=2 ;;
             *) echo "Unknown test scope" >&2; exit 1 ;;
           esac
 
