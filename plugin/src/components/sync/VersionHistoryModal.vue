@@ -13,51 +13,77 @@
       <div class="abele-version-history__list">
         <EmptyState v-if="notice !== null" :text="notice" />
 
-        <CardGrid v-else stack>
-          <Card
-            v-for="version in versions"
-            :key="version.version_id"
-            :title="`#${version.no}`"
-            :subtitle="mergeLine(version, versions)"
-            :meta="metaOf(version)"
-            :clickable="isText"
-            :selected="isText ? selected === version.version_id : undefined"
-            @click="select(version)"
-          >
-            <template #badges>
-              <Badge :text="OP_LABEL[version.op]" />
-            </template>
-
-            <template #actions>
-              <Button
-                text="Restore"
-                :disabled="busy || refusalFor(version) !== null"
-                :tooltip="refusalFor(version) ?? 'Make this version the current one again'"
-                @click="confirming = version"
-              />
-            </template>
-
-            <!--
-              The preview sits inside a card that opens and closes on a click, so its own clicks
-              are stopped: selecting a line of the diff to copy it must not fold the diff away.
-            -->
-            <div v-if="selected === version.version_id" @click.stop @keydown.enter.stop>
-              <p v-if="previewNote !== null" class="abele-version-history__note">
-                {{ previewNote }}
-              </p>
-              <div v-else class="abele-version-history__diff">
-                <div
-                  v-for="(line, index) in diff"
-                  :key="index"
-                  class="abele-version-history__diff-line"
-                  :class="lineClass(line)"
-                >
-                  {{ line }}
-                </div>
-              </div>
+        <!--
+          The versions as rows by day, the way a file's history reads anywhere: what happened in
+          the words, who and when as quiet facts. A row unfolds into what restoring it would
+          undo and the one Restore there is to press, rather than a button on every row.
+        -->
+        <template v-else>
+          <div v-for="day in days" :key="day.label" class="abele-version-history__day">
+            <GroupHeading :label="day.label" />
+            <div role="list">
+              <EntryRow
+                v-for="version in day.versions"
+                :key="version.version_id"
+                role="listitem"
+                class="abele-version-history__row"
+                :data-version="version.no"
+                :active="selected === version.version_id"
+                :more="selected === version.version_id"
+                more-label="what restoring it changes"
+                @update:more="select(version)"
+                @click="select(version)"
+              >
+                {{ OP_LABEL[version.op] }}
+                <template v-if="version.version_id === currentId" #codes>
+                  <Icon
+                    icon="check"
+                    :interactive="false"
+                    tooltip="The version this device has now"
+                  />
+                </template>
+                <template #meta>
+                  <span v-for="(fact, i) in metaOf(version)" :key="i">{{ fact }}</span>
+                  <span v-if="mergeLine(version, versions)" class="abele-version-history__merge">{{
+                    mergeLine(version, versions)
+                  }}</span>
+                </template>
+                <!--
+                  Its own clicks are stopped: selecting a line of the diff to copy it must not
+                  fold the row away.
+                -->
+                <template v-if="selected === version.version_id" #detail>
+                  <div class="abele-version-history__open" @click.stop @keydown.enter.stop>
+                    <p v-if="previewNote !== null" class="abele-version-history__note">
+                      {{ previewNote }}
+                    </p>
+                    <div v-else-if="diff.length" class="abele-version-history__diff">
+                      <div
+                        v-for="(line, index) in diff"
+                        :key="index"
+                        class="abele-version-history__diff-line"
+                        :class="lineClass(line)"
+                      >
+                        {{ line }}
+                      </div>
+                    </div>
+                    <p v-if="refusalFor(version)" class="abele-version-history__note">
+                      {{ refusalFor(version) }}.
+                    </p>
+                    <div v-else class="abele-version-history__restore">
+                      <Button
+                        text="Restore"
+                        :disabled="busy"
+                        :tooltip="`Make version #${version.no} the current one again`"
+                        @click="confirming = version"
+                      />
+                    </div>
+                  </div>
+                </template>
+              </EntryRow>
             </div>
-          </Card>
-        </CardGrid>
+          </div>
+        </template>
         <div v-if="hasOlder" class="abele-version-history__older">
           <Button
             text="Load older"
@@ -108,15 +134,16 @@ import { Notice } from 'obsidian'
 import type { V2EngineClient } from '@abele/sync-core'
 import type { VersionInfo, VersionOp } from '@abele/sync-protocol'
 import ObsidianModal from '../obsidian/Modal.vue'
-import Card from '../obsidian/Card.vue'
-import CardGrid from '../obsidian/CardGrid.vue'
-import Badge from '../obsidian/Badge.vue'
+import EntryRow from '../obsidian/EntryRow.vue'
+import GroupHeading from '../obsidian/GroupHeading.vue'
+import Icon from '../obsidian/Icon.vue'
 import Button from '../obsidian/Button.vue'
 import EmptyState from '../obsidian/EmptyState.vue'
 import ConfirmModal from '../obsidian/ConfirmModal.vue'
 import { GlobalStore } from '@/stores/GlobalStore'
 import { tokenHistory } from '@/sync/tokenHistory'
-import { formatWhen, mergeLine, reasonOf, restoredNotice } from '@/sync/format'
+import { mergeLine, reasonOf, restoredNotice } from '@/sync/format'
+import dayjs from '@/helpers/dateLibrary'
 import { unifiedDiff } from '@/sync/diff'
 import { formatBytes } from '@/helpers/reduceImage'
 
@@ -192,6 +219,8 @@ const root = useTemplateRef<HTMLElement>('root')
 let fileId = ''
 /** The version this device currently agrees with — the one there is nothing to restore to. */
 let currentVersionId = ''
+/** The same, for the row that marks it. */
+const currentId = ref('')
 let client: V2EngineClient | null = null
 
 /**
@@ -233,12 +262,37 @@ const confirmMessage = computed(() => {
     : head
 })
 
-/** The three facts about a version that fit on one faint row: who, when, and how big. */
+const whenOf = (version: VersionInfo) =>
+  dayjs(new Date(version.mtime ?? Date.parse(version.at)).toISOString())
+
+/**
+ * The facts about a version that fit on one faint row: when in its day, who, how big, and its
+ * number, which is what the server and the restore question call it by.
+ */
 const metaOf = (version: VersionInfo): string[] => [
+  whenOf(version).format('HH:mm'),
   version.actor.name,
-  formatWhen(new Date(version.mtime ?? Date.parse(version.at)).toISOString()),
   formatBytes(version.size),
+  `#${version.no}`,
 ]
+
+/** The versions by the day they were written, newest first as the server gives them. */
+const days = computed(() => {
+  const out: { label: string; versions: VersionInfo[] }[] = []
+  const today = dayjs().startOf('day')
+  for (const version of versions.value) {
+    const day = whenOf(version).startOf('day')
+    const label = day.isSame(today)
+      ? 'Today'
+      : day.isSame(today.subtract(1, 'day'))
+        ? 'Yesterday'
+        : day.format(day.isSame(today, 'year') ? 'D MMMM' : 'D MMMM YYYY')
+    const last = out.at(-1)
+    if (last?.label === label) last.versions.push(version)
+    else out.push({ label, versions: [version] })
+  }
+  return out
+})
 
 /** Which part of a unified diff a line is, so the block can colour it. */
 function lineClass(line: string): string {
@@ -280,7 +334,7 @@ async function currentText(): Promise<string> {
  * fifty downloads, and a person reads one or two of them.
  */
 async function select(version: VersionInfo): Promise<void> {
-  if (!isText.value || client === null) return
+  if (client === null) return
   if (selected.value === version.version_id) {
     selected.value = null
     diff.value = []
@@ -288,6 +342,13 @@ async function select(version: VersionInfo): Promise<void> {
     return
   }
   selected.value = version.version_id
+  // A file that is not text opens on its Restore alone: two versions of a picture differ, and
+  // saying so line by line is a wall of bytes.
+  if (!isText.value) {
+    diff.value = []
+    previewNote.value = null
+    return
+  }
   diff.value = []
   previewNote.value = 'Reading this version…'
   try {
@@ -392,6 +453,7 @@ onMounted(async () => {
     }
     fileId = entry.fileId
     currentVersionId = entry.versionId
+    currentId.value = entry.versionId
     versions.value = await client.versions(fileId, { limit: PAGE })
     hasOlder.value = versions.value.length === PAGE
     notice.value =
@@ -430,12 +492,36 @@ onMounted(async () => {
   flex: 1 1 auto;
   min-height: 0;
   overflow-y: auto;
+  // Room inside the scroller for a row's light, which hangs past the text edge.
+  padding-inline: var(--size-2-3);
+  margin-inline: calc(-1 * var(--size-2-3));
 }
 
-// Cards already inset their controls. The paging control is outside a card and needs its
-// own room inside the clipping scroller for the native button's focus ring.
+// The paging control stands under the last row, with room inside the clipping scroller for the
+// native button's focus ring.
 .abele-version-history__older {
   padding: var(--size-4-2);
+}
+
+.abele-version-history__day + .abele-version-history__day {
+  margin-top: var(--size-4-3);
+}
+
+.abele-version-history__day .abele-group-heading {
+  margin-bottom: var(--size-2-2);
+}
+
+.abele-version-history__row {
+  cursor: var(--cursor);
+}
+
+// What an opened row holds: the diff, then the one Restore, at the row's text edge.
+.abele-version-history__open {
+  cursor: auto;
+}
+
+.abele-version-history__restore {
+  margin-top: var(--size-4-2);
 }
 
 /**

@@ -11,8 +11,7 @@
         @commit="custom = $event"
       />
       <Button
-        :text="busy ? progress : `Restore ${picked.length}…`"
-        accent
+        :text="busy ? progress : picked.length ? `Restore ${picked.length}…` : 'Restore'"
         :disabled="busy || picked.length === 0"
         :tooltip="
           picked.length === 0
@@ -271,6 +270,11 @@ function gone(items: TrashItem[], results: CommitOpResult[]): string[] {
 </script>
 
 <style lang="scss">
+// A step under the window's words, as one setting stands from the text above it.
+.abele-restore-since {
+  margin-top: var(--size-4-3);
+}
+
 // The generic dropdown offsets its focus-ring padding with negative margins. Inside the
 // dialog's full-width setting column that margin crosses the row's right edge by 4px.
 .abele-restore-since .abele-obsidian-dropdown {

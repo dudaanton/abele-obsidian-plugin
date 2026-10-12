@@ -103,13 +103,13 @@ liveCase(
         expect(history.capped).toEqual([])
         expect(history.stranded).toEqual([])
         a.run(
-          `const box=document.querySelector('.abele-version-history');await press(box,'Load older');await poll(()=>box.querySelectorAll('.abele-card').length>50);return true`
+          `const box=document.querySelector('.abele-version-history');await press(box,'Load older');await poll(()=>box.querySelectorAll('.abele-version-history__row').length>50);return true`
         )
         expect(
-          a.run(`return document.querySelectorAll('.abele-version-history .abele-card').length`)
+          a.run(`return document.querySelectorAll('.abele-version-history .abele-version-history__row').length`)
         ).toBeGreaterThan(50)
         a.run(
-          `const box=inWindows('.abele-version-history');const older=[...box.querySelectorAll('.abele-card')].find(card=>{const button=buttonIn(card,'Restore');return button&&!button.disabled});if(!older)throw new Error('No restorable historical version');older.click();await poll(()=>box.querySelector('.abele-version-history__diff'));return true`
+          `const box=inWindows('.abele-version-history');let older=null;for(const row of [...box.querySelectorAll('.abele-version-history__row')].slice(1)){if(!row.classList.contains('is-active'))row.click();await poll(()=>row.querySelector('.abele-version-history__open'));if(buttonIn(row,'Restore')){older=row;break}row.click();await sleep(50)}if(!older)throw new Error('No restorable historical version');await poll(()=>box.querySelector('.abele-version-history__diff'));return true`
         )
         const preview = await captureSyncScreen(
           a,
@@ -120,7 +120,7 @@ liveCase(
         expect(preview.clipped).toEqual([])
         expect(preview.stranded).toEqual([])
         a.run(
-          `const box=inWindows('.abele-version-history');const older=[...box.querySelectorAll('.abele-card')].find(card=>{const button=buttonIn(card,'Restore');return button&&!button.disabled});await press(older,'Restore');await poll(()=>inWindows('.abele-confirm__message'));return true`
+          `const box=inWindows('.abele-version-history');const older=box.querySelector('.abele-version-history__row.is-active');await press(older,'Restore');await poll(()=>inWindows('.abele-confirm__message'));return true`
         )
         const confirm = await captureSyncScreen(
           a,

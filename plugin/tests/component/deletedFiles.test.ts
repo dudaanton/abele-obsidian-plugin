@@ -12,9 +12,8 @@ import { mount, flushPromises } from '@vue/test-utils'
 import { Notice } from 'obsidian'
 import type { CommitOpResult, TrashItem } from '@abele/sync-protocol'
 import DeletedFilesModal from '@/components/sync/DeletedFilesModal.vue'
-import Card from '@/components/obsidian/Card.vue'
-import Badge from '@/components/obsidian/Badge.vue'
-import Button from '@/components/obsidian/Button.vue'
+import EntryRow from '@/components/obsidian/EntryRow.vue'
+import Icon from '@/components/obsidian/Icon.vue'
 import EmptyState from '@/components/obsidian/EmptyState.vue'
 import RestoreSince from '@/components/sync/RestoreSince.vue'
 import * as TokenHistory from '@/sync/tokenHistory'
@@ -84,14 +83,18 @@ const service = {
 const open = () => mount(DeletedFilesModal, { global: { stubs: STUBS } })
 type Screen = ReturnType<typeof open>
 
-const titles = (screen: Screen): string[] =>
-  screen.findAllComponents(Card).map((card) => card.props('title') as string)
+const rows = (screen: Screen) => screen.findAll('.abele-deleted-files__row')
 
+const titles = (screen: Screen): string[] =>
+  rows(screen).map((row) => row.attributes('data-path') as string)
+
+/** The glyph at a row's end that brings its file back. */
 const restoreFor = (screen: Screen, path: string) =>
   screen
-    .findAllComponents(Card)
-    .find((card) => card.props('title') === path)
-    ?.findComponent(Button)
+    .findAllComponents(EntryRow)
+    .find((row) => row.attributes('data-path') === path)
+    ?.findAllComponents(Icon)
+    .find((icon) => icon.props('interactive') !== false)
 
 const errorLine = (screen: Screen): string =>
   screen.find('.abele-deleted-files__error').exists()
@@ -148,14 +151,18 @@ describe('what has been deleted', () => {
     const screen = open()
     await flushPromises()
 
-    expect(screen.findAllComponents(Badge).map((b) => b.props('text'))).toEqual([
-      'Attachment',
-      'Note',
-    ])
-    expect(screen.findAllComponents(Card)[0].props('meta')).toEqual([
-      'Deleted 5 minutes ago',
-      '1.0 KB',
-    ])
+    // The kind is a glyph with its word in the tooltip; the folder, when and how big are facts.
+    expect(
+      screen
+        .findAllComponents(Icon)
+        .filter((icon) => icon.props('interactive') === false)
+        .map((icon) => icon.props('tooltip'))
+    ).toEqual(['Attachment', 'Note'])
+    expect(
+      rows(screen)[0]
+        .findAll('.abele-entry-row__meta > span')
+        .map((f) => f.text())
+    ).toEqual(['Attachments', 'Deleted 5 minutes ago', '1.0 KB'])
   })
 
   it('says the trash is empty rather than showing an empty list', async () => {
@@ -163,7 +170,7 @@ describe('what has been deleted', () => {
     const screen = open()
     await flushPromises()
 
-    expect(screen.findAllComponents(Card)).toHaveLength(0)
+    expect(rows(screen)).toHaveLength(0)
     expect(screen.findComponent(EmptyState).props('text')).toContain('Nothing has been deleted')
   })
 
@@ -337,8 +344,10 @@ describe('bringing a file back', () => {
     void restoreFor(screen, 'Attachments/photo.png')?.trigger('click')
     await flushPromises()
 
-    expect(restoreFor(screen, 'Notes/older.md')?.props('text')).toBe('Restoring…')
-    expect(restoreFor(screen, 'Attachments/photo.png')?.props('text')).toBe('Queued')
+    expect(restoreFor(screen, 'Notes/older.md')?.props('tooltip')).toBe('Bringing this file back')
+    expect(restoreFor(screen, 'Attachments/photo.png')?.props('tooltip')).toBe(
+      'Restored as soon as the one before it is done'
+    )
     expect(restoreFor(screen, 'Attachments/photo.png')?.props('disabled')).toBe(true)
     expect(client.restoreDeleted).toHaveBeenCalledTimes(1)
 
@@ -360,6 +369,8 @@ describe('bringing a file back', () => {
     await flushPromises()
 
     expect(restoreFor(screen, 'Attachments/photo.png')?.props('disabled')).toBe(false)
-    expect(restoreFor(screen, 'Attachments/photo.png')?.props('text')).toBe('Restore')
+    expect(restoreFor(screen, 'Attachments/photo.png')?.props('tooltip')).toBe(
+      'Bring this file back to the path it was deleted from'
+    )
   })
 })

@@ -109,14 +109,14 @@ liveCase(
     expect((await s.client().trash()).filter((one) => paths.includes(one.path))).toHaveLength(2)
     await a.trash()
     a.run(
-      `const client=svc.runtimes.get(${JSON.stringify(id)}).historyClient;window.__abeleRestoreRelease=(${holdRestore.toString()})(client);const box=inWindows('.abele-deleted-files');const row=path=>[...box.querySelectorAll('.abele-card')].find(one=>textOf(one.querySelector('.abele-card__name'))===path);await press(()=>row(${JSON.stringify(paths[0])}),'Restore');await press(()=>row(${JSON.stringify(paths[1])}),'Restore');return true`
+      `const client=svc.runtimes.get(${JSON.stringify(id)}).historyClient;window.__abeleRestoreRelease=(${holdRestore.toString()})(client);const box=inWindows('.abele-deleted-files');const glyph=path=>[...box.querySelectorAll('.abele-deleted-files__row')].find(one=>one.dataset.path===path)?.querySelector('button.clickable-icon');const restore=async path=>{await poll(()=>glyph(path)&&!glyph(path).disabled,20000,'enabled restore of '+path);glyph(path).click();await sleep(100)};await restore(${JSON.stringify(paths[0])});await restore(${JSON.stringify(paths[1])});return true`
     )
     try {
       expect(
         a.run(
-          `const row=[...document.querySelectorAll('.abele-deleted-files .abele-card')].find(one=>textOf(one.querySelector('.abele-card__name'))===${JSON.stringify(paths[1])});return textOf(row.querySelector('button'))`
+          `const row=[...document.querySelectorAll('.abele-deleted-files .abele-deleted-files__row')].find(one=>one.dataset.path===${JSON.stringify(paths[1])});return row.querySelector('button.clickable-icon').getAttribute('aria-label')`
         )
-      ).toBe('Queued')
+      ).toBe('Restored as soon as the one before it is done')
     } finally {
       a.run(`window.__abeleRestoreRelease();delete window.__abeleRestoreRelease;return true`)
     }

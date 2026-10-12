@@ -16,8 +16,6 @@ import { mount, flushPromises } from '@vue/test-utils'
 import { Notice } from 'obsidian'
 import type { CommitOpResult, VersionInfo } from '@abele/sync-protocol'
 import VersionHistoryModal from '@/components/sync/VersionHistoryModal.vue'
-import Card from '@/components/obsidian/Card.vue'
-import Badge from '@/components/obsidian/Badge.vue'
 import Button from '@/components/obsidian/Button.vue'
 import EmptyState from '@/components/obsidian/EmptyState.vue'
 import ConfirmModal from '@/components/obsidian/ConfirmModal.vue'
@@ -111,14 +109,29 @@ const open = (path = PATH) =>
   mount(VersionHistoryModal, { props: { path }, global: { stubs: STUBS } })
 type Screen = ReturnType<typeof open>
 
+const rows = (screen: Screen) => screen.findAll('.abele-version-history__row')
+
 const titles = (screen: Screen): string[] =>
-  screen.findAllComponents(Card).map((card) => card.props('title') as string)
+  rows(screen).map((row) => `#${row.attributes('data-version')}`)
 
 const cardFor = (screen: Screen, no: number) =>
-  screen.findAllComponents(Card).find((card) => card.props('title') === `#${no}`)
+  rows(screen).find((row) => row.attributes('data-version') === String(no))
 
-/** The Restore button of one version's card. */
-const restoreFor = (screen: Screen, no: number) => cardFor(screen, no)?.findComponent(Button)
+const metaOf = (screen: Screen, no: number): string[] =>
+  cardFor(screen, no)
+    ?.findAll('.abele-entry-row__meta > span')
+    .map((fact) => fact.text()) ?? []
+
+/** Opens one version's row, where its single Restore is, and gives that button. */
+const restoreFor = async (screen: Screen, no: number) => {
+  if (!cardFor(screen, no)?.classes('is-active')) {
+    await cardFor(screen, no)?.trigger('click')
+    await flushPromises()
+  }
+  return cardFor(screen, no)
+    ?.findAllComponents(Button)
+    .find((button) => button.props('text') === 'Restore')
+}
 
 const diffLines = (screen: Screen): string[] =>
   screen.findAll('.abele-version-history__diff-line').map((line) => line.text())
@@ -132,7 +145,7 @@ const bytesOf = (text: string): Uint8Array => new TextEncoder().encode(text)
 
 /** Presses Restore on one version and answers the question it asks. */
 const confirmRestore = async (screen: Screen, no: number): Promise<void> => {
-  await restoreFor(screen, no)?.trigger('click')
+  await (await restoreFor(screen, no))?.trigger('click')
   screen.findComponent(ConfirmModal).vm.$emit('confirm')
   await flushPromises()
 }
@@ -161,7 +174,7 @@ describe('what has happened to a file', () => {
 
     expect(service.entryFor).toHaveBeenCalledWith(PATH)
     expect(client.versions).toHaveBeenCalledWith('file-1', { limit: 50 })
-    expect(screen.findAllComponents(Card)).toHaveLength(4)
+    expect(rows(screen)).toHaveLength(4)
   })
 
   it('pages beyond fifty versions and can preview and restore an older version', async () => {
@@ -196,14 +209,20 @@ describe('what has happened to a file', () => {
     const screen = open()
     await flushPromises()
 
-    expect(screen.findAllComponents(Badge).map((b) => b.props('text'))).toEqual([
+    expect(rows(screen).map((row) => row.find('.abele-entry-row__title').text())).toEqual([
       'Edited',
       'Deleted',
       'Restored',
       'Created',
     ])
-    expect(cardFor(screen, 4)?.props('meta')).toEqual(['Laptop', '5 minutes ago', '1.0 KB'])
-    expect(cardFor(screen, 2)?.props('meta')).toContain('2.0 KB')
+    // The day is the heading over the rows; the row says the time in it.
+    expect(metaOf(screen, 4)).toEqual([
+      expect.stringMatching(/^\d\d:\d\d$/),
+      'Laptop',
+      '1.0 KB',
+      '#4',
+    ])
+    expect(metaOf(screen, 2)).toContain('2.0 KB')
   })
 
   /**
@@ -236,7 +255,8 @@ describe('what has happened to a file', () => {
       client.versions.mockResolvedValue(history(top))
       const screen = open()
       await flushPromises()
-      return cardFor(screen, 3)?.props('subtitle')
+      const line = cardFor(screen, 3)?.find('.abele-version-history__merge')
+      return line?.exists() ? line.text() : undefined
     }
 
     it('names the device whose version was kept, not the one that wrote the row', async () => {
@@ -256,13 +276,13 @@ describe('what has happened to a file', () => {
       client.versions.mockResolvedValue([top])
       const screen = open()
       await flushPromises()
-      expect(cardFor(screen, 3)?.props('subtitle')).toBeUndefined()
+      expect(cardFor(screen, 3)?.find('.abele-version-history__merge').exists()).toBe(false)
     })
 
     it('gives an ordinary version no such line', async () => {
       const screen = open()
       await flushPromises()
-      expect(cardFor(screen, 4)?.props('subtitle')).toBeUndefined()
+      expect(cardFor(screen, 4)?.find('.abele-version-history__merge').exists()).toBe(false)
     })
   })
 
@@ -366,12 +386,14 @@ describe('the preview', () => {
       const screen = open(path)
       await flushPromises()
 
-      expect(screen.findAllComponents(Card)[0].props('clickable')).toBe(false)
-      await screen.findAllComponents(Card)[0].trigger('click')
+      await rows(screen)[1].trigger('click')
       await flushPromises()
 
       expect(client.versionBytes).not.toHaveBeenCalled()
       expect(diffLines(screen)).toEqual([])
+      // It opens on its Restore alone.
+      expect(await restoreFor(screen, 3)).toBeUndefined()
+      expect(await restoreFor(screen, 2)).toBeDefined()
     }
   )
 
@@ -379,8 +401,7 @@ describe('the preview', () => {
     const screen = open('my.notes/a.md')
     await flushPromises()
 
-    expect(screen.findAllComponents(Card)[0].props('clickable')).toBe(true)
-    await screen.findAllComponents(Card)[0].trigger('click')
+    await rows(screen)[0].trigger('click')
     await flushPromises()
 
     expect(client.versionBytes).toHaveBeenCalled()
@@ -404,24 +425,24 @@ describe('what cannot be restored', () => {
     const screen = open()
     await flushPromises()
 
-    expect(restoreFor(screen, 4)?.props('disabled')).toBe(true)
-    expect(restoreFor(screen, 4)?.props('tooltip')).toContain('already the current version')
+    expect(await restoreFor(screen, 4)).toBeUndefined()
+    expect(cardFor(screen, 4)?.text()).toContain('already the current version')
   })
 
   it('offers no restore for a version that deleted the file', async () => {
     const screen = open()
     await flushPromises()
 
-    expect(restoreFor(screen, 3)?.props('disabled')).toBe(true)
-    expect(restoreFor(screen, 3)?.props('tooltip')).toContain('no content to put back')
+    expect(await restoreFor(screen, 3)).toBeUndefined()
+    expect(cardFor(screen, 3)?.text()).toContain('no content to put back')
   })
 
   it('offers a restore for every version that has content behind it', async () => {
     const screen = open()
     await flushPromises()
 
-    expect(restoreFor(screen, 2)?.props('disabled')).toBe(false)
-    expect(restoreFor(screen, 1)?.props('disabled')).toBe(false)
+    expect((await restoreFor(screen, 2))?.props('disabled')).toBe(false)
+    expect((await restoreFor(screen, 1))?.props('disabled')).toBe(false)
   })
 })
 
@@ -430,7 +451,7 @@ describe('putting an old version back', () => {
     const screen = open()
     await flushPromises()
 
-    await restoreFor(screen, 2)?.trigger('click')
+    await (await restoreFor(screen, 2))?.trigger('click')
 
     expect(client.restore).not.toHaveBeenCalled()
     expect(screen.findComponent(ConfirmModal).props('message')).toContain('#2')
@@ -531,7 +552,7 @@ describe('putting an old version back', () => {
     const screen = open()
     await flushPromises()
 
-    await restoreFor(screen, 2)?.trigger('click')
+    await (await restoreFor(screen, 2))?.trigger('click')
 
     const message = screen.findComponent(ConfirmModal).props('message') as string
     expect(message).toContain('Notes/old-name.md')

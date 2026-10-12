@@ -17,22 +17,46 @@
       <div class="abele-deleted-files__list">
         <EmptyState v-if="notice !== null" :text="notice" />
 
-        <CardGrid v-else stack>
-          <Card v-for="item in items" :key="item.file_id" :title="item.path" :meta="metaOf(item)">
-            <template #badges>
-              <Badge :text="KIND_LABEL[item.kind]" />
+        <!--
+          A deleted file as a row, the way the file list shows one: its kind as a glyph, its name,
+          and where it was, when and by whom as quiet facts. Bringing it back is a glyph at the
+          row's end, with the whole sentence in its tooltip.
+        -->
+        <div v-else role="list">
+          <EntryRow
+            v-for="item in items"
+            :key="item.file_id"
+            role="listitem"
+            class="abele-deleted-files__row"
+            :data-path="item.path"
+          >
+            <template #leading>
+              <Icon
+                :icon="KIND_ICON[item.kind]"
+                :interactive="false"
+                :tooltip="KIND_LABEL[item.kind]"
+              />
             </template>
-
+            {{ nameOf(item.path) }}
+            <template #meta>
+              <span v-for="(fact, i) in metaOf(item)" :key="i">{{ fact }}</span>
+            </template>
             <template #actions>
-              <Button
-                :text="buttonText(item)"
-                :disabled="waiting.has(item.file_id)"
+              <Icon
+                :icon="
+                  busy === item.file_id
+                    ? 'loader'
+                    : waiting.has(item.file_id)
+                      ? 'clock'
+                      : 'rotate-ccw'
+                "
                 :tooltip="buttonTooltip(item)"
+                :disabled="waiting.has(item.file_id)"
                 @click="restore(item)"
               />
             </template>
-          </Card>
-        </CardGrid>
+          </EntryRow>
+        </div>
       </div>
     </div>
   </ObsidianModal>
@@ -60,10 +84,8 @@ import { Notice } from 'obsidian'
 import type { V2EngineClient } from '@abele/sync-core'
 import type { FileKind, TrashItem } from '@abele/sync-protocol'
 import ObsidianModal from '../obsidian/Modal.vue'
-import Card from '../obsidian/Card.vue'
-import CardGrid from '../obsidian/CardGrid.vue'
-import Badge from '../obsidian/Badge.vue'
-import Button from '../obsidian/Button.vue'
+import EntryRow from '../obsidian/EntryRow.vue'
+import Icon from '../obsidian/Icon.vue'
 import EmptyState from '../obsidian/EmptyState.vue'
 import RestoreSince from './RestoreSince.vue'
 import { tokenHistory } from '@/sync/tokenHistory'
@@ -80,6 +102,18 @@ const KIND_LABEL: Record<FileKind, string> = {
   script: 'Script',
   settings: 'Obsidian settings',
 }
+
+/** The kind of a file as the glyph Obsidian draws it with. */
+const KIND_ICON: Record<FileKind, string> = {
+  note: 'file-text',
+  canvas: 'layout-dashboard',
+  attachment: 'file-image',
+  script: 'file-code',
+  settings: 'settings',
+}
+
+/** A path's last part; the folder goes to the quiet line. */
+const nameOf = (path: string) => path.split('/').pop() ?? path
 
 /** What the screen says when there is nothing in the trash, which is the usual case. */
 const EMPTY = 'Nothing has been deleted, or everything deleted has already been swept.'
@@ -103,10 +137,15 @@ const root = useTemplateRef<HTMLElement>('root')
 let client: V2EngineClient | null = null
 
 /** When it went, and how much comes back with it. */
-const metaOf = (item: TrashItem): string[] => [
-  `Deleted ${formatWhen(item.deleted_at)}`,
-  formatBytes(item.size),
-]
+const metaOf = (item: TrashItem): string[] => {
+  const folder = item.path.includes('/') ? item.path.slice(0, item.path.lastIndexOf('/')) : ''
+  return [
+    ...(folder ? [folder] : []),
+    `Deleted ${formatWhen(item.deleted_at)}`,
+    ...(item.deleted_by ? [`by ${item.deleted_by.name}`] : []),
+    formatBytes(item.size),
+  ]
+}
 
 /**
  * A key for one restore.
@@ -116,11 +155,6 @@ const metaOf = (item: TrashItem): string[] => [
  * first sent with is the first answer again rather than a second copy of the file.
  */
 const idempotencyKey = (): string => (root.value?.win ?? window).crypto.randomUUID()
-
-const buttonText = (item: TrashItem): string => {
-  if (busy.value === item.file_id) return 'Restoring…'
-  return waiting.value.has(item.file_id) ? 'Queued' : 'Restore'
-}
 
 const buttonTooltip = (item: TrashItem): string => {
   if (busy.value === item.file_id) return 'Bringing this file back'
@@ -220,13 +254,16 @@ onMounted(async () => {
 }
 
 /**
- * The list is the one scroller here, and it scrolls one way only: a card wraps, so there is
+ * The list is the one scroller here, and it scrolls one way only: a row wraps, so there is
  * never anything to reach sideways for.
  */
 .abele-deleted-files__list {
   flex: 1 1 auto;
   min-height: 0;
   overflow-y: auto;
+  // Room inside the scroller for a row's light, which hangs past the text edge.
+  padding-inline: var(--size-2-3);
+  margin-inline: calc(-1 * var(--size-2-3));
 }
 
 .abele-deleted-files__desc {
@@ -242,8 +279,9 @@ onMounted(async () => {
   overflow-wrap: anywhere;
 }
 
-/** A path is the title here, and a path has no space to break at. */
-.abele-deleted-files .abele-card__name {
+/** A name has no space to break at, often, and a folder never has. */
+.abele-deleted-files__row .abele-entry-row__title,
+.abele-deleted-files__row .abele-entry-row__meta {
   overflow-wrap: anywhere;
 }
 </style>
