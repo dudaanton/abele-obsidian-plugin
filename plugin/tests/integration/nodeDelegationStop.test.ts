@@ -20,7 +20,7 @@ let store: NodeClientStore
 let factory: IDBFactory
 let parent: string
 let status: DelegationStatus
-let client: { connected: boolean; delegationStatus: ReturnType<typeof vi.fn>; subscribeDelegation: ReturnType<typeof vi.fn>; disconnect: ReturnType<typeof vi.fn> }
+let client: { connected: boolean; describe: ReturnType<typeof vi.fn>; delegationStatus: ReturnType<typeof vi.fn>; subscribeDelegation: ReturnType<typeof vi.fn>; disconnect: ReturnType<typeof vi.fn> }
 
 beforeEach(async () => {
   factory = new IDBFactory()
@@ -54,7 +54,7 @@ beforeEach(async () => {
       child, status,
     } } }
   })
-  client = { connected: true, delegationStatus: vi.fn(async () => status), subscribeDelegation: vi.fn(async () => {}), disconnect: vi.fn(async () => {}) }
+  client = { connected: true, describe: vi.fn(async () => ({})), delegationStatus: vi.fn(async () => status), subscribeDelegation: vi.fn(async () => {}), disconnect: vi.fn(async () => {}) }
   connection = new NodeConnection(client as unknown as NodeClient, store)
   // Test-owned connection, deliberately not started: no timers or shared Obsidian resources.
   const service = NodeService.getInstance()
