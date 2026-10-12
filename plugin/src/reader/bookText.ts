@@ -108,9 +108,14 @@ export function loadBookText(app: App, file: TFile): Promise<LoadedBook> {
     hit.at = now
     return hit.loaded
   }
+  // Replacing a changed file must release the old resource owner, even if still opening.
+  if (hit) void hit.loaded.then((b) => b.destroy()).catch(() => {})
   const loaded = load(app, file)
   cache.set(file.path, { at: now, mtime: file.stat.mtime, loaded })
-  loaded.catch(() => cache.delete(file.path))
+  loaded.catch(() => {
+    // An older opening may fail after replacement or unload; it no longer owns this slot.
+    if (cache.get(file.path)?.loaded === loaded) cache.delete(file.path)
+  })
   while (cache.size > KEEP_BOOKS) {
     const oldest = [...cache.entries()].sort((a, b) => a[1].at - b[1].at)[0]
     cache.delete(oldest[0])
