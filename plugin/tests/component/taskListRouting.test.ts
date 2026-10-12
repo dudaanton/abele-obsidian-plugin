@@ -166,13 +166,26 @@ describe('routing tasks to sidebars and lists', () => {
   })
 
   it('Todo hides completed by default and updates its empty message after filtering them', async () => {
-    view = mount(TodoList, { props: { tasks: [task('Done', undefined, true)] }, shallow: true })
+    view = mount(TodoList, {
+      props: { tasks: [task('Done', undefined, true)], showAddButton: true },
+      shallow: true,
+    })
     expect(rendered()).toEqual([])
     expect(view.text()).toContain('No tasks to show.')
-    await view
+    const toggle = view
       .findAllComponents(Icon)
-      .find((icon) => icon.props('textRight') === 'Show completed')!
-      .trigger('click')
+      .find((icon) => icon.classes().includes('abele-todo-list__completed-toggle'))!
+    expect(toggle.props()).toMatchObject({ icon: 'list-checks', label: 'Show completed tasks' })
+    expect(toggle.props('textRight')).toBeUndefined()
+    expect(toggle.attributes('role')).toBe('switch')
+    expect(toggle.attributes('aria-checked')).toBe('false')
+    const actions = view.findAllComponents(Icon)
+    const add = actions.find((icon) => icon.props('label') === 'New task')!
+    expect(add.props('icon')).toBe('square-plus')
+    expect(actions.indexOf(add)).toBeGreaterThan(actions.indexOf(toggle))
+    await toggle.trigger('click')
+    expect(toggle.props()).toMatchObject({ icon: 'list-todo', label: 'Hide completed tasks' })
+    expect(toggle.attributes('aria-checked')).toBe('true')
     expect(rendered()).toEqual(['Done'])
     expect(view.text()).not.toContain('No tasks to show.')
   })

@@ -21,7 +21,10 @@
         />
         <ObsidianIcon
           class="abele-todo-list__completed-toggle"
-          :text-right="hideCompleted ? 'Show completed' : 'Hide completed'"
+          :icon="hideCompleted ? 'list-checks' : 'list-todo'"
+          role="switch"
+          :aria-checked="!hideCompleted"
+          :label="hideCompleted ? 'Show completed tasks' : 'Hide completed tasks'"
           @click="hideCompleted = !hideCompleted"
         />
         <ObsidianIcon

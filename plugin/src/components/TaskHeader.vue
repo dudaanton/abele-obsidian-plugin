@@ -2,7 +2,7 @@
   <div v-if="task.taskNotFound" class="abele-task-header-view">
     <em class="abele-task-header-view__content">Task not found</em>
   </div>
-  <div v-else-if="task.loaded" class="abele-task-header-view">
+  <div v-else-if="task.loaded" class="abele-task-header-view abele-glyph-row">
     <!-- One row of glyphs, as Obsidian's own navigation: a set value is a code beside its glyph,
          the words are in the tooltips. -->
     <Icon
@@ -222,12 +222,6 @@ onMounted(() => {
 
   p {
     margin: 0;
-  }
-
-  // The first glyph's ink, not its button's box, starts where the title above starts: less the
-  // button's own padding and the margin a glyph is drawn inside its box with.
-  > .clickable-icon:first-child {
-    margin-inline-start: calc(-1 * var(--size-2-3) - var(--icon-size) * 2 / 24);
   }
 }
 

@@ -59,6 +59,7 @@ describe('task header controls', () => {
     const load = vi.spyOn(task, 'load')
     await render()
     expect(load).toHaveBeenCalledOnce()
+    expect(view.classes()).toContain('abele-glyph-row')
     expect(button('toggle').props()).toMatchObject({ icon: 'square', label: 'Mark done' })
     expect(button('toggle').attributes('aria-checked')).toBe('false')
     await button('toggle').trigger('click')
