@@ -139,7 +139,7 @@ import ObsidianIcon from './obsidian/Icon.vue'
 import ObsidianMarkdown from './obsidian/Markdown.vue'
 import ListSectionHeader from './obsidian/ListSectionHeader.vue'
 import dayjs from 'dayjs'
-import { DATE_FORMAT, DISPLAY_DATE_FORMAT } from '@/constants/dates'
+import { DATE_FORMAT } from '@/constants/dates'
 import { useOwnerVisibility } from '@/composables/useOwnerVisibility'
 import { useDate } from '@/composables/useDate'
 import { useTimelineDays } from '@/composables/useTimelineDays'
@@ -187,13 +187,8 @@ const shownTasks = computed(() =>
   props.tasks.filter((task) => {
     if (task.taskNotFound) return false
     if (!hideCompleted.value || !task.completedAt) return true
-    const range = drag.range.value
-    return (
-      !!range &&
-      task.dates.some(
-        (day) => day >= range.first && day <= range.last && day < now.value.format(DATE_FORMAT)
-      )
-    )
+    // Completed tasks remain in their past days, including while history is folded.
+    return task.dates.some((day) => day < now.value.format(DATE_FORMAT))
   })
 )
 
@@ -228,13 +223,8 @@ const dates = computed(() => {
 
   for (const task of search.results.value) {
     for (const date of task.dates) {
-      const range = drag.range.value
-      if (
-        task.completedAt &&
-        hideCompleted.value &&
-        (!range || date < range.first || date > range.last || date >= now.value.format(DATE_FORMAT))
-      )
-        continue
+      // The completed switch applies from today onward; history keeps the whole day.
+      if (task.completedAt && hideCompleted.value && date >= now.value.format(DATE_FORMAT)) continue
       // A task with no time sorts to the end of its day, as it always has.
       itemsOf(date).push({ key: `task:${task.id}`, at: task.getSortTimestamp() * 1000, task })
     }
@@ -337,17 +327,10 @@ const getDateWikilink = (dateStr: string) => {
   const date = dayjs(dateStr, DATE_FORMAT)
   const diff = date.startOf('day').diff(now.value.startOf('day'), 'day')
 
-  let suffix = ''
-  if (diff === 0) suffix = '(Today)'
-  if (diff === 1) suffix = '(Tomorrow)'
-  if (diff === -1) suffix = '(Yesterday)'
-  if (diff > 1) suffix = `(${diff} days left)`
-  if (diff < -1) suffix = `(${Math.abs(diff)} days ago)`
-
-  const dateToShow = date.format(DISPLAY_DATE_FORMAT)
-  const weekday = ` · ${date.format('dd')}`
+  const near = diff === 0 ? 'Today' : diff === 1 ? 'Tomorrow' : diff === -1 ? 'Yesterday' : ''
+  const short = date.format(date.isSame(now.value, 'year') ? 'ddd DD.MM' : 'ddd DD.MM.YYYY')
   // TODO: handle user defined daily note format and location
-  return `[[${dateStr}|${dateToShow}${weekday} ${suffix}]]`
+  return `[[${dateStr}|${near ? `${near} · ${short}` : short}]]`
 }
 </script>
 

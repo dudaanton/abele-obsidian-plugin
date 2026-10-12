@@ -5,6 +5,8 @@ import dayjs from 'dayjs'
 import { useFakeClock } from '../helpers/fakeClock'
 import { Menu, type MenuItem } from 'obsidian'
 import Timeline from '@/components/Timeline.vue'
+import TaskView from '@/components/Task.vue'
+import Markdown from '@/components/obsidian/Markdown.vue'
 import Search from '@/components/obsidian/Search.vue'
 import { Task } from '@/entities/Task'
 import { configureAbele, useVault } from '../helpers/testEnv'
@@ -48,6 +50,34 @@ afterEach(() => {
 })
 
 describe('folded timeline history', () => {
+  it('keeps completed past days while hiding completed dates from today onward', async () => {
+    render([
+      task('sample-completed-span', '2030-06-14', true, '2030-06-16'),
+      task('sample-completed-today', '2030-06-15', true),
+      task('sample-completed-future', '2030-06-16', true),
+      task('sample-open-today', '2030-06-15'),
+    ])
+    await view.find('.abele-timeline__history').trigger('click')
+    expect(days()).toEqual(['date:2030-06-14', 'date:2030-06-15'])
+    expect(view.findAllComponents(TaskView).map((row) => row.props('task').title)).toEqual([
+      'sample-completed-span',
+      'sample-open-today',
+    ])
+    await view.find('.abele-timeline__completed-toggle').trigger('click')
+    await flushPromises()
+    // The switch preserves the date boundary already read; page forward to the new future day.
+    expect(scrollIntoView(view.find('.abele-timeline__sentinel').element)).toBe(1)
+    await flushPromises()
+    expect(days()).toEqual(['date:2030-06-14', 'date:2030-06-15', 'date:2030-06-16'])
+  })
+
+  it('names near days first and includes the year only outside the current year', () => {
+    render([task('sample-tomorrow', '2030-06-16'), task('sample-next-year', '2031-06-16')])
+    const labels = view.findAllComponents(Markdown).map((row) => row.props('text'))
+    expect(labels).toContain('[[2030-06-16|Tomorrow · Sun 16.06]]')
+    expect(labels).toContain('[[2031-06-16|Mon 16.06.2031]]')
+  })
+
   it('restores the same future page without rounding revealed history into extra future pages', async () => {
     useVault([])
     const config = configureAbele()

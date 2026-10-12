@@ -5,7 +5,7 @@
       <span class="abele-header-view__currency">{{ b.currency }}</span>
     </div>
   </div>
-  <div v-else-if="header.type === 'transaction'" class="abele-header-view">
+  <div v-else-if="header.type === 'transaction'" class="abele-header-view abele-glyph-row">
     <Icon icon="copy-plus" text-right="Add next" @click="addNextTransaction" />
   </div>
   <div v-else-if="header.journal" class="abele-header-view abele-header-view--spread">
@@ -43,7 +43,7 @@
     </div>
   </div>
   <!-- The note's own buttons and its timer are one row of actions, not a row each. -->
-  <div v-if="scriptButtons.length || showTimerButton" class="abele-header-view">
+  <div v-if="scriptButtons.length || showTimerButton" class="abele-header-view abele-glyph-row">
     <Icon
       v-for="button in scriptButtons"
       :key="button.id"
@@ -329,12 +329,6 @@ onMounted(() => {
 
   p {
     margin: 0;
-  }
-
-  // The first glyph's ink, not its button's box, starts where the title above starts: less the
-  // button's own padding and the margin a glyph is drawn inside its box with.
-  > .clickable-icon:first-child {
-    margin-inline-start: calc(-1 * var(--size-2-3) - var(--icon-size) * 2 / 24);
   }
 }
 
