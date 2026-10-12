@@ -7,6 +7,7 @@ export function projectInterruptedTools(
   messages: Message[],
   stopped: ReadonlyMap<string, ToolInterruption>
 ): Message[] {
+  if (!stopped.size) return messages
   const output: Message[] = []
   const pending = new Map<string, { call: ToolCallContent; timestamp: number }>()
   const finish = () => {

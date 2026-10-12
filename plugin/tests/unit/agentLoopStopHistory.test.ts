@@ -35,6 +35,25 @@ it('does not send a request stopped during the iteration hook', async () => {
   expect(fetch).not.toHaveBeenCalled()
 })
 
+it('retains history and releases the loop when a checkpoint consumer throws', async () => {
+  const loop = new AgentLoop()
+  vi.spyOn(window, 'fetch').mockResolvedValue(response({ content: 'Saved sample answer.' }))
+  vi.spyOn(console, 'error').mockImplementation(() => {})
+  const result = await loop.run({
+    model,
+    systemPrompt: '',
+    messages: [user],
+    tools: [],
+    onHistory: () => {
+      throw Error('Sample checkpoint consumer failed')
+    },
+  })
+  expect(result.messages.at(-1)).toMatchObject({
+    content: [{ type: 'text', text: 'Saved sample answer.' }],
+  })
+  expect(loop.isRunning).toBe(false)
+})
+
 it('retains an answer with an unfamiliar provider completion reason', async () => {
   const loop = new AgentLoop()
   vi.spyOn(window, 'fetch').mockResolvedValue(

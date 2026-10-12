@@ -127,7 +127,6 @@ function probe(mode: string) {
         session.cancelAutoRetry()
         await session.retryRequest()
       }
-
     } catch (e) { report.error = String(e && e.stack || e) }
     finally {
       try {

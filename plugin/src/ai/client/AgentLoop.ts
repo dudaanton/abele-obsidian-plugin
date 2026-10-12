@@ -96,6 +96,15 @@ export class AgentLoop {
     this.abortController?.abort()
   }
 
+  private publishHistory(opts: AgentLoopOptions, messages: Message[]): void {
+    try {
+      opts.onHistory?.(messages)
+    } catch (error) {
+      // A consumer failure cannot discard completed work or prevent runtime cleanup.
+      console.error('AgentLoop history checkpoint error:', error)
+    }
+  }
+
   /**
    * Run the agent loop: send user message, stream response, execute tools, repeat.
    * Returns the final list of messages. If the loop paused for approval, `pausedAt` contains remaining tool calls.
@@ -160,7 +169,7 @@ export class AgentLoop {
          */
         if (assistantMsg.stopReason !== 'error') messages.push(assistantMsg)
         this.emit({ type: 'message_end', message: assistantMsg })
-        opts.onHistory?.(messages)
+        this.publishHistory(opts, messages)
 
         // Stop conditions
         if (assistantMsg.stopReason === 'error' || assistantMsg.stopReason === 'aborted') break
@@ -201,7 +210,7 @@ export class AgentLoop {
 
           messages.push(resultMsg)
           this.emit({ type: 'message_end', message: resultMsg })
-          opts.onHistory?.(messages)
+          this.publishHistory(opts, messages)
 
           // Inject extra messages (e.g. image content from read_image tool)
           if (resultMsg.injectMessages?.length) {
@@ -252,7 +261,7 @@ export class AgentLoop {
         this._pausedToolCalls = null
       }
       messages.push(...injected)
-      opts.onHistory?.(messages)
+      this.publishHistory(opts, messages)
       externalSignal?.removeEventListener('abort', onExternalAbort)
       this._isRunning = false
       this.abortController = null
