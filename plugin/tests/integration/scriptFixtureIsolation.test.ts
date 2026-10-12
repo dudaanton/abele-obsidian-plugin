@@ -9,6 +9,7 @@ import { activateScriptProvenance } from '@/scripting/trust/scriptTrustStorage'
 import { scriptForExecution } from '@/scripting/trust/scriptExecutionGate'
 import { SCRIPT_FIXTURE } from '../e2e/helpers/scriptFixture'
 import { useVault } from '../helpers/testEnv'
+import { TokenConnectionRegistry } from '@/sync/tokenConnectionRegistry'
 
 const PATH = 'Sample scripts/fixture.js'
 const SOURCE = '// @name Sample fixture\nreturn "approved fixture"'
@@ -71,6 +72,39 @@ afterEach(() => {
 })
 
 describe('script fixture prerequisites and ownership', () => {
+  it('uses the empty token registry instead of a leftover retired connection slot', async () => {
+    TokenConnectionRegistry.open(app)
+    app.saveLocalStorage('abele-sync-connection', { vaultId: 'sample-retired-vault' })
+    await expect(run('return await saveScriptFixture()')).resolves.toHaveProperty('local')
+  })
+
+  it('refuses an active token connection even when the retired connection slot is absent', async () => {
+    const registry = TokenConnectionRegistry.open(app),
+      id = registry.add()
+    const scope = { kind: 'folder' as const, id: 'sample-folder', path: 'Sample notes' }
+    const values = new Map<string, string>()
+    registry.attach(
+      id,
+      { v: 1, address: 'https://sync.example', key: 'a'.repeat(43), scope },
+      {
+        protocol: 2,
+        token_id: 'sample-token',
+        space_id: 'sample-space',
+        scope,
+        status: 'active',
+      },
+      {
+        get: (reference) => values.get(reference) ?? null,
+        set: (reference, key) => {
+          values.set(reference, key)
+        },
+      }
+    )
+    await expect(run('return await saveScriptFixture()')).rejects.toThrow(
+      'disconnected, exclusively held vault'
+    )
+  })
+
   it('approves only exact fixture bytes through the execution gate and restores durable state', async () => {
     await expect(scriptForExecution(app as unknown as App, PATH)).rejects.toThrow(/provenance/)
     const before = await run('return await saveScriptFixture()')

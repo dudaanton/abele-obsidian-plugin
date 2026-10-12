@@ -76,19 +76,23 @@ describe('script approval with existing dialog geometry checks', () => {
       const key = 'abele-script-provenance', marker = '.abele-script-managed'
       const saved = app.loadLocalStorage(key)
       const savedConnection = app.loadLocalStorage('abele-sync-connection')
+      const registryKey = 'abele-sync-connections-v2', savedRegistry = app.loadLocalStorage(registryKey)
       const hadMarker = await app.vault.adapter.exists(marker)
       const markerBytes = hadMarker ? await app.vault.adapter.readBinary(marker) : null
       const folder = 'ScriptApprovalProbe', path = folder + '/sample.js'
-      let context = null, identity = null, sha = null
+      let context = null
       if (app.vault.getAbstractFileByPath(folder)) throw new Error('Probe folder already exists')
       await app.vault.createFolder(folder)
       try {
         await app.vault.create(path, '// @name Native sample\\nreturn "native-approved"')
-        app.saveLocalStorage('abele-sync-connection', { serverUrl: 'https://sync.example', enrolledUrl: 'https://sync.example', vaultId: 'sample-vault', deviceId: 'sample-native-device', facet: 'personal', grantId: null })
-        context = await api.activate(app, { endpoint: 'https://sync.example', vaultId: 'sample-vault', principal: 'sample-native-device', facet: 'personal', grantId: null }, window.indexedDB)
+        // Own a disconnected token context and a fresh local trust database, independent of pool history.
+        app.saveLocalStorage(registryKey, { version: 2, selectedId: '', records: [] })
+        app.saveLocalStorage('abele-sync-connection', null)
+        app.saveLocalStorage(key, null)
+        if (hadMarker) await app.vault.adapter.remove(marker)
+        context = await api.activate(app, { endpoint: 'local:', vaultId: 'local', principal: 'local', facet: 'personal', grantId: null }, window.indexedDB)
         await context.provenance.record(path, 'sample-native-file')
-        identity = await context.provenance.lookup(path)
-        const loaded = api.load(app, path, request => { sha = request.sha; return api.confirm(request) })
+        const loaded = api.load(app, path, request => api.confirm(request))
         if (!(await until(() => document.querySelector('.abele-script-approval'), 5000))) throw new Error('Native approval did not open')
         const approve = [...document.querySelectorAll('.abele-script-approval button')].find(b => b.textContent.trim() === 'Approve and run')
         approve.click()
@@ -97,23 +101,26 @@ describe('script approval with existing dialog geometry checks', () => {
         return { matches: parsed.code === second.code, code: parsed.code, dialogClosed: !api.dialog.value }
       } finally {
         api.dialog.value?.answer(false)
-        if (context) {
-          await context.store.setMeta('script-source:' + path.toLowerCase(), null)
-          if (identity && sha) await context.store.setMeta('script-approval:' + JSON.stringify([identity.binding, identity.fileId, sha]), null)
-          context.store.close()
-        }
         const created = app.loadLocalStorage(key)
-        app.saveLocalStorage(key, saved)
-        app.saveLocalStorage('abele-sync-connection', savedConnection)
-        if (markerBytes) await app.vault.adapter.writeBinary(marker, markerBytes)
-        else if (await app.vault.adapter.exists(marker)) await app.vault.adapter.remove(marker)
-        if (!saved && created?.id) await new Promise((resolve, reject) => {
-          const request = indexedDB.deleteDatabase('abele-script-provenance-' + created.id)
-          request.onsuccess = resolve; request.onerror = () => reject(request.error)
-          request.onblocked = () => reject(new Error('Probe database remained open'))
-        })
-        const file = app.vault.getAbstractFileByPath(folder)
-        if (file) await app.vault.delete(file, true)
+        try {
+          context?.store.close()
+          if (created?.id && created.id !== saved?.id) await new Promise((resolve, reject) => {
+            const request = indexedDB.deleteDatabase('abele-script-provenance-' + created.id)
+            request.onsuccess = resolve; request.onerror = () => reject(request.error)
+            request.onblocked = () => reject(new Error('Probe database remained open'))
+          })
+        } finally {
+          app.saveLocalStorage(key, saved)
+          app.saveLocalStorage('abele-sync-connection', savedConnection)
+          app.saveLocalStorage(registryKey, savedRegistry)
+          try {
+            if (markerBytes) await app.vault.adapter.writeBinary(marker, markerBytes)
+            else if (await app.vault.adapter.exists(marker)) await app.vault.adapter.remove(marker)
+          } finally {
+            const file = app.vault.getAbstractFileByPath(folder)
+            if (file) await app.vault.delete(file, true)
+          }
+        }
       }
     })()`)
     expect(result.matches).toBe(true)

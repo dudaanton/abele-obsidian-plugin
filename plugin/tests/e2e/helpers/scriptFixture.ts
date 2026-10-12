@@ -32,8 +32,13 @@ export const SCRIPT_FIXTURE = String.raw`
     tx.onerror = tx.onabort = () => reject(tx.error ?? new Error('Fixture provenance transaction failed'))
   })
   async function saveScriptFixture() {
+    const registry = app.loadLocalStorage('abele-sync-connections-v2')
     const connection = app.loadLocalStorage('abele-sync-connection')
-    if (connection && (connection.serverUrl || connection.enrolledUrl || connection.vaultId || connection.deviceId))
+    const connected = registry != null
+      ? registry.version !== 2 || !Array.isArray(registry.records) || registry.records.some(record =>
+          record.secretReference || record.pending || record.address || record.spaceId || record.tokenId || record.scope)
+      : connection && (connection.serverUrl || connection.enrolledUrl || connection.vaultId || connection.deviceId)
+    if (connected)
       throw new Error('Script fixture needs a disconnected, exclusively held vault')
     const local = Object.fromEntries(fixtureKeys.map(key => [key, fixtureClone(app.loadLocalStorage(key))]))
     const id = local['abele-script-provenance']?.id
