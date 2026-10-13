@@ -105,6 +105,9 @@ export async function reloadAs(vault: VaultCli, mobile: boolean): Promise<void> 
       })()`,
       20_000
     )
+    // The reloaded app's own start (sync among it) gets the time it always had: without it the
+    // phone transport below was swapped in mid-start and sync recovered copies on every reload.
+    await delay(4000)
     // A new page is a new time origin: until it changes, the old page with its test API is
     // still the one answering.
     await waitFor(
