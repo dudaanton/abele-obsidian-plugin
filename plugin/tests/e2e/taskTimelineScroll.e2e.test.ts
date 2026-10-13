@@ -59,6 +59,7 @@ interface Probe {
   sticky?: number
   chromeGap?: number
   calendarGap?: number
+  calendarLayout?: unknown
   overflow?: number
   shots?: string[]
 }
@@ -318,6 +319,10 @@ const script = (footer: boolean, short = false) => String.raw`(async function* (
       const header = leaf.view.containerEl.querySelector('.view-header')
       if (!calendar || !header) throw Error('calendar or native view header missing')
       report.calendarGap = calendar.getBoundingClientRect().top - header.getBoundingClientRect().bottom
+      const panel = root.closest('.abele-timeline-sidebar'), bodyStyle = getComputedStyle(document.body)
+      report.calendarLayout = { scrollTop: panel.scrollTop, panelTop: panel.getBoundingClientRect().top, calendarTop: calendar.getBoundingClientRect().top,
+        headerTop: header.getBoundingClientRect().top, headerBottom: header.getBoundingClientRect().bottom, paddingTop: getComputedStyle(panel).paddingTop,
+        safe: bodyStyle.getPropertyValue('--safe-area-inset-top'), viewHeader: bodyStyle.getPropertyValue('--view-header-height') }
     }
     report.initial = dates()
     report.summary = strip() ? [strip().querySelector('.abele-timeline__history-count')?.getAttribute('aria-label'), strip().getAttribute('aria-label')].join(' · ') : null
@@ -683,7 +688,8 @@ describe.skipIf(!available)('task timeline scrolling', () => {
           expect(p.revealed).toHaveLength(110)
           expect(p.countAfter).toContain('90 unfinished · Hide all past days')
           expect(p.chromeGap).toBeGreaterThanOrEqual(-1)
-          if (index === 0 && kind === 'phone width') expect(p.calendarGap).toBeGreaterThanOrEqual(0)
+          if (index === 0 && kind === 'phone width')
+            expect(p.calendarGap, JSON.stringify(p.calendarLayout)).toBeGreaterThanOrEqual(0)
           expect(p.sticky).toBeLessThanOrEqual(2)
           expect(p.overflow).toBeLessThanOrEqual(1)
           expect(p.revealAnchor).toHaveLength(2)
