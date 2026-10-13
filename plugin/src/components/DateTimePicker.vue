@@ -203,7 +203,12 @@ defineExpose({ confirm, canConfirm: computed(() => !!selectedDate.value) })
   display: flex;
   flex-direction: column;
   gap: var(--p-spacing);
-  padding-top: var(--p-spacing);
+}
+
+// The day's tasks are one more part of the column, as far from the calendar as the time is from
+// them; a section's own space above it would push the form past a phone's sheet.
+.abele-datetime-picker > .abele-datetime-picker__tasks-preview {
+  margin-top: 0;
 }
 
 .abele-datetime-picker__tasks-preview {
