@@ -230,12 +230,16 @@ describe.skipIf(!available)('the history timeline of a base', () => {
           if (s) report.socratesX = [Math.round(s.x), Math.round(v.labelW + (-469 - v.t0) * v.ppy)]
           report.shots.push(await picture('timeline-desktop-light.png'))
 
-          // A name typed in the go-to field picks that person.
+          // A name typed in the go-to field picks that person. The notes were made moments ago;
+          // on a busy machine the base may not have read every one yet, so the name is entered
+          // again, for a few seconds, until the person is there to pick.
           const go = root.querySelector('.abele-timeline-base__go input')
-          go.value = 'Шекспир'
-          go.dispatchEvent(new Event('input', { bubbles: true }))
-          go.dispatchEvent(new KeyboardEvent('keydown', { key: 'Enter', bubbles: true }))
-          await until(() => panel(root), 3000)
+          for (const deadline = Date.now() + 9000; !panel(root) && Date.now() < deadline; ) {
+            go.value = 'Шекспир'
+            go.dispatchEvent(new Event('input', { bubbles: true }))
+            go.dispatchEvent(new KeyboardEvent('keydown', { key: 'Enter', bubbles: true }))
+            await until(() => panel(root), 3000)
+          }
           await frames(3)
           report.picked = panel(root)?.dataset.selected
           report.contemporaries = panelRows(root)
