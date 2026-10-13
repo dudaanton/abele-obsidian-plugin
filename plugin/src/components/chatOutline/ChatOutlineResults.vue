@@ -101,14 +101,16 @@ const groups = computed<Group[]>(() => {
   const out = new Map<string, Group>()
   for (const hit of props.hits) {
     const question = owners.value(hit.messageId)
-    const key = question?.id ?? hit.messageId
+    const ownerId = question?.id ?? hit.messageId
+    const branch = props.labels?.get(hit.messageId)
+    const key = branch ? `${ownerId}:${branch}` : ownerId
     if (!out.has(key))
       out.set(key, {
         key,
         icon: 'message-circle',
         title: question ? navigationTitle(question) : 'Message',
-        note: props.labels?.get(key),
-        open: () => emit('jump', key),
+        note: branch,
+        open: () => emit('jump', ownerId),
         hits: [],
       })
     out

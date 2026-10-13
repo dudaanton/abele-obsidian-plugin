@@ -1,7 +1,7 @@
 <template>
   <div ref="root" class="abele-chat-outline" tabindex="-1" @keydown="onKey">
     <div class="abele-chat-outline__search">
-      <Search v-model="query" placeholder="Find in this chat…" autofocus />
+      <Search v-model="query" placeholder="Find in this chat…" :autofocus="autofocus" />
       <Icon
         v-for="b in toggles"
         :key="b.icon"
@@ -134,6 +134,7 @@ const props = withDefaults(
     /** The message being read now. */
     activeMessageId?: string
     canGoBack?: boolean
+    autofocus?: boolean
     /** A branch switch waiting for the agent's turn to end, said in a line. */
     pending?: string
     /** A fork to open and show first. */
@@ -145,6 +146,7 @@ const props = withDefaults(
     activeMessageId: undefined,
     pending: undefined,
     focusFork: undefined,
+    autofocus: true,
   }
 )
 const emit = defineEmits<{
@@ -296,8 +298,9 @@ onBeforeUnmount(invalidateSearch)
 
 const found = computed(() => {
   const n = hits.value.length + discussionHits.value.length
-  if (n) return plural(n, 'match', 'matches')
+  if (n) return `${plural(n, 'match', 'matches')}${searchCanceled.value ? ' · Search stopped' : ''}`
   if (searchRunning.value) return 'Nothing yet'
+  if (searchCanceled.value) return 'Search stopped'
   return everyBranch.value ? 'Nothing in this chat' : 'Nothing on this branch'
 })
 
@@ -327,7 +330,7 @@ onMounted(async () => {
   const here = box.querySelector<HTMLElement>('.tree-item-self.is-active')
   if (here) here.scrollIntoView({ block: 'center' })
   else box.scrollTop = props.state.scrollTop
-  root.value?.querySelector<HTMLInputElement>('input')?.focus()
+  if (props.autofocus) root.value?.querySelector<HTMLInputElement>('input')?.focus()
 })
 
 // Arrows walk the rows, right and left open and fold, Enter goes, Escape closes the dialog.
@@ -341,6 +344,7 @@ const onKey = (event: KeyboardEvent) => {
     return
   }
   const target = event.target as HTMLElement
+  if (!target.matches('input, .tree-item-self, .search-result-file-match')) return
   const row = target.closest<HTMLElement>('.tree-item')
   if (
     (event.key === 'ArrowRight' || event.key === 'ArrowLeft') &&

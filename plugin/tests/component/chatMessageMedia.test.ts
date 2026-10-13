@@ -111,7 +111,12 @@ it.each([
   const wrapper = render({ toolName, toolParams }, opener)
   const summary = wrapper.get('.abele-chat-msg__tool-summary')
   expect(summary.classes()).toContain('abele-chat-msg__tool-link')
+  expect(summary.attributes('role')).toBe('link')
+  expect(summary.attributes('tabindex')).toBe('0')
   await summary.trigger('click')
+  expect(opener).toHaveBeenCalledExactlyOnceWith(path)
+  opener.mockClear()
+  await summary.trigger('keydown.enter')
   expect(opener).toHaveBeenCalledExactlyOnceWith(path)
 })
 
@@ -122,6 +127,8 @@ it.each(['editorial_summary', 'run_command'])(
     const wrapper = render({ toolName, toolParams: { path: 'Sample/elsewhere.md' } }, opener)
     const summary = wrapper.get('.abele-chat-msg__tool-summary')
     expect(summary.classes()).not.toContain('abele-chat-msg__tool-link')
+    expect(summary.attributes('role')).toBeUndefined()
+    expect(summary.attributes('tabindex')).toBeUndefined()
     await summary.trigger('click')
     expect(opener).not.toHaveBeenCalled()
   }

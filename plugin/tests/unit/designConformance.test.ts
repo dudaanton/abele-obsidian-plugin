@@ -150,9 +150,6 @@ const MIGRATION_EXEMPTIONS = {
   stage1: ['ChatArtifacts.vue'], // Inventory/history hierarchy needs owner-selected composition.
   stage2: ['TextCommentDialog.vue'], // Content sizing, drafts and annotation controls.
   stage3: [
-    'ChatNavigation.vue',
-    'ChatNavigationRows.vue',
-    'ChatNavigationDiscussion.vue',
     'AiChatHistory.vue',
     'AiChatMessage.vue',
     'ChatAnchorHistory.vue',

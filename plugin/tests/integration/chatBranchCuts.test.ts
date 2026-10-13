@@ -8,6 +8,7 @@ import { DEFAULT_AI_SETTINGS, type ChatMessage } from '@/ai/types'
 import { EMPTY_USAGE, type Message, type AgentTool } from '@/ai/client'
 import { OpenAIClient } from '@/ai/client/OpenAIClient'
 import { parseChat, serializeChat } from '@/ai/ChatLog'
+import { cloneChatPath } from '@/ai/chatClone'
 import { useVault } from '../helpers/testEnv'
 
 const path = 'SampleBranch/sample-context.abchat'
@@ -96,6 +97,26 @@ const calls = (input: Message[]) =>
   input.flatMap((m) =>
     m.role === 'assistant' ? m.content.flatMap((p) => (p.type === 'toolCall' ? [p.id] : [])) : []
   )
+const recordProvider = () => {
+  const sent: Message[][] = []
+  vi.spyOn(OpenAIClient.prototype, 'stream').mockImplementation(
+    async function* (_model, _prompt, input) {
+      sent.push(structuredClone(input))
+      yield {
+        type: 'done',
+        message: {
+          role: 'assistant',
+          content: [{ type: 'text', text: 'Sample continuation' }],
+          model: 'sample',
+          usage: EMPTY_USAGE,
+          stopReason: 'stop',
+          timestamp: 20,
+        },
+      }
+    }
+  )
+  return sent
+}
 beforeEach(async () => {
   AbeleConfig.getInstance().ai = {
     ...DEFAULT_AI_SETTINGS,
@@ -171,6 +192,94 @@ afterEach(async () => {
 })
 
 describe('a completed-call branch in the real session', () => {
+  it('cuts an intermediate answer before its bundled calls and persists that choice', async () => {
+    const sent = recordProvider()
+    const restore = vi.spyOn(session.rewind, 'apply')
+    session.createBranch('a')
+    expect(calls(session.messagesForModel())).toEqual([])
+    expect(JSON.stringify(session.messagesForModel())).toContain('Reviewing sample sections')
+    expect(session.messagesForModel().some((m) => m.role === 'toolResult')).toBe(false)
+    await session.save()
+    await session.load(app.vault.getAbstractFileByPath(path) as TFile)
+    await session.sendMessage('Use a different sample approach')
+    expect(sent).toHaveLength(1)
+    expect(calls(sent[0])).toEqual([])
+    expect(executed).not.toHaveBeenCalled()
+    expect(restore).not.toHaveBeenCalled()
+    expect(session.switchBranch('reply', false)).toBe(true)
+    expect(calls(session.messagesForModel())).toEqual(['lookup-first', 'lookup-later'])
+  })
+
+  it('keeps only images injected by a retained result in the next provider request', async () => {
+    const snapshot = parseChat(await app.vault.read(app.vault.getAbstractFileByPath(path) as TFile))
+    for (const [id, marker] of [
+      ['first', 'prefix-image'],
+      ['later', 'tail-image'],
+    ]) {
+      const index = snapshot.internalMessages!.findIndex((m) => m.chatMessageId === id)
+      snapshot.internalMessages!.splice(index + 1, 0, {
+        role: 'user',
+        content: [{ type: 'image_url', image_url: { url: `data:image/png;base64,${marker}` } }],
+        chatMessageId: id,
+        timestamp: 6,
+      })
+    }
+    await app.vault.modify(app.vault.getAbstractFileByPath(path) as TFile, serializeChat(snapshot))
+    await session.load(app.vault.getAbstractFileByPath(path) as TFile)
+    const sent = recordProvider()
+    session.createBranch('first')
+    await session.sendMessage('Describe the retained sample image')
+    expect(sent).toHaveLength(1)
+    expect(JSON.stringify(sent[0])).toContain('prefix-image')
+    expect(JSON.stringify(sent[0])).not.toContain('tail-image')
+    expect(executed).not.toHaveBeenCalled()
+  })
+
+  it('excludes old compaction context, survives new compaction and reload, and restores the original branch', async () => {
+    session.applyCompactSummary(
+      'Old summary includes the later section.',
+      session.messagesForModel()
+    )
+    session.createBranch('first')
+    expect(JSON.stringify(session.messagesForModel())).not.toContain('Old summary')
+    session.applyCompactSummary(
+      'New summary covers only the first section.',
+      session.messagesForModel()
+    )
+    await session.save()
+    await session.load(app.vault.getAbstractFileByPath(path) as TFile)
+    const sent = recordProvider()
+    await session.sendMessage('Continue from the compacted prefix')
+    expect(sent).toHaveLength(1)
+    expect(calls(sent[0])).toEqual(['lookup-first'])
+    expect(JSON.stringify(sent[0])).toContain('New summary')
+    expect(JSON.stringify(sent[0])).not.toContain('Old summary')
+    expect(session.switchBranch('reply', false)).toBe(true)
+    expect(calls(session.messagesForModel())).toEqual(['lookup-first', 'lookup-later'])
+    expect(executed).not.toHaveBeenCalled()
+  })
+
+  it('clones a persisted cut with remapped boundaries and real prefix results without changing its source', async () => {
+    recordProvider()
+    session.createBranch('first')
+    await session.sendMessage('Another sample direction')
+    await session.save()
+    const source = parseChat(await app.vault.read(app.vault.getAbstractFileByPath(path) as TFile))
+    const before = structuredClone(source)
+    const clone = cloneChatPath(source, session.branchLeafId!)!
+    const boundary = clone.messages.find((m) => m.branchCutAfter)
+    const retained = clone.messages.find((m) => m.toolCallId === 'lookup-first')!
+    expect(boundary?.branchCutAfter).toBe(retained.id)
+    expect(retained.id).not.toBe('first')
+    expect(calls(clone.internalMessages!)).toEqual(['lookup-first'])
+    expect(clone.internalMessages!.filter((m) => m.role === 'toolResult')).toHaveLength(1)
+    expect(clone.internalMessages!.find((m) => m.role === 'toolResult')?.stored?.key).toBe(
+      'sample-first-key'
+    )
+    expect(JSON.stringify(clone.internalMessages)).not.toContain('lookup-later')
+    expect(source).toEqual(before)
+    expect(executed).not.toHaveBeenCalled()
+  })
   it('waits, persists its cut, and sends only the real prefix through a fake provider', async () => {
     const before = await app.vault.read(
       app.vault.getAbstractFileByPath('SampleBranch/sample-memo.md') as TFile

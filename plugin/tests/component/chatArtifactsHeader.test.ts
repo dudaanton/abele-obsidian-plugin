@@ -5,7 +5,7 @@ import AiChat from '@/components/AiChat.vue'
 import ChatArtifacts from '@/components/ChatArtifacts.vue'
 import SheetHeaderActions from '@/components/obsidian/SheetHeaderActions.vue'
 import ChatFindBar from '@/components/ChatFindBar.vue'
-import ChatNavigation from '@/components/ChatNavigation.vue'
+import ChatNavigation from '@/components/chatOutline/ChatOutlineDialog.vue'
 import AiChatSetup from '@/components/AiChatSetup.vue'
 import { ChatService } from '@/ai/ChatService'
 import type { ChatSession } from '@/ai/ChatSession'
@@ -140,6 +140,25 @@ describe('throwing a chat away', () => {
     view = mountChat()
     expect(action('delete')?.disabled).toBe(true)
     expect(action('reload')?.disabled).toBe(true)
+  })
+  it('dismisses deletion on a chat switch and ignores a stale confirmation', async () => {
+    withFile()
+    const deleteChat = vi
+      .spyOn(ChatService.getInstance(), 'deleteChat')
+      .mockResolvedValue(true as never)
+    view = mountChat()
+    view.findComponent(SheetHeaderActions).vm.$emit('action', 'delete')
+    await nextTick()
+    const confirm = view.findComponent({ name: 'ConfirmModal' })
+    active.value = fakeChatSession({
+      kind: 'chat',
+      overrides: { currentChatFile: ref({ path: 'Chats/other-sample.md' }) },
+    }) as ChatSession
+    await nextTick()
+    expect(view.findComponent({ name: 'ConfirmModal' }).exists()).toBe(false)
+    confirm.vm.$emit('confirm')
+    await nextTick()
+    expect(deleteChat).not.toHaveBeenCalled()
   })
 })
 

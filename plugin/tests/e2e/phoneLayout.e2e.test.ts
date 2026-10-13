@@ -650,7 +650,7 @@ const probeScript = `(async () => {
     chat?.querySelector('[aria-label="More chat actions"]')?.click()
     await until(() => document.querySelector('.menu'), 3000)
     const setup = [...document.querySelectorAll('.menu-item')].find(item =>
-      item.querySelector('.menu-item-title')?.textContent.trim() === 'Scope, skills, prompts, permissions and settings')
+      item.querySelector('.menu-item-title')?.textContent.trim() === 'Access, tools and chat settings')
     if (setup) {
       setup.click()
       await until(() => document.querySelector('.modal .abele-chat-setup'), 5000)
@@ -1347,27 +1347,26 @@ const probeScript = `(async () => {
         }
         if (dialogName === 'chat-navigation') {
           if (modal.querySelector('input') === document.activeElement) throw new Error('Navigation opened the keyboard without a search tap')
-          for (const details of [...modal.querySelectorAll('details')].slice(0, 2)) details.open = true
+          for (const row of [...modal.querySelectorAll('.tree-item.is-collapsed > .tree-item-self > .collapse-icon')].slice(0, 2)) row.click()
           await wait(200)
         }
         await screen(label, modal, modal.querySelector('.abele-modal__body'))
         if (dialogName === 'chat-navigation') {
-          modal.querySelector('[data-fork-id="question-0"]').open = true
+          if (modal.querySelector('[data-question="question-0"]')?.classList.contains('is-collapsed')) modal.querySelector('[data-question="question-0"] > .tree-item-self > .collapse-icon').click(); await wait(150); modal.querySelector('[data-fork-id="question-0"] > .tree-item-self').click()
           await wait(150)
-          modal.querySelector('[data-continuation="alternate"] details').open = true
+          modal.querySelector('[data-continuation="alternate"] > .tree-item-self > .collapse-icon').click()
           await wait(150)
-          modal.querySelector('[data-fork-id="alternate"]').open = true
+          modal.querySelector('[data-fork-id="alternate"] > .tree-item-self').click()
           await wait(150)
           await screen('navigation continuation', modal, modal.querySelector('.abele-modal__body'))
           for (const field of modal.querySelectorAll('input, select, button, summary, [tabindex="0"]')) {
             if (!field.getBoundingClientRect().width) continue
             field.focus(); report['navigation continuation'].clipped.push(...ringClipped(field)); field.blur()
           }
-          const scope = modal.querySelector('select')
-          scope.value = 'all'; scope.dispatchEvent(new Event('change', { bubbles: true }))
+          modal.querySelector('[aria-label="Search every branch of this chat"]').click()
           const search = modal.querySelector('input')
           search.value = 'first nested'; search.dispatchEvent(new Event('input', { bubbles: true }))
-          modal.querySelector('[role="checkbox"]').click()
+          modal.querySelector('[aria-label="Search discussions too, nested ones included"]').click()
           await wait(500)
           await screen('navigation search', modal, modal.querySelector('.abele-modal__body'))
           for (const field of modal.querySelectorAll('input, select, button, [tabindex="0"]')) {
@@ -1399,6 +1398,7 @@ const probeScript = `(async () => {
           : []
         if (dialogName === 'node-workspaces') {
           for (const details of modal.querySelectorAll('details')) details.open = true
+            for (const row of modal.querySelectorAll('.tree-item.is-collapsed > .tree-item-self > .collapse-icon')) row.click()
           const registration = [...modal.querySelectorAll('summary')].find(s => s.textContent.trim() === 'Register a project')
           registration?.scrollIntoView({ block: 'start' })
           await wait(200)
@@ -2425,7 +2425,7 @@ describe.skipIf(!available)('the chat dialogs on a phone', () => {
         'Find in this chat',
         'Outline of this chat',
         ...(label === 'nested comment' ? ['Turn this comment into an ordinary chat'] : []),
-        'Scope, skills, prompts, permissions and settings',
+        'Access, tools and chat settings',
         ...(label === 'chat' ? ['Files from this chat'] : []),
         'Agents',
       ])

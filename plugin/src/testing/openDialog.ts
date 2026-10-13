@@ -25,7 +25,7 @@ export interface DialogFixtureOptions {
 }
 import TextCommentDialog from '@/components/TextCommentDialog.vue'
 import { textCommentFixture } from './textCommentFixture'
-import ChatNavigation from '@/components/ChatNavigation.vue'
+import ChatNavigation from '@/components/chatOutline/ChatOutlineDialog.vue'
 import type { ChatMessage } from '@/ai/types'
 import AgentsListDialog from '@/components/AgentsListDialog.vue'
 import { agentsFixture } from './agentsFixture'

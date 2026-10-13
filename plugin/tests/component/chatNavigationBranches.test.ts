@@ -1,7 +1,7 @@
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest'
 import { flushPromises, mount, type VueWrapper } from '@vue/test-utils'
 import { ref } from 'vue'
-import ChatNavigation from '@/components/ChatNavigation.vue'
+import ChatNavigation from '@/components/chatOutline/ChatOutlineDialog.vue'
 import { CommentService } from '@/ai/CommentService'
 import { AbeleConfig } from '@/services/AbeleConfig'
 import { DEFAULT_AI_SETTINGS, type ChatMessage } from '@/ai/types'
@@ -18,11 +18,13 @@ const rows: ChatMessage[] = [
   { id: 'second-root', role: 'user', content: 'Another conversation start', timestamp: 7 },
 ]
 let wrapper: VueWrapper | undefined
-const root = () => document.querySelector<HTMLElement>('.abele-chat-navigation')!
+const root = () => document.querySelector<HTMLElement>('.abele-chat-outline')!
 const click = async (text: string) => {
-  const el = [...root().querySelectorAll<HTMLElement>('button,summary')].find((e) =>
-    e.textContent?.includes(text)
-  )!
+  text = text === 'Continuations · 2' ? 'Branches' : text
+  const el = [
+    ...root().querySelectorAll<HTMLElement>('.search-result-file-match'),
+    ...root().querySelectorAll<HTMLElement>('.tree-item-self, button[aria-label]'),
+  ].find((e) => e.textContent?.includes(text) || e.getAttribute('aria-label')?.includes(text))!
   el.click()
   await flushPromises()
 }
@@ -33,7 +35,7 @@ const open = async (extra = {}) => {
       messages: rows.slice(0, 2),
       allMessages: rows,
       comments: [],
-      state: { expanded: [], scrollTop: 0 },
+      state: { expanded: ['q1:turn', 'q:turn'], scrollTop: 0 },
       ...extra,
     },
   })
@@ -51,9 +53,11 @@ afterEach(() => {
 })
 
 describe('forks in the contents list', () => {
-  it('leaves native scope-selector arrow keys with Obsidian rather than moving to a message', async () => {
+  it('leaves scope-toggle arrow keys on the control rather than moving to a message', async () => {
     await open()
-    const select = root().querySelector<HTMLSelectElement>('select')!
+    const select = root().querySelector<HTMLElement>(
+      '[aria-label="Search every branch of this chat"]'
+    )!
     select.focus()
     const down = new KeyboardEvent('keydown', { key: 'ArrowDown', bubbles: true, cancelable: true })
     select.dispatchEvent(down)
@@ -63,19 +67,33 @@ describe('forks in the contents list', () => {
 
   it('shows root forks and continuations with times and a selected marker; expansion does not jump', async () => {
     await open()
-    expect(root().textContent).toContain('Conversation starts · 2')
-    expect(root().textContent).toContain('Continuations · 2')
+    expect(
+      root().querySelector('[data-question="q"] .abele-chat-outline__code')?.textContent
+    ).toContain('2')
+    expect(
+      root().querySelector('[data-fork-id="q"] .abele-chat-outline__codes')?.textContent
+    ).toContain('2')
     await click('Continuations · 2')
     expect(root().textContent).toContain('Alternate pond answer')
-    expect(root().textContent).toContain('Selected')
+    expect(
+      root()
+        .querySelector('[data-continuation="a"]')
+        ?.classList.contains('abele-chat-outline__branch_on')
+    ).toBe(true)
     expect(root().querySelector('[data-continuation="b"] time')).not.toBeNull()
     expect(root().textContent).not.toContain('A nested sample question')
     expect(wrapper!.emitted('jump')).toBeUndefined()
-    root().querySelector<HTMLElement>('[data-continuation="b"] summary')!.click()
+    root()
+      .querySelector<HTMLElement>('[data-continuation="b"] > .tree-item-self > .collapse-icon')!
+      .click()
     await flushPromises()
     expect(root().textContent).toContain('A nested sample question')
     expect(root().textContent).not.toContain('Nested second answer')
-    const nested = root().querySelector<HTMLElement>('[data-fork-id="bq"] summary')!
+    root()
+      .querySelector<HTMLElement>('[data-question="bq"] > .tree-item-self > .collapse-icon')!
+      .click()
+    await flushPromises()
+    const nested = root().querySelector<HTMLElement>('[data-fork-id="bq"] > .tree-item-self')!
     nested.click()
     await flushPromises()
     await click('Nested second answer')
@@ -111,7 +129,9 @@ describe('forks in the contents list', () => {
     ]
     await open({ messages: allMessages.slice(0, 4), allMessages })
     expect(root().querySelector('[data-fork-id="result"]')).not.toBeNull()
-    expect(root().querySelector<HTMLDetailsElement>('details')!.open).toBe(false)
+    expect(
+      root().querySelector('.abele-chat-outline__work')?.classList.contains('is-collapsed')
+    ).toBe(true)
     await click('Continuations · 2')
     expect(root().textContent).toContain('Alternate result answer')
   })
@@ -130,7 +150,9 @@ describe('forks in the contents list', () => {
     })
     expect(read).not.toHaveBeenCalled()
     await click('Continuations · 2')
-    const disclosure = root().querySelector<HTMLElement>('[data-continuation="b"] summary')
+    const disclosure = root().querySelector<HTMLElement>(
+      '[data-continuation="b"] > .tree-item-self > .collapse-icon'
+    )
     expect(disclosure).not.toBeNull()
     disclosure!.click()
     await flushPromises()
@@ -147,18 +169,19 @@ describe('forks in the contents list', () => {
     input.value = 'pond'
     input.dispatchEvent(new Event('input', { bubbles: true }))
     await pause(220)
-    expect(root().querySelectorAll('[data-nav-item]')).toHaveLength(1)
-    const select = root().querySelector<HTMLSelectElement>('select')!
-    expect(select.value).toBe('current')
-    select.value = 'all'
-    select.dispatchEvent(new Event('change', { bubbles: true }))
+    expect(root().querySelectorAll('.search-result-file-match')).toHaveLength(1)
+    const select = root().querySelector<HTMLElement>(
+      '[aria-label="Search every branch of this chat"]'
+    )!
+    expect(select.getAttribute('aria-pressed')).toBe('false')
+    select.click()
     await pause(220)
-    expect(root().querySelectorAll('[data-nav-item]')).toHaveLength(2)
+    expect(root().querySelectorAll('.search-result-file-match')).toHaveLength(2)
     expect(root().textContent).toContain('Continuation 2 of 2')
     input.value = 'shared'
     input.dispatchEvent(new Event('input', { bubbles: true }))
     await pause(220)
-    expect(root().querySelectorAll('[data-nav-item]')).toHaveLength(1)
+    expect(root().querySelectorAll('.search-result-file-match')).toHaveLength(1)
   })
 })
 
@@ -189,11 +212,13 @@ describe('discussion search controls', () => {
     input.dispatchEvent(new Event('input', { bubbles: true }))
     await pause(220)
     expect(read.mock.calls.map((c) => c[0])).toEqual(['first'])
-    root().querySelector<HTMLElement>('[role="checkbox"]')!.click()
+    root()
+      .querySelector<HTMLElement>('[aria-label="Search discussions too, nested ones included"]')!
+      .click()
     await pause(250)
     expect(root().textContent).toContain('A pond discussion match')
-    expect(root().textContent).toContain('3 of 3 discussions')
-    expect(root().textContent).toContain('Unavailable discussion')
+    expect(root().textContent).toContain('3 / 3')
+    expect(root().textContent).toContain('Gone, unreadable or not synced yet')
     expect(root().textContent).toContain('missing sample passage')
     await click('A pond discussion match')
     expect(wrapper!.emitted('discussion')!.at(-1)).toEqual(['nested', 'nq', 'content', 'pond'])
@@ -217,10 +242,12 @@ describe('discussion search controls', () => {
     const input = root().querySelector<HTMLInputElement>('input')!
     input.value = 'pond'
     input.dispatchEvent(new Event('input', { bubbles: true }))
-    root().querySelector<HTMLElement>('[role="checkbox"]')!.click()
+    root()
+      .querySelector<HTMLElement>('[aria-label="Search discussions too, nested ones included"]')!
+      .click()
     await pause(220)
-    await click('Cancel search')
-    expect(root().textContent).toContain('Search canceled')
+    await click('Stop reading the discussions')
+    expect(root().textContent).toContain('Search stopped')
     input.value = 'shade'
     input.dispatchEvent(new Event('input', { bubbles: true }))
     await flushPromises()

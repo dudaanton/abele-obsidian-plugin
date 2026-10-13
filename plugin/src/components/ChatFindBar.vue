@@ -131,7 +131,7 @@ defineExpose({ focus })
 // The matches, painted over the messages' own text by the CSS Custom Highlight API
 // (`chatFindDom.ts`). The same colours as the find bar over a GitHub tab.
 ::highlight(abele-chat-find) {
-  background-color: var(--text-highlight-bg);
+  background-color: var(--highlight-background, var(--text-highlight-bg));
 }
 
 ::highlight(abele-chat-find-current) {

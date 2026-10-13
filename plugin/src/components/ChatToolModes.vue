@@ -41,6 +41,7 @@
             aria-haspopup="menu"
             :label="`${group.category}: ${MODE[shared(optionalOf(group)) ?? 'mixed'].said}`"
             @click.stop="(e: MouseEvent) => modeMenu(e, optionalOf(group))"
+            @keydown.stop
           />
         </template>
         <TreeItem
@@ -58,6 +59,7 @@
               aria-haspopup="menu"
               :label="`${tool.label}: ${MODE[modeOf(tool)].said}`"
               @click="(e: MouseEvent) => modeMenu(e, [tool])"
+              @keydown.stop
             />
           </template>
         </TreeItem>

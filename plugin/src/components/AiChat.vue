@@ -387,7 +387,7 @@
       @close="replyReview = null"
     />
     <AiChatHistory v-if="historyOpen" @close="historyOpen = false" @select="onLoadChat" />
-    <ChatNavigation
+    <ChatOutlineDialog
       v-if="navigationOpen && session"
       :messages="messages"
       :all-messages="allMessages"
@@ -469,7 +469,7 @@ import NodeDelegations from './NodeDelegations.vue'
 import AiToolApproval from './AiToolApproval.vue'
 import AiAgentSelector from './AiAgentSelector.vue'
 import AiChatHistory from './AiChatHistory.vue'
-import ChatNavigation from './ChatNavigation.vue'
+import ChatOutlineDialog from './chatOutline/ChatOutlineDialog.vue'
 import { navigationTitle } from '@/ai/chatNavigation'
 import { branchSwitches, newBranchAfter } from '@/ai/chatBranches'
 import { callState, chatBlocks, type ChatBlock } from '@/ai/toolRuns'
@@ -1943,10 +1943,27 @@ const headerOverflowActions = computed<HeaderAction[]>(() => [
       ]),
 ])
 const deleting = ref(false)
+let deletionTarget: { session: ChatSession; path: string } | undefined
+watch(
+  [session, () => session.value?.currentChatFile.value?.path],
+  () => {
+    deleting.value = false
+    deletionTarget = undefined
+  },
+  { flush: 'sync' }
+)
 const deleteChat = async () => {
+  const target = deletionTarget
+  const confirmed = deleting.value
   deleting.value = false
+  deletionTarget = undefined
   const current = session.value
-  if (current?.currentChatFile.value) await chatService.deleteChat(current.id)
+  if (
+    confirmed &&
+    target?.session === current &&
+    current?.currentChatFile.value?.path === target.path
+  )
+    await chatService.deleteChat(current.id)
 }
 /** Some other conversation waits for an answer from you. */
 const agentsNeedYou = computed(() => {
@@ -1979,7 +1996,10 @@ const onHeaderOverflowAction = (id: string) => {
       showDebug()
       break
     case 'delete':
-      deleting.value = true
+      if (session.value?.currentChatFile.value) {
+        deletionTarget = { session: session.value, path: session.value.currentChatFile.value.path }
+        deleting.value = true
+      }
       break
     case 'outline':
       openNavigation()

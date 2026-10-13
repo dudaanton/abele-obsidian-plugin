@@ -64,6 +64,22 @@ async function typed(wrapper: ReturnType<typeof composer>, words: string) {
 }
 
 describe('Send, tapped with the keyboard up', () => {
+  it('reopens dismissed slash choices when the command word changes', async () => {
+    const wrapper = composer()
+    try {
+      await typed(wrapper, '/')
+      expect(wrapper.find('.abele-chat-slash').exists()).toBe(true)
+      await wrapper.get('textarea').trigger('keydown', { key: 'Escape' })
+      expect(wrapper.find('.abele-chat-slash').exists()).toBe(false)
+      await typed(wrapper, '/co')
+      expect(wrapper.find('.abele-chat-slash').exists()).toBe(true)
+      await wrapper.get('textarea').trigger('keydown', { key: 'Enter' })
+      expect(wrapper.emitted('command')).toEqual([['/compact']])
+      expect(wrapper.emitted('send')).toBeUndefined()
+    } finally {
+      wrapper.unmount()
+    }
+  })
   it('sends the message', async () => {
     const tap = listen()
     const wrapper = composer()

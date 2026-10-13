@@ -66,7 +66,10 @@
           <span
             class="abele-chat-msg__tool-summary"
             :class="{ 'abele-chat-msg__tool-link': toolFilePath }"
+            :role="toolFilePath ? 'link' : undefined"
+            :tabindex="toolFilePath ? 0 : undefined"
             @click="openToolFile"
+            @keydown.enter="openToolFile"
             >{{ toolSummary }}</span
           >
           <span

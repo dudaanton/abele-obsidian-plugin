@@ -270,6 +270,7 @@ const script = `(async () => {
           // Each newly mounted continuation can reveal one further fork, just as a user expands it.
           for (let level = 0; level < (dialogName === 'chat-navigation' ? 4 : 1); level++) {
             for (const details of modal.querySelectorAll('details')) details.open = true
+            for (const row of modal.querySelectorAll('.tree-item.is-collapsed > .tree-item-self > .collapse-icon')) row.click()
             await settle(() => modal)
           }
         }

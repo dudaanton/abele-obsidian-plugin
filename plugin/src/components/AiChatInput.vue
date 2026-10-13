@@ -355,8 +355,8 @@ const send = () => {
 const slashQuery = computed(() => /^\/(\S*)$/.exec(text.value)?.[1] ?? null)
 /** Esc closed the list for this word; typing on opens it again. */
 const slashDismissed = ref(false)
-watch(slashQuery, (now, before) => {
-  if (now === null || before === null) slashDismissed.value = false
+watch(slashQuery, () => {
+  slashDismissed.value = false
 })
 const slash = ref<InstanceType<typeof ChatSlashSuggest> | null>(null)
 const onSlashKey = (e: KeyboardEvent) => {

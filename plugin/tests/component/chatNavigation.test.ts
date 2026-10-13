@@ -1,13 +1,13 @@
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest'
 import { flushPromises, mount, type VueWrapper } from '@vue/test-utils'
 import { ref } from 'vue'
-import ChatNavigation from '@/components/ChatNavigation.vue'
+import ChatNavigation from '@/components/chatOutline/ChatOutlineDialog.vue'
 import AiChat from '@/components/AiChat.vue'
 import { CommentService } from '@/ai/CommentService'
 import { ChatService } from '@/ai/ChatService'
 import { AbeleConfig } from '@/services/AbeleConfig'
 import { DEFAULT_AI_SETTINGS, type ChatMessage } from '@/ai/types'
-import { TFile } from 'obsidian'
+import { Platform, TFile } from 'obsidian'
 import { serializeChat } from '@/ai/ChatLog'
 import { chatCopyPath } from '@/ai/chatCopy'
 import { fakeChatSession } from '../helpers/fakeChatSession'
@@ -29,12 +29,36 @@ const messages: ChatMessage[] = [
   { id: 'q2', role: 'user', content: 'Add some shade', timestamp: 86401000 },
 ]
 let wrapper: VueWrapper | undefined
-const root = () => document.querySelector<HTMLElement>('.abele-chat-navigation')!
+const root = () => document.querySelector<HTMLElement>('.abele-chat-outline')!
 const click = async (text: string) => {
-  const button = [...root().querySelectorAll<HTMLElement>('button, summary')].find((el) =>
-    el.textContent?.includes(text)
-  )!
-  button.click()
+  if (text === 'Answers · 1') {
+    root()
+      .querySelector<HTMLElement>('[data-question="q1"] > .tree-item-self > .collapse-icon')!
+      .click()
+    await flushPromises()
+    return
+  }
+  if (text === 'Nested discussions · 1') {
+    root()
+      .querySelector<HTMLElement>(
+        '.abele-chat-outline__discussion > .tree-item-self > .collapse-icon'
+      )!
+      .click()
+    await flushPromises()
+    return
+  }
+  let button = [
+    ...root().querySelectorAll<HTMLElement>('.search-result-file-match'),
+    ...root().querySelectorAll<HTMLElement>('.tree-item-self, button[aria-label]'),
+  ].find((el) => el.textContent?.includes(text) || el.getAttribute('aria-label')?.includes(text))
+  if (!button) {
+    root().querySelector<HTMLElement>('[data-question] > .tree-item-self > .collapse-icon')?.click()
+    await flushPromises()
+    button = [...root().querySelectorAll<HTMLElement>('.tree-item-self')].find((el) =>
+      el.textContent?.includes(text)
+    )
+  }
+  button!.click()
   await flushPromises()
 }
 
@@ -51,7 +75,12 @@ afterEach(() => {
 
 const open = async (extra = {}) => {
   wrapper = mount(ChatNavigation, {
-    props: { messages, comments: [], state: { expanded: [], scrollTop: 0 }, ...extra },
+    props: {
+      messages,
+      comments: [],
+      state: { expanded: ['q1:turn', 'q:turn'], scrollTop: 0 },
+      ...extra,
+    },
     attachTo: document.body,
   })
   await flushPromises()
@@ -59,6 +88,17 @@ const open = async (extra = {}) => {
 }
 
 describe('the navigation modal', () => {
+  it('keeps the phone keyboard closed until the search field is tapped', async () => {
+    const platform = Platform as { isMobile: boolean }
+    const mobile = platform.isMobile
+    platform.isMobile = true
+    try {
+      await open()
+      expect(document.activeElement).not.toBe(root().querySelector('input'))
+    } finally {
+      platform.isMobile = mobile
+    }
+  })
   it('reads an unopened legacy discussion without migrating or writing its file or safety copies', async () => {
     const comments = CommentService.getInstance()
     const path = comments.commentPath('sample-legacy')
@@ -128,17 +168,17 @@ describe('the navigation modal', () => {
     expect(comments.sessionFor('sample-recovery')).toBeNull()
   })
 
-  it('shows dated questions, leaves the search unfocused, and expands only navigation rows', async () => {
-    await open({ activeMessageId: 'a1' })
+  it('shows dated questions, focuses search, and expands only navigation rows', async () => {
+    await open({ activeMessageId: 'a1', state: { expanded: [], scrollTop: 0 } })
     expect([...root().querySelectorAll('[data-question]')].map((el) => el.textContent)).toEqual(
       expect.arrayContaining([
         expect.stringContaining('Plan a sample garden'),
         expect.stringContaining('Add some shade'),
       ])
     )
-    expect(root().querySelectorAll('.abele-date-divider')).toHaveLength(2)
-    expect(document.activeElement).not.toBe(root().querySelector('input'))
-    expect(root().querySelector('[data-current="true"]')).not.toBeNull()
+    expect(root().querySelectorAll('.abele-chat-outline__day')).toHaveLength(2)
+    expect(document.activeElement).toBe(root().querySelector('input'))
+    expect(root().querySelector('[aria-current="true"]')).not.toBeNull()
     expect(root().textContent).not.toContain('Put a pond near')
     await click('Answers · 1')
     expect(root().textContent).toContain('Put a pond near')
@@ -149,9 +189,9 @@ describe('the navigation modal', () => {
 
   it('offers start, latest, back, and search results in folded tool details without switching branches', async () => {
     await open({ canGoBack: true })
-    await click('To start')
-    await click('To latest')
-    await click('Back to place')
+    await click('To the start')
+    await click('To the latest')
+    await click('Back to where you were')
     expect(wrapper!.emitted('start')).toHaveLength(1)
     expect(wrapper!.emitted('latest')).toHaveLength(1)
     expect(wrapper!.emitted('back')).toHaveLength(1)
@@ -163,10 +203,11 @@ describe('the navigation modal', () => {
     await click('A pond liner')
     expect(wrapper!.emitted('jump')![0]).toEqual(['t1', 'result', 'liner'])
     // Scope selection alone never switches a conversation; search still starts on its current path.
-    expect(root().querySelector<HTMLSelectElement>('select')!.value).toBe('current')
     expect(
-      [...root().querySelectorAll('option')].map((option) => (option as HTMLOptionElement).value)
-    ).toEqual(['current', 'all'])
+      root()
+        .querySelector('[aria-label="Search every branch of this chat"]')
+        ?.getAttribute('aria-pressed')
+    ).toBe('false')
   })
 
   it('uses arrows to move focus and Enter to jump, and closes with Escape', async () => {
@@ -176,7 +217,9 @@ describe('the navigation modal', () => {
     input.dispatchEvent(
       new KeyboardEvent('keydown', { key: 'ArrowDown', bubbles: true, cancelable: true })
     )
-    expect(document.activeElement?.getAttribute('data-question')).toBe('q1')
+    expect(document.activeElement?.closest('[data-question]')?.getAttribute('data-question')).toBe(
+      'q1'
+    )
     document.activeElement!.dispatchEvent(
       new KeyboardEvent('keydown', { key: 'Enter', bubbles: true, cancelable: true })
     )
@@ -191,14 +234,14 @@ describe('the navigation modal', () => {
     const state = { expanded: [] as string[], scrollTop: 0 }
     await open({ state })
     await click('Answers · 1')
-    const list = root().querySelector<HTMLElement>('.abele-chat-navigation__list')!
+    const list = root().querySelector<HTMLElement>('.abele-chat-outline__list')!
     list.scrollTop = 120
     list.dispatchEvent(new Event('scroll'))
     await flushPromises()
     wrapper!.unmount()
     await open({ state })
     expect(root().textContent).toContain('Put a pond near')
-    expect(root().querySelector('.abele-chat-navigation__list')!.scrollTop).toBe(120)
+    expect(root().querySelector('.abele-chat-outline__list')!.scrollTop).toBe(120)
   })
 
   it('shows direct discussion questions and jumps through the existing comment path, reading children only on expansion', async () => {
@@ -209,7 +252,7 @@ describe('the navigation modal', () => {
     })
     const load = vi.spyOn(comments, 'navigationPreview').mockResolvedValue(child as never)
     await open({ comments: [{ id: 'direct', message: 'a1', quote: 'pond' }] })
-    expect(root().textContent).toContain('Discussions · 1')
+    expect(root().querySelectorAll('.abele-chat-outline__discussion')).toHaveLength(1)
     expect(root().textContent).toContain('Which pond liner?')
     expect(load.mock.calls).toEqual([['direct']])
     await click('Which pond liner?')
@@ -256,7 +299,11 @@ describe('the navigation modal', () => {
       .spyOn(CommentService.getInstance(), 'navigationPreview')
       .mockImplementation(async (id) => (id === 'direct' ? child : visible) as never)
     await open({ comments: [{ id: 'direct', message: 'a1' }] })
-    expect(root().textContent).toContain('Nested discussions · 1')
+    expect(
+      root()
+        .querySelector('.abele-chat-outline__discussion > .tree-item-self')
+        ?.getAttribute('aria-expanded')
+    ).toBe('false')
     expect(preview.mock.calls).toEqual([['direct']])
     await click('Nested discussions · 1')
     expect(preview.mock.calls).toEqual([['direct'], ['visible-child']])
@@ -270,7 +317,7 @@ describe('the navigation modal', () => {
     const comment = { id: 'long-quote', message: 'a1', quote }
     await open({ comments: [comment] })
     expect(
-      root().querySelector('.abele-chat-navigation__discussion button')!.textContent!.length
+      root().querySelector('.abele-chat-outline__discussion > .tree-item-self')!.textContent!.length
     ).toBeLessThan(200)
     expect(comment.quote).toBe(quote)
   })
@@ -279,7 +326,7 @@ describe('the navigation modal', () => {
     vi.spyOn(CommentService.getInstance(), 'navigationPreview').mockResolvedValue(null)
     await open({ comments: [{ id: 'missing', message: 'a1', quote: 'sample passage' }] })
     expect(root().textContent).toContain('sample passage')
-    expect(root().textContent).toContain('Discussion unavailable')
+    expect(root().textContent).toContain('Gone, unreadable or not synced yet')
   })
 })
 
@@ -382,7 +429,7 @@ describe('navigation in the chat header', () => {
       await pause(80)
       await wrapper.find('.abele-ai-chat__navigation').trigger('click')
       expect(wrapper.findComponent(ChatNavigation).props('canGoBack')).toBe(true)
-      await click('Back to place')
+      await click('Back to where you were')
       await pause(80)
       expect(switchTab).toHaveBeenCalledWith(session.id)
       await wrapper.find('.abele-ai-chat__navigation').trigger('click')
@@ -420,7 +467,7 @@ describe('navigation in the chat header', () => {
     input.value = 'liner'
     input.dispatchEvent(new Event('input', { bubbles: true }))
     await flushPromises()
-    root().querySelectorAll<HTMLElement>('[data-nav-item]')[1].click()
+    root().querySelectorAll<HTMLElement>('.search-result-file-match')[1].click()
     await pause(100)
     expect(wrapper.find('.abele-chat-find__count').text()).toBe('2/2')
     expect(wrapper.find('[data-message-id="tool"] [data-find-part="result"]').text()).toBe(

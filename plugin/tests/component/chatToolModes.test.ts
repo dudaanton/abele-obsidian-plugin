@@ -25,6 +25,17 @@ const group = (view: ReturnType<typeof mount>, name: string) =>
   view.findAllComponents(TreeItem).find((item) => item.props('text') === name)!
 
 describe('the tools a chat may use', () => {
+  it('keeps a mode button Enter key with the button without folding the group', async () => {
+    const view = mount(ChatToolModes, { props: { toolModes: {} } })
+    const files_ = group(view, 'Files')
+    const button = files_.get('.abele-tree-item__end .clickable-icon')
+    const key = new KeyboardEvent('keydown', { key: 'Enter', bubbles: true, cancelable: true })
+    button.element.dispatchEvent(key)
+    await view.vm.$nextTick()
+    expect(key.defaultPrevented).toBe(false)
+    expect(files_.props('collapsed')).toBe(true)
+    view.unmount()
+  })
   it('lists each group with its count and one glyph for the mode its tools share', () => {
     const modes = Object.fromEntries(optionalFiles().map((tool) => [keyOf(tool), 'ask' as const]))
     const view = mount(ChatToolModes, { props: { toolModes: modes } })

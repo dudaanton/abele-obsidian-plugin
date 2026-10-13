@@ -16,16 +16,21 @@ import { useFakeClock } from '../helpers/fakeClock'
 const pause = useFakeClock()
 let session: ChatSession
 let wrapper: VueWrapper
-const modal = () => document.querySelector<HTMLElement>('.abele-chat-navigation')!
+const modal = () => document.querySelector<HTMLElement>('.abele-chat-outline')!
 const open = async () => {
   await wrapper.find('.abele-ai-chat__navigation').trigger('click')
   await flushPromises()
+  const question = modal().querySelector<HTMLElement>('[data-question="q"]')
+  if (question?.classList.contains('is-collapsed')) {
+    question.querySelector<HTMLElement>(':scope > .tree-item-self > .collapse-icon')!.click()
+    await flushPromises()
+  }
 }
 const chooseOther = async () => {
   await open()
-  modal().querySelector<HTMLElement>('[data-fork-id="q"] > summary')!.click()
+  modal().querySelector<HTMLElement>('[data-fork-id="q"] > .tree-item-self')!.click()
   await flushPromises()
-  modal().querySelector<HTMLElement>('[data-continuation="b"] > button')!.click()
+  modal().querySelector<HTMLElement>('[data-continuation="b"] > .tree-item-self')!.click()
   await pause(80)
 }
 beforeEach(async () => {
@@ -78,12 +83,13 @@ describe('branch jumps from navigation', () => {
     expect(wrapper.find('[data-message-id="b"] .abele-chat-branch').text()).toContain('2/2')
     expect(session.draft.value.text).toBe('An unfinished sample message')
     await open()
-    const fork = modal().querySelector<HTMLDetailsElement>('[data-fork-id="q"]')!
-    if (!fork.open) fork.querySelector<HTMLElement>('summary')!.click()
+    const fork = modal().querySelector<HTMLElement>('[data-fork-id="q"]')!
+    if (fork.classList.contains('is-collapsed'))
+      fork.querySelector<HTMLElement>(':scope > .tree-item-self')!.click()
     await flushPromises()
-    expect(fork.open).toBe(true)
+    expect(fork.classList.contains('is-collapsed')).toBe(false)
     const back = [...modal().querySelectorAll('button')].find(
-      (b) => b.textContent === 'Back to place'
+      (b) => b.getAttribute('aria-label') === 'Back to where you were'
     )!
     back.click()
     await pause(80)
@@ -143,7 +149,7 @@ describe('branch jumps from navigation', () => {
     expect(session.branchLeafId).toBe('b1')
     await open()
     ;[...modal().querySelectorAll('button')]
-      .find((button) => button.textContent === 'Back to place')!
+      .find((button) => button.getAttribute('aria-label') === 'Back to where you were')!
       .click()
     await pause(100)
     expect(session.branchLeafId).toBe('finished-original')
@@ -161,7 +167,7 @@ describe('branch jumps from navigation', () => {
     await chooseOther()
     await open()
     ;[...modal().querySelectorAll('button')]
-      .find((button) => button.textContent === 'Back to place')!
+      .find((button) => button.getAttribute('aria-label') === 'Back to where you were')!
       .click()
     await pause(100)
     expect(session.branchLeafId).toBe('a')
@@ -188,7 +194,7 @@ describe('branch jumps from navigation', () => {
     Notice.shown.length = 0
     await open()
     ;[...modal().querySelectorAll('button')]
-      .find((button) => button.textContent === 'Back to place')!
+      .find((button) => button.getAttribute('aria-label') === 'Back to where you were')!
       .click()
     await pause(100)
     expect(session.branchLeafId).toBe('b1')
@@ -335,11 +341,11 @@ describe('branch jumps from navigation', () => {
     box.scrollTop = 100
     const version = parent.conversationVersion.value
     await open()
-    wrapper.findComponent({ name: 'ChatNavigation' }).vm.$emit('discussion', 'child-discussion')
+    wrapper.findComponent({ name: 'ChatOutlineDialog' }).vm.$emit('discussion', 'child-discussion')
     await pause(80)
     await open()
     ;[...modal().querySelectorAll('button')]
-      .find((button) => button.textContent === 'Back to place')!
+      .find((button) => button.getAttribute('aria-label') === 'Back to where you were')!
       .click()
     await flushPromises()
     expect(finishOpen).toBeTypeOf('function')
@@ -396,23 +402,23 @@ describe('branch jumps from navigation', () => {
     wrapper = mount(AiChat, { attachTo: document.body })
     await flushPromises()
     await open()
-    wrapper.findComponent({ name: 'ChatNavigation' }).vm.$emit('discussion', 'parent-discussion')
+    wrapper.findComponent({ name: 'ChatOutlineDialog' }).vm.$emit('discussion', 'parent-discussion')
     await pause(80)
     await open()
-    wrapper.findComponent({ name: 'ChatNavigation' }).vm.$emit('discussion', 'child-discussion')
+    wrapper.findComponent({ name: 'ChatOutlineDialog' }).vm.$emit('discussion', 'child-discussion')
     await pause(80)
     slowReveal = true
     try {
       await open()
       ;[...modal().querySelectorAll('button')]
-        .find((button) => button.textContent === 'Back to place')!
+        .find((button) => button.getAttribute('aria-label') === 'Back to where you were')!
         .click()
       await pause(80)
       expect(active.value).toBe(parent)
       expect(finishReveal).toBeTypeOf('function')
       await open()
       ;[...modal().querySelectorAll('button')]
-        .find((button) => button.textContent === 'Back to place')!
+        .find((button) => button.getAttribute('aria-label') === 'Back to where you were')!
         .click()
       await pause(80)
       expect(active.value).toBe(root)
@@ -429,7 +435,7 @@ describe('branch jumps from navigation', () => {
       .find('.abele-ai-chat__branch-note [aria-label="Cancel branch switch"]')
       .trigger('click')
     await open()
-    modal().querySelector<HTMLElement>('[data-question="q"]')!.click()
+    modal().querySelector<HTMLElement>('[data-question="q"] > .tree-item-self')!.click()
     await pause(80)
     expect(session.branchLeafId).toBe('a2')
     expect(modal()).toBeNull()
@@ -454,7 +460,7 @@ describe('branch jumps from navigation', () => {
     const show = vi.spyOn(comments, 'showInSidebar').mockResolvedValue(true)
     await open()
     wrapper
-      .findComponent({ name: 'ChatNavigation' })
+      .findComponent({ name: 'ChatOutlineDialog' })
       .vm.$emit('discussion', 'sample-discussion', 'a', 'content', 'answer')
     await pause(100)
     expect(show.mock.lastCall?.[1]).toEqual(expect.any(Function))
