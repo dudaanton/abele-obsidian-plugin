@@ -100,7 +100,12 @@ const script = `(async () => {
     input.dispatchEvent(new Event('input', { bubbles: true }))
     await wait(400)
     input.dispatchEvent(new KeyboardEvent('keydown', { key: 'Enter', code: 'Enter', keyCode: 13, bubbles: true }))
-    await until(() => inputText().includes('[[sample-menu-fixture/sample-note]]'), 'inserted note link')
+    // The link is the one Obsidian writes for the note: its shortest unique form, which depends
+    // on what else the vault holds, so it is checked by where it leads rather than its spelling.
+    const linktext = app.metadataCache.fileToLinktext(note, '')
+    report.link = '[[' + linktext + ']]'
+    report.linkTarget = app.metadataCache.getFirstLinkpathDest(linktext, '')?.path ?? ''
+    await until(() => inputText().includes(report.link), 'inserted note link')
     report.draft = inputText()
     report.scope = session.scopeResolver.isInScope(notePath)
     report.attached = session.touched.value.map(n => n.path)
@@ -139,6 +144,8 @@ interface Report {
   menus: string[][]
   quick: string[]
   draft: string
+  link: string
+  linkTarget: string
   scope: boolean
   attached: string[]
   activeNote: string
@@ -187,7 +194,9 @@ describe.skipIf(!available)('note actions in the app', () => {
   it('inserts into the picked chat beside its draft, without attaching a card or moving the note', () => {
     for (const report of reports) {
       expect(report.draft).toContain('Existing draft')
-      expect(report.draft).toContain('[[sample-menu-fixture/sample-note]]')
+      expect(report.link).toMatch(/^\[\[(sample-menu-fixture\/)?sample-note\]\]$/)
+      expect(report.linkTarget).toBe('sample-menu-fixture/sample-note.md')
+      expect(report.draft).toContain(report.link)
       expect(report.scope).toBe(true)
       expect(report.attached).toEqual([])
       expect(report.activeNote).toBe('sample-menu-fixture/sample-note.md')
