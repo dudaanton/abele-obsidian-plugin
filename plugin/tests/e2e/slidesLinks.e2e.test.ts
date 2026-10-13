@@ -44,6 +44,7 @@ describe.skipIf(!available)('note links with a presentation tab active', () => {
         await leaf.setViewState({type:'markdown',state:{file:notePath,mode:'source'},active:true})
         leaf.view.editor.setValue(leaf.view.editor.getValue()+'\\nA sample edit.');await leaf.view.save()
         r.editable=await until(async()=>(await app.vault.read(note)).includes('A sample edit.'))
+        if(!r.editable)r.editState={type:leaf.view.getViewType(),mode:leaf.view.getMode?.(),editor:leaf.view.editor?.getValue().slice(-40),file:(await app.vault.read(note)).slice(-40),viewFile:leaf.view.file?.path}
         r.noteShot=await shot('chat-note-markdown')
         await leaf.openFile(deck);r.reopenedDeck=leaf.view.getViewType()==='abele-deck'
         const deckViewer=leaf.view.viewer;await deckViewer.go(1)
