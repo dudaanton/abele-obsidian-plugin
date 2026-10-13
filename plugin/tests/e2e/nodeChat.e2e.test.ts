@@ -12,6 +12,7 @@ import {
 import { resolve } from 'node:path'
 import { tmpdir } from 'node:os'
 import { createServer } from 'node:http'
+import { OPEN_LOCAL_NODE_FORM } from './helpers/nodeSettingsForm'
 import { evalRaw, evalJson, reloadPlugin, reloadApp } from './helpers/obsidianCli'
 import { shotDir } from './helpers/shots'
 import { evalAsync } from './helpers/githubLive'
@@ -34,7 +35,7 @@ const captureDraft = (label: string) =>
 })()`)
 const wait = (ms: number) => new Promise((resolve) => setTimeout(resolve, ms))
 const PRELUDE = `const wait = ms => new Promise(r => setTimeout(r, ms));
-const until = async fn => { for (let i=0; i<200; i++) { if (fn()) return; await wait(50) } throw new Error('Node UI did not converge: ' + fn.toString()) };
+const until = async fn => { for (let i=0; i<200; i++) { const value = fn(); if (value) return value; await wait(50) } throw new Error('Node UI did not converge: ' + fn.toString()) };
 const chats = window.__abeleTest.ChatService.getInstance();
 const nodes = window.__abeleTest.NodeService.getInstance();
 const nodeMenu = async title => {
@@ -162,11 +163,13 @@ it('restores unsent offline drafts without auto-sending, then sends explicitly a
       const settingsDoc = app.setting.activeTab.containerEl.ownerDocument;
       await until(() => settingsDoc.querySelector('.abele-settings__nav .abele-tabs__tab'));
       [...settingsDoc.querySelectorAll('.abele-settings__nav .abele-tabs__tab')].find(t => t.textContent.trim() === 'Nodes').click();
-      await until(() => settingsDoc.querySelector('input[aria-label="Node URL"]'));
-      const fill = (label, value) => { const field = settingsDoc.querySelector('input[aria-label="' + label + '"]'); field.value = value; field.dispatchEvent(new Event('input', {bubbles:true})) };
+      const settingsRoot = app.setting.activeTab.containerEl;
+      ${OPEN_LOCAL_NODE_FORM}
+      const fill = (label, value) => { const field = nodeForm.querySelector('input[aria-label="' + label + '"]'); field.value = value; field.dispatchEvent(new Event('input', {bubbles:true})) };
       fill('Node label', 'Sample acceptance node'); fill('Node URL', 'http://127.0.0.1:${port}'); fill('Node installation token', ${JSON.stringify(token)});
       await wait(100);
-      [...settingsDoc.querySelectorAll('.abele-settings__content button')].find(b => b.textContent.trim() === 'Add node').click();
+      nodeForm.querySelector('button[aria-label="Authenticate and pin the local node identity on this device"]').click();
+      await until(() => !nodeForm.isConnected);
       await until(() => nodes.nodes.value.some(n => n.label === 'Sample acceptance node'));
       const node = nodes.nodes.value.find(n => n.label === 'Sample acceptance node');
       const row = [...settingsDoc.querySelectorAll('.setting-item')].find(row => row.querySelector('.setting-item-name')?.textContent === node.label);

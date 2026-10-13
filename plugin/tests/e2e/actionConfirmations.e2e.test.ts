@@ -31,9 +31,10 @@ const probe = async (
     if (document.querySelector('.modal-container')) throw Error('A dialog was already open')
     const frame = () => new Promise(resolve => requestAnimationFrame(resolve))
     const path = 'sample-action-confirmation.md'
-    const pluginId = 'sample-confirmation-dataview'
+    const pluginId = 'dataview'
+    const savedDataview = app.plugins.plugins[pluginId]
     const source = '- [ ] Sample task\\n'
-    if (app.vault.getAbstractFileByPath(path) || app.plugins.plugins[pluginId]) throw Error('Confirmation fixture already exists')
+    if (app.vault.getAbstractFileByPath(path)) throw Error('Confirmation fixture already exists')
     const file = await app.vault.create(path, source)
     let parent, confirm, confirmContainer
     const close = container => container?.querySelector('.modal-close-button, .modal-header-button')?.click()
@@ -48,8 +49,9 @@ const probe = async (
       const root = await until(() => document.querySelector(${JSON.stringify(place === 'find-replace' ? '.abele-sar-fm-modal' : '.abele-migrate-dv-modal')}))
       if (!root) throw Error('The action dialog did not open')
       parent = root.closest('.modal-container')
-      const field = root.querySelector(${JSON.stringify(place === 'find-replace' ? '.abele-criterion input' : 'input')})
-      field.value = ${JSON.stringify(place)} === 'find-replace' ? path : pluginId
+      const field = root.querySelector(${JSON.stringify(place === 'find-replace' ? '.abele-criterion input' : 'textarea')})
+      if (!field) throw Error('The action query field did not open')
+      field.value = ${JSON.stringify(place)} === 'find-replace' ? path : 'TASK WHERE file.path = "' + path + '"'
       field.dispatchEvent(new Event('input', { bubbles: true }))
       await frame()
       const button = label => [...root.closest('.modal').querySelectorAll('button')].find(el => el.textContent.trim() === label)
@@ -84,7 +86,10 @@ const probe = async (
     } finally {
       if (confirmContainer?.isConnected) close(confirmContainer)
       if (parent?.isConnected) close(parent)
-      delete app.plugins.plugins[pluginId]
+      if (${JSON.stringify(place)} === 'migrate-dataview') {
+        if (savedDataview) app.plugins.plugins[pluginId] = savedDataview
+        else delete app.plugins.plugins[pluginId]
+      }
       await app.vault.delete(file)
       if (parent && !(await until(() => !parent.isConnected))) throw Error('The action dialog did not close')
     }

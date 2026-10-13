@@ -84,6 +84,7 @@ describe.skipIf(!available)('custom OpenAI-compatible proxy timeouts in the runn
         file = await app.vault.create(path, JSON.stringify({v: 2, k: 'meta', type: 'abele-chat', title: 'Sample proxy chat', agentId: agent.id}) + '\n')
         app.commands.executeCommandById('abele:show-ai-sidebar')
         await chats.openChatFile(file)
+        await chats.revealSidebar({focus: false})
         session = chats.getSessionByFile(path)
         if (!session) throw Error('Synthetic chat did not open')
         session.getTools = () => []

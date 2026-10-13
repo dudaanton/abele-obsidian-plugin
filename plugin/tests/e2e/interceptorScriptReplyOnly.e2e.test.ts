@@ -1,5 +1,6 @@
 import { beforeAll, describe, expect, it } from 'vitest'
 import { evalRaw, hasTestApi, isObsidianRunning } from './helpers/obsidianCli'
+import { SCRIPT_FIXTURE } from './helpers/scriptFixture'
 
 interface Report {
   error: string
@@ -14,16 +15,15 @@ interface Report {
 }
 
 const probe = String.raw`(async () => {
+  ${SCRIPT_FIXTURE}
   const T = window.__abeleTest
   const chats = T.ChatService.getInstance()
   const scripts = T.ScriptService.getInstance()
-  const cfg = T.AbeleConfig.getInstance().ai
-  const oldFolder = cfg.scriptsFolder
   const oldTab = chats.activeTabId.value
   const wasRightCollapsed = app.workspace.rightSplit.collapsed
   const realFetch = window.fetch
   const FAKE = 'http://sample-script-reply.invalid/v1'
-  const folder = cfg.scriptsFolder || 'Scripts'
+  const folder = 'Sample reply-only scripts'
   const scriptPath = folder + '/sample-side-review.js'
   const chatPath = 'AI/Chats/sample-script-reply.abchat'
   const name = 'Sample side reviewer'
@@ -32,7 +32,7 @@ const probe = String.raw`(async () => {
   const pending = new Map()
   const inputs = []
   globalThis.__sampleScriptReviews = { pending, inputs }
-  let session
+  let session, fixture
   const report = { error: '', mainBeforeScripts: false, noDraftActions: false, inputs, replies: [], savedReplies: [], renderedReplies: false, silentHidden: false, ignoredRewrite: '' }
   const wait = ms => new Promise(resolve => setTimeout(resolve, ms))
   const until = async fn => {
@@ -56,21 +56,23 @@ const probe = String.raw`(async () => {
       { status: 200, headers: { 'Content-Type': 'text/event-stream' } })
   }
   try {
-    cfg.scriptsFolder = folder
+    fixture = await saveScriptFixture()
     for (const dir of ['AI', 'AI/Chats', folder]) {
       if (!app.vault.getAbstractFileByPath(dir)) { await app.vault.createFolder(dir); madeDirs.unshift(dir) }
     }
-    const scriptFile = await app.vault.create(scriptPath, [
+    await enableScriptFixture(folder)
+    const scriptSource = [
       '// @name ' + name,
       '// @interceptor 30',
       'globalThis.__sampleScriptReviews.inputs.push({ text: message.text, earlier: chat.messages.length })',
       'return await new Promise(resolve => globalThis.__sampleScriptReviews.pending.set(message.text, resolve))',
-    ].join('\n'))
+    ].join('\n')
+    const scriptFile = await app.vault.create(scriptPath, scriptSource)
     madeFiles.push(scriptFile)
     await scripts.discover()
     const indexed = scripts.get(scriptPath)
     if (!indexed) throw new Error('sample script was not indexed')
-    scripts.confirm(indexed)
+    await approveScriptFixture(scriptPath, scriptSource)
     const file = await app.vault.create(chatPath, JSON.stringify({ v: 2, k: 'meta', type: 'abele-chat', title: 'Sample script reply' }) + '\n')
     madeFiles.push(file)
     await chats.openChatFile(file)
@@ -124,8 +126,7 @@ const probe = String.raw`(async () => {
     for (const file of madeFiles.reverse()) {
       if (app.vault.getAbstractFileByPath(file.path) === file) await app.vault.delete(file)
     }
-    cfg.scriptsFolder = oldFolder
-    await scripts.discover()
+    await restoreScriptFixture(fixture)
     if (oldTab) chats.activeTabId.value = oldTab
     if (wasRightCollapsed) app.workspace.rightSplit.collapse()
     delete globalThis.__sampleScriptReviews

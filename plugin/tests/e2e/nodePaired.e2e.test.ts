@@ -141,8 +141,9 @@ it('pairs through the real node UI, confirms locally, runs fake prompts and fenc
       const doc=app.setting.activeTab.containerEl.ownerDocument;
       await until(()=>doc.querySelector('.abele-settings__nav .abele-tabs__tab'));
       [...doc.querySelectorAll('.abele-settings__nav .abele-tabs__tab')].find(t=>t.textContent.trim()==='Nodes').click();
-      await until(()=>[...doc.querySelectorAll('button')].some(b=>b.textContent.trim()==='Pair remote node'));
-      [...doc.querySelectorAll('button')].find(b=>b.textContent.trim()==='Pair remote node').click();
+      const pairLabel='Scan or paste an invitation; re-pair or verify a changed node key';
+      await until(()=>doc.querySelector('button[aria-label="'+pairLabel+'"]'));
+      doc.querySelector('button[aria-label="'+pairLabel+'"]').click();
       await until(()=>doc.querySelector('textarea[aria-label="Node invitation"]'));
       const input=doc.querySelector('textarea[aria-label="Node invitation"]');input.value=${JSON.stringify(JSON.stringify(invite))};input.dispatchEvent(new Event('input',{bubbles:true}));await wait(50);
       const press=text=>[...doc.querySelectorAll('.abele-node-pairing button')].find(b=>b.textContent.trim()===text).click();

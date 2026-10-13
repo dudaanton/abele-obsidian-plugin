@@ -99,6 +99,14 @@ const PRELUDE = `
     if (!items) throw Error('The selection menu did not open')
     return items
   }
+  const selectedBar = async (view) => {
+    const bar = await until(() => {
+      const el = view.contentEl.querySelector('.abele-book-selection')
+      return view.model.selection && !view.model.selecting && el?.getBoundingClientRect().height > 0 ? el : null
+    }, 3000)
+    if (!bar) throw Error('The PDF script selection bar did not appear')
+    return bar
+  }
   const menuChoice = async (bar, title) => {
     const item = (await moreItems(bar)).find(row => row.querySelector('.menu-item-title')?.textContent.trim() === title)
     if (!item) throw Error('Missing selection action: ' + title)
@@ -243,7 +251,7 @@ describe.skipIf(!available)('scripts on words in a book, and notes linking into 
       const { view } = await open(${JSON.stringify(BOOK)})
       await closePanel(view)
       await selectIn(view, 2, 0, 5)
-      const button = await menuChoice(view.contentEl.querySelector('.abele-book-selection'), 'Run E2E word card')
+      const button = await menuChoice(await selectedBar(view), 'Run E2E word card')
       if (!button) return { button: false }
       button.click()
       const card = await until(() => app.vault.getFiles().find((f) => f.path.startsWith(${JSON.stringify(CARDS)}))?.path, 10000)
@@ -430,7 +438,7 @@ describe.skipIf(!available)('scripts on words in a book, and notes linking into 
       const range = doc.createRange(); range.setStart(span.firstChild, 0); range.setEnd(span.firstChild, 5)
       doc.getSelection().removeAllRanges(); doc.getSelection().addRange(range)
       await until(() => view.model.selection, 3000)
-      const button = await menuChoice(view.contentEl.querySelector('.abele-book-selection'), 'Run E2E word card')
+      const button = await menuChoice(await selectedBar(view), 'Run E2E word card')
       button.click()
       const card = await until(() => app.vault.getFiles().find((f) => f.path.startsWith(${JSON.stringify(CARDS)}))?.path, 10000)
       view.reading.clearSelection()

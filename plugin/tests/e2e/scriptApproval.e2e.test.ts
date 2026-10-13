@@ -41,7 +41,7 @@ const measure = (label: string) => String.raw`(async () => {
     if (!(await until(() => document.querySelector('.abele-script-approval'), 5000))) throw new Error('Approval dialog never opened')
     const root = document.querySelector('.abele-script-approval').closest('.modal')
     const report = await screen(${JSON.stringify(label)}, root, root.querySelector('.abele-modal__body'))
-    const buttons = [...root.querySelectorAll('.abele-script-approval button')]
+    const buttons = [...root.querySelectorAll('.abele-modal__footer button')]
     report.extra = {
       buttons: buttons.map(b => b.textContent.trim()),
       visible: buttons.every(b => { const r = b.getBoundingClientRect(); return r.width > 0 && r.left >= 0 && r.right <= innerWidth + 1 && r.top >= 0 && r.bottom <= innerHeight + 1 }),
@@ -66,7 +66,7 @@ describe('script approval with existing dialog geometry checks', () => {
     expect(screen.error).toBe('')
     expect(screen.over).toEqual([])
     expect(screen.clipped).toEqual([])
-    expect(screen.extra.buttons).toEqual(['Cancel', 'Approve and run', 'Stop'])
+    expect(screen.extra.buttons).toEqual(['Stop', 'Approve and run', 'Cancel'])
     expect(screen.extra.visible).toBe(true)
   })
   it('persists an exact-byte approval through the real native dialog and IndexedDB', () => {
@@ -94,7 +94,7 @@ describe('script approval with existing dialog geometry checks', () => {
         await context.provenance.record(path, 'sample-native-file')
         const loaded = api.load(app, path, request => api.confirm(request))
         if (!(await until(() => document.querySelector('.abele-script-approval'), 5000))) throw new Error('Native approval did not open')
-        const approve = [...document.querySelectorAll('.abele-script-approval button')].find(b => b.textContent.trim() === 'Approve and run')
+        const approve = [...document.querySelector('.abele-script-approval').closest('.modal').querySelectorAll('.abele-modal__footer button')].find(b => b.textContent.trim() === 'Approve and run')
         approve.click()
         const parsed = await loaded
         const second = await api.load(app, path)
@@ -140,7 +140,7 @@ describe('script approval with existing dialog geometry checks', () => {
     expect(screen.capped).toEqual([])
     expect(screen.scrollers).toHaveLength(1)
     expect(screen.extra.visible).toBe(true)
-    expect(screen.extra.buttons).toEqual(['Cancel', 'Approve and run', 'Stop'])
+    expect(screen.extra.buttons).toEqual(['Stop', 'Approve and run', 'Cancel'])
     expect(screen.extra.codeHeight).toBeGreaterThan(80)
     expect(screen.extra.reviewHeight).toBeGreaterThan(300)
     expect(screen.fill).toBeGreaterThan(0.8)

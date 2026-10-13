@@ -4,6 +4,7 @@ import { evalLong, evalRaw, reloadApp } from './helpers/obsidianCli'
 import { onPhone, targets } from './helpers/target'
 import { shotDir } from './helpers/shots'
 import { RESTORE_PHONE_SCRIPT } from './helpers/phoneState'
+import { SCRIPT_FIXTURE } from './helpers/scriptFixture'
 
 targets('desktop', 'phone')
 const SHOTS = shotDir('abele-agent-rights')
@@ -23,6 +24,7 @@ interface Report {
 }
 
 const probe = (desktopChecks: boolean, label: string) => `(async () => {
+  ${SCRIPT_FIXTURE}
   const wait = ms => new Promise(resolve => setTimeout(resolve, ms))
   const until = async fn => {
     for (let n = 0; n < 100; n++) { const value = fn(); if (value) return value; await wait(100) }
@@ -42,7 +44,7 @@ const probe = (desktopChecks: boolean, label: string) => `(async () => {
   const FAKE = 'https://sample-model.invalid/v1'
   const MARK = 'Use concise sample summaries'
   const report = {asks: false, pending: false, beforeMemory: -1, afterMemory: -1, visible: false, overflow: -1, text: '', shot: '', restored: false}
-  let tab = null, session = null, created = false, scriptPath = '', createdScript = false, createdScriptFolder = ''
+  let tab = null, session = null, created = false, scriptPath = '', createdScript = false, scriptFixture = null
   let phase = 'memory'
   const sse = (delta, finish) => new Response(
     'data: ' + JSON.stringify({choices: [{delta, finish_reason: null}]}) + '\\n\\n' +
@@ -62,6 +64,7 @@ const probe = (desktopChecks: boolean, label: string) => `(async () => {
   }
   try {
     if (app.vault.getAbstractFileByPath(DIR)) throw new Error('Sample fixture folder already exists')
+    if (${desktopChecks}) scriptFixture = await saveScriptFixture()
     await app.vault.createFolder(DIR); created = true
     config.ai.enabled = true
     config.ai.providers = [{id: 'sample-provider', name: 'Sample provider', baseUrl: FAKE, apiKeyId: '', models: [{id: 'sample-model', name: 'Sample model', contextWindow: 32000, maxTokens: 100, supportsReasoning: false}]}]
@@ -151,17 +154,15 @@ const probe = (desktopChecks: boolean, label: string) => `(async () => {
     if (${desktopChecks}) {
       phase = 'script'
       const target = registry.create({name: 'Sample unattended worker', providerId: 'sample-provider', modelId: 'sample-model', toolModes: {eval_js: 'ask'}})
-      const folder = config.ai.scriptsFolder || DIR + '/Scripts'
-      config.ai.scriptsEnabled = true; config.ai.scriptsFolder = folder
-      if (!app.vault.getAbstractFileByPath(folder)) {
-        await app.vault.createFolder(folder); createdScriptFolder = folder
-      }
+      const folder = DIR + '/Scripts'
+      await app.vault.createFolder(folder)
+      await enableScriptFixture(folder)
       scriptPath = folder + '/sample-ask-check.js'
       if (app.vault.getAbstractFileByPath(scriptPath)) throw new Error('Sample script already exists')
       const code = '// @name Sample unattended check\\nreturn await agent("Sample calculation", {agent: ' + JSON.stringify(target.id) + '});'
-      await t.ScriptTrust.getInstance().noteLocalWrite(scriptPath, code)
       await app.vault.create(scriptPath, code); createdScript = true
       await t.ScriptService.getInstance().discover()
+      await approveScriptFixture(scriptPath, code)
       const answer = await t.ScriptService.getInstance().execute(scriptPath, {})
       report.scriptRefused = /eval_js.*approval/.test(answer)
     }
@@ -171,7 +172,7 @@ const probe = (desktopChecks: boolean, label: string) => `(async () => {
     window.fetch = fetchBefore
     if (session) { session.abort(); await chats.closeTab(tab) }
     if (createdScript && app.vault.getAbstractFileByPath(scriptPath)) await app.vault.delete(app.vault.getAbstractFileByPath(scriptPath), true)
-    if (createdScriptFolder && !createdScriptFolder.startsWith(DIR + '/') && app.vault.getAbstractFileByPath(createdScriptFolder)) await app.vault.delete(app.vault.getAbstractFileByPath(createdScriptFolder), true)
+    await restoreScriptFixture(scriptFixture)
     config.ai = savedAi; registry.notifyConfigReloaded()
     await config.saveSettings()
     if (created && app.vault.getAbstractFileByPath(DIR)) await app.vault.delete(app.vault.getAbstractFileByPath(DIR), true)

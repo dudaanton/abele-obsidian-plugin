@@ -56,3 +56,22 @@ it('rejects a script page which never draws', async () => {
   expect(await result).toBeInstanceOf(Error)
   expect(((await result) as Error).message).toMatch(/script.*page/i)
 })
+
+it('waits for the PDF selection controls after the model has accepted the selection', async () => {
+  vi.useFakeTimers()
+  let bar: unknown = null
+  const view = {
+    model: { selection: { text: 'Sample' }, selecting: false },
+    contentEl: { querySelector: () => bar },
+  }
+  const selectedBar = new Function(`${prelude}; return selectedBar`)() as (
+    view: unknown
+  ) => Promise<unknown>
+  const done = vi.fn()
+  void selectedBar(view).then(done)
+  await vi.advanceTimersByTimeAsync(200)
+  expect(done).not.toHaveBeenCalled()
+  bar = { getBoundingClientRect: () => ({ height: 32 }) }
+  await vi.advanceTimersByTimeAsync(200)
+  expect(done).toHaveBeenCalledWith(bar)
+})
