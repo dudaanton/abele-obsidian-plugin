@@ -118,7 +118,7 @@ import { pluginRepresentation } from '@/sync/external/pluginRepresentation'
 import { RuntimeFence } from '@/sync/external/recovery'
 import { tokenSyncProbe } from './tokenSyncProbe'
 import { holdTokenDownload } from './holdTokenDownload'
-import { nativeSyncTransportSnapshot } from '../sync/mobileTransport'
+import { nativeSyncTransportSnapshot, setNativeSyncTimeoutForTests } from '../sync/mobileTransport'
 import { externalFileSnapshot } from '../sync/external/ObsidianExternalFileHost'
 import type { TokenEngineRuntime } from '@/sync/tokenEngineRuntime'
 import { scan, SyncEngine, RecoveryBarrier } from '@abele/sync-core'
@@ -237,6 +237,8 @@ interface AbeleTestApi {
   tokenSyncProbe(id: string): ReturnType<typeof tokenSyncProbe>
   holdTokenDownload(id: string): ReturnType<typeof holdTokenDownload>
   nativeSyncTransport(): ReturnType<typeof nativeSyncTransportSnapshot>
+  /** Lowers the phone's native connect/read timeout for a hung-server test; `null` restores. */
+  setNativeSyncTimeout: typeof setNativeSyncTimeoutForTests
   externalFileOperations(): ReturnType<typeof externalFileSnapshot>
   externalRepresentation: {
     SyncEngine: typeof SyncEngine
@@ -871,6 +873,7 @@ export function exposeTestApi(plugin: Plugin): void {
       return holdTokenDownload(runtime, () => binding.assertCurrent())
     },
     nativeSyncTransport: nativeSyncTransportSnapshot,
+    setNativeSyncTimeout: setNativeSyncTimeoutForTests,
     externalFileOperations: externalFileSnapshot,
     externalRepresentation: {
       SyncEngine,

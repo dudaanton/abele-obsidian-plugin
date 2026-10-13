@@ -1,5 +1,9 @@
 import { describe, expect, it, vi } from 'vitest'
-import { fetchViaCapacitorHttp, exactNativeRequestBodies } from '@/sync/mobileTransport'
+import {
+  fetchViaCapacitorHttp,
+  exactNativeRequestBodies,
+  setNativeSyncTimeoutForTests,
+} from '@/sync/mobileTransport'
 import { connectionError } from '@/sync/tokenUi'
 
 describe('bounded native connection-lost retry', () => {
@@ -400,6 +404,29 @@ describe('non-following native mobile fetch', () => {
           headers: { authorization: 'Bearer ' + principal },
         })
     expect(seen.map((o) => o.headers['Cache-Control'])).toEqual(Array(6).fill('no-cache, no-store'))
+  })
+  it('waits 30 s to connect and to read, unless a hung-server test lowers it', async () => {
+    const seen: any[] = []
+    const native = {
+      request: async (opts: any) => {
+        seen.push([opts.connectTimeout, opts.readTimeout])
+        return { status: 200, headers: {}, data: btoa('sample'), url: opts.url }
+      },
+    }
+    const fetch = fetchViaCapacitorHttp(native)
+    await fetch('https://sync.example/timeouts')
+    setNativeSyncTimeoutForTests(5000)
+    try {
+      await fetch('https://sync.example/timeouts')
+    } finally {
+      setNativeSyncTimeoutForTests(null)
+    }
+    await fetch('https://sync.example/timeouts')
+    expect(seen).toEqual([
+      [30000, 30000],
+      [5000, 5000],
+      [30000, 30000],
+    ])
   })
   it('encodes binary file bytes exactly and preserves explicit text/JSON bodies', async () => {
     const request = vi.fn(async (opts: any) => ({

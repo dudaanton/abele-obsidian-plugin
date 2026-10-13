@@ -60,6 +60,8 @@ liveCase(
       id = await s.connect()
     await a.pause(id, true)
     a.create(path, 'phone bytes awaiting transfer')
+    // The stopped server is waited out for 5 s per request rather than 30: still the hung path.
+    a.run('window.__abeleTest.setNativeSyncTimeout(5000);return true')
     s.server.suspend()
     try {
       await a.pause(id, false)
@@ -80,6 +82,7 @@ liveCase(
       ).toMatch(/Not sent:.*(?:unavailable|interrupted|reachable|timed out)/i)
     } finally {
       s.server.resume()
+      a.run('window.__abeleTest.setNativeSyncTimeout(null);return true')
     }
     await a.syncNow(id)
     const remote = (await s.items()).find((one) => one.path === path)!
@@ -183,6 +186,7 @@ liveCase(
       a = s.primary,
       path = s.root + '/offline.md'
     const id = await s.connect()
+    a.run('window.__abeleTest.setNativeSyncTimeout(5000);return true')
     s.server.suspend()
     try {
       a.create(path, 'offline phone edit')
@@ -190,6 +194,7 @@ liveCase(
       expect(a.read(path)).toBe('offline phone edit')
     } finally {
       s.server.resume()
+      a.run('window.__abeleTest.setNativeSyncTimeout(null);return true')
     }
     await a.syncNow(id)
     expect((await s.items()).some((one) => one.path === path)).toBe(true)
@@ -293,6 +298,7 @@ liveCase(
     await a.syncNow()
     expect((await s.items()).some((one) => one.path === path)).toBe(true)
     expect((await s.items(second)).some((one) => one.path === path)).toBe(true)
+    a.run('window.__abeleTest.setNativeSyncTimeout(5000);return true')
     second.suspend()
     try {
       a.create(path, 'one server unavailable')
@@ -301,6 +307,7 @@ liveCase(
       expect(a.rows()).toHaveLength(2)
     } finally {
       second.resume()
+      a.run('window.__abeleTest.setNativeSyncTimeout(null);return true')
     }
     await a.syncNow(other)
     const file = (await s.items(second)).find((one) => one.path === path)!

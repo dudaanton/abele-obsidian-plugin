@@ -7,6 +7,16 @@ const nativeRequests = new ExchangeTrace()
 nativeRequests.finishFirstSync()
 export const nativeSyncTransportSnapshot = () => nativeRequests.snapshot()
 export const MOBILE_BINARY_CHUNK_BYTES = 1024 * 1024
+/** How long a native request waits to connect, and then to read. */
+const NATIVE_TIMEOUT_MS = 30_000
+let nativeTimeoutMs = NATIVE_TIMEOUT_MS
+/**
+ * For tests of a server that stopped answering, which would otherwise wait the full 30 s per
+ * request; `null` puts the real value back. Nothing outside the test API calls it.
+ */
+export function setNativeSyncTimeoutForTests(ms: number | null): void {
+  nativeTimeoutMs = ms ?? NATIVE_TIMEOUT_MS
+}
 export interface NativeHttpOptions {
   url: string
   method: string
@@ -221,8 +231,8 @@ function capacitorFetch(native: NativeHttp): typeof fetch {
         headers,
         disableRedirects: true,
         responseType: 'arraybuffer',
-        connectTimeout: 30000,
-        readTimeout: 30000,
+        connectTimeout: nativeTimeoutMs,
+        readTimeout: nativeTimeoutMs,
       }
       const body = init?.body
       let requestBytes = 0
