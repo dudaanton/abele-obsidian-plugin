@@ -67,6 +67,29 @@ const script = `(async () => {
     )
     await until(() => !document.querySelector('.modal'), 3000)
   }
+  // Two frames of the window \`el\` is in, or a moment where it draws none.
+  const frame = (el) => new Promise((r) => {
+    const view = el.ownerDocument.defaultView
+    const t = setTimeout(r, 250)
+    view.requestAnimationFrame(() => view.requestAnimationFrame(() => { clearTimeout(t); r() }))
+  })
+  // What was opened or chosen, drawn: \`ready\` holds, and the elements under \`rootOf()\` and its
+  // box are the same two frames running. Past the allowance it is measured as it is.
+  const settle = async (rootOf, ready = () => true) => {
+    let last = null
+    for (const deadline = Date.now() + 5000; Date.now() < deadline; ) {
+      const root = rootOf()
+      await frame(root || document.body)
+      if (!root || !root.isConnected || !ready()) { last = null; continue }
+      const r = root.getBoundingClientRect()
+      const now = [root.getElementsByTagName('*').length, root.scrollWidth, root.scrollHeight, r.left, r.top, r.width, r.height].join(' ')
+      if (now === last) return true
+      last = now
+    }
+    return false
+  }
+  const chosen = (tab) => () => tab.classList.contains('abele-tabs__tab_active') || tab.classList.contains('abele-tabs__tab_disabled')
+  const theModal = () => document.querySelector('.modal')
 
   const ringClipped = (field) => {
     const cs = getComputedStyle(field)
@@ -111,7 +134,7 @@ const script = `(async () => {
     () => [...document.querySelectorAll('.abele-ai-chat')].some((el) => el.getBoundingClientRect().height > 0),
     5000
   )
-  await wait(400)
+  await settle(() => [...document.querySelectorAll('.abele-ai-chat')].find((el) => el.getBoundingClientRect().height > 0))
 
   ${MESSAGE_ACTIONS_SETUP}
   try {
@@ -120,12 +143,17 @@ const script = `(async () => {
     const fs = require('fs'), win = require('@electron/remote').getCurrentWindow()
     fs.writeFileSync(dir + '/message-actions.png', (await win.webContents.capturePage()).toPNG())
     actionRow.querySelector('[aria-label="More message actions"]').click()
-    await wait(200)
+    await until(() => document.querySelector('.menu'), 3000)
+    await frame(document.body)
     if (!document.querySelector('.menu')) throw Error('Message actions menu did not open')
     fs.writeFileSync(dir + '/message-actions-menu.png', (await win.webContents.capturePage()).toPNG())
     document.body.dispatchEvent(new KeyboardEvent('keydown',{key:'Escape',code:'Escape',keyCode:27,bubbles:true}))
     actionService.getSession(actionSourceId).preparingClone.value = true
-    await wait(200)
+    await until(() => {
+      const c = [...document.querySelectorAll('.abele-ai-chat')].find(root=>root.getBoundingClientRect().width)
+      return c && !c.querySelector('.abele-chat-input, .abele-ai-chat__header')
+    }, 3000)
+    await frame(document.body)
     const pendingChat = [...document.querySelectorAll('.abele-ai-chat')].find(root=>root.getBoundingClientRect().width)
     if (pendingChat.querySelector('.abele-chat-input, .abele-ai-chat__header')) throw Error('Pending copy is editable')
     measureAll('chat copy pending', pendingChat)
@@ -145,17 +173,17 @@ const script = `(async () => {
   if (!(await until(() => document.querySelector('.modal .abele-chat-setup'), 5000))) {
     return JSON.stringify([{ screen: 'setup', field: '-', by: ['dialog did not open'] }])
   }
-  await wait(300)
+  await settle(theModal)
   for (const tab of [...document.querySelectorAll('.modal .abele-chat-setup .abele-tabs__tab')]) {
     tab.click()
-    await wait(400)
+    await settle(theModal, chosen(tab))
     measureAll('setup ' + tab.textContent.trim().toLowerCase(), document.querySelector('.modal'))
   }
   await closeDialog()
 
   press(chat && chat.querySelector('.lucide-history'))
   if (await until(() => document.querySelector('.modal'), 5000)) {
-    await wait(400)
+    await settle(theModal)
     measureAll('history', document.querySelector('.modal'))
     await closeDialog()
   }
@@ -168,7 +196,7 @@ const script = `(async () => {
 
   window.__abeleTest.openIconPicker('calendar')
   if (await until(() => document.querySelector('.modal .abele-icon-picker .abele-icon-picker__icon'), 5000)) {
-    await wait(400)
+    await settle(theModal)
     measureAll('icon picker', document.querySelector('.modal'))
     await closeDialog()
   } else {
@@ -187,7 +215,7 @@ const script = `(async () => {
       const modal = document.querySelector('.modal .abele-mcp-server').closest('.modal')
       ;[...modal.querySelectorAll('button')].find((b) => b.textContent.trim() === 'Fetch tools').click()
       await until(() => modal.querySelectorAll('.abele-mcp-server .setting-item').length > 12, 5000)
-      await wait(400)
+      await settle(() => modal)
       measureAll('mcp server', modal)
       await closeDialog()
     } else {
@@ -199,7 +227,7 @@ const script = `(async () => {
 
   window.__abeleTest.openSecretsList()
   if (await until(() => document.querySelector('.modal .abele-secrets-list'), 5000)) {
-    await wait(400)
+    await settle(theModal)
     measureAll('secrets list', document.querySelector('.modal'))
     await closeDialog()
   } else {
@@ -214,7 +242,7 @@ const script = `(async () => {
     const settingsRoot = app.setting.activeTab.containerEl
     measureAll('settings nodes overview', settingsRoot)
     ${OPEN_LOCAL_NODE_FORM}
-    await wait(400)
+    await settle(() => nodeForm)
     measureAll('settings nodes', nodeForm)
     ${CLOSE_LOCAL_NODE_FORM}
   } else cuts.push({ screen: 'settings nodes', field: '-', by: ['settings did not open'] })
@@ -230,7 +258,7 @@ const script = `(async () => {
       if (['node-files', 'node-diffs', 'node-review', 'node-history'].includes(dialogName)) await completion
       if (await until(() => openingError || document.querySelector('.modal.abele-modal'), 5000)) {
         if (openingError) throw openingError
-        await wait(300)
+        await settle(() => document.querySelector('.modal.abele-modal'))
         const modal = document.querySelector('.modal.abele-modal')
         // Empty, populated and long-path artifact fixtures must all retain their three sections.
         if (dialogName.startsWith('chat-artifacts') && modal.querySelectorAll('.abele-chat-artifacts section').length !== 3)
@@ -240,7 +268,7 @@ const script = `(async () => {
           // Each newly mounted continuation can reveal one further fork, just as a user expands it.
           for (let level = 0; level < (dialogName === 'chat-navigation' ? 4 : 1); level++) {
             for (const details of modal.querySelectorAll('details')) details.open = true
-            await wait(150)
+            await settle(() => modal)
           }
         }
         // Pairing input, owner-waiting and pin-recovery are distinct screens; do not
@@ -260,7 +288,7 @@ const script = `(async () => {
         // A dialog with tabs, the agent editor's among them, is measured tab by tab.
         for (const tab of [...modal.querySelectorAll('.abele-tabs__tab')].slice(1)) {
           tab.click()
-          await wait(300)
+          await settle(() => modal, chosen(tab))
           measureAll('dialog ' + dialogName + ' ' + tab.textContent.trim().toLowerCase(), modal)
         }
       } else {

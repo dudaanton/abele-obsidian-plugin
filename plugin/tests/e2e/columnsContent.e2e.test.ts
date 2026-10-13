@@ -25,7 +25,18 @@ const SHOTS = shotDir('columns-content')
 const probe = <T>(code: string): T =>
   JSON.parse(
     evalRaw(`(async () => JSON.stringify(await (async () => {
-  const wait = ms => new Promise(r => setTimeout(r, ms)); ${code}
+  const wait = ms => new Promise(r => setTimeout(r, ms));
+  const paint = () => new Promise(r => { const t = setTimeout(r, 250); requestAnimationFrame(() => requestAnimationFrame(() => { clearTimeout(t); r() })) });
+  // The first non-null value of \`read\` that comes back the same three times, a poll apart.
+  const steady = async (read, ms = 5000) => {
+    let last = null, still = 0
+    for (const deadline = Date.now() + ms; Date.now() < deadline; ) {
+      await paint(); const now = read()
+      still = now !== null && now === last ? still + 1 : 0; last = now
+      if (still >= 2) return now
+      await wait(100)
+    } return null
+  }; ${code}
 })()))()`)
   ) as T
 function show(name: string, mode: string, selector: string) {
@@ -98,7 +109,9 @@ describe.skipIf(!available)('column content compatibility', () => {
   for (const narrow of onPhone() ? [true] : [false, true]) {
     it(narrow ? 'switches to the 390 by 844 phone layout' : 'uses a desktop pane', async () => {
       if (!onPhone()) {
-        await reloadApp(`app.emulateMobile(${narrow})`)
+        // The desktop pane starts from a window that is not a phone already: no reload for it.
+        if (narrow || evalJson<boolean>('app.isMobile'))
+          await reloadApp(`app.emulateMobile(${narrow})`)
         probe(
           `require('@electron/remote').getCurrentWindow().setContentSize(${narrow ? 390 : 1400},${narrow ? 844 : 1000});return true`
         )
@@ -175,7 +188,9 @@ describe.skipIf(!available)('column content compatibility', () => {
           if (result.canvasWidth !== null) expect(result.canvasWidth).toBeCloseTo(result.width, 0)
           if (['maps', 'charts', 'diagrams', 'gallery'].includes(sample.name)) {
             const resized = probe<{ width: number; contentWidth: number }>(`
-            ${ROOT} frame.style.width='280px';await wait(800);
+            ${ROOT} const before=column.clientWidth;frame.style.width='280px';
+            // The column narrowed, and what it holds followed it and stopped there.
+            await steady(()=>{if(column.clientWidth===before)return null;const t=column.querySelector('canvas')??column.querySelector('.abele-mermaid__frame')??column.querySelector('.abele-gallery-widget-container');return t?t.getBoundingClientRect().width:null});
             const target=column.querySelector('canvas')??column.querySelector('.abele-mermaid__frame')??column.querySelector('.abele-gallery-widget-container');
             const result={width:column.clientWidth,contentWidth:target.getBoundingClientRect().width+(target.closest('.abele-map')?2:0)};frame.style.removeProperty('width');return result;
           `)
@@ -202,15 +217,18 @@ describe.skipIf(!available)('column content compatibility', () => {
           const text=view.editor.getValue();let first;
           for(let i=0;i<3;i++){
             view.editor.setValue(text+'\\nSample revision '+i);
-            view.editor.setCursor({line:view.editor.lineCount()-1,ch:0});await wait(800);
+            view.editor.setCursor({line:view.editor.lineCount()-1,ch:0});
+            // The widget drawn again from the new text, and the galleries it registers settled.
+            await steady(()=>root.querySelector('.abele-column')?.querySelector(${JSON.stringify(sample.selector)})?store.galleriesContainers.value.length:null);
             const count=store.galleriesContainers.value.length;
             if(i===0)first=count;else if(count!==first)throw Error('gallery count grew on replacement');
           }
-          view.editor.focus();view.editor.setCursor({line:4,ch:6});await wait(500);
+          view.editor.focus();view.editor.setCursor({line:4,ch:6});
+          for(const deadline=Date.now()+5000;Date.now()<deadline&&root.querySelector('.abele-columns');)await wait(50);
           if(root.querySelector('.abele-columns'))throw Error('the source area did not open');
           // MarkdownView keeps the inactive Reading render until its leaf closes.
           for(const leaf of app.workspace.getLeavesOfType('markdown'))if(leaf.view===view)leaf.detach();
-          await wait(500);
+          for(const deadline=Date.now()+5000;Date.now()<deadline&&(active.size||store.galleriesContainers.value.length!==baseline);)await wait(50);
           return {remaining:active.size,targets:[...active.values()],galleries:store.galleriesContainers.value.length-baseline};
         }finally{window.ResizeObserver=Native}
       `)

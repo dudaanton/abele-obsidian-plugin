@@ -1,6 +1,13 @@
 import { randomUUID } from 'node:crypto'
 import { afterAll, beforeAll, describe, expect, it } from 'vitest'
-import { evalLong, hasTestApi, isObsidianRunning, reloadApp, runCli } from './helpers/obsidianCli'
+import {
+  evalJson,
+  evalLong,
+  hasTestApi,
+  isObsidianRunning,
+  reloadApp,
+  runCli,
+} from './helpers/obsidianCli'
 import {
   enableGithub,
   realClick,
@@ -89,7 +96,9 @@ for (const layout of ['desktop', 'emulateMobile'] as const) {
             await github?.stop()
           } finally {
             if (previous) {
-              await reloadApp(selectionEmulation(previous.mobile))
+              // Only a window this block turned into the other layout is reloaded back.
+              if (evalJson<boolean>('app.isMobile') !== previous.mobile)
+                await reloadApp(selectionEmulation(previous.mobile))
               await run(selectionResize(previous.size[0], previous.size[1]))
             }
           }

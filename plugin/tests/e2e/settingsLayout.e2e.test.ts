@@ -33,6 +33,7 @@ import { describe, it, expect, beforeAll, afterAll } from 'vitest'
 import { isObsidianRunning, evalJson, evalLong, activeVaultName } from './helpers/obsidianCli'
 import { shotDir } from './helpers/shots'
 import { horizontalOverflow } from './helpers/horizontalOverflow'
+import { WAIT_PRELUDE } from './helpers/wait'
 
 interface Overflow {
   /** Class names of elements sticking out, with how far past the container they reach. */
@@ -64,21 +65,54 @@ const PASSES = [
  * The long-job transport starts after its launch reply and reports asynchronous failures.
  * A hand-started detached promise can otherwise leave the setup polling an unset result.
  */
-const probeFor = (phone: boolean) =>
+const probeFor = (phone: boolean, width: number) =>
   `(async () => {
-  const wait = (ms) => new Promise((r) => setTimeout(r, ms))
+  ${WAIT_PRELUDE}
   app.setting.open()
   app.setting.openTabById('abele')
-  await wait(800)
+  const opened = await until(() =>
+    app.setting.activeTab?.id === 'abele' &&
+    app.setting.activeTab.containerEl.querySelector('.abele-settings__nav .abele-tabs__tab'))
+  if (!opened) throw new Error('The Abele settings tab never drew')
 
   const d = app.setting.activeTab.containerEl.ownerDocument
   const view = d.defaultView
   const qa = (s) => [...d.querySelectorAll(s)]
+  // Two frames of the settings window, or a moment where it draws none (covered, minimised).
+  const frame = () => new Promise((r) => {
+    const t = setTimeout(r, 250)
+    view.requestAnimationFrame(() => view.requestAnimationFrame(() => { clearTimeout(t); r() }))
+  })
+  // What a click set off, drawn: \`ready\` holds, and the window's elements and the size and place
+  // of \`rootSel\` are the same two frames running. Past the allowance it is measured as it is.
+  const settle = (ready = () => true, rootSel = '.abele-settings__content') => {
+    let last = null
+    return until(async () => {
+      await frame()
+      const root = ready() && d.querySelector(rootSel)
+      if (!root) return (last = null)
+      const r = root.getBoundingClientRect()
+      const now = [d.body.getElementsByTagName('*').length, root.scrollWidth, root.scrollHeight, r.left, r.top, r.width, r.height].join(' ')
+      const same = now === last
+      last = now
+      return same
+    }, 5000, 0)
+  }
+  const active = (tab) => () =>
+    tab.classList.contains('abele-tabs__tab_active') || tab.classList.contains('abele-tabs__tab_disabled')
+  const choose = async (tab, rootSel) => {
+    tab.click()
+    await settle(active(tab), rootSel)
+  }
+
+  // The window was resized before this probe: its new width reached, then its layout drawn.
+  await until(() => view.outerWidth === ${width}, 5000)
+  await settle()
 
   const phoneClasses = ['is-mobile', 'is-phone']
   if (${phone}) {
     d.body.classList.add(...phoneClasses)
-    await wait(400)
+    await settle()
   }
 
   const measure = (rootSel) => {
@@ -115,8 +149,7 @@ const probeFor = (phone: boolean) =>
     const topTabs = () => qa('.abele-settings__nav .abele-tabs__tab')
     for (const tab of topTabs()) {
       const label = tab.textContent.trim()
-      tab.click()
-      await wait(250)
+      await choose(tab)
       report[label] = measure('.abele-settings__content')
     }
 
@@ -131,29 +164,27 @@ const probeFor = (phone: boolean) =>
     // The scripts page is five pages under one tab. The header buttons and automations ones are
     // measured with an item in them — an empty list says nothing about the rows a real one
     // holds — and the item is deleted again through the page's own confirmation afterwards.
-    topTabs().find((t) => t.textContent.trim() === 'Scripts').click()
-    await wait(300)
+    await choose(topTabs().find((t) => t.textContent.trim() === 'Scripts'))
     const scriptTabs = () => qa('.abele-settings__scripts-tabs .abele-tabs__tab')
     for (const tab of scriptTabs()) {
       const label = tab.textContent.trim()
-      tab.click()
-      await wait(300)
+      await choose(tab)
       const adds = { 'Header buttons': 'Add button', Automations: 'Add automation' }
       const add = adds[label]
         ? qa('.abele-settings__scripts button').find((b) => b.textContent.trim() === adds[label])
         : null
       if (add) {
         add.click()
-        await wait(300)
+        await settle()
       }
       report['Scripts → ' + label] = measure('.abele-settings__content')
       if (add) {
         const cards = qa('.abele-settings__scripts .abele-card')
         const trash = cards[cards.length - 1]?.querySelector('.abele-card__actions > :last-child')
         trash?.click()
-        await wait(300)
+        await settle()
         qa('.modal button').find((b) => b.textContent.trim() === 'Delete')?.click()
-        await wait(300)
+        await settle()
       }
     }
 
@@ -162,12 +193,10 @@ const probeFor = (phone: boolean) =>
       await cfg.saveSettings()
     }
 
-    topTabs().find((t) => t.textContent.includes('AI Agent')).click()
-    await wait(300)
-    qa('.abele-ai-settings__tabs .abele-tabs__tab')
-      .find((t) => t.textContent.trim() === 'Agents')
-      .click()
-    await wait(300)
+    await choose(topTabs().find((t) => t.textContent.includes('AI Agent')))
+    await choose(
+      qa('.abele-ai-settings__tabs .abele-tabs__tab').find((t) => t.textContent.trim() === 'Agents')
+    )
     report['AI → Agents'] = measure('.abele-settings__content')
 
     // The MCP tab, measured with a server in it — an empty list says nothing about a card — and
@@ -195,32 +224,29 @@ const probeFor = (phone: boolean) =>
           })),
         }] }
       }
-      qa('.abele-ai-settings__tabs .abele-tabs__tab')
-        .find((t) => t.textContent.trim() === 'MCP')
-        .click()
-      await wait(300)
+      await choose(
+        qa('.abele-ai-settings__tabs .abele-tabs__tab').find((t) => t.textContent.trim() === 'MCP')
+      )
       report['AI → MCP'] = measure('.abele-settings__content')
       await shoot('mcp')
       d.querySelector('.abele-settings__content .abele-card').click()
-      await wait(500)
+      await settle(() => true, '.abele-mcp-server')
       report['MCP server dialog'] = measure('.abele-mcp-server')
       await shoot('mcp-server')
       d.querySelector('.modal-container .modal-close-button')?.click()
-      await wait(300)
+      await settle(() => !d.querySelector('.abele-mcp-server'))
     } finally {
       if (config) config.ai = { ...config.ai, mcpServers: mcpBefore }
     }
-    qa('.abele-ai-settings__tabs .abele-tabs__tab')
-      .find((t) => t.textContent.trim() === 'Agents')
-      .click()
-    await wait(300)
+    await choose(
+      qa('.abele-ai-settings__tabs .abele-tabs__tab').find((t) => t.textContent.trim() === 'Agents')
+    )
 
     d.querySelector('.abele-card').click()
-    await wait(500)
+    await settle(() => true, '.abele-agent-editor')
     for (const section of qa('.abele-agent-editor .abele-tabs__tab')) {
       const label = section.textContent.trim()
-      section.click()
-      await wait(300)
+      await choose(section, '.abele-agent-editor')
       report['agent editor → ' + label] = measure('.abele-agent-editor')
     }
   } finally {
@@ -248,8 +274,8 @@ const resize = (width: number) =>
     return w ? w.getSize()[0] : 0
   })()`
 
-async function runProbe(phone: boolean): Promise<Report> {
-  return JSON.parse(await evalLong(probeFor(phone), 120_000)) as Report
+async function runProbe(phone: boolean, width: number): Promise<Report> {
+  return JSON.parse(await evalLong(probeFor(phone, width), 120_000)) as Report
 }
 
 const available = isObsidianRunning()
@@ -266,8 +292,7 @@ describe.skipIf(!available)('the settings pane', () => {
   beforeAll(async () => {
     for (const pass of PASSES) {
       evalJson<number>(resize(pass.width), 60_000)
-      await new Promise((resolve) => setTimeout(resolve, 1000))
-      reports.set(pass.label, await runProbe(pass.phone))
+      reports.set(pass.label, await runProbe(pass.phone, pass.width))
     }
     console.info(`\n  vault ...................... ${activeVaultName()}\n`)
   }, 400_000)

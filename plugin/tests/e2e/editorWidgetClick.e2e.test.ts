@@ -68,6 +68,18 @@ const script = `(async () => {
     }
     return null
   }
+  const frame = () => new Promise((r) => requestAnimationFrame(() => requestAnimationFrame(r)))
+  // \`read\` once it gives the same value twice in a row, a poll apart: what moved has stopped.
+  const steady = (read, ms = 5000) => {
+    let last
+    return until(async () => {
+      await frame()
+      const v = read()
+      const same = v !== undefined && v === last
+      last = v
+      return same
+    }, ms)
+  }
   const folder = ${JSON.stringify(FOLDER)}
   const hostPath = folder + '/Sample host note.md'
   const linkedPath = folder + '/Tasks/Sample linked task.md'
@@ -106,7 +118,12 @@ const script = `(async () => {
     !el || el === document.body ? 'body' : el.tagName.toLowerCase() + '.' + [...el.classList].join('.')
   const open = async (path) => {
     await leaf.setViewState({ type: 'markdown', state: { file: path, mode: 'source', source: false }, active: true })
-    await wait(1500)
+    const drawn = await until(() => {
+      const c = leaf.view.file?.path === path && leaf.view.containerEl.querySelector('.cm-content')
+      return c && c.getClientRects().length && c.textContent.includes('Paragraph 1 ')
+    })
+    if (!drawn) throw new Error('the note was never drawn: ' + path)
+    await frame()
   }
 
   // \`find\` gives what to press, \`place\` puts it where it is pressed; \`typing\`: the editor has the
@@ -122,12 +139,29 @@ const script = `(async () => {
       if (a && a !== document.body) a.blur()
     }
     // A phone's keyboard comes up for a focused editor and scrolls to its cursor on the way.
-    await wait(typing ? 1500 : 300)
+    // Elsewhere there is no keyboard: the editor's own scroll to its cursor is waited out.
+    if (window.__e2eHost) await wait(typing ? 1500 : 300)
+    else if (typing) await steady(() => scroller().scrollTop)
+    else await frame()
+    // What to press, once it is drawn and has stayed put for three reads, two polls apart.
+    const placed = () => {
+      let last = null
+      let lastTop = NaN
+      let still = 0
+      return until(async () => {
+        await frame()
+        const t = find()
+        const top = t ? t.getBoundingClientRect().top : NaN
+        still = !!t && t === last && top === lastTop ? still + 1 : 0
+        last = t
+        lastTop = top
+        return still >= 2 ? t : null
+      }, 5000)
+    }
     let target = null
     for (let attempt = 0; attempt < 3 && !target; attempt++) {
       await place()
-      await wait(1200)
-      target = await until(find, 5000)
+      target = await placed()
     }
     if (!target) throw new Error('nothing to press')
     const before = target.getBoundingClientRect().top
@@ -236,7 +270,9 @@ const setWindowSize = async (width: number, height: number): Promise<void> => {
     `(() => { require('@electron/remote').getCurrentWindow().setContentSize(${width}, ${height}); return 'ok' })()`,
     30_000
   )
-  await pause(1500)
+  for (const deadline = Date.now() + 10_000; Date.now() < deadline; await pause(100))
+    if (evalRaw('innerWidth + "x" + innerHeight') === `${width}x${height}`) return
+  throw new Error(`the window did not reach ${width}x${height}`)
 }
 
 const stays = (p: Press | undefined) => {
