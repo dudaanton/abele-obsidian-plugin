@@ -78,20 +78,25 @@ it.each([
         dialog,
         confirm: () =>
           new Promise<boolean>((resolve) => {
+            const modal = document.createElement('div')
+            modal.className = 'modal'
             const review = document.createElement('div')
             review.className = 'abele-script-approval'
+            const footer = document.createElement('div')
+            footer.className = 'abele-modal__footer'
             const approve = document.createElement('button')
             approve.textContent = 'Approve and run'
             dialog.value = {
               answer: (value) => {
                 dialog.value = null
-                review.remove()
+                modal.remove()
                 resolve(value)
               },
             }
             approve.onclick = () => dialog.value?.answer(true)
-            review.append(approve)
-            document.body.append(review)
+            footer.append(approve)
+            modal.append(review, footer)
+            document.body.append(modal)
           }),
       },
     }

@@ -18,7 +18,6 @@ const probe = String.raw`(async () => {
   ${SCRIPT_FIXTURE}
   const T = window.__abeleTest
   const chats = T.ChatService.getInstance()
-  const scripts = T.ScriptService.getInstance()
   const oldTab = chats.activeTabId.value
   const wasRightCollapsed = app.workspace.rightSplit.collapsed
   const realFetch = window.fetch
@@ -61,6 +60,8 @@ const probe = String.raw`(async () => {
       if (!app.vault.getAbstractFileByPath(dir)) { await app.vault.createFolder(dir); madeDirs.unshift(dir) }
     }
     await enableScriptFixture(folder)
+    // Changing the scripts folder replaces the service; retain only the new instance.
+    const scripts = T.ScriptService.getInstance()
     const scriptSource = [
       '// @name ' + name,
       '// @interceptor 30',
@@ -70,6 +71,7 @@ const probe = String.raw`(async () => {
     const scriptFile = await app.vault.create(scriptPath, scriptSource)
     madeFiles.push(scriptFile)
     await scripts.discover()
+    await until(() => scripts.get(scriptPath)?.source === scriptSource)
     const indexed = scripts.get(scriptPath)
     if (!indexed) throw new Error('sample script was not indexed')
     await approveScriptFixture(scriptPath, scriptSource)

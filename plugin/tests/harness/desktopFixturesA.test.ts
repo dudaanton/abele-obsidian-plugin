@@ -1,4 +1,5 @@
 import { readFileSync } from 'node:fs'
+import { resolve } from 'node:path'
 import ts from 'typescript'
 import { expect, it } from 'vitest'
 import { WAIT_PRELUDE } from '../e2e/helpers/wait'
@@ -13,7 +14,8 @@ it('opens the node chat fixture form with its real poller and settings document'
   const add = document.createElement('button')
   add.setAttribute('aria-label', 'Name the node here and paste its token')
   add.textContent = 'Add'
-  settings.append(add)
+  // The settings tab mounts on Vue's next update, after its navigation click.
+  const mount = setTimeout(() => settings.append(add), 25)
   const form = document.createElement('div')
   form.className = 'modal'
   const url = document.createElement('input')
@@ -21,13 +23,16 @@ it('opens the node chat fixture form with its real poller and settings document'
   form.append(url)
   add.onclick = () => document.body.append(form)
   const api = { getInstance: () => ({}) }
+  const setup = source('nodeChat').match(
+    /const settingsRoot = .*?;\n([\s\S]*?)\n {6}const fill/
+  )![1]
   const open = new Function(
     'window',
     'settingsRoot',
     'document',
     `return (async () => {
     ${new Function(`return ${prelude}`)()}
-    ${OPEN_LOCAL_NODE_FORM}
+    ${new Function('OPEN_LOCAL_NODE_FORM', `return \`${setup}\``)(OPEN_LOCAL_NODE_FORM)}
     return nodeForm
   })()`
   )
@@ -36,6 +41,7 @@ it('opens the node chat fixture form with its real poller and settings document'
       await open({ __abeleTest: { ChatService: api, NodeService: api } }, settings, document)
     ).toBe(form)
   } finally {
+    clearTimeout(mount)
     form.remove()
   }
 })
@@ -60,6 +66,7 @@ it.each(['agentRights', 'interceptorScriptReplyOnly'])(
 it.each([
   'nodeChat',
   'nodePaired',
+  'nodePath',
   'bookScripts',
   'scriptApproval',
   'actionConfirmations',
@@ -71,6 +78,8 @@ it.each([
   const scope: Record<string, unknown> = {
     JSON,
     String,
+    Boolean,
+    resolve,
     WAIT_PRELUDE,
     SCRIPT_FIXTURE,
     OPEN_LOCAL_NODE_FORM,
@@ -92,6 +101,13 @@ it.each([
     registrationId: 'sample-registration',
     registration: 'sample-registration',
     invite: { node_id: 'sample-node', node_fingerprint: 'sample-pin' },
+    ids: {
+      root: 'sample-root',
+      external: 'sample-worktree',
+      project: 'sample-project',
+      plain: 'sample-plain',
+    },
+    selector: '.sample-code',
     projectPaths: ['sample-repository'],
     i: 0,
     width: 1100,
@@ -132,7 +148,14 @@ it.each([
         const raw =
           ts.isTaggedTemplateExpression(node.parent) &&
           node.parent.tag.getText(tree) === 'String.raw'
-        const code = emit((raw ? 'String.raw' : '') + text)
+        let code: string
+        try {
+          code = emit((raw ? 'String.raw' : '') + text)
+        } catch (error) {
+          throw new Error(
+            `${name}:${tree.getLineAndCharacterOfPosition(node.pos).line + 1}: ${String(error)}`
+          )
+        }
         expect(
           () => new Function(`return (async () => {${code}\n})()`),
           `${name}:${tree.getLineAndCharacterOfPosition(node.pos).line + 1}`
