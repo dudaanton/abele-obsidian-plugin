@@ -11,6 +11,7 @@
         :key="JSON.stringify([debug.sourceId, debug.debugSessionId, debug.incarnation, debug.path])"
         :context="{ ...debug, text: model.document.value.text }"
         @reveal="model.mode.value = 'file'"
+        @selection="debugSelection"
       />
       <FileView
         v-if="!debug || model.mode.value !== 'file'"
@@ -22,6 +23,7 @@
         @menu="(event, selection) => emit('menu', event, selection)"
         @ask="emit('ask', $event)"
         @add="emit('add', $event)"
+        @note="emit('note', $event)"
       />
     </template>
   </div>
@@ -40,7 +42,21 @@ const emit = defineEmits<{
   menu: [event: MouseEvent, selection: string]
   ask: [selection: FileSelection]
   add: [selection: FileSelection]
+  note: [selection: FileSelection]
 }>()
+import type { Selected } from '../obsidian/SelectionBar.vue'
+function debugSelection(action: 'ask' | 'add' | 'note', selected: Selected) {
+  if (!selected.from || !selected.to) return
+  const selection: FileSelection = {
+    text: selected.text,
+    from: selected.from,
+    to: selected.to,
+    side: 'after',
+  }
+  if (action === 'ask') emit('ask', selection)
+  else if (action === 'add') emit('add', selection)
+  else emit('note', selection)
+}
 </script>
 <style lang="scss">
 .abele-node-content__pane {

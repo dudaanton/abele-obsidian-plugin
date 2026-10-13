@@ -20,6 +20,7 @@
         @menu="(e, selection) => emit('menu', e, file.path, selection)"
         @ask="emit('ask', file.path, $event)"
         @add="emit('add', file.path, $event)"
+        @note="emit('note', file.path, $event)"
       />
     </template>
 
@@ -146,6 +147,7 @@ const emit = defineEmits<{
   (e: 'menu', event: MouseEvent, what: string, selection: string): void
   (e: 'ask', path: string, selection: FileSelection): void
   (e: 'add', path: string, selection: FileSelection): void
+  (e: 'note', path: string, selection: FileSelection): void
 }>()
 
 const commit = computed(() => props.commits.find((c) => c.hash === props.open))

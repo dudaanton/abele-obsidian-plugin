@@ -39,7 +39,10 @@ import { css } from '@codemirror/lang-css'
 import { html } from '@codemirror/lang-html'
 import { xml } from '@codemirror/lang-xml'
 import { yaml } from '@codemirror/lang-yaml'
-import { reactive } from 'vue'
+import { createApp, h, reactive } from 'vue'
+import SelectionBar from '@/components/obsidian/SelectionBar.vue'
+import { ASK, ADD, NOTE } from '@/components/obsidian/selectionActions'
+import { chatCodeSelection, insertCodeSelection, type CodeSelection } from './codeSelectionHost'
 import { isScriptPath } from '@/scripting/scriptPath'
 import { noteLocalScriptWrite } from '@/scripting/ScriptTrust'
 import { mountFileChats, type FileChatsModel } from './codeViewChats'
@@ -73,6 +76,7 @@ export class CodeView extends TextFileView {
    */
   private chatsEl: HTMLElement | null = null
   private readonly chatsModel = reactive<FileChatsModel>({ path: '' })
+  private unmountSelection: (() => void) | null = null
   private unmountChats: (() => void) | null = null
 
   constructor(leaf: WorkspaceLeaf) {
@@ -144,6 +148,8 @@ export class CodeView extends TextFileView {
   }
 
   clear(): void {
+    this.unmountSelection?.()
+    this.unmountSelection = null
     this.editor?.destroy()
     this.editor = null
   }
@@ -166,6 +172,8 @@ export class CodeView extends TextFileView {
   }
 
   async onClose(): Promise<void> {
+    this.unmountSelection?.()
+    this.unmountSelection = null
     this.unmountChats?.()
     this.unmountChats = null
     this.chatsEl = null
@@ -302,6 +310,8 @@ export class CodeView extends TextFileView {
   }
 
   private buildEditor(doc: string) {
+    this.unmountSelection?.()
+    this.unmountSelection = null
     this.editor?.destroy()
     this.contentEl.empty()
 
@@ -400,5 +410,32 @@ export class CodeView extends TextFileView {
     })
     // `contentEl.empty()` above took the list of chats out with everything else.
     if (this.chatsEl) this.contentEl.appendChild(this.chatsEl)
+    const scope = this.editor.dom
+    const host = this.contentEl.createDiv()
+    const bar = createApp({
+      render: () =>
+        h(SelectionBar, {
+          scope,
+          within: '.cm-content',
+          actions: [ASK, ADD, NOTE],
+          onPick: (action: string, words: CodeSelection) => {
+            const path = this.file?.path
+            if (!path || !words.from || !words.to) return
+            const selection = {
+              text: words.text,
+              from: words.from,
+              to: words.to,
+              side: 'after' as const,
+            }
+            if (action === 'note') insertCodeSelection(this.app, path, selection)
+            else if (action === 'ask' || action === 'add')
+              void chatCodeSelection(action, path, selection).catch((error: unknown) => {
+                console.error('[Abele] Code selection action failed:', error)
+              })
+          },
+        }),
+    })
+    bar.mount(host)
+    this.unmountSelection = () => bar.unmount()
   }
 }

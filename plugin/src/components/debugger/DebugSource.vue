@@ -4,6 +4,12 @@
     class="abele-github-code abele-debug-source"
     :class="{ 'abele-debug-source_stale': stale }"
   />
+  <SelectionBar
+    :scope="host"
+    within=".cm-content"
+    :actions="[ASK, ADD, NOTE]"
+    @pick="(a, s) => emit('selection', a as 'ask' | 'add' | 'note', { ...s, path })"
+  />
 </template>
 
 <script setup lang="ts">
@@ -16,6 +22,8 @@ import { EditorView, GutterMarker, gutter, Decoration } from '@codemirror/view'
 import { Compartment, Prec, StateEffect } from '@codemirror/state'
 import { setTooltip } from 'obsidian'
 import { mountCode, type CodeViewer } from '@/github/codeViewer'
+import SelectionBar, { type Selected } from '../obsidian/SelectionBar.vue'
+import { ADD, ASK, NOTE } from '../obsidian/selectionActions'
 import type { DebugBreakpoint } from './types'
 
 const props = withDefaults(
@@ -31,7 +39,10 @@ const props = withDefaults(
   { line: undefined, stale: false }
 )
 
-const emit = defineEmits<{ (e: 'breakpoint', line: number): void }>()
+const emit = defineEmits<{
+  (e: 'breakpoint', line: number): void
+  (e: 'selection', action: 'ask' | 'add' | 'note', selected: Selected & { path: string }): void
+}>()
 
 const host = ref<HTMLElement>()
 let viewer: CodeViewer | undefined

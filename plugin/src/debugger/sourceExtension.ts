@@ -1,4 +1,5 @@
 import { createApp, h, ref } from 'vue'
+import type { CodeSelection } from '@/views/codeSelectionHost'
 import DebugSource from '@/components/debugger/DebugSource.vue'
 import { DebuggerService } from './DebuggerService'
 
@@ -19,7 +20,8 @@ export interface DebugSourceExtension {
 }
 export function mountDebugSource(
   host: HTMLElement,
-  context: DebugSourceContext
+  context: DebugSourceContext,
+  selection?: (action: 'ask' | 'add' | 'note', selected: CodeSelection & { path: string }) => void
 ): DebugSourceExtension {
   const service = DebuggerService.instance,
     text = ref(context.text)
@@ -66,6 +68,7 @@ export function mountDebugSource(
             ? frame.line
             : undefined,
         stale: !model?.current,
+        onSelection: selection,
         onBreakpoint: (line: number) => {
           if (binding && matched)
             void binding.controller

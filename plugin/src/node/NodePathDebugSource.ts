@@ -9,10 +9,13 @@ import {
 export function mountNodePathDebugSource(
   host: HTMLElement,
   context: DebugSourceContext,
-  show: (line: number) => void
+  show: (line: number) => void,
+  selection?: Parameters<typeof mountDebugSource>[2]
 ) {
   const captured = Object.freeze({ ...context })
-  const extension = mountDebugSource(host, captured)
+  const extension = selection
+    ? mountDebugSource(host, captured, selection)
+    : mountDebugSource(host, captured)
   const stop = registerDebugSourceRevealer((request) => {
     if (
       request.registrationId !== captured.registrationId ||

@@ -14,6 +14,7 @@
       @menu="(event, what, selection) => emit('menu', event, what, selection)"
       @ask="(path, selection) => emit('ask', path, selection)"
       @add="(path, selection) => emit('add', path, selection)"
+      @note="(path, selection) => emit('note', path, selection)"
     />
   </div>
 </template>
@@ -35,6 +36,7 @@ const emit = defineEmits<{
   menu: [event: MouseEvent, what: string, selection: string]
   ask: [path: string, selection: FileSelection]
   add: [path: string, selection: FileSelection]
+  note: [path: string, selection: FileSelection]
 }>()
 const act = (run: () => Promise<void>) => {
   void run().catch(() => {})

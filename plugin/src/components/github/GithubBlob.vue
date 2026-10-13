@@ -1,5 +1,5 @@
 <template>
-  <div class="abele-github-blob">
+  <div ref="blobRoot" class="abele-github-blob">
     <Teleport :to="glyphHost ?? 'body'" :disabled="!glyphHost">
       <!-- Who last changed each line, as a glyph lit while it is on. -->
       <Icon
@@ -117,6 +117,13 @@
         />
       </template>
     </GithubCode>
+    <SelectionBar
+      v-if="linker && !unsaved && !documentNote"
+      :scope="blobRoot"
+      within=".cm-content"
+      :actions="linker.canAsk() ? [ASK, ADD, NOTE, LINK] : [ADD, NOTE, LINK]"
+      @pick="onWords"
+    />
   </div>
 </template>
 
@@ -134,6 +141,9 @@ import Tabs from '../obsidian/Tabs.vue'
 import GithubCode from './GithubCode.vue'
 import GithubMarkdown from './GithubMarkdown.vue'
 import GithubSelectionBar from './GithubSelectionBar.vue'
+import SelectionBar, { type Selected } from '../obsidian/SelectionBar.vue'
+import { ADD, ASK, NOTE, LINK } from '../obsidian/selectionActions'
+import { addGithubSelection } from '@/github/addSelection'
 import { LINKER } from '@/github/linking'
 import { codeSnippet } from '@/github/snippetBlock'
 import { SCREEN, blobCode } from '@/github/screen'
@@ -412,6 +422,20 @@ const selectedSnippet = async () => {
   const span = selected.value
   if (!span) throw new Error('nothing is selected')
   return codeSnippet(await selectedLink(), props.file.path, props.text, span)
+}
+
+const blobRoot = ref<HTMLElement>()
+async function onWords(action: string, words: Selected) {
+  if (!linker || !words.from || !words.to) return
+  const span = { from: words.from, to: words.to }
+  const path = props.file.path
+  const text = props.text
+  const link = linker.blobLink(span)
+  if (action === 'ask') await linker.ask(link, { code: words.text, path })
+  else if (action === 'add') await addGithubSelection(link, { code: words.text, path })
+  else if (action === 'link') await linker.copy(link)
+  else if (action === 'note')
+    await linker.insertSnippet(link.then((resolved) => codeSnippet(resolved, path, text, span)))
 }
 
 interface View {

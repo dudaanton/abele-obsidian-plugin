@@ -43,27 +43,13 @@
       />
     </div>
 
-    <!-- Over selected text, the way a note offers it: ask the agent about it, or hand it over. -->
-    <SelectionToolbar
-      v-if="picked"
-      ref="bar"
-      class="abele-file-view__selection"
-      :top="picked.top"
-      :left="picked.left"
-    >
-      <Button
-        text="Ask here"
-        icon="message-circle-plus"
-        tooltip="Ask the agent about the selected lines"
-        @click="send('ask')"
-      />
-      <Button
-        text="Add to chat"
-        icon="message-square-plus"
-        tooltip="Add the selected lines to the open chat"
-        @click="send('add')"
-      />
-    </SelectionToolbar>
+    <SelectionBar
+      v-if="!image && !metadataNote"
+      :scope="root"
+      within=".cm-content, .abele-diff__text"
+      :actions="[ASK, ADD, NOTE]"
+      @pick="send"
+    />
   </div>
 </template>
 
@@ -72,14 +58,13 @@
 // page does; the whole file is one switch away in the view's header, beside opening it in the
 // code editor and the arrows to the previous and next changed file. Selected text — in the
 // comparison or in the file — gets a small bar over it to ask the agent about it or add it to the
-// chat, on a phone as on a computer; the context menu offers the same.
+// chat or insert it into a note, on a phone as on a computer.
 import { computed, nextTick, onBeforeUnmount, onMounted, ref, watch } from 'vue'
-import { Platform } from 'obsidian'
 import { fileSelection, type FileSelection } from './fileSelection'
 import { mountCode, type CodeViewer } from '@/github/codeViewer'
 import Diff from '../Diff.vue'
-import Button from '../obsidian/Button.vue'
-import SelectionToolbar from '../obsidian/SelectionToolbar.vue'
+import SelectionBar from '../obsidian/SelectionBar.vue'
+import { ADD, ASK, NOTE } from '../obsidian/selectionActions'
 import ChangeCodes from './ChangeCodes.vue'
 import Image from '../obsidian/Image.vue'
 import { plural } from './codes'
@@ -104,6 +89,7 @@ const emit = defineEmits<{
   /** Selected text to ask about in a new chat, or to add to the open one. */
   (e: 'ask', selection: FileSelection): void
   (e: 'add', selection: FileSelection): void
+  (e: 'note', selection: FileSelection): void
 }>()
 
 const metadataNote = computed(() =>
@@ -129,7 +115,7 @@ let viewer: CodeViewer | undefined
 let stopped = false
 
 async function draw() {
-  picked.value = null
+  lastSelection = null
   await nextTick()
   if (stopped) return
   viewer?.destroy()
@@ -139,92 +125,41 @@ async function draw() {
 onMounted(draw)
 watch(() => [props.text, props.path, props.mode, props.change, props.image], draw)
 
-// The selection bar: shown while text inside this view is selected, under the selection on a
-// phone (the system's own menu sits over it), over it elsewhere.
-const bar = ref<InstanceType<typeof SelectionToolbar>>()
-const picked = ref<{ selection: FileSelection; top: number; left: number } | null>(null)
-let owner = document
-let frame = window
-let resize: ResizeObserver | undefined
-watch(
-  () => bar.value?.element,
-  () => {
-    if (picked.value) onSelection()
-  },
-  { flush: 'post' }
-)
-function onSelection() {
-  if (props.image || metadataNote.value) {
-    picked.value = null
-    return
-  }
-  const sel = owner.getSelection()
-  const selection = root.value ? fileSelection(root.value, sel) : null
-  if (!sel || !selection) {
-    picked.value = null
-    return
-  }
-  const rect = sel.getRangeAt(0).getBoundingClientRect()
-  if (rect.bottom <= rect.top) {
-    picked.value = null
-    return
-  }
-  const width = bar.value?.element?.offsetWidth || 240
-  const height = bar.value?.element?.offsetHeight || 36
-  const phone = Platform.isPhone || owner.body.classList.contains('is-phone')
-  const header = root.value?.querySelector('.abele-file-view__header, .abele-diff__header')
-  const content = root.value?.querySelector('.abele-file-view__code, .abele-diff__body')
-  const contentTop = Math.max(
-    8,
-    header?.getBoundingClientRect().bottom ?? 0,
-    content?.getBoundingClientRect().top ?? 0
-  )
-  const above = rect.top - height - 8
-  const desiredTop = phone || above < contentTop ? rect.bottom + 8 : above
-  const lastTop = frame.innerHeight - height - 8
-  if (lastTop < contentTop) {
-    picked.value = null
-    return
-  }
-  picked.value = {
-    selection,
-    // A first-line selection has no space above it inside the content, so use the space below.
-    top: Math.max(contentTop, Math.min(desiredTop, lastTop)),
-    left: Math.max(8, Math.min(rect.left, frame.innerWidth - width - 8)),
-  }
+let lastSelection: FileSelection | null = null
+let selectionDocument: Document | undefined
+function rememberSelection() {
+  const selection = root.value
+    ? fileSelection(root.value, root.value.ownerDocument.getSelection())
+    : null
+  if (selection) lastSelection = selection
 }
 onMounted(() => {
-  owner = root.value?.ownerDocument ?? document
-  frame = owner.defaultView ?? window
-  owner.addEventListener('selectionchange', onSelection)
-  frame.addEventListener('scroll', onSelection, true)
-  frame.addEventListener('resize', onSelection)
-  resize = new frame.ResizeObserver(onSelection)
-  if (root.value) resize.observe(root.value)
-  const header = root.value?.querySelector('.abele-file-view__header, .abele-diff__header')
-  if (header) resize.observe(header)
+  selectionDocument = root.value?.ownerDocument
+  selectionDocument?.addEventListener('selectionchange', rememberSelection)
 })
 onBeforeUnmount(() => {
+  selectionDocument?.removeEventListener('selectionchange', rememberSelection)
   stopped = true
   releaseImage()
-  owner.removeEventListener('selectionchange', onSelection)
-  frame.removeEventListener('scroll', onSelection, true)
-  frame.removeEventListener('resize', onSelection)
-  resize?.disconnect()
   viewer?.destroy()
 })
 
-function send(kind: 'ask' | 'add') {
-  if (!picked.value) return
-  if (kind === 'ask') emit('ask', picked.value.selection)
-  else emit('add', picked.value.selection)
-  owner.getSelection()?.removeAllRanges()
-  picked.value = null
+function send(action: string) {
+  // Read before SelectionBar clears the native range: retain exact text, line and diff side.
+  const selection =
+    (root.value ? fileSelection(root.value, root.value.ownerDocument.getSelection()) : null) ??
+    lastSelection
+  lastSelection = null
+  if (!selection) return
+  if (action === 'ask') emit('ask', selection)
+  else if (action === 'add') emit('add', selection)
+  else if (action === 'note') emit('note', selection)
 }
 
 function onMenu(e: MouseEvent) {
+  if (root.value && fileSelection(root.value, root.value.ownerDocument.getSelection())) return
   e.preventDefault()
-  emit('menu', e, root.value ? (fileSelection(root.value, owner.getSelection())?.text ?? '') : '')
+  emit('menu', e, '')
 }
 </script>
 
@@ -248,8 +183,7 @@ function onMenu(e: MouseEvent) {
   .abele-obsidian-icon,
   .cm-gutters,
   .abele-diff__gutter,
-  .abele-diff__sign,
-  .abele-file-view__selection {
+  .abele-diff__sign {
     user-select: none;
     -webkit-user-select: none;
   }

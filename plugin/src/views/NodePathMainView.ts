@@ -38,6 +38,7 @@ import {
   newNodePathChat,
 } from '@/node/NodePathController'
 import { nodePathOwnerActions, freezeNodePathContext } from '@/node/NodePathOwnerActions'
+import { insertCodeSelection } from '@/views/codeSelectionHost'
 import { selectionQuote, type FileSelection } from '@/components/nodeWork/fileSelection'
 import NodePathFilePane from '@/components/nodeWork/NodePathFilePane.vue'
 import NodePathHistoryPane from '@/components/nodeWork/NodePathHistoryPane.vue'
@@ -292,6 +293,10 @@ export class NodePathMainView extends ItemView {
                 this.act(() => owner.add(context))
               }
             },
+            onNote: (selection: FileSelection) => {
+              const doc = file.document.value
+              if (doc) insertCodeSelection(this.app, doc.path, selection)
+            },
             onMenu: (event: MouseEvent, selection: string) => {
               const doc = file.document.value
               if (doc)
@@ -354,6 +359,9 @@ export class NodePathMainView extends ItemView {
                 })
                 this.act(() => owner.add(context))
               }
+            },
+            onNote: (path: string, selection: FileSelection) => {
+              insertCodeSelection(this.app, `${path} at ${history.openCommit.value}`, selection)
             },
             onMenu: (event: MouseEvent, what: string, selection: string) => {
               const commit = history.commits.value.find((c) => c.hash === history.openCommit.value)
