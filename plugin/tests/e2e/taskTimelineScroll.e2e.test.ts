@@ -494,8 +494,14 @@ const script = (footer: boolean, short = false) => String.raw`(async function* (
       await wait(500)
       await leaf.openFile(app.vault.getAbstractFileByPath(folder + '/Sample group.md'))
       await wait(2000)
+      // The place is put back once the reopened timeline has drawn the day; on a loaded machine
+      // that is later than any fixed wait, so the row is read once the view stopped moving.
+      const savedRow = () => [...(leaf.view.containerEl.querySelector('.abele-timeline')?.querySelectorAll('.abele-task-view') ?? [])]
+        .find(x => x.dataset.abeleAnchor === 'task:' + folder + '/Sample item -1 1.md')
+      if (await until(() => savedRow(), 'reopened past row').catch(() => false))
+        await settleUI(() => true, leaf.view.containerEl.querySelector('.abele-timeline'), leaf.view.containerEl.querySelector('.cm-scroller'))
       const reopened = leaf.view.containerEl.querySelector('.abele-timeline')
-      const returned = [...(reopened?.querySelectorAll('.abele-task-view') ?? [])].find(x => x.dataset.abeleAnchor === 'task:' + folder + '/Sample item -1 1.md')
+      const returned = savedRow()
       report.restoredHistory = !!returned
       report.restoredAnchor = [beforeReturn, returned ? returned.getBoundingClientRect().top - leaf.view.containerEl.querySelector('.cm-scroller').getBoundingClientRect().top : -9999]
       reopened.querySelector('.abele-timeline__history').click()
