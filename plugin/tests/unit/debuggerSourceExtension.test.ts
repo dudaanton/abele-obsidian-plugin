@@ -7,7 +7,7 @@ vi.mock('@/components/debugger/DebugSource.vue', () => ({
   default: {
     props: ['stale'],
     emits: ['selection'],
-    template: `<div :data-stale="stale">sample source<button @click="$emit('selection', 'note', { text: 'sample', path: 'sample.ts', from: 2, to: 3 })">Quote</button></div>`,
+    template: `<div :data-stale="stale">sample source<button @click="$emit('selection', 'note', { text: 'sample', path: 'sample.ts', from: 2, to: 3 })" aria-label="Quote"></button></div>`,
   },
 }))
 it('registers a source extension without owning the node file tab and cleans it up', () => {
@@ -22,7 +22,7 @@ it('registers a source extension without owning the node file tab and cleans it 
     path: 'sample.ts',
     text: 'const sample = 1',
   })
-  expect(host.textContent).toContain('sample source')
+  expect(host.textContent).toBe('sample source')
   const reveal = vi.fn(() => true)
   const stop = service.registerRevealer(reveal)
   expect(service.sources.size).toBe(1)
