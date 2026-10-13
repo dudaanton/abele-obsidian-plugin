@@ -162,6 +162,20 @@ onBeforeUnmount(() => {
   padding-block: var(--size-2-2);
 }
 
+// An approval's actions stay at the end of its line, clear of the state word.
+.abele-github-comment_event .abele-github-comment__head > .abele-github-link-actions {
+  position: static;
+  flex: none;
+  margin-inline-start: auto;
+  transform: none;
+}
+
+@container (max-width: 26em) {
+  .abele-github-comment_event .abele-github-comment__state-word {
+    display: none;
+  }
+}
+
 // A comment's link, quote and ask wait under the pointer, as Obsidian's own row actions do;
 // a phone has no pointer, so there they stay.
 .abele-github-comment__head .abele-github-link-actions {

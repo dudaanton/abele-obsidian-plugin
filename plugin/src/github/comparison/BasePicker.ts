@@ -3,6 +3,7 @@ import type { GithubClient } from '../client'
 import type { RepositorySource } from '@/repository/source'
 import { githubRepositorySource } from '@/repository/github'
 import { basePins, type BasePin, type Repository } from './pins'
+import './basePicker.css'
 
 interface Row {
   name: string
@@ -72,7 +73,7 @@ export class BasePicker extends SuggestModal<Row> {
    * was found at, a refusal) and the name, with a muted line only when there is something to say.
    */
   renderSuggestion(row: Row, el: HTMLElement): void {
-    el.addClass('mod-complex')
+    el.addClass('mod-complex', 'abele-ref-suggestion')
     const icon = el.createDiv({ cls: 'suggestion-icon' })
     setIcon(
       icon.createSpan({ cls: 'suggestion-flair' }),

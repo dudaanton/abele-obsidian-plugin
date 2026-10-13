@@ -2,6 +2,7 @@
 // quick-switcher prompt: type to filter, arrows to move, Enter to choose. Each row is the thing's
 // glyph (its kind in the tooltip), its name, a faint line under it, and a code at the end.
 import { App, SuggestModal, setIcon, setTooltip } from 'obsidian'
+import './nodeSuggest.css'
 
 export interface NodeSuggestion {
   id: string
