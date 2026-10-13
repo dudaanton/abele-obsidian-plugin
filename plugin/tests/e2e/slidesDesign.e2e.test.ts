@@ -200,7 +200,8 @@ describe.skipIf(!available)('slide hierarchy in the Obsidian theme', () => {
               entry:measure(slide.querySelector('li')),
               cells:[...slide.querySelectorAll('.abele-slide-region-cell')].map(el=>{const b=el.getBoundingClientRect();return {top:b.top,left:b.left,right:b.right}}),
               marker:slide.querySelector('.abele-slide-sources-marker')?.textContent??'',
-              private:slide.textContent.includes('Private detail')}
+              private:slide.textContent.includes('Private detail'),
+              overflowing:[...slide.querySelectorAll('p,li,pre,table,h1,h2,h3,h4,h5,h6')].filter(el=>el.clientHeight&&el.scrollHeight-el.clientHeight>2).map(el=>({tag:el.tagName,cls:el.className,over:el.scrollHeight-el.clientHeight,height:el.clientHeight,text:el.textContent.slice(0,40)}))}
             const picture=await tools.find(t=>t.name==='screenshot').execute('sample-picture',{path:${JSON.stringify(PATH)},slide:index+1},undefined,ctx)
             const path=picture.content[0].text.split('\\n')[0].replace('Screenshot saved: ','')
             const file=app.vault.getAbstractFileByPath(path)
@@ -251,7 +252,8 @@ describe.skipIf(!available)('slide hierarchy in the Obsidian theme', () => {
       expect(
         result.report.slides
           .flatMap((s: { issues: { kind: string }[] }) => s.issues)
-          .filter((i: { kind: string }) => i.kind === 'overflow')
+          .filter((i: { kind: string }) => i.kind === 'overflow'),
+        JSON.stringify(result.results.map((r: { overflowing: unknown }) => r.overflowing))
       ).toEqual([])
       expect(result.report.slides.flatMap((s: { warnings: unknown[] }) => s.warnings)).toEqual([])
     })
