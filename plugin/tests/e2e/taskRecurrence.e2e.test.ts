@@ -38,6 +38,7 @@ const probe = `(async () => {
     }
     throw new Error('Timed out: ' + label)
   }
+  const frame = () => new Promise(resolve => requestAnimationFrame(() => requestAnimationFrame(resolve)))
   const folder = 'Sample recurrence probe'
   if (app.vault.getAbstractFileByPath(folder)) throw new Error('Probe folder already exists')
   const config = window.__abeleTest.AbeleConfig.getInstance()
@@ -61,7 +62,14 @@ const probe = `(async () => {
   }
   const press = async el => {
     el.scrollIntoView({ block: 'center' })
-    await wait(300)
+    // The scroll has landed once the control holds its place for three painted frames.
+    let last = null, steady = 0
+    for (let i = 0; i < 100 && steady < 3; i++) {
+      await new Promise(resolve => requestAnimationFrame(resolve))
+      const top = el.getBoundingClientRect().top
+      steady = top === last ? steady + 1 : 0
+      last = top
+    }
     const r = el.getBoundingClientRect()
     const x = Math.round(r.left + r.width / 2), y = Math.round(r.top + r.height / 2)
     if (r.width <= 0 || r.height <= 0 || y < 0 || y >= innerHeight) throw new Error('Control is not visible')
@@ -120,15 +128,20 @@ const probe = `(async () => {
           undone: false, copies: 0,
         }
         // Undo the original, not the new occurrence: no second next task may be created.
-        await until(control, 'undo control')
-        await wait(500)
+        // The index, the store and the control all show the completion before it is pressed again.
+        await until(() => {
+          const c = control()
+          return c && app.metadataCache.getFileCache(file)?.frontmatter?.completed &&
+            window.__abeleTest.GlobalStore.getInstance().tasksList.value?.tasks.get(file.path)?.completedAt &&
+            (c.matches('input') ? c.checked : c.getAttribute('aria-checked') === 'true')
+        }, 'undo control')
         await press(control())
         await until(async () => !prop(await read(file), 'completed'), 'completion undone')
         result.undone = true
         result.copies = nextFiles().length
         await open(next)
         await until(() => leaf.view.containerEl.querySelector('.abele-task-header-view'), 'next task header')
-        await wait(300)
+        await frame()
         await shoot(surface + '-' + rule + '-next')
         report.push(result)
       }

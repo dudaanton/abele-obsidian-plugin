@@ -189,7 +189,8 @@ const script = (footer: boolean, short = false) => String.raw`(async function* (
         for (const type of ['touchstart', 'touchend', 'click']) document.addEventListener(type, record, true)
         try {
           await window.__e2eHost.tap(x, y)
-          await wait(200)
+          // The tap's own toggle, bounded by the former 200 ms allowance.
+          for (let t = 0; t < 20 && el.isConnected && el.getAttribute('aria-expanded') === expanded; t++) await wait(10)
           if (!el.isConnected || el.getAttribute('aria-expanded') === expanded) throw Error('Banner tap did not toggle history: ' + JSON.stringify({ x, y, hit: document.elementFromPoint(x, y)?.className, received }))
         } finally {
           for (const type of ['touchstart', 'touchend', 'click']) document.removeEventListener(type, record, true)
@@ -229,6 +230,30 @@ const script = (footer: boolean, short = false) => String.raw`(async function* (
         scroller.dispatchEvent(new WheelEvent('wheel', { bubbles: true, deltaY: 1 }))
         scroller.scrollTop += displacement()
       }, () => wait(100))
+    }
+    // A test-driven scroll is done once its frames stop moving: no running chrome animation,
+    // no pending title render, and the same geometry for six painted frames.
+    const still = async () => {
+      const chrome = () => [leaf.view.containerEl.querySelector('.view-header'), root.closest('.abele-timeline-sidebar')?.querySelector('.abele-calendar')]
+      let last, steady = 0
+      for (let i = 0; i < 300; i++) {
+        const now = JSON.stringify([scroller.scrollTop, scroller.scrollHeight, strip()?.getBoundingClientRect().top, chromeBottom(), usableTop(), dates().length])
+        const moving = renders.pending() || chrome().some(el => el && (el.getAnimations?.({ subtree: true }) ?? []).some(a => a.pending || a.playState === 'running'))
+        steady = !moving && now === last ? steady + 1 : 0
+        if (steady >= 6) return
+        last = now
+        await new Promise(done => requestAnimationFrame(done))
+      }
+      throw Error('timeline did not come to rest; state=' + JSON.stringify(uiState()))
+    }
+    // Scroll to the end until a row appears, re-scrolling once the next page has grown the
+    // content (700 ms stays the bound per page).
+    const scrollToRow = async (has, pages) => {
+      for (let i = 0; i < pages && !has(); i++) {
+        const height = scroller.scrollHeight
+        scroller.scrollTop = height
+        for (let t = 0; t < 14 && !has() && scroller.scrollHeight === height; t++) await wait(50)
+      }
     }
     const shot = async name => {
       const path = shots + '/' + phase + '-' + (${short} ? 'short-' : '') + (${footer} ? 'footer' : 'sidebar') + '-' + (app.isMobile ? 'phone' : 'desktop') + '-' + name + '.png'
@@ -328,13 +353,11 @@ const script = (footer: boolean, short = false) => String.raw`(async function* (
     report.initial = dates()
     report.summary = strip() ? [strip().querySelector('.abele-timeline__history-count')?.getAttribute('aria-label'), strip().getAttribute('aria-label')].join(' · ') : null
     // Bring today's unchanged block into sight even in the baseline (which starts in history).
-    if (!row(0)) {
-      for (let i = 0; i < 6 && !row(0); i++) { scroller.scrollTop = scroller.scrollHeight; await wait(700) }
-    }
+    if (!row(0)) await scrollToRow(() => row(0), 6)
     await until(() => row(0)?.textContent.includes('Sample item 0 1'))
     const todayBlock = blocks().find(x => x.dataset.abeleAnchor === 'date:' + day(0))
     scroller.scrollTop += todayBlock.getBoundingClientRect().top - scroller.getBoundingClientRect().top - 200
-    await wait(800)
+    await settleUI()
     await shot('unchanged')
     await shot('initial')
     // Lazy markdown titles must be painted before the row's baseline is measured.
@@ -359,7 +382,7 @@ const script = (footer: boolean, short = false) => String.raw`(async function* (
       report.collapseAnchor = [beforeCollapse, row(0).getBoundingClientRect().top]
       report.collapsed = dates()
       root.querySelector('.abele-timeline__search-toggle').click()
-      await wait(100)
+      await until(() => root.querySelector('.abele-timeline__search input'), 'search input')
       const input = root.querySelector('.abele-timeline__search input')
       input.value = 'sample-no-match'
       input.dispatchEvent(new Event('input', { bubbles: true }))
@@ -372,16 +395,16 @@ const script = (footer: boolean, short = false) => String.raw`(async function* (
     // The folded banner stays at the usable edge, without changing existing pane spacing.
     const stickyScroll = scroller.scrollTop
     scroller.scrollTop += 400
-    await wait(400)
+    await still()
     report.chromeGap = strip().getBoundingClientRect().top - chromeBottom()
     report.sticky = Math.abs(strip().getBoundingClientRect().top - usableTop())
     scroller.scrollTop = stickyScroll
-    await wait(400)
+    await still()
 
     // Reach the upper boundary and scroll past it: input stays native, history stays folded.
     const first = blocks()[0]
     scroller.scrollTop += first.getBoundingClientRect().top - usableTop() - (strip()?.getBoundingClientRect().height ?? 0)
-    await wait(400)
+    await still()
     const nativeBefore = scroller.scrollTop
     let prevented = false, moves = 0, fingerY = null, inputDistance = 0, nativeEnd = null
     const touchStart = e => { fingerY = e.touches[0]?.clientY ?? null }
@@ -422,7 +445,8 @@ const script = (footer: boolean, short = false) => String.raw`(async function* (
         type: 'mouseWheel', x, y, deltaX: 0, deltaY: -80,
       })
     }
-    await wait(800)
+    // The input has landed once the owner moved or the release frame was recorded (800 ms bound).
+    for (let t = 0; t < 16 && nativeEnd === null && Math.abs(scroller.scrollTop - nativeBefore) <= 0.5; t++) await wait(50)
     // The phone's physical swipe can keep coasting after the host call returns. Wait for
     // native motion to end before another case positions rows or taps a moving banner.
     let lastTop = scroller.scrollTop, stableSince = Date.now()
@@ -465,9 +489,9 @@ const script = (footer: boolean, short = false) => String.raw`(async function* (
     await toggleCompleted()
     report.hiddenAnchor = [beforeHide, row(0)?.getBoundingClientRect().top ?? -9999]
     yield 'future rows and collapsing history'
-    for (let i = 0; i < 4 && !row(25); i++) { scroller.scrollTop = scroller.scrollHeight; await wait(700) }
+    await scrollToRow(() => row(25), 4)
     await until(() => row(25))
-    await align(row(25)); await wait(1000)
+    await align(row(25)); await settleUI()
     const futureBefore = row(25).getBoundingClientRect().top
     await toggleCompleted()
     report.futureAnchor = [futureBefore, row(25)?.getBoundingClientRect().top ?? -9999]
@@ -481,7 +505,7 @@ const script = (footer: boolean, short = false) => String.raw`(async function* (
     await revealClick()
     await settleUI()
     report.rerevealAnchor = [beforeRereveal, row(25).getBoundingClientRect().top]
-    await align(row(-40)); await wait(1000)
+    await align(row(-40)); await settleUI()
     const removedBefore = row(-40).getBoundingClientRect().top
     await revealClick()
     await settleUI()

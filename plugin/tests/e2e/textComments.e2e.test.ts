@@ -39,7 +39,10 @@ const NATIVE_TOUCH = `
         // scrolls the note/dialog vertically and invalidates the subsequent touch coordinates.
         const delta=target.scroll==='left'?item.right-Math.min(bounds.right,screen.right)+8:item.left-Math.max(bounds.left,screen.left)-8
         scroller.scrollBy({left:delta,behavior:'smooth'})
-        await wait(400)
+        // The smooth scroll has started and then held still for three frames (former 400 ms bound).
+        const from=scroller.scrollLeft, end=Date.now()+400
+        let left=from, still=0
+        while(Date.now()<end && !(left!==from && still>=3)) { await new Promise(r=>requestAnimationFrame(r)); still=scroller.scrollLeft===left?still+1:0; left=scroller.scrollLeft }
         continue
       }
       const under=document.elementFromPoint(target.point.x,target.point.y)
@@ -67,6 +70,18 @@ const run = <T>(body: string): T => {
     `(async () => {
   const wait = ms => new Promise(resolve => setTimeout(resolve, ms))
   const until = async fn => { for(let i=0;i<80;i++) { if(fn()) return true; await wait(100) } return false }
+  // Until measure() holds still for three frames with no finite animation running, at most ms.
+  const still = async (measure, ms) => {
+    const end = Date.now() + ms
+    let last, steady = 0
+    while (Date.now() < end && steady < 3) {
+      await new Promise(r => requestAnimationFrame(r))
+      const now = JSON.stringify(measure())
+      const moving = document.getAnimations().some(a => a.playState === 'running' && a.effect?.getComputedTiming?.().iterations !== Infinity)
+      steady = !moving && now === last ? steady + 1 : 0
+      last = now
+    }
+  }
   const button = text => [...([...document.querySelectorAll('.modal')].at(-1) ?? document.querySelector('.abele-anchored-card'))?.querySelectorAll('button') ?? []].find(el => el.textContent.trim() === text)
   const send = () => document.querySelector('.abele-text-comments [aria-label="Send (⌘↵)"]')
   const ownedModals = () => [...document.querySelectorAll('.modal-container')].filter(el => !window.__textCommentBaselineModals.has(el))
@@ -98,7 +113,8 @@ describe.skipIf(!available)('ordinary-note text comments', () => {
       const discard = button('Discard')
       attempts.push({ discard: !!discard, close: !!panel.closest('.modal')?.querySelector('.modal-close-button, .modal-header-button.mod-raised'), card: !!panel.closest('.abele-anchored-card'), seen: !!seen })
       if (discard) discard.click(); else dismiss()
-      await wait(150)
+      // Closed, or a fresh Discard asked for, within the former 150 ms.
+      for(let t=0;t<15 && document.querySelector('.abele-text-comments') && (!button('Discard') || button('Discard') === discard);t++) await wait(10)
     }
     await until(() => !document.querySelector('.abele-text-comments') && !ownedModals().length)
     // Name whatever is still open, so a leftover dialog explains itself.
@@ -206,7 +222,7 @@ describe.skipIf(!available)('ordinary-note text comments', () => {
       window.__abeleTest.openDialog('text-comment-edit')
       const edited = await until(() => document.querySelector('.abele-text-comments__entry.is-editing .cm-content'))
       const field = document.querySelector('.abele-text-comments__entry.is-editing .cm-content')
-      await wait(400)
+      await still(() => field?.querySelector('.cm-line')?.getBoundingClientRect().top, 400)
       const line = field?.querySelector('.cm-line')?.getBoundingClientRect()
       const visible = !!line && line.top >= 0 && line.top < (window.visualViewport?.height ?? window.innerHeight)
       field?.focus()
@@ -243,7 +259,7 @@ describe.skipIf(!available)('ordinary-note text comments', () => {
       await tap(field)
       await until(() => keyboardHeight() > 100)
       const keyboard = keyboardHeight() > 100
-      await wait(500)
+      await still(() => [keyboardHeight(), document.querySelector('.abele-text-comments')?.closest('.abele-modal__body')?.getBoundingClientRect().toJSON()], 500)
       const body = document.querySelector('.abele-text-comments').closest('.abele-modal__body')
       const room = body.clientHeight
       const panel = body.closest('.modal')
@@ -260,15 +276,15 @@ describe.skipIf(!available)('ordinary-note text comments', () => {
       const edit = document.querySelector('.abele-text-comments [aria-label="Edit this comment"]')
       await tap(edit)
       if(!await until(() => keyboardHeight()>100)) throw new Error('Native edit keyboard did not open: '+JSON.stringify({editing:!!document.querySelector('.abele-text-comments__entry.is-editing'),active:document.activeElement?.className,editDisabled:edit?.getAttribute('aria-disabled')??edit?.disabled,keyboard:keyboardHeight()}))
-      await wait(500)
+      await still(() => [keyboardHeight(), document.querySelector('.abele-text-comments .abele-note-editor-field__editor')?.getBoundingClientRect().toJSON()], 500)
       const editor = window.__abeleTest.noteFieldView(document.querySelector('.abele-text-comments .abele-note-editor-field__editor'))
       editor.focus()
       editor.dispatch({ selection: { anchor: editor.state.doc.length } })
-      await wait(150)
+      for(let t=0;t<15 && document.activeElement !== editor.contentDOM;t++) await wait(10)
       if(document.activeElement !== editor.contentDOM) throw new Error('Edit did not focus the comment editor')
       await host.type(' Updated')
       if(!await until(() => editor.state.doc.toString().endsWith(' Updated'))) throw new Error('Native edit text did not arrive: '+JSON.stringify({edit:editor.state.doc.toString(),reply:window.__abeleTest.noteFieldView(document.querySelector('.abele-text-comments__reply .abele-note-editor-field__editor'))?.state.doc.toString(),active:document.activeElement?.closest('.abele-text-comments__reply,.abele-text-comments__entry')?.className??document.activeElement?.className}))
-      await wait(150)
+      await until(() => button('Save') && !button('Save').disabled)
       await tap(button('Save'))
       await until(() => document.querySelector('.abele-text-comments__time')?.textContent.includes('edited'))
       const id = /%%c:([a-z0-9]{6})/.exec(await app.vault.read(note))[1]
@@ -306,7 +322,7 @@ describe.skipIf(!available)('ordinary-note text comments', () => {
       cm.dispatch({changes:{from:0,to:cm.state.doc.length,insert:'Native toolbar probe'}})
       await tap(cm.contentDOM)
       await until(() => keyboardHeight()>100)
-      await wait(500)
+      await still(() => [keyboardHeight(), cm.dom.getBoundingClientRect().toJSON()], 500)
       cm.focus()
       cm.dispatch({selection:{anchor:0,head:6}})
       await wait(100)
@@ -370,19 +386,22 @@ describe.skipIf(!available)('ordinary-note text comments', () => {
       const file = app.vault.getAbstractFileByPath(window.__abeleTest.ChatStorage.commentsFolder()+'/'+id+'.abcomment')
       const original = JSON.parse(await app.vault.read(file))
       const field = () => window.__abeleTest.noteFieldView(document.querySelector('.abele-text-comments .abele-note-editor-field__editor'))
-      const save = async () => { const action = () => button('Save') ?? send(); await until(() => action() && !action().disabled); action().click(); await wait(300) }
+      // A write has landed once the thread's file changed (or went), then the panel repaints.
+      const written = async m => { await until(() => !app.vault.getAbstractFileByPath(file.path) || file.stat.mtime !== m); await new Promise(r => requestAnimationFrame(() => requestAnimationFrame(r))) }
+      const save = async () => { const action = () => button('Save') ?? send(); await until(() => action() && !action().disabled); const m = file.stat.mtime; action().click(); await written(m); await until(() => !button('Save')) }
       field().dispatch({changes:{from:0,insert:'Another entry'}}); await save()
       const stacked = JSON.parse(await app.vault.read(file)).entries.length === original.entries.length + 1
-      document.querySelector('.abele-text-comments [aria-label="Edit this comment"]').click(); await wait(200)
+      document.querySelector('.abele-text-comments [aria-label="Edit this comment"]').click(); await until(() => button('Save'))
       const cm = field(); cm.dispatch({changes:{from:0,to:cm.state.doc.length,insert:'Edited entry'}}); await save()
-      document.querySelector('.abele-text-comments__mark').click(); await wait(100)
-      document.querySelector('.abele-text-comments [role="radio"][aria-label="underlined"]').click(); await until(() => document.querySelector('.abele-text-comments__mark')?.getAttribute('aria-label')?.includes('underlined')); await wait(300)
+      document.querySelector('.abele-text-comments__mark').click(); await until(() => document.querySelector('.abele-text-comments [role="radio"][aria-label="underlined"]'))
+      const marked = file.stat.mtime
+      document.querySelector('.abele-text-comments [role="radio"][aria-label="underlined"]').click(); await until(() => document.querySelector('.abele-text-comments__mark')?.getAttribute('aria-label')?.includes('underlined')); await written(marked)
       const edited = JSON.parse(await app.vault.read(file))
       const createdStable = edited.entries[0].createdAt === original.entries[0].createdAt && !!edited.entries[0].editedAt
       const appearance = edited.appearance
-      document.querySelector('.abele-text-comments [aria-label="Delete this comment"]').click(); await until(() => button('Delete')); button('Delete').click(); await wait(300)
+      document.querySelector('.abele-text-comments [aria-label="Delete this comment"]').click(); await until(() => button('Delete')); const deleted = file.stat.mtime; button('Delete').click(); await written(deleted); await until(() => !button('Delete'))
       const sibling = JSON.parse(await app.vault.read(file)).entries.length === original.entries.length
-      for(let i=0;i<original.entries.length;i++) { document.querySelector('.abele-text-comments [aria-label="Delete this comment"]').click(); await until(() => button('Delete')); button('Delete').click(); await wait(300) }
+      for(let i=0;i<original.entries.length;i++) { document.querySelector('.abele-text-comments [aria-label="Delete this comment"]').click(); await until(() => button('Delete')); const m = file.stat.mtime; button('Delete').click(); await written(m); await until(() => !button('Delete')) }
       await until(() => !document.querySelector('.abele-text-comments'))
       return JSON.stringify({stacked,createdStable,appearance,sibling,clean:await app.vault.read(note),removed:!app.vault.getAbstractFileByPath(file.path)})
     `)

@@ -113,6 +113,17 @@ const script = `(async () => {
   const names = {}
   const rowNamed = (i) => rows().find((r) => nameOf(r) === names[i])
   const topOf = (el) => Math.round(el.getBoundingClientRect().top - scroller().getBoundingClientRect().top)
+  /** Until the element and the scroller have held still for five rendering steps. */
+  const steady = async (el) => {
+    let last = null, still = 0
+    for (let i = 0; i < 300 && still < 5; i++) {
+      await frame()
+      const now = JSON.stringify([el()?.getBoundingClientRect().top, scroller()?.scrollTop, scroller()?.scrollHeight])
+      still = now === last ? still + 1 : 0
+      last = now
+    }
+    return still >= 5
+  }
 
   try {
     // Restoring a saved place is opt-in: this fixture must not inherit a vault's disabled setting.
@@ -131,14 +142,15 @@ const script = `(async () => {
           'Sample task ' + String(i).padStart(2, '0') + '\\n\\nThe description of sample task ' + i + '.\\n'
       )
     }
-    await until(() => {
-      const links = app.metadataCache.resolvedLinks[taskPath(1)]
-      return links && Object.keys(links).length
-    }, 20000)
-    await wait(1500)
+    // Every task's group link resolved and the task loaded into the store.
+    const tasks = window.__abeleTest.GlobalStore.getInstance().tasksList
+    await until(() => Array.from({ length: ${TASKS} }, (_, i) => taskPath(i + 1)).every((path) => {
+      const links = app.metadataCache.resolvedLinks[path]
+      return links && Object.keys(links).length && tasks.value?.tasks.get(path)?.loaded
+    }), 20000)
 
     await leaf.setViewState({ type: 'markdown', state: { file: groupPath, mode: 'source', source: false }, active: true })
-    await wait(1500)
+    await until(() => scroller() && leaf.view.containerEl.querySelector('.abele-footer-widget-container') && rows().length, 20000)
     // Down the list until the row is drawn, pages being added as their ends come into view.
     const drawn = await until(() => {
       const s = scroller()
@@ -153,12 +165,15 @@ const script = `(async () => {
       names[i] = nameOf(rows()[i])
     }
     rowNamed(${OPENED}).scrollIntoView({ block: 'center' })
-    await wait(800)
+    await until(() => rowNamed(${OPENED})?.querySelector('.abele-entry-row__more'), 5000)
+    await steady(() => rowNamed(${OPENED}))
     const opener = rowNamed(${OPENED}).querySelector('.abele-entry-row__more')
     opener.click()
     if (!(await until(() => rowNamed(${OPENED})?.querySelector('.abele-task-view__description'), 5000)))
       throw new Error('the task never opened')
-    await wait(600)
+    // The description drawn and the list settled around it.
+    await until(() => rowNamed(${OPENED})?.querySelector('.abele-task-view__description')?.textContent.trim(), 5000)
+    await steady(() => rowNamed(${OPENED}))
     // The row a little below the top of the window, then time for the place to be saved.
     rowNamed(${ROW}).scrollIntoView({ block: 'start' })
     scroller().scrollTop -= 120

@@ -85,6 +85,18 @@ const probeScript = (tag: string): string => `(async () => {
     }
     return false
   }
+  // Until what measure reads has stopped changing for quiet ms: a list done mounting.
+  const steady = async (measure, ms, quiet = 500) => {
+    const deadline = Date.now() + ms
+    let last = JSON.stringify(measure()), since = Date.now()
+    while (Date.now() < deadline) {
+      await wait(50)
+      const now = JSON.stringify(measure())
+      if (now !== last) { last = now; since = Date.now() }
+      else if (Date.now() - since >= quiet) return true
+    }
+    return false
+  }
   const fs = require('fs')
   const win = require('@electron/remote').getCurrentWindow()
   fs.mkdirSync(${JSON.stringify(SHOTS)}, { recursive: true })
@@ -148,7 +160,13 @@ const probeScript = (tag: string): string => `(async () => {
   await leaf.openFile(file, inEditor)
   const footer = () => leaf.view.containerEl.querySelector('.abele-footer-view')
   await until(() => footer() && footer().querySelector('.abele-timeline') && footer().querySelector('.abele-logs-list'), 30000)
-  await wait(1500)
+  // The footer's relations and both lists have finished loading: their counts hold still.
+  await steady(() => {
+    const relations = window.__abeleTest.GlobalStore.getInstance().footersContainers.value
+      .find((f) => f.filePath === ${JSON.stringify(GROUP_NOTE)})?.noteRelations
+    return [footer()?.querySelectorAll('.abele-timeline .abele-task-view').length, footer()?.querySelectorAll('.abele-logs-list .abele-log').length,
+      relations?.tasks.size, [...(relations?.tasks.values() ?? [])].filter((t) => t.loaded).length, relations?.logs.size]
+  }, 30000)
 
   // What to look for comes from the notes, not from the list: the calendar task with the
   // latest date and the oldest log both sort last, far past the first page.
@@ -288,7 +306,7 @@ const probeScript = (tag: string): string => `(async () => {
     selector().__vueParentComponent.emit('update:start', own[0].date.startOf('month'))
     if (!(await until(() => footer().querySelector('.abele-transactions-list .abele-transaction-view'), 30000)))
       throw new Error('the account note never listed its transactions')
-    await wait(1500)
+    await steady(() => [footer().querySelectorAll('.abele-transactions-list .abele-transaction-view').length, account.noteRelations.transactions.size], 30000)
     const ownTitle = await titleOf(own[0])
     await probe(
       'transactions',
@@ -305,7 +323,8 @@ const probeScript = (tag: string): string => `(async () => {
       .find(section => section.querySelector(':scope > .abele-section__header > .abele-section__heading')?.textContent.trim() === 'Recent Transactions') ?? null
     if (!(await until(() => sidebarList() && sidebarList().querySelector('.abele-transaction-view'), 30000)))
       throw new Error('the finance sidebar never listed a transaction')
-    await wait(1500)
+    await steady(() => [sidebarList()?.querySelectorAll('.abele-transaction-view').length,
+      [...store.transactionsList.value.transactions.values()].filter((t) => t.loaded).length], 30000)
     const every = [...store.transactionsList.value.transactions.values()].filter((t) => t.loaded && t.date)
     every.sort(byDate)
     const allTitle = await titleOf(every[0])
@@ -362,7 +381,7 @@ const run = async (tag: string): Promise<Report> => {
   if (!started.includes('started')) throw new Error(`the ${tag} probe did not start: ${started}`)
   const deadline = Date.now() + 180_000
   while (Date.now() < deadline) {
-    await new Promise((resolve) => setTimeout(resolve, 2_000))
+    await new Promise((resolve) => setTimeout(resolve, 250))
     const report = evalJson<Report | null>('window.__abeleListSearch ?? null', 30_000)
     if (report) return report
   }

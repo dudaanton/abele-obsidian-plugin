@@ -35,6 +35,7 @@ import {
 } from '../fixtures/history/historyNotes'
 import { shotDir } from './helpers/shots'
 import { nativeGesture } from '../helpers/nativeGesture'
+import { until } from './helpers/wait'
 
 targets('desktop', 'phone')
 
@@ -124,7 +125,8 @@ const PRELUDE = `
     pointer(root, 'pointerdown', x, y, kind)
     pointer(root, 'pointerup', x, y, kind)
     await frames(3)
-    await wait(150)
+    // The pick's panel, within the former 150 ms allowance.
+    await until(() => panel(root), 150)
   }
   const panel = (root) => root.querySelector('.abele-timeline-panel')
   const panelRows = (root) => [...(panel(root)?.querySelectorAll('.abele-timeline-panel__row') ?? [])].map((r) => r.querySelector('.abele-timeline-panel__name').textContent.trim() + ' ' + r.querySelector('.abele-timeline-panel__together').textContent.trim())
@@ -210,7 +212,17 @@ describe.skipIf(!available)('the history timeline of a base', () => {
         if (!app.vault.getAbstractFileByPath(path)) await app.vault.create(path, content)
       return '"made"'
     })()`)
-    await pause(2500)
+    // Every note's frontmatter is indexed before the base reads it.
+    const notes = Object.keys(FILES).filter((path) => path.endsWith('.md'))
+    const indexed = await until(
+      () =>
+        evalRaw(
+          `String(${JSON.stringify(notes)}.every((p) => { const f = app.vault.getAbstractFileByPath(p); return f && app.metadataCache.getFileCache(f)?.frontmatter }))`
+        ) === 'true',
+      30_000,
+      250
+    )
+    if (!indexed) throw new Error('the history notes were never indexed')
 
     if (!onPhone()) {
       desktop = evalAsync<Desktop>(`(async () => {
@@ -246,7 +258,7 @@ describe.skipIf(!available)('the history timeline of a base', () => {
           report.contemporaries = panelRows(root)
           report.shots.push(await picture('timeline-desktop-contemporaries.png'))
           setDark(true)
-          await wait(300)
+          // css-change repaints synchronously through the theme version and the next frames.
           await frames(3)
           report.shots.push(await picture('timeline-desktop-dark-contemporaries.png'))
           canvasOf(root).dispatchEvent(new KeyboardEvent('keydown', { key: 'Escape', bubbles: true }))
@@ -261,12 +273,10 @@ describe.skipIf(!available)('the history timeline of a base', () => {
           go.value = '1560'
           go.dispatchEvent(new Event('input', { bubbles: true }))
           go.dispatchEvent(new KeyboardEvent('keydown', { key: 'Enter', bubbles: true }))
-          await wait(300)
           await frames(3)
           report.decades = view(root).ppy
           report.shots.push(await picture('timeline-desktop-dark-decades.png'))
           setDark(false)
-          await wait(300)
           await frames(3)
           report.shots.push(await picture('timeline-desktop-light-decades.png'))
 
@@ -348,7 +358,9 @@ describe.skipIf(!available)('the history timeline of a base', () => {
           }
           await Promise.all(writes)
           await app.vault.create(${JSON.stringify(`${PERF}/Perf.base`)}, 'filters:\\n  and:\\n    - file.inFolder("${PERF}")\\nviews:\\n  - type: abele-timeline\\n    name: Many\\n    groupBy:\\n      property: note.group\\n      direction: ASC\\n')
-          await wait(3000)
+          // Every note's frontmatter is indexed before the first draw is timed.
+          const indexed = await until(() => app.vault.getMarkdownFiles().filter((f) => f.path.startsWith(${JSON.stringify(PERF + '/')}) && app.metadataCache.getFileCache(f)?.frontmatter?.born !== undefined).length === ${PERF_NOTES}, 60000)
+          if (!indexed) throw Error('the perf notes were never indexed')
           const started = performance.now()
           const root = await openBase(${JSON.stringify(`${PERF}/Perf.base`)})
           if (!root) return { error: 'the big timeline did not open' }
@@ -386,7 +398,9 @@ describe.skipIf(!available)('the history timeline of a base', () => {
         app.workspace.rightSplit?.collapse?.()
         const root = await openBase(${JSON.stringify(`${FOLDER}/History.base`)})
         if (!root) return { ...report, error: 'the timeline did not open' }
-        await wait(600)
+        // The collapsing sidebars' animations end, within the former 600 ms allowance.
+        await until(() => !document.getAnimations().some((a) => a.playState === 'running'), 600)
+        await frames(2)
         const c = canvasOf(root)
         report.canvas = [c.clientWidth, c.clientHeight]
         report.over = overEdge(root)
@@ -437,7 +451,8 @@ describe.skipIf(!available)('the history timeline of a base', () => {
             }
           } else await press(root, x, y, 'touch')
           await until(() => panel(root), 3000)
-          await wait(300)
+          await until(() => panelRows(root).length, 300)
+          await frames(3)
           report.picked = panel(root)?.dataset.selected
           report.contemporaries = panelRows(root)
           report.rows = report.contemporaries.length

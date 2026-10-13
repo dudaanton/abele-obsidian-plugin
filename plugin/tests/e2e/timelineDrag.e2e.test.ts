@@ -27,9 +27,14 @@ const probe = (footer: boolean) => String.raw`(async () => {
     if (!app.vault.getAbstractFileByPath(folder)) await app.vault.createFolder(folder)
     const write = async (name, text) => { const f = app.vault.getAbstractFileByPath(folder+'/'+name+'.md'); if (f) await app.vault.modify(f,text); else await app.vault.create(folder+'/'+name+'.md',text) }
     await write('Sample group','Sample group\n')
-    for (const [name, offset, done] of [['Sample moving',0,false],['Sample past',-1,false],['Sample completed',-2,true],['Sample future',2,false]])
+    const fixture=[['Sample moving',0,false],['Sample past',-1,false],['Sample completed',-2,true],['Sample future',2,false]]
+    for (const [name, offset, done] of fixture)
       await write(name,'---\ntype: task\ndate: '+day(offset)+'\n'+(done?'completed: '+day(offset)+'\n':'')+'labels:\n  - sample-drag\ngroups:\n  - "[['+folder+'/Sample group]]"\n---\n'+name+'\n')
-    await wait(2000)
+    // Every written task is in the store with its date, completion, label and group.
+    await until(() => fixture.every(([name, offset, done]) => {
+      const task=window.__abeleTest.GlobalStore.getInstance().tasksList.value?.tasks.get(folder+'/'+name+'.md')
+      return task?.loaded && task.date?.format('YYYY-MM-DD')===day(offset) && !!task.completedAt===done && task.labels.includes('sample-drag') && task.groups.length
+    }))
     leaf = app.workspace.getLeaf('tab')
     await leaf.setViewState(${footer} ? { type:'markdown', state:{file:folder+'/Sample group.md',mode:'source',source:false},active:true } : {type:'abele-timeline-sidebar-view',active:true})
     app.workspace.setActiveLeaf(leaf,{focus:true})
@@ -40,13 +45,28 @@ const probe = (footer: boolean) => String.raw`(async () => {
       const option=await until(() => [...document.querySelectorAll('.menu-item')].find(x=>x.textContent.trim().startsWith('sample-drag (')))
       option.click()
     }
-    await wait(1200)
+    // Only the fixture's rows are mounted (the filter applied), with titles and date labels painted.
+    await until(() => !document.querySelector('.menu') && ['Sample moving','Sample future'].every(n=>root.querySelector('[data-abele-anchor="task:'+folder+'/'+n+'.md"]')?.textContent.includes(n)) &&
+      [...root.querySelectorAll('.abele-task-view')].every(el=>el.dataset.abeleAnchor?.startsWith('task:'+folder+'/')) &&
+      [...root.querySelectorAll('.timeline__date')].every(el=>el.textContent.trim()))
     const scroller=${footer} ? leaf.view.containerEl.querySelector('.cm-scroller') : root.closest('.abele-timeline-sidebar')
     const row=()=>root.querySelector('[data-abele-anchor="task:'+folder+'/Sample moving.md"]')
     const dates=()=>[...root.querySelectorAll('.abele-timeline__date-block')].map(x=>x.dataset.abeleAnchor)
     await until(row)
     const align=()=> { scroller.dispatchEvent(new WheelEvent('wheel',{bubbles:true,deltaY:1})); scroller.scrollTop+=row().getBoundingClientRect().top-scroller.getBoundingClientRect().top-240 }
-    align(); await wait(800)
+    // The aligned row has stopped moving: same scroll and geometry for six painted frames.
+    const settle=async()=> {
+      let last, steady=0
+      for (let i=0; i<300; i++) {
+        const now=JSON.stringify([scroller.scrollTop,scroller.scrollHeight,row()?.getBoundingClientRect().top,dates()])
+        steady=now===last ? steady+1 : 0
+        if (steady>=6) return
+        last=now
+        await new Promise(r=>requestAnimationFrame(r))
+      }
+      throw Error('timeline did not come to rest')
+    }
+    align(); await settle()
     // Start cancellation from natural scroll range, not compensation left by mounting
     // a short list. Then test that this gesture contributes no spacer of its own.
     scroller.dispatchEvent(new WheelEvent('wheel',{bubbles:true,deltaY:-1}))
@@ -92,7 +112,7 @@ const probe = (footer: boolean) => String.raw`(async () => {
     app.workspace.setActiveLeaf(leaf,{focus:true})
     await wait(200)
     await picture('cancel')
-    align(); await wait(800)
+    align(); await settle()
     const a=row().getBoundingClientRect(), ax=a.left+a.width/2, ay=a.top+10
     pointer('pointerdown',ax,ay,row()); pointer('pointermove',ax,ay+12); await wait(900)
     const target=root.querySelector('[data-abele-anchor="date:'+day(1)+'"]')
@@ -106,7 +126,7 @@ const probe = (footer: boolean) => String.raw`(async () => {
     report.extraGone=dates().length===2 && !root.querySelector('[data-abele-anchor="task:'+folder+'/Sample completed.md"]') && !root.querySelector('[data-abele-anchor="task:'+folder+'/Sample past.md"]')
     // Exercise the real WebKit touch path: a fast swipe scrolls, a held swipe drags.
     if (window.__e2eHost) {
-      align(); await wait(800)
+      align(); await settle()
       const b=row().getBoundingClientRect(), bx=b.left+b.width/2, by=b.top+10
       let expanded=false, nativeStart, sourceBefore
       const observer=new MutationObserver(()=>{
@@ -138,7 +158,7 @@ const probe = (footer: boolean) => String.raw`(async () => {
       report.nativeDrag=expanded
       report.nativeStart=nativeStart
       report.nativeDrop=[nativeEnd,row()?.getBoundingClientRect().top]
-            align(); await wait(800)
+      align(); await settle()
       const edgeRow=row().getBoundingClientRect(), edgeY=usableBottom()-12
       let edgeStart, edgeDistance=0
       const nearEdge=e=>{ if(document.querySelector('.abele-timeline__drag-card') && e.touches[0]?.clientY>edgeY-35) { edgeStart??=scroller.scrollTop; edgeDistance=Math.max(edgeDistance,scroller.scrollTop-edgeStart) } }
