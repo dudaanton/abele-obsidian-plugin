@@ -131,7 +131,15 @@ export const wordCoordinates = codeSelectionScript(String.raw`
 
 export const readSelectionBar = codeSelectionScript(String.raw`
   const bar=await until(()=>document.querySelector('.abele-selection-bar_placed'),5000);
-  if(!bar)throw Error('No selection bar: '+String(window.getSelection()));
+  if(!bar){
+    // Say what took the drag instead: the element under the word and what holds focus.
+    const content=state.source?.view.containerEl.querySelector('.cm-content'),box=content?.getBoundingClientRect();
+    const under=box&&document.elementFromPoint(box.left+20,box.top+8);
+    throw Error('No selection bar: '+JSON.stringify({selection:String(window.getSelection()),bars:document.querySelectorAll('.abele-selection-bar').length,
+      under:under?.className??null,inSource:!!(under&&content.contains(under)),active:document.activeElement?.className??null,
+      cm:state.source?.view.containerEl.querySelector('.cm-editor')?.cmView?.view?.state.selection.main.toJSON?.()??null,
+      drawers:[...document.querySelectorAll('.workspace-drawer.is-pinned,.workspace-drawer:not(.is-hidden),.modal-container')].map(el=>el.className)}));
+  }
   const box=bar.getBoundingClientRect();
   const actions=[...bar.querySelectorAll('[data-action]')].map(el=>({id:el.dataset.action,
     icon:el.querySelector('svg')?.innerHTML===state.linkSvg?'link':

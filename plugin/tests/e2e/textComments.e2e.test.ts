@@ -95,16 +95,21 @@ describe.skipIf(!available)('ordinary-note text comments', () => {
       if (discard) discard.click(); else dismiss()
       await wait(150)
     }
-    return JSON.stringify(await until(() => !document.querySelector('.abele-text-comments') && !ownedModals().length))
+    await until(() => !document.querySelector('.abele-text-comments') && !ownedModals().length)
+    // Name whatever is still open, so a leftover dialog explains itself.
+    return JSON.stringify({ panel: document.querySelector('.abele-text-comments')?.closest('.abele-anchored-card,.modal')?.className ?? null,
+      owned: ownedModals().map(el => el.className + ': ' + el.textContent.trim().slice(0, 120)) })
   `)
-    ).toBe(true)
+    ).toEqual({ panel: null, owned: [] })
   )
   beforeEach(() =>
     expect(
-      run<boolean>(
-        `return JSON.stringify(await until(() => !document.querySelector('.abele-text-comments') && !ownedModals().length))`
+      run<unknown>(
+        `await until(() => !document.querySelector('.abele-text-comments') && !ownedModals().length)
+        return JSON.stringify({ panel: document.querySelector('.abele-text-comments')?.closest('.abele-anchored-card,.modal')?.className ?? null,
+          owned: ownedModals().map(el => el.className + ': ' + el.textContent.trim().slice(0, 120)) })`
       )
-    ).toBe(true)
+    ).toEqual({ panel: null, owned: [] })
   )
   beforeAll(() =>
     run(`
