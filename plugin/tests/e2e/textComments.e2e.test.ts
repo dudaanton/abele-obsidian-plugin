@@ -16,7 +16,7 @@ const NATIVE_TOUCH = `
     let r=target.getBoundingClientRect(), settled=0
     for(let i=0;i<30;i++) { await wait(150); const next=target.getBoundingClientRect(); const stable=next.top===r.top&&next.left===r.left; r=next; settled=stable?settled+1:0; if(settled>=4) break }
     const x=r.left+r.width/2,y=r.top+r.height/2,under=document.elementFromPoint(x,y)
-    if(under!==el&&!el.contains(under)) throw new Error('Comment action covered by '+(under?.className??'nothing'))
+    if(under!==el&&!el.contains(under)) throw new Error('Comment action covered by '+(under?.className??'nothing')+': '+JSON.stringify({target:target.className,rect:r.toJSON(),viewport:[innerWidth,innerHeight,window.visualViewport?.height],keyboard:keyboardHeight(),under:under?.getBoundingClientRect().toJSON()}))
     await host.tap(x,y)
   }
   const keyboardHeight = () => Math.max(parseFloat(getComputedStyle(document.body).getPropertyValue('--keyboard-height'))||0,window.innerHeight-(window.visualViewport?.height??window.innerHeight))
@@ -247,7 +247,7 @@ describe.skipIf(!available)('ordinary-note text comments', () => {
       const body = document.querySelector('.abele-text-comments').closest('.abele-modal__body')
       const room = body.clientHeight
       const panel = body.closest('.modal')
-      const geometry = [panel.parentElement, panel, panel.querySelector('.modal-content'), body, panel.querySelector('.abele-modal__footer')].map(el => { const s=getComputedStyle(el); return {class:el.className,height:el.getBoundingClientRect().height,top:el.getBoundingClientRect().top,cssHeight:s.height,max:s.maxHeight,flex:s.flex,keyboard:s.getPropertyValue('--keyboard-height'),room:s.getPropertyValue('--abele-room-height')} })
+      const geometry = [panel.parentElement, panel, panel.querySelector('.modal-content'), body, panel.querySelector('.abele-text-comments__reply')].map(el => { const s=getComputedStyle(el); return {class:el.className,height:el.getBoundingClientRect().height,top:el.getBoundingClientRect().top,cssHeight:s.height,max:s.maxHeight,flex:s.flex,keyboard:s.getPropertyValue('--keyboard-height'),room:s.getPropertyValue('--abele-room-height')} })
       const toolbar = !![...document.querySelectorAll('.mobile-toolbar')].find(el => el.getBoundingClientRect().height > 0)
       const shots = [await host.shot(${JSON.stringify(SHOTS)} + '/text-comment-keyboard-open.png')]
       await host.type('Native second comment\\nwith another line')
