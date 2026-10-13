@@ -3,7 +3,7 @@ import { AccessClient, sha256 } from '@abele/sync-core'
 import { beforeEach, afterEach, describe, expect, it } from 'vitest'
 import { TokenSyncLive } from './helpers/tokenSyncLive'
 import { fixtureFetch } from './helpers/syncServer'
-import { onPhone, targets } from './helpers/target'
+import { interimRun, onPhone, targets } from './helpers/target'
 import { MOBILE_MAX_FILE_BYTES } from '../../src/sync/connectionDefaults'
 import { allowFixtureAttachment } from './helpers/externalAttachmentFixture'
 import { residentMemorySampler } from './helpers/residentMemory'
@@ -12,6 +12,13 @@ import { wasReloaded } from './helpers/loadIdentity'
 targets('desktop', 'phone')
 const TIMEOUT = 600000
 const MAXIMUM = 200 * 1024 * 1024
+/**
+ * The large transfer: the declared maximum at a release, a few MiB between releases. Both go
+ * the same way (memory sampled, hydrated by fingerprint, not byte by byte); only the size, and
+ * what it proves about the maximum, differs.
+ */
+const LARGE = interimRun() ? 8 * 1024 * 1024 : MAXIMUM
+const LARGE_LABEL = `${LARGE / 1024 / 1024} MiB`
 interface RoundTrip {
   evicted: { status: string; reclaimedBytes: number }
   missing: boolean
@@ -71,7 +78,7 @@ async function roundTrip(folderToken = false, size = 26, departure = false, rais
   const outcome = await live.primary.long<RoundTrip>(
     'v2 attachment eviction and hydration',
     `
-    const id=${JSON.stringify(file.id)},path=${JSON.stringify(file.path)},size=${size},maximum=size===${MAXIMUM}
+    const id=${JSON.stringify(file.id)},path=${JSON.stringify(file.path)},size=${size},maximum=size===${LARGE}
     const memory=(${residentMemorySampler.toString()})(window)
     const sampling=maximum&&memory!==null
     let baseline=0,peakMemory=0,samples=0,memoryError=maximum&&!sampling?'Resident-memory sampler required':null,timer,samplingFlight=null
@@ -188,13 +195,13 @@ describe('v2 external attachments on live adapters', () => {
   )
   let maximum: Awaited<ReturnType<typeof roundTrip>>
   let maximumFlight: ReturnType<typeof roundTrip> | undefined
-  const maximumResult = () => (maximumFlight ??= roundTrip(false, MAXIMUM))
+  const maximumResult = () => (maximumFlight ??= roundTrip(false, LARGE))
   it(
-    'transfers a 200 MiB attachment and hydrates concurrent requests',
+    `transfers a ${LARGE_LABEL} attachment and hydrates concurrent requests`,
     async () => {
       maximum = await maximumResult()
       expect(maximum).toMatchObject({
-        evicted: { status: 'complete', reclaimedBytes: MAXIMUM },
+        evicted: { status: 'complete', reclaimedBytes: LARGE },
         missing: true,
         sidecar: true,
         retired: true,
@@ -205,6 +212,7 @@ describe('v2 external attachments on live adapters', () => {
       })
       console.info('v2 attachment memory', {
         target: onPhone() ? 'phone' : 'desktop',
+        size: LARGE_LABEL,
         baseline: maximum.baseline,
         peak: maximum.peakMemory,
         samples: maximum.samples,
@@ -214,7 +222,7 @@ describe('v2 external attachments on live adapters', () => {
   )
   // BUG: runtimes without native or injected resident RSS cannot prove this bound.
   ;(onPhone() ? it.fails : it)(
-    'bounds resident-memory growth for the 200 MiB transfer',
+    `bounds resident-memory growth for the ${LARGE_LABEL} transfer`,
     async (context) => {
       maximum ??= await maximumResult()
       if (onPhone() && maximum.memoryError === null)

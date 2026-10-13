@@ -6,16 +6,18 @@
  * stops answering meanwhile. The same for the fill-in on its own, as it runs at startup.
  *
  * Writes about 200 MB of chats and removes them, so it runs only when asked for
- * (`ABELE_MEASURE_HISTORY=1`, or a phone run, which is started by hand). Requires Obsidian running
+ * (`ABELE_MEASURE_HISTORY=1`), on the phone as well: phone runs are started by every release
+ * batch now, not by hand, and a measurement nobody reads there is half a minute each time.
+ * Requires Obsidian running
  * with the development build — see docs/Testing.md.
  */
 import { describe, it, expect, beforeAll } from 'vitest'
 import { evalLong, hasTestApi, isObsidianRunning } from './helpers/obsidianCli'
-import { onPhone, targets } from './helpers/target'
+import { onPhone, requested, targets } from './helpers/target'
 
 targets('desktop', 'phone')
 
-const asked = process.env.ABELE_MEASURE_HISTORY === '1' || onPhone()
+const asked = requested('ABELE_MEASURE_HISTORY')
 const available = asked && isObsidianRunning() && hasTestApi()
 
 interface Report {

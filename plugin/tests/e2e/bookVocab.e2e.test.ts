@@ -21,7 +21,7 @@
 import { describe, it, expect, beforeAll, afterAll } from 'vitest'
 import { hasTestApi, isObsidianRunning, evalRaw, evalLong } from './helpers/obsidianCli'
 import { evalAsync } from './helpers/githubLive'
-import { onPhone, targets } from './helpers/target'
+import { interimRun, onPhone, targets } from './helpers/target'
 import { swipe, tap } from './helpers/phone'
 import { MADE_UP, VOCAB_COUNTS, buildVocabEpub } from '../fixtures/books/vocabBook'
 import { WAIT_PRELUDE } from './helpers/wait'
@@ -537,19 +537,22 @@ describe.skipIf(!available)('words underlined everywhere in a book', () => {
     expect(r.closed).toBe(true)
   })
 
-  it(`the page turn with ${RULES} words underlined is not much slower than with none`, async () => {
-    const r = await runLong<{
-      error?: string
-      none?: number[]
-      many?: number[]
-      rules?: number
-      drawnOnPage?: number
-      words?: number
-      redrawNone?: number
-      redrawMany?: number
-      readMs?: number
-    }>(
-      `
+  // On the phone this benchmark takes about a minute, so it runs there for a release only.
+  it.skipIf(onPhone() && interimRun())(
+    `the page turn with ${RULES} words underlined is not much slower than with none`,
+    async () => {
+      const r = await runLong<{
+        error?: string
+        none?: number[]
+        many?: number[]
+        rules?: number
+        drawnOnPage?: number
+        words?: number
+        redrawNone?: number
+        redrawMany?: number
+        readMs?: number
+      }>(
+        `
       const view = await open(${JSON.stringify(BOOK)})
       const renderer = view.engine.renderer
       const animated = renderer.hasAttribute('animated')
@@ -601,18 +604,20 @@ describe.skipIf(!available)('words underlined everywhere in a book', () => {
       if (animated) renderer.setAttribute('animated', '')
       return { none, many, rules, drawnOnPage, words: vocab(view).count(), redrawNone, redrawMany, readMs }
     `,
-      300_000
-    )
-    expect(r.error).toBeUndefined()
-    expect(r.rules).toBeGreaterThanOrEqual(RULES)
-    expect(r.words).toBeGreaterThan(3000)
-    expect(r.drawnOnPage).toBeGreaterThan(50)
-    const median = (xs: number[]) => [...xs].sort((a, b) => a - b)[Math.floor(xs.length / 2)]
-    const ratio = median(r.many ?? []) / median(r.none ?? [])
-    console.info(
-      `page turn: ${median(r.none ?? []).toFixed(1)} ms with no rules, ${median(r.many ?? []).toFixed(1)} ms with ${r.rules} (${r.drawnOnPage} lines on screen), ratio ${ratio.toFixed(2)}; ` +
-        `marks drawn again: ${r.redrawNone?.toFixed(2)} ms, ${r.redrawMany?.toFixed(2)} ms; the chapter's ${r.words} words found in ${r.readMs?.toFixed(0)} ms`
-    )
-    expect(ratio).toBeLessThan(1.5)
-  }, 400_000)
+        300_000
+      )
+      expect(r.error).toBeUndefined()
+      expect(r.rules).toBeGreaterThanOrEqual(RULES)
+      expect(r.words).toBeGreaterThan(3000)
+      expect(r.drawnOnPage).toBeGreaterThan(50)
+      const median = (xs: number[]) => [...xs].sort((a, b) => a - b)[Math.floor(xs.length / 2)]
+      const ratio = median(r.many ?? []) / median(r.none ?? [])
+      console.info(
+        `page turn: ${median(r.none ?? []).toFixed(1)} ms with no rules, ${median(r.many ?? []).toFixed(1)} ms with ${r.rules} (${r.drawnOnPage} lines on screen), ratio ${ratio.toFixed(2)}; ` +
+          `marks drawn again: ${r.redrawNone?.toFixed(2)} ms, ${r.redrawMany?.toFixed(2)} ms; the chapter's ${r.words} words found in ${r.readMs?.toFixed(0)} ms`
+      )
+      expect(ratio).toBeLessThan(1.5)
+    },
+    400_000
+  )
 })

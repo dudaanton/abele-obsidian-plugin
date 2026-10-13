@@ -19,6 +19,22 @@ export function targets(...list: Target[]): void {
 }
 
 /**
+ * Cases a batch between releases leaves out: the heaviest measurements, whose full size only a
+ * release has to prove (`ABELE_E2E_INTERIM=1`, set by the batch runner for every batch that does
+ * not gate a release). Unset, everything runs, so a runner that does not know the flag costs
+ * time, never coverage.
+ */
+export const interimRun = (): boolean => process.env.ABELE_E2E_INTERIM === '1'
+
+/**
+ * Whether a run asked for something by its variable (`ABELE_MEASURE_HISTORY=1`): for files that
+ * measure or record rather than check, and for checks of the test harness itself. Wrap the file
+ * in `describe.runIf(requested(...))`: a file whose every case is skipped is skipped whole, its
+ * setup included, so leaving it out costs nothing.
+ */
+export const requested = (variable: string): boolean => process.env[variable] === '1'
+
+/**
  * Thrown by a helper that exists only on the desktop — the DevTools protocol, Electron's
  * windows, the CLI's console capture — when it is asked for on a phone. The e2e setup turns a
  * test that fails with nothing but this into a skip, naming what it needed, so a phone run
