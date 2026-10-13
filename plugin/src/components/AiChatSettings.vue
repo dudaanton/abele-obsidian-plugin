@@ -51,9 +51,8 @@
     <Setting name="Hide reasoning" desc="Show only a spinner while the model is thinking.">
       <Checkbox :is-enabled="hideReasoning" @toggle="toggleHideReasoning" />
     </Setting>
-    <!-- Only for a chat that has reached into a node's repository. -->
+    <!-- Read grants can outlive the current scope or come from the agent's scope. -->
     <Setting
-      v-if="hasNodeAccess"
       name="Node repository access"
       desc="Revoke this chat's repository read grants. Later reads require a new owner approval."
     >
@@ -96,12 +95,6 @@ function revokeNodeReads() {
     console.error('[Abele] Node scope revocation failed', error)
   )
 }
-
-/** The chat has been given a node: only then is there repository access to take back. */
-const hasNodeAccess = computed(() => {
-  const scope = session.value?.overrides?.value.nodeScope
-  return Array.isArray(scope) && scope.length > 0
-})
 
 // ── Model override ──
 

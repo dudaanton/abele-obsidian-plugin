@@ -12,6 +12,10 @@ import { AbeleConfig } from '@/services/AbeleConfig'
 import { DEFAULT_AI_SETTINGS, CORE_TOOLS } from '@/ai/types'
 import { getToolRegistry } from '@/ai/tools'
 import { useVault } from '../helpers/testEnv'
+import { shallowRef } from 'vue'
+import AiPermissions from '@/components/AiPermissions.vue'
+import { ChatService } from '@/ai/ChatService'
+import { fakeChatSession } from '../helpers/fakeChatSession'
 
 beforeEach(() => {
   useVault([])
@@ -25,6 +29,30 @@ const group = (view: ReturnType<typeof mount>, name: string) =>
   view.findAllComponents(TreeItem).find((item) => item.props('text') === name)!
 
 describe('the tools a chat may use', () => {
+  it('changes one tool through the permissions surface without changing its peers', async () => {
+    const tool = optionalFiles()[0]
+    const key = keyOf(tool)
+    const peer = keyOf(optionalFiles().find((other) => keyOf(other) !== key)!)
+    const session = fakeChatSession({ overrides: { isOverridden: () => false } })
+    session.toolModes.value = { [key]: 'off', [peer]: 'auto' }
+    const service = vi
+      .spyOn(ChatService, 'getInstance')
+      .mockReturnValue({ activeSession: shallowRef(session) } as never)
+    const shown = vi.spyOn(Menu.prototype, 'showAtMouseEvent')
+    const view = mount(AiPermissions)
+    try {
+      await group(view, 'Files').get('.tree-item-self').trigger('click')
+      await group(view, tool.label).get('.abele-tree-item__end .clickable-icon').trigger('click')
+      const menu = shown.mock.contexts.at(-1) as Menu
+      menu.items.find((item) => item.title === 'Ask first')!.handler!()
+      await view.vm.$nextTick()
+      expect(session.toolModes.value).toEqual({ [key]: 'ask', [peer]: 'auto' })
+    } finally {
+      view.unmount()
+      shown.mockRestore()
+      service.mockRestore()
+    }
+  })
   it('keeps a mode button Enter key with the button without folding the group', async () => {
     const view = mount(ChatToolModes, { props: { toolModes: {} } })
     const files_ = group(view, 'Files')

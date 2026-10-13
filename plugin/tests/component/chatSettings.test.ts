@@ -8,7 +8,7 @@
  * go at once.
  */
 import { describe, it, expect, beforeEach, vi } from 'vitest'
-import { mount } from '@vue/test-utils'
+import { flushPromises, mount } from '@vue/test-utils'
 import { nextTick, ref, shallowRef } from 'vue'
 import AiChatSettings from '@/components/AiChatSettings.vue'
 import Button from '@/components/obsidian/Button.vue'
@@ -21,6 +21,8 @@ import { AbeleConfig } from '@/services/AbeleConfig'
 import { DEFAULT_AI_SETTINGS } from '@/ai/types'
 import { fakeChatSession } from '../helpers/fakeChatSession'
 import { useVault } from '../helpers/testEnv'
+import { GlobalStore } from '@/stores/GlobalStore'
+import { NodeScopeLedger, type NodeScopeEntry } from '@/ai/nodeScope'
 
 const deleteChat = vi.fn()
 
@@ -84,6 +86,37 @@ beforeEach(() => {
   AbeleConfig.getInstance().ai = { ...DEFAULT_AI_SETTINGS, agents: [] }
   deleteChat.mockReset().mockResolvedValue(true)
 })
+
+it.each(['cleared', 'inherited'])(
+  'can revoke a ledger approval when the node scope override is %s',
+  async (mode) => {
+    const entry: NodeScopeEntry = { kind: 'node', node_id: 'sample-node', access: 'read' }
+    const session = seed({
+      nodeScopeIdentity: 'sample-settings-chat',
+      overrides: ref({ nodeScope: [entry] }),
+    })
+    const { app } = GlobalStore.getInstance()
+    const storage = {
+      read: () => app.loadLocalStorage('abele-chat-node-scope-approvals'),
+      write: (value: unknown) => app.saveLocalStorage('abele-chat-node-scope-approvals', value),
+    }
+    new NodeScopeLedger(storage).approve(session, { 'sample-node': 'sample-principal' })
+    expect(storage.read()).toHaveProperty('sample-settings-chat')
+    session.overrides.value = mode === 'cleared' ? { nodeScope: [] } : {}
+    const view = mountSettings()
+    try {
+      const revoke = view
+        .findAllComponents(Button)
+        .find((button) => button.props('text') === 'Revoke repository access')
+      expect(revoke).toBeDefined()
+      await revoke!.vm.$emit('click')
+      await flushPromises()
+      expect(storage.read()).toEqual({})
+    } finally {
+      view.unmount()
+    }
+  }
+)
 
 describe('system prompt choices', () => {
   it('uses a labelled kit selector and saves each prompt source without changing the others', async () => {
