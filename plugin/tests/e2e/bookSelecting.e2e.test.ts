@@ -255,6 +255,9 @@ describe.skipIf(!available)('selecting words on pages turned one at a time', () 
         const click = async (x) => { await mouse('mouseMoved', x, y, 0); await mouse('mousePressed', x, y); await mouse('mouseReleased', x, y, 0); await wait(600) }
         const p0 = R(view).page
         await click(edge.right - 2)
+        // A turn is an animated scroll, and a busy machine runs it slower than the pause after a
+        // click: the page is read once it has changed, or once it plainly is not going to.
+        await until(() => R(view).page !== p0, 5000)
         const clicked = [p0, R(view).page]
         const w = words(view)[5]
         select(view, w.range)
