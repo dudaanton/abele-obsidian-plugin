@@ -236,14 +236,24 @@ describe.skipIf(!available)('calendars on a phone', () => {
         await wait(800)
         report.over = overEdge(root)
         report.sideways = root.scrollWidth - root.clientWidth
-        report.events = root.querySelectorAll('.abele-card').length
+        report.events = root.querySelectorAll('.abele-calendars-settings__feed').length
         report.shot = await picture('calendars-settings.png')
-        // Each calendar's card as well, the CalDAV one with its server, username and password.
-        for (const [i, card] of [...root.querySelectorAll('.abele-card')].entries()) {
-          card.scrollIntoView({ block: 'start' })
+        // Each calendar's editor as well, including the CalDAV connection fields.
+        for (const [i, row] of [...root.querySelectorAll('.abele-calendars-settings__feed')].entries()) {
+          row.scrollIntoView({ block: 'start' })
+          const action = row.querySelector('[aria-label="Change this calendar"]')
+          if (!action) throw Error('calendar settings action missing')
+          action.click()
+          const modal = await until(() => d.querySelector('.modal.abele-modal'), 5000)
+          if (!modal) throw Error('calendar editor missing')
           await wait(600)
-          report.over = [...report.over, ...overEdge(root)]
+          report.over = [...report.over, ...overEdge(modal)]
+          report.sideways = Math.max(report.sideways, modal.scrollWidth - modal.clientWidth)
           await picture('calendars-settings-card-' + (i + 1) + '.png')
+          const close = modal.querySelector('.modal-close-button')
+          if (!close) throw Error('calendar editor close action missing')
+          close.click()
+          if (!(await until(() => !modal.isConnected, 5000))) throw Error('calendar editor did not close')
         }
       } catch (e) {
         report.error = String((e && e.message) || e)

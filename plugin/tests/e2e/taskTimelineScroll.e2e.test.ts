@@ -310,7 +310,7 @@ const script = (footer: boolean, short = false) => String.raw`(async function* (
       report.shots.push(path)
     }
     yield 'initial dates and unchanged appearance'
-    await until(() => dates().length === ${short ? 1 : 20} && strip()?.textContent.includes(${short ? "'2 unfinished'" : "'90 unfinished'"}), 'initial fixture dates and unfinished count')
+    await until(() => dates().length === ${short ? 1 : 20} && strip()?.querySelector('.abele-timeline__history-count')?.getAttribute('aria-label') === ${short ? "'2 unfinished'" : "'90 unfinished'"}, 'initial fixture dates and unfinished count')
     await settleUI()
     if (!${footer} && document.body.classList.contains('is-phone')) {
       const calendar = root.closest('.abele-timeline-sidebar').querySelector('.abele-calendar')
@@ -319,7 +319,7 @@ const script = (footer: boolean, short = false) => String.raw`(async function* (
       report.calendarGap = calendar.getBoundingClientRect().top - header.getBoundingClientRect().bottom
     }
     report.initial = dates()
-    report.summary = strip()?.textContent.trim() ?? null
+    report.summary = strip() ? [strip().querySelector('.abele-timeline__history-count')?.getAttribute('aria-label'), strip().getAttribute('aria-label')].join(' · ') : null
     // Bring today's unchanged block into sight even in the baseline (which starts in history).
     if (!row(0)) {
       for (let i = 0; i < 6 && !row(0); i++) { scroller.scrollTop = scroller.scrollHeight; await wait(700) }
@@ -444,7 +444,7 @@ const script = (footer: boolean, short = false) => String.raw`(async function* (
     await settleUI()
     report.revealAnchor = [beforeReveal, row(0).getBoundingClientRect().top]
     report.revealed = dates()
-    report.countAfter = strip()?.textContent.trim() ?? null
+    report.countAfter = strip() ? [strip().querySelector('.abele-timeline__history-count')?.getAttribute('aria-label'), strip().getAttribute('aria-label')].join(' · ') : null
     // Keep the first incomplete row under the eye while completed rows appear above it.
     await align(row(0)); await wait(500)
     const before = row(0).getBoundingClientRect().top
@@ -469,7 +469,7 @@ const script = (footer: boolean, short = false) => String.raw`(async function* (
     await settleUI()
     report.collapseAnchor = [beforeCollapse, row(25).getBoundingClientRect().top]
     report.collapsed = dates()
-    report.collapseSummary = strip()?.textContent.trim() ?? null
+    report.collapseSummary = strip() ? [strip().querySelector('.abele-timeline__history-count')?.getAttribute('aria-label'), strip().getAttribute('aria-label')].join(' · ') : null
     const beforeRereveal = row(25).getBoundingClientRect().top
     await revealClick()
     await settleUI()
@@ -537,23 +537,40 @@ async function runProbe(footer: boolean, short = false): Promise<Probe> {
   }
 }
 
-// These synthetic folders may survive an interrupted phone run. Always start fresh;
-// reusing a partial folder bypasses fixture creation and cannot test timeline behaviour.
+const REMOVE_TIMELINE_FIXTURE = `
+  async function removeTimelineFixture(path, label) {
+    const folder = app.vault.getAbstractFileByPath(path)
+    const files = [...(folder?.children ?? [])]
+    // Prove every file before deleting any: a synthetic folder name is not ownership.
+    for (const file of files) {
+      if (file.children) throw Error('unowned nested fixture folder: ' + file.path)
+      const text = await app.vault.read(file)
+      const fm = app.metadataCache.getFileCache(file)?.frontmatter
+      const group = file.path === path + '/Sample group.md' && text === 'Sample group\\n'
+      const task = /^Sample (?:item -?\\d+ [0-2]|archive -\\d+)\\.md$/.test(file.name) &&
+        fm?.type === 'task' && Array.isArray(fm.labels) && fm.labels.includes(label) &&
+        Array.isArray(fm.groups) && fm.groups.includes('[[' + path + '/Sample group]]')
+      if (!group && !task) throw Error('unowned fixture file: ' + file.path)
+    }
+    // Individual native deletes publish file events before the empty folder is removed.
+    for (const file of files) await app.vault.delete(file, true)
+    if (folder) await app.vault.delete(folder, true)
+    const deadline = Date.now() + 60000
+    while ([...window.__abeleTest.GlobalStore.getInstance().tasksList.value.tasks.keys()].some(key => key.startsWith(path + '/'))) {
+      if (Date.now() > deadline) throw Error('deleted fixture tasks remained in the store: ' + path)
+      await new Promise(done => setTimeout(done, 100))
+    }
+    return 'removed folder'
+  }
+`
+
+// Synthetic fixtures may survive an interrupted run. Remove only proven owned notes.
 async function removeFixtures(): Promise<void> {
   for (const dir of [FOLDER, FOLDER + ' short']) {
-    // Folder deletion still goes through the native vault and emits its file events, without
-    // hundreds of host round trips. Wait for the store too before recreating the same paths.
     const raw = await evalLong(
       `(async () => {
-        const path = ${JSON.stringify(dir)}
-        const folder = app.vault.getAbstractFileByPath(path)
-        if (folder) await app.vault.delete(folder, true)
-        const deadline = Date.now() + 60000
-        while ([...window.__abeleTest.GlobalStore.getInstance().tasksList.value.tasks.keys()].some(key => key.startsWith(path + '/'))) {
-          if (Date.now() > deadline) throw Error('deleted fixture tasks remained in the store')
-          await new Promise(done => setTimeout(done, 100))
-        }
-        return 'removed folder'
+        ${REMOVE_TIMELINE_FIXTURE}
+        return await removeTimelineFixture(${JSON.stringify(dir)}, ${JSON.stringify('sample-timeline-probe' + (dir.endsWith(' short') ? '-short' : ''))})
       })()`,
       120_000
     )
@@ -654,7 +671,7 @@ describe.skipIf(!available)('task timeline scrolling', () => {
           expect(Math.abs(displacement - p.nativeDistance!)).toBeLessThanOrEqual(24)
           expect(p.nativeSettled).toBeGreaterThanOrEqual(displacement - 2)
           expect(p.revealed).toHaveLength(65)
-          expect(p.countAfter).toContain('90 unfinished · Hide all')
+          expect(p.countAfter).toContain('90 unfinished · Hide all past days')
           expect(p.chromeGap).toBeGreaterThanOrEqual(-1)
           if (index === 0 && kind === 'phone width') expect(p.calendarGap).toBeGreaterThanOrEqual(0)
           expect(p.sticky).toBeLessThanOrEqual(2)
@@ -669,7 +686,7 @@ describe.skipIf(!available)('task timeline scrolling', () => {
           const p = probe()
           expect(p.error).toBeUndefined()
           expect(p.collapsed!.every((date) => date >= p.initial![0])).toBe(true)
-          expect(p.collapseSummary).toContain('90 unfinished · Show all')
+          expect(p.collapseSummary).toContain('90 unfinished · Show all past days')
           for (const pair of [p.collapseAnchor, p.rerevealAnchor, p.removedPastAnchor]) {
             expect(pair).toHaveLength(2)
             expect(Math.abs(pair![1] - pair![0])).toBeLessThanOrEqual(1)

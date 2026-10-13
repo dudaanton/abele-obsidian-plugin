@@ -11,7 +11,7 @@
  *
  * Pictures go to `/tmp/abele-github-notifications/` — look at them.
  */
-import { describe, it, expect, beforeAll, afterAll } from 'vitest'
+import { describe, it, expect, beforeAll, afterAll, beforeEach } from 'vitest'
 import { evalJson, evalRaw, hasTestApi, isObsidianRunning, reloadApp } from './helpers/obsidianCli'
 import {
   PRELUDE,
@@ -119,20 +119,27 @@ describe.skipIf(!available)('GitHub notifications', () => {
     }
   })
 
+  beforeEach((context) => {
+    if (available && !context.task.name.startsWith('without a notifications token'))
+      useNotificationsToken()
+  })
+
   it('without a notifications token, says the main token cannot read them and names the field for one', () => {
     const r = evalAsync<{ error?: string; text?: string }>(`(async () => {
       ${PRELUDE}
       ${PANEL}
       app.commands.executeCommandById('abele:show-github-notifications')
       const notice = await until(() => panel()?.querySelector('.abele-github-notice__text'), 20000)
-      const text = notice?.textContent ?? ''
+      const disclosure = panel()?.querySelector('.abele-github-notice__more button[aria-expanded="false"]')
+      disclosure?.click()
+      await until(() => !disclosure || disclosure.getAttribute('aria-expanded') === 'true', 3000)
+      const text = notice?.closest('.abele-github-notice')?.textContent ?? ''
       for (const l of app.workspace.getLeavesOfType('abele-github-notifications')) l.detach()
       return notice ? { text } : { error: 'no refusal: ' + (panel()?.textContent.slice(0, 300) ?? 'none') }
     })()`)
     expect(r.error).toBeUndefined()
     expect(r.text).toContain('Notifications token')
     expect(r.text).toContain('classic')
-    useNotificationsToken()
   })
 
   // The old unread-default/check-to-read expectations are intentionally replaced with the

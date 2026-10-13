@@ -120,7 +120,7 @@ const PRELUDE = `
 const run = async <T>(body: string): Promise<T> => {
   const out = await evalLong(
     `(async () => { ${PRELUDE}
-      try { ${body} } catch (e) { return JSON.stringify({ error: String((e && e.stack) || e) }) }
+      try { ${body} } catch (e) { return JSON.stringify({ error: String((e && e.message) || e), stack: String((e && e.stack) || '') }) }
     })()`,
     120_000
   )
@@ -420,7 +420,12 @@ describe.skipIf(!available)('a word is selected where it is drawn', () => {
               // The public selection bar scrolls horizontally on a narrow screen. Reveal its
               // existing dismiss action before witnessing and sending the single cleanup tap.
               control.scrollIntoView({block:'nearest',inline:'nearest',behavior:'instant'})
+              const bar=control.closest('.abele-book-selection')
+              if (!bar) throw Error('owned selection bar unavailable')
+              const reveal=()=>{ const r=control.getBoundingClientRect(), b=bar.getBoundingClientRect(); if(r.right>b.right) bar.scrollLeft+=r.right-b.right; else if(r.left<b.left) bar.scrollLeft-=b.left-r.left }
+              reveal()
               if (!await until(()=>{
+                reveal()
                 const r=control.getBoundingClientRect(),top=document.elementFromPoint(r.left+r.width/2,r.top+r.height/2)
                 return r.width>0&&r.height>0&&r.left>=0&&r.right<=innerWidth&&(top===control||control.contains(top))
               },5000)) throw Error('owned public selection-dismiss control did not become hittable')

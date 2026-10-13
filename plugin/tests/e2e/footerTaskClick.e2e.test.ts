@@ -135,7 +135,8 @@ const script = `(async () => {
       row = rows()[at] ?? null
     }
     if (!row) throw new Error('the list went out of the editor before the press')
-    const above = row.previousElementSibling
+    const above = rows()[at - 1]
+    if (!above) throw new Error('the preceding logical task is missing')
     const { target, settled } = pick(row)
     const before = above.getBoundingClientRect().top
     await press(target, settled)
