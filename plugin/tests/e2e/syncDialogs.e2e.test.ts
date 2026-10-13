@@ -1,7 +1,7 @@
 import { expect } from 'vitest'
 import { liveSuite, liveCase } from './helpers/syncLiveCases'
 import { captureSyncScreen, closeSyncScreens } from './helpers/syncScreens'
-import { reloadAs, setWindowSize, windowSize } from './helpers/phoneWindow'
+import { showAs, windowSize } from './helpers/phoneWindow'
 const fixture = liveSuite(false)
 liveCase(
   'syncDialogs',
@@ -18,8 +18,7 @@ liveCase(
         [390, 844],
         [320, 844],
       ]) {
-        await setWindowSize(vault, width, height)
-        await reloadAs(vault, width < 500)
+        await showAs(vault, width, height, width < 500)
         a.run(
           `const root=await openSyncTab();await press(root,'Connect…');await poll(()=>modal('Connect to a server'));typeInto(modal('Connect to a server').querySelector('input[placeholder="Paste your token"]'),'not a token');await press(modal('Connect to a server'),'Connect');await poll(()=>modal('Connect to a server').querySelector('[role="alert"]'));return true`
         )
@@ -36,8 +35,7 @@ liveCase(
         expect(a.rows()).toHaveLength(0)
         closeSyncScreens(a)
       }
-      await setWindowSize(vault, 1200, 900)
-      await reloadAs(vault, false)
+      await showAs(vault, 1200, 900, false)
       const id = await s.connect(),
         second = await s.addServer()
       await s.connect(a, second.rootToken)
@@ -45,8 +43,7 @@ liveCase(
       a.create(s.root + '/Group with a long descriptive sample name.md', 'group')
       await a.syncNow()
       for (const width of [1200, 390, 320]) {
-        await setWindowSize(vault, width, width === 1200 ? 900 : 844)
-        await reloadAs(vault, width < 500)
+        await showAs(vault, width, width === 1200 ? 900 : 844, width < 500)
         await a.waitIdle()
         const connections = await captureSyncScreen(a, 'token-connections-' + width)
         expect(connections.error).toBe('')
@@ -64,8 +61,7 @@ liveCase(
       }
     } finally {
       closeSyncScreens(a)
-      await setWindowSize(vault, ...size)
-      await reloadAs(vault, false)
+      await showAs(vault, ...size, false)
     }
   },
   fixture
@@ -88,8 +84,7 @@ liveCase(
     await a.syncNow()
     try {
       for (const width of [1200, 390, 320]) {
-        await setWindowSize(a.vault(), width, width === 1200 ? 900 : 844)
-        await reloadAs(a.vault(), width < 500)
+        await showAs(a.vault(), width, width === 1200 ? 900 : 844, width < 500)
         await a.waitIdle()
         await a.history(path)
         const history = await captureSyncScreen(
@@ -152,8 +147,7 @@ liveCase(
       }
     } finally {
       closeSyncScreens(a)
-      await setWindowSize(a.vault(), ...size)
-      await reloadAs(a.vault(), false)
+      await showAs(a.vault(), ...size, false)
     }
   },
   fixture
@@ -183,8 +177,7 @@ liveCase(
     ).toBe(60)
     try {
       for (const width of [1200, 390, 320]) {
-        await setWindowSize(a.vault(), width, width === 1200 ? 900 : 844)
-        await reloadAs(a.vault(), width < 500)
+        await showAs(a.vault(), width, width === 1200 ? 900 : 844, width < 500)
         await a.waitIdle()
         a.run(
           `const root=await openSyncTab();icon(connectionRow(root,${JSON.stringify(id)}),'settings');await poll(()=>inWindows('.abele-held-deletes'),20000,'held deletions in either owner window');return true`
@@ -214,8 +207,7 @@ liveCase(
         (await s.items()).some((one) => one.path.startsWith(s.root + '/long sample folder'))
       ).toBe(false)
       for (const width of [1200, 390, 320]) {
-        await setWindowSize(a.vault(), width, width === 1200 ? 900 : 844)
-        await reloadAs(a.vault(), width < 500)
+        await showAs(a.vault(), width, width === 1200 ? 900 : 844, width < 500)
         await a.waitIdle()
         await a.trash()
         for (const preset of ['hour', 'today', 'custom']) {
@@ -245,8 +237,7 @@ liveCase(
       }
     } finally {
       closeSyncScreens(a)
-      await setWindowSize(a.vault(), ...size)
-      await reloadAs(a.vault(), false)
+      await showAs(a.vault(), ...size, false)
     }
   },
   fixture

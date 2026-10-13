@@ -1,6 +1,6 @@
 import { afterAll, beforeAll, expect, it } from 'vitest'
 import { vaultCli } from './helpers/obsidianCli'
-import { reloadAs, setWindowSize, windowSize } from './helpers/phoneWindow'
+import { showAs, windowSize } from './helpers/phoneWindow'
 import type { TestVault } from './helpers/syncVault'
 import { probePrelude } from './helpers/layoutProbe'
 import { shotDir } from './helpers/shots'
@@ -17,25 +17,25 @@ beforeAll(() => {
 })
 afterAll(async () => {
   if (!vault) return
-  await setWindowSize(vault, size[0], size[1])
-  await reloadAs(vault, false)
+  await showAs(vault, size[0], size[1], false)
 })
 
-it.each(['desktop', 'phone'] as const)(
-  '%s approval rows stay reachable and Stop settles the whole queue',
-  async (device) => {
-    await setWindowSize(vault, device === 'phone' ? 390 : 1200, 844)
-    await reloadAs(vault, device === 'phone')
-    for (const state of ['normal', 'long-command', 'several-pending']) {
-      const result = vault.evalAwait<{
-        buttons: string[]
-        overflow: string[]
-        pending: number
-        rejected: number
-        turns: number
-        focusable: boolean
-        actionRows: number
-      }>(`(async () => {
+type Device = 'desktop' | 'phone'
+/** The window as this device: reloaded only when it changes from the desktop to the phone. */
+const as = (device: Device) =>
+  showAs(vault, device === 'phone' ? 390 : 1200, 844, device === 'phone')
+
+const approvalRows = async (device: Device) => {
+  for (const state of ['normal', 'long-command', 'several-pending']) {
+    const result = vault.evalAwait<{
+      buttons: string[]
+      overflow: string[]
+      pending: number
+      rejected: number
+      turns: number
+      focusable: boolean
+      actionRows: number
+    }>(`(async () => {
       ${probePrelude(shots)}
       const chats = window.__abeleTest.ChatService.getInstance()
       const previous = chats.activeTabId.value
@@ -86,29 +86,24 @@ it.each(['desktop', 'phone'] as const)(
         if (previous) chats.switchTab(previous)
       }
     })()`)
-      expect(result.buttons).toContain('Stop')
-      expect(result.overflow).toEqual([])
-      expect(result.focusable).toBe(true)
-      expect(result.actionRows).toBe(1)
-      expect(result.pending).toBe(0)
-      expect(result.rejected).toBe(state === 'several-pending' ? 3 : 1)
-      expect(result.turns).toBe(0)
-    }
+    expect(result.buttons).toContain('Stop')
+    expect(result.overflow).toEqual([])
+    expect(result.focusable).toBe(true)
+    expect(result.actionRows).toBe(1)
+    expect(result.pending).toBe(0)
+    expect(result.rejected).toBe(state === 'several-pending' ? 3 : 1)
+    expect(result.turns).toBe(0)
   }
-)
+}
 
-it.each(['desktop', 'phone'] as const)(
-  '%s node approval rows fit with Stop beside Deny',
-  async (device) => {
-    await setWindowSize(vault, device === 'phone' ? 390 : 1200, 844)
-    await reloadAs(vault, device === 'phone')
-    for (const state of ['normal', 'long-command', 'several-pending']) {
-      const result = vault.evalAwait<{
-        rows: number
-        overflow: string[]
-        stopped: string
-        prompt: string
-      }>(`(async () => {
+const nodeRows = async (device: Device) => {
+  for (const state of ['normal', 'long-command', 'several-pending']) {
+    const result = vault.evalAwait<{
+      rows: number
+      overflow: string[]
+      stopped: string
+      prompt: string
+    }>(`(async () => {
       ${probePrelude(shots)}
       const chats = window.__abeleTest.ChatService.getInstance(), previous = chats.activeTabId.value
       const id = 'sample-stop-node-tab'
@@ -159,9 +154,20 @@ it.each(['desktop', 'phone'] as const)(
         if (previous) chats.switchTab(previous)
       }
     })()`)
-      expect(result.rows).toBe(1)
-      expect(result.overflow).toEqual([])
-      expect(result.stopped).toBe(result.prompt)
-    }
+    expect(result.rows).toBe(1)
+    expect(result.overflow).toEqual([])
+    expect(result.stopped).toBe(result.prompt)
   }
-)
+}
+
+// Grouped by device, so the window becomes a phone once rather than at every other test.
+for (const device of ['desktop', 'phone'] as const) {
+  it(`${device} approval rows stay reachable and Stop settles the whole queue`, async () => {
+    await as(device)
+    await approvalRows(device)
+  })
+  it(`${device} node approval rows fit with Stop beside Deny`, async () => {
+    await as(device)
+    await nodeRows(device)
+  })
+}

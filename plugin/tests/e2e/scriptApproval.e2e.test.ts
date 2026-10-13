@@ -1,7 +1,7 @@
 import { beforeAll, afterAll, describe, expect, it } from 'vitest'
 import { fileURLToPath } from 'node:url'
 import { vaultCli } from './helpers/obsidianCli'
-import { reloadAs, setWindowSize, windowSize } from './helpers/phoneWindow'
+import { showAs, windowSize } from './helpers/phoneWindow'
 import { type TestVault } from './helpers/syncVault'
 import { probePrelude, type Screen } from './helpers/layoutProbe'
 
@@ -24,8 +24,7 @@ afterAll(async () => {
   } catch {
     /* window may be reloading */
   }
-  await setWindowSize(vault, size[0], size[1])
-  await reloadAs(vault, false)
+  await showAs(vault, size[0], size[1], false)
 })
 
 const measure = (label: string) => String.raw`(async () => {
@@ -131,8 +130,7 @@ describe('script approval with existing dialog geometry checks', () => {
   })
 
   it.each([390, 320])('uses one readable scrolling sheet at %s wide', async (width) => {
-    await setWindowSize(vault, width, 844)
-    await reloadAs(vault, true)
+    await showAs(vault, width, 844, true)
     const screen = vault.evalAwait<Screen>(measure('script-approval-' + width))
     console.info(JSON.stringify(screen))
     expect(screen.error).toBe('')

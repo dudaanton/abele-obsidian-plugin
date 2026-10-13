@@ -1,6 +1,6 @@
 import { afterAll, beforeAll, expect, it } from 'vitest'
 import { vaultCli } from './helpers/obsidianCli'
-import { reloadAs, setWindowSize, windowSize } from './helpers/phoneWindow'
+import { showAs, windowSize } from './helpers/phoneWindow'
 import type { TestVault } from './helpers/syncVault'
 import { probePrelude } from './helpers/layoutProbe'
 import { shotDir } from './helpers/shots'
@@ -17,15 +17,13 @@ beforeAll(() => {
 })
 afterAll(async () => {
   if (!vault) return
-  await setWindowSize(vault, size[0], size[1])
-  await reloadAs(vault, false)
+  await showAs(vault, size[0], size[1], false)
 })
 
 it.each(['desktop', 'phone'] as const)(
   '%s stopped turns retain calls, results and text after reopening',
   async (device) => {
-    await setWindowSize(vault, device === 'phone' ? 390 : 1200, 844)
-    await reloadAs(vault, device === 'phone')
+    await showAs(vault, device === 'phone' ? 390 : 1200, 844, device === 'phone')
     for (const state of ['stream', 'tool', 'approval']) {
       const report = vault.evalAwait<any>(
         String.raw`(async () => {

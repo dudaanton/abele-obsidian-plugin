@@ -67,13 +67,25 @@ const hasTestApi = (vault: VaultCli): boolean => {
   }
 }
 
+const reloaded = (vault: VaultCli, before: number): boolean => {
+  try {
+    const now = Number(vault.evalRaw('String(performance.timeOrigin)', 10_000))
+    return Number.isFinite(now) && now !== before
+  } catch {
+    return false
+  }
+}
+
 /**
  * Reloads the test window as a phone or as a desktop, and waits for the plugin to be back.
  * Background throttling is switched off again, since a reload turns it back on.
  */
 export async function reloadAs(vault: VaultCli, mobile: boolean): Promise<void> {
+  const asked = Date.now()
   await takeReloadLock()
+  const locked = Date.now()
   try {
+    const before = Number(vault.evalRaw('String(performance.timeOrigin)', 20_000))
     vault.evalRaw(
       `(() => {
         sessionStorage.setItem('${MOBILE_WISH}', '${mobile ? '1' : ''}')
@@ -84,8 +96,17 @@ export async function reloadAs(vault: VaultCli, mobile: boolean): Promise<void> 
       })()`,
       20_000
     )
-    await delay(4000)
-    await waitFor('the plugin to be back after the reload', () => hasTestApi(vault), 60_000)
+    // A new page is a new time origin: until it changes, the old page with its test API is
+    // still the one answering.
+    await waitFor(
+      'the plugin to be back after the reload',
+      () => reloaded(vault, before) && hasTestApi(vault),
+      60_000
+    )
+    console.info(
+      '[abele e2e] reloadAs timing',
+      JSON.stringify({ mobile, lockWaitMs: locked - asked, reloadMs: Date.now() - locked })
+    )
     if (mobile) {
       // Desktop emulation has no iOS HTTP bridge, and the plugin's mobile module loader
       // hides Electron. Inject this window's real native host through the CLI loader while
@@ -125,16 +146,42 @@ export const windowSize = (vault: VaultCli): [number, number] =>
     `require('@electron/remote').getCurrentWindow().getContentSize()`
   )
 
-/** Resizes, then nudges by two pixels and back: a capture after a reload waits on a frame. */
+/**
+ * Resizes, then nudges by two pixels and back: a capture after a reload waits on a frame. Done
+ * when the page has the size and has drawn two frames at it, rather than after a fixed 1.5 s.
+ */
 export async function setWindowSize(vault: VaultCli, width: number, height: number): Promise<void> {
-  vault.evalRaw(
-    `(() => {
+  const sized = vault.evalAwait<boolean>(
+    `(async () => {
       const w = require('@electron/remote').getCurrentWindow()
+      const pause = ms => new Promise(resolve => setTimeout(resolve, ms))
       w.setContentSize(${width + 2}, ${height + 2})
-      setTimeout(() => w.setContentSize(${width}, ${height}), 300)
-      return 'ok'
+      await pause(300)
+      w.setContentSize(${width}, ${height})
+      for (const until = Date.now() + 10000; Date.now() < until; await pause(50))
+        if (innerWidth === ${width} && innerHeight === ${height}) {
+          const frame = () => Promise.race([new Promise(requestAnimationFrame), pause(250)])
+          await frame(); await frame()
+          return true
+        }
+      return false
     })()`,
     20_000
   )
-  await delay(1500)
+  if (!sized) throw new Error(`the window did not take the size ${width}×${height}`)
+}
+
+/**
+ * Sizes the window for a phone or a desktop, and reloads it only when it has to change from one
+ * to the other: between two phone widths, or two desktop ones, the app follows a resize.
+ */
+export async function showAs(
+  vault: VaultCli,
+  width: number,
+  height: number,
+  mobile = width < 500
+): Promise<void> {
+  await setWindowSize(vault, width, height)
+  if ((vault.evalRaw('String(!!app.isMobile)', 20_000) === 'true') !== mobile)
+    await reloadAs(vault, mobile)
 }
