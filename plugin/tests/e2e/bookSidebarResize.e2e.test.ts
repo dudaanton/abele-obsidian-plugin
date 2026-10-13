@@ -3,6 +3,7 @@ import { afterAll, beforeAll, describe, expect, it } from 'vitest'
 import {
   evalJson,
   evalRaw,
+  evalLong,
   evalRawIdempotent,
   hasTestApi,
   isObsidianRunning,
@@ -13,6 +14,12 @@ import { WAIT_PRELUDE } from './helpers/wait'
 import { buildJustifiedEpub } from '../fixtures/books/justifiedBook'
 import { onPhone, targets } from './helpers/target'
 import { shotDir } from './helpers/shots'
+
+/**
+ * The steps that open, search and settle a book run as a job in the app rather than one blocking
+ * call: on a busy machine they outlast the ceiling a single synchronous call is held to.
+ */
+const evalJob = async <T>(script: string): Promise<T> => JSON.parse(await evalLong(script)) as T
 
 targets('desktop', 'phone')
 const available = isObsidianRunning() && hasTestApi()
@@ -152,7 +159,7 @@ describe.skipIf(!available)('reader navigation split', () => {
 
   if (!onPhone()) {
     it('drags, reflows both marks and remembers the width after reopening the panel and book', async () => {
-      const before = evalAsync<{ width: number; geometry: Geometry }>(`(async () => {
+      const before = await evalJob<{ width: number; geometry: Geometry }>(`(async () => {
         ${PRELUDE}
         const v = await open()
         await need(() => v.contentEl.querySelector('.abele-book-reader__resize'), 'the navigation panel has no divider')
@@ -172,7 +179,7 @@ describe.skipIf(!available)('reader navigation split', () => {
         )
       ).toBe(true)
       await realDrag(handle!, { x: handle!.x - 60, y: handle!.y })
-      const after = evalAsync<{
+      const after = await evalJob<{
         width: number
         stored: number
         panel: number
@@ -206,8 +213,8 @@ describe.skipIf(!available)('reader navigation split', () => {
       expect(after.geometry.savedWords).not.toEqual(before.geometry.savedWords)
     })
 
-    it('clamps to the split limits and double-click resets to the original width', () => {
-      const r = evalAsync<{
+    it('clamps to the split limits and double-click resets to the original width', async () => {
+      const r = await evalJob<{
         min: number
         max: number
         small: number
@@ -238,7 +245,7 @@ describe.skipIf(!available)('reader navigation split', () => {
       evalRaw(`require('@electron/remote').getCurrentWindow().setContentSize(390, 844)`)
       await reloadApp('app.emulateMobile(true)')
     }
-    const r = evalAsync<{
+    const r = await evalJob<{
       page: number
       panel: number
       width: number
