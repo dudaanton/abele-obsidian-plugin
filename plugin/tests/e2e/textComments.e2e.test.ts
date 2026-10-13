@@ -70,9 +70,10 @@ const run = <T>(body: string): T => {
   const button = text => [...([...document.querySelectorAll('.modal')].at(-1) ?? document.querySelector('.abele-anchored-card'))?.querySelectorAll('button') ?? []].find(el => el.textContent.trim() === text)
   const send = () => document.querySelector('.abele-text-comments [aria-label="Send (⌘↵)"]')
   const ownedModals = () => [...document.querySelectorAll('.modal-container')].filter(el => !window.__textCommentBaselineModals.has(el))
+  // Obsidian 1.14 draws a dialog's close control as a raised header button.
   const dismiss = () => {
     const panel = document.querySelector('.abele-text-comments')
-    const close = panel?.closest('.modal')?.querySelector('.modal-close-button')
+    const close = panel?.closest('.modal')?.querySelector('.modal-close-button, .modal-header-button.mod-raised')
     if (close) close.click()
     else if (panel?.closest('.abele-anchored-card')) document.body.dispatchEvent(new PointerEvent('pointerdown', {bubbles: true}))
   }
@@ -95,7 +96,7 @@ describe.skipIf(!available)('ordinary-note text comments', () => {
       const panel = document.querySelector('.abele-text-comments')
       const seen = panel.__cleanupSeen; panel.__cleanupSeen = true
       const discard = button('Discard')
-      attempts.push({ discard: !!discard, close: !!panel.closest('.modal')?.querySelector('.modal-close-button'), card: !!panel.closest('.abele-anchored-card'), seen: !!seen })
+      attempts.push({ discard: !!discard, close: !!panel.closest('.modal')?.querySelector('.modal-close-button, .modal-header-button.mod-raised'), card: !!panel.closest('.abele-anchored-card'), seen: !!seen })
       if (discard) discard.click(); else dismiss()
       await wait(150)
     }

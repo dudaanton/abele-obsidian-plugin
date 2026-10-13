@@ -114,10 +114,13 @@ export const wordCoordinates = codeSelectionScript(String.raw`
   app.workspace.leftSplit.collapse();app.workspace.rightSplit.collapse();
   // A closing phone drawer must finish before an action reopens it for the destination.
   if(app.isMobile)await wait(600);
+  // A phone shows one tab at a time: bring the code tab back on screen, not only make it active.
+  await app.workspace.revealLeaf(state.source);
   app.workspace.setActiveLeaf(state.source,{focus:true});
   const root=state.source.view.containerEl;
-  const content=await until(()=>root.querySelector('.cm-content'),10000);
-  if(!content)throw Error('No code content');
+  const content=await until(()=>{const el=root.querySelector('.cm-content'),box=el?.getBoundingClientRect();
+    return box&&box.width>0&&box.left>=0&&box.right<=innerWidth+1?el:null},10000);
+  if(!content)throw Error('No code content on screen: '+JSON.stringify(root.querySelector('.cm-content')?.getBoundingClientRect()));
   const walker=document.createTreeWalker(content,NodeFilter.SHOW_TEXT);let text;
   while(text=walker.nextNode()){if(text.data.includes(state.word))break}
   if(!text)throw Error('Sample word missing from code');
