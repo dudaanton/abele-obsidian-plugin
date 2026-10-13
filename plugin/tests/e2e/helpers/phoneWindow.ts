@@ -122,6 +122,9 @@ export async function reloadAs(vault: VaultCli, mobile: boolean): Promise<void> 
           body: bytes => buffer.from(bytes),
           controller: () => new (remote.getGlobal('AbortController'))()
         }
+        // The engines the reload started finish starting first: reset in the middle of their
+        // start, they left staging files behind that sync then announced as recovered copies.
+        await tokenHost.engines.settled()
         await tokenHost.engines.reset()
         tokenHost.deps.fetch = api.desktopTransport(undefined, host)
         tokenHost.start()
