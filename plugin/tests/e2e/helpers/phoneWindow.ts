@@ -59,9 +59,18 @@ export async function openVaultUnderLock(): Promise<TestVault> {
   }
 }
 
+/**
+ * The plugin back and its layout ready: sync starts on layout-ready, and a transport swapped in
+ * before that start ran beside it (the fixed 4 s wait used to cover the gap).
+ */
 const hasTestApi = (vault: VaultCli): boolean => {
   try {
-    return vault.evalRaw('String(typeof window.__abeleTest === "object")', 10_000) === 'true'
+    return (
+      vault.evalRaw(
+        'String(typeof window.__abeleTest === "object" && !!app.workspace.layoutReady)',
+        10_000
+      ) === 'true'
+    )
   } catch {
     return false
   }
