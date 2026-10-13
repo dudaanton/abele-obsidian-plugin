@@ -1,4 +1,5 @@
-import nodePanelSource from '@/components/nodeWork/NodePanel.vue?raw'
+import { readFileSync } from 'node:fs'
+import { join } from 'node:path'
 import { afterEach, describe, expect, it, vi } from 'vitest'
 import { flushPromises, mount } from '@vue/test-utils'
 import { EditorView } from '@codemirror/view'
@@ -324,7 +325,11 @@ describe('node design corrections', () => {
 })
 
 it('anchors suggestion glyphs to the first title line despite a second note line', () => {
-  const styles = nodePanelSource.match(
+  const nodeSuggestSource = readFileSync(
+    join(__dirname, '../../src/components/nodeWork/nodeSuggest.css'),
+    'utf8'
+  )
+  const styles = nodeSuggestSource.match(
     /\.suggestion-item\.mod-complex\.abele-node-suggestion \.suggestion-icon\.abele-node-suggestion__kind \{([^}]+)\}/
   )?.[1]
   expect(styles).toMatch(/align-self: flex-start/)
