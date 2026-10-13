@@ -3,6 +3,8 @@ import { evalAsync } from './helpers/githubLive'
 import { targets } from './helpers/target'
 import { reloadApp, evalRaw, evalJson, evalLong } from './helpers/obsidianCli'
 import { outwardBoxShadowReach } from '../helpers/focusRingPaint'
+import { shotDir } from './helpers/shots'
+const SHOTS = shotDir('abele-phone')
 targets('desktop')
 it('keeps the review comment field and its focus ring on a phone-sized screen', async () => {
   const bounds = evalJson<number[]>(
@@ -26,7 +28,7 @@ it('keeps the review comment field and its focus ring on a phone-sized screen', 
         field.blur()
       }
       query()?.scrollIntoView({block:'center'});await wait(200)
-      require('fs').writeFileSync('/tmp/abele-phone/node-review-comment-targeted.png',(await require('@electron/remote').getCurrentWindow().webContents.capturePage()).toPNG())
+      require('fs').writeFileSync(${JSON.stringify(`${SHOTS}/node-review-comment-targeted.png`)},(await require('@electron/remote').getCurrentWindow().webContents.capturePage()).toPNG())
       const after=!!query();document.querySelector('.modal-close-button')?.click();return JSON.stringify({before,after,cuts,transitions})
     })()`)
     ) as { before: boolean; after: boolean; cuts: string[]; transitions: string[] }
@@ -60,7 +62,7 @@ it('shows the shared editor and conflict/unknown notices within a phone-width fi
         const wait=ms=>new Promise(r=>setTimeout(r,ms));await window.__abeleTest.openDialog('node-${state}');await wait(300);
         const root=document.querySelector('.abele-node-files');root.querySelector('h3').scrollIntoView({block:'start'});await wait(200);
         const code=root.querySelector('.cm-content'),box=code.getBoundingClientRect();
-        require('fs').writeFileSync('/tmp/abele-phone/node-${state}-body.png',(await require('@electron/remote').getCurrentWindow().webContents.capturePage()).toPNG());
+        require('fs').writeFileSync(${JSON.stringify(`${SHOTS}/node-${state}-body.png`)},(await require('@electron/remote').getCurrentWindow().webContents.capturePage()).toPNG());
         const result={text:root.textContent,editable:code.contentEditable==='true',right:box.right};
         [...document.querySelectorAll('.modal button')].find(b=>b.textContent==='Close').click();await wait(50);return result
       })()`)
