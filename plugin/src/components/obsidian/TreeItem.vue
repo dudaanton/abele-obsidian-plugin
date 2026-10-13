@@ -27,7 +27,7 @@
         ref="chevron"
         class="tree-item-icon collapse-icon abele-tree-item__toggle"
         :class="{ 'is-collapsed': collapsed }"
-        @click="foldApart && ($event.stopPropagation(), emit('toggle'))"
+        @click="foldApart && !inert && ($event.stopPropagation(), emit('toggle'))"
       />
       <div class="tree-item-inner abele-tree-item__inner">
         <!-- A choice the row stands for, ahead of its name: a check in a list of what to send. -->

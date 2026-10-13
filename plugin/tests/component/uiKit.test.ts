@@ -496,6 +496,19 @@ describe('TreeItem', () => {
     expect(view.emitted('click')).toBeUndefined()
   })
 
+  it('folds from its arrow only while it can be used', async () => {
+    const props = { text: 'Archive', collapsible: true, foldApart: true }
+    const live = mount(TreeItem, { props })
+    await live.get('.abele-tree-item__toggle').trigger('click')
+    expect(live.emitted('toggle')).toHaveLength(1)
+
+    for (const inert of [{ disabled: true }, { plain: true }]) {
+      const view = mount(TreeItem, { props: { ...props, ...inert } })
+      await view.get('.abele-tree-item__toggle').trigger('click')
+      expect(view.emitted('toggle')).toBeUndefined()
+    }
+  })
+
   it('names its states and parts', () => {
     const view = mount(TreeItem, {
       props: { text: 'Notes', collapsible: true, collapsed: true, active: true, flair: '12' },
