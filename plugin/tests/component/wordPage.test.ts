@@ -28,6 +28,57 @@ const edits = (page: ReturnType<typeof mount>) =>
   (page.emitted('edit') ?? []).map(([edit]) => edit as Record<string, unknown>)
 
 describe('the Word page', () => {
+  it('saves typing in an empty paragraph as an insertion', async () => {
+    const page = mount(WordPage, {
+      props: { model: { styles: [], blocks: [{ kind: 'paragraph', number: 1, runs: [] }] } },
+    })
+    await page.find('.abele-word-line__text').trigger('click')
+    await page.find('textarea').setValue('Sample new text')
+    await page.find('textarea').trigger('keydown', { key: 'Escape' })
+    expect(edits(page)).toEqual([
+      { operation: 'insert', paragraph: 1, offset: 0, text: 'Sample new text' },
+    ])
+    page.unmount()
+  })
+
+  it('keeps a failed text save in its field for correction or retry', async () => {
+    const page = await open()
+    await page.find('textarea').setValue('Sample draft here')
+    await page.find('textarea').trigger('keydown', { key: 'Escape' })
+    await page.setProps({ save: { state: 'failed', reason: 'Sample write failure' } })
+    await nextTick()
+    expect(page.find<HTMLTextAreaElement>('textarea').element.value).toBe('Sample draft here')
+    expect(page.text()).toContain('Not saved: Sample write failure')
+    page.unmount()
+  })
+
+  it('retains both drafts when moving between paragraphs before a save fails', async () => {
+    const page = mount(WordPage, {
+      props: {
+        model: {
+          styles: [],
+          blocks: [
+            { kind: 'paragraph', number: 1, runs: [{ text: 'Sample one' }] },
+            { kind: 'paragraph', number: 2, runs: [{ text: 'Sample two' }] },
+          ],
+        },
+      },
+    })
+    await page.find('[data-paragraph="1"] .abele-word-line__text').trigger('click')
+    await page.find('textarea').setValue('Sample first draft')
+    await page.find('[data-paragraph="2"] .abele-word-line__text').trigger('click')
+    await page.find('textarea').setValue('Sample second draft')
+    await page.find('textarea').trigger('keydown', { key: 'Escape' })
+    await page.setProps({ save: { state: 'failed', reason: 'Sample failure' } })
+    expect(page.find<HTMLTextAreaElement>('[data-paragraph="1"] textarea').element.value).toBe(
+      'Sample first draft'
+    )
+    await page.find('[data-paragraph="2"] .abele-word-line__text').trigger('click')
+    expect(page.find<HTMLTextAreaElement>('[data-paragraph="2"] textarea').element.value).toBe(
+      'Sample second draft'
+    )
+    page.unmount()
+  })
   it('turns the pressed paragraph into a field holding its text', async () => {
     const page = await open()
     const field = page.find<HTMLTextAreaElement>('[data-paragraph="1"] textarea')
@@ -44,8 +95,9 @@ describe('the Word page', () => {
       {
         operation: 'replace',
         paragraph: 1,
-        old_text: 'Sample text here',
-        new_text: 'Sample words here',
+        old_text: 'text',
+        offset: 7,
+        new_text: 'words',
       },
     ])
     page.unmount()

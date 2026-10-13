@@ -18,7 +18,7 @@
       v-if="editing"
       ref="field"
       class="abele-word-line__field"
-      :value="text"
+      :value="draft ?? text"
       rows="1"
       :aria-label="`Paragraph ${paragraph.number}`"
       @input="onInput"
@@ -40,9 +40,15 @@
       @keydown.enter.prevent="emit('open')"
     >
       <template v-for="(run, i) in paragraph.runs" :key="i">
-        <a v-if="run.link" :href="run.link" :class="markClasses(run)" @click.prevent>{{
-          run.text
-        }}</a>
+        <a
+          v-if="run.link"
+          :href="run.link"
+          :class="markClasses(run)"
+          target="_blank"
+          rel="noopener noreferrer"
+          @click.stop
+          >{{ run.text }}</a
+        >
         <span v-else :class="markClasses(run)">{{ run.text }}</span>
       </template>
       <span v-if="!text" class="abele-word-line__empty" aria-hidden="true">&#8203;</span>
@@ -67,6 +73,7 @@ const props = defineProps<{
   paragraph: WordPageParagraph
   editing: boolean
   readOnly: boolean
+  draft?: string
   /** A list item's marker: "•", or its number in its list, "3.". */
   marker?: string
 }>()
@@ -136,11 +143,18 @@ const onBlur = (e: FocusEvent) => {
 
 <style lang="scss">
 .abele-word-line {
+  content-visibility: auto;
+  contain-intrinsic-size: auto 2em;
   position: relative;
   margin-block: 0 var(--p-spacing);
 }
 
+.abele-word-line_editing {
+  content-visibility: visible;
+}
+
 .abele-word-line__text {
+  white-space: pre-wrap;
   outline-offset: var(--size-2-2);
   overflow-wrap: anywhere;
   cursor: text;

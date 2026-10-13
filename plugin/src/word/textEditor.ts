@@ -2,7 +2,10 @@ import type { WordParagraph } from './package'
 import type { WordEdit } from './edit'
 
 /** One minimal replacement preserves untouched runs when a whole paragraph field is edited. */
-export function paragraphTextEdit(p: WordParagraph, next: string): WordEdit {
+export function paragraphTextEdit(
+  p: Pick<WordParagraph, 'number' | 'text'>,
+  next: string
+): WordEdit {
   let from = 0
   while (from < p.text.length && from < next.length && p.text[from] === next[from]) from++
   let oldEnd = p.text.length

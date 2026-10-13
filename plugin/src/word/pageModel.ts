@@ -22,6 +22,12 @@ export interface WordPageParagraph {
   list?: 'bullet' | 'decimal'
   /** Kept as Word wrote it: a field, a complex layout. Shown, never edited here. */
   locked?: boolean
+  cell?: number
+  colSpan?: number
+  rowSpan?: number
+  images?: WordPageImage[]
+  beforeTables?: WordPageTable[]
+  afterTables?: WordPageTable[]
 }
 
 export interface WordPageImage {
@@ -60,12 +66,41 @@ export type WordSaveState =
 
 export type WordPageEdit = WordEdit
 
+export function tableCells(row: WordPageParagraph[]) {
+  const cells: {
+    number: number
+    colSpan: number
+    rowSpan: number
+    paragraphs: WordPageParagraph[]
+  }[] = []
+  for (const p of row) {
+    const number = p.cell ?? p.number
+    let cell = cells.find((cell) => cell.number === number)
+    if (!cell) {
+      cell = { number, colSpan: p.colSpan ?? 1, rowSpan: p.rowSpan ?? 1, paragraphs: [] }
+      cells.push(cell)
+    }
+    cell.paragraphs.push(p)
+  }
+  return cells
+}
+
 export const paragraphText = (p: WordPageParagraph) => p.runs.map((r) => r.text).join('')
 
 /** Every paragraph the page holds, those inside tables included, in reading order. */
 export const allParagraphs = (model: WordPageModel): WordPageParagraph[] =>
   model.blocks.flatMap((block) =>
-    block.kind === 'paragraph' ? [block] : block.kind === 'table' ? block.rows.flat() : []
+    block.kind === 'paragraph'
+      ? [block]
+      : block.kind === 'table'
+        ? block.rows
+            .flat()
+            .flatMap((p) => [
+              ...allParagraphs({ blocks: p.beforeTables ?? [], styles: [] }),
+              p,
+              ...allParagraphs({ blocks: p.afterTables ?? [], styles: [] }),
+            ])
+        : []
   )
 
 export const wordCount = (model: WordPageModel) =>

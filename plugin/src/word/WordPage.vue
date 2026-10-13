@@ -63,39 +63,51 @@
         :disabled="!current"
         @click="deleteCurrent"
       />
+      <Icon
+        icon="settings-2"
+        tooltip="Table, image and paragraph controls"
+        :disabled="!current"
+        @click="advanced"
+      />
     </div>
 
     <!-- The page on its grey field, as Word and Pages show it; the theme's own colours. -->
     <div class="abele-word-page__field" @mousedown.self="leave">
       <div class="abele-word-page__sheet" :style="{ zoom: zoom / 100 }">
-        <template v-for="block in model.blocks" :key="`${block.kind}-${block.number}`">
-          <figure v-if="block.kind === 'image'" class="abele-word-page__image">
+        <template v-for="block in visibleBlocks" :key="`${block.kind}-${block.number}`">
+          <figure
+            v-if="block.kind === 'image'"
+            class="abele-word-page__image"
+            @dblclick="!model.readOnly && emit('advanced', block.paragraph)"
+          >
             <img :src="block.src" :alt="block.alt" :width="block.width" :height="block.height" />
+            <Icon
+              v-if="!model.readOnly"
+              icon="settings-2"
+              tooltip="Image controls"
+              @click="emit('advanced', block.paragraph)"
+            />
           </figure>
-          <table v-else-if="block.kind === 'table'" class="abele-word-page__table">
-            <tbody>
-              <tr v-for="(row, r) in block.rows" :key="r">
-                <td v-for="cell in row" :key="cell.number">
-                  <WordPageLine
-                    :paragraph="cell"
-                    :marker="markers.get(cell.number)"
-                    :editing="editing === cell.number"
-                    :read-only="!!model.readOnly"
-                    @open="open(cell)"
-                    @keys="onKeys"
-                    @leave="leave"
-                    @input="draft = $event"
-                    @select="selection = $event"
-                  />
-                </td>
-              </tr>
-            </tbody>
-          </table>
+          <WordPageTable
+            v-else-if="block.kind === 'table'"
+            :table="block"
+            :markers="markers"
+            :editing="editing"
+            :draft="draft"
+            :read-only="!!model.readOnly"
+            @open="open"
+            @keys="onKeys"
+            @leave="leave"
+            @input="draft = $event"
+            @select="selection = $event"
+            @advanced="emit('advanced', $event)"
+          />
           <WordPageLine
             v-else
             :paragraph="block"
             :marker="markers.get(block.number)"
             :editing="editing === block.number"
+            :draft="draft"
             :read-only="!!model.readOnly"
             @open="open(block)"
             @keys="onKeys"
@@ -140,10 +152,12 @@
 </template>
 
 <script setup lang="ts">
-import { computed, ref } from 'vue'
+import { computed, onBeforeUnmount, reactive, ref, watch } from 'vue'
+import { paragraphTextEdit } from './textEditor'
 import Dropdown from '@/components/obsidian/Dropdown.vue'
 import Icon from '@/components/obsidian/Icon.vue'
 import WordPageLine from './WordPageLine.vue'
+import WordPageTable from './WordPageTable.vue'
 import {
   allParagraphs,
   markCovers,
@@ -171,6 +185,9 @@ const emit = defineEmits<{
   pickImage: [paragraph: number]
   /** Asked for an address for the selected words. */
   pickLink: [edit: Omit<WordPageEdit, 'url'>]
+  advanced: [paragraph: number]
+  editorState: [open: boolean]
+  context: [paragraph: number]
 }>()
 
 const MARKS: { mark: WordMark; icon: string; label: string; keys: string }[] = [
@@ -182,6 +199,24 @@ const MARKS: { mark: WordMark; icon: string; label: string; keys: string }[] = [
 
 const paragraphs = computed(() => allParagraphs(props.model))
 const words = computed(() => wordCount(props.model))
+const rendered = ref(0)
+let renderTimer: ReturnType<typeof window.setTimeout> | undefined
+const visibleBlocks = computed(() => props.model.blocks.slice(0, rendered.value))
+/** Yield between batches so opening a long page leaves room for input and scrolling. */
+watch(
+  () => props.model.blocks,
+  (blocks) => {
+    window.clearTimeout(renderTimer)
+    rendered.value = Math.min(blocks.length, Math.max(rendered.value, 100))
+    const append = () => {
+      rendered.value = Math.min(blocks.length, rendered.value + 100)
+      if (rendered.value < blocks.length) renderTimer = window.setTimeout(append, 0)
+    }
+    if (rendered.value < blocks.length) renderTimer = window.setTimeout(append, 0)
+  },
+  { immediate: true }
+)
+onBeforeUnmount(() => window.clearTimeout(renderTimer))
 
 /** A bullet for each bulleted paragraph; a numbered one counts on from the one before it. */
 const markers = computed(() => {
@@ -197,12 +232,32 @@ const markers = computed(() => {
 
 const editing = ref<number | null>(null)
 const draft = ref('')
+const baseline = ref('')
+const pendingDrafts = reactive(new Map<number, string>())
+watch(editing, (value) => emit('editorState', value !== null))
+watch(
+  () => props.save.state,
+  (state) => {
+    if (state === 'failed' && pendingDrafts.size) {
+      const first = pendingDrafts.entries().next().value
+      const p = first && paragraphs.value.find((p) => p.number === first[0])
+      if (p) {
+        editing.value = p.number
+        draft.value = pendingDrafts.get(p.number)!
+        baseline.value = paragraphText(p)
+      }
+    }
+    if (state === 'saved') {
+      for (const p of paragraphs.value)
+        if (pendingDrafts.get(p.number) === paragraphText(p)) pendingDrafts.delete(p.number)
+    }
+  }
+)
 const selection = ref<{ from: number; to: number }>({ from: 0, to: 0 })
 const current = computed(() => paragraphs.value.find((p) => p.number === editing.value) ?? null)
 const position = computed(() => paragraphs.value.findIndex((p) => p.number === editing.value) + 1)
 
 const styleOptions = computed(() => [
-  { value: '', display: 'Normal' },
   ...props.model.styles.map((s) => ({ value: s.id, display: s.name })),
 ])
 
@@ -210,7 +265,9 @@ const saveText = computed(() =>
   props.save.state === 'saving'
     ? 'Saving…'
     : props.save.state === 'saved'
-      ? 'Saved'
+      ? pendingDrafts.size
+        ? 'Unsaved changes'
+        : 'Saved'
       : props.save.state === 'failed'
         ? `Not saved: ${props.save.reason}`
         : ''
@@ -229,15 +286,19 @@ const base = (operation: WordPageEdit['operation']): WordPageEdit => ({
 /** What was typed goes in as one replacement of the paragraph's text, before anything else. */
 const flush = () => {
   const p = current.value
-  if (!p || draft.value === paragraphText(p)) return
-  emit('edit', { ...base('replace'), old_text: paragraphText(p), new_text: draft.value })
+  if (!p || draft.value === baseline.value) return
+  pendingDrafts.set(p.number, draft.value)
+  emit('edit', paragraphTextEdit({ number: p.number, text: baseline.value }, draft.value))
+  baseline.value = draft.value
 }
 
 const open = (p: WordPageParagraph) => {
   if (props.model.readOnly || p.locked) return
   if (editing.value !== null && editing.value !== p.number) flush()
   editing.value = p.number
-  draft.value = paragraphText(p)
+  emit('context', p.number)
+  draft.value = pendingDrafts.get(p.number) ?? paragraphText(p)
+  baseline.value = props.save.state === 'failed' ? paragraphText(p) : draft.value
   selection.value = { from: draft.value.length, to: draft.value.length }
 }
 
@@ -278,18 +339,28 @@ const addLink = () => {
   flush()
   const { from, to } = range()
   emit('pickLink', { ...base('link'), from, to })
+  editing.value = null
 }
 
 const insertImage = () => {
   if (!current.value) return
   flush()
   emit('pickImage', current.value.number)
+  editing.value = null
+}
+
+const advanced = () => {
+  if (!current.value) return
+  flush()
+  emit('advanced', current.value.number)
+  editing.value = null
 }
 
 const addBelow = () => {
   if (!current.value) return
   flush()
   emit('edit', { ...base('paragraph_add'), text: '' })
+  editing.value = null
 }
 
 const deleteCurrent = () => {
@@ -308,6 +379,7 @@ const onKeys = (e: KeyboardEvent) => {
     e.preventDefault()
     flush()
     emit('edit', { ...base('paragraph_split'), offset: selection.value.from })
+    editing.value = null
   } else if (e.key === 'Backspace' && draft.value === '' && current.value) {
     e.preventDefault()
     deleteCurrent()
@@ -393,6 +465,8 @@ defineExpose({ open, leave })
 }
 
 .abele-word-page__table {
+  content-visibility: auto;
+  contain-intrinsic-size: auto 10em;
   width: 100%;
   margin: var(--size-4-3) 0;
   border-collapse: collapse;
