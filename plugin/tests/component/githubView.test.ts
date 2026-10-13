@@ -10,6 +10,7 @@ import { flushPromises } from '@vue/test-utils'
 import { ISSUE, PULL, file, openTab as open, clientWith, type Reply } from '../helpers/githubTab'
 import { parseGithubUrl } from '@/github/urls'
 import { useVault } from '../helpers/testEnv'
+import { noticeText, retryOf } from '../helpers/githubNotice'
 
 beforeEach(() => {
   useVault([])
@@ -31,7 +32,7 @@ describe('connection switching', () => {
     expect(JSON.stringify(model.screen)).not.toContain('private-selection')
     await flushPromises()
     expect(wrapper.text()).not.toContain('Private first account')
-    expect(wrapper.text()).toMatch(/not found/i)
+    expect(await noticeText(wrapper)).toMatch(/not found/i)
   })
 })
 
@@ -73,7 +74,11 @@ describe('an issue', () => {
     await flushPromises()
 
     expect(wrapper.find('.abele-github-header__title').text()).toContain('Crash on start')
-    expect(wrapper.findAll('.abele-badge').map((b) => b.text())).toEqual(['open', 'bug'])
+    expect(
+      wrapper
+        .findAll('.abele-github-header__state, .abele-github-header__label')
+        .map((b) => b.text())
+    ).toEqual(['open', 'bug'])
     expect(wrapper.findAll('.abele-github-comment__author').map((a) => a.text())).toEqual([
       'bob',
       'ann',
@@ -102,8 +107,8 @@ describe('an issue', () => {
     const { wrapper } = open('https://github.com/o/r/issues/404', {})
     await flushPromises()
 
-    expect(wrapper.text()).toMatch(/selected in the token/)
-    expect(wrapper.findAll('button').some((b) => b.text().includes('Try again'))).toBe(true)
+    expect(await noticeText(wrapper)).toMatch(/selected in the token/)
+    expect(retryOf(wrapper).exists()).toBe(true)
   })
 })
 
@@ -231,8 +236,10 @@ describe('a pull request whose comments are refused', () => {
     const notice = wrapper.find('.abele-github-thread .abele-github-notice')
     expect(notice.exists()).toBe(true)
     expect(notice.text()).toMatch(/refused the pull request's comments/)
-    expect(notice.text()).toMatch(/Resource not accessible by personal access token/)
-    expect(notice.findAll('button').some((b) => b.text().includes('Try again'))).toBe(true)
+    expect(await noticeText(wrapper, '.abele-github-thread .abele-github-notice')).toMatch(
+      /Resource not accessible by personal access token/
+    )
+    expect(retryOf(wrapper, '.abele-github-thread .abele-github-notice').exists()).toBe(true)
     expect(wrapper.text()).not.toContain('No comments yet.')
     // No full-tab error.
     expect(wrapper.find('.abele-github__error').exists()).toBe(false)
@@ -257,10 +264,7 @@ describe('a pull request whose comments are refused', () => {
     })
     await flushPromises()
     refuse = false
-    const retry = wrapper
-      .findAll('.abele-github-notice button')
-      .find((b) => b.text().includes('Try again'))!
-    await retry.trigger('click')
+    await retryOf(wrapper).trigger('click')
     await flushPromises()
 
     expect(wrapper.find('.abele-github-notice').exists()).toBe(false)
@@ -377,7 +381,9 @@ describe('a discussion', () => {
     })
     await flushPromises()
 
-    expect(wrapper.findAll('.abele-badge').map((b) => b.text())).toContain('Answer')
+    expect(wrapper.findAll('.abele-github-comment .abele-badge').map((b) => b.text())).toContain(
+      'Answer'
+    )
     expect(wrapper.find('.abele-github-comment_reply').text()).toContain('ann')
   })
 })
@@ -431,7 +437,7 @@ describe('switched off', () => {
   it('says so and asks GitHub nothing', async () => {
     const { wrapper } = open('https://github.com/o/r/issues/5', {}, false)
     await flushPromises()
-    expect(wrapper.text()).toContain('The GitHub integration is off')
+    expect(wrapper.text()).toContain('GitHub is off')
   })
 })
 

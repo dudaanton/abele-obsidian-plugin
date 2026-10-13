@@ -1,4 +1,4 @@
-import { SuggestModal, type App } from 'obsidian'
+import { SuggestModal, setIcon, type App } from 'obsidian'
 import type { GithubClient } from '../client'
 import type { RepositorySource } from '@/repository/source'
 import { githubRepositorySource } from '@/repository/github'
@@ -6,13 +6,15 @@ import { basePins, type BasePin, type Repository } from './pins'
 
 interface Row {
   name: string
+  /** A listed branch or tag; a typed name has none until it is looked up. */
+  kind?: 'branch' | 'tag'
   pin?: BasePin
   note?: string
 }
 
 /** Choosing a name resolves it; only a second, SHA-labelled choice saves the frozen base. */
 export class BasePicker extends SuggestModal<Row> {
-  private refs: Promise<string[]> | undefined
+  private refs: Promise<Row[]> | undefined
   private readonly resolved = new Map<string, Promise<BasePin>>()
   private queryGeneration = 0
   private closed = false
@@ -25,7 +27,7 @@ export class BasePicker extends SuggestModal<Row> {
     this.modalEl.addClass('abele-github-base-picker')
     this.setPlaceholder('Compare against a commit SHA, branch or tag')
     this.setInstructions([
-      { command: '↵', purpose: 'resolve a ref, then confirm its SHA' },
+      { command: '↵', purpose: 'look it up, then compare against it' },
       { command: 'esc', purpose: 'cancel' },
     ])
   }
@@ -53,23 +55,40 @@ export class BasePicker extends SuggestModal<Row> {
     try {
       this.refs ??= this.source()
         .refs()
-        .then((refs) => [...new Set([...refs.branches, ...refs.tags])])
-      return (await this.refs).map((name) => ({ name }))
+        .then((refs) => [
+          ...refs.branches.map((name) => ({ name, kind: 'branch' as const })),
+          ...refs.tags
+            .filter((name) => !refs.branches.includes(name))
+            .map((name) => ({ name, kind: 'tag' as const })),
+        ])
+      return await this.refs
     } catch {
       this.refs = undefined
       return [{ name: 'Paste a commit SHA, branch or tag above.' }]
     }
   }
+  /**
+   * As the quick switcher draws a row: a glyph for what it is (branch, tag, the commit a name
+   * was found at, a refusal) and the name, with a muted line only when there is something to say.
+   */
   renderSuggestion(row: Row, el: HTMLElement): void {
     el.addClass('mod-complex')
+    const icon = el.createDiv({ cls: 'suggestion-icon' })
+    setIcon(
+      icon.createSpan({ cls: 'suggestion-flair' }),
+      row.pin
+        ? 'git-commit-horizontal'
+        : row.note
+          ? 'circle-alert'
+          : row.kind === 'tag'
+            ? 'tag'
+            : 'git-branch'
+    )
     const content = el.createDiv({ cls: 'suggestion-content' })
     content.createDiv({ cls: 'suggestion-title', text: row.name })
-    content.createDiv({
-      cls: 'suggestion-note',
-      text: row.pin
-        ? `Pin frozen commit ${row.pin.baseSha}`
-        : (row.note ?? 'Resolve this ref before pinning'),
-    })
+    // Only what is worth reading: the commit a name was found at, or why it was not.
+    const note = row.pin ? `Compare against commit ${row.pin.baseSha.slice(0, 7)}` : row.note
+    if (note) content.createDiv({ cls: 'suggestion-note', text: note })
   }
   selectSuggestion(row: Row, event: MouseEvent | KeyboardEvent): void {
     if (!row.pin) {

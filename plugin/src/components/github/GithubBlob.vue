@@ -1,16 +1,19 @@
 <template>
   <div class="abele-github-blob">
+    <Teleport :to="glyphHost ?? 'body'" :disabled="!glyphHost">
+      <!-- Who last changed each line, as a glyph lit while it is on. -->
+      <Icon
+        v-if="source"
+        icon="git-commit-horizontal"
+        :active="blaming"
+        label="Toggle line blame"
+        :aria-pressed="blaming"
+        :tooltip="blaming ? 'Hide who changed each line' : 'Show who last changed each line'"
+        @click="toggleBlame"
+      />
+    </Teleport>
     <Teleport :to="toolbarHost ?? 'body'" :disabled="!toolbarHost">
-      <div v-if="markdown || range || source" class="abele-github-blob__toolbar">
-        <Button
-          v-if="source"
-          text="Blame"
-          icon="git-commit-horizontal"
-          aria-label="Toggle line blame"
-          :aria-pressed="blaming"
-          tooltip="Toggle line blame"
-          @click="toggleBlame"
-        />
+      <div v-if="markdown || range" class="abele-github-blob__toolbar">
         <div v-if="range" class="abele-github-blob__range">
           {{ linesLabel({ from: range.start, to: range.end }) }}
           <span v-if="range.start > lineCount" class="abele-github-blob__warning">
@@ -119,7 +122,7 @@
 
 <script setup lang="ts">
 import { computed, inject, onBeforeUnmount, ref, shallowRef, watch } from 'vue'
-import Button from '../obsidian/Button.vue'
+import Icon from '../obsidian/Icon.vue'
 import GithubNotice from './GithubNotice.vue'
 import NodeFileSaveState from '../NodeFileSaveState.vue'
 import type { NodeFilesModel } from '@/node/NodeFilesModel'
@@ -163,6 +166,8 @@ const props = withDefaults(
     client?: GithubClient
     /** In a tab, file actions sit below the pinned path; standalone previews stay inline. */
     toolbarHost?: HTMLElement | null
+    /** The header's row of glyphs, where blame goes. */
+    glyphHost?: HTMLElement | null
     editor?: NodeFilesModel
     writable?: boolean
     offline?: boolean
@@ -176,6 +181,7 @@ const props = withDefaults(
     mode: undefined,
     client: undefined,
     toolbarHost: null,
+    glyphHost: null,
     editor: undefined,
     writable: false,
     offline: false,

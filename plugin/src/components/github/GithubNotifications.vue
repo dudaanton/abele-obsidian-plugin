@@ -68,8 +68,20 @@
       <GithubNotice :text="doneError" :retry="false" />
     </div>
 
-    <EmptyState v-if="!enabled">
-      The GitHub integration is off. Turn it on in Abele settings → GitHub.
+    <EmptyState
+      v-if="!enabled"
+      icon="github"
+      badge="power-off"
+      title="GitHub is off"
+      text="Turn it on to see issues, pull requests and notifications here."
+    >
+      <template #action>
+        <Button
+          text="Open GitHub settings"
+          tooltip="Turn GitHub on in the settings"
+          @click="openGithubSettings"
+        />
+      </template>
     </EmptyState>
     <div v-else-if="error" class="abele-github-notifications__error">
       <GithubNotice :text="error" :busy="busy" @retry="refresh(true)" />
@@ -131,6 +143,8 @@ import Tabs from '../obsidian/Tabs.vue'
 import Button from '../obsidian/Button.vue'
 import Dropdown from '../obsidian/Dropdown.vue'
 import EmptyState from '../obsidian/EmptyState.vue'
+import { openAbeleSettings } from '@/components/settings/settingsTab'
+import { GlobalStore } from '@/stores/GlobalStore'
 import GithubNotice from './GithubNotice.vue'
 import { GithubClient } from '@/github/client'
 import { paneForClick } from '@/github/links'
@@ -437,9 +451,22 @@ onMounted(() => {
 onBeforeUnmount(() => window.clearInterval(timer))
 
 defineExpose({ refresh })
+
+const openGithubSettings = () => openAbeleSettings(GlobalStore.getInstance().app, 'github')
 </script>
 
 <style lang="scss">
+// The Done check waits under the pointer; a phone keeps it.
+.abele-github-notification__mark {
+  opacity: 0;
+}
+
+.abele-github-notification:hover .abele-github-notification__mark,
+.abele-github-notification:focus-within .abele-github-notification__mark,
+.is-phone .abele-github-notification__mark {
+  opacity: 1;
+}
+
 .abele-github-notifications {
   display: flex;
   flex-direction: column;
@@ -450,7 +477,7 @@ defineExpose({ refresh })
     flex-wrap: wrap;
     align-items: center;
     gap: var(--size-4-2);
-    padding: var(--size-4-1) var(--size-4-2) var(--size-4-2);
+    padding: var(--size-4-1) 0 var(--size-4-2);
 
     .abele-obsidian-dropdown {
       min-width: 0;
@@ -466,8 +493,9 @@ defineExpose({ refresh })
     padding: var(--size-4-2);
   }
 
+  // The pane already keeps Obsidian's margin; a list adds none of its own, as the file list does.
   &__list {
-    padding: 0 var(--size-4-1);
+    padding: 0;
   }
 
   &__access-hint,
@@ -490,7 +518,7 @@ defineExpose({ refresh })
 
   &__type {
     flex: 0 0 auto;
-    padding-top: var(--size-2-1);
+    padding: var(--size-2-1) 0 0;
     color: var(--text-faint);
   }
 

@@ -166,7 +166,15 @@ let abort: AbortController | null = null
 let pending = false
 let livePending = false
 let lastQuery = ''
-const queryKey = () => JSON.stringify([query.value.trim(), scope.value, glob.value, caseSensitive.value, wholeWord.value, regex.value])
+const queryKey = () =>
+  JSON.stringify([
+    query.value.trim(),
+    scope.value,
+    glob.value,
+    caseSensitive.value,
+    wholeWord.value,
+    regex.value,
+  ])
 
 const scopes = computed(() => [
   ...(props.hasChanges ? [{ value: 'changes', display: 'Only the changed files' }] : []),
@@ -241,11 +249,14 @@ const run = async () => {
   }
 }
 
-watch(() => props.revisionKey, (next, previous) => {
-  if (!next || !previous || next === previous || !lastQuery || lastQuery !== queryKey()) return
-  if (running.value) livePending = true
-  else if (results.value) void run()
-})
+watch(
+  () => props.revisionKey,
+  (next, previous) => {
+    if (!next || !previous || next === previous || !lastQuery || lastQuery !== queryKey()) return
+    if (running.value) livePending = true
+    else if (results.value) void run()
+  }
+)
 
 const cancel = () => {
   abort?.abort()
@@ -438,7 +449,7 @@ defineExpose({ focus })
   }
 
   &__match {
-    background-color: var(--text-highlight-bg);
+    background-color: var(--highlight-background, var(--text-highlight-bg));
     color: inherit;
   }
 }

@@ -13,7 +13,9 @@
       <span ref="glyph" class="abele-repository-row__icon" aria-hidden="true" />
       <div class="tree-item-inner abele-repository-row__content">
         <span class="abele-repository-row__title">{{ title }}</span>
-        <span v-if="meta" class="abele-repository-row__meta">{{ meta }}</span>
+        <span v-if="meta || $slots.meta" class="abele-repository-row__meta"
+          ><slot name="meta">{{ meta }}</slot></span
+        >
       </div>
       <span v-if="status" class="tree-item-flair-outer"
         ><span class="tree-item-flair">{{ status }}</span></span
@@ -85,6 +87,10 @@ watch(() => props.icon, draw)
 }
 .abele-repository-row .tree-item-flair-outer {
   flex: 0 0 auto;
+  align-self: flex-start;
+  display: flex;
+  align-items: center;
+  height: 1lh;
   margin-inline-start: auto;
 }
 body.is-phone .abele-repository-row .tree-item-self {

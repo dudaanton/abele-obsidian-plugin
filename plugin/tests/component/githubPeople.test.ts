@@ -145,10 +145,10 @@ describe('a person in a tab', () => {
     await flushPromises()
     await settled()
 
-    const subtitles = wrapper.findAll('.abele-github-commits .abele-card__subtitle')
+    const subtitles = wrapper.findAll('.abele-github-commits .abele-repository-row__meta')
     expect(subtitles[0].text()).toContain('Bob Example')
     expect(subtitles[1].text()).toContain('Offline Person')
-    // The name is the person's to swap; the card does not open the commit for it.
+    // The name is the person's to swap; the row does not open the commit for it.
     await subtitles[0].find('.abele-github-user').trigger('click')
     expect(subtitles[0].text()).toContain('bob')
   })

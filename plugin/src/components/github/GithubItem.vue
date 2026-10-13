@@ -19,8 +19,20 @@
       class="abele-github"
       :class="{ 'abele-github_node': source?.identity.provider === 'node' }"
     >
-      <EmptyState v-if="!enabled">
-        The GitHub integration is off. Turn it on in Abele settings → GitHub.
+      <EmptyState
+        v-if="!enabled"
+        icon="github"
+        badge="power-off"
+        title="GitHub is off"
+        text="Turn it on to see issues, pull requests and notifications here."
+      >
+        <template #action>
+          <Button
+            text="Open GitHub settings"
+            tooltip="Turn GitHub on in the settings"
+            @click="openGithubSettings"
+          />
+        </template>
       </EmptyState>
 
       <div v-else-if="!target" class="abele-github__fallback">
@@ -64,7 +76,9 @@
           :ref-label="crumbRef"
           :tree="panelOpen"
           :swap="!!compared && source?.identity.provider !== 'node'"
+          :compare="canPinBase && !pin"
           @tree="setPanel(!panelOpen)"
+          @compare="baseBar?.choose()"
           @swap="swapSides"
           @open="(url: string, pane: PaneType | false) => onOpen?.(url, pane)"
           @refresh="reload(true)"
@@ -82,6 +96,13 @@
               <span>{{ target.repo }}</span>
             </slot>
           </template>
+          <template #actions>
+            <span
+              v-if="shown.kind === 'blob' && blob"
+              ref="blobGlyphs"
+              class="abele-github-header__page-glyphs"
+            />
+          </template>
           <template #file-actions>
             <div v-if="shown.kind === 'blob' && blob" ref="blobToolbar" />
           </template>
@@ -89,11 +110,8 @@
 
         <slot name="repository-details" :file="blob" />
         <GithubBaseBar
-          v-if="
-            source?.identity.provider !== 'node' &&
-            repoRef &&
-            ['blob', 'tree', 'repo'].includes(shown.kind)
-          "
+          v-if="canPinBase"
+          ref="baseBar"
           :repo="repoRef"
           :client="client()"
           :pin="pin"
@@ -132,13 +150,7 @@
           v-if="main.error.value && !(liveEditableFile && documentModel?.draft.value)"
           class="abele-github__error"
         >
-          <EmptyState :text="main.error.value" />
-          <Button
-            text="Try again"
-            icon="refresh-cw"
-            tooltip="Ask GitHub again"
-            @click="reload(true)"
-          />
+          <GithubNotice :text="main.error.value" @retry="reload(true)" />
         </div>
         <EmptyState
           v-else-if="!main.data.value"
@@ -191,13 +203,7 @@
           />
           <template v-else-if="pullTab === 'files'">
             <div v-if="files.error.value" class="abele-github__error">
-              <EmptyState :text="files.error.value" />
-              <Button
-                text="Try again"
-                icon="refresh-cw"
-                tooltip="Ask GitHub again"
-                @click="files.load"
-              />
+              <GithubNotice :text="files.error.value" @retry="files.load" />
             </div>
             <EmptyState v-else-if="!files.data.value" text="Loading the changed files…" />
             <template v-else>
@@ -219,13 +225,7 @@
           </template>
           <template v-else>
             <div v-if="commits.error.value" class="abele-github__error">
-              <EmptyState :text="commits.error.value" />
-              <Button
-                text="Try again"
-                icon="refresh-cw"
-                tooltip="Ask GitHub again"
-                @click="commits.load"
-              />
+              <GithubNotice :text="commits.error.value" @retry="commits.load" />
             </div>
             <EmptyState v-else-if="!commits.data.value" text="Loading the commits…" />
             <GithubCommits v-else :commits="commits.data.value" @open="openCommit" />
@@ -296,9 +296,10 @@
             :plain="blobPlain"
             :mode="model.mode"
             :toolbar-host="blobToolbar"
+            :glyph-host="blobGlyphs"
             :client="client()"
-            @mode="setMode"
             :refresh="() => reload(true)"
+            @mode="setMode"
             @open="(url: string) => onOpen?.(url)"
           />
         </template>
@@ -338,7 +339,10 @@
 </template>
 
 <script setup lang="ts">
+import { computed, ref } from 'vue'
 import EmptyState from '../obsidian/EmptyState.vue'
+import { openAbeleSettings } from '@/components/settings/settingsTab'
+import { GlobalStore } from '@/stores/GlobalStore'
 import Button from '../obsidian/Button.vue'
 import Tabs from '../obsidian/Tabs.vue'
 import GithubText from './GithubText.vue'
@@ -426,6 +430,19 @@ const {
   openCommit,
   reload,
 } = useGithubItem(props)
+
+/** A GitHub repository's files, folders and home can be compared against a pinned version. */
+const canPinBase = computed(
+  () =>
+    source.value?.identity.provider !== 'node' &&
+    !!repoRef.value &&
+    ['blob', 'tree', 'repo'].includes(shown.value.kind)
+)
+const baseBar = ref<InstanceType<typeof GithubBaseBar> | null>(null)
+/** Where a file puts its own glyphs: the header's row, before the tab's. */
+const blobGlyphs = ref<HTMLElement | null>(null)
+
+const openGithubSettings = () => openAbeleSettings(GlobalStore.getInstance().app, 'github')
 </script>
 
 <style lang="scss" src="./githubItem.scss"></style>

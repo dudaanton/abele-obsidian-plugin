@@ -11,6 +11,7 @@ import type { RequestUrlParam, RequestUrlResponse } from 'obsidian'
 import GithubNotifications from '@/components/github/GithubNotifications.vue'
 import type { NotificationsState } from '@/github/notifications/inbox'
 import { clientWith, type Route } from '../helpers/githubTab'
+import { noticeText } from '../helpers/githubNotice'
 
 const API = 'https://api.github.com/repos'
 
@@ -258,7 +259,7 @@ describe('the notifications panel', () => {
       attachTo: document.body,
     })
     await vi.waitFor(() => expect(wrapper.find('.abele-github-notice').exists()).toBe(true))
-    const text = wrapper.find('.abele-github-notice__text').text()
+    const text = await noticeText(wrapper)
     expect(text).toContain('fine-grained token')
     expect(text).toContain('classic')
     expect(text).toContain('notifications')
@@ -274,7 +275,7 @@ describe('the notifications panel', () => {
       },
     })
     await flushPromises()
-    expect(wrapper.text()).toContain('The GitHub integration is off')
+    expect(wrapper.text()).toContain('GitHub is off')
     expect(request).not.toHaveBeenCalled()
   })
 })

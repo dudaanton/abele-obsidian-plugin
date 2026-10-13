@@ -78,7 +78,7 @@ export function insertLink(app: App, link: GithubLink): boolean {
 export function insertSnippet(app: App, snippet: SnippetBlock): boolean {
   const view = recentNoteView(app)
   if (!view) {
-    new Notice('Open a note to put the code in')
+    new Notice('Open a note to put this in')
     return false
   }
   const end = insertBlockOnOwnLine(view.editor, formatSnippet(snippet))

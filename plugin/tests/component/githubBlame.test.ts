@@ -5,6 +5,7 @@ import { GithubClient, GithubError } from '@/github/client'
 import { endpoints } from '@/github/urls'
 import { useVault } from '../helpers/testEnv'
 import { openTab } from '../helpers/githubTab'
+import { retryOf } from '../helpers/githubNotice'
 
 const file = {
   host: 'github.com',
@@ -110,7 +111,7 @@ describe('line blame in the file view', () => {
     await flushPromises()
     expect(wrapper.get('.abele-github-notice').text()).toContain('Sample permission is missing')
     expect(wrapper.get('.cm-content').text()).toContain('one')
-    await wrapper.get('.abele-github-notice button').trigger('click')
+    await retryOf(wrapper).trigger('click')
     await flushPromises()
     expect(wrapper.find('.abele-github-notice').exists()).toBe(false)
     expect(wrapper.find('.abele-github-blame-range').exists()).toBe(true)

@@ -7,6 +7,14 @@ export function formatDate(iso: string | undefined): string {
   return d.isValid() ? d.format('D MMM YYYY, HH:mm') : ''
 }
 
+/** A date for a narrow row: no year when it is this year's. */
+export function shortDate(iso: string | undefined): string {
+  if (!iso) return ''
+  const d = dayjs(iso)
+  if (!d.isValid()) return ''
+  return d.format(d.isSame(dayjs(), 'year') ? 'D MMM, HH:mm' : 'D MMM YYYY')
+}
+
 /** The first line of a commit message, and the rest. */
 export function splitMessage(message: string): { title: string; body: string } {
   const at = message.indexOf('\n')

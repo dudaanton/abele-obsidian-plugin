@@ -5,6 +5,7 @@
     :class="{
       'abele-github-comment_target': !!comment.anchor && comment.anchor === target,
       'abele-github-comment_reply': reply,
+      'abele-github-comment_event': !comment.body && !!comment.badge,
     }"
     :data-anchor="comment.anchor"
   >
@@ -15,10 +16,17 @@
         :avatar="comment.avatar"
       />
       <span class="abele-github-comment__date">{{ formatDate(comment.createdAt) }}</span>
+      <span class="abele-github-comment__date abele-github-comment__date_short">{{
+        shortDate(comment.createdAt)
+      }}</span>
       <span v-if="comment.location" class="abele-github-comment__location">{{
         comment.location
       }}</span>
-      <Badge v-if="comment.badge" :text="comment.badge" :accent="comment.badge === 'Answer'" />
+      <Badge v-if="comment.badge === 'Answer'" text="Answer" accent />
+      <span v-else-if="comment.badge" class="abele-github-comment__state">
+        <StatusDot :tone="reviewTone(comment.badge)" :label="comment.badge" />
+        <span class="abele-github-comment__state-word">{{ comment.badge }}</span>
+      </span>
       <GithubLinkActions
         v-if="linker && link"
         :linker="linker"
@@ -34,7 +42,7 @@
       :repo="repo"
       as-document
     />
-    <EmptyState v-else text="No text." />
+    <EmptyState v-else-if="!comment.badge" text="No text." />
 
     <div v-if="comment.replies?.length" class="abele-github-comment__replies">
       <GithubComment v-for="r in comment.replies" :key="r.id" :comment="r" :target="target" reply />
@@ -50,11 +58,12 @@
 import { computed, inject, onBeforeUnmount, onMounted, ref } from 'vue'
 import Badge from '../obsidian/Badge.vue'
 import EmptyState from '../obsidian/EmptyState.vue'
+import StatusDot from '../obsidian/StatusDot.vue'
 import GithubText from './GithubText.vue'
 import GithubLinkActions from './GithubLinkActions.vue'
 import GithubUser from './GithubUser.vue'
 import type { Comment } from '@/github/api'
-import { formatDate } from '@/github/format'
+import { formatDate, shortDate } from '@/github/format'
 import { LINKER } from '@/github/linking'
 import { GITHUB_REPO, NO_REPO } from '@/github/repoContext'
 import { bodyLink, commentLink, type GithubLink } from '@/github/permalinks'
@@ -73,6 +82,13 @@ const props = withDefaults(
   }>(),
   { target: undefined }
 )
+
+/** A review's state as a colour: approved green, changes asked red, the rest quiet. */
+function reviewTone(state: string): 'green' | 'red' | 'faint' {
+  if (state === 'Approved') return 'green'
+  if (state === 'Changes requested') return 'red'
+  return 'faint'
+}
 
 const linker = inject(LINKER, null)
 const people = inject(GITHUB_PEOPLE, null)
@@ -139,6 +155,73 @@ onBeforeUnmount(() => {
 </script>
 
 <style lang="scss">
+// A review with no words — an approval — is one quiet line in the thread, not an empty card.
+.abele-github-comment.abele-github-comment_event {
+  border-color: transparent;
+  background: none;
+  padding-block: var(--size-2-2);
+}
+
+// A comment's link, quote and ask wait under the pointer, as Obsidian's own row actions do;
+// a phone has no pointer, so there they stay.
+.abele-github-comment__head .abele-github-link-actions {
+  opacity: 0;
+  pointer-events: none;
+}
+
+.abele-github-comment__date_short,
+.is-phone .abele-github-comment__date:not(.abele-github-comment__date_short) {
+  display: none;
+}
+
+.abele-github-comment__state {
+  display: inline-flex;
+  align-items: center;
+  gap: var(--size-4-1);
+  color: var(--text-muted);
+}
+
+// The review's state is its dot there; the word is in the dot's tooltip.
+.is-phone .abele-github-comment__state-word {
+  display: none;
+}
+
+// A narrow column takes the short date, as a phone does.
+.abele-github-comment {
+  container-type: inline-size;
+}
+
+@container (max-width: 26em) {
+  .abele-github-comment__date:not(.abele-github-comment__date_short) {
+    display: none;
+  }
+
+  .abele-github-comment__head .abele-github-comment__date_short {
+    display: inline;
+  }
+}
+
+// A phone keeps the head on one line: a short date, and the actions at its end.
+.is-phone .abele-github-comment__head {
+  .abele-github-comment__date_short {
+    display: inline;
+  }
+
+  .abele-github-link-actions {
+    position: static;
+    flex: none;
+    margin-inline-start: auto;
+    transform: none;
+  }
+}
+
+.abele-github-comment__head:hover .abele-github-link-actions,
+.abele-github-comment__head:focus-within .abele-github-link-actions,
+.is-phone .abele-github-comment__head .abele-github-link-actions {
+  opacity: 1;
+  pointer-events: auto;
+}
+
 .abele-github-comment {
   border: 1px solid var(--background-modifier-border);
   border-radius: var(--radius-m);
@@ -157,17 +240,38 @@ onBeforeUnmount(() => {
     padding: var(--size-4-1) 0 var(--size-4-1) var(--size-4-3);
   }
 
+  // The rule beside a reply stays grey; the reply linked to is told by a wash.
   &_reply#{&}_target {
-    border-left-color: var(--interactive-accent);
+    background: color-mix(in srgb, var(--interactive-accent) 8%, transparent);
     box-shadow: none;
   }
 
+  // One line however narrow the column: the date and place give way, the actions keep their end.
   &__head {
     display: flex;
-    flex-wrap: wrap;
     align-items: center;
     gap: var(--size-4-1) var(--size-4-2);
     font-size: var(--font-ui-small);
+    white-space: nowrap;
+
+    > * {
+      min-width: 0;
+      overflow: hidden;
+      text-overflow: ellipsis;
+    }
+
+    // They show under the pointer over the line's end, as the file explorer's own do, so the
+    // words keep the whole line while they are not there.
+    position: relative;
+
+    > .abele-github-link-actions {
+      position: absolute;
+      inset-inline-end: 0;
+      top: 50%;
+      transform: translateY(-50%);
+      overflow: visible;
+      background-color: var(--background-primary);
+    }
   }
 
   &__author {

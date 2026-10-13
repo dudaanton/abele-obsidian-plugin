@@ -105,3 +105,14 @@ body.is-phone .abele-github_node .abele-github-crumbs__link {
     -webkit-user-select: text;
   }
 }
+
+// A phone fits the pull request's three tabs on one row by their words alone.
+.is-phone .abele-github__tabs {
+  .abele-tabs__icon {
+    display: none;
+  }
+
+  .abele-tabs__tab {
+    padding-inline: var(--size-4-2);
+  }
+}

@@ -55,13 +55,15 @@ onBeforeUnmount(() => {
 .abele-github-snippet {
   margin-block: var(--size-4-2);
 
+  // Where it came from, as a quiet line over the code; the code is what is read.
   .abele-card__name {
-    font-size: var(--font-ui-medium);
+    font-size: var(--font-ui-small);
     overflow-wrap: anywhere;
   }
 
+  // Inside the card the code is a note's code block, its background and no second frame.
   &__code {
-    border: 1px solid var(--background-modifier-border);
+    background-color: var(--code-background);
     border-radius: var(--radius-s);
     overflow: hidden;
     font-size: var(--code-size);

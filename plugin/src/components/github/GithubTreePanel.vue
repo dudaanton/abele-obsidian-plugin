@@ -14,8 +14,7 @@
     <Search v-model="query" class="abele-github-tree__filter" placeholder="Filter by name" />
     <div ref="body" class="abele-github-tree__body">
       <div v-if="error" class="abele-github-tree__error">
-        <EmptyState :text="error" />
-        <Button text="Try again" icon="refresh-cw" tooltip="Ask GitHub again" @click="load" />
+        <GithubNotice :text="error" @retry="load" />
       </div>
       <EmptyState v-else-if="!tree" text="Loading the files…" />
       <template v-else>
@@ -63,10 +62,10 @@ import { projectTree } from '@/github/comparison/trees'
 import { findNode as findTargetNode } from '@/github/tree/fileTree'
 import { Keymap, type PaneType } from 'obsidian'
 import Badge from '../obsidian/Badge.vue'
-import Button from '../obsidian/Button.vue'
 import EmptyState from '../obsidian/EmptyState.vue'
 import Icon from '../obsidian/Icon.vue'
 import Search from '../obsidian/Search.vue'
+import GithubNotice from './GithubNotice.vue'
 import GithubTreeNode from './GithubTreeNode.vue'
 import type { GithubClient } from '@/github/client'
 import { paneForClick } from '@/github/links'
@@ -342,7 +341,8 @@ const pick = (node: TreeNode, event: MouseEvent) => {
     flex: 1 1 auto;
     min-height: 0;
     overflow-y: auto;
-    padding: 0 var(--size-4-2) var(--size-4-4);
+    // Room above the first row, so its glyph's light and focus ring are not cut by the edge.
+    padding: var(--size-2-2) var(--size-4-2) var(--size-4-4);
   }
 
   &__note {

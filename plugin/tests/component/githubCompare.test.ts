@@ -8,6 +8,7 @@ import { flushPromises } from '@vue/test-utils'
 import { file, openTab as open } from '../helpers/githubTab'
 import { diffAnchorHash } from '@/github/urls'
 import { useVault } from '../helpers/testEnv'
+import { retryOf } from '../helpers/githubNotice'
 
 beforeEach(() => {
   useVault([])
@@ -45,7 +46,11 @@ describe('a comparison', () => {
     await vi.waitFor(() => expect(wrapper.find('.abele-github-compare').exists()).toBe(true))
 
     expect(wrapper.find('.abele-github-header__title').text()).toBe('master...octocat-patch-1')
-    expect(wrapper.findAll('.abele-badge').map((b) => b.text())).toEqual(['diverged'])
+    expect(
+      wrapper
+        .findAll('.abele-github-header__state, .abele-github-header__label')
+        .map((b) => b.text())
+    ).toEqual(['diverged'])
     const meta = wrapper.find('.abele-github-header__meta').text()
     expect(meta).toContain('2 commits ahead')
     expect(meta).toContain('1 behind')
@@ -73,13 +78,13 @@ describe('a comparison', () => {
     await wrapper.findAll('.abele-tabs__tab')[1].trigger('click')
     await flushPromises()
 
-    const cards = wrapper.findAll('.abele-github-compare .abele-card')
-    expect(cards.map((c) => c.find('.abele-card__title').text())).toEqual([
+    const rows = wrapper.findAll('.abele-github-compare .abele-repository-row')
+    expect(rows.map((c) => c.find('.abele-repository-row__title').text())).toEqual([
       'Add the greeting',
       'Fix a typo',
     ])
     expect(model.screen.section).toBe('commits')
-    await cards[1].trigger('click')
+    await rows[1].find('.tree-item-self').trigger('click')
     expect(onOpen).toHaveBeenLastCalledWith(
       `https://github.com/octocat/Hello-World/commit/${commit(2, '').sha}`,
       false
@@ -149,7 +154,7 @@ describe('a comparison', () => {
     )
     await vi.waitFor(() => expect(wrapper.find('.abele-github-notice').exists()).toBe(true))
     expect(wrapper.find('.abele-github-notice').text()).toMatch(/side by side/)
-    expect(wrapper.find('.abele-github-notice button').exists()).toBe(false)
+    expect(retryOf(wrapper).exists()).toBe(false)
   })
 
   it('is a full-tab error, with a way to try again, when GitHub has no such comparison', async () => {

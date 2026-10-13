@@ -4,25 +4,38 @@
       <div v-if="$slots.controls" class="abele-github-header__controls">
         <slot name="controls" />
       </div>
-      <div v-else class="abele-github-header__repo">{{ crumbs ? '' : repo }}</div>
+      <div v-else class="abele-github-header__repo" :title="crumbs ? undefined : repo">
+        {{ crumbs ? '' : repo }}
+      </div>
       <div class="abele-github-header__actions">
+        <!-- What the page itself offers (a file's blame), first in the row. -->
+        <slot name="actions" />
         <Icon
           v-bind="nativeAction"
-          @keydown.enter.prevent="emit('tree')"
-          @keydown.space.prevent="emit('tree')"
           icon="folder-tree"
           :active="tree"
           :tooltip="tree ? 'Hide the file tree' : 'Show the repository\'s files beside this'"
+          @keydown.enter.prevent="emit('tree')"
+          @keydown.space.prevent="emit('tree')"
           @click="emit('tree')"
         />
         <Icon
-          v-bind="nativeAction"
-          @keydown.enter.prevent="emit('swap')"
-          @keydown.space.prevent="emit('swap')"
           v-if="swap"
+          v-bind="nativeAction"
           icon="arrow-left-right"
           tooltip="Swap base and head: what base has that head has not"
+          @keydown.enter.prevent="emit('swap')"
+          @keydown.space.prevent="emit('swap')"
           @click="emit('swap')"
+        />
+        <Icon
+          v-if="compare"
+          v-bind="nativeAction"
+          icon="git-compare"
+          tooltip="Compare against a branch, tag or commit…"
+          @keydown.enter.prevent="emit('compare')"
+          @keydown.space.prevent="emit('compare')"
+          @click="emit('compare')"
         />
         <Icon
           v-bind="nativeAction"
@@ -34,37 +47,37 @@
         />
         <Icon
           v-bind="nativeAction"
-          @keydown.enter.prevent="emit('search')"
-          @keydown.space.prevent="emit('search')"
           icon="file-search"
           tooltip="Search the code: this change, the whole repository, or file names"
+          @keydown.enter.prevent="emit('search')"
+          @keydown.space.prevent="emit('search')"
           @click="emit('search')"
         />
         <Icon
-          v-bind="nativeAction"
-          @keydown.enter.prevent="emit('chat')"
-          @keydown.space.prevent="emit('chat')"
           v-if="chat"
+          v-bind="nativeAction"
           icon="message-square-plus"
           tooltip="Chat about this: a new chat with a link to it in the input"
+          @keydown.enter.prevent="emit('chat')"
+          @keydown.space.prevent="emit('chat')"
           @click="emit('chat')"
         />
         <Icon
           v-bind="nativeAction"
-          @keydown.enter.prevent="loading || emit('refresh')"
-          @keydown.space.prevent="loading || emit('refresh')"
           icon="refresh-cw"
           :tooltip="node ? 'Refresh from the node' : 'Load again from GitHub'"
           :disabled="loading"
+          @keydown.enter.prevent="loading || emit('refresh')"
+          @keydown.space.prevent="loading || emit('refresh')"
           @click="emit('refresh')"
         />
         <Icon
-          v-bind="nativeAction"
-          @keydown.enter.prevent="emit('browser')"
-          @keydown.space.prevent="emit('browser')"
           v-if="url"
+          v-bind="nativeAction"
           icon="external-link"
           tooltip="Open this on GitHub in the browser"
+          @keydown.enter.prevent="emit('browser')"
+          @keydown.space.prevent="emit('browser')"
           @click="emit('browser')"
         />
       </div>
@@ -82,8 +95,17 @@
     <div class="abele-github-header__details">
       <slot name="file-actions" />
       <div v-if="state || labels?.length" class="abele-github-header__badges">
-        <Badge v-if="state" :text="state" :accent="accentStates.includes(state)" />
-        <Badge v-for="label in labels" :key="label.name" :text="label.name" />
+        <!-- The state as a dot of GitHub's own meaning, the labels as words with their colour. -->
+        <span v-if="state" class="abele-github-header__state">
+          <StatusDot :tone="stateTone(state)" :label="`State: ${state}`" />{{ state }}
+        </span>
+        <span
+          v-for="label in labels"
+          :key="label.name"
+          class="abele-github-header__label"
+          :style="label.color ? { '--abele-github-label-color': `#${label.color}` } : undefined"
+          >{{ label.name }}</span
+        >
       </div>
       <div v-if="meta.length" class="abele-github-header__meta">
         <span v-for="(part, i) in meta" :key="i">
@@ -103,7 +125,7 @@ import { computed, ref } from 'vue'
 import { useRepositorySource } from '@/repository/context'
 import { useResizeObserver } from '@vueuse/core'
 import Icon from '../obsidian/Icon.vue'
-import Badge from '../obsidian/Badge.vue'
+import StatusDot from '../obsidian/StatusDot.vue'
 import GithubBreadcrumbs from './GithubBreadcrumbs.vue'
 import GithubUser from './GithubUser.vue'
 import type { PaneType } from 'obsidian'
@@ -132,6 +154,8 @@ withDefaults(
     tree?: boolean
     /** Offer to swap a comparison's two sides. */
     swap?: boolean
+    /** Offer to pin a version to compare the repository's files against. */
+    compare?: boolean
   }>(),
   {
     number: undefined,
@@ -158,6 +182,7 @@ const emit = defineEmits<{
   (e: 'search'): void
   (e: 'tree'): void
   (e: 'swap'): void
+  (e: 'compare'): void
   (e: 'open', url: string, pane: PaneType | false): void
 }>()
 
@@ -172,11 +197,17 @@ useResizeObserver(path, () => {
   )
 })
 
-/** The states that mean "still going": the ones worth drawing the eye to. */
-const accentStates = ['open', 'draft']
+/** GitHub's own colours for a state: open green, merged in the accent, closed red, draft grey. */
+const stateTone = (state: string) =>
+  state === 'open' ? 'green' : state === 'merged' ? 'accent' : state === 'closed' ? 'red' : 'faint'
 </script>
 
 <style lang="scss">
+// A page's own glyphs stand in the row as its siblings do.
+.abele-github-header__page-glyphs {
+  display: contents;
+}
+
 // A file or folder pins just its path. The header has no containing box here, so the
 // path's sticky range is the document, not the short-lived controls above and below it.
 .abele-github-header.abele-github-header_path {
@@ -231,10 +262,15 @@ const accentStates = ['open', 'draft']
     flex: 1 1 auto;
   }
 
+  // One line: the tab's title already says the whole name when it is cut.
   &__repo {
+    flex: 1 1 auto;
+    min-width: 0;
     color: var(--text-muted);
     font-size: var(--font-ui-small);
-    overflow-wrap: anywhere;
+    white-space: nowrap;
+    overflow: hidden;
+    text-overflow: ellipsis;
   }
 
   &__actions {
@@ -264,7 +300,31 @@ const accentStates = ['open', 'draft']
   &__badges {
     display: flex;
     flex-wrap: wrap;
-    gap: var(--size-4-1);
+    align-items: center;
+    gap: var(--size-4-3);
+    font-size: var(--font-ui-smaller);
+    color: var(--text-muted);
+  }
+
+  &__state {
+    display: inline-flex;
+    align-items: center;
+    gap: var(--size-2-2);
+  }
+
+  &__label {
+    white-space: nowrap;
+
+    &::before {
+      content: '';
+      display: inline-block;
+      width: var(--size-2-3);
+      height: var(--size-2-3);
+      margin-inline-end: var(--size-2-2);
+      border-radius: 50%;
+      vertical-align: middle;
+      background-color: var(--abele-github-label-color, var(--text-faint));
+    }
   }
 
   &__meta {

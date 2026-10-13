@@ -1,7 +1,7 @@
 <template>
   <div v-if="!source || !target" class="abele-node-repository__unavailable">
-    <EmptyState :text="error || 'Connecting to the node…'" />
-    <Button v-if="error" text="Try again" icon="refresh-cw" @click="load" />
+    <GithubNotice v-if="error" :text="error" retry-tooltip="Ask the node again" @retry="load" />
+    <EmptyState v-else text="Connecting to the node…" />
   </div>
   <GithubItem
     v-else
@@ -87,7 +87,7 @@ import { changeExternalBrowsing } from '@/node/repositorySettings'
 import GithubItem from './github/GithubItem.vue'
 import GithubCommits from './github/GithubCommits.vue'
 import EmptyState from './obsidian/EmptyState.vue'
-import Button from './obsidian/Button.vue'
+import GithubNotice from './github/GithubNotice.vue'
 import Icon from './obsidian/Icon.vue'
 import Setting from './obsidian/Setting.vue'
 import Checkbox from './obsidian/Checkbox.vue'

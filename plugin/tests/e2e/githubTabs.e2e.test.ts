@@ -364,7 +364,7 @@ describe.skipIf(!available)('a GitHub tab', () => {
         const at = await pinned(el)
         const out = {
           inView: at.inView,
-          badge: root.querySelector('.abele-github-header .abele-badge')?.textContent.trim(),
+          badge: root.querySelector('.abele-github-header__state')?.textContent.trim(),
           meta: root.querySelector('.abele-github-header__meta')?.textContent,
           tabs: [...root.querySelectorAll('.abele-tabs__label')].map((t) => t.textContent.trim()),
           files: root.querySelectorAll('.abele-github-file').length,
@@ -388,7 +388,7 @@ describe.skipIf(!available)('a GitHub tab', () => {
         const tab = [...root.querySelectorAll('.abele-tabs__tab')].find((t) => t.textContent.includes('Commits'))
         tab.click()
         await until(() => root.querySelector('.abele-github-commits'), 5000)
-        const commits = [...root.querySelectorAll('.abele-github-commits .abele-card__title')].map((t) => t.textContent.trim())
+        const commits = [...root.querySelectorAll('.abele-github-commits .abele-repository-row__title')].map((t) => t.textContent.trim())
         const swap = [...root.querySelectorAll('.abele-github-header__actions .abele-obsidian-icon')]
           .find((i) => (i.getAttribute('aria-label') ?? '').startsWith('Swap'))
         if (!swap) return { error: 'no swap button', commits }

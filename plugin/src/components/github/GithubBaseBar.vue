@@ -1,5 +1,6 @@
 <template>
-  <div class="abele-github-base">
+  <!-- Only while a base is pinned: choosing one is a glyph in the header, nothing to show here. -->
+  <div v-if="pin" class="abele-github-base">
     <template v-if="pin">
       <Badge :text="`Base: ${pin.enteredRef} · ${pin.baseSha.slice(0, 7)}`" :title="pin.baseSha" />
       <Badge v-if="targetSha" :text="`Target: ${targetSha.slice(0, 7)}`" :title="targetSha" />
@@ -23,13 +24,6 @@
         @click="emit('original', !original)"
       />
     </template>
-    <Button
-      v-else
-      text="Compare against…"
-      icon="git-compare"
-      tooltip="Pin a comparison base for this repository on this device"
-      @click="choose"
-    />
   </div>
 </template>
 <script setup lang="ts">
@@ -56,6 +50,7 @@ const source = useRepositorySource(
   () => props.repo
 )
 const choose = () => new BasePicker(app, source.value, props.repo).open()
+defineExpose({ choose })
 </script>
 <style lang="scss">
 .abele-github-base {

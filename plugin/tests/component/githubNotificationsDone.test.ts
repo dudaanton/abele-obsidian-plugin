@@ -6,6 +6,7 @@ import { GithubClient, GithubError } from '@/github/client'
 import { endpoints } from '@/github/urls'
 import GithubNotifications from '@/components/github/GithubNotifications.vue'
 import { clientWith, type Reply } from '../helpers/githubTab'
+import { noticeText } from '../helpers/githubNotice'
 
 const id = '9007199254740993'
 const notification = {
@@ -83,12 +84,12 @@ describe('Done refusals', () => {
       await flushPromises()
       await done(w)
       expect(w.find(`[data-id="${id}"]`).exists()).toBe(true)
-      expect(w.find('.abele-github-notice').text()).toMatch(expected)
-      expect(w.find('.abele-github-notice').text()).toContain(`Done failed for thread ${id}`)
-      expect(w.find('.abele-github-notice').text()).toContain(String(reply.status))
+      expect(await noticeText(w)).toMatch(expected)
+      expect(await noticeText(w)).toContain(`Done failed for thread ${id}`)
+      expect(await noticeText(w)).toContain(String(reply.status))
       await refresh(w)
       expect(w.find(`[data-id="${id}"]`).exists()).toBe(true)
-      expect(w.find('.abele-github-notice').text()).toMatch(expected)
+      expect(await noticeText(w)).toMatch(expected)
       expect(request.mock.calls.filter(([r]) => r.method === 'DELETE')).toHaveLength(1)
     }
   )
@@ -105,12 +106,16 @@ describe('local Done fallback in the panel', () => {
     await done(w)
     await refresh(w)
     expect(w.find(`[data-id="${id}"]`).exists()).toBe(false)
+    await noticeText(w)
     const notice = w.find('[role="status"]')
     expect(notice.text()).toContain('GitHub still lists 1 unchanged notification')
     expect(notice.text()).toContain('HTTP 204')
     expect(notice.text()).toContain('Local fallback')
     expect(notice.text()).toContain('session only')
-    await notice.find('button').trigger('click')
+    await notice
+      .findAll('button')
+      .find((b) => b.text().includes('Show locally hidden'))!
+      .trigger('click')
     await flushPromises()
     expect(w.find(`[data-id="${id}"]`).exists()).toBe(true)
     expect(w.find('[role="status"]').exists()).toBe(false)
@@ -129,7 +134,7 @@ describe('local Done fallback in the panel', () => {
     await (second.vm as unknown as { refresh(): Promise<void> }).refresh()
     await flushPromises()
     expect(second.find(`[data-id="${id}"]`).exists()).toBe(false)
-    expect(second.find('[role="status"]').text()).toContain('Local fallback')
+    expect(await noticeText(second, '[role="status"]')).toContain('Local fallback')
   })
 
   it('clears a failed Done only after that thread is successfully retried', async () => {

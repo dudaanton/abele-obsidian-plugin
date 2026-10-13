@@ -129,12 +129,10 @@
       />
     </div>
     <div v-if="moreError" class="abele-github-list__more-error">
-      <EmptyState :text="moreError" />
-      <Button
-        text="Try again"
-        icon="refresh-cw"
-        tooltip="Ask GitHub for the next page again"
-        @click="more"
+      <GithubNotice
+        :text="moreError"
+        retry-tooltip="Ask GitHub for the next page again"
+        @retry="more"
       />
     </div>
     <div v-else-if="next !== null" ref="sentinel" class="abele-github-list__more">
@@ -160,6 +158,7 @@ import Input from '../obsidian/Input.vue'
 import Tabs from '../obsidian/Tabs.vue'
 import Dropdown from '../obsidian/Dropdown.vue'
 import EmptyState from '../obsidian/EmptyState.vue'
+import GithubNotice from './GithubNotice.vue'
 import GithubListRow from './GithubListRow.vue'
 import type { GithubClient } from '@/github/client'
 import type { GithubTarget } from '@/github/urls'
@@ -354,8 +353,7 @@ onBeforeUnmount(() => observer?.disconnect())
     border-radius: var(--radius-m);
   }
 
-  &__more,
-  &__more-error {
+  &__more {
     display: flex;
     flex-direction: column;
     align-items: center;
