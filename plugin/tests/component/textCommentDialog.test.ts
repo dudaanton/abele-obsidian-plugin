@@ -11,8 +11,14 @@ const Shell = defineComponent({
   emits: ['close'],
   template: '<div><slot/></div>',
 })
+/** What each focused field held, in order: the field that took the focus. */
+const focused: string[] = []
 const NoteEditor = defineComponent({
-  methods: { focus() {} },
+  methods: {
+    focus(this: { modelValue: string }) {
+      focused.push(this.modelValue)
+    },
+  },
   props: ['modelValue'],
   emits: ['update:modelValue', 'submit', 'escape'],
   template:
@@ -128,6 +134,25 @@ describe('comments on a passage', () => {
     await press('Cancel')
     expect(changing().exists()).toBe(false)
     expect((await m.repository.read(initial.thread.id))!.thread.entries[0].body).toBe('Saved')
+  })
+
+  it('takes a field focus within the press on Edit, so a phone raises its keyboard', async () => {
+    const m = memoryComments()
+    const initial = await m.service.publish(
+      await m.service.draft('Notes/sample.md', 'sample words', 0, 12, 'yellow', 'Saved')
+    )
+    open({ service: m.service, initial })
+    focused.length = 0
+    const edit = wrapper!
+      .findAll('button')
+      .find((button) => button.attributes('aria-label')?.startsWith('Edit'))!
+    // A phone shows its keyboard only for a focus taken while the tap is handled, not after
+    // the field for the change has been drawn.
+    ;(edit.element as HTMLButtonElement).click()
+    expect(focused.length).toBeGreaterThan(0)
+    await flushPromises()
+    expect(changing().element.value).toBe('Saved')
+    expect(focused.at(-1)).toBe('Saved')
   })
 
   it('keeps text typed during a slow send as a change to that comment, never a repeat', async () => {
