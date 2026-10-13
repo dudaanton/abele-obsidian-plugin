@@ -465,8 +465,6 @@ defineExpose({ open, leave })
 }
 
 .abele-word-page__table {
-  content-visibility: auto;
-  contain-intrinsic-size: auto 10em;
   width: 100%;
   margin: var(--size-4-3) 0;
   border-collapse: collapse;
