@@ -84,6 +84,10 @@ watch(() => props.icon, draw)
   font-size: var(--font-ui-smaller);
   color: var(--text-muted);
   overflow-wrap: anywhere;
+
+  // A face no taller than the line it is in, so the line stays with the name above it.
+  --abele-avatar-size: calc(var(--font-ui-smaller) * var(--line-height-tight));
+  line-height: var(--line-height-tight);
 }
 .abele-repository-row .tree-item-flair-outer {
   flex: 0 0 auto;
