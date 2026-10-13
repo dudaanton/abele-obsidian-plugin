@@ -148,10 +148,24 @@ const measure = async (name: string): Promise<Screen> =>
       const frame = page.doc.defaultView.frameElement.getBoundingClientRect()
       const x = r.right - 10 - frame.left
       const y = r.top + r.height / 2 - frame.top
-      if (host) await host.tap(r.right - 10, r.top + r.height / 2)
-      else page.doc.elementFromPoint(Math.max(0, x), y)?.dispatchEvent(new MouseEvent('click', {
-        bubbles: true, cancelable: true, view: page.doc.defaultView, clientX: x, clientY: y }))
-      report.turned = !!await until(() => engine.lastLocation.fraction > before, 5000)
+      // Keep delivery evidence for an intermittent native tap without replaying it.
+      const tapEvents = []
+      const recordTap = e => tapEvents.push({ type:e.type, trusted:e.isTrusted, time:e.timeStamp,
+        target:e.target?.tagName, prevented:e.defaultPrevented, selected:String(page.doc.getSelection()) })
+      const tapTypes = ['pointerdown','pointerup','touchstart','touchend','click']
+      const tapOwners = [page.doc, engine.renderer]
+      for (const owner of tapOwners) for (const type of tapTypes) owner.addEventListener(type,recordTap,true)
+      report.tap = { point:[r.right-10,r.top+r.height/2], frame:[frame.left,frame.top,frame.width,frame.height],
+        hit:page.doc.elementFromPoint(Math.max(0,x),y)?.tagName,
+        selected:String(page.doc.getSelection()), bar:!!(view.model.selection||view.model.active), events:tapEvents }
+      try {
+        if (host) await host.tap(r.right - 10, r.top + r.height / 2)
+        else page.doc.elementFromPoint(Math.max(0, x), y)?.dispatchEvent(new MouseEvent('click', {
+          bubbles: true, cancelable: true, view: page.doc.defaultView, clientX: x, clientY: y }))
+        report.turned = !!await until(() => engine.lastLocation.fraction > before, 5000)
+      } finally {
+        for (const owner of tapOwners) for (const type of tapTypes) owner.removeEventListener(type,recordTap,true)
+      }
 
       // A finger swiped from right to left turns the page too.
       await wait(600)

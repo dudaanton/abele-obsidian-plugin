@@ -250,7 +250,7 @@ describe.skipIf(!available)('calendars on a phone', () => {
           report.over = [...report.over, ...overEdge(modal)]
           report.sideways = Math.max(report.sideways, modal.scrollWidth - modal.clientWidth)
           await picture('calendars-settings-card-' + (i + 1) + '.png')
-          const close = modal.querySelector('.modal-close-button')
+          const close = [...modal.querySelectorAll('button')].find(button => button.textContent.trim() === 'Done')
           if (!close) throw Error('calendar editor close action missing')
           close.click()
           if (!(await until(() => !modal.isConnected, 5000))) throw Error('calendar editor did not close')

@@ -4,6 +4,25 @@ import { resolve } from 'node:path'
 import { TIMELINE_READY_PROBE } from '../e2e/helpers/timelineReady'
 
 const settle = new Function(TIMELINE_READY_PROBE + 'return settleTimelineUI')()
+it('observes completion through the switch state rather than absent glyph text', async () => {
+  const source = readFileSync(resolve(__dirname, '../e2e/taskTimelineScroll.e2e.test.ts'), 'utf8')
+  const toggle = source.slice(
+    source.indexOf('const toggleCompleted ='),
+    source.indexOf('const revealClick =')
+  )
+  const root = document.createElement('div')
+  const control = document.createElement('button')
+  control.className = 'abele-timeline__completed-toggle'
+  control.setAttribute('aria-checked', 'false')
+  control.onclick = () => control.setAttribute('aria-checked', 'true')
+  root.append(control)
+  const settled = vi.fn(async (ready: () => boolean) => expect(ready()).toBe(true))
+  const run = new Function('root', 'settleUI', toggle + 'return toggleCompleted')
+  await run(root, settled)()
+  expect(settled).toHaveBeenCalledOnce()
+  expect(control.textContent).toBe('')
+  expect(control.getAttribute('aria-checked')).toBe('true')
+})
 it('waits for expected state and five stable geometry samples without correcting displacement', async () => {
   let polls = 0,
     position = 20,

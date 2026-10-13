@@ -526,8 +526,12 @@ describe.skipIf(!available)('a pull request on a phone', () => {
         } catch (e) { await wait(500) }
       }
       row('src/app.ts').click()
-      await until(() => loaded(leaf, 'src/app.ts'), 20000)
-      report.opened = leaf.view.model.url
+      // Navigation focuses an existing exact-target tab when one is already open.
+      // Observe the destination rather than assuming the drawer's source leaf is reused.
+      const destination = await until(() => githubLeaves().find(candidate =>
+        candidate.view.model.url === ${JSON.stringify(`${gh.web}/blob/main/src/app.ts`)} && loaded(candidate, 'src/app.ts')), 20000)
+      if (!destination) return { ...report, error: 'the picked file never showed' }
+      report.opened = destination.view.model.url
       report.closedAfter = !root.querySelector('.abele-github-tree')
       return report
     })()`)
@@ -542,7 +546,7 @@ describe.skipIf(!available)('a pull request on a phone', () => {
     expect(r.main!.sideways).toBe(0)
     expect(r.over).toEqual([])
     expect(r.shot).toMatch(/\.png$/)
-    expect(r.opened).toMatch(/\/blob\/main\/src\/app\.ts$/)
+    expect(r.opened).toBe(`${gh.web}/blob/main/src/app.ts`)
     expect(r.closedAfter).toBe(true)
   })
 

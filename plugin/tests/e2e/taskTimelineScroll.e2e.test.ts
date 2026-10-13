@@ -164,9 +164,10 @@ const script = (footer: boolean, short = false) => String.raw`(async function* (
     }
     const toggleCompleted = async () => {
       const control = root.querySelector('.abele-timeline__completed-toggle')
-      const before = control.textContent
+      const before = control.getAttribute('aria-checked')
+      if (before !== 'true' && before !== 'false') throw Error('completed switch state missing')
       control.click()
-      await settleUI(() => control.textContent !== before)
+      await settleUI(() => control.getAttribute('aria-checked') === String(before !== 'true'))
     }
     const revealClick = async () => {
       const el = strip()
