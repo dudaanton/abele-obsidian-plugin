@@ -35,6 +35,7 @@ it.each([
     shotDir: () => 'sample-shots',
     SHOTS: 'sample-shots',
     WORD_SAMPLE: '',
+    fixtureId: 'sample-fixture',
     CANVAS_SCREENS: ['sample review', 'sample confirmation'],
   }
   const script = new Function(...Object.keys(scope), `return ${template}`)(...Object.values(scope))
