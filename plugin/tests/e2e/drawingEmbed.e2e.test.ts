@@ -116,13 +116,22 @@ const run = <T>(body: string): T =>
   )
 
 describe.skipIf(!available)('a drawing in a note', () => {
+  let sidebars: [boolean, boolean] = [true, true]
   beforeAll(() => {
     attachDebugger()
+    sidebars = evalJson<[boolean, boolean]>(
+      '[app.workspace.leftSplit.collapsed, app.workspace.rightSplit.collapsed]'
+    )
     const r = run<{ error?: string; name?: string }>(`
       const old = app.vault.getAbstractFileByPath(DIR)
       if (old) await app.vault.delete(old, true)
       await app.vault.createFolder(DIR)
       await closeAll()
+      // The note sits beside the drawing; with both sidebars open in a window a file before this
+      // one left narrow, that pane shrank the embed below anything worth measuring. The sidebars
+      // are folded for this file and put back as they were.
+      app.workspace.leftSplit.collapse()
+      app.workspace.rightSplit.collapse()
       await window.__abeleTest.newDrawing(app, app.vault.getAbstractFileByPath(DIR))
       const view = await until(() => views().find((v) => v.session && v.file && v.model.on && v.session.surface.width > 0), 10000)
       await drawingReady(view)
@@ -152,6 +161,10 @@ describe.skipIf(!available)('a drawing in a note', () => {
       await reloadApp('app.emulateMobile(false)')
       attachDebugger()
     }
+    const [left, right] = sidebars
+    evalRaw(
+      `${left ? '' : 'app.workspace.leftSplit.expand();'}${right ? '' : 'app.workspace.rightSplit.expand();'}'ok'`
+    )
   }, 180_000)
 
   it('keeps what was drawn when the tab is closed right after, and the note shows it', () => {
