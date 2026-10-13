@@ -1,4 +1,5 @@
 import { afterAll, beforeAll, beforeEach, describe, expect, it } from 'vitest'
+import { randomUUID } from 'node:crypto'
 import { evalAsync } from './helpers/githubLive'
 import { hasTestApi, isObsidianRunning } from './helpers/obsidianCli'
 import { onPhone, targets } from './helpers/target'
@@ -8,7 +9,7 @@ import { shotDir } from './helpers/shots'
 
 targets('desktop', 'phone')
 const available = isObsidianRunning() && hasTestApi()
-const DIR = 'Sample human canvas'
+const DIR = `Sample human canvas ${randomUUID()}`
 const SHOTS = shotDir('canvas-editor')
 const PRELUDE = `
   const path = ${JSON.stringify(`${DIR}/Sample diagram.canvas`)}
@@ -45,7 +46,11 @@ const press = async (expression: string, corner = false) => {
   `)
     )
 }
-const click = (label: string) => press(`button(${JSON.stringify(label)})`)
+const click = async (label: string, allowDisabled = false) => {
+  if (!allowDisabled)
+    await until(`button(${JSON.stringify(label)}) && !button(${JSON.stringify(label)}).disabled`)
+  await press(`button(${JSON.stringify(label)})`)
+}
 const type = async (text: string) => {
   if (onPhone()) {
     // DOM focus precedes the native keyboard. Wait for it, then use its keys directly:
@@ -100,8 +105,20 @@ const failSave = () =>
   app.vault.process=async function(file,fn){if(file.path===path)throw Error('Sample known-unwritten save failure');return window.__humanCanvas.process.call(this,file,fn)}
   return true
 `)
-const addText = async (text: string) => {
+const beginText = async () => {
   await click('Add text card')
+  console.info(
+    'Add text transition:',
+    run(`const el=view().contentEl.querySelector('textarea'),r=el?.getBoundingClientRect();return {
+    enabled:!button('Add text card').disabled,editing:view().editor.editing,draft:!!view().documentLease.document.draftPath,
+    focused:document.activeElement===el,rect:r?.toJSON(),hit:r&&document.elementFromPoint(r.left+r.width/2,r.top+r.height/2)?.outerHTML}`)
+  )
+  await until(
+    'view().editor.editing && !view().contentEl.querySelector(".abele-canvas-text-editor").hidden && document.activeElement===view().contentEl.querySelector("textarea")'
+  )
+}
+const addText = async (text: string) => {
+  await beginText()
   await press('view().contentEl.querySelector("textarea")')
   await type(text)
   await click('Save text')
@@ -128,6 +145,7 @@ describe.skipIf(!available)('human canvas creation and editing with real input',
       if(app.vault.getAbstractFileByPath(${JSON.stringify(DIR)}))throw Error('Synthetic folder already exists')
       window.__humanCanvas={layout:app.workspace.getLayout(),preference:window.__abeleTest.AbeleConfig.getInstance().canvasViewer,location:app.vault.getConfig('newFileLocation')}
       window.__abeleTest.AbeleConfig.getInstance().canvasViewer=true
+      if(!${onPhone()}){app.workspace.leftSplit.collapse();app.workspace.rightSplit.collapse()}
       app.vault.setConfig('newFileLocation','current')
       await app.vault.createFolder(${JSON.stringify(DIR)});window.__humanCanvas.owned=true
       const note=await app.vault.create(${JSON.stringify(`${DIR}/sample-note.md`)},'A note inserted by a person.')
@@ -168,7 +186,7 @@ describe.skipIf(!available)('human canvas creation and editing with real input',
     await press(textButton('.abele-canvas-input', 'Create'))
     await until('view()?.editor')
     const empty = run<boolean>('return (await read()).nodes.length===0')
-    await click('Add text card')
+    await beginText()
     const focused = run<boolean>(
       'return document.activeElement===view().contentEl.querySelector("textarea")'
     )
@@ -306,7 +324,7 @@ describe.skipIf(!available)('human canvas creation and editing with real input',
     )
     expect(run<boolean>("return button('Edit card text').disabled")).toBe(true)
     const generation = run<number>('return view().documentLease.document.session.generation')
-    await click('Edit card text')
+    await click('Edit card text', true)
     expect(run<number>('return view().documentLease.document.session.generation')).toBe(generation)
     expect(run('return view().documentLease.document.session.history')).toEqual(history)
     restoreProcess()
@@ -349,43 +367,71 @@ describe.skipIf(!available)('human canvas creation and editing with real input',
   // cancel native saves or acknowledge matching content to make this guarantee pass.
   it.fails(
     'keeps a failed human save visible, asks before native handoff, and reopens retained text for retry',
-    async () => {
-      const before = run<string>(
-        'return await app.vault.read(app.vault.getAbstractFileByPath(path))'
-      )
-      failSave()
-      await addText('Retained human text')
-      await until("button('Retry save')&&!button('Retry save').disabled")
-      const unsaved = run<boolean>(
-        "return view().contentEl.textContent.includes('not saved')&&view().viewer.graph.nodes.some(node=>node.text==='Retained human text')"
-      )
-      const sourceSame = run<boolean>(
-        `return ${JSON.stringify(before)}===await app.vault.read(app.vault.getAbstractFileByPath(path))`
-      )
-      shot('failed-save')
-      await press('view().containerEl.querySelector(\'[aria-label="Open in Obsidian Canvas"]\')')
-      await until("document.querySelector('.abele-canvas-choice')")
-      shot('native-handoff')
-      await press(textButton('.abele-canvas-choice', 'Retain draft and open native'))
-      await until("app.workspace.getLeavesOfType('canvas').some(leaf=>leaf.view.file?.path===path)")
-      const native = true
-      restoreProcess()
-      // Closing/reopening is navigation, not a canvas edit. Native unload may write formatting.
-      run(
-        "app.workspace.getLeavesOfType('canvas').find(leaf=>leaf.view.file?.path===path).detach();return true"
-      )
-      await reopen()
-      const retained = run<boolean>(
-        "return view().viewer.graph.nodes.some(node=>node.text==='Retained human text')"
-      )
-      const reopened = run<boolean>("return !button('Retry save').disabled")
-      await click('Retry save')
-      await new Promise((resolve) => setTimeout(resolve, 500))
-      const written = run<boolean>(
-        "return (await read()).nodes.some(node=>node.text==='Retained human text')"
-      )
-      shot('reopened-saved')
-      expect({ unsaved, sourceSame, retained, native, reopened, saved: written }).toEqual({
+    async ({ task }) => {
+      let result: {
+        unsaved: boolean
+        sourceSame: boolean
+        retained: boolean
+        native: boolean
+        reopened: boolean
+        saved: boolean
+      }
+      try {
+        const before = run<string>(
+          'return await app.vault.read(app.vault.getAbstractFileByPath(path))'
+        )
+        failSave()
+        await addText('Retained human text')
+        await until("button('Retry save')&&!button('Retry save').disabled")
+        const unsaved = run<boolean>(
+          "return view().contentEl.textContent.includes('not saved')&&view().viewer.graph.nodes.some(node=>node.text==='Retained human text')"
+        )
+        const sourceSame = run<boolean>(
+          `return ${JSON.stringify(before)}===await app.vault.read(app.vault.getAbstractFileByPath(path))`
+        )
+        shot('failed-save')
+        await press('view().containerEl.querySelector(\'[aria-label="Open in Obsidian Canvas"]\')')
+        await until("document.querySelector('.abele-canvas-choice')")
+        shot('native-handoff')
+        await press(textButton('.abele-canvas-choice', 'Retain draft and open native'))
+        await until(
+          "app.workspace.getLeavesOfType('canvas').some(leaf=>leaf.view.file?.path===path)"
+        )
+        const native = true
+        restoreProcess()
+        // Closing/reopening is navigation, not a canvas edit. Native unload may write formatting.
+        run(
+          "app.workspace.getLeavesOfType('canvas').find(leaf=>leaf.view.file?.path===path).detach();return true"
+        )
+        await reopen()
+        const retained = run<boolean>(
+          "return view().viewer.graph.nodes.some(node=>node.text==='Retained human text')"
+        )
+        const reopened = run<boolean>("return !button('Retry save').disabled")
+        await click('Retry save', true)
+        await new Promise((resolve) => setTimeout(resolve, 500))
+        const written = run<boolean>(
+          "return (await read()).nodes.some(node=>node.text==='Retained human text')"
+        )
+        shot('reopened-saved')
+        expect({ unsaved, sourceSame, retained, native }).toEqual({
+          unsaved: true,
+          sourceSame: true,
+          retained: true,
+          native: true,
+        })
+        result = { unsaved, sourceSame, retained, native, reopened, saved: written }
+      } catch (error) {
+        // Expected failure belongs only to the known byte-revision assertion below.
+        // A blocked native action or broken setup must fail normally, not hide under it.fails.
+        task.fails = false
+        throw error
+      } finally {
+        run(
+          'if(window.__humanCanvas?.process){app.vault.process=window.__humanCanvas.process;delete window.__humanCanvas.process}return true'
+        )
+      }
+      expect(result).toEqual({
         unsaved: true,
         sourceSame: true,
         retained: true,
