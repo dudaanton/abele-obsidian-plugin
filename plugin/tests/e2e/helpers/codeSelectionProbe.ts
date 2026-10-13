@@ -135,8 +135,8 @@ export const readSelectionBar = codeSelectionScript(String.raw`
     // Say what took the drag instead: the element under the word and what holds focus.
     const content=state.source?.view.containerEl.querySelector('.cm-content'),box=content?.getBoundingClientRect();
     const under=box&&document.elementFromPoint(box.left+20,box.top+8);
-    throw Error('No selection bar: '+JSON.stringify({selection:String(window.getSelection()),bars:document.querySelectorAll('.abele-selection-bar').length,
-      under:under?.className??null,inSource:!!(under&&content.contains(under)),active:document.activeElement?.className??null,
+    throw Error('No selection bar: '+JSON.stringify({action:state.action??null,selection:String(window.getSelection()),bars:document.querySelectorAll('.abele-selection-bar').length,
+      under:under?.className??null,content:box?[box.left,box.top,box.width,box.height]:null,viewport:[innerWidth,innerHeight],sourceActive:app.workspace.activeLeaf===state.source,inSource:!!(under&&content.contains(under)),active:document.activeElement?.className??null,
       cm:state.source?.view.containerEl.querySelector('.cm-editor')?.cmView?.view?.state.selection.main.toJSON?.()??null,
       drawers:[...document.querySelectorAll('.workspace-drawer.is-pinned,.workspace-drawer:not(.is-hidden),.modal-container')].map(el=>el.className)}));
   }
@@ -164,7 +164,7 @@ export const selectionMenu = codeSelectionScript(String.raw`
 
 export const prepareSelectionAction = (action: 'ask' | 'add' | 'note') =>
   codeSelectionScript(String.raw`
-  state.actionError=null;
+  state.actionError=null;state.action=${JSON.stringify(action)};
   if(${JSON.stringify(action)}==='add'){
     const session=await chats.openBlankChat();state.addId=session.id;
     state.addTitle='Sample selection destination '+session.id;session.chatTitle.value=state.addTitle;
