@@ -1,37 +1,44 @@
 <template>
+  <!-- The same bar as over selected code, glyph for glyph: ask, into the note, a link. -->
   <div
     v-if="shown"
     ref="bar"
-    class="abele-github-prose"
-    :class="{ 'abele-github-prose_placed': placed }"
+    class="abele-selection-bar abele-github-prose"
+    :class="{ 'abele-selection-bar_placed': placed }"
+    role="toolbar"
+    aria-label="Selection"
     :style="{ top: `${place.top}px`, left: `${place.left}px` }"
     data-find-skip
     data-prose-skip
     @pointerdown="onPress"
     @mousedown.prevent
   >
-    <Button
-      v-if="linker.canAsk()"
-      text="Ask here"
-      icon="message-circle-plus"
-      tooltip="Open a new chat with a link to where this is and the selected words quoted in its input"
-      @click="ask"
-    />
-    <Icon icon="link" :tooltip="`Copy a link to ${shown.where}`" with-bg @click="copyLink" />
     <Icon
-      icon="quote"
-      tooltip="Insert the selected words into the note you were last in, as a quote with a link to where they are from"
-      with-bg
-      @click="insertQuote"
+      v-for="a in actions"
+      :key="a.id"
+      :icon="a.icon"
+      :tooltip="a.tooltip"
+      :data-action="a.id"
+      @click="run(a.id)"
     />
   </div>
 </template>
 
 <script setup lang="ts">
-import { inject, nextTick, onBeforeUnmount, onMounted, reactive, ref, shallowRef, watch } from 'vue'
-import { Menu, Platform } from 'obsidian'
-import Button from '../obsidian/Button.vue'
+import {
+  computed,
+  inject,
+  nextTick,
+  onBeforeUnmount,
+  onMounted,
+  reactive,
+  ref,
+  shallowRef,
+  watch,
+} from 'vue'
+import { Platform } from 'obsidian'
 import Icon from '../obsidian/Icon.vue'
+import { ASK, NOTE, type SelectionAction } from '../obsidian/selectionActions'
 import { LINKER } from '@/github/linking'
 import { SCREEN } from '@/github/screen'
 import { proseQuote, proseSnippet, readProse, type ProseSelection } from '@/github/proseSelection'
@@ -40,8 +47,8 @@ import { placeSelectionBar } from '@/helpers/selectionBarPlace'
 
 /**
  * The small bar over words selected in a GitHub tab's prose: ask about them in a new chat, copy a
- * link to the comment they are in, or quote them into the note. The same three are in the menu a
- * right-click on the selection opens.
+ * link to the comment they are in, or quote them into the note. They are here only: a right-click
+ * opens the ordinary menu, so nothing is offered twice.
  *
  * A phone's own menu over a selection cannot be given an item, so there the bar is the way in:
  * it sits below the selection, clear of the handles and of the system's menu above it, and waits
@@ -124,6 +131,19 @@ const done = () => {
   shown.value = null
 }
 
+/** The link glyph names what it links to: the comment, or the item. */
+const actions = computed<SelectionAction[]>(() => [
+  ...(linker.canAsk() ? [ASK] : []),
+  NOTE,
+  { id: 'link', icon: 'link', tooltip: `Copy a link to ${shown.value?.where ?? 'this'}` },
+])
+
+function run(id: string) {
+  if (id === 'ask') ask()
+  else if (id === 'note') insertQuote()
+  else copyLink()
+}
+
 function ask() {
   const p = shown.value
   if (p) void linker.ask(p.link, proseQuote(p))
@@ -142,24 +162,6 @@ function insertQuote() {
   done()
 }
 
-/** Right-click on selected words: the same actions, beside a plain copy. Not on a touch screen. */
-function onContextMenu(e: MouseEvent) {
-  if (touch) return
-  const { prose } = read()
-  if (!prose) return
-  e.preventDefault()
-  screen.prose = prose
-  const menu = new Menu()
-  const item = (title: string, icon: string, run: () => void) =>
-    menu.addItem((i) => i.setTitle(title).setIcon(icon).onClick(run))
-  item('Copy', 'copy', () => void navigator.clipboard.writeText(prose.text))
-  if (linker.canAsk())
-    item('Ask here', 'message-circle-plus', () => void linker.ask(prose.link, proseQuote(prose)))
-  item('Copy link to this', 'link', () => void linker.copy(prose.link))
-  item('Insert as quote', 'quote', () => void linker.insertSnippet(proseSnippet(prose)))
-  menu.showAtMouseEvent(e)
-}
-
 let watcher: SettledSelection | null = null
 
 onMounted(() => {
@@ -176,12 +178,10 @@ onMounted(() => {
     },
     ignore: (node) => !!bar.value?.contains(node),
   })
-  props.root.addEventListener('contextmenu', onContextMenu)
 })
 
 onBeforeUnmount(() => {
   watcher?.destroy()
-  props.root.removeEventListener('contextmenu', onContextMenu)
   screen.prose = null
 })
 
@@ -196,25 +196,8 @@ watch(
 </script>
 
 <style lang="scss">
-.abele-github-prose {
+// The selection bar's look; placed inside the tab rather than on the window.
+.abele-selection-bar.abele-github-prose {
   position: absolute;
-  z-index: var(--layer-popover);
-  display: flex;
-  align-items: center;
-  gap: var(--size-4-1);
-  padding: var(--size-4-1);
-  background: var(--background-primary);
-  border: 1px solid var(--background-modifier-border);
-  border-radius: var(--radius-m);
-  box-shadow: var(--shadow-s);
-  font-family: var(--font-interface);
-  font-size: var(--font-ui-small);
-  visibility: hidden;
-  user-select: none;
-  -webkit-user-select: none;
-
-  &_placed {
-    visibility: visible;
-  }
 }
 </style>

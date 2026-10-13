@@ -151,9 +151,7 @@ describe('words selected in a discussion comment', () => {
     await selectWords(wrapper, '.abele-github-comment__body', 'reads better')
     expect(bar(wrapper).exists()).toBe(true)
 
-    const ask = bar(wrapper)
-      .findAll('button')
-      .find((b) => b.text().includes('Ask here'))!
+    const ask = bar(wrapper).get('[data-action="ask"]')
     await ask.trigger('click')
     await flushPromises()
 
@@ -212,10 +210,7 @@ describe('words selected in a discussion comment', () => {
     expect(prose.link.url).toBe('https://github.com/o/r/discussions/3')
     expect(prose.spans).toEqual(['the comment by dave', 'the reply by bob', 'the comment by erin'])
 
-    await bar(wrapper)
-      .findAll('button')
-      .find((b) => b.text().includes('Ask here'))!
-      .trigger('click')
+    await bar(wrapper).get('[data-action="ask"]').trigger('click')
     await vi.waitFor(() => expect(askAboutGithub).toHaveBeenCalled())
     const [link, quote] = askAboutGithub.mock.calls[0] as unknown as [
       { label: string; url: string },
@@ -226,7 +221,8 @@ describe('words selected in a discussion comment', () => {
     )
   })
 
-  it('a right-click offers the same in a menu', async () => {
+  // Selection actions live in the bar; a right-click keeps the ordinary menu.
+  it("a right-click does not offer the bar's actions a second time", async () => {
     const shown = vi.spyOn(Menu.prototype, 'showAtMouseEvent')
     const { wrapper } = await openDiscussion()
     await selectWords(wrapper, '.abele-github-comment__body', 'fewer requests')
@@ -234,14 +230,10 @@ describe('words selected in a discussion comment', () => {
     const event = new MouseEvent('contextmenu', { bubbles: true, cancelable: true })
     target.dispatchEvent(event)
 
-    expect(event.defaultPrevented).toBe(true)
-    const menu = shown.mock.contexts[0] as unknown as Menu & { items: { title: string }[] }
-    expect(menu.items.map((i) => i.title)).toEqual([
-      'Copy',
-      'Ask here',
-      'Copy link to this',
-      'Insert as quote',
-    ])
+    expect(event.defaultPrevented).toBe(false)
+    expect(shown).not.toHaveBeenCalled()
+    await flushPromises()
+    expect(bar(wrapper).exists()).toBe(true)
     shown.mockRestore()
   })
 
@@ -291,15 +283,18 @@ describe('words selected in a discussion comment', () => {
 })
 
 describe('on a phone', () => {
-  it('a touch selection brings up the bar, as icons and "Ask here", under the words', async () => {
+  it('a touch selection brings up the bar of glyphs under the words', async () => {
     Platform.isPhone = true
     Platform.isMobile = true
     const { wrapper } = await openDiscussion()
     await selectWords(wrapper, '.abele-github-comment__body', 'reads better')
 
     expect(bar(wrapper).exists()).toBe(true)
-    expect(bar(wrapper).text()).toContain('Ask here')
-    expect(bar(wrapper).findAll('.abele-obsidian-icon_with-bg')).toHaveLength(2)
+    expect(
+      bar(wrapper)
+        .findAll('[data-action]')
+        .map((b) => b.attributes('data-action'))
+    ).toEqual(['ask', 'note', 'link'])
   })
 })
 
@@ -329,10 +324,7 @@ describe("words selected in a folder's README", () => {
         url: 'https://github.com/o/r/blob/main/src/README.md',
       },
     })
-    await bar(wrapper)
-      .findAll('button')
-      .find((b) => b.text().includes('Ask here'))!
-      .trigger('click')
+    await bar(wrapper).get('[data-action="ask"]').trigger('click')
     await vi.waitFor(() => expect(askAboutGithub).toHaveBeenCalled())
     const [link] = askAboutGithub.mock.calls[0] as unknown as [{ url: string }]
     expect(link.url).toBe('https://github.com/o/r/blob/main/src/README.md')
