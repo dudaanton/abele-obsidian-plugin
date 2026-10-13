@@ -6,6 +6,8 @@ import { genid } from '@/helpers/vueUtils'
 import { GlobalStore } from '@/stores/GlobalStore'
 import { setWidgetMount } from '@/helpers/widgetMounts'
 import { reliableScrollTo } from '@/helpers/scrollUtils'
+import { createApp, type App as VueApp } from 'vue'
+import FootnotePeek from '@/components/FootnotePeek.vue'
 import { marginOverlayFor, marginOverlayIfAny, type MarginEntry } from './MarginOverlay'
 
 const FOOTNOTE_REF_RE = /\[\^([^\]]+)\]/g
@@ -122,7 +124,7 @@ function parseFootnotes(state: EditorState) {
 function buildDecorations(
   footnotes: ParsedFootnote[],
   definitions: ParsedDefinition[],
-  state: EditorState
+  _state: EditorState
 ): DecorationSet {
   const builder = new RangeSetBuilder<Decoration>()
 
@@ -208,6 +210,10 @@ export class FootnoteProvider {
 
   private parsedFootnotes: ParsedFootnote[] = []
   private parsedDefinitions: ParsedDefinition[] = []
+  /** The footnote read where it is cited, when there is no margin to set it in. */
+  private peek: { label: string; app: VueApp; host: HTMLElement } | null = null
+  /** A press outside closes the card before the click lands: the same number then must not reopen it. */
+  private peekClosed: { label: string; at: number } | null = null
 
   constructor(view: EditorView) {
     this.view = view
@@ -240,7 +246,8 @@ export class FootnoteProvider {
       const fn = this.parsedFootnotes.find((f) => f.label === label)
       if (fn) {
         e.preventDefault()
-        reliableScrollTo(fn.definitionFrom)
+        if (marginOverlayFor(this.view).hasRoom()) reliableScrollTo(fn.definitionFrom)
+        else this.togglePeek(fn, refPart)
       }
       return
     }
@@ -260,8 +267,50 @@ export class FootnoteProvider {
     }
   }
 
+  /** No margin (a phone, a narrow pane): the footnote opens in a card under its line. */
+  private togglePeek(fn: ParsedFootnote, ref: Element) {
+    const reopening = this.peekClosed?.label === fn.label && Date.now() - this.peekClosed.at < 400
+    if (this.peek?.label === fn.label || reopening) {
+      this.closePeek()
+      return
+    }
+    this.closePeek()
+    const box = ref.getBoundingClientRect()
+    const left = this.view.contentDOM.getBoundingClientRect().left
+    const host = document.body.createDiv()
+    const footnote = new Footnote({
+      id: `peek-${fn.label}`,
+      label: fn.label,
+      content: fn.content,
+      filePath: fn.filePath,
+      definitionFrom: fn.definitionFrom,
+      refFrom: fn.refFrom,
+    })
+    const app = createApp(FootnotePeek, {
+      footnote,
+      anchor: { left, top: box.top, bottom: box.bottom },
+      onClose: () => this.closePeek(),
+    })
+    app.mount(host)
+    this.peek = { label: fn.label, app, host }
+    this.view.scrollDOM.addEventListener('scroll', this.closePeekOnScroll, { passive: true })
+  }
+
+  private closePeekOnScroll = () => this.closePeek()
+
+  private closePeek() {
+    if (!this.peek) return
+    this.peekClosed = { label: this.peek.label, at: Date.now() }
+    this.view.scrollDOM.removeEventListener('scroll', this.closePeekOnScroll)
+    this.peek.app.unmount()
+    this.peek.host.remove()
+    this.peek = null
+  }
+
   update(update: ViewUpdate) {
     if (this.destroyed) return
+    // The card holds a snapshot, including definition positions; an edit invalidates it.
+    if (update.docChanged) this.closePeek()
 
     let needsRebuild = false
     if (
@@ -398,6 +447,7 @@ export class FootnoteProvider {
 
   destroy() {
     this.destroyed = true
+    this.closePeek()
     this.clearHighlight()
     this.view.dom.removeEventListener('click', this.handleClick)
     const store = GlobalStore.getInstance()

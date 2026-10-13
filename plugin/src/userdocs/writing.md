@@ -85,7 +85,9 @@ selection and lets you pick the colour; **Remove colored highlight** takes it of
 ## Footnotes as sidenotes
 
 Footnotes are shown in the margin beside the line that refers to them, when the note is wide
-enough. **Reindex footnotes** renumbers them in order of appearance.
+enough. On a phone or in a narrow pane there is no margin: tap a footnote's number and its text
+opens in a card under the line, without the note moving; the arrow in the card goes to the
+footnote at the end of the note. A tap outside, the same number again or scrolling closes it. **Reindex footnotes** renumbers them in order of appearance.
 
 ## Links to lines
 
