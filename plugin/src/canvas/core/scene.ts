@@ -28,26 +28,56 @@ export const defaultMetrics: TextMetricsPort = {
   lineHeight: 1.4,
   measure: (text, size) => Array.from(text).length * size * 0.58,
 }
+/**
+ * Where a card's words go. A rectangle keeps a card's padding; a rounded or pointed shape gives
+ * them the largest upright box inside its outline instead, whose curves and slopes already keep
+ * the words off the line — the padding on top of that left an ordinary diamond or pill no room
+ * for a second line, or for the first.
+ */
 export function contentBox(node: CanvasNode): Rect {
+  const { x, y, width: w, height: h } = node
   const shape = node.styleAttributes?.shape
-  const inset =
-    shape === 'diamond' || shape === 'circle' || shape === 'pill'
-      ? 0.22
-      : shape === 'parallelogram'
-        ? 0.16
-        : 0
-  const verticalInset = shape === 'diamond' || shape === 'circle' || shape === 'pill' ? 0.22 : 0
-  return {
-    x: node.x + 16 + node.width * inset,
-    y: node.y + 16 + (shape === 'database' ? 20 : node.height * verticalInset),
-    width: Math.max(1, node.width * (1 - 2 * inset) - 32),
-    height: Math.max(
-      1,
-      node.height * (1 - 2 * verticalInset) -
-        32 -
-        (shape === 'database' || shape === 'document' ? 20 : 0)
-    ),
+  const room = (dx: number, dy: number, pad: number): Rect => ({
+    x: x + dx + pad,
+    y: y + dy + pad,
+    width: Math.max(1, w - 2 * (dx + pad)),
+    height: Math.max(1, h - 2 * (dy + pad)),
+  })
+  if (shape === 'diamond') return room(w / 4, h / 4, SHAPE_PADDING.diamond)
+  if (shape === 'circle') return room(w * CIRCLE_INSET, h * CIRCLE_INSET, SHAPE_PADDING.circle)
+  if (shape === 'pill') {
+    // Short of its round ends by a share of its thickness, the box's corners touch the ends.
+    const r = Math.min(w, h) / 2,
+      across = Math.min(w, h) * PILL_SHARE,
+      along = r - Math.sqrt(r * r - (r - across) ** 2)
+    return w >= h
+      ? room(along, across, SHAPE_PADDING.pill)
+      : room(across, along, SHAPE_PADDING.pill)
   }
+  const inset = shape === 'parallelogram' ? 0.16 : 0
+  return {
+    x: x + 16 + w * inset,
+    y: y + 16 + (shape === 'database' ? 20 : 0),
+    width: Math.max(1, w * (1 - 2 * inset) - 32),
+    height: Math.max(1, h - 32 - (shape === 'database' || shape === 'document' ? 20 : 0)),
+  }
+}
+/** An ellipse's largest upright box leaves (1 − 1/√2) / 2 of each side outside it. */
+const CIRCLE_INSET = (1 - Math.SQRT1_2) / 2
+/** What a pill's words leave free above and below them, as a share of its thickness. */
+const PILL_SHARE = 0.15
+const SHAPE_PADDING = { diamond: 2, circle: 4, pill: 2 }
+/** The share of a shape's height its words get, and the padding taken from that. */
+function heightShare(shape: unknown): { ratio: number; padding: number } {
+  if (shape === 'diamond') return { ratio: 0.5, padding: 2 * SHAPE_PADDING.diamond }
+  if (shape === 'circle') return { ratio: 1 - 2 * CIRCLE_INSET, padding: 2 * SHAPE_PADDING.circle }
+  if (shape === 'pill') return { ratio: 1 - 2 * PILL_SHARE, padding: 2 * SHAPE_PADDING.pill }
+  return { ratio: 1, padding: shape === 'database' || shape === 'document' ? 52 : 32 }
+}
+/** Whether a shape's words stand in its middle, as a drawn shape's label does. */
+export function centredLabel(node: CanvasNode): boolean {
+  const shape = node.styleAttributes?.shape
+  return shape === 'diamond' || shape === 'circle' || shape === 'pill'
 }
 export function plainMarkdown(text: string): string {
   return text
@@ -302,9 +332,7 @@ export function fitText(
     if (node.type !== 'text' || !selected(node)) continue
     const box = contentBox(node),
       lines = textLines(labelOf(node), box.width, metrics)
-    const shape = node.styleAttributes?.shape
-    const ratio = shape === 'diamond' || shape === 'circle' || shape === 'pill' ? 0.56 : 1
-    const padding = shape === 'database' || shape === 'document' ? 52 : 32
+    const { ratio, padding } = heightShare(node.styleAttributes?.shape)
     const needed = (textHeight(lines, metrics) + padding) / ratio
     node.height = Math.max(node.height, needed)
   }

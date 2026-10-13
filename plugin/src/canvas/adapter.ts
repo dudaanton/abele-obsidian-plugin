@@ -2,7 +2,7 @@
 import { Component, MarkdownRenderer, TFile, type App } from 'obsidian'
 import { CanvasViewer, type ViewerCards } from './Viewer'
 import { canvasRegionAssets, canvasTheme, notePart } from './pictureAdapter'
-import { contentBox } from './core/scene'
+import { centredLabel, contentBox } from './core/scene'
 import { bounds, type CanvasGraph } from './core/model'
 import {
   paintCanvas,
@@ -106,6 +106,7 @@ class LiveCards implements ViewerCards {
         height: `${frame.height}px`,
         transform: `translate(${(frame.x - camera.x) * camera.zoom}px, ${(frame.y - camera.y) * camera.zoom}px) scale(${camera.zoom})`,
       })
+      card.body?.toggleClass('abele-canvas-card_centred', centredLabel(node))
       card.body?.setCssStyles({
         width: `${box.width}px`,
         height: `${box.height}px`,

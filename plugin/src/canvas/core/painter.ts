@@ -16,6 +16,7 @@ import {
 } from './model'
 import { lintCanvas, type CanvasWarning } from './lint'
 import {
+  centredLabel,
   contentBox,
   paintedRoute,
   routeEdge,
@@ -428,13 +429,15 @@ export function paintCanvas(
     ctx.clip()
     const text = assets.contents?.get(node.id) ?? labelOf(node),
       lines = text ? textLines(text, box.width, metrics) : []
-    let y = box.y
+    const centred = centredLabel(node)
+    const tall = lines.reduce((n, l) => n + l.size * theme.lineHeight, 0)
+    let y = centred ? box.y + Math.max(0, (box.height - tall) / 2) : box.y
     ctx.fillStyle = theme.text
     ctx.textBaseline = 'alphabetic'
     for (const line of lines) {
       ctx.font = `${line.bold ? '600 ' : ''}${line.size}px ${theme.font}`
       const x =
-        node.textAlign === 'center'
+        centred || node.textAlign === 'center'
           ? box.x + (box.width - line.width) / 2
           : node.textAlign === 'right'
             ? box.x + box.width - line.width

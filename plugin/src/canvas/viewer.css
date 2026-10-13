@@ -110,6 +110,13 @@
   line-height: var(--line-height-normal);
   color: var(--text-normal);
 }
+/* A drawn shape's words stand in its middle, as a label does in a diagram. */
+.abele-canvas-card.abele-canvas-card_centred {
+  display: flex;
+  flex-direction: column;
+  justify-content: center;
+  text-align: center;
+}
 .abele-canvas-card > :first-child {
   margin-top: 0;
 }

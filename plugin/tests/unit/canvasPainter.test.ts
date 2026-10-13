@@ -165,6 +165,28 @@ describe('the shared canvas picture plan', () => {
     ]).graph
     expect(lintCanvas(fitText(graph)).filter((w) => w.code === 'clipped-text')).toEqual([])
   })
+  it.each([
+    ['diamond', 'Water on Mondays?', 110],
+    ['pill', '**Water**\n400 ml a plant', 90],
+    ['circle', 'Water on Mondays?', 110],
+  ])('leaves a %s of an ordinary size room for its label', (shape, text, height) => {
+    const graph = {
+      nodes: [
+        {
+          id: 'sample',
+          type: 'text' as const,
+          text,
+          x: 0,
+          y: 0,
+          width: 240,
+          height,
+          styleAttributes: { shape },
+        },
+      ],
+      edges: [],
+    }
+    expect(lintCanvas(graph).filter((w) => w.code === 'clipped-text')).toEqual([])
+  })
   it('fits labels during layout without mutating or resizing a kept node', () => {
     const graph = editCanvas(emptyCanvas(), [
       {
@@ -228,7 +250,7 @@ describe('the shared canvas picture plan', () => {
     const box = contentBox(graph.nodes[0]),
       radius = 80
     expect((box.x - radius) ** 2 + (box.y - radius) ** 2).toBeLessThanOrEqual(radius ** 2)
-    graph.nodes[0].width = 20
+    graph.nodes[0].width = 12
     graph.nodes[0].text = '😀' // One line fits vertically, but its glyph is wider than the content box.
     expect(lintCanvas(graph).some((w) => w.code === 'clipped-text')).toBe(true)
   })
