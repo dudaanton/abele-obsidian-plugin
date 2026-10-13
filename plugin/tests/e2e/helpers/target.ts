@@ -35,6 +35,49 @@ export const interimRun = (): boolean => process.env.ABELE_E2E_INTERIM === '1'
 export const requested = (variable: string): boolean => process.env[variable] === '1'
 
 /**
+ * Files whose emulated phone checks something the real-phone run of the same file does not
+ * (a desktop-only probe, a width the phone cannot take, a case skipped on the phone): they keep
+ * their emulated pass even when the batch runs the real phone too.
+ */
+const EMULATION_ONLY = new Set([
+  'bookLibraryScript',
+  'bookOverlayReflow',
+  'footerTaskClick',
+  'githubNotifications',
+  'taskTimelineScroll',
+])
+
+/**
+ * Whether the phone layout this desktop file is about to emulate is checked anyway by the real
+ * phone in the same batch (`ABELE_E2E_REAL_PHONE=1`, set by a batch that runs the phone tier):
+ * the file runs on the phone too and repeats there what it emulates here.
+ */
+export function emulationCovered(
+  testPath: string | undefined,
+  source: string,
+  env: Record<string, string | undefined> = process.env
+): boolean {
+  if (env.ABELE_E2E_REAL_PHONE !== '1' || !testPath) return false
+  const name = testPath
+    .split('/')
+    .pop()!
+    .replace(/\.e2e\.test\.ts$/, '')
+  return !EMULATION_ONLY.has(name) && declaredTargets(source).includes('phone')
+}
+
+/**
+ * Thrown where a desktop file would enter the emulated phone that the real phone covers in the
+ * same batch (`emulationCovered`). The case, or the part whose setup threw it, is reported
+ * skipped, with this as the reason.
+ */
+export class EmulationCoveredError extends Error {
+  constructor() {
+    super('skipped: the real phone checks this layout in the same batch')
+    this.name = 'EmulationCoveredError'
+  }
+}
+
+/**
  * Thrown by a helper that exists only on the desktop — the DevTools protocol, Electron's
  * windows, the CLI's console capture — when it is asked for on a phone. The e2e setup turns a
  * test that fails with nothing but this into a skip, naming what it needed, so a phone run

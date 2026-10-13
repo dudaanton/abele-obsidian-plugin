@@ -25,7 +25,8 @@ import { tmpdir, homedir } from 'node:os'
 import { randomBytes } from 'node:crypto'
 import { fileURLToPath } from 'node:url'
 import { dirname, join } from 'node:path'
-import { onPhone, desktopOnly } from './target'
+import { onPhone, desktopOnly, emulationCovered, EmulationCoveredError } from './target'
+import { expect } from 'vitest'
 import { phoneEval, installPhoneHost, assertPhoneTransport } from './phone'
 import { confirmReload, type ReloadWitness } from './reloadWitness'
 
@@ -807,9 +808,24 @@ export async function reloadApp(
   if (entry) return enterPhone(Number(entry[1]), Number(entry[2]))
   if (onPhone()) return reloadPhone()
   const asked = /emulateMobile\((true|false)\)/.exec(how)?.[1]
+  if (asked === 'true') skipCoveredEmulation()
+  // Leaving a phone this file never entered: nothing to reload.
+  if (asked === 'false' && emulationSkipped && !evalJsonIdempotent<boolean>('app.isMobile')) return
   if (asked === 'true') rememberDesktop()
   await reloadWindow(asked, launch)
   if (asked === 'false') putDesktopBack()
+}
+
+let emulationSkipped = false
+let fileSource: [string, string] | undefined
+
+/** Skips entering the emulated phone where the real phone in this batch checks the same. */
+function skipCoveredEmulation(): void {
+  const path = expect.getState().testPath
+  if (path && fileSource?.[0] !== path) fileSource = [path, readFileSync(path, 'utf8')]
+  if (!emulationCovered(path, fileSource?.[1] ?? '')) return
+  emulationSkipped = true
+  throw new EmulationCoveredError()
 }
 
 /**
@@ -823,6 +839,7 @@ export async function reloadApp(
  */
 export async function enterPhone(width = 390, height = 844): Promise<void> {
   if (onPhone()) return reloadPhone()
+  skipCoveredEmulation()
   rememberDesktop()
   setContentSize(width, height)
   await reloadWindow('true')

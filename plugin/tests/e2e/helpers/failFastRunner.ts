@@ -74,6 +74,12 @@ export default class FailFastRunner extends TestRunner {
   }
 
   async onAfterRunSuite(suite: Suite): Promise<void> {
+    // A part whose setup found its emulated phone covered by the real one is skipped, not failed.
+    const errors = suite.result?.errors ?? []
+    if (errors.length && errors.every((e) => e.name === 'EmulationCoveredError')) {
+      suite.result!.state = 'skip'
+      suite.result!.errors = undefined
+    }
     this.broken ??= failedSetup(suite as RunTask, false)
     await super.onAfterRunSuite(suite)
   }

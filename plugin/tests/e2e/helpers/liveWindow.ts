@@ -33,6 +33,9 @@ import {
   type SavedRootViews,
 } from './savedRootViews'
 
+/** Failures that mean "not checked here", reported as skips: see `target.ts`. */
+const SKIPS = ['DesktopOnlyError', 'EmulationCoveredError']
+
 let rootViews: RootView[] | undefined
 let savedRootViews: SavedRootViews | undefined
 
@@ -111,7 +114,7 @@ afterAll(async () => {
 beforeEach(() => {
   onTestFailed(({ task }) => {
     const errors = task.result?.errors ?? []
-    if (!errors.length || !errors.every((e) => e?.name === 'DesktopOnlyError')) return
+    if (!errors.length || !errors.every((e) => SKIPS.includes(e?.name ?? ''))) return
     // The runner reports a result in this state as skipped, `note` as the reason.
     const result = task.result as NonNullable<typeof task.result> & { note?: string }
     result.state = 'skip'
