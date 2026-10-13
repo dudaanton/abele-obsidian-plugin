@@ -1147,14 +1147,14 @@ const probeScript = `(async () => {
     // gives that page a masked field; a dozen named secrets make the page long enough for the
     // Secrets introduction to scroll under the native title. Both are put back as they were.
     const aiConfig = window.__abeleTest.AbeleConfig.getInstance().ai
-    const heldAi = { brave: aiConfig.braveSearchApiKey, secrets: aiConfig.secrets }
-    const aiTrail = []
-    const aiMark = (at) => { const now = window.__abeleTest.AbeleConfig.getInstance().ai; aiTrail.push(at + ':' + now.enabled + (now === aiConfig ? '' : ' replaced')) }
-    aiMark('before')
+    // The agent's pages show only its switch while it is off, so the probe turns it on itself
+    // rather than trusting whatever the shared test vault was left with.
+    const heldAi = { enabled: aiConfig.enabled, brave: aiConfig.braveSearchApiKey, secrets: aiConfig.secrets }
     FAKE_KEYS['abele-brave-search'] = 'fake-probe-value-4'
     const held = {}
     for (const id of Object.keys(FAKE_KEYS)) held[id] = keychain.getSecret(id)
     try {
+      aiConfig.enabled = true
       aiConfig.braveSearchApiKey = 'abele-brave-search'
       aiConfig.secrets = [
         ...(heldAi.secrets || []),
@@ -1162,9 +1162,7 @@ const probeScript = `(async () => {
           id: 'phone-probe-secret-' + i, name: 'Sample secret ' + i, keyId: 'phone-probe-secret-' + i, allowedOrigins: [],
         })),
       ]
-      aiMark('seeded')
       for (const [id, value] of Object.entries(FAKE_KEYS)) keychain.setSecret(id, value)
-      aiMark('keys set')
       window.__abeleTest.openSecretsList()
       if (await until(() => document.querySelector('.modal .abele-secrets-list .abele-card'), 5000)) {
         await wait(300)
@@ -1185,11 +1183,9 @@ const probeScript = `(async () => {
 
       // The settings pages whose fields hold keys, as a phone shows them: each stored key
       // masked with its show and copy icons beside it, the first one shown in full.
-      aiMark('list closed')
       app.setting.open()
       app.setting.openTabById('abele')
       await until(() => document.querySelector('.abele-settings__nav .abele-tabs__tab'), 5000)
-      aiMark('settings open')
       const PAGES = [['settings ai keys', 'AI Agent'], ['settings finance keys', 'Finance']]
       for (const [label, page] of PAGES) {
         const tab = [...document.querySelectorAll('.abele-settings__nav .abele-tabs__tab')].find(
@@ -1221,7 +1217,7 @@ const probeScript = `(async () => {
             report['settings ai secrets scroll'].introTop = introTop
             report['settings ai secrets scroll'].headerBottom = headerBottom
           } else {
-            report['settings ai secrets scroll'] = { over: [], scrollers: [], capped: [], stranded: [], clipped: [], fill: 0, shot: '', error: 'no Secrets introduction or native settings header: ' + JSON.stringify({ intro: !!intro, header: !!header, scroll: !!settingsScroll, modals: [...document.querySelectorAll('.modal')].map((m) => m.className + ' ' + (m.querySelector('.modal-title, .modal-header')?.textContent || '').trim().slice(0, 40)), ai: !!document.querySelector('.abele-settings__ai'), trail: aiTrail.concat('page:' + window.__abeleTest.AbeleConfig.getInstance().ai.enabled), headings: [...document.querySelectorAll('.abele-section__heading')].map((h) => h.textContent.trim()).slice(0, 12), page: (settingsScroll?.textContent || '').trim().slice(0, 300) }) }
+            report['settings ai secrets scroll'] = { over: [], scrollers: [], capped: [], stranded: [], clipped: [], fill: 0, shot: '', error: 'no Secrets introduction or native settings header: ' + JSON.stringify({ intro: !!intro, header: !!header, scroll: !!settingsScroll, modals: [...document.querySelectorAll('.modal')].map((m) => m.className + ' ' + (m.querySelector('.modal-title, .modal-header')?.textContent || '').trim().slice(0, 40)), ai: !!document.querySelector('.abele-settings__ai'), headings: [...document.querySelectorAll('.abele-section__heading')].map((h) => h.textContent.trim()).slice(0, 12), page: (settingsScroll?.textContent || '').trim().slice(0, 300) }) }
           }
           ;[...document.querySelectorAll('.abele-ai-settings__tabs .abele-tabs__tab')]
             .find(tab => tab.textContent.trim() === 'Models')?.click()
@@ -1301,6 +1297,7 @@ const probeScript = `(async () => {
       }
       app.setting.close()
     } finally {
+      aiConfig.enabled = heldAi.enabled
       aiConfig.braveSearchApiKey = heldAi.brave
       aiConfig.secrets = heldAi.secrets
       for (const [id, value] of Object.entries(held)) {
