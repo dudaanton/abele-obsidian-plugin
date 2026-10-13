@@ -172,8 +172,10 @@ export async function setWindowSize(vault: VaultCli, width: number, height: numb
 }
 
 /**
- * Sizes the window for a phone or a desktop, and reloads it only when it has to change from one
- * to the other: between two phone widths, or two desktop ones, the app follows a resize.
+ * Sizes the window for a phone or a desktop, and reloads it only when it has to: when it changes
+ * from one to the other, or to another phone width — the phone layout does not follow a resize
+ * the way a desktop does (a 390 sheet resized to 320 left a dialog's buttons covered). Between
+ * two desktop sizes the app follows the resize.
  */
 export async function showAs(
   vault: VaultCli,
@@ -181,7 +183,9 @@ export async function showAs(
   height: number,
   mobile = width < 500
 ): Promise<void> {
+  const [wasMobile, wasWidth] = JSON.parse(
+    vault.evalRaw('JSON.stringify([!!app.isMobile, innerWidth])', 20_000)
+  ) as [boolean, number]
   await setWindowSize(vault, width, height)
-  if ((vault.evalRaw('String(!!app.isMobile)', 20_000) === 'true') !== mobile)
-    await reloadAs(vault, mobile)
+  if (wasMobile !== mobile || (mobile && wasWidth !== width)) await reloadAs(vault, mobile)
 }
