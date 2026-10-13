@@ -79,10 +79,6 @@
   .abele-gallery__grid--column .abele-gallery__image {
     max-height: 15em;
   }
-
-  .abele-gallery__masonry {
-    columns: 2;
-  }
 }
 
 .abele-gallery__image {
@@ -117,6 +113,13 @@ img.abele-gallery__image {
 
   .abele-gallery__image-error {
     aspect-ratio: 1;
+  }
+}
+
+// Keep the narrow override after the base rule so it wins at equal specificity.
+@container (max-width: 30em) {
+  .abele-gallery__masonry {
+    columns: 2;
   }
 }
 
