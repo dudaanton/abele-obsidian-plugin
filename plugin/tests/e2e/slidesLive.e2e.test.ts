@@ -76,7 +76,7 @@ afterAll(async () => {
     for(const leaf of app.workspace.getLeavesOfType('abele-deck'))if(leaf.view.file?.path===${JSON.stringify(PATH)})leaf.detach()
     const file=app.vault.getAbstractFileByPath(${JSON.stringify(PATH)});if(window.__slidesLiveOwnedDeck&&file)await app.vault.delete(file)
     const script=app.vault.getAbstractFileByPath(${JSON.stringify(scriptPath)});if(window.__slidesLiveOwnedScript&&script)await app.vault.delete(script)
-    const folder=app.vault.getAbstractFileByPath('Sample live slide scripts');if(window.__slidesLiveOwnedFolder && folder && !folder.children.length)await app.vault.delete(folder)
+    const folder=app.vault.getAbstractFileByPath('Sample live slide scripts');if(window.__slidesLiveOwnedFolder && folder && !folder.children.length)await app.vault.delete(folder,true)
     await app.workspace.changeLayout(${JSON.stringify(layout)})
     if (!${onPhone()}) {
       const win = require('@electron/remote').getCurrentWindow()

@@ -39,6 +39,7 @@ describe.skipIf(!available)('replacement preview paging in Bases', () => {
         count: string
         rows: number
         last: string
+        lastPath: string
         shot: boolean
       }>(`(async () => {
         ${WAIT_PRELUDE}
@@ -69,11 +70,13 @@ describe.skipIf(!available)('replacement preview paging in Bases', () => {
         await new Promise((resolve) => requestAnimationFrame(() => requestAnimationFrame(resolve)))
         const image = await require('@electron/remote').getCurrentWebContents().capturePage()
         require('fs').writeFileSync(${JSON.stringify(SHOTS + (phone ? '/phone.png' : '/desktop.png'))}, image.resize({ width: ${phone ? 390 : 1280} }).toPNG())
-        return { count: root.querySelector('.abele-far-bases__count').textContent.trim(), rows: rowCount(), last: root.querySelectorAll('.abele-far-bases__result a')[62].textContent, shot: !image.isEmpty() }
+        return { count: root.querySelector('.abele-far-bases__count').textContent.trim(), rows: rowCount(), last: root.querySelectorAll('.abele-far-bases__result a')[62].textContent, lastPath: root.querySelectorAll('.abele-far-bases__result a')[62].title, shot: !image.isEmpty() }
       })()`)
       expect(report.count).toBe('63 notes would change')
       expect(report.rows).toBe(63)
-      expect(report.last).toContain('sample-62.md')
+      // A row names the note without its extension and keeps the whole path in its tooltip.
+      expect(report.last).toBe('sample-62')
+      expect(report.lastPath).toMatch(/(^|\/)sample-62\.md$/)
       expect(report.shot).toBe(true)
     })
   }
