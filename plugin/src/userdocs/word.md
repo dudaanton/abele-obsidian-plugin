@@ -70,7 +70,7 @@ selected text stays in the top-left cell when merging; after splitting it stays 
 You can add a blank row below or delete a row. Split a vertical merge before editing its rows.
 Nested, irregular or protected tables are read-only rather than silently simplified.
 
-Open **Image controls** beside a picture, or the picture icon in the ribbon. In the controls,
+Select a picture on the page, then open the controls from the ribbon, or use the picture icon in the ribbon. In the controls,
 select its image number to replace, resize or delete it. To insert one,
 choose a vault image path and its width and height in pixels. The path field suggests vault files.
 PNG, JPEG, GIF and WebP files up to 10 MB are supported. The image is embedded in the Word file;

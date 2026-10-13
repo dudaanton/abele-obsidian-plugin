@@ -28,14 +28,17 @@
               @input="emit('input', $event)"
               @select="emit('select', $event)"
             />
-            <figure v-for="image in p.images" :key="image.number" class="abele-word-page__image">
+            <figure
+              v-for="image in p.images"
+              :key="image.number"
+              class="abele-word-page__image"
+              :tabindex="readOnly ? undefined : 0"
+              :aria-label="`Select picture paragraph ${p.number}`"
+              @click="emit('picture', p.number)"
+              @keydown.enter.prevent="emit('picture', p.number)"
+              @keydown.space.prevent="emit('picture', p.number)"
+            >
               <img :src="image.src" :alt="image.alt" :width="image.width" :height="image.height" />
-              <Icon
-                v-if="!readOnly"
-                icon="settings-2"
-                tooltip="Image controls"
-                @click="emit('advanced', p.number)"
-              />
             </figure>
             <WordPageTable
               v-for="nested in p.afterTables"
@@ -53,7 +56,6 @@
 
 <script setup lang="ts">
 import { computed } from 'vue'
-import Icon from '@/components/obsidian/Icon.vue'
 import WordPageLine from './WordPageLine.vue'
 import { tableCells, type WordPageParagraph, type WordPageTable } from './pageModel'
 const props = defineProps<{
@@ -69,7 +71,7 @@ const emit = defineEmits<{
   leave: []
   input: [text: string]
   select: [range: { from: number; to: number }]
-  advanced: [paragraph: number]
+  picture: [paragraph: number]
 }>()
 const shared = computed(() => ({
   markers: props.markers,
@@ -83,6 +85,6 @@ const forward = {
   leave: () => emit('leave'),
   input: (text: string) => emit('input', text),
   select: (range: { from: number; to: number }) => emit('select', range),
-  advanced: (paragraph: number) => emit('advanced', paragraph),
+  picture: (paragraph: number) => emit('picture', paragraph),
 }
 </script>

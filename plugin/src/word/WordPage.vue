@@ -13,7 +13,7 @@
         class="abele-word-page__style"
         :model-value="current?.style ?? normalStyle?.id ?? ''"
         :options="styleOptions"
-        :disabled="!current"
+        :disabled="!writable"
         aria-label="Paragraph style"
         @update:model-value="setStyle"
       />
@@ -23,7 +23,7 @@
         :key="mark.mark"
         :icon="mark.icon"
         :tooltip="`${mark.label} (${mark.keys})`"
-        :disabled="!current"
+        :disabled="!writable"
         :active="!!current && markOn(mark.mark)"
         @click="toggleMark(mark.mark)"
       />
@@ -31,19 +31,19 @@
       <Icon
         icon="list"
         tooltip="Bulleted list"
-        :disabled="!current"
+        :disabled="!writable"
         :active="current?.list === 'bullet'"
         @click="setList('bullet')"
       />
       <Icon
         icon="list-ordered"
         tooltip="Numbered list"
-        :disabled="!current"
+        :disabled="!writable"
         :active="current?.list === 'decimal'"
         @click="setList('decimal')"
       />
       <span class="abele-word-page__sep" aria-hidden="true" />
-      <Icon icon="link" tooltip="Link the selected words" :disabled="!current" @click="addLink" />
+      <Icon icon="link" tooltip="Link the selected words" :disabled="!writable" @click="addLink" />
       <Icon
         icon="image-plus"
         tooltip="Insert a picture after this paragraph"
@@ -54,13 +54,13 @@
       <Icon
         icon="between-horizontal-end"
         tooltip="Add a paragraph below"
-        :disabled="!current"
+        :disabled="!writable"
         @click="addBelow"
       />
       <Icon
         icon="trash-2"
         tooltip="Delete this paragraph"
-        :disabled="!current"
+        :disabled="!writable"
         @click="deleteCurrent"
       />
       <Icon
@@ -78,15 +78,13 @@
           <figure
             v-if="block.kind === 'image'"
             class="abele-word-page__image"
-            @dblclick="!model.readOnly && emit('advanced', block.paragraph)"
+            :tabindex="model.readOnly ? undefined : 0"
+            :aria-label="`Select picture paragraph ${block.paragraph}`"
+            @click="selectPicture(block.paragraph)"
+            @keydown.enter.prevent="selectPicture(block.paragraph)"
+            @keydown.space.prevent="selectPicture(block.paragraph)"
           >
             <img :src="block.src" :alt="block.alt" :width="block.width" :height="block.height" />
-            <Icon
-              v-if="!model.readOnly"
-              icon="settings-2"
-              tooltip="Image controls"
-              @click="emit('advanced', block.paragraph)"
-            />
           </figure>
           <WordPageTable
             v-else-if="block.kind === 'table'"
@@ -100,7 +98,7 @@
             @leave="leave"
             @input="draft = $event"
             @select="selection = $event"
-            @advanced="emit('advanced', $event)"
+            @picture="selectPicture"
           />
           <WordPageLine
             v-else
@@ -231,6 +229,7 @@ const markers = computed(() => {
 })
 
 const editing = ref<number | null>(null)
+const selected = ref<number | null>(null)
 const draft = ref('')
 const baseline = ref('')
 const pendingDrafts = reactive(new Map<number, string>())
@@ -243,6 +242,7 @@ watch(
       const p = first && paragraphs.value.find((p) => p.number === first[0])
       if (p) {
         editing.value = p.number
+        selected.value = p.number
         draft.value = pendingDrafts.get(p.number)!
         baseline.value = paragraphText(p)
       }
@@ -254,8 +254,9 @@ watch(
   }
 )
 const selection = ref<{ from: number; to: number }>({ from: 0, to: 0 })
-const current = computed(() => paragraphs.value.find((p) => p.number === editing.value) ?? null)
-const position = computed(() => paragraphs.value.findIndex((p) => p.number === editing.value) + 1)
+const current = computed(() => paragraphs.value.find((p) => p.number === selected.value) ?? null)
+const writable = computed(() => !!current.value && !current.value.locked)
+const position = computed(() => paragraphs.value.findIndex((p) => p.number === selected.value) + 1)
 
 const normalStyle = computed(() =>
   props.model.styles.find(
@@ -286,13 +287,13 @@ const keepFocus = (e: MouseEvent) => {
 
 const base = (operation: WordPageEdit['operation']): WordPageEdit => ({
   operation,
-  paragraph: editing.value ?? 0,
+  paragraph: selected.value ?? 0,
 })
 
 /** What was typed goes in as one replacement of the paragraph's text, before anything else. */
 const flush = () => {
   const p = current.value
-  if (!p || draft.value === baseline.value) return
+  if (editing.value === null || !p || draft.value === baseline.value) return
   pendingDrafts.set(p.number, draft.value)
   emit('edit', paragraphTextEdit({ number: p.number, text: baseline.value }, draft.value))
   baseline.value = draft.value
@@ -302,6 +303,7 @@ const open = (p: WordPageParagraph) => {
   if (props.model.readOnly || p.locked) return
   if (editing.value !== null && editing.value !== p.number) flush()
   editing.value = p.number
+  selected.value = p.number
   emit('context', p.number)
   draft.value = pendingDrafts.get(p.number) ?? paragraphText(p)
   baseline.value = props.save.state === 'failed' ? paragraphText(p) : draft.value
@@ -313,6 +315,18 @@ const leave = () => {
   editing.value = null
 }
 
+const selectPicture = (number: number) => {
+  if (props.model.readOnly) return
+  const p = paragraphs.value.find((p) => p.number === number)
+  if (!p) return
+  leave()
+  selected.value = number
+  draft.value = paragraphText(p)
+  baseline.value = draft.value
+  selection.value = { from: 0, to: 0 }
+  emit('context', number)
+}
+
 const range = () =>
   selection.value.to > selection.value.from ? selection.value : { from: 0, to: draft.value.length }
 
@@ -322,26 +336,26 @@ const markOn = (mark: WordMark) => {
 }
 
 const toggleMark = (mark: WordMark) => {
-  if (!current.value) return
+  if (!writable.value) return
   flush()
   const { from, to } = range()
   emit('edit', { ...base('format'), format: mark, from, to, enabled: !markOn(mark) })
 }
 
 const setStyle = (style: string) => {
-  if (!current.value) return
+  if (!writable.value) return
   flush()
   emit('edit', { ...base('style'), style_id: style })
 }
 
 const setList = (list: 'bullet' | 'decimal') => {
-  if (!current.value) return
+  if (!current.value || !writable.value) return
   flush()
   emit('edit', { ...base('list'), list: current.value.list === list ? 'none' : list })
 }
 
 const addLink = () => {
-  if (!current.value) return
+  if (!writable.value) return
   flush()
   const { from, to } = range()
   emit('pickLink', { ...base('link'), from, to })
@@ -363,16 +377,18 @@ const advanced = () => {
 }
 
 const addBelow = () => {
-  if (!current.value) return
+  if (!writable.value) return
   flush()
   emit('edit', { ...base('paragraph_add'), text: '' })
   editing.value = null
+  selected.value = null
 }
 
 const deleteCurrent = () => {
-  if (!current.value) return
+  if (!writable.value) return
   emit('edit', base('paragraph_delete'))
   editing.value = null
+  selected.value = null
 }
 
 /** Keys as Word has them: Enter splits, Backspace on an empty paragraph removes it, Esc leaves. */
@@ -386,6 +402,7 @@ const onKeys = (e: KeyboardEvent) => {
     flush()
     emit('edit', { ...base('paragraph_split'), offset: selection.value.from })
     editing.value = null
+    selected.value = null
   } else if (e.key === 'Backspace' && draft.value === '' && current.value) {
     e.preventDefault()
     deleteCurrent()
