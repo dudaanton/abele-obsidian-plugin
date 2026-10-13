@@ -93,7 +93,7 @@ const probe = `(async () => {
           : '.abele-task-view input.task-list-item-checkbox')
         await until(control, 'completion control')
         if (surface === 'card') {
-          await until(() => leaf.view.containerEl.querySelector('.abele-task-view__content')?.textContent.includes(title), 'card title')
+          await until(() => leaf.view.containerEl.querySelector('.abele-task-view__title')?.textContent.includes(title), 'card title')
         }
         await shoot(surface + '-' + rule + '-before')
         const now = new Date()

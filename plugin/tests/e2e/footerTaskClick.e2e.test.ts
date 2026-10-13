@@ -191,7 +191,7 @@ const script = `(async () => {
         }, typing)
       const expand = (at, typing) =>
         measure(at, (row) => ({
-          target: row.querySelector('.abele-task-view__more') ?? undefined,
+          target: row.querySelector('.abele-entry-row__more') ?? undefined,
           settled: () => !!row.querySelector('.abele-task-view__description'),
         }), typing)
       out.tick = await tick(false)

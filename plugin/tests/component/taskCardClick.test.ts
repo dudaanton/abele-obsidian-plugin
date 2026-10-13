@@ -25,7 +25,12 @@ const render = () => {
   const task = new Task({ wikilink: '[[Tasks/Sample card]]' })
   task.loaded = true
   task.title = 'Sample card'
-  view = mount(TaskCard, { props: { task }, shallow: true, attachTo: document.body })
+  view = mount(TaskCard, {
+    props: { task },
+    shallow: true,
+    attachTo: document.body,
+    global: { stubs: { EntryRow: false } },
+  })
   return view
 }
 
@@ -46,19 +51,19 @@ describe('task card — click', () => {
 
   it('opens the task', async () => {
     const card = render()
-    await card.find('.abele-task-view__content').trigger('click')
+    await card.find('.abele-entry-row__body').trigger('click')
     expect(opened).toHaveLength(1)
   })
 
   it('does not open it when the click ends a selection of its words', async () => {
     const card = render()
-    const content = card.find('.abele-task-view__content').element
+    const content = card.find('.abele-entry-row__body').element
     content.appendChild(document.createTextNode('Words to select'))
     const range = document.createRange()
     range.selectNodeContents(content)
     document.getSelection()!.addRange(range)
 
-    await card.find('.abele-task-view__content').trigger('click')
+    await card.find('.abele-entry-row__body').trigger('click')
     expect(opened).toHaveLength(0)
   })
 
@@ -70,7 +75,7 @@ describe('task card — click', () => {
     range.selectNodeContents(elsewhere)
     document.getSelection()!.addRange(range)
 
-    await card.find('.abele-task-view__content').trigger('click')
+    await card.find('.abele-entry-row__body').trigger('click')
     expect(opened).toHaveLength(1)
     elsewhere.remove()
   })

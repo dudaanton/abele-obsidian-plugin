@@ -153,7 +153,7 @@ const script = `(async () => {
     }
     rowNamed(${OPENED}).scrollIntoView({ block: 'center' })
     await wait(800)
-    const opener = rowNamed(${OPENED}).querySelector('.abele-task-view__more')
+    const opener = rowNamed(${OPENED}).querySelector('.abele-entry-row__more')
     opener.click()
     if (!(await until(() => rowNamed(${OPENED})?.querySelector('.abele-task-view__description'), 5000)))
       throw new Error('the task never opened')

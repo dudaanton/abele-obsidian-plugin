@@ -54,10 +54,10 @@ function viewDouble() {
     <div class="abele-timeline__date-block" data-abele-anchor="date:2030-01-01">
       <div class="timeline__date abele-markdown"><a data-href="2030-01-01">Sample date</a></div>
       <div class="abele-task-view" data-abele-anchor="task:Sample folder/Sample item.md">
-        <div class="abele-task-view__content"><div class="abele-markdown">Sample item</div></div>
+        <div class="abele-entry-row__body"><div class="abele-task-view__title"><div class="abele-markdown">Sample item</div></div></div>
       </div>
       <div class="abele-task-view" data-abele-anchor="task:Sample folder/Sample archive.md">
-        <div class="abele-task-view__content"><div class="abele-markdown">Sample archive</div></div>
+        <div class="abele-entry-row__body"><div class="abele-task-view__title"><div class="abele-markdown">Sample archive</div></div></div>
       </div>
     </div>
   </div>`
