@@ -345,6 +345,9 @@
 .abele-slide-title h1 {
   font-size: 2.9em;
   line-height: 1.04;
+  /* Large theme-font glyphs can extend beyond this tight line box; keep their paint inside
+     the heading's measured box without changing the spacing between title lines. */
+  padding-block: 0.1em;
   max-width: 13em;
 }
 
