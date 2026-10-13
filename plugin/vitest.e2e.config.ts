@@ -35,6 +35,8 @@ export default defineConfig({
     include: ['tests/e2e/**/*.test.ts'],
     exclude: [...configDefaults.exclude, ...notForThisTarget],
     setupFiles: ['tests/e2e/helpers/liveWindow.ts'],
+    // A file whose setup failed is not run on against an app in an unknown state.
+    runner: './tests/e2e/helpers/failFastRunner.ts',
     globalSetup: ['tests/e2e/helpers/globalSetup.ts'],
     testTimeout: 180_000,
     hookTimeout: 180_000,
