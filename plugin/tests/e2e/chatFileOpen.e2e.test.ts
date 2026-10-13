@@ -149,9 +149,13 @@ const script = `(async () => {
   const explorerRow = async (chat) => {
     const explorer = app.workspace.getLeavesOfType('file-explorer')[0]
     if (explorer?.loadIfDeferred) await explorer.loadIfDeferred()
-    // Awaited: it ends by making the explorer the active leaf, and left running it did that at
-    // some moment of the road or other, which decided what the road saw as active.
+    // The reveal ends by making the explorer the active leaf — on the frame after its promise
+    // resolves. Left to land after the note below was focused, it made the explorer active in the
+    // same millisecond as the note: the press then found the explorer active already and did not
+    // stamp it again, the two tied, and the note won. So the reveal is let finish first.
     await app.internalPlugins.getPluginById('file-explorer').instance.revealInFolder(chat)
+    await until(() => app.workspace.activeLeaf === explorer, 2000)
+    await new Promise((r) => requestAnimationFrame(() => requestAnimationFrame(r)))
     app.workspace.setActiveLeaf(middle(), { focus: true })
     const found = await until(() => document.querySelector('.nav-file-title[data-path="' + chatPath + '"]'))
     if (!found) throw new Error('no explorer row for the chat')
@@ -159,6 +163,9 @@ const script = `(async () => {
     // active last is read from those stamps: a press in the same millisecond as the note's focus
     // tied with it, and the note won. No hand presses that fast.
     await wait(50)
+    // The press is what takes the focus from the note, as a hand's does.
+    if (app.workspace.activeLeaf !== middle())
+      throw new Error('the note lost the focus before the press, to ' + describeLeaf(app.workspace.activeLeaf))
     return document.querySelector('.nav-file-title[data-path="' + chatPath + '"]')
   }
   // Pressed the way a pointer presses: the press makes the explorer the active leaf, as a real
@@ -230,28 +237,7 @@ const script = `(async () => {
     await storage.refreshHistory()
 
     await tryRoad('explorer', 'source', async () => press(await explorerRow(chat)))
-    {
-      const trace = []
-      const ws = app.workspace
-      const orig = ws.setActiveLeaf
-      const t0 = Date.now()
-      ws.setActiveLeaf = function (leaf, ...rest) {
-        trace.push({ t: Date.now() - t0, set: describeLeaf(leaf), opts: JSON.stringify(rest), stack: (new Error().stack || '').split('\\n').slice(2, 7).map(s => s.trim()).join(' | ') })
-        return orig.call(this, leaf, ...rest)
-      }
-      const ref = ws.on('active-leaf-change', (l) => trace.push({ t: Date.now() - t0, change: describeLeaf(l) }))
-      const times = () => { const o = {}; ws.iterateAllLeaves((l) => { o[describeLeaf(l) + '#' + (l.id || '')] = (l.activeTime || 0) - t0 }); return o }
-      await tryRoad('explorerNewTab', 'source', async () => {
-        const row = await explorerRow(chat)
-        trace.push({ before: times(), focus: document.activeElement?.className, hasFocus: document.hasFocus() })
-        press(row, mod)
-        trace.push({ afterPress: times(), active: describeLeaf(ws.activeLeaf) })
-      })
-      trace.push({ end: times() })
-      ws.setActiveLeaf = orig
-      ws.offref(ref)
-      report.trace = trace
-    }
+    await tryRoad('explorerNewTab', 'source', async () => press(await explorerRow(chat), mod))
     await tryRoad('link', 'preview', async () => (await noteLink()).click())
     await tryRoad('selectionLink', 'preview', async () => (await noteLink(1)).click())
     await tryRoad('linkNewTab', 'preview', async () =>
@@ -324,7 +310,6 @@ describe.skipIf(!available)('opening a chat file the ways Obsidian opens files, 
   }, 135_000)
 
   it('runs to the end', () => {
-    console.info('TRACE ' + JSON.stringify((report as Record<string, unknown>).trace, null, 1))
     expect(report.error ?? '').toBe('')
   })
 
