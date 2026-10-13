@@ -14,8 +14,8 @@ describe('independent tree disclosure', () => {
     expect(row.emitted('click')).toHaveLength(1)
     row.unmount()
   })
-  it.fails.each(['disabled', 'plain'] as const)(
-    'BUG: does not fold an inert %s row',
+  it.each(['disabled', 'plain'] as const)(
+    'does not fold an inert %s row',
     async (mode) => {
       const row = mount(TreeItem, {
         props: { text: 'Sample question', collapsible: true, foldApart: true, [mode]: true },
