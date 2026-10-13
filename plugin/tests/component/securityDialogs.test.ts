@@ -202,7 +202,7 @@ describe('security dialogs share the scrolling body and pinned actions', () => {
       }
       expect(document.querySelector('.modal.abele-modal')).not.toBeNull()
       expect(document.querySelector('.abele-modal__body')!.textContent).toContain(
-        'Key values are never shown here.'
+        'they are never shown here.'
       )
       expect(buttons(document.querySelector('.abele-modal__body')!)).toEqual([])
       expect(buttons(footer()).map((b) => b.textContent)).toEqual([
@@ -229,6 +229,33 @@ describe('security dialogs share the scrolling body and pinned actions', () => {
     click('Cancel')
     await rejected
     expect(state.allowSecret).not.toHaveBeenCalled()
+  })
+
+  it('keeps one visible failure after repeated permission-save errors and allows cancelling', async () => {
+    state.allowSecret.mockImplementation(() => {
+      throw new Error('Sample persistence failure')
+    })
+    const approval = approveScriptKeyRequest(request)
+    const rejected = expect(approval).rejects.toThrow('Saved-key request was not approved')
+    try {
+      for (let attempt = 0; attempt < 2; attempt++) {
+        click('Allow address and send')
+        await vi.waitFor(() => {
+          expect(
+            buttons(footer()).find((button) => button.textContent === 'Allow address and send')!
+              .disabled
+          ).toBe(false)
+        })
+        const failures = document.querySelectorAll<HTMLElement>('[role="alert"]')
+        expect(failures).toHaveLength(1)
+        expect(failures[0].hidden).toBe(false)
+        expect(failures[0].textContent).toContain('nothing was sent')
+      }
+    } finally {
+      click('Cancel')
+      await rejected
+      state.allowSecret.mockReset()
+    }
   })
 
   it('abort closes the shell, rejects the request and removes its listener', async () => {

@@ -11,6 +11,8 @@ class VaultFileModal extends FuzzySuggestModal<TFile> {
   ) {
     super(app)
     this.setPlaceholder('Search for a file...')
+    // Said in place of Obsidian's bare "No results found.", naming what was looked for.
+    this.emptyStateText = 'No file has that in its name.'
   }
 
   getItems(): TFile[] {

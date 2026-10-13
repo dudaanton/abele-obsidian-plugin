@@ -10,6 +10,13 @@
           @click="service.cancel()"
         />
         <template v-else>
+          <!-- One accent at a time: linting until there is a report, fixing once there is. -->
+          <Icon
+            v-if="report"
+            icon="refresh-cw"
+            :tooltip="`Lint ${report.scope} again`"
+            @click="service.rerun()"
+          />
           <Button
             text="Lint vault"
             :accent="!report"
@@ -18,13 +25,8 @@
           />
           <Button
             v-if="report"
-            text="Again"
-            :tooltip="`Lint ${report.scope} again`"
-            @click="service.rerun()"
-          />
-          <Button
             text="Fix all"
-            accent
+            :accent="!!counts.fixable"
             :disabled="!counts.fixable || !!fixing"
             :tooltip="
               counts.fixable
@@ -43,7 +45,12 @@
     </div>
 
     <div v-if="fixing" class="abele-linter__note">
-      Fixing {{ fixing.done }} of {{ fixing.total }} notes…
+      <Progress
+        :value="fixing.done"
+        :max="fixing.total"
+        :label="`Fixing ${fixing.done} of ${fixing.total} notes`"
+      />
+      <span>Fixing {{ fixing.done }} of {{ fixing.total }} notes…</span>
     </div>
     <div
       v-for="(error, rule) in report?.ruleErrors ?? {}"
@@ -189,6 +196,7 @@ import Badge from '../obsidian/Badge.vue'
 import Tabs from '../obsidian/Tabs.vue'
 import FoldHeading from '../obsidian/FoldHeading.vue'
 import EmptyState from '../obsidian/EmptyState.vue'
+import Progress from '../obsidian/Progress.vue'
 import ConfirmModal from '../obsidian/ConfirmModal.vue'
 import ObsidianModal from '../obsidian/Modal.vue'
 import Diff from '../Diff.vue'
@@ -321,6 +329,9 @@ const applyPreview = async () => {
 }
 
 .abele-linter__note {
+  display: flex;
+  flex-direction: column;
+  gap: var(--size-2-2);
   color: var(--text-muted);
   font-size: var(--font-ui-small);
 

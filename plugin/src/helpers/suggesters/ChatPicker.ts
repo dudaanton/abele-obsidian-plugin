@@ -20,6 +20,8 @@ class ChatModal extends FuzzySuggestModal<AiChatHistoryEntry> {
   ) {
     super(app)
     this.setPlaceholder(options.placeholder ?? 'Search for a chat...')
+    // Said in place of Obsidian's bare "No results found.", naming what was looked for.
+    this.emptyStateText = 'No chat has that in its name.'
   }
 
   getItems(): AiChatHistoryEntry[] {

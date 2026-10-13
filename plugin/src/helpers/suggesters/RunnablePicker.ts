@@ -23,6 +23,8 @@ class RunnablePicker<T> extends FuzzySuggestModal<T> {
   ) {
     super(app)
     this.setPlaceholder(placeholder)
+    // Said in place of Obsidian's bare "No results found.", naming what was looked for.
+    this.emptyStateText = 'Nothing to run has that in its name.'
   }
 
   getItems(): T[] {

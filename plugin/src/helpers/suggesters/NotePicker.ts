@@ -25,6 +25,8 @@ class NoteModal extends FuzzySuggestModal<TFile> {
   ) {
     super(app)
     this.setPlaceholder(options.placeholder ?? 'Search for a note...')
+    // Said in place of Obsidian's bare "No results found.", naming what was looked for.
+    this.emptyStateText = 'No note has that in its name.'
   }
 
   getItems(): TFile[] {

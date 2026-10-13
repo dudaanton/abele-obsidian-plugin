@@ -27,6 +27,8 @@ class ImagePickerModal extends FuzzySuggestModal<TFile> {
   constructor(app: App) {
     super(app)
     this.setPlaceholder('Search for an image or video...')
+    // Said in place of Obsidian's bare "No results found.", naming what was looked for.
+    this.emptyStateText = 'No picture or video has that in its name.'
   }
 
   getItems(): TFile[] {
