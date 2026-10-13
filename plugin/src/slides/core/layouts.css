@@ -381,6 +381,8 @@
 .abele-slide-section h2 {
   font-size: 2.5em;
   line-height: 1.06;
+  /* As the title's: descenders of large theme-font glyphs stay inside the measured box. */
+  padding-block: 0.1em;
   max-width: 14em;
 }
 
