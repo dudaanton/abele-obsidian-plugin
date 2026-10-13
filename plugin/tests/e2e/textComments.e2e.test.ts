@@ -16,7 +16,7 @@ const NATIVE_TOUCH = `
     let r=target.getBoundingClientRect(), settled=0
     for(let i=0;i<30;i++) { await wait(150); const next=target.getBoundingClientRect(); const stable=next.top===r.top&&next.left===r.left; r=next; settled=stable?settled+1:0; if(settled>=4) break }
     const x=r.left+r.width/2,y=r.top+r.height/2,under=document.elementFromPoint(x,y)
-    if(under!==el&&!el.contains(under)) throw new Error('Comment action covered by '+(under?.className??'nothing')+': '+JSON.stringify({target:target.className,rect:r.toJSON(),viewport:[innerWidth,innerHeight,window.visualViewport?.height],keyboard:keyboardHeight(),under:under?.getBoundingClientRect().toJSON(),chain:(()=>{const out=[];for(let n=target;n&&!n.matches('.modal');n=n.parentElement)out.push(n.className.split(' ')[0]+':'+Math.round(n.getBoundingClientRect().width)+'/'+getComputedStyle(n).display);return out})()}))
+    if(under!==el&&!el.contains(under)) throw new Error('Comment action covered by '+(under?.className??'nothing')+': '+JSON.stringify({target:target.className,rect:r.toJSON(),viewport:[innerWidth,innerHeight,window.visualViewport?.height],keyboard:keyboardHeight(),under:under?.getBoundingClientRect().toJSON(),row:[...(target.closest('.abele-text-comments__reply')?.children??[])].map(n=>n.className+':'+Math.round(n.getBoundingClientRect().width)),editing:!!document.querySelector('.abele-text-comments__entry.is-editing'),entries:document.querySelectorAll('.abele-text-comments__entry').length,chain:(()=>{const out=[];for(let n=target;n&&!n.matches('.modal');n=n.parentElement)out.push(n.className.split(' ')[0]+':'+Math.round(n.getBoundingClientRect().width)+'/'+getComputedStyle(n).display);return out})()}))
     await host.tap(x,y)
   }
   const keyboardHeight = () => Math.max(parseFloat(getComputedStyle(document.body).getPropertyValue('--keyboard-height'))||0,window.innerHeight-(window.visualViewport?.height??window.innerHeight))
@@ -259,7 +259,7 @@ describe.skipIf(!available)('ordinary-note text comments', () => {
       shots.push(await host.shot(${JSON.stringify(SHOTS)} + '/text-comment-saved.png'))
       const edit = document.querySelector('.abele-text-comments [aria-label="Edit this comment"]')
       await tap(edit)
-      if(!await until(() => keyboardHeight()>100)) throw new Error('Native edit keyboard did not open')
+      if(!await until(() => keyboardHeight()>100)) throw new Error('Native edit keyboard did not open: '+JSON.stringify({editing:!!document.querySelector('.abele-text-comments__entry.is-editing'),active:document.activeElement?.className,editDisabled:edit?.getAttribute('aria-disabled')??edit?.disabled,keyboard:keyboardHeight()}))
       await wait(500)
       const editor = window.__abeleTest.noteFieldView(document.querySelector('.abele-text-comments .abele-note-editor-field__editor'))
       editor.focus()
