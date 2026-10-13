@@ -56,7 +56,12 @@
 
       <!-- Tool call — compact one-liner + inline diff -->
       <template v-if="message.role === 'tool-call'">
-        <span v-if="!ownLine(message)" class="abele-chat-msg__tool-line" data-find-part="tool">
+        <span
+          v-if="!ownLine(message)"
+          class="abele-chat-msg__tool-line"
+          data-find-part="tool"
+          @contextmenu.prevent="showActions"
+        >
           <code>{{ message.toolName }}</code>
           <span
             class="abele-chat-msg__tool-summary"
@@ -90,6 +95,23 @@
                 : 'failed'
           }}</span>
           <slot name="tool-note" />
+          <ChatBranchSwitch
+            v-if="branches"
+            class="abele-chat-msg__branches abele-chat-msg__tool-branches"
+            :choices="branches.choices"
+            :index="branches.index"
+            @switch="(id) => emit('switch-branch', id)"
+          />
+          <Icon
+            v-if="canForkCall"
+            class="abele-chat-msg__tool-branch"
+            icon="git-branch-plus"
+            size="xs"
+            tooltip="Branch from here: go on from this call in a new branch"
+            :disabled="branchBlocked"
+            disabled-reason="Wait for the active turn to finish"
+            @click.stop="branchFromHere"
+          />
         </span>
         <span
           v-if="ownLine(message) && expanded"
@@ -291,7 +313,7 @@
       />
     </ChatMessageBar>
     <ChatBranchSwitch
-      v-else-if="branches"
+      v-else-if="branches && message.role !== 'tool-call'"
       class="abele-chat-msg__branches"
       :choices="branches.choices"
       :index="branches.index"
@@ -369,6 +391,8 @@ const props = defineProps<{
   canClone?: boolean
   /** Part of the turn the agent is still working on: its thinking stays open. */
   liveTurn?: boolean
+  /** The session refuses all branch changes while its current turn is unsettled. */
+  branchBlocked?: boolean
   /** Node histories keep successful tool previews behind the existing detail toggle. */
   compactToolDetails?: boolean
   resourceOpener?: (path: string) => void
@@ -448,6 +472,14 @@ async function copyMessage() {
   }
 }
 
+const canForkCall = computed(
+  () =>
+    !props.readOnlyHistory &&
+    !props.message.draft &&
+    props.message.role === 'tool-call' &&
+    props.message.toolStatus !== 'pending' &&
+    props.message.toolResult !== undefined
+)
 function showActions(event: MouseEvent) {
   const menu = new Menu()
   const add = (title: string, icon: string, section: string, action: () => void) =>
@@ -468,7 +500,15 @@ function showActions(event: MouseEvent) {
   if (props.readOnlyHistory) return menu.showAtMouseEvent(event)
   if (props.message.role === 'user')
     add('Repeat', 'repeat', 'message', () => emit('repeat-message', props.message.id))
-  add('Branch from here', 'git-branch', 'conversation', () => branchFromHere())
+  if (props.message.role !== 'tool-call' || canForkCall.value)
+    menu.addItem((item) =>
+      item
+        .setTitle('Branch from here')
+        .setIcon('git-branch')
+        .setSection('conversation')
+        .setDisabled(!!props.branchBlocked)
+        .onClick(() => branchFromHere())
+    )
   if (props.canClone && !props.message.draft)
     add('New chat from here', 'copy-plus', 'conversation', () =>
       emit('clone-chat', props.message.id)
@@ -477,6 +517,10 @@ function showActions(event: MouseEvent) {
     add('Rewind', 'history', 'changes', () => emit('rewind', props.message.id, 'since'))
     if (props.changedFiles)
       add('Undo changes', 'undo-2', 'changes', () => emit('rewind', props.message.id, 'turn'))
+  }
+  if (event.type === 'contextmenu') {
+    menu.showAtMouseEvent(event)
+    return
   }
   const button = event.currentTarget as HTMLElement
   const rect = button.getBoundingClientRect()

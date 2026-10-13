@@ -171,6 +171,7 @@
             :id="block.id"
             :calls="block.calls"
             :open="runOpen(block)"
+            :forks="runForks(block)"
             @update:open="(open) => setRunOpen(block.id, open)"
           >
             <AiChatMessage
@@ -320,7 +321,9 @@
             ? pendingNavigation.label
             : editingId
               ? 'Editing your message: sending starts a new branch'
-              : 'New branch after this answer'
+              : branchingAfter?.role === 'tool-call'
+                ? 'New branch after this call'
+                : 'New branch after this answer'
         }}</span>
         <Icon
           icon="x"
@@ -595,6 +598,13 @@ const tabInfos = computed(() =>
 
 const branchSwitchMap = computed(() => branchSwitches(allMessages.value, messages.value))
 
+const runForks = (block: ChatBlock) =>
+  block.kind === 'run'
+    ? block.messages
+        .slice(1)
+        .map((message) => branchSwitchMap.value.get(message.id)?.choices.length ?? 0)
+        .find((count) => count > 1)
+    : undefined
 const blocks = computed(() => chatBlocks(visibleMessages.value))
 const runChoice = reactive(new Map<string, boolean>())
 const runsShowing = reactive(new Set<string>())
@@ -641,6 +651,7 @@ const messageProps = (msg: ChatMessage) => ({
   canRewind: canRewind.value && msg.role === 'user' && !msg.draft,
   changedFiles: changedTurns.value.has(msg.id),
   canClone: !!session.value,
+  branchBlocked: !!session.value?.branchSwitchBlocked,
   liveTurn: liveTurn.value.has(msg.id),
 })
 /** What the agent has done since the last question, while it is still at it. */
@@ -925,7 +936,8 @@ const pendingApprovalMessage = computed(() => {
 
 const showContinue = computed(() => {
   if (isStreaming.value) return false
-  if (pendingToolCalls.value.length > 0) return false
+  if (pendingToolCalls.value.length > 0 || session.value?.branchSwitchBlocked) return false
+  if (branchingAfter.value) return true
   if (messages.value.length === 0) return false
   return true
 })

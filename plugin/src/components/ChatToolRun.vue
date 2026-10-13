@@ -15,6 +15,10 @@
   >
     <template #end>
       <span class="abele-chat-run__codes">
+        <!-- The chat went more than one way from a call inside: opened, the switch is on it. -->
+        <span v-if="forks" ref="fork" class="abele-chat-run__fork"
+          ><Icon icon="git-branch" size="xs" :interactive="false" />{{ forks }}</span
+        >
         <span
           ref="dot"
           class="abele-chat-run__dot"
@@ -34,10 +38,17 @@
 import { computed, ref, watchEffect } from 'vue'
 import { setTooltip } from 'obsidian'
 import TreeItem from './obsidian/TreeItem.vue'
+import Icon from './obsidian/Icon.vue'
 import type { ChatMessage } from '@/ai/types'
 import { KIND_ICON, runKind, runState, runSummary, type RunState } from '@/ai/toolRuns'
 
-const props = defineProps<{ id: string; calls: ChatMessage[]; open: boolean }>()
+const props = defineProps<{
+  id: string
+  calls: ChatMessage[]
+  open: boolean
+  /** Ways the chat went from a call inside the run, when it branched there. */
+  forks?: number
+}>()
 const emit = defineEmits<{ (e: 'update:open', open: boolean): void }>()
 
 const STATE_LABEL: Record<RunState, string> = {
@@ -55,6 +66,11 @@ const summary = computed(() => runSummary(props.calls))
 
 const dot = ref<HTMLElement>()
 watchEffect(() => dot.value && setTooltip(dot.value, STATE_LABEL[state.value]))
+const fork = ref<HTMLElement>()
+watchEffect(
+  () =>
+    fork.value && setTooltip(fork.value, `The chat went ${props.forks} ways from a call in here`)
+)
 </script>
 
 <style lang="scss">
@@ -91,6 +107,15 @@ watchEffect(() => dot.value && setTooltip(dot.value, STATE_LABEL[state.value]))
   color: var(--text-faint);
   font-size: var(--font-ui-smaller);
   font-variant-numeric: tabular-nums;
+}
+.abele-chat-run__fork {
+  display: inline-flex;
+  align-items: center;
+  gap: var(--size-2-1);
+
+  .abele-obsidian-icon {
+    padding: 0;
+  }
 }
 // The dot keeps its place in every run, empty when all is well, so runs line up.
 .abele-chat-run__dot {

@@ -4,7 +4,9 @@
   gap: var(--size-4-1);
   font-size: var(--font-small);
   color: var(--text-muted);
-  overflow: hidden;
+  // Its parts cut themselves short; the line does not clip, so the focus ring of a glyph or the
+  // branch switch at its end shows whole.
+  min-width: 0;
 
   // The tool's name is a faint code; what it worked on is the line's subject.
   // Doubled so it outranks the theme's inline code inside a rendered message.
@@ -375,4 +377,48 @@ button.abele-chat-msg__icon:not(.abele-chat-msg__time) {
     border-color: var(--interactive-accent);
     outline: none;
   }
+}
+
+// Branching from a call: at the end of its line, under the pointer; a phone has it in the call's
+// details, which a tap on its glyph opens.
+.abele-chat-msg__tool-branch {
+  margin-inline-start: auto;
+  visibility: hidden;
+
+  .abele-chat-msg_tool-call:hover &,
+  .abele-chat-msg__tool-line:focus-within & {
+    visibility: visible;
+  }
+  body.is-phone & {
+    display: none;
+  }
+}
+// The switch on a call stands at the end of its line, the branch glyph after it.
+.abele-chat-msg__tool-branches {
+  margin-inline-start: auto;
+
+  & + .abele-chat-msg__tool-branch {
+    margin-inline-start: 0;
+  }
+}
+// Short of room — a switch at the line's end, a narrow pane — the tool's faint name gives way
+// before what it worked on, which is the line's subject.
+.abele-chat-msg__tool-line.abele-chat-msg__tool-line > code {
+  flex: 0 100 auto;
+  min-width: 0;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+.abele-chat-msg__tool-line > .abele-chat-msg__tool-summary {
+  flex: 0 1 auto;
+  min-width: 6ch;
+}
+
+// A call's body is exactly its line's height: clipped, it cut the focus ring of the glyphs on the
+// line. It still keeps wide details from spilling sideways, with room for a ring.
+.abele-chat-msg_tool-call > .abele-chat-msg__body {
+  overflow-x: clip;
+  overflow-y: visible;
+  overflow-clip-margin: var(--size-2-2);
 }

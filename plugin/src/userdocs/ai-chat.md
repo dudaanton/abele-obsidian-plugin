@@ -438,7 +438,12 @@ file changes. Repeat, **Branch from here**, **Rewind** and **Undo changes** rema
 Selection scripts, highlights, revision review and draft Send/Edit keep their existing places.
 
 **Branch from here** continues inside the same chat: the chat stops at that message and a
-line above the input says the next message starts a new branch after it; its cross goes back
+line above the input says the next message starts a new branch after it. Finished calls also
+offer a fork glyph on desktop or the same menu in their details on phone. A cut after a call
+includes only the assistant's prefix through that call and its real results, never later
+calls or placeholder results. It waits for your message or explicit **Continue**; nothing is
+re-executed and files stay in their current state. Busy turns and node histories do not offer
+local cuts. Its cross goes back
 to where the chat went on. Where a chat went more than one way, the message that differs
 carries the branch switch at its end: arrows to the neighbouring branches and **2/3**, which
 lists every branch from that place with how it begins, how many questions it holds, its time

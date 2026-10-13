@@ -1,7 +1,7 @@
 /**
- * The codes at the end of a question's row in a chat's outline — its branches, discussions and
- * tool calls — open that row where it is. The row itself jumps to the question and closes the
- * outline; its codes are for seeing what is under it without going anywhere.
+ * A question's row in a chat's outline: the arrow folds what followed it in place, the row jumps
+ * to the question and closes the outline. The codes at its end — branches, discussions, tool
+ * calls — only say what is under it; the words are in their tooltips.
  */
 import { afterEach, beforeEach, expect, it } from 'vitest'
 import { flushPromises, mount, type VueWrapper } from '@vue/test-utils'
@@ -36,42 +36,45 @@ afterEach(() => {
 
 const row = () => document.querySelector<HTMLElement>('[data-question="q1"] > .tree-item-self')!
 
-it.each([
-  ['a click', (el: HTMLElement) => el.click()],
-  [
-    'Enter',
-    (el: HTMLElement) =>
-      el.dispatchEvent(new KeyboardEvent('keydown', { key: 'Enter', bubbles: true })),
-  ],
-])("opens a question's row in place from its codes on %s, without jumping", async (_, press) => {
-  wrapper = mount(ChatOutlinePane, {
-    props: {
-      messages,
-      comments: [],
-      state: { expanded: [], scrollTop: 0 },
-      preview: async () => null,
-    },
-    attachTo: document.body,
-  })
-  await flushPromises()
-  expect(row().getAttribute('aria-expanded')).toBe('false')
-  const code = () => row().querySelector<HTMLElement>('.abele-chat-outline__code_work')!
-  expect(code().getAttribute('role')).toBe('button')
+it.each(['pointer', 'keyboard'] as const)(
+  'folds a question with %s without jumping, and codes remain plain marks',
+  async (how) => {
+    wrapper = mount(ChatOutlinePane, {
+      props: {
+        messages,
+        comments: [],
+        state: { expanded: [], scrollTop: 0 },
+        preview: async () => null,
+      },
+      attachTo: document.body,
+    })
+    await flushPromises()
+    expect(row().getAttribute('aria-expanded')).toBe('false')
+    const code = row().querySelector<HTMLElement>('.abele-chat-outline__code_work')!
+    expect(code.getAttribute('role')).toBeNull()
+    expect(code.getAttribute('tabindex')).toBeNull()
 
-  press(code())
-  await flushPromises()
-  expect(row().getAttribute('aria-expanded')).toBe('true')
-  expect(wrapper.emitted('jump')).toBeUndefined()
-  expect(wrapper.emitted('close')).toBeUndefined()
+    const arrow = () => row().querySelector<HTMLElement>('.collapse-icon')!
+    const fold = (key: string) => {
+      if (how === 'pointer') arrow().click()
+      else
+        row().dispatchEvent(new KeyboardEvent('keydown', { key, bubbles: true, cancelable: true }))
+    }
+    fold('ArrowRight')
+    await flushPromises()
+    expect(row().getAttribute('aria-expanded')).toBe('true')
+    expect(wrapper.emitted('jump')).toBeUndefined()
+    expect(wrapper.emitted('close')).toBeUndefined()
 
-  // Pressed again it leaves the row open: folding it is the arrow's.
-  press(code())
-  await flushPromises()
-  expect(row().getAttribute('aria-expanded')).toBe('true')
-  expect(wrapper.emitted('jump')).toBeUndefined()
+    // The opposite move folds it back without selecting another message.
+    fold('ArrowLeft')
+    await flushPromises()
+    expect(row().getAttribute('aria-expanded')).toBe('false')
+    expect(wrapper.emitted('jump')).toBeUndefined()
 
-  // The row's own text still goes to the question.
-  row().querySelector<HTMLElement>('.abele-tree-item__text')!.click()
-  await flushPromises()
-  expect(wrapper.emitted('jump')?.[0]?.[0]).toBe('q1')
-})
+    // The row itself, codes included, goes to the question.
+    code.click()
+    await flushPromises()
+    expect(wrapper.emitted('jump')?.[0]?.[0]).toBe('q1')
+  }
+)
