@@ -93,7 +93,9 @@ describe('script approval with existing dialog geometry checks', () => {
         context = await api.activate(app, { endpoint: 'local:', vaultId: 'local', principal: 'local', facet: 'personal', grantId: null }, window.indexedDB)
         await context.provenance.record(path, 'sample-native-file')
         const loaded = api.load(app, path, request => api.confirm(request))
-        if (!(await until(() => document.querySelector('.abele-script-approval'), 5000))) throw new Error('Native approval did not open')
+        const settled = loaded.then(() => 'loaded without asking', e => String(e && e.message || e))
+        if (!(await until(() => document.querySelector('.abele-script-approval'), 5000)))
+          throw new Error('Native approval did not open: ' + await Promise.race([settled, new Promise(r => setTimeout(() => r('still loading; dialog ' + (api.dialog.value ? 'set' : 'unset')), 0))]))
         const approve = [...document.querySelector('.abele-script-approval').closest('.modal').querySelectorAll('.abele-modal__footer button')].find(b => b.textContent.trim() === 'Approve and run')
         approve.click()
         const parsed = await loaded
