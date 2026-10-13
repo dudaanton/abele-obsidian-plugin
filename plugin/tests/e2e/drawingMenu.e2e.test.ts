@@ -9,12 +9,14 @@ import {
   reloadApp,
 } from './helpers/obsidianCli'
 import { shotDir } from './helpers/shots'
+import { randomUUID } from 'node:crypto'
 
 const available = isObsidianRunning() && hasTestApi()
 const shots = shotDir('drawing-menu')
 
 interface Report {
   error?: string
+  folder: string
   titles: string[]
   sources: string[]
   created?: { extension: string; parent: string; drawing: boolean }
@@ -22,17 +24,20 @@ interface Report {
 
 async function probe(otherProvider: boolean, mode: string): Promise<Report> {
   const result = await evalLong(`(async () => {
-    const folderPath = 'sample-drawing-menu'
+    const folderPath = ${JSON.stringify(`sample-drawing-menu-${randomUUID()}`)}
     const layout = app.workspace.getLayout()
+    const nativeMenus = app.vault.getConfig('nativeMenus')
     const wait = ms => new Promise(r => setTimeout(r, ms))
     const until = async fn => {
       for (let i = 0; i < 100; i++) { const value = fn(); if (value) return value; await wait(100) }
       throw new Error('Timed out waiting for the drawing menu')
     }
-    const report = { titles: [], sources: [] }
+    const report = { folder: folderPath, titles: [], sources: [] }
     let created = false, other, observed, drawingLeaf
     const escape = () => document.body.dispatchEvent(new KeyboardEvent('keydown', { key: 'Escape', keyCode: 27, bubbles: true }))
     try {
+      escape()
+      app.vault.setConfig('nativeMenus', false)
       if (app.vault.getAbstractFileByPath(folderPath)) throw new Error('Fixture already exists')
       await app.vault.createFolder(folderPath)
       created = true
@@ -50,7 +55,7 @@ async function probe(otherProvider: boolean, mode: string): Promise<Report> {
       await wait(300)
       const b = el.getBoundingClientRect()
       el.dispatchEvent(new MouseEvent('contextmenu', { bubbles: true, clientX: b.left + 30, clientY: b.top + 10 }))
-      await until(() => document.querySelector('.menu .menu-item-title'))
+      await until(() => report.sources.length && [...document.querySelectorAll('.menu .menu-item-title')].some(e => e.textContent.trim() === 'New Abele drawing'))
       report.titles = [...document.querySelectorAll('.menu .menu-item-title')].map(e => e.textContent.trim())
       // The mobile sheet enters after the menu DOM is populated.
       await wait(500)
@@ -66,6 +71,7 @@ async function probe(otherProvider: boolean, mode: string): Promise<Report> {
     } catch (e) { report.error = String(e?.stack || e) }
     finally {
       escape()
+      app.vault.setConfig('nativeMenus', nativeMenus)
       if (other) app.workspace.offref(other)
       if (observed) app.workspace.offref(observed)
       drawingLeaf?.detach()
@@ -83,7 +89,7 @@ function check(report: Report, otherProvider: boolean): void {
   expect(report.sources).toEqual(['file-explorer-context-menu'])
   expect(report.titles.filter((t) => t === 'New Abele drawing')).toHaveLength(1)
   expect(report.titles.filter((t) => t === 'New drawing')).toHaveLength(otherProvider ? 1 : 0)
-  expect(report.created).toEqual({ extension: 'svg', parent: 'sample-drawing-menu', drawing: true })
+  expect(report.created).toEqual({ extension: 'svg', parent: report.folder, drawing: true })
 }
 
 describe.skipIf(!available)('folder drawing actions', () => {

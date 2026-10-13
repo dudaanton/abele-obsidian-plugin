@@ -227,9 +227,13 @@ describe.skipIf(!available)('reading a book aloud', () => {
       await until(() => view.model.selection, 3000)
       // The bar comes once the words have rested: it stays hidden while they are being selected.
       await until(() => view.contentEl.querySelector('.abele-book-selection'), 3000)
-      const icon = [...view.contentEl.querySelectorAll('.abele-book-selection .abele-obsidian-icon')]
-        .find((i) => i.getAttribute('aria-label') === 'Read aloud from here')
-      icon.click()
+      const more = await until(() => view.contentEl.querySelector('.abele-book-selection [aria-label="More for these words"]'), 3000)
+      if (!more) throw Error('No selection menu')
+      more.click()
+      const item = await until(() => [...document.querySelectorAll('.menu-item')]
+        .find(i => i.querySelector('.menu-item-title')?.textContent.trim() === 'Read aloud from here'), 3000)
+      if (!item) throw Error('No Read aloud from here in the selection menu')
+      item.click()
       await until(() => fake.said.length, 3000)
       const u = fake.said[0]
       view.reading.speech.stop()

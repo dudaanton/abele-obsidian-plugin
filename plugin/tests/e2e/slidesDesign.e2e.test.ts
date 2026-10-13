@@ -182,13 +182,17 @@ describe.skipIf(!available)('slide hierarchy in the Obsidian theme', () => {
           for(let index=0;index<viewer.model.slides.length;index++) {
             await viewer.go(index)
             const slide=viewer.viewport.querySelector('.abele-slide:not([hidden])')
-            const colour=document.createElement('div');colour.style.color='var(--text-accent)';slide.append(colour)
-            const expectedAccent=getComputedStyle(colour).color;colour.remove()
+            const colour=document.createElement('div');slide.append(colour)
+            colour.style.color='var(--bold-color, var(--text-normal))'
+            const expectedBold=getComputedStyle(colour).color
+            colour.style.color='var(--text-muted)';const expectedMuted=getComputedStyle(colour).color
+            colour.style.color='var(--background-modifier-border-hover)';const expectedBorder=getComputedStyle(colour).color
+            colour.remove()
             const strong=slide.querySelector('strong'),th=slide.querySelector('th'),quote=slide.querySelector('blockquote')
             const item={layout:viewer.model.slides[index].settings.layout,body:measure(slide),h1:measure(slide.querySelector('h1')),h2:measure(slide.querySelector('h2')),h3:measure(slide.querySelector('h3')),width:slide.clientWidth,height:slide.clientHeight,
-              accent:!strong||getComputedStyle(strong).color===expectedAccent,
-              table:!th||(parseFloat(getComputedStyle(th).paddingTop)>=10&&getComputedStyle(th).backgroundColor!=='rgba(0, 0, 0, 0)'),
-              quote:!quote||parseFloat(getComputedStyle(quote).borderLeftWidth)>=4,
+              bold:!strong||getComputedStyle(strong).color===expectedBold,
+              table:!th||(parseFloat(getComputedStyle(th).paddingTop)>=10&&parseFloat(getComputedStyle(th).borderBottomWidth)===2&&getComputedStyle(th).borderBottomColor===expectedBorder&&getComputedStyle(th).color===expectedMuted),
+              quote:!quote||(slide.classList.contains('abele-slide-quote')&&getComputedStyle(quote,'::before').content.includes('“')&&parseFloat(getComputedStyle(quote).fontSize)>=56),
               listIndent:[...slide.querySelectorAll('li')].every(li=>parseFloat(getComputedStyle(li).marginInlineStart)===0),
               tracking:[...slide.querySelectorAll('p,li,table,th,td')].every(el=>getComputedStyle(el).letterSpacing==='normal'||parseFloat(getComputedStyle(el).letterSpacing)===0),
               rendering:getComputedStyle(slide.querySelector('p,li')||slide).textRendering,
@@ -223,7 +227,7 @@ describe.skipIf(!available)('slide hierarchy in the Obsidian theme', () => {
         expect(slide.png).toEqual([1280, 720])
         expect([slide.width, slide.height]).toEqual([1280, 720])
         expect(slide.body).toBeGreaterThanOrEqual(28)
-        expect(slide.accent).toBe(true)
+        expect(slide.bold).toBe(true)
         expect(slide.table).toBe(true)
         expect(slide.quote).toBe(true)
         expect(slide.listIndent).toBe(true)

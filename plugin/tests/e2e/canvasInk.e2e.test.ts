@@ -5,15 +5,17 @@ import { onPhone, targets } from './helpers/target'
 import { driver, tap, swipe, screenshot } from './helpers/phone'
 import { withNativeInput } from './helpers/nativeInput'
 import { shotDir } from './helpers/shots'
+import { randomUUID } from 'node:crypto'
 
 targets('desktop', 'phone')
 const available = isObsidianRunning() && hasTestApi()
-const DIR = 'Sample canvas ink',
+const DIR = `Sample canvas ink ${randomUUID()}`,
   SHOTS = shotDir('canvas-ink')
 const PRELUDE = `
   const path=${JSON.stringify(`${DIR}/sample.canvas`)}
   const view=()=>app.workspace.getLeavesOfType('abele-canvas').find(l=>l.view.file?.path===path)?.view
   const button=label=>view()?.contentEl.querySelector('[aria-label="'+label+'"]')
+  const embed=()=>window.__canvasInk?.embedLeaf?.view.contentEl.querySelector(".abele-canvas-embed-picture")
   const read=async()=>JSON.parse(await app.vault.read(app.vault.getAbstractFileByPath(path)))
 `
 const run = <T>(body: string): T =>
@@ -206,14 +208,12 @@ describe.skipIf(!available)('canvas pen with real mouse and finger input', () =>
       )
     ).toBe(true)
     run(
-      `const note=await app.vault.create(${JSON.stringify(`${DIR}/sample-embed.md`)},'![[sample.canvas]]');const leaf=app.workspace.getLeaf('tab');await leaf.setViewState({type:'markdown',state:{file:note.path,mode:'preview'},active:true});await app.workspace.revealLeaf(leaf);return true`
+      `const note=await app.vault.create(${JSON.stringify(`${DIR}/sample-embed.md`)},${JSON.stringify(`![[${DIR}/sample.canvas]]`)});const leaf=app.workspace.getLeaf('tab');await leaf.setViewState({type:'markdown',state:{file:note.path,mode:'preview'},active:true});await app.workspace.revealLeaf(leaf);window.__canvasInk.embedLeaf=leaf;return true`
     )
-    await until(
-      'document.querySelector(".abele-canvas-embed-picture")?.complete&&document.querySelector(".abele-canvas-embed-picture")?.naturalWidth>0'
-    )
+    await until('embed()?.complete&&embed()?.naturalWidth>0')
     expect(
       run<boolean>(
-        `const image=document.querySelector('.abele-canvas-embed-picture'),data=Uint8Array.from(atob(image.src.split(',')[1]),c=>c.charCodeAt(0)),bytes=new Uint8Array(await app.vault.readBinary(app.vault.getAbstractFileByPath(${JSON.stringify(`${DIR}/sample-picture.png`)})));return data.length===bytes.length&&data.every((v,i)=>v===bytes[i])`
+        `const image=embed(),data=Uint8Array.from(atob(image.src.split(',')[1]),c=>c.charCodeAt(0)),bytes=new Uint8Array(await app.vault.readBinary(app.vault.getAbstractFileByPath(${JSON.stringify(`${DIR}/sample-picture.png`)})));return data.length===bytes.length&&data.every((v,i)=>v===bytes[i])`
       )
     ).toBe(true)
     shot('saved-canvas-embed')

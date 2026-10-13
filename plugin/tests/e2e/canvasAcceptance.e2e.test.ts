@@ -31,7 +31,7 @@ const PRELUDE = `
   const call=async(name,params)=>tools[name].execute('sample-acceptance',params,undefined,ctx)
   const parsed=result=>JSON.parse(result.content[0].text)
   const read=async()=>parsed(await call('canvas_read',{path,detail:'full'}))
-  const embed=()=>document.querySelector('.abele-canvas-embed-picture')
+  const embed=()=>window.__canvasAcceptance?.embedLeaf?.view.contentEl.querySelector('.abele-canvas-embed-picture')
   const menuItem=label=>[...document.querySelectorAll('.menu-item')].find(el=>el.textContent.trim()===label)
 `
 const cli =
@@ -283,7 +283,7 @@ describe.skipIf(!available)('shared human and agent canvas acceptance', () => {
     shot('canvas')
 
     run(`
-      const note=await app.vault.create(${JSON.stringify(`${DIR}/sample-embed.md`)},${JSON.stringify('# Living explanation\n\n![[Sample diagram.canvas]]\n\nThe picture follows the diagram.\n')})
+      const note=await app.vault.create(${JSON.stringify(`${DIR}/sample-embed.md`)},${JSON.stringify(`# Living explanation\n\n![[${DIR}/Sample diagram.canvas]]\n\nThe picture follows the diagram.\n`)})
       const leaf=app.workspace.getLeaf('tab');await leaf.setViewState({type:'markdown',state:{file:note.path,mode:'preview'},active:true});await app.workspace.revealLeaf(leaf);window.__canvasAcceptance.embedLeaf=leaf;return true
     `)
     await until('embed()?.complete&&embed()?.naturalWidth>0')

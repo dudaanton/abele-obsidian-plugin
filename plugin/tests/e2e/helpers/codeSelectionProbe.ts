@@ -32,6 +32,12 @@ export const selectionSetup = (directory: string) =>
   chats.openBlankChat=async()=>{const id=chats.createTab();const session=chats.getSession(id);
     if(!session||saved.existingChats.includes(id))throw Error('No room for an owned selection test chat');saved.ownedChats.push(id);return session};
   config.ai.enabled=true;app.vault.setConfig('nativeMenus',false);
+  // Some native icon aliases have no Lucide class. Compare their actual SVG with the kit's picker.
+  api.openIconPicker('link');
+  const link=await until(()=>document.querySelector('.abele-icon-picker [aria-label="link"] svg'),8000);
+  if(!link)throw Error('No link glyph in the icon picker');saved.linkSvg=link.innerHTML;
+  document.body.dispatchEvent(new KeyboardEvent('keydown',{key:'Escape',bubbles:true}));
+  if(!await until(()=>!document.querySelector('.abele-icon-picker'),8000))throw Error('Icon picker did not close');
   return JSON.stringify({ready:true});
 `)
 
@@ -106,6 +112,8 @@ export const openSelectionSource = (surface: 'debugger' | 'node-or-local' | 'git
 export const wordCoordinates = codeSelectionScript(String.raw`
   window.getSelection()?.removeAllRanges();
   app.workspace.leftSplit.collapse();app.workspace.rightSplit.collapse();
+  // A closing phone drawer must finish before an action reopens it for the destination.
+  if(app.isMobile)await wait(600);
   app.workspace.setActiveLeaf(state.source,{focus:true});
   const root=state.source.view.containerEl;
   const content=await until(()=>root.querySelector('.cm-content'),10000);
@@ -126,7 +134,8 @@ export const readSelectionBar = codeSelectionScript(String.raw`
   if(!bar)throw Error('No selection bar: '+String(window.getSelection()));
   const box=bar.getBoundingClientRect();
   const actions=[...bar.querySelectorAll('[data-action]')].map(el=>({id:el.dataset.action,
-    icon:[...(el.querySelector('svg')?.classList??[])].find(name=>name.startsWith('lucide-'))?.slice(7)}));
+    icon:el.querySelector('svg')?.innerHTML===state.linkSvg?'link':
+      [...(el.querySelector('svg')?.classList??[])].find(name=>name.startsWith('lucide-'))?.slice(7)}));
   return JSON.stringify({actions,text:String(window.getSelection()),visible:box.width>0&&box.left>=0&&box.right<=innerWidth+1&&box.top>=0&&box.bottom<=innerHeight+1});
 `)
 

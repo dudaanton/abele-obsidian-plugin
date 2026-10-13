@@ -104,9 +104,9 @@ describe.skipIf(!available)('words selected in a discussion comment', () => {
     }>(`(async () => {
       ${PRELUDE}
       const root = githubLeaves()[0].view.containerEl
-      const bar = await until(() => root.querySelector('.abele-github-prose_placed'), 5000)
+      const bar = await until(() => root.querySelector('.abele-github-prose.abele-selection-bar_placed'), 5000)
       if (!bar) return { error: 'no bar over the selection', selected: String(window.getSelection()) }
-      const button = [...bar.querySelectorAll('button')].find((b) => b.textContent.includes('Ask here'))
+      const button = bar.querySelector('[data-action="ask"]')
       if (!button) return { error: 'no Ask here on the bar' }
       const r = button.getBoundingClientRect()
       const sel = window.getSelection().getRangeAt(0).getBoundingClientRect()
