@@ -53,6 +53,9 @@ async function installedProbe(change: string) {
   }
   let vault = 'sample-vault'
   const files = { ...bytes }
+  const leftovers = new Set(
+    change === 'leftover sync recovery' ? ['.sample/plugins/abele/sync-recovery'] : []
+  )
   if (change.endsWith('hash'))
     files[change.split(' ')[0] as keyof typeof files] = Buffer.from('different bytes')
   if (change === 'missing API') page.__abeleTest = null
@@ -66,6 +69,10 @@ async function installedProbe(change: string) {
       getName: () => vault,
       configDir: '.sample',
       adapter: {
+        exists: async (path: string) => leftovers.has(path),
+        rmdir: async (path: string, recursive: boolean) => {
+          if (recursive) leftovers.delete(path)
+        },
         readBinary: async (path: string) => {
           if (change === 'unreadable files') throw Error('not readable')
           const buffer = files[path.split('/').pop() as keyof typeof files]
@@ -74,12 +81,16 @@ async function installedProbe(change: string) {
       },
     },
   }
-  return new Function('window', 'app', 'performance', 'crypto', 'return ' + code)(
-    page,
-    app,
-    { timeOrigin: 10 },
-    webcrypto
-  )
+  const accepted = await new Function(
+    'window',
+    'app',
+    'performance',
+    'crypto',
+    'console',
+    'return ' + code
+  )(page, app, { timeOrigin: 10 }, webcrypto, { info: () => {} })
+  if (change === 'leftover sync recovery') expect([...leftovers]).toEqual([])
+  return accepted
 }
 
 it('does not push or reload a verified running build', async () => {
@@ -98,6 +109,7 @@ it.each([
   'replaced API',
   'unfinished page job',
   'plugin loader busy',
+  'leftover sync recovery',
 ])('does not accept %s as an installed build', async (change) => {
   await expect(installedProbe(change)).resolves.toBe(false)
 })
@@ -451,4 +463,63 @@ it('preserves loader/page diagnostics even when the native screen query also fai
   } finally {
     vi.useRealTimers()
   }
+})
+
+it('clears leftover sync recovery in the phone vault before the reload that loads the build', async () => {
+  let generation = 10,
+    requestId: string | null = null
+  phone.eval.mockImplementation((code) => {
+    if (code.includes('SHA-256')) return '=> false'
+    if (code.includes('location.reload')) {
+      requestId = /sessionStorage.setItem\('[^']+', "([^"]+)"\)/.exec(code)![1]
+      generation++
+      return '=> ' + requestId
+    }
+    if (code.includes('performance.timeOrigin') && !code.includes('__e2eInstalledBuild ='))
+      return (
+        '=> ' +
+        JSON.stringify({
+          owner: 'sample-vault',
+          generation,
+          requestId,
+          mobile: true,
+          apiReady: true,
+          layoutReady: true,
+        })
+      )
+    return '=> sample-vault'
+  })
+  await installBuild(process.cwd())
+  const code = phone.eval.mock.calls.find(([code]) => code.includes('location.reload'))![0]
+  const events: string[] = []
+  const leftovers = new Set([
+    '.sample/plugins/abele/sync-recovery',
+    '.sample/plugins/abele/sync-staging',
+  ])
+  const app = (vault: string) => ({
+    plugins: { plugins: { abele: {} }, loadingPluginId: null },
+    vault: {
+      getName: () => vault,
+      configDir: '.sample',
+      adapter: {
+        exists: async (path: string) => leftovers.has(path),
+        rmdir: async (path: string) => {
+          events.push('remove ' + path.split('/').pop())
+          leftovers.delete(path)
+        },
+      },
+    },
+  })
+  const run = (vault: string) =>
+    new Function('app', 'sessionStorage', 'setTimeout', 'console', 'return ' + code)(
+      app(vault),
+      { setItem: () => {} },
+      () => events.push('reload'),
+      { info: () => {} }
+    )
+  await run('another-sample-vault')
+  expect(events).toEqual(['reload'])
+  events.length = 0
+  await run('sample-vault')
+  expect(events).toEqual(['remove sync-recovery', 'remove sync-staging', 'reload'])
 })

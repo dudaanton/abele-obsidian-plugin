@@ -82,6 +82,21 @@ export function assertPhoneReady(): void {
 }
 
 /**
+ * A run starts like the fixture: no sync recovery state. The plugin posts a never-closing
+ * notice on every load while `<configDir>/plugins/abele/sync-recovery` exists, and moves an
+ * orphaned `sync-staging` there on load, so a sync case cut off mid-transfer (a killed batch)
+ * left that notice over the top of the screen for every later phone test. The batch clears the
+ * desktop pool vaults the same way. Page code: resolves to whether anything was removed.
+ */
+const CLEAR_SYNC_RECOVERY = `async () => {
+  const dir = app.vault.configDir + '/plugins/abele/', found = []
+  for (const name of ['sync-recovery', 'sync-staging'])
+    if (await app.vault.adapter.exists(dir + name)) { await app.vault.adapter.rmdir(dir + name, true); found.push(name) }
+  if (found.length) console.info('[e2e] cleared leftover sync state: ' + found.join(' '))
+  return found.length > 0
+}`
+
+/**
  * Builds the plugin the way `build:test` does (the test API included) into a scratch
  * directory and installs it in the phone's vault; `ABELE_PHONE_BUILD` names a build directory
  * to install instead. Then reloads Obsidian and waits for exactly that version.
@@ -119,6 +134,8 @@ export async function installBuild(pluginDir: string): Promise<string> {
         phoneEval(
           `(async () => {
         if (app.vault.getName() !== ${JSON.stringify(PHONE_VAULT)} || !window.__abeleTest || app.plugins?.loadingPluginId) return false
+        // Leftover sync recovery posts its never-closing notice on every load; reload without it.
+        if (await (${CLEAR_SYNC_RECOVERY})()) return false
         const hashes = ${JSON.stringify(hashes)}
         const loaded = window.__e2eInstalledBuild
         if (!loaded || loaded.api !== window.__abeleTest || loaded.generation !== performance.timeOrigin ||
@@ -217,6 +234,7 @@ export async function installBuild(pluginDir: string): Promise<string> {
           phoneEval(
             `(async () => {
         sessionStorage.setItem('${key}', ${JSON.stringify(requestId)})
+        if (app.vault?.getName() === ${JSON.stringify(PHONE_VAULT)}) await (${CLEAR_SYNC_RECOVERY})()
         // Restore a plugin unloaded by a fallback probe, but never contend with a busy loader.
         const plugins = app.plugins
         if (plugins && !plugins.plugins?.abele && !plugins.loadingPluginId)
