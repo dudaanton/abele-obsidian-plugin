@@ -59,6 +59,9 @@ class Mark extends GutterMarker {
     )
   }
   toDOM() {
+    // The gutter's width spacer: as wide as a mark, but nothing to press or to read out.
+    if (this.line === 0)
+      return createSpan({ cls: 'abele-debug-source__point', attr: { 'aria-hidden': 'true' } })
     const el = createEl('button')
     el.type = 'button'
     el.className = 'abele-debug-source__point'
@@ -156,6 +159,9 @@ onBeforeUnmount(() => viewer?.destroy())
   box-shadow: none;
   cursor: var(--cursor);
 
+  &:disabled {
+    cursor: default;
+  }
   .abele-breakpoint-mark_none {
     width: var(--size-4-2);
     height: var(--size-4-2);
