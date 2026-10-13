@@ -439,16 +439,22 @@ const probeScript = `(async () => {
   // switch, and the settings' MCP tab has a card to open. Put back as it was by \`unseed\`.
   const mcpConfig = window.__abeleTest.AbeleConfig.getInstance()
   const MCP_BEFORE = mcpConfig.ai.mcpServers
+  // The agent's commands, pages and dialogs exist only while it is on, so the probe switches it
+  // on itself rather than trusting whatever the shared test vault was left with; in memory, and
+  // put back by \`unseed\`.
+  const AI_ENABLED_BEFORE = mcpConfig.ai.enabled
   const seed = async () => {
     replyReviewer = window.__abeleTest.AgentRegistry.getInstance().create({ name: 'Sample reply reviewer', utility: true })
     const lorem = 'Reads a page of the documentation for a library and returns it as markdown, with the examples kept whole.'
-    mcpConfig.ai = { ...mcpConfig.ai, mcpServers: [{
+    mcpConfig.ai = { ...mcpConfig.ai, enabled: true, mcpServers: [{
       id: 'phone-probe', name: 'context7', url: 'https://mcp.context7.com/mcp', enabled: true,
       keyId: '', headers: { 'X-Team': 'docs' }, fetchedAt: new Date().toISOString(),
       tools: ['resolve-library-id', 'get-library-docs', 'search'].map((name) => ({
         name, description: lorem, inputSchema: { type: 'object', properties: {} },
       })),
     }] }
+    mcpConfig.version.value++
+    mcpConfig.plugin.syncAiFeatures()
     const folder = 'Phone probe'
     if (!app.vault.getAbstractFileByPath(folder)) await app.vault.createFolder(folder)
     for (let i = 1; i <= 12; i++) {
@@ -533,7 +539,8 @@ const probeScript = `(async () => {
     SEEDED.push(third)
   }
   const unseed = async () => {
-    mcpConfig.ai = { ...mcpConfig.ai, mcpServers: MCP_BEFORE }
+    mcpConfig.ai = { ...mcpConfig.ai, enabled: AI_ENABLED_BEFORE, mcpServers: MCP_BEFORE }
+    mcpConfig.version.value++
     if (replyReviewer) window.__abeleTest.AgentRegistry.getInstance().remove(replyReviewer.id)
     for (const path of SEEDED) {
       const chats = window.__abeleTest.ChatService.getInstance()
@@ -1147,14 +1154,11 @@ const probeScript = `(async () => {
     // gives that page a masked field; a dozen named secrets make the page long enough for the
     // Secrets introduction to scroll under the native title. Both are put back as they were.
     const aiConfig = window.__abeleTest.AbeleConfig.getInstance().ai
-    // The agent's pages show only its switch while it is off, so the probe turns it on itself
-    // rather than trusting whatever the shared test vault was left with.
-    const heldAi = { enabled: aiConfig.enabled, brave: aiConfig.braveSearchApiKey, secrets: aiConfig.secrets }
+    const heldAi = { brave: aiConfig.braveSearchApiKey, secrets: aiConfig.secrets }
     FAKE_KEYS['abele-brave-search'] = 'fake-probe-value-4'
     const held = {}
     for (const id of Object.keys(FAKE_KEYS)) held[id] = keychain.getSecret(id)
     try {
-      aiConfig.enabled = true
       aiConfig.braveSearchApiKey = 'abele-brave-search'
       aiConfig.secrets = [
         ...(heldAi.secrets || []),
@@ -1297,7 +1301,6 @@ const probeScript = `(async () => {
       }
       app.setting.close()
     } finally {
-      aiConfig.enabled = heldAi.enabled
       aiConfig.braveSearchApiKey = heldAi.brave
       aiConfig.secrets = heldAi.secrets
       for (const [id, value] of Object.entries(held)) {

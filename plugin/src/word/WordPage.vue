@@ -548,9 +548,7 @@ defineExpose({ open, leave })
   .abele-word-page__sheet {
     min-height: 100%;
     padding: var(--size-4-4);
-    padding-block-end: calc(
-      var(--navbar-height, 0px) + var(--navbar-bottom-offset, 0px) + var(--size-4-4)
-    );
+    padding-block-end: calc(var(--size-4-4) + var(--view-bottom-spacing, 0px));
     border: none;
     border-radius: 0;
     box-shadow: none;

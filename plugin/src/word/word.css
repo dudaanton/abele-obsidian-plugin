@@ -4,6 +4,11 @@
   gap: var(--size-4-2);
   overflow: hidden;
 }
+/* A phone: the page runs to the screen's foot, under Obsidian's floating bar, and keeps its
+   own last line clear of it — the documentation tab's way. */
+.is-phone .view-content.abele-word {
+  padding-bottom: 0;
+}
 .abele-word-page-host {
   flex: 1;
   min-height: 0;
