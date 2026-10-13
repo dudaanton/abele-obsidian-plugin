@@ -471,6 +471,9 @@ watch(
     display: flex;
     align-items: center;
     gap: var(--size-2-2);
+    // Keep the focused glyph's paint inside the strip, including the last tab.
+    padding-inline: var(--size-4-1);
+    padding-inline-start: calc(var(--size-4-1) + var(--size-2-3) + var(--icon-size) * 2 / 24);
   }
 
   &__panel-head {
@@ -479,8 +482,7 @@ watch(
     justify-content: space-between;
     gap: var(--size-4-2);
     // The first glyph's ink stands where the words of the rows under it start, inside their light.
-    padding: var(--size-4-1) var(--size-4-2) var(--size-4-1)
-      calc(var(--size-4-2) + var(--size-2-3));
+    padding: var(--size-4-1) var(--size-4-2) var(--size-4-1) calc(var(--size-4-2) + var(--size-2-3));
     border-bottom: 1px solid var(--background-modifier-border);
 
     // The tabs scroll inside the drawer; their min-content width must not push the close

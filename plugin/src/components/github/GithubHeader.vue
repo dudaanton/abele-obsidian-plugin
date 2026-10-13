@@ -276,7 +276,11 @@ const stateTone = (state: string) =>
   &__actions {
     display: flex;
     gap: var(--size-4-1);
-    flex-shrink: 0;
+    // A file can offer more glyphs than a phone can hold on one line.
+    min-width: 0;
+    flex-shrink: 1;
+    flex-wrap: wrap;
+    justify-content: flex-end;
   }
 
   &__title {
