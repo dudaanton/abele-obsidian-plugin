@@ -160,22 +160,33 @@ describe.skipIf(!available)('single external occurrence completion in the runnin
         service.state.version++
         dailyLeaf.detach()
         await t.plugin.activateView('abele-timeline-sidebar-view')
-        const timeline = await until(() => document.querySelector('.abele-timeline-sidebar'), 'timeline sidebar after daily note')
-        const row = await until(() => timeline.querySelector('[data-timeline-item="event:' + events[0].id + '"]'), 'first recurring sidebar row after daily note')
+        // Read the sidebar leaf's current root each time: a phone can re-render it while revealing.
+        const sidebarLeaf = app.workspace.getLeavesOfType('abele-timeline-sidebar-view')[0]
+        if (!sidebarLeaf) throw Error('Timeline sidebar leaf missing')
+        await app.workspace.revealLeaf(sidebarLeaf)
+        const timeline = () => sidebarLeaf.view.containerEl.querySelector('.abele-timeline-sidebar')
+        await until(timeline, 'timeline sidebar after daily note')
+        // The switch is on (aria-checked) while completed items are shown; start with them hidden.
+        const toggle = await until(() => timeline()?.querySelector('.abele-timeline__completed-toggle'), 'completion filter')
+        if (toggle.getAttribute('aria-checked') === 'true') toggle.click()
+        await until(() => timeline()?.querySelector('.abele-timeline__completed-toggle')?.getAttribute('aria-checked') === 'false', 'completed items hidden')
+        const selector = '[data-timeline-item="event:' + events[0].id + '"]'
+        const row = await until(() => timeline()?.querySelector(selector), 'first recurring sidebar row after daily note')
         row.scrollIntoView({ block: 'center' })
         await wait(300)
         const input = row.querySelector('input[type=checkbox]')
         if (!input) throw Error('Timeline event has no completion checkbox')
         input.click()
-        await until(() => service.isDone(events[0]) && !timeline.contains(row), 'hide marked sidebar occurrence').catch(error => {
-          throw Error(error.message + ': ' + JSON.stringify({ done: done(), rowConnected: row.isConnected, inTimeline: timeline.contains(row),
-            timelineConnected: timeline.isConnected, sidebars: document.querySelectorAll('.abele-timeline-sidebar').length,
-            toggle: timeline.querySelector('.abele-timeline__completed-toggle')?.getAttribute('aria-checked'),
-            checked: input.checked, marks: window.__abeleTest.AbeleConfig.getInstance().calendarCompletion }))
+        await until(() => service.isDone(events[0]), 'persist marked sidebar occurrence')
+        await until(() => !timeline()?.querySelector(selector), 'hide marked sidebar occurrence').catch(error => {
+          throw Error(error.message + ': ' + JSON.stringify({ done: done(), oldRowConnected: row.isConnected,
+            rootConnected: timeline()?.isConnected, sidebars: app.workspace.getLeavesOfType('abele-timeline-sidebar-view').length,
+            row: timeline()?.querySelector(selector)?.outerHTML.slice(0, 300),
+            filter: timeline()?.querySelector('.abele-timeline__completed-toggle')?.getAttribute('aria-checked') }))
         })
         const timelineDone = done()
-        timeline.querySelector('.abele-timeline__completed-toggle').click()
-        const checked = await until(() => timeline.querySelector('[data-timeline-item="event:' + events[0].id + '"] input:checked'), 'show marked sidebar occurrence')
+        timeline().querySelector('.abele-timeline__completed-toggle').click()
+        const checked = await until(() => timeline()?.querySelector(selector + ' input:checked'), 'show marked sidebar occurrence')
         checked.scrollIntoView({ block: 'center' })
         await shot(${JSON.stringify(profile.replaceAll(' ', '-'))} + '-timeline')
         if (!app.vault.getAbstractFileByPath(${JSON.stringify(FOLDER)})) await app.vault.createFolder(${JSON.stringify(FOLDER)})
