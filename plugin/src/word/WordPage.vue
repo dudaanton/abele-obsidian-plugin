@@ -537,9 +537,20 @@ defineExpose({ open, leave })
     padding: 0;
   }
 
+  // Obsidian's bar floats over a phone's last inches: the status row stood behind it, unread.
+  // It heads the page instead, and the page scrolls to the screen's foot, its last line clear.
+  .abele-word-page__status {
+    order: -1;
+    border-top: none;
+    border-bottom: 1px solid var(--background-modifier-border);
+  }
+
   .abele-word-page__sheet {
     min-height: 100%;
     padding: var(--size-4-4);
+    padding-block-end: calc(
+      var(--navbar-height, 0px) + var(--navbar-bottom-offset, 0px) + var(--size-4-4)
+    );
     border: none;
     border-radius: 0;
     box-shadow: none;

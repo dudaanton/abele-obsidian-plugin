@@ -367,7 +367,9 @@ const probeScript = `(async () => {
           strip.scrollLeft = start
           const bounds = strip.getBoundingClientRect()
           const box = tab.getBoundingClientRect()
-          const outside = box.left >= bounds.right || box.right <= bounds.left
+          // Not wholly in sight: the six-tab strip of a chat's setup now overflows by less than
+          // a tab, so its end tabs start partly scrolled away rather than entirely.
+          const outside = box.left < bounds.left - 0.5 || box.right > bounds.right + 0.5
           // The same unforced focus a keyboard or script gives. Do not scroll into view in the
           // probe: the component itself must reveal the focused tab and its whole focus ring.
           tab.focus()
@@ -1141,9 +1143,22 @@ const probeScript = `(async () => {
     // AI page, and the one a person reaches for.
     const provider = (window.__abeleTest.AbeleConfig.getInstance().ai.providers || [])[0]
     if (provider && provider.apiKeyId) FAKE_KEYS[provider.apiKeyId] = 'fake-probe-value-3-long-enough-to-wrap-on-a-phone-0123456789'
+    // The agent's General page holds the search key and the named secrets. A stored search key
+    // gives that page a masked field; a dozen named secrets make the page long enough for the
+    // Secrets introduction to scroll under the native title. Both are put back as they were.
+    const aiConfig = window.__abeleTest.AbeleConfig.getInstance().ai
+    const heldAi = { brave: aiConfig.braveSearchApiKey, secrets: aiConfig.secrets }
+    FAKE_KEYS['abele-brave-search'] = 'fake-probe-value-4'
     const held = {}
     for (const id of Object.keys(FAKE_KEYS)) held[id] = keychain.getSecret(id)
     try {
+      aiConfig.braveSearchApiKey = 'abele-brave-search'
+      aiConfig.secrets = [
+        ...(heldAi.secrets || []),
+        ...Array.from({ length: 12 }, (_, i) => ({
+          id: 'phone-probe-secret-' + i, name: 'Sample secret ' + i, keyId: 'phone-probe-secret-' + i, allowedOrigins: [],
+        })),
+      ]
       for (const [id, value] of Object.entries(FAKE_KEYS)) keychain.setSecret(id, value)
       window.__abeleTest.openSecretsList()
       if (await until(() => document.querySelector('.modal .abele-secrets-list .abele-card'), 5000)) {
@@ -1191,10 +1206,13 @@ const probeScript = `(async () => {
           if (intro && header && settingsScroll) {
             settingsScroll.scrollTop += intro.getBoundingClientRect().top - header.getBoundingClientRect().bottom + 12
             await wait(400)
+            // Read before the capture: its tab-focus pass scrolls a focused tab's strip into view.
+            const introTop = intro.getBoundingClientRect().top
+            const headerBottom = header.getBoundingClientRect().bottom
             await screen('settings ai secrets scroll', settingsModal, settingsScroll)
             report['settings ai secrets scroll'].headerCover = getComputedStyle(header).backgroundColor
-            report['settings ai secrets scroll'].introTop = intro.getBoundingClientRect().top
-            report['settings ai secrets scroll'].headerBottom = header.getBoundingClientRect().bottom
+            report['settings ai secrets scroll'].introTop = introTop
+            report['settings ai secrets scroll'].headerBottom = headerBottom
           } else {
             report['settings ai secrets scroll'] = { over: [], scrollers: [], capped: [], stranded: [], clipped: [], fill: 0, shot: '', error: 'no Secrets introduction or native settings header: ' + JSON.stringify({ intro: !!intro, header: !!header, scroll: !!settingsScroll }) }
           }
@@ -1237,6 +1255,38 @@ const probeScript = `(async () => {
             f.blur()
           }
           report[label].clipped = clipped
+          // A provider's key lives in that provider's own window on the Models page now; the
+          // first provider's key, long enough to wrap, is the one a person reaches for.
+          if (page === 'AI Agent' && provider && provider.apiKeyId) {
+            ;[...document.querySelectorAll('.abele-ai-settings__tabs .abele-tabs__tab')]
+              .find(tab => tab.textContent.trim() === 'Models')?.click()
+            await until(() => document.querySelector('.abele-ai-provider'), 3000)
+            document.querySelector('.abele-ai-provider .abele-obsidian-icon')?.click()
+            const providerWindow = () => [...document.querySelectorAll('.modal')].find(m => m !== modal && m.querySelector('.abele-secret-field__stored'))
+            await until(providerWindow, 5000)
+            const window_ = providerWindow()
+            if (!window_) {
+              report[label].error = 'no stored key in the first provider window'
+            } else {
+              window_.querySelector('.abele-secret-field__stored .abele-obsidian-icon').click()
+              await wait(400)
+              await shoot(label + ' provider')
+              for (const row of window_.querySelectorAll('.abele-secret-field__stored')) {
+                const value = row.querySelector('.abele-secret-field__value').getBoundingClientRect()
+                for (const icon of row.querySelectorAll('.abele-obsidian-icon')) {
+                  if (icon.getBoundingClientRect().top >= value.bottom - 1) report[label].stranded.push('provider: ' + row.textContent.trim().slice(0, 24))
+                }
+              }
+              for (const f of window_.querySelectorAll('.abele-secret-field input')) {
+                if (f.getBoundingClientRect().width === 0) continue
+                f.focus()
+                for (const cut of ringClipped(f)) report[label].clipped.push('provider ' + name(f) + ': ' + cut)
+                f.blur()
+              }
+              ;[...window_.querySelectorAll('button')].find(b => b.textContent.trim() === 'Done')?.click()
+              await until(() => !document.contains(window_), 3000)
+            }
+          }
         }
         const back = document.querySelector('.modal-setting-back-button')
         if (back) back.click()
@@ -1244,6 +1294,8 @@ const probeScript = `(async () => {
       }
       app.setting.close()
     } finally {
+      aiConfig.braveSearchApiKey = heldAi.brave
+      aiConfig.secrets = heldAi.secrets
       for (const [id, value] of Object.entries(held)) {
         if (value) keychain.setSecret(id, value)
         else if (keychain.deleteSecret) keychain.deleteSecret(id)
