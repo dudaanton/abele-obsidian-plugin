@@ -49,6 +49,19 @@ const script = (layout: string) => `(async () => {
   const modal = () => document.querySelector('.abele-chat-navigation')
   const item = id => box()?.querySelector('[data-message-id="' + id + '"]')
   const offset = id => item(id).getBoundingClientRect().top - box().getBoundingClientRect().top
+  // A destination reached: the condition true, and the list holding still, four polls in a row.
+  // False when it never is; the report then says what was there.
+  const holds = async (fn, ms = 3000) => {
+    let last = null, count = 0
+    for (const end = Date.now() + ms; Date.now() < end; await wait(50)) {
+      let key = null
+      try { if (fn()) key = box() ? box().scrollTop + ':' + box().scrollHeight : 'no list' } catch {}
+      count = key !== null && key === last ? count + 1 : 0
+      last = key
+      if (count >= 3) return true
+    }
+    return false
+  }
   const capture = async name => {
     // Let native sheets finish their open/dismiss animation before recording the screen.
     await wait(350)
@@ -161,19 +174,19 @@ const script = (layout: string) => `(async () => {
     await wait(400)
     report.drift = Math.abs(offset('q0') - before)
     owner.streamingContent.value = ''; owner.isStreaming.value = false
-    await open(); await choose('To latest'); await wait(200)
+    await open(); await choose('To latest'); await holds(() => box().scrollHeight - box().scrollTop - box().clientHeight < 60)
     report.latest = box().scrollHeight - box().scrollTop - box().clientHeight < 60
-    await open(); await choose('Back to place'); await wait(200)
+    await open(); await choose('Back to place'); await holds(() => box().scrollHeight - box().scrollTop - box().clientHeight < 60)
     report.returned = box().scrollHeight - box().scrollTop - box().clientHeight < 60
     box().dispatchEvent(new WheelEvent('wheel', { bubbles: true, deltaY: -120 }))
     box().scrollTop += offset('q80') - 16
     await wait(100)
     const middleAt = offset('q80')
-    await open(); await choose('To start'); await wait(200)
-    await open(); await choose('Back to place'); await wait(200)
+    await open(); await choose('To start'); await holds(() => !modal() && item('q0'))
+    await open(); await choose('Back to place'); await holds(() => Math.abs(offset('q80') - middleAt) < 2)
     report.middleReturnDrift = Math.abs(offset('q80') - middleAt)
     // Put the reader at the first question again, then open its direct and nested discussions.
-    await open(); await choose('To start'); await wait(200)
+    await open(); await choose('To start'); await holds(() => !modal() && item('q0'))
     await open(); await until(() => modal().textContent.includes('Which plants need shade?'))
     await capture('navigation-discussions')
     const fold = [...modal().querySelectorAll('summary')].find(s => s.textContent.includes('Nested discussions'))
@@ -181,7 +194,7 @@ const script = (layout: string) => `(async () => {
     await choose('How much shade?')
     await until(() => chats.activeSession.value?.commentId === 'navd02')
     report.nested = true
-    await open(); await choose('Back to place'); await wait(200)
+    await open(); await choose('Back to place'); await holds(() => chats.activeSession.value === owner)
     report.discussionReturn = chats.activeSession.value === owner
     await open(); await choose('Which plants need shade?')
     await until(() => chats.activeSession.value?.commentId === 'navd01')
@@ -189,9 +202,9 @@ const script = (layout: string) => `(async () => {
     await open(); await until(() => modal().textContent.includes('How much shade?'))
     await choose('How much shade?')
     await until(() => chats.activeSession.value?.commentId === 'navd02')
-    await open(); await choose('Back to place'); await wait(200)
+    await open(); await choose('Back to place'); await holds(() => chats.activeSession.value?.commentId === 'navd01')
     report.nestedBack = chats.activeSession.value?.commentId === 'navd01'
-    await open(); await choose('Back to place'); await wait(200)
+    await open(); await choose('Back to place'); await holds(() => chats.activeSession.value === owner)
     // Search includes a folded tool result, and selecting its snippet opens that exact part.
     const tool = { id: 'tool-sample', parentId: 'a299', role: 'tool-call', content: '', toolName: 'read', thinking: 'A sample liner', toolResult: 'A sample liner', toolStatus: 'approved', timestamp: 1700000007000 }
     owner.appendChatMessage(tool); owner.updateVisibleMessages()
@@ -292,7 +305,10 @@ describe.skipIf(!available || !onPhone())('navigation with the phone keyboard', 
         await evalLong(`(async () => {
         const height = () => parseFloat(getComputedStyle(document.documentElement).getPropertyValue('--keyboard-height')) || 0
         for (let i=0; i<100 && !height(); i++) await new Promise(r => setTimeout(r, 50))
-        await new Promise(r => setTimeout(r, 800))
+        // The keyboard up and still: its height, the field's place and value and the rows found the
+        // same two readings running.
+        const place = () => { const f = document.querySelector('.abele-chat-navigation input'); return [height(), f?.getBoundingClientRect().top, f?.value, document.querySelectorAll('.abele-chat-navigation [data-nav-item]').length].join(':') }
+        for (let i=0, last=null; i<40; i++) { await new Promise(r => setTimeout(r, 100)); const now = place(); if (now === last) break; last = now }
         const field = document.querySelector('.abele-chat-navigation input'), r = field.getBoundingClientRect()
         const shot = await window.__e2eHost.shot(${JSON.stringify(SHOTS + '/navigation-keyboard.png')})
         return JSON.stringify({ keyboard: height(), top: r.top, bottom: r.bottom, keyboardTop: window.innerHeight-height(), value: field.value, results: document.querySelectorAll('.abele-chat-navigation [data-nav-item]').length, shot })

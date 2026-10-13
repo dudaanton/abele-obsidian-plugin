@@ -77,11 +77,27 @@ const PRELUDE = `
     cdp.sendCommand('Input.dispatchTouchEvent', { type, touchPoints: type === 'touchEnd' ? [] : [{ x: Math.round(x), y: Math.round(y) }] })
   const mouse = (type, x, y, buttons = 1) =>
     cdp.sendCommand('Input.dispatchMouseEvent', { type, x: Math.round(x), y: Math.round(y), button: type === 'mouseMoved' && !buttons ? 'none' : 'left', buttons, clickCount: 1 })
-  const tap = async (x, y, hold = 60) => { await touch('touchStart', x, y); await wait(hold); await touch('touchEnd'); await wait(700) }
-  const swipe = async (x0, x1, y, hold = 0) => {
+  // A gesture that is expected to turn the page passes a done check and waits for the turn instead;
+  // every other one keeps its window to show that nothing turns.
+  const tap = async (x, y, hold = 60, done) => {
+    await touch('touchStart', x, y); await wait(hold); await touch('touchEnd')
+    await (done ? until(done, 3000) : wait(700))
+  }
+  const swipe = async (x0, x1, y, hold = 0, done) => {
     await touch('touchStart', x0, y); await wait(hold)
     for (let i = 1; i <= 6; i++) { await touch('touchMove', x0 + (x1 - x0) * i / 6, y); await wait(16) }
-    await touch('touchEnd'); await wait(900)
+    await touch('touchEnd'); await (done ? until(done, 3000) : wait(900))
+  }
+  /** On the page asked for, at rest on its edge for three readings: past the engine's lock after a turn. */
+  const turnedTo = (view, page) => {
+    let previous = null, still = 0
+    return () => {
+      const { start, size } = R(view)
+      if (R(view).page !== page || Math.abs(start / size - Math.round(start / size)) >= 0.01) { previous = null; still = 0; return false }
+      still = start === previous ? still + 1 : 0
+      previous = start
+      return still >= 2
+    }
   }
   const open = async (path) => {
     // A new tab, or the one Obsidian keeps when there is no tab group to put one in.
@@ -477,11 +493,11 @@ describe.skipIf(!available)('selecting words on pages turned one at a time', () 
         await fresh(view)
         const s = box(view), y = s.top + s.height / 2
         const p0 = R(view).page
-        await tap(s.right - 15, y)
+        await tap(s.right - 15, y, 60, turnedTo(view, p0 + 1))
         const right = [p0, R(view).page]
-        await tap(s.left + 15, y)
+        await tap(s.left + 15, y, 60, turnedTo(view, right[1] - 1))
         const left = [right[1], R(view).page]
-        await swipe(s.right - 60, s.left + 60, y)
+        await swipe(s.right - 60, s.left + 60, y, 0, turnedTo(view, left[1] + 1))
         const swiped = [left[1], R(view).page]
         leaf.detach()
         return { right, left, swipe: swiped }
@@ -580,7 +596,7 @@ describe.skipIf(!available)('selecting words on pages turned one at a time', () 
         await tap(s.right - 15, y + 100)
         const closed = !view.model.active
         const p1 = R(view).page
-        await tap(s.right - 15, y + 100)
+        await tap(s.right - 15, y + 100, 60, turnedTo(view, p1 + 1))
         const turned = R(view).page
         leaf.detach()
         return { opened, afterButton, closed, pages: [p0, p1], turned }

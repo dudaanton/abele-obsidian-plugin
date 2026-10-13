@@ -83,6 +83,30 @@ const measure = async (name: string): Promise<Screen> =>
       while (Date.now() < deadline) { try { const v = fn(); if (v) return v } catch {} await wait(100) }
       return null
     }
+    const painted = () => Promise.race([new Promise((r) => requestAnimationFrame(() => requestAnimationFrame(() => r()))), new Promise((r) => setTimeout(r, 250))])
+    /** Until a reading is there and holds for four polls in a row; null if it never does. */
+    const steady = async (read, ms = 8000) => {
+      let previous = null, still = 0
+      return until(() => {
+        const value = read()
+        const key = value == null ? null : JSON.stringify(value)
+        still = key !== null && key === previous ? still + 1 : 0
+        previous = key
+        return still >= 3
+      }, ms)
+    }
+    const box = (el) => { const b = el?.getBoundingClientRect(); return b ? [b.left, b.top, b.width, b.height] : null }
+    /** The page loaded and the reader, its page and the phone's bars laid out and holding still. */
+    const laidOut = async (leaf) => {
+      await steady(() => {
+        const engine = leaf.view.engine, doc = engine.renderer.getContents()[0]?.doc
+        if (doc?.readyState !== 'complete' || doc.fonts.status !== 'loaded') return null
+        return [box(engine), box(leaf.view.contentEl.querySelector('.abele-book-reader')),
+          box(document.querySelector('.mobile-navbar')), box(leaf.view.containerEl.querySelector('.view-header')),
+          box(doc.defaultView.frameElement), engine.lastLocation?.cfi ?? null, engine.lastLocation?.fraction ?? null]
+      })
+      await painted()
+    }
     const report = { phone: document.body.classList.contains('is-phone') }
     try {
       const leaf = app.workspace.getLeaf(false)
@@ -92,12 +116,12 @@ const measure = async (name: string): Promise<Screen> =>
       await app.workspace.revealLeaf(leaf)
       const view = leaf.view
       if (!await until(() => view.engine?.lastLocation)) return { ...report, error: 'the book never showed' }
-      await wait(1000)
+      await laidOut(leaf)
       const engine = view.engine
       // From the start: a book opens where the last run left it, which may be its last page.
       if (engine.lastLocation.fraction > 0) {
         await engine.goTo(${JSON.stringify(name)}.endsWith('-pdf') ? 0 : engine.book.toc?.[0]?.href ?? 0)
-        await wait(800)
+        await laidOut(leaf)
       }
       const r = engine.getBoundingClientRect()
       const whole = view.contentEl.querySelector('.abele-book-reader').getBoundingClientRect()
@@ -168,8 +192,8 @@ const measure = async (name: string): Promise<Screen> =>
         for (const owner of tapOwners) for (const type of tapTypes) owner.removeEventListener(type,recordTap,true)
       }
 
-      // A finger swiped from right to left turns the page too.
-      await wait(600)
+      // A finger swiped from right to left turns the page too, once the turn above has come to rest.
+      await steady(() => [engine.lastLocation.fraction, engine.renderer.start ?? null])
       const swipeFrom = engine.lastLocation.fraction
       const doc = engine.renderer.getContents()[0].doc
       const target = doc.body
@@ -266,6 +290,27 @@ describe.skipIf(!available)('a book on a phone', () => {
       await evalLong(
         `(async () => {
       const wait = (ms) => new Promise((r) => setTimeout(r, ms))
+      const until = async (fn, ms = 5000) => {
+        const deadline = Date.now() + ms
+        while (Date.now() < deadline) { try { const v = fn(); if (v) return v } catch {} await wait(100) }
+        return null
+      }
+      const painted = () => Promise.race([new Promise((r) => requestAnimationFrame(() => requestAnimationFrame(() => r()))), new Promise((r) => setTimeout(r, 250))])
+      const box = (el) => { const b = el?.getBoundingClientRect(); return b ? [b.left, b.top, b.width, b.height] : null }
+      /** Until an element is there, done moving and holding still for four polls in a row. */
+      const still = async (find, ms = 5000) => {
+        let previous = null, count = 0
+        await until(() => {
+          const el = find()
+          const moving = el?.getAnimations?.({ subtree: true })
+            .some((a) => a.playState === 'running' && a.effect?.getTiming?.().iterations !== Infinity)
+          const key = !el || moving ? null : JSON.stringify(box(el))
+          count = key !== null && key === previous ? count + 1 : 0
+          previous = key
+          return count >= 3
+        }, ms)
+        await painted()
+      }
       const shoot = async (name) => {
         if (window.__e2eHost) return window.__e2eHost.shot(${JSON.stringify(SHOTS)} + '/book-' + name + '.png')
         for (let attempt = 0; attempt < 3; attempt++) {
@@ -278,28 +323,32 @@ describe.skipIf(!available)('a book on a phone', () => {
       const view = app.workspace.getLeavesOfType('abele-book')[0].view
       const report = {}
       view.model.panel = true
-      await wait(800)
+      await until(() => view.contentEl.querySelector('.abele-book-contents .tree-item-self'))
+      await still(() => view.contentEl.querySelector('.abele-book-reader__panel'))
       const panel = view.contentEl.querySelector('.abele-book-reader__panel')?.getBoundingClientRect()
       report.drawer = panel ? { left: Math.round(panel.left), right: Math.round(panel.right), rows: view.contentEl.querySelectorAll('.abele-book-contents .tree-item-self').length } : null
       await shoot('rich-contents')
       // Picking a chapter in the drawer closes it and goes there.
       ;[...view.contentEl.querySelectorAll('.abele-book-contents .tree-item-self')].find((row) => row.textContent.trim() === 'Chapter 2')?.click()
-      await wait(1500)
+      await until(() => !view.model.panel && view.model.chapter === 'Chapter 2' &&
+        !view.contentEl.querySelector('.abele-book-reader__panel'))
+      await still(() => view.contentEl.querySelector('.abele-book-reader'))
       report.afterPick = { panel: view.model.panel, chapter: view.model.chapter }
       view.model.settingsOpen = true
-      await wait(900)
+      await still(() => document.querySelector('.modal-container .modal'))
       const dialog = document.querySelector('.modal-container .modal')?.getBoundingClientRect()
       report.dialog = dialog ? { left: Math.round(dialog.left), right: Math.round(dialog.right), width: window.innerWidth } : null
       await shoot('rich-settings')
       document.body.dispatchEvent(new KeyboardEvent('keydown', { key: 'Escape', bubbles: true }))
-      await wait(400)
+      await until(() => !document.querySelector('.modal-container'))
 
       // The search in the drawer, with what it found.
       view.model.panelTab = 'search'
       view.model.panel = true
-      await wait(400)
+      await still(() => view.contentEl.querySelector('.abele-book-reader__panel'))
       await view.reading.search('plain text')
-      await wait(400)
+      await until(() => view.contentEl.querySelector('.abele-book-search__hit'))
+      await still(() => view.contentEl.querySelector('.abele-book-reader__panel'))
       const edge = (sel, skipScrollContents = false) => {
         let over = 0
         const walk = (el) => {
@@ -345,7 +394,8 @@ describe.skipIf(!available)('a book on a phone', () => {
       await shoot('rich-search')
       view.model.panel = false
       view.reading.stopSearch()
-      await wait(300)
+      await until(() => !view.contentEl.querySelector('.abele-book-reader__panel'))
+      await still(() => view.contentEl.querySelector('.abele-book-reader'))
 
       // Words selected: the bar viewport fits the screen; its single action row scrolls sideways.
       const doc = view.engine.renderer.getContents()[0].doc
@@ -355,13 +405,13 @@ describe.skipIf(!available)('a book on a phone', () => {
       for (let i = 0; i < 30 && !view.model.selection; i++) await wait(100)
       // The bar comes once the words have rested: it stays hidden while they are being selected.
       for (let i = 0; i < 30 && !view.contentEl.querySelector('.abele-book-selection'); i++) await wait(100)
-      await wait(200)
+      await still(() => view.contentEl.querySelector('.abele-book-selection'))
       const barEl = view.contentEl.querySelector('.abele-book-selection')
       const bar = barEl?.getBoundingClientRect()
       if (bar) {
         const last = [...barEl.querySelectorAll('[role="button"],button')].at(-1)
         barEl.scrollLeft = barEl.scrollWidth
-        await wait(100)
+        await painted()
         const end = last?.getBoundingClientRect()
         report.bar = { over: edge('.abele-book-selection', true), left:bar.left, height:Math.round(bar.height),
           scrolled:barEl.scrollLeft > 0,
@@ -370,7 +420,7 @@ describe.skipIf(!available)('a book on a phone', () => {
       } else report.bar = null
       await shoot('rich-selection')
       view.reading.clearSelection()
-      await wait(300)
+      await until(() => !view.model.selection && !view.contentEl.querySelector('.abele-book-selection'))
 
       // Reading aloud, with a silent stand-in for speech that never finishes its sentence: the
       // bar under the page fits, and the sentence is marked.
@@ -381,7 +431,7 @@ describe.skipIf(!available)('a book on a phone', () => {
       }
       view.reading.speech.stop()
       view.reading.speech.toggle()
-      await wait(900)
+      await still(() => view.contentEl.querySelector('.abele-book-speech'))
       const speaking = view.contentEl.querySelector('.abele-book-speech')?.getBoundingClientRect()
       report.speech = speaking
         ? { over: edge('.abele-book-speech'), bottom: Math.round(speaking.bottom), height: window.innerHeight, rows: Math.round(speaking.height) }

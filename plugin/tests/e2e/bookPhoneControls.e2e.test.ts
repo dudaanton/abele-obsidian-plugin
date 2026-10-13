@@ -84,6 +84,36 @@ const PRELUDE = `
   // A condition that is already true immediately after the gesture would miss a late turn.
   const observeTap = () => wait(800)
   const observeTableSwipe = () => wait(900)
+  const painted = () => Promise.race([new Promise((r) => requestAnimationFrame(() => requestAnimationFrame(() => r()))), new Promise((r) => setTimeout(r, 250))])
+  /** Until a reading holds for three polls in a row; null if it never does. */
+  const steady = async (read, ms = 5000) => {
+    let previous, still = 0
+    return until(() => {
+      const value = JSON.stringify(read())
+      still = value === previous ? still + 1 : 0
+      previous = value
+      return still >= 2
+    }, ms)
+  }
+  /** The relocations the engine reports from now on. */
+  const relocations = (view) => {
+    let n = 0
+    const on = () => n++
+    view.engine.addEventListener('relocate', on)
+    return { count: () => n, stop: () => view.engine.removeEventListener('relocate', on) }
+  }
+  /** The pages at rest: where the engine is and what the reader shows of it, unchanged between polls. */
+  const rested = (view, more = () => null) =>
+    steady(() => [R(view).start, R(view).size, view.engine.lastLocation?.cfi, view.model.fraction, more()])
+  /** A move of the engine finished: it said where it went, and the pages and the reader came to rest. */
+  const moved = async (view, step, more) => {
+    const moves = relocations(view)
+    try {
+      await step()
+      await until(() => moves.count() > 0, 3000)
+      await rested(view, more)
+    } finally { moves.stop() }
+  }
   // On a real phone the harness's host touches the screen and takes the pictures (helpers/phone.ts).
   const host = window.__e2eHost
   const cdp = host ? null : require('@electron/remote').getCurrentWebContents().debugger
@@ -223,7 +253,7 @@ describe.skipIf(!available)('the reader’s controls on a phone', () => {
     const r = await run<{ error?: string; closed?: boolean[]; fraction?: number[] }>(`
       const { leaf, view } = await open(${JSON.stringify(RICH)})
       // From the start of the book, with room to move to the right.
-      await view.engine.goTo(view.model.toc[0].href); await wait(600)
+      await moved(view, () => view.engine.goTo(view.model.toc[0].href))
       app.workspace.leftSplit.collapse()
       const slider = view.contentEl.querySelector('.abele-book-reader__footer input[type=range]')
       const b = slider.getBoundingClientRect(), y = b.top + b.height / 2
@@ -254,11 +284,11 @@ describe.skipIf(!available)('the reader’s controls on a phone', () => {
       cfg.reader = { ...cfg.reader, progressShow: 'page', flow: 'paginated' }
       await cfg.saveSettings()
       const { leaf, view } = await open(${JSON.stringify(RICH)})
-      await view.engine.goTo(view.model.toc[0].href); await wait(600)
       const measure = () => view.contentEl.querySelector('.abele-book-reader__measure')
+      await moved(view, () => view.engine.goTo(view.model.toc[0].href), () => measure()?.textContent)
       await until(() => measure(), 3000)
       const first = measure().textContent.trim()
-      await R(view).next(); await wait(600)
+      await moved(view, () => R(view).next(), () => measure()?.textContent)
       const turned = measure().textContent.trim()
       await shoot('footer-page')
       const shown = [first]
@@ -272,10 +302,12 @@ describe.skipIf(!available)('the reader’s controls on a phone', () => {
       const m = measure().getBoundingClientRect()
       const fits = m.right <= footer.right + 1 && m.left >= footer.left - 1
       // A chapter scrolled through counts its screens.
-      cfg.reader = { ...cfg.reader, flow: 'scrolled' }
-      await cfg.saveSettings()
-      await wait(1200)
-      await R(view).next(); await wait(800)
+      await moved(view, async () => {
+        cfg.reader = { ...cfg.reader, flow: 'scrolled' }
+        await cfg.saveSettings()
+        await until(() => R(view).scrolled, 3000)
+      }, () => measure()?.textContent)
+      await moved(view, () => R(view).next(), () => measure()?.textContent)
       const scrolled = measure().textContent.trim()
       await shoot('footer-scrolled')
       cfg.reader = { ...cfg.reader, flow: 'paginated' }
@@ -330,7 +362,8 @@ describe.skipIf(!available)('the reader’s controls on a phone', () => {
       if (!(await until(() => !document.querySelector('.modal-container')))) throw Error('Settings modal did not close')
 
       // A note, as a tap on its mark opens it.
-      await view.engine.goTo(view.model.toc[0].href); await wait(600)
+      await moved(view, () => view.engine.goTo(view.model.toc[0].href))
+      await painted()
       const ref = docOf(view).getElementById('ref1')
       const at = onScreen(view, ref)
       await tap(at.x, at.y)
@@ -513,17 +546,24 @@ describe.skipIf(!available)('the reader’s controls on a phone', () => {
   it('turned on its side, the page is laid out anew at the same place, the picture centred', async () => {
     const r = await run<{ error?: string; kept?: boolean; pages?: number[]; centred?: boolean }>(`
       const { leaf, view } = await open(${JSON.stringify(FIGURES)})
-      await view.engine.goTo(view.model.toc[0].href); await wait(500)
-      for (let i = 0; i < 3; i++) { await R(view).next(); await wait(400) }
-      await wait(500)
+      await moved(view, () => view.engine.goTo(view.model.toc[0].href))
+      for (let i = 0; i < 3; i++) await moved(view, () => R(view).next())
+      await painted()
       const before = view.engine.lastLocation.range
       const start = [before.startContainer, before.startOffset]
       const p0 = R(view).page
       const win = host ? null : require('@electron/remote').getCurrentWindow()
       try {
-      if (host) await host.orientation('landscape')
-      else win.setContentSize(844, 390)
-      await wait(2000)
+      // Laid out anew for its new shape: the window turned, the engine placed its page again, and
+      // the page, the place and the picture all held still.
+      const turned = relocations(view)
+      try {
+        if (host) await host.orientation('landscape')
+        else win.setContentSize(844, 390)
+        await until(() => (host ? innerWidth > innerHeight : innerWidth === 844 && innerHeight === 390) && turned.count() > 0, 5000)
+        await rested(view, () => [innerWidth, innerHeight, turned.count(), docOf(view).getElementById('scan')?.getBoundingClientRect().left])
+        await painted()
+      } finally { turned.stop() }
       // What began the page upright is on the page on its side.
       const after = view.engine.lastLocation.range
       const kept = after.comparePoint(start[0], start[1]) === 0
@@ -535,7 +575,11 @@ describe.skipIf(!available)('the reader’s controls on a phone', () => {
       return { kept, pages: [p0], centred }
       } finally {
         if (host) await ${RESTORE_PHONE_SCRIPT}
-        else { win.setContentSize(390, 844); await wait(1500) }
+        else {
+          win.setContentSize(390, 844)
+          await until(() => innerWidth === 390 && innerHeight === 844, 5000)
+          await rested(view, () => [innerWidth, innerHeight])
+        }
         leaf.detach()
       }
     `)

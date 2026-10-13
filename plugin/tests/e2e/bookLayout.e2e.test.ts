@@ -59,6 +59,21 @@ const PRELUDE = `
     return null
   }
   const win = require('@electron/remote').getCurrentWindow()
+  const painted = () => Promise.race([new Promise((r) => requestAnimationFrame(() => requestAnimationFrame(() => r()))), new Promise((r) => setTimeout(r, 250))])
+  /** The page loaded with its fonts, and the engine, its page and its place unchanged for five polls. */
+  const laidOut = async (view) => {
+    let previous = null, still = 0
+    await until(() => {
+      const r = view.engine.renderer, doc = r.getContents()[0]?.doc
+      const ready = doc?.readyState === 'complete' && doc.fonts.status === 'loaded'
+      const b = r.getBoundingClientRect(), f = ready && doc.defaultView.frameElement?.getBoundingClientRect()
+      const key = ready && f ? JSON.stringify([b.width, b.height, f.left, f.top, f.width, f.height, r.start, r.size, view.engine.lastLocation?.cfi]) : null
+      still = key !== null && key === previous ? still + 1 : 0
+      previous = key
+      return still >= 4
+    }, 5000)
+    await painted()
+  }
   const open = async () => {
     let leaf = app.workspace.getLeavesOfType('abele-book').find(l => l.getViewState().state?.file === ${JSON.stringify(BOOK)})
     if (!leaf) {
@@ -70,7 +85,7 @@ const PRELUDE = `
     if (leaf.loadIfDeferred) await leaf.loadIfDeferred()
     if (!await until(() => leaf.view?.model?.status === 'ready' && leaf.view.reading))
       throw Error('the fixture book did not become ready')
-    await wait(800)
+    await laidOut(leaf.view)
     return leaf.view
   }
   const R = (view) => view.engine.renderer
@@ -227,7 +242,8 @@ describe.skipIf(!available)('paragraphs are never drawn over each other', () => 
       try { leaf = app.workspace.getLeaf('tab') } catch { leaf = app.workspace.createLeafInParent(app.workspace.rootSplit, 0) }
       await leaf.setViewState({ type: 'abele-book', state: { file: ${JSON.stringify(BOOK)} }, active: true })
       await until(() => ['ready', 'error'].includes(leaf.view?.model?.status))
-      await wait(500)
+      // The chapter is said once the opening page has placed itself.
+      await until(() => leaf.view.model.status !== 'ready' || leaf.view.model.chapter, 3000)
       return { status: leaf.view.model.status, message: leaf.view.model.message, chapter: leaf.view.model.chapter }
     `)
     expect(r.error).toBeUndefined()

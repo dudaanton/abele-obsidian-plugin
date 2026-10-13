@@ -146,6 +146,18 @@ const probeLib = `(() => {
    * being fitted to it as it lands. Read in that moment, Run stood under a toolbar still on its
    * way. A fit that is wrong and stays wrong is still read, once it has stayed.
    */
+  /** Until a reading is the same three times running, a tenth of a second apart. */
+  const still = async (read, ms = 5000) => {
+    let last = null
+    let same = 0
+    return until(() => {
+      const now = read()
+      same = now === last ? same + 1 : 0
+      last = now
+      return same >= 2
+    }, ms)
+  }
+
   const settled = async () => {
     const start = Date.now()
     let last = ''
@@ -173,14 +185,15 @@ const probeLib = `(() => {
       // for the one touched.
       document.activeElement && document.activeElement.blur()
       await until(() => keyboardHeight() === 0, 5000)
-      await wait(1000)
+      // The toolbar gone with the keyboard and the dialog fitted again.
+      await still(layout)
       return 'open'
     },
     // Brought into sight, and where to touch it once nothing moves any more.
     async aim(which) {
       const el = fieldOf(which)
       el.scrollIntoView({ block: 'center' })
-      await wait(600)
+      await still(() => JSON.stringify(el.getBoundingClientRect()))
       const r = el.getBoundingClientRect()
       return [Math.round(r.left + r.width / 2), Math.round(r.top + Math.min(r.height / 2, 20))]
     },
@@ -195,13 +208,14 @@ const probeLib = `(() => {
       if (host) {
         await until(() => keyboardHeight() > 0, 5000)
         // Until the keyboard has finished coming up: letters typed while it slides in are lost.
-        await wait(1800)
+        // Its height and the toolbar and dialog over it have stopped moving.
+        await still(layout)
       } else {
         document.documentElement.style.setProperty('--keyboard-height', '${KEYBOARD}px')
         const shown = new Event('keyboardWillShow')
         shown.keyboardHeight = ${KEYBOARD}
         window.dispatchEvent(shown)
-        await wait(600)
+        await still(layout)
       }
       return 'focused'
     },
@@ -331,7 +345,16 @@ const setWindowSize = async (width: number, height: number): Promise<void> => {
     })()`,
     30_000
   )
-  await new Promise((resolve) => setTimeout(resolve, 1500))
+  // Until the page has the new size and has drawn at it.
+  evalRaw(
+    `(async () => {
+      const wait = (ms) => new Promise((r) => setTimeout(r, ms))
+      for (let end = Date.now() + 5000; Date.now() < end && !(innerWidth === ${width} && innerHeight === ${height}); ) await wait(50)
+      await Promise.race([new Promise((r) => requestAnimationFrame(() => requestAnimationFrame(() => r()))), new Promise((r) => setTimeout(r, 250))])
+      return 'ok'
+    })()`,
+    30_000
+  )
 }
 
 const available = isObsidianRunning() && hasTestApi()

@@ -23,12 +23,32 @@ const PRELUDE = `
     while (Date.now() < deadline) { try { const v = fn(); if (v) return v } catch {} await wait(100) }
     return null
   }
+  const frame = () => Promise.race([new Promise((r) => requestAnimationFrame(() => requestAnimationFrame(() => r()))), new Promise((r) => setTimeout(r, 250))])
+  // A part is ready once its page has arrived and been checked, its frames have loaded, and
+  // their boxes hold still between two readings: then one more paint.
+  const settled = async (view, index) => {
+    let previous = ''
+    await until(() => {
+      if (!view.pages.some((p) => index === undefined || p.index === index)) return false
+      const contents = view.engine.renderer.getContents()
+      if (!contents.length || contents.some((c) => c.doc?.readyState !== 'complete')) return false
+      if (index !== undefined && !contents.some((c) => c.index === undefined || c.index === index)) return false
+      const boxes = JSON.stringify(contents.map((c) => {
+        const b = c.doc.defaultView?.frameElement?.getBoundingClientRect()
+        return b ? [b.left, b.top, b.width, b.height] : null
+      }))
+      const still = boxes === previous
+      previous = boxes
+      return still
+    }, 5000)
+    await frame()
+  }
   const open = async (name) => {
     const leaf = app.workspace.getLeaf('tab')
     await leaf.openFile(app.vault.getAbstractFileByPath(${JSON.stringify(DIR)} + '/' + name))
     const view = leaf.view
     await until(() => view.model?.status === 'ready' || view.model?.status === 'error', 15000)
-    await wait(800)
+    if (view.model?.status === 'ready') await settled(view)
     return { leaf, view }
   }
 `
@@ -75,7 +95,7 @@ const visit = (name: string, sandbox: string | null) =>
       for (let i = 0; i < out.sections; i++) {
         await view.engine.goTo(i)
         // The part's page is made and laid out a moment after the engine has gone there.
-        await wait(1200)
+        await settled(view, i)
         for (const { doc } of view.engine.renderer.getContents()) {
           if (!doc?.body) continue
           text += ' ' + doc.body.innerText
@@ -196,7 +216,7 @@ describe.skipIf(!available)('books in the other formats', () => {
       const renderer = view.engine.renderer.localName.replace(/-[a-z]{6}$/, '')
       const order = view.engine.book.sections.map((s) => s.id)
       await view.engine.goTo(0)
-      await wait(600)
+      await settled(view, 0)
       // A comic's first page stands alone on the right of its spread; the left is blank.
       await until(() => view.engine.renderer.getContents().some((c) => c.doc?.querySelector('img')?.naturalWidth), 5000)
       const img = view.engine.renderer.getContents().map((c) => c.doc?.querySelector('img')).find(Boolean)
@@ -230,7 +250,7 @@ describe.skipIf(!available)('books in the other formats', () => {
     }>(`
       const { leaf, view } = await open('fixed.epub')
       await view.engine.goTo(1)
-      await wait(600)
+      await settled(view, 1)
       const doc = view.engine.renderer.getContents().map((c) => c.doc).find((d) => d.getElementById('line2'))
       const text = doc.getElementById('line2').firstChild
       const range = doc.createRange(); range.setStart(text, 0); range.setEnd(text, 10)
