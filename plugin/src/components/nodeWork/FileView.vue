@@ -47,6 +47,7 @@
       v-if="!image && !metadataNote"
       :scope="root"
       within=".cm-content, .abele-diff__text"
+      under=".abele-file-view__header, .abele-diff__header"
       :actions="[ASK, ADD, NOTE]"
       @pick="send"
     />

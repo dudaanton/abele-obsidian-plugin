@@ -79,8 +79,7 @@ describe('node design corrections', () => {
     await flushPromises()
     expect(view.get('.cm-content').text()).toContain('value = 2')
   })
-  // BUG: SelectionBar currently bounds placement to the viewport, not the file header.
-  it.fails(
+  it(
     'places first-line selection actions below the selection instead of over the file header',
     async () => {
       const view = keep(
@@ -106,7 +105,7 @@ describe('node design corrections', () => {
       document.dispatchEvent(new Event('selectionchange'))
       await new Promise((resolve) => setTimeout(resolve, 400))
       await flushPromises()
-      expect(view.get('.abele-selection-bar').attributes('style')).toContain('top: 128px')
+      expect(view.get('.abele-selection-bar').attributes('style')).toContain('top: 126px')
     }
   )
   it('does not quote a selection outside this file through its context menu', async () => {
