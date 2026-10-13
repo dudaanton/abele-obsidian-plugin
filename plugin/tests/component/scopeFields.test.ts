@@ -1,35 +1,31 @@
-import { beforeEach, describe, expect, it, vi } from 'vitest'
+import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest'
 import { mount } from '@vue/test-utils'
 import ScopeEditor from '@/components/AiScopeEditor.vue'
+import { ScopeResolver } from '@/ai/ScopeResolver'
 import { useVault } from '../helpers/testEnv'
 
+import type { ScopeEntry } from '@/ai/ScopeResolver'
+
+// The field's own list is the suggester's business (tests/unit/scopeSuggest.test.ts); here it
+// is a stand-in that records what the editor hands it.
 const suggesters = vi.hoisted(
   () =>
     [] as {
-      selectSuggestion: (item: { path: string }) => void
+      input: HTMLInputElement
+      taken: () => ScopeEntry[]
+      onChoose: (entry: ScopeEntry) => void
       close: ReturnType<typeof vi.fn>
-      refresh: ReturnType<typeof vi.fn>
-      allFileTypes?: boolean
     }[]
 )
-vi.mock('@/helpers/suggesters/FileSuggester', () => ({
-  FileSuggest: class {
+vi.mock('@/helpers/suggesters/ScopeSuggest', () => ({
+  ScopeSuggest: class {
     close = vi.fn()
-    refresh = vi.fn()
-    selectSuggestion = (_item: { path: string }) => {}
-    allFileTypes?: boolean
-    constructor(_app: unknown, _input: unknown, options?: { allFileTypes?: boolean }) {
-      this.allFileTypes = options?.allFileTypes
-      suggesters.push(this)
-    }
-  },
-}))
-vi.mock('@/helpers/suggesters/FolderSuggester', () => ({
-  FolderSuggest: class {
-    close = vi.fn()
-    refresh = vi.fn()
-    selectSuggestion = (_item: { path: string }) => {}
-    constructor() {
+    constructor(
+      _app: unknown,
+      public input: HTMLInputElement,
+      public taken: () => ScopeEntry[],
+      public onChoose: (entry: ScopeEntry) => void
+    ) {
       suggesters.push(this)
     }
   },
@@ -39,32 +35,79 @@ beforeEach(() => {
   useVault([])
   suggesters.length = 0
 })
-describe('scope fields', () => {
-  it('mounts suggesters after full access is narrowed and closes them when broadened', async () => {
+afterEach(() => {
+  vi.restoreAllMocks()
+})
+describe('scope field', () => {
+  it('is one field, mounted while access is narrowed and closed when it is broadened', async () => {
     const view = mount(ScopeEditor, { props: { entries: [], fullVaultAccess: true } })
     expect(suggesters).toHaveLength(0)
+    expect(view.find('input').exists()).toBe(false)
     await view.setProps({ fullVaultAccess: false })
-    expect(suggesters).toHaveLength(3)
-    expect(suggesters[0].allFileTypes).toBe(true)
-    for (const [index, type] of ['file', 'folder', 'group'].entries()) {
-      suggesters[index].selectSuggestion({ path: `Samples/${type}.md` })
-      expect(view.emitted('update:entries')?.[index]).toEqual([
-        [{ type, path: `Samples/${type}.md` }],
-      ])
-    }
+    expect(suggesters).toHaveLength(1)
+    const input = view.get('input[placeholder="Add a note, folder, group or pattern…"]')
+    expect(suggesters[0].input).toBe(input.element)
+    expect(view.findAll('input')).toHaveLength(1)
     await view.setProps({ fullVaultAccess: true })
-    suggesters.forEach((s) => expect(s.close).toHaveBeenCalledOnce())
+    expect(suggesters[0].close).toHaveBeenCalledOnce()
     view.unmount()
   })
-  it('adds a trimmed pattern once on Enter and clears the input', async () => {
-    const view = mount(ScopeEditor, { props: { entries: [], fullVaultAccess: false } })
-    const input = view.get('input[placeholder="e.g. Projects/**/*.md"]')
-    await input.setValue(' Samples/**/*.md ')
-    await input.trigger('keydown.enter')
+
+  it('adds whatever is chosen in it, once, and tells the list what is already there', async () => {
+    const entries: ScopeEntry[] = [{ type: 'folder', path: 'Samples' }]
+    const view = mount(ScopeEditor, { props: { entries, fullVaultAccess: false } })
+    const [suggest] = suggesters
+    expect(suggest.taken()).toEqual(entries)
+
+    suggest.onChoose({ type: 'pattern', path: 'Samples/**/*.md' })
     expect(view.emitted('update:entries')).toEqual([
-      [[{ type: 'pattern', path: 'Samples/**/*.md' }]],
+      [[...entries, { type: 'pattern', path: 'Samples/**/*.md' }]],
     ])
-    expect((input.element as HTMLInputElement).value).toBe('')
+    suggest.onChoose({ type: 'folder', path: 'Samples' })
+    expect(view.emitted('update:entries')).toHaveLength(1)
+    view.unmount()
+  })
+})
+
+describe('scope entries', () => {
+  const entries = [
+    { type: 'file' as const, path: 'Samples/one.md' },
+    { type: 'group' as const, path: 'Samples/Sample group.md' },
+  ]
+
+  it('lists each place as a row with a remove glyph that leaves the others', async () => {
+    const view = mount(ScopeEditor, { props: { entries, fullVaultAccess: false } })
+    const rows = view.findAll('[role="list"] [role="listitem"]')
+    expect(rows.map((r) => r.find('.abele-scope-mgr__entry-path').text())).toEqual([
+      'Samples/one.md',
+      'Samples/Sample group.md',
+    ])
+    await view.get('button[aria-label="Remove Samples/one.md from scope"]').trigger('click')
+    expect(view.emitted('update:entries')).toEqual([[[entries[1]]]])
+    view.unmount()
+  })
+
+  it("opens a group's row to show its members on a click and folds it on the next", async () => {
+    vi.spyOn(ScopeResolver.getInstance(), 'resolveGroupPaths').mockImplementation((path) =>
+      path === 'Samples/Sample group.md' ? ['Samples/member-a.md', 'Samples/member-b.md'] : []
+    )
+    const view = mount(ScopeEditor, { props: { entries, fullVaultAccess: false } })
+    const group = view.findAll('[role="listitem"]')[1]
+    expect(group.attributes('aria-expanded')).toBe('false')
+    expect(group.get('.abele-scope-mgr__entry-type').text()).toBe('2')
+    expect(view.find('.abele-scope-mgr__preview').exists()).toBe(false)
+
+    await group.trigger('click')
+    expect(view.findAll('[role="listitem"]')[1].attributes('aria-expanded')).toBe('true')
+    expect(view.findAll('.abele-scope-mgr__preview-item').map((p) => p.text())).toEqual([
+      'Samples/member-a.md',
+      'Samples/member-b.md',
+    ])
+    await view.findAll('[role="listitem"]')[1].trigger('click')
+    expect(view.find('.abele-scope-mgr__preview').exists()).toBe(false)
+    // A file's row has nothing under it to open.
+    await view.findAll('[role="listitem"]')[0].trigger('click')
+    expect(view.find('.abele-scope-mgr__preview').exists()).toBe(false)
     view.unmount()
   })
 })

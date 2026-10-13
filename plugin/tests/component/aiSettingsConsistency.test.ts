@@ -145,16 +145,16 @@ it('uses the clearer permission labels with unchanged stored values on both scre
   expect(row(scope, 'Permission mode').findComponent(Dropdown).props('options')).toEqual(expected)
 })
 
-it('uses the shared override notice for models and resets both model fields', async () => {
+it("marks a model of this chat's own with the reset glyph, which resets both model fields", async () => {
   const { clearOverride, session } = seed()
   const chat = open(AiChatSettings)
   const notice = chat.findComponent(AgentOverrideNotice)
   expect(notice.exists()).toBe(true)
-  expect(notice.text()).toContain('Overridden for this chat.')
-  await notice
-    .findAllComponents(Icon)
-    .find((icon) => icon.props('icon') === 'undo-2')!
-    .vm.$emit('click')
+  expect(notice.props('compact')).toBe(true)
+  const reset = notice.findComponent(Icon)
+  expect(reset.props('icon')).toBe('rotate-ccw')
+  expect(reset.props('tooltip')).toContain("This chat's own setting")
+  await reset.vm.$emit('click')
   expect(clearOverride.mock.calls.map((call) => call[0])).toEqual(['modelId', 'providerId'])
   expect(session.save).toHaveBeenCalledOnce()
 })

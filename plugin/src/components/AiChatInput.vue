@@ -8,159 +8,164 @@
     @dragover.prevent="onDragOver"
     @dragleave="onDragLeave"
     @drop.prevent.stop="onDrop"
+    @keydown.capture="onSlashKey"
   >
-    <!-- Pending attachments -->
-    <div v-if="attachments.length" class="abele-chat-input__attachments">
-      <div v-for="(a, i) in attachments" :key="a.path" class="abele-chat-input__attachment">
-        <ChatPicture v-if="isImagePath(a.path)" :path="a.path" pending />
-        <template v-else>
-          <Icon :icon="getAttachmentIcon(a.path)" />
-          <span class="abele-chat-input__attachment-name">{{ attachmentName(a.path) }}</span>
-        </template>
-        <Icon
-          icon="x"
-          class="abele-chat-input__attachment-remove"
-          @click="attachments.splice(i, 1)"
-        />
+    <!-- «/» at the start of a message: the chat's commands, skills and prompts. -->
+    <ChatSlashSuggest
+      v-if="slashQuery !== null && !slashDismissed"
+      ref="slash"
+      :query="slashQuery"
+      :text-only="textOnly"
+      @choose="onSlash"
+    />
+    <!-- One frame, as Obsidian's own field: what goes with the message on top, the words, and
+         the row of glyphs at its foot, so the field and its buttons read as one thing. -->
+    <div class="abele-chat-input__box">
+      <div v-if="attachments.length" class="abele-chat-input__attachments">
+        <div v-for="(a, i) in attachments" :key="a.path" class="abele-chat-input__attachment">
+          <ChatPicture v-if="isImagePath(a.path)" :path="a.path" pending />
+          <template v-else>
+            <Icon :icon="getAttachmentIcon(a.path)" />
+            <span class="abele-chat-input__attachment-name">{{ attachmentName(a.path) }}</span>
+          </template>
+          <Icon
+            icon="x"
+            class="abele-chat-input__attachment-remove"
+            :tooltip="`Remove ${attachmentName(a.path)}`"
+            @click="attachments.splice(i, 1)"
+          />
+        </div>
       </div>
-    </div>
 
-    <!-- Obsidian's own note editor: live preview, the `[[` suggester, the formatting hotkeys,
-         and on a phone Obsidian's toolbar above the keyboard. A plain text box only where
-         that editor cannot be borrowed (see embeddedEditor.ts). -->
-    <div
-      v-if="!fallback"
-      ref="editorHost"
-      class="abele-chat-input__field abele-chat-input__editor"
-      @paste.capture="onPaste"
-      @drop.capture="onEditorDrop"
-      @mousedown="onEmptyPress"
-    />
-    <textarea
-      v-else
-      ref="inputEl"
-      :value="text"
-      class="abele-chat-input__field abele-chat-input__textarea"
-      placeholder="Message..."
-      rows="1"
-      @input="onInput"
-      @keydown="onKeydown"
-      @paste="onPaste"
-      @focus="emit('focus', true)"
-      @blur="emit('focus', false)"
-    />
+      <!-- Obsidian's own note editor: live preview, the `[[` suggester, the formatting hotkeys,
+           and on a phone Obsidian's toolbar above the keyboard. A plain text box only where
+           that editor cannot be borrowed (see embeddedEditor.ts). -->
+      <div
+        v-if="!fallback"
+        ref="editorHost"
+        class="abele-chat-input__field abele-chat-input__editor"
+        @paste.capture="onPaste"
+        @drop.capture="onEditorDrop"
+        @mousedown="onEmptyPress"
+      />
+      <textarea
+        v-else
+        ref="inputEl"
+        :value="text"
+        class="abele-chat-input__field abele-chat-input__textarea"
+        placeholder="Message…"
+        rows="1"
+        @input="onInput"
+        @keydown="onKeydown"
+        @paste="onPaste"
+        @focus="emit('focus', true)"
+        @blur="emit('focus', false)"
+      />
 
-    <VoiceRecorder
-      v-if="voiceOpen"
-      can-send
-      auto-start
-      :can-note="canNote && !noteBlocked"
-      class="abele-chat-input__voice"
-      @text="onVoiceText"
-      @send="onVoiceSend"
-      @note="onVoiceNote"
-      @close="voiceOpen = false"
-    />
+      <VoiceRecorder
+        v-if="voiceOpen"
+        can-send
+        auto-start
+        :can-note="canNote && !noteBlocked"
+        class="abele-chat-input__voice"
+        @text="onVoiceText"
+        @send="onVoiceSend"
+        @note="onVoiceNote"
+        @close="voiceOpen = false"
+      />
 
-    <div class="abele-chat-input__toolbar">
-      <div class="abele-chat-input__toolbar-left">
-        <!-- Opens the field out over the whole chat for writing at length, and back. It keeps
-             the field's focus like Send does, so a phone's keyboard stays up through it. -->
-        <Icon
-          :icon="expanded ? 'minimize-2' : 'maximize-2'"
-          with-bg
-          class="abele-chat-input__expand"
-          :tooltip="expandLabel"
-          :aria-label="expandLabel"
-          data-keeps-focus
-          @mousedown.prevent
-          @click="toggleExpanded"
-        />
-        <span v-if="tokenDisplay" class="abele-chat-input__tokens">{{ tokenDisplay }}</span>
-      </div>
       <!-- `data-keeps-focus` on the buttons that act on what is typed: on a phone the field
            keeps its focus through the tap, so the keyboard stays up and the composer does not
            move out from under the finger before the click lands (see fieldFocus.ts). -->
-      <div class="abele-chat-input__toolbar-right" @mousedown.prevent>
-        <template v-if="!isBusy && !importing">
+      <div class="abele-chat-input__toolbar" @mousedown.prevent>
+        <!-- What goes along with the message: files, and what the agent may reach. -->
+        <div class="abele-chat-input__toolbar-left">
           <Icon
-            v-if="!textOnly"
+            v-if="!textOnly && !isBusy && !importing"
             icon="paperclip"
-            with-bg
             tooltip="Attach a file"
             @click="showAttachMenu"
           />
-          <Icon
-            icon="mic"
-            with-bg
-            :tooltip="voiceOpen ? 'Close voice input' : 'Dictate a message'"
-            :class="{ 'abele-chat-input__mic_open': voiceOpen }"
-            @click="voiceOpen = !voiceOpen"
-          />
-        </template>
-        <template v-if="isStreaming">
-          <Icon
-            v-if="text.trim() || attachments.length"
-            icon="send-horizontal"
-            with-bg
-            tooltip="Send when the agent gets there"
-            data-keeps-focus
-            @click="send"
-          />
-          <Icon
-            icon="square"
-            with-bg
-            tooltip="Stop"
-            class="abele-chat-input__stop"
-            @click="emit('abort')"
-          />
-        </template>
-        <Icon
-          v-else-if="isBusy || importing"
-          icon="loader"
-          no-hover
-          class="abele-chat-input__spinner"
-        />
-        <template v-else>
           <!-- What the agent may reach, as a glyph with a count: the whole vault, or so many
                places of its own; the full list is in the tooltip and in the access settings. -->
           <Icon
             v-if="scopeLabel"
             :icon="scopeIcon ?? 'vault'"
-            with-bg
             :text-right="scopeCode || undefined"
             :tooltip="scopeLabel"
             class="abele-chat-input__scope"
             @click="emit('openScope')"
           />
-          <!-- Only over a comment, which is a place in a note as much as it is a chat: the
-               words are kept and nothing is asked of anybody. -->
+        </div>
+        <!-- How it is sent: the room, the voice, and sending last. -->
+        <div class="abele-chat-input__toolbar-right">
+          <span v-if="tokenDisplay" class="abele-chat-input__tokens">{{ tokenDisplay }}</span>
+          <!-- Opens the field out over the whole chat for writing at length, and back. It
+               keeps the field's focus like Send does, so a phone's keyboard stays up. -->
           <Icon
-            v-if="canNote"
-            icon="sticky-note"
-            with-bg
-            :disabled="noteDisabled"
-            :tooltip="noteTooltip"
+            :icon="expanded ? 'minimize-2' : 'maximize-2'"
+            class="abele-chat-input__expand"
+            :tooltip="expandLabel"
+            :aria-label="expandLabel"
             data-keeps-focus
-            @click="keepNote"
+            @click="toggleExpanded"
           />
           <Icon
-            v-if="canContinue && !text.trim() && !attachments.length"
-            icon="play"
-            with-bg
-            class="abele-chat-input__continue"
-            @click="emit('continue')"
+            v-if="!isBusy && !importing"
+            icon="mic"
+            :tooltip="voiceOpen ? 'Close voice input' : 'Dictate a message'"
+            :class="{ 'abele-chat-input__mic_open': voiceOpen }"
+            @click="voiceOpen = !voiceOpen"
           />
+          <template v-if="isStreaming">
+            <Icon
+              v-if="text.trim() || attachments.length"
+              icon="send-horizontal"
+              tooltip="Send when the agent gets there"
+              class="abele-chat-input__send"
+              data-keeps-focus
+              @click="send"
+            />
+            <Icon icon="square" tooltip="Stop" class="abele-chat-input__stop" @click="emit('abort')" />
+          </template>
           <Icon
-            v-else
-            icon="send-horizontal"
-            with-bg
-            :class="{ 'abele-chat-input__disabled': !text.trim() && !attachments.length }"
-            :tooltip="sendLabel ?? 'Send'"
-            data-keeps-focus
-            @click="send"
+            v-else-if="isBusy || importing"
+            icon="loader"
+            no-hover
+            :tooltip="importing ? 'Copying the files into the vault' : 'Busy'"
+            class="abele-chat-input__spinner"
           />
-        </template>
+          <template v-else>
+            <!-- Only over a comment, which is a place in a note as much as it is a chat: the
+                 words are kept and nothing is asked of anybody. -->
+            <Icon
+              v-if="canNote"
+              icon="sticky-note"
+              :disabled="noteDisabled"
+              :tooltip="noteTooltip"
+              data-keeps-focus
+              @click="keepNote"
+            />
+            <Icon
+              v-if="canContinue && !text.trim() && !attachments.length"
+              icon="play"
+              tooltip="Continue where the agent stopped"
+              class="abele-chat-input__continue"
+              @click="emit('continue')"
+            />
+            <Icon
+              v-else
+              icon="send-horizontal"
+              :class="[
+                'abele-chat-input__send',
+                { 'abele-chat-input__disabled': !text.trim() && !attachments.length },
+              ]"
+              :tooltip="sendLabel ?? 'Send'"
+              data-keeps-focus
+              @click="send"
+            />
+          </template>
+        </div>
       </div>
     </div>
 
@@ -180,6 +185,7 @@
 import { ref, computed, nextTick, watch } from 'vue'
 import { TFile } from 'obsidian'
 import Icon from './obsidian/Icon.vue'
+import ChatSlashSuggest, { type SlashItem } from './ChatSlashSuggest.vue'
 import VoiceRecorder from './VoiceRecorder.vue'
 import ChatPicture from './ChatPicture.vue'
 import { isImagePath } from '@/ai/tools/ReadImageTool'
@@ -236,6 +242,8 @@ const emit = defineEmits<{
   /** Keep these words in the conversation, and start nothing. */
   (e: 'note', text: string): void
   (e: 'command', command: string): void
+  /** A prompt was picked from the «/» list: the chat fills its variables and applies it. */
+  (e: 'prompt', file: TFile): void
   (e: 'abort'): void
   (e: 'continue'): void
   (e: 'focus', focused: boolean): void
@@ -341,6 +349,36 @@ const send = () => {
   // What was written is sent; what comes next is the answer, and it needs the room.
   setExpanded(false)
   nextTick(autoResize)
+}
+
+/** The word after «/» while the message is only that word; null otherwise. */
+const slashQuery = computed(() => /^\/(\S*)$/.exec(text.value)?.[1] ?? null)
+/** Esc closed the list for this word; typing on opens it again. */
+const slashDismissed = ref(false)
+watch(slashQuery, (now, before) => {
+  if (now === null || before === null) slashDismissed.value = false
+})
+const slash = ref<InstanceType<typeof ChatSlashSuggest> | null>(null)
+const onSlashKey = (e: KeyboardEvent) => {
+  if (slashQuery.value === null || slashDismissed.value || !slash.value?.open) return
+  if (e.key === 'Escape') {
+    slashDismissed.value = true
+    e.preventDefault()
+    e.stopPropagation()
+    return
+  }
+  slash.value.key(e)
+}
+const onSlash = (item: SlashItem) => {
+  if (item.kind === 'skill') {
+    // A skill can take words after it: it stays in the field until the message is sent.
+    write(`/${item.name} `)
+    void nextTick(() => focus())
+    return
+  }
+  write('')
+  if (item.kind === 'command') emit('command', `/${item.name}`)
+  else if (item.file) emit('prompt', item.file)
 }
 
 const noteDisabled = computed(() => !!props.noteBlocked || text.value.trim().length === 0)

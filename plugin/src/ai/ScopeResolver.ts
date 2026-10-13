@@ -351,6 +351,11 @@ export class ScopeResolver {
   }
 
   /** Resolve a group entry and return just its paths (for preview) */
+  /** Every group note with how many notes name it in their `groups`, for the access picker. */
+  groupSizes(): Map<string, number> {
+    return new Map([...this.buildGroupIndex()].map(([path, members]) => [path, members.length]))
+  }
+
   resolveGroupPaths(groupPath: string): string[] {
     const result = new Set<string>()
     this.resolveGroup(groupPath, result, this.buildGroupIndex())

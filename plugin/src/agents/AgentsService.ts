@@ -1,5 +1,6 @@
 import { computed, ref, shallowRef, watch, type WatchStopHandle } from 'vue'
-import { Notice, TFile, type App } from 'obsidian'
+import dayjs from 'dayjs'
+import { Notice, SuggestModal, TFile, setTooltip, type App } from 'obsidian'
 import { GlobalStore } from '@/stores/GlobalStore'
 import { ChatService } from '@/ai/ChatService'
 import { ChatStorage } from '@/ai/ChatStorage'
@@ -11,7 +12,6 @@ import { AttentionReader } from './AttentionReader'
 import { chatCopyPath } from '@/ai/chatCopy'
 import { AgentRegistry } from '@/ai/agents/AgentRegistry'
 import type { ChatMetadata } from '@/ai/types'
-import { ShellModal } from '@/modal/ShellModal'
 import {
   attentionBadge,
   attentionReasons,
@@ -906,10 +906,18 @@ export class AgentsService {
     const chats = ChatService.getInstance()
     return chooseAttentionTab(
       GlobalStore.getInstance().app,
-      chats.tabOrder.value.map((id) => ({
-        id,
-        label: chats.getPresentation(id)?.label.value || 'Chat',
-      })),
+      chats.tabOrder.value.map((id) => {
+        const local = chats.getSession(id)
+        const last = local?.messages.value.at(-1)
+        return {
+          id,
+          label: chats.getPresentation(id)?.label.value || 'Chat',
+          waiting:
+            !!local && (local.pendingToolCalls.value.length > 0 || !!local.pendingQuestions.value),
+          working: !!local?.isStreaming.value,
+          at: last?.timestamp,
+        }
+      }),
       (id) => chats.closeTab(id)
     )
   }
@@ -924,44 +932,89 @@ export class AgentsService {
   }
 }
 
-/** The full-tab choice is explicit; dismissal never closes a conversation. */
+/** A chat tab, as the choice of which to close offers it. */
+export interface ClosableTab {
+  id: string
+  label: string
+  /** The agent waits for an answer or a permission there. */
+  waiting?: boolean
+  /** The agent is at work there. */
+  working?: boolean
+  /** When its last message was written. */
+  at?: number
+}
+
+/**
+ * Every tab is taken: which one to close, picked the way Obsidian's quick switcher picks a
+ * note. Quiet chats first and the ones that wait for you or work last, since a quiet one is
+ * what you usually let go; a dot says which is which, the time when each last moved. The
+ * full-tab choice is explicit: Esc, or a press outside, never closes a conversation.
+ */
 export function chooseAttentionTab(
   app: App,
-  tabs: { id: string; label: string }[],
+  tabs: ClosableTab[],
   close: (id: string) => Promise<void>
 ): Promise<boolean> {
+  const busy = (tab: ClosableTab) => (tab.waiting ? 2 : tab.working ? 1 : 0)
+  const order = [...tabs].sort((a, b) => busy(a) - busy(b) || (a.at ?? 0) - (b.at ?? 0))
   return new Promise((resolve) => {
-    let chosen = false
-    const modal = new (class extends ShellModal {
-      onClose(): void {
-        super.onClose()
-        if (!chosen) resolve(false)
+    let picked = false
+    const modal = new (class extends SuggestModal<ClosableTab> {
+      getSuggestions(query: string): ClosableTab[] {
+        const q = query.trim().toLowerCase()
+        return q ? order.filter((tab) => tab.label.toLowerCase().includes(q)) : order
       }
-    })(app, {
-      title: 'Choose a tab to close',
-      size: 'tall',
-      cls: ['abele-agents-tabs'],
-    })
-    modal.bodyEl.createEl('p', {
-      text: 'All 20 tabs are open. Only the tab you choose will close.',
-    })
-    for (const tab of tabs) {
-      const button = modal.bodyEl.createEl('button', { text: tab.label })
-      button.addEventListener('click', () => {
-        button.disabled = true
+      renderSuggestion(tab: ClosableTab, el: HTMLElement): void {
+        el.classList.add('mod-complex', 'abele-close-tab__item')
+        const content = el.createDiv('suggestion-content')
+        content.createDiv({ cls: 'suggestion-title', text: tab.label })
+        const aux = el.createDiv('suggestion-aux')
+        if (tab.at)
+          aux.createSpan({
+            cls: 'suggestion-flair abele-close-tab__time',
+            text: dayjs(tab.at).isSame(dayjs(), 'day')
+              ? dayjs(tab.at).format('HH:mm')
+              : dayjs(tab.at).format('D MMM'),
+          })
+        if (tab.waiting || tab.working) {
+          const dot = aux.createSpan({
+            cls: `abele-close-tab__dot ${tab.waiting ? 'abele-close-tab__dot_waiting' : ''}`,
+          })
+          setTooltip(dot, tab.waiting ? 'Waiting for you' : 'The agent is working')
+        }
+      }
+      onChooseSuggestion(tab: ClosableTab): void {
+        picked = true
         void close(tab.id).then(
-          () => {
-            chosen = true
-            modal.close()
-            resolve(true)
-          },
+          () => resolve(true),
           (error) => {
-            button.disabled = false
             new Notice(error instanceof Error ? error.message : 'Could not close the tab')
+            resolve(false)
           }
         )
-      })
-    }
+      }
+      onClose(): void {
+        super.onClose()
+        // Obsidian closes the list before it hands over the choice: wait that moment out, so
+        // only a dismissal resolves here; a choice resolves once its tab is closed.
+        window.setTimeout(() => {
+          if (!picked) resolve(false)
+        }, 0)
+      }
+    })(app)
+    modal.setPlaceholder('Close which chat?')
+    modal.setInstructions([
+      { command: '↑↓', purpose: 'to choose' },
+      { command: '↵', purpose: 'to close it' },
+      { command: 'esc', purpose: 'to keep them all' },
+    ])
+    modal.modalEl.classList.add('abele-close-tab')
+    // How full the tabs are, as a code in the field's corner: every one taken.
+    const count = modal.inputEl.parentElement?.createSpan({
+      cls: 'abele-close-tab__count',
+      text: `${tabs.length}/${tabs.length}`,
+    })
+    if (count) setTooltip(count, `All ${tabs.length} chat tabs are open`)
     modal.open()
   })
 }

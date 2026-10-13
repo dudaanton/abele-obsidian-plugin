@@ -76,7 +76,7 @@ belongs only to that error; a later failure returns to the list. Opening or clos
 not dismiss an error. The list survives restart and includes unopened local chats and
 closed discussion tabs. Interrupted local work is labelled as interrupted and is never
 resumed just by opening the list. Stale or uncertain approval/question/work entries offer
-**Убрать** (Remove): the dismissal is saved first, then the entry disappears; the conversation
+a cross to remove them: the dismissal is saved first, then the entry disappears; the conversation
 and its history remain. An accepted tool interrupted before its result can also be dismissed,
 or leaves the list when a later run of that chat completes successfully.
 Existing saved approvals can be reviewed again; saved
@@ -378,7 +378,9 @@ and attachments to your draft. Waiting messages are saved with the chat, using r
 to files in the vault. After a reload they stay visible: use the pencil and send again when
 you are ready; opening the chat does not start them automatically.
 
-Commands typed in the message box:
+Type `/` at the start of the message box to see what it can be: the chat's own commands first,
+then your skills, then your prompts, each with a line of description. Keep typing to narrow the
+list; the arrows and Enter choose, Esc closes it.
 
 | Command         | What it does                                        |
 | --------------- | --------------------------------------------------- |
@@ -386,13 +388,15 @@ Commands typed in the message box:
 | `/load`         | Open the chat history                               |
 | `/compact`      | Replace older messages with a summary, to make room |
 | `/scope`        | Choose which notes the chat may open                |
-| `/prompt`       | Insert a saved prompt                               |
+| `/prompt`       | Show the saved prompts                              |
 | `/<skill name>` | Run a skill                                         |
 
 Chats working at the same time keep their access separate: each tool uses the scope and agent
 of the chat that called it, not whichever tab is selected or started most recently.
 
-Up to 20 chats can be open at once, as tabs. Every chat is saved as a file in the chat folder
+Up to 20 chats can be open at once, as tabs. When all 20 are open and another chat has to open,
+a list asks which one to close, like the quick switcher: quiet chats first, the ones waiting for
+you or working last, with a dot and the time of the last message. Esc closes nothing. Every chat is saved as a file in the chat folder
 (`AI/Chats` by default), so it survives a restart and can be found again in the history. When a
 chat approaches 90% of the model's configured context window, older messages are summarized
 automatically. This is checked before each model request, including between tool steps in one
@@ -784,10 +788,23 @@ agent loads it when a task needs it. Set **Skills folder** on the AI **General**
 offered to all agents, or keep a skill inside the agent's scope. Each agent may use all of
 those skills, none, or a chosen few. Other skill notes do not appear in its tool instructions;
 loading one asks you first, even with automatic permissions. Choosing a skill yourself from
-the picker or typing its slash command still works.
+the `/` list or typing its slash command still works.
 
-A **prompt** is a note with `type: abele-prompt`: text you insert into a chat with `/prompt`. Its
-`{{ placeholders }}` become fields to fill in first.
+A **prompt** is a note with `type: abele-prompt`: text you insert into a chat by choosing it from
+the `/` list. Its `{{ placeholders }}` become fields to fill in first.
+
+## Setting up a chat
+
+The access button beside the send button, or **Access, tools and chat settings** in the chat's
+**⋯**, opens the chat's settings, named after the chat. **Access** is what the agent may read and
+write. **Tools** lists the tools by group: the glyph at a tool's end says whether it asks first,
+runs on its own or is off, and opens the choice; a group's glyph sets all its tools at once. Tools
+that are always on are folded under **Always on**. **Chat** holds the model, the system prompt,
+the interceptor and whether to hide reasoning; a setting changed for this chat alone shows a
+reset glyph that returns it to the agent's.
+
+Things done to a chat once in a while are in its **⋯**: **Reload from file**, **Copy debug data**
+and **Delete chat**, which asks first.
 
 ## Memory
 

@@ -1,10 +1,11 @@
 <template>
   <div class="abele-node-scope-editor">
     <Setting
+      class="abele-node-scope-editor__head"
       name="Node access"
-      desc="Separate from vault access. A whole node includes future registered folders; scope still needs approval on this device."
+      desc="Separate from vault access. A whole node includes future registered folders."
     >
-      <Icon icon="refresh-cw" with-bg tooltip="Refresh nodes" @click="loadNodes" />
+      <Icon icon="refresh-cw" tooltip="Refresh nodes" @click="loadNodes" />
     </Setting>
     <EmptyState v-if="loading" variant="loading" text="Loading node folders…" />
     <EmptyState v-if="error" variant="error" :text="error" />
@@ -15,10 +16,28 @@
     >
       <template #action><Button text="Clear node access" @click="clear" /></template>
     </EmptyState>
-    <EmptyState
-      v-if="!nodes.length && !loading"
-      text="No nodes connected. Connect one from the Node panel."
-    />
+    <!-- What this chat may reach on its nodes, as the vault's places above it. -->
+    <div class="abele-scope-mgr__entries" role="list" aria-label="Node access">
+      <div
+        v-for="entry in entries"
+        :key="nodeScopeKey(entry)"
+        class="abele-scope-mgr__entry"
+        role="listitem"
+      >
+        <Icon :icon="entry.kind === 'node' ? 'server' : 'folder-git-2'" />
+        <span class="abele-scope-mgr__entry-path">{{ label(entry) }}</span>
+        <span class="abele-scope-mgr__entry-type">
+          {{ entry.access === 'edit' ? 'read and edit' : 'read' }}
+        </span>
+        <Icon
+          class="abele-scope-mgr__entry-remove"
+          icon="x"
+          :tooltip="`Remove ${label(entry)} from chat access`"
+          @click="remove(entry)"
+        />
+      </div>
+      <EmptyState v-if="!entries.length && !loading && nodes.length" text="No node access yet." />
+    </div>
     <template v-if="nodes.length">
       <Setting name="Node">
         <Dropdown :model-value="node" :options="nodeOptions" @update:model-value="chooseNode" />
@@ -58,19 +77,10 @@
         <Button text="Add access" :disabled="busy || loading" @click="add" />
       </Setting>
     </template>
-    <Setting
-      v-for="entry in entries"
-      :key="nodeScopeKey(entry)"
-      :name="label(entry)"
-      :desc="`${entry.kind === 'node' ? 'Whole node · ' : ''}${entry.access}`"
-    >
-      <Icon
-        icon="x"
-        with-bg
-        :tooltip="`Remove ${label(entry)} from chat access`"
-        @click="remove(entry)"
-      />
-    </Setting>
+    <EmptyState
+      v-else-if="!loading"
+      text="No nodes connected here. Connect one from the Node panel."
+    />
     <Setting
       v-if="entries.length"
       name="Local approval"
@@ -78,10 +88,6 @@
     >
       <Button text="Approve on this device" :disabled="busy" @click="approve" />
     </Setting>
-    <EmptyState
-      v-else-if="!loading"
-      text="This chat has no node access. Full vault access does not include nodes."
-    />
   </div>
 </template>
 
@@ -189,7 +195,7 @@ async function chooseNode(value: string) {
         }))
       )
       if (batch.length < 100) return
-      const next = batch.at(-1)!.project_id
+      const next = batch.at(-1).project_id
       if (next === after) throw new Error('Invalid folder cursor')
       after = next
     }
@@ -296,7 +302,15 @@ onUnmounted(() => {
 </script>
 
 <style lang="scss">
+/* Refresh stays beside the words, even where a setting's control drops under them. */
+.abele-obsidian-setting.abele-node-scope-editor__head {
+  grid-template-columns: minmax(0, 1fr) auto;
+}
+
 .abele-node-scope-editor {
+  display: flex;
+  flex-direction: column;
+  gap: var(--size-4-2);
   min-width: 0;
 }
 </style>

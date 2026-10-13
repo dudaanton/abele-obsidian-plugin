@@ -69,7 +69,7 @@ describe('Send, tapped with the keyboard up', () => {
     const wrapper = composer()
     await typed(wrapper, 'hello')
 
-    const send = wrapper.find('.abele-chat-input__toolbar-right [data-keeps-focus]')
+    const send = wrapper.find('.abele-chat-input__send[data-keeps-focus]')
     expect(send.exists()).toBe(true)
     tap(send.element)
 
@@ -84,7 +84,7 @@ describe('Send, tapped with the keyboard up', () => {
     const focusEvents = () => (wrapper.emitted('focus') ?? []).map((e) => e[0])
     const before = focusEvents().length
 
-    tap(wrapper.find('.abele-chat-input__toolbar-right [data-keeps-focus]').element)
+    tap(wrapper.find('.abele-chat-input__send[data-keeps-focus]').element)
 
     expect(document.activeElement).toBe(field)
     // The chat drops its keyboard layout on this event; it must not fire before the click.
@@ -97,7 +97,7 @@ describe('Send, tapped with the keyboard up', () => {
     const wrapper = composer({ isStreaming: true })
     const field = await typed(wrapper, 'and also')
 
-    const send = wrapper.findAll('.abele-chat-input__toolbar-right [data-keeps-focus]')[0]
+    const send = wrapper.findAll('.abele-chat-input__send[data-keeps-focus]')[0]
     tap(send.element)
 
     expect(document.activeElement).toBe(field)

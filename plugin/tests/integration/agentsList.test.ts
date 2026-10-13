@@ -1,4 +1,5 @@
 import 'fake-indexeddb/auto'
+import { SuggestModal } from 'obsidian'
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest'
 import { AgentsService } from '@/agents/AgentsService'
 import { ChatSession } from '@/ai/ChatSession'
@@ -6,7 +7,6 @@ import { ChatService } from '@/ai/ChatService'
 import { ChatStorage } from '@/ai/ChatStorage'
 import { NodeService } from '@/node/NodeService'
 import { CommentService } from '@/ai/CommentService'
-import { ShellModal } from '@/modal/ShellModal'
 import { AbeleConfig } from '@/services/AbeleConfig'
 import { DEFAULT_AI_SETTINGS } from '@/ai/types'
 import { serializeChat, parseChatMetadata } from '@/ai/ChatLog'
@@ -62,10 +62,17 @@ describe('one list independent of open tabs', () => {
     expect(await CommentService.getInstance().load('sample')).toBeNull()
   })
   it('publishes model and note-folder facts from storage without starting a chat', async () => {
-    useVault([{ path: 'Comments/sample.abchat', content: content({
-      modelId: 'sample-model', kind: 'comment', commentId: 'sample',
-      anchor: { note: 'Notes/Chapters/sample.md' },
-    }) }])
+    useVault([
+      {
+        path: 'Comments/sample.abchat',
+        content: content({
+          modelId: 'sample-model',
+          kind: 'comment',
+          commentId: 'sample',
+          anchor: { note: 'Notes/Chapters/sample.md' },
+        }),
+      },
+    ])
     const agents = AgentsService.getInstance()
     await agents.start()
     expect(agents.rows.value[0]).toMatchObject({ model: 'sample-model', folder: 'Notes/Chapters' })
@@ -76,16 +83,25 @@ describe('one list independent of open tabs', () => {
     const chats = ChatService.getInstance()
     const session = new ChatSession(chats)
     chats.adoptSession(session)
-    session.attention.value = { question: {
-      id: 'sample-question', at: 1, status: 'waiting', currentIndex: 0, answers: [],
-      questions: [{ question: 'Which sample folder?', options: [] }],
-    } }
+    session.attention.value = {
+      question: {
+        id: 'sample-question',
+        at: 1,
+        status: 'waiting',
+        currentIndex: 0,
+        answers: [],
+        questions: [{ question: 'Which sample folder?', options: [] }],
+      },
+    }
     const agents = AgentsService.getInstance()
     vi.spyOn(chats, 'revealSidebar').mockResolvedValue(undefined)
-    const row = agents.rows.value.find(r => r.reference.sessionId === session.id)!
+    const row = agents.rows.value.find((r) => r.reference.sessionId === session.id)!
     expect(await agents.open(row, row.reasons[0], { focusComposer: true })).toBe(true)
     expect(chats.pendingAttentionReveal.value).toEqual({
-      sessionId: session.id, kind: 'question', id: 'sample-question', focusComposer: true,
+      sessionId: session.id,
+      kind: 'question',
+      id: 'sample-question',
+      focusComposer: true,
     })
     expect(session.attention.value.question?.status).toBe('waiting')
     expect(chats.getAllSessions()).toHaveLength(1)
@@ -93,17 +109,24 @@ describe('one list independent of open tabs', () => {
   it('reconnects through the existing node transport without sending input or creating tabs', async () => {
     useVault([])
     const connect = vi.fn().mockResolvedValue(undefined)
-    const connection = vi.spyOn(NodeService.prototype, 'connection').mockReturnValue({ connect } as never)
+    const connection = vi
+      .spyOn(NodeService.prototype, 'connection')
+      .mockReturnValue({ connect } as never)
     const nodes = NodeService.getInstance()
     try {
       const agents = AgentsService.getInstance()
-      agents.setNodes([{ id: 'sample-registration', expectedNodeId: 'sample-node', label: 'Sample node' }])
+      agents.setNodes([
+        { id: 'sample-registration', expectedNodeId: 'sample-node', label: 'Sample node' },
+      ])
       await agents.reconnect(agents.rows.value[0])
       expect(connection).toHaveBeenCalledWith('sample-registration')
       expect(connect).toHaveBeenCalledOnce()
       expect(ChatService.getInstance().getAllSessions()).toHaveLength(0)
       expect(agents.incomplete.value).toBe(true)
-    } finally { nodes.destroy(); connection.mockRestore() }
+    } finally {
+      nodes.destroy()
+      connection.mockRestore()
+    }
   })
   it('opens discussions through their owner without replacing another discussion tab', async () => {
     const app = useVault(
@@ -133,74 +156,69 @@ describe('one list independent of open tabs', () => {
     expect(ChatService.getInstance().getAllSessions()).toHaveLength(2)
     expect(agents.rows.value).toHaveLength(2)
   })
-  it(
-    'direct discussion file renames preserve tab closure and owner identity',
-    async () => {
-      const app = useVault([
-        {
-          path: 'AI/Comments/sample-discussion.abchat',
-          content: content({
-            kind: 'comment', anchor: { note: 'Notes/sample.md' },
-            // Exercise rename/reopen on live work, not an already-seen failure.
-            pendingToolCalls: [{ id: 'sample-approval', name: 'sample_tool', arguments: {} }],
-          }),
-        },
-      ])
-      ;(app as unknown as { workspace: unknown }).workspace = {
-        iterateAllLeaves: () => {},
-        getLeavesOfType: () => [],
-      }
-      const agents = AgentsService.getInstance()
-      await agents.start()
-      const chats = ChatService.getInstance()
-      vi.spyOn(chats, 'revealSidebar').mockResolvedValue(undefined)
-      const row = agents.rows.value[0]
-      await agents.open(row, row.reasons[0])
-      const session = chats.activeSession.value!
-      const file = session.currentChatFile.value!
-      const oldPath = file.path
-      await app.fileManager.renameFile(file, 'AI/Comments/renamed-discussion.abchat')
-      await agents.updateFile(file, oldPath)
-      const renamed = agents.rows.value[0]
-      await agents.open(renamed, renamed.reasons[0])
-      await chats.closeTab(session.id)
-      expect(chats.getSession(session.id)).toBeNull()
-      expect(CommentService.getInstance().sessionFor('sample-discussion')).toBe(session)
-      expect(CommentService.getInstance().sessionFor('renamed-discussion')).toBeNull()
+  it('direct discussion file renames preserve tab closure and owner identity', async () => {
+    const app = useVault([
+      {
+        path: 'AI/Comments/sample-discussion.abchat',
+        content: content({
+          kind: 'comment',
+          anchor: { note: 'Notes/sample.md' },
+          // Exercise rename/reopen on live work, not an already-seen failure.
+          pendingToolCalls: [{ id: 'sample-approval', name: 'sample_tool', arguments: {} }],
+        }),
+      },
+    ])
+    ;(app as unknown as { workspace: unknown }).workspace = {
+      iterateAllLeaves: () => {},
+      getLeavesOfType: () => [],
     }
-  )
-  it(
-    'preserves the original note-marker identity through a closed rename and restart',
-    async () => {
-      const app = useVault([
-        {
-          path: 'AI/Comments/sample-marker.abchat',
-          content: content({ kind: 'comment', anchor: { note: 'Notes/sample.md' } }),
-        },
-      ])
-      ;(app as unknown as { workspace: unknown }).workspace = {
-        iterateAllLeaves: () => {},
-        getLeavesOfType: () => [],
-      }
-      const agents = AgentsService.getInstance()
-      await agents.start()
-      const file = app.vault.getFileByPath('AI/Comments/sample-marker.abchat')!
-      const oldPath = file.path
-      await app.fileManager.renameFile(file, 'AI/Comments/renamed-marker.abchat')
-      await agents.updateFile(file, oldPath)
-      expect(parseChatMetadata(await app.vault.read(file))?.commentId).toBe('sample-marker')
-      CommentService.getInstance().destroy()
-      ChatService.getInstance().destroy()
-      AgentsService.destroyCurrent()
-      await AgentsService.getInstance().start()
-      const comments = CommentService.getInstance()
-      const restored = await comments.load('sample-marker')
-      expect(restored?.currentChatFile.value?.path).toBe(file.path)
-      expect(restored?.commentId).toBe('sample-marker')
-      expect(comments.sessionFor('sample-marker')).toBe(restored)
-      expect(comments.sessionFor('renamed-marker')).toBeNull()
+    const agents = AgentsService.getInstance()
+    await agents.start()
+    const chats = ChatService.getInstance()
+    vi.spyOn(chats, 'revealSidebar').mockResolvedValue(undefined)
+    const row = agents.rows.value[0]
+    await agents.open(row, row.reasons[0])
+    const session = chats.activeSession.value!
+    const file = session.currentChatFile.value!
+    const oldPath = file.path
+    await app.fileManager.renameFile(file, 'AI/Comments/renamed-discussion.abchat')
+    await agents.updateFile(file, oldPath)
+    const renamed = agents.rows.value[0]
+    await agents.open(renamed, renamed.reasons[0])
+    await chats.closeTab(session.id)
+    expect(chats.getSession(session.id)).toBeNull()
+    expect(CommentService.getInstance().sessionFor('sample-discussion')).toBe(session)
+    expect(CommentService.getInstance().sessionFor('renamed-discussion')).toBeNull()
+  })
+  it('preserves the original note-marker identity through a closed rename and restart', async () => {
+    const app = useVault([
+      {
+        path: 'AI/Comments/sample-marker.abchat',
+        content: content({ kind: 'comment', anchor: { note: 'Notes/sample.md' } }),
+      },
+    ])
+    ;(app as unknown as { workspace: unknown }).workspace = {
+      iterateAllLeaves: () => {},
+      getLeavesOfType: () => [],
     }
-  )
+    const agents = AgentsService.getInstance()
+    await agents.start()
+    const file = app.vault.getFileByPath('AI/Comments/sample-marker.abchat')!
+    const oldPath = file.path
+    await app.fileManager.renameFile(file, 'AI/Comments/renamed-marker.abchat')
+    await agents.updateFile(file, oldPath)
+    expect(parseChatMetadata(await app.vault.read(file))?.commentId).toBe('sample-marker')
+    CommentService.getInstance().destroy()
+    ChatService.getInstance().destroy()
+    AgentsService.destroyCurrent()
+    await AgentsService.getInstance().start()
+    const comments = CommentService.getInstance()
+    const restored = await comments.load('sample-marker')
+    expect(restored?.currentChatFile.value?.path).toBe(file.path)
+    expect(restored?.commentId).toBe('sample-marker')
+    expect(comments.sessionFor('sample-marker')).toBe(restored)
+    expect(comments.sessionFor('renamed-marker')).toBeNull()
+  })
   it('opens copied discussion files without stealing the original marker or writer', async () => {
     const app = useVault(
       ['sample-original', 'sample-copy'].map((name) => ({
@@ -327,15 +345,15 @@ describe('one list independent of open tabs', () => {
     }
     const original = [...chats.tabOrder.value]
     const revealing = vi.spyOn(chats, 'revealSidebar').mockResolvedValue(undefined)
-    const titles = vi.spyOn(ShellModal.prototype, 'setTitle')
+    const shown = vi.spyOn(SuggestModal.prototype, 'open')
     const opened = agents.open(agents.rows.value[0], agents.rows.value[0].reasons[0])
-    const title = titles.mock.calls.at(-1)![0]
-    expect(title).toMatch(/close/)
-    expect(title.length).toBeLessThanOrEqual(32)
+    const modal = shown.mock.contexts.at(-1) as SuggestModal<{ id: string }>
+    expect(modal).toBeDefined()
     expect(chats.tabOrder.value).toEqual(original)
-    const choice = document.querySelector<HTMLButtonElement>('.modal button')!
-    expect(choice).not.toBeNull()
-    choice.click()
+    // The quietest, longest untouched chat comes first: the one usually let go.
+    const [first] = (await modal.getSuggestions('')) as { id: string }[]
+    expect(first.id).toBe(original[0])
+    modal.selectSuggestion(first, new MouseEvent('click'))
     expect(await opened).toBe(true)
     expect(chats.tabOrder.value).toHaveLength(20)
     expect(chats.tabOrder.value).not.toContain(original[0])

@@ -4,25 +4,25 @@
     <AiScopeEditor
       :entries="scopeEntries"
       :full-vault-access="scope?.fullVaultAccess.value ?? false"
-      :show-current-file="true"
       @update:entries="onEntriesUpdate"
       @update:full-vault-access="scope?.setFullVaultAccess($event)"
     />
 
     <AiNodeScopeEditor v-if="session" :key="session.id" :session="session" />
 
-    <AgentOverrideNotice
-      field="permissionMode"
-      from-agent="Permission mode comes from this chat's agent."
-    />
-
-    <Setting name="Permission mode" desc="Controls which file operations require your approval.">
-      <Dropdown
-        :model-value="permissionMode"
-        :options="PERMISSION_OPTIONS"
-        @update:model-value="onPermissionChange"
+    <div class="abele-scope-mgr__group">
+      <AgentOverrideNotice
+        field="permissionMode"
+        from-agent="Permission mode comes from this chat's agent."
       />
-    </Setting>
+      <Setting name="Permission mode" desc="Controls which file operations require your approval.">
+        <Dropdown
+          :model-value="permissionMode"
+          :options="PERMISSION_OPTIONS"
+          @update:model-value="onPermissionChange"
+        />
+      </Setting>
+    </div>
   </div>
 </template>
 
@@ -61,5 +61,21 @@ const onPermissionChange = (value: string) => {
   flex-direction: column;
   gap: var(--size-4-3);
   padding-top: var(--size-4-2);
+}
+
+/* The vault, the nodes and the approval as three groups, a rule between them as between
+   Obsidian's own rows; inside a group its rows follow without one. */
+.abele-scope-mgr__group,
+.abele-scope-mgr > .abele-node-scope-editor {
+  display: flex;
+  flex-direction: column;
+  gap: var(--size-4-2);
+  padding-top: var(--size-4-4);
+  border-top: var(--border-width) solid var(--background-modifier-border);
+
+  > .setting-item {
+    padding-top: 0;
+    border-top: none;
+  }
 }
 </style>

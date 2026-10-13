@@ -273,17 +273,23 @@ const DIALOGS: Record<string, (options?: DialogFixtureOptions) => void | Promise
       canGoBack: true,
     })
   },
-  'agents': (options) => mountAlone(AgentsListDialog, { source: agentsFixture(options?.agentsState) }),
+  agents: (options) =>
+    mountAlone(AgentsListDialog, { source: agentsFixture(options?.agentsState) }),
   'agents-tabs': async () => {
     const completion = chooseAttentionTab(
       GlobalStore.getInstance().app,
       Array.from({ length: 20 }, (_, i) => ({
         id: `sample-tab-${i}`,
         label: `Sample conversation ${i + 1} with an intentionally long invented title for a narrow dialog`,
+        waiting: i === 3,
+        working: i === 7,
+        at: Date.now() - i * 3_600_000,
       })),
       async () => {}
     )
-    document.querySelector<HTMLElement>('.abele-agents-tabs')?.setAttribute('data-abele-fixture', 'agents-tabs')
+    document
+      .querySelector<HTMLElement>('.abele-close-tab')
+      ?.setAttribute('data-abele-fixture', 'agents-tabs')
     await completion
   },
   'node-pairing': () =>
@@ -470,14 +476,14 @@ const DIALOGS: Record<string, (options?: DialogFixtureOptions) => void | Promise
     destinationFixture('new', () => {
       const modal = reviewKeyDestinations()
       modal.modalEl.dataset.abeleFixture = 'key-destinations-new'
-      const select = modal.bodyEl.querySelector('select')!
+      const select = modal.bodyEl.querySelector('select')
       select.value = 'new'
       select.dispatchEvent(new Event('change', { bubbles: true }))
       for (const [label, value] of [
         ['Recipient address', 'http://192.168.42.12:8123/status'],
         ['New key name', 'Sample local key'],
       ]) {
-        const input = modal.bodyEl.querySelector<HTMLInputElement>(`input[aria-label="${label}"]`)!
+        const input = modal.bodyEl.querySelector<HTMLInputElement>(`input[aria-label="${label}"]`)
         input.value = value
         input.dispatchEvent(new Event('input', { bubbles: true }))
       }

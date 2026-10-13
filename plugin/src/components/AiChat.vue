@@ -365,6 +365,7 @@
         @send="onSend"
         @note="onNote"
         @command="onCommand"
+        @prompt="onPromptSelected"
         @abort="onAbort"
         @continue="onContinue"
         @focus="onInputFocus"
@@ -413,14 +414,15 @@
       @conversation="onEditMessage"
       @close="rewinding = null"
     />
-    <AiChatSetup
-      v-if="setupOpen"
-      :open="setupTab"
-      @close="setupOpen = false"
-      @skill="onPickerSkill"
-      @prompt="onPromptSelected"
-      @reload="reloadChat"
-      @debug="showDebug"
+    <AiChatSetup v-if="setupOpen" :open="setupTab" @close="setupOpen = false" />
+    <ConfirmModal
+      v-if="deleting"
+      title="Delete chat"
+      message="Delete this chat? Its file, the runs it delegated and its entry in the history
+        all go. This cannot be undone."
+      confirm-tooltip="Delete this chat"
+      @confirm="deleteChat"
+      @close="deleting = false"
     />
     <TemplateVariablesModal
       v-if="variablesModalOpen"
@@ -476,6 +478,7 @@ import ChatThinking from './ChatThinking.vue'
 import ChatQuestionCard from './ChatQuestionCard.vue'
 import AiRewindDialog from './AiRewindDialog.vue'
 import AiChatSetup from './AiChatSetup.vue'
+import ConfirmModal from './obsidian/ConfirmModal.vue'
 import AiCommentTrail from './AiCommentTrail.vue'
 import { CommentService } from '@/ai/CommentService'
 import TemplateVariablesModal from './TemplateVariablesModal.vue'
@@ -938,8 +941,8 @@ const showContinue = computed(() => {
   if (isStreaming.value) return false
   if (pendingToolCalls.value.length > 0 || session.value?.branchSwitchBlocked) return false
   if (branchingAfter.value) return true
-  if (messages.value.length === 0) return false
-  return true
+  const last = messages.value.at(-1)
+  return !!last && !(last.role === 'assistant' && last.content.trim())
 })
 
 const contextWindow = computed(() => session.value?.resolveModel()?.contextWindow || 0)
@@ -1626,7 +1629,8 @@ const onCommand = async (command: string) => {
       openSetup('scope')
       break
     case '/prompt':
-      openSetup('prompts')
+      // The prompts are in the «/» list now: open it.
+      chatInput.value?.setText('/')
       break
     default:
       if (command.startsWith('/')) {
@@ -1697,12 +1701,6 @@ const onSkillCommand = async (command: string) => {
   applyAiModelProperty(getSkillModelKey(skillName))
   scrollOnUserSend()
   await session.value?.injectSkill(skillName, args || undefined)
-}
-
-const onPickerSkill = async (name: string) => {
-  applyAiModelProperty(getSkillModelKey(name))
-  scrollOnUserSend()
-  await session.value?.injectSkill(name)
 }
 
 const onPromptSelected = async (file: TFile) => {
@@ -1914,14 +1912,42 @@ const headerOverflowActions = computed<HeaderAction[]>(() => [
     : []),
   {
     id: 'setup',
-    label: 'Scope, skills, prompts, permissions and settings',
+    label: 'Access, tools and chat settings',
     icon: 'sliders-horizontal',
   },
   ...(commentSession.value
     ? []
     : [{ id: 'artifacts', label: 'Files from this chat', icon: 'boxes' }]),
   ...(agentsNeedYou.value ? [] : [{ id: 'agents', label: 'Agents', icon: 'activity' }]),
+  ...(commentSession.value
+    ? []
+    : [
+        {
+          id: 'reload',
+          label: 'Reload from file',
+          icon: 'refresh-cw',
+          section: 'file',
+          disabled: !session.value?.currentChatFile.value,
+          reason: 'nothing written yet',
+        },
+        { id: 'debug', label: 'Copy debug data', icon: 'bug', section: 'file' },
+        {
+          id: 'delete',
+          label: 'Delete chat',
+          icon: 'trash-2',
+          section: 'danger',
+          warning: true,
+          disabled: !session.value?.currentChatFile.value,
+          reason: 'nothing written yet',
+        },
+      ]),
 ])
+const deleting = ref(false)
+const deleteChat = async () => {
+  deleting.value = false
+  const current = session.value
+  if (current?.currentChatFile.value) await chatService.deleteChat(current.id)
+}
 /** Some other conversation waits for an answer from you. */
 const agentsNeedYou = computed(() => {
   const current = session.value
@@ -1945,6 +1971,15 @@ const onHeaderOverflowAction = (id: string) => {
       break
     case 'find':
       find.open()
+      break
+    case 'reload':
+      void reloadChat()
+      break
+    case 'debug':
+      showDebug()
+      break
+    case 'delete':
+      deleting.value = true
       break
     case 'outline':
       openNavigation()

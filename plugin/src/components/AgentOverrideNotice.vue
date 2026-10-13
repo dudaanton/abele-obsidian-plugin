@@ -1,5 +1,15 @@
 <template>
-  <div v-if="agentName" class="abele-override-notice setting-item-description">
+  <!-- In a setting row's controls, only the way back, and only once the chat has its own
+       value: the row says what the setting is, the glyph that it is this chat's. -->
+  <Icon
+    v-if="compact"
+    v-show="agentName && isOverridden"
+    class="abele-override-notice__reset"
+    icon="rotate-ccw"
+    :tooltip="`This chat's own setting. Follow ${agentName} again`"
+    @click="reset"
+  />
+  <div v-else-if="agentName" class="abele-override-notice setting-item-description">
     <span class="abele-override-notice__text">
       {{ isOverridden ? overridden : fromAgent }}
     </span>
@@ -28,11 +38,13 @@ import type { OverrideKey } from '@/ai/agents/types'
 const props = withDefaults(
   defineProps<{
     field: OverrideKey
-    fromAgent: string
+    fromAgent?: string
+    /** Only the reset glyph, for a setting row's controls. */
+    compact?: boolean
     overridden?: string
     showReset?: boolean
   }>(),
-  { overridden: 'Overridden for this chat.', showReset: true }
+  { fromAgent: '', overridden: 'Overridden for this chat.', showReset: true, compact: false }
 )
 
 const session = computed(() => ChatService.getInstance().activeSession.value)

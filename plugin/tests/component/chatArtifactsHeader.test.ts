@@ -59,14 +59,13 @@ describe('the compact chat header', () => {
     ])
       expect(view.find(`[tooltip="${tooltip}"]`).exists()).toBe(true)
     const overflow = view.findComponent(SheetHeaderActions)
-    expect(overflow.props('actions')).toEqual([
-      {
-        id: 'setup',
-        label: 'Scope, skills, prompts, permissions and settings',
-        icon: 'sliders-horizontal',
-      },
-      { id: 'artifacts', label: 'Files from this chat', icon: 'boxes' },
-      { id: 'agents', label: 'Agents', icon: 'activity' },
+    expect(overflow.props('actions').map((a) => [a.id, a.section ?? ''])).toEqual([
+      ['setup', ''],
+      ['artifacts', ''],
+      ['agents', ''],
+      ['reload', 'file'],
+      ['debug', 'file'],
+      ['delete', 'danger'],
     ])
     overflow.vm.$emit('action', 'setup')
     await nextTick()
@@ -92,6 +91,55 @@ describe('the compact chat header', () => {
       ])
     )
     expect(actions.some((a) => a.id === 'artifacts')).toBe(false)
+  })
+})
+
+/** Deleting is done to the chat, once in a while: last in the ⋯, warning, after Obsidian asks. */
+describe('throwing a chat away', () => {
+  const withFile = () => {
+    active.value = fakeChatSession({
+      kind: 'chat',
+      overrides: { currentChatFile: ref({ path: 'Chats/sample.md' }) },
+    }) as ChatSession
+  }
+  const action = (id: string) =>
+    view
+      .findComponent(SheetHeaderActions)
+      .props('actions')
+      .find((a) => a.id === id)
+
+  it('offers it as the destructive act it is', () => {
+    withFile()
+    view = mountChat()
+    expect(action('delete')).toMatchObject({ warning: true, disabled: false })
+  })
+
+  it('asks first, deletes this chat on yes and nothing on no', async () => {
+    withFile()
+    const deleteChat = vi
+      .spyOn(ChatService.getInstance(), 'deleteChat')
+      .mockResolvedValue(true as never)
+    view = mountChat()
+    view.findComponent(SheetHeaderActions).vm.$emit('action', 'delete')
+    await nextTick()
+    const confirm = view.findComponent({ name: 'ConfirmModal' })
+    expect(confirm.exists()).toBe(true)
+    expect(deleteChat).not.toHaveBeenCalled()
+    confirm.vm.$emit('close')
+    await nextTick()
+    expect(deleteChat).not.toHaveBeenCalled()
+    view.findComponent(SheetHeaderActions).vm.$emit('action', 'delete')
+    await nextTick()
+    view.findComponent({ name: 'ConfirmModal' }).vm.$emit('confirm')
+    await nextTick()
+    expect(deleteChat).toHaveBeenCalledWith(active.value!.id)
+  })
+
+  /** A tab nobody has written to yet has no file, and no file is nothing to throw away. */
+  it('is dark over a conversation that has never been saved', () => {
+    view = mountChat()
+    expect(action('delete')?.disabled).toBe(true)
+    expect(action('reload')?.disabled).toBe(true)
   })
 })
 

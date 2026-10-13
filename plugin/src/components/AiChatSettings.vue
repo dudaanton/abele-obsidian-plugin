@@ -1,19 +1,39 @@
 <template>
+  <!-- By how often each is changed: the model, the prompt, the interceptor, then the rest. -->
   <div class="abele-chat-settings">
-    <Setting
-      name="Node repository access"
-      desc="Revoke this chat's repository read grants. Later reads require a new owner approval."
-    >
-      <Button
-        text="Revoke repository access"
-        tooltip="Require new owner approval for repository reads"
-        @click="revokeNodeReads"
+    <Setting name="Model" desc="The one this chat answers with.">
+      <AgentOverrideNotice field="modelId" compact />
+      <Dropdown
+        :model-value="modelKey"
+        :options="modelOptions"
+        @update:model-value="selectModel($event)"
       />
     </Setting>
-    <Setting name="Hide reasoning" desc="Show only a spinner while the model is thinking.">
-      <Checkbox :is-enabled="hideReasoning" @toggle="toggleHideReasoning" />
+    <Setting name="System prompt" desc="The global one, a note, or words for this chat only.">
+      <Dropdown
+        :model-value="promptMode"
+        :options="promptModes"
+        @update:model-value="setPromptMode($event as PromptMode)"
+      />
     </Setting>
-
+    <Setting v-if="promptMode === 'note'" name="Note" desc="Read the system prompt from this note.">
+      <Search
+        :model-value="notePath"
+        label="System prompt note"
+        placeholder="Path to note..."
+        :suggester="FileSuggest"
+        @update:model-value="updateNotePath"
+      />
+    </Setting>
+    <Setting v-if="promptMode === 'custom'" name="Prompt" desc="Only this chat uses this text.">
+      <Input
+        :model-value="customText"
+        as-text-area
+        aria-label="System prompt for this chat"
+        placeholder="Enter system prompt..."
+        @update:model-value="updateCustomText"
+      />
+    </Setting>
     <InterceptorSettings
       :model-value="interceptorKey"
       :options="interceptorOptions"
@@ -28,77 +48,21 @@
       @update:reply-only="setInterceptorReplyOnly"
       @update:context-depth="setInterceptorContextDepth"
     />
-
-    <AgentOverrideNotice field="modelId" from-agent="Model comes from this chat's agent." />
-    <Setting name="Model" desc="Changing it here affects only this chat.">
-      <Dropdown
-        :model-value="modelKey"
-        :options="modelOptions"
-        @update:model-value="selectModel($event)"
-      />
+    <Setting name="Hide reasoning" desc="Show only a spinner while the model is thinking.">
+      <Checkbox :is-enabled="hideReasoning" @toggle="toggleHideReasoning" />
     </Setting>
-
-    <Section title="System Prompt">
-      <Setting name="Source" desc="Use the global prompt, a vault note or text for this chat.">
-        <Dropdown
-          :model-value="promptMode"
-          :options="promptModes"
-          @update:model-value="setPromptMode($event as PromptMode)"
-        />
-      </Setting>
-      <Setting
-        v-if="promptMode === 'note'"
-        name="Note"
-        desc="Read the system prompt from this note."
-      >
-        <Search
-          :model-value="notePath"
-          label="System prompt note"
-          placeholder="Path to note..."
-          :suggester="FileSuggest"
-          @update:model-value="updateNotePath"
-        />
-      </Setting>
-      <Setting v-if="promptMode === 'custom'" name="Prompt" desc="Only this chat uses this text.">
-        <Input
-          :model-value="customText"
-          as-text-area
-          aria-label="System prompt for this chat"
-          placeholder="Enter system prompt..."
-          @update:model-value="updateCustomText"
-        />
-      </Setting>
-    </Section>
-
-    <!-- Last, and on its own: everything above changes how this chat behaves and can be
-           changed back. This one ends it. -->
+    <!-- Only for a chat that has reached into a node's repository. -->
     <Setting
-      name="Delete chat"
-      desc="Remove this conversation, its delegated runs and its place in the history."
+      v-if="hasNodeAccess"
+      name="Node repository access"
+      desc="Revoke this chat's repository read grants. Later reads require a new owner approval."
     >
-      <!-- "Delete", not "Delete chat": the row beside it already says what goes. -->
       <Button
-        text="Delete"
-        warning
-        :disabled="!savedToFile"
-        :tooltip="
-          savedToFile
-            ? 'Delete this conversation for good'
-            : 'Nothing has been written to this chat yet'
-        "
-        @click="pendingRemoval = true"
+        text="Revoke repository access"
+        tooltip="Require new owner approval for repository reads"
+        @click="revokeNodeReads"
       />
     </Setting>
-
-    <ConfirmModal
-      v-if="pendingRemoval"
-      title="Delete chat"
-      message="Delete this chat? Its file, the runs it delegated and its entry in the history
-        all go. This cannot be undone."
-      confirm-tooltip="Delete this chat"
-      @confirm="remove"
-      @close="pendingRemoval = false"
-    />
   </div>
 </template>
 
@@ -108,7 +72,6 @@ import { revokeObsidianChatNodeApproval } from '@/ai/tools/node/owner'
 import { ref, computed } from 'vue'
 import Setting from './obsidian/Setting.vue'
 import Button from './obsidian/Button.vue'
-import ConfirmModal from './obsidian/ConfirmModal.vue'
 import Checkbox from './obsidian/Checkbox.vue'
 import Search from './obsidian/Search.vue'
 import { FileSuggest } from '@/helpers/suggesters/FileSuggester'
@@ -121,37 +84,24 @@ import AgentOverrideNotice from './AgentOverrideNotice.vue'
 import { AbeleConfig } from '@/services/AbeleConfig'
 import Dropdown from './obsidian/Dropdown.vue'
 import Input from './obsidian/Input.vue'
-import Section from './obsidian/Section.vue'
 
-const emit = defineEmits<{ close: [] }>()
+defineEmits<{ close: [] }>()
 
 const session = computed(() => ChatService.getInstance().activeSession.value)
 function revokeNodeReads() {
   const current = session.value
   if (!current) return
   nodeRepositoryToolsHost.revokeAll(current)
-  void revokeObsidianChatNodeApproval(current).catch(error => console.error('[Abele] Node scope revocation failed', error))
+  void revokeObsidianChatNodeApproval(current).catch((error) =>
+    console.error('[Abele] Node scope revocation failed', error)
+  )
 }
 
-// ── Deleting this chat ──
-
-const pendingRemoval = ref(false)
-
-/** A tab nobody has written to has no file yet, and no file is nothing to throw away. */
-const savedToFile = computed(() => !!session.value?.currentChatFile.value)
-
-/**
- * The dialog closes behind it either way: what it was showing the settings of is gone, and a
- * refusal — a tab that turned out to have no file — has already been said by the dark button.
- */
-const remove = () =>
-  void (async () => {
-    const current = session.value
-    if (!current) return
-
-    await ChatService.getInstance().deleteChat(current.id)
-    emit('close')
-  })()
+/** The chat has been given a node: only then is there repository access to take back. */
+const hasNodeAccess = computed(() => {
+  const scope = session.value?.overrides?.value.nodeScope
+  return Array.isArray(scope) && scope.length > 0
+})
 
 // ── Model override ──
 

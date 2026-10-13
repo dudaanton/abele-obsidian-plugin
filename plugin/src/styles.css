@@ -13,16 +13,38 @@ body.is-tablet.abele-half-width-sidebars {
   --mobile-sidebar-max-width: 50vw;
 }
 
-.abele-agents-tabs .abele-modal__body {
-  display: flex;
-  flex-direction: column;
+/* Which chat tab to close: the quick switcher's list, with a dot for a chat that waits or
+ * works, the time of its last message, and how full the tabs are in the field's corner. */
+.abele-close-tab .prompt-input-container {
+  position: relative;
+}
+/* Left of the field's clear cross, which Obsidian keeps at the field's end. */
+.abele-close-tab__count {
+  position: absolute;
+  inset-inline-end: var(--size-4-12);
+  top: 50%;
+  translate: 0 -50%;
+  pointer-events: none;
+  color: var(--text-faint);
+  font-size: var(--font-ui-smaller);
+  font-variant-numeric: tabular-nums;
+}
+.abele-close-tab__item .suggestion-aux {
+  align-items: center;
   gap: var(--size-4-2);
 }
-.abele-agents-tabs button {
-  white-space: normal;
-  height: auto;
-  width: 100%;
-  overflow-wrap: anywhere;
+.abele-close-tab__time {
+  color: var(--text-faint);
+  font-variant-numeric: tabular-nums;
+}
+.abele-close-tab__dot {
+  width: var(--size-4-2);
+  height: var(--size-4-2);
+  border-radius: 50%;
+  background: var(--interactive-accent);
+}
+.abele-close-tab__dot_waiting {
+  background: var(--color-orange);
 }
 .abele-agents-ribbon { position: relative; }
 .abele-agents-ribbon__badge {

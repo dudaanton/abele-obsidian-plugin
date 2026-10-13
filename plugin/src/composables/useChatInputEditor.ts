@@ -19,12 +19,6 @@ interface InputEditorOptions {
 /** The borrowed note editor and the plain-text fallback share the same composer actions. */
 export function useChatInputEditor(options: InputEditorOptions) {
   const { props, text, expanded, send, keepNote, emitFocus } = options
-  const TEXTAREA_MIN_HEIGHT = 34
-  /**
-   * Six lines or so before it starts scrolling. Three was what it used to be, which is not
-   * enough to see a paragraph you are still writing. The stylesheet caps it at the same number.
-   */
-  const TEXTAREA_MAX_HEIGHT = 140
   const inputEl = ref<HTMLTextAreaElement | null>(null)
   const editorHost = ref<HTMLElement | null>(null)
   /**
@@ -60,10 +54,12 @@ export function useChatInputEditor(options: InputEditorOptions) {
       el.style.removeProperty('overflow-y')
       return
     }
-    el.style.height = `${TEXTAREA_MIN_HEIGHT}px`
-    const newHeight = Math.min(el.scrollHeight, TEXTAREA_MAX_HEIGHT)
-    el.style.height = `${newHeight}px`
-    el.style.overflowY = el.scrollHeight > TEXTAREA_MAX_HEIGHT ? 'auto' : 'hidden'
+    // One line at least and eight at most (Obsidian's line height): the stylesheet holds both
+    // limits, so the field is let down to its least and grown to what the text needs.
+    el.style.removeProperty('height')
+    const most = parseFloat(getComputedStyle(el).maxHeight) || Infinity
+    el.style.height = `${Math.min(el.scrollHeight, most)}px`
+    el.style.overflowY = el.scrollHeight > most ? 'auto' : 'hidden'
   }
 
   const onInput = (e: Event) => {

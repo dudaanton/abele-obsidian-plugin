@@ -1,10 +1,28 @@
 .abele-chat-input {
-  border-top: 1px solid var(--background-modifier-border);
+  // The «/» list stands over the field, measured from here.
+  position: relative;
   padding: var(--size-4-2);
   flex-shrink: 0;
+}
+
+/**
+ * One frame, as Obsidian's own text field draws it: the attachments, the words and the row of
+ * glyphs inside, so the field and its buttons read as one thing. The frame, not the text, lights
+ * up on focus, and a file dragged over it lights it in the accent.
+ */
+.abele-chat-input__box {
+  border: 1px solid var(--background-modifier-border);
+  // Not the field's own radius: a phone rounds a one-line field into a pill, and a frame that
+  // holds several lines and files would cut into them at the corners.
+  border-radius: var(--radius-m);
+  background-color: var(--background-primary);
   transition: border-color 0.15s;
 
-  &--dragover {
+  &:focus-within {
+    border-color: var(--background-modifier-border-focus);
+  }
+
+  .abele-chat-input--dragover & {
     border-color: var(--interactive-accent);
   }
 }
@@ -13,7 +31,7 @@
   display: flex;
   flex-wrap: wrap;
   gap: var(--size-2-2);
-  margin-bottom: var(--size-4-1);
+  padding: var(--size-4-2) var(--size-4-2) 0;
 }
 
 .abele-chat-input__attachment {
@@ -21,15 +39,39 @@
   align-items: center;
   justify-content: space-between;
   gap: var(--size-2-1);
-  padding: var(--size-2-1) var(--size-2-3);
+  padding: var(--size-2-1) var(--size-2-1) var(--size-2-1) var(--size-2-3);
   background-color: var(--background-secondary);
   border-radius: var(--radius-s);
-  font-size: var(--font-smaller);
+  font-size: var(--font-ui-smaller);
   color: var(--text-muted);
-  max-width: 200px;
+  // A long file name ends in an ellipsis rather than pushing the next one off the row.
+  max-width: 100%;
 
   .abele-obsidian-icon {
     flex-shrink: 0;
+  }
+}
+
+// A picture waiting to go is the same line as a file: a small square of it where a file has its
+// glyph, then its name. Pressing it still opens the picture.
+.abele-chat-input__attachment .abele-chat-picture {
+  flex-direction: row;
+  gap: var(--size-2-3);
+  max-width: none;
+  min-width: 0;
+  height: auto;
+  padding: 0;
+  background: none;
+  box-shadow: none;
+  color: inherit;
+  font-size: inherit;
+
+  img {
+    flex-shrink: 0;
+    width: calc(var(--line-height-normal) * 2em);
+    height: calc(var(--line-height-normal) * 2em);
+    object-fit: cover;
+    border-radius: var(--radius-s);
   }
 }
 
@@ -43,28 +85,32 @@
   white-space: nowrap;
 }
 
+// Inside the frame the field has no frame of its own. It grows with the text up to eight lines
+// and scrolls after that; the script sizing it as it is typed keeps to the same height.
 .abele-chat-input__textarea {
+  display: block;
   width: 100%;
   resize: none;
-  border: 1px solid var(--background-modifier-border);
-  border-radius: var(--radius-s);
-  padding: var(--size-2-3) var(--size-4-2);
+  border: none;
+  border-radius: var(--radius-m);
+  padding: var(--size-4-2) var(--size-4-3) var(--size-2-2);
   font-family: inherit;
   font-size: inherit;
-  line-height: 1.5;
-  background-color: var(--background-primary);
+  line-height: var(--line-height-normal);
+  background-color: transparent;
   color: var(--text-normal);
-  height: 34px;
-  min-height: 34px;
-  // Keep in step with `TEXTAREA_MAX_HEIGHT`: the script sizes the field as it is typed into,
-  // and this stops it going further if anything else ever sets a height.
-  max-height: 140px;
+  min-height: calc(var(--line-height-normal) * 1em + var(--size-4-2) + var(--size-2-2));
+  max-height: calc(8 * var(--line-height-normal) * 1em + var(--size-4-2) + var(--size-2-2));
   overflow-y: hidden;
   box-sizing: border-box;
 
-  &:focus {
-    border-color: var(--interactive-accent);
+  &:focus,
+  &:focus-visible,
+  &:hover {
+    border: none;
+    box-shadow: none;
     outline: none;
+    background-color: transparent;
   }
 }
 
@@ -74,20 +120,14 @@
  * so and scrolls after that; opened out, it takes all the height the chat gives it.
  */
 .abele-chat-input__editor {
-  border: 1px solid var(--background-modifier-border);
-  border-radius: var(--radius-s);
-  background-color: var(--background-primary);
+  border-radius: var(--radius-m);
   cursor: text;
   overflow: hidden;
 
-  &:focus-within {
-    border-color: var(--interactive-accent);
-  }
-
   .markdown-source-view.mod-cm6 .cm-scroller {
-    min-height: 34px;
-    max-height: 140px;
-    padding: var(--size-2-3) var(--size-4-2);
+    min-height: calc(var(--line-height-normal) * 1em + var(--size-4-2) + var(--size-2-2));
+    max-height: calc(8 * var(--line-height-normal) * 1em + var(--size-4-2) + var(--size-2-2));
+    padding: var(--size-4-2) var(--size-4-3) var(--size-2-2);
     overflow-y: auto;
   }
 
@@ -107,12 +147,19 @@
   display: flex;
   flex-direction: column;
 
-  > .abele-chat-input__field {
+  > .abele-chat-input__box {
+    flex: 1 1 auto;
+    min-height: 0;
+    display: flex;
+    flex-direction: column;
+  }
+
+  .abele-chat-input__field {
     flex: 1 1 auto;
     min-height: 0;
   }
 
-  > .abele-chat-input__textarea {
+  .abele-chat-input__textarea {
     max-height: none;
     overflow-y: auto;
   }
@@ -141,35 +188,33 @@ body.is-mobile .abele-chat-input__textarea {
 }
 
 .abele-chat-input__voice {
-  margin: var(--size-4-2) 0;
+  margin: var(--size-2-2) var(--size-4-2);
 }
 
 .abele-chat-input__mic_open {
   color: var(--interactive-accent);
 }
 
+// The glyphs at the frame's foot: what goes with the message at the start, how it is sent at
+// the end. Each keeps its whole button; the row stands in by the button's own padding so the
+// first and last glyphs' ink line up with the text above.
 .abele-chat-input__toolbar {
   display: flex;
   align-items: center;
   justify-content: space-between;
-  margin-top: var(--size-4-1);
+  gap: var(--size-4-2);
+  padding: 0 var(--size-4-1) var(--size-4-1);
 }
 
-.abele-chat-input__toolbar-left {
-  display: flex;
-  align-items: center;
-  gap: var(--size-4-1);
-}
-
+.abele-chat-input__toolbar-left,
 .abele-chat-input__toolbar-right {
   display: flex;
   align-items: center;
-  gap: var(--size-4-1);
+  gap: var(--size-2-1);
+  min-width: 0;
 
   > .abele-obsidian-icon {
     flex-shrink: 0;
-    height: 2em;
-    width: 2em;
   }
 }
 
@@ -184,14 +229,6 @@ body.is-mobile .abele-chat-input__textarea {
   color: var(--text-muted);
   font-size: var(--font-ui-smaller);
   font-variant-numeric: tabular-nums;
-}
-
-.abele-chat-input__continue {
-  opacity: 0.5;
-
-  &:hover {
-    opacity: 1;
-  }
 }
 
 .abele-chat-input__spinner {

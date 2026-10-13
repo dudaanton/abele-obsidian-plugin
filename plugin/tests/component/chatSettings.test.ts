@@ -107,55 +107,12 @@ describe('system prompt choices', () => {
   })
 })
 
+/** Deleting is done to a chat, not a setting of it: it is in the header's ⋯ (chatArtifactsHeader). */
 describe('throwing a chat away', () => {
-  it('offers it as the destructive act it is', () => {
+  it('is not among the settings', () => {
     seed()
 
-    const button = deleteButton(mountSettings())
-
-    expect(button?.props('warning')).toBe(true)
-    expect(button?.props('disabled')).toBeFalsy()
-  })
-
-  it('asks first, and destroys nothing while the question is open', async () => {
-    seed()
-    const view = mountSettings()
-
-    await deleteButton(view)!.vm.$emit('click')
-
-    expect(view.findComponent(ConfirmModal).exists()).toBe(true)
-    expect(deleteChat).not.toHaveBeenCalled()
-  })
-
-  it('deletes the chat this dialog is about, and closes behind itself', async () => {
-    const session = seed()
-    const view = mountSettings()
-
-    await deleteButton(view)!.vm.$emit('click')
-    await view.findComponent(ConfirmModal).vm.$emit('confirm')
-    await nextTick()
-
-    expect(deleteChat).toHaveBeenCalledWith(session.id)
-    expect(view.emitted('close')).toHaveLength(1)
-  })
-
-  it('changes nothing when the question is dismissed', async () => {
-    seed()
-    const view = mountSettings()
-
-    await deleteButton(view)!.vm.$emit('click')
-    await view.findComponent(ConfirmModal).vm.$emit('close')
-    await nextTick()
-
-    expect(deleteChat).not.toHaveBeenCalled()
-    expect(view.findComponent(ConfirmModal).exists()).toBe(false)
-  })
-
-  /** A tab nobody has written to yet has no file, and no file is nothing to throw away. */
-  it('is dark over a conversation that has never been saved', () => {
-    seed({ currentChatFile: ref(null) })
-
-    expect(deleteButton(mountSettings())?.props('disabled')).toBe(true)
+    expect(deleteButton(mountSettings())).toBeUndefined()
   })
 })
 

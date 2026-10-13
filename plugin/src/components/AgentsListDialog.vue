@@ -1,116 +1,88 @@
 <template>
+  <!-- Every conversation where an agent waits for you, works, or has lost its node: rows like
+       the chat history's, a dot for the state, one line of what it waits on, the time. A row
+       opens its chat where it waits; agent, model, folder and source are its tooltip. -->
   <ObsidianModal title="Agents" @close="emit('close')">
     <div class="abele-agents">
-      <Input
-        v-model="query"
-        type="search"
-        aria-label="Search conversations and agents"
-        placeholder="Search conversations and agents"
-      />
-      <Icon
-        class="abele-agents__all-seen"
-        icon="check-check"
-        text-right="Mark all as seen"
-        tooltip="Mark all as seen; waiting questions and permissions stay active"
-        :disabled="busy || !hasDismissible"
-        @click="allSeen"
-      />
-      <EmptyState text="Click a title to open the conversation" />
+      <div class="abele-agents__head">
+        <Search
+          v-model="query"
+          class="abele-agents__field"
+          label="Search conversations and agents"
+          placeholder="Search…"
+        />
+        <Icon
+          class="abele-agents__all-seen"
+          icon="check-check"
+          label="Mark all as seen; waiting questions and permissions stay"
+          :disabled="busy || !hasDismissible"
+          @click="allSeen"
+        />
+      </div>
       <EmptyState v-if="failure" variant="error" :text="failure" />
       <EmptyState v-if="feedback" :text="feedback" />
-      <section v-for="section in sections" :key="section.title">
+      <p v-if="source.status.value" class="abele-agents__status">{{ source.status.value }}</p>
+
+      <EmptyState
+        v-if="!sections.some((section) => section.rows.length)"
+        class="abele-agents__empty"
+        :variant="query ? 'no-matches' : 'empty'"
+        :icon="query ? undefined : 'bot'"
+        :text="query ? 'No matches' : 'No agents at work'"
+      />
+      <section v-for="section in sections.filter((s) => s.rows.length)" :key="section.title">
         <ListSectionHeader :text="section.title" :count="section.rows.length" />
-        <EmptyState
-          v-if="section.title === 'Connection and delivery' && source.status.value"
-          :text="source.status.value"
-        />
-        <EmptyState
-          v-if="!section.rows.length"
-          :variant="query ? 'no-matches' : 'empty'"
-          :text="query ? 'No matches' : 'No conversations'"
-        />
-        <ListRow
+        <Card
           v-for="row in section.rows"
           :key="row.key"
+          :ref="(card) => describeRow(card, row)"
+          class="abele-agents__row"
+          :class="{ 'abele-agents__row_unavailable': unavailable(row) }"
           :title="row.title"
-          icon="bot"
-          :interactive="!unavailable(row)"
-          :facts="facts(row)"
-          :state="state(row)"
-          :message="label(row)"
-          @open="open(row)"
+          :subtitle="said(row)"
+          :meta="[when(row)]"
+          :clickable="!unavailable(row)"
+          @click="open(row, primary(row).kind === 'question')"
         >
-          <template #recovery>
+          <template #badges>
+            <StatusDot :tone="tone(row)" :pulse="tone(row) === 'accent'" :label="label(row)" />
+          </template>
+          <template v-if="dismissible(row).length || reconnectable(row)" #actions>
             <Icon
-              v-if="primary(row).kind === 'question' && !unavailable(row)"
-              icon="message-square"
-              text-right="Reply in chat"
-              tooltip="Open the waiting question in chat and focus the reply field"
-              :disabled="busy"
-              @click="open(row, true)"
-            />
-            <Icon
-              v-if="primary(row).kind === 'approval' && !unavailable(row)"
-              icon="shield-check"
-              text-right="Review in chat"
-              tooltip="Open the permission request in chat; does not approve it"
-              @click="open(row)"
-            />
-            <EmptyState
-              v-if="row.reference.kind === 'node' && row.reasons.some((r) => r.kind === 'delivery')"
-              text="Reconnect to this node without restarting work."
-            />
-            <Icon
-              v-if="row.reference.kind === 'node' && row.reasons.some((r) => r.kind === 'delivery')"
+              v-if="reconnectable(row)"
+              class="abele-agents__reconnect"
               icon="refresh-cw"
-              text-right="Reconnect"
               tooltip="Reconnect to this node; does not restart work"
               :disabled="busy"
               @click="reconnect(row)"
             />
             <Icon
-              class="abele-agents__details-toggle"
-              :icon="expanded.has(row.key) ? 'chevron-down' : 'chevron-right'"
-              :text-right="primary(row).kind === 'error' ? 'Error details' : 'Details and time'"
-              tooltip="Show or hide request details and time"
-              :aria-expanded="expanded.has(row.key)"
-              :aria-controls="`agents-detail-${row.key}`"
-              @click="toggleDetails(row.key, !expanded.has(row.key))"
+              v-for="reason in dismissible(row)"
+              :key="reason.id"
+              class="abele-agents__seen"
+              :icon="reason.kind === 'error' ? 'check' : 'x'"
+              :tooltip="actionLabel(reason)"
+              :disabled="busy"
+              @click="seen(row, reason.id)"
             />
           </template>
-          <template v-if="expanded.has(row.key)" #detail>
-            <div :id="`agents-detail-${row.key}`">
-              <Quote v-if="row.quote" :text="row.quote" />
-              <p class="setting-item-description">{{ age(row) }}</p>
-              <p class="setting-item-description">
-                Folder is where the conversation or discussion note is stored.
-              </p>
-              <Icon
-                v-for="reason in row.reasons.filter(canDismissAttention)"
-                :key="reason.id"
-                class="abele-agents__seen"
-                :icon="reason.kind === 'error' ? 'check' : 'x'"
-                :text-right="reason.kind === 'error' ? 'Mark as seen' : 'Dismiss'"
-                :tooltip="actionLabel(reason)"
-                :disabled="busy"
-                @click="seen(row, reason.id)"
-              />
-            </div>
-          </template>
-        </ListRow>
+        </Card>
       </section>
     </div>
   </ObsidianModal>
 </template>
+
 <script setup lang="ts">
 import { computed, ref } from 'vue'
 import ObsidianModal from './obsidian/Modal.vue'
-import ListRow from './obsidian/ListRow.vue'
+import Card from './obsidian/Card.vue'
+import StatusDot from './obsidian/StatusDot.vue'
 import ListSectionHeader from './obsidian/ListSectionHeader.vue'
-import Input from './obsidian/Input.vue'
 import EmptyState from './obsidian/EmptyState.vue'
 import Icon from './obsidian/Icon.vue'
-import Quote from './obsidian/Quote.vue'
+import Search from './obsidian/Search.vue'
+import { setTooltip } from 'obsidian'
+import dayjs from 'dayjs'
 import { AgentsService } from '@/agents/AgentsService'
 import {
   canDismissAttention,
@@ -131,18 +103,14 @@ const emit = defineEmits<{ (e: 'close'): void }>()
 const query = ref(''),
   failure = ref(''),
   feedback = ref(''),
-  busy = ref(false),
-  expanded = ref(new Set<string>())
-const toggleDetails = (key: string, value: boolean) => {
-  if (value) expanded.value.add(key)
-  else expanded.value.delete(key)
+  busy = ref(false)
+/** Who and where, for the row's tooltip: what used to be four labelled facts under every title. */
+const facts = (row: AttentionRow) =>
+  [row.agent, row.model, row.folder, row.source].filter(Boolean).join(' · ')
+const describeRow = (card: unknown, row: AttentionRow) => {
+  const el = (card as { $el?: HTMLElement } | null)?.$el
+  if (el) setTooltip(el, `${facts(row)}\n${age(row)}`, { placement: 'top' })
 }
-const facts = (row: AttentionRow) => [
-  { key: 'agent', label: 'Agent', value: row.agent },
-  { key: 'model', label: 'Model', value: row.model, required: true, unknown: 'Unknown' },
-  { key: 'where', label: 'Folder', value: row.folder, required: true, unknown: 'Unknown' },
-  { key: 'source', label: 'Source', value: row.source },
-]
 const sections = computed(() => {
   const rows = source.rows.value.filter((r) =>
     `${r.title} ${r.agent} ${r.model ?? ''} ${r.folder ?? ''} ${r.source} ${r.quote ?? ''}`
@@ -150,7 +118,7 @@ const sections = computed(() => {
       .includes(query.value.toLocaleLowerCase())
   )
   return [
-    { title: 'Needs your attention', rows: rows.filter((r) => r.reasons.some(needsAttention)) },
+    { title: 'Waiting for you', rows: rows.filter((r) => r.reasons.some(needsAttention)) },
     {
       title: 'Working',
       rows: rows.filter(
@@ -158,7 +126,7 @@ const sections = computed(() => {
       ),
     },
     {
-      title: 'Connection and delivery',
+      title: 'Offline',
       rows: rows.filter(
         (r) => !r.reasons.some(needsAttention) && !r.reasons.some((s) => s.kind === 'running')
       ),
@@ -169,14 +137,32 @@ const primary = (row: AttentionRow) =>
   row.reasons.find((r) => r.kind === 'approval') ??
   row.reasons.find(needsAttention) ??
   row.reasons[0]
-const state = (row: AttentionRow) => {
+/** The row's dot: orange waits for you, red failed, accent pulses while working, faint offline. */
+const tone = (row: AttentionRow) => {
   const reason = primary(row)
-  if (reason.uncertain || reason.interrupted || reason.kind === 'interrupted') return 'missing'
-  if (reason.kind === 'error') return 'error'
-  if (reason.kind === 'running') return 'loading'
-  if (reason.kind === 'delivery') return 'missing'
-  return 'waiting'
+  if (reason.uncertain || reason.interrupted || reason.kind === 'interrupted') return 'faint'
+  if (reason.kind === 'error') return 'red'
+  if (reason.kind === 'running') return 'accent'
+  if (reason.kind === 'delivery') return 'faint'
+  return 'orange'
 }
+/** What it waits on, in one line: the question itself, the action asked for, what failed. */
+const said = (row: AttentionRow) => {
+  const approvals = row.reasons.filter((r) => r.kind === 'approval').length
+  if (approvals > 1) return `${approvals} permissions`
+  const reason = primary(row)
+  if (reason.uncertain) return reasonLabel(reason)
+  return reason.text || reasonLabel(reason)
+}
+/** Since when, as a time today and a date before. */
+const when = (row: AttentionRow) => {
+  const at = primary(row).at
+  if (!at) return ''
+  return dayjs(at).isSame(dayjs(), 'day') ? dayjs(at).format('HH:mm') : dayjs(at).format('D MMM')
+}
+const dismissible = (row: AttentionRow) => row.reasons.filter(canDismissAttention)
+const reconnectable = (row: AttentionRow) =>
+  row.reference.kind === 'node' && row.reasons.some((r) => r.kind === 'delivery')
 const label = (row: AttentionRow) => {
   const approvals = row.reasons.filter((r) => r.kind === 'approval').length
   const reason = primary(row)
@@ -249,8 +235,49 @@ const seen = async (row: AttentionRow, id: string) => {
   }
 }
 </script>
-<style>
+<style lang="scss">
 .abele-agents {
+  display: flex;
+  flex-direction: column;
+  gap: var(--size-4-2);
   min-width: 0;
+}
+/* The cards of a group apart as the chat history's are, and the groups further apart than
+   the cards inside them. */
+.abele-agents > section {
+  display: flex;
+  flex-direction: column;
+  gap: var(--size-4-2);
+}
+.abele-agents > section + section {
+  margin-top: var(--size-4-4);
+}
+.abele-agents .abele-list-section-header {
+  margin: 0;
+}
+.abele-agents__head + section,
+.abele-agents__head ~ .abele-empty-state + section {
+  margin-top: var(--size-4-2);
+}
+/* What it waits on and when, one block under the name at the same step. */
+.abele-agents .abele-card__meta {
+  margin-top: 0;
+}
+.abele-agents__head {
+  display: flex;
+  align-items: center;
+  gap: var(--size-4-1);
+}
+.abele-agents__field {
+  flex: 1 1 auto;
+}
+.abele-agents__status {
+  margin: 0;
+  color: var(--text-muted);
+  font-size: var(--font-ui-smaller);
+}
+// A node's session that is not there to open reads faint and takes no click.
+.abele-agents__row_unavailable {
+  color: var(--text-faint);
 }
 </style>
