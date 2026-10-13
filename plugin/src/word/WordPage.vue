@@ -65,7 +65,7 @@
       />
       <Icon
         icon="settings-2"
-        tooltip="Table, image and paragraph controls"
+        :tooltip="`${controlsTitle} controls`"
         :disabled="!current"
         @click="advanced"
       />
@@ -156,6 +156,7 @@ import Dropdown from '@/components/obsidian/Dropdown.vue'
 import Icon from '@/components/obsidian/Icon.vue'
 import WordPageLine from './WordPageLine.vue'
 import WordPageTable from './WordPageTable.vue'
+import { pageControlsTitle } from './controlsTitle'
 import {
   allParagraphs,
   markCovers,
@@ -256,6 +257,9 @@ watch(
 const selection = ref<{ from: number; to: number }>({ from: 0, to: 0 })
 const current = computed(() => paragraphs.value.find((p) => p.number === selected.value) ?? null)
 const writable = computed(() => !!current.value && !current.value.locked)
+const controlsTitle = computed(() =>
+  current.value ? pageControlsTitle(props.model, current.value.number) : 'Paragraph'
+)
 const position = computed(() => paragraphs.value.findIndex((p) => p.number === selected.value) + 1)
 
 const normalStyle = computed(() =>

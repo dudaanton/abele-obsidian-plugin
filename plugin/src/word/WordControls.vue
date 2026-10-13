@@ -1,14 +1,15 @@
 <template>
-  <Modal title="Word paragraph controls" size="tall" @close="emit('close')">
+  <Modal :title="title" size="tall" @close="emit('close')">
     <div ref="host" />
   </Modal>
 </template>
 
 <script setup lang="ts">
-import { nextTick, onBeforeUnmount, onMounted, ref } from 'vue'
+import { computed, nextTick, onBeforeUnmount, onMounted, ref } from 'vue'
 import Modal from '@/components/obsidian/Modal.vue'
 import { mountWordEditor, type DesktopEditHost } from './desktopEditor'
 import type { WordPackage, WordParagraph } from './package'
+import { wordControlsTitle } from './controlsTitle'
 
 const props = defineProps<{
   doc: WordPackage
@@ -16,6 +17,13 @@ const props = defineProps<{
   editor: DesktopEditHost
 }>()
 const emit = defineEmits<{ close: [] }>()
+const title = computed(() =>
+  wordControlsTitle(
+    props.paragraph.number,
+    props.doc.images.some((image) => image.paragraph === props.paragraph.number),
+    !!props.paragraph.table
+  )
+)
 const host = ref<HTMLElement>()
 let dispose: (() => void) | undefined
 onMounted(async () => {

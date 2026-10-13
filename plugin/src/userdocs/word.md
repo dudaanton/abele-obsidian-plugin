@@ -53,8 +53,9 @@ or changing structure.
 Choose a style already in the document (including its heading styles). The list icons toggle
 bulleted and numbered lists. There is no style designer.
 You can add a paragraph below, split at the cursor, merge with the next paragraph, or delete one.
-Enter splits at the cursor. The **Table, image and paragraph controls** icon opens the remaining
-controls, including merging with the next paragraph. Merging retains the first paragraph's style.
+Enter splits at the cursor. The ribbon's controls icon names the selected paragraph, table or
+picture and opens its remaining controls, including merging with the next paragraph.
+Merging retains the first paragraph's style.
 At least one paragraph stays in each container.
 
 For links, select the words, enter the address and choose **Apply link**. Select an existing link
@@ -63,7 +64,7 @@ contact those addresses automatically.
 
 ## Tables and pictures
 
-In an existing table cell, open **Table, image and paragraph controls** for row and cell controls. Rows and **Grid column**
+In an existing table cell, open the ribbon's table controls. Rows and **Grid column**
 numbers start at 1; a merged cell spans several grid columns. Enter the first and last row/column
 of a rectangle and choose **Merge cells**, or choose its first column and **Split cells**. All
 selected text stays in the top-left cell when merging; after splitting it stays in the first cell.

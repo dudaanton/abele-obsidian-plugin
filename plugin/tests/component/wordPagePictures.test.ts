@@ -28,7 +28,7 @@ it.each(['body', 'table'])(
     await page.find('img').trigger('click')
     expect(page.emitted('context')?.at(-1)).toEqual([1])
     expect(page.find('textarea').exists()).toBe(false)
-    await page.find('[aria-label="Table, image and paragraph controls"]').trigger('click')
+    await page.find('[aria-label="Picture controls"]').trigger('click')
     expect(page.emitted('advanced')?.at(-1)).toEqual([1])
     expect(page.emitted('edit')).toBeUndefined()
     page.unmount()

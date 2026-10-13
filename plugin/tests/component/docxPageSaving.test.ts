@@ -4,6 +4,7 @@ import { DocxView } from '@/word/DocxView'
 import { useVault } from '../helpers/testEnv'
 import { paragraph, sampleDocx } from '../fixtures/docx/sampleDocx'
 import type { WordEdit } from '@/word/edit'
+import { Platform } from 'obsidian'
 
 const views: DocxView[] = []
 afterEach(async () => {
@@ -105,4 +106,31 @@ it('opens retained controls in the shared modal with the selected link range', a
   expect(buttons.some((button) => button.textContent === 'Apply link')).toBe(true)
   buttons.find((button) => button.textContent === 'Cancel')!.click()
   expect(document.querySelector('.abele-word-editor')).toBeNull()
+})
+
+it('opens a read-only mobile inspector without enabling document writes', async () => {
+  const { app, view } = await opened()
+  const prior = Platform.isMobile
+  const write = vi.spyOn(app.vault, 'modifyBinary')
+  Platform.isMobile = true
+  try {
+    await (view as unknown as { advanced(paragraph: number): Promise<void> }).advanced(1)
+    await vi.waitFor(() => expect(document.querySelector('.abele-word-editor')).not.toBeNull())
+    const fields = Array.from(
+      document.querySelectorAll<HTMLInputElement>(
+        '.abele-word-editor input,.abele-word-editor select,.abele-word-editor textarea'
+      )
+    )
+    expect(fields.every((field) => field.disabled)).toBe(true)
+    const buttons = Array.from(
+      document.querySelectorAll<HTMLButtonElement>('.abele-word-editor button')
+    )
+    expect(
+      buttons.filter((button) => button.textContent !== 'Cancel').every((button) => button.disabled)
+    ).toBe(true)
+    buttons.find((button) => button.textContent === 'Cancel')!.click()
+    expect(write).not.toHaveBeenCalled()
+  } finally {
+    Platform.isMobile = prior
+  }
 })

@@ -141,7 +141,7 @@ export class DocxView extends FileView {
     if (token !== this.token) return
     const doc = this.document
     const p = doc?.paragraphs.find((p) => p.number === paragraph)
-    if (!doc || !p || Platform.isMobile) return
+    if (!doc || !p) return
     this.controls?.unmount()
     const close = () => {
       this.controls?.unmount()
@@ -157,6 +157,7 @@ export class DocxView extends FileView {
       paragraph: p,
       editor: {
         app: this.app,
+        readOnly: Platform.isMobile,
         range,
         cancel: close,
         apply: async (edit: WordEdit) => {

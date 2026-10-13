@@ -167,7 +167,7 @@ describe.skipIf(!available)('Word document view', () => {
       const root = view.contentEl;
       root.querySelector('[data-paragraph="1"] .abele-word-line__text').click()
       await new Promise(r => setTimeout(r,0))
-      root.querySelector('[aria-label="Table, image and paragraph controls"]').click()
+      root.querySelector('[aria-label="Paragraph 1 controls"]').click()
       for(let i=0;i<150&&!document.querySelector('.abele-word-editor');i++) await new Promise(r=>setTimeout(r,100))
       const row=document.querySelector('.abele-word-editor')
       const input=row.querySelector('textarea');input.setSelectionRange(0,6)

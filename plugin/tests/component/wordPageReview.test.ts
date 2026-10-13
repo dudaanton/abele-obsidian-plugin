@@ -44,4 +44,3 @@ it('uses the document Normal entry without duplicating it', async () => {
   expect(select.selectedOptions[0]?.textContent).toBe('Normal')
   page.unmount()
 })
-

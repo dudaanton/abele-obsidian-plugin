@@ -10,6 +10,7 @@ export interface DesktopEditHost {
   apply(edit: WordEdit): Promise<void>
   cancel(): void
   range?: { from: number; to: number }
+  readOnly?: boolean
 }
 /** Plain desktop fields act on original package operations; never a lossy contenteditable model. */
 export function mountWordEditor(
@@ -30,6 +31,7 @@ export function mountWordEditor(
     return el
   }
   const run = async (edit: WordEdit, textChange = false) => {
+    if (host.readOnly) return
     if (!textChange && input.value !== p.text) {
       status.setText('Save text changes before formatting or changing structure.')
       return
@@ -193,7 +195,15 @@ export function mountWordEditor(
     button(pictures, 'Resize image', () => ({ ...base('image_resize'), ...image() }))
     button(pictures, 'Delete image', () => ({ ...base('image_delete'), ...image() }))
   }
-  input.focus()
+  if (host.readOnly) {
+    for (const control of Array.from(
+      form.querySelectorAll<
+        HTMLInputElement | HTMLSelectElement | HTMLTextAreaElement | HTMLButtonElement
+      >('input,select,textarea,button')
+    ))
+      control.disabled = true
+    cancel.disabled = false
+  } else input.focus()
   if (host.range) input.setSelectionRange(host.range.from, host.range.to)
   return () => {
     suggestions.forEach((s) => s.close())
