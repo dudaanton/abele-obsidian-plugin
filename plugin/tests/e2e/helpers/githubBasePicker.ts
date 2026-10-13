@@ -6,7 +6,7 @@ export const openBasePicker = (web: string) => `
   const leaf = await openTab(${JSON.stringify(`${web}/blob/main/src/app.ts`)})
   const root = leaf.view.containerEl
   if (!(await until(() => loaded(leaf, 'src/app.ts'), 20000))) throw Error('The file did not load')
-  const chooseBase = [...root.querySelectorAll('button')].find(b => b.textContent === 'Compare against…' || b.textContent === 'Change base')
+  const chooseBase = root.querySelector('button[aria-label="Compare against a branch, tag or commit…"]') || [...root.querySelectorAll('button')].find(b => b.textContent === 'Change base')
   if (!chooseBase) throw Error('No comparison base action')
   chooseBase.click()
   const prompt = await until(() => document.querySelector('.abele-github-base-picker'), 5000)

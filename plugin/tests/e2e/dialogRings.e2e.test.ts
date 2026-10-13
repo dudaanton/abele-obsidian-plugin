@@ -27,6 +27,7 @@ import {
   restoreGithub,
 } from './helpers/githubLive'
 import { openBasePicker, basePickerGeometry } from './helpers/githubBasePicker'
+import { OPEN_LOCAL_NODE_FORM, CLOSE_LOCAL_NODE_FORM } from './helpers/nodeSettingsForm'
 import { SELECTION_PICKER_OPEN, SELECTION_PICKER_CLOSE } from './helpers/selectionScriptPicker'
 import {
   SELECTION_MENUS_SETUP,
@@ -205,10 +206,12 @@ const script = `(async () => {
   const settingsDoc = app.setting.activeTab.containerEl.ownerDocument
   if (await until(() => settingsDoc.querySelector('.abele-settings__nav .abele-tabs__tab'), 5000)) {
     ;[...settingsDoc.querySelectorAll('.abele-settings__nav .abele-tabs__tab')].find(t => t.textContent.trim() === 'Nodes')?.click()
-    if (await until(() => settingsDoc.querySelector('input[aria-label="Node URL"]'), 5000)) {
-      await wait(400)
-      measureAll('settings nodes', app.setting.activeTab.containerEl)
-    } else cuts.push({ screen: 'settings nodes', field: '-', by: ['fields did not open'] })
+    const settingsRoot = app.setting.activeTab.containerEl
+    measureAll('settings nodes overview', settingsRoot)
+    ${OPEN_LOCAL_NODE_FORM}
+    await wait(400)
+    measureAll('settings nodes', nodeForm)
+    ${CLOSE_LOCAL_NODE_FORM}
   } else cuts.push({ screen: 'settings nodes', field: '-', by: ['settings did not open'] })
   app.setting.close()
 

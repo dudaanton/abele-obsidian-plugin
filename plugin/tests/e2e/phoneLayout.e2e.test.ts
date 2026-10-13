@@ -29,6 +29,7 @@
  */
 import { describe, it, expect, beforeAll, afterAll } from 'vitest'
 import { openBasePicker, basePickerGeometry } from './helpers/githubBasePicker'
+import { OPEN_LOCAL_NODE_FORM, CLOSE_LOCAL_NODE_FORM } from './helpers/nodeSettingsForm'
 import {
   PRELUDE as BASE_PRELUDE,
   startFakeGithub,
@@ -951,8 +952,17 @@ const probeScript = `(async () => {
         app.setting.openTabById('abele')
         await until(() => document.querySelector('.abele-settings__nav .abele-tabs__tab'), 5000)
         ;[...document.querySelectorAll('.abele-settings__nav .abele-tabs__tab')].find(t => t.textContent.trim() === 'Nodes')?.click()
-        await until(() => document.querySelector('input[aria-label="Node URL"]'), 5000)
-        const modal = document.querySelector('.modal.mod-settings') || document.querySelector('.modal')
+        const settingsRoot = app.setting.activeTab.containerEl
+        const settingsModal = settingsRoot.closest('.modal')
+        const overviewCuts = []
+        for (const field of settingsRoot.querySelectorAll('input, button')) {
+          if (!field.getBoundingClientRect().width) continue
+          field.focus()
+          for (const cut of ringClipped(field)) overviewCuts.push(name(field) + ': ' + cut)
+          field.blur()
+        }
+        ${OPEN_LOCAL_NODE_FORM}
+        const modal = nodeForm
         const cuts = []
         for (const field of modal.querySelectorAll('input, button')) {
           if (!field.getBoundingClientRect().width) continue
@@ -960,13 +970,15 @@ const probeScript = `(async () => {
           for (const cut of ringClipped(field)) cuts.push(name(field) + ': ' + cut)
           field.blur()
         }
-        await screen('settings nodes', modal, modal.querySelector('.vertical-tab-content'))
+        await screen('settings nodes', modal, modal.querySelector('.abele-modal__body'))
         report['settings nodes'].clipped = cuts
-        const settingsScroll = modal.querySelector('.vertical-tab-content')
+        ${CLOSE_LOCAL_NODE_FORM}
+        const settingsScroll = settingsModal.querySelector('.vertical-tab-content')
         if (settingsScroll) settingsScroll.scrollTop = 0
         await wait(200)
-        await screen('settings nodes overview', modal, settingsScroll)
-        ;[...modal.querySelectorAll('button')].find(button => button.textContent.trim() === 'Open session')?.click()
+        await screen('settings nodes overview', settingsModal, settingsScroll)
+        report['settings nodes overview'].clipped = overviewCuts
+        ;[...settingsRoot.querySelectorAll('button')].find(button => button.textContent.trim() === 'Open session')?.click()
         await until(() => document.querySelector('.prompt .suggestion-item'), 5000)
         await wait(300)
         const picker = document.querySelector('.prompt')
