@@ -204,12 +204,39 @@ const script = `(async () => {
       // taking the focus the press would have given the editor. A phone selects by a long
       // press, which is the system's own, so only the mouse is tried.
       if (!window.__e2eHost) {
-        const text = rows()[14].querySelector('.abele-task-view__description p')
-        if (!text) throw new Error('no description to select')
         const a = document.activeElement
         if (a && a !== document.body) a.blur()
         window.getSelection().removeAllRanges()
-        const r = text.getBoundingClientRect()
+        // The editor may still be scrolling to its cursor, or the list re-rendering after the last
+        // press, when the drag starts; a description that moved under the pointer is pressed in
+        // the middle of its words, and a list redrawn under a drag in progress (a tick written a
+        // moment before) drops the start of the selection. So the drag waits until the list has
+        // not changed and the words have held still for a while, and are under the point pressed.
+        let changed = 0
+        const watch = new MutationObserver((m) => { changed += m.length })
+        watch.observe(footer(), { childList: true, subtree: true, characterData: true, attributes: true })
+        const frame = () => new Promise((done) => requestAnimationFrame(() => done()))
+        let text = null
+        let r = null
+        let same = 0
+        let last = ''
+        let ready = false
+        const deadline = Date.now() + 10000
+        while (Date.now() < deadline) {
+          await frame()
+          text = rows()[14]?.querySelector('.abele-task-view__description p') ?? null
+          if (!text) { same = 0; last = ''; continue }
+          r = text.getBoundingClientRect()
+          const at = [r.left, r.top, r.width, r.height].map(Math.round).join()
+          same = at === last && !changed ? same + 1 : 0
+          last = at
+          changed = 0
+          const hit = document.elementFromPoint(Math.round(r.left + 1), Math.round(r.top + r.height / 2))
+          if (same >= 20 && hit && text.contains(hit)) { ready = true; break }
+        }
+        watch.disconnect()
+        if (!text) throw new Error('no description to select')
+        if (!ready) throw new Error('the description never held still under the pointer')
         const y = Math.round(r.top + r.height / 2)
         const drag = (type, x, buttons) =>
           cdp.sendCommand('Input.dispatchMouseEvent', { type, x: Math.round(x), y, button: 'left', buttons, clickCount: 1 })
