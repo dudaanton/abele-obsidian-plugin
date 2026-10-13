@@ -1,5 +1,6 @@
 import { afterAll, beforeAll, describe, expect, it } from 'vitest'
 import {
+  enterPhone,
   evalJson,
   evalLong,
   evalRaw,
@@ -79,26 +80,25 @@ const script = `(async () => {
   return report
 })()`
 
+// Both parts run in the phone layout: the window becomes a phone once for the file, not per part.
+let size: number[] = []
+beforeAll(async () => {
+  if (!available || onPhone()) return
+  size = evalJson<number[]>(`require('@electron/remote').getCurrentWindow().getContentSize()`)
+  await enterPhone(390, 844)
+}, 150_000)
+afterAll(async () => {
+  if (!available || onPhone()) return
+  if (size.length)
+    evalRaw(`require('@electron/remote').getCurrentWindow().setContentSize(${size[0]},${size[1]})`)
+  await reloadApp('app.emulateMobile(false)')
+}, 90_000)
+
 describe.runIf(available)('returning from a comment to its reply passage', () => {
-  let size: number[] = [],
-    report: any
+  let report: any
   beforeAll(async () => {
-    if (!onPhone()) {
-      size = evalJson<number[]>(`require('@electron/remote').getCurrentWindow().getContentSize()`)
-      await reloadApp('app.emulateMobile(true)')
-      evalRaw(`require('@electron/remote').getCurrentWindow().setContentSize(390,844)`)
-    }
     report = JSON.parse(await evalLong(script, 70_000))
   }, 150_000)
-  afterAll(async () => {
-    if (!onPhone()) {
-      if (size.length)
-        evalRaw(
-          `require('@electron/remote').getCurrentWindow().setContentSize(${size[0]},${size[1]})`
-        )
-      await reloadApp('app.emulateMobile(false)')
-    }
-  }, 90_000)
   it('completes without errors', () => expect(report.error).toBeUndefined())
   it('keeps one writer and the saved question when replacing the contextual tab', () => {
     expect(report.sameWriter).toBe(true)
@@ -120,27 +120,14 @@ describe.runIf(available)('returning from a comment to its reply passage', () =>
 })
 
 describe.runIf(available)('ordinary backlinks to durable selections', () => {
-  let size: number[] = [],
-    report: any
+  let report: any
   beforeAll(async () => {
-    if (!onPhone()) {
-      size = evalJson<number[]>(`require('@electron/remote').getCurrentWindow().getContentSize()`)
-      await reloadApp('app.emulateMobile(true)')
-      evalRaw(`require('@electron/remote').getCurrentWindow().setContentSize(390,844)`)
-    }
     await evalLong(SELECTION_RETURN_SETUP)
     await reloadApp('window.location.reload()')
     report = JSON.parse(await evalLong(selectionReturnProbe(shots), 70_000))
   }, 180_000)
   afterAll(async () => {
     await evalLong(SELECTION_RETURN_CLEANUP)
-    if (!onPhone()) {
-      if (size.length)
-        evalRaw(
-          `require('@electron/remote').getCurrentWindow().setContentSize(${size[0]},${size[1]})`
-        )
-      await reloadApp('app.emulateMobile(false)')
-    }
   }, 90_000)
   it('completes after a reload without errors', () => expect(report.error).toBeUndefined())
   it('uses chat identity after rename and path reuse and switches to a containing descendant', () => {
