@@ -181,10 +181,18 @@ const DIALOGS: Record<string, (options?: DialogFixtureOptions) => void | Promise
     mountAlone(TextCommentDialog, { ...textCommentFixture(true), orphan: true, unresolved: true }),
   'text-comment-edit': async () => {
     mountAlone(TextCommentDialog, textCommentFixture(true), 'text-comment-edit')
-    await nextTick()
-    Array.from(document.querySelectorAll<HTMLButtonElement>('.abele-text-comments button'))
-      .find((button) => button.textContent?.trim() === 'Edit')
-      ?.click()
+    // The saved thread arrives after mounting; each comment is changed from its pencil glyph.
+    for (let i = 0; i < 20; i++) {
+      const pencil = document.querySelector<HTMLElement>(
+        '.abele-text-comments [aria-label="Edit this comment"]'
+      )
+      if (pencil) {
+        pencil.click()
+        await nextTick()
+        return
+      }
+      await new Promise((resolve) => window.setTimeout(resolve, 0))
+    }
   },
   'text-comment-delete': () => {
     void confirmAction(GlobalStore.getInstance().app, {

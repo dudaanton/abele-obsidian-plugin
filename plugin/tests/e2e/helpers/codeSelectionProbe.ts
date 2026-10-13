@@ -115,12 +115,18 @@ export const wordCoordinates = codeSelectionScript(String.raw`
   // A closing phone drawer must finish before an action reopens it for the destination.
   if(app.isMobile)await wait(600);
   // A phone shows one tab at a time: bring the code tab back on screen, not only make it active.
-  await app.workspace.revealLeaf(state.source);
-  app.workspace.setActiveLeaf(state.source,{focus:true});
+  // The destination note was focused while it was prepared; its editor must not pull its tab back.
+  if(state.note?.view.containerEl.contains(document.activeElement))document.activeElement.blur();
   const root=state.source.view.containerEl;
-  const content=await until(()=>{const el=root.querySelector('.cm-content'),box=el?.getBoundingClientRect();
-    return box&&box.width>0&&box.left>=0&&box.right<=innerWidth+1?el:null},10000);
-  if(!content)throw Error('No code content on screen: '+JSON.stringify(root.querySelector('.cm-content')?.getBoundingClientRect()));
+  const shown=()=>{const el=root.querySelector('.cm-content'),box=el?.getBoundingClientRect();
+    return app.workspace.activeLeaf===state.source&&box&&box.width>0&&box.left>=0&&box.right<=innerWidth+1?el:null};
+  let content=null;
+  for(let stable=0,i=0;i<60&&stable<5;i++){
+    if(shown())stable++;else{stable=0;await app.workspace.revealLeaf(state.source);app.workspace.setActiveLeaf(state.source,{focus:true})}
+    await wait(100);
+  }
+  content=shown();
+  if(!content)throw Error('No code content on screen: '+JSON.stringify({box:root.querySelector('.cm-content')?.getBoundingClientRect(),active:app.workspace.activeLeaf===state.source}));
   const walker=document.createTreeWalker(content,NodeFilter.SHOW_TEXT);let text;
   while(text=walker.nextNode()){if(text.data.includes(state.word))break}
   if(!text)throw Error('Sample word missing from code');
