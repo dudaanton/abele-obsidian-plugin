@@ -33,6 +33,9 @@ const script = `(async () => {
   const t = window.__abeleTest
   const service = t.ChatService.getInstance()
   service.ensureInitialized()
+  // A file run before this one may have closed every chat; then this run opens its own and
+  // closes it again, rather than depending on what the vault was left with.
+  const opened = service.activeSession.value ? null : service.createTab()
   const session = service.activeSession.value
   if (!session) return JSON.stringify({ error: 'no active chat session' })
   const scope = session.scopeResolver
@@ -77,6 +80,7 @@ const script = `(async () => {
     return JSON.stringify(report)
   } finally {
     scope.fullVaultAccess.value = wasFull
+    if (opened) await service.closeTab(opened)
   }
 })()`
 
