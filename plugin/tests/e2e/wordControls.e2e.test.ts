@@ -67,19 +67,22 @@ describe.skipIf(!available)('Word controls dialog captures', () => {
         await leaf.setViewState({type:'abele-word',state:{file:${JSON.stringify(PATH)}},active:true});await app.workspace.revealLeaf(leaf)
         await leaf.view.advanced(${number})
         let editor
-        for(let i=0;i<150;i++) {editor=document.querySelector('.abele-word-editor');if(editor) break;await new Promise(resolve=>setTimeout(resolve,100))}
+        for(let i=0;i<150;i++) {editor=document.querySelector(${JSON.stringify(mobile ? '.abele-word-read-only .abele-word-line' : '.abele-word-editor')});if(editor) break;await new Promise(resolve=>setTimeout(resolve,100))}
         if(!editor) throw Error('Word controls did not open')
+        if(${mobile}) editor=editor.closest('.abele-word-read-only')
         const modal=editor.closest('.modal')
         await new Promise(resolve=>requestAnimationFrame(()=>requestAnimationFrame(resolve)))
         const bounds=modal.getBoundingClientRect()
         const clipped=bounds.left<0||bounds.top<0||bounds.right>innerWidth+1||bounds.bottom>innerHeight+1
-        const readOnly=[...editor.querySelectorAll('input,select,textarea,button')].filter(el=>el.textContent!=='Cancel').every(el=>el.disabled)
+        const controls=[...editor.querySelectorAll('input,select,textarea,button')]
+        const readOnly=${mobile} ? controls.length===0 && !modal.querySelector('.abele-word-editor') : controls.filter(el=>el.textContent!=='Cancel').every(el=>el.disabled)
         const title=modal.querySelector('.modal-title')?.textContent
         if(title!==${JSON.stringify(title)}) throw Error('Unexpected Word controls title: '+title)
         const shot=${JSON.stringify(SHOTS)}+'/word-controls-'+${JSON.stringify(subject)}+'-'+${JSON.stringify(mobile ? 'phone' : 'desktop')}+'.png'
         if(window.__e2eHost) await window.__e2eHost.shot(shot)
         else {const fs=require('fs');fs.mkdirSync(${JSON.stringify(SHOTS)},{recursive:true});fs.writeFileSync(shot,(await require('@electron/remote').getCurrentWindow().webContents.capturePage()).toPNG())}
-        ;[...editor.querySelectorAll('button')].find(button=>button.textContent==='Cancel').click()
+        if(${mobile}) modal.querySelector('.modal-close-button,.modal-header-button').click()
+        else [...editor.querySelectorAll('button')].find(button=>button.textContent==='Cancel').click()
         return {title,shot,clipped,readOnly,mobile:app.isMobile}
       } finally {leaf.detach()}
     })()`)

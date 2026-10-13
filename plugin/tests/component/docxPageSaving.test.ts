@@ -115,20 +115,17 @@ it('opens a read-only mobile inspector without enabling document writes', async 
   Platform.isMobile = true
   try {
     await (view as unknown as { advanced(paragraph: number): Promise<void> }).advanced(1)
-    await vi.waitFor(() => expect(document.querySelector('.abele-word-editor')).not.toBeNull())
-    const fields = Array.from(
-      document.querySelectorAll<HTMLInputElement>(
-        '.abele-word-editor input,.abele-word-editor select,.abele-word-editor textarea'
-      )
+    await vi.waitFor(() =>
+      expect(document.querySelector('.abele-word-read-only .abele-word-line')).not.toBeNull()
     )
-    expect(fields.every((field) => field.disabled)).toBe(true)
-    const buttons = Array.from(
-      document.querySelectorAll<HTMLButtonElement>('.abele-word-editor button')
-    )
+    expect(document.querySelector('.abele-word-editor')).toBeNull()
     expect(
-      buttons.filter((button) => button.textContent !== 'Cancel').every((button) => button.disabled)
-    ).toBe(true)
-    buttons.find((button) => button.textContent === 'Cancel')!.click()
+      document.querySelectorAll(
+        '.abele-word-read-only input,.abele-word-read-only select,.abele-word-read-only textarea,.abele-word-read-only button'
+      )
+    ).toHaveLength(0)
+    await view.onUnloadFile()
+    expect(document.querySelector('.abele-word-read-only')).toBeNull()
     expect(write).not.toHaveBeenCalled()
   } finally {
     Platform.isMobile = prior

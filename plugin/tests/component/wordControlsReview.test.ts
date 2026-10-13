@@ -1,6 +1,5 @@
-import { expect, it } from 'vitest'
+import { expect, it, vi } from 'vitest'
 import { mount } from '@vue/test-utils'
-import { nextTick } from 'vue'
 import WordControls from '@/word/WordControls.vue'
 import WordPage from '@/word/WordPage.vue'
 import Modal from '@/components/obsidian/Modal.vue'
@@ -8,6 +7,31 @@ import { openDocx } from '@/word/package'
 import { wordPageModel } from '@/word/pageAdapter'
 import { sampleDocx } from '../fixtures/docx/sampleDocx'
 import { useVault } from '../helpers/testEnv'
+
+it.each([1, 3, 7])('renders paragraph %s on mobile without any editor controls', async (number) => {
+  const app = useVault([])
+  const doc = await openDocx(sampleDocx())
+  const controls = mount(WordControls, {
+    props: {
+      doc,
+      paragraph: doc.paragraphs[number - 1],
+      editor: { app: app as never, readOnly: true, apply: vi.fn(), cancel: () => {} },
+    },
+    global: {
+      stubs: { Modal: { props: ['size', 'phoneSheet'], template: '<div><slot /></div>' } },
+    },
+  })
+  await vi.waitFor(() => expect(controls.find(`[data-paragraph="${number}"]`).exists()).toBe(true))
+  expect(controls.text()).toContain(
+    number === 1 ? 'Sample report' : number === 3 ? 'Cell sample' : 'Read only'
+  )
+  expect(controls.find('input,select,textarea,button,.abele-word-editor').exists()).toBe(false)
+  expect(controls.findComponent(Modal).props('size')).toBeUndefined()
+  expect(controls.findComponent(Modal).props('phoneSheet')).toBe(true)
+  if (number === 7)
+    expect(controls.find('img').attributes('src')).toMatch(/^data:image\/png;base64,/)
+  controls.unmount()
+})
 
 it.each([
   [1, 'Paragraph 1'],
@@ -52,15 +76,7 @@ it('keeps the mobile controls inspector read only', async () => {
     },
     global: { stubs: { Modal: { template: '<div><slot /></div>' } } },
   })
-  await nextTick()
-  const fields = controls.findAll<HTMLInputElement>('input,select,textarea')
-  expect(fields.length).toBeGreaterThan(0)
-  expect(fields.every((field) => field.element.disabled)).toBe(true)
-  expect(
-    controls
-      .findAll<HTMLButtonElement>('button')
-      .filter((button) => button.text() !== 'Cancel')
-      .every((button) => button.element.disabled)
-  ).toBe(true)
+  await vi.waitFor(() => expect(controls.text()).toContain('Sample report'))
+  expect(controls.findAll('input,select,textarea,button')).toHaveLength(0)
   controls.unmount()
 })
