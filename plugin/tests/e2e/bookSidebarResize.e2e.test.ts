@@ -34,7 +34,14 @@ const PRELUDE = `
   // A step that never settles names itself instead of running the test out of time.
   const step = (label, promise, state = () => '') => Promise.race([promise, new Promise((_, no) => setTimeout(() => no(Error(label + ' did not finish in 30 s ' + state())), 30000))])
   const open = async () => {
-    let leaf; try { leaf = app.workspace.getLeaf('tab') } catch { leaf = app.workspace.getLeaf(false) }
+    // Right after the book's own tab closes, the workspace is still putting a new pane in its place;
+    // a tab asked for then lands in the removed group, outside the window, and the book never loads.
+    const inWorkspace = (l) => { let found = false; app.workspace.iterateAllLeaves((x) => { if (x === l) found = true }); return found }
+    const leaf = await need(() => {
+      let made; try { made = app.workspace.getLeaf('tab') } catch { made = app.workspace.getLeaf(false) }
+      if (inWorkspace(made)) return made
+      made.detach()
+    }, 'no tab in the workspace to open the book in')
     await step('opening the book', leaf.setViewState({ type: 'abele-book', state: { file: ${JSON.stringify(BOOK)} }, active: true }), () => JSON.stringify({ type: leaf.view?.getViewType?.(), file: leaf.view?.file?.path, status: leaf.view?.model?.status, message: leaf.view?.model?.message, engine: !!leaf.view?.engine, reading: !!leaf.view?.reading, attached: leaf.view?.containerEl?.isConnected, stage: !!leaf.view?.contentEl?.querySelector('.abele-book-reader__stage'), books: app.workspace.getLeavesOfType('abele-book').length, visible: document.visibilityState }))
     const v = await need(() => leaf.view.model?.status === 'ready' && leaf.view.reading && leaf.view, 'reader not ready')
     v.model.panelTab = 'search'; v.model.panel = true
