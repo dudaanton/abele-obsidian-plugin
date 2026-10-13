@@ -103,6 +103,13 @@ export async function reloadAs(vault: VaultCli, mobile: boolean): Promise<void> 
       () => reloaded(vault, before) && hasTestApi(vault),
       60_000
     )
+    // Notices the app shows as it starts (sync's own reports) time out by themselves; the
+    // screens these suites picture are measured after them, as the old fixed wait happened to.
+    await waitFor(
+      'startup notices to time out',
+      () => vault.evalRaw('String(!document.querySelector(".notice"))', 10_000) === 'true',
+      10_000
+    ).catch(() => console.info('[abele e2e] startup notices still showing after 10 s'))
     console.info(
       '[abele e2e] reloadAs timing',
       JSON.stringify({ mobile, lockWaitMs: locked - asked, reloadMs: Date.now() - locked })
