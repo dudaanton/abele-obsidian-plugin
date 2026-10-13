@@ -1,4 +1,5 @@
 import { describe, expect, it } from 'vitest'
+import { expandFirstOutlineQuestion } from '../helpers/chatProbeInteractions'
 import { evalLong, evalRaw, hasTestApi, isObsidianRunning } from './helpers/obsidianCli'
 import { onPhone, targets } from './helpers/target'
 import { tap, typeText } from './helpers/phone'
@@ -82,8 +83,8 @@ const script = (layout: string) => `(async () => {
     }
     await until(modal)
     await wait(100)
-    const question = modal().querySelector('[data-question="q0"]')
-    if (question?.classList.contains('is-collapsed')) { question.querySelector(':scope > .tree-item-self > .collapse-icon').click(); await wait(100) }
+    ;(${expandFirstOutlineQuestion.toString()})(modal())
+    await wait(100)
   }
   const choose = async text => {
     const button = [...modal().querySelectorAll('.search-result-file-match'), ...modal().querySelectorAll('.tree-item-self, button')].find(b => b.textContent.includes(text) || b.getAttribute('aria-label')?.includes(text))

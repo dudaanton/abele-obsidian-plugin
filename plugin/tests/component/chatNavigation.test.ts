@@ -13,6 +13,7 @@ import { chatCopyPath } from '@/ai/chatCopy'
 import { fakeChatSession } from '../helpers/fakeChatSession'
 import { useVault } from '../helpers/testEnv'
 import { useFakeClock } from '../helpers/fakeClock'
+import { expandFirstOutlineQuestion } from '../helpers/chatProbeInteractions'
 
 const messages: ChatMessage[] = [
   { id: 'q1', role: 'user', content: 'Plan a sample garden', timestamp: 1000 },
@@ -88,6 +89,32 @@ const open = async (extra = {}) => {
 }
 
 describe('the navigation modal', () => {
+  it('opens nested discussions in a child chat whose question is not the root fixture question', async () => {
+    const preview = vi.spyOn(CommentService.getInstance(), 'navigationPreview').mockResolvedValue(
+      fakeChatSession({
+        messages: ref([
+          {
+            id: 'nested-question',
+            role: 'user',
+            content: 'A nested sample question',
+            timestamp: 2,
+          },
+        ]),
+      }) as never
+    )
+    await open({
+      messages: [
+        { id: 'child-question', role: 'user', content: 'A child sample question', timestamp: 1 },
+      ],
+      comments: [{ id: 'nested-discussion', message: 'child-question' }],
+      state: { expanded: [], scrollTop: 0 },
+    })
+    expect(preview).not.toHaveBeenCalled()
+    expandFirstOutlineQuestion(root())
+    await flushPromises()
+    expect(preview).toHaveBeenCalledWith('nested-discussion')
+    expect(root().textContent).toContain('A nested sample question')
+  })
   it('keeps the phone keyboard closed until the search field is tapped', async () => {
     const platform = Platform as { isMobile: boolean }
     const mobile = platform.isMobile

@@ -1,3 +1,4 @@
+import { openChatSetup, waitForUiMatch } from '../helpers/chatProbeInteractions'
 /**
  * Every dialog of the chat, and the icon picker, on a phone.
  *
@@ -226,14 +227,8 @@ type RecipientScreen = Screen &
 const fixtureId = Date.now() + '-' + Math.random().toString(36).slice(2)
 const probeScript = `(async () => {
   const wait = (ms) => new Promise((r) => setTimeout(r, ms))
-  const until = async (fn, ms) => {
-    const deadline = Date.now() + ms
-    while (Date.now() < deadline) {
-      if (fn()) return true
-      await wait(100)
-    }
-    return false
-  }
+  const until = (fn, ms) => (${waitForUiMatch.toString()})(fn, wait, ms)
+
   // On a real phone the harness's host takes the pictures (see phone.ts); there is no Electron.
   const host = window.__e2eHost
   const fs = host ? null : require('fs')
@@ -471,7 +466,7 @@ const probeScript = `(async () => {
       SEEDED.push(path)
     }
     for (let i = 1; i <= 8; i++) {
-      const path = folder + '/Probe prompt ' + i + '.md'
+      const path = folder + '/probe-prompt-' + i + '.md'
       const body = '---\\ntype: abele-prompt\\ndescription: A prompt written by the phone layout probe, number ' + i + '.\\n---\\nAsk about {{topic}}.\\n'
       await app.vault.create(path, body)
       SEEDED.push(path)
@@ -647,12 +642,8 @@ const probeScript = `(async () => {
       guardedChat.interceptor.script.value = 'Phone probe guard'
       guardedChat.interceptor.pattern.value = '^/todo'
     }
-    chat?.querySelector('[aria-label="More chat actions"]')?.click()
-    await until(() => document.querySelector('.menu'), 3000)
-    const setup = [...document.querySelectorAll('.menu-item')].find(item =>
-      item.querySelector('.menu-item-title')?.textContent.trim() === 'Access, tools and chat settings')
+    const setup = await (${openChatSetup.toString()})(chat, until)
     if (setup) {
-      setup.click()
       await until(() => document.querySelector('.modal .abele-chat-setup'), 5000)
       await wait(300)
       const tabs = [...document.querySelectorAll('.modal .abele-chat-setup .abele-tabs__tab')]
@@ -685,22 +676,56 @@ const probeScript = `(async () => {
         }
         await screen('setup ' + label, modal, modal && modal.querySelector('.abele-modal__body'))
         report['setup ' + label].clipped = clipped
-        if (label === 'settings' && modal) {
-          report['setup settings'].pattern = !!modal.querySelector('input[placeholder="Every message"]')
+        if (label === 'chat' && modal) {
+          report['setup chat'].pattern = !!modal.querySelector('input[placeholder="Every message"]')
           const replyRow = () => [...modal.querySelectorAll('.setting-item')].find(r => r.querySelector('.setting-item-name')?.textContent.trim() === 'Reply only')
-          report['setup settings'].replyToggle = !!replyRow()?.querySelector('.checkbox-container')
+          report['setup chat'].replyToggle = !!replyRow()?.querySelector('.checkbox-container')
           guardedChat.interceptor.agentId.value = replyReviewer.id
           await until(() => replyRow(), 3000)
           const row = replyRow()
           if (row) row.scrollIntoView({ block: 'center' })
-          await screen('setup settings reply only', modal, modal.querySelector('.abele-modal__body'))
-          report['setup settings reply only'].replyToggle = !!row?.querySelector('.checkbox-container')
+          await screen('setup chat reply only', modal, modal.querySelector('.abele-modal__body'))
+          report['setup chat reply only'].replyToggle = !!row?.querySelector('.checkbox-container')
         }
       }
       await closeDialog()
       if (guardedChat) guardedChat.interceptor.followAgent()
     } else {
       report['setup'] = { over: [], scrollers: [], capped: [], clipped: [], fill: 0, shot: '', error: 'no setup menu item' }
+    }
+
+    // Skills and prompts now live in the composer. Measure their long lists there,
+    // and reach the final option without choosing it or invoking a provider.
+    {
+      const draft = window.__abeleTest.ChatService.getInstance().activeSession.value.draft.value
+      const previous = draft.text
+      try {
+        for (const [label, query, count] of [
+          ['composer skills', '/probe-skill-', 12],
+          ['composer prompts', '/probe-prompt-', 8],
+        ]) {
+          draft.text = query
+          if (!(await until(() => {
+            const options = [...chat.querySelectorAll('.abele-chat-slash .suggestion-item')]
+            return options.length === count && options.every(option => option.querySelector('.suggestion-title')?.textContent.toLowerCase().includes(query.slice(1).toLowerCase()))
+          }, 5000))) throw new Error('Composer choices did not settle: ' + label)
+          const list = chat.querySelector('.abele-chat-slash')
+          if (!list) throw new Error('Composer choices did not open: ' + label)
+          list.scrollTop = list.scrollHeight
+          await wait(200)
+          await screen(label, list, list)
+          const options = [...list.querySelectorAll('.suggestion-item')]
+          const last = options.at(-1)?.getBoundingClientRect(), box = list.getBoundingClientRect()
+          report[label].count = options.length
+          report[label].expectedCount = count
+          report[label].lastVisible = !!last && last.top >= box.top - 1 && last.bottom <= box.bottom + 1
+          const field = chat.querySelector('.abele-chat-input textarea, .abele-chat-input [contenteditable="true"]')
+          report[label].clipped = field ? ringClipped(field) : ['composer field missing']
+        }
+      } finally {
+        draft.text = previous
+        await wait(100)
+      }
     }
 
     const history = chat && chat.querySelector('.lucide-history')
@@ -2093,14 +2118,13 @@ describe.skipIf(!available)('the chat dialogs on a phone', () => {
     'chat attachment',
     'chat deferred media',
     'chat image preview',
-    'setup scope',
-    'setup skills',
-    'setup prompts',
+    'setup access',
+    'composer skills',
+    'composer prompts',
     'setup tools',
-    'setup settings',
-    'setup settings reply only',
+    'setup chat',
+    'setup chat reply only',
     'agent editor reply only',
-    'setup debug',
     'history',
     'nested comment',
     'nested comment folded',
@@ -2390,12 +2414,12 @@ describe.skipIf(!available)('the chat dialogs on a phone', () => {
     }
   })
 
-  it.each(['scope', 'skills', 'prompts', 'tools', 'settings', 'debug'])(
-    'setup %s: all six tabs stay on one row without shrinking the strip',
+  it.each(['access', 'tools', 'chat'])(
+    'setup %s: all three tabs stay on one row without shrinking the strip',
     (tab) => {
       const strips = report['setup ' + tab]?.tabs
       expect(strips?.length ?? 0).toBe(1)
-      expect(strips?.[0].count).toBe(6)
+      expect(strips?.[0].count).toBe(3)
       expect(strips?.[0].rows).toBe(1)
       expect(strips?.[0].clipped).toEqual([])
     }
@@ -2428,12 +2452,27 @@ describe.skipIf(!available)('the chat dialogs on a phone', () => {
         'Access, tools and chat settings',
         ...(label === 'chat' ? ['Files from this chat'] : []),
         'Agents',
+        ...(label === 'chat' ? ['Reload from file', 'Copy debug data', 'Delete chat'] : []),
       ])
       expect(header?.unreachable).toEqual([])
       expect(header?.clipped).toEqual([])
       expect(header?.findOpened).toBe(true)
       expect(report[label + ' header menu']?.error).toBe('')
       expect(report[label + ' header menu']?.over).toEqual([])
+    }
+  )
+
+  it.each(['composer skills', 'composer prompts'])(
+    '%s: the relocated list includes every seeded choice and reaches its final row',
+    (label) => {
+      const list = report[label] as Screen & {
+        count: number
+        expectedCount: number
+        lastVisible: boolean
+      }
+      expect(list.count).toBe(list.expectedCount)
+      expect(list.lastVisible).toBe(true)
+      expect(list.clipped).toEqual([])
     }
   )
 
@@ -2501,18 +2540,18 @@ describe.skipIf(!available)('the chat dialogs on a phone', () => {
     expect(r.warning).toBe(true)
   })
 
-  it("setup settings: the chat's interceptor pattern field is there to be measured", () => {
-    expect((report['setup settings'] as Screen & { pattern?: boolean })?.pattern).toBe(true)
+  it("setup chat: the chat's interceptor pattern field is there to be measured", () => {
+    expect((report['setup chat'] as Screen & { pattern?: boolean })?.pattern).toBe(true)
   })
 
-  it.each(['setup settings reply only', 'agent editor reply only'])(
+  it.each(['setup chat reply only', 'agent editor reply only'])(
     '%s: the agent reviewer toggle is present',
     (label) => {
       expect((report[label] as Screen & { replyToggle?: boolean })?.replyToggle).toBe(true)
     }
   )
 
-  it.each(['setup settings', 'agent editor interceptor'])(
+  it.each(['setup chat', 'agent editor interceptor'])(
     '%s: scripts also have a reply-only toggle',
     (label) => {
       expect((report[label] as Screen & { replyToggle?: boolean })?.replyToggle).toBe(true)

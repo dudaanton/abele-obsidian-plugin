@@ -1,3 +1,4 @@
+import { openChatSetup } from '../helpers/chatProbeInteractions'
 /**
  * Focus rings in the chat dialogs, on the desktop.
  *
@@ -164,12 +165,7 @@ const script = `(async () => {
   const chat = [...document.querySelectorAll('.abele-ai-chat')].find(
     (el) => el.getBoundingClientRect().height > 0
   )
-  press(chat && chat.querySelector('[aria-label="More chat actions"]'))
-  if (!await until(() => document.querySelector('.menu'), 3000)) throw Error('Chat actions menu did not open')
-  const setupAction = [...document.querySelectorAll('.menu-item')].find(item =>
-    item.querySelector('.menu-item-title')?.textContent.trim() === 'Scope, skills, prompts, permissions and settings')
-  if (!setupAction) throw Error('Chat setup action did not open')
-  setupAction.click()
+  await (${openChatSetup.toString()})(chat, until)
   if (!(await until(() => document.querySelector('.modal .abele-chat-setup'), 5000))) {
     return JSON.stringify([{ screen: 'setup', field: '-', by: ['dialog did not open'] }])
   }

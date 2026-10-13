@@ -1,3 +1,4 @@
+import { dismissNativeDialog } from '../../helpers/chatProbeInteractions'
 /** Invented persisted selections shared by the ordinary-link return probes. */
 export const SELECTION_RETURN_SETUP = `(async () => {
   const chats=window.__abeleTest.ChatService.getInstance(), comments=window.__abeleTest.CommentService.getInstance()
@@ -84,13 +85,14 @@ export function selectionReturnProbe(shots: string): string {
     await click(0);await until(()=>document.querySelector('.abele-anchor-history'))
     report.historical={explanation:document.querySelector('.abele-anchor-history').textContent,quote:document.querySelector('.abele-anchor-history blockquote')?.textContent,editable:!!document.querySelector('.abele-anchor-history input, .abele-anchor-history textarea'),keyboard:keyboard(),currentHighlighted:document.querySelector('[data-message-id="answer"]')?.classList.contains('abele-footnote-flash')||!!document.querySelector('[data-ask-message="answer"] [data-selection-return]')}
     await shoot('selection-return-history')
-    ;document.querySelector('.modal .modal-close-button').click()
+    ;(${dismissNativeDialog.toString()})(document.querySelector('.abele-anchor-history'))
     await until(()=>!document.querySelector('.abele-anchor-history'))
     const editingSession=chats.getSessionByFile(moved)
     await app.vault.append(file,JSON.stringify({...original,content:'echo edited elsewhere echo',selection:{...original.selection,revisionId:'remote-version'}})+'\\n')
     await click(0);await until(()=>document.querySelector('.abele-anchor-history'))
     report.syncedEdit={sameSession:chats.getSessionByFile(moved)===editingSession,content:editingSession.allMessages.value.find(m=>m.id==='answer')?.content,explanation:document.querySelector('.abele-anchor-history').textContent,currentHighlighted:document.querySelector('[data-message-id="answer"]')?.classList.contains('abele-footnote-flash')||!!document.querySelector('[data-ask-message="answer"] [data-selection-return]')}
-    ;document.querySelector('.modal .modal-close-button').click()
+    ;(${dismissNativeDialog.toString()})(document.querySelector('.abele-anchor-history'))
+    await until(()=>!document.querySelector('.abele-anchor-history'))
     await click(1);await until(()=>chats.activeSession.value?.kind==='comment'&&document.querySelector('[data-selection-return]'))
     await wait(600);report.nested=measure();await shoot('selection-return-nested')
     await close(nested);await close(moved);await app.vault.delete(file)
