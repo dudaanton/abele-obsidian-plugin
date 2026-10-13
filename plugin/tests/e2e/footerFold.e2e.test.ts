@@ -14,6 +14,7 @@
 import { describe, it, expect, beforeAll, afterAll } from 'vitest'
 import {
   activeVaultName,
+  enterPhone,
   evalJson,
   evalRaw,
   hasTestApi,
@@ -227,10 +228,8 @@ describe.skipIf(!available)('folding the lists under a note', () => {
     desktop = await run('desktop')
 
     size = windowSize()
-    await reloadApp('app.emulateMobile(true)')
-    await setWindowSize(PHONE.width, PHONE.height)
-    // A resize leaves the viewport stale until the app reloads.
-    await reloadApp()
+    // Sized before its one reload: a resize alone leaves the viewport stale.
+    await enterPhone(PHONE.width, PHONE.height)
     phone = await run('phone')
 
     console.info(

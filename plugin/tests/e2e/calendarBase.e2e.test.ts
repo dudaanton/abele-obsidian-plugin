@@ -9,7 +9,13 @@
  * Everything made is removed afterwards: the fixture vault holds `ScaleTest/` and nothing else.
  */
 import { describe, it, expect, beforeAll, afterAll } from 'vitest'
-import { hasTestApi, isObsidianRunning, evalRaw, reloadApp } from './helpers/obsidianCli'
+import {
+  evalRaw,
+  hasTestApi,
+  isObsidianRunning,
+  phoneEntry,
+  reloadApp,
+} from './helpers/obsidianCli'
 import { shotDir } from './helpers/shots'
 import { until, WAIT_PRELUDE } from './helpers/wait'
 
@@ -316,9 +322,7 @@ describe.skipIf(!available)('the calendar view of a base', () => {
     })()`)
 
     size = windowSize()
-    await reload('app.emulateMobile(true)')
-    await setWindowSize(PHONE.width, PHONE.height)
-    await reload('window.location.reload()')
+    await reload(phoneEntry(PHONE.width, PHONE.height))
 
     phone = evalAsync<Phone>(`(async () => {
       ${PRELUDE}

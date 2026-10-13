@@ -20,7 +20,14 @@
  *   pins and the book menu's settings, none reaching past the screen's edge.
  */
 import { describe, it, expect, beforeAll, afterAll } from 'vitest'
-import { hasTestApi, isObsidianRunning, evalRaw, evalJson, reloadApp } from './helpers/obsidianCli'
+import {
+  evalJson,
+  evalRaw,
+  hasTestApi,
+  isObsidianRunning,
+  phoneEntry,
+  reloadApp,
+} from './helpers/obsidianCli'
 import { evalAsync } from './helpers/githubLive'
 import { buildRichEpub } from '../fixtures/books/richBook'
 import { buildPlainPdf } from '../fixtures/books/pdfFixture'
@@ -463,9 +470,7 @@ describe.skipIf(!available)('scripts on words in a book, and notes linking into 
   })
 
   it('on a phone the bar with the script is one row', async () => {
-    await reload('app.emulateMobile(true)')
-    await setWindowSize(390, 844)
-    await reload('location.reload()')
+    await reload(phoneEntry(390, 844))
     const r = run<{
       error?: string
       bar?: number

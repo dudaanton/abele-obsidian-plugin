@@ -1,6 +1,13 @@
 /** Recurrence through the actual header button and embedded card, including phone touches. */
 import { afterAll, beforeAll, describe, expect, it } from 'vitest'
-import { evalLong, evalRaw, hasTestApi, isObsidianRunning, reloadApp } from './helpers/obsidianCli'
+import {
+  enterPhone,
+  evalLong,
+  evalRaw,
+  hasTestApi,
+  isObsidianRunning,
+  reloadApp,
+} from './helpers/obsidianCli'
 import { onPhone, targets } from './helpers/target'
 import { shotDir } from './helpers/shots'
 
@@ -179,9 +186,7 @@ if (onPhone()) {
       size = JSON.parse(
         evalRaw("JSON.stringify(require('@electron/remote').getCurrentWindow().getContentSize())")
       )
-      await reloadApp('app.emulateMobile(true)')
-      evalRaw("require('@electron/remote').getCurrentWindow().setContentSize(390, 844)")
-      await reloadApp('window.location.reload()')
+      await enterPhone(390, 844)
     },
     async () => {
       if (size)

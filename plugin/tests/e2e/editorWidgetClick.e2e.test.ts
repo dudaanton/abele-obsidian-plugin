@@ -21,7 +21,14 @@
  * its own folder of notes and removes it.
  */
 import { describe, it, expect, beforeAll, afterAll } from 'vitest'
-import { evalLong, evalRaw, hasTestApi, isObsidianRunning, reloadApp } from './helpers/obsidianCli'
+import {
+  enterPhone,
+  evalLong,
+  evalRaw,
+  hasTestApi,
+  isObsidianRunning,
+  reloadApp,
+} from './helpers/obsidianCli'
 import { onPhone, targets } from './helpers/target'
 
 targets('desktop', 'phone')
@@ -298,9 +305,7 @@ if (onPhone()) {
     'pressing a task drawn in a note, in the phone layout',
     async () => {
       size = windowSize()
-      await reloadApp('app.emulateMobile(true)')
-      await setWindowSize(390, 844)
-      await reloadApp('window.location.reload()')
+      await enterPhone(390, 844)
     },
     async () => {
       if (size[0]) await setWindowSize(size[0], size[1])

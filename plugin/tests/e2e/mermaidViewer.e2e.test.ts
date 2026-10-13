@@ -9,7 +9,14 @@
  * Pictures go to `/tmp/abele-mermaid/` — look at them.
  */
 import { describe, it, expect, beforeAll, afterAll } from 'vitest'
-import { evalJson, evalRaw, hasTestApi, isObsidianRunning, reloadApp } from './helpers/obsidianCli'
+import {
+  evalJson,
+  evalRaw,
+  hasTestApi,
+  isObsidianRunning,
+  phoneEntry,
+  reloadApp,
+} from './helpers/obsidianCli'
 import { evalAsync } from './helpers/githubLive'
 import { shotDir } from './helpers/shots'
 
@@ -294,9 +301,7 @@ describe.skipIf(!available)('the mermaid viewer', () => {
 
     beforeAll(async () => {
       size = windowSize()
-      await reload('app.emulateMobile(true)')
-      await setWindowSize(PHONE.width, PHONE.height)
-      await reload('window.location.reload()')
+      await reload(phoneEntry(PHONE.width, PHONE.height))
       // A hidden window hands back no frame after a reload until its size is nudged.
       await setWindowSize(PHONE.width + 2, PHONE.height + 2)
       await setWindowSize(PHONE.width, PHONE.height)

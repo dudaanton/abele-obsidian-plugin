@@ -16,6 +16,7 @@ import {
   evalRaw,
   hasTestApi,
   isObsidianRunning,
+  phoneEntry,
   reloadApp,
   runCli,
 } from './helpers/obsidianCli'
@@ -552,9 +553,7 @@ describe.skipIf(!available)('notes come back where they were left', () => {
       size = evalJson<[number, number]>(
         `require('@electron/remote').getCurrentWindow().getContentSize()`
       )
-      await reload('app.emulateMobile(true)')
-      await setWindowSize(390, 844)
-      await reload('window.location.reload()')
+      await reload(phoneEntry(390, 844))
       // In-memory settings do not survive emulation's reloads.
       enableRememberedPlaces()
       // Afresh: the book's words are highlighted already, and a highlight is not made twice.

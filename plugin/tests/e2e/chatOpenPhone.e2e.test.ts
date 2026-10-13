@@ -16,7 +16,14 @@
  * chats of its own and removes them.
  */
 import { describe, it, expect, beforeAll, afterAll } from 'vitest'
-import { evalLong, evalRaw, hasTestApi, isObsidianRunning, reloadApp } from './helpers/obsidianCli'
+import {
+  enterPhone,
+  evalLong,
+  evalRaw,
+  hasTestApi,
+  isObsidianRunning,
+  reloadApp,
+} from './helpers/obsidianCli'
 import { onPhone, targets } from './helpers/target'
 
 targets('desktop', 'phone')
@@ -280,9 +287,7 @@ describe.skipIf(!available)('opening a chat with a tap on a phone', () => {
   beforeAll(async () => {
     if (!onPhone()) {
       size = windowSize()
-      await reloadApp('app.emulateMobile(true)')
-      await setWindowSize(390, 844)
-      await reloadApp('window.location.reload()')
+      await enterPhone(390, 844)
     }
     report = JSON.parse(await evalLong(script, 120_000)) as Report
     console.info(`\n  ${JSON.stringify(report, null, 2)}\n`)

@@ -12,7 +12,14 @@
  * Pictures go to `/tmp/abele-github-notifications/` — look at them.
  */
 import { describe, it, expect, beforeAll, afterAll, beforeEach } from 'vitest'
-import { evalJson, evalRaw, hasTestApi, isObsidianRunning, reloadApp } from './helpers/obsidianCli'
+import {
+  enterPhone,
+  evalJson,
+  evalRaw,
+  hasTestApi,
+  isObsidianRunning,
+  reloadApp,
+} from './helpers/obsidianCli'
 import {
   PRELUDE,
   enableGithub,
@@ -300,9 +307,7 @@ describe.skipIf(!available || onPhone())('GitHub notifications on a phone', () =
     size = evalJson<[number, number]>(
       `require('@electron/remote').getCurrentWindow().getContentSize()`
     )
-    await reloadApp('app.emulateMobile(true)')
-    await setWindowSize(PHONE.width, PHONE.height)
-    await reloadApp('window.location.reload()')
+    await enterPhone(PHONE.width, PHONE.height)
     enableGithub(gh.origin, false)
     useNotificationsToken()
   }, 300_000)

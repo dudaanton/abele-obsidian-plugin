@@ -21,6 +21,7 @@ import {
   evalRaw,
   hasTestApi,
   isObsidianRunning,
+  phoneEntry,
   reloadApp,
   runCli,
 } from './helpers/obsidianCli'
@@ -467,9 +468,7 @@ describe.skipIf(!available)('selecting words on pages turned one at a time', () 
 
   describe('with a finger, on a phone', () => {
     beforeAll(async () => {
-      await reload('app.emulateMobile(true)')
-      await setWindowSize(PHONE.width, PHONE.height)
-      await reload('window.location.reload()')
+      await reload(phoneEntry(PHONE.width, PHONE.height))
     }, 180_000)
 
     it('a clean tap at either edge, or a swipe, turns the page', () => {

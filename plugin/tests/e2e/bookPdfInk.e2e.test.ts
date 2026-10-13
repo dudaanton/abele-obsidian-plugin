@@ -20,6 +20,7 @@ import {
   evalRaw,
   hasTestApi,
   isObsidianRunning,
+  phoneEntry,
   reloadApp,
   runCli,
 } from './helpers/obsidianCli'
@@ -520,9 +521,7 @@ describe.skipIf(!available)('drawing on the pages of a PDF', () => {
   })
 
   it('fits its bar on a phone, where a finger draws, and on a tablet, where it moves the pages', async () => {
-    await reload('app.emulateMobile(true)')
-    await setWindowSize(390, 844)
-    await reload('location.reload()')
+    await reload(phoneEntry(390, 844))
     const phone = run<{
       error?: string
       line?: {

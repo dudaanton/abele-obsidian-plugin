@@ -803,12 +803,46 @@ export async function reloadApp(
   how = 'location.reload()',
   launch: typeof evalRaw = evalRaw
 ): Promise<void> {
+  const entry = /^abele-e2e:enterPhone\((\d+),(\d+)\)$/.exec(how)
+  if (entry) return enterPhone(Number(entry[1]), Number(entry[2]))
   if (onPhone()) return reloadPhone()
   const asked = /emulateMobile\((true|false)\)/.exec(how)?.[1]
   if (asked === 'true') rememberDesktop()
   await reloadWindow(asked, launch)
   if (asked === 'false') putDesktopBack()
 }
+
+/**
+ * Turns this window into a phone of the given size with one reload: the window is made that size
+ * first, so the app starts already at a phone's width. It used to take three — `emulateMobile`,
+ * a resize with a fixed sleep, and a second reload for the app to pick the new width up.
+ *
+ * The desktop size is recorded before the resize (`rememberDesktop`), so leaving the phone with
+ * `reloadApp('app.emulateMobile(false)')` puts the real one back. On a real phone it is just the
+ * reload that `reloadApp` gives a phone.
+ */
+export async function enterPhone(width = 390, height = 844): Promise<void> {
+  if (onPhone()) return reloadPhone()
+  rememberDesktop()
+  setContentSize(width, height)
+  await reloadWindow('true')
+  // The viewport is checked once, so a window that refused the size fails here, not as a layout.
+  let viewport: [number, number] = [0, 0]
+  for (const deadline = Date.now() + 10_000; ; ) {
+    viewport = evalJsonIdempotent<[number, number]>('[window.innerWidth, window.innerHeight]')
+    if (viewport[0] === width && viewport[1] === height) return
+    if (Date.now() > deadline) break
+    await pauseAsync(100)
+  }
+  throw new Error(`the phone window is ${viewport.join('×')}, not ${width}×${height}`)
+}
+
+/**
+ * `enterPhone` as something `reloadApp` takes, for a file whose own reload wrapper does more
+ * after the reload (a debugger attached, throttling off): `reload(phoneEntry(390, 844))`.
+ */
+export const phoneEntry = (width = 390, height = 844): string =>
+  `abele-e2e:enterPhone(${Math.round(width)},${Math.round(height)})`
 
 /**
  * The window's desktop size, kept on disk from the moment a file turns it into a phone until it

@@ -2,6 +2,7 @@
 import { afterAll, beforeAll, describe, expect, it } from 'vitest'
 import { readFileSync } from 'node:fs'
 import {
+  enterPhone,
   evalLong,
   evalRaw,
   hasTestApi,
@@ -619,9 +620,7 @@ describe.skipIf(!available)('task timeline scrolling', () => {
         desktop.push(await runProbe(footer))
         shortDesktop.push(await runProbe(footer, true))
       }
-      await reloadApp('app.emulateMobile(true)')
-      evalRaw(`require('@electron/remote').getCurrentWindow().setContentSize(390,844); 'sized'`)
-      await reloadApp('window.location.reload()')
+      await enterPhone(390, 844)
       runCli(['dev:debug', 'on'], 30000)
     }
     for (const footer of [false, true]) {

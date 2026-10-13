@@ -18,6 +18,7 @@ import {
   evalRaw,
   hasTestApi,
   isObsidianRunning,
+  phoneEntry,
   reloadApp,
   runCli,
 } from './helpers/obsidianCli'
@@ -363,9 +364,7 @@ describe.skipIf(!available)('paragraphs are never drawn over each other', () => 
 
   describe('on a phone', () => {
     beforeAll(async () => {
-      await reload('app.emulateMobile(true)')
-      await setWindowSize(PHONE.width, PHONE.height)
-      await reload('window.location.reload()')
+      await reload(phoneEntry(PHONE.width, PHONE.height))
     }, 180_000)
 
     it('in one column, turned and scrolled for a while', () => {

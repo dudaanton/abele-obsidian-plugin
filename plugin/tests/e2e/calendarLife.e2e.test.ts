@@ -10,7 +10,13 @@
  * made is removed: the fixture vault holds `ScaleTest/` and nothing else.
  */
 import { describe, it, expect, beforeAll, afterAll } from 'vitest'
-import { hasTestApi, isObsidianRunning, evalRaw, reloadApp } from './helpers/obsidianCli'
+import {
+  enterPhone,
+  evalRaw,
+  hasTestApi,
+  isObsidianRunning,
+  reloadApp,
+} from './helpers/obsidianCli'
 import { lifeSummary, lifeWeekOf } from '@/bases/lifeWeeks'
 import { shotDir } from './helpers/shots'
 
@@ -222,9 +228,7 @@ describe.skipIf(!available)('the life in weeks of a calendar base', () => {
     size = JSON.parse(
       evalRaw(`JSON.stringify(require('@electron/remote').getCurrentWindow().getContentSize())`)
     ) as [number, number]
-    await reloadApp('app.emulateMobile(true)')
-    await setWindowSize(PHONE.width, PHONE.height)
-    await reloadApp('window.location.reload()')
+    await enterPhone(PHONE.width, PHONE.height)
 
     phone = evalAsync<Report>(`(async () => {
       ${PRELUDE}

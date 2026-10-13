@@ -1,6 +1,13 @@
 /** File blame at 390 px and on the real phone: virtual rows, details, navigation and no overflow. */
 import { afterAll, beforeAll, describe, expect, it } from 'vitest'
-import { evalJson, evalRaw, hasTestApi, isObsidianRunning, reloadApp } from './helpers/obsidianCli'
+import {
+  enterPhone,
+  evalJson,
+  evalRaw,
+  hasTestApi,
+  isObsidianRunning,
+  reloadApp,
+} from './helpers/obsidianCli'
 import {
   enableGithub,
   evalAsync,
@@ -24,9 +31,7 @@ describe.skipIf(!available)('file blame on a phone', () => {
     gh = await startFakeGithub()
     if (!onPhone()) {
       size = evalJson(`[...require('@electron/remote').getCurrentWindow().getContentSize()]`)
-      await reloadApp('app.emulateMobile(true)')
-      evalRaw(`require('@electron/remote').getCurrentWindow().setContentSize(390, 844)`)
-      await reloadApp('window.location.reload()')
+      await enterPhone(390, 844)
     }
     enableGithub(gh.origin, false)
   }, 180_000)

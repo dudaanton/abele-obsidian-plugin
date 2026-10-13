@@ -10,7 +10,14 @@
  * screen go to `/tmp/abele-gallery/` — look at them.
  */
 import { describe, it, expect, beforeAll, afterAll } from 'vitest'
-import { evalJson, evalRaw, hasTestApi, isObsidianRunning, reloadApp } from './helpers/obsidianCli'
+import {
+  enterPhone,
+  evalJson,
+  evalRaw,
+  hasTestApi,
+  isObsidianRunning,
+  reloadApp,
+} from './helpers/obsidianCli'
 import { evalAsync } from './helpers/githubLive'
 import { shotDir } from './helpers/shots'
 
@@ -249,9 +256,7 @@ describe.skipIf(!available)('the gallery', () => {
 
     beforeAll(async () => {
       size = windowSize()
-      await reloadApp('app.emulateMobile(true)')
-      await setWindowSize(PHONE.width, PHONE.height)
-      await reloadApp('window.location.reload()')
+      await enterPhone(PHONE.width, PHONE.height)
       // A hidden window hands back no frame after a reload until its size is nudged.
       await setWindowSize(PHONE.width + 2, PHONE.height + 2)
       await setWindowSize(PHONE.width, PHONE.height)

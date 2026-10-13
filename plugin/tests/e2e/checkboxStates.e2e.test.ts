@@ -1,5 +1,5 @@
 import { afterAll, beforeAll, describe, expect, it } from 'vitest'
-import { evalJson, evalRaw, reloadApp } from './helpers/obsidianCli'
+import { enterPhone, evalJson, evalRaw, reloadApp } from './helpers/obsidianCli'
 import { shotDir } from './helpers/shots'
 import { WAIT_PRELUDE } from './helpers/wait'
 import { onPhone, targets } from './helpers/target'
@@ -152,9 +152,7 @@ it('keeps a normal reading-view click native', () => {
 it('fits the state menu and all icons at phone width after a hold', async () => {
   const shots = shotDir('checkboxes')
   if (!onPhone()) {
-    await reloadApp('app.emulateMobile(true)')
-    evalRaw(`require('@electron/remote').getCurrentWindow().setContentSize(390, 844)`)
-    await reloadApp()
+    await enterPhone(390, 844)
   }
   try {
     for (const surface of ['source', 'preview'] as const) {

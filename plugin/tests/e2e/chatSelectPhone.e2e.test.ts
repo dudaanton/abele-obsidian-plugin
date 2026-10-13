@@ -18,6 +18,7 @@ import {
   evalRaw,
   hasTestApi,
   isObsidianRunning,
+  phoneEntry,
   reloadApp,
   runCli,
 } from './helpers/obsidianCli'
@@ -190,9 +191,7 @@ describe.runIf(available)('selecting words in a chat with a finger', () => {
 
   beforeAll(async () => {
     size = windowSize()
-    await reload('app.emulateMobile(true)')
-    await setWindowSize(PHONE.width, PHONE.height)
-    await reload('window.location.reload()')
+    await reload(phoneEntry(PHONE.width, PHONE.height))
     report = evalAsync<Report>(script, 120_000)
   }, 240_000)
 
@@ -229,7 +228,9 @@ describe.runIf(available)('selecting words in a chat with a finger', () => {
   })
 
   it('copies an ordinary durable selection backlink without changing message Markdown', () => {
-    expect(report.copied?.link).toMatch(/^\[\[.+\.abchat#abele-selection=.+\/.+\|Return to selection\]\]$/)
+    expect(report.copied?.link).toMatch(
+      /^\[\[.+\.abchat#abele-selection=.+\/.+\|Return to selection\]\]$/
+    )
     expect(report.copied?.unchanged).toBe(true)
     expect(report.copied?.anchors).toBe(1)
   })

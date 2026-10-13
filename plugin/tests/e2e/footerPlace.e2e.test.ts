@@ -17,6 +17,7 @@
  */
 import { describe, it, expect, beforeAll, afterAll } from 'vitest'
 import {
+  enterPhone,
   evalJson,
   evalLong,
   evalRaw,
@@ -326,9 +327,7 @@ if (onPhone()) {
     'a note left in the list under it comes back there, in the phone layout',
     async () => {
       size = windowSize()
-      await reloadApp('app.emulateMobile(true)')
-      await setWindowSize(390, 844)
-      await reloadApp('window.location.reload()')
+      await enterPhone(390, 844)
     },
     async () => {
       if (size[0]) await setWindowSize(size[0], size[1])

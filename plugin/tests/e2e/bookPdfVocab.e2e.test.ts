@@ -1,5 +1,12 @@
 import { describe, it, expect, beforeAll, afterAll } from 'vitest'
-import { hasTestApi, isObsidianRunning, evalRaw, evalJson, reloadApp } from './helpers/obsidianCli'
+import {
+  enterPhone,
+  evalJson,
+  evalRaw,
+  hasTestApi,
+  isObsidianRunning,
+  reloadApp,
+} from './helpers/obsidianCli'
 import { evalAsync } from './helpers/githubLive'
 import { onPhone, targets } from './helpers/target'
 import { screenshot, tap } from './helpers/phone'
@@ -164,9 +171,7 @@ describe.skipIf(!available)('vocabulary on selectable PDF pages', () => {
         "require('@electron/remote').getCurrentWindow().getContentSize()"
       )
       try {
-        await reloadApp('app.emulateMobile(true)')
-        evalRaw("require('@electron/remote').getCurrentWindow().setContentSize(390, 844)")
-        await reloadApp('window.location.reload()')
+        await enterPhone(390, 844)
         const result = run<{ error?: string; lines?: number; target?: string }>(`
         const leaf = app.workspace.getLeaf('tab')
         await leaf.setViewState({ type: 'abele-book', state: { file: ${JSON.stringify(BOOK)} }, active: true })

@@ -10,7 +10,13 @@
  * before. `emulateMobile` reloads the app, so the calendar is set up after the reloads.
  */
 import { describe, it, expect, beforeAll, afterAll } from 'vitest'
-import { evalRaw, hasTestApi, isObsidianRunning, reloadApp } from './helpers/obsidianCli'
+import {
+  evalRaw,
+  hasTestApi,
+  isObsidianRunning,
+  phoneEntry,
+  reloadApp,
+} from './helpers/obsidianCli'
 import { LINK_TOKEN } from '../helpers/fakeCalendarServer'
 import { onPhone, targets } from './helpers/target'
 import { startCalendarProcess, type CalendarProcess } from './helpers/calendarProcess'
@@ -155,9 +161,7 @@ describe.skipIf(!available)('calendars on a phone', () => {
   beforeAll(async () => {
     server = await startCalendarProcess(calendarAroundToday())
     size = windowSize()
-    await reload('app.emulateMobile(true)')
-    await setWindowSize(PHONE.width, PHONE.height)
-    await reload('window.location.reload()')
+    await reload(phoneEntry(PHONE.width, PHONE.height))
 
     const link = `${server.origin}/secret/${LINK_TOKEN}.ics`
     screens.read = evalAsync<Screen>(`(async () => {

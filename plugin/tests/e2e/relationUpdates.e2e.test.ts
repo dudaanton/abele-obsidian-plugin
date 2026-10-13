@@ -1,6 +1,13 @@
 /** Live footer updates, using only synthetic notes and restoring the workspace afterwards. */
 import { afterAll, describe, expect, it } from 'vitest'
-import { evalLong, evalRaw, hasTestApi, isObsidianRunning, reloadApp } from './helpers/obsidianCli'
+import {
+  enterPhone,
+  evalLong,
+  evalRaw,
+  hasTestApi,
+  isObsidianRunning,
+  reloadApp,
+} from './helpers/obsidianCli'
 import { onPhone, targets } from './helpers/target'
 import { shotDir } from './helpers/shots'
 import { rootChatOwnerVisible } from './contracts/rootChatOwner'
@@ -378,7 +385,7 @@ async function check(label: string) {
   const report = JSON.parse(raw)
   console.info(JSON.stringify(report.pagingDiagnostics))
   const { pagingDiagnostics, cleanup, runtime, ...outcomes } = report
-  console.info('relation runtime '+JSON.stringify(runtime))
+  console.info('relation runtime ' + JSON.stringify(runtime))
   expect(runtime.testApi).toBe(true)
   expect(runtime.bytes).toBeGreaterThan(0)
   expect(runtime.sha256).toMatch(/^[a-f0-9]{64}$/)
@@ -424,9 +431,7 @@ describe.skipIf(!available)('relation updates in an open footer', () => {
     'updates the same footer under phone emulation',
     async () => {
       emulated = true
-      await reloadApp('app.emulateMobile(true)')
-      evalRaw("require('@electron/remote').getCurrentWindow().setContentSize(390, 844)")
-      await reloadApp()
+      await enterPhone(390, 844)
       await check('emulated')
     },
     180_000

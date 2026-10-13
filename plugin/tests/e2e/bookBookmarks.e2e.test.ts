@@ -13,6 +13,7 @@ import {
   evalRaw,
   hasTestApi,
   isObsidianRunning,
+  phoneEntry,
   reloadApp,
   runCli,
 } from './helpers/obsidianCli'
@@ -270,9 +271,7 @@ describe.skipIf(!available)('bookmarks in the reader', () => {
       size = evalJson<[number, number]>(
         `require('@electron/remote').getCurrentWindow().getContentSize()`
       )
-      await reload('app.emulateMobile(true)')
-      await setWindowSize(390, 844)
-      await reload('window.location.reload()')
+      await reload(phoneEntry(390, 844))
     }, 240_000)
 
     afterAll(async () => {

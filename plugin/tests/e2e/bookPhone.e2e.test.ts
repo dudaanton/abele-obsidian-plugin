@@ -20,6 +20,7 @@ import {
   evalRaw,
   hasTestApi,
   isObsidianRunning,
+  phoneEntry,
   reloadApp,
 } from './helpers/obsidianCli'
 import { buildPlainEpub } from '../fixtures/books/maliciousBook'
@@ -256,9 +257,7 @@ describe.skipIf(!available)('a book on a phone', () => {
       30_000
     )
     size = windowSize()
-    await reload('app.emulateMobile(true)')
-    await setWindowSize(PHONE.width, PHONE.height)
-    await reload('window.location.reload()')
+    await reload(phoneEntry(PHONE.width, PHONE.height))
     screens.plain = await measure('plain')
     screens['epub-test'] = await measure('epub-test')
     screens['plain-pdf'] = await measure('plain-pdf')

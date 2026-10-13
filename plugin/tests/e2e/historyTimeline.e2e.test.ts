@@ -18,11 +18,12 @@
  */
 import { describe, it, expect, beforeAll, afterAll } from 'vitest'
 import {
-  hasTestApi,
-  isObsidianRunning,
+  enterPhone,
   evalJson,
   evalLong,
   evalRaw,
+  hasTestApi,
+  isObsidianRunning,
   reloadApp,
 } from './helpers/obsidianCli'
 import { onPhone, targets } from './helpers/target'
@@ -371,9 +372,7 @@ describe.skipIf(!available)('the history timeline of a base', () => {
         )
       ) as Perf
 
-      await reloadApp('app.emulateMobile(true)')
-      await setWindowSize(PHONE.width, PHONE.height)
-      await reloadApp('window.location.reload()')
+      await enterPhone(PHONE.width, PHONE.height)
     }
 
     // Started and asked after on a phone, whose real pinch and tap take their time.

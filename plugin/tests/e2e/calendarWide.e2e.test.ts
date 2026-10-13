@@ -15,7 +15,14 @@
  * with the sidebar's width, the window's size and the calendar cache put back.
  */
 import { describe, it, expect, beforeAll, afterAll } from 'vitest'
-import { evalLong, evalRaw, hasTestApi, isObsidianRunning, reloadApp } from './helpers/obsidianCli'
+import {
+  enterPhone,
+  evalLong,
+  evalRaw,
+  hasTestApi,
+  isObsidianRunning,
+  reloadApp,
+} from './helpers/obsidianCli'
 import { LINK_TOKEN } from '../helpers/fakeCalendarServer'
 import { targets } from './helpers/target'
 import { startCalendarProcess, type CalendarProcess } from './helpers/calendarProcess'
@@ -277,9 +284,7 @@ describe.skipIf(!available)('a wide entry in the sidebar timeline', () => {
     })()`)
     restoreCalendar()
 
-    await reloadApp('app.emulateMobile(true)')
-    await setWindowSize(PHONE.width, PHONE.height)
-    await reloadApp('window.location.reload()')
+    await enterPhone(PHONE.width, PHONE.height)
     reads.phone = await setUpCalendar(link)
     screens.phone = await probe('phone', null)
     console.info(`\n  ${JSON.stringify({ reads, screens })}\n`)

@@ -5,7 +5,14 @@
  * written for the run; the settings are put back after it. The same on a phone at 390×844.
  */
 import { describe, it, expect, beforeAll, afterAll } from 'vitest'
-import { evalJson, evalRaw, hasTestApi, isObsidianRunning, reloadApp } from './helpers/obsidianCli'
+import {
+  evalJson,
+  evalRaw,
+  hasTestApi,
+  isObsidianRunning,
+  phoneEntry,
+  reloadApp,
+} from './helpers/obsidianCli'
 import { evalAsync } from './helpers/githubLive'
 import { buildLongPdf, buildPlainPdf } from '../fixtures/books/pdfFixture'
 import { shotDir } from './helpers/shots'
@@ -274,9 +281,7 @@ describe.skipIf(!available)('a PDF as one continuous scroll', () => {
       size = evalJson<[number, number]>(
         `require('@electron/remote').getCurrentWindow().getContentSize()`
       )
-      await reload('app.emulateMobile(true)')
-      await setWindowSize(PHONE.width, PHONE.height)
-      await reload('window.location.reload()')
+      await reload(phoneEntry(PHONE.width, PHONE.height))
     }, 180_000)
 
     afterAll(async () => {

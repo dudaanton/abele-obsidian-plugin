@@ -1,5 +1,5 @@
 import { afterAll, beforeAll, describe, expect, it } from 'vitest'
-import { evalLong, evalRaw, reloadApp } from './helpers/obsidianCli'
+import { enterPhone, evalLong, evalRaw, reloadApp } from './helpers/obsidianCli'
 import { onPhone, targets } from './helpers/target'
 import { shotDir } from './helpers/shots'
 
@@ -40,9 +40,7 @@ describe.each(onPhone() ? ['phone'] : ['desktop', 'emulated-phone'])(
         size = JSON.parse(
           evalRaw(`JSON.stringify(require('@electron/remote').getCurrentWindow().getContentSize())`)
         )
-        await reloadApp('app.emulateMobile(true)')
-        evalRaw(`require('@electron/remote').getCurrentWindow().setContentSize(390,844); 'sized'`)
-        await reloadApp()
+        await enterPhone(390, 844)
       }
       await probe(`
       if (app.vault.getAbstractFileByPath('${FOLDER}')) throw new Error('Fixture already exists')

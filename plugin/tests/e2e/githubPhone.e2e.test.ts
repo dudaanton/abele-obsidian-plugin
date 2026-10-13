@@ -19,6 +19,7 @@ import {
   evalRaw,
   hasTestApi,
   isObsidianRunning,
+  phoneEntry,
   reloadApp,
   runCli,
 } from './helpers/obsidianCli'
@@ -326,9 +327,7 @@ describe.skipIf(!available)('a pull request on a phone', () => {
   beforeAll(async () => {
     gh = await startFakeGithub()
     size = windowSize()
-    await reload('app.emulateMobile(true)')
-    await setWindowSize(PHONE.width, PHONE.height)
-    await reload('window.location.reload()')
+    await reload(phoneEntry(PHONE.width, PHONE.height))
     enableGithub(gh.origin, false)
     screens.conversation = measure(gh.web, 'conversation')
     screens.compare = measure(gh.web, 'compare')

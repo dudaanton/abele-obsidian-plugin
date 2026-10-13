@@ -12,6 +12,7 @@
  */
 import { describe, it, expect, beforeAll, afterAll } from 'vitest'
 import {
+  enterPhone,
   evalJson,
   evalRaw,
   hasTestApi,
@@ -181,9 +182,7 @@ describe.skipIf(!available)('menus in the picture viewer', () => {
 
     beforeAll(async () => {
       size = windowSize()
-      await reloadApp('app.emulateMobile(true)')
-      await setWindowSize(PHONE.width, PHONE.height)
-      await reloadApp('window.location.reload()')
+      await enterPhone(PHONE.width, PHONE.height)
       // A hidden window hands back no frame after a reload until its size is nudged.
       await setWindowSize(PHONE.width + 2, PHONE.height + 2)
       await setWindowSize(PHONE.width, PHONE.height)

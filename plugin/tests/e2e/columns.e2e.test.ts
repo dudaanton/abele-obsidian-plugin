@@ -1,6 +1,7 @@
 /** Native callouts as columns: renderer, source bindings and editor transitions. */
 import { afterAll, beforeAll, describe, expect, it } from 'vitest'
 import {
+  enterPhone,
   evalJson,
   evalRaw,
   hasTestApi,
@@ -349,9 +350,7 @@ describe.skipIf(!available)('note columns foundation', () => {
   it.runIf(!onPhone())(
     'phone emulation stacks at 390 by 844',
     async () => {
-      await reloadApp('app.emulateMobile(true)')
-      evalRaw(`require('@electron/remote').getCurrentWindow().setContentSize(390,844)`)
-      await reloadApp()
+      await enterPhone(390, 844)
       for (const mode of ['preview', 'source'] as const) {
         expect(show(mode)).toBe(true)
         const l = layout()

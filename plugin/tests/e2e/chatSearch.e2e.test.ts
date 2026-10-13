@@ -23,6 +23,7 @@ import {
   evalRaw,
   hasTestApi,
   isObsidianRunning,
+  phoneEntry,
   reloadApp,
   runCli,
   setBackgroundThrottling,
@@ -356,9 +357,7 @@ describe.runIf(available)('finding words in chats, on a phone', () => {
 
   beforeAll(async () => {
     size = windowSize()
-    await reload('app.emulateMobile(true)')
-    await setWindowSize(PHONE.width, PHONE.height)
-    await reload('window.location.reload()')
+    await reload(phoneEntry(PHONE.width, PHONE.height))
     report = await run(true)
     console.log('phone', JSON.stringify(report))
   }, 300_000)

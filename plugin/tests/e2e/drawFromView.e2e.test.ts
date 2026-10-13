@@ -13,6 +13,7 @@
  */
 import { describe, it, expect, beforeAll, afterAll } from 'vitest'
 import {
+  enterPhone,
   evalJson,
   evalRaw,
   hasTestApi,
@@ -277,9 +278,7 @@ describe.skipIf(!available)('drawing on a picture from where it is looked at', (
   })
 
   it('has the pen in the picture tab’s header on a phone, inside the screen', async () => {
-    await reloadApp('app.emulateMobile(true)')
-    await setWindowSize(390, 844)
-    await reloadApp('location.reload()')
+    await enterPhone(390, 844)
     const r = run<{
       error?: string
       pen?: { left: number; right: number; top: number; bottom: number; shown: boolean }
