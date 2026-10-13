@@ -1,3 +1,4 @@
+import nodePanelSource from '@/components/nodeWork/NodePanel.vue?raw'
 import { afterEach, describe, expect, it, vi } from 'vitest'
 import { flushPromises, mount } from '@vue/test-utils'
 import { EditorView } from '@codemirror/view'
@@ -311,4 +312,13 @@ describe('node design corrections', () => {
     expect(view.emitted('chat-menu')?.[0]?.[1]).toBe('chat')
     expect(view.emitted('open-chat')).toBeUndefined()
   })
+})
+
+it('anchors suggestion glyphs to the first title line despite a second note line', () => {
+  const styles = nodePanelSource.match(
+    /\.suggestion-item\.mod-complex\.abele-node-suggestion \.suggestion-icon\.abele-node-suggestion__kind \{([^}]+)\}/
+  )?.[1]
+  expect(styles).toMatch(/align-self: flex-start/)
+  expect(styles).toMatch(/height: 1lh/)
+  expect(styles).toMatch(/align-items: center/)
 })
