@@ -647,7 +647,9 @@ describe.skipIf(!available)('task timeline scrolling', () => {
           const p = (kind === 'desktop' ? shortDesktop : shortMobile)[index]
           expect(p.error).toBeUndefined()
           expect(p.emptySpace).toBe(0)
-          expect(p.revealed).toHaveLength(2)
+          // History keeps completed past days: the 45 completed-only archive days join
+          // yesterday and today.
+          expect(p.revealed).toHaveLength(47)
           expect(p.collapsed).toHaveLength(1)
           for (const pair of [p.anchored, p.hiddenAnchor, p.revealAnchor, p.collapseAnchor]) {
             expect(pair).toHaveLength(2)
@@ -671,7 +673,8 @@ describe.skipIf(!available)('task timeline scrolling', () => {
           // Touch slop is platform-owned, not a reason to accept zero or reversed scroll.
           expect(Math.abs(displacement - p.nativeDistance!)).toBeLessThanOrEqual(24)
           expect(p.nativeSettled).toBeGreaterThanOrEqual(displacement - 2)
-          expect(p.revealed).toHaveLength(65)
+          // 20 initial days, 45 unfinished past days and 45 completed-only archive days.
+          expect(p.revealed).toHaveLength(110)
           expect(p.countAfter).toContain('90 unfinished · Hide all past days')
           expect(p.chromeGap).toBeGreaterThanOrEqual(-1)
           if (index === 0 && kind === 'phone width') expect(p.calendarGap).toBeGreaterThanOrEqual(0)

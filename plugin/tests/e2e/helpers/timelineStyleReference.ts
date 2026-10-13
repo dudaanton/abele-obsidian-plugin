@@ -4,9 +4,10 @@ import { resolve } from 'node:path'
 import { promisify } from 'node:util'
 
 const exec = promisify(execFile)
-// Frozen pre-history stylesheet, built with its own locked dependencies. It supplies a
-// theme-relative reference rather than a PNG tied to one font renderer, date, or theme.
-const REFERENCE = '60cfabf4^'
+// Frozen stylesheet of the accepted timeline design (date blocks restyled with the shared
+// footer design), built with its own locked dependencies. It supplies a theme-relative
+// reference rather than a PNG tied to one font renderer, date, or theme.
+const REFERENCE = 'c92dffdb3'
 
 export async function timelineStyleReference(): Promise<string> {
   const { stdout } = await exec('git', ['rev-parse', REFERENCE])
