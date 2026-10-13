@@ -113,21 +113,6 @@ const script = `(async () => {
   const names = {}
   const rowNamed = (i) => rows().find((r) => nameOf(r) === names[i])
   const topOf = (el) => Math.round(el.getBoundingClientRect().top - scroller().getBoundingClientRect().top)
-  /**
-   * Until the element and the scroller have held still for five rendering steps, for no longer
-   * than the fixed waits this replaced (about a second): a list that keeps moving by a pixel
-   * must not cost more than before.
-   */
-  const steady = async (el) => {
-    let last = null, still = 0
-    for (let i = 0; i < 60 && still < 5; i++) {
-      await frame()
-      const now = JSON.stringify([el()?.getBoundingClientRect().top, scroller()?.scrollTop, scroller()?.scrollHeight])
-      still = now === last ? still + 1 : 0
-      last = now
-    }
-    return still >= 5
-  }
 
   try {
     // Restoring a saved place is opt-in: this fixture must not inherit a vault's disabled setting.
@@ -146,14 +131,14 @@ const script = `(async () => {
           'Sample task ' + String(i).padStart(2, '0') + '\\n\\nThe description of sample task ' + i + '.\\n'
       )
     }
-    // Every task's group link resolved; the list builds its rows from those links when drawn.
-    await until(() => Array.from({ length: ${TASKS} }, (_, i) => taskPath(i + 1)).every((path) => {
-      const links = app.metadataCache.resolvedLinks[path]
+    await until(() => {
+      const links = app.metadataCache.resolvedLinks[taskPath(1)]
       return links && Object.keys(links).length
-    }), 20000)
+    }, 20000)
+    await wait(1500)
 
     await leaf.setViewState({ type: 'markdown', state: { file: groupPath, mode: 'source', source: false }, active: true })
-    await until(() => scroller() && leaf.view.containerEl.querySelector('.abele-footer-widget-container') && rows().length, 20000)
+    await wait(1500)
     // Down the list until the row is drawn, pages being added as their ends come into view.
     const drawn = await until(() => {
       const s = scroller()
@@ -168,15 +153,12 @@ const script = `(async () => {
       names[i] = nameOf(rows()[i])
     }
     rowNamed(${OPENED}).scrollIntoView({ block: 'center' })
-    await until(() => rowNamed(${OPENED})?.querySelector('.abele-entry-row__more'), 5000)
-    await steady(() => rowNamed(${OPENED}))
+    await wait(800)
     const opener = rowNamed(${OPENED}).querySelector('.abele-entry-row__more')
     opener.click()
     if (!(await until(() => rowNamed(${OPENED})?.querySelector('.abele-task-view__description'), 5000)))
       throw new Error('the task never opened')
-    // The description drawn and the list settled around it.
-    await until(() => rowNamed(${OPENED})?.querySelector('.abele-task-view__description')?.textContent.trim(), 5000)
-    await steady(() => rowNamed(${OPENED}))
+    await wait(600)
     // The row a little below the top of the window, then time for the place to be saved.
     rowNamed(${ROW}).scrollIntoView({ block: 'start' })
     scroller().scrollTop -= 120
