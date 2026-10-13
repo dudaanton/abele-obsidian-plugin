@@ -19,6 +19,7 @@
       <Button
         :text="write.mode === 'replace' ? 'Replace note' : 'Add to note'"
         :warning="write.mode === 'replace'"
+        :accent="write.mode !== 'replace'"
         tooltip="Write the contents shown into this note"
         @click="accept"
       />
