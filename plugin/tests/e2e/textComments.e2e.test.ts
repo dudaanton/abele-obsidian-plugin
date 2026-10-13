@@ -192,19 +192,33 @@ describe.skipIf(!available)('ordinary-note text comments', () => {
     })
   })
   it('dismisses a pristine edit with Escape while the embedded editor owns focus', () => {
+    // A comment is changed where it stands: Escape there gives the comment back unchanged and
+    // keeps the thread open; Escape in the reply field then closes the thread.
     expect(
-      run<{ closed: boolean; visible: boolean }>(`
+      run<{
+        edited: boolean
+        visible: boolean
+        dismissed: boolean
+        unchanged: boolean
+        closed: boolean
+      }>(`
+      const escape = () => document.body.dispatchEvent(new KeyboardEvent('keydown', { key: 'Escape', code: 'Escape', keyCode: 27, bubbles: true }))
       window.__abeleTest.openDialog('text-comment-edit')
-      await until(() => document.querySelector('.abele-text-comments .cm-content'))
-      const field = document.querySelector('.abele-text-comments .cm-content')
+      const edited = await until(() => document.querySelector('.abele-text-comments__entry.is-editing .cm-content'))
+      const field = document.querySelector('.abele-text-comments__entry.is-editing .cm-content')
       await wait(400)
       const line = field?.querySelector('.cm-line')?.getBoundingClientRect()
       const visible = !!line && line.top >= 0 && line.top < (window.visualViewport?.height ?? window.innerHeight)
       field?.focus()
-      document.body.dispatchEvent(new KeyboardEvent('keydown', { key: 'Escape', code: 'Escape', keyCode: 27, bubbles: true }))
-      return JSON.stringify({closed:await until(() => !document.querySelector('.abele-text-comments')),visible})
+      escape()
+      const dismissed = await until(() => document.querySelector('.abele-text-comments') && !document.querySelector('.abele-text-comments__entry.is-editing'))
+      const unchanged = !!document.querySelector('.abele-text-comments__entry[data-entry-id="000001"]')?.textContent.includes('rain gauge')
+      const reply = document.querySelector('.abele-text-comments .cm-content')
+      reply?.focus()
+      escape()
+      return JSON.stringify({edited, visible, dismissed, unchanged, closed:await until(() => !document.querySelector('.abele-text-comments'))})
     `)
-    ).toEqual({ closed: true, visible: true })
+    ).toEqual({ edited: true, visible: true, dismissed: true, unchanged: true, closed: true })
   })
   it.skipIf(!onPhone())('native keyboard geometry, save and edit preserve the source note', () => {
     const result = run<{
