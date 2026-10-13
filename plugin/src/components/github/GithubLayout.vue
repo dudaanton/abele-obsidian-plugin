@@ -80,7 +80,7 @@ const { style: panelStyle, divider } = usePanelResize(layout, WIDTH_KEY)
     flex: 0 0 auto;
     width: var(--abele-panel-width);
     min-width: 12em;
-    max-width: min(40%, 36em);
+    max-width: 100%;
     border-inline-end: 1px solid var(--background-modifier-border);
   }
 

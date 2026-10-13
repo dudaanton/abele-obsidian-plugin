@@ -11,3 +11,13 @@ it('reserves focus paint space at both ends of the reader glyph strip', () => {
   const tabs = css('reader/BookReader').match(/\.abele-book-reader__panel-tabs\s*\{([^}]+)\}/)![1]
   expect(tabs).toContain('padding-inline: var(--size-4-1)')
 })
+
+it.each(['reader/BookReader', 'github/GithubLayout'])(
+  '%s lets the panel reach its advertised split maximum',
+  (component) => {
+    const rules = css(component).match(
+      /\.abele-(?:book-reader|github-layout)__panel\s*\{([^}]+)\}/
+    )![1]
+    expect(rules).toContain('max-width: 100%')
+  }
+)
