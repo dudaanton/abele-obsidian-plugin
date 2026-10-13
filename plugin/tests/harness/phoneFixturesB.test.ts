@@ -3,14 +3,13 @@ import { expect, it, vi } from 'vitest'
 
 const source = (name: string) => readFileSync(`tests/e2e/${name}.e2e.test.ts`, 'utf8')
 
-it('validates the global timeout on General before opening Models', () => {
+it('validates the global timeout on Models, where the settings page shows it', () => {
   const code = source('modelTimeout')
-  const general = code.indexOf("t.textContent.trim() === 'General'")
-  const validation = code.indexOf("await edit(input, '500')")
   const models = code.indexOf("t.textContent.trim() === 'Models'")
-  expect(general).toBeGreaterThan(0)
-  expect(validation).toBeGreaterThan(general)
-  expect(models).toBeGreaterThan(validation)
+  const validation = code.indexOf("await edit(input, '500')")
+  expect(code).not.toContain("t.textContent.trim() === 'General'")
+  expect(models).toBeGreaterThan(0)
+  expect(validation).toBeGreaterThan(models)
 })
 
 it('comment cleanup retains pre-existing dialogs and checks every dialog it opened', () => {
