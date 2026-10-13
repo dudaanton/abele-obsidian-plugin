@@ -3,6 +3,44 @@ import { expect, it, vi } from 'vitest'
 
 const source = (name: string) => readFileSync(`tests/e2e/${name}.e2e.test.ts`, 'utf8')
 
+it('validates the global timeout on General before opening Models', () => {
+  const code = source('modelTimeout')
+  const general = code.indexOf("t.textContent.trim() === 'General'")
+  const validation = code.indexOf("await edit(input, '500')")
+  const models = code.indexOf("t.textContent.trim() === 'Models'")
+  expect(general).toBeGreaterThan(0)
+  expect(validation).toBeGreaterThan(general)
+  expect(models).toBeGreaterThan(validation)
+})
+
+it('comment cleanup retains pre-existing dialogs and checks every dialog it opened', () => {
+  const code = source('textComments')
+  expect(code).toContain('window.__textCommentBaselineModals = new Set')
+  expect(code).toContain('!window.__textCommentBaselineModals.has(el)')
+  expect(code).toContain('delete window.__textCommentBaselineModals')
+  const baseline = document.createElement('div')
+  const owned = document.createElement('div')
+  baseline.className = owned.className = 'modal-container'
+  document.body.append(baseline, owned)
+  const declaration = code.slice(
+    code.indexOf('  const ownedModals ='),
+    code.indexOf('  const dismiss =')
+  )
+  const ownedModals = new Function('document', 'window', `${declaration};return ownedModals`)(
+    document,
+    { __textCommentBaselineModals: new Set([baseline]) }
+  )
+  try {
+    expect(ownedModals()).toEqual([owned])
+    owned.remove()
+    expect(ownedModals()).toEqual([])
+    expect(baseline.isConnected).toBe(true)
+  } finally {
+    baseline.remove()
+    owned.remove()
+  }
+})
+
 it('gives reader and slide scripts exact-source fixture authority and restores it', () => {
   for (const name of ['bookLibraryScript', 'slidesLive']) {
     const code = source(name)

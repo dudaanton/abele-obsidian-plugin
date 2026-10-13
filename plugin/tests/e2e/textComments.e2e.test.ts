@@ -69,6 +69,7 @@ const run = <T>(body: string): T => {
   const until = async fn => { for(let i=0;i<80;i++) { if(fn()) return true; await wait(100) } return false }
   const button = text => [...([...document.querySelectorAll('.modal')].at(-1) ?? document.querySelector('.abele-anchored-card'))?.querySelectorAll('button') ?? []].find(el => el.textContent.trim() === text)
   const send = () => document.querySelector('.abele-text-comments [aria-label="Send (⌘↵)"]')
+  const ownedModals = () => [...document.querySelectorAll('.modal-container')].filter(el => !window.__textCommentBaselineModals.has(el))
   const dismiss = () => {
     const panel = document.querySelector('.abele-text-comments')
     const close = panel?.closest('.modal')?.querySelector('.modal-close-button')
@@ -94,20 +95,21 @@ describe.skipIf(!available)('ordinary-note text comments', () => {
       if (discard) discard.click(); else dismiss()
       await wait(150)
     }
-    return JSON.stringify(await until(() => !document.querySelector('.abele-text-comments') && !document.querySelector('.modal-container')))
+    return JSON.stringify(await until(() => !document.querySelector('.abele-text-comments') && !ownedModals().length))
   `)
     ).toBe(true)
   )
   beforeEach(() =>
     expect(
       run<boolean>(
-        `return JSON.stringify(await until(() => !document.querySelector('.abele-text-comments') && !document.querySelector('.modal-container')))`
+        `return JSON.stringify(await until(() => !document.querySelector('.abele-text-comments') && !ownedModals().length))`
       )
     ).toBe(true)
   )
   beforeAll(() =>
     run(`
     if (note) throw Error('Synthetic note already exists')
+    window.__textCommentBaselineModals = new Set(document.querySelectorAll('.modal-container'))
     await app.vault.create(${JSON.stringify(PATH)}, 'A **sample passage** and another sentence.')
     window.__textCommentOwned = true
     const file = app.vault.getAbstractFileByPath(${JSON.stringify(PATH)})
@@ -123,6 +125,7 @@ describe.skipIf(!available)('ordinary-note text comments', () => {
     window.__abeleTest.AbeleConfig.getInstance().ai.enabled = window.__textCommentAi
     delete window.__textCommentAi
     delete window.__textCommentOwned
+    delete window.__textCommentBaselineModals
     for(const leaf of app.workspace.getLeavesOfType('markdown')) if(leaf.view.file?.path === note?.path) leaf.detach()
     if(note) {
       const source = await app.vault.read(note)
