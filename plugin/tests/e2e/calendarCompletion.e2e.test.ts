@@ -167,7 +167,12 @@ describe.skipIf(!available)('single external occurrence completion in the runnin
         const input = row.querySelector('input[type=checkbox]')
         if (!input) throw Error('Timeline event has no completion checkbox')
         input.click()
-        await until(() => service.isDone(events[0]) && !timeline.contains(row), 'hide marked sidebar occurrence')
+        await until(() => service.isDone(events[0]) && !timeline.contains(row), 'hide marked sidebar occurrence').catch(error => {
+          throw Error(error.message + ': ' + JSON.stringify({ done: done(), rowConnected: row.isConnected, inTimeline: timeline.contains(row),
+            timelineConnected: timeline.isConnected, sidebars: document.querySelectorAll('.abele-timeline-sidebar').length,
+            toggle: timeline.querySelector('.abele-timeline__completed-toggle')?.getAttribute('aria-checked'),
+            checked: input.checked, marks: window.__abeleTest.AbeleConfig.getInstance().calendarCompletion }))
+        })
         const timelineDone = done()
         timeline.querySelector('.abele-timeline__completed-toggle').click()
         const checked = await until(() => timeline.querySelector('[data-timeline-item="event:' + events[0].id + '"] input:checked'), 'show marked sidebar occurrence')
