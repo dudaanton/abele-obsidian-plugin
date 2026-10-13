@@ -11,6 +11,7 @@
 import { beforeAll, afterAll, beforeEach, onTestFailed } from 'vitest'
 import {
   assertWindowDrawn,
+  cliCost,
   closeStrayWindows,
   evalLong,
   isObsidianRunning,
@@ -77,6 +78,8 @@ beforeAll(async () => {
 afterAll(async () => {
   if (!available) return
   const failures: unknown[] = []
+  // What the CLI cost this file, read before the boundary's own calls add to it.
+  if (!onPhone()) console.info('[abele e2e] cli cost', JSON.stringify(cliCost()))
   try {
     closeStrayWindows()
     notesInEditor()

@@ -114,7 +114,34 @@ function runReady(args: string[], timeoutMs: number, vault: string, reply?: stri
   }
 }
 
+/**
+ * What the CLI costs this file: every desktop call, timed from spawn to answer, so a run shows
+ * whether the two process spawns per call or the app itself is where the time goes. Read by
+ * the setup file at the end of each file (`cliCost`).
+ */
+const cliCalls: number[] = []
+
+/** Calls made so far by this file, their total and the cheapest (the bare spawn cost). */
+export function cliCost(): { calls: number; totalMs: number; minMs: number; medianMs: number } {
+  const sorted = [...cliCalls].sort((a, b) => a - b)
+  return {
+    calls: sorted.length,
+    totalMs: Math.round(sorted.reduce((sum, ms) => sum + ms, 0)),
+    minMs: Math.round(sorted[0] ?? 0),
+    medianMs: Math.round(sorted[Math.floor(sorted.length / 2)] ?? 0),
+  }
+}
+
 function runOnce(args: string[], timeoutMs: number, vault: string, reply?: string): string {
+  const started = performance.now()
+  try {
+    return runOnceUntimed(args, timeoutMs, vault, reply)
+  } finally {
+    cliCalls.push(performance.now() - started)
+  }
+}
+
+function runOnceUntimed(args: string[], timeoutMs: number, vault: string, reply?: string): string {
   // `vault=` MUST precede the command. Passed after it the CLI ignores it without an error
   // and runs against whichever window is frontmost, so the tests would silently measure
   // whatever vault the user happened to be looking at.
@@ -973,7 +1000,9 @@ async function reloadWindow(
   asked: string | undefined,
   launch: typeof evalRaw = evalRaw
 ): Promise<void> {
+  const asked0 = performance.now()
   await takeReloadLock()
+  const locked = performance.now()
   const requestId = 'reload-' + Date.now() + '-' + Math.random().toString(36).slice(2)
   let owner: string | undefined
   let failure: unknown
@@ -1012,7 +1041,12 @@ async function reloadWindow(
       },
       60_000
     )
-    console.info('[abele e2e] reload witness', JSON.stringify({ before, ...outcome }))
+    // How long this window waited for other windows' reloads, and how long its own took.
+    const timing = {
+      lockWaitMs: Math.round(locked - asked0),
+      reloadMs: Math.round(performance.now() - locked),
+    }
+    console.info('[abele e2e] reload witness', JSON.stringify({ before, ...outcome, timing }))
   } catch (error) {
     failure = error
     throw error
