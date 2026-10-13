@@ -35,6 +35,15 @@ async function unchangedParts(before: Uint8Array, after: Uint8Array, allowed: st
 }
 
 describe('surgical basic Word formatting', () => {
+  it('resets an explicit style to implicit Normal without adding a styles entry', async () => {
+    const original = sampleDocx(
+      '<w:p><w:pPr><w:pStyle w:val="Heading1"/></w:pPr><w:r><w:t>Sample heading</w:t></w:r></w:p>'
+    )
+    const after = await edit(original, { operation: 'style', style_id: '' })
+    expect((await openDocx(after)).paragraphs[0].style).toBeUndefined()
+    expect((await openDocx(after)).paragraphs[0].text).toBe('Sample heading')
+    await unchangedParts(original, after, ['word/document.xml'])
+  })
   it.each(['bold', 'italic', 'underline', 'strike'])(
     'formats only a selected text range: %s',
     async (format) => {

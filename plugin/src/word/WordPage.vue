@@ -11,7 +11,7 @@
     >
       <Dropdown
         class="abele-word-page__style"
-        :model-value="current?.style ?? ''"
+        :model-value="current?.style ?? normalStyle?.id ?? ''"
         :options="styleOptions"
         :disabled="!current"
         aria-label="Paragraph style"
@@ -257,8 +257,14 @@ const selection = ref<{ from: number; to: number }>({ from: 0, to: 0 })
 const current = computed(() => paragraphs.value.find((p) => p.number === editing.value) ?? null)
 const position = computed(() => paragraphs.value.findIndex((p) => p.number === editing.value) + 1)
 
+const normalStyle = computed(() =>
+  props.model.styles.find(
+    (s) => s.id.toLowerCase() === 'normal' || s.name.toLowerCase() === 'normal'
+  )
+)
 const styleOptions = computed(() => [
-  ...props.model.styles.map((s) => ({ value: s.id, display: s.name })),
+  ...(normalStyle.value ? [] : [{ value: '', display: 'Normal' }]),
+  ...props.model.styles.map((s) => ({ value: s.id, display: s.name || s.id })),
 ])
 
 const saveText = computed(() =>

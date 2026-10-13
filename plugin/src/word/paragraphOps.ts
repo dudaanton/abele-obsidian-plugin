@@ -65,6 +65,7 @@ export async function paragraphOperation(
       })
   }
   if (e.operation === 'style') {
+    if (e.style_id === '') return propertyPatches(source, p.node, 'pPr', 'pStyle', null)
     if (!doc.styles.some((s) => s.id === e.style_id))
       throw new Error('Choose an existing paragraph style')
     return propertyPatches(
