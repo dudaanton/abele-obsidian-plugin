@@ -142,11 +142,11 @@ const script = `(async () => {
           'Sample task ' + String(i).padStart(2, '0') + '\\n\\nThe description of sample task ' + i + '.\\n'
       )
     }
-    // Every task's group link resolved and the task loaded into the store.
+    // Every task's group link resolved and the task known to the store (it loads lazily, when drawn).
     const tasks = window.__abeleTest.GlobalStore.getInstance().tasksList
     await until(() => Array.from({ length: ${TASKS} }, (_, i) => taskPath(i + 1)).every((path) => {
       const links = app.metadataCache.resolvedLinks[path]
-      return links && Object.keys(links).length && tasks.value?.tasks.get(path)?.loaded
+      return links && Object.keys(links).length && tasks.value?.tasks.has(path)
     }), 20000)
 
     await leaf.setViewState({ type: 'markdown', state: { file: groupPath, mode: 'source', source: false }, active: true })
