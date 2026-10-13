@@ -230,7 +230,28 @@ const script = `(async () => {
     await storage.refreshHistory()
 
     await tryRoad('explorer', 'source', async () => press(await explorerRow(chat)))
-    await tryRoad('explorerNewTab', 'source', async () => press(await explorerRow(chat), mod))
+    {
+      const trace = []
+      const ws = app.workspace
+      const orig = ws.setActiveLeaf
+      const t0 = Date.now()
+      ws.setActiveLeaf = function (leaf, ...rest) {
+        trace.push({ t: Date.now() - t0, set: describeLeaf(leaf), opts: JSON.stringify(rest), stack: (new Error().stack || '').split('\n').slice(2, 7).map(s => s.trim()).join(' | ') })
+        return orig.call(this, leaf, ...rest)
+      }
+      const ref = ws.on('active-leaf-change', (l) => trace.push({ t: Date.now() - t0, change: describeLeaf(l) }))
+      const times = () => { const o = {}; ws.iterateAllLeaves((l) => { o[describeLeaf(l) + '#' + (l.id || '')] = (l.activeTime || 0) - t0 }); return o }
+      await tryRoad('explorerNewTab', 'source', async () => {
+        const row = await explorerRow(chat)
+        trace.push({ before: times(), focus: document.activeElement?.className, hasFocus: document.hasFocus() })
+        press(row, mod)
+        trace.push({ afterPress: times(), active: describeLeaf(ws.activeLeaf) })
+      })
+      trace.push({ end: times() })
+      ws.setActiveLeaf = orig
+      ws.offref(ref)
+      report.trace = trace
+    }
     await tryRoad('link', 'preview', async () => (await noteLink()).click())
     await tryRoad('selectionLink', 'preview', async () => (await noteLink(1)).click())
     await tryRoad('linkNewTab', 'preview', async () =>
@@ -303,6 +324,7 @@ describe.skipIf(!available)('opening a chat file the ways Obsidian opens files, 
   }, 135_000)
 
   it('runs to the end', () => {
+    console.info('TRACE ' + JSON.stringify((report as Record<string, unknown>).trace, null, 1))
     expect(report.error ?? '').toBe('')
   })
 
