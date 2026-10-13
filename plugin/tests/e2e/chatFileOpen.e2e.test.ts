@@ -236,7 +236,7 @@ const script = `(async () => {
       const orig = ws.setActiveLeaf
       const t0 = Date.now()
       ws.setActiveLeaf = function (leaf, ...rest) {
-        trace.push({ t: Date.now() - t0, set: describeLeaf(leaf), opts: JSON.stringify(rest), stack: (new Error().stack || '').split('\n').slice(2, 7).map(s => s.trim()).join(' | ') })
+        trace.push({ t: Date.now() - t0, set: describeLeaf(leaf), opts: JSON.stringify(rest), stack: (new Error().stack || '').split('\\n').slice(2, 7).map(s => s.trim()).join(' | ') })
         return orig.call(this, leaf, ...rest)
       }
       const ref = ws.on('active-leaf-change', (l) => trace.push({ t: Date.now() - t0, change: describeLeaf(l) }))
