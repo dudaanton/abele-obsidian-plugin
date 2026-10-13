@@ -406,12 +406,18 @@ export function checkScreen(scope: ScreenScope = {}): ScreenCheck {
             fill !== behind(el.parentElement))
         )
       }
-      if (draws(e) || e.matches('input, select, textarea')) return r.left
+      // A row's light is no edge of its own either: the picked file in Obsidian's explorer is lit
+      // out to the inset its words keep, and those words line up with the rows around it.
+      const light = e.matches(LIT) && !(parseFloat(cs(e).borderLeftWidth) > 0)
+      if ((draws(e) && !light) || e.matches('input, select, textarea')) return r.left
       // Where its first line starts: the first thing drawn in it, in reading order.
       const walker = document.createTreeWalker(e, NodeFilter.SHOW_TEXT | NodeFilter.SHOW_ELEMENT)
       let n: Node | null
       while ((n = walker.nextNode())) {
-        if (n instanceof SVGSVGElement && visible(n)) return inkLeft(n)
+        // A tree's fold arrow hangs in the gutter before its row, as in Obsidian's explorer, and
+        // turns as it folds: the words after it are the row's edge.
+        if (n instanceof SVGSVGElement && visible(n) && !n.closest('.collapse-icon'))
+          return inkLeft(n)
         // A box drawn inside it before any words — a card in a grid, a filled cell of a strip —
         // is where the block is seen to start, not the words inside that box. Not a row's or a
         // tab's light: that comes and goes with the pointer and the choice, and the words in it

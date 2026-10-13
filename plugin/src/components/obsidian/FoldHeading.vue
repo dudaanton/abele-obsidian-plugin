@@ -84,6 +84,10 @@ watch(() => props.collapsible, draw, { flush: 'post' })
 // so the title starts on the same edge as the rows under it and nothing moves as it folds.
 .abele-fold-heading__arrow {
   flex: 0 0 auto;
+  // As wide as the margin the heading is pulled back by, whatever size the theme draws the arrow.
+  display: inline-flex;
+  justify-content: center;
+  width: var(--icon-xs);
 }
 
 .abele-fold-heading.is-collapsible {
