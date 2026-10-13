@@ -1,5 +1,5 @@
 <template>
-  <ObsidianModal title="Review script execution" @close="request.answer(false)">
+  <ObsidianModal title="Review script execution" size="tall" @close="request.answer(false)">
     <div class="abele-script-approval">
       <div class="abele-script-approval__review">
         <p class="abele-script-approval__lead">
@@ -42,8 +42,10 @@
           layout="auto"
         />
         <!-- The code as Obsidian draws a code block, coloured by its own highlighter. -->
-        <ObsidianMarkdown v-else class="abele-script-approval__source" :text="fenced" />
+        <ObsidianMarkdown v-else class="abele-script-approval__source" :text="fenced" as-document />
       </div>
+    </div>
+    <template #footer>
       <!-- Stopping the agent is a different decision from leaving this one script blocked, so
            it stands apart on the left. -->
       <div class="abele-modal__actions">
@@ -69,7 +71,7 @@
         />
         <Button text="Cancel" tooltip="Leave this script blocked" @click="request.answer(false)" />
       </div>
-    </div>
+    </template>
   </ObsidianModal>
 </template>
 
@@ -141,6 +143,8 @@ const fenced = computed(() => {
   flex: 1 1 auto;
   min-height: 0;
   overflow: auto;
+  // Leave room for the native code-copy button's outward focus ring.
+  padding: var(--size-4-2);
 }
 .abele-script-approval__source {
   // Long code wraps rather than push the native sheet sideways.
@@ -159,12 +163,6 @@ const fenced = computed(() => {
   margin-bottom: var(--size-4-2);
 }
 
-.abele-script-approval .abele-modal__actions {
-  display: flex;
-  flex-wrap: wrap;
-  gap: var(--size-4-2);
-  justify-content: flex-end;
-}
 .abele-script-approval__stop {
   margin-inline-end: auto;
 }

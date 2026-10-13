@@ -24,12 +24,37 @@ const request: ScriptApprovalRequest = {
   },
 }
 afterEach(cancelScriptApprovals)
+it('pins decisions outside the tall review body and uses document code styling', () => {
+  const wrapper = mount(ScriptApprovalModal, {
+    props: { request: { ...request, id: 1, answer: vi.fn(), stop: vi.fn() } },
+    global: {
+      stubs: {
+        ObsidianModal: {
+          props: ['size'],
+          template:
+            '<div :data-size="size"><main><slot /></main><footer><slot name="footer" /></footer></div>',
+        },
+      },
+    },
+  })
+  expect(wrapper.attributes('data-size')).toBe('tall')
+  expect(wrapper.find('main .abele-modal__actions').exists()).toBe(false)
+  expect(wrapper.findAll('footer button').map((b) => b.text())).toEqual([
+    'Stop',
+    'Approve and run',
+    'Cancel',
+  ])
+  expect(wrapper.get('.abele-script-approval__source').classes()).toContain('markdown-rendered')
+  wrapper.unmount()
+})
 describe('script approval UI', () => {
   it('shows exact identity/hash and inert source and makes acceptance explicit', async () => {
     const answer = vi.fn()
     const wrapper = mount(ScriptApprovalModal, {
       props: { request: { ...request, id: 1, answer } },
-      global: { stubs: { ObsidianModal: { template: '<div><slot /></div>' } } },
+      global: {
+        stubs: { ObsidianModal: { template: '<div><slot /><slot name="footer" /></div>' } },
+      },
     })
     expect(wrapper.text()).toContain('this device only')
     expect(wrapper.text()).toContain(request.sha)
@@ -51,7 +76,9 @@ describe('script approval UI', () => {
   it('lists the facts as terms and sets Stop apart on the left, Cancel last', () => {
     const wrapper = mount(ScriptApprovalModal, {
       props: { request: { ...request, id: 1, answer: vi.fn(), stop: vi.fn() } },
-      global: { stubs: { ObsidianModal: { template: '<div><slot /></div>' } } },
+      global: {
+        stubs: { ObsidianModal: { template: '<div><slot /><slot name="footer" /></div>' } },
+      },
     })
     const facts = wrapper.get('dl.abele-script-approval__facts')
     expect(facts.findAll('dt').map((t) => t.text())).toEqual([
@@ -83,7 +110,9 @@ describe('script approval UI', () => {
     const dialog = scriptApprovalDialog.value!
     const wrapper = mount(ScriptApprovalModal, {
       props: { request: dialog },
-      global: { stubs: { ObsidianModal: { template: '<div><slot /></div>' } } },
+      global: {
+        stubs: { ObsidianModal: { template: '<div><slot /><slot name="footer" /></div>' } },
+      },
     })
     try {
       const stop = wrapper.findAll('button').find((b) => b.text() === 'Stop')!
@@ -101,7 +130,9 @@ describe('script approval UI', () => {
   it('labels a recovery-only review as approval, not as running the script', () => {
     const wrapper = mount(ScriptApprovalModal, {
       props: { request: { ...request, recovery: true, reviewOnly: true, id: 1, answer: vi.fn() } },
-      global: { stubs: { ObsidianModal: { template: '<div><slot /></div>' } } },
+      global: {
+        stubs: { ObsidianModal: { template: '<div><slot /><slot name="footer" /></div>' } },
+      },
     })
     expect(wrapper.text()).toContain('Other unreviewed scripts stay blocked')
     // Only reviewing: nothing runs and no agent waits, so there is nothing to stop.
@@ -115,7 +146,9 @@ describe('script approval UI', () => {
     const answer = vi.fn(),
       w = mount(ScriptApprovalModal, {
         props: { request: { ...request, id: 1, answer }, readOnly: true },
-        global: { stubs: { ObsidianModal: { template: '<div><slot/></div>' } } },
+        global: {
+          stubs: { ObsidianModal: { template: '<div><slot/><slot name="footer" /></div>' } },
+        },
       })
     const approve = w.findAll('button').find((b) => b.text() === 'Approve and run')!
     await approve.trigger('click')
@@ -149,7 +182,9 @@ describe('script approval UI', () => {
       props: {
         request: { ...request, path: 'Scripts/sample.ts', source, id: 1, answer: vi.fn() },
       },
-      global: { stubs: { ObsidianModal: { template: '<div><slot /></div>' } } },
+      global: {
+        stubs: { ObsidianModal: { template: '<div><slot /><slot name="footer" /></div>' } },
+      },
     })
     await flushPromises()
     expect(wrapper.get('.abele-script-approval__source').text()).toBe(
@@ -169,7 +204,9 @@ describe('script approval UI', () => {
           answer: vi.fn(),
         },
       },
-      global: { stubs: { ObsidianModal: { template: '<div><slot /></div>' } } },
+      global: {
+        stubs: { ObsidianModal: { template: '<div><slot /><slot name="footer" /></div>' } },
+      },
     })
     await flushPromises()
     const tabs = () => wrapper.findAll('[role="tab"]')
@@ -191,7 +228,9 @@ describe('script approval UI', () => {
   it('offers no comparison for a script never approved before', () => {
     const wrapper = mount(ScriptApprovalModal, {
       props: { request: { ...request, id: 1, answer: vi.fn() } },
-      global: { stubs: { ObsidianModal: { template: '<div><slot /></div>' } } },
+      global: {
+        stubs: { ObsidianModal: { template: '<div><slot /><slot name="footer" /></div>' } },
+      },
     })
     expect(wrapper.find('[role="tab"]').exists()).toBe(false)
     expect(wrapper.find('.abele-script-approval__diff').exists()).toBe(false)
