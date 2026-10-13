@@ -543,6 +543,9 @@ const drafts = new Map<string, string>()
     flex: 1 1 auto;
     min-height: 0;
     overflow-y: auto;
+    // Keep the rows on the text edge, with room inside the scroll clip for their focus paint.
+    padding-inline: var(--size-4-1);
+    margin-inline: calc(-1 * var(--size-4-1));
   }
 
   &__entry {
