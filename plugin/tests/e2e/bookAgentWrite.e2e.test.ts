@@ -6,6 +6,7 @@
  * same place, not merely the same words. The files are written to a folder for the run and removed
  * after it, with the places and bookmarks files; the scope is put back.
  */
+import { randomUUID } from 'node:crypto'
 import { describe, it, expect, beforeAll, afterAll } from 'vitest'
 import { hasTestApi, isObsidianRunning, evalRaw } from './helpers/obsidianCli'
 import { evalAsync } from './helpers/githubLive'
@@ -75,7 +76,8 @@ const run = <T>(body: string): T =>
 describe.skipIf(!available)('the agent marking books', () => {
   beforeAll(() => {
     const files = {
-      'rich.epub': Buffer.from(buildRichEpub()).toString('base64'),
+      // A book of its own: bookmarks follow the identifier, and other files bookmark the shared one.
+      'rich.epub': Buffer.from(buildRichEpub(`urn:uuid:${randomUUID()}`)).toString('base64'),
       'plain.pdf': Buffer.from(buildPlainPdf()).toString('base64'),
     }
     evalRaw(

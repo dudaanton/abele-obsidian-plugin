@@ -42,14 +42,15 @@ const container = `<?xml version="1.0" encoding="UTF-8"?>
 
 export const RICH_BOOK_ID = 'urn:uuid:abele-rich-test-book'
 
-export function buildRichEpub(): Uint8Array {
+/** `id` gives a test a book of its own: bookmarks and places follow a book's identifier. */
+export function buildRichEpub(id: string = RICH_BOOK_ID): Uint8Array {
   const files: Record<string, string> = {
     mimetype: 'application/epub+zip',
     'META-INF/container.xml': container,
     'OEBPS/content.opf': `<?xml version="1.0" encoding="UTF-8"?>
 <package xmlns="http://www.idpf.org/2007/opf" version="3.0" unique-identifier="id">
 <metadata xmlns:dc="http://purl.org/dc/elements/1.1/">
-<dc:identifier id="id">${RICH_BOOK_ID}</dc:identifier><dc:title>Rich test book</dc:title>
+<dc:identifier id="id">${id}</dc:identifier><dc:title>Rich test book</dc:title>
 <dc:creator>Abele</dc:creator><dc:language>en</dc:language>
 </metadata><manifest>
 <item id="nav" href="nav.xhtml" media-type="application/xhtml+xml" properties="nav"/>
