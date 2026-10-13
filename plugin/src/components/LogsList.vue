@@ -116,7 +116,6 @@ watch(search.terms, followSearch)
   display: flex;
   flex-direction: column;
   gap: calc(var(--p-spacing));
-  padding-left: calc(var(--icon-size) / 4);
 
   br {
     display: none;
