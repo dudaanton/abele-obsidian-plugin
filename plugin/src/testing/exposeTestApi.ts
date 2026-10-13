@@ -174,6 +174,8 @@ export interface ResponsivenessSample {
   ticks: number
   /** Paths the operation resolved to, for context. */
   resolved: number
+  /** The same resolution's calls into the vault, counted as `measureGroupResolve` counts them. */
+  counts: Omit<GroupResolveMeasurement, 'ms' | 'resolved'>
 }
 
 export interface NoteRenderSample {
@@ -537,6 +539,21 @@ async function resolvedSystemPrompt(): Promise<string> {
  * the algorithm. The counters are installed as temporary wrappers and always restored.
  */
 function measureGroupResolve(groupPath: string): GroupResolveMeasurement {
+  const { value, counts } = countingVaultCalls(() => {
+    const scope = new ScopeResolver()
+    scope.addGroup(groupPath)
+    const startedAt = performance.now()
+    const resolved = scope.resolve()
+    return { ms: performance.now() - startedAt, resolved: resolved.size }
+  })
+  return { ...value, ...counts }
+}
+
+/** Runs `work` with the vault calls a group resolution makes counted, and always restored. */
+function countingVaultCalls<T>(work: () => T): {
+  value: T
+  counts: Omit<GroupResolveMeasurement, 'ms' | 'resolved'>
+} {
   const { app } = GlobalStore.getInstance()
 
   const originalGetFiles = app.vault.getFiles
@@ -563,20 +580,15 @@ function measureGroupResolve(groupPath: string): GroupResolveMeasurement {
   } as typeof app.metadataCache.getFirstLinkpathDest
 
   try {
-    const scope = new ScopeResolver()
-    scope.addGroup(groupPath)
-
-    const startedAt = performance.now()
-    const resolved = scope.resolve()
-    const ms = performance.now() - startedAt
-
+    const value = work()
     return {
-      ms,
-      resolved: resolved.size,
-      getFilesCalls,
-      linkResolutions,
-      fileCacheReads,
-      vaultFiles: originalGetFiles.call(app.vault).length,
+      value,
+      counts: {
+        getFilesCalls,
+        linkResolutions,
+        fileCacheReads,
+        vaultFiles: originalGetFiles.call(app.vault).length,
+      },
     }
   } finally {
     app.vault.getFiles = originalGetFiles
@@ -661,13 +673,19 @@ function startResponsivenessProbe(groupPath: string): void {
   }, 16)
 
   // Let the ticker establish a baseline, then run the operation and sample past it.
+  // The vault calls are counted on the same run, so one resolution answers both questions.
   window.setTimeout(() => {
     const scope = new ScopeResolver()
     scope.addGroup(groupPath)
 
-    const startedAt = performance.now()
-    const resolved = scope.resolve()
-    const operationMs = performance.now() - startedAt
+    const {
+      value: { resolved, operationMs },
+      counts,
+    } = countingVaultCalls(() => {
+      const startedAt = performance.now()
+      const resolved = scope.resolve()
+      return { resolved, operationMs: performance.now() - startedAt }
+    })
 
     window.setTimeout(() => {
       window.clearInterval(timer)
@@ -676,6 +694,7 @@ function startResponsivenessProbe(groupPath: string): void {
         operationMs,
         ticks,
         resolved: resolved.size,
+        counts,
       }
     }, 200)
   }, 200)
