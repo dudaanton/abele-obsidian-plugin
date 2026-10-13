@@ -1214,7 +1214,7 @@ const probeScript = `(async () => {
             report['settings ai secrets scroll'].introTop = introTop
             report['settings ai secrets scroll'].headerBottom = headerBottom
           } else {
-            report['settings ai secrets scroll'] = { over: [], scrollers: [], capped: [], stranded: [], clipped: [], fill: 0, shot: '', error: 'no Secrets introduction or native settings header: ' + JSON.stringify({ intro: !!intro, header: !!header, scroll: !!settingsScroll }) }
+            report['settings ai secrets scroll'] = { over: [], scrollers: [], capped: [], stranded: [], clipped: [], fill: 0, shot: '', error: 'no Secrets introduction or native settings header: ' + JSON.stringify({ intro: !!intro, header: !!header, scroll: !!settingsScroll, modals: [...document.querySelectorAll('.modal')].map((m) => m.className + ' ' + (m.querySelector('.modal-title, .modal-header')?.textContent || '').trim().slice(0, 40)), ai: !!document.querySelector('.abele-settings__ai'), headings: [...document.querySelectorAll('.abele-section__heading')].map((h) => h.textContent.trim()).slice(0, 12), page: (settingsScroll?.textContent || '').trim().slice(0, 300) }) }
           }
           ;[...document.querySelectorAll('.abele-ai-settings__tabs .abele-tabs__tab')]
             .find(tab => tab.textContent.trim() === 'Models')?.click()
