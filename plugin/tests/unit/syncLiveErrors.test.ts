@@ -21,7 +21,11 @@ it('identifies the failed connection and its safe product reason instead of a ge
   const driver = new SyncDriver(
     () =>
       ({
-        evalAwait: () => [{ id: 'connection-one', status: 'error', error: 'The server is full.' }],
+        // The settle runs in the page and answers in the call that starts it.
+        evalAwait: () => ({
+          ok: true,
+          value: [{ id: 'connection-one', status: 'error', error: 'The server is full.' }],
+        }),
       }) as never
   )
   await expect(driver.waitIdle()).rejects.toThrow('connection-one: The server is full.')

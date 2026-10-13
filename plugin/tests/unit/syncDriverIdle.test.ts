@@ -61,24 +61,37 @@ describe('waiting for a real sync state snapshot', () => {
     expect(idle).not.toHaveBeenCalled()
   })
   it('waits for idle and returns that observation even if a new watcher cycle starts next', async () => {
-    vi.useFakeTimers()
-    const states = ['syncing', 'idle', 'syncing']
+    // The wait runs in the page now, in the same action as the sync: run what syncNow sends
+    // against a connection that goes syncing, idle, syncing again.
     const driver = new SyncDriver(() => {
       throw new Error('No live vault expected')
     })
-    vi.spyOn(driver, 'long').mockResolvedValue(true)
-    vi.spyOn(driver, 'rows').mockImplementation(() => [
-      { id: 'sample', status: states.shift()!, paused: false, address: 'https://sync.example' },
-    ])
-    try {
-      const waiting = driver.syncNow()
-      await vi.advanceTimersByTimeAsync(500)
-      const settled = await waiting
-      expect(settled[0].status).toBe('idle')
-      expect(driver.rows()[0].status).toBe('syncing')
-      expect(settled[0].status).toBe('idle')
-    } finally {
-      vi.useRealTimers()
+    const states = ['syncing', 'idle', 'syncing']
+    let status = 'syncing'
+    const svc = {
+      rows: {
+        get value() {
+          return [{ id: 'sample', status, paused: false, address: 'https://sync.example' }]
+        },
+      },
+      activity: { value: {} },
+      sync: async () => {},
     }
+    // A new cycle starts the moment the wait is satisfied.
+    const poll = async (fn: () => unknown) => {
+      for (;;) {
+        status = states.shift() ?? status
+        if (await fn()) {
+          status = 'syncing'
+          return true
+        }
+      }
+    }
+    vi.spyOn(driver, 'long').mockImplementation(async (_what, body) =>
+      new Function('svc', 'poll', `return (async()=>{${body}})()`)(svc, poll)
+    )
+    const settled = await driver.syncNow()
+    expect(settled[0].status).toBe('idle')
+    expect(status).toBe('syncing')
   })
 })

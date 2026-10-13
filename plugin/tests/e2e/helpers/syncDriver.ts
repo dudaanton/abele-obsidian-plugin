@@ -31,9 +31,13 @@ export const SYNC_PRELUDE = `
  */
 const FIRST_ANSWER_MS = onPhone() ? 10_000 : 20_000
 const ROWS = `svc.rows.value.map(({id,status,paused,address})=>({id,status,paused,address,error:svc.activity.value[id]?.error}))`
-/** Waits in the page until the connections (or one) are idle or paused, or one is in error. */
+/**
+ * Waits in the page until the connections (or one) are idle or paused, or one is in error, and
+ * returns the rows as they were at that moment: a watcher cycle starting right after must not
+ * turn the observation into "syncing".
+ */
 const settle = (id?: string) =>
-  `const mine=()=>svc.rows.value.filter(one=>${id ? 'one.id===' + JSON.stringify(id) : 'true'});await poll(()=>{const rows=mine();return rows.some(one=>one.status==='error')||rows.length>0&&rows.every(one=>['idle','paused'].includes(one.status))},60000,'token connection to settle');return ${ROWS}`
+  `let seen;await poll(()=>{const rows=${ROWS}.filter(one=>${id ? 'one.id===' + JSON.stringify(id) : 'true'});seen=rows;return rows.some(one=>one.status==='error')||rows.length>0&&rows.every(one=>['idle','paused'].includes(one.status))},60000,'token connection to settle');return seen`
 export interface SyncStatus {
   id: string
   status: string
