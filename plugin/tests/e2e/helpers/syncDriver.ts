@@ -313,7 +313,7 @@ export class SyncDriver {
   }
   async consent(decision: 'Allow' | 'Deny'): Promise<void> {
     this.run(
-      `await poll(()=>modal('Share a private file?')); await press(modal('Share a private file?'),${JSON.stringify(decision)}); await poll(()=>!modal('Share a private file?')); return true`
+      `try{await poll(()=>modal('Share a private file?'),15000)}catch(e){const root=document.getElementById('abele-vue-root');const app=root?.__vue_app__;const found=[];const walk=(v,d)=>{if(!v||d>60)return;if(v.component){const c=v.component;const n=c.type.__name||c.type.name;if(n==='TokenReviewPrompts'||n==='TokenDialogs'||n==='Views'||n==='App')found.push({n,mounted:c.isMounted,unmounted:c.isUnmounted,deactivated:c.isDeactivated,q:c.setupState?.question?.id??null,deferred:[...(c.setupState?.deferred?.values?.()||c.setupState?.deferred||[])].length,uiSet:!!c.setupState?.ui});walk(c.subTree,d+1)}if(Array.isArray(v.children))for(const ch of v.children)walk(ch,d+1);if(v.dynamicChildren)for(const ch of v.dynamicChildren)walk(ch,d+1)};walk(app?._instance?.vnode,0);throw new Error('PROBE '+JSON.stringify({root:!!root,rootKids:root?.childElementCount,inBody:root?.isConnected,app:!!app,questions:svc.questions.value.map(q=>q.id),found,modals:[...document.querySelectorAll('.modal')].length,tokenUiSame:app?._instance? 'n/a':'none'}))} await press(modal('Share a private file?'),${JSON.stringify(decision)}); await poll(()=>!modal('Share a private file?')); return true`
     )
   }
   async history(path: string): Promise<void> {
