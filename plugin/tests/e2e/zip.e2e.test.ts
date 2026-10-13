@@ -143,7 +143,8 @@ it('creates a selected byte-exact ZIP through session approval and refuses denie
   for (const failed of report.failedApprovals) {
     for (const flag of ['scopeUnchanged', 'rejected', 'noSourceGrant', 'noOutputGrant'])
       expect(failed[flag], `${failed.fault}: ${flag}`).toBe(true)
-    expect(failed.result).not.toContain('Saved ZIP')
+    if (failed.fault === 'pre-issuance-stop') expect(failed.result).toBeUndefined()
+    else expect(failed.result).not.toContain('Saved ZIP')
     expect(failed.writes).toBe(failed.fault === 'native-failure' ? 1 : 0)
     expect(failed.reads).toHaveLength(
       ['native-failure', 'pre-issuance-stop'].includes(failed.fault) ? 1 : 0

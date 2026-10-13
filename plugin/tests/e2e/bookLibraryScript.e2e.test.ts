@@ -11,6 +11,7 @@ import {
 import { evalAsync } from './helpers/githubLive'
 import { buildLongPdf } from '../fixtures/books/pdfFixture'
 import { onPhone, targets } from './helpers/target'
+import { SCRIPT_FIXTURE, type ScriptFixtureSnapshot } from './helpers/scriptFixture'
 
 targets('desktop', 'phone')
 
@@ -35,10 +36,13 @@ await v.open()
 await refresh()
 `
 const available = isObsidianRunning() && hasTestApi()
+let fixture: ScriptFixtureSnapshot
+let owned = false
 const run = <T>(body: string): T =>
   evalAsync<T>(
     `(async () => JSON.stringify(await (async () => {
-  try { ${body} } catch (e) { return { error: String(e && e.stack || e) } }
+  ${SCRIPT_FIXTURE}
+  try { ${body} } catch (e) { return { error: String(e?.message || e) + '\\n' + String(e?.stack || '') } }
 })()))()`,
     90_000
   )
@@ -48,42 +52,49 @@ const until = async (fn) => { for (let i = 0; i < 80; i++) { const value = fn();
 
 describe.skipIf(!available)('reader-file script dashboard', () => {
   beforeAll(() => {
+    fixture = run<ScriptFixtureSnapshot>('return await saveScriptFixture()')
+    expect(fixture.ai).toBeDefined()
     const binary = Buffer.from(buildLongPdf(8)).toString('base64')
     const result = run<string>(`
-      const config = window.__abeleTest.AbeleConfig.getInstance()
-      const folder = config.ai.scriptsFolder
-      for (const leaf of app.workspace.getLeavesOfType('abele-script-view')) leaf.detach()
+      const folder = '${DIR}/Scripts'
       const dir = app.vault.getAbstractFileByPath('${DIR}')
-      if (dir) await app.vault.delete(dir, true)
+      if (dir) throw Error('Synthetic folder already exists')
       await app.vault.createFolder('${DIR}')
+      window.__abeleBookFixtureOwned = true
       const bytes = Uint8Array.from(atob('${binary}'), c => c.charCodeAt(0))
       await app.vault.createBinary('${FILE}', bytes.buffer)
       if (!app.vault.getAbstractFileByPath(folder)) await app.vault.createFolder(folder)
       const path = folder + '/Sample reader library.js'
-      const old = app.vault.getAbstractFileByPath(path)
-      if (old) await app.vault.delete(old)
       await app.vault.create(path, ${JSON.stringify(SCRIPT)})
-      await window.__abeleTest.ScriptService.getInstance().discover()
+      await enableScriptFixture(folder)
+      await approveScriptFixture(path, ${JSON.stringify(SCRIPT)})
       return 'ready'
     `)
     expect(result).toBe('ready')
+    owned = true
   }, 90_000)
 
   afterAll(() => {
-    run(`
+    expect(
+      run(`
+      try {
       for (const leaf of app.workspace.getLeavesOfType('abele-book'))
         if (leaf.view.file?.path === '${FILE}') leaf.detach()
-      for (const leaf of app.workspace.getLeavesOfType('abele-script-view')) leaf.detach()
-      const folder = window.__abeleTest.AbeleConfig.getInstance().ai.scriptsFolder
+      const folder = '${DIR}/Scripts'
+      for (const leaf of app.workspace.getLeavesOfType('abele-script-view'))
+        if (leaf.view.getState()?.script === 'Sample reader library') leaf.detach()
       const script = app.vault.getAbstractFileByPath(folder + '/Sample reader library.js')
-      if (script) await app.vault.delete(script)
+      if ((${owned} || window.__abeleBookFixtureOwned) && script) await app.vault.delete(script)
       const dir = app.vault.getAbstractFileByPath('${DIR}')
-      if (dir) await app.vault.delete(dir, true)
-      const scriptsDir = app.vault.getAbstractFileByPath(folder)
-      if (scriptsDir?.children?.length === 0) await app.vault.delete(scriptsDir, true)
+      if ((${owned} || window.__abeleBookFixtureOwned) && dir) await app.vault.delete(dir, true)
       delete window.__abeleBookSnapshot
       return true
+      } finally {
+        await restoreScriptFixture(${JSON.stringify(fixture)})
+        delete window.__abeleBookFixtureOwned
+      }
     `)
+    ).toBe(true)
   }, 90_000)
 
   it('lists an unopened file without parsing it and opens it without replacing the script tab', () => {
@@ -105,7 +116,8 @@ describe.skipIf(!available)('reader-file script dashboard', () => {
       const script = service.getAll().find(s => s.meta.name === 'Sample reader library')
       await service.execute(script.path, {}, { source: 'command' })
       const before = await until(() => window.__abeleBookSnapshot)
-      const tab = app.workspace.getLeavesOfType('abele-script-view')[0]
+      const tabs = app.workspace.getLeavesOfType('abele-script-view').filter(l => l.view.getState()?.script === 'Sample reader library')
+      const tab = tabs[0]
       const cards = tab.view.contentEl.querySelectorAll('.abele-card').length
       const btn = tab.view.contentEl.querySelector('button')
       if (!btn) throw new Error('Read button not rendered')
@@ -115,7 +127,7 @@ describe.skipIf(!available)('reader-file script dashboard', () => {
         .catch(e => { throw new Error(String(e) + ': ' + JSON.stringify(app.workspace.getLeavesOfType('abele-book').map(l => ({ path: l.view.file?.path, status: l.view.model?.status, message: l.view.model?.message })))) })
       const after = await until(() => window.__abeleBookSnapshot?.pageCount && window.__abeleBookSnapshot.highlightCount !== null ? window.__abeleBookSnapshot : null)
         .catch(e => { throw new Error(String(e) + ': ' + JSON.stringify(window.__abeleBookSnapshot)) })
-      return { before, after, cards, tabs: app.workspace.getLeavesOfType('abele-script-view').length }
+      return { before, after, cards, tabs: tabs.length }
     `)
     expect(result.error).toBeUndefined()
     expect(result.before.progress).toBeNull()
@@ -179,7 +191,7 @@ describe.skipIf(!available)('reader-file script dashboard', () => {
         runCli(['dev:screenshot', `path=${process.cwd()}/build/book-library-mobile.png`])
       } finally {
         run(
-          `for (const leaf of app.workspace.getLeavesOfType('abele-script-view')) leaf.detach(); return true`
+          `for (const leaf of app.workspace.getLeavesOfType('abele-script-view')) if (leaf.view.getState()?.script === 'Sample reader library') leaf.detach(); return true`
         )
         await reloadApp('app.emulateMobile(false)')
         evalRaw(

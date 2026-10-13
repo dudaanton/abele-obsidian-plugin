@@ -97,7 +97,7 @@ describe.skipIf(!available)('remembered saved-key recipients', () => {
         expect(result.otherAsked).toBe(true)
         expect(result.otherRefused).toBe(true)
         expect(result.outside).toEqual([])
-        expect(result.text).toContain('will not ask again on this device')
+        expect(result.text).toContain('on this device, so it will not ask again here')
         expect(result.shot).not.toMatch(/^no picture:/)
         console.info(result.shot)
       } finally {

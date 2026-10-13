@@ -32,7 +32,7 @@ function probe(mode: string) {
     }
     const madeDirs = []
     const madeFiles = []
-    const report = { error: '', rejected: [], content: '', status: '', visible: false, histories: [], writes: 0, shot: '' }
+    const report = { error: '', scriptError: '', rejected: [], content: '', status: '', visible: false, histories: [], writes: 0, shot: '' }
     let leaf, session, release, scriptRun, fixture
     const realFetch = window.fetch
     const root = 'Sample stop fixture'
@@ -50,6 +50,7 @@ function probe(mode: string) {
       if (app.vault.getAbstractFileByPath(root)) throw new Error('Fixture folder is occupied')
       await app.vault.createFolder(root); madeDirs.push(root)
       const note = await put(notePath, 'original')
+      try {
       const code = [
         '// @name Sample stop fixture',
         'await params.gate',
@@ -77,8 +78,8 @@ function probe(mode: string) {
       const row = () => [...leaf.view.containerEl.querySelectorAll('.abele-runs__run')].find((r) => r.querySelector('.abele-runs__name')?.textContent === 'Sample stop fixture')
       await until(() => row())
       row().querySelector('.abele-runs__row').click()
-      await until(() => [...row().querySelectorAll('button')].some((b) => b.textContent.trim() === 'Stop'))
-      ;[...row().querySelectorAll('button')].find((b) => b.textContent.trim() === 'Stop').click()
+      await until(() => row().querySelector('[aria-label="Stop this run"]'))
+      row().querySelector('[aria-label="Stop this run"]').click()
       await running
       release()
       await until(() => finished.value)
@@ -92,6 +93,11 @@ function probe(mode: string) {
       else {
         const image = await require('@electron/remote').getCurrentWindow().webContents.capturePage()
         require('fs').writeFileSync(report.shot, image.toPNG())
+      }
+      } catch (e) {
+        report.scriptError = String(e?.message || e) + '\n' + String(e?.stack || '')
+        if (scriptRun) runs.stop(scriptRun.id)
+        release?.()
       }
 
       // Exercise the real ChatSession -> AgentLoop -> OpenAIClient history commit path.
@@ -127,7 +133,7 @@ function probe(mode: string) {
         session.cancelAutoRetry()
         await session.retryRequest()
       }
-    } catch (e) { report.error = String(e && e.stack || e) }
+    } catch (e) { report.error = String(e?.message || e) + '\n' + String(e?.stack || '') }
     finally {
       try {
       window.fetch = realFetch
@@ -172,6 +178,7 @@ describe.runIf(available).each(onPhone() ? ['phone'] : ['desktop', 'emulated'])(
 
     it('finishes and cleans up its fixture', () => {
       expect(report.error).toBe('')
+      expect(report.scriptError).toBe('')
     })
     it('stops late effects through the visible run button', () => {
       expect(report.rejected).toEqual(['write', 'remove', 'fetch', 'form'])

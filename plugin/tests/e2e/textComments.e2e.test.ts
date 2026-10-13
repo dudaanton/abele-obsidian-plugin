@@ -1,4 +1,4 @@
-import { afterAll, afterEach, beforeAll, describe, expect, it } from 'vitest'
+import { afterAll, afterEach, beforeAll, beforeEach, describe, expect, it } from 'vitest'
 import { evalRaw, hasTestApi, isObsidianRunning } from './helpers/obsidianCli'
 import { onPhone, targets } from './helpers/target'
 import { shotDir } from './helpers/shots'
@@ -67,7 +67,14 @@ const run = <T>(body: string): T => {
     `(async () => {
   const wait = ms => new Promise(resolve => setTimeout(resolve, ms))
   const until = async fn => { for(let i=0;i<80;i++) { if(fn()) return true; await wait(100) } return false }
-  const button = text => [...(document.querySelectorAll('.modal').length ? [...document.querySelectorAll('.modal')].at(-1).querySelectorAll('button') : [])].find(el => el.textContent.trim() === text)
+  const button = text => [...([...document.querySelectorAll('.modal')].at(-1) ?? document.querySelector('.abele-anchored-card'))?.querySelectorAll('button') ?? []].find(el => el.textContent.trim() === text)
+  const send = () => document.querySelector('.abele-text-comments [aria-label="Send (⌘↵)"]')
+  const dismiss = () => {
+    const panel = document.querySelector('.abele-text-comments')
+    const close = panel?.closest('.modal')?.querySelector('.modal-close-button')
+    if (close) close.click()
+    else if (panel?.closest('.abele-anchored-card')) document.body.dispatchEvent(new PointerEvent('pointerdown', {bubbles: true}))
+  }
   const note = app.vault.getAbstractFileByPath(${JSON.stringify(PATH)})
   const view = app.workspace.getLeavesOfType('markdown').find(leaf => leaf.view.file?.path === note?.path)?.view
   ${body}
@@ -83,18 +90,26 @@ describe.skipIf(!available)('ordinary-note text comments', () => {
     expect(
       run<boolean>(`
     for(let i=0;i<6 && document.querySelector('.abele-text-comments');i++) {
-      const top=[...document.querySelectorAll('.modal')].at(-1)
-      const buttons=[...top.querySelectorAll('button')]
-      const close=buttons.find(el=>el.textContent.trim()==='Discard') ?? buttons.find(el=>el.textContent.trim()==='Close') ?? buttons.find(el=>el.textContent.trim()==='Cancel')
-      close?.click(); await wait(150)
+      const discard = button('Discard')
+      if (discard) discard.click(); else dismiss()
+      await wait(150)
     }
-    return JSON.stringify(!document.querySelector('.abele-text-comments'))
+    return JSON.stringify(await until(() => !document.querySelector('.abele-text-comments') && !document.querySelector('.modal-container')))
   `)
+    ).toBe(true)
+  )
+  beforeEach(() =>
+    expect(
+      run<boolean>(
+        `return JSON.stringify(await until(() => !document.querySelector('.abele-text-comments') && !document.querySelector('.modal-container')))`
+      )
     ).toBe(true)
   )
   beforeAll(() =>
     run(`
-    if (!note) await app.vault.create(${JSON.stringify(PATH)}, 'A **sample passage** and another sentence.')
+    if (note) throw Error('Synthetic note already exists')
+    await app.vault.create(${JSON.stringify(PATH)}, 'A **sample passage** and another sentence.')
+    window.__textCommentOwned = true
     const file = app.vault.getAbstractFileByPath(${JSON.stringify(PATH)})
     await app.workspace.getLeaf('tab').openFile(file)
     window.__textCommentAi = window.__abeleTest.AbeleConfig.getInstance().ai.enabled
@@ -104,8 +119,10 @@ describe.skipIf(!available)('ordinary-note text comments', () => {
   )
   afterAll(() =>
     run(`
+    if (!window.__textCommentOwned) return JSON.stringify(true)
     window.__abeleTest.AbeleConfig.getInstance().ai.enabled = window.__textCommentAi
     delete window.__textCommentAi
+    delete window.__textCommentOwned
     for(const leaf of app.workspace.getLeavesOfType('markdown')) if(leaf.view.file?.path === note?.path) leaf.detach()
     if(note) {
       const source = await app.vault.read(note)
@@ -138,18 +155,18 @@ describe.skipIf(!available)('ordinary-note text comments', () => {
       const host = document.querySelector('.abele-text-comments .abele-note-editor-field__editor')
       const cm = window.__abeleTest.noteFieldView(host)
       if(cm) cm.dispatch({ changes: { from: 0, insert: '**First comment**\\nSecond line' } })
-      await until(() => button('Save') && !button('Save').disabled)
-      button('Save')?.click()
+      await until(() => send() && !send().disabled)
+      send()?.click()
       await until(() => document.querySelector('.abele-text-comments__entry'))
       const source = await app.vault.read(note)
       const id = /%%c:([a-z0-9]{6})/.exec(source)?.[1]
       const file = id && app.vault.getAbstractFileByPath(window.__abeleTest.ChatStorage.commentsFolder() + '/' + id + '.abcomment')
       const thread = file ? JSON.parse(await app.vault.read(file)) : null
-      button('Close')?.click(); await until(() => !document.querySelector('.abele-text-comments'))
+      dismiss(); await until(() => !document.querySelector('.abele-text-comments'))
       await until(() => view.contentEl.querySelector('[data-comment-kind="human"]'))
       view.contentEl.querySelector('[data-comment-kind="human"]')?.click()
       const reopened = await until(() => document.querySelector('.abele-text-comments__entry'))
-      button('Close')?.click()
+      dismiss()
       return JSON.stringify({ opened, rich: !!cm, entries: thread?.entries.length ?? 0, body: thread?.entries[0].body ?? '', ai: app.vault.getFiles().filter(file => file.extension === 'abchat').length - chats, reopened })
     `)
     expect(result).toEqual({
@@ -209,11 +226,11 @@ describe.skipIf(!available)('ordinary-note text comments', () => {
       await host.type('Native second comment\\nwith another line')
       shots.push(await host.shot(${JSON.stringify(SHOTS)} + '/text-comment-keyboard.png'))
       await host.swipe(window.innerWidth/2, window.innerHeight-keyboardHeight()-100, window.innerWidth/2, 160)
-      await tap(button('Save'))
+      await tap(send())
       await until(() => document.querySelectorAll('.abele-text-comments__entry').length === 2)
       const saved = document.querySelectorAll('.abele-text-comments__entry').length === 2
       shots.push(await host.shot(${JSON.stringify(SHOTS)} + '/text-comment-saved.png'))
-      const edit = [...document.querySelectorAll('.abele-text-comments button')].find(el => el.textContent.trim() === 'Edit')
+      const edit = document.querySelector('.abele-text-comments [aria-label="Edit this comment"]')
       await tap(edit)
       if(!await until(() => keyboardHeight()>100)) throw new Error('Native edit keyboard did not open')
       await wait(500)
@@ -226,12 +243,12 @@ describe.skipIf(!available)('ordinary-note text comments', () => {
       if(!await until(() => editor.state.doc.toString().endsWith(' Updated'))) throw new Error('Native edit text did not arrive: '+editor.state.doc.toString())
       await wait(150)
       await tap(button('Save'))
-      await until(() => document.querySelector('.abele-text-comments__time')?.textContent.includes('Edited'))
+      await until(() => document.querySelector('.abele-text-comments__time')?.textContent.includes('edited'))
       const id = /%%c:([a-z0-9]{6})/.exec(await app.vault.read(note))[1]
       const savedFile = app.vault.getAbstractFileByPath(window.__abeleTest.ChatStorage.commentsFolder()+'/'+id+'.abcomment')
       const editedThread = JSON.parse(await app.vault.read(savedFile))
       const edited = !!editedThread.entries[0].editedAt && editedThread.entries[0].body.endsWith(' Updated')
-      await tap(button('Close'))
+      dismiss(); await until(() => !document.querySelector('.abele-text-comments'))
       return JSON.stringify({keyboard, room, geometry, toolbar, sourceUnchanged:view.editor.getValue()===sourceBefore, saved, edited, shots})
     `)
     console.log('Native comment editor:', result)
@@ -302,7 +319,7 @@ describe.skipIf(!available)('ordinary-note text comments', () => {
       const icon = preview?.querySelector('[data-comment-kind="human"]')
       const quote = [...(preview?.querySelectorAll('[data-abele-note-comment-quote]') ?? [])].map(el => el.textContent).join('')
       icon?.click(); const reopened = await until(() => document.querySelector('.abele-text-comments__entry'))
-      button('Close')?.click()
+      dismiss()
       return JSON.stringify({ icon: !!icon, quote, reopened })
     `)
     expect(result.icon).toBe(true)
@@ -326,18 +343,19 @@ describe.skipIf(!available)('ordinary-note text comments', () => {
       const file = app.vault.getAbstractFileByPath(window.__abeleTest.ChatStorage.commentsFolder()+'/'+id+'.abcomment')
       const original = JSON.parse(await app.vault.read(file))
       const field = () => window.__abeleTest.noteFieldView(document.querySelector('.abele-text-comments .abele-note-editor-field__editor'))
-      const save = async () => { await until(() => button('Save') && !button('Save').disabled); button('Save').click(); await wait(300) }
+      const save = async () => { const action = () => button('Save') ?? send(); await until(() => action() && !action().disabled); action().click(); await wait(300) }
       field().dispatch({changes:{from:0,insert:'Another entry'}}); await save()
       const stacked = JSON.parse(await app.vault.read(file)).entries.length === original.entries.length + 1
-      button('Edit').click(); await wait(200)
+      document.querySelector('.abele-text-comments [aria-label="Edit this comment"]').click(); await wait(200)
       const cm = field(); cm.dispatch({changes:{from:0,to:cm.state.doc.length,insert:'Edited entry'}}); await save()
-      const select = document.querySelector('.abele-text-comments select'); select.value='underline'; select.dispatchEvent(new Event('change',{bubbles:true})); await save()
+      document.querySelector('.abele-text-comments__mark').click(); await wait(100)
+      document.querySelector('.abele-text-comments [role="radio"][aria-label="underlined"]').click(); await until(() => document.querySelector('.abele-text-comments__mark')?.getAttribute('aria-label')?.includes('underlined')); await wait(300)
       const edited = JSON.parse(await app.vault.read(file))
       const createdStable = edited.entries[0].createdAt === original.entries[0].createdAt && !!edited.entries[0].editedAt
       const appearance = edited.appearance
-      button('Delete').click(); await wait(100); button('Delete').click(); await wait(300)
+      document.querySelector('.abele-text-comments [aria-label="Delete this comment"]').click(); await until(() => button('Delete')); button('Delete').click(); await wait(300)
       const sibling = JSON.parse(await app.vault.read(file)).entries.length === original.entries.length
-      for(let i=0;i<original.entries.length;i++) { button('Delete').click(); await wait(100); button('Delete').click(); await wait(300) }
+      for(let i=0;i<original.entries.length;i++) { document.querySelector('.abele-text-comments [aria-label="Delete this comment"]').click(); await until(() => button('Delete')); button('Delete').click(); await wait(300) }
       await until(() => !document.querySelector('.abele-text-comments'))
       return JSON.stringify({stacked,createdStable,appearance,sibling,clean:await app.vault.read(note),removed:!app.vault.getAbstractFileByPath(file.path)})
     `)

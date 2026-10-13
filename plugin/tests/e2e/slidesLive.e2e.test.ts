@@ -1,7 +1,8 @@
 import { afterAll, beforeAll, describe, expect, it } from 'vitest'
-import { evalJson, evalLong, evalRaw, hasTestApi, isObsidianRunning } from './helpers/obsidianCli'
+import { evalJson, evalLong, hasTestApi, isObsidianRunning } from './helpers/obsidianCli'
 import { onPhone, targets } from './helpers/target'
 import { shotDir } from './helpers/shots'
+import { SCRIPT_FIXTURE, type ScriptFixtureSnapshot } from './helpers/scriptFixture'
 
 targets('desktop', 'phone')
 const available = isObsidianRunning() && hasTestApi()
@@ -30,38 +31,52 @@ await show('## Sample markdown')
 v.body = [label, new Button({ text: 'Update', onClick: () => { label.text = 'Updated value' } })]
 await v.open()
 `
-let scriptPath: string
+const scriptPath = 'Sample live slide scripts/Sample slide counter.js'
 let layout: unknown
+let fixture: ScriptFixtureSnapshot
 beforeAll(async () => {
   if (!available) return
   layout = evalJson('app.workspace.getLayout()')
-  scriptPath = JSON.parse(
-    await evalLong(`(async()=>{
-    const t=window.__abeleTest,folder=t.AbeleConfig.getInstance().ai.scriptsFolder,path=folder+'/Sample slide counter.js'
-    if(!app.vault.getAbstractFileByPath(folder))await app.vault.createFolder(folder)
+  fixture = JSON.parse(
+    await evalLong(
+      `(async()=>{${SCRIPT_FIXTURE} return JSON.stringify(await saveScriptFixture())})()`
+    )
+  )
+  expect(
+    JSON.parse(
+      await evalLong(`(async()=>{
+    ${SCRIPT_FIXTURE}
+    const t=window.__abeleTest,folder='Sample live slide scripts',path=folder+'/Sample slide counter.js'
+    if(!app.vault.getAbstractFileByPath(folder)){await app.vault.createFolder(folder);window.__slidesLiveOwnedFolder=true}
     if(app.vault.getAbstractFileByPath(path))throw Error('sample script fixture exists')
     await app.vault.create(path,${JSON.stringify(SCRIPT)})
-    await t.ScriptService.getInstance().discover()
+    window.__slidesLiveOwnedScript=true
+    await enableScriptFixture(folder)
     const script=t.ScriptService.getInstance().get(path)
     if(!script)throw Error('sample script not indexed')
-    t.ScriptService.getInstance().confirm(script)
+    await approveScriptFixture(path,${JSON.stringify(SCRIPT)})
     return JSON.stringify(path)
   })()`)
-  ) as string
+    )
+  ).toBe(scriptPath)
   expect(
     await evalLong(`(async()=>{
     if(app.vault.getAbstractFileByPath(${JSON.stringify(PATH)}))throw Error('sample fixture exists')
     const file=await app.vault.create(${JSON.stringify(PATH)},${JSON.stringify(SOURCE)})
+    window.__slidesLiveOwnedDeck=true
     const leaf=app.workspace.getLeaf('tab');await leaf.openFile(file);return leaf.view.getViewType()
   })()`)
   ).toBe('abele-deck')
 })
 afterAll(async () => {
   if (!available) return
-  evalRaw(`(async()=>{
+  await evalLong(`(async()=>{
+    ${SCRIPT_FIXTURE}
+    try {
     for(const leaf of app.workspace.getLeavesOfType('abele-deck'))if(leaf.view.file?.path===${JSON.stringify(PATH)})leaf.detach()
-    const file=app.vault.getAbstractFileByPath(${JSON.stringify(PATH)});if(file)await app.vault.delete(file)
-    const script=app.vault.getAbstractFileByPath(${JSON.stringify(scriptPath)});if(script)await app.vault.delete(script)
+    const file=app.vault.getAbstractFileByPath(${JSON.stringify(PATH)});if(window.__slidesLiveOwnedDeck&&file)await app.vault.delete(file)
+    const script=app.vault.getAbstractFileByPath(${JSON.stringify(scriptPath)});if(window.__slidesLiveOwnedScript&&script)await app.vault.delete(script)
+    const folder=app.vault.getAbstractFileByPath('Sample live slide scripts');if(window.__slidesLiveOwnedFolder && folder && !folder.children.length)await app.vault.delete(folder)
     await app.workspace.changeLayout(${JSON.stringify(layout)})
     if (!${onPhone()}) {
       const win = require('@electron/remote').getCurrentWindow()
@@ -72,6 +87,10 @@ afterAll(async () => {
       if (typeof activeDocument !== 'undefined' && activeDocument !== document) throw Error('Main window did not regain the active document')
     }
     return true
+    } finally {
+      await restoreScriptFixture(${JSON.stringify(fixture)})
+      delete window.__slidesLiveOwnedDeck;delete window.__slidesLiveOwnedScript;delete window.__slidesLiveOwnedFolder
+    }
   })()`)
 })
 describe.skipIf(!available)('live slide lifecycle', () => {
@@ -90,7 +109,7 @@ describe.skipIf(!available)('live slide lifecycle', () => {
       const stopped=!button?.isConnected
       await viewer.go(3)
       const rebuilt=await until(()=>viewer.viewport.querySelector('.abele-slide:not([hidden]) .abele-script-view_live button')!==button)
-      return JSON.stringify({ready,updated,markdown,stopped,rebuilt})
+      return JSON.stringify({ready,updated,markdown,stopped,rebuilt,slideText:viewer.viewport.querySelector('.abele-slide:not([hidden])')?.textContent})
     })()`)
     ) as Record<string, boolean>
     expect(result.ready, JSON.stringify(result)).toBe(true)

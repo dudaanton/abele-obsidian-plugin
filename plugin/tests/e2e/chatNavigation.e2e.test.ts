@@ -44,7 +44,6 @@ const script = (layout: string) => `(async () => {
   const chats = window.__abeleTest.ChatService.getInstance()
   const comments = window.__abeleTest.CommentService.getInstance()
   const path = 'sample-navigation.abchat'
-  if (app.vault.getAbstractFileByPath(path)) throw Error('Synthetic chat already exists')
   const dirs = [], files = [], report = {}
   const box = () => [...document.querySelectorAll('.abele-ai-chat__messages')].find(el => el.getClientRects().length)
   const modal = () => document.querySelector('.abele-chat-navigation')
@@ -87,10 +86,43 @@ const script = (layout: string) => `(async () => {
   records.push({ k: 'msg', id: 'other-start', role: 'user', content: 'Another sample conversation start', timestamp: 1700000005000 })
   // The current leaf is explicit; opening navigation must never change it.
   const meta = { v: 2, k: 'meta', type: 'abele-chat', title: 'Sample navigation', created: '2023-11-14', activeLeafId: 'a299', comments: [{ id: 'navd01', message: 'a0', quote: 'sample answer' }] }
+  // A previous interrupted run can leave the old fixture behind. A name alone is not ownership:
+  // require the invented metadata and every original message before deleting anything.
+  const stale = app.vault.getAbstractFileByPath(path)
+  if (stale) {
+    const rows = (await app.vault.read(stale)).trim().split('\\n').map(line => JSON.parse(line))
+    const header = rows.find(row => row.k === 'meta')
+    const owned = header?.v === meta.v && header?.type === meta.type && header?.title === meta.title && header?.created === meta.created &&
+      records.every(record => rows.some(row => Object.entries(record).every(([key,value]) => row[key] === value))) &&
+      rows.filter(row => row.k === 'msg').every(row => records.some(record => record.id === row.id) ||
+        row.id === 'tool-sample' && row.parentId === 'a299' && row.toolName === 'read' && row.toolResult === 'A sample liner' && row.thinking === 'A sample liner')
+    if (!owned) throw Error('Navigation path is occupied by an unowned file')
+    for (const [id, note] of [['navd02', comments.commentPath('navd01')], ['navd01', path]]) {
+      const file = app.vault.getAbstractFileByPath(comments.commentPath(id))
+      if (!file) continue
+      const rows = (await app.vault.read(file)).trim().split('\\n').map(line => JSON.parse(line))
+      const header = rows[0], messages = rows.filter(row => row.k === 'msg')
+      if (header.type !== 'abele-chat' || header.kind !== 'comment' || header.created !== meta.created || header.anchor?.note !== note)
+        throw Error('Navigation discussion path is occupied by an unowned file')
+      const expected = id === 'navd01' ? {id:'du',content:'Which plants need shade?',timestamp:1700000005000} : {id:'nu',content:'How much shade?',timestamp:1700000006000}
+      if (messages.length !== 1 || !Object.entries(expected).every(([key,value]) => messages[0][key] === value) || messages[0].role !== 'user')
+        throw Error('Navigation discussion path is occupied by an unowned file')
+    }
+    for (const id of ['navd02', 'navd01']) {
+      if (comments.isShown(id)) await comments.hideFromSidebar(id)
+      if (app.vault.getAbstractFileByPath(comments.commentPath(id))) await comments.remove(id)
+    }
+    const session = chats.getSessionByFile(path)
+    if (session) await chats.deleteChat(session.id)
+    const remaining = app.vault.getAbstractFileByPath(path)
+    if (remaining) await app.vault.delete(remaining)
+  }
   let owner
   try {
     files.push(await app.vault.create(path, [meta, ...records].map(JSON.stringify).join('\\n') + '\\n'))
     const commentPath = comments.commentPath('navd01')
+    for (const id of ['navd01', 'navd02'])
+      if (app.vault.getAbstractFileByPath(comments.commentPath(id))) throw Error('Synthetic discussion already exists')
     const segments = commentPath.split('/').slice(0, -1)
     for (let i = 1; i <= segments.length; i++) {
       const dir = segments.slice(0, i).join('/')
@@ -229,6 +261,7 @@ const script = (layout: string) => `(async () => {
     document.body.dispatchEvent(new KeyboardEvent('keydown', { key: 'Escape', bubbles: true }))
     if (owner) { owner.isStreaming.value = false; owner.isExecutingTool.value = false; owner.streamingContent.value = '' }
     for (const id of ['navd02', 'navd01']) {
+      if (!files.some(file => file.path === comments.commentPath(id))) continue
       if (comments.isShown(id)) await comments.hideFromSidebar(id)
       await comments.remove(id)
     }

@@ -202,10 +202,26 @@ describe.skipIf(!available)('canvas selection and geometry with real pointer inp
     const before = run<string>('return await app.vault.read(app.vault.getAbstractFileByPath(path))')
     const history = run<number>('return view().documentLease.document.session.history.undo')
     const zoom = run<number>('return view().viewer.camera.zoom')
-    if (onPhone()) driver(['pinch', '1.3'])
-    else
-      await withNativeInput(() =>
-        run(`
+    run<{ x: number; y: number }>(`
+      const stage=view().viewer.stage,r=stage.getBoundingClientRect()
+      const x=${onPhone()}?innerWidth/2:r.left+r.width/2,y=${onPhone()}?innerHeight/2:r.top+r.height/2,under=document.elementFromPoint(x,y)
+      if (!stage.contains(under)) throw Error('Pinch stage is covered: '+under?.className)
+      const events=[],active=new Set()
+      const record=e=>{
+        if(e.type==='pointerdown')active.add(e.pointerId)
+        events.push({type:e.type,id:e.pointerId,trusted:e.isTrusted,pointer:e.pointerType,x:e.clientX,y:e.clientY,active:active.size})
+        if(e.type==='pointerup'||e.type==='pointercancel')active.delete(e.pointerId)
+      }
+      const types=['pointerdown','pointermove','pointerup','pointercancel']
+      for(const type of types)stage.addEventListener(type,record,true)
+      window.__canvasPinchWitness={events,dispose:()=>{for(const type of types)stage.removeEventListener(type,record,true)}}
+      return {x:Math.round(x),y:Math.round(y)}
+    `)
+    try {
+      if (onPhone()) driver(['pinch', '1.3'])
+      else
+        await withNativeInput(() =>
+          run(`
       const v=view(),n=v.viewer.graph.nodes.find(n=>n.id==='note'),c=v.viewer.camera,r=v.viewer.stage.getBoundingClientRect(),
         x=Math.round(r.left+(n.x+n.width/2-c.x)*c.zoom),y=Math.round(r.top+(n.y+n.height/2-c.y)*c.zoom)
       const cdp=require('@electron/remote').getCurrentWebContents().debugger,owned=!cdp.isAttached();if(owned)cdp.attach('1.3')
@@ -218,7 +234,20 @@ describe.skipIf(!available)('canvas selection and geometry with real pointer inp
         await cdp.sendCommand('Input.dispatchTouchEvent',{type:'touchEnd',touchPoints:[]})
       } finally {if(owned)cdp.detach()}return true
     `)
-      )
+        )
+    } finally {
+      run('window.__canvasPinchWitness.dispose();return true')
+    }
+    const delivered = run<{ type: string; id: number; trusted: boolean; active: number }[]>(
+      'const events=window.__canvasPinchWitness.events;delete window.__canvasPinchWitness;return events'
+    )
+    console.info('Canvas pinch pointers', delivered)
+    expect(
+      new Set(delivered.filter((e) => e.type === 'pointerdown' && e.trusted).map((e) => e.id)).size
+    ).toBe(2)
+    expect(delivered.some((e) => e.type === 'pointermove' && e.trusted && e.active === 2)).toBe(
+      true
+    )
     expect(run<string>('return await app.vault.read(app.vault.getAbstractFileByPath(path))')).toBe(
       before
     )

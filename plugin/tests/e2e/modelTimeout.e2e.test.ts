@@ -34,8 +34,7 @@ describe.skipIf(!available)('per-model timeout settings on a real screen', () =>
           if (!await until(nav, 5000)) throw Error('Settings navigation did not open')
           ;[...doc.querySelectorAll('.abele-settings__nav .abele-tabs__tab')].find(t => t.textContent.trim() === 'AI Agent')?.click()
           if (!await until(() => doc.querySelector('.abele-ai-settings__tabs'), 5000)) throw Error('AI settings did not open')
-          ;[...doc.querySelectorAll('.abele-ai-settings__tabs .abele-tabs__tab')].find(t => t.textContent.trim() === 'General')?.click()
-          if (!await until(() => doc.querySelector('.abele-ai-provider .abele-card'), 5000)) throw Error('Model card did not open')
+          ;[...doc.querySelectorAll('.abele-ai-settings__tabs .abele-tabs__tab')].find(t => t.textContent.trim() === 'Models')?.click()
           if (validateGlobal) {
             const row = [...doc.querySelectorAll('.abele-settings__ai .setting-item')].find(e => e.querySelector('.setting-item-name')?.textContent === 'Request timeout (seconds)')
             const input = row.querySelector('input')
@@ -44,7 +43,12 @@ describe.skipIf(!available)('per-model timeout settings on a real screen', () =>
             if (input.value !== '5000' || !row.querySelector('[role="alert"]') || config.ai.requestTimeoutSeconds !== 500) throw Error('Invalid global timeout was silently accepted')
             await edit(input, '120')
           }
-          doc.querySelector('.abele-ai-provider .abele-card').click()
+          const provider = await until(() => doc.querySelector('.abele-ai-provider [aria-label="Change this provider and its models"]'), 5000)
+          if (!provider) throw Error('Provider did not open')
+          provider.click()
+          const card = await until(() => [...doc.querySelectorAll('.modal .abele-card')].find(el => el.textContent.includes('Sample model')), 5000)
+          if (!card) throw Error('Model card did not open')
+          card.click()
           if (!await until(() => doc.querySelector('.abele-model-edit'), 5000)) throw Error('Model editor did not open')
           const editor = doc.querySelector('.abele-model-edit')
           const row = [...editor.querySelectorAll('.setting-item')].find(e => e.querySelector('.setting-item-name')?.textContent === 'Request timeout (seconds)')
@@ -59,6 +63,9 @@ describe.skipIf(!available)('per-model timeout settings on a real screen', () =>
         const save = async ({doc, editor}) => {
           editor.closest('.modal').querySelector('.abele-modal__footer button').click()
           if (!await until(() => !doc.querySelector('.abele-model-edit'), 5000)) throw Error('Model editor did not close')
+          const provider = [...doc.querySelectorAll('.modal')].find(el => el.querySelector('.abele-ai-provider__delete'))
+          ;[...provider.querySelectorAll('button')].find(el => el.textContent.trim() === 'Done').click()
+          if (!await until(() => !provider.isConnected, 5000)) throw Error('Provider editor did not close')
           await config.saveSettings()
           app.setting.close()
           await config.reloadSettings()
@@ -100,6 +107,7 @@ describe.skipIf(!available)('per-model timeout settings on a real screen', () =>
       } finally {
         const doc = app.setting.activeTab?.containerEl.ownerDocument
         doc?.querySelector('.modal:has(.abele-model-edit) .modal-close-button')?.click()
+        doc?.querySelector('.modal:has(.abele-ai-provider__delete) .modal-close-button')?.click()
         app.setting.close()
         config.editSettings(() => { config.ai = originalAi })
         await config.saveSettings()
