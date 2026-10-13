@@ -161,6 +161,11 @@ export function enableGithub(origin: string, foldSidebars = true): void {
       }
       // In-memory fixture changes still need the notification real settings saves emit.
       config.version.value++
+      // What every GitHub case needs before it opens anything, checked once here so a file
+      // whose setup did not take stops in its setup, not case by case at each 20 s wait. No
+      // request is made: cases count the fake server's requests from their own first one.
+      if (!app.viewRegistry?.viewByType?.['abele-github']) return 'the GitHub view is not registered'
+      if (!config.github?.enabled || config.github.server !== ${JSON.stringify(origin)}) return 'the GitHub settings did not take'
       return 'ok'
     })()`,
     30_000
