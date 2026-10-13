@@ -15,6 +15,8 @@ import { eink, setEink } from '@/reader/eink'
 import { setZen, zen } from '@/reader/zen'
 import { ScopeResolver } from '@/ai/ScopeResolver'
 import { ChatService } from '@/ai/ChatService'
+import { mountDebugSource } from '@/debugger/sourceExtension'
+import { chatCodeSelection, insertCodeSelection } from '@/views/codeSelectionHost'
 import { NodeService } from '@/node/NodeService'
 import { NodePathService } from '@/node/NodePathService'
 import { openNodeRepository } from '@/node/openRepository'
@@ -256,6 +258,8 @@ interface AbeleTestApi {
     confirm: typeof showScriptApproval
     dialog: typeof scriptApprovalDialog
   }
+  mountDebugSource: typeof mountDebugSource
+  codeSelectionAdapters: { chat: typeof chatCodeSelection; note: typeof insertCodeSelection }
   ChatService: typeof ChatService
   NodeService: typeof NodeService
   NodePathService: typeof NodePathService
@@ -881,6 +885,8 @@ export function exposeTestApi(plugin: Plugin): void {
       confirm: showScriptApproval,
       dialog: scriptApprovalDialog,
     },
+    mountDebugSource,
+    codeSelectionAdapters: { chat: chatCodeSelection, note: insertCodeSelection },
     ChatService,
     NodeService,
     NodePathService,
