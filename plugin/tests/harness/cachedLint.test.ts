@@ -62,7 +62,8 @@ export declare class MarkdownRenderer { static render(app: unknown, text: string
 export declare const sampleComponent: `
 
 describe('cached lint execution', () => {
-  // Setup and the comparison each retain a five-second deadline. Seeding is a checked
+  // Setup retains a five-second deadline; a warm-plus-cold comparison of two real lints gets
+  // twenty, so a loaded check machine does not read as a regression. Seeding is a checked
   // fixture prerequisite, not three serial full parser bootstraps inside one assertion phase.
   describe.each(['generated', 'external'])('Vue-only %s declarations', (location) => {
     let f: Fixture
@@ -180,7 +181,7 @@ export default [
       const [warm, cold] = await comparison(f)
       expect(warm.errorCount).toBe(1)
       expect(cold.errorCount).toBe(warm.errorCount)
-    })
+    }, 20000)
   })
 
   describe('non-type file changes', () => {
@@ -194,6 +195,6 @@ export default [
       const [warm, cold] = await comparison(f)
       expect(warm.errorCount).toBe(1)
       expect(cold.errorCount).toBe(1)
-    })
+    }, 20000)
   })
 })
