@@ -1,6 +1,6 @@
 import { afterAll, beforeAll, describe, expect, it } from 'vitest'
-import { sampleDocx, paragraph } from '../fixtures/docx/sampleDocx'
-import { strFromU8, unzipSync } from 'fflate'
+import { sampleDocx, sampleParts, paragraph } from '../fixtures/docx/sampleDocx'
+import { strFromU8, unzipSync, zipSync } from 'fflate'
 import { evalAsync } from './helpers/githubLive'
 import { evalJson, evalRaw, hasTestApi, isObsidianRunning, reloadApp } from './helpers/obsidianCli'
 import { onPhone, targets } from './helpers/target'
@@ -17,6 +17,48 @@ const largeBytes = Buffer.from(
 ).toString('base64')
 const available = isObsidianRunning() && hasTestApi()
 const SHOTS = shotDir('abele-word')
+const emptyParts = sampleParts(paragraph(''))
+for (const name of [
+  'word/header1.xml',
+  'word/footer1.xml',
+  'word/comments.xml',
+  'word/footnotes.xml',
+])
+  delete emptyParts[name]
+const states = [
+  ['empty', Buffer.from(zipSync(emptyParts)).toString('base64')],
+  ['short', bytes],
+  ['long', largeBytes],
+  ['broken', Buffer.from('sample invalid document').toString('base64')],
+]
+
+function captureStates() {
+  return evalAsync<string[]>(`(async () => {
+    const shots=[]
+    for(const [state,base64] of ${JSON.stringify(states)}) {
+      const path='sample-word-state-'+state+'.docx'
+      const prior=app.vault.getAbstractFileByPath(path);if(prior) await app.vault.delete(prior)
+      const data=Uint8Array.from(atob(base64),c=>c.charCodeAt(0))
+      const file=await app.vault.createBinary(path,data.buffer)
+      const leaf=app.workspace.getLeaf('tab')
+      try {
+        await leaf.setViewState({type:'abele-word',state:{file:path},active:true});await app.workspace.revealLeaf(leaf)
+        const root=leaf.view.contentEl
+        for(let i=0;i<150;i++) {
+          if(state==='broken' ? root.textContent.includes('Could not open document') : root.querySelector('.abele-word-page')) break
+          await new Promise(resolve=>setTimeout(resolve,100))
+        }
+        if(state==='broken' ? !root.textContent.includes('Could not open document') : !root.querySelector('.abele-word-page')) throw Error('Word state did not settle: '+state)
+        await new Promise(resolve=>requestAnimationFrame(()=>requestAnimationFrame(resolve)))
+        const shot=${JSON.stringify(SHOTS)}+'/word-'+state+'-'+(app.isMobile?'phone':'desktop')+'.png'
+        if(window.__e2eHost) await window.__e2eHost.shot(shot)
+        else {const fs=require('fs');fs.mkdirSync(${JSON.stringify(SHOTS)},{recursive:true});fs.writeFileSync(shot,(await require('@electron/remote').getCurrentWindow().webContents.capturePage()).toPNG())}
+        shots.push(shot)
+      } finally {leaf.detach();await app.vault.delete(file)}
+    }
+    return shots
+  })()`)
+}
 
 describe.skipIf(!available)('Word document view', () => {
   let sidebars: [boolean, boolean] = [true, true]
@@ -66,18 +108,18 @@ describe.skipIf(!available)('Word document view', () => {
     await leaf.setViewState({type:'abele-word',state:{file:${JSON.stringify(PATH)}},active:true})
     await app.workspace.revealLeaf(leaf)
     const until = async fn => { for (let i=0;i<150;i++) { if(fn()) return; await new Promise(r => setTimeout(r,100)) } throw Error('Word preview did not open') }
-    await until(() => leaf.view.contentEl.querySelector('iframe')?.contentDocument?.querySelector('section.docx'))
-    const frame = leaf.view.contentEl.querySelector('iframe')
-    const dom = frame.contentDocument
+    await until(() => leaf.view.contentEl.querySelector('.abele-word-page'))
+    const page = leaf.view.contentEl.querySelector('.abele-word-page')
     await new Promise(resolve => requestAnimationFrame(() => requestAnimationFrame(resolve)))
-    if (frame.getBoundingClientRect().height < 100) throw Error('Word preview has no visible height')
+    if (page.getBoundingClientRect().height < 100) throw Error('Word preview has no visible height')
     const root = leaf.view.contentEl
     const edge = root.getBoundingClientRect()
-    const over = [...root.querySelectorAll('.abele-word-toolbar button,.abele-word-toolbar input')].some(el => el.getBoundingClientRect().right > edge.right+1)
+    const field=root.querySelector('.abele-word-page__field')
+    const over = root.scrollWidth > root.clientWidth+1 || field.scrollWidth > field.clientWidth+1 || [...root.querySelectorAll('.abele-word-page__ribbon,.abele-word-page__status')].some(el => el.getBoundingClientRect().right > edge.right+1)
     const path = ${JSON.stringify(SHOTS)} + '/word-' + (app.isMobile ? 'phone' : 'desktop') + '.png'
     if (window.__e2eHost) await window.__e2eHost.shot(path)
     else { const fs = require('fs'); fs.mkdirSync(${JSON.stringify(SHOTS)},{recursive:true}); const image = await require('@electron/remote').getCurrentWindow().webContents.capturePage(); fs.writeFileSync(path,image.toPNG()) }
-    return { text:dom.body.textContent, safe:!dom.querySelector('script,iframe') && frame.getAttribute('sandbox') === 'allow-same-origin', over, edit:!!root.querySelector('.abele-word-edit'),shot:path }
+    return { text:page.textContent, safe:!page.querySelector('script,iframe,object,embed') && [...page.querySelectorAll('img')].every(img => ['png','jpeg','gif','webp'].some(mime => img.getAttribute('src').startsWith('data:image/'+mime+';base64,'))), over, edit:!!root.querySelector('[role=toolbar]'),shot:path }
   })()`)
   it('renders a Word package without executable document content', () => {
     const result = probe()
@@ -92,11 +134,12 @@ describe.skipIf(!available)('Word document view', () => {
     const data = evalAsync<string>(`(async () => {
       const view = app.workspace.getLeavesOfType('abele-word').find(l => l.view.file?.path === ${JSON.stringify(PATH)}).view
       const root = view.contentEl;
-      [...root.querySelectorAll('button')].find(b => b.textContent === 'Text paragraphs').click()
       const row = root.querySelector('[data-paragraph="2"]')
-      row.querySelector('.abele-word-edit').click()
+      row.querySelector('.abele-word-line__text').click()
+      await new Promise(r => setTimeout(r,0))
       row.querySelector('textarea').value = 'Updated item';
-      [...row.querySelectorAll('button')].find(b => b.textContent === 'Save').click()
+      row.querySelector('textarea').dispatchEvent(new Event('input',{bubbles:true}));
+      row.querySelector('textarea').dispatchEvent(new KeyboardEvent('keydown',{key:'Escape',bubbles:true}))
       for (let i=0;i<150;i++) {
         if (view.document?.paragraphs[1]?.text === 'Updated item') break
         await new Promise(r => setTimeout(r,100))
@@ -122,8 +165,11 @@ describe.skipIf(!available)('Word document view', () => {
     }>(`(async () => {
       const view = app.workspace.getLeavesOfType('abele-word').find(l=>l.view.file?.path===${JSON.stringify(PATH)}).view
       const root = view.contentEl;
-      if(root.querySelector('.abele-word-text').hidden) [...root.querySelectorAll('button')].find(b=>b.textContent==='Text paragraphs').click()
-      const row=root.querySelector('[data-paragraph="1"]');row.querySelector('.abele-word-edit').click()
+      root.querySelector('[data-paragraph="1"] .abele-word-line__text').click()
+      await new Promise(r => setTimeout(r,0))
+      root.querySelector('[aria-label="Table, image and paragraph controls"]').click()
+      for(let i=0;i<150&&!document.querySelector('.abele-word-editor');i++) await new Promise(r=>setTimeout(r,100))
+      const row=document.querySelector('.abele-word-editor')
       const input=row.querySelector('textarea');input.setSelectionRange(0,6)
       const controls=[...row.querySelectorAll('button')].map(b=>b.textContent)
       const clipped=[]
@@ -162,7 +208,7 @@ describe.skipIf(!available)('Word document view', () => {
     console.info(result.shot)
   })
 
-  it('pages a large document without a long blocked animation frame', () => {
+  it('renders and scrolls every paragraph without a long blocked animation frame', () => {
     const result = evalAsync<{
       paragraphs: number
       rows: number
@@ -178,17 +224,25 @@ describe.skipIf(!available)('Word document view', () => {
       handle=requestAnimationFrame(tick)
       try {
         await leaf.setViewState({type:'abele-word',state:{file:path},active:true});await app.workspace.revealLeaf(leaf)
-        for(let i=0;i<150&&!leaf.view.document;i++) await new Promise(r=>setTimeout(r,100))
+        for(let i=0;i<150&&leaf.view.contentEl.querySelectorAll('[data-paragraph]').length!==5004;i++) await new Promise(r=>setTimeout(r,100))
         await new Promise(resolve=>requestAnimationFrame(()=>requestAnimationFrame(resolve)))
-        return {paragraphs:leaf.view.document?.paragraphs.length ?? 0,rows:leaf.view.contentEl.querySelectorAll('.abele-word-paragraph').length,frames,maxGap,rich:!!leaf.view.contentEl.querySelector('iframe')}
+        const field=leaf.view.contentEl.querySelector('.abele-word-page__field')
+        for(let i=0;i<10;i++) {field.scrollTop=field.scrollHeight*i/9;await new Promise(resolve=>requestAnimationFrame(resolve))}
+        return {paragraphs:leaf.view.document?.paragraphs.length ?? 0,rows:leaf.view.contentEl.querySelectorAll('[data-paragraph]').length,frames,maxGap,rich:!!leaf.view.contentEl.querySelector('iframe')}
       } finally {stopped=true;cancelAnimationFrame(handle);leaf.detach();await app.vault.delete(file)}
     })()`)
     expect(result.paragraphs).toBe(5004)
-    expect(result.rows).toBe(50)
+    expect(result.rows).toBe(5004)
     expect(result.rich).toBe(false)
     expect(result.frames).toBeGreaterThan(1)
     expect(result.maxGap).toBeLessThan(500)
   })
+
+  it('captures empty, short, long and broken synthetic document states', () => {
+    const shots = captureStates()
+    expect(shots).toHaveLength(4)
+    console.info(shots.join('\n'))
+  }, 120000)
 
   it('fits a phone screen and offers no hand-editing controls', async () => {
     if (!onPhone()) {
@@ -200,5 +254,6 @@ describe.skipIf(!available)('Word document view', () => {
     expect(result.edit).toBe(false)
     expect(result.text).toContain('Sample report')
     console.info(result.shot)
+    expect(captureStates()).toHaveLength(4)
   }, 120000)
 })

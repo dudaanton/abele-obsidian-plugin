@@ -94,7 +94,7 @@ describe.skipIf(!available)('Word editing through agent tools', () => {
         await leaf.setViewState({type:'abele-word',state:{file:${JSON.stringify(DOC)}},active:true}); await app.workspace.revealLeaf(leaf)
         let image=false
         for(let i=0;i<150;i++) {
-          const img=leaf.view.contentEl.querySelector('iframe')?.contentDocument?.querySelector('img')
+          const img=leaf.view.contentEl.querySelector('.abele-word-page img')
           if(img?.complete && img.naturalWidth>0) {image=true;break}
           await new Promise(resolve=>setTimeout(resolve,100))
         }

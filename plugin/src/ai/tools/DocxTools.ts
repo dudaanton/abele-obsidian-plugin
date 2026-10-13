@@ -98,7 +98,7 @@ export function createDocxTools(): AgentTool[] {
       label: 'Word tabs',
       category: 'Word',
       description:
-        'List open Word documents in this chat’s scope and the paragraph text window shown. Read-only.',
+        'List open Word documents in this chat’s scope and their selected paragraph. Each tab shows the full document page. Read-only.',
       parameters: { type: 'object', properties: {} },
       execute: async (_id, _params, _signal, ctx) => {
         const app = GlobalStore.getInstance().app

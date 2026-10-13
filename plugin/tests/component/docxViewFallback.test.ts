@@ -3,7 +3,7 @@ import { DocxView } from '@/word/DocxView'
 import { useVault } from '../helpers/testEnv'
 import { sampleDocx } from '../fixtures/docx/sampleDocx'
 
-it('leaves readable text and an explanation when the preview renderer fails', async () => {
+it('leaves every paragraph readable and an explanation when the page fails', async () => {
   const app = useVault([])
   const bytes = sampleDocx()
   const file = await app.vault.createBinary('sample.docx', bytes.buffer as ArrayBuffer)
@@ -15,6 +15,7 @@ it('leaves readable text and an explanation when the preview renderer fails', as
     paragraph: 1,
     editing: false,
     document: null,
+    unmountPage: () => {},
     showDocument: async () => {
       contentEl.empty()
       throw new Error('sample renderer failure')

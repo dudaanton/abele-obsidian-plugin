@@ -9,6 +9,7 @@ export interface DesktopEditHost {
   app: App
   apply(edit: WordEdit): Promise<void>
   cancel(): void
+  range?: { from: number; to: number }
 }
 /** Plain desktop fields act on original package operations; never a lossy contenteditable model. */
 export function mountWordEditor(
@@ -16,7 +17,7 @@ export function mountWordEditor(
   doc: WordPackage,
   p: WordParagraph,
   host: DesktopEditHost
-): void {
+): () => void {
   const form = row.createDiv({ cls: 'abele-word-editor' })
   const input = form.createEl('textarea', { attr: { 'aria-label': `Edit paragraph ${p.number}` } })
   input.value = p.text
@@ -193,4 +194,9 @@ export function mountWordEditor(
     button(pictures, 'Delete image', () => ({ ...base('image_delete'), ...image() }))
   }
   input.focus()
+  if (host.range) input.setSelectionRange(host.range.from, host.range.to)
+  return () => {
+    suggestions.forEach((s) => s.close())
+    form.remove()
+  }
 }
