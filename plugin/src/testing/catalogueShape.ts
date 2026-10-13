@@ -64,7 +64,6 @@ export const CATALOGUE_COMPONENTS = [
   'Search',
   'SelectionBar',
   'Section',
-  'SelectionToolbar',
   'Setting',
   'SheetHeaderActions',
   'ShortList',

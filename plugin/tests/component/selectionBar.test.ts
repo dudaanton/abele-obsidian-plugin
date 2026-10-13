@@ -80,3 +80,31 @@ it('offers its actions only in the bar: a right-click keeps the ordinary menu', 
   prose.dispatchEvent(menu)
   expect(menu.defaultPrevented).toBe(false)
 })
+
+it('teleports outside a clipping pane, preserves a pressed selection and removes the bar on unmount', async () => {
+  const { prose } = setup()
+  select(prose)
+  await settle()
+  await flushPromises()
+  const toolbar = bar()!
+  expect(toolbar.parentElement).toBe(document.body)
+  expect(toolbar.getAttribute('role')).toBe('toolbar')
+  expect(toolbar.classList.contains('abele-selection-bar_placed')).toBe(true)
+  const icon = toolbar.querySelector<HTMLElement>('[data-action="add"]')!
+  const mouse = new MouseEvent('mousedown', { cancelable: true, bubbles: true })
+  icon.dispatchEvent(mouse)
+  expect(mouse.defaultPrevented).toBe(true)
+  icon.dispatchEvent(new Event('pointerdown', { bubbles: true }))
+  window.getSelection()?.removeAllRanges()
+  document.dispatchEvent(new Event('selectionchange'))
+  await flushPromises()
+  icon.click()
+  expect(wrapper!.emitted('pick')?.[0]).toEqual(['add', { text: 'Sample words' }])
+  select(prose)
+  await settle()
+  await flushPromises()
+  expect(bar()).not.toBeNull()
+  wrapper!.unmount()
+  wrapper = undefined
+  expect(bar()).toBeNull()
+})

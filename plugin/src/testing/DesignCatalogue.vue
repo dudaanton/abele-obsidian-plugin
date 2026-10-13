@@ -439,14 +439,6 @@
         >
           Sample context beside the selected passage.
         </AnchoredCard>
-        <SelectionToolbar
-          v-if="selectionPosition"
-          :top="selectionPosition.top"
-          :left="selectionPosition.left"
-        >
-          <Button text="Ask here" icon="message-circle-plus" @click="selectionPosition = null" />
-          <Button text="Add to chat" icon="message-square-plus" @click="selectionPosition = null" />
-        </SelectionToolbar>
       </template>
       <template v-else-if="page === 'navigation'">
         <Tabs
@@ -672,7 +664,6 @@ import Chart from '@/components/obsidian/Chart.vue'
 import SidebarPanel from '@/components/obsidian/SidebarPanel.vue'
 import PanelResizeHandle from '@/components/obsidian/PanelResizeHandle.vue'
 import FloatingButton from '@/components/obsidian/FloatingButton.vue'
-import SelectionToolbar from '@/components/obsidian/SelectionToolbar.vue'
 import AnchoredCard, { type CardAnchor } from '@/components/obsidian/AnchoredCard.vue'
 import RunReport from '@/components/obsidian/RunReport.vue'
 import ShortList from '@/components/obsidian/ShortList.vue'
@@ -818,11 +809,15 @@ function previewAnchor() {
   const { left, top, bottom } = selectionAnchor.value.getBoundingClientRect()
   cardAnchor.value = { left, top, bottom }
 }
-const selectionPosition = ref<{ top: number; left: number } | null>(null)
 function previewSelection() {
-  if (!selectionAnchor.value) return
-  const rect = selectionAnchor.value.getBoundingClientRect()
-  selectionPosition.value = { top: rect.bottom, left: rect.left }
+  const sample = selectionAnchor.value?.querySelector('[data-selection-sample]')
+  if (!sample) return
+  const range = document.createRange()
+  range.selectNodeContents(sample)
+  const selection = window.getSelection()
+  selection?.removeAllRanges()
+  selection?.addRange(range)
+  document.dispatchEvent(new Event('selectionchange'))
 }
 const selected = ref(0),
   questionOpen = ref(true),
