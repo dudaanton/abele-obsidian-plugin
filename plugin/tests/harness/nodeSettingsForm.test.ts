@@ -37,7 +37,8 @@ it('closes only the child form and keeps the settings dialog mounted', async () 
 
 it('opens the local node dialog from its settings action and returns its field container', async () => {
   const settings = document.createElement('div')
-  settings.innerHTML = '<button aria-label="Name the node here and paste its token">Add</button>'
+  settings.innerHTML =
+    '<div class="setting-item"><div class="setting-item-name">Add the node on this computer</div><button>Add</button></div>'
   document.body.append(settings)
   settings.querySelector('button')!.onclick = () => {
     const modal = document.createElement('div')
@@ -45,14 +46,15 @@ it('opens the local node dialog from its settings action and returns its field c
     modal.innerHTML = '<input aria-label="Node URL">'
     document.body.append(modal)
   }
-  const form = await run(settings, async (probe: () => unknown) => probe())
+  const form = await run(settings, async (probe: () => unknown) => !!probe())
   expect(form).toBe(document.querySelector('.modal'))
   expect(form.querySelector('input[aria-label="Node URL"]')).not.toBeNull()
 })
 
 it('does not silently skip fields when the dialog fails to open', async () => {
   const settings = document.createElement('div')
-  settings.innerHTML = '<button aria-label="Name the node here and paste its token">Add</button>'
+  settings.innerHTML =
+    '<div class="setting-item"><div class="setting-item-name">Add the node on this computer</div><button>Add</button></div>'
   await expect(run(settings, async (probe: () => unknown) => probe())).rejects.toThrow(
     'Local node fields did not open'
   )

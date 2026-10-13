@@ -164,12 +164,11 @@ it('restores unsent offline drafts without auto-sending, then sends explicitly a
       await until(() => settingsDoc.querySelector('.abele-settings__nav .abele-tabs__tab'));
       [...settingsDoc.querySelectorAll('.abele-settings__nav .abele-tabs__tab')].find(t => t.textContent.trim() === 'Nodes').click();
       const settingsRoot = app.setting.activeTab.containerEl;
-      await until(() => settingsRoot.querySelector('button[aria-label="Name the node here and paste its token"]'));
       ${OPEN_LOCAL_NODE_FORM}
       const fill = (label, value) => { const field = nodeForm.querySelector('input[aria-label="' + label + '"]'); field.value = value; field.dispatchEvent(new Event('input', {bubbles:true})) };
       fill('Node label', 'Sample acceptance node'); fill('Node URL', 'http://127.0.0.1:${port}'); fill('Node installation token', ${JSON.stringify(token)});
       await wait(100);
-      nodeForm.querySelector('button[aria-label="Authenticate and pin the local node identity on this device"]').click();
+      [...nodeForm.querySelectorAll('button')].find(button => button.textContent.trim() === 'Add').click();
       await until(() => !nodeForm.isConnected);
       await until(() => nodes.nodes.value.some(n => n.label === 'Sample acceptance node'));
       const node = nodes.nodes.value.find(n => n.label === 'Sample acceptance node');

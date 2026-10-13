@@ -12,10 +12,13 @@ it('opens the node chat fixture form with its real poller and settings document'
   const prelude = source('nodeChat').match(/const PRELUDE = (`[\s\S]*?`)\n/)![1]
   const settings = document.createElement('div')
   const add = document.createElement('button')
-  add.setAttribute('aria-label', 'Name the node here and paste its token')
+  const row = document.createElement('div')
+  row.className = 'setting-item'
+  row.innerHTML = '<div class="setting-item-name">Add the node on this computer</div>'
+  row.append(add)
   add.textContent = 'Add'
   // The settings tab mounts on Vue's next update, after its navigation click.
-  const mount = setTimeout(() => settings.append(add), 25)
+  const mount = setTimeout(() => settings.append(row), 25)
   const form = document.createElement('div')
   form.className = 'modal'
   const url = document.createElement('input')

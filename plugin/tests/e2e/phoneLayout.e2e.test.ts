@@ -534,6 +534,9 @@ const probeScript = `(async () => {
     mcpConfig.ai = { ...mcpConfig.ai, mcpServers: MCP_BEFORE }
     if (replyReviewer) window.__abeleTest.AgentRegistry.getInstance().remove(replyReviewer.id)
     for (const path of SEEDED) {
+      const chats = window.__abeleTest.ChatService.getInstance()
+      const session = chats.getSessionByFile(path)
+      if (session) await chats.closeTab(session.id)
       const file = app.vault.getAbstractFileByPath(path)
       if (file) await app.vault.delete(file)
     }
@@ -548,11 +551,13 @@ const probeScript = `(async () => {
   try {
     await closeDialog()
     await seed()
-    app.commands.executeCommandById('abele:show-ai-sidebar')
-    await until(() => {
+    const probeChats = window.__abeleTest.ChatService.getInstance()
+    await probeChats.openChatFile(app.vault.getAbstractFileByPath(SEEDED.find(path => path.endsWith('.abchat'))))
+    await probeChats.revealSidebar({ focus: false })
+    if (!await until(() => {
       const chat = document.querySelector('.abele-ai-chat')
       return chat && chat.getBoundingClientRect().height > 0
-    }, 8000)
+    }, 8000)) throw Error('Local chat fixture did not open')
     await wait(500)
 
     const chat = document.querySelector('.abele-ai-chat')
