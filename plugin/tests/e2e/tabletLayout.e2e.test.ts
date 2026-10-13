@@ -126,7 +126,7 @@ const probeScript = `(async () => {${PRELUDE}
     report.pageShown = !!root.querySelector('.abele-settings__content')?.children.length
     await shoot('settings')
 
-    tabs[2]?.click()
+    tabs.find(tab => tab.textContent.trim() === 'Journals')?.click()
     await wait(500)
     report.tabsAfterPick = [...root.querySelectorAll('.abele-settings__nav .abele-tabs__tab')].filter(onScreen).length
     report.pageAfterPick = !!root.querySelector('.abele-settings__content')?.children.length
@@ -223,14 +223,14 @@ describe.skipIf(!available)('settings and sidebars on a tablet', () => {
     expect(report.phone).toBe(false)
   })
 
-  it('shows every settings tab as a strip beside the page, as the desktop does', () => {
-    expect(report.vertical).toBe(false)
+  it('shows every settings page in a list beside the page, as the desktop does', () => {
+    expect(report.vertical).toBe(true)
     expect(report.tabs).toBe(SETTINGS_TABS)
     expect(report.tabsOnScreen).toBe(SETTINGS_TABS)
     expect(report.pageShown).toBe(true)
   })
 
-  it('keeps the strip after a tab is picked', () => {
+  it('keeps the page list after a page is picked', () => {
     expect(report.tabsAfterPick).toBe(SETTINGS_TABS)
     expect(report.activeAfterPick).toBe('Journals')
     expect(report.pageAfterPick).toBe(true)

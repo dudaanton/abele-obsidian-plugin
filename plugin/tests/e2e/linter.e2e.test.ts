@@ -12,11 +12,15 @@
 import { describe, it, expect, beforeAll, afterAll } from 'vitest'
 import { evalJson, evalRaw, hasTestApi, isObsidianRunning, reloadApp } from './helpers/obsidianCli'
 import { shotDir } from './helpers/shots'
+import { SCRIPT_FIXTURE, type ScriptFixtureSnapshot } from './helpers/scriptFixture'
 
 const available = isObsidianRunning() && hasTestApi()
 
 const FOLDER = 'E2E Lint'
 const SCRIPT_NAME = 'E2E lint todo'
+const SCRIPT_FOLDER = 'Sample lint scripts ' + Date.now()
+let scriptFixture: ScriptFixtureSnapshot
+let linterBefore: unknown
 const SCRIPT = `// @name ${SCRIPT_NAME}
 // @description No TODO left in a note
 // @lint warning
@@ -83,13 +87,15 @@ const setup = `
     if (old) await app.vault.delete(old)
     await app.vault.create(path, text)
   }
-  const folder = config.ai.scriptsFolder || 'Scripts'
+  ${SCRIPT_FIXTURE}
+  const folder = ${JSON.stringify(SCRIPT_FOLDER)}
   if (!app.vault.getAbstractFileByPath(folder)) await app.vault.createFolder(folder)
   const path = folder + '/${SCRIPT_NAME}.js'
   const old = app.vault.getAbstractFileByPath(path)
   if (old) await app.vault.delete(old)
   await app.vault.create(path, ${JSON.stringify(SCRIPT)})
-  await t.ScriptService.getInstance().discover()
+  await enableScriptFixture(folder)
+  await approveScriptFixture(path, ${JSON.stringify(SCRIPT)})
   await until(() => Object.keys(notes).every((n) => app.metadataCache.getFileCache(app.vault.getAbstractFileByPath('${FOLDER}/' + n))), 5000)
   return true
 `
@@ -101,7 +107,7 @@ const cleanup = `
   app.workspace.detachLeavesOfType('abele-linter')
   const dir = app.vault.getAbstractFileByPath('${FOLDER}')
   if (dir) await app.vault.delete(dir, true)
-  const folder = config.ai.scriptsFolder || 'Scripts'
+  const folder = ${JSON.stringify(SCRIPT_FOLDER)}
   const f = app.vault.getAbstractFileByPath(folder + '/${SCRIPT_NAME}.js')
   if (f) await app.vault.delete(f)
   const scripts = app.vault.getAbstractFileByPath(folder)
@@ -134,11 +140,21 @@ interface Linted {
 
 describe.skipIf(!available)('the linter', () => {
   beforeAll(() => {
+    linterBefore = probe('return t.AbeleConfig.getInstance().linter')
+    scriptFixture = probe<ScriptFixtureSnapshot>(
+      `${SCRIPT_FIXTURE} return await saveScriptFixture()`
+    )
     probe(setup)
   }, 60_000)
 
   afterAll(() => {
-    probe(cleanup)
+    try {
+      probe(cleanup)
+    } finally {
+      probe(
+        `${SCRIPT_FIXTURE} t.AbeleConfig.getInstance().linter = ${JSON.stringify(linterBefore)}; await restoreScriptFixture(${JSON.stringify(scriptFixture)}); return true`
+      )
+    }
   }, 60_000)
 
   it('lints a folder into its tab, a script rule among the rules', () => {

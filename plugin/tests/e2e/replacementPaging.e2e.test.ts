@@ -71,7 +71,7 @@ describe.skipIf(!available)('replacement preview paging in Bases', () => {
         require('fs').writeFileSync(${JSON.stringify(SHOTS + (phone ? '/phone.png' : '/desktop.png'))}, image.resize({ width: ${phone ? 390 : 1280} }).toPNG())
         return { count: root.querySelector('.abele-far-bases__count').textContent.trim(), rows: rowCount(), last: root.querySelectorAll('.abele-far-bases__result a')[62].textContent, shot: !image.isEmpty() }
       })()`)
-      expect(report.count).toBe('63 results')
+      expect(report.count).toBe('63 notes would change')
       expect(report.rows).toBe(63)
       expect(report.last).toContain('sample-62.md')
       expect(report.shot).toBe(true)

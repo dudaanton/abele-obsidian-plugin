@@ -218,6 +218,7 @@ type RecipientScreen = Screen &
     primary: RecipientAction & { pinned: boolean; summary: string }
   }
 
+const fixtureId = Date.now() + '-' + Math.random().toString(36).slice(2)
 const probeScript = `(async () => {
   const wait = (ms) => new Promise((r) => setTimeout(r, ms))
   const until = async (fn, ms) => {
@@ -1182,13 +1183,6 @@ const probeScript = `(async () => {
           const settingsModal = document.querySelector('.modal.mod-settings') || document.querySelector('.modal')
           const header = settingsModal?.querySelector('.modal-header')
           const settingsScroll = settingsModal?.querySelector('.vertical-tab-content')
-          const timeoutRow = [...document.querySelectorAll('.abele-settings__ai .setting-item')]
-            .find((row) => row.querySelector('.setting-item-name')?.textContent === 'Request timeout (seconds)')
-          if (timeoutRow?.querySelector('input') && settingsModal && settingsScroll) {
-            timeoutRow.scrollIntoView({ block: 'center' })
-            await wait(400)
-            await screen('settings ai timeout', settingsModal, settingsScroll)
-          }
           if (intro && header && settingsScroll) {
             settingsScroll.scrollTop += intro.getBoundingClientRect().top - header.getBoundingClientRect().bottom + 12
             await wait(400)
@@ -1199,6 +1193,18 @@ const probeScript = `(async () => {
           } else {
             report['settings ai secrets scroll'] = { over: [], scrollers: [], capped: [], stranded: [], clipped: [], fill: 0, shot: '', error: 'no Secrets introduction or native settings header: ' + JSON.stringify({ intro: !!intro, header: !!header, scroll: !!settingsScroll }) }
           }
+          ;[...document.querySelectorAll('.abele-ai-settings__tabs .abele-tabs__tab')]
+            .find(tab => tab.textContent.trim() === 'Models')?.click()
+          await wait(300)
+          const timeoutRow = [...document.querySelectorAll('.abele-settings__ai .setting-item')]
+            .find(row => row.querySelector('.setting-item-name')?.textContent === 'Request timeout (seconds)')
+          if (!timeoutRow) throw Error('No request timeout on the Models page')
+          timeoutRow.scrollIntoView({ block: 'center' })
+          await wait(400)
+          await screen('settings ai timeout', settingsModal, settingsScroll)
+          ;[...document.querySelectorAll('.abele-ai-settings__tabs .abele-tabs__tab')]
+            .find(tab => tab.textContent.trim() === 'General')?.click()
+          await wait(300)
         }
         if (!(await until(() => document.querySelector('.abele-secret-field__stored'), 5000))) {
           report[label] = { over: [], scrollers: [], capped: [], clipped: [], fill: 0, shot: '', error: 'no stored key on ' + page }
@@ -1784,6 +1790,10 @@ const probeScript = `(async () => {
 
   return report
 })()`
+  // Each invocation owns its files even after an interrupted older run.
+  .replaceAll('Phone probe', 'Sample layout ' + fixtureId)
+  .replaceAll('pnest', 'sample-comment-' + fixtureId + '-')
+  .replaceAll('sample-word-layout.docx', 'sample-word-layout-' + fixtureId + '.docx')
 
 /** Closes anything standing over the note and switches emulation, letting the reload settle. */
 const setMobile = async (on: boolean): Promise<void> => {
@@ -1859,7 +1869,7 @@ describe.skipIf(!available)('the GitHub base picker on a phone', () => {
     expect(result.clipped).toEqual([])
     expect(result.over).toEqual([])
     expect(result.width).toBeGreaterThan(100)
-    expect(result.sha).toContain(BASE_SHA)
+    expect(result.sha).toContain(BASE_SHA.slice(0, 7))
     expect(result.shot).toMatch(/\.png$/)
   }, 90000)
 })

@@ -100,7 +100,7 @@ const script = `(async () => {
     input.dispatchEvent(new Event('input', { bubbles: true }))
     await wait(400)
     input.dispatchEvent(new KeyboardEvent('keydown', { key: 'Enter', code: 'Enter', keyCode: 13, bubbles: true }))
-    await until(() => inputText().includes('[[sample-note]]'), 'inserted note link')
+    await until(() => inputText().includes('[[sample-menu-fixture/sample-note]]'), 'inserted note link')
     report.draft = inputText()
     report.scope = session.scopeResolver.isInScope(notePath)
     report.attached = session.touched.value.map(n => n.path)
@@ -187,7 +187,7 @@ describe.skipIf(!available)('note actions in the app', () => {
   it('inserts into the picked chat beside its draft, without attaching a card or moving the note', () => {
     for (const report of reports) {
       expect(report.draft).toContain('Existing draft')
-      expect(report.draft).toContain('[[sample-note]]')
+      expect(report.draft).toContain('[[sample-menu-fixture/sample-note]]')
       expect(report.scope).toBe(true)
       expect(report.attached).toEqual([])
       expect(report.activeNote).toBe('sample-menu-fixture/sample-note.md')

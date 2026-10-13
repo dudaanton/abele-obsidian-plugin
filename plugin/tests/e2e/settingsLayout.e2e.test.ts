@@ -30,7 +30,7 @@
  * Requires Obsidian running with the plugin installed — see docs/Testing.md.
  */
 import { describe, it, expect, beforeAll, afterAll } from 'vitest'
-import { isObsidianRunning, evalJson, evalRaw, activeVaultName } from './helpers/obsidianCli'
+import { isObsidianRunning, evalJson, evalLong, activeVaultName } from './helpers/obsidianCli'
 import { shotDir } from './helpers/shots'
 import { horizontalOverflow } from './helpers/horizontalOverflow'
 
@@ -61,11 +61,11 @@ const PASSES = [
 ]
 
 /**
- * The probe is asynchronous — it clicks through tabs and waits for each to render — and
- * `evalJson` cannot await a promise, so the result is parked on the window and polled for.
+ * The long-job transport starts after its launch reply and reports asynchronous failures.
+ * A hand-started detached promise can otherwise leave the setup polling an unset result.
  */
 const probeFor = (phone: boolean) =>
-  `(() => { window.__abeleLayoutProbe = null; (async () => {
+  `(async () => {
   const wait = (ms) => new Promise((r) => setTimeout(r, ms))
   app.setting.open()
   app.setting.openTabById('abele')
@@ -233,12 +233,8 @@ const probeFor = (phone: boolean) =>
     .find((w) => w.getTitle().startsWith('Settings - ' + app.vault.getName() + ' - '))
   if (settingsWindow) settingsWindow.close()
 
-  window.__abeleLayoutProbe = report
-})().catch((e) => {
-  // A step that throws — a tab or a card not where the probe expects it — says so, instead of
-  // leaving the result unset and the test waiting out its whole timeout for nothing.
-  window.__abeleLayoutProbe = { __error: String((e && e.stack) || e).slice(0, 600) }
-}); return 'started' })()`
+  return report
+})()`
 
 const resize = (width: number) =>
   `(() => {
@@ -253,19 +249,7 @@ const resize = (width: number) =>
   })()`
 
 async function runProbe(phone: boolean): Promise<Report> {
-  evalRaw(probeFor(phone), 120_000)
-
-  const deadline = Date.now() + 120_000
-  while (Date.now() < deadline) {
-    if (evalJson<boolean>('window.__abeleLayoutProbe !== null', 60_000)) {
-      const report = evalJson<Report | { __error: string }>('window.__abeleLayoutProbe', 60_000)
-      if ('__error' in report && typeof report.__error === 'string')
-        throw new Error(`The layout probe failed: ${report.__error}`)
-      return report as Report
-    }
-    await new Promise((resolve) => setTimeout(resolve, 1000))
-  }
-  throw new Error('The layout probe did not finish in time — it is still running, not failed')
+  return JSON.parse(await evalLong(probeFor(phone), 120_000)) as Report
 }
 
 const available = isObsidianRunning()

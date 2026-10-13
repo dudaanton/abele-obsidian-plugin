@@ -34,32 +34,31 @@ const probe = (width: number) => `(() => {
   const host = document.createElement('div')
   host.style.cssText = 'position:fixed;left:-9999px;top:0;width:${width}px;font-size:16px'
 
-  // The shape TransactionItem.vue emits: the title and the chevron are siblings inside
-  // __main, and the chevron is the kit's icon, which brings its own box.
+  // TransactionItem composes EntryRow: title, amount and actions occupy the first grid row.
   const chevron = '<div class="abele-obsidian-icon">' +
     '<div class="abele-obsidian-icon__icon"><svg class="svg-icon" width="16" height="16">' +
     '</svg></div></div>'
   const row = (name, title) =>
-    '<div class="abele-transaction-view" data-name="' + name + '">' +
-      '<div class="abele-transaction-view__content">' +
-        '<div class="abele-transaction-view__main">' +
+    '<div class="abele-entry-row abele-transaction-view" data-name="' + name + '">' +
+      '<div class="abele-entry-row__body">' +
+        '<div class="abele-entry-row__title">' +
           '<div class="abele-markdown abele-transaction-view__title"><p>' + title + '</p></div>' +
-          chevron +
         '</div>' +
-        '<div class="abele-transaction-view__info">' +
+        '<div class="abele-entry-row__codes"><span class="abele-transaction-view__amount">-500.00 ' +
+          '<span class="abele-transaction-view__currency">USD</span></span></div>' +
+        '<div class="abele-entry-row__actions">' + chevron + '</div>' +
+        '<div class="abele-entry-row__meta">' +
           '<span class="abele-transaction-view__accounts">' +
-            '<span class="abele-transaction-view__link"><p>tinkoff ACC RUB</p></span>' +
+            '<span class="abele-transaction-view__link"><p>Sample source</p></span>' +
             '<span> \\u2192 </span>' +
-            '<span class="abele-transaction-view__link"><p>Services ACC</p></span>' +
+            '<span class="abele-transaction-view__link"><p>Sample destination</p></span>' +
           '</span>' +
         '</div>' +
       '</div>' +
-      '<span class="abele-transaction-view__amount">-500.00 ' +
-        '<span class="abele-transaction-view__currency">RUB</span></span>' +
     '</div>'
 
   host.innerHTML =
-    row('short', 'SUBS - regru') +
+    row('short', 'Sample subscription') +
     row('long', 'A subscription with a name long enough to fill the whole of the row it is on ' +
       'and then some, which is what a wrapped title looks like')
   document.body.appendChild(host)
@@ -83,7 +82,7 @@ const probe = (width: number) => `(() => {
     const boxes = lines(firstText(title))
     const icon = el.querySelector('.abele-obsidian-icon')
     report[el.dataset.name] = {
-      chevronGap: round(icon.getBoundingClientRect().left - boxes[boxes.length - 1].right),
+      chevronGap: round(icon.getBoundingClientRect().left - el.querySelector('.abele-entry-row__codes').getBoundingClientRect().right),
       chevronOffset: round(boxMiddle(icon) - middle(boxes[0])),
       titleLines: boxes.length,
     }
@@ -114,7 +113,7 @@ describe.skipIf(!available)('a transaction with a note to expand', () => {
         return found
       }
 
-      it('puts the chevron beside the title rather than across the row', () => {
+      it('puts the chevron beside the amount in its own action column', () => {
         expect(report().short.chevronGap).toBeLessThanOrEqual(BESIDE_IT_PX)
       })
 

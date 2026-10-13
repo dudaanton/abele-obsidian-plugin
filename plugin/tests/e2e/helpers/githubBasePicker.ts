@@ -14,7 +14,7 @@ export const openBasePicker = (web: string) => `
   const input = prompt.querySelector('input')
   input.value = ${JSON.stringify(TAG)}
   input.dispatchEvent(new Event('input', { bubbles: true }))
-  if (!(await until(() => prompt.querySelector('.suggestion-note')?.textContent.includes(${JSON.stringify(BASE_SHA)}), 20000))) throw Error('The resolved base SHA did not show')
+  if (!(await until(() => prompt.querySelector('.suggestion-note')?.textContent.includes(${JSON.stringify(BASE_SHA.slice(0, 7))}), 20000))) throw Error('The resolved base SHA did not show')
 `
 
 /** Measure the native prompt, including the focus ring outside its field's box. */

@@ -276,18 +276,17 @@ describe.skipIf(!available)('date, priority and labels properties', () => {
       steps.push(await settle('${LABELS}', ['sample-beta']))
       await wait(300)
       const pills = [...cell(leaf, '${LABELS}').querySelectorAll('.multi-select-pill')].map((p) => p.dataset.label)
-      // A label with a colour of its own is drawn in it, its text too, clear of the tint's edge.
+      // The accepted design carries the label's colour in its dot, beside the text.
       const tinted = cell(leaf, '${LABELS}').querySelector('.multi-select-pill[data-label="sample-beta"]')
       const probe = document.body.createDiv()
       probe.style.color = 'var(--color-red)'
       const red = getComputedStyle(probe).color
       probe.remove()
       const tint = tinted && {
-        color: getComputedStyle(tinted.querySelector('.multi-select-pill-content')).color,
+        color: getComputedStyle(tinted.querySelector('.multi-select-pill-content'), '::before').backgroundColor,
         red,
         padding:
-          tinted.querySelector('.multi-select-pill-content').getBoundingClientRect().left -
-          tinted.getBoundingClientRect().left,
+          parseFloat(getComputedStyle(tinted.querySelector('.multi-select-pill-content'), '::before').marginInlineEnd),
       }
       await shoot('desktop-labels')
       return { steps, offered, pills, tint }

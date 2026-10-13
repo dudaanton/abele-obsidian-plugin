@@ -132,15 +132,27 @@ describe.skipIf(!available)('changelog in Obsidian', () => {
       await new Promise(r => setTimeout(r, 200))
       const leaf = app.workspace.getLeavesOfType('abele-changelog')[0]
       const title = leaf.view.contentEl.querySelector('h1').textContent
+      const range = leaf.view.contentEl.querySelector('.abele-changelog__range').textContent
+      const installed = leaf.view.contentEl.querySelector('.abele-changelog__version').textContent
       leaf.detach()
       const hide = window.__abeleTest.showChangelogOffer(app, { from: '1.56.0', to: '1.58.0' })
       try { [...document.querySelectorAll('.notice button')].find(b => b.textContent === 'Dismiss').click() } finally { hide() }
-      return JSON.stringify({ found: true, clipped, title, marker: app.loadLocalStorage('${KEY}') })
+      return JSON.stringify({ found: true, clipped, title, range, installed, marker: app.loadLocalStorage('${KEY}') })
     })()`)
-    ) as { found: boolean; clipped: number; title: string; marker: { lastRunVersion: string } }
+    ) as {
+      found: boolean
+      clipped: number
+      title: string
+      range: string
+      installed: string
+      marker: { lastRunVersion: string }
+    }
     expect(updated.found).toBe(true)
     expect(updated.clipped).toBe(0)
-    expect(updated.title).toBe(`What's new since 1.56.0 through ${baseline.marker.lastRunVersion}`)
+    expect(updated.title).toBe("What's new")
+    expect(updated.range).toContain('Since 1.56.0')
+    expect(updated.installed).toContain(baseline.marker.lastRunVersion)
+    expect(updated.installed).toContain('installed')
     expect(updated.marker.lastRunVersion).toBe(baseline.marker.lastRunVersion)
     runCli(['plugin:reload', 'id=abele'])
     const count = JSON.parse(
