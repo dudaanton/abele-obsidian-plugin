@@ -237,15 +237,82 @@ const windowSize = (): [number, number] =>
     30_000
   )
 
-const setWindowSize = async (width: number, height: number): Promise<void> => {
-  evalRaw(
+interface WindowState {
+  size: [number, number]
+  /** The largest content size the screen the window is on has room for. */
+  room: [number, number]
+  maximized: boolean
+  fullScreen: boolean
+  minimized: boolean
+}
+
+const windowState = (): WindowState =>
+  evalJson<WindowState>(
     `(() => {
-      require('@electron/remote').getCurrentWindow().setContentSize(${width}, ${height})
-      return 'ok'
+      const remote = require('@electron/remote')
+      const w = remote.getCurrentWindow()
+      const area = remote.screen.getDisplayMatching(w.getBounds()).workArea
+      const frame = w.getBounds()
+      const content = w.getContentBounds()
+      return {
+        size: w.getContentSize(),
+        room: [area.width - (frame.width - content.width), area.height - (frame.height - content.height)],
+        maximized: w.isMaximized(),
+        fullScreen: w.isFullScreen(),
+        minimized: w.isMinimized(),
+      }
     })()`,
     30_000
   )
-  await new Promise((resolve) => setTimeout(resolve, 1500))
+
+/**
+ * Resizes the window and waits until it is that size, or as much of it as the screen has room
+ * for. A resize asked for once was found not taken in a busy batch — the documentation then
+ * measured at the size the window had before, contents hidden behind the menu button — so the
+ * size is read back, asked for again while it is not there, and the run stops saying what the
+ * window was doing if it never gets there.
+ */
+const setWindowSize = async (width: number, height: number): Promise<void> => {
+  const deadline = Date.now() + 15_000
+  for (;;) {
+    evalRaw(
+      `(() => {
+        const w = require('@electron/remote').getCurrentWindow()
+        if (w.isFullScreen()) w.setFullScreen(false)
+        if (w.isMaximized()) w.unmaximize()
+        w.setContentSize(${width}, ${height})
+        return 'ok'
+      })()`,
+      30_000
+    )
+    await new Promise((resolve) => setTimeout(resolve, 500))
+    if (await windowIs(width, height, Math.max(0, deadline - Date.now()))) return
+    if (Date.now() > deadline)
+      throw new Error(
+        `the window never became ${width}×${height}: ${JSON.stringify(windowState())}`
+      )
+  }
+}
+
+/** Whether the window is this size (as much as fits) and held it for a second. */
+const windowIs = async (width: number, height: number, withinMs: number): Promise<boolean> => {
+  const fits = () => {
+    const { size, room } = windowState()
+    return (
+      Math.abs(size[0] - Math.min(width, room[0])) <= 1 &&
+      Math.abs(size[1] - Math.min(height, room[1])) <= 1
+    )
+  }
+  const deadline = Date.now() + Math.min(withinMs, 3000)
+  let since = 0
+  for (;;) {
+    if (fits()) {
+      since ||= Date.now()
+      if (Date.now() - since >= 1000) return true
+    } else since = 0
+    if (Date.now() > deadline) return false
+    await new Promise((resolve) => setTimeout(resolve, 200))
+  }
 }
 
 const available = isObsidianRunning() && hasTestApi()
@@ -263,6 +330,8 @@ describe.skipIf(!available)('the documentation', () => {
     await setWindowSize(DESKTOP.width, DESKTOP.height)
     await reloadApp()
     setBackgroundThrottling(false)
+    // The reload must not have taken the size back.
+    await setWindowSize(DESKTOP.width, DESKTOP.height)
     desktop = evalAsync<Report>(desktopProbe, 60_000)
 
     await setMobile(true)
