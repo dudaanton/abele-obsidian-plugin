@@ -16,7 +16,7 @@ const NATIVE_TOUCH = `
     let r=target.getBoundingClientRect(), settled=0
     for(let i=0;i<30;i++) { await wait(150); const next=target.getBoundingClientRect(); const stable=next.top===r.top&&next.left===r.left; r=next; settled=stable?settled+1:0; if(settled>=4) break }
     const x=r.left+r.width/2,y=r.top+r.height/2,under=document.elementFromPoint(x,y)
-    if(under!==el&&!el.contains(under)) throw new Error('Comment action covered by '+(under?.className??'nothing')+': '+JSON.stringify({target:target.className,rect:r.toJSON(),viewport:[innerWidth,innerHeight,window.visualViewport?.height],keyboard:keyboardHeight(),under:under?.getBoundingClientRect().toJSON()}))
+    if(under!==el&&!el.contains(under)) throw new Error('Comment action covered by '+(under?.className??'nothing')+': '+JSON.stringify({target:target.className,rect:r.toJSON(),viewport:[innerWidth,innerHeight,window.visualViewport?.height],keyboard:keyboardHeight(),under:under?.getBoundingClientRect().toJSON(),chain:(()=>{const out=[];for(let n=target;n&&!n.matches('.modal');n=n.parentElement)out.push(n.className.split(' ')[0]+':'+Math.round(n.getBoundingClientRect().width)+'/'+getComputedStyle(n).display);return out})()}))
     await host.tap(x,y)
   }
   const keyboardHeight = () => Math.max(parseFloat(getComputedStyle(document.body).getPropertyValue('--keyboard-height'))||0,window.innerHeight-(window.visualViewport?.height??window.innerHeight))
