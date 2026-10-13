@@ -84,12 +84,17 @@ const status = computed(() => {
   height: 100%;
   min-height: 0;
 
+  // Everything starts where the panel's glyphs above start, the words of its rows.
+  --abele-book-search-edge: calc(var(--size-4-2) + var(--size-2-3));
+
   &__field {
-    padding: var(--size-4-2);
+    padding: var(--size-4-2) var(--size-4-2) var(--size-4-2) var(--abele-book-search-edge);
   }
 
+  // The field, the status and the chapters start on one edge; the words found step in under
+  // their chapter, as matches do under a file in Obsidian's search.
   &__status {
-    padding: 0 var(--size-4-3) var(--size-4-2);
+    padding: 0 var(--size-4-2) var(--size-4-2) var(--abele-book-search-edge);
     font-size: var(--font-ui-smaller);
     color: var(--text-muted);
   }
@@ -98,22 +103,27 @@ const status = computed(() => {
     flex: 1 1 auto;
     min-height: 0;
     overflow-y: auto;
-    padding: 0 var(--size-4-2) var(--size-4-2);
+    padding: 0 var(--size-4-2) var(--size-4-2) var(--abele-book-search-edge);
   }
 
   &__label {
-    padding: var(--size-4-2) var(--size-4-1) var(--size-4-1);
+    padding: var(--size-4-2) 0 var(--size-4-1);
     font-size: var(--font-ui-smaller);
     font-weight: var(--font-semibold);
     color: var(--text-muted);
   }
 
   &__hit {
-    padding: var(--size-4-1) var(--size-4-2);
+    padding: var(--size-4-1) var(--size-4-3);
     border-radius: var(--radius-s);
     font-size: var(--font-ui-small);
     line-height: var(--line-height-tight);
     cursor: var(--cursor);
+
+    // Two found places in a row keep Obsidian's 2px between their lights.
+    & + & {
+      margin-top: var(--size-2-1);
+    }
 
     &:hover,
     &:focus-visible {

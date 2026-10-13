@@ -12,7 +12,7 @@
         <div ref="panelHead" class="abele-book-reader__panel-head">
           <!-- The lists as a row of glyphs, the way Obsidian's own side panes switch: the
                names are in the tooltips, the one open is pressed. -->
-          <div class="abele-book-reader__panel-tabs" role="tablist">
+          <div class="abele-book-reader__panel-tabs abele-glyph-row" role="tablist">
             <Icon
               v-for="tab in panelTabs"
               :key="tab.id"
@@ -478,7 +478,9 @@ watch(
     align-items: center;
     justify-content: space-between;
     gap: var(--size-4-2);
-    padding: var(--size-4-1) var(--size-4-2);
+    // The first glyph's ink stands where the words of the rows under it start, inside their light.
+    padding: var(--size-4-1) var(--size-4-2) var(--size-4-1)
+      calc(var(--size-4-2) + var(--size-2-3));
     border-bottom: 1px solid var(--background-modifier-border);
 
     // The tabs scroll inside the drawer; their min-content width must not push the close

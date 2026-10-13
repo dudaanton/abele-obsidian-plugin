@@ -5,7 +5,7 @@
     data-ignore-swipe="true"
     :aria-label="highlight ? 'Highlight' : 'Selection'"
   >
-    <div class="abele-book-selection__colors">
+    <div class="abele-book-selection__colors abele-glyph-row">
       <!-- On e-ink a colour is shown as the shape its highlight takes, which a grey screen can
            tell apart where it cannot the colours. -->
       <template v-if="einkOn">
@@ -182,6 +182,11 @@ const openMore = (event: MouseEvent) => {
     display: none;
   }
 
+  // On a phone the first dot's ink stands under the page's words.
+  body.is-phone & {
+    padding-inline-start: var(--size-4-6);
+  }
+
   &__colors,
   &__actions {
     display: flex;
@@ -190,9 +195,10 @@ const openMore = (event: MouseEvent) => {
     gap: var(--size-2-1);
   }
 
-  /* Dots, narrower than the glyphs beside them: a highlight's full row fits a phone. */
-  &__swatch.abele-obsidian-icon {
-    padding-inline: var(--size-2-1);
+  /* Dots keep a glyph's whole box, so each is as easy to hit; they stand edge to edge instead,
+     which keeps a highlight's full row on a phone. */
+  &__colors {
+    gap: 0;
   }
 
   &__swatch svg {

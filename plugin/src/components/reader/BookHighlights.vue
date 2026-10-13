@@ -149,8 +149,11 @@ const shown = computed(() =>
   }
 
   // The words marked as the book marks them, the colour carried along every wrapped line.
+  // Its colour reaches past the first letter by its own padding, as a row's light does, so the
+  // words, not the colour, start where the chapter under them starts.
   &__mark {
     padding: 0 var(--size-2-1);
+    margin-inline-start: calc(-1 * var(--size-2-1));
     border-radius: var(--radius-s);
     background-color: color-mix(
       in srgb,
@@ -175,9 +178,10 @@ const shown = computed(() =>
     padding: var(--size-4-1) var(--size-4-2) 0;
   }
 
+  // The count starts where the panel's glyphs and the rows' words start.
   &__count {
     flex: 1;
-    padding-inline-start: var(--size-4-2);
+    padding-inline-start: var(--size-2-3);
     font-size: var(--font-ui-smaller);
     color: var(--text-muted);
   }
