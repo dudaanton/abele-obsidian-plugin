@@ -31,13 +31,15 @@ const VIEW = `app.workspace.getLeavesOfType('abele-book').find(l => l.view.file?
 const PRELUDE = `
   ${WAIT_PRELUDE}
   const need = async (fn, label) => { const v = await until(fn); if (!v) throw Error(label); return v }
+  // A step that never settles names itself instead of running the test out of time.
+  const step = (label, promise) => Promise.race([promise, new Promise((_, no) => setTimeout(() => no(Error(label + ' did not finish in 30 s')), 30000))])
   const open = async () => {
     let leaf; try { leaf = app.workspace.getLeaf('tab') } catch { leaf = app.workspace.getLeaf(false) }
-    await leaf.setViewState({ type: 'abele-book', state: { file: ${JSON.stringify(BOOK)} }, active: true })
+    await step('opening the book', leaf.setViewState({ type: 'abele-book', state: { file: ${JSON.stringify(BOOK)} }, active: true }))
     const v = await need(() => leaf.view.model?.status === 'ready' && leaf.view.reading && leaf.view, 'reader not ready')
     v.model.panelTab = 'search'; v.model.panel = true
     await need(() => v.contentEl.querySelector('.abele-book-reader__panel'), 'panel not open')
-    await v.engine.goTo(0)
+    await step('going to the start', v.engine.goTo(0))
     await need(() => v.engine.renderer.getContents()[0]?.doc?.getElementById('p1-0-0'), 'chapter missing')
     return v
   }
@@ -167,7 +169,7 @@ describe.skipIf(!available)('reader navigation split', () => {
         const selected = range(65), cfi = v.engine.getCFI(0, selected)
         const link = cfi.slice(8, -1).split('[').join('%5B').split(']').join('%5D')
         await app.vault.create(${JSON.stringify(`${DIR}/sample-book highlights.md`)}, ${JSON.stringify('---\ntype: book-highlights\nfile: "[[sample-book.epub]]"\n---\n\n> [!quote|yellow] [[sample-book.epub#cfi=')} + link + ${JSON.stringify('|Sample chapter]]\n> ')} + String(selected) + ${JSON.stringify('\n')})
-        await v.reading.loadHighlights(); await v.reading.search(query); await v.reading.goToHit(v.model.search.groups[0].hits[0])
+        await step('loading highlights', v.reading.loadHighlights()); await step('searching', v.reading.search(query)); await step('going to the hit', v.reading.goToHit(v.model.search.groups[0].hits[0]))
         return { width: measure(v), geometry: await settled() }
       })()`)
       assertGeometry(before.geometry)
@@ -197,7 +199,7 @@ describe.skipIf(!available)('reader navigation split', () => {
         const panel = measure(v)
         v.leaf.detach()
         const next = await open()
-        await next.reading.search(query); await next.reading.goToHit(next.model.search.groups[0].hits[0])
+        await step('searching the reopened book', next.reading.search(query)); await step('going to the hit in the reopened book', next.reading.goToHit(next.model.search.groups[0].hits[0]))
         return { width, stored, panel, reopened: measure(next), geometry: geometryAfter, reopenedGeometry: await (async () => {
           const v = next
           ${GEOMETRY}
