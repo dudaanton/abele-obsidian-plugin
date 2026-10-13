@@ -145,6 +145,17 @@ export function renderGroups(
     text: 'Add group',
     attr: { role: 'button', tabindex: '0', 'aria-label': 'Add a group' },
   })
+  // The stock editor replaces the pill children while accepting typed links. Keep the
+  // shortcut in its current list without taking ownership of the stock editor's input.
+  const Observer = el.ownerDocument.defaultView?.MutationObserver ?? MutationObserver
+  const redraw = new Observer(() => {
+    if (pills !== el && !el.contains(pills)) {
+      redraw.disconnect()
+      return
+    }
+    if (button.parentElement !== pills) pills.appendChild(button)
+  })
+  if (pills !== el) redraw.observe(pills, { childList: true })
   button.addEventListener('keydown', (e) => {
     if (e.key === 'Enter' || e.key === ' ') {
       e.preventDefault()

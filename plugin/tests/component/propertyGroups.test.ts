@@ -95,6 +95,14 @@ afterEach(() => {
 })
 
 describe('a groups property', () => {
+  it('keeps its picker after the stock editor redraws its pills', async () => {
+    const el = draw('multitext', ['[[Garden]]'], ctx('groups'))
+    const pick = button(el)!
+    el.querySelector('.multi-select-container')!.replaceChildren()
+    await new Promise((resolve) => setTimeout(resolve, 0))
+    expect(button(el)).toBe(pick)
+    expect(press(el)).toBeInstanceOf(GroupPicker)
+  })
   it('is Obsidian’s own list editor with the button beside it, whatever it holds', () => {
     for (const value of [['[[Garden]]', '[[Nowhere]]', 'free text'], '[[Garden]]', null, '']) {
       const el = draw('multitext', value, ctx('groups'))

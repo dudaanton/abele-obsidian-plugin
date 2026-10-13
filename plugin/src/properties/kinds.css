@@ -190,6 +190,9 @@ body:not(.is-phone) .abele-property-labels__pill:not(:hover):not(:focus-within) 
 
 /* Adding a group reads as adding a label does: faint words after the last one. */
 .abele-property-groups__pick {
+  display: inline-flex;
+  align-items: center;
+  min-height: var(--size-4-6);
   flex: none;
   align-self: center;
   color: var(--text-faint);
