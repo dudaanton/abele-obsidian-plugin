@@ -23,6 +23,8 @@ const FITTED = 'abele-keyboard-room'
  */
 const COVERED = 'abele-keyboard-cover'
 const SCROLLER = 'abele-keyboard-scroller'
+/** `NoteEditorField`'s own frame, the whole field around its editor. */
+const NOTE_FIELD = '.abele-note-editor-field'
 /**
  * On a tablet's container while its dialog is moved up by `--abele-keyboard-lift`, only as far
  * as the keyboard covers it — see `keyboardLift.ts`.
@@ -150,8 +152,9 @@ export function attachKeyboardRoom(root: HTMLElement): () => void {
       return overflow === 'auto' || overflow === 'scroll'
     }
     // Above the field's own widget: an editor scrolls inside itself, and room given to that box
-    // leaves the field where it is.
-    const field = from?.closest(FIELD_WIDGET) ?? from
+    // leaves the field where it is. A note-editor field may scroll in its own frame too (the
+    // comment reply, past a few lines); held as the scroller it lost its share of its row.
+    const field = from?.closest(NOTE_FIELD) ?? from?.closest(FIELD_WIDGET) ?? from
     // The shell's body is the box a dialog's content scrolls in, by construction.
     for (let el = field?.parentElement ?? null; el && el !== box; el = el.parentElement)
       if (scrolls(el) || el.classList.contains('abele-modal__body')) return el

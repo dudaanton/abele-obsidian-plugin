@@ -262,6 +262,43 @@ describe('a dialog taller than the room the keyboard leaves', () => {
   })
 
   /**
+   * A field that scrolls inside its own frame past a few lines — the comment reply, Obsidian's
+   * note editor in a row with its send arrow — is the field, not the box its dialog scrolls in.
+   * Held as that box, it lost its share of the row on an iPhone and stood 24 px wide.
+   */
+  it('gives the room to the box the field stands in, not to a field that scrolls in itself', async () => {
+    const Tall = defineComponent({
+      setup: () => () =>
+        h(ObsidianModal, { title: 'Tall', size: 'tall' }, () =>
+          h('div', { class: 'list', style: 'overflow-y: auto' }, [
+            h('div', { class: 'reply', style: 'display: flex' }, [
+              h('div', { class: 'abele-note-editor-field', style: 'overflow-y: auto' }, [
+                h('div', { class: 'abele-note-editor-field__editor' }, [
+                  h('input', { class: 'search' }),
+                ]),
+              ]),
+            ]),
+          ])
+        ),
+    })
+    wrapper = mount(Tall, { attachTo: document.body })
+    await nextTick()
+    document.querySelector<HTMLInputElement>('input.search')!.focus()
+    setKeyboardVar(KEYBOARD)
+    await settle()
+
+    expect(container()?.classList.contains('abele-keyboard-cover')).toBe(true)
+    expect(document.querySelector('.list')!.classList.contains('abele-keyboard-scroller')).toBe(
+      true
+    )
+    expect(
+      document
+        .querySelector('.abele-note-editor-field')!
+        .classList.contains('abele-keyboard-scroller')
+    ).toBe(false)
+  })
+
+  /**
    * On a real iPhone Obsidian's own stylesheet already stops a dialog's content above the
    * keyboard. Room for the keyboard added again inside that squeezed the content into what was
    * left: the icon picker's grid came out 8 px tall, the chat history's list empty (2026-09-27,
