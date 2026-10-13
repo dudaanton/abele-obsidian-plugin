@@ -3,6 +3,7 @@ import { sampleDocx, sampleBody, paragraph } from '../fixtures/docx/sampleDocx'
 import { evalAsync } from './helpers/githubLive'
 import { evalJson, evalRaw, hasTestApi, isObsidianRunning, reloadApp } from './helpers/obsidianCli'
 import { targets } from './helpers/target'
+import { measureWordControls } from '../helpers/wordControlsLayout'
 
 targets('desktop')
 const PATH = 'sample-word-controls-e2e.docx'
@@ -61,6 +62,7 @@ describe.skipIf(!available)('Word controls dialog captures', () => {
       clipped: boolean
       readOnly: boolean
       mobile: boolean
+      layout: ReturnType<typeof measureWordControls>
     }>(`(async () => {
       const leaf=app.workspace.getLeaf('tab')
       try {
@@ -71,9 +73,12 @@ describe.skipIf(!available)('Word controls dialog captures', () => {
         if(!editor) throw Error('Word controls did not open')
         if(${mobile}) editor=editor.closest('.abele-word-read-only')
         const modal=editor.closest('.modal')
-        await new Promise(resolve=>requestAnimationFrame(()=>requestAnimationFrame(resolve)))
+        // Match phoneLayout's settled-sheet capture; background windows need no animation frames.
+        for(const el of [modal,modal.closest('.modal-container')]) if(el) el.style.transition='none'
+        await new Promise(resolve=>setTimeout(resolve,400))
         const bounds=modal.getBoundingClientRect()
-        const clipped=bounds.left<0||bounds.top<0||bounds.right>innerWidth+1||bounds.bottom>innerHeight+1
+        const layout=(${measureWordControls.toString()})(modal,modal.querySelector('.abele-modal__body'),editor)
+        const clipped=layout.clipped || (!${mobile} && (bounds.left<0||bounds.top<0||bounds.right>innerWidth+1||bounds.bottom>innerHeight+1))
         const controls=[...editor.querySelectorAll('input,select,textarea,button')]
         const readOnly=${mobile} ? controls.length===0 && !modal.querySelector('.abele-word-editor') : controls.filter(el=>el.textContent!=='Cancel').every(el=>el.disabled)
         const title=modal.querySelector('.modal-title')?.textContent
@@ -83,15 +88,16 @@ describe.skipIf(!available)('Word controls dialog captures', () => {
         else {const fs=require('fs');fs.mkdirSync(${JSON.stringify(SHOTS)},{recursive:true});fs.writeFileSync(shot,(await require('@electron/remote').getCurrentWindow().webContents.capturePage()).toPNG())}
         if(${mobile}) modal.querySelector('.modal-close-button,.modal-header-button').click()
         else [...editor.querySelectorAll('button')].find(button=>button.textContent==='Cancel').click()
-        return {title,shot,clipped,readOnly,mobile:app.isMobile}
+        return {title,shot,clipped,readOnly,mobile:app.isMobile,layout}
       } finally {leaf.detach()}
     })()`)
 
   it('captures a table cell, picture and plain paragraph on desktop', () => {
     for (const [number, subject, title] of subjects) {
       const result = capture(number, subject, title, false)
+      console.info(`${subject} desktop bounds: ${JSON.stringify(result.layout)}`)
       expect(result.title).toBe(title)
-      expect(result.clipped).toBe(false)
+      expect(result.clipped, JSON.stringify(result.layout)).toBe(false)
       expect(result.mobile).toBe(false)
       console.info(result.shot)
     }
@@ -101,8 +107,9 @@ describe.skipIf(!available)('Word controls dialog captures', () => {
     evalRaw("require('@electron/remote').getCurrentWindow().setContentSize(390,844)")
     for (const [number, subject, title] of subjects) {
       const result = capture(number, subject, title, true)
+      console.info(`${subject} phone bounds: ${JSON.stringify(result.layout)}`)
       expect(result.title).toBe(title)
-      expect(result.clipped).toBe(false)
+      expect(result.clipped, JSON.stringify(result.layout)).toBe(false)
       expect(result.readOnly).toBe(true)
       expect(result.mobile).toBe(true)
       console.info(result.shot)
