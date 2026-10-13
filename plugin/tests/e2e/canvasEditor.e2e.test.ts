@@ -402,6 +402,11 @@ describe.skipIf(!available)('human canvas creation and editing with real input',
     const retained = run<boolean>(
       "return view().viewer.graph.nodes.some(node=>node.text==='Retained human text')"
     )
+    // The preceding retry settles asynchronously (slower on a phone): witness its outcome
+    // before reading it, and still report the state reached when it never comes.
+    await until(
+      "button('Retry save')?.disabled&&view().contentEl.textContent.includes('source changed')"
+    ).catch(() => undefined)
     const blocked = run<boolean>(
       "return button('Retry save').disabled&&view().contentEl.textContent.includes('source changed')"
     )
