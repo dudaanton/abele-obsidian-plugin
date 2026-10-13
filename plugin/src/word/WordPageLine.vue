@@ -99,8 +99,8 @@ const field = ref<HTMLTextAreaElement>()
 const fit = () => {
   const el = field.value
   if (!el) return
-  el.style.height = 'auto'
-  el.style.height = `${el.scrollHeight}px`
+  el.setCssProps({ height: 'auto' })
+  el.setCssProps({ height: `${el.scrollHeight}px` })
 }
 
 watch(
