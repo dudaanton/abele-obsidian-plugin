@@ -225,6 +225,7 @@ describe.skipIf(!available)('shared presenter show', () => {
         const next=[...p.root.querySelectorAll('button')].find(b=>b.textContent==='Next')
         await tap(next);await tap(next);await tap(next);await p.ready
         r.paged=p.current.index===1 && p.notes.textContent.includes('Second cue')
+        if(!r.paged)r.pagedState={index:p.current.index,notes:p.notes.textContent.slice(0,80),nextButton:!!next,hit:next&&document.elementFromPoint(next.getBoundingClientRect().left+next.getBoundingClientRect().width/2,next.getBoundingClientRect().top+next.getBoundingClientRect().height/2)?.outerHTML.slice(0,160),notices:[...document.querySelectorAll('.notice')].map(n=>n.textContent.slice(0,60))}
         if(window.__e2eHost) {
           try {
             await window.__e2eHost.orientation('landscape')
