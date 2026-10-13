@@ -41,7 +41,7 @@ describe.skipIf(!available)('exact pinned-base GitHub links', () => {
     }
   })
 
-  it('shows the full resolved commit in the native base picker before confirmation', () => {
+  it('shows the resolved commit, short as GitHub writes it, in the native base picker before confirmation', () => {
     const result = evalAsync<{
       sha: string
       clipped: string[]
@@ -59,7 +59,7 @@ describe.skipIf(!available)('exact pinned-base GitHub links', () => {
       leaf.detach()
       return pickerReport
     })()`)
-    expect(result.sha).toContain(BASE_SHA)
+    expect(result.sha).toContain(BASE_SHA.slice(0, 7))
     expect(result.clipped).toEqual([])
     expect(result.over).toEqual([])
     expect(result.shot).toMatch(/\.png$/)
