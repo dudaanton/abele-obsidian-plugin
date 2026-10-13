@@ -1,6 +1,7 @@
 import { nanoid } from 'nanoid'
 import type { ChatSnapshot } from './ChatLog'
 import { getPathToLeaf, backfillChatMessageIds } from './chatTree'
+import { projectBranchCuts } from './chatBranchCuts'
 import type { ChatMetadata } from './types'
 
 /** File records are JSON data; copying this way also accepts Vue's reactive wrappers. */
@@ -16,6 +17,7 @@ export function cloneChatPath(source: ChatSnapshot, messageId: string): ChatSnap
   const messages = copyChatData(path).map((message) => {
     message.id = ids.get(message.id)!
     message.parentId = message.parentId ? ids.get(message.parentId) : undefined
+    message.branchCutAfter = message.branchCutAfter ? ids.get(message.branchCutAfter) : undefined
     // These locate selections and revision proposals in the original conversation.
     delete message.selection
     delete message.decorationOperations
@@ -31,14 +33,22 @@ export function cloneChatPath(source: ChatSnapshot, messageId: string): ChatSnap
   const history = copyChatData(source.internalMessages ?? [])
   backfillChatMessageIds(source.messages, history)
   // Never fall back to all remaining unlinked history: it can contain later turns.
-  const internalMessages = history.filter(
+  const target = path.at(-1)
+  const pendingCut =
+    target.role === 'tool-call'
+      ? target.id
+      : source.metadata.pendingBranchCut === target.id
+        ? target.id
+        : undefined
+  const projected = projectBranchCuts(path, history, pendingCut)
+  const internalMessages = projected.filter(
     (message) => message.chatMessageId && ids.has(message.chatMessageId)
   )
   const completedCalls = new Set(
     internalMessages.filter((m) => m.role === 'toolResult').map((m) => m.toolCallId)
   )
   for (const message of internalMessages) {
-    message.chatMessageId = ids.get(message.chatMessageId!)!
+    message.chatMessageId = ids.get(message.chatMessageId)!
     if (message.role !== 'assistant') continue
     // A provider reply bundles text and several calls, while the UI gives each call a row.
     // Cutting before/between those rows must not include calls beyond the chosen point, or
@@ -69,7 +79,8 @@ export function cloneChatPath(source: ChatSnapshot, messageId: string): ChatSnap
     interceptorReplyOnly: setup.interceptorReplyOnly,
     interceptorScript: setup.interceptorScript,
     interceptorPattern: setup.interceptorPattern,
-    activeLeafId: messages.at(-1)!.id,
+    activeLeafId: messages.at(-1).id,
+    pendingBranchCut: pendingCut ? ids.get(pendingCut) : undefined,
   })
   // `touched` is chat-wide (including manual links). Only explicit writes on this path
   // prove a link belongs here, with that write's time, not a later sibling's timestamp.

@@ -628,6 +628,8 @@ export interface SubAgentRunRef {
 export interface ChatMessage {
   id: string
   parentId?: string
+  /** Explicit context cut on this continuation's first record; references its parent message. */
+  branchCutAfter?: string
   role: 'user' | 'assistant' | 'tool-call' | 'tool-result' | 'system'
   content: string
   /** Plain failure explanation, separate from model answer content. */
@@ -770,6 +772,8 @@ export interface ChatMetadata {
   scopeEntries?: Array<{ type: 'file' | 'folder' | 'pattern' | 'group'; path: string }>
   fullVaultAccess?: boolean
   activeLeafId?: string
+  /** A selected assistant/call boundary awaiting an explicit new continuation. */
+  pendingBranchCut?: string
   customSystemPrompt?: string
   customSystemPromptNotePath?: string
   interceptorAgentId?: string

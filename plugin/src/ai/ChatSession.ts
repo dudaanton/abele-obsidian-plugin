@@ -36,10 +36,16 @@ import type {
   ToolCallContent,
   ToolDefinition,
 } from './client'
+import { projectBranchCuts } from './chatBranchCuts'
 import { ChatStorage } from './ChatStorage'
 import { cloneChatPath } from './chatClone'
 import { claimDelegationIdentity, ownsDelegationIdentity } from './delegationIdentity'
-import { NODE_AGENT_TOOL_NAMES, NODE_EDIT_TOOLS, NODE_FILE_OPERATIONS, NODE_MUTATION_TOOLS } from './tools/node/agent'
+import {
+  NODE_AGENT_TOOL_NAMES,
+  NODE_EDIT_TOOLS,
+  NODE_FILE_OPERATIONS,
+  NODE_MUTATION_TOOLS,
+} from './tools/node/agent'
 import { reconcileNodeScopeApproval } from './tools/node/owner'
 import { nodeRepositoryToolsHost } from './tools/node'
 import { hasNodeScope } from './nodeScope'
@@ -282,18 +288,24 @@ export class ChatSession implements SummarizerHost, InterceptorHost, AnchorStora
   private retryCancel: (() => void) | null = null
   private allChatMessages: ChatMessage[] = []
   private activeLeafId: string | null = null
+  private pendingBranchCut: string | undefined
   private branchSelectionRevision = 0
   private userMessageCount = 0
   public readonly chatTitle = ref('')
   private chatCreated = ''
   private readonly chatIdentityRef = ref<string>()
-  private get chatIdentity(): string | undefined { return this.chatIdentityRef.value }
-  private set chatIdentity(value: string | undefined) { this.chatIdentityRef.value = value }
+  private get chatIdentity(): string | undefined {
+    return this.chatIdentityRef.value
+  }
+  private set chatIdentity(value: string | undefined) {
+    this.chatIdentityRef.value = value
+  }
   /** Existing durable chat identity, not the transient tab/AgentLoop ID. */
   get delegationParentId(): string | undefined {
     const file = this.currentChatFile.value
     return file && this.chatIdentity && ownsDelegationIdentity(this.chatIdentity, file.path)
-      ? this.chatIdentity : undefined
+      ? this.chatIdentity
+      : undefined
   }
   public readonly bindingRecoveries = shallowRef<ChatBindingRecovery[]>([])
   private get bindingRecovery(): ChatBindingRecovery[] | undefined {
@@ -326,7 +338,17 @@ export class ChatSession implements SummarizerHost, InterceptorHost, AnchorStora
     scope: () => this.scopeResolver,
   })
   /** Keeps a result too big to send whole, for `read_result`. See `resultStore.ts`. */
-  private readonly results = new ResultStore({ messages: () => this.allInternalMessages })
+  private readonly results = new ResultStore({
+    messages: () => {
+      const path = this.activeLeafId
+        ? getPathToLeaf(this.allChatMessages, this.activeLeafId)
+        : this.allChatMessages
+      // Keep the existing conversation-wide store on ordinary paths; explicit cuts narrow it.
+      return this.pendingBranchCut || path.some((message) => message.branchCutAfter)
+        ? this.getBranchInternalMessages()
+        : this.allInternalMessages
+    },
+  })
   /**
    * What this chat's agent changed in the vault, turn by turn, and the way back. See
    * `rewind/ChatRewind.ts`. Built on first use: a session made before the app is known — a
@@ -400,7 +422,8 @@ export class ChatSession implements SummarizerHost, InterceptorHost, AnchorStora
       const pending = this.pendingToolCalls.value.filter((tc) => !settled.has(tc.id))
       // Scans can land during a selection return. An equal filtered list is not a local
       // change: replacing it would trip the synchronous revision watcher on every scan.
-      if (pending.length !== this.pendingToolCalls.value.length) this.pendingToolCalls.value = pending
+      if (pending.length !== this.pendingToolCalls.value.length)
+        this.pendingToolCalls.value = pending
       if (
         !this.isBusy &&
         !this.pendingToolCalls.value.length &&
@@ -1267,8 +1290,15 @@ export class ChatSession implements SummarizerHost, InterceptorHost, AnchorStora
       (this.toolModes.value[EDIT_SELECTION_TOOL] ?? 'ask') !== 'off'
     // Node scope is an explicit owner surface, independent of optional feature-tool defaults.
     const withNode = this.overrides.value.nodeScope?.length
-      ? [...filtered, ...allTools.filter(tool => NODE_AGENT_TOOL_NAMES.includes(tool.name) &&
-          this.toolModes.value[tool.name] !== 'off' && !filtered.some(value => value.name === tool.name))]
+      ? [
+          ...filtered,
+          ...allTools.filter(
+            (tool) =>
+              NODE_AGENT_TOOL_NAMES.includes(tool.name) &&
+              this.toolModes.value[tool.name] !== 'off' &&
+              !filtered.some((value) => value.name === tool.name)
+          ),
+        ]
       : filtered
     const withSelection = offered ? [...withNode, createEditSelectionTool(this)] : withNode
     if (this.kind === 'comment' && this.anchor.value?.message && this.anchor.value.quote)
@@ -1628,6 +1658,12 @@ export class ChatSession implements SummarizerHost, InterceptorHost, AnchorStora
   private appendChatMessage(msg: ChatMessage): void {
     this.localRevision++
     msg.parentId = this.activeLeafId || undefined
+    if (this.pendingBranchCut) {
+      if (msg.parentId !== this.pendingBranchCut)
+        throw new Error('The branch boundary changed before its continuation')
+      msg.branchCutAfter = this.pendingBranchCut
+      this.pendingBranchCut = undefined
+    }
     this.allChatMessages.push(msg)
     this.activeLeafId = msg.id
   }
@@ -1705,12 +1741,20 @@ export class ChatSession implements SummarizerHost, InterceptorHost, AnchorStora
 
   // ── Agent loop execution ──────────────────────────────────────
 
+  private getBranchInternalMessages(): Message[] {
+    const path = this.activeLeafId
+      ? getPathToLeaf(this.allChatMessages, this.activeLeafId)
+      : this.allChatMessages
+    const projected = projectBranchCuts(path, this.allInternalMessages, this.pendingBranchCut)
+    return getInternalMessagesForPath(path, projected)
+  }
+
   private getMessagesForModel(): Message[] {
     const path = this.activeLeafId
       ? getPathToLeaf(this.allChatMessages, this.activeLeafId)
       : this.allChatMessages
     const internal = projectInterruptedTools(
-      getInternalMessagesForPath(path, this.allInternalMessages),
+      this.getBranchInternalMessages(),
       new Map(
         path.flatMap((m) => (m.toolCallId && m.toolExecution ? [[m.toolCallId, m.toolExecution]] : []))
       )
@@ -2331,19 +2375,28 @@ export class ChatSession implements SummarizerHost, InterceptorHost, AnchorStora
       `The result for node delegation ${id} has arrived. Call node_delegation_status to read the durable mailbox result.`,
       undefined,
       wake
-    ).catch((error) => { console.error('[Abele] Delegation result notification failed', error) })
+    ).catch((error) => {
+      console.error('[Abele] Delegation result notification failed', error)
+    })
     return true
   }
 
   private isDelegationWakeCurrent(wake: DelegationWakeFence): boolean {
-    return !this.destroyed && !this.delegationWakeStopped && wake.sessionId === this.id &&
-      wake.generation === this.generation && wake.stopEpoch === this.delegationStopEpoch
+    return (
+      !this.destroyed &&
+      !this.delegationWakeStopped &&
+      wake.sessionId === this.id &&
+      wake.generation === this.generation &&
+      wake.stopEpoch === this.delegationStopEpoch
+    )
   }
 
   /** Keep ordinary user messages, but drop wakes from a stopped or replaced session. */
   private currentQueuedMessages(): QueuedMessage[] {
     const queued = this.queuedMessages.value
-    const current = queued.filter((q) => !q.delegationWake || this.isDelegationWakeCurrent(q.delegationWake))
+    const current = queued.filter(
+      (q) => !q.delegationWake || this.isDelegationWakeCurrent(q.delegationWake)
+    )
     if (current.length !== queued.length) {
       this.queuedMessages.value = current
       this.markDirty()
@@ -2357,8 +2410,14 @@ export class ChatSession implements SummarizerHost, InterceptorHost, AnchorStora
     if (parent) NodeService.resumeDelegationWaiters(parent)
   }
 
-  async sendMessage(content: string, attachments?: string[], delegationWake?: DelegationWakeFence): Promise<void> {
-    const isCurrent = delegationWake ? () => this.isDelegationWakeCurrent(delegationWake) : undefined
+  async sendMessage(
+    content: string,
+    attachments?: string[],
+    delegationWake?: DelegationWakeFence
+  ): Promise<void> {
+    const isCurrent = delegationWake
+      ? () => this.isDelegationWakeCurrent(delegationWake)
+      : undefined
     if (isCurrent && !isCurrent()) return
     if (this.preparingClone.value) {
       new Notice('Wait for the chat copy to finish.')
@@ -2373,7 +2432,9 @@ export class ChatSession implements SummarizerHost, InterceptorHost, AnchorStora
       this.queuedMessages.value = [
         ...this.queuedMessages.value,
         {
-          id: nanoid(), content, attachments: attachments?.length ? [...attachments] : undefined,
+          id: nanoid(),
+          content,
+          attachments: attachments?.length ? [...attachments] : undefined,
           ...(delegationWake ? { delegationWake: { ...delegationWake } } : {}),
         },
       ]
@@ -2736,7 +2797,13 @@ export class ChatSession implements SummarizerHost, InterceptorHost, AnchorStora
 
   /** Existing source-path approval widens access; ZIP's new output is granted only after saving. */
   private widenScopeFor(toolName: string, args: Record<string, unknown> | undefined): void {
-    if (toolName === 'zip' || toolName.startsWith('node_') || toolName === 'list_node_worktrees' || !args) return
+    if (
+      toolName === 'zip' ||
+      toolName.startsWith('node_') ||
+      toolName === 'list_node_worktrees' ||
+      !args
+    )
+      return
     const path = (args.path || args.from) as string
     if (path && !this.scopeResolver.isInScope(path)) this.scopeResolver.addFile(path)
   }
@@ -2876,9 +2943,10 @@ export class ChatSession implements SummarizerHost, InterceptorHost, AnchorStora
     this.delegationWakeStopped = true
     ++this.delegationStopEpoch
     const parent = this.delegationParentId
-    if (parent) void NodeService.stopDelegationWaiters(parent).catch((error) => {
-      console.error('[Abele] Could not clear delegation waiters on Stop', error)
-    })
+    if (parent)
+      void NodeService.stopDelegationWaiters(parent).catch((error) => {
+        console.error('[Abele] Could not clear delegation waiters on Stop', error)
+      })
     this.turnAborted = true
     this.cancelAutoRetry()
     this.abortQuestions()
@@ -2943,6 +3011,7 @@ export class ChatSession implements SummarizerHost, InterceptorHost, AnchorStora
     this.allChatMessages = []
     this.toolDiscovery = new ToolDiscovery()
     this.activeLeafId = null
+    this.pendingBranchCut = undefined
     this.messages.value = []
     this.allMessages.value = []
     this.streamingContent.value = ''
@@ -3265,8 +3334,15 @@ export class ChatSession implements SummarizerHost, InterceptorHost, AnchorStora
       )
       return result
     })
-    this.writing = operation.then((): void => {}, (): void => {})
-    try { return await operation } finally { this.writing = null }
+    this.writing = operation.then(
+      (): void => {},
+      (): void => {}
+    )
+    try {
+      return await operation
+    } finally {
+      this.writing = null
+    }
   }
 
   bindingState(): BindingState {
@@ -3299,7 +3375,7 @@ export class ChatSession implements SummarizerHost, InterceptorHost, AnchorStora
       check()
       const snapshot = this.snapshot()
       await this.rewriteReply(
-        file!,
+        file,
         {
           ...snapshot,
           metadata: { ...snapshot.metadata, bindingRecovery: changed.recovery },
@@ -3317,12 +3393,12 @@ export class ChatSession implements SummarizerHost, InterceptorHost, AnchorStora
       this.bindingRecovery = changed.recovery
       if (changed.message)
         this.updateChatMessage(
-          (m) => m.id === changed.message!.id,
+          (m) => m.id === changed.message.id,
           (m) => ({
             ...m,
-            content: changed.message!.content,
-            selection: changed.message!.selection,
-            decorationOperations: changed.message!.decorationOperations,
+            content: changed.message.content,
+            selection: changed.message.selection,
+            decorationOperations: changed.message.decorationOperations,
           })
         )
       return changed.result
@@ -3374,7 +3450,8 @@ export class ChatSession implements SummarizerHost, InterceptorHost, AnchorStora
     if (this.delegationParentId) return this.delegationParentId
     const file = this.currentChatFile.value
     const generation = this.generation
-    if (!file || this.kind === 'run') throw new Error('Save this parent chat before approving node delegation')
+    if (!file || this.kind === 'run')
+      throw new Error('Save this parent chat before approving node delegation')
     const check = () => {
       if (this.destroyed || generation !== this.generation || this.currentChatFile.value !== file)
         throw new Error('The parent conversation changed')
@@ -3386,27 +3463,47 @@ export class ChatSession implements SummarizerHost, InterceptorHost, AnchorStora
       // An older identity may predate the device-local owner binding. Never adopt
       // ambiguous file metadata: two physical files cannot claim one parent grant.
       if (existing) {
-        const files = GlobalStore.getInstance().app.vault.getFiles().filter(
-          (candidate) => candidate.extension === 'abchat' && candidate.path !== file.path
-        )
+        const files = GlobalStore.getInstance()
+          .app.vault.getFiles()
+          .filter((candidate) => candidate.extension === 'abchat' && candidate.path !== file.path)
         let duplicated = false
         for (const candidate of files) {
-          const loaded = await ChatStorage.getInstance().loadChat(candidate).catch((): null => null)
-          if (loaded?.metadata?.chatId === existing) { duplicated = true; break }
+          const loaded = await ChatStorage.getInstance()
+            .loadChat(candidate)
+            .catch((): null => null)
+          if (loaded?.metadata?.chatId === existing) {
+            duplicated = true
+            break
+          }
         }
         check()
         if (!duplicated && claimDelegationIdentity(existing, file.path)) return existing
       }
       const chatId = crypto.randomUUID()
       const snapshot = this.snapshot()
-      await this.rewriteReply(file, { ...snapshot, metadata: { ...snapshot.metadata, chatId }, internalMessages: [...snapshot.internalMessages] }, check)
+      await this.rewriteReply(
+        file,
+        {
+          ...snapshot,
+          metadata: { ...snapshot.metadata, chatId },
+          internalMessages: [...snapshot.internalMessages],
+        },
+        check
+      )
       check()
       claimDelegationIdentity(chatId, file.path)
       this.chatIdentity = chatId
       return chatId
     })
-    this.writing = operation.then((): void => {}, (): void => {})
-    try { return await operation } finally { this.writing = null }
+    this.writing = operation.then(
+      (): void => {},
+      (): void => {}
+    )
+    try {
+      return await operation
+    } finally {
+      this.writing = null
+    }
   }
 
   /** Protected owner edits share one external-change guard and persistence recovery path. */
@@ -3520,17 +3617,17 @@ export class ChatSession implements SummarizerHost, InterceptorHost, AnchorStora
       await this.changeReply(id, (message) => ({
         ...message,
         replyProposal: {
-          ...proposal!,
+          ...proposal,
           status: accept ? 'accepted' : 'rejected',
           application: accept ? 'pending' : undefined,
         },
       }))
       if (!accept) return
-      proposal = this.allChatMessages.find((m) => m.id === id)!.replyProposal!
+      proposal = this.allChatMessages.find((m) => m.id === id).replyProposal!
       await CommentService.getInstance().acceptReplyProposal({ ...proposal, status: 'pending' })
       await this.changeReply(id, (message) => ({
         ...message,
-        replyProposal: { ...proposal!, application: 'done' },
+        replyProposal: { ...proposal, application: 'done' },
       }))
     } finally {
       this.replyDeciding = false
@@ -3619,26 +3716,45 @@ export class ChatSession implements SummarizerHost, InterceptorHost, AnchorStora
     const id = this.commentId
     if (!file || !id || this.writing || this.isBusy || this.isMidTurn)
       throw new Error('The expansion cannot be confirmed while the conversation is changing.')
-    const path = file.path, version = this.conversationVersion.value, revision = this.localRevision
+    const path = file.path,
+      version = this.conversationVersion.value,
+      revision = this.localRevision
     const main = await inspectMainChat(GlobalStore.getInstance().app, file)
     if (!main?.metadata || main.metadata.commentId !== id || main.metadata.commentLocation !== path)
       throw new Error('The saved discussion is unavailable or has changed identity.')
     // Refresh the exact file binding too; a failed readback left its pre-write observation stale.
-    const { snapshot: saved, identity } = await ChatStorage.getInstance().prepareDiscussion(file, undefined, { recover: false })
+    const { snapshot: saved, identity } = await ChatStorage.getInstance().prepareDiscussion(
+      file,
+      undefined,
+      { recover: false }
+    )
     const metadata = saved.metadata
-    if (!metadata || saved.torn || saved.damaged || identity !== id || metadata.commentLocation !== path ||
+    if (
+      !metadata ||
+      saved.torn ||
+      saved.damaged ||
+      identity !== id ||
+      metadata.commentLocation !== path ||
       (metadata.kind && metadata.kind !== 'chat' && metadata.kind !== 'comment') ||
-      this.destroyed || this.currentChatFile.value !== file || file.path !== path ||
-      this.conversationVersion.value !== version || this.localRevision !== revision)
+      this.destroyed ||
+      this.currentChatFile.value !== file ||
+      file.path !== path ||
+      this.conversationVersion.value !== version ||
+      this.localRevision !== revision
+    )
       throw new Error('The discussion changed while confirming the expansion.')
     // No confirmed change: preserve local pending work; the caller can restore its old binding.
     if (this.log.matchesDiscussionRevision(saved)) return { metadata, unchanged: true }
     // Never replace local edits that arrived during the failed write, or merge a foreign history
     // by adopting its checkpoint under the stale in-memory conversation.
-    if (this.lastWriteRevision !== revision ||
+    if (
+      this.lastWriteRevision !== revision ||
       JSON.stringify(saved.messages) !== JSON.stringify(this.allChatMessages) ||
-      JSON.stringify(saved.internalMessages) !== JSON.stringify(this.allInternalMessages))
-      throw new Error('Local work changed. Confirm the saved conversation before retrying expansion.')
+      JSON.stringify(saved.internalMessages) !== JSON.stringify(this.allInternalMessages)
+    )
+      throw new Error(
+        'Local work changed. Confirm the saved conversation before retrying expansion.'
+      )
     if (this.persistTimer !== null) window.clearTimeout(this.persistTimer)
     this.persistTimer = null
     this.dirty = false
@@ -3712,6 +3828,7 @@ export class ChatSession implements SummarizerHost, InterceptorHost, AnchorStora
             }))
           : undefined,
       activeLeafId: this.activeLeafId || undefined,
+      pendingBranchCut: this.pendingBranchCut,
       customSystemPrompt: this.customSystemPrompt.value || undefined,
       customSystemPromptNotePath: this.customSystemPromptNotePath.value || undefined,
       // Only a choice this chat made; a chat following its agent says nothing, and picks up
@@ -3853,13 +3970,20 @@ export class ChatSession implements SummarizerHost, InterceptorHost, AnchorStora
     const operation = (async () => {
       if (previous) await previous.catch(() => {})
       if (!isCurrent()) return
-      if (this.destroyed || this.currentChatFile.value !== file || this.conversationVersion.value !== version)
+      if (
+        this.destroyed ||
+        this.currentChatFile.value !== file ||
+        this.conversationVersion.value !== version
+      )
         throw new Error('The selection source changed. Open the link again.')
       await this.reconcileSelectionSnapshot(isCurrent)
     })()
     this.selectionReconciliation = operation
-    try { await operation }
-    finally { if (this.selectionReconciliation === operation) this.selectionReconciliation = null }
+    try {
+      await operation
+    } finally {
+      if (this.selectionReconciliation === operation) this.selectionReconciliation = null
+    }
   }
 
   private async reconcileSelectionSnapshot(isCurrent: () => boolean): Promise<void> {
@@ -3912,7 +4036,12 @@ export class ChatSession implements SummarizerHost, InterceptorHost, AnchorStora
   /** Adopt into the reserved empty session without resetting any draft delivered meanwhile. */
   async initializeClone(file: TFile, isCurrent: () => boolean): Promise<void> {
     const result = await ChatStorage.getInstance().loadChat(file)
-    if (!isCurrent() || !this.preparingClone.value || this.currentChatFile.value || this.allChatMessages.length)
+    if (
+      !isCurrent() ||
+      !this.preparingClone.value ||
+      this.currentChatFile.value ||
+      this.allChatMessages.length
+    )
       throw new Error('The chat copy was cancelled.')
     await this.restoreLoadedChat(file, result, { readOnly: true })
   }
@@ -4021,6 +4150,10 @@ export class ChatSession implements SummarizerHost, InterceptorHost, AnchorStora
       (leaf && this.allChatMessages.some((m) => m.id === leaf) ? leaf : null) ||
       findDefaultLeaf(this.allChatMessages)?.id ||
       null
+    this.pendingBranchCut =
+      result.metadata?.pendingBranchCut === this.activeLeafId
+        ? result.metadata.pendingBranchCut
+        : undefined
     this.updateVisibleMessages()
     void this.rewind.load()
 
@@ -4069,7 +4202,10 @@ export class ChatSession implements SummarizerHost, InterceptorHost, AnchorStora
    */
   private busyFor(action: string): boolean {
     const busy =
-      this.preparingClone.value || this.isStreaming.value || this.isExecutingTool.value || this.pendingToolCalls.value.length > 0
+      this.preparingClone.value ||
+      this.isStreaming.value ||
+      this.isExecutingTool.value ||
+      this.pendingToolCalls.value.length > 0
     if (busy) new Notice(`The chat is busy — stop it or wait for the turn to finish to ${action}`)
     return busy
   }
@@ -4082,10 +4218,54 @@ export class ChatSession implements SummarizerHost, InterceptorHost, AnchorStora
   }
 
   createBranch(messageId: string): void {
-    if (this.busyFor('branch')) return
+    if (
+      this.isDestroyed ||
+      this.kind === 'run' ||
+      this.preparingClone.value ||
+      this.branchSwitchBlocked
+    ) {
+      new Notice('The chat is busy — stop it or wait for the turn to finish to branch')
+      return
+    }
+    const target = this.allChatMessages.find((message) => message.id === messageId)
+    if (!target || target.draft) return
+    const bundled =
+      target.role === 'assistant' &&
+      this.allInternalMessages.some(
+        (message) =>
+          message.role === 'assistant' &&
+          message.chatMessageId === target.id &&
+          Array.isArray(message.content) &&
+          message.content.some((part) => part.type === 'toolCall')
+      )
+    const cut = target.role === 'tool-call' || bundled ? target.id : undefined
+    if (
+      target.role === 'tool-call' &&
+      (target.toolStatus === 'pending' || target.toolResult === undefined)
+    ) {
+      new Notice('Wait for the call to return before branching from it')
+      return
+    }
+    if (cut) {
+      try {
+        projectBranchCuts(
+          getPathToLeaf(this.allChatMessages, messageId),
+          this.allInternalMessages,
+          cut
+        )
+      } catch (error) {
+        new Notice(
+          error instanceof Error ? error.message : 'This call has no verified context boundary'
+        )
+        return
+      }
+    }
     this.branchSelectionRevision++
     this.activeLeafId = messageId
+    this.pendingBranchCut = cut
+    this.results.settle()
     this.updateVisibleMessages()
+    this.markDirty()
   }
 
   repeatMessage(messageId: string): void {
@@ -4099,6 +4279,8 @@ export class ChatSession implements SummarizerHost, InterceptorHost, AnchorStora
 
     this.branchSelectionRevision++
     this.activeLeafId = msg.parentId || null
+    this.pendingBranchCut = msg.branchCutAfter
+    this.results.settle()
     this.updateVisibleMessages()
 
     this.sendMessage(msg.content, msg.attachments)
@@ -4163,6 +4345,8 @@ export class ChatSession implements SummarizerHost, InterceptorHost, AnchorStora
     const leaf = followContinuation ? findDeepestLeaf(this.allChatMessages, messageId) : target
     this.branchSelectionRevision++
     this.activeLeafId = leaf.id
+    this.pendingBranchCut = undefined
+    this.results.settle()
     this.updateVisibleMessages()
     this.markDirty()
     return true
@@ -4416,6 +4600,7 @@ export class ChatSession implements SummarizerHost, InterceptorHost, AnchorStora
     this.allInternalMessages = []
     this.allChatMessages = []
     this.activeLeafId = null
+    this.pendingBranchCut = undefined
     this.messages.value = []
     this.allMessages.value = []
     this.pendingToolCalls.value = []

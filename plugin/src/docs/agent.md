@@ -177,6 +177,14 @@ different expertise within the same access. Do not delegate what is one tool cal
 
 ## Chats
 
+An explicit branch after a completed local call sends only the assistant's prefix through
+that call, with its actual results; later calls, outputs and image injections are not part
+of that branch's model context. Stored-result reads respect that boundary too. Branching
+starts no agent turn, re-executes no earlier call and never changes files. The person writes
+a new message or explicitly asks to continue. Files still reflect their current state, not
+a historical snapshot. Streaming, execution and pending decisions block the cut. Node
+sessions do not offer local branching.
+
 The conversation presents reasoning as a Thinking/Thought disclosure and consecutive tool
 calls as one work line grouped by kind. These are presentation only: every call retains its
 own arguments, result and approval identity. The person opens the work line and a call's

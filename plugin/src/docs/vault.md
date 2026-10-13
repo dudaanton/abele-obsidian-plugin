@@ -1018,6 +1018,17 @@ another asks first. The folder choice is saved with AI general settings and trav
 
 ## Chats
 
+An explicitly cut local branch carries `pendingBranchCut` in metadata until its first new
+record is appended. That record carries `branchCutAfter`, referencing its parent assistant
+or completed tool-call message ID. These optional fields survive log writes and compaction;
+copies remap references to their fresh message IDs. The selected model context trims the
+original assistant bundle at that boundary, retaining genuine prefix results and their
+linked injections, never synthetic results for omitted calls. Image injections and stored
+result access follow the same cut. The original transcript remains unchanged for its other
+branches. Creating or selecting a branch never restores files or executes a tool; the
+filesystem remains its current state. Older clients do not implement this optional context
+boundary, so use compatible versions when continuing a cut branch on another device.
+
 Agent definitions keep `toolDiscovery`: `all` (the default, also when absent) or `by-group`.
 This setting travels with the whole agent definition in settings transfer. Chat metadata
 keeps `revealedToolGroups`, the group names in the order revealed with `enable_tools`.
