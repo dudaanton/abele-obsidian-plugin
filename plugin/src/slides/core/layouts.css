@@ -303,6 +303,9 @@
 
 .abele-slide-content th {
   --table-column-alt-background: transparent;
+  /* Obsidian colours a rendered head cell's borders through this variable, with a selector
+     stronger than this one; without it the firmer rule came out in the hairline's colour. */
+  --table-header-border-color: var(--background-modifier-border-hover);
   border-bottom: 2px solid var(--background-modifier-border-hover);
   color: var(--text-muted);
   font-weight: var(--font-semibold);
