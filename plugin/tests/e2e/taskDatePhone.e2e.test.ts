@@ -361,8 +361,7 @@ describe.skipIf(!available)("the task's date dialog on a phone, keyboard up", ()
   })
 
   // BUG: The reviewed date form needs 18px of body scrolling without a keyboard.
-  // Preserve the zero-scroll guarantee until its design contract is decided.
-  it.fails('shows all date controls without internal scrolling when no keyboard is open', () => {
+  it('shows all date controls without internal scrolling when no keyboard is open', () => {
     const s = report['no-keyboard']
     expect(s.content.scrollHeight).toBeLessThanOrEqual(s.content.clientHeight + 1)
   })
