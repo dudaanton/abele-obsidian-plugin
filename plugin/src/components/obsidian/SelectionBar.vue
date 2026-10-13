@@ -54,6 +54,8 @@ const props = defineProps<{
   actions: SelectionAction[]
   /** Only words inside an element matching this count — `.cm-editor` for code alone. */
   within?: string
+  /** What above the words the bar must not cover, as a selector inside the scope: a header. */
+  under?: string
 }>()
 
 const emit = defineEmits<{ (e: 'pick', action: string, selected: Selected): void }>()
@@ -88,11 +90,37 @@ function read(): { selected: Selected; range: Range } | null {
   const range = sel.getRangeAt(0)
   if (!scope.contains(range.startContainer) || !scope.contains(range.endContainer)) return null
   if (props.within) {
-    const inside = (n: Node) => (n.instanceOf(Element) ? (n as Element) : n.parentElement)?.closest(props.within!)
+    const inside = (n: Node) => (n.instanceOf(Element) ? n : n.parentElement)?.closest(props.within)
     if (!inside(range.startContainer) || !inside(range.endContainer)) return null
   }
   const text = sel.toString().trim()
   return text ? { selected: { text, ...lines(range) }, range } : null
+}
+
+/**
+ * The highest the bar may stand: under what the caller names as not to be covered — a file's
+ * header over its first line — and not past the top of the pane the words scroll in.
+ */
+function ceiling(range: Range, words: DOMRect): number {
+  let top = 0
+  if (props.under && props.scope)
+    for (const el of Array.from(props.scope.querySelectorAll(props.under))) {
+      const box = el.getBoundingClientRect()
+      if (box.bottom <= words.top + 1) top = Math.max(top, box.bottom)
+    }
+  const start = range.startContainer
+  for (
+    let el: Element | null = start.instanceOf(Element) ? start : start.parentElement;
+    el && el !== document.body;
+    el = el.parentElement
+  ) {
+    const overflow = getComputedStyle(el).overflowY
+    if (overflow === 'auto' || overflow === 'scroll') {
+      top = Math.max(top, el.getBoundingClientRect().top)
+      break
+    }
+  }
+  return top
 }
 
 async function position(range: Range) {
@@ -104,7 +132,7 @@ async function position(range: Range) {
   const spot = placeSelectionBar(
     { top: box.top, bottom: box.bottom, left: box.left },
     { width: el.offsetWidth, height: el.offsetHeight },
-    { width: window.innerWidth, top: 0, bottom: window.innerHeight },
+    { width: window.innerWidth, top: ceiling(range, box), bottom: window.innerHeight },
     touch
   )
   at.top = spot.top

@@ -2,7 +2,7 @@
  * The bar over selected words: it comes up for words inside its scope, only inside code when told
  * to, and says which action was picked with the words.
  */
-import { afterEach, beforeEach, expect, it } from 'vitest'
+import { afterEach, beforeEach, expect, it, vi } from 'vitest'
 import { flushPromises, mount, type VueWrapper } from '@vue/test-utils'
 import SelectionBar from '@/components/obsidian/SelectionBar.vue'
 import { ADD, ASK, NOTE } from '@/components/obsidian/selectionActions'
@@ -107,4 +107,29 @@ it('teleports outside a clipping pane, preserves a pressed selection and removes
   wrapper!.unmount()
   wrapper = undefined
   expect(bar()).toBeNull()
+})
+
+it('stands under words on the first line rather than over what sits above the text', async () => {
+  const scope = document.body.createDiv()
+  const header = scope.createDiv({ cls: 'sample-header', text: 'sample.ts' })
+  const line = scope
+    .createDiv({ cls: 'cm-content' })
+    .createSpan({ text: 'export const sample = 1' })
+  vi.spyOn(header, 'getBoundingClientRect').mockReturnValue({ top: 60, bottom: 100 } as DOMRect)
+  wrapper = mount(SelectionBar, {
+    props: { scope, actions: [ASK, ADD, NOTE], within: '.cm-content', under: '.sample-header' },
+    attachTo: document.body,
+  })
+  const range = document.createRange()
+  range.selectNodeContents(line)
+  vi.spyOn(range, 'getBoundingClientRect').mockReturnValue({
+    top: 100,
+    bottom: 120,
+    left: 20,
+  } as DOMRect)
+  window.getSelection()!.addRange(range)
+  document.dispatchEvent(new Event('selectionchange'))
+  await settle()
+  await flushPromises()
+  expect(bar()!.style.top).toBe('126px')
 })
