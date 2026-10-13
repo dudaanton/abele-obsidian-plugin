@@ -113,10 +113,14 @@ const script = `(async () => {
   const names = {}
   const rowNamed = (i) => rows().find((r) => nameOf(r) === names[i])
   const topOf = (el) => Math.round(el.getBoundingClientRect().top - scroller().getBoundingClientRect().top)
-  /** Until the element and the scroller have held still for five rendering steps. */
+  /**
+   * Until the element and the scroller have held still for five rendering steps, for no longer
+   * than the fixed waits this replaced (about a second): a list that keeps moving by a pixel
+   * must not cost more than before.
+   */
   const steady = async (el) => {
     let last = null, still = 0
-    for (let i = 0; i < 300 && still < 5; i++) {
+    for (let i = 0; i < 60 && still < 5; i++) {
       await frame()
       const now = JSON.stringify([el()?.getBoundingClientRect().top, scroller()?.scrollTop, scroller()?.scrollHeight])
       still = now === last ? still + 1 : 0
