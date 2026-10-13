@@ -104,7 +104,7 @@ describe('routing tasks to sidebars and lists', () => {
     expect(view.findAllComponents(TaskCard).every((card) => card.props('atTimeline'))).toBe(true)
     await view
       .findAllComponents(Icon)
-      .find((icon) => icon.props('textRight') === 'Show completed')!
+      .find((icon) => icon.props('label') === 'Show completed tasks')!
       .trigger('click')
     await flushPromises()
     expect(rendered()).toEqual(['Early', 'Late', 'Untimed', 'Done'])
