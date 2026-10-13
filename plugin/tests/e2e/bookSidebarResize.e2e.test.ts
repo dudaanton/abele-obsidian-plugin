@@ -32,10 +32,10 @@ const PRELUDE = `
   ${WAIT_PRELUDE}
   const need = async (fn, label) => { const v = await until(fn); if (!v) throw Error(label); return v }
   // A step that never settles names itself instead of running the test out of time.
-  const step = (label, promise) => Promise.race([promise, new Promise((_, no) => setTimeout(() => no(Error(label + ' did not finish in 30 s')), 30000))])
+  const step = (label, promise, state = () => '') => Promise.race([promise, new Promise((_, no) => setTimeout(() => no(Error(label + ' did not finish in 30 s ' + state())), 30000))])
   const open = async () => {
     let leaf; try { leaf = app.workspace.getLeaf('tab') } catch { leaf = app.workspace.getLeaf(false) }
-    await step('opening the book', leaf.setViewState({ type: 'abele-book', state: { file: ${JSON.stringify(BOOK)} }, active: true }))
+    await step('opening the book', leaf.setViewState({ type: 'abele-book', state: { file: ${JSON.stringify(BOOK)} }, active: true }), () => JSON.stringify({ type: leaf.view?.getViewType?.(), file: leaf.view?.file?.path, status: leaf.view?.model?.status, message: leaf.view?.model?.message, engine: !!leaf.view?.engine, reading: !!leaf.view?.reading, attached: leaf.view?.containerEl?.isConnected, stage: !!leaf.view?.contentEl?.querySelector('.abele-book-reader__stage'), books: app.workspace.getLeavesOfType('abele-book').length, visible: document.visibilityState }))
     const v = await need(() => leaf.view.model?.status === 'ready' && leaf.view.reading && leaf.view, 'reader not ready')
     v.model.panelTab = 'search'; v.model.panel = true
     await need(() => v.contentEl.querySelector('.abele-book-reader__panel'), 'panel not open')
