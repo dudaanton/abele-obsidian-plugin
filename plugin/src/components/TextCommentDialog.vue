@@ -585,6 +585,11 @@ const drafts = new Map<string, string>()
     opacity: 1;
   }
 
+  // A phone has neither pointer nor keyboard to bring them up: there they always stand.
+  .is-mobile &__meta .clickable-icon {
+    opacity: 1;
+  }
+
   &__time {
     flex: 1 1 auto;
     min-width: 0;
