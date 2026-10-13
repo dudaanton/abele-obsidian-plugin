@@ -2,7 +2,7 @@
   <!-- The canvas's controls laid out as Obsidian Canvas lays out its own, in its own classes: the
        tools at the foot in the middle, zoom and history in a column at the top right, and the
        actions for what is picked in a small bar standing over it. -->
-  <div class="abele-canvas-chrome" :class="{ 'is-phone-layout': phone }">
+  <div class="abele-canvas-chrome" :class="{ 'is-phone-layout': phone }" @pointerdown.stop>
     <div v-if="saveState" class="canvas-controls abele-canvas-chrome__state">
       <div class="canvas-control-group">
         <div
@@ -37,6 +37,39 @@
           :disabled="state('Redo canvas change').disabled"
           @click="press('Redo canvas change')"
         />
+      </div>
+      <!-- The walkthrough, only when the canvas has one: a glyph to start it, and while it runs
+           the steps back and forth, the step it is at in their tooltips, and a way out. -->
+      <div v-if="steps" class="canvas-control-group">
+        <ControlItem
+          v-if="viewer.step === null || viewer.step === undefined"
+          key="start"
+          icon="presentation"
+          :tooltip="`Go through the canvas step by step (${steps} steps)`"
+          @click="step(1)"
+        />
+        <template v-else>
+          <ControlItem
+            :key="`back-${viewer.step}`"
+            icon="chevron-left"
+            :tooltip="`Previous step (now ${viewer.step} of ${steps})`"
+            :disabled="viewer.step <= 1"
+            @click="step(-1)"
+          />
+          <ControlItem
+            :key="`next-${viewer.step}`"
+            icon="chevron-right"
+            :tooltip="`Next step (now ${viewer.step} of ${steps})`"
+            :disabled="viewer.step >= steps"
+            @click="step(1)"
+          />
+          <ControlItem
+            key="all"
+            icon="x"
+            tooltip="Leave the steps and show all"
+            @click="allSteps"
+          />
+        </template>
       </div>
     </div>
 
@@ -108,25 +141,6 @@
         @click="press('Ungroup selected group')"
       />
       <ChromeIcon icon="more-horizontal" tooltip="More" @click="moreMenu($event)" />
-    </div>
-
-    <!-- The walkthrough, only when the canvas has one. -->
-    <div
-      v-if="steps"
-      class="canvas-menu abele-canvas-chrome__steps"
-      role="toolbar"
-      aria-label="Steps"
-    >
-      <ChromeIcon icon="chevron-left" tooltip="Previous step" @click="step(-1)" />
-      <span class="abele-canvas-chrome__count">{{ viewer.step ?? 0 }} / {{ steps }}</span>
-      <ChromeIcon icon="chevron-right" tooltip="Next step" @click="step(1)" />
-      <ChromeIcon icon="play" tooltip="Play the walkthrough" @click="viewer.go(viewer.step ?? 1)" />
-      <ChromeIcon
-        icon="scan"
-        tooltip="Show all"
-        :disabled="viewer.step === null"
-        @click="viewer.go(null)"
-      />
     </div>
 
     <!-- The pen's colours and widths, over the tools while a pen is in hand. -->
@@ -217,8 +231,8 @@ const ControlItem = defineComponent({
     const el = ref<HTMLElement>()
     onMounted(() => {
       if (!el.value) return
-      setIcon(el.value, p.icon!)
-      setTooltip(el.value, p.tooltip!, { placement: 'left' })
+      setIcon(el.value, p.icon)
+      setTooltip(el.value, p.tooltip, { placement: 'left' })
     })
     return () =>
       h('div', {
@@ -240,8 +254,8 @@ const ToolButton = defineComponent({
     const draw = () => {
       if (!el.value) return
       el.value.replaceChildren()
-      setIcon(el.value, p.icon!)
-      setTooltip(el.value, p.tooltip!, { placement: 'top' })
+      setIcon(el.value, p.icon)
+      setTooltip(el.value, p.tooltip, { placement: 'top' })
     }
     onMounted(draw)
     return () => {
@@ -482,7 +496,7 @@ const saveState = computed(() => {
 
 const slots = SLOTS.flat()
 const shownGroups = computed(() =>
-  phone ? [PHONE_ORDER.map((id) => slots.find((s) => s.id === id)!)] : SLOTS
+  phone ? [PHONE_ORDER.map((id) => slots.find((s) => s.id === id))] : SLOTS
 )
 const hidden = computed(() => (phone ? slots.filter((s) => !PHONE_ORDER.includes(s.id)) : []))
 const hiddenActive = computed(() => hidden.value.find((s) => slotActive(s)))
@@ -585,7 +599,7 @@ function shapeMenu(e: MouseEvent, _: 'change') {
         .setIcon(SHAPE_ICONS[s] ?? 'square')
         .setChecked(currentShape.value === s)
         .onClick(() => {
-          set('shape', s as Shape)
+          set('shape', s)
           set('shape-color', currentColour.value)
           press('Apply selected shape')
         })
@@ -698,6 +712,10 @@ function zoom(factor: number) {
 function zoomTo(z: number) {
   zoom(z / props.viewer.camera.zoom)
 }
+function allSteps() {
+  props.viewer.go(null)
+  tick.value++
+}
 function step(delta: number) {
   const n = (props.viewer.step ?? 0) + delta
   props.viewer.go(n < 1 ? null : Math.min(n, steps.value))
@@ -707,7 +725,7 @@ function step(delta: number) {
 /** The card being written in: the editor's own field, laid over the card on the canvas. */
 const placeField = () => {
   const id = c.editing()
-  const field = c.textField().parentElement as HTMLElement | null
+  const field = c.textField().parentElement
   if (!field) return
   const node = id ? graph().nodes.find((n) => n.id === id) : undefined
   if (!node) return field.style.removeProperty('left')
@@ -826,7 +844,6 @@ onBeforeUnmount(() => {
   z-index: var(--layer-cover);
 }
 
-.abele-canvas-chrome__steps,
 .abele-canvas-chrome__pen {
   position: absolute;
   left: 50%;
@@ -834,17 +851,6 @@ onBeforeUnmount(() => {
   transform: translateX(-50%);
   z-index: var(--layer-cover);
   align-items: center;
-}
-.abele-canvas-chrome__pen ~ .abele-canvas-chrome__steps {
-  display: none;
-}
-
-.abele-canvas-chrome__count {
-  white-space: nowrap;
-  padding-inline: var(--size-2-3);
-  color: var(--text-muted);
-  font-size: var(--font-ui-small);
-  font-variant-numeric: tabular-nums;
 }
 
 .abele-canvas-chrome__swatch-button {
