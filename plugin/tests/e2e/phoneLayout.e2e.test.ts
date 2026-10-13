@@ -993,7 +993,10 @@ const probeScript = `(async () => {
         await wait(200)
         await screen('settings nodes overview', settingsModal, settingsScroll)
         report['settings nodes overview'].clipped = overviewCuts
-        ;[...settingsRoot.querySelectorAll('button')].find(button => button.textContent.trim() === 'Open session')?.click()
+        // The probe's own node, not whichever the shared test vault already lists first.
+        const ownRow = [...settingsRoot.querySelectorAll('.setting-item')]
+          .find(row => row.querySelector('.setting-item-name')?.textContent.trim() === registration.label)
+        ;[...(ownRow?.querySelectorAll('button') ?? [])].find(button => button.textContent.trim() === 'Open session')?.click()
         await until(() => document.querySelector('.prompt .suggestion-item'), 5000)
         await wait(300)
         const picker = document.querySelector('.prompt')
