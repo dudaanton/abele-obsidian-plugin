@@ -2,6 +2,7 @@ import type { VaultCli } from './obsidianCli'
 import { waitFor } from './syncVault'
 import { captureSyncFailure, captureSyncProgress, SYNC_SNAPSHOT } from './syncDiagnostics'
 import { STARTUP_WAIT, waitForStartup } from './startupWait'
+import { onPhone } from './target'
 export const SYNC_PRELUDE = `
  ${SYNC_SNAPSHOT}
  ${STARTUP_WAIT}
@@ -24,6 +25,15 @@ export const SYNC_PRELUDE = `
  const icon = (root,name) => { if(root.classList.contains('abele-sync-row')&&name==='settings') { root.click(); return } if(root.classList.contains('abele-sync-row')&&name!=='refresh-cw'&&name!=='more-horizontal') { icon(root,'more-horizontal'); const item=[...new Set([document,settingsDoc()])].flatMap(doc=>[...doc.querySelectorAll('.menu .menu-item')]).find(el=>el.querySelector('svg.lucide-'+name)); if(!item) throw new Error('Menu action unavailable: '+name); item.click(); return } const el=root.querySelector('svg.lucide-'+name)?.closest('.abele-obsidian-icon'); if(!el||el.classList.contains('abele-obsidian-icon_disabled')) throw new Error('Action unavailable: '+name); el.click() }
  const closeSettings = async () => { app.setting.close(); await sleep(100) }
 `
+/**
+ * How long the call that starts a long action waits for it before polling takes over. Less on a
+ * phone, whose driver gives one eval 30 s in all.
+ */
+const FIRST_ANSWER_MS = onPhone() ? 10_000 : 20_000
+const ROWS = `svc.rows.value.map(({id,status,paused,address})=>({id,status,paused,address,error:svc.activity.value[id]?.error}))`
+/** Waits in the page until the connections (or one) are idle or paused, or one is in error. */
+const settle = (id?: string) =>
+  `const mine=()=>svc.rows.value.filter(one=>${id ? 'one.id===' + JSON.stringify(id) : 'true'});await poll(()=>{const rows=mine();return rows.some(one=>one.status==='error')||rows.length>0&&rows.every(one=>['idle','paused'].includes(one.status))},60000,'token connection to settle');return ${ROWS}`
 export interface SyncStatus {
   id: string
   status: string
@@ -81,8 +91,11 @@ export class SyncDriver {
     let answer: { ok: boolean; value?: T; error?: string } | null = null
     let nextEvidence = Date.now() + 30000
     try {
-      evaluate(
-        `(()=>{window[${JSON.stringify(key)}]=null;(async()=>{const jobKey=${JSON.stringify(key)};${SYNC_PRELUDE}\n${body}})().then(value=>window[${JSON.stringify(key)}]={ok:true,value:value===undefined?null:value},error=>window[${JSON.stringify(key)}]={ok:false,error:String(error?.message||error)});return true})()`
+      // The job is started and, for up to FIRST_ANSWER_MS, waited for inside the same call: most
+      // actions finish well within it and cost one round trip. A longer one is polled as before.
+      answer = evaluate(
+        `(async()=>{window[${JSON.stringify(key)}]=null;const job=(async()=>{const jobKey=${JSON.stringify(key)};${SYNC_PRELUDE}\n${body}})().then(value=>window[${JSON.stringify(key)}]={ok:true,value:value===undefined?null:value},error=>window[${JSON.stringify(key)}]={ok:false,error:String(error?.message||error)});await Promise.race([job,new Promise(resolve=>setTimeout(resolve,${FIRST_ANSWER_MS}))]);const result=window[${JSON.stringify(key)}];if(result)delete window[${JSON.stringify(key)}];return result||null})()`,
+        FIRST_ANSWER_MS + 15_000
       )
       const check = () => {
         if (!cleanup) this.assertActive()
@@ -116,7 +129,9 @@ export class SyncDriver {
           ),
         }
       }
-      if (startupProgress) await waitForStartup(check)
+      if (answer !== null) {
+        /* answered within the first call */
+      } else if (startupProgress) await waitForStartup(check)
       else
         await waitFor(
           what,
@@ -176,37 +191,30 @@ export class SyncDriver {
       )
     })
   }
+  /** Syncs the connections (or one) and waits until they settle, in one action in the page. */
   async syncNow(id?: string): Promise<SyncStatus[]> {
-    await this.long(
+    const rows = await this.long<SyncStatus[]>(
       'sync token connections',
-      `for(const row of svc.rows.value.filter(one=>!one.paused${id ? '&&one.id===' + JSON.stringify(id) : ''})) await svc.sync(row.id); return true`
+      `for(const row of svc.rows.value.filter(one=>!one.paused${id ? '&&one.id===' + JSON.stringify(id) : ''})) await svc.sync(row.id); ${settle(id)}`
     )
-    return this.waitIdle(id)
+    return this.settled(rows, id)
   }
   async waitIdle(id?: string): Promise<SyncStatus[]> {
-    let settled: SyncStatus[] = []
-    await waitFor(
-      'token connection to settle',
-      () => {
-        const rows = this.rows().filter((one) => !id || one.id === id)
-        if (rows.some((one) => one.status === 'error'))
-          throw new Error(
-            rows
-              .filter((one) => one.status === 'error')
-              .map((one) => one.id + ': ' + (one.error ?? 'Token exchange needs attention'))
-              .join('; ')
-          )
-        if (rows.length > 0 && rows.every((one) => ['idle', 'paused'].includes(one.status))) {
-          settled = rows
-          return true
-        }
-        return false
-      },
-      60000
-    ).catch((error) => {
-      throw this.failure('token connection to settle', error)
-    })
-    return settled
+    return this.settled(await this.long<SyncStatus[]>('token connection to settle', settle(id)), id)
+  }
+  private settled(all: SyncStatus[], id?: string): SyncStatus[] {
+    const rows = all.filter((one) => !id || one.id === id)
+    const failed = rows.filter((one) => one.status === 'error')
+    if (failed.length)
+      throw this.failure(
+        'token connection to settle',
+        new Error(
+          failed
+            .map((one) => one.id + ': ' + (one.error ?? 'Token exchange needs attention'))
+            .join('; ')
+        )
+      )
+    return rows
   }
   async pause(id: string, paused: boolean): Promise<void> {
     this.run(
