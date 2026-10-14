@@ -67,10 +67,10 @@
     "id": "@abele/node-protocol@0.0.0",
     "name": "@abele/node-protocol",
     "version": "0.0.0",
-    "size": 55809,
+    "size": 55796,
     "unpackedSize": 584542,
-    "shasum": "7c534e41383ca75d863082bbb2c768530b77ccbc",
-    "integrity": "sha512-tVA+1hhiH+Etx602JeO4TgNnuF2UYDbBBSP85QmTUmBwLhNo6tV8AFZ9aKUQOpGVrl0z/hdR3deVtfC10y1Jdw==",
+    "shasum": "34e64c28d5ffdbef71729c7eaa3ddc899931d45e",
+    "integrity": "sha512-erTBnDs+7ODIQg73cQ2p2CD+HU6bc/4MBRZZ/RtNst7BeBPqdzTc0nzGUIEQ0FH4wiIksoprRV/bOh+EZD16DA==",
     "filename": "abele-node-protocol-0.0.0.tgz",
     "files": [
       {
@@ -315,10 +315,10 @@
     "id": "@abele/node-client@0.0.0",
     "name": "@abele/node-client",
     "version": "0.0.0",
-    "size": 36922,
+    "size": 36888,
     "unpackedSize": 198750,
-    "shasum": "d2ef31f577e6189a8b701b309b46b1644bb041ec",
-    "integrity": "sha512-QBAmJz5bIYzoKLQE1QyP69QuM7yoKrdDfkLJ3Z3xBCgUlkPazP2SyhLDSfqkt0bs4s4WXFABKiLQy/Xwg7SdHQ==",
+    "shasum": "579aac31d77fb366d6ccf4a4a63bc3e0ed9e8840",
+    "integrity": "sha512-bkKvVFsSGDF2RS53e2ONwZuqWtOIVj9+FR6BiGvnwmh1yuYZmWImEf9IyM4Pjo8wqD+a6T0I/rlcJRF4Q/oTRg==",
     "filename": "abele-node-client-0.0.0.tgz",
     "files": [
       {
