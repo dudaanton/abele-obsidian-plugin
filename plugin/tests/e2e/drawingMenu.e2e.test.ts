@@ -20,6 +20,7 @@ interface Report {
   folder: string
   titles: string[]
   sources: string[]
+  nativeContextMenu?: boolean
   created?: { extension: string; parent: string; drawing: boolean }
 }
 
@@ -67,10 +68,13 @@ async function probe(otherProvider: boolean, mode: string): Promise<Report> {
       if(app.isMobile){
         const {x,y}=point
         const cdp=require('@electron/remote').getCurrentWebContents().debugger,owned=!cdp.isAttached();if(owned)cdp.attach('1.3')
+        // Desktop mobile emulation does not synthesize the phone OS's long-press
+        // context-menu event. Use Chromium's real context-menu gesture; Obsidian
+        // still renders its mobile sheet, and the trusted explorer event is witnessed.
+        el.addEventListener('contextmenu',event=>{report.nativeContextMenu=event.isTrusted},{once:true,capture:true})
         try{
-          await cdp.sendCommand('Input.dispatchTouchEvent',{type:'touchStart',touchPoints:[{x,y,id:1}]})
-          await wait(800)
-          await cdp.sendCommand('Input.dispatchTouchEvent',{type:'touchEnd',touchPoints:[]})
+          await cdp.sendCommand('Input.dispatchMouseEvent',{type:'mousePressed',x,y,button:'right',buttons:2,clickCount:1})
+          await cdp.sendCommand('Input.dispatchMouseEvent',{type:'mouseReleased',x,y,button:'right',buttons:0,clickCount:1})
         }finally{if(owned)cdp.detach()}
       }else el.dispatchEvent(new MouseEvent('contextmenu', { bubbles: true, clientX: b.left + 30, clientY: b.top + 10 }))
       await until(() => report.sources.length === 1 && [...document.querySelectorAll('.menu-item-title')].some(e => e.textContent.trim() === 'New Abele drawing'))
@@ -144,6 +148,8 @@ describe.skipIf(!available)('folder drawing actions', () => {
   it('distinguishes the actions in the mobile explorer menu', async () => {
     await reloadApp('app.emulateMobile(true)')
     evalRaw(`require('@electron/remote').getCurrentWindow().setContentSize(390, 844)`)
-    check(await probe(true, 'mobile'), true)
+    const report = await probe(true, 'mobile')
+    check(report, true)
+    expect(report.nativeContextMenu).toBe(true)
   }, 120_000)
 })
