@@ -160,7 +160,8 @@ describe.skipIf(!available)('settings transfer security in the running app', () 
         const scan = () => [...root.querySelectorAll('button')].find(b => b.textContent.trim() === 'Scan');
         await ready(scan, 'Scan action'); scan().click();
         const dialog = () => doc.querySelector('.abele-transfer-scan');
-        const button = text => [...(dialog()?.querySelectorAll('button') ?? [])].find(b => b.textContent.trim() === text);
+        // The window's answer stands at its foot, outside the list: buttons are looked for in the whole window.
+        const button = text => [...(dialog()?.closest('.modal')?.querySelectorAll('button') ?? [])].find(b => b.textContent.trim() === text);
         await ready(() => button('Paste the text'), 'paste action'); button('Paste the text').click();
         await ready(() => dialog()?.querySelector('textarea'), 'paste field');
         const input = dialog().querySelector('textarea'); input.value = ${JSON.stringify(text)}; input.dispatchEvent(new view.Event('input', { bubbles: true }));
@@ -169,6 +170,7 @@ describe.skipIf(!available)('settings transfer security in the running app', () 
         const fs = require('fs'); fs.mkdirSync(${JSON.stringify(shots)}, { recursive: true });
         const image = await view.require('@electron/remote').getCurrentWindow().webContents.capturePage();
         fs.writeFileSync(${JSON.stringify(`${shots}/${mobile ? 'phone' : 'desktop'}-review.png`)}, image.toPNG());
+        const footApply = button('Apply'), applyAtFoot = !!footApply.closest('.abele-modal__footer'), applyInSight = footApply.getBoundingClientRect().bottom <= view.innerHeight + 1;
         button('Apply').click(); await wait(300);
         const c = ${config}, store = window.__abeleTest.secrets();
         const out = { permission: c.ai.permissionMode, store: c.secretStore,
@@ -177,7 +179,8 @@ describe.skipIf(!available)('settings transfer security in the running app', () 
           selectedKey: store.get('abele-sample-transfer-key') === 'invented-arriving-value',
           unrelatedKey: store.get('abele-sample-unrelated-key') === 'invented-existing-value',
           connectionKey: c.github.connections.find(x => x.id === 'sample-transfer-connection')?.keyId,
-          overflow: rect.right > view.innerWidth + 1 || rect.left < -1 };
+          overflow: rect.right > view.innerWidth + 1 || rect.left < -1,
+          applyAtFoot, applyInSight };
         modal.querySelector('.modal-close-button')?.click(); app.setting.close(); return JSON.stringify(out);
       })()`)
       )
@@ -189,6 +192,59 @@ describe.skipIf(!available)('settings transfer security in the running app', () 
       expect(result.store).toEqual((original as any).secretStore)
       expect(result.permission).toBe((original as any).ai.permissionMode)
       expect(result.overflow).toBe(false)
+      expect(result.applyAtFoot).toBe(true)
+      expect(result.applyInSight).toBe(true)
+    })
+
+    it(`shows what will be sent as rows and the code above the ways it can go (${mobile ? 'phone layout' : 'desktop'})`, async () => {
+      evalRaw(`${config}.applySettings(${JSON.stringify(original)})`)
+      const result = JSON.parse(
+        await evalLong(`(async () => {
+        const wait = ms => new Promise(r => setTimeout(r, ms));
+        const ready = async (test, step) => { for (let i=0; i<100; i++) { const got=test(); if(got) return got; await wait(50) } throw new Error('Transfer window did not become ready: ' + step) };
+        app.setting.open(); app.setting.openTabById('abele');
+        const root = app.setting.activeTab.containerEl, doc = root.ownerDocument, view = doc.defaultView;
+        const transferTab = () => [...root.querySelectorAll('.abele-settings__nav .abele-tabs__tab')].find(t => t.textContent.trim() === 'Transfer');
+        await ready(transferTab, 'Transfer tab'); transferTab().click();
+        const tree = await ready(() => root.querySelector('.abele-transfer__tree'), 'tree');
+        for (let shut; (shut = tree.querySelector('.tree-item.is-collapsed > .tree-item-self')); ) { shut.click(); await wait(20) }
+        await ready(() => tree.querySelector('.abele-transfer__entry > .tree-item-self'), 'a row to send').click();
+        const pageButton = text => [...root.querySelectorAll('button')].find(b => b.textContent.trim() === text && !b.disabled);
+        const picture = async name => {
+          await new Promise(r => view.requestAnimationFrame(() => view.requestAnimationFrame(r))); await wait(300);
+          const fs = require('fs'); fs.mkdirSync(${JSON.stringify(shots)}, { recursive: true });
+          const image = await view.require('@electron/remote').getCurrentWindow().webContents.capturePage();
+          fs.writeFileSync(${JSON.stringify(shots)} + '/' + ${JSON.stringify(mobile ? 'phone' : 'desktop')} + '-' + name + '.png', image.toPNG());
+        };
+        const inside = el => { const r = el.getBoundingClientRect(); return r.left >= -1 && r.right <= view.innerWidth + 1 && r.bottom <= view.innerHeight + 1 };
+        const out = {};
+        (await ready(() => pageButton('Preview'), 'Preview')).click();
+        const preview = await ready(() => doc.querySelector('.abele-transfer-preview'), 'preview window');
+        out.previewRows = preview.querySelectorAll('.abele-entry-row').length;
+        out.previewHeadings = preview.querySelectorAll('.abele-group-heading').length;
+        out.previewInside = inside(preview.closest('.modal'));
+        await picture('preview');
+        preview.closest('.modal').querySelector('.modal-close-button').click();
+        await ready(() => !doc.querySelector('.abele-transfer-preview'), 'preview closed');
+        (await ready(() => pageButton('Send'), 'Send')).click();
+        const send = await ready(() => doc.querySelector('.abele-transfer-send .abele-transfer-send__code-value') && doc.querySelector('.abele-transfer-send'), 'codes');
+        const modal = send.closest('.modal'), foot = modal.querySelector('.abele-modal__footer');
+        const qr = send.querySelector('svg, canvas, img'), hint = send.querySelector('.abele-transfer-send__hint');
+        out.ways = [...foot.querySelectorAll('button')].map(b => b.textContent.trim());
+        out.footInSight = inside(foot);
+        out.codeFirst = send.querySelector('.abele-transfer-send__code-value').getBoundingClientRect().top < hint.getBoundingClientRect().top && (!qr || qr.getBoundingClientRect().bottom <= hint.getBoundingClientRect().top + 1);
+        await picture('send');
+        modal.querySelector('.modal-close-button').click(); app.setting.close();
+        return JSON.stringify(out);
+      })()`)
+      )
+      expect(result.previewRows).toBeGreaterThan(0)
+      expect(result.previewHeadings).toBeGreaterThan(0)
+      expect(result.previewInside).toBe(true)
+      expect(result.ways.at(-1)).toBe('Copy the text')
+      expect(result.ways).toContain('Save a file')
+      expect(result.footInSight).toBe(true)
+      expect(result.codeFirst).toBe(true)
     })
   }
 })
