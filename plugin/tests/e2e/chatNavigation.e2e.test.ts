@@ -345,7 +345,9 @@ describe.skipIf(!available)('current-branch chat navigation', () => {
       console.warn(
         `Navigation of 600 messages: mount ${Math.round(result.jumpMs)} ms; settled sample ${Math.round(result.settledMs)} ms`
       )
-      expect(result.focusedSearch).toBe(layout !== 'emulated phone')
+      // The search takes focus on a desktop only: on any phone (real or emulated) a focused field
+      // would raise the keyboard over the outline the reader just opened.
+      expect(result.focusedSearch).toBe(layout === 'desktop')
       expect(result.questions).toBe(300)
       expect(result.hiddenBranch).toBe(true)
       expect(result.firstMounted).toBe(true)

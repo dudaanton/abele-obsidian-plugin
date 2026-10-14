@@ -217,10 +217,29 @@ const script = `(async () => {
       const explorer = app.workspace.getLeavesOfType('file-explorer')[0]
       if (!explorer) throw new Error('no file list')
       if (explorer.loadIfDeferred) await explorer.loadIfDeferred()
-      app.workspace.revealLeaf(explorer)
-      app.internalPlugins.getPluginById('file-explorer').instance.revealInFolder(chat)
-      const row = await until(() => document.querySelector('.nav-file-title[data-path="' + chatPath + '"]'))
-      if (!row) throw new Error('no row for the chat in the file list')
+      // The drawer slides in after revealLeaf resolves; the list draws only the rows inside its
+      // visible height, so a reveal made while the drawer still measures nothing draws no row.
+      // Reveal again until the row is there, as a person would scroll to it.
+      await app.workspace.revealLeaf(explorer)
+      const reveal = () => app.internalPlugins.getPluginById('file-explorer').instance.revealInFolder(chat)
+      const rowOf = () => document.querySelector('.nav-file-title[data-path="' + chatPath + '"]')
+      let row = null
+      for (let i = 0; i < 10 && !row; i++) {
+        reveal()
+        row = await until(rowOf, 1000)
+      }
+      if (!row) {
+        const view = explorer.view
+        throw new Error('no row for the chat in the file list: ' + JSON.stringify({
+          file: !!app.vault.getAbstractFileByPath(chatPath),
+          item: !!view?.fileItems?.[chatPath],
+          leftCollapsed: app.workspace.leftSplit.collapsed,
+          explorerShown: !!view?.containerEl?.getClientRects().length,
+          height: view?.containerEl?.getBoundingClientRect().height ?? null,
+          rows: document.querySelectorAll('.nav-file-title').length,
+          active: app.workspace.activeLeaf?.view?.getViewType() ?? null,
+        }))
+      }
       await wait(600)
       await tap('explorer', row)
     })

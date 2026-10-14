@@ -16,7 +16,15 @@ describe.skipIf(!available)('one view of a chat’s artifacts', () => {
         `(async () => {
       ${SCRIPT_FIXTURE}
       const wait = ms => new Promise(r => setTimeout(r, ms))
-      const until = async fn => { for (let i = 0; i < 100; i++) { const value = fn(); if (value) return value; await wait(50) } throw Error('UI did not appear') }
+      const until = async (fn, what = 'UI') => { for (let i = 0; i < 100; i++) { const value = fn(); if (value) return value; await wait(50) } throw Error(what + ' did not appear') }
+      // The phone slides a menu sheet away after its item is pressed; the next menu is only
+      // reliably the one just opened once the old sheet has left the DOM.
+      const menusGone = () => until(() => !document.querySelector('.menu'), 'no menu')
+      const fromMenu = async text => {
+        const item = await until(() => [...document.querySelectorAll('.menu .menu-item')].find(el => el.textContent.trim() === text), 'menu item ' + text)
+        item.click()
+        await menusGone()
+      }
       const api = window.__abeleTest, chats = api.ChatService.getInstance(), config = api.AbeleConfig.getInstance()
       const priorTab = chats.activeTabId.value, priorLeaf = app.workspace.activeLeaf
       const oldFolder = app.vault.getConfig('attachmentFolderPath')
@@ -30,10 +38,10 @@ describe.skipIf(!available)('one view of a chat’s artifacts', () => {
       const root = () => document.querySelector('.abele-chat-artifacts')
       const openArtifacts = async () => {
         const overflow = await until(() => document.querySelector('.abele-ai-chat__overflow [aria-haspopup="menu"]'))
+        await menusGone()
         overflow.click()
-        const item = await until(() => [...document.querySelectorAll('.menu .menu-item')].find(el => el.textContent.trim() === 'Files from this chat'))
-        item.click()
-        await until(root)
+        await fromMenu('Files from this chat')
+        await until(root, 'files view')
       }
       // A note or script is a tree row, a picture a tile; both carry the file's path.
       const card = path => [...root().querySelectorAll('.abele-chat-artifacts__row, .abele-chat-artifacts__image')].find(el => (el.matches('[data-path]') ? el : el.querySelector('[data-path]'))?.getAttribute('data-path') === path)
@@ -42,15 +50,16 @@ describe.skipIf(!available)('one view of a chat’s artifacts', () => {
       const headings = () => [...root().querySelectorAll('.abele-fold-heading')].map(heading)
       // What the ⋯ of a row (or a right click on a picture) holds; nativeMenus is off for the run.
       const menuOf = async host => {
+        await menusGone()
         const more = host.querySelector('.abele-chat-artifacts__more')
         if (more) more.click()
         else host.dispatchEvent(new MouseEvent('contextmenu', { bubbles: true, cancelable: true, clientX: 10, clientY: 10 }))
-        return [...(await until(() => document.querySelector('.menu'))).querySelectorAll('.menu-item')]
+        return [...(await until(() => document.querySelector('.menu'), 'menu')).querySelectorAll('.menu-item')]
       }
       const press = async (host, text) => {
         const item = (await menuOf(host)).find(el => el.textContent.trim() === text)
         if (!item || item.classList.contains('is-disabled')) throw Error('Missing enabled menu item: ' + text)
-        item.click(); await wait(50)
+        item.click(); await menusGone(); await wait(50)
       }
       const oldNative = app.vault.getConfig('nativeMenus')
       const capture = async name => {
@@ -117,8 +126,8 @@ describe.skipIf(!available)('one view of a chat’s artifacts', () => {
         document.querySelector('.abele-chat-input__expand').click()
         await until(() => document.querySelector('.abele-ai-chat--composing'))
         overflow().click()
-        ;(await until(() => [...document.querySelectorAll('.menu .menu-item')].find(el => el.textContent.trim() === 'Files from this chat'))).click()
-        await until(root)
+        await fromMenu('Files from this chat')
+        await until(root, 'files view')
         observations.sections = headings()
         observations.images = root().querySelectorAll('.abele-chat-picture img').length
         // A picture says where it came from in its tooltip.
@@ -170,12 +179,11 @@ describe.skipIf(!available)('one view of a chat’s artifacts', () => {
         observations.missing = (await menuOf(card(created[1]))).some(el => el.textContent.trim() === 'Show in chat')
         // Execute the source action to dismiss its menu normally; synthetic Escape can also
         // close the native modal. Reopen the files view for the independent upload-source check.
-        const missingSource = [...document.querySelectorAll('.menu .menu-item')].find(el => el.textContent.trim() === 'Show in chat')
-        missingSource.click()
-        await until(() => !root())
+        await fromMenu('Show in chat')
+        await until(() => !root(), 'files view closed')
         await openArtifacts()
         await press(card(upload.path), 'Show in chat')
-        await until(() => !root())
+        await until(() => !root(), 'files view closed')
         const sourceVisible = () => {
           const source = document.querySelector('[data-message-id="sample-upload"]')
           const box = source?.closest('.abele-ai-chat__messages')
@@ -185,12 +193,12 @@ describe.skipIf(!available)('one view of a chat’s artifacts', () => {
           return source.classList.contains('abele-footnote-flash') && b.width > 0 && b.height > 0 &&
             b.left >= -1 && b.right <= innerWidth + 1 && s.bottom > b.top && s.top < b.bottom
         }
-        await until(sourceVisible)
+        await until(sourceVisible, 'the upload in its chat')
         observations.source = !!document.querySelector('[data-message-id="sample-upload"]')
         observations.sourceVisible = sourceVisible()
         observations.sourceShot = await capture('source')
         return JSON.stringify({ ...observations, cuts, over })
-      } catch (error) { return JSON.stringify({ error: String(error.stack || error), observations }) }
+      } catch (error) { return JSON.stringify({ error: String(error) + (error && error.stack ? '\n' + error.stack : ''), observations }) }
       finally {
         // Tools and code views can save the temporary settings. Restore durably before any
         // workspace cleanup that could fail, so the next file never inherits scripts off.

@@ -42,6 +42,7 @@ interface Report {
   metadataOnly: string[]
   contentRemembered: string | null
   contentOff: string[]
+  contentOffPressed?: string | null
 }
 
 const script = `(async () => {
@@ -67,6 +68,7 @@ const script = `(async () => {
   const CONTENT_KEY = 'abele-chat-history-content'
   const beforeContent = app.loadLocalStorage(CONTENT_KEY)
   const createdDirs = []
+  const oldNative = app.vault.getConfig('nativeMenus')
 
   const DAY = 86400000
   const noon = new Date(); noon.setHours(12, 0, 0, 0)
@@ -108,14 +110,27 @@ const script = `(async () => {
     modal()?.closest('.modal-container')?.querySelector('.modal-close-button, .modal-header-button')?.click()
     return !!(await until(() => !modal(), 3000))
   }
+  // The order is a glyph beside the search field opening Obsidian's menu of orders; nativeMenus
+  // is off for the run so the desktop draws it in the DOM, the way the phone always does.
+  const ORDER_TITLES = { last: 'Last message', created: 'Date created' }
+  const menuItem = (text) => [...document.querySelectorAll('.menu .menu-item')].find((el) =>
+    (el.querySelector('.menu-item-title')?.textContent ?? el.textContent).trim() === text)
   const choose = async (value) => {
-    const select = modal().querySelector('.abele-chat-history__order select')
-    select.value = value
-    select.dispatchEvent(new Event('change', { bubbles: true }))
+    const button = modal().querySelector('button.abele-chat-history__order')
+    if (!button) throw new Error('the order button is missing')
+    button.click()
+    const item = await until(() => menuItem(ORDER_TITLES[value]), 3000)
+    if (!item) throw new Error('the order menu has no ' + ORDER_TITLES[value])
+    item.click()
+    // The phone slides its menu sheet away: wait until it is gone, not just clicked.
+    if (!(await until(() => !document.querySelector('.menu'), 3000))) throw new Error('the order menu did not close')
     await wait(300)
   }
+  // Searching the messages too is a pressed-or-not glyph button beside the field.
+  const contentToggle = () => modal().querySelector('button.abele-chat-history__content')
 
   try {
+    app.vault.setConfig('nativeMenus', false)
     app.saveLocalStorage(KEY, null)
     app.saveLocalStorage(CONTENT_KEY, null)
     for (const d of dir.split('/').map((_, i, a) => a.slice(0, i + 1).join('/'))) {
@@ -143,8 +158,8 @@ const script = `(async () => {
     report.byCreated = seen()
     report.expectCreated = chats.map((c) => day(c.first))
     const search = modal().querySelector('.abele-chat-history__search input')
-    const scope = modal().querySelector('[role="switch"]')
-    report.contentDefault = scope?.getAttribute('aria-checked') ?? null
+    const scope = contentToggle()
+    report.contentDefault = scope?.getAttribute('aria-pressed') ?? null
     search.value = PREFIX
     search.dispatchEvent(new Event('input', { bubbles: true }))
     await wait(350)
@@ -164,14 +179,16 @@ const script = `(async () => {
     await openHistory()
     if (modal().querySelector('.abele-chat-history__search input').value) throw new Error('the old history is still open')
     report.reopened = seen().titles
-    const reopenedScope = modal().querySelector('[role="switch"]')
-    report.contentRemembered = reopenedScope?.getAttribute('aria-checked') ?? null
+    const reopenedScope = contentToggle()
+    report.contentRemembered = reopenedScope?.getAttribute('aria-pressed') ?? null
     const reopenedSearch = modal().querySelector('.abele-chat-history__search input')
     reopenedSearch.value = 'plan'
     reopenedSearch.dispatchEvent(new Event('input', { bubbles: true }))
     await until(() => modal().querySelector('.abele-chat-history__snippet'), 6000)
-    reopenedScope.dispatchEvent(new KeyboardEvent('keydown', { key: ' ', bubbles: true }))
+    // A native button: Space and Enter reach it as a click, which a synthetic key event does not.
+    reopenedScope.click()
     await wait(150)
+    report.contentOffPressed = reopenedScope.getAttribute('aria-pressed')
     report.contentOff = seen().titles
     if (!(await closeHistory())) throw new Error('the history did not close')
   } catch (e) {
@@ -179,6 +196,7 @@ const script = `(async () => {
   } finally {
     try {
       await closeHistory()
+      app.vault.setConfig('nativeMenus', oldNative)
       app.saveLocalStorage(KEY, before ?? null)
       app.saveLocalStorage(CONTENT_KEY, beforeContent ?? null)
       for (const c of chats) {
@@ -226,6 +244,7 @@ describe.skipIf(!available)('the order of the chat history', () => {
     expect(report.metadataOnly).toEqual([])
     expect(report.contentRemembered).toBe('true')
     expect(report.contentOff).toEqual([])
+    expect(report.contentOffPressed).toBe('false')
   })
 
   it('keeps that order for what a search finds', () => {

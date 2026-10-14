@@ -63,7 +63,17 @@ describe('real agents list on synthetic states', () => {
         }).map(el => el.className)
         const closes = document.querySelectorAll('.modal .modal-header-button, .modal .modal-close-button').length
         const searchFocused = root.querySelector('input') === document.activeElement
-        const rows = root.querySelectorAll('.abele-list-row').length
+        const rowEls = [...root.querySelectorAll('.abele-agents__row')]
+        const rows = rowEls.length
+        // Each row's state dot stands at the end of the title's first line, never on a line of its own.
+        const dotsOnTitleLine = rowEls.every(row => {
+          const name = row.querySelector('.abele-card__name')
+          const dot = row.querySelector('.abele-card__title > .abele-status-dot')
+          if (!name || !dot) return false
+          const first = name.getClientRects()[0]
+          const d = dot.getBoundingClientRect()
+          return d.top >= first.top - 1 && d.bottom <= first.bottom + 1 && d.left >= first.left
+        })
         const shot = async path => {
           if (window.__e2eHost) await window.__e2eHost.shot(path)
           else {
@@ -80,7 +90,7 @@ describe('real agents list on synthetic states', () => {
           bottomSnapshot = ${designCaptureExpression('.modal.abele-modal', { nativeSelector: '.backlink-pane > .tree-item-self, .backlink-pane .search-result-file-title' })}
           await shot(${JSON.stringify(path.replace('.png', '-bottom.png'))})
         }
-        return JSON.stringify({ snapshot, bottomSnapshot, overflowing, closes, searchFocused, rows })
+        return JSON.stringify({ snapshot, bottomSnapshot, overflowing, closes, searchFocused, rows, dotsOnTitleLine })
       })()`)
       const result = JSON.parse(raw) as {
         snapshot: DesignSnapshot
@@ -89,6 +99,7 @@ describe('real agents list on synthetic states', () => {
         closes: number
         searchFocused: boolean
         rows: number
+        dotsOnTitleLine: boolean
       }
       expect(result.overflowing).toEqual([])
       expect(result.closes).toBe(1)
@@ -96,6 +107,7 @@ describe('real agents list on synthetic states', () => {
       expect(result.rows).toBe(
         state === 'empty' ? 0 : state === 'many' ? 4 : state === 'mixed' ? 3 : 1
       )
+      expect(result.dotsOnTitleLine).toBe(true)
       const violations = lintDesign(result.snapshot, { requireNative: true })
       writeFileSync(
         join(directory, `${state}-${onPhone() ? 'phone' : 'desktop'}-lint.json`),
@@ -127,9 +139,10 @@ describe('real agents list on synthetic states', () => {
         await chats.revealSidebar({ focus: false })
         app.commands.executeCommandById('abele:agents')
         await new Promise(r => setTimeout(r, 300))
-        const row = [...document.querySelectorAll('.abele-list-row')].find(el => el.querySelector('.abele-list-row__title-text')?.textContent === session.chatTitle.value)
+        // A waiting question's row is itself the way to its reply field.
+        const row = [...document.querySelectorAll('.abele-agents__row')].find(el => el.querySelector('.abele-card__name')?.textContent === session.chatTitle.value)
         if (!row) throw new Error('Live question is not in the list')
-        row.querySelector('.abele-list-row__recovery button').click()
+        row.click()
         for (let i = 0; i < 40; i++) {
           if (!document.querySelector('.abele-agents') && document.querySelector('.abele-chat-input')?.contains(document.activeElement)) break
           await new Promise(r => setTimeout(r, 100))
@@ -162,9 +175,16 @@ describe('real agents list on synthetic states', () => {
       ${close}
       window.__abeleTest.openDialog('agents', { agentsState: 'waiting' })
       await new Promise(r => setTimeout(r, 200))
-      const button = document.querySelector('.abele-list-row__main')
+      const button = document.querySelector('.abele-agents__row[role="button"][tabindex="0"]')
+      if (!button) throw new Error('No keyboard-reachable row')
+      let owner = button.closest('.abele-agents').__vueParentComponent
+      while (owner && !owner.props.source) owner = owner.parent
+      if (!owner) throw new Error('Synthetic agents source is unavailable')
+      // The row is a focusable role=button card, so its activations are counted where it opens.
+      const source = owner.props.source
+      const open = source.open
       let clicks = 0
-      button.addEventListener('click', () => clicks++)
+      source.open = (...args) => { clicks++; return open(...args) }
       const contents = require('@electron/remote').getCurrentWindow().webContents
       for (const key of ['Enter', ' ']) {
         button.focus()

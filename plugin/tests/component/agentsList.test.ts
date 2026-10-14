@@ -83,6 +83,21 @@ describe('agents dialog', () => {
     expect(source.markSeen).toHaveBeenCalledWith(rows[0], 'error-1')
     wrapper.unmount()
   })
+  it('opens a row once for Enter and once for Space, and not from its own actions', async () => {
+    const source = sourceOf(rows)
+    const wrapper = mountWith(source)
+    const row = wrapper.get('.abele-agents__row')
+    expect(row.attributes('role')).toBe('button')
+    expect(row.attributes('tabindex')).toBe('0')
+    await row.trigger('keydown', { key: 'Enter' })
+    await row.trigger('keydown', { key: ' ' })
+    await flushPromises()
+    expect(source.open).toHaveBeenCalledTimes(2)
+    await wrapper.get('.abele-agents__seen').trigger('keydown', { key: ' ' })
+    await flushPromises()
+    expect(source.open).toHaveBeenCalledTimes(2)
+    wrapper.unmount()
+  })
   it('offers dismissals for stale non-error evidence, not live approvals or running work', async () => {
     const reasons = [
       { kind: 'approval' as const, id: 'stale-approval', at: 1, uncertain: true },

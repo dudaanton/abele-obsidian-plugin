@@ -31,23 +31,23 @@ describe.skipIf(!available)('agents dialog on a narrow screen', () => {
         // Exercise the same retained-request dismissal case as the original fixture.
         owner.props.source.rows.value[0].reasons = owner.props.source.rows.value[0].reasons.map(r => ({ ...r, uncertain: true }))
         await wait(100)
-        const details = [...root.querySelectorAll('.abele-agents__details-toggle')]
-        const collapsedDetails = details.length === 4 && details.every(e => e.getAttribute('aria-expanded') === 'false')
-        for (const detail of details) detail.click()
-        await wait(100)
+        const rows = [...root.querySelectorAll('.abele-agents__row')]
+        // Agent, model, folder and source live in the row's tooltip, not in its text.
+        const collapsedDetails = rows.length === 4 && rows.every(e => e.getAttribute('aria-label') && !/Agent:|Folder|Sample helper/.test(e.textContent))
         const buttons = [...root.querySelectorAll('button')]
+        const actionLabels = [...root.querySelectorAll('.abele-agents__seen')].map(e => e.getAttribute('aria-label') ?? '')
         if (window.__e2eHost) await window.__e2eHost.shot(${JSON.stringify(`${SHOTS}/agents-real.png`)})
         return {
           searchFocused: document.activeElement === root.querySelector('input'),
           sections: [...root.querySelectorAll('.abele-fold-heading__text')].map(e => e.textContent),
-          rows: root.querySelectorAll('.abele-list-row').length,
-          overflow: buttons.some(e => { const r = e.getBoundingClientRect(); return r.left < box.left - 1 || r.right > box.right + 1 }),
-          seen: buttons.some(e => e.textContent === 'Mark as seen'),
-          dismissals: buttons.filter(e => e.textContent === 'Dismiss').length,
-          approvals: buttons.some(e => /approve|allow/i.test(e.textContent)),
+          rows: rows.length,
+          overflow: [...buttons, ...rows].some(e => { const r = e.getBoundingClientRect(); return r.left < box.left - 1 || r.right > box.right + 1 }),
+          seen: actionLabels.some(e => e.startsWith('Mark as seen')),
+          dismissals: actionLabels.filter(e => e.startsWith('Dismiss')).length,
+          approvals: buttons.some(e => /approve|allow/i.test(e.textContent + ' ' + (e.getAttribute('aria-label') ?? ''))),
           namedIcons: buttons.every(e => e.classList.contains('clickable-icon') && e.getAttribute('aria-label') && e.querySelector('svg')),
-          touchTargets: !app.isMobile || buttons.every(e => { const r = e.getBoundingClientRect(); return r.width >= 44 && r.height >= 44 }),
-          keyboardRows: [...root.querySelectorAll('.abele-list-row__main')].every(e => e.tagName === 'BUTTON' && e.getAttribute('type') === 'button' && e.tabIndex === 0),
+          touchTargets: !app.isMobile || [...buttons, ...rows].every(e => { const r = e.getBoundingClientRect(); return r.width >= 44 && r.height >= 44 }),
+          keyboardRows: rows.length === 4 && rows.every(e => e.getAttribute('role') === 'button' && e.tabIndex === 0),
           collapsedDetails,
         }
       } finally {
@@ -70,7 +70,8 @@ describe.skipIf(!available)('agents dialog on a narrow screen', () => {
       collapsedDetails: boolean
     }
     expect(result.searchFocused).toBe(false)
-    expect(result.sections).toEqual(['Needs your attention', 'Working', 'Connection and delivery'])
+    // The accepted design hides an empty group: this fixture has nobody offline.
+    expect(result.sections).toEqual(['Waiting for you', 'Working'])
     expect(result.rows).toBe(4)
     expect(result.overflow).toBe(false)
     expect(result.seen).toBe(true)
@@ -95,17 +96,26 @@ describe.skipIf(!available)('agents dialog on a narrow screen', () => {
         await wait(300)
         const modal = root.closest('.modal')
         const box = modal.getBoundingClientRect()
-        return { height: box.height, viewport: innerHeight, emptySections: root.querySelectorAll('section > .abele-empty-state').length, clipped: root.scrollWidth > root.clientWidth }
+        const empty = root.querySelectorAll('.abele-agents__empty')
+        return { height: box.height, viewport: innerHeight, sections: root.querySelectorAll('section').length, empty: empty.length === 1 ? empty[0].textContent.trim() : empty.length, clipped: root.scrollWidth > root.clientWidth }
       } finally {
         ${closeDialog}
       }
     })()`,
         15000
       )
-    ) as { height: number; viewport: number; emptySections: number; clipped: boolean }
+    ) as {
+      height: number
+      viewport: number
+      sections: number
+      empty: string | number
+      clipped: boolean
+    }
     expect(result.height).toBeGreaterThan(0)
     expect(result.height).toBeLessThan(result.viewport * 0.75)
-    expect(result.emptySections).toBe(3)
+    // One centred empty state instead of three empty groups.
+    expect(result.sections).toBe(0)
+    expect(result.empty).toContain('No agents at work')
     expect(result.clipped).toBe(false)
   })
   it('offers twenty explicit close choices without horizontal overflow', async () => {
@@ -116,15 +126,20 @@ describe.skipIf(!available)('agents dialog on a narrow screen', () => {
       ${closeDialog}
       window.__abeleTest.openDialog('agents-tabs')
       try {
-        for (let i = 0; i < 50 && !document.querySelector('.abele-agents-tabs'); i++) await wait(100)
+        for (let i = 0; i < 50 && !document.querySelector('.abele-close-tab'); i++) await wait(100)
         await wait(300)
-        const root = document.querySelector('.abele-agents-tabs')
+        // The choice is Obsidian's quick-switcher dialog now; its choices are suggestion rows.
+        const root = document.querySelector('.abele-close-tab')
         if (!root) throw new Error('Tab choice did not open')
         const box = root.getBoundingClientRect()
-        const buttons = [...root.querySelectorAll('button')]
+        const buttons = [...root.querySelectorAll('.suggestion-item')]
         if (window.__e2eHost) await window.__e2eHost.shot(${JSON.stringify(`${SHOTS}/agents-tabs-real.png`)})
         return { choices: buttons.length, overflow: buttons.some(e => { const r = e.getBoundingClientRect(); return r.left < box.left - 1 || r.right > box.right + 1 }) }
       } finally {
+        // A quick-switcher dialog has no close button: its backdrop closes it without closing a tab.
+        document.querySelector('.abele-close-tab')?.parentElement?.querySelector('.modal-bg')?.click()
+        for (let i = 0; i < 50 && document.querySelector('.abele-close-tab'); i++) await wait(100)
+        if (document.querySelector('.abele-close-tab')) throw new Error('Tab choice did not close')
         ${closeDialog}
       }
     })()`,

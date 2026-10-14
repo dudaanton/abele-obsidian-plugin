@@ -43,6 +43,9 @@
           :meta="[when(row)]"
           :clickable="!unavailable(row)"
           @click="open(row, primary(row).kind === 'question')"
+          @keydown.space.self.prevent="
+            !unavailable(row) && open(row, primary(row).kind === 'question')
+          "
         >
           <template #badges>
             <StatusDot :tone="tone(row)" :pulse="tone(row) === 'accent'" :label="label(row)" />
@@ -258,6 +261,21 @@ const seen = async (row: AttentionRow, id: string) => {
 .abele-agents__head + section,
 .abele-agents__head ~ .abele-empty-state + section {
   margin-top: var(--size-4-2);
+}
+/* The dot stays at the end of the title's first line, as in the chat history: a long title
+   wraps inside its own box instead of pushing the dot onto a line of its own. */
+.abele-agents .abele-card__title {
+  flex-wrap: nowrap;
+  align-items: flex-start;
+  /* The name's own step, so the dot's line below is the name's line. */
+  font-size: var(--font-ui-small);
+  line-height: var(--line-height-tight);
+}
+.abele-agents .abele-card__name {
+  min-width: 0;
+}
+.abele-agents .abele-card__title > .abele-status-dot {
+  margin-top: calc((1lh - var(--size-4-2)) / 2);
 }
 /* What it waits on and when, one block under the name at the same step. */
 .abele-agents .abele-card__meta {

@@ -50,7 +50,7 @@ export function selectionReturnProbe(shots: string): string {
     if(window.__e2eHost){
       const root=document.querySelector('[data-ask-message="answer"]'), word=root.querySelector('strong'), bounds=word.getBoundingClientRect()
       await window.__e2eHost.longPress(bounds.left+bounds.width/2,bounds.top+bounds.height/2)
-      const button=await until(()=>[...document.querySelectorAll('.abele-chat-selection_placed button')].find(button=>button.textContent.trim()==='Copy link to selection'))
+      const button=await until(()=>document.querySelector('.abele-chat-selection_placed button[aria-label="Copy link to selection"]'))
       report.native={quote:document.getSelection()?.toString(),copied:false}
       await shoot('selection-native-handles')
       const write=navigator.clipboard.writeText.bind(navigator.clipboard)
