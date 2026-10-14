@@ -145,7 +145,9 @@
         <ChromeIcon icon="pencil" tooltip="Rename" @click="c.name(picked.ids[0])" />
         <ChromeIcon
           :icon="pickedNode?.collapsed ? 'chevrons-up-down' : 'chevrons-down-up'"
-          :tooltip="pickedNode?.collapsed ? 'Unfold: show what is inside' : 'Fold: hide what is inside'"
+          :tooltip="
+            pickedNode?.collapsed ? 'Unfold: show what is inside' : 'Fold: hide what is inside'
+          "
           @click="c.foldFrame(picked.ids[0], !pickedNode?.collapsed)"
         />
         <ChromeIcon
@@ -631,5 +633,4 @@ onBeforeUnmount(() => {
 .is-phone-layout .abele-canvas-chrome__zoom {
   display: none;
 }
-
 </style>

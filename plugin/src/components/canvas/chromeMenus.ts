@@ -35,10 +35,8 @@ export function showAt(menu: Menu, e: MouseEvent): void {
 }
 
 /** Something the menu offers that the prototype does not do yet: it says so and does nothing. */
-const later =
-  (title: string) =>
-  (): void =>
-    void new Notice(`${title.replace(/…$/, '')}: not in this prototype yet`)
+const later = (title: string) => (): void =>
+  void new Notice(`${title.replace(/…$/, '')}: not in this prototype yet`)
 
 export function colourMenu(e: MouseEvent, c: Controls, p: PickedView): void {
   const menu = new Menu()
@@ -274,14 +272,17 @@ export function saveMenu(e: MouseEvent, c: Controls): void {
  * The canvas tab's own "more" items, at the top of Obsidian's pane menu, as a view's onPaneMenu
  * adds them. Attaching to the chat is a glyph in the tab's header, so it is not repeated here.
  */
-export function paneEntries(handlers: {
-  exportCanvas: () => unknown
-  copyEmbed: () => unknown
-  find: () => unknown
-  contents: () => unknown
-  openNative: () => unknown
-  fingerDraws?: { on: boolean; toggle: () => unknown }
-}, tablet = Platform.isTablet): { title: string; icon: string; run: () => unknown; checked?: boolean }[] {
+export function paneEntries(
+  handlers: {
+    exportCanvas: () => unknown
+    copyEmbed: () => unknown
+    find: () => unknown
+    contents: () => unknown
+    openNative: () => unknown
+    fingerDraws?: { on: boolean; toggle: () => unknown }
+  },
+  tablet = Platform.isTablet
+): { title: string; icon: string; run: () => unknown; checked?: boolean }[] {
   return [
     { title: 'Find on the canvas', icon: 'search', run: handlers.find },
     { title: 'Show contents', icon: 'list', run: handlers.contents },
