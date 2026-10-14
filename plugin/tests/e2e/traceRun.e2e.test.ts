@@ -209,8 +209,8 @@ it('opens a recorded run as a tab of steps, a step with its values by shape, and
     rows: string[]
     place: string
     values: string[]
-    wide: { beside: boolean; under: boolean; overflow: number }
-    narrow: { beside: boolean; under: boolean; overflow: number }
+    wide: { em: number; beside: boolean; under: boolean; overflow: number }
+    narrow: { em: number; beside: boolean; under: boolean; overflow: number }
     shape: boolean
     whole: string
   }>(`(async()=>{${prelude}
@@ -225,12 +225,16 @@ it('opens a recorded run as a tab of steps, a step with its values by shape, and
     await shot('2026-10-14-trace-step-desktop');
     // Wide, the step stands beside the list; narrower than 44em, under it.
     const root=document.querySelector('.abele-trace-run'),list=root.querySelector('.abele-trace-run__list'),detail=root.querySelector('.abele-trace-run__detail');
-    const layout=async width=>{root.style.width=width;await wait(300);const l=list.getBoundingClientRect(),d=detail.getBoundingClientRect();return {beside:d.left>=l.right-1&&Math.abs(d.top-l.top)<2,under:d.top>=l.bottom-1&&Math.abs(d.left-l.left)<2,overflow:root.scrollWidth-root.clientWidth}};
-    const wide=await layout('60em');
-    await shot('2026-10-14-trace4-run-wide-desktop');
-    const narrow=await layout('36em');
-    await shot('2026-10-14-trace4-run-narrow-desktop');
-    root.style.width='';
+    // Wide with both sidebars folded, narrow beside them: the tab's own width, nothing forced.
+    const em=parseFloat(getComputedStyle(root).fontSize),sides=[app.workspace.leftSplit,app.workspace.rightSplit],wasCollapsed=sides.map(x=>x.collapsed);
+    const layout=async fold=>{for(const x of sides)fold?x.collapse():x.expand();await wait(600);const l=list.getBoundingClientRect(),d=detail.getBoundingClientRect();return {em:Math.round(root.clientWidth/em),beside:d.left>=l.right-1&&Math.abs(d.top-l.top)<2,under:d.top>=l.bottom-1&&Math.abs(d.left-l.left)<2,overflow:root.scrollWidth-root.clientWidth}};
+    let wide,narrow;
+    try{
+      wide=await layout(true);
+      await shot('2026-10-14-trace4-run-wide-desktop');
+      narrow=await layout(false);
+      await shot('2026-10-14-trace4-run-narrow-desktop');
+    }finally{sides.forEach((x,i)=>wasCollapsed[i]?x.collapse():x.expand())}
     await api.openTraceValue({registrationId:${JSON.stringify(registration)},projectId:${JSON.stringify(project)},runId:${JSON.stringify(RUN)},step:'t0001',valueName:'xmlText',view:'whole'});
     await until(()=>document.querySelector('.abele-trace-value-tab')?.textContent.includes('C-100'),'whole value');
     // The text view draws only the lines on screen: the value's last contract shows at its end.
@@ -243,8 +247,11 @@ it('opens a recorded run as a tab of steps, a step with its values by shape, and
   expect(seen.place).toContain('parse.ts:18')
   expect(seen.values).toContain('xmlText')
   expect(seen.whole).toContain('Sample contracts run')
+  expect(seen.wide.em, JSON.stringify(seen.wide)).toBeGreaterThanOrEqual(44)
   expect(seen.wide).toMatchObject({ beside: true, under: false })
+  expect(seen.narrow.em, JSON.stringify(seen.narrow)).toBeLessThan(44)
   expect(seen.narrow).toMatchObject({ beside: false, under: true })
+  expect(seen.wide.overflow).toBeLessThanOrEqual(1)
   expect(seen.narrow.overflow).toBeLessThanOrEqual(1)
 })
 

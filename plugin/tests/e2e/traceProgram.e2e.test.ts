@@ -347,6 +347,8 @@ it('on a phone: the picker offers the file open in a tab, the stack folds Node, 
       await until(()=>document.querySelector('[aria-label="Continue (F5)"]'),'debug panel',600);
       await until(()=>stackRows().some(r=>!r.internals),'a frame of the program listed');
       const leaf=app.workspace.getLeavesOfType('abele-debug-view')[0];await app.workspace.revealLeaf(leaf);
+      // The drawer slides in: wait until the panel stands still inside the screen.
+      let last='';await until(()=>{const r=document.querySelector('.abele-debug-panel').getBoundingClientRect(),now=r.left+','+r.width;const still=now===last&&r.left>=0&&r.right<=innerWidth+1&&r.width>200;last=now;return still},'debug drawer open');
       const held=stackRows();
       await shot('2026-10-14-trace4-frames-phone');
       const panel=document.querySelector('.abele-debug-panel'),overflow=panel.scrollWidth-panel.clientWidth;
