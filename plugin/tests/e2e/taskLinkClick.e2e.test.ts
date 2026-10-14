@@ -163,17 +163,23 @@ const script = `(async () => {
     if (!(await until(() => row.querySelector('.abele-task-view__title a.external-link'), 10000)))
       throw new Error(place + ': the row never drew its name')
     const open = () => !!row.querySelector('.abele-task-view__description a.external-link')
-    if (open() !== unfolded) {
+    // The editor goes on measuring and scrolling for a moment after the row is brought into
+    // view, and a press made meanwhile lands beside the chevron; it is made again only when
+    // nothing has happened.
+    for (let attempt = 0; attempt < 3 && open() !== unfolded; attempt++) {
+      row.scrollIntoView({ block: 'center' })
+      await wait(1200)
       await press(pointOf(row.querySelector('.abele-entry-row__more')))
-      if (!(await until(() => open() === unfolded, 5000))) throw new Error(place + ': the row did not ' + (unfolded ? 'unfold' : 'fold'))
+      await until(() => open() === unfolded, 3000)
     }
+    if (open() !== unfolded) throw new Error(place + ': the row did not ' + (unfolded ? 'unfold' : 'fold'))
     row.scrollIntoView({ block: 'center' })
     await wait(800)
     return row
   }
 
-  const run = async (place) => {
-    const out = {}
+  // What was pressed before a failure is kept beside it.
+  const run = async (place, out) => {
     for (const unfolded of [false, true]) {
       const part = unfolded ? '.abele-task-view__description' : '.abele-task-view__title'
       const state = unfolded ? 'unfolded' : 'folded'
@@ -231,7 +237,8 @@ const script = `(async () => {
     }, 20000)
     await wait(1500)
     for (const place of ['footer', 'timeline']) {
-      try { report[place] = await run(place) } catch (e) { report[place] = { error: String((e && e.message) || e) } }
+      report[place] = {}
+      try { await run(place, report[place]) } catch (e) { report[place].error = String((e && e.message) || e) }
     }
   } catch (e) {
     report.error = String((e && e.message) || e)
