@@ -568,12 +568,11 @@ describe('the design standard', () => {
     )
   })
 
-  it('leaves focus-ring room around the history paging button inside its scroller', () => {
+  it('reads older versions as the history scrolls to its end, with no paging button to press', () => {
+    // The button and the room for its focus ring went with it: the end of the list asks itself.
     const source = readFileSync(join(ROOT, 'sync/VersionHistoryModal.vue'), 'utf8')
-    expect(source).toContain('class="abele-version-history__older"')
-    expect(styleBlock(source)).toMatch(
-      /\.abele-version-history__older\s*\{[^}]*padding:\s*var\(--size-4-2\);/
-    )
+    expect(source).not.toContain('text="Load older"')
+    expect(source).toMatch(/<ScrollMore[^>]*v-if="hasOlder"/)
   })
 
   it('lists what a transfer brings as rows whose names keep the width and whose state is a code', () => {
