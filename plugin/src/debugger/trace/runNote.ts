@@ -1,12 +1,13 @@
-// Writes the note about a run into the folder the settings name, beside the person's own notes,
-// and opens it. A note already there is left alone: a new one is made next to it.
-import { normalizePath, Notice, TFile } from 'obsidian'
+// Writes the note about a run into the folder the settings name, in the vault or anywhere on this
+// computer, and opens it. A note already there is left alone: a new one is made next to it.
+import { Notice, TFile } from 'obsidian'
 import { AbeleConfig } from '@/services/AbeleConfig'
 import { GlobalStore } from '@/stores/GlobalStore'
 import { NodeService } from '@/node/NodeService'
 import { buildRunNote, NOTE_STEPS, traceLink, type NoteValue } from './note'
 import type { TraceRunState } from './TraceTabs'
 import { TraceRpc } from './wire'
+import { revealOutside, saveRunNote } from './notesFolder'
 
 const HEAD_LINES = 12
 
@@ -54,13 +55,17 @@ export async function writeRunNote(state: TraceRunState, rpc?: TraceRpc): Promis
     link: (t) => traceLink({ ...state, ...t }),
   })
   const app = GlobalStore.getInstance().app
-  const folder = normalizePath(AbeleConfig.getInstance().traceNotesFolder || 'Trace')
-  if (!app.vault.getAbstractFileByPath(folder)) await app.vault.createFolder(folder)
-  const base = `${folder}/${safeName(run.run.name)}`
-  let path = `${base}.md`
-  for (let i = 2; app.vault.getAbstractFileByPath(path); i++) path = `${base} ${i}.md`
-  const file = await app.vault.create(path, text)
-  if (file instanceof TFile) await app.workspace.getLeaf('tab').openFile(file)
+  const { path, outside } = await saveRunNote(
+    app,
+    AbeleConfig.getInstance().traceNotesFolder,
+    safeName(run.run.name),
+    text
+  )
+  if (outside) revealOutside(path)
+  else {
+    const file = app.vault.getAbstractFileByPath(path)
+    if (file instanceof TFile) await app.workspace.getLeaf('tab').openFile(file)
+  }
   new Notice(`Note written: ${path}`)
   return path
 }

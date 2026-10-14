@@ -101,7 +101,9 @@ shape, its whole text or its changes. A value can be followed through the run an
 be marked. A run's menu renames or deletes it; deleting asks first.
 
 *Write a note about this run* in a run's tab writes a note into the folder set in Settings →
-Nodes (*Notes about recorded runs*); its links open the values on the node. The agent reads runs
+Nodes (*Notes about recorded runs*): a vault folder, or on a computer any folder, outside the vault
+too, picked with the folder button. A device where that folder does not exist says so and writes
+nothing. Its links open the values on the node. The agent reads runs
 with the `trace_*` tools, each answer bounded, and can write the same note.
 
 Not yet: recording without stopping the program, the browser's requests on the same timeline,

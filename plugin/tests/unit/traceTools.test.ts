@@ -222,6 +222,10 @@ describe('the agent reading a recorded run', () => {
       s.call('trace_point_add', { file: 'src/sample.ts', line: 0, take: [] })
     ).rejects.toThrow(/line/)
     expect(await s.call('trace_note')).toBe('Note written: Trace/Sample run.md')
+    s.context.writeNote = vi.fn(async () => '/srv/sample-notes/Sample run.md')
+    expect(await s.call('trace_note')).toMatch(
+      /^Note written outside the vault: \/srv\/sample-notes\/Sample run\.md\. Vault file tools cannot reach it/
+    )
     expect(s.context.writeNote).toHaveBeenCalledWith('run-new')
   })
 

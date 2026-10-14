@@ -4,6 +4,7 @@
 import type { AgentTool, AgentToolResult } from '../client'
 import type { TraceRpc, WireStep } from '@/debugger/trace/wire'
 import type { PointEdit } from '@/debugger/trace/TraceSession'
+import { isAbsoluteFolder } from '@/debugger/trace/notesFolder'
 
 export const TRACE_AGENT_LINES = 80
 export const TRACE_AGENT_BYTES = 6 * 1024
@@ -355,10 +356,15 @@ export function createTraceTools(resolve: () => TraceToolContext | undefined): A
     tool(
       'trace_note',
       'Note about a run',
-      'Write a note about a recorded run into the vault folder the settings name: record points, the timeline, each step’s values with their shape and first lines, marks and questions, each linked to the whole value on the node. Answers with the note’s path; add your account of the flow under its last heading.',
+      'Write a note about a recorded run into the folder the settings name: record points, the timeline, each step’s values with their shape and first lines, marks and questions, each linked to the whole value on the node. Answers with the note’s path; add your account of the flow under its last heading. The folder may be outside the vault, where vault file tools cannot reach the note.',
       { run: RUN },
       [],
-      async (c, p) => `Note written: ${await c.writeNote(await runOf(c, p))}`
+      async (c, p) => {
+        const path = await c.writeNote(await runOf(c, p))
+        return isAbsoluteFolder(path)
+          ? `Note written outside the vault: ${path}. Vault file tools cannot reach it; give the person your account of the flow in the chat.`
+          : `Note written: ${path}`
+      }
     ),
   ]
 }

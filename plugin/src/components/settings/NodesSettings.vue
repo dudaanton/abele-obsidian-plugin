@@ -50,13 +50,21 @@
     </Setting>
     <Setting
       name="Notes about recorded runs"
-      desc="Vault folder for a note about a run the debugger recorded, yours or the agent's. The run itself stays on the node."
+      desc="Folder for a note about a run the debugger recorded, yours or the agent's: a vault folder, or on a computer any folder by its full path. The run itself stays on the node."
     >
       <Input
         :model-value="traceNotesFolder"
         placeholder="e.g. Trace"
         aria-label="Folder for notes about recorded runs"
+        :suggester="FolderSuggest"
         @update:model-value="updateTraceNotesFolder"
+      />
+      <Button
+        v-if="Platform.isDesktopApp"
+        icon="folder-open"
+        tooltip="Choose a folder on this computer, in the vault or outside it"
+        aria-label="Choose a folder for notes about recorded runs"
+        @click="chooseTraceNotesFolder"
       />
     </Setting>
     <NodeDelegationGrantsDialog
@@ -133,8 +141,11 @@ import Button from '../obsidian/Button.vue'
 import Icon from '../obsidian/Icon.vue'
 import StatusDot from '../obsidian/StatusDot.vue'
 import ObsidianModal from '../obsidian/Modal.vue'
-import { Menu, debounce } from 'obsidian'
+import { Menu, Platform, debounce } from 'obsidian'
+import { FolderSuggest } from '@/helpers/suggesters/FolderSuggester'
+import { chooseOutsideFolder, notesFolder } from '@/debugger/trace/notesFolder'
 import { AbeleConfig } from '@/services/AbeleConfig'
+import { GlobalStore } from '@/stores/GlobalStore'
 const service = NodeService.getInstance()
 const config = AbeleConfig.getInstance()
 const traceNotesFolder = ref(config.traceNotesFolder)
@@ -145,6 +156,14 @@ const saveTraceNotesFolder = debounce(async (value: string) => {
 const updateTraceNotesFolder = (value: string) => {
   traceNotesFolder.value = value
   saveTraceNotesFolder(value)
+}
+const chooseTraceNotesFolder = async () => {
+  const chosen = await chooseOutsideFolder()
+  if (!chosen) return
+  // A folder picked inside the vault is kept as the vault's own path, so it travels as one.
+  const adapter = GlobalStore.getInstance().app.vault.adapter as { getBasePath?: () => string }
+  const folder = notesFolder(chosen, adapter.getBasePath?.())
+  updateTraceNotesFolder(folder.kind === 'vault' && folder.path ? folder.path : chosen)
 }
 const grantNode = ref<RegisteredNode>()
 const parentChats = computed(() => {

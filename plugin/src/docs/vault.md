@@ -741,8 +741,11 @@ path, not base64 bytes or a temporary system path.
 A run the debugger recorded stays on the node, in a folder on its disk (by default `.abele/runs`
 in the project, which ignores itself in git). Nothing of it is synced. A note about a run is
 written only when asked, by the person from the run's tab or by an agent with `trace_note`, into
-the vault folder `traceNotesFolder` (Settings → Nodes, default `Trace`; it travels with the
-other settings). A note already there is never overwritten: the next one gets a number.
+the folder `traceNotesFolder` (Settings → Nodes, default `Trace`; it travels with the other
+settings). It is a vault folder, or on a computer any folder given by its full path, outside the
+vault too; vault file tools cannot reach a note written there. A device where that full path does
+not exist, or a phone, refuses to write the note and says so, rather than writing it anywhere
+else. A note already there is never overwritten: the next one gets a number.
 
 The note holds the record points, the timeline, for the first 50 steps each value's shape and
 first lines in a folded callout, the marks and the questions, and an empty last heading for an
