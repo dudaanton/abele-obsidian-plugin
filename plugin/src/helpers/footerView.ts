@@ -17,6 +17,8 @@ export interface NoteFooterView {
   open?: string[]
   /** All past timeline days revealed, so a saved past-row anchor can be drawn again. */
   calendarPast?: true
+  /** The overdue fold open, for the same reason: its rows are drawn only while it is. */
+  calendarOverdue?: true
   /** The note's logs shown as a month with marks rather than as a list. */
   logsCalendar?: true
 }
@@ -37,6 +39,7 @@ const isEmpty = (v: NoteFooterView) =>
   !(v.pages && Object.keys(v.pages).length) &&
   !(v.open && v.open.length) &&
   !v.calendarPast &&
+  !v.calendarOverdue &&
   !v.logsCalendar
 
 export function logsCalendarOf(state: FooterViewState, path: string): boolean {
@@ -69,6 +72,22 @@ export function setTimelinePast(
   const view = { ...state[path] }
   if (revealed) view.calendarPast = true
   else delete view.calendarPast
+  return put(state, path, view)
+}
+
+export function timelineOverdueOf(state: FooterViewState, path: string): boolean {
+  return state[path]?.calendarOverdue === true
+}
+
+export function setTimelineOverdue(
+  state: FooterViewState,
+  path: string,
+  open: boolean
+): FooterViewState {
+  if (timelineOverdueOf(state, path) === open) return state
+  const view = { ...state[path] }
+  if (open) view.calendarOverdue = true
+  else delete view.calendarOverdue
   return put(state, path, view)
 }
 
@@ -146,6 +165,7 @@ export function footerViewFrom(raw: unknown): FooterViewState {
       pages?: unknown
       open?: unknown
       calendarPast?: unknown
+      calendarOverdue?: unknown
       calendarStart?: unknown
       logsCalendar?: unknown
     }
@@ -168,6 +188,7 @@ export function footerViewFrom(raw: unknown): FooterViewState {
       (typeof v.calendarStart === 'string' && /^\d{4}-\d{2}-\d{2}$/.test(v.calendarStart))
     )
       view.calendarPast = true
+    if (v.calendarOverdue === true) view.calendarOverdue = true
     if (v.logsCalendar === true) view.logsCalendar = true
     if (!isEmpty(view)) state[path] = view
   }

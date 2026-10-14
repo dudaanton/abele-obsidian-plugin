@@ -11,7 +11,9 @@ import {
   setLogsCalendar,
   setOpen,
   setPages,
+  setTimelineOverdue,
   setTimelinePast,
+  timelineOverdueOf,
   timelinePastOf,
   type FooterViewState,
 } from '@/helpers/footerView'
@@ -69,6 +71,10 @@ export function useFooterTimeline() {
     pastRevealed: !!path && restoring() && timelinePastOf(current(), path()),
     recordPast: (revealed: boolean) => {
       if (path) write(setTimelinePast(current(), path(), revealed))
+    },
+    overdueOpen: !!path && restoring() && timelineOverdueOf(current(), path()),
+    recordOverdue: (open: boolean) => {
+      if (path) write(setTimelineOverdue(current(), path(), open))
     },
   }
 }

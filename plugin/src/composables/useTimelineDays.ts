@@ -5,6 +5,8 @@ import type { PageMemory } from './usePagedList'
 export interface TimelineMemory extends PageMemory {
   pastRevealed?: boolean
   recordPast?: (revealed: boolean) => void
+  overdueOpen?: boolean
+  recordOverdue?: (open: boolean) => void
 }
 
 /** Date boundaries, not array offsets: newly visible completed days cannot evict a read day. */

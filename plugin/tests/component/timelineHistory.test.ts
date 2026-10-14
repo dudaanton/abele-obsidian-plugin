@@ -148,11 +148,8 @@ describe('folded timeline history', () => {
     config.rememberNotePlaces = true
     resetFooterView()
     resetFooterFolds()
-    // Done, so it is in the past-days fold, which is remembered; Overdue's own fold is not.
-    const tasks = [
-      task('sample-yesterday', '2030-06-14', true),
-      task('sample-today', '2030-06-15'),
-    ]
+    // Done, so it is in the past-days fold; Overdue's own fold is remembered on its own (below).
+    const tasks = [task('sample-yesterday', '2030-06-14', true), task('sample-today', '2030-06-15')]
     const open = async () => {
       view = mount(Timeline, {
         props: { tasks },
@@ -177,6 +174,56 @@ describe('folded timeline history', () => {
       view.unmount()
       config.rememberNotePlaces = false
       await open()
+      expect(days()).toEqual(['date:2030-06-15'])
+    } finally {
+      config.rememberNotePlaces = remembered
+      resetFooterView()
+      resetFooterFolds()
+    }
+  })
+
+  // A place saved on an overdue row is only there to return to if its fold opens again.
+  it('recreates an open overdue fold after a footer unmounts, apart from past days', async () => {
+    useVault([])
+    const config = configureAbele()
+    const remembered = config.rememberNotePlaces
+    config.rememberNotePlaces = true
+    resetFooterView()
+    resetFooterFolds()
+    const tasks = [
+      task('sample-left', '2030-06-13'),
+      task('sample-yesterday', '2030-06-14', true),
+      task('sample-today', '2030-06-15'),
+    ]
+    const open = async () => {
+      view = mount(Timeline, {
+        props: { tasks },
+        shallow: true,
+        attachTo: document.body,
+        global: { provide: { [FOOTER_FOLD as symbol]: () => 'Sample/group.md' } },
+      })
+      await flushPromises()
+    }
+    try {
+      await open()
+      await overdueRow().trigger('click')
+      await flushPromises()
+      expect(days()).toEqual(['date:2030-06-13', 'date:2030-06-15'])
+      view.unmount()
+      resetFooterView()
+      await open()
+      expect(overdueRow().attributes('aria-expanded')).toBe('true')
+      expect(days()).toEqual(['date:2030-06-13', 'date:2030-06-15'])
+      await view.find('.abele-timeline__completed-toggle').trigger('click')
+      await flushPromises()
+      // Past days stayed folded: only the overdue fold was opened.
+      expect(view.find('.abele-timeline__history').attributes('aria-expanded')).toBe('false')
+      await overdueRow().trigger('click')
+      await flushPromises()
+      view.unmount()
+      resetFooterView()
+      await open()
+      expect(overdueRow().attributes('aria-expanded')).toBe('false')
       expect(days()).toEqual(['date:2030-06-15'])
     } finally {
       config.rememberNotePlaces = remembered
@@ -360,24 +407,24 @@ describe('folded timeline history', () => {
     await flushPromises()
     expect(days()).toEqual([])
     expect(overdueRow().text()).toBe('Overdue2')
-    expect(
-      overdueRow().find('.abele-timeline__overdue-count').attributes('aria-label')
-    ).toBe('2 unfinished')
+    expect(overdueRow().find('.abele-timeline__overdue-count').attributes('aria-label')).toBe(
+      '2 unfinished'
+    )
     await overdueRow().trigger('click')
     await flushPromises()
     expect(days()).toEqual(['date:2030-06-12', 'date:2030-06-14'])
     expect(overdueRow().text()).toBe('Overdue2')
-    expect(
-      overdueRow().find('.abele-timeline__overdue-count').attributes('aria-label')
-    ).toBe('2 unfinished')
+    expect(overdueRow().find('.abele-timeline__overdue-count').attributes('aria-label')).toBe(
+      '2 unfinished'
+    )
     expect(overdueRow().attributes('aria-expanded')).toBe('true')
     await overdueRow().trigger('click')
     await flushPromises()
     expect(days()).toEqual([])
     expect(overdueRow().text()).toBe('Overdue2')
-    expect(
-      overdueRow().find('.abele-timeline__overdue-count').attributes('aria-label')
-    ).toBe('2 unfinished')
+    expect(overdueRow().find('.abele-timeline__overdue-count').attributes('aria-label')).toBe(
+      '2 unfinished'
+    )
     expect(overdueRow().attributes('aria-expanded')).toBe('false')
   })
 

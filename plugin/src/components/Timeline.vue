@@ -3,39 +3,39 @@
     <!-- Pinned while the days scroll under it, so the search, the label filter and the completed
          switch are always at hand; its count is what the list shows now. -->
     <div ref="headerEl" class="abele-timeline__pinned">
-    <ListSectionHeader
-      class-prefix="abele-timeline"
-      :text="title ?? 'Timeline'"
-      :count="shownCount"
-      :fold="fold"
-      :search="search"
-      search-tooltip="Search tasks by title and description"
-      placeholder="Search tasks…"
-      group-actions
-    >
-      <template #leading
-        ><ObsidianIcon v-if="showAddButton" icon="calendar-plus" @click="createTask()"
-      /></template>
-      <template #actions>
-        <ObsidianIcon
-          v-if="labelOptions.length"
-          class="abele-task-label-filter"
-          icon="tag"
-          :text-right="labelText || undefined"
-          tooltip="Filter by label"
-          @click="openLabelMenu"
-        />
-        <ObsidianIcon
-          class="abele-timeline__completed-toggle"
-          :icon="hideCompleted ? 'list-checks' : 'list-todo'"
-          :active="!hideCompleted"
-          role="switch"
-          :aria-checked="!hideCompleted"
-          :label="hideCompleted ? 'Show completed tasks' : 'Hide completed tasks'"
-          @click="hideCompleted = !hideCompleted"
-        />
-      </template>
-    </ListSectionHeader>
+      <ListSectionHeader
+        class-prefix="abele-timeline"
+        :text="title ?? 'Timeline'"
+        :count="shownCount"
+        :fold="fold"
+        :search="search"
+        search-tooltip="Search tasks by title and description"
+        placeholder="Search tasks…"
+        group-actions
+      >
+        <template #leading
+          ><ObsidianIcon v-if="showAddButton" icon="calendar-plus" @click="createTask()"
+        /></template>
+        <template #actions>
+          <ObsidianIcon
+            v-if="labelOptions.length"
+            class="abele-task-label-filter"
+            icon="tag"
+            :text-right="labelText || undefined"
+            tooltip="Filter by label"
+            @click="openLabelMenu"
+          />
+          <ObsidianIcon
+            class="abele-timeline__completed-toggle"
+            :icon="hideCompleted ? 'list-checks' : 'list-todo'"
+            :active="!hideCompleted"
+            role="switch"
+            :aria-checked="!hideCompleted"
+            :label="hideCompleted ? 'Show completed tasks' : 'Hide completed tasks'"
+            @click="hideCompleted = !hideCompleted"
+          />
+        </template>
+      </ListSectionHeader>
     </div>
     <template v-if="!fold.collapsed.value">
       <!-- Two folds above today, each a row of its own: the days gone by, with what was done in
@@ -69,15 +69,17 @@
             tabindex="0"
             :aria-label="overdueOpen ? 'Hide overdue tasks' : 'Show overdue tasks'"
             :aria-expanded="overdueOpen"
-            @click="overdueOpen = !overdueOpen"
-            @keydown.enter.prevent="overdueOpen = !overdueOpen"
-            @keydown.space.prevent="overdueOpen = !overdueOpen"
+            @click="toggleOverdue"
+            @keydown.enter.prevent="toggleOverdue"
+            @keydown.space.prevent="toggleOverdue"
           >
             <ObsidianIcon class="abele-timeline__overdue-flame" icon="flame" no-hover />
             <span class="abele-timeline__fold-text">Overdue</span>
-            <span class="abele-timeline__overdue-count" :aria-label="`${overdueCount} unfinished`">{{
-              overdueCount
-            }}</span>
+            <span
+              class="abele-timeline__overdue-count"
+              :aria-label="`${overdueCount} unfinished`"
+              >{{ overdueCount }}</span
+            >
             <ObsidianIcon
               class="abele-timeline__fold-glyph"
               :icon="overdueOpen ? 'chevron-down' : 'chevron-right'"
@@ -276,7 +278,13 @@ const overdue = computed(() =>
     .filter(([, items]) => items.length)
 )
 const forward = computed(() => dates.value.filter(([day]) => day >= today()))
-const overdueOpen = ref(false)
+const memory = useFooterTimeline()
+// Remembered like the past days, so a saved place on an overdue row can be drawn again.
+const overdueOpen = ref(memory.overdueOpen ?? false)
+const toggleOverdue = () => {
+  overdueOpen.value = !overdueOpen.value
+  memory.recordOverdue?.(overdueOpen.value)
+}
 
 const {
   visible: pagedVisible,
@@ -291,7 +299,7 @@ const {
   () => now.value.format(DATE_FORMAT),
   () => search.terms.value,
   PAGE_SIZE,
-  useFooterTimeline(),
+  memory,
   () => !fold.collapsed.value
 )
 // Gesture dates never change pagination/history memory. Only this rendered window expands.
@@ -363,22 +371,30 @@ const shownCount = computed(() => {
 const headerEl = ref<HTMLElement | null>(null)
 const historyEl = ref<HTMLElement | null>(null)
 const anchorSpaceEl = ref<HTMLElement | null>(null)
+// Every drawn row, the open overdue fold's included: opening or closing a fold above the reader is
+// a layout change the scroll hold has to see, and an overdue row is as good an anchor as any.
 const retainedRows = computed(
   () =>
     new Set(
-      visible.value.flatMap(([date, items]) => items.map((item) => 'date:' + date + ':' + item.key))
+      groups.value.flatMap(({ days }) =>
+        days.flatMap(([date, items]) => items.map((item) => 'date:' + date + ':' + item.key))
+      )
     )
 )
 const scroll = useTimelineScroll(
   itemsEl,
   headerEl,
   anchorSpaceEl,
-  () => visible.value,
+  () => groups.value,
   (key, day) => retainedRows.value.has(day + ':' + key),
   () => drag.anchor.value,
   () => !!drag.range.value
 )
-watch(labelSelection, reset)
+watch(labelSelection, () => {
+  // A label folds the past away again, the overdue fold with it.
+  reset()
+  if (overdueOpen.value) toggleOverdue()
+})
 watch([labelSelection, hideCompleted, search.terms, pastRevealed, overdueOpen], () => {
   drag.landing.value = null
 })
@@ -435,7 +451,15 @@ const getDateWikilink = (dateStr: string) => {
   position: sticky;
   top: var(--abele-timeline-sticky-top, 0);
   z-index: 2;
+  // Pinned, it keeps the header's own room above its words and part of the room below, both on
+  // its own ground, so a row passing under it is cut off clear of the header rather than at it.
+  padding-block: var(--size-4-3) var(--size-4-2);
+  margin-bottom: var(--size-4-2);
   background-color: var(--abele-timeline-ground);
+
+  > .abele-list-section-header {
+    margin-block: 0;
+  }
 }
 
 // A fold above today is a quiet row of the list's own: its own box, lit as a row is, and never
@@ -517,6 +541,12 @@ const getDateWikilink = (dateStr: string) => {
   .abele-timeline__header-text {
     font-weight: bold;
   }
+}
+
+// A phone's glyphs carry their own wide tap boxes; the gap on top of them pushed the third one
+// onto a line of its own under the title.
+.is-phone .abele-timeline__header-right {
+  gap: 0;
 }
 
 .abele-timeline__header-left {

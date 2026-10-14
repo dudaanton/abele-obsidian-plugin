@@ -14,7 +14,9 @@ import {
   setLogsCalendar,
   setOpen,
   setPages,
+  setTimelineOverdue,
   setTimelinePast,
+  timelineOverdueOf,
   timelinePastOf,
 } from '@/helpers/footerView'
 
@@ -59,6 +61,16 @@ describe('the revealed timeline history', () => {
     expect(setTimelinePast({}, 'sample.md', false)).toEqual({})
     expect(footerViewFrom({ 'sample.md': { calendarPast: ['bad'] } })).toEqual({})
     expect(footerViewFrom({ 'sample.md': { calendarPast: 'true' } })).toEqual({})
+  })
+
+  it('keeps the open overdue fold apart from the past days, through storage and rename', () => {
+    const s = setTimelineOverdue({}, 'sample.md', true)
+    expect(timelineOverdueOf(footerViewFrom(s), 'sample.md')).toBe(true)
+    expect(timelinePastOf(s, 'sample.md')).toBe(false)
+    const moved = renameFooterView(s, 'sample.md', 'sample-renamed.md')
+    expect(timelineOverdueOf(moved, 'sample-renamed.md')).toBe(true)
+    expect(setTimelineOverdue(moved, 'sample-renamed.md', false)).toEqual({})
+    expect(footerViewFrom({ 'sample.md': { calendarOverdue: 'true' } })).toEqual({})
   })
 
   it('migrates a legacy revealed day into all-history state without losing future pages', () => {
