@@ -21,15 +21,12 @@
             @click="emit('choose', name)"
           />
         </div>
-        <div v-if="shown.length < matches.length" class="abele-icon-picker__more">
-          <Button
-            text="Show more"
-            :tooltip="`Show the next ${Math.min(PAGE, matches.length - shown.length)} of ${
-              matches.length - shown.length
-            } icons not drawn yet`"
-            @click="pages++"
-          />
-        </div>
+        <ScrollMore
+          v-if="shown.length < matches.length"
+          :shown="shown.length"
+          :label="`${matches.length - shown.length} more icons below`"
+          @more="pages++"
+        />
       </div>
     </div>
   </Modal>
@@ -41,8 +38,8 @@ import { getIconIds } from 'obsidian'
 import Modal from './Modal.vue'
 import Search from './Search.vue'
 import Icon from './Icon.vue'
-import Button from './Button.vue'
 import EmptyState from './EmptyState.vue'
+import ScrollMore from './ScrollMore.vue'
 
 /**
  * Every icon Obsidian can draw, as a grid to click, narrowed by a search field.
@@ -220,11 +217,5 @@ const onKeydown = (event: KeyboardEvent) => {
     width: var(--icon-l);
     height: var(--icon-l);
   }
-}
-
-.abele-icon-picker__more {
-  display: flex;
-  justify-content: center;
-  padding-top: var(--size-4-3);
 }
 </style>

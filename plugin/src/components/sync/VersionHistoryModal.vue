@@ -84,14 +84,13 @@
             </div>
           </div>
         </template>
-        <div v-if="hasOlder" class="abele-version-history__older">
-          <Button
-            text="Load older"
-            :disabled="loadingOlder || busy"
-            tooltip="Read the next page of older versions from the server"
-            @click="loadOlder"
-          />
-        </div>
+        <ScrollMore
+          v-if="hasOlder"
+          :loading="loadingOlder"
+          label="Older versions below"
+          :shown="versions.length"
+          @more="!busy && loadOlder()"
+        />
       </div>
     </div>
 
@@ -139,6 +138,7 @@ import GroupHeading from '../obsidian/GroupHeading.vue'
 import Icon from '../obsidian/Icon.vue'
 import Button from '../obsidian/Button.vue'
 import EmptyState from '../obsidian/EmptyState.vue'
+import ScrollMore from '../obsidian/ScrollMore.vue'
 import ConfirmModal from '../obsidian/ConfirmModal.vue'
 import { GlobalStore } from '@/stores/GlobalStore'
 import { tokenHistory } from '@/sync/tokenHistory'
@@ -499,10 +499,6 @@ onMounted(async () => {
 
 // The paging control stands under the last row, with room inside the clipping scroller for the
 // native button's focus ring.
-.abele-version-history__older {
-  padding: var(--size-4-2);
-}
-
 .abele-version-history__day + .abele-version-history__day {
   margin-top: var(--size-4-3);
 }

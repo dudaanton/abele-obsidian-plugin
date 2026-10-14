@@ -1,3 +1,4 @@
+import ScrollMore from '@/components/obsidian/ScrollMore.vue'
 import { afterEach, describe, expect, it } from 'vitest'
 import { flushPromises, mount, type VueWrapper } from '@vue/test-utils'
 import { ref } from 'vue'
@@ -41,14 +42,16 @@ for (const [name, component, prefix] of [
       const rows = () => wrapper.findAll(`.${prefix}__result`)
       expect(rows().length).toBeLessThan(63)
       while (rows().length < 63) {
-        const more = wrapper.findAll('button').find((button) => button.text() === 'Load more')
-        expect(more, 'Remaining previews must have a paging control').toBeDefined()
-        await more!.trigger('click')
+        // The end of the list asks for more as it scrolls into view.
+        const more = wrapper.findComponent(ScrollMore)
+        expect(more.exists(), 'Remaining previews must load as the list scrolls').toBe(true)
+        more.vm.$emit('more')
+        await flushPromises()
       }
       expect(rows().map((row) => row.find('a').attributes('title'))).toEqual(
         app.vault.getMarkdownFiles().map((file) => file.path)
       )
-      expect(wrapper.findAll('button').some((button) => button.text() === 'Load more')).toBe(false)
+      expect(wrapper.findComponent(ScrollMore).exists()).toBe(false)
       await preview()
       await flushPromises()
       expect(rows().length).toBeLessThan(63)

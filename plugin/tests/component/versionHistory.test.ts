@@ -1,3 +1,4 @@
+import ScrollMore from '@/components/obsidian/ScrollMore.vue'
 /**
  * One file's history, as the dialog behind "Open version history" shows it.
  *
@@ -184,10 +185,10 @@ describe('what has happened to a file', () => {
       .mockResolvedValueOnce([])
     const screen = open()
     await flushPromises()
-    const older = () =>
-      screen.findAllComponents(Button).find((b) => b.props('text') === 'Load older')
-    expect(older()).toBeDefined()
-    await older()!.trigger('click')
+    // Older versions are read as the end of the list scrolls into view.
+    const older = () => screen.findComponent(ScrollMore)
+    expect(older().exists()).toBe(true)
+    older().vm.$emit('more')
     await flushPromises()
     expect(client.versions).toHaveBeenLastCalledWith('file-1', { limit: 50, before: 51 })
     expect(titles(screen)).toHaveLength(100)

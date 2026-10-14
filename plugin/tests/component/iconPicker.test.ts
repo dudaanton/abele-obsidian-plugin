@@ -1,3 +1,4 @@
+import ScrollMore from '@/components/obsidian/ScrollMore.vue'
 /**
  * Choosing an icon by looking at it.
  *
@@ -172,15 +173,15 @@ describe('the icon picker', () => {
     expect(scroller.scrollTop).toBe(0)
   })
 
-  it('draws a long list a page at a time, and draws more when asked', async () => {
+  it('draws a long list a page at a time, and more as it scrolls to the end', async () => {
     const many = Array.from({ length: 700 }, (_, i) => `lucide-icon-${String(i).padStart(3, '0')}`)
     const wrapper = open('', many)
 
     const first = shown(wrapper).length
     expect(first).toBeLessThan(700)
 
-    const more = wrapper.findAllComponents(Button).find((b) => b.props('text') === 'Show more')!
-    await more.trigger('click')
+    wrapper.findComponent(ScrollMore).vm.$emit('more')
+    await nextTick()
 
     expect(shown(wrapper).length).toBeGreaterThan(first)
   })

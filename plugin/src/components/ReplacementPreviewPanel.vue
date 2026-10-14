@@ -100,13 +100,11 @@
           />
         </template>
       </EntryRow>
-      <ObsidianButton
+      <ScrollMore
         v-if="canLoadMore"
-        quiet
-        text="Load more"
-        tooltip="Show the next notes found"
-        class="abele-replacement-preview__more"
-        @click="loadMore"
+        :shown="visibleCount"
+        label="More notes found below"
+        @more="loadMore"
       />
     </div>
   </div>
@@ -114,7 +112,6 @@
 
 <script setup lang="ts">
 import { computed, reactive, ref, watch } from 'vue'
-import { useInfiniteScroll } from '@vueuse/core'
 import type { ReplacementAction } from '@/entities/ReplacementAction'
 import type { ReplacementPreview } from '@/helpers/bulkReplacement'
 import ReplacementActionView from './ReplacementAction.vue'
@@ -122,6 +119,7 @@ import Diff from './Diff.vue'
 import ObsidianButton from './obsidian/Button.vue'
 import ObsidianIcon from './obsidian/Icon.vue'
 import EntryRow from './obsidian/EntryRow.vue'
+import ScrollMore from './obsidian/ScrollMore.vue'
 import Setting from './obsidian/Setting.vue'
 
 const props = withDefaults(
@@ -170,10 +168,6 @@ watch(
     if (!results.length) visibleCount.value = batchSize
   }
 )
-useInfiniteScroll(() => props.scrollContainer ?? null, loadMore, {
-  distance: batchSize,
-  canLoadMore: () => canLoadMore.value,
-})
 </script>
 
 <style lang="scss">
@@ -227,15 +221,5 @@ useInfiniteScroll(() => props.scrollContainer ?? null, loadMore, {
 .abele-replacement-preview__error {
   color: var(--text-error);
   font-size: var(--font-ui-smaller);
-}
-
-.abele-replacement-preview .abele-replacement-preview__more {
-  align-self: flex-start;
-  margin-top: var(--size-4-2);
-  padding-inline: var(--size-2-3);
-
-  .modal-content & {
-    padding-inline: 0;
-  }
 }
 </style>

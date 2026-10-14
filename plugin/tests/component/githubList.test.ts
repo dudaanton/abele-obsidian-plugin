@@ -1,3 +1,4 @@
+import ScrollMore from '@/components/obsidian/ScrollMore.vue'
 /**
  * A repository's list of pull requests, issues or discussions in a tab: the query in GitHub's own
  * syntax is the one source of truth — the field shows it, the state tabs and filters rewrite it
@@ -72,9 +73,9 @@ describe('a list of pull requests', () => {
     const { wrapper, request, onTitle, model } = openTab('https://github.com/o/r/pulls', ROUTES)
     await loaded(wrapper)
 
-    expect((wrapper.find('.abele-github-list__query input').element as HTMLInputElement).value).toBe(
-      'is:pr is:open'
-    )
+    expect(
+      (wrapper.find('.abele-github-list__query input').element as HTMLInputElement).value
+    ).toBe('is:pr is:open')
     const first = searches(request).find((u) => u.searchParams.get('per_page') !== '1')!
     expect(first.searchParams.get('q')).toBe('repo:o/r is:pr is:open')
     expect(first.searchParams.get('sort')).toBe('created')
@@ -172,11 +173,12 @@ describe('a list of pull requests', () => {
     await loaded(wrapper)
     expect(wrapper.findAll('.abele-github-list-row')).toHaveLength(25)
 
-    await click(wrapper.find('.abele-github-list__more button').element)
+    // The end of the list asks for the next page as it scrolls into view.
+    wrapper.findComponent(ScrollMore).vm.$emit('more')
     await flushPromises()
     expect(wrapper.findAll('.abele-github-list-row')).toHaveLength(26)
     expect(searches(request).some((u) => u.searchParams.get('page') === '2')).toBe(true)
-    expect(wrapper.find('.abele-github-list__more').exists()).toBe(false)
+    expect(wrapper.findComponent(ScrollMore).exists()).toBe(false)
   })
 
   it('says why when GitHub refuses the search', async () => {

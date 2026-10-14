@@ -135,14 +135,13 @@
         @retry="more"
       />
     </div>
-    <div v-else-if="next !== null" ref="sentinel" class="abele-github-list__more">
-      <Button
-        :text="loadingMore ? 'Loading…' : `Show more (${items.length} of ${shownTotal})`"
-        :disabled="loadingMore"
-        tooltip="Ask GitHub for the next page"
-        @click="more"
-      />
-    </div>
+    <ScrollMore
+      v-else-if="next !== null"
+      :loading="loadingMore"
+      :shown="items.length"
+      :label="`${items.length} of ${shownTotal} shown, more below`"
+      @more="more"
+    />
     <div v-else-if="data.total > SEARCH_CAP_SHOWN" class="abele-github-list__cap">
       GitHub's search shows the first thousand; narrow the query to see the rest.
     </div>
@@ -150,7 +149,7 @@
 </template>
 
 <script setup lang="ts">
-import { computed, onBeforeUnmount, ref, shallowRef, watch } from 'vue'
+import { computed, ref, shallowRef, watch } from 'vue'
 import type { PaneType } from 'obsidian'
 import Button from '../obsidian/Button.vue'
 import Icon from '../obsidian/Icon.vue'
@@ -158,6 +157,7 @@ import Input from '../obsidian/Input.vue'
 import Tabs from '../obsidian/Tabs.vue'
 import Dropdown from '../obsidian/Dropdown.vue'
 import EmptyState from '../obsidian/EmptyState.vue'
+import ScrollMore from '../obsidian/ScrollMore.vue'
 import GithubNotice from './GithubNotice.vue'
 import GithubListRow from './GithubListRow.vue'
 import type { GithubClient } from '@/github/client'
@@ -296,21 +296,6 @@ const more = async () => {
     loadingMore.value = false
   }
 }
-
-// The next page is asked for as the end of the list comes into view.
-const sentinel = ref<HTMLElement>()
-let observer: IntersectionObserver | null = null
-watch(sentinel, (el) => {
-  observer?.disconnect()
-  observer = null
-  const Observer = el?.ownerDocument.defaultView?.IntersectionObserver
-  if (!el || !Observer) return
-  observer = new Observer((entries) => {
-    if (entries.some((e) => e.isIntersecting)) void more()
-  })
-  observer.observe(el)
-})
-onBeforeUnmount(() => observer?.disconnect())
 </script>
 
 <style lang="scss">
@@ -351,15 +336,6 @@ onBeforeUnmount(() => observer?.disconnect())
     flex-direction: column;
     border: 1px solid var(--background-modifier-border);
     border-radius: var(--radius-m);
-  }
-
-  &__more {
-    display: flex;
-    flex-direction: column;
-    align-items: center;
-    gap: var(--size-4-2);
-    white-space: pre-line;
-    overflow-wrap: anywhere;
   }
 
   &__cap {
