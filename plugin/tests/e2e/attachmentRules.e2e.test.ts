@@ -129,7 +129,7 @@ const probe = (mobile: boolean) => `(async () => {
     }
     const notes = [...group.querySelectorAll('.abele-attachment-rules__notes')]
     const fields = notes.map(row => row.querySelector('input').value)
-    const places = [...group.querySelectorAll('.abele-attachment-rules__place select')].map(select => select.value)
+    const places = [...group.querySelectorAll('.abele-attachment-rules__place')].map(row => row.querySelector('select').value)
     // The bin on the line of its field, at its end, on the desktop and with the phone's stacked rows.
     const binBeside = notes.map(row => {
       const field = row.querySelector('input').getBoundingClientRect(), bin = row.querySelector('.clickable-icon').getBoundingClientRect()

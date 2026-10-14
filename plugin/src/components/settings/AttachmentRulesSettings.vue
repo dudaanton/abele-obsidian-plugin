@@ -180,3 +180,15 @@ onMounted(() => {
 })
 watch(rows, () => void nextTick(showPathEnds), { deep: true, flush: 'post' })
 </script>
+
+<style lang="scss">
+// The bin stays on the line of the notes field however narrow the pane: the field gives way.
+.abele-attachment-rules__notes > .setting-item-control {
+  flex-wrap: nowrap;
+
+  > .abele-obsidian-search {
+    flex: 1 1 auto;
+    min-width: 0;
+  }
+}
+</style>
