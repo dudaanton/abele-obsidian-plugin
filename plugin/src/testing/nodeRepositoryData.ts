@@ -195,6 +195,7 @@ export function nodeRepositoryFixture(
           entries: [{ path: 'app.ts', line: 1, text, content_id: content(text).content_id }],
         }
       case 'repository.v1.watch':
+      case 'workspace.watch':
         return {
           subscription_id: 'subscription-fixture',
           expires_at: new Date(Date.now() + 60000).toISOString(),
@@ -211,6 +212,7 @@ export function nodeRepositoryFixture(
             : {}),
         }
       case 'repository.v1.unwatch':
+      case 'workspace.unwatch':
         return { removed: true }
       default:
         throw new Error(`Unsupported fixture call: ${method}`)
@@ -263,6 +265,22 @@ export function nodeRepositoryFixture(
       }
       if (!later) deliver()
       return deliver
+    },
+    /** A plain folder's `workspace.files_changed` batch, counted by the same stream. */
+    folderBatch(workspace: string, revision: number, body: Record<string, unknown>) {
+      streamRevision = Math.max(streamRevision, revision)
+      sent.add(revision)
+      for (const listener of listeners)
+        listener({
+          kind: 'event',
+          stream_id: 'catalog',
+          node_id: identity.node,
+          seq: 3,
+          type: 'workspace.files_changed',
+          actor: { kind: 'node' },
+          at: '2025-01-01T00:00:00Z',
+          data: { workspace_id: workspace, stream_id: 'stream-fixture', revision, ...body },
+        })
     },
     calls,
     request,

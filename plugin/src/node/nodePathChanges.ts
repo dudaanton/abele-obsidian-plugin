@@ -65,11 +65,19 @@ function remove(entries: TreeEntry[], path: string) {
   )
 }
 
+/**
+ * How the node orders a folder's listing: a git copy by `localeCompare`, a plain folder by the
+ * names' code units.
+ */
+export type PathOrder = 'git' | 'plain'
+const after = (order: PathOrder, a: string, b: string) =>
+  order === 'git' ? a.localeCompare(b) > 0 : a > b
+
 /** Places a row where the node lists it, replacing one of the same path. */
-function put(entries: TreeEntry[], row: TreeEntry) {
+function put(entries: TreeEntry[], row: TreeEntry, order: PathOrder) {
   return within(entries, parentOf(row.path), (children) => {
     const next = children.filter((c) => c.path !== row.path)
-    const at = next.findIndex((c) => c.path.localeCompare(row.path) > 0)
+    const at = next.findIndex((c) => after(order, c.path, row.path))
     next.splice(at < 0 ? next.length : at, 0, row)
     return next
   })
@@ -82,7 +90,8 @@ function put(entries: TreeEntry[], row: TreeEntry) {
  */
 export function applyPathChanges(
   entries: TreeEntry[],
-  changes: readonly RepositoryTreeChange[]
+  changes: readonly RepositoryTreeChange[],
+  order: PathOrder = 'git'
 ): TreeEntry[] {
   for (const change of changes) {
     if (change.change === 'deleted') {
@@ -102,7 +111,7 @@ export function applyPathChanges(
     }
     const existing = find(entries, row.path)
     if (existing?.kind === row.kind && existing.name === row.name && !carried) continue
-    entries = put(entries, carried ?? row)
+    entries = put(entries, carried ?? row, order)
   }
   return entries
 }

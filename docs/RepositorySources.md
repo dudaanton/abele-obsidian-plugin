@@ -25,7 +25,8 @@ applied to it before it follows the stream. A lease renewed while batches are st
 keeps the source's own position, and the node asks for a reread only when a batch was never sent
 to that client.
 
-The node path sidebar follows the same stream (`node/nodePathChanges.ts`): its port hands the
+The node path sidebar follows the same stream (`node/nodePathChanges.ts`), and for a plain
+folder the node's `workspace_changes_v1` stream (`workspace.files_changed`): its port hands the
 model in-order batches, the model patches its listing in place, and reads again only the change
 list when git state moved or a changed file was touched. Lease renewals no longer reread it.
 

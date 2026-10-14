@@ -59,6 +59,16 @@ describe('applying a node change batch to the path sidebar', () => {
     expect(next[1]!.children).toEqual([row('lib/deep.ts')])
     expect(next[3]!.children).toEqual([])
   })
+  it('places a row of a plain folder in the order that folder is listed in', () => {
+    const plain = [row('B.md'), row('c.md')]
+    const next = applyPathChanges(plain, [{ change: 'added', entry: file('a.md') }], 'plain')
+    expect(next.map((c) => c.path)).toEqual(['B.md', 'a.md', 'c.md'])
+    expect(
+      applyPathChanges([row('a.md'), row('c.md')], [{ change: 'added', entry: file('B.md') }]).map(
+        (c) => c.path
+      )
+    ).toEqual(['a.md', 'B.md', 'c.md'])
+  })
   it('changes nothing when the listing already shows the batch', () => {
     const batch = [
       { change: 'added' as const, entry: file('src/b.ts') },
@@ -81,7 +91,15 @@ describe('the path sidebar port on the change stream', () => {
       store: new MemoryClientStore(),
       describe: vi.fn(async () =>
         changes
-          ? { capabilities: { capabilities: { repository_changes_v1: { status: 'supported' } } } }
+          ? {
+              capabilities: {
+                capabilities: {
+                  repository_changes_v1: { status: 'supported' },
+                  workspace_changes_v1: { status: 'supported' },
+                  node_path_v2: { status: 'supported' },
+                },
+              },
+            }
           : {}
       ),
       nodePath: new NodePathClient(f.request, async () => {
@@ -166,6 +184,35 @@ describe('the path sidebar port on the change stream', () => {
     expect(catalogue).toHaveBeenCalledTimes(1)
     unsubscribe()
     stop()
+  })
+  it('follows a plain folder on its own stream', async () => {
+    const { port, folderBatch, calls, stop } = await start()
+    stop()
+    const folder: PathTarget = {
+      nodeId: identity.node,
+      registrationId: identity.installation,
+      projectId: identity.project,
+      kind: 'workspace',
+      id: 'workspace-plain',
+    }
+    const notify = vi.fn(),
+      changed = vi.fn<(batch: PathTreeBatch) => void>()
+    const stopFolder = await port.watch(folder, notify, changed)
+    expect(calls.filter((c) => c.method === 'workspace.watch').at(-1)!.params).toEqual({
+      workspace_id: 'workspace-plain',
+      changes: null,
+    })
+    notify.mockClear()
+    folderBatch('workspace-other', 1, { complete: true, entries: [] })
+    folderBatch('workspace-plain', 1, {
+      complete: true,
+      entries: [{ change: 'added', entry: file('a.ts') }],
+    })
+    expect(changed.mock.calls).toEqual([
+      [{ entries: [{ change: 'added', entry: file('a.ts') }], git: false }],
+    ])
+    expect(notify).not.toHaveBeenCalled()
+    stopFolder()
   })
   it('keeps the legacy lease and its rereads on a node without the stream', async () => {
     const { calls, notify, changed, stop } = await start(false)

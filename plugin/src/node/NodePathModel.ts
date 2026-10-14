@@ -423,7 +423,11 @@ export class NodePathModel {
     const key = pathTargetKey(target),
       current = this.inspections.value[key]
     if (!current || !changes.length) return
-    const entries = applyPathChanges(current.entries, changes)
+    const entries = applyPathChanges(
+      current.entries,
+      changes,
+      target.kind === 'workspace' ? 'plain' : 'git'
+    )
     if (entries === current.entries) return
     this.inspections.value = {
       ...this.inspections.value,

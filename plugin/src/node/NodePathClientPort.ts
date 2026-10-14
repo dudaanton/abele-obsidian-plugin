@@ -4,7 +4,9 @@ import { bindPathTarget } from './nodePathChat'
 import { supportsExpectedTarget } from './expectedTarget'
 import {
   RepositoryChangeBatchSchema,
+  WorkspaceChangeBatchSchema,
   type RepositoryChangeBatch,
+  type WorkspaceChangeBatch,
   type RepositoryChangesCursor,
   type RepositoryRevision,
   type WorktreeEntry,
@@ -782,6 +784,7 @@ export class NodePathClientPort implements NodePathPort {
       // A batch that only moves files changes no folder, copy or branch; the watch applies it.
       const data = record(event.data)
       if (event.type === 'repository.changed' && data.complete === true && data.git === null) return
+      if (event.type === 'workspace.files_changed' && data.complete === true) return
       if (
         event.stream_id === 'catalog' ||
         event.type === 'stream.redacted' ||
@@ -816,14 +819,22 @@ export class NodePathClientPort implements NodePathPort {
     changed?: (batch: PathTreeBatch) => void
   ): Promise<() => void> {
     if (target.kind === 'workspace' && !this.capabilities.includes('node_path_v2')) return () => {}
+    // A git copy and a plain folder each have their own stream on the node.
     const streaming =
-      target.kind === 'worktree' && !!changed && this.capabilities.includes('repository_changes_v1')
+      !!changed &&
+      this.capabilities.includes(
+        target.kind === 'worktree' ? 'repository_changes_v1' : 'workspace_changes_v1'
+      )
     let cursor: RepositoryChangesCursor | undefined
     /** Batches that arrived before the lease said where the stream stands. */
-    const early: RepositoryChangeBatch[] = []
+    const early: (RepositoryChangeBatch | WorkspaceChangeBatch)[] = []
     const acquire = () =>
       target.kind === 'workspace'
-        ? this.client.nodePath.watch({ workspace_id: target.id })
+        ? this.client.nodePath.watch(
+            streaming
+              ? { workspace_id: target.id, changes: cursor ?? null }
+              : { workspace_id: target.id }
+          )
         : this.client.repository.watch(
             streaming
               ? { worktree_id: target.id, changes: cursor ?? null }
@@ -833,7 +844,7 @@ export class NodePathClientPort implements NodePathPort {
       target.kind === 'workspace'
         ? this.client.nodePath.unwatch({ workspace_id: target.id, subscription_id })
         : this.client.repository.unwatch({ worktree_id: target.id, subscription_id })
-    const follow = (batch: RepositoryChangeBatch) => {
+    const follow = (batch: RepositoryChangeBatch | WorkspaceChangeBatch) => {
       if (!cursor) {
         if (early.length < 64) early.push(batch)
         return
@@ -851,7 +862,7 @@ export class NodePathClientPort implements NodePathPort {
           to: next,
         })
         notify()
-      } else changed!({ entries: batch.entries, git: batch.git !== null })
+      } else changed!({ entries: batch.entries, git: 'git' in batch && batch.git !== null })
     }
     /** False on a node without the stream: the caller rereads as it always did. */
     const adopt = (lease: Awaited<ReturnType<typeof acquire>>) => {
@@ -869,8 +880,19 @@ export class NodePathClientPort implements NodePathPort {
       timer: number | undefined
     const stop = this.client.onEvent((event) => {
       if (event.type === 'repository.changed') {
-        const batch = streaming ? RepositoryChangeBatchSchema.safeParse(event.data) : null
+        const batch =
+          streaming && target.kind === 'worktree'
+            ? RepositoryChangeBatchSchema.safeParse(event.data)
+            : null
         if (batch?.success && batch.data.worktree_id === target.id) follow(batch.data)
+        return
+      }
+      if (event.type === 'workspace.files_changed') {
+        const batch =
+          streaming && target.kind === 'workspace'
+            ? WorkspaceChangeBatchSchema.safeParse(event.data)
+            : null
+        if (batch?.success && batch.data.workspace_id === target.id) follow(batch.data)
         return
       }
       if (
@@ -881,7 +903,8 @@ export class NodePathClientPort implements NodePathPort {
           !(streaming && cursor && record(event.data).reason === 'filesystem')) ||
         (event.type === 'workspace.invalidated' &&
           target.kind === 'workspace' &&
-          record(event.data).workspace_id === target.id) ||
+          record(event.data).workspace_id === target.id &&
+          !(streaming && cursor && record(event.data).reason === 'filesystem')) ||
         event.type === 'stream.redacted'
       )
         notify()
