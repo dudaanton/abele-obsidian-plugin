@@ -1,7 +1,7 @@
 # Node browser packages
 
 These four exact `0.0.0` npm tarballs contain the built browser packages from
-AbeleNode revision `c3a9255`, which adds the repository and plain folder change streams
+AbeleNode revision `46d8e34`, which adds the repository and plain folder change streams
 (`repository_changes_v1`, `workspace_changes_v1`) to the `v0.4.8` release; refresh them from
 the release tag that carries them. They include paired WSS,
 foreground pairing, node-path resources and execution targets, pi sessions, durable
