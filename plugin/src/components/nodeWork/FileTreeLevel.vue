@@ -4,6 +4,7 @@
     :key="entry.path"
     :text="entry.name"
     :path="entry.path"
+    :label="entry.path"
     :collapsible="entry.kind === 'folder'"
     :collapsed="folded.has(entry.path)"
     :active="entry.kind === 'file' && selected === entry.path"

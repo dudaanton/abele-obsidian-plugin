@@ -357,6 +357,17 @@ const found = computed(() => matches.value.slice(0, 50))
   color: var(--text-muted);
   font-size: var(--font-ui-smaller);
 }
+// A name keeps to one line and is cut short, as the file explorer keeps it; broken anywhere, a
+// long one ran over three lines in a phone's panel. The whole path is in the row's tooltip.
+.abele-file-tree .abele-tree-item__inner {
+  flex: 1 1 auto;
+}
+.abele-file-tree .abele-tree-item__text {
+  overflow: hidden;
+  white-space: nowrap;
+  text-overflow: ellipsis;
+}
+
 .abele-file-tree__deleted > .tree-item-self .abele-tree-item__text {
   color: var(--text-muted);
   text-decoration: line-through;
