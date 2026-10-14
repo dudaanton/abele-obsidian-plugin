@@ -3,6 +3,7 @@ import { evalJson, evalLong, hasTestApi, isObsidianRunning } from './helpers/obs
 import { onPhone, targets } from './helpers/target'
 import { shotDir } from './helpers/shots'
 import { SCRIPT_FIXTURE, type ScriptFixtureSnapshot } from './helpers/scriptFixture'
+import { dismissOwnNotices } from './helpers/ownNotices'
 
 targets('desktop', 'phone')
 const available = isObsidianRunning() && hasTestApi()
@@ -92,6 +93,8 @@ afterAll(async () => {
       delete window.__slidesLiveOwnedDeck;delete window.__slidesLiveOwnedScript;delete window.__slidesLiveOwnedFolder
     }
   })()`)
+  // Discovery announces the probe script before the fixture approves it.
+  dismissOwnNotices('"Sample slide counter"')
 })
 describe.skipIf(!available)('live slide lifecycle', () => {
   it('mounts a trusted script view and releases its controls on slide exit', async () => {

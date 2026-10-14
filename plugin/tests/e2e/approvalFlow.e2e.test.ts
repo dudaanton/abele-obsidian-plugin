@@ -210,6 +210,8 @@ export const approvalScript = (screen: string) => `(async () => {
     config.applySettings(previous); await config.saveSettings(); await config.reloadSettings()
     app.saveLocalStorage('abele-key-destinations-v1', local)
     if (rightCollapsed) app.workspace.rightSplit.collapse()
+    // The unreadable-settings case raises the plugin's own warning; it is this file's to close.
+    for (const notice of document.querySelectorAll('.notice')) if (notice.textContent.includes('could not read its settings file')) notice.click()
   }
   return report
 })()`

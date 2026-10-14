@@ -7,6 +7,7 @@ import { withNativeInput } from './helpers/nativeInput'
 import { shotDir } from './helpers/shots'
 import { canvasBackgroundGesture } from './helpers/canvasBackgroundGesture'
 import { randomUUID } from 'node:crypto'
+import { dismissOwnNotices } from './helpers/ownNotices'
 
 targets('desktop', 'phone')
 const available = isObsidianRunning() && hasTestApi()
@@ -95,18 +96,17 @@ describe.skipIf(!available)('canvas pen with real mouse and finger input', () =>
   `),
     120_000
   )
-  afterAll(
-    () =>
-      run(`
+  afterAll(() => {
+    run(`
     document.body.dispatchEvent(new KeyboardEvent('keydown',{key:'Escape',bubbles:true}))
     const state=window.__canvasInk,leaves=[];app.workspace.iterateAllLeaves(l=>{if(l.view.file?.path.startsWith(${JSON.stringify(DIR + '/')}))leaves.push(l)})
     for(const leaf of leaves){leaf.view.documentLease?.document.discardDraft();leaf.detach()}
     if(state?.owned){const folder=app.vault.getAbstractFileByPath(${JSON.stringify(DIR)});if(folder)await app.vault.delete(folder,true)}
     if(state){app.vault.setConfig('attachmentFolderPath',state.folder);await app.workspace.changeLayout(state.layout)}
     delete window.__canvasInk;return true
-  `),
-    120_000
-  )
+  `)
+    dismissOwnNotices('Saved whole canvas')
+  }, 120_000)
   it('draws attached pen and background marker strokes, then undo/redo restores their exact samples', async () => {
     await until('view()?.editor')
     await click('Canvas drawing tools')
