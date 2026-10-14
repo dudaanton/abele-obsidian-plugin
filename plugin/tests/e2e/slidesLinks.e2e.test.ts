@@ -42,9 +42,10 @@ describe.skipIf(!available)('note links with a presentation tab active', () => {
         r.noteType=leaf.view.getViewType();r.noteIsSlide=!!leaf.view.contentEl.querySelector('.abele-slide')
         if(r.noteType!=='markdown') {r.failureShot=await shot('note-wrongly-in-deck');return JSON.stringify(r)}
         await leaf.setViewState({type:'markdown',state:{file:notePath,mode:'source'},active:true})
-        leaf.view.editor.setValue(leaf.view.editor.getValue()+'\\nA sample edit.');await leaf.view.save()
+        const editView=leaf.view,beforeEdit=leaf.view.editor.getValue()
+        leaf.view.editor.setValue(beforeEdit+'\\nA sample edit.');await leaf.view.save()
         r.editable=await until(async()=>(await app.vault.read(note)).includes('A sample edit.'))
-        if(!r.editable)r.editState={type:leaf.view.getViewType(),mode:leaf.view.getMode?.(),editor:leaf.view.editor?.getValue().slice(-40),file:(await app.vault.read(note)).slice(-40),viewFile:leaf.view.file?.path}
+        if(!r.editable)r.editState={type:leaf.view.getViewType(),mode:leaf.view.getMode?.(),editor:leaf.view.editor?.getValue().slice(-40),file:(await app.vault.read(note)).slice(-40),viewFile:leaf.view.file?.path,beforeEdit:beforeEdit.slice(-40),sameView:leaf.view===editView}
         r.noteShot=await shot('chat-note-markdown')
         await leaf.openFile(deck);r.reopenedDeck=leaf.view.getViewType()==='abele-deck'
         const deckViewer=leaf.view.viewer;await deckViewer.go(1)
