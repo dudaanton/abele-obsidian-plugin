@@ -1,9 +1,12 @@
 <template>
   <div ref="clockEl" class="abele-timeline" data-abele-anchor="section:calendar">
+    <!-- Pinned while the days scroll under it, so the search, the label filter and the completed
+         switch are always at hand; its count is what the list shows now. -->
+    <div ref="headerEl" class="abele-timeline__pinned">
     <ListSectionHeader
       class-prefix="abele-timeline"
       :text="title ?? 'Timeline'"
-      :count="shownTasks.length"
+      :count="shownCount"
       :fold="fold"
       :search="search"
       search-tooltip="Search tasks by title and description"
@@ -25,6 +28,7 @@
         <ObsidianIcon
           class="abele-timeline__completed-toggle"
           :icon="hideCompleted ? 'list-checks' : 'list-todo'"
+          :active="!hideCompleted"
           role="switch"
           :aria-checked="!hideCompleted"
           :label="hideCompleted ? 'Show completed tasks' : 'Hide completed tasks'"
@@ -32,91 +36,102 @@
         />
       </template>
     </ListSectionHeader>
+    </div>
     <template v-if="!fold.collapsed.value">
+      <!-- Two folds above today, each a row of its own: the days gone by, with what was done in
+           them, and what was left undone. Opening one never brings the other's rows. -->
       <div
-        v-if="past.length && !search.terms.value.length"
+        v-if="history.length && !search.terms.value.length"
         ref="historyEl"
-        class="abele-timeline__history"
-        :class="{ 'abele-timeline__history_overdue': pastUnfinished > 0 }"
+        class="abele-timeline__fold abele-timeline__history"
         role="button"
         tabindex="0"
-        :aria-label="pastRevealed ? 'Hide all past days' : 'Show all past days'"
+        :aria-label="pastRevealed ? 'Hide past days' : 'Show past days'"
         :aria-expanded="pastRevealed"
         @click="togglePast"
         @keydown.enter.prevent="togglePast"
         @keydown.space.prevent="togglePast"
       >
-        <!-- Left undone is said first and in red, with the flame the overdue days carry; with
-             nothing left undone it is only the quiet way back to the days before. -->
+        <span class="abele-timeline__fold-text">Past days</span>
         <ObsidianIcon
-          v-if="pastUnfinished > 0"
-          class="abele-timeline__history-flame"
-          icon="flame"
-          no-hover
-        />
-        <span class="abele-timeline__history-text">{{
-          pastUnfinished > 0 ? 'Overdue' : 'Past days'
-        }}</span>
-        <span
-          v-if="pastUnfinished > 0"
-          class="abele-timeline__history-count"
-          :aria-label="`${pastUnfinished} unfinished`"
-          >{{ pastUnfinished }}</span
-        >
-        <!-- The fold at the end, so the row starts on the same edge as the days under it. -->
-        <ObsidianIcon
-          class="abele-timeline__history-glyph"
+          class="abele-timeline__fold-glyph"
           :icon="pastRevealed ? 'chevron-down' : 'chevron-right'"
           no-hover
         />
       </div>
       <div ref="itemsEl" class="abele-timeline__blocks">
-        <div
-          v-for="[date, dateItems] in visible"
-          :key="date"
-          class="abele-timeline__date-block"
-          :class="{ 'abele-timeline__drop-target': drag.targetDay.value === date }"
-          :data-abele-anchor="'date:' + date"
-        >
-          <div class="abele-timeline__block-content">
-            <!-- The day as a quiet heading; overdue says so in red, with a flame. -->
-            <div
-              class="abele-timeline__date-indicator"
-              :class="{
-                'abele-timeline__date-indicator_overdue':
-                  dayjs(date).isBefore(now, 'day') && dateItems.some((item) => !!item.task),
-                'abele-timeline__date-indicator_today': dayjs(date).isSame(now, 'day'),
-              }"
-            >
-              <ObsidianIcon
-                v-if="dayjs(date).isBefore(now, 'day') && dateItems.some((item) => !!item.task)"
-                class="abele-timeline__date-icon"
-                icon="flame"
-                label="Overdue"
-                no-hover
-              />
-              <ObsidianMarkdown trusted class="timeline__date" :text="getDateWikilink(date)" />
-            </div>
-            <div class="abele-timeline__tasks">
-              <template v-for="item in dateItems" :key="item.key">
-                <CalendarEventView
-                  v-if="item.shown"
-                  :event="item.shown.event"
-                  :feed="item.shown.feed"
-                  :day="date"
-                  :data-timeline-item="item.key"
+        <template v-for="group in groups" :key="group.id">
+          <!-- Left undone is said in red, with the flame the overdue days carry. -->
+          <div
+            v-if="group.id === 'overdue-row'"
+            class="abele-timeline__fold abele-timeline__overdue"
+            role="button"
+            tabindex="0"
+            :aria-label="overdueOpen ? 'Hide overdue tasks' : 'Show overdue tasks'"
+            :aria-expanded="overdueOpen"
+            @click="overdueOpen = !overdueOpen"
+            @keydown.enter.prevent="overdueOpen = !overdueOpen"
+            @keydown.space.prevent="overdueOpen = !overdueOpen"
+          >
+            <ObsidianIcon class="abele-timeline__overdue-flame" icon="flame" no-hover />
+            <span class="abele-timeline__fold-text">Overdue</span>
+            <span class="abele-timeline__overdue-count" :aria-label="`${overdueCount} unfinished`">{{
+              overdueCount
+            }}</span>
+            <ObsidianIcon
+              class="abele-timeline__fold-glyph"
+              :icon="overdueOpen ? 'chevron-down' : 'chevron-right'"
+              no-hover
+            />
+          </div>
+          <div
+            v-for="[date, dateItems] in group.days"
+            v-else
+            :key="group.id + date"
+            class="abele-timeline__date-block"
+            :class="{ 'abele-timeline__drop-target': drag.targetDay.value === date }"
+            :data-abele-anchor="'date:' + date"
+            :data-timeline-group="group.id"
+          >
+            <div class="abele-timeline__block-content">
+              <!-- The day as a quiet heading; overdue says so in red, with a flame. -->
+              <div
+                class="abele-timeline__date-indicator"
+                :class="{
+                  'abele-timeline__date-indicator_overdue': group.id === 'overdue',
+                  'abele-timeline__date-indicator_today': dayjs(date).isSame(now, 'day'),
+                }"
+              >
+                <ObsidianIcon
+                  v-if="group.id === 'overdue'"
+                  class="abele-timeline__date-icon"
+                  icon="flame"
+                  label="Overdue"
+                  no-hover
                 />
-                <TaskView
-                  v-else
-                  class="abele-timeline__task"
-                  :task="item.task!"
-                  :data-timeline-item="item.key"
-                  at-timeline
-                />
-              </template>
+                <ObsidianMarkdown trusted class="timeline__date" :text="getDateWikilink(date)" />
+              </div>
+              <div class="abele-timeline__tasks">
+                <template v-for="item in dateItems" :key="item.key">
+                  <CalendarEventView
+                    v-if="item.shown"
+                    :event="item.shown.event"
+                    :feed="item.shown.feed"
+                    :day="date"
+                    :data-timeline-item="item.key"
+                  />
+                  <TaskView
+                    v-else
+                    class="abele-timeline__task"
+                    :task="item.task!"
+                    :data-timeline-item="item.key"
+                    at-timeline
+                  />
+                </template>
+              </div>
             </div>
           </div>
-        </div>
+        </template>
       </div>
       <div ref="anchorSpaceEl" class="abele-timeline__anchor-space" aria-hidden="true" />
       <div v-if="hasMore" ref="sentinel" class="abele-timeline__sentinel" />
@@ -183,15 +198,8 @@ const drag = useTimelineDrag(
   () => scroll.captureDragLayout()
 )
 
-const shownTasks = computed(() =>
-  props.tasks.filter((task) => {
-    if (task.taskNotFound) return false
-    if (!hideCompleted.value || !task.completedAt) return true
-    // Completed tasks remain in their past days, including while history is folded.
-    return task.dates.some((day) => day < now.value.format(DATE_FORMAT))
-  })
-)
-
+// Completed tasks follow the switch everywhere, past days included: hidden, they are nowhere.
+const shownTasks = computed(() => props.tasks.filter((task) => !task.taskNotFound))
 const {
   options: labelOptions,
   filtered,
@@ -214,6 +222,8 @@ interface DayItem {
 }
 
 const dates = computed(() => {
+  // A folded footer must not build the date ranges, even as tasks arrive in separate batches.
+  if (fold.collapsed.value) return []
   const datesSet = new Map<string, DayItem[]>()
   const itemsOf = (date: string) => {
     let items = datesSet.get(date)
@@ -223,8 +233,7 @@ const dates = computed(() => {
 
   for (const task of search.results.value) {
     for (const date of task.dates) {
-      // The completed switch applies from today onward; history keeps the whole day.
-      if (task.completedAt && hideCompleted.value && date >= now.value.format(DATE_FORMAT)) continue
+      if (task.completedAt && hideCompleted.value) continue
       // A task with no time sorts to the end of its day, as it always has.
       itemsOf(date).push({ key: `task:${task.id}`, at: task.getSortTimestamp() * 1000, task })
     }
@@ -250,16 +259,35 @@ const dates = computed(() => {
   return Array.from(datesSet.entries()).sort((a, b) => (a[0] < b[0] ? -1 : 1))
 })
 
+const today = () => now.value.format(DATE_FORMAT)
+const unfinished = (item: DayItem) => !!item.task && !item.task.completedAt
+/** Past days with what was done in them and the events: the history fold. */
+const history = computed(() =>
+  dates.value
+    .filter(([day]) => day < today())
+    .map(([day, items]) => [day, items.filter((item) => !unfinished(item))] as [string, DayItem[]])
+    .filter(([, items]) => items.length)
+)
+/** Past days with only what was left undone in them: the overdue fold. */
+const overdue = computed(() =>
+  dates.value
+    .filter(([day]) => day < today())
+    .map(([day, items]) => [day, items.filter(unfinished)] as [string, DayItem[]])
+    .filter(([, items]) => items.length)
+)
+const forward = computed(() => dates.value.filter(([day]) => day >= today()))
+const overdueOpen = ref(false)
+
 const {
   visible: pagedVisible,
-  past,
   pastRevealed,
   hasMore,
   sentinel,
   reset,
   togglePast,
 } = useTimelineDays(
-  () => dates.value,
+  // Searching finds a task in any day; otherwise the days fold away into history.
+  () => (search.terms.value.length ? dates.value : [...history.value, ...forward.value]),
   () => now.value.format(DATE_FORMAT),
   () => search.terms.value,
   PAGE_SIZE,
@@ -294,13 +322,45 @@ const visible = computed(() => {
   }
   return [...window].sort(([a], [b]) => a.localeCompare(b))
 })
-// Past events are history, not overdue work. Keep the existing indication for task days.
-const pastUnfinished = computed(() => {
+/** What the list draws, fold by fold, in the order it draws them. */
+const groups = computed(() => {
+  if (search.terms.value.length) return [{ id: 'found', days: visible.value }]
+  const list: { id: string; days: [string, DayItem[]][] }[] = [
+    { id: 'history', days: visible.value.filter(([day]) => day < today()) },
+  ]
+  if (overdue.value.length) {
+    list.push({ id: 'overdue-row', days: [] })
+    if (overdueOpen.value) list.push({ id: 'overdue', days: overdue.value })
+  }
+  list.push({ id: 'days', days: visible.value.filter(([day]) => day >= today()) })
+  return list
+})
+const tasksIn = (days: readonly [string, DayItem[]][]) => {
   const keys = new Set<string>()
-  for (const [, items] of past.value)
-    for (const item of items) if (item.task && !item.task.completedAt) keys.add(item.key)
+  for (const [, items] of days) for (const item of items) if (item.task) keys.add(item.key)
+  return keys
+}
+const overdueCount = computed(() => tasksIn(overdue.value).size)
+/**
+ * What is open is what is counted: the days from today on, all of them, not only the page
+ * drawn so far; and the past only while its fold is open. A task over several days counts once.
+ */
+const shownCount = computed(() => {
+  // Folded, the heading still says how many are ahead, read off each task's last day rather than
+  // the ranges a folded footer does not build.
+  if (fold.collapsed.value)
+    return filtered.value.filter((task) => {
+      if (task.completedAt && hideCompleted.value) return false
+      const last = task.due ?? task.date
+      return !!last && last.format(DATE_FORMAT) >= today()
+    }).length
+  if (search.terms.value.length) return tasksIn(dates.value).size
+  const keys = tasksIn(forward.value)
+  if (pastRevealed.value) for (const key of tasksIn(history.value)) keys.add(key)
+  if (overdueOpen.value) for (const key of tasksIn(overdue.value)) keys.add(key)
   return keys.size
 })
+const headerEl = ref<HTMLElement | null>(null)
 const historyEl = ref<HTMLElement | null>(null)
 const anchorSpaceEl = ref<HTMLElement | null>(null)
 const retainedRows = computed(
@@ -311,7 +371,7 @@ const retainedRows = computed(
 )
 const scroll = useTimelineScroll(
   itemsEl,
-  historyEl,
+  headerEl,
   anchorSpaceEl,
   () => visible.value,
   (key, day) => retainedRows.value.has(day + ':' + key),
@@ -319,7 +379,7 @@ const scroll = useTimelineScroll(
   () => !!drag.range.value
 )
 watch(labelSelection, reset)
-watch([labelSelection, hideCompleted, search.terms, pastRevealed], () => {
+watch([labelSelection, hideCompleted, search.terms, pastRevealed, overdueOpen], () => {
   drag.landing.value = null
 })
 
@@ -364,18 +424,29 @@ const getDateWikilink = (dateStr: string) => {
   overflow-anchor: none !important;
 }
 
-.abele-timeline__history {
+.abele-timeline {
+  // What the pinned header stands on, so the days passing under it do not show through: a note,
+  // or the side panel, which lays the same ground under its lists.
+  --abele-timeline-ground: var(--background-primary);
+}
+
+// The header with its search and switches stays at the top while the days scroll under it.
+.abele-timeline__pinned {
   position: sticky;
   top: var(--abele-timeline-sticky-top, 0);
-  z-index: 1;
+  z-index: 2;
+  background-color: var(--abele-timeline-ground);
+}
+
+// A fold above today is a quiet row of the list's own: its own box, lit as a row is, and never
+// over a task — it scrolls with the days rather than sticking above them.
+.abele-timeline__fold {
   display: flex;
   align-items: center;
   gap: var(--size-2-2);
   padding: var(--size-2-2) var(--size-2-3);
   margin-bottom: var(--size-4-2);
   border-radius: var(--radius-s);
-  // A quiet row like the list's own, not an accent banner: opaque, since it sticks over the days.
-  background-color: var(--background-primary);
   color: var(--text-muted);
   font-size: var(--font-ui-small);
   cursor: var(--cursor);
@@ -395,7 +466,7 @@ const getDateWikilink = (dateStr: string) => {
   }
 }
 
-.abele-timeline__history_overdue {
+.abele-timeline__overdue {
   color: var(--color-red);
   font-weight: var(--font-semibold);
 
@@ -404,19 +475,19 @@ const getDateWikilink = (dateStr: string) => {
   }
 }
 
-.abele-timeline__history-flame svg {
+.abele-timeline__overdue-flame svg {
   width: var(--icon-xs);
   height: var(--icon-xs);
 }
 
 // A glyph is drawn inside its box with a margin; a flame leading a line is pulled by that margin
 // so its ink, not its box, starts on the edge the words under it start on.
-.abele-timeline__history-flame,
+.abele-timeline__overdue-flame,
 .abele-timeline__date-icon {
   margin-inline-start: calc(var(--icon-xs) * -4 / 24);
 }
 
-.abele-timeline__history-count {
+.abele-timeline__overdue-count {
   font-variant-numeric: tabular-nums;
 }
 

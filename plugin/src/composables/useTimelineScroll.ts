@@ -13,7 +13,8 @@ export function timelinePinnedTop(owner: HTMLElement): number {
   const viewport = owner.getBoundingClientRect()
   const top = viewport.top
   const body = owner.ownerDocument.body
-  if (!body.classList.contains('is-phone')) return top
+  // A drawer lies over the note and its header; only its own top bounds it.
+  if (!body.classList.contains('is-phone') || owner.closest('.workspace-drawer')) return top
   const bodyStyle = getComputedStyle(body)
   const safe = parseFloat(bodyStyle.getPropertyValue('--safe-area-inset-top')) || 0
   // Native navigation retains its tap region when the visual header collapses on a pan.

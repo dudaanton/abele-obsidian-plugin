@@ -133,7 +133,9 @@ describe('timeline task dragging', () => {
     expect(dragClick.defaultPrevented).toBe(true)
   })
 
-  it('temporarily shows hidden past and completed rows within the month and restores both on Escape', async () => {
+  // The completed switch now hides done tasks everywhere, past days included, and the month a
+  // drag opens follows it too: it brings the folded past back, but not what the switch hides.
+  it('temporarily shows hidden past rows within the month and restores them on Escape', async () => {
     const current = sample('sample-current', '2030-06-15')
     current.dateTime = dayjs('2030-06-15T09:30')
     current.due = dayjs('2030-06-15')
@@ -146,15 +148,17 @@ describe('timeline task dragging', () => {
       content: current.content,
     }
     const write = vi.spyOn(current, 'writeTaskToFile').mockResolvedValue(undefined)
+    const done = sample('sample-done', '2030-06-13', true)
     await render([
       sample('sample-past', '2030-06-14'),
-      sample('sample-done', '2030-06-13', true),
+      done,
       sample('sample-archive', '2020-01-01', true),
       current,
     ])
     await pointer('pointerdown', 80, 190, row().element)
     await pointer('pointermove', 80, 205)
-    expect(view.findAll('[data-timeline-item]')).toHaveLength(3)
+    expect(view.findAll('[data-timeline-item]')).toHaveLength(2)
+    expect(view.find(`[data-timeline-item="task:${done.id}"]`).exists()).toBe(false)
     expect(days()).not.toContain('date:2020-01-01')
     document.dispatchEvent(new KeyboardEvent('keydown', { key: 'Escape', bubbles: true }))
     await flushPromises()
@@ -246,21 +250,16 @@ describe('timeline task dragging', () => {
     }
   )
 
-  it('overrides completed filtering only for past occurrences inside the temporary month', async () => {
+  // Done tasks used to come back on the past days of the drag's month; the switch hides them
+  // everywhere now, the month the drag opens included.
+  it('keeps completed tasks hidden in the temporary month while the switch hides them', async () => {
     const done = sample('sample-span-done', '2030-05-01', true)
     done.due = dayjs('2030-06-20')
     await render([sample('sample-current', '2030-06-15'), done])
     await pointer('pointerdown', 80, 190, row().element)
     await pointer('pointermove', 80, 205)
-    const occurrences = view
-      .findAll(`[data-timeline-item="task:${done.id}"]`)
-      .map((row) =>
-        row.element.closest('.abele-timeline__date-block')?.getAttribute('data-abele-anchor')
-      )
-    expect(occurrences).toHaveLength(31)
-    expect(occurrences.every((day) => day! >= 'date:2030-05-15' && day! < 'date:2030-06-15')).toBe(
-      true
-    )
+    expect(view.findAll(`[data-timeline-item="task:${done.id}"]`)).toHaveLength(0)
+    expect(days().some((day) => day! < 'date:2030-06-15')).toBe(true)
   })
 
   it('rolls the in-memory dates back and restores filters if persistence fails', async () => {

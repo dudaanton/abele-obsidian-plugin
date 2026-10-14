@@ -473,6 +473,33 @@ describe('timeline scroll ownership', () => {
     expect(strip.getBoundingClientRect().top).toBe(40)
   })
 
+  it('pins at the top of a phone drawer, not under the note header the drawer lies over', async () => {
+    document.body.classList.add('is-phone')
+    document.body.style.setProperty('--safe-area-inset-top', '20px')
+    document.body.style.setProperty('--view-header-height', '40px')
+    const p = await pane(100)
+    const drawer = document.createElement('div')
+    drawer.classList.add('workspace-drawer')
+    document.body.append(drawer)
+    drawer.append(p.owner)
+    const header = document.createElement('div')
+    header.classList.add('view-header')
+    document.body.append(header)
+    cleanups.push(() => {
+      header.remove()
+      drawer.remove()
+      document.body.classList.remove('is-phone')
+      document.body.style.removeProperty('--safe-area-inset-top')
+      document.body.style.removeProperty('--view-header-height')
+    })
+    vi.spyOn(header, 'getBoundingClientRect').mockReturnValue(new DOMRect(0, 0, 300, 100))
+    const strip = document.createElement('div')
+    p.owner.append(strip)
+    p.history.value = strip
+    await nextTick()
+    expect(strip.style.getPropertyValue('--abele-timeline-sticky-top')).toBe('0px')
+  })
+
   it('pins below floating phone navigation outside the scroll leaf', async () => {
     document.body.classList.add('is-phone')
     const p = await pane(100)

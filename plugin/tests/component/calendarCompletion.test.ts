@@ -149,15 +149,18 @@ describe('completion where external events are drawn', () => {
     task.date = dayjs('2026-04-07')
     task.due = dayjs('2026-04-08')
     view = mount(Timeline, { props: { tasks: [task], events: service.byDay() } })
-    expect(view.find('.abele-timeline__history').text()).toBe('Overdue1')
-    expect(view.find('.abele-timeline__history-count').attributes('aria-label')).toBe(
+    // What was left undone is a fold of its own, apart from the past days with their events.
+    expect(view.find('.abele-timeline__overdue').text()).toBe('Overdue1')
+    expect(view.find('.abele-timeline__overdue-count').attributes('aria-label')).toBe(
       '1 unfinished'
     )
     await view.find('.abele-timeline__history').trigger('click')
+    await view.find('.abele-timeline__overdue').trigger('click')
     const blocks = view.findAll('.abele-timeline__date-block')
+    // The past days first, events only and never red, then the task's own days under Overdue.
     expect(
       blocks.map((block) => block.find('.abele-timeline__date-indicator_overdue').exists())
-    ).toEqual([true, true, false])
+    ).toEqual([false, false, false, true, true])
   })
 
   it('never returns external occurrences from the agent open-task list', async () => {

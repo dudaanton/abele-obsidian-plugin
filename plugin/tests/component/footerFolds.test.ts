@@ -37,7 +37,8 @@ const tasks = (n: number, dated = false) =>
     const task = new Task({ wikilink: `[[Tasks/Task ${i}]]` })
     task.loaded = true
     task.title = `Task ${i}`
-    if (dated) task.date = dayjs('2026-01-01').add(i, 'day')
+    // From today on: the heading counts what the list shows, and days gone by are folded away.
+    if (dated) task.date = dayjs().startOf('day').add(i, 'day')
     return task
   })
 
