@@ -426,7 +426,7 @@ watch([selectedMonth, selectedYear], () =>
   border-radius: var(--radius-s);
   cursor: pointer;
   &:hover {
-    background-color: var(--abele-hover-background);
+    background-color: var(--background-modifier-hover);
   }
   &_today {
     color: var(--text-accent);

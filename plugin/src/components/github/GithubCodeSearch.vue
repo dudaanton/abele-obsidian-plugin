@@ -428,7 +428,7 @@ defineExpose({ focus })
 
   &__path:hover,
   &__line:hover {
-    background: var(--abele-hover-background);
+    background: var(--background-modifier-hover);
   }
 
   &__number {

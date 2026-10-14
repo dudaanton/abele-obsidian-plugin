@@ -267,7 +267,7 @@ onMounted(() => window.setTimeout(() => field.value?.inputRef?.focus()))
 
   &:hover,
   &.is-selected {
-    background-color: var(--abele-selected-background);
+    background-color: var(--background-modifier-hover);
   }
 }
 body.is-phone .abele-folder-picker__row {

@@ -1304,7 +1304,7 @@ const modelCount = (n: number) => (n === 1 ? '1 model' : `${n} models`)
   }
 
   &:hover {
-    background-color: var(--abele-hover-background);
+    background-color: var(--background-modifier-hover);
   }
 
   &_added {

@@ -222,7 +222,7 @@ function open(entry: Entry) {
   box-shadow: none;
 
   &:hover {
-    background-color: var(--abele-hover-background);
+    background-color: var(--background-modifier-hover);
   }
 
   .abele-card__head {

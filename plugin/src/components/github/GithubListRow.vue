@@ -86,7 +86,7 @@ const open = (event: MouseEvent | KeyboardEvent) => {
 
   &:hover,
   &:focus-visible {
-    background-color: var(--abele-hover-background);
+    background-color: var(--background-modifier-hover);
   }
 
   &__state {

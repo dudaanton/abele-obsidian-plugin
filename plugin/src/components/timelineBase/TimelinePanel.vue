@@ -168,7 +168,7 @@ const dotClass = (item: TimelineItem) =>
 
   &:hover,
   &:focus-visible {
-    background-color: var(--abele-hover-background);
+    background-color: var(--background-modifier-hover);
   }
 }
 

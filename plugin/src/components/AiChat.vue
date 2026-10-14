@@ -2252,8 +2252,8 @@ const showDebug = () => {
       box-shadow: none;
 
       &:hover {
-        color: var(--abele-hover-color);
-        background-color: var(--abele-hover-background);
+        color: var(--text-normal);
+        background-color: var(--background-modifier-hover);
       }
     }
   }

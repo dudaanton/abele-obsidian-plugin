@@ -81,17 +81,11 @@ const emit = defineEmits<{ 'update:more': [open: boolean] }>()
   &[role='button']:hover,
   &[role='link']:hover,
   &:focus-visible {
-    background-color: var(--abele-hover-background);
-    --abele-text-title-color: var(--abele-hover-color);
-    --abele-text-fact-color: var(--abele-tinted-muted);
-    --abele-text-meta-color: var(--abele-tinted-muted);
+    background-color: var(--background-modifier-hover);
   }
 
   &.is-active {
-    background-color: var(--abele-selected-background);
-    --abele-text-title-color: var(--abele-selected-color);
-    --abele-text-fact-color: var(--abele-tinted-muted);
-    --abele-text-meta-color: var(--abele-tinted-muted);
+    background-color: var(--nav-item-background-active, var(--background-modifier-hover));
   }
 
   // In a window the words of a row stand at the window's text edge, as in a note: the inset that
@@ -169,7 +163,6 @@ const emit = defineEmits<{ 'update:more': [open: boolean] }>()
 .abele-entry-row__title {
   grid-area: title;
   min-width: 0;
-  color: var(--abele-text-title-color);
 }
 
 .abele-entry-row__codes {

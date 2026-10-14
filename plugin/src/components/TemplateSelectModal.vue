@@ -246,7 +246,7 @@ function confirmSelection() {
 
 .abele-template-select__item:hover,
 .abele-template-select__item_selected {
-  background: var(--abele-selected-background);
+  background: var(--background-modifier-hover);
 }
 
 .abele-template-select__item_selected .abele-template-select__item-name {
@@ -269,8 +269,8 @@ function confirmSelection() {
 }
 
 .abele-template-select__breadcrumb-item:hover {
-  background: var(--abele-hover-background);
-  color: var(--abele-hover-color);
+  background: var(--background-modifier-hover);
+  color: var(--text-normal);
 }
 
 .abele-template-select__breadcrumb-separator {

@@ -343,7 +343,7 @@ watch(() => [props.copy, props.open, props.commits], tips, { flush: 'post' })
   cursor: var(--cursor);
 
   &:hover {
-    background-color: var(--abele-hover-background);
+    background-color: var(--background-modifier-hover);
   }
   &:focus-visible {
     box-shadow: 0 0 0 2px var(--background-modifier-border-focus);

@@ -682,7 +682,7 @@ onBeforeUnmount(() => {
   cursor: var(--cursor);
 
   &:hover {
-    background-color: var(--abele-hover-background);
+    background-color: var(--background-modifier-hover);
   }
 }
 

@@ -143,8 +143,8 @@ function move(event: KeyboardEvent, from: number): void {
   min-width: 0;
 
   &:hover {
-    background-color: var(--abele-hover-background);
-    color: var(--abele-hover-color);
+    background-color: var(--background-modifier-hover);
+    color: var(--text-normal);
   }
 }
 
@@ -159,12 +159,6 @@ function move(event: KeyboardEvent, from: number): void {
 .abele-tabs__badge {
   flex: 0 0 auto;
   color: var(--text-faint);
-
-  // On the wash of the chosen tab or the one under the pointer, in its hue.
-  .abele-tabs__tab:hover &,
-  .abele-tabs__tab_active & {
-    color: var(--abele-tinted-muted);
-  }
   font-size: var(--font-ui-smaller);
   font-variant-numeric: tabular-nums;
 }
@@ -187,8 +181,8 @@ function move(event: KeyboardEvent, from: number): void {
 .abele-tabs_primary .abele-tabs__tab_active {
   &,
   &:hover {
-    background-color: var(--abele-selected-background);
-    color: var(--abele-selected-color);
+    background-color: var(--background-modifier-hover);
+    color: var(--text-normal);
   }
 }
 
@@ -200,8 +194,8 @@ function move(event: KeyboardEvent, from: number): void {
   .abele-tabs__tab_active {
     &,
     &:hover {
-      background-color: var(--abele-selected-background);
-      color: var(--abele-selected-color);
+      background-color: var(--background-modifier-hover);
+      color: var(--text-normal);
       font-weight: var(--font-medium);
     }
   }
@@ -258,8 +252,8 @@ function move(event: KeyboardEvent, from: number): void {
   .abele-tabs__tab_active {
     &,
     &:hover {
-      background-color: var(--abele-selected-background);
-      color: var(--abele-selected-color);
+      background-color: var(--background-modifier-hover);
+      color: var(--text-normal);
     }
   }
 }

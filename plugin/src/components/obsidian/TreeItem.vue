@@ -201,16 +201,6 @@ body:not(.is-grabbing) .abele-tree-item__self.is-clickable:hover {
   font-weight: var(--abele-tree-item-weight);
 }
 
-// The row's glyph goes with its words: under the pointer and when chosen, in the same deep accent.
-@media (hover: hover) {
-  .abele-tree-item__self.is-clickable:hover .abele-tree-item__glyph {
-    color: var(--abele-hover-color);
-  }
-}
-.abele-tree-item__self.is-active .abele-tree-item__glyph {
-  color: var(--abele-selected-color);
-}
-
 .abele-tree-item__glyph {
   display: flex;
   align-items: center;

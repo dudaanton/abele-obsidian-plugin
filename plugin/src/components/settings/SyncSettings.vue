@@ -235,7 +235,7 @@ onMounted(() => {
 
   &:hover,
   &:focus-visible {
-    background-color: var(--abele-hover-background);
+    background-color: var(--background-modifier-hover);
   }
 }
 .abele-sync-row__line.mod-warning {

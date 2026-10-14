@@ -350,12 +350,12 @@ scan()
 
   &:hover,
   &:focus-visible {
-    background-color: var(--abele-hover-background);
+    background-color: var(--background-modifier-hover);
   }
 
   &.is-active {
-    background-color: var(--abele-selected-background);
-    color: var(--abele-selected-color);
+    background-color: var(--background-modifier-hover);
+    color: var(--text-normal);
   }
 }
 

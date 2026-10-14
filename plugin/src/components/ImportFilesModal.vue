@@ -163,7 +163,7 @@ const onDrop = (e: DragEvent) => {
 
   &_active {
     border-color: var(--interactive-accent);
-    background-color: var(--abele-selected-background);
+    background-color: var(--background-modifier-hover);
   }
 }
 

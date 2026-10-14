@@ -86,7 +86,7 @@
   cursor: pointer;
 
   &:hover {
-    background-color: var(--abele-hover-background);
+    background-color: var(--background-modifier-hover);
   }
 }
 
@@ -265,8 +265,8 @@ button.abele-chat-msg__icon:not(.abele-chat-msg__time) {
   cursor: pointer;
 
   &:hover {
-    background: var(--abele-hover-background);
-    color: var(--abele-hover-color);
+    background: var(--background-modifier-hover);
+    color: var(--text-normal);
   }
 
   &--send {

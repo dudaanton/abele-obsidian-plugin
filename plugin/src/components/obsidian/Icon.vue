@@ -148,8 +148,8 @@ watch(accessibleName, updateTooltip)
   }
 
   &_active {
-    color: var(--abele-selected-color);
-    background-color: var(--abele-selected-background);
+    color: var(--text-accent);
+    background-color: var(--background-modifier-active-hover);
   }
   // Only an icon that does something reacts to the pointer. A picture-only icon is a span with
   // no `clickable-icon`, and a disabled one carries Obsidian's own `aria-disabled`, whose rule
@@ -161,8 +161,8 @@ watch(accessibleName, updateTooltip)
   // keeps `:hover` on whatever was tapped last, so the highlight stayed behind after a tap.
   @media (hover: hover) {
     &.clickable-icon:not(.abele-obsidian-icon_disabled):not(.abele-obsidian-icon_no-hover):hover {
-      color: var(--abele-hover-color);
-      background-color: var(--abele-hover-background);
+      color: var(--icon-color-hover);
+      background-color: var(--background-modifier-hover);
     }
   }
 }
