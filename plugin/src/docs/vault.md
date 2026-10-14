@@ -1691,6 +1691,22 @@ per-key generation number, not a password or secret-link checksum. The generatio
 change detector stay in the device keychain. Version 1 caches are discarded once and refreshed;
 changing a credential invalidates its cached source, including a response already in flight.
 
+## Exchange-rate cache
+
+Today's exchange rates (**Settings → Finance → Exchange rates**) are kept in
+`exchange-rates.json` in the plugin's own folder, on this device only: one table of how many units
+of each currency a US dollar buys, with the day each rate is for and its source, the moment it was
+fetched, the moment of the last attempt and, when that failed, why. It is fetched at most once a
+day, and after a failure at most once an hour. The request is the whole public table against the
+dollar, from Frankfurter (`api.frankfurter.dev`) and, for currencies it lacks or when it fails,
+currency-api (jsDelivr, then its `currency-api.pages.dev` mirror); it never names the currencies
+the vault holds, and needs no key. Offline, the last table is used; older than four days it is
+marked stale. Nothing in a note depends on it: it can be deleted at any time, and the next fetch
+writes it again. It is not synced and not carried by settings transfer. The two settings that
+govern it, `fetchExchangeRates` (on by default) and `displayCurrency` (`USD` by default), are in
+`data.json` and do travel. Converted figures are only shown and sorted by; no balance or note is
+ever written in another currency.
+
 ## GitHub snippets
 
 "Insert with code" on lines selected in a GitHub tab, and "Insert as quote" on a comment, write a

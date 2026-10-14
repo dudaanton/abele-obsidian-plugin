@@ -45,10 +45,7 @@
       name="Fetch today's rates"
       desc="Once a day, from a public table that needs no key; nothing about the vault is sent. Sums of several currencies and the order of accounts by amount use them."
     >
-      <Checkbox
-        :is-enabled="exchangeRates.enabled"
-        @toggle="exchangeRates.enabled = !exchangeRates.enabled"
-      />
+      <Checkbox :is-enabled="exchangeRates.enabled" @toggle="fetchRatesToggled" />
     </Setting>
     <template v-if="exchangeRates.enabled">
       <Setting name="Show sums in" desc="The currency a sum of several currencies is shown in.">
@@ -134,8 +131,27 @@ import { exchangeRates, ratesStatus } from '@/finance/rates/exchangeRates'
 import { GlobalStore } from '@/stores/GlobalStore'
 import { keyDestinations, acceptIntroducedDestinations } from '@/secrets/destinations'
 
+// Both are settings that travel; the store follows them once they are saved.
+const fetchRatesToggled = () => {
+  const config = AbeleConfig.getInstance()
+  config.editSettings(() => {
+    config.fetchExchangeRates = !config.fetchExchangeRates
+  })
+  exchangeRates.enabled = config.fetchExchangeRates
+  void config.saveSettings()
+}
+
+const saveDisplay = debounce(async () => {
+  await AbeleConfig.getInstance().saveSettings()
+}, 500)
+
 const displayChanged = (value: string) => {
-  exchangeRates.display = value.trim().toUpperCase() || 'USD'
+  const config = AbeleConfig.getInstance()
+  config.editSettings(() => {
+    config.displayCurrency = value.trim().toUpperCase() || 'USD'
+  })
+  exchangeRates.display = config.displayCurrency
+  saveDisplay()
 }
 
 /** Held currencies today's table has no rate for. */
@@ -151,7 +167,7 @@ const withoutRate = computed(() => {
 
 const ratesLine = computed(() => {
   const table = exchangeRates.table
-  if (exchangeRates.updating) return 'Fetching today\'s rates…'
+  if (exchangeRates.updating) return "Fetching today's rates…"
   if (!table)
     return exchangeRates.lastError
       ? `Could not fetch: ${exchangeRates.lastError}`

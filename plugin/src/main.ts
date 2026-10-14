@@ -91,6 +91,7 @@ import './editor/MapCodeblock'
 import './ai/messageCards'
 import { SnippetService } from './services/SnippetService'
 import { startCalendars } from './calendars/start'
+import { startExchangeRates } from './finance/rates/start'
 import '@/audio/voiceModal'
 import { registerLineLinks } from './lineLinks/register'
 import './checkboxes/register'
@@ -481,6 +482,8 @@ export default class AbelePlugin extends Plugin {
 
       // External calendars: kept events at layout-ready, then read over the network on a timer.
       startupStep('calendars', () => startCalendars(this))
+      // Today's exchange rates: the kept table at layout-ready, a new one once a day.
+      startupStep('exchange rates', () => startExchangeRates(this))
 
       // Development builds expose plugin internals to the e2e suite, which drives the app
       // through `obsidian eval`. Vite inlines NODE_ENV, so in a production build this folds to

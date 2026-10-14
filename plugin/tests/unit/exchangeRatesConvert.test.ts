@@ -36,7 +36,12 @@ describe('converting at today’s rates', () => {
         'USD',
         table
       )
-    ).toEqual({ total: 23, missing: ['PTS'], oldest: '2026-10-13', currencies: ['EUR', 'GEL', 'USD'] })
+    ).toEqual({
+      total: 23,
+      missing: ['PTS'],
+      oldest: '2026-10-13',
+      currencies: ['EUR', 'GEL', 'USD'],
+    })
   })
 
   it('calls a table older than four days stale, and none at all never fetched', () => {

@@ -61,6 +61,8 @@ export class AbeleConfig {
   public financeCategoriesFolder: string
   public defaultCurrency: string
   public pinnedCurrencies: string
+  public fetchExchangeRates: boolean
+  public displayCurrency: string
   public fireflyBaseUrl: string
   public fireflyToken: string
   public accountsList: AccountsListSettings

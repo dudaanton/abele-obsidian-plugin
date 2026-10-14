@@ -46,6 +46,10 @@ export interface AbeleSettings {
   financeCategoriesFolder?: string // Default folder for new finance categories
   defaultCurrency?: string // Default currency code for new transactions
   pinnedCurrencies?: string // Comma-separated currencies to show in sidebar
+  /** Fetch today's exchange rates once a day, for sums of several currencies and sorting by amount. */
+  fetchExchangeRates?: boolean
+  /** The currency a sum of several currencies is shown in. */
+  displayCurrency?: string
   fireflyBaseUrl?: string // Firefly III instance base URL for migration
   /**
    * Legacy: the Firefly III token as it was once saved, in the clear. Moved into the keychain
@@ -290,6 +294,8 @@ export const DEFAULT_SETTINGS: Required<Omit<AbeleSettings, 'secretStore'>> = {
   financeCategoriesFolder: 'Finance/Categories',
   defaultCurrency: 'EUR',
   pinnedCurrencies: 'EUR',
+  fetchExchangeRates: true,
+  displayCurrency: 'USD',
   fireflyBaseUrl: '',
   fireflyToken: '',
   accountsList: DEFAULT_ACCOUNTS_LIST,

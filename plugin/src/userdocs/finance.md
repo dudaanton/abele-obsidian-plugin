@@ -45,6 +45,20 @@ its balance over time and its transactions under the text.
 A transaction in two currencies gives the amount in both, as Firefly III does. Set your main
 currency and the currencies shown first in **Settings → Abele → Finance**.
 
+When your money is in more than one currency, Abele adds it up at today's exchange rates: one
+balance of everything at the top of the finance sidebar, a **≈ USD** tab for the period with its
+pie and calendar, a dashed total on the net worth chart, and accounts sorted by size or balance by
+what they are worth in dollars. A computed account whose sources are in different currencies
+converts them into its own. Every such figure starts with `≈` and is approximate: today's rate
+stands for every past day. Its tooltip gives the day of the rates, the rate of each currency and
+the source. The exact sums in each currency stay where they were.
+
+The rates are a public table fetched once a day without a key, from Frankfurter, with
+currency-api for currencies it does not have, such as crypto. They are kept on the device, so
+nothing breaks offline; rates older than four days get an orange dot. A currency with no rate is
+left out of the sum and marked with a dashed ring. **Settings → Abele → Finance → Exchange rates**
+turns fetching off, changes the currency sums are shown in, and shows where the rates stand.
+
 ## The finance sidebar
 
 **Show finance sidebar** opens income, expenses and savings for a period you pick, charts of

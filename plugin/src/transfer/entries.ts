@@ -289,6 +289,8 @@ export const SECTIONS: Section[] = [
       'financeCategoriesFolder',
       'defaultCurrency',
       'pinnedCurrencies',
+      'fetchExchangeRates',
+      'displayCurrency',
       'fireflyBaseUrl',
       'accountsList',
     ],

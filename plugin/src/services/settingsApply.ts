@@ -190,6 +190,14 @@ export function applySettingsTo(
     settings?.financeCategoriesFolder ?? DEFAULT_SETTINGS.financeCategoriesFolder
   config.defaultCurrency = settings?.defaultCurrency ?? DEFAULT_SETTINGS.defaultCurrency
   config.pinnedCurrencies = settings?.pinnedCurrencies ?? DEFAULT_SETTINGS.pinnedCurrencies
+  config.fetchExchangeRates =
+    typeof settings?.fetchExchangeRates === 'boolean'
+      ? settings.fetchExchangeRates
+      : DEFAULT_SETTINGS.fetchExchangeRates
+  config.displayCurrency =
+    (typeof settings?.displayCurrency === 'string'
+      ? settings.displayCurrency.trim().toUpperCase()
+      : '') || DEFAULT_SETTINGS.displayCurrency
   config.fireflyBaseUrl = settings?.fireflyBaseUrl ?? DEFAULT_SETTINGS.fireflyBaseUrl
   config.fireflyToken = settings?.fireflyToken ?? DEFAULT_SETTINGS.fireflyToken ?? ''
   notePlainSecrets(config)
@@ -288,6 +296,8 @@ export function exportSettingsOf(config: AbeleConfig, outOfSettings: boolean): A
     financeCategoriesFolder: config.financeCategoriesFolder,
     defaultCurrency: config.defaultCurrency,
     pinnedCurrencies: config.pinnedCurrencies,
+    fetchExchangeRates: config.fetchExchangeRates,
+    displayCurrency: config.displayCurrency,
     fireflyBaseUrl: config.fireflyBaseUrl,
     ...(config.fireflyToken ? { fireflyToken: config.fireflyToken } : {}),
     accountsList: { ...config.accountsList, types: [...config.accountsList.types] },
