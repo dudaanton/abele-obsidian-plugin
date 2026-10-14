@@ -73,7 +73,7 @@ const chatTurn = (path: string, steps: string) => `(async()=>{
     const before=session.allMessages.value.length;
     await session.sendMessage('Work with the sample project files on the node.');
     if(session.error.value)out.error=String(session.error.value);
-    for(const m of session.allMessages.value.slice(before))if(m.role==='tool-result'||m.toolResult!==undefined)out.calls.push({name:m.toolName,params:m.toolParams||{},result:String(m.toolResult??m.content??'')});
+    for(const m of session.allMessages.value.slice(before))if(m.role==='tool-call'&&m.toolResult!==undefined)out.calls.push({name:m.toolName,params:m.toolParams||{},result:String(m.toolResult??m.content??'')});
   }finally{window.fetch=realFetch}
   return JSON.stringify(out)
 })()`
