@@ -67,6 +67,7 @@ it('reports every cleanup failure while still checking current and saved root ow
     },
     './obsidianCli': {
       isObsidianRunning: () => true,
+      cliCost: () => ({}),
       closeStrayWindows: close,
       notesInEditor: noop,
       setBackgroundThrottling: noop,

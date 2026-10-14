@@ -70,7 +70,7 @@ it.each(['throw', 'reject'])(
       'window',
       'document',
       'measureAll',
-      `return (async () => { const cuts = [], wait = async () => {}, until = async fn => { await Promise.resolve(); return !!fn() }, closeDialog = async () => {}; ${loop}; return cuts })()`
+      `return (async () => { const cuts = [], wait = async () => {}, until = async fn => { await Promise.resolve(); return !!fn() }, closeDialog = async () => {}, settle = async () => {}, chosen = () => () => true; ${loop}; return cuts })()`
     )
     const cuts = await run(
       {

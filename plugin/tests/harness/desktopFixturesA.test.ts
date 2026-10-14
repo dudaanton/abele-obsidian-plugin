@@ -98,6 +98,8 @@ it.each([
     shots: 'sample-shots',
     label: 'Sample',
     mode: 'desktop',
+    modes: ['silent', 'closed'],
+    failing: (one: string) => one === 'closed',
     place: 'migrate-dataview',
     port: 1234,
     token: 'sample-token',
