@@ -9,6 +9,10 @@ import { TraceSession } from './trace/TraceSession'
 import { nodeTraceSupported, TraceRpc } from './trace/wire'
 
 /** One session's UI lifetime. The owner client never supplies agent tool authority. */
+/** The node channel gives a request five seconds before it gives up on the connection, so the
+ * panel waits for what the program does in rounds well inside that. */
+const WAIT_ROUND_MS = 4000
+
 export class DebuggerBinding {
   readonly revision = shallowRef(0)
   readonly controller: DebuggerController
@@ -171,7 +175,7 @@ export class DebuggerBinding {
           'control_pending',
           'output',
         ],
-        timeout_ms: 60000,
+        timeout_ms: WAIT_ROUND_MS,
       })
       if (this.waitId === waitId) this.waitId = undefined
       if (abort.signal.aborted || this.disposed) return
@@ -182,6 +186,8 @@ export class DebuggerBinding {
         return
       }
       if (result.reason === 'cancelled') return
+      // A quiet round: nothing happened, so nothing is read again; the next round asks on.
+      if (result.reason === 'elapsed' && result.snapshot.event_seq === eventSeq) continue
       await this.loadGrant(abort)
       if (abort.signal.aborted) return
       await this.refresh()

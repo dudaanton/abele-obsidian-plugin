@@ -172,3 +172,41 @@ describe('a program that ends while it records', () => {
     }
   })
 })
+
+describe('waiting for what the program does', () => {
+  it('asks the node in rounds the channel lets finish, and a quiet round reads nothing again', async () => {
+    const asked: number[] = []
+    const c = connection(true)
+    let quiet = 0
+    c.rpc.mockImplementation(async (method: string, params: any): Promise<unknown> => {
+      switch (method) {
+        case 'debugger.v1.status':
+          return debuggerStatus()
+        case 'debugger.v1.wait':
+          asked.push(params.timeout_ms)
+          if (++quiet > 3) return new Promise(() => {})
+          return {
+            wait_id: params.wait_id,
+            reason: 'elapsed',
+            elapsed_ms: params.timeout_ms,
+            snapshot: debuggerSnapshot(),
+          }
+        case 'debugger.v1.cancelWait':
+          return { cancelled: true }
+      }
+      return { points: [], folder: '/sample/runs', chosen: true, recording: null, runs: [] }
+    })
+    const binding = new DebuggerBinding(c.connection, 'sample-chat', 'sample-registration')
+    const refresh = vi.spyOn(binding, 'refresh').mockResolvedValue(undefined)
+    try {
+      await binding.open('sample-debug')
+      await vi.waitFor(() => expect(asked).toHaveLength(4))
+      // The channel gives a request five seconds.
+      expect(Math.max(...asked)).toBeLessThan(5000)
+      // Opening reads once; three quiet rounds read nothing more.
+      expect(refresh).toHaveBeenCalledTimes(1)
+    } finally {
+      binding.destroy()
+    }
+  })
+})
