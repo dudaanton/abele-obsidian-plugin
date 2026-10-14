@@ -214,6 +214,21 @@ describe('node repository source through the validated client contract', () => {
     expect(pinned.after?.text).toContain('42')
     expect(pinned.text?.additions).toBe(1)
   })
+  it('opens a commit on its changed files alone, without reading any history', async () => {
+    const { source, calls } = fixture()
+    const commit = await source.commit(HEAD)
+    expect(commit.parentSha).toBe(BASE)
+    expect(commit.files.map((file) => file.path)).toContain('app.ts')
+    expect(calls.map((c) => c.method.replace(/^.*\./, ''))).toEqual([
+      'resolve',
+      'commit',
+      'compare',
+    ])
+    await commit.files.find((file) => file.path === 'app.ts')!.loadPatch!()
+    expect(commit.files.find((file) => file.path === 'app.ts')!.patch).toContain(
+      '+export const answer = 42'
+    )
+  })
   it('shows additions in a root commit without inventing a parent', async () => {
     const { source } = fixture()
     const commit = await source.commit(BASE)

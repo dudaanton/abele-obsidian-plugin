@@ -530,8 +530,14 @@ export class NodeRepositorySource implements RepositorySource {
   async commit(ref: string): Promise<CommitData> {
     const revision = await this.at(ref),
       c = await this.read(() => this.client.repository.commit({ ...this.target, revision }))
+    // The page shows the files alone: no commit lists, and no lookups of ids the node just named.
     const files = c.parents.length
-      ? (await this.compare(c.parents[0], c.commit, true)).files
+      ? await this.diffFiles(
+          await this.manifest(
+            this.remember({ kind: 'commit', commit: c.parents[0] }),
+            this.remember({ kind: 'commit', commit: c.commit })
+          )
+        )
       : await this.rootCommitFiles(c.commit)
     return { ...summary(c), parentSha: c.parents[0], url: this.navigation.commit(c.commit), files }
   }
