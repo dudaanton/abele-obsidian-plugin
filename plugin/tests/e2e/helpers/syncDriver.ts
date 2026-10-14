@@ -303,7 +303,6 @@ export class SyncDriver {
   }
   open(path: string): void {
     this.run(
-      `if(!window.__probeErrs){window.__probeErrs=[];const oe=console.error,ow=console.warn;const cap=(k,a)=>{try{window.__probeErrs.push(k+': '+a.map(x=>x instanceof Error?(x.message+' @ '+(x.stack||'').split('\\n').slice(0,4).join(' | ')):typeof x==='string'?x:JSON.stringify(x)).join(' ').slice(0,500))}catch{}};console.error=function(...a){cap('E',a);return oe.apply(this,a)};console.warn=function(...a){cap('W',a);return ow.apply(this,a)};window.addEventListener('error',ev=>cap('U',[ev.error||ev.message]));window.addEventListener('unhandledrejection',ev=>cap('R',[ev.reason]))} if(!window.__probeModals){window.__probeModals=[];const t0=Date.now();const rec=(k,n)=>{if(n&&n.nodeType===1&&n.classList&&(n.classList.contains('modal-container')||n.querySelector?.('.modal'))){window.__probeModals.push({k,dt:Date.now()-t0,title:n.querySelector?.('.modal-title')?.textContent,stack:k==='rm'?new Error().stack?.split('\\n').slice(1,9).join(' | '):undefined})}};const orig=Node.prototype.removeChild;Node.prototype.removeChild=function(c){rec('rm',c);return orig.call(this,c)};const origR=Element.prototype.remove;Element.prototype.remove=function(){rec('rm',this);return origR.call(this)};new MutationObserver(ms=>{for(const m of ms){for(const n of m.addedNodes)rec('add',n)}}).observe(document.body,{childList:true})} `+
       `const file=app.vault.getFileByPath(${JSON.stringify(path)}); if(!file) throw new Error('Note unavailable'); await closeSettings(); await app.workspace.getLeaf(false).openFile(file); return true`
     )
   }
@@ -314,7 +313,7 @@ export class SyncDriver {
   }
   async consent(decision: 'Allow' | 'Deny'): Promise<void> {
     this.run(
-      `try{await poll(()=>modal('Share a private file?'),15000)}catch(e){const vroot=document.getElementById('abele-vue-root');const vapp=vroot?.__vue_app__;const names=()=>{const out=[];const w=(v,d)=>{if(!v||d>80)return;if(v.component){out.push(v.component);w(v.component.subTree,d+1)}if(Array.isArray(v.children))for(const ch of v.children)w(ch,d+1)};w(vapp?._instance?.vnode,0);return out};const nm=c=>c.type.__name||c.type.name||'?';const before=names().map(nm).filter(n=>/Token/.test(n));const host=names().find(c=>nm(c)==='TokenReviewPrompts');let forced='none';try{host?.update?.();await sleep(500);forced=names().map(nm).filter(n=>/Token/.test(n)).join(',')+' modals='+document.querySelectorAll('.modal').length}catch(x){forced='threw '+String(x).slice(0,300)}throw new Error('PROBE3 '+JSON.stringify({before,forced,rows:svc.rows.value.length,errs:(window.__probeErrs||['no hook']).slice(-6)}).slice(0,3500))} await press(modal('Share a private file?'),${JSON.stringify(decision)}); await poll(()=>!modal('Share a private file?')); return true`
+      `await poll(()=>modal('Share a private file?')); await press(modal('Share a private file?'),${JSON.stringify(decision)}); await poll(()=>!modal('Share a private file?')); return true`
     )
   }
   async history(path: string): Promise<void> {

@@ -39,7 +39,9 @@ export function mountPhoneSyncAction(
       const view = leaf.view as ItemView
       actions.get(view)?.remove()
       actions.delete(view)
-      if (!want) continue
+      // A tab not opened yet this session is a placeholder with no header to add to; it gets
+      // the glyph when it loads. Throwing here would also abort the Vue update this runs in.
+      if (!want || typeof view.addAction !== 'function') continue
       const el = view.addAction(want.icon, want.tooltip, open)
       el.addClass('abele-sync-header-action')
       el.toggleClass('mod-warning', want.warning)
@@ -47,6 +49,7 @@ export function mountPhoneSyncAction(
     }
   }
   plugin.registerEvent(plugin.app.workspace.on('layout-change', paint))
+  plugin.registerEvent(plugin.app.workspace.on('active-leaf-change', paint))
   plugin.register(() => {
     for (const el of actions.values()) el.remove()
     actions.clear()
