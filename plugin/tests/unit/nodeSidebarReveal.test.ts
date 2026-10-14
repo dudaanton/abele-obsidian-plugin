@@ -61,6 +61,7 @@ describe('opening the Node sidebar command', () => {
       app,
       registerView: vi.fn(),
       registerExtensions: vi.fn(),
+      registerObsidianProtocolHandler: vi.fn(),
       registerDomEvent: vi.fn(),
       registerEvent: vi.fn(),
       register: vi.fn(),
