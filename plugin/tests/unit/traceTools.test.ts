@@ -6,6 +6,10 @@ import {
   type TraceToolContext,
 } from '@/ai/tools/TraceTools'
 import { TraceRpc } from '@/debugger/trace/wire'
+import { createAgentTools } from '@/ai/tools'
+import { DEFAULT_AI_SETTINGS, TRACE_TOOL_MODES } from '@/ai/types'
+import { AbeleConfig } from '@/services/AbeleConfig'
+import { useVault } from '../helpers/testEnv'
 
 const summary = {
   id: 'run-new',
@@ -223,5 +227,27 @@ describe('the agent reading a recorded run', () => {
     await expect(runs!.execute('call', {})).rejects.toThrow(
       /No debugger session that records runs is open/
     )
+  })
+
+  it('follows the usual modes: reading a run on its own, a mark, a point or a note asks', () => {
+    expect(TRACE_TOOL_MODES).toEqual({
+      trace_runs: 'auto',
+      trace_timeline: 'auto',
+      trace_shape: 'auto',
+      trace_slice: 'auto',
+      trace_diff: 'auto',
+      trace_find: 'auto',
+      trace_follow: 'auto',
+      trace_mark: 'ask',
+      trace_point_add: 'ask',
+      trace_note: 'ask',
+    })
+  })
+
+  it('is handed to every agent like any other tool, its mode decides the rest', () => {
+    useVault([])
+    AbeleConfig.getInstance().ai = structuredClone(DEFAULT_AI_SETTINGS)
+    const names = createAgentTools().map((t) => t.name)
+    for (const name of Object.keys(TRACE_TOOL_MODES)) expect(names).toContain(name)
   })
 })

@@ -919,9 +919,8 @@ the Debug panel, and say so when there is none. Each answer stops at 80 lines or
 parameter lifts, and says where to continue. There is no tool that returns a run or a value
 whole.
 
-A run holds whatever the program had in memory, secrets included, so every trace tool asks
-before it runs until the person sets it otherwise, and none is offered to a script or a
-background run.
+Like every other tool each has its own Off/Ask/On mode: reading a run runs on its own by
+default; `trace_mark`, `trace_point_add` and `trace_note` ask first.
 
 - `trace_runs` lists the project's runs, newest first. Every other tool reads the newest run
   unless given `run`.
