@@ -128,6 +128,19 @@ const emit = defineEmits<{
   min-height: 0;
   overflow-y: auto;
 }
+// A phone drawer with floating buttons pads its last block so a list scrolls clear of them. Here
+// only the files scroll, so the room goes inside their list instead of standing empty under it.
+body.is-mobile.is-floating-nav.is-phone
+  .workspace-drawer
+  .abele-node-sidebar
+  .nav-header
+  ~ .abele-file-tree:last-child {
+  padding-bottom: 0;
+
+  > .abele-file-tree__body {
+    padding-bottom: 96px;
+  }
+}
 // Files scrolled up under the search end at a hairline, not against its glyphs.
 .abele-node-sidebar .abele-file-tree__bar {
   border-bottom: var(--border-width) solid var(--background-modifier-border);
