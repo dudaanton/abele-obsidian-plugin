@@ -128,6 +128,9 @@ export async function canvasAssets(
         urls.push(source)
       }
       const image = doc.win.createEl('img')
+      // Vault resource URLs can have a different origin from the app document.
+      // Set this before src so a successfully loaded asset remains exportable.
+      image.crossOrigin = 'anonymous'
       await new Promise<void>((resolve, reject) => {
         const finish = (error?: Error) => {
           window.clearTimeout(timer)

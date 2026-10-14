@@ -82,6 +82,33 @@ describe('bounded whole-canvas asset loading', () => {
     expect(createImage).not.toHaveBeenCalled()
     expect(assets.warnings[0].message).toMatch(/dimensions/)
   })
+  it('requests unbounded local resources as origin-clean images before assigning their URLs', async () => {
+    const image = {
+      crossOrigin: '',
+      naturalWidth: 20,
+      naturalHeight: 20,
+      onload: null as (() => void) | null,
+      onerror: null,
+      cleanAtLoad: false,
+      _src: '',
+    }
+    Object.defineProperty(image, 'src', {
+      get: () => image._src,
+      set: (value: string) => {
+        image._src = value
+        if (value) {
+          image.cleanAtLoad = image.crossOrigin === 'anonymous'
+          queueMicrotask(() => image.onload?.())
+        }
+      },
+    })
+    createImage.mockReturnValue(image)
+    const assets = await canvasAssets(app, graph, 'sample.canvas', () => true, doc)
+    expect(assets.images.size).toBe(1)
+    expect(image.cleanAtLoad).toBe(true)
+    expect(image._src).toMatch(/^app:\/\/sample\//)
+    assets.release()
+  })
   it('bounds cumulative decoded assets and releases loaded images and blob URLs', async () => {
     const url = vi.spyOn(URL, 'createObjectURL').mockReturnValue('blob:sample')
     const revoke = vi.spyOn(URL, 'revokeObjectURL').mockImplementation(() => {})
