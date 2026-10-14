@@ -208,6 +208,8 @@ export class DebuggerBinding {
   }
   /** The session is over: its run, if it was writing one, is kept on the node; read it once more. */
   private async lastRuns() {
+    // A read already under way may have started before the program ended: read after it.
+    await this.trace?.refresh().catch(() => {})
     await this.trace?.refresh().catch((e) => console.debug('[debugger] Runs unavailable', e))
   }
   refresh(): Promise<void> {

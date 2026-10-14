@@ -234,3 +234,16 @@ describe('a run that ends', () => {
     expect(node.calls.some((c) => /note/i.test(c.method))).toBe(false)
   })
 })
+
+describe('reading the runs again', () => {
+  it('joins a read under way, so a read that must be fresh waits for it and reads once more', async () => {
+    const node = fakeNode()
+    const s = new TraceSession(node.rpc, fakeDebugger(), () => {})
+    const first = s.refresh()
+    expect(s.refresh()).toBe(first)
+    await first
+    const before = node.calls.length
+    await s.refresh()
+    expect(node.calls.length).toBeGreaterThan(before)
+  })
+})
