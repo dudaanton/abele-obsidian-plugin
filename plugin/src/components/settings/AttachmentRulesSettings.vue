@@ -54,9 +54,11 @@
 /**
  * The folder rules for attachments (`src/media/attachmentRules.ts`): one row per rule, the notes
  * folder and the attachments folder side by side. A rule is saved as it is typed, half a second
- * after the last key; one with a folder still empty is kept but covers nothing.
+ * after the last key; one with a folder still empty is kept but covers nothing. Rules that change
+ * underneath the screen — a sync, an agent, a reload — are drawn again, unless something typed
+ * here is still waiting to be saved.
  */
-import { reactive } from 'vue'
+import { reactive, watch } from 'vue'
 import { debounce } from 'obsidian'
 import { nanoid } from 'nanoid'
 import Section from '../obsidian/Section.vue'
@@ -77,13 +79,33 @@ interface Row extends AttachmentRule {
 const config = AbeleConfig.getInstance()
 const rows = reactive<Row[]>(config.attachmentRules.map((rule) => ({ ...rule, key: nanoid() })))
 
-const save = debounce(async () => {
-  config.attachmentRules = rows.map(({ notesFolder, attachmentsFolder }) => ({
-    notesFolder,
-    attachmentsFolder,
-  }))
+const ruleOf = ({ notesFolder, attachmentsFolder }: AttachmentRule): AttachmentRule => ({
+  notesFolder,
+  attachmentsFolder,
+})
+
+/** Typed here and not yet handed to the settings. */
+let pending = false
+
+const debouncedSave = debounce(async () => {
+  config.attachmentRules = rows.map(ruleOf)
+  pending = false
   await config.saveSettings()
 }, 500)
+const save = () => {
+  pending = true
+  debouncedSave()
+}
+
+watch(
+  () => config.version.value,
+  () => {
+    if (pending) return
+    const saved = config.attachmentRules.map(ruleOf)
+    if (JSON.stringify(saved) === JSON.stringify(rows.map(ruleOf))) return
+    rows.splice(0, rows.length, ...saved.map((rule) => ({ ...rule, key: nanoid() })))
+  }
+)
 
 const ruleName = (row: Row): string => {
   if (!row.notesFolder.trim()) return 'New rule'

@@ -104,7 +104,9 @@ const probe = (mobile: boolean) => `(async () => {
     // A phone reopens settings on the page last shown; the list of pages only comes the first time.
     const shown = await until(() => doc.querySelector('.abele-attachment-rules') || [...doc.querySelectorAll('.abele-settings__nav .abele-tabs__tab')].find(t => t.textContent.trim() === 'Other'))
     if (shown && !shown.classList.contains('abele-attachment-rules')) shown.click()
-    const group = await until(() => doc.querySelector('.abele-attachment-rules'))
+    const count = state === 'empty' ? 0 : state === 'two' ? 2 : 1
+    // The group drawn with the rules just set, not one still on its way out from the last opening.
+    const group = await until(() => [...doc.querySelectorAll('.abele-attachment-rules')].find(g => g.isConnected && g.querySelectorAll('.abele-attachment-rules__rule').length === count))
     if (!group) throw new Error('The Attachment folders group never drew')
     await wait(400)
     group.scrollIntoView({ block: 'start' })

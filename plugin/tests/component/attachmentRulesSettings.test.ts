@@ -110,3 +110,29 @@ describe('attachment folder rules settings', () => {
     ).toEqual(['a files', 'c files'])
   })
 })
+
+describe('attachment folder rules settings, changed underneath', () => {
+  it('draws rules that arrive while the screen is open', async () => {
+    view = mount(AttachmentRulesSettings)
+    config.attachmentRules = [
+      { notesFolder: 'Sample Inbox', attachmentsFolder: 'Sample Inbox/files' },
+    ]
+    config.version.value++
+    await nextTick()
+    expect(ruleRows(view).map((row) => row.props('name'))).toEqual(['Notes in Sample Inbox'])
+  })
+
+  it('does not draw the rows again after its own save, so the field being typed in stays', async () => {
+    config.attachmentRules = [{ notesFolder: 'Sample A', attachmentsFolder: 'a files' }]
+    view = mount(AttachmentRulesSettings)
+    const field = ruleRows(view)[0].findAllComponents(Search)[0]
+    field.vm.$emit('update:model-value', 'Sample AB')
+    await settle()
+    config.version.value++
+    await nextTick()
+    expect(config.attachmentRules).toEqual([
+      { notesFolder: 'Sample AB', attachmentsFolder: 'a files' },
+    ])
+    expect(ruleRows(view)[0].findAllComponents(Search)[0].vm.$.uid).toBe(field.vm.$.uid)
+  })
+})
