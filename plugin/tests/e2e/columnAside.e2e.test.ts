@@ -81,15 +81,17 @@ describe.skipIf(!available)('aside column layouts', () => {
       app.workspace.leftSplit.collapse();app.workspace.rightSplit.collapse();return true;`)
   })
   afterAll(async () => {
+    // Close the fixture notes before the layout changes back: a desktop layout rebuilt around
+    // a note of the emulated phone is what is left to the next file otherwise.
+    probe(
+      `for(const leaf of app.workspace.getLeavesOfType('markdown'))if(leaf.view.file?.path?.startsWith(${JSON.stringify(FOLDER + '/')}))leaf.detach();const folder=app.vault.getAbstractFileByPath(${JSON.stringify(FOLDER)});if(folder)await app.vault.delete(folder,true);return true;`
+    )
     if (!onPhone()) {
       await reloadApp('app.emulateMobile(false)')
       evalRaw(
         `require('@electron/remote').getCurrentWindow().setContentSize(${size[0]},${size[1]})`
       )
     }
-    probe(
-      `for(const leaf of app.workspace.getLeavesOfType('markdown'))if(leaf.view.file?.path?.startsWith(${JSON.stringify(FOLDER + '/')}))leaf.detach();const folder=app.vault.getAbstractFileByPath(${JSON.stringify(FOLDER)});if(folder)await app.vault.delete(folder,true);return true;`
-    )
   })
   // Print is a desktop case: it runs after the desktop pass, in the desktop layout, not after the
   // phone one, whose cases a batch with the real phone skips. A phone reports it skipped.

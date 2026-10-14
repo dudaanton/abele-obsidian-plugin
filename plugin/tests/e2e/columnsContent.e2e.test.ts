@@ -95,16 +95,18 @@ describe.skipIf(!available)('column content compatibility', () => {
     `)
   })
   afterAll(async () => {
+    // Close the fixture notes before the layout changes back: a desktop layout rebuilt around
+    // a note of the emulated phone is what is left to the next file otherwise.
+    probe(`app.saveLocalStorage('mermaid-vault-trust',${JSON.stringify(trust)});
+      window.__abeleTest.AbeleConfig.getInstance().mapStyleUrl=${JSON.stringify(mapStyle)};
+      for(const leaf of app.workspace.getLeavesOfType('markdown')) if(leaf.view.file?.path?.startsWith(${JSON.stringify(FOLDER + '/')}))leaf.detach();
+      const folder=app.vault.getAbstractFileByPath(${JSON.stringify(FOLDER)});if(folder)await app.vault.delete(folder,true);return true;`)
     if (!onPhone()) {
       await reloadApp('app.emulateMobile(false)')
       evalRaw(
         `require('@electron/remote').getCurrentWindow().setContentSize(${size[0]},${size[1]})`
       )
     }
-    probe(`app.saveLocalStorage('mermaid-vault-trust',${JSON.stringify(trust)});
-      window.__abeleTest.AbeleConfig.getInstance().mapStyleUrl=${JSON.stringify(mapStyle)};
-      for(const leaf of app.workspace.getLeavesOfType('markdown')) if(leaf.view.file?.path?.startsWith(${JSON.stringify(FOLDER + '/')}))leaf.detach();
-      const folder=app.vault.getAbstractFileByPath(${JSON.stringify(FOLDER)});if(folder)await app.vault.delete(folder,true);return true;`)
   })
   for (const narrow of onPhone() ? [true] : [false, true]) {
     it(narrow ? 'switches to the 390 by 844 phone layout' : 'uses a desktop pane', async () => {
