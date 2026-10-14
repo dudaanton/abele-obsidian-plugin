@@ -4,17 +4,18 @@
  * removing highlights, and bookmarking. What it marks is checked the way the reader sees it: the
  * book opened, the same words selected by hand, and the reader finding its highlight there — the
  * same place, not merely the same words. The files are written to a folder for the run and removed
- * after it, with the places and bookmarks files; the scope is put back.
+ * after it; the places and bookmarks files, the layout and the scope are put back as they were.
  */
 import { randomUUID } from 'node:crypto'
 import { describe, it, expect, beforeAll, afterAll } from 'vitest'
-import { hasTestApi, isObsidianRunning, evalRaw } from './helpers/obsidianCli'
+import { hasTestApi, isObsidianRunning, evalRaw, reloadApp } from './helpers/obsidianCli'
 import { evalAsync } from './helpers/githubLive'
 import { buildRichEpub } from '../fixtures/books/richBook'
 import { buildPlainPdf } from '../fixtures/books/pdfFixture'
 
 const available = isObsidianRunning() && hasTestApi()
-const DIR = 'Abele reader agent write e2e'
+const RUN_ID = randomUUID()
+const DIR = `Sample reader agent write ${RUN_ID}`
 const BOOK = `${DIR}/rich.epub`
 const PDF = `${DIR}/plain.pdf`
 const NOTE = `${DIR}/rich highlights.md`
@@ -77,13 +78,18 @@ describe.skipIf(!available)('the agent marking books', () => {
   beforeAll(() => {
     const files = {
       // A book of its own: bookmarks follow the identifier, and other files bookmark the shared one.
-      'rich.epub': Buffer.from(buildRichEpub(`urn:uuid:${randomUUID()}`)).toString('base64'),
+      'rich.epub': Buffer.from(buildRichEpub(`urn:uuid:${RUN_ID}`)).toString('base64'),
       'plain.pdf': Buffer.from(buildPlainPdf()).toString('base64'),
     }
     evalRaw(
       `(async () => {
-        const old = app.vault.getAbstractFileByPath(${JSON.stringify(DIR)})
-        if (old) await app.vault.delete(old, true)
+        if (app.vault.getAbstractFileByPath(${JSON.stringify(DIR)})) throw Error('Owned book fixture already exists')
+        const places = window.__abeleTest.AbeleConfig.getInstance().reader.placesPath || 'abele-book-places.json'
+        const bookmarks = (places.includes('/') ? places.slice(0,places.lastIndexOf('/'))+'/' : '')+'abele-book-bookmarks.json'
+        const pluginDir = window.__abeleTest.plugin.manifest.dir
+        const state = {}
+        for(const path of [places,bookmarks,pluginDir+'/book-places.backup.json',pluginDir+'/book-places.json',pluginDir+'/book-bookmarks.backup.json'])
+          state[path] = await app.vault.adapter.exists(path) ? await app.vault.adapter.read(path) : null
         await app.vault.createFolder(${JSON.stringify(DIR)})
         for (const [name, data] of Object.entries(${JSON.stringify(files)})) {
           const bytes = Uint8Array.from(atob(data), (c) => c.charCodeAt(0))
@@ -92,7 +98,8 @@ describe.skipIf(!available)('the agent marking books', () => {
         const scope = window.__abeleTest.ScopeResolver.getInstance()
         window.__abeleBookWriteE2E = {
           full: scope.fullVaultAccess.value,
-          entries: JSON.parse(JSON.stringify(scope.entries.value)),
+          entries: JSON.parse(JSON.stringify(scope.entries.value)), state,
+          layout: app.workspace.getLayout(),
         }
         scope.clear()
         scope.setFullVaultAccess(false)
@@ -103,10 +110,10 @@ describe.skipIf(!available)('the agent marking books', () => {
     )
   }, 60_000)
 
-  afterAll(() => {
+  afterAll(async () => {
     evalRaw(
       `(async () => {
-        for (const leaf of app.workspace.getLeavesOfType('abele-book')) leaf.detach()
+        for (const leaf of app.workspace.getLeavesOfType('abele-book')) if(leaf.view.file?.path.startsWith(${JSON.stringify(DIR + '/')})){await leaf.setViewState({type:'empty'});leaf.detach()}
         const saved = window.__abeleBookWriteE2E
         if (saved) {
           const scope = window.__abeleTest.ScopeResolver.getInstance()
@@ -119,17 +126,22 @@ describe.skipIf(!available)('the agent marking books', () => {
           }
           scope.setFullVaultAccess(saved.full)
         }
+        if(saved?.layout)await app.workspace.changeLayout(saved.layout)
         delete window.__abeleBookWriteE2E
         const dir = app.vault.getAbstractFileByPath(${JSON.stringify(DIR)})
         if (dir) await app.vault.delete(dir, true)
         await new Promise((r) => setTimeout(r, 1500))
-        for (const f of ['abele-book-places.json', 'abele-book-bookmarks.json'])
-          if (await app.vault.adapter.exists(f)) await app.vault.adapter.remove(f)
+        for (const [path,text] of Object.entries(saved?.state ?? {})) {
+          if(text!==null)await app.vault.adapter.write(path,text)
+          else if(await app.vault.adapter.exists(path))await app.vault.adapter.remove(path)
+        }
         return 'ok'
       })()`,
       44_000
     )
-  }, 60_000)
+    // Reinitialize reader caches from the restored bytes, not the just-removed fixture's records.
+    await reloadApp()
+  }, 120_000)
 
   it('book_list lists the books in scope; book_search searches the parts named, a page at a time', () => {
     const r = run<{
@@ -269,7 +281,8 @@ describe.skipIf(!available)('the agent marking books', () => {
       const link = firstLink(search, '1.')
       const made = await call('book_bookmark', { book: link })
       const listed = await call('book_highlights', { book: ${JSON.stringify(BOOK)} })
-      const id = /^- (\\S+): /m.exec(listed)?.[1]
+      const id = /\\(id (\\S+)\\)\\.$/.exec(made)?.[1]
+      if(!id)throw Error('Created bookmark did not return its id: '+made)
       const removed = await call('book_bookmark', { book: ${JSON.stringify(BOOK)}, remove: id })
       const after = await call('book_highlights', { book: ${JSON.stringify(BOOK)} })
       return { made, listed, removed, after }
