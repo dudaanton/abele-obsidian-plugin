@@ -48,6 +48,8 @@ it('routes local code word actions and tears down the bar when the editor is reb
   for (const action of ['ask', 'add', 'note']) {
     const range = document.createRange()
     range.selectNodeContents(document.querySelector('.cm-line')!)
+    // A selection that already holds a range ignores `addRange`, so the last pass's would stay.
+    window.getSelection()!.removeAllRanges()
     window.getSelection()!.addRange(range)
     document.dispatchEvent(new Event('selectionchange'))
     await new Promise((resolve) => setTimeout(resolve, 400))
