@@ -244,6 +244,33 @@ const READ_RUN = `
     steps.push({label:row.querySelector('.abele-tree-item__text')?.textContent.trim()??'',place:document.querySelector('.abele-trace-step__place')?.textContent.trim()??'',values});
   }`
 
+/**
+ * The panel's stack while the program is held: its own frames one by one, every run of Node's
+ * frames folded into one row that counts them. js-debug holds a program either on its first line or
+ * on a statement of its own just before it, so the program's frame need not be on top.
+ */
+function expectFolded(
+  held: { text: string; note: string; flair: string; internals: boolean }[],
+  said: string
+) {
+  const why = JSON.stringify(held) + said
+  expect(
+    held.some((r) => !r.internals && /^total\.js:\d+$/.test(r.note)),
+    why
+  ).toBe(true)
+  const internals = held.filter((r) => r.internals)
+  expect(internals.length, why).toBeGreaterThan(0)
+  for (const r of internals) {
+    expect(r.text, why).toBe('Node internals')
+    expect(Number(r.flair), why).toBeGreaterThan(0)
+  }
+  // Two folded rows never stand together: they would be one.
+  expect(
+    held.some((r, i) => r.internals && held[i + 1]?.internals),
+    why
+  ).toBe(false)
+}
+
 it('runs a JavaScript program picked from Debug, records at a point set in its margin, opens the run by itself, and runs it again on Restart', () => {
   const seen = inApp<{
     steps: { label: string; place: string; values: Record<string, string> }[]
@@ -286,13 +313,7 @@ it('runs a JavaScript program picked from Debug, records at a point set in its m
   expect(seen.steps[2]!.values.item).toContain('price')
   // A run never writes a note by itself.
   expect(seen.notes).toBe(0)
-  // Held on its first line: the program's own frame on top, Node's loader folded into one row.
-  expect(seen.held[0], JSON.stringify(seen.held) + seen.stop).toMatchObject({ internals: false })
-  expect(seen.held[0]!.note).toMatch(/^total\.js:\d+$/)
-  const internals = seen.held.filter((r) => r.internals)
-  expect(internals, JSON.stringify(seen.held) + seen.stop).toHaveLength(1)
-  expect(internals[0]).toMatchObject({ text: 'Node internals' })
-  expect(Number(internals[0]!.flair)).toBeGreaterThan(0)
+  expectFolded(seen.held, seen.stop)
   expect(seen.restartWhileHeld).toBe(true)
   expect(seen.restartAfter).toBe(true)
   expect(seen.again.steps).toBe(3)
@@ -331,7 +352,7 @@ it('on a phone: the picker offers the file open in a tab, the stack folds Node, 
     openChat()
     const seen = inApp<{
       offered: { title: string; note: string }[]
-      held: { text: string; internals: boolean }[]
+      held: { text: string; note: string; flair: string; internals: boolean }[]
       stop: string
       restart: boolean
       overflow: number
@@ -350,7 +371,7 @@ it('on a phone: the picker offers the file open in a tab, the stack folds Node, 
       await until(()=>stackRows().some(r=>!r.internals),'a frame of the program listed');
       const leaf=app.workspace.getLeavesOfType('abele-debug-view')[0];await app.workspace.revealLeaf(leaf);
       // The drawer slides in: wait until the panel stands still inside the screen.
-      let last='';await until(()=>{const r=document.querySelector('.abele-debug-panel').getBoundingClientRect(),now=r.left+','+r.width;const still=now===last&&r.left>=0&&r.right<=innerWidth+1&&r.width>200;last=now;return still},'debug drawer open');
+      let last='';await until(()=>{const r=document.querySelector('.abele-debug-panel').getBoundingClientRect(),now=r.left+','+r.width;const still=now===last&&r.left>=0&&r.right<=innerWidth+1&&r.width>200;last=now;return still},'debug drawer open').catch(()=>console.debug('[debugger] the drawer did not settle before the picture'));
       const held=stackRows(),stop=debugState0();
       await shot('2026-10-14-trace4-frames-phone');
       const panel=document.querySelector('.abele-debug-panel'),overflow=panel.scrollWidth-panel.clientWidth;
@@ -368,11 +389,7 @@ it('on a phone: the picker offers the file open in a tab, the stack folds Node, 
       }
     })()`)
     expect(seen.offered[0]).toMatchObject({ title: 'src/total.js' })
-    expect(
-      seen.held.filter((r) => r.internals),
-      JSON.stringify(seen.held) + seen.stop
-    ).toHaveLength(1)
-    expect(seen.held[0]!.internals, JSON.stringify(seen.held) + seen.stop).toBe(false)
+    expectFolded(seen.held, seen.stop)
     expect(seen.restart).toBe(true)
     expect(seen.overflow).toBeLessThanOrEqual(1)
   })
