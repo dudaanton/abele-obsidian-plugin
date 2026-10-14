@@ -247,7 +247,13 @@ watch(
           },
           () => {}
         )
-      } else void refreshInPlace()
+      } else {
+        console.debug('[Abele] GitHub file tree: reading the current files again', {
+          from: previous[0],
+          to: key,
+        })
+        void refreshInPlace()
+      }
       return
     }
     tree.value = null

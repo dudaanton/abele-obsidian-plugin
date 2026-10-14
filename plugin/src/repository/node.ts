@@ -206,7 +206,7 @@ export class NodeRepositorySource implements RepositorySource {
     this.aliases.clear()
   }
   reconnect() {
-    this.forget()
+    this.forget('reconnect')
     this.refresh()
     this.textCache.clear()
     this.textBytes = 0
@@ -412,6 +412,14 @@ export class NodeRepositorySource implements RepositorySource {
       this.liveRoots.add(root)
       this.liveTrees.add(new WeakRef(root))
     }
+    if (revision.kind === 'working')
+      console.debug('[Abele] node repository: a tree of the current files', {
+        live: this.liveRoots.has(root),
+        streaming: this.streaming,
+        at: this.observedAt.get(key) ?? null,
+        cursor: this.cursor ?? null,
+        epoch: this.epoch,
+      })
     return {
       root,
       sha,
@@ -1072,7 +1080,11 @@ export class NodeRepositorySource implements RepositorySource {
     return true
   }
   /** Nothing handed out so far follows the stream any more; it is all read again. */
-  private forget() {
+  private forget(reason: string) {
+    console.debug('[Abele] node repository: the trees handed out stop following the stream', {
+      reason,
+      epoch: this.epoch,
+    })
     this.epoch++
     this.recent = []
     this.observedAt.clear()
@@ -1110,7 +1122,7 @@ export class NodeRepositorySource implements RepositorySource {
   }
   /** Rereads everything once; batches after `cursor` describe what changes from there. */
   private reread(cursor?: RepositoryChangesCursor) {
-    this.forget()
+    this.forget('reread')
     this.cursor = cursor
     this.refresh()
     this.emit({ kind: 'workspace' })
@@ -1207,7 +1219,7 @@ export class NodeRepositorySource implements RepositorySource {
     this.textCache.clear()
     this.fileContents.clear()
     this.revisions.clear()
-    this.forget()
+    this.forget('dispose')
     this.textBytes = 0
     if (this.subscription)
       void this.client.repository
