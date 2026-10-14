@@ -102,10 +102,8 @@ const run = <T>(body: string): T => {
   return JSON.parse(result)
 }
 
-describe.skipIf(!available)('ordinary-note text comments', () => {
-  afterEach(() =>
-    expect(
-      run<boolean>(`
+// Closes the comment panel and every dialog this file opened, discarding a draft on the way.
+const CLOSE_PANELS = `
     const attempts = []
     for(let i=0;i<6 && document.querySelector('.abele-text-comments');i++) {
       const panel = document.querySelector('.abele-text-comments')
@@ -117,6 +115,12 @@ describe.skipIf(!available)('ordinary-note text comments', () => {
       for(let t=0;t<15 && document.querySelector('.abele-text-comments') && (!button('Discard') || button('Discard') === discard);t++) await wait(10)
     }
     await until(() => !document.querySelector('.abele-text-comments') && !ownedModals().length)
+`
+
+describe.skipIf(!available)('ordinary-note text comments', () => {
+  afterEach(() =>
+    expect(
+      run<boolean>(`${CLOSE_PANELS}
     // Name whatever is still open, so a leftover dialog explains itself.
     const panel = document.querySelector('.abele-text-comments')?.closest('.abele-anchored-card,.modal')?.className ?? null
     return JSON.stringify({ panel, owned: ownedModals().map(el => el.className + ': ' + el.textContent.trim().slice(0, 120)), attempts: panel ? attempts : [] })
@@ -148,6 +152,12 @@ describe.skipIf(!available)('ordinary-note text comments', () => {
   afterAll(() =>
     run(`
     if (!window.__textCommentOwned) return JSON.stringify(true)
+    // A case whose own cleanup failed must not leave its dialog over the next file.
+    if (window.__textCommentBaselineModals) {
+      ${CLOSE_PANELS}
+      for (const modal of ownedModals()) modal.querySelector('.modal-close-button, .modal-header-button.mod-raised')?.click()
+      await until(() => !ownedModals().length)
+    }
     window.__abeleTest.AbeleConfig.getInstance().ai.enabled = window.__textCommentAi
     delete window.__textCommentAi
     delete window.__textCommentOwned
