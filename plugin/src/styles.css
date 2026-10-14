@@ -92,8 +92,6 @@ body {
   /* Where a thing has an edge of its own (a card), the edge is the same wash a step deeper. */
   --abele-hover-border: hsla(var(--interactive-accent-hsl), 0.25);
   --abele-selected-border: hsla(var(--interactive-accent-hsl), 0.4);
-  /* The quiet words on that wash take its hue, as grey on any coloured ground does. */
-  --abele-tinted-muted: color-mix(in srgb, var(--interactive-accent) 35%, var(--text-muted));
 
   /* The ground under `code` in the plugin's own markdown: Obsidian's is a hair off the page's white
      and could not be told from it. A step of the theme's text mixed into the page, so it is as
