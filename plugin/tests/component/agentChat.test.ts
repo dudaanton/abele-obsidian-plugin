@@ -70,31 +70,36 @@ describe('the agent picker', () => {
     expect(options.map((o) => o.display)).toEqual(['Researcher', 'Writer'])
   })
 
-  it('shows the model in force beside the agent', () => {
+  // The agent's own model is a fact about the agent and is not repeated in the header; only a
+  // chat that answers with a model of its own says so there.
+  it('keeps the agent\'s own model out of the header', () => {
     const view = mount(AiAgentSelector, { shallow: true })
 
-    expect(view.find('.abele-agent-selector__model').text()).toBe('Big')
+    expect(view.find('.abele-agent-selector__model').exists()).toBe(false)
   })
 
   it('falls back to the model id when the provider gave it no name', () => {
     // Models fetched from a provider's /models endpoint often arrive unnamed.
-    AbeleConfig.getInstance().ai.providers[0].models[0].name = ''
-
-    const view = mount(AiAgentSelector, { shallow: true })
-
-    expect(view.find('.abele-agent-selector__model').text()).toBe('big')
-  })
-
-  it('follows a per-chat model override', async () => {
+    const model = AbeleConfig.getInstance().ai.providers[0].models[1]
+    const name = model.name
+    model.name = ''
     session.activeModelId.value = 'small'
 
     const view = mount(AiAgentSelector, { shallow: true })
 
-    expect(view.find('.abele-agent-selector__model').text()).toBe('Small')
-    expect(view.findComponent(AgentOverrideNotice).exists()).toBe(true)
-    expect(view.findComponent(AgentOverrideNotice).props('overridden')).toBe(
-      'Overridden for this chat.'
-    )
+    expect(view.find('.abele-agent-selector__model').text()).toBe('small')
+    model.name = name
+  })
+
+  it('names a per-chat model override by the agent, as a button for its menu', async () => {
+    session.activeModelId.value = 'small'
+
+    const view = mount(AiAgentSelector, { shallow: true })
+
+    const chip = view.get('.abele-agent-selector__model')
+    expect(chip.text()).toBe('Small')
+    expect(chip.attributes('aria-haspopup')).toBe('menu')
+    expect(view.findComponent(AgentOverrideNotice).exists()).toBe(false)
   })
 
   it('switches the chat onto another agent', async () => {

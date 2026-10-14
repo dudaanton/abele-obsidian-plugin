@@ -8,23 +8,29 @@
     />
     <span v-else class="abele-agent-selector__empty">No agent configured</span>
 
-    <div v-if="modelLabel" class="abele-agent-selector__model">
-      <span>{{ modelLabel }}</span>
-      <AgentOverrideNotice
-        v-if="modelOverridden"
-        field="modelId"
-        from-agent="Model comes from this chat's agent."
-        :show-reset="false"
-      />
-    </div>
+    <!-- The model is the agent's and is not repeated here. Only a chat that answers with a model
+         of its own says so, by the agent: the model's name on the chosen wash; pressed, the
+         models to change to and the way back to the agent's, at the button. -->
+    <button
+      v-if="modelLabel && modelOverridden"
+      ref="modelButton"
+      type="button"
+      class="abele-agent-selector__model"
+      aria-haspopup="menu"
+      @click="showModels"
+    >
+      <Icon icon="cpu" size="xs" :interactive="false" class="abele-agent-selector__model-icon" />
+      <span class="abele-agent-selector__model-name">{{ modelLabel }}</span>
+    </button>
   </div>
 </template>
 
 <script setup lang="ts">
-import { computed } from 'vue'
-import { Notice } from 'obsidian'
+import { computed, ref, watchEffect } from 'vue'
+import { Menu, Notice, setTooltip } from 'obsidian'
+import { AbeleConfig } from '@/services/AbeleConfig'
 import Dropdown from './obsidian/Dropdown.vue'
-import AgentOverrideNotice from './AgentOverrideNotice.vue'
+import Icon from './obsidian/Icon.vue'
 import { ChatService } from '@/ai/ChatService'
 import { AgentRegistry } from '@/ai/agents/AgentRegistry'
 import { NodeService } from '@/node/NodeService'
@@ -81,7 +87,65 @@ const modelLabel = computed(() => {
   return model ? model.name || model.id : ''
 })
 
-const modelOverridden = computed(() => session.value?.isOverridden('modelId') ?? false)
+const modelOverridden = computed(() => session.value?.isOverridden?.('modelId') ?? false)
+
+/** The agent's own model, named in the tooltip and on the way back. */
+const agentModelLabel = computed(() => {
+  const agent = session.value?.agent.value
+  if (!agent?.modelId) return ''
+  for (const provider of AbeleConfig.getInstance().ai.providers)
+    if (provider.id === agent.providerId) {
+      const model = provider.models.find((m) => m.id === agent.modelId)
+      if (model) return model.name || model.id
+    }
+  return agent.modelId
+})
+
+const modelButton = ref<HTMLElement>()
+watchEffect(() => {
+  const agent = session.value?.agent.value?.name ?? 'the agent'
+  if (modelButton.value)
+    setTooltip(
+      modelButton.value,
+      `This chat answers with ${modelLabel.value}${agentModelLabel.value ? `, not ${agent}'s ${agentModelLabel.value}` : ''}. Change or go back`
+    )
+})
+
+function showModels() {
+  const s = session.value
+  const el = modelButton.value
+  if (!s || !el) return
+  const menu = new Menu()
+  for (const provider of AbeleConfig.getInstance().ai.providers)
+    for (const model of provider.models)
+      menu.addItem((item) =>
+        item
+          .setTitle(model.name || model.id)
+          .setChecked(s.activeProviderId.value === provider.id && s.activeModelId.value === model.id)
+          .setSection('models')
+          .onClick(() => {
+            s.activeProviderId.value = provider.id
+            s.activeModelId.value = model.id
+            s.save()
+          })
+      )
+  const agent = s.agent.value?.name ?? 'the agent'
+  menu.addItem((item) =>
+    item
+      .setTitle(
+        agentModelLabel.value ? `Follow ${agent}: ${agentModelLabel.value}` : `Follow ${agent}`
+      )
+      .setIcon('rotate-ccw')
+      .setSection('back')
+      .onClick(() => {
+        s.clearOverride('modelId')
+        s.clearOverride('providerId')
+        s.save()
+      })
+  )
+  const box = el.getBoundingClientRect()
+  menu.showAtPosition({ x: box.left, y: box.bottom })
+}
 
 const onSelect = (agentId: string) => {
   const s = session.value
@@ -123,28 +187,45 @@ const onSelect = (agentId: string) => {
   }
 }
 
-.abele-agent-selector__model {
-  color: var(--text-faint);
-  font-size: var(--font-smallest);
-  white-space: nowrap;
+// Chosen for this chat, so on the chosen wash: one code for "this chat's own" wherever it shows.
+.abele-agent-selector .abele-agent-selector__model {
+  display: inline-flex;
+  align-items: center;
+  min-width: 0;
+  max-width: 12em;
+  height: auto;
+  padding: var(--size-2-1) var(--size-2-3);
+  border: none;
+  border-radius: var(--radius-s);
+  box-shadow: none;
+  background-color: var(--abele-selected-background);
+  color: var(--abele-selected-color);
+  font-size: var(--font-ui-smaller);
+  font-weight: var(--font-normal);
+  cursor: var(--cursor);
+}
+
+.abele-agent-selector__model-icon {
+  flex: 0 0 auto;
+  color: inherit;
+}
+
+.abele-agent-selector__model-name {
+  margin-inline-start: var(--size-2-2);
+  min-width: 0;
   overflow: hidden;
   text-overflow: ellipsis;
-  min-width: 0;
+  white-space: nowrap;
 }
 
 /**
- * A pane too narrow for both.
- *
- * Six things share the header's row — the agent, the model, and four actions — and a comment
- * adds two more. At 414 px that clipped the agent to "Co…" and the model to "Claude O…", which
- * is two truncations where one of them is the only thing on screen saying which agent is
- * answering. The model goes: it is a fact about the agent, and the chat settings say it in full.
- *
- * A container query rather than a media query, because what is narrow is the pane: a phone and
- * a narrow desktop split are one problem. `.abele-ai-chat` is the container it resolves against.
+ * A pane too narrow for both: the agent keeps its room, and a chat's own model keeps only its
+ * glyph, named in its tooltip, rather than going, since it is the only sign the chat answers
+ * differently.
+ * A container query, because what is narrow is the pane.
  */
 @container (max-width: 420px) {
-  .abele-agent-selector__model {
+  .abele-agent-selector__model-name {
     display: none;
   }
 }
