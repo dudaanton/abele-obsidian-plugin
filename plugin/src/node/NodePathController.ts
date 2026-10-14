@@ -2,6 +2,7 @@ import { Menu, Notice, Platform } from 'obsidian'
 import type { WorktreeEntry } from '@abele/node-protocol'
 import { NodeSuggestModal } from '@/components/nodeWork/NodeSuggestModal'
 import { confirmAction } from '@/modal/confirm'
+import { changeProjectExternalBrowsing, externalBrowsingConfirm } from './repositorySettings'
 import { GlobalStore } from '@/stores/GlobalStore'
 import { NodeService } from './NodeService'
 import { nodeProviders, providerAvailable, providerLabel } from './providers'
@@ -149,6 +150,23 @@ export function showNodePathRowMenu(model: NodePathModel, event: MouseEvent, id:
         ).open()
       }
     )
+    // The project's other worktrees, Orca's among them, opened to read-only browsing or closed
+    // again: the same switch as the repository tab's menu, here where the project is.
+    for (const enabled of [true, false])
+      add(
+        enabled ? 'Allow external workspace browsing' : 'Stop browsing external workspaces',
+        enabled ? 'folder-git-2' : 'folder-closed',
+        online && !!owner,
+        async () => {
+          const changed = await changeProjectExternalBrowsing(
+            connection.client,
+            target.projectId,
+            enabled,
+            () => confirmAction(app(), externalBrowsingConfirm(enabled))
+          )
+          if (changed) await model.refresh()
+        }
+      )
     const row = folder.copies.find((c) => c.id === target.id)
     if (row?.kind !== 'project') {
       add(

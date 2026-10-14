@@ -1,5 +1,5 @@
 import { describe, expect, it, vi } from 'vitest'
-import { changeExternalBrowsing } from '@/node/repositorySettings'
+import { changeExternalBrowsing, changeProjectExternalBrowsing, externalBrowsingConfirm } from '@/node/repositorySettings'
 import { NodeRepositorySource } from '@/repository/node'
 import { nodeRepositoryFixture, identity } from '../helpers/nodeRepositoryFixture'
 
@@ -20,5 +20,14 @@ describe('owner external-workspace browsing approval', () => {
     expect(client.setRepositorySettings).toHaveBeenCalledWith({ project_id: identity.project, external_read: false })
     await expect(changeExternalBrowsing(client as any, source, true, async () => { source.dispose(); return true })).rejects.toThrow('no longer available')
     expect(client.setRepositorySettings).toHaveBeenCalledTimes(1)
+  })
+  it('asks the same from the side panel by project id, and changes nothing on a no', async () => {
+    const client = { setRepositorySettings: vi.fn(async () => ({})) }
+    expect(await changeProjectExternalBrowsing(client as any, 'sample-project', true, async () => false)).toBe(false)
+    expect(client.setRepositorySettings).not.toHaveBeenCalled()
+    expect(await changeProjectExternalBrowsing(client as any, 'sample-project', false, async () => true)).toBe(true)
+    expect(client.setRepositorySettings).toHaveBeenCalledWith({ project_id: 'sample-project', external_read: false })
+    expect(externalBrowsingConfirm(true).confirmText).toBe('Allow browsing')
+    expect(externalBrowsingConfirm(false).confirmText).toBe('Stop browsing')
   })
 })

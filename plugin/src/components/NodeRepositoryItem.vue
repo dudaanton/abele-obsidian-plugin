@@ -83,7 +83,7 @@
 import { computed, onBeforeUnmount, reactive, ref, shallowRef, watch } from 'vue'
 import { Menu, Notice, type PaneType } from 'obsidian'
 import { confirmAction } from '@/modal/confirm'
-import { changeExternalBrowsing } from '@/node/repositorySettings'
+import { changeExternalBrowsing, externalBrowsingConfirm } from '@/node/repositorySettings'
 import GithubItem from './github/GithubItem.vue'
 import GithubCommits from './github/GithubCommits.vue'
 import EmptyState from './obsidian/EmptyState.vue'
@@ -375,16 +375,7 @@ const externalMenu = (event?: MouseEvent | KeyboardEvent) => {
     settingsBusy.value = true
     try {
       const changed = await changeExternalBrowsing(transport.client, current, enabled, () =>
-        confirmAction(GlobalStore.getInstance().app, {
-          title: 'External workspace browsing',
-          message: enabled
-            ? 'Allow this project’s other Git worktrees to be browsed by confirmed node owners? They remain read only. This does not allow agent execution or editing.'
-            : 'Stop browsing external workspaces for this project? Open external views and retained reads lose access.',
-          confirmText: enabled ? 'Allow browsing' : 'Stop browsing',
-          confirmTooltip: enabled
-            ? 'Allow read-only browsing of external workspaces'
-            : 'Stop external workspace reads',
-        })
+        confirmAction(GlobalStore.getInstance().app, externalBrowsingConfirm(enabled))
       )
       if (changed && alive) await load()
     } catch (error) {
