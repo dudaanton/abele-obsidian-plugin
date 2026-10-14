@@ -27,9 +27,9 @@ function bounded(lines: string[], from = 0, unit = 'from'): string {
   let bytes = 0
   let i = 0
   for (; i < lines.length && out.length < TRACE_AGENT_LINES; i++) {
-    const size = Buffer.byteLength(lines[i]!) + 1
+    const size = Buffer.byteLength(lines[i]) + 1
     if (bytes + size > TRACE_AGENT_BYTES && out.length) break
-    out.push(lines[i]!.slice(0, TRACE_AGENT_BYTES))
+    out.push(lines[i].slice(0, TRACE_AGENT_BYTES))
     bytes += size
   }
   if (i < lines.length) out.push(`… cut at the limit; call again with ${unit}: ${from + i}`)
@@ -37,6 +37,8 @@ function bounded(lines: string[], from = 0, unit = 'from'): string {
 }
 
 const str = (v: unknown) => (typeof v === 'string' ? v : undefined)
+/** A required string parameter; anything else is the empty string the node refuses. */
+const req = (v: unknown) => (typeof v === 'string' ? v : '')
 const num = (v: unknown) => (typeof v === 'number' && Number.isFinite(v) ? v : undefined)
 
 const stepLine = (s: WireStep) =>
@@ -147,8 +149,8 @@ export function createTraceTools(resolve: () => TraceToolContext | undefined): A
         const r = await c.rpc.value(
           c.projectId,
           await runOf(c, p),
-          String(p.step),
-          String(p.name),
+          req(p.step),
+          req(p.name),
           'shape',
           {
             cap: 'agent',
@@ -187,11 +189,11 @@ export function createTraceTools(resolve: () => TraceToolContext | undefined): A
         const r = await c.rpc.value(
           c.projectId,
           await runOf(c, p),
-          String(p.step),
-          String(p.name),
+          req(p.step),
+          req(p.name),
           'slice',
           {
-            path: String(p.path),
+            path: req(p.path),
             from,
             cap: 'agent',
           }
@@ -221,13 +223,13 @@ export function createTraceTools(resolve: () => TraceToolContext | undefined): A
       ['step', 'name'],
       async (c, p) => {
         const against = str(p.against_step)
-          ? { step: String(p.against_step), name: str(p.against_name) ?? String(p.name) }
+          ? { step: req(p.against_step), name: str(p.against_name) ?? req(p.name) }
           : undefined
         const r = await c.rpc.value(
           c.projectId,
           await runOf(c, p),
-          String(p.step),
-          String(p.name),
+          req(p.step),
+          req(p.name),
           'changes',
           {
             ...(against ? { against } : {}),
@@ -307,15 +309,15 @@ export function createTraceTools(resolve: () => TraceToolContext | undefined): A
       async (c, p) => {
         const run = await runOf(c, p)
         await c.rpc.mark(c.projectId, run, {
-          step: String(p.step),
-          ...(str(p.name) ? { name: String(p.name) } : {}),
-          ...(str(p.path) ? { path: String(p.path) } : {}),
-          comment: String(p.comment),
+          step: req(p.step),
+          ...(str(p.name) ? { name: req(p.name) } : {}),
+          ...(str(p.path) ? { path: req(p.path) } : {}),
+          comment: req(p.comment),
           ...(Array.isArray(p.tags)
             ? { tags: p.tags.filter((t): t is string => typeof t === 'string') }
             : {}),
         })
-        return `Marked ${p.step}${str(p.name) ? ` ${p.name}` : ''}${str(p.path) ? ` ${p.path}` : ''}.`
+        return `Marked ${[req(p.step), str(p.name), str(p.path)].filter(Boolean).join(' ')}.`
       }
     ),
     tool(
@@ -340,12 +342,12 @@ export function createTraceTools(resolve: () => TraceToolContext | undefined): A
           : []
         const line = Math.floor(num(p.line) ?? 0)
         if (line < 1) throw new Error('line must be a positive line number')
-        await c.addPoint(String(p.file), line, {
+        await c.addPoint(req(p.file), line, {
           take,
-          ...(str(p.when) ? { when: String(p.when) } : {}),
-          ...(str(p.note) ? { note: String(p.note) } : {}),
+          ...(str(p.when) ? { when: req(p.when) } : {}),
+          ...(str(p.note) ? { note: req(p.note) } : {}),
         })
-        return `Record point set at ${p.file}:${line}, taking ${take.length ? take.join(', ') : 'the frame’s variables'}.`
+        return `Record point set at ${req(p.file)}:${line}, taking ${take.length ? take.join(', ') : 'the frame’s variables'}.`
       }
     ),
     tool(

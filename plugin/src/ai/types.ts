@@ -475,21 +475,23 @@ export const CANVAS_TOOL_MODES: Record<string, ToolMode> = {
 }
 
 /**
- * The tools over runs the debugger recorded: reading a run's bounded views is on its own; a mark,
- * a record point and a note about a run ask first, as editing a note does.
+ * The tools over runs the debugger recorded. A run can hold whatever the program had in memory,
+ * secrets included, so every one of them asks first until the person chooses otherwise.
  */
-export const TRACE_TOOL_MODES: Record<string, ToolMode> = {
-  trace_runs: 'auto',
-  trace_timeline: 'auto',
-  trace_shape: 'auto',
-  trace_slice: 'auto',
-  trace_diff: 'auto',
-  trace_find: 'auto',
-  trace_follow: 'auto',
-  trace_mark: 'ask',
-  trace_point_add: 'ask',
-  trace_note: 'ask',
-}
+export const TRACE_TOOL_MODES: Record<string, ToolMode> = Object.fromEntries(
+  [
+    'trace_runs',
+    'trace_timeline',
+    'trace_shape',
+    'trace_slice',
+    'trace_diff',
+    'trace_find',
+    'trace_follow',
+    'trace_mark',
+    'trace_point_add',
+    'trace_note',
+  ].map((name) => [name, 'ask'])
+)
 
 /** Personal device data: ask before every request unless the person chooses another mode. */
 export const LOCATION_TOOL_MODES: Record<string, ToolMode> = { current_location: 'ask' }

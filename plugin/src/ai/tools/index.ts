@@ -347,8 +347,9 @@ function buildAgentTools(options: AgentToolsOptions = {}, everything = false): A
   tools.push(...createXlsxTools())
   tools.push(...createCanvasTools())
   tools.push(...createNodeTools(undefined, options.nodeRepositoryApproval))
-  // A run the debugger recorded, read a little at a time; only while a session records runs.
-  tools.push(...createTraceTools(activeTraceContext))
+  // A run the debugger recorded, read a little at a time; only in a chat the person is in,
+  // never a script's or a background run's.
+  if (everything || options.session) tools.push(...createTraceTools(activeTraceContext))
 
   // Read-only, and only while the integration is on: with it off there is no GitHub to read.
   if (everything || githubSettings().enabled)
