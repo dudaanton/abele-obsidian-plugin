@@ -24,8 +24,9 @@ export class CanvasInkInput {
   ignores(event: PointerEvent): boolean {
     return !!this.gesture?.pen && event.pointerType === 'touch'
   }
-  down(event: PointerEvent): boolean {
-    const tool = this.ports.tool()
+  /** `as` draws with a pen or marker other than the tool in hand: the Pencil's own. */
+  down(event: PointerEvent, as?: 'pen' | 'marker'): boolean {
+    const tool = as ?? this.ports.tool()
     if (tool !== 'pen' && tool !== 'marker') return false
     if (routePointer({ finger: true, penDown: false }, event) !== 'ink') return false
     const rect = this.viewer.stage.getBoundingClientRect(),
@@ -33,7 +34,7 @@ export class CanvasInkInput {
     const node = attachmentAt(this.viewer.graph, x, y)
     this.ports.select(new Set())
     if (!this.ports.begin()) return true
-    const brush = this.ports.brush()
+    const brush = this.ports.brush(tool)
     const stroke: CanvasInk = {
       version: 1,
       id: nanoid(),

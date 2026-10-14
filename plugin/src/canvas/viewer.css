@@ -251,3 +251,11 @@
   width: min(26px, var(--abele-point-limit, 26px) * 1.25);
   height: min(26px, var(--abele-point-limit, 26px) * 1.25);
 }
+/* Where a pen held over the screen would touch, at the size of its tip. */
+.abele-canvas-pen-hover {
+  position: absolute;
+  transform: translate(-50%, -50%);
+  border-radius: 50%;
+  border: 1px solid var(--text-muted);
+  background: color-mix(in srgb, var(--text-normal) 8%, transparent);
+}

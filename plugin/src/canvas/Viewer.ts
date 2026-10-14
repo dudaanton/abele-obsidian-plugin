@@ -54,6 +54,8 @@ export class CanvasViewer {
   selection: ReadonlySet<string> = new Set()
   onSelect?: (node: CanvasNode | null) => void
   onEditorKey?: (event: KeyboardEvent) => boolean
+  /** Two or three fingers tapped together and lifted without moving: undo and redo on iPad. */
+  onFingersTap?: (fingers: number) => void
   input?: CanvasViewerInput
   /** The host draws each frame's name as a label of its own; the surface paints only the frame. */
   groupLabels = false
@@ -84,8 +86,13 @@ export class CanvasViewer {
     time: number
     multi: boolean
     touch: boolean
+    /** Started by a pen, not a finger. */
+    pen: boolean
     camera: Camera
     editing: boolean
+    /** The most fingers down at once, and whether any of them travelled. */
+    fingers: number
+    moved: boolean
   } | null = null
   private error = ''
 
@@ -437,6 +444,14 @@ export class CanvasViewer {
     this.stopAnimation()
     this.framedRegion = null
     if (e.pointerType === 'mouse') this.el.focus({ preventScroll: true })
+    // A pen landing while only fingers are down: those fingers are the hand resting on the
+    // screen. They are let go of, the canvas goes back to where it was, and the pen draws.
+    if (e.pointerType === 'pen' && this.gesture?.touch && !this.gesture.pen) {
+      this.input?.cancel()
+      this.camera = this.gesture.camera
+      this.pointers.clear()
+      this.gesture = null
+    }
     this.pointers.set(e.pointerId, { x: e.clientX, y: e.clientY })
     if (!this.gesture)
       this.gesture = {
@@ -445,11 +460,15 @@ export class CanvasViewer {
         time: Date.now(),
         multi: false,
         touch: e.pointerType !== 'mouse',
+        pen: e.pointerType === 'pen',
         camera: { ...this.camera },
         editing: this.step === null && !!this.input?.down(e),
+        fingers: 1,
+        moved: false,
       }
     else {
       this.gesture.multi = true
+      this.gesture.fingers = Math.max(this.gesture.fingers, this.pointers.size)
       this.input?.cancel()
     }
     try {
@@ -471,6 +490,8 @@ export class CanvasViewer {
       return
     }
     this.framedRegion = null
+    if (this.gesture && Math.hypot(e.clientX - this.gesture.x, e.clientY - this.gesture.y) > 12)
+      this.gesture.moved = true
     const other = [...this.pointers.entries()].find(([id]) => id !== e.pointerId)?.[1]
     const rect = this.stage.getBoundingClientRect()
     if (other) {
@@ -503,6 +524,20 @@ export class CanvasViewer {
     }
     if (this.pointers.size || !gesture) return
     this.gesture = null
+    if (
+      !cancel &&
+      gesture.touch &&
+      !gesture.pen &&
+      gesture.multi &&
+      !gesture.moved &&
+      (gesture.fingers === 2 || gesture.fingers === 3) &&
+      Date.now() - gesture.time < 400
+    ) {
+      this.camera = gesture.camera
+      this.draw()
+      this.onFingersTap?.(gesture.fingers)
+      return
+    }
     if (cancel || gesture.multi) return
     if (gesture.editing) {
       this.input?.up(e)

@@ -381,9 +381,11 @@ describe('human canvas pen', () => {
     const ink = s.document.session.graph.nodes[0].abele.ink as { points: number[] }[]
     expect(ink[0].points).toEqual([20, 20, 0.2, 80, 90, 0.8, 100, 100, 0.8])
     s.button('Draw with marker').click()
-    pointer(s, 'pointerdown', 20, 250, { buttons: 1 })
-    pointer(s, 'pointermove', 100, 250, { buttons: 1 })
-    pointer(s, 'pointerup', 120, 250)
+    // The second stroke is the pen's too: once a pen has drawn here, a finger moves the canvas
+    // instead of drawing (palm rejection), so a finger stroke would no longer make ink.
+    pointer(s, 'pointerdown', 20, 250, { pointerType: 'pen', buttons: 1 })
+    pointer(s, 'pointermove', 100, 250, { pointerType: 'pen', buttons: 1 })
+    pointer(s, 'pointerup', 120, 250, { pointerType: 'pen' })
     await vi.waitFor(() => expect(s.document.session.history.undo).toBe(2))
     expect(s.document.session.graph.abele.ink).toHaveLength(1)
     s.button('Undo canvas change').click()
@@ -1394,5 +1396,71 @@ describe('the picked things\' more menu', () => {
     ;(s.editor as unknown as { selected: Set<string> }).selected = new Set(['gamma'])
     await s.editor.controls.act('back')
     expect(s.document.session.graph.nodes[0].id).toBe('gamma')
+  })
+})
+
+describe('a Pencil on a tablet', () => {
+  const pen = { pointerType: 'pen', pressure: 0.6 }
+  const stroke = (s: ReturnType<typeof setup>, y: number, extra = {}) => {
+    pointer(s, 'pointerdown', 40, y, { ...pen, buttons: 1, pointerId: 5, ...extra })
+    pointer(s, 'pointermove', 120, y + 10, { ...pen, buttons: 1, pointerId: 5, ...extra })
+    pointer(s, 'pointerup', 200, y + 20, { ...pen, pointerId: 5, ...extra })
+  }
+  const inkCount = (s: ReturnType<typeof setup>) =>
+    ((s.document.session.graph.abele?.ink as unknown[]) ?? []).length
+  it('draws whatever tool is in hand', async () => {
+    const s = setup()
+    s.viewer.setCamera({ x: 0, y: 0, zoom: 1 })
+    stroke(s, 400)
+    await vi.waitFor(() => expect(inkCount(s)).toBe(1))
+    expect(s.editor.controls.tool()).toBe('select')
+    expect(s.editor.controls.pencil()).toBe(true)
+  })
+  it('erases with its other end', async () => {
+    const s = setup()
+    s.viewer.setCamera({ x: 0, y: 0, zoom: 1 })
+    stroke(s, 400)
+    await vi.waitFor(() => expect(inkCount(s)).toBe(1))
+    stroke(s, 400, { buttons: 33 })
+    await vi.waitFor(() => expect(inkCount(s)).toBe(0))
+  })
+  it('lets a finger move the canvas rather than draw once a pen has been seen', async () => {
+    const s = setup()
+    s.viewer.setCamera({ x: 0, y: 0, zoom: 1 })
+    stroke(s, 400)
+    await vi.waitFor(() => expect(inkCount(s)).toBe(1))
+    s.button('Draw with pen').click()
+    pointer(s, 'pointerdown', 40, 200, { buttons: 1, pointerId: 6 })
+    pointer(s, 'pointermove', 140, 200, { buttons: 1, pointerId: 6 })
+    pointer(s, 'pointerup', 140, 200, { pointerId: 6 })
+    expect(inkCount(s)).toBe(1)
+    expect(s.viewer.camera.x).toBe(-100)
+    s.editor.controls.setFingerDraws(true)
+    pointer(s, 'pointerdown', 40, 200, { buttons: 1, pointerId: 7 })
+    pointer(s, 'pointermove', 140, 220, { buttons: 1, pointerId: 7 })
+    pointer(s, 'pointerup', 140, 220, { pointerId: 7 })
+    await vi.waitFor(() => expect(inkCount(s)).toBe(2))
+    s.editor.controls.setFingerDraws(false)
+  })
+  it('lets go of a hand already resting on the screen when the pen lands', async () => {
+    const s = setup()
+    s.viewer.setCamera({ x: 0, y: 0, zoom: 1 })
+    pointer(s, 'pointerdown', 300, 300, { buttons: 1, pointerId: 3 })
+    pointer(s, 'pointermove', 330, 320, { buttons: 1, pointerId: 3 })
+    expect(s.viewer.camera.x).not.toBe(0)
+    stroke(s, 400)
+    expect(s.viewer.camera).toMatchObject({ x: 0, y: 0 })
+    await vi.waitFor(() => expect(inkCount(s)).toBe(1))
+  })
+  it('undoes on a tap of two fingers', async () => {
+    const s = setup()
+    s.viewer.setCamera({ x: 0, y: 0, zoom: 1 })
+    stroke(s, 400)
+    await vi.waitFor(() => expect(inkCount(s)).toBe(1))
+    pointer(s, 'pointerdown', 300, 300, { buttons: 1, pointerId: 11 })
+    pointer(s, 'pointerdown', 360, 300, { buttons: 1, pointerId: 12 })
+    pointer(s, 'pointerup', 300, 300, { pointerId: 11 })
+    pointer(s, 'pointerup', 360, 300, { pointerId: 12 })
+    await vi.waitFor(() => expect(inkCount(s)).toBe(0))
   })
 })

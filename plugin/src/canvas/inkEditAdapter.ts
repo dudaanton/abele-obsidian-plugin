@@ -47,8 +47,9 @@ export class CanvasInkEditInput {
     const r = this.viewer.stage.getBoundingClientRect()
     return toWorld(this.viewer.camera, event.clientX - r.left, event.clientY - r.top)
   }
-  down(event: PointerEvent): boolean {
-    const tool = this.ports.tool()
+  /** `as` erases with a tool other than the one in hand: the eraser end of a pen. */
+  down(event: PointerEvent, as?: 'eraser' | 'partial-eraser'): boolean {
+    const tool = as ?? this.ports.tool()
     if (!['eraser', 'partial-eraser', 'lasso'].includes(tool)) return false
     const graph = this.viewer.graph,
       start = this.point(event),

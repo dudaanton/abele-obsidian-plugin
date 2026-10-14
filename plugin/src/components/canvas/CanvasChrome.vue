@@ -154,11 +154,27 @@
 
     <!-- The pen's colours and widths, over the tools while a pen is in hand. -->
     <div
-      v-if="drawing && tool !== 'eraser' && tool !== 'partial-eraser'"
+      v-if="penStrip"
       class="canvas-menu abele-canvas-chrome__pen"
+      :style="penAt"
       role="toolbar"
       aria-label="Pen"
     >
+      <!-- With a Pencil about and another tool in hand, which of pen and marker the Pencil
+           draws with: pressed, it takes the other. -->
+      <template v-if="!drawing && !phone">
+        <ChromeIcon
+          :key="pencilInk"
+          :icon="pencilInk === 'marker' ? 'highlighter' : 'pen-line'"
+          :tooltip="
+            pencilInk === 'marker'
+              ? 'The Pencil draws with the marker; press for the pen'
+              : 'The Pencil draws with the pen; press for the marker'
+          "
+          @click="c.setPencilInk(pencilInk === 'marker' ? 'pen' : 'marker')"
+        />
+        <span class="canvas-card-menu-divider" />
+      </template>
       <button
         v-for="c in COLOURS"
         :key="c"
@@ -190,6 +206,7 @@
 
     <!-- The tools: one slot for each family, wearing the glyph of the member last used. -->
     <div
+      ref="toolsEl"
       class="canvas-card-menu abele-canvas-chrome__tools"
       role="toolbar"
       aria-label="Canvas tools"
@@ -309,6 +326,23 @@ const gesturing = computed(() => (tick.value, c.gesturing()))
 const naming = computed(() => (tick.value, c.naming()))
 const barEl = ref<HTMLElement>()
 const drawing = computed(() => ['pen', 'marker', 'eraser', 'partial-eraser'].includes(tool.value))
+/** Once a Pencil has touched the canvas it draws whatever is in hand, so its colours stay out. */
+const pencil = computed(() => (tick.value, c.pencil()))
+const pencilInk = computed(() => (tick.value, c.pencilInk()))
+const toolsEl = ref<HTMLElement>()
+/** The pen's strip stands a step above the tools, however tall they are on this device. */
+const penAt = computed(() => {
+  tick.value
+  const tools = toolsEl.value,
+    host = tools?.offsetParent as HTMLElement | null
+  if (!tools || !host) return {}
+  return { bottom: `calc(${host.clientHeight - tools.offsetTop}px + var(--size-4-2))` }
+})
+const penStrip = computed(
+  () =>
+    !['eraser', 'partial-eraser', 'lasso'].includes(tool.value) &&
+    (drawing.value || (pencil.value && !editing.value && !naming.value))
+)
 const steps = computed(() => (tick.value, stepsOf(props.viewer.graph).length))
 const percent = computed(() => (tick.value, Math.round(props.viewer.camera.zoom * 100)))
 const state = (label: string) => (tick.value, c.state(label))

@@ -70,6 +70,22 @@ export type CanvasAction = 'duplicate' | 'copy' | 'front' | 'back' | 'delete-wit
 /** The gap between what is copied and its copy, which stands beside it to the right. */
 const COPY_GAP = 40
 
+const FINGER_KEY = 'abele-canvas-finger-draws'
+const readFingerDraws = (): boolean => {
+  try {
+    return globalThis.localStorage?.getItem(FINGER_KEY) === '1'
+  } catch {
+    return false
+  }
+}
+const writeFingerDraws = (on: boolean): void => {
+  try {
+    globalThis.localStorage?.setItem(FINGER_KEY, on ? '1' : '0')
+  } catch {
+    /* A device that keeps nothing simply asks again next time. */
+  }
+}
+
 export class CanvasEditor {
   private selected = new Set<string>()
   private multiple = false
@@ -96,6 +112,12 @@ export class CanvasEditor {
   private editing: string | null = null
   /** A connection let go over empty canvas, waiting for what to make at its end. */
   private drop: CanvasDrop | null = null
+  /** Which of pen and marker the Pencil draws with: the one last taken in hand. */
+  private pencilInk: 'pen' | 'marker' = 'pen'
+  /** A pen has touched this canvas, so it is a device with a Pencil. */
+  private penSeen = false
+  /** On a device with a Pencil, whether a finger draws too; kept on this device. */
+  private fingerDraws = readFingerDraws()
   /** A frame whose name is being written on its label. */
   private naming: string | null = null
   private ownedDraft: CanvasEditorDocument | null = null
@@ -157,6 +179,20 @@ export class CanvasEditor {
     drop: (): CanvasDrop | null => this.drop,
     /** Makes a card, a note or a shape at the end of the dropped connection, or nothing. */
     dropAdd: (kind: 'card' | 'note' | 'shape' | null): Promise<void> => this.dropAdd(kind),
+    /** A pen has touched the canvas: the pen's colours stay out for it whatever is in hand. */
+    pencil: (): boolean => this.penSeen,
+    /** Which of pen and marker the Pencil draws with; pressed, it takes the other. */
+    pencilInk: (): 'pen' | 'marker' => this.pencilInk,
+    setPencilInk: (ink: 'pen' | 'marker'): void => {
+      this.pencilInk = ink
+      this.refresh()
+    },
+    fingerDraws: (): boolean => this.fingerDraws,
+    setFingerDraws: (on: boolean): void => {
+      this.fingerDraws = on
+      writeFingerDraws(on)
+      this.refresh()
+    },
     /** A card, frame or line is being carried or drawn right now. */
     gesturing: (): boolean => !!this.geometry,
     /** The frame a card being carried would land in. */
@@ -254,6 +290,7 @@ export class CanvasEditor {
           this.inputAdapter.cancel()
           this.selected.clear()
           this.tool = tool
+          if (tool === 'pen' || tool === 'marker') this.pencilInk = tool
           this.multiple = false
           this.refresh()
         },
@@ -402,10 +439,17 @@ export class CanvasEditor {
     this.listen(this.text, 'input', () => this.input())
     this.inputAdapter = new CanvasInput(viewer, {
       tool: () => this.tool,
-      brush: () => ({
+      brush: (tool) => ({
         color: this.inkColor.value,
-        size: WIDTHS[this.tool === 'marker' ? 'marker' : 'pen'][this.inkSize.value as Thickness],
+        size: WIDTHS[(tool ?? this.tool) === 'marker' ? 'marker' : 'pen'][
+          this.inkSize.value as Thickness
+        ],
       }),
+      pencil: () => ({ ink: this.pencilInk, eraser: 'eraser', fingerDraws: this.fingerDraws }),
+      sawPen: () => {
+        this.penSeen = true
+        this.refresh()
+      },
       enabled: () => this.canGesture(),
       selection: () => this.selected,
       select: (ids) => {
@@ -460,6 +504,8 @@ export class CanvasEditor {
       doc.addEventListener('visibilitychange', hidden)
       this.off.push(() => doc.removeEventListener('visibilitychange', hidden))
     }
+    viewer.onFingersTap = (fingers) =>
+      this.buttons.get(fingers === 2 ? 'Undo canvas change' : 'Redo canvas change')?.click()
     this.refresh()
   }
   private listen(el: HTMLElement, type: string, fn: EventListener): void {
@@ -1503,6 +1549,7 @@ export class CanvasEditor {
     this.off.splice(0).forEach((fn) => fn())
     this.viewer.onSelect = undefined
     this.viewer.onEditorKey = undefined
+    this.viewer.onFingersTap = undefined
     this.viewer.selection = new Set()
     this.bar.remove()
     this.panel.remove()

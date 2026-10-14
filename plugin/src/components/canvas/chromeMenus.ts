@@ -281,7 +281,7 @@ export function paneEntries(handlers: {
   contents: () => unknown
   openNative: () => unknown
   fingerDraws?: { on: boolean; toggle: () => unknown }
-}): { title: string; icon: string; run: () => unknown; checked?: boolean }[] {
+}, tablet = Platform.isTablet): { title: string; icon: string; run: () => unknown; checked?: boolean }[] {
   return [
     { title: 'Find on the canvas', icon: 'search', run: handlers.find },
     { title: 'Show contents', icon: 'list', run: handlers.contents },
@@ -289,7 +289,7 @@ export function paneEntries(handlers: {
     { title: 'Copy embed of what is shown', icon: 'clipboard-copy', run: handlers.copyEmbed },
     { title: 'Open in Obsidian Canvas', icon: 'layout-dashboard', run: handlers.openNative },
     // Only where a pen and fingers share the screen: whether a finger draws as well.
-    ...(handlers.fingerDraws && Platform.isTablet
+    ...(handlers.fingerDraws && tablet
       ? [
           {
             title: 'Draw with a finger',
