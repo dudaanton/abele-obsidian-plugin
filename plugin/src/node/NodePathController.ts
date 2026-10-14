@@ -182,10 +182,11 @@ function rowMenu(
       }
     )
     // The project's other worktrees, Orca's among them, opened to read-only browsing or closed
-    // again: the same switch as the repository tab's menu, here where the project is.
-    for (const enabled of [true, false])
+    // again. A node that says whether browsing is on gets one switch with its check; one that
+    // cannot say gets both ways, as the repository tab's menu has them.
+    const browsing = (enabled: boolean, title: string, checked = false) =>
       add(
-        enabled ? 'Allow external workspace browsing' : 'Stop browsing external workspaces',
+        title,
         enabled ? 'folder-git-2' : 'folder-closed',
         online && !!owner,
         async () => {
@@ -197,8 +198,12 @@ function rowMenu(
           )
           if (changed) await model.refresh()
         },
-        enabled && external === true
+        checked
       )
+    if (external === undefined) {
+      browsing(true, 'Allow external workspace browsing')
+      browsing(false, 'Stop browsing external workspaces')
+    } else browsing(!external, 'Browse external workspaces', external)
     const row = folder.copies.find((c) => c.id === target.id)
     if (row?.kind !== 'project') {
       add(

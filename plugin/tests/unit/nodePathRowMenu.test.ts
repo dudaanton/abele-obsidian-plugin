@@ -63,7 +63,12 @@ const allow = (menu: Shown) =>
   menu.items.find((i) => i.title === 'Allow external workspace browsing')!
 
 describe('the folder menu’s external-worktrees item', () => {
-  it('is checked when the node says browsing is on', async () => {
+  const switchOf = (menu: Shown) =>
+    menu.items.find((i) => i.title === 'Browse external workspaces')!
+  const twoWays = (menu: Shown) =>
+    menu.items.filter((i) => /^(Allow|Stop browsing) external/.test(i.title))
+
+  it('is one switch, checked, when the node says browsing is on, and turns it off', async () => {
     f.request.mockResolvedValue({
       project_id: 'sample-project',
       external_read: true,
@@ -73,20 +78,37 @@ describe('the folder menu’s external-worktrees item', () => {
     expect(f.request).toHaveBeenCalledWith('project.repository_settings.get', {
       project_id: 'sample-project',
     })
-    expect(allow(menu).checked).toBe(true)
+    expect(switchOf(menu).checked).toBe(true)
+    expect(twoWays(menu)).toHaveLength(0)
+    switchOf(menu).handler!()
+    await vi.waitFor(() =>
+      expect(f.settings).toHaveBeenCalledWith({
+        project_id: 'sample-project',
+        external_read: false,
+      })
+    )
   })
-  it('is unchecked when browsing is off', async () => {
+  it('is one switch, unchecked, when browsing is off, and turns it on', async () => {
     f.request.mockResolvedValue({
       project_id: 'sample-project',
       external_read: false,
       default_branch: null,
     })
-    expect(allow(await opened()).checked).toBeFalsy()
+    const menu = await opened()
+    expect(switchOf(menu).checked).toBeFalsy()
+    expect(twoWays(menu)).toHaveLength(0)
+    switchOf(menu).handler!()
+    await vi.waitFor(() =>
+      expect(f.settings).toHaveBeenCalledWith({
+        project_id: 'sample-project',
+        external_read: true,
+      })
+    )
   })
-  it('is unchecked on a node that cannot say, and still switches browsing on', async () => {
+  it('offers both ways on a node that cannot say, and still switches browsing on', async () => {
     f.request.mockRejectedValue(new Error('unsupported_method'))
     const menu = await opened()
-    expect(allow(menu).checked).toBeFalsy()
+    expect(switchOf(menu)).toBeUndefined()
     allow(menu).handler!()
     await vi.waitFor(() =>
       expect(f.settings).toHaveBeenCalledWith({

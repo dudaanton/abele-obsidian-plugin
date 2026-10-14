@@ -182,21 +182,23 @@ it('shows changed files, a missing worktree, the external worktree switch and a 
         `(async()=>{${prelude}visible('.abele-file-tree [aria-label^="Only changed files"]').click();const tree=visible('.abele-file-tree');await until(()=>tree.querySelector('.abele-tree-item__where'));for(const row of tree.querySelectorAll('.abele-tree-item__named')){const name=row.querySelector('.abele-tree-item__text'),where=row.querySelector('.abele-tree-item__where');for(const line of [name,where]){const height=line.getBoundingClientRect().height,lineHeight=parseFloat(getComputedStyle(line).lineHeight)||16;if(height>lineHeight*1.5)throw Error('A name or path broke onto several lines: '+line.textContent)}}const path=[...tree.querySelectorAll('.tree-item-self')].find(r=>r.textContent.includes('SampleSettingsPanel.vue'));if(path.getAttribute('aria-label')!=='packages/sample-app/src/components/panels/settings/SampleSettingsPanel.vue')throw Error('The whole path is not in the row tooltip: '+path.getAttribute('aria-label'));return 'changed list'})()`
       )
       await capture(prefix + '-changed-list')
-      const menu = async (expectChecked: boolean) =>
+      // A node that reports the setting gets one switch; one that cannot say, both ways.
+      const menu = async (expectChecked: boolean, title: string) =>
         evalLong(
-          `(async()=>{${prelude}closeMenu();await drawer();const row=[...visible('.abele-folder-tree').querySelectorAll('.abele-folder-tree__copy > .tree-item-self')].find(r=>r.textContent.includes('trunk'));row.dispatchEvent(new MouseEvent('contextmenu',{bubbles:true,cancelable:true,clientX:row.getBoundingClientRect().left+40,clientY:row.getBoundingClientRect().bottom}));await until(()=>[...document.querySelectorAll('.menu-item')].some(i=>i.textContent.includes('Allow external workspace browsing')));const item=[...document.querySelectorAll('.menu-item')].find(i=>i.textContent.includes('Allow external workspace browsing'));const checked=item.classList.contains('mod-checked')||!!item.querySelector('.menu-item-icon.mod-checked,.mod-checked');if(checked!==${expectChecked})throw Error('The switch reads '+(checked?'checked':'unchecked')+': '+item.outerHTML);return 'menu'})()`
+          `(async()=>{${prelude}closeMenu();await drawer();const row=[...visible('.abele-folder-tree').querySelectorAll('.abele-folder-tree__copy > .tree-item-self')].find(r=>r.textContent.includes('trunk'));row.dispatchEvent(new MouseEvent('contextmenu',{bubbles:true,cancelable:true,clientX:row.getBoundingClientRect().left+40,clientY:row.getBoundingClientRect().bottom}));await until(()=>[...document.querySelectorAll('.menu-item')].some(i=>i.textContent.includes(${JSON.stringify(title)})));const item=[...document.querySelectorAll('.menu-item')].find(i=>i.textContent.includes(${JSON.stringify(title)}));const checked=item.classList.contains('mod-checked')||!!item.querySelector('.menu-item-icon.mod-checked,.mod-checked');if(checked!==${expectChecked})throw Error('The switch reads '+(checked?'checked':'unchecked')+': '+item.outerHTML);return 'menu'})()`
         )
       // A node too old to report the setting leaves the switch unchecked, and it still works.
       const reports =
         (await evalLong(
           `(async()=>{${prelude}try{await nodes.connection(${JSON.stringify(registration)}).client.request('project.repository_settings.get',{project_id:${JSON.stringify(ids.project)}});return 'reports'}catch{return 'silent'}})()`
         )) === 'reports'
-      await menu(reports)
+      const switchTitle = reports ? 'Browse external workspaces' : 'Allow external workspace browsing'
+      await menu(reports, switchTitle)
       await capture(prefix + '-external-on')
       await evalLong(
         `(async()=>{${prelude}closeMenu();await nodes.connection(${JSON.stringify(registration)}).client.setRepositorySettings({project_id:${JSON.stringify(ids.project)},external_read:false});return 'off'})()`
       )
-      await menu(false)
+      await menu(false, switchTitle)
       await capture(prefix + '-external-off')
       await evalLong(
         `(async()=>{${prelude}closeMenu();await nodes.connection(${JSON.stringify(registration)}).client.setRepositorySettings({project_id:${JSON.stringify(ids.project)},external_read:true});return 'on again'})()`
