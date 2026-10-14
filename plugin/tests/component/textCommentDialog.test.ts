@@ -1,6 +1,6 @@
 import { afterEach, describe, expect, it, vi } from 'vitest'
 import { mount, flushPromises, type VueWrapper } from '@vue/test-utils'
-import { defineComponent } from 'vue'
+import { defineComponent, nextTick } from 'vue'
 import TextCommentDialog from '@/components/TextCommentDialog.vue'
 import { memoryComments } from '../helpers/textComments'
 
@@ -136,7 +136,7 @@ describe('comments on a passage', () => {
     expect((await m.repository.read(initial.thread.id))!.thread.entries[0].body).toBe('Saved')
   })
 
-  it('takes a field focus within the press on Edit, so a phone raises its keyboard', async () => {
+  it('focuses the field for the change within the press on Edit, never the reply field first', async () => {
     const m = memoryComments()
     const initial = await m.service.publish(
       await m.service.draft('Notes/sample.md', 'sample words', 0, 12, 'yellow', 'Saved')
@@ -146,13 +146,16 @@ describe('comments on a passage', () => {
     const edit = wrapper!
       .findAll('button')
       .find((button) => button.attributes('aria-label')?.startsWith('Edit'))!
-    // A phone shows its keyboard only for a focus taken while the tap is handled, not after
-    // the field for the change has been drawn.
+    // A phone shows its keyboard only for a focus taken while the tap is handled: the field is
+    // drawn and focused in the microtasks of that same task, before any timer. Focus passed on
+    // from the reply field instead raised the keyboard and then lost it with the first keys.
     ;(edit.element as HTMLButtonElement).click()
-    expect(focused.length).toBeGreaterThan(0)
+    await nextTick()
+    await nextTick()
+    expect(focused).toEqual(['Saved'])
     await flushPromises()
     expect(changing().element.value).toBe('Saved')
-    expect(focused.at(-1)).toBe('Saved')
+    expect(focused).toEqual(['Saved'])
   })
 
   it('keeps text typed during a slow send as a change to that comment, never a repeat', async () => {

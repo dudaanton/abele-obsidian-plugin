@@ -392,10 +392,9 @@ async function edit(id: string) {
   if (!entry) return
   editing.value = id
   editBody.value = entry.body
-  // A phone raises its keyboard only for a focus taken while the tap is handled, and the field
-  // for the change is drawn after it. Take the reply field's focus now; the keyboard then stays
-  // up as the focus moves on to the change.
-  editor.value?.focus()
+  // A phone raises its keyboard only for a focus taken while the tap is handled. The field for
+  // the change is drawn in this tap's own microtasks, so it takes the focus itself; focus passed
+  // on from the reply field raised the keyboard and then lost it with the first keys.
   await nextTick()
   const field = editEditor.value?.[0]
   field?.focus()
