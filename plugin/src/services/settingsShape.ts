@@ -8,6 +8,7 @@ import { DEFAULT_GITHUB_SETTINGS, type GithubSettings } from '@/github/settings'
 import { DEFAULT_ACCOUNTS_LIST, type AccountsListSettings } from '@/helpers/accountRows'
 import { DEFAULT_LABEL_PROPERTY, type LabelColor } from '@/helpers/taskMeta'
 import { DEFAULT_LINTER_SETTINGS, type LinterSettings } from '@/linter/settings'
+import { type AttachmentRule } from '@/media/attachmentRules'
 import { DEFAULT_QUICK_BUTTON, type QuickButtonSettings } from '@/quickButton/settings'
 import { DEFAULT_READER_SETTINGS, type ReaderSettings } from '@/reader/settings'
 import { defaultSyncSettings, type SyncSettings } from '@/sync/settings'
@@ -97,6 +98,11 @@ export interface AbeleSettings {
    * they are opened at a place of their own: a heading, a search result, a book's highlight.
    */
   rememberNotePlaces?: boolean
+  /**
+   * Where pasted and dropped files of notes under a folder go, in place of Obsidian's one
+   * attachment folder; the deepest folder wins. Notes under no rule keep Obsidian's setting.
+   */
+  attachmentRules?: AttachmentRule[]
   /** Property names drawn as a counter: the number with − and + beside it. Empty counts as 0. */
   counterProperties?: string[]
   /** Property names drawn as a date: a day back and on, how far away, its daily note. */
@@ -316,6 +322,7 @@ export const DEFAULT_SETTINGS: Required<Omit<AbeleSettings, 'secretStore'>> = {
   editorSyntaxHighlight: true,
   propertyWidgets: true,
   rememberNotePlaces: true,
+  attachmentRules: [],
   counterProperties: [],
   dateProperties: ['date', 'due'],
   priorityProperties: ['priority'],

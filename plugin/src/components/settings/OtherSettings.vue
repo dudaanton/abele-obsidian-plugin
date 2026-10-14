@@ -1,7 +1,7 @@
 <template>
   <!-- What is left once every feature has its page, grouped by what it changes: how Obsidian
-       looks, what Abele draws in a note in place of Obsidian, how notes open, maps, and the
-       plugin itself. -->
+       looks, what Abele draws in a note in place of Obsidian, how notes open, where attachments go,
+       maps, and the plugin itself. -->
   <div class="abele-settings__other">
     <Section title="Look">
       <Setting name="Full-width sidebars" desc="Make sidebars take the full screen width on a phone.">
@@ -81,6 +81,7 @@
         <Checkbox :is-enabled="rememberNotePlaces" @toggle="toggleRememberNotePlaces" />
       </Setting>
     </Section>
+    <AttachmentRulesSettings />
     <Section title="Maps">
       <Setting
         name="Coordinates property"
@@ -125,6 +126,7 @@ import Section from '../obsidian/Section.vue'
 import Input from '../obsidian/Input.vue'
 import Checkbox from '../obsidian/Checkbox.vue'
 import Button from '../obsidian/Button.vue'
+import AttachmentRulesSettings from './AttachmentRulesSettings.vue'
 import { openChangelog } from '@/changelog/ChangelogView'
 import { AbeleConfig } from '@/services/AbeleConfig'
 import { SnippetService } from '@/services/SnippetService'

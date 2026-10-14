@@ -97,6 +97,7 @@ import { registerLineLinks } from './lineLinks/register'
 import './checkboxes/register'
 import './columns/register'
 import './columns/styles.css'
+import { registerAttachmentRules } from './media/attachmentRulesHook'
 import { registerNotePlaces } from './notePlaces/register'
 import { registerGithub } from '@/github/register'
 import { secrets, setSecrets } from '@/secrets/SecretStore'
@@ -535,6 +536,9 @@ export default class AbelePlugin extends Plugin {
 
       // Notes come back where they were left, unless opened at a place of their own.
       startupStep('note places', () => registerNotePlaces(this))
+
+      // Pasted and dropped files of notes under a ruled folder go to that rule's folder.
+      startupStep('attachment folders', () => registerAttachmentRules(this))
 
       // Some properties drawn by the plugin: wallet balances, sums in numbers, file cards.
       startupStep('property widgets', () => registerPropertyWidgets(this))

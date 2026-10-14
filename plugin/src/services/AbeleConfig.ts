@@ -7,6 +7,7 @@ import type { GithubSettings } from '@/github/settings'
 import type { AccountsListSettings } from '@/helpers/accountRows'
 import type { LabelColor } from '@/helpers/taskMeta'
 import { linterSettingsFrom, type LinterSettings } from '@/linter/settings'
+import type { AttachmentRule } from '@/media/attachmentRules'
 import type AbelePlugin from '@/main'
 import type { QuickButtonSettings } from '@/quickButton/settings'
 import type { ReaderSettings } from '@/reader/settings'
@@ -83,6 +84,7 @@ export class AbeleConfig {
   public editorSyntaxHighlight: boolean
   public propertyWidgets: boolean
   public rememberNotePlaces: boolean
+  public attachmentRules: AttachmentRule[] = []
   public counterProperties: string[] = []
   public dateProperties: string[] = []
   public priorityProperties: string[] = []

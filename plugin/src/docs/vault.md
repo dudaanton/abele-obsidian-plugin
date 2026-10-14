@@ -757,6 +757,18 @@ links to the whole of it on the node as `obsidian://abele-trace?node=…&project
 the link opens a tab while the node is reachable and says the node is away when it is not.
 Marks written by hand into the note do not go back into the run.
 
+## Attachment folder rules
+
+`attachmentRules` in the plugin's `data.json` is an ordered list of
+`{ notesFolder, attachmentsFolder }`. An attachment saved for a note — pasted, dropped,
+recorded, imported, or written by the plugin itself — goes to the `attachmentsFolder` of the
+rule on the deepest `notesFolder` that holds the note at any depth (compared without regard
+to case; `/` is the vault root). `attachmentsFolder` is written the way Obsidian's own
+attachment setting is: `/` root, `./` beside the note, `./sub` a folder beside it, otherwise a
+vault path. A rule with either folder empty applies to nothing. Notes under no rule use the
+vault's Files and links setting, which the plugin never changes. The rules travel in the
+Other block of a settings transfer.
+
 ## Naming notes
 
 A note's name cannot carry `* " \ / < > : | ?` — Obsidian refuses those itself — nor `#`, `^`,

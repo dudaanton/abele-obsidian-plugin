@@ -151,6 +151,16 @@ notes where you left them (see [Where you left off](writing#where-you-left-off))
 coordinates property and map style for maps, and keyboard diagnostics, a troubleshooting panel
 for the on-screen keyboard.
 
+**Attachment folders** sends the files of notes in chosen folders somewhere other than
+Obsidian's own attachment folder. Each rule names a folder of notes and the folder for their
+attachments. A file pasted or dropped into a note in that folder, or in any folder below it, goes
+to the rule's folder, which is created if it is missing; Obsidian still picks a free name. When
+several rules cover a note, the one on the deepest folder wins. Notes outside every rule keep
+the setting in Obsidian's **Files and links**. `/` as the notes folder means the whole vault,
+`./` as the attachments folder means beside the note, and `./images` a folder beside it.
+Recordings, images imported on a phone, drawings and diagram exports follow the same rules.
+The rules travel with settings.
+
 **Open canvases in Abele** chooses the default for newly opened `.canvas` tabs. On uses the
 read-only [diagram viewer](drawing#canvas-diagrams) with walkthrough steps; off uses native
 Canvas. An individual viewer tab can always return to native Canvas from its header. This

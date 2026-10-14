@@ -1,5 +1,7 @@
 import type { App } from 'obsidian'
 import { ensureVaultFolder } from '@/helpers/vaultFolders'
+import { AbeleConfig } from '@/services/AbeleConfig'
+import { attachmentSettingFor } from './attachmentRules'
 
 /** Resolve Obsidian's attachment setting to a vault-relative folder (empty means vault root). */
 export function resolveAttachmentFolder(setting: string, notePath?: string): string {
@@ -16,11 +18,17 @@ export function attachmentPath(setting: string, filename: string, notePath?: str
   return folder ? `${folder}/${filename}` : filename
 }
 
-/** Without a source note, "same folder" is the vault root; ./sub resolves from that root. */
+/**
+ * Without a source note, "same folder" is the vault root; ./sub resolves from that root. A note
+ * under one of the attachment folder rules takes that rule's folder instead of the vault's.
+ */
 export function configuredAttachmentFolder(app: App, notePath?: string): string {
   const vault = app.vault as typeof app.vault & { getConfig?: (key: string) => string | null }
+  const ruled = notePath
+    ? attachmentSettingFor(AbeleConfig.getInstance().attachmentRules, notePath)
+    : null
   return resolveAttachmentFolder(
-    vault.getConfig?.('attachmentFolderPath') ?? 'Attachments',
+    ruled ?? vault.getConfig?.('attachmentFolderPath') ?? 'Attachments',
     notePath
   )
 }

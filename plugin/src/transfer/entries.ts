@@ -423,6 +423,7 @@ export const SECTIONS: Section[] = [
     'editorSyntaxHighlight',
     'propertyWidgets',
     'rememberNotePlaces',
+    'attachmentRules',
     'counterProperties',
     'dateProperties',
     'priorityProperties',

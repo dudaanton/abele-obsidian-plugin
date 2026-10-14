@@ -23,6 +23,7 @@ import { projectLegacy } from '@/github/connections'
 import { githubSettingsFrom } from '@/github/settings'
 import { normalizeAccountsList } from '@/helpers/accountRows'
 import { linterSettingsFrom, type LinterSettings } from '@/linter/settings'
+import { attachmentRulesFrom } from '@/media/attachmentRules'
 import { quickButtonSettingsFrom } from '@/quickButton/settings'
 import { readerSettingsFrom } from '@/reader/settings'
 import { selectionMenuScriptsFrom } from '@/scripting/selectionMenuScripts'
@@ -229,6 +230,7 @@ export function applySettingsTo(
   config.propertyWidgets = settings?.propertyWidgets ?? DEFAULT_SETTINGS.propertyWidgets ?? true
   config.rememberNotePlaces =
     settings?.rememberNotePlaces ?? DEFAULT_SETTINGS.rememberNotePlaces ?? true
+  config.attachmentRules = attachmentRulesFrom(settings?.attachmentRules)
   config.counterProperties = Array.isArray(settings?.counterProperties)
     ? settings.counterProperties.filter((name): name is string => typeof name === 'string')
     : []
@@ -323,6 +325,7 @@ export function exportSettingsOf(config: AbeleConfig, outOfSettings: boolean): A
     editorSyntaxHighlight: config.editorSyntaxHighlight,
     propertyWidgets: config.propertyWidgets,
     rememberNotePlaces: config.rememberNotePlaces,
+    attachmentRules: config.attachmentRules.map((rule) => ({ ...rule })),
     counterProperties: [...config.counterProperties],
     dateProperties: [...config.dateProperties],
     priorityProperties: [...config.priorityProperties],
