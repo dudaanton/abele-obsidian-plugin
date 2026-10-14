@@ -256,7 +256,7 @@ it('runs a JavaScript program picked from Debug, records at a point set in its m
     const notesBefore=app.vault.getMarkdownFiles().length;
     // No session in the chat yet: Debug asks for a program to run.
     ${RUN('src/total.js', '2026-10-14-trace4-debug', 'Debug')}
-    await until(()=>stackRows().length,'call stack listed');
+    await until(()=>stackRows().some(r=>!r.internals),'a frame of the program listed');
     const held=stackRows(),restartWhileHeld=restartOn();
     await shot('2026-10-14-trace4-frames-desktop');
     await recordPoint(4,['sum','item']);
@@ -334,6 +334,7 @@ it('on a phone: the picker offers the file open in a tab, the stack folds Node, 
       restart: boolean
       overflow: number
     }>(`(async()=>{${prelude}${STACK}${RESTART}
+      try{
       const opened=app.workspace.getLeaf('tab');
       await opened.setViewState({type:'abele-node-file',active:true,state:{kind:'file',target:${JSON.stringify(folder)},path:'src/total.js'}});
       await until(()=>opened.containerEl.textContent.includes('function total'),'program open');
@@ -344,19 +345,23 @@ it('on a phone: the picker offers the file open in a tab, the stack folds Node, 
       await shot('2026-10-14-trace4-picker-phone');
       press([...document.querySelectorAll('.modal-container .prompt .suggestion-item')].find(r=>r.querySelector('.suggestion-title')?.textContent.trim()==='src/total.js'));
       await until(()=>document.querySelector('[aria-label="Continue (F5)"]'),'debug panel',600);
-      await until(()=>stackRows().length,'call stack listed');
+      await until(()=>stackRows().some(r=>!r.internals),'a frame of the program listed');
       const leaf=app.workspace.getLeavesOfType('abele-debug-view')[0];await app.workspace.revealLeaf(leaf);
       const held=stackRows();
       await shot('2026-10-14-trace4-frames-phone');
-      const restart=restartOn();
-      await shot('2026-10-14-trace4-restart-phone');
       const panel=document.querySelector('.abele-debug-panel'),overflow=panel.scrollWidth-panel.clientWidth;
       press(document.querySelector('.abele-debug-panel [aria-label^="Stop"]'));
       await until(()=>api.DebuggerService.instance.active.value.controller.session.status==='exited','program stopped',600).catch(()=>{throw Error('program not stopped: '+debugState())});
-      // The phone's layout is saved apart from the desktop's: leave no tab of this file in it.
-      for(const t of ['abele-trace-run','abele-trace-value','abele-node-file','abele-debug-view'])for(const l of app.workspace.getLeavesOfType(t))l.detach();
-      await app.workspace.requestSaveLayout.run();
+      // Stopped, it can be run again from its first line.
+      await until(()=>restartOn(),'Restart offered once stopped');
+      const restart=restartOn();
+      await shot('2026-10-14-trace4-restart-phone');
       return {offered,held,restart,overflow}
+      }finally{
+        // The phone's layout is saved apart from the desktop's: leave no tab of this file in it.
+        for(const t of ['abele-trace-run','abele-trace-value','abele-node-file','abele-debug-view'])for(const l of app.workspace.getLeavesOfType(t))l.detach();
+        await app.workspace.requestSaveLayout.run();
+      }
     })()`)
     expect(seen.offered[0]).toMatchObject({ title: 'src/total.js' })
     expect(seen.held.filter((r) => r.internals)).toHaveLength(1)
