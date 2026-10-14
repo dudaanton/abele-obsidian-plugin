@@ -145,9 +145,10 @@ describe.skipIf(!available)('single external occurrence completion in the runnin
         const daily = await until(() => dailyLeaf.view.containerEl.querySelector('.abele-footer-view .abele-timeline'), 'past daily timeline')
         await hideCompleted(() => daily)
         const history = await until(() => daily.querySelector('.abele-timeline__history'), 'past daily history')
-        if (history.classList.contains('abele-timeline__history_overdue') || history.querySelector('.abele-timeline__history-count, .abele-timeline__history-flame'))
+        // An event is never left undone: it is in the past days, and there is no Overdue fold for it.
+        if (daily.querySelector('.abele-timeline__overdue') || history.querySelector('.abele-timeline__overdue-count, .abele-timeline__overdue-flame'))
           throw Error('Past occurrence counted as unfinished')
-        if (history.querySelector('.abele-timeline__history-text')?.textContent !== 'Past days')
+        if (history.querySelector('.abele-timeline__fold-text')?.textContent !== 'Past days')
           throw Error('Neutral past-day history missing')
         if (history.getAttribute('aria-expanded') !== 'true') history.click()
         const pastRow = await until(() => daily.querySelector('[data-timeline-item="event:' + pastEvent.id + '"]'), 'past daily row')

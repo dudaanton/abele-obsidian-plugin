@@ -1,4 +1,7 @@
-/** Folded history and viewport anchoring in the task timeline's real scroll owners. */
+/**
+ * The overdue and past-days folds, the pinned header and viewport anchoring in the task
+ * timeline's real scroll owners.
+ */
 import { afterAll, beforeAll, describe, expect, it } from 'vitest'
 import { readFileSync } from 'node:fs'
 import {
@@ -30,6 +33,25 @@ interface Probe {
   initial?: string[]
   summary?: string
   revealed?: string[]
+  revealedOverdue?: string[]
+  overdueRowsDone?: number
+  overdueRows?: number
+  daysBeforeReveal?: string[]
+  daysAfterReveal?: string[]
+  pastHidden?: boolean
+  pastDays?: string[]
+  pastRows?: number
+  pastRowsOpen?: number
+  pastAnchor?: number[]
+  pastShownAnchor?: number[]
+  pastCollapseAnchor?: number[]
+  overdueCollapseAnchor?: number[]
+  counts?: [string, number, number][]
+  overlaps?: string[]
+  hoverChecked?: number
+  pinnedFar?: number
+  pinnedHit?: boolean
+  pinnedGround?: string
   countAfter?: string
   anchored?: number[]
   hiddenAnchor?: number[]
@@ -149,8 +171,25 @@ const script = (footer: boolean, short = false) => String.raw`(async function* (
     const scroller = ${footer} ? leaf.view.containerEl.querySelector('.cm-scroller') : root.closest('.abele-timeline-sidebar')
     const blocks = () => [...root.querySelectorAll('.abele-timeline__date-block')]
     const dates = () => blocks().map(x => x.dataset.abeleAnchor)
-    const strip = () => root.querySelector('.abele-timeline__history')
-    uiState = () => ({today:day(0),dates:dates(),history:strip()?.textContent.trim(),
+    // Two folds above today: what was left undone, and the days gone by with what was done.
+    const overdueRow = () => root.querySelector('.abele-timeline__overdue')
+    const pastRow = () => root.querySelector('.abele-timeline__history')
+    const pinned = () => root.querySelector('.abele-timeline__pinned')
+    const foldState = el => el ? [el.querySelector('.abele-timeline__overdue-count')?.getAttribute('aria-label'), el.getAttribute('aria-label')].join(' · ') : null
+    const groupDays = id => blocks().filter(x => x.dataset.timelineGroup === id).map(x => x.dataset.abeleAnchor)
+    const groupRows = id => [...root.querySelectorAll('.abele-timeline__date-block[data-timeline-group="' + id + '"] [data-timeline-item^="task:"]')]
+    const store = window.__abeleTest.GlobalStore.getInstance().tasksList.value.tasks
+    const done = el => {
+      const path = (el.dataset.abeleAnchor ?? el.querySelector('[data-abele-anchor]')?.dataset.abeleAnchor ?? '').replace(/^task:/, '')
+      const task = store.get(path)
+      if (!task) throw Error('timeline row without a stored task: ' + path)
+      return !!task.completedAt
+    }
+    // The heading's number against the tasks the list draws now: each task once, whatever days it spans.
+    const headerCount = () => Number(pinned()?.querySelector('.abele-fold-heading__count, .abele-list-section-header__count')?.textContent.trim())
+    const openTasks = () => new Set([...root.querySelectorAll('[data-timeline-item^="task:"]')].map(x => x.dataset.timelineItem)).size
+    const count = state => (report.counts ??= []).push([state, headerCount(), openTasks()])
+    uiState = () => ({today:day(0),dates:dates(),overdue:overdueRow()?.textContent.trim(),past:pastRow()?.textContent.trim(),
       viewport:[scroller.clientWidth,scroller.clientHeight],label,
       fixtureDates:[...window.__abeleTest.GlobalStore.getInstance().tasksList.value.tasks.values()]
         .filter(task=>task.taskPath.startsWith(folder+'/')&&!task.completedAt)
@@ -171,8 +210,9 @@ const script = (footer: boolean, short = false) => String.raw`(async function* (
       control.click()
       await settleUI(() => control.getAttribute('aria-checked') === String(before !== 'true'))
     }
-    const revealClick = async () => {
-      const el = strip()
+    const foldClick = async (fold) => {
+      const el = fold()
+      if (!el) throw Error('fold row missing; state=' + JSON.stringify(uiState()))
       const expanded = el.getAttribute('aria-expanded')
       if (window.__e2eHost) {
         const r = el.getBoundingClientRect()
@@ -182,7 +222,7 @@ const script = (footer: boolean, short = false) => String.raw`(async function* (
           const hit = document.elementFromPoint(x, y)
           if (y >= chromeBottom() && hit && el.contains(hit)) point ??= {x, y}
         }
-        if (!point) throw Error('history banner has no hittable point: ' + JSON.stringify({box:r.toJSON(),chrome:chromeBottom()}))
+        if (!point) throw Error('fold row has no hittable point: ' + JSON.stringify({box:r.toJSON(),chrome:chromeBottom()}))
         const {x, y} = point
         const received = []
         const record = e => received.push({ type: e.type, target: e.target.className, prevented: e.defaultPrevented })
@@ -191,12 +231,48 @@ const script = (footer: boolean, short = false) => String.raw`(async function* (
           await window.__e2eHost.tap(x, y)
           // The tap's own toggle, bounded by the former 200 ms allowance.
           for (let t = 0; t < 20 && el.isConnected && el.getAttribute('aria-expanded') === expanded; t++) await wait(10)
-          if (!el.isConnected || el.getAttribute('aria-expanded') === expanded) throw Error('Banner tap did not toggle history: ' + JSON.stringify({ x, y, hit: document.elementFromPoint(x, y)?.className, received }))
+          if (!el.isConnected || el.getAttribute('aria-expanded') === expanded) throw Error('Fold row tap did not toggle it: ' + JSON.stringify({ x, y, hit: document.elementFromPoint(x, y)?.className, received }))
         } finally {
           for (const type of ['touchstart', 'touchend', 'click']) document.removeEventListener(type, record, true)
         }
       } else el.click()
-      await until(() => strip()?.getAttribute('aria-expanded') !== expanded, 'history toggled')
+      await until(() => fold()?.getAttribute('aria-expanded') !== expanded, 'fold toggled')
+    }
+    // Fold rows, days and the pinned header never cover one another, hovered or not.
+    const intersections = (state) => {
+      const boxes = [['pinned', pinned()], ['overdue', overdueRow()], ['past', pastRow()],
+        ...blocks().map(x => [x.dataset.timelineGroup + ' ' + x.dataset.abeleAnchor, x])]
+        .filter(([, el]) => el).map(([name, el]) => [name, el.getBoundingClientRect()])
+        .filter(([, r]) => r.height > 0)
+      const top = usableTop(), bottom = scroller.getBoundingClientRect().bottom
+      for (let i = 0; i < boxes.length; i++) for (let j = i + 1; j < boxes.length; j++) {
+        const [a, ra] = boxes[i], [b, rb] = boxes[j]
+        // The days scroll under the pinned header by design; it is opaque. Elsewhere, nothing overlaps.
+        if (a === 'pinned') continue
+        if (Math.max(ra.top, rb.top) < top || Math.min(ra.bottom, rb.bottom) > bottom) continue
+        const w = Math.min(ra.right, rb.right) - Math.max(ra.left, rb.left)
+        const h = Math.min(ra.bottom, rb.bottom) - Math.max(ra.top, rb.top)
+        if (w > 0.5 && h > 0.5) (report.overlaps ??= []).push(state + ': ' + a + ' × ' + b + ' ' + JSON.stringify([ra.toJSON(), rb.toJSON()]))
+      }
+    }
+    // A real pointer over a fold row, then over the first day's first row, on a desktop.
+    const hoverCheck = async (state) => {
+      intersections(state)
+      if (window.__e2eHost) return
+      const cdp = require('@electron/remote').getCurrentWebContents().debugger
+      for (const el of [overdueRow(), pastRow(), root.querySelector('[data-timeline-item^="task:"]')]) {
+        if (!el) continue
+        const r = el.getBoundingClientRect()
+        if (r.top < usableTop() || r.bottom > scroller.getBoundingClientRect().bottom) continue
+        const x = Math.round(r.left + r.width / 2), y = Math.round(r.top + r.height / 2)
+        await cdp.sendCommand('Input.dispatchMouseEvent', { type: 'mouseMoved', x, y })
+        await new Promise(r => requestAnimationFrame(() => requestAnimationFrame(r)))
+        const hit = document.elementFromPoint(x, y)
+        if (!hit || !el.contains(hit)) (report.overlaps ??= []).push(state + ': hovered row covered by ' + hit?.className)
+        intersections(state + ' hover')
+        report.hoverChecked = (report.hoverChecked ?? 0) + 1
+      }
+      await cdp.sendCommand('Input.dispatchMouseEvent', { type: 'mouseMoved', x: 0, y: 0 })
     }
     const row = (d, n = 1) => [...root.querySelectorAll('.abele-task-view')].find(x => x.dataset.abeleAnchor === 'task:' + folder + '/Sample item ' + d + ' ' + n + '.md')
     const chromeBottom = () => {
@@ -224,7 +300,7 @@ const script = (footer: boolean, short = false) => String.raw`(async function* (
       // below newly painted predecessors before the completed toggle even began.
       const displacement = () => {
         if (!el.isConnected) throw Error('timeline fixture row was replaced while positioning')
-        return el.getBoundingClientRect().top - usableTop() - (strip()?.getBoundingClientRect().height ?? 0) - 8
+        return el.getBoundingClientRect().top - usableTop() - (pinned()?.getBoundingClientRect().height ?? 0) - 8
       }
       await settleTimelinePosition(displacement, () => {
         scroller.dispatchEvent(new WheelEvent('wheel', { bubbles: true, deltaY: 1 }))
@@ -237,7 +313,7 @@ const script = (footer: boolean, short = false) => String.raw`(async function* (
       const chrome = () => [leaf.view.containerEl.querySelector('.view-header'), root.closest('.abele-timeline-sidebar')?.querySelector('.abele-calendar')]
       let last, steady = 0
       for (let i = 0; i < 300; i++) {
-        const now = JSON.stringify([scroller.scrollTop, scroller.scrollHeight, strip()?.getBoundingClientRect().top, chromeBottom(), usableTop(), dates().length])
+        const now = JSON.stringify([scroller.scrollTop, scroller.scrollHeight, pinned()?.getBoundingClientRect().top, chromeBottom(), usableTop(), dates().length])
         const moving = renders.pending() || chrome().some(el => el && (el.getAnimations?.({ subtree: true }) ?? []).some(a => a.pending || a.playState === 'running'))
         steady = !moving && now === last ? steady + 1 : 0
         if (steady >= 6) return
@@ -254,6 +330,44 @@ const script = (footer: boolean, short = false) => String.raw`(async function* (
         scroller.scrollTop = height
         for (let t = 0; t < 14 && !has() && scroller.scrollHeight === height; t++) await wait(50)
       }
+    }
+    // The row a reader is on: the first drawn below the pinned header, an unfinished one first
+    // (it survives both directions of the completed switch), as the timeline itself picks it.
+    const readTop = () => usableTop() + (pinned()?.getBoundingClientRect().height ?? 0)
+    const taskRows = () => [...root.querySelectorAll('[data-timeline-item^="task:"]')]
+    const readRow = rows => {
+      const top = readTop(), bottom = scroller.getBoundingClientRect().bottom
+      return rows.find(el => { const r = el.getBoundingClientRect(); return r.top >= top && r.top < bottom && !el.querySelector('input:checked') }) ??
+        rows.find(el => { const r = el.getBoundingClientRect(); return r.bottom > top && r.top < bottom })
+    }
+    const groupOf = el => el.closest('.abele-timeline__date-block')
+    const rowId = el => [el.dataset.timelineItem, groupOf(el)?.dataset.timelineGroup, groupOf(el)?.dataset.abeleAnchor]
+    const rowBy = id => taskRows().find(el => JSON.stringify(rowId(el)) === JSON.stringify(id))
+    // A fold row out of reach is first scrolled to just under the pinned header, as a reader
+    // would before tapping it; nothing in the list moves it there by itself.
+    const reach = async fold => {
+      const r = fold().getBoundingClientRect()
+      if (r.top >= readTop() && r.bottom <= scroller.getBoundingClientRect().bottom) return
+      scroller.dispatchEvent(new WheelEvent('wheel', { bubbles: true, deltaY: 1 }))
+      scroller.scrollTop += r.top - readTop() - 8
+      await still()
+    }
+    // One fold click, read on the row the reader was on: a row still drawn stays where it was;
+    // when the fold takes every row in sight away, the nearest remaining row comes to that place.
+    const foldAnchor = async (fold, closing = null) => {
+      await reach(fold)
+      const read = readRow(taskRows())
+      if (!read) throw Error('no row in sight to read; state=' + JSON.stringify(uiState()))
+      const at = read.getBoundingClientRect().top
+      const survivors = taskRows().filter(el => !closing || groupOf(el)?.dataset.timelineGroup !== closing)
+      const shown = readRow(survivors)
+      const target = shown ?? survivors.reduce((near, el) => !near || Math.abs(el.getBoundingClientRect().top - at) < Math.abs(near.getBoundingClientRect().top - at) ? el : near, null)
+      if (!target) throw Error('no row survives the fold; state=' + JSON.stringify(uiState()))
+      const expected = shown ? shown.getBoundingClientRect().top : at
+      const id = rowId(target)
+      await foldClick(fold)
+      await settleUI()
+      return [expected, rowBy(id)?.getBoundingClientRect().top ?? -9999]
     }
     const shot = async name => {
       const path = shots + '/' + phase + '-' + (${short} ? 'short-' : '') + (${footer} ? 'footer' : 'sidebar') + '-' + (app.isMobile ? 'phone' : 'desktop') + '-' + name + '.png'
@@ -338,7 +452,7 @@ const script = (footer: boolean, short = false) => String.raw`(async function* (
       report.shots.push(path)
     }
     yield 'initial dates and unchanged appearance'
-    await until(() => dates().length === ${short ? 1 : 20} && strip()?.querySelector('.abele-timeline__history-count')?.getAttribute('aria-label') === ${short ? "'2 unfinished'" : "'90 unfinished'"}, 'initial fixture dates and unfinished count')
+    await until(() => dates().length === ${short ? 1 : 20} && overdueRow()?.querySelector('.abele-timeline__overdue-count')?.getAttribute('aria-label') === ${short ? "'2 unfinished'" : "'90 unfinished'"}, 'initial fixture dates and unfinished count')
     await settleUI()
     if (!${footer} && document.body.classList.contains('is-phone')) {
       const calendar = root.closest('.abele-timeline-sidebar').querySelector('.abele-calendar')
@@ -351,7 +465,9 @@ const script = (footer: boolean, short = false) => String.raw`(async function* (
         safe: bodyStyle.getPropertyValue('--safe-area-inset-top'), viewHeader: bodyStyle.getPropertyValue('--view-header-height') }
     }
     report.initial = dates()
-    report.summary = strip() ? [strip().querySelector('.abele-timeline__history-count')?.getAttribute('aria-label'), strip().getAttribute('aria-label')].join(' · ') : null
+    report.summary = foldState(overdueRow())
+    // Done tasks are hidden, so there is no past day to open yet.
+    report.pastHidden = !pastRow()
     // Bring today's unchanged block into sight even in the baseline (which starts in history).
     if (!row(0)) await scrollToRow(() => row(0), 6)
     await until(() => row(0)?.textContent.includes('Sample item 0 1'))
@@ -363,24 +479,36 @@ const script = (footer: boolean, short = false) => String.raw`(async function* (
     // Lazy markdown titles must be painted before the row's baseline is measured.
     await until(() => row(0)?.textContent.includes('Sample item 0 1'))
     if (${short}) {
-      yield 'short-list completion and history anchors'
+      yield 'short-list completion and fold anchors'
+      count('initial')
       const before = row(0).getBoundingClientRect().top
       await toggleCompleted()
       report.anchored = [before, row(0)?.getBoundingClientRect().top ?? -9999]
+      count('completed shown')
       await shot('completed')
       const beforeHide = row(0).getBoundingClientRect().top
       await toggleCompleted()
       report.hiddenAnchor = [beforeHide, row(0)?.getBoundingClientRect().top ?? -9999]
-      const beforeReveal = row(0).getBoundingClientRect().top
-      await revealClick()
-      await settleUI()
-      report.revealAnchor = [beforeReveal, row(0).getBoundingClientRect().top]
+      report.revealAnchor = await foldAnchor(overdueRow)
       report.revealed = dates()
-      const beforeCollapse = row(0).getBoundingClientRect().top
-      await revealClick()
-      await settleUI()
-      report.collapseAnchor = [beforeCollapse, row(0).getBoundingClientRect().top]
+      report.overdueRows = groupRows('overdue').length
+      report.overdueRowsDone = groupRows('overdue').filter(done).length
+      count('overdue open')
+      const beforeShown = row(0).getBoundingClientRect().top
+      await toggleCompleted()
+      report.pastShownAnchor = [beforeShown, row(0).getBoundingClientRect().top]
+      count('overdue open, completed shown')
+      report.pastAnchor = await foldAnchor(pastRow)
+      report.pastDays = groupDays('history')
+      report.pastRows = groupRows('history').length
+      report.pastRowsOpen = groupRows('history').filter(x => !done(x)).length
+      count('both folds open')
+      report.overdueCollapseAnchor = await foldAnchor(overdueRow, 'overdue')
+      count('past days open')
+      report.collapseAnchor = await foldAnchor(pastRow, 'history')
       report.collapsed = dates()
+      await toggleCompleted()
+      count('folded, completed hidden')
       root.querySelector('.abele-timeline__search-toggle').click()
       await until(() => root.querySelector('.abele-timeline__search input'), 'search input')
       const input = root.querySelector('.abele-timeline__search input')
@@ -391,19 +519,21 @@ const script = (footer: boolean, short = false) => String.raw`(async function* (
       return JSON.stringify(report)
     }
 
-    yield 'sticky banner and native scroll'
-    // The folded banner stays at the usable edge, without changing existing pane spacing.
+    yield 'pinned header and native scroll'
+    // The header with its switches stays at the usable edge, without changing pane spacing.
     const stickyScroll = scroller.scrollTop
+    await hoverCheck('at rest')
     scroller.scrollTop += 400
     await still()
-    report.chromeGap = strip().getBoundingClientRect().top - chromeBottom()
-    report.sticky = Math.abs(strip().getBoundingClientRect().top - usableTop())
+    report.chromeGap = pinned().getBoundingClientRect().top - chromeBottom()
+    report.sticky = Math.abs(pinned().getBoundingClientRect().top - usableTop())
+    await hoverCheck('scrolled')
     scroller.scrollTop = stickyScroll
     await still()
 
-    // Reach the upper boundary and scroll past it: input stays native, history stays folded.
+    // Reach the upper boundary and scroll past it: input stays native, the folds stay folded.
     const first = blocks()[0]
-    scroller.scrollTop += first.getBoundingClientRect().top - usableTop() - (strip()?.getBoundingClientRect().height ?? 0)
+    scroller.scrollTop += first.getBoundingClientRect().top - usableTop() - (pinned()?.getBoundingClientRect().height ?? 0)
     await still()
     const nativeBefore = scroller.scrollTop
     let prevented = false, moves = 0, fingerY = null, inputDistance = 0, nativeEnd = null
@@ -468,54 +598,69 @@ const script = (footer: boolean, short = false) => String.raw`(async function* (
     scroller.removeEventListener('touchend', touchEnd)
     scroller.removeEventListener('wheel', wheel)
     report.scrollRevealed = dates()
-    yield 'revealing history and completion anchors'
-    await align(row(0)); await wait(500)
-    const beforeReveal = row(0).getBoundingClientRect().top
-    await revealClick()
-    await settleUI()
-    report.revealAnchor = [beforeReveal, row(0).getBoundingClientRect().top]
+    yield 'pinned header far down, and the count of every open task'
+    // Every page ahead drawn, the header still pinned and its switch still under the pointer.
+    await scrollToRow(() => row(45), 6)
+    await until(() => row(45), 'last fixture day drawn')
+    scroller.scrollTop = scroller.scrollHeight
+    await still()
+    report.pinnedFar = Math.abs(pinned().getBoundingClientRect().top - usableTop())
+    const switchEl = root.querySelector('.abele-timeline__completed-toggle')
+    const switchBox = switchEl.getBoundingClientRect()
+    report.pinnedHit = switchEl.contains(document.elementFromPoint(switchBox.left + switchBox.width / 2, switchBox.top + switchBox.height / 2))
+    report.pinnedGround = getComputedStyle(pinned()).backgroundColor
+    await hoverCheck('far down')
+    count('folded, completed hidden')
+    await shot('far-down')
+    yield 'revealing overdue, then past days, and completion anchors'
+    report.daysBeforeReveal = groupDays('days')
+    report.revealAnchor = await foldAnchor(overdueRow)
     report.revealed = dates()
-    report.countAfter = strip() ? [strip().querySelector('.abele-timeline__history-count')?.getAttribute('aria-label'), strip().getAttribute('aria-label')].join(' · ') : null
+    report.revealedOverdue = groupDays('overdue')
+    report.daysAfterReveal = groupDays('days')
+    report.overdueRows = groupRows('overdue').length
+    report.overdueRowsDone = groupRows('overdue').filter(done).length
+    report.countAfter = foldState(overdueRow())
+    count('overdue open')
+    await hoverCheck('overdue open')
+    await shot('overdue-open')
     // Keep the first incomplete row under the eye while completed rows appear above it.
     await align(row(0)); await wait(500)
     const before = row(0).getBoundingClientRect().top
     await toggleCompleted()
     report.anchored = [before, row(0)?.getBoundingClientRect().top ?? -9999]
-    report.allHistory = dates().includes('date:' + day(-90))
-    report.pastCompleted = !!row(-45, 0)
+    count('overdue open, completed shown')
+    report.pastAnchor = await foldAnchor(pastRow)
+    report.allHistory = groupDays('history').includes('date:' + day(-90))
+    report.pastCompleted = !!groupRows('history').find(x => x.dataset.timelineItem && (x.dataset.abeleAnchor ?? x.querySelector('[data-abele-anchor]')?.dataset.abeleAnchor) === 'task:' + folder + '/Sample item -45 0.md')
+    report.pastDays = groupDays('history')
+    report.pastRows = groupRows('history').length
+    report.pastRowsOpen = groupRows('history').filter(x => !done(x)).length
     report.overflow = scroller.scrollWidth - scroller.clientWidth
+    count('both folds open, completed shown')
+    await hoverCheck('both open')
     await shot('completed')
+    await align(row(0)); await wait(500)
     const beforeHide = row(0)?.getBoundingClientRect().top ?? -9999
     await toggleCompleted()
     report.hiddenAnchor = [beforeHide, row(0)?.getBoundingClientRect().top ?? -9999]
-    yield 'future rows and collapsing history'
+    yield 'future rows and folding both away'
     await scrollToRow(() => row(25), 4)
     await until(() => row(25))
     await align(row(25)); await settleUI()
     const futureBefore = row(25).getBoundingClientRect().top
     await toggleCompleted()
     report.futureAnchor = [futureBefore, row(25)?.getBoundingClientRect().top ?? -9999]
-    const beforeCollapse = row(25).getBoundingClientRect().top
-    await revealClick()
-    await settleUI()
-    report.collapseAnchor = [beforeCollapse, row(25).getBoundingClientRect().top]
+    // Folding away the rows being read brings the nearest remaining row to where they were.
+    report.pastCollapseAnchor = await foldAnchor(pastRow, 'history')
+    report.removedPastAnchor = await foldAnchor(overdueRow, 'overdue')
     report.collapsed = dates()
-    report.collapseSummary = strip() ? [strip().querySelector('.abele-timeline__history-count')?.getAttribute('aria-label'), strip().getAttribute('aria-label')].join(' · ') : null
-    const beforeRereveal = row(25).getBoundingClientRect().top
-    await revealClick()
-    await settleUI()
-    report.rerevealAnchor = [beforeRereveal, row(25).getBoundingClientRect().top]
-    await align(row(-40)); await settleUI()
-    const removedBefore = row(-40).getBoundingClientRect().top
-    await revealClick()
-    await settleUI()
-    report.removedPastAnchor = [removedBefore, row(0, 0).getBoundingClientRect().top]
+    report.collapseSummary = foldState(overdueRow())
     await shot('hidden-past')
-    await revealClick()
-    await settleUI()
+    report.rerevealAnchor = await foldAnchor(overdueRow)
     if (${footer}) {
-      yield 'reopening saved history and row anchor'
-      // A past row's saved anchor is useful only if reopening actually recreates that day.
+      yield 'reopening a saved overdue place and row anchor'
+      // A saved overdue row is useful only if reopening opens its fold and draws that day again.
       await toggleCompleted()
       config.rememberNotePlaces = true
       await align(row(-1)); await wait(1500)
@@ -528,21 +673,21 @@ const script = (footer: boolean, short = false) => String.raw`(async function* (
       // that is later than any fixed wait, so the row is read once the view stopped moving.
       const savedRow = () => [...(leaf.view.containerEl.querySelector('.abele-timeline')?.querySelectorAll('.abele-task-view') ?? [])]
         .find(x => x.dataset.abeleAnchor === 'task:' + folder + '/Sample item -1 1.md')
-      if (await until(() => savedRow(), 'reopened past row').catch(() => false))
+      if (await until(() => savedRow(), 'reopened overdue row').catch(() => false))
         await settleUI(() => true, leaf.view.containerEl.querySelector('.abele-timeline'), leaf.view.containerEl.querySelector('.cm-scroller'))
       const reopened = leaf.view.containerEl.querySelector('.abele-timeline')
       const returned = savedRow()
       report.restoredHistory = !!returned
       report.restoredAnchor = [beforeReturn, returned ? returned.getBoundingClientRect().top - leaf.view.containerEl.querySelector('.cm-scroller').getBoundingClientRect().top : -9999]
-      reopened.querySelector('.abele-timeline__history').click()
-      await until(() => reopened.querySelector('.abele-timeline__history')?.getAttribute('aria-expanded') === 'false', 'reopened history folded')
+      reopened.querySelector('.abele-timeline__overdue').click()
+      await until(() => reopened.querySelector('.abele-timeline__overdue')?.getAttribute('aria-expanded') === 'false', 'reopened overdue folded')
       await settleUI(() => true, reopened, leaf.view.containerEl.querySelector('.cm-scroller'))
       await leaf.openFile(app.vault.getAbstractFileByPath(folder + '/Sample item 0 1.md'))
       await wait(500)
       await leaf.openFile(app.vault.getAbstractFileByPath(folder + '/Sample group.md'))
       await wait(2000)
       const foldedAgain = leaf.view.containerEl.querySelector('.abele-timeline')
-      report.restoredCollapsed = foldedAgain?.querySelector('.abele-timeline__history')?.getAttribute('aria-expanded') === 'false' &&
+      report.restoredCollapsed = foldedAgain?.querySelector('.abele-timeline__overdue')?.getAttribute('aria-expanded') === 'false' &&
         ![...foldedAgain.querySelectorAll('.abele-timeline__date-block')].some(x => x.dataset.abeleAnchor < 'date:' + day(0))
     }
   } catch (e) { report.error = String(e) + '\n' + (e?.stack ?? '') }
@@ -681,23 +826,64 @@ describe.skipIf(!available)('task timeline scrolling', () => {
           const p = (kind === 'desktop' ? shortDesktop : shortMobile)[index]
           expect(p.error).toBeUndefined()
           expect(p.emptySpace).toBe(0)
-          // History keeps completed past days: the 45 completed-only archive days join
-          // yesterday and today.
-          expect(p.revealed).toHaveLength(47)
+          // Overdue opens yesterday's undone rows above today, and nothing done.
+          expect(p.revealed).toHaveLength(2)
+          expect(p.overdueRows).toBe(2)
+          expect(p.overdueRowsDone).toBe(0)
+          // Past days open on their own: the 45 completed-only archive days and yesterday's done row.
+          expect(p.pastDays).toHaveLength(46)
+          expect(p.pastRows).toBe(46)
+          expect(p.pastRowsOpen).toBe(0)
           expect(p.collapsed).toHaveLength(1)
-          for (const pair of [p.anchored, p.hiddenAnchor, p.revealAnchor, p.collapseAnchor]) {
+          for (const pair of [
+            p.anchored,
+            p.hiddenAnchor,
+            p.revealAnchor,
+            p.pastShownAnchor,
+            p.pastAnchor,
+            p.overdueCollapseAnchor,
+            p.collapseAnchor,
+          ]) {
             expect(pair).toHaveLength(2)
             expect(Math.abs(pair![1] - pair![0])).toBeLessThanOrEqual(1)
           }
         }
       )
       it.skipIf(kind === 'desktop' && onPhone())(
-        `${kind}, ${owner}: scroll stays native, one click reveals all past days without moving the row`,
+        `${kind}, ${owner}: the heading counts exactly the tasks open in the list, in every fold state`,
+        () => {
+          for (const p of [probe(), (kind === 'desktop' ? shortDesktop : shortMobile)[index]]) {
+            expect(p.error).toBeUndefined()
+            for (const [state, heading, open] of p.counts!)
+              expect(heading, `${state}: heading against open tasks`).toBe(open)
+          }
+          // Today on: 46 days of two undone; overdue 45 days of two; done rows 46 + 90 more.
+          expect(probe().counts!.map(([state, heading]) => [state, heading])).toEqual([
+            ['folded, completed hidden', 92],
+            ['overdue open', 182],
+            ['overdue open, completed shown', 228],
+            ['both folds open, completed shown', 318],
+          ])
+          const short = (kind === 'desktop' ? shortDesktop : shortMobile)[index]
+          expect(short.counts!.map(([state, heading]) => [state, heading])).toEqual([
+            ['initial', 2],
+            ['completed shown', 3],
+            ['overdue open', 4],
+            ['overdue open, completed shown', 5],
+            ['both folds open', 51],
+            ['past days open', 49],
+            ['folded, completed hidden', 2],
+          ])
+        }
+      )
+      it.skipIf(kind === 'desktop' && onPhone())(
+        `${kind}, ${owner}: scroll stays native, and Overdue opens only what was left undone without moving the row`,
         () => {
           const p = probe()
           expect(p.error).toBeUndefined()
           expect(p.initial).toHaveLength(20)
-          expect(p.summary).toContain('90 unfinished')
+          expect(p.summary).toBe('90 unfinished · Show overdue tasks')
+          expect(p.pastHidden).toBe(true)
           expect(p.scrollRevealed).toEqual(p.initial)
           expect(p.nativeInput).toBe(true)
           expect(p.nativeScroll).toHaveLength(2)
@@ -707,9 +893,13 @@ describe.skipIf(!available)('task timeline scrolling', () => {
           // Touch slop is platform-owned, not a reason to accept zero or reversed scroll.
           expect(Math.abs(displacement - p.nativeDistance!)).toBeLessThanOrEqual(24)
           expect(p.nativeSettled).toBeGreaterThanOrEqual(displacement - 2)
-          // 20 initial days, 45 unfinished past days and 45 completed-only archive days.
-          expect(p.revealed).toHaveLength(110)
-          expect(p.countAfter).toContain('90 unfinished · Hide all past days')
+          // 45 days with two undone each, and no completed-only archive day among them.
+          expect(p.revealedOverdue).toHaveLength(45)
+          expect(p.revealedOverdue!.every((date) => date < p.initial![0])).toBe(true)
+          expect(p.overdueRows).toBe(90)
+          expect(p.overdueRowsDone).toBe(0)
+          expect(p.daysAfterReveal).toEqual(p.daysBeforeReveal)
+          expect(p.countAfter).toBe('90 unfinished · Hide overdue tasks')
           expect(p.chromeGap).toBeGreaterThanOrEqual(-1)
           if (index === 0 && kind === 'phone width')
             expect(p.calendarGap, JSON.stringify(p.calendarLayout)).toBeGreaterThanOrEqual(0)
@@ -720,13 +910,41 @@ describe.skipIf(!available)('task timeline scrolling', () => {
         }
       )
       it.skipIf(kind === 'desktop' && onPhone())(
-        `${kind}, ${owner}: hides and reopens history without moving a surviving row, or replaces a removed past row with its nearest remaining row`,
+        `${kind}, ${owner}: the header stays pinned and reachable far down, and no row covers another, hovered or not`,
+        () => {
+          const p = probe()
+          expect(p.error).toBeUndefined()
+          expect(p.pinnedFar).toBeLessThanOrEqual(2)
+          expect(p.pinnedHit).toBe(true)
+          // Opaque, so the days passing under it never show through.
+          expect(p.pinnedGround).toMatch(/^rgb\(/)
+          expect(p.overlaps ?? []).toEqual([])
+          if (!onPhone()) expect(p.hoverChecked).toBeGreaterThan(0)
+        }
+      )
+      it.skipIf(kind === 'desktop' && onPhone())(
+        `${kind}, ${owner}: Past days open apart from Overdue, with every done row and none left undone`,
+        () => {
+          const p = probe()
+          expect(p.error).toBeUndefined()
+          // 45 completed-only archive days and 45 days with one done row each.
+          expect(p.pastDays).toHaveLength(90)
+          expect(p.pastRows).toBe(90)
+          expect(p.pastRowsOpen).toBe(0)
+          expect(p.allHistory).toBe(true)
+          expect(p.pastCompleted).toBe(true)
+          expect(p.pastAnchor).toHaveLength(2)
+          expect(Math.abs(p.pastAnchor![1] - p.pastAnchor![0])).toBeLessThanOrEqual(1)
+        }
+      )
+      it.skipIf(kind === 'desktop' && onPhone())(
+        `${kind}, ${owner}: folds away the rows in sight by bringing the nearest remaining row to their place, and reopens without moving a row`,
         () => {
           const p = probe()
           expect(p.error).toBeUndefined()
           expect(p.collapsed!.every((date) => date >= p.initial![0])).toBe(true)
-          expect(p.collapseSummary).toContain('90 unfinished · Show all past days')
-          for (const pair of [p.collapseAnchor, p.rerevealAnchor, p.removedPastAnchor]) {
+          expect(p.collapseSummary).toBe('90 unfinished · Show overdue tasks')
+          for (const pair of [p.pastCollapseAnchor, p.removedPastAnchor, p.rerevealAnchor]) {
             expect(pair).toHaveLength(2)
             expect(Math.abs(pair![1] - pair![0])).toBeLessThanOrEqual(1)
           }
@@ -734,7 +952,7 @@ describe.skipIf(!available)('task timeline scrolling', () => {
       )
       if (index === 1)
         it.skipIf(kind === 'desktop' && onPhone())(
-          `${kind}, ${owner}: reopening restores a revealed past-row anchor`,
+          `${kind}, ${owner}: reopening restores an open overdue fold and its row anchor`,
           () => {
             const p = probe()
             expect(p.error).toBeUndefined()
@@ -762,12 +980,10 @@ describe.skipIf(!available)('task timeline scrolling', () => {
         }
       )
       it.skipIf(kind === 'desktop' && onPhone())(
-        `${kind}, ${owner}: completed toggles hold the same row within one pixel and include all revealed history`,
+        `${kind}, ${owner}: completed toggles hold the same row within one pixel`,
         () => {
           const p = probe()
           expect(p.error).toBeUndefined()
-          expect(p.allHistory).toBe(true)
-          expect(p.pastCompleted).toBe(true)
           for (const pair of [p.anchored, p.hiddenAnchor, p.futureAnchor]) {
             expect(pair).toHaveLength(2)
             expect(Math.abs(pair![1] - pair![0])).toBeLessThanOrEqual(1)
