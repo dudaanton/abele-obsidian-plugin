@@ -28,7 +28,12 @@
               "
             />
             <p class="abele-rewind__note">{{ explain(item) }}</p>
-            <Diff v-if="item.diff" :text-left="item.diff.old" :text-right="item.diff.new" />
+            <Diff
+              v-if="item.diff"
+              :text-left="item.diff.old"
+              :text-right="item.diff.new"
+              :path="item.path"
+            />
           </div>
         </TreeItem>
       </div>

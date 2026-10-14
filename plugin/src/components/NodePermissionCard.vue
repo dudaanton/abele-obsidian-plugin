@@ -18,6 +18,7 @@
         "
         :text-left="prompt.input.old_string"
         :text-right="prompt.input.new_string"
+        :path="typeof prompt.input.file_path === 'string' ? prompt.input.file_path : undefined"
       />
       <pre
         class="abele-tool-approval__code"

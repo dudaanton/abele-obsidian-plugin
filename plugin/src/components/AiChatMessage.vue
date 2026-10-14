@@ -131,6 +131,7 @@
           v-else-if="message.toolDiff && (!compactToolDetails || expanded)"
           :text-left="message.toolDiff.old"
           :text-right="message.toolDiff.new"
+          :path="diffPath"
           class="abele-chat-msg__diff"
         />
       </template>
@@ -413,6 +414,13 @@ const {
 
 const originalOpen = ref(false)
 const lastRevision = computed(() => props.message.revisions?.at(-1))
+// The file an edit or a write changed — the plugin's own tools say `path`, Claude Code's
+// `file_path` — so its comparison is coloured as that file's code.
+const diffPath = computed(() => {
+  const params = props.message.toolParams
+  const path = params?.path ?? params?.file_path
+  return typeof path === 'string' ? path : undefined
+})
 
 function onMessageClick(event: MouseEvent) {
   previewContentImage(event)

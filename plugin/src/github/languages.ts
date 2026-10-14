@@ -7,6 +7,7 @@
  * tokens, so every line came out plain anyway — at the cost of a parse.
  */
 import type { Extension } from '@codemirror/state'
+import { LanguageSupport, type Language } from '@codemirror/language'
 import { json } from '@codemirror/lang-json'
 import { javascript } from '@codemirror/lang-javascript'
 import { css } from '@codemirror/lang-css'
@@ -39,4 +40,10 @@ export function languageFor(path: string): Extension[] {
   const ext = name.includes('.') ? (name.split('.').pop() ?? '').toLowerCase() : ''
   const bundled = BUNDLED[ext]
   return bundled ? [bundled()] : []
+}
+
+/** The parser behind `languageFor`, for code drawn without an editor; null for plain text. */
+export function languageOf(path: string): Language | null {
+  const support = languageFor(path)[0]
+  return support instanceof LanguageSupport ? support.language : null
 }

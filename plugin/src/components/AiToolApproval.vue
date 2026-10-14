@@ -34,6 +34,7 @@
         v-if="currentContent !== null"
         :text-left="currentContent"
         :text-right="String(params.content || '')"
+        :path="String(params.path || '')"
         class="abele-tool-approval__diff"
       />
       <pre v-else class="abele-tool-approval__code"><code>{{ params.content }}</code></pre>
@@ -46,6 +47,7 @@
         v-if="params.old_string || params.new_string"
         :text-left="String(params.old_string || '')"
         :text-right="String(params.new_string || '')"
+        :path="String(params.path || '')"
         class="abele-tool-approval__diff"
       />
     </template>

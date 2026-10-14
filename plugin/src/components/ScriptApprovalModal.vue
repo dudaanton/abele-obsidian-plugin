@@ -39,6 +39,7 @@
           class="abele-script-approval__diff"
           :text-left="request.previousSource"
           :text-right="request.source"
+          :path="request.path"
           layout="auto"
         />
         <!-- The code as Obsidian draws a code block, coloured by its own highlighter. -->

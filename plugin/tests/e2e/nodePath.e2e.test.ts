@@ -21,6 +21,13 @@ async function capture(name: string) {
   )
 }
 
+/** The comparison of a code file is coloured the way the code view colours the file. */
+async function checkDiffColours() {
+  await evalLong(
+    `(async()=>{${prelude}await until(()=>visible('.abele-file-view .abele-diff_code .abele-diff__line_added .abele-diff__text'));const text=visible('.abele-file-view .abele-diff__line_added .abele-diff__text');const keyword=[...text.querySelectorAll('span[class]')].find(s=>s.textContent==='const'&&!s.classList.contains('abele-diff__changed'));if(!keyword)throw Error('Syntax colours missing in the diff: '+text.innerHTML);if(getComputedStyle(keyword).color===getComputedStyle(text).color)throw Error('The keyword is drawn in the text colour');if(text.textContent!=='export const value = 3')throw Error('The coloured line reads '+text.textContent);return 'diff colours'})()`
+  )
+}
+
 async function reopenNodePane(name: string) {
   try {
     await evalLong(
@@ -340,6 +347,7 @@ it('pairs and opens target-bound node files history editor and fake chats in the
       `(async()=>{${prelude}const panel=visible('.abele-node-panel');const file=[...panel.querySelectorAll('.tree-item-self')].find(r=>r.textContent.includes('sample.ts'));file.click();await until(()=>visible('.abele-file-view')?.textContent.includes('value = 3'));const view=app.workspace.getLeavesOfType('abele-node-file')[0].view;if(view.file.mode.value!=='diff')throw Error('Changed file did not default to diff');if(JSON.stringify(view.getState()).includes('wss://'))throw Error('Transport URL leaked into layout');return 'diff'})()`
     )
     await capture('desktop-diff')
+    await checkDiffColours()
     await selectText('.abele-file-view .abele-diff__line_added .abele-diff__text')
     await capture('desktop-diff-selection')
     await clearSelection()
@@ -495,6 +503,7 @@ it('pairs and opens target-bound node files history editor and fake chats in the
       `(async()=>{${prelude}const panel=visible('.abele-node-panel');[...panel.querySelectorAll('.tree-item-self')].find(r=>r.textContent.includes('sample.ts')).click();await until(()=>visible('.abele-file-view'));if(app.workspace.leftSplit.collapsed===false)throw Error('File did not close the drawer');return JSON.stringify({width:innerWidth,height:innerHeight})})()`
     )
     await capture('phone-diff')
+    await checkDiffColours()
     await selectText('.abele-file-view .abele-diff__line_added .abele-diff__text')
     await capture('phone-diff-selection')
     await clearSelection()

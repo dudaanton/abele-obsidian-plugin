@@ -75,6 +75,7 @@ for (const mobile of [false, true]) {
             background: string
             hitHeader: boolean
             sideways: number
+            colours: string[]
           }>(
             `(async () => {
           ${PRELUDE}
@@ -119,6 +120,10 @@ for (const mobile of [false, true]) {
               background: getComputedStyle(head).backgroundColor,
               hitHeader: head === hit || head.contains(hit),
               sideways: main.scrollWidth - main.clientWidth,
+              // The code's words in the code view's colours: each distinct colour a keyword,
+              // a number or a comment on a changed line is drawn in, beside the plain text's.
+              colours: [...new Set([...root.querySelectorAll('.abele-github-code__line_add span[class], .abele-github-code__line_del span[class]')].map(s => getComputedStyle(s).color))]
+                .filter(c => c !== getComputedStyle(root.querySelector('.abele-github-code .cm-content')).color),
             }
             const path = ${JSON.stringify(shots)} + '/${mobile ? 'phone' : 'desktop'}-${kind}.png'
             if (window.__e2eHost) await window.__e2eHost.shot(path)
@@ -141,6 +146,8 @@ for (const mobile of [false, true]) {
           expect(report.background).not.toBe('rgba(0, 0, 0, 0)')
           expect(report.hitHeader).toBe(true)
           expect(report.sideways).toBe(0)
+          // Keywords, numbers and comments each in their own colour, on added and removed lines.
+          if (kind === 'diff') expect(report.colours.length).toBeGreaterThanOrEqual(3)
         },
         120_000
       )

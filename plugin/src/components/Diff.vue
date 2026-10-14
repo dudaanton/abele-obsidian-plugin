@@ -2,7 +2,7 @@
   <div
     ref="root"
     class="abele-diff diff-view"
-    :class="[`abele-diff_${shown}`, { 'abele-diff_empty': !changed }]"
+    :class="[`abele-diff_${shown}`, { 'abele-diff_empty': !changed, 'abele-diff_code': syntax }]"
     :style="{ '--abele-diff-digits': digits }"
   >
     <div v-if="title || $slots.title || changed" class="abele-diff__header">
@@ -69,10 +69,13 @@
           ><span class="abele-diff__sign">{{ sign(row) }}</span
           ><span class="abele-diff__text"
             ><span
-              v-for="(piece, p) in row.pieces"
+              v-for="(piece, p) in painted(row)"
               :key="p"
               :class="{ 'diff-changed abele-diff__changed': piece.changed && row.kind !== 'same' }"
-              >{{ piece.text }}</span
+              ><template v-for="(part, q) in piece.parts" :key="q"
+                ><span v-if="part.cls" :class="part.cls">{{ part.text }}</span
+                ><template v-else>{{ part.text }}</template></template
+              ></span
             ></span
           >
         </div>
@@ -112,13 +115,16 @@
               ><span class="abele-diff__sign">{{ sign(pair[side]!) }}</span
               ><span class="abele-diff__text"
                 ><span
-                  v-for="(piece, p) in pair[side]!.pieces"
+                  v-for="(piece, p) in painted(pair[side]!)"
                   :key="p"
                   :class="{
                     'diff-changed abele-diff__changed':
                       piece.changed && pair[side]!.kind !== 'same',
                   }"
-                  >{{ piece.text }}</span
+                  ><template v-for="(part, q) in piece.parts" :key="q"
+                    ><span v-if="part.cls" :class="part.cls">{{ part.text }}</span
+                    ><template v-else>{{ part.text }}</template></template
+                  ></span
                 ></span
               >
             </template>
@@ -133,10 +139,12 @@
 // What changed between two versions of a text, drawn the way Obsidian draws its own comparison
 // in file recovery and sync history: removed lines in its error colour, added ones in its
 // success colour, the changed words inside them stronger, unchanged stretches folded away.
-// A sign before each line says the same without colour.
-import { computed, ref, watch } from 'vue'
+// A sign before each line says the same without colour. A file's code is coloured the way the
+// plugin's code view colours it.
+import { computed, ref, watch, watchEffect } from 'vue'
 import { useResizeObserver } from '@vueuse/core'
 import { diffLines, foldUnchanged, pairRows, type DiffLine, type DiffRow } from './diffModel'
+import { lineTokens, mountSyntaxStyles, paint, type PaintedPiece } from './diffSyntax'
 import Icon from './obsidian/Icon.vue'
 
 const props = withDefaults(
@@ -160,6 +168,8 @@ const props = withDefaults(
     emptyText?: string
     /** What is compared, usually the file's path; shown in the header beside the counts. */
     title?: string
+    /** The compared file's path, when it is code: its extension picks the colours. */
+    path?: string
   }>(),
   {
     layout: 'unified',
@@ -168,6 +178,7 @@ const props = withDefaults(
     labelAfter: undefined,
     emptyText: 'No changes',
     title: undefined,
+    path: undefined,
   }
 )
 
@@ -182,6 +193,22 @@ watch(
   { immediate: true }
 )
 const pairs = computed(() => pairRows(rows.value))
+
+// Each version is parsed whole, once, so a line in a comment that opened above it is coloured as
+// one; a line takes its colours from the version it belongs to.
+const syntax = computed(() => {
+  const left = lineTokens(props.textLeft, props.path)
+  const right = left && lineTokens(props.textRight, props.path)
+  return left && right ? { left, right } : null
+})
+const painted = (line: DiffLine): PaintedPiece[] => {
+  const tokens = syntax.value
+  if (!tokens) return line.pieces.map((piece) => ({ ...piece, parts: [{ text: piece.text }] }))
+  return paint(
+    line.pieces,
+    line.kind === 'added' ? tokens.right[line.lineB - 1] : tokens.left[line.lineA - 1]
+  )
+}
 const folded = computed(() => rows.value.some((r) => r.kind === 'fold'))
 
 // Side by side needs about two short lines of text across; narrower than that, as a sidebar
@@ -195,6 +222,9 @@ useResizeObserver(root, ([entry]) => {
   if (!el) return
   const em = parseFloat(el.win.getComputedStyle(el).fontSize) || 16
   roomy.value = entry.contentRect.width >= SPLIT_EMS * em
+})
+watchEffect(() => {
+  if (syntax.value && root.value) mountSyntaxStyles(root.value.ownerDocument)
 })
 const shown = computed(() =>
   props.layout !== 'auto' ? props.layout : (chosen.value ?? (roomy.value ? 'split' : 'unified'))
@@ -332,6 +362,10 @@ const lineClass = (line: DiffLine) => ({
 .abele-diff__text {
   flex: 1 1 auto;
   min-width: 0;
+}
+// Code reads in the code font, as it does in a code block and in the code view.
+.abele-diff_code .abele-diff__text {
+  font-family: var(--font-monospace);
 }
 // A little air between lines, more than the leading inside a wrapped one, so a long line that
 // wraps still reads as one line and not as two.

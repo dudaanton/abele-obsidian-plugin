@@ -4,6 +4,7 @@
       v-if="!image && !metadataNote && mode === 'diff' && change"
       :text-left="change.before"
       :text-right="change.after"
+      :path="path"
       :layout="layout"
       class="abele-file-view__card"
     >

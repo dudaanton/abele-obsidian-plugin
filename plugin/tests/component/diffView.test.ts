@@ -4,6 +4,8 @@
  */
 import { describe, it, expect } from 'vitest'
 import { mount } from '@vue/test-utils'
+import { defaultHighlightStyle } from '@codemirror/language'
+import { tags } from '@lezer/highlight'
 import Diff from '@/components/Diff.vue'
 
 const before = Array.from({ length: 12 }, (_, i) => `line ${i + 1}`).join('\n')
@@ -58,5 +60,87 @@ describe('Diff', () => {
     expect(view.findAll('.abele-diff__line_left.abele-diff__line_removed')).toHaveLength(1)
     expect(view.findAll('.abele-diff__line_right.abele-diff__line_added')).toHaveLength(2)
     expect(view.findAll('.abele-diff__line_blank')).toHaveLength(1)
+  })
+
+  describe('of code', () => {
+    const keyword = defaultHighlightStyle.style([tags.keyword])!
+    const string = defaultHighlightStyle.style([tags.string])!
+    const tokens = (view: ReturnType<typeof mount>, selector: string) =>
+      view
+        .get(selector)
+        .findAll('.abele-diff__text span[class]')
+        .filter((s) => s.classes().length > 0 && !s.classes().includes('abele-diff__changed'))
+        .map((s) => [s.element.textContent, s.classes().join(' ')])
+
+    it("colours a file's code the way the code view does, on both sides", () => {
+      const view = mount(Diff, {
+        props: {
+          textLeft: 'const a = 1\nexport function f() {}',
+          textRight: "const a = 'two'\nexport function f() {}",
+          path: 'src/sample.ts',
+        },
+      })
+
+      expect(view.classes()).toContain('abele-diff_code')
+      expect(tokens(view, '.abele-diff__line_removed')).toContainEqual(['const', keyword])
+      expect(tokens(view, '.abele-diff__line_added')).toContainEqual(["'two'", string])
+      expect(tokens(view, '.abele-diff__line_same')).toContainEqual(['function', keyword])
+      // The changed words keep their mark, with the colours inside it.
+      const changed = view.get('.abele-diff__line_added .abele-diff__changed')
+      expect(changed.text()).toBe("'two'")
+      expect(changed.get('span').classes()).toContain(string)
+      // Copying a line still gives exactly its text.
+      expect(view.get('.abele-diff__line_added .abele-diff__text').element.textContent).toBe(
+        "const a = 'two'"
+      )
+    })
+
+    it('colours a line by the comment that opened above it', () => {
+      const comment = defaultHighlightStyle.style([tags.comment])!
+      const view = mount(Diff, {
+        props: {
+          textLeft: '/* one\ntwo */\nlet x = 1',
+          textRight: '/* one\nthree */\nlet x = 1',
+          path: 'sample.ts',
+        },
+      })
+      expect(tokens(view, '.abele-diff__line_added')).toEqual([
+        ['three', comment],
+        [' */', comment],
+      ])
+    })
+
+    it('colours the side-by-side layout too', () => {
+      const view = mount(Diff, {
+        props: {
+          textLeft: 'let x = 1',
+          textRight: 'let x = 2',
+          path: 'sample.js',
+          layout: 'split',
+        },
+      })
+
+      expect(tokens(view, '.abele-diff__line_left')).toContainEqual(['let', keyword])
+      expect(tokens(view, '.abele-diff__line_right')).toContainEqual(['let', keyword])
+    })
+
+    it('leaves prose and unknown files as they were', () => {
+      for (const path of [undefined, 'notes/sample.md', 'sample.unknown']) {
+        const view = mount(Diff, {
+          props: { textLeft: 'const a = 1', textRight: 'const a = 2', path },
+        })
+        expect(view.classes()).not.toContain('abele-diff_code')
+        expect(tokens(view, '.abele-diff__line_removed')).toEqual([])
+      }
+    })
+
+    it('does not colour a text too large to parse at once', () => {
+      const big = 'const a = 1\n'.repeat(60_000)
+      const view = mount(Diff, {
+        props: { textLeft: big, textRight: big + 'const b = 2', path: 'sample.ts' },
+      })
+      expect(view.classes()).not.toContain('abele-diff_code')
+      expect(tokens(view, '.abele-diff__line_added')).toEqual([])
+    })
   })
 })
