@@ -353,7 +353,7 @@ export function paintCanvas(
     if (edge.toEnd !== 'none') arrow(ctx, before, end, edge.styleAttributes?.arrow)
     if (edge.fromEnd === 'arrow') arrow(ctx, points[1], points[0], edge.styleAttributes?.arrow)
     if (edge.label) {
-      const middle = labelPoint(points)
+      const middle = labelPoint(route)
       ctx.font = `${theme.size}px ${theme.font}`
       const width = ctx.measureText(edge.label).width
       const caption = {
@@ -394,7 +394,7 @@ export function paintCanvas(
     if (line.label) {
       ctx.font = `${theme.size}px ${theme.font}`
       const width = ctx.measureText(line.label).width,
-        middle = labelPoint([line.from, line.to]),
+        middle = { x: (line.from.x + line.to.x) / 2, y: (line.from.y + line.to.y) / 2 },
         x = middle.x - width / 2,
         y = middle.y
       ctx.fillStyle = theme.paper

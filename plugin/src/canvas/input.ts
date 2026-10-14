@@ -1,7 +1,8 @@
 /** Narrow DOM pointer adapter; camera navigation remains in the existing viewer. */
 import { toScreen, toWorld } from '../drawing/camera'
 import { nanoid } from 'nanoid'
-import { linesOf, rawLines, segmentDistance, type CanvasLine } from './core/primitives'
+import { lineBounds, linesOf, rawLines, segmentDistance, type CanvasLine } from './core/primitives'
+import { inkBounds, inkEntries } from './core/ink'
 import { endpoint, paintedRoute, routeSamples, sideAt, type Point } from './core/scene'
 import { editCanvas } from './core/edit'
 import { type CanvasOperation } from './core/edit'
@@ -43,8 +44,83 @@ export type CanvasInputTool =
   | 'partial-eraser'
   | 'lasso'
   | 'frame'
+  | 'card'
+  | 'shape'
 /** A frame drawn with a click and no drag: about two cards wide. */
 export const FRAME_SIZE = { width: 480, height: 320 }
+/** A card or shape put down with a click and no drag. */
+export const CARD_SIZE = { width: 260, height: 120 }
+export const SHAPE_SIZE = { width: 200, height: 120 }
+/** A drag shorter than this, on the screen, is a click that puts down the usual size. */
+const PLACE_DRAG = 12
+/**
+ * The rectangle a drag from one point to another draws, in the canvas's units; with Shift (or
+ * for a square kind of shape) its sides are made equal, the larger one winning.
+ */
+export function dragRect(start: [number, number], end: [number, number], square: boolean): Rect {
+  let w = end[0] - start[0],
+    h = end[1] - start[1]
+  if (square) {
+    const side = Math.max(Math.abs(w), Math.abs(h))
+    w = Math.sign(w || 1) * side
+    h = Math.sign(h || 1) * side
+  }
+  return {
+    x: Math.min(start[0], start[0] + w),
+    y: Math.min(start[1], start[1] + h),
+    width: Math.abs(w),
+    height: Math.abs(h),
+  }
+}
+/** Every card any part of which lies in a box, for a selection box drawn with Alt. */
+export function nodesTouching(graph: CanvasGraph, box: Rect): string[] {
+  return graph.nodes
+    .filter(
+      (n) =>
+        n.x < box.x + box.width &&
+        n.x + n.width > box.x &&
+        n.y < box.y + box.height &&
+        n.y + n.height > box.y
+    )
+    .map((n) => n.id)
+}
+/**
+ * What a selection box picks: cards whole inside it, and the free lines and strokes whole inside
+ * it too; with Alt, everything any part of which it touches.
+ */
+export function objectsInBox(graph: CanvasGraph, box: Rect, touching: boolean): string[] {
+  const inside = (r: Rect) =>
+    touching
+      ? r.x < box.x + box.width &&
+        r.x + r.width > box.x &&
+        r.y < box.y + box.height &&
+        r.y + r.height > box.y
+      : r.x >= box.x &&
+        r.y >= box.y &&
+        r.x + r.width <= box.x + box.width &&
+        r.y + r.height <= box.y + box.height
+  return [
+    ...(touching ? nodesTouching(graph, box) : nodesInBox(graph, box)),
+    ...linesOf(graph)
+      .filter((l) => inside(lineBounds(l)))
+      .map((l) => l.id),
+    ...inkEntries(graph)
+      .filter((e) => !e.node && inside(inkBounds(e)))
+      .map((e) => e.stroke.id),
+  ]
+}
+/** The connection or free line nearest a point within reach, topmost first. */
+export function connectionAt(graph: CanvasGraph, point: Point, tolerance: number): string | null {
+  const line = [...linesOf(graph)]
+    .reverse()
+    .find((l) => segmentDistance(point, l.from, l.to) <= tolerance)
+  if (line) return line.id
+  const edge = [...graph.edges].reverse().find((e) => {
+    const samples = routeSamples(paintedRoute(e, graph))
+    return samples.slice(1).some((p, i) => segmentDistance(point, samples[i], p) <= tolerance)
+  })
+  return edge?.id ?? null
+}
 export interface InputPorts {
   /** The colour and width a pen or marker draws with now. */
   brush(tool?: 'pen' | 'marker'): { color: string; size: number }
@@ -73,16 +149,11 @@ export interface InputPorts {
    * make there. The gesture's draft stays open until it answers.
    */
   dropped?(drop: CanvasDrop): void
-  /** Two presses in one place: what was pressed opens for writing, or a card is made there. */
-  double?(target: CanvasDouble): void
+  /** A card or shape put down where it was clicked, or across where it was dragged. */
+  placed?(kind: 'card' | 'shape', rect: Rect): void
+  /** Picked things carried with Alt held: a copy goes where they were let go. */
+  copied?(ids: ReadonlySet<string>, dx: number, dy: number): void
 }
-/** What a double press landed on. */
-export type CanvasDouble =
-  | { kind: 'node' | 'frame' | 'connection'; id: string }
-  | { kind: 'empty'; point: Point }
-/** Two presses this close in time and on the screen are one double press. */
-const DOUBLE_MS = 500,
-  DOUBLE_PX = 8
 /** Where a connection was let go over nothing, and the card edge it came from. */
 export interface CanvasDrop {
   source: string
@@ -110,6 +181,12 @@ interface Gesture {
   screen: [number, number]
   active: boolean
   ops: CanvasOperation[]
+  /** A box drawn with Alt picks everything it touches, not only what is whole inside it. */
+  touching: boolean
+  /** Carried with Alt: a copy is left where it is let go, the original stays. */
+  copy: boolean
+  /** A finger on a picked note that scrolls: its body, and where the scroll stood. */
+  scroll: { el: HTMLElement; top: number; carry: boolean; timer: number } | null
 }
 interface ConnectionGesture {
   graph: CanvasGraph
@@ -174,6 +251,14 @@ export class CanvasInput implements CanvasViewerInput {
   /** A frame being drawn with the Frame tool, from where the pointer went down. */
   private framing: { start: [number, number]; screen: [number, number]; rect: Rect | null } | null =
     null
+  /** A card or shape being put down with the Card or Shape tool. */
+  private placing: {
+    kind: 'card' | 'shape'
+    start: [number, number]
+    screen: [number, number]
+    rect: Rect | null
+    square: boolean
+  } | null = null
   /** The frame a card being carried would land in, lit while it is over it. */
   private dropFrame: string | null = null
   /** The card under a mouse that is not pressed, which shows its connection points. */
@@ -182,8 +267,6 @@ export class CanvasInput implements CanvasViewerInput {
   private penHover: [number, number] | null = null
   /** Once a pen has touched the canvas, a finger moves it rather than drawing. */
   private penSeen = false
-  /** The last press with Select that has not become a drag, for a second press to pair with. */
-  private lastPress: { time: number; x: number; y: number } | null = null
   constructor(
     private readonly viewer: CanvasViewer,
     private readonly ports: InputPorts
@@ -224,7 +307,7 @@ export class CanvasInput implements CanvasViewerInput {
     return tool
   }
   down(event: PointerEvent): boolean {
-    if (event.altKey || event.button !== 0) return false
+    if (event.button !== 0) return false
     if (!this.ports.enabled()) {
       // While the last change is being written, a stroke is still drawn, and added after it.
       const ink = this.ports.holds?.() ? this.inkFor(event) : null
@@ -259,8 +342,17 @@ export class CanvasInput implements CanvasViewerInput {
       }
       return true
     }
-    if (this.doubleDown(event)) return true
-    if (this.connectionDown(event)) return true
+    if (tool === 'card' || tool === 'shape') {
+      this.placing = {
+        kind: tool,
+        start: this.point(event),
+        screen: [event.clientX, event.clientY],
+        rect: null,
+        square: event.shiftKey,
+      }
+      return true
+    }
+    if (!event.altKey && this.connectionDown(event)) return true
     if (this.ports.tool() !== 'select') return false
     const graph = this.viewer.graph,
       [x, y] = this.point(event),
@@ -279,11 +371,29 @@ export class CanvasInput implements CanvasViewerInput {
       node = corner ? single : (named ?? hitNode(graph, x, y))
     if (!node && !multiple && event.pointerType !== 'mouse') {
       this.ports.select(new Set())
-      return false // A finger on empty space moves the canvas; a mouse draws a box there.
+      // A finger on empty space moves the canvas; a mouse draws a box to pick what is inside.
+      if (event.pointerType !== 'mouse') return false
     }
     if (!corner && (multiple || !node || !selected.has(node.id)))
       this.ports.select(selectNode(selected, node?.id ?? null, multiple))
     const ids = new Set(this.ports.selection())
+    // A finger on a picked note whose words run past its foot scrolls them; held still a moment,
+    // it carries the card instead.
+    const body =
+      node && !corner && event.pointerType === 'touch' && selected.has(node.id)
+        ? this.viewer.scroller(node.id)
+        : null
+    const scroll =
+      body && body.scrollHeight > body.clientHeight + 1
+        ? {
+            el: body,
+            top: body.scrollTop,
+            carry: false,
+            timer: window.setTimeout(() => {
+              if (this.gesture?.scroll && !this.gesture.active) this.gesture.scroll.carry = true
+            }, 350),
+          }
+        : null
     this.gesture = {
       graph,
       ids,
@@ -296,6 +406,9 @@ export class CanvasInput implements CanvasViewerInput {
       screen: [event.clientX, event.clientY],
       active: false,
       ops: [],
+      touching: !node && event.altKey,
+      copy: !!node && !corner && event.altKey,
+      scroll,
     }
     return true
   }
@@ -304,6 +417,17 @@ export class CanvasInput implements CanvasViewerInput {
     this.inkEdit.move(event)
     if (this.connection) {
       this.connectionMove(event)
+      return
+    }
+    if (this.placing) {
+      const p = this.placing
+      if (
+        !p.rect &&
+        Math.hypot(event.clientX - p.screen[0], event.clientY - p.screen[1]) < PLACE_DRAG
+      )
+        return
+      p.rect = dragRect(p.start, this.point(event), p.square || event.shiftKey)
+      this.viewer.draw()
       return
     }
     if (this.framing) {
@@ -323,6 +447,12 @@ export class CanvasInput implements CanvasViewerInput {
     }
     const g = this.gesture
     if (!g || g.additive) return
+    if (g.scroll && !g.scroll.carry) {
+      window.clearTimeout(g.scroll.timer)
+      const zoom = this.viewer.camera.zoom
+      g.scroll.el.scrollTop = g.scroll.top - (event.clientY - g.screen[1]) / zoom
+      return
+    }
     if (g.active && !this.ports.valid()) {
       this.cancel()
       return
@@ -333,14 +463,13 @@ export class CanvasInput implements CanvasViewerInput {
       dx = x - g.start[0],
       dy = y - g.start[1]
     if (g.box) {
-      this.lastPress = null
       this.marquee = {
         x: Math.min(x, g.start[0]),
         y: Math.min(y, g.start[1]),
         width: Math.abs(dx),
         height: Math.abs(dy),
       }
-      this.ports.select(new Set([...g.ids, ...nodesInBox(g.graph, this.marquee)]))
+      this.ports.select(new Set([...g.ids, ...objectsInBox(g.graph, this.marquee, g.touching)]))
       this.viewer.draw()
       return
     }
@@ -358,7 +487,6 @@ export class CanvasInput implements CanvasViewerInput {
         return
       }
       g.active = true
-      this.lastPress = null
     }
     let preview: CanvasGraph
     if (g.corner) {
@@ -385,6 +513,19 @@ export class CanvasInput implements CanvasViewerInput {
       this.connectionUp(event)
       return
     }
+    if (this.placing) {
+      this.move(event)
+      const p = this.placing
+      this.placing = null
+      const size = p.kind === 'card' ? CARD_SIZE : SHAPE_SIZE
+      const rect =
+        p.rect && p.rect.width >= 20 && p.rect.height >= 20
+          ? p.rect
+          : { x: p.start[0] - size.width / 2, y: p.start[1] - size.height / 2, ...size }
+      this.viewer.draw()
+      this.ports.placed?.(p.kind, roundRect(rect))
+      return
+    }
     if (this.framing) {
       this.move(event)
       const f = this.framing
@@ -408,7 +549,13 @@ export class CanvasInput implements CanvasViewerInput {
     this.gesture = null
     this.marquee = null
     this.dropFrame = null
-    if (g.active) {
+    if (g.scroll) window.clearTimeout(g.scroll.timer)
+    if (g.active && g.copy) {
+      // The originals go back where they were; the copy stands where they were let go.
+      const move = g.ops.find((o) => o.op === 'move')
+      this.ports.cancel()
+      if (move && move.op === 'move') this.ports.copied?.(g.ids, move.dx, move.dy)
+    } else if (g.active) {
       if (
         this.ports.valid() &&
         g.ops.length &&
@@ -430,6 +577,10 @@ export class CanvasInput implements CanvasViewerInput {
     }
     if (this.framing) {
       this.framing = null
+      this.viewer.draw()
+    }
+    if (this.placing) {
+      this.placing = null
       this.viewer.draw()
     }
     const g = this.gesture
@@ -570,6 +721,10 @@ export class CanvasInput implements CanvasViewerInput {
       box(this.framing.rect)
       this.overlay.lastElementChild?.classList.add('abele-canvas-frame-draft')
     }
+    if (this.placing?.rect) {
+      box(this.placing.rect)
+      this.overlay.lastElementChild?.classList.add('abele-canvas-frame-draft')
+    }
     const target = this.dropFrame && graph.nodes.find((n) => n.id === this.dropFrame)
     if (target) {
       box(target)
@@ -632,37 +787,6 @@ export class CanvasInput implements CanvasViewerInput {
       return samples.slice(1).some((p, i) => segmentDistance(point, samples[i], p) <= tolerance)
     })
     return edge?.id ?? null
-  }
-  /** A second press with Select close to the first: the host opens what it landed on. */
-  private doubleDown(event: PointerEvent): boolean {
-    if (this.ports.tool() !== 'select' || event.shiftKey || !this.ports.double) return false
-    const now = Date.now(),
-      last = this.lastPress
-    this.lastPress = { time: now, x: event.clientX, y: event.clientY }
-    if (
-      !last ||
-      now - last.time > DOUBLE_MS ||
-      Math.hypot(event.clientX - last.x, event.clientY - last.y) > DOUBLE_PX
-    )
-      return false
-    this.lastPress = null
-    const graph = this.viewer.graph,
-      [x, y] = this.point(event),
-      labelled = (event.target as Element | null)?.closest?.<HTMLElement>('[data-frame-id]'),
-      over = hitNode(graph, x, y),
-      tolerance = (event.pointerType === 'mouse' ? 10 : 22) / this.viewer.camera.zoom,
-      connection = this.connectionAt({ x, y }, tolerance)
-    const target: CanvasDouble = labelled?.dataset.frameId
-      ? { kind: 'frame', id: labelled.dataset.frameId }
-      : over && over.type !== 'group'
-        ? { kind: 'node', id: over.id }
-        : connection
-          ? { kind: 'connection', id: connection }
-          : over
-            ? { kind: 'frame', id: over.id }
-            : { kind: 'empty', point: { x: Math.round(x), y: Math.round(y) } }
-    this.ports.double(target)
-    return true
   }
   private connectionDown(event: PointerEvent): boolean {
     const graph = this.viewer.graph,
@@ -752,7 +876,6 @@ export class CanvasInput implements CanvasViewerInput {
         return
       }
       g.active = true
-      this.lastPress = null
     }
     const [x, y] = this.point(event)
     g.point = { x, y }

@@ -198,12 +198,6 @@ export function routeEdge(edge: CanvasEdge, graph: CanvasGraph): Point[] {
     ? [a, { x: (a.x + b.x) / 2, y: a.y }, { x: (a.x + b.x) / 2, y: b.y }, b]
     : [a, { x: a.x, y: (a.y + b.y) / 2 }, { x: b.x, y: (a.y + b.y) / 2 }, b]
 }
-/** Where a connection's or a free line's label stands: the middle of the points it runs by. */
-export function labelPoint(points: Point[]): Point {
-  const first = points[0],
-    last = points[points.length - 1]
-  return points.length === 5 ? points[2] : { x: (first.x + last.x) / 2, y: (first.y + last.y) / 2 }
-}
 export function sideAt(node: CanvasNode, point: Point): Side {
   const dx = (point.x - node.x - node.width / 2) / node.width,
     dy = (point.y - node.y - node.height / 2) / node.height
@@ -228,6 +222,29 @@ export function paintedRoute(edge: CanvasEdge, graph: CanvasGraph): PaintedRoute
         : 'polyline',
     points,
   }
+}
+/**
+ * Where a connection's label stands: the middle of the curve itself, not of the chord between
+ * its ends, so a curved connection's label sits on its line.
+ */
+export function labelPoint(route: PaintedRoute): Point {
+  const p = route.points
+  if (!p.length) return { x: 0, y: 0 }
+  if (route.kind === 'cubic')
+    return {
+      x: cubicAt(
+        p.map((q) => q.x),
+        0.5
+      ),
+      y: cubicAt(
+        p.map((q) => q.y),
+        0.5
+      ),
+    }
+  if (p.length === 5) return p[2]
+  const first = p[0],
+    last = p[p.length - 1]
+  return { x: (first.x + last.x) / 2, y: (first.y + last.y) / 2 }
 }
 const cubicAt = (v: number[], t: number) =>
   (1 - t) ** 3 * v[0] + 3 * (1 - t) ** 2 * t * v[1] + 3 * (1 - t) * t ** 2 * v[2] + t ** 3 * v[3]

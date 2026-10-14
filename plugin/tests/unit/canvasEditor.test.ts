@@ -1052,7 +1052,8 @@ describe('human canvas editor', () => {
   it('does not steal shortcuts or arrow keys from the text input', () => {
     const s = setup()
     s.button('Add text card').click()
-    // Esc is the card's own way out, saving its words (see canvasMechanics); the rest stay the field's.
+    // Escape is no longer left to the field: it finishes writing on the card, as a click beside
+    // it does (the canvas scenarios, step 6); that is tested in canvasMechanics.test.ts.
     for (const key of ['ArrowRight', 'Delete', 'z']) {
       const event = new KeyboardEvent('keydown', {
         key,

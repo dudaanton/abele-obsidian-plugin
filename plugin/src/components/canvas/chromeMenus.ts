@@ -278,6 +278,64 @@ export function moreEntries(c: Controls, p: PickedView, host?: CanvasHostActions
   else out.push(entry('Delete', 'trash-2', remove, true))
   return out
 }
+/**
+ * Which part of a note its card shows: the whole note, the part scrolled to, or a part from one
+ * of its headings on; each part can also be put beside it as a card of its own.
+ */
+export async function partMenu(
+  e: MouseEvent | { currentTarget: EventTarget | null },
+  c: Controls,
+  p: PickedView,
+  adding = false
+): Promise<void> {
+  const button = e.currentTarget as HTMLElement
+  const node = p.node
+  if (!node?.file) return
+  const headings = await c.headings(node.file)
+  const inView = adding ? null : c.partInView(node.id)
+  const menu = new Menu()
+  const current = node.subpath ?? ''
+  const run = (subpath: string): void =>
+    void (adding ? c.addPart(node.id, subpath) : c.showPart(node.id, subpath))
+  if (!adding)
+    menu.addItem((item) =>
+      item
+        .setTitle('The whole note')
+        .setIcon('file-text')
+        .setChecked(!current)
+        .onClick(() => run(''))
+    )
+  if (inView)
+    menu.addItem((item) =>
+      item
+        .setTitle(`Keep the part in view: ${inView}`)
+        .setIcon('pin')
+        .onClick(() => run(`#${inView}`))
+    )
+  if (headings.length && !adding) menu.addSeparator()
+  const top = Math.min(...headings.map((h) => h.level))
+  for (const h of headings)
+    menu.addItem((item) =>
+      item
+        .setTitle(`${'\u2003'.repeat(h.level - top)}${h.heading}`)
+        .setIcon(adding ? 'copy-plus' : 'heading')
+        .setChecked(!adding && current === `#${h.heading}`)
+        .onClick(() => run(`#${h.heading}`))
+    )
+  if (!headings.length)
+    menu.addItem((item) => item.setTitle('This note has no headings').setDisabled(true))
+  else if (!adding) {
+    menu.addSeparator()
+    menu.addItem((item) =>
+      item
+        .setTitle('Add a part beside it…')
+        .setIcon('copy-plus')
+        .onClick(() => void partMenu({ currentTarget: button }, c, p, true))
+    )
+  }
+  const r = button.getBoundingClientRect()
+  menu.showAtPosition({ x: r.left, y: r.bottom, left: false, overlap: false, width: r.width })
+}
 export function moreMenu(
   e: MouseEvent,
   c: Controls,

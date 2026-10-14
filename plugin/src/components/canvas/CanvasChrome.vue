@@ -84,15 +84,7 @@
 
     <!-- Over a picked thing, its actions; above it, or under it where the top has no room. -->
     <div
-      v-if="
-        picked.rect &&
-        !editing &&
-        !drawing &&
-        tool !== 'frame' &&
-        !gesturing &&
-        !naming &&
-        !labeling
-      "
+      v-if="picked.rect && !editing && !drawing && !placing && !gesturing && !naming && !labelling"
       ref="barEl"
       class="canvas-menu abele-canvas-chrome__picked"
       :style="pickedAt"
@@ -118,6 +110,16 @@
         tooltip="Edit text"
         :disabled="state('Edit card text').disabled"
         @click="press('Edit card text')"
+      />
+      <ChromeIcon
+        v-if="one && kind === 'file' && /\.md$/i.test(pickedNode?.file ?? '')"
+        icon="list-tree"
+        :tooltip="
+          pickedNode?.subpath
+            ? `Shows ${pickedNode.subpath.slice(1)}: show another part`
+            : 'Show one part of the note'
+        "
+        @click="menus.partMenu($event, c, view)"
       />
       <ChromeIcon
         v-if="one && (kind === 'file' || kind === 'link')"
@@ -198,21 +200,21 @@
       />
     </div>
 
-    <!-- A connection's label written where it stands, as Obsidian Canvas writes an edge's. -->
-    <input
-      v-if="labelAt"
-      :key="labelAt.id"
-      ref="labelEl"
-      class="abele-canvas-chrome__label"
-      :style="labelAt.style"
-      :value="labelAt.text"
-      type="text"
-      aria-label="Label of the connection"
-      placeholder="Label"
-      @keydown="labelKey"
-      @blur="labelDone"
-      @pointerdown.stop
-    />
+    <!-- A connection's label written on the line itself, as Obsidian Canvas writes it. -->
+    <div v-if="labelling && labelAt" class="canvas-path-label-wrapper" :style="labelAt.style">
+      <div
+        ref="labelEl"
+        class="canvas-path-label is-editing abele-canvas-chrome__label"
+        contenteditable="true"
+        role="textbox"
+        aria-label="Connection label"
+        @pointerdown.stop
+        @keydown="labelKey"
+        @blur="labelDone"
+      >
+        {{ labelAt.text }}
+      </div>
+    </div>
 
     <!-- The tools, the kit's tool bar across the tab's top as over a drawing: one slot for each
          family, wearing the glyph of the member last used; with a pen in hand, its colours and
@@ -294,6 +296,8 @@ import type { CanvasEditor, CanvasField } from '@/canvas/Editor'
 import type { CanvasViewer } from '@/canvas/Viewer'
 import { stepsOf } from '@/canvas/core/steps'
 import { allInkEntries } from '@/canvas/core/ink'
+import { linesOf } from '@/canvas/core/primitives'
+import { centredLabel, contentBox, labelPoint, paintedRoute } from '@/canvas/core/scene'
 import { zoomAt } from '@/drawing/camera'
 import ChromeIcon from '../obsidian/Icon.vue'
 import ToolBar from '../obsidian/ToolBar.vue'
@@ -312,8 +316,6 @@ import {
 } from './chromeTools'
 import * as menus from './chromeMenus'
 import type { CanvasHostActions } from '@/canvas/pickedActions'
-import { labelPoint, paintedRoute } from '@/canvas/core/scene'
-import { linesOf } from '@/canvas/core/primitives'
 
 const props = defineProps<{
   editor: CanvasEditor
@@ -349,7 +351,6 @@ const ControlItem = defineComponent({
 const tick = ref(0)
 const phone = Platform.isPhone
 const last = ref<Record<string, number>>({})
-let lastPressed = ''
 const stateEl = ref<HTMLElement>()
 
 const tool = computed(() => (tick.value, c.tool()))
@@ -360,53 +361,63 @@ const kind = computed(() => kinds.value[0])
 const editing = computed(() => (tick.value, c.editing()))
 const gesturing = computed(() => (tick.value, c.gesturing()))
 const naming = computed(() => (tick.value, c.naming()))
-const labeling = computed(() => (tick.value, c.labeling()))
-const labelEl = ref<HTMLInputElement>()
-/** The label field over the middle of the connection being labelled, in the canvas's scale. */
+const labelling = computed(() => (tick.value, c.labelling()))
+const placing = computed(() => ['frame', 'card', 'shape'].includes(tool.value))
+const labelEl = ref<HTMLElement>()
+/** Where the label being written stands: in the middle of its line, on the screen. */
 const labelAt = computed(() => {
-  const id = labeling.value
+  tick.value
+  const id = labelling.value
   if (!id) return null
-  const g = graph(),
-    edge = g.edges.find((e) => e.id === id),
-    line = edge ? undefined : linesOf(g).find((l) => l.id === id)
+  const edge = graph().edges.find((e) => e.id === id)
+  const line = edge ? undefined : linesOf(graph()).find((l) => l.id === id)
   if (!edge && !line) return null
-  const at = labelPoint(edge ? paintedRoute(edge, g).points : [line.from, line.to]),
-    cam = props.viewer.camera
+  const mid = edge
+    ? labelPoint(paintedRoute(edge, graph()))
+    : { x: (line.from.x + line.to.x) / 2, y: (line.from.y + line.to.y) / 2 }
+  const cam = props.viewer.camera
   return {
-    id,
     text: (edge ?? line).label ?? '',
     style: {
-      left: `${(at.x - cam.x) * cam.zoom}px`,
-      top: `${(at.y - cam.y) * cam.zoom}px`,
-      fontSize: `calc(var(--font-text-size) * ${Math.max(0.6, Math.min(cam.zoom, 2)).toFixed(3)})`,
+      left: `${(mid.x - cam.x) * cam.zoom}px`,
+      top: `${(mid.y - cam.y) * cam.zoom}px`,
+      '--zoom-multiplier': String(Math.max(0.6, Math.min(cam.zoom, 2))),
+      '--canvas-color': 'var(--interactive-accent)',
     },
   }
 })
-watch(labelAt, (now, was) => {
-  if (!now || now.id === was?.id) return
-  void nextTick(() => {
-    labelEl.value?.focus()
-    labelEl.value?.select()
-  })
+let labelOpened = ''
+watch(labelling, async (id) => {
+  if (!id || id === labelOpened) return
+  labelOpened = id
+  await nextTick()
+  const el = labelEl.value
+  if (!el) return
+  el.focus()
+  const range = document.createRange()
+  range.selectNodeContents(el)
+  const sel = document.getSelection()
+  sel?.removeAllRanges()
+  sel?.addRange(range)
 })
-let labelLeft = false
+function labelDone(e: FocusEvent) {
+  const id = c.labelling()
+  labelOpened = ''
+  if (!id) return
+  void c.saveLabel(id, (e.target as HTMLElement).innerText.replace(/\s+/g, ' '))
+}
 function labelKey(e: KeyboardEvent) {
   e.stopPropagation()
   if (e.isComposing) return
-  if (e.key === 'Enter') {
+  if (e.key === 'Enter' && !e.shiftKey) {
     e.preventDefault()
-    labelEl.value?.blur()
+    ;(e.target as HTMLElement).blur()
   } else if (e.key === 'Escape') {
     e.preventDefault()
-    labelLeft = true
+    labelOpened = ''
     c.editLabel(null)
     props.viewer.el.focus({ preventScroll: true })
   }
-}
-function labelDone(e: FocusEvent) {
-  const id = labeling.value
-  if (labelLeft || !id) return void (labelLeft = false)
-  void c.saveLabel(id, (e.target as HTMLInputElement).value)
 }
 const barEl = ref<HTMLElement>()
 const drawing = computed(() => ['pen', 'marker', 'eraser', 'partial-eraser'].includes(tool.value))
@@ -501,7 +512,7 @@ const colourClass = (v: string) => (v ? `mod-canvas-color-${v}` : 'abele-canvas-
 /** The bar stands over the picked thing, on the screen, kept inside the stage. */
 const pickedAt = computed(() => {
   tick.value
-  const r = picked.value.rect
+  const r = picked.value.anchor
   if (!r) return {}
   const cam = props.viewer.camera
   const left = (r.x + r.width / 2 - cam.x) * cam.zoom
@@ -515,18 +526,59 @@ const pickedAt = computed(() => {
   const nameTop = name
     ? name.getBoundingClientRect().top - props.viewer.stage.getBoundingClientRect().top
     : top
-  const above = Math.min(top, nameTop) > 56
   const over = Math.min(top, nameTop)
-  // Kept clear of the stage's sides and of the control column at the top right.
-  const half = (barEl.value?.offsetWidth ?? 0) / 2,
+  // Kept clear of the stage's sides, of the tools' row across the top and of the control column
+  // at the top right.
+  const width = barEl.value?.offsetWidth ?? 0,
+    height = barEl.value?.offsetHeight ?? 40,
+    half = width / 2,
     column = props.viewer.el.querySelector<HTMLElement>('.abele-canvas-chrome__view'),
-    right = props.viewer.stage.clientWidth - (column ? column.offsetWidth + 24 : 8)
+    right = props.viewer.stage.clientWidth - (column ? column.offsetWidth + 24 : 8),
+    ceiling = barHeight.value + 8
+  const x = Math.max(8 + half, Math.min(left, right - half))
+  // A connection's bar never covers its two ends, which are pulled to reconnect it: above its
+  // middle, else under it, else beside it.
+  const ends = connectionEnds()
+  const covers = (bx: number, by: number) =>
+    ends.some(
+      (p) => p.x > bx - half - 14 && p.x < bx + half + 14 && p.y > by - 14 && p.y < by + height + 14
+    )
+  const aboveTop = over - 12 - height,
+    belowTop = bottom + 12
+  if (ends.length) {
+    if (aboveTop > ceiling && !covers(x, aboveTop))
+      return { left: `${x}px`, top: `${aboveTop}px`, transform: 'translate(-50%, 0)' }
+    if (!covers(x, belowTop))
+      return { left: `${x}px`, top: `${belowTop}px`, transform: 'translate(-50%, 0)' }
+    const midY = (top + bottom) / 2
+    return {
+      left: `${Math.min(left + 24, right - width)}px`,
+      top: `${Math.max(ceiling, midY - height / 2)}px`,
+      transform: 'none',
+    }
+  }
+  const above = aboveTop > ceiling
   return {
-    left: `${Math.max(8 + half, Math.min(left, right - half))}px`,
-    top: `${above ? over - 12 : bottom + 12}px`,
-    transform: `translate(-50%, ${above ? '-100%' : '0'})`,
+    left: `${x}px`,
+    top: `${above ? aboveTop : belowTop}px`,
+    transform: 'translate(-50%, 0)',
   }
 })
+/** The two ends of the one picked connection or line, on the screen. */
+function connectionEnds(): { x: number; y: number }[] {
+  if (!one.value || (kind.value !== 'connection' && kind.value !== 'line')) return []
+  const id = picked.value.ids[0],
+    g = graph(),
+    cam = props.viewer.camera
+  const edge = g.edges.find((e) => e.id === id)
+  const line = edge ? undefined : linesOf(g).find((l) => l.id === id)
+  const points = edge ? paintedRoute(edge, g).points : line ? [line.from, line.to] : []
+  if (!points.length) return []
+  return [points[0], points[points.length - 1]].map((p) => ({
+    x: (p.x - cam.x) * cam.zoom,
+    y: (p.y - cam.y) * cam.zoom,
+  }))
+}
 
 const saveState = computed(() => {
   tick.value
@@ -544,30 +596,35 @@ const hidden = computed(() => (phone ? slots.filter((s) => !PHONE_ORDER.includes
 const hiddenActive = computed(() => hidden.value.find((s) => slotActive(s)))
 
 const member = (slot: Slot) => slot.members[last.value[slot.id] ?? 0]
+/** The shape slot wears the shape the Shape tool puts down, however it was chosen. */
 const slotIcon = (slot: Slot) => {
+  if (slot.id === 'shape' && tool.value === 'shape')
+    return SHAPE_ICONS[value('shape')] ?? member(slot).icon
   const m = slot.members.find((x) => x.id === tool.value) ?? member(slot)
   return m.icon
 }
-const slotTooltip = (slot: Slot) => member(slot).tooltip
-const slotActive = (slot: Slot) => slot.members.some((m) => m.id === tool.value)
+const slotTooltip = (slot: Slot) =>
+  slot.id === 'shape' && tool.value === 'shape'
+    ? `Shape: ${(value('shape') || 'rectangle').replace(/-/g, ' ')} (R, again for the next)`
+    : member(slot).tooltip
+const slotActive = (slot: Slot) =>
+  slot.id === 'shape' ? tool.value === 'shape' : slot.members.some((m) => m.id === tool.value)
 
 /** A family's slot takes its last member; pressed again, it offers the others at the button. */
 function useSlot(slot: Slot, e: MouseEvent) {
-  // A tool already in hand offers its family; the shape slot adds a shape each time it is
-  // pressed, so it offers its family when pressed twice running.
-  const again =
-    slot.members.length > 1 &&
-    (slot.members.some((m) => m.id === tool.value) || lastPressed === slot.id)
-  lastPressed = slot.id
+  // Pressed while its tool is already in hand, a family offers its other members at the button.
+  const again = slotActive(slot) && slot.members.length > 1
   if (again) return familyMenu(slot, e)
   run(slot, member(slot))
 }
 function run(slot: Slot, m: Slot['members'][number]) {
   last.value = { ...last.value, [slot.id]: slot.members.indexOf(m) }
+  // Card and Shape are tools: the card or shape goes where the canvas is then clicked or dragged.
   if (slot.id === 'shape') {
     set('shape', m.id)
-    return press('Add canvas shape')
+    return c.useTool('shape')
   }
+  if (slot.id === 'card') return c.useTool('card')
   press(m.label)
 }
 function familyMenu(slot: Slot, e: MouseEvent) {
@@ -617,24 +674,45 @@ function step(delta: number) {
 }
 
 /** The card being written in: the editor's own field, laid over the card on the canvas. */
+/** The card whose own words hide while they are written over it, so they do not show twice. */
+let hiddenCard: HTMLElement | null = null
+function markWritten() {
+  const id = c.editing()
+  // The card is drawn afresh as its words change, so it is looked up again each frame.
+  const card = id ? props.viewer.stage.querySelector<HTMLElement>(`[data-card-id="${id}"]`) : null
+  if (card === hiddenCard && (!card || card.classList.contains('is-being-written'))) return
+  hiddenCard?.classList.remove('is-being-written')
+  card?.classList.add('is-being-written')
+  hiddenCard = card
+}
 const placeField = () => {
   const id = c.editing()
-  const field = c.textField().parentElement
+  const text = c.textField(),
+    field = text.parentElement
   if (!field) return
   const node = id ? graph().nodes.find((n) => n.id === id) : undefined
+  markWritten()
   if (!node) return field.style.removeProperty('left')
   const cam = props.viewer.camera,
     stage = props.viewer.stage
-  const at = stage.offsetTop
+  // A shape's words are written where they stand, in the middle of the shape, which stays in
+  // sight; a card's fill the card.
+  const shaped = centredLabel(node),
+    box = shaped ? contentBox(node) : node
+  field.classList.toggle('is-shape', shaped)
   Object.assign(field.style, {
-    left: `${stage.offsetLeft + (node.x - cam.x) * cam.zoom}px`,
-    top: `${at + (node.y - cam.y) * cam.zoom}px`,
-    width: `${node.width * cam.zoom}px`,
-    height: `${node.height * cam.zoom}px`,
+    left: `${stage.offsetLeft + (box.x - cam.x) * cam.zoom}px`,
+    top: `${stage.offsetTop + (box.y - cam.y) * cam.zoom}px`,
+    width: `${box.width * cam.zoom}px`,
+    height: `${box.height * cam.zoom}px`,
     fontSize: `calc(var(--font-text-size) * ${cam.zoom})`,
   })
+  if (shaped) {
+    text.style.setProperty('padding-top', '0px')
+    const room = box.height * cam.zoom
+    text.style.setProperty('padding-top', `${Math.max(0, (room - text.scrollHeight) / 2)}px`)
+  } else text.style.removeProperty('padding-top')
 }
-
 let frame = 0
 let seen = ''
 const watchCamera = () => {
@@ -645,6 +723,7 @@ const watchCamera = () => {
     tick.value++
     placeField()
   }
+  markWritten()
   frame = window.requestAnimationFrame(watchCamera)
 }
 let dropShown: unknown = null
@@ -672,6 +751,7 @@ onMounted(() => {
   props.viewer.draw()
   off.value = c.watch(() => {
     tick.value++
+    props.viewer.stage.dataset.tool = c.tool()
     placeField()
     const drop = c.drop()
     if (drop && drop !== dropShown) {
@@ -680,13 +760,13 @@ onMounted(() => {
     } else if (!drop) dropShown = null
   })
   c.textField().addEventListener('blur', blur)
-  props.viewer.stage.addEventListener('pointerdown', leaveFields, true)
+  c.textField().addEventListener('input', placeField)
   frame = window.requestAnimationFrame(watchCamera)
 })
 onBeforeUnmount(() => {
   off.value?.()
   c.textField().removeEventListener('blur', blur)
-  props.viewer.stage.removeEventListener('pointerdown', leaveFields, true)
+  c.textField().removeEventListener('input', placeField)
   cancelAnimationFrame(frame)
   props.viewer.el.classList.remove('abele-canvas-view_chrome')
   props.viewer.groupLabels = false
@@ -723,6 +803,15 @@ onBeforeUnmount(() => {
       background: var(--background-primary);
       font-family: var(--font-text);
       font-size: inherit;
+    }
+    // On a shape the words sit in its middle with no box of their own: the shape is the box.
+    &.is-shape textarea {
+      padding-inline: 0;
+      padding-bottom: 0;
+      border: none;
+      background: transparent;
+      text-align: center;
+      overflow: hidden;
     }
   }
 }
@@ -776,6 +865,26 @@ onBeforeUnmount(() => {
 // The colour of words, for a stroke or card left without one of the six.
 .abele-canvas-chrome__ink {
   --canvas-color: var(--text-normal);
+}
+
+// A card's words written over it hide its own copy of them.
+.abele-canvas-card-frame.is-being-written .abele-canvas-card {
+  visibility: hidden;
+}
+// The pointer says what the tool in hand does.
+.abele-canvas-view_chrome .abele-canvas-stage {
+  &.is-panning,
+  &[data-tool='pan'] {
+    cursor: grab;
+  }
+  &[data-tool='card'],
+  &[data-tool='shape'],
+  &[data-tool='frame'],
+  &[data-tool='connect'],
+  &[data-tool='line'],
+  &[data-tool='arrow'] {
+    cursor: crosshair;
+  }
 }
 
 // The tools' row across the tab's top, over the canvas as a drawing's is over its paper; the

@@ -4,24 +4,29 @@
  */
 import { nanoid } from 'nanoid'
 import { editCanvas, type CanvasOperation, type NodeInput } from './core/edit'
-import { bounds, canvasFingerprint, parentsOf, SHAPES, type Rect, type Shape } from './core/model'
+import {
+  bounds,
+  canvasFingerprint,
+  parentsOf,
+  SHAPES,
+  type CanvasGraph,
+  type Rect,
+  type Shape,
+} from './core/model'
 import { moveIds } from './core/selection'
+import { clipOf, copyOps, parseClip } from './core/copy'
 import { lineBounds, linesOf } from './core/primitives'
+import { labelPoint, paintedRoute, routeSamples } from './core/scene'
+import { hitNode } from './core/selection'
+import { canvasKey, frameAround, pastedUrl, PICTURE_TYPES, pictureSize } from './editorKeys'
+import { CARD_SIZE, connectionAt } from './input'
 import { allInkEntries, inkBounds, inkEntries } from './core/ink'
 import { canvasVisibility } from './core/visibility'
 import type { CanvasSession, GraphTransform } from './core/session'
 import { CanvasSessionError } from './core/session'
 import { CanvasWriteScheduler, type CanvasWriteSchedule } from './core/writeScheduler'
 import type { CanvasViewer } from './Viewer'
-import {
-  CanvasInput,
-  OPPOSITE,
-  type CanvasDouble,
-  type CanvasDrop,
-  type CanvasInputTool,
-} from './input'
-import { paintedRoute, routeSamples } from './core/scene'
-import { pasteOps, type Pasted } from './paste'
+import { CanvasInput, OPPOSITE, type CanvasDrop, type CanvasInputTool } from './input'
 import { toWorld } from '../drawing/camera'
 import { WIDTHS } from '../drawing/model'
 import { THICKNESSES, type Thickness } from '../ink/thickness'
@@ -54,8 +59,15 @@ export interface CanvasEditorPorts {
   confirmDiscard(): Promise<boolean>
   handoffChoice(): Promise<'stay' | 'retain' | 'discard'>
   notice(message: string): void
-  /** Pasted files saved with the vault's attachments: their paths, and a picture's size. */
-  saveFiles?(files: File[]): Promise<{ path: string; width?: number; height?: number }[]>
+  /**
+   * Saves a pasted or dropped file next to the canvas's attachments and gives back its path in
+   * the vault, or null when nothing could be saved.
+   */
+  saveAttachment?(name: string, data: ArrayBuffer): Promise<string | null>
+  /** The headings of a note, for showing one part of it on a card. */
+  noteHeadings?(path: string): Promise<{ heading: string; level: number }[]>
+  /** What a drop from the host's own file list carries, as paths in the vault. */
+  droppedPaths?(event: DragEvent): string[]
 }
 /** What is picked, for a bar of actions standing over it. */
 export interface CanvasPicked {
@@ -63,6 +75,11 @@ export interface CanvasPicked {
   kinds: ('text' | 'shape' | 'file' | 'link' | 'group' | 'connection' | 'line' | 'stroke')[]
   /** Around all of it, in the canvas's own units. */
   rect: Rect | null
+  /**
+   * Where the bar of actions stands over it: around all of it, or for one connection or line,
+   * at its label in the middle of the line, so the bar opens at the line that was pressed.
+   */
+  anchor: Rect | null
 }
 /** Fields the editor reads its next action's values from, by what they hold. */
 export type CanvasField =
@@ -131,12 +148,12 @@ export class CanvasEditor {
   private fingerDraws = readFingerDraws()
   /** A frame whose name is being written on its label. */
   private naming: string | null = null
-  /** A connection or free line whose label is being written where it stands. */
-  private labeling: string | null = null
-  /** The tool to go back to when a held Space lets go of the canvas. */
-  private spaceFrom: CanvasInputTool | null = null
+  /** A connection or line whose label is being written on the line itself. */
+  private labelling: string | null = null
+  /** Space held down: the hand, whatever tool is in hand, until it is let go. */
+  private spaceHeld = false
   /** Where the pointer last was over the canvas, in its own units: where a paste lands. */
-  private pointer: { x: number; y: number } | null = null
+  private pointerAt: [number, number] | null = null
   private ownedDraft: CanvasEditorDocument | null = null
   /** Strokes drawn while the last change was being written, added one by one after it. */
   private held: CanvasOperation[] = []
@@ -164,7 +181,7 @@ export class CanvasEditor {
       this.watchers.add(fn)
       return () => this.watchers.delete(fn)
     },
-    tool: (): CanvasInputTool => this.tool,
+    tool: (): CanvasInputTool => (this.spaceHeld ? 'pan' : this.tool),
     state: (label: string) => {
       const b = this.buttons.get(label)
       return b
@@ -187,15 +204,25 @@ export class CanvasEditor {
       this.refresh()
     },
     renameFrame: (id: string, label: string): Promise<void> => this.frameOp(id, 'rename', label),
-    /** The connection whose label is being written where it stands. */
-    labeling: (): string | null => this.labeling,
+    /** The connection or line whose label is open for writing on the line. */
+    labelling: (): string | null => this.labelling,
     editLabel: (id: string | null): void => {
-      this.labeling = id
+      this.labelling = id
       if (id) this.selected = new Set([id])
       this.refresh()
     },
-    /** Writes a connection's label as one step; an unchanged one is left alone. */
     saveLabel: (id: string, label: string): Promise<void> => this.saveLabel(id, label),
+    /** Takes a tool in hand, as its key or its button does. */
+    useTool: (tool: CanvasInputTool): void => this.useTool(tool),
+    /** The headings of the picked note, for showing one part of it. */
+    headings: (path: string): Promise<{ heading: string; level: number }[]> =>
+      this.ports.noteHeadings?.(path) ?? Promise.resolve([]),
+    /** Shows one part of a note on its card, from a heading on; empty shows the whole note. */
+    showPart: (id: string, subpath: string): Promise<void> => this.showPart(id, subpath),
+    /** Adds one part of a note as a card of its own beside the note's card. */
+    addPart: (id: string, subpath: string): Promise<void> => this.addPart(id, subpath),
+    /** The heading the picked note's card has scrolled to, if it has scrolled past one. */
+    partInView: (id: string): string | null => this.partInView(id),
     foldFrame: (id: string, collapsed: boolean): Promise<void> =>
       this.frameOp(id, collapsed ? 'collapse' : 'expand'),
     /**
@@ -390,6 +417,8 @@ export class CanvasEditor {
       ['connect', 'Draw connection', 'Connect'],
       ['line', 'Draw free line', 'Line'],
       ['arrow', 'Draw free arrow', 'Arrow'],
+      ['card', 'Place text card', 'Card'],
+      ['shape', 'Place canvas shape', 'Place shape'],
     ] as const)
       this.button(
         label,
@@ -473,20 +502,20 @@ export class CanvasEditor {
       this.refresh()
     })
     this.listen(this.text, 'input', () => this.input())
-    // Esc, or Mod+Enter, leaves the card with its words saved, as Obsidian Canvas does.
-    this.listen(this.text, 'keydown', (e) => {
-      const event = e as KeyboardEvent
-      if (event.isComposing || this.composing) return
-      if (event.key === 'Escape' || (event.key === 'Enter' && (event.metaKey || event.ctrlKey))) {
-        event.preventDefault()
-        event.stopPropagation()
+    // Esc, or Cmd+Enter, finishes writing on a card and saves it, as a click beside it does.
+    this.listen(this.text, 'keydown', (event) => {
+      const e = event as KeyboardEvent
+      if (e.isComposing || this.composing) return
+      if (e.key === 'Escape' || (e.key === 'Enter' && (e.metaKey || e.ctrlKey))) {
+        e.preventDefault()
+        e.stopPropagation()
         void this.complete()
           .catch((error) => this.fail(error))
-          .finally(() => viewer.el.focus({ preventScroll: true }))
+          .finally(() => this.viewer.el.focus({ preventScroll: true }))
       }
     })
     this.inputAdapter = new CanvasInput(viewer, {
-      tool: () => this.tool,
+      tool: () => (this.spaceHeld ? 'pan' : this.tool),
       brush: (tool) => ({
         color: this.inkColor.value,
         size: WIDTHS[(tool ?? this.tool) === 'marker' ? 'marker' : 'pen'][
@@ -550,8 +579,50 @@ export class CanvasEditor {
         this.drop = drop
         this.refresh()
       },
-      double: (target) => this.double(target),
+      placed: (kind, rect) => {
+        try {
+          this.addText(kind === 'shape' ? (this.shape.value as Shape) : undefined, rect)
+        } catch (error) {
+          this.fail(error)
+        }
+      },
+      copied: (ids, dx, dy) => {
+        void this.copyBy(ids, dx, dy).catch((error) => this.fail(error))
+      },
     })
+    viewer.onDoubleTap = (event) => this.doubleTap(event)
+    viewer.onWheel = (event) => this.wheel(event)
+    this.listen(viewer.el, 'keyup', (event) => {
+      if ((event as KeyboardEvent).key === ' ' && this.spaceHeld) {
+        this.spaceHeld = false
+        viewer.stage.classList.remove('is-panning')
+        this.refresh()
+      }
+    })
+    this.listen(viewer.el, 'blur', () => {
+      if (this.spaceHeld) {
+        this.spaceHeld = false
+        viewer.stage.classList.remove('is-panning')
+        this.refresh()
+      }
+    })
+    this.listen(viewer.stage, 'pointermove', (event) => {
+      const e = event as PointerEvent,
+        r = viewer.stage.getBoundingClientRect(),
+        cam = viewer.camera
+      this.pointerAt = [
+        (e.clientX - r.left) / cam.zoom + cam.x,
+        (e.clientY - r.top) / cam.zoom + cam.y,
+      ]
+    })
+    this.listen(viewer.el, 'paste', (event) => void this.paste(event as ClipboardEvent))
+    this.listen(viewer.stage, 'dragover', (event) => {
+      const e = event as DragEvent
+      if (!this.canGesture()) return
+      e.preventDefault()
+      if (e.dataTransfer) e.dataTransfer.dropEffect = 'copy'
+    })
+    this.listen(viewer.stage, 'drop', (event) => void this.dropIn(event as DragEvent))
     viewer.onSelect = (node) => {
       if (this.editing || this.waiting) return
       this.selected = new Set(node ? [node.id] : [])
@@ -811,11 +882,11 @@ export class CanvasEditor {
       y: region.y + region.height / 2 - 80 + offset,
     }
   }
-  /** A card, or a shape, at the middle of the view, or with its middle at a point. */
-  private addText(shape?: Shape, at?: { x: number; y: number }): void {
+  private addText(shape?: Shape, at?: Rect): void {
     const document = this.ready(),
       id = nanoid(),
-      size = { width: 260, height: 160 }
+      place = at ?? { ...this.location(), width: 260, height: 160 },
+      parent = frameAround(document.session.graph, place)
     document.beginDraft()
     this.ownedDraft = document
     this.update(document, [
@@ -827,9 +898,9 @@ export class CanvasEditor {
           shape,
           ...(shape && this.shapeColor.value ? { color: this.shapeColor.value } : {}),
           label: '',
-          ...(at
-            ? { x: at.x - size.width / 2, y: at.y - size.height / 2, ...size }
-            : this.location()),
+          ...place,
+          // Put down inside a frame, it is in that frame.
+          ...(parent ? { parent } : {}),
         },
       },
     ])
@@ -837,78 +908,6 @@ export class CanvasEditor {
     this.tool = 'select'
     this.palette.hidden = true
     this.showText(id)
-  }
-  /** Moves what is picked by a few units, as one step to take back. */
-  private async nudge(ids: string[], dx: number, dy: number): Promise<void> {
-    const document = this.ready()
-    document.beginDraft()
-    try {
-      this.update(document, [{ op: 'move', ids, dx, dy }])
-    } catch (error) {
-      document.discardDraft()
-      throw error
-    }
-    document.finishDraft()
-    await this.saving(() => this.ports.publish())
-  }
-  /** What was pasted, on the canvas where the pointer was, or in the middle of the view. */
-  private async paste(files: File[], text: string): Promise<void> {
-    const view = this.viewer.visible(),
-      p = this.pointer,
-      inside =
-        p && p.x >= view.x && p.y >= view.y && p.x <= view.x + view.width && p.y <= view.y + view.height
-    const at = inside ? p : { x: view.x + view.width / 2, y: view.y + view.height / 2 }
-    let pasted: Pasted = { kind: 'text', text }
-    if (files.length) {
-      const save = this.ports.saveFiles
-      if (!save) return
-      this.ready()
-      let saved: Awaited<ReturnType<typeof save>> = []
-      await this.saving(async () => {
-        saved = await save(files)
-      })
-      if (!saved.length) return
-      pasted = { kind: 'files', files: saved }
-    }
-    const document = this.ready(),
-      { ops, ids } = pasteOps(pasted, { x: Math.round(at.x), y: Math.round(at.y) })
-    document.beginDraft()
-    try {
-      this.update(document, ops)
-    } catch (error) {
-      document.discardDraft()
-      throw error
-    }
-    document.finishDraft()
-    this.selected = new Set(ids)
-    await this.saving(() => this.ports.publish())
-  }
-  /** Two presses on one place open what is there for writing, or make a card on empty canvas. */
-  private double(target: CanvasDouble): void {
-    if (target.kind === 'empty') return this.addText(undefined, target.point)
-    this.selected = new Set([target.id])
-    if (target.kind === 'frame') this.naming = target.id
-    else if (target.kind === 'connection') this.labeling = target.id
-    else {
-      const node = this.node()
-      if (node?.type === 'text') return this.editText()
-      if (node) this.viewer.openNode(node)
-    }
-    this.refresh()
-  }
-  private async saveLabel(id: string, label: string): Promise<void> {
-    if (this.labeling === id) this.labeling = null
-    const graph = this.ports.document()?.session.graph,
-      element =
-        graph?.edges.find((e) => e.id === id) ??
-        linesOf(graph ?? { nodes: [], edges: [] }).find((l) => l.id === id)
-    const text = label.replace(/\s+/g, ' ').trim()
-    if (!element || (element.label ?? '') === text) return this.refresh()
-    const document = this.ready()
-    document.beginDraft()
-    this.update(document, [{ op: 'update', id, patch: { label: text || undefined } }])
-    document.finishDraft()
-    await this.saving(() => this.ports.publish())
   }
   private showText(id: string): void {
     this.editing = id
@@ -949,7 +948,11 @@ export class CanvasEditor {
     if (document?.session.draft?.active) document.finishDraft()
     this.editing = null
     this.ownedDraft = null
+    const doc = this.text.ownerDocument,
+      had = doc.activeElement === this.text
     this.text.blur()
+    // The keys go back to the canvas, so the next letter takes a tool rather than going nowhere.
+    if (had || doc.activeElement === doc.body) this.viewer.el.focus({ preventScroll: true })
     if (document) this.changed(document)
     else this.refresh()
   }
@@ -1206,15 +1209,7 @@ export class CanvasEditor {
     if (!graph || !this.selected.size) return
     const picked = graph.nodes.filter((n) => this.selected.has(n.id))
     if (action === 'copy') {
-      const ids = new Set(moveIds(graph, new Set(picked.map((n) => n.id))))
-      const nodes = graph.nodes.filter((n) => ids.has(n.id)),
-        edges = graph.edges.filter(
-          (e) => this.selected.has(e.id) || (ids.has(e.fromNode) && ids.has(e.toNode))
-        )
-      await this.viewer.el.ownerDocument.defaultView?.navigator.clipboard?.writeText(
-        JSON.stringify({ nodes, edges }, null, '\t')
-      )
-      this.ports.notice(`Copied ${nodes.length + edges.length} to the clipboard`)
+      await this.copy()
       return
     }
     const document = this.ready()
@@ -1234,64 +1229,14 @@ export class CanvasEditor {
       ops = [...all].sort((a, b) => depth(b) - depth(a)).map((id) => ({ op: 'remove', id }))
       after = new Set()
     } else {
-      // A copy of the picked cards, frames with what is inside them, and the connections among
-      // them, standing beside them to the right, so a copied frame never lands on its original.
-      const ids = moveIds(graph, new Set(picked.map((n) => n.id))),
-        fresh = new Map([...ids].map((id) => [id, nanoid()])),
-        shift = bounds(graph.nodes.filter((n) => ids.has(n.id))).width + COPY_GAP
-      const parents = parentsOf(graph)
-      const nodes = graph.nodes
-        .filter((n) => ids.has(n.id))
-        // Frames before what they hold, an outer frame before an inner one.
-        .sort(
-          (a, b) =>
-            Number(b.type === 'group') - Number(a.type === 'group') ||
-            (a.type === 'group' && b.type === 'group' ? b.width * b.height - a.width * a.height : 0)
-        )
-      ops = [
-        ...nodes.map(
-          (n): CanvasOperation => ({
-            op: 'add_node',
-            node: {
-              id: fresh.get(n.id),
-              kind:
-                n.type === 'file'
-                  ? 'note'
-                  : n.type === 'text' && n.styleAttributes?.shape
-                    ? 'shape'
-                    : n.type,
-              ...(n.type === 'text' ? { label: n.text ?? '' } : {}),
-              ...(n.type === 'group' ? { label: n.label ?? '' } : {}),
-              ...(n.file ? { file: n.file } : {}),
-              ...(n.subpath ? { subpath: n.subpath } : {}),
-              ...(n.url ? { url: n.url } : {}),
-              ...(n.styleAttributes?.shape ? { shape: n.styleAttributes.shape as Shape } : {}),
-              ...(n.color ? { color: n.color } : {}),
-              ...(fresh.has(parents.get(n.id) ?? '')
-                ? { parent: fresh.get(parents.get(n.id)) }
-                : {}),
-              x: n.x + shift,
-              y: n.y,
-              width: n.width,
-              height: n.height,
-            },
-          })
-        ),
-        ...graph.edges
-          .filter((e) => ids.has(e.fromNode) && ids.has(e.toNode))
-          .map(
-            (e): CanvasOperation => ({
-              op: 'connect',
-              edge: {
-                ...e,
-                id: nanoid(),
-                fromNode: fresh.get(e.fromNode),
-                toNode: fresh.get(e.toNode),
-              },
-            })
-          ),
-      ]
-      after = new Set(picked.map((n) => fresh.get(n.id)))
+      // A copy of what is picked, frames with what is inside them and the connections among
+      // them, standing beside it to the right, so a copied frame never lands on its original.
+      const clip = clipOf(graph, this.selected),
+        box = this.picked().rect
+      if (!box) return
+      const copy = copyOps(clip, box.width + COPY_GAP, 0)
+      ops = copy.ops
+      after = copy.picked
     }
     if (!ops.length) return
     document.beginDraft()
@@ -1473,7 +1418,21 @@ export class CanvasEditor {
         rects.push(inkBounds(ink))
       }
     }
-    return { ids: [...this.selected], kinds, rect: rects.length ? bounds(rects) : null }
+    const rect = rects.length ? bounds(rects) : null
+    let anchor = rect
+    if (this.selected.size === 1) {
+      // One connection or line: the bar stands at its label, in the middle of the line.
+      const id = [...this.selected][0],
+        edge = graph.edges.find((e) => e.id === id),
+        line = edge ? undefined : linesOf(graph).find((l) => l.id === id)
+      const mid = edge
+        ? labelPoint(paintedRoute(edge, graph))
+        : line
+          ? { x: (line.from.x + line.to.x) / 2, y: (line.from.y + line.to.y) / 2 }
+          : null
+      if (mid) anchor = { x: mid.x, y: mid.y - 14, width: 0, height: 22 }
+    }
+    return { ids: [...this.selected], kinds, rect, anchor }
   }
   refresh(): void {
     if (this.destroyed) return
@@ -1727,10 +1686,22 @@ export class CanvasEditor {
     if (
       this.editing ||
       this.waiting ||
+      this.naming ||
+      this.labelling ||
       event.isComposing ||
       (event.target instanceof Element && event.target.closest('button'))
     )
       return false
+    if (event.key === ' ' && this.viewer.step === null) {
+      // Held Space is the hand, whatever tool is in hand, as in every drawing app.
+      if (!this.spaceHeld) {
+        this.spaceHeld = true
+        this.viewer.stage.classList.add('is-panning')
+        this.refresh()
+      }
+      event.preventDefault()
+      return true
+    }
     if (event.key === 'Escape' && this.viewer.step === null) {
       this.inputAdapter.cancel()
       this.selected.clear()
@@ -1739,103 +1710,404 @@ export class CanvasEditor {
       event.preventDefault()
       return true
     }
-    const command = event.metaKey || event.ctrlKey
-    if (event.key === ' ' && this.viewer.step === null && !command) {
-      // Space held moves the canvas whatever is in hand, as in every drawing tool.
-      if (!event.repeat && this.spaceFrom === null && this.tool !== 'pan') {
-        this.inputAdapter.cancel()
-        this.spaceFrom = this.tool
-        this.tool = 'pan'
-        this.refresh()
-      }
-      event.preventDefault()
-      return true
-    }
-    const graph = this.ports.document()?.session.graph
-    // Cmd with a letter or a bracket acts on what is picked, as in every editor of shapes.
-    if (command && !event.altKey && this.viewer.step === null) {
-      const k = event.key.toLowerCase()
-      const run = (action: () => Promise<void> | void) => {
-        event.preventDefault()
-        event.stopPropagation()
-        void Promise.resolve(action()).catch((error) => this.fail(error))
-        return true
-      }
-      if (k === 'a' && graph)
-        return run(() => {
-          this.selected = new Set(canvasVisibility(graph).visible.map((n) => n.id))
-          this.refresh()
-        })
-      if (this.selected.size) {
-        if (k === 'd' && !event.shiftKey) return run(() => this.act('duplicate'))
-        if (k === 'c' && !event.shiftKey) return run(() => this.act('copy'))
-        if (event.key === ']') return run(() => this.act('front'))
-        if (event.key === '[') return run(() => this.act('back'))
-      }
-    }
-    // Shift+1 shows the whole canvas, Shift+2 what is picked.
-    if (event.shiftKey && !command && (event.code === 'Digit1' || event.code === 'Digit2')) {
-      const rect = this.picked().rect
-      if (event.code === 'Digit1') this.viewer.fit()
-      else if (rect) this.viewer.focusRegion(rect, true)
-      event.preventDefault()
-      return true
-    }
-    // Arrows move what is picked a step, ten with Shift; with nothing picked they go through steps.
-    const arrows: Record<string, [number, number]> = {
-      ArrowLeft: [-1, 0],
-      ArrowRight: [1, 0],
-      ArrowUp: [0, -1],
-      ArrowDown: [0, 1],
-    }
-    if (arrows[event.key] && this.selected.size && this.viewer.step === null && !command) {
-      const step = event.shiftKey ? 10 : 1,
-        [dx, dy] = arrows[event.key],
-        ids = [...this.selected].filter((id) => !graph?.edges.some((e) => e.id === id))
-      event.preventDefault()
-      event.stopPropagation()
-      if (ids.length)
-        void this.nudge(ids, dx * step, dy * step).catch((error) => this.fail(error))
-      return true
-    }
-    const tools: Record<string, [string, string?]> = {
-      v: ['Select canvas objects'],
-      h: ['Navigate canvas'],
-      a: ['Draw connection'],
-      f: ['Draw frame'],
-      l: ['Lasso canvas objects'],
-      p: ['Draw with pen', 'Draw with marker'],
-      e: ['Erase whole strokes', 'Erase part of strokes'],
-      t: ['Add text card'],
-      n: ['Add note or attachment'],
-      w: ['Add link'],
-      r: ['Add canvas shape'],
-    }
-    const letter = event.key.length === 1 ? event.key.toLowerCase() : ''
-    if (!command && !event.altKey && tools[letter]) {
-      const [first, again] = tools[letter],
-        pressed = this.buttons.get(first)?.getAttribute('aria-pressed') === 'true'
-      event.preventDefault()
-      event.stopPropagation()
-      this.buttons.get(pressed && again ? again : first)?.click()
-      return true
-    }
-    let label: string
-    if (command && event.key.toLowerCase() === 'z')
-      label = event.shiftKey ? 'Redo canvas change' : 'Undo canvas change'
-    else if (command && event.key.toLowerCase() === 'y') label = 'Redo canvas change'
-    else if (event.key === 'Delete' || event.key === 'Backspace') label = 'Delete selected card'
-    else if (event.key === 'Enter' && this.node()?.type === 'group') {
+    let label: string | null = null
+    if (event.key === 'Enter' && this.node()?.type === 'group') {
       this.naming = this.node().id
       this.refresh()
       event.preventDefault()
       return true
+    } else if (event.key === 'Enter' && this.connection()) {
+      this.labelling = this.connection().id
+      this.refresh()
+      event.preventDefault()
+      return true
     } else if (event.key === 'Enter') label = 'Edit card text'
-    else return false
+    const command = label ? null : canvasKey(event, this.tool)
+    if (!label && !command) return false
     event.preventDefault()
     event.stopPropagation()
-    this.buttons.get(label)?.click()
+    if (label) {
+      this.buttons.get(label)?.click()
+      return true
+    }
+    const run = (work: () => unknown) => {
+      try {
+        void Promise.resolve(work()).catch((error) => this.fail(error))
+      } catch (error) {
+        this.fail(error)
+      }
+    }
+    switch (command.kind) {
+      case 'tool': {
+        const tool = command.tool
+        if (tool === 'note') this.buttons.get('Add note or attachment')?.click()
+        else if (tool === 'shape' && this.tool === 'shape') {
+          // R again steps through the shapes, the slot wearing each in turn.
+          const at = SHAPES.indexOf(this.shape.value as Shape)
+          this.shape.value = SHAPES[(at + 1) % SHAPES.length]
+          this.refresh()
+        } else this.useTool(tool)
+        break
+      }
+      case 'undo':
+        this.buttons.get('Undo canvas change')?.click()
+        break
+      case 'redo':
+        this.buttons.get('Redo canvas change')?.click()
+        break
+      case 'delete':
+        this.buttons
+          .get(
+            this.buttons.get('Delete selected card')?.disabled
+              ? 'Delete canvas selection'
+              : 'Delete selected card'
+          )
+          ?.click()
+        break
+      case 'select-all': {
+        const graph = this.ports.document()?.session.graph
+        if (!graph) break
+        this.selected = new Set([
+          ...canvasVisibility(graph).visible.map((n) => n.id),
+          ...graph.edges.map((e) => e.id),
+          ...linesOf(graph).map((l) => l.id),
+          ...inkEntries(graph)
+            .filter((e) => !e.node)
+            .map((e) => e.stroke.id),
+        ])
+        this.refresh()
+        break
+      }
+      case 'duplicate':
+        run(() => this.act('duplicate'))
+        break
+      case 'copy':
+        run(() => this.copy())
+        break
+      case 'cut':
+        run(async () => {
+          if (await this.copy()) await this.remove()
+        })
+        break
+      case 'front':
+      case 'back':
+        run(() => this.act(command.kind as 'front' | 'back'))
+        break
+      case 'fit':
+        this.viewer.fit()
+        break
+      case 'fit-selection': {
+        const rect = this.picked().rect
+        if (rect) this.viewer.focusRegion(rect, true)
+        break
+      }
+      case 'nudge':
+        run(() => this.nudge(command.dx, command.dy))
+        break
+      case 'find':
+        this.ports.notice('Find on the canvas: not in this prototype yet')
+        break
+    }
     return true
+  }
+  private useTool(tool: CanvasInputTool): void {
+    this.inputAdapter.cancel()
+    if (['pen', 'marker', 'eraser', 'partial-eraser', 'lasso'].includes(tool)) this.selected.clear()
+    this.tool = tool
+    if (tool === 'pen' || tool === 'marker') this.pencilInk = tool
+    this.multiple = false
+    this.refresh()
+  }
+  /** Picked things moved by an arrow key: one step to undo each press. */
+  private async nudge(dx: number, dy: number): Promise<void> {
+    const graph = this.ports.document()?.session.graph
+    if (!graph) return
+    // Connections follow their cards and cannot move on their own.
+    const ids = [...this.selected].filter((id) => !graph.edges.some((e) => e.id === id))
+    if (!ids.length) return
+    await this.apply([{ op: 'move', ids, dx, dy }])
+  }
+  /** One batch of edits as one step to undo, published at once. */
+  private async apply(ops: CanvasOperation[], select?: Set<string>): Promise<void> {
+    const document = this.ready()
+    if (!ops.length) return
+    if (
+      canvasFingerprint(editCanvas(document.session.graph, ops).graph) ===
+      canvasFingerprint(document.session.graph)
+    )
+      return this.refresh()
+    document.beginDraft()
+    this.update(document, ops)
+    document.finishDraft()
+    if (select) this.selected = select
+    await this.saving(() => this.ports.publish())
+  }
+  /** The picked things on the clipboard, as Obsidian Canvas's own JSON, so it pastes anywhere. */
+  private async copy(): Promise<boolean> {
+    const graph = this.ports.document()?.session.graph
+    if (!graph || !this.selected.size) return false
+    const clip = clipOf(graph, this.selected),
+      count =
+        clip.nodes.length +
+        clip.edges.length +
+        linesOf(clip).length +
+        (Array.isArray(clip.abele?.ink) ? clip.abele.ink.length : 0)
+    const text = JSON.stringify(clip, null, '\t')
+    this.clipboard = text
+    await this.viewer.el.ownerDocument.defaultView?.navigator.clipboard
+      ?.writeText(text)
+      .catch(() => {})
+    this.ports.notice(`Copied ${count} to the clipboard`)
+    return true
+  }
+  /** What was copied, kept here too, for a clipboard the page may not read back. */
+  private clipboard = ''
+  /** Copies of picked things carried with Alt: they stand where they were let go. */
+  private async copyBy(ids: ReadonlySet<string>, dx: number, dy: number): Promise<void> {
+    const graph = this.ports.document()?.session.graph
+    if (!graph) return
+    const copy = copyOps(clipOf(graph, ids), dx, dy)
+    await this.apply(copy.ops, copy.picked)
+  }
+  /** Where something pasted or dropped lands: at the pointer, else in the middle of the view. */
+  private landing(): [number, number] {
+    if (this.pointerAt) {
+      const v = this.viewer.visible(),
+        [x, y] = this.pointerAt
+      if (x >= v.x && y >= v.y && x <= v.x + v.width && y <= v.y + v.height) return [x, y]
+    }
+    const v = this.viewer.visible()
+    return [v.x + v.width / 2, v.y + v.height / 2]
+  }
+  private async paste(event: ClipboardEvent): Promise<void> {
+    const target = event.target as HTMLElement | null
+    if (
+      this.editing ||
+      this.naming ||
+      this.labelling ||
+      target?.closest?.('input,textarea,[contenteditable=true]') ||
+      !event.clipboardData
+    )
+      return
+    const data = event.clipboardData,
+      files = Array.from(data.files),
+      text = data.getData('text/plain')
+    if (!files.length && !text && !this.clipboard) return
+    event.preventDefault()
+    try {
+      await this.place(files, text || this.clipboard, this.landing())
+    } catch (error) {
+      this.fail(error)
+    }
+  }
+  private async dropIn(event: DragEvent): Promise<void> {
+    if (!event.dataTransfer || !this.canGesture()) return
+    event.preventDefault()
+    const r = this.viewer.stage.getBoundingClientRect(),
+      cam = this.viewer.camera,
+      at: [number, number] = [
+        (event.clientX - r.left) / cam.zoom + cam.x,
+        (event.clientY - r.top) / cam.zoom + cam.y,
+      ]
+    const paths = this.ports.droppedPaths?.(event) ?? []
+    try {
+      if (paths.length) await this.addFiles(paths, at)
+      else
+        await this.place(
+          Array.from(event.dataTransfer.files),
+          event.dataTransfer.getData('text/uri-list') || event.dataTransfer.getData('text/plain'),
+          at
+        )
+    } catch (error) {
+      this.fail(error)
+    }
+  }
+  /**
+   * Files become cards of their own, saved beside the canvas's attachments first; a copy of
+   * canvas cards lands with its middle at the point; a web address becomes a link card, and
+   * other words a text card.
+   */
+  private async place(files: File[], text: string, [x, y]: [number, number]): Promise<void> {
+    if (files.length) {
+      if (!this.ports.saveAttachment) throw new Error('Files cannot be saved here')
+      const paths: string[] = [],
+        sizes: { width: number; height: number }[] = []
+      for (const file of files) {
+        const data = await file.arrayBuffer()
+        const ext = PICTURE_TYPES[file.type]
+        const name =
+          file.name && file.name !== 'image.png'
+            ? file.name
+            : `Pasted image ${new Date().toISOString().replace(/[:T]/g, '-').slice(0, 19)}.${ext ?? 'png'}`
+        const path = await this.ports.saveAttachment(name, data)
+        if (!path) continue
+        paths.push(path)
+        sizes.push(ext ? await pictureDimensions(data, file.type) : { width: 320, height: 240 })
+      }
+      return this.addFiles(paths, [x, y], sizes)
+    }
+    const clip = parseClip(text)
+    if (clip && clip.nodes.length + (clip.abele ? 1 : 0)) {
+      const box = clip.nodes.length ? bounds(clip.nodes) : { x, y, width: 0, height: 0 }
+      const copy = copyOps(clip, x - (box.x + box.width / 2), y - (box.y + box.height / 2))
+      return this.apply(copy.ops, copy.picked)
+    }
+    const url = pastedUrl(text)
+    const id = nanoid()
+    const node: NodeInput = url
+      ? { id, kind: 'link', url, x: x - 200, y: y - 120, width: 400, height: 240 }
+      : {
+          id,
+          kind: 'text',
+          label: text.trim(),
+          x: x - CARD_SIZE.width / 2,
+          y: y - CARD_SIZE.height / 2,
+          ...CARD_SIZE,
+        }
+    if (!url && !text.trim()) return
+    return this.apply([{ op: 'add_node', node }], new Set([id]))
+  }
+  /** Files from the vault as cards side by side, the first with its middle at the point. */
+  private async addFiles(
+    paths: string[],
+    [x, y]: [number, number],
+    sizes: { width: number; height: number }[] = []
+  ): Promise<void> {
+    if (!paths.length) return
+    let left = x - (sizes[0]?.width ?? 320) / 2
+    const ops: CanvasOperation[] = [],
+      ids = new Set<string>()
+    paths.forEach((file, i) => {
+      const size =
+        sizes[i] ??
+        (/\.md$/i.test(file) ? { width: 400, height: 400 } : { width: 320, height: 240 })
+      const id = nanoid()
+      ids.add(id)
+      ops.push({
+        op: 'add_node',
+        node: { id, kind: 'note', file, x: left, y: y - size.height / 2, ...size },
+      })
+      left += size.width + 40
+    })
+    await this.apply(ops, ids)
+  }
+  /** A double click or double tap: write in the card, on the line or in the frame's name; on
+   * empty canvas, or empty space inside a frame, a new card there. */
+  private doubleTap(event: PointerEvent): void {
+    const document = this.ports.document()
+    if (
+      !document ||
+      this.waiting ||
+      this.editing ||
+      this.naming ||
+      this.labelling ||
+      this.spaceHeld ||
+      this.tool !== 'select' ||
+      !this.canGesture()
+    )
+      return
+    const doc = this.viewer.el.ownerDocument
+    const label = (doc.elementsFromPoint?.(event.clientX, event.clientY) ?? [])
+      .map((el) => el.closest<HTMLElement>('[data-frame-id]'))
+      .find(Boolean)
+    if (label?.dataset.frameId) {
+      this.selected = new Set([label.dataset.frameId])
+      this.naming = label.dataset.frameId
+      return this.refresh()
+    }
+    const r = this.viewer.stage.getBoundingClientRect(),
+      cam = this.viewer.camera,
+      x = (event.clientX - r.left) / cam.zoom + cam.x,
+      y = (event.clientY - r.top) / cam.zoom + cam.y,
+      graph = document.session.graph,
+      node = hitNode(graph, x, y)
+    if (!node || node.type === 'group') {
+      const line = connectionAt(
+        graph,
+        { x, y },
+        (event.pointerType === 'mouse' ? 10 : 22) / cam.zoom
+      )
+      if (line) {
+        this.selected = new Set([line])
+        this.labelling = line
+        return this.refresh()
+      }
+    }
+    if (node && node.type === 'text') {
+      this.selected = new Set([node.id])
+      this.refresh()
+      return this.editText()
+    }
+    if (node && node.type !== 'group') return
+    try {
+      this.addText(undefined, {
+        x: Math.round(x - CARD_SIZE.width / 2),
+        y: Math.round(y - CARD_SIZE.height / 2),
+        ...CARD_SIZE,
+      })
+    } catch (error) {
+      this.fail(error)
+    }
+  }
+  /** The wheel over a picked note reads on inside its card, until its words run out. */
+  private wheel(event: WheelEvent): boolean {
+    const r = this.viewer.stage.getBoundingClientRect(),
+      cam = this.viewer.camera,
+      x = (event.clientX - r.left) / cam.zoom + cam.x,
+      y = (event.clientY - r.top) / cam.zoom + cam.y,
+      graph = this.ports.document()?.session.graph
+    const node = graph && hitNode(graph, x, y)
+    if (!node || !this.selected.has(node.id) || node.type === 'group') return false
+    const body = this.viewer.scroller(node.id)
+    if (!body || body.scrollHeight <= body.clientHeight + 1) return false
+    const dy = (event.deltaMode === 1 ? event.deltaY * 16 : event.deltaY) / cam.zoom,
+      before = body.scrollTop
+    body.scrollTop = before + dy
+    return body.scrollTop !== before || Math.abs(dy) < 1
+  }
+  private async saveLabel(id: string, label: string): Promise<void> {
+    this.labelling = null
+    const graph = this.ports.document()?.session.graph,
+      element =
+        graph?.edges.find((e) => e.id === id) ??
+        linesOf(graph ?? { nodes: [], edges: [] }).find((l) => l.id === id)
+    if (!element || (element.label ?? '') === label.trim()) return this.refresh()
+    await this.apply([{ op: 'update', id, patch: { label: label.trim() } }])
+  }
+  private async showPart(id: string, subpath: string): Promise<void> {
+    await this.apply([{ op: 'update', id, patch: { subpath: subpath || undefined } }])
+  }
+  private async addPart(id: string, subpath: string): Promise<void> {
+    const node = this.ports.document()?.session.graph.nodes.find((n) => n.id === id)
+    if (!node?.file) return
+    const fresh = nanoid()
+    await this.apply(
+      [
+        {
+          op: 'add_node',
+          node: {
+            id: fresh,
+            kind: 'note',
+            file: node.file,
+            ...(subpath ? { subpath } : {}),
+            x: node.x + node.width + 60,
+            y: node.y,
+            width: node.width,
+            height: Math.min(node.height, 300),
+          },
+        },
+      ],
+      new Set([fresh])
+    )
+  }
+  /** The last heading a note's card has scrolled past: the part to keep on the card. */
+  private partInView(id: string): string | null {
+    const body = this.viewer.scroller(id)
+    if (!body || body.scrollTop < 4) return null
+    let found: string | null = null
+    for (const h of Array.from(body.querySelectorAll<HTMLElement>('h1,h2,h3,h4,h5,h6')))
+      if (h.offsetTop <= body.scrollTop + 8) found = h.textContent?.trim() || found
+    return found
   }
   destroy(): void {
     void this.close()
@@ -1864,5 +2136,32 @@ export class CanvasEditor {
     this.inkControls.remove()
     this.properties.remove()
     return written
+  }
+}
+
+/** A picture's own size, read from its bytes by the browser, scaled to a card. */
+async function pictureDimensions(
+  data: ArrayBuffer,
+  type: string
+): Promise<{ width: number; height: number }> {
+  if (typeof URL.createObjectURL !== 'function') return pictureSize(0, 0)
+  const url = URL.createObjectURL(new Blob([data], { type }))
+  try {
+    const size = await new Promise<{ width: number; height: number }>((resolve) => {
+      const image = new Image()
+      const timer = window.setTimeout(() => resolve({ width: 0, height: 0 }), 3000)
+      image.onload = () => {
+        window.clearTimeout(timer)
+        resolve({ width: image.naturalWidth, height: image.naturalHeight })
+      }
+      image.onerror = () => {
+        window.clearTimeout(timer)
+        resolve({ width: 0, height: 0 })
+      }
+      image.src = url
+    })
+    return pictureSize(size.width, size.height)
+  } finally {
+    URL.revokeObjectURL(url)
   }
 }

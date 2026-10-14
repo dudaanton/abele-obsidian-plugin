@@ -26,6 +26,8 @@ export interface ViewerCards {
   /** Scrolls a card's own words by screen pixels; whether they moved, so the canvas stays put. */
   scroll?(id: string, dx: number, dy: number): boolean
   destroy(): void
+  /** A card's own scrolling body, for a long note read inside its card. */
+  scroller?(id: string): HTMLElement | null
 }
 export interface CanvasViewerPorts {
   theme(): CanvasTheme
@@ -58,6 +60,12 @@ export class CanvasViewer {
   onEditorKey?: (event: KeyboardEvent) => boolean
   /** Two or three fingers tapped together and lifted without moving: undo and redo on iPad. */
   onFingersTap?: (fingers: number) => void
+  /** A second press in the same place soon after the first: a double click or a double tap. */
+  onDoubleTap?: (event: PointerEvent) => void
+  /** The wheel turned over the canvas; true when the host used it, so the camera stays. */
+  onWheel?: (event: WheelEvent) => boolean
+  /** The last press that was a tap, for telling a double tap. */
+  private lastTap: { x: number; y: number; time: number; type: string } | null = null
   input?: CanvasViewerInput
   /** The host draws each frame's name as a label of its own; the surface paints only the frame. */
   groupLabels = false
@@ -444,8 +452,14 @@ export class CanvasViewer {
     e.preventDefault()
     e.stopPropagation()
   }
+  /** A card's scrolling body, when the host's cards have one. */
+  scroller(id: string): HTMLElement | null {
+    return this.ports.cards.scroller?.(id) ?? null
+  }
   private down(e: PointerEvent): void {
-    if ((e.button !== 0 && e.pointerType === 'mouse') || this.input?.ignores?.(e)) return
+    // The middle button moves the canvas whatever tool is in hand.
+    const middle = e.pointerType === 'mouse' && e.button === 1
+    if ((e.button !== 0 && !middle && e.pointerType === 'mouse') || this.input?.ignores?.(e)) return
     e.stopPropagation()
     this.stopAnimation()
     this.framedRegion = null
@@ -468,7 +482,7 @@ export class CanvasViewer {
         touch: e.pointerType !== 'mouse',
         pen: e.pointerType === 'pen',
         camera: { ...this.camera },
-        editing: this.step === null && !!this.input?.down(e),
+        editing: !middle && this.step === null && !!this.input?.down(e),
         fingers: 1,
         moved: false,
       }
@@ -535,6 +549,7 @@ export class CanvasViewer {
     }
     if (this.pointers.size || !gesture) return
     this.gesture = null
+    this.tapped(e, gesture, cancel)
     if (
       !cancel &&
       gesture.touch &&
@@ -580,11 +595,52 @@ export class CanvasViewer {
     else if (node && (node.type === 'file' || node.type === 'link')) this.ports.openNode(node)
     else if (this.step !== null) this.advance(1)
   }
+  /**
+   * A press let go where it went down, quickly, with one pointer: a tap. A second tap in the same
+   * place soon after is a double tap, told to the host after the tap itself has been handled.
+   * A pen's taps are dots it draws, so they are not counted.
+   */
+  private tapped(
+    e: PointerEvent,
+    gesture: { x: number; y: number; time: number; multi: boolean },
+    cancel: boolean
+  ): void {
+    const now = Date.now()
+    if (
+      cancel ||
+      gesture.multi ||
+      e.pointerType === 'pen' ||
+      Math.hypot(e.clientX - gesture.x, e.clientY - gesture.y) > 8 ||
+      now - gesture.time > 500
+    ) {
+      this.lastTap = null
+      return
+    }
+    const last = this.lastTap,
+      reach = e.pointerType === 'mouse' ? 8 : 24
+    if (
+      last &&
+      last.type === e.pointerType &&
+      now - last.time < 450 &&
+      Math.hypot(e.clientX - last.x, e.clientY - last.y) <= reach
+    ) {
+      this.lastTap = null
+      const handler = this.onDoubleTap
+      if (handler && this.step === null) queueMicrotask(() => !this.destroyed && handler(e))
+      return
+    }
+    this.lastTap = { x: e.clientX, y: e.clientY, time: now, type: e.pointerType }
+  }
   private cancelInput(): void {
     this.input?.cancel()
     if (this.gesture) this.gesture.multi = true
   }
   private wheel(e: WheelEvent): void {
+    if (this.step === null && !e.ctrlKey && !e.metaKey && this.onWheel?.(e)) {
+      e.preventDefault()
+      e.stopPropagation()
+      return
+    }
     this.cancelInput()
     this.framedRegion = null
     e.preventDefault()

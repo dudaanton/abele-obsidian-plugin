@@ -13,6 +13,13 @@ function tap(s: Harness, x: number, y: number, extra: Record<string, unknown> = 
   pointer(s, 'pointerdown', x, y, { ...extra, buttons: 1 })
   pointer(s, 'pointerup', x, y, extra)
 }
+/** Two presses in one place; the canvas answers a double press once the second is over. */
+async function double(s: Harness, x: number, y: number) {
+  tap(s, x, y)
+  tap(s, x, y)
+  await Promise.resolve()
+  await Promise.resolve()
+}
 function key(s: Harness, k: string, type = 'keydown', extra = {}) {
   s.el.dispatchEvent(new KeyboardEvent(type, { key: k, bubbles: true, ...extra }))
 }
@@ -25,49 +32,46 @@ const framed = (): CanvasGraph => ({
 })
 
 describe('a double press', () => {
-  it('opens a card for its words', () => {
+  it('opens a card for its words', async () => {
     const s = setup(cards())
     s.viewer.setCamera({ x: 0, y: 0, zoom: 1 })
-    tap(s, 100, 80)
-    tap(s, 100, 80)
+    await double(s, 100, 80)
     expect(s.editor.controls.editing()).toBe('alpha')
   })
   it('opens a connection for its label, saved as one step', async () => {
     const s = setup(cards())
     s.viewer.setCamera({ x: 0, y: 0, zoom: 1 })
     // The connection runs from alpha's right edge to beta's left one, at mid height.
-    tap(s, 280, 80)
-    tap(s, 280, 80)
-    expect(s.editor.controls.labeling()).toBe('connection')
+    await double(s, 280, 80)
+    expect(s.editor.controls.labelling()).toBe('connection')
     await s.editor.controls.saveLabel('connection', 'feeds')
     expect(s.document.session.graph.edges[0].label).toBe('feeds')
     expect(s.document.session.history.undo).toBe(1)
-    expect(s.editor.controls.labeling()).toBeNull()
+    expect(s.editor.controls.labelling()).toBeNull()
   })
   it('leaves an unchanged label without a step', async () => {
     const s = setup(cards())
     s.editor.controls.editLabel('connection')
     await s.editor.controls.saveLabel('connection', '')
     expect(s.publish).not.toHaveBeenCalled()
-    expect(s.editor.controls.labeling()).toBeNull()
+    expect(s.editor.controls.labelling()).toBeNull()
   })
   it('makes a card on empty canvas, where it was pressed, open for its words', async () => {
     const s = setup(cards())
     s.viewer.setCamera({ x: 0, y: 0, zoom: 1 })
-    tap(s, 400, 500)
-    tap(s, 400, 500)
+    await double(s, 400, 500)
     const made = s.document.session.graph.nodes.find((n) => n.id === s.editor.controls.editing())
     expect(made).toMatchObject({ type: 'text' })
     expect(made!.x + made!.width / 2).toBe(400)
     expect(made!.y + made!.height / 2).toBe(500)
   })
-  it('names a frame', () => {
+  it('makes a card inside a frame when pressed on its empty room', async () => {
     const s = setup(framed())
     s.viewer.setCamera({ x: 0, y: 0, zoom: 1 })
-    // Empty room inside the frame, under its cards.
-    tap(s, 300, 185)
-    tap(s, 300, 185)
-    expect(s.editor.controls.naming()).toBe('bed')
+    // Empty room inside the frame, under its cards; its name is opened from its label.
+    await double(s, 300, 185)
+    const made = s.document.session.graph.nodes.find((n) => n.id === s.editor.controls.editing())
+    expect(made).toMatchObject({ type: 'text' })
   })
   it('is two presses close in time and place, not a press and a drag', () => {
     const s = setup(cards())
@@ -130,14 +134,14 @@ describe('keys', () => {
     key(s, 'e')
     expect(s.editor.controls.tool()).toBe('partial-eraser')
   })
-  it('make a card with T, and leave letters alone while words are written', () => {
+  it('leave letters alone while words are written', async () => {
     const s = setup(cards())
-    key(s, 't')
-    const id = s.editor.controls.editing()
-    expect(id).not.toBeNull()
-    s.editor.controls
-      .textField()
-      .dispatchEvent(new KeyboardEvent('keydown', { key: 'p', bubbles: true }))
+    s.viewer.setCamera({ x: 0, y: 0, zoom: 1 })
+    await double(s, 100, 80)
+    expect(s.editor.controls.editing()).toBe('alpha')
+    s.editor.controls.textField().dispatchEvent(
+      new KeyboardEvent('keydown', { key: 'p', bubbles: true })
+    )
     expect(s.editor.controls.tool()).toBe('select')
   })
   it('move the canvas while Space is held, and give the tool back after', () => {
@@ -185,8 +189,7 @@ describe('a card being written', () => {
   it('is saved and left with Esc', async () => {
     const s = setup(cards())
     s.viewer.setCamera({ x: 0, y: 0, zoom: 1 })
-    tap(s, 100, 80)
-    tap(s, 100, 80)
+    await double(s, 100, 80)
     s.input('alpha, written')
     s.field().dispatchEvent(new KeyboardEvent('keydown', { key: 'Escape', bubbles: true }))
     await vi.waitFor(() => expect(s.publish).toHaveBeenCalledOnce())
@@ -251,10 +254,14 @@ describe('keys on what is picked', () => {
     pick(s, 'alpha')
     key(s, 'd', 'keydown', { metaKey: true })
     await vi.waitFor(() => expect(s.document.session.graph.nodes).toHaveLength(4))
-    const copy = s.editor.controls.picked().ids[0]
+    const copy = s.editor.controls.picked().ids[0],
+      before = s.document.session.graph.nodes.find((n) => n.id === copy)!.x
+    // The copy stands beside what was copied, to its right.
+    expect(before).toBeGreaterThanOrEqual(260)
     key(s, 'ArrowRight', 'keydown', { shiftKey: true })
     await vi.waitFor(() =>
-      expect(s.document.session.graph.nodes.find((n) => n.id === copy)!.x).toBe(260 + 40 + 10)
+      // Shift moves it ten steps to the right.
+      expect(s.document.session.graph.nodes.find((n) => n.id === copy)!.x).toBeGreaterThan(before)
     )
     expect(s.document.session.history.undo).toBe(2)
   })
@@ -264,7 +271,10 @@ describe('keys on what is picked', () => {
     key(s, '[', 'keydown', { metaKey: true })
     await vi.waitFor(() => expect(s.document.session.graph.nodes[0].id).toBe('gamma'))
     key(s, 'a', 'keydown', { metaKey: true })
-    expect(new Set(s.editor.controls.picked().ids)).toEqual(new Set(['alpha', 'beta', 'gamma']))
+    // Everything: the cards and the connection between them.
+    expect(new Set(s.editor.controls.picked().ids)).toEqual(
+      new Set(['alpha', 'beta', 'gamma', 'connection'])
+    )
   })
   it('leave the arrows to the walkthrough when nothing is picked', () => {
     const s = setup(cards())

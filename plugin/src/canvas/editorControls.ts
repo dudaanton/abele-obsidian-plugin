@@ -79,7 +79,14 @@ class CanvasChoiceModal<T extends string> extends ShellModal {
 }
 /** The moment as Obsidian stamps a pasted picture's name: 20260102030405. */
 const stamp = (now = new Date()): string =>
-  [now.getFullYear(), now.getMonth() + 1, now.getDate(), now.getHours(), now.getMinutes(), now.getSeconds()]
+  [
+    now.getFullYear(),
+    now.getMonth() + 1,
+    now.getDate(),
+    now.getHours(),
+    now.getMinutes(),
+    now.getSeconds(),
+  ]
     .map((n, i) => String(n).padStart(i ? 2 : 4, '0'))
     .join('')
 export function hostCanvasEditor(
@@ -123,32 +130,28 @@ export function hostCanvasEditor(
     notice: (message) => {
       new Notice(message)
     },
-    saveFiles: async (files) => {
-      const canvas = requireDocument().file.path,
-        out: { path: string; width?: number; height?: number }[] = []
-      for (const file of files) {
-        // A picture from the clipboard comes unnamed; Obsidian names its own pasted pictures so.
-        const ext = file.name.includes('.')
-          ? file.name.split('.').pop()!
-          : (file.type.split('/')[1] ?? 'png').replace('jpeg', 'jpg')
-        const name =
-          !file.name || /^image\.\w+$/i.test(file.name)
-            ? `Pasted image ${stamp()}.${ext}`
-            : file.name
-        const path = await app.fileManager.getAvailablePathForAttachment(name, canvas)
-        const made = await app.vault.createBinary(path, await file.arrayBuffer())
-        let size: { width?: number; height?: number } = {}
-        if (file.type.startsWith('image/') && typeof createImageBitmap === 'function')
-          try {
-            const bitmap = await createImageBitmap(file)
-            size = { width: bitmap.width, height: bitmap.height }
-            bitmap.close()
-          } catch {
-            /* A picture the browser cannot read stands at a note's size. */
-          }
-        out.push({ path: made.path, ...size })
-      }
-      return out
+    saveAttachment: async (name, data) => {
+      const path = await app.fileManager.getAvailablePathForAttachment(
+        name,
+        requireDocument().file.path
+      )
+      return (await app.vault.createBinary(path, data)).path
+    },
+    noteHeadings: async (path) =>
+      (app.metadataCache.getCache(path)?.headings ?? []).map((h) => ({
+        heading: h.heading,
+        level: h.level,
+      })),
+    // A file dragged from Obsidian's own file list: Obsidian holds what is being dragged.
+    droppedPaths: () => {
+      const dragged = (
+        app as unknown as {
+          dragManager?: { draggable?: { type?: string; file?: TFile; files?: TFile[] } | null }
+        }
+      ).dragManager?.draggable
+      if (dragged?.type === 'file' && dragged.file) return [dragged.file.path]
+      if (dragged?.type === 'files' && dragged.files) return dragged.files.map((f) => f.path)
+      return []
     },
   })
 }
