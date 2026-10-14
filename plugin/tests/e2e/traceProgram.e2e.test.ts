@@ -37,8 +37,9 @@ const recordPoint=async (line,takes)=>{
   press(document.querySelector('.abele-trace-point [aria-label="Keep (Enter)"]'));
   await until(()=>!document.querySelector('.abele-trace-point'),'point saved');
   const said=()=>[...document.querySelectorAll('button.abele-debug-source__point')].map(b=>b.getAttribute('aria-label')).filter(l=>l&&!l.startsWith('Stop at line')).join(' | ');
-  await until(()=>said().startsWith('Record point ·'),'record point confirmed: '+said(),400).catch(e=>{throw Error(e.message+' / now: '+said())});
+  await until(()=>said().startsWith('Record point ·'),'record point confirmed: '+said(),400).catch(e=>{throw Error(e.message+' / now: '+said()+' / state: '+debugState())});
 };
+const debugState=()=>{const b=api.DebuggerService.instance.active.value,c=b?.controller;return JSON.stringify({session:c?.snapshot?.debug_session_id,lifecycle:c?.snapshot?.lifecycle,execution:c?.snapshot?.execution,status:c?.session.status,error:c?.error,bps:c?.snapshot?.breakpoints,identity:c?.snapshot?.target.build_identity,points:b?.trace?.points,actions:c?.actions?.slice(-3),notices:[...document.querySelectorAll('.notice')].map(n=>n.textContent)}).slice(0,3000)};
 const goOn=async()=>{
   const go=await until(()=>[...document.querySelectorAll('[aria-label="Continue (F5)"]')].find(b=>!b.classList.contains('is-disabled')&&!b.hasAttribute('disabled')),'Continue offered');
   press(go);
