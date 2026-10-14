@@ -332,6 +332,8 @@ Third caption
         const edge=s=>s.querySelector('h2').getBoundingClientRect().left-s.getBoundingClientRect().left
         const article={overlaps,edge:edge(art),firstPara:para.getBoundingClientRect().left-art.getBoundingClientRect().left,cls:art.className,columns:getComputedStyle(artBody).columnCount,size:parseFloat(getComputedStyle(para).fontSize),heading:parseFloat(getComputedStyle(art.querySelector('h2')).fontSize),overflow:artBody.scrollHeight-artBody.clientHeight,slideBottom:art.getBoundingClientRect().bottom,bodyBottom:artBody.getBoundingClientRect().bottom}
         await shot(3,'article')
+        // The window itself as well: the slide tool's picture is drawn from a copy of the page.
+        {const fs=require('fs');art.scrollIntoView();await new Promise(r=>requestAnimationFrame(()=>requestAnimationFrame(r)));fs.writeFileSync(${JSON.stringify(SHOTS)}+'/more-article-window.png',(await require('@electron/remote').getCurrentWebContents().capturePage()).toPNG())}
         await v.go(3);await settle()
         const g=active(),cells=[...g.querySelectorAll('.abele-slide-region-cell')]
         const gallery={cls:g.className,cells:cells.map(c=>{const img=c.querySelector('img'),cap=[...c.querySelectorAll('p')].find(p=>!p.querySelector('img'))||c;return {img:rect(img),caption:rect(cap),text:c.textContent.trim()}})}
