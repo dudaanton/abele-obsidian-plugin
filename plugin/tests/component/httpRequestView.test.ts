@@ -1,9 +1,8 @@
 import { describe, expect, it } from 'vitest'
 import { mount } from '@vue/test-utils'
 import RequestView from '@/components/debugger/http/RequestView.vue'
-import DebugPanel from '@/components/debugger/DebugPanel.vue'
+import RequestsPanel from '@/components/debugger/http/RequestsPanel.vue'
 import type { HttpRequest } from '@/components/debugger/http/types'
-import type { DebugSession } from '@/components/debugger/types'
 
 const request = (missing?: string): HttpRequest => ({
   id: 'sample-create',
@@ -60,36 +59,75 @@ describe('a saved request in its tab', () => {
   })
 })
 
-describe('the requests in the Debug view', () => {
-  const session: DebugSession = {
-    program: 'sample',
-    status: 'running',
-    frame: 0,
-    frames: [],
-    variables: [],
-    breakpoints: [],
-    watches: [],
-    output: '',
-    mode: 'ask',
+describe('a request and a recording', () => {
+  it('offers sending into a recording only while one goes on', async () => {
+    const view = mount(RequestView, { props: { request: request(), environment: 'local', vars } })
+    expect(view.find('.abele-http-request__into').exists()).toBe(false)
+    await view.setProps({ recording: 'sample program' })
+    await view.find('.abele-http-request__into').trigger('click')
+    expect(view.emitted('into-recording')?.[0]).toEqual([true])
+  })
+})
+
+describe('the history of a request', () => {
+  const history = [
+    {
+      id: 'sample-2',
+      at: '05:12',
+      environment: 'local',
+      status: 201,
+      ms: 80,
+      bytes: 10,
+      body: '{}',
+    },
+    {
+      id: 'sample-1',
+      at: '05:03',
+      environment: 'local',
+      status: 422,
+      ms: 90,
+      bytes: 10,
+      body: '{"a":1}',
+    },
+  ]
+  const answered = {
+    kind: 'answered' as const,
+    response: { status: 201, reason: 'Created', ms: 80, bytes: 10, headers: [], body: '{}' },
   }
+  it('lists each sending and compares one with the answer shown', async () => {
+    const view = mount(RequestView, {
+      props: { request: request(), environment: 'local', vars, outcome: answered, history },
+    })
+    const tab = view
+      .findAll('.abele-tabs__tab, [role=tab]')
+      .find((t) => t.text().startsWith('History'))
+    expect(tab).toBeDefined()
+    await tab!.trigger('click')
+    expect(view.text()).toContain('05:03')
+    await view.findAll('.abele-http-request__rows .tree-item-self')[1].trigger('click')
+    expect(view.emitted('show-send')?.[0]).toEqual(['sample-1'])
+    await view.setProps({ compareWith: history[1] })
+    expect(view.text()).toContain('Compared with the answer of 05:03')
+  })
+})
+
+describe('the requests view', () => {
   it('lists collections with each request and opens one on a click', async () => {
-    const view = mount(DebugPanel, {
+    const view = mount(RequestsPanel, {
       props: {
-        session,
-        requests: [{ name: 'Samples', requests: [{ ...request(), last: { status: 201 } }] }],
+        collections: [{ name: 'Samples', requests: [{ ...request(), last: { status: 201 } }] }],
         environment: 'local',
       },
     })
-    expect(view.find('.abele-debug-panel__requests').text()).toContain('Create sample')
-    expect(view.find('.abele-debug-panel__last').text()).toBe('201')
-    await view.find('.abele-debug-panel__request .tree-item-self').trigger('click')
+    expect(view.text()).toContain('Create sample')
+    expect(view.find('.abele-requests-panel__last').text()).toBe('201')
+    expect(view.find('.abele-requests-panel__recording').exists()).toBe(false)
+    await view.find('.abele-requests-panel__request .tree-item-self').trigger('click')
     expect(view.emitted('open-request')?.[0]).toEqual(['sample-create'])
   })
 
   it('says the requests open while the node is online', () => {
-    const view = mount(DebugPanel, {
-      props: { session, requests: [], requestsOffline: true },
-    })
-    expect(view.find('.abele-debug-panel__requests').text()).toContain('while the node is online')
+    const view = mount(RequestsPanel, { props: { collections: [], offline: true } })
+    expect(view.text()).toContain('while the node is online')
   })
 })

@@ -25,13 +25,34 @@
             @change="emit('change', { ...request, url: ($event.target as HTMLInputElement).value })"
             @keydown.enter.prevent="send"
           />
+          <Icon
+            v-if="recording"
+            class="abele-http-request__into"
+            :class="{ 'abele-http-request__into_on': intoRecording }"
+            icon="circle-dot"
+            :active="intoRecording"
+            role="switch"
+            :aria-checked="intoRecording"
+            :tooltip="
+              intoRecording
+                ? `Goes into the recording of ${recording}; click to send it on its own`
+                : `Sent on its own; click to send it into the recording of ${recording}`
+            "
+            @click="emit('into-recording', !intoRecording)"
+          />
+          <!-- Only while a program is recorded: whether this send goes into the recording, so its
+           answer and the code's steps it caused stand in one run. Otherwise there is no such
+           choice and nothing about recording shows. -->
           <Button
             class="abele-http-request__send"
             accent
             :text="outcome?.kind === 'sending' ? 'Sending…' : 'Send'"
             :loading="outcome?.kind === 'sending'"
             :disabled="!!blocked || outcome?.kind === 'sending'"
-            :tooltip="blocked ?? `Send it in ${environment} (${mod}+Enter)`"
+            :tooltip="
+              blocked ??
+              `Send it in ${environment}${recording && intoRecording ? ', into the recording' : ''} (Enter)`
+            "
             @click="send"
           />
         </div>
@@ -129,6 +150,7 @@
             <span>{{ outcome.response.reason }}</span>
             <span class="abele-http-request__fact">{{ outcome.response.ms }} ms</span>
             <span class="abele-http-request__fact">{{ bytes(outcome.response.bytes) }}</span>
+            <span v-if="shownAt" class="abele-http-request__fact">{{ shownAt }}</span>
             <a
               v-if="outcome.response.steps"
               class="abele-http-request__steps"
@@ -141,8 +163,27 @@
             >
           </div>
           <Tabs v-model="answerTab" level="secondary" :tabs="answerTabs" />
+          <div v-if="answerTab === 'body' && compareWith" class="abele-http-request__compare">
+            <div class="abele-http-request__compare-head">
+              <span>Compared with the answer of {{ compareWith.at }}</span>
+              <Icon
+                icon="x"
+                size="xs"
+                tooltip="Stop comparing"
+                @click="emit('compare', undefined)"
+              />
+            </div>
+            <Diff
+              :text-left="compareWith.body ?? ''"
+              :text-right="outcome.response.body"
+              layout="unified"
+              :label-before="compareWith.at"
+              label-after="This answer"
+              empty-text="The same body."
+            />
+          </div>
           <DebugValueView
-            v-if="answerTab === 'body'"
+            v-else-if="answerTab === 'body'"
             class="abele-http-request__body-view"
             name="Body"
             :value="outcome.response.body"
@@ -152,6 +193,45 @@
               <template #end
                 ><code class="abele-http-request__header-value">{{ h.value }}</code></template
               >
+            </TreeItem>
+          </div>
+          <div v-else-if="answerTab === 'history'" class="abele-http-request__rows">
+            <TreeItem
+              v-for="h in history"
+              :key="h.id"
+              flush
+              :text="h.at"
+              :note="h.environment"
+              :active="h.id === (shownSend ?? history[0]?.id)"
+              @click="emit('show-send', h.id)"
+            >
+              <template #end>
+                <Icon
+                  v-if="h.intoRun"
+                  icon="circle-dot"
+                  size="xs"
+                  no-hover
+                  class="abele-http-request__in-run"
+                  tooltip="Sent into a recording: a step of its run"
+                />
+                <span class="abele-http-request__fact">{{
+                  h.ms !== undefined ? `${h.ms} ms` : ''
+                }}</span>
+                <span
+                  class="abele-http-request__status"
+                  :class="`abele-http-request__status_${h.failed ? 'error' : statusTone(h.status ?? 0)}`"
+                  >{{ h.failed ? '—' : h.status }}</span
+                >
+              </template>
+              <template #actions>
+                <Icon
+                  icon="git-compare"
+                  size="xs"
+                  tooltip="Compare with the answer shown"
+                  :disabled="h.failed || h.id === (shownSend ?? history[0]?.id)"
+                  @click.stop="emit('compare', h.id)"
+                />
+              </template>
             </TreeItem>
           </div>
           <div v-else class="abele-http-request__rows">
@@ -220,10 +300,18 @@ import ResultMark from '../../obsidian/ResultMark.vue'
 import StatusDot from '../../obsidian/StatusDot.vue'
 import Tabs from '../../obsidian/Tabs.vue'
 import TreeItem from '../../obsidian/TreeItem.vue'
+import Diff from '../../Diff.vue'
 import DebugValueView from '../DebugValueView.vue'
 import { bytes } from '../trace/format'
 import RequestPairs from './RequestPairs.vue'
-import type { HttpEnvironment, HttpMethod, HttpOutcome, HttpPair, HttpRequest } from './types'
+import type {
+  HttpEnvironment,
+  HttpMethod,
+  HttpOutcome,
+  HttpPair,
+  HttpRequest,
+  HttpSend,
+} from './types'
 
 const props = withDefaults(
   defineProps<{
@@ -232,18 +320,43 @@ const props = withDefaults(
     /** The environment's values, to show what the address comes to. */
     vars?: HttpEnvironment['vars']
     outcome?: HttpOutcome
+    /** Every sending of it, the latest first. */
+    history?: HttpSend[]
+    /** The sending whose answer is shown, when not the latest. */
+    shownSend?: string
+    /** An earlier sending the answer shown is compared with. */
+    compareWith?: HttpSend
+    /** The program being recorded now, when one is: a send may go into it. */
+    recording?: string
+    intoRecording?: boolean
   }>(),
-  { vars: () => [], outcome: undefined }
+  {
+    vars: () => [],
+    outcome: undefined,
+    history: () => [],
+    shownSend: undefined,
+    compareWith: undefined,
+    recording: undefined,
+    intoRecording: false,
+  }
 )
 const emit = defineEmits<{
   (e: 'change', request: HttpRequest): void
   (e: 'send'): void
   (e: 'open-run'): void
   (e: 'open-script', name: string): void
+  (e: 'into-recording', on: boolean): void
+  (e: 'show-send', id: string): void
+  (e: 'compare', id: string | undefined): void
 }>()
 
 const phone = Platform.isPhone
-const mod = Platform.isMacOS ? '⌘' : 'Ctrl'
+/** When the answer shown was sent, if it is not the latest. */
+const shownAt = computed(() =>
+  props.shownSend && props.shownSend !== props.history[0]?.id
+    ? props.history.find((h) => h.id === props.shownSend)?.at
+    : undefined
+)
 const METHODS: HttpMethod[] = ['GET', 'POST', 'PUT', 'PATCH', 'DELETE', 'HEAD', 'OPTIONS']
 
 const folded = reactive(new Set<string>(['scripts']))
@@ -314,7 +427,14 @@ function addPair(part: string, pair: HttpPair) {
 const answerTab = ref('body')
 watch(
   () => props.outcome,
-  () => (answerTab.value = 'body')
+  (now, before) => {
+    // A fresh answer is read from its body; looking through the history keeps its tab.
+    if (now?.kind !== 'answered' || before?.kind !== 'answered') answerTab.value = 'body'
+  }
+)
+watch(
+  () => props.compareWith,
+  (c) => c && (answerTab.value = 'body')
 )
 const answerTabs = computed(() => {
   const r = props.outcome?.kind === 'answered' ? props.outcome.response : undefined
@@ -330,6 +450,9 @@ const answerTabs = computed(() => {
             badge: `${checks.filter((c) => c.passed).length}/${checks.length}`,
           },
         ]
+      : []),
+    ...(props.history.length > 1
+      ? [{ id: 'history', label: 'History', badge: props.history.length }]
       : []),
   ]
 })
@@ -509,6 +632,31 @@ const statusTone = (status: number) => (status >= 400 ? 'error' : status >= 300 
     padding: 0;
     color: inherit;
   }
+}
+
+.abele-http-request__into {
+  flex: 0 0 auto;
+}
+// On, the recording's own red: the same code as the dot of a recording in the Debug view.
+.abele-http-request__into_on {
+  color: var(--color-red);
+}
+.abele-http-request__in-run {
+  height: auto;
+  padding: 0;
+  color: var(--color-red);
+}
+.abele-http-request__compare {
+  display: flex;
+  flex-direction: column;
+  gap: var(--size-4-2);
+}
+.abele-http-request__compare-head {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  font-size: var(--font-ui-small);
+  color: var(--text-muted);
 }
 
 .abele-http-request__header-value {

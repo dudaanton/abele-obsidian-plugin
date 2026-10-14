@@ -72,3 +72,20 @@ export interface HttpEnvironment {
   name: string
   vars: HttpPair[]
 }
+
+/** One sending of a request, kept in its history beside the request's file. */
+export interface HttpSend {
+  id: string
+  /** When, said as it should read: `05:12`, `Yesterday 18:40`. */
+  at: string
+  environment: string
+  status?: number
+  /** It never reached the server. */
+  failed?: boolean
+  ms?: number
+  bytes?: number
+  /** The answer's body, to show again and to compare. */
+  body?: string
+  /** Sent into a recording: it is a step of that run. */
+  intoRun?: boolean
+}

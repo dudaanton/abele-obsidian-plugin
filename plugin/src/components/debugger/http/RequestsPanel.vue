@@ -1,0 +1,177 @@
+<template>
+  <!-- The project's saved requests as a view of their own in the sidebar, as Bookmarks or the
+       file explorer: what to add in its header, the environment they go out in, then the
+       collections as folders and each request as a row, its method a code before the name and its
+       last status faint at the end. A recording going on is one quiet line at the top: a request
+       can then be sent into it, from the request's own tab. -->
+  <div class="abele-requests-panel">
+    <div class="nav-header">
+      <div class="nav-buttons-container">
+        <Icon
+          class="nav-action-button"
+          icon="file-plus"
+          tooltip="New request"
+          :disabled="offline"
+          @click="emit('new-request')"
+        />
+        <Icon
+          class="nav-action-button"
+          icon="folder-plus"
+          tooltip="New collection"
+          :disabled="offline"
+          @click="emit('new-collection')"
+        />
+      </div>
+    </div>
+
+    <div v-if="offline" class="abele-requests-panel__empty">
+      Requests open while the node is online.
+    </div>
+    <template v-else>
+      <TreeItem
+        v-if="recording"
+        class="abele-requests-panel__recording"
+        :text="recording"
+        label="A recording goes on: a request can be sent into it"
+        @click="emit('show-recording')"
+      >
+        <template #leading>
+          <StatusDot tone="red" label="Recording" pulse />
+        </template>
+      </TreeItem>
+      <TreeItem
+        class="abele-requests-panel__environment"
+        icon="layers"
+        :text="environment ?? 'No environment'"
+        label="Environment the requests go out in"
+        @click="(e: MouseEvent) => emit('environment-menu', e)"
+      >
+        <template #end><Icon icon="chevrons-up-down" size="xs" no-hover /></template>
+      </TreeItem>
+      <TreeItem
+        v-for="c in collections"
+        :key="c.name"
+        icon="folder"
+        :text="c.name"
+        :flair="String(c.requests.length)"
+        collapsible
+        :collapsed="folded.has(c.name)"
+        @click="toggle(c.name)"
+      >
+        <TreeItem
+          v-for="r in c.requests"
+          :key="r.id"
+          class="abele-requests-panel__request"
+          :text="r.name"
+          :active="r.id === open"
+          @click="emit('open-request', r.id)"
+          @contextmenu.prevent="(e: MouseEvent) => emit('request-menu', r.id, e)"
+        >
+          <template #leading><MethodMark :method="r.method" /></template>
+          <template #end>
+            <StatusDot v-if="r.id === sending" tone="accent" label="Sending" pulse />
+            <span
+              v-else-if="r.last"
+              class="abele-requests-panel__last"
+              :class="{
+                'abele-requests-panel__last_error': r.last.failed || (r.last.status ?? 0) >= 400,
+              }"
+              :aria-label="
+                r.last.failed
+                  ? 'Did not get through the last time'
+                  : `Answered ${r.last.status} the last time`
+              "
+              >{{ r.last.failed ? '—' : r.last.status }}</span
+            >
+          </template>
+          <template #actions>
+            <Icon
+              icon="send-horizontal"
+              size="xs"
+              tooltip="Send"
+              :disabled="r.id === sending"
+              @click.stop="emit('send-request', r.id)"
+            />
+          </template>
+        </TreeItem>
+      </TreeItem>
+      <div v-if="!collections.length" class="abele-requests-panel__empty">
+        Save a request to send it again; the agent can make one too.
+      </div>
+    </template>
+  </div>
+</template>
+
+<script setup lang="ts">
+// The requests stand on their own: collections, environments, keys by name, scripts and the
+// answers. Nothing here needs the debugger; a recording only adds a place a request may go into.
+import { reactive } from 'vue'
+import Icon from '../../obsidian/Icon.vue'
+import StatusDot from '../../obsidian/StatusDot.vue'
+import TreeItem from '../../obsidian/TreeItem.vue'
+import MethodMark from './MethodMark.vue'
+import type { HttpCollection } from './types'
+
+withDefaults(
+  defineProps<{
+    collections: HttpCollection[]
+    /** The environment they go out in. */
+    environment?: string
+    /** The node is away: the requests are files on it. */
+    offline?: boolean
+    /** The request open in a tab. */
+    open?: string
+    /** The request being sent now. */
+    sending?: string
+    /** The program being recorded now, when one is. */
+    recording?: string
+  }>(),
+  {
+    environment: undefined,
+    offline: false,
+    open: undefined,
+    sending: undefined,
+    recording: undefined,
+  }
+)
+const emit = defineEmits<{
+  (e: 'open-request', id: string): void
+  (e: 'send-request', id: string): void
+  /** Send, duplicate, rename, copy as curl, delete: a menu at the row. */
+  (e: 'request-menu', id: string, event: MouseEvent): void
+  /** The environments to pick from and their values to edit, a menu at the row. */
+  (e: 'environment-menu', event: MouseEvent): void
+  (e: 'new-request'): void
+  (e: 'new-collection'): void
+  /** The Debug view, where the recording is. */
+  (e: 'show-recording'): void
+}>()
+
+const folded = reactive(new Set<string>())
+const toggle = (name: string) => (folded.has(name) ? folded.delete(name) : folded.add(name))
+</script>
+
+<style lang="scss">
+.abele-requests-panel__empty {
+  padding: var(--size-4-2) var(--size-4-3);
+  color: var(--text-muted);
+  font-size: var(--font-ui-small);
+}
+
+// The last status of a request, faint as a fact; red where it failed or did not get through.
+.abele-requests-panel__last {
+  color: var(--text-faint);
+  font-family: var(--font-monospace);
+  font-size: var(--font-ui-smaller);
+  font-variant-numeric: tabular-nums;
+}
+.abele-requests-panel__last_error {
+  color: var(--text-error);
+}
+
+.abele-requests-panel__environment .abele-obsidian-icon {
+  height: auto;
+  padding: 0;
+  color: var(--text-faint);
+}
+</style>
