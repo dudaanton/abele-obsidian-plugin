@@ -227,8 +227,9 @@ describe.skipIf(!available)('settings transfer security in the running app', () 
         const preview = await ready(() => doc.querySelector('.abele-transfer-preview'), 'preview window');
         out.previewRows = preview.querySelectorAll('.abele-entry-row').length;
         out.previewHeadings = preview.querySelectorAll('.abele-group-heading').length;
+                await picture('preview');
+        // Measured once settled: a phone's sheet slides up from below as it opens.
         out.previewInside = inside(preview.closest('.modal'));
-        await picture('preview');
         await shut(preview.closest('.modal'), 'preview');
         await ready(() => !doc.querySelector('.abele-transfer-preview'), 'preview closed');
         (await ready(() => pageButton('Send'), 'Send')).click();

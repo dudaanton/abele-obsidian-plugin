@@ -180,7 +180,8 @@ describe.skipIf(!available)('Word document view', () => {
       const fits = scope => {
         for(const el of scope.querySelectorAll('[aria-label]')) controls.push(el.getAttribute('aria-label'))
         for(const field of scope.querySelectorAll('input,select,textarea,button')) {
-          if(field.disabled||!field.getClientRects().length) continue
+          // Obsidian's hidden copy of a select, made to measure it, is not a control.
+          if(field.disabled||!field.getClientRects().length||field.closest('.is-measuring')) continue
           field.focus();const r=field.getBoundingClientRect()
           for(let el=field.parentElement;el&&el!==document.body;el=el.parentElement) {
             const css=getComputedStyle(el);if(css.overflowX==='visible'&&css.overflowY==='visible') continue
