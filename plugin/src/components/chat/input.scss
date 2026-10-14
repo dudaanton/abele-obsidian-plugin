@@ -250,12 +250,26 @@ body.is-mobile .abele-chat-input__textarea {
   pointer-events: none;
 }
 
-// A plain text box's places, by their numbers, in a row over the files.
+// A plain text box's places, by the markers that stand for them in its text, in a row over the
+// files.
 .abele-chat-input__replies {
   display: flex;
   flex-wrap: wrap;
   gap: var(--size-2-2);
   padding: var(--size-4-2) var(--size-4-2) 0;
+}
+.abele-chat-input__reply {
+  display: inline-flex;
+  align-items: center;
+  gap: var(--size-2-1);
+  min-width: 0;
+  max-width: 100%;
+}
+.abele-chat-input__reply-number {
+  flex-shrink: 0;
+  font-size: var(--font-ui-smaller);
+  font-variant-numeric: tabular-nums;
+  color: var(--text-muted);
 }
 .abele-chat-input__replies + .abele-chat-input__attachments {
   padding-top: var(--size-2-2);

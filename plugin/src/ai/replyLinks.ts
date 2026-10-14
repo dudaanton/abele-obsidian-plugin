@@ -253,3 +253,24 @@ export function splitMarkedText(
   }
   return { text: words + text.slice(last), replyTo }
 }
+
+/**
+ * Puts a line in the text where the cursor is — a place replied to stands on a line of its own:
+ * on the cursor's line when it is empty, else on a new line after it. The cursor goes to the line
+ * after it, for the words about that place.
+ */
+export function insertLine(
+  text: string,
+  cursor: number,
+  line: string
+): { text: string; cursor: number } {
+  const at = Math.max(0, Math.min(cursor, text.length))
+  const lineStart = text.lastIndexOf('\n', at - 1) + 1
+  const end = text.indexOf('\n', at)
+  const lineEnd = end < 0 ? text.length : end
+  const empty = text.slice(lineStart, lineEnd).trim() === ''
+  const head = empty ? text.slice(0, lineStart) : `${text.slice(0, lineEnd)}\n`
+  const rest = empty ? text.slice(lineEnd).replace(/^\n/, '') : text.slice(lineEnd + 1)
+  const written = `${head}${line}\n`
+  return { text: written + rest, cursor: written.length }
+}

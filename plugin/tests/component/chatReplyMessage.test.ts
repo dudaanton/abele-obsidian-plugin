@@ -30,17 +30,17 @@ const question = {
 }
 
 describe('a sent question with places', () => {
-  it('shows each place as a chip where it stood, the words between them', async () => {
+  it('shows each place as its card where it stood, the words between them', async () => {
     const wrapper = mount(AiChatMessage, {
       attachTo: document.body,
       props: { message: question, replyGone: ['elsewhere'] },
     })
     await flushPromises()
     const content = wrapper.get('[data-find-part="content"]').element
-    const chips = Array.from(content.querySelectorAll<HTMLElement>('.abele-reply-chip'))
-    expect(chips.map((c) => c.textContent)).toEqual(['1the lamp low', '2An older answer.'])
-    // In the line of words: chip, the words, chip, the words.
-    const line = Array.from(chips[0].parentElement!.childNodes).map((n) =>
+    const chips = Array.from(content.querySelectorAll<HTMLElement>('.abele-chat-reply-card'))
+    expect(chips.map((c) => c.textContent?.trim())).toEqual(['the lamp low', 'An older answer.'])
+    // Among the words: card, the words, card, the words.
+    const line = Array.from(chips[0].parentElement!.parentElement!.childNodes).map((n) =>
       n instanceof HTMLElement ? `[${n.dataset.replySpot}]` : n.textContent
     )
     expect(line).toEqual(['[0]', 'How low? ', '[1]', 'And still so?'])
@@ -49,7 +49,7 @@ describe('a sent question with places', () => {
     chips[0].click()
     expect(wrapper.emitted('show-reply')).toEqual([[question.replyTo[0]]])
     // Its message is in another branch: the chip stays, faint, and leads nowhere.
-    expect(chips[1].classList).toContain('abele-reply-chip_gone')
+    expect(chips[1].classList).toContain('abele-chat-reply-card_gone')
     expect(chips[1].querySelector('[data-icon="unlink"]')).not.toBeNull()
     chips[1].click()
     expect(wrapper.emitted('show-reply')).toHaveLength(1)
@@ -63,9 +63,9 @@ describe('a sent question with places', () => {
     })
     await flushPromises()
     await wrapper.setProps({ replyGone: [] })
-    const chips = wrapper.findAll('.abele-reply-chip')
+    const chips = wrapper.findAll('.abele-chat-reply-card')
     expect(chips).toHaveLength(2)
-    expect(chips[1].classes()).not.toContain('abele-reply-chip_gone')
+    expect(chips[1].classes()).not.toContain('abele-chat-reply-card_gone')
     wrapper.unmount()
   })
 
@@ -76,9 +76,7 @@ describe('a sent question with places', () => {
       },
     })
     await flushPromises()
-    const chip = wrapper.get('.abele-reply-chip')
-    expect(chip.find('.abele-reply-chip__number').exists()).toBe(false)
-    expect(chip.text()).toBe('the lamp low')
+    expect(wrapper.get('.abele-chat-reply-card').text()).toBe('the lamp low')
     wrapper.unmount()
   })
 
@@ -90,7 +88,7 @@ describe('a sent question with places', () => {
     })
     await flushPromises()
     expect(wrapper.get('[data-find-part="content"]').text()).toContain('Quoted words')
-    expect(wrapper.find('.abele-reply-chip').exists()).toBe(false)
+    expect(wrapper.find('.abele-chat-reply-card').exists()).toBe(false)
     wrapper.unmount()
   })
 })

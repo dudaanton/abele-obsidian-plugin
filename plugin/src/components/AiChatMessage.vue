@@ -360,7 +360,7 @@
 </template>
 
 <script setup lang="ts">
-import { ref, computed, watch } from 'vue'
+import { ref, computed, watch, onBeforeUnmount } from 'vue'
 import { flashMessagePassage, flashExactSelection, messageRenderedText } from '@/ai/messageComments'
 import type { ChatRevision, RenderedRange } from '@/selection/types'
 import { formatTimestamp } from '@/helpers/displayFormat'
@@ -699,11 +699,16 @@ function onReplyRendered() {
   paintPlaces()
   replyRendered.value = true
 }
-/** A question's places, each a chip where it stands and the way back to its words. */
+/** The cards drawn in the words last time, taken down before they are drawn again. */
+let unpaintPlaces: (() => void) | undefined
+onBeforeUnmount(() => unpaintPlaces?.())
+/** A question's places, each a card where it stands and the way back to its words. */
 function paintPlaces() {
   const root = comments.content.value?.$el as HTMLElement | undefined
+  unpaintPlaces?.()
+  unpaintPlaces = undefined
   if (!root || !question.value.order.length) return
-  paintReplyChips(
+  unpaintPlaces = paintReplyChips(
     root,
     question.value.order,
     (to) => !!props.replyGone?.includes(to.messageId),

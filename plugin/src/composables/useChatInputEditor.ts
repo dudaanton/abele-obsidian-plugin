@@ -1,6 +1,7 @@
 import { ref, nextTick, onMounted, onUnmounted, type Ref } from 'vue'
 import { TFile } from 'obsidian'
 import type { Extension } from '@codemirror/state'
+import { insertLine } from '@/ai/replyLinks'
 import { GlobalStore } from '@/stores/GlobalStore'
 import {
   createEmbeddedEditor,
@@ -92,25 +93,19 @@ export function useChatInputEditor(options: InputEditorOptions) {
   }
 
   /**
-   * Something that stands in a line of words — a reply's token — put where the cursor is, a
-   * space kept on each side of it, and the cursor after it for the words that follow.
+   * A line of its own where the cursor is — a place replied to — and the cursor on the line after
+   * it, for the words about it.
    */
-  function placeInline(piece: string) {
+  function placeLine(line: string) {
     const el = inputEl.value
-    const at = Math.min(
-      editor ? editor.cursor() : (el?.selectionStart ?? text.value.length),
-      text.value.length
-    )
-    const before = text.value.slice(0, at)
-    const after = text.value.slice(at)
-    const head = before && !/\s$/.test(before) ? `${before} ` : before
-    const placed = `${head}${piece} `
-    write(placed + after.replace(/^ /, ''))
-    if (editor) return editor.focusAt(placed.length)
+    const at = editor ? editor.cursor() : (el?.selectionStart ?? text.value.length)
+    const placed = insertLine(text.value, at, line)
+    write(placed.text)
+    if (editor) return editor.focusAt(placed.cursor)
     void nextTick(() => {
       if (!el) return
       el.focus()
-      el.setSelectionRange(placed.length, placed.length)
+      el.setSelectionRange(placed.cursor, placed.cursor)
       autoResize()
     })
   }
@@ -265,7 +260,7 @@ export function useChatInputEditor(options: InputEditorOptions) {
     onInput,
     syncText,
     focus,
-    placeInline,
+    placeLine,
     hasFocus,
     onKeydown,
     onEmptyPress,

@@ -24,15 +24,10 @@
       <!-- A plain text box cannot draw a reply's chip: its places stand in the text as «[↩1]»,
            and here is what each number is. -->
       <div v-if="fallback && marked.size" class="abele-chat-input__replies">
-        <ReplyChip
-          v-for="[n, to] in marked"
-          :key="n"
-          :to="to"
-          :number="n"
-          removable
-          @open="emit('show-reply', to)"
-          @remove="unmark(n)"
-        />
+        <span v-for="[n, to] in marked" :key="n" class="abele-chat-input__reply">
+          <span class="abele-chat-input__reply-number">{{ replyMarker(n) }}</span>
+          <ChatReplyCard :to="to" removable @open="emit('show-reply', to)" @remove="unmark(n)" />
+        </span>
       </div>
       <div v-if="attachments.length" class="abele-chat-input__attachments">
         <div v-for="(a, i) in attachments" :key="a.path" class="abele-chat-input__attachment">
@@ -220,7 +215,7 @@ import {
   splitComposerText,
   splitMarkedText,
 } from '@/ai/replyLinks'
-import ReplyChip from './chat/ReplyChip.vue'
+import ChatReplyCard from './chat/ChatReplyCard.vue'
 import { replyChips } from '@/editor/replyChips'
 import { sameConversation, type ConversationOwner } from '@/ai/draftImports'
 
@@ -319,7 +314,7 @@ const {
   onInput,
   syncText,
   focus,
-  placeInline,
+  placeLine,
   hasFocus,
   onKeydown,
   onEmptyPress,
@@ -544,8 +539,9 @@ watch(text, syncText)
 const isDraftFor = (owner?: ConversationOwner) => sameConversation(draftOwner, owner)
 
 /**
- * A place of the agent's words replied to: a chip in the text where the cursor is, the person's
- * own words before and after it. Several can be put in one message; the same place twice is one.
+ * A place of the agent's words replied to: a card on a line of its own where the cursor is, the
+ * person's own words before and after it. Several can be put in one message; the same place
+ * twice is one.
  */
 const quote = (to: ChatReplyTo) => {
   if (fallback.value) {
@@ -553,10 +549,10 @@ const quote = (to: ChatReplyTo) => {
     if (kept && text.value.includes(replyMarker(kept[0]))) return focus()
     const n = kept?.[0] ?? Math.max(0, ...marked.value.keys()) + 1
     marked.value.set(n, to)
-    return placeInline(replyMarker(n))
+    return placeLine(replyMarker(n))
   }
   if (replyTokens(text.value).some((t) => samePlace(t.reply, to))) return focus()
-  placeInline(replyToken(to))
+  placeLine(replyToken(to))
 }
 
 /** In a plain text box, the places by the number their marker carries. */
