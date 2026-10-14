@@ -3,35 +3,61 @@
     <div class="abele-transfer-preview">
       <p class="abele-transfer-preview__summary">{{ summary }}</p>
 
-      <div v-for="entry in payload.entries" :key="`${entry.section}:${entry.id}`">
-        <div class="abele-transfer-preview__head">
-          <span class="abele-transfer-preview__name">{{ entry.label }}</span>
-          <Badge :text="sectionLabel(entry.section)" />
+      <!-- A group a heading, a thing a row, as on the page it was ticked on. What exactly goes
+           unfolds under its row: a settings block shown as it will travel, not summarised. -->
+      <div v-for="group in groups" :key="group.section" class="abele-transfer-preview__group">
+        <GroupHeading :label="group.label">{{ group.entries.length }}</GroupHeading>
+        <div role="list">
+          <EntryRow
+            v-for="entry in group.entries"
+            :key="key(entry)"
+            role="listitem"
+            :more="open.has(key(entry))"
+            more-label="what goes"
+            @update:more="fold(entry)"
+          >
+            {{ entry.label }}
+            <template v-if="entry.secretIds?.some((id) => payload.secrets[id])" #codes>
+              <Icon icon="key-round" :interactive="false" tooltip="Carries a key" />
+            </template>
+            <template v-if="open.has(key(entry))" #detail>
+              <pre class="abele-transfer-preview__body">{{ shown(entry) }}</pre>
+            </template>
+          </EntryRow>
         </div>
-        <!-- A settings block is what it is: shown as it will travel, not summarised. -->
-        <pre class="abele-transfer-preview__body">{{ shown(entry) }}</pre>
       </div>
 
-      <template v-if="keys.length">
-        <div class="abele-transfer-preview__head">
-          <span class="abele-transfer-preview__name">Keys</span>
-          <Badge :text="String(keys.length)" />
+      <div v-if="keys.length" class="abele-transfer-preview__group">
+        <GroupHeading label="Keys">{{ keys.length }}</GroupHeading>
+        <div role="list">
+          <EntryRow v-for="[id, value] in keys" :key="id" role="listitem">
+            {{ id }}
+            <template #meta>
+              <span class="abele-transfer-preview__masked">{{ mask(value) }}</span>
+            </template>
+          </EntryRow>
         </div>
-        <pre class="abele-transfer-preview__body">{{ keysShown }}</pre>
         <p class="abele-transfer-preview__note">
           Shown masked here; they travel in full, which is why the transfer is locked.
         </p>
-      </template>
+      </div>
     </div>
   </ObsidianModal>
 </template>
 
 <script setup lang="ts">
-import { computed } from 'vue'
+import { computed, ref } from 'vue'
 import ObsidianModal from '../../obsidian/Modal.vue'
-import Badge from '../../obsidian/Badge.vue'
+import EntryRow from '../../obsidian/EntryRow.vue'
+import GroupHeading from '../../obsidian/GroupHeading.vue'
+import Icon from '../../obsidian/Icon.vue'
 import { sectionLabel } from '@/transfer/entries'
-import type { TransferEntry, TransferPayload } from '@/transfer/types'
+import {
+  TRANSFER_SECTIONS,
+  type SectionId,
+  type TransferEntry,
+  type TransferPayload,
+} from '@/transfer/types'
 
 const props = defineProps<{
   payload: TransferPayload
@@ -54,6 +80,31 @@ const summary = computed(() => {
 
 const shown = (entry: TransferEntry) => JSON.stringify(entry.data, null, 2)
 
+const key = (entry: TransferEntry) => `${entry.section}:${entry.id}`
+
+/** By section, in the order the sending page lists them. */
+const groups = computed(() => {
+  const bySection = new Map<SectionId, TransferEntry[]>()
+  for (const entry of props.payload.entries) {
+    const list = bySection.get(entry.section) ?? []
+    list.push(entry)
+    bySection.set(entry.section, list)
+  }
+  return TRANSFER_SECTIONS.filter((section) => bySection.has(section)).map((section) => ({
+    section,
+    label: sectionLabel(section),
+    entries: bySection.get(section) ?? [],
+  }))
+})
+
+/** Which rows are unfolded; a short transfer opens with everything in sight. */
+const open = ref(new Set(props.payload.entries.length === 1 ? props.payload.entries.map(key) : []))
+const fold = (entry: TransferEntry) => {
+  const next = new Set(open.value)
+  if (!next.delete(key(entry))) next.add(key(entry))
+  open.value = next
+}
+
 /**
  * Enough of a key to recognise which one it is, and not enough to be worth photographing.
  * The prefix is what tells `sk-proj-…` from `sk-ant-…`; the tail is what tells two of those
@@ -63,10 +114,6 @@ const mask = (value: string) =>
   value.length > 12
     ? `${value.slice(0, 3)}…${value.slice(-4)} (${value.length} characters)`
     : '••••'
-
-const keysShown = computed(() =>
-  keys.value.map(([id, value]) => `${id}: ${mask(value)}`).join('\n')
-)
 </script>
 
 <style lang="scss">
@@ -81,15 +128,12 @@ const keysShown = computed(() =>
   color: var(--text-muted);
 }
 
-.abele-transfer-preview__head {
-  display: flex;
-  align-items: center;
-  gap: var(--size-4-2);
+.abele-transfer-preview__group {
   margin-top: var(--size-4-2);
-}
 
-.abele-transfer-preview__name {
-  font-weight: var(--font-semibold);
+  .abele-group-heading {
+    margin-bottom: var(--size-2-2);
+  }
 }
 
 .abele-transfer-preview__body {
@@ -100,9 +144,15 @@ const keysShown = computed(() =>
   background-color: var(--background-secondary);
   font-family: var(--font-monospace);
   font-size: var(--font-smallest);
+  user-select: text;
+  -webkit-user-select: text;
   // A settings value can be a long path or a URL, and wrapping one mid-token makes it
   // unreadable — this block is deliberately a scroller, like a code block anywhere else.
   overflow: auto;
+}
+
+.abele-transfer-preview__masked {
+  font-family: var(--font-monospace);
 }
 
 .abele-transfer-preview__note {

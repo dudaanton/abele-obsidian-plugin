@@ -70,6 +70,11 @@
   border-top: 1px solid var(--background-modifier-border);
 }
 
+/* A dialog whose buttons come and go with its steps has no row while there is nothing to press. */
+.abele-modal__footer:empty {
+  display: none;
+}
+
 /* A dialog that wraps its buttons for the body's sticky row and then gives them to the footer:
    the wrapper steps aside, so the buttons sit in the footer's row and not one under another. */
 .abele-modal__footer > .abele-modal__actions {

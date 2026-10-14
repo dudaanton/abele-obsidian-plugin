@@ -16,6 +16,7 @@ import Input from '@/components/obsidian/Input.vue'
 import Checkbox from '@/components/obsidian/Checkbox.vue'
 import Button from '@/components/obsidian/Button.vue'
 import QrCode from '@/components/obsidian/QrCode.vue'
+import Icon from '@/components/obsidian/Icon.vue'
 import { Notice } from 'obsidian'
 import { AbeleConfig } from '@/services/AbeleConfig'
 import { HIDDEN_FOLDER } from '@/transfer/saveFile'
@@ -33,7 +34,9 @@ let original: (id: string, value: string) => void
 
 /** The dialog itself belongs to Obsidian; what these tests ask about is what it holds. */
 const STUBS = {
-  ObsidianModal: { template: '<div><slot /><slot name="footer" /></div>' },
+  ObsidianModal: {
+    template: '<div><slot /><div class="stub-modal-footer"><slot name="footer" /></div></div>',
+  },
   // Obsidian's own widget, which needs a real app to construct.
   Dropdown: {
     name: 'Dropdown',
@@ -484,7 +487,11 @@ describe('reading a transfer on the other device', () => {
     await paste(wrapper, frames)
 
     expect(wrapper.text()).toContain('openwebui')
-    expect(wrapper.text()).toContain('new')
+    expect(
+      wrapper
+        .findAllComponents(Icon)
+        .some((icon) => icon.props('tooltip') === 'Not on this device yet')
+    ).toBe(true)
     expect(AbeleConfig.getInstance().ai.providers).toHaveLength(0)
   })
 
@@ -508,7 +515,7 @@ describe('reading a transfer on the other device', () => {
     await clickButton(wrapper, 'Paste the text')
     await paste(wrapper, frames)
 
-    expect(wrapper.text()).toContain('unchanged')
+    expect(wrapper.text()).toContain('Already here, the same')
   })
 
   it('collects the frames it is given without minding the order', async () => {
@@ -598,7 +605,7 @@ describe('the scripts, skills and prompts themselves', () => {
     await wrapper.findComponent(Input).vm.$emit('update:model-value', frames.join('\n'))
     await waitFor(() => wrapper.text().includes('to apply'))
 
-    expect(wrapper.text()).toContain('unchanged')
+    expect(wrapper.text()).toContain('Already here, the same')
   })
 })
 
@@ -951,5 +958,81 @@ describe('reading a transfer out of a file', () => {
     await pick(wrapper, 'Dear diary, today I picked the wrong file.')
 
     expect(wrapper.text()).toContain('No transfer in that file.')
+  })
+})
+
+describe("the answer at the window's foot", () => {
+  const footerButtons = (wrapper: ReturnType<typeof mount>) =>
+    wrapper
+      .findAllComponents(Button)
+      .filter((button) => button.element.closest('.stub-modal-footer'))
+      .map((button) => button.props('text') as string)
+
+  const sent = async (keys: boolean) => {
+    const wrapper = open(TransferSettings)
+    await (await rowNamed(wrapper, 'openwebui'))?.trigger('click')
+    if (!keys) await wrapper.findComponent(Checkbox).vm.$emit('toggle')
+    await flushPromises()
+    await clickButton(wrapper, 'Send')
+    await waitFor(() => wrapper.findComponent(TransferSendModal).exists())
+    return wrapper.findComponent(TransferSendModal)
+  }
+
+  it('keeps Apply under the list of what arrived, not as its last row', async () => {
+    const frames = (await sent(false)).props('frames') as string[]
+    AbeleConfig.getInstance().ai = { ...DEFAULT_AI_SETTINGS, providers: [] } as AiSettings
+
+    const wrapper = open(TransferScanModal)
+    await clickButton(wrapper, 'Paste the text')
+    await wrapper.findComponent(Input).vm.$emit('update:model-value', frames.join('\n'))
+    await flushPromises()
+
+    expect(footerButtons(wrapper)).toEqual(['Apply'])
+    // What arrived is grouped as the sending page groups it, a heading over its rows.
+    expect(wrapper.find('.abele-transfer-scan__group .abele-group-heading').exists()).toBe(true)
+    expect(wrapper.find('.abele-transfer-scan__group .abele-entry-row').text()).toContain(
+      'openwebui'
+    )
+  })
+
+  it('unlocks from the foot, or with Enter in the code field', async () => {
+    const shown = await sent(true)
+    const frames = shown.props('frames') as string[]
+    const code = shown.props('code') as string
+
+    const wrapper = open(TransferScanModal)
+    await clickButton(wrapper, 'Paste the text')
+    await wrapper.findComponent(Input).vm.$emit('update:model-value', frames.join('\n'))
+    await waitFor(() => wrapper.text().includes('locked'))
+
+    expect(footerButtons(wrapper)).toEqual(['Unlock'])
+    await wrapper.findComponent(Input).vm.$emit('update:model-value', code)
+    await wrapper.find('input').trigger('keydown', { key: 'Enter' })
+    await waitFor(() => wrapper.text().includes('openwebui'))
+  })
+
+  it('shows the code first and the ways it can go at the foot, the one it leads with last', async () => {
+    const shown = await sent(false)
+
+    // A short series is on screen straight away, so there is no Show the codes to press.
+    expect(footerButtons(shown)).toEqual(['Save a file', 'Copy the text'])
+    const body = shown.find('.abele-transfer-send').html()
+    expect(body.indexOf('abele-transfer-send__code-value')).toBeLessThan(
+      body.indexOf('abele-transfer-send__hint')
+    )
+  })
+
+  it('lists what will be sent as rows under its group, the keys masked as rows', async () => {
+    const wrapper = open(TransferSettings)
+    await (await rowNamed(wrapper, 'openwebui'))?.trigger('click')
+    await flushPromises()
+    await clickButton(wrapper, 'Preview')
+
+    const preview = wrapper.findComponent(TransferPreviewModal)
+    const headings = preview.findAll('.abele-group-heading').map((h) => h.text())
+    expect(headings.some((h) => h.startsWith('Keys'))).toBe(true)
+    const rows = preview.findAll('.abele-entry-row').map((row) => row.text())
+    expect(rows.some((row) => row.includes('openwebui'))).toBe(true)
+    expect(rows.some((row) => row.includes('key-p1') && !row.includes('sk-the-secret'))).toBe(true)
   })
 })

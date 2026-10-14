@@ -51,8 +51,12 @@
         <p class="abele-transfer-scan__hint">
           This transfer carries a key, so it is locked. Type the code shown on the other device.
         </p>
-        <Input :model-value="code" placeholder="8 characters" @update:model-value="code = $event" />
-        <Button text="Unlock" accent tooltip="Open the transfer with this code" @click="unlock" />
+        <Input
+          :model-value="code"
+          placeholder="8 characters"
+          @update:model-value="code = $event"
+          @keydown.enter="unlock"
+        />
       </template>
 
       <template v-else>
@@ -69,42 +73,72 @@
           />
         </Setting>
 
-        <div
-          v-for="item in planned"
-          :key="`${item.entry.section}:${item.entry.id}`"
-          class="abele-transfer-scan__entry"
-          role="button"
-          tabindex="0"
-          @click="toggle(item)"
-          @keydown.enter="toggle(item)"
-          @keydown.space.prevent="toggle(item)"
-        >
-          <Checkbox :is-enabled="accepted.has(id(item))" @toggle="toggle(item)" />
-          <div class="abele-transfer-scan__entry-content">
-            <span class="abele-transfer-scan__entry-name">{{ item.entry.label }}</span>
-            <span v-if="item.status === 'replace'" class="abele-transfer-scan__entry-note">
-              Replaces the item already on this device.
-            </span>
-          </div>
-          <div class="abele-transfer-scan__entry-details">
-            <Badge :text="statusWord(item.status)" />
-            <span class="abele-transfer-scan__entry-section">{{ label(item.entry.section) }}</span>
+        <!-- What arrived as the sending page lists it: a group a heading, a thing a row with a
+             check; whether it is new here or replaces something is a code with its words in the
+             tooltip. -->
+        <div v-for="group in plannedGroups" :key="group.section" class="abele-transfer-scan__group">
+          <GroupHeading :label="group.label">{{ group.items.length }}</GroupHeading>
+          <div role="list">
+            <EntryRow
+              v-for="item in group.items"
+              :key="id(item)"
+              role="listitem"
+              class="abele-transfer-scan__entry"
+              @click="toggle(item)"
+            >
+              <template #leading>
+                <input
+                  type="checkbox"
+                  class="abele-transfer-scan__check"
+                  :checked="accepted.has(id(item))"
+                  :aria-label="`Keep ${item.entry.label}`"
+                  @click.stop
+                  @change="toggle(item)"
+                />
+              </template>
+              {{ item.entry.label }}
+              <template v-if="item.status !== 'same'" #codes>
+                <Icon
+                  :icon="item.status === 'new' ? 'plus' : 'pencil'"
+                  :interactive="false"
+                  :tooltip="
+                    item.status === 'new'
+                      ? 'Not on this device yet'
+                      : 'Replaces the one already on this device'
+                  "
+                />
+              </template>
+              <template v-if="item.status === 'same'" #meta>
+                <span>Already here, the same</span>
+              </template>
+            </EntryRow>
           </div>
         </div>
 
-        <Setting :name="acceptedSummary" :desc="keysSummary">
-          <Button
-            text="Apply"
-            accent
-            :disabled="!accepted.size || busy || done"
-            :tooltip="applyTooltip"
-            @click="apply"
-          />
-        </Setting>
+        <!-- What applying comes to, said once under the list, beside the Apply below it. -->
+        <p class="abele-transfer-scan__hint">{{ acceptedSummary }}. {{ keysSummary }}</p>
       </template>
 
       <p v-if="error" class="abele-transfer-scan__error">{{ error }}</p>
     </div>
+    <!-- The answer at the window's foot, in sight however long the list runs. -->
+    <template #footer>
+      <Button
+        v-if="phase === 'code'"
+        text="Unlock"
+        accent
+        tooltip="Open the transfer with this code"
+        @click="unlock"
+      />
+      <Button
+        v-else-if="phase === 'review'"
+        text="Apply"
+        accent
+        :disabled="!accepted.size || busy || done"
+        :tooltip="applyTooltip"
+        @click="apply"
+      />
+    </template>
   </ObsidianModal>
 </template>
 
@@ -113,8 +147,9 @@ import { computed, onBeforeUnmount, ref, useTemplateRef } from 'vue'
 import ObsidianModal from '../../obsidian/Modal.vue'
 import Button from '../../obsidian/Button.vue'
 import Input from '../../obsidian/Input.vue'
-import Checkbox from '../../obsidian/Checkbox.vue'
-import Badge from '../../obsidian/Badge.vue'
+import EntryRow from '../../obsidian/EntryRow.vue'
+import GroupHeading from '../../obsidian/GroupHeading.vue'
+import Icon from '../../obsidian/Icon.vue'
 import Setting from '../../obsidian/Setting.vue'
 import Dropdown from '../../obsidian/Dropdown.vue'
 import { AbeleConfig } from '@/services/AbeleConfig'
@@ -137,7 +172,7 @@ import { applyFiles, planFiles, readCurrent } from '@/transfer/files'
 import { storeReceivedKeys } from '@/transfer/receivedKeys'
 import { isReservedSecretId } from '@/secrets/SecretStore'
 import { readCodes, readableSize, closerLooks, type Rect } from '@/transfer/scan'
-import type { SectionId, TransferPayload } from '@/transfer/types'
+import { TRANSFER_SECTIONS, type SectionId, type TransferPayload } from '@/transfer/types'
 
 /** What was written, and what the keychain would not take — the parent says so out loud. */
 export interface Applied {
@@ -187,9 +222,6 @@ const current = ref(new Map<string, string>())
 const scriptsFolder = () => AbeleConfig.getInstance().ai.scriptsFolder || ''
 
 const label = (section: SectionId) => sectionLabel(section)
-
-const statusWord = (status: PlannedEntry['status']) =>
-  status === 'new' ? 'new' : status === 'replace' ? 'replaces' : 'unchanged'
 
 /** A frame from anywhere: the camera, a photo, a file, or pasted text. */
 const take = async (text: string) => {
@@ -270,6 +302,21 @@ const planned = computed<PlannedEntry[]>(() => {
 
 const id = (item: PlannedEntry) => `${item.entry.section}:${item.entry.id}`
 
+/** What arrived, by section in the order the sending page lists them. */
+const plannedGroups = computed(() => {
+  const bySection = new Map<SectionId, PlannedEntry[]>()
+  for (const item of planned.value) {
+    const list = bySection.get(item.entry.section) ?? []
+    list.push(item)
+    bySection.set(item.entry.section, list)
+  }
+  return TRANSFER_SECTIONS.filter((section) => bySection.has(section)).map((section) => ({
+    section,
+    label: label(section),
+    items: bySection.get(section) ?? [],
+  }))
+})
+
 const accepted = ref(new Set<string>())
 
 /**
@@ -338,7 +385,11 @@ const keysSummary = computed(() =>
 
 const madeAt = computed(() => {
   const at = payload.value?.at
-  return at ? new Date(at).toLocaleString() : 'just now'
+  if (!at) return 'just now'
+  const made = new Date(at)
+  const today = new Date().toDateString() === made.toDateString()
+  const time = made.toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' })
+  return today ? `today at ${time}` : `${made.toLocaleDateString()} at ${time}`
 })
 
 const onPasted = (value: string) => {
@@ -619,53 +670,23 @@ onBeforeUnmount(() => {
   color: var(--text-error);
 }
 
-// The replacement note is part of the destination, not another competing column. Keep the
-// native checkbox and metadata separate, so adding that note never shrinks a name to fragments.
+.abele-transfer-scan__group {
+  margin-top: var(--size-4-2);
+
+  .abele-group-heading {
+    margin-bottom: var(--size-2-2);
+  }
+}
+
 .abele-transfer-scan__entry {
-  display: grid;
-  grid-template-columns: max-content minmax(0, 1fr) max-content;
-  align-items: center;
-  gap: var(--size-4-2);
-  padding: var(--size-4-1) 0;
-  cursor: pointer;
+  cursor: var(--cursor);
+
+  &:hover {
+    background-color: var(--background-modifier-hover);
+  }
 }
 
-.abele-transfer-scan__entry-content {
-  display: flex;
-  flex-direction: column;
-  min-width: 0;
-  gap: var(--size-4-1);
-}
-
-.abele-transfer-scan__entry-details {
-  display: flex;
-  align-items: center;
-  flex-wrap: wrap;
-  gap: var(--size-4-2);
-}
-
-body.is-phone .abele-transfer-scan__entry {
-  grid-template-columns: max-content minmax(0, 1fr);
-}
-
-body.is-phone .abele-transfer-scan__entry-details {
-  grid-column: 2;
-  justify-content: space-between;
-}
-
-.abele-transfer-scan__entry-name {
-  color: var(--text-normal);
-  overflow-wrap: anywhere;
-}
-
-.abele-transfer-scan__entry-note {
-  color: var(--text-muted);
-  font-size: var(--font-ui-smaller);
-}
-
-.abele-transfer-scan__entry-section {
-  color: var(--text-faint);
-  font-size: var(--font-ui-smaller);
-  margin-left: auto;
+.abele-transfer-scan .abele-transfer-scan__check {
+  margin: 0;
 }
 </style>

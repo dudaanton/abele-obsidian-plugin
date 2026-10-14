@@ -20,46 +20,12 @@
         <p v-if="busy" class="abele-transfer-send__hint">
           Asking the server for a device of its own for the other side…
         </p>
-        <Button
-          text="Make the codes"
-          accent
-          :disabled="busy || !name.trim()"
-          :tooltip="
-            name.trim()
-              ? 'Have the server make the other device, and show the codes'
-              : 'Give the other device a name first'
-          "
-          @click="emit('named', name.trim())"
-        />
       </template>
 
       <template v-else>
         <div v-if="code" class="abele-transfer-send__code">
           <div class="abele-transfer-send__code-label">Type this on the other device</div>
           <div class="abele-transfer-send__code-value">{{ code }}</div>
-        </div>
-
-        <p v-if="note" class="abele-transfer-send__hint">{{ note }}</p>
-        <p class="abele-transfer-send__hint">{{ advice }}</p>
-
-        <div class="abele-transfer-send__roads">
-          <Button
-            text="Copy the text"
-            :accent="!showing"
-            tooltip="Copy the whole transfer, to paste on the other device"
-            @click="copy"
-          />
-          <Button
-            text="Save a file"
-            tooltip="Save the transfer as a file outside what syncs, to send on however you like"
-            @click="save"
-          />
-          <Button
-            v-if="!showing"
-            text="Show the codes"
-            :tooltip="`Show the transfer as ${frames.length === 1 ? 'a QR code' : `${frames.length} QR codes`}`"
-            @click="showing = true"
-          />
         </div>
 
         <!--
@@ -77,12 +43,11 @@
           <QrCode :text="frames[index]" :label="`Transfer code ${index + 1} of ${frames.length}`" />
 
           <div v-if="frames.length > 1" class="abele-transfer-send__series">
-            <Icon icon="chevron-left" with-bg tooltip="Previous code" @click="step(-1)" />
+            <Icon icon="chevron-left" tooltip="Previous code" @click="step(-1)" />
             <span class="abele-transfer-send__counter">{{ index + 1 }} / {{ frames.length }}</span>
-            <Icon icon="chevron-right" with-bg tooltip="Next code" @click="step(1)" />
+            <Icon icon="chevron-right" tooltip="Next code" @click="step(1)" />
             <Icon
               :icon="cycling ? 'pause' : 'play'"
-              with-bg
               :tooltip="
                 cycling ? 'Stop moving through the codes' : 'Move through the codes on their own'
               "
@@ -90,8 +55,47 @@
             />
           </div>
         </template>
+
+        <p v-if="note" class="abele-transfer-send__hint">{{ note }}</p>
+        <p class="abele-transfer-send__hint">{{ advice }}</p>
       </template>
     </div>
+    <!-- The ways it can go, at the window's foot under the code the camera is pointed at; the
+         one the screen leads with stands last. -->
+    <template #footer>
+      <template v-if="naming">
+        <Button
+          text="Make the codes"
+          accent
+          :disabled="busy || !name.trim()"
+          :tooltip="
+            name.trim()
+              ? 'Have the server make the other device, and show the codes'
+              : 'Give the other device a name first'
+          "
+          @click="emit('named', name.trim())"
+        />
+      </template>
+      <template v-else>
+        <Button
+          text="Save a file"
+          tooltip="Save the transfer as a file outside what syncs, to send on however you like"
+          @click="save"
+        />
+        <Button
+          v-if="!showing"
+          text="Show the codes"
+          :tooltip="`Show the transfer as ${frames.length === 1 ? 'a QR code' : `${frames.length} QR codes`}`"
+          @click="showing = true"
+        />
+        <Button
+          text="Copy the text"
+          :accent="!showing"
+          tooltip="Copy the whole transfer, to paste on the other device"
+          @click="copy"
+        />
+      </template>
+    </template>
   </ObsidianModal>
 </template>
 
@@ -180,7 +184,9 @@ const step = (by: number) => {
 const uncopied = ref(false)
 
 const selectFallback = () => {
-  const field = root.value?.querySelector<HTMLTextAreaElement>('.abele-transfer-send__fallback .abele-obsidian-input__base')
+  const field = root.value?.querySelector<HTMLTextAreaElement>(
+    '.abele-transfer-send__fallback .abele-obsidian-input__base'
+  )
   field?.focus()
   field?.select()
 }
@@ -301,13 +307,6 @@ onBeforeUnmount(stop)
   font-size: var(--font-ui-large);
   letter-spacing: var(--size-4-1);
   color: var(--text-normal);
-}
-
-.abele-transfer-send__roads {
-  display: flex;
-  flex-wrap: wrap;
-  justify-content: center;
-  gap: var(--size-4-2);
 }
 
 .abele-transfer-send__series {

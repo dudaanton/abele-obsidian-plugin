@@ -579,17 +579,13 @@ describe('the design standard', () => {
     )
   })
 
-  it('keeps replacement transfer names and notes in one content column with phone metadata below', () => {
+  it('lists what a transfer brings as rows whose names keep the width and whose state is a code', () => {
     const source = readFileSync(join(ROOT, 'settings/transfer/TransferScanModal.vue'), 'utf8')
-    const css = styleBlock(source)
-    expect(source).toContain('class="abele-transfer-scan__entry-content"')
-    expect(source).toContain('class="abele-transfer-scan__entry-details"')
-    expect(css).toMatch(
-      /\.abele-transfer-scan__entry\s*\{[^}]*grid-template-columns:\s*max-content minmax\(0, 1fr\) max-content;/
-    )
-    expect(css).toMatch(
-      /body\.is-phone \.abele-transfer-scan__entry-details\s*\{[^}]*grid-column:\s*2;/
-    )
+    // The shared row moves its codes under the name when narrow, so a name never shrinks to
+    // fragments beside them; new and replacing are codes with their words in the tooltip.
+    expect(source).toMatch(/<EntryRow[^>]*class="abele-transfer-scan__entry"/)
+    expect(source).toContain("'Replaces the one already on this device'")
+    expect(source).toContain("'Not on this device yet'")
   })
 
   it('wraps shared phone modal titles inside space reserved for native close controls', () => {
