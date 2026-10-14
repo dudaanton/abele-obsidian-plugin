@@ -186,7 +186,11 @@ export class TraceRunTab extends ItemView {
 }
 
 export class TraceValueView extends ItemView {
-  private state?: z.output<typeof ValueState>
+  /** Reactive, so a value that arrives after the tab drew itself empty redraws it. */
+  private readonly current = shallowRef<z.output<typeof ValueState>>()
+  private get state() {
+    return this.current.value
+  }
   private vue?: VueApp
   private readonly model = reactive<{
     value?: TraceValue
@@ -225,7 +229,7 @@ export class TraceValueView extends ItemView {
   async setState(raw: unknown, result: ViewStateResult) {
     const parsed = ValueState.safeParse(raw)
     if (parsed.success) {
-      this.state = parsed.data
+      this.current.value = parsed.data
       void this.read()
     }
     await super.setState(raw, result)

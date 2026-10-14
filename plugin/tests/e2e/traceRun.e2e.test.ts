@@ -233,15 +233,15 @@ it('opens a recorded run as a tab of steps, a step with its values by shape, and
 })
 
 it('writes a note about the run whose links lead back to the node', () => {
-  const note = evalAsync<string>(`(async()=>{${prelude}
+  const note = evalAsync<{ text: string }>(`(async()=>{${prelude}
     const leaf=app.workspace.getLeavesOfType('abele-trace-run')[0];app.workspace.setActiveLeaf(leaf,{focus:true});
     leaf.view.containerEl.querySelector('.view-action[aria-label="Write a note about this run"]').click();
     await until(()=>app.vault.getMarkdownFiles().some(f=>f.path.startsWith('Trace/Sample contracts run')),'note written');
     const file=app.vault.getMarkdownFiles().find(f=>f.path.startsWith('Trace/Sample contracts run'));
     const text=await app.vault.read(file);await app.vault.delete(file);
     for(const l of app.workspace.getLeavesOfType('markdown'))if(l.view.file?.path===file.path)l.detach();
-    return text
-  })()`)
+    return {text}
+  })()`).text
   expect(note).toContain('Recorded run [Sample contracts run]')
   expect(note).toContain('obsidian://abele-trace?node=')
   expect(note).toContain('### t0001 · Contracts parsed')
