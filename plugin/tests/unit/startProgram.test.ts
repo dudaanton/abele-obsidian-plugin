@@ -1,7 +1,7 @@
 import { afterEach, describe, expect, it, vi } from 'vitest'
 import { GlobalStore } from '@/stores/GlobalStore'
 import { DebuggerService } from '@/debugger/DebuggerService'
-import { openFilesOf, startProgram } from '@/debugger/startProgram'
+import { defaultProgram, openFilesOf, startProgram } from '@/debugger/startProgram'
 import { NODE_FILE_VIEW } from '@/node/nodePathNavigation'
 import type { NodeChatPresenter } from '@/node/NodeChatPresenter'
 import type { PathTarget } from '@/node/NodePathModel'
@@ -41,8 +41,9 @@ function fakePresenter() {
     calls.push([method, params])
     switch (method) {
       case 'debugger.v1.start':
+        // The node answers with the session the program's code runs in.
         return {
-          debug_session_id: 'root-1',
+          debug_session_id: 'child-1',
           sources: [
             { source_id: 's1', path: 'src/page.js' },
             { source_id: 's2', path: 'src/service.js' },
@@ -84,6 +85,18 @@ describe('running a program under the debugger', () => {
     expect(openFilesOf(workspace as never, target)).toEqual(['src/page.js', 'src/service.js'])
   })
 
+  it('takes TypeScript open beside the build as sources, and runs only JavaScript', () => {
+    const { workspace } = fakeWorkspace([
+      fileLeaf('dist/total.js'),
+      fileLeaf('src/total.ts'),
+      fileLeaf('src/view.tsx'),
+    ])
+    const open = openFilesOf(workspace as never, target)
+    expect(open).toEqual(['src/total.ts', 'dist/total.js', 'src/view.tsx'])
+    expect(defaultProgram(open)).toBe('dist/total.js')
+    expect(defaultProgram(['src/total.ts'])).toBe('')
+  })
+
   it('starts it, shows the session its code runs in and opens its file with the margin', async () => {
     const { opened } = fakeWorkspace()
     const { presenter, calls } = fakePresenter()
@@ -106,6 +119,7 @@ describe('running a program under the debugger', () => {
       }),
     ])
     expect(show).toHaveBeenCalledWith('child-1')
+    expect(calls.map(([m]) => m)).not.toContain('debugger.v1.sessions')
     expect(opened).toEqual([
       {
         type: NODE_FILE_VIEW,

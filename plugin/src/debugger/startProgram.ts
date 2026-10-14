@@ -16,18 +16,11 @@ export const StartResultSchema = z.object({
   debug_session_id: id,
   sources: z.array(z.object({ source_id: id, path: z.string().max(4096) })).max(256),
 })
-const SessionsSchema = z.array(
-  z
-    .object({
-      debug_session_id: id,
-      incarnation: id,
-      target: z.object({ target_id: id }).loose(),
-    })
-    .loose()
-)
 const StatusSchema = z.object({ snapshot: z.object({ incarnation: id }).loose() }).loose()
 
 const RUNNABLE = /\.[cm]?js$/
+/** What takes breakpoints: JavaScript as it runs, and TypeScript the node maps through its build. */
+const SOURCE = /\.(?:[cm]?[jt]s|[jt]sx)$/
 
 /** The chat's folder as a node file tab addresses it; undefined while the chat has none. */
 async function chatTarget(presenter: NodeChatPresenter): Promise<PathTarget | undefined> {
@@ -44,7 +37,7 @@ async function chatTarget(presenter: NodeChatPresenter): Promise<PathTarget | un
   }
 }
 
-/** JavaScript files open from this folder in node file tabs, the active one first. */
+/** Code files open from this folder in node file tabs, the active one first. */
 export function openFilesOf(workspace: Workspace, target: PathTarget): string[] {
   const active = workspace.getMostRecentLeaf()
   const leaves = workspace.getLeavesOfType(NODE_FILE_VIEW)
@@ -58,7 +51,7 @@ export function openFilesOf(workspace: Workspace, target: PathTarget): string[] 
       state.data.target.registrationId === target.registrationId &&
       state.data.target.kind === target.kind &&
       state.data.target.id === target.id &&
-      RUNNABLE.test(state.data.path) &&
+      SOURCE.test(state.data.path) &&
       !paths.includes(state.data.path)
     )
       paths.push(state.data.path)
@@ -66,24 +59,9 @@ export function openFilesOf(workspace: Workspace, target: PathTarget): string[] 
   return paths
 }
 
-/** The session the program's code runs in: the adapter starts one under the first, a moment later. */
-async function runningSession(presenter: NodeChatPresenter, root: string, wait = 3000) {
-  const client = presenter.connection.client
-  const list = async () =>
-    SessionsSchema.parse(
-      await client.request('debugger.v1.sessions', {
-        conversation_id: presenter.reference.sessionId,
-      })
-    )
-  const first = (await list()).find((s) => s.debug_session_id === root)
-  if (!first) return root
-  const prefix = `${first.target.target_id}:child:`
-  for (let waited = 0; waited < wait; waited += 150) {
-    const child = (await list()).find((s) => s.target.target_id.startsWith(prefix))
-    if (child) return child.debug_session_id
-    await new Promise((r) => window.setTimeout(r, 150))
-  }
-  return root
+/** The program offered to run: the first JavaScript file open, as Node runs only JavaScript. */
+export function defaultProgram(open: string[]) {
+  return open.find((path) => RUNNABLE.test(path)) ?? ''
 }
 
 export async function startProgram(
@@ -103,8 +81,9 @@ export async function startProgram(
       sources: sources.filter((s) => s !== program),
     })
   )
-  console.debug('[debugger] Program started', program, started.debug_session_id)
-  const sessionId = await runningSession(presenter, started.debug_session_id)
+  // The node answers with the session the program's code runs in, not the adapter's own.
+  const sessionId = started.debug_session_id
+  console.debug('[debugger] Program started', program, sessionId)
   const { snapshot } = StatusSchema.parse(
     await client.request('debugger.v1.status', { debug_session_id: sessionId })
   )
@@ -157,7 +136,7 @@ export async function askAndStartProgram(
       await askName(app, {
         title: 'Run a program under the debugger',
         placeholder: 'src/main.js',
-        value: open[0] ?? '',
+        value: defaultProgram(open),
         submitText: 'Run',
       })
     )?.trim()
