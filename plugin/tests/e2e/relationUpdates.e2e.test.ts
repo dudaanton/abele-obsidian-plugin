@@ -3,7 +3,6 @@ import { afterAll, describe, expect, it } from 'vitest'
 import {
   enterPhone,
   evalLong,
-  evalRaw,
   hasTestApi,
   isObsidianRunning,
   reloadApp,

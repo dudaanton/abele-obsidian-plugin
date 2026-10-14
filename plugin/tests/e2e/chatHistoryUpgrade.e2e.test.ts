@@ -13,7 +13,7 @@
  */
 import { describe, it, expect, beforeAll } from 'vitest'
 import { evalLong, hasTestApi, isObsidianRunning } from './helpers/obsidianCli'
-import { onPhone, requested, targets } from './helpers/target'
+import { requested, targets } from './helpers/target'
 
 targets('desktop', 'phone')
 
