@@ -13,6 +13,7 @@
  */
 import { describe, it, expect, beforeAll } from 'vitest'
 import { isObsidianRunning, hasTestApi, evalRaw, activeVaultName } from './helpers/obsidianCli'
+import { dismissOwnNotices } from './helpers/ownNotices'
 
 const SCRIPT = 'script-chats-probe'
 const CHAT = 'Script chats probe'
@@ -156,6 +157,8 @@ describe.skipIf(!available)('chats under a script, in the app', () => {
   beforeAll(() => {
     const raw = evalRaw(script, 45_000)
     report = JSON.parse(raw) as Report
+    // The probe cleans its files up; the confirmations it showed are its own too.
+    dismissOwnNotices('Attached ')
     console.info(`\n  vault ${activeVaultName()}\n  ${JSON.stringify(report, null, 2)}\n`)
   }, 60_000)
 

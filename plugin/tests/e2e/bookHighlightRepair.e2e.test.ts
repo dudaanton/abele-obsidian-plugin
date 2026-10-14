@@ -2,6 +2,7 @@ import { afterAll, beforeAll, describe, expect, it } from 'vitest'
 import { evalLong, evalRaw, hasTestApi, isObsidianRunning } from './helpers/obsidianCli'
 import { targets } from './helpers/target'
 import { buildJustifiedEpub } from '../fixtures/books/justifiedBook'
+import { dismissOwnNotices } from './helpers/ownNotices'
 
 targets('desktop', 'phone')
 
@@ -37,6 +38,7 @@ describe.skipIf(!available)('confirming repairs on a real EPUB', () => {
     })()`,
       60_000
     )
+    dismissOwnNotices('Repaired ')
   }, 90_000)
 
   it('keeps the note unchanged until confirmation, then changes only the saved CFI spans', async () => {

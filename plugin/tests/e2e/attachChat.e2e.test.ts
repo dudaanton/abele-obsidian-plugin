@@ -14,6 +14,7 @@
 import { randomUUID } from 'node:crypto'
 import { describe, it, expect, beforeAll } from 'vitest'
 import { isObsidianRunning, hasTestApi, evalLong, activeVaultName } from './helpers/obsidianCli'
+import { dismissOwnNotices } from './helpers/ownNotices'
 
 const RUN = randomUUID()
 const NOTE = `Attach probe note ${RUN}`
@@ -239,6 +240,8 @@ describe.skipIf(!available)('attaching a chat to a note, in the app', () => {
   beforeAll(async () => {
     const raw = await evalLong(script, 45_000)
     report = JSON.parse(raw) as Report
+    // The probe cleans its files up; the confirmations it showed are its own too.
+    dismissOwnNotices('Attached ')
     console.info(`\n  vault ${activeVaultName()}\n  ${JSON.stringify(report, null, 2)}\n`)
   }, 60_000)
 

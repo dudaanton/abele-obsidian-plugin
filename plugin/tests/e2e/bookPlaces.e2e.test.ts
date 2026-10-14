@@ -18,6 +18,7 @@ import { buildRichEpub, RICH_BOOK_ID } from '../fixtures/books/richBook'
 import { unzipSync, zipSync, strFromU8, strToU8 } from 'fflate'
 import { buildLongPdf } from '../fixtures/books/pdfFixture'
 import { WAIT_PRELUDE } from './helpers/wait'
+import { dismissOwnNotices } from './helpers/ownNotices'
 
 const available = isObsidianRunning() && hasTestApi()
 const SHOTS = shotDir('book-places')
@@ -221,6 +222,7 @@ describe.skipIf(!available)('where a book was left, across a restart', () => {
       })()`,
       60_000
     )
+    dismissOwnNotices('Moved to where this book was left')
   }, 60_000)
 
   it('was read to a place in both, and the places were written', () => {

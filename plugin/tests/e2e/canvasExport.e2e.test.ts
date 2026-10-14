@@ -6,6 +6,7 @@ import { onPhone, targets } from './helpers/target'
 import { screenshot, tap, typeText } from './helpers/phone'
 import { withNativeInput } from './helpers/nativeInput'
 import { shotDir } from './helpers/shots'
+import { dismissOwnNotices } from './helpers/ownNotices'
 
 targets('desktop', 'phone')
 const available = isObsidianRunning() && hasTestApi()
@@ -104,6 +105,7 @@ describe.skipIf(!available)('whole canvas export through real pointer and touch 
       if(state)await app.workspace.changeLayout(state.layout)
       delete window.__canvasExport;delete window.__canvasExportScriptRuns;return true
     `)
+    dismissOwnNotices('Saved whole canvas', 'Export inserted at the end of the note')
   }, 120_000)
   it('exports every card and local attachment while viewing only the first walkthrough card', async () => {
     await until('view()?.editor')

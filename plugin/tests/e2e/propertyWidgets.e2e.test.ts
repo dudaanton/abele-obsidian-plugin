@@ -14,6 +14,7 @@ import { evalAsync } from './helpers/githubLive'
 import { buildPlainPdf } from '../fixtures/books/pdfFixture'
 import { tablePng } from '../fixtures/books/figureBook'
 import { shotDir } from './helpers/shots'
+import { dismissOwnNotices } from './helpers/ownNotices'
 
 const available = isObsidianRunning() && hasTestApi()
 const DIR = 'Property widgets e2e'
@@ -144,6 +145,7 @@ describe.skipIf(!available)('properties drawn by the plugin', () => {
       })()`,
       60_000
     )
+    dismissOwnNotices('has been modified externally')
   })
 
   it('draws File, Files and cover as cards, each with its picture', () => {

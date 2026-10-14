@@ -3,6 +3,7 @@ import { evalAsync } from './helpers/githubLive'
 import { evalJson, evalRaw, hasTestApi, isObsidianRunning, reloadApp } from './helpers/obsidianCli'
 import { onPhone, targets } from './helpers/target'
 import { shotDir } from './helpers/shots'
+import { dismissOwnNotices } from './helpers/ownNotices'
 
 targets('desktop', 'phone')
 const available = isObsidianRunning() && hasTestApi()
@@ -76,6 +77,7 @@ describe.skipIf(!available)('read-only walkthrough viewer and canvas note embeds
       )
       await reloadApp('app.emulateMobile(false)')
     }
+    dismissOwnNotices('diagram picture')
   }, 120_000)
   it('adopts canvases by default, preserves bytes, and plays keyboard/tap navigation', () => {
     const result = run<{

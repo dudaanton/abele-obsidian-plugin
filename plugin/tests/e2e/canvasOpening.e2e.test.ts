@@ -4,6 +4,7 @@ import { evalJson, evalRaw, hasTestApi, isObsidianRunning, reloadApp } from './h
 import { onPhone, targets } from './helpers/target'
 import { screenshot } from './helpers/phone'
 import { shotDir } from './helpers/shots'
+import { dismissOwnNotices } from './helpers/ownNotices'
 
 targets('desktop', 'phone')
 const available = isObsidianRunning() && hasTestApi()
@@ -66,6 +67,7 @@ describe.skipIf(!available)('new native Canvas opening', () => {
       )
       await reloadApp('app.emulateMobile(false)')
     }
+    dismissOwnNotices('Could not open diagram')
   }, 120_000)
 
   it('opens the native new-file command in the default viewer without initializing or overwriting bytes', () => {

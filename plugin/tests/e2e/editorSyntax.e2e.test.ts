@@ -3,6 +3,7 @@ import { evalJson, hasTestApi, isObsidianRunning, reloadApp } from './helpers/ob
 import { evalAsync } from './helpers/githubLive'
 import { onPhone, targets } from './helpers/target'
 import { shotDir } from './helpers/shots'
+import { dismissOwnNotices } from './helpers/ownNotices'
 
 targets('desktop', 'phone')
 
@@ -101,6 +102,7 @@ describe.skipIf(!available)('editor syntax highlighting', () => {
       if (file) await app.vault.delete(file)
       return { ok: true }
     })()`)
+    dismissOwnNotices('has been modified externally')
   })
 
   const checkEditor = (source: boolean) => {
