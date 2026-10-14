@@ -749,7 +749,12 @@ export class DebuggerController {
       file: f.source_id ? (this.path(f.source_id) ?? f.source_id) : '',
       line: f.line,
     }))
-    this.session.frame = 0
+    // Held in Node's own code (js-debug's statement, the loader): the program's frame is the one
+    // that matters, so it is the one selected; the Node row stays folded above it.
+    this.session.frame = Math.max(
+      0,
+      this.session.frames.findIndex((frame) => frame.file)
+    )
     this.notify()
   }
   selectFrame(index: number) {

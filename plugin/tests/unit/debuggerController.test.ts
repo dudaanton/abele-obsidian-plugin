@@ -344,6 +344,42 @@ describe('debugger shared control', () => {
     await pending
     expect(model.session.frames[0].name).not.toBe('staleFrame')
   })
+  it("selects the program's own frame when Node's internals are on top of the stack", async () => {
+    const { model, rpc } = fixture()
+    rpc.mockResolvedValueOnce({
+      data: {
+        items: [
+          { handle: 'sample-internal-a', name: 'internalStatement', source_id: null, line: 3 },
+          { handle: 'sample-internal-b', name: 'internalLoader', source_id: null, line: 9 },
+          { handle: 'sample-own', name: 'sampleMain', source_id: 'sample-source', line: 7 },
+          { handle: 'sample-caller', name: 'sampleCaller', source_id: 'sample-source', line: 2 },
+        ],
+      },
+    } as never)
+    await model.loadStack()
+    expect(model.session.frame).toBe(2)
+    expect(model.session.frames[model.session.frame].name).toBe('sampleMain')
+  })
+  it("keeps the top frame selected when it is the program's own or no frame has a source", async () => {
+    const { model, rpc } = fixture()
+    rpc.mockResolvedValueOnce({
+      data: {
+        items: [
+          { handle: 'sample-own', name: 'sampleMain', source_id: 'sample-source', line: 7 },
+          { handle: 'sample-internal', name: 'internalLoader', source_id: null, line: 9 },
+        ],
+      },
+    } as never)
+    await model.loadStack()
+    expect(model.session.frame).toBe(0)
+    rpc.mockResolvedValueOnce({
+      data: {
+        items: [{ handle: 'sample-internal', name: 'internalLoader', source_id: null, line: 9 }],
+      },
+    } as never)
+    await model.loadStack()
+    expect(model.session.frame).toBe(0)
+  })
   it('does not claim Ask without a live grant, and clears authority on replacement', () => {
     const { model } = fixture()
     expect(model.session.mode).toBe('unknown')

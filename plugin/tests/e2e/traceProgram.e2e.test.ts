@@ -226,7 +226,7 @@ const RUN = (program: string, shots = '', via = 'Run a program') => `
 
 /** The call stack as the panel lists it, Node's own frames folded into one row. */
 const STACK = `
-  const stackRows=()=>{const stack=[...document.querySelectorAll('.abele-debug-panel .tree-item')].find(t=>t.querySelector(':scope > .tree-item-self')?.textContent.trim().startsWith('Call stack'));return stack?[...stack.querySelectorAll(':scope > .tree-item-children > .tree-item')].map(r=>({text:r.querySelector(':scope > .tree-item-self .abele-tree-item__text')?.textContent.trim()??'',note:r.querySelector(':scope > .tree-item-self .abele-tree-item__note')?.textContent.trim()??'',flair:r.querySelector(':scope > .tree-item-self .tree-item-flair')?.textContent.trim()??'',internals:r.classList.contains('abele-debug-panel__internals')})):[]};`
+  const stackRows=()=>{const stack=[...document.querySelectorAll('.abele-debug-panel .tree-item')].find(t=>t.querySelector(':scope > .tree-item-self')?.textContent.trim().startsWith('Call stack'));return stack?[...stack.querySelectorAll(':scope > .tree-item-children > .tree-item')].map(r=>({text:r.querySelector(':scope > .tree-item-self .abele-tree-item__text')?.textContent.trim()??'',note:r.querySelector(':scope > .tree-item-self .abele-tree-item__note')?.textContent.trim()??'',flair:r.querySelector(':scope > .tree-item-self .tree-item-flair')?.textContent.trim()??'',internals:r.classList.contains('abele-debug-panel__internals'),active:!!r.querySelector(':scope > .tree-item-self.is-active')})):[]};`
 
 /** Restart in the panel, and whether it can be pressed. */
 const RESTART = `const restartButton=()=>document.querySelector('.abele-debug-panel [aria-label^="Restart"]'),restartOn=()=>{const b=restartButton();return !!b&&!b.classList.contains('is-disabled')&&!b.hasAttribute('disabled')};`
@@ -250,7 +250,7 @@ const READ_RUN = `
  * on a statement of its own just before it, so the program's frame need not be on top.
  */
 function expectFolded(
-  held: { text: string; note: string; flair: string; internals: boolean }[],
+  held: { text: string; note: string; flair: string; internals: boolean; active: boolean }[],
   said: string
 ) {
   const why = JSON.stringify(held) + said
@@ -264,6 +264,11 @@ function expectFolded(
     expect(r.text, why).toBe('Node internals')
     expect(Number(r.flair), why).toBeGreaterThan(0)
   }
+  // Whichever way it is held, the selected row is the program's own frame, never Node's.
+  const selected = held.filter((r) => r.active)
+  expect(selected.length, why).toBe(1)
+  expect(selected[0].internals, why).toBe(false)
+  expect(selected[0].note, why).toMatch(/^total\.js:\d+$/)
   // Two folded rows never stand together: they would be one.
   expect(
     held.some((r, i) => r.internals && held[i + 1]?.internals),
@@ -275,7 +280,7 @@ it('runs a JavaScript program picked from Debug, records at a point set in its m
   const seen = inApp<{
     steps: { label: string; place: string; values: Record<string, string> }[]
     notes: number
-    held: { text: string; note: string; flair: string; internals: boolean }[]
+    held: { text: string; note: string; flair: string; internals: boolean; active: boolean }[]
     stop: string
     restartWhileHeld: boolean
     restartAfter: boolean
@@ -352,7 +357,7 @@ it('on a phone: the picker offers the file open in a tab, the stack folds Node, 
     openChat()
     const seen = inApp<{
       offered: { title: string; note: string }[]
-      held: { text: string; note: string; flair: string; internals: boolean }[]
+      held: { text: string; note: string; flair: string; internals: boolean; active: boolean }[]
       stop: string
       restart: boolean
       overflow: number
