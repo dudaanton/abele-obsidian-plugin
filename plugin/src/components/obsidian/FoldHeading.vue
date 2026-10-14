@@ -21,7 +21,9 @@
       :class="{ 'is-collapsed': collapsed }"
       aria-hidden="true"
     />
-    <span class="abele-fold-heading__text"><slot name="text">{{ text }}</slot></span>
+    <span class="abele-fold-heading__text"
+      ><slot name="text">{{ text }}</slot></span
+    >
     <span v-if="count !== undefined" class="abele-fold-heading__count">{{ count }}</span>
   </div>
 </template>
@@ -83,13 +85,13 @@ watch(() => props.collapsible, draw, { flush: 'post' })
   min-width: 0;
 
   // The whole title is the control and lights up as one, as a row of Obsidian's trees and the
-  // Backlinks headings do: arrow, words and count together. The room the light needs is taken back
-  // by margins, so the words stay on the edge of the rows under them.
+  // Backlinks headings do: arrow, words and count together. The room the light needs at the sides
+  // is taken back by margins, so the words stay on the edge of the rows under them. Above and below
+  // the light is the line's own height: room taken back there would lay it over the row beneath.
   &.is-collapsible {
     cursor: var(--cursor);
     border-radius: var(--radius-s);
-    padding: var(--size-2-1) var(--size-2-3);
-    margin-block: calc(-1 * var(--size-2-1));
+    padding: 0 var(--size-2-3);
     margin-inline-end: calc(-1 * var(--size-2-3));
 
     .abele-fold-heading__arrow {
