@@ -1,3 +1,4 @@
+import { randomUUID } from 'node:crypto'
 import { afterAll, beforeAll, describe, expect, it } from 'vitest'
 import { evalAsync } from './helpers/githubLive'
 import { hasTestApi, isObsidianRunning } from './helpers/obsidianCli'
@@ -8,7 +9,10 @@ import { shotDir } from './helpers/shots'
 
 targets('desktop', 'phone')
 const available = isObsidianRunning() && hasTestApi()
-const DIR = 'Sample canvas export'
+// Per run: a run whose page state was lost (an app restart) cannot block the next one.
+const RUN = randomUUID().slice(0, 8)
+const DIR = `Sample canvas export ${RUN}`
+const TARGET = `sample-target-${RUN}`
 const SHOTS = shotDir('canvas-export')
 const PRELUDE = `
   const path=${JSON.stringify(`${DIR}/sample.canvas`)}
@@ -59,8 +63,10 @@ const chooseExport = async (format: string) => {
 }
 
 describe.skipIf(!available)('whole canvas export through real pointer and touch input', () => {
+  // Kept here too: an app restart mid-file loses the page's copy, not the vault's changes.
+  let saved: { folder: unknown; preference: unknown } | undefined
   beforeAll(() => {
-    run(`
+    saved = run(`
       if(app.vault.getAbstractFileByPath(${JSON.stringify(DIR)}))throw Error('Synthetic folder already exists')
       window.__canvasExport={layout:app.workspace.getLayout(),folder:app.vault.getConfig('attachmentFolderPath'),preference:window.__abeleTest.AbeleConfig.getInstance().canvasViewer}
       window.__canvasExportScriptRuns=0
@@ -68,7 +74,7 @@ describe.skipIf(!available)('whole canvas export through real pointer and touch 
       await app.vault.createFolder(${JSON.stringify(DIR)});window.__canvasExport.owned=true
       app.vault.setConfig('attachmentFolderPath',${JSON.stringify(DIR)})
       const note=await app.vault.create(${JSON.stringify(`${DIR}/sample-note.md`)},${JSON.stringify('# Linked note\nReadable note — 日本語.\n')})
-      await app.vault.create(${JSON.stringify(`${DIR}/sample-target.md`)},${JSON.stringify('Export snapshots belong below.\n')})
+      await app.vault.create(${JSON.stringify(`${DIR}/${TARGET}.md`)},${JSON.stringify('Export snapshots belong below.\n')})
       const image=document.createElement('canvas');image.width=120;image.height=60
       const c=image.getContext('2d');c.fillStyle=getComputedStyle(document.body).getPropertyValue('--interactive-accent');c.fillRect(0,0,120,60);c.fillStyle=getComputedStyle(document.body).getPropertyValue('--text-on-accent');c.font='16px sans-serif';c.fillText('Attachment',10,35)
       const blob=await new Promise(r=>image.toBlob(r,'image/png'))
@@ -83,15 +89,19 @@ describe.skipIf(!available)('whole canvas export through real pointer and touch 
       ],edges:[{id:'a',fromNode:'near',toNode:'note'},{id:'b',fromNode:'note',toNode:'image'},{id:'c',fromNode:'image',toNode:'drawing'},{id:'d',fromNode:'drawing',toNode:'far'}],abele:{steps:[{id:'first',reveal:['near'],focus:'near',say:'Only the first card is visible.'}]}}
       const file=await app.vault.create(path,JSON.stringify(graph));window.__canvasExport.source=await app.vault.read(file)
       // Start in Abele directly: native Canvas normalizes image geometry on first open.
-      const leaf=app.workspace.getLeaf('tab');await leaf.setViewState({type:'abele-canvas',state:{file:file.path},active:true});await app.workspace.revealLeaf(leaf);return true
+      const leaf=app.workspace.getLeaf('tab');await leaf.setViewState({type:'abele-canvas',state:{file:file.path},active:true});await app.workspace.revealLeaf(leaf)
+      return {folder:window.__canvasExport.folder,preference:window.__canvasExport.preference}
     `)
   }, 120_000)
   afterAll(() => {
     run(`
       document.body.dispatchEvent(new KeyboardEvent('keydown',{key:'Escape',bubbles:true}))
       const state=window.__canvasExport,leaves=[];app.workspace.iterateAllLeaves(l=>{if(l.view.file?.path.startsWith(${JSON.stringify(DIR + '/')}))leaves.push(l)});for(const leaf of leaves)leaf.detach()
-      if(state?.owned){const dir=app.vault.getAbstractFileByPath(${JSON.stringify(DIR)});if(dir)await app.vault.delete(dir,true)}
-      if(state){app.vault.setConfig('attachmentFolderPath',state.folder);window.__abeleTest.AbeleConfig.getInstance().canvasViewer=state.preference;await app.workspace.changeLayout(state.layout)}
+      // The folder is this run's alone, so it goes even when the page lost the record of it.
+      const dir=app.vault.getAbstractFileByPath(${JSON.stringify(DIR)});if(dir)await app.vault.delete(dir,true)
+      const kept=state??${JSON.stringify(saved ?? null)}
+      if(kept){app.vault.setConfig('attachmentFolderPath',kept.folder);window.__abeleTest.AbeleConfig.getInstance().canvasViewer=kept.preference}
+      if(state)await app.workspace.changeLayout(state.layout)
       delete window.__canvasExport;delete window.__canvasExportScriptRuns;return true
     `)
   }, 120_000)
@@ -137,22 +147,22 @@ describe.skipIf(!available)('whole canvas export through real pointer and touch 
     await press('document.querySelector(".prompt-input")')
     if (onPhone()) {
       await new Promise((r) => setTimeout(r, 500))
-      typeText('sample-target')
+      typeText(TARGET)
     } else
       await withNativeInput(() =>
         run(
-          `const cdp=require('@electron/remote').getCurrentWebContents().debugger,owned=!cdp.isAttached();if(owned)cdp.attach('1.3');try{await cdp.sendCommand('Input.insertText',{text:'sample-target'})}finally{if(owned)cdp.detach()}return true`
+          `const cdp=require('@electron/remote').getCurrentWebContents().debugger,owned=!cdp.isAttached();if(owned)cdp.attach('1.3');try{await cdp.sendCommand('Input.insertText',{text:${JSON.stringify(TARGET)}})}finally{if(owned)cdp.detach()}return true`
         )
       )
     await press(
-      '[...document.querySelectorAll(".suggestion-item")].find(el=>el.textContent.includes("sample-target.md"))'
+      `[...document.querySelectorAll(".suggestion-item")].find(el=>el.textContent.includes(${JSON.stringify(TARGET)}))`
     )
     await until(
-      `(await app.vault.read(app.vault.getAbstractFileByPath(${JSON.stringify(`${DIR}/sample-target.md`)}))).includes('![[')`
+      `(await app.vault.read(app.vault.getAbstractFileByPath(${JSON.stringify(`${DIR}/${TARGET}.md`)}))).includes('![[')`
     )
     expect(
       run<string>(
-        `return await app.vault.read(app.vault.getAbstractFileByPath(${JSON.stringify(`${DIR}/sample-target.md`)}))`
+        `return await app.vault.read(app.vault.getAbstractFileByPath(${JSON.stringify(`${DIR}/${TARGET}.md`)}))`
       )
     ).toMatch(/^Export snapshots belong below\.\n\n!\[\[/)
   }, 120_000)
