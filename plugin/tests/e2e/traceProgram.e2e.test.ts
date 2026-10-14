@@ -193,6 +193,7 @@ const RUN = (program: string, shotMenu = '') => `
   press(item('Run a program'));
   const field=await until(()=>document.querySelector('.modal-container .modal input'),'program asked');
   field.value=${JSON.stringify(program)};field.dispatchEvent(new Event('input',{bubbles:true}));
+  ${shotMenu ? `await shot(${JSON.stringify(shotMenu + '-dialog')});` : ''}
   press(await until(()=>[...document.querySelectorAll('.modal-container .modal button')].find(b=>b.textContent.trim()==='Run'),'Run button'));
   await until(()=>document.querySelector('[aria-label="Continue (F5)"]'),'debug panel',600);`
 
