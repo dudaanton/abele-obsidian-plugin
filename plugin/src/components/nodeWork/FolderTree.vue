@@ -41,7 +41,7 @@
           :text="copy.branch"
           :icon="copyIcon(copy)"
           :path="copy.path"
-          :note="copy.missing ? 'Missing from disk' : undefined"
+          :label="copy.missing ? `${copy.branch} · missing from disk` : undefined"
           :collapsible="hasInside(copy)"
           :collapsed="!open(copy)"
           :active="selected === copy.id && !selectedChat"

@@ -19,6 +19,7 @@
       :aria-current="active ? 'true' : undefined"
       :aria-disabled="disabled || undefined"
       :data-path="path"
+      :aria-label="label ?? (where ? `${where}/${text}` : undefined)"
       @click="rowClick"
       @keydown.enter="rowKey"
     >
@@ -35,7 +36,14 @@
           ><slot name="leading"
         /></span>
         <span ref="glyph" class="abele-tree-item__glyph" aria-hidden="true" />
-        <span class="abele-tree-item__text">{{ text }}</span>
+        <span v-if="where" class="abele-tree-item__named">
+          <span class="abele-tree-item__text">{{ text }}</span>
+          <!-- Cut from its start, so the folder nearest the file is what stays. -->
+          <span class="abele-tree-item__where"
+            ><bdi dir="ltr">{{ where }}</bdi></span
+          >
+        </span>
+        <span v-else class="abele-tree-item__text">{{ text }}</span>
         <span v-if="note" class="abele-tree-item__note">{{ note }}</span>
       </div>
       <div v-if="flair || $slots.actions || $slots.end" class="tree-item-flair-outer">
@@ -70,6 +78,13 @@ const props = withDefaults(
     flair?: string
     /** Faint text after the name, cut short when the row is narrow: where a file lies. */
     note?: string
+    /**
+     * Where a file lies, its folder path: a faint line of its own under the name, as Obsidian's
+     * quick switcher puts it. Beside the name, both broke into syllables in a narrow pane.
+     */
+    where?: string
+    /** The row in words, where its glyph and faintness already say it: its tooltip. */
+    label?: string
     /** The row stands for what is shown now. */
     active?: boolean
     /** Has children to fold: draws the arrow, and shows the default slot while open. */
@@ -98,6 +113,8 @@ const props = withDefaults(
   {
     icon: undefined,
     note: undefined,
+    where: undefined,
+    label: undefined,
     flair: undefined,
     active: false,
     collapsible: false,
@@ -237,6 +254,32 @@ body:not(.is-grabbing) .abele-tree-item__self.is-clickable:hover {
   color: var(--text-muted);
   font-size: var(--font-ui-smaller);
   overflow-wrap: anywhere;
+}
+// A file and where it lies: the name on its line, the path under it, each cut short rather than
+// broken, the way the file explorer keeps a name to one line.
+.abele-tree-item__inner:has(> .abele-tree-item__named) {
+  flex: 1 1 auto;
+}
+.abele-tree-item__named {
+  display: flex;
+  flex-direction: column;
+  flex: 1 1 auto;
+  min-width: 0;
+
+  > .abele-tree-item__text,
+  > .abele-tree-item__where {
+    overflow: hidden;
+    white-space: nowrap;
+    text-overflow: ellipsis;
+  }
+}
+.abele-tree-item__where {
+  color: var(--text-faint);
+  font-size: var(--font-ui-smaller);
+  line-height: var(--line-height-tight);
+  // The ellipsis at the start: the folders every file shares go first, the one it is in stays.
+  direction: rtl;
+  text-align: left;
 }
 .abele-tree-item__inner:has(.abele-tree-item__note) {
   flex: 1 1 auto;
