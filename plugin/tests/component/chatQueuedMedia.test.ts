@@ -1,6 +1,6 @@
 import { afterEach, describe, expect, it, vi } from 'vitest'
 import { flushPromises, mount } from '@vue/test-utils'
-import { ref } from 'vue'
+import { nextTick, ref } from 'vue'
 import AiChatInput from '@/components/AiChatInput.vue'
 import AiChat from '@/components/AiChat.vue'
 import VoiceRecorder from '@/components/VoiceRecorder.vue'
@@ -74,6 +74,21 @@ describe('queued media in the chat', () => {
   it('names an attachment-only message in the queue', () => {
     openChat()
     expect(wrapper.get('.abele-ai-chat__queued-item').text()).toContain('sample-note.md')
+  })
+
+  it('keeps an attachment name apart from the words a long message cuts off', async () => {
+    const queued = openChat()
+    queued.value = [
+      {
+        id: 'sample-long',
+        content: 'Describe '.repeat(40),
+        attachments: ['folder/sample-image.png'],
+      },
+    ]
+    await nextTick()
+    // Inside the cut-off text the name would lie past the row's end, unseen on a phone.
+    expect(wrapper.get('.abele-ai-chat__queued-text').element.children).toHaveLength(0)
+    expect(wrapper.get('.abele-ai-chat__queued-files').text()).toBe('sample-image.png')
   })
 
   it('returns the attachment to the composer for editing, without leaving a queued copy', async () => {

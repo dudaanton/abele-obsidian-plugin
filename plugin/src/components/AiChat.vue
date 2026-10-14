@@ -224,9 +224,11 @@
         <div v-if="queuedMessages.length" class="abele-ai-chat__queued">
           <div v-for="q in queuedMessages" :key="q.id" class="abele-ai-chat__queued-item">
             <Icon icon="clock" size="xs" :interactive="false" class="abele-ai-chat__queued-icon" />
-            <span class="abele-ai-chat__queued-text">
-              {{ q.content }}
-              <span v-if="q.attachments?.length">
+            <!-- Words and attachments each cut themselves off: a name inside the cut words
+                 would lie past the row's end, unseen. -->
+            <span class="abele-ai-chat__queued-line">
+              <span class="abele-ai-chat__queued-text">{{ q.content }}</span>
+              <span v-if="q.attachments?.length" class="abele-ai-chat__queued-files">
                 {{ q.attachments.map((path) => path.split('/').pop()).join(', ') }}
               </span>
             </span>
@@ -2264,12 +2266,26 @@ const showDebug = () => {
   color: var(--icon-color);
 }
 
-.abele-ai-chat__queued-text {
+.abele-ai-chat__queued-line {
+  display: flex;
   flex: 1;
+  gap: var(--size-4-1);
+  min-width: 0;
+}
+
+.abele-ai-chat__queued-text,
+.abele-ai-chat__queued-files {
   min-width: 0;
   overflow: hidden;
   text-overflow: ellipsis;
   white-space: nowrap;
+}
+
+/* The words give way first; the name keeps a short piece of itself. */
+.abele-ai-chat__queued-files {
+  flex: 0 1 auto;
+  min-width: min(6em, 40%);
+  color: var(--text-faint);
 }
 
 /* The way to change it and out show under the pointer; a phone, which cannot point, keeps them. */
