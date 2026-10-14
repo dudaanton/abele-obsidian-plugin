@@ -70,6 +70,10 @@ export interface TraceStep {
   host?: string
   /** The request it belongs to: steps of one request stand together. */
   chain?: string
+  /** Put under its request only because it ran while the request was out, not by a header. */
+  byTime?: boolean
+  /** A request sent from the project's Requests, not by the browser. */
+  sent?: boolean
   values: TraceValue[]
   /** A browser request: what went out and what came back. */
   request?: TraceValue[]

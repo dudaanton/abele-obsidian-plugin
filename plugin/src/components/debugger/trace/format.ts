@@ -19,7 +19,7 @@ export function kindWords(step: TraceStep): string {
   if (step.kind === 'probe') return 'Taken at a record point'
   if (step.kind === 'error') return 'An exception'
   if (step.kind === 'browser-lost') return 'The browser tab went away'
-  return `A browser request${step.status ? `, ${step.status}` : ''}`
+  return `${step.sent ? 'A request you sent' : 'A browser request'}${step.status ? `, ${step.status}` : ''}`
 }
 
 /** Everything the step took, in one size. */

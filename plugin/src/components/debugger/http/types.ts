@@ -1,0 +1,74 @@
+// What the requests of a project draw: saved requests in collections, the environment they are
+// sent in, and what came back. Plain data, so the views can be built and tested without a node;
+// the node reads the files of `.abele/requests/` and sends, the plugin only fills these shapes.
+
+export type HttpMethod = 'GET' | 'POST' | 'PUT' | 'PATCH' | 'DELETE' | 'HEAD' | 'OPTIONS'
+
+/** One line of the params, the headers or an environment: a name and what it stands for. */
+export interface HttpPair {
+  key: string
+  value: string
+  /** Kept in the request but not sent. */
+  off?: boolean
+  /** The value comes from the plugin's keys by name, `${abele_key:name}`: never shown. */
+  secret?: boolean
+  /** Why it cannot be sent as it is: a key that is not in the keys, a variable with no value. */
+  missing?: string
+}
+
+/** A check of the answer, `status == 201`; passed once it was sent. */
+export interface HttpCheck {
+  text: string
+  passed?: boolean
+}
+
+export interface HttpResponse {
+  status: number
+  /** The status in words, `Created`. */
+  reason: string
+  ms: number
+  bytes: number
+  headers: HttpPair[]
+  body: string
+  /** Steps the record points took in the code while it was out, when a run was recorded. */
+  steps?: number
+  checks?: HttpCheck[]
+  /** The body was longer than what is kept, and was cut. */
+  cut?: boolean
+}
+
+/** What one sending came to. */
+export type HttpOutcome =
+  | { kind: 'sending' }
+  | { kind: 'answered'; response: HttpResponse }
+  /** It never reached the server: refused, no such host. */
+  | { kind: 'failed'; reason: string }
+  /** No answer in time: it may have gone through, and it is not sent again by itself. */
+  | { kind: 'unknown'; after: string }
+
+export interface HttpRequest {
+  id: string
+  name: string
+  method: HttpMethod
+  /** As written, with `{{variables}}` of the environment in it. */
+  url: string
+  params: HttpPair[]
+  headers: HttpPair[]
+  body?: { format: 'json' | 'text' | 'form'; text: string }
+  /** Scripts of the plugin run before it goes and after it comes back, by name. */
+  scripts: { before?: string; after?: string }
+  checks: HttpCheck[]
+  /** The last time it was sent: its status, or that it did not get through. */
+  last?: { status?: number; failed?: boolean }
+}
+
+/** A folder of `.abele/requests/`. */
+export interface HttpCollection {
+  name: string
+  requests: HttpRequest[]
+}
+
+export interface HttpEnvironment {
+  name: string
+  vars: HttpPair[]
+}

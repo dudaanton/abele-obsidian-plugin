@@ -196,6 +196,93 @@
         </div>
       </TreeItem>
 
+      <!-- The project's saved requests: the environment they go out in, then the collections as
+           folders and each request as a row, its method a code before the name and its last
+           status faint at the end. -->
+      <TreeItem
+        v-if="requests"
+        class="abele-debug-panel__group abele-debug-panel__requests"
+        text="Requests"
+        :flair="requestCount ? String(requestCount) : undefined"
+        collapsible
+        :collapsed="folded.has('requests')"
+        @click="toggle('requests')"
+      >
+        <template #actions>
+          <Icon
+            icon="plus"
+            size="xs"
+            tooltip="New request"
+            :disabled="requestsOffline"
+            @click.stop="emit('new-request')"
+          />
+        </template>
+        <div v-if="requestsOffline" class="abele-debug-panel__empty">
+          Requests open while the node is online.
+        </div>
+        <template v-else>
+          <TreeItem
+            class="abele-debug-panel__environment"
+            icon="layers"
+            :text="environment ?? 'No environment'"
+            label="Environment the requests go out in"
+            @click="(e: MouseEvent) => emit('environment-menu', e)"
+          >
+            <template #end><Icon icon="chevrons-up-down" size="xs" no-hover /></template>
+          </TreeItem>
+          <TreeItem
+            v-for="c in requests"
+            :key="c.name"
+            icon="folder"
+            :text="c.name"
+            :flair="String(c.requests.length)"
+            collapsible
+            :collapsed="folded.has(`requests-${c.name}`)"
+            @click="toggle(`requests-${c.name}`)"
+          >
+            <TreeItem
+              v-for="r in c.requests"
+              :key="r.id"
+              class="abele-debug-panel__request"
+              :text="r.name"
+              :active="r.id === openRequest"
+              @click="emit('open-request', r.id)"
+              @contextmenu.prevent="(e: MouseEvent) => emit('request-menu', r.id, e)"
+            >
+              <template #leading><MethodMark :method="r.method" /></template>
+              <template #end>
+                <StatusDot v-if="r.id === sending" tone="accent" label="Sending" pulse />
+                <span
+                  v-else-if="r.last"
+                  class="abele-debug-panel__last"
+                  :class="{
+                    'abele-debug-panel__last_error': r.last.failed || (r.last.status ?? 0) >= 400,
+                  }"
+                  :aria-label="
+                    r.last.failed
+                      ? 'Did not get through the last time'
+                      : `Answered ${r.last.status} the last time`
+                  "
+                  >{{ r.last.failed ? '—' : r.last.status }}</span
+                >
+              </template>
+              <template #actions>
+                <Icon
+                  icon="send-horizontal"
+                  size="xs"
+                  tooltip="Send"
+                  :disabled="r.id === sending"
+                  @click.stop="emit('send-request', r.id)"
+                />
+              </template>
+            </TreeItem>
+          </TreeItem>
+          <div v-if="!requests.length" class="abele-debug-panel__empty">
+            Save a request to send it again; the agent can make one too.
+          </div>
+        </template>
+      </TreeItem>
+
       <TreeItem
         v-if="runs"
         class="abele-debug-panel__group"
@@ -297,6 +384,8 @@ import DebugValues from './DebugValues.vue'
 import type { DebugFrame, DebugSession, DebugWatch } from './types'
 import { wholeValue } from './valueFormat'
 import type { TraceRecording, TraceRunSummary } from './trace/types'
+import MethodMark from './http/MethodMark.vue'
+import type { HttpCollection } from './http/types'
 
 const props = withDefaults(
   defineProps<{
@@ -311,6 +400,16 @@ const props = withDefaults(
     runs?: TraceRunSummary[]
     /** The run open in a tab. */
     openRun?: string
+    /** The project's saved requests by collection; none where requests are not offered. */
+    requests?: HttpCollection[]
+    /** The environment they go out in. */
+    environment?: string
+    /** The node is away: the requests are files on it. */
+    requestsOffline?: boolean
+    /** The request open in a tab. */
+    openRequest?: string
+    /** The request being sent now. */
+    sending?: string
   }>(),
   {
     restartAvailable: false,
@@ -320,7 +419,15 @@ const props = withDefaults(
     recording: undefined,
     runs: undefined,
     openRun: undefined,
+    requests: undefined,
+    environment: undefined,
+    requestsOffline: false,
+    openRequest: undefined,
+    sending: undefined,
   }
+)
+const requestCount = computed(() =>
+  (props.requests ?? []).reduce((n, c) => n + c.requests.length, 0)
 )
 const locked = computed(() => props.session.status === 'lost' || props.busy)
 const modeKnown = computed(
@@ -351,6 +458,13 @@ const emit = defineEmits<{
   (e: 'show-folder'): void
   (e: 'open-run', id: string): void
   (e: 'run-menu', id: string, event: MouseEvent): void
+  (e: 'open-request', id: string): void
+  (e: 'send-request', id: string): void
+  /** Send, duplicate, rename, copy as curl, delete: a menu at the row. */
+  (e: 'request-menu', id: string, event: MouseEvent): void
+  /** The environments to pick from, a menu at the row. */
+  (e: 'environment-menu', event: MouseEvent): void
+  (e: 'new-request'): void
 }>()
 
 const browserBrief = computed(() => {
@@ -613,6 +727,21 @@ function watchIt() {
   color: var(--text-muted);
   font-size: var(--font-ui-smaller);
   font-variant-numeric: tabular-nums;
+}
+// The last status of a request, faint as a fact; red where it failed or did not get through.
+.abele-debug-panel__last {
+  color: var(--text-faint);
+  font-family: var(--font-monospace);
+  font-size: var(--font-ui-smaller);
+  font-variant-numeric: tabular-nums;
+}
+.abele-debug-panel__last_error {
+  color: var(--text-error);
+}
+.abele-debug-panel__environment .abele-obsidian-icon {
+  height: auto;
+  padding: 0;
+  color: var(--text-faint);
 }
 .abele-debug-panel__hits_none {
   color: var(--text-faint);

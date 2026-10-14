@@ -134,7 +134,7 @@ const phone = Platform.isPhone
 type Filter = 'code' | 'browser' | 'failed' | 'marked'
 const FILTERS: { id: Filter; icon: string; tooltip: string }[] = [
   { id: 'code', icon: 'diamond', tooltip: 'Only what the record points took' },
-  { id: 'browser', icon: 'arrow-right-left', tooltip: "Only the browser's requests" },
+  { id: 'browser', icon: 'arrow-right-left', tooltip: 'Only the requests' },
   { id: 'failed', icon: 'circle-x', tooltip: 'Only what failed' },
   { id: 'marked', icon: 'flag', tooltip: 'Only what you marked' },
 ]
@@ -208,6 +208,16 @@ const StepEnd = defineComponent({
     const size = stepBytes(p.step)
     const same = p.step.values.length > 0 && p.step.values.every((v) => v.same)
     return h('span', { class: 'abele-trace-run__end' }, [
+      // Under its request by time only: the node suggests it, a header would prove it.
+      p.step.byTime
+        ? h(Icon, {
+            icon: 'clock',
+            size: 'xs',
+            noHover: true,
+            class: 'abele-trace-run__by-time',
+            tooltip: 'Placed here by time: it ran while the request was out',
+          })
+        : null,
       p.step.marked
         ? h(Icon, { icon: 'flag', size: 'xs', noHover: true, class: 'abele-trace-run__flag' })
         : null,
@@ -219,6 +229,9 @@ const StepEnd = defineComponent({
 </script>
 
 <style lang="scss">
+.abele-trace-run__by-time {
+  color: var(--text-faint);
+}
 .abele-trace-run {
   height: 100%;
   min-height: 0;
