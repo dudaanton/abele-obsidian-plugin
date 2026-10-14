@@ -105,6 +105,8 @@ defineExpose({
   border-radius: var(--input-radius);
   background: var(--background-modifier-form-field);
   cursor: text;
+  // The editor inside paints square corners of its own; held in the field's rounded ones.
+  overflow: hidden;
 
   &:focus-within {
     border-color: var(--background-modifier-border-focus);

@@ -626,8 +626,28 @@ const drafts = new Map<string, string>()
       overflow-y: auto;
     }
 
-    // The frame is the reply's; a plain text box standing in for the editor drops its own and
-    // grows with what is written, from one line.
+    // The frame is the reply's: the note editor inside it drops its own border, ring and
+    // ground, and grows with what is written from one line, so there is one outline, not two.
+    .abele-note-editor-field__editor {
+      min-height: 0;
+      border: none;
+      border-radius: 0;
+      background: transparent;
+
+      &:focus-within {
+        box-shadow: none;
+      }
+
+      .markdown-source-view.mod-cm6 .cm-scroller {
+        padding: 0;
+      }
+
+      .markdown-source-view.mod-cm6 .cm-content {
+        min-height: 1lh;
+      }
+    }
+
+    // A plain text box standing in for the editor does the same.
     .abele-note-editor-field textarea {
       field-sizing: content;
       width: 100%;
