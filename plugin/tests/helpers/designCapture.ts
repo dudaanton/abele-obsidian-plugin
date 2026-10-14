@@ -161,8 +161,12 @@ export function captureDesign(selector: string, options: CaptureOptions = {}): D
         'button, input, select, textarea, summary, a[href], [role="button"], [role="checkbox"], [role="treeitem"][tabindex="0"], [role="tab"], [role="switch"], [role="menuitem"], [tabindex="0"], .clickable-icon, .is-clickable'
       )
       const text = textBoxes(el, !!level || control)
-      if (el.matches('.abele-list-row__state') && text.firstLine) {
-        const glyph = el.querySelector('.abele-list-row__status-icon svg')?.getBoundingClientRect()
+      // A glyph that leads its words is where the line starts: a row's state, and a fold in running
+      // content, whose arrow stands on the words' edge rather than hanging in the margin.
+      if (el.matches('.abele-list-row__state, .abele-fold-heading.is-inline') && text.firstLine) {
+        const glyph = el
+          .querySelector('.abele-list-row__status-icon svg, .abele-fold-heading__arrow')
+          ?.getBoundingClientRect()
         if (glyph) {
           const end = text.firstLine.x + text.firstLine.width
           text.firstLine.x = Math.min(text.firstLine.x, glyph.x)
@@ -338,9 +342,15 @@ export function captureDesign(selector: string, options: CaptureOptions = {}): D
             [
               ...(el
                 .closest('.abele-quote')
-                ?.querySelectorAll('button[aria-label][aria-controls][aria-expanded="false"]') ??
-                []),
-            ].some((button) => button.getAttribute('aria-controls') === el.id)),
+                ?.querySelectorAll(
+                  'button[aria-controls][aria-expanded="false"], [role="button"][aria-controls][aria-expanded="false"]'
+                ) ?? []),
+            ].some(
+              // The kit's fold title is a `role="button"` named by its own words.
+              (button) =>
+                button.getAttribute('aria-controls') === el.id &&
+                !!(button.getAttribute('aria-label') || button.textContent)?.trim()
+            )),
         disabled: el.matches(':disabled, [aria-disabled="true"]'),
       })
     }

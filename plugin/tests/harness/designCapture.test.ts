@@ -418,6 +418,22 @@ describe('renderer design capture', () => {
       20
     )
   })
+  it('starts an inline fold title at its arrow, which stands on the words edge', () => {
+    fixture()
+    document.querySelector('#surface')!.innerHTML =
+      '<div class="abele-disclosure"><div class="abele-disclosure__control abele-fold-heading is-collapsible is-inline" role="button"><span class="collapse-icon abele-fold-heading__arrow"><svg></svg></span><span class="abele-fold-heading__text">Source</span></div></div>'
+    for (const el of document.querySelectorAll('#surface *'))
+      vi.spyOn(el, 'getBoundingClientRect').mockReturnValue(
+        el.closest('.abele-fold-heading__arrow')
+          ? new DOMRect(10, 20, 16, 16)
+          : new DOMRect(30, 20, 40, 16)
+      )
+    const fold = () => captureDesign('#surface').elements.find((e) => e.level === 'detail')
+    expect(fold()?.firstLine?.x).toBe(10)
+    // Hung in the margin, the arrow is not the edge: the words are.
+    document.querySelector('.abele-fold-heading')!.classList.remove('is-inline')
+    expect(fold()?.firstLine?.x).toBeGreaterThanOrEqual(30)
+  })
   it('recognizes a clamped quote only with its own labelled accessible full-text disclosure', () => {
     fixture()
     document.querySelector('#surface')!.innerHTML =
@@ -433,6 +449,21 @@ describe('renderer design capture', () => {
       captureDesign('#surface').elements.find((e) => e.selector.includes('blockquote'))
         ?.fullTextAvailable
     ).toBe(false)
+  })
+  it('recognizes the kit fold title as the clamped quote opener by its own words', () => {
+    fixture()
+    document.querySelector('#surface')!.innerHTML =
+      '<figure class="abele-quote"><blockquote id="sample-quote" class="abele-quote__text_preview">Full passage</blockquote><div role="button" aria-controls="sample-quote" aria-expanded="false"><span>Expand quote</span></div></figure>'
+    for (const el of document.querySelectorAll('#surface *'))
+      vi.spyOn(el, 'getBoundingClientRect').mockReturnValue(new DOMRect(20, 20, 100, 44))
+    const quote = () =>
+      captureDesign('#surface').elements.find((e) => e.selector.includes('blockquote'))
+    expect(quote()?.fullTextAvailable).toBe(true)
+    document.querySelector('[role="button"]')!.textContent = ''
+    expect(quote()?.fullTextAvailable).toBe(false)
+    document.querySelector('[role="button"]')!.textContent = 'Expand quote'
+    document.querySelector('[role="button"]')!.removeAttribute('aria-controls')
+    expect(quote()?.fullTextAvailable).toBe(false)
   })
   it('throws on absent containers rather than reporting a vacuous pass', () => {
     fixture()
