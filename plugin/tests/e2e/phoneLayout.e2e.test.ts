@@ -357,10 +357,16 @@ const probeScript = `(async () => {
       Object.assign(entry, measure(root, body))
       entry.tabFocus = []
       for (const strip of root.querySelectorAll('.abele-tabs:not(.abele-tabs_vertical)')) {
-        if (strip.scrollWidth <= strip.clientWidth + 1) continue
+        const level = strip.classList.contains('abele-tabs_primary') ? 'primary' : 'secondary'
+        // The accepted chat setup has three primary tabs, which fit a phone: no measured primary
+        // strip overflows any more. Narrow one that fits, for this check only, so a primary strip
+        // is still made to reveal a tab it has scrolled away; put back below.
+        const narrowed = level === 'primary' && strip.scrollWidth <= strip.clientWidth + 1 &&
+          strip.getBoundingClientRect().width > 0
+        if (narrowed) strip.style.maxWidth = Math.floor(strip.clientWidth / 2) + 'px'
+        if (strip.scrollWidth <= strip.clientWidth + 1) { strip.style.maxWidth = ''; continue }
         const tabs = [...strip.querySelectorAll('.abele-tabs__tab')]
         const previous = strip.scrollLeft
-        const level = strip.classList.contains('abele-tabs_primary') ? 'primary' : 'secondary'
         for (const [tab, start] of [[tabs.at(-1), 0], [tabs[0], strip.scrollWidth]]) {
           if (!tab || !tab.getBoundingClientRect().width) continue
           document.activeElement?.blur()
@@ -373,10 +379,11 @@ const probeScript = `(async () => {
           // The same unforced focus a keyboard or script gives. Do not scroll into view in the
           // probe: the component itself must reveal the focused tab and its whole focus ring.
           tab.focus()
-          entry.tabFocus.push({ label: tab.textContent.trim(), level, outside, clipped: ringClipped(tab) })
+          entry.tabFocus.push({ label: tab.textContent.trim(), level, outside, narrowed, clipped: ringClipped(tab) })
           tab.blur()
         }
         strip.scrollLeft = previous
+        if (narrowed) strip.style.maxWidth = ''
       }
     } catch (e) {
       entry.error = String((e && e.message) || e)
@@ -424,7 +431,7 @@ const probeScript = `(async () => {
     const findItem = [...menu.querySelectorAll('.menu-item')].find(item =>
       item.querySelector('.menu-item-title')?.textContent.trim() === 'Find in this chat')
     findItem.click()
-    entry.findOpened = await until(() => root.querySelector('.abele-chat-find'), 3000)
+    entry.findOpened = !!(await until(() => root.querySelector('.abele-chat-find'), 3000))
     root.querySelector('[aria-label="Close the find bar (Esc)"]')?.click()
     await wait(300)
     report[label].header = entry
@@ -722,7 +729,9 @@ const probeScript = `(async () => {
           }))
           const list = chat.querySelector('.abele-chat-slash')
           if (!list) throw new Error('Composer choices did not open: ' + label)
-          list.scrollTop = list.scrollHeight
+          // Obsidian's own list scrolls inside the container (\`.suggestion\`), not the container.
+          for (const el of [list, ...list.querySelectorAll('*')])
+            if (el.scrollHeight > el.clientHeight + 1) el.scrollTop = el.scrollHeight
           await wait(200)
           await screen(label, list, list)
           const options = [...list.querySelectorAll('.suggestion-item')]
@@ -974,7 +983,7 @@ const probeScript = `(async () => {
         report['node claude chat'].headerHeight = claudeChat.querySelector('.abele-ai-chat__header').getBoundingClientRect().height
         for (const field of claudeChat.querySelectorAll('button, textarea, [tabindex="0"]')) {
           if (!field.getBoundingClientRect().width) continue
-          field.focus(); report['node claude permission'].clipped.push(...ringClipped(field)); field.blur()
+          field.focus(); report['node claude permission'].clipped.push(...ringClipped(field).map(cut => (field.getAttribute('aria-label') || name(field)) + ' in ' + cut)); field.blur()
         }
         const sent = { ...claude, id: 'layout-node-answer-tab', answers: { value: { 'sample-permission': { state: 'pending', choice: 'allow' } } } }
         chats.nodeSessions.set(sent.id, sent)
