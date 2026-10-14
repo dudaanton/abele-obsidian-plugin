@@ -128,7 +128,7 @@ const probe = (scene: 'rates' | 'stale' | 'none') => `(async () => {
       tab.click()
       await until(() => !!root().querySelector('.abele-finance-sidebar__summary_approx'), 5000)
       await wait(300)
-      return number(root().querySelector('.abele-finance-sidebar__summary-value--expense'))
+      return number(root().querySelector('.abele-finance-sidebar__summary .abele-finance-sidebar__summary-value--expense'))
     }
     const totalBefore = totalNow()
     const expensesBefore = (await allExpensesNow()) ?? 0
