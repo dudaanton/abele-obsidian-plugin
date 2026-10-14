@@ -429,8 +429,7 @@ if (n.type === 'markdown') {
 // A plain button in a script's tab is a place to go or a thing to do, laid out by the script in
 // rows and grids, not a form's Cancel beside its Save: Obsidian's grey slab made a start page a
 // wall of grey. Here it is drawn as a card is, a hairline round the words on the page's own
-// ground, and lit as every card and row is under the pointer: the accent's light wash, its edge
-// and its words a deep shade of it. The one accent button stays the filled one.
+// ground, and lit in Obsidian's own grey under the pointer. The one accent button stays filled.
 .abele-script-view
   .abele-obsidian-button:not(.mod-cta, .mod-warning, .abele-obsidian-button_quiet) {
   border: 1px solid var(--background-modifier-border);
@@ -446,12 +445,11 @@ if (n.type === 'markdown') {
   }
 
   &:hover:not(:disabled) {
-    border-color: var(--abele-hover-border);
-    background-color: var(--abele-hover-background);
-    color: var(--abele-hover-color);
+    border-color: var(--background-modifier-border-hover);
+    background-color: var(--background-modifier-hover);
 
     .abele-obsidian-button__icon {
-      color: var(--abele-hover-color);
+      color: var(--icon-color-hover);
     }
   }
 }
