@@ -413,6 +413,7 @@ export const SECTIONS: Section[] = [
     'logsNotesTypes',
     'excludedPathsForDefaultTemplate',
     'snippetsFolder',
+    'traceNotesFolder',
     'fullWidthSidebars',
     'halfWidthSidebarsOnTablet',
     'mermaidViewer',

@@ -48,6 +48,17 @@
         @click="addingLocal = true"
       />
     </Setting>
+    <Setting
+      name="Notes about recorded runs"
+      desc="Vault folder for a note about a run the debugger recorded, yours or the agent's. The run itself stays on the node."
+    >
+      <Input
+        :model-value="traceNotesFolder"
+        placeholder="e.g. Trace"
+        aria-label="Folder for notes about recorded runs"
+        @update:model-value="updateTraceNotesFolder"
+      />
+    </Setting>
     <NodeDelegationGrantsDialog
       v-if="grantNode"
       :label="grantNode.label"
@@ -122,8 +133,19 @@ import Button from '../obsidian/Button.vue'
 import Icon from '../obsidian/Icon.vue'
 import StatusDot from '../obsidian/StatusDot.vue'
 import ObsidianModal from '../obsidian/Modal.vue'
-import { Menu } from 'obsidian'
+import { Menu, debounce } from 'obsidian'
+import { AbeleConfig } from '@/services/AbeleConfig'
 const service = NodeService.getInstance()
+const config = AbeleConfig.getInstance()
+const traceNotesFolder = ref(config.traceNotesFolder)
+const saveTraceNotesFolder = debounce(async (value: string) => {
+  config.traceNotesFolder = value.trim()
+  await config.saveSettings()
+}, 500)
+const updateTraceNotesFolder = (value: string) => {
+  traceNotesFolder.value = value
+  saveTraceNotesFolder(value)
+}
 const grantNode = ref<RegisteredNode>()
 const parentChats = computed(() => {
   const chats = ChatService.getInstance()

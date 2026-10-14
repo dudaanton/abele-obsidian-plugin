@@ -5,11 +5,15 @@ import { DebuggerSnapshotSchema } from '@abele/node-protocol'
 import { z } from 'zod'
 import { DebuggerController } from './DebuggerController'
 import { nodeDebuggerSupported } from '@/node/providers'
+import { TraceSession } from './trace/TraceSession'
+import { nodeTraceSupported, TraceRpc } from './trace/wire'
 
 /** One session's UI lifetime. The owner client never supplies agent tool authority. */
 export class DebuggerBinding {
   readonly revision = shallowRef(0)
   readonly controller: DebuggerController
+  /** The session's recording, where the node records runs. */
+  trace?: TraceSession
   private abort?: AbortController
   private waitId?: string
   private stopConnection: WatchStopHandle
@@ -56,6 +60,15 @@ export class DebuggerBinding {
     try {
       const result = await this.connection.client.debugger.status(sessionId)
       if (abort.signal.aborted || this.disposed) return
+      if (!this.trace && (await this.recordsRuns()))
+        this.trace = new TraceSession(
+          new TraceRpc((method, params) => this.connection.client.request(method, params)),
+          this.controller,
+          () => {
+            ++this.revision.value
+          }
+        )
+      if (abort.signal.aborted || this.disposed) return
       this.controller.observe(this.connection.client.debugger.current(sessionId))
       await this.loadGrant(abort)
       if (abort.signal.aborted || this.disposed) return
@@ -71,6 +84,17 @@ export class DebuggerBinding {
       })
     } catch (e) {
       if (!abort.signal.aborted) this.fail(e)
+    }
+  }
+  /** Whether the node records runs. A node that cannot say is treated as one that does not: the
+   * debugger itself works the same either way. */
+  private async recordsRuns() {
+    try {
+      const client = this.connection.client as { describe?: () => Promise<unknown> }
+      return typeof client.describe === 'function' && nodeTraceSupported(await client.describe())
+    } catch (e) {
+      console.debug('[debugger] Run recording support unknown', e)
+      return false
     }
   }
   private async loadGrant(abort: AbortController) {
@@ -165,8 +189,13 @@ export class DebuggerBinding {
       await this.controller.refreshApprovals()
       await this.controller.refreshHistory()
       await this.controller.refreshOutput()
+      await this.trace?.refresh().catch((e) => console.debug('[debugger] Runs unavailable', e))
       const epoch = this.controller.snapshot?.stop_epoch
-      if (this.controller.session.status === 'paused' && epoch !== this.loadedEpoch) {
+      if (
+        this.controller.session.status === 'paused' &&
+        epoch !== this.loadedEpoch &&
+        !this.trace?.isRecordStop()
+      ) {
         await this.controller.loadStack()
         this.loadedEpoch = epoch
         const f = this.controller.session.frames[0]

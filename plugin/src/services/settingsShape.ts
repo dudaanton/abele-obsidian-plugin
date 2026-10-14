@@ -72,6 +72,8 @@ export interface AbeleSettings {
   mapStyleUrl?: string
   // Other
   snippetsFolder?: string
+  /** The vault folder a note about a run recorded by the debugger is written to. */
+  traceNotesFolder?: string
   fullWidthSidebars?: boolean
   /** On a tablet, sidebars take half the screen. The phone has its own, `fullWidthSidebars`. */
   halfWidthSidebarsOnTablet?: boolean
@@ -300,6 +302,7 @@ export const DEFAULT_SETTINGS: Required<Omit<AbeleSettings, 'secretStore'>> = {
   mapCoordinatesProperty: 'coordinates',
   mapStyleUrl: '',
   snippetsFolder: '',
+  traceNotesFolder: 'Trace',
   fullWidthSidebars: false,
   halfWidthSidebarsOnTablet: false,
   mermaidViewer: true,

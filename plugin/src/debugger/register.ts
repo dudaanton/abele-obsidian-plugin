@@ -7,6 +7,7 @@ import { DebuggerService } from './DebuggerService'
 import { debuggerKey } from './DebuggerController'
 import DebuggerView from './DebuggerView.vue'
 import { registerDebugValues } from './DebugValueTab'
+import { registerTraceTabs } from './trace/TraceTabs'
 export const DEBUG_VIEW_TYPE = 'abele-debug-view'
 export class DebugView extends ItemView {
   private vue?: VueApp
@@ -31,6 +32,7 @@ export class DebugView extends ItemView {
 }
 export function registerDebugger(plugin: Plugin) {
   registerDebugValues(plugin)
+  registerTraceTabs(plugin)
   plugin.registerView(DEBUG_VIEW_TYPE, (leaf) => new DebugView(leaf))
   const keyboard = (event: KeyboardEvent) => {
     const action = debuggerKey(event),

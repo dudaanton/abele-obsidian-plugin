@@ -11,7 +11,13 @@ import { ShellModal } from './ShellModal'
  */
 export function askName(
   app: App,
-  options: { title: string; placeholder?: string }
+  options: {
+    title: string
+    placeholder?: string
+    /** What the field holds to begin with, for a name being changed. */
+    value?: string
+    submitText?: string
+  }
 ): Promise<string | null> {
   return new Promise((resolve) => {
     let answered = false
@@ -32,6 +38,7 @@ export function askName(
       type: 'text',
       placeholder: options.placeholder ?? 'filename',
       cls: 'abele-name-input',
+      value: options.value ?? '',
     })
     const submit = () => {
       const value = input.value.trim()
@@ -43,7 +50,7 @@ export function askName(
       if (event.key === 'Enter') submit()
     })
     modal.addButton('Cancel', () => modal.close())
-    modal.addButton('Create', submit, { cta: true })
+    modal.addButton(options.submitText ?? 'Create', submit, { cta: true })
 
     modal.open()
     input.focus()

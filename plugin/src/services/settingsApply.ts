@@ -209,6 +209,8 @@ export function applySettingsTo(
     settings?.mapCoordinatesProperty ?? DEFAULT_SETTINGS.mapCoordinatesProperty
   config.mapStyleUrl = settings?.mapStyleUrl ?? DEFAULT_SETTINGS.mapStyleUrl
   config.snippetsFolder = settings?.snippetsFolder ?? DEFAULT_SETTINGS.snippetsFolder
+  config.traceNotesFolder =
+    settings?.traceNotesFolder ?? DEFAULT_SETTINGS.traceNotesFolder ?? 'Trace'
   config.fullWidthSidebars = settings?.fullWidthSidebars ?? DEFAULT_SETTINGS.fullWidthSidebars
   config.halfWidthSidebarsOnTablet =
     settings?.halfWidthSidebarsOnTablet ?? DEFAULT_SETTINGS.halfWidthSidebarsOnTablet
@@ -303,6 +305,7 @@ export function exportSettingsOf(config: AbeleConfig, outOfSettings: boolean): A
     mapCoordinatesProperty: config.mapCoordinatesProperty,
     mapStyleUrl: config.mapStyleUrl,
     snippetsFolder: config.snippetsFolder,
+    traceNotesFolder: config.traceNotesFolder,
     fullWidthSidebars: config.fullWidthSidebars,
     halfWidthSidebarsOnTablet: config.halfWidthSidebarsOnTablet,
     mermaidViewer: config.mermaidViewer,

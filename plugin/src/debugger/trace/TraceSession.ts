@@ -1,0 +1,139 @@
+// One debugger session's recording: its record points, the run being written, the project's runs.
+// No Obsidian here; the panel, the source margin and the run tab read it and call its moves.
+import type { DebuggerSnapshot } from '@abele/node-protocol'
+import type { DebugBreakpoint } from '@/components/debugger/types'
+import type { TraceRecording, TraceRunSummary } from '@/components/debugger/trace/types'
+import { decorate, recording, runSummary, type KnownBreakpoint } from './mapping'
+import type { TraceRpc, WirePoint, WireRunPoint, WireRunSummary, WireStatus } from './wire'
+
+/** The breakpoints a record point stands on: the debugger controller, as far as trace needs it. */
+export interface TraceBreakpoints {
+  readonly snapshot: DebuggerSnapshot | null
+  knownBreakpoints(): (KnownBreakpoint & { sourceId: string; requestedLine: number })[]
+  setBreakpoint(id: string, sourceId: string, line: number, condition?: string): Promise<unknown>
+  removeBreakpoint(id: string): Promise<unknown>
+}
+
+export interface PointEdit {
+  take: string[]
+  when?: string
+  note?: string
+}
+
+export class TraceSession {
+  points: WirePoint[] = []
+  status?: WireStatus
+  runs: WireRunSummary[] = []
+  /** The record points as the newest run saw them: how often each fired, what it took last. */
+  latest?: WireRunPoint[]
+  folder = ''
+  private refreshing?: Promise<void>
+  constructor(
+    readonly rpc: TraceRpc,
+    private readonly debug: TraceBreakpoints,
+    private readonly changed: () => void
+  ) {}
+
+  get sessionId() {
+    return this.debug.snapshot?.debug_session_id
+  }
+  get projectId() {
+    return this.debug.snapshot?.target.project_id
+  }
+
+  refresh(): Promise<void> {
+    return (this.refreshing ??= (async () => {
+      const session = this.sessionId,
+        project = this.projectId
+      if (!session || !project) return
+      const [points, status, runs] = await Promise.all([
+        this.rpc.points(session),
+        this.rpc.status(session),
+        this.rpc.runs(project),
+      ])
+      const newest = runs.runs[0]
+      const latest = newest ? (await this.rpc.run(project, newest.id, 0, 1)).points : undefined
+      if (this.sessionId !== session) return
+      this.points = points
+      this.status = status
+      this.runs = runs.runs
+      this.folder = runs.folder
+      this.latest = latest
+      this.changed()
+    })().finally(() => {
+      this.refreshing = undefined
+    }))
+  }
+
+  /** A stop on record points only: the node takes the values and lets the program go on, so it
+   * reads as running, and nothing is asked of a frame that is already gone. */
+  isRecordStop(snapshot = this.debug.snapshot) {
+    const stop = snapshot?.threads.find((t) => t.thread_id === snapshot.selected_thread_id)?.stop
+    const hits = stop?.hit_breakpoint_ids ?? []
+    return hits.length > 0 && hits.every((id) => this.points.some((p) => p.breakpoint_id === id))
+  }
+
+  /** The panel's and the margin's breakpoints, record points marked as such. */
+  breakpoints(): DebugBreakpoint[] {
+    return decorate(this.debug.knownBreakpoints(), this.points, this.latest)
+  }
+  pointAt(sourceId: string, line: number) {
+    const b = this.debug.knownBreakpoints().find((k) => k.sourceId === sourceId && k.line === line)
+    return b && this.points.some((p) => p.breakpoint_id === b.id) ? b : undefined
+  }
+  recording(now = Date.now()): TraceRecording | undefined {
+    return this.status ? recording(this.status, now) : undefined
+  }
+  summaries(now = Date.now()): TraceRunSummary[] {
+    return this.runs.map((r) => runSummary(r, now))
+  }
+
+  /** Sets up a record point on a line: the point first, so a hit never comes before what to take,
+   * then its breakpoint, kept when one is already there. */
+  async savePoint(sourceId: string, line: number, edit: PointEdit) {
+    const session = this.sessionId
+    if (!session) throw new Error('No debugger session')
+    const existing = this.debug
+      .knownBreakpoints()
+      .find((b) => b.sourceId === sourceId && b.line === line)
+    const id = existing?.id ?? crypto.randomUUID()
+    this.points = await this.rpc.setPoints(
+      session,
+      [
+        {
+          breakpoint_id: id,
+          take: edit.take,
+          ...(edit.note?.trim() ? { note: edit.note.trim() } : {}),
+        },
+      ],
+      []
+    )
+    if (!existing || (existing.condition ?? '') !== (edit.when ?? ''))
+      await this.debug.setBreakpoint(id, sourceId, existing?.requestedLine ?? line, edit.when)
+    this.changed()
+    await this.refresh()
+  }
+
+  /** It stops the program again rather than taking values. */
+  async toBreakpoint(id: string) {
+    const session = this.sessionId
+    if (!session) return
+    this.points = await this.rpc.setPoints(session, [], [id])
+    this.changed()
+  }
+
+  async removePoint(id: string) {
+    const session = this.sessionId
+    if (!session) return
+    this.points = await this.rpc.setPoints(session, [], [id])
+    await this.debug.removeBreakpoint(id)
+    this.changed()
+  }
+
+  async chooseFolder(folder: string) {
+    const project = this.projectId
+    if (!project) return
+    this.folder = (await this.rpc.setFolder(project, folder)).folder
+    await this.refresh()
+  }
+}

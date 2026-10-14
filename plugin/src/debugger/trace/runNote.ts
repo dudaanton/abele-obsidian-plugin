@@ -1,0 +1,66 @@
+// Writes the note about a run into the folder the settings name, beside the person's own notes,
+// and opens it. A note already there is left alone: a new one is made next to it.
+import { normalizePath, Notice, TFile } from 'obsidian'
+import { AbeleConfig } from '@/services/AbeleConfig'
+import { GlobalStore } from '@/stores/GlobalStore'
+import { NodeService } from '@/node/NodeService'
+import { buildRunNote, NOTE_STEPS, traceLink, type NoteValue } from './note'
+import type { TraceRunState } from './TraceTabs'
+import { TraceRpc } from './wire'
+
+const HEAD_LINES = 12
+
+export async function readForNote(rpc: TraceRpc, state: TraceRunState) {
+  const run = await rpc.wholeRun(state.projectId, state.runId)
+  const values = new Map<string, NoteValue>()
+  for (const s of run.steps.slice(0, NOTE_STEPS))
+    for (const v of s.values) {
+      if (v.failed || v.masked || v.same) continue
+      try {
+        const shape = await rpc.value(state.projectId, state.runId, s.id, v.name, 'shape', {
+          cap: 'agent',
+        })
+        const page = await rpc.value(state.projectId, state.runId, s.id, v.name, 'page', {
+          cap: 'agent',
+        })
+        values.set(`${s.id}/${v.name}`, {
+          ...(shape.shape ? { shape: shape.shape } : {}),
+          head: page.page?.lines.slice(0, HEAD_LINES) ?? [],
+        })
+      } catch (e) {
+        console.debug('[trace] Value left out of the note', v.name, e)
+      }
+    }
+  return { run, values }
+}
+
+const safeName = (name: string) =>
+  name
+    .replace(/[\\/:*?"<>|#^[\]]/g, ' ')
+    .replace(/\s+/g, ' ')
+    .trim()
+    .slice(0, 120) || 'Run'
+
+export async function writeRunNote(state: TraceRunState, rpc?: TraceRpc): Promise<string> {
+  const connection = NodeService.getInstance().connection(state.registrationId)
+  rpc ??= new TraceRpc(async (method, params) => {
+    await connection.connect()
+    return connection.client.request(method, params)
+  })
+  const { run, values } = await readForNote(rpc, state)
+  const text = buildRunNote({
+    run,
+    values,
+    link: (t) => traceLink({ ...state, ...t }),
+  })
+  const app = GlobalStore.getInstance().app
+  const folder = normalizePath(AbeleConfig.getInstance().traceNotesFolder || 'Trace')
+  if (!app.vault.getAbstractFileByPath(folder)) await app.vault.createFolder(folder)
+  const base = `${folder}/${safeName(run.run.name)}`
+  let path = `${base}.md`
+  for (let i = 2; app.vault.getAbstractFileByPath(path); i++) path = `${base} ${i}.md`
+  const file = await app.vault.create(path, text)
+  if (file instanceof TFile) await app.workspace.getLeaf('tab').openFile(file)
+  new Notice(`Note written: ${path}`)
+  return path
+}

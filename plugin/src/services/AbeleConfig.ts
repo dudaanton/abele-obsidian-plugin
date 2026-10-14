@@ -73,6 +73,7 @@ export class AbeleConfig {
   public mapCoordinatesProperty: string
   public mapStyleUrl: string
   public snippetsFolder: string
+  public traceNotesFolder: string
   public fullWidthSidebars: boolean
   public halfWidthSidebarsOnTablet: boolean
   public mermaidViewer: boolean

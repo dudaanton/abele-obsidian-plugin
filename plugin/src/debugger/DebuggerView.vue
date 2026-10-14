@@ -11,6 +11,13 @@
         :mode-available="!!binding.controller.grantId"
         :mode-unavailable-reason="binding.controller.modeUnavailableReason"
         :busy="busy"
+        :recording="recording"
+        :runs="runs"
+        :open-run="openRunId"
+        @open-run="openRunTab"
+        @run-menu="(id, e) => runMenu(binding!, id, e)"
+        @show-folder="folderMenu(binding!)"
+        @browser-menu="browserMenu"
         @command="run(() => binding!.controller.command($event))"
         @mode="run(() => binding!.controller.setMode($event))"
         @frame="run(() => binding!.controller.selectFrame($event))"
@@ -26,17 +33,47 @@
   </div>
 </template>
 <script setup lang="ts">
-import { computed, ref } from 'vue'
+import { computed, onBeforeUnmount, ref } from 'vue'
 import DebugPanel from '@/components/debugger/DebugPanel.vue'
 import EmptyState from '@/components/obsidian/EmptyState.vue'
 import { DebuggerService } from './DebuggerService'
 import { openDebugValue } from './DebugValueTab'
+import { browserMenu, folderMenu, openRun, runMenu } from './trace/panel'
 const service = DebuggerService.instance
 const binding = service.active
 const session = computed(() => {
   binding.value?.revision.value
-  return binding.value ? { ...binding.value.controller.session } : undefined
+  const b = binding.value
+  if (!b) return undefined
+  const trace = b.trace
+  const s = { ...b.controller.session }
+  if (!trace) return s
+  // A stop on record points only lasts as long as the values take: it reads as running.
+  return {
+    ...s,
+    breakpoints: trace.breakpoints(),
+    ...(s.status === 'paused' && trace.isRecordStop() ? { status: 'running' as const } : {}),
+  }
 })
+// While a run is written its time goes on by the second.
+const now = ref(Date.now())
+const clock = window.setInterval(() => {
+  if (binding.value?.trace?.status?.recording) now.value = Date.now()
+}, 1000)
+onBeforeUnmount(() => window.clearInterval(clock))
+const recording = computed(() => {
+  binding.value?.revision.value
+  return binding.value?.trace?.recording(now.value)
+})
+const runs = computed(() => {
+  binding.value?.revision.value
+  return binding.value?.trace?.summaries()
+})
+const openRunId = ref<string>()
+function openRunTab(id: string) {
+  openRunId.value = id
+  if (binding.value) openRun(binding.value, id)
+}
 const error = computed(() => {
   binding.value?.revision.value
   return binding.value?.controller.error
@@ -64,7 +101,11 @@ function breakpoint(file: string, line: number) {
       (b.controller.path(p.source_id) ?? p.source_id) === file &&
       (p.resolved_line ?? p.line) === line
   )
-  if (b && point) void run(() => b.controller.toggleBreakpoint(point.source_id, point.line))
+  if (!b || !point) return
+  // A record point goes with what it takes; a breakpoint is only taken off.
+  if (b.trace?.points.some((p) => p.breakpoint_id === point.breakpoint_id))
+    void run(() => b.trace?.removePoint(point.breakpoint_id) ?? Promise.resolve())
+  else void run(() => b.controller.toggleBreakpoint(point.source_id, point.line))
 }
 function retry() {
   const b = binding.value

@@ -525,19 +525,59 @@ export class DebuggerController {
     })
   }
   toggleBreakpoint(sourceId: string, line: number) {
+    return this.patchBreakpoints((s) => {
+      const existing = s.breakpoints.find((b) => b.source_id === sourceId && b.line === line)
+      return existing
+        ? { upsert: [], remove: [existing.breakpoint_id] }
+        : {
+            upsert: [{ breakpoint_id: crypto.randomUUID(), source_id: sourceId, line }],
+            remove: [],
+          }
+    })
+  }
+  /** A breakpoint by the identity a record point shares with it; a condition goes to the owner's
+   * approval as any conditional breakpoint does. */
+  setBreakpoint(breakpointId: string, sourceId: string, line: number, condition?: string) {
+    return this.patchBreakpoints(() => ({
+      upsert: [
+        {
+          breakpoint_id: breakpointId,
+          source_id: sourceId,
+          line,
+          ...(condition ? { condition } : {}),
+        },
+      ],
+      remove: [],
+    }))
+  }
+  removeBreakpoint(breakpointId: string) {
+    return this.patchBreakpoints(() => ({ upsert: [], remove: [breakpointId] }))
+  }
+  /** The breakpoints with the identities and conditions the node holds for them. */
+  knownBreakpoints() {
+    return (this.snapshot?.breakpoints ?? []).map((b, i) => ({
+      ...this.session.breakpoints[i],
+      id: b.breakpoint_id,
+      sourceId: b.source_id,
+      requestedLine: b.line,
+      ...(b.condition ? { condition: b.condition } : {}),
+    }))
+  }
+  private patchBreakpoints(
+    change: (s: DebuggerSnapshot) => {
+      upsert: { breakpoint_id: string; source_id: string; line: number; condition?: string }[]
+      remove: string[]
+    }
+  ) {
     return this.human(async (invocation) => {
-      const s = invocation.snapshot,
-        existing = s.breakpoints.find((b) => b.source_id === sourceId && b.line === line)
+      const s = invocation.snapshot
       const generation = this.serial
       const result = DebuggerReceiptSchema.parse(
         await this.transport.command('breakpoints.patch', {
           ...this.precondition(invocation),
           operation_id: crypto.randomUUID(),
           expected_breakpoint_revision: s.breakpoint_revision,
-          upsert: existing
-            ? []
-            : [{ breakpoint_id: crypto.randomUUID(), source_id: sourceId, line }],
-          remove: existing ? [existing.breakpoint_id] : [],
+          ...change(s),
         })
       )
       if (!this.current || generation !== this.serial) return
