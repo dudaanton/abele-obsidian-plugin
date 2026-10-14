@@ -260,3 +260,68 @@ it('keeps opened folders filled through a refresh and reads them again at the ne
   expect(childrenOf()).toEqual(['src/a.ts', 'src/b.ts'])
   model.destroy()
 })
+it('keeps the extra pages of the root and of an opened folder through a refresh', async () => {
+  const { model, port } = fixture()
+  let watched!: () => void
+  port.watch.mockImplementation(async (_target: PathTarget, notify: () => void) => {
+    watched = notify
+    return () => {}
+  })
+  const file = (path: string) => ({
+    path,
+    name: path.split('/').at(-1)!,
+    kind: 'file' as const,
+  })
+  // Two pages in the root and in `src`; the cursor names the page after it.
+  const pages: Record<string, { entries: any[]; cursor: string | null }[]> = {
+    '': [
+      { entries: [folder, file('one.ts')], cursor: 'root-2' },
+      { entries: [file('two.ts')], cursor: null },
+    ],
+    src: [
+      { entries: [file('src/a.ts')], cursor: 'src-2' },
+      { entries: [file('src/b.ts')], cursor: null },
+    ],
+  }
+  port.tree.mockImplementation(async (_target: PathTarget, path: string, cursor?: string) => {
+    const list = pages[path]!
+    return { ...list[cursor ? 1 : 0]!, revision }
+  })
+  await model.refresh()
+  await model.select(target.id)
+  await model.loadMore('')
+  await model.loadFolder('src')
+  await model.loadMore('src')
+  const shown = () =>
+    model.entries.value.map((entry) => [entry.path, entry.children?.map((child) => child.path)])
+  const before = [
+    ['src', ['src/a.ts', 'src/b.ts']],
+    ['one.ts', undefined],
+    ['two.ts', undefined],
+  ]
+  expect(shown()).toEqual(before)
+  watched()
+  for (let i = 0; i < 10; i++) {
+    await ticks()
+    // Never fewer rows while it is read again.
+    expect(shown()).toEqual(before)
+  }
+  expect(model.treeCursors.value).toMatchObject({ '': null, src: null })
+  model.destroy()
+})
+it('says a failed background read only in the tree, not in a notice over it', async () => {
+  const { model, port } = fixture()
+  let watched!: () => void
+  port.watch.mockImplementation(async (_target: PathTarget, notify: () => void) => {
+    watched = notify
+    return () => {}
+  })
+  await model.refresh()
+  await model.select(target.id)
+  port.tree.mockRejectedValueOnce(new Error('Sample read error'))
+  watched()
+  for (let i = 0; i < 5; i++) await ticks()
+  expect(model.treeProgress.value).toMatchObject({ state: 'failed', error: 'Sample read error' })
+  expect(model.error.value).toBe('')
+  model.destroy()
+})

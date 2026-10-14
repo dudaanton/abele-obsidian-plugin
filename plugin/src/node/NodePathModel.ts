@@ -338,7 +338,13 @@ export class NodePathModel {
     if (this.disposed || generation !== this.selectionGeneration) return
     this.mode.value = target.kind === 'worktree' && this.changes.value.length ? 'changed' : 'all'
     const stop = await this.port.watch(target, () => {
-      void this.reloadTarget(target).catch((e) => this.report(e))
+      void this.reloadTarget(target).catch((e) => {
+        // The tree already says it failed, with a retry, without moving its rows; a notice over
+        // it would push them down on every failed background read.
+        if (this.progress.value[pathTargetKey(target)]?.state === 'failed')
+          console.debug('[Abele] node path: reading the files again failed', e)
+        else this.report(e)
+      })
     })
     if (this.disposed || generation !== this.selectionGeneration) stop()
     else this.stopWatch = stop
@@ -543,22 +549,48 @@ export class NodePathModel {
     if (files && this.port.tree) {
       this.setProgress(target, 'reading')
       try {
-        const page = await this.port.tree(target, '')
+        const read = this.port.tree
+        const tree = (
+          at: PathTarget,
+          path: string,
+          cursor?: string,
+          revision?: RepositoryRevision
+        ) => read.call(this.port, at, path, cursor, revision)
+        const first = await tree(target, '')
         if (this.disposed) return
-        // A refresh keeps the folders the person opened filled while it reads each again at the
-        // new observation, so the tree neither collapses nor jumps.
-        const opened: string[] = []
+        // A refresh keeps the folders the person opened filled, and as many of each one's pages
+        // as were loaded, while it reads each again at the new observation: a folder is swapped
+        // in only once all of them are read, so the tree neither collapses, shortens nor jumps.
+        const previous = this.inspections.value[pathTargetKey(target)]?.entries ?? []
+        const opened: { path: string; loaded: number }[] = []
         const walk = (entries: TreeEntry[]) =>
           entries.forEach((entry) => {
             if (entry.children === undefined) return
-            opened.push(entry.path)
+            opened.push({ path: entry.path, loaded: entry.children.length })
             walk(entry.children)
           })
-        walk(this.inspections.value[pathTargetKey(target)]?.entries ?? [])
+        walk(previous)
+        const pages = async (path: string, page: PathTreePage, loaded: number) => {
+          const entries = new Map(page.entries.map((entry) => [entry.path, entry]))
+          let cursor = page.cursor
+          while (cursor && entries.size < loaded && !this.disposed) {
+            const next: PathTreePage = await tree(target, path, cursor, page.revision)
+            if (next.cursor === cursor) break
+            next.entries.forEach((entry) => entries.set(entry.path, entry))
+            cursor = next.cursor
+          }
+          return { ...page, entries: [...entries.values()], cursor }
+        }
+        const page = await pages('', first, previous.length)
+        if (this.disposed) return
         this.publishPage(target, '', page, false, true)
-        for (const path of opened) {
+        for (const { path, loaded } of opened) {
           try {
-            const folder = await this.port.tree(target, path, undefined, page.revision)
+            const folder = await pages(
+              path,
+              await tree(target, path, undefined, page.revision),
+              loaded
+            )
             if (this.disposed) return
             this.publishPage(target, path, folder, false, true)
           } catch (error) {
