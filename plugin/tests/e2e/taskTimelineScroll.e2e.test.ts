@@ -89,6 +89,7 @@ interface Probe {
   calendarGap?: number
   calendarLayout?: unknown
   overflow?: number
+  anchorFrames?: unknown[]
   shots?: string[]
 }
 const script = (footer: boolean, short = false) => String.raw`(async function* () {
@@ -370,8 +371,12 @@ const script = (footer: boolean, short = false) => String.raw`(async function* (
       if (!target) throw Error('no row survives the fold; state=' + JSON.stringify(uiState()))
       const expected = shown ? shown.getBoundingClientRect().top : at
       const id = rowId(target)
+      // Where the scroll owner and the phone chrome were, so a moved row can be told from a moved pane.
+      const frame = () => [scroller.getBoundingClientRect().top, chromeBottom(), scroller.scrollTop, scroller.scrollHeight, pinned()?.getBoundingClientRect().top]
+      const was = frame()
       await foldClick(fold)
       await settleUI()
+      ;(report.anchorFrames ??= []).push([id, was, frame()])
       return [expected, rowBy(id)?.getBoundingClientRect().top ?? -9999]
     }
     // Hiding done tasks while reading the past, read the same way as a fold: every row in sight
@@ -518,9 +523,13 @@ const script = (footer: boolean, short = false) => String.raw`(async function* (
       report.overdueRows = groupRows('overdue').length
       report.overdueRowsDone = groupRows('overdue').filter(done).length
       count('overdue open')
-      const beforeShown = row(0).getBoundingClientRect().top
+      // With Overdue open, the row read is the first undone one in sight, which may be an overdue
+      // row above today; the switch holds that row, as the timeline itself picks it.
+      const shownRead = readRow(taskRows())
+      if (!shownRead) throw Error('no row in sight to read; state=' + JSON.stringify(uiState()))
+      const shownId = rowId(shownRead), beforeShown = shownRead.getBoundingClientRect().top
       await toggleCompleted()
-      report.pastShownAnchor = [beforeShown, row(0).getBoundingClientRect().top]
+      report.pastShownAnchor = [beforeShown, rowBy(shownId)?.getBoundingClientRect().top ?? -9999]
       count('overdue open, completed shown')
       report.pastDays = groupDays('history')
       report.pastRows = groupRows('history').length
