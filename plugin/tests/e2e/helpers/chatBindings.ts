@@ -14,9 +14,10 @@ const bindingSetup = `
   const config = window.__abeleTest.AbeleConfig.getInstance()
   const chats = window.__abeleTest.ChatService.getInstance()
   // A run whose cleanup never ran left its probe folder, and the scripts settings pointing into
-  // it, as the vault's baseline: the next snapshot would restore that state forever. Sweep it.
-  const bindingStale = app.vault.getRoot().children.filter(f => f.name.startsWith('Sample binding probe-'))
-  if (/^Sample binding probe-/.test(config.ai.scriptsFolder || '')) {
+  // it, as the vault's baseline: the next snapshot would restore that state forever. Sweep it,
+  // but never this run's own directory: whether that one may be touched is decided below.
+  const bindingStale = app.vault.getRoot().children.filter(f => f.name.startsWith('Sample binding probe-') && f.path !== ${JSON.stringify(BINDING_DIR)})
+  if (/^Sample binding probe-/.test(config.ai.scriptsFolder || '') && !(config.ai.scriptsFolder + '/').startsWith(${JSON.stringify(BINDING_DIR + '/')})) {
     config.ai = { ...config.ai, scriptsEnabled: false, scriptsFolder: '', confirmForeignScripts: false,
       startupScripts: [], startupScriptsPaused: false, toolbarScripts: [] }
     config.version.value++

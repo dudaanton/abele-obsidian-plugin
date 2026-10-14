@@ -19,6 +19,11 @@ function fixture(failAt: 'folder' | 'open' | undefined) {
       setConfig: (key: string, value: unknown) => settings.set(key, value),
       saveConfig: async () => {},
       getAbstractFileByPath: (path: string) => files.get(path),
+      getRoot: () => ({
+        children: [...files.values()]
+          .filter((file) => !file.path.includes('/'))
+          .map((file) => ({ ...file, name: file.path })),
+      }),
       createFolder: async (path: string) => {
         if (path.endsWith('/Cards') && failAt === 'folder') throw Error('Sample folder failure')
         files.set(path, { path })
@@ -96,6 +101,19 @@ describe('owned binding fixture', () => {
     await expect(f.run(BINDING_SETUP)).rejects.toThrow('Binding fixture already exists')
     expect(f.files.has(BINDING_DIR)).toBe(true)
     expect(f.settings.get('nativeMenus')).toBe(true)
+  })
+
+  it('sweeps a probe directory and scripts settings left by an earlier run', async () => {
+    const f = fixture(undefined)
+    const stale = 'Sample binding probe-sample-earlier-run'
+    f.files.set(stale, { path: stale })
+    f.files.set(`${stale}/Scripts/bind.js`, { path: `${stale}/Scripts/bind.js` })
+    f.config.ai = { ...f.ai, scriptsEnabled: true, scriptsFolder: `${stale}/Scripts` }
+    await f.run(BINDING_SETUP)
+    expect([...f.files.keys()].filter((path) => path.startsWith(stale))).toEqual([])
+    await f.run(BINDING_CLEANUP)
+    expect([...f.files.keys()]).toEqual([])
+    expect(f.config.ai).toMatchObject({ scriptsEnabled: false, scriptsFolder: '' })
   })
 
   it('enrolls exact script provenance and restores its owned fixture', async () => {
