@@ -222,7 +222,11 @@ it('opens a recorded run as a tab of steps, a step with its values by shape, and
     const values=[...document.querySelectorAll('.abele-trace-step .abele-trace-value > .tree-item-self .abele-tree-item__text, .abele-trace-step .abele-trace-value .abele-tree-item__text')].map(e=>e.textContent.trim()).slice(0,4);
     await shot('2026-10-14-trace-step-desktop');
     await api.openTraceValue({registrationId:${JSON.stringify(registration)},projectId:${JSON.stringify(project)},runId:${JSON.stringify(RUN)},step:'t0001',valueName:'xmlText',view:'whole'});
-    await until(()=>document.querySelector('.abele-trace-value-tab')?.textContent.includes('C-139'),'whole value');
+    await until(()=>document.querySelector('.abele-trace-value-tab')?.textContent.includes('C-100'),'whole value');
+    // The text view draws only the lines on screen: the value's last contract shows at its end.
+    const tab=document.querySelector('.abele-trace-value-tab');
+    for(const el of [tab,...tab.querySelectorAll('*')])if(el.scrollHeight>el.clientHeight+4)el.scrollTop=el.scrollHeight;
+    await until(()=>tab.textContent.includes('C-139'),'end of the whole value');
     await shot('2026-10-14-trace-value-desktop');
     return {rows,place,values,shape:!!document.querySelector('.abele-trace-step'),whole:document.querySelector('.abele-trace-value-tab').textContent.slice(0,200)}
   })()`)
@@ -283,10 +287,8 @@ it('asks the node to run a program and says plainly that it has no JavaScript de
   const seen = evalAsync<{ profiles: unknown[]; code: string }>(`(async()=>{${prelude}
     const client=nodes.connection(${JSON.stringify(registration)}).client;
     const profiles=await client.request('debugger.v1.profiles',{});
-    const workspaces=await client.request('workspace.list',{project_id:${JSON.stringify(project)}});
-    const chat=await client.createSession('Trace program',workspaces[0].workspace_id,'claude');
     let code='started';
-    try{await client.request('debugger.v1.start',{operation_id:crypto.randomUUID(),conversation_id:chat.session_id,program:'src/sample/parse.js'})}
+    try{await client.request('debugger.v1.start',{operation_id:crypto.randomUUID(),conversation_id:'sample-chat',program:'src/sample/parse.js'})}
     catch(e){code=String(e?.code??e?.message??e)}
     return {profiles,code}
   })()`)
