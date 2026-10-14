@@ -18,6 +18,7 @@ const probe = String.raw`(async () => {
   ${SCRIPT_FIXTURE}
   const T = window.__abeleTest
   const chats = T.ChatService.getInstance()
+  let phase = 'setup'
   const oldTab = chats.activeTabId.value
   const wasRightCollapsed = app.workspace.rightSplit.collapsed
   const realFetch = window.fetch
@@ -37,7 +38,7 @@ const probe = String.raw`(async () => {
   const until = async fn => {
     const end = Date.now() + 8000
     while (!fn() && Date.now() < end) await wait(50)
-    if (!fn()) throw new Error('probe did not reach its expected state')
+    if (!fn()) throw new Error('probe did not reach ' + phase + ': ' + JSON.stringify({pending: [...pending.keys()], runs: T.ScriptRuns.getInstance().runs.value.filter(r => r.path === scriptPath)}))
   }
   const send = async text => {
     let done = false
@@ -86,9 +87,11 @@ const probe = String.raw`(async () => {
     session.interceptor.script.value = name
     session.interceptor.replyOnly.value = true
     session.interceptor.pattern.value = '^/review'
+    phase = 'main turns'
     await send('Plain question')
     await send('/review first')
     await send('/review second')
+    phase = 'two pending reviews'
     await until(() => pending.size === 2)
     report.mainBeforeScripts = !session.isBusy && session.messages.value.filter(m => m.role === 'assistant').length === 3
     report.noDraftActions = !session.getDraftMessage() && !document.querySelector('.abele-ai-chat .abele-chat-msg__draft-actions, .abele-ai-chat .abele-chat-msg__interceptor-input')
