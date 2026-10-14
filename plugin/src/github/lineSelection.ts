@@ -146,6 +146,12 @@ export function lineSelection(hooks: SelectionHooks): {
     } else {
       next = { lines: [line], anchor: line, bar: true }
     }
+    apply(view, next)
+    event.preventDefault()
+    return true
+  }
+
+  const apply = (view: EditorView, next: Selected) => {
     if (hooks.selectable) next.lines = next.lines.filter((n) => hooks.selectable(n))
     view.dispatch({ effects: select.of(next) })
     hooks.onSelect?.(
@@ -153,14 +159,40 @@ export function lineSelection(hooks: SelectionHooks): {
         ? { from: next.lines[0], to: next.lines[next.lines.length - 1] }
         : null
     )
-    event.preventDefault()
-    return true
   }
+
+  // Selecting the words of some lines selects those lines too, as their numbers would: people
+  // select code by its text far more often than by the gutter, and got no bar for it.
+  const onText = EditorView.domEventHandlers({
+    mouseup: (_event, view) => {
+      // After the browser has settled the selection the press made.
+      window.setTimeout(() => {
+        const sel = view.root.getSelection()
+        if (!sel || sel.isCollapsed || !sel.rangeCount) return
+        const r = sel.getRangeAt(0)
+        if (
+          !view.contentDOM.contains(r.startContainer) ||
+          !view.contentDOM.contains(r.endContainer)
+        )
+          return
+        const doc = view.state.doc
+        const first = doc.lineAt(view.posAtDOM(r.startContainer, r.startOffset))
+        const end = view.posAtDOM(r.endContainer, r.endOffset)
+        let last = doc.lineAt(end).number
+        // A drag that ends at the very start of a line has not taken any of it.
+        if (last > first.number && end === doc.line(last).from) last--
+        const lines = range(first.number, last)
+        if (hooks.selectable && !lines.some((n) => hooks.selectable(n))) return
+        apply(view, { lines, anchor: first.number, bar: true })
+      })
+      return false
+    },
+  })
 
   const mark = (view: EditorView, lines: number[]) =>
     view.dispatch({ effects: select.of({ lines, anchor: lines[0] ?? null, bar: false }) })
 
-  return { extension: field, gutterHandlers: { mousedown: onNumber }, mark }
+  return { extension: [field, onText], gutterHandlers: { mousedown: onNumber }, mark }
 }
 
 function build(state: EditorState, value: Selected, hooks: SelectionHooks): DecorationSet {

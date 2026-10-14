@@ -103,3 +103,36 @@ describe('on a phone, where there is no Shift', () => {
     expect(e.bar()).toBeNull()
   })
 })
+
+describe('selecting lines by their words', () => {
+  const drag = (e: ReturnType<typeof editor>, from: [number, number], to: [number, number]) => {
+    const text = (line: number) => e.view.dom.querySelectorAll('.cm-line')[line - 1].firstChild!
+    const r = document.createRange()
+    r.setStart(text(from[0]), from[1])
+    r.setEnd(text(to[0]), to[1])
+    const sel = document.getSelection()!
+    sel.removeAllRanges()
+    sel.addRange(r)
+    e.view.contentDOM.dispatchEvent(new MouseEvent('mouseup', { bubbles: true }))
+    vi.runAllTimers()
+  }
+
+  it('marks every line the text runs over and draws the bar under the last', () => {
+    vi.useFakeTimers()
+    const e = editor()
+    drag(e, [2, 3], [4, 2])
+    expect(e.marked()).toEqual([2, 3, 4])
+    expect(e.onSelect).toHaveBeenLastCalledWith({ from: 2, to: 4 })
+    expect(e.bar()).not.toBeNull()
+    vi.useRealTimers()
+  })
+
+  it('leaves the lines alone when the selection runs over none that can be selected', () => {
+    vi.useFakeTimers()
+    const e = editor({ selectable: (n) => n !== 3 })
+    drag(e, [3, 0], [3, 4])
+    expect(e.marked()).toEqual([])
+    expect(e.onSelect).not.toHaveBeenCalled()
+    vi.useRealTimers()
+  })
+})
