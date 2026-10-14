@@ -939,7 +939,8 @@ default; `trace_mark`, `trace_point_add` and `trace_note` ask first.
 - `trace_mark(step, name?, path?, comment, tags?)` marks something for the person; the tag
   `question` puts it among the questions of a note about the run.
 - `trace_point_add(file, line, take, when?, note?)` sets a record point on a line of a file
-  the person opened from the node in this session; the next launch records.
+  the person opened from the node in this session; the next launch records. Only what `take`
+  names is taken; an empty list takes nothing.
 - `trace_note(run?)` writes a note about the run into the folder named in Settings → Nodes
   (see [Vault](vault)) and answers with its path. Write your own account of the flow under its
   last heading with ordinary file tools, citing steps and paths as `t0042 · result · $.items[7]`.

@@ -82,8 +82,8 @@ Where the node advertises `trace_v1`, a breakpoint can be a **record point**: ri
 line's margin and choose *Add record point*, then name what to take under the line (names in
 scope, offered from the line, or expressions written `expression as name`), an optional
 condition and a note. A record point is a diamond in the margin; pressing it opens its setup
-again, and its right-click menu turns it back into a breakpoint or removes it. An empty list
-takes the frame's variables.
+again, and its right-click menu turns it back into a breakpoint or removes it. Only what is named
+is taken; with nothing named each pass is a step with its place and stack and no values.
 
 There is no record button. Whenever a session has a record point, the program is recorded: each
 time it passes a record point the node takes the named values **whole**, writes a step and lets

@@ -25,7 +25,7 @@
           ref="adding"
           v-model="added"
           class="multi-select-input"
-          :placeholder="take.length ? 'Add' : 'All values here'"
+          :placeholder="take.length ? 'Add' : 'A name or an expression'"
           aria-label="A name or an expression to take"
           spellcheck="false"
           autocomplete="off"
@@ -82,8 +82,8 @@
 
 <script setup lang="ts">
 // What a record point takes, set up where it is: the names the editor sees on its line are
-// offered under the field, an expression is typed in with `as` for its name. Nothing taken means
-// all the values of that place, which the run warns about by their size.
+// offered under the field, an expression is typed in with `as` for its name. Only what is named
+// is taken: with nothing named a pass is a step with its place and no values.
 import { computed, onMounted, ref } from 'vue'
 import Icon from '../../obsidian/Icon.vue'
 import Input from '../../obsidian/Input.vue'

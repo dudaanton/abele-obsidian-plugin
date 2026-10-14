@@ -98,7 +98,7 @@ describe('a note about a run', () => {
     expect(note).toContain('>     1,')
     expect(note).toContain('> [!failure] gone: not taken')
     expect(note).toContain('> [!note] sample: the same as the last time')
-    expect(note).toContain('| `src/other.ts:9` | the frame’s variables | `flag` |  | 0 |')
+    expect(note).toContain('| `src/other.ts:9` | nothing | `flag` |  | 0 |')
     expect(note).toContain('Recorded run [Sample \\| run]')
     expect(note).toContain('## Questions')
     expect(note).toContain('## What happens in this flow')

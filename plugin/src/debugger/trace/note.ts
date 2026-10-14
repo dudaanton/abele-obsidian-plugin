@@ -81,7 +81,7 @@ export function buildRunNote(input: RunNoteInput): string {
     out.push('| Where | Takes | When | Note | Fired |', '| --- | --- | --- | --- | --- |')
     for (const p of run.points)
       out.push(
-        `| ${code(`${p.file}:${p.line}`).replace(/\|/g, '\\|')} | ${cell(p.take.length ? p.take.join(', ') : 'the frame’s variables')} | ${p.when ? code(p.when).replace(/\|/g, '\\|') : ''} | ${cell(p.note ?? '')} | ${p.hits} |`
+        `| ${code(`${p.file}:${p.line}`).replace(/\|/g, '\\|')} | ${cell(p.take.length ? p.take.join(', ') : 'nothing')} | ${p.when ? code(p.when).replace(/\|/g, '\\|') : ''} | ${cell(p.note ?? '')} | ${p.hits} |`
       )
     out.push('')
   }

@@ -330,7 +330,7 @@ export function createTraceTools(resolve: () => TraceToolContext | undefined): A
         take: {
           type: 'array',
           items: { type: 'string' },
-          description: 'Empty takes the frame’s variables.',
+          description: 'Only these are taken; empty takes nothing.',
         },
         when: { type: 'string' },
         note: { type: 'string' },
@@ -347,7 +347,9 @@ export function createTraceTools(resolve: () => TraceToolContext | undefined): A
           ...(str(p.when) ? { when: req(p.when) } : {}),
           ...(str(p.note) ? { note: req(p.note) } : {}),
         })
-        return `Record point set at ${req(p.file)}:${line}, taking ${take.length ? take.join(', ') : 'the frame’s variables'}.`
+        return take.length
+          ? `Record point set at ${req(p.file)}:${line}, taking ${take.join(', ')}.`
+          : `Record point set at ${req(p.file)}:${line}, taking nothing: name what to take for it to record values.`
       }
     ),
     tool(
