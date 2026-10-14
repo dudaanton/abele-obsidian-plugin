@@ -117,8 +117,9 @@ const emit = defineEmits<{
   color: var(--text-error);
   overflow-wrap: anywhere;
 }
-// The panel itself does not scroll: its header, the node, the folders and the files' search stay
-// where they are, and only the files under them move, as the file explorer keeps its header.
+// On a computer the panel itself does not scroll: its header, the node, the folders and the
+// files' search stay where they are, and only the files under them move, as the file explorer
+// keeps its header.
 .abele-node-sidebar .abele-file-tree {
   flex: 1;
   min-height: 0;
@@ -128,17 +129,33 @@ const emit = defineEmits<{
   min-height: 0;
   overflow-y: auto;
 }
-// A phone drawer with floating buttons pads its last block so a list scrolls clear of them. Here
-// only the files scroll, so the room goes inside their list instead of standing empty under it.
-body.is-mobile.is-floating-nav.is-phone
-  .workspace-drawer
-  .abele-node-sidebar
-  .nav-header
-  ~ .abele-file-tree:last-child {
-  padding-bottom: 0;
+// A phone's drawer is too short to hold the header, the node and the folders still with room for
+// files under them: there the whole panel scrolls, the header and the folders going up out of
+// the way, and only the files' search stays, at the top, so it can always be reached. The drawer
+// then pads the end of the panel clear of its floating buttons, as it does every list.
+body.is-phone .abele-node-sidebar {
+  .abele-node-panel {
+    height: auto;
+  }
 
-  > .abele-file-tree__body {
-    padding-bottom: 96px;
+  .abele-file-tree {
+    flex: none;
+  }
+
+  .abele-file-tree__body {
+    overflow: visible;
+  }
+
+  .abele-folder-tree {
+    max-height: none;
+    overflow: visible;
+  }
+
+  .abele-file-tree__bar {
+    position: sticky;
+    top: 0;
+    z-index: 1;
+    background-color: var(--background-secondary);
   }
 }
 // Files scrolled up under the search end at a hairline, not against its glyphs.
