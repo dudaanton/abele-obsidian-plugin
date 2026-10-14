@@ -19,6 +19,11 @@ import { canvasMenu } from './menu'
 import type { CanvasExportFormat } from './core/export'
 import { pickAnyFile } from '../helpers/suggesters/VaultFilePicker'
 import { isChatLog } from '../ai/chatText'
+import { askName } from '../modal/askName'
+import { mountCanvasChrome } from './chrome'
+import { canvasHostActions, type CanvasHostActions } from './pickedActions'
+import { paneEntries } from '../components/canvas/chromeMenus'
+import { CanvasPlaceModal, canvasContents, canvasPlaces, type CanvasPlace } from './canvasFind'
 
 /** Shared human editor; no view save hook ever publishes a transient preview. */
 export class CanvasView extends FileView {
@@ -36,6 +41,14 @@ export class CanvasView extends FileView {
   private pending: Record<string, unknown> | null = null
   private exportController: AbortController | null = null
   private lastExport: TFile | null = null
+  private chromeOff: (() => void) | null = null
+  /** What the canvas's menus do outside it: pictures, embeds, the chat and notes. */
+  readonly host: CanvasHostActions = canvasHostActions(
+    this.app,
+    () => this.file,
+    () => this.viewer?.graph ?? emptyCanvas(),
+    (title, value) => askName(this.app, { title, placeholder: value })
+  )
   constructor(leaf: WorkspaceLeaf) {
     super(leaf)
     this.scope = new Scope(this.app.scope)
@@ -53,6 +66,10 @@ export class CanvasView extends FileView {
         this.viewer?.handleKey(event)
         return event.defaultPrevented ? false : undefined
       })
+    this.scope.register(['Mod'], 'f', () => {
+      this.find()
+      return false
+    })
     this.registerEvent(
       this.app.vault.on('modify', (file) => {
         if (
@@ -109,6 +126,11 @@ export class CanvasView extends FileView {
     })
     this.addAction('image-down', 'Export diagram picture', (e) => this.exportMenu(e))
     this.addAction('rotate-ccw', 'Recover failed canvas change', (e) => void this.recoveryMenu(e))
+    this.addAction(
+      'paperclip',
+      'Attach to the chat as a picture',
+      () => void this.host.attach(null)
+    )
     if (this.documentLease) {
       this.attachEditor()
       this.renderDocument(this.documentLease.document)
@@ -162,12 +184,86 @@ export class CanvasView extends FileView {
     await super.onClose()
   }
   private attachEditor(): void {
-    if (this.viewer && !this.editor)
+    if (this.viewer && !this.editor) {
       this.editor = hostCanvasEditor(
         this.app,
         this.viewer,
         () => this.documentLease?.document ?? null
       )
+      this.chromeOff = mountCanvasChrome(this.viewer, this.editor, this.host)
+    }
+  }
+  /** The canvas tab's own items at the top of its "more" menu, over Obsidian's. */
+  onPaneMenu(menu: Menu, source: string): void {
+    const editor = this.editor
+    for (const entry of paneEntries({
+      find: () => this.find(),
+      contents: () => this.contents(),
+      exportCanvas: () => this.exportMenu(this.headerEvent('Export diagram picture')),
+      copyEmbed: () => {
+        const r = this.viewer?.visible()
+        if (r)
+          void this.host.copyEmbed({
+            region: {
+              x: Math.round(r.x),
+              y: Math.round(r.y),
+              width: Math.round(r.width),
+              height: Math.round(r.height),
+            },
+          })
+      },
+      openNative: () => void this.openNative(),
+      ...(editor
+        ? {
+            fingerDraws: {
+              on: editor.controls.fingerDraws(),
+              toggle: () => editor.controls.setFingerDraws(!editor.controls.fingerDraws()),
+            },
+          }
+        : {}),
+    }))
+      menu.addItem((item) => {
+        item
+          .setTitle(entry.title)
+          .setIcon(entry.icon)
+          .setSection('pane')
+          .onClick(() => void entry.run())
+        if (entry.checked !== undefined) item.setChecked(entry.checked)
+      })
+    super.onPaneMenu(menu, source)
+  }
+  /** A click at one of the header's own glyphs, for a menu that opens under it. */
+  private headerEvent(label: string): MouseEvent {
+    const r = this.containerEl.querySelector(`[aria-label="${label}"]`)?.getBoundingClientRect()
+    return new MouseEvent('click', { clientX: r?.left ?? 0, clientY: r?.bottom ?? 0 })
+  }
+  /** Shows a found place: a card or frame picked and framed, or a step gone to. */
+  private show(place: CanvasPlace): void {
+    const viewer = this.viewer
+    if (!viewer) return
+    if (place.step) return viewer.go(place.step)
+    if (!place.node) return
+    viewer.go(null, false)
+    viewer.focusRegion(place.node, true)
+    viewer.onSelect?.(place.node)
+  }
+  find(): void {
+    if (this.viewer)
+      new CanvasPlaceModal(
+        this.app,
+        canvasPlaces(this.viewer.graph),
+        'Find a card, note or frame on the canvas',
+        (p) => this.show(p)
+      ).open()
+  }
+  contents(): void {
+    if (this.viewer)
+      new CanvasPlaceModal(
+        this.app,
+        canvasContents(this.viewer.graph),
+        'Frames and steps of the canvas',
+        (p) => this.show(p)
+      ).open()
   }
   private async openNative(): Promise<void> {
     const file = this.file,
@@ -184,6 +280,8 @@ export class CanvasView extends FileView {
     this.exportController?.abort()
     this.exportController = null
     this.lastExport = null
+    this.chromeOff?.()
+    this.chromeOff = null
     // Closing writes the unwritten changes; only work that could not be written stays in memory.
     const written = this.editor?.close() ?? Promise.resolve(true)
     this.editor = null

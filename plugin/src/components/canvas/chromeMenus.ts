@@ -5,7 +5,8 @@
  */
 import { Menu, Notice, Platform } from 'obsidian'
 import type { CanvasEditor } from '@/canvas/Editor'
-import type { CanvasNode } from '@/canvas/core/model'
+import type { CanvasNode, Rect } from '@/canvas/core/model'
+import { partRegion, type CanvasHostActions } from '@/canvas/pickedActions'
 import { SHAPES } from '@/canvas/core/model'
 import { COLOURS, COLOUR_NAMES, ROUTE_ICONS, SHAPE_ICONS } from './chromeTools'
 
@@ -19,6 +20,8 @@ export interface PickedView {
   node: CanvasNode | undefined
   shape: string
   colour: string
+  /** Around all of it, in the canvas's own units. */
+  rect: Rect | null
 }
 
 /** A menu opens at the button that was pressed, under it, or over it at the foot. */
@@ -126,7 +129,7 @@ type Entry = { title: string; icon: string; run: () => unknown; warning?: boolea
  * what turns it into something else, the agent, taking it out of the canvas as a picture or an
  * embed, and last, apart and in red, what removes it.
  */
-export function moreEntries(c: Controls, p: PickedView): Entry[] {
+export function moreEntries(c: Controls, p: PickedView, host?: CanvasHostActions): Entry[] {
   const remove = () =>
     c.press(
       c.state('Delete selected card').disabled ? 'Delete canvas selection' : 'Delete selected card'
@@ -142,13 +145,24 @@ export function moreEntries(c: Controls, p: PickedView): Entry[] {
     run,
     warning,
   })
+  /** What goes to the host, or, without one, a word that it is not here. */
+  const outside = (title: string, run: (h: CanvasHostActions, region: Rect) => unknown) =>
+    host && p.rect ? () => run(host, partRegion(p.rect)) : later(title)
   const agent: Entry[] = [
-    entry('Attach to the chat as a picture', 'paperclip', later('Attach to the chat as a picture')),
-    entry('Ask the agent about this', 'message-circle-question', later('Ask the agent about this')),
+    entry(
+      'Attach to the chat as a picture',
+      'paperclip',
+      outside('Attach to the chat as a picture', (h, region) => h.attach(region))
+    ),
+    entry(
+      'Ask the agent about this',
+      'message-circle-question',
+      outside('Ask the agent about this', (h, region) => h.ask(region, p.ids, 'ask'))
+    ),
   ]
   if (lines)
     return [
-      ...(p.one ? [entry('Edit label', 'text-cursor-input', later('Edit label'))] : []),
+      ...(p.one ? [entry('Edit label', 'text-cursor-input', () => c.editLabel(p.ids[0]))] : []),
       entry('Bring to front', 'bring-to-front', () => c.act('front')),
       entry('Send to back', 'send-to-back', () => c.act('back')),
       '-',
@@ -161,8 +175,16 @@ export function moreEntries(c: Controls, p: PickedView): Entry[] {
       '-',
       ...agent,
       '-',
-      entry('Export frame…', 'image-down', later('Export frame')),
-      entry('Copy embed of this frame', 'clipboard-copy', later('Copy embed of this frame')),
+      entry(
+        'Export frame…',
+        'image-down',
+        outside('Export frame', (h, region) => h.exportPart(region, p.node?.label || 'frame'))
+      ),
+      entry(
+        'Copy embed of this frame',
+        'clipboard-copy',
+        host ? () => host.copyEmbed({ node: p.ids[0] }) : later('Copy embed of this frame')
+      ),
       '-',
       entry(
         'Delete frame and what is inside',
@@ -172,7 +194,14 @@ export function moreEntries(c: Controls, p: PickedView): Entry[] {
       ),
     ]
   const out: Entry[] = []
-  if (strokes) out.push(entry('Read the handwriting', 'scan-text', later('Read the handwriting')))
+  if (strokes)
+    out.push(
+      entry(
+        'Read the handwriting',
+        'scan-text',
+        outside('Read the handwriting', (h, region) => h.ask(region, p.ids, 'transcribe'))
+      )
+    )
   else
     out.push(
       entry('Duplicate', 'copy-plus', () => c.act('duplicate')),
@@ -182,26 +211,63 @@ export function moreEntries(c: Controls, p: PickedView): Entry[] {
       entry('Send to back', 'send-to-back', () => c.act('back'))
     )
   if (p.one && p.kind === 'text')
-    out.push('-', entry('Turn into a note', 'file-plus-2', later('Turn into a note')))
+    out.push(
+      '-',
+      entry(
+        'Turn into a note',
+        'file-plus-2',
+        host
+          ? async () => {
+              const path = await host.makeNote(p.node?.text ?? '')
+              if (path) await c.replaceWithNote(p.ids[0], path)
+            }
+          : later('Turn into a note')
+      )
+    )
   out.push('-', ...agent, '-')
   out.push(
-    entry('Export the selection…', 'image-down', later('Export the selection')),
-    entry('Copy embed of the selection', 'clipboard-copy', later('Copy embed of the selection')),
+    entry(
+      'Export the selection…',
+      'image-down',
+      outside('Export the selection', (h, region) => h.exportPart(region, 'selection'))
+    ),
+    entry(
+      'Copy embed of the selection',
+      'clipboard-copy',
+      outside('Copy embed of the selection', (h, region) => h.copyEmbed({ region }))
+    ),
     '-'
   )
   // A note or a web page on the canvas only stands there: taking it off leaves the file alone.
   if (p.one && (p.kind === 'file' || p.kind === 'link')) {
     out.push(entry('Remove from canvas', 'square-x', remove, p.kind === 'link'))
+    const file = p.node?.file
     if (p.kind === 'file')
-      out.push(entry('Delete the note…', 'trash-2', later('Delete the note'), true))
+      out.push(
+        entry(
+          'Delete the note…',
+          'trash-2',
+          host && file
+            ? async () => {
+                if (await host.trashNote(file)) remove()
+              }
+            : later('Delete the note'),
+          true
+        )
+      )
   } else if ([...kinds].some(card) && [...kinds].some((k) => k === 'file'))
     out.push(entry('Remove from canvas', 'trash-2', remove, true))
   else out.push(entry('Delete', 'trash-2', remove, true))
   return out
 }
-export function moreMenu(e: MouseEvent, c: Controls, p: PickedView): void {
+export function moreMenu(
+  e: MouseEvent,
+  c: Controls,
+  p: PickedView,
+  host?: CanvasHostActions
+): void {
   const menu = new Menu()
-  for (const x of moreEntries(c, p)) {
+  for (const x of moreEntries(c, p, host)) {
     if (x === '-') menu.addSeparator()
     else
       menu.addItem((item) =>

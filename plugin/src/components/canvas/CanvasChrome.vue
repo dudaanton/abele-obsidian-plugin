@@ -2,7 +2,10 @@
   <!-- The canvas's controls laid out as Obsidian Canvas lays out its own, in its own classes: the
        tools at the foot in the middle, zoom and history in a column at the top right, and the
        actions for what is picked in a small bar standing over it. -->
-  <CanvasFrames :editor="editor" :viewer="viewer" :tick="tick" />
+  <!-- The frames' names stand on the canvas itself, so a press on one reaches its pointer. -->
+  <Teleport :to="viewer.stage">
+    <CanvasFrames :editor="editor" :viewer="viewer" :tick="tick" />
+  </Teleport>
   <div
     class="abele-canvas-chrome"
     :class="{ 'is-phone-layout': phone }"
@@ -81,7 +84,15 @@
 
     <!-- Over a picked thing, its actions; above it, or under it where the top has no room. -->
     <div
-      v-if="picked.rect && !editing && !drawing && tool !== 'frame' && !gesturing && !naming"
+      v-if="
+        picked.rect &&
+        !editing &&
+        !drawing &&
+        tool !== 'frame' &&
+        !gesturing &&
+        !naming &&
+        !labeling
+      "
       ref="barEl"
       class="canvas-menu abele-canvas-chrome__picked"
       :style="pickedAt"
@@ -156,8 +167,28 @@
           @click="press('Ungroup selected group')"
         />
       </template>
-      <ChromeIcon icon="more-horizontal" tooltip="More" @click="menus.moreMenu($event, c, view)" />
+      <ChromeIcon
+        icon="more-horizontal"
+        tooltip="More"
+        @click="menus.moreMenu($event, c, view, host)"
+      />
     </div>
+
+    <!-- A connection's label written where it stands, as Obsidian Canvas writes an edge's. -->
+    <input
+      v-if="labelAt"
+      :key="labelAt.id"
+      ref="labelEl"
+      class="abele-canvas-chrome__label"
+      :style="labelAt.style"
+      :value="labelAt.text"
+      type="text"
+      aria-label="Label of the connection"
+      placeholder="Label"
+      @keydown="labelKey"
+      @blur="labelDone"
+      @pointerdown.stop
+    />
 
     <!-- The tools, the kit's tool bar across the tab's top as over a drawing: one slot for each
          family, wearing the glyph of the member last used; with a pen in hand, its colours and
@@ -223,7 +254,17 @@
 </template>
 
 <script setup lang="ts">
-import { computed, defineComponent, h, onBeforeUnmount, onMounted, ref, shallowRef } from 'vue'
+import {
+  computed,
+  defineComponent,
+  h,
+  nextTick,
+  onBeforeUnmount,
+  onMounted,
+  ref,
+  shallowRef,
+  watch,
+} from 'vue'
 import { Menu, Platform, setIcon, setTooltip } from 'obsidian'
 import type { CanvasEditor, CanvasField } from '@/canvas/Editor'
 import type { CanvasViewer } from '@/canvas/Viewer'
@@ -246,8 +287,16 @@ import {
   type Slot,
 } from './chromeTools'
 import * as menus from './chromeMenus'
+import type { CanvasHostActions } from '@/canvas/pickedActions'
+import { labelPoint, paintedRoute } from '@/canvas/core/scene'
+import { linesOf } from '@/canvas/core/primitives'
 
-const props = defineProps<{ editor: CanvasEditor; viewer: CanvasViewer }>()
+const props = defineProps<{
+  editor: CanvasEditor
+  viewer: CanvasViewer
+  /** What the more menus do outside the canvas: pictures, embeds, the chat, notes. */
+  host?: CanvasHostActions
+}>()
 const c = props.editor.controls
 
 /** One of Obsidian Canvas's own control items: a glyph in its column, named by its tooltip. */
@@ -287,6 +336,54 @@ const kind = computed(() => kinds.value[0])
 const editing = computed(() => (tick.value, c.editing()))
 const gesturing = computed(() => (tick.value, c.gesturing()))
 const naming = computed(() => (tick.value, c.naming()))
+const labeling = computed(() => (tick.value, c.labeling()))
+const labelEl = ref<HTMLInputElement>()
+/** The label field over the middle of the connection being labelled, in the canvas's scale. */
+const labelAt = computed(() => {
+  const id = labeling.value
+  if (!id) return null
+  const g = graph(),
+    edge = g.edges.find((e) => e.id === id),
+    line = edge ? undefined : linesOf(g).find((l) => l.id === id)
+  if (!edge && !line) return null
+  const at = labelPoint(edge ? paintedRoute(edge, g).points : [line.from, line.to]),
+    cam = props.viewer.camera
+  return {
+    id,
+    text: (edge ?? line).label ?? '',
+    style: {
+      left: `${(at.x - cam.x) * cam.zoom}px`,
+      top: `${(at.y - cam.y) * cam.zoom}px`,
+      fontSize: `calc(var(--font-text-size) * ${Math.max(0.6, Math.min(cam.zoom, 2)).toFixed(3)})`,
+    },
+  }
+})
+watch(labelAt, (now, was) => {
+  if (!now || now.id === was?.id) return
+  void nextTick(() => {
+    labelEl.value?.focus()
+    labelEl.value?.select()
+  })
+})
+let labelLeft = false
+function labelKey(e: KeyboardEvent) {
+  e.stopPropagation()
+  if (e.isComposing) return
+  if (e.key === 'Enter') {
+    e.preventDefault()
+    labelEl.value?.blur()
+  } else if (e.key === 'Escape') {
+    e.preventDefault()
+    labelLeft = true
+    c.editLabel(null)
+    props.viewer.el.focus({ preventScroll: true })
+  }
+}
+function labelDone(e: FocusEvent) {
+  const id = labeling.value
+  if (labelLeft || !id) return void (labelLeft = false)
+  void c.saveLabel(id, (e.target as HTMLInputElement).value)
+}
 const barEl = ref<HTMLElement>()
 const drawing = computed(() => ['pen', 'marker', 'eraser', 'partial-eraser'].includes(tool.value))
 /** Once a Pencil has touched the canvas it draws whatever is in hand, so its colours stay out. */
@@ -360,6 +457,7 @@ const view = computed<menus.PickedView>(() => ({
   node: pickedNode.value,
   shape: currentShape.value,
   colour: currentColour.value,
+  rect: picked.value.rect,
 }))
 const colourClass = (v: string) => (v ? `mod-canvas-color-${v}` : 'abele-canvas-chrome__ink')
 
@@ -597,6 +695,14 @@ onBeforeUnmount(() => {
 }
 .abele-canvas-chrome__save.is-saving .abele-canvas-chrome__save-dot {
   background: var(--text-faint);
+}
+
+.abele-canvas-chrome__label {
+  position: absolute;
+  z-index: var(--layer-cover);
+  transform: translate(-50%, -50%);
+  min-width: 8em;
+  text-align: center;
 }
 
 .abele-canvas-chrome__picked {

@@ -259,3 +259,7 @@
   border: 1px solid var(--text-muted);
   background: color-mix(in srgb, var(--text-normal) 8%, transparent);
 }
+/* The controls' own box takes no room: they float over the canvas inside the viewer. */
+.abele-canvas-chrome-host {
+  display: contents;
+}

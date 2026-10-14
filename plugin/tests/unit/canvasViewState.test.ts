@@ -8,6 +8,8 @@ import { canvasDocuments } from '@/canvas/documentRegistry'
 vi.mock('@/canvas/editorControls', () => ({
   hostCanvasEditor: vi.fn(() => ({ refresh: vi.fn(), destroy: vi.fn() })),
 }))
+// The viewer here is a stand-in with no element for the controls to stand on.
+vi.mock('@/canvas/chrome', () => ({ mountCanvasChrome: vi.fn(() => () => {}) }))
 
 it.each(['', '{}'])(
   'loads the untouched native empty state %j without hiding nonempty malformed data',
