@@ -79,3 +79,27 @@ it('returns focus to the trigger when dismissal leaves focus in the menu', async
   menu!.hide()
   expect(document.activeElement).toBe(trigger)
 })
+
+it('keeps unsectioned actions in their place instead of letting Obsidian move them below every section', async () => {
+  // Obsidian's menu draws named sections in order of first appearance and puts items with no
+  // section after all of them, glued to the last group: a destructive item ended up mid-list.
+  const shown = vi.spyOn(Menu.prototype, 'showAtPosition')
+  wrapper = mount(SheetHeaderActions, {
+    attachTo: document.body,
+    props: {
+      actions: [
+        { id: 'find', label: 'Find' },
+        { id: 'reload', label: 'Reload', section: 'file' },
+        { id: 'delete', label: 'Delete', section: 'danger', warning: true },
+      ],
+    },
+  })
+  await wrapper.get('button').trigger('click')
+  menu = shown.mock.instances.at(-1)!
+  menu.unload = vi.fn()
+  const sections = (menu as unknown as { items: { section: string }[] }).items.map(
+    (item) => item.section
+  )
+  expect(sections.every(Boolean)).toBe(true)
+  expect([...new Set(sections)]).toEqual([sections[0], 'file', 'danger'])
+})

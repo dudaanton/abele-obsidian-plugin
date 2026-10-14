@@ -32,7 +32,10 @@ export interface HeaderAction {
   icon?: string
   disabled?: boolean
   reason?: string
-  /** Obsidian's menu section: items of one section stand together, a line between sections. */
+  /**
+   * Obsidian's menu section: items of one section stand together, a line between sections.
+   * Sections keep the order of their first action; without one an action is in `actions`.
+   */
   section?: string
   /** Ends or removes something: drawn in the menu's warning colour. */
   warning?: boolean
@@ -63,7 +66,9 @@ const openMenu = () => {
           if (!action.disabled) emit('action', action.id)
         })
       if (action.icon) item.setIcon(action.icon)
-      if (action.section) item.setSection(action.section)
+      // Obsidian draws items without a section after every named one, so each gets one and
+      // the groups keep the order the actions were given in.
+      item.setSection(action.section || 'actions')
       if (action.warning) item.setWarning(true)
     })
   menu.onHide(() => {
