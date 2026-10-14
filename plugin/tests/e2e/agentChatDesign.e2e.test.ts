@@ -170,6 +170,22 @@ const probe = (screen: string) => `(async () => {
     }
     working.isStreaming.value = false; waiting.pendingQuestions.value = null; waiting.attention.value = {}
 
+    // A chat answering with a model of its own names it beside the agent, as a button for its menu.
+    session.resolveModel = () => ({ id: 'sample-fast-model', name: 'Sample fast model', contextWindow: 100000 })
+    session.activeModelId.value = 'sample-fast-model'
+    chats.switchTab(owned[1]); chats.switchTab(session.id)
+    await shot('model', '.abele-agent-selector__model')
+    const chip = root().querySelector('.abele-agent-selector__model')
+    if (chip.getAttribute('aria-haspopup') !== 'menu' || !chip.querySelector('svg')?.getBoundingClientRect().width) throw Error('Model chip lost its menu or its glyph')
+    chip.click()
+    const menuTitles = () => [...document.querySelectorAll('.menu .menu-item-title')].map(t => t.textContent)
+    await until(() => menuTitles().some(t => t.startsWith('Follow Sample assistant')))
+    document.body.dispatchEvent(new KeyboardEvent('keydown', { key: 'Escape', bubbles: true }))
+    await wait(100)
+    for (const menu of document.querySelectorAll('.menu')) menu.remove()
+    session.clearOverride('modelId')
+    await until(() => !root()?.querySelector('.abele-agent-selector__model'))
+
     set([])
     session.scopeResolver.setFullVaultAccess(false)
     session.scopeResolver.addFile('Sample/reference.md')
@@ -223,6 +239,7 @@ describe('the real agent chat design', () => {
           'question',
           'error',
           'tabs',
+          'model',
           'access',
         ])
         expect(report.shots).toHaveLength(9)

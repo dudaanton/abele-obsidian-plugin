@@ -23,6 +23,9 @@ import {
 } from './helpers/obsidianCli'
 
 import { SCRIPT_FIXTURE, type ScriptFixtureSnapshot } from './helpers/scriptFixture'
+import { shotDir } from './helpers/shots'
+
+const shots = shotDir('abele-script-buttons')
 
 const FOLDER = 'Sample button scripts'
 const SCRIPT = `// @name E2E Buttons
@@ -264,6 +267,10 @@ for (const phone of [false, true])
         moveTo(away())
         await settle()
         expectNative(await probe<Looks>(measure), `${theme} idle`)
+        const path = `${shots}/${phone ? 'phone' : 'desktop'}-${theme}.png`
+        await probe(
+          `const image = await require('@electron/remote').getCurrentWebContents().capturePage(); require('fs').writeFileSync(${JSON.stringify(path)}, image.toPNG()); return true`
+        )
 
         // Hovered: the native of each kind first, then ours with the pointer on its icon.
         const hovered: Partial<Looks> = await probe<Looks>(measure)
