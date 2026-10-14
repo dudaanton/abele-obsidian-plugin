@@ -185,7 +185,7 @@ describe.skipIf(!available)('Word document view', () => {
           for(let el=field.parentElement;el&&el!==document.body;el=el.parentElement) {
             const css=getComputedStyle(el);if(css.overflowX==='visible'&&css.overflowY==='visible') continue
             const b=el.getBoundingClientRect()
-            if(r.left-2 < b.left || r.right+2 > b.right) clipped.push(field.getAttribute('aria-label')||field.textContent)
+            if(r.left-2 < b.left || r.right+2 > b.right) clipped.push((field.getAttribute('aria-label')||field.textContent)+' by '+(el.className||el.tagName)+' '+JSON.stringify([r.left,r.right,b.left,b.right]))
           }
         }
       }

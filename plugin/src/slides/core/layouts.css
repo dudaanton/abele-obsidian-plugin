@@ -646,6 +646,12 @@
   column-fill: balance;
 }
 
+/* Each paragraph comes in its own block; those blocks give up their box here, so the text flows
+   through the columns as one and a column's last lines are never laid over by the next block. */
+.abele-slide-article .abele-slide-region-body > div {
+  display: contents;
+}
+
 .abele-slide-article .abele-slide-content :is(p, ul, ol) {
   max-width: none;
 }

@@ -326,7 +326,7 @@ Third caption
         }
         const a=await figure(0);await shot(1,'figure');const b=await figure(1);await shot(2,'figure-right')
         await v.go(2);await settle()
-        const art=active(),artBody=art.querySelector('.abele-slide-content-body, .abele-slide-region-body > div'),para=art.querySelector('p')
+        const art=active(),artBody=art.querySelector('.abele-slide-region-body'),para=art.querySelector('p')
         const lines=[...art.querySelectorAll('p')].flatMap(p=>{const r=document.createRange();r.selectNodeContents(p);return [...r.getClientRects()].filter(b=>b.width>1&&b.height>1)})
         const overlaps=lines.flatMap((x,i)=>lines.slice(i+1).filter(y=>Math.min(x.right,y.right)-Math.max(x.left,y.left)>1&&Math.min(x.bottom,y.bottom)-Math.max(x.top,y.top)>1)).length
         const edge=s=>s.querySelector('h2').getBoundingClientRect().left-s.getBoundingClientRect().left
