@@ -49,6 +49,7 @@ class LiveCards implements ViewerCards {
     const shown = new Set<string>(),
       live = new Set<string>()
     const ratio = this.stage.ownerDocument.defaultView.devicePixelRatio || 1
+    let previous: HTMLElement | null = null
     for (const node of canvasVisibility(graph, region).visible) {
       if (node.type === 'group') continue
       shown.add(node.id)
@@ -132,7 +133,15 @@ class LiveCards implements ViewerCards {
           })
         }
       }
-      this.layer.append(card.el)
+      // Only a card out of its place in the stack is moved: moving an element drops how far its
+      // words were scrolled, so a note being read would jump back to its top at every repaint.
+      const want: ChildNode | null = previous ? previous.nextSibling : this.layer.firstChild
+      if (want !== card.el) {
+        const top = card.body?.scrollTop ?? 0
+        this.layer.insertBefore(card.el, want)
+        if (card.body && top) card.body.scrollTop = top
+      }
+      previous = card.el
     }
     for (const [id, card] of this.cards)
       if (!shown.has(id)) {
@@ -152,6 +161,9 @@ class LiveCards implements ViewerCards {
     body.scrollTop = top + dy / scale
     body.scrollLeft = left + dx / scale
     return body.scrollTop !== top || body.scrollLeft !== left
+  }
+  scroller(id: string): HTMLElement | null {
+    return this.cards.get(id)?.body ?? null
   }
   destroy(): void {
     for (const card of this.cards.values()) {
