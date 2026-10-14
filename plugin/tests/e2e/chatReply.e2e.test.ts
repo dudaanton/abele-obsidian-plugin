@@ -195,7 +195,7 @@ const script = (screen: 'desktop' | 'phone') => `(async () => {
     const question = await until(() => session.allChatMessages.length > before && session.allChatMessages.at(-1))
     if (!question) throw new Error('the question was not sent')
     report.question = { content: question.content, replyTo: question.replyTo ?? [] }
-    const given = session.allInternalMessages.find((m) => m.chatMessageId === question.id)
+    const given = await until(() => session.allInternalMessages.find((m) => m.chatMessageId === question.id), 4000)
     report.given = typeof given?.content === 'string' ? given.content : (given?.content ?? []).map((p) => p.text ?? '').join('')
     await until(() => cardsIn(message(question.id)).length === 3, 4000)
     report.drawn = { cards: cardsIn(message(question.id)).map((c) => c.textContent.trim()), text: words(question.id)?.textContent ?? '' }
