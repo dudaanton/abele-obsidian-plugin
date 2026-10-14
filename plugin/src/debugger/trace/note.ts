@@ -22,7 +22,22 @@ export interface RunNoteInput {
   link(target: { step?: string; name?: string; path?: string }): string
 }
 
-const cell = (s: string) => s.replace(/\|/g, '\\|').replace(/\n/g, ' ')
+/** Recorded text is data, never markup: links, embeds, tags, emphasis, math and comments in it
+ * are shown as written. */
+const cell = (s: string) =>
+  s
+    .replace(/[\\`*_~[\]#!$%=|<>]/g, (c) => (c === '<' ? '&lt;' : c === '>' ? '&gt;' : `\\${c}`))
+    .replace(/\s*\n\s*/g, ' ')
+const longestTicks = (s: string) => Math.max(0, ...(s.match(/`+/g) ?? []).map((m) => m.length))
+/** A code span whose delimiter no backtick inside it can close. */
+const code = (s: string) => {
+  const t = '`'.repeat(longestTicks(s) + 1)
+  const pad = s.startsWith('`') || s.endsWith('`') ? ' ' : ''
+  return `${t}${pad}${s.replace(/\n/g, ' ')}${pad}${t}`
+}
+/** A fence longer than any run of backticks in what it holds. */
+const fenceFor = (lines: string[]) => '`'.repeat(Math.max(3, longestTicks(lines.join('\n')) + 1))
+const TAG = /^[\w/-]{1,64}$/
 const fileName = (path: string) => path.slice(path.lastIndexOf('/') + 1)
 
 function shapeLines(node: WireShape, depth = 0, out: string[] = []): string[] {
@@ -64,7 +79,7 @@ export function buildRunNote(input: RunNoteInput): string {
     out.push('| Where | Takes | When | Note | Fired |', '| --- | --- | --- | --- | --- |')
     for (const p of run.points)
       out.push(
-        `| \`${cell(p.file)}:${p.line}\` | ${cell(p.take.length ? p.take.join(', ') : 'the frame’s variables')} | ${p.when ? `\`${cell(p.when)}\`` : ''} | ${cell(p.note ?? '')} | ${p.hits} |`
+        `| ${code(`${p.file}:${p.line}`).replace(/\|/g, '\\|')} | ${cell(p.take.length ? p.take.join(', ') : 'the frame’s variables')} | ${p.when ? code(p.when).replace(/\|/g, '\\|') : ''} | ${cell(p.note ?? '')} | ${p.hits} |`
       )
     out.push('')
   }
@@ -74,7 +89,9 @@ export function buildRunNote(input: RunNoteInput): string {
   else {
     out.push('| Step | Time | What | Where | Values |', '| --- | --- | --- | --- | --- |')
     for (const s of run.steps.slice(0, NOTE_TIMELINE)) {
-      const where = s.place ? `\`${cell(fileName(s.place.file))}:${s.place.line}\`` : (s.host ?? '')
+      const where = s.place
+        ? code(`${fileName(s.place.file)}:${s.place.line}`).replace(/\|/g, '\\|')
+        : cell(s.host ?? '')
       const vals = s.values
         .map((v) =>
           v.failed
@@ -101,7 +118,7 @@ export function buildRunNote(input: RunNoteInput): string {
     out.push(`### ${s.id} · ${cell(s.label)}`, '')
     const facts = [
       s.place
-        ? `\`${s.place.file}:${s.place.line}\`${s.place.fn ? ` in \`${s.place.fn}\`` : ''}`
+        ? `${code(`${s.place.file}:${s.place.line}`)}${s.place.fn ? ` in ${code(s.place.fn)}` : ''}`
         : '',
       since(s.at),
       s.paused_ms ? `paused ${Math.round(s.paused_ms)} ms` : '',
@@ -110,16 +127,16 @@ export function buildRunNote(input: RunNoteInput): string {
     for (const v of s.values) {
       const head = `${v.name} · ${v.brief || v.format} · ${bytes(v.bytes)}`
       if (v.failed) {
-        out.push(`> [!failure] ${v.name}: not taken`, `> ${cell(v.failed)}`, '')
+        out.push(`> [!failure] ${cell(v.name)}: not taken`, `> ${cell(v.failed)}`, '')
         continue
       }
       if (v.masked) {
-        out.push(`> [!info] ${v.name}: masked before writing`, '')
+        out.push(`> [!info] ${cell(v.name)}: masked before writing`, '')
         continue
       }
       if (v.same) {
         out.push(
-          `> [!note] ${v.name}: the same as the last time · [open](${link({ step: s.id, name: v.name })})`,
+          `> [!note] ${cell(v.name)}: the same as the last time · [open](${link({ step: s.id, name: v.name })})`,
           ''
         )
         continue
@@ -127,14 +144,17 @@ export function buildRunNote(input: RunNoteInput): string {
       const read = values.get(`${s.id}/${v.name}`)
       out.push(`> [!abstract]- ${cell(head)} · [open](${link({ step: s.id, name: v.name })})`)
       if (read?.shape) {
-        out.push('> ```text')
-        for (const l of shapeLines(read.shape)) out.push(`> ${l}`)
-        out.push('> ```')
+        const lines = shapeLines(read.shape)
+        const f = fenceFor(lines)
+        out.push(`> ${f}text`)
+        for (const l of lines) out.push(`> ${l}`)
+        out.push(`> ${f}`)
       }
       if (read?.head?.length) {
-        out.push(`> \`\`\`${fence(v.format)}`)
+        const f = fenceFor(read.head)
+        out.push(`> ${f}${fence(v.format)}`)
         for (const l of read.head) out.push(`> ${l}`)
-        out.push('> ```')
+        out.push(`> ${f}`)
       }
       out.push('')
     }
@@ -149,7 +169,11 @@ export function buildRunNote(input: RunNoteInput): string {
     out.push('## Marks', '')
     for (const m of run.marks) {
       const at = [m.step, m.name, m.path].filter(Boolean).join(' · ')
-      const tags = m.tags?.length ? ` ${m.tags.map((t) => `#${t}`).join(' ')}` : ''
+      const tags =
+        m.tags
+          ?.filter((t) => TAG.test(t))
+          .map((t) => ` #${t}`)
+          .join('') ?? ''
       out.push(
         `- [${cell(at)}](${link({ step: m.step, name: m.name, path: m.path })}): ${cell(m.comment)}${tags}`
       )

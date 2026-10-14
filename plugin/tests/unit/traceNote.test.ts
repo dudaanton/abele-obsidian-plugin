@@ -111,4 +111,21 @@ describe('a note about a run', () => {
     expect(note).toContain('| [t0080](')
     expect(note).toContain('The other 30 steps')
   })
+
+  it('shows recorded text as written, never as markup of the note', () => {
+    const run = sampleRun(1, 1)
+    run.steps[0]!.values[0]!.brief = '![[secret note]] #tag [[link]]'
+    run.steps[0]!.label = '<script>x</script> **bold**'
+    run.marks[0]!.tags = ['question', 'bad tag]']
+    const note = buildRunNote({
+      run,
+      values: new Map([['t0001/sample', { head: ['````', 'inside'] }]]),
+      link,
+    })
+    expect(note).not.toContain('![[')
+    expect(note).toContain('\\!\\[\\[secret note\\]\\] \\#tag')
+    expect(note).toContain('&lt;script&gt;')
+    expect(note).toContain('> `````json')
+    expect(note).not.toContain('#bad')
+  })
 })
