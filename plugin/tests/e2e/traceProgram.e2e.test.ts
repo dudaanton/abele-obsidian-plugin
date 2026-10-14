@@ -36,7 +36,8 @@ const recordPoint=async (line,takes)=>{
   await until(()=>takes.every(t=>[...document.querySelectorAll('.abele-trace-point .multi-select-pill-content')].some(p=>p.textContent.trim()===t)),'takes listed');
   press(document.querySelector('.abele-trace-point [aria-label="Keep (Enter)"]'));
   await until(()=>!document.querySelector('.abele-trace-point'),'point saved');
-  await until(()=>document.querySelector('.abele-breakpoint-mark_record.abele-breakpoint-mark_set, .abele-breakpoint-mark_record.abele-breakpoint-mark_verified'),'record point confirmed');
+  const said=()=>[...document.querySelectorAll('button.abele-debug-source__point')].map(b=>b.getAttribute('aria-label')).filter(l=>l&&!l.startsWith('Stop at line')).join(' | ');
+  await until(()=>said().startsWith('Record point ·'),'record point confirmed: '+said(),400).catch(e=>{throw Error(e.message+' / now: '+said())});
 };
 const goOn=async()=>{
   const go=await until(()=>[...document.querySelectorAll('[aria-label="Continue (F5)"]')].find(b=>!b.classList.contains('is-disabled')&&!b.hasAttribute('disabled')),'Continue offered');
@@ -230,7 +231,7 @@ it('records at a line of TypeScript open beside its build, through the source ma
     steps: { label: string; place: string; text: string }[]
   }>(`(async()=>{${prelude}
     for(const t of ['abele-trace-run','abele-trace-value','abele-node-file'])for(const l of app.workspace.getLeavesOfType(t))l.detach();
-    const opened=app.workspace.getLeaf('tab');
+    const opened=app.workspace.createLeafInParent(app.workspace.rootSplit,0);
     await opened.setViewState({type:'abele-node-file',active:true,state:{kind:'file',target:${JSON.stringify(folder)},path:'src/total.ts'}});
     await until(()=>opened.containerEl.textContent.includes('type Item'),'TypeScript open');
     ${RUN('dist/total.js')}
