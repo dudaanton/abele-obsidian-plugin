@@ -249,6 +249,7 @@ it('runs a JavaScript program picked from Debug, records at a point set in its m
     steps: { label: string; place: string; values: Record<string, string> }[]
     notes: number
     held: { text: string; note: string; flair: string; internals: boolean }[]
+    stop: string
     restartWhileHeld: boolean
     restartAfter: boolean
     again: { session: boolean; steps: number }
@@ -257,14 +258,14 @@ it('runs a JavaScript program picked from Debug, records at a point set in its m
     // No session in the chat yet: Debug asks for a program to run.
     ${RUN('src/total.js', '2026-10-14-trace4-debug', 'Debug')}
     await until(()=>stackRows().some(r=>!r.internals),'a frame of the program listed');
-    const held=stackRows(),restartWhileHeld=restartOn();
+    const held=stackRows(),stop=debugState0(),restartWhileHeld=restartOn();
     await shot('2026-10-14-trace4-frames-desktop');
     await recordPoint(4,['sum','item']);
     await shot('2026-10-14-trace-margin-live-desktop');
     await goOn();
     ${READ_RUN}
     await shot('2026-10-14-trace-run-real-desktop');
-    const out={steps,notes:app.vault.getMarkdownFiles().length-notesBefore,held,restartWhileHeld};
+    const out={steps,notes:app.vault.getMarkdownFiles().length-notesBefore,held,stop,restartWhileHeld};
     // Restart starts the same program again from its first line, as a new session that records too.
     const first=api.DebuggerService.instance.active.value.controller.snapshot?.debug_session_id;
     await until(()=>restartOn(),'Restart offered after the run');
@@ -286,10 +287,10 @@ it('runs a JavaScript program picked from Debug, records at a point set in its m
   // A run never writes a note by itself.
   expect(seen.notes).toBe(0)
   // Held on its first line: the program's own frame on top, Node's loader folded into one row.
-  expect(seen.held[0], JSON.stringify(seen.held)).toMatchObject({ internals: false })
+  expect(seen.held[0], JSON.stringify(seen.held) + seen.stop).toMatchObject({ internals: false })
   expect(seen.held[0]!.note).toMatch(/^total\.js:\d+$/)
   const internals = seen.held.filter((r) => r.internals)
-  expect(internals).toHaveLength(1)
+  expect(internals, JSON.stringify(seen.held) + seen.stop).toHaveLength(1)
   expect(internals[0]).toMatchObject({ text: 'Node internals' })
   expect(Number(internals[0]!.flair)).toBeGreaterThan(0)
   expect(seen.restartWhileHeld).toBe(true)
@@ -331,6 +332,7 @@ it('on a phone: the picker offers the file open in a tab, the stack folds Node, 
     const seen = inApp<{
       offered: { title: string; note: string }[]
       held: { text: string; internals: boolean }[]
+      stop: string
       restart: boolean
       overflow: number
     }>(`(async()=>{${prelude}${STACK}${RESTART}
@@ -349,7 +351,7 @@ it('on a phone: the picker offers the file open in a tab, the stack folds Node, 
       const leaf=app.workspace.getLeavesOfType('abele-debug-view')[0];await app.workspace.revealLeaf(leaf);
       // The drawer slides in: wait until the panel stands still inside the screen.
       let last='';await until(()=>{const r=document.querySelector('.abele-debug-panel').getBoundingClientRect(),now=r.left+','+r.width;const still=now===last&&r.left>=0&&r.right<=innerWidth+1&&r.width>200;last=now;return still},'debug drawer open');
-      const held=stackRows();
+      const held=stackRows(),stop=debugState0();
       await shot('2026-10-14-trace4-frames-phone');
       const panel=document.querySelector('.abele-debug-panel'),overflow=panel.scrollWidth-panel.clientWidth;
       press(document.querySelector('.abele-debug-panel [aria-label^="Stop"]'));
@@ -358,7 +360,7 @@ it('on a phone: the picker offers the file open in a tab, the stack folds Node, 
       await until(()=>restartOn(),'Restart offered once stopped');
       const restart=restartOn();
       await shot('2026-10-14-trace4-restart-phone');
-      return {offered,held,restart,overflow}
+      return {offered,held,stop,restart,overflow}
       }finally{
         // The phone's layout is saved apart from the desktop's: leave no tab of this file in it.
         for(const t of ['abele-trace-run','abele-trace-value','abele-node-file','abele-debug-view'])for(const l of app.workspace.getLeavesOfType(t))l.detach();
@@ -366,8 +368,11 @@ it('on a phone: the picker offers the file open in a tab, the stack folds Node, 
       }
     })()`)
     expect(seen.offered[0]).toMatchObject({ title: 'src/total.js' })
-    expect(seen.held.filter((r) => r.internals)).toHaveLength(1)
-    expect(seen.held[0]!.internals, JSON.stringify(seen.held)).toBe(false)
+    expect(
+      seen.held.filter((r) => r.internals),
+      JSON.stringify(seen.held) + seen.stop
+    ).toHaveLength(1)
+    expect(seen.held[0]!.internals, JSON.stringify(seen.held) + seen.stop).toBe(false)
     expect(seen.restart).toBe(true)
     expect(seen.overflow).toBeLessThanOrEqual(1)
   })
