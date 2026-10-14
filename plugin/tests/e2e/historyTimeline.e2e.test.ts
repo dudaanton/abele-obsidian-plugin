@@ -36,6 +36,7 @@ import {
 import { shotDir } from './helpers/shots'
 import { nativeGesture } from '../helpers/nativeGesture'
 import { until } from './helpers/wait'
+import { closeFixtureLeaves } from './helpers/fixtureBoundary'
 
 targets('desktop', 'phone')
 
@@ -392,10 +393,12 @@ describe.skipIf(!available)('the history timeline of a base', () => {
     try {
       evalRaw(
         `(async () => {
-          for (const leaf of app.workspace.getLeavesOfType('bases')) {
+          const leaves = []
+          app.workspace.iterateAllLeaves(leaf => {
             const p = leaf.view.file?.path ?? ''
-            if (p.startsWith(${JSON.stringify(FOLDER + '/')}) || p.startsWith(${JSON.stringify(PERF + '/')})) leaf.detach()
-          }
+            if (p.startsWith(${JSON.stringify(FOLDER + '/')}) || p.startsWith(${JSON.stringify(PERF + '/')})) leaves.push(leaf)
+          })
+          await (${closeFixtureLeaves.toString()})(leaves)
           for (const dir of ${JSON.stringify([FOLDER, PERF])}) {
             const folder = app.vault.getAbstractFileByPath(dir)
             if (folder) await app.vault.delete(folder, true)

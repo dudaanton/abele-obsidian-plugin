@@ -3,6 +3,7 @@ import { evalAsync } from './helpers/githubLive'
 import { evalJson, evalRaw, hasTestApi, isObsidianRunning, reloadApp } from './helpers/obsidianCli'
 import { onPhone, targets } from './helpers/target'
 import { shotDir } from './helpers/shots'
+import { closeFixtureLeaves } from './helpers/fixtureBoundary'
 
 targets('desktop', 'phone')
 const available = isObsidianRunning() && hasTestApi()
@@ -52,7 +53,7 @@ describe.skipIf(!available)('agent explanatory diagrams in native Canvas', () =>
   afterAll(async () => {
     run(`
       const leaves = []; app.workspace.iterateAllLeaves(l => { if (l.view.file?.path.startsWith(${JSON.stringify(DIR + '/')})) leaves.push(l) })
-      leaves.forEach(l => l.detach())
+      await (${closeFixtureLeaves.toString()})(leaves)
       const dir = window.__canvasAgentOwned ? app.vault.getAbstractFileByPath(${JSON.stringify(DIR)}) : null; if (dir) await app.vault.delete(dir, true)
       delete window.__canvasAgentOwned
       if (window.__canvasAgentPreference !== undefined) window.__abeleTest.AbeleConfig.getInstance().canvasViewer = window.__canvasAgentPreference
