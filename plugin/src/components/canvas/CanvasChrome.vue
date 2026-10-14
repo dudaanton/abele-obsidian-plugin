@@ -3,7 +3,12 @@
        tools at the foot in the middle, zoom and history in a column at the top right, and the
        actions for what is picked in a small bar standing over it. -->
   <CanvasFrames :editor="editor" :viewer="viewer" :tick="tick" />
-  <div class="abele-canvas-chrome" :class="{ 'is-phone-layout': phone }" @pointerdown.stop>
+  <div
+    class="abele-canvas-chrome"
+    :class="{ 'is-phone-layout': phone }"
+    :style="{ '--abele-canvas-bar': `${barHeight}px` }"
+    @pointerdown.stop
+  >
     <div v-if="saveState" class="canvas-controls abele-canvas-chrome__state">
       <div class="canvas-control-group">
         <div
@@ -152,86 +157,66 @@
       <ChromeIcon icon="more-horizontal" tooltip="More" @click="menus.moreMenu($event, c, view)" />
     </div>
 
-    <!-- The pen's colours and widths, over the tools while a pen is in hand. -->
-    <div
-      v-if="penStrip"
-      class="canvas-menu abele-canvas-chrome__pen"
-      :style="penAt"
-      role="toolbar"
-      aria-label="Pen"
-    >
-      <!-- With a Pencil about and another tool in hand, which of pen and marker the Pencil
-           draws with: pressed, it takes the other. -->
-      <template v-if="!drawing && !phone">
+    <!-- The tools, the kit's tool bar across the tab's top as over a drawing: one slot for each
+         family, wearing the glyph of the member last used; with a pen in hand, its colours and
+         width in the same row. -->
+    <ToolBar ref="toolsBar" class="abele-canvas-chrome__tools" label="Canvas tools">
+      <ToolBarGroup v-for="(group, g) in shownGroups" :key="g">
         <ChromeIcon
-          :key="pencilInk"
-          :icon="pencilInk === 'marker' ? 'highlighter' : 'pen-line'"
-          :tooltip="
-            pencilInk === 'marker'
-              ? 'The Pencil draws with the marker; press for the pen'
-              : 'The Pencil draws with the pen; press for the marker'
-          "
-          @click="c.setPencilInk(pencilInk === 'marker' ? 'pen' : 'marker')"
-        />
-        <span class="canvas-card-menu-divider" />
-      </template>
-      <button
-        v-for="c in COLOURS"
-        :key="c"
-        class="clickable-icon abele-canvas-chrome__swatch-button"
-        :class="{ 'is-active': value('ink-color') === c }"
-        :aria-label="`Draw in ${COLOUR_NAMES[c]}`"
-        @click="set('ink-color', c)"
-      >
-        <span
-          class="canvas-color-picker-item"
-          :class="[colourClass(c), { 'is-active': value('ink-color') === c }]"
-        />
-      </button>
-      <span class="canvas-card-menu-divider" />
-      <button
-        v-for="(t, i) in THICKNESSES"
-        :key="t"
-        class="clickable-icon abele-canvas-chrome__width"
-        :class="{ 'is-active': value('ink-size') === t }"
-        :aria-label="`Width: ${t}`"
-        @click="set('ink-size', t)"
-      >
-        <span
-          class="abele-canvas-chrome__width-dot"
-          :style="{ '--abele-width': 3 + i * 3 + 'px' }"
-        />
-      </button>
-    </div>
-
-    <!-- The tools: one slot for each family, wearing the glyph of the member last used. -->
-    <div
-      ref="toolsEl"
-      class="canvas-card-menu abele-canvas-chrome__tools"
-      role="toolbar"
-      aria-label="Canvas tools"
-    >
-      <template v-for="(group, g) in shownGroups" :key="g">
-        <span v-if="g" class="canvas-card-menu-divider" />
-        <ToolButton
           v-for="slot in group"
           :key="slot.id"
           :icon="slotIcon(slot)"
           :tooltip="slotTooltip(slot)"
           :active="slotActive(slot)"
+          class="abele-canvas-chrome__tool"
           @click="useSlot(slot, $event)"
         />
-      </template>
-      <template v-if="hidden.length">
-        <span class="canvas-card-menu-divider" />
-        <ToolButton
+      </ToolBarGroup>
+      <ToolBarGroup v-if="hidden.length">
+        <ChromeIcon
           :icon="hiddenActive ? slotIcon(hiddenActive) : 'more-horizontal'"
           tooltip="More tools"
           :active="!!hiddenActive"
+          class="abele-canvas-chrome__tool"
           @click="moreTools($event)"
         />
+      </ToolBarGroup>
+      <template v-if="penStrip">
+        <!-- With a Pencil about and another tool in hand, which of pen and marker the Pencil
+             draws with: pressed, it takes the other. -->
+        <ToolBarGroup v-if="!drawing && !phone" label="Pencil">
+          <ChromeIcon
+            :key="pencilInk"
+            :icon="pencilInk === 'marker' ? 'highlighter' : 'pen-line'"
+            :tooltip="
+              pencilInk === 'marker'
+                ? 'The Pencil draws with the marker; press for the pen'
+                : 'The Pencil draws with the pen; press for the marker'
+            "
+            @click="c.setPencilInk(pencilInk === 'marker' ? 'pen' : 'marker')"
+          />
+        </ToolBarGroup>
+        <ToolBarGroup class="abele-canvas-chrome__pen" label="Colours">
+          <ChromeIcon
+            v-for="col in COLOURS"
+            :key="col"
+            icon="circle"
+            :color="SWATCH_COLOURS[col]"
+            :active="value('ink-color') === col"
+            :tooltip="`Draw in ${COLOUR_NAMES[col]}`"
+            class="abele-canvas-chrome__swatch"
+            :class="{ 'abele-canvas-chrome__swatch_ink': !col }"
+            @click="set('ink-color', col)"
+          />
+          <ChromeIcon
+            icon="line-squiggle"
+            :tooltip="`Width: ${value('ink-size') || THICKNESSES[1]}`"
+            class="abele-canvas-chrome__width"
+            @click="widthMenu($event)"
+          />
+        </ToolBarGroup>
       </template>
-    </div>
+    </ToolBar>
   </div>
 </template>
 
@@ -244,6 +229,8 @@ import { stepsOf } from '@/canvas/core/steps'
 import { allInkEntries } from '@/canvas/core/ink'
 import { zoomAt } from '@/drawing/camera'
 import ChromeIcon from '../obsidian/Icon.vue'
+import ToolBar from '../obsidian/ToolBar.vue'
+import ToolBarGroup from '../obsidian/ToolBarGroup.vue'
 import CanvasFrames from './CanvasFrames.vue'
 import {
   COLOURS,
@@ -252,6 +239,7 @@ import {
   ROUTE_ICONS,
   SHAPE_ICONS,
   SLOTS,
+  SWATCH_COLOURS,
   THICKNESSES,
   type Slot,
 } from './chromeTools'
@@ -283,33 +271,6 @@ const ControlItem = defineComponent({
   },
 })
 /** A tool at the foot, as Obsidian Canvas draws its card menu's buttons. */
-const ToolButton = defineComponent({
-  props: { icon: String, tooltip: String, active: Boolean },
-  emits: ['click'],
-  setup(p, { emit }) {
-    const el = ref<HTMLElement>()
-    const draw = () => {
-      if (!el.value) return
-      el.value.replaceChildren()
-      setIcon(el.value, p.icon)
-      setTooltip(el.value, p.tooltip, { placement: 'top' })
-    }
-    onMounted(draw)
-    return () => {
-      queueMicrotask(draw)
-      return h('div', {
-        ref: el,
-        class: ['canvas-card-menu-button', 'abele-canvas-chrome__tool', { 'is-active': p.active }],
-        role: 'button',
-        'aria-label': p.tooltip,
-        'aria-pressed': p.active,
-        onClick: (e: MouseEvent) => emit('click', e),
-      })
-    }
-  },
-})
-
-
 const tick = ref(0)
 const phone = Platform.isPhone
 const last = ref<Record<string, number>>({})
@@ -329,15 +290,30 @@ const drawing = computed(() => ['pen', 'marker', 'eraser', 'partial-eraser'].inc
 /** Once a Pencil has touched the canvas it draws whatever is in hand, so its colours stay out. */
 const pencil = computed(() => (tick.value, c.pencil()))
 const pencilInk = computed(() => (tick.value, c.pencilInk()))
-const toolsEl = ref<HTMLElement>()
-/** The pen's strip stands a step above the tools, however tall they are on this device. */
-const penAt = computed(() => {
-  tick.value
-  const tools = toolsEl.value,
-    host = tools?.offsetParent as HTMLElement | null
-  if (!tools || !host) return {}
-  return { bottom: `calc(${host.clientHeight - tools.offsetTop}px + var(--size-4-2))` }
+/** The tools' row: the column of zoom and undo stands under it, however tall it wraps. */
+const toolsBar = ref<{ $el: HTMLElement }>()
+const barHeight = ref(0)
+let barSize: ResizeObserver | undefined
+onMounted(() => {
+  const el = toolsBar.value?.$el
+  if (!el || typeof ResizeObserver === 'undefined') return
+  barSize = new ResizeObserver(() => (barHeight.value = el.offsetHeight))
+  barSize.observe(el)
 })
+onBeforeUnmount(() => barSize?.disconnect())
+/** The pen's width, from its row's glyph: Obsidian's menu under the button. */
+function widthMenu(e: MouseEvent) {
+  const menu = new Menu()
+  for (const t of THICKNESSES)
+    menu.addItem((item) =>
+      item
+        .setTitle(t[0].toUpperCase() + t.slice(1))
+        .setChecked((value('ink-size') || THICKNESSES[1]) === t)
+        .onClick(() => set('ink-size', t))
+    )
+  const r = (e.currentTarget as HTMLElement).getBoundingClientRect()
+  menu.showAtPosition({ x: r.left, y: r.bottom })
+}
 const penStrip = computed(
   () =>
     !['eraser', 'partial-eraser', 'lasso'].includes(tool.value) &&
@@ -626,47 +602,29 @@ onBeforeUnmount(() => {
   z-index: var(--layer-cover);
 }
 
-.abele-canvas-chrome__pen {
-  position: absolute;
-  left: 50%;
-  bottom: calc(var(--size-4-4) + 3.6em);
-  transform: translateX(-50%);
-  z-index: var(--layer-cover);
-  align-items: center;
-}
-
-.abele-canvas-chrome__swatch-button {
-  padding: var(--size-2-1);
-
-  .canvas-color-picker-item {
-    width: 18px;
-    height: 18px;
-    margin: 0;
-  }
-}
 // The colour of words, for a stroke or card left without one of the six.
 .abele-canvas-chrome__ink {
   --canvas-color: var(--text-normal);
 }
 
-.abele-canvas-chrome__width {
-  width: 28px;
-  justify-content: center;
-
-  &.is-active {
-    background: var(--background-modifier-hover);
-  }
+// The tools' row across the tab's top, over the canvas as a drawing's is over its paper; the
+// column of zoom and undo stands under it.
+.abele-canvas-chrome__tools {
+  position: absolute;
+  inset-inline: 0;
+  top: 0;
+  z-index: var(--layer-cover);
 }
-.abele-canvas-chrome__width-dot {
-  display: block;
-  width: var(--abele-width);
-  height: var(--abele-width);
-  border-radius: 50%;
-  background: var(--text-normal);
+.abele-canvas-chrome > .canvas-controls {
+  top: calc(var(--abele-canvas-bar, 0px) + var(--size-4-2));
 }
 
-.abele-canvas-chrome__tool.is-active {
-  color: var(--color-accent);
+.abele-canvas-chrome__swatch svg {
+  fill: currentColor;
+}
+// The text's colour, pressed or not: a pressed glyph otherwise takes the accent.
+.abele-canvas-chrome__swatch_ink.abele-obsidian-icon {
+  color: var(--text-normal);
 }
 
 // On a phone two fingers zoom; the column keeps only undo and redo.
@@ -674,13 +632,4 @@ onBeforeUnmount(() => {
   display: none;
 }
 
-// Obsidian draws no card menu on a phone; this one stays, along the foot over the bar.
-.is-phone .abele-canvas-chrome__tools {
-  display: flex;
-  bottom: calc(var(--size-4-3) + var(--safe-area-inset-bottom, 0px));
-}
-.is-phone .abele-canvas-chrome__tools .canvas-card-menu-button {
-  padding: var(--size-4-2) var(--size-4-2);
-  --icon-size: var(--icon-l);
-}
 </style>

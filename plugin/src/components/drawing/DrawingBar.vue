@@ -1,5 +1,5 @@
 <template>
-  <div class="abele-drawing-bar" role="toolbar" aria-label="Drawing" data-ignore-swipe="true">
+  <ToolBar class="abele-drawing-bar" label="Drawing">
     <!-- The first button turns drawing on, and in the same place turns it off again. -->
     <Icon
       :icon="model.on ? 'check' : 'pen-line'"
@@ -8,7 +8,7 @@
       @click="emit('toggle')"
     />
     <template v-if="model.on">
-      <div class="abele-drawing-bar__group">
+      <ToolBarGroup class="abele-drawing-bar__group">
         <Icon
           v-for="t in TOOLS"
           :key="t.id"
@@ -37,8 +37,8 @@
           class="abele-drawing-bar__tool abele-drawing-bar__tool_text"
           @click="emit('tool', 'text')"
         />
-      </div>
-      <div class="abele-drawing-bar__group">
+      </ToolBarGroup>
+      <ToolBarGroup class="abele-drawing-bar__group">
         <Icon
           v-for="c in colors"
           :key="c"
@@ -56,8 +56,8 @@
           class="abele-drawing-bar__thickness"
           @click="emit('thickness', $event)"
         />
-      </div>
-      <div class="abele-drawing-bar__group">
+      </ToolBarGroup>
+      <ToolBarGroup class="abele-drawing-bar__group">
         <!-- Always in its place, so the row does not jump; pale while nothing is picked. -->
         <Icon
           icon="trash-2"
@@ -94,9 +94,9 @@
           class="abele-drawing-bar__redo"
           @click="emit('redo')"
         />
-      </div>
+      </ToolBarGroup>
     </template>
-    <div class="abele-drawing-bar__end">
+    <template #end>
       <Icon
         :text-right="zoomText"
         icon="zoom-in"
@@ -110,8 +110,8 @@
         class="abele-drawing-bar__more"
         @click="emit('more', $event)"
       />
-    </div>
-  </div>
+    </template>
+  </ToolBar>
 </template>
 
 <script setup lang="ts">
@@ -123,6 +123,8 @@
  */
 import { computed } from 'vue'
 import Icon from '../obsidian/Icon.vue'
+import ToolBar from '../obsidian/ToolBar.vue'
+import ToolBarGroup from '../obsidian/ToolBarGroup.vue'
 import type { DrawingModel, DrawingTool } from '@/drawing/model'
 import type { ShapeKind } from '@/drawing/items'
 import { INK_COLORS, type InkColor } from '@/reader/ink/stroke'
@@ -176,31 +178,7 @@ const zoomText = computed(() => `${Math.round(props.model.zoom * 100)}%`)
 
 <style lang="scss">
 .abele-drawing-bar {
-  display: flex;
-  flex-wrap: wrap;
-  align-items: center;
-  gap: var(--size-4-1) var(--size-4-2);
-  padding: var(--size-4-1) var(--size-4-2);
-  border-bottom: 1px solid var(--background-modifier-border);
-  background-color: var(--background-primary);
-
-  /* Each group after the first stands behind a hairline, as a toolbar's groups do. */
-  &__group {
-    display: flex;
-    flex: 0 0 auto;
-    align-items: center;
-    gap: var(--size-2-1);
-    padding-inline-start: var(--size-4-2);
-    border-inline-start: 1px solid var(--background-modifier-border);
-  }
-
-  &__end {
-    display: flex;
-    align-items: center;
-    gap: var(--size-2-1);
-    margin-left: auto;
-  }
-
+  /* The row itself is the kit's tool bar (ToolBar.vue); here only what a drawing's colours need. */
   &__swatch svg {
     fill: currentColor;
   }

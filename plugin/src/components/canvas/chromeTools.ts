@@ -1,4 +1,5 @@
-/** The canvas's tools at the foot, in families sharing a slot, and the values they pick from. */
+/** The canvas's tools along the top, in families sharing a slot, and the values they pick from. */
+import type { KitColor } from '@/constants/colors'
 import { SHAPES } from '@/canvas/core/model'
 
 export type Slot = {
@@ -24,6 +25,16 @@ export const ROUTE_ICONS: Record<string, string> = {
 export const COLOURS = ['', '1', '2', '3', '4', '5', '6']
 export const COLOUR_NAMES: Record<string, string> = {
   '': 'the text colour',
+  1: 'red',
+  2: 'orange',
+  3: 'yellow',
+  4: 'green',
+  5: 'cyan',
+  6: 'purple',
+}
+/** Each canvas colour as the kit's colour a glyph wears; the text colour wears none. */
+export const SWATCH_COLOURS: Record<string, KitColor | undefined> = {
+  '': undefined,
   1: 'red',
   2: 'orange',
   3: 'yellow',
