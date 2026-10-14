@@ -42,6 +42,8 @@ const script = `(async () => {
   const registry = t.AgentRegistry.getInstance()
   const service = t.ChatService.getInstance()
   service.ensureInitialized()
+  // A fresh vault window may have no chat yet: open one tab of its own, closed again at the end.
+  const ownTab = service.activeSession.value ? null : service.newTab()
   const session = service.activeSession.value
   if (!session) return JSON.stringify({ error: 'no active chat session' })
 
@@ -95,6 +97,7 @@ const script = `(async () => {
     report.restored = registry.list({ includeUtility: true }).every(
       (a) => JSON.stringify(a.memory || []) === before.get(a.id)
     )
+    if (ownTab) await service.closeTab(ownTab)
   }
   return JSON.stringify(report)
 })()`
