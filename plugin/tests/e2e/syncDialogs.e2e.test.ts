@@ -103,7 +103,8 @@ liveCase(
         expect(history.capped).toEqual([])
         expect(history.stranded).toEqual([])
         a.run(
-          `const box=inWindows('.abele-version-history');await press(box,'Load older');await poll(()=>box.querySelectorAll('.abele-version-history__row').length>50);return true`
+          // Older versions load as the end of the history scrolls into view; there is no button.
+          `const box=inWindows('.abele-version-history');let end;await poll(()=>(end=box.querySelector('.abele-scroll-more')),20000,'the end of the history');end.scrollIntoView({block:'end'});await poll(()=>box.querySelectorAll('.abele-version-history__row').length>50);return true`
         )
         expect(
           a.run(

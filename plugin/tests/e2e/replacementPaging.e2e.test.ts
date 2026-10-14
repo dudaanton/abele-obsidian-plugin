@@ -61,9 +61,10 @@ describe.skipIf(!available)('replacement preview paging in Bases', () => {
         const rowCount = () => root.querySelectorAll('.abele-far-bases__result').length
         while (rowCount() < 63) {
           const before = rowCount()
-          const more = [...root.querySelectorAll('button')].find((button) => button.textContent === 'Load more')
+          // The list's end asks for the next part as it scrolls into view; there is no button.
+          const more = root.querySelector('.abele-scroll-more')
           if (!more) throw Error('Remaining previews are unreachable')
-          more.click()
+          more.scrollIntoView({ block: 'end' })
           if (!await until(() => rowCount() > before)) throw Error('Paging did not advance')
         }
         root.querySelectorAll('.abele-far-bases__result')[50].scrollIntoView({ block: 'start' })

@@ -137,7 +137,7 @@ describe.skipIf(!available)('GitHub notifications', () => {
       ${PANEL}
       app.commands.executeCommandById('abele:show-github-notifications')
       const notice = await until(() => panel()?.querySelector('.abele-github-notice__text'), 20000)
-      const disclosure = panel()?.querySelector('.abele-github-notice__more button[aria-expanded="false"]')
+      const disclosure = panel()?.querySelector('.abele-github-notice__more [aria-expanded="false"]')
       disclosure?.click()
       await until(() => !disclosure || disclosure.getAttribute('aria-expanded') === 'true', 3000)
       const text = notice?.closest('.abele-github-notice')?.textContent ?? ''

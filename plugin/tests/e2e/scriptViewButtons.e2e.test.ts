@@ -1,6 +1,8 @@
 /**
  * Buttons in a script view look like Obsidian's own, in both themes and after the pointer
- * has been over them.
+ * has been over them. The accent button and the bare icon are Obsidian's own; a plain button is
+ * drawn as a card is, a hairline round its words on the page's ground with the icon in the icon
+ * grey, lit in Obsidian's own hover grey — measured against those theme colours resolved in place.
  *
  * The icon in a labelled button was the plugin's icon widget, which paints itself in the icon grey
  * and lights up a box of its own under the pointer — dark on the accent button, and a patch
@@ -118,7 +120,28 @@ const measure = `
       patches,
     }
   }
+  // The theme's own colours a plain button is drawn in, resolved in the same row as it.
+  const row = root.querySelector('.e2e-cta').parentElement
+  const resolve = (css) => {
+    const d = row.ownerDocument.createElement('div')
+    d.style.cssText = 'position:absolute;visibility:hidden;' + css
+    row.append(d)
+    const cs = getComputedStyle(d)
+    const out = {
+      background: cs.backgroundColor,
+      color: cs.color,
+      border: cs.borderTopWidth + ' ' + cs.borderTopStyle + ' ' + cs.borderTopColor,
+    }
+    d.remove()
+    return out
+  }
+  const card = (border, background) =>
+    resolve('border:1px solid var(' + border + ');background-color:' + background + ';color:var(--text-normal)')
   return {
+    refPlain: card('--background-modifier-border', 'transparent'),
+    refPlainHover: card('--background-modifier-border-hover', 'var(--background-modifier-hover)'),
+    refIcon: resolve('color:var(--icon-color)').color,
+    refIconHover: resolve('color:var(--icon-color-hover)').color,
     cta: look('.e2e-cta'), nativeCta: look('.e2e-native-cta'),
     plain: look('.e2e-plain'), nativePlain: look('.e2e-native-plain'),
     icon: look('.e2e-icon'), nativeIcon: look('.e2e-native-icon'),
@@ -132,7 +155,13 @@ type Look = {
   iconColor: string | null
   patches: string[]
 }
-type Looks = Record<'cta' | 'nativeCta' | 'plain' | 'nativePlain' | 'icon' | 'nativeIcon', Look>
+type Paint = { background: string; color: string; border: string }
+type Looks = Record<'cta' | 'nativeCta' | 'plain' | 'nativePlain' | 'icon' | 'nativeIcon', Look> & {
+  refPlain: Paint
+  refPlainHover: Paint
+  refIcon: string
+  refIconHover: string
+}
 
 const centreOf = (sel: string) =>
   evalJson<{ x: number; y: number }>(`(() => {
@@ -170,13 +199,17 @@ const lingering = () => new Promise((r) => setTimeout(r, 1500))
 
 const paint = (l: Look) => ({ background: l.background, color: l.color, border: l.border })
 
-function expectNative(looks: Looks, when: string): void {
+function expectNative(looks: Looks, when: string, hovered = false): void {
   expect(looks.cta.iconColor, `${when}: cta icon follows its text`).toBe(looks.cta.color)
-  expect(looks.plain.iconColor, `${when}: button icon follows its text`).toBe(looks.plain.color)
+  expect(looks.plain.iconColor, `${when}: button icon in the icon grey`).toBe(
+    hovered ? looks.refIconHover : looks.refIcon
+  )
   expect(looks.cta.patches, `${when}: nothing painted around the cta icon`).toEqual([])
   expect(looks.plain.patches, `${when}: nothing painted around the button icon`).toEqual([])
   expect(paint(looks.cta), `${when}: cta as native`).toEqual(paint(looks.nativeCta))
-  expect(paint(looks.plain), `${when}: button as native`).toEqual(paint(looks.nativePlain))
+  expect(paint(looks.plain), `${when}: button as a card`).toEqual(
+    hovered ? looks.refPlainHover : looks.refPlain
+  )
   expect(paint(looks.icon), `${when}: icon as native`).toEqual(paint(looks.nativeIcon))
 }
 
@@ -233,7 +266,7 @@ for (const phone of [false, true])
         expectNative(await probe<Looks>(measure), `${theme} idle`)
 
         // Hovered: the native of each kind first, then ours with the pointer on its icon.
-        const hovered: Partial<Looks> = {}
+        const hovered: Partial<Looks> = await probe<Looks>(measure)
         for (const [ours, native] of [
           ['cta', 'nativeCta'],
           ['plain', 'nativePlain'],
@@ -250,7 +283,7 @@ for (const phone of [false, true])
         expect(hovered.nativeIcon?.background, 'the hover reached the page').not.toBe(
           'rgba(0, 0, 0, 0)'
         )
-        expectNative(hovered as Looks, `${theme} hovered`)
+        expectNative(hovered as Looks, `${theme} hovered`, true)
 
         moveTo(away())
         await settle()
@@ -287,8 +320,11 @@ for (const phone of [false, true])
           tap(iconOf(`.e2e-${ours}`))
           await lingering()
           const tapped = (await probe<Looks>(measure))[ours]
-          expect(paint(tapped), `${ours} after a tap`).toEqual(paint(nativeTapped))
+          // A plain button is not drawn as a native one, so only its own idle look holds it.
+          if (ours !== 'plain')
+            expect(paint(tapped), `${ours} after a tap`).toEqual(paint(nativeTapped))
           expect(paint(tapped), `${ours} after a tap, as idle`).toEqual(paint(idle[ours]))
+          expect(tapped.iconColor, `${ours} icon after a tap, as idle`).toBe(idle[ours].iconColor)
         }
       } finally {
         cdp('Emulation.setTouchEmulationEnabled', { enabled: false })
