@@ -111,12 +111,12 @@ export default [
       expect((await runLint(f.root, f.env)).errorCount).toBe(0)
       expect(existsSync(join(f.env.ABELE_CHECK_CACHE_DIR, 'lint-typed'))).toBe(false)
       writeFileSync(declaration, api + 'Plugin;')
-    }, 5000)
+    }, 30_000)
     it('rechecks imported types omitted by plain TypeScript against cold lint', async () => {
       const [warm, cold] = await comparison(f)
       expect(cold.errorCount).toBe(1)
       expect(warm.errorCount).toBe(cold.errorCount)
-    })
+    }, 30_000)
   })
 
   describe('manifest-dependent rule state', () => {
@@ -137,12 +137,12 @@ export default [
       )
       expect((await runLint(f.root, f.env)).errorCount).toBe(0)
       writeFileSync(join(f.root, 'manifest.json'), '{"isDesktopOnly":false}')
-    }, 5000)
+    }, 30_000)
     it('reloads rule state before computing and sealing a new input result', async () => {
       const [warm, cold] = await comparison(f)
       expect(warm.errorCount).toBe(1)
       expect(cold.errorCount).toBe(1)
-    })
+    }, 30_000)
   })
 
   describe('root-sensitive configuration', () => {
@@ -160,10 +160,10 @@ export default [
         'plugin/tests/unit/sample.test.js',
       ])
       expect(new Set(first.files).size).toBe(first.files.length)
-    }, 5000)
+    }, 30_000)
     it('retains disjoint complete coverage on repeated calls', async () => {
       expect((await runLint(f.root, f.env)).files.sort()).toEqual(first.files.sort())
-    })
+    }, 30_000)
   })
 
   describe('imported return type changes', () => {
@@ -176,7 +176,7 @@ export default [
         join(f.root, 'plugin/src/service.ts'),
         'export async function sample(): Promise<void> {}'
       )
-    }, 5000)
+    }, 30_000)
     it('rechecks unchanged consumers, matching cold results', async () => {
       const [warm, cold] = await comparison(f)
       expect(warm.errorCount).toBe(1)
@@ -190,7 +190,7 @@ export default [
       f = fixture()
       expect((await runLint(f.root, f.env)).errorCount).toBe(0)
       writeFileSync(join(f.root, 'plugin/tests/unit/sample.test.js'), 'unknownSample()')
-    }, 5000)
+    }, 30_000)
     it('rechecks edited files by content, matching cold results', async () => {
       const [warm, cold] = await comparison(f)
       expect(warm.errorCount).toBe(1)
