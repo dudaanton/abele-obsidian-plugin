@@ -237,11 +237,11 @@ describe.skipIf(!available)('settings transfer security in the running app', () 
         const modal = send.closest('.modal'), foot = modal.querySelector('.abele-modal__footer');
         const qr = send.querySelector('svg, canvas, img'), hint = send.querySelector('.abele-transfer-send__hint');
         out.ways = [...foot.querySelectorAll('button')].map(b => b.textContent.trim());
-        out.footInSight = inside(foot);
-        // What the camera is pointed at — the typed code when there is one, else the QR — comes before the hints.
+                // What the camera is pointed at — the typed code when there is one, else the QR — comes before the hints.
         const first = send.querySelector('.abele-transfer-send__code-value') ?? qr;
         out.codeFirst = !!first && first.getBoundingClientRect().bottom <= hint.getBoundingClientRect().top + 1;
         await picture('send');
+        out.footInSight = inside(foot);
         await shut(modal, 'send'); app.setting.close();
         return JSON.stringify(out);
       })()`)
