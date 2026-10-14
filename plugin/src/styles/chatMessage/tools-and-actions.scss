@@ -215,6 +215,13 @@ body.is-mobile button.abele-chat-msg__icon {
 body.is-mobile button.abele-chat-msg__icon:not(.abele-chat-msg__time) {
   margin-block: calc((1lh - 44px) / 2);
   margin-inline-start: calc((var(--icon-size) - 44px) / 2);
+
+  // That box reaches the edge of the conversation's padding, where the scrolling list cuts a ring
+  // drawn outside it: the ring is drawn inside the box instead, as a phone's tab strip does.
+  &:focus-visible {
+    outline: none;
+    box-shadow: inset 0 0 0 var(--size-2-1) var(--background-modifier-border-focus);
+  }
 }
 
 // The glyph keeps its place on the line and in the words' column; the button keeps Obsidian's
