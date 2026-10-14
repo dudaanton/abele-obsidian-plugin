@@ -4,6 +4,7 @@ import { evalAsync } from './helpers/githubLive'
 import {
   activeVaultName,
   evalJson,
+  evalLong,
   evalRaw,
   hasTestApi,
   isObsidianRunning,
@@ -14,6 +15,7 @@ import { onPhone, targets } from './helpers/target'
 import { screenshot, swipe, tap, typeText } from './helpers/phone'
 import { withNativeInput } from './helpers/nativeInput'
 import { shotDir } from './helpers/shots'
+import { RESTORE_PHONE_SCRIPT } from './helpers/phoneState'
 
 targets('desktop', 'phone')
 const available = isObsidianRunning() && hasTestApi()
@@ -162,10 +164,12 @@ describe.skipIf(!available)('shared human and agent canvas acceptance', () => {
     } else if (!onPhone()) await reloadApp()
     run(`
       if(app.vault.getAbstractFileByPath(${JSON.stringify(DIR)}))throw Error('Synthetic folder already exists')
-      window.__canvasAcceptance={layout:app.workspace.getLayout(),preference:window.__abeleTest.AbeleConfig.getInstance().canvasViewer,location:app.vault.getConfig('newFileLocation'),folder:app.vault.getConfig('attachmentFolderPath')}
+      window.__canvasAcceptance={layout:app.workspace.getLayout(),preference:window.__abeleTest.AbeleConfig.getInstance().canvasViewer,location:app.vault.getConfig('newFileLocation'),newFolder:app.vault.getConfig('newFileFolderPath'),folder:app.vault.getConfig('attachmentFolderPath')}
       window.__abeleTest.AbeleConfig.getInstance().canvasViewer=true
       await app.vault.createFolder(${JSON.stringify(DIR)});window.__canvasAcceptance.owned=true
-      app.vault.setConfig('newFileLocation','current');app.vault.setConfig('attachmentFolderPath',${JSON.stringify(DIR)})
+      if(!${onPhone()}){app.workspace.leftSplit.collapse();app.workspace.rightSplit.collapse()}
+      // Own the host's creation parent even if modal focus changes its active file.
+      app.vault.setConfig('newFileLocation','folder');app.vault.setConfig('newFileFolderPath',${JSON.stringify(DIR)});app.vault.setConfig('attachmentFolderPath',${JSON.stringify(DIR)})
       const note=await app.vault.create(${JSON.stringify(`${DIR}/sample-note.md`)},${JSON.stringify('# Linked concept\n\nA person starts; an agent continues.\n')})
       const leaf=app.workspace.getLeaf('tab');await leaf.openFile(note);await app.workspace.revealLeaf(leaf);return true
     `)
@@ -177,7 +181,7 @@ describe.skipIf(!available)('shared human and agent canvas acceptance', () => {
         const state=window.__canvasAcceptance,leaves=[];app.workspace.iterateAllLeaves(l=>{if(l.view.file?.path.startsWith(${JSON.stringify(DIR + '/')}))leaves.push(l)})
         for(const leaf of leaves){leaf.view.documentLease?.document.discardDraft();leaf.detach()}
         if(state?.owned){const dir=app.vault.getAbstractFileByPath(${JSON.stringify(DIR)});if(dir)await app.vault.delete(dir,true)}
-        if(state){window.__abeleTest.AbeleConfig.getInstance().canvasViewer=state.preference;app.vault.setConfig('newFileLocation',state.location);app.vault.setConfig('attachmentFolderPath',state.folder);await app.workspace.changeLayout(state.layout)}
+        if(state){window.__abeleTest.AbeleConfig.getInstance().canvasViewer=state.preference;app.vault.setConfig('newFileLocation',state.location);app.vault.setConfig('newFileFolderPath',state.newFolder);app.vault.setConfig('attachmentFolderPath',state.folder);await app.workspace.changeLayout(state.layout)}
         delete window.__canvasAcceptance;return true
       `)
     } finally {
@@ -191,7 +195,17 @@ describe.skipIf(!available)('shared human and agent canvas acceptance', () => {
   }, 120_000)
 
   it('creates, annotates, moves, continues, renames, embeds and exports one evolving diagram', async () => {
-    onTestFailed(() => shot('failure'))
+    onTestFailed(() => {
+      console.info(
+        'Canvas acceptance failure:',
+        run(`return {active:app.workspace.getActiveFile()?.path,
+        canvases:app.workspace.getLeavesOfType('abele-canvas').map(l=>l.view.file?.path),
+        rename:document.querySelector('.mod-file-rename')?.textContent,
+        embed:embed()&&{src:embed().src.slice(0,80),complete:embed().complete,width:embed().naturalWidth},
+        embedStatus:window.__canvasAcceptance?.embedLeaf?.view.contentEl.querySelector('.abele-canvas-embed-status')?.textContent}`)
+      )
+      shot('failure')
+    })
     run("app.commands.executeCommandById('abele:new-canvas');return true")
     await press('document.querySelector(\'[aria-label="Canvas name"]\')')
     await type('Sample diagram', '[aria-label="Canvas name"]')
@@ -265,8 +279,12 @@ describe.skipIf(!available)('shared human and agent canvas acceptance', () => {
     await until('document.activeElement?.matches(".rename-textarea")')
     await type('sample-renamed', '.rename-textarea')
     expect(run<string>('return document.activeElement.value')).toBe('sample-renamed')
+    if (onPhone()) await evalLong(RESTORE_PHONE_SCRIPT, 30_000)
     await press(
       '[...document.querySelectorAll(".mod-file-rename button")].find(el=>el.textContent==="Save")'
+    )
+    await until(
+      `!document.querySelector('.mod-file-rename') && !!app.vault.getAbstractFileByPath(${JSON.stringify(`${DIR}/sample-renamed.md`)})`
     )
     await until(
       `view().viewer.graph.nodes.some(n=>n.file===${JSON.stringify(`${DIR}/sample-renamed.md`)})`

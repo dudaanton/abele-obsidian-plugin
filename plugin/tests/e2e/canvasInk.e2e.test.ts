@@ -57,7 +57,10 @@ const press = async (expression: string) => {
   }
   await input(run<number[]>(geometry))
 }
-const click = (label: string) => press(`button(${JSON.stringify(label)})`)
+const click = async (label: string) => {
+  await until(`button(${JSON.stringify(label)}) && !button(${JSON.stringify(label)}).disabled`)
+  await press(`button(${JSON.stringify(label)})`)
+}
 const fit = async () => {
   await click('Fit diagram')
   await new Promise((r) => setTimeout(r, 350))
@@ -82,6 +85,7 @@ describe.skipIf(!available)('canvas pen with real mouse and finger input', () =>
       run(`
     if(app.vault.getAbstractFileByPath(${JSON.stringify(DIR)}))throw Error('Synthetic folder already exists')
     window.__canvasInk={layout:app.workspace.getLayout(),folder:app.vault.getConfig('attachmentFolderPath')}
+    if(!${onPhone()}){app.workspace.leftSplit.collapse();app.workspace.rightSplit.collapse()}
     await app.vault.createFolder(${JSON.stringify(DIR)});window.__canvasInk.owned=true
     app.vault.setConfig('attachmentFolderPath',${JSON.stringify(DIR)})
     await app.vault.create(${JSON.stringify(`${DIR}/sample-note.md`)},${JSON.stringify('# Sample note\n\nA linked note remains separate from its annotation.')})
@@ -106,9 +110,17 @@ describe.skipIf(!available)('canvas pen with real mouse and finger input', () =>
     await until('view()?.editor')
     await click('Canvas drawing tools')
     await click('Draw with pen')
+    await until('button("Draw with pen").getAttribute("aria-pressed")==="true"')
     await fit()
     const start = point(true)
+    expect(
+      run<boolean>(`const v=view().viewer,r=v.stage.getBoundingClientRect(),hit=document.elementFromPoint(${start[0]},${start[1]}),n=v.graph.nodes[0],c=v.camera;
+      const x=(${start[0]}-r.left)/c.zoom+c.x,y=(${start[1]}-r.top)/c.zoom+c.y;
+      return v.stage.contains(hit)&&x>n.x&&x<n.x+n.width&&y>n.y&&y<n.y+n.height`),
+      'Pen starts on the stage inside its attachment'
+    ).toBe(true)
     await input(start, [start[0] + 50, start[1] + 8])
+    await until('(await read()).nodes[0].abele?.ink?.length===1')
     await saved()
     const attached = run<{ version: number; tool: string; frame: unknown; points: number[] }[]>(
       'return (await read()).nodes[0].abele.ink'
@@ -128,6 +140,7 @@ describe.skipIf(!available)('canvas pen with real mouse and finger input', () =>
     ).toBe(true)
     shot('attached-pen')
     await click('Draw with marker')
+    await until('button("Draw with marker").getAttribute("aria-pressed")==="true"')
     const background = point(false)
     await input(background, [background[0] + 55, background[1] - 8])
     await saved()
@@ -166,6 +179,7 @@ describe.skipIf(!available)('canvas pen with real mouse and finger input', () =>
   it('interrupts drawing with a pinch without adding an accidental stroke', async () => {
     await click('Canvas drawing tools')
     await click('Draw with pen')
+    await until('button("Draw with pen").getAttribute("aria-pressed")==="true"')
     await fit()
     const before = run<string>('return await app.vault.read(app.vault.getAbstractFileByPath(path))')
     if (onPhone()) driver(['pinch', '1.3'])
@@ -173,6 +187,9 @@ describe.skipIf(!available)('canvas pen with real mouse and finger input', () =>
       await withNativeInput(() =>
         run(`
       const v=view().viewer,r=v.stage.getBoundingClientRect(),x=Math.round(r.left+r.width/2),y=Math.round(r.top+r.height/2)
+      const events=[],record=e=>events.push({type:e.type,id:e.pointerId,kind:e.pointerType,x:e.clientX,y:e.clientY})
+      for(const type of ['pointerdown','pointerup','pointercancel'])v.stage.addEventListener(type,record,true)
+      if(![x-60,x+60].every(px=>v.stage.contains(document.elementFromPoint(px,y))))throw Error('Pinch contacts are not both on the canvas stage')
       const cdp=require('@electron/remote').getCurrentWebContents().debugger,owned=!cdp.isAttached();if(owned)cdp.attach('1.3')
       try{
         const a={id:1,x:x-30,y},b={id:2,x:x+30,y}
@@ -181,9 +198,21 @@ describe.skipIf(!available)('canvas pen with real mouse and finger input', () =>
         await cdp.sendCommand('Input.dispatchTouchEvent',{type:'touchStart',touchPoints:[{...a,x:x-35},b]})
         await cdp.sendCommand('Input.dispatchTouchEvent',{type:'touchMove',touchPoints:[{...a,x:x-60},{...b,x:x+60}]})
         await cdp.sendCommand('Input.dispatchTouchEvent',{type:'touchEnd',touchPoints:[]})
-      }finally{if(owned)cdp.detach()}return true
+      }finally{
+        if(owned)cdp.detach()
+        for(const type of ['pointerdown','pointerup','pointercancel'])v.stage.removeEventListener(type,record,true)
+        console.info('Canvas pinch delivery',JSON.stringify(events))
+        window.__canvasInk.pinchEvents=events
+      }return true
     `)
       )
+    if (!onPhone())
+      expect(
+        run<number>(
+          `return new Set(window.__canvasInk.pinchEvents.filter(e=>e.type==='pointerdown'&&e.kind==='touch').map(e=>e.id)).size`
+        ),
+        'Two native touch contacts reached the stage'
+      ).toBe(2)
     expect(run<string>('return await app.vault.read(app.vault.getAbstractFileByPath(path))')).toBe(
       before
     )
