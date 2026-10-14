@@ -225,8 +225,7 @@ it('opens a recorded run as a tab of steps, a step with its values by shape, and
     await until(()=>document.querySelector('.abele-trace-value-tab')?.textContent.includes('C-100'),'whole value');
     // The text view draws only the lines on screen: the value's last contract shows at its end.
     const tab=document.querySelector('.abele-trace-value-tab');
-    for(const el of [tab,...tab.querySelectorAll('*')])if(el.scrollHeight>el.clientHeight+4)el.scrollTop=el.scrollHeight;
-    await until(()=>tab.textContent.includes('C-139'),'end of the whole value');
+    await until(()=>{for(const el of [tab.closest('.view-content'),tab,...tab.querySelectorAll('*')])if(el&&el.scrollHeight>el.clientHeight+4){el.scrollTop=el.scrollHeight;el.dispatchEvent(new Event('scroll'))}return tab.textContent.includes('C-139')},'end of the whole value');
     await shot('2026-10-14-trace-value-desktop');
     return {rows,place,values,shape:!!document.querySelector('.abele-trace-step'),whole:document.querySelector('.abele-trace-value-tab').textContent.slice(0,200)}
   })()`)
