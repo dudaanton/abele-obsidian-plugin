@@ -58,27 +58,59 @@ export async function reviewWaiting(service: ScriptService): Promise<void> {
  * Says once per version, per session, that scripts arrived that wait to be confirmed — with a
  * button that goes through them. A script only ever run by an automation or at startup would
  * otherwise just stop, with nothing on screen to say why.
+ *
+ * The notice stays until pressed, but only while something waits: confirmed or removed, the
+ * scripts it names no longer need it, and a plugin that unloads takes it along — left behind,
+ * its button would call a service that is gone. A newer arrival replaces it rather than
+ * stacking a second one, and names every script still waiting.
  */
-export function announceWaiting(service: ScriptService, announced: Set<string>): void {
-  const fresh = service.waitingScripts().filter((s) => {
-    const key = `${s.path}\0${s.hash}`
-    if (announced.has(key)) return false
-    announced.add(key)
-    return true
-  })
-  if (!fresh.length) return
-  const names = fresh.map((s) => `"${s.meta.name}"`).join(', ')
-  const message =
-    fresh.length === 1
-      ? `Script ${names} changed without being written on this device. It will not run until you confirm it here.`
-      : `${fresh.length} scripts changed without being written on this device: ${names}. They will not run until you confirm them here.`
-  // A notice lives in the main window, so the bare factories — which build there — are right.
-  const button = createEl('button', { text: 'Review', cls: 'mod-cta' })
-  const fragment = createFragment()
-  fragment.append(createDiv({ text: message }), button)
-  const notice = new Notice(fragment, 0)
-  button.addEventListener('click', () => {
-    notice.hide()
-    void reviewWaiting(service)
-  })
+export class WaitingScriptsNotice {
+  /** Versions of waiting scripts already announced this session, `path\0hash`. */
+  private readonly announced = new Set<string>()
+  private notice: Notice | null = null
+
+  constructor(private readonly service: Pick<ScriptService, 'waitingScripts' | 'reviewWaiting'>) {}
+
+  announce(): void {
+    const waiting = this.service.waitingScripts()
+    const fresh = waiting.filter((s) => {
+      const key = `${s.path}\0${s.hash}`
+      if (this.announced.has(key)) return false
+      this.announced.add(key)
+      return true
+    })
+    if (!fresh.length) return this.settle()
+    const named = this.notice ? waiting : fresh
+    const names = named.map((s) => `"${s.meta.name}"`).join(', ')
+    const message =
+      named.length === 1
+        ? `Script ${names} changed without being written on this device. It will not run until you confirm it here.`
+        : `${named.length} scripts changed without being written on this device: ${names}. They will not run until you confirm them here.`
+    this.hide()
+    // A notice lives in the main window, so the bare factories — which build there — are right.
+    const button = createEl('button', { text: 'Review', cls: 'mod-cta' })
+    const fragment = createFragment()
+    fragment.append(createDiv({ text: message }), button)
+    const notice = new Notice(fragment, 0)
+    this.notice = notice
+    button.addEventListener('click', () => {
+      this.hide()
+      void this.service.reviewWaiting()
+    })
+  }
+
+  /** Closes the notice once nothing it could review is waiting any more. */
+  settle(): void {
+    if (this.notice && !this.service.waitingScripts().length) this.hide()
+  }
+
+  hide(): void {
+    this.notice?.hide()
+    this.notice = null
+  }
+
+  /** Every waiting version may be said again, as after the confirm-everything switch. */
+  forget(): void {
+    this.announced.clear()
+  }
 }

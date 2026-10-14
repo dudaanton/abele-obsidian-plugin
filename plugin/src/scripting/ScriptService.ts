@@ -15,7 +15,7 @@ import type { ParsedScript, FormField } from './types'
 import { isScriptPath, isInScriptsFolder } from './scriptPath'
 import { ScriptTrust, ScriptWaitingError, sha256, noteLocalScriptWrite } from './ScriptTrust'
 import type { TrustedFile, TrustVerdict } from './trustState'
-import { announceWaiting, reviewOne, reviewWaiting } from './scriptReview'
+import { WaitingScriptsNotice, reviewOne, reviewWaiting } from './scriptReview'
 
 import './selectionContext'
 import { type SelectionLaunchTarget, type SelectionLaunchOutcome } from './runFromSelection'
@@ -71,8 +71,8 @@ export class ScriptService {
   private markReady: () => void = () => {}
   /** Whether the index has been read at least once; an unread index arms nothing. */
   private indexed = false
-  /** Versions of waiting scripts already announced this session, `path\0hash`. */
-  private readonly announced = new Set<string>()
+  /** Says that scripts from elsewhere wait, while they do. */
+  private readonly waitingNotice = new WaitingScriptsNotice(this)
 
   private constructor() {
     this.ready = this.resetReady()
@@ -192,6 +192,7 @@ export class ScriptService {
 
   private cleanup() {
     this.disposed = true
+    this.waitingNotice.hide()
     this.discoverAgain = false
     this.markReady()
     this.toolbar?.stop()
@@ -342,7 +343,7 @@ export class ScriptService {
     this.scriptList.value = Array.from(this.scripts.values())
     this.indexed = true
     ScriptTrust.getInstance().sync(this.trustedFiles())
-    announceWaiting(this, this.announced)
+    this.waitingNotice.announce()
   }
 
   // ── Scripts from elsewhere ──
@@ -375,7 +376,8 @@ export class ScriptService {
     if (on && this.indexed) trust.arm(this.trustedFiles())
     else if (on) trust.allowArming()
     else trust.disarm()
-    this.announced.clear()
+    this.waitingNotice.forget()
+    this.waitingNotice.settle()
   }
 
   /** Vouches for exactly this version — the one shown, the one that runs. */
@@ -386,6 +388,7 @@ export class ScriptService {
       hash: script.hash,
       text: script.source ?? '',
     })
+    this.waitingNotice.settle()
   }
 
   /** Shows a script from elsewhere for review; true once this version is confirmed. */
