@@ -907,6 +907,40 @@ start a new parent model turn; use status to read them into model context. Owner
 cancels active delegations and blocks further controller access. Grants/task links/mailbox
 cursors are device/node-side, not transferable settings or synced secrets.
 
+## Recorded runs
+
+`trace_runs`, `trace_timeline`, `trace_shape`, `trace_slice`, `trace_diff`, `trace_find`,
+`trace_follow`, `trace_mark`, `trace_point_add`, `trace_note`.
+
+A run is what the debugger recorded while a record point was set: a record point is a
+breakpoint that takes named values whole each time the program passes and lets it go on. The
+run lives on the node; these tools read it a little at a time from the debug session open in
+the Debug panel, and say so when there is none. Each answer stops at 80 lines or 6 KB, which no
+parameter lifts, and says where to continue. There is no tool that returns a run or a value
+whole.
+
+- `trace_runs` lists the project's runs, newest first. Every other tool reads the newest run
+  unless given `run`.
+- `trace_timeline` lists steps: id (`t0042`), time from the start, kind, label, place in the
+  code, and each value as `name=brief [bytes]`, `=same` when unchanged since the last time,
+  `✕` when it could not be taken. `from` continues; `kind` filters.
+- `trace_shape(step, name)` gives a value's keys, types, list lengths, optional keys and one
+  example per leaf, an XML element tree with counts. Read it before slicing.
+- `trace_slice(step, name, path)` is the only way to see the data: a JSON path such as
+  `$.items[7].id` or `$.items[*].amount`, `L10-L40` for XML or text, `$` for the start.
+- `trace_diff(step, name)` compares with the same name at the step before, or with
+  `against_step`/`against_name`: a summary, then changes grouped over list elements.
+- `trace_find(value | key)` finds where a value or key occurs across the run; `loose` matches a
+  number written as a string. `trace_follow(value)` gives one value's trail: each step, its path,
+  where its path or type changed, where it was last seen.
+- `trace_mark(step, name?, path?, comment, tags?)` marks something for the person; the tag
+  `question` puts it among the questions of a note about the run. Asks first by default.
+- `trace_point_add(file, line, take, when?, note?)` sets a record point on a line of a file
+  the person opened from the node in this session; the next launch records. Asks first.
+- `trace_note(run?)` writes a note about the run into the folder named in Settings → Nodes
+  (see [Vault](vault)) and answers with its path. Write your own account of the flow under its
+  last heading with ordinary file tools, citing steps and paths as `t0042 · result · $.items[7]`.
+
 ## Scripts
 
 `create_script`, `answer_form`, plus one tool per script the vault has, named `script_<name>`.

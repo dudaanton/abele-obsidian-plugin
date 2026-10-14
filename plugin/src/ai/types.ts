@@ -474,6 +474,23 @@ export const CANVAS_TOOL_MODES: Record<string, ToolMode> = {
   canvas_export: 'ask',
 }
 
+/**
+ * The tools over runs the debugger recorded: reading a run's bounded views is on its own; a mark,
+ * a record point and a note about a run ask first, as editing a note does.
+ */
+export const TRACE_TOOL_MODES: Record<string, ToolMode> = {
+  trace_runs: 'auto',
+  trace_timeline: 'auto',
+  trace_shape: 'auto',
+  trace_slice: 'auto',
+  trace_diff: 'auto',
+  trace_find: 'auto',
+  trace_follow: 'auto',
+  trace_mark: 'ask',
+  trace_point_add: 'ask',
+  trace_note: 'ask',
+}
+
 /** Personal device data: ask before every request unless the person chooses another mode. */
 export const LOCATION_TOOL_MODES: Record<string, ToolMode> = { current_location: 'ask' }
 
@@ -510,6 +527,7 @@ export const DEFAULT_AI_SETTINGS: AiSettings = {
     ...DOCX_TOOL_MODES,
     ...XLSX_TOOL_MODES,
     ...CANVAS_TOOL_MODES,
+    ...TRACE_TOOL_MODES,
   },
   scriptsEnabled: false,
   scriptsFolder: '',

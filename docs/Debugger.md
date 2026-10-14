@@ -75,3 +75,35 @@ reveals to the file tab. The handler receives the mapped node source and line,
 returns whether it handled the request, and its registration returns a disposer.
 Unknown source mappings produce an unavailable-source message, never an arbitrary
 filesystem read. Dispose both registrations when the host closes.
+
+## Recording a run
+
+Where the node advertises `trace_v1`, a breakpoint can be a **record point**: right-click a
+line's margin and choose *Add record point*, then name what to take under the line (names in
+scope, offered from the line, or expressions written `expression as name`), an optional
+condition and a note. A record point is a diamond in the margin; pressing it opens its setup
+again, and its right-click menu turns it back into a breakpoint or removes it. An empty list
+takes the frame's variables.
+
+There is no record button. Whenever a session has a record point, the program is recorded: each
+time it passes a record point the node takes the named values **whole**, writes a step and lets
+the program go on. Ordinary breakpoints still stop. Stopping the program keeps the run. Before
+the first record point of a project the plugin asks where runs go on the node's disk (by
+default `.abele/runs` in the project); the folder row in the panel's *Recording* group changes
+it later.
+
+The panel shows a *Recording* group while a run is written (how long, how many steps, the
+folder) and a *Runs* group with the project's runs; a breakpoint row says how often its record
+point fired in the newest run. A run opens as a tab of the main area: steps on the left by time,
+the picked step on the right with its place in the code, its stack and each value by shape,
+with what changed since the last time. *Open whole* opens a value in a tab of its own, as its
+shape, its whole text or its changes. A value can be followed through the run and anything can
+be marked. A run's menu renames or deletes it; deleting asks first.
+
+*Write a note about this run* in a run's tab writes a note into the folder set in Settings →
+Nodes (*Notes about recorded runs*); its links open the values on the node. The agent reads runs
+with the `trace_*` tools, each answer bounded, and can write the same note.
+
+Not yet: recording without stopping the program, the browser's requests on the same timeline,
+links the node suggests between steps, comparing runs, and marks written in a note going back
+into the run.

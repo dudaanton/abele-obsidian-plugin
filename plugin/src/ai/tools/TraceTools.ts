@@ -1,0 +1,360 @@
+// Tools over a run the debugger recorded, for the agent to read it a little at a time. The run
+// lives on the node; every answer is one of its bounded views, at the agent's ceiling (80 lines,
+// 6 KB), which no parameter lifts. There is no tool that shows a run or a value whole.
+import type { AgentTool, AgentToolResult } from '../client'
+import type { TraceRpc, WireStep } from '@/debugger/trace/wire'
+import type { PointEdit } from '@/debugger/trace/TraceSession'
+
+export const TRACE_AGENT_LINES = 80
+export const TRACE_AGENT_BYTES = 6 * 1024
+
+/** The recording the tools read: the open debugger session's, by default. */
+export interface TraceToolContext {
+  rpc: TraceRpc
+  projectId: string
+  registrationId: string
+  /** The newest run first. */
+  runs(): Promise<{ id: string; name: string; steps: number; state: string }[]>
+  addPoint(file: string, line: number, edit: PointEdit): Promise<void>
+  writeNote(runId: string): Promise<string>
+}
+
+const text = (t: string): AgentToolResult => ({ content: [{ type: 'text', text: t }] })
+
+/** Lines under the agent's ceiling, saying where to go on when it stops. */
+function bounded(lines: string[], from = 0, unit = 'from'): string {
+  const out: string[] = []
+  let bytes = 0
+  let i = 0
+  for (; i < lines.length && out.length < TRACE_AGENT_LINES; i++) {
+    const size = Buffer.byteLength(lines[i]!) + 1
+    if (bytes + size > TRACE_AGENT_BYTES && out.length) break
+    out.push(lines[i]!.slice(0, TRACE_AGENT_BYTES))
+    bytes += size
+  }
+  if (i < lines.length) out.push(`… cut at the limit; call again with ${unit}: ${from + i}`)
+  return out.join('\n')
+}
+
+const str = (v: unknown) => (typeof v === 'string' ? v : undefined)
+const num = (v: unknown) => (typeof v === 'number' && Number.isFinite(v) ? v : undefined)
+
+const stepLine = (s: WireStep) =>
+  [
+    s.id,
+    `+${(s.at / 1000).toFixed(2)}s`,
+    s.kind,
+    JSON.stringify(s.label),
+    s.place ? `${s.place.file}:${s.place.line}` : (s.host ?? ''),
+    s.values
+      .map((v) =>
+        v.failed
+          ? `${v.name}=✕(${v.failed})`
+          : v.same
+            ? `${v.name}=same`
+            : `${v.name}=${v.brief} [${v.bytes} B]`
+      )
+      .join('; '),
+    s.marked ? 'marked' : '',
+  ]
+    .filter(Boolean)
+    .join(' · ')
+
+const RUN = { type: 'string', description: 'Run id from trace_runs; the newest run if omitted.' }
+const STEP = { type: 'string', description: 'Step id, e.g. t0042.' }
+const NAME = { type: 'string', description: 'The value name at that step, e.g. result.' }
+
+export function createTraceTools(resolve: () => TraceToolContext | undefined): AgentTool[] {
+  const context = () => {
+    const c = resolve()
+    if (!c)
+      throw new Error(
+        'No debugger session that records runs is open. Ask the person to open Debug from a node chat.'
+      )
+    return c
+  }
+  const runOf = async (c: TraceToolContext, params: Record<string, unknown>) => {
+    const asked = str(params.run)
+    if (asked) return asked
+    const newest = (await c.runs())[0]
+    if (!newest) throw new Error('No runs recorded in this project yet.')
+    return newest.id
+  }
+  const tool = (
+    name: string,
+    label: string,
+    description: string,
+    properties: Record<string, unknown>,
+    required: string[],
+    run: (c: TraceToolContext, p: Record<string, unknown>) => Promise<string>
+  ): AgentTool => ({
+    name,
+    label,
+    category: 'Nodes',
+    description,
+    parameters: { type: 'object', properties, required, additionalProperties: false },
+    execute: async (_id, params) => text(await run(context(), params)),
+  })
+
+  return [
+    tool(
+      'trace_runs',
+      'Recorded runs',
+      'List the runs the debugger recorded in the open debug session’s project, newest first: id, name, steps, state (recording, done, cut). Read-only.',
+      {},
+      [],
+      async (c) => {
+        const runs = await c.runs()
+        return runs.length
+          ? bounded(
+              runs.map((r) => `${r.id} · ${JSON.stringify(r.name)} · ${r.steps} steps · ${r.state}`)
+            )
+          : 'No runs recorded in this project yet. A run is recorded while a record point is set.'
+      }
+    ),
+    tool(
+      'trace_timeline',
+      'Run timeline',
+      'The steps of a recorded run in time: id, time from the start, kind, label, place in the code, each value as name=brief [bytes] (=same when unchanged since the last time, ✕ when it could not be taken). At most 80 lines; continue with from. Read-only.',
+      {
+        run: RUN,
+        from: { type: 'number', description: 'Step index to start at (0-based).' },
+        kind: {
+          type: 'string',
+          enum: ['probe', 'error', 'http', 'browser-lost'],
+          description: 'Only steps of this kind.',
+        },
+      },
+      [],
+      async (c, p) => {
+        const run = await runOf(c, p)
+        const from = Math.max(0, Math.floor(num(p.from) ?? 0))
+        const page = await c.rpc.run(c.projectId, run, from, TRACE_AGENT_LINES)
+        const kind = str(p.kind)
+        const steps = kind ? page.steps.filter((s) => s.kind === kind) : page.steps
+        const head = `${page.run.name} · ${page.run.steps} steps · ${page.run.state}`
+        const body = bounded(steps.map(stepLine), from)
+        return `${head}\n${body}${page.next !== undefined && !body.includes('call again') ? `\n… more steps; call again with from: ${page.next}` : ''}`
+      }
+    ),
+    tool(
+      'trace_shape',
+      'Value shape',
+      'The shape of one recorded value: keys, types, list lengths, optional keys, one example per leaf; for XML the element tree with counts. Use it before trace_slice to find a path. Read-only.',
+      { run: RUN, step: STEP, name: NAME },
+      ['step', 'name'],
+      async (c, p) => {
+        const r = await c.rpc.value(
+          c.projectId,
+          await runOf(c, p),
+          String(p.step),
+          String(p.name),
+          'shape',
+          {
+            cap: 'agent',
+          }
+        )
+        const lines: string[] = [
+          `${r.value.name} · ${r.value.format} · ${r.value.bytes} B · ${r.value.brief}`,
+        ]
+        const walk = (n: NonNullable<typeof r.shape>, depth: number) => {
+          lines.push(
+            `${'  '.repeat(depth)}${n.key ?? '$'}: ${n.type}${n.count !== undefined ? ` (${n.count})` : ''}${n.optional ? ' optional' : ''}${n.example ? ` e.g. ${n.example}` : ''}`
+          )
+          for (const ch of n.children ?? []) walk(ch, depth + 1)
+        }
+        if (r.shape) walk(r.shape, 0)
+        return bounded(lines)
+      }
+    ),
+    tool(
+      'trace_slice',
+      'Value slice',
+      'The data of one recorded value at a path, formatted: JSON paths like $.items[7].id or $.items[*].amount, XML and text by lines L10-L40, $ for the start. The only way to see the data itself; at most 80 lines or 6 KB, continue with from. Read-only.',
+      {
+        run: RUN,
+        step: STEP,
+        name: NAME,
+        path: {
+          type: 'string',
+          description: 'JSON path, or L<from>-L<to> for XML/text; $ for the start.',
+        },
+        from: { type: 'number', description: 'Line of the slice to continue from.' },
+      },
+      ['step', 'name', 'path'],
+      async (c, p) => {
+        const from = Math.max(0, Math.floor(num(p.from) ?? 0))
+        const r = await c.rpc.value(
+          c.projectId,
+          await runOf(c, p),
+          String(p.step),
+          String(p.name),
+          'slice',
+          {
+            path: String(p.path),
+            from,
+            cap: 'agent',
+          }
+        )
+        const page = r.page
+        if (!page) return 'Nothing at that path.'
+        return `${page.lines.join('\n')}${page.next !== undefined ? `\n… cut at the limit; call again with from: ${page.next} (of ${page.total} lines)` : ''}`
+      }
+    ),
+    tool(
+      'trace_diff',
+      'Value changes',
+      'What changed in a recorded value: against the same name at the step before by default, or against another step and name. A summary line, then changes grouped over list elements (added, removed, changed type, changed value) with counts. Read-only.',
+      {
+        run: RUN,
+        step: STEP,
+        name: NAME,
+        against_step: {
+          type: 'string',
+          description: 'Compare with this step instead of the one before.',
+        },
+        against_name: {
+          type: 'string',
+          description: 'The value name at against_step; the same name if omitted.',
+        },
+      },
+      ['step', 'name'],
+      async (c, p) => {
+        const against = str(p.against_step)
+          ? { step: String(p.against_step), name: str(p.against_name) ?? String(p.name) }
+          : undefined
+        const r = await c.rpc.value(
+          c.projectId,
+          await runOf(c, p),
+          String(p.step),
+          String(p.name),
+          'changes',
+          {
+            ...(against ? { against } : {}),
+            cap: 'agent',
+          }
+        )
+        const ch = r.changes
+        if (!ch) return 'Nothing to compare with.'
+        return bounded([
+          `against ${ch.against.step} ${ch.against.name}: ${ch.summary}`,
+          ...ch.changes.map(
+            (x) =>
+              `${x.kind} ${x.path}${x.before !== undefined || x.after !== undefined ? `: ${x.before ?? ''} → ${x.after ?? ''}` : ''}${x.count > 1 ? ` in ${x.count} places` : ''}`
+          ),
+        ])
+      }
+    ),
+    tool(
+      'trace_find',
+      'Find in run',
+      'Where a value or a key occurs across every value of a recorded run: step, value name, path. loose matches a number and the same number written as a string. Read-only.',
+      {
+        run: RUN,
+        value: { type: ['string', 'number', 'boolean'], description: 'The value to look for.' },
+        key: { type: 'string', description: 'A key name to look for instead of a value.' },
+        loose: { type: 'boolean' },
+      },
+      [],
+      async (c, p) => {
+        const value = p.value as string | number | boolean | undefined
+        const key = str(p.key)
+        if (value === undefined && !key) throw new Error('Give a value or a key to look for.')
+        const hits = await c.rpc.find(c.projectId, await runOf(c, p), {
+          ...(value !== undefined ? { value } : {}),
+          ...(key ? { key } : {}),
+          ...(p.loose === true ? { loose: true } : {}),
+        })
+        return hits.length
+          ? bounded(hits.map((h) => `${h.step} · ${h.name} · ${h.path}`))
+          : 'Not found in this run.'
+      }
+    ),
+    tool(
+      'trace_follow',
+      'Follow a value',
+      'The trail of one value through a recorded run: each step where it appears, its path there, and where its path or type changed; where it was last seen. Read-only.',
+      { run: RUN, value: { type: ['string', 'number', 'boolean'] } },
+      ['value'],
+      async (c, p) => {
+        const t = await c.rpc.follow(
+          c.projectId,
+          await runOf(c, p),
+          p.value as string | number | boolean
+        )
+        if (!t.stops.length) return 'Not seen in this run.'
+        return bounded([
+          ...t.stops.map(
+            (s) => `${s.step} · ${s.name} · ${s.path}${s.change ? ` · ${s.change}` : ''}`
+          ),
+          ...(t.lost_after ? [`not seen after ${t.lost_after}`] : []),
+        ])
+      }
+    ),
+    tool(
+      'trace_mark',
+      'Mark in run',
+      'Mark a step, a value or a path in a recorded run with a comment, for the person and for a note about the run. Tag question to put it among the note’s questions.',
+      {
+        run: RUN,
+        step: STEP,
+        name: NAME,
+        path: { type: 'string' },
+        comment: { type: 'string' },
+        tags: { type: 'array', items: { type: 'string' } },
+      },
+      ['step', 'comment'],
+      async (c, p) => {
+        const run = await runOf(c, p)
+        await c.rpc.mark(c.projectId, run, {
+          step: String(p.step),
+          ...(str(p.name) ? { name: String(p.name) } : {}),
+          ...(str(p.path) ? { path: String(p.path) } : {}),
+          comment: String(p.comment),
+          ...(Array.isArray(p.tags)
+            ? { tags: p.tags.filter((t): t is string => typeof t === 'string') }
+            : {}),
+        })
+        return `Marked ${p.step}${str(p.name) ? ` ${p.name}` : ''}${str(p.path) ? ` ${p.path}` : ''}.`
+      }
+    ),
+    tool(
+      'trace_point_add',
+      'Add record point',
+      'Set a record point in the open debug session: on a line of a source file open from the node, take the named values (names in scope or expressions, `expr as name`) each time the program passes and let it go on. The next launch records a run. Optional when (condition) and note (why the point is there).',
+      {
+        file: { type: 'string', description: 'The source path as the debugger shows it.' },
+        line: { type: 'number' },
+        take: {
+          type: 'array',
+          items: { type: 'string' },
+          description: 'Empty takes the frame’s variables.',
+        },
+        when: { type: 'string' },
+        note: { type: 'string' },
+      },
+      ['file', 'line', 'take'],
+      async (c, p) => {
+        const take = Array.isArray(p.take)
+          ? p.take.filter((t): t is string => typeof t === 'string')
+          : []
+        const line = Math.floor(num(p.line) ?? 0)
+        if (line < 1) throw new Error('line must be a positive line number')
+        await c.addPoint(String(p.file), line, {
+          take,
+          ...(str(p.when) ? { when: String(p.when) } : {}),
+          ...(str(p.note) ? { note: String(p.note) } : {}),
+        })
+        return `Record point set at ${p.file}:${line}, taking ${take.length ? take.join(', ') : 'the frame’s variables'}.`
+      }
+    ),
+    tool(
+      'trace_note',
+      'Note about a run',
+      'Write a note about a recorded run into the vault folder the settings name: record points, the timeline, each step’s values with their shape and first lines, marks and questions, each linked to the whole value on the node. Answers with the note’s path; add your account of the flow under its last heading.',
+      { run: RUN },
+      [],
+      async (c, p) => `Note written: ${await c.writeNote(await runOf(c, p))}`
+    ),
+  ]
+}

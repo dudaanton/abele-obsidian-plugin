@@ -312,6 +312,16 @@ export class DebuggerService {
         binding.controller.registerSource(id, mapping.path)
     }
   }
+  /** The source a file of this session is known by, from the node file tab that opened it. */
+  sourceFor(binding: DebuggerBinding, file: string) {
+    const sources = this.sources.get(this.key(binding.registrationId, binding.conversationId))
+    return [...(sources ?? [])].find(
+      ([id, mapping]) =>
+        mapping.debugSessionId === binding.sessionId &&
+        mapping.incarnation === binding.controller.snapshot?.incarnation &&
+        (id === file || mapping.path === file)
+    )?.[0]
+  }
   reveal(binding: DebuggerBinding, file: string, line: number) {
     const sources = this.sources.get(this.key(binding.registrationId, binding.conversationId))
     const source = [...(sources ?? [])].find(

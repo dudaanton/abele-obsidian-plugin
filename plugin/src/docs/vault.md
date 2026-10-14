@@ -736,6 +736,21 @@ An existing vault file is reused without making a duplicate. A notice explains t
 conversion is available on iPhone/iPad. Chat attachments store the resulting file's vault
 path, not base64 bytes or a temporary system path.
 
+## Notes about recorded runs
+
+A run the debugger recorded stays on the node, in a folder on its disk (by default `.abele/runs`
+in the project, which ignores itself in git). Nothing of it is synced. A note about a run is
+written only when asked, by the person from the run's tab or by an agent with `trace_note`, into
+the vault folder `traceNotesFolder` (Settings → Nodes, default `Trace`; it travels with the
+other settings). A note already there is never overwritten: the next one gets a number.
+
+The note holds the record points, the timeline, for the first 50 steps each value's shape and
+first lines in a folded callout, the marks and the questions, and an empty last heading for an
+account of the flow. Recorded text is written as text, never as markup. Each step and value
+links to the whole of it on the node as `obsidian://abele-trace?node=…&project=…&run=…&step=…&name=…&path=…`;
+the link opens a tab while the node is reachable and says the node is away when it is not.
+Marks written by hand into the note do not go back into the run.
+
 ## Naming notes
 
 A note's name cannot carry `* " \ / < > : | ?` — Obsidian refuses those itself — nor `#`, `^`,

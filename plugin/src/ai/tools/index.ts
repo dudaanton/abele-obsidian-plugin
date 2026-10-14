@@ -47,6 +47,8 @@ import { createRememberTool } from './RememberTool'
 import { createForgetTool } from './ForgetTool'
 import { createGithubTools } from './github'
 import { createNodeTools } from './node'
+import { createTraceTools } from './TraceTools'
+import { activeTraceContext } from '@/debugger/trace/agentContext'
 import { createBookTools } from './BookTools'
 import { createDeckTools } from './DeckTools'
 import { createDocxTools } from './DocxTools'
@@ -345,6 +347,8 @@ function buildAgentTools(options: AgentToolsOptions = {}, everything = false): A
   tools.push(...createXlsxTools())
   tools.push(...createCanvasTools())
   tools.push(...createNodeTools(undefined, options.nodeRepositoryApproval))
+  // A run the debugger recorded, read a little at a time; only while a session records runs.
+  tools.push(...createTraceTools(activeTraceContext))
 
   // Read-only, and only while the integration is on: with it off there is no GitHub to read.
   if (everything || githubSettings().enabled)

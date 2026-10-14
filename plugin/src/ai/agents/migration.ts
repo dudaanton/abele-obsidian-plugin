@@ -5,6 +5,7 @@ import {
   DOCX_TOOL_MODES,
   XLSX_TOOL_MODES,
   CANVAS_TOOL_MODES,
+  TRACE_TOOL_MODES,
   LINT_TOOL_MODES,
   LOCATION_TOOL_MODES,
   ANALYTICS_TOOL_MODES,
@@ -220,6 +221,19 @@ function enableCanvasTools(ai: AiSettings): boolean {
   return changed
 }
 
+/** Add the recorded-run tools to older agents, retaining every explicit Off/Ask/On choice. */
+function enableTraceTools(ai: AiSettings): boolean {
+  let changed = false
+  for (const agent of ai.agents || []) {
+    for (const [tool, mode] of Object.entries(TRACE_TOOL_MODES)) {
+      if (agent.toolModes[tool] !== undefined) continue
+      agent.toolModes[tool] = mode
+      changed = true
+    }
+  }
+  return changed
+}
+
 /** Add book/Word modes only when an older agent has no explicit choice. */
 function enableBookTools(ai: AiSettings): boolean {
   let changed = false
@@ -353,6 +367,7 @@ export function migrateAgents(ai: AiSettings): boolean {
   const github = enableGithubTools(ai)
   const books = enableBookTools(ai)
   const canvas = enableCanvasTools(ai)
+  const trace = enableTraceTools(ai)
   const lint = enableLintTools(ai)
   const analytics = enableAnalyticsTools(ai)
   const location = enableLocationTool(ai)
@@ -366,6 +381,7 @@ export function migrateAgents(ai: AiSettings): boolean {
     github ||
     books ||
     canvas ||
+    trace ||
     lint ||
     analytics ||
     location ||
