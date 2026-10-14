@@ -697,6 +697,12 @@ const probeScript = `(async () => {
     // Skills and prompts now live in the composer. Measure their long lists there,
     // and reach the final option without choosing it or invoking a provider.
     {
+      // The list is looked at where the person sees it: the chat in sight again after the
+      // setup dialog, not a composer left behind a closed drawer.
+      await window.__abeleTest.ChatService.getInstance().revealSidebar({ focus: false })
+      if (!(await until(() => [...document.querySelectorAll('.abele-ai-chat')].some(el => el.getBoundingClientRect().height > 0), 5000)))
+        throw new Error('Chat not in sight for the composer choices')
+      const chat = [...document.querySelectorAll('.abele-ai-chat')].find(el => el.getBoundingClientRect().height > 0)
       const draft = window.__abeleTest.ChatService.getInstance().activeSession.value.draft.value
       const previous = draft.text
       try {
@@ -708,7 +714,12 @@ const probeScript = `(async () => {
           if (!(await until(() => {
             const options = [...chat.querySelectorAll('.abele-chat-slash .suggestion-item')]
             return options.length === count && options.every(option => option.querySelector('.suggestion-title')?.textContent.toLowerCase().includes(query.slice(1).toLowerCase()))
-          }, 5000))) throw new Error('Composer choices did not settle: ' + label)
+          }, 5000))) throw new Error('Composer choices did not settle: ' + label + ' — ' + JSON.stringify({
+            text: draft.text,
+            field: chat.querySelector('.abele-chat-input .cm-content')?.textContent ?? null,
+            titles: [...chat.querySelectorAll('.abele-chat-slash .suggestion-title')].map(el => el.textContent),
+            seeded: app.vault.getMarkdownFiles().filter(f => f.basename.startsWith('probe-skill-')).length,
+          }))
           const list = chat.querySelector('.abele-chat-slash')
           if (!list) throw new Error('Composer choices did not open: ' + label)
           list.scrollTop = list.scrollHeight
@@ -1361,10 +1372,13 @@ const probeScript = `(async () => {
         // fixtures whose completion waits for the user to close them.
         if (['node-files', 'node-diffs', 'node-review', 'node-history'].includes(dialogName)) await fixtureCompletion
         fixtureCompletion?.catch(error => { openingError = error })
-        if (!(await until(() => openingError || document.querySelector('.modal.abele-modal'), 5000))) throw new Error('did not open')
+        // A fixture may be one of Obsidian's own prompts (the choice of a chat tab to close is
+        // the quick switcher's list): it is measured the same way as the dialog shell.
+        const opened = () => document.querySelector('.modal.abele-modal, .modal-container > .prompt[data-abele-fixture="' + dialogName + '"]')
+        if (!(await until(() => openingError || opened(), 5000))) throw new Error('did not open')
         if (openingError) throw openingError
         await wait(300)
-        const modal = document.querySelector('.modal.abele-modal')
+        const modal = opened()
         if (dialogName === 'github-connections') {
           // Show the long connection rows, not the unrelated general settings above them.
           const heading = [...modal.querySelectorAll('.abele-section__heading')].find(el => el.textContent === 'Connections')
@@ -1525,7 +1539,12 @@ const probeScript = `(async () => {
         if (restoreRecipients || fixtureCompletion) {
           const entry = report[label] ??= { over: [], scrollers: [], capped: [], clipped: [], fill: 0, shot: '', error: '' }
           const closeOwnedFixture = async () => {
-            if (document.querySelector('.modal[data-abele-fixture="' + dialogName + '"]')) await closeDialog()
+            const owned = document.querySelector('.modal[data-abele-fixture="' + dialogName + '"], .modal-container > .prompt[data-abele-fixture="' + dialogName + '"]')
+            if (!owned) return
+            await closeDialog()
+            // A native prompt is dismissed by a press outside it, as on a phone.
+            if (owned.isConnected) owned.parentElement?.querySelector('.modal-bg')?.click()
+            if (!(await until(() => !owned.isConnected, 3000))) throw new Error('fixture ' + dialogName + ' did not close')
           }
           // The next inventory entry cannot mutate state until this restoration and its
           // verification have settled; rejected cleanup is part of this entry's failure.

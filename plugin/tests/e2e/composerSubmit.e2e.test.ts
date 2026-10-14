@@ -169,7 +169,10 @@ describe.skipIf(!available)('composer send with a phone keyboard', () => {
     evalRaw(`(() => {
       const field = window.__abeleTest.composer().field
       const input = field.closest('.abele-chat-input')
-      input.querySelector('.abele-chat-input__toolbar-right [data-keeps-focus]').click()
+      // Send by its own class: the expand toggle beside it keeps the field's focus too.
+      const send = input.querySelector('.abele-chat-input__send')
+      if (!send) throw new Error('No Send button in the composer')
+      send.click()
       return 'sent'
     })()`)
     await pause()

@@ -215,8 +215,26 @@ const desktopScript = `(async () => {
       // \`svg.lucide-<name>\` — there is no attribute naming the icon in the running app.
       const icon = (name) => !!chat.querySelector('.abele-ai-chat__header-actions .lucide-' + name)
       report.backToNoteVisible = icon('corner-up-left')
-      report.openAsChatVisible = icon('messages-square')
       report.noteButtonVisible = !!chat.querySelector('.abele-chat-input .lucide-sticky-note')
+      // The way up into a full chat is in the header's ⋯, as everything else the chat is set
+      // up with: Obsidian's own menu, opened the way a press opens it, and closed again.
+      const more = chat.querySelector('.abele-ai-chat__header-actions [aria-label="More chat actions"]')
+      if (more) {
+        more.click()
+        const promote = () =>
+          [...document.querySelectorAll('.menu .menu-item')].find((item) =>
+            (item.querySelector('.menu-item-title')?.textContent ?? '')
+              .trim()
+              .startsWith('Turn this comment into an ordinary chat')
+          )
+        report.openAsChatVisible = await until(promote, 3000)
+        const escape = new KeyboardEvent('keydown', { key: 'Escape', code: 'Escape', bubbles: true, cancelable: true })
+        Object.defineProperty(escape, 'keyCode', { value: 27 })
+        document.body.dispatchEvent(escape)
+        if (!(await until(() => !document.querySelector('.menu'), 2000)))
+          document.body.dispatchEvent(new MouseEvent('mousedown', { bubbles: true }))
+        await until(() => !document.querySelector('.menu'), 2000)
+      }
     }
 
     // A second comment, on another passage: its marker replaces the tab rather than adding one.

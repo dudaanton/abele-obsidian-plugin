@@ -145,7 +145,7 @@ const probeLib = `(() => {
       const c = composer()
       const input = chat.querySelector('.abele-chat-input')
       const messages = chat.querySelector('.abele-ai-chat__messages')
-      const send = [...chat.querySelectorAll('.abele-chat-input__toolbar-right [data-keeps-focus]')].at(-1)
+      const send = chat.querySelector('.abele-chat-input__send')
       const bar = document.querySelector('.mobile-toolbar')
       const barRect = bar && bar.getBoundingClientRect()
       const view = window.__abeleTest.noteFieldView(c.field)
@@ -199,10 +199,13 @@ const probeLib = `(() => {
     // The chat's own commands start with a slash. Obsidian's core slash-command plugin, when it
     // is on, offers its commands on a slash in a note; over the chat's it offered the wrong ones,
     // and Enter picked one of them. Switched on for the probe, and back as it was.
+    // The chat draws its own list of commands, skills and prompts in Obsidian's suggestion
+    // classes, marked abele-chat-slash: that one is expected, Obsidian's is not.
     async slash() {
       const core = app.internalPlugins.getPluginById('slash-command')
       const wasOn = !!core?.enabled
-      if (!core) return { core: false, open: true, noteOpen: false }
+      if (!core) return { core: false, open: true, noteOpen: false, chatOpen: false }
+      const native = () => document.querySelector('.suggestion-container:not(.abele-chat-slash) .suggestion-item')
       if (!wasOn) await core.enable(true)
       const c = composer()
       const view = window.__abeleTest.noteFieldView(c.field)
@@ -213,11 +216,12 @@ const probeLib = `(() => {
         target.dispatch({ changes: { from: 0, to: target.state.doc.length, insert: text }, selection: { anchor: text.length }, userEvent: 'input.type' })
         await wait(300)
         const owner = app.workspace.activeEditor
-        if (!document.querySelector('.suggestion-container') && owner && owner.editor)
+        if (!native() && owner && owner.editor)
           app.workspace.editorSuggest.trigger(owner.editor, owner.file ?? null, true)
-        return !!(await until(() => document.querySelector('.suggestion-container .suggestion-item'), 1500))
+        return !!(await until(native, 1500))
       }
       const open = await typeSlash(view, '/comp')
+      const chatOpen = !!chatEl().querySelector('.abele-chat-slash .suggestion-item')
       app.workspace.editorSuggest.close?.()
       view.dispatch({ changes: { from: 0, to: view.state.doc.length, insert: before } })
       delete view.hasFocus
@@ -245,7 +249,7 @@ const probeLib = `(() => {
         if (left) await app.vault.delete(left)
         if (!wasOn) await core.disable(true)
       }
-      return { core: true, open, noteOpen }
+      return { core: true, open, noteOpen, chatOpen }
     },
 
     // A file pasted, then one dropped, onto the editor: each becomes an attachment of the
@@ -387,7 +391,7 @@ describe.skipIf(!available)('the chat composer, opened out', () => {
   let suggest: { open: boolean; activeIsComposer: boolean }
   let attached: { chips: number; textUnchanged: boolean; files: number }
   let nativePaste: { chips: number; textUnchanged: boolean; files: number }
-  let slash: { core: boolean; open: boolean; noteOpen: boolean }
+  let slash: { core: boolean; open: boolean; noteOpen: boolean; chatOpen: boolean }
   let closedAgain: Measure
   let sent: { requests: string[] }
   let afterSend: Measure
@@ -463,6 +467,8 @@ describe.skipIf(!available)('the chat composer, opened out', () => {
     // In a note the same probe does see Obsidian's list, so the one below is not a blind spot.
     expect(slash.noteOpen).toBe(true)
     expect(slash.open).toBe(false)
+    // What is offered over the chat is its own list, the one Enter picks from there.
+    expect(slash.chatOpen).toBe(true)
   })
 
   it('takes a pasted and a dropped file as attachments, not as text', () => {

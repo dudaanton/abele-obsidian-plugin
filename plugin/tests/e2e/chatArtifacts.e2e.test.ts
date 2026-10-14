@@ -198,7 +198,7 @@ describe.skipIf(!available)('one view of a chat’s artifacts', () => {
         observations.sourceVisible = sourceVisible()
         observations.sourceShot = await capture('source')
         return JSON.stringify({ ...observations, cuts, over })
-      } catch (error) { return JSON.stringify({ error: String(error) + (error && error.stack ? '\n' + error.stack : ''), observations }) }
+      } catch (error) { return JSON.stringify({ error: String(error) + (error && error.stack ? '\\n' + error.stack : ''), observations }) }
       finally {
         // Tools and code views can save the temporary settings. Restore durably before any
         // workspace cleanup that could fail, so the next file never inherits scripts off.

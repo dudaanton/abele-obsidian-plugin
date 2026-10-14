@@ -61,12 +61,17 @@ const script = `(async () => {
   }
   const name = (el) => ((el.className || el.tagName) + '').split(' ')[0].slice(0, 48)
   const press = (el) => el && el.dispatchEvent(new MouseEvent('click', { bubbles: true }))
+  // Obsidian's own prompts (a fixture may be one) are dialogs too.
+  const anyDialog = () => document.querySelector('.modal, .modal-container > .prompt')
   const closeDialog = async () => {
-    if (!document.querySelector('.modal')) return
+    if (!anyDialog()) return
     document.body.dispatchEvent(
       new KeyboardEvent('keydown', { key: 'Escape', code: 'Escape', keyCode: 27, bubbles: true })
     )
-    await until(() => !document.querySelector('.modal'), 3000)
+    if (await until(() => !anyDialog(), 3000)) return
+    // A native prompt is dismissed by a press outside it.
+    document.querySelector('.modal-container > .prompt')?.parentElement?.querySelector('.modal-bg')?.click()
+    await until(() => !anyDialog(), 3000)
   }
   // Two frames of the window \`el\` is in, or a moment where it draws none.
   const frame = (el) => new Promise((r) => {
@@ -252,10 +257,12 @@ const script = `(async () => {
       const completion = window.__abeleTest.openDialog(dialogName)
       completion?.catch(error => { openingError = error })
       if (['node-files', 'node-diffs', 'node-review', 'node-history'].includes(dialogName)) await completion
-      if (await until(() => openingError || document.querySelector('.modal.abele-modal'), 5000)) {
+      // The choice of a chat tab to close is Obsidian's own prompt, the quick switcher's list.
+      const opened = () => document.querySelector('.modal.abele-modal, .modal-container > .prompt[data-abele-fixture="' + dialogName + '"]')
+      if (await until(() => openingError || opened(), 5000)) {
         if (openingError) throw openingError
-        await settle(() => document.querySelector('.modal.abele-modal'))
-        const modal = document.querySelector('.modal.abele-modal')
+        await settle(opened)
+        const modal = opened()
         // Empty, populated and long-path artifact fixtures must all retain their three sections.
         if (dialogName.startsWith('chat-artifacts') && !(dialogName === 'chat-artifacts-empty'
           ? modal.querySelectorAll('.abele-chat-artifacts section').length === 0 && modal.querySelector('.abele-chat-artifacts .abele-empty-state')
