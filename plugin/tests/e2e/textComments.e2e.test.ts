@@ -267,9 +267,9 @@ describe.skipIf(!available)('ordinary-note text comments', () => {
       await wait(150)
       if(document.activeElement !== editor.contentDOM) throw new Error('Edit did not focus the comment editor')
       const steps = [], t0 = Date.now(), dom = editor.contentDOM
-      const note = what => steps.push({what, ms: Date.now()-t0, doc: editor.state.doc.toString().slice(-12), sel: editor.state.selection.main.head, len: editor.state.doc.length, active: document.activeElement === editor.contentDOM, same: editor.contentDOM === dom && dom.isConnected, kb: keyboardHeight()})
-      note('before')
-      for (const part of [' ', 'U', 'pdated']) { await host.type(part); note('typed ' + JSON.stringify(part)); await wait(400); note('settled') }
+      const step = what => steps.push({what, ms: Date.now()-t0, doc: editor.state.doc.toString().slice(-12), sel: editor.state.selection.main.head, len: editor.state.doc.length, active: document.activeElement === editor.contentDOM, same: editor.contentDOM === dom && dom.isConnected, kb: keyboardHeight()})
+      step('before')
+      for (const part of [' ', 'U', 'pdated']) { await host.type(part); step('typed ' + JSON.stringify(part)); await wait(400); step('settled') }
       console.log('PROBE ' + JSON.stringify(steps))
       window.__commentProbe = steps
       if(!await until(() => editor.state.doc.toString().endsWith(' Updated'))) throw new Error('Native edit text did not arrive: '+JSON.stringify({steps:window.__commentProbe,edit:editor.state.doc.toString(),reply:window.__abeleTest.noteFieldView(document.querySelector('.abele-text-comments__reply .abele-note-editor-field__editor'))?.state.doc.toString(),active:document.activeElement?.closest('.abele-text-comments__reply,.abele-text-comments__entry')?.className??document.activeElement?.className}))
