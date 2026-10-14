@@ -44,3 +44,28 @@ export async function changeProjectExternalBrowsing(
   await client.setRepositorySettings({ project_id: project, external_read: enabled })
   return true
 }
+
+/**
+ * Whether the project's other worktrees are open to browsing, as the node reports it. A node too
+ * old to say, or one slow to answer, leaves it unknown: the menu then shows the switch unchecked.
+ */
+export async function projectExternalBrowsing(
+  client: Pick<NodeClient, 'request'>,
+  project: string,
+  wait = 1500
+): Promise<boolean | undefined> {
+  let timer: number | undefined
+  try {
+    const answer = await Promise.race([
+      client.request('project.repository_settings.get', { project_id: project }),
+      new Promise<undefined>((resolve) => (timer = window.setTimeout(resolve, wait))),
+    ])
+    const enabled = (answer as { external_read?: unknown } | undefined)?.external_read
+    return typeof enabled === 'boolean' ? enabled : undefined
+  } catch (error) {
+    console.debug('[Abele] node did not report external workspace browsing', error)
+    return undefined
+  } finally {
+    window.clearTimeout(timer)
+  }
+}

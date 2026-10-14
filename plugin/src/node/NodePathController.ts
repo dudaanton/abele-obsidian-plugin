@@ -2,7 +2,11 @@ import { Menu, Notice, Platform } from 'obsidian'
 import type { WorktreeEntry } from '@abele/node-protocol'
 import { NodeSuggestModal } from '@/components/nodeWork/NodeSuggestModal'
 import { confirmAction } from '@/modal/confirm'
-import { changeProjectExternalBrowsing, externalBrowsingConfirm } from './repositorySettings'
+import {
+  changeProjectExternalBrowsing,
+  externalBrowsingConfirm,
+  projectExternalBrowsing,
+} from './repositorySettings'
 import { GlobalStore } from '@/stores/GlobalStore'
 import { NodeService } from './NodeService'
 import { nodeProviders, providerAvailable, providerLabel } from './providers'
@@ -94,18 +98,45 @@ export function showNodePathRowMenu(model: NodePathModel, event: MouseEvent, id:
   if (!folder) return
   const target = { ...model.target(id === folder.id ? (folder.copies[0]?.id ?? id) : id) }
   const connection = NodeService.getInstance().connection(model.registrationId)
+  // A repository's menu shows whether its other worktrees are open, so it asks the node first.
+  if (!folder.git || connection.state.value !== 'connected')
+    return rowMenu(model, event, folder, target)
+  nodePathAction(async () =>
+    rowMenu(
+      model,
+      event,
+      folder,
+      target,
+      await projectExternalBrowsing(connection.client, target.projectId)
+    )
+  )
+}
+function rowMenu(
+  model: NodePathModel,
+  event: MouseEvent,
+  folder: NodePathModel['folders']['value'][number],
+  target: PathTarget,
+  external?: boolean
+): void {
+  const connection = NodeService.getInstance().connection(model.registrationId)
   const online = connection.state.value === 'connected',
     git = folder.git
   const menu = new Menu(),
     owner = nodePathOwnerActions()
-  const add = (title: string, icon: string, enabled: boolean, run: () => Promise<unknown> | void) =>
-    menu.addItem((i) =>
-      i
-        .setTitle(title)
+  const add = (
+    title: string,
+    icon: string,
+    enabled: boolean,
+    run: () => Promise<unknown> | void,
+    checked?: boolean
+  ) =>
+    menu.addItem((i) => {
+      i.setTitle(title)
         .setIcon(icon)
         .setDisabled(!enabled)
         .onClick(() => nodePathAction(run))
-    )
+      if (checked) i.setChecked(true)
+    })
   add('New chat', 'message-square-plus', online, () => newNodePathChat(model, target))
   add('History', 'history', git, () =>
     openNodePathTab(app().workspace, { kind: 'history', target }, Platform.isMobile)
@@ -165,7 +196,8 @@ export function showNodePathRowMenu(model: NodePathModel, event: MouseEvent, id:
             () => confirmAction(app(), externalBrowsingConfirm(enabled))
           )
           if (changed) await model.refresh()
-        }
+        },
+        enabled && external === true
       )
     const row = folder.copies.find((c) => c.id === target.id)
     if (row?.kind !== 'project') {
