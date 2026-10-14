@@ -1,7 +1,7 @@
-// What the node answers about recorded runs (`trace.v1.*`). The vendored node packages predate
-// these methods, so the plugin reads them through the generic request with its own schemas,
-// mirroring AbeleNode's `packages/node-protocol/src/trace.ts`; unknown fields are dropped, not
-// refused, so a newer node still reads. Swap for the protocol's own schemas at the next vendor bump.
+// What the node answers about recorded runs (`trace.v1.*`). The vendored node protocol has its own
+// schemas for these, but they refuse any field they do not know; the plugin reads through the
+// generic request with its own, mirroring AbeleNode's `packages/node-protocol/src/trace.ts`, where
+// unknown fields are dropped, not refused, so a newer node still reads.
 import { z } from 'zod'
 
 export interface WireShape {
