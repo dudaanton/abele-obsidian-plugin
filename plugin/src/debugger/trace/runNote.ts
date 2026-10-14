@@ -7,7 +7,7 @@ import { NodeService } from '@/node/NodeService'
 import { buildRunNote, NOTE_STEPS, traceLink, type NoteValue } from './note'
 import type { TraceRunState } from './TraceTabs'
 import { TraceRpc } from './wire'
-import { revealOutside, saveRunNote } from './notesFolder'
+import { saveRunNote } from './notesFolder'
 
 const HEAD_LINES = 12
 
@@ -61,8 +61,8 @@ export async function writeRunNote(state: TraceRunState, rpc?: TraceRpc): Promis
     safeName(run.run.name),
     text
   )
-  if (outside) revealOutside(path)
-  else {
+  // A note outside the vault cannot open in a tab; the notice says where it is.
+  if (!outside) {
     const file = app.vault.getAbstractFileByPath(path)
     if (file instanceof TFile) await app.workspace.getLeaf('tab').openFile(file)
   }

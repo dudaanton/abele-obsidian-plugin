@@ -107,16 +107,3 @@ export async function chooseOutsideFolder(): Promise<string | undefined> {
     return undefined
   }
 }
-
-/** Shows a note written outside the vault in the computer's file manager. */
-export function revealOutside(path: string) {
-  try {
-    const req = (window as unknown as { require?: (name: string) => unknown }).require
-    const electron = req?.('electron') as
-      | { shell?: { showItemInFolder(path: string): void } }
-      | undefined
-    electron?.shell?.showItemInFolder(path)
-  } catch (e) {
-    console.debug('[trace] Could not show the note in its folder', e)
-  }
-}
