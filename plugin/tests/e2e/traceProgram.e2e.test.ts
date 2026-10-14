@@ -266,11 +266,12 @@ it('records at a line of TypeScript open beside its build, through the source ma
     await wait(300);
     await recordPoint(6,['sum','item'],leaf.containerEl);
     await shot('2026-10-14-trace-margin-ts-desktop');
+    const before=debugState0()+' tabs '+JSON.stringify(app.workspace.getLeavesOfType('abele-node-file').map(l=>{const st=l.view.getState();return [st.path,st.debug?.sourceId]}));
     await goOn();
     ${READ_RUN}
-    return {steps}
+    return {steps,before}
   })()`)
-  expect(seen.steps).toHaveLength(2)
+  expect(seen.steps, seen.before).toHaveLength(2)
   for (const s of seen.steps) expect(s.place).toContain('total.ts:6')
   expect(seen.steps.map((s) => s.values.sum)).toEqual(['0', '7'])
   expect(seen.steps[1]!.values.item).toContain('label')
