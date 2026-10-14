@@ -128,10 +128,16 @@ const emit = defineEmits<{
   min-height: 0;
   overflow-y: auto;
 }
+// Files scrolled up under the search end at a hairline, not against its glyphs.
+.abele-node-sidebar .abele-file-tree__bar {
+  border-bottom: var(--border-width) solid var(--background-modifier-border);
+}
 .abele-node-sidebar .abele-folder-tree {
   flex: 0 0 auto;
   max-height: 45%;
   overflow: auto;
+  // Room for a glyph's focus ring on the first and last rows: the edge that scrolls the list cut it.
+  padding-block: var(--size-2-1);
 }
 .abele-node-sidebar .abele-node-panel {
   height: 100%;
