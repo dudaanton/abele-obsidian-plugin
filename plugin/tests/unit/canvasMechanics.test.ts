@@ -180,3 +180,17 @@ describe('a card turned into a note', () => {
     expect(s.document.session.history.undo).toBe(1)
   })
 })
+
+describe('a card being written', () => {
+  it('is saved and left with Esc', async () => {
+    const s = setup(cards())
+    s.viewer.setCamera({ x: 0, y: 0, zoom: 1 })
+    tap(s, 100, 80)
+    tap(s, 100, 80)
+    s.input('alpha, written')
+    s.field().dispatchEvent(new KeyboardEvent('keydown', { key: 'Escape', bubbles: true }))
+    await vi.waitFor(() => expect(s.publish).toHaveBeenCalledOnce())
+    expect(s.editor.controls.editing()).toBeNull()
+    expect(s.document.session.graph.nodes[0].text).toBe('alpha, written')
+  })
+})

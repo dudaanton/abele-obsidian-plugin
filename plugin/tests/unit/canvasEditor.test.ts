@@ -1052,7 +1052,8 @@ describe('human canvas editor', () => {
   it('does not steal shortcuts or arrow keys from the text input', () => {
     const s = setup()
     s.button('Add text card').click()
-    for (const key of ['ArrowRight', 'Delete', 'Escape', 'z']) {
+    // Esc is the card's own way out, saving its words (see canvasMechanics); the rest stay the field's.
+    for (const key of ['ArrowRight', 'Delete', 'z']) {
       const event = new KeyboardEvent('keydown', {
         key,
         ctrlKey: key === 'z',

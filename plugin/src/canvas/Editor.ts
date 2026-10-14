@@ -461,6 +461,18 @@ export class CanvasEditor {
       this.refresh()
     })
     this.listen(this.text, 'input', () => this.input())
+    // Esc, or Mod+Enter, leaves the card with its words saved, as Obsidian Canvas does.
+    this.listen(this.text, 'keydown', (e) => {
+      const event = e as KeyboardEvent
+      if (event.isComposing || this.composing) return
+      if (event.key === 'Escape' || (event.key === 'Enter' && (event.metaKey || event.ctrlKey))) {
+        event.preventDefault()
+        event.stopPropagation()
+        void this.complete()
+          .catch((error) => this.fail(error))
+          .finally(() => viewer.el.focus({ preventScroll: true }))
+      }
+    })
     this.inputAdapter = new CanvasInput(viewer, {
       tool: () => this.tool,
       brush: (tool) => ({
@@ -1651,6 +1663,7 @@ export class CanvasEditor {
       e: ['Erase whole strokes', 'Erase part of strokes'],
       t: ['Add text card'],
       n: ['Add note or attachment'],
+      w: ['Add link'],
       r: ['Add canvas shape'],
     }
     const letter = event.key.length === 1 ? event.key.toLowerCase() : ''

@@ -85,6 +85,10 @@ export const SLOTS: Slot[][] = [
       ],
     },
     {
+      id: 'link',
+      members: [{ id: 'link', label: 'Add link', icon: 'globe', tooltip: 'Web page (W)' }],
+    },
+    {
       id: 'shape',
       members: SHAPES.map((s) => ({
         id: s,

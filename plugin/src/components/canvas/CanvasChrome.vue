@@ -516,7 +516,11 @@ const slotActive = (slot: Slot) => slot.members.some((m) => m.id === tool.value)
 
 /** A family's slot takes its last member; pressed again, it offers the others at the button. */
 function useSlot(slot: Slot, e: MouseEvent) {
-  const again = lastPressed === slot.id && slot.members.length > 1
+  // A tool already in hand offers its family; the shape slot adds a shape each time it is
+  // pressed, so it offers its family when pressed twice running.
+  const again =
+    slot.members.length > 1 &&
+    (slot.members.some((m) => m.id === tool.value) || lastPressed === slot.id)
   lastPressed = slot.id
   if (again) return familyMenu(slot, e)
   run(slot, member(slot))
