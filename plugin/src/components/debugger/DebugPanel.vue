@@ -198,7 +198,7 @@
           </template>
         </TreeItem>
         <div v-if="!runs.length" class="abele-debug-panel__empty">
-          Record a run to see what passes the record points.
+          Run the program with a record point to see what passes it.
         </div>
       </TreeItem>
 
@@ -395,13 +395,9 @@ const stateLabel = computed(() => {
           : `No connection to the node · as of ${s.seen ?? 'a while ago'}`
 })
 
-// Where runs are recorded the program mostly goes on: groups that only fill on a pause wait
-// until there is one, rather than saying twice that there is nothing in them.
-const quietWhileRunning = computed(
-  () => !!props.runs && !live.value && props.session.status !== 'exited'
-)
-
-const hasRecordPoints = computed(() => props.session.breakpoints.some((b) => b.kind === 'record'))
+// Where runs are recorded the program mostly goes on, or has not started: groups that only fill
+// on a pause wait until there is one, rather than saying twice that there is nothing in them.
+const quietWhileRunning = computed(() => !!props.runs && !live.value)
 
 // Controls in the order every debugger keeps them, with their keys in the tooltip.
 const buttons = computed(() => {
@@ -427,25 +423,6 @@ const buttons = computed(() => {
       disabled: locked.value || !props.restartAvailable,
     },
     { action: 'stop', icon: 'square', tooltip: 'Stop (Shift+F5)', disabled: !on },
-    ...(props.runs
-      ? [
-          props.recording
-            ? {
-                action: 'stop-recording',
-                icon: 'circle-stop',
-                tooltip: 'Stop recording: keep the run',
-                disabled: locked.value,
-              }
-            : {
-                action: 'record',
-                icon: 'circle-dot',
-                tooltip: hasRecordPoints.value
-                  ? 'Record a run: record points take their values and the program goes on'
-                  : "Record a run: first right-click a line's margin for a record point",
-                disabled: locked.value || !hasRecordPoints.value,
-              },
-        ]
-      : []),
   ]
 })
 
