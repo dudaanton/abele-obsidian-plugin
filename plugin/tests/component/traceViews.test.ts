@@ -1,0 +1,106 @@
+import { mount } from '@vue/test-utils'
+import { describe, expect, it } from 'vitest'
+import TracePointEditor from '@/components/debugger/trace/TracePointEditor.vue'
+import TraceRunView from '@/components/debugger/trace/TraceRunView.vue'
+import TraceValueRow from '@/components/debugger/trace/TraceValueRow.vue'
+import BreakpointMark from '@/components/debugger/BreakpointMark.vue'
+import type { TraceRun } from '@/components/debugger/trace/types'
+
+const run: TraceRun = {
+  id: 'sample-run',
+  name: 'Sample run',
+  length: '1 s',
+  steps: [
+    { id: 's1', kind: 'http', at: 10, chain: 'a', status: 200, label: 'GET /sample', values: [] },
+    {
+      id: 's2',
+      kind: 'probe',
+      at: 40,
+      chain: 'a',
+      label: 'Sample arrives',
+      place: { file: 'src/sample.ts', line: 4 },
+      values: [{ name: 'sample', brief: '{ items: 2 }', bytes: 2048, format: 'json' }],
+    },
+    { id: 's3', kind: 'error', at: 60, label: 'SampleError', values: [] },
+  ],
+}
+
+describe('a record point set up under its line', () => {
+  it('takes an offered name and keeps the point on Enter', async () => {
+    const w = mount(TracePointEditor, { props: { line: 4, inScope: ['sample', 'other'] } })
+    await w.get('[aria-label="Take sample"]').trigger('click')
+    await w.get('input[aria-label="Fire only when this holds"]').setValue('sample.ok')
+    await w
+      .get('input[aria-label="Fire only when this holds"]')
+      .trigger('keydown', { key: 'Enter' })
+    expect(w.emitted('save')?.[0]?.[0]).toEqual({
+      take: ['sample'],
+      when: 'sample.ok',
+      note: undefined,
+    })
+  })
+
+  it('leaves the point as it was on Escape', async () => {
+    const w = mount(TracePointEditor, { props: { line: 4 } })
+    await w.get('.abele-trace-point').trigger('keydown', { key: 'Escape' })
+    expect(w.emitted('cancel')).toHaveLength(1)
+    expect(w.emitted('save')).toBeUndefined()
+  })
+})
+
+describe('a recorded run', () => {
+  it('stands the steps of one request under the first and keeps a step of none alone', () => {
+    const w = mount(TraceRunView, { props: { run } })
+    const top = w.findAll('.abele-trace-run__steps > .abele-trace-run__step')
+    expect(top.map((r) => r.get('.abele-tree-item__text').text())).toEqual([
+      'GET /sample',
+      'SampleError',
+    ])
+    expect(top[0].findAll('.tree-item-children .abele-trace-run__step')).toHaveLength(1)
+  })
+
+  it('shows only what failed under the failed filter', async () => {
+    const w = mount(TraceRunView, { props: { run } })
+    await w.get('[aria-label="Only what failed"]').trigger('click')
+    const texts = w.findAll('.abele-trace-run__step .abele-tree-item__text').map((r) => r.text())
+    expect(texts).toEqual(['SampleError'])
+  })
+
+  it('moves to the next step with the down arrow', async () => {
+    const w = mount(TraceRunView, { props: { run, picked: 's1' } })
+    await w.get('.abele-trace-run__steps').trigger('keydown', { key: 'ArrowDown' })
+    expect(w.emitted('pick')?.[0]).toEqual(['s2'])
+  })
+})
+
+describe('a value a step took', () => {
+  it('says a blanked secret by its dots and a value that came through unchanged by =', () => {
+    const masked = mount(TraceValueRow, {
+      props: {
+        value: { name: 'Authorization', brief: '', bytes: 0, format: 'headers', masked: true },
+      },
+    })
+    expect(masked.get('.abele-trace-value__size').text()).toBe('••••')
+    expect(masked.find('[aria-label="Open whole"]').exists()).toBe(false)
+    const same = mount(TraceValueRow, {
+      props: { value: { name: 'sample', brief: '{}', bytes: 9, format: 'json', same: true } },
+    })
+    expect(same.get('.abele-trace-value__size').text()).toBe('=')
+  })
+})
+
+it('draws a record point as a diamond and names what it takes', () => {
+  const w = mount(BreakpointMark, {
+    props: {
+      breakpoint: {
+        file: 'src/sample.ts',
+        line: 4,
+        state: 'set',
+        kind: 'record',
+        take: ['sample'],
+      },
+    },
+  })
+  expect(w.classes()).toContain('abele-breakpoint-mark_record')
+  expect(w.attributes('aria-label')).toBe('Record point: takes sample and goes on')
+})

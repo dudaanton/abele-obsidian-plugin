@@ -50,7 +50,47 @@
     </div>
 
     <div class="abele-debug-panel__groups" :class="{ 'abele-debug-panel__groups_stale': stale }">
+      <!-- While a run is recorded: how long, how many steps, where the browser's requests come
+           from and where it all goes on disk. -->
       <TreeItem
+        v-if="recording"
+        class="abele-debug-panel__group"
+        text="Recording"
+        :flair="`${recording.elapsed} · ${recording.steps} steps`"
+        collapsible
+        :collapsed="folded.has('recording')"
+        @click="toggle('recording')"
+      >
+        <template #end>
+          <StatusDot
+            tone="red"
+            label="Recording: the record points take values as the program goes"
+            pulse
+          />
+        </template>
+        <TreeItem
+          class="abele-debug-panel__browser"
+          icon="globe"
+          :text="browserBrief"
+          @click="(e: MouseEvent) => emit('browser-menu', e)"
+        >
+          <template #end>
+            <StatusDot
+              :tone="recording.browser.state === 'connected' ? 'green' : 'faint'"
+              :label="browserLabel"
+            />
+          </template>
+        </TreeItem>
+        <TreeItem
+          class="abele-debug-panel__folder"
+          icon="folder"
+          :text="recording.folder"
+          @click="emit('show-folder')"
+        />
+      </TreeItem>
+
+      <TreeItem
+        v-if="!quietWhileRunning"
         class="abele-debug-panel__group"
         text="Variables"
         :flair="frameName"
@@ -71,6 +111,7 @@
       </TreeItem>
 
       <TreeItem
+        v-if="!quietWhileRunning"
         class="abele-debug-panel__group"
         text="Call stack"
         :flair="live ? String(session.frames.length) : undefined"
@@ -103,9 +144,22 @@
           v-for="b in session.breakpoints"
           :key="`${b.file}:${b.line}`"
           :text="`${fileName(b.file)}:${b.line}`"
+          :note="b.kind === 'record' ? b.note : undefined"
           @click="emit('reveal', b.file, b.line)"
         >
-          <template #end><BreakpointMark :breakpoint="b" /></template>
+          <template #end>
+            <span
+              v-if="b.kind === 'record' && b.hits !== undefined"
+              ref="hitEls"
+              class="abele-debug-panel__hits"
+              :class="{ 'abele-debug-panel__hits_none': !b.hits }"
+              :aria-label="
+                b.hits ? `Fired ${b.hits} times in the last run` : 'Not reached in the last run'
+              "
+              >{{ b.hits }}</span
+            >
+            <BreakpointMark :breakpoint="b" />
+          </template>
           <template #actions>
             <Icon
               icon="x"
@@ -117,7 +171,34 @@
           </template>
         </TreeItem>
         <div v-if="!session.breakpoints.length" class="abele-debug-panel__empty">
-          Press the margin of a line to stop there.
+          Press the margin of a line to stop there; right-click it for a record point.
+        </div>
+      </TreeItem>
+
+      <TreeItem
+        v-if="runs"
+        class="abele-debug-panel__group"
+        text="Runs"
+        :flair="runs.length ? String(runs.length) : undefined"
+        collapsible
+        :collapsed="folded.has('runs')"
+        @click="toggle('runs')"
+      >
+        <TreeItem
+          v-for="r in runs"
+          :key="r.id"
+          :text="r.name"
+          :note="`${r.steps} steps · ${r.length}`"
+          :active="r.id === openRun"
+          @click="emit('open-run', r.id)"
+          @contextmenu.prevent="(e: MouseEvent) => emit('run-menu', r.id, e)"
+        >
+          <template v-if="r.cut" #end>
+            <Icon icon="scissors" size="xs" tooltip="Cut short: the node went away" no-hover />
+          </template>
+        </TreeItem>
+        <div v-if="!runs.length" class="abele-debug-panel__empty">
+          Record a run to see what passes the record points.
         </div>
       </TreeItem>
 
@@ -185,6 +266,7 @@
 // tab in the main area; what the chat agent does goes into the chat. State is said by a dot and
 // by what is enabled; the words are in the tooltips.
 import { computed, reactive, ref, watch } from 'vue'
+import { setTooltip } from 'obsidian'
 import Icon from '../obsidian/Icon.vue'
 import Input from '../obsidian/Input.vue'
 import StatusDot from '../obsidian/StatusDot.vue'
@@ -193,6 +275,7 @@ import BreakpointMark from './BreakpointMark.vue'
 import DebugValues from './DebugValues.vue'
 import type { DebugSession, DebugWatch } from './types'
 import { wholeValue } from './valueFormat'
+import type { TraceRecording, TraceRunSummary } from './trace/types'
 
 const props = withDefaults(
   defineProps<{
@@ -201,8 +284,22 @@ const props = withDefaults(
     modeAvailable?: boolean
     modeUnavailableReason?: string
     busy?: boolean
+    /** A run being recorded now. */
+    recording?: TraceRecording
+    /** The runs recorded in this project; none where recording is not offered. */
+    runs?: TraceRunSummary[]
+    /** The run open in a tab. */
+    openRun?: string
   }>(),
-  { restartAvailable: false, modeAvailable: false, modeUnavailableReason: '', busy: false }
+  {
+    restartAvailable: false,
+    modeAvailable: false,
+    modeUnavailableReason: '',
+    busy: false,
+    recording: undefined,
+    runs: undefined,
+    openRun: undefined,
+  }
 )
 const locked = computed(() => props.session.status === 'lost' || props.busy)
 const modeKnown = computed(
@@ -228,7 +325,37 @@ const emit = defineEmits<{
   (e: 'inspect', handle: string): void
   /** A value too long for its row, to be read whole in a tab of its own. */
   (e: 'open-value', name: string, value: string, type?: string): void
+  /** Where the browser's requests come from, a menu at the row. */
+  (e: 'browser-menu', event: MouseEvent): void
+  (e: 'show-folder'): void
+  (e: 'open-run', id: string): void
+  (e: 'run-menu', id: string, event: MouseEvent): void
 }>()
+
+const browserBrief = computed(() => {
+  const b = props.recording?.browser
+  if (!b) return ''
+  if (b.via === 'har') return 'HAR file'
+  if (b.state === 'none') return 'Not connected'
+  if (b.state === 'lost') return 'Lost'
+  return b.tab ?? ''
+})
+const browserLabel = computed(() => {
+  const b = props.recording?.browser
+  if (!b) return ''
+  const via =
+    b.via === 'agent'
+      ? "through the agent's Chrome"
+      : b.via === 'har'
+        ? 'from a HAR file'
+        : 'from your Chrome'
+  const hosts = b.hosts.length ? ` · requests to ${b.hosts.join(' and ')}` : ''
+  return b.state === 'connected'
+    ? `Recording ${via}${hosts} · press to change`
+    : b.state === 'lost'
+      ? 'The browser tab went away; the code is still recorded · press to connect again'
+      : 'No browser: only the code is recorded · press to connect'
+})
 
 const fileName = (path: string) => path.slice(path.lastIndexOf('/') + 1)
 const paused = computed(() => props.session.status === 'paused')
@@ -268,6 +395,14 @@ const stateLabel = computed(() => {
           : `No connection to the node · as of ${s.seen ?? 'a while ago'}`
 })
 
+// Where runs are recorded the program mostly goes on: groups that only fill on a pause wait
+// until there is one, rather than saying twice that there is nothing in them.
+const quietWhileRunning = computed(
+  () => !!props.runs && !live.value && props.session.status !== 'exited'
+)
+
+const hasRecordPoints = computed(() => props.session.breakpoints.some((b) => b.kind === 'record'))
+
 // Controls in the order every debugger keeps them, with their keys in the tooltip.
 const buttons = computed(() => {
   const s = props.session.status
@@ -292,6 +427,25 @@ const buttons = computed(() => {
       disabled: locked.value || !props.restartAvailable,
     },
     { action: 'stop', icon: 'square', tooltip: 'Stop (Shift+F5)', disabled: !on },
+    ...(props.runs
+      ? [
+          props.recording
+            ? {
+                action: 'stop-recording',
+                icon: 'circle-stop',
+                tooltip: 'Stop recording: keep the run',
+                disabled: locked.value,
+              }
+            : {
+                action: 'record',
+                icon: 'circle-dot',
+                tooltip: hasRecordPoints.value
+                  ? 'Record a run: record points take their values and the program goes on'
+                  : "Record a run: first right-click a line's margin for a record point",
+                disabled: locked.value || !hasRecordPoints.value,
+              },
+        ]
+      : []),
   ]
 })
 
@@ -303,6 +457,13 @@ watch(
   (s) => s === 'exited' && folded.delete('output'),
   { immediate: true }
 )
+
+// The counts by the record points say in their tooltips what they count.
+const hitEls = ref<HTMLElement[]>([])
+watch(hitEls, (els) => els.forEach((el) => setTooltip(el, el.getAttribute('aria-label') ?? '')), {
+  deep: true,
+  flush: 'post',
+})
 
 const expression = ref('')
 function watchIt() {
@@ -364,7 +525,13 @@ function watchIt() {
   flex: 1;
   flex-wrap: wrap;
 }
+// A row with no glyph has nothing to hold its place: an empty one took a line of its own above
+// a long name.
+.abele-debug-panel .abele-tree-item__glyph:empty {
+  display: none;
+}
 .abele-debug-panel .tree-item-flair-outer {
+  gap: var(--size-4-2);
   flex-shrink: 1;
   min-width: 0;
   max-width: 50%;
@@ -407,6 +574,30 @@ function watchIt() {
   font-size: var(--font-ui-smaller);
   text-overflow: ellipsis;
   white-space: nowrap;
+}
+// A path or a tab's title: one line beside its glyph, cut at the end.
+.abele-debug-panel .abele-debug-panel__browser .abele-tree-item__inner,
+.abele-debug-panel .abele-debug-panel__folder .abele-tree-item__inner {
+  flex-wrap: nowrap;
+}
+.abele-debug-panel__browser .abele-tree-item__text,
+.abele-debug-panel__folder .abele-tree-item__text {
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+.abele-debug-panel__folder .abele-tree-item__text {
+  font-family: var(--font-monospace);
+  font-size: var(--font-ui-smaller);
+}
+// How many times a record point fired: a count in the row, faint when it never did.
+.abele-debug-panel__hits {
+  color: var(--text-muted);
+  font-size: var(--font-ui-smaller);
+  font-variant-numeric: tabular-nums;
+}
+.abele-debug-panel__hits_none {
+  color: var(--text-faint);
 }
 .abele-debug-panel__value_error {
   color: var(--text-error);

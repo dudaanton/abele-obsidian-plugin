@@ -9,7 +9,12 @@
         <Icon :icon="stateIcon" size="xs" :interactive="false" />
       </span>
     </div>
-    <details v-if="action.exact || action.detail" class="abele-debug-action__exact">
+    <!-- A reading of the run changes nothing: what it asked is in its head, there is no exact
+         action to check. -->
+    <details
+      v-if="(action.exact || action.detail) && !action.kind.startsWith('trace_')"
+      class="abele-debug-action__exact"
+    >
       <summary>Exact action</summary>
       <pre>{{ action.exact ?? action.detail }}</pre>
     </details>
@@ -66,6 +71,15 @@ const names: Record<string, string> = {
   breakpoint: 'Breakpoint',
   restart: 'Restart',
   stop: 'Stop',
+  'record-point': 'Add a record point',
+  record: 'Record a run',
+  trace_timeline: 'Read the steps',
+  trace_shape: 'Read a shape',
+  trace_slice: 'Read a slice',
+  trace_diff: 'Compare two steps',
+  trace_find: 'Find a value',
+  trace_follow: 'Follow a value',
+  trace_mark: 'Mark',
 }
 const icons: Record<string, string> = {
   'step-over': 'redo-dot',
@@ -78,6 +92,15 @@ const icons: Record<string, string> = {
   breakpoint: 'circle-dot',
   restart: 'rotate-ccw',
   stop: 'square',
+  'record-point': 'diamond-plus',
+  record: 'circle-dot',
+  trace_timeline: 'list',
+  trace_shape: 'list-tree',
+  trace_slice: 'scissors',
+  trace_diff: 'diff',
+  trace_find: 'search',
+  trace_follow: 'footprints',
+  trace_mark: 'flag',
 }
 const stateIcon = computed(
   () =>

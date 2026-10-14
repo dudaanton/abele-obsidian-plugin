@@ -29,6 +29,18 @@ export interface DebugBreakpoint {
   /** set: the adapter took it; pending: not confirmed yet; rejected: it cannot stop there. */
   state: 'set' | 'pending' | 'rejected'
   reason?: string
+  /** stop: the program stops here; record: the values are taken and it goes on. */
+  kind?: 'stop' | 'record'
+  /** What a record point takes: names in scope or expressions; none means all of the frame's. */
+  take?: string[]
+  /** It only fires when this holds. */
+  when?: string
+  /** Why the point is there; a step of the run reads by it. */
+  note?: string
+  /** How many times it fired in the last run. */
+  hits?: number
+  /** What it took the last time, in a line: `xmlText 1.8 MB · result { items: 214 }`. */
+  last?: string
 }
 
 export interface DebugWatch {
