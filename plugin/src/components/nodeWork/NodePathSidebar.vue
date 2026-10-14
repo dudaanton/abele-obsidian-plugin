@@ -155,7 +155,8 @@ body.is-phone .abele-node-sidebar {
     position: sticky;
     top: 0;
     z-index: 1;
-    background-color: var(--background-secondary);
+    // The drawer's own colour, so the files passing under it do not show through.
+    background-color: var(--mobile-sidebar-background, var(--background-secondary));
   }
 }
 // Files scrolled up under the search end at a hairline, not against its glyphs.
