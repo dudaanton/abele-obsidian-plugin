@@ -37,6 +37,7 @@ describe('script view host registration', () => {
       app: useVault([]),
       registerView: vi.fn(),
       registerExtensions: vi.fn(),
+      registerObsidianProtocolHandler: vi.fn(),
       registerDomEvent: vi.fn(),
       registerEvent: vi.fn(),
       register: vi.fn(),
