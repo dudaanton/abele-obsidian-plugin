@@ -24,6 +24,7 @@ import { onPhone } from './target'
 import { installPhoneHost } from './phone'
 import { RESTORE_PHONE_SCRIPT } from './phoneState'
 import { assertNoLeakedRootViews, snapshotRootViews, type RootView } from './rootViews'
+import { dismissBoundaryNotices } from './fixtureBoundary'
 
 import {
   assertNoLeakedSavedRootViews,
@@ -52,6 +53,13 @@ beforeAll(async () => {
   closeStrayWindows()
   notesInEditor()
   await cleanPhone()
+  // Dismiss only inherited notices, never notices produced by the file's own assertions.
+  const dismissed = await evalLong(
+    `(async () => JSON.stringify(await (${dismissBoundaryNotices.toString()})(document,
+    () => new Promise(resolve => setTimeout(resolve, 100)))))()`,
+    30_000
+  )
+  console.info('Notice boundary:', dismissed)
   setBackgroundThrottling(false)
   setFocusEmulation(true)
   // Menus a test can open and pick from: see `useDomMenus`.
