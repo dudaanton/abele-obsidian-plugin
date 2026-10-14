@@ -25,7 +25,8 @@ describe.skipIf(!available)('note links with a presentation tab active', () => {
       }
       try {
         await app.vault.createFolder(dir);made.push(dir)
-        const note=await app.vault.create(notePath,'# Sample ordinary note\\n\\nEditable Markdown content.\\n\\n## Sample section\\nSection text.')
+        const noteText='# Sample ordinary note\\n\\nEditable Markdown content.\\n\\n## Sample section\\nSection text.'
+        const note=await app.vault.create(notePath,noteText)
         const deck=await app.vault.create(deckPath,'---\\ntype: presentation\\n---\\n# Sample deck\\n---\\n# Second')
         const records=[{v:2,k:'meta',type:'abele-chat',title:'Sample links',providerId:'',modelId:'',created:''},
           {k:'msg',id:'sample-link-reply',role:'assistant',content:'Open [[sample-slide-links/sample-note#Sample section|Sample note]] or [[sample-slide-links/sample-deck|Sample deck]].',timestamp:1}]
@@ -42,6 +43,8 @@ describe.skipIf(!available)('note links with a presentation tab active', () => {
         r.noteType=leaf.view.getViewType();r.noteIsSlide=!!leaf.view.contentEl.querySelector('.abele-slide')
         if(r.noteType!=='markdown') {r.failureShot=await shot('note-wrongly-in-deck');return JSON.stringify(r)}
         await leaf.setViewState({type:'markdown',state:{file:notePath,mode:'source'},active:true})
+        // A link opens the file before its text arrives; an edit made sooner is replaced by the load.
+        if(!await until(()=>leaf.view.getViewData()===noteText))throw Error('chat-opened note did not load: '+JSON.stringify(leaf.view.getViewData().slice(-40)))
         const editView=leaf.view,beforeEdit=leaf.view.editor.getValue()
         leaf.view.editor.setValue(beforeEdit+'\\nA sample edit.');await leaf.view.save()
         r.editable=await until(async()=>(await app.vault.read(note)).includes('A sample edit.'))
