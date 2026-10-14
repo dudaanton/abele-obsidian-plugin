@@ -209,6 +209,8 @@ it('opens a recorded run as a tab of steps, a step with its values by shape, and
     rows: string[]
     place: string
     values: string[]
+    wide: { beside: boolean; under: boolean; overflow: number }
+    narrow: { beside: boolean; under: boolean; overflow: number }
     shape: boolean
     whole: string
   }>(`(async()=>{${prelude}
@@ -221,18 +223,29 @@ it('opens a recorded run as a tab of steps, a step with its values by shape, and
     const place=document.querySelector('.abele-trace-step__place')?.textContent.trim()??'';
     const values=[...document.querySelectorAll('.abele-trace-step .abele-trace-value > .tree-item-self .abele-tree-item__text, .abele-trace-step .abele-trace-value .abele-tree-item__text')].map(e=>e.textContent.trim()).slice(0,4);
     await shot('2026-10-14-trace-step-desktop');
+    // Wide, the step stands beside the list; narrower than 44em, under it.
+    const root=document.querySelector('.abele-trace-run'),list=root.querySelector('.abele-trace-run__list'),detail=root.querySelector('.abele-trace-run__detail');
+    const layout=async width=>{root.style.width=width;await wait(300);const l=list.getBoundingClientRect(),d=detail.getBoundingClientRect();return {beside:d.left>=l.right-1&&Math.abs(d.top-l.top)<2,under:d.top>=l.bottom-1&&Math.abs(d.left-l.left)<2,overflow:root.scrollWidth-root.clientWidth}};
+    const wide=await layout('60em');
+    await shot('2026-10-14-trace4-run-wide-desktop');
+    const narrow=await layout('36em');
+    await shot('2026-10-14-trace4-run-narrow-desktop');
+    root.style.width='';
     await api.openTraceValue({registrationId:${JSON.stringify(registration)},projectId:${JSON.stringify(project)},runId:${JSON.stringify(RUN)},step:'t0001',valueName:'xmlText',view:'whole'});
     await until(()=>document.querySelector('.abele-trace-value-tab')?.textContent.includes('C-100'),'whole value');
     // The text view draws only the lines on screen: the value's last contract shows at its end.
     const tab=document.querySelector('.abele-trace-value-tab');
     await until(()=>{for(const el of [tab.closest('.view-content'),tab,...tab.querySelectorAll('*')])if(el&&el.scrollHeight>el.clientHeight+4){el.scrollTop=el.scrollHeight;el.dispatchEvent(new Event('scroll'))}return tab.textContent.includes('C-139')},'end of the whole value');
     await shot('2026-10-14-trace-value-desktop');
-    return {rows,place,values,shape:!!document.querySelector('.abele-trace-step'),whole:document.querySelector('.abele-trace-value-tab').textContent.slice(0,200)}
+    return {rows,place,values,wide,narrow,shape:!!document.querySelector('.abele-trace-step'),whole:document.querySelector('.abele-trace-value-tab').textContent.slice(0,200)}
   })()`)
   expect(seen.rows).toEqual(['Contracts parsed', 'Contracts parsed', 'SampleError: no rows'])
   expect(seen.place).toContain('parse.ts:18')
   expect(seen.values).toContain('xmlText')
   expect(seen.whole).toContain('Sample contracts run')
+  expect(seen.wide).toMatchObject({ beside: true, under: false })
+  expect(seen.narrow).toMatchObject({ beside: false, under: true })
+  expect(seen.narrow.overflow).toBeLessThanOrEqual(1)
 })
 
 it('writes a note about the run whose links lead back to the node', () => {
@@ -304,10 +317,10 @@ it('reads the run on a phone: the steps whole-screen, a step over them', async (
       overflow: number
     }>(`(async()=>{${prelude}
       ${OPEN_RUN()}
-      await shot('2026-10-14-trace-run-phone');
+      await shot('2026-10-14-trace4-run-phone');
       document.querySelector('.abele-trace-run__step .abele-tree-item__self, .abele-trace-run__step .tree-item-self')?.click();
       await until(()=>document.querySelector('.abele-trace-step'),'step detail');
-      await shot('2026-10-14-trace-step-phone');
+      await shot('2026-10-14-trace4-step-phone');
       const root=document.querySelector('.abele-trace-run');
       const out={steps:document.querySelectorAll('.abele-trace-run__step').length,detail:!!document.querySelector('.abele-trace-step'),overflow:root.scrollWidth-root.clientWidth};
       // The phone's layout is saved apart from the desktop's: leave no run tab in it.

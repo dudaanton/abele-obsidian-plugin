@@ -9,6 +9,7 @@ import { mkdirSync, mkdtempSync, realpathSync, rmSync, writeFileSync } from 'nod
 import { join, resolve } from 'node:path'
 import ts from 'typescript'
 import { evalAsync } from './helpers/githubLive'
+import { withEmulatedPhone } from './helpers/emulatedPhone'
 import { evalRaw } from './helpers/obsidianCli'
 import { shotDir } from './helpers/shots'
 import { targets } from './helpers/target'
@@ -94,6 +95,27 @@ const TS = [
   '',
 ].join('\n')
 
+/** Registers the node, its folder and a chat in the app; a phone run starts after a reload, so again. */
+function openChat() {
+  const r = evalAsync<{
+    registration: string
+    target: Record<string, string>
+  }>(`(async()=>{${prelude}
+    const existing=nodes.nodes.value.find(n=>n.label==='Program fixture');if(existing)nodes.remove(existing.id);
+    const node=await nodes.add('Program fixture','http://127.0.0.1:${port}',${JSON.stringify(token)}),client=nodes.connection(node.id).client;
+    const project=await client.registerProject(${JSON.stringify(repo)},'trusted');
+    const workspaces=await client.listWorkspaces(project.project_id),workspace=(workspaces.items??workspaces)[0];
+    await client.nodePath.execution({project_id:project.project_id,target:{kind:'workspace',workspace_id:workspace.workspace_id},enabled:true},crypto.randomUUID());
+    const s=await client.nodePath.createSession({title:'Program fixture',provider:'fake',target:{kind:'workspace',workspace_id:workspace.workspace_id}},crypto.randomUUID());
+    await chats.openNodeSession({kind:'node-session',registrationId:node.id,nodeId:node.expectedNodeId,sessionId:s.session_id,title:s.title});
+    await chats.revealSidebar({focus:false});
+    await until(()=>document.querySelector('.abele-node-chat__title')?.textContent==='Program fixture','chat open');
+    return {registration:node.id,target:{nodeId:node.expectedNodeId,registrationId:node.id,projectId:project.project_id,kind:'workspace',id:workspace.workspace_id}}
+  })()`)
+  registration = r.registration
+  folder = r.target
+}
+
 beforeAll(async () => {
   const cli = process.env.ABELE_NODE_CLI
   if (!cli) throw new Error('Set ABELE_NODE_CLI to the built daemon CLI')
@@ -172,23 +194,7 @@ beforeAll(async () => {
   port = (
     JSON.parse(output.split('\n').find((l) => l.includes('"listening"'))!) as { port: number }
   ).port
-  const r = evalAsync<{
-    registration: string
-    target: Record<string, string>
-  }>(`(async()=>{${prelude}
-    const existing=nodes.nodes.value.find(n=>n.label==='Program fixture');if(existing)nodes.remove(existing.id);
-    const node=await nodes.add('Program fixture','http://127.0.0.1:${port}',${JSON.stringify(token)}),client=nodes.connection(node.id).client;
-    const project=await client.registerProject(${JSON.stringify(repo)},'trusted');
-    const workspaces=await client.listWorkspaces(project.project_id),workspace=(workspaces.items??workspaces)[0];
-    await client.nodePath.execution({project_id:project.project_id,target:{kind:'workspace',workspace_id:workspace.workspace_id},enabled:true},crypto.randomUUID());
-    const s=await client.nodePath.createSession({title:'Program fixture',provider:'fake',target:{kind:'workspace',workspace_id:workspace.workspace_id}},crypto.randomUUID());
-    await chats.openNodeSession({kind:'node-session',registrationId:node.id,nodeId:node.expectedNodeId,sessionId:s.session_id,title:s.title});
-    await chats.revealSidebar({focus:false});
-    await until(()=>document.querySelector('.abele-node-chat__title')?.textContent==='Program fixture','chat open');
-    return {registration:node.id,target:{nodeId:node.expectedNodeId,registrationId:node.id,projectId:project.project_id,kind:'workspace',id:workspace.workspace_id}}
-  })()`)
-  registration = r.registration
-  folder = r.target
+  openChat()
 }, 120000)
 
 afterAll(async () => {
@@ -203,17 +209,27 @@ afterAll(async () => {
   if (dir) rmSync(dir, { recursive: true, force: true })
 })
 
-/** Runs `program` from the chat menu; the files open before it take record points too. */
-const RUN = (program: string, shotMenu = '') => `
+/**
+ * Runs `program` from the chat menu, picked in the program picker; the files open before it take
+ * record points too. `via` is the menu item: Debug asks for a program while the chat has no session.
+ */
+const RUN = (program: string, shots = '', via = 'Run a program') => `
   document.querySelector('.abele-node-chat [aria-label="Node session menu"]').click();
-  await until(()=>item('Run a program'),'Run a program in the menu');
-  ${shotMenu ? `await shot(${JSON.stringify(shotMenu)});` : ''}
-  press(item('Run a program'));
+  await until(()=>item(${JSON.stringify(via)}),${JSON.stringify(via + ' in the menu')});
+  ${shots ? `await shot(${JSON.stringify(shots + '-menu')});` : ''}
+  press(item(${JSON.stringify(via)}));
   const field=await until(()=>document.querySelector('.modal-container .prompt input.prompt-input'),'program asked');
   field.value=${JSON.stringify(program)};field.dispatchEvent(new Event('input',{bubbles:true}));
-  ${shotMenu ? `await shot(${JSON.stringify(shotMenu + '-dialog')});` : ''}
+  ${shots ? `await shot(${JSON.stringify(shots + '-picker')});` : ''}
   press(await until(()=>[...document.querySelectorAll('.modal-container .prompt .suggestion-item')].find(r=>r.querySelector('.suggestion-title')?.textContent.trim()===${JSON.stringify(program)}),'the program offered'));
   await until(()=>document.querySelector('[aria-label="Continue (F5)"]'),'debug panel',600);`
+
+/** The call stack as the panel lists it, Node's own frames folded into one row. */
+const STACK = `
+  const stackRows=()=>{const stack=[...document.querySelectorAll('.abele-debug-panel .tree-item')].find(t=>t.querySelector(':scope > .tree-item-self')?.textContent.trim().startsWith('Call stack'));return stack?[...stack.querySelectorAll(':scope > .tree-item-children > .tree-item')].map(r=>({text:r.querySelector(':scope > .tree-item-self .abele-tree-item__text')?.textContent.trim()??'',note:r.querySelector(':scope > .tree-item-self .abele-tree-item__note')?.textContent.trim()??'',flair:r.querySelector(':scope > .tree-item-self .tree-item-flair')?.textContent.trim()??'',internals:r.classList.contains('abele-debug-panel__internals')})):[]};`
+
+/** Restart in the panel, and whether it can be pressed. */
+const RESTART = `const restartButton=()=>document.querySelector('.abele-debug-panel [aria-label^="Restart"]'),restartOn=()=>{const b=restartButton();return !!b&&!b.classList.contains('is-disabled')&&!b.hasAttribute('disabled')};`
 
 /** The run that opened by itself: its steps, and the values of each, read from the step pane. */
 const READ_RUN = `
@@ -228,19 +244,39 @@ const READ_RUN = `
     steps.push({label:row.querySelector('.abele-tree-item__text')?.textContent.trim()??'',place:document.querySelector('.abele-trace-step__place')?.textContent.trim()??'',values});
   }`
 
-it('runs a JavaScript program from the chat menu, records at a point set in its margin, and opens the run by itself', () => {
+it('runs a JavaScript program picked from Debug, records at a point set in its margin, opens the run by itself, and runs it again on Restart', () => {
   const seen = inApp<{
     steps: { label: string; place: string; values: Record<string, string> }[]
     notes: number
-  }>(`(async()=>{${prelude}
+    held: { text: string; note: string; flair: string; internals: boolean }[]
+    restartWhileHeld: boolean
+    restartAfter: boolean
+    again: { session: boolean; steps: number }
+  }>(`(async()=>{${prelude}${STACK}${RESTART}
     const notesBefore=app.vault.getMarkdownFiles().length;
-    ${RUN('src/total.js', '2026-10-14-trace-run-program-menu')}
+    // No session in the chat yet: Debug asks for a program to run.
+    ${RUN('src/total.js', '2026-10-14-trace4-debug', 'Debug')}
+    await until(()=>stackRows().length,'call stack listed');
+    const held=stackRows(),restartWhileHeld=restartOn();
+    await shot('2026-10-14-trace4-frames-desktop');
     await recordPoint(4,['sum','item']);
     await shot('2026-10-14-trace-margin-live-desktop');
     await goOn();
     ${READ_RUN}
     await shot('2026-10-14-trace-run-real-desktop');
-    return {steps,notes:app.vault.getMarkdownFiles().length-notesBefore}
+    const out={steps,notes:app.vault.getMarkdownFiles().length-notesBefore,held,restartWhileHeld};
+    // Restart starts the same program again from its first line, as a new session that records too.
+    const first=api.DebuggerService.instance.active.value.controller.snapshot?.debug_session_id;
+    await until(()=>restartOn(),'Restart offered after the run');
+    out.restartAfter=restartOn();
+    await shot('2026-10-14-trace4-restart-desktop');
+    for(const l of app.workspace.getLeavesOfType('abele-trace-run'))l.detach();
+    press(restartButton());
+    await until(()=>{const id=api.DebuggerService.instance.active.value.controller.snapshot?.debug_session_id;return id&&id!==first},'a new session',600);
+    await goOn();
+    await until(()=>document.querySelectorAll('.abele-trace-run__steps > .abele-trace-run__step').length===3,'the second run opened by itself',600);
+    out.again={session:true,steps:document.querySelectorAll('.abele-trace-run__steps > .abele-trace-run__step').length};
+    return out
   })()`)
   expect(seen.steps).toHaveLength(3)
   for (const s of seen.steps) expect(s.place).toContain('total.js:4')
@@ -249,6 +285,16 @@ it('runs a JavaScript program from the chat menu, records at a point set in its 
   expect(seen.steps[2]!.values.item).toContain('price')
   // A run never writes a note by itself.
   expect(seen.notes).toBe(0)
+  // Held on its first line: the program's own frame on top, Node's loader folded into one row.
+  expect(seen.held[0]).toMatchObject({ internals: false })
+  expect(seen.held[0]!.note).toMatch(/^total\.js:\d+$/)
+  const internals = seen.held.filter((r) => r.internals)
+  expect(internals).toHaveLength(1)
+  expect(internals[0]).toMatchObject({ text: 'Node internals' })
+  expect(Number(internals[0]!.flair)).toBeGreaterThan(0)
+  expect(seen.restartWhileHeld).toBe(true)
+  expect(seen.restartAfter).toBe(true)
+  expect(seen.again.steps).toBe(3)
 })
 
 it('records at a line of TypeScript open beside its build, through the source map', () => {
@@ -278,3 +324,44 @@ it('records at a line of TypeScript open beside its build, through the source ma
   expect(seen.steps.map((s) => s.values.sum)).toEqual(['0', '7'])
   expect(seen.steps[1]!.values.item).toContain('label')
 })
+
+it('on a phone: the picker offers the file open in a tab, the stack folds Node, Restart is offered', async () => {
+  await withEmulatedPhone(async () => {
+    openChat()
+    const seen = inApp<{
+      offered: { title: string; note: string }[]
+      held: { text: string; internals: boolean }[]
+      restart: boolean
+      overflow: number
+    }>(`(async()=>{${prelude}${STACK}${RESTART}
+      const opened=app.workspace.getLeaf('tab');
+      await opened.setViewState({type:'abele-node-file',active:true,state:{kind:'file',target:${JSON.stringify(folder)},path:'src/total.js'}});
+      await until(()=>opened.containerEl.textContent.includes('function total'),'program open');
+      document.querySelector('.abele-node-chat [aria-label="Node session menu"]').click();
+      press(await until(()=>item('Run a program'),'Run a program in the menu'));
+      await until(()=>document.querySelector('.modal-container .prompt .suggestion-item'),'program offered');
+      const offered=[...document.querySelectorAll('.modal-container .prompt .suggestion-item')].map(r=>({title:r.querySelector('.suggestion-title')?.textContent.trim()??'',note:r.querySelector('.suggestion-note')?.textContent.trim()??''}));
+      await shot('2026-10-14-trace4-picker-phone');
+      press([...document.querySelectorAll('.modal-container .prompt .suggestion-item')].find(r=>r.querySelector('.suggestion-title')?.textContent.trim()==='src/total.js'));
+      await until(()=>document.querySelector('[aria-label="Continue (F5)"]'),'debug panel',600);
+      await until(()=>stackRows().length,'call stack listed');
+      const leaf=app.workspace.getLeavesOfType('abele-debug-view')[0];await app.workspace.revealLeaf(leaf);
+      const held=stackRows();
+      await shot('2026-10-14-trace4-frames-phone');
+      const restart=restartOn();
+      await shot('2026-10-14-trace4-restart-phone');
+      const panel=document.querySelector('.abele-debug-panel'),overflow=panel.scrollWidth-panel.clientWidth;
+      press(document.querySelector('.abele-debug-panel [aria-label^="Stop"]'));
+      await until(()=>api.DebuggerService.instance.active.value.controller.session.status==='exited','program stopped',600);
+      // The phone's layout is saved apart from the desktop's: leave no tab of this file in it.
+      for(const t of ['abele-trace-run','abele-trace-value','abele-node-file','abele-debug-view'])for(const l of app.workspace.getLeavesOfType(t))l.detach();
+      await app.workspace.requestSaveLayout.run();
+      return {offered,held,restart,overflow}
+    })()`)
+    expect(seen.offered[0]).toMatchObject({ title: 'src/total.js' })
+    expect(seen.held.filter((r) => r.internals)).toHaveLength(1)
+    expect(seen.held[0]!.internals).toBe(false)
+    expect(seen.restart).toBe(true)
+    expect(seen.overflow).toBeLessThanOrEqual(1)
+  })
+}, 240000)
