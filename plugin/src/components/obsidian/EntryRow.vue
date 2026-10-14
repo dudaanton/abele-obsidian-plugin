@@ -59,6 +59,20 @@ const emit = defineEmits<{ 'update:more': [open: boolean] }>()
   border-radius: var(--radius-s);
   line-height: var(--line-height-normal);
 
+  // The room is for the hairlines between entries. Where the list starts or ends there is none,
+  // as Obsidian's settings drop it on their first row, and only the light's own edge is kept.
+  &:first-child {
+    padding-top: var(--size-2-2);
+  }
+  &:last-child {
+    padding-bottom: var(--size-2-2);
+  }
+  // Under a group's heading the first entry is as far from it as the entries are from each other.
+  // Larger than the heading's own margin, which it meets rather than adds to where they collapse.
+  .abele-group-heading + & {
+    margin-top: var(--size-4-3);
+  }
+
   &[role='button'],
   &[role='link'] {
     cursor: var(--cursor);

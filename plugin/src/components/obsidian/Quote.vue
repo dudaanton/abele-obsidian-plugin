@@ -38,7 +38,9 @@ const long = computed(() => props.text.length > 240 || props.text.split('\n').le
   margin: 0;
   min-width: 0;
 }
-.abele-quote__text {
+/* Over a note's own blockquote rule, which would paint the line in the accent and step the words
+   far in: here the line is Obsidian's grey one and the words sit a step from it. */
+.abele-quote blockquote.abele-quote__text {
   font-family: var(--font-text);
   font-size: var(--font-ui-small);
   line-height: var(--line-height-normal);

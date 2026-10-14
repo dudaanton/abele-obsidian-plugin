@@ -94,7 +94,7 @@ describe('subordinate detail', () => {
     // The arrow alone is an ordinary clickable icon, as every glyph that does something.
     expect(view.get('button').classes()).toContain('clickable-icon')
   })
-  it('puts exact time in its own block while retaining the semantic relative label', () => {
+  it('puts exact time in its own block while retaining the semantic relative label', async () => {
     const view = mount(RelativeTime, {
       props: {
         value: '2026-04-05T10:15:00Z',
@@ -102,12 +102,15 @@ describe('subordinate detail', () => {
         timeZone: 'UTC',
       },
     })
+    // The kit's own fold mounts what it holds once opened, so the exact time is asked for first.
+    expect(view.find('.abele-relative-time__exact').exists()).toBe(false)
+    await view.get('.abele-fold-heading').trigger('click')
     expect(view.get('.abele-relative-time__exact').text()).toBe('05.04.2026, 10:15')
-    expect(view.get('summary .collapse-icon').exists()).toBe(true)
+    expect(view.get('.abele-fold-heading .collapse-icon').exists()).toBe(true)
   })
   it('uses the host collapse glyph for full path access, not the browser marker', () => {
     const view = mount(PathLabel, { props: { path: 'Work/sample.md' } })
-    expect(view.get('summary .collapse-icon').exists()).toBe(true)
+    expect(view.get('.abele-fold-heading .collapse-icon').exists()).toBe(true)
   })
   it('does not present empty-state copy as a quotation from the document', () => {
     const view = mount(Quote, { props: { text: '' } })

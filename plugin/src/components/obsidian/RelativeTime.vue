@@ -9,26 +9,20 @@
       >{{ formatted.label }}</time
     >
     <span v-else class="abele-relative-time__label">{{ formatted.label }}</span>
-    <details
+    <!-- The exact moment folded under the same fold as every other detail in the kit. -->
+    <Disclosure
       v-if="formatted.datetime && formatted.label !== formatted.exact"
+      v-model="opened"
       class="abele-relative-time__detail"
-      @toggle="opened = ($event.target as HTMLDetailsElement).open"
+      label="Exact time"
     >
-      <summary class="abele-relative-time__summary">
-        <span
-          ref="glyph"
-          class="collapse-icon abele-relative-time__toggle"
-          :class="{ 'is-collapsed': !opened }"
-          aria-hidden="true"
-        />Exact time
-      </summary>
       <span class="abele-relative-time__exact">{{ formatted.exact }}</span>
-    </details>
+    </Disclosure>
   </span>
 </template>
 <script setup lang="ts">
-import { computed, ref, onMounted, watch, nextTick } from 'vue'
-import { setIcon } from 'obsidian'
+import { computed, ref } from 'vue'
+import Disclosure from './Disclosure.vue'
 import { formatTimestamp, type TimestampValue } from '@/helpers/displayFormat'
 const props = defineProps<{
   value?: TimestampValue
@@ -38,19 +32,7 @@ const props = defineProps<{
   timeZone?: string
 }>()
 const formatted = computed(() => formatTimestamp(props.value, props))
-const glyph = ref<HTMLElement>(),
-  opened = ref(false)
-const draw = () => {
-  if (glyph.value) {
-    glyph.value.replaceChildren()
-    setIcon(glyph.value, 'right-triangle')
-  }
-}
-onMounted(draw)
-watch(
-  () => formatted.value.datetime,
-  () => void nextTick(draw)
-)
+const opened = ref(false)
 </script>
 <style>
 .abele-relative-time {
@@ -62,26 +44,9 @@ watch(
   overflow-wrap: anywhere;
 }
 .abele-relative-time__detail {
-  display: block;
   min-width: 0;
-}
-.abele-relative-time__detail summary {
-  display: flex;
-  align-items: flex-start;
-  gap: var(--size-4-1);
-  cursor: var(--cursor-link);
-  list-style: none;
-}
-.abele-relative-time__detail summary::marker,
-.abele-relative-time__detail summary::-webkit-details-marker {
-  display: none;
-  content: '';
 }
 .abele-relative-time__exact {
   display: block;
-  margin-top: var(--size-4-1);
-}
-body.is-phone .abele-relative-time__detail summary {
-  min-height: var(--abele-touch-min);
 }
 </style>

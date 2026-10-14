@@ -5,6 +5,7 @@
       'is-collapsible': collapsible,
       'is-collapsed': collapsible && collapsed,
       'is-disabled': collapsible && disabled,
+      'is-inline': collapsible && !hang,
     }"
     :role="collapsible ? 'button' : undefined"
     :tabindex="collapsible && !disabled ? 0 : undefined"
@@ -44,8 +45,14 @@ const props = withDefaults(
     collapsed?: boolean
     /** Seen but cannot be folded now: faint, no light, no tab stop. */
     disabled?: boolean
+    /**
+     * The arrow hangs in the margin before the title, as over a list whose rows start on the
+     * title's edge. Off, it stands inside, on the edge of the words around: a fold in running
+     * content (under a quote, in a card) has no margin to hang into.
+     */
+    hang?: boolean
   }>(),
-  { count: undefined, collapsible: false, collapsed: false, disabled: false }
+  { count: undefined, collapsible: false, collapsed: false, disabled: false, hang: true }
 )
 
 const emit = defineEmits<{
@@ -113,6 +120,10 @@ watch(() => props.collapsible, draw, { flush: 'post' })
 // so the title starts on the same edge as the rows under it and nothing moves as it folds.
 .abele-fold-heading__arrow {
   flex: 0 0 auto;
+  // On the first line of a title that wraps, as a tree's arrow stays by its first line.
+  align-self: flex-start;
+  align-items: center;
+  height: 1lh;
   // As wide as the margin the heading is pulled back by, whatever size the theme draws the arrow.
   display: inline-flex;
   justify-content: center;
@@ -121,6 +132,10 @@ watch(() => props.collapsible, draw, { flush: 'post' })
 
 .abele-fold-heading.is-collapsible {
   margin-inline-start: calc(-1 * (var(--icon-xs) + var(--size-4-1) + var(--size-2-3)));
+}
+// Standing inside: only the light's own room is taken back, so the arrow is on the words' edge.
+.abele-fold-heading.is-collapsible.is-inline {
+  margin-inline-start: calc(-1 * var(--size-2-3));
 }
 
 .abele-fold-heading__count {

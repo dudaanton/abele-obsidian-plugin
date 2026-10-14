@@ -25,6 +25,7 @@
       :text="label"
       :count="count"
       collapsible
+      :hang="false"
       :collapsed="!modelValue"
       :disabled="disabled"
       :aria-controls="contentId"
@@ -72,7 +73,7 @@ const accessibleLabel = computed(() =>
   color: var(--abele-text-meta-color);
   font-size: var(--abele-text-meta-size);
 }
-/* Under the words, on their edge: the arrow hangs in the margin before them. */
+/* Under the control, on the same edge as its arrow. */
 .abele-disclosure__content {
   margin-top: var(--size-4-1);
   min-width: 0;

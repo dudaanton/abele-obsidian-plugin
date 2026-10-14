@@ -104,7 +104,7 @@ describe('MetaLine', () => {
   })
 })
 describe('RelativeTime', () => {
-  it('has an exact accessible value and touch-readable detail with a controlled clock', () => {
+  it('has an exact accessible value and touch-readable detail with a controlled clock', async () => {
     const view = mount(RelativeTime, {
       props: {
         value: '2026-04-05T10:15:00Z',
@@ -115,6 +115,8 @@ describe('RelativeTime', () => {
     expect(view.get('time').attributes('datetime')).toBe('2026-04-05T10:15:00.000Z')
     expect(view.get('time').text()).toContain('Today')
     expect(view.get('time').attributes('aria-label')).toContain('05.04.2026, 10:15')
+    // A touch opens the fold to read it, there being no pointer to hover the label with.
+    await view.get('.abele-disclosure__control').trigger('click')
     expect(view.text()).toContain('05.04.2026, 10:15')
   })
   it.each([undefined, 'bad'])('does not serialize %s as Invalid Date', (value) => {

@@ -76,6 +76,12 @@ const shown = computed(() => (all.value ? props.items : props.items.slice(0, pro
   color: var(--text-error);
 }
 
+// The cross is drawn a little in from its box; set back by that much, its stroke starts on the
+// heading's first letter rather than a few pixels after it.
+.abele-short-list_error .abele-short-list__row .abele-result-mark {
+  margin-inline-start: calc(-0.2 * var(--icon-xs));
+}
+
 .abele-short-list__rows {
   display: flex;
   flex-direction: column;
