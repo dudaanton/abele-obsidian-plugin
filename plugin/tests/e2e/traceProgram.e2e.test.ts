@@ -43,7 +43,6 @@ let port = 0
 let token = ''
 let repo = ''
 let registration = ''
-let session = ''
 
 const JS = [
   'function total(items) {',
@@ -154,7 +153,6 @@ beforeAll(async () => {
     return {registration:node.id,session:s.session_id}
   })()`)
   registration = r.registration
-  session = r.session
 }, 120000)
 
 afterAll(async () => {
