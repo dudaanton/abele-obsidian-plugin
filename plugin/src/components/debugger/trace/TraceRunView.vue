@@ -7,83 +7,85 @@
     class="abele-trace-run"
     :class="{ 'abele-trace-run_phone': phone, 'abele-trace-run_picked': !!picked || !!trail }"
   >
-    <div class="abele-trace-run__list">
-      <div class="abele-trace-run__tools">
-        <Search v-model="query" placeholder="Find in the steps" label="Find in the steps" />
-        <div class="abele-trace-run__filters" role="group" aria-label="Show only">
-          <Icon
-            v-for="f in FILTERS"
-            :key="f.id"
-            :icon="f.icon"
-            :tooltip="f.tooltip"
-            :active="filter === f.id"
-            @click="filter = filter === f.id ? null : f.id"
+    <div class="abele-trace-run__body">
+      <div class="abele-trace-run__list">
+        <div class="abele-trace-run__tools">
+          <Search v-model="query" placeholder="Find in the steps" label="Find in the steps" />
+          <div class="abele-trace-run__filters" role="group" aria-label="Show only">
+            <Icon
+              v-for="f in FILTERS"
+              :key="f.id"
+              :icon="f.icon"
+              :tooltip="f.tooltip"
+              :active="filter === f.id"
+              @click="filter = filter === f.id ? null : f.id"
+            />
+          </div>
+        </div>
+        <div v-if="run.cut" class="abele-trace-run__notice" role="status">
+          <Icon icon="scissors" size="xs" no-hover />
+          <span>Cut short: the node went away. The steps before it are kept.</span>
+        </div>
+        <div class="abele-trace-run__steps" role="tree" aria-label="Steps" @keydown="keys">
+          <template v-for="row in rows" :key="row.step.id">
+            <TreeItem
+              class="abele-trace-run__step"
+              :class="{
+                'abele-trace-run__step_on-trail': onTrail.has(row.step.id),
+              }"
+              :text="row.step.label"
+              :active="row.step.id === picked"
+              :collapsible="row.children.length > 0"
+              :collapsed="folded.has(row.step.id)"
+              :fold-apart="row.children.length > 0"
+              @toggle="toggle(row.step.id)"
+              @click="pick(row.step.id)"
+            >
+              <template #leading><TraceStepGlyph :step="row.step" /></template>
+              <template #end><StepEnd :step="row.step" /></template>
+              <TreeItem
+                v-for="child in row.children"
+                :key="child.id"
+                class="abele-trace-run__step"
+                :class="{ 'abele-trace-run__step_on-trail': onTrail.has(child.id) }"
+                :text="child.label"
+                :active="child.id === picked"
+                @click="pick(child.id)"
+              >
+                <template #leading><TraceStepGlyph :step="child" /></template>
+                <template #end><StepEnd :step="child" /></template>
+              </TreeItem>
+            </TreeItem>
+          </template>
+          <EmptyState
+            v-if="!rows.length"
+            :text="query || filter ? 'No step matches.' : 'Nothing was recorded.'"
           />
         </div>
       </div>
-      <div v-if="run.cut" class="abele-trace-run__notice" role="status">
-        <Icon icon="scissors" size="xs" no-hover />
-        <span>Cut short: the node went away. The steps before it are kept.</span>
-      </div>
-      <div class="abele-trace-run__steps" role="tree" aria-label="Steps" @keydown="keys">
-        <template v-for="row in rows" :key="row.step.id">
-          <TreeItem
-            class="abele-trace-run__step"
-            :class="{
-              'abele-trace-run__step_on-trail': onTrail.has(row.step.id),
-            }"
-            :text="row.step.label"
-            :active="row.step.id === picked"
-            :collapsible="row.children.length > 0"
-            :collapsed="folded.has(row.step.id)"
-            :fold-apart="row.children.length > 0"
-            @toggle="toggle(row.step.id)"
-            @click="pick(row.step.id)"
-          >
-            <template #leading><TraceStepGlyph :step="row.step" /></template>
-            <template #end><StepEnd :step="row.step" /></template>
-            <TreeItem
-              v-for="child in row.children"
-              :key="child.id"
-              class="abele-trace-run__step"
-              :class="{ 'abele-trace-run__step_on-trail': onTrail.has(child.id) }"
-              :text="child.label"
-              :active="child.id === picked"
-              @click="pick(child.id)"
-            >
-              <template #leading><TraceStepGlyph :step="child" /></template>
-              <template #end><StepEnd :step="child" /></template>
-            </TreeItem>
-          </TreeItem>
-        </template>
-        <EmptyState
-          v-if="!rows.length"
-          :text="query || filter ? 'No step matches.' : 'Nothing was recorded.'"
-        />
-      </div>
-    </div>
 
-    <div class="abele-trace-run__detail">
-      <TraceTrail
-        v-if="trail"
-        :trail="trail"
-        :steps="run.steps"
-        @close="emit('unfollow')"
-        @open-value="(s, p) => emit('open-value', s, nameAt(s, p), p)"
-      />
-      <TraceStepDetail
-        v-else-if="current"
-        :key="current.id"
-        :step="current"
-        @reveal="(f, l) => emit('reveal', f, l)"
-        @open-value="(s, n, p) => emit('open-value', s, n, p)"
-        @open-changes="(s, n) => emit('open-changes', s, n)"
-        @open-step="pick"
-        @follow="(v) => emit('follow', v)"
-        @mark="(s, at) => emit('mark', s, at)"
-        @link="(l, ok) => emit('link', current!.id, l, ok)"
-      />
-      <EmptyState v-else text="Pick a step to see what it took." />
+      <div class="abele-trace-run__detail">
+        <TraceTrail
+          v-if="trail"
+          :trail="trail"
+          :steps="run.steps"
+          @close="emit('unfollow')"
+          @open-value="(s, p) => emit('open-value', s, nameAt(s, p), p)"
+        />
+        <TraceStepDetail
+          v-else-if="current"
+          :key="current.id"
+          :step="current"
+          @reveal="(f, l) => emit('reveal', f, l)"
+          @open-value="(s, n, p) => emit('open-value', s, n, p)"
+          @open-changes="(s, n) => emit('open-changes', s, n)"
+          @open-step="pick"
+          @follow="(v) => emit('follow', v)"
+          @mark="(s, at) => emit('mark', s, at)"
+          @link="(l, ok) => emit('link', current!.id, l, ok)"
+        />
+        <EmptyState v-else text="Pick a step to see what it took." />
+      </div>
     </div>
   </div>
 </template>
@@ -218,11 +220,30 @@ const StepEnd = defineComponent({
 
 <style lang="scss">
 .abele-trace-run {
+  height: 100%;
+  min-height: 0;
+  container-type: inline-size;
+}
+.abele-trace-run__body {
   display: grid;
-  grid-template-columns: minmax(22em, 1fr) minmax(0, 1fr);
+  grid-template-columns: minmax(18em, 2fr) minmax(0, 3fr);
   gap: var(--size-4-4);
   height: 100%;
   min-height: 0;
+}
+// A tab too narrow for both side by side puts the step under the list, as wide as the tab:
+// beside it a megabyte of XML and the names of its values would be cut to a few letters.
+@container (max-width: 44em) {
+  .abele-trace-run__body {
+    grid-template-columns: minmax(0, 1fr);
+    grid-template-rows: minmax(8em, 2fr) minmax(0, 3fr);
+    gap: 0;
+  }
+  .abele-trace-run__list {
+    padding-inline-end: var(--size-2-2);
+    border-inline-end: none;
+    border-block-end: var(--border-width) solid var(--background-modifier-border);
+  }
 }
 .abele-trace-run__list,
 .abele-trace-run__detail {
@@ -299,8 +320,11 @@ const StepEnd = defineComponent({
 }
 // On a phone one side at a time: the list, or the step over it.
 .abele-trace-run_phone {
-  grid-template-columns: minmax(0, 1fr);
-
+  .abele-trace-run__body {
+    grid-template-columns: minmax(0, 1fr);
+    grid-template-rows: minmax(0, 1fr);
+    gap: 0;
+  }
   .abele-trace-run__list {
     padding-inline-end: 0;
     border: none;

@@ -46,6 +46,34 @@ describe('debugger panel', () => {
     expect(w.get('.abele-debug-panel__mode').attributes('aria-pressed')).toBe('false')
     w.unmount()
   })
+  it('folds the frames with no source of the program into one quiet row, opened on asking', async () => {
+    const w = mount(DebugPanel, {
+      props: {
+        session: {
+          ...session('paused'),
+          frames: [
+            { name: 'total', file: 'src/sample.js', line: 4 },
+            { name: '<anonymous>', file: 'src/sample.js', line: 8 },
+            { name: '<anonymous>', file: '', line: 1778 },
+            { name: 'wrapModuleLoad', file: '', line: 254 },
+            { name: '<anonymous>', file: '', line: 36 },
+          ],
+        },
+      },
+    })
+    const internals = w.get('.abele-debug-panel__internals')
+    expect(internals.text()).toContain('Node internals')
+    expect(internals.text()).toContain('3')
+    expect(w.text()).not.toContain('wrapModuleLoad')
+    await internals.get('.tree-item-self').trigger('click')
+    expect(w.text()).toContain('wrapModuleLoad')
+    await w
+      .findAll('.tree-item-self')
+      .find((r) => r.text().includes('wrapModuleLoad'))!
+      .trigger('click')
+    expect(w.emitted('frame')?.at(-1)).toEqual([3])
+    w.unmount()
+  })
   it('explains how to open a session when the sidebar is empty', () => {
     DebuggerService.instance.destroy()
     const w = mount(DebuggerView)

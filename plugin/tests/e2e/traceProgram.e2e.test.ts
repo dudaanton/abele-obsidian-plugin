@@ -209,10 +209,10 @@ const RUN = (program: string, shotMenu = '') => `
   await until(()=>item('Run a program'),'Run a program in the menu');
   ${shotMenu ? `await shot(${JSON.stringify(shotMenu)});` : ''}
   press(item('Run a program'));
-  const field=await until(()=>document.querySelector('.modal-container .modal input'),'program asked');
+  const field=await until(()=>document.querySelector('.modal-container .prompt input.prompt-input'),'program asked');
   field.value=${JSON.stringify(program)};field.dispatchEvent(new Event('input',{bubbles:true}));
   ${shotMenu ? `await shot(${JSON.stringify(shotMenu + '-dialog')});` : ''}
-  press(await until(()=>[...document.querySelectorAll('.modal-container .modal button')].find(b=>b.textContent.trim()==='Run'),'Run button'));
+  press(await until(()=>[...document.querySelectorAll('.modal-container .prompt .suggestion-item')].find(r=>r.querySelector('.suggestion-title')?.textContent.trim()===${JSON.stringify(program)}),'the program offered'));
   await until(()=>document.querySelector('[aria-label="Continue (F5)"]'),'debug panel',600);`
 
 /** The run that opened by itself: its steps, and the values of each, read from the step pane. */

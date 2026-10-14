@@ -14,11 +14,12 @@
         :recording="recording"
         :runs="runs"
         :open-run="openRunId"
+        :restart-available="!!binding.rerun"
         @open-run="openRunTab"
         @run-menu="(id, e) => runMenu(binding!, id, e)"
         @show-folder="folderMenu(binding!)"
         @browser-menu="browserMenu"
-        @command="run(() => binding!.controller.command($event))"
+        @command="command($event)"
         @mode="run(() => binding!.controller.setMode($event))"
         @frame="run(() => binding!.controller.selectFrame($event))"
         @inspect="run(() => binding!.controller.inspect($event))"
@@ -93,6 +94,17 @@ async function run(work: () => Promise<unknown>) {
   } finally {
     busy.value = false
   }
+}
+function command(action: string) {
+  const b = binding.value
+  if (!b) return
+  if (action !== 'restart' || !b.rerun) return void run(() => b.controller.command(action))
+  const again = b.rerun
+  // A program still going is stopped first, so the new one takes the points to itself.
+  void run(async () => {
+    if (b.controller.session.status !== 'exited') await b.controller.command('stop')
+    await again()
+  })
 }
 function breakpoint(file: string, line: number) {
   const b = binding.value

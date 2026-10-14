@@ -1,7 +1,8 @@
 import { afterEach, describe, expect, it, vi } from 'vitest'
+import { ref } from 'vue'
 import { GlobalStore } from '@/stores/GlobalStore'
 import { DebuggerService } from '@/debugger/DebuggerService'
-import { defaultProgram, openFilesOf, startProgram } from '@/debugger/startProgram'
+import { ProgramPicker, defaultProgram, openFilesOf, startProgram } from '@/debugger/startProgram'
 import { NODE_FILE_VIEW } from '@/node/nodePathNavigation'
 import type { NodeChatPresenter } from '@/node/NodeChatPresenter'
 import type { PathTarget } from '@/node/NodePathModel'
@@ -70,7 +71,7 @@ function fakePresenter() {
     throw new Error(`unexpected ${method}`)
   })
   const presenter = {
-    connection: { client: { request }, connect: async () => {} },
+    connection: { client: { request }, connect: async () => {}, state: ref('connected') },
     reference: { sessionId: 'chat-a', registrationId: 'reg-a', nodeId: 'node-a' },
   } as unknown as NodeChatPresenter
   return { presenter, calls }
@@ -99,6 +100,32 @@ describe('running a program under the debugger', () => {
     expect(open).toEqual(['src/total.ts', 'dist/total.js', 'src/view.tsx'])
     expect(defaultProgram(open)).toBe('dist/total.js')
     expect(defaultProgram(['src/total.ts'])).toBe('')
+  })
+
+  it('offers a typed path to run on top of the open files, once', () => {
+    const offered = [
+      { id: 'src/page.js', icon: 'file-code', kind: 'Open in a tab', title: 'src/page.js' },
+    ]
+    const picker = new ProgramPicker({} as never, offered, 'program', () => {})
+    expect(picker.getSuggestions('').map((i) => i.title)).toEqual(['src/page.js'])
+    expect(picker.getSuggestions('src/main.js').map((i) => [i.icon, i.title])).toEqual([
+      ['play', 'src/main.js'],
+    ])
+    expect(picker.getSuggestions('src/page.js').map((i) => i.title)).toEqual(['src/page.js'])
+  })
+
+  it('leaves Restart in the panel the same program again, with the same files', async () => {
+    fakeWorkspace()
+    const { presenter, calls } = fakePresenter()
+    await startProgram(presenter, 'src/page.js', ['src/service.js'], target, async () => {})
+    const binding = DebuggerService.instance.binding(presenter)
+    expect(binding.rerun).toBeTypeOf('function')
+    await binding.rerun!()
+    const starts = calls.filter(([m]) => m === 'debugger.v1.start').map(([, p]) => p)
+    expect(starts).toHaveLength(2)
+    expect(starts[1]).toEqual(
+      expect.objectContaining({ program: 'src/page.js', sources: ['src/service.js'] })
+    )
   })
 
   it('starts it, shows the session its code runs in and opens its file with the margin', async () => {

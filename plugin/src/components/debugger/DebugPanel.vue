@@ -120,14 +120,35 @@
         @click="toggle('stack')"
       >
         <template v-if="live">
-          <TreeItem
-            v-for="(f, i) in session.frames"
-            :key="i"
-            :text="f.name"
-            :note="`${fileName(f.file)}:${f.line}`"
-            :active="i === session.frame"
-            @click="!locked && emit('frame', i)"
-          />
+          <template v-for="row in stackRows" :key="row.at">
+            <TreeItem
+              v-if="row.kind === 'frame'"
+              :text="row.frame.name"
+              :note="`${fileName(row.frame.file)}:${row.frame.line}`"
+              :active="row.at === session.frame"
+              @click="!locked && emit('frame', row.at)"
+            />
+            <!-- Frames with no source of the program, Node's own loader mostly: one quiet row,
+                 opened on asking, so the program's frames stand together. -->
+            <TreeItem
+              v-else
+              class="abele-debug-panel__internals"
+              text="Node internals"
+              :flair="String(row.frames.length)"
+              collapsible
+              :collapsed="!folded.has(`internals-${row.at}`)"
+              @click="toggle(`internals-${row.at}`)"
+            >
+              <TreeItem
+                v-for="(f, j) in row.frames"
+                :key="j"
+                :text="f.name"
+                :note="`:${f.line}`"
+                :active="row.at + j === session.frame"
+                @click="!locked && emit('frame', row.at + j)"
+              />
+            </TreeItem>
+          </template>
         </template>
         <div v-else class="abele-debug-panel__empty">{{ notPaused }}</div>
       </TreeItem>
@@ -273,7 +294,7 @@ import StatusDot from '../obsidian/StatusDot.vue'
 import TreeItem from '../obsidian/TreeItem.vue'
 import BreakpointMark from './BreakpointMark.vue'
 import DebugValues from './DebugValues.vue'
-import type { DebugSession, DebugWatch } from './types'
+import type { DebugFrame, DebugSession, DebugWatch } from './types'
 import { wholeValue } from './valueFormat'
 import type { TraceRecording, TraceRunSummary } from './trace/types'
 
@@ -358,6 +379,21 @@ const browserLabel = computed(() => {
 })
 
 const fileName = (path: string) => path.slice(path.lastIndexOf('/') + 1)
+
+type StackRow =
+  | { kind: 'frame'; at: number; frame: DebugFrame }
+  | { kind: 'internals'; at: number; frames: DebugFrame[] }
+// The program's own frames one by one; a run of frames with no source between them folds into one.
+const stackRows = computed(() => {
+  const rows: StackRow[] = []
+  props.session.frames.forEach((frame, at) => {
+    const last = rows[rows.length - 1]
+    if (frame.file) rows.push({ kind: 'frame', at, frame })
+    else if (last?.kind === 'internals') last.frames.push(frame)
+    else rows.push({ kind: 'internals', at, frames: [frame] })
+  })
+  return rows
+})
 const paused = computed(() => props.session.status === 'paused')
 // The last values stay readable while the node is away, faded.
 const live = computed(() => paused.value || props.session.status === 'lost')
@@ -419,7 +455,9 @@ const buttons = computed(() => {
     {
       action: 'restart',
       icon: 'rotate-ccw',
-      tooltip: props.restartAvailable ? 'Restart' : 'Restart is not available on this node',
+      tooltip: props.restartAvailable
+        ? 'Restart: the same program from its first line'
+        : 'Restart is not available on this node',
       disabled: locked.value || !props.restartAvailable,
     },
     { action: 'stop', icon: 'square', tooltip: 'Stop (Shift+F5)', disabled: !on },
@@ -537,6 +575,9 @@ function watchIt() {
   color: var(--text-muted);
   font-size: var(--font-ui-smaller);
   --abele-tree-item-weight: var(--font-semibold);
+}
+.abele-debug-panel__internals > .tree-item-self {
+  color: var(--text-faint);
 }
 .abele-debug-panel__empty {
   padding: var(--size-4-1) var(--size-4-3) var(--size-4-2);

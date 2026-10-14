@@ -7,7 +7,7 @@ import type { NodeChatPresenter } from '@/node/NodeChatPresenter'
 import type { PathTarget } from '@/node/NodePathModel'
 import { readChatBinding } from '@/node/expectedTarget'
 import { NODE_FILE_VIEW, NodePathTabSchema, openNodePathTab } from '@/node/nodePathNavigation'
-import { askName } from '@/modal/askName'
+import { NodeSuggestModal, type NodeSuggestion } from '@/components/nodeWork/NodeSuggestModal'
 import { GlobalStore } from '@/stores/GlobalStore'
 import { DebuggerService } from './DebuggerService'
 
@@ -99,6 +99,8 @@ export async function startProgram(
       snapshot.incarnation,
       target
     )
+  // The node has no restart of its own: Restart in the panel starts the same program again.
+  service.binding(presenter).rerun = () => startProgram(presenter, program, sources, target, show)
   await show(sessionId)
   const debugOf = (sourceId: string) => ({
     conversationId: presenter.reference.sessionId,
@@ -133,11 +135,33 @@ export async function startProgram(
   return sessionId
 }
 
-/** Asks which program to run, offering the JavaScript file open from this chat's folder. */
+/**
+ * What to run, picked the way the node picks a folder: the JavaScript files open from this chat's
+ * folder first, and whatever path is typed as the top row, so a file not open runs as well.
+ */
+export class ProgramPicker extends NodeSuggestModal {
+  getSuggestions(query: string): NodeSuggestion[] {
+    const typed = query.trim()
+    const open = super.getSuggestions(query)
+    return typed && !open.some((i) => i.title === typed)
+      ? [{ id: typed, icon: 'play', kind: "A path in the chat's folder", title: typed }, ...open]
+      : open
+  }
+}
+
+/** Asks which program to run, offering the JavaScript files open from this chat's folder. */
 export async function askAndStartProgram(
   presenter: NodeChatPresenter,
   show: (sessionId: string) => Promise<void>
 ) {
+  const failed = (e: Error | string) => {
+    console.debug('[debugger] Program not started', e)
+    new Notice(
+      e instanceof Error && e.message.includes('debugger_profile_unavailable')
+        ? 'This node cannot run programs under the debugger yet: its JavaScript debugger is not installed.'
+        : `The program did not start: ${e instanceof Error ? e.message : String(e)}`
+    )
+  }
   try {
     await presenter.connection.connect()
     const target = await chatTarget(presenter)
@@ -147,22 +171,23 @@ export async function askAndStartProgram(
     }
     const app = GlobalStore.getInstance().app
     const open = openFilesOf(app.workspace, target)
-    const program = (
-      await askName(app, {
-        title: 'Run a program under the debugger',
-        placeholder: 'src/main.js',
-        value: defaultProgram(open),
-        submitText: 'Run',
-      })
-    )?.trim()
-    if (!program) return
-    await startProgram(presenter, program, open, target, show)
+    const offered = open
+      .filter((path) => RUNNABLE.test(path))
+      .map((path) => ({
+        id: path,
+        icon: 'file-code',
+        kind: 'Open in a tab',
+        title: path,
+        ...(path === defaultProgram(open) ? { note: 'Looked at last' } : {}),
+      }))
+    new ProgramPicker(
+      app,
+      offered,
+      'A JavaScript file to run under the debugger: src/main.js',
+      (item) => void startProgram(presenter, item.id, open, target, show).catch(failed),
+      "Type the path of a JavaScript file in this chat's folder"
+    ).open()
   } catch (e) {
-    console.debug('[debugger] Program not started', e)
-    new Notice(
-      e instanceof Error && e.message.includes('debugger_profile_unavailable')
-        ? 'This node cannot run programs under the debugger yet: its JavaScript debugger is not installed.'
-        : `The program did not start: ${e instanceof Error ? e.message : String(e)}`
-    )
+    failed(e as Error)
   }
 }

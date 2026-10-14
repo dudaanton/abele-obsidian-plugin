@@ -99,10 +99,8 @@ export async function openNodeDebugger(presenter: NodeChatPresenter) {
   try {
     const service = DebuggerService.instance,
       sessions = await service.sessions(presenter)
-    if (!sessions.length) {
-      new Notice('No debug sessions. Start one from the chat menu: run a program.')
-      return
-    }
+    // Nothing to show yet: the way to a session is running a program, so that is asked at once.
+    if (!sessions.length) return await startNodeProgram(presenter)
     if (sessions.length === 1) await showSession(presenter, sessions[0].debug_session_id)
     else new SessionPicker(presenter, sessions).open()
   } catch (e) {

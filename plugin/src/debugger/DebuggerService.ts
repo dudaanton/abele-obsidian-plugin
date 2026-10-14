@@ -28,6 +28,8 @@ export class DebuggerBinding {
   readonly controller: DebuggerController
   /** The session's recording, where the node records runs. */
   trace?: TraceSession
+  /** Runs the program last started from this chat again, with the same files: Restart in the panel. */
+  rerun?: () => Promise<unknown>
   private abort?: AbortController
   private waitId?: string
   private stopConnection: WatchStopHandle
