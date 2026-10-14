@@ -216,6 +216,24 @@ describe('node repository source on the change stream', () => {
     expect(tree.root.children!.some((c) => c.path === 'new.ts')).toBe(true)
     source.dispose()
   })
+  it('asks a real client, whose describe needs its own object, whether the node streams', async () => {
+    const f = nodeRepositoryFixture({ changes: true })
+    const answer = f.client.describe!
+    // The node client is a class: its describe reads its own fields.
+    const client = Object.assign(Object.create(f.client), {
+      capabilities: answer,
+      describe(this: { capabilities: typeof answer }) {
+        return this.capabilities()
+      },
+    })
+    const source = new NodeRepositorySource(client, identity, {
+      node: 'Sample node',
+      project: 'Sample project',
+    })
+    await source.startWatching()
+    expect(f.calls.find((c) => c.method === 'repository.v1.watch')!.params.changes).toBeNull()
+    source.dispose()
+  })
   it('keeps the batches that arrive before the first lease answers', async () => {
     const lease = later()
     const f = nodeRepositoryFixture({

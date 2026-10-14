@@ -1103,9 +1103,10 @@ export class NodeRepositorySource implements RepositorySource {
         .catch(() => {})
   }
   private supportsChanges() {
-    const describe = this.client.describe
-    this.changeStream ??= describe
-      ? this.read(() => describe())
+    const client = this.client
+    // Called on the client itself: the node client's describe reads its own fields.
+    this.changeStream ??= client.describe
+      ? this.read(() => client.describe!())
           .then((description) => {
             const capabilities = (
               description as { capabilities?: { capabilities?: Record<string, unknown> } }
