@@ -201,7 +201,7 @@ describe.skipIf(!available)('Word document view', () => {
       const formatted=!!view.document?.xml.get('word/document.xml').includes('<w:i')
       // What the ribbon has no room for, about the paragraph and then about its picture.
       const details = async (open, name) => {
-        open()
+        await open()
         const rows=await until(()=>document.querySelector('.modal .abele-word-details'),name+' rows')
         await new Promise(r=>setTimeout(r,400))
         fits(rows)
@@ -210,7 +210,7 @@ describe.skipIf(!available)('Word document view', () => {
         await until(()=>!document.querySelector('.modal .abele-word-details'),name+' closing')
       }
       await details(()=>need(root,'.abele-word-page__ribbon [aria-label="Paragraph 1 controls"]').click(),'paragraph')
-      await details(()=>{need(root,'[aria-label="Select picture paragraph 7"]').click();need(root,'.abele-word-page__ribbon [aria-label="Picture controls"]').click()},'picture')
+      await details(async ()=>{need(root,'[aria-label="Select picture paragraph 7"]').click();await until(()=>root.querySelector('.abele-word-page__ribbon [aria-label="Picture controls"]'),'Picture controls').then(b=>b.click())},'picture')
       return {controls,clipped,formatted,shots}
     })()`)
     for (const label of [

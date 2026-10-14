@@ -321,10 +321,10 @@ Third caption
         }
         const figure=async index=>{
           await v.go(index);await settle();const s=active(),scale=s.getBoundingClientRect().width/1280
-          const img=s.querySelector('.abele-slide-region img'),region=img.closest('.abele-slide-region'),words=[...s.querySelectorAll('.abele-slide-region')].find(r=>!r.querySelector('img'))
+          const img=s.querySelector('.abele-slide-region img'),region=img.closest('.abele-slide-region'),words=[...s.querySelectorAll('.abele-slide-region-left,.abele-slide-region-right')].find(r=>!r.querySelector('img'))
           return {edge:s.querySelector('h2').getBoundingClientRect().left-s.getBoundingClientRect().left,cls:s.className,picture:rect(img),region:rect(region),words:rect(words),side:region.classList.contains('abele-slide-region-left')?'left':'right',scale}
         }
-        const a=await figure(0);await shot(1,'figure');const b=await figure(1)
+        const a=await figure(0);await shot(1,'figure');const b=await figure(1);await shot(2,'figure-right')
         await v.go(2);await settle()
         const art=active(),artBody=art.querySelector('.abele-slide-content-body, .abele-slide-region-body > div'),para=art.querySelector('p')
         const lines=[...art.querySelectorAll('p')].flatMap(p=>{const r=document.createRange();r.selectNodeContents(p);return [...r.getClientRects()].filter(b=>b.width>1&&b.height>1)})

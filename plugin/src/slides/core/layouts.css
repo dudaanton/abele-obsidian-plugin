@@ -586,10 +586,6 @@
   grid-column: 2;
 }
 
-.abele-slide-figure .abele-slide-region-right:has(img, video) {
-  order: -1;
-}
-
 .abele-slide-figure:has(.abele-slide-region-right img, .abele-slide-region-right video)
   .abele-slide-content {
   grid-template-columns: minmax(0, 1fr) minmax(0, 1.25fr);
@@ -660,7 +656,9 @@
   font-size: 1.15em;
 }
 
-.abele-slide-article .abele-slide-content :is(p, li) {
+/* A paragraph runs on into the next column as printed text does; only a list item is kept whole.
+   A paragraph longer than a column that is asked to stay whole is laid over by the next one. */
+.abele-slide-article .abele-slide-content li {
   break-inside: avoid-column;
 }
 

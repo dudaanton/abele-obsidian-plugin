@@ -217,6 +217,11 @@ describe.skipIf(!available)('settings transfer security in the running app', () 
           fs.writeFileSync(${JSON.stringify(shots)} + '/' + ${JSON.stringify(mobile ? 'phone' : 'desktop')} + '-' + name + '.png', image.toPNG());
         };
         const inside = el => { const r = el.getBoundingClientRect(); return r.left >= -1 && r.right <= view.innerWidth + 1 && r.bottom <= view.innerHeight + 1 };
+        const shut = async (modal, step) => {
+          const x = modal.querySelector('.modal-close-button, .modal-header-button, [aria-label="Close"]');
+          if (x) x.click(); else modal.ownerDocument.activeElement?.dispatchEvent(new view.KeyboardEvent('keydown', { key: 'Escape', bubbles: true }));
+          await ready(() => !modal.isConnected, step + ' closed (header: ' + (modal.querySelector('.modal-header')?.outerHTML ?? 'none').slice(0, 300) + ')');
+        };
         const out = {};
         (await ready(() => pageButton('Preview'), 'Preview')).click();
         const preview = await ready(() => doc.querySelector('.abele-transfer-preview'), 'preview window');
@@ -224,7 +229,7 @@ describe.skipIf(!available)('settings transfer security in the running app', () 
         out.previewHeadings = preview.querySelectorAll('.abele-group-heading').length;
         out.previewInside = inside(preview.closest('.modal'));
         await picture('preview');
-        preview.closest('.modal').querySelector('.modal-close-button').click();
+        await shut(preview.closest('.modal'), 'preview');
         await ready(() => !doc.querySelector('.abele-transfer-preview'), 'preview closed');
         (await ready(() => pageButton('Send'), 'Send')).click();
         const send = await ready(() => doc.querySelector('.abele-transfer-send .abele-transfer-send__code-value') && doc.querySelector('.abele-transfer-send'), 'codes');
@@ -234,7 +239,7 @@ describe.skipIf(!available)('settings transfer security in the running app', () 
         out.footInSight = inside(foot);
         out.codeFirst = send.querySelector('.abele-transfer-send__code-value').getBoundingClientRect().top < hint.getBoundingClientRect().top && (!qr || qr.getBoundingClientRect().bottom <= hint.getBoundingClientRect().top + 1);
         await picture('send');
-        modal.querySelector('.modal-close-button').click(); app.setting.close();
+        await shut(modal, 'send'); app.setting.close();
         return JSON.stringify(out);
       })()`)
       )
