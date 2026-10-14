@@ -7,6 +7,7 @@ import type { CommitSummary, FileChange, TreeEntry } from '@/components/nodeWork
 import { formatTimestamp } from '@/helpers/displayFormat'
 import { nodePages } from './NodeWorkspaceModel'
 import { readNodeText } from './NodeFilesModel'
+import { COMMIT_FILE_READS, eachBounded } from './bounded'
 import { readNodeImage, isNodeImagePath, NODE_IMAGE_MAX_BYTES } from './nodeImagePreview'
 import type {
   NodePathPort,
@@ -674,67 +675,100 @@ export class NodePathClientPort implements NodePathPort {
     if (page.incomplete) throw new Error(page.omissions.join(' · ') || 'Incomplete history')
     return { entries: page.entries.map(commitSummary), cursor: page.cursor, revision }
   }
+  /** A commit and every file it changed, contents included. */
   async commit(target: PathTarget, hash: string): Promise<CommitSummary> {
+    const index = await this.commitIndex(target, hash),
+      files = [...(index.files ?? [])]
+    await eachBounded(files, COMMIT_FILE_READS, async (file, i) => {
+      files[i] = await this.commitFile(target, index, file)
+    })
+    return { ...index, files }
+  }
+  /**
+   * A commit and the paths it changed, without their contents: two reads however big the commit
+   * is, so its page opens at once. Each file stays `pending` until `commitFile` reads it.
+   */
+  async commitIndex(target: PathTarget, hash: string): Promise<CommitSummary> {
     const revision = { kind: 'commit' as const, commit: hash }
     const commit = await this.client.repository.commit({ worktree_id: target.id, revision })
+    const parent = commit.parents[0]
+    const pending = (path: string, kind: FileChange['kind']): FileChange => ({
+      path,
+      kind,
+      before: '',
+      after: '',
+      added: 0,
+      removed: 0,
+      pending: true,
+    })
     const files: FileChange[] = []
-    if (commit.parents[0]) {
-      const base = { kind: 'commit' as const, commit: commit.parents[0] }
+    if (parent) {
       const changed = await pathPages((cursor) =>
         this.client.repository.compare({
           worktree_id: target.id,
-          base,
+          base: { kind: 'commit', commit: parent },
           head: revision,
           mode: 'endpoint',
           cursor,
         })
       )
-      for (const entry of changed) {
-        const before = entry.status.startsWith('A')
-          ? { text: '', binary: false }
-          : await this.commitText(target, base, entry.path)
-        const after = entry.status.startsWith('D')
-          ? { text: '', binary: false }
-          : await this.commitText(target, revision, entry.path)
-        const binary = before.binary || after.binary
-        const previewNote = before.previewNote ?? after.previewNote
-        files.push({
-          path: entry.path,
-          kind: entry.status.startsWith('A')
-            ? 'added'
-            : entry.status.startsWith('D')
-              ? 'deleted'
-              : 'modified',
-          before: binary || previewNote ? '' : before.text,
-          after: binary || previewNote ? '' : after.text,
-          ...(binary ? { binary: true } : {}),
-          ...(previewNote ? { previewNote } : {}),
-          added: 0,
-          removed: 0,
-        })
-      }
+      for (const entry of changed)
+        files.push(
+          pending(
+            entry.path,
+            entry.status.startsWith('A')
+              ? 'added'
+              : entry.status.startsWith('D')
+                ? 'deleted'
+                : 'modified'
+          )
+        )
     } else {
-      const walk = async (entries: TreeEntry[]): Promise<void> => {
-        for (const entry of entries) {
-          if (entry.kind === 'folder') await walk(entry.children ?? [])
-          else {
-            const loaded = await this.commitText(target, revision, entry.path)
-            files.push({
-              path: entry.path,
-              kind: 'added',
-              before: '',
-              after: loaded.text,
-              ...(loaded.binary ? { binary: true } : {}),
-              ...(loaded.previewNote ? { previewNote: loaded.previewNote } : {}),
-              added: 0,
-              removed: 0,
-            })
-          }
-        }
+      const walk = (entries: TreeEntry[]) => {
+        for (const entry of entries)
+          if (entry.kind === 'folder') walk(entry.children ?? [])
+          else files.push(pending(entry.path, 'added'))
       }
-      await walk(await this.gitTree(target.id, revision))
+      walk(await this.gitTree(target.id, revision))
     }
-    return { ...commitSummary(commit), files }
+    return { ...commitSummary(commit), ...(parent ? { parent } : {}), files }
+  }
+  /**
+   * Both sides of one file a commit changed, read as the commit page reaches it. One read at a
+   * time, and tree reads wait meanwhile: the node refuses a fifth repository read in flight.
+   */
+  commitFile(target: PathTarget, commit: CommitSummary, file: FileChange): Promise<FileChange> {
+    return this.interactive(() => this.readCommitFile(target, commit, file))
+  }
+  private async readCommitFile(
+    target: PathTarget,
+    commit: CommitSummary,
+    file: FileChange
+  ): Promise<FileChange> {
+    const empty: { text: string; binary: boolean; previewNote?: string } = {
+      text: '',
+      binary: false,
+    }
+    const before =
+      file.kind === 'added' || !commit.parent
+        ? empty
+        : await this.commitText(target, { kind: 'commit', commit: commit.parent }, file.path)
+    const after =
+      file.kind === 'deleted'
+        ? empty
+        : await this.commitText(target, { kind: 'commit', commit: commit.hash }, file.path)
+    const binary = before.binary || after.binary
+    const previewNote = before.previewNote ?? after.previewNote
+    return {
+      path: file.path,
+      kind: file.kind,
+      before: binary || previewNote ? '' : before.text,
+      after: binary || previewNote ? '' : after.text,
+      ...(binary ? { binary: true } : {}),
+      ...(previewNote ? { previewNote } : {}),
+      added: 0,
+      removed: 0,
+    }
   }
   async subscribe(notify: () => void): Promise<() => void> {
     const stop = this.client.onEvent((event) => {

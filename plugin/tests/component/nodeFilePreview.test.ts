@@ -16,6 +16,28 @@ const binary = {
   removed: 0,
 }
 describe('node binary and image presentation', () => {
+  it('shows a commit file still being read by its name and a loading line, not an empty diff', () => {
+    const view = mount(HistoryView, {
+      props: {
+        open: 'sample-hash',
+        commits: [
+          {
+            hash: 'sample-hash',
+            subject: 'Update notes',
+            author: 'Sample',
+            day: 'Today',
+            when: '12:00',
+            files: [{ ...binary, path: 'sample.txt', binary: undefined, pending: true }],
+          },
+        ],
+      },
+    })
+    expect(view.text()).toContain('sample.txt')
+    expect(view.text()).toContain('Loading changes…')
+    expect(view.find('.abele-diff').exists()).toBe(false)
+    expect(view.find('.abele-file-view__code').exists()).toBe(false)
+    view.unmount()
+  })
   it('renders a binary commit entry as metadata instead of a blank text diff', () => {
     const view = mount(HistoryView, {
       props: {

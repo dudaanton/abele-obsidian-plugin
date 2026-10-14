@@ -399,6 +399,22 @@ describe('binary-safe commit detail', () => {
       )
     ).toBe(false)
   })
+  it('lists the files of a commit without reading any of their contents, then reads one when asked', async () => {
+    const f = mixed()
+    const index = await f.port.commitIndex(target, HEAD)
+    expect(index.files?.map((file) => [file.path, file.kind, file.pending])).toEqual([
+      ['asset.bin', 'modified', true],
+      ['README.md', 'modified', true],
+      ['removed.bin', 'deleted', true],
+      ['created.bin', 'added', true],
+    ])
+    expect(
+      f.calls.filter((c) => ['repository.v1.blob', 'repository.v1.content'].includes(c.method))
+    ).toEqual([])
+    const readme = await f.port.commitFile(target, index, index.files![1]!)
+    expect(readme.after).toContain('# Sample project')
+    expect(readme.pending).toBeUndefined()
+  })
   it('also opens binary entries in the initial commit', async () => {
     const f = mixed(true)
     const detail = await f.port.commit(target, BASE)

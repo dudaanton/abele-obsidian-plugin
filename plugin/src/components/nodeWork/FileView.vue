@@ -94,7 +94,11 @@ const emit = defineEmits<{
 }>()
 
 const metadataNote = computed(() =>
-  props.change?.binary ? 'Binary file · no text diff.' : props.change?.previewNote
+  props.change?.pending
+    ? 'Loading changes…'
+    : props.change?.binary
+      ? 'Binary file · no text diff.'
+      : props.change?.previewNote
 )
 const imageUrl = ref('')
 const releaseImage = () => {

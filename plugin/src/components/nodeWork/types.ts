@@ -82,6 +82,8 @@ export interface FileChange {
   binary?: boolean
   /** Content omitted by a bounded read; its type may not be known. */
   previewNote?: string
+  /** Listed, its contents still being read: the commit page shows the file before its diff. */
+  pending?: boolean
 }
 
 export interface NodeImagePreview {
@@ -113,6 +115,8 @@ export interface CommitSummary {
   when: string
   /** The day heading the commit is grouped under ("Today", "Yesterday", "8 October"). */
   day: string
+  /** The first parent, which each changed file is compared with. */
+  parent?: string
   /** The files the commit changed, for its own page. */
   files?: FileChange[]
   /** How much it changed, when its files are not loaded: files, lines added, lines removed. */

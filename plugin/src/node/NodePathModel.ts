@@ -99,6 +99,9 @@ export interface NodePathPort {
     revision?: RepositoryRevision
   ): Promise<{ entries: CommitSummary[]; cursor: string | null; revision?: RepositoryRevision }>
   commit(target: PathTarget, hash: string): Promise<CommitSummary>
+  /** The commit's changed paths at once, each `pending`; `commitFile` reads one's contents. */
+  commitIndex?(target: PathTarget, hash: string): Promise<CommitSummary>
+  commitFile?(target: PathTarget, commit: CommitSummary, file: FileChange): Promise<FileChange>
   watch(target: PathTarget, notify: () => void): Promise<() => void>
   subscribe(notify: () => void): Promise<() => void>
 }
