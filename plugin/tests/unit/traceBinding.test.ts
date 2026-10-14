@@ -86,6 +86,30 @@ describe('a debugger session on a node that records runs', () => {
   })
 })
 
+describe('a program held on its first line', () => {
+  it("goes to the first frame that has a file, not Node's own loader around it", async () => {
+    const { DebuggerService } = await import('@/debugger/DebuggerService')
+    const { binding } = await opened(false)
+    try {
+      const c = binding.controller
+      vi.spyOn(c, 'refreshApprovals').mockResolvedValue(undefined as never)
+      vi.spyOn(c, 'refreshHistory').mockResolvedValue(undefined)
+      vi.spyOn(c, 'refreshOutput').mockResolvedValue(undefined)
+      vi.spyOn(c, 'loadStack').mockImplementation(async () => {
+        c.session.frames = [
+          { name: '<anonymous>', file: '', line: 1 },
+          { name: '<anonymous>', file: 'src/total.js', line: 1 },
+        ] as typeof c.session.frames
+      })
+      const reveal = vi.spyOn(DebuggerService.instance, 'reveal').mockImplementation(() => {})
+      await binding.refresh()
+      expect(reveal).toHaveBeenCalledWith(binding, 'src/total.js', 1)
+    } finally {
+      binding.destroy()
+    }
+  })
+})
+
 vi.mock('@/debugger/trace/panel', () => ({ openRun: vi.fn() }))
 
 describe('a program that ends while it records', () => {

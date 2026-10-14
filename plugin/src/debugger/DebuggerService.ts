@@ -228,7 +228,8 @@ export class DebuggerBinding {
       ) {
         await this.controller.loadStack()
         this.loadedEpoch = epoch
-        const f = this.controller.session.frames[0]
+        // The first frame with a file: a program held on its first line sits in Node's loader.
+        const f = this.controller.session.frames.find((frame) => frame.file)
         if (f) DebuggerService.instance.reveal(this, f.file, f.line)
       }
     })().finally(() => {
