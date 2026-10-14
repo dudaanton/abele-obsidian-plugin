@@ -2,7 +2,8 @@ import { afterAll, afterEach, beforeAll, describe, expect, it } from 'vitest'
 import { createHash } from 'node:crypto'
 import { readFileSync, writeFileSync } from 'node:fs'
 import { resolve } from 'node:path'
-import { evalAsync, realClick } from './helpers/githubLive'
+import { evalAsync } from './helpers/githubLive'
+import { withNativeInput } from './helpers/nativeInput'
 import {
   evalJson,
   evalJsonIdempotent,
@@ -99,13 +100,31 @@ const press = async (selector: string, label: string) => {
     modal: control.modal,
     requested: onPhone()
       ? 'one driver tap'
-      : 'unchanged helper moved/pressed/released; individual request-await step is not exposed',
+      : 'one page-owned debugger job: moved/pressed/released, no replay',
   })
   await canvasDispatchOnce(
     control.state,
     async () => {
       if (onPhone()) tap(control.point.x, control.point.y)
-      else await realClick(control.point.x, control.point.y)
+      else
+        await withNativeInput(() => {
+          // CLI dev:cdp may lose its reply when the click dismisses a modal. Use the
+          // existing page eval channel for one native debugger gesture, never replay it.
+          const delivered = inside<string[]>(`
+          const cdp=require('@electron/remote').getCurrentWebContents().debugger,owned=!cdp.isAttached()
+          if(owned)cdp.attach('1.3')
+          const steps=[]
+          try{
+            for(const type of ['mouseMoved','mousePressed','mouseReleased']){
+              await cdp.sendCommand('Input.dispatchMouseEvent',{type,x:${control.point.x},y:${control.point.y},
+                button:type==='mouseMoved'?'none':'left',buttons:type==='mousePressed'?1:0,clickCount:1})
+              steps.push(type)
+            }
+            return steps
+          }finally{if(owned)cdp.detach()}
+        `)
+          record('native-debugger-steps-replied', { label, delivered })
+        })
     },
     observe
   )
