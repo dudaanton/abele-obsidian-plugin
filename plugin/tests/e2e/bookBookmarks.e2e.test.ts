@@ -7,6 +7,7 @@
  * Then on a phone (390×844 under `emulateMobile`): the bar with the bookmark and the list in the
  * drawer, measured and photographed to `/tmp/abele-phone/bookmarks-*.png` — look at them.
  */
+import { randomUUID } from 'node:crypto'
 import { describe, it, expect, beforeAll, afterAll } from 'vitest'
 import {
   evalJson,
@@ -18,7 +19,7 @@ import {
   runCli,
 } from './helpers/obsidianCli'
 import { evalAsync } from './helpers/githubLive'
-import { buildRichEpub, RICH_BOOK_ID } from '../fixtures/books/richBook'
+import { buildRichEpub } from '../fixtures/books/richBook'
 import { buildLongPdf } from '../fixtures/books/pdfFixture'
 import { shotDir } from './helpers/shots'
 import { until, WAIT_PRELUDE } from './helpers/wait'
@@ -26,6 +27,8 @@ import { until, WAIT_PRELUDE } from './helpers/wait'
 const available = isObsidianRunning() && hasTestApi()
 const DIR = 'Abele reader bookmarks e2e'
 const BOOK = `${DIR}/rich.epub`
+// A book of its own: bookmarks and places follow the identifier, which other files' copies share.
+const BOOK_ID = `urn:uuid:${randomUUID()}`
 const PDF = `${DIR}/long.pdf`
 const SHOTS = shotDir('abele-phone')
 
@@ -110,7 +113,7 @@ describe.skipIf(!available)('bookmarks in the reader', () => {
 
   beforeAll(() => {
     const files = {
-      'rich.epub': Buffer.from(buildRichEpub()).toString('base64'),
+      'rich.epub': Buffer.from(buildRichEpub(BOOK_ID)).toString('base64'),
       'long.pdf': Buffer.from(buildLongPdf(12)).toString('base64'),
     }
     savedReader = evalJson<unknown>('window.__abeleTest.AbeleConfig.getInstance().reader')
@@ -125,6 +128,12 @@ describe.skipIf(!available)('bookmarks in the reader', () => {
           await app.vault.createBinary(${JSON.stringify(DIR)} + '/' + name, bytes.buffer)
         }
         const cfg = window.__abeleTest.AbeleConfig.getInstance()
+        // The places and bookmarks files are the vault's; they are put back as they were.
+        const places = cfg.reader?.placesPath || 'abele-book-places.json'
+        const marks = (places.includes('/') ? places.slice(0, places.lastIndexOf('/')) + '/' : '') + 'abele-book-bookmarks.json'
+        window.__bookBookmarksFiles = {}
+        for (const f of [places, marks])
+          window.__bookBookmarksFiles[f] = (await app.vault.adapter.exists(f)) ? await app.vault.adapter.read(f) : null
         cfg.reader = { ...cfg.reader, flow: 'paginated', fontSize: 100 }
         await cfg.saveSettings()
         return 'ok'
@@ -144,8 +153,10 @@ describe.skipIf(!available)('bookmarks in the reader', () => {
         if (dir) await app.vault.delete(dir, true)
         // The fixture vault holds nothing of the tests' own afterwards.
         await new Promise((r) => setTimeout(r, 1500))
-        for (const f of ['abele-book-places.json', 'abele-book-bookmarks.json'])
-          if (await app.vault.adapter.exists(f)) await app.vault.adapter.remove(f)
+        for (const [f, text] of Object.entries(window.__bookBookmarksFiles ?? {}))
+          if (text !== null) await app.vault.adapter.write(f, text)
+          else if (await app.vault.adapter.exists(f)) await app.vault.adapter.remove(f)
+        delete window.__bookBookmarksFiles
         return 'ok'
       })()`,
       60_000
@@ -167,7 +178,7 @@ describe.skipIf(!available)('bookmarks in the reader', () => {
       unfilled?: boolean | null
     }>(`
       const { leaf, view } = await open(${JSON.stringify(BOOK)})
-      const key = 'id:' + ${JSON.stringify(RICH_BOOK_ID)}
+      const key = 'id:' + ${JSON.stringify(BOOK_ID)}
       for (const b of view.model.bookmarks) await view.bookmarks.remove(b)
       await until(() => view.model.bookmarks.length === 0 && filled(view) === false)
       await chapterAt(view, 2)
@@ -324,7 +335,7 @@ describe.skipIf(!available)('bookmarks in the reader', () => {
         await until(() => !view.contentEl.querySelector('.abele-book-reader__panel'))
         for (const b of view.model.bookmarks) await view.bookmarks.remove(b)
         await until(() => view.model.bookmarks.length === 0)
-        await marksWritten(view, 'id:' + ${JSON.stringify(RICH_BOOK_ID)})
+        await marksWritten(view, 'id:' + ${JSON.stringify(BOOK_ID)})
         leaf.detach()
         return { phone: document.body.classList.contains('is-phone'), button, screen: { width: innerWidth, height: innerHeight }, tabs, drawer, rows }
       `)
