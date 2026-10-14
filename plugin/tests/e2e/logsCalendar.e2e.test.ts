@@ -1,0 +1,214 @@
+/** The real note footer, with synthetic dated log notes, at desktop and phone widths. */
+import { afterAll, describe, expect, it } from 'vitest'
+import { evalLong, evalRaw, hasTestApi, isObsidianRunning, reloadApp } from './helpers/obsidianCli'
+import { targets } from './helpers/target'
+import { shotDir } from './helpers/shots'
+
+targets('desktop')
+const available = isObsidianRunning() && hasTestApi()
+const SHOTS = shotDir('logs-calendar')
+let emulated = false
+let originalSize: { width: number; height: number } | undefined
+
+const probe = (label: string) => String.raw`(async () => {
+  const api = window.__abeleTest
+  const config = api.AbeleConfig.getInstance()
+  const store = api.GlobalStore.getInstance()
+  const folder = 'Sample calendar probe'
+  if (app.vault.getAbstractFileByPath(folder)) throw Error('probe folder already exists')
+  const previousRemember = config.rememberNotePlaces
+  const previousLeaf = app.workspace.activeLeaf
+  const previousViewState = previousLeaf?.getViewState()
+  const previousMemory = app.loadLocalStorage('abele-footer-view')
+  let leaf
+  const report = {}
+  const wait = ms => new Promise(resolve => setTimeout(resolve, ms))
+  const until = async (fn, name) => {
+    const deadline = Date.now() + 15000
+    while (Date.now() < deadline) {
+      const value = fn()
+      if (value) return value
+      await wait(100)
+    }
+    throw Error('not ready: ' + name)
+  }
+  const create = async (name, body) => {
+    const file = await app.vault.create(folder + '/' + name + '.md', body)
+    await until(() => app.metadataCache.getFileCache(file), name + ' metadata')
+    return file
+  }
+  const shoot = async name => {
+    // Park the pointer outside the note so a native link preview cannot cover the state.
+    require('@electron/remote').getCurrentWebContents().sendInputEvent({ type: 'mouseMove', x: 8, y: 400 })
+    // Let the native floating phone chrome settle after scrolling before taking the viewport.
+    await wait(800)
+    await new Promise((resolve, reject) => {
+      const timer = setTimeout(() => reject(Error('window is not drawing')), 5000)
+      requestAnimationFrame(() => requestAnimationFrame(() => { clearTimeout(timer); resolve() }))
+    })
+    const fs = require('fs')
+    fs.mkdirSync(${JSON.stringify(SHOTS)}, { recursive: true })
+    const path = ${JSON.stringify(SHOTS)} + '/' + ${JSON.stringify(label)} + '-' + name + '.png'
+    const image = await require('@electron/remote').getCurrentWebContents().capturePage()
+    fs.writeFileSync(path, image.toPNG())
+  }
+  try {
+    config.rememberNotePlaces = false
+    store.applySettings()
+    await app.vault.createFolder(folder)
+    const note = await create('Sample practice', 'A sample practice with dated entries.\n')
+    const today = new Date()
+    const date = day => today.getFullYear() + '-' + String(today.getMonth()+1).padStart(2,'0') + '-' + String(day).padStart(2,'0')
+    const todayKey = date(today.getDate())
+    const longDay = today.getDate() === 14 ? 13 : 14
+    const files = []
+    for (let day = 1; day <= Math.max(28, today.getDate()); day++) {
+      if (day % 5 === 0 && day !== today.getDate() && day !== longDay) continue
+      const content = day === longDay
+        ? Array.from({length: 14}, (_, i) => 'Sample line ' + (i+1) + ' about [[' + note.path + ']].').join('\n')
+        : (day % 3 === 0 ? '- [ ] ' : day % 3 === 1 ? '- [x] ' : '') + 'Sample entry for [[' + note.path + ']].'
+      const file = await create(date(day), '---\ntype: log\ncreated: ' + date(day) + '\n---\n' + content + '\n')
+      files.push(file)
+    }
+    await until(() => files.every(file => app.metadataCache.resolvedLinks[file.path]?.[note.path]), 'resolved log links')
+    leaf = app.workspace.getLeaf('tab')
+    await leaf.openFile(note, { state: { mode: 'source', source: false } })
+    app.workspace.setActiveLeaf(leaf, { focus: true })
+    const root = () => leaf.view.containerEl
+    const toggle = await until(() => root().querySelector('.abele-logs-list__view'), 'logs view toggle')
+    toggle.click()
+    const calendar = await until(() => root().querySelector('.abele-logs-calendar'), 'calendar')
+    const section = root().querySelector('.abele-logs-list')
+    section.scrollIntoView({ block: 'start' })
+    await until(() => calendar.querySelectorAll('.abele-calendar__day-log').length >= files.length, 'loaded marks')
+    await until(() => calendar.querySelector('.abele-log__file-content')?.textContent.includes('Sample'), 'selected body')
+    const selected = () => calendar.querySelector('.abele-calendar__day_selected')
+    const dayTitle = () => calendar.querySelector('.abele-logs-calendar__day-title')
+    report.today = selected().getAttribute('aria-label').includes(today.getDate() + ' ')
+    report.dailyLink = !!dayTitle().querySelector('a.internal-link')
+    report.noRepeatedSource = !calendar.querySelector('.abele-log__links')
+    report.marks = {
+      checked: calendar.querySelectorAll('.abele-calendar__day-log_done').length,
+      open: calendar.querySelectorAll('.abele-calendar__day-log_open').length,
+      all: calendar.querySelectorAll('.abele-calendar__day-log').length
+    }
+    const monthBox = calendar.querySelector('.abele-logs-calendar__month').getBoundingClientRect()
+    const detailBox = calendar.querySelector('.abele-logs-calendar__day').getBoundingClientRect()
+    report.stacked = detailBox.top >= monthBox.bottom
+    report.overflow = [...calendar.querySelectorAll('*')].filter(el => el.getBoundingClientRect().right > Math.min(innerWidth,calendar.getBoundingClientRect().right) + 1).map(el => el.className)
+    report.daySizes = [...calendar.querySelectorAll('.abele-calendar__day')].map(el => { const b=el.getBoundingClientRect(); return [b.width,b.height] })
+    await shoot('today')
+    await shoot('busy-month')
+    const todayFile = files.find(file => file.basename === todayKey)
+    await app.vault.modify(todayFile, '---\ntype: log\ncreated: ' + todayKey + '\n---\n- [x] Sample entry for [[' + note.path + ']].\n')
+    await until(() => selected().querySelector('.abele-calendar__day-log_done'), 'updated source checkbox mark')
+    report.sourceRefresh = !!selected().querySelector('.abele-calendar__day-log_done')
+
+    const longCell = [...calendar.querySelectorAll('.abele-calendar__day:not(.abele-calendar__day_other-month)')].find(el => el.querySelector('.abele-calendar__day-number').textContent === String(longDay))
+    longCell.click()
+    await until(() => calendar.querySelector('.abele-log__toggle'), 'long entry disclosure')
+    report.collapsed = !!calendar.querySelector('.abele-log__file-content--collapsed')
+    section.scrollIntoView({ block: 'start' })
+    await shoot('long-entry')
+    calendar.querySelector('.abele-log__toggle').click()
+    await wait(100)
+    report.expanded = !calendar.querySelector('.abele-log__file-content--collapsed')
+
+    calendar.querySelector('[aria-label="Next month"]').click()
+    await until(() => calendar.querySelector('.abele-logs-calendar__none')?.textContent.includes('Nothing written in'), 'empty month')
+    report.empty = calendar.querySelector('.abele-logs-calendar__none').textContent.trim()
+    report.selectedInMonth = !selected().classList.contains('abele-calendar__day_other-month')
+    section.scrollIntoView({ block: 'start' })
+    await shoot('empty-month')
+    calendar.querySelector('[aria-label="Previous month"]').click()
+    await until(() => calendar.querySelector('.abele-log__file-content')?.textContent.includes('Sample'), 'returned month body')
+    report.returned = !calendar.querySelector('.abele-logs-calendar__none')
+    await shoot('switching-months')
+    calendar.querySelector('[aria-label="Select today"]').click()
+    await wait(100)
+    report.todayAgain = selected().querySelector('.abele-calendar__day-number').textContent === String(today.getDate())
+    calendar.querySelector('.abele-calendar__day').focus()
+    const contents = require('@electron/remote').getCurrentWebContents()
+    contents.sendInputEvent({ type: 'keyDown', keyCode: 'Tab' })
+    contents.sendInputEvent({ type: 'keyUp', keyCode: 'Tab' })
+    await wait(100)
+    const focused = document.activeElement
+    const focusStyle = getComputedStyle(focused)
+    report.keyboardDay = focused.classList.contains('abele-calendar__day') && focused.matches(':focus-visible')
+    report.focusPaint = focusStyle.outlineStyle !== 'none' && parseFloat(focusStyle.outlineWidth) > 0 || focusStyle.boxShadow !== 'none'
+
+    const saved = app.loadLocalStorage('abele-footer-view')
+    report.saved = saved[note.path]?.logsCalendar === true
+    root().querySelector('.abele-logs-list__view').click()
+    await until(() => !root().querySelector('.abele-logs-calendar') && root().querySelector('.abele-logs-list__logs'), 'list view restored')
+    report.list = !root().querySelector('.abele-logs-calendar') && !!root().querySelector('.abele-logs-list__logs')
+    return report
+  } finally {
+    if (leaf === previousLeaf && previousViewState) await leaf.setViewState(previousViewState)
+    else leaf?.detach()
+    if (previousLeaf) app.workspace.setActiveLeaf(previousLeaf, { focus: true })
+    const scratch = app.vault.getAbstractFileByPath(folder)
+    if (scratch) await app.vault.delete(scratch, true)
+    app.saveLocalStorage('abele-footer-view', previousMemory ?? {})
+    config.rememberNotePlaces = previousRemember
+    store.applySettings()
+  }
+})()`
+
+async function check(label: string) {
+  const raw = await evalLong(probe(label))
+  if (raw.startsWith('Error:')) throw new Error(`${label} logs calendar: ${raw}`)
+  const report = JSON.parse(raw)
+  expect(report.today).toBe(true)
+  expect(report.dailyLink).toBe(true)
+  expect(report.noRepeatedSource).toBe(true)
+  expect(report.marks.checked).toBeGreaterThan(0)
+  expect(report.marks.open).toBeGreaterThan(0)
+  expect(report.marks.all).toBeGreaterThan(20)
+  expect(report.stacked).toBe(label === 'phone')
+  expect(report.overflow).toEqual([])
+  if (label === 'phone') {
+    for (const [width, height] of report.daySizes) {
+      expect(width).toBeGreaterThanOrEqual(44)
+      expect(height).toBeGreaterThanOrEqual(44)
+    }
+  }
+  expect(report.sourceRefresh).toBe(true)
+  expect(report.collapsed).toBe(true)
+  expect(report.expanded).toBe(true)
+  expect(report.empty).toMatch(/^Nothing written in /)
+  expect(report.selectedInMonth).toBe(true)
+  expect(report.returned).toBe(true)
+  expect(report.todayAgain).toBe(true)
+  expect(report.keyboardDay).toBe(true)
+  expect(report.focusPaint).toBe(true)
+  expect(report.saved).toBe(true)
+  expect(report.list).toBe(true)
+}
+
+describe.skipIf(!available)('logs calendar in the live note footer', () => {
+  afterAll(async () => {
+    if (emulated) await reloadApp('app.emulateMobile(false)')
+    if (originalSize)
+      evalRaw(
+        `require('@electron/remote').getCurrentWindow().setContentSize(${originalSize.width}, ${originalSize.height})`
+      )
+  })
+
+  it('shows marked months and selected entries on a wide note', async () => {
+    originalSize = JSON.parse(
+      evalRaw(
+        "JSON.stringify((() => { const [width,height] = require('@electron/remote').getCurrentWindow().getContentSize(); return {width,height} })())"
+      )
+    )
+    evalRaw("require('@electron/remote').getCurrentWindow().setContentSize(1440, 1000)")
+    await check('desktop')
+  }, 180_000)
+
+  it('stacks the selected day under a full-width touch calendar on a phone', async () => {
+    emulated = true
+    await reloadApp('app.emulateMobile(true)')
+    evalRaw("require('@electron/remote').getCurrentWindow().setContentSize(390, 844)")
+    await check('phone')
+  }, 180_000)
+})

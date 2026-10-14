@@ -5,9 +5,16 @@
         {{ dayjs().month(selectedMonth).format('MMMM') }} {{ selectedYear }}
       </div>
       <div class="abele-calendar__header-controls">
-        <ObsidianIcon icon="chevron-left" @click="previousMonth()" />
-        <div class="abele-calendar__header-today" @click="todayClick()">Today</div>
-        <ObsidianIcon icon="chevron-right" @click="nextMonth()" />
+        <ObsidianIcon icon="chevron-left" tooltip="Previous month" @click="previousMonth()" />
+        <!-- In a note's log month the keyboard moves through the controls and the days alike. -->
+        <ObsidianIcon
+          v-if="marks"
+          text-right="Today"
+          tooltip="Select today"
+          @click="todayClick()"
+        />
+        <div v-else class="abele-calendar__header-today" @click="todayClick()">Today</div>
+        <ObsidianIcon icon="chevron-right" tooltip="Next month" @click="nextMonth()" />
       </div>
     </div>
     <div class="abele-calendar__body">
@@ -17,11 +24,18 @@
         </div>
       </div>
       <div class="abele-calendar__days">
-        <div
+        <!-- A day of a note's log is a button named by its date and its mark, so it is reached
+             and pressed from the keyboard and read out as what it shows. -->
+        <component
+          :is="marks ? 'button' : 'div'"
           v-for="day in days"
           :key="day.day.toString()"
           class="abele-calendar__day"
+          :type="marks ? 'button' : undefined"
+          :aria-label="marks ? dayLabel(day.day, day.formatedDate) : undefined"
+          :aria-pressed="marks ? !!props.selectedDate?.isSame(day.day, 'day') : undefined"
           :class="{
+            'clickable-icon': !!marks,
             'abele-calendar__day_today': day.day.isSame(today, 'day'),
             'abele-calendar__day_other-month': day.day.get('month') !== selectedMonth,
             'abele-calendar__day_selected': props.selectedDate
@@ -43,6 +57,7 @@
               class="abele-calendar__day-dot abele-calendar__day-log"
               viewBox="0 0 10 10"
               xmlns="http://www.w3.org/2000/svg"
+              aria-hidden="true"
             >
               <circle cx="5" cy="5" r="4" fill="currentColor" />
             </svg>
@@ -51,6 +66,7 @@
               class="abele-calendar__day-dot abele-calendar__day-log abele-calendar__day-log_done"
               viewBox="0 0 10 10"
               xmlns="http://www.w3.org/2000/svg"
+              aria-hidden="true"
             >
               <rect x="0.5" y="0.5" width="9" height="9" rx="2" fill="currentColor" />
               <path
@@ -67,6 +83,7 @@
               class="abele-calendar__day-dot abele-calendar__day-log abele-calendar__day-log_open"
               viewBox="0 0 10 10"
               xmlns="http://www.w3.org/2000/svg"
+              aria-hidden="true"
             >
               <rect
                 x="1"
@@ -117,7 +134,7 @@
               <circle cx="5" cy="5" r="4" fill="none" stroke="currentColor" stroke-width="1.5" />
             </svg>
           </div>
-        </div>
+        </component>
       </div>
     </div>
   </div>
@@ -150,6 +167,19 @@ const props = defineProps<{
   /** A mark for each day by `YYYY-MM-DD`: the days a note's log was written on. */
   marks?: Map<string, LogDayMark>
 }>()
+/** What a log month's day says when read out: its date, and what its mark shows. */
+const dayLabel = (date: dayjs.Dayjs, key: string): string => {
+  const mark = props.marks?.get(key)
+  const status =
+    mark === 'done'
+      ? 'Checked log'
+      : mark === 'open'
+        ? 'Unchecked log'
+        : mark === 'entry'
+          ? 'Log entry'
+          : 'No log entries'
+  return `${date.format('ddd D MMMM YYYY')}: ${status}`
+}
 const selectedMonth = ref(
   props.selectedDate ? props.selectedDate.get('month') : today.value.get('month')
 )
@@ -228,7 +258,7 @@ const onTouchEnd = () => {
 
 const days = computed(() => {
   const days: { dayNumber: number; day: dayjs.Dayjs; formatedDate: string }[] = []
-  const firstDayOfMonth = dayjs().year(selectedYear.value).month(selectedMonth.value).date(1)
+  const firstDayOfMonth = dayjs().date(1).year(selectedYear.value).month(selectedMonth.value)
   const weekStart = GlobalStore.getInstance().weekStartsOnMonday.value ? 1 : 0
 
   const paddingDays = (firstDayOfMonth.day() - weekStart + 7) % 7
@@ -324,7 +354,7 @@ const emit = defineEmits<{
 }>()
 
 watch([selectedMonth, selectedYear], () =>
-  emit('month-changed', dayjs().year(selectedYear.value).month(selectedMonth.value).date(1))
+  emit('month-changed', dayjs().date(1).year(selectedYear.value).month(selectedMonth.value))
 )
 </script>
 
@@ -450,8 +480,15 @@ watch([selectedMonth, selectedYear], () =>
 // a size a box can be told from a dot by, and the chosen day is lit the way Obsidian lights the
 // open file in its list rather than filled with the accent the ticked boxes are drawn in.
 .abele-calendar_marks {
+  // The day is a button here; Obsidian's button box and shadow give way to the calendar's cell.
   .abele-calendar__day {
-    padding-block: var(--size-2-2);
+    padding: var(--size-2-2) 0;
+    height: auto;
+    font: inherit;
+
+    &:not(:focus-visible) {
+      box-shadow: none;
+    }
     gap: var(--size-2-1);
   }
 
@@ -466,6 +503,17 @@ watch([selectedMonth, selectedYear], () =>
     background-color: var(--nav-item-background-active);
     color: var(--nav-item-color-active);
     font-weight: var(--font-semibold);
+  }
+}
+
+// A finger's worth of height for each day on a phone, the cells meeting edge to edge.
+body.is-phone .abele-calendar_marks {
+  .abele-calendar__days {
+    gap: 0;
+  }
+
+  .abele-calendar__day {
+    min-height: var(--abele-touch-min);
   }
 }
 

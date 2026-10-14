@@ -175,6 +175,8 @@ export class Log {
           }
 
           this.load(true)
+          // Keep loaded excerpts and calendar checkbox marks current, without reading unseen logs.
+          if (this.content !== undefined) void this.loadContent()
           console.debug('log file changed')
         },
         AbeleConfig.getInstance().refreshDelay,

@@ -103,6 +103,17 @@ describe('Log metadata and watchers', () => {
     expect(ordinaryLog).not.toHaveBeenCalled()
   })
 
+  it('refreshes already-read content when the source checkbox changes', async () => {
+    const item = log(PATH, TARGET)
+    await item.load()
+    await item.loadContent()
+    const file = app.vault.getAbstractFileByPath(PATH) as TFile
+    await app.vault.modify(file, '- [x] [[Orchard]]')
+    app.emit('vault', 'modify', file)
+    await flushPromises()
+    expect(item.content).toBe('- [x] [[Orchard]]')
+  })
+
   it('reloads related text when the target changes or moves', async () => {
     const item = log(PATH, TARGET)
     await item.load()
