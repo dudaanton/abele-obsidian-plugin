@@ -99,8 +99,9 @@ body {
   --abele-code-background: color-mix(in srgb, var(--text-normal) 7%, var(--background-primary));
 }
 
-.abele-markdown :not(pre) > code {
-  background-color: var(--abele-code-background);
+/* Through Obsidian's own variable, so a code block's ground takes it as well as `code` in a line. */
+.abele-markdown {
+  --code-background: var(--abele-code-background);
 }
 
 body {
