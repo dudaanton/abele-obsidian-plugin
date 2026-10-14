@@ -2,9 +2,10 @@ import { afterEach, expect, it, vi } from 'vitest'
 import { shallowReactive } from 'vue'
 import { DocxView } from '@/word/DocxView'
 import { useVault } from '../helpers/testEnv'
-import { paragraph, sampleDocx } from '../fixtures/docx/sampleDocx'
+import { paragraph, sampleBody, sampleDocx, SAMPLE_IMAGE } from '../fixtures/docx/sampleDocx'
+import { WordPicturePicker } from '@/word/WordPicturePicker'
 import type { WordEdit } from '@/word/edit'
-import { Platform } from 'obsidian'
+import { Modal, Platform } from 'obsidian'
 
 const views: DocxView[] = []
 afterEach(async () => {
@@ -87,45 +88,118 @@ it('rejects queued work after the document is closed', async () => {
   expect(file.path).toBe('sample-page.docx')
 })
 
-it('opens retained controls in the shared modal with the selected link range', async () => {
+type Dialogs = {
+  advanced(paragraph: number, picture?: boolean): Promise<void>
+  askLink(edit: Omit<WordEdit, 'url'>): Promise<void>
+  pickImage(paragraph: number): void
+}
+const dialogs = (view: DocxView) => view as unknown as Dialogs
+const modal = () => document.querySelector<HTMLElement>('.modal')
+const button = (label: string) =>
+  document.querySelector<HTMLButtonElement>(`.modal [aria-label="${label}"]`)
+const flush = () => new Promise((resolve) => setTimeout(resolve, 0))
+
+it('asks for a link on the words chosen on the page and links exactly those', async () => {
   const { view } = await opened()
-  await (
-    view as unknown as {
-      advanced(paragraph: number, range: { from: number; to: number }): Promise<void>
-    }
-  ).advanced(1, { from: 0, to: 6 })
+  await dialogs(view).askLink({ operation: 'link', paragraph: 1, from: 0, to: 6 })
+  await vi.waitFor(() => expect(modal()?.textContent).toContain('On «Sample»'))
+  const field = document.querySelector<HTMLInputElement>('.modal input[aria-label="Link address"]')!
+  field.value = 'https://example.com/sample'
+  field.dispatchEvent(new Event('input'))
+  await flush()
+  button('Link the words to this address')!.click()
   await vi.waitFor(() =>
-    expect(document.querySelector('.abele-word-editor textarea')).not.toBeNull()
+    expect(view.document?.xml.get('word/document.xml')).toContain('<w:hyperlink')
   )
-  const field = document.querySelector<HTMLTextAreaElement>('.abele-word-editor textarea')!
-  expect(field.selectionStart).toBe(0)
-  expect(field.selectionEnd).toBe(6)
-  const buttons = Array.from(
-    document.querySelectorAll<HTMLButtonElement>('.abele-word-editor button')
-  )
-  expect(buttons.some((button) => button.textContent === 'Apply link')).toBe(true)
-  buttons.find((button) => button.textContent === 'Cancel')!.click()
-  expect(document.querySelector('.abele-word-editor')).toBeNull()
+  expect(modal()).toBeNull()
+  const xml = view.document!.xml.get('word/document.xml')!
+  const linked = xml.slice(xml.indexOf('<w:hyperlink'), xml.indexOf('</w:hyperlink>'))
+  expect(linked).toContain('Sample')
+  expect(linked).not.toContain('original')
 })
 
-it('opens a read-only mobile inspector without enabling document writes', async () => {
+it('closes the link window on Cancel without writing', async () => {
   const { app, view } = await opened()
-  const prior = Platform.isMobile
   const write = vi.spyOn(app.vault, 'modifyBinary')
+  await dialogs(view).askLink({ operation: 'link', paragraph: 1, from: 0, to: 6 })
+  await vi.waitFor(() => expect(button('Close without linking')).not.toBeNull())
+  button('Close without linking')!.click()
+  await flush()
+  expect(modal()).toBeNull()
+  expect(write).not.toHaveBeenCalled()
+})
+
+it('opens what the ribbon has no room for as rows, and joins a paragraph with the next', async () => {
+  const { view } = await opened(paragraph('Sample first') + paragraph('Sample second'))
+  const title = vi.spyOn(Modal.prototype, 'setTitle')
+  await dialogs(view).advanced(1)
+  await vi.waitFor(() => expect(modal()?.textContent).toContain('Join with the next paragraph'))
+  expect(title).toHaveBeenLastCalledWith('Paragraph 1')
+  expect(document.querySelector('.abele-word-editor')).toBeNull()
+  button('Join the next paragraph onto this one')!.click()
+  const body = () => view.document?.paragraphs.filter((p) => p.part === 'word/document.xml')
+  await vi.waitFor(() => expect(body()).toHaveLength(1))
+  expect(body()?.[0].text).toBe('Sample firstSample second')
+  expect(modal()).toBeNull()
+})
+
+it('resizes a chosen picture in proportion and keeps its window open', async () => {
+  const { view } = await opened(sampleBody)
+  const title = vi.spyOn(Modal.prototype, 'setTitle')
+  const number = view.document!.images[0].paragraph
+  await dialogs(view).advanced(number, true)
+  await vi.waitFor(() => expect(title).toHaveBeenLastCalledWith('Picture'))
+  const width = document.querySelector<HTMLInputElement>(
+    '.modal input[aria-label="Width in pixels"]'
+  )!
+  const height = document.querySelector<HTMLInputElement>(
+    '.modal input[aria-label="Height in pixels"]'
+  )!
+  expect([width.value, height.value]).toEqual(['100', '100'])
+  width.value = '50'
+  width.dispatchEvent(new Event('input'))
+  await flush()
+  expect(height.value).toBe('50')
+  width.dispatchEvent(new Event('change'))
+  width.dispatchEvent(new KeyboardEvent('keydown', { key: 'Enter' }))
+  await vi.waitFor(() =>
+    expect(view.document?.xml.get('word/document.xml')).toContain('cx="476250" cy="476250"')
+  )
+  expect(modal()).not.toBeNull()
+})
+
+it('puts a picture from the vault in at its own size, offering only what Word can hold', async () => {
+  const { app, view } = await opened()
+  await app.vault.createBinary('Attachments/sample-image.png', SAMPLE_IMAGE.buffer as ArrayBuffer)
+  await app.vault.create('Attachments/sample-drawing.svg', '<svg/>')
+  await app.vault.create('Notes/sample-note.md', 'Sample')
+  const open = vi.spyOn(WordPicturePicker.prototype, 'open').mockImplementation(() => {})
+  dialogs(view).pickImage(1)
+  const picker = open.mock.contexts[0] as WordPicturePicker | undefined
+  expect(picker).toBeDefined()
+  expect(picker!.getSuggestions('').map((f) => f.path)).toEqual(['Attachments/sample-image.png'])
+  picker!.selectSuggestion({ path: 'Attachments/sample-image.png' }, new KeyboardEvent('keydown'))
+  await vi.waitFor(() => expect(view.document?.images).toHaveLength(1))
+  // The invented picture is 16 pixels square: 16 × 9525 EMU.
+  expect(view.document?.xml.get('word/document.xml')).toContain('cx="152400" cy="152400"')
+})
+
+it('opens the same rows read only on a phone without enabling document writes', async () => {
+  const prior = Platform.isMobile
   Platform.isMobile = true
   try {
-    await (view as unknown as { advanced(paragraph: number): Promise<void> }).advanced(1)
-    await vi.waitFor(() =>
-      expect(document.querySelector('.abele-word-read-only .abele-word-line')).not.toBeNull()
-    )
+    const { app, view } = await opened(paragraph('Sample first') + paragraph('Sample second'))
+    const write = vi.spyOn(app.vault, 'modifyBinary')
+    await dialogs(view).advanced(1)
+    await vi.waitFor(() => expect(modal()?.textContent).toContain('Read only'))
     expect(document.querySelector('.abele-word-editor')).toBeNull()
     expect(
       document.querySelectorAll(
-        '.abele-word-read-only input,.abele-word-read-only select,.abele-word-read-only textarea,.abele-word-read-only button'
+        '.modal input,.modal select,.modal textarea,.modal button:not(.modal-close-button)'
       )
     ).toHaveLength(0)
     await view.onUnloadFile()
-    expect(document.querySelector('.abele-word-read-only')).toBeNull()
+    expect(modal()).toBeNull()
     expect(write).not.toHaveBeenCalled()
   } finally {
     Platform.isMobile = prior

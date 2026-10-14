@@ -54,26 +54,31 @@ Choose a style already in the document (including its heading styles). The list 
 bulleted and numbered lists. There is no style designer.
 You can add a paragraph below, split at the cursor, merge with the next paragraph, or delete one.
 Enter splits at the cursor. The ribbon's controls icon names the selected paragraph, table or
-picture and opens its remaining controls, including merging with the next paragraph.
+picture and opens what the ribbon has no room for as a short list of rows: the paragraph's links
+and joining it with the next one. A row that cannot be used says why in its tooltip.
 Merging retains the first paragraph's style.
 At least one paragraph stays in each container.
 
-For links, select the words, enter the address and choose **Apply link**. Select an existing link
-whole to change or remove it. HTTP, HTTPS and mail addresses are supported; the preview does not
+For links, select the words and choose the link icon: a small window names the words, takes the
+address and links them with **Link** or Enter. On words already linked it shows the address to
+change and offers **Remove link**. The paragraph's links are also rows in its controls, each with
+its address to edit and a button to take it off. HTTP, HTTPS and mail addresses are supported; the preview does not
 contact those addresses automatically.
 
 ## Tables and pictures
 
-In an existing table cell, open the ribbon's table controls. Rows and **Grid column**
-numbers start at 1; a merged cell spans several grid columns. Enter the first and last row/column
-of a rectangle and choose **Merge cells**, or choose its first column and **Split cells**. All
-selected text stays in the top-left cell when merging; after splitting it stays in the first cell.
-You can add a blank row below or delete a row. Split a vertical merge before editing its rows.
+In an existing table cell, open the ribbon's table controls. They name the cell's row and grid
+column, counted from 1 as the table's grid has them; a merged cell spans several grid columns.
+Merge the cell with the one to its right or the one below, one step at a time, or split a merged
+cell back into single cells. All text stays in the top-left cell when merging; after splitting it
+stays in the first cell. You can add a blank row below or delete a row. Split a vertical merge before editing its rows.
 Nested, irregular or protected tables are read-only rather than silently simplified.
 
-Select a picture on the page, then open the controls from the ribbon, or use the picture icon in the ribbon. In the controls,
-select its image number to replace, resize or delete it. To insert one,
-choose a vault image path and its width and height in pixels. The path field suggests vault files.
+Select a picture on the page, then open the controls from the ribbon. Its size is in pixels;
+width and height change together unless the lock beside them is opened. Replace it with another
+picture from the vault, or delete it. To insert one, use the picture icon in the ribbon: the vault's
+pictures are listed as the quick switcher lists notes, the name with its folder under it. It goes
+in at the end of the paragraph at its own size, made smaller to fit the page's width if it is wider.
 PNG, JPEG, GIF and WebP files up to 10 MB are supported. The image is embedded in the Word file;
 the source attachment stays in the vault. Floating pictures are kept untouched and read-only.
 Original media stays inside the package even after a picture is replaced/deleted, so other parts

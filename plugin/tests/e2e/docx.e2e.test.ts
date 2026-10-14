@@ -161,51 +161,76 @@ describe.skipIf(!available)('Word document view', () => {
       controls: string[]
       clipped: string[]
       formatted: boolean
-      shot: string
+      shots: string[]
     }>(`(async () => {
       const view = app.workspace.getLeavesOfType('abele-word').find(l=>l.view.file?.path===${JSON.stringify(PATH)}).view
-      const root = view.contentEl;
-      root.querySelector('[data-paragraph="1"] .abele-word-line__text').click()
-      await new Promise(r => setTimeout(r,0))
-      root.querySelector('[aria-label="Paragraph 1 controls"]').click()
-      for(let i=0;i<150&&!document.querySelector('.abele-word-editor');i++) await new Promise(r=>setTimeout(r,100))
-      const row=document.querySelector('.abele-word-editor')
-      const input=row.querySelector('textarea');input.setSelectionRange(0,6)
-      const controls=[...row.querySelectorAll('button')].map(b=>b.textContent)
-      const clipped=[]
-      for(const field of row.querySelectorAll('input,select,textarea')) {
-        field.focus();const r=field.getBoundingClientRect()
-        for(let el=field.parentElement;el&&el!==document.body;el=el.parentElement) {
-          const css=getComputedStyle(el);if(css.overflowX==='visible'&&css.overflowY==='visible') continue
-          const b=el.getBoundingClientRect()
-          if(r.left-2 < b.left || r.right+2 > b.right) clipped.push(field.getAttribute('aria-label'))
+      const root = view.contentEl
+      const until = async (fn, what) => { for(let i=0;i<150;i++) { const got=fn(); if(got) return got; await new Promise(r=>setTimeout(r,100)) } throw Error(what+' did not appear') }
+      const frames = () => new Promise(resolve=>requestAnimationFrame(()=>requestAnimationFrame(resolve)))
+      const shots=[]
+      const shot = async name => {
+        await frames()
+        const path=${JSON.stringify(SHOTS)}+'/'+name+'.png'
+        const fs=require('fs');fs.mkdirSync(${JSON.stringify(SHOTS)},{recursive:true});fs.writeFileSync(path,(await require('@electron/remote').getCurrentWindow().webContents.capturePage()).toPNG())
+        shots.push(path)
+      }
+      const controls=[],clipped=[]
+      // Every control's box, focused, inside every ancestor that clips: its focus ring is drawn.
+      const fits = scope => {
+        for(const el of scope.querySelectorAll('[aria-label]')) controls.push(el.getAttribute('aria-label'))
+        for(const field of scope.querySelectorAll('input,select,textarea,button')) {
+          if(field.disabled||!field.getClientRects().length) continue
+          field.focus();const r=field.getBoundingClientRect()
+          for(let el=field.parentElement;el&&el!==document.body;el=el.parentElement) {
+            const css=getComputedStyle(el);if(css.overflowX==='visible'&&css.overflowY==='visible') continue
+            const b=el.getBoundingClientRect()
+            if(r.left-2 < b.left || r.right+2 > b.right) clipped.push(field.getAttribute('aria-label')||field.textContent)
+          }
         }
       }
+      root.querySelector('[data-paragraph="1"] .abele-word-line__text').click()
+      const input=await until(()=>root.querySelector('[data-paragraph="1"] textarea'),'The paragraph field')
       input.focus();input.setSelectionRange(0,6)
-      await new Promise(resolve=>requestAnimationFrame(()=>requestAnimationFrame(resolve)))
-      const path=${JSON.stringify(SHOTS)}+'/word-desktop-editor.png'
-      const fs=require('fs');fs.mkdirSync(${JSON.stringify(SHOTS)},{recursive:true});fs.writeFileSync(path,(await require('@electron/remote').getCurrentWindow().webContents.capturePage()).toPNG())
-      ;[...row.querySelectorAll('button')].find(b=>b.textContent==='Italic').click()
+      const ribbon=root.querySelector('.abele-word-page__ribbon')
+      fits(ribbon)
+      input.focus();input.setSelectionRange(0,6)
+      await shot('word-desktop-editor')
+      ribbon.querySelector('[aria-label="Italic (Mod+I)"]').click()
       for(let i=0;i<150;i++) {if(view.document?.xml.get('word/document.xml').includes('<w:i')) break;await new Promise(r=>setTimeout(r,100))}
-      return {controls,clipped,formatted:!!view.document?.xml.get('word/document.xml').includes('<w:i'),shot:path}
+      const formatted=!!view.document?.xml.get('word/document.xml').includes('<w:i')
+      // What the ribbon has no room for, about the paragraph and then about its picture.
+      const details = async (open, name) => {
+        open()
+        const rows=await until(()=>document.querySelector('.modal .abele-word-details'),name+' rows')
+        await new Promise(r=>setTimeout(r,400))
+        fits(rows)
+        await shot('word-desktop-'+name)
+        rows.closest('.modal').querySelector('.modal-close-button').click()
+        await until(()=>!document.querySelector('.modal .abele-word-details'),name+' closing')
+      }
+      await details(()=>root.querySelector('.abele-word-page__ribbon [aria-label="Paragraph 1 controls"]').click(),'paragraph')
+      await details(()=>{root.querySelector('[aria-label="Select picture paragraph 7"]').click();root.querySelector('.abele-word-page__ribbon [aria-label="Picture controls"]').click()},'picture')
+      return {controls,clipped,formatted,shots}
     })()`)
     for (const label of [
-      'Bold',
-      'Italic',
-      'Underline',
-      'Strikethrough',
-      'Apply style',
-      'Apply list',
-      'Split at cursor',
-      'Merge with next',
-      'Apply link',
-      'Insert image',
-      'Resize image',
+      'Bold (Mod+B)',
+      'Italic (Mod+I)',
+      'Underline (Mod+U)',
+      'Strikethrough (Mod+Shift+X)',
+      'Paragraph style',
+      'Bulleted list',
+      'Numbered list',
+      'Link the selected words',
+      'Insert a picture after this paragraph',
+      // Splitting is Enter in the field, as in Word; joining and a picture's size are rows.
+      'Join the next paragraph onto this one',
+      'Width in pixels',
+      'Height in pixels',
     ])
       expect(result.controls).toContain(label)
     expect(result.clipped).toEqual([])
     expect(result.formatted).toBe(true)
-    console.info(result.shot)
+    console.info(result.shots.join('\n'))
   })
 
   it('renders and scrolls every paragraph without a long blocked animation frame', () => {

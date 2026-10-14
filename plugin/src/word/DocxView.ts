@@ -1,13 +1,18 @@
 import { FileView, Platform, TFile, type WorkspaceLeaf, type Plugin } from 'obsidian'
-import { createApp, h, shallowReactive, type App as VueApp } from 'vue'
+import { createApp, h, shallowReactive, type App as VueApp, type VNode } from 'vue'
 import { applyWordEdit, type WordEdit } from './edit'
 import { readOfficeBytes } from '@/ooxml/vaultAdapter'
 import { loadWordBytes, vaultWordResources, writeWordChange } from './vaultAdapter'
 import type { WordPackage } from './package'
 import { wordPageModel } from './pageAdapter'
-import type { WordPageModel, WordSaveState } from './pageModel'
+import { allParagraphs, type WordPageModel, type WordSaveState } from './pageModel'
+import { pageControlsTitle } from './controlsTitle'
+import { insertSize, linkAsk, pictureSize } from './pageDialogs'
+import { WordPicturePicker, isPicture } from './WordPicturePicker'
+import Modal from '@/components/obsidian/Modal.vue'
 import WordPage from './WordPage.vue'
-import WordControls from './WordControls.vue'
+import WordDetails from './WordDetails.vue'
+import WordLinkPrompt from './WordLinkPrompt.vue'
 import './word.css'
 
 export const DOCX_VIEW_TYPE = 'abele-word'
@@ -20,6 +25,8 @@ export class DocxView extends FileView {
   private externalChange = false
   private vue: VueApp | null = null
   private controls: VueApp | null = null
+  /** Closes the window open over the page, if one is. */
+  private closeDialog: (() => void) | null = null
   private pending: Promise<void> = Promise.resolve()
   private abort = new AbortController()
   private state = shallowReactive<{ model: WordPageModel; save: WordSaveState }>({
@@ -56,6 +63,7 @@ export class DocxView extends FileView {
     this.saving = false
     this.controls?.unmount()
     this.controls = null
+    this.closeDialog = null
     this.unmountPage()
     this.document = null
     this.editing = false
@@ -94,6 +102,7 @@ export class DocxView extends FileView {
     this.abort.abort()
     this.controls?.unmount()
     this.controls = null
+    this.closeDialog = null
     this.unmountPage()
     this.document = null
     this.contentEl.empty()
@@ -135,39 +144,116 @@ export class DocxView extends FileView {
     })
     return run
   }
-  private async advanced(paragraph: number, range?: { from: number; to: number }): Promise<void> {
-    const token = this.token
-    await this.pending
-    if (token !== this.token) return
-    const doc = this.document
-    const p = doc?.paragraphs.find((p) => p.number === paragraph)
-    if (!doc || !p) return
-    this.controls?.unmount()
+  /** One window over the page at a time. While it is open a change from outside waits, and
+   *  closing it lets that change reload the page. */
+  private openDialog(render: (close: () => void) => VNode): void {
+    this.closeDialog?.()
+    const host = this.contentEl.createDiv()
+    let closed = false
     const close = () => {
-      this.controls?.unmount()
+      if (closed) return
+      closed = true
+      if (this.closeDialog === close) this.closeDialog = null
+      app.unmount()
       host.remove()
+      if (this.controls === app) this.controls = null
       this.editing = false
-      this.controls = null
       if (this.externalChange && this.file) void this.onLoadFile(this.file)
     }
+    const app = createApp({ render: () => render(close) })
+    this.controls = app
+    this.closeDialog = close
     this.editing = true
-    const host = this.contentEl.createDiv()
-    this.controls = createApp(WordControls, {
-      doc,
-      paragraph: p,
-      editor: {
-        app: this.app,
-        readOnly: Platform.isMobile,
-        range,
-        cancel: close,
-        apply: async (edit: WordEdit) => {
-          await this.enqueue(edit)
-          close()
+    app.mount(host)
+  }
+  /** What the ribbon has no room for, about the paragraph or the picture chosen on the page. */
+  private async advanced(paragraph: number, picture = false): Promise<void> {
+    const token = this.token
+    await this.pending
+    if (token !== this.token || !this.document) return
+    if (!allParagraphs(this.state.model).some((p) => p.number === paragraph)) return
+    this.openDialog((close) =>
+      h(
+        Modal,
+        {
+          title: pageControlsTitle(this.state.model, paragraph, picture),
+          phoneSheet: true,
+          onClose: close,
         },
-      },
-      onClose: close,
+        {
+          default: () =>
+            h(WordDetails, {
+              model: this.state.model,
+              paragraph,
+              pictureOnly: picture,
+              readOnly: this.state.model.readOnly,
+              onEdit: (edit: WordEdit) => {
+                void this.enqueue(edit).catch(() => {})
+                // A link or a size is changed in place; anything else changes what the rows are about.
+                if (edit.operation !== 'link' && edit.operation !== 'image_resize') close()
+              },
+              onPickImage: (at: { paragraph: number; image: number }) => {
+                close()
+                this.choosePicture('to replace', (path) => ({
+                  operation: 'image_replace',
+                  paragraph: at.paragraph,
+                  image: at.image,
+                  image_path: path,
+                }))
+              },
+            }),
+        }
+      )
+    )
+  }
+  /** The ribbon's link: the address for the words chosen on the page. */
+  private async askLink(edit: Omit<WordEdit, 'url'>): Promise<void> {
+    const token = this.token
+    await this.pending
+    if (token !== this.token || !this.document) return
+    const ask = linkAsk(this.state.model, edit)
+    if (!ask) return
+    this.openDialog((close) =>
+      h(WordLinkPrompt, {
+        words: ask.words,
+        current: ask.current,
+        onClose: close,
+        onLink: (url: string) => {
+          close()
+          void this.enqueue({ ...edit, url }).catch(() => {})
+        },
+      })
+    )
+  }
+  /** The ribbon's picture: one from the vault, put in at its own size, fitted to the page. */
+  private pickImage(paragraph: number): void {
+    this.choosePicture('to insert', async (path) => {
+      const { bytes } = await vaultWordResources(this.app).loadImage(path)
+      return {
+        operation: 'image_insert',
+        paragraph,
+        image_path: path,
+        ...insertSize(pictureSize(bytes)),
+      }
     })
-    this.controls.mount(host)
+  }
+  private choosePicture(purpose: string, edit: (path: string) => WordEdit | Promise<WordEdit>) {
+    const files = this.app.vault
+      .getFiles()
+      .filter((file) => isPicture(file.path))
+      .map((file) => ({ path: file.path }))
+    new WordPicturePicker(this.app, files, purpose, (file) => {
+      void Promise.resolve()
+        .then(() => edit(file.path))
+        .then(
+          (change) => this.enqueue(change),
+          (error: Error) => {
+            console.warn('[Abele] the picture could not be read', error)
+            this.state.save = { state: 'failed', reason: error.message }
+          }
+        )
+        .catch(() => {})
+    }).open()
   }
   protected async showDocument(doc: WordPackage, token = this.token): Promise<void> {
     const model = await wordPageModel(doc)
@@ -185,14 +271,14 @@ export class DocxView extends FileView {
           onEdit: (edit: WordEdit) => {
             void this.enqueue(edit).catch(() => {})
           },
-          onAdvanced: (paragraph: number) => {
-            void this.advanced(paragraph)
+          onAdvanced: (paragraph: number, picture: boolean) => {
+            void this.advanced(paragraph, picture)
           },
           onPickImage: (paragraph: number) => {
-            void this.advanced(paragraph)
+            this.pickImage(paragraph)
           },
-          onPickLink: (edit: WordEdit) => {
-            void this.advanced(edit.paragraph, { from: edit.from ?? 0, to: edit.to ?? 0 })
+          onPickLink: (edit: Omit<WordEdit, 'url'>) => {
+            void this.askLink(edit)
           },
           onContext: (paragraph: number) => {
             this.paragraph = paragraph

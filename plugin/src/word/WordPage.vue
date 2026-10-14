@@ -184,7 +184,8 @@ const emit = defineEmits<{
   pickImage: [paragraph: number]
   /** Asked for an address for the selected words. */
   pickLink: [edit: Omit<WordPageEdit, 'url'>]
-  advanced: [paragraph: number]
+  /** The window of what the ribbon has no room for, about the paragraph or its picture. */
+  advanced: [paragraph: number, picture: boolean]
   editorState: [open: boolean]
   context: [paragraph: number]
 }>()
@@ -255,10 +256,14 @@ watch(
   }
 )
 const selection = ref<{ from: number; to: number }>({ from: 0, to: 0 })
+/** The picture was chosen on the page, not the words of its paragraph. */
+const pictureChosen = ref(false)
 const current = computed(() => paragraphs.value.find((p) => p.number === selected.value) ?? null)
 const writable = computed(() => !!current.value && !current.value.locked)
 const controlsTitle = computed(() =>
-  current.value ? pageControlsTitle(props.model, current.value.number) : 'Paragraph'
+  current.value
+    ? pageControlsTitle(props.model, current.value.number, pictureChosen.value)
+    : 'Paragraph'
 )
 const position = computed(() => paragraphs.value.findIndex((p) => p.number === selected.value) + 1)
 
@@ -308,6 +313,7 @@ const open = (p: WordPageParagraph) => {
   if (editing.value !== null && editing.value !== p.number) flush()
   editing.value = p.number
   selected.value = p.number
+  pictureChosen.value = false
   emit('context', p.number)
   draft.value = pendingDrafts.get(p.number) ?? paragraphText(p)
   baseline.value = props.save.state === 'failed' ? paragraphText(p) : draft.value
@@ -325,6 +331,7 @@ const selectPicture = (number: number) => {
   if (!p) return
   leave()
   selected.value = number
+  pictureChosen.value = true
   draft.value = paragraphText(p)
   baseline.value = draft.value
   selection.value = { from: 0, to: 0 }
@@ -376,7 +383,7 @@ const insertImage = () => {
 const advanced = () => {
   if (!current.value) return
   flush()
-  emit('advanced', current.value.number)
+  emit('advanced', current.value.number, pictureChosen.value)
   editing.value = null
 }
 

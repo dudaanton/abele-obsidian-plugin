@@ -29,7 +29,7 @@ it.each(['body', 'table'])(
     expect(page.emitted('context')?.at(-1)).toEqual([1])
     expect(page.find('textarea').exists()).toBe(false)
     await page.find('[aria-label="Picture controls"]').trigger('click')
-    expect(page.emitted('advanced')?.at(-1)).toEqual([1])
+    expect(page.emitted('advanced')?.at(-1)).toEqual([1, true])
     expect(page.emitted('edit')).toBeUndefined()
     page.unmount()
   }
