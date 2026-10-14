@@ -78,6 +78,7 @@ it('sets the other settings out under headings by what they are about', () => {
       'Look',
       'Drawn by Abele in a note',
       'Opening notes',
+      'Attachment folders',
       'Maps',
       'The plugin',
     ])
