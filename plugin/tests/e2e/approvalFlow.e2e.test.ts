@@ -35,7 +35,8 @@ export const approvalScript = (screen: string) => `(async () => {
   let session, observer, frame = 0
   let plan = [], requested = false, stage = ''
   const report = { listed: [], executed: [], cards: [], frames: [], persisted: [], shots: [], chatViews: 0, transportCalls: 0, correctHeader: false, redacted: false, readback: false, noPlaintext: false, mcpChangedPending: false, mcpSeparatelyAllowed: false, skippedWrite: false, unreadablePending: false, error: '', transitions: [] }
-  const state = () => ({ stage, session: session?.id, active: chats.activeTabId.value, streaming: session?.isStreaming.value, executing: session?.isExecutingTool.value, compacting: session?.isCompacting.value, pending: session?.pendingToolCalls.value.map(c=>c.id) })
+  const state = () => ({ stage, session: session?.id, active: chats.activeTabId.value, streaming: session?.isStreaming.value, executing: session?.isExecutingTool.value, compacting: session?.isCompacting.value, pending: session?.pendingToolCalls.value.map(c=>c.id),
+    file:session?.currentChatFile.value?.path,persistFailed:session?.persistFailed,committedAttention:session?.committedAttention,error:session?.error.value })
   const fake = 'https://sample-provider.invalid/v1'
   const wait = ms => new Promise(resolve => setTimeout(resolve, ms))
   const until = async fn => {
@@ -87,7 +88,7 @@ export const approvalScript = (screen: string) => `(async () => {
   }
   try {
     if (store.get(keyId)) throw Error('sample key slot already exists')
-    config.ai = { ...config.ai, secrets: [{ name: 'sample', keyId }], providers: [], imageProviders: [], mcpServers: [], braveSearchApiKey: '', voice: { ...config.ai.voice, apiKeyId: keyId, endpoint: 'https://api.sample.example/data' } }
+    config.ai = { ...config.ai, secrets: [{ name: 'sample', keyId }], providers: [], imageProviders: [], mcpServers: [], chatFolder: root + '/Chats/{{name}}', braveSearchApiKey: '', voice: { ...config.ai.voice, apiKeyId: keyId, endpoint: 'https://api.sample.example/data' } }
     config.fireflyBaseUrl = ''; config.calendars = { ...config.calendars, feeds: [] }
     store.set(keyId, value); ownedKey = true; await store.flush()
     await config.saveSettings()
@@ -105,7 +106,6 @@ export const approvalScript = (screen: string) => `(async () => {
     const id = chats.createTab()
     if (id === oldTab) throw Error('no new sample tab available')
     session = chats.getSession(id)
-    session.save = async () => {}
     session.resolveModel = () => ({ id: 'sample', name: 'Sample', baseUrl: fake, apiKey: '', contextWindow: 100000, maxTokens: 1000, supportsReasoning: false })
     for (const name of ['generateTitle', 'generateSummary', 'generateRecap', 'autoCompactIfNeeded']) session.summarizer[name] = async () => {}
     session.scopeResolver.clear()
@@ -138,6 +138,8 @@ export const approvalScript = (screen: string) => `(async () => {
     await start('listing', [toolCall('list-root', 'ls', { path: '/' }), toolCall('list-parent', 'ls', { path: root }), toolCall('list-nested', 'ls', { path: root + '/Nested' })])
     report.listed = session.messages.value.filter(m => m.toolName === 'ls').map(m => m.toolResult)
     if (session.pendingToolCalls.value.length || card()) throw Error('listing asked approval')
+    await session.save()
+    await until(()=>!!session.currentChatFile.value)
     await shot('listing')
     await start('key', [toolCall('key-first', 'fetch', keyArgs)])
     await until(() => !!card())

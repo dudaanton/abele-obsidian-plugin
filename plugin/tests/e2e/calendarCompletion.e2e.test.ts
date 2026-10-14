@@ -117,6 +117,12 @@ describe.skipIf(!available)('single external occurrence completion in the runnin
         const events = service.state.events['sample-feed']
         if (events.length !== 3) throw Error('Expected three recurring instances, got ' + events.length)
         const done = () => service.state.events['sample-feed'].map((e) => service.isDone(e))
+        // The switch is on (aria-checked) while completed items are shown; start with them hidden.
+        const hideCompleted = async root => {
+          const toggle = await until(() => root()?.querySelector('.abele-timeline__completed-toggle'), 'completion filter')
+          if (toggle.getAttribute('aria-checked') === 'true') toggle.click()
+          await until(() => root()?.querySelector('.abele-timeline__completed-toggle')?.getAttribute('aria-checked') === 'false', 'completed items hidden')
+        }
         await t.plugin.activateView('abele-timeline-sidebar-view')
         await until(() => document.querySelector('.abele-timeline-sidebar'), 'initial timeline sidebar')
         // The sidebar intentionally starts today. Past occurrences are shown in daily
@@ -137,6 +143,7 @@ describe.skipIf(!available)('single external occurrence completion in the runnin
         await app.workspace.revealLeaf(dailyLeaf)
         app.workspace.setActiveLeaf(dailyLeaf, { focus: true })
         const daily = await until(() => dailyLeaf.view.containerEl.querySelector('.abele-footer-view .abele-timeline'), 'past daily timeline')
+        await hideCompleted(() => daily)
         const history = await until(() => daily.querySelector('.abele-timeline__history'), 'past daily history')
         if (history.classList.contains('abele-timeline__history_overdue') || history.querySelector('.abele-timeline__history-count, .abele-timeline__history-flame'))
           throw Error('Past occurrence counted as unfinished')
@@ -166,10 +173,7 @@ describe.skipIf(!available)('single external occurrence completion in the runnin
         await app.workspace.revealLeaf(sidebarLeaf)
         const timeline = () => sidebarLeaf.view.containerEl.querySelector('.abele-timeline-sidebar')
         await until(timeline, 'timeline sidebar after daily note')
-        // The switch is on (aria-checked) while completed items are shown; start with them hidden.
-        const toggle = await until(() => timeline()?.querySelector('.abele-timeline__completed-toggle'), 'completion filter')
-        if (toggle.getAttribute('aria-checked') === 'true') toggle.click()
-        await until(() => timeline()?.querySelector('.abele-timeline__completed-toggle')?.getAttribute('aria-checked') === 'false', 'completed items hidden')
+        await hideCompleted(timeline)
         const selector = '[data-timeline-item="event:' + events[0].id + '"]'
         const row = await until(() => timeline()?.querySelector(selector), 'first recurring sidebar row after daily note')
         row.scrollIntoView({ block: 'center' })
