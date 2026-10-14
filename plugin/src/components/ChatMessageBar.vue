@@ -1,7 +1,8 @@
 <template>
-  <!-- One quiet line under a question or an answer: what can be done with it, the branches that
-       part from it, and when it was written. The time is always there; the actions come up under
-       the pointer on a computer. A phone, which cannot point, keeps only the ⋯ that holds them all. -->
+  <!-- One quiet line under a question or an answer, on the side of whoever wrote it: what can be
+       done with it and when it was written, together, coming up under the pointer on a computer;
+       the branches that part from it stay. A phone, which cannot point, keeps the ⋯ that holds
+       every action, and the time. -->
   <div class="abele-chat-msg__bar">
     <span class="abele-chat-msg__quick" role="group" aria-label="Message actions">
       <template v-if="!mobile">
@@ -128,8 +129,22 @@ const timeTooltip = computed(() => {
   display: inline-flex;
   align-items: center;
   gap: var(--size-2-1);
-  // The actions at the start, the branches and the time at the end.
-  margin-inline-end: auto;
+}
+// The time right after the actions, as one group. What stays — the branches, an edit's pencil —
+// is on the message's own edge, so it does not float apart from it while the group is hidden:
+// an answer's on the left, a question's on the right.
+.abele-chat-msg__bar > .abele-chat-msg__time {
+  order: 1;
+}
+.abele-chat-msg__bar > :not(.abele-chat-msg__quick, .abele-chat-msg__time) {
+  order: -1;
+}
+.abele-chat-msg_user > .abele-chat-msg__bar {
+  justify-content: flex-end;
+
+  > :not(.abele-chat-msg__quick, .abele-chat-msg__time) {
+    order: 2;
+  }
 }
 .abele-chat-msg__bar .abele-chat-msg__time {
   height: auto;
@@ -146,7 +161,7 @@ body.is-mobile .abele-chat-msg__bar button.abele-chat-msg__icon {
 body:not(.is-mobile)
   .abele-chat-msg:not(:hover):not(:focus-within)
   > .abele-chat-msg__bar
-  .abele-chat-msg__quick {
+  :is(.abele-chat-msg__quick, .abele-chat-msg__time:not([aria-expanded='true'])) {
   opacity: 0;
 }
 </style>

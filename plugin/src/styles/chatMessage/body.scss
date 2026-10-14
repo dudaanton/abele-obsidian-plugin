@@ -7,7 +7,12 @@
   padding: 0;
   line-height: 1.5;
 
+  // A question is a bubble on the right, as wide as what was written in it — one word, a
+  // picture — and never across the whole chat; an answer is the page's text on the left.
   &_user .abele-chat-msg__body {
+    flex: 0 1 auto;
+    max-width: 85%;
+    margin-inline-start: auto;
     background-color: var(--background-secondary);
     border-radius: var(--radius-s);
     padding: var(--size-4-1) var(--size-4-3);
