@@ -325,7 +325,7 @@ function markWords(el: HTMLElement, terms: string[]) {
 
   &:hover,
   &:focus-visible {
-    background: var(--background-modifier-hover);
+    background: var(--abele-hover-background);
   }
 }
 

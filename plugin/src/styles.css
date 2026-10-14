@@ -80,6 +80,30 @@ body {
   --abele-text-section-weight: var(--font-semibold);
   /* How many, beside a heading: in its size and colour, not its weight. */
   --abele-text-count-color: var(--text-muted);
+
+  /* What is under the pointer, and what is chosen: a very light wash of the accent with the words
+     in a deep shade of it, never an accent outline round a grey body. The words mix the accent
+     with the theme's own text colour, so in a dark theme they turn light on a dark wash. */
+  --abele-hover-background: hsla(var(--interactive-accent-hsl), 0.08);
+  --abele-hover-color: color-mix(in srgb, var(--interactive-accent) 50%, var(--text-normal));
+  --abele-selected-background: hsla(var(--interactive-accent-hsl), 0.14);
+  --abele-selected-color: color-mix(in srgb, var(--interactive-accent) 60%, var(--text-normal));
+  /* Where a thing has an edge of its own (a card), the edge is the same wash a step deeper. */
+  --abele-hover-border: hsla(var(--interactive-accent-hsl), 0.25);
+  --abele-selected-border: hsla(var(--interactive-accent-hsl), 0.4);
+  /* The quiet words on that wash take its hue, as grey on any coloured ground does. */
+  --abele-tinted-muted: color-mix(in srgb, var(--interactive-accent) 35%, var(--text-muted));
+}
+
+/* The plugin's trees and rows are Obsidian's own tree items, lit through its own variables: they
+   take the same wash and deep words as every other thing under the pointer. */
+.abele-tree-item,
+.abele-list-row {
+  --nav-item-background-hover: var(--abele-hover-background);
+  --nav-item-color-hover: var(--abele-hover-color);
+  --nav-item-background-active: var(--abele-selected-background);
+  --nav-item-color-active: var(--abele-selected-color);
+  --nav-item-background-selected: var(--abele-selected-background);
 }
 
 body {
@@ -393,7 +417,7 @@ body.is-mobile .abele-footnote-ref-link {
 }
 
 .abele-comment-marker:hover {
-  background-color: var(--background-modifier-hover);
+  background-color: var(--abele-hover-background);
 }
 
 .abele-comment-marker:focus-visible {

@@ -198,7 +198,7 @@ const weekdayNames = computed(() =>
   cursor: var(--cursor-link);
 
   &:hover {
-    background-color: var(--background-modifier-hover);
+    background-color: var(--abele-hover-background);
   }
 }
 
@@ -245,7 +245,7 @@ const weekdayNames = computed(() =>
 }
 
 .abele-calendar-month__day_selected {
-  background-color: var(--background-modifier-hover);
+  background-color: var(--abele-selected-background);
 }
 
 .abele-calendar-month__dots {

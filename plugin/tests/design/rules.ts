@@ -311,8 +311,15 @@ export function checkScreen(scope: ScreenScope = {}): ScreenCheck {
         } else if ((n.textContent || '').trim()) {
           const parent = n.parentElement
           if (parent && visible(parent) && parseFloat(cs(parent).opacity) > 0) {
-            // Words cut off by their box count only as far as they show.
-            const clip = cs(parent).overflow !== 'visible' ? parent.getBoundingClientRect() : null
+            // Words cut off by their box count only as far as they show. Cut with an ellipsis,
+            // they end at the box's content edge, where the ellipsis is drawn, not in its padding.
+            const ps = cs(parent)
+            const box0 = ps.overflow !== 'visible' ? parent.getBoundingClientRect() : null
+            const inset = ps.textOverflow === 'ellipsis'
+            const clip = box0 && {
+              left: box0.left + (inset ? parseFloat(ps.paddingLeft) || 0 : 0),
+              right: box0.right - (inset ? parseFloat(ps.paddingRight) || 0 : 0),
+            }
             const range = document.createRange()
             range.selectNodeContents(n)
             for (const r of range.getClientRects()) {

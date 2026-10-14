@@ -164,20 +164,34 @@ const open = (event: Event) => {
 
 .abele-card_clickable {
   cursor: var(--cursor-link);
-  transition: border-color 0.15s;
+  transition:
+    border-color 0.15s,
+    background-color 0.15s;
 
   &:hover {
-    border-color: var(--interactive-accent);
+    border-color: var(--abele-hover-border);
+    background-color: var(--abele-hover-background);
+
+    .abele-card__name,
+    .abele-card__icon {
+      color: var(--abele-hover-color);
+    }
   }
 }
 
 /**
- * Chosen, rather than hovered: the accent is what the theme uses to say "this one", and the
- * tint keeps a selected card legible in a grid where the border alone is easy to miss.
+ * Chosen, rather than hovered: the whole card is washed in the accent and its name takes a deep
+ * shade of it. An accent outline round a grey body said "this one" in two voices at once.
  */
-.abele-card_selected {
-  border-color: var(--interactive-accent);
-  background-color: var(--background-modifier-hover);
+.abele-card_selected,
+.abele-card_selected.abele-card_clickable:hover {
+  border-color: var(--abele-selected-border);
+  background-color: var(--abele-selected-background);
+
+  .abele-card__name,
+  .abele-card__icon {
+    color: var(--abele-selected-color);
+  }
 }
 
 /**

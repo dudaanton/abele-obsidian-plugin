@@ -129,7 +129,8 @@ const text = (value: unknown): string => {
   cursor: var(--cursor-link);
 
   &:hover {
-    background-color: var(--background-modifier-hover);
+    background-color: var(--abele-hover-background);
+    color: var(--abele-hover-color);
   }
 }
 </style>

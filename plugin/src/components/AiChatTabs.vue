@@ -156,12 +156,12 @@ const emit = defineEmits<{
   flex-shrink: 0;
 
   &:hover {
-    background-color: var(--background-modifier-hover);
+    background-color: var(--abele-hover-background);
   }
 
   &--active {
-    color: var(--text-normal);
-    background-color: var(--background-modifier-hover);
+    color: var(--abele-selected-color);
+    background-color: var(--abele-selected-background);
   }
 }
 

@@ -381,7 +381,7 @@ const getDateWikilink = (dateStr: string) => {
   cursor: var(--cursor);
 
   &:hover {
-    background-color: var(--background-modifier-hover);
+    background-color: var(--abele-hover-background);
   }
 
   &:focus-visible {

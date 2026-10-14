@@ -119,7 +119,8 @@ const emit = defineEmits<{
   text-overflow: ellipsis;
   white-space: nowrap;
   border-radius: var(--radius-s);
-  padding: var(--size-2-1) var(--size-2-2);
+  // The light keeps the words 6px in from its edges, as every lit row's does.
+  padding: var(--size-2-1) var(--size-2-3);
 }
 
 .abele-breadcrumbs__item[role='button'] {
@@ -128,8 +129,8 @@ const emit = defineEmits<{
   cursor: var(--cursor);
 
   &:hover {
-    background-color: var(--background-modifier-hover);
-    color: var(--text-normal);
+    background-color: var(--abele-hover-background);
+    color: var(--abele-hover-color);
   }
 }
 
@@ -156,8 +157,8 @@ const emit = defineEmits<{
   cursor: var(--cursor);
 
   &:hover {
-    background-color: var(--background-modifier-hover);
-    color: var(--text-normal);
+    background-color: var(--abele-hover-background);
+    color: var(--abele-hover-color);
   }
 }
 

@@ -177,8 +177,8 @@ onMounted(() => {
   }
 
   &:hover {
-    background-color: var(--background-modifier-hover);
-    color: var(--text-normal);
+    background-color: var(--abele-hover-background);
+    color: var(--abele-hover-color);
   }
 }
 </style>

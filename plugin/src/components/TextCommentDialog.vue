@@ -531,7 +531,7 @@ const drafts = new Map<string, string>()
     gap: var(--size-2-1);
 
     [aria-checked='true'] {
-      background: var(--background-modifier-hover);
+      background: var(--abele-selected-background);
     }
   }
 

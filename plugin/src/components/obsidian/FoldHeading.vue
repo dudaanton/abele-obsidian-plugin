@@ -96,10 +96,12 @@ watch(() => props.collapsible, draw, { flush: 'post' })
       color: var(--icon-color);
     }
     &:hover:not(.is-disabled) {
-      background-color: var(--background-modifier-hover);
+      background-color: var(--abele-hover-background);
+      color: var(--abele-hover-color);
 
-      .abele-fold-heading__arrow {
-        color: var(--icon-color-hover);
+      .abele-fold-heading__arrow,
+      .abele-fold-heading__count {
+        color: var(--abele-hover-color);
       }
     }
 

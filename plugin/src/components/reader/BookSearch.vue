@@ -127,7 +127,7 @@ const status = computed(() => {
 
     &:hover,
     &:focus-visible {
-      background-color: var(--background-modifier-hover);
+      background-color: var(--abele-hover-background);
     }
   }
 

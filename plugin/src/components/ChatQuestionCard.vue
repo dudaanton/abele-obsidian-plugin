@@ -181,7 +181,7 @@ body.is-mobile .abele-chat-question .abele-chat-question__skip {
 
   &:hover,
   &:focus-visible {
-    background-color: var(--background-modifier-hover);
+    background-color: var(--abele-hover-background);
   }
 }
 .abele-chat-question .abele-chat-question__option_own {

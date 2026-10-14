@@ -248,7 +248,7 @@ scan()
   cursor: var(--cursor);
 
   &:hover {
-    background-color: var(--background-modifier-hover);
+    background-color: var(--abele-hover-background);
   }
 
   &_deleted .abele-entry-row__title,
