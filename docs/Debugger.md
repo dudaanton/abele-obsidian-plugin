@@ -14,8 +14,10 @@ the chat's folder (offering the one open from it) and starts it on the node unde
 the node runs it with its own Node, an empty environment and no shell, and holds it on its first
 line. Its session opens in the view and its file opens in a node tab with the margin, so record
 points and breakpoints go in before the program goes on; other JavaScript files open from the same
-folder take breakpoints too. The folder must be one the node may run code in. A node without an
-audited JavaScript debugger installed refuses and says so. Attach, restart and source export are
+folder take breakpoints too, and so do TypeScript files open from it when a source map of the build
+lists them and is not older than they are (the node maps their lines onto the JavaScript that
+runs). The folder must be one the node may run code in. A node without its JavaScript debugger
+installed (`abele-node debugger install js`) refuses and says so. Attach, restart and source export are
 not offered. An empty session list does not start a process by itself.
 
 The session-mode switch changes a bound live agent grant, never the node's default
@@ -98,13 +100,17 @@ it later.
 
 The panel shows a *Recording* group while a run is written (how long, how many steps, the
 folder) and a *Runs* group with the project's runs; a breakpoint row says how often its record
-point fired in the newest run. A run opens as a tab of the main area: steps on the left by time,
+point fired in the newest run. When a run ends (the program stops, or its last record point is
+removed) it opens by itself as a tab of the main area; the *Runs* group opens any other. The count
+at the end of a record point's line opens the newest run at the last step that point gave. A run's
+tab shows steps on the left by time,
 the picked step on the right with its place in the code, its stack and each value by shape,
 with what changed since the last time. *Open whole* opens a value in a tab of its own, as its
 shape, its whole text or its changes. A value can be followed through the run and anything can
 be marked. A run's menu renames or deletes it; deleting asks first.
 
-*Write a note about this run* in a run's tab writes a note into the folder set in Settings →
+A run never writes a note by itself. *Write a note about this run* in a run's tab writes one into
+the folder set in Settings →
 Nodes (*Notes about recorded runs*): a vault folder, or on a computer any folder, outside the vault
 too, picked with the folder button. A device where that folder does not exist says so and writes
 nothing. Its links open the values on the node. The agent reads runs

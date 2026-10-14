@@ -91,6 +91,27 @@ describe('a run open in its tab', () => {
     expect(m.run?.length).toBe('0.9 s')
   })
 
+  it("opens at a record point's last hit, asked for before the steps have come", async () => {
+    const n = node()
+    const m = new TraceRunModel(n.rpc, 'project-1', 'run-1', () => {})
+    const steps = (m as unknown as { rpc: TraceRpc }).rpc
+    const wholeRun = steps.wholeRun.bind(steps)
+    vi.spyOn(steps, 'wholeRun').mockImplementation(async (...args) => {
+      const run = await wholeRun(...args)
+      run.steps = run.steps.map((s, i) => ({ ...s, point: i === 0 ? 'bp-1' : 'bp-2' }))
+      run.steps.push({ ...run.steps[0]!, id: 't0003', point: 'bp-1' })
+      return run
+    })
+    m.pickPoint('bp-1')
+    await m.load()
+    expect(m.picked).toBe('t0003')
+    await m.pickPoint('bp-2')
+    expect(m.picked).toBe('t0002')
+    // A point that gave nothing in this run leaves the pick alone.
+    await m.pickPoint('bp-3')
+    expect(m.picked).toBe('t0002')
+  })
+
   it('asks for shapes and changes only of the step picked, once', async () => {
     const n = node()
     const m = new TraceRunModel(n.rpc, 'project-1', 'run-1', () => {})

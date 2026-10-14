@@ -97,9 +97,10 @@ export function mountDebugSource(
             if (binding && matched)
               marginMenu(binding, context.sourceId, line, event, (l) => (editing.value = l))
           },
-          onOpenHits: () => {
+          onOpenHits: (line: number) => {
             const newest = trace?.runs[0]
-            if (binding && newest) openRun(binding, newest.id)
+            if (binding && newest)
+              openRun(binding, newest.id, trace?.pointAt(context.sourceId, line)?.id)
           },
         },
         {

@@ -106,16 +106,20 @@ export function marginMenu(
   menu.showAtMouseEvent(event)
 }
 
-export function openRun(binding: DebuggerBinding, runId: string) {
+/** Opens a run in its tab; given a record point, at the last step that point gave. */
+export function openRun(binding: DebuggerBinding, runId: string, point?: string) {
   const trace = binding.trace
   if (!trace?.projectId) return
   const name = trace.runs.find((r) => r.id === runId)?.name
-  void openTraceRun({
-    registrationId: binding.registrationId,
-    projectId: trace.projectId,
-    runId,
-    ...(name ? { name } : {}),
-  }).catch(fail)
+  void openTraceRun(
+    {
+      registrationId: binding.registrationId,
+      projectId: trace.projectId,
+      runId,
+      ...(name ? { name } : {}),
+    },
+    point ? { point } : {}
+  ).catch(fail)
 }
 
 export function runMenu(binding: DebuggerBinding, runId: string, event: MouseEvent) {

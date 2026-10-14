@@ -12,6 +12,8 @@ export class TraceRunModel {
   trail?: TraceTrail
   error = ''
   private loadedSteps = new Set<string>()
+  /** A record point whose last hit is to be picked once the steps have come. */
+  private wantedPoint?: string
   constructor(
     readonly rpc: TraceRpc,
     readonly projectId: string,
@@ -26,6 +28,9 @@ export class TraceRunModel {
       this.run = reactive(runView(this.wire))
       this.loadedSteps.clear()
       this.error = ''
+      const wanted = this.lastHitOf(this.wantedPoint)
+      this.wantedPoint = undefined
+      if (wanted) this.picked = wanted
       if (this.picked) await this.fill(this.picked)
     } catch (e) {
       this.error = e instanceof Error ? e.message : 'The run could not be read'
@@ -36,6 +41,19 @@ export class TraceRunModel {
 
   step(id: string): TraceStep | undefined {
     return this.run?.steps.find((s) => s.id === id)
+  }
+
+  /** Picks the last step a record point gave, the way its line's count of hits opens the run. */
+  async pickPoint(point: string) {
+    if (!this.wire) {
+      this.wantedPoint = point
+      return
+    }
+    const last = this.lastHitOf(point)
+    if (last) await this.pick(last)
+  }
+  private lastHitOf(point: string | undefined) {
+    return point ? this.wire?.steps.findLast((s) => s.point === point)?.id : undefined
   }
 
   async pick(id: string | undefined) {

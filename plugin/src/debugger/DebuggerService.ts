@@ -60,7 +60,7 @@ export class DebuggerBinding {
     try {
       const result = await this.connection.client.debugger.status(sessionId)
       if (abort.signal.aborted || this.disposed) return
-      if (!this.trace && (await this.recordsRuns()))
+      if (!this.trace && (await this.recordsRuns())) {
         this.trace = new TraceSession(
           new TraceRpc((method, params) => this.connection.client.request(method, params)),
           this.controller,
@@ -68,6 +68,12 @@ export class DebuggerBinding {
             ++this.revision.value
           }
         )
+        // A run that ends opens in its tab: what the points took is looked at there, and a note
+        // about it is written only when someone asks for one.
+        this.trace.onRunEnded((runId) => {
+          if (!this.disposed) void import('./trace/panel').then((m) => m.openRun(this, runId))
+        })
+      }
       if (abort.signal.aborted || this.disposed) return
       this.controller.observe(this.connection.client.debugger.current(sessionId))
       await this.loadGrant(abort)
@@ -172,6 +178,7 @@ export class DebuggerBinding {
       this.controller.observe(this.connection.client.debugger.current(sessionId))
       if (result.reason === 'connection_lost' || !result.snapshot) {
         this.controller.disconnected()
+        await this.lastRuns()
         return
       }
       if (result.reason === 'cancelled') return
@@ -181,6 +188,11 @@ export class DebuggerBinding {
       eventSeq = result.snapshot.event_seq
       incarnation = result.snapshot.incarnation
     }
+    if (!abort.signal.aborted && !this.disposed) await this.lastRuns()
+  }
+  /** The session is over: its run, if it was writing one, is kept on the node; read it once more. */
+  private async lastRuns() {
+    await this.trace?.refresh().catch((e) => console.debug('[debugger] Runs unavailable', e))
   }
   refresh(): Promise<void> {
     return (this.refreshing ??= (async () => {

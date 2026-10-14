@@ -28,11 +28,20 @@ export class TraceSession {
   latest?: WireRunPoint[]
   folder = ''
   private refreshing?: Promise<void>
+  private readonly endedListeners = new Set<(runId: string) => void>()
   constructor(
     readonly rpc: TraceRpc,
     private readonly debug: TraceBreakpoints,
     private readonly changed: () => void
   ) {}
+
+  /** A run the node was writing is written no more: the program stopped or its points went. */
+  onRunEnded(listener: (runId: string) => void) {
+    this.endedListeners.add(listener)
+    return () => {
+      this.endedListeners.delete(listener)
+    }
+  }
 
   get sessionId() {
     return this.debug.snapshot?.debug_session_id
@@ -54,12 +63,15 @@ export class TraceSession {
       const newest = runs.runs[0]
       const latest = newest ? (await this.rpc.run(project, newest.id, 0, 1)).points : undefined
       if (this.sessionId !== session) return
+      const was = this.status?.recording?.run_id
       this.points = points
       this.status = status
       this.runs = runs.runs
       this.folder = runs.folder
       this.latest = latest
       this.changed()
+      if (was && status.recording?.run_id !== was && runs.runs.some((r) => r.id === was))
+        for (const listener of [...this.endedListeners]) listener(was)
     })().finally(() => {
       this.refreshing = undefined
     }))

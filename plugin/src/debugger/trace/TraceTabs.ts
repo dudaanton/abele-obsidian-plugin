@@ -119,6 +119,9 @@ export class TraceRunTab extends ItemView {
   pick(step: string) {
     void this.model?.pick(step)
   }
+  pickPoint(point: string) {
+    void this.model?.pickPoint(point)
+  }
   private start() {
     const state = this.state
     if (!state) return
@@ -399,7 +402,7 @@ export function registerTraceTabs(plugin: Plugin) {
 /** Opens a run in a tab of the main area, reusing the tab it is already in. */
 export async function openTraceRun(
   state: TraceRunState,
-  options: { follow?: string; step?: string } = {}
+  options: { follow?: string; step?: string; point?: string } = {}
 ) {
   const { workspace } = GlobalStore.getInstance().app
   const parsed = RunState.parse(state)
@@ -411,6 +414,7 @@ export async function openTraceRun(
   await workspace.revealLeaf(leaf)
   const view = leaf.view as TraceRunTab
   if (options.step) view.pick(options.step)
+  if (options.point) view.pickPoint(options.point)
   if (options.follow) view.follow(options.follow)
 }
 

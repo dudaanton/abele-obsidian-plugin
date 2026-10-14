@@ -214,3 +214,23 @@ describe('a stop on record points', () => {
     expect(s.isRecordStop(stopped([]))).toBe(false)
   })
 })
+
+describe('a run that ends', () => {
+  it('is handed on once, when the run being written is written no more, and never as a note', async () => {
+    const node = fakeNode()
+    const s = new TraceSession(node.rpc, fakeDebugger([{ id: 'bp-1', line: 4 }]), () => {})
+    const ended = vi.fn()
+    s.onRunEnded(ended)
+    await s.savePoint('sample-source', 4, { take: ['sample'] })
+    expect(s.status?.recording?.run_id).toBe('run-1')
+    expect(ended).not.toHaveBeenCalled()
+    // The program stopped: the node has no run in writing now.
+    await s.removePoint('bp-1')
+    await s.refresh()
+    expect(ended).toHaveBeenCalledTimes(1)
+    expect(ended).toHaveBeenCalledWith('run-1')
+    await s.refresh()
+    expect(ended).toHaveBeenCalledTimes(1)
+    expect(node.calls.some((c) => /note/i.test(c.method))).toBe(false)
+  })
+})

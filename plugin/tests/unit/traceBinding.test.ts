@@ -85,3 +85,90 @@ describe('a debugger session on a node that records runs', () => {
     }
   })
 })
+
+vi.mock('@/debugger/trace/panel', () => ({ openRun: vi.fn() }))
+
+describe('a program that ends while it records', () => {
+  it('reads its runs once more and opens the run it left in its tab', async () => {
+    const { openRun } = await import('@/debugger/trace/panel')
+    let recording = true
+    let waited = 0
+    let programEnds = () => {}
+    const ended = new Promise<void>((resolve) => (programEnds = resolve))
+    const c = connection(true)
+    c.rpc.mockImplementation(async (method: string, params: any): Promise<unknown> => {
+      switch (method) {
+        case 'debugger.v1.status':
+          return debuggerStatus()
+        case 'debugger.v1.wait':
+          // The first wait sees the program go: its connection is lost.
+          if (++waited > 1) return new Promise(() => {})
+          await ended
+          return {
+            wait_id: params.wait_id,
+            reason: 'connection_lost',
+            elapsed_ms: 0,
+            snapshot: null,
+          }
+        case 'debugger.v1.cancelWait':
+          return { cancelled: true }
+        case 'trace.v1.points.list':
+          return { points: [] }
+        case 'trace.v1.status':
+          return {
+            folder: '/sample/runs',
+            chosen: true,
+            recording: recording
+              ? { run_id: 'run-1', steps: 3, started_at: '2026-01-02T03:04:05.000Z' }
+              : null,
+          }
+        case 'trace.v1.runs':
+          return {
+            folder: '/sample/runs',
+            chosen: true,
+            runs: [
+              {
+                id: 'run-1',
+                name: 'Sample run',
+                debug_session_id: 'sample-debug',
+                started_at: '2026-01-02T03:04:05.000Z',
+                state: recording ? 'recording' : 'done',
+                steps: 3,
+                bytes: 10,
+              },
+            ],
+          }
+        case 'trace.v1.run':
+          return {
+            run: {
+              id: 'run-1',
+              name: 'Sample run',
+              debug_session_id: 'sample-debug',
+              started_at: '2026-01-02T03:04:05.000Z',
+              state: 'done',
+              steps: 3,
+              bytes: 10,
+            },
+            points: [],
+            steps: [],
+            marks: [],
+            folder: '/sample/runs',
+          }
+      }
+      return {}
+    })
+    const binding = new DebuggerBinding(c.connection, 'sample-chat', 'sample-registration')
+    for (const m of ['refreshApprovals', 'refreshHistory', 'refreshOutput', 'loadStack'] as const)
+      vi.spyOn(binding.controller, m).mockResolvedValue(undefined)
+    try {
+      await binding.open('sample-debug')
+      expect(binding.trace?.status?.recording?.run_id).toBe('run-1')
+      recording = false
+      programEnds()
+      await vi.waitFor(() => expect(openRun).toHaveBeenCalledWith(binding, 'run-1'))
+      expect(c.rpc.mock.calls.some(([m]) => /note/i.test(String(m)))).toBe(false)
+    } finally {
+      binding.destroy()
+    }
+  })
+})
