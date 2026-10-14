@@ -302,9 +302,7 @@ export function editCanvas(
         for (const key of ['abele', 'styleAttributes'] as const) {
           if (patch[key] && typeof patch[key] === 'object' && !Array.isArray(patch[key]))
             merged[key] = {
-              ...(element[key] && typeof element[key] === 'object'
-                ? (element[key] as Record<string, unknown>)
-                : {}),
+              ...(element[key] && typeof element[key] === 'object' ? element[key] : {}),
               ...patch[key],
             }
         }

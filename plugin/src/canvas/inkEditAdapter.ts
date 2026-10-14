@@ -101,7 +101,7 @@ export class CanvasInkEditInput {
     return true
   }
   private erase(point: [number, number]): void {
-    const g = this.gesture!,
+    const g = this.gesture,
       radius = ERASER_RADIUS / this.viewer.camera.zoom,
       distance = Math.hypot(point[0] - g.at[0], point[1] - g.at[1]),
       steps = Math.max(1, Math.ceil(distance / (radius / 2))),
@@ -156,7 +156,7 @@ export class CanvasInkEditInput {
         { op: 'move', ids: [...g.selected], dx: point[0] - g.start[0], dy: point[1] - g.start[1] },
       ]
     else {
-      const b = g.box!,
+      const b = g.box,
         length = b.width * b.width + b.height * b.height || 1,
         along = (p: number[]) => (p[0] - b.x) * b.width + (p[1] - b.y) * b.height,
         grip = along(g.start),

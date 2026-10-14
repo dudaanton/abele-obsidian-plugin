@@ -1452,6 +1452,33 @@ describe('a Pencil on a tablet', () => {
     expect(s.viewer.camera).toMatchObject({ x: 0, y: 0 })
     await vi.waitFor(() => expect(inkCount(s)).toBe(1))
   })
+  it('keeps a stroke drawn while the last one saves, without moving the canvas', async () => {
+    const s = setup()
+    s.viewer.setCamera({ x: 0, y: 0, zoom: 1 })
+    let release = () => {}
+    const plain = s.publish.getMockImplementation()!
+    s.publish.mockImplementationOnce(
+      () => new Promise<void>((resolve) => (release = () => resolve(plain())))
+    )
+    stroke(s, 400)
+    await vi.waitFor(() => expect(s.publish).toHaveBeenCalledTimes(1))
+    // The first is still being written when the pen lands again.
+    stroke(s, 300)
+    expect(s.viewer.camera).toMatchObject({ x: 0, y: 0 })
+    release()
+    await vi.waitFor(() => expect(inkCount(s)).toBe(2))
+    expect(s.document.session.dirty).toBe(false)
+    // Each stroke is its own step to take back.
+    expect(s.document.session.history.undo).toBe(2)
+  })
+  it('never moves the canvas with a pen, even when the canvas cannot take a stroke', () => {
+    const s = setup()
+    s.viewer.setCamera({ x: 0, y: 0, zoom: 1 })
+    s.document.beginDraft()
+    stroke(s, 400)
+    expect(s.viewer.camera).toMatchObject({ x: 0, y: 0 })
+    s.document.discardDraft()
+  })
   it('undoes on a tap of two fingers', async () => {
     const s = setup()
     s.viewer.setCamera({ x: 0, y: 0, zoom: 1 })

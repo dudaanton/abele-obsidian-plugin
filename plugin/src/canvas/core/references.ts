@@ -33,7 +33,7 @@ export function nodeReferencesPath(node: CanvasNode, path: string, source = ''):
   // Text-link rewriting belongs to the host. Conservatively invalidate a matching link;
   // never rewrite prose, URLs, code or unknown extensions ourselves.
   if (node.type !== 'text' || typeof node.text !== 'string') return false
-  const basename = path.split('/').pop()!.replace(/\.md$/, '')
+  const basename = path.split('/').pop().replace(/\.md$/, '')
   return [...node.text.matchAll(/\[\[([^\]|#]+)(?:[^\]]*)\]\]|\]\(([^)]+)\)/g)].some((match) => {
     let link = (match[1] ?? match[2]).split('#')[0].replace(/^<|>$/g, '')
     try {

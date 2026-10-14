@@ -34,7 +34,7 @@ export function lintCanvas(
     if (parent && !contains(parent, a))
       add('group-clipping', [a.id, parent.id], `${a.id} extends outside ${parent.id}`)
     for (const b of nodes.slice(i + 1)) {
-      if (below.get(a.id)!.has(b.id) || below.get(b.id)!.has(a.id)) continue
+      if (below.get(a.id).has(b.id) || below.get(b.id).has(a.id)) continue
       if (overlaps(a, b)) add('overlap', [a.id, b.id], `${a.id} overlaps ${b.id}`)
     }
     const box = contentBox(a),

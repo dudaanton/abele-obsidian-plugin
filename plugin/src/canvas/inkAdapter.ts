@@ -14,9 +14,13 @@ interface InkGesture {
   entry: InkEntry
   ahead: number[]
   pressure: number
+  /** Drawn while the last change was still being written: kept to be added after it. */
+  held: boolean
 }
 export class CanvasInkInput {
   private gesture: InkGesture | null = null
+  /** Strokes finished while the last change was being written, shown until they are added. */
+  private kept: InkEntry[] = []
   constructor(
     private readonly viewer: CanvasViewer,
     private readonly ports: InputPorts
@@ -24,16 +28,19 @@ export class CanvasInkInput {
   ignores(event: PointerEvent): boolean {
     return !!this.gesture?.pen && event.pointerType === 'touch'
   }
-  /** `as` draws with a pen or marker other than the tool in hand: the Pencil's own. */
-  down(event: PointerEvent, as?: 'pen' | 'marker'): boolean {
+  /**
+   * `as` draws with a pen or marker other than the tool in hand: the Pencil's own. `held` draws
+   * while the last change is still being written, so the stroke waits to be added after it.
+   */
+  down(event: PointerEvent, as?: 'pen' | 'marker', held = false): boolean {
     const tool = as ?? this.ports.tool()
     if (tool !== 'pen' && tool !== 'marker') return false
     if (routePointer({ finger: true, penDown: false }, event) !== 'ink') return false
     const rect = this.viewer.stage.getBoundingClientRect(),
       [x, y] = toWorld(this.viewer.camera, event.clientX - rect.left, event.clientY - rect.top)
     const node = attachmentAt(this.viewer.graph, x, y)
-    this.ports.select(new Set())
-    if (!this.ports.begin()) return true
+    if (!held) this.ports.select(new Set())
+    if (!held && !this.ports.begin()) return true
     const brush = this.ports.brush(tool)
     const stroke: CanvasInk = {
       version: 1,
@@ -50,13 +57,14 @@ export class CanvasInkInput {
       entry: { stroke, node },
       ahead: [],
       pressure: 0.5,
+      held,
     }
     this.add(event, false)
     this.viewer.drawInk()
     return true
   }
   private sample(event: PointerEvent): number[] {
-    const g = this.gesture!,
+    const g = this.gesture,
       node = g.entry.node,
       rect = this.viewer.stage.getBoundingClientRect()
     const [x, y] = toWorld(this.viewer.camera, event.clientX - rect.left, event.clientY - rect.top)
@@ -64,7 +72,7 @@ export class CanvasInkInput {
     return roundPoint(x - (node?.x ?? 0), y - (node?.y ?? 0), g.pen ? g.pressure : 0.5)
   }
   private add(event: PointerEvent, predicted: boolean): void {
-    const g = this.gesture!,
+    const g = this.gesture,
       p = this.sample(event),
       points = predicted ? g.ahead : g.entry.stroke.points,
       n = points.length
@@ -74,7 +82,7 @@ export class CanvasInkInput {
   move(event: PointerEvent): void {
     const g = this.gesture
     if (!g || g.id !== event.pointerId) return
-    if (!this.ports.valid()) {
+    if (!g.held && !this.ports.valid()) {
       this.cancel()
       return
     }
@@ -92,21 +100,34 @@ export class CanvasInkInput {
     this.move(event)
     if (this.gesture !== g) return
     this.gesture = null
-    this.ports.complete([
-      { op: 'add_ink', stroke: g.entry.stroke, ...(g.entry.node ? { node: g.entry.node.id } : {}) },
-    ])
+    const op = {
+      op: 'add_ink' as const,
+      stroke: g.entry.stroke,
+      ...(g.entry.node ? { node: g.entry.node.id } : {}),
+    }
+    if (g.held) {
+      this.kept.push(g.entry)
+      this.ports.hold?.(op)
+    } else this.ports.complete([op])
+    this.viewer.drawInk()
+  }
+  /** A kept stroke has been added to the canvas, or given up: it is no longer drawn here. */
+  release(id: string): void {
+    this.kept = this.kept.filter((e) => e.stroke.id !== id)
     this.viewer.drawInk()
   }
   cancel(): void {
     if (!this.gesture) return
+    const g = this.gesture
     this.gesture = null
-    this.ports.cancel()
+    if (!g.held) this.ports.cancel()
     this.viewer.drawInk()
   }
   validate(): void {
-    if (this.gesture && !this.ports.valid()) this.cancel()
+    if (this.gesture && !this.gesture.held && !this.ports.valid()) this.cancel()
   }
   paint(ctx: CanvasRenderingContext2D, theme: CanvasTheme): void {
+    for (const entry of this.kept) paintInkEntry(ctx, entry, theme, true)
     const g = this.gesture
     if (!g) return
     const node = g.entry.node

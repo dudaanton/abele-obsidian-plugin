@@ -56,6 +56,10 @@ export interface InputPorts {
   pencil?(): { ink: 'pen' | 'marker'; eraser: 'eraser' | 'partial-eraser'; fingerDraws: boolean }
   sawPen?(): void
   enabled(): boolean
+  /** The canvas is only writing the last change: a stroke may still be drawn, to add after it. */
+  holds?(): boolean
+  /** A stroke drawn while the last change was being written, to add once it is written. */
+  hold?(op: CanvasOperation): void
   selection(): ReadonlySet<string>
   select(ids: Set<string>): void
   multiple(): boolean
@@ -175,10 +179,7 @@ export class CanvasInput implements CanvasViewerInput {
   ) {
     this.ink = new CanvasInkInput(viewer, ports)
     this.inkEdit = new CanvasInkEditInput(viewer, ports)
-    this.overlay = viewer.el.ownerDocument.createElementNS(
-      'http://www.w3.org/1999/xhtml',
-      'div'
-    ) as HTMLElement
+    this.overlay = viewer.el.ownerDocument.createElementNS('http://www.w3.org/1999/xhtml', 'div')
     this.overlay.className = 'abele-canvas-selection-layer'
     viewer.stage.append(this.overlay)
     viewer.input = this
@@ -190,12 +191,34 @@ export class CanvasInput implements CanvasViewerInput {
   ignores(event: PointerEvent): boolean {
     return this.ink.ignores(event) || this.inkEdit.ignores(event)
   }
+  /** A stroke kept while the last change was written is on the canvas now, or given up. */
+  released(id: string): void {
+    this.ink.release(id)
+  }
   paintInk(ctx: CanvasRenderingContext2D, theme: CanvasTheme): void {
     this.ink.paint(ctx, theme)
     this.inkEdit.paint(ctx, theme)
   }
+  /** What a pointer coming down would draw with, if it draws at all. */
+  private inkFor(event: PointerEvent): 'pen' | 'marker' | null {
+    const tool = this.ports.tool(),
+      pencil = this.ports.pencil?.()
+    if (event.pointerType === 'pen' && pencil) {
+      if (routePointer({ finger: false, penDown: false }, event) === 'erase') return null
+      if (tool === 'eraser' || tool === 'partial-eraser' || tool === 'lasso') return null
+      return tool === 'pen' || tool === 'marker' ? tool : pencil.ink
+    }
+    if (tool !== 'pen' && tool !== 'marker') return null
+    if (event.pointerType === 'touch' && this.penSeen && !pencil?.fingerDraws) return null
+    return tool
+  }
   down(event: PointerEvent): boolean {
-    if (!this.ports.enabled() || event.altKey || event.button !== 0) return false
+    if (event.altKey || event.button !== 0) return false
+    if (!this.ports.enabled()) {
+      // While the last change is being written, a stroke is still drawn, and added after it.
+      const ink = this.ports.holds?.() ? this.inkFor(event) : null
+      return ink ? this.ink.down(event, ink, true) : false
+    }
     const tool = this.ports.tool(),
       pencil = this.ports.pencil?.()
     this.penHover = null
@@ -323,7 +346,7 @@ export class CanvasInput implements CanvasViewerInput {
     }
     let preview: CanvasGraph
     if (g.corner) {
-      const node = g.graph.nodes.find((n) => n.id === g.node)!,
+      const node = g.graph.nodes.find((n) => n.id === g.node),
         rect = resizeRect(node, g.corner, dx, dy)
       preview = {
         ...g.graph,
@@ -414,10 +437,7 @@ export class CanvasInput implements CanvasViewerInput {
       selected = this.ports.selection(),
       single = selected.size === 1
     const box = (rect: Rect) => {
-      const el = this.overlay.ownerDocument.createElementNS(
-          'http://www.w3.org/1999/xhtml',
-          'div'
-        ) as HTMLElement,
+      const el = this.overlay.ownerDocument.createElementNS('http://www.w3.org/1999/xhtml', 'div'),
         [x, y] = toScreen(this.viewer.camera, rect.x, rect.y)
       el.className = 'abele-canvas-selection-box'
       el.style.left = `${x}px`
@@ -433,7 +453,7 @@ export class CanvasInput implements CanvasViewerInput {
         const handle = this.overlay.ownerDocument.createElementNS(
             'http://www.w3.org/1999/xhtml',
             'div'
-          ) as HTMLElement,
+          ),
           [x, y] = toScreen(this.viewer.camera, rect.x + rect.width, rect.y + rect.height)
         handle.className = 'abele-canvas-resize-handle'
         handle.setAttribute('aria-label', 'Scale canvas selection')
@@ -450,7 +470,7 @@ export class CanvasInput implements CanvasViewerInput {
         const handle = this.overlay.ownerDocument.createElementNS(
             'http://www.w3.org/1999/xhtml',
             'div'
-          ) as HTMLElement,
+          ),
           [wx, wy] = cornerPoint(node, corner),
           [x, y] = toScreen(this.viewer.camera, wx, wy)
         handle.className = 'abele-canvas-resize-handle'
@@ -472,7 +492,7 @@ export class CanvasInput implements CanvasViewerInput {
         const handle = this.overlay.ownerDocument.createElementNS(
             'http://www.w3.org/1999/xhtml',
             'div'
-          ) as HTMLElement,
+          ),
           [x, y] = toScreen(this.viewer.camera, point.x, point.y)
         handle.className = 'abele-canvas-resize-handle abele-canvas-endpoint-handle'
         handle.dataset.end = end
@@ -490,7 +510,7 @@ export class CanvasInput implements CanvasViewerInput {
         const el = this.overlay.ownerDocument.createElementNS(
             'http://www.w3.org/1999/xhtml',
             'div'
-          ) as HTMLElement,
+          ),
           p = endpoint(node, side),
           [x, y] = toScreen(this.viewer.camera, p.x, p.y)
         el.className = 'abele-canvas-connect-point'
@@ -523,10 +543,7 @@ export class CanvasInput implements CanvasViewerInput {
       const tool = this.ports.tool(),
         ink = tool === 'pen' || tool === 'marker' ? tool : this.ports.pencil().ink,
         size = Math.max(6, this.ports.brush(ink).size * this.viewer.camera.zoom),
-        ring = this.overlay.ownerDocument.createElementNS(
-          'http://www.w3.org/1999/xhtml',
-          'div'
-        ) as HTMLElement
+        ring = this.overlay.ownerDocument.createElementNS('http://www.w3.org/1999/xhtml', 'div')
       ring.className = 'abele-canvas-pen-hover'
       ring.style.left = `${this.penHover[0]}px`
       ring.style.top = `${this.penHover[1]}px`
@@ -572,8 +589,7 @@ export class CanvasInput implements CanvasViewerInput {
     if ((tool !== 'select' && tool !== 'connect') || !this.ports.enabled()) return null
     const graph = this.viewer.graph,
       selected = this.ports.selection(),
-      id =
-        this.hovered ?? (selected.size === 1 ? [...selected][0] : null)
+      id = this.hovered ?? (selected.size === 1 ? [...selected][0] : null)
     const node = graph.nodes.find((n) => n.id === id)
     return node && node.type !== 'group' ? node : null
   }

@@ -121,7 +121,7 @@ export function attachInk(graph: CanvasGraph, entry: InkEntry, nodeId?: string):
   const node = nodeId === undefined ? undefined : graph.nodes.find((n) => n.id === nodeId)
   if (nodeId !== undefined && !node) throw new Error(`Unknown ink attachment ${nodeId}`)
   const world = inkInWorld(entry),
-    t = world.transform!
+    t = world.transform
   // Check the destination before removing anything, including incompatible opaque containers.
   rawInk(node ?? graph, true)
   replaceInk(graph, entry, [])

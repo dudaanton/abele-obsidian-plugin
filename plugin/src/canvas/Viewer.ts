@@ -104,7 +104,7 @@ export class CanvasViewer {
     el.classList.add('abele-canvas-viewer')
     el.tabIndex = 0
     const make = (tag: string, cls: string, parent: HTMLElement) => {
-      const child = doc.createElementNS('http://www.w3.org/1999/xhtml', tag) as HTMLElement
+      const child = doc.createElementNS('http://www.w3.org/1999/xhtml', tag)
       child.className = cls
       parent.append(child)
       return child
@@ -261,7 +261,7 @@ export class CanvasViewer {
       16
     )
     this.stopAnimation()
-    const win = this.el.ownerDocument.defaultView!
+    const win = this.el.ownerDocument.defaultView
     if (!animate || win.matchMedia('(prefers-reduced-motion: reduce)').matches) {
       this.camera = target
       this.draw()
@@ -313,7 +313,7 @@ export class CanvasViewer {
       this.setCamera({ x: this.camera.x + dx / zoom, y: this.camera.y + dy / zoom, zoom })
   }
   private stopAnimation(): void {
-    if (this.animation) this.el.ownerDocument.defaultView!.cancelAnimationFrame(this.animation)
+    if (this.animation) this.el.ownerDocument.defaultView.cancelAnimationFrame(this.animation)
     this.animation = 0
   }
   visible(): Rect {
@@ -322,7 +322,7 @@ export class CanvasViewer {
   }
   draw(): void {
     if (this.destroyed || this.frame) return
-    this.frame = this.el.ownerDocument.defaultView!.requestAnimationFrame(() => {
+    this.frame = this.el.ownerDocument.defaultView.requestAnimationFrame(() => {
       this.frame = 0
       this.paint()
     })
@@ -330,7 +330,7 @@ export class CanvasViewer {
   /** Pen sampling repaints only the ink plane, not Markdown cards or asset loads. */
   drawInk(): void {
     if (this.destroyed || this.inkFrame) return
-    this.inkFrame = this.el.ownerDocument.defaultView!.requestAnimationFrame(() => {
+    this.inkFrame = this.el.ownerDocument.defaultView.requestAnimationFrame(() => {
       this.inkFrame = 0
       this.paintInk()
     })
@@ -339,7 +339,7 @@ export class CanvasViewer {
     const width = this.stage.clientWidth,
       height = this.stage.clientHeight
     if (this.destroyed || !width || !height) return
-    const ratio = this.el.ownerDocument.defaultView!.devicePixelRatio || 1
+    const ratio = this.el.ownerDocument.defaultView.devicePixelRatio || 1
     this.inkCanvas.width = Math.max(1, Math.round(width * ratio))
     this.inkCanvas.height = Math.max(1, Math.round(height * ratio))
     const ctx = this.inkCanvas.getContext('2d')
@@ -364,7 +364,7 @@ export class CanvasViewer {
     if (!width || !height) return
     const scene = this.scene(),
       region = this.visible(),
-      ratio = this.el.ownerDocument.defaultView!.devicePixelRatio || 1
+      ratio = this.el.ownerDocument.defaultView.devicePixelRatio || 1
     this.canvas.width = Math.max(1, Math.round(width * ratio))
     this.canvas.height = Math.max(1, Math.round(height * ratio))
     const ctx = this.canvas.getContext('2d')
@@ -489,6 +489,11 @@ export class CanvasViewer {
       this.pointers.set(e.pointerId, { x: e.clientX, y: e.clientY })
       return
     }
+    // A pen draws or does nothing: it never carries the canvas, even when it could not draw.
+    if (this.gesture?.pen && !this.gesture.multi) {
+      this.pointers.set(e.pointerId, { x: e.clientX, y: e.clientY })
+      return
+    }
     this.framedRegion = null
     if (this.gesture && Math.hypot(e.clientX - this.gesture.x, e.clientY - this.gesture.y) > 12)
       this.gesture.moved = true
@@ -598,8 +603,8 @@ export class CanvasViewer {
     this.abort?.abort()
     this.resize.disconnect()
     this.stopAnimation()
-    if (this.frame) this.el.ownerDocument.defaultView!.cancelAnimationFrame(this.frame)
-    if (this.inkFrame) this.el.ownerDocument.defaultView!.cancelAnimationFrame(this.inkFrame)
+    if (this.frame) this.el.ownerDocument.defaultView.cancelAnimationFrame(this.frame)
+    if (this.inkFrame) this.el.ownerDocument.defaultView.cancelAnimationFrame(this.inkFrame)
     this.off.splice(0).forEach((fn) => fn())
     this.ports.cards.destroy()
     this.pointers.clear()

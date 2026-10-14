@@ -73,14 +73,14 @@ const COPY_GAP = 40
 const FINGER_KEY = 'abele-canvas-finger-draws'
 const readFingerDraws = (): boolean => {
   try {
-    return globalThis.localStorage?.getItem(FINGER_KEY) === '1'
+    return window.localStorage?.getItem(FINGER_KEY) === '1'
   } catch {
     return false
   }
 }
 const writeFingerDraws = (on: boolean): void => {
   try {
-    globalThis.localStorage?.setItem(FINGER_KEY, on ? '1' : '0')
+    window.localStorage?.setItem(FINGER_KEY, on ? '1' : '0')
   } catch {
     /* A device that keeps nothing simply asks again next time. */
   }
@@ -121,6 +121,8 @@ export class CanvasEditor {
   /** A frame whose name is being written on its label. */
   private naming: string | null = null
   private ownedDraft: CanvasEditorDocument | null = null
+  /** Strokes drawn while the last change was being written, added one by one after it. */
+  private held: CanvasOperation[] = []
   private composing = false
   private waiting = false
   private destroyed = false
@@ -451,6 +453,21 @@ export class CanvasEditor {
         this.refresh()
       },
       enabled: () => this.canGesture(),
+      holds: () => {
+        const document = this.ports.document()
+        return (
+          this.waiting &&
+          !this.destroyed &&
+          !this.editing &&
+          !!document &&
+          !document.state.native &&
+          !document.error &&
+          !document.session.conflict
+        )
+      },
+      hold: (op) => {
+        this.held.push(op)
+      },
       selection: () => this.selected,
       select: (ids) => {
         this.selected = ids
@@ -796,7 +813,25 @@ export class CanvasEditor {
     } finally {
       this.waiting = false
       this.refresh()
+      if (this.held.length) void this.addHeld()
     }
+  }
+  /** The next stroke drawn while a change was being written, added as a step of its own. */
+  private async addHeld(): Promise<void> {
+    const op = this.held.shift()
+    if (!op || op.op !== 'add_ink') return
+    try {
+      const document = this.ready()
+      document.beginDraft()
+      this.update(document, [op])
+      document.finishDraft()
+    } catch (error) {
+      for (const lost of [op, ...this.held.splice(0)])
+        if (lost.op === 'add_ink') this.inputAdapter.released(lost.stroke.id)
+      return this.fail(error)
+    }
+    this.inputAdapter.released(op.stroke.id)
+    await this.saving(() => this.ports.publish()).catch((error) => this.fail(error))
   }
   private async retry(): Promise<void> {
     const document = this.ports.document()
@@ -988,7 +1023,7 @@ export class CanvasEditor {
     const id = nanoid()
     const node: NodeInput =
       kind === 'note'
-        ? { id, kind: 'note', file: file!, ...at, ...size }
+        ? { id, kind: 'note', file: file, ...at, ...size }
         : {
             id,
             kind: kind === 'shape' ? 'shape' : 'text',
@@ -1055,22 +1090,20 @@ export class CanvasEditor {
         .sort(
           (a, b) =>
             Number(b.type === 'group') - Number(a.type === 'group') ||
-            (a.type === 'group' && b.type === 'group'
-              ? b.width * b.height - a.width * a.height
-              : 0)
+            (a.type === 'group' && b.type === 'group' ? b.width * b.height - a.width * a.height : 0)
         )
       ops = [
         ...nodes.map(
           (n): CanvasOperation => ({
             op: 'add_node',
             node: {
-              id: fresh.get(n.id)!,
+              id: fresh.get(n.id),
               kind:
                 n.type === 'file'
                   ? 'note'
                   : n.type === 'text' && n.styleAttributes?.shape
                     ? 'shape'
-                    : (n.type as 'text' | 'link' | 'group'),
+                    : n.type,
               ...(n.type === 'text' ? { label: n.text ?? '' } : {}),
               ...(n.type === 'group' ? { label: n.label ?? '' } : {}),
               ...(n.file ? { file: n.file } : {}),
@@ -1079,7 +1112,7 @@ export class CanvasEditor {
               ...(n.styleAttributes?.shape ? { shape: n.styleAttributes.shape as Shape } : {}),
               ...(n.color ? { color: n.color } : {}),
               ...(fresh.has(parents.get(n.id) ?? '')
-                ? { parent: fresh.get(parents.get(n.id)!) }
+                ? { parent: fresh.get(parents.get(n.id)) }
                 : {}),
               x: n.x + shift,
               y: n.y,
@@ -1093,11 +1126,16 @@ export class CanvasEditor {
           .map(
             (e): CanvasOperation => ({
               op: 'connect',
-              edge: { ...e, id: nanoid(), fromNode: fresh.get(e.fromNode)!, toNode: fresh.get(e.toNode)! },
+              edge: {
+                ...e,
+                id: nanoid(),
+                fromNode: fresh.get(e.fromNode),
+                toNode: fresh.get(e.toNode),
+              },
             })
           ),
       ]
-      after = new Set(picked.map((n) => fresh.get(n.id)!))
+      after = new Set(picked.map((n) => fresh.get(n.id)))
     }
     if (!ops.length) return
     document.beginDraft()
@@ -1223,9 +1261,7 @@ export class CanvasEditor {
     for (const id of this.selected) {
       const node = graph.nodes.find((n) => n.id === id)
       if (node) {
-        kinds.push(
-          node.type === 'text' && node.styleAttributes?.shape ? 'shape' : (node.type as 'text')
-        )
+        kinds.push(node.type === 'text' && node.styleAttributes?.shape ? 'shape' : node.type)
         rects.push(node)
         continue
       }
@@ -1520,7 +1556,7 @@ export class CanvasEditor {
     else if (command && event.key.toLowerCase() === 'y') label = 'Redo canvas change'
     else if (event.key === 'Delete' || event.key === 'Backspace') label = 'Delete selected card'
     else if (event.key === 'Enter' && this.node()?.type === 'group') {
-      this.naming = this.node()!.id
+      this.naming = this.node().id
       this.refresh()
       event.preventDefault()
       return true

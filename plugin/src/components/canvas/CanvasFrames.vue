@@ -16,7 +16,9 @@
       <div
         :ref="(el) => label(el as HTMLElement | null, f)"
         class="canvas-group-label abele-canvas-frame__label"
-        :class="f.color ? (DARK_WORDS.has(f.color) ? 'mod-foreground-dark' : 'mod-foreground-light') : ''"
+        :class="
+          f.color ? (DARK_WORDS.has(f.color) ? 'mod-foreground-dark' : 'mod-foreground-light') : ''
+        "
         :data-frame-id="f.id"
         :contenteditable="f.naming ? 'true' : undefined"
         :style="{ fontSize: f.font }"
@@ -82,7 +84,7 @@ const frames = computed<Frame[]>(() => {
     .map((n) => ({
       id: n.id,
       label: n.label || 'Frame',
-      color: /^[1-6]$/.test(n.color ?? '') ? n.color! : '',
+      color: /^[1-6]$/.test(n.color ?? '') ? n.color : '',
       selected: selected.has(n.id),
       collapsed: !!n.collapsed,
       naming: naming === n.id,
