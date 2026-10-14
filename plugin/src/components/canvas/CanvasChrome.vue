@@ -2,6 +2,7 @@
   <!-- The canvas's controls laid out as Obsidian Canvas lays out its own, in its own classes: the
        tools at the foot in the middle, zoom and history in a column at the top right, and the
        actions for what is picked in a small bar standing over it. -->
+  <CanvasFrames :editor="editor" :viewer="viewer" :tick="tick" />
   <div class="abele-canvas-chrome" :class="{ 'is-phone-layout': phone }" @pointerdown.stop>
     <div v-if="saveState" class="canvas-controls abele-canvas-chrome__state">
       <div class="canvas-control-group">
@@ -75,7 +76,8 @@
 
     <!-- Over a picked thing, its actions; above it, or under it where the top has no room. -->
     <div
-      v-if="picked.rect && !editing && !drawing"
+      v-if="picked.rect && !editing && !drawing && tool !== 'frame' && !gesturing && !naming"
+      ref="barEl"
       class="canvas-menu abele-canvas-chrome__picked"
       :style="pickedAt"
       role="toolbar"
@@ -134,12 +136,19 @@
         :disabled="groupLabel === null"
         @click="groupLabel && press(groupLabel)"
       />
-      <ChromeIcon
-        v-if="one && kind === 'group'"
-        icon="ungroup"
-        tooltip="Take out of the frame"
-        @click="press('Ungroup selected group')"
-      />
+      <template v-if="one && kind === 'group'">
+        <ChromeIcon icon="pencil" tooltip="Rename" @click="c.name(picked.ids[0])" />
+        <ChromeIcon
+          :icon="pickedNode?.collapsed ? 'chevrons-up-down' : 'chevrons-down-up'"
+          :tooltip="pickedNode?.collapsed ? 'Unfold: show what is inside' : 'Fold: hide what is inside'"
+          @click="c.foldFrame(picked.ids[0], !pickedNode?.collapsed)"
+        />
+        <ChromeIcon
+          icon="ungroup"
+          tooltip="Remove the frame, keep what is inside"
+          @click="press('Ungroup selected group')"
+        />
+      </template>
       <ChromeIcon icon="more-horizontal" tooltip="More" @click="moreMenu($event)" />
     </div>
 
@@ -219,6 +228,7 @@ import { SHAPES, type Shape } from '@/canvas/core/model'
 import { allInkEntries } from '@/canvas/core/ink'
 import { zoomAt } from '@/drawing/camera'
 import ChromeIcon from '../obsidian/Icon.vue'
+import CanvasFrames from './CanvasFrames.vue'
 
 const props = defineProps<{ editor: CanvasEditor; viewer: CanvasViewer }>()
 const c = props.editor.controls
@@ -371,9 +381,9 @@ const SLOTS: Slot[][] = [
       members: [
         {
           id: 'frame',
-          label: 'Group selected cards',
+          label: 'Draw frame',
           icon: 'frame',
-          tooltip: 'Frame: pick cards, then frame them (F)',
+          tooltip: 'Frame: draw around cards (F)',
         },
       ],
     },
@@ -436,6 +446,9 @@ const kinds = computed(() => picked.value.kinds)
 const one = computed(() => kinds.value.length === 1)
 const kind = computed(() => kinds.value[0])
 const editing = computed(() => (tick.value, c.editing()))
+const gesturing = computed(() => (tick.value, c.gesturing()))
+const naming = computed(() => (tick.value, c.naming()))
+const barEl = ref<HTMLElement>()
 const drawing = computed(() => ['pen', 'marker', 'eraser', 'partial-eraser'].includes(tool.value))
 const steps = computed(() => (tick.value, stepsOf(props.viewer.graph).length))
 const percent = computed(() => (tick.value, Math.round(props.viewer.camera.zoom * 100)))
@@ -478,10 +491,23 @@ const pickedAt = computed(() => {
   const left = (r.x + r.width / 2 - cam.x) * cam.zoom
   const top = (r.y - cam.y) * cam.zoom
   const bottom = (r.y + r.height - cam.y) * cam.zoom
-  const above = top > 56
+  // A frame's name stands over its top edge: the bar goes over the name, not onto it.
+  const name =
+    one.value && kind.value === 'group'
+      ? props.viewer.stage.querySelector<HTMLElement>(`[data-frame-id="${picked.value.ids[0]}"]`)
+      : null
+  const nameTop = name
+    ? name.getBoundingClientRect().top - props.viewer.stage.getBoundingClientRect().top
+    : top
+  const above = Math.min(top, nameTop) > 56
+  const over = Math.min(top, nameTop)
+  // Kept clear of the stage's sides and of the control column at the top right.
+  const half = (barEl.value?.offsetWidth ?? 0) / 2,
+    column = props.viewer.el.querySelector<HTMLElement>('.abele-canvas-chrome__view'),
+    right = props.viewer.stage.clientWidth - (column ? column.offsetWidth + 24 : 8)
   return {
-    left: `${Math.max(8, left)}px`,
-    top: `${above ? top - 12 : bottom + 12}px`,
+    left: `${Math.max(8 + half, Math.min(left, right - half))}px`,
+    top: `${above ? over - 12 : bottom + 12}px`,
     transform: `translate(-50%, ${above ? '-100%' : '0'})`,
   }
 })
@@ -521,10 +547,6 @@ function run(slot: Slot, m: Slot['members'][number]) {
   if (slot.id === 'shape') {
     set('shape', m.id)
     return press('Add canvas shape')
-  }
-  if (slot.id === 'frame') {
-    if (groupLabel.value) return press(groupLabel.value)
-    return void new Notice('Pick the cards to frame first')
   }
   press(m.label)
 }
@@ -759,6 +781,8 @@ const blur = () => {
 }
 onMounted(() => {
   props.viewer.el.classList.add('abele-canvas-view_chrome')
+  props.viewer.groupLabels = true
+  props.viewer.draw()
   off.value = c.watch(() => {
     tick.value++
     placeField()
@@ -771,6 +795,7 @@ onBeforeUnmount(() => {
   c.textField().removeEventListener('blur', blur)
   cancelAnimationFrame(frame)
   props.viewer.el.classList.remove('abele-canvas-view_chrome')
+  props.viewer.groupLabels = false
 })
 </script>
 

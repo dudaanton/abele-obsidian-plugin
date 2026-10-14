@@ -53,6 +53,8 @@ export class CanvasViewer {
   onSelect?: (node: CanvasNode | null) => void
   onEditorKey?: (event: KeyboardEvent) => boolean
   input?: CanvasViewerInput
+  /** The host draws each frame's name as a label of its own; the surface paints only the frame. */
+  groupLabels = false
   openNode(node: CanvasNode): void {
     this.ports.openNode(node)
   }
@@ -362,6 +364,7 @@ export class CanvasViewer {
       lint: false,
       skipCards: true,
       skipInk: true,
+      skipGroupLabels: this.groupLabels,
     })
     this.paintInk()
     this.input?.paint()

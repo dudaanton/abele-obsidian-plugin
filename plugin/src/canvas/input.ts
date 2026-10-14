@@ -5,7 +5,7 @@ import { linesOf, rawLines, segmentDistance, type CanvasLine } from './core/prim
 import { endpoint, paintedRoute, routeSamples, sideAt, type Point } from './core/scene'
 import { editCanvas } from './core/edit'
 import { type CanvasOperation } from './core/edit'
-import { canvasFingerprint, type CanvasGraph, type Rect } from './core/model'
+import { canvasFingerprint, parentsOf, type CanvasGraph, type Rect } from './core/model'
 import {
   cornerPoint,
   hitNode,
@@ -34,6 +34,9 @@ export type CanvasInputTool =
   | 'eraser'
   | 'partial-eraser'
   | 'lasso'
+  | 'frame'
+/** A frame drawn with a click and no drag: about two cards wide. */
+export const FRAME_SIZE = { width: 480, height: 320 }
 export interface InputPorts {
   brush(): { color: string; size: number }
   tool(): CanvasInputTool
@@ -72,6 +75,42 @@ interface ConnectionGesture {
   point: Point
   active: boolean
 }
+const roundRect = (r: Rect): Rect => ({
+  x: Math.round(r.x),
+  y: Math.round(r.y),
+  width: Math.round(r.width),
+  height: Math.round(r.height),
+})
+/**
+ * The smallest frame, not itself carried, that would hold a carried card whole once it is let
+ * go; a frame it already sits in still counts, so the light shows where it stays as well.
+ */
+export function landingFrame(
+  graph: CanvasGraph,
+  ids: ReadonlySet<string>,
+  moving: ReadonlySet<string>
+): string | null {
+  const carried = graph.nodes.filter((n) => ids.has(n.id))
+  if (!carried.length) return null
+  const holds = (g: Rect, n: Rect) =>
+    n.x >= g.x && n.y >= g.y && n.x + n.width <= g.x + g.width && n.y + n.height <= g.y + g.height
+  const frames = graph.nodes
+    .filter((n) => n.type === 'group' && !moving.has(n.id) && carried.every((c) => holds(n, c)))
+    .sort((a, b) => a.width * a.height - b.width * b.height)
+  return frames[0]?.id ?? null
+}
+/** A frame drawn around a region takes in what lies whole inside it, nested frames intact. */
+export function frameOps(graph: CanvasGraph, rect: Rect): CanvasOperation[] {
+  const id = nanoid(),
+    inside = new Set(nodesInBox(graph, rect)),
+    parents = parentsOf(graph),
+    top = [...inside].filter((n) => !inside.has(parents.get(n) ?? ''))
+  if (!top.length) return [{ op: 'add_node', node: { id, kind: 'group', label: 'Frame', ...rect } }]
+  return [
+    { op: 'group', id, label: 'Frame', ids: top },
+    { op: 'update', id, patch: { ...rect } },
+  ]
+}
 export class CanvasInput implements CanvasViewerInput {
   private readonly ink: CanvasInkInput
   private readonly inkEdit: CanvasInkEditInput
@@ -79,6 +118,11 @@ export class CanvasInput implements CanvasViewerInput {
   private gesture: Gesture | null = null
   private readonly overlay: HTMLElement
   private marquee: Rect | null = null
+  /** A frame being drawn with the Frame tool, from where the pointer went down. */
+  private framing: { start: [number, number]; screen: [number, number]; rect: Rect | null } | null =
+    null
+  /** The frame a card being carried would land in, lit while it is over it. */
+  private dropFrame: string | null = null
   constructor(
     private readonly viewer: CanvasViewer,
     private readonly ports: InputPorts
@@ -109,18 +153,31 @@ export class CanvasInput implements CanvasViewerInput {
     if (this.ports.tool() === 'pen' || this.ports.tool() === 'marker') return this.ink.down(event)
     if (this.inkEdit.down(event)) return true
     if (this.ports.tool() === 'pan') return false
+    if (this.ports.tool() === 'frame') {
+      this.framing = {
+        start: this.point(event),
+        screen: [event.clientX, event.clientY],
+        rect: null,
+      }
+      return true
+    }
     if (this.connectionDown(event)) return true
     if (this.ports.tool() !== 'select') return false
     const graph = this.viewer.graph,
       [x, y] = this.point(event),
       selected = this.ports.selection(),
+      // A frame's name stands over its corner, outside its box, and still picks and carries it.
+      labelled = (event.target as Element | null)?.closest?.('[data-frame-id]'),
+      named = labelled
+        ? graph.nodes.find((n) => n.id === (labelled as HTMLElement).dataset.frameId)
+        : undefined,
       single = selected.size === 1 ? graph.nodes.find((n) => selected.has(n.id)) : null,
       multiple = event.shiftKey || this.ports.multiple(),
       corner =
         !multiple && single
           ? hitResize(single, x, y, this.viewer.camera.zoom, event.pointerType !== 'mouse')
           : null,
-      node = corner ? single : hitNode(graph, x, y)
+      node = corner ? single : (named ?? hitNode(graph, x, y))
     if (!node && !multiple) {
       this.ports.select(new Set())
       return false // Empty space still pans.
@@ -148,6 +205,21 @@ export class CanvasInput implements CanvasViewerInput {
     this.inkEdit.move(event)
     if (this.connection) {
       this.connectionMove(event)
+      return
+    }
+    if (this.framing) {
+      const f = this.framing
+      if (!f.rect && Math.hypot(event.clientX - f.screen[0], event.clientY - f.screen[1]) < 6)
+        return
+      const [x, y] = this.point(event)
+      f.rect = {
+        x: Math.min(x, f.start[0]),
+        y: Math.min(y, f.start[1]),
+        width: Math.abs(x - f.start[0]),
+        height: Math.abs(y - f.start[1]),
+      }
+      this.ports.select(new Set(nodesInBox(this.viewer.graph, f.rect)))
+      this.viewer.draw()
       return
     }
     const g = this.gesture
@@ -198,6 +270,7 @@ export class CanvasInput implements CanvasViewerInput {
       preview = movePreview(g.graph, g.moving, dx, dy)
       g.ops = [{ op: 'move', ids: [...g.ids], dx, dy }]
     }
+    this.dropFrame = landingFrame(preview, g.ids, g.moving)
     // Avoid validation, asset reloads and full session cloning on every pointer event.
     this.viewer.graph = preview
     this.viewer.draw()
@@ -209,12 +282,29 @@ export class CanvasInput implements CanvasViewerInput {
       this.connectionUp(event)
       return
     }
+    if (this.framing) {
+      this.move(event)
+      const f = this.framing
+      this.framing = null
+      const rect =
+        f.rect && f.rect.width >= 40 && f.rect.height >= 40
+          ? f.rect
+          : {
+              x: f.start[0] - FRAME_SIZE.width / 2,
+              y: f.start[1] - FRAME_SIZE.height / 2,
+              ...FRAME_SIZE,
+            }
+      if (this.ports.begin()) this.ports.complete(frameOps(this.viewer.graph, roundRect(rect)))
+      this.viewer.draw()
+      return
+    }
     const g = this.gesture
     if (!g) return
     this.move(event)
     if (this.gesture !== g) return
     this.gesture = null
     this.marquee = null
+    this.dropFrame = null
     if (g.active) {
       if (
         this.ports.valid() &&
@@ -235,10 +325,15 @@ export class CanvasInput implements CanvasViewerInput {
       if (g.active) this.ports.cancel()
       this.viewer.draw()
     }
+    if (this.framing) {
+      this.framing = null
+      this.viewer.draw()
+    }
     const g = this.gesture
     if (!g) return
     this.gesture = null
     this.marquee = null
+    this.dropFrame = null
     if (g.active) this.ports.cancel()
     else if (g.box) this.ports.select(g.ids)
     this.viewer.draw()
@@ -324,6 +419,19 @@ export class CanvasInput implements CanvasViewerInput {
       }
     }
     if (this.marquee) box(this.marquee)
+    if (this.framing?.rect) {
+      box(this.framing.rect)
+      this.overlay.lastElementChild?.classList.add('abele-canvas-frame-draft')
+    }
+    const target = this.dropFrame && graph.nodes.find((n) => n.id === this.dropFrame)
+    if (target) {
+      box(target)
+      this.overlay.lastElementChild?.classList.add('abele-canvas-frame-target')
+    }
+  }
+  /** The frame a carried card would land in, for a host that lights it in its own way. */
+  landing(): string | null {
+    return this.dropFrame
   }
   private connectionDown(event: PointerEvent): boolean {
     const graph = this.viewer.graph,

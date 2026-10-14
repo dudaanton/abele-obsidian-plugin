@@ -215,3 +215,11 @@
   overflow-wrap: anywhere;
   white-space: pre-wrap;
 }
+/* A frame being drawn: a dashed outline in the accent, nothing inside it yet. */
+.abele-canvas-selection-box.abele-canvas-frame-draft {
+  border-style: dashed;
+}
+/* The frame a carried card would land in lights up, as Obsidian lights a drop target. */
+.abele-canvas-selection-box.abele-canvas-frame-target {
+  background: color-mix(in srgb, var(--interactive-accent) 8%, transparent);
+}

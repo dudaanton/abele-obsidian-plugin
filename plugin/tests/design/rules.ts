@@ -490,10 +490,14 @@ export function checkScreen(scope: ScreenScope = {}): ScreenCheck {
       if (!stacked) continue
       seen.add(parent)
       const edges = kids.map((k) => [k, edge(k)] as const).filter(([, x]) => x !== null)
+      // A column drawn scaled — a card on a zoomed-out canvas — is measured at its own size:
+      // its list's indent shrinks on screen with everything else and stays an indent.
+      const width = (parent as HTMLElement).offsetWidth
+      const scale = width ? parent.getBoundingClientRect().width / width : 1
       for (let i = 1; i < edges.length; i++) {
         const [a, ax] = edges[i - 1]
         const [b, bx] = edges[i]
-        const step = Math.abs((bx as number) - (ax as number))
+        const step = Math.abs((bx as number) - (ax as number)) / (scale || 1)
         if (step > 1.5 && step < 8)
           fails.push(`${name(a)} и ${name(b)}: края расходятся на ${px(step)}`)
       }

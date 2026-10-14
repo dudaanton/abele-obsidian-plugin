@@ -55,6 +55,8 @@ export interface CanvasAssets {
   transparent?: boolean
   /** Interactive ink is composited above live Markdown cards. */
   skipInk?: boolean
+  /** A frame's name is drawn by the host as a label of its own, over the frame's corner. */
+  skipGroupLabels?: boolean
 }
 export function withoutLiveCardAssets(
   assets: CanvasAssets,
@@ -277,14 +279,25 @@ export function paintCanvas(
     ctx.fillRect(region.x, region.y, region.width, region.height)
   }
   for (const node of visible.filter((n) => n.type === 'group')) {
-    ctx.strokeStyle = assets.highlight?.has(node.id)
-      ? theme.accent
-      : colorOf(node.color, theme.border, theme)
+    const colour = colorOf(node.color, theme.border, theme)
+    // As Obsidian Canvas draws a group: a faint wash of its colour inside the edge. A folded
+    // frame keeps only a dashed edge, so the place it holds stays readable as empty.
+    if (!node.collapsed) {
+      ctx.save()
+      ctx.globalAlpha = 0.07
+      ctx.fillStyle = colour
+      shapePath(ctx, node)
+      ctx.fill()
+      ctx.restore()
+    }
+    ctx.strokeStyle = assets.highlight?.has(node.id) ? theme.accent : colour
     ctx.fillStyle = theme.muted
     ctx.lineWidth = assets.highlight?.has(node.id) ? 3 : 1
-    ctx.setLineDash([])
+    ctx.setLineDash(node.collapsed ? [6, 4] : [])
     shapePath(ctx, node)
     ctx.stroke()
+    ctx.setLineDash([])
+    if (assets.skipGroupLabels) continue
     ctx.font = `600 ${theme.size}px ${theme.font}`
     ctx.fillText(node.label ?? node.id, node.x + 12, node.y + theme.size + 8)
   }

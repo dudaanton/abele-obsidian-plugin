@@ -74,7 +74,8 @@ export function inkEntries(graph: CanvasGraph): InkEntry[] {
       .filter((s) => !s.frame)
       .map((stroke) => ({ stroke })),
     ...graph.nodes
-      .filter((n) => !hidden.has(n.id))
+      // A folded frame hides the ink drawn in it along with its cards.
+      .filter((n) => !hidden.has(n.id) && !(n.type === 'group' && n.collapsed))
       .flatMap((node) =>
         inkOf(node)
           .filter((s) => !!s.frame)

@@ -88,6 +88,8 @@ export class CanvasEditor {
   private geometry: { document: CanvasEditorDocument; generation: number; path: string } | null =
     null
   private editing: string | null = null
+  /** A frame whose name is being written on its label. */
+  private naming: string | null = null
   private ownedDraft: CanvasEditorDocument | null = null
   private composing = false
   private waiting = false
@@ -129,6 +131,19 @@ export class CanvasEditor {
     picked: (): CanvasPicked => this.picked(),
     editing: (): string | null => this.editing,
     textField: (): HTMLTextAreaElement => this.text,
+    /** The frame whose name is being written, so its label opens for writing. */
+    naming: (): string | null => this.naming,
+    name: (id: string | null): void => {
+      this.naming = id
+      this.refresh()
+    },
+    renameFrame: (id: string, label: string): Promise<void> => this.frameOp(id, 'rename', label),
+    foldFrame: (id: string, collapsed: boolean): Promise<void> =>
+      this.frameOp(id, collapsed ? 'collapse' : 'expand'),
+    /** A card, frame or line is being carried or drawn right now. */
+    gesturing: (): boolean => !!this.geometry,
+    /** The frame a card being carried would land in. */
+    landing: (): string | null => this.inputAdapter.landing(),
   }
 
   constructor(
@@ -281,6 +296,7 @@ export class CanvasEditor {
     )
     for (const [tool, label, text] of [
       ['select', 'Select canvas objects', 'Select'],
+      ['frame', 'Draw frame', 'Frame'],
       ['connect', 'Draw connection', 'Connect'],
       ['line', 'Draw free line', 'Line'],
       ['arrow', 'Draw free arrow', 'Arrow'],
@@ -580,6 +596,18 @@ export class CanvasEditor {
       for (const op of ops) {
         if (op.op === 'connect') this.selected = new Set([op.edge.id])
         if (op.op === 'add_line') this.selected = new Set([op.line.id])
+        const frame =
+          op.op === 'add_node' && op.node.kind === 'group'
+            ? op.node.id
+            : op.op === 'group'
+              ? op.id
+              : null
+        if (frame) {
+          // A frame just drawn is named at once, and the hand goes back to picking.
+          this.selected = new Set([frame])
+          this.naming = frame
+          this.tool = 'select'
+        }
       }
       g.document.finishDraft()
     } catch (error) {
@@ -849,7 +877,7 @@ export class CanvasEditor {
       this.update(document, [
         ungroup
           ? { op: 'ungroup', id }
-          : { op: 'group', id, label: 'Group', ids: [...this.selected] },
+          : { op: 'group', id, label: 'Frame', ids: [...this.selected] },
       ])
       this.selected = new Set(ungroup ? [] : [id])
       document.finishDraft()
@@ -857,7 +885,29 @@ export class CanvasEditor {
       if (document.session.draft?.active) document.cancelDraft()
       throw error
     }
+    if (!ungroup) this.naming = id
     this.changed(document)
+  }
+  /** Renames, folds or unfolds one frame as a single step to undo. */
+  private async frameOp(
+    id: string,
+    action: 'rename' | 'collapse' | 'expand',
+    label?: string
+  ): Promise<void> {
+    if (action === 'rename') this.naming = null
+    const document = this.ready(),
+      frame = document.session.graph.nodes.find((n) => n.id === id && n.type === 'group')
+    if (!frame) return this.refresh()
+    const ops: CanvasOperation[] =
+      action === 'rename'
+        ? [{ op: 'update', id, patch: { label: label?.trim() || 'Frame' } }]
+        : [{ op: 'collapse', id, collapsed: action === 'collapse' }]
+    if (
+      canvasFingerprint(editCanvas(document.session.graph, ops).graph) ===
+      canvasFingerprint(document.session.graph)
+    )
+      return this.refresh()
+    this.commit(document, ops)
   }
   /** Undo and redo happen in memory at once; the result is written with the next batch. */
   private history(direction: 'undo' | 'redo'): void {
@@ -1136,6 +1186,7 @@ export class CanvasEditor {
       ['partial-eraser', 'Erase part of strokes'],
       ['lasso', 'Lasso canvas objects'],
       ['select', 'Select canvas objects'],
+      ['frame', 'Draw frame'],
       ['connect', 'Draw connection'],
       ['line', 'Draw free line'],
       ['arrow', 'Draw free arrow'],
@@ -1248,7 +1299,12 @@ export class CanvasEditor {
       label = event.shiftKey ? 'Redo canvas change' : 'Undo canvas change'
     else if (command && event.key.toLowerCase() === 'y') label = 'Redo canvas change'
     else if (event.key === 'Delete' || event.key === 'Backspace') label = 'Delete selected card'
-    else if (event.key === 'Enter') label = 'Edit card text'
+    else if (event.key === 'Enter' && this.node()?.type === 'group') {
+      this.naming = this.node()!.id
+      this.refresh()
+      event.preventDefault()
+      return true
+    } else if (event.key === 'Enter') label = 'Edit card text'
     else return false
     event.preventDefault()
     event.stopPropagation()
