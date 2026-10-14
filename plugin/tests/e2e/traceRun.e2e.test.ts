@@ -248,6 +248,52 @@ it('writes a note about the run whose links lead back to the node', () => {
   expect(note).toContain('## What happens in this flow')
 })
 
+it('writes the note into a folder outside the vault, and writes nothing where that folder is missing', () => {
+  const seen = evalAsync<{
+    files: string[]
+    text: string
+    refused: boolean
+    missingMade: boolean
+    vaultNotes: number
+  }>(`(async()=>{${prelude}
+    const fs=require('fs'),path=require('path'),os=require('os'),cfg=api.AbeleConfig.getInstance(),before=cfg.traceNotesFolder;
+    const out=fs.mkdtempSync(path.join(os.tmpdir(),'trace-notes-'));
+    try{
+      cfg.traceNotesFolder=out;
+      const leaf=app.workspace.getLeavesOfType('abele-trace-run')[0];app.workspace.setActiveLeaf(leaf,{focus:true});
+      const write=()=>leaf.view.containerEl.querySelector('.view-action[aria-label="Write a note about this run"]').click();
+      write();
+      await until(()=>fs.readdirSync(out).some(f=>f.startsWith('Sample contracts run')),'note outside the vault');
+      const files=fs.readdirSync(out),text=fs.readFileSync(path.join(out,files[0]),'utf8');
+      const missing=path.join(out,'not-on-this-device','runs');
+      cfg.traceNotesFolder=missing;
+      write();
+      await until(()=>[...document.querySelectorAll('.notice')].some(n=>n.textContent.includes('is not on this device')),'refusal said');
+      return {files,text,refused:true,missingMade:fs.existsSync(missing),vaultNotes:app.vault.getMarkdownFiles().filter(f=>f.path.startsWith('Trace/Sample contracts run')).length}
+    }finally{cfg.traceNotesFolder=before;fs.rmSync(out,{recursive:true,force:true})}
+  })()`)
+  expect(seen.files).toEqual(['Sample contracts run.md'])
+  expect(seen.text).toContain('Recorded run [Sample contracts run]')
+  expect(seen.refused).toBe(true)
+  expect(seen.missingMade).toBe(false)
+  expect(seen.vaultNotes).toBe(0)
+})
+
+it('asks the node to run a program and says plainly that it has no JavaScript debugger yet', () => {
+  const seen = evalAsync<{ profiles: unknown[]; code: string }>(`(async()=>{${prelude}
+    const client=nodes.connection(${JSON.stringify(registration)}).client;
+    const profiles=await client.request('debugger.v1.profiles',{});
+    const workspaces=await client.request('workspace.list',{project_id:${JSON.stringify(project)}});
+    const chat=await client.createSession('Trace program',workspaces[0].workspace_id,'claude');
+    let code='started';
+    try{await client.request('debugger.v1.start',{operation_id:crypto.randomUUID(),conversation_id:chat.session_id,program:'src/sample/parse.js'})}
+    catch(e){code=String(e?.code??e?.message??e)}
+    return {profiles,code}
+  })()`)
+  expect(seen.profiles).toEqual([])
+  expect(seen.code).toContain('debugger_profile_unavailable')
+})
+
 it('reads the run on a phone: the steps whole-screen, a step over them', async () => {
   await withEmulatedPhone(async () => {
     connect()
