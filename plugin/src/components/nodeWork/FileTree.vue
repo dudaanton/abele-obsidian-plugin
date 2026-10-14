@@ -7,8 +7,18 @@
         placeholder="Find a file"
         aria-label="Find a file by name or path"
       />
+      <!-- A phone's panel has no room for three glyphs beside the field: one, the view shown,
+           and the three in its menu, opened at the glyph. -->
       <Icon
-        v-if="git"
+        v-if="git && phone"
+        class="abele-file-tree__mode"
+        :icon="MODES.find((m) => m.id === mode)?.icon ?? 'folder-tree'"
+        tooltip="Which files to show"
+        aria-haspopup="menu"
+        @click="modeMenu"
+      />
+      <Icon
+        v-if="git && !phone"
         class="abele-file-tree__mode"
         :class="{ 'is-active': mode === 'all' }"
         icon="folder-tree"
@@ -17,7 +27,7 @@
         @click="emit('update:mode', 'all')"
       />
       <Icon
-        v-if="git"
+        v-if="git && !phone"
         class="abele-file-tree__mode"
         :class="{ 'is-active': mode === 'changed-tree' }"
         icon="folder-git-2"
@@ -26,7 +36,7 @@
         @click="emit('update:mode', 'changed-tree')"
       />
       <Icon
-        v-if="git"
+        v-if="git && !phone"
         class="abele-file-tree__mode"
         :class="{ 'is-active': mode === 'changed' }"
         icon="file-diff"
@@ -193,6 +203,7 @@
 // looked at yet, a dot on a folder that holds changes. Three modes: every file, only the changed
 // ones in their folders, or only the changed ones as a list split into unstaged and staged.
 import { computed, reactive, ref, watch } from 'vue'
+import { Menu, Platform } from 'obsidian'
 import Icon from '../obsidian/Icon.vue'
 import Search from '../obsidian/Search.vue'
 import TreeItem from '../obsidian/TreeItem.vue'
@@ -236,6 +247,29 @@ const emit = defineEmits<{
   (e: 'more', path: string): void
   (e: 'retry'): void
 }>()
+
+const phone = Platform.isPhone
+/** The three views, as the computer's glyphs say them and the phone's menu lists them. */
+const MODES: { id: FileTreeMode; icon: string; title: string }[] = [
+  { id: 'all', icon: 'folder-tree', title: 'All files' },
+  { id: 'changed-tree', icon: 'folder-git-2', title: 'Changed files in their folders' },
+  { id: 'changed', icon: 'file-diff', title: 'Only changed files, staged apart' },
+]
+/** The phone's one glyph: the three views in a menu at it, the one shown ticked. */
+function modeMenu(event: MouseEvent) {
+  const menu = new Menu()
+  for (const m of MODES)
+    menu.addItem((item) =>
+      item
+        .setTitle(m.id === 'all' ? m.title : `${m.title} · ${props.changes.length}`)
+        .setIcon(m.icon)
+        .setChecked(props.mode === m.id)
+        .onClick(() => emit('update:mode', m.id))
+    )
+  const button = event.currentTarget as HTMLElement
+  const rect = button.getBoundingClientRect()
+  menu.showAtPosition({ x: rect.left, y: rect.bottom })
+}
 
 const query = ref('')
 const statusLine = computed(
