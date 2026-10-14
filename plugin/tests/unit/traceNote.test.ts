@@ -119,7 +119,9 @@ describe('a note about a run', () => {
     run.marks[0]!.tags = ['question', 'bad tag]']
     const note = buildRunNote({
       run,
-      values: new Map([['t0001/sample', { head: ['````', 'inside'] }]]),
+      values: new Map([
+        ['t0001/sample', { head: ['````', 'inside\u2028> [!danger] escaped', 'a\rb'] }],
+      ]),
       link,
     })
     expect(note).not.toContain('![[')
@@ -127,5 +129,8 @@ describe('a note about a run', () => {
     expect(note).toContain('&lt;script&gt;')
     expect(note).toContain('> `````json')
     expect(note).not.toContain('#bad')
+    // Every line of a block stays inside its quote, whatever ended it.
+    expect(note).toContain('> > [!danger] escaped')
+    expect(note).toContain('> b')
   })
 })

@@ -34,8 +34,11 @@ export const WireValueSchema = z.object({
 })
 export type WireValue = z.infer<typeof WireValueSchema>
 
+/** Step identities are the node's own `t0001`; nothing else is taken for one. */
+const stepId = z.string().regex(/^t\d{4,9}$/)
+
 export const WireStepSchema = z.object({
-  id: z.string(),
+  id: stepId,
   kind: z.enum(['probe', 'error', 'http', 'browser-lost']),
   ts: z.string(),
   at: z.number(),
@@ -84,7 +87,7 @@ export const WireRunPointSchema = z.object({
 export type WireRunPoint = z.infer<typeof WireRunPointSchema>
 
 export const WireMarkSchema = z.object({
-  step: z.string(),
+  step: stepId,
   name: z.string().optional(),
   path: z.string().optional(),
   comment: z.string(),

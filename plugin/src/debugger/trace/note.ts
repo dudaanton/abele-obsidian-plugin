@@ -27,17 +27,19 @@ export interface RunNoteInput {
 const cell = (s: string) =>
   s
     .replace(/[\\`*_~[\]#!$%=|<>]/g, (c) => (c === '<' ? '&lt;' : c === '>' ? '&gt;' : `\\${c}`))
-    .replace(/\s*\n\s*/g, ' ')
+    .replace(/\s*(?:\r\n|[\r\n\u2028\u2029])\s*/g, ' ')
 const longestTicks = (s: string) => Math.max(0, ...(s.match(/`+/g) ?? []).map((m) => m.length))
 /** A code span whose delimiter no backtick inside it can close. */
 const code = (s: string) => {
   const t = '`'.repeat(longestTicks(s) + 1)
   const pad = s.startsWith('`') || s.endsWith('`') ? ' ' : ''
-  return `${t}${pad}${s.replace(/\n/g, ' ')}${pad}${t}`
+  return `${t}${pad}${s.replace(/\r\n|[\r\n\u2028\u2029]/g, ' ')}${pad}${t}`
 }
 /** A fence longer than any run of backticks in what it holds. */
 const fenceFor = (lines: string[]) => '`'.repeat(Math.max(3, longestTicks(lines.join('\n')) + 1))
 const TAG = /^[\w/-]{1,64}$/
+/** Lines of a block, each kept inside the quote whatever line ending it carried. */
+const blockLines = (lines: string[]) => lines.flatMap((l) => l.split(/\r\n|[\r\n\u2028\u2029]/))
 const fileName = (path: string) => path.slice(path.lastIndexOf('/') + 1)
 
 function shapeLines(node: WireShape, depth = 0, out: string[] = []): string[] {
@@ -144,16 +146,17 @@ export function buildRunNote(input: RunNoteInput): string {
       const read = values.get(`${s.id}/${v.name}`)
       out.push(`> [!abstract]- ${cell(head)} · [open](${link({ step: s.id, name: v.name })})`)
       if (read?.shape) {
-        const lines = shapeLines(read.shape)
+        const lines = blockLines(shapeLines(read.shape))
         const f = fenceFor(lines)
         out.push(`> ${f}text`)
         for (const l of lines) out.push(`> ${l}`)
         out.push(`> ${f}`)
       }
       if (read?.head?.length) {
-        const f = fenceFor(read.head)
+        const head = blockLines(read.head)
+        const f = fenceFor(head)
         out.push(`> ${f}${fence(v.format)}`)
-        for (const l of read.head) out.push(`> ${l}`)
+        for (const l of head) out.push(`> ${l}`)
         out.push(`> ${f}`)
       }
       out.push('')
