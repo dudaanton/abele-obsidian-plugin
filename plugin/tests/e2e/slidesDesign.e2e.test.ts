@@ -259,3 +259,128 @@ describe.skipIf(!available)('slide hierarchy in the Obsidian theme', () => {
     })
   }
 })
+
+describe.skipIf(!available)('the picture, long text and picture row layouts', () => {
+  const MORE = `---
+type: presentation
+---
+::slide{layout=figure}::
+## A picture beside its words
+::left::
+![[${DIR}/sample.svg]]
+::right::
+A short paragraph that explains the picture beside it.
+
+---
+::slide{layout=figure}::
+## The picture on the other side
+::left::
+The words first, then the picture to their right.
+::right::
+![[${DIR}/sample.svg]]
+
+---
+::slide{layout=article}::
+## A page of reading
+${'A sentence that runs on for a while, so the page has something to balance. '.repeat(10)}
+
+${'Another paragraph that keeps the two columns honest about their share. '.repeat(8)}
+
+---
+::slide{layout=gallery}::
+## Three pictures in a row
+::cell::
+![[${DIR}/sample.svg]]
+
+First caption
+::cell::
+![[${DIR}/sample.svg]]
+
+Second caption
+::cell::
+![[${DIR}/sample.svg]]
+
+Third caption
+`
+  it('fills a figure column with its picture, sets long text in two columns and a row of same-sized pictures', async () => {
+    const result = JSON.parse(
+      await evalLong(`(async()=>{
+      const path=${JSON.stringify(DIR + '/more-layouts.md')},file=await app.vault.create(path,${JSON.stringify(MORE)}),leaf=app.workspace.getLeaf('tab')
+      const scope=new window.__abeleTest.ScopeResolver();scope.addFile(path)
+      const ctx={scope,interactive:true},tools=window.__abeleTest.createAgentTools()
+      try {
+        await leaf.openFile(file);const v=leaf.view.viewer;await v.ready
+        const active=()=>v.viewport.querySelector('.abele-slide:not([hidden])')
+        const rect=el=>{const b=el.getBoundingClientRect();return {top:b.top,bottom:b.bottom,left:b.left,right:b.right,width:b.width,height:b.height}}
+        const settle=async()=>{for(const img of active().querySelectorAll('img'))await img.decode().catch(()=>{});await new Promise(r=>requestAnimationFrame(()=>requestAnimationFrame(r)))}
+        const shot=async(slide,name)=>{
+          const picture=await tools.find(t=>t.name==='screenshot').execute('sample-picture',{path,slide},undefined,ctx)
+          const saved=picture.content[0].text.split('\\n')[0].replace('Screenshot saved: ','');const f=app.vault.getAbstractFileByPath(saved)
+          try { const fs=require('fs');fs.writeFileSync(${JSON.stringify(SHOTS)}+'/more-'+name+'.png',Buffer.from(await app.vault.readBinary(f))) }
+          finally { await app.vault.delete(f) }
+        }
+        const figure=async index=>{
+          await v.go(index);await settle();const s=active(),scale=s.getBoundingClientRect().width/1280
+          const img=s.querySelector('.abele-slide-region img'),region=img.closest('.abele-slide-region'),words=[...s.querySelectorAll('.abele-slide-region')].find(r=>!r.querySelector('img'))
+          return {cls:s.className,picture:rect(img),region:rect(region),words:rect(words),side:region.classList.contains('abele-slide-region-left')?'left':'right',scale}
+        }
+        const a=await figure(0);await shot(1,'figure');const b=await figure(1)
+        await v.go(2);await settle()
+        const art=active(),artBody=art.querySelector('.abele-slide-content-body, .abele-slide-region-body > div'),para=art.querySelector('p')
+        const article={cls:art.className,columns:getComputedStyle(artBody).columnCount,size:parseFloat(getComputedStyle(para).fontSize),heading:parseFloat(getComputedStyle(art.querySelector('h2')).fontSize),overflow:artBody.scrollHeight-artBody.clientHeight,slideBottom:art.getBoundingClientRect().bottom,bodyBottom:artBody.getBoundingClientRect().bottom}
+        await shot(3,'article')
+        await v.go(3);await settle()
+        const g=active(),cells=[...g.querySelectorAll('.abele-slide-region-cell')]
+        const gallery={cls:g.className,cells:cells.map(c=>{const img=c.querySelector('img'),cap=[...c.querySelectorAll('p')].find(p=>!p.querySelector('img'))||c;return {img:rect(img),caption:rect(cap),text:c.textContent.trim()}})}
+        await shot(4,'gallery')
+        const report=JSON.parse((await tools.find(t=>t.name==='deck_check').execute('sample-check',{path},undefined,ctx)).content[0].text)
+        return JSON.stringify({a,b,article,gallery,overflow:report.slides.flatMap(s=>s.issues).filter(i=>i.kind==='overflow')})
+      } finally { leaf.detach();await app.vault.delete(file) }
+    })()`)
+    )
+    for (const f of [result.a, result.b]) {
+      expect(f.cls).toContain('abele-slide-figure')
+      // The picture fills its column: its full width and height, within a pixel of the slide's scale.
+      expect(Math.abs(f.picture.width - f.region.width)).toBeLessThan(2)
+      expect(Math.abs(f.picture.height - f.region.height)).toBeLessThan(2)
+      expect(f.region.height / f.scale).toBeGreaterThan(300)
+      // The picture's column is the larger one, and the words never sit over it.
+      expect(f.region.width).toBeGreaterThan(f.words.width)
+      expect(f.words.left >= f.region.right - 1 || f.words.right <= f.region.left + 1).toBe(true)
+    }
+    expect(result.a.side).toBe('left')
+    expect(result.a.picture.left).toBeLessThan(result.a.words.left)
+    expect(result.b.side).toBe('right')
+    expect(result.b.picture.left).toBeGreaterThan(result.b.words.left)
+    expect(result.article.cls).toContain('abele-slide-article')
+    expect(result.article.columns).toBe('2')
+    expect(result.article.size).toBeLessThan(28)
+    expect(result.article.heading).toBeGreaterThan(result.article.size * 1.5)
+    expect(result.article.bodyBottom).toBeLessThanOrEqual(result.article.slideBottom + 1)
+    expect(result.gallery.cls).toContain('abele-slide-gallery')
+    const cells = result.gallery.cells as {
+      img: {
+        top: number
+        width: number
+        height: number
+        bottom: number
+        left: number
+        right: number
+      }
+      caption: { top: number }
+      text: string
+    }[]
+    expect(cells).toHaveLength(3)
+    for (const cell of cells) {
+      // One row, one shape: the same top and size for every picture, the caption under it.
+      expect(Math.abs(cell.img.top - cells[0].img.top)).toBeLessThan(1)
+      expect(Math.abs(cell.img.width - cells[0].img.width)).toBeLessThan(1)
+      expect(Math.abs(cell.img.height - cells[0].img.height)).toBeLessThan(1)
+      expect(Math.abs(cell.img.width / cell.img.height - 4 / 3)).toBeLessThan(0.02)
+      expect(cell.caption.top).toBeGreaterThanOrEqual(cell.img.bottom - 1)
+    }
+    expect(cells[0].img.right).toBeLessThan(cells[1].img.left)
+    expect(cells.map((c) => c.text)).toEqual(['First caption', 'Second caption', 'Third caption'])
+    expect(result.overflow).toEqual([])
+  })
+})

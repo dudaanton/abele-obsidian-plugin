@@ -48,6 +48,35 @@ describe('bounded deck rendering', () => {
         .style.getPropertyValue('--deck-columns')
     ).toBe(String(columns))
   })
+  it.each([
+    [2, 2],
+    [3, 3],
+    [4, 2],
+  ])('lays %i gallery pictures in %i columns, as a grid lays its cells', async (cells, columns) => {
+    const { viewer, load } = made(
+      '::slide{layout=gallery}::\n# Sample gallery\n' +
+        Array.from({ length: cells }, (_, i) => `::cell::\n![[sample-${i}.png]]\nCaption`).join(
+          '\n'
+        )
+    )
+    await load()
+    const slide = viewer.viewport.querySelector<HTMLElement>('.abele-slide')!
+    expect(slide.classList).toContain('abele-slide-gallery')
+    expect(slide.style.getPropertyValue('--deck-columns')).toBe(String(columns))
+    expect(slide.querySelectorAll('.abele-slide-region-cell')).toHaveLength(cells)
+  })
+  it('sets a figure picture and its words in the two regions it was given', async () => {
+    const { viewer, load } = made(
+      '::slide{layout=figure}::\n# Sample figure\n::left::\nThe words\n::right::\n![[sample-image.png]]'
+    )
+    await load()
+    const slide = viewer.viewport.querySelector<HTMLElement>('.abele-slide')!
+    expect(slide.classList).toContain('abele-slide-figure')
+    expect(slide.querySelector('.abele-slide-region-left')?.textContent).toContain('The words')
+    expect(slide.querySelector('.abele-slide-region-right')?.textContent).toContain(
+      'sample-image.png'
+    )
+  })
   it('renders a muted source count and an automatic final slide without exposing note prose', async () => {
     const { viewer, host, load } = made(
       '# Topic\nBody\n\n> [!notes]\n> Private reminder\n> [Report](https://example.test/report)'

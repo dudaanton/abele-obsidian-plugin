@@ -46,15 +46,18 @@ for Obsidian's built-in Slides uses the same separator; its own Slides command s
 ## Choose a layout
 
 A settings line is optional and goes at the very top of its slide:
-`::slide{layout=content}::`. Choose `title`, `section`, `content`, `split`, `grid`, `image` or
-`quote`. Title, section and quote center their content. The default style uses large slide
+`::slide{layout=content}::`. Choose `title`, `section`, `content`, `split`, `grid`, `image`,
+`quote`, `figure`, `article` or `gallery`. Title, section and quote center their content. The default style uses large slide
 text and a clear heading hierarchy, with your theme's accent for subheadings and emphasis,
 comfortable tables and bordered quotations. Title slides have a larger heading and muted subtitle. Split uses the `::left::` and
 `::right::` lines for columns. Grid uses one `::cell::` line for each cell: up to three cells
 sit in one row, and four make a 2×2 grid. For a one-line statement, choose `section`. Content
 keeps its heading at the top and centers a short text body below it; longer text, tables,
 code and pictures remain top-aligned. Image fills the
-slide with its embedded image or video and leaves the text as a caption.
+slide with its embedded image or video and leaves the text as a caption. Figure puts a picture
+beside text: the picture goes after `::left::` or `::right::`, the words in the other column.
+Article holds more text: it sets it smaller, in two columns, under one heading. Gallery shows
+several pictures in a row, one `::cell::` each, with a short caption under each picture.
 
 The slide is a fixed canvas, scaled to fit rather than reflowed. `aspect: '16:9'` is the
 usual widescreen shape. `4:3` and `9:16` are also available. On a phone, turn it sideways to

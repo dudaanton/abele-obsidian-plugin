@@ -369,7 +369,7 @@ export class DeckViewer {
     const transition =
       slide.settings.attributes.transition ?? this.deck?.settings.properties.transition
     if (transition === 'fade' || transition === 'slide') element.dataset.transition = transition
-    if (slide.settings.layout === 'grid') {
+    if (slide.settings.layout === 'grid' || slide.settings.layout === 'gallery') {
       const cells = slide.regions.filter((r) => r.name === 'cell').length
       element.style.setProperty(
         '--deck-columns',

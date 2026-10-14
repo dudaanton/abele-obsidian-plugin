@@ -1,5 +1,16 @@
 /** Portable presentation data. Markdown is one codec, not the storage contract. */
-export const LAYOUTS = ['title', 'section', 'content', 'split', 'grid', 'image', 'quote'] as const
+export const LAYOUTS = [
+  'title',
+  'section',
+  'content',
+  'split',
+  'grid',
+  'image',
+  'quote',
+  'figure',
+  'article',
+  'gallery',
+] as const
 export type Layout = (typeof LAYOUTS)[number]
 export type Aspect = '16:9' | '4:3' | '9:16'
 export type Attribute = string | boolean

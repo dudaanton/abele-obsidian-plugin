@@ -23,12 +23,16 @@ open the same separator format.
 
 The first nonblank line of a slide may be `::slide{layout=split bg="[[sample-image.png]]"
 dim=0.4 fit=cover class="sample-layout" autoplay}::` (write the whole marker on one line).
-Layouts: `title`, `section`, `content` (default), `split`, `grid`, `image`, `quote`. In `split`,
+Layouts: `title`, `section`, `content` (default), `split`, `grid`, `image`, `quote`, `figure`,
+`article`, `gallery`. In `split`,
 text before regions is the shared heading; use standalone `::left::` and `::right::` lines.
 In `grid`, use `::cell::` for each cell: up to three cells share one row; four use a 2×2 grid.
 Content headings stay at the top. A plain-text content body using less than a third of the remaining
 height is vertically centered below its heading; longer bodies, tables, code and embeds stay top-aligned. `image` puts its embedded image or video behind its
-caption. Reading mode labels actual slide markers and separators with a thin slide divider.
+caption. `figure` sets a picture beside text: put the picture in `::left::` or `::right::` and the
+words in the other; the picture fills its column. `article` sets a longer text in two columns at
+reading size under one heading. `gallery` lays pictures in a row, one `::cell::` each with its
+caption under the picture; columns as in `grid`. Reading mode labels actual slide markers and separators with a thin slide divider.
 
 Pictures, video, audio, note embeds, drawings, galleries, diagrams, charts and maps use the
 same Markdown syntax and renderer as an ordinary note. Other plugins' note processors remain

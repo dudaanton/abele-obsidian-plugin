@@ -44,7 +44,7 @@ const content = (deck: ReturnType<typeof parseDeck>, index: number) =>
   deck.slides[index].regions.flatMap((r) => r.blocks.map((b) => b.source)).join('\n')
 
 describe('presentation markdown codec', () => {
-  it('reads deck metadata, seven fixed layouts and per-slide settings into a portable model', () => {
+  it('reads deck metadata, ten fixed layouts and per-slide settings into a portable model', () => {
     const deck = parseDeck(sample)
     expect(deck.settings.aspect).toBe('16:9')
     expect(deck.settings.theme).toBe('[[sample-theme.css]]')
@@ -69,7 +69,18 @@ describe('presentation markdown codec', () => {
     )
     expect(deck.css).toContain('body { --sample: 1; }')
     expect(content(deck, 2)).not.toContain('```css')
-    for (const layout of ['title', 'section', 'content', 'split', 'grid', 'image', 'quote']) {
+    for (const layout of [
+      'title',
+      'section',
+      'content',
+      'split',
+      'grid',
+      'image',
+      'quote',
+      'figure',
+      'article',
+      'gallery',
+    ]) {
       expect(parseDeck(`::slide{layout=${layout}}::\n# Example`).slides[0].settings.layout).toBe(
         layout
       )

@@ -559,6 +559,149 @@
   grid-column: 2;
 }
 
+/* A picture beside its words: the picture takes the larger column to its full height, as a
+   magazine spread sets a photograph, and the words keep their reading measure beside it. The
+   column holding the picture is the picture's, whichever side it is on. */
+.abele-slide-figure .abele-slide-content {
+  display: grid;
+  grid-template-columns: minmax(0, 1.25fr) minmax(0, 1fr);
+  grid-template-rows: auto minmax(0, 1fr);
+  column-gap: 1.6em;
+  row-gap: var(--slide-gap);
+}
+
+.abele-slide-figure .abele-slide-region-body {
+  grid-column: 1 / -1;
+}
+
+.abele-slide-figure:not(:has(.abele-slide-region-body *)) .abele-slide-content {
+  grid-template-rows: minmax(0, 1fr);
+}
+
+.abele-slide-figure .abele-slide-region-left {
+  grid-column: 1;
+}
+
+.abele-slide-figure .abele-slide-region-right {
+  grid-column: 2;
+}
+
+.abele-slide-figure .abele-slide-region-right:has(img, video) {
+  order: -1;
+}
+
+.abele-slide-figure:has(.abele-slide-region-right img, .abele-slide-region-right video)
+  .abele-slide-content {
+  grid-template-columns: minmax(0, 1fr) minmax(0, 1.25fr);
+}
+
+.abele-slide-figure .abele-slide-region:has(img, video) > div {
+  height: 100%;
+}
+
+.abele-slide-figure .abele-slide-region img,
+.abele-slide-figure .abele-slide-region video {
+  display: block;
+  width: 100%;
+  height: 100%;
+  max-height: none;
+  object-fit: cover;
+  border-radius: 0.35em;
+}
+
+.abele-slide-figure .abele-slide-region:not(:has(img, video)) {
+  align-self: center;
+}
+
+.abele-slide-figure .abele-slide-region p {
+  color: var(--text-muted);
+}
+
+/* A page of words: the type steps down to reading size and runs in two columns under one
+   title, as a printed handout sets more text than a slide's points would hold. */
+.abele-slide-article .abele-slide-content {
+  font-size: 0.68em;
+  line-height: 1.5;
+}
+
+.abele-slide-article .abele-slide-content h1,
+.abele-slide-article .abele-slide-content h2 {
+  column-span: all;
+  font-size: 2.3em;
+  margin-bottom: 0.6em;
+}
+
+.abele-slide-article .abele-slide-content-body,
+.abele-slide-article .abele-slide-region-body > div {
+  display: block;
+  columns: 2;
+  column-gap: 2.4em;
+  column-fill: balance;
+}
+
+.abele-slide-article .abele-slide-content :is(p, ul, ol) {
+  max-width: none;
+}
+
+.abele-slide-article .abele-slide-content h3 {
+  break-after: avoid;
+  margin-top: 0.4em;
+  font-size: 1.15em;
+}
+
+.abele-slide-article .abele-slide-content :is(p, li) {
+  break-inside: avoid-column;
+}
+
+.abele-slide-article .abele-slide-content img {
+  display: block;
+  width: 100%;
+  max-height: 45%;
+  object-fit: cover;
+  margin-block: 0 0.8em;
+  border-radius: 0.3em;
+}
+
+/* Pictures in a row, each with its caption under it: the same shape for every picture so the
+   row reads as one set, the caption quiet and small, as a contact sheet labels its frames. */
+.abele-slide-gallery .abele-slide-content {
+  display: grid;
+  grid-template-columns: repeat(var(--deck-columns, 3), minmax(0, 1fr));
+  grid-auto-rows: auto;
+  column-gap: 1em;
+  row-gap: 1.1em;
+  align-content: start;
+}
+
+.abele-slide-gallery .abele-slide-region-body {
+  grid-column: 1 / -1;
+}
+
+.abele-slide-gallery .abele-slide-region-cell img,
+.abele-slide-gallery .abele-slide-region-cell video {
+  display: block;
+  width: 100%;
+  aspect-ratio: 4 / 3;
+  max-height: none;
+  object-fit: cover;
+  border-radius: 0.3em;
+}
+
+.abele-slide-gallery .abele-slide-region-cell p {
+  margin: 0;
+  color: var(--text-muted);
+  font-size: 0.62em;
+  line-height: 1.35;
+}
+
+.abele-slide-gallery .abele-slide-region-cell p:has(img, video) {
+  margin-bottom: 0.55em;
+}
+
+.abele-slide-gallery .abele-slide-region-cell strong {
+  color: var(--text-normal);
+}
+
 .abele-slide-image .abele-slide-content {
   justify-content: flex-end;
 }
