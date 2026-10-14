@@ -33,7 +33,7 @@ const item=title=>[...document.querySelectorAll('.menu-item')].find(i=>i.querySe
 const press=el=>{el.click()};
 const marginAt=line=>document.querySelector('.workspace-leaf.mod-active button.abele-debug-source__point[aria-label^="Stop at line '+line+' "]')??[...document.querySelectorAll('button.abele-debug-source__point')].find(b=>b.getAttribute('aria-label')?.startsWith('Stop at line '+line+' ')&&b.offsetParent);
 const recordPoint=async (line,takes)=>{
-  const mark=await until(()=>marginAt(line),'margin of line '+line);
+  const mark=await until(()=>marginAt(line),'margin of line '+line).catch(()=>{throw Error('no margin on line '+line+': '+JSON.stringify(app.workspace.getLeavesOfType('abele-node-file').map(l=>{const st=l.view.getState();return [st.path,!!st.debug,st.debug?.sourceId,l.containerEl.querySelectorAll('button.abele-debug-source__point').length]}))+' '+debugState())});
   mark.dispatchEvent(new MouseEvent('contextmenu',{bubbles:true,cancelable:true,clientX:40,clientY:200}));
   press(await until(()=>item('Add record point'),'Add record point'));
   const input=await until(()=>document.querySelector('.abele-trace-point .multi-select-input'),'point editor');
@@ -45,6 +45,8 @@ const recordPoint=async (line,takes)=>{
   }
   await until(()=>takes.every(t=>[...document.querySelectorAll('.abele-trace-point .multi-select-pill-content')].some(p=>p.textContent.trim()===t)),'takes listed');
   press(document.querySelector('.abele-trace-point [aria-label="Keep (Enter)"]'));
+  // The first record point of a project asks once where its runs go: the offered folder.
+  for(let i=0;i<40;i++){const keep=[...document.querySelectorAll('.modal-container .modal button')].find(b=>b.textContent.trim()==='Keep them here');if(keep){press(keep);break}if(document.querySelector('.abele-breakpoint-mark_record'))break;await wait(50)}
   await until(()=>!document.querySelector('.abele-trace-point'),'point saved');
   const said=()=>[...document.querySelectorAll('button.abele-debug-source__point')].map(b=>b.getAttribute('aria-label')).filter(l=>l&&!l.startsWith('Stop at line')).join(' | ');
   await until(()=>said().startsWith('Record point ·'),'record point confirmed: '+said(),400).catch(()=>{throw Error('record point not confirmed: '+debugState())});
