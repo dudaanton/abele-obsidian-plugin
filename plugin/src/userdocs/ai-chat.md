@@ -528,10 +528,10 @@ existing comment chat. **Nested discussions** lists only discussions on the sub-
 branch and reads the next level only when expanded. Missing or unreadable discussions are
 labelled, not silently hidden. Reading the contents does not migrate discussion files or
 repair their safety copies; only opening a discussion uses its ordinary chat-loading path.
-The comment's existing trail and **Back to place** in Navigation provide ways back.
+The comment's existing trail and **Back to where you were** in the outline provide ways back.
 
-**To start** and **To latest** move within the current conversation without sending anything.
-**Back to place** restores the exact branch and reading position saved before the navigation
+**To the start** and **To the latest** move within the current conversation without sending anything.
+**Back to where you were** restores the exact branch and reading position saved before the navigation
 jump, including from a discussion. A branch restore waits while that conversation is busy;
 if the saved message no longer exists, you are told rather than taken to a different message.
 Typed text stays in its conversation's draft through branch changes and returns. Expanded
