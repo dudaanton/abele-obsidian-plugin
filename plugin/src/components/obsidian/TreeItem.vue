@@ -175,6 +175,12 @@ watch(() => [props.icon, props.collapsible], draw, { flush: 'post' })
 </script>
 
 <style lang="scss">
+// A row that is only read does not answer the pointer: Obsidian brightens a row's flair on hover,
+// which on a row with nothing to press reads as an invitation to click.
+.abele-tree-item_plain > .abele-tree-item__self:hover .tree-item-flair,
+.abele-tree-item_disabled > .abele-tree-item__self:hover .tree-item-flair {
+  color: var(--text-faint);
+}
 .abele-tree-item__inner {
   display: flex;
   align-items: flex-start;
