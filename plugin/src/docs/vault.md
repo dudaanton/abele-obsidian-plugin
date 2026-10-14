@@ -760,14 +760,18 @@ Marks written by hand into the note do not go back into the run.
 ## Attachment folder rules
 
 `attachmentRules` in the plugin's `data.json` is an ordered list of
-`{ notesFolder, attachmentsFolder }`. An attachment saved for a note — pasted, dropped,
-recorded, imported, or written by the plugin itself — goes to the `attachmentsFolder` of the
-rule on the deepest `notesFolder` that holds the note at any depth (compared without regard
-to case; `/` is the vault root). `attachmentsFolder` is written the way Obsidian's own
-attachment setting is: `/` root, `./` beside the note, `./sub` a folder beside it, otherwise a
-vault path. A rule with either folder empty applies to nothing. Notes under no rule use the
-vault's Files and links setting, which the plugin never changes. The rules travel in the
-Other block of a settings transfer.
+`{ notesFolder, location, attachmentsFolder, subfolder }`. An attachment saved for a note —
+pasted, dropped, recorded, imported, or written by the plugin itself — goes where the rule on
+the deepest `notesFolder` holding the note at any depth says (folders compared without regard
+to case; `/` is the vault root). `location` is Obsidian's own choice: `note` beside the note,
+`folder` into `attachmentsFolder` (`/` is the root), `subfolder` into the folder named
+`subfolder` under the note's folder. The field the current `location` does not use is kept, so
+switching back finds it. A rule missing its notes folder, or the field its `location` needs,
+applies to nothing. Notes under no rule use the vault's Files and links setting, which the
+plugin never changes. Rules from the first shape, `{ notesFolder, attachmentsFolder }` with
+`./` or `./name` meaning beside or under the note, are moved to the matching `location` when the
+settings load or arrive in a transfer. The rules travel in the Other block of a settings
+transfer.
 
 ## Naming notes
 
