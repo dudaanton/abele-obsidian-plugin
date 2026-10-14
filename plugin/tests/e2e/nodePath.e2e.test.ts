@@ -13,7 +13,7 @@ targets('desktop')
 const cli = process.env.ABELE_NODE_CLI
 const shots = process.env.ABELE_NODE_PATH_SCREENSHOTS ?? process.env.ABELE_E2E_SHOTS
 const wait = (ms: number) => new Promise((resolve) => setTimeout(resolve, ms))
-const prelude = `const api=window.__abeleTest,nodes=api.NodeService.getInstance();const wait=ms=>new Promise(r=>setTimeout(r,ms));const until=async f=>{for(let i=0;i<400;i++){if(f())return;await wait(50)}throw Error('Node path did not settle: '+f.toString())};const visible=selector=>[...document.querySelectorAll(selector)].find(el=>el.getBoundingClientRect().width>0&&getComputedStyle(el).visibility!=='hidden'&&!el.closest('.workspace-leaf.mod-hidden')); const button=(root,text)=>[...root.querySelectorAll('button')].find(b=>b.textContent.trim()===text);`
+const prelude = `const api=window.__abeleTest,nodes=api.NodeService.getInstance();const wait=ms=>new Promise(r=>setTimeout(r,ms));const until=async f=>{for(let i=0;i<400;i++){if(f())return;await wait(50)}throw Error('Node path did not settle: '+f.toString())};const visible=selector=>[...document.querySelectorAll(selector)].find(el=>el.getBoundingClientRect().width>0&&getComputedStyle(el).visibility!=='hidden'&&!el.closest('.workspace-leaf.mod-hidden')); const button=(root,text)=>[...root.querySelectorAll('button')].find(b=>b.textContent.trim()===text);const VIEW_ICONS={'All files':'folder-tree','Changed files in their folders':'folder-git-2','Only changed files':'file-diff'};const shownView=t=>{const tree=visible('.abele-file-tree');if(!tree)return false;const modes=tree.querySelectorAll('.abele-file-tree__mode');if(!document.body.classList.contains('is-phone'))return modes.length===3&&!!tree.querySelector('.abele-file-tree__mode.is-active[aria-label^="'+t+'"]');return modes.length===1&&!!modes[0].querySelector('svg.lucide-'+VIEW_ICONS[t])};const pickView=async t=>{const tree=visible('.abele-file-tree'),own=tree.querySelector('[aria-label^="'+t+'"]');if(own)own.click();else{tree.querySelector('[aria-label="Which files to show"]').click();await until(()=>[...document.querySelectorAll('.menu-item')].some(i=>i.textContent.startsWith(t)));[...document.querySelectorAll('.menu-item')].find(i=>i.textContent.startsWith(t)).click()}await until(()=>shownView(t))};`
 async function capture(name: string) {
   if (!shots) return
   await evalLong(
@@ -44,7 +44,7 @@ async function reopenNodePane(name: string) {
 }
 async function checkFileLookup(prefix: string) {
   await evalLong(
-    `(async()=>{${prelude}visible('.abele-file-tree [aria-label="All files"]').click();await until(()=>visible('.abele-file-tree')?.textContent.includes('Ignored files are not shown.'));if(visible('.abele-file-tree').textContent.includes('hidden.txt'))throw Error('Ignored content was included');return 'all files'})()`
+    `(async()=>{${prelude}await pickView('All files');await until(()=>visible('.abele-file-tree')?.textContent.includes('Ignored files are not shown.'));if(visible('.abele-file-tree').textContent.includes('hidden.txt'))throw Error('Ignored content was included');return 'all files'})()`
   )
   await capture(prefix + '-all-files')
   // The fixture's nested entries are now loaded by expansion, not by an eager repository walk.
@@ -64,7 +64,7 @@ async function checkFileLookup(prefix: string) {
   )
   await capture(prefix + '-lookup-missing')
   await evalLong(
-    `(async()=>{${prelude}const input=visible('.abele-file-tree input');input.value='';input.dispatchEvent(new Event('input',{bubbles:true}));visible('.abele-file-tree [aria-label^="Only changed files"]').click();return 'changes restored'})()`
+    `(async()=>{${prelude}const input=visible('.abele-file-tree input');input.value='';input.dispatchEvent(new Event('input',{bubbles:true}));await pickView('Only changed files');return 'changes restored'})()`
   )
 }
 async function checkMixedCommit() {
