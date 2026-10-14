@@ -90,7 +90,7 @@ it('patches the node file tree in place from the change stream without reading i
       const described=await client.describe();
       if(described.capabilities.capabilities.repository_changes_v1?.status!=='supported')throw Error('The node does not stream changes');
       const repository=client.repository,read=repository.tree.bind(repository);
-      window.__sampleStreamReads=0;window.__sampleStreamReadsFrom=[];repository.tree=p=>{if(p.path==='src'){window.__sampleStreamReads++;window.__sampleStreamReadsFrom.push(String(new Error().stack).split('\\n').slice(2,9).join(' < '))}return read(p)};
+      window.__sampleStreamReads=0;window.__sampleStreamReadsFrom=[];window.__sampleStreamLog=[];const debug=console.debug;window.__sampleStreamDebug=debug;console.debug=(...a)=>{if(/node repository|file tree/.test(String(a[0])))window.__sampleStreamLog.push(a.map(v=>{try{return typeof v==='string'?v:JSON.stringify(v)}catch{return String(v)}}).join(' '));return debug.apply(console,a)};repository.tree=p=>{if(p.path==='src'){window.__sampleStreamReads++;window.__sampleStreamReadsFrom.push(String(new Error().stack).split('\\n').slice(2,9).join(' < '))}return read(p)};
       return 'opened';
     })()`)
     // Edits from outside: one added, one renamed, one removed in the opened folder, one elsewhere.
@@ -115,9 +115,11 @@ it('patches the node file tree in place from the change stream without reading i
         reads:window.__sampleStreamReads,
         // Where a read of the opened folder came from, should one happen.
         readsFrom:window.__sampleStreamReadsFrom,
+        log:window.__sampleStreamLog,
       });
     })()`)
     )
+    console.info('[abele e2e] change stream state', JSON.stringify(state))
     expect(state).toMatchObject({
       open: true,
       sameRow: true,
@@ -129,7 +131,7 @@ it('patches the node file tree in place from the change stream without reading i
   } finally {
     try {
       await evalLong(
-        `(async()=>{const id=window.__sampleStreamNode;for(const leaf of app.workspace.getLeavesOfType('abele-github'))if(leaf.view.model?.sourceTarget?.source?.node===id)leaf.detach();if(id)window.__abeleTest.NodeService.getInstance().remove(id);delete window.__sampleStreamNode;delete window.__sampleStreamScroll;delete window.__sampleStreamRow;delete window.__sampleStreamBody;delete window.__sampleStreamReads;delete window.__sampleStreamReadsFrom;return 'restored'})()`
+        `(async()=>{const id=window.__sampleStreamNode;for(const leaf of app.workspace.getLeavesOfType('abele-github'))if(leaf.view.model?.sourceTarget?.source?.node===id)leaf.detach();if(id)window.__abeleTest.NodeService.getInstance().remove(id);delete window.__sampleStreamNode;delete window.__sampleStreamScroll;delete window.__sampleStreamRow;delete window.__sampleStreamBody;delete window.__sampleStreamReads;delete window.__sampleStreamReadsFrom;if(window.__sampleStreamDebug)console.debug=window.__sampleStreamDebug;delete window.__sampleStreamDebug;delete window.__sampleStreamLog;return 'restored'})()`
       )
     } finally {
       if (child?.exitCode === null) {
