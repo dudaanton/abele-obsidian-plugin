@@ -30,7 +30,7 @@ describe('live probe synchronization and failure evidence', () => {
     const text = source('slidesLinks')
     const poll = text.slice(text.indexOf('      const until='), text.indexOf('      const dir='))
     const edit = text.slice(
-      text.indexOf('        leaf.view.editor.setValue('),
+      text.indexOf('        // A link opens the file before its text arrives'),
       text.indexOf('        r.noteShot=')
     )
     let reads = 0
@@ -42,13 +42,14 @@ describe('live probe synchronization and failure evidence', () => {
     const leaf = {
       view: {
         editor: { getValue: () => 'Original note', setValue: vi.fn() },
+        getViewData: () => 'Original note',
         save: vi.fn(async () => {}),
       },
     }
     const run = new Function(
       'app',
       'leaf',
-      `return (async()=>{const note={},r={},wait=async()=>{};${poll}${edit};return r})()`
+      `return (async()=>{const note={},r={},noteText='Original note',wait=async()=>{};${poll}${edit};return r})()`
     )
     expect((await run(app, leaf)).editable).toBe(true)
     expect(reads).toBe(3)
