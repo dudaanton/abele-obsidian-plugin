@@ -22,9 +22,16 @@ const metadata = (commit: string) => ({
   subject: 'Update sample',
   message: 'Update sample\n',
 })
-/** `changes`: the node advertises the repository change stream. */
-export function nodeRepositoryFixture(options: { changes?: boolean } = {}) {
+/**
+ * `changes`: the node advertises the repository change stream. `hold`: a call's answer, already
+ * decided, waits for the returned promise before it reaches the client.
+ */
+export function nodeRepositoryFixture(
+  options: { changes?: boolean; hold?: (method: string) => Promise<void> | undefined } = {}
+) {
   let streamRevision = 0
+  /** Revisions the node handed to this client's journal, whether or not they arrived yet. */
+  const sent = new Set<number>()
   const calls: { method: string; params: any }[] = []
   const listeners = new Set<(event: JournalEvent) => void>()
   let text = 'export const answer = 42\n'
@@ -46,6 +53,11 @@ export function nodeRepositoryFixture(options: { changes?: boolean } = {}) {
   const files = (revision: RepositoryRevision) =>
     revision.kind === 'working' ? text : 'export const answer = 1\n'
   const request = async (method: string, params: any): Promise<unknown> => {
+    const answer = await respond(method, params)
+    await options.hold?.(method)
+    return answer
+  }
+  const respond = async (method: string, params: any): Promise<unknown> => {
     calls.push({ method, params })
     switch (method) {
       case 'repository.v1.worktrees':
@@ -186,9 +198,14 @@ export function nodeRepositoryFixture(options: { changes?: boolean } = {}) {
         return {
           subscription_id: 'subscription-fixture',
           expires_at: new Date(Date.now() + 60000).toISOString(),
+          // Behind is fine while every later batch is already on its way to this client.
           refresh_required:
             params.changes?.stream_id !== 'stream-fixture' ||
-            params.changes?.revision !== streamRevision,
+            params.changes.revision > streamRevision ||
+            Array.from(
+              { length: streamRevision - params.changes.revision },
+              (_, i) => params.changes.revision + 1 + i
+            ).some((revision) => !sent.has(revision)),
           ...(params.changes !== undefined
             ? { changes: { stream_id: 'stream-fixture', revision: streamRevision } }
             : {}),
@@ -218,26 +235,34 @@ export function nodeRepositoryFixture(options: { changes?: boolean } = {}) {
           }
         : {}),
     },
-    /** Sends a `repository.changed` batch; the node's stream counts it. */
-    batch(revision: number, body: Record<string, unknown>) {
+    /**
+     * Sends a `repository.changed` batch; the node's stream counts it. `later`: the node has sent
+     * it, but it reaches the client only when the returned function is called.
+     */
+    batch(revision: number, body: Record<string, unknown>, later = false) {
       streamRevision = Math.max(streamRevision, revision)
-      for (const listener of listeners)
-        listener({
-          kind: 'event',
-          stream_id: 'catalog',
-          node_id: identity.node,
-          seq: 3,
-          type: 'repository.changed',
-          actor: { kind: 'node' },
-          at: '2025-01-01T00:00:00Z',
-          data: {
-            project_id: identity.project,
-            worktree_id: identity.workspace,
-            stream_id: 'stream-fixture',
-            revision,
-            ...body,
-          },
-        })
+      sent.add(revision)
+      const deliver = () => {
+        for (const listener of listeners)
+          listener({
+            kind: 'event',
+            stream_id: 'catalog',
+            node_id: identity.node,
+            seq: 3,
+            type: 'repository.changed',
+            actor: { kind: 'node' },
+            at: '2025-01-01T00:00:00Z',
+            data: {
+              project_id: identity.project,
+              worktree_id: identity.workspace,
+              stream_id: 'stream-fixture',
+              revision,
+              ...body,
+            },
+          })
+      }
+      if (!later) deliver()
+      return deliver
     },
     calls,
     request,

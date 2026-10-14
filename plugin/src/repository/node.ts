@@ -95,8 +95,17 @@ export class NodeRepositorySource implements RepositorySource {
   private cursor?: RepositoryChangesCursor
   /** Batches that arrived before the lease said where the stream stands. */
   private early: RepositoryChangeBatch[] = []
+  /** Settles once the first lease said whether and where the change stream stands. */
+  private ready?: Promise<void>
+  /** Bumped by every reread: what was read before it no longer follows the stream. */
+  private epoch = 0
+  /** The latest complete batches of this epoch, so a read that overlapped them catches up. */
+  private recent: RepositoryChangeBatch[] = []
+  /** Where the stream stood when each observation of the current files was taken. */
+  private observedAt = new Map<string, { epoch: number; revision: number }>()
   /** Roots of the trees of the current files handed out, patched by every batch. */
-  private liveTrees = new Set<TreeNode>()
+  private liveRoots = new WeakSet<TreeNode>()
+  private liveTrees = new Set<WeakRef<TreeNode>>()
   private comparisonIds = new WeakMap<ComparisonIndex, string>()
   readonly navigation: RepositorySource['navigation']
   constructor(
@@ -197,6 +206,7 @@ export class NodeRepositorySource implements RepositorySource {
     this.aliases.clear()
   }
   reconnect() {
+    this.forget()
     this.refresh()
     this.textCache.clear()
     this.textBytes = 0
@@ -213,13 +223,21 @@ export class NodeRepositorySource implements RepositorySource {
       )
     let pending = this.aliases.get(ref)
     if (!pending) {
-      pending = this.read(async () =>
-        this.remember(
+      // Taken before asking: every batch after this mark may be missing from the observation.
+      const mark = ref === WORKING_TREE ? this.mark() : null
+      pending = this.read(async () => {
+        const key = this.remember(
           ref === WORKING_TREE
             ? (await this.client.repository.observe(this.target)).revision
             : await this.client.repository.resolve({ ...this.target, ref })
         )
-      )
+        if (mark) {
+          this.observedAt.set(key, mark)
+          if (this.observedAt.size > 64)
+            this.observedAt.delete(this.observedAt.keys().next().value!)
+        }
+        return key
+      })
       this.aliases.set(ref, pending)
       if (this.aliases.size > 64) this.aliases.delete(this.aliases.keys().next().value!)
       void pending.catch(() => {
@@ -361,36 +379,40 @@ export class NodeRepositorySource implements RepositorySource {
         expand: async () => {},
         reveal: async () => {},
       }
+    // A tab reads its tree beside the watch it has just started: wait for the stream to say
+    // where it stands, so the tree can follow it instead of being read again at once.
+    if (ref === WORKING_TREE || this.revisions.get(ref)?.kind === 'working')
+      await this.streamSettled()
     const sha = await this.resolve(ref),
       revision = await this.at(sha)
     // Reactive, as GitHub's tree is: a folder read later appears in whatever shows the tree.
     const root: TreeNode = reactive({ name: '', path: '', kind: 'dir' })
-    // The current files on the change stream are patched in place, so a folder opened later
-    // is read as the files are now, not as they were when the tree was first read.
-    const current = this.aliases.get(WORKING_TREE)
-    const live =
-      revision.kind === 'working' &&
-      this.streaming &&
-      (ref === WORKING_TREE || (current !== undefined && (await current) === sha))
+    const liveRoots = () => this.liveRoots
     const expand = async (node: TreeNode) => {
       if (node.kind !== 'dir' || node.children) return
-      const at = live ? await this.at(WORKING_TREE) : revision
+      // The current files on the change stream are patched in place, so a folder opened later
+      // is read as the files are now, then given the batches that overlapped the read.
+      const following = liveRoots().has(root)
+      const key = following ? await this.resolve(WORKING_TREE) : sha
+      const at = following ? await this.at(key) : revision
       const page = await this.pages((cursor) =>
         this.client.repository.tree({ ...this.target, revision: at, path: node.path, cursor })
       )
       node.children = sortNodes(page.entries.map(nodeTreeNode))
+      if (following && liveRoots().has(root)) this.catchUp(root, key)
     }
     await expand(root)
-    if (live) {
-      this.liveTrees.add(root)
-      // Only the trees still on screen matter; an old one is left to the collector.
-      if (this.liveTrees.size > 8) this.liveTrees.delete(this.liveTrees.values().next().value!)
+    if (revision.kind === 'working' && this.catchUp(root, sha)) {
+      this.liveRoots.add(root)
+      this.liveTrees.add(new WeakRef(root))
     }
     return {
       root,
       sha,
       truncated: true,
-      live,
+      get live() {
+        return liveRoots().has(root)
+      },
       expand,
       reveal: async (path) => {
         const parts = path.split('/')
@@ -979,7 +1001,8 @@ export class NodeRepositorySource implements RepositorySource {
         const batch = RepositoryChangeBatchSchema.safeParse(event.data)
         if (
           batch.success &&
-          this.streaming &&
+          // Before the first lease answers, batches are kept until it says where the stream is.
+          (this.streaming || !this.cursor) &&
           batch.data.project_id === this.identity.project &&
           batch.data.worktree_id === this.identity.workspace
         )
@@ -999,16 +1022,56 @@ export class NodeRepositorySource implements RepositorySource {
       this.refresh()
       this.emit({ kind: 'workspace' })
     })
-    try {
-      await this.read(() => this.client.subscribe('catalog'))
-      if (this.mutableWatch) await this.renewWatch()
-    } catch {
-      this.emit({ kind: 'workspace' })
-      if (this.mutableWatch && !this.disposed && !this.retired)
-        this.timer = window.setTimeout(() => {
-          void this.renewWatch()
-        }, 5000)
-    }
+    const ready = (async () => {
+      try {
+        await this.read(() => this.client.subscribe('catalog'))
+        if (this.mutableWatch) await this.renewWatch()
+      } catch {
+        this.emit({ kind: 'workspace' })
+        if (this.mutableWatch && !this.disposed && !this.retired)
+          this.timer = window.setTimeout(() => {
+            void this.renewWatch()
+          }, 5000)
+      }
+    })()
+    this.ready = ready
+    await ready
+  }
+  /** Waits, briefly, for the first lease; a slow node does not hold the tree back for long. */
+  private async streamSettled() {
+    if (!this.ready) return
+    let timer: number | undefined
+    await Promise.race([
+      this.ready,
+      new Promise<void>((resolve) => (timer = window.setTimeout(resolve, 3000))),
+    ])
+    window.clearTimeout(timer)
+  }
+  private mark() {
+    return this.streaming && this.cursor
+      ? { epoch: this.epoch, revision: this.cursor.revision }
+      : null
+  }
+  /**
+   * Applies to a tree read at `revision` the batches that came after its observation. False when
+   * that cannot be known — taken before the stream, before a reread, or too long ago — and the
+   * tree has to be read again instead.
+   */
+  private catchUp(root: TreeNode, key: string) {
+    const mark = this.observedAt.get(key)
+    if (!mark || !this.cursor || mark.epoch !== this.epoch) return false
+    const missed = this.recent.filter((batch) => batch.revision > mark.revision)
+    if (missed.length !== this.cursor.revision - mark.revision) return false
+    for (const batch of missed) if (batch.complete) applyTreeChanges(root, batch.entries)
+    return true
+  }
+  /** Nothing handed out so far follows the stream any more; it is all read again. */
+  private forget() {
+    this.epoch++
+    this.recent = []
+    this.observedAt.clear()
+    this.liveRoots = new WeakSet()
+    this.liveTrees.clear()
   }
   stopWatching() {
     this.mutableWatch = false
@@ -1041,6 +1104,7 @@ export class NodeRepositorySource implements RepositorySource {
   }
   /** Rereads everything once; batches after `cursor` describe what changes from there. */
   private reread(cursor?: RepositoryChangesCursor) {
+    this.forget()
     this.cursor = cursor
     this.refresh()
     this.emit({ kind: 'workspace' })
@@ -1067,12 +1131,18 @@ export class NodeRepositorySource implements RepositorySource {
       return
     }
     this.cursor = next
+    this.recent.push(batch)
+    if (this.recent.length > 32) this.recent.shift()
     // Reads after this one observe the files again; rows on screen are patched, not reread.
     this.aliases.delete(WORKING_TREE)
     if (batch.entries.length) {
-      let paths: string[] = []
-      for (const root of this.liveTrees) paths = applyTreeChanges(root, batch.entries)
-      if (!this.liveTrees.size)
+      let paths: string[] | null = null
+      for (const ref of this.liveTrees) {
+        const root = ref.deref()
+        if (root) paths = applyTreeChanges(root, batch.entries)
+        else this.liveTrees.delete(ref)
+      }
+      if (!paths)
         paths = batch.entries.flatMap((e) =>
           e.change === 'deleted'
             ? [e.path]
@@ -1106,7 +1176,8 @@ export class NodeRepositorySource implements RepositorySource {
           this.streaming = true
           const early = this.early.splice(0)
           if (lease.refresh_required) this.reread(lease.changes)
-          else this.cursor = lease.changes
+          // Behind the lease is fine: the node says every batch since is on its way here.
+          else if (!this.cursor) this.cursor = lease.changes
           for (const batch of early) this.changed(batch)
         } else if (firstLease) {
           this.refresh()
@@ -1130,7 +1201,7 @@ export class NodeRepositorySource implements RepositorySource {
     this.textCache.clear()
     this.fileContents.clear()
     this.revisions.clear()
-    this.liveTrees.clear()
+    this.forget()
     this.textBytes = 0
     if (this.subscription)
       void this.client.repository

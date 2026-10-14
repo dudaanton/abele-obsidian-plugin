@@ -159,6 +159,121 @@ describe('node repository source on the change stream', () => {
     expect(events).not.toHaveBeenCalled()
     source.dispose()
   })
+  /** A promise the test lets go of, for a node answer that is late. */
+  const later = () => {
+    let release!: () => void
+    const promise = new Promise<void>((resolve) => (release = resolve))
+    return { promise, release }
+  }
+  const settle = () => new Promise((resolve) => setTimeout(resolve, 0))
+  it('patches a tree read while the first lease was still on its way', async () => {
+    const lease = later()
+    const f = nodeRepositoryFixture({
+      changes: true,
+      hold: (method) => (method === 'repository.v1.watch' ? lease.promise : undefined),
+    })
+    const source = new NodeRepositorySource(f.client, identity, {
+      node: 'Sample node',
+      project: 'Sample project',
+    })
+    const events = vi.fn()
+    source.subscribe(events)
+    const watching = source.startWatching()
+    // The tab reads its tree at once, beside the watch it has just started.
+    const reading = source.tree(WORKING_TREE)
+    await settle()
+    lease.release()
+    await watching
+    const tree = await reading
+    expect(tree.live).toBe(true)
+    events.mockClear()
+    const app = tree.root.children!.find((c) => c.path === 'app.ts')!
+    f.batch(1, { complete: true, entries: [{ change: 'added', entry: file('new.ts') }], git: null })
+    expect(tree.root.children!.map((c) => c.path)).toEqual(['app.ts', 'new.ts', 'README.md'])
+    expect(tree.root.children![0]).toBe(app)
+    expect(events.mock.calls).toEqual([[{ kind: 'tree', paths: ['new.ts'] }]])
+    source.dispose()
+  })
+  it('keeps the batches that arrive before the first lease answers', async () => {
+    const lease = later()
+    const f = nodeRepositoryFixture({
+      changes: true,
+      hold: (method) => (method === 'repository.v1.watch' ? lease.promise : undefined),
+    })
+    const source = new NodeRepositorySource(f.client, identity, {
+      node: 'Sample node',
+      project: 'Sample project',
+    })
+    const events = vi.fn()
+    source.subscribe(events)
+    const watching = source.startWatching()
+    await settle()
+    // The lease says revision 0; batch 1 overtakes its answer.
+    f.batch(1, { complete: true, entries: [{ change: 'added', entry: file('one.ts') }], git: null })
+    lease.release()
+    await watching
+    events.mockClear()
+    f.batch(2, { complete: true, entries: [{ change: 'added', entry: file('two.ts') }], git: null })
+    expect(events.mock.calls).toEqual([[{ kind: 'tree', paths: ['two.ts'] }]])
+    source.dispose()
+  })
+  it('follows the batches still on their way when its lease is renewed', async () => {
+    const { source, events, batch } = await start()
+    const tree = await source.tree(WORKING_TREE)
+    batch(1, { complete: true, entries: [{ change: 'added', entry: file('one.ts') }], git: null })
+    const deliver = batch(
+      2,
+      { complete: true, entries: [{ change: 'added', entry: file('two.ts') }], git: null },
+      true
+    )
+    events.mockClear()
+    await (source as unknown as { renewWatch(): Promise<void> }).renewWatch()
+    deliver()
+    expect(tree.root.children!.map((c) => c.path)).toEqual([
+      'app.ts',
+      'one.ts',
+      'README.md',
+      'two.ts',
+    ])
+    expect(events.mock.calls).toEqual([[{ kind: 'tree', paths: ['two.ts'] }]])
+    source.dispose()
+  })
+  it('adds to a tree the batches that arrived while it was being read', async () => {
+    let read: ReturnType<typeof later> | undefined
+    const f = nodeRepositoryFixture({
+      changes: true,
+      hold: (method) => (method === 'repository.v1.tree' ? read?.promise : undefined),
+    })
+    const source = new NodeRepositorySource(f.client, identity, {
+      node: 'Sample node',
+      project: 'Sample project',
+    })
+    await source.startWatching()
+    read = later()
+    const reading = source.tree(WORKING_TREE)
+    await settle()
+    // The listing was taken before this batch; the batch reaches the client before the listing.
+    f.batch(1, { complete: true, entries: [{ change: 'added', entry: file('new.ts') }], git: null })
+    read.release()
+    const tree = await reading
+    expect(tree.live).toBe(true)
+    expect(tree.root.children!.map((c) => c.path)).toEqual(['app.ts', 'new.ts', 'README.md'])
+    source.dispose()
+  })
+  it('stops patching the trees it handed out once it has to reread everything', async () => {
+    const { source, batch } = await start()
+    const tree = await source.tree(WORKING_TREE)
+    expect(tree.live).toBe(true)
+    batch(1, { complete: false, reason: 'overflow' })
+    // The tab reads that tree again; the new one follows the stream from here.
+    expect(tree.live).toBe(false)
+    const next = await source.tree(WORKING_TREE)
+    expect(next.live).toBe(true)
+    batch(2, { complete: true, entries: [{ change: 'added', entry: file('new.ts') }], git: null })
+    expect(next.root.children!.some((c) => c.path === 'new.ts')).toBe(true)
+    expect(tree.root.children!.some((c) => c.path === 'new.ts')).toBe(false)
+    source.dispose()
+  })
   it('keeps the legacy lease and its rereads on a node without the stream', async () => {
     const { source, events, calls, change } = await start(false)
     expect(calls.find((c) => c.method === 'repository.v1.watch')!.params).toEqual({

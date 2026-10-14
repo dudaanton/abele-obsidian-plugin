@@ -90,7 +90,7 @@ it('patches the node file tree in place from the change stream without reading i
       const described=await client.describe();
       if(described.capabilities.capabilities.repository_changes_v1?.status!=='supported')throw Error('The node does not stream changes');
       const repository=client.repository,read=repository.tree.bind(repository);
-      window.__sampleStreamReads=0;repository.tree=p=>{if(p.path==='src')window.__sampleStreamReads++;return read(p)};
+      window.__sampleStreamReads=0;window.__sampleStreamReadsFrom=[];repository.tree=p=>{if(p.path==='src'){window.__sampleStreamReads++;window.__sampleStreamReadsFrom.push(String(new Error().stack).split('\\n').slice(2,9).join(' < '))}return read(p)};
       return 'opened';
     })()`)
     // Edits from outside: one added, one renamed, one removed in the opened folder, one elsewhere.
@@ -113,6 +113,8 @@ it('patches the node file tree in place from the change stream without reading i
         scroll:body.scrollTop,expected:window.__sampleStreamScroll,
         loading:tree().textContent.includes('Loading the files'),
         reads:window.__sampleStreamReads,
+        // Where a read of the opened folder came from, should one happen.
+        readsFrom:window.__sampleStreamReadsFrom,
       });
     })()`)
     )
@@ -127,7 +129,7 @@ it('patches the node file tree in place from the change stream without reading i
   } finally {
     try {
       await evalLong(
-        `(async()=>{const id=window.__sampleStreamNode;for(const leaf of app.workspace.getLeavesOfType('abele-github'))if(leaf.view.model?.sourceTarget?.source?.node===id)leaf.detach();if(id)window.__abeleTest.NodeService.getInstance().remove(id);delete window.__sampleStreamNode;delete window.__sampleStreamScroll;delete window.__sampleStreamRow;delete window.__sampleStreamBody;delete window.__sampleStreamReads;return 'restored'})()`
+        `(async()=>{const id=window.__sampleStreamNode;for(const leaf of app.workspace.getLeavesOfType('abele-github'))if(leaf.view.model?.sourceTarget?.source?.node===id)leaf.detach();if(id)window.__abeleTest.NodeService.getInstance().remove(id);delete window.__sampleStreamNode;delete window.__sampleStreamScroll;delete window.__sampleStreamRow;delete window.__sampleStreamBody;delete window.__sampleStreamReads;delete window.__sampleStreamReadsFrom;return 'restored'})()`
       )
     } finally {
       if (child?.exitCode === null) {
