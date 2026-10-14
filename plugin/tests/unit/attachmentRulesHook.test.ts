@@ -1,6 +1,6 @@
 import { afterEach, describe, expect, it } from 'vitest'
 import { hookAttachmentPaths } from '@/media/attachmentRulesHook'
-import { attachmentSettingFor } from '@/media/attachmentRules'
+import { attachmentSettingFor, type AttachmentRule } from '@/media/attachmentRules'
 import { ensureAttachmentFolder } from '@/media/attachmentFolder'
 import { AbeleConfig } from '@/services/AbeleConfig'
 import { useVault } from '../helpers/testEnv'
@@ -32,9 +32,19 @@ class SampleVault {
   }
 }
 
-const rules = [
-  { notesFolder: 'Sample Projects', attachmentsFolder: 'Sample Projects/files' },
-  { notesFolder: 'Sample Projects/Deep', attachmentsFolder: './images' },
+const rules: AttachmentRule[] = [
+  {
+    notesFolder: 'Sample Projects',
+    location: 'folder',
+    attachmentsFolder: 'Sample Projects/files',
+    subfolder: '',
+  },
+  {
+    notesFolder: 'Sample Projects/Deep',
+    location: 'subfolder',
+    attachmentsFolder: '',
+    subfolder: 'images',
+  },
 ]
 const settingFor = (path: string) => attachmentSettingFor(rules, path)
 const note = (path: string) => ({ path }) as never

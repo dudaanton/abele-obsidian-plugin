@@ -2,9 +2,9 @@ import { describe, expect, it } from 'vitest'
 import {
   attachmentRuleFor,
   attachmentRulesFrom,
-  attachmentSetting,
   attachmentSettingFor,
   normalizeFolder,
+  ruleSetting,
   type AttachmentRule,
 } from '@/media/attachmentRules'
 import { AbeleConfig, type AbeleSettings } from '@/services/AbeleConfig'
@@ -13,7 +13,21 @@ import { useVault } from '../helpers/testEnv'
 
 const rule = (notesFolder: string, attachmentsFolder: string): AttachmentRule => ({
   notesFolder,
+  location: 'folder',
   attachmentsFolder,
+  subfolder: '',
+})
+const beside = (notesFolder: string): AttachmentRule => ({
+  notesFolder,
+  location: 'note',
+  attachmentsFolder: '',
+  subfolder: '',
+})
+const under = (notesFolder: string, subfolder: string): AttachmentRule => ({
+  notesFolder,
+  location: 'subfolder',
+  attachmentsFolder: '',
+  subfolder,
 })
 
 describe('attachment folder rules', () => {
@@ -68,9 +82,12 @@ describe('attachment folder rules', () => {
     expect(attachmentSettingFor(rules, 'sample projects/deep/note.md')).toBe('mid files')
   })
 
-  it('treats a rule with an empty folder as unfinished', () => {
+  it('treats a rule as unfinished until what its mode needs is filled in', () => {
     expect(attachmentRuleFor([rule('', 'files')], 'note.md')).toBeNull()
     expect(attachmentRuleFor([rule('Sample Projects', '  ')], 'Sample Projects/n.md')).toBeNull()
+    expect(attachmentRuleFor([under('Sample Projects', ' ')], 'Sample Projects/n.md')).toBeNull()
+    // Beside the note needs no folder of its own.
+    expect(attachmentRuleFor([beside('Sample Projects')], 'Sample Projects/n.md')).not.toBeNull()
   })
 
   it('gives the first of two rules on the same folder', () => {
@@ -79,20 +96,26 @@ describe('attachment folder rules', () => {
   })
 
   it('follows a rename of the folder only through the rule text', () => {
-    const before = [rule('Sample Projects', 'files')]
-    expect(attachmentRuleFor(before, 'Renamed Projects/n.md')).toBeNull()
+    expect(
+      attachmentRuleFor([rule('Sample Projects', 'files')], 'Renamed Projects/n.md')
+    ).toBeNull()
   })
 
-  it('writes the attachments folder as Obsidian writes its setting', () => {
-    expect(attachmentSetting('/')).toBe('/')
-    expect(attachmentSetting('.')).toBe('./')
-    expect(attachmentSetting('./')).toBe('./')
-    expect(attachmentSetting('./images/')).toBe('./images')
-    expect(attachmentSetting('Files/')).toBe('Files')
+  it("hands Obsidian each mode in its own setting's form", () => {
+    expect(ruleSetting(rule('A', '/'))).toBe('/')
+    expect(ruleSetting(rule('A', 'Files//'))).toBe('Files')
+    expect(ruleSetting(beside('A'))).toBe('./')
+    expect(ruleSetting(under('A', '/images/'))).toBe('./images')
     expect(normalizeFolder('//a//b//')).toBe('a/b')
   })
 
-  it('keeps only well-formed rules from a settings file', () => {
+  it('sends a note beside itself, or into a subfolder beside it, by mode', () => {
+    const modes = [beside('Sample Notes'), under('Sample Notes/Deep', 'pictures')]
+    expect(attachmentSettingFor(modes, 'Sample Notes/n.md')).toBe('./')
+    expect(attachmentSettingFor(modes, 'Sample Notes/Deep/x/n.md')).toBe('./pictures')
+  })
+
+  it('keeps only well-formed rules from a settings file, filling in what is missing', () => {
     expect(attachmentRulesFrom(undefined)).toEqual([])
     expect(
       attachmentRulesFrom([
@@ -100,15 +123,27 @@ describe('attachment folder rules', () => {
         null,
         { notesFolder: 'A' },
         { notesFolder: 1, attachmentsFolder: 'B' },
+        { notesFolder: 'C', location: 'nowhere', attachmentsFolder: 'D' },
       ])
-    ).toEqual([rule('A', 'B')])
+    ).toEqual([rule('A', 'B'), rule('A', ''), rule('C', 'D')])
+  })
+
+  it('moves rules written in the first shape, with ./ in the folder, to modes', () => {
+    expect(
+      attachmentRulesFrom([
+        { notesFolder: 'A', attachmentsFolder: './' },
+        { notesFolder: 'B', attachmentsFolder: '.' },
+        { notesFolder: 'C', attachmentsFolder: './images/' },
+        { notesFolder: 'D', attachmentsFolder: 'Files' },
+      ])
+    ).toEqual([beside('A'), beside('B'), under('C', 'images'), rule('D', 'Files')])
   })
 })
 
 describe('attachment folder rules as settings', () => {
-  it('travel in the Other block of a settings transfer', async () => {
+  it('travel in the Other block of a settings transfer, in their present shape', async () => {
     const { collectEntries, applyEntries } = await import('@/transfer/entries')
-    const rules = [rule('Sample Projects', 'Sample Projects/files')]
+    const rules = [rule('Sample Projects', 'Sample Projects/files'), under('Sample Notes', 'pics')]
     const source = { refreshDelay: 500, attachmentRules: rules } as AbeleSettings
     const entry = collectEntries(source).find((item) => item.section === 'other')!
     expect(entry.data).toMatchObject({ attachmentRules: rules })
@@ -117,18 +152,34 @@ describe('attachment folder rules as settings', () => {
     )
   })
 
-  it('are saved and read back with the settings file', async () => {
+  it('arrive in the present shape when sent from a build that wrote the first one', async () => {
+    const { applyEntries } = await import('@/transfer/entries')
+    const entry = {
+      section: 'other',
+      id: 'other',
+      label: 'Other',
+      data: { attachmentRules: [{ notesFolder: 'Sample Notes', attachmentsFolder: './' }] },
+    }
+    expect(
+      applyEntries([entry as never], { refreshDelay: 500 } as AbeleSettings).attachmentRules
+    ).toEqual([beside('Sample Notes')])
+  })
+
+  it('are saved and read back with the settings file, the first shape moved over', async () => {
     useVault([])
-    const disk = new FakeSettings({ refreshDelay: 500, attachmentRules: [rule('A', 'B'), 7] })
+    const disk = new FakeSettings({
+      refreshDelay: 500,
+      attachmentRules: [{ notesFolder: 'A', attachmentsFolder: './sub' }, 7],
+    })
     const config = AbeleConfig.getInstance()
     config.init(disk as never)
     try {
       await config.loadSettings()
-      expect(config.attachmentRules).toEqual([rule('A', 'B')])
+      expect(config.attachmentRules).toEqual([under('A', 'sub')])
       config.attachmentRules.push(rule('/', 'All files'))
       await config.saveSettings()
       await config.reloadSettings()
-      expect(config.attachmentRules).toEqual([rule('A', 'B'), rule('/', 'All files')])
+      expect(config.attachmentRules).toEqual([under('A', 'sub'), rule('/', 'All files')])
     } finally {
       config.destroy()
     }

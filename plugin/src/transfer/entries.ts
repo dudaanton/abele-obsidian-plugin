@@ -21,6 +21,7 @@ import { pruneToolDescriptions } from '@/ai/tools/toolDescriptionOverrides'
 import { FIREFLY_TOKEN_KEY_ID } from '@/secrets/legacy'
 import { isReservedSecretId } from '@/secrets/deviceSecret'
 import { migrateSyncSettings } from '@/sync/settings'
+import { attachmentRulesFrom } from '@/media/attachmentRules'
 import {
   FILE_SECTION_LABELS,
   isFileSection,
@@ -109,6 +110,27 @@ const aiBlock = (
   },
   ...extra,
 })
+
+const OTHER_KEYS = [
+  'refreshDelay',
+  'logsNotesTypes',
+  'excludedPathsForDefaultTemplate',
+  'snippetsFolder',
+  'traceNotesFolder',
+  'fullWidthSidebars',
+  'halfWidthSidebarsOnTablet',
+  'mermaidViewer',
+  'canvasViewer',
+  'editorSyntaxHighlight',
+  'propertyWidgets',
+  'rememberNotePlaces',
+  'attachmentRules',
+  'counterProperties',
+  'dateProperties',
+  'priorityProperties',
+  'labelProperties',
+  'groupProperties',
+]
 
 const rootBlock = (
   id: SectionId,
@@ -410,26 +432,14 @@ export const SECTIONS: Section[] = [
       if (data.sync !== undefined) settings.sync = migrateSyncSettings(data.sync)
     },
   }),
-  rootBlock('other', 'Other', [
-    'refreshDelay',
-    'logsNotesTypes',
-    'excludedPathsForDefaultTemplate',
-    'snippetsFolder',
-    'traceNotesFolder',
-    'fullWidthSidebars',
-    'halfWidthSidebarsOnTablet',
-    'mermaidViewer',
-    'canvasViewer',
-    'editorSyntaxHighlight',
-    'propertyWidgets',
-    'rememberNotePlaces',
-    'attachmentRules',
-    'counterProperties',
-    'dateProperties',
-    'priorityProperties',
-    'labelProperties',
-    'groupProperties',
-  ]),
+  /** Attachment rules from an older build arrive in its shape and are moved to the present one. */
+  rootBlock('other', 'Other', OTHER_KEYS, {
+    write: (settings, data) => {
+      Object.assign(settings, pick(data, OTHER_KEYS))
+      if (data.attachmentRules !== undefined)
+        settings.attachmentRules = attachmentRulesFrom(data.attachmentRules)
+    },
+  }),
 ]
 
 const sectionById = new Map(SECTIONS.map((section) => [section.id, section]))
