@@ -505,8 +505,8 @@ const getDateWikilink = (dateStr: string) => {
 }
 
 .abele-timeline__tasks {
-  // A day's heading sits close over its own rows; the rows keep Obsidian's 2px between them.
-  margin-top: var(--size-2-1);
+  // A day's heading is as far from the words of its first row as the rows' words are apart.
+  margin-top: var(--abele-entry-heading-gap);
   display: flex;
   flex-direction: column;
 }

@@ -85,6 +85,12 @@ body {
      a deep shade of it, never an accent outline round a grey body. The words mix the accent with
      the theme's own text colour, so in a dark theme they turn light on a dark wash. Cards only:
      everything else lights up in Obsidian's own grey. */
+  /* Between two entries of a list, outside their light, so the light stays close round the words;
+     the words of two entries are this and two edges of light apart. A heading over entries keeps
+     the same distance to the words of the first. */
+  --abele-entry-gap: var(--size-4-2);
+  --abele-entry-heading-gap: calc(var(--abele-entry-gap) + var(--size-2-2));
+
   --abele-hover-background: hsla(var(--interactive-accent-hsl), 0.08);
   --abele-hover-color: color-mix(in srgb, var(--interactive-accent) 50%, var(--text-normal));
   --abele-selected-background: hsla(var(--interactive-accent-hsl), 0.14);

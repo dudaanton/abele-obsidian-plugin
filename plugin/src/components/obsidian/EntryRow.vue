@@ -54,23 +54,15 @@ const emit = defineEmits<{ 'update:more': [open: boolean] }>()
   display: flex;
   align-items: flex-start;
   gap: var(--size-2-3);
-  // Room above and below the words, so a hairline between entries never touches them.
-  padding: var(--size-4-3) var(--size-2-3);
+  // Only the light's own edge around the words; the room between entries is their margin.
+  padding: var(--size-2-2) var(--size-2-3);
   border-radius: var(--radius-s);
   line-height: var(--line-height-normal);
 
-  // The room is for the hairlines between entries. Where the list starts or ends there is none,
-  // as Obsidian's settings drop it on their first row, and only the light's own edge is kept.
-  &:first-child {
-    padding-top: var(--size-2-2);
-  }
-  &:last-child {
-    padding-bottom: var(--size-2-2);
-  }
-  // Under a group's heading the first entry is as far from it as the entries are from each other.
-  // Larger than the heading's own margin, which it meets rather than adds to where they collapse.
+  // Under a group's heading the first entry's words are as far from it as the entries' words are
+  // from each other: the margin between entries and the light's edge of one of them.
   .abele-group-heading + & {
-    margin-top: var(--size-4-3);
+    margin-top: var(--abele-entry-heading-gap);
   }
 
   &[role='button'],
@@ -94,22 +86,23 @@ const emit = defineEmits<{ 'update:more': [open: boolean] }>()
     margin-inline: calc(-1 * var(--size-2-3));
   }
 
-  // Two lit rows never run together into one slab: apart by Obsidian's own 2px.
+  // Entries stand apart by a margin, not by room inside their light, so two lit rows never run
+  // together and the light stays close around the words.
   & + & {
-    margin-top: var(--size-2-1);
+    margin-top: var(--abele-entry-gap);
   }
 
   // Entries end at a hairline, from the words' edge to the row's end, as Obsidian's own group of
   // settings does between rows: whitespace alone ran the line under one name into the name of the
   // next, and in a narrow pane every entry is two lines, its codes under the name. Drawn in the
-  // 2px between the rows, under neither one's light.
+  // margin between the rows, under neither one's light.
   & + & {
     position: relative;
 
     &::before {
       content: '';
       position: absolute;
-      top: calc(-1 * var(--size-2-1) / 2);
+      top: calc(-1 * var(--abele-entry-gap) / 2);
       inset-inline: var(--size-2-3);
       border-top: 1px solid var(--background-modifier-border);
       pointer-events: none;

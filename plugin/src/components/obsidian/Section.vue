@@ -44,6 +44,12 @@ defineProps<{
   margin-inline-start: auto;
 }
 
+// A phone's glyph keeps its whole tap box, its height taken back by a margin, so the header is as
+// tall as its heading and the rows under it start where they would without the glyph.
+.is-phone .abele-section__actions .clickable-icon {
+  margin-block: calc(-1 * var(--size-2-3));
+}
+
 // Obsidian pads its settings' headings to its own groups' edge; the header here already stands
 // at the rows' text edge, so the heading takes no more.
 .abele-section .abele-section__heading {

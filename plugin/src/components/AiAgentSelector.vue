@@ -11,28 +11,30 @@
     <!-- The model is the agent's and is not repeated here. Only a chat that answers with a model
          of its own says so, by the agent: the model's name on the chosen wash; pressed, the
          models to change to and the way back to the agent's, at the button. -->
-    <Button
+    <!-- A plate, not a form button: it reads as a fact of the header that opens its menu. -->
+    <div
       v-if="modelLabel && modelOverridden"
       ref="modelButton"
-      quiet
-      icon="cpu"
-      :text="modelLabel"
-      :tooltip="modelTooltip"
+      role="button"
+      tabindex="0"
       class="abele-agent-selector__model"
       aria-haspopup="menu"
       @click="showModels"
+      @keydown.enter.prevent="showModels"
+      @keydown.space.prevent="showModels"
     >
+      <Icon icon="cpu" size="xs" :interactive="false" class="abele-agent-selector__model-icon" />
       <span class="abele-agent-selector__model-name">{{ modelLabel }}</span>
-    </Button>
+    </div>
   </div>
 </template>
 
 <script setup lang="ts">
-import { computed, ref, type ComponentPublicInstance } from 'vue'
-import { Menu, Notice } from 'obsidian'
+import { computed, ref, watchEffect } from 'vue'
+import { Menu, Notice, setTooltip } from 'obsidian'
 import { AbeleConfig } from '@/services/AbeleConfig'
 import Dropdown from './obsidian/Dropdown.vue'
-import Button from './obsidian/Button.vue'
+import Icon from './obsidian/Icon.vue'
 import { ChatService } from '@/ai/ChatService'
 import { AgentRegistry } from '@/ai/agents/AgentRegistry'
 import { NodeService } from '@/node/NodeService'
@@ -62,6 +64,9 @@ const session = computed(() => chatService.activeSession.value)
  * back in, for the same reason.
  */
 const options = computed(() => {
+  // A chat on a node picks from what the node runs.
+  const place = session.value?.place?.value
+  if (place) return place.agents.map((agent) => ({ value: agent.id, display: agent.name }))
   const listed = registry.list().map((agent) => ({ value: agent.id, display: agent.name }))
 
   const own = session.value?.kind === 'comment' ? session.value.agent.value : null
@@ -104,15 +109,19 @@ const agentModelLabel = computed(() => {
   return agent.modelId
 })
 
-const modelButton = ref<ComponentPublicInstance>()
-const modelTooltip = computed(() => {
+const modelButton = ref<HTMLElement>()
+watchEffect(() => {
   const agent = session.value?.agent.value?.name ?? 'the agent'
-  return `This chat answers with ${modelLabel.value}${agentModelLabel.value ? `, not ${agent}'s ${agentModelLabel.value}` : ''}. Change or go back`
+  if (modelButton.value)
+    setTooltip(
+      modelButton.value,
+      `This chat answers with ${modelLabel.value}${agentModelLabel.value ? `, not ${agent}'s ${agentModelLabel.value}` : ''}. Change or go back`
+    )
 })
 
 function showModels() {
   const s = session.value
-  const el = modelButton.value?.$el as HTMLElement | undefined
+  const el = modelButton.value
   if (!s || !el) return
   const menu = new Menu()
   for (const provider of AbeleConfig.getInstance().ai.providers)
@@ -159,6 +168,8 @@ const onSelect = (agentId: string) => {
       )
     return
   }
+  const place = s.place?.value
+  if (place) return place.startWith(agentId)
 
   // Overrides were expressed against the previous agent, so switching drops them. Said out
   // loud rather than silently, since it can undo a scope somebody narrowed on purpose.
@@ -189,13 +200,12 @@ const onSelect = (agentId: string) => {
 }
 
 // Chosen for this chat, so on the chosen wash: one code for "this chat's own" wherever it shows.
-.abele-agent-selector .abele-obsidian-button.abele-agent-selector__model {
+.abele-agent-selector .abele-agent-selector__model {
   display: inline-flex;
   align-items: center;
   min-width: 0;
   max-width: 12em;
   height: auto;
-  margin: 0;
   padding: var(--size-2-1) var(--size-2-3);
   border: none;
   border-radius: var(--radius-s);
@@ -206,19 +216,18 @@ const onSelect = (agentId: string) => {
   font-weight: var(--font-normal);
   cursor: var(--cursor);
 
-  // A quiet button greys under the pointer; this one stays on its wash, which is what it says.
-  &:hover {
-    background-color: var(--abele-selected-background);
-    color: var(--abele-selected-color);
+  &:focus-visible {
+    box-shadow: var(--input-shadow);
   }
 }
 
-.abele-agent-selector__model .abele-obsidian-button__label {
-  display: flex;
-  min-width: 0;
+.abele-agent-selector__model-icon {
+  flex: 0 0 auto;
+  color: inherit;
 }
 
 .abele-agent-selector__model-name {
+  margin-inline-start: var(--size-2-2);
   min-width: 0;
   overflow: hidden;
   text-overflow: ellipsis;
@@ -232,7 +241,7 @@ const onSelect = (agentId: string) => {
  * A container query, because what is narrow is the pane.
  */
 @container (max-width: 420px) {
-  .abele-agent-selector__model .abele-obsidian-button__label {
+  .abele-agent-selector__model-name {
     display: none;
   }
 }
