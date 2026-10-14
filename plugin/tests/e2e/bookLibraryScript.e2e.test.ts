@@ -1,5 +1,6 @@
 /** A reader-library script in a real tab, using only invented books. */
 import { describe, it, expect, beforeAll, afterAll } from 'vitest'
+import { randomUUID } from 'node:crypto'
 import {
   evalJson,
   evalRaw,
@@ -15,9 +16,13 @@ import { SCRIPT_FIXTURE, type ScriptFixtureSnapshot } from './helpers/scriptFixt
 
 targets('desktop', 'phone')
 
-const DIR = 'Sample reader library e2e'
-const FILE = `${DIR}/sample-${Date.now()}.pdf`
-const SCRIPT = `// @name Sample reader library
+const RUN_ID = randomUUID()
+const DIR = `Sample reader library ${RUN_ID}`
+const FILE = `${DIR}/sample-book.pdf`
+const SCRIPT_PATH = `${DIR}/Scripts/Sample reader library.js`
+const SCRIPT_NAME = `Sample library ${RUN_ID}`
+let layout: unknown
+const SCRIPT = `// @name ${SCRIPT_NAME}
 const v = view({ title: 'Sample reader library' })
 let items = []
 async function refresh() {
@@ -52,6 +57,7 @@ const until = async (fn) => { for (let i = 0; i < 80; i++) { const value = fn();
 
 describe.skipIf(!available)('reader-file script dashboard', () => {
   beforeAll(() => {
+    layout = evalJson('app.workspace.getLayout()')
     fixture = run<ScriptFixtureSnapshot>('return await saveScriptFixture()')
     expect(fixture.ai).toBeDefined()
     const binary = Buffer.from(buildLongPdf(8)).toString('base64')
@@ -82,12 +88,13 @@ describe.skipIf(!available)('reader-file script dashboard', () => {
         if (leaf.view.file?.path === '${FILE}') leaf.detach()
       const folder = '${DIR}/Scripts'
       for (const leaf of app.workspace.getLeavesOfType('abele-script-view'))
-        if (leaf.view.getState()?.script === 'Sample reader library') leaf.detach()
+        if (leaf.view.getState()?.script === ${JSON.stringify(SCRIPT_NAME)}) leaf.detach()
       const script = app.vault.getAbstractFileByPath(folder + '/Sample reader library.js')
       if ((${owned} || window.__abeleBookFixtureOwned) && script) await app.vault.delete(script)
       const dir = app.vault.getAbstractFileByPath('${DIR}')
       if ((${owned} || window.__abeleBookFixtureOwned) && dir) await app.vault.delete(dir, true)
       delete window.__abeleBookSnapshot
+      await app.workspace.changeLayout(${JSON.stringify(layout)})
       return true
       } finally {
         await restoreScriptFixture(${JSON.stringify(fixture)})
@@ -113,10 +120,10 @@ describe.skipIf(!available)('reader-file script dashboard', () => {
     }>(`
       ${wait}
       const service = window.__abeleTest.ScriptService.getInstance()
-      const script = service.getAll().find(s => s.meta.name === 'Sample reader library')
+      const script = service.get(${JSON.stringify(SCRIPT_PATH)})
       await service.execute(script.path, {}, { source: 'command' })
       const before = await until(() => window.__abeleBookSnapshot)
-      const tabs = app.workspace.getLeavesOfType('abele-script-view').filter(l => l.view.getState()?.script === 'Sample reader library')
+      const tabs = app.workspace.getLeavesOfType('abele-script-view').filter(l => l.view.getState()?.script === ${JSON.stringify(SCRIPT_NAME)})
       const tab = tabs[0]
       const cards = tab.view.contentEl.querySelectorAll('.abele-card').length
       const btn = tab.view.contentEl.querySelector('button')
@@ -176,11 +183,11 @@ describe.skipIf(!available)('reader-file script dashboard', () => {
         ${wait}
         const service = window.__abeleTest.ScriptService.getInstance()
         await service.ready
-        const script = service.getAll().find(s => s.meta.name === 'Sample reader library')
+        const script = service.get(${JSON.stringify(SCRIPT_PATH)})
         if (!script) throw new Error('The sample script was not restored')
         await service.execute(script.path, {}, { source: 'command' })
         const view = await until(() => app.workspace.getLeavesOfType('abele-script-view')
-          .find(l => l.view?.contentEl?.querySelector('.abele-card'))?.view)
+          .find(l => l.view.getState()?.script === ${JSON.stringify(SCRIPT_NAME)} && l.view?.contentEl?.querySelector('.abele-card'))?.view)
         const card = view.contentEl.querySelector('.abele-card').getBoundingClientRect()
         const button = view.contentEl.querySelector('button').getBoundingClientRect()
         return { card: card.right, button: button.right, viewport: window.innerWidth }
@@ -191,7 +198,7 @@ describe.skipIf(!available)('reader-file script dashboard', () => {
         runCli(['dev:screenshot', `path=${process.cwd()}/build/book-library-mobile.png`])
       } finally {
         run(
-          `for (const leaf of app.workspace.getLeavesOfType('abele-script-view')) if (leaf.view.getState()?.script === 'Sample reader library') leaf.detach(); return true`
+          `for (const leaf of app.workspace.getLeavesOfType('abele-script-view')) if (leaf.view.getState()?.script === ${JSON.stringify(SCRIPT_NAME)}) leaf.detach(); return true`
         )
         await reloadApp('app.emulateMobile(false)')
         evalRaw(
