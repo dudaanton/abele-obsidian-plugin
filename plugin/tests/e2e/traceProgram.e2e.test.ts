@@ -286,7 +286,7 @@ it('runs a JavaScript program picked from Debug, records at a point set in its m
   // A run never writes a note by itself.
   expect(seen.notes).toBe(0)
   // Held on its first line: the program's own frame on top, Node's loader folded into one row.
-  expect(seen.held[0]).toMatchObject({ internals: false })
+  expect(seen.held[0], JSON.stringify(seen.held)).toMatchObject({ internals: false })
   expect(seen.held[0]!.note).toMatch(/^total\.js:\d+$/)
   const internals = seen.held.filter((r) => r.internals)
   expect(internals).toHaveLength(1)
@@ -365,7 +365,7 @@ it('on a phone: the picker offers the file open in a tab, the stack folds Node, 
     })()`)
     expect(seen.offered[0]).toMatchObject({ title: 'src/total.js' })
     expect(seen.held.filter((r) => r.internals)).toHaveLength(1)
-    expect(seen.held[0]!.internals).toBe(false)
+    expect(seen.held[0]!.internals, JSON.stringify(seen.held)).toBe(false)
     expect(seen.restart).toBe(true)
     expect(seen.overflow).toBeLessThanOrEqual(1)
   })
