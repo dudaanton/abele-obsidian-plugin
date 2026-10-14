@@ -115,3 +115,29 @@ it('starts the walkthrough for Play on a node embed while Open still frames only
     viewer.destroy()
   }
 })
+it('frames the part of the canvas an embed of a part opens', async () => {
+  const el = document.createElement('div')
+  const viewer = new CanvasViewer(el, {
+    theme: () => ({}) as never,
+    assets: async () => ({}),
+    cards: { sync: () => new Set(), destroy: () => {} },
+    openNode: () => {},
+  })
+  viewer.load({
+    nodes: [{ id: 'alpha', type: 'text', text: 'Alpha', x: 0, y: 0, width: 240, height: 120 }],
+    edges: [],
+  })
+  const view = Object.create(CanvasView.prototype) as CanvasView
+  view.viewer = viewer
+  ;(view as unknown as { loaded: boolean }).loaded = true
+  const focus = vi.spyOn(viewer, 'focusRegion')
+  try {
+    await view.setState({ region: { x: -40, y: 20, width: 600, height: 300 } }, {})
+    expect(focus).toHaveBeenLastCalledWith({ x: -40, y: 20, width: 600, height: 300 })
+    focus.mockClear()
+    await view.setState({ region: { x: 0, y: 0, width: 0, height: 10 } }, {})
+    expect(focus).not.toHaveBeenCalled()
+  } finally {
+    viewer.destroy()
+  }
+})

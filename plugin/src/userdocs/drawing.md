@@ -296,12 +296,14 @@ and retained work does not survive a plugin reload or crash.
 
 ## A diagram inside a note
 
-Embed a canvas as usual, or name a one-based step or a card:
+Embed a canvas as usual, or name a one-based step, a card or frame, or a part of the canvas
+(`x,y,width,height` in the canvas's own units):
 
 ```markdown
 ![[sample.canvas]]
 ![[sample.canvas#step=2]]
 ![[sample.canvas#node=alpha]]
+![[sample.canvas#part=0,0,800,500]]
 ```
 
 Reading view and Live Preview show a static picture with **Open** and **Play** buttons.

@@ -248,6 +248,23 @@ export class CanvasView extends FileView {
         viewer.focusRegion(node)
       }
     }
+    // An embed of a part of the canvas opens on that part.
+    const region = state.region as Record<string, unknown> | undefined
+    if (
+      region &&
+      !playback &&
+      [region.x, region.y, region.width, region.height].every(Number.isFinite) &&
+      (region.width as number) > 0 &&
+      (region.height as number) > 0
+    ) {
+      viewer.go(null, false)
+      viewer.focusRegion({
+        x: region.x as number,
+        y: region.y as number,
+        width: region.width as number,
+        height: region.height as number,
+      })
+    }
     const camera = cameraFrom(state.camera)
     if (camera) viewer.setCamera(camera)
   }

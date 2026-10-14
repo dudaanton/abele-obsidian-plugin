@@ -621,7 +621,7 @@ on by default, choosing Abele for newly opened canvas leaves; the per-leaf nativ
 that tab native until reopened in Abele. A view switch never writes the diagram. If the native
 editor and stored version differ, adoption waits for native saving/reloading rather than deciding
 which version to overwrite; pending edits remain in their native tab. Camera and selected step live only in the workspace
-leaf state, not the `.canvas` file. `![[sample.canvas#step=N]]` and `#node=id` embeds store only
+leaf state, not the `.canvas` file. `![[sample.canvas#step=N]]`, `#node=id` and `#part=x,y,width,height` embeds store only
 that link in the note; their pictures are transient. User whole-canvas PNG/SVG/PDF exports go
 into the ordinary attachments folder as new files; current-view and step PNG/SVG exports remain
 available. `canvas_export` creates the exact new output path supplied by the agent. Neither
