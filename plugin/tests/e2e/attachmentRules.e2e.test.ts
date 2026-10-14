@@ -101,8 +101,9 @@ const probe = (mobile: boolean) => `(async () => {
     app.setting.open()
     app.setting.openTabById('abele')
     const doc = app.setting.modalEl.ownerDocument
-    const other = await until(() => [...doc.querySelectorAll('.abele-settings__nav .abele-tabs__tab')].find(t => t.textContent.trim() === 'Other'))
-    other.click()
+    // A phone reopens settings on the page last shown; the list of pages only comes the first time.
+    const shown = await until(() => doc.querySelector('.abele-attachment-rules') || [...doc.querySelectorAll('.abele-settings__nav .abele-tabs__tab')].find(t => t.textContent.trim() === 'Other'))
+    if (shown && !shown.classList.contains('abele-attachment-rules')) shown.click()
     const group = await until(() => doc.querySelector('.abele-attachment-rules'))
     if (!group) throw new Error('The Attachment folders group never drew')
     await wait(400)
