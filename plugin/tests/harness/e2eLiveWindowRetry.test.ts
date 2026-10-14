@@ -28,9 +28,15 @@ it('does not wrap an exhausted helper retry in another retry at the file boundar
       afterAll: () => {},
       beforeEach: () => {},
     },
-    './obsidianCli': { ...cli, isObsidianRunning: () => true, setFocusEmulation: focus },
+    './obsidianCli': {
+      ...cli,
+      evalLong: vi.fn(() => '[]'),
+      isObsidianRunning: () => true,
+      setFocusEmulation: focus,
+    },
     './target': { onPhone: () => false },
     './phone': {},
+    './fixtureBoundary': { dismissBoundaryNotices: async () => [] },
   }
   new Function('require', 'exports', code)((name: string) => imports[name], {})
   await expect(setup()).rejects.toThrow('3 attempts')
@@ -68,9 +74,11 @@ it('reports every cleanup failure while still checking current and saved root ow
       useDomMenus: noop,
       waitForLinkIndex: noop,
       assertWindowDrawn: noop,
+      evalLong: () => '[]',
     },
     './target': { onPhone: () => false },
     './phone': {},
+    './fixtureBoundary': { dismissBoundaryNotices: async () => [] },
     './rootViews': { snapshotRootViews: () => [], assertNoLeakedRootViews: current },
     './savedRootViews': {
       snapshotSavedRootViews: async () => ({}),
