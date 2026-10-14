@@ -28,6 +28,10 @@
  * docs/Testing.md.
  */
 import { describe, it, expect, beforeAll, afterAll } from 'vitest'
+import {
+  DESKTOP_CATALOGUE_CONTRACTS,
+  PHONE_CATALOGUE_CONTRACTS,
+} from './helpers/designCatalogueContracts'
 import { openBasePicker, basePickerGeometry } from './helpers/githubBasePicker'
 import { OPEN_LOCAL_NODE_FORM, CLOSE_LOCAL_NODE_FORM } from './helpers/nodeSettingsForm'
 import {
@@ -41,6 +45,7 @@ import {
 import { BASE_SHA } from './helpers/fakeGithubRepo'
 import {
   activeVaultName,
+  enterPhone,
   evalJson,
   evalLong,
   evalRaw,
@@ -48,7 +53,7 @@ import {
   isObsidianRunning,
   reloadApp,
 } from './helpers/obsidianCli'
-import { onPhone, targets } from './helpers/target'
+import { targets } from './helpers/target'
 import { shotDir } from './helpers/shots'
 import {
   SELECTION_MENUS_SETUP,
@@ -1862,8 +1867,8 @@ const probeScript = `(async () => {
   .replaceAll('pnest', 'sample-comment-' + fixtureId + '-')
   .replaceAll('sample-word-layout.docx', 'sample-word-layout-' + fixtureId + '.docx')
 
-/** Closes anything standing over the note and switches emulation, letting the reload settle. */
-const setMobile = async (on: boolean): Promise<void> => {
+/** Closes anything standing over the note. */
+const closeDialog = (): void => {
   evalRaw(
     `(() => {
       const close = document.querySelector('.modal-close-button')
@@ -1872,38 +1877,39 @@ const setMobile = async (on: boolean): Promise<void> => {
     })()`,
     30_000
   )
-  await reloadApp(`app.emulateMobile(${on})`)
 }
 
-/** A phone's window is its screen: measured, never set. */
-const windowSize = (): [number, number] =>
-  onPhone()
-    ? evalJson<[number, number]>(`[innerWidth, innerHeight]`, 30_000)
-    : evalJson<[number, number]>(
-        `require('@electron/remote').getCurrentWindow().getContentSize()`,
-        30_000
-      )
+const isMobile = (): boolean => evalJson<boolean>('!!app.isMobile', 30_000)
 
-const setWindowSize = async (width: number, height: number): Promise<void> => {
-  if (onPhone()) return
-  evalRaw(
-    `(() => {
-      require('@electron/remote').getCurrentWindow().setContentSize(${width}, ${height})
-      return 'ok'
-    })()`,
-    30_000
-  )
-  await new Promise((resolve) => setTimeout(resolve, 1500))
+/**
+ * Every phone part of this file shares one phone: the first to start enters it, at the phone's
+ * size with one reload, and the file leaves it once at the end. Each part used to enter and leave
+ * on its own, two reloads and two resizes with fixed waits apiece.
+ */
+const ensurePhone = async (): Promise<void> => {
+  if (!isMobile()) await enterPhone(PHONE.width, PHONE.height)
+}
+
+/** Back to the desktop at the size it had (`enterPhone` recorded it). */
+const leavePhone = async (): Promise<void> => {
+  closeDialog()
+  if (isMobile()) await reloadApp('app.emulateMobile(false)')
 }
 
 const available = isObsidianRunning() && hasTestApi()
 
+afterAll(async () => {
+  if (available) await leavePhone()
+}, 120_000)
+
+describe.skipIf(!available)('design catalogue desktop contracts', () => {
+  it.each(DESKTOP_CATALOGUE_CONTRACTS)('%s', async (_name, check) => check(), 90_000)
+})
+
 describe.skipIf(!available)('the GitHub base picker on a phone', () => {
-  let gh: FakeGithub, size: [number, number]
+  let gh: FakeGithub
   beforeAll(async () => {
-    size = windowSize()
-    await setMobile(true)
-    await setWindowSize(PHONE.width, PHONE.height)
+    await ensurePhone()
     gh = await startFakeGithub()
     enableGithub(gh.origin, false)
   }, 90000)
@@ -1913,8 +1919,6 @@ describe.skipIf(!available)('the GitHub base picker on a phone', () => {
     } finally {
       await gh?.stop()
     }
-    if (size?.[0]) await setWindowSize(size[0], size[1])
-    await setMobile(false)
   }, 120000)
   it('shows the resolved SHA and keeps the native prompt and field ring within the phone', () => {
     const result = evalBase<{
@@ -1942,16 +1946,9 @@ describe.skipIf(!available)('the GitHub base picker on a phone', () => {
 })
 
 describe.skipIf(!available)('the node repository tab on a phone', () => {
-  let size: [number, number]
-  beforeAll(async () => {
-    size = windowSize()
-    await setMobile(true)
-    await setWindowSize(PHONE.width, PHONE.height)
-  }, 90000)
-  afterAll(async () => {
+  beforeAll(ensurePhone, 90000)
+  afterAll(() => {
     evalRaw('window.__abeleTest.closeNodeRepositoryFixture()')
-    if (size?.[0]) await setWindowSize(size[0], size[1])
-    await setMobile(false)
   }, 120000)
   for (const state of [
     'home',
@@ -2014,12 +2011,10 @@ describe.skipIf(!available)('the node repository tab on a phone', () => {
 
 describe.skipIf(!available)('the chat dialogs on a phone', () => {
   let report: Report = {}
-  let size: [number, number] = [0, 0]
 
   beforeAll(async () => {
-    size = windowSize()
-    await setMobile(true)
-    await setWindowSize(PHONE.width, PHONE.height)
+    closeDialog()
+    await ensurePhone()
     // On a phone this probe runs longer than one call may block for: see `evalLong`.
     report = JSON.parse(await evalLong(probeScript, 320_000)) as Report
 
@@ -2029,15 +2024,6 @@ describe.skipIf(!available)('the chat dialogs on a phone', () => {
     console.info(`\n  vault ...................... ${activeVaultName()}\n${lines.join('\n')}\n`)
     console.info('recipient action measurements', JSON.stringify(report['dialog key-destinations']))
   }, 480_000)
-
-  afterAll(async () => {
-    if (!available) return
-    // Restore the window before leaving emulation: `emulateMobile(false)` reloads the app and
-    // takes the viewport size from the window at that moment. The opposite order left every
-    // later desktop e2e test running in a phone-sized viewport.
-    if (size[0]) await setWindowSize(size[0], size[1])
-    await setMobile(false)
-  }, 120_000)
 
   it('keeps card actions, removed links and binding-only recovery inside the phone viewport', async () => {
     const result = JSON.parse(
@@ -2664,17 +2650,11 @@ describe.skipIf(!available)('the chat dialogs on a phone', () => {
 })
 
 describe.skipIf(!available)('design catalogue phone contracts', () => {
-  let size: [number, number]
-  beforeAll(async () => {
-    size = windowSize()
-    await setMobile(true)
-    await setWindowSize(PHONE.width, PHONE.height)
-  }, 90_000)
-  afterAll(async () => {
+  beforeAll(ensurePhone, 90_000)
+  afterAll(() => {
     evalRaw('window.__abeleTest.closeDesignCatalogue()')
-    if (size?.[0]) await setWindowSize(size[0], size[1])
-    await setMobile(false)
   }, 90_000)
+  it.each(PHONE_CATALOGUE_CONTRACTS)('%s', async (_name, check) => check(), 90_000)
   it.each([
     'rows',
     'states',
