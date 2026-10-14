@@ -1,21 +1,23 @@
 <template>
   <figure class="abele-quote">
     <EmptyState v-if="!text" text="No quoted text" />
+    <!-- One passage, cut to three lines while folded; the fold stays under it either way, so
+         opening it never moves the control above the words it opened. -->
     <blockquote
-      v-else-if="!long || !expanded"
+      v-else
       :id="textId"
       class="abele-quote__text"
       :class="{ 'abele-quote__text_preview': long && !expanded }"
     >
-      {{ text || 'No quoted text' }}
+      {{ text }}
     </blockquote>
     <Disclosure
-      v-if="long"
+      v-if="text && long"
       v-model="expanded"
+      control-only
       :target-id="textId"
       :label="expanded ? 'Collapse quote' : 'Expand quote'"
-      ><blockquote class="abele-quote__text">{{ text }}</blockquote></Disclosure
-    >
+    />
     <figcaption v-if="source || unresolved" class="abele-quote__source">
       {{ source
       }}<template v-if="unresolved"

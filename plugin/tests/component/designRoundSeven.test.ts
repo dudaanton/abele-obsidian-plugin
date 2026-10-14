@@ -20,7 +20,8 @@ describe('plain list affordances', () => {
     expect(quote.get('.abele-disclosure__control').attributes('aria-controls')).toBe(id)
     await quote.get('.abele-disclosure__control').trigger('click')
     expect(quote.findAll(`[id="${id}"]`)).toHaveLength(1)
-    expect(quote.get(`#${id}`).find('blockquote').exists()).toBe(true)
+    // One passage, unclamped in place: the control points at the very blockquote it opens.
+    expect(quote.get(`#${id}`).element.tagName).toBe('BLOCKQUOTE')
     expect(quote.get('blockquote').classes()).not.toContain('abele-quote__text_preview')
     expect(quote.get('blockquote').text()).toBe('A selectable sample passage. '.repeat(30).trim())
   })
