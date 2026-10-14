@@ -34,8 +34,21 @@ const press = async (expression: string, corner = false) => {
     // action rather than tapping the Notice. Card frames intentionally pass input to the stage.
     if(!el.contains(hit)&&!(el.matches('.abele-canvas-card-frame')&&el.closest('.abele-canvas-stage')?.contains(hit)))return null;
     return [x,y]`
-  await expect.poll(() => run<number[] | null>(geometry), { timeout: 10_000 }).not.toBeNull()
-  const [x, y] = run<number[]>(geometry)
+  let point: number[] | null = null,
+    stable = 0
+  await expect
+    .poll(
+      () => {
+        const next = run<number[] | null>(geometry)
+        stable = next && JSON.stringify(next) === JSON.stringify(point) ? stable + 1 : 0
+        point = next
+        return stable >= 2 ? point : null
+      },
+      { timeout: 10_000, interval: 100 }
+    )
+    .not.toBeNull()
+  // Use the witnessed sample, not a second read that can return null during layout changes.
+  const [x, y] = point!
   if (onPhone()) tap(x, y)
   else
     await withNativeInput(() =>
