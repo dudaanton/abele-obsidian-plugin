@@ -8,7 +8,7 @@ it('observes completion through the switch state rather than absent glyph text',
   const source = readFileSync(resolve(__dirname, '../e2e/taskTimelineScroll.e2e.test.ts'), 'utf8')
   const toggle = source.slice(
     source.indexOf('const toggleCompleted ='),
-    source.indexOf('const revealClick =')
+    source.indexOf('const foldClick =')
   )
   const root = document.createElement('div')
   const control = document.createElement('button')
