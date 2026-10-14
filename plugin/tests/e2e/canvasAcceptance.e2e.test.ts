@@ -280,9 +280,7 @@ describe.skipIf(!available)('shared human and agent canvas acceptance', () => {
     await type('sample-renamed', '.rename-textarea')
     expect(run<string>('return document.activeElement.value')).toBe('sample-renamed')
     if (onPhone()) await evalLong(RESTORE_PHONE_SCRIPT, 30_000)
-    await press(
-      '[...document.querySelectorAll(".mod-file-rename button")].find(el=>el.textContent==="Save")'
-    )
+    await press('document.querySelector(".mod-file-rename button.mod-cta")')
     await until(
       `!document.querySelector('.mod-file-rename') && !!app.vault.getAbstractFileByPath(${JSON.stringify(`${DIR}/sample-renamed.md`)})`
     )

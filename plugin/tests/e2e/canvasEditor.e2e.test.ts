@@ -501,7 +501,10 @@ describe.skipIf(!available)('human canvas creation and editing with real input',
     )
     await until('document.activeElement?.matches(".rename-textarea")')
     await type('sample-renamed')
-    await press(textButton('.mod-file-rename', 'Save'))
+    await press('document.querySelector(".mod-file-rename button.mod-cta")')
+    await until(
+      `!document.querySelector('.mod-file-rename') && !!app.vault.getAbstractFileByPath(${JSON.stringify(DIR + '/sample-assets/sample-renamed.svg')})`
+    )
     await until(
       `view().viewer.graph.nodes.some(n=>n.file===${JSON.stringify(DIR + '/sample-assets/sample-renamed.svg')})`
     )
