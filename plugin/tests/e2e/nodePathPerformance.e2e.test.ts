@@ -46,7 +46,13 @@ it('opens files and history independently of a large recursive tree refresh agai
   await git('init', '--initial-branch=trunk')
   await git('add', '.')
   await git('commit', '-m', 'Add sample modules')
-  for (let i = 0; i < 24; i++) await git('commit', '--allow-empty', '-m', `Sample history ${i}`)
+  for (let file = 0; file < 5; file++)
+    writeFileSync(
+      resolve(repo, `packages/module-${file}/src/sample-${file}.ts`),
+      `export const value = ${file}\nexport const changed = true\n`
+    )
+  await git('commit', '-am', 'Change sample modules')
+  for (let i = 0; i < 23; i++) await git('commit', '--allow-empty', '-m', `Sample history ${i}`)
   await git('worktree', 'add', '-b', 'topic', resolve(home, 'external-copy'))
   let child: ChildProcess | undefined,
     registration = ''
@@ -118,6 +124,25 @@ it('opens files and history independently of a large recursive tree refresh agai
     )
     console.info('Large node repository history timing', JSON.stringify(history))
     expect(history.shellMs).toBeLessThan(500)
+    // A commit page opens on its file list, then fills the diffs in; a big commit lists at once too.
+    const openCommit = async (subject: string) =>
+      JSON.parse(
+        await evalLong(
+          `(async()=>{${prelude}const leaf=app.workspace.getLeavesOfType('abele-node-history').at(-1),history=leaf.view.history;history.back();await until(()=>leaf.containerEl.querySelector('.abele-history__row'));const row=[...leaf.containerEl.querySelectorAll('.abele-history__row')].find(r=>r.textContent.includes(${JSON.stringify(subject)}));const start=performance.now();row.click();await until(()=>leaf.containerEl.querySelector('.abele-history__commit-head'));const listMs=Math.round(performance.now()-start);const frame=performance.now();await new Promise(r=>requestAnimationFrame(()=>r()));const frameMs=Math.round(performance.now()-frame);const files=()=>history.commits.value.find(c=>c.hash===history.openCommit.value).files;const count=files().length;const pending=files().filter(f=>f.pending).length;if(count<=10)await until(()=>!files().some(f=>f.pending)&&leaf.containerEl.querySelectorAll('.abele-diff').length===count);const loadedMs=Math.round(performance.now()-start);if(history.error.value)throw Error(history.error.value);history.back();return JSON.stringify({count,pending,listMs,frameMs,loadedMs})})()`,
+          150000
+        )
+      )
+    const typical = await openCommit('Change sample modules')
+    console.info('Large node repository typical commit timing', JSON.stringify(typical))
+    expect(typical.count).toBe(5)
+    expect(typical.listMs).toBeLessThan(1000)
+    expect(typical.loadedMs).toBeLessThan(5000)
+    const big = await openCommit('Add sample modules')
+    console.info('Large node repository big commit timing', JSON.stringify(big))
+    expect(big.count).toBe(2001)
+    expect(big.pending).toBeGreaterThan(1900)
+    expect(big.listMs).toBeLessThan(10000)
+    expect(big.frameMs).toBeLessThan(1000)
   } finally {
     try {
       await evalLong(

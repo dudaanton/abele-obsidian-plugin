@@ -62,7 +62,7 @@ async function checkFileLookup(prefix: string) {
 }
 async function checkMixedCommit() {
   await evalLong(
-    `(async()=>{${prelude}await until(()=>visible('.abele-history__commit-head'));const history=visible('.abele-history');if(!history.textContent.includes('sample.bin')||!history.textContent.includes('Binary file · no text diff.'))throw Error('Binary metadata missing');if(!history.textContent.includes('Updated sample repository')||!history.querySelector('.abele-diff'))throw Error('Text diff in mixed commit is unavailable');if(visible('.abele-node-main [role="alert"]'))throw Error('Mixed commit failed');return 'mixed commit readable'})()`
+    `(async()=>{${prelude}await until(()=>visible('.abele-history__commit-head'));await until(()=>!visible('.abele-history').textContent.includes('Loading changes…'));const history=visible('.abele-history');if(!history.textContent.includes('sample.bin')||!history.textContent.includes('Binary file · no text diff.'))throw Error('Binary metadata missing');if(!history.textContent.includes('Updated sample repository')||!history.querySelector('.abele-diff'))throw Error('Text diff in mixed commit is unavailable');if(visible('.abele-node-main [role="alert"]'))throw Error('Mixed commit failed');return 'mixed commit readable'})()`
   )
 }
 async function selectText(selector: string) {
