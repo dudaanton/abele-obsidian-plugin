@@ -123,6 +123,19 @@ body:not(.is-mobile) .modal.abele-modal_full {
   height: var(--dialog-max-height);
 }
 
+/*
+ * A full dialog covers the whole window, the window's own buttons included where the window has
+ * no frame: macOS's three lights at the left, Windows' and Linux's controls at the right. Its title
+ * and its close button stand clear of them, as Obsidian's tab bar does; in native full screen
+ * there are none and the room goes back.
+ */
+body.is-hidden-frameless .modal.abele-modal_full .modal-title {
+  padding-inline-start: calc(var(--frame-left-space) + var(--frame-ribbon-left));
+}
+body.is-hidden-frameless .modal.abele-modal_full .modal-close-button {
+  margin-inline-end: calc(var(--frame-right-space) + var(--frame-ribbon-right));
+}
+
 /* What a full dialog shows draws and pans itself; its body never scrolls. */
 .modal.abele-modal_full .abele-modal__body {
   overflow: hidden;
