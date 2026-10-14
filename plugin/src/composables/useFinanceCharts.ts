@@ -230,6 +230,8 @@ export function useFinanceCharts(options: FinanceChartOptions) {
           type: 'line',
           data: s.data,
           emphasis: { disabled: true },
+          // Every currency at today's rates is an estimate: drawn dashed, as its name begins ≈.
+          ...(s.name.startsWith('≈') ? { lineStyle: { type: 'dashed' as const } } : {}),
         })),
       },
       true

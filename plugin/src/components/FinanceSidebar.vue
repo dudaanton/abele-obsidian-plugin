@@ -23,7 +23,45 @@
     />
 
     <!-- Currency Balance Cards -->
-    <div v-if="currencyCards.length" class="abele-finance-sidebar__cards">
+    <div v-if="currencyCards.length || totalCard" class="abele-finance-sidebar__cards">
+      <!-- Everything held, in every currency, as one sum at today's rates: first, since it is the
+           one answer to «how much do I have»; the exact cards of each currency follow. -->
+      <div v-if="totalCard" class="abele-finance-sidebar__card abele-finance-sidebar__card_total">
+        <div class="abele-finance-sidebar__card-balance">
+          <ApproxAmount
+            :amount="totalCard.assets"
+            :currency="totalCard.currency"
+            :currencies="totalCard.currencies"
+            :missing="totalCard.missing"
+          />
+        </div>
+        <div
+          v-if="totalCard.debt > 0 || totalCard.owed > 0"
+          class="abele-finance-sidebar__card-details abele-finance-sidebar__dashed"
+        >
+          <div class="abele-finance-sidebar__card-row">
+            <span class="abele-finance-sidebar__summary-label">Debts</span>
+            <span class="abele-finance-sidebar__card-debts">
+              <span
+                v-if="totalCard.owed > 0"
+                class="abele-finance-sidebar__card-debt-amount abele-finance-sidebar__summary-value--income"
+                aria-label="Owed to me"
+                >+{{ formatAmount(totalCard.owed) }}</span
+              >
+              <span
+                v-if="totalCard.debt > 0"
+                class="abele-finance-sidebar__card-debt-amount abele-finance-sidebar__summary-value--expense"
+                aria-label="I owe"
+                >-{{ formatAmount(totalCard.debt) }}</span
+              >
+            </span>
+          </div>
+          <div class="abele-finance-sidebar__card-row">
+            <span class="abele-finance-sidebar__summary-label">Net</span>
+            <span class="abele-finance-sidebar__card-net">≈ {{ formatAmount(totalCard.net) }}</span>
+          </div>
+        </div>
+      </div>
       <div v-for="card in currencyCards" :key="card.currency" class="abele-finance-sidebar__card">
         <div class="abele-finance-sidebar__card-balance">
           {{ formatAmount(card.assets) }}
@@ -69,7 +107,10 @@
         level="secondary"
         class="abele-finance-sidebar__currency-tabs"
       />
-      <div class="abele-finance-sidebar__summary">
+      <div
+        class="abele-finance-sidebar__summary"
+        :class="{ 'abele-finance-sidebar__summary_approx': approxPeriod }"
+      >
         <div class="abele-finance-sidebar__summary-row">
           <span class="abele-finance-sidebar__summary-label">Income</span>
           <span
@@ -97,6 +138,24 @@
           >
             {{ formatAmount(periodSavings) }}
           </span>
+        </div>
+        <!-- Added up at today's rates, the tab says so. Only what is wrong gets a line: rates
+             that could not update since a day, a currency left out for want of a rate. -->
+        <div
+          v-if="approxPeriod && (ratesStale || periodTotals.missing?.length)"
+          ref="approxNote"
+          class="abele-finance-sidebar__approx-note"
+        >
+          <template v-if="ratesStale">
+            <StatusDot tone="orange" :label="approxTooltip" />
+            <span>{{ ratesDay }}</span>
+          </template>
+          <template v-if="periodTotals.missing?.length">
+            <ObsidianIcon icon="circle-dashed" size="xs" />
+            <span class="abele-finance-sidebar__approx-missing">{{
+              periodTotals.missing.join(', ')
+            }}</span>
+          </template>
         </div>
       </div>
       <div
@@ -200,9 +259,9 @@
 <script setup lang="ts">
 import { financeDirections, transactionKind } from '@/finance/accountTypes'
 import { useFinanceCharts } from '@/composables/useFinanceCharts'
-import { useFinancePeriodSummary } from '@/composables/useFinancePeriodSummary'
+import { ALL_CURRENCIES, useFinancePeriodSummary } from '@/composables/useFinancePeriodSummary'
 import { addMoney } from '@/helpers/moneySum'
-import { ref, unref, watch, toRef } from 'vue'
+import { ref, unref, watch, watchEffect, toRef } from 'vue'
 import { useIntersectionObserver } from '@vueuse/core'
 import { GlobalStore } from '@/stores/GlobalStore'
 import { AccountsList } from '@/entities/AccountsList'
@@ -221,10 +280,25 @@ import Tabs from './obsidian/Tabs.vue'
 import PeriodSelector from './obsidian/PeriodSelector.vue'
 import DateDivider from './obsidian/DateDivider.vue'
 import TransactionItem from './TransactionItem.vue'
+import ApproxAmount from './finance/ApproxAmount.vue'
+import {
+  exchangeRates,
+  ratesStatus,
+  ratesTable,
+  ratesTooltip,
+} from '@/finance/rates/exchangeRates'
+import StatusDot from './obsidian/StatusDot.vue'
+import { setTooltip } from 'obsidian'
+import { convert } from '@/finance/rates/convert'
 import dayjs from 'dayjs'
 import { toRaw } from 'vue'
 import { formatAmount } from '@/helpers/moneyFormat'
-import { currencyCard, type CurrencyCard } from '@/helpers/financeTotals'
+import {
+  convertedCard,
+  currencyCard,
+  type ConvertedCard,
+  type CurrencyCard,
+} from '@/helpers/financeTotals'
 import { useFinanceLedger, type LedgerEntry } from '@/composables/useFinanceLedger'
 import { pausedWhileHidden } from '@/helpers/pausedWhileHidden'
 import { transactionSearch, useListSearch } from '@/composables/useListSearch'
@@ -278,6 +352,30 @@ const currencyCards = pausedWhileHidden(active, (): CurrencyCard[] => {
   )
 })
 
+/** Every currency an account holds money in, not only the pinned ones. */
+const heldCurrencies = computed(() => {
+  const held = new Set<string>()
+  for (const [, account] of accountsList.value?.accounts ?? []) {
+    if (account.excludeFromTotal || !account.currency) continue
+    if (account.accountType === 'asset' || account.accountType === 'liability')
+      held.add(account.currency.toUpperCase())
+  }
+  return [...held].sort()
+})
+
+/** All of it as one sum at today's rates, once there are two currencies to add. */
+const totalCard = pausedWhileHidden(active, (): ConvertedCard | null => {
+  const al = accountsList.value
+  const bi = toRaw(balanceIndex.value)
+  const table = ratesTable()
+  if (!al || !bi || !table || heldCurrencies.value.length < 2) return null
+  bi.version.value // track reactivity
+  const cards = heldCurrencies.value.map((currency) =>
+    currencyCard(currency, al.accounts, (path) => bi.getBalanceAtDate(path, periodEnd.value))
+  )
+  return convertedCard(cards, exchangeRates.display, table)
+})
+
 // --- Period Summary ---
 
 const periodStart = ref<dayjs.Dayjs>(dayjs().startOf('month'))
@@ -311,6 +409,19 @@ const {
   pinnedCurrenciesList,
   periodStart,
   periodEnd,
+  rates: () => ({ table: ratesTable(), display: exchangeRates.display }),
+})
+const approxPeriod = computed(() => selectedPeriodCurrency.value === ALL_CURRENCIES)
+const ratesStale = computed(() => ratesStatus() === 'stale')
+const ratesDay = computed(() =>
+  exchangeRates.table ? dayjs(exchangeRates.table.fetchedOn).format('D MMM') : ''
+)
+const approxTooltip = computed(() =>
+  ratesTooltip(periodTotals.value.currencies ?? [], periodTotals.value.missing ?? [])
+)
+const approxNote = ref<HTMLElement>()
+watchEffect(() => {
+  if (approxNote.value) setTooltip(approxNote.value, approxTooltip.value)
 })
 
 // --- Account Type Lookup ---
@@ -359,9 +470,16 @@ const calendarData = computed(() => {
   const endStr = periodEnd.value.format(DATE_FORMAT)
   const dayMap = new Map<string, { expense: number; income: number }>()
 
+  // On the tab of all currencies every day is added up at today's rates, so the colours compare
+  // like with like.
+  const all = selectedPeriodCurrency.value === ALL_CURRENCIES
+  const table = ratesTable()
   for (const entry of ledger.value) {
-    if (entry.amount == null || entry.currency !== selectedPeriodCurrency.value) continue
+    if (entry.amount == null || !entry.currency) continue
+    if (!all && entry.currency !== selectedPeriodCurrency.value) continue
     if (entry.date < startStr || entry.date > endStr) continue
+    const amount = all ? convert(entry.amount, entry.currency, exchangeRates.display, table) : entry.amount
+    if (amount === null) continue
 
     if (!dayMap.has(entry.date)) dayMap.set(entry.date, { expense: 0, income: 0 })
     const day = dayMap.get(entry.date)
@@ -370,8 +488,8 @@ const calendarData = computed(() => {
       accountTypes.value.get(entry.from),
       accountTypes.value.get(entry.to)
     )
-    if (expense) day.expense = addMoney(day.expense, entry.amount)
-    if (income) day.income = addMoney(day.income, entry.amount)
+    if (expense) day.expense = addMoney(day.expense, amount)
+    if (income) day.income = addMoney(day.income, amount)
   }
 
   return dayMap
@@ -407,6 +525,28 @@ const networthData = pausedWhileHidden(active, () => {
       dd = dd.add(1, 'day')
     }
     series.push({ name: currency, data })
+  }
+
+  // Everything held as one line at today's rates, for every past day: approximate by its name.
+  const table = ratesTable()
+  if (table && heldCurrencies.value.length > 1) {
+    const data: number[] = []
+    let dd = periodStart.value
+    for (let i = 0; i < dates.length; i++) {
+      let total = 0
+      for (const currency of heldCurrencies.value) {
+        const value = convert(
+          bi.getNetWorthAtDateByCurrency(dd, currency),
+          currency,
+          exchangeRates.display,
+          table
+        )
+        if (value !== null) total = addMoney(total, value)
+      }
+      data.push(Math.round(total * 100) / 100)
+      dd = dd.add(1, 'day')
+    }
+    series.push({ name: `≈ ${exchangeRates.display}`, data })
   }
 
   return { dates, series }

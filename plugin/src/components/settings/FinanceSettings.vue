@@ -40,6 +40,36 @@
       />
     </Setting>
 
+    <h3>Exchange rates</h3>
+    <Setting
+      name="Fetch today's rates"
+      desc="Once a day, from a public table that needs no key; nothing about the vault is sent. Sums of several currencies and the order of accounts by amount use them."
+    >
+      <Checkbox
+        :is-enabled="exchangeRates.enabled"
+        @toggle="exchangeRates.enabled = !exchangeRates.enabled"
+      />
+    </Setting>
+    <template v-if="exchangeRates.enabled">
+      <Setting name="Show sums in" desc="The currency a sum of several currencies is shown in.">
+        <Input
+          :model-value="exchangeRates.display"
+          placeholder="USD"
+          @update:model-value="displayChanged"
+        />
+      </Setting>
+      <!-- Where the rates stand, in one quiet line: their day and source, what failed, which
+           currency has none. -->
+      <Setting name="Rates" :desc="ratesLine">
+        <Icon
+          icon="refresh-cw"
+          :disabled="exchangeRates.updating || !exchangeRates.refresh"
+          tooltip="Fetch today's rates now"
+          @click="exchangeRates.refresh?.()"
+        />
+      </Setting>
+    </template>
+
     <h3>Firefly III Migration</h3>
     <Setting name="Firefly III URL" desc="Base URL of your Firefly III instance.">
       <Input
@@ -98,7 +128,44 @@ import { FolderSuggest } from '@/helpers/suggesters/FolderSuggester'
 import { FileSuggest } from '@/helpers/suggesters/FileSuggester'
 import { AbeleConfig } from '@/services/AbeleConfig'
 import { debounce } from 'obsidian'
+import dayjs from 'dayjs'
+import Checkbox from '../obsidian/Checkbox.vue'
+import { exchangeRates, ratesStatus } from '@/finance/rates/exchangeRates'
+import { GlobalStore } from '@/stores/GlobalStore'
 import { keyDestinations, acceptIntroducedDestinations } from '@/secrets/destinations'
+
+const displayChanged = (value: string) => {
+  exchangeRates.display = value.trim().toUpperCase() || 'USD'
+}
+
+/** Held currencies today's table has no rate for. */
+const withoutRate = computed(() => {
+  const table = exchangeRates.table
+  if (!table) return []
+  const held = new Set<string>()
+  const list = GlobalStore.getInstance().accountsList.value
+  for (const [, account] of list?.accounts ?? [])
+    if (account.currency) held.add(account.currency.toUpperCase())
+  return [...held].filter((c) => c !== 'USD' && !table.rates[c]).sort()
+})
+
+const ratesLine = computed(() => {
+  const table = exchangeRates.table
+  if (exchangeRates.updating) return 'Fetching today\'s rates…'
+  if (!table)
+    return exchangeRates.lastError
+      ? `Could not fetch: ${exchangeRates.lastError}`
+      : 'Not fetched yet.'
+  const day = dayjs(table.fetchedOn).format('D MMM')
+  const parts = [
+    ratesStatus() === 'stale'
+      ? `Could not update since ${day}${exchangeRates.lastError ? `: ${exchangeRates.lastError}` : ''}`
+      : `From ${day}, ${exchangeRates.source}`,
+  ]
+  if (withoutRate.value.length)
+    parts.push(`No rate for ${withoutRate.value.join(', ')}: left out of sums`)
+  return `${parts.join('. ')}.`
+})
 
 const transactionPathTemplate = ref(AbeleConfig.getInstance().transactionPathTemplate)
 const transactionTemplatePath = ref(AbeleConfig.getInstance().transactionTemplatePath)

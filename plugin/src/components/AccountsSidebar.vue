@@ -20,10 +20,22 @@
       class="abele-accounts-sidebar__group"
     >
       <GroupHeading v-if="group.label" :label="group.label">
-        <span v-for="t in group.totals" :key="t.currency"
-          >{{ formatAmount(t.amount) }}
-          <span class="abele-accounts-sidebar__currency">{{ t.currency }}</span></span
-        >
+        <!-- Two currencies or more: one sum at today's rates, the exact sum of each currency in
+             its tooltip; the rows under it keep their own. Side by side they ran over the name. -->
+        <ApproxAmount
+          v-if="group.converted"
+          :amount="group.converted.amount"
+          :currency="group.converted.currency"
+          :currencies="group.converted.currencies"
+          :missing="group.converted.missing"
+          :exact="group.totals.map((t) => `${formatAmount(t.amount)} ${t.currency}`)"
+        />
+        <template v-else>
+          <span v-for="t in group.totals" :key="t.currency"
+            >{{ formatAmount(t.amount) }}
+            <span class="abele-accounts-sidebar__currency">{{ t.currency }}</span></span
+          >
+        </template>
       </GroupHeading>
       <EntryRow
         v-for="row in group.rows"
@@ -43,6 +55,7 @@
           <span
             class="abele-accounts-sidebar__amount"
             :class="{ 'abele-accounts-sidebar__amount_negative': row.balance < 0 }"
+            :aria-label="worthIn(row)"
             >{{ formatAmount(row.balance) }}
             <span class="abele-accounts-sidebar__currency">{{ row.currency }}</span></span
           >
@@ -92,6 +105,9 @@ import GroupHeading from './obsidian/GroupHeading.vue'
 import EntryRow from './obsidian/EntryRow.vue'
 import { Menu } from 'obsidian'
 import EmptyState from './obsidian/EmptyState.vue'
+import ApproxAmount from './finance/ApproxAmount.vue'
+import { exchangeRates, ratesTable } from '@/finance/rates/exchangeRates'
+import { convert } from '@/finance/rates/convert'
 
 const props = withDefaults(
   defineProps<{
@@ -167,10 +183,22 @@ const groups = pausedWhileHidden(toRef(props, 'active'), (): AccountGroup[] => {
           : null
       },
     },
-    { ...options, types: [...options.types] }
+    { ...options, types: [...options.types] },
+    ratesTable()
   )
-  return groupAccountRows(rows, options.groupByType)
+  return groupAccountRows(rows, options.groupByType, {
+    table: ratesTable(),
+    display: exchangeRates.display,
+  })
 })
+
+/** A balance in another currency than the one sums are shown in: what it is worth, on hover. */
+const worthIn = (row: AccountRow) => {
+  const to = exchangeRates.display
+  if (!row.currency || row.currency === to) return undefined
+  const value = convert(row.balance, row.currency, to, ratesTable())
+  return value === null ? undefined : `≈ ${formatAmount(value)} ${to} at today's rates`
+}
 
 const accountCount = computed(() => groups.value.reduce((n, g) => n + g.rows.length, 0))
 

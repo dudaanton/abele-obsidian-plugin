@@ -49,6 +49,30 @@
   line-height: 1.2;
 }
 
+// The sum of every currency reads as a balance, its sign and code quiet as a card's code is.
+.abele-finance-sidebar__card_total .abele-approx-amount {
+  color: var(--text-normal);
+
+  .abele-approx-amount__sign {
+    font-weight: normal;
+  }
+
+  .abele-approx-amount__code {
+    font-size: var(--font-ui-smaller);
+    font-weight: normal;
+  }
+}
+
+// On the tab of all currencies: one quiet line under the totals, the day's rates in its tooltip.
+.abele-finance-sidebar__approx-note {
+  display: flex;
+  justify-content: flex-end;
+  align-items: center;
+  gap: var(--size-2-2);
+  color: var(--text-faint);
+  font-size: var(--font-ui-smaller);
+}
+
 .abele-finance-sidebar__card-currency {
   color: var(--text-faint);
   font-size: var(--font-ui-smaller);

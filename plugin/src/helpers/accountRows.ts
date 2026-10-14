@@ -1,6 +1,7 @@
 import { addMoney } from '@/helpers/moneySum'
 import { isCategoryType } from '@/finance/accountTypes'
 import type { Account, AccountType } from '@/entities/Account'
+import { convert, sumConverted, type RateTable } from '@/finance/rates/convert'
 
 export type AccountsSort = 'size' | 'balance' | 'name'
 
@@ -91,7 +92,9 @@ const cents = (n: number): number => Math.round(n * 100) / 100
 export function accountRows(
   accounts: Iterable<[string, Account]>,
   source: BalanceSource,
-  settings: AccountsListSettings
+  settings: AccountsListSettings,
+  /** Today's rates: amounts of different currencies are then ordered by what they are worth. */
+  table: RateTable | null = null
 ): AccountRow[] {
   const rows: AccountRow[] = []
 
@@ -133,15 +136,32 @@ export function accountRows(
   return rows
     .filter((row) => !settings.currency || row.currency === settings.currency)
     .filter((row) => !settings.hideZero || row.balance !== 0)
-    .sort(compareBy(settings.sort))
+    .sort(compareBy(settings.sort, table))
 }
 
-function compareBy(sort: AccountsSort): (a: AccountRow, b: AccountRow) => number {
+/**
+ * By size or balance, rows of different currencies compare by what they are worth in dollars at
+ * today's rates; one with no rate goes after all those with one, among its own by its own amount.
+ * Without a table every row compares by its own number, as before.
+ */
+function compareBy(
+  sort: AccountsSort,
+  table: RateTable | null
+): (a: AccountRow, b: AccountRow) => number {
   const byName = (a: AccountRow, b: AccountRow) =>
     a.name.localeCompare(b.name) || a.currency.localeCompare(b.currency)
   if (sort === 'name') return byName
-  if (sort === 'balance') return (a, b) => b.balance - a.balance || byName(a, b)
-  return (a, b) => Math.abs(b.balance) - Math.abs(a.balance) || byName(a, b)
+  const worth = (row: AccountRow) =>
+    table ? convert(row.balance, row.currency, 'USD', table) : row.balance
+  const key = (row: AccountRow, value: number) => (sort === 'size' ? Math.abs(value) : value)
+  return (a, b) => {
+    const wa = worth(a)
+    const wb = worth(b)
+    if ((wa === null) !== (wb === null)) return wa === null ? 1 : -1
+    const va = wa ?? a.balance
+    const vb = wb ?? b.balance
+    return key(b, vb) - key(a, va) || byName(a, b)
+  }
 }
 
 export interface AccountGroup {
@@ -151,9 +171,15 @@ export interface AccountGroup {
   rows: AccountRow[]
   /** Per currency, leaving out accounts excluded from totals. */
   totals: Array<{ currency: string; amount: number }>
+  /** The totals of two currencies or more as one, at today's rates. */
+  converted?: { amount: number; currency: string; currencies: string[]; missing: string[] }
 }
 
-export function groupAccountRows(rows: AccountRow[], byType: boolean): AccountGroup[] {
+export function groupAccountRows(
+  rows: AccountRow[],
+  byType: boolean,
+  rates?: { table: RateTable | null; display: string }
+): AccountGroup[] {
   const groups: AccountGroup[] = byType
     ? ACCOUNT_TYPE_ORDER.map((type) => ({
         type,
@@ -172,6 +198,15 @@ export function groupAccountRows(rows: AccountRow[], byType: boolean): AccountGr
     group.totals = [...sums]
       .map(([currency, amount]) => ({ currency, amount: cents(amount) }))
       .sort((a, b) => a.currency.localeCompare(b.currency))
+    if (rates?.table && group.totals.length > 1) {
+      const sum = sumConverted(group.totals, rates.display, rates.table)
+      group.converted = {
+        amount: cents(sum.total),
+        currency: rates.display,
+        currencies: sum.currencies,
+        missing: sum.missing,
+      }
+    }
   }
 
   return groups.filter((group) => group.rows.length > 0)
