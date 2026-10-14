@@ -43,6 +43,8 @@ interface Report {
   contentRemembered: string | null
   contentOff: string[]
   contentOffPressed?: string | null
+  /** How many cards the history drew to show all of them, these three and every other chat. */
+  drawn?: number
 }
 
 const script = `(async () => {
@@ -89,7 +91,18 @@ const script = `(async () => {
 
   const day = (at) => { const d = new Date(at); return String(d.getDate()).padStart(2, '0') + '.' + String(d.getMonth() + 1).padStart(2, '0') + '.' + d.getFullYear() }
   const modal = () => document.querySelector('.abele-chat-history')
-  const seen = () => {
+  // The history draws thirty cards at a time and more as its end scrolls into view; a device
+  // with many chats newer than these three would leave one on a page nobody drew.
+  const cards = () => modal().querySelectorAll('.abele-card').length
+  const drawAll = async () => {
+    for (let s; (s = modal().querySelector('.abele-chat-history__sentinel')); ) {
+      const drawn = cards()
+      s.scrollIntoView({ block: 'end' })
+      if (!(await until(() => cards() > drawn, 3000))) throw new Error('the history did not draw its next page after ' + drawn + ' cards')
+    }
+  }
+  const seen = async () => {
+    await drawAll()
     const out = { titles: [], days: [] }
     let dayNow = null
     for (const el of modal().querySelectorAll('.abele-date-divider, .abele-card')) {
@@ -152,10 +165,11 @@ const script = `(async () => {
     report.touchedNewest = mtimes[2] > mtimes[0] && mtimes[2] > mtimes[1]
 
     await openHistory()
-    report.byLast = seen()
+    report.byLast = await seen()
+    report.drawn = cards()
     report.expectLast = chats.map((c) => day(c.last))
     await choose('created')
-    report.byCreated = seen()
+    report.byCreated = await seen()
     report.expectCreated = chats.map((c) => day(c.first))
     const search = modal().querySelector('.abele-chat-history__search input')
     const scope = contentToggle()
@@ -163,22 +177,22 @@ const script = `(async () => {
     search.value = PREFIX
     search.dispatchEvent(new Event('input', { bubbles: true }))
     await wait(350)
-    report.metadataMatches = seen().titles
+    report.metadataMatches = (await seen()).titles
     search.value = 'plan'
     search.dispatchEvent(new Event('input', { bubbles: true }))
     await wait(350)
-    report.metadataOnly = seen().titles
+    report.metadataOnly = (await seen()).titles
     if (!scope) throw new Error('the content switch is missing')
     scope.click()
     await until(() => modal().querySelector('.abele-chat-history__snippet'), 6000)
     if (window.__e2eHost) await window.__e2eHost.shot(${JSON.stringify(SHOTS)} + '/history-content.png')
     await wait(300)
-    report.searched = seen().titles
+    report.searched = (await seen()).titles
     report.saved = app.loadLocalStorage(KEY)
     if (!(await closeHistory())) throw new Error('the history did not close')
     await openHistory()
     if (modal().querySelector('.abele-chat-history__search input').value) throw new Error('the old history is still open')
-    report.reopened = seen().titles
+    report.reopened = (await seen()).titles
     const reopenedScope = contentToggle()
     report.contentRemembered = reopenedScope?.getAttribute('aria-pressed') ?? null
     const reopenedSearch = modal().querySelector('.abele-chat-history__search input')
@@ -189,7 +203,7 @@ const script = `(async () => {
     reopenedScope.click()
     await wait(150)
     report.contentOffPressed = reopenedScope.getAttribute('aria-pressed')
-    report.contentOff = seen().titles
+    report.contentOff = (await seen()).titles
     if (!(await closeHistory())) throw new Error('the history did not close')
   } catch (e) {
     report.error = String((e && e.message) || e)

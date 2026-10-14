@@ -241,23 +241,31 @@ describe.skipIf(!available)('Word document view', () => {
       rows: number
       frames: number
       maxGap: number
+      gaps: Record<'open' | 'render' | 'scroll', number>
+      steps: number[]
       rich: boolean
     }>(`(async () => {
       const path=${JSON.stringify(LARGE)}
       const prior=app.vault.getAbstractFileByPath(path);if(prior) await app.vault.delete(prior)
       const data=Uint8Array.from(atob(${JSON.stringify(largeBytes)}),c=>c.charCodeAt(0));const file=await app.vault.createBinary(path,data.buffer)
       const leaf=app.workspace.getLeaf('tab');let handle=0;let last=performance.now();let frames=0;let maxGap=0;let stopped=false
-      const tick = at => {if(stopped) return;frames++;maxGap=Math.max(maxGap,at-last);last=at;handle=requestAnimationFrame(tick)}
+      let phase='open';const gaps={open:0,render:0,scroll:0};const steps=[];let seenRows=0
+      const count=()=>leaf.view?.contentEl?.querySelectorAll('[data-paragraph]').length ?? 0
+      const tick = at => {if(stopped) return;frames++;maxGap=Math.max(maxGap,at-last);gaps[phase]=Math.max(gaps[phase],at-last);last=at
+        if(phase!=='scroll'){const rows=count();if(rows!==seenRows){steps.push(rows-seenRows);seenRows=rows;if(phase==='open') phase='render'}}
+        handle=requestAnimationFrame(tick)}
       handle=requestAnimationFrame(tick)
       try {
         await leaf.setViewState({type:'abele-word',state:{file:path},active:true});await app.workspace.revealLeaf(leaf)
-        for(let i=0;i<150&&leaf.view.contentEl.querySelectorAll('[data-paragraph]').length!==5004;i++) await new Promise(r=>setTimeout(r,100))
+        for(let i=0;i<150&&count()!==5004;i++) await new Promise(r=>setTimeout(r,100))
         await new Promise(resolve=>requestAnimationFrame(()=>requestAnimationFrame(resolve)))
+        phase='scroll'
         const field=leaf.view.contentEl.querySelector('.abele-word-page__field')
         for(let i=0;i<10;i++) {field.scrollTop=field.scrollHeight*i/9;await new Promise(resolve=>requestAnimationFrame(resolve))}
-        return {paragraphs:leaf.view.document?.paragraphs.length ?? 0,rows:leaf.view.contentEl.querySelectorAll('[data-paragraph]').length,frames,maxGap,rich:!!leaf.view.contentEl.querySelector('iframe')}
+        return {paragraphs:leaf.view.document?.paragraphs.length ?? 0,rows:count(),frames,maxGap,gaps,steps,rich:!!leaf.view.contentEl.querySelector('iframe')}
       } finally {stopped=true;cancelAnimationFrame(handle);leaf.detach();await app.vault.delete(file)}
     })()`)
+    console.log(JSON.stringify(result))
     expect(result.paragraphs).toBe(5004)
     expect(result.rows).toBe(5004)
     expect(result.rich).toBe(false)
