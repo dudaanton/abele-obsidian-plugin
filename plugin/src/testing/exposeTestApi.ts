@@ -76,6 +76,7 @@ import { normalizeImageImport } from '@/media/imageImport'
 import { McpService } from '@/ai/mcp/McpService'
 import { githubUsers } from '@/github/users'
 import { calendars } from '@/calendars/CalendarService'
+import { exchangeRates } from '@/finance/rates/exchangeRates'
 import { createBookTools } from '@/ai/tools/BookTools'
 import { setKeyboardDiagnostics } from '@/helpers/keyboardDiagnostics'
 import { confirmProtocolWrite } from '@/helpers/protocolConfirm'
@@ -354,6 +355,8 @@ interface AbeleTestApi {
   McpService: typeof McpService
   githubUsers: typeof githubUsers
   calendars: typeof calendars
+  /** Today's exchange rates as the screens read them, so a test can put a fixed table in. */
+  exchangeRates: typeof exchangeRates
   createBookTools: typeof createBookTools
   /** The book reader: its open tabs, its cleaning, and the sandbox override for the e2e tier. */
   reader: {
@@ -988,6 +991,7 @@ export function exposeTestApi(plugin: Plugin): void {
     McpService,
     githubUsers,
     calendars,
+    exchangeRates,
     createBookTools,
     reader: {
       viewType: BOOK_VIEW_TYPE,
