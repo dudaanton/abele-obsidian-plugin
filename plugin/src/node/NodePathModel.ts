@@ -2,6 +2,7 @@ import { computed, ref, shallowRef, markRaw } from 'vue'
 import { ChannelError } from '@abele/channel-protocol'
 import { formatTimestamp } from '@/helpers/displayFormat'
 import { NodePathSnapshotSchema, emptySnapshotChange } from './nodePathSnapshot'
+import { applyPathChanges, type PathTreeBatch } from './nodePathChanges'
 import type { NodeClient } from '@abele/node-client'
 import type { RepositoryRevision } from '@abele/node-protocol'
 import type {
@@ -103,7 +104,12 @@ export interface NodePathPort {
   /** The commit's changed paths at once, each `pending`; `commitFile` reads one's contents. */
   commitIndex?(target: PathTarget, hash: string): Promise<CommitSummary>
   commitFile?(target: PathTarget, commit: CommitSummary, file: FileChange): Promise<FileChange>
-  watch(target: PathTarget, notify: () => void): Promise<() => void>
+  /** `changed`: the node's change batches in order, where it streams them. */
+  watch(
+    target: PathTarget,
+    notify: () => void,
+    changed?: (batch: PathTreeBatch) => void
+  ): Promise<() => void>
   subscribe(notify: () => void): Promise<() => void>
 }
 export interface SeenChanges {
@@ -168,6 +174,8 @@ export class NodePathModel {
   private revisions = new Map<string, { at: number; read: KnownPathRead }>()
   private revisionEpochs = new Map<string, number>()
   private pageRevisions = new Map<string, Map<string, RepositoryRevision | undefined>>()
+  /** Per target, the change batches applied so far and the latest of them. */
+  private batches = new Map<string, { count: number; recent: PathTreeBatch[] }>()
 
   constructor(
     readonly nodeId: string,
@@ -340,15 +348,19 @@ export class NodePathModel {
     if (this.disposed || generation !== this.selectionGeneration) return
     this.mode.value =
       target.kind === 'worktree' && this.changes.value.length ? 'changed-tree' : 'all'
-    const stop = await this.port.watch(target, () => {
-      void this.reloadTarget(target).catch((e) => {
-        // The tree already says it failed, with a retry, without moving its rows; a notice over
-        // it would push them down on every failed background read.
-        if (this.progress.value[pathTargetKey(target)]?.state === 'failed')
-          console.debug('[Abele] node path: reading the files again failed', e)
-        else this.report(e)
-      })
-    })
+    const stop = await this.port.watch(
+      target,
+      () => {
+        void this.reloadTarget(target).catch((e) => {
+          // The tree already says it failed, with a retry, without moving its rows; a notice over
+          // it would push them down on every failed background read.
+          if (this.progress.value[pathTargetKey(target)]?.state === 'failed')
+            console.debug('[Abele] node path: reading the files again failed', e)
+          else this.report(e)
+        })
+      },
+      (batch) => this.applyBatch(target, batch)
+    )
     if (this.disposed || generation !== this.selectionGeneration) stop()
     else this.stopWatch = stop
   }
@@ -379,6 +391,62 @@ export class NodePathModel {
       this.treeLoads.delete(key)
     })
     return load.promise
+  }
+  /**
+   * Patches the rows a batch names in place; opened folders stay filled and nothing is read
+   * again. The change list is read again — not the tree — when git state moved or a file in it
+   * was touched, since its details come from the node's status.
+   */
+  private applyBatch(target: PathTarget, batch: PathTreeBatch): void {
+    if (this.disposed) return
+    const key = pathTargetKey(target)
+    const seen = this.batches.get(key) ?? { count: 0, recent: [] }
+    seen.count++
+    seen.recent.push(batch)
+    if (seen.recent.length > 32) seen.recent.shift()
+    this.batches.set(key, seen)
+    // Reads after this observe the files again.
+    this.invalidateRevision(target)
+    this.patch(target, batch.entries)
+    const listed = new Set((this.inspections.value[key]?.changes ?? []).map((c) => c.path))
+    const touched = batch.entries.some((c) =>
+      c.change === 'deleted'
+        ? listed.has(c.path)
+        : listed.has(c.entry.path) || (c.change === 'renamed' && listed.has(c.from))
+    )
+    if (batch.git || touched)
+      void this.serialTarget(target, () => this.readTarget(target, false)).catch((e) =>
+        this.report(e)
+      )
+  }
+  private patch(target: PathTarget, changes: PathTreeBatch['entries']): void {
+    const key = pathTargetKey(target),
+      current = this.inspections.value[key]
+    if (!current || !changes.length) return
+    const entries = applyPathChanges(current.entries, changes)
+    if (entries === current.entries) return
+    this.inspections.value = {
+      ...this.inspections.value,
+      [key]: this.mark(target, { ...current, entries }),
+    }
+  }
+  /** Where a read starts in the stream, to give it afterwards the batches that overtook it. */
+  private batchMark(target: PathTarget) {
+    return this.batches.get(pathTargetKey(target))?.count ?? 0
+  }
+  private catchUp(target: PathTarget, mark: number) {
+    const seen = this.batches.get(pathTargetKey(target))
+    if (!seen || seen.count === mark) return
+    // More overtook the read than are kept: only reading it all again is right.
+    if (seen.count - mark > seen.recent.length) {
+      void this.reloadTarget(target).catch((e) => this.report(e))
+      return
+    }
+    const missed = seen.recent.slice(Math.max(0, seen.recent.length - (seen.count - mark)))
+    this.patch(
+      target,
+      missed.flatMap((batch) => batch.entries)
+    )
   }
   private serialTarget<T>(target: PathTarget, read: () => Promise<T>): Promise<T> {
     const key = pathTargetKey(target),
@@ -528,10 +596,12 @@ export class NodePathModel {
         : this.knownRead(target)?.revision
       if (more && target.kind === 'worktree' && !revision)
         throw new Error('Refresh the folder before continuing its expired listing.')
+      const mark = this.batchMark(target)
       const page = await tree.call(this.port, target, path, activeCursor ?? undefined, revision)
       if (this.disposed) return
       if (more && page.cursor === activeCursor) throw new Error('Node pagination did not advance')
       this.publishPage(target, path, page, more)
+      this.catchUp(target, mark)
       this.setProgress(target)
     })
       .catch((error: unknown) => {
@@ -552,6 +622,7 @@ export class NodePathModel {
     if (files && this.port.tree) {
       this.setProgress(target, 'reading')
       try {
+        const mark = this.batchMark(target)
         const read = this.port.tree
         const tree = (
           at: PathTarget,
@@ -600,6 +671,7 @@ export class NodePathModel {
             console.debug('[Abele] node path: an opened folder was not read again', path, error)
           }
         }
+        this.catchUp(target, mark)
         await this.readTarget(target, false)
         if (!this.disposed) this.setProgress(target)
       } catch (error) {

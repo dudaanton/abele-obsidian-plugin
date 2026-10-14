@@ -2,7 +2,14 @@ import type { NodeClient } from '@abele/node-client'
 import { ChannelError } from '@abele/channel-protocol'
 import { bindPathTarget } from './nodePathChat'
 import { supportsExpectedTarget } from './expectedTarget'
-import type { RepositoryRevision, WorktreeEntry } from '@abele/node-protocol'
+import {
+  RepositoryChangeBatchSchema,
+  type RepositoryChangeBatch,
+  type RepositoryChangesCursor,
+  type RepositoryRevision,
+  type WorktreeEntry,
+} from '@abele/node-protocol'
+import type { PathTreeBatch } from './nodePathChanges'
 import type { CommitSummary, FileChange, TreeEntry } from '@/components/nodeWork/types'
 import { formatTimestamp } from '@/helpers/displayFormat'
 import { nodePages } from './NodeWorkspaceModel'
@@ -772,6 +779,9 @@ export class NodePathClientPort implements NodePathPort {
   }
   async subscribe(notify: () => void): Promise<() => void> {
     const stop = this.client.onEvent((event) => {
+      // A batch that only moves files changes no folder, copy or branch; the watch applies it.
+      const data = record(event.data)
+      if (event.type === 'repository.changed' && data.complete === true && data.git === null) return
       if (
         event.stream_id === 'catalog' ||
         event.type === 'stream.redacted' ||
@@ -795,24 +805,80 @@ export class NodePathClientPort implements NodePathPort {
       stop()
     }
   }
-  async watch(target: PathTarget, notify: () => void): Promise<() => void> {
+  /**
+   * `changed`, when given, receives the node's change batches in order on a node that streams
+   * them; `notify` then asks for a full reread only when a batch is incomplete, one is missing,
+   * or the node says it lost track.
+   */
+  async watch(
+    target: PathTarget,
+    notify: () => void,
+    changed?: (batch: PathTreeBatch) => void
+  ): Promise<() => void> {
     if (target.kind === 'workspace' && !this.capabilities.includes('node_path_v2')) return () => {}
+    const streaming =
+      target.kind === 'worktree' && !!changed && this.capabilities.includes('repository_changes_v1')
+    let cursor: RepositoryChangesCursor | undefined
+    /** Batches that arrived before the lease said where the stream stands. */
+    const early: RepositoryChangeBatch[] = []
     const acquire = () =>
       target.kind === 'workspace'
         ? this.client.nodePath.watch({ workspace_id: target.id })
-        : this.client.repository.watch({ worktree_id: target.id })
+        : this.client.repository.watch(
+            streaming
+              ? { worktree_id: target.id, changes: cursor ?? null }
+              : { worktree_id: target.id }
+          )
     const release = (subscription_id: string) =>
       target.kind === 'workspace'
         ? this.client.nodePath.unwatch({ workspace_id: target.id, subscription_id })
         : this.client.repository.unwatch({ worktree_id: target.id, subscription_id })
+    const follow = (batch: RepositoryChangeBatch) => {
+      if (!cursor) {
+        if (early.length < 64) early.push(batch)
+        return
+      }
+      if (batch.stream_id === cursor.stream_id && batch.revision <= cursor.revision) return
+      const next = { stream_id: batch.stream_id, revision: batch.revision }
+      const inOrder =
+        batch.complete &&
+        batch.stream_id === cursor.stream_id &&
+        batch.revision === cursor.revision + 1
+      cursor = next
+      if (!inOrder) {
+        console.debug('[Abele] node path: rereading the files', {
+          reason: 'reason' in batch ? batch.reason : 'revision gap',
+          to: next,
+        })
+        notify()
+      } else changed!({ entries: batch.entries, git: batch.git !== null })
+    }
+    /** False on a node without the stream: the caller rereads as it always did. */
+    const adopt = (lease: Awaited<ReturnType<typeof acquire>>) => {
+      if (!streaming || !lease.changes) return false
+      const pending = early.splice(0)
+      if (lease.refresh_required) {
+        cursor = lease.changes
+        notify()
+        // Behind the lease is fine: the node says every batch since is on its way here.
+      } else cursor ??= lease.changes
+      for (const batch of pending) follow(batch)
+      return true
+    }
     let stopped = false,
       timer: number | undefined
-    let lease = await acquire()
     const stop = this.client.onEvent((event) => {
+      if (event.type === 'repository.changed') {
+        const batch = streaming ? RepositoryChangeBatchSchema.safeParse(event.data) : null
+        if (batch?.success && batch.data.worktree_id === target.id) follow(batch.data)
+        return
+      }
       if (
         (event.type === 'repository.invalidated' &&
           target.kind === 'worktree' &&
-          record(event.data).worktree_id === target.id) ||
+          record(event.data).worktree_id === target.id &&
+          // On the change stream every filesystem edit arrives as a batch.
+          !(streaming && cursor && record(event.data).reason === 'filesystem')) ||
         (event.type === 'workspace.invalidated' &&
           target.kind === 'workspace' &&
           record(event.data).workspace_id === target.id) ||
@@ -820,6 +886,14 @@ export class NodePathClientPort implements NodePathPort {
       )
         notify()
     })
+    let lease: Awaited<ReturnType<typeof acquire>>
+    try {
+      lease = await acquire()
+    } catch (error) {
+      stop()
+      throw error
+    }
+    adopt(lease)
     const renew = async () => {
       try {
         const next = await acquire()
@@ -831,7 +905,7 @@ export class NodePathClientPort implements NodePathPort {
         lease = next
         if (previous.subscription_id !== next.subscription_id)
           await release(previous.subscription_id)
-        notify()
+        if (!adopt(next)) notify()
       } catch {
         notify()
       }
