@@ -31,9 +31,9 @@ const api=window.__abeleTest,nodes=api.NodeService.getInstance(),chats=api.ChatS
 const shot=async name=>{await wait(300);const image=await require('@electron/remote').getCurrentWebContents().capturePage();require('fs').writeFileSync(${JSON.stringify(SHOTS)}+'/'+name+'.png',image.toPNG())};
 const item=title=>[...document.querySelectorAll('.menu-item')].find(i=>i.querySelector('.menu-item-title')?.textContent.trim()===title);
 const press=el=>{el.click()};
-const marginAt=line=>document.querySelector('.workspace-leaf.mod-active button.abele-debug-source__point[aria-label^="Stop at line '+line+' "]')??[...document.querySelectorAll('button.abele-debug-source__point')].find(b=>b.getAttribute('aria-label')?.startsWith('Stop at line '+line+' ')&&b.offsetParent);
-const recordPoint=async (line,takes)=>{
-  const mark=await until(()=>marginAt(line),'margin of line '+line).catch(()=>{throw Error('no margin on line '+line+': '+JSON.stringify(app.workspace.getLeavesOfType('abele-node-file').map(l=>{const st=l.view.getState();return [st.path,!!st.debug,st.debug?.sourceId,l.containerEl.querySelectorAll('button.abele-debug-source__point').length]}))+' '+debugState())});
+const marginAt=(line,root)=>{const sel='button.abele-debug-source__point[aria-label^="Stop at line '+line+' "]';if(root)return root.querySelector(sel);return document.querySelector('.workspace-leaf.mod-active '+sel)??[...document.querySelectorAll(sel)].find(b=>b.offsetParent)};
+const recordPoint=async (line,takes,root)=>{
+  const mark=await until(()=>marginAt(line,root),'margin of line '+line).catch(()=>{throw Error('no margin on line '+line+': '+JSON.stringify(app.workspace.getLeavesOfType('abele-node-file').map(l=>{const st=l.view.getState();return [st.path,!!st.debug,st.debug?.sourceId,l.containerEl.querySelectorAll('button.abele-debug-source__point').length]}))+' '+debugState())});
   mark.dispatchEvent(new MouseEvent('contextmenu',{bubbles:true,cancelable:true,clientX:40,clientY:200}));
   press(await until(()=>item('Add record point'),'Add record point'));
   const input=await until(()=>document.querySelector('.abele-trace-point .multi-select-input'),'point editor');
@@ -221,12 +221,13 @@ const READ_RUN = `
     (row.querySelector('.abele-tree-item__self, .tree-item-self')??row).click();
     await until(()=>document.querySelector('.abele-trace-step'),'step detail');
     await wait(400);
-    steps.push({label:row.querySelector('.abele-tree-item__text')?.textContent.trim()??'',place:document.querySelector('.abele-trace-step__place')?.textContent.trim()??'',text:document.querySelector('.abele-trace-step')?.textContent??''});
+    const values={};for(const v of document.querySelectorAll('.abele-trace-step .abele-trace-value')){const name=v.querySelector('.abele-tree-item__text')?.textContent.trim();if(name&&!(name in values))values[name]=v.querySelector('.abele-tree-item__note')?.textContent.trim()??''}
+    steps.push({label:row.querySelector('.abele-tree-item__text')?.textContent.trim()??'',place:document.querySelector('.abele-trace-step__place')?.textContent.trim()??'',values});
   }`
 
 it('runs a JavaScript program from the chat menu, records at a point set in its margin, and opens the run by itself', () => {
   const seen = inApp<{
-    steps: { label: string; place: string; text: string }[]
+    steps: { label: string; place: string; values: Record<string, string> }[]
     notes: number
   }>(`(async()=>{${prelude}
     const notesBefore=app.vault.getMarkdownFiles().length;
@@ -241,15 +242,15 @@ it('runs a JavaScript program from the chat menu, records at a point set in its 
   expect(seen.steps).toHaveLength(3)
   for (const s of seen.steps) expect(s.place).toContain('total.js:4')
   // What the point took at each hit: the sum before the line adds the item's price.
-  expect(seen.steps.map((s) => /sum\s*([0-9]+)/.exec(s.text)?.[1])).toEqual(['0', '2', '5'])
-  expect(seen.steps[2]!.text).toContain('price')
+  expect(seen.steps.map((s) => s.values.sum)).toEqual(['0', '2', '5'])
+  expect(seen.steps[2]!.values.item).toContain('price')
   // A run never writes a note by itself.
   expect(seen.notes).toBe(0)
 })
 
 it('records at a line of TypeScript open beside its build, through the source map', () => {
   const seen = inApp<{
-    steps: { label: string; place: string; text: string }[]
+    steps: { label: string; place: string; values: Record<string, string> }[]
   }>(`(async()=>{${prelude}
     for(const t of ['abele-trace-run','abele-trace-value','abele-node-file'])for(const l of app.workspace.getLeavesOfType(t))l.detach();
     const opened=app.workspace.createLeafInParent(app.workspace.rootSplit,0);
@@ -260,7 +261,7 @@ it('records at a line of TypeScript open beside its build, through the source ma
     const leaf=app.workspace.getLeavesOfType('abele-node-file').find(l=>l.view.containerEl.textContent.includes('type Item'));
     app.workspace.setActiveLeaf(leaf,{focus:true});
     await wait(300);
-    await recordPoint(6,['sum','item']);
+    await recordPoint(6,['sum','item'],leaf.containerEl);
     await shot('2026-10-14-trace-margin-ts-desktop');
     await goOn();
     ${READ_RUN}
@@ -268,6 +269,6 @@ it('records at a line of TypeScript open beside its build, through the source ma
   })()`)
   expect(seen.steps).toHaveLength(2)
   for (const s of seen.steps) expect(s.place).toContain('total.ts:6')
-  expect(seen.steps.map((s) => /sum\s*([0-9]+)/.exec(s.text)?.[1])).toEqual(['0', '7'])
-  expect(seen.steps[1]!.text).toContain('second')
+  expect(seen.steps.map((s) => s.values.sum)).toEqual(['0', '7'])
+  expect(seen.steps[1]!.values.item).toContain('label')
 })
