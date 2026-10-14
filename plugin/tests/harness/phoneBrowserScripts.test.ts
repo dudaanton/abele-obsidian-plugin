@@ -7,6 +7,7 @@ import { TIMELINE_POSITION_PROBE } from '../e2e/helpers/timelinePosition'
 import { PIXEL_PROBE } from '../e2e/helpers/stablePixels'
 import { openBasePicker, basePickerGeometry } from '../e2e/helpers/githubBasePicker'
 import { selectionDismissPoint } from '../e2e/helpers/selectionDismissPoint'
+import { closeFixtureLeaves } from '../e2e/helpers/fixtureBoundary'
 
 const files = [
   'githubPhone',
@@ -38,6 +39,7 @@ it.each(files)('parses %s browser scripts after template emission', (file) => {
     openBasePicker,
     basePickerGeometry,
     selectionDismissPoint,
+    closeFixtureLeaves,
     FOLDER: 'Sample probe',
     DIR: 'Sample books',
     BOOK: 'Sample books/sample.epub',
