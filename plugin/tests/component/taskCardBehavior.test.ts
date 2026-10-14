@@ -81,7 +81,9 @@ describe('task card content and date presentation', () => {
     expect(view.attributes('data-abele-anchor')).toBe(`task:${TASK_PATH}`)
     expect(view.findComponent(Markdown).props()).toMatchObject({
       text: 'Water seedlings',
-      filePath: 'Daily/2028-01-31.md',
+      // The words are the task note's own, so their links resolve from it, not from the note
+      // that links the task.
+      filePath: TASK_PATH,
     })
     const chevron = view
       .findAllComponents(Icon)

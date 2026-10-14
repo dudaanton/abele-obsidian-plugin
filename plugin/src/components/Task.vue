@@ -36,7 +36,7 @@
         v-if="contentLoaded"
         trusted
         :text="task.title ?? ''"
-        :file-path="task.filePath"
+        :file-path="task.taskPath"
       />
     </div>
     <!-- State as codes, the words in each one's tooltip. -->
@@ -128,7 +128,7 @@
       <ObsidianMarkdown
         trusted
         :text="task.description"
-        :file-path="task.filePath"
+        :file-path="task.taskPath"
         class="abele-task-view__description"
       />
     </template>
@@ -356,11 +356,9 @@ const isOverdue = computed(() => {
 
 const onCardClick = (e: MouseEvent) => {
   const target = e.target as HTMLElement
-  if (
-    target.closest('a.internal-link') ||
-    target.closest('.abele-obsidian-icon') ||
-    target.closest('label')
-  )
+  // A link in the words is followed as it is in a note — a note, a web address, a tag — and
+  // leaves the task where it is.
+  if (target.closest('a') || target.closest('.abele-obsidian-icon') || target.closest('label'))
     return
   // A drag across the words to select them ends in a click too; it is not a request to open.
   const selection = target.ownerDocument.getSelection()
