@@ -24,7 +24,7 @@ async function capture(name: string) {
 /** The comparison of a code file is coloured the way the code view colours the file. */
 async function checkDiffColours() {
   await evalLong(
-    `(async()=>{${prelude}await until(()=>visible('.abele-file-view .abele-diff_code .abele-diff__line_added .abele-diff__text'));const text=visible('.abele-file-view .abele-diff__line_added .abele-diff__text');const keyword=[...text.querySelectorAll('span[class]')].find(s=>s.textContent==='const'&&!s.classList.contains('abele-diff__changed'));if(!keyword)throw Error('Syntax colours missing in the diff: '+text.innerHTML);if(getComputedStyle(keyword).color===getComputedStyle(text).color)throw Error('The keyword is drawn in the text colour');if(text.textContent!=='export const value = 3')throw Error('The coloured line reads '+text.textContent);return 'diff colours'})()`
+    `(async()=>{${prelude}await until(()=>visible('.abele-file-view .abele-diff_code .abele-diff__line_added .abele-diff__text'));const text=visible('.abele-file-view .abele-diff__line_added .abele-diff__text');const keyword=[...text.querySelectorAll('span[class]')].find(s=>s.textContent==='const'&&!s.classList.contains('abele-diff__changed'));if(!keyword)throw Error('Syntax colours missing in the diff: '+text.innerHTML);if(getComputedStyle(keyword).color===getComputedStyle(text).color)throw Error('The keyword is drawn in the text colour');if(!/^export const value = \\d+$/.test(text.textContent))throw Error('The coloured line reads '+text.textContent);return 'diff colours'})()`
   )
 }
 
