@@ -309,7 +309,11 @@ it('reads the run on a phone: the steps whole-screen, a step over them', async (
       await until(()=>document.querySelector('.abele-trace-step'),'step detail');
       await shot('2026-10-14-trace-step-phone');
       const root=document.querySelector('.abele-trace-run');
-      return {steps:document.querySelectorAll('.abele-trace-run__step').length,detail:!!document.querySelector('.abele-trace-step'),overflow:root.scrollWidth-root.clientWidth}
+      const out={steps:document.querySelectorAll('.abele-trace-run__step').length,detail:!!document.querySelector('.abele-trace-step'),overflow:root.scrollWidth-root.clientWidth};
+      // The phone's layout is saved apart from the desktop's: leave no run tab in it.
+      for(const l of app.workspace.getLeavesOfType('abele-trace-run').concat(app.workspace.getLeavesOfType('abele-trace-value')))l.detach();
+      await app.workspace.requestSaveLayout.run();
+      return out
     })()`)
     expect(seen.steps).toBeGreaterThanOrEqual(2)
     expect(seen.detail).toBe(true)
