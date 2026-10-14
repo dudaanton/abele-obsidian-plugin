@@ -639,6 +639,12 @@
 
 /* One run of columns for the whole text: each paragraph is its own block, and columns on every
    block would balance each one on its own and lay them over one another. */
+/* The surface is a plain block here: two balanced columns inside a flex item are drawn from a
+   stale first pass, the second column's lines over one another. */
+.abele-slide-article > .abele-slide-content {
+  display: block;
+}
+
 .abele-slide-article .abele-slide-region-body {
   display: block;
   columns: 2;
