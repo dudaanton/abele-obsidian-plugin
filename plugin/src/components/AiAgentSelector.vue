@@ -11,26 +11,28 @@
     <!-- The model is the agent's and is not repeated here. Only a chat that answers with a model
          of its own says so, by the agent: the model's name on the chosen wash; pressed, the
          models to change to and the way back to the agent's, at the button. -->
-    <button
+    <Button
       v-if="modelLabel && modelOverridden"
       ref="modelButton"
-      type="button"
+      quiet
+      icon="cpu"
+      :text="modelLabel"
+      :tooltip="modelTooltip"
       class="abele-agent-selector__model"
       aria-haspopup="menu"
       @click="showModels"
     >
-      <Icon icon="cpu" size="xs" :interactive="false" class="abele-agent-selector__model-icon" />
       <span class="abele-agent-selector__model-name">{{ modelLabel }}</span>
-    </button>
+    </Button>
   </div>
 </template>
 
 <script setup lang="ts">
-import { computed, ref, watchEffect } from 'vue'
-import { Menu, Notice, setTooltip } from 'obsidian'
+import { computed, ref, type ComponentPublicInstance } from 'vue'
+import { Menu, Notice } from 'obsidian'
 import { AbeleConfig } from '@/services/AbeleConfig'
 import Dropdown from './obsidian/Dropdown.vue'
-import Icon from './obsidian/Icon.vue'
+import Button from './obsidian/Button.vue'
 import { ChatService } from '@/ai/ChatService'
 import { AgentRegistry } from '@/ai/agents/AgentRegistry'
 import { NodeService } from '@/node/NodeService'
@@ -69,7 +71,8 @@ const options = computed(() => {
 
   // A chat with nothing in it yet can still go to a node: its agents are picked there.
   if (session.value && !session.value.messages.value.length)
-    for (const node of nodes()) listed.push({ value: `${NODE}${node.id}`, display: `On ${node.label}…` })
+    for (const node of nodes())
+      listed.push({ value: `${NODE}${node.id}`, display: `On ${node.label}…` })
 
   return listed
 })
@@ -101,19 +104,15 @@ const agentModelLabel = computed(() => {
   return agent.modelId
 })
 
-const modelButton = ref<HTMLElement>()
-watchEffect(() => {
+const modelButton = ref<ComponentPublicInstance>()
+const modelTooltip = computed(() => {
   const agent = session.value?.agent.value?.name ?? 'the agent'
-  if (modelButton.value)
-    setTooltip(
-      modelButton.value,
-      `This chat answers with ${modelLabel.value}${agentModelLabel.value ? `, not ${agent}'s ${agentModelLabel.value}` : ''}. Change or go back`
-    )
+  return `This chat answers with ${modelLabel.value}${agentModelLabel.value ? `, not ${agent}'s ${agentModelLabel.value}` : ''}. Change or go back`
 })
 
 function showModels() {
   const s = session.value
-  const el = modelButton.value
+  const el = modelButton.value?.$el as HTMLElement | undefined
   if (!s || !el) return
   const menu = new Menu()
   for (const provider of AbeleConfig.getInstance().ai.providers)
@@ -121,12 +120,14 @@ function showModels() {
       menu.addItem((item) =>
         item
           .setTitle(model.name || model.id)
-          .setChecked(s.activeProviderId.value === provider.id && s.activeModelId.value === model.id)
+          .setChecked(
+            s.activeProviderId.value === provider.id && s.activeModelId.value === model.id
+          )
           .setSection('models')
           .onClick(() => {
             s.activeProviderId.value = provider.id
             s.activeModelId.value = model.id
-            s.save()
+            void s.save()
           })
       )
   const agent = s.agent.value?.name ?? 'the agent'
@@ -140,7 +141,7 @@ function showModels() {
       .onClick(() => {
         s.clearOverride('modelId')
         s.clearOverride('providerId')
-        s.save()
+        void s.save()
       })
   )
   const box = el.getBoundingClientRect()
@@ -188,12 +189,13 @@ const onSelect = (agentId: string) => {
 }
 
 // Chosen for this chat, so on the chosen wash: one code for "this chat's own" wherever it shows.
-.abele-agent-selector .abele-agent-selector__model {
+.abele-agent-selector .abele-obsidian-button.abele-agent-selector__model {
   display: inline-flex;
   align-items: center;
   min-width: 0;
   max-width: 12em;
   height: auto;
+  margin: 0;
   padding: var(--size-2-1) var(--size-2-3);
   border: none;
   border-radius: var(--radius-s);
@@ -203,15 +205,20 @@ const onSelect = (agentId: string) => {
   font-size: var(--font-ui-smaller);
   font-weight: var(--font-normal);
   cursor: var(--cursor);
+
+  // A quiet button greys under the pointer; this one stays on its wash, which is what it says.
+  &:hover {
+    background-color: var(--abele-selected-background);
+    color: var(--abele-selected-color);
+  }
 }
 
-.abele-agent-selector__model-icon {
-  flex: 0 0 auto;
-  color: inherit;
+.abele-agent-selector__model .abele-obsidian-button__label {
+  display: flex;
+  min-width: 0;
 }
 
 .abele-agent-selector__model-name {
-  margin-inline-start: var(--size-2-2);
   min-width: 0;
   overflow: hidden;
   text-overflow: ellipsis;
@@ -225,7 +232,7 @@ const onSelect = (agentId: string) => {
  * A container query, because what is narrow is the pane.
  */
 @container (max-width: 420px) {
-  .abele-agent-selector__model-name {
+  .abele-agent-selector__model .abele-obsidian-button__label {
     display: none;
   }
 }

@@ -72,7 +72,7 @@ describe('the agent picker', () => {
 
   // The agent's own model is a fact about the agent and is not repeated in the header; only a
   // chat that answers with a model of its own says so there.
-  it('keeps the agent\'s own model out of the header', () => {
+  it("keeps the agent's own model out of the header", () => {
     const view = mount(AiAgentSelector, { shallow: true })
 
     expect(view.find('.abele-agent-selector__model').exists()).toBe(false)
@@ -85,7 +85,8 @@ describe('the agent picker', () => {
     model.name = ''
     session.activeModelId.value = 'small'
 
-    const view = mount(AiAgentSelector, { shallow: true })
+    // The chip is the kit's Button; its stub has to draw the name it holds.
+    const view = mount(AiAgentSelector, { shallow: true, global: { renderStubDefaultSlot: true } })
 
     expect(view.find('.abele-agent-selector__model').text()).toBe('small')
     model.name = name
@@ -94,7 +95,8 @@ describe('the agent picker', () => {
   it('names a per-chat model override by the agent, as a button for its menu', async () => {
     session.activeModelId.value = 'small'
 
-    const view = mount(AiAgentSelector, { shallow: true })
+    // The chip is the kit's Button; its stub has to draw the name it holds.
+    const view = mount(AiAgentSelector, { shallow: true, global: { renderStubDefaultSlot: true } })
 
     const chip = view.get('.abele-agent-selector__model')
     expect(chip.text()).toBe('Small')
