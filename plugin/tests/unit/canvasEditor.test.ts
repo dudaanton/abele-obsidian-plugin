@@ -1361,3 +1361,38 @@ describe('connections pulled from a card edge', () => {
     expect(s.document.session.graph.edges).toHaveLength(1)
   })
 })
+
+describe('the picked things\' more menu', () => {
+  const framed = (): CanvasGraph => ({
+    nodes: [
+      { id: 'bed', type: 'group', label: 'Bed', x: -20, y: -40, width: 600, height: 240 },
+      ...cards().nodes.slice(0, 2),
+    ],
+    edges: [{ id: 'connection', fromNode: 'alpha', toNode: 'beta' }],
+  })
+  it('duplicates a frame with what is inside beside it, joined the same way', async () => {
+    const s = setup(framed())
+    ;(s.editor as unknown as { selected: Set<string> }).selected = new Set(['bed'])
+    await s.editor.controls.act('duplicate')
+    const graph = s.document.session.graph
+    expect(graph.nodes).toHaveLength(6)
+    const copy = graph.nodes.find((n) => n.type === 'group' && n.id !== 'bed')!
+    expect([copy.x, copy.y, copy.label]).toEqual([-20 + 600 + 40, -40, 'Bed'])
+    expect(graph.edges).toHaveLength(2)
+    expect(s.viewer.selection).toEqual(new Set([copy.id]))
+  })
+  it('deletes a frame together with what is inside it in one step', async () => {
+    const s = setup(framed())
+    ;(s.editor as unknown as { selected: Set<string> }).selected = new Set(['bed'])
+    await s.editor.controls.act('delete-with-contents')
+    expect(s.document.session.graph.nodes).toEqual([])
+    expect(s.document.session.graph.edges).toEqual([])
+    expect(s.document.session.history.undo).toBe(1)
+  })
+  it('sends a card to the back', async () => {
+    const s = setup(cards())
+    ;(s.editor as unknown as { selected: Set<string> }).selected = new Set(['gamma'])
+    await s.editor.controls.act('back')
+    expect(s.document.session.graph.nodes[0].id).toBe('gamma')
+  })
+})

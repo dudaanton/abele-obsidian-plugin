@@ -4,7 +4,8 @@
  */
 import { nanoid } from 'nanoid'
 import { editCanvas, type CanvasOperation, type NodeInput } from './core/edit'
-import { bounds, canvasFingerprint, SHAPES, type Rect, type Shape } from './core/model'
+import { bounds, canvasFingerprint, parentsOf, SHAPES, type Rect, type Shape } from './core/model'
+import { moveIds } from './core/selection'
 import { lineBounds, linesOf } from './core/primitives'
 import { allInkEntries, inkBounds, inkEntries } from './core/ink'
 import { canvasVisibility } from './core/visibility'
@@ -63,6 +64,11 @@ export type CanvasField =
   | 'to-end'
   | 'routing'
   | 'connection-color'
+
+/** The picked things' actions that need no field of their own. */
+export type CanvasAction = 'duplicate' | 'copy' | 'front' | 'back' | 'delete-with-contents'
+/** The gap between what is copied and its copy, which stands beside it to the right. */
+const COPY_GAP = 40
 
 export class CanvasEditor {
   private selected = new Set<string>()
@@ -142,6 +148,11 @@ export class CanvasEditor {
     renameFrame: (id: string, label: string): Promise<void> => this.frameOp(id, 'rename', label),
     foldFrame: (id: string, collapsed: boolean): Promise<void> =>
       this.frameOp(id, collapsed ? 'collapse' : 'expand'),
+    /**
+     * What the picked things' "more" menu does: a copy beside them, the canvas's own JSON on the
+     * clipboard, stacking, and taking a frame away together with what is inside it.
+     */
+    act: (action: CanvasAction): Promise<void> => this.act(action),
     /** A connection let go over nothing, waiting to be told what to make there. */
     drop: (): CanvasDrop | null => this.drop,
     /** Makes a card, a note or a shape at the end of the dropped connection, or nothing. */
@@ -952,6 +963,102 @@ export class CanvasEditor {
     this.viewer.reveal({ ...at, ...size }, { bottom: 96 })
     if (kind !== 'note') this.editText()
     else this.refresh()
+  }
+  private async act(action: CanvasAction): Promise<void> {
+    const graph = this.ports.document()?.session.graph
+    if (!graph || !this.selected.size) return
+    const picked = graph.nodes.filter((n) => this.selected.has(n.id))
+    if (action === 'copy') {
+      const ids = new Set(moveIds(graph, new Set(picked.map((n) => n.id))))
+      const nodes = graph.nodes.filter((n) => ids.has(n.id)),
+        edges = graph.edges.filter(
+          (e) => this.selected.has(e.id) || (ids.has(e.fromNode) && ids.has(e.toNode))
+        )
+      await this.viewer.el.ownerDocument.defaultView?.navigator.clipboard?.writeText(
+        JSON.stringify({ nodes, edges }, null, '\t')
+      )
+      this.ports.notice(`Copied ${nodes.length + edges.length} to the clipboard`)
+      return
+    }
+    const document = this.ready()
+    let ops: CanvasOperation[]
+    let after: Set<string> | null = null
+    if (action === 'front' || action === 'back') {
+      ops = [{ op: 'order', ids: [...this.selected], place: action }]
+    } else if (action === 'delete-with-contents') {
+      const all = moveIds(graph, new Set(picked.map((n) => n.id)))
+      // Inner cards first, so no frame's removal promotes a child that is about to go too.
+      const parents = parentsOf(graph),
+        depth = (id: string) => {
+          let d = 0
+          for (let p = parents.get(id); p; p = parents.get(p)) d++
+          return d
+        }
+      ops = [...all].sort((a, b) => depth(b) - depth(a)).map((id) => ({ op: 'remove', id }))
+      after = new Set()
+    } else {
+      // A copy of the picked cards, frames with what is inside them, and the connections among
+      // them, standing beside them to the right, so a copied frame never lands on its original.
+      const ids = moveIds(graph, new Set(picked.map((n) => n.id))),
+        fresh = new Map([...ids].map((id) => [id, nanoid()])),
+        shift = bounds(graph.nodes.filter((n) => ids.has(n.id))).width + COPY_GAP
+      const parents = parentsOf(graph)
+      const nodes = graph.nodes
+        .filter((n) => ids.has(n.id))
+        // Frames before what they hold, an outer frame before an inner one.
+        .sort(
+          (a, b) =>
+            Number(b.type === 'group') - Number(a.type === 'group') ||
+            (a.type === 'group' && b.type === 'group'
+              ? b.width * b.height - a.width * a.height
+              : 0)
+        )
+      ops = [
+        ...nodes.map(
+          (n): CanvasOperation => ({
+            op: 'add_node',
+            node: {
+              id: fresh.get(n.id)!,
+              kind:
+                n.type === 'file'
+                  ? 'note'
+                  : n.type === 'text' && n.styleAttributes?.shape
+                    ? 'shape'
+                    : (n.type as 'text' | 'link' | 'group'),
+              ...(n.type === 'text' ? { label: n.text ?? '' } : {}),
+              ...(n.type === 'group' ? { label: n.label ?? '' } : {}),
+              ...(n.file ? { file: n.file } : {}),
+              ...(n.subpath ? { subpath: n.subpath } : {}),
+              ...(n.url ? { url: n.url } : {}),
+              ...(n.styleAttributes?.shape ? { shape: n.styleAttributes.shape as Shape } : {}),
+              ...(n.color ? { color: n.color } : {}),
+              ...(fresh.has(parents.get(n.id) ?? '')
+                ? { parent: fresh.get(parents.get(n.id)!) }
+                : {}),
+              x: n.x + shift,
+              y: n.y,
+              width: n.width,
+              height: n.height,
+            },
+          })
+        ),
+        ...graph.edges
+          .filter((e) => ids.has(e.fromNode) && ids.has(e.toNode))
+          .map(
+            (e): CanvasOperation => ({
+              op: 'connect',
+              edge: { ...e, id: nanoid(), fromNode: fresh.get(e.fromNode)!, toNode: fresh.get(e.toNode)! },
+            })
+          ),
+      ]
+      after = new Set(picked.map((n) => fresh.get(n.id)!))
+    }
+    if (!ops.length) return
+    document.beginDraft()
+    this.update(document, ops)
+    document.finishDraft()
+    if (after) this.selected = after
+    await this.saving(() => this.ports.publish())
   }
   /** Renames, folds or unfolds one frame as a single step to undo. */
   private async frameOp(

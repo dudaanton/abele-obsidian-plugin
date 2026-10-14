@@ -96,6 +96,13 @@ export const operationSchema = z.discriminatedUnion('op', [
     .strict(),
   z.object({ op: z.literal('ungroup'), id }).strict(),
   z.object({ op: z.literal('collapse'), id, collapsed: z.boolean() }).strict(),
+  z
+    .object({
+      op: z.literal('order'),
+      ids: z.array(id).min(1),
+      place: z.enum(['front', 'back']),
+    })
+    .strict(),
   z.object({ op: z.literal('style'), id, styleAttributes: object }).strict(),
 ])
 export type CanvasOperation = z.input<typeof operationSchema>
@@ -360,6 +367,19 @@ export function editCanvas(
         for (const entry of ink) attachInk(graph, entry, op.id)
         rebuild()
         parentsOf(graph)
+      } else if (op.op === 'order') {
+        // Cards and connections keep their stacking in file order: the last is drawn on top.
+        // Frames stay under cards whatever their place, as Obsidian Canvas draws them.
+        const ids = new Set(op.ids)
+        for (const id of ids) known(id, elements)
+        const restack = <T extends { id: string }>(list: T[]): T[] => {
+          const moved = list.filter((x) => ids.has(x.id)),
+            rest = list.filter((x) => !ids.has(x.id))
+          return op.place === 'front' ? [...rest, ...moved] : [...moved, ...rest]
+        }
+        graph.nodes = restack(graph.nodes)
+        graph.edges = restack(graph.edges)
+        rebuild()
       } else if (op.op === 'collapse') {
         const node = known(op.id, nodes)
         if (node.type !== 'group') throw new Error('Only groups can collapse')

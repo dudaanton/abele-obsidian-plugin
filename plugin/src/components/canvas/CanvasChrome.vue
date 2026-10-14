@@ -11,7 +11,7 @@
           class="canvas-control-item abele-canvas-chrome__save"
           :class="`is-${saveState}`"
           :aria-label="saveState === 'saving' ? 'Saving' : 'Not saved: open for what to do'"
-          @click="saveMenu"
+          @click="menus.saveMenu($event, c)"
         >
           <span class="abele-canvas-chrome__save-dot" />
         </div>
@@ -86,7 +86,7 @@
       <button
         class="clickable-icon abele-canvas-chrome__swatch-button"
         aria-label="Colour"
-        @click="colourMenu($event)"
+        @click="menus.colourMenu($event, c, view)"
       >
         <span class="canvas-color-picker-item" :class="colourClass(currentColour)" />
       </button>
@@ -94,7 +94,7 @@
         v-if="one && (kind === 'text' || kind === 'shape')"
         :icon="SHAPE_ICONS[currentShape] ?? 'square'"
         tooltip="Shape"
-        @click="shapeMenu($event, 'change')"
+        @click="menus.shapeMenu($event, c, view)"
       />
       <ChromeIcon
         v-if="one && (kind === 'text' || kind === 'shape')"
@@ -114,9 +114,9 @@
           v-if="kind === 'connection'"
           :icon="ROUTE_ICONS[value('routing')] ?? 'spline'"
           tooltip="Line: straight, elbow or curved"
-          @click="routeMenu($event)"
+          @click="menus.routeMenu($event, c)"
         />
-        <ChromeIcon icon="move-right" tooltip="Arrow ends" @click="endsMenu($event)" />
+        <ChromeIcon icon="move-right" tooltip="Arrow ends" @click="menus.endsMenu($event, c)" />
         <ChromeIcon
           icon="arrow-right-left"
           tooltip="Reverse the arrows"
@@ -149,7 +149,7 @@
           @click="press('Ungroup selected group')"
         />
       </template>
-      <ChromeIcon icon="more-horizontal" tooltip="More" @click="moreMenu($event)" />
+      <ChromeIcon icon="more-horizontal" tooltip="More" @click="menus.moreMenu($event, c, view)" />
     </div>
 
     <!-- The pen's colours and widths, over the tools while a pen is in hand. -->
@@ -220,15 +220,25 @@
 
 <script setup lang="ts">
 import { computed, defineComponent, h, onBeforeUnmount, onMounted, ref, shallowRef } from 'vue'
-import { Menu, Notice, Platform, setIcon, setTooltip } from 'obsidian'
+import { Menu, Platform, setIcon, setTooltip } from 'obsidian'
 import type { CanvasEditor, CanvasField } from '@/canvas/Editor'
 import type { CanvasViewer } from '@/canvas/Viewer'
 import { stepsOf } from '@/canvas/core/steps'
-import { SHAPES, type Shape } from '@/canvas/core/model'
 import { allInkEntries } from '@/canvas/core/ink'
 import { zoomAt } from '@/drawing/camera'
 import ChromeIcon from '../obsidian/Icon.vue'
 import CanvasFrames from './CanvasFrames.vue'
+import {
+  COLOURS,
+  COLOUR_NAMES,
+  PHONE_ORDER,
+  ROUTE_ICONS,
+  SHAPE_ICONS,
+  SLOTS,
+  THICKNESSES,
+  type Slot,
+} from './chromeTools'
+import * as menus from './chromeMenus'
 
 const props = defineProps<{ editor: CanvasEditor; viewer: CanvasViewer }>()
 const c = props.editor.controls
@@ -282,157 +292,6 @@ const ToolButton = defineComponent({
   },
 })
 
-type Slot = {
-  id: string
-  /** The family's members: a tool of the editor, or an action that adds something. */
-  members: { id: string; label: string; icon: string; tooltip: string; key?: string }[]
-}
-const SHAPE_ICONS: Record<string, string> = {
-  rectangle: 'square',
-  pill: 'rectangle-horizontal',
-  diamond: 'diamond',
-  parallelogram: 'square-dashed',
-  circle: 'circle',
-  'predefined-process': 'columns-3',
-  document: 'file',
-  database: 'database',
-}
-const ROUTE_ICONS: Record<string, string> = {
-  direct: 'minus',
-  square: 'corner-down-right',
-  bezier: 'spline',
-}
-const COLOURS = ['', '1', '2', '3', '4', '5', '6']
-const COLOUR_NAMES: Record<string, string> = {
-  '': 'the text colour',
-  1: 'red',
-  2: 'orange',
-  3: 'yellow',
-  4: 'green',
-  5: 'cyan',
-  6: 'purple',
-}
-const THICKNESSES = ['fine', 'medium', 'bold']
-const SLOTS: Slot[][] = [
-  [
-    {
-      id: 'select',
-      members: [
-        {
-          id: 'select',
-          label: 'Select canvas objects',
-          icon: 'mouse-pointer-2',
-          tooltip: 'Select (V)',
-        },
-      ],
-    },
-    {
-      id: 'pan',
-      members: [
-        {
-          id: 'pan',
-          label: 'Navigate canvas',
-          icon: 'hand',
-          tooltip: 'Hand: move the canvas (H, or hold Space)',
-        },
-      ],
-    },
-  ],
-  [
-    {
-      id: 'card',
-      members: [{ id: 'card', label: 'Add text card', icon: 'sticky-note', tooltip: 'Card (T)' }],
-    },
-    {
-      id: 'note',
-      members: [
-        {
-          id: 'note',
-          label: 'Add note or attachment',
-          icon: 'file-text',
-          tooltip: 'Note or file from the vault (N)',
-        },
-      ],
-    },
-    {
-      id: 'shape',
-      members: SHAPES.map((s) => ({
-        id: s,
-        label: 'Add canvas shape',
-        icon: SHAPE_ICONS[s] ?? 'square',
-        tooltip: `Shape: ${s.replace(/-/g, ' ')} (R)`,
-      })),
-    },
-    {
-      id: 'connect',
-      members: [
-        {
-          id: 'connect',
-          label: 'Draw connection',
-          icon: 'spline',
-          tooltip: 'Connect two cards (A)',
-        },
-        { id: 'line', label: 'Draw free line', icon: 'minus', tooltip: 'Line' },
-        { id: 'arrow', label: 'Draw free arrow', icon: 'move-up-right', tooltip: 'Arrow' },
-      ],
-    },
-    {
-      id: 'frame',
-      members: [
-        {
-          id: 'frame',
-          label: 'Draw frame',
-          icon: 'frame',
-          tooltip: 'Frame: draw around cards (F)',
-        },
-      ],
-    },
-  ],
-  [
-    {
-      id: 'pen',
-      members: [
-        { id: 'pen', label: 'Draw with pen', icon: 'pen-line', tooltip: 'Pen (P)' },
-        {
-          id: 'marker',
-          label: 'Draw with marker',
-          icon: 'highlighter',
-          tooltip: 'Marker (P again)',
-        },
-      ],
-    },
-    {
-      id: 'eraser',
-      members: [
-        {
-          id: 'eraser',
-          label: 'Erase whole strokes',
-          icon: 'eraser',
-          tooltip: 'Eraser: whole strokes (E)',
-        },
-        {
-          id: 'partial-eraser',
-          label: 'Erase part of strokes',
-          icon: 'eraser',
-          tooltip: 'Eraser: part of a stroke (E again)',
-        },
-      ],
-    },
-    {
-      id: 'lasso',
-      members: [
-        {
-          id: 'lasso',
-          label: 'Lasso canvas objects',
-          icon: 'lasso',
-          tooltip: 'Lasso: circle cards and ink (L)',
-        },
-      ],
-    },
-  ],
-]
-/** On a phone seven slots fit; the rest wait in More, in this order of need. */
-const PHONE_ORDER = ['select', 'pen', 'eraser', 'shape', 'card', 'note']
 
 const tick = ref(0)
 const phone = Platform.isPhone
@@ -480,6 +339,16 @@ const currentColour = computed(() => {
   const edge = graph().edges.find((e) => e.id === picked.value.ids[0])
   return edge?.color ?? ''
 })
+/** What is picked, as the menus over it read it. */
+const view = computed<menus.PickedView>(() => ({
+  ids: picked.value.ids,
+  kinds: kinds.value,
+  one: one.value,
+  kind: kind.value,
+  node: pickedNode.value,
+  shape: currentShape.value,
+  colour: currentColour.value,
+}))
 const colourClass = (v: string) => (v ? `mod-canvas-color-${v}` : 'abele-canvas-chrome__ink')
 
 /** The bar stands over the picked thing, on the screen, kept inside the stage. */
@@ -560,7 +429,7 @@ function familyMenu(slot: Slot, e: MouseEvent) {
         .setChecked(m === member(slot))
         .onClick(() => run(slot, m))
     )
-  showAt(menu, e)
+  menus.showAt(menu, e)
 }
 function moreTools(e: MouseEvent) {
   const menu = new Menu()
@@ -572,189 +441,8 @@ function moreTools(e: MouseEvent) {
         .setChecked(slotActive(slot))
         .onClick(() => run(slot, member(slot)))
     )
-  showAt(menu, e)
+  menus.showAt(menu, e)
 }
-/** A menu opens at the button that was pressed, under it, or over it at the foot. */
-function showAt(menu: Menu, e: MouseEvent) {
-  const r = (e.currentTarget as HTMLElement).getBoundingClientRect()
-  const low = r.top > window.innerHeight / 2
-  menu.showAtPosition({
-    x: r.left,
-    y: low ? r.top : r.bottom,
-    left: false,
-    overlap: false,
-    width: r.width,
-  })
-}
-
-function colourMenu(e: MouseEvent) {
-  const menu = new Menu()
-  for (const v of COLOURS)
-    menu.addItem((item) =>
-      item
-        .setTitle(v ? COLOUR_NAMES[v][0].toUpperCase() + COLOUR_NAMES[v].slice(1) : 'No colour')
-        .setIcon('circle')
-        .setChecked(currentColour.value === v)
-        .onClick(() => applyColour(v))
-    )
-  showAt(menu, e)
-}
-function applyColour(v: string) {
-  if (kind.value === 'connection' || kind.value === 'line') {
-    set('connection-color', v)
-    return press('Apply connection style')
-  }
-  if (one.value && (kind.value === 'text' || kind.value === 'shape')) {
-    set('shape-color', v)
-    set('shape', currentShape.value)
-    return press('Apply selected shape')
-  }
-  set('ink-color', v)
-  press('Recolor canvas selection')
-}
-function shapeMenu(e: MouseEvent, _: 'change') {
-  const menu = new Menu()
-  for (const s of SHAPES)
-    menu.addItem((item) =>
-      item
-        .setTitle(s[0].toUpperCase() + s.slice(1).replace(/-/g, ' '))
-        .setIcon(SHAPE_ICONS[s] ?? 'square')
-        .setChecked(currentShape.value === s)
-        .onClick(() => {
-          set('shape', s)
-          set('shape-color', currentColour.value)
-          press('Apply selected shape')
-        })
-    )
-  showAt(menu, e)
-}
-function routeMenu(e: MouseEvent) {
-  const menu = new Menu()
-  for (const [v, title] of [
-    ['direct', 'Straight'],
-    ['square', 'Elbow'],
-    ['bezier', 'Curved'],
-  ])
-    menu.addItem((item) =>
-      item
-        .setTitle(title)
-        .setIcon(ROUTE_ICONS[v])
-        .setChecked(value('routing') === v)
-        .onClick(() => {
-          set('routing', v)
-          press('Apply connection style')
-        })
-    )
-  showAt(menu, e)
-}
-function endsMenu(e: MouseEvent) {
-  const menu = new Menu()
-  for (const [from, to, title, icon] of [
-    ['none', 'arrow', 'Arrow at the end', 'move-right'],
-    ['arrow', 'arrow', 'Arrows at both ends', 'move-horizontal'],
-    ['none', 'none', 'No arrows', 'minus'],
-  ])
-    menu.addItem((item) =>
-      item
-        .setTitle(title)
-        .setIcon(icon)
-        .setChecked(value('from-end') === from && value('to-end') === to)
-        .onClick(() => {
-          set('from-end', from)
-          set('to-end', to)
-          press('Apply connection style')
-        })
-    )
-  showAt(menu, e)
-}
-function moreMenu(e: MouseEvent) {
-  const menu = new Menu()
-  const later = (title: string, icon: string) =>
-    menu.addItem((item) =>
-      item
-        .setTitle(title)
-        .setIcon(icon)
-        .onClick(() => new Notice(`${title}: not in this prototype yet`))
-    )
-  later('Duplicate', 'copy-plus')
-  later('Copy', 'copy')
-  menu.addSeparator()
-  later('Bring to front', 'bring-to-front')
-  later('Send to back', 'send-to-back')
-  menu.addSeparator()
-  later('Attach to the chat as a picture', 'paperclip')
-  later('Ask the agent about this', 'message-circle-question')
-  later('Export the selection', 'image-down')
-  later('Copy embed of the selection', 'clipboard-copy')
-  menu.addSeparator()
-  menu.addItem((item) =>
-    item
-      .setTitle('Delete')
-      .setIcon('trash-2')
-      .setWarning(true)
-      .onClick(() =>
-        press(
-          state('Delete selected card').disabled
-            ? 'Delete canvas selection'
-            : 'Delete selected card'
-        )
-      )
-  )
-  showAt(menu, e)
-}
-/**
- * A connection let go over nothing: a menu where it was let go, to make there a card, a note or
- * the shape last used, joined to it. Closed without a choice, nothing is made.
- */
-function dropMenu() {
-  const drop = c.drop()
-  if (!drop) return
-  let chosen = false
-  const menu = new Menu()
-  const add = (title: string, icon: string, kind: 'card' | 'note' | 'shape') =>
-    menu.addItem((item) =>
-      item
-        .setTitle(title)
-        .setIcon(icon)
-        .onClick(() => {
-          chosen = true
-          void c.dropAdd(kind)
-        })
-    )
-  add('Card', 'sticky-note', 'card')
-  add('Note or file', 'file-text', 'note')
-  const shape = value('shape') || 'rectangle'
-  add(`Shape: ${shape.replace(/-/g, ' ')}`, SHAPE_ICONS[shape] ?? 'square', 'shape')
-  menu.onHide(() => {
-    if (!chosen) void c.dropAdd(null)
-  })
-  menu.showAtPosition({ x: drop.screen.x, y: drop.screen.y })
-}
-let dropShown: unknown = null
-function saveMenu(e: MouseEvent) {
-  const menu = new Menu()
-  menu.addItem((i) =>
-    i
-      .setTitle('Retry')
-      .setIcon('refresh-cw')
-      .onClick(() => press('Retry save'))
-  )
-  menu.addItem((i) =>
-    i
-      .setTitle('Keep the draft')
-      .setIcon('archive')
-      .onClick(() => press('Keep text draft'))
-  )
-  menu.addItem((i) =>
-    i
-      .setTitle('Discard the draft…')
-      .setIcon('trash-2')
-      .setWarning(true)
-      .onClick(() => press('Discard local draft'))
-  )
-  showAt(menu, e)
-}
-
 function zoom(factor: number) {
   const s = props.viewer.stage
   props.viewer.setCamera(zoomAt(props.viewer.camera, s.clientWidth / 2, s.clientHeight / 2, factor))
@@ -804,6 +492,7 @@ const watchCamera = () => {
   }
   frame = window.requestAnimationFrame(watchCamera)
 }
+let dropShown: unknown = null
 const off = shallowRef<() => void>()
 const blur = () => {
   if (c.editing() && !state('Save text').disabled) press('Save text')
@@ -818,7 +507,7 @@ onMounted(() => {
     const drop = c.drop()
     if (drop && drop !== dropShown) {
       dropShown = drop
-      dropMenu()
+      menus.dropMenu(c)
     } else if (!drop) dropShown = null
   })
   c.textField().addEventListener('blur', blur)

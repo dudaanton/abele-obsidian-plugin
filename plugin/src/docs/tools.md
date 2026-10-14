@@ -322,7 +322,8 @@ Free primitives may be revealed, highlighted and focused by id in walkthrough st
   including unsaved native changes and changes arriving at the final storage boundary. sequential, all-or-nothing batch. Ops are `add_node {node}`, `update
   {id,patch}`, `move {ids,dx,dy}`, `scale {ids,x,y,factor}`, `add_line {line}`, `add_ink {stroke,node?}`,
   `update_ink {id,patch}`, `attach_ink {id,node?}`, `remove {id}`, `connect {edge}`, `group {id,label?,ids}`, `ungroup {id}`, `collapse
-  {id,collapsed}`, and `style {id,styleAttributes}`. Move translates selected nodes and group
+  {id,collapsed}`, `order {ids,place}` (`front` or `back`: stacking of cards and connections), and
+  `style {id,styleAttributes}`. Move translates selected nodes and group
   descendants once, even when a child is also selected, preserving group membership. Add group/node ids before connecting to them.
   New unpositioned nodes trigger automatic layout. Update/style merge `abele` and `styleAttributes`
   instead of erasing their other fields. An error names the failing op index (from zero), and may

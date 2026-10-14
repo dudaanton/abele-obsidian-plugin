@@ -92,3 +92,18 @@ describe('a folded frame', () => {
     expect(inkEntries(folded)).toEqual([])
   })
 })
+
+describe('stacking', () => {
+  it('brings picked cards to the front and sends them to the back, in file order', () => {
+    const graph = garden()
+    const front = editCanvas(graph, [{ op: 'order', ids: ['mint'], place: 'front' }]).graph
+    expect(front.nodes.at(-1)?.id).toBe('mint')
+    const back = editCanvas(graph, [{ op: 'order', ids: ['tray', 'sage'], place: 'back' }]).graph
+    expect(back.nodes.slice(0, 2).map((n) => n.id)).toEqual(['sage', 'tray'])
+  })
+  it('refuses an unknown id', () => {
+    expect(() => editCanvas(garden(), [{ op: 'order', ids: ['fern'], place: 'front' }])).toThrow(
+      /Unknown id fern/
+    )
+  })
+})
