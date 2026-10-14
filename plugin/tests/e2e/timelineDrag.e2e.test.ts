@@ -103,7 +103,8 @@ const probe = (footer: boolean) => String.raw`(async () => {
     report.weekdays=shortWeekdays()
     report.stableLabels=initialLabels.every(before=>labels().some(after=>after.day===before.day && after.text===before.text && Math.abs(after.height-before.height)<=1))
     await picture('drag')
-    report.hiddenVisible=!!root.querySelector('[data-abele-anchor="task:'+folder+'/Sample completed.md"]') && !!root.querySelector('[data-abele-anchor="task:'+folder+'/Sample past.md"]')
+    // The month brings the folded past back, but not what the completed switch hides.
+    report.hiddenVisible=!root.querySelector('[data-abele-anchor="task:'+folder+'/Sample completed.md"]') && !!root.querySelector('[data-abele-anchor="task:'+folder+'/Sample past.md"]')
     const usableBottom=()=>Math.min(scroller.getBoundingClientRect().bottom,...[...document.querySelectorAll('.mobile-navbar,.mobile-toolbar')].flatMap(el=>{const r=el.getBoundingClientRect();return r.height && r.top>scroller.getBoundingClientRect().top && r.top<scroller.getBoundingClientRect().bottom?[r.top]:[]}))
     const edge=usableBottom()-8
     pointer('pointermove',x,edge); const start=scroller.scrollTop
