@@ -99,12 +99,8 @@ function command(action: string) {
   const b = binding.value
   if (!b) return
   if (action !== 'restart' || !b.rerun) return void run(() => b.controller.command(action))
-  const again = b.rerun
-  // A program still going is stopped first, so the new one takes the points to itself.
-  void run(async () => {
-    if (b.controller.session.status !== 'exited') await b.controller.command('stop')
-    await again()
-  })
+  // Restart stops a program still going, then starts it again with its points.
+  void run(b.rerun)
 }
 function breakpoint(file: string, line: number) {
   const b = binding.value

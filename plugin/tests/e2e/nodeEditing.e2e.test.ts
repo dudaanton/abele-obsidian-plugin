@@ -10,7 +10,7 @@ const wait = (ms: number) => new Promise((r) => setTimeout(r, ms))
 const prelude = `const wait=ms=>new Promise(r=>setTimeout(r,ms)),until=async fn=>{for(let i=0;i<200;i++){if(fn())return;await wait(50)}throw Error('File editor did not converge: '+fn.toString()+'; '+document.querySelector('.abele-node-files')?.textContent.slice(0,1000))};
 const nodes=window.__abeleTest.NodeService.getInstance(),chats=window.__abeleTest.ChatService.getInstance();
 const press=text=>[...document.querySelectorAll('.modal button')].find(b=>b.textContent.trim()===text).click();
-const enter=async text=>{const editor=document.querySelector('.abele-node-files [contenteditable="true"]');editor.focus();document.execCommand('selectAll');document.execCommand('insertText',false,text);await wait(300)};
+const enter=async text=>{const editable=()=>document.querySelector('.abele-node-files [contenteditable="true"]');await until(editable);const editor=editable();editor.focus();document.execCommand('selectAll');document.execCommand('insertText',false,text);await wait(300)};
 const close=async()=>{const button=[...document.querySelectorAll('.modal button')].find(b=>b.textContent.trim()==='Close');if(button)button.click();else document.body.dispatchEvent(new KeyboardEvent('keydown',{key:'Escape',code:'Escape',keyCode:27,bubbles:true}));await until(()=>!document.querySelector('.modal'))};`
 it('edits from the node code view, restores local drafts, and checks a lost save without overwriting an external edit', async () => {
   const cli = process.env.ABELE_NODE_CLI

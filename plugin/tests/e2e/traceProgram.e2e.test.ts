@@ -274,7 +274,7 @@ it('runs a JavaScript program picked from Debug, records at a point set in its m
     press(restartButton());
     await until(()=>{const id=api.DebuggerService.instance.active.value.controller.snapshot?.debug_session_id;return id&&id!==first},'a new session',600);
     await goOn();
-    await until(()=>document.querySelectorAll('.abele-trace-run__steps > .abele-trace-run__step').length===3,'the second run opened by itself',600);
+    await until(()=>document.querySelectorAll('.abele-trace-run__steps > .abele-trace-run__step').length===3,'the second run opened by itself',600).catch(()=>{throw Error('second run did not open: '+debugState())});
     out.again={session:true,steps:document.querySelectorAll('.abele-trace-run__steps > .abele-trace-run__step').length};
     return out
   })()`)
@@ -352,7 +352,7 @@ it('on a phone: the picker offers the file open in a tab, the stack folds Node, 
       await shot('2026-10-14-trace4-restart-phone');
       const panel=document.querySelector('.abele-debug-panel'),overflow=panel.scrollWidth-panel.clientWidth;
       press(document.querySelector('.abele-debug-panel [aria-label^="Stop"]'));
-      await until(()=>api.DebuggerService.instance.active.value.controller.session.status==='exited','program stopped',600);
+      await until(()=>api.DebuggerService.instance.active.value.controller.session.status==='exited','program stopped',600).catch(()=>{throw Error('program not stopped: '+debugState())});
       // The phone's layout is saved apart from the desktop's: leave no tab of this file in it.
       for(const t of ['abele-trace-run','abele-trace-value','abele-node-file','abele-debug-view'])for(const l of app.workspace.getLeavesOfType(t))l.detach();
       await app.workspace.requestSaveLayout.run();

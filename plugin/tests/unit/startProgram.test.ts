@@ -128,6 +128,54 @@ describe('running a program under the debugger', () => {
     )
   })
 
+  it('stops the program still going on Restart and carries its breakpoints and record points to the new run', async () => {
+    fakeWorkspace()
+    const { presenter, calls } = fakePresenter()
+    await startProgram(presenter, 'src/page.js', [], target, async () => {})
+    const binding = DebuggerService.instance.binding(presenter)
+    const order: string[] = []
+    vi.spyOn(binding.controller, 'knownBreakpoints').mockReturnValue([
+      {
+        id: 'b-stop',
+        sourceId: 'old-1',
+        file: 'src/page.js',
+        line: 9,
+        requestedLine: 8,
+        state: 'set',
+        condition: 'n > 1',
+      },
+      {
+        id: 'b-rec',
+        sourceId: 'old-2',
+        file: 'src/service.js',
+        line: 4,
+        requestedLine: 4,
+        state: 'set',
+      },
+    ] as never)
+    Object.defineProperty(binding.controller, 'session', { value: { status: 'paused' } })
+    vi.spyOn(binding.controller, 'command').mockImplementation(async (a: string) => {
+      order.push(a)
+      return undefined as never
+    })
+    const setBreakpoint = vi
+      .spyOn(binding.controller, 'setBreakpoint')
+      .mockImplementation(async () => undefined as never)
+    const savePoint = vi.fn(async () => {})
+    binding.trace = {
+      points: [{ breakpoint_id: 'b-rec', take: ['sum'], note: 'the running total' }],
+      savePoint,
+      dispose: () => {},
+    } as never
+    await binding.rerun!()
+    expect(order).toEqual(['stop'])
+    const starts = calls.filter(([m]) => m === 'debugger.v1.start').map(([, p]) => p)
+    // The file a point stands in is taken by the new run even when no tab shows it.
+    expect(starts[1].sources).toEqual(['src/service.js'])
+    expect(setBreakpoint).toHaveBeenCalledWith(expect.any(String), 's1', 8, 'n > 1')
+    expect(savePoint).toHaveBeenCalledWith('s2', 4, { take: ['sum'], note: 'the running total' })
+  })
+
   it('starts it, shows the session its code runs in and opens its file with the margin', async () => {
     const { opened } = fakeWorkspace()
     const { presenter, calls } = fakePresenter()

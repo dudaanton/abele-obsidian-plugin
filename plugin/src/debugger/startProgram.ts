@@ -9,7 +9,7 @@ import { readChatBinding } from '@/node/expectedTarget'
 import { NODE_FILE_VIEW, NodePathTabSchema, openNodePathTab } from '@/node/nodePathNavigation'
 import { NodeSuggestModal, type NodeSuggestion } from '@/components/nodeWork/NodeSuggestModal'
 import { GlobalStore } from '@/stores/GlobalStore'
-import { DebuggerService } from './DebuggerService'
+import { DebuggerService, type DebuggerBinding } from './DebuggerService'
 
 const id = z.string().min(1).max(128)
 export const StartResultSchema = z.object({
@@ -65,12 +65,39 @@ export function defaultProgram(open: string[]) {
   return open.find((path) => RUNNABLE.test(path)) ?? ''
 }
 
+/** A point of a run, carried to the program's next run: where it stands, what it takes if it records. */
+export interface CarriedPoint {
+  path: string
+  line: number
+  condition?: string
+  take?: string[]
+  note?: string
+}
+
+/** The breakpoints and record points the program's session holds now, by file and line. */
+export function carriedPoints(binding: DebuggerBinding): CarriedPoint[] {
+  return binding.controller.knownBreakpoints().flatMap((b) => {
+    if (!b.file) return []
+    const point = binding.trace?.points.find((p) => p.breakpoint_id === b.id)
+    return [
+      {
+        path: b.file,
+        line: b.requestedLine,
+        ...(b.condition ? { condition: b.condition } : {}),
+        ...(point ? { take: point.take } : {}),
+        ...(point?.note ? { note: point.note } : {}),
+      },
+    ]
+  })
+}
+
 export async function startProgram(
   presenter: NodeChatPresenter,
   program: string,
   sources: string[],
   target: PathTarget,
-  show: (sessionId: string) => Promise<void>
+  show: (sessionId: string) => Promise<void>,
+  carry: CarriedPoint[] = []
 ) {
   const client = presenter.connection.client
   const started = StartResultSchema.parse(
@@ -99,9 +126,31 @@ export async function startProgram(
       snapshot.incarnation,
       target
     )
-  // The node has no restart of its own: Restart in the panel starts the same program again.
-  service.binding(presenter).rerun = () => startProgram(presenter, program, sources, target, show)
+  // The node has no restart of its own: Restart in the panel stops the program still going and
+  // starts the same one again, with the points it had.
+  const binding = service.binding(presenter)
+  binding.rerun = async () => {
+    const carried = carriedPoints(binding)
+    if (binding.controller.session.status !== 'exited') await binding.controller.command('stop')
+    const taken = [...sources, ...carried.map((c) => c.path)]
+    return startProgram(presenter, program, [...new Set(taken)], target, show, carried)
+  }
   await show(sessionId)
+  // Held on its first line, the new run takes the points before any of its code runs.
+  for (const c of carry) {
+    const sourceId = started.sources.find((s) => s.path === c.path)?.source_id
+    if (!sourceId) {
+      console.debug('[debugger] Point not carried: the node did not take its file', c)
+      continue
+    }
+    if (c.take && binding.trace)
+      await binding.trace.savePoint(sourceId, c.line, {
+        take: c.take,
+        ...(c.condition ? { when: c.condition } : {}),
+        ...(c.note ? { note: c.note } : {}),
+      })
+    else await binding.controller.setBreakpoint(crypto.randomUUID(), sourceId, c.line, c.condition)
+  }
   const debugOf = (sourceId: string) => ({
     conversationId: presenter.reference.sessionId,
     sourceId,
