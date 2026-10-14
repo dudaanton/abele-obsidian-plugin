@@ -324,6 +324,13 @@ the property names drawn as a counter, the number with − and + beside it, whil
 task priority, labels and a list of links with a button adding one of the usual groups — and
 `refreshDelay` is how long the plugin waits before rebuilding what a note shows.
 
+`attachmentRules` is an ordered list of `{ notesFolder, attachmentsFolder }`: a file pasted,
+dropped or otherwise saved as an attachment of a note under `notesFolder` (at any depth; `/` is
+the whole vault) goes to `attachmentsFolder` instead of Obsidian's own attachment folder, and of
+several rules holding a note the one on the deepest folder wins. `attachmentsFolder` takes the
+values Obsidian's attachment setting does: `/`, `./`, `./sub` or a vault path. A rule with an
+empty folder applies to nothing; notes under no rule keep Obsidian's setting.
+
 `headerButtons` are buttons on notes, each `{ id, name, icon, runs, commandId, scriptName, params,
 enabled, iconOnly, allNotes, noteTypes, folders, tags, otherFiles, conditions, conditionMode }`.
 `runs: "command"` (what a new one is) runs `commandId`, any command id Obsidian has — a script's
