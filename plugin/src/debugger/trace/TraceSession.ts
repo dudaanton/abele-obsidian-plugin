@@ -32,7 +32,7 @@ export class TraceSession {
   private refreshing?: Promise<void>
   private readonly endedListeners = new Set<(runId: string) => void>()
   /** While a run is written its steps and time go on, and its end comes with no event of its own. */
-  private following?: ReturnType<typeof setTimeout>
+  private following?: number
   private disposed = false
   constructor(
     readonly rpc: TraceRpc,
@@ -84,17 +84,17 @@ export class TraceSession {
   }
 
   private follow() {
-    clearTimeout(this.following)
+    window.clearTimeout(this.following)
     this.following = undefined
     if (this.disposed || !this.status?.recording) return
-    this.following = setTimeout(() => {
+    this.following = window.setTimeout(() => {
       this.following = undefined
       void this.refresh().catch((e) => console.debug('[trace] Run not read again', e))
     }, FOLLOW_MS)
   }
   dispose() {
     this.disposed = true
-    clearTimeout(this.following)
+    window.clearTimeout(this.following)
   }
 
   /** A stop on record points only: the node takes the values and lets the program go on, so it
