@@ -1785,10 +1785,12 @@ was left: the scroll and the cursor, by path. A note opened plainly comes back t
 at a heading, a block, a search result, a line or a book's highlight goes to that instead.
 Nothing about it is written into notes or synced, a rename carries the place along and a delete
 drops it. The local footer-view memory also keeps expanded list pages, opened task descriptions,
-whether all past timeline days were revealed (`calendarPast`), and whether the note’s logs
+whether the timeline's overdue fold is open (`calendarOverdue`), and whether the note’s logs
 use the month view (`logsCalendar`). The log view choice follows a renamed note and is kept
-locally rather than in note content, independently of `rememberNotePlaces`. Revealed history
-is drawn again before restoring a saved past-task anchor; an older saved day boundary migrates to all history open.
+locally rather than in note content, independently of `rememberNotePlaces`. An open overdue fold
+is drawn again before restoring a saved overdue-task anchor. Past days with done tasks show only
+while the completed switch shows done tasks, which is not remembered; an older `calendarPast` or
+saved day boundary is still read but no longer opens anything.
 With place restoration off, the timeline starts at today. Search windows are not remembered.
 
 ## Places

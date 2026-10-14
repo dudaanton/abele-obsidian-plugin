@@ -92,14 +92,16 @@ describe('completion where external events are drawn', () => {
     return service.state.events[feed.id]
   }
 
-  it('keeps unchecked past events neutral in history and each revealed day', async () => {
+  // Past events used to wait under a "Past days" fold. That fold is gone: the past, events with
+  // it, is in the list while the completed switch shows done things, and nowhere while it hides.
+  it('keeps unchecked past events neutral and shows them only with the completed switch', async () => {
     const events = pastEvents()
     const event = events.find((event) => event.uid === 'sample-past')!
     view = mount(Timeline, { props: { tasks: [], events: service.byDay() } })
-    expect(view.find('.abele-timeline__history').text()).toBe('Past days')
-    expect(view.find('.abele-timeline__history-count').exists()).toBe(false)
-    expect(view.find('.abele-timeline__date-indicator_overdue').exists()).toBe(false)
-    await view.find('.abele-timeline__history').trigger('click')
+    expect(view.find('.abele-timeline__history').exists()).toBe(false)
+    expect(view.find('.abele-timeline__overdue').exists()).toBe(false)
+    expect(view.findAllComponents(CalendarEventView)).toHaveLength(0)
+    await view.find('.abele-timeline__completed-toggle').trigger('click')
     expect(view.findAllComponents(CalendarEventView)).toHaveLength(4)
     expect(view.find('.abele-timeline__date-indicator_overdue').exists()).toBe(false)
     for (const row of view.findAllComponents(CalendarEventView)) {
@@ -113,11 +115,11 @@ describe('completion where external events are drawn', () => {
     await meeting.find('input').trigger('click')
     await flushPromises()
     expect(service.isDone(event)).toBe(true)
-    expect(view.findAllComponents(CalendarEventView)).toHaveLength(3)
-    await view.find('.abele-timeline__completed-toggle').trigger('click')
+    // Done things are shown, so the checked one stays, among the rest.
     expect(view.findAllComponents(CalendarEventView)).toHaveLength(4)
-    expect(view.find('.abele-timeline__history').text()).toBe('Past days')
-    expect(view.find('.abele-timeline__history-count').exists()).toBe(false)
+    expect(view.find('.abele-timeline__overdue').exists()).toBe(false)
+    await view.find('.abele-timeline__completed-toggle').trigger('click')
+    expect(view.findAllComponents(CalendarEventView)).toHaveLength(0)
   })
 
   it('keeps an optional checkbox without marking an unchecked event as a pending task', () => {
@@ -130,7 +132,7 @@ describe('completion where external events are drawn', () => {
   it('uses a neutral calendar indicator for past event-only days', async () => {
     pastEvents()
     view = mount(Timeline, { props: { tasks: [], events: service.byDay() } })
-    await view.find('.abele-timeline__history').trigger('click')
+    await view.find('.abele-timeline__completed-toggle').trigger('click')
     expect(view.findAll('.abele-timeline__date-block')).toHaveLength(3)
     expect(view.find('.abele-timeline__date-indicator_overdue').exists()).toBe(false)
   })
@@ -149,12 +151,12 @@ describe('completion where external events are drawn', () => {
     task.date = dayjs('2026-04-07')
     task.due = dayjs('2026-04-08')
     view = mount(Timeline, { props: { tasks: [task], events: service.byDay() } })
-    // What was left undone is a fold of its own, apart from the past days with their events.
+    // What was left undone is the one fold; the past days with their events follow the switch.
     expect(view.find('.abele-timeline__overdue').text()).toBe('Overdue1')
     expect(view.find('.abele-timeline__overdue-count').attributes('aria-label')).toBe(
       '1 unfinished'
     )
-    await view.find('.abele-timeline__history').trigger('click')
+    await view.find('.abele-timeline__completed-toggle').trigger('click')
     await view.find('.abele-timeline__overdue').trigger('click')
     const blocks = view.findAll('.abele-timeline__date-block')
     // The past days first, events only and never red, then the task's own days under Overdue.

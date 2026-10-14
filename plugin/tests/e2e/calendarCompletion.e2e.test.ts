@@ -144,14 +144,18 @@ describe.skipIf(!available)('single external occurrence completion in the runnin
         app.workspace.setActiveLeaf(dailyLeaf, { focus: true })
         const daily = await until(() => dailyLeaf.view.containerEl.querySelector('.abele-footer-view .abele-timeline'), 'past daily timeline')
         await hideCompleted(() => daily)
-        const history = await until(() => daily.querySelector('.abele-timeline__history'), 'past daily history')
-        // An event is never left undone: it is in the past days, and there is no Overdue fold for it.
-        if (daily.querySelector('.abele-timeline__overdue') || history.querySelector('.abele-timeline__overdue-count, .abele-timeline__overdue-flame'))
-          throw Error('Past occurrence counted as unfinished')
-        if (history.querySelector('.abele-timeline__fold-text')?.textContent !== 'Past days')
-          throw Error('Neutral past-day history missing')
-        if (history.getAttribute('aria-expanded') !== 'true') history.click()
-        const pastRow = await until(() => daily.querySelector('[data-timeline-item="event:' + pastEvent.id + '"]'), 'past daily row')
+        // There used to be a "Past days" fold here. It is gone: the past, events with it, is in the
+        // list while the completed switch shows done things, and nowhere while it hides them.
+        const dailyToggle = await until(() => daily.querySelector('.abele-timeline__completed-toggle'), 'daily completion filter')
+        const pastSelector = '[data-timeline-item="event:' + pastEvent.id + '"]'
+        await wait(300)
+        if (daily.querySelector('.abele-timeline__history')) throw Error('A past-days fold is back')
+        // An event is never left undone: there is no Overdue fold for it.
+        if (daily.querySelector('.abele-timeline__overdue')) throw Error('Past occurrence counted as unfinished')
+        if (daily.querySelector(pastSelector)) throw Error('Past occurrence shown while done things are hidden')
+        dailyToggle.click()
+        const pastRow = await until(() => daily.querySelector(pastSelector), 'past daily row')
+        if (daily.querySelector('.abele-timeline__history, .abele-timeline__overdue')) throw Error('Showing the past brought a fold')
         if (pastRow.hasAttribute('data-task')) throw Error('Past occurrence marked as a pending task')
         if (pastRow.closest('.abele-timeline__date-block').querySelector('.abele-timeline__date-indicator_overdue'))
           throw Error('Event-only past date shown as overdue')
@@ -159,11 +163,11 @@ describe.skipIf(!available)('single external occurrence completion in the runnin
         await wait(300)
         await shot(${JSON.stringify(profile.replaceAll(' ', '-'))} + '-past-neutral')
         pastRow.querySelector('input[type=checkbox]').click()
-        await until(() => service.isDone(pastEvent) && !daily.contains(pastRow), 'hide marked past event')
-        daily.querySelector('.abele-timeline__completed-toggle').click()
-        const pastChecked = await until(() => daily.querySelector('[data-timeline-item="event:' + pastEvent.id + '"] input:checked'), 'show marked past event')
+        const pastChecked = await until(() => service.isDone(pastEvent) && daily.querySelector(pastSelector + ' input:checked'), 'marked past event stays while shown')
         pastChecked.click()
         await until(() => !service.isDone(pastEvent), 'reopen past occurrence')
+        daily.querySelector('.abele-timeline__completed-toggle').click()
+        await until(() => !daily.querySelector(pastSelector), 'past hidden again with done things')
         service.state.events['sample-feed'] = events
         service.state.version++
         dailyLeaf.detach()

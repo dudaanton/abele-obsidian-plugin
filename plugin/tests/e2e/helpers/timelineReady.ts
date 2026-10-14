@@ -57,7 +57,6 @@ export const TIMELINE_READY_PROBE = `
         return title && el.textContent.includes(title)
       })
     await settleTimelineUI(() => [renders.revision(), owner.scrollTop, owner.scrollHeight, bounds(owner),
-      timeline.querySelector('.abele-timeline__history')?.getAttribute('aria-expanded'),
       timeline.querySelector('.abele-timeline__overdue')?.getAttribute('aria-expanded'),
       ...blocks().map(el => [el.dataset.abeleAnchor, bounds(el), bounds(el.querySelector('.timeline__date')), el.querySelector('.timeline__date')?.textContent]),
       ...items().map(el => [el.dataset.abeleAnchor, bounds(el), el.textContent]),

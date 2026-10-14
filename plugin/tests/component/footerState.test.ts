@@ -80,16 +80,16 @@ describe('footer state — storage, shared tabs and path lifecycle', () => {
     expect(s.fold.collapsed.value).toBe(false)
     expect(s.pages.initial).toBe(1)
     expect(s.task.initial).toBe(false)
-    expect(s.timeline.pastRevealed).toBe(false)
+    expect(s.timeline.overdueOpen).toBe(false)
     s.fold.toggle()
     s.pages.record(4)
     s.task.record(true)
-    s.timeline.recordPast(true)
+    s.timeline.recordOverdue(true)
     expect(read).not.toHaveBeenCalled()
     expect(save).not.toHaveBeenCalled()
   })
 
-  it('shares folds between tabs, remembers pages, open tasks and revealed history on remount', () => {
+  it('shares folds between tabs, remembers pages, open tasks and the overdue fold on remount', () => {
     const read = vi.spyOn(app, 'loadLocalStorage')
     const a = probe()
     const b = probe()
@@ -98,12 +98,12 @@ describe('footer state — storage, shared tabs and path lifecycle', () => {
     a.pages.record(3)
     a.task.record(true)
     a.timeline.record(2)
-    a.timeline.recordPast(true)
+    a.timeline.recordOverdue(true)
     const again = probe()
     expect(again.pages.initial).toBe(3)
     expect(again.task.initial).toBe(true)
     expect(again.timeline.initial).toBe(2)
-    expect(again.timeline.pastRevealed).toBe(true)
+    expect(again.timeline.overdueOpen).toBe(true)
     expect(probe(ref('Notes/Other.md')).pages.initial).toBe(1)
     // Each module lazily reads its own storage once, not once per mounted list.
     expect(read.mock.calls).toHaveLength(2)
@@ -116,18 +116,18 @@ describe('footer state — storage, shared tabs and path lifecycle', () => {
       'Notes/Orchard.md': {
         pages: { backlinks: 3 },
         open: ['Tasks/Water.md'],
-        calendarStart: '2028-02-29',
+        calendarOverdue: true,
       },
     })
     const s = probe()
     expect(s.fold.collapsed.value).toBe(true)
-    expect(s.timeline.pastRevealed).toBe(true)
+    expect(s.timeline.overdueOpen).toBe(true)
     expect(s.pages.initial).toBe(3)
     expect(s.task.initial).toBe(true)
     const save = vi.spyOn(app, 'saveLocalStorage')
     s.pages.record(3)
     s.task.record(true)
-    s.timeline.recordPast(true)
+    s.timeline.recordOverdue(true)
     forget('Missing')
     move('Missing.md', 'Also missing.md')
     expect(save).not.toHaveBeenCalled()
@@ -141,12 +141,12 @@ describe('footer state — storage, shared tabs and path lifecycle', () => {
     s.fold.toggle()
     s.pages.record(4)
     s.task.record(true)
-    s.timeline.recordPast(true)
+    s.timeline.recordOverdue(true)
     configureAbele().rememberNotePlaces = false
     const off = probe()
     expect(off.pages.initial).toBe(1)
     expect(off.task.initial).toBe(false)
-    expect(off.timeline.pastRevealed).toBe(false)
+    expect(off.timeline.overdueOpen).toBe(false)
     expect(off.fold.collapsed.value).toBe(true)
     off.pages.record(2)
     configureAbele().rememberNotePlaces = true

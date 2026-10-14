@@ -38,30 +38,12 @@
       </ListSectionHeader>
     </div>
     <template v-if="!fold.collapsed.value">
-      <!-- Two folds above today, each a row of its own: the days gone by, with what was done in
-           them, and what was left undone. Opening one never brings the other's rows. -->
-      <div
-        v-if="history.length && !search.terms.value.length"
-        ref="historyEl"
-        class="abele-timeline__fold abele-timeline__history"
-        role="button"
-        tabindex="0"
-        :aria-label="pastRevealed ? 'Hide past days' : 'Show past days'"
-        :aria-expanded="pastRevealed"
-        @click="togglePast"
-        @keydown.enter.prevent="togglePast"
-        @keydown.space.prevent="togglePast"
-      >
-        <span class="abele-timeline__fold-text">Past days</span>
-        <ObsidianIcon
-          class="abele-timeline__fold-glyph"
-          :icon="pastRevealed ? 'chevron-down' : 'chevron-right'"
-          no-hover
-        />
-      </div>
       <div ref="itemsEl" class="abele-timeline__blocks">
         <template v-for="group in groups" :key="group.id">
-          <!-- Left undone is said in red, with the flame the overdue days carry. -->
+          <!-- Above today there is one fold, what was left undone, said in red with the flame the
+               overdue days carry. What was done in the past is no fold: the days with it stand
+               above this row while the completed switch shows done tasks, and are gone while it
+               hides them. -->
           <div
             v-if="group.id === 'overdue-row'"
             class="abele-timeline__fold abele-timeline__overdue"
@@ -263,10 +245,13 @@ const dates = computed(() => {
 
 const today = () => now.value.format(DATE_FORMAT)
 const unfinished = (item: DayItem) => !!item.task && !item.task.completedAt
-/** Past days with what was done in them and the events: the history fold. */
+/**
+ * Past days with what was done in them and their events, in the list only while the completed
+ * switch shows done tasks: hiding them leaves nothing of the past but the overdue fold.
+ */
 const history = computed(() =>
   dates.value
-    .filter(([day]) => day < today())
+    .filter(([day]) => !hideCompleted.value && day < today())
     .map(([day, items]) => [day, items.filter((item) => !unfinished(item))] as [string, DayItem[]])
     .filter(([, items]) => items.length)
 )
@@ -288,19 +273,18 @@ const toggleOverdue = () => {
 
 const {
   visible: pagedVisible,
-  pastRevealed,
   hasMore,
   sentinel,
   reset,
-  togglePast,
 } = useTimelineDays(
-  // Searching finds a task in any day; otherwise the days fold away into history.
+  // Searching finds a task in any day; otherwise the past is its done days, while they are shown.
   () => (search.terms.value.length ? dates.value : [...history.value, ...forward.value]),
   () => now.value.format(DATE_FORMAT),
   () => search.terms.value,
   PAGE_SIZE,
   memory,
-  () => !fold.collapsed.value
+  () => !fold.collapsed.value,
+  () => !hideCompleted.value
 )
 // Gesture dates never change pagination/history memory. Only this rendered window expands.
 const visible = computed(() => {
@@ -350,8 +334,9 @@ const tasksIn = (days: readonly [string, DayItem[]][]) => {
 }
 const overdueCount = computed(() => tasksIn(overdue.value).size)
 /**
- * What is open is what is counted: the days from today on, all of them, not only the page
- * drawn so far; and the past only while its fold is open. A task over several days counts once.
+ * What is shown is what is counted: the days from today on, all of them, not only the page
+ * drawn so far; what was left undone while Overdue is open; what was done in the past while the
+ * switch shows done tasks. A task over several days counts once.
  */
 const shownCount = computed(() => {
   // Folded, the heading still says how many are ahead, read off each task's last day rather than
@@ -364,12 +349,11 @@ const shownCount = computed(() => {
     }).length
   if (search.terms.value.length) return tasksIn(dates.value).size
   const keys = tasksIn(forward.value)
-  if (pastRevealed.value) for (const key of tasksIn(history.value)) keys.add(key)
+  for (const key of tasksIn(history.value)) keys.add(key)
   if (overdueOpen.value) for (const key of tasksIn(overdue.value)) keys.add(key)
   return keys.size
 })
 const headerEl = ref<HTMLElement | null>(null)
-const historyEl = ref<HTMLElement | null>(null)
 const anchorSpaceEl = ref<HTMLElement | null>(null)
 // Every drawn row, the open overdue fold's included: opening or closing a fold above the reader is
 // a layout change the scroll hold has to see, and an overdue row is as good an anchor as any.
@@ -391,11 +375,11 @@ const scroll = useTimelineScroll(
   () => !!drag.range.value
 )
 watch(labelSelection, () => {
-  // A label folds the past away again, the overdue fold with it.
+  // A label folds the overdue fold away again; the completed switch is left as it was.
   reset()
   if (overdueOpen.value) toggleOverdue()
 })
-watch([labelSelection, hideCompleted, search.terms, pastRevealed, overdueOpen], () => {
+watch([labelSelection, hideCompleted, search.terms, overdueOpen], () => {
   drag.landing.value = null
 })
 

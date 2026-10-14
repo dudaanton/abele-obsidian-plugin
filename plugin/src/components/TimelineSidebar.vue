@@ -88,8 +88,8 @@ const onDateRightClick = (date: dayjs.Dayjs, event: MouseEvent) => {
 const container = ref<HTMLElement>()
 const visible = useOwnerVisibility(container)
 const { now } = useDate(visible, () => container.value?.ownerDocument ?? document)
-// The past is folded under "Past days" in the list; opened, a day there reads whole, with its
-// meetings beside the tasks left over from it. A month back is as far as that history goes.
+// The past is in the list while it shows done tasks; a day there reads whole, with its meetings
+// beside what was done in it. A month back is as far as that history goes.
 const calendarDays = useCalendarDays(
   (day) => day >= now.value.subtract(30, 'day').format(DATE_FORMAT)
 )

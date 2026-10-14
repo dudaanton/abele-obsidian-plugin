@@ -12,9 +12,7 @@ import {
   setOpen,
   setPages,
   setTimelineOverdue,
-  setTimelinePast,
   timelineOverdueOf,
-  timelinePastOf,
   type FooterViewState,
 } from '@/helpers/footerView'
 import { FOOTER_FOLD } from './useFooterFold'
@@ -63,15 +61,11 @@ export function useFooterPages(section: FooterSection): RememberedPages {
   }
 }
 
-/** The timeline needs its revealed history state before note-place restoration runs. */
+/** The timeline needs its open overdue fold before note-place restoration runs. */
 export function useFooterTimeline() {
   const path = inject(FOOTER_FOLD, null)
   return {
     ...useFooterPages('calendar'),
-    pastRevealed: !!path && restoring() && timelinePastOf(current(), path()),
-    recordPast: (revealed: boolean) => {
-      if (path) write(setTimelinePast(current(), path(), revealed))
-    },
     overdueOpen: !!path && restoring() && timelineOverdueOf(current(), path()),
     recordOverdue: (open: boolean) => {
       if (path) write(setTimelineOverdue(current(), path(), open))

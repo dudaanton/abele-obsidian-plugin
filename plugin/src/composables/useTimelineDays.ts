@@ -3,27 +3,28 @@ import { useIntersectionObserver } from '@vueuse/core'
 import type { PageMemory } from './usePagedList'
 
 export interface TimelineMemory extends PageMemory {
-  pastRevealed?: boolean
-  recordPast?: (revealed: boolean) => void
   overdueOpen?: boolean
   recordOverdue?: (open: boolean) => void
 }
 
-/** Date boundaries, not array offsets: newly visible completed days cannot evict a read day. */
+/**
+ * Date boundaries, not array offsets: newly visible completed days cannot evict a read day.
+ * The past is drawn whole while `pastShown` says so (the list shows what was done), never paged.
+ */
 export function useTimelineDays<T>(
   source: () => readonly [string, T[]][],
   today: () => string,
   terms: () => readonly string[],
   pageSize: number,
   memory: TimelineMemory,
-  enabled: () => boolean = () => true
+  enabled: () => boolean = () => true,
+  pastShown: () => boolean = () => false
 ) {
   // A folded footer must not read the date map, even as tasks arrive in separate batches.
   const all = computed(() => (enabled() ? source() : []))
-  const pastRevealed = ref(memory.pastRevealed ?? false)
   const upper = ref<string | null>(null)
   const eligible = computed(() =>
-    terms().length || pastRevealed.value ? all.value : all.value.filter(([day]) => day >= today())
+    terms().length || pastShown() ? all.value : all.value.filter(([day]) => day >= today())
   )
   // History has its own state. Revealing it never consumes or expands future pages.
   const forward = computed(() => all.value.filter(([day]) => day >= today()))
@@ -39,7 +40,7 @@ export function useTimelineDays<T>(
     eligible.value.filter(([day]) => upper.value === null || day <= upper.value)
   )
   const past = computed(() => all.value.filter(([day]) => day < today()))
-  const folded = computed(() => (terms().length || pastRevealed.value ? [] : past.value))
+  const folded = computed(() => (terms().length || pastShown() ? [] : past.value))
   const hasMore = computed(
     () => upper.value !== null && all.value.some(([day]) => day > upper.value)
   )
@@ -58,18 +59,10 @@ export function useTimelineDays<T>(
   useIntersectionObserver(sentinel, ([entry]) => {
     if (entry?.isIntersecting) showMore()
   })
-  const togglePast = () => {
-    pastRevealed.value = !pastRevealed.value
-    if (!terms().length) memory.recordPast?.(pastRevealed.value)
-  }
   const reset = () => {
     // A label changes the source, not the search: its matching past days must stay visible.
     upper.value = pageEnd()
-    if (!terms().length) {
-      pastRevealed.value = false
-      memory.record(1)
-      memory.recordPast?.(false)
-    }
+    if (!terms().length) memory.record(1)
   }
   let beforeSearch: { upper: string | null } | null = null
   watch(terms, (words) => {
@@ -81,5 +74,5 @@ export function useTimelineDays<T>(
       beforeSearch = null
     }
   })
-  return { visible, folded, past, pastRevealed, hasMore, sentinel, togglePast, reset }
+  return { visible, folded, past, hasMore, sentinel, reset }
 }

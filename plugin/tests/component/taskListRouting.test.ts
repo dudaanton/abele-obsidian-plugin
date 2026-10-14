@@ -146,10 +146,10 @@ describe('routing tasks to sidebars and lists', () => {
     await flushPromises()
     const folded = rendered()
     expect(folded).toEqual(['sample-today-b', 'sample-today-c'])
-    // Past days and what was left undone in them are two folds now; open both to see them all.
+    // What was done in the past comes in with the completed switch (there is no "Past days"
+    // fold any more), and what was left undone with the Overdue fold; both, to see them all.
     await view.find('.abele-timeline__completed-toggle').trigger('click')
     await flushPromises()
-    await view.find('.abele-timeline__history').trigger('click')
     await view.find('.abele-timeline__overdue').trigger('click')
     await flushPromises()
     const expanded = rendered()
@@ -158,7 +158,6 @@ describe('routing tasks to sidebars and lists', () => {
     rescan(makeTasks().reverse())
     await flushPromises()
     expect(rendered()).toEqual(expanded)
-    await view.find('.abele-timeline__history').trigger('click')
     await view.find('.abele-timeline__overdue').trigger('click')
     await view.find('.abele-timeline__completed-toggle').trigger('click')
     await flushPromises()

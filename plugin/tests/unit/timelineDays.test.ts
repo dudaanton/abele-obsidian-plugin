@@ -8,10 +8,9 @@ import {
 } from '../helpers/fakeIntersectionObserver'
 
 describe('timeline date loading', () => {
-  it('preserves revealed history across a search label reset without recording the search', async () => {
+  it('keeps shown past days across a search label reset without recording the search', async () => {
     const scope = effectScope()
     const terms = ref<string[]>([])
-    const recordPast = vi.fn()
     const record = vi.fn()
     const window = scope.run(() =>
       useTimelineDays(
@@ -22,7 +21,10 @@ describe('timeline date loading', () => {
         () => '2030-06-15',
         () => terms.value,
         20,
-        { initial: 1, pastRevealed: true, record, recordPast }
+        { initial: 1, record },
+        () => true,
+        // The past is drawn while the list shows done tasks; a reset leaves that to its switch.
+        () => true
       )
     )!
     try {
@@ -34,7 +36,6 @@ describe('timeline date loading', () => {
       terms.value = []
       await nextTick()
       expect(window.visible.value.map(([day]) => day)).toEqual(['2030-06-01', '2030-06-15'])
-      expect(recordPast).not.toHaveBeenCalled()
       expect(record).not.toHaveBeenCalled()
     } finally {
       scope.stop()

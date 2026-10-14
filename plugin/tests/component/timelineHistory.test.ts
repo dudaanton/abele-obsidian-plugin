@@ -51,6 +51,9 @@ afterEach(() => {
   mountConfig.global.stubs = originalStubs
 })
 
+// The past used to have a "Past days" fold of its own beside Overdue. It is gone: what was done
+// in the past is in the list exactly while the completed switch shows done tasks, in date order
+// above the Overdue row, and Overdue is the only fold left above today.
 describe('folded timeline history', () => {
   // Completed tasks used to stay in the past days whatever the switch said, so the past could
   // not be cleared of them; now the switch hides them everywhere, past days included.
@@ -69,8 +72,9 @@ describe('folded timeline history', () => {
     ])
     await view.find('.abele-timeline__completed-toggle').trigger('click')
     await flushPromises()
-    await view.find('.abele-timeline__history').trigger('click')
-    await flushPromises()
+    // Shown, the done past day is in the list at once, with no fold to open.
+    expect(days()).toEqual(['date:2030-06-14', 'date:2030-06-15'])
+    expect(view.find('.abele-timeline__history').exists()).toBe(false)
     // The switch preserves the date boundary already read; page forward to the new future day.
     expect(scrollIntoView(view.find('.abele-timeline__sentinel').element)).toBe(1)
     await flushPromises()
@@ -84,14 +88,14 @@ describe('folded timeline history', () => {
     expect(labels).toContain('[[2031-06-16|Mon 16.06.2031]]')
   })
 
-  it('restores the same future page without rounding revealed history into extra future pages', async () => {
+  it('restores the same future page without rounding shown past days into extra future pages', async () => {
     useVault([])
     const config = configureAbele()
     const remembered = config.rememberNotePlaces
     config.rememberNotePlaces = true
     resetFooterView()
     resetFooterFolds()
-    // A done task: the past-days fold holds what was done; what was not is Overdue's.
+    // A done task: in the list while done tasks are shown; what was not done is Overdue's.
     const tasks = [
       task('sample-yesterday', '2030-06-14', true),
       ...Array.from({ length: 60 }, (_, i) =>
@@ -114,8 +118,6 @@ describe('folded timeline history', () => {
       open()
       await flushPromises()
       await showCompleted()
-      await view.find('.abele-timeline__history').trigger('click')
-      await flushPromises()
       expect(days()).toHaveLength(21)
       const before = days()
       view.unmount()
@@ -124,16 +126,14 @@ describe('folded timeline history', () => {
       await flushPromises()
       await showCompleted()
       expect(days()).toEqual(before)
-      await view.find('.abele-timeline__history').trigger('click')
-      await flushPromises()
+      // Hidden again, the done past day goes and the future page stays as it was.
+      await showCompleted()
       expect(days()).toEqual(before.filter((date) => date !== 'date:2030-06-14'))
       view.unmount()
       resetFooterView()
       open()
       await flushPromises()
-      await showCompleted()
       expect(days()).toEqual(before.filter((date) => date !== 'date:2030-06-14'))
-      expect(view.find('.abele-timeline__history').attributes('aria-expanded')).toBe('false')
     } finally {
       config.rememberNotePlaces = remembered
       resetFooterView()
@@ -141,14 +141,16 @@ describe('folded timeline history', () => {
     }
   })
 
-  it('recreates revealed history after a footer unmounts, only when remembering places is enabled', async () => {
+  // The past is no fold to remember any more; the switch it follows starts hiding done tasks.
+  it('starts a remounted footer with done past days hidden, whether places are remembered or not', async () => {
     const app = useVault([])
     const config = configureAbele()
     const remembered = config.rememberNotePlaces
     config.rememberNotePlaces = true
     resetFooterView()
     resetFooterFolds()
-    // Done, so it is in the past-days fold; Overdue's own fold is remembered on its own (below).
+    // Done, so it is in the list only while done tasks are shown; Overdue's fold is remembered
+    // on its own (below).
     const tasks = [task('sample-yesterday', '2030-06-14', true), task('sample-today', '2030-06-15')]
     const open = async () => {
       view = mount(Timeline, {
@@ -158,19 +160,18 @@ describe('folded timeline history', () => {
         global: { provide: { [FOOTER_FOLD as symbol]: () => 'Sample/group.md' } },
       })
       await flushPromises()
-      await view.find('.abele-timeline__completed-toggle').trigger('click')
-      await flushPromises()
     }
     try {
       await open()
-      await view.find('.abele-timeline__history').trigger('click')
+      await view.find('.abele-timeline__completed-toggle').trigger('click')
       await flushPromises()
       expect(days()).toEqual(['date:2030-06-14', 'date:2030-06-15'])
-      expect(app.loadLocalStorage(FOOTER_VIEW_KEY)).toBeTruthy()
+      // Showing done tasks is not a place in the note: nothing about it is stored.
+      expect(app.loadLocalStorage(FOOTER_VIEW_KEY)).toBeFalsy()
       view.unmount()
       resetFooterView()
       await open()
-      expect(days()).toEqual(['date:2030-06-14', 'date:2030-06-15'])
+      expect(days()).toEqual(['date:2030-06-15'])
       view.unmount()
       config.rememberNotePlaces = false
       await open()
@@ -216,8 +217,8 @@ describe('folded timeline history', () => {
       expect(days()).toEqual(['date:2030-06-13', 'date:2030-06-15'])
       await view.find('.abele-timeline__completed-toggle').trigger('click')
       await flushPromises()
-      // Past days stayed folded: only the overdue fold was opened.
-      expect(view.find('.abele-timeline__history').attributes('aria-expanded')).toBe('false')
+      // The done day comes in above the Overdue row; the fold keeps only what was left undone.
+      expect(days()).toEqual(['date:2030-06-14', 'date:2030-06-13', 'date:2030-06-15'])
       await overdueRow().trigger('click')
       await flushPromises()
       view.unmount()
@@ -267,7 +268,7 @@ describe('folded timeline history', () => {
       task('sample-today', '2030-06-15'),
     ])
     expect(days()).toEqual(['date:2030-06-15'])
-    // Overdue is its own row now, with its own count; the past-days row holds what was done.
+    // Overdue is the only row above today, with its own count; no row for the past days.
     expect(overdueRow().text()).toBe('Overdue2')
     expect(overdueRow().find('.abele-timeline__overdue-count').attributes('aria-label')).toBe(
       '2 unfinished'
@@ -275,7 +276,7 @@ describe('folded timeline history', () => {
     expect(view.find('.abele-timeline__history').exists()).toBe(false)
   })
 
-  it('counts in the heading only what is open: today on, then each fold as it opens', async () => {
+  it('counts in the heading only what is shown: today on, Overdue while open, done past while shown', async () => {
     render([
       task('sample-span', '2030-06-10', false, '2030-06-12'),
       task('sample-old', '2030-06-14'),
@@ -288,16 +289,16 @@ describe('folded timeline history', () => {
     await overdueRow().trigger('click')
     await flushPromises()
     expect(headerCount()).toBe('4')
+    // Shown, the done day is in the list, so it is counted.
     await view.find('.abele-timeline__completed-toggle').trigger('click')
-    await flushPromises()
-    // The done day is there to open, but folded it is not counted.
-    expect(headerCount()).toBe('4')
-    await view.find('.abele-timeline__history').trigger('click')
     await flushPromises()
     expect(headerCount()).toBe('5')
     await overdueRow().trigger('click')
     await flushPromises()
     expect(headerCount()).toBe('3')
+    await view.find('.abele-timeline__completed-toggle').trigger('click')
+    await flushPromises()
+    expect(headerCount()).toBe('2')
   })
 
   // What was left undone opens from its own row now, not with the rest of the past.
@@ -335,7 +336,7 @@ describe('folded timeline history', () => {
     expect(strip.attributes('aria-expanded')).toBe('false')
   })
 
-  it('does not reset future pages or unfold old completed-only days on a completed toggle', async () => {
+  it('does not reset future pages when a completed toggle brings old completed-only days in', async () => {
     render([
       task('sample-old-done', '2020-01-01', true),
       ...Array.from({ length: 60 }, (_, i) =>
@@ -346,16 +347,18 @@ describe('folded timeline history', () => {
     expect(scrollIntoView(view.find('.abele-timeline__sentinel').element)).toBe(1)
     await flushPromises()
     expect(days()).toHaveLength(40)
+    const last = days().at(-1)
     await view.find('.abele-timeline__completed-toggle').trigger('click')
     await flushPromises()
-    expect(days()).toHaveLength(40)
-    expect(days()[0]).toBe('date:2030-06-15')
-    expect(view.find('.abele-timeline__history').text()).toBe('Past days')
+    expect(days()).toHaveLength(41)
+    expect(days().slice(0, 2)).toEqual(['date:2020-01-01', 'date:2030-06-15'])
+    expect(days().at(-1)).toBe(last)
+    expect(view.find('.abele-timeline__history').exists()).toBe(false)
   })
 
-  // Completed-only days belong to the past-days fold, so they appear when it opens, each fold
-  // keeping its own rows under it: the done day, then the overdue one, then today.
-  it('keeps Overdue open when completed-only days appear, until past days open too', async () => {
+  // Completed-only days come in with the switch, above the Overdue row, while the fold keeps its
+  // own rows under it: the done day, then the overdue one, then today.
+  it('keeps Overdue open when completed-only days appear', async () => {
     render([
       task('sample-old', '2030-06-12'),
       task('sample-done', '2030-06-13', true),
@@ -364,12 +367,10 @@ describe('folded timeline history', () => {
     await flushPromises()
     await overdueRow().trigger('click')
     await flushPromises()
+    expect(days()).toEqual(['date:2030-06-12', 'date:2030-06-15'])
     await view.find('.abele-timeline__completed-toggle').trigger('click')
     await flushPromises()
-    expect(days()).toEqual(['date:2030-06-12', 'date:2030-06-15'])
     expect(overdueRow().attributes('aria-expanded')).toBe('true')
-    await view.find('.abele-timeline__history').trigger('click')
-    await flushPromises()
     expect(days()).toEqual(['date:2030-06-13', 'date:2030-06-12', 'date:2030-06-15'])
   })
 
@@ -428,9 +429,9 @@ describe('folded timeline history', () => {
     expect(overdueRow().attributes('aria-expanded')).toBe('false')
   })
 
-  // The past-days fold holds what was done, so it is only there once completed tasks are shown;
-  // a late arrival that is done joins it, and Overdue keeps counting only what is undone.
-  it('includes older completed-only days and late done arrivals in revealed past days', async () => {
+  // What was done in the past is there only while completed tasks are shown; a late arrival that
+  // is done joins it, and Overdue keeps counting only what is undone.
+  it('includes older completed-only days and late done arrivals while done tasks are shown', async () => {
     const tasks = [
       task('sample-old-done', '2020-01-01', true),
       task('sample-old', '2030-06-12'),
@@ -439,18 +440,15 @@ describe('folded timeline history', () => {
     render(tasks)
     await flushPromises()
     expect(view.find('.abele-timeline__history').exists()).toBe(false)
-    await view.find('.abele-timeline__completed-toggle').trigger('click')
-    await flushPromises()
     expect(days()).toEqual(['date:2030-06-15'])
-    await view.find('.abele-timeline__history').trigger('click')
+    await view.find('.abele-timeline__completed-toggle').trigger('click')
     await flushPromises()
     expect(days()).toEqual(['date:2020-01-01', 'date:2030-06-15'])
     await view.setProps({ tasks: [task('sample-arrival', '2019-01-01', true), ...tasks] })
     await flushPromises()
     expect(days()[0]).toBe('date:2019-01-01')
     expect(overdueRow().text()).toBe('Overdue1')
-    expect(view.find('.abele-timeline__history').attributes('aria-expanded')).toBe('true')
-    await view.find('.abele-timeline__history').trigger('click')
+    await view.find('.abele-timeline__completed-toggle').trigger('click')
     await flushPromises()
     expect(days()).toEqual(['date:2030-06-15'])
   })

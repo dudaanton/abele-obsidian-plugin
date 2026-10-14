@@ -778,7 +778,7 @@ body.is-mobile .abele-comment-marker_pending::after {
   :is(
     .abele-entry-row,
     .abele-group-heading,
-    .abele-timeline__history,
+    .abele-timeline__fold,
     .abele-timeline__date-indicator
   ) {
   margin-inline: calc(-1 * var(--size-2-3));

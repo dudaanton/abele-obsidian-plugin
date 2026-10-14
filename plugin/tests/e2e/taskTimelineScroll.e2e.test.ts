@@ -1,6 +1,9 @@
 /**
- * The overdue and past-days folds, the pinned header and viewport anchoring in the task
- * timeline's real scroll owners.
+ * The overdue fold, the past days the completed switch brings in, the pinned header and
+ * viewport anchoring in the task timeline's real scroll owners.
+ *
+ * There used to be a "Past days" fold beside Overdue. It is gone: what was done in the past is
+ * in the list exactly while the completed switch shows done tasks, and Overdue is the only fold.
  */
 import { afterAll, beforeAll, describe, expect, it } from 'vitest'
 import { readFileSync } from 'node:fs'
@@ -39,10 +42,12 @@ interface Probe {
   daysBeforeReveal?: string[]
   daysAfterReveal?: string[]
   pastHidden?: boolean
+  historyWhileHidden?: number
+  overdueRowsDoneShown?: number
+  pastNoFold?: boolean
   pastDays?: string[]
   pastRows?: number
   pastRowsOpen?: number
-  pastAnchor?: number[]
   pastShownAnchor?: number[]
   pastCollapseAnchor?: number[]
   overdueCollapseAnchor?: number[]
@@ -171,9 +176,11 @@ const script = (footer: boolean, short = false) => String.raw`(async function* (
     const scroller = ${footer} ? leaf.view.containerEl.querySelector('.cm-scroller') : root.closest('.abele-timeline-sidebar')
     const blocks = () => [...root.querySelectorAll('.abele-timeline__date-block')]
     const dates = () => blocks().map(x => x.dataset.abeleAnchor)
-    // Two folds above today: what was left undone, and the days gone by with what was done.
+    // One fold above today, what was left undone; the days gone by come with the completed switch.
     const overdueRow = () => root.querySelector('.abele-timeline__overdue')
+    // The dropped "Past days" fold; it must never come back.
     const pastRow = () => root.querySelector('.abele-timeline__history')
+    const firstPastDay = () => blocks().find(x => x.dataset.timelineGroup === 'history')
     const pinned = () => root.querySelector('.abele-timeline__pinned')
     const foldState = el => el ? [el.querySelector('.abele-timeline__overdue-count')?.getAttribute('aria-label'), el.getAttribute('aria-label')].join(' · ') : null
     const groupDays = id => blocks().filter(x => x.dataset.timelineGroup === id).map(x => x.dataset.abeleAnchor)
@@ -240,7 +247,7 @@ const script = (footer: boolean, short = false) => String.raw`(async function* (
     }
     // Fold rows, days and the pinned header never cover one another, hovered or not.
     const intersections = (state) => {
-      const boxes = [['pinned', pinned()], ['overdue', overdueRow()], ['past', pastRow()],
+      const boxes = [['pinned', pinned()], ['overdue', overdueRow()],
         ...blocks().map(x => [x.dataset.timelineGroup + ' ' + x.dataset.abeleAnchor, x])]
         .filter(([, el]) => el).map(([name, el]) => [name, el.getBoundingClientRect()])
         .filter(([, r]) => r.height > 0)
@@ -258,7 +265,7 @@ const script = (footer: boolean, short = false) => String.raw`(async function* (
       intersections(state)
       if (window.__e2eHost) return
       const cdp = require('@electron/remote').getCurrentWebContents().debugger
-      for (const el of [overdueRow(), pastRow(), root.querySelector('[data-timeline-item^="task:"]')]) {
+      for (const el of [overdueRow(), root.querySelector('[data-timeline-item^="task:"]')]) {
         if (!el) continue
         const r = el.getBoundingClientRect()
         if (r.top < readTop() || r.bottom > scroller.getBoundingClientRect().bottom) continue
@@ -367,6 +374,24 @@ const script = (footer: boolean, short = false) => String.raw`(async function* (
       await settleUI()
       return [expected, rowBy(id)?.getBoundingClientRect().top ?? -9999]
     }
+    // Hiding done tasks while reading the past, read the same way as a fold: every row in sight
+    // goes, so the nearest row left undone comes to the place the reader was on.
+    const switchAnchor = async () => {
+      if (!firstPastDay()) throw Error('no past day shown; state=' + JSON.stringify(uiState()))
+      await reach(firstPastDay)
+      const read = readRow(taskRows())
+      if (!read) throw Error('no row in sight to read; state=' + JSON.stringify(uiState()))
+      const at = read.getBoundingClientRect().top
+      const survivors = taskRows().filter(el => !done(el))
+      const shown = readRow(survivors)
+      const target = shown ?? survivors.reduce((near, el) => !near || Math.abs(el.getBoundingClientRect().top - at) < Math.abs(near.getBoundingClientRect().top - at) ? el : near, null)
+      if (!target) throw Error('no row survives hiding done tasks; state=' + JSON.stringify(uiState()))
+      const expected = shown ? shown.getBoundingClientRect().top : at
+      const id = rowId(target)
+      await toggleCompleted()
+      await settleUI()
+      return [expected, rowBy(id)?.getBoundingClientRect().top ?? -9999]
+    }
     const shot = async name => {
       const path = shots + '/' + phase + '-' + (${short} ? 'short-' : '') + (${footer} ? 'footer' : 'sidebar') + '-' + (app.isMobile ? 'phone' : 'desktop') + '-' + name + '.png'
       if (window.__e2eHost) await window.__e2eHost.shot(path)
@@ -464,8 +489,8 @@ const script = (footer: boolean, short = false) => String.raw`(async function* (
     }
     report.initial = dates()
     report.summary = foldState(overdueRow())
-    // Done tasks are hidden, so there is no past day to open yet.
-    report.pastHidden = !pastRow()
+    // Done tasks are hidden, so no past day is in the list, and there is no fold for one.
+    report.pastHidden = !pastRow() && !firstPastDay()
     // Bring today's unchanged block into sight even in the baseline (which starts in history).
     if (!row(0)) await scrollToRow(() => row(0), 6)
     await until(() => row(0)?.textContent.includes('Sample item 0 1'))
@@ -489,6 +514,7 @@ const script = (footer: boolean, short = false) => String.raw`(async function* (
       report.hiddenAnchor = [beforeHide, row(0)?.getBoundingClientRect().top ?? -9999]
       report.revealAnchor = await foldAnchor(overdueRow)
       report.revealed = dates()
+      report.historyWhileHidden = groupDays('history').length
       report.overdueRows = groupRows('overdue').length
       report.overdueRowsDone = groupRows('overdue').filter(done).length
       count('overdue open')
@@ -496,16 +522,15 @@ const script = (footer: boolean, short = false) => String.raw`(async function* (
       await toggleCompleted()
       report.pastShownAnchor = [beforeShown, row(0).getBoundingClientRect().top]
       count('overdue open, completed shown')
-      report.pastAnchor = await foldAnchor(pastRow)
       report.pastDays = groupDays('history')
       report.pastRows = groupRows('history').length
       report.pastRowsOpen = groupRows('history').filter(x => !done(x)).length
-      count('both folds open')
+      report.overdueRowsDoneShown = groupRows('overdue').filter(done).length
+      report.pastNoFold = !pastRow()
       report.overdueCollapseAnchor = await foldAnchor(overdueRow, 'overdue')
-      count('past days open')
-      report.collapseAnchor = await foldAnchor(pastRow, 'history')
+      count('overdue closed, completed shown')
+      report.collapseAnchor = await switchAnchor()
       report.collapsed = dates()
-      await toggleCompleted()
       count('folded, completed hidden')
       root.querySelector('.abele-timeline__search-toggle').click()
       await until(() => root.querySelector('.abele-timeline__search input'), 'search input')
@@ -610,11 +635,12 @@ const script = (footer: boolean, short = false) => String.raw`(async function* (
     await hoverCheck('far down')
     count('folded, completed hidden')
     await shot('far-down')
-    yield 'revealing overdue, then past days, and completion anchors'
+    yield 'revealing overdue, then the past with done tasks, and completion anchors'
     report.daysBeforeReveal = groupDays('days')
     report.revealAnchor = await foldAnchor(overdueRow)
     report.revealed = dates()
     report.revealedOverdue = groupDays('overdue')
+    report.historyWhileHidden = groupDays('history').length
     report.daysAfterReveal = groupDays('days')
     report.overdueRows = groupRows('overdue').length
     report.overdueRowsDone = groupRows('overdue').filter(done).length
@@ -628,30 +654,32 @@ const script = (footer: boolean, short = false) => String.raw`(async function* (
     await toggleCompleted()
     report.anchored = [before, row(0)?.getBoundingClientRect().top ?? -9999]
     count('overdue open, completed shown')
-    report.pastAnchor = await foldAnchor(pastRow)
     report.allHistory = groupDays('history').includes('date:' + day(-90))
     report.pastCompleted = !!groupRows('history').find(x => x.dataset.timelineItem && (x.dataset.abeleAnchor ?? x.querySelector('[data-abele-anchor]')?.dataset.abeleAnchor) === 'task:' + folder + '/Sample item -45 0.md')
     report.pastDays = groupDays('history')
     report.pastRows = groupRows('history').length
     report.pastRowsOpen = groupRows('history').filter(x => !done(x)).length
+    report.overdueRowsDoneShown = groupRows('overdue').filter(done).length
+    report.pastNoFold = !pastRow()
     report.overflow = scroller.scrollWidth - scroller.clientWidth
-    count('both folds open, completed shown')
-    await hoverCheck('both open')
+    await hoverCheck('completed shown')
     await shot('completed')
     await align(row(0)); await wait(500)
     const beforeHide = row(0)?.getBoundingClientRect().top ?? -9999
     await toggleCompleted()
     report.hiddenAnchor = [beforeHide, row(0)?.getBoundingClientRect().top ?? -9999]
-    yield 'future rows and folding both away'
+    yield 'future rows, hiding the past and folding Overdue away'
     await scrollToRow(() => row(25), 4)
     await until(() => row(25))
     await align(row(25)); await settleUI()
     const futureBefore = row(25).getBoundingClientRect().top
     await toggleCompleted()
     report.futureAnchor = [futureBefore, row(25)?.getBoundingClientRect().top ?? -9999]
-    // Folding away the rows being read brings the nearest remaining row to where they were.
-    report.pastCollapseAnchor = await foldAnchor(pastRow, 'history')
+    // Taking away the rows being read brings the nearest remaining row to where they were.
+    report.pastCollapseAnchor = await switchAnchor()
+    count('overdue open, completed hidden')
     report.removedPastAnchor = await foldAnchor(overdueRow, 'overdue')
+    count('folded again, completed hidden')
     report.collapsed = dates()
     report.collapseSummary = foldState(overdueRow())
     await shot('hidden-past')
@@ -659,7 +687,7 @@ const script = (footer: boolean, short = false) => String.raw`(async function* (
     if (${footer}) {
       yield 'reopening a saved overdue place and row anchor'
       // A saved overdue row is useful only if reopening opens its fold and draws that day again.
-      await toggleCompleted()
+      // Done tasks stay hidden: the switch is not remembered, so the reopened list hides them too.
       config.rememberNotePlaces = true
       await align(row(-1)); await wait(1500)
       const beforeReturn = row(-1).getBoundingClientRect().top - scroller.getBoundingClientRect().top
@@ -824,21 +852,25 @@ describe.skipIf(!available)('task timeline scrolling', () => {
           const p = (kind === 'desktop' ? shortDesktop : shortMobile)[index]
           expect(p.error).toBeUndefined()
           expect(p.emptySpace).toBe(0)
-          // Overdue opens yesterday's undone rows above today, and nothing done.
+          // Overdue opens yesterday's undone rows above today, and nothing done, nor any past day.
+          expect(p.pastHidden).toBe(true)
           expect(p.revealed).toHaveLength(2)
+          expect(p.historyWhileHidden).toBe(0)
           expect(p.overdueRows).toBe(2)
           expect(p.overdueRowsDone).toBe(0)
-          // Past days open on their own: the 45 completed-only archive days and yesterday's done row.
+          // Done tasks shown: the 45 completed-only archive days and yesterday's done row come in,
+          // with no fold of their own, and Overdue still holds only what was left undone.
+          expect(p.pastNoFold).toBe(true)
           expect(p.pastDays).toHaveLength(46)
           expect(p.pastRows).toBe(46)
           expect(p.pastRowsOpen).toBe(0)
+          expect(p.overdueRowsDoneShown).toBe(0)
           expect(p.collapsed).toHaveLength(1)
           for (const pair of [
             p.anchored,
             p.hiddenAnchor,
             p.revealAnchor,
             p.pastShownAnchor,
-            p.pastAnchor,
             p.overdueCollapseAnchor,
             p.collapseAnchor,
           ]) {
@@ -855,21 +887,22 @@ describe.skipIf(!available)('task timeline scrolling', () => {
             for (const [state, heading, open] of p.counts!)
               expect(heading, `${state}: heading against open tasks`).toBe(open)
           }
-          // Today on: 46 days of two undone; overdue 45 days of two; done rows 46 + 90 more.
+          // Today on: 46 days of two undone; overdue 45 days of two; done rows 46 from today on,
+          // and the past's 45 plus 45 archive days, all of them in once done tasks are shown.
           expect(probe().counts!.map(([state, heading]) => [state, heading])).toEqual([
             ['folded, completed hidden', 92],
             ['overdue open', 182],
-            ['overdue open, completed shown', 228],
-            ['both folds open, completed shown', 318],
+            ['overdue open, completed shown', 318],
+            ['overdue open, completed hidden', 182],
+            ['folded again, completed hidden', 92],
           ])
           const short = (kind === 'desktop' ? shortDesktop : shortMobile)[index]
           expect(short.counts!.map(([state, heading]) => [state, heading])).toEqual([
             ['initial', 2],
-            ['completed shown', 3],
+            ['completed shown', 49],
             ['overdue open', 4],
-            ['overdue open, completed shown', 5],
-            ['both folds open', 51],
-            ['past days open', 49],
+            ['overdue open, completed shown', 51],
+            ['overdue closed, completed shown', 49],
             ['folded, completed hidden', 2],
           ])
         }
@@ -894,6 +927,7 @@ describe.skipIf(!available)('task timeline scrolling', () => {
           // 45 days with two undone each, and no completed-only archive day among them.
           expect(p.revealedOverdue).toHaveLength(45)
           expect(p.revealedOverdue!.every((date) => date < p.initial![0])).toBe(true)
+          expect(p.historyWhileHidden).toBe(0)
           expect(p.overdueRows).toBe(90)
           expect(p.overdueRowsDone).toBe(0)
           expect(p.daysAfterReveal).toEqual(p.daysBeforeReveal)
@@ -921,18 +955,20 @@ describe.skipIf(!available)('task timeline scrolling', () => {
         }
       )
       it.skipIf(kind === 'desktop' && onPhone())(
-        `${kind}, ${owner}: Past days open apart from Overdue, with every done row and none left undone`,
+        `${kind}, ${owner}: the completed switch brings the past days in with every done row, with no fold, and Overdue keeps only what is undone`,
         () => {
           const p = probe()
           expect(p.error).toBeUndefined()
+          expect(p.pastNoFold).toBe(true)
           // 45 completed-only archive days and 45 days with one done row each.
           expect(p.pastDays).toHaveLength(90)
           expect(p.pastRows).toBe(90)
           expect(p.pastRowsOpen).toBe(0)
+          expect(p.overdueRowsDoneShown).toBe(0)
           expect(p.allHistory).toBe(true)
           expect(p.pastCompleted).toBe(true)
-          expect(p.pastAnchor).toHaveLength(2)
-          expect(Math.abs(p.pastAnchor![1] - p.pastAnchor![0])).toBeLessThanOrEqual(1)
+          expect(p.anchored).toHaveLength(2)
+          expect(Math.abs(p.anchored![1] - p.anchored![0])).toBeLessThanOrEqual(1)
         }
       )
       it.skipIf(kind === 'desktop' && onPhone())(
