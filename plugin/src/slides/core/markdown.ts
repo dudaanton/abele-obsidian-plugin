@@ -84,16 +84,22 @@ function extractSpeakerNotes(lines: string[]): { audience: string[]; notes: Mark
     if (container.kind !== 'quote' && container.kind !== 'list-item') continue
     const original = lines.slice(container.start, container.end + 1)
     const prefixes: string[] = []
+    // A marker with nothing after it ("-", "1.") still opens an item; its content is indented
+    // one column past the marker, as CommonMark has it.
+    let indent = 0
     const body = original.map((line, index) => {
-      const prefix =
-        container.kind === 'quote'
-          ? (/^ {0,3}> ?/.exec(line)?.[0] ?? '')
-          : index === 0
-            ? (/^ {0,3}(?:[-+*]|\d{1,9}[.)])[ \t]+/.exec(line)?.[0] ?? '')
-            : (/^[ \t]*/.exec(line)?.[0].slice(0, prefixes[0].length) ?? '')
+      let prefix: string
+      if (container.kind === 'quote') prefix = /^ {0,3}> ?/.exec(line)?.[0] ?? ''
+      else if (index === 0) {
+        prefix = /^ {0,3}(?:[-+*]|\d{1,9}[.)])(?:[ \t]+|$)/.exec(line)?.[0] ?? ''
+        indent =
+          prefix.length === line.length && !/[ \t]$/.test(line) ? prefix.length + 1 : prefix.length
+      } else prefix = /^[ \t]*/.exec(line)?.[0].slice(0, indent) ?? ''
       prefixes.push(prefix)
       return line.slice(prefix.length)
     })
+    // Every level must strip something, or the walk would meet the same container forever.
+    if (body.every((line, i) => line === original[i])) continue
     if (container.kind === 'quote' && /^ {0,3}\[!notes\][+-]?(?:[ \t].*)?$/i.test(body[0])) {
       notes.push(block(body.slice(1).join('\n')))
       for (let i = container.start; i <= container.end; i++) audience[i] = ''
@@ -214,29 +220,40 @@ function parseSlide(
   return slide
 }
 
-export function parseDeck(source: string, locations?: DeckLocations): Deck {
-  if (locations) locations.css = []
-  const lines = source
+/** Just the deck's properties: callers that only ask "is this a presentation?" should not pay
+ * for, or be exposed to, a full deck parse of every note. */
+export function deckProperties(source: string): Record<string, unknown> {
+  return frontmatter(splitLines(source)).properties
+}
+
+function splitLines(source: string): string[] {
+  return source
     .replace(/^\uFEFF/, '')
     .replace(/\r\n?/g, '\n')
     .split('\n')
-  let properties: Record<string, unknown> = {},
-    start = 0
+}
+
+function frontmatter(lines: string[]): { properties: Record<string, unknown>; start: number } {
   if (lines[0]?.trim() === '---') {
     const end = lines.findIndex((l, i) => i > 0 && /^(-{3}|\.{3})\s*$/.test(l))
     if (end > 0) {
       // Only a valid mapping is frontmatter; an ordinary first separator is not one.
       try {
         const value = load(lines.slice(1, end).join('\n'))
-        if (value && typeof value === 'object' && !Array.isArray(value)) {
-          properties = value as Record<string, unknown>
-          start = end + 1
-        }
+        if (value && typeof value === 'object' && !Array.isArray(value))
+          return { properties: value as Record<string, unknown>, start: end + 1 }
       } catch {
         /* Broken YAML is shown as slide content, never discarded. */
       }
     }
   }
+  return { properties: {}, start: 0 }
+}
+
+export function parseDeck(source: string, locations?: DeckLocations): Deck {
+  if (locations) locations.css = []
+  const lines = splitLines(source)
+  const { properties, start } = frontmatter(lines)
   const aspect =
     properties.aspect === '4:3' || properties.aspect === '9:16' ? properties.aspect : '16:9'
   const deck: Deck = {

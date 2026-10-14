@@ -1,5 +1,5 @@
 import { describe, expect, it } from 'vitest'
-import { parseDeck, serializeDeck } from '@/slides/core/markdown'
+import { deckProperties, parseDeck, serializeDeck } from '@/slides/core/markdown'
 import { navigate, slideForKey, slideForGesture, fitSlide } from '@/slides/core/navigation'
 
 const sample = `---
@@ -176,6 +176,43 @@ describe('presentation markdown codec', () => {
     const restored = parseDeck(serializeDeck(deck))
     expect(restored.slides[0].notes).toEqual(deck.slides[0].notes)
     expect(content(restored, 0)).not.toContain('Nested reminder')
+  })
+
+  it('parses list markers with nothing after them instead of overflowing the stack', () => {
+    // A bare marker ("-", "1.", "- -", "> -") once made the notes walk recurse on itself forever.
+    for (const source of [
+      '-',
+      '+',
+      '1.',
+      '2)',
+      '   -',
+      '- -',
+      '- 1.',
+      '> -',
+      '>-',
+      ' > -',
+      '> >\n-',
+    ])
+      expect(() => parseDeck(source), JSON.stringify(source)).not.toThrow()
+    expect(content(parseDeck('# Title\n\n-\n\n1.'), 0)).toBe('# Title\n\n-\n\n1.')
+  })
+
+  it('reads deck properties without parsing slides, as the deck parser does', () => {
+    for (const source of [
+      sample,
+      '---\ntype: presentation\n---\n-',
+      '---\n- not: a mapping\n---',
+      '# Note',
+      '',
+    ])
+      expect(deckProperties(source)).toEqual(parseDeck(source).settings.properties)
+  })
+
+  it('extracts speaker notes from a list item whose marker line is empty', () => {
+    const deck = parseDeck('-\n  > [!notes]\n  > Private\n\n- Public')
+    expect(deck.slides[0].notes.map((n) => n.source)).toEqual(['Private'])
+    expect(content(deck, 0)).not.toContain('Private')
+    expect(content(deck, 0)).toContain('Public')
   })
 
   it('leaves notes syntax inside quoted and list-contained code examples as code', () => {
