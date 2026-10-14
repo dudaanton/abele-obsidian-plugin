@@ -8,6 +8,7 @@ import * as selectionMenus from '../e2e/helpers/selectionMenus'
 import * as publication from '../e2e/helpers/canvasPublicationReview'
 import { outwardBoxShadowReach } from '../helpers/focusRingPaint'
 import { recipientLayoutProbe } from '../helpers/keyDestinationLayoutProbe'
+import * as chatProbeInteractions from '../helpers/chatProbeInteractions'
 
 it.each([
   ['dialogRings', 'script'],
@@ -32,6 +33,7 @@ it.each([
     ...publication,
     outwardBoxShadowReach,
     recipientLayoutProbe,
+    ...chatProbeInteractions,
     shotDir: () => 'sample-shots',
     SHOTS: 'sample-shots',
     WORD_SAMPLE: '',

@@ -4,6 +4,7 @@ import { expect, it } from 'vitest'
 import { SCRIPT_FIXTURE } from '../e2e/helpers/scriptFixture'
 import { WAIT_PRELUDE } from '../e2e/helpers/wait'
 import { findToolbarScroller, visibleToolbarTarget } from '../helpers/visibleToolbarTarget'
+import * as chatProbeInteractions from '../helpers/chatProbeInteractions'
 
 const files = [
   'bookLibraryScript',
@@ -25,6 +26,7 @@ it.each(files)('parses emitted browser scripts in %s without contacting a live a
     WAIT_PRELUDE,
     findToolbarScroller,
     visibleToolbarTarget,
+    ...chatProbeInteractions,
     DIR: 'Sample fixture',
     FILE: 'Sample fixture/sample.pdf',
     PATH: 'sample.md',
