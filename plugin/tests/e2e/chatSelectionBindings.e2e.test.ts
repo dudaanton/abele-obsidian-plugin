@@ -20,6 +20,7 @@ import {
   BINDING_CHAT,
   BINDING_CARD,
 } from './helpers/chatBindings'
+import { dismissOwnNotices } from './helpers/ownNotices'
 
 targets('desktop', 'phone')
 const available = isObsidianRunning() && hasTestApi()
@@ -79,6 +80,8 @@ for (const layout of onPhone() ? ['native phone'] : ['desktop', 'phone layout'])
             `(async()=>{window.__bindingOld=${saved};${BINDING_CLEANUP}return 'clean'})()`,
             45000
           )
+        // Linking a card confirms itself with a notice; it is this file's to close.
+        if (saved) dismissOwnNotices('Card linked')
       } finally {
         if (size) {
           evalRaw(
