@@ -19,8 +19,8 @@
       :aria-current="active ? 'true' : undefined"
       :aria-disabled="disabled || undefined"
       :data-path="path"
-      @click="inert || emit('click', $event)"
-      @keydown.enter.prevent="inert || emit('click', keyClick($event))"
+      @click="rowClick"
+      @keydown.enter="rowKey"
     >
       <div
         v-if="collapsible"
@@ -127,6 +127,21 @@ const keyClick = (e: KeyboardEvent) =>
     shiftKey: e.shiftKey,
     altKey: e.altKey,
   })
+
+/** A control in the row's actions is its own: its click and its Enter never navigate the row. */
+const fromAction = (e: Event) =>
+  e.target instanceof Element && !!e.target.closest('.abele-tree-item__actions')
+
+const rowClick = (e: MouseEvent) => {
+  if (!inert.value && !fromAction(e)) emit('click', e)
+}
+
+/** Enter navigates only from the row itself; on a child control it stays that control's. */
+const rowKey = (e: KeyboardEvent) => {
+  if (e.target !== e.currentTarget) return
+  e.preventDefault()
+  if (!inert.value) emit('click', keyClick(e))
+}
 
 const chevron = ref<HTMLElement>()
 const glyph = ref<HTMLElement>()
