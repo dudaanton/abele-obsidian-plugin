@@ -2,7 +2,7 @@ import { afterAll, beforeAll, describe, expect, it } from 'vitest'
 import { evalAsync } from './helpers/githubLive'
 import { hasTestApi, isObsidianRunning } from './helpers/obsidianCli'
 import { onPhone, targets } from './helpers/target'
-import { tap, swipe, typeText, screenshot, driver, swipeDriverArgs } from './helpers/phone'
+import { tap, swipe, screenshot, driver, swipeDriverArgs } from './helpers/phone'
 import { withNativeInput } from './helpers/nativeInput'
 import { shotDir } from './helpers/shots'
 
@@ -93,7 +93,26 @@ const type = async (text: string) => {
         { timeout: 15_000, interval: 100 }
       )
       .toBeGreaterThanOrEqual(10)
-    typeText(text)
+    const before = run<{
+      value: string
+      start: number
+      end: number
+      label: string
+    }>(`const el=document.activeElement;
+      return {value:el.value,start:el.selectionStart,end:el.selectionEnd,label:el.getAttribute('aria-label')}`)
+    const expected = before.value.slice(0, before.start) + text + before.value.slice(before.end)
+    // One native key path: the generic focused-field helper may partially type before a
+    // fallback, dropping a prefix or duplicating delivered input. Never replay uncertain text.
+    driver(['type', text, '--via', 'keys'])
+    console.info('Canvas native typing:', {
+      before,
+      after: run(
+        `const el=document.activeElement;return {label:el?.getAttribute('aria-label'),value:el?.value}`
+      ),
+    })
+    await expect
+      .poll(() => run<string>('return document.activeElement?.value'), { timeout: 15_000 })
+      .toBe(expected)
   } else
     await withNativeInput(() =>
       run(

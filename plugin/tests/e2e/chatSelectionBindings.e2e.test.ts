@@ -6,6 +6,7 @@ import {
   hasTestApi,
   isObsidianRunning,
   reloadApp,
+  waitForTestApi,
 } from './helpers/obsidianCli'
 import { onPhone, targets } from './helpers/target'
 import { WAIT_PRELUDE } from './helpers/wait'
@@ -70,6 +71,9 @@ for (const layout of onPhone() ? ['native phone'] : ['desktop', 'phone layout'])
     })
     afterAll(async () => {
       try {
+        // The last case reloads the plugin; a cleanup that ran before its test API was back
+        // left the probe script and its folder as the vault's settings for every later run.
+        if (saved) await waitForTestApi()
         if (saved)
           await evalLong(
             `(async()=>{window.__bindingOld=${saved};${BINDING_CLEANUP}return 'clean'})()`,

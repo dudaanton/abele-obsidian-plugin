@@ -13,6 +13,20 @@ const bindingSetup = `
   ${SCRIPT_FIXTURE}
   const config = window.__abeleTest.AbeleConfig.getInstance()
   const chats = window.__abeleTest.ChatService.getInstance()
+  // A run whose cleanup never ran left its probe folder, and the scripts settings pointing into
+  // it, as the vault's baseline: the next snapshot would restore that state forever. Sweep it.
+  const bindingStale = app.vault.getRoot().children.filter(f => f.name.startsWith('Sample binding probe-'))
+  if (/^Sample binding probe-/.test(config.ai.scriptsFolder || '')) {
+    config.ai = { ...config.ai, scriptsEnabled: false, scriptsFolder: '', confirmForeignScripts: false,
+      startupScripts: [], startupScriptsPaused: false, toolbarScripts: [] }
+    config.version.value++
+    await config.saveSettings()
+  }
+  for (const folder of bindingStale) await app.vault.delete(folder, true)
+  if (bindingStale.length) {
+    console.info('[binding fixture] removed stale probes', JSON.stringify(bindingStale.map(f => f.path)))
+    await window.__abeleTest.ScriptService.getInstance().discover()
+  }
   const bindingOld = { scripts:await saveScriptFixture(), native:app.vault.getConfig('nativeMenus') ?? null, directory:${JSON.stringify(BINDING_DIR)}, ownsDirectory:false }
   window.__bindingOld = bindingOld
   try {
