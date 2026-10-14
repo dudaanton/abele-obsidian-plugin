@@ -6,6 +6,7 @@ import { onPhone, targets } from './helpers/target'
 import { driver, tap, typeText, screenshot } from './helpers/phone'
 import { withNativeInput } from './helpers/nativeInput'
 import { shotDir } from './helpers/shots'
+import { dismissOwnNotices } from './helpers/ownNotices'
 
 targets('desktop', 'phone')
 const available = isObsidianRunning() && hasTestApi()
@@ -176,6 +177,7 @@ describe.skipIf(!available)('human canvas creation and editing with real input',
       if(fixture){window.__abeleTest.AbeleConfig.getInstance().canvasViewer=fixture.preference;app.vault.setConfig('newFileLocation',fixture.location);await app.workspace.changeLayout(fixture.layout)}
       delete window.__humanCanvas;return true
     `)
+    dismissOwnNotices('Canvas updated ')
   }, 120_000)
 
   it('creates an empty canvas from the palette and completes a card with keyboard input', async () => {
