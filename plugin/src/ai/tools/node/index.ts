@@ -3,6 +3,7 @@ import type { ChatSession } from '../../ChatSession'
 import type { RepositorySource, RepositoryIdentity, RepositoryTarget } from '@/repository/source'
 import { RepositoryWriteSchema } from '@abele/node-protocol'
 import { createNodeAgentTools, type NodeAgentHostFactory } from './agent'
+import { GIVE_ACCESS } from './guidance'
 import { nodeAgentHost } from './owner'
 import { hasNodeScope } from '../../nodeScope'
 const scopeState = (session: ChatSession) =>
@@ -263,18 +264,25 @@ export function createNodeTools(
       { cursor }
     )
   }
-  const legacyTools = names.map(
-    (kind): AgentTool => ({
+  const legacyTools = names.map((kind): AgentTool => {
+    // A name both groups have is the node file tool a model reaches it as; an open tab is
+    // its fallback for a chat without node access.
+    const shared = remoteTools.find(
+      (tool) => tool.name === (kind === 'worktrees' ? 'list_node_worktrees' : `node_${kind}`)
+    )
+    return {
       name: kind === 'worktrees' ? 'list_node_worktrees' : `node_${kind}`,
-      label: `Node repository ${kind}`,
-      category: 'Node repositories',
-      description:
-        kind === 'propose_edit'
+      label: shared ? shared.label : `Node repository ${kind}`,
+      category: shared ? shared.category : 'Node repositories',
+      description: shared
+        ? `${shared.description} A chat without node access reads a repository tab open in Obsidian instead (node_views lists them).`
+        : kind === 'propose_edit'
           ? 'Propose an edit to one current working file. Requires a separate per-edit owner approval and an existing chat repository read grant. Supply exact path, expected_content_id from node_file, and complete proposed text. Retains a device-local draft only; the owner must explicitly Save in the repository tab. Historical versions, Git actions and automatic uncertain retries are not supported.'
           : `With chat node scope, supply opaque node/project/workspace IDs (or omit them for the selected target), target_kind (worktree or workspace), and path for file text. node_read returns file bytes and content identity; node_search accepts literal/regex/filename modes. Without node scope, this is legacy read-only node repository ${kind}. Requires an owner grant for the executing chat and project. Use opaque node/project/workspace IDs; revision defaults to the working tree. Continuations use cursor alone. ${kind === 'search' ? 'Mode code or path; query, regex, case_sensitive and glob select matches.' : ''}`,
       parameters: {
         type: 'object',
         properties: {
+          ...(shared?.parameters.properties as Record<string, unknown> | undefined),
           ...Object.fromEntries(
             [
               'node',
@@ -426,7 +434,10 @@ export function createNodeTools(
               i.workspace === workspace
             )
           })
-          if (!tab) throw new Error('No repository source is available for these IDs')
+          if (!tab)
+            throw new Error(
+              `No repository source open in Obsidian has these IDs; node_views lists the open repository tabs. To reach node files without an open tab this chat needs node access: ${GIVE_ACCESS}`
+            )
           checks.push(await scopedSourceGuard(tab))
           guard()
           if (
@@ -602,8 +613,8 @@ export function createNodeTools(
           expires: Date.now() + 600000,
         })
       },
-    })
-  )
+    }
+  })
   const existing = new Set(legacyTools.map((tool) => tool.name))
   return [...legacyTools, ...remoteTools.filter((tool) => !existing.has(tool.name))]
 }

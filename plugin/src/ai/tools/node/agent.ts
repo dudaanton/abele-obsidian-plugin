@@ -18,9 +18,18 @@ import {
   NodeScopeTargetSchema,
 } from '../../nodeScope'
 
-export const NODE_EDIT_TOOLS = ['node_edit', 'node_replace', 'node_write']
-export const NODE_FILE_OPERATIONS = ['node_mv', 'node_cp', 'node_rm']
-export const NODE_MUTATION_TOOLS = [...NODE_EDIT_TOOLS, ...NODE_FILE_OPERATIONS]
+import {
+  NODE_EDIT_TOOLS,
+  NODE_FILE_OPERATIONS,
+  NODE_MUTATION_TOOLS,
+  GIVE_ACCESS,
+  CHOOSE_TARGET,
+  NO_NODE_ACCESS,
+  NODE_ACCESS_NOT_APPROVED,
+  nodeToolDescription,
+  resolveNodeTarget,
+} from './guidance'
+export { NODE_EDIT_TOOLS, NODE_FILE_OPERATIONS, NODE_MUTATION_TOOLS } from './guidance'
 export const NODE_AGENT_TOOL_NAMES = [
   'node_nodes',
   'node_folders',
@@ -108,6 +117,13 @@ const targetOf = (session: NodeScopeChat, params: Record<string, unknown>): Node
       if (!parsed.target) throw new Error('The selected chat node target is missing')
       return { ...parsed, target: parsed.target }
     }
+    // A chat given one folder or worktree reads there without naming it.
+    const scopes = nodeScopeEntries(session)
+    if (!scopes.length) throw new Error(NO_NODE_ACCESS)
+    const [only] = scopes
+    if (scopes.length === 1 && only.kind === 'target')
+      return { node_id: only.node_id, project_id: only.project_id, target: only.target }
+    throw new Error(`This chat may reach more than one folder, so name one. ${CHOOSE_TARGET}`)
   }
   return {
     node_id: text(params, 'node'),
@@ -203,7 +219,7 @@ export function createNodeAgentTools(factory: NodeAgentHostFactory): AgentTool[]
     name,
     label: name.replaceAll('_', ' '),
     category: 'Node files',
-    description: `${name}: files on registered node folders/worktrees allowed by this chat's locally approved node scope. Opaque node/project/workspace IDs only; target_kind is worktree (Git) or workspace (plain folder). Omit all IDs to use this chat's selected target. Read continuations use cursor alone. Writes act immediately, use exact expected_content_id (SHA-256 from node_read; null for exclusive creation), and follow the chat file-edit permission mode. node_edit replaces one unique old_text with new_text; node_replace replaces all exact old_text matches. node_write uses complete text. Moves/copies/removal are single regular files, same target, destination absent. No shell, staging, commits, push, owner settings or automatic retries.`,
+    description: nodeToolDescription(name),
     parameters: {
       type: 'object',
       properties: {
@@ -273,11 +289,18 @@ export function createNodeAgentTools(factory: NodeAgentHostFactory): AgentTool[]
       }
       const scopes = nodeScopeEntries(session)
       const admittedConnection = (node: string) => {
+        if (!scopes.length) throw new Error(NO_NODE_ACCESS)
         if (!scopes.some((entry) => entry.node_id === node))
-          throw new Error('This node is not in chat scope')
+          throw new Error(
+            `Node ${JSON.stringify(node)} is not in this chat's node access. This chat may use ${[
+              ...new Set(scopes.map((entry) => JSON.stringify(entry.node_id))),
+            ].join(', ')}; node_nodes lists them. ${GIVE_ACCESS}`
+          )
         const connection = host.connection(node, session),
           principal = connection.principal(),
           generation = connection.authorizationGeneration
+        if (!host.ledger.approvedNode(session, node, principal))
+          throw new Error(NODE_ACCESS_NOT_APPROVED)
         checks.push(host.ledger.guardNode(session, node, principal))
         const identity = session.nodeScopeIdentity,
           conversation = session.conversationVersion.value,
@@ -307,14 +330,19 @@ export function createNodeAgentTools(factory: NodeAgentHostFactory): AgentTool[]
         return result
       }
       if (name === 'node_nodes') {
+        if (!scopes.length) return answer(NO_NODE_ACCESS)
         const result: unknown[] = []
+        let unapproved = false
         for (const node of host.nodes()) {
           const nodeId = host.nodeId?.(node.id) ?? node.id
           if (!scopes.some((entry) => entry.node_id === nodeId)) continue
           const connection = host.connection(node.id),
             principal = connection.principal(),
             generation = connection.authorizationGeneration
-          if (!host.ledger.approvedNode(session, nodeId, principal)) continue
+          if (!host.ledger.approvedNode(session, nodeId, principal)) {
+            unapproved = true
+            continue
+          }
           checks.push(host.ledger.guardNode(session, nodeId, principal))
           checks.push(() => {
             if (
@@ -331,6 +359,12 @@ export function createNodeAgentTools(factory: NodeAgentHostFactory): AgentTool[]
           await safe(() => connection.client.describe())
           result.push({ node: nodeId, label: node.label, connected: true })
         }
+        if (!result.length)
+          return answer(
+            unapproved
+              ? NODE_ACCESS_NOT_APPROVED
+              : 'The nodes this chat may use are not connected on this device. The person connects them from the Node panel.'
+          )
         return retain(result)
       }
       if (name === 'node_folders') {
@@ -501,6 +535,7 @@ export function createNodeAgentTools(factory: NodeAgentHostFactory): AgentTool[]
       }
       const connection = admittedConnection(target.node_id),
         client = connection.client
+      await safe(() => resolveNodeTarget(client, target, scopes, guard))
       const id = nodeTargetId(target.target),
         git = target.target.kind === 'worktree'
       const access = NODE_MUTATION_TOOLS.includes(name) ? 'edit' : 'read'

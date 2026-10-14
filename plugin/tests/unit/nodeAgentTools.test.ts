@@ -753,3 +753,73 @@ describe('Obsidian chat node tools', () => {
     expect(client.writeFile).not.toHaveBeenCalled()
   })
 })
+
+describe('what the node file tools tell a model that cannot reach a file yet', () => {
+  const none = { node: undefined, project: undefined, workspace: undefined, target_kind: undefined }
+  it('says how the person gives this chat node access when it has none', async () => {
+    const { call, session } = setup()
+    session.overrides.value = {}
+    const nodes = await call('node_nodes')
+    expect(nodes.content[0].text).toMatch(/no node access/i)
+    expect(nodes.content[0].text).toContain('Give the Obsidian chat access')
+    await expect(call('node_read', { path: 'sample.txt' })).rejects.toThrow(
+      /Give the Obsidian chat access/
+    )
+    await expect(call('node_folders', { node: 'sample-node' })).rejects.toThrow(
+      /Give the Obsidian chat access/
+    )
+  })
+  it('says the access needs approving on this device when it arrived with the chat', async () => {
+    const { call, session, ledger } = setup()
+    ledger.revoke(session)
+    expect((await call('node_nodes')).content[0].text).toMatch(/Approve on this device/)
+  })
+  it('reads from the one target this chat was given when the call names none', async () => {
+    const { call, session, ledger } = setup()
+    session.overrides.value = {
+      nodeScope: [
+        {
+          kind: 'target',
+          node_id: 'sample-node',
+          project_id: project.project_id,
+          target: { kind: 'workspace', workspace_id: workspace.workspace_id },
+          access: 'edit',
+        },
+      ],
+    }
+    ledger.approve(session, { 'sample-node': 'sample-pin:0' })
+    const read = await call('node_read', { ...none, path: 'sample.txt' })
+    expect(JSON.parse(read.content[0].text)).toMatchObject({ text: 'old', content_id: hash })
+  })
+  it('points at node_folders when the call names no target and the chat may reach several', async () => {
+    const { call } = setup()
+    await expect(call('node_read', { ...none, path: 'sample.txt' })).rejects.toThrow(/node_folders/)
+  })
+  it('describes each tool by what it does rather than one text shared by all of them', () => {
+    const tools = createNodeAgentTools(() => setup().host)
+    const descriptions = new Set(tools.map((tool) => tool.description))
+    expect(descriptions.size).toBe(tools.length)
+    for (const tool of tools) expect(tool.description).toMatch(/node_folders|node access/i)
+  })
+  it("reads the worktree a Git folder's workspace ID belongs to, the ID node_folders also shows", async () => {
+    const { call, repository } = setupGit()
+    const read = await call('node_read', { workspace: workspace.workspace_id, path: 'sample.txt' })
+    expect(JSON.parse(read.content[0].text)).toMatchObject({ text: 'old' })
+    expect(repository.blob).toHaveBeenCalledWith(
+      expect.objectContaining({ worktree_id: 'sample-tree' })
+    )
+  })
+  it('reads a plain folder when the call names its workspace but keeps the default worktree kind', async () => {
+    const { call } = setup()
+    const read = await call('node_read', { target_kind: undefined, path: 'sample.txt' })
+    expect(JSON.parse(read.content[0].text)).toMatchObject({ text: 'old' })
+  })
+  it('names the worktrees this chat may use when the call names one outside the folder', async () => {
+    const { call } = setupGit()
+    const failure = call('node_read', { workspace: 'unknown-tree', path: 'sample.txt' })
+    await expect(failure).rejects.toThrow(/sample-tree/)
+    await expect(call('node_read', { workspace: 'unknown-tree', path: 'x' })).rejects.toThrow(
+      /node_folders/
+    )
+  })
+})

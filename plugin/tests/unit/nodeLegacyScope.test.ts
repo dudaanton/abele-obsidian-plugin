@@ -144,3 +144,26 @@ describe('configured node scope is a ceiling for every legacy node tool', () => 
     await expect(call('node_compare', { cursor })).rejects.toThrow()
   })
 })
+
+describe('the node tools a person switches on in the agent settings', () => {
+  it('groups file reading, search and worktree listing with the node file tools that serve them', () => {
+    const tools = createNodeTools(new NodeRepositoryToolsHost(), undefined, () => {
+      throw new Error('unused')
+    })
+    const category = (name: string) => tools.find((tool) => tool.name === name)!.category
+    for (const name of ['node_read', 'node_search', 'list_node_worktrees', 'node_ls', 'node_edit'])
+      expect(category(name), name).toBe('Node files')
+    expect(category('node_views')).toBe('Node repositories')
+    const read = tools.find((tool) => tool.name === 'node_read')!
+    expect(read.description).toMatch(/node_folders/)
+    expect(Object.keys(read.parameters.properties)).toEqual(
+      expect.arrayContaining(['path', 'start_line', 'ref', 'target_kind'])
+    )
+  })
+  it('says how the person gives node access when a chat without it names no open repository tab', async () => {
+    const { call } = setup()
+    await expect(call('node_read', { project: 'unknown-project' })).rejects.toThrow(
+      /Give the Obsidian chat access/
+    )
+  })
+})

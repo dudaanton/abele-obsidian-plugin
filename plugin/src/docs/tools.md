@@ -983,6 +983,15 @@ Each carries its own mode, so reading the settings and changing them are two per
 each setting decides is the `settings` section of this reference.
 # Node repositories
 
+Two groups of tools reach a node. **Node files** is what an agent needs to read and change
+the files of a folder on a node: `node_nodes`, `node_folders`, `list_node_worktrees`, `node_ls`,
+`node_read`, `node_search`, the edits, and the `node_git_*` reads. They work on the folders this
+chat was given node access to, with no tab open. **Node repositories** is the older set that
+works on repository tabs open in Obsidian (`node_views`, `node_file`, `node_tree`,
+`node_open`, `node_propose_edit` and the rest); with node access its reading tools answer the
+same way the node file tools do. `node_read`, `node_search` and `list_node_worktrees` belong to
+both and are listed under **Node files**.
+
 The legacy repository-tab workflow below remains available when the chat has no `nodeScope` override.
 A configured override, including an empty list, constrains every node tool and legacy alias.
 Scope changes retire previous tab read grants; legacy reads also require exact locally approved scope.
@@ -1009,8 +1018,8 @@ Grants are held in memory and disappear when the plugin restarts; nothing new is
 | Tool | Purpose |
 | --- | --- |
 | `node_views` | Authorized open repository tabs and their selections |
-| `list_node_worktrees` | Available project workspaces, including external worktrees |
-| `node_read` | Project overview and workspace catalogue, including external worktrees |
+| `list_node_worktrees` | Without node access: available project workspaces of an open tab, including external worktrees |
+| `node_read` | Without node access: project overview and workspace catalogue of an open tab |
 | `node_tree` | Directory entries at a revision |
 | `node_file` | File text at a revision and the exact full-file content identity, including for selected lines |
 | `node_changes` | Working status, or endpoint changes from an explicit base |
@@ -1076,9 +1085,21 @@ The explicit local confirmation action approves the displayed entries individual
 Loaded or copied scope must be approved locally. No open human tab is required. Scope does not
 turn on external browsing/editing, project trust or execution on the daemon.
 
-Use `node`, `project`, `workspace` (opaque target ID), and `target_kind` (`worktree` for Git,
-`workspace` for a plain folder). Omit all three IDs to use this chat's selected node target.
-Paths are relative to that target, never absolute or `.git` paths. No arbitrary filesystem
+The person gives a chat node access in two places: in the chat, the access button at the
+bottom left of the message box, then **Node access**, choose the node, folder and worktree,
+**Add access**; or in the Node panel, right-click a folder, **Give the Obsidian chat access**,
+choose the chat, **Give access**. Access copied or synced from another device is approved
+once on this one with **Approve on this device** in the same Node access section. A tool that
+cannot reach a file says which of these is missing.
+
+A model starts with `node_nodes`, then `node_folders` for one node, which lists each folder's
+`project` ID, whether it is Git, and its worktree or workspace IDs. Every other tool takes
+`node`, `project`, `workspace` (opaque target ID), and `target_kind` (`worktree` for Git,
+`workspace` for a plain folder). Omit all three IDs when the chat was given exactly one folder
+or worktree, or after `node_worktree_switch` chose one; a chat that may reach more is told to
+name one. A Git folder's workspace ID reads its worktree, and a plain folder's workspace ID
+works with the default `worktree` kind. An ID the folder does not have is answered with the
+worktrees the chat may use. Paths are relative to that target, never absolute or `.git` paths. No arbitrary filesystem
 picker, shell, stage, commit, push or delegation is exposed by this toolset.
 
 | Tool | Purpose |
