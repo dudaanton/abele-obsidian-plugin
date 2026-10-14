@@ -12,7 +12,6 @@ interface InkGesture {
   id: number
   pen: boolean
   entry: InkEntry
-  ahead: number[]
   pressure: number
   /** Drawn while the last change was still being written: kept to be added after it. */
   held: boolean
@@ -55,11 +54,10 @@ export class CanvasInkInput {
       id: event.pointerId,
       pen: event.pointerType === 'pen',
       entry: { stroke, node },
-      ahead: [],
       pressure: 0.5,
       held,
     }
-    this.add(event, false)
+    this.add(event)
     this.viewer.drawInk()
     return true
   }
@@ -71,10 +69,10 @@ export class CanvasInkInput {
     if (g.pen && event.pressure > 0) g.pressure = event.pressure
     return roundPoint(x - (node?.x ?? 0), y - (node?.y ?? 0), g.pen ? g.pressure : 0.5)
   }
-  private add(event: PointerEvent, predicted: boolean): void {
+  private add(event: PointerEvent): void {
     const g = this.gesture,
       p = this.sample(event),
-      points = predicted ? g.ahead : g.entry.stroke.points,
+      points = g.entry.stroke.points,
       n = points.length
     if (n >= 3 && points[n - 3] === p[0] && points[n - 2] === p[1]) return
     points.push(...p)
@@ -86,12 +84,10 @@ export class CanvasInkInput {
       this.cancel()
       return
     }
-    for (const sample of event.getCoalescedEvents?.() ?? []) this.add(sample, false)
-    this.add(event, false)
-    g.ahead = []
-    const pressure = g.pressure
-    for (const sample of event.getPredictedEvents?.() ?? []) this.add(sample, true)
-    g.pressure = pressure
+    // Every sample the pointer went through, and only those: points the browser predicts ahead
+    // of the pen are drawn and then taken back each frame, which reads as the line jumping.
+    for (const sample of event.getCoalescedEvents?.() ?? []) this.add(sample)
+    this.add(event)
     this.viewer.drawInk()
   }
   up(event: PointerEvent): void {
@@ -141,7 +137,7 @@ export class CanvasInkInput {
     }
     paintInkEntry(
       ctx,
-      { ...g.entry, stroke: { ...g.entry.stroke, points: [...g.entry.stroke.points, ...g.ahead] } },
+      { ...g.entry, stroke: { ...g.entry.stroke, points: [...g.entry.stroke.points] } },
       theme,
       true
     )
