@@ -91,11 +91,22 @@ const probe = async (name: string) =>
   const beforeStatus=status?(await status.getInfo()).visible:null
   const beforeFull=full()
   await v.go(0)
+  await app.workspace.revealLeaf(leaf)
   app.workspace.setActiveLeaf(leaf,{focus:true})
-  await wait(350)
-  const play=v.toolbar.querySelector('button[aria-label="Play"]'),b=play.getBoundingClientRect()
-  await tap(b.left+b.width/2,b.top+b.height/2)
+  const play=v.toolbar.querySelector('button[aria-label="Play"]')
+  let previous='',stable=0,point,clicked=false
+  const clickedPlay=()=>{clicked=true}
+  play.addEventListener('click',clickedPlay,{once:true})
   try {
+    if(!await until(()=>{
+      const b=play.getBoundingClientRect(),x=Math.round(b.left+b.width/2),y=Math.round(b.top+b.height/2)
+      const hit=play.ownerDocument.elementFromPoint(x,y),signature=JSON.stringify([b.x,b.y,b.width,b.height])
+      const hittable=!play.disabled&&b.width>0&&b.height>0&&x>=0&&y>=0&&x<innerWidth&&y<innerHeight&&play.contains(hit)
+      stable=hittable&&signature===previous?stable+1:0;previous=signature;point={x,y,hit:hit?.outerHTML}
+      return stable>=5
+    }))throw Error('Play has no stable native target: '+JSON.stringify(point))
+    await tap(point.x,point.y)
+    if(!await until(()=>clicked))throw Error('Play tap did not reach its button: '+JSON.stringify({point,active:app.workspace.getActiveFile()?.path}))
     if(!await until(()=>v.root.classList.contains('abele-deck-presenting')))throw Error('Play did not start')
     if(!mobile && !await until(full))throw Error('Play did not enter native fullscreen')
     await wait(300)
@@ -134,7 +145,11 @@ const probe = async (name: string) =>
     r.restored=await until(()=>v.root.parentElement===leaf.view.contentEl && (mobile || full()===beforeFull))
     if(status){await wait(200);r.statusRestored=(await status.getInfo()).visible===beforeStatus}
     return JSON.stringify(r)
-  } finally {v.exitPresenting();if(phone)await ${RESTORE_PHONE_SCRIPT}}
+  } finally {
+    play.removeEventListener('click',clickedPlay)
+    console.info('Play delivery',JSON.stringify({clicked,point,presenting:v.root.classList.contains('abele-deck-presenting')}))
+    v.exitPresenting();if(phone)await ${RESTORE_PHONE_SCRIPT}
+  }
 })()`)
   )
 const verify = (r: Record<string, unknown>, mobile: boolean) => {

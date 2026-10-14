@@ -9,6 +9,7 @@ import {
   reloadApp,
 } from './helpers/obsidianCli'
 import { shotDir } from './helpers/shots'
+import { withNativeInput } from './helpers/nativeInput'
 import { randomUUID } from 'node:crypto'
 
 const available = isObsidianRunning() && hasTestApi()
@@ -23,7 +24,8 @@ interface Report {
 }
 
 async function probe(otherProvider: boolean, mode: string): Promise<Report> {
-  const result = await evalLong(`(async () => {
+  const result = await withNativeInput(() =>
+    evalLong(`(async () => {
     const folderPath = ${JSON.stringify(`sample-drawing-menu-${randomUUID()}`)}
     const layout = app.workspace.getLayout()
     const nativeMenus = app.vault.getConfig('nativeMenus')
@@ -54,15 +56,24 @@ async function probe(otherProvider: boolean, mode: string): Promise<Report> {
       el.scrollIntoView({ block: 'center' })
       await wait(300)
       const b = el.getBoundingClientRect()
-      el.dispatchEvent(new MouseEvent('contextmenu', { bubbles: true, clientX: b.left + 30, clientY: b.top + 10 }))
-      await until(() => report.sources.length && [...document.querySelectorAll('.menu .menu-item-title')].some(e => e.textContent.trim() === 'New Abele drawing'))
-      report.titles = [...document.querySelectorAll('.menu .menu-item-title')].map(e => e.textContent.trim())
+      if(app.isMobile){
+        const x=Math.round(b.left+Math.min(30,b.width/2)),y=Math.round(b.top+b.height/2)
+        if(!el.contains(document.elementFromPoint(x,y)))throw Error('Mobile folder is not hittable')
+        const cdp=require('@electron/remote').getCurrentWebContents().debugger,owned=!cdp.isAttached();if(owned)cdp.attach('1.3')
+        try{
+          await cdp.sendCommand('Input.dispatchTouchEvent',{type:'touchStart',touchPoints:[{x,y,id:1}]})
+          await wait(800)
+          await cdp.sendCommand('Input.dispatchTouchEvent',{type:'touchEnd',touchPoints:[]})
+        }finally{if(owned)cdp.detach()}
+      }else el.dispatchEvent(new MouseEvent('contextmenu', { bubbles: true, clientX: b.left + 30, clientY: b.top + 10 }))
+      await until(() => report.sources.length === 1 && [...document.querySelectorAll('.menu-item-title')].some(e => e.textContent.trim() === 'New Abele drawing'))
+      report.titles = [...document.querySelectorAll('.menu-item-title')].map(e => e.textContent.trim())
       // The mobile sheet enters after the menu DOM is populated.
       await wait(500)
       const remote = require('@electron/remote')
       const image = await remote.getCurrentWebContents().capturePage()
       require('fs').writeFileSync(${JSON.stringify(shots)} + '/' + ${JSON.stringify(`${mode}-${otherProvider ? 'coexist' : 'alone'}.png`)}, image.toPNG())
-      const item = [...document.querySelectorAll('.menu .menu-item')].find(e => e.querySelector('.menu-item-title')?.textContent.trim() === 'New Abele drawing')
+      const item = [...document.querySelectorAll('.menu-item')].find(e => e.querySelector('.menu-item-title')?.textContent.trim() === 'New Abele drawing')
       if (!item) throw new Error('The Abele drawing item is missing')
       item.click()
       drawingLeaf = await until(() => app.workspace.getLeavesOfType('abele-drawing').find(l => l.view.file?.parent?.path === folderPath && l.view.session))
@@ -81,6 +92,7 @@ async function probe(otherProvider: boolean, mode: string): Promise<Report> {
     }
     return report
   })()`)
+  )
   return JSON.parse(result) as Report
 }
 
