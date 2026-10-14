@@ -444,12 +444,15 @@ if (n.type === 'markdown') {
     color: var(--icon-color);
   }
 
-  &:hover:not(:disabled) {
-    border-color: var(--background-modifier-border-hover);
-    background-color: var(--background-modifier-hover);
+  // Only where there is a pointer: a tap on a phone leaves `:hover` on what it touched.
+  @media (hover: hover) {
+    &:hover:not(:disabled) {
+      border-color: var(--background-modifier-border-hover);
+      background-color: var(--background-modifier-hover);
 
-    .abele-obsidian-button__icon {
-      color: var(--icon-color-hover);
+      .abele-obsidian-button__icon {
+        color: var(--icon-color-hover);
+      }
     }
   }
 }
