@@ -29,8 +29,10 @@ interface State {
   totalStaleDot: boolean
   /** The period's currency tabs, in order. */
   tabs: string[]
-  /** Expenses on the tab of every currency, once it is chosen. */
-  allExpenses: string | null
+  /** What the probe's ledger added to the approximate balance. */
+  totalAdded: number | null
+  /** What it added to the expenses on the tab of every currency. */
+  allExpensesAdded: number | null
   /** The probe's wallets in the accounts pane, top to bottom. */
   order: string[]
 }
@@ -49,7 +51,7 @@ const probe = (scene: 'rates' | 'stale' | 'none') => `(async () => {
   const scene = ${JSON.stringify(scene)}
   const ws = app.workspace
   const rates = window.__abeleTest.exchangeRates
-  const state = { error: '', total: null, totalFirst: false, totalMissingRing: false, totalStaleDot: false, tabs: [], allExpenses: null, order: [] }
+  const state = { error: '', total: null, totalAdded: null, totalFirst: false, totalMissingRing: false, totalStaleDot: false, tabs: [], allExpensesAdded: null, order: [] }
   const kept = { table: rates.table, enabled: rates.enabled, display: rates.display }
   const leaves = []
   const shot = async (name) => {
@@ -88,11 +90,6 @@ const probe = (scene: 'rates' | 'stale' | 'none') => `(async () => {
     spend('GEL', 400)
     spend('USD', 30)
     spend('PTS', 4)
-    for (const dir of [FOLDER, FOLDER + '/Accounts', FOLDER + '/Transactions']) {
-      if (!app.vault.getAbstractFileByPath(dir)) await app.vault.createFolder(dir)
-    }
-    for (const [path, body] of Object.entries(files)) await app.vault.create(FOLDER + '/' + path, body)
-
     // A fetch of the app's own may be under way; the fixed table goes in after it.
     await until(() => !rates.updating, 30000)
     const fetchedOn = scene === 'stale' ? day(9) : today
@@ -119,11 +116,32 @@ const probe = (scene: 'rates' | 'stale' | 'none') => `(async () => {
 
     const finance = await open('abele-finance-sidebar-view')
     const root = () => finance.view.containerEl.querySelector('.abele-finance-sidebar')
+    await until(() => !!root(), 30000)
+    await wait(1500)
+    // The vault has money of its own: what is checked is what the probe's ledger adds to it.
+    const number = (e) => (e ? Number(e.textContent.replace(/[^\\d.-]/g, '')) : 0)
+    const totalNow = () => number(root().querySelector('.abele-finance-sidebar__card_total .abele-finance-sidebar__card-balance'))
+    const allTab = () => [...root().querySelectorAll('.abele-finance-sidebar__currency-tabs .abele-tabs__tab')].find((t) => t.textContent.includes('≈'))
+    const allExpensesNow = async () => {
+      const tab = allTab()
+      if (!tab) return null
+      tab.click()
+      await until(() => !!root().querySelector('.abele-finance-sidebar__summary_approx'), 5000)
+      await wait(300)
+      return number(root().querySelector('.abele-finance-sidebar__summary-value--expense'))
+    }
+    const totalBefore = totalNow()
+    const expensesBefore = (await allExpensesNow()) ?? 0
+
+    for (const dir of [FOLDER, FOLDER + '/Accounts', FOLDER + '/Transactions']) {
+      if (!app.vault.getAbstractFileByPath(dir)) await app.vault.createFolder(dir)
+    }
+    for (const [path, body] of Object.entries(files)) await app.vault.create(FOLDER + '/' + path, body)
     const seeded = await until(() => {
-      const r = root()
-      return r && [...r.querySelectorAll('.abele-finance-sidebar__currency-tabs .abele-tabs__tab')].some((e) => e.textContent.trim() === 'GEL')
+      const gel = [...root().querySelectorAll('.abele-finance-sidebar__currency-tabs .abele-tabs__tab')].some((e) => e.textContent.trim() === 'GEL')
+      return gel && (scene === 'none' || totalNow() !== totalBefore)
     }, 30000)
-    if (!seeded) throw new Error('the sidebar never showed the seeded spending')
+    if (!seeded) throw new Error('the sidebar never showed the seeded ledger')
     await wait(600)
     const el = root()
     el.scrollTop = 0
@@ -131,18 +149,20 @@ const probe = (scene: 'rates' | 'stale' | 'none') => `(async () => {
     const total = el.querySelector('.abele-finance-sidebar__card_total')
     if (total) {
       state.total = total.querySelector('.abele-finance-sidebar__card-balance').textContent.replace(/\\s+/g, ' ').trim()
+      state.totalAdded = Math.round((totalNow() - totalBefore) * 100) / 100
       state.totalFirst = cards[0] === total
       state.totalMissingRing = !!total.querySelector('.abele-approx-amount__missing')
       state.totalStaleDot = !!total.querySelector('.abele-approx-amount__stale')
     }
     state.tabs = [...el.querySelectorAll('.abele-finance-sidebar__currency-tabs .abele-tabs__tab')].map((t) => t.textContent.replace(/\\s+/g, ' ').trim())
-    const allTab = [...el.querySelectorAll('.abele-finance-sidebar__currency-tabs .abele-tabs__tab')].find((t) => t.textContent.includes('≈'))
-    if (allTab) {
-      allTab.click()
-      await until(() => !!el.querySelector('.abele-finance-sidebar__summary_approx'), 5000)
-      await wait(400)
-      const value = el.querySelector('.abele-finance-sidebar__summary-value--expense')
-      state.allExpenses = value ? value.textContent.trim() : null
+    if (allTab()) {
+      let after = null
+      for (let i = 0; i < 30; i++) {
+        after = await allExpensesNow()
+        if (after !== expensesBefore) break
+        await wait(300)
+      }
+      state.allExpensesAdded = after === null ? null : Math.round((after - expensesBefore) * 100) / 100
     }
     await shot(scene + '-sidebar')
 
@@ -171,7 +191,6 @@ const probe = (scene: 'rates' | 'stale' | 'none') => `(async () => {
 })()`
 
 const available = isObsidianRunning() && hasTestApi()
-const digits = (text: string | null) => (text ?? '').replace(/[^\d.]/g, '')
 
 describe.skipIf(!available)('money in several currencies, at a fixed table of rates', () => {
   const states: Partial<Record<'rates' | 'stale' | 'none', State>> = {}
@@ -196,8 +215,8 @@ describe.skipIf(!available)('money in several currencies, at a fixed table of ra
     const s = await run('rates')
     expect(s.error).toBe('')
     // 400 EUR + 2600 GEL + 670 USD = 800 + 1300 + 670 USD; the PTS has no rate.
-    expect(s.total).toMatch(/^≈ .* USD$/)
-    expect(digits(s.total)).toBe('2770.00')
+    expect(s.total).toMatch(/^≈.*USD$/)
+    expect(s.totalAdded).toBe(2770)
     expect(s.totalFirst).toBe(true)
     expect(s.totalMissingRing).toBe(true)
     expect(s.totalStaleDot).toBe(false)
@@ -207,7 +226,7 @@ describe.skipIf(!available)('money in several currencies, at a fixed table of ra
     const s = await run('rates')
     expect(s.tabs[0]).toBe('≈ USD')
     // 100 EUR + 400 GEL + 30 USD = 200 + 200 + 30 USD.
-    expect(digits(s.allExpenses)).toBe('430.00')
+    expect(s.allExpensesAdded).toBe(430)
   })
 
   it('orders the accounts by what they are worth, one with no rate last', async () => {
