@@ -12,7 +12,7 @@ import type { CanvasSession, GraphTransform } from './core/session'
 import { CanvasSessionError } from './core/session'
 import { CanvasWriteScheduler, type CanvasWriteSchedule } from './core/writeScheduler'
 import type { CanvasViewer } from './Viewer'
-import { CanvasInput, type CanvasInputTool } from './input'
+import { CanvasInput, OPPOSITE, type CanvasDrop, type CanvasInputTool } from './input'
 import { WIDTHS } from '../drawing/model'
 import { THICKNESSES, type Thickness } from '../ink/thickness'
 
@@ -88,6 +88,8 @@ export class CanvasEditor {
   private geometry: { document: CanvasEditorDocument; generation: number; path: string } | null =
     null
   private editing: string | null = null
+  /** A connection let go over empty canvas, waiting for what to make at its end. */
+  private drop: CanvasDrop | null = null
   /** A frame whose name is being written on its label. */
   private naming: string | null = null
   private ownedDraft: CanvasEditorDocument | null = null
@@ -140,6 +142,10 @@ export class CanvasEditor {
     renameFrame: (id: string, label: string): Promise<void> => this.frameOp(id, 'rename', label),
     foldFrame: (id: string, collapsed: boolean): Promise<void> =>
       this.frameOp(id, collapsed ? 'collapse' : 'expand'),
+    /** A connection let go over nothing, waiting to be told what to make there. */
+    drop: (): CanvasDrop | null => this.drop,
+    /** Makes a card, a note or a shape at the end of the dropped connection, or nothing. */
+    dropAdd: (kind: 'card' | 'note' | 'shape' | null): Promise<void> => this.dropAdd(kind),
     /** A card, frame or line is being carried or drawn right now. */
     gesturing: (): boolean => !!this.geometry,
     /** The frame a card being carried would land in. */
@@ -420,6 +426,10 @@ export class CanvasEditor {
       },
       cancel: () => this.cancelGeometry(),
       invalid: (error) => this.fail(error),
+      dropped: (drop) => {
+        this.drop = drop
+        this.refresh()
+      },
     })
     viewer.onSelect = (node) => {
       if (this.editing || this.waiting) return
@@ -888,6 +898,61 @@ export class CanvasEditor {
     if (!ungroup) this.naming = id
     this.changed(document)
   }
+  /**
+   * The card made at the loose end of a connection stands with its near edge where it was let go,
+   * the connection joined to that edge, and a text card or shape opens for its words at once.
+   */
+  private async dropAdd(kind: 'card' | 'note' | 'shape' | null): Promise<void> {
+    const drop = this.drop
+    this.drop = null
+    if (!drop || !kind || !this.validGeometry()) {
+      this.cancelGeometry()
+      return this.refresh()
+    }
+    let file: string | null = null
+    if (kind === 'note') {
+      file = await this.ports.pickFile()
+      if (!file || !this.validGeometry()) {
+        this.cancelGeometry()
+        return this.refresh()
+      }
+    }
+    const size = kind === 'note' ? { width: 320, height: 240 } : { width: 240, height: 100 },
+      toSide = OPPOSITE[drop.side],
+      { x, y } = drop.point
+    const at = {
+      x: Math.round(
+        toSide === 'left' ? x : toSide === 'right' ? x - size.width : x - size.width / 2
+      ),
+      y: Math.round(
+        toSide === 'top' ? y : toSide === 'bottom' ? y - size.height : y - size.height / 2
+      ),
+    }
+    const id = nanoid()
+    const node: NodeInput =
+      kind === 'note'
+        ? { id, kind: 'note', file: file!, ...at, ...size }
+        : {
+            id,
+            kind: kind === 'shape' ? 'shape' : 'text',
+            ...(kind === 'shape' ? { shape: this.shape.value as Shape } : {}),
+            label: '',
+            ...at,
+            ...size,
+          }
+    await this.completeGeometry([
+      { op: 'add_node', node },
+      {
+        op: 'connect',
+        edge: { id: nanoid(), fromNode: drop.source, fromSide: drop.side, toNode: id, toSide },
+      },
+    ])
+    this.selected = new Set([id])
+    // The new card stands clear of the tools at the foot, so its words can be written in view.
+    this.viewer.reveal({ ...at, ...size }, { bottom: 96 })
+    if (kind !== 'note') this.editText()
+    else this.refresh()
+  }
   /** Renames, folds or unfolds one frame as a single step to undo. */
   private async frameOp(
     id: string,
@@ -1044,6 +1109,8 @@ export class CanvasEditor {
           ...(graph?.edges ?? []),
           ...linesOf(graph ?? { nodes: [], edges: [] }),
           ...inkEntries(graph ?? { nodes: [], edges: [] }).map((e) => e.stroke),
+          // A connection being pulled, or loose and waiting for its menu, stays picked in the accent.
+          ...(this.drop || this.geometry ? linesOf(this.viewer.graph) : []),
         ].map((e) => e.id)
       )
     this.selected = new Set([...this.selected].filter((id) => ids.has(id)))

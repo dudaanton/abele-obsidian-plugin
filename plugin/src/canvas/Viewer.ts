@@ -39,6 +39,8 @@ export interface CanvasViewerInput {
   paint(): void
   paintInk?(ctx: CanvasRenderingContext2D, theme: CanvasTheme): void
   ignores?(event: PointerEvent): boolean
+  /** A pointer moving over the stage with nothing pressed. */
+  hover?(event: PointerEvent): void
 }
 export class CanvasViewer {
   readonly stage: HTMLElement
@@ -282,6 +284,27 @@ export class CanvasViewer {
     this.fitted = true
     this.draw()
   }
+  /**
+   * Moves the camera the least it takes for a region to show whole, kept clear of the given
+   * screen margins (the tools floating at the foot), without changing the zoom.
+   */
+  reveal(region: Rect, inset: { top?: number; bottom?: number; side?: number } = {}): void {
+    const width = this.stage.clientWidth,
+      height = this.stage.clientHeight,
+      zoom = this.camera.zoom
+    if (!width || !height) return
+    const top = inset.top ?? 16,
+      bottom = inset.bottom ?? 16,
+      side = inset.side ?? 16
+    const sx = (region.x - this.camera.x) * zoom,
+      sy = (region.y - this.camera.y) * zoom,
+      ex = sx + region.width * zoom,
+      ey = sy + region.height * zoom
+    const dx = sx < side ? sx - side : ex > width - side ? ex - (width - side) : 0
+    const dy = sy < top ? sy - top : ey > height - bottom ? ey - (height - bottom) : 0
+    if (dx || dy)
+      this.setCamera({ x: this.camera.x + dx / zoom, y: this.camera.y + dy / zoom, zoom })
+  }
   private stopAnimation(): void {
     if (this.animation) this.el.ownerDocument.defaultView!.cancelAnimationFrame(this.animation)
     this.animation = 0
@@ -437,7 +460,10 @@ export class CanvasViewer {
   }
   private move(e: PointerEvent): void {
     const was = this.pointers.get(e.pointerId)
-    if (!was) return
+    if (!was) {
+      if (!this.pointers.size && this.step === null) this.input?.hover?.(e)
+      return
+    }
     e.stopPropagation()
     if (this.gesture?.editing && !this.gesture.multi) {
       this.input?.move(e)

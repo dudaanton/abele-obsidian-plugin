@@ -5,7 +5,14 @@ import { linesOf, rawLines, segmentDistance, type CanvasLine } from './core/prim
 import { endpoint, paintedRoute, routeSamples, sideAt, type Point } from './core/scene'
 import { editCanvas } from './core/edit'
 import { type CanvasOperation } from './core/edit'
-import { canvasFingerprint, parentsOf, type CanvasGraph, type Rect } from './core/model'
+import {
+  canvasFingerprint,
+  parentsOf,
+  type CanvasGraph,
+  type CanvasNode,
+  type Rect,
+  type Side,
+} from './core/model'
 import {
   cornerPoint,
   hitNode,
@@ -49,6 +56,26 @@ export interface InputPorts {
   complete(ops: CanvasOperation[]): void
   cancel(): void
   invalid(error: unknown): void
+  /**
+   * A connection pulled from a card's edge and let go over empty canvas: the host asks what to
+   * make there. The gesture's draft stays open until it answers.
+   */
+  dropped?(drop: CanvasDrop): void
+}
+/** Where a connection was let go over nothing, and the card edge it came from. */
+export interface CanvasDrop {
+  source: string
+  side: Side
+  /** In the canvas's own space, and on the screen for a menu to open at. */
+  point: Point
+  screen: Point
+}
+const SIDES: Side[] = ['top', 'right', 'bottom', 'left']
+export const OPPOSITE: Record<Side, Side> = {
+  top: 'bottom',
+  bottom: 'top',
+  left: 'right',
+  right: 'left',
 }
 interface Gesture {
   graph: CanvasGraph
@@ -67,6 +94,11 @@ interface ConnectionGesture {
   graph: CanvasGraph
   id: string
   source: string | null
+  /** The edge of the source card it was pulled from, when pulled from one of its points. */
+  fromSide: Side | null
+  /** The card under the pointer and the edge of it the connection would stick to. */
+  target: string | null
+  toSide: Side | null
   end: 'from' | 'to' | null
   line: CanvasLine | null
   creating: boolean
@@ -123,6 +155,8 @@ export class CanvasInput implements CanvasViewerInput {
     null
   /** The frame a card being carried would land in, lit while it is over it. */
   private dropFrame: string | null = null
+  /** The card under a mouse that is not pressed, which shows its connection points. */
+  private hovered: string | null = null
   constructor(
     private readonly viewer: CanvasViewer,
     private readonly ports: InputPorts
@@ -418,6 +452,42 @@ export class CanvasInput implements CanvasViewerInput {
         this.overlay.append(handle)
       }
     }
+    // The four points on a card's edges a connection is pulled from, and while one is pulled,
+    // the points of the card it would stick to, the nearest one lit.
+    const pulling = this.connection?.active && this.connection.source ? this.connection : null
+    const pointsOf = (node: CanvasNode, lit: Side | null) => {
+      for (const side of SIDES) {
+        const el = this.overlay.ownerDocument.createElementNS(
+            'http://www.w3.org/1999/xhtml',
+            'div'
+          ) as HTMLElement,
+          p = endpoint(node, side),
+          [x, y] = toScreen(this.viewer.camera, p.x, p.y)
+        el.className = 'abele-canvas-connect-point'
+        // A small card far zoomed out keeps its points smaller than itself; a finger still
+        // reaches them as far as before.
+        el.style.setProperty(
+          '--abele-point-limit',
+          `${Math.max(8, (Math.min(node.width, node.height) * this.viewer.camera.zoom) / 3)}px`
+        )
+        if (side === lit) el.classList.add('is-active')
+        el.dataset.side = side
+        el.setAttribute('aria-label', `Connect from the ${side} edge`)
+        el.style.left = `${x}px`
+        el.style.top = `${y}px`
+        this.overlay.append(el)
+      }
+    }
+    if (pulling) {
+      const target = pulling.target && graph.nodes.find((n) => n.id === pulling.target)
+      if (target) {
+        box(target)
+        pointsOf(target, pulling.toSide)
+      }
+    } else if (!this.gesture?.active) {
+      const card = this.pointsCard()
+      if (card) pointsOf(card, null)
+    }
     if (this.marquee) box(this.marquee)
     if (this.framing?.rect) {
       box(this.framing.rect)
@@ -433,6 +503,40 @@ export class CanvasInput implements CanvasViewerInput {
   landing(): string | null {
     return this.dropFrame
   }
+  /** A mouse moving over the canvas with nothing pressed: the card under it shows its points. */
+  hover(event: PointerEvent): void {
+    const tool = this.ports.tool()
+    if (event.pointerType !== 'mouse' || (tool !== 'select' && tool !== 'connect')) return
+    const [x, y] = this.point(event),
+      over = hitNode(this.viewer.graph, x, y),
+      near = this.hovered ? this.pointHit(x, y, false) : null,
+      id = near ? near.node.id : over && over.type !== 'group' ? over.id : null
+    if (id === this.hovered) return
+    this.hovered = id
+    this.viewer.draw()
+  }
+  /** The card whose edges show their points: the one under the mouse, else the one picked. */
+  private pointsCard(): CanvasNode | null {
+    const tool = this.ports.tool()
+    if ((tool !== 'select' && tool !== 'connect') || !this.ports.enabled()) return null
+    const graph = this.viewer.graph,
+      selected = this.ports.selection(),
+      id =
+        this.hovered ?? (selected.size === 1 ? [...selected][0] : null)
+    const node = graph.nodes.find((n) => n.id === id)
+    return node && node.type !== 'group' ? node : null
+  }
+  /** A point on a card's edge within reach: a finger's reach is wider than a mouse's. */
+  private pointHit(x: number, y: number, touch: boolean): { node: CanvasNode; side: Side } | null {
+    const node = this.pointsCard()
+    if (!node) return null
+    const reach = (touch ? 22 : 10) / this.viewer.camera.zoom
+    const side = SIDES.find((s) => {
+      const p = endpoint(node, s)
+      return Math.hypot(x - p.x, y - p.y) <= reach
+    })
+    return side ? { node, side } : null
+  }
   private connectionDown(event: PointerEvent): boolean {
     const graph = this.viewer.graph,
       [x, y] = this.point(event),
@@ -442,10 +546,17 @@ export class CanvasInput implements CanvasViewerInput {
       tolerance = (event.pointerType === 'mouse' ? 10 : 22) / this.viewer.camera.zoom
     let id = nanoid(),
       source: string | null = null,
+      fromSide: Side | null = null,
       end: 'from' | 'to' | null = null,
       line: CanvasLine | null = null,
       creating = tool !== 'select'
-    if (tool === 'connect') {
+    const pulled = this.pointHit(x, y, event.pointerType !== 'mouse')
+    if (pulled) {
+      // Pulled from a point on a card's edge: a new connection, whatever the tool.
+      source = pulled.node.id
+      fromSide = pulled.side
+      creating = true
+    } else if (tool === 'connect') {
       const node = hitNode(graph, x, y)
       if (!node) return false
       source = node.id
@@ -494,6 +605,9 @@ export class CanvasInput implements CanvasViewerInput {
       graph,
       id,
       source,
+      fromSide,
+      target: null,
+      toSide: null,
       end,
       line,
       creating,
@@ -545,12 +659,23 @@ export class CanvasInput implements CanvasViewerInput {
       const edge = g.graph.edges.find((e) => e.id === g.id),
         node = g.source ? g.graph.nodes.find((n) => n.id === g.source) : undefined,
         points = edge ? paintedRoute(edge, g.graph).points : [],
-        from = node
-          ? endpoint(node, sideAt(node, g.point))
+        over = g.source ? hitNode(g.graph, x, y) : null,
+        target = over && over.id !== g.source && over.type !== 'group' ? over : null
+      // Over another card, a line pulled from an edge point sticks to the target's edge nearest
+      // the pointer; one dragged from a card's body to the edge facing where it started.
+      g.target = target?.id ?? null
+      g.toSide = target ? sideAt(target, g.fromSide ? g.point : g.start) : null
+      const from = node
+          ? endpoint(node, g.fromSide ?? sideAt(node, g.point))
           : g.end === 'from'
             ? g.point
             : (points[0] ?? g.start),
-        to = g.end === 'from' ? points[points.length - 1] : g.point,
+        to =
+          g.end === 'from'
+            ? points[points.length - 1]
+            : target && g.toSide
+              ? endpoint(target, g.toSide)
+              : g.point,
         preview: CanvasLine = {
           version: 1,
           id: g.id,
@@ -563,6 +688,8 @@ export class CanvasInput implements CanvasViewerInput {
         edges: g.graph.edges.filter((e) => e.id !== g.id),
         abele: { ...g.graph.abele, lines: [...rawLines(g.graph), preview] },
       }
+      // A connection being pulled out is drawn as picked, in the accent, until it is let go.
+      if (g.creating && !this.ports.selection().has(g.id)) this.ports.select(new Set([g.id]))
     }
     this.viewer.draw()
   }
@@ -582,7 +709,21 @@ export class CanvasInput implements CanvasViewerInput {
         if (changed && canvasFingerprint(this.viewer.graph) !== canvasFingerprint(g.graph))
           ops = [{ op: 'update', id: g.id, patch: { from: changed.from, to: changed.to } }]
       } else if (g.source || g.end) {
-        const target = hitNode(g.graph, g.point.x, g.point.y)
+        const target = g.source
+          ? g.graph.nodes.find((n) => n.id === g.target)
+          : hitNode(g.graph, g.point.x, g.point.y)
+        const home = hitNode(g.graph, g.point.x, g.point.y)?.id === g.source
+        if (!target && !home && g.source && g.fromSide && this.ports.dropped) {
+          // Let go over nothing: the host offers what to make there; the draft waits for it.
+          this.ports.dropped({
+            source: g.source,
+            side: g.fromSide,
+            point: g.point,
+            screen: { x: event.clientX, y: event.clientY },
+          })
+          this.viewer.draw()
+          return
+        }
         if (target) {
           if (g.source)
             ops = [
@@ -591,8 +732,9 @@ export class CanvasInput implements CanvasViewerInput {
                 edge: {
                   id: g.id,
                   fromNode: g.source,
+                  ...(g.fromSide ? { fromSide: g.fromSide } : {}),
                   toNode: target.id,
-                  toSide: sideAt(target, g.start),
+                  toSide: g.toSide ?? sideAt(target, g.start),
                 },
               },
             ]

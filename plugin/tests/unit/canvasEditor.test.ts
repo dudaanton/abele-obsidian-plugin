@@ -1290,3 +1290,74 @@ describe('human canvas editor', () => {
     expect(s.publish).toHaveBeenCalledOnce()
   })
 })
+
+describe('connections pulled from a card edge', () => {
+  const mouse = { pointerType: 'mouse' }
+  const pull = (s: ReturnType<typeof setup>, from: [number, number], to: [number, number]) => {
+    pointer(s, 'pointermove', from[0] - 20, from[1], mouse)
+    pointer(s, 'pointerdown', from[0], from[1], { ...mouse, buttons: 1 })
+    pointer(s, 'pointermove', (from[0] + to[0]) / 2, (from[1] + to[1]) / 2, {
+      ...mouse,
+      buttons: 1,
+    })
+    pointer(s, 'pointermove', to[0], to[1], { ...mouse, buttons: 1 })
+    pointer(s, 'pointerup', to[0], to[1], mouse)
+  }
+  it('shows the four edge points of the card under a resting mouse', () => {
+    const s = setup(cards())
+    s.viewer.setCamera({ x: 0, y: 0, zoom: 1 })
+    pointer(s, 'pointermove', 100, 80, mouse)
+    s.viewer.input!.paint()
+    const points = [...s.el.querySelectorAll<HTMLElement>('.abele-canvas-connect-point')]
+    expect(points.map((p) => p.dataset.side)).toEqual(['top', 'right', 'bottom', 'left'])
+  })
+  it('joins the edge it was pulled from to the edge of the target nearest the pointer', async () => {
+    const s = setup(cards())
+    s.viewer.setCamera({ x: 0, y: 0, zoom: 1 })
+    pull(s, [260, 80], [840, 150])
+    await vi.waitFor(() => expect(s.publish).toHaveBeenCalled())
+    const made = s.document.session.graph.edges.find((e) => e.id !== 'connection')
+    expect(made).toMatchObject({
+      fromNode: 'alpha',
+      fromSide: 'right',
+      toNode: 'gamma',
+      toSide: 'bottom',
+    })
+  })
+  it('asks what to make where it is let go over nothing, and makes a joined card there', async () => {
+    const s = setup(cards())
+    s.viewer.setCamera({ x: 0, y: 0, zoom: 1 })
+    pull(s, [130, 160], [130, 400])
+    const drop = s.editor.controls.drop()
+    expect(drop).toMatchObject({ source: 'alpha', side: 'bottom', point: { x: 130, y: 400 } })
+    expect(s.publish).not.toHaveBeenCalled()
+    await s.editor.controls.dropAdd('card')
+    const graph = s.document.session.graph
+    const card = graph.nodes.find((n) => !['alpha', 'beta', 'gamma'].includes(n.id))!
+    expect(card).toMatchObject({ type: 'text', y: 400, x: 130 - card.width / 2 })
+    expect(graph.edges.find((e) => e.toNode === card.id)).toMatchObject({
+      fromNode: 'alpha',
+      fromSide: 'bottom',
+      toSide: 'top',
+    })
+    // The new card opens for its words at once.
+    expect(s.editor.controls.editing()).toBe(card.id)
+  })
+  it('makes nothing when the menu is closed without a choice', async () => {
+    const s = setup(cards())
+    s.viewer.setCamera({ x: 0, y: 0, zoom: 1 })
+    pull(s, [130, 160], [130, 400])
+    await s.editor.controls.dropAdd(null)
+    expect(s.editor.controls.drop()).toBeNull()
+    expect(s.document.session.graph.nodes).toHaveLength(3)
+    expect(s.document.session.dirty).toBe(false)
+    expect(s.publish).not.toHaveBeenCalled()
+  })
+  it('makes nothing when let go back on its own card', () => {
+    const s = setup(cards())
+    s.viewer.setCamera({ x: 0, y: 0, zoom: 1 })
+    pull(s, [260, 80], [200, 90])
+    expect(s.editor.controls.drop()).toBeNull()
+    expect(s.document.session.graph.edges).toHaveLength(1)
+  })
+})

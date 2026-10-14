@@ -130,7 +130,7 @@
         @click="press(attachedInk ? 'Detach selected ink' : 'Attach selected ink')"
       />
       <ChromeIcon
-        v-if="!one || kind !== 'group'"
+        v-if="!one || (kind !== 'group' && kind !== 'connection' && kind !== 'line')"
         icon="frame"
         tooltip="Frame these"
         :disabled="groupLabel === null"
@@ -702,6 +702,35 @@ function moreMenu(e: MouseEvent) {
   )
   showAt(menu, e)
 }
+/**
+ * A connection let go over nothing: a menu where it was let go, to make there a card, a note or
+ * the shape last used, joined to it. Closed without a choice, nothing is made.
+ */
+function dropMenu() {
+  const drop = c.drop()
+  if (!drop) return
+  let chosen = false
+  const menu = new Menu()
+  const add = (title: string, icon: string, kind: 'card' | 'note' | 'shape') =>
+    menu.addItem((item) =>
+      item
+        .setTitle(title)
+        .setIcon(icon)
+        .onClick(() => {
+          chosen = true
+          void c.dropAdd(kind)
+        })
+    )
+  add('Card', 'sticky-note', 'card')
+  add('Note or file', 'file-text', 'note')
+  const shape = value('shape') || 'rectangle'
+  add(`Shape: ${shape.replace(/-/g, ' ')}`, SHAPE_ICONS[shape] ?? 'square', 'shape')
+  menu.onHide(() => {
+    if (!chosen) void c.dropAdd(null)
+  })
+  menu.showAtPosition({ x: drop.screen.x, y: drop.screen.y })
+}
+let dropShown: unknown = null
 function saveMenu(e: MouseEvent) {
   const menu = new Menu()
   menu.addItem((i) =>
@@ -786,6 +815,11 @@ onMounted(() => {
   off.value = c.watch(() => {
     tick.value++
     placeField()
+    const drop = c.drop()
+    if (drop && drop !== dropShown) {
+      dropShown = drop
+      dropMenu()
+    } else if (!drop) dropShown = null
   })
   c.textField().addEventListener('blur', blur)
   frame = window.requestAnimationFrame(watchCamera)

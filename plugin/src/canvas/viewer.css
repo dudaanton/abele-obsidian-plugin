@@ -223,3 +223,31 @@
 .abele-canvas-selection-box.abele-canvas-frame-target {
   background: color-mix(in srgb, var(--interactive-accent) 8%, transparent);
 }
+/* A point on a card's edge to pull a connection from, drawn as Obsidian Canvas draws its own. */
+.abele-canvas-connect-point {
+  position: absolute;
+  width: min(16px, var(--abele-point-limit, 16px));
+  height: min(16px, var(--abele-point-limit, 16px));
+  transform: translate(-50%, -50%);
+  box-sizing: border-box;
+  border-radius: 50%;
+  background-color: var(--color-accent);
+  border: 3px solid var(--background-modifier-border);
+  border-width: min(3px, var(--abele-point-limit, 16px) / 5);
+}
+/* The edge of the card under the pointer the connection would stick to. */
+.abele-canvas-connect-point.is-active {
+  width: min(20px, var(--abele-point-limit, 20px) * 1.25);
+  height: min(20px, var(--abele-point-limit, 20px) * 1.25);
+  border-color: var(--background-primary);
+  box-shadow: 0 0 0 2px var(--color-accent);
+}
+/* Under a finger the points are bigger, as Obsidian makes them on a phone. */
+.is-mobile .abele-canvas-connect-point {
+  width: min(22px, var(--abele-point-limit, 22px));
+  height: min(22px, var(--abele-point-limit, 22px));
+}
+.is-mobile .abele-canvas-connect-point.is-active {
+  width: min(26px, var(--abele-point-limit, 26px) * 1.25);
+  height: min(26px, var(--abele-point-limit, 26px) * 1.25);
+}
