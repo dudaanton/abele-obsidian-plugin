@@ -319,7 +319,7 @@ const groups = computed(() => parsed.value?.fingerprint.match(/.{1,4}/g) ?? [])
   gap: var(--size-4-2);
   padding: var(--size-4-1) var(--size-4-1) var(--size-4-1) var(--size-4-3);
   border-radius: var(--radius-s);
-  background-color: var(--code-background);
+  background-color: var(--abele-code-background);
 
   code {
     color: var(--code-normal);

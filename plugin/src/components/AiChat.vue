@@ -2260,7 +2260,7 @@ const showDebug = () => {
 
   :not(pre) > code {
     padding: 1px var(--size-4-1);
-    background-color: var(--code-background);
+    background-color: var(--abele-code-background);
     border-radius: var(--radius-s);
     font-size: 0.9em;
   }

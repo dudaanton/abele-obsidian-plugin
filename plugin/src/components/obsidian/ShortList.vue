@@ -1,7 +1,11 @@
 <template>
   <div class="abele-short-list" :class="{ 'abele-short-list_error': tone === 'error' }">
-    <GroupHeading v-if="heading" :label="heading" class="abele-short-list__heading">
-      {{ items.length }}
+    <!-- How many, right after the words, as a list's count is everywhere: across the window from
+         them it read as a sum belonging to nothing. -->
+    <GroupHeading v-if="heading" class="abele-short-list__heading">
+      <template #label
+        >{{ heading }} <span class="abele-short-list__count">{{ items.length }}</span></template
+      >
     </GroupHeading>
     <div class="abele-short-list__rows" role="list">
       <!-- A thing a line: its name, and faint after it where it is; an error leads with its mark. -->
@@ -87,19 +91,31 @@ const shown = computed(() => (all.value ? props.items : props.items.slice(0, pro
   flex-direction: column;
 }
 
-// Where the window is narrow, the faint part goes under the name rather than cutting it.
+// Where it is, or what went wrong, is a quiet line of its own under the name, as under an
+// entry's: beside it, a long reason wrapped into a ragged column of its own.
 .abele-short-list__row .abele-tree-item__inner {
   flex-wrap: wrap;
+  // The quiet line belongs to the name above it: no step between them, the step is between rows.
+  row-gap: 0;
 }
 
 .abele-short-list__row .abele-tree-item__note {
-  flex: 1 1 10em;
+  flex-basis: 100%;
+  color: var(--abele-text-meta-color);
+  font-size: var(--abele-text-meta-size);
 }
 
-// On a phone where it is always takes a line of its own: under the name, not under the glyph.
-body.is-phone .abele-short-list__row .abele-tree-item__glyph:not(:empty) ~ .abele-tree-item__note {
-  flex-basis: 100%;
+// Under the name, not under the glyph or the mark before it.
+.abele-short-list__row .abele-tree-item__glyph:not(:empty) ~ .abele-tree-item__note {
   padding-inline-start: calc(var(--icon-xs) + var(--size-4-1));
+}
+.abele-short-list_error .abele-short-list__row .abele-tree-item__note {
+  padding-inline-start: calc(var(--icon-xs) * 0.8 + var(--size-4-1));
+}
+
+.abele-short-list__count {
+  color: var(--abele-text-count-color);
+  font-weight: var(--font-normal);
 }
 
 // A tree's rows are muted all through; here the name is what is read, and where it is stays faint.

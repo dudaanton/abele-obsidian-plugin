@@ -55,7 +55,7 @@ const emit = defineEmits<{ 'update:more': [open: boolean] }>()
   align-items: flex-start;
   gap: var(--size-2-3);
   // Room above and below the words, so a hairline between entries never touches them.
-  padding: var(--size-4-2) var(--size-2-3);
+  padding: var(--size-4-3) var(--size-2-3);
   border-radius: var(--radius-s);
   line-height: var(--line-height-normal);
 

@@ -63,7 +63,7 @@ onBeforeUnmount(() => {
 
   // Inside the card the code is a note's code block, its background and no second frame.
   &__code {
-    background-color: var(--code-background);
+    background-color: var(--abele-code-background);
     border-radius: var(--radius-s);
     overflow: hidden;
     font-size: var(--code-size);

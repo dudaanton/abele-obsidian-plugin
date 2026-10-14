@@ -554,7 +554,7 @@ onMounted(async () => {
   margin-top: var(--size-4-2);
   padding: var(--size-4-2);
   border-radius: var(--radius-s);
-  background-color: var(--code-background);
+  background-color: var(--abele-code-background);
   font-family: var(--font-monospace);
   font-size: var(--font-smaller);
   line-height: var(--line-height-tight);

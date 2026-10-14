@@ -100,6 +100,11 @@ const fold = computed(() => props.fold ?? plainFold)
   font-weight: var(--font-normal);
   color: var(--abele-text-count-color);
 }
+/* The search it opens is the list's, not the title's: a step clear of the title and its glyph's
+   light above, and as far from the first row below. */
+.abele-list-section-header__search {
+  margin-block: var(--size-4-3) var(--size-4-2);
+}
 .abele-list-section-header__actions {
   display: flex;
   align-items: center;

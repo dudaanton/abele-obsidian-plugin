@@ -667,7 +667,7 @@ const toggleEdit = () => {
 
 .abele-tool-approval__code {
   margin: 0;
-  background-color: var(--code-background);
+  background-color: var(--abele-code-background);
   border-radius: var(--radius-s);
   padding: var(--size-4-1) var(--size-4-2);
   max-height: 300px;

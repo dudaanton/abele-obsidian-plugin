@@ -297,7 +297,7 @@ body.is-phone .abele-node-panel__link {
   margin-top: var(--size-4-3);
   padding: var(--size-4-1) var(--size-4-1) var(--size-4-1) var(--size-4-2);
   border-radius: var(--radius-s);
-  background-color: var(--code-background);
+  background-color: var(--abele-code-background);
 }
 .abele-node-panel__command-text {
   min-width: 0;
