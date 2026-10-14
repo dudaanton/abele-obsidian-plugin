@@ -34,7 +34,7 @@ async function eventually(test: () => Promise<boolean>) {
   throw new Error('Daemon state did not converge')
 }
 async function start(dir: string) {
-  const child = spawn(process.execPath, [cli!, 'start', '--state-dir', dir, '--port', '0'], {
+  const child = spawn(process.execPath, [cli!, 'start', '--state-dir', dir, '--port', '0', '--json'], {
     stdio: ['ignore', 'pipe', 'pipe'],
     env: { ...process.env, ABELE_CLAUDE_PATH: resolve(dir, 'fixture-claude.mjs') },
   })
@@ -83,7 +83,7 @@ it('persists offline outbox, replay/cursor, approval and renderer history across
   const enroll = (label: string) => {
     const created = spawnSync(
       process.execPath,
-      [cli!, 'token', 'create', label, '--state-dir', dir],
+      [cli!, 'token', 'create', label, '--state-dir', dir, '--json'],
       {
         encoding: 'utf8',
         env: { ...process.env, ABELE_CLAUDE_PATH: resolve(dir, 'fixture-claude.mjs') },
@@ -165,6 +165,15 @@ it('persists offline outbox, replay/cursor, approval and renderer history across
   expect(await client.operationResult(rejected.operation_id)).toEqual({
     error: 'not_found',
     input: { sessionId: 'missing-session', text: 'Sample offline rejection' },
+    request: {
+      method: 'session.send',
+      params: {
+        observed_seq: 0,
+        script: [{ kind: 'echo' }],
+        session_id: 'missing-session',
+        text: 'Sample offline rejection',
+      },
+    },
   })
 }, 20000)
 
@@ -177,7 +186,7 @@ it('provisions two projects, renders gated fake CLI edits, reloads approvals, qu
   chmodSync(resolve(dir, 'fixture-claude.mjs'), 0o700)
   const tokenResult = spawnSync(
     process.execPath,
-    [cli!, 'token', 'create', 'sample-workspace-client', '--state-dir', dir],
+    [cli!, 'token', 'create', 'sample-workspace-client', '--state-dir', dir, '--json'],
     {
       encoding: 'utf8',
       env: { ...process.env, ABELE_CLAUDE_PATH: resolve(dir, 'fixture-claude.mjs') },

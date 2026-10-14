@@ -50,7 +50,7 @@ for (const provider of ['claude', 'pi'] as const)
       'sample'
     )
     const token = (label: string) => {
-      const r = spawnSync(process.execPath, [cli, 'token', 'create', label, '--state-dir', dir], {
+      const r = spawnSync(process.execPath, [cli, 'token', 'create', label, '--state-dir', dir, '--json'], {
         encoding: 'utf8',
         env,
       })
@@ -66,7 +66,7 @@ for (const provider of ['claude', 'pi'] as const)
     const start = async () => {
       daemon = spawn(
         process.execPath,
-        [cli, 'start', '--state-dir', dir, '--port', '0', '--pi-profile', 'isolated'],
+        [cli, 'start', '--state-dir', dir, '--port', '0', '--pi-profile', 'isolated', '--json'],
         { stdio: ['ignore', 'pipe', 'pipe'], env }
       )
       let output = '',
