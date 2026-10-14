@@ -1,5 +1,6 @@
 import { ref, nextTick, onMounted, onUnmounted, type Ref } from 'vue'
 import { TFile } from 'obsidian'
+import type { Extension } from '@codemirror/state'
 import { GlobalStore } from '@/stores/GlobalStore'
 import {
   createEmbeddedEditor,
@@ -14,6 +15,8 @@ interface InputEditorOptions {
   send: () => void
   keepNote: () => void
   emitFocus: (focused: boolean) => void
+  /** More of the note editor's drawing: the reply chips. */
+  extensions?: Extension[]
 }
 
 /** The borrowed note editor and the plain-text fallback share the same composer actions. */
@@ -88,6 +91,30 @@ export function useChatInputEditor(options: InputEditorOptions) {
     if (options.atEnd) el.setSelectionRange(el.value.length, el.value.length)
   }
 
+  /**
+   * Something that stands in a line of words — a reply's token — put where the cursor is, a
+   * space kept on each side of it, and the cursor after it for the words that follow.
+   */
+  function placeInline(piece: string) {
+    const el = inputEl.value
+    const at = Math.min(
+      editor ? editor.cursor() : (el?.selectionStart ?? text.value.length),
+      text.value.length
+    )
+    const before = text.value.slice(0, at)
+    const after = text.value.slice(at)
+    const head = before && !/\s$/.test(before) ? `${before} ` : before
+    const placed = `${head}${piece} `
+    write(placed + after.replace(/^ /, ''))
+    if (editor) return editor.focusAt(placed.length)
+    void nextTick(() => {
+      if (!el) return
+      el.focus()
+      el.setSelectionRange(placed.length, placed.length)
+      autoResize()
+    })
+  }
+
   /** Whether the field has the cursor — a focus given to one not on screen yet is dropped. */
   function hasFocus(): boolean {
     const el = editor ? editor.contentEl : inputEl.value
@@ -158,6 +185,7 @@ export function useChatInputEditor(options: InputEditorOptions) {
       onFocus: () => emitFocus(true),
       onBlur: () => emitFocus(false),
       keys: EDITOR_KEYS,
+      extensions: options.extensions,
     })
     if (!editor) fallback.value = true
   }
@@ -237,6 +265,7 @@ export function useChatInputEditor(options: InputEditorOptions) {
     onInput,
     syncText,
     focus,
+    placeInline,
     hasFocus,
     onKeydown,
     onEmptyPress,

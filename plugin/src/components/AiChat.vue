@@ -115,7 +115,9 @@
         :capture-link="captureLink"
         :capture-script="captureScript"
         :script-menu="selectionScripts"
+        :can-reply="canReply"
         @ask="onAskHere"
+        @reply="(id, quote, start) => onReply({ messageId: id, quote, start })"
         @highlight="onHighlight"
       />
 
@@ -369,6 +371,7 @@
         :can-note="commentSession"
         :note-blocked="midTurn"
         @send="onSend"
+        @show-reply="onShowReply"
         @note="onNote"
         @command="onCommand"
         @prompt="onPromptSelected"
@@ -497,7 +500,8 @@ import { GlobalStore } from '@/stores/GlobalStore'
 import { parseTemplateVariables, applyTemplateVariables } from '@/templates/TemplateParser'
 import { allowTemplateExecution } from '@/templates/TemplateTrust'
 import type { TemplateVariable } from '@/templates/TemplateParser'
-import type { ChatDraft, ChatMessage, MessageComment } from '@/ai/types'
+import type { ChatDraft, ChatMessage, ChatReplyTo, MessageComment } from '@/ai/types'
+import { agentReplyText, composerText } from '@/ai/replyLinks'
 import { sameConversation, type ConversationOwner } from '@/ai/draftImports'
 import { revealAnchor, captureSelectionLink } from '@/ai/openChat'
 import { ScriptService } from '@/scripting/ScriptService'
@@ -654,6 +658,10 @@ const messageProps = (msg: ChatMessage) => ({
   interceptorError: msg.draft ? interceptorError.value : replyReviews.value[msg.id]?.error,
   comments: commentsOn.value.get(msg.id),
   canComment: canComment.value,
+  canReply: canReply.value,
+  replyGone: msg.replyTo
+    ?.filter((to) => !messages.value.some((m) => m.id === to.messageId))
+    .map((to) => to.messageId),
   captureLink,
   captureScript,
   scriptMenu: selectionScripts,
@@ -681,6 +689,8 @@ const messageHandlers = {
   'retry-message': (id: string) => onRetryMessage(id),
   'insert-into-note': (id: string) => onInsertIntoNote(id),
   'ask-here': (...a: Parameters<typeof onAskHere>) => onAskHere(...a),
+  reply: (to: ChatReplyTo) => onReply(to),
+  'show-reply': (to: ChatReplyTo) => onShowReply(to),
   highlight: (...a: Parameters<typeof onHighlight>) => onHighlight(...a),
   'remove-highlight': (...a: Parameters<typeof onRemoveHighlight>) => onRemoveHighlight(...a),
   'recolor-highlight': (...a: Parameters<typeof onRecolorHighlight>) => onRecolorHighlight(...a),
@@ -767,6 +777,20 @@ const canComment = computed(
     (session.value?.kind === 'chat' || session.value?.kind === 'comment') &&
     !!session.value?.currentChatFile.value
 )
+
+/** Any chat a question is written in can reply to the agent's words; a run has nobody to ask. */
+const canReply = computed(() => !!session.value && session.value.kind !== 'run')
+/** A chip for the place goes into the field where the cursor is, and the field takes the focus. */
+const onReply = (to: ChatReplyTo) => chatInput.value?.quote(to)
+/** Back to the words a place replies to, in this branch: the words themselves when picked. */
+const onShowReply = (to: ChatReplyTo) =>
+  void revealMessage(
+    to.messageId,
+    to.start !== undefined ? { quote: to.quote, start: to.start } : undefined,
+    undefined,
+    true,
+    true
+  )
 
 const onAskHere = (messageId: string, quote?: string, start?: number) => {
   const s = session.value
@@ -868,7 +892,7 @@ const onEditMessage = (messageId: string) => {
   } else {
     s.createBranch(messageId)
   }
-  chatInput.value?.setText(msg.content)
+  chatInput.value?.setText(composerText(msg.content, msg.replyTo))
 }
 
 /**
@@ -908,7 +932,7 @@ const onEditDraft = (messageId: string) => {
   const msg = s.allMessages.value.find((m) => m.id === messageId)
   if (!msg || !msg.draft) return
   s.draft.value.editingDraftId = messageId
-  s.draft.value.text = msg.content
+  s.draft.value.text = composerText(msg.content, msg.replyTo)
 }
 
 const onSendInterceptor = async (messageId: string, content: string) => {
@@ -1088,8 +1112,8 @@ async function openAsChat(): Promise<void> {
  * there, so this is the race between the two, and a refusal that said nothing would look
  * exactly like a note that was saved.
  */
-async function onNote(text: string): Promise<void> {
-  const kept = await session.value?.addUserNote(text)
+async function onNote(text: string, replyTo?: ChatReplyTo[]): Promise<void> {
+  const kept = await session.value?.addUserNote(text, replyTo)
   if (kept === false) new Notice('Finish or dismiss the pending step first')
 }
 
@@ -1573,20 +1597,21 @@ watch(
   () => void nextTick(focusComposer)
 )
 
-const onSend = async (content: string, attachments: string[] = []) => {
+const onSend = async (content: string, attachments: string[] = [], replyTo?: ChatReplyTo[]) => {
   const s = session.value
   if (!s) return
 
   // Update draft content if editing
   if (s.draft.value.editingDraftId) {
-    s.updateDraftContent(s.draft.value.editingDraftId, content)
+    if (replyTo?.length) s.updateDraftContent(s.draft.value.editingDraftId, content, replyTo)
+    else s.updateDraftContent(s.draft.value.editingDraftId, content)
     delete s.draft.value.editingDraftId
     return
   }
 
   // Answer pending question with typed text
   if (s.pendingQuestions.value) {
-    s.answerCurrentQuestion(content)
+    s.answerCurrentQuestion(agentReplyText(content, replyTo))
     return
   }
 
@@ -1597,7 +1622,9 @@ const onSend = async (content: string, attachments: string[] = []) => {
 
   for (const path of fileMentions(content)) s.scopeResolver.addFile(path)
   scrollOnUserSend()
-  await s.sendMessage(content, attachments)
+  // A message that replies to nothing goes as it always did.
+  if (replyTo?.length) await s.sendMessage(content, attachments, undefined, replyTo)
+  else await s.sendMessage(content, attachments)
 }
 
 /**
@@ -1829,7 +1856,9 @@ const onAbort = () => {
       .map((path) => app.vault.getAbstractFileByPath(path))
       .filter((file): file is TFile => file instanceof TFile)
     chatInput.value?.putDraft({
-      text: [...queued.map((q) => q.content), draft.text].filter(Boolean).join('\n'),
+      text: [...queued.map((q) => composerText(q.content, q.replyTo)), draft.text]
+        .filter(Boolean)
+        .join('\n'),
       attachments: [...draft.attachments, ...files.filter((f) => !draft.attachments.includes(f))],
     })
   }
@@ -1853,7 +1882,7 @@ const onEditQueued = (id: string) => {
   if (!s || !input || !queued) return
   const draft = input.takeDraft()
   input.putDraft({
-    text: [queued.content, draft.text].filter(Boolean).join('\n'),
+    text: [composerText(queued.content, queued.replyTo), draft.text].filter(Boolean).join('\n'),
     attachments: [
       ...draft.attachments,
       ...filesOf(queued.attachments).filter(

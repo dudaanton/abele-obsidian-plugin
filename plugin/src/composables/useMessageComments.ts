@@ -47,8 +47,20 @@ export function useMessageComments(
     start: number,
     text: string
   ) => ((name?: string) => void) | undefined,
-  scripts: () => SelectionMenuItem[] = () => []
+  scripts: () => SelectionMenuItem[] = () => [],
+  more: {
+    /** Reply to the selected words, or to the whole answer when none are, in this chat. */
+    reply?: (quote?: string, start?: number) => void
+    /** Whether Reply is offered: an answer of the agent in a chat a message can be written in. */
+    canReply?: () => boolean
+    /**
+     * Whether the words can be asked about, linked to, run through a script or highlighted: a
+     * chat with a file to keep that in. Without one, the menu of selected words is Copy and Reply.
+     */
+    canAnnotate?: () => boolean
+  } = {}
 ) {
+  const { reply, canAnnotate = () => true, canReply = () => !!reply } = more
   const content = ref<ComponentPublicInstance | null>(null)
   const root = (): HTMLElement | null => (content.value?.$el as HTMLElement | undefined) ?? null
 
@@ -112,15 +124,27 @@ export function useMessageComments(
     ask(anchor?.quote, anchor?.start)
   }
 
-  /** Right-click on selected words of the answer: copy them, or ask about them. */
+  const replyHere = () => {
+    const anchor = current() ?? held
+    held = null
+    if (anchor) reply?.(anchor.quote, anchor.start)
+    else reply?.()
+  }
+
+  /** Right-click on selected words of the answer: copy them, reply to them, or ask about them. */
   const onContentMenu = (event: MouseEvent) => {
     const anchor = current()
     if (!anchor) return
     event.preventDefault()
     const selected = root()?.ownerDocument.getSelection()?.toString() ?? anchor.quote
 
-    const copyLink = captureLink?.(anchor.quote, anchor.start, messageRenderedText(root()!))
-    const run = captureScript?.(anchor.quote, anchor.start, messageRenderedText(root()!))
+    const annotate = canAnnotate()
+    const copyLink = annotate
+      ? captureLink?.(anchor.quote, anchor.start, messageRenderedText(root()))
+      : undefined
+    const run = annotate
+      ? captureScript?.(anchor.quote, anchor.start, messageRenderedText(root()))
+      : undefined
     const menu = new Menu()
     menu.addItem((item) =>
       item
@@ -128,12 +152,21 @@ export function useMessageComments(
         .setIcon('copy')
         .onClick(() => void navigator.clipboard.writeText(selected))
     )
-    menu.addItem((item) =>
-      item
-        .setTitle('Ask here')
-        .setIcon('message-circle-plus')
-        .onClick(() => ask(anchor.quote, anchor.start))
-    )
+    // Replying goes on in this chat; asking about the words opens a discussion apart.
+    if (reply && canReply())
+      menu.addItem((item) =>
+        item
+          .setTitle('Reply')
+          .setIcon('reply')
+          .onClick(() => reply(anchor.quote, anchor.start))
+      )
+    if (annotate)
+      menu.addItem((item) =>
+        item
+          .setTitle('Ask here')
+          .setIcon('message-circle-plus')
+          .onClick(() => ask(anchor.quote, anchor.start))
+      )
     if (copyLink)
       menu.addItem((item) =>
         item.setTitle('Copy link to selection').setIcon('link').onClick(copyLink)
@@ -156,7 +189,7 @@ export function useMessageComments(
           .onClick(() => run())
       )
     }
-    if (highlight) {
+    if (highlight && annotate) {
       menu.addItem((item) =>
         item
           .setTitle('Highlight')
@@ -165,7 +198,7 @@ export function useMessageComments(
       )
     }
     const end = anchor.start + anchor.quote.length
-    for (const mark of highlights() ?? []) {
+    for (const mark of annotate ? (highlights() ?? []) : []) {
       if (mark.start >= end || mark.start + mark.quote.length <= anchor.start) continue
       menu.addItem((item) =>
         item
@@ -181,5 +214,5 @@ export function useMessageComments(
     held = null
   })
 
-  return { content, paint, capture, captureFresh, askHere, onContentMenu }
+  return { content, paint, capture, captureFresh, askHere, replyHere, onContentMenu }
 }

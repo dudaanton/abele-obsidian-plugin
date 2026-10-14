@@ -96,8 +96,11 @@
           :queue-states="presentation.states"
           :offline="offline"
           :open-resource="(path) => openResource(path, segment.target)"
+          can-reply
           @cancel="presenter.cancelInput($event)"
           @retry="retry"
+          @reply="(to) => chatInput?.quote(to)"
+          @show-reply="showReply"
         >
           <template #after-message="{ message }">
             <NodeDebugActions
@@ -178,6 +181,7 @@
       :facts="[{ key: '0', value: presenter.draftNotice.value }]"
     />
     <AiChatInput
+      ref="chatInput"
       :key="presenter.id"
       v-model:expanded="expanded"
       :conversation-draft="presenter.draft.value"
@@ -190,6 +194,7 @@
       token-display=""
       scope-label=""
       @send="send"
+      @show-reply="showReply"
       @focus="onInputFocus"
     />
   </div>
@@ -206,6 +211,8 @@ import { openNodeFiles } from '@/node/openFiles'
 import NodeMessageTree from './NodeMessageTree.vue'
 import NodePermissionCard from './NodePermissionCard.vue'
 import AiChatInput from './AiChatInput.vue'
+import type { ChatReplyTo } from '@/ai/types'
+import { flashMessagePassage } from '@/ai/messageComments'
 import Icon from './obsidian/Icon.vue'
 import AgentsButton from './AgentsButton.vue'
 import Button from './obsidian/Button.vue'
@@ -432,15 +439,19 @@ const openMenu = (event: MouseEvent | KeyboardEvent) => {
   const rect = (event.currentTarget as HTMLElement).getBoundingClientRect()
   menu.showAtPosition({ x: rect.left, y: rect.bottom })
 }
-const send = async (text: string) => {
+const send = async (text: string, _files: string[] = [], replyTo?: ChatReplyTo[]) => {
   sending.value = true
+  // The places replied to go as links over the words; the field's text held them as markers.
+  const reply = replyTo?.length ? { replyTo, draft: props.presenter.draft.value.text } : undefined
   try {
     if (permissionFixture.value && props.presenter.provider?.value === 'fake')
       await props.presenter.send(
         text,
         [{ kind: 'permission', ttl_ms: 60000 }, { kind: 'echo' }],
-        props.currentTarget
+        props.currentTarget,
+        reply
       )
+    else if (reply) await props.presenter.send(text, undefined, props.currentTarget, reply)
     else if (props.currentTarget) await props.presenter.send(text, undefined, props.currentTarget)
     else await props.presenter.send(text)
   } finally {
@@ -448,6 +459,20 @@ const send = async (text: string) => {
   }
   await nextTick()
   if (scroller.value) scroller.value.scrollTop = scroller.value.scrollHeight
+}
+const chatInput = ref<InstanceType<typeof AiChatInput> | null>(null)
+/** Back to the words a place replies to: its message brought into view, the words flashed. */
+const showReply = (to: ChatReplyTo) => {
+  const el = scroller.value?.querySelector<HTMLElement>(
+    `[data-node-message="${CSS.escape(to.messageId)}"]`
+  )
+  if (!el) {
+    new Notice('That message is no longer in this chat')
+    return
+  }
+  el.scrollIntoView({ block: 'center' })
+  const words = el.querySelector<HTMLElement>('[data-find-part="content"]')
+  if (words && to.start !== undefined) flashMessagePassage(words, to.quote, to.start)
 }
 const retry = (messageId: string) => {
   if (offline.value || sending.value) return

@@ -9,6 +9,8 @@
     @mousedown.prevent
   >
     <!-- Glyphs in one row, as Obsidian's own toolbar on a phone; the words are their labels. -->
+    <!-- Replying to the words goes on in this chat; asking about them opens a discussion apart. -->
+    <Icon v-if="canReply && shown.highlight" icon="reply" label="Reply" @click="reply" />
     <Icon icon="message-circle-plus" label="Ask here" @click="ask" />
     <Icon v-if="shown.copyLink" icon="link" label="Copy link to selection" @click="copyLink" />
     <template v-if="shown.script">
@@ -70,10 +72,13 @@ const props = defineProps<{
   ) => ((name?: string) => void) | undefined
   scripts?: SelectionMenuItem[]
   scriptMenu?: () => SelectionMenuItem[]
+  /** The agent's answers can be replied to in this chat. */
+  canReply?: boolean
 }>()
 
 const emit = defineEmits<{
   (e: 'ask', messageId: string, quote: string, start: number): void
+  (e: 'reply', messageId: string, quote: string, start: number): void
   (e: 'highlight', messageId: string, quote: string, start: number, color: HighlightColor): void
 }>()
 
@@ -177,6 +182,13 @@ function ask() {
   pressing = false
   shown.value = null
   if (asked) emit('ask', asked.id, asked.quote, asked.start)
+}
+
+function reply() {
+  const asked = shown.value
+  pressing = false
+  shown.value = null
+  if (asked) emit('reply', asked.id, asked.quote, asked.start)
 }
 
 function copyLink() {

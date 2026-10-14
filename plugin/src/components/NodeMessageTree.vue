@@ -1,10 +1,13 @@
 <template>
-  <div v-for="(message, index) in messages" :key="message.id">
+  <div v-for="(message, index) in messages" :key="message.id" :data-node-message="message.id">
     <AiChatMessage
       :message="message"
       :read-only-history="true"
+      :can-reply="canReply && depth === 0"
       :compact-tool-details="true"
       :resource-opener="openResource"
+      @reply="emit('reply', $event)"
+      @show-reply="emit('show-reply', $event)"
     >
       <template #tool-note
         ><span v-if="message.content" class="abele-node-message-note" :title="message.content">{{
@@ -62,6 +65,7 @@
         :offline="offline"
         @cancel="emit('cancel', $event)"
         @retry="emit('retry', $event)"
+        @show-reply="emit('show-reply', $event)"
       />
       <pre v-else>{{ JSON.stringify(children[message.id], null, 2) }}</pre>
     </details>
@@ -69,7 +73,7 @@
   </div>
 </template>
 <script setup lang="ts">
-import type { ChatMessage } from '@/ai/types'
+import type { ChatMessage, ChatReplyTo } from '@/ai/types'
 import type { QueueState } from '@/node/presentation'
 import AiChatMessage from './AiChatMessage.vue'
 import Icon from './obsidian/Icon.vue'
@@ -81,12 +85,16 @@ withDefaults(
     openResource: (path: string) => void
     queueStates?: Record<string, QueueState>
     offline?: boolean
+    /** The agent's answers here can be replied to from the composer; nested work cannot. */
+    canReply?: boolean
   }>(),
   { depth: 0, queueStates: () => ({}) }
 )
 const emit = defineEmits<{
   (e: 'cancel', inputId: string): void
   (e: 'retry', messageId: string): void
+  (e: 'reply', to: ChatReplyTo): void
+  (e: 'show-reply', to: ChatReplyTo): void
 }>()
 </script>
 <style lang="scss">

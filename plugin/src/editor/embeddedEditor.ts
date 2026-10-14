@@ -149,6 +149,8 @@ export interface EmbeddedEditorOptions {
    */
   keys?: { key: string; run: () => boolean }[]
   placeholder?: string
+  /** More of the field's own drawing — the composer's reply chips. */
+  extensions?: Extension[]
 }
 
 export interface EmbeddedEditor {
@@ -157,6 +159,10 @@ export interface EmbeddedEditor {
   focus(): void
   /** Focus with the cursor after the last character. */
   focusEnd(): void
+  /** Where the cursor is, as an offset into the text. */
+  cursor(): number
+  /** Focus with the cursor at an offset into the text. */
+  focusAt(offset: number): void
   /** The editor's own content element — what the keyboard comes up for. */
   readonly contentEl: HTMLElement
   destroy(): void
@@ -208,6 +214,7 @@ export function createEmbeddedEditor(
     buildLocalExtensions(): Extension[] {
       const extensions = super.buildLocalExtensions()
       if (options.placeholder) extensions.push(placeholderExt(options.placeholder))
+      extensions.push(...(options.extensions ?? []))
       extensions.push(
         Prec.highest(
           keymap.of([
@@ -425,6 +432,12 @@ export function createEmbeddedEditor(
     focusEnd: () => {
       const cm = controller.editor.cm
       cm.dispatch({ selection: { anchor: cm.state.doc.length } })
+      cm.focus()
+    },
+    cursor: () => controller.editor.cm.state.selection.main.head,
+    focusAt: (offset: number) => {
+      const cm = controller.editor.cm
+      cm.dispatch({ selection: { anchor: Math.min(offset, cm.state.doc.length) } })
       cm.focus()
     },
     get contentEl() {

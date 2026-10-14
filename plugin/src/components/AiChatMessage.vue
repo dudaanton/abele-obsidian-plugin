@@ -223,11 +223,15 @@
         >
       </template>
 
-      <!-- User / Assistant — markdown -->
+      <!-- User / Assistant — markdown; a question's places of the agent's words stand in it as
+           chips, where the person put them. -->
       <Markdown
-        v-else-if="(message.role === 'assistant' || message.role === 'user') && message.content"
+        v-else-if="
+          (message.role === 'assistant' || message.role === 'user') &&
+          (message.content || question.order.length)
+        "
         :ref="comments.content"
-        :text="message.content"
+        :text="question.text"
         :resource-opener="resourceOpener"
         :data-ask-message="canComment ? message.id : undefined"
         :data-copy-selection="canComment && !message.draft && !readOnlyHistory ? 'true' : undefined"
@@ -287,10 +291,12 @@
       :message="message"
       :read-only="readOnlyHistory"
       :can-comment="canComment"
+      :can-reply="answerable"
       :expanded="expanded"
       :capture-selection="comments.capture"
       :ask-here="comments.askHere"
       @copy="copyMessage"
+      @reply="comments.replyHere"
       @actions="showActions"
       @edit-message="emit('edit-message', $event)"
       @retry-message="emit('retry-message', $event)"
@@ -355,7 +361,7 @@
 
 <script setup lang="ts">
 import { ref, computed, watch } from 'vue'
-import { flashMessagePassage, flashExactSelection } from '@/ai/messageComments'
+import { flashMessagePassage, flashExactSelection, messageRenderedText } from '@/ai/messageComments'
 import type { ChatRevision, RenderedRange } from '@/selection/types'
 import { formatTimestamp } from '@/helpers/displayFormat'
 import { Menu, Notice, Platform } from 'obsidian'
@@ -378,7 +384,9 @@ import AiSubAgentRun from './AiSubAgentRun.vue'
 import GalleryViewer from './GalleryViewer.vue'
 import { getAttachmentIcon, fileName as attachmentName } from '@/ai/attachments'
 import { ChatService } from '@/ai/ChatService'
-import type { ChatMessage, MessageComment } from '@/ai/types'
+import type { ChatMessage, ChatReplyTo, MessageComment } from '@/ai/types'
+import { wholeQuote } from '@/ai/replyLinks'
+import { paintReplyChips, questionMarkdown } from './chat/replyChipPaint'
 import type { BranchSwitch } from '@/ai/chatBranches'
 import ChatBranchSwitch from './ChatBranchSwitch.vue'
 import ChatMessageBar from './ChatMessageBar.vue'
@@ -407,6 +415,10 @@ const props = defineProps<{
   comments?: MessageComment[]
   /** Whether "Ask here" is offered: an ordinary chat that has a file to keep comments in. */
   canComment?: boolean
+  /** Whether the message being written can reply to this one, when it is the agent's. */
+  canReply?: boolean
+  /** Messages this question replies to that are not in the branch on screen. */
+  replyGone?: string[]
   /** Whether "Rewind" is offered on a user message: a chat that keeps a rewind log. */
   canRewind?: boolean
   /** This user message's turn changed files that can still be put back. */
@@ -438,6 +450,10 @@ const emit = defineEmits<{
   (e: 'retry-interceptor', messageId: string): void
   /** A comment on this answer: on the selected words, or on all of it when there are none. */
   (e: 'ask-here', messageId: string, quote?: string, start?: number): void
+  /** The message being written replies to this one: the words selected in it, or all of it. */
+  (e: 'reply', to: ChatReplyTo): void
+  /** Go to the words a place in this question replies to. */
+  (e: 'show-reply', to: ChatReplyTo): void
   /** Take back file changes: everything from this message on, or this turn's alone. */
   (e: 'rewind', messageId: string, mode: 'since' | 'turn'): void
   (e: 'highlight', messageId: string, quote: string, start: number, color: HighlightColor): void
@@ -463,7 +479,33 @@ const comments = useMessageComments(
     !props.message.draft && !props.readOnlyHistory && replyRendered.value
       ? props.captureScript?.(props.message.id, quote, start, text)
       : undefined,
-  () => props.scriptMenu?.() ?? props.scripts ?? []
+  () => props.scriptMenu?.() ?? props.scripts ?? [],
+  {
+    reply: (quote, start) => {
+      if (!answerable.value) return
+      const root = comments.content.value?.$el as HTMLElement | undefined
+      emit('reply', {
+        messageId: props.message.id,
+        // Nothing selected: the whole answer, by its opening as it reads.
+        ...(quote !== undefined && start !== undefined
+          ? { quote, start }
+          : { quote: wholeQuote(root ? messageRenderedText(root) : props.message.content) }),
+      })
+    },
+    canReply: () => answerable.value,
+    canAnnotate: () => !!props.canComment,
+  }
+)
+/** An answer of the agent, sent, in a chat whose next message can reply to it. */
+const answerable = computed(
+  () => !!props.canReply && props.message.role === 'assistant' && !props.message.draft
+)
+/** What is rendered: a question's words with a spot for each of its places. */
+const question = computed(() =>
+  questionMarkdown(
+    props.message.content,
+    props.message.role === 'user' ? props.message.replyTo : undefined
+  )
 )
 
 async function copyMessage() {
@@ -489,6 +531,7 @@ function showActions(event: MouseEvent) {
     menu.addItem((item) => item.setTitle(title).setIcon(icon).setSection(section).onClick(action))
   // A phone shows only the ⋯ under a message, so everything is in its menu there.
   if (Platform.isMobile && (props.message.role === 'user' || props.message.role === 'assistant')) {
+    if (answerable.value) add('Reply', 'reply', 'direct', () => comments.replyHere())
     add('Copy', 'copy', 'direct', () => void copyMessage())
     if (!props.readOnlyHistory) {
       if (props.message.role === 'user')
@@ -602,7 +645,7 @@ function onMessageClick(event: MouseEvent) {
 // touch screen, where the long press that fires it is the one selecting the words: the menu
 // jumped up before they were chosen. There `ChatSelectionBar` offers it once they are.
 const onContentMenu = (event: MouseEvent) => {
-  if (props.canComment && !Platform.isMobile) comments.onContentMenu(event)
+  if ((props.canComment || answerable.value) && !Platform.isMobile) comments.onContentMenu(event)
 }
 
 const interceptorText = ref('')
@@ -653,8 +696,21 @@ watch(
 )
 function onReplyRendered() {
   comments.paint()
+  paintPlaces()
   replyRendered.value = true
 }
+/** A question's places, each a chip where it stands and the way back to its words. */
+function paintPlaces() {
+  const root = comments.content.value?.$el as HTMLElement | undefined
+  if (!root || !question.value.order.length) return
+  paintReplyChips(
+    root,
+    question.value.order,
+    (to) => !!props.replyGone?.includes(to.messageId),
+    (to) => emit('show-reply', to)
+  )
+}
+watch(() => props.replyGone?.join('\n'), paintPlaces)
 /** Undefined while rendering; null only when the rendered passage is genuinely missing. */
 function revealPassage(quote: string, start?: number): HTMLElement | null | undefined {
   if (!replyRendered.value) return undefined

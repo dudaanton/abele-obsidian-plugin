@@ -5,6 +5,16 @@
   <div class="abele-chat-msg__bar">
     <span class="abele-chat-msg__quick" role="group" aria-label="Message actions">
       <template v-if="!mobile">
+        <!-- Replying to the agent's words, as in a messenger: the words selected in this answer,
+             or all of it, go into the message being written, where the cursor is. -->
+        <Icon
+          v-if="canReply"
+          icon="reply"
+          size="xs"
+          label="Reply to this"
+          @pointerdown="captureSelection"
+          @click="emit('reply')"
+        />
         <Icon icon="copy" size="xs" label="Copy message" @click="emit('copy')" />
         <template v-if="!readOnly">
           <Icon
@@ -74,12 +84,15 @@ const props = defineProps<{
   message: ChatMessage
   readOnly?: boolean
   canComment?: boolean
+  /** An answer of the agent the message being written can reply to. */
+  canReply?: boolean
   expanded?: boolean
   captureSelection: () => void
   askHere: () => void
 }>()
 const emit = defineEmits<{
   (event: 'copy'): void
+  (event: 'reply'): void
   (event: 'actions', mouse: MouseEvent): void
   (event: 'edit-message', id: string): void
   (event: 'retry-message', id: string): void

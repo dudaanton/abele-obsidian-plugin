@@ -21,6 +21,19 @@
     <!-- One frame, as Obsidian's own field: what goes with the message on top, the words, and
          the row of glyphs at its foot, so the field and its buttons read as one thing. -->
     <div class="abele-chat-input__box">
+      <!-- A plain text box cannot draw a reply's chip: its places stand in the text as «[↩1]»,
+           and here is what each number is. -->
+      <div v-if="fallback && marked.size" class="abele-chat-input__replies">
+        <ReplyChip
+          v-for="[n, to] in marked"
+          :key="n"
+          :to="to"
+          :number="n"
+          removable
+          @open="emit('show-reply', to)"
+          @remove="unmark(n)"
+        />
+      </div>
       <div v-if="attachments.length" class="abele-chat-input__attachments">
         <div v-for="(a, i) in attachments" :key="a.path" class="abele-chat-input__attachment">
           <ChatPicture v-if="isImagePath(a.path)" :path="a.path" pending />
@@ -126,7 +139,12 @@
               data-keeps-focus
               @click="send"
             />
-            <Icon icon="square" tooltip="Stop" class="abele-chat-input__stop" @click="emit('abort')" />
+            <Icon
+              icon="square"
+              tooltip="Stop"
+              class="abele-chat-input__stop"
+              @click="emit('abort')"
+            />
           </template>
           <Icon
             v-else-if="isBusy || importing"
@@ -193,7 +211,17 @@ import { discoverSkills } from '@/ai/tools/SkillTool'
 import { useChatInputAttachments } from '@/composables/useChatInputAttachments'
 import { useChatInputEditor } from '@/composables/useChatInputEditor'
 import { getAttachmentIcon, fileName as attachmentName, ALLOWED_ACCEPT } from '@/ai/attachments'
-import type { ChatDraft } from '@/ai/types'
+import type { ChatDraft, ChatReplyTo } from '@/ai/types'
+import {
+  replyMarker,
+  replyToken,
+  replyTokens,
+  samePlace,
+  splitComposerText,
+  splitMarkedText,
+} from '@/ai/replyLinks'
+import ReplyChip from './chat/ReplyChip.vue'
+import { replyChips } from '@/editor/replyChips'
 import { sameConversation, type ConversationOwner } from '@/ai/draftImports'
 
 const props = defineProps<{
@@ -238,9 +266,12 @@ const props = defineProps<{
 }>()
 
 const emit = defineEmits<{
-  (e: 'send', message: string, attachments: string[]): void
+  /** With `replyTo` when the words reply to places of the agent's, each where it stands. */
+  (e: 'send', message: string, attachments: string[], replyTo?: ChatReplyTo[]): void
+  /** A reply's chip was pressed: the chat goes to the words it replies to. */
+  (e: 'show-reply', to: ChatReplyTo): void
   /** Keep these words in the conversation, and start nothing. */
-  (e: 'note', text: string): void
+  (e: 'note', text: string, replyTo?: ChatReplyTo[]): void
   (e: 'command', command: string): void
   /** A prompt was picked from the «/» list: the chat fills its variables and applies it. */
   (e: 'prompt', file: TFile): void
@@ -288,6 +319,7 @@ const {
   onInput,
   syncText,
   focus,
+  placeInline,
   hasFocus,
   onKeydown,
   onEmptyPress,
@@ -299,6 +331,7 @@ const {
   send: () => send(),
   keepNote: () => keepNote(),
   emitFocus: (focused) => emit('focus', focused),
+  extensions: [replyChips((to) => emit('show-reply', to))],
 })
 const expandLabel = computed(() =>
   expanded.value ? 'Collapse the message field' : 'Expand the message field'
@@ -342,7 +375,11 @@ const send = () => {
   }
 
   const paths = attachments.value.map((f) => f.path)
-  emit('send', msg, paths)
+  // The places replied to go beside the words, each where it stood; a message that replies to
+  // nothing goes as it always did.
+  const { text: words, replyTo } = splitPlaces(msg)
+  if (replyTo.length) emit('send', words, paths, replyTo)
+  else emit('send', words, paths)
   if (props.sendClearing === 'owner') return
   write('')
   attachments.value = []
@@ -393,7 +430,9 @@ const noteTooltip = computed(() =>
 const keepNote = () => {
   if (noteDisabled.value) return
 
-  emit('note', text.value.trim())
+  const { text: words, replyTo } = splitPlaces(text.value.trim())
+  if (replyTo.length) emit('note', words, replyTo)
+  else emit('note', words)
   write('')
   setExpanded(false)
   nextTick(autoResize)
@@ -504,7 +543,38 @@ watch(text, syncText)
 
 const isDraftFor = (owner?: ConversationOwner) => sameConversation(draftOwner, owner)
 
+/**
+ * A place of the agent's words replied to: a chip in the text where the cursor is, the person's
+ * own words before and after it. Several can be put in one message; the same place twice is one.
+ */
+const quote = (to: ChatReplyTo) => {
+  if (fallback.value) {
+    const kept = [...marked.value].find(([, place]) => samePlace(place, to))
+    if (kept && text.value.includes(replyMarker(kept[0]))) return focus()
+    const n = kept?.[0] ?? Math.max(0, ...marked.value.keys()) + 1
+    marked.value.set(n, to)
+    return placeInline(replyMarker(n))
+  }
+  if (replyTokens(text.value).some((t) => samePlace(t.reply, to))) return focus()
+  placeInline(replyToken(to))
+}
+
+/** In a plain text box, the places by the number their marker carries. */
+const marked = ref(new Map<number, ChatReplyTo>())
+const unmark = (n: number) => {
+  marked.value.delete(n)
+  write(text.value.split(replyMarker(n)).join(''))
+}
+// Sent or cleared: the numbers start again.
+watch(text, (value) => {
+  if (!value.trim()) marked.value.clear()
+})
+/** What is sent: the words, and the places where they stood in them. */
+const splitPlaces = (value: string) =>
+  fallback.value ? splitMarkedText(value, marked.value) : splitComposerText(value)
+
 defineExpose({
+  quote,
   setText,
   addAttachment,
   importFiles,

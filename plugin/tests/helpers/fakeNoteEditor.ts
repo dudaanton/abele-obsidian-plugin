@@ -21,6 +21,8 @@ export interface FakeNoteEditor {
   submit(): void
   /** A key the field was given to answer (`Shift-Enter`); whether anything took it. */
   press(key: string): boolean
+  /** Where the cursor stands; at the end unless a test puts it elsewhere. */
+  cursor?: number
   destroyed: boolean
 }
 
@@ -66,7 +68,15 @@ export function createEmbeddedEditor(
     get: () => fake.value,
     set: (value: string) => void (fake.value = value),
     focus: () => content.focus(),
-    focusEnd: () => content.focus(),
+    focusEnd: () => {
+      fake.cursor = undefined
+      content.focus()
+    },
+    cursor: () => fake.cursor ?? fake.value.length,
+    focusAt: (offset: number) => {
+      fake.cursor = offset
+      content.focus()
+    },
     contentEl: content,
     destroy: () => {
       fake.destroyed = true
