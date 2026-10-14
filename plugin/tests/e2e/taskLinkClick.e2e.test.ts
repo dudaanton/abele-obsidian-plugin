@@ -41,11 +41,15 @@ interface Press {
   task: boolean
   /** The note the link names was opened. */
   note: boolean
-  /** The web link's press reached the window with nothing holding it back. */
-  web: boolean
-  /** The row's description was shown before and after. */
+  /**
+   * How many times the web link was followed: its press reached the window with nothing holding
+   * it back, or the app opened its address itself (as the editor does with a link in it).
+   */
+  web: number
+  /** The row's description was shown before the press. */
   before: boolean
-  after: boolean
+  /** The description appeared or went while the row was on the page. */
+  toggled: boolean
 }
 
 type Place = Record<string, Press | undefined>
@@ -108,19 +112,20 @@ const script = `(async () => {
 
   // Every press on a link is seen at the window after the row has had it, and then held back:
   // whether the app would have followed it is recorded, and nothing is opened outside.
-  let web = null
+  let web = 0
+  const opened = (url) => { if (String(url).startsWith('https://example.invalid/')) web++ }
   const atWindow = (e) => {
     const a = e.target.closest && e.target.closest('a')
     if (!a) return
-    if (a.classList.contains('external-link')) web = !e.defaultPrevented
+    if (a.classList.contains('external-link') && !e.defaultPrevented) web++
     e.preventDefault()
   }
   window.addEventListener('click', atWindow)
   const realOpen = window.open
-  window.open = () => null
+  window.open = (url) => { opened(url); return null }
   const shell = window.__e2eHost ? null : require('electron').shell
   const realExternal = shell?.openExternal
-  if (shell) shell.openExternal = async () => {}
+  if (shell) shell.openExternal = async (url) => { opened(url) }
 
   const shows = (path) => app.workspace.getLeavesOfType('markdown').some((l) => l.view.file?.path === path)
   const closeOurs = () => {
@@ -181,15 +186,24 @@ const script = `(async () => {
       for (const [kind, pick] of Object.entries(picks)) {
         const row = await showRow(place, unfolded)
         const before = !!row.querySelector('.abele-task-view__description')
-        web = null
+        // A link to a note may take the row's page away with it, so a fold is watched for while
+        // the row is there rather than looked for afterwards.
+        let toggled = false
+        const detail = (n) => n.nodeType === 1 && (n.matches('.abele-entry-row__detail') || !!n.querySelector('.abele-entry-row__detail'))
+        const watch = new MutationObserver((list) => {
+          for (const m of list) if ([...m.addedNodes, ...m.removedNodes].some(detail)) toggled = true
+        })
+        watch.observe(row, { childList: true, subtree: true })
+        web = 0
         await press(pick(row.querySelector(part)))
         await wait(1500)
+        watch.disconnect()
         out[state + ' ' + kind] = {
           task: shows(taskPath),
           note: shows(unfolded ? otherPath : targetPath),
-          web: web === true,
+          web,
           before,
-          after: row.isConnected && !!row.querySelector('.abele-task-view__description'),
+          toggled,
         }
       }
     }
@@ -276,7 +290,7 @@ const suite = (title: string, prepare: () => Promise<void>, restore: () => Promi
         }
         const unmoved = (p: Press) => {
           expect(p.before).toBe(state === 'unfolded')
-          expect(p.after).toBe(p.before)
+          expect(p.toggled).toBe(false)
         }
 
         it(`${place}, ${state}: a note link opens its note, not the task`, () => {
@@ -288,7 +302,7 @@ const suite = (title: string, prepare: () => Promise<void>, restore: () => Promi
 
         it(`${place}, ${state}: a web link is followed, not the task`, () => {
           const p = press('web')
-          expect(p.web).toBe(true)
+          expect(p.web).toBe(1)
           expect(p.task).toBe(false)
           unmoved(p)
         })
