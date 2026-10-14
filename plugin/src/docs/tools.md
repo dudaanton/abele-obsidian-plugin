@@ -919,6 +919,10 @@ the Debug panel, and say so when there is none. Each answer stops at 80 lines or
 parameter lifts, and says where to continue. There is no tool that returns a run or a value
 whole.
 
+A run holds whatever the program had in memory, secrets included, so every trace tool asks
+before it runs until the person sets it otherwise, and none is offered to a script or a
+background run.
+
 - `trace_runs` lists the project's runs, newest first. Every other tool reads the newest run
   unless given `run`.
 - `trace_timeline` lists steps: id (`t0042`), time from the start, kind, label, place in the
@@ -934,9 +938,9 @@ whole.
   number written as a string. `trace_follow(value)` gives one value's trail: each step, its path,
   where its path or type changed, where it was last seen.
 - `trace_mark(step, name?, path?, comment, tags?)` marks something for the person; the tag
-  `question` puts it among the questions of a note about the run. Asks first by default.
+  `question` puts it among the questions of a note about the run.
 - `trace_point_add(file, line, take, when?, note?)` sets a record point on a line of a file
-  the person opened from the node in this session; the next launch records. Asks first.
+  the person opened from the node in this session; the next launch records.
 - `trace_note(run?)` writes a note about the run into the folder named in Settings → Nodes
   (see [Vault](vault)) and answers with its path. Write your own account of the flow under its
   last heading with ordinary file tools, citing steps and paths as `t0042 · result · $.items[7]`.
