@@ -16,7 +16,7 @@
         :key="file.path"
         :path="file.path"
         :text="file.after"
-        :change="{ ...file, when: undefined, unseen: false, stage: undefined }"
+        :change="asChange(file)"
         @menu="(e, selection) => emit('menu', e, file.path, selection)"
         @ask="emit('ask', file.path, $event)"
         @add="emit('add', file.path, $event)"
@@ -124,7 +124,7 @@ import Button from '../obsidian/Button.vue'
 import Icon from '../obsidian/Icon.vue'
 import FileView from './FileView.vue'
 import { copyIcon, plural } from './codes'
-import type { CommitSummary, CopySummary } from './types'
+import type { CommitSummary, CopySummary, FileChange } from './types'
 import type { FileSelection } from './fileSelection'
 
 const props = withDefaults(
@@ -151,6 +151,15 @@ const emit = defineEmits<{
 }>()
 
 const commit = computed(() => props.commits.find((c) => c.hash === props.open))
+// One view of each file for as long as the file is the same object: as a big commit's files fill
+// in one by one, the cards whose file did not change are not drawn again.
+const changes = new WeakMap<FileChange, FileChange>()
+const asChange = (file: FileChange) => {
+  let change = changes.get(file)
+  if (!change)
+    changes.set(file, (change = { ...file, when: undefined, unseen: false, stage: undefined }))
+  return change
+}
 const days = computed(() => {
   const out: { name: string; commits: CommitSummary[] }[] = []
   for (const c of props.commits) {

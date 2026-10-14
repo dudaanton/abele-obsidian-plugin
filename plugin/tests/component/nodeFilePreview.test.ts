@@ -16,6 +16,37 @@ const binary = {
   removed: 0,
 }
 describe('node binary and image presentation', () => {
+  it('redraws only the commit file whose contents arrived, not every file of the commit', async () => {
+    const file = (path: string, pending: boolean) => ({
+      ...binary,
+      path,
+      binary: undefined,
+      pending,
+      after: pending ? '' : 'sample text\n',
+    })
+    const page = (files: ReturnType<typeof file>[]) => [
+      {
+        hash: 'sample-hash',
+        subject: 'Update notes',
+        author: 'Sample',
+        day: 'Today',
+        when: '12:00',
+        files,
+      },
+    ]
+    const waiting = file('second.txt', true)
+    const view = mount(HistoryView, {
+      props: { open: 'sample-hash', commits: page([file('first.txt', true), waiting]) },
+    })
+    const before = view.findAllComponents(FileView)[1]!.props('change')
+    await view.setProps({ commits: page([file('first.txt', false), waiting]) })
+    expect(view.findAllComponents(FileView)[1]!.props('change')).toBe(before)
+    expect(view.findAllComponents(FileView)[0]!.props('change')).toMatchObject({
+      path: 'first.txt',
+      pending: false,
+    })
+    view.unmount()
+  })
   it('shows a commit file still being read by its name and a loading line, not an empty diff', () => {
     const view = mount(HistoryView, {
       props: {
