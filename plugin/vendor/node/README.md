@@ -1,8 +1,9 @@
 # Node browser packages
 
 These four exact `0.0.0` npm tarballs contain the built browser packages from
-the released AbeleNode tag `v0.4.9` (revision `4dce5b4`), including the repository and plain
-folder change streams (`repository_changes_v1`, `workspace_changes_v1`), paired WSS,
+the released AbeleNode tag `v0.4.10` (revision `43bc135`), including the repository and plain
+folder change streams (`repository_changes_v1`, `workspace_changes_v1`), the recorded-run
+`trace.v1` methods, paired WSS,
 foreground pairing, node-path resources and execution targets, pi sessions, durable
 delegation mailboxes, versioned repository reads and the gated `debugger.v1` human-channel
 client. Capability checks still determine adapter availability. They are kept in the

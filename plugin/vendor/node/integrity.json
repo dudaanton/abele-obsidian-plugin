@@ -67,35 +67,35 @@
     "id": "@abele/node-protocol@0.0.0",
     "name": "@abele/node-protocol",
     "version": "0.0.0",
-    "size": 55796,
-    "unpackedSize": 584542,
-    "shasum": "34e64c28d5ffdbef71729c7eaa3ddc899931d45e",
-    "integrity": "sha512-erTBnDs+7ODIQg73cQ2p2CD+HU6bc/4MBRZZ/RtNst7BeBPqdzTc0nzGUIEQ0FH4wiIksoprRV/bOh+EZD16DA==",
+    "size": 62430,
+    "unpackedSize": 642806,
+    "shasum": "42c3010444948201cebfd75d4636c003d92d545d",
+    "integrity": "sha512-RSrH5zbt4rVEGTV3GCiQBk2EO4tTtfUwFnWAFiUYBquVjz98cEt4Ih/Vj3rMur19Es+qIdPd5bURCLYdYGXnjQ==",
     "filename": "abele-node-protocol-0.0.0.tgz",
     "files": [
       {
         "path": "dist/debugger-control.d.ts",
-        "size": 24396,
+        "size": 26583,
         "mode": 420
       },
       {
         "path": "dist/debugger-control.js",
-        "size": 4486,
+        "size": 5344,
         "mode": 420
       },
       {
         "path": "dist/debugger-control.js.map",
-        "size": 3816,
+        "size": 4758,
         "mode": 420
       },
       {
         "path": "dist/debugger.d.ts",
-        "size": 151058,
+        "size": 151051,
         "mode": 420
       },
       {
         "path": "dist/debugger.js",
-        "size": 14697,
+        "size": 14690,
         "mode": 420
       },
       {
@@ -135,17 +135,17 @@
       },
       {
         "path": "dist/index.d.ts",
-        "size": 1809,
+        "size": 1837,
         "mode": 420
       },
       {
         "path": "dist/index.js",
-        "size": 844,
+        "size": 872,
         "mode": 420
       },
       {
         "path": "dist/index.js.map",
-        "size": 743,
+        "size": 764,
         "mode": 420
       },
       {
@@ -210,17 +210,17 @@
       },
       {
         "path": "dist/repository.d.ts",
-        "size": 71522,
+        "size": 71723,
         "mode": 420
       },
       {
         "path": "dist/repository.js",
-        "size": 12086,
+        "size": 12260,
         "mode": 420
       },
       {
         "path": "dist/repository.js.map",
-        "size": 13796,
+        "size": 13892,
         "mode": 420
       },
       {
@@ -240,7 +240,7 @@
       },
       {
         "path": "dist/schemas.d.ts",
-        "size": 79915,
+        "size": 80152,
         "mode": 420
       },
       {
@@ -251,6 +251,21 @@
       {
         "path": "dist/schemas.js.map",
         "size": 11721,
+        "mode": 420
+      },
+      {
+        "path": "dist/trace.d.ts",
+        "size": 35510,
+        "mode": 420
+      },
+      {
+        "path": "dist/trace.js",
+        "size": 7848,
+        "mode": 420
+      },
+      {
+        "path": "dist/trace.js.map",
+        "size": 10148,
         "mode": 420
       },
       {
@@ -274,7 +289,7 @@
         "mode": 420
       }
     ],
-    "entryCount": 40,
+    "entryCount": 43,
     "bundled": []
   },
   {
@@ -315,40 +330,40 @@
     "id": "@abele/node-client@0.0.0",
     "name": "@abele/node-client",
     "version": "0.0.0",
-    "size": 36888,
-    "unpackedSize": 198750,
-    "shasum": "579aac31d77fb366d6ccf4a4a63bc3e0ed9e8840",
-    "integrity": "sha512-bkKvVFsSGDF2RS53e2ONwZuqWtOIVj9+FR6BiGvnwmh1yuYZmWImEf9IyM4Pjo8wqD+a6T0I/rlcJRF4Q/oTRg==",
+    "size": 38856,
+    "unpackedSize": 210155,
+    "shasum": "09dfc70db0c8742fd75ac80fe8b0ab5c00397042",
+    "integrity": "sha512-b8i0pnWkth8P33lVVoDLuvm2IwgxlcYIWCLAjICVWyrASksFX44AdCjG1CtidJqq9l/VR9GaTs1a+XOTdIBK6g==",
     "filename": "abele-node-client-0.0.0.tgz",
     "files": [
       {
         "path": "dist/debugger.d.ts",
-        "size": 17777,
+        "size": 18096,
         "mode": 420
       },
       {
         "path": "dist/debugger.js",
-        "size": 8018,
+        "size": 8316,
         "mode": 420
       },
       {
         "path": "dist/debugger.js.map",
-        "size": 6703,
+        "size": 6902,
         "mode": 420
       },
       {
         "path": "dist/index.d.ts",
-        "size": 18320,
+        "size": 18707,
         "mode": 420
       },
       {
         "path": "dist/index.js",
-        "size": 24546,
+        "size": 24985,
         "mode": 420
       },
       {
         "path": "dist/index.js.map",
-        "size": 23790,
+        "size": 24146,
         "mode": 420
       },
       {
@@ -427,12 +442,27 @@
         "mode": 420
       },
       {
+        "path": "dist/trace.d.ts",
+        "size": 5076,
+        "mode": 420
+      },
+      {
+        "path": "dist/trace.js",
+        "size": 2150,
+        "mode": 420
+      },
+      {
+        "path": "dist/trace.js.map",
+        "size": 2181,
+        "mode": 420
+      },
+      {
         "path": "package.json",
         "size": 372,
         "mode": 420
       }
     ],
-    "entryCount": 22,
+    "entryCount": 25,
     "bundled": []
   }
 ]
