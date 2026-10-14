@@ -6,7 +6,7 @@
  * file's own teardown and the setup file's boundary still run.
  */
 import { TestRunner } from 'vitest'
-import type { Suite, Test } from '@vitest/runner'
+import type { Suite, Test, VitestRunner } from '@vitest/runner'
 import { skipReason } from './target'
 
 /** The part of a vitest task this rule reads; the real `Task` fits it. */
@@ -86,7 +86,14 @@ export default class FailFastRunner extends TestRunner {
     if (errors.length && errors.every((e) => e.name === 'EmulationCoveredError')) {
       suite.result!.state = 'skip'
       suite.result!.errors = undefined
-      for (const test of tests(suite)) skipReason(test, errors[0].message)
+      const skipped = tests(suite)
+      for (const test of skipped) skipReason(test, errors[0].message)
+      // The runner sent these cases as skipped before the reason was on them: send them again.
+      // Vitest sets `onTaskUpdate` on the runner instance when the worker starts.
+      await (this as VitestRunner).onTaskUpdate?.(
+        skipped.map((test) => [test.id, test.result, test.meta]),
+        []
+      )
     }
     this.broken ??= failedSetup(suite as RunTask, false)
     await super.onAfterRunSuite(suite)
