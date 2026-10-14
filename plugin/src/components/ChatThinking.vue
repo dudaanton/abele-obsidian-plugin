@@ -1,6 +1,6 @@
 <template>
-  <!-- The agent's reasoning as one quiet line: open while the agent thinks, its glyph breathing,
-       so the work is seen as it goes; folded once the answer comes, unless the reader chose. -->
+  <!-- The agent's reasoning as one quiet line: open while the agent writes it, its glyph breathing,
+       so the work is seen as it goes; folded once it is written, unless the reader chose. -->
   <TreeItem
     class="abele-chat-thinking"
     :class="{ 'abele-chat-thinking_live': streaming }"
@@ -30,16 +30,15 @@ import Markdown from './obsidian/Markdown.vue'
 const props = defineProps<{
   /** What the agent thought; absent when its reasoning is kept out of sight. */
   text?: string
+  /** Still being written: it stays open until the agent moves on to its answer or a tool. */
   streaming?: boolean
-  /** The turn it belongs to is still running: it stays open until the answer is done. */
-  live?: boolean
   resourceOpener?: (path: string) => void
 }>()
 
-/** What the reader chose; until then it is open while the agent works and folded after. */
+/** What the reader chose; until then it is open while it is written and folded after. */
 const chosen = ref<boolean | null>(null)
 const open = computed({
-  get: () => chosen.value ?? !!(props.streaming || props.live),
+  get: () => chosen.value ?? !!props.streaming,
   set: (value: boolean) => (chosen.value = value),
 })
 

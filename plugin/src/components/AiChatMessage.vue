@@ -50,7 +50,7 @@
         ref="thinking"
         class="abele-chat-msg__thinking"
         :text="message.thinking"
-        :live="liveTurn"
+        :streaming="thinkingStreaming"
         :resource-opener="resourceOpener"
       />
 
@@ -392,8 +392,8 @@ const props = defineProps<{
   readOnlyHistory?: boolean
   /** Local chats only; node/provider-native sessions cannot be cloned into a vault chat. */
   canClone?: boolean
-  /** Part of the turn the agent is still working on: its thinking stays open. */
-  liveTurn?: boolean
+  /** Its thought is still being written: open until the agent moves on, folded after. */
+  thinkingStreaming?: boolean
   /** The session refuses all branch changes while its current turn is unsettled. */
   branchBlocked?: boolean
   /** Node histories keep successful tool previews behind the existing detail toggle. */

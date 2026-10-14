@@ -115,6 +115,22 @@ const probe = (screen: string) => `(async () => {
     session.streamingThinking.value = 'Checking which sample sources cover watering, shade and seasonal work.'
     await shot('thinking', '.abele-chat-thinking_live')
 
+    // A node agent streams its thought into the list: open while it is written, folded once
+    // the answer follows it, and folded again when the finished turn is all that is left.
+    const thought = 'Checking which sample sources cover watering, shade and seasonal work.'
+    const thinkingRow = () => root()?.querySelector('[data-message-id="sample-answer"] .abele-chat-thinking')
+    const expanded = () => thinkingRow()?.querySelector('.tree-item-self')?.getAttribute('aria-expanded')
+    set([q, { id: 'sample-answer', role: 'assistant', parentId: q.id, timestamp: time + 2000, content: '', thinking: thought }])
+    session.isStreaming.value = true
+    await until(() => expanded() === 'true')
+    session.allChatMessages = [q, { id: 'sample-answer', role: 'assistant', parentId: q.id, timestamp: time + 2000, content: 'The sample plan', thinking: thought }]
+    session.updateVisibleMessages()
+    await until(() => expanded() === 'false')
+    set([q, { id: 'sample-answer', role: 'assistant', parentId: q.id, timestamp: time + 2000, content: ${JSON.stringify(sampleReply)}, thinking: thought, usage: { input: 120, output: 80, total: 200 } }])
+    await until(() => expanded() === 'false')
+    if (thinkingRow().querySelector('.tree-item-inner')?.textContent.trim() !== 'Thought') throw Error('A written thought is not labelled as one')
+    await shot('thought', '[data-message-id="sample-answer"] .abele-chat-thinking.is-collapsed')
+
     set([q, call('sample-search', 'web_search'), call('sample-read', 'read', { parentId: 'sample-search', toolResult: undefined, toolParams: { path: 'Sample/garden-plan.md' } })])
     session.isExecutingTool.value = true
     session.queuedMessages.value = [{ id: 'sample-queued', content: 'Also include a short version.', timestamp: time + 3000 }]
@@ -201,6 +217,7 @@ describe('the real agent chat design', () => {
         expect(report.states).toEqual([
           'empty',
           'thinking',
+          'thought',
           'tool-runs',
           'approval',
           'question',
@@ -208,7 +225,7 @@ describe('the real agent chat design', () => {
           'tabs',
           'access',
         ])
-        expect(report.shots).toHaveLength(8)
+        expect(report.shots).toHaveLength(9)
         expect(report.overflow).toEqual([])
         for (const target of report.touch) {
           expect(target.width, target.name).toBeGreaterThanOrEqual(44)

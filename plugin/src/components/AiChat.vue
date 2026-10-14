@@ -204,7 +204,6 @@
             class="abele-ai-chat__streaming-thinking"
             :text="hideReasoning ? undefined : streamingThinking"
             :streaming="!streamingContent"
-            :live="isStreaming"
           />
           <div v-if="streamingContent" class="abele-ai-chat__streaming-content">
             <div class="abele-chat-msg abele-chat-msg_assistant">
@@ -657,21 +656,17 @@ const messageProps = (msg: ChatMessage) => ({
   changedFiles: changedTurns.value.has(msg.id),
   canClone: !!session.value,
   branchBlocked: !!session.value?.branchSwitchBlocked,
-  liveTurn: liveTurn.value.has(msg.id),
+  thinkingStreaming: thoughtBeingWritten.value === msg.id,
 })
-/** What the agent has done since the last question, while it is still at it. */
-const liveTurn = computed(() => {
-  if (
-    !isStreaming.value &&
-    !isExecutingTool.value &&
-    !pendingApprovalMessage.value &&
-    !currentQuestion.value
-  )
-    return new Set<string>()
-  const list = messages.value
-  let start = list.length
-  while (start > 0 && list[start - 1].role !== 'user') start--
-  return new Set(list.slice(start).map((m) => m.id))
+/**
+ * The thought the agent is still writing: the last thing in a running turn, reasoning with no
+ * answer after it yet. Node agents stream reasoning into the list itself; local turns keep it in
+ * the streaming indicator until the step ends. Every other thought is written, so it folds.
+ */
+const thoughtBeingWritten = computed(() => {
+  if (!isStreaming.value) return null
+  const last = messages.value.at(-1)
+  return last?.role === 'assistant' && last.thinking && !last.content.trim() ? last.id : null
 })
 const messageHandlers = {
   'clone-chat': (id: string) => onCloneChat(id),

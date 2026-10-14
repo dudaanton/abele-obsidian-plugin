@@ -4,7 +4,6 @@ import { computed, ref, shallowRef } from 'vue'
 import AiChat from '@/components/AiChat.vue'
 import ChatToolRun from '@/components/ChatToolRun.vue'
 import ChatQuestionCard from '@/components/ChatQuestionCard.vue'
-import ChatThinking from '@/components/ChatThinking.vue'
 import { ChatService } from '@/ai/ChatService'
 import { AgentsService } from '@/agents/AgentsService'
 import { AbeleConfig } from '@/services/AbeleConfig'
@@ -73,7 +72,96 @@ describe('conversation presentation', () => {
     await flushPromises()
     expect(chat.findComponent(ChatToolRun).props('open')).toBe(false)
   })
-  it('shows thinking while tools are executing even when provider text has paused', async () => {
+  it('keeps a thought open while it is written and folds it once the answer starts', async () => {
+    const messages = ref<ChatMessage[]>([
+      { id: 'sample-ask', role: 'user', content: 'Summarise the sample page', timestamp: 1 },
+    ])
+    const session = fakeChatSession({ kind: 'chat', messages })
+    session.isStreaming.value = true
+    session.streamingThinking.value = 'Reading the sample page first'
+    const chat = await render(session)
+    const folded = () => chat.find('.abele-chat-thinking').classes('is-collapsed')
+    expect(folded()).toBe(false)
+    // The answer streams after the thought: the thought is written, so it folds.
+    session.streamingContent.value = 'The sample page'
+    await flushPromises()
+    expect(folded()).toBe(true)
+    // The turn ends: the session moves the thought onto the answer it belongs to.
+    messages.value = [
+      ...messages.value,
+      {
+        id: 'sample-answer',
+        role: 'assistant',
+        content: 'The sample page lists three items.',
+        thinking: 'Reading the sample page first',
+        timestamp: 2,
+      },
+    ]
+    session.streamingThinking.value = ''
+    session.streamingContent.value = ''
+    session.isStreaming.value = false
+    await flushPromises()
+    expect(chat.findAll('.abele-chat-thinking')).toHaveLength(1)
+    expect(folded()).toBe(true)
+    expect(chat.find('.abele-chat-thinking .tree-item-inner').text()).toBe('Thought')
+  })
+  it('opens a thought a node agent is still writing and folds it once the next step comes', async () => {
+    // Node agents stream their reasoning into the message list rather than a side buffer.
+    const messages = ref<ChatMessage[]>([
+      { id: 'sample-ask', role: 'user', content: 'Check the sample source', timestamp: 1 },
+      {
+        id: 'sample-thought',
+        role: 'assistant',
+        content: '',
+        thinking: 'Checking the sample',
+        timestamp: 2,
+      },
+    ])
+    const session = fakeChatSession({ kind: 'chat', messages })
+    session.isStreaming.value = true
+    const chat = await render(session)
+    const thought = () => chat.find('[data-message-id="sample-thought"] .abele-chat-thinking')
+    expect(thought().classes('is-collapsed')).toBe(false)
+    expect(thought().find('.tree-item-inner').text()).toBe('Thinking')
+    // A tool call follows while the turn goes on: the thought is done.
+    messages.value = [
+      ...messages.value,
+      {
+        id: 'sample-read',
+        role: 'tool-call',
+        content: '',
+        toolName: 'read',
+        toolStatus: 'approved',
+        timestamp: 3,
+      },
+    ]
+    await flushPromises()
+    expect(thought().classes('is-collapsed')).toBe(true)
+    expect(thought().find('.tree-item-inner').text()).toBe('Thought')
+    // The same thought gaining its answer text is done as well.
+    messages.value = [messages.value[0], { ...messages.value[1], content: 'Done.' }]
+    await flushPromises()
+    expect(thought().classes('is-collapsed')).toBe(true)
+  })
+  it('opens a reopened conversation with every thought folded', async () => {
+    const chat = await render(
+      fakeChatSession({
+        kind: 'chat',
+        messages: ref<ChatMessage[]>([
+          { id: 'sample-ask', role: 'user', content: 'Summarise the sample page', timestamp: 1 },
+          {
+            id: 'sample-answer',
+            role: 'assistant',
+            content: 'The sample page lists three items.',
+            thinking: 'Reading the sample page first',
+            timestamp: 2,
+          },
+        ]),
+      })
+    )
+    expect(chat.find('.abele-chat-thinking').classes('is-collapsed')).toBe(true)
+  })
+  it('keeps a written thought folded but at hand while the tools it led to run', async () => {
     const messages = ref(calls())
     messages.value.splice(1, 0, {
       id: 'sample-thought',
@@ -88,7 +176,11 @@ describe('conversation presentation', () => {
       overrides: { isExecutingTool: ref(true) },
     })
     const chat = await render(session)
-    expect(chat.findComponent(ChatThinking).props('live')).toBe(true)
+    const thought = chat.find('.abele-chat-thinking')
+    expect(thought.classes('is-collapsed')).toBe(true)
+    await thought.find('.tree-item-self').trigger('click')
+    await flushPromises()
+    expect(chat.find('.abele-chat-thinking').classes('is-collapsed')).toBe(false)
     expect(chat.find('[data-find-part="thinking"]').text()).toContain('Checking the sample source')
   })
   it('names every reachable place in the access tooltip and counts nodes too', async () => {
