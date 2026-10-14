@@ -70,7 +70,13 @@ import GithubTreeNode from './GithubTreeNode.vue'
 import type { GithubClient } from '@/github/client'
 import { paneForClick } from '@/github/links'
 import { usePagedList } from '@/composables/usePagedList'
-import { ancestors, filterTree, findNode, type TreeNode } from '@/github/tree/fileTree'
+import {
+  adoptChildren,
+  ancestors,
+  filterTree,
+  findNode,
+  type TreeNode,
+} from '@/github/tree/fileTree'
 import { useRepositorySource } from '@/repository/context'
 import type { RepositoryTree } from '@/repository/source'
 
@@ -187,9 +193,54 @@ const load = async () => {
     error.value = e instanceof Error ? e.message : String(e)
   }
 }
+/**
+ * A node's current files are read again whenever they change on disk, each time under a new
+ * observation: the same tree, not another version. It is read beside the one on screen and
+ * swapped in with every open folder read again, so nothing collapses, scrolls or flashes.
+ */
+const workingKey = (key: string) =>
+  source.value?.identity.provider === 'node' ? key.replace(/@working-[\w-]+$/, '@working') : null
+const refreshInPlace = async () => {
+  const mine = ++generation
+  const shown = tree.value
+  try {
+    const v = await props.resolve()
+    const next = await source.value.tree(v.sha)
+    const read = async (paths: string[]) => {
+      for (const path of paths.sort((a, b) => a.split('/').length - b.split('/').length)) {
+        const node = findNode(next.root, path)
+        if (node?.kind === 'dir' && !node.children) await next.expand(node)
+      }
+    }
+    await read([...expanded])
+    if (mine !== generation) return
+    if (shown) adoptChildren(shown.root, next.root)
+    version.value = v
+    tree.value = next
+    // A folder opened while this was read was read into the tree it replaces.
+    await read([...expanded])
+  } catch (e) {
+    if (mine !== generation) return
+    // The tree on screen stays: it is what was there a moment ago.
+    console.debug('[Abele] GitHub file tree: refreshing the current files failed', e)
+  }
+}
 watch(
   () => [props.versionKey, props.baseSha, props.comparison] as const,
-  () => {
+  ([key, baseSha, comparison], previous) => {
+    if (
+      previous &&
+      tree.value &&
+      !comparison &&
+      !previous[2] &&
+      baseSha === previous[1] &&
+      key !== previous[0] &&
+      workingKey(key) !== null &&
+      workingKey(key) === workingKey(previous[0])
+    ) {
+      void refreshInPlace()
+      return
+    }
     tree.value = null
     comparisonIndex.value = null
     version.value = null

@@ -145,6 +145,42 @@ export function findNode(root: TreeNode, path: string): TreeNode | null {
   return node ?? null
 }
 
+const sameEntry = (a: TreeNode, b: TreeNode) =>
+  a.kind === b.kind &&
+  a.path === b.path &&
+  a.name === b.name &&
+  a.sha === b.sha &&
+  a.size === b.size &&
+  a.mode === b.mode &&
+  a.comparisonStatus === b.comparisonStatus
+
+/** `next`, or `previous` itself where a newer read of it found nothing different. */
+function adopt(previous: TreeNode, next: TreeNode): TreeNode {
+  if (!sameEntry(previous, next)) return next
+  // A folder read before and not in the newer read is read again at the newer version when opened.
+  if (!next.children) return previous.children ? next : previous
+  if (!previous.children) return next
+  adoptChildren(previous, next)
+  const before = previous.children,
+    after = next.children
+  return after.length === before.length && after.every((child, i) => child === before[i])
+    ? previous
+    : next
+}
+
+/**
+ * Gives a newer read of a folder the very entries of the one on screen wherever they are
+ * unchanged, so a refresh redraws only the rows that did change.
+ */
+export function adoptChildren(previous: TreeNode, next: TreeNode): void {
+  if (!previous.children || !next.children) return
+  const known = new Map(previous.children.map((child) => [`${child.kind}:${child.path}`, child]))
+  next.children = next.children.map((child) => {
+    const before = known.get(`${child.kind}:${child.path}`)
+    return before ? adopt(before, child) : child
+  })
+}
+
 export interface Filtered {
   /** The tree cut down to what matched and the folders leading to it. */
   root: TreeNode

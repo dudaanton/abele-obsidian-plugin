@@ -10,6 +10,7 @@ import { describe, it, expect, beforeEach, vi } from 'vitest'
 import type { RequestUrlParam, RequestUrlResponse } from 'obsidian'
 import { parseGithubUrl, shortName, targetKey, treeCandidates, endpoints } from '@/github/urls'
 import {
+  adoptChildren,
   ancestors,
   buildTree,
   crumbs,
@@ -378,5 +379,37 @@ describe('the tree panel', () => {
     expect(saved).toEqual({})
     rememberPanel(app, true, false)
     expect(saved).toEqual({ [PANEL_KEY]: true })
+  })
+})
+
+describe('a newer read of a tree', () => {
+  const read = (inner: string[], top: string[] = ['src', 'app.ts']) =>
+    buildTree([
+      ...top.map((path) => ({ path, type: path === 'src' ? 'tree' : 'blob', size: 1 })),
+      ...inner.map((path) => ({ path, type: 'blob', size: 1 })),
+    ])
+  it('keeps the entries on screen wherever nothing changed', () => {
+    const shown = read(['src/a.ts'])
+    const next = read(['src/a.ts'])
+    adoptChildren(shown, next)
+    expect(next.children).toEqual(shown.children)
+    next.children!.forEach((child, i) => expect(child).toBe(shown.children![i]))
+  })
+  it('takes the newer folder where its entries changed, keeping its unchanged ones', () => {
+    const shown = read(['src/a.ts'])
+    const next = read(['src/a.ts', 'src/b.ts'], ['src'])
+    adoptChildren(shown, next)
+    const src = findNode(next, 'src')!
+    expect(src).not.toBe(findNode(shown, 'src'))
+    expect(src.children!.map((c) => c.path)).toEqual(['src/a.ts', 'src/b.ts'])
+    expect(findNode(next, 'src/a.ts')).toBe(findNode(shown, 'src/a.ts'))
+    expect(findNode(next, 'app.ts')).toBeNull()
+  })
+  it('does not keep a folder read before that the newer read has not read', () => {
+    const shown = read(['src/a.ts'])
+    const next = read([])
+    findNode(next, 'src')!.children = undefined
+    adoptChildren(shown, next)
+    expect(findNode(next, 'src')!.children).toBeUndefined()
   })
 })

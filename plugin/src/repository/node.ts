@@ -1,3 +1,4 @@
+import { reactive } from 'vue'
 import type {
   NodeClient,
   RepositoryClient,
@@ -348,7 +349,8 @@ export class NodeRepositorySource implements RepositorySource {
       }
     const sha = await this.resolve(ref),
       revision = await this.at(sha)
-    const root: TreeNode = { name: '', path: '', kind: 'dir' }
+    // Reactive, as GitHub's tree is: a folder read later appears in whatever shows the tree.
+    const root: TreeNode = reactive({ name: '', path: '', kind: 'dir' })
     const expand = async (node: TreeNode) => {
       if (node.kind !== 'dir' || node.children) return
       const page = await this.pages((cursor) =>
