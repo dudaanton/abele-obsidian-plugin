@@ -149,9 +149,12 @@
         <FileTreeLevel
           :entries="changedTree"
           :selected="selected"
-          :folded="folded"
+          :folded="changedFolded"
           :changes="changes"
-          @toggle="toggle"
+          @toggle="
+            (path) =>
+              changedFolded.has(path) ? changedFolded.delete(path) : changedFolded.add(path)
+          "
           @open="openChanged"
           @menu="(e, path) => emit('menu', e, path)"
         />
@@ -288,6 +291,8 @@ const groups = computed(() => [
 ])
 
 const changedTree = computed(() => buildChangedTree(props.changes))
+// Its folders stand open, since only changes are in them; folding one here leaves the whole tree be.
+const changedFolded = reactive(new Set<string>())
 // A file staged whole opens its staged change; any other, what is in the working tree.
 const openChanged = (path: string) =>
   emit(

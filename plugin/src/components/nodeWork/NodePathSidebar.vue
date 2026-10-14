@@ -117,9 +117,16 @@ const emit = defineEmits<{
   color: var(--text-error);
   overflow-wrap: anywhere;
 }
+// The panel itself does not scroll: its header, the node, the folders and the files' search stay
+// where they are, and only the files under them move, as the file explorer keeps its header.
 .abele-node-sidebar .abele-file-tree {
   flex: 1;
   min-height: 0;
+}
+.abele-node-sidebar .abele-file-tree__body {
+  flex: 1 1 auto;
+  min-height: 0;
+  overflow-y: auto;
 }
 .abele-node-sidebar .abele-folder-tree {
   flex: 0 0 auto;
