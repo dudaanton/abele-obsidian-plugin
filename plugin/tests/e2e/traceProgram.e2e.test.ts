@@ -27,8 +27,14 @@ const recordPoint=async (line,takes)=>{
   mark.dispatchEvent(new MouseEvent('contextmenu',{bubbles:true,cancelable:true,clientX:40,clientY:200}));
   press(await until(()=>item('Add record point'),'Add record point'));
   const input=await until(()=>document.querySelector('.abele-trace-point .multi-select-input'),'point editor');
-  for(const t of takes){input.focus();input.value=t;input.dispatchEvent(new Event('input',{bubbles:true}));await wait(50);input.dispatchEvent(new KeyboardEvent('keydown',{key:'Enter',bubbles:true}));await wait(100)}
-  input.dispatchEvent(new KeyboardEvent('keydown',{key:'Enter',bubbles:true}));
+  for(const t of takes){
+    const offered=document.querySelector('.abele-trace-point [aria-label="Take '+t+'"]');
+    if(offered){press(offered);await wait(100);continue}
+    input.focus();input.value=t;input.dispatchEvent(new Event('input',{bubbles:true}));await wait(100);
+    input.dispatchEvent(new KeyboardEvent('keydown',{key:'Enter',code:'Enter',bubbles:true,cancelable:true}));await wait(100);
+  }
+  await until(()=>takes.every(t=>[...document.querySelectorAll('.abele-trace-point .multi-select-pill-content')].some(p=>p.textContent.trim()===t)),'takes listed');
+  press(document.querySelector('.abele-trace-point [aria-label="Keep (Enter)"]'));
   await until(()=>!document.querySelector('.abele-trace-point'),'point saved');
   await until(()=>document.querySelector('.abele-breakpoint-mark_record.abele-breakpoint-mark_set, .abele-breakpoint-mark_record.abele-breakpoint-mark_verified'),'record point confirmed');
 };
@@ -43,6 +49,7 @@ let port = 0
 let token = ''
 let repo = ''
 let registration = ''
+let folder: Record<string, string> = {}
 
 const JS = [
   'function total(items) {',
@@ -140,7 +147,10 @@ beforeAll(async () => {
   port = (
     JSON.parse(output.split('\n').find((l) => l.includes('"listening"'))!) as { port: number }
   ).port
-  const r = evalAsync<{ registration: string; session: string }>(`(async()=>{${prelude}
+  const r = evalAsync<{
+    registration: string
+    target: Record<string, string>
+  }>(`(async()=>{${prelude}
     const existing=nodes.nodes.value.find(n=>n.label==='Program fixture');if(existing)nodes.remove(existing.id);
     const node=await nodes.add('Program fixture','http://127.0.0.1:${port}',${JSON.stringify(token)}),client=nodes.connection(node.id).client;
     const project=await client.registerProject(${JSON.stringify(repo)},'trusted');
@@ -150,9 +160,10 @@ beforeAll(async () => {
     await chats.openNodeSession({kind:'node-session',registrationId:node.id,nodeId:node.expectedNodeId,sessionId:s.session_id,title:s.title});
     await chats.revealSidebar({focus:false});
     await until(()=>document.querySelector('.abele-node-chat__title')?.textContent==='Program fixture','chat open');
-    return {registration:node.id,session:s.session_id}
+    return {registration:node.id,target:{nodeId:node.expectedNodeId,registrationId:node.id,projectId:project.project_id,kind:'workspace',id:workspace.workspace_id}}
   })()`)
   registration = r.registration
+  folder = r.target
 }, 120000)
 
 afterAll(async () => {
@@ -219,15 +230,15 @@ it('records at a line of TypeScript open beside its build, through the source ma
     steps: { label: string; place: string; text: string }[]
   }>(`(async()=>{${prelude}
     for(const t of ['abele-trace-run','abele-trace-value','abele-node-file'])for(const l of app.workspace.getLeavesOfType(t))l.detach();
-    const presenter=chats.getNodeSession(chats.activeTabId.value);
-    presenter.openResource('src/total.ts');
-    await until(()=>[...document.querySelectorAll('.workspace-leaf')].some(l=>l.textContent.includes('type Item')),'TypeScript open');
+    const opened=app.workspace.getLeaf('tab');
+    await opened.setViewState({type:'abele-node-file',active:true,state:{kind:'file',target:${JSON.stringify(folder)},path:'src/total.ts'}});
+    await until(()=>opened.containerEl.textContent.includes('type Item'),'TypeScript open');
     ${RUN('dist/total.js')}
     // The TypeScript tab takes the point: bring it forward.
     const leaf=app.workspace.getLeavesOfType('abele-node-file').find(l=>l.view.containerEl.textContent.includes('type Item'));
     app.workspace.setActiveLeaf(leaf,{focus:true});
     await wait(300);
-    await recordPoint(6,['sum','item.label']);
+    await recordPoint(6,['sum','item']);
     await shot('2026-10-14-trace-margin-ts-desktop');
     await goOn();
     ${READ_RUN}
