@@ -96,7 +96,8 @@ export async function startProgram(
       s.source_id,
       s.path,
       sessionId,
-      snapshot.incarnation
+      snapshot.incarnation,
+      target
     )
   await show(sessionId)
   const debugOf = (sourceId: string) => ({

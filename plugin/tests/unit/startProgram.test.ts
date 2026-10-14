@@ -143,8 +143,19 @@ describe('running a program under the debugger', () => {
     ])
     const sources = DebuggerService.instance.sources.get(JSON.stringify(['reg-a', 'chat-a']))
     expect([...(sources?.entries() ?? [])]).toEqual([
-      ['s1', { path: 'src/page.js', debugSessionId: 'child-1', incarnation: 'i-child' }],
-      ['s2', { path: 'src/service.js', debugSessionId: 'child-1', incarnation: 'i-child' }],
+      [
+        's1',
+        { path: 'src/page.js', debugSessionId: 'child-1', incarnation: 'i-child', folder: target },
+      ],
+      [
+        's2',
+        {
+          path: 'src/service.js',
+          debugSessionId: 'child-1',
+          incarnation: 'i-child',
+          folder: target,
+        },
+      ],
     ])
   })
 })
@@ -171,5 +182,47 @@ describe('files already open when the program starts', () => {
       })
     )
     expect(other.setViewState).not.toHaveBeenCalled()
+  })
+})
+
+describe('the files a program took', () => {
+  it('keep their margin in the folder they came from, whichever way a tab comes to show them', async () => {
+    const { debuggerSnapshot } = await import('../fixtures/debugger')
+    const { ref } = await import('vue')
+    const service = DebuggerService.instance
+    const presenter = {
+      connection: { state: ref('connected'), client: { request: vi.fn() } },
+      reference: { sessionId: 'chat-a', registrationId: 'reg-a', nodeId: 'node-a' },
+    } as unknown as NodeChatPresenter
+    const binding = service.binding(presenter)
+    binding.controller.observe({ observation: 'current', snapshot: debuggerSnapshot() })
+    service.registerSource(
+      'reg-a',
+      'chat-a',
+      's2',
+      'src/total.ts',
+      'sample-debug',
+      'sample-incarnation',
+      target
+    )
+    expect(service.debugFor(target, 'src/total.ts')).toEqual({
+      conversationId: 'chat-a',
+      sourceId: 's2',
+      debugSessionId: 'sample-debug',
+      incarnation: 'sample-incarnation',
+    })
+    expect(service.debugFor({ ...target, id: 'workspace-b' }, 'src/total.ts')).toBeUndefined()
+    expect(service.debugFor(target, 'src/other.ts')).toBeUndefined()
+    // A tab that shows it and moves on leaves the program's mapping in place.
+    const shown = service.registerSource(
+      'reg-a',
+      'chat-a',
+      's2',
+      'src/total.ts',
+      'sample-debug',
+      'sample-incarnation'
+    )
+    shown()
+    expect(service.debugFor(target, 'src/total.ts')?.sourceId).toBe('s2')
   })
 })

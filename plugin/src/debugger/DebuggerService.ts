@@ -7,6 +7,16 @@ import { DebuggerController } from './DebuggerController'
 import { nodeDebuggerSupported } from '@/node/providers'
 import { TraceSession } from './trace/TraceSession'
 import { nodeTraceSupported, TraceRpc } from './trace/wire'
+import { Platform } from 'obsidian'
+import type { PathTarget } from '@/node/NodePathModel'
+import { GlobalStore } from '@/stores/GlobalStore'
+
+type SourceMapping = {
+  path: string
+  debugSessionId: string
+  incarnation: string
+  folder?: PathTarget
+}
 
 /** One session's UI lifetime. The owner client never supplies agent tool authority. */
 /** The node channel gives a request five seconds before it gives up on the connection, so the
@@ -259,10 +269,7 @@ export class DebuggerService {
   readonly active = shallowRef<DebuggerBinding | null>(null)
   private readonly bindings = new Map<string, DebuggerBinding>()
   private readonly revealers = new Set<(request: DebugSourceReveal) => boolean>()
-  readonly sources = new Map<
-    string,
-    Map<string, { path: string; debugSessionId: string; incarnation: string }>
-  >()
+  readonly sources = new Map<string, Map<string, SourceMapping>>()
   private key(registrationId: string, conversationId: string) {
     return JSON.stringify([registrationId, conversationId])
   }
@@ -304,13 +311,28 @@ export class DebuggerService {
     sourceId: string,
     path: string,
     debugSessionId: string,
-    incarnation: string
+    incarnation: string,
+    /** The folder the file is in, for a file the program took when it started. */
+    folder?: PathTarget
   ) {
     const key = this.key(registrationId, conversationId)
-    const sources =
-      this.sources.get(key) ??
-      new Map<string, { path: string; debugSessionId: string; incarnation: string }>()
-    const mapping = { path, debugSessionId, incarnation }
+    const sources = this.sources.get(key) ?? new Map<string, SourceMapping>()
+    const known = sources.get(sourceId)
+    // A tab showing a file the program took leaves its mapping when it closes or moves on.
+    if (
+      known?.path === path &&
+      known.debugSessionId === debugSessionId &&
+      known.incarnation === incarnation
+    ) {
+      if (folder) known.folder = folder
+      return () => {}
+    }
+    const mapping: SourceMapping = {
+      path,
+      debugSessionId,
+      incarnation,
+      ...(folder ? { folder } : {}),
+    }
     sources.set(sourceId, mapping)
     this.sources.set(key, sources)
     const binding = this.forSource(registrationId, conversationId)
@@ -318,6 +340,31 @@ export class DebuggerService {
     return () => {
       if (sources.get(sourceId) === mapping) sources.delete(sourceId)
     }
+  }
+  /** The session mapping for a file a node file tab shows, when a live program took that file of
+   * that folder: the tab shows its margin however it came to show the file. */
+  debugFor(target: PathTarget, path: string) {
+    for (const [key, sources] of this.sources) {
+      const [registrationId, conversationId] = JSON.parse(key) as [string, string]
+      if (registrationId !== target.registrationId) continue
+      const binding = this.forSource(registrationId, conversationId)
+      for (const [sourceId, m] of sources)
+        if (
+          m.path === path &&
+          m.folder &&
+          m.folder.kind === target.kind &&
+          m.folder.id === target.id &&
+          m.debugSessionId === binding?.sessionId &&
+          m.incarnation === binding.controller.snapshot?.incarnation
+        )
+          return {
+            conversationId,
+            sourceId,
+            debugSessionId: m.debugSessionId,
+            incarnation: m.incarnation,
+          }
+    }
+    return undefined
   }
   syncSources(binding: DebuggerBinding) {
     for (const [id, mapping] of this.sources.get(
@@ -364,6 +411,30 @@ export class DebuggerService {
         })
       )
         return
+    // A file the program took and no tab shows: open it at the line, as the stop's place.
+    if (source[1].folder) {
+      const folder = source[1].folder
+      void import('@/node/nodePathNavigation')
+        .then(({ openNodePathTab }) =>
+          openNodePathTab(
+            GlobalStore.getInstance().app.workspace,
+            {
+              kind: 'file',
+              target: folder,
+              path: source[1].path,
+              debug: {
+                conversationId: binding.conversationId,
+                sourceId: source[0],
+                debugSessionId: source[1].debugSessionId,
+                incarnation: source[1].incarnation,
+              },
+            },
+            Platform.isMobile
+          )
+        )
+        .catch((e) => console.debug('[debugger] Source not opened', e))
+      return
+    }
     binding.controller.error = 'Open the node file tab to reveal this source'
     ++binding.revision.value
   }

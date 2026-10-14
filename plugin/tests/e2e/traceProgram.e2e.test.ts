@@ -260,8 +260,10 @@ it('records at a line of TypeScript open beside its build, through the source ma
     await opened.setViewState({type:'abele-node-file',active:true,state:{kind:'file',target:${JSON.stringify(folder)},path:'src/total.ts'}});
     await until(()=>opened.containerEl.textContent.includes('type Item'),'TypeScript open');
     ${RUN('dist/total.js')}
-    // The TypeScript tab takes the point: bring it forward.
-    const leaf=app.workspace.getLeavesOfType('abele-node-file').find(l=>l.view.containerEl.textContent.includes('type Item'));
+    // The program's file took the one file tab; going back to the TypeScript there keeps its margin.
+    const leaf=app.workspace.getLeavesOfType('abele-node-file')[0];
+    await leaf.setViewState({type:'abele-node-file',active:true,state:{kind:'file',target:${JSON.stringify(folder)},path:'src/total.ts'}});
+    await until(()=>leaf.containerEl.textContent.includes('type Item'),'TypeScript shown again');
     app.workspace.setActiveLeaf(leaf,{focus:true});
     await wait(300);
     await recordPoint(6,['sum','item'],leaf.containerEl);

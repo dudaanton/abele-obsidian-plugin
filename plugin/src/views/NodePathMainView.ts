@@ -16,6 +16,7 @@ import {
   type WatchStopHandle,
 } from 'vue'
 import { NodeService } from '@/node/NodeService'
+import { DebuggerService } from '@/debugger/DebuggerService'
 import { confirmAction } from '@/modal/confirm'
 import { pathPages } from '@/node/NodePathClientPort'
 import { NodePathService } from '@/node/NodePathService'
@@ -191,6 +192,19 @@ export class NodePathMainView extends ItemView {
     if (!same) this.startBinding(parsed)
     await super.setState(raw, result)
   }
+  /** The margin of the file shown: the one this tab was opened for, or any file a running
+   * program took from this folder, however the tab came to show it. */
+  private debugOf(state: Extract<NodePathTabState, { kind: 'file' }>, file: NodePathFileModel) {
+    const doc = file.document.value
+    if (!doc) return undefined
+    const debug =
+      state.debug && doc.path === state.path
+        ? state.debug
+        : DebuggerService.instance.debugFor(state.target, doc.path)
+    return debug
+      ? { ...debug, registrationId: state.target.registrationId, path: doc.path, text: doc.text }
+      : undefined
+  }
   private act(run: () => Promise<unknown> | undefined): void {
     void Promise.resolve()
       .then(run)
@@ -253,15 +267,7 @@ export class NodePathMainView extends ItemView {
           h(NodePathFilePane, {
             model: file,
             offline: offline(),
-            debug:
-              state.debug && file.document.value?.path === state.path
-                ? {
-                    ...state.debug,
-                    registrationId: state.target.registrationId,
-                    path: state.path,
-                    text: file.document.value.text,
-                  }
-                : undefined,
+            debug: this.debugOf(state, file),
             onAsk: (selection: FileSelection) => {
               const doc = file.document.value
               if (doc)
