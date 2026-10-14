@@ -212,7 +212,7 @@ import Button from './obsidian/Button.vue'
 import MetaLine from './obsidian/MetaLine.vue'
 import { piFailure } from '@/node/piTranscript'
 import NodeDebugActions from '@/debugger/NodeDebugActions.vue'
-import { openNodeDebugger } from '@/debugger/register'
+import { openNodeDebugger, startNodeProgram } from '@/debugger/register'
 import { useChatKeyboardGap } from '@/composables/useChatKeyboardGap'
 import WorktreeChip from './nodeWork/WorktreeChip.vue'
 import WorktreeSwitchLine from './nodeWork/WorktreeSwitchLine.vue'
@@ -347,6 +347,15 @@ const openMenu = (event: MouseEvent | KeyboardEvent) => {
         .setIcon('bug-play')
         .onClick(() => {
           void openNodeDebugger(props.presenter)
+        })
+    )
+  if (props.presenter.debuggerAvailable?.value === true)
+    menu.addItem((i) =>
+      i
+        .setTitle('Run a program')
+        .setIcon('play')
+        .onClick(() => {
+          void startNodeProgram(props.presenter)
         })
     )
   menu.addItem((i) =>

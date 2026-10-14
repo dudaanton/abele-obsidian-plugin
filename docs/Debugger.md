@@ -9,10 +9,14 @@ results appear as action cards between chat messages.
 ## Availability
 
 This UI uses the gated `debugger.v1` infrastructure. The node must advertise and
-explicitly enable it. Native JS/TS target launch is still blocked until an audited
-adapter is available. Selecting a host-created session is supported; the declared
-launch, attach, restart and source-export methods are not treated as available.
-Restart remains disabled. An empty session list does not start a process.
+explicitly enable it. *Run a program* in the node chat's menu asks for a JavaScript file of
+the chat's folder (offering the one open from it) and starts it on the node under the debugger:
+the node runs it with its own Node, an empty environment and no shell, and holds it on its first
+line. Its session opens in the view and its file opens in a node tab with the margin, so record
+points and breakpoints go in before the program goes on; other JavaScript files open from the same
+folder take breakpoints too. The folder must be one the node may run code in. A node without an
+audited JavaScript debugger installed refuses and says so. Attach, restart and source export are
+not offered. An empty session list does not start a process by itself.
 
 The session-mode switch changes a bound live agent grant, never the node's default
 policy. Its permissions are exactly Ask and Allow all. Before authoritative live

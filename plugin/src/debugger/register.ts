@@ -89,15 +89,18 @@ async function showSession(presenter: NodeChatPresenter, sessionId: string) {
   await workspace.revealLeaf(leaf)
   await binding.open(sessionId)
 }
-/** Select only host-created sessions. No declared launch/restart RPC is treated as available. */
+/** Runs a program of the chat's folder under the debugger and shows its session. */
+export async function startNodeProgram(presenter: NodeChatPresenter) {
+  const { askAndStartProgram } = await import('./startProgram')
+  await askAndStartProgram(presenter, (sessionId) => showSession(presenter, sessionId))
+}
+/** The chat's debug sessions: one opens at once, several are offered to pick from. */
 export async function openNodeDebugger(presenter: NodeChatPresenter) {
   try {
     const service = DebuggerService.instance,
       sessions = await service.sessions(presenter)
     if (!sessions.length) {
-      new Notice(
-        'No debug sessions. Target launch requires an enabled debugger and an available node profile.'
-      )
+      new Notice('No debug sessions. Start one from the chat menu: run a program.')
       return
     }
     if (sessions.length === 1) await showSession(presenter, sessions[0].debug_session_id)
