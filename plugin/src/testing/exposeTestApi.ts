@@ -30,6 +30,7 @@ import {
 import { NodeDeviceKeyStore } from '@/node/NodeDeviceKeyStore'
 import { generateIdentity, fingerprint, signProof, verifyProof } from '@abele/channel-protocol'
 import { pairedLoopbackTransport } from './nodePairedTransport'
+import { giveObsidianChatAccess } from '@/ai/tools/node/owner'
 const nodePairingCrypto = { generateIdentity, fingerprint, signProof, verifyProof }
 import { CommentService } from '@/ai/CommentService'
 import { ChatStorage } from '@/ai/ChatStorage'
@@ -203,8 +204,7 @@ interface AbeleTestApi {
     id: string
     scans: ReturnType<import('@/sync/exchangeTrace').ExchangeTrace['snapshot']>['scans']
     firstSync:
-      | ReturnType<import('@/sync/exchangeTrace').ExchangeTrace['snapshot']>['firstSync']
-      | null
+      ReturnType<import('@/sync/exchangeTrace').ExchangeTrace['snapshot']>['firstSync'] | null
     active: ReturnType<import('@/sync/exchangeTrace').ExchangeTrace['snapshot']>['active']
   }[]
   canvasProbe: ReturnType<typeof createCanvasProbe>
@@ -280,6 +280,8 @@ interface AbeleTestApi {
   NodeDeviceKeyStore: typeof NodeDeviceKeyStore
   nodePairingCrypto: typeof nodePairingCrypto
   pairedLoopbackTransport: typeof pairedLoopbackTransport
+  /** The owner's "Give the Obsidian chat access" action, without its chat picker. */
+  giveNodeChatAccess: typeof giveObsidianChatAccess
   ChatStorage: typeof ChatStorage
   /** The words of every chat, for timing a search across them. */
   ChatSearchIndex: typeof ChatSearchIndex
@@ -928,6 +930,7 @@ export function exposeTestApi(plugin: Plugin): void {
     NodeDeviceKeyStore,
     nodePairingCrypto,
     pairedLoopbackTransport,
+    giveNodeChatAccess: giveObsidianChatAccess,
     ChatStorage,
     ChatSearchIndex,
     CommentService,
