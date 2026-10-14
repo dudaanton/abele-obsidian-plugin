@@ -40,6 +40,8 @@ export interface QueuedMessage {
   id: string
   content: string
   attachments?: string[]
+  /** The places it replies to, as in a sent question. */
+  replyTo?: ChatReplyTo[]
   /** Data rather than a callback: saving/reopening must not turn a wake into an explicit send. */
   delegationWake?: DelegationWakeFence
 }
@@ -643,6 +645,20 @@ export interface SubAgentRunRef {
   branchCount: number
 }
 
+/**
+ * A place of the agent's words a question replies to: one of its messages, or words selected in
+ * it. It stands in the question's text where the person put it, their own words around it.
+ */
+export interface ChatReplyTo {
+  messageId: string
+  /** The words answered; the message's opening when it was answered as a whole. */
+  quote: string
+  /** Where the words start in the message's rendered text, when they were selected. */
+  start?: number
+  /** Where it stands in the question's text, as an offset; absent, at its start. */
+  at?: number
+}
+
 export interface ChatMessage {
   id: string
   parentId?: string
@@ -669,6 +685,8 @@ export interface ChatMessage {
   toolMap?: MapBlock
   usage?: ChatMessageUsage
   attachments?: string[]
+  /** The places of the agent's words this question replies to, each where it stands in it. */
+  replyTo?: ChatReplyTo[]
   timestamp: number
   draft?: boolean
   interceptorName?: string

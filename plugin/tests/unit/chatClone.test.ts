@@ -132,6 +132,21 @@ describe('a new conversation from a message', () => {
     expect(JSON.stringify(source)).toBe(before)
   })
 
+  it('leads the places a question replies to to their copies, and one elsewhere nowhere new', () => {
+    const source = sample()
+    source.messages[4].replyTo = [
+      { messageId: 'answer', quote: 'Answer', at: 0 },
+      { messageId: 'sibling', quote: 'Other branch', at: 5 },
+    ]
+    const clone = cloneChatPath(source, 'later')!
+    const copied = clone.messages.find((m) => m.content === 'Answer')!
+    expect(clone.messages.at(-1)!.replyTo).toEqual([
+      { messageId: copied.id, quote: 'Answer', at: 0 },
+      { messageId: 'sibling', quote: 'Other branch', at: 5 },
+    ])
+    expect(source.messages[4].replyTo![0].messageId).toBe('answer')
+  })
+
   it('keeps chat setup, but drops original discussion, queue, approvals, selection identity and summaries', () => {
     const clone = cloneChatPath(sample(), 'tool')!
     expect(clone.metadata).toMatchObject({

@@ -10,7 +10,7 @@
 import { Notice } from 'obsidian'
 import { nanoid } from 'nanoid'
 import type { Message } from '@/ai/client'
-import type { ChatMessage } from '@/ai/types'
+import type { ChatMessage, ChatReplyTo } from '@/ai/types'
 import type { ChatInterceptor, InterceptRoute } from '@/ai/ChatInterceptor'
 import { buildInterceptInput, type InterceptSource } from './context'
 import type { ToolPolicy } from './policy'
@@ -40,7 +40,8 @@ export async function sendThroughScript(
   host: ScriptSendHost,
   route: Extract<InterceptRoute, { kind: 'script' }>,
   content: string,
-  attachments?: string[]
+  attachments?: string[],
+  replyTo?: ChatReplyTo[]
 ): Promise<void> {
   const gen = host.generation()
   const earlier = host.visible()
@@ -50,6 +51,7 @@ export async function sendThroughScript(
     role: 'user',
     content,
     attachments: attachments?.length ? attachments : undefined,
+    ...(replyTo?.length ? { replyTo } : {}),
     timestamp: Date.now(),
     draft: true,
     interceptorName: route.script,
@@ -109,7 +111,7 @@ export async function sendThroughScript(
         stopReason: 'stop',
         timestamp: answer.timestamp,
         chatMessageId: answer.id,
-      } as Message)
+      })
       await host.save()
       await host.drainQueue()
       return

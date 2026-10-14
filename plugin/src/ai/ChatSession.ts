@@ -130,6 +130,7 @@ import type {
   SubAgentRunRef,
   QueuedMessage,
   DelegationWakeFence,
+  ChatReplyTo,
 } from './types'
 import type { CommentState } from '@/editor/CommentPlugin'
 import type { UserContentPart } from './client'
@@ -147,6 +148,7 @@ import { ReadGuard } from './readGuard'
 import { ChatRewind } from './rewind/ChatRewind'
 import { ResultStore, createReadResultTool, READ_RESULT } from './resultStore'
 import { linkedNotesNote } from './linkedNotes'
+import { agentReplyText, composerText } from './replyLinks'
 import { TurnPolicy } from './interceptor/turnPolicy'
 import type { ToolPolicy } from './interceptor/policy'
 import { buildInterceptInput, type InterceptSource } from './interceptor/context'
@@ -1756,7 +1758,9 @@ export class ChatSession implements SummarizerHost, InterceptorHost, AnchorStora
     const internal = projectInterruptedTools(
       this.getBranchInternalMessages(),
       new Map(
-        path.flatMap((m) => (m.toolCallId && m.toolExecution ? [[m.toolCallId, m.toolExecution]] : []))
+        path.flatMap((m) =>
+          m.toolCallId && m.toolExecution ? [[m.toolCallId, m.toolExecution]] : []
+        )
       )
     )
 
@@ -2350,15 +2354,15 @@ export class ChatSession implements SummarizerHost, InterceptorHost, AnchorStora
    *
    * Returns whether the note was kept, so a caller can say why it was not.
    */
-  async addUserNote(content: string): Promise<boolean> {
+  async addUserNote(content: string, replyTo?: ChatReplyTo[]): Promise<boolean> {
     // Nothing may be pushed into the middle of a turn — see `isMidTurn`. `sendMessage` can
     // queue instead; a note has nothing to be queued for, since nothing is going to run.
     if (this.isMidTurn) return false
 
-    const text = content.trim()
-    if (!text) return false
+    const text = replyTo?.length ? content : content.trim()
+    if (!text.trim() && !replyTo?.length) return false
 
-    this.rememberInternal(await this.userMessage(text, undefined, false))
+    this.rememberInternal(await this.userMessage(text, undefined, false, replyTo))
     await this.save()
     return true
   }
@@ -2413,7 +2417,8 @@ export class ChatSession implements SummarizerHost, InterceptorHost, AnchorStora
   async sendMessage(
     content: string,
     attachments?: string[],
-    delegationWake?: DelegationWakeFence
+    delegationWake?: DelegationWakeFence,
+    replyTo?: ChatReplyTo[]
   ): Promise<void> {
     const isCurrent = delegationWake
       ? () => this.isDelegationWakeCurrent(delegationWake)
@@ -2435,6 +2440,7 @@ export class ChatSession implements SummarizerHost, InterceptorHost, AnchorStora
           id: nanoid(),
           content,
           attachments: attachments?.length ? [...attachments] : undefined,
+          ...(replyTo?.length ? { replyTo: replyTo.map((to) => ({ ...to })) } : {}),
           ...(delegationWake ? { delegationWake: { ...delegationWake } } : {}),
         },
       ]
@@ -2446,9 +2452,9 @@ export class ChatSession implements SummarizerHost, InterceptorHost, AnchorStora
     // run, where nobody is there to send a draft on.
     const route = isCurrent ? { kind: 'none' as const } : this.interceptRoute(content)
     if (route.kind === 'agent' && !route.replyOnly)
-      return this.sendDraftMessage(content, attachments)
+      return this.sendDraftMessage(content, attachments, replyTo)
     if (route.kind === 'script' && !route.replyOnly)
-      return this.sendThroughScript(route, content, attachments)
+      return this.sendThroughScript(route, content, attachments, replyTo)
 
     const gen = this.generation
     this.error.value = null
@@ -2456,7 +2462,7 @@ export class ChatSession implements SummarizerHost, InterceptorHost, AnchorStora
     this.wroteThisTurn = false
     this.turnPolicy.clear()
 
-    const message = await this.userMessage(content, attachments, !isCurrent)
+    const message = await this.userMessage(content, attachments, !isCurrent, replyTo)
     // Stop may arrive while attachments/message preparation is awaiting I/O.
     if (isCurrent && !isCurrent()) return
     this.rememberInternal(message)
@@ -2554,7 +2560,7 @@ export class ChatSession implements SummarizerHost, InterceptorHost, AnchorStora
     if (!next) return
 
     this.queuedMessages.value = rest
-    await this.sendMessage(next.content, next.attachments, next.delegationWake)
+    await this.sendMessage(next.content, next.attachments, next.delegationWake, next.replyTo)
   }
 
   /**
@@ -2567,13 +2573,15 @@ export class ChatSession implements SummarizerHost, InterceptorHost, AnchorStora
   private async userMessage(
     content: string,
     attachments?: string[],
-    review = true
+    review = true,
+    replyTo?: ChatReplyTo[]
   ): Promise<Message> {
     const userMsg: ChatMessage = {
       id: nanoid(),
       role: 'user',
       content,
       attachments: attachments?.length ? attachments : undefined,
+      ...(replyTo?.length ? { replyTo: replyTo.map((to) => ({ ...to })) } : {}),
       timestamp: Date.now(),
     }
     const route = this.interceptRoute(content)
@@ -2608,9 +2616,11 @@ export class ChatSession implements SummarizerHost, InterceptorHost, AnchorStora
   private async modelMessage(bubble: ChatMessage): Promise<Message> {
     const content = bubble.content
     const attachments = bubble.attachments
-    // The model is told where each link points; the bubble keeps what was typed.
+    // The model is told where each link points, and which places of earlier answers the
+    // question replies to; the bubble keeps what was typed.
     const text =
-      content + linkedNotesNote(content, GlobalStore.getInstance().app, this.scopeResolver)
+      agentReplyText(content, bubble.replyTo) +
+      linkedNotesNote(content, GlobalStore.getInstance().app, this.scopeResolver)
 
     if (attachments?.length) {
       // A picture explicitly sent to the agent is also a file its editing tools may use.
@@ -2661,7 +2671,7 @@ export class ChatSession implements SummarizerHost, InterceptorHost, AnchorStora
     const messages: Message[] = []
     for (const q of taken) {
       if (q.delegationWake && !this.isDelegationWakeCurrent(q.delegationWake)) continue
-      const message = await this.userMessage(q.content, q.attachments, !q.delegationWake)
+      const message = await this.userMessage(q.content, q.attachments, !q.delegationWake, q.replyTo)
       // Stop can win while message/attachment preparation is pending, after dequeue.
       if (q.delegationWake && !this.isDelegationWakeCurrent(q.delegationWake)) continue
       messages.push(message)
@@ -2736,7 +2746,9 @@ export class ChatSession implements SummarizerHost, InterceptorHost, AnchorStora
         .filter((file): file is TFile => file instanceof TFile)
       this.draft.value = {
         ...draft,
-        text: [...queued.map((q) => q.content), draft.text].filter(Boolean).join('\n'),
+        text: [...queued.map((q) => composerText(q.content, q.replyTo)), draft.text]
+          .filter(Boolean)
+          .join('\n'),
         attachments: [
           ...draft.attachments,
           ...files.filter((file) => !draft.attachments.includes(file)),
@@ -4283,7 +4295,7 @@ export class ChatSession implements SummarizerHost, InterceptorHost, AnchorStora
     this.results.settle()
     this.updateVisibleMessages()
 
-    this.sendMessage(msg.content, msg.attachments)
+    this.sendMessage(msg.content, msg.attachments, undefined, msg.replyTo)
   }
 
   async retryFromMessage(messageId: string): Promise<void> {
@@ -4392,7 +4404,11 @@ export class ChatSession implements SummarizerHost, InterceptorHost, AnchorStora
 
   // ── Interceptor ────────────────────────────────────────────────
 
-  private async sendDraftMessage(content: string, attachments?: string[]): Promise<void> {
+  private async sendDraftMessage(
+    content: string,
+    attachments?: string[],
+    replyTo?: ChatReplyTo[]
+  ): Promise<void> {
     this.error.value = null
 
     const userMsg: ChatMessage = {
@@ -4400,6 +4416,7 @@ export class ChatSession implements SummarizerHost, InterceptorHost, AnchorStora
       role: 'user',
       content,
       attachments: attachments?.length ? attachments : undefined,
+      ...(replyTo?.length ? { replyTo } : {}),
       timestamp: Date.now(),
       draft: true,
       interceptorName: this.interceptor.agentName,
@@ -4416,10 +4433,11 @@ export class ChatSession implements SummarizerHost, InterceptorHost, AnchorStora
   private sendThroughScript(
     route: Extract<InterceptRoute, { kind: 'script' }>,
     content: string,
-    attachments?: string[]
+    attachments?: string[],
+    replyTo?: ChatReplyTo[]
   ): Promise<void> {
     this.error.value = null
-    return sendThroughScript(this.scriptSendHost(), route, content, attachments)
+    return sendThroughScript(this.scriptSendHost(), route, content, attachments, replyTo)
   }
 
   private scriptSendHost(): ScriptSendHost {
@@ -4488,10 +4506,13 @@ export class ChatSession implements SummarizerHost, InterceptorHost, AnchorStora
     return this.allChatMessages.find((m) => m.id === id)
   }
 
-  updateDraftContent(draftMsgId: string, content: string): void {
+  updateDraftContent(draftMsgId: string, content: string, replyTo?: ChatReplyTo[]): void {
     this.updateChatMessage(
       (m) => m.id === draftMsgId && !!m.draft,
-      (m) => ({ ...m, content })
+      (m) => {
+        const { replyTo: _old, ...rest } = m
+        return { ...rest, content, ...(replyTo?.length ? { replyTo } : {}) }
+      }
     )
   }
 

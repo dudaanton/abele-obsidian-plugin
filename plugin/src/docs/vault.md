@@ -340,7 +340,10 @@ This is not multi-device arbitration for local tool approvals.
 
 ## Node sessions (device-local)
 
-Node history is owned by the daemon journal, not vault Markdown or `.abchat` files. The
+Node history is owned by the daemon journal, not vault Markdown or `.abchat` files. A message
+that replies to places is sent and journaled as the links block over the words, and read back
+from it for display; the plain text box of a node chat shows each place as a `[↩N]` marker with
+its numbered chip above the field. The
 plugin never runs local tools for a node tab. Obsidian's vault-scoped local storage holds
 `abele-node-installation` (local namespace UUID), `abele-node-registry` (installation
 registration id, label, endpoint and pinned node identity; paired registrations also retain public key coordinates, public node fingerprint and installation ID), and the discriminated
@@ -1123,9 +1126,20 @@ Uploaded images and other image-tool references retain their existing sources. A
 schemed and parent-traversing artifact paths stay visible as unavailable references rather
 than being normalized into a different vault resource.
 
+A person's message that replies to places of the agent's answers keeps them in `replyTo`, in the
+order they stand: each has `messageId` (the answer replied to), `quote` (the selected words, or
+the answer's opening of up to 280 characters when it was replied to whole), `start` (where the
+selected words begin in that answer's rendered text; absent for a whole answer) and `at` (where
+the place stands in this message's `content`, as an offset; `content` holds only the person's own
+words). A place whose answer is not on the shown branch stays in the record and is drawn faint.
+The model-facing record of the same message carries the links block instead (see the agent's
+Chats reference); a copy made with **New chat from here** points `messageId` at the copied
+answers. The composer's draft holds each place as a private-use token inside its text, so a draft
+restored from the queue, Stop or Edit carries them without a separate field.
+
 Unsent messages waiting behind an active turn are stored in the chat metadata as
-`queuedMessages`: each has an `id`, `content`, and optional `attachments` containing vault
-paths, exactly as in a normal user bubble. Imported media stays in the ordinary attachment
+`queuedMessages`: each has an `id`, `content`, optional `replyTo` as above, and optional
+`attachments` containing vault paths, exactly as in a normal user bubble. Imported media stays in the ordinary attachment
 folder, never as binary data in settings. Enqueuing saves immediately; consumption, editing
 and cancellation update the chat's queue. Reopening restores the queue without starting a
 request; the user can return a message to the composer and send it again. Cancelling a queued

@@ -233,6 +233,26 @@ depth. The new comment runs on the agent of the comment it came from and is told
 messages the same way. The levels above that are named, not carried: the words each one was asked
 about and where — so the chain costs a line per level, however deep it goes.
 
+The person can **reply** to the agent's answers, as in a messenger: a whole answer, or words
+selected in it. Each place replied to stands in their message as a chip where they put it, their
+own words before and after it, and one message can reply to several places. The agent is not given
+its words again. Over the person's text comes a block of links, then the text with `[reply N]`
+where each place stands:
+
+```
+<reply-links>
+…
+[reply 1] message <id>, characters 120-184, begins: <at most eight opening words>
+[reply 2] message <id>, the whole message, begins: <at most eight opening words>
+</reply-links>
+
+[reply 1] Why so? [reply 2] And this?
+```
+
+`characters` are offsets into the rendered text of that message, as the person saw it. The same
+block reaches every agent: a model behind a chat-completions endpoint and an agent run by a node,
+Claude Code included.
+
 Writing to a note links this chat to it: the note shows a card for every chat that changed it,
 so what you do here is visible from there afterwards. Reading a note links nothing.
 

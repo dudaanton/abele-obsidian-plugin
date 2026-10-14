@@ -1,5 +1,6 @@
 import type { Job } from '@abele/node-client'
 import type { ChatMessage } from '@/ai/types'
+import { readAgentReplyText } from '@/ai/replyLinks'
 
 export function shortNodePath(path: string, width = 40): string {
   const chars = Array.from(path)
@@ -28,7 +29,7 @@ export const workspaceStateLabels = {
 }
 export function promptExpiry(expires: number | undefined, now: number): string {
   if (!Number.isFinite(expires)) return ''
-  const remaining = expires! - now
+  const remaining = expires - now
   if (remaining > 10 * 60000) return ''
   if (remaining <= 0) return 'Expiry due'
   if (remaining < 60000) return 'Expires in less than a minute'
@@ -41,6 +42,12 @@ export interface QueueState {
 export interface NodeQueueView {
   messages: ChatMessage[]
   states: Record<string, QueueState>
+}
+
+/** A queued input as the person wrote it: a reply's links back to its words and places. */
+function queuedQuestion(text: string): Pick<ChatMessage, 'content' | 'replyTo'> {
+  const replied = readAgentReplyText(text)
+  return replied ? { content: replied.content, replyTo: replied.replyTo } : { content: text }
 }
 
 /** Receipt identity joins device outbox and journal inputs. Never deduplicate by text. */
@@ -66,7 +73,7 @@ export function nodeQueueView(
   for (const queued of node) {
     const id = key(queued.id)
     if (!ids.has(id)) {
-      shown.push({ id, role: 'user', content: queued.text, timestamp: 0 })
+      shown.push({ id, role: 'user', ...queuedQuestion(queued.text), timestamp: 0 })
       ids.add(id)
     }
     states[id] = { label: 'Queued', inputId: queued.id }
@@ -74,7 +81,7 @@ export function nodeQueueView(
   for (const queued of device) {
     const id = `operation:${queued.id}`
     if (ids.has(id)) continue
-    shown.push({ id, role: 'user', content: queued.text, timestamp: 0 })
+    shown.push({ id, role: 'user', ...queuedQuestion(queued.text), timestamp: 0 })
     states[id] = { label: 'Queued on this device' }
     ids.add(id)
   }

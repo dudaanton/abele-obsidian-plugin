@@ -1,6 +1,7 @@
 import type { JournalEvent } from '@abele/channel-protocol'
 import { PromptSchema, SessionSchema, type Prompt } from '@abele/node-protocol'
 import type { ChatMessage } from '@/ai/types'
+import { readAgentReplyText } from '@/ai/replyLinks'
 import { ClaudeTranscript } from './claudeTranscript'
 import { PiTranscript, piFailure } from './piTranscript'
 
@@ -60,7 +61,7 @@ export function reduceTranscript(events: readonly JournalEvent[]): NodeTranscrip
     sequence = event.seq
     const data =
       event.data && typeof event.data === 'object' ? (event.data as Record<string, unknown>) : {}
-    const text = (key: string) => (typeof data[key] === 'string' ? (data[key] as string) : '')
+    const text = (key: string) => (typeof data[key] === 'string' ? data[key] : '')
     at = Date.parse(event.at)
     currentRun = text('run_id')
     touchedTools = []
@@ -101,8 +102,13 @@ export function reduceTranscript(events: readonly JournalEvent[]): NodeTranscrip
     if (event.type.startsWith('input.')) {
       const state = text('state') || event.type.slice(6)
       inputs.set(text('input_id'), state)
-      if (event.type === 'input.accepted')
-        message(`input:${text('input_id')}`, 'user').content = text('text')
+      if (event.type === 'input.accepted') {
+        const input = message(`input:${text('input_id')}`, 'user')
+        // A reply was sent as links over the words: shown again as the words and its places.
+        const replied = readAgentReplyText(text('text'))
+        input.content = replied?.content ?? text('text')
+        if (replied) input.replyTo = replied.replyTo
+      }
     } else if (event.type === 'run.started') {
       runs.add(text('run_id'))
       if (text('input_id')) {

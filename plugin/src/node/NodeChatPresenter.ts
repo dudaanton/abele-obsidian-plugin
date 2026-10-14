@@ -2,7 +2,8 @@ import { computed, ref, watch, type WatchStopHandle } from 'vue'
 import { z } from 'zod'
 import type { FakeStep, Prompt } from '@abele/node-client'
 import type { ChatPresentationSession, ChatReference } from '@/ai/ChatPresentationSession'
-import type { ChatDraft } from '@/ai/types'
+import type { ChatDraft, ChatReplyTo } from '@/ai/types'
+import { agentReplyText } from '@/ai/replyLinks'
 import { mobileBackground } from '@/ai/mobileBackground'
 import { reduceTranscript } from './NodeTranscriptReducer'
 import type { NodeConnection } from './NodeService'
@@ -234,7 +235,7 @@ export class NodeChatPresenter implements ChatPresentationSession {
               pending: state.outbox,
               rejected: Object.entries(state.results)
                 .filter(([, r]) => r.error && r.input?.sessionId === this.reference.sessionId)
-                .map(([id, r]) => ({ id, text: r.input!.text, error: r.error! })),
+                .map(([id, r]) => ({ id, text: r.input.text, error: r.error })),
             }
           })
         if (this.destroyed) return
@@ -342,10 +343,25 @@ export class NodeChatPresenter implements ChatPresentationSession {
     void this.draftWrite.catch((error: unknown) => this.report(error))
   }
 
-  async send(text: string, script?: FakeStep[], shownTarget?: PathTarget): Promise<void> {
+  /**
+   * `reply` is for words that reply to places of the agent's: the node is sent links to them over
+   * the words, never the agent's words again, and the draft that held them is what is cleared.
+   */
+  async send(
+    text: string,
+    script?: FakeStep[],
+    shownTarget?: PathTarget,
+    reply?: { replyTo: ChatReplyTo[]; draft: string }
+  ): Promise<void> {
     this.error.value = ''
     const client = this.connection.client
-    const submittedDraft = this.draft.value.text.trim() === text ? this.draft.value.text : text
+    const submittedDraft =
+      reply && this.draft.value.text === reply.draft
+        ? reply.draft
+        : this.draft.value.text.trim() === text
+          ? this.draft.value.text
+          : text
+    const wire = reply?.replyTo.length ? agentReplyText(text, reply.replyTo) : text
     if (!this.draft.value.text) this.draft.value.text = text
     // Capture before the first await: cursor/storage work must not adopt a newer target.
     let guarded = supportsExpectedTarget(this.nodeDescription.value)
@@ -401,7 +417,7 @@ export class NodeChatPresenter implements ChatPresentationSession {
       const observed_seq = await client.cursor(this.reference.sessionId)
       const params = validateParams('session.send', {
         session_id: this.reference.sessionId,
-        text,
+        text: wire,
         observed_seq,
         ...(script ? { script } : {}),
         ...(guarded && expected ? { expected_target: expected } : {}),

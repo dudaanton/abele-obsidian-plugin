@@ -18,6 +18,8 @@ export function cloneChatPath(source: ChatSnapshot, messageId: string): ChatSnap
     message.id = ids.get(message.id)!
     message.parentId = message.parentId ? ids.get(message.parentId) : undefined
     message.branchCutAfter = message.branchCutAfter ? ids.get(message.branchCutAfter) : undefined
+    // A place answered in the copied path leads to its copy; one elsewhere stays out of reach.
+    for (const to of message.replyTo ?? []) to.messageId = ids.get(to.messageId) ?? to.messageId
     // These locate selections and revision proposals in the original conversation.
     delete message.selection
     delete message.decorationOperations
