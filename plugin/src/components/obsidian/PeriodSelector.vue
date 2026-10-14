@@ -1,12 +1,24 @@
 <template>
   <div class="abele-period-selector">
     <ObsidianIcon icon="chevron-left" tooltip="Previous month" @click="previousMonth" />
-    <ObsidianIcon
-      class="abele-period-selector__title"
-      :text-right="label"
-      tooltip="Choose date range"
-      @click="pickerOpen = true"
-    />
+    <!-- The title takes the width of the year's longest month, so the arrows stay where they are
+         while paging; every month's label sits unseen in the same cell to hold it. -->
+    <span class="abele-period-selector__slot">
+      <ObsidianIcon
+        class="abele-period-selector__title"
+        :text-right="label"
+        tooltip="Choose date range"
+        @click="pickerOpen = true"
+      />
+      <ObsidianIcon
+        v-for="month in months"
+        :key="month"
+        class="clickable-icon abele-period-selector__title abele-period-selector__sizer"
+        :text-right="month"
+        aria-hidden="true"
+        tabindex="-1"
+      />
+    </span>
     <ObsidianIcon icon="chevron-right" tooltip="Next month" @click="nextMonth" />
 
     <DateRangePickerModal
@@ -50,6 +62,10 @@ const label = computed(() => {
   }
   return dayjs().year(selectedYear.value).month(selectedMonth.value).format('MMMM YYYY')
 })
+
+const months = computed(() =>
+  Array.from({ length: 12 }, (_, m) => dayjs().year(selectedYear.value).month(m).format('MMMM YYYY'))
+)
 
 const computedStart = computed(() =>
   isCustomRange.value
@@ -118,7 +134,20 @@ function onReset() {
   margin-bottom: var(--size-4-2);
 }
 
-.abele-period-selector__title {
+.abele-period-selector__slot {
+  display: grid;
   min-width: 0;
+}
+.abele-period-selector__title {
+  grid-area: 1 / 1;
+  min-width: 0;
+  justify-content: center;
+  font-variant-numeric: tabular-nums;
+}
+.abele-period-selector__sizer {
+  /* Its whole label counts, so the cell is as wide as the longest month. */
+  min-width: max-content;
+  visibility: hidden;
+  pointer-events: none;
 }
 </style>
