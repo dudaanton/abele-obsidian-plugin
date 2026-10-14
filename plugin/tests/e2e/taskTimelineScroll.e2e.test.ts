@@ -393,8 +393,11 @@ const script = (footer: boolean, short = false) => String.raw`(async function* (
       if (!target) throw Error('no row survives hiding done tasks; state=' + JSON.stringify(uiState()))
       const expected = shown ? shown.getBoundingClientRect().top : at
       const id = rowId(target)
+      const frame = () => [scroller.getBoundingClientRect().top, chromeBottom(), scroller.scrollTop, scroller.scrollHeight, pinned()?.getBoundingClientRect().top, scroller.clientHeight]
+      const was = frame()
       await toggleCompleted()
       await settleUI()
+      ;(report.anchorFrames ??= []).push(['switch', id, was, frame()])
       return [expected, rowBy(id)?.getBoundingClientRect().top ?? -9999]
     }
     const shot = async name => {
