@@ -103,61 +103,66 @@ describe('duration-balanced fast shards', () => {
     ).toEqual({ [files[0]]: 100 })
   })
 
-  it('drives the actual Vitest shard sequencer without duplicate or omitted modules', () => {
-    const selected = ['tests/unit/sample-a.test.ts', 'tests/unit/sample-b.test.ts']
-    const p = makePlan(selected, {}, 2, 'sample-inputs')
-    const directory = realpathSync(mkdtempSync(join(tmpdir(), 'sample-shards-')))
-    mkdirSync(join(directory, 'tests/unit'), { recursive: true })
-    for (const file of selected)
+  // Spawns two real Vitest runs; on a loaded machine they take longer than the default 5 s.
+  it(
+    'drives the actual Vitest shard sequencer without duplicate or omitted modules',
+    { timeout: 60_000 },
+    () => {
+      const selected = ['tests/unit/sample-a.test.ts', 'tests/unit/sample-b.test.ts']
+      const p = makePlan(selected, {}, 2, 'sample-inputs')
+      const directory = realpathSync(mkdtempSync(join(tmpdir(), 'sample-shards-')))
+      mkdirSync(join(directory, 'tests/unit'), { recursive: true })
+      for (const file of selected)
+        writeFileSync(
+          join(directory, file),
+          'test("sample case", () => { expect(process.env.ABELE_FAST_SHARD_PLAN).toBeUndefined(); expect(1).toBe(1) })'
+        )
+      const config = join(directory, 'vitest.config.mjs')
       writeFileSync(
-        join(directory, file),
-        'test("sample case", () => { expect(process.env.ABELE_FAST_SHARD_PLAN).toBeUndefined(); expect(1).toBe(1) })'
+        config,
+        `import FastSequencer from ${JSON.stringify(new URL('../../scripts/fast-sequencer.mjs', import.meta.url).href)}; export default { test: { globals: true, environment: 'node', include: ['tests/unit/**/*.test.ts'], sequence: { sequencer: FastSequencer } } }`
       )
-    const config = join(directory, 'vitest.config.mjs')
-    writeFileSync(
-      config,
-      `import FastSequencer from ${JSON.stringify(new URL('../../scripts/fast-sequencer.mjs', import.meta.url).href)}; export default { test: { globals: true, environment: 'node', include: ['tests/unit/**/*.test.ts'], sequence: { sequencer: FastSequencer } } }`
-    )
-    const command = [
-      resolve('node_modules/vitest/vitest.mjs'),
-      'run',
-      `--config=${config}`,
-      `--root=${directory}`,
-      '--maxWorkers=2',
-    ]
-    const manifest = join(directory, 'plan.json')
-    writeFileSync(manifest, JSON.stringify(p))
-    try {
-      for (const index of [1, 2]) {
-        const output = join(directory, `shard-${index}.json`)
-        // Vitest list deliberately ignores --shard; run two small suites to exercise sequencing.
-        execFileSync(
-          process.execPath,
-          [...command, '--reporter=json', `--outputFile=${output}`, `--shard=${index}/2`],
-          {
+      const command = [
+        resolve('node_modules/vitest/vitest.mjs'),
+        'run',
+        `--config=${config}`,
+        `--root=${directory}`,
+        '--maxWorkers=2',
+      ]
+      const manifest = join(directory, 'plan.json')
+      writeFileSync(manifest, JSON.stringify(p))
+      try {
+        for (const index of [1, 2]) {
+          const output = join(directory, `shard-${index}.json`)
+          // Vitest list deliberately ignores --shard; run two small suites to exercise sequencing.
+          execFileSync(
+            process.execPath,
+            [...command, '--reporter=json', `--outputFile=${output}`, `--shard=${index}/2`],
+            {
+              env: { ...process.env, ABELE_FAST_SHARD_PLAN: manifest },
+              stdio: 'pipe',
+            }
+          )
+          const report = JSON.parse(readFileSync(output, 'utf8'))
+          expect(
+            report.testResults.every((entry: any) => entry.name.startsWith(directory + '/'))
+          ).toBe(true)
+          const collected = report.testResults.map((entry: any) =>
+            entry.name.replace(directory + '/', '')
+          )
+          expect(collected.sort()).toEqual(p.shards[index - 1].files)
+        }
+        expect(() =>
+          execFileSync(process.execPath, command, {
             env: { ...process.env, ABELE_FAST_SHARD_PLAN: manifest },
             stdio: 'pipe',
-          }
-        )
-        const report = JSON.parse(readFileSync(output, 'utf8'))
-        expect(
-          report.testResults.every((entry: any) => entry.name.startsWith(directory + '/'))
-        ).toBe(true)
-        const collected = report.testResults.map((entry: any) =>
-          entry.name.replace(directory + '/', '')
-        )
-        expect(collected.sort()).toEqual(p.shards[index - 1].files)
+          })
+        ).toThrow()
+      } finally {
+        rmSync(directory, { recursive: true, force: true })
       }
-      expect(() =>
-        execFileSync(process.execPath, command, {
-          env: { ...process.env, ABELE_FAST_SHARD_PLAN: manifest },
-          stdio: 'pipe',
-        })
-      ).toThrow()
-    } finally {
-      rmSync(directory, { recursive: true, force: true })
     }
-  })
+  )
 
   it('merges only complete successful same-input shard inventories', () => {
     const p = plan()
