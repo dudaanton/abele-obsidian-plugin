@@ -7,39 +7,43 @@
       'abele-disclosure_disabled': disabled,
     }"
   >
-    <button
-      type="button"
-      class="clickable-icon abele-disclosure__control"
-      :aria-label="accessibleLabel"
+    <!-- Only the arrow, for a row that carries its own words: an ordinary clickable icon. -->
+    <Icon
+      v-if="compact"
+      class="abele-disclosure__control"
+      :icon="modelValue ? 'chevron-down' : 'chevron-right'"
+      :tooltip="accessibleLabel"
       :aria-expanded="modelValue"
       :aria-controls="contentId"
       :disabled="disabled"
       @click="emit('update:modelValue', !modelValue)"
+    />
+    <!-- With words: the same fold title as every list's, arrow and words lit up as one. -->
+    <FoldHeading
+      v-else
+      class="abele-disclosure__control"
+      :text="label"
+      :count="count"
+      collapsible
+      :collapsed="!modelValue"
+      :disabled="disabled"
+      :aria-controls="contentId"
+      @toggle="emit('update:modelValue', !modelValue)"
     >
-      <span
-        ref="glyph"
-        class="collapse-icon abele-disclosure__icon"
-        :class="{ 'is-collapsed': !modelValue }"
-        aria-hidden="true"
-      />
-      <template v-if="!compact"
-        ><span class="abele-disclosure__label"
-          ><slot name="label">{{ label }}</slot></span
-        ><span v-if="count !== undefined" class="abele-disclosure__count">{{
-          count
-        }}</span></template
-      >
-    </button>
+      <template v-if="$slots.label" #text><slot name="label" /></template>
+    </FoldHeading>
     <div v-if="modelValue && !controlOnly" :id="contentId" class="abele-disclosure__content">
       <slot />
     </div>
   </div>
 </template>
 <script setup lang="ts">
-import { ref, computed, onMounted, useId } from 'vue'
-import { setIcon } from 'obsidian'
+import { computed, useId } from 'vue'
+import FoldHeading from './FoldHeading.vue'
+import Icon from './Icon.vue'
 import './designKit.css'
-// Obsidian's own fold: its triangle and its icon button. What Nuxt UI calls a Collapsible.
+// What Nuxt UI calls a Collapsible, made of the kit's own fold: FoldHeading with words, or a
+// clickable arrow alone. No fold of its own.
 const props = defineProps<{
   /** What is folded away, in a few words; also what a screen reader hears. */
   label: string
@@ -57,55 +61,24 @@ const props = defineProps<{
 const emit = defineEmits<{ 'update:modelValue': [expanded: boolean] }>()
 const id = useId()
 const contentId = computed(() => props.targetId ?? `abele-disclosure-${id}`)
+// The arrow alone has no words: its tooltip and its name say what it folds, and how many.
 const accessibleLabel = computed(() =>
   props.count !== undefined ? `${props.label} ${props.count}` : props.label
 )
-const glyph = ref<HTMLElement>()
-onMounted(() => {
-  if (glyph.value) setIcon(glyph.value, 'right-triangle')
-})
 </script>
 <style>
-.abele-disclosure .abele-disclosure__control {
-  display: inline-flex;
-  align-items: flex-start;
-  gap: var(--size-4-1);
-  justify-content: flex-start;
-  padding: 0;
-  position: relative;
-  color: var(--text-muted);
-  font-size: var(--font-ui-smaller);
-  font-weight: var(--font-normal);
-  white-space: normal;
-  text-align: start;
+/* Details folded away are told in the quiet size of a row's facts: a title's fold, a step down. */
+.abele-disclosure:not(.abele-disclosure_compact) > .abele-disclosure__control {
+  color: var(--abele-text-meta-color);
+  font-size: var(--abele-text-meta-size);
 }
-/* As a disabled icon is drawn in the kit: faint, and no hover box. */
-.abele-disclosure .abele-disclosure__control:disabled,
-.abele-disclosure .abele-disclosure__control:disabled:hover {
-  color: var(--text-faint);
-  background-color: transparent;
-  cursor: default;
-}
-.abele-disclosure__count {
-  color: var(--text-muted);
-  font-weight: var(--font-normal);
-}
+/* Under the words, on their edge: the arrow hangs in the margin before them. */
 .abele-disclosure__content {
-  margin-inline-start: var(--size-4-4);
   margin-top: var(--size-4-1);
   min-width: 0;
   overflow-wrap: anywhere;
 }
-.abele-disclosure_compact .abele-disclosure__control {
-  font: inherit;
-}
-.abele-disclosure:not(.abele-disclosure_compact) .abele-disclosure__control .collapse-icon {
-  position: absolute;
-  inset-inline-start: calc(-1 * var(--size-4-4));
-}
-.abele-disclosure__control .collapse-icon {
-  display: flex;
-  align-items: center;
-  height: 1lh;
+.abele-disclosure_compact .abele-disclosure__content {
+  margin-inline-start: 0;
 }
 </style>

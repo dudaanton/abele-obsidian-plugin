@@ -63,6 +63,7 @@ export const CATALOGUE_COMPONENTS = [
   'ResultMark',
   'RunReport',
   'Search',
+  'ScrollMore',
   'SelectionBar',
   'Section',
   'Setting',

@@ -32,11 +32,12 @@ defineProps<{
   // As far from its first row as the rows are from each other, so every row reads as the
   // heading's and not just the first.
   margin-bottom: var(--size-4-2);
-  color: var(--text-muted);
-  font-size: var(--font-ui-small);
-  // Not bold: a bold line over rows of normal names fought them for the eye. A group is told by
-  // its place and its colour.
-  font-weight: var(--font-normal);
+  // A step smaller than the rows, muted and a little heavier, as Apple's and Linear's section
+  // headings are: told from the rows at a glance, without the bold line at their own size that
+  // fought them for the eye.
+  color: var(--abele-text-heading-color);
+  font-size: var(--abele-text-heading-size);
+  font-weight: var(--abele-text-heading-weight);
 
   // In a window, in line with the window's text, as the rows under it are there.
   .modal-content & {
@@ -49,7 +50,7 @@ defineProps<{
   }
 
   &_strong {
-    color: var(--text-normal);
+    color: var(--abele-text-title-color);
   }
 }
 
@@ -60,6 +61,9 @@ defineProps<{
 
 // Several totals — one per currency — each kept whole and wrapped when there is no room.
 .abele-group-heading__summary {
+  // What the group adds up to is a fact, not the heading: in the heading's size, not its weight.
+  color: var(--abele-text-count-color);
+  font-weight: var(--font-normal);
   display: flex;
   flex-wrap: wrap;
   justify-content: flex-end;

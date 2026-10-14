@@ -54,7 +54,8 @@ const emit = defineEmits<{ 'update:more': [open: boolean] }>()
   display: flex;
   align-items: flex-start;
   gap: var(--size-2-3);
-  padding: var(--size-2-2) var(--size-2-3);
+  // Room above and below the words, so a hairline between entries never touches them.
+  padding: var(--size-4-2) var(--size-2-3);
   border-radius: var(--radius-s);
   line-height: var(--line-height-normal);
 
@@ -141,6 +142,9 @@ const emit = defineEmits<{ 'update:more': [open: boolean] }>()
   align-items: start;
   overflow-wrap: anywhere;
 }
+.abele-entry-row__title {
+  align-self: baseline;
+}
 
 .abele-entry-row__title {
   grid-area: title;
@@ -152,16 +156,15 @@ const emit = defineEmits<{ 'update:more': [open: boolean] }>()
   display: flex;
   align-items: center;
   gap: var(--size-2-2);
-  // As tall as the first line of the name, measured in the name's own size, so the codes in
-  // their smaller size sit on the middle of that line rather than at its top.
-  height: calc(var(--line-height-normal) * 1em);
+  // On the name's baseline: a smaller time beside a name reads as one line, as in a mail list.
+  align-self: baseline;
   padding-inline-start: var(--size-4-2);
-  color: var(--text-muted);
+  // A fact at the end, a time or a sum: a size smaller and muted, so it never reads as part of the
+  // name. Set on the cell itself, so bare text in it takes it too, not only tags.
+  color: var(--abele-text-fact-color);
+  font-size: var(--abele-text-fact-size);
+  font-variant-numeric: tabular-nums;
   white-space: nowrap;
-
-  > * {
-    font-size: var(--font-ui-smaller);
-  }
 
   &:empty {
     display: none;
@@ -223,8 +226,8 @@ const emit = defineEmits<{ 'update:more': [open: boolean] }>()
   flex-wrap: wrap;
   align-items: center;
   column-gap: var(--size-4-2);
-  color: var(--text-muted);
-  font-size: var(--font-ui-smaller);
+  color: var(--abele-text-meta-color);
+  font-size: var(--abele-text-meta-size);
   line-height: var(--line-height-tight);
 
   &:empty {
@@ -256,6 +259,27 @@ const emit = defineEmits<{ 'update:more': [open: boolean] }>()
   margin-top: var(--size-2-2);
 }
 
+// Where there is a pointer, what can be done to the row takes the place of its fact at the end of
+// the name's line while the row is under the pointer or the keyboard: the time goes, the glyph comes,
+// in the same spot. The cell keeps the width of the wider of the two, so nothing moves.
+@media (hover: hover) {
+  body:not(.is-phone) {
+    .abele-entry-row__aside {
+      grid-area: codes;
+      justify-self: end;
+      align-self: center;
+      height: calc(var(--line-height-normal) * 1em);
+      margin-top: 0;
+      padding-inline-start: var(--size-4-2);
+    }
+    .abele-entry-row:is(:hover, :focus-within)
+      .abele-entry-row__body:has(> .abele-entry-row__aside)
+      > .abele-entry-row__codes {
+      visibility: hidden;
+    }
+  }
+}
+
 // Narrow: the codes leave the name's line and lead the quiet line under it.
 @container (max-width: 18em) {
   .abele-entry-row__body {
@@ -271,9 +295,14 @@ const emit = defineEmits<{ 'update:more': [open: boolean] }>()
   .abele-entry-row__meta {
     align-self: baseline;
   }
+  .abele-entry-row__aside {
+    align-self: center;
+  }
 
   .abele-entry-row__codes {
     height: auto;
+    // On the quiet line, the size of its words.
+    font-size: var(--abele-text-meta-size);
     margin-top: var(--size-2-1);
     padding-inline: 0 var(--size-4-2);
   }

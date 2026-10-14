@@ -91,14 +91,14 @@ const fold = computed(() => props.fold ?? plainFold)
   flex-wrap: wrap;
   gap: var(--size-4-2);
   margin-block: var(--size-4-3) var(--size-4-2);
-  color: var(--text-normal);
-  font-size: var(--font-ui-medium);
-  font-weight: var(--font-semibold);
+  color: var(--abele-text-section-color);
+  font-size: var(--abele-text-section-size);
+  font-weight: var(--abele-text-section-weight);
 }
+/* "12 of 40" and "Loading…" say how many, as the count beside the title does: its size, muted. */
 .abele-list-section-header__count {
-  font-size: var(--font-ui-smaller);
   font-weight: var(--font-normal);
-  color: var(--text-muted);
+  color: var(--abele-text-count-color);
 }
 .abele-list-section-header__actions {
   display: flex;

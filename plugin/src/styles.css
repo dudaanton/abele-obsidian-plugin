@@ -59,6 +59,29 @@ body.is-tablet.abele-half-width-sidebars {
 }
 
 /* Named highlights follow the active theme on both platforms and in either colour mode. */
+/* The roles text plays in a list, one colour and one size each, used by every row, heading and
+   count, so the same thing never reads differently in two lists. Obsidian's own variables. */
+body {
+  /* What a row is: its name. */
+  --abele-text-title-color: var(--text-normal);
+  /* A fact at the end of a row's first line: a time, a sum, a size. */
+  --abele-text-fact-color: var(--text-muted);
+  --abele-text-fact-size: var(--font-ui-small);
+  /* The quiet line under a name, or the words after it: where it lies, what it is. */
+  --abele-text-meta-color: var(--text-muted);
+  --abele-text-meta-size: var(--font-ui-smaller);
+  /* The heading of a group of rows: a day, a kind, what was found. */
+  --abele-text-heading-color: var(--text-muted);
+  --abele-text-heading-size: var(--font-ui-smaller);
+  --abele-text-heading-weight: var(--font-semibold);
+  /* The heading of a whole list: a footer's notes, a panel's tasks. A step above a group's. */
+  --abele-text-section-color: var(--text-normal);
+  --abele-text-section-size: var(--font-ui-medium);
+  --abele-text-section-weight: var(--font-semibold);
+  /* How many, beside a heading: in its size and colour, not its weight. */
+  --abele-text-count-color: var(--text-muted);
+}
+
 body {
   --abele-highlight-red: rgba(var(--color-red-rgb), 0.3);
   --abele-highlight-orange: rgba(var(--color-orange-rgb), 0.3);

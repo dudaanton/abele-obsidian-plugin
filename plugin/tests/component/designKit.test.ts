@@ -134,7 +134,8 @@ describe('PathLabel', () => {
     const second = mount(PathLabel, { props: { path: 'Archive/sample.md', mode: 'context' } })
     expect(first.text()).toContain('Work/Long')
     expect(second.text()).toContain('Archive')
-    expect(first.get('summary').text()).not.toContain('sample.md')
+    expect(first.get('.abele-fold-heading__text').text()).not.toContain('sample.md')
+    await first.get('.abele-disclosure__control').trigger('click')
     expect(first.get('.abele-path-label__full').text()).toBe('Work/Long/sample.md')
     const remote = mount(PathLabel, {
       props: { path: 'C:\\Work\\sample.md', mode: 'full', workspace: 'Demo node', missing: true },
@@ -150,9 +151,10 @@ describe('PathLabel parts', () => {
     expect(folded.classes()).toEqual(
       expect.arrayContaining(['abele-path-label_expandable', 'abele-path-label_missing'])
     )
-    expect(folded.find('.abele-path-label__summary .abele-path-label__toggle').exists()).toBe(true)
+    // Folded and unfolded by the kit's own fold, the one every list title has.
+    expect(folded.find('.abele-fold-heading .abele-fold-heading__arrow').exists()).toBe(true)
     // Said on the folded line, not only once it is opened.
-    expect(folded.get('.abele-path-label__summary .abele-path-label__state').text()).toBe(
+    expect(folded.get('.abele-fold-heading__text .abele-path-label__state').text()).toBe(
       'Unavailable on this device'
     )
 
@@ -195,14 +197,14 @@ describe('Disclosure', () => {
       props: { label: 'History', modelValue: false, count: 0 },
       slots: { default: 'Details' },
     })
-    expect(view.get('button').attributes('aria-expanded')).toBe('false')
+    expect(view.get('.abele-disclosure__control').attributes('aria-expanded')).toBe('false')
     expect(view.text()).toContain('0')
-    await view.get('button').trigger('click')
+    await view.get('.abele-disclosure__control').trigger('click')
     expect(view.emitted('update:modelValue')).toEqual([[true]])
     expect(view.text()).not.toContain('Details')
     await view.setProps({ modelValue: true })
     expect(view.text()).toContain('Details')
-    expect(view.get('button').attributes('aria-controls')).toBe(
+    expect(view.get('.abele-disclosure__control').attributes('aria-controls')).toBe(
       view.get('.abele-disclosure__content').attributes('id')
     )
   })
@@ -211,8 +213,10 @@ describe('Disclosure parts and states', () => {
   it('names its parts and says when it is open', () => {
     const view = mount(Disclosure, { props: { label: 'History', modelValue: true } })
     expect(view.classes()).toContain('abele-disclosure_open')
-    expect(view.get('.abele-disclosure__icon').classes()).toContain('collapse-icon')
-    expect(view.get('.abele-disclosure__label').text()).toBe('History')
+    // The kit's own fold: FoldHeading's arrow and words, not a fold of its own.
+    expect(view.get('.abele-disclosure__control').classes()).toContain('abele-fold-heading')
+    expect(view.get('.abele-fold-heading__arrow').classes()).toContain('collapse-icon')
+    expect(view.get('.abele-fold-heading__text').text()).toBe('History')
   })
 
   it('takes its own label content', () => {
@@ -220,8 +224,8 @@ describe('Disclosure parts and states', () => {
       props: { label: 'History', modelValue: false },
       slots: { label: '<strong class="own">History</strong>' },
     })
-    expect(view.get('.abele-disclosure__label .own').text()).toBe('History')
-    expect(view.get('button').attributes('aria-label')).toBe('History')
+    expect(view.get('.abele-fold-heading__text .own').text()).toBe('History')
+    expect(view.get('.abele-disclosure__control').attributes('role')).toBe('button')
   })
 
   it('does not open while disabled', async () => {
@@ -229,8 +233,8 @@ describe('Disclosure parts and states', () => {
       props: { label: 'History', modelValue: false, disabled: true },
     })
     expect(view.classes()).toContain('abele-disclosure_disabled')
-    expect(view.get('button').attributes('disabled')).toBeDefined()
-    await view.get('button').trigger('click')
+    expect(view.get('.abele-disclosure__control').attributes('aria-disabled')).toBe('true')
+    await view.get('.abele-disclosure__control').trigger('click')
     expect(view.emitted('update:modelValue')).toBeUndefined()
   })
 })
@@ -282,9 +286,11 @@ describe('Quote', () => {
     })
     expect(view.text()).toContain('Source unavailable')
     expect(view.find('.collapse-icon').exists()).toBe(true)
-    await view.get('[aria-label="Expand quote"]').trigger('click')
+    expect(view.get('.abele-disclosure__control').text()).toBe('Expand quote')
+    await view.get('.abele-disclosure__control').trigger('click')
     expect(view.get('blockquote').classes()).not.toContain('abele-quote__text_preview')
-    expect(view.get('[aria-label="Collapse quote"]').attributes('aria-expanded')).toBe('true')
+    expect(view.get('.abele-disclosure__control').text()).toBe('Collapse quote')
+    expect(view.get('.abele-disclosure__control').attributes('aria-expanded')).toBe('true')
     expect(mount(Quote, { props: { text: '' } }).text()).toContain('No quoted text')
   })
 })
@@ -316,7 +322,7 @@ describe('Card attachment previews', () => {
     const view = mount(Card, {
       props: { title: 'sample.md', path: 'Work/sample.md', clickable: true },
     })
-    await view.get('summary').trigger('click')
+    await view.get('.abele-disclosure__control').trigger('click')
     expect(view.emitted('click')).toBeUndefined()
   })
   it('does not crop information out of a thumbnail by default', () => {

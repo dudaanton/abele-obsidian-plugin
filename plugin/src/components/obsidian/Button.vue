@@ -117,17 +117,25 @@ watch(
 
 <style lang="scss">
 // Words, not a button: no box, no fill, muted until the pointer or the keyboard is on them.
+// A button in the words' own size, without a frame: under the pointer it lights up as every
+// clickable thing in Obsidian does. The room the light needs is taken back by margins, so its words
+// stay on the edge of the text around it.
 .abele-obsidian-button.abele-obsidian-button_quiet {
   height: auto;
-  padding: 0;
+  padding: var(--size-2-1) var(--size-2-3);
+  margin: calc(-1 * var(--size-2-1)) calc(-1 * var(--size-2-3));
   border: none;
+  border-radius: var(--radius-s);
   background: none;
   box-shadow: none;
   color: var(--text-muted);
   font-size: inherit;
   font-weight: var(--font-normal);
 
-  &:hover,
+  &:hover {
+    background-color: var(--background-modifier-hover);
+    color: var(--text-normal);
+  }
   &:focus-visible {
     background: none;
     color: var(--text-normal);

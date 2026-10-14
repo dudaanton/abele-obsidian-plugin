@@ -91,7 +91,8 @@ describe('subordinate detail', () => {
     })
     expect(view.get('button').attributes('aria-label')).toBe('Sources 2')
     expect(view.get('button').text()).toBe('')
-    expect(view.find('.collapse-icon').exists()).toBe(true)
+    // The arrow alone is an ordinary clickable icon, as every glyph that does something.
+    expect(view.get('button').classes()).toContain('clickable-icon')
   })
   it('puts exact time in its own block while retaining the semantic relative label', () => {
     const view = mount(RelativeTime, {

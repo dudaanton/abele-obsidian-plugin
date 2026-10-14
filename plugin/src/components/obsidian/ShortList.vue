@@ -106,12 +106,7 @@ body.is-phone .abele-short-list__row .abele-tree-item__glyph:not(:empty) ~ .abel
 .abele-short-list .abele-short-list__more {
   align-self: flex-start;
   margin-top: var(--size-2-2);
-  padding-inline: var(--size-2-3);
-  // Asking for the rest is a quiet line under the rows, the size of their faint part, not a heading.
-  font-size: var(--font-ui-small);
-
-  .modal-content & {
-    padding-inline: 0;
-  }
+  // Asking for the rest is a quiet button under the rows, in the size of a row's facts.
+  font-size: var(--abele-text-fact-size);
 }
 </style>

@@ -1,11 +1,16 @@
 <template>
   <div
     class="abele-fold-heading"
-    :class="{ 'is-collapsible': collapsible, 'is-collapsed': collapsible && collapsed }"
+    :class="{
+      'is-collapsible': collapsible,
+      'is-collapsed': collapsible && collapsed,
+      'is-disabled': collapsible && disabled,
+    }"
     :role="collapsible ? 'button' : undefined"
-    :tabindex="collapsible ? 0 : undefined"
+    :tabindex="collapsible && !disabled ? 0 : undefined"
     :aria-expanded="collapsible ? !collapsed : undefined"
-    @click="collapsible && emit('toggle')"
+    :aria-disabled="collapsible && disabled ? true : undefined"
+    @click="collapsible && !disabled && emit('toggle')"
     @keydown="onKey"
   >
     <span
@@ -15,7 +20,7 @@
       :class="{ 'is-collapsed': collapsed }"
       aria-hidden="true"
     />
-    <span class="abele-fold-heading__text">{{ text }}</span>
+    <span class="abele-fold-heading__text"><slot name="text">{{ text }}</slot></span>
     <span v-if="count !== undefined" class="abele-fold-heading__count">{{ count }}</span>
   </div>
 </template>
@@ -37,8 +42,10 @@ const props = withDefaults(
     count?: number
     collapsible?: boolean
     collapsed?: boolean
+    /** Seen but cannot be folded now: faint, no light, no tab stop. */
+    disabled?: boolean
   }>(),
-  { count: undefined, collapsible: false, collapsed: false }
+  { count: undefined, collapsible: false, collapsed: false, disabled: false }
 )
 
 const emit = defineEmits<{
@@ -47,7 +54,7 @@ const emit = defineEmits<{
 }>()
 
 const onKey = (e: KeyboardEvent) => {
-  if (!props.collapsible || (e.key !== 'Enter' && e.key !== ' ')) return
+  if (!props.collapsible || props.disabled || (e.key !== 'Enter' && e.key !== ' ')) return
   // Space would otherwise scroll the note.
   e.preventDefault()
   emit('toggle')
@@ -81,7 +88,7 @@ watch(() => props.collapsible, draw, { flush: 'post' })
     .abele-fold-heading__arrow {
       color: var(--icon-color);
     }
-    &:hover {
+    &:hover:not(.is-disabled) {
       background-color: var(--background-modifier-hover);
 
       .abele-fold-heading__arrow {
@@ -95,6 +102,11 @@ watch(() => props.collapsible, draw, { flush: 'post' })
       outline: none;
     }
   }
+}
+
+.abele-fold-heading.is-disabled {
+  color: var(--text-faint);
+  cursor: default;
 }
 
 // The arrow hangs in the margin before the title, as Obsidian's own fold arrows on headings do,
@@ -112,8 +124,7 @@ watch(() => props.collapsible, draw, { flush: 'post' })
 }
 
 .abele-fold-heading__count {
-  color: var(--text-muted);
-  font-size: var(--font-ui-small);
+  color: var(--abele-text-count-color);
   font-weight: var(--font-normal);
 }
 </style>

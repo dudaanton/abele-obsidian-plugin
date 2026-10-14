@@ -257,8 +257,8 @@ body:not(.is-grabbing) .abele-tree-item__self.is-clickable:hover {
 .abele-tree-item__note {
   flex: 1 1 auto;
   min-width: 0;
-  color: var(--text-muted);
-  font-size: var(--font-ui-smaller);
+  color: var(--abele-text-meta-color);
+  font-size: var(--abele-text-meta-size);
   overflow-wrap: anywhere;
 }
 // A file and where it lies: the name on its line, the path under it, each cut short rather than

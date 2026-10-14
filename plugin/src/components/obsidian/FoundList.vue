@@ -34,9 +34,11 @@
     />
     <template v-else>
       <!-- What was found, in one quiet line, and choosing all of it at its end. -->
-      <div class="abele-found-list__head">
-        <span class="abele-found-list__summary"
-          ><slot name="summary">{{ summary }}</slot></span
+      <GroupHeading class="abele-found-list__head">
+        <template #label
+          ><span class="abele-found-list__summary"
+            ><slot name="summary">{{ summary }}</slot></span
+          ></template
         >
         <Button
           v-if="selectable && total"
@@ -46,7 +48,7 @@
           :tooltip="chosen === total ? 'Choose none of these' : 'Choose every one of these'"
           @click="emit(chosen === total ? 'clear' : 'select-all')"
         />
-      </div>
+      </GroupHeading>
       <div class="abele-found-list__rows" role="list"><slot /></div>
     </template>
   </div>
@@ -60,6 +62,7 @@
  * EntryRows with a check at their start; what to do with the chosen ones is the window's footer.
  */
 import Button from './Button.vue'
+import GroupHeading from './GroupHeading.vue'
 import EmptyState from './EmptyState.vue'
 import Progress from './Progress.vue'
 
@@ -113,22 +116,10 @@ const emit = defineEmits<{ 'select-all': []; clear: [] }>()
   max-width: 100%;
 }
 
-// The summary is the list's own heading: in line with the words of the rows under it, closer to
-// them than to whatever stands above the list.
+// The summary is the list's own heading, the one every group of rows has: its words in line
+// with the rows, closer to them than to whatever stands above the list.
 .abele-found-list__head {
-  display: flex;
-  align-items: baseline;
-  justify-content: space-between;
-  gap: var(--size-4-2);
   margin-top: var(--size-4-3);
-  margin-bottom: var(--size-2-2);
-  padding-inline: var(--size-2-3);
-  color: var(--text-muted);
-
-  .modal-content & {
-    padding-inline: 0;
-  }
-  font-size: var(--font-ui-small);
 }
 
 .abele-found-list__summary {
