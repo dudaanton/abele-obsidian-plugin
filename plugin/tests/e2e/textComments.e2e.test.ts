@@ -267,7 +267,7 @@ describe.skipIf(!available)('ordinary-note text comments', () => {
       await wait(150)
       if(document.activeElement !== editor.contentDOM) throw new Error('Edit did not focus the comment editor')
       await host.type(' Updated')
-      if(!await until(() => editor.state.doc.toString().endsWith(' Updated'))) throw new Error('Native edit text did not arrive: '+editor.state.doc.toString())
+      if(!await until(() => editor.state.doc.toString().endsWith(' Updated'))) throw new Error('Native edit text did not arrive: '+JSON.stringify({edit:editor.state.doc.toString(),reply:window.__abeleTest.noteFieldView(document.querySelector('.abele-text-comments__reply .abele-note-editor-field__editor'))?.state.doc.toString(),active:document.activeElement?.closest('.abele-text-comments__reply,.abele-text-comments__entry')?.className??document.activeElement?.className}))
       await wait(150)
       await tap(button('Save'))
       await until(() => document.querySelector('.abele-text-comments__time')?.textContent.includes('edited'))

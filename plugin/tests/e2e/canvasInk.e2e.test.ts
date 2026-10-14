@@ -48,7 +48,13 @@ const input = async (from: number[], to = from) => {
 }
 const press = async (expression: string) => {
   const geometry = `const el=${expression};if(!el)return null;const r=el.getBoundingClientRect(),x=Math.round(r.left+r.width/2),y=Math.round(r.top+r.height/2);if(!r.width||!r.height||r.top<0||r.bottom>innerHeight||!el.contains(document.elementFromPoint(x,y)))return null;return[x,y]`
-  await expect.poll(() => run<number[] | null>(geometry), { timeout: 15_000 }).not.toBeNull()
+  const why = `const el=${expression};if(!el)return 'missing';const r=el.getBoundingClientRect(),x=Math.round(r.left+r.width/2),y=Math.round(r.top+r.height/2),under=document.elementFromPoint(x,y);return JSON.stringify({rect:r.toJSON(),viewport:[innerWidth,innerHeight],hidden:el.closest('[hidden]')?.className??null,under:under?(under.className||under.tagName)+': '+(under.textContent??'').trim().slice(0,80):null,underRect:under?.getBoundingClientRect().toJSON()})`
+  try {
+    await expect.poll(() => run<number[] | null>(geometry), { timeout: 15_000 }).not.toBeNull()
+  } catch (error) {
+    // Name what stands where the finger would go, so a covered control explains itself.
+    throw new Error(`Cannot press ${expression}: ${run<string>(why)}`, { cause: error })
+  }
   await input(run<number[]>(geometry))
 }
 const click = (label: string) => press(`button(${JSON.stringify(label)})`)

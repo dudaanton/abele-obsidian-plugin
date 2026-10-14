@@ -73,7 +73,7 @@ const script = `(async () => {
     }
     const x = Math.round(r.left + r.width / 2), y = Math.round(r.top + r.height / 2)
     const under = document.elementFromPoint(x, y)
-    hits[name] = under === el || el.contains(under) ? 'on it' : 'covered by ' + (under ? under.className : 'nothing')
+    hits[name] = under === el || el.contains(under) ? 'on it' : 'covered by ' + (under ? under.className + (under.closest('.notice') ? ' "' + under.closest('.notice').textContent.trim().slice(0, 160) + '"' : '') : 'nothing')
     if (!window.__e2eHost) return el.click()
     const failures = []
     for (let attempt = 0; attempt < 3; attempt++) {
