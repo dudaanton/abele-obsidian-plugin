@@ -19,6 +19,15 @@ rows keep their objects and open folders stay open; it emits `tree` and `status`
 the touched paths, and the tab reloads only the file or folder listing they touch. An
 incomplete batch, a skipped batch number, another stream (the node restarted) or a renewed lease
 the node cannot continue is the one case that rereads everything.
+A tree read before the first lease answered is read again once; one read later is marked with
+where the stream stood when its files were observed, and the batches that overtook the read are
+applied to it before it follows the stream. A lease renewed while batches are still on their way
+keeps the source's own position, and the node asks for a reread only when a batch was never sent
+to that client.
+
+The node path sidebar follows the same stream (`node/nodePathChanges.ts`): its port hands the
+model in-order batches, the model patches its listing in place, and reads again only the change
+list when git state moved or a changed file was touched. Lease renewals no longer reread it.
 
 `githubRepositorySource` wraps the exact `GithubClient` supplied by the tab, including its chat
 capability wrapper. It does not unwrap guards, select another connection, or add another content

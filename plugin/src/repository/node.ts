@@ -388,21 +388,27 @@ export class NodeRepositorySource implements RepositorySource {
     // Reactive, as GitHub's tree is: a folder read later appears in whatever shows the tree.
     const root: TreeNode = reactive({ name: '', path: '', kind: 'dir' })
     const liveRoots = () => this.liveRoots
+    /** Reads one folder; at the files as they are now while the stream is followed. */
+    const read = async (node: TreeNode, fresh: boolean) => {
+      // The caller's observation may predate the stream; a fresh one knows where it stood.
+      const key = fresh ? await this.resolve(WORKING_TREE) : sha
+      const at = fresh ? await this.at(key) : revision
+      const page = await this.pages((cursor) =>
+        this.client.repository.tree({ ...this.target, revision: at, path: node.path, cursor })
+      )
+      node.children = sortNodes(page.entries.map(nodeTreeNode))
+      return key
+    }
     const expand = async (node: TreeNode) => {
       if (node.kind !== 'dir' || node.children) return
       // The current files on the change stream are patched in place, so a folder opened later
       // is read as the files are now, then given the batches that overlapped the read.
       const following = liveRoots().has(root)
-      const key = following ? await this.resolve(WORKING_TREE) : sha
-      const at = following ? await this.at(key) : revision
-      const page = await this.pages((cursor) =>
-        this.client.repository.tree({ ...this.target, revision: at, path: node.path, cursor })
-      )
-      node.children = sortNodes(page.entries.map(nodeTreeNode))
+      const key = await read(node, following)
       if (following && liveRoots().has(root)) this.catchUp(root, key)
     }
-    await expand(root)
-    if (revision.kind === 'working' && this.catchUp(root, sha)) {
+    const key = await read(root, revision.kind === 'working' && this.streaming)
+    if (revision.kind === 'working' && this.catchUp(root, key)) {
       this.liveRoots.add(root)
       this.liveTrees.add(new WeakRef(root))
     }

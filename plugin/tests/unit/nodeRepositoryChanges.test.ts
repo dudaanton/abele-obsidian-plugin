@@ -194,6 +194,28 @@ describe('node repository source on the change stream', () => {
     expect(events.mock.calls).toEqual([[{ kind: 'tree', paths: ['new.ts'] }]])
     source.dispose()
   })
+  it('follows the stream with a tree asked for at files observed before it', async () => {
+    const lease = later()
+    const f = nodeRepositoryFixture({
+      changes: true,
+      hold: (method) => (method === 'repository.v1.watch' ? lease.promise : undefined),
+    })
+    const source = new NodeRepositorySource(f.client, identity, {
+      node: 'Sample node',
+      project: 'Sample project',
+    })
+    // The tab holds an observation from before the watch, and asks for the tree at it later.
+    const early = await source.resolve(WORKING_TREE)
+    const watching = source.startWatching()
+    await settle()
+    lease.release()
+    await watching
+    const tree = await source.tree(early)
+    expect(tree.live).toBe(true)
+    f.batch(1, { complete: true, entries: [{ change: 'added', entry: file('new.ts') }], git: null })
+    expect(tree.root.children!.some((c) => c.path === 'new.ts')).toBe(true)
+    source.dispose()
+  })
   it('keeps the batches that arrive before the first lease answers', async () => {
     const lease = later()
     const f = nodeRepositoryFixture({

@@ -86,7 +86,7 @@ it('patches the node file tree in place from the change stream without reading i
       const body=tree().querySelector('.abele-github-tree__body');
       if(body.scrollHeight-body.clientHeight<200)throw Error('The tree is not tall enough to scroll');
       body.scrollTop=200;await wait(100);
-      window.__sampleStreamScroll=body.scrollTop;window.__sampleStreamRow=row('src/sample-50.ts');window.__sampleStreamBody=body;
+      window.__sampleStreamScroll=body.scrollTop;window.__sampleStreamTop=row('src/sample-50.ts').getBoundingClientRect().top-body.getBoundingClientRect().top;window.__sampleStreamRow=row('src/sample-50.ts');window.__sampleStreamBody=body;
       const described=await client.describe();
       if(described.capabilities.capabilities.repository_changes_v1?.status!=='supported')throw Error('The node does not stream changes');
       const repository=client.repository,read=repository.tree.bind(repository);
@@ -111,6 +111,7 @@ it('patches the node file tree in place from the change stream without reading i
         sameRow:row('src/sample-50.ts')===window.__sampleStreamRow&&window.__sampleStreamRow.isConnected,
         sameBody:body===window.__sampleStreamBody,
         scroll:body.scrollTop,expected:window.__sampleStreamScroll,
+        top:row('src/sample-50.ts').getBoundingClientRect().top-body.getBoundingClientRect().top,expectedTop:window.__sampleStreamTop,
         loading:tree().textContent.includes('Loading the files'),
         reads:window.__sampleStreamReads,
         // Where a read of the opened folder came from, should one happen.
@@ -127,11 +128,13 @@ it('patches the node file tree in place from the change stream without reading i
       loading: false,
       reads: 0,
     })
-    expect(Math.abs(state.scroll - state.expected)).toBeLessThanOrEqual(1)
+    // A row added above the view moves the scroll offset by its height (the browser anchors the
+    // view); what must not move is the row on screen.
+    expect(Math.abs(state.top - state.expectedTop)).toBeLessThanOrEqual(1)
   } finally {
     try {
       await evalLong(
-        `(async()=>{const id=window.__sampleStreamNode;for(const leaf of app.workspace.getLeavesOfType('abele-github'))if(leaf.view.model?.sourceTarget?.source?.node===id)leaf.detach();if(id)window.__abeleTest.NodeService.getInstance().remove(id);delete window.__sampleStreamNode;delete window.__sampleStreamScroll;delete window.__sampleStreamRow;delete window.__sampleStreamBody;delete window.__sampleStreamReads;delete window.__sampleStreamReadsFrom;if(window.__sampleStreamDebug)console.debug=window.__sampleStreamDebug;delete window.__sampleStreamDebug;delete window.__sampleStreamLog;return 'restored'})()`
+        `(async()=>{const id=window.__sampleStreamNode;for(const leaf of app.workspace.getLeavesOfType('abele-github'))if(leaf.view.model?.sourceTarget?.source?.node===id)leaf.detach();if(id)window.__abeleTest.NodeService.getInstance().remove(id);delete window.__sampleStreamNode;delete window.__sampleStreamScroll;delete window.__sampleStreamTop;delete window.__sampleStreamRow;delete window.__sampleStreamBody;delete window.__sampleStreamReads;delete window.__sampleStreamReadsFrom;if(window.__sampleStreamDebug)console.debug=window.__sampleStreamDebug;delete window.__sampleStreamDebug;delete window.__sampleStreamLog;return 'restored'})()`
       )
     } finally {
       if (child?.exitCode === null) {
