@@ -48,7 +48,7 @@ const input = async (from: number[], to = from) => {
 }
 const press = async (expression: string) => {
   const geometry = `const el=${expression};if(!el)return null;const r=el.getBoundingClientRect(),x=Math.round(r.left+r.width/2),y=Math.round(r.top+r.height/2);if(!r.width||!r.height||r.top<0||r.bottom>innerHeight||!el.contains(document.elementFromPoint(x,y)))return null;return[x,y]`
-  const why = `const el=${expression};if(!el)return 'missing';const r=el.getBoundingClientRect(),x=Math.round(r.left+r.width/2),y=Math.round(r.top+r.height/2),under=document.elementFromPoint(x,y);return JSON.stringify({rect:r.toJSON(),viewport:[innerWidth,innerHeight],hidden:el.closest('[hidden]')?.className??null,under:under?(under.className||under.tagName)+': '+(under.textContent??'').trim().slice(0,80):null,underRect:under?.getBoundingClientRect().toJSON()})`
+  const why = `const el=${expression};if(!el)return 'missing';const r=el.getBoundingClientRect(),x=Math.round(r.left+r.width/2),y=Math.round(r.top+r.height/2),under=document.elementFromPoint(x,y);return JSON.stringify({rect:r.toJSON(),viewport:[innerWidth,innerHeight],hidden:el.closest('[hidden]')?.className??null,under:under?(under.className||under.tagName)+': '+(under.textContent??'').trim().slice(0,80):null,underRect:under?.getBoundingClientRect().toJSON(),waitingScripts:window.__abeleTest?.ScriptService?.getInstance().waitingScripts().map(s=>s.path)})`
   try {
     await expect.poll(() => run<number[] | null>(geometry), { timeout: 15_000 }).not.toBeNull()
   } catch (error) {
