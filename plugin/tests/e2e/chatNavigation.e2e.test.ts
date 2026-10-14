@@ -87,7 +87,9 @@ const script = (layout: string) => `(async () => {
     await wait(100)
   }
   const choose = async text => {
-    const button = [...modal().querySelectorAll('.search-result-file-match'), ...modal().querySelectorAll('.tree-item-self, button')].find(b => b.textContent.includes(text) || b.getAttribute('aria-label')?.includes(text))
+    // The moves (start, latest, back) sit in the dialog's footer, outside the outline itself.
+    const dialog = modal().closest('.modal') || modal()
+    const button = [...modal().querySelectorAll('.search-result-file-match'), ...dialog.querySelectorAll('.tree-item-self, button')].find(b => b.textContent.includes(text) || b.getAttribute('aria-label')?.includes(text))
     if (!button || button.disabled) throw Error('No available navigation action: ' + text)
     button.click(); await wait(100)
   }
