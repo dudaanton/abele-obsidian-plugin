@@ -70,7 +70,6 @@ describe('the app’s own money sums', () => {
     const end = dayjs('2026-01-31')
     // In floats: 0.1 + 0.2 − 0.1 = 0.20000000000000004
     expect(bi.getBalanceAtDate('A/Card.md', end)).toBe(0.2)
-    expect(bi.getNetWorthAtDate(end)).toBe(0.2)
     expect(bi.getNetWorthAtDateByCurrency(end, 'EUR')).toBe(0.2)
     // 0.1 + 0.2 = 0.30000000000000004 in floats
     expect(bi.getBalanceAtDateByCurrency('A/Food.md', end, 'EUR')).toBe(0.3)

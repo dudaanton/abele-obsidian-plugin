@@ -97,8 +97,9 @@ export function accountRows(
   table: RateTable | null = null
 ): AccountRow[] {
   const rows: AccountRow[] = []
+  const all = new Map(accounts)
 
-  for (const [path, account] of accounts) {
+  for (const [path, account] of all) {
     const type = account.accountType
     if (!type || !settings.types.includes(type)) continue
     if (account.excludeFromTotal && !settings.showExcluded) continue
@@ -121,22 +122,59 @@ export function accountRows(
       continue
     }
 
-    let balance = 0
     if (type === 'computed') {
+      const parts: Array<{ amount: number; currency: string }> = []
       for (const wikilink of account.sourceAccounts) {
         const sourcePath = source.resolve(wikilink)
-        if (sourcePath) balance = addMoney(balance, source.balance(sourcePath))
+        if (sourcePath)
+          parts.push({
+            amount: source.balance(sourcePath),
+            currency: all.get(sourcePath)?.currency ?? '',
+          })
       }
-    } else {
-      balance = source.balance(path)
+      const sum = computedSum(parts, account.currency ?? '', table)
+      rows.push({ ...base, currency: sum.currency, balance: cents(sum.amount) })
+      continue
     }
-    rows.push({ ...base, currency: account.currency || '', balance: cents(balance) })
+    rows.push({ ...base, currency: account.currency || '', balance: cents(source.balance(path)) })
   }
 
   return rows
     .filter((row) => !settings.currency || row.currency === settings.currency)
     .filter((row) => !settings.hideZero || row.balance !== 0)
     .sort(compareBy(settings.sort, table))
+}
+
+/**
+ * A computed account's balance from its sources: those in its own currency (or with none) are
+ * added as they are, the rest converted at today's rates, and a source no rate covers is left out
+ * and named rather than counted as if it were the same money. With no currency of its own it
+ * takes the one its sources share.
+ */
+export function computedSum(
+  parts: Array<{ amount: number; currency: string }>,
+  own: string,
+  table: RateTable | null
+): { amount: number; currency: string; converted: boolean; missing: string[] } {
+  const codes = [...new Set(parts.map((p) => p.currency.trim().toUpperCase()).filter(Boolean))]
+  const currency = own.trim().toUpperCase() || (codes.length === 1 ? codes[0] : '')
+  let amount = 0
+  let converted = false
+  const missing = new Set<string>()
+  for (const part of parts) {
+    const code = part.currency.trim().toUpperCase()
+    if (!code || code === currency || !currency) {
+      amount = addMoney(amount, part.amount)
+      continue
+    }
+    const value = convert(part.amount, code, currency, table)
+    if (value === null) missing.add(code)
+    else {
+      amount = addMoney(amount, cents(value))
+      converted = true
+    }
+  }
+  return { amount, currency, converted, missing: [...missing].sort() }
 }
 
 /**

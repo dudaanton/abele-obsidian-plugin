@@ -281,12 +281,7 @@ import PeriodSelector from './obsidian/PeriodSelector.vue'
 import DateDivider from './obsidian/DateDivider.vue'
 import TransactionItem from './TransactionItem.vue'
 import ApproxAmount from './finance/ApproxAmount.vue'
-import {
-  exchangeRates,
-  ratesStatus,
-  ratesTable,
-  ratesTooltip,
-} from '@/finance/rates/exchangeRates'
+import { exchangeRates, ratesStatus, ratesTable, ratesTooltip } from '@/finance/rates/exchangeRates'
 import StatusDot from './obsidian/StatusDot.vue'
 import { setTooltip } from 'obsidian'
 import { convert } from '@/finance/rates/convert'
@@ -478,7 +473,9 @@ const calendarData = computed(() => {
     if (entry.amount == null || !entry.currency) continue
     if (!all && entry.currency !== selectedPeriodCurrency.value) continue
     if (entry.date < startStr || entry.date > endStr) continue
-    const amount = all ? convert(entry.amount, entry.currency, exchangeRates.display, table) : entry.amount
+    const amount = all
+      ? convert(entry.amount, entry.currency, exchangeRates.display, table)
+      : entry.amount
     if (amount === null) continue
 
     if (!dayMap.has(entry.date)) dayMap.set(entry.date, { expense: 0, income: 0 })

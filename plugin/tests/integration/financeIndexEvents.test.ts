@@ -124,7 +124,7 @@ describe('BalanceIndex deferred events', () => {
     app.emit('metadataCache', 'resolved')
     vi.advanceTimersByTime(300)
     expect(al.accounts.size).toBe(0)
-    expect(bi.getNetWorthAtDate(at)).toBe(0)
+    expect(bi.getNetWorthAtDateByCurrency(at, 'EUR')).toBe(0)
   })
 
   it('removes a retyped transaction from balances after the list queue resolves', () => {

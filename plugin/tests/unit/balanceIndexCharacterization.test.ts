@@ -64,7 +64,7 @@ describe('BalanceIndex — dates, prefix sums and currencies', () => {
     expect(bi.getCurrenciesForAccount('Sample exchange.md')).toEqual(['EUR', 'USD'])
     expect(bi.getBalanceAtDateByCurrency('Sample exchange.md', at, 'EUR')).toBe(-18)
     expect(bi.getBalanceAtDateByCurrency('Sample exchange.md', at, 'USD')).toBe(-5)
-    expect(bi.getNetWorthAtDate(at)).toBe(bi.getBalanceAtDate('Cash.md', at))
+    expect(bi.getNetWorthAtDateByCurrency(at, 'EUR')).toBe(bi.getBalanceAtDate('Cash.md', at))
   })
   it('has zero totals and empty currency lists for an empty vault', () => {
     build([])
@@ -72,7 +72,7 @@ describe('BalanceIndex — dates, prefix sums and currencies', () => {
     expect(bi.getBalanceAtDate('Missing.md', at)).toBe(0)
     expect(bi.getBalanceAtDateByCurrency('Missing.md', at, 'EUR')).toBe(0)
     expect(bi.getCurrenciesForAccount('Missing.md')).toEqual([])
-    expect(bi.getNetWorthAtDate(at)).toBe(0)
+    expect(bi.getNetWorthAtDateByCurrency(at, 'EUR')).toBe(0)
     expect(bi.getTotalForPeriod({ startDate: at, endDate: at })).toBe(0)
   })
 
@@ -212,7 +212,7 @@ describe('BalanceIndex — dates, prefix sums and currencies', () => {
 })
 
 describe('BalanceIndex — net worth and period queries', () => {
-  it('adds signed debts, excludes opted-out accounts and categories, and never converts currencies', () => {
+  it('adds signed debts, excludes opted-out accounts and categories, and keeps each currency to itself', () => {
     build([
       account('Cash', { startingBalance: 100.1 }),
       account('Borrowed', { accountType: 'liability', startingBalance: -30.2 }),
@@ -231,7 +231,6 @@ describe('BalanceIndex — net worth and period queries', () => {
     expect(bi.getNetWorthAtDateByCurrency(at, 'EUR')).toBe(90.2)
     expect(bi.getNetWorthAtDateByCurrency(at, 'USD')).toBe(5)
     expect(bi.getNetWorthAtDateByCurrency(at, 'GBP')).toBe(0)
-    expect(bi.getNetWorthAtDate(at)).toBe(95.2)
   })
 
   it('filters inclusive dates, category and direction; period amounts stay primary, not wallet-converted', () => {

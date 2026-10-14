@@ -317,19 +317,6 @@ export class BalanceIndex {
     return result
   }
 
-  getNetWorthAtDate(date: dayjs.Dayjs): number {
-    let netWorth = 0
-
-    for (const [path, account] of this.accountsList.accounts) {
-      if (account.excludeFromTotal) continue
-      if (account.accountType === 'asset' || account.accountType === 'liability') {
-        netWorth = addMoney(netWorth, this.getBalanceAtDate(path, date))
-      }
-    }
-
-    return netWorth
-  }
-
   getNetWorthAtDateByCurrency(date: dayjs.Dayjs, currency: string): number {
     let netWorth = 0
 

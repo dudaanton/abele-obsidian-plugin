@@ -4,6 +4,11 @@
       {{ b.formatted }}
       <span class="abele-header-view__currency">{{ b.currency }}</span>
     </div>
+    <!-- Several currencies: one more line with all of them at today's rates, never instead of
+         the exact ones above. -->
+    <div v-if="accountApprox" class="abele-header-view__balance abele-header-view__approx">
+      <ApproxAmount v-bind="accountApprox" />
+    </div>
   </div>
   <div v-else-if="header.type === 'transaction'" class="abele-header-view abele-glyph-row">
     <Icon icon="copy-plus" text-right="Add next" @click="addNextTransaction" />
@@ -63,7 +68,10 @@
 </template>
 
 <script setup lang="ts">
-import { addMoney } from '@/helpers/moneySum'
+import ApproxAmount from './finance/ApproxAmount.vue'
+import { computedSum } from '@/helpers/accountRows'
+import { sumConverted } from '@/finance/rates/convert'
+import { exchangeRates, ratesTable } from '@/finance/rates/exchangeRates'
 import { Header } from '@/entities/Header'
 import Icon from './obsidian/Icon.vue'
 import { computed, onMounted, ref } from 'vue'
@@ -100,15 +108,14 @@ const accountBalances = computed(() => {
   const fmt = formatAmount
 
   if (account.accountType === 'computed' && account.sourceAccounts.length) {
-    const { app } = store
-    let sum = 0
-    for (const wikilink of account.sourceAccounts) {
-      const linkPath = wikilinkToPath(wikilink)
-      if (!linkPath) continue
-      const file = app.metadataCache.getFirstLinkpathDest(linkPath, '')
-      if (file) sum = addMoney(sum, bi.getBalanceAtDate(file.path, dayjs()))
-    }
-    return [{ currency: account.currency || '', formatted: fmt(sum) }]
+    // Sources in another currency are converted at today's rates, never added as if they were
+    // the same money; one with no rate is left out.
+    const sum = computedSum(
+      computedParts(account.sourceAccounts),
+      account.currency ?? '',
+      ratesTable()
+    )
+    return [{ currency: sum.currency, formatted: fmt(sum.amount) }]
   }
 
   if (account.currency) {
@@ -131,6 +138,69 @@ const accountBalances = computed(() => {
     currency: cur,
     formatted: fmt(bi.getBalanceAtDateByCurrency(props.header.filePath, dayjs(), cur)),
   }))
+})
+
+/** A computed account's sources with their balances today, each in its own currency. */
+function computedParts(sourceAccounts: string[]) {
+  const bi = toRaw(unref(store.balanceIndex)) as BalanceIndex
+  const al = unref(store.accountsList) as AccountsList
+  const parts: Array<{ amount: number; currency: string }> = []
+  for (const wikilink of sourceAccounts) {
+    const linkPath = wikilinkToPath(wikilink)
+    if (!linkPath) continue
+    const file = store.app.metadataCache.getFirstLinkpathDest(linkPath, '')
+    if (file)
+      parts.push({
+        amount: bi.getBalanceAtDate(file.path, dayjs()),
+        currency: al.accounts.get(file.path)?.currency ?? '',
+      })
+  }
+  return parts
+}
+
+/**
+ * The account's money in several currencies as one sum at today's rates: a category that has
+ * moved money in two currencies or more, or a computed account whose sources had to be converted.
+ */
+const accountApprox = computed(() => {
+  const table = ratesTable()
+  const bi = toRaw(unref(store.balanceIndex)) as BalanceIndex | null
+  const al = unref(store.accountsList) as AccountsList | null
+  if (!table || !bi || !al) return null
+  bi.version.value
+  const account = al.accounts.get(props.header.filePath)
+  if (!account) return null
+
+  const display = exchangeRates.display
+  if (account.accountType === 'computed') {
+    if (!account.sourceAccounts.length) return null
+    const parts = computedParts(account.sourceAccounts)
+    const sum = computedSum(parts, account.currency ?? '', table)
+    if (!sum.converted && !sum.missing.length) return null
+    const codes = [...new Set(parts.map((p) => p.currency.toUpperCase()).filter(Boolean))]
+    return {
+      amount: Math.round(sum.amount * 100) / 100,
+      currency: sum.currency,
+      currencies: codes.filter((c) => !sum.missing.includes(c)),
+      missing: sum.missing,
+      exact: parts.map((p) => `${formatAmount(p.amount)} ${p.currency}`),
+    }
+  }
+  if (account.currency) return null
+
+  const lines = accountBalances.value
+  if (lines.length < 2) return null
+  const items = lines.map((l) => ({
+    currency: l.currency,
+    amount: bi.getBalanceAtDateByCurrency(props.header.filePath, dayjs(), l.currency),
+  }))
+  const sum = sumConverted(items, display, table)
+  return {
+    amount: sum.total,
+    currency: display,
+    currencies: sum.currencies,
+    missing: sum.missing,
+  }
 })
 
 /**

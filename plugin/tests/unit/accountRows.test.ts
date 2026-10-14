@@ -7,7 +7,9 @@ import {
   DEFAULT_ACCOUNTS_LIST,
   type AccountsListSettings,
   type BalanceSource,
+  computedSum,
 } from '@/helpers/accountRows'
+import type { RateTable } from '@/finance/rates/convert'
 
 interface Spec {
   name: string
@@ -102,6 +104,52 @@ describe('accountRows', () => {
     const { accounts, source } = world(sample)
     const row = accountRows(accounts, source, settings()).find((r) => r.name === 'All cash')
     expect(row?.balance).toBe(5120)
+  })
+
+  it("converts a computed account's sources in another currency instead of adding them as its own", () => {
+    const { accounts, source } = world([
+      { name: 'Card', type: 'asset', currency: 'EUR', balance: 120 },
+      { name: 'Lari', type: 'asset', currency: 'GEL', balance: 400 },
+      { name: 'Both', type: 'computed', currency: 'EUR', sources: ['[[Card]]', '[[Lari]]'] },
+    ])
+    const table: RateTable = {
+      base: 'USD',
+      fetchedAt: '2026-03-10T08:00:00Z',
+      fetchedOn: '2026-03-10',
+      rates: {
+        EUR: { perUsd: 0.5, date: '2026-03-10', source: 'sample' },
+        GEL: { perUsd: 2, date: '2026-03-10', source: 'sample' },
+      },
+    }
+    const both = (t: RateTable | null) =>
+      accountRows(accounts, source, settings({ types: ['computed'] }), t)[0]
+    // 400 GEL is 200 USD is 100 EUR at these rates.
+    expect(both(table)).toMatchObject({ currency: 'EUR', balance: 220 })
+    // Without rates the lari cannot be counted, and is left out rather than taken for euros.
+    expect(both(null)).toMatchObject({ currency: 'EUR', balance: 120 })
+  })
+
+  it('sums a computed account with no currency of its own in the currency its sources share', () => {
+    expect(
+      computedSum(
+        [
+          { amount: 5, currency: 'GEL' },
+          { amount: 7, currency: 'GEL' },
+        ],
+        '',
+        null
+      )
+    ).toEqual({ amount: 12, currency: 'GEL', converted: false, missing: [] })
+    expect(
+      computedSum(
+        [
+          { amount: 5, currency: 'GEL' },
+          { amount: 7, currency: 'PTS' },
+        ],
+        'GEL',
+        null
+      )
+    ).toEqual({ amount: 5, currency: 'GEL', converted: false, missing: ['PTS'] })
   })
 
   it('lists expense and income accounts per currency, as amounts spent and earned', () => {
