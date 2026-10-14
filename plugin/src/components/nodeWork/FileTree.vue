@@ -19,9 +19,18 @@
       <Icon
         v-if="git"
         class="abele-file-tree__mode"
+        :class="{ 'is-active': mode === 'changed-tree' }"
+        icon="folder-git-2"
+        :tooltip="`Changed files in their folders · ${changes.length}`"
+        :aria-pressed="mode === 'changed-tree'"
+        @click="emit('update:mode', 'changed-tree')"
+      />
+      <Icon
+        v-if="git"
+        class="abele-file-tree__mode"
         :class="{ 'is-active': mode === 'changed' }"
         icon="file-diff"
-        :tooltip="`Only changed files · ${changes.length}`"
+        :tooltip="`Only changed files, staged apart · ${changes.length}`"
         :aria-pressed="mode === 'changed'"
         @click="emit('update:mode', 'changed')"
       />
@@ -134,6 +143,21 @@
         <div v-if="!changes.length" class="search-empty-state">Nothing changed.</div>
       </template>
 
+      <!-- Only what changed, but where it lies: the folders that hold changes, a folder with one
+           folder in it named as one path, and each file with its codes. -->
+      <template v-else-if="git && mode === 'changed-tree'">
+        <FileTreeLevel
+          :entries="changedTree"
+          :selected="selected"
+          :folded="folded"
+          :changes="changes"
+          @toggle="toggle"
+          @open="openChanged"
+          @menu="(e, path) => emit('menu', e, path)"
+        />
+        <div v-if="!changes.length" class="search-empty-state">Nothing changed.</div>
+      </template>
+
       <!-- The whole folder, as the file explorer draws it; changes marked where they are. -->
       <template v-else>
         <FileTreeLevel
@@ -163,8 +187,8 @@
 // The files of a folder or a worktree in the side panel, the way the file explorer lists a vault:
 // folders open in place, a click on a file opens it in the main area. Git speaks in codes at the
 // row's end: a coloured square for the kind of change, an accent dot for a change you have not
-// looked at yet, a dot on a folder that holds changes. Two modes: every file, or only the changed
-// ones, split into unstaged and staged.
+// looked at yet, a dot on a folder that holds changes. Three modes: every file, only the changed
+// ones in their folders, or only the changed ones as a list split into unstaged and staged.
 import { computed, reactive, ref, watch } from 'vue'
 import Icon from '../obsidian/Icon.vue'
 import Search from '../obsidian/Search.vue'
@@ -173,13 +197,14 @@ import ResultMark from '../obsidian/ResultMark.vue'
 import ChangeCodes from './ChangeCodes.vue'
 import FileTreeLevel from './FileTreeLevel.vue'
 import { dirName, fileName } from './codes'
-import type { FileChange, TreeEntry } from './types'
+import type { FileChange, FileTreeMode, TreeEntry } from './types'
+import { changedTree as buildChangedTree } from './changedTree'
 
 const props = withDefaults(
   defineProps<{
     entries: TreeEntry[]
     changes: FileChange[]
-    mode: 'all' | 'changed'
+    mode: FileTreeMode
     /** The file open in the main area. */
     selected?: string
     /** Shown as last known while the node is away. */
@@ -201,7 +226,7 @@ const props = withDefaults(
 )
 
 const emit = defineEmits<{
-  (e: 'update:mode', mode: 'all' | 'changed'): void
+  (e: 'update:mode', mode: FileTreeMode): void
   (e: 'open', path: string, stage?: 'staged' | 'unstaged'): void
   (e: 'menu', event: MouseEvent, path: string): void
   (e: 'expand', path: string): void
@@ -261,6 +286,15 @@ const groups = computed(() => [
     files: props.changes.filter((c) => c.stage === 'staged' || c.stage === 'partly'),
   },
 ])
+
+const changedTree = computed(() => buildChangedTree(props.changes))
+// A file staged whole opens its staged change; any other, what is in the working tree.
+const openChanged = (path: string) =>
+  emit(
+    'open',
+    path,
+    props.changes.find((c) => c.path === path)?.stage === 'staged' ? 'staged' : 'unstaged'
+  )
 
 const files = computed(() => {
   const out: TreeEntry[] = []

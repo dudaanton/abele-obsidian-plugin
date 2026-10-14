@@ -8,6 +8,7 @@ import type {
   CommitSummary,
   CopySummary,
   FileChange,
+  FileTreeMode,
   FolderSummary,
   NodeImagePreview,
   TreeEntry,
@@ -114,7 +115,7 @@ export class NodePathModel {
   readonly folders = shallowRef<FolderSummary[]>([])
   readonly selected = ref('')
   readonly selectedChat = ref('')
-  readonly mode = ref<'all' | 'changed'>('changed')
+  readonly mode = ref<FileTreeMode>('changed')
   readonly receivedAt = ref('')
   readonly error = ref('')
   readonly busy = ref(false)
@@ -330,13 +331,15 @@ export class NodePathModel {
     if (!this.online.value) {
       if (!this.inspections.value[pathTargetKey(target)])
         throw new Error('This target’s files were not retained. Reconnect to load them.')
-      this.mode.value = target.kind === 'worktree' && this.changes.value.length ? 'changed' : 'all'
+      this.mode.value =
+        target.kind === 'worktree' && this.changes.value.length ? 'changed-tree' : 'all'
       return
     }
     const pending = this.treeLoads.get(pathTargetKey(target))
     await (pending?.promise ?? this.reloadTarget(target))
     if (this.disposed || generation !== this.selectionGeneration) return
-    this.mode.value = target.kind === 'worktree' && this.changes.value.length ? 'changed' : 'all'
+    this.mode.value =
+      target.kind === 'worktree' && this.changes.value.length ? 'changed-tree' : 'all'
     const stop = await this.port.watch(target, () => {
       void this.reloadTarget(target).catch((e) => {
         // The tree already says it failed, with a retry, without moving its rows; a notice over

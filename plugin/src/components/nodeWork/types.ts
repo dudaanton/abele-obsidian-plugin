@@ -98,6 +98,9 @@ export interface FolderEntry {
   size?: string
 }
 
+/** How the side panel lists a copy's files: all of them, the changed ones in their folders, or the changed ones as a list. */
+export type FileTreeMode = 'all' | 'changed-tree' | 'changed'
+
 /** One file or folder of a copy's tree; a file carries its git change, if it has one. */
 export interface TreeEntry {
   path: string

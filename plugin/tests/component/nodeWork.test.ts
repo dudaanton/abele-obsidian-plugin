@@ -86,6 +86,20 @@ describe('FileTree', () => {
     const groups = view.findAll('.abele-file-tree__group')
     expect(groups.map((g) => g.get('.tree-item-flair').text())).toEqual(['2', '2'])
   })
+
+  it('draws only the changed files in their folders, and opens a staged one at its staged change', async () => {
+    const view = mount(FileTree, {
+      props: {
+        entries: [],
+        mode: 'changed-tree',
+        changes: [change('src/sample/a.ts', 'unstaged'), change('src/sample/b.ts', 'staged')],
+      },
+    })
+    const names = view.findAll('.abele-tree-item__text').map((t) => t.text())
+    expect(names).toEqual(['src/sample', 'a.ts', 'b.ts'])
+    await view.findAll('.tree-item-self').find((r) => r.text().includes('b.ts'))!.trigger('click')
+    expect(view.emitted('open')?.[0]).toEqual(['src/sample/b.ts', 'staged'])
+  })
 })
 
 describe('FolderPicker', () => {
