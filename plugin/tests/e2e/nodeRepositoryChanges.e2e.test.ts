@@ -69,6 +69,7 @@ it('patches the node file tree in place from the change stream without reading i
     }
     const ready = JSON.parse(output.split('\n').find((line) => line.includes('"listening"'))!)
     await evalLong(`(async()=>{${prelude}
+      window.__sampleStreamLog=[];const debug=console.debug;window.__sampleStreamDebug=debug;console.debug=(...a)=>{if(/node repository|file tree/.test(String(a[0])))window.__sampleStreamLog.push(a.map(v=>{try{return typeof v==='string'?v:JSON.stringify(v)}catch{return String(v)}}).join(' '));return debug.apply(console,a)};
       const node=await nodes.add('Sample stream node','http://127.0.0.1:${ready.port}',${JSON.stringify(enrolled.token)});
       window.__sampleStreamNode=node.id;
       const client=nodes.connection(node.id).client,project=await client.registerProject(${JSON.stringify(projectPath)},'trusted');
@@ -90,7 +91,7 @@ it('patches the node file tree in place from the change stream without reading i
       const described=await client.describe();
       if(described.capabilities.capabilities.repository_changes_v1?.status!=='supported')throw Error('The node does not stream changes');
       const repository=client.repository,read=repository.tree.bind(repository);
-      window.__sampleStreamReads=0;window.__sampleStreamReadsFrom=[];window.__sampleStreamLog=[];const debug=console.debug;window.__sampleStreamDebug=debug;console.debug=(...a)=>{if(/node repository|file tree/.test(String(a[0])))window.__sampleStreamLog.push(a.map(v=>{try{return typeof v==='string'?v:JSON.stringify(v)}catch{return String(v)}}).join(' '));return debug.apply(console,a)};repository.tree=p=>{if(p.path==='src'){window.__sampleStreamReads++;window.__sampleStreamReadsFrom.push(String(new Error().stack).split('\\n').slice(2,9).join(' < '))}return read(p)};
+      window.__sampleStreamReads=0;window.__sampleStreamReadsFrom=[];window.__sampleStreamLog.push('-- reads counted from here');repository.tree=p=>{if(p.path==='src'){window.__sampleStreamReads++;window.__sampleStreamReadsFrom.push(String(new Error().stack).split('\\n').slice(2,9).join(' < '))}return read(p)};
       return 'opened';
     })()`)
     // Edits from outside: one added, one renamed, one removed in the opened folder, one elsewhere.
