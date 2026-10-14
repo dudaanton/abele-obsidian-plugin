@@ -51,14 +51,21 @@ async function probe(otherProvider: boolean, mode: string): Promise<Report> {
       })
       const explorer = app.workspace.getLeavesOfType('file-explorer')[0]
       await app.workspace.revealLeaf(explorer)
+      app.workspace.rightSplit.collapse()
       app.workspace.leftSplit.expand()
       const el = await until(() => [...explorer.view.containerEl.querySelectorAll('.nav-folder-title')].find(e => e.dataset.path === folderPath))
       el.scrollIntoView({ block: 'center' })
       await wait(300)
+      let last='',stable=0,point
+      if(app.isMobile)await until(()=>{
+        const b=el.getBoundingClientRect(),x=Math.round(b.left+b.width*.65),y=Math.round(b.top+b.height/2),hit=document.elementFromPoint(x,y)
+        const signature=JSON.stringify([b.x,b.y,b.width,b.height]);point={x,y,box:b.toJSON(),hit:hit?.outerHTML}
+        stable=b.width>0&&x>=0&&y>=0&&x<innerWidth&&y<innerHeight&&el.contains(hit)&&signature===last?stable+1:0;last=signature
+        return stable>=5
+      })
       const b = el.getBoundingClientRect()
       if(app.isMobile){
-        const x=Math.round(b.left+Math.min(30,b.width/2)),y=Math.round(b.top+b.height/2)
-        if(!el.contains(document.elementFromPoint(x,y)))throw Error('Mobile folder is not hittable')
+        const {x,y}=point
         const cdp=require('@electron/remote').getCurrentWebContents().debugger,owned=!cdp.isAttached();if(owned)cdp.attach('1.3')
         try{
           await cdp.sendCommand('Input.dispatchTouchEvent',{type:'touchStart',touchPoints:[{x,y,id:1}]})
@@ -73,8 +80,8 @@ async function probe(otherProvider: boolean, mode: string): Promise<Report> {
       const remote = require('@electron/remote')
       const image = await remote.getCurrentWebContents().capturePage()
       require('fs').writeFileSync(${JSON.stringify(shots)} + '/' + ${JSON.stringify(`${mode}-${otherProvider ? 'coexist' : 'alone'}.png`)}, image.toPNG())
-      const item = [...document.querySelectorAll('.menu-item')].find(e => e.querySelector('.menu-item-title')?.textContent.trim() === 'New Abele drawing')
-      if (!item) throw new Error('The Abele drawing item is missing')
+      const item = [...document.querySelectorAll('.menu-item-title')].find(e => e.textContent.trim() === 'New Abele drawing')
+      if (!item) throw new Error('The Abele drawing item is missing: '+JSON.stringify({titles:report.titles,live:[...document.querySelectorAll('.menu-item-title')].map(el=>el.outerHTML)}))
       item.click()
       drawingLeaf = await until(() => app.workspace.getLeavesOfType('abele-drawing').find(l => l.view.file?.parent?.path === folderPath && l.view.session))
       const file = drawingLeaf.view.file
@@ -93,7 +100,9 @@ async function probe(otherProvider: boolean, mode: string): Promise<Report> {
     return report
   })()`)
   )
-  return JSON.parse(result) as Report
+  const report = JSON.parse(result) as Report
+  console.info('Drawing menu probe:', report)
+  return report
 }
 
 function check(report: Report, otherProvider: boolean): void {
