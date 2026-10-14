@@ -16,8 +16,12 @@ const target: PathTarget = {
 }
 
 function fileLeaf(path: string, t: PathTarget = target) {
+  let state: Record<string, unknown> = { kind: 'file', target: t, path }
   return {
-    getViewState: () => ({ type: NODE_FILE_VIEW, state: { kind: 'file', target: t, path } }),
+    getViewState: () => ({ type: NODE_FILE_VIEW, state }),
+    setViewState: vi.fn(async (v: { state: Record<string, unknown> }) => {
+      state = v.state
+    }),
   }
 }
 
@@ -142,5 +146,30 @@ describe('running a program under the debugger', () => {
       ['s1', { path: 'src/page.js', debugSessionId: 'child-1', incarnation: 'i-child' }],
       ['s2', { path: 'src/service.js', debugSessionId: 'child-1', incarnation: 'i-child' }],
     ])
+  })
+})
+
+describe('files already open when the program starts', () => {
+  it('take its margin too, mapped to the sources the node took', async () => {
+    const service = fileLeaf('src/service.js')
+    const other = fileLeaf('src/service.js', { ...target, id: 'workspace-b' })
+    fakeWorkspace([service, other])
+    const { presenter } = fakePresenter()
+    await startProgram(presenter, 'src/page.js', ['src/service.js'], target, async () => {})
+    expect(service.setViewState).toHaveBeenCalledWith(
+      expect.objectContaining({
+        type: NODE_FILE_VIEW,
+        state: expect.objectContaining({
+          path: 'src/service.js',
+          debug: {
+            conversationId: 'chat-a',
+            sourceId: 's2',
+            debugSessionId: 'child-1',
+            incarnation: 'i-child',
+          },
+        }),
+      })
+    )
+    expect(other.setViewState).not.toHaveBeenCalled()
   })
 })

@@ -37,6 +37,9 @@ async function chatTarget(presenter: NodeChatPresenter): Promise<PathTarget | un
   }
 }
 
+const sameFolder = (a: PathTarget, b: PathTarget) =>
+  a.registrationId === b.registrationId && a.kind === b.kind && a.id === b.id
+
 /** Code files open from this folder in node file tabs, the active one first. */
 export function openFilesOf(workspace: Workspace, target: PathTarget): string[] {
   const active = workspace.getMostRecentLeaf()
@@ -48,9 +51,7 @@ export function openFilesOf(workspace: Workspace, target: PathTarget): string[] 
     if (
       state.success &&
       state.data.kind === 'file' &&
-      state.data.target.registrationId === target.registrationId &&
-      state.data.target.kind === target.kind &&
-      state.data.target.id === target.id &&
+      sameFolder(state.data.target, target) &&
       SOURCE.test(state.data.path) &&
       !paths.includes(state.data.path)
     )
@@ -98,20 +99,33 @@ export async function startProgram(
       snapshot.incarnation
     )
   await show(sessionId)
+  const debugOf = (sourceId: string) => ({
+    conversationId: presenter.reference.sessionId,
+    sourceId,
+    debugSessionId: sessionId,
+    incarnation: snapshot.incarnation,
+  })
   const source = started.sources.find((s) => s.path === program) ?? started.sources[0]
+  // The other files the node took, already open from this folder, take their margin where they are.
+  const { workspace } = GlobalStore.getInstance().app
+  for (const leaf of workspace.getLeavesOfType(NODE_FILE_VIEW)) {
+    const view = leaf.getViewState()
+    const parsed = NodePathTabSchema.safeParse(view.state)
+    const tab = parsed.success ? parsed.data : undefined
+    if (tab?.kind !== 'file' || !sameFolder(tab.target, target)) continue
+    const path = tab.path
+    const taken = started.sources.find((s) => s !== source && s.path === path)
+    if (taken)
+      await leaf.setViewState({ ...view, state: { ...tab, debug: debugOf(taken.source_id) } })
+  }
   if (source)
     await openNodePathTab(
-      GlobalStore.getInstance().app.workspace,
+      workspace,
       {
         kind: 'file',
         target,
         path: source.path,
-        debug: {
-          conversationId: presenter.reference.sessionId,
-          sourceId: source.source_id,
-          debugSessionId: sessionId,
-          incarnation: snapshot.incarnation,
-        },
+        debug: debugOf(source.source_id),
       },
       Platform.isMobile
     )
