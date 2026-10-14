@@ -266,13 +266,8 @@ describe.skipIf(!available)('ordinary-note text comments', () => {
       editor.dispatch({ selection: { anchor: editor.state.doc.length } })
       await wait(150)
       if(document.activeElement !== editor.contentDOM) throw new Error('Edit did not focus the comment editor')
-      const steps = [], t0 = Date.now(), dom = editor.contentDOM
-      const step = what => steps.push({what, ms: Date.now()-t0, doc: editor.state.doc.toString().slice(-12), sel: editor.state.selection.main.head, len: editor.state.doc.length, active: document.activeElement === editor.contentDOM, same: editor.contentDOM === dom && dom.isConnected, kb: keyboardHeight()})
-      step('before')
-      for (const part of [' ', 'U', 'pdated']) { await host.type(part); step('typed ' + JSON.stringify(part)); await wait(400); step('settled') }
-      console.log('PROBE ' + JSON.stringify(steps))
-      window.__commentProbe = steps
-      if(!await until(() => editor.state.doc.toString().endsWith(' Updated'))) throw new Error('Native edit text did not arrive: '+JSON.stringify({steps:window.__commentProbe,edit:editor.state.doc.toString(),reply:window.__abeleTest.noteFieldView(document.querySelector('.abele-text-comments__reply .abele-note-editor-field__editor'))?.state.doc.toString(),active:document.activeElement?.closest('.abele-text-comments__reply,.abele-text-comments__entry')?.className??document.activeElement?.className}))
+      await host.type(' Updated')
+      if(!await until(() => editor.state.doc.toString().endsWith(' Updated'))) throw new Error('Native edit text did not arrive: '+JSON.stringify({edit:editor.state.doc.toString(),reply:window.__abeleTest.noteFieldView(document.querySelector('.abele-text-comments__reply .abele-note-editor-field__editor'))?.state.doc.toString(),active:document.activeElement?.closest('.abele-text-comments__reply,.abele-text-comments__entry')?.className??document.activeElement?.className}))
       await wait(150)
       await tap(button('Save'))
       await until(() => document.querySelector('.abele-text-comments__time')?.textContent.includes('edited'))
@@ -281,7 +276,7 @@ describe.skipIf(!available)('ordinary-note text comments', () => {
       const editedThread = JSON.parse(await app.vault.read(savedFile))
       const edited = !!editedThread.entries[0].editedAt && editedThread.entries[0].body.endsWith(' Updated')
       dismiss(); await until(() => !document.querySelector('.abele-text-comments'))
-      return JSON.stringify({keyboard, room, geometry, toolbar, sourceUnchanged:view.editor.getValue()===sourceBefore, saved, edited, shots, probe:window.__commentProbe})
+      return JSON.stringify({keyboard, room, geometry, toolbar, sourceUnchanged:view.editor.getValue()===sourceBefore, saved, edited, shots})
     `)
     console.log('Native comment editor:', result)
     expect(result.keyboard).toBe(true)
