@@ -599,6 +599,14 @@
   height: 100%;
 }
 
+/* The picture's own wrappers — the paragraph and the embed the note renders around it — pass the
+   column's height down, so the picture reaches the foot of its column rather than its own height. */
+.abele-slide-figure .abele-slide-region:has(img, video) > div :is(div, p, span):has(img, video) {
+  display: block;
+  height: 100%;
+  margin: 0;
+}
+
 .abele-slide-figure .abele-slide-region img,
 .abele-slide-figure .abele-slide-region video {
   display: block;
@@ -618,8 +626,10 @@
 }
 
 /* A page of words: the type steps down to reading size and runs in two columns under one
-   title, as a printed handout sets more text than a slide's points would hold. */
-.abele-slide-article .abele-slide-content {
+   title, as a printed handout sets more text than a slide's points would hold. The type steps
+   down inside the text, not on the slide's surface, whose margins are in ems and would close in
+   with it: the page keeps the deck's one left edge. */
+.abele-slide-article .abele-slide-region-body {
   font-size: 0.68em;
   line-height: 1.5;
 }
@@ -631,8 +641,9 @@
   margin-bottom: 0.6em;
 }
 
-.abele-slide-article .abele-slide-content-body,
-.abele-slide-article .abele-slide-region-body > div {
+/* One run of columns for the whole text: each paragraph is its own block, and columns on every
+   block would balance each one on its own and lay them over one another. */
+.abele-slide-article .abele-slide-region-body {
   display: block;
   columns: 2;
   column-gap: 2.4em;

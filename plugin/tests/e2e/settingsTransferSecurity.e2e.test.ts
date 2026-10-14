@@ -208,7 +208,7 @@ describe.skipIf(!available)('settings transfer security in the running app', () 
         await ready(transferTab, 'Transfer tab'); transferTab().click();
         const tree = await ready(() => root.querySelector('.abele-transfer__tree'), 'tree');
         for (let shut; (shut = tree.querySelector('.tree-item.is-collapsed > .tree-item-self')); ) { shut.click(); await wait(20) }
-        await ready(() => tree.querySelector('.abele-transfer__entry > .tree-item-self'), 'a row to send').click();
+        (await ready(() => tree.querySelector('.abele-transfer__entry > .tree-item-self'), 'a row to send')).click();
         const pageButton = text => [...root.querySelectorAll('button')].find(b => b.textContent.trim() === text && !b.disabled);
         const picture = async name => {
           await new Promise(r => view.requestAnimationFrame(() => view.requestAnimationFrame(r))); await wait(300);

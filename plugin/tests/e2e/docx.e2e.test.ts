@@ -168,6 +168,7 @@ describe.skipIf(!available)('Word document view', () => {
       const until = async (fn, what) => { for(let i=0;i<150;i++) { const got=fn(); if(got) return got; await new Promise(r=>setTimeout(r,100)) } throw Error(what+' did not appear') }
       const frames = () => new Promise(resolve=>requestAnimationFrame(()=>requestAnimationFrame(resolve)))
       const shots=[]
+      const need = (scope, selector) => { const el=scope.querySelector(selector); if(!el) throw Error('Not on the page: '+selector); return el }
       const shot = async name => {
         await frames()
         const path=${JSON.stringify(SHOTS)}+'/'+name+'.png'
@@ -188,14 +189,14 @@ describe.skipIf(!available)('Word document view', () => {
           }
         }
       }
-      root.querySelector('[data-paragraph="1"] .abele-word-line__text').click()
+      need(root,'[data-paragraph="1"] .abele-word-line__text').click()
       const input=await until(()=>root.querySelector('[data-paragraph="1"] textarea'),'The paragraph field')
       input.focus();input.setSelectionRange(0,6)
-      const ribbon=root.querySelector('.abele-word-page__ribbon')
+      const ribbon=need(root,'.abele-word-page__ribbon')
       fits(ribbon)
       input.focus();input.setSelectionRange(0,6)
       await shot('word-desktop-editor')
-      ribbon.querySelector('[aria-label="Italic (Mod+I)"]').click()
+      need(ribbon,'[aria-label="Italic (Mod+I)"]').click()
       for(let i=0;i<150;i++) {if(view.document?.xml.get('word/document.xml').includes('<w:i')) break;await new Promise(r=>setTimeout(r,100))}
       const formatted=!!view.document?.xml.get('word/document.xml').includes('<w:i')
       // What the ribbon has no room for, about the paragraph and then about its picture.
@@ -205,11 +206,11 @@ describe.skipIf(!available)('Word document view', () => {
         await new Promise(r=>setTimeout(r,400))
         fits(rows)
         await shot('word-desktop-'+name)
-        rows.closest('.modal').querySelector('.modal-close-button').click()
+        need(rows.closest('.modal'),'.modal-close-button,.modal-header-button').click()
         await until(()=>!document.querySelector('.modal .abele-word-details'),name+' closing')
       }
-      await details(()=>root.querySelector('.abele-word-page__ribbon [aria-label="Paragraph 1 controls"]').click(),'paragraph')
-      await details(()=>{root.querySelector('[aria-label="Select picture paragraph 7"]').click();root.querySelector('.abele-word-page__ribbon [aria-label="Picture controls"]').click()},'picture')
+      await details(()=>need(root,'.abele-word-page__ribbon [aria-label="Paragraph 1 controls"]').click(),'paragraph')
+      await details(()=>{need(root,'[aria-label="Select picture paragraph 7"]').click();need(root,'.abele-word-page__ribbon [aria-label="Picture controls"]').click()},'picture')
       return {controls,clipped,formatted,shots}
     })()`)
     for (const label of [

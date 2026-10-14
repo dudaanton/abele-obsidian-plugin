@@ -322,12 +322,15 @@ Third caption
         const figure=async index=>{
           await v.go(index);await settle();const s=active(),scale=s.getBoundingClientRect().width/1280
           const img=s.querySelector('.abele-slide-region img'),region=img.closest('.abele-slide-region'),words=[...s.querySelectorAll('.abele-slide-region')].find(r=>!r.querySelector('img'))
-          return {cls:s.className,picture:rect(img),region:rect(region),words:rect(words),side:region.classList.contains('abele-slide-region-left')?'left':'right',scale}
+          return {edge:s.querySelector('h2').getBoundingClientRect().left-s.getBoundingClientRect().left,cls:s.className,picture:rect(img),region:rect(region),words:rect(words),side:region.classList.contains('abele-slide-region-left')?'left':'right',scale}
         }
         const a=await figure(0);await shot(1,'figure');const b=await figure(1)
         await v.go(2);await settle()
         const art=active(),artBody=art.querySelector('.abele-slide-content-body, .abele-slide-region-body > div'),para=art.querySelector('p')
-        const article={cls:art.className,columns:getComputedStyle(artBody).columnCount,size:parseFloat(getComputedStyle(para).fontSize),heading:parseFloat(getComputedStyle(art.querySelector('h2')).fontSize),overflow:artBody.scrollHeight-artBody.clientHeight,slideBottom:art.getBoundingClientRect().bottom,bodyBottom:artBody.getBoundingClientRect().bottom}
+        const lines=[...art.querySelectorAll('p')].flatMap(p=>{const r=document.createRange();r.selectNodeContents(p);return [...r.getClientRects()].filter(b=>b.width>1&&b.height>1)})
+        const overlaps=lines.flatMap((x,i)=>lines.slice(i+1).filter(y=>Math.min(x.right,y.right)-Math.max(x.left,y.left)>1&&Math.min(x.bottom,y.bottom)-Math.max(x.top,y.top)>1)).length
+        const edge=s=>s.querySelector('h2').getBoundingClientRect().left-s.getBoundingClientRect().left
+        const article={overlaps,edge:edge(art),firstPara:para.getBoundingClientRect().left-art.getBoundingClientRect().left,cls:art.className,columns:getComputedStyle(artBody).columnCount,size:parseFloat(getComputedStyle(para).fontSize),heading:parseFloat(getComputedStyle(art.querySelector('h2')).fontSize),overflow:artBody.scrollHeight-artBody.clientHeight,slideBottom:art.getBoundingClientRect().bottom,bodyBottom:artBody.getBoundingClientRect().bottom}
         await shot(3,'article')
         await v.go(3);await settle()
         const g=active(),cells=[...g.querySelectorAll('.abele-slide-region-cell')]
@@ -357,6 +360,10 @@ Third caption
     expect(result.article.size).toBeLessThan(28)
     expect(result.article.heading).toBeGreaterThan(result.article.size * 1.5)
     expect(result.article.bodyBottom).toBeLessThanOrEqual(result.article.slideBottom + 1)
+    // Two columns of one text: no line laid over another, and the deck's one left edge kept.
+    expect(result.article.overlaps).toBe(0)
+    expect(Math.abs(result.article.edge - result.a.edge)).toBeLessThan(1)
+    expect(Math.abs(result.article.firstPara - result.a.edge)).toBeLessThan(1)
     expect(result.gallery.cls).toContain('abele-slide-gallery')
     const cells = result.gallery.cells as {
       img: {
