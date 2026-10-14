@@ -70,6 +70,12 @@ watch(() => props.step, draw)
     height: 100%;
   }
 }
+// The diamond starts where an icon's drawing does, an eighth of its box in, so a column of steps
+// keeps one left edge; centred, it stood a step to the right of the arrows on a phone.
+.abele-trace-glyph_probe {
+  justify-content: flex-start;
+  padding-inline-start: calc(var(--icon-s) / 8);
+}
 .abele-trace-glyph_error {
   color: var(--text-error);
 }
