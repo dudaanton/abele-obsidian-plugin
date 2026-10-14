@@ -223,3 +223,40 @@ it('passes a fresh observed revision and changes to file reads, retrying only an
   expect(port.tree).toHaveBeenCalledTimes(1)
   model.destroy()
 })
+it('keeps opened folders filled through a refresh and reads them again at the new observation', async () => {
+  const { model, port } = fixture()
+  let watched!: () => void
+  port.watch.mockImplementation(async (_target: PathTarget, notify: () => void) => {
+    watched = notify
+    return () => {}
+  })
+  const inner = (name: string) => ({ path: `src/${name}`, name, kind: 'file' as const })
+  let children = [inner('a.ts')]
+  port.tree.mockImplementation(async (_target: PathTarget, path: string) => ({
+    entries: path === 'src' ? children : [folder],
+    cursor: null,
+    revision,
+  }))
+  await model.refresh()
+  await model.select(target.id)
+  await model.loadFolder('src')
+  const childrenOf = () => model.entries.value[0].children?.map((entry) => entry.path)
+  expect(childrenOf()).toEqual(['src/a.ts'])
+  let finish!: () => void
+  port.tree.mockImplementationOnce(async () => {
+    // The root page has arrived; the opened folder must not have emptied meanwhile.
+    await new Promise<void>((resolve) => (finish = resolve))
+    return { entries: [folder], cursor: null, revision }
+  })
+  children = [inner('a.ts'), inner('b.ts')]
+  watched()
+  await ticks()
+  expect(childrenOf()).toEqual(['src/a.ts'])
+  finish()
+  for (let i = 0; i < 5; i++) {
+    await ticks()
+    expect(childrenOf()).not.toBeUndefined()
+  }
+  expect(childrenOf()).toEqual(['src/a.ts', 'src/b.ts'])
+  model.destroy()
+})

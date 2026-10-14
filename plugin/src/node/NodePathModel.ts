@@ -420,13 +420,33 @@ export class NodePathModel {
         : undefined,
     }
   }
-  private publishPage(target: PathTarget, path: string, page: PathTreePage, append: boolean): void {
+  private publishPage(
+    target: PathTarget,
+    path: string,
+    page: PathTreePage,
+    append: boolean,
+    /** Keep the entries already read inside folders that are still there. */
+    retain = false
+  ): void {
     const key = pathTargetKey(target),
       current = this.inspections.value[key] ?? { entries: [], changes: [] }
+    const kept = (previous: TreeEntry[]) => {
+      const known = new Map(previous.map((entry) => [entry.path, entry]))
+      return page.entries.map((entry) => {
+        const before = known.get(entry.path)
+        return entry.children === undefined &&
+          before?.kind === entry.kind &&
+          before.children !== undefined
+          ? { ...entry, children: before.children }
+          : entry
+      })
+    }
     const merge = (previous: TreeEntry[]) =>
       append
         ? [...new Map([...previous, ...page.entries].map((entry) => [entry.path, entry])).values()]
-        : page.entries
+        : retain
+          ? kept(previous)
+          : page.entries
     const walk = (entries: TreeEntry[]): TreeEntry[] =>
       entries.map((entry) =>
         entry.path === path
@@ -522,7 +542,26 @@ export class NodePathModel {
       try {
         const page = await this.port.tree(target, '')
         if (this.disposed) return
-        this.publishPage(target, '', page, false)
+        // A refresh keeps the folders the person opened filled while it reads each again at the
+        // new observation, so the tree neither collapses nor jumps.
+        const opened: string[] = []
+        const walk = (entries: TreeEntry[]) =>
+          entries.forEach((entry) => {
+            if (entry.children === undefined) return
+            opened.push(entry.path)
+            walk(entry.children)
+          })
+        walk(this.inspections.value[pathTargetKey(target)]?.entries ?? [])
+        this.publishPage(target, '', page, false, true)
+        for (const path of opened) {
+          try {
+            const folder = await this.port.tree(target, path, undefined, page.revision)
+            if (this.disposed) return
+            this.publishPage(target, path, folder, false, true)
+          } catch (error) {
+            console.debug('[Abele] node path: an opened folder was not read again', path, error)
+          }
+        }
         await this.readTarget(target, false)
         if (!this.disposed) this.setProgress(target)
       } catch (error) {
