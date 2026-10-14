@@ -14,6 +14,9 @@ import { DEFAULT_AI_SETTINGS } from '@/ai/types'
 import { githubSettingsFrom } from '@/github/settings'
 import { useVault } from '../helpers/testEnv'
 
+// The model here calls its tools by name: these agents are offered every tool at once, as
+// sections are not what is tested (`toolGroups.test.ts` covers them).
+
 const request = vi.hoisted(() => vi.fn())
 vi.mock('@/github/transport', () => ({ singleHopRequest: request }))
 const sessions: ChatSession[] = []
@@ -31,7 +34,11 @@ afterEach(() => {
 const server = 'https://git.example.test'
 const item = `${server}/sample/widgets/pull/12`
 const oldAgent = () => {
-  const agent = createAgent({ id: 'sample-existing', name: 'Sample existing' })
+  const agent = createAgent({
+    toolDiscovery: 'all-at-once',
+    id: 'sample-existing',
+    name: 'Sample existing',
+  })
   // A saved agent from before connection permissions had no map at all.
   delete agent.githubConnections
   return agent
@@ -174,6 +181,7 @@ describe('existing GitHub credentials through the execution tool chain', () => {
       ai: { ...DEFAULT_AI_SETTINGS, agents: [], defaultAgentId: '' },
     })
     const chat = newSession()
+    AgentRegistry.getInstance().update(chat.agentId.value, { toolDiscovery: 'all-at-once' })
     expect(
       JSON.stringify(
         await tool(sessionTools(chat), 'github_read').execute('sample-default', { item })
@@ -214,7 +222,7 @@ describe('existing GitHub credentials through the execution tool chain', () => {
   it('does not grant a newly created agent or a newly added connection the legacy credential', async () => {
     load(true)
     const registry = AgentRegistry.getInstance()
-    const agent = registry.create({ name: 'Sample new' })
+    const agent = registry.create({ toolDiscovery: 'all-at-once', name: 'Sample new' })
     const config = AbeleConfig.getInstance()
     config.applySettings(config.exportSettings())
     expect(registry.get(agent.id)?.githubConnections).toEqual({})
@@ -255,6 +263,7 @@ describe('existing GitHub credentials through the execution tool chain', () => {
   it('uses each call-local agent without borrowing a selected chat or concurrent invocation', async () => {
     const id = load(true, { 'github-legacy': 'auto' })
     const denied = AgentRegistry.getInstance().create({
+      toolDiscovery: 'all-at-once',
       name: 'Sample denied',
       githubConnections: { 'github-legacy': 'off' },
     })

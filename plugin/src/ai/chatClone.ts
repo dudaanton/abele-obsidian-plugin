@@ -74,6 +74,7 @@ export function cloneChatPath(source: ChatSnapshot, messageId: string): ChatSnap
     agentId: setup.agentId,
     overrides: setup.overrides,
     revealedToolGroups: setup.revealedToolGroups,
+    openToolSections: setup.openToolSections,
     customSystemPrompt: setup.customSystemPrompt,
     customSystemPromptNotePath: setup.customSystemPromptNotePath,
     interceptorAgentId: setup.interceptorAgentId,

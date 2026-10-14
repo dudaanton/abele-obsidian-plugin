@@ -41,7 +41,9 @@ beforeEach(() => {
     chatFolder: 'Chats/{{name}}',
   }
   AbeleConfig.getInstance().saveSettings = vi.fn(async () => {})
-  AgentRegistry.getInstance().setDefault(AgentRegistry.getInstance().create({ name: 'Sample' }).id)
+  AgentRegistry.getInstance().setDefault(
+    AgentRegistry.getInstance().create({ toolDiscovery: 'all-at-once', name: 'Sample' }).id
+  )
   vi.spyOn(ChatService.getInstance(), 'saveTabs').mockImplementation(() => {})
 })
 afterEach(() => {
@@ -111,6 +113,9 @@ describe('artifacts over real links and chat loading', () => {
       const reopened = session()
       await reopened.load(s.currentChatFile.value!)
       expect(artifactsOf(reopened).images).toEqual([])
+
+      // The model here calls its tools by name: these agents are offered every tool at once, as
+      // sections are not what is tested (`toolGroups.test.ts` covers them).
 
       vi.mocked(callImageApi).mockResolvedValue({
         text: caption,

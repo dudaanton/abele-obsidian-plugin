@@ -67,7 +67,7 @@ import Icon from '../../obsidian/Icon.vue'
 import Input from '../../obsidian/Input.vue'
 import Button from '../../obsidian/Button.vue'
 import ObsidianModal from '../../obsidian/Modal.vue'
-import { getToolRegistry } from '@/ai/tools'
+import { getSectionToolRegistry, getToolRegistry } from '@/ai/tools'
 import { isDefaultDescription } from '@/ai/tools/toolDescriptionOverrides'
 
 const props = defineProps<{
@@ -87,7 +87,8 @@ interface Tool {
 
 const groups = computed(() => {
   const byCategory = new Map<string, Tool[]>()
-  for (const tool of getToolRegistry()) {
+  // A section's own entry heads its group: its words are what the agent reads before opening it.
+  for (const tool of [...getSectionToolRegistry(), ...getToolRegistry()]) {
     const list = byCategory.get(tool.category) ?? []
     list.push({ name: tool.name, label: tool.label })
     byCategory.set(tool.category, list)
@@ -96,7 +97,9 @@ const groups = computed(() => {
 })
 
 const defaults = computed<Record<string, string>>(() =>
-  Object.fromEntries(getToolRegistry().map((tool) => [tool.name, tool.description]))
+  Object.fromEntries(
+    [...getSectionToolRegistry(), ...getToolRegistry()].map((tool) => [tool.name, tool.description])
+  )
 )
 
 const changedIn = (group: { tools: Tool[] }) =>

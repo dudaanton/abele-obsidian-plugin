@@ -80,8 +80,8 @@ describe('location access travelling with agents', () => {
 })
 
 describe('tool discovery travelling with agents', () => {
-  it('round-trips both modes in the whole agent definition', () => {
-    for (const toolDiscovery of ['all', 'by-group'] as const) {
+  it('round-trips every mode, older ones included, in the whole agent definition', () => {
+    for (const toolDiscovery of ['sections', 'all-at-once', 'all', 'by-group'] as const) {
       const source = settings()
       source.ai.agents = [createAgent({ id: 'sample-discovery-agent', toolDiscovery })]
       const entry = find(collectEntries(source), 'ai-agents', 'sample-discovery-agent')!

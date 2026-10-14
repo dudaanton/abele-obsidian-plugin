@@ -2,7 +2,12 @@ import { createAnalyticsTools } from './AnalyticsTools'
 import type { AgentTool } from '../client'
 import { AbeleConfig } from '@/services/AbeleConfig'
 import { EDIT_SELECTION_TOOL } from '../types'
-import { ENABLE_TOOLS, ENABLE_TOOLS_DESCRIPTION } from '../ToolDiscovery'
+import {
+  GROUP_ORDER,
+  TOOL_SECTIONS,
+  sectionToolDescriptions,
+  sectionToolName,
+} from '../toolSections'
 import { createReadFileTool } from './ReadFileTool'
 import { READ_BUDGET, READ_RESULT, READ_RESULT_DESCRIPTION } from '../resultStore'
 import { isDefaultDescription } from './toolDescriptionOverrides'
@@ -81,23 +86,7 @@ export function getToolRegistry(tools: AgentTool[] = buildAgentTools()): ToolInf
   const labels: Record<string, string> = {}
   for (const t of tools) labels[t.name] = t.label
 
-  const CATEGORY_ORDER = [
-    'Files',
-    'Canvas',
-    'Network',
-    'GitHub',
-    'Books',
-    'Presentations',
-    'Word',
-    'AI',
-    'Nodes',
-    'Vault data',
-    'Maps',
-    'Docs',
-    'Templates',
-    'Scripts',
-    'Settings',
-  ]
+  const CATEGORY_ORDER = GROUP_ORDER
 
   const TOOL_CATEGORIES: Record<string, { label: string; category: string }> = {
     read: { label: 'Read file', category: 'Files' },
@@ -114,13 +103,13 @@ export function getToolRegistry(tools: AgentTool[] = buildAgentTools()): ToolInf
     workspace: { label: 'Workspace', category: 'Files' },
     read_image: { label: 'Read image', category: 'Files' },
     look_at_drawing: { label: 'Look at drawing', category: 'Files' },
-    open: { label: 'Open file', category: 'Files' },
-    screenshot: { label: 'Screenshot', category: 'Files' },
-    inspect_view: { label: 'Inspect view', category: 'Files' },
-    web_search: { label: 'Web search', category: 'Network' },
-    fetch: { label: 'Fetch URL', category: 'Network' },
-    download_image: { label: 'Download image', category: 'Network' },
-    download_file: { label: 'Download file', category: 'Network' },
+    open: { label: 'Open file', category: 'App view' },
+    screenshot: { label: 'Screenshot', category: 'App view' },
+    inspect_view: { label: 'Inspect view', category: 'App view' },
+    web_search: { label: 'Web search', category: 'Web' },
+    fetch: { label: 'Fetch URL', category: 'Web' },
+    download_image: { label: 'Download image', category: 'Web' },
+    download_file: { label: 'Download file', category: 'Web' },
     github_views: { label: 'GitHub tabs', category: 'GitHub' },
     github_read: { label: 'Read issue or PR', category: 'GitHub' },
     github_pr_files: { label: 'PR files', category: 'GitHub' },
@@ -144,28 +133,28 @@ export function getToolRegistry(tools: AgentTool[] = buildAgentTools()): ToolInf
     geocode: { label: 'Geocode', category: 'Maps' },
     places: { label: 'Find places', category: 'Maps' },
     route: { label: 'Build route', category: 'Maps' },
-    generate_image: { label: 'Generate image', category: 'AI' },
-    edit_image: { label: 'Edit image', category: 'AI' },
-    eval_js: { label: 'Eval JS', category: 'AI' },
-    questions: { label: 'Questions', category: 'AI' },
-    delegate: { label: 'Delegate', category: 'AI' },
-    remember: { label: 'Remember', category: 'AI' },
-    forget: { label: 'Forget', category: 'AI' },
+    generate_image: { label: 'Generate image', category: 'Images' },
+    edit_image: { label: 'Edit image', category: 'Images' },
+    eval_js: { label: 'Eval JS', category: 'App view' },
+    questions: { label: 'Questions', category: 'Basics' },
+    delegate: { label: 'Delegate', category: 'Delegation' },
+    remember: { label: 'Remember', category: 'Memory' },
+    forget: { label: 'Forget', category: 'Memory' },
     chart_docs: { label: 'Chart docs', category: 'Docs' },
     template_docs: { label: 'Template docs', category: 'Docs' },
-    read_logs: { label: 'Read logs', category: 'Vault data' },
-    read_backlinks: { label: 'Read backlinks', category: 'Vault data' },
-    read_transactions: { label: 'Read transactions', category: 'Vault data' },
-    read_tasks: { label: 'Read tasks', category: 'Vault data' },
-    read_data: { label: 'Read data', category: 'Vault data' },
-    analyze_data: { label: 'Analyze data', category: 'Vault data' },
-    lint: { label: 'Lint notes', category: 'Vault data' },
-    lint_fix: { label: 'Fix lint issues', category: 'Vault data' },
+    read_logs: { label: 'Read logs', category: 'Notes data' },
+    read_backlinks: { label: 'Read backlinks', category: 'Notes data' },
+    read_transactions: { label: 'Read transactions', category: 'Finance' },
+    read_tasks: { label: 'Read tasks', category: 'Tasks' },
+    read_data: { label: 'Read data', category: 'Notes data' },
+    analyze_data: { label: 'Analyze data', category: 'Notes data' },
+    lint: { label: 'Lint notes', category: 'Notes data' },
+    lint_fix: { label: 'Fix lint issues', category: 'Notes data' },
     list_templates: { label: 'List templates', category: 'Templates' },
     apply_template: { label: 'Apply template', category: 'Templates' },
-    skill: { label: 'Skill', category: 'Templates' },
+    skill: { label: 'Skill', category: 'Basics' },
     script_api_docs: { label: 'Script API docs', category: 'Docs' },
-    query_docs: { label: 'Query docs', category: 'Docs' },
+    query_docs: { label: 'Query docs', category: 'Basics' },
     read_settings: { label: 'Read settings', category: 'Settings' },
     write_settings: { label: 'Write settings', category: 'Settings' },
     create_script: { label: 'Create script', category: 'Scripts' },
@@ -179,12 +168,16 @@ export function getToolRegistry(tools: AgentTool[] = buildAgentTools()): ToolInf
     if (seen.has(t.name)) continue
     seen.add(t.name)
     const info = TOOL_CATEGORIES[t.name]
+    const own = info?.category || t.category
     result.push({
       name: t.name,
       permissionKey: t.permissionKey,
       label: info?.label || labels[t.name] || t.name,
-      category:
-        info?.category || t.category || (t.name.startsWith('script_') ? 'Scripts' : 'Other'),
+      // Every node tool is one group, whatever the tool calls its own: files, repositories and
+      // agents on a node are one thing to the person and one section to the agent.
+      category: isNodeTool(t.name, own)
+        ? 'Nodes'
+        : own || (t.name.startsWith('script_') ? 'Scripts' : 'Other'),
       description: t.description,
     })
   }
@@ -205,14 +198,6 @@ export function getToolRegistry(tools: AgentTool[] = buildAgentTools()): ToolInf
     description: READ_RESULT_DESCRIPTION,
   })
 
-  // Discovery belongs to a conversation, and is offered only in its by-group mode.
-  result.push({
-    name: ENABLE_TOOLS,
-    label: 'Enable tool group',
-    category: 'AI',
-    description: ENABLE_TOOLS_DESCRIPTION,
-  })
-
   result.sort((a, b) => {
     const ai = CATEGORY_ORDER.indexOf(a.category)
     const bi = CATEGORY_ORDER.indexOf(b.category)
@@ -225,6 +210,23 @@ export function getToolRegistry(tools: AgentTool[] = buildAgentTools()): ToolInf
   })
 
   return result
+}
+
+const NODE_GROUPS = new Set(['Node files', 'Node repositories', 'Nodes'])
+const isNodeTool = (name: string, category: string | undefined) =>
+  NODE_GROUPS.has(category ?? '') || name.startsWith('node_') || name === 'list_node_worktrees'
+
+/**
+ * The section tools of the groups the plugin defines, for the settings screen that edits tool
+ * descriptions. They have no mode: opening a section grants nothing.
+ */
+export function getSectionToolRegistry(): ToolInfo[] {
+  return TOOL_SECTIONS.map((section) => ({
+    name: sectionToolName(section.id),
+    label: `Open ${section.group}`,
+    category: section.group,
+    description: section.description,
+  }))
 }
 
 export interface AgentToolsOptions {
@@ -270,7 +272,7 @@ export function codeToolDescriptions(): Record<string, string> {
   const out: Record<string, string> = {
     [EDIT_SELECTION_TOOL]: EDIT_SELECTION_DESCRIPTION,
     [READ_RESULT]: READ_RESULT_DESCRIPTION,
-    [ENABLE_TOOLS]: ENABLE_TOOLS_DESCRIPTION,
+    ...sectionToolDescriptions(),
   }
   for (const tool of tools) out[tool.name] = tool.description
   return out

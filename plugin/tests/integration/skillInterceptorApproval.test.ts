@@ -9,6 +9,9 @@ import type { Message, ToolCallContent } from '@/ai/client'
 import { useVault } from '../helpers/testEnv'
 import { destroyChatsAfterEach } from '../helpers/chatTeardown'
 
+// The model here calls its tools by name: these agents are offered every tool at once, as
+// sections are not what is tested (`toolGroups.test.ts` covers them).
+
 const policy = vi.hoisted(() => ({ approve: vi.fn() }))
 vi.mock('@/ai/interceptor/runScript', async (original) => ({
   ...(await original<typeof import('@/ai/interceptor/runScript')>()),
@@ -92,6 +95,7 @@ beforeEach(() => {
   }
   vi.spyOn(AbeleConfig.getInstance(), 'saveSettings').mockResolvedValue(undefined)
   const agent = AgentRegistry.getInstance().create({
+    toolDiscovery: 'all-at-once',
     name: 'Sample worker',
     providerId: provider.id,
     modelId: 'sample-model',

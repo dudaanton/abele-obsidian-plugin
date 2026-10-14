@@ -19,6 +19,8 @@ import { useVault } from '../helpers/testEnv'
 let saved = 0
 
 function sessionOn(agentId: string): ChatSession {
+  // Memory tools by name, not how sections offer them (`toolGroups.test.ts` covers that).
+  AgentRegistry.getInstance().update(agentId, { toolDiscovery: 'all-at-once' })
   const session = new ChatSession(ChatService.getInstance(), undefined, { kind: 'chat' })
   session.agentId.value = agentId
   return session
@@ -207,7 +209,7 @@ describe('changing and forgetting', () => {
   it('is listed in the agent editor under its own label', () => {
     expect(getToolRegistry().find((t) => t.name === FORGET_TOOL)).toMatchObject({
       label: 'Forget',
-      category: 'AI',
+      category: 'Memory',
     })
   })
 })

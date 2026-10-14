@@ -11,6 +11,9 @@ import { ChangeTracker } from '@/ai/rewind/ChangeTracker'
 import { useVault } from '../helpers/testEnv'
 import { deferred } from '../helpers/deferred'
 
+// The model here calls its tools by name: these agents are offered every tool at once, as
+// sections are not what is tested (`toolGroups.test.ts` covers them).
+
 const policy = vi.hoisted(() => ({ approve: vi.fn() }))
 vi.mock('@/ai/interceptor/runScript', async (original) => ({
   ...(await original<typeof import('@/ai/interceptor/runScript')>()),
@@ -102,6 +105,7 @@ afterEach(() => {
 })
 function owner(route: Route) {
   const agent = AgentRegistry.getInstance().create({
+    toolDiscovery: 'all-at-once',
     name: 'Sample ZIP owner',
     providerId: provider.id,
     modelId: 'sample-model',

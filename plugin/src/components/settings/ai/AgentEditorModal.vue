@@ -222,15 +222,15 @@
           >
             <Setting
               name="Tool discovery"
-              desc="Offer every enabled tool at once, or let the agent reveal groups as needed. Revealed groups stay with the chat."
+              desc="By section: the agent sees one entry per tool group with what it is for, and opens a group's tools when it needs them. All at once: every enabled tool is offered from the start."
             >
               <Dropdown
-                :model-value="agent.toolDiscovery ?? 'all'"
+                :model-value="toolDiscoveryMode(agent)"
                 :options="[
-                  { value: 'all', display: 'All at once' },
-                  { value: 'by-group', display: 'By group' },
+                  { value: 'sections', display: 'By section' },
+                  { value: 'all-at-once', display: 'All at once' },
                 ]"
-                @update:model-value="patch({ toolDiscovery: $event as 'all' | 'by-group' })"
+                @update:model-value="patch({ toolDiscovery: $event as 'sections' | 'all-at-once' })"
               />
             </Setting>
             <ToolModesEditor
@@ -311,7 +311,7 @@ import { FileSuggest } from '@/helpers/suggesters/FileSuggester'
 import { AgentRegistry } from '@/ai/agents/AgentRegistry'
 import { AbeleConfig } from '@/services/AbeleConfig'
 import { discoverSkills } from '@/ai/tools/SkillTool'
-import type { AgentDefinition } from '@/ai/agents/types'
+import { toolDiscoveryMode, type AgentDefinition } from '@/ai/agents/types'
 import { interceptorScripts } from '@/ai/interceptor/runScript'
 import InterceptorSettings from './InterceptorSettings.vue'
 import { interceptorChoices, PERMISSION_OPTIONS, SCRIPT_KEY } from './options'

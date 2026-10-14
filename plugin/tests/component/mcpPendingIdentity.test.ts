@@ -16,6 +16,9 @@ import { useVault } from '../helpers/testEnv'
 import { destroyChatsAfterEach } from '../helpers/chatTeardown'
 import { ALWAYS_TOOL, chooseApproval } from '../helpers/approvalCard'
 
+// The model here calls its tools by name: these agents are offered every tool at once, as
+// sections are not what is tested (`toolGroups.test.ts` covers them).
+
 const server = (id: string, name: string) =>
   createMcpServer({
     id,
@@ -59,6 +62,7 @@ beforeEach(() => {
   }
   const registry = AgentRegistry.getInstance()
   const agent = registry.create({
+    toolDiscovery: 'all-at-once',
     name: 'Sample',
     providerId: 'p',
     modelId: 'm',

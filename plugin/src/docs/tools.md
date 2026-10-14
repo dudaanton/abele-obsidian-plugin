@@ -23,18 +23,35 @@ is not proof of model credentials or accepted extension/compaction capabilities.
 
 ## Tool discovery
 
-In **By group** mode, `enable_tools(group)` reveals the group's enabled tools for the rest of
-this chat. Its description lists exact group names and a short line of enabled capabilities.
-Call it first, then use the tools returned by name in the next request. Core file, skill,
-template and reference tools remain available immediately, as do tools tied to a comment's
-selected passage. Off tools are never revealed; Ask still requires approval. Revealed groups
-stay in reveal order when the chat is reopened. In **All at once** mode, all enabled tools
-are offered immediately and `enable_tools` is absent.
+**By section** (the default) offers the core tools from the first request: the file tools,
+`read_result`, `skill`, `query_docs`, `questions`, and the tools a comment passage or a book
+discussion brings. Every other tool group is one section tool, named `open_<section>`, whose
+description says what the section is for and when to open it. Calling it needs no approval and
+grants nothing; it returns the section's tools with one line each (marking those that ask the
+person first), how to use them, and the live state where the section has one. Its tools are
+available from the next step. Calling a tool of a section that is not open answers which
+section tool to call first. Calling a section tool again returns the same text with fresh live
+state.
+
+The sections: `open_nodes` (projects, worktrees, Git and coding agents on paired computers),
+`open_tasks`, `open_finance` (with `analyze_data`), `open_notes_data` (properties, bases,
+logs, backlinks, statistics, lint), `open_canvas`, `open_books`, `open_word`, `open_excel`,
+`open_presentations`, `open_web`, `open_github`, `open_maps`, `open_images`, `open_memory`,
+`open_delegation`, `open_app_view` (`open`, `screenshot`, `inspect_view`, `eval_js`),
+`open_templates`, `open_docs`, `open_scripts`, `open_settings`. Each MCP server is a section of
+its own, `open_mcp_<server>`. A section is offered only when at least one of its tools is
+enabled; Off tools are never listed or opened, and Ask still asks.
+
+Open sections belong to the conversation's branch: those opened on the path to the current
+message, in the order opened. A sibling branch that never opened one does not have it, and
+going back before the open call closes it. A chat with node scope has `open_nodes` open from
+the start. A delegated run starts with the sections its parent had open. **All at once**
+offers every enabled tool immediately and no section tools.
 
 ## ZIP archives
 
 `zip({path, files: [{path, name?}]})` is a core **Files** write tool, immediately available
-including in By group mode. Select explicit context-visible files of any byte type. `path`
+including in By section mode. Select explicit context-visible files of any byte type. `path`
 is an exact new vault-relative `.zip` destination; `files[].path` is an exact source file,
 not a folder or glob. Without `name`, the entry preserves the source's vault-relative hierarchy.
 Optional `name` chooses a virtual archive subfolder/rename, not a vault permission:

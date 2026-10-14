@@ -12,7 +12,7 @@ import { parseYaml } from 'obsidian'
 import { parseGalleryHeader } from '@/helpers/galleryUtils'
 import { parseMapBlock } from '@/helpers/mapConfig'
 import { createQueryDocsTool } from '@/ai/tools/QueryDocsTool'
-import { getToolRegistry } from '@/ai/tools'
+import { getSectionToolRegistry, getToolRegistry } from '@/ai/tools'
 import { DEFAULT_GITHUB_SETTINGS } from '@/github/settings'
 import { AbeleConfig } from '@/services/AbeleConfig'
 import { DEFAULT_AI_SETTINGS } from '@/ai/types'
@@ -198,6 +198,15 @@ describe('coverage of what an agent can actually do', () => {
       .filter((name) => !name.startsWith('mcp_'))
 
     const missing = documented.filter((name) => !text.includes(name))
+
+    expect(missing).toEqual([])
+  })
+
+  it('names every section an agent can open', () => {
+    const text = DOCS.map((s) => s.topics.map((t) => t.text).join('\n')).join('\n')
+    const missing = getSectionToolRegistry()
+      .map((tool) => tool.name)
+      .filter((name) => !text.includes(name))
 
     expect(missing).toEqual([])
   })

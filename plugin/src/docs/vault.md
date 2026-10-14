@@ -1066,11 +1066,14 @@ branches. Creating or selecting a branch never restores files or executes a tool
 filesystem remains its current state. Older clients do not implement this optional context
 boundary, so use compatible versions when continuing a cut branch on another device.
 
-Agent definitions keep `toolDiscovery`: `all` (the default, also when absent) or `by-group`.
-This setting travels with the whole agent definition in settings transfer. Chat metadata
-keeps `revealedToolGroups`, the group names in the order revealed with `enable_tools`.
-These are discovery state, not permissions; every request still filters tools by the current
-agent's and chat's settings. Reopening keeps this order; starting a new chat clears it.
+Agent definitions keep `toolDiscovery`: `sections` (the default) or `all-at-once`. Older
+values `all` and `by-group`, and an absent value, mean sections. This setting travels with the
+whole agent definition in settings transfer. Open sections are not stored: they are derived from
+the `open_<section>` calls on the active branch. Chat metadata keeps `openToolSections` only for
+sections open before the chat's own history — those a delegated run inherited from its parent,
+or those carried over from `revealedToolGroups`, the legacy list of tool groups revealed before
+sections existed. These are discovery state, not permissions; every request still filters tools
+by the current agent's and chat's settings. Starting a new chat clears them.
 Do not edit these records by hand.
 
 Chat metadata `overrides.nodeScope` stores remote scope separately from vault paths:

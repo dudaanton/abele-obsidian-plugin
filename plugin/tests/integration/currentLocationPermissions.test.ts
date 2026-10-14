@@ -11,6 +11,9 @@ import type { AgentTool, Message, ModelConfig } from '@/ai/client'
 import { useVault } from '../helpers/testEnv'
 import { destroyChatsAfterEach } from '../helpers/chatTeardown'
 
+// The model here calls its tools by name: these agents are offered every tool at once, as
+// sections are not what is tested (`toolGroups.test.ts` covers them).
+
 const device = vi.hoisted(() => ({ get: vi.fn() }))
 vi.mock('@/services/DeviceLocation', () => ({ getDeviceLocation: device.get }))
 
@@ -77,6 +80,7 @@ afterEach(() => vi.restoreAllMocks())
 
 function agent(mode: 'ask' | 'auto' | 'off') {
   return AgentRegistry.getInstance().create({
+    toolDiscovery: 'all-at-once',
     name: 'Sample worker',
     providerId: provider.id,
     modelId: 'sample-model',
@@ -144,7 +148,7 @@ describe('location permission with nobody to confirm', () => {
     }
     const result = await runSubAgent(
       { systemPrompt: '', userMessage: 'Use the sample tool', tools: [tool], model },
-      createAgent({ toolModes: { sample_tool: 'ask' } })
+      createAgent({ toolDiscovery: 'all-at-once', toolModes: { sample_tool: 'ask' } })
     )
     expect(result).toMatch(/sample_tool.*approval/)
     expect(execute).not.toHaveBeenCalled()

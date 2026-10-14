@@ -139,10 +139,10 @@ describe('one section at once', () => {
   it('sets that section and nothing outside it', async () => {
     const { view, modes } = mountHost()
 
-    await press(sectionRow(view, 'Network'), 'Auto')
+    await press(sectionRow(view, 'Web'), 'Auto')
 
-    for (const tool of inCategory('Network')) expect(modes.value[tool.name], tool.name).toBe('auto')
-    for (const tool of optional().filter((t) => t.category !== 'Network'))
+    for (const tool of inCategory('Web')) expect(modes.value[tool.name], tool.name).toBe('auto')
+    for (const tool of optional().filter((t) => t.category !== 'Web'))
       expect(modes.value[tool.name] ?? 'off', tool.name).toBe('off')
   })
 
@@ -153,7 +153,7 @@ describe('one section at once', () => {
     await press(sectionRow(view, 'Books'), 'Off')
 
     for (const tool of inCategory('Books')) expect(modes.value[tool.name], tool.name).toBe('off')
-    for (const tool of inCategory('Network')) expect(modes.value[tool.name], tool.name).toBe('ask')
+    for (const tool of inCategory('Web')) expect(modes.value[tool.name], tool.name).toBe('ask')
   })
 
   it('still lets one tool of the section be changed after', async () => {
@@ -203,12 +203,12 @@ describe("in an agent's editor", () => {
     await tab.trigger('click')
 
     save.mockClear()
-    await press(sectionRow(view, 'Network'), 'Auto')
+    await press(sectionRow(view, 'Web'), 'Auto')
     expect(save).toHaveBeenCalledTimes(1)
-    for (const tool of inCategory('Network'))
+    for (const tool of inCategory('Web'))
       expect(registry.get(agent.id)?.toolModes[tool.name], tool.name).toBe('auto')
 
-    const [first, ...rest] = inCategory('Network')
+    const [first, ...rest] = inCategory('Web')
     const row = view
       .findAll('.abele-tool-modes__row')
       .find((r) => r.find('.setting-item-name').text() === first.label)!

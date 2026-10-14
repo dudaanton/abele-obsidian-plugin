@@ -18,6 +18,9 @@ import { DEFAULT_AI_SETTINGS, type AiProvider } from '@/ai/types'
 import type { Message, ModelConfig, ToolCallContent, ToolResultMessage } from '@/ai/client'
 import { useVault, configureAbele } from '../helpers/testEnv'
 
+// The model here calls its tools by name: these agents are offered every tool at once, as
+// sections are not what is tested (`toolGroups.test.ts` covers them).
+
 let script: Array<ToolCallContent[] | string> = []
 /** What the model was sent on each request. */
 let sent: Message[][] = []
@@ -117,7 +120,9 @@ beforeEach(() => {
   }
   AbeleConfig.getInstance().saveSettings = vi.fn(async () => {})
   const registry = AgentRegistry.getInstance()
-  registry.setDefault(registry.create({ name: 'D', providerId: 'p1', modelId: 'm1' }).id)
+  registry.setDefault(
+    registry.create({ toolDiscovery: 'all-at-once', name: 'D', providerId: 'p1', modelId: 'm1' }).id
+  )
   vi.spyOn(ChatService.getInstance(), 'getSystemPrompt').mockResolvedValue('')
   vi.spyOn(ChatService.getInstance(), 'saveTabs').mockImplementation(() => {})
 })

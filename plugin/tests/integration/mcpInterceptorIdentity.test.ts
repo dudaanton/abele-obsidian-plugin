@@ -15,6 +15,9 @@ import type { InterceptInput } from '@/ai/interceptor/context'
 import { useVault } from '../helpers/testEnv'
 import { destroyChatsAfterEach } from '../helpers/chatTeardown'
 
+// The model here calls its tools by name: these agents are offered every tool at once, as
+// sections are not what is tested (`toolGroups.test.ts` covers them).
+
 const intercepted = vi.hoisted(() => ({ policy: null as ToolPolicy | null }))
 vi.mock('@/ai/interceptor/runScript', async (importOriginal) => ({
   ...(await importOriginal<Record<string, unknown>>()),
@@ -68,6 +71,7 @@ beforeEach(() => {
   }
   const registry = AgentRegistry.getInstance()
   const agent = registry.create({
+    toolDiscovery: 'all-at-once',
     name: 'Sample',
     providerId: 'p',
     modelId: 'm',

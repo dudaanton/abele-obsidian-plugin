@@ -73,7 +73,15 @@ import {
   type ChatSnapshot,
   type ParsedChat,
 } from './ChatLog'
-import { ToolDiscovery, ENABLE_TOOLS } from './ToolDiscovery'
+import {
+  closedSectionHint,
+  emulatedTools,
+  mergeOpen,
+  offerSections,
+  openSectionsOnPath,
+  type ToolOffer,
+} from './ToolDiscovery'
+import { isSectionToolName, nodeSectionLive, sectionsOfLegacyGroups } from './toolSections'
 import { inspectMainChat, readChat } from './chatCopy'
 import {
   compatibleReplyHistory,
@@ -107,6 +115,7 @@ import {
   type OverrideKey,
   type ScopeEntry,
   type SessionOverrides,
+  toolDiscoveryMode,
 } from './agents/types'
 import {
   ChatMessage,
@@ -1239,7 +1248,40 @@ export class ChatSession implements SummarizerHost, InterceptorHost, AnchorStora
 
   // ── Tools with session scope ────────────────────────────────────
 
-  private toolDiscovery = new ToolDiscovery()
+  /**
+   * Sections open before this chat's own history: inherited by a delegated run from its parent,
+   * or carried over from a chat saved with revealed tool groups. Everything else is derived.
+   */
+  private initialSections: string[] = []
+  /** The last section offer, so a call to a closed section's tool can say which one to open. */
+  private lastOffer: ToolOffer | null = null
+
+  /**
+   * The sections open on the active branch, in the order they were opened. Derived from the
+   * branch's own open calls, so a sibling branch does not share them and a rewind closes them.
+   * A chat with node scope has the node section open from the start.
+   */
+  openToolSections(): string[] {
+    const path = this.activeLeafId
+      ? getPathToLeaf(this.allChatMessages, this.activeLeafId)
+      : this.allChatMessages
+    return mergeOpen(
+      this.overrides.value.nodeScope?.length ? ['nodes'] : [],
+      this.initialSections,
+      openSectionsOnPath(path)
+    )
+  }
+
+  /** A delegated run starts with the sections its parent had open. */
+  inheritToolSections(ids: readonly string[]): void {
+    this.initialSections = mergeOpen(this.initialSections, ids)
+  }
+
+  /** Why a called tool is missing, when it only waits for its section to be opened. */
+  missingToolHint(name: string): string | undefined {
+    this.getTools()
+    return this.lastOffer ? closedSectionHint(name, this.lastOffer) : undefined
+  }
 
   private getTools(): AgentTool[] {
     const agent = this.agent.value
@@ -1291,6 +1333,7 @@ export class ChatSession implements SummarizerHost, InterceptorHost, AnchorStora
       !this.anchor.value.cfi &&
       (this.toolModes.value[EDIT_SELECTION_TOOL] ?? 'ask') !== 'off'
     // Node scope is an explicit owner surface, independent of optional feature-tool defaults.
+    const sectioned = toolDiscoveryMode(agent) === 'sections'
     const withNode = this.overrides.value.nodeScope?.length
       ? [
           ...filtered,
@@ -1321,18 +1364,33 @@ export class ChatSession implements SummarizerHost, InterceptorHost, AnchorStora
 
     // Every agent can read on in a result it was sent only the start of.
     const allowed = [...withBook, createReadResultTool(this.results)]
-    const core = new Set(CORE_TOOLS)
-    // Context tools belong to the passage, not an optional feature permission.
-    if (offered) core.add(EDIT_SELECTION_TOOL)
-    if (this.overrides.value.nodeScope?.length)
-      for (const name of NODE_AGENT_TOOL_NAMES) core.add(name)
-    core.add(REPLY_REVISION_TOOL)
-    if (this.bookAnchored()) for (const name of BOOK_READ_TOOLS) core.add(name)
-    const discovered =
-      agent?.toolDiscovery === 'by-group'
-        ? this.toolDiscovery.offer(allowed, getToolRegistry(allTools), core, () => this.save())
-        : allowed
-    return this.wrapToolsForSession(discovered)
+    if (!sectioned) {
+      this.lastOffer = null
+      return this.wrapToolsForSession(allowed)
+    }
+    // Context tools belong to the passage or the conversation, not to a section. The node tools
+    // a scope brings wait in the node section, open from the start (`openToolSections`).
+    const context = new Set([REPLY_REVISION_TOOL, READ_RESULT])
+    if (offered) context.add(EDIT_SELECTION_TOOL)
+    if (this.bookAnchored()) for (const name of BOOK_READ_TOOLS) context.add(name)
+    const offer = offerSections({
+      allowed,
+      metadata: getToolRegistry(allTools),
+      context,
+      open: this.openToolSections(),
+      asks: (tool) => this.needsApproval(tool.name, undefined, tool.permissionKey),
+      live: (id) =>
+        id === 'nodes'
+          ? nodeSectionLive(
+              this.overrides.value.nodeScope,
+              this.overrides.value.nodeTarget,
+              this.permissionMode.value
+            )
+          : undefined,
+      overrides: AbeleConfig.getInstance().ai.prompts?.toolDescriptions,
+    })
+    this.lastOffer = offer
+    return this.wrapToolsForSession(emulatedTools(offer))
   }
 
   /** Whether this is a discussion about words in a book: its anchor names a place in one. */
@@ -1464,7 +1522,7 @@ export class ChatSession implements SummarizerHost, InterceptorHost, AnchorStora
 
     // This tool only records a proposal. Accepting it is a separate owner action, never a
     // permission mode, tool call or automatic approval.
-    if (toolName === REPLY_REVISION_TOOL || toolName === ENABLE_TOOLS) return false
+    if (toolName === REPLY_REVISION_TOOL || isSectionToolName(toolName)) return false
 
     // Listing is filtered by the tool itself, including ancestors of scoped files. It never
     // grants access to the directory or needs approval to extend the scope.
@@ -1931,6 +1989,7 @@ export class ChatSession implements SummarizerHost, InterceptorHost, AnchorStora
         systemPrompt,
         tools,
         getTools: () => this.getTools(),
+        missingTool: (name) => this.missingToolHint(name),
         messages: toSend,
         onHistory: (messages) => {
           if (this.destroyed || generation !== this.generation) return
@@ -2231,7 +2290,13 @@ export class ChatSession implements SummarizerHost, InterceptorHost, AnchorStora
     }
 
     const tools = this.getTools()
-    const tool = tools.find((t) => t.name === tc.name)
+    // The person approved this very call: a tool its modes allow runs even if its section is
+    // not in the current offer, as a call stopped for approval before the open was saved.
+    const tool =
+      tools.find((t) => t.name === tc.name) ??
+      this.wrapToolsForSession(
+        (this.lastOffer?.sections ?? []).flatMap((s) => s.tools).filter((t) => t.name === tc.name)
+      )[0]
     const identityRefusal = pendingMcpToolRefusal(tc, AbeleConfig.getInstance().ai.mcpServers)
     if (
       identityRefusal ||
@@ -2245,7 +2310,7 @@ export class ChatSession implements SummarizerHost, InterceptorHost, AnchorStora
       return
     }
     if (!tool) {
-      const errText = `Tool "${tc.name}" not found`
+      const errText = this.missingToolHint(tc.name) ?? `Tool "${tc.name}" not found`
       const toolChatMsg = this.allChatMessages.find(
         (m) => m.role === 'tool-call' && m.toolCallId === tc.id
       )
@@ -3021,7 +3086,7 @@ export class ChatSession implements SummarizerHost, InterceptorHost, AnchorStora
     if (this.root === this) this.delegatedRuns = 0
     this.allInternalMessages = []
     this.allChatMessages = []
-    this.toolDiscovery = new ToolDiscovery()
+    this.initialSections = []
     this.activeLeafId = null
     this.pendingBranchCut = undefined
     this.messages.value = []
@@ -3808,9 +3873,7 @@ export class ChatSession implements SummarizerHost, InterceptorHost, AnchorStora
         ? this.queuedMessages.value.map((q) => ({ ...q, attachments: q.attachments?.slice() }))
         : undefined,
       agentId: this.agentId.value || undefined,
-      revealedToolGroups: this.toolDiscovery.revealed.length
-        ? this.toolDiscovery.revealed
-        : undefined,
+      openToolSections: this.initialSections.length ? this.initialSections : undefined,
       // Written whenever there is an anchor, expanded comments included: the marker in the
       // note has to keep finding this file, and `kind` is how a reopened one knows what it is.
       kind: this.anchor.value ? (this.kind === 'comment' ? 'comment' : 'chat') : undefined,
@@ -4172,7 +4235,9 @@ export class ChatSession implements SummarizerHost, InterceptorHost, AnchorStora
     this.userMessageCount = this.messages.value.filter((m) => m.role === 'user').length
 
     const permissionsMigrated = this.restoreAgentBinding(result.metadata)
-    this.toolDiscovery = new ToolDiscovery(result.metadata?.revealedToolGroups)
+    this.initialSections = Array.isArray(result.metadata?.openToolSections)
+      ? result.metadata.openToolSections.filter((id): id is string => typeof id === 'string')
+      : sectionsOfLegacyGroups(result.metadata?.revealedToolGroups)
 
     this.customSystemPrompt.value = result.metadata?.customSystemPrompt || ''
     this.customSystemPromptNotePath.value = result.metadata?.customSystemPromptNotePath || ''

@@ -23,6 +23,9 @@ import { useVault } from '../helpers/testEnv'
 import type { FakeApp } from '../helpers/fakeVault'
 import { destroyChatsAfterEach } from '../helpers/chatTeardown'
 
+// The model here calls its tools by name: these agents are offered every tool at once, as
+// sections are not what is tested (`toolGroups.test.ts` covers them).
+
 // The editor is not standing up here: `dispatchCommentsChanged` walks the workspace's leaves,
 // which a fake vault has none of. Nothing in this file observes the repaint.
 vi.mock('@/editor/CommentPlugin', () => ({
@@ -90,8 +93,11 @@ beforeEach(() => {
     commentFolder: 'AI/Comments',
   }
   AbeleConfig.getInstance().saveSettings = vi.fn(async () => {})
-  AgentRegistry.getInstance().setDefault(AgentRegistry.getInstance().create({ name: 'D' }).id)
+  AgentRegistry.getInstance().setDefault(
+    AgentRegistry.getInstance().create({ toolDiscovery: 'all-at-once', name: 'D' }).id
+  )
   AbeleConfig.getInstance().ai.commentAgentId = AgentRegistry.getInstance().create({
+    toolDiscovery: 'all-at-once',
     name: 'Comment',
     utility: true,
   }).id

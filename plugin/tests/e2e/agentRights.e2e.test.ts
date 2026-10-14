@@ -95,7 +95,7 @@ const probe = (desktopChecks: boolean, label: string) => `(async () => {
       await shoot('skills-folder')
       app.setting.close(); await wait(300)
     }
-    const worker = registry.create({name: 'Sample memory worker', providerId: 'sample-provider', modelId: 'sample-model'})
+    const worker = registry.create({toolDiscovery: 'all-at-once', name: 'Sample memory worker', providerId: 'sample-provider', modelId: 'sample-model'})
     const beforeTabs = new Set(chats.tabOrder.value)
     const newTab = chats.createTab()
     if (beforeTabs.has(newTab)) throw new Error('No free chat tab')
@@ -153,7 +153,7 @@ const probe = (desktopChecks: boolean, label: string) => `(async () => {
     report.afterMemory = worker.memory.length
     if (${desktopChecks}) {
       phase = 'script'
-      const target = registry.create({name: 'Sample unattended worker', providerId: 'sample-provider', modelId: 'sample-model', toolModes: {eval_js: 'ask'}})
+      const target = registry.create({toolDiscovery: 'all-at-once', name: 'Sample unattended worker', providerId: 'sample-provider', modelId: 'sample-model', toolModes: {eval_js: 'ask'}})
       const folder = DIR + '/Scripts'
       await app.vault.createFolder(folder)
       await enableScriptFixture(folder)

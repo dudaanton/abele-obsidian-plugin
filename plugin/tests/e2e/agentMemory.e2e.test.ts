@@ -51,7 +51,12 @@ const script = `(async () => {
 
   const report = { chatAgent: chatAgent.name, otherAgent: other ? other.name : '' }
   try {
-    const tool = session.getTools().find((x) => x.name === 'remember')
+    // By section, memory is offered as its section until the agent opens it; the tools
+    // themselves are taken bound to this chat's agent, so the chat's branch is not changed.
+    const offered = (name) => session.getTools().some((x) =>
+      x.name === name || (x.name === 'open_memory' && x.description.includes(name)))
+    const bound = t.createAgentTools({ session, agentId: chatAgent.id })
+    const tool = offered('remember') ? bound.find((x) => x.name === 'remember') : undefined
     report.offered = !!tool
     if (tool) {
       const result = await tool.execute('e2e', { text: '${MARK}' })
@@ -68,7 +73,7 @@ const script = `(async () => {
     report.promptHasItem = (await t.resolvedSystemPrompt()).includes('${MARK}')
     report.otherPromptHasItem = other ? (await registry.buildSystemPrompt(other)).includes('${MARK}') : false
 
-    const forget = session.getTools().find((x) => x.name === 'forget')
+    const forget = offered('forget') ? bound.find((x) => x.name === 'forget') : undefined
     report.forgetOffered = !!forget
     if (tool && forget) {
       const changed = await tool.execute('e2e', { text: '${CHANGED}', replace: 'probe item' })

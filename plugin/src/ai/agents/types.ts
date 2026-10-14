@@ -77,8 +77,11 @@ export interface AgentDefinition {
   permissionMode: PermissionMode
   /** Feature tools only — CORE_TOOLS are always available and governed by permissionMode. */
   toolModes: Record<string, ToolMode>
-  /** Absent in older settings means all enabled tools are offered immediately. */
-  toolDiscovery?: 'all' | 'by-group'
+  /**
+   * How tools reach the agent: by section (the default) or all at once. `all`, `by-group` and
+   * absent are older saves and mean sections too; see `toolDiscoveryMode`.
+   */
+  toolDiscovery?: ToolDiscoverySetting
   /** Per-connection GitHub access. Absent IDs are Off, including newly added connections. */
   githubConnections?: Record<string, ToolMode>
   scope: ScopeEntry[]
@@ -96,6 +99,18 @@ export interface AgentDefinition {
    * its `remember` and `forget` calls change it. Optional because agents saved before memory lack it.
    */
   memory?: AgentMemoryItem[]
+}
+
+export type ToolDiscoverySetting = 'sections' | 'all-at-once' | 'all' | 'by-group'
+
+/**
+ * Sections, unless the agent was set to all at once. Every agent saved before sections had
+ * `all` written by default, so that value cannot tell a choice from a default and means sections.
+ */
+export function toolDiscoveryMode(
+  agent: { toolDiscovery?: ToolDiscoverySetting } | null | undefined
+): 'sections' | 'all-at-once' {
+  return agent?.toolDiscovery === 'all-at-once' ? 'all-at-once' : 'sections'
 }
 
 /** The context depths an interceptor accepts; anything else read from a file is taken as the draft. */
@@ -126,7 +141,7 @@ export function createAgent(overrides: Partial<AgentDefinition> = {}): AgentDefi
     modelId: '',
     prompts: [],
     permissionMode: 'confirm-all',
-    toolDiscovery: 'all',
+    toolDiscovery: 'sections',
     // Memory asks by default. A deliberate auto/off choice overrides this, including on
     // existing agents where the saved file cannot distinguish old defaults from choices.
     // The GitHub tools only read, and only exist while the integration is on. The book tools read

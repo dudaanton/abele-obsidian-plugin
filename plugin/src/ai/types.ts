@@ -408,8 +408,6 @@ export const CORE_TOOLS = new Set([
   // Reads the rest of a result too long to send whole. Without it a shortened answer would be
   // a dead end, so every agent has it. See `resultStore.ts`.
   'read_result',
-  // Only offered in by-group discovery mode; revealing a group changes no permission.
-  'enable_tools',
 ])
 
 /**
@@ -756,8 +754,13 @@ export interface ChatMetadata {
   queuedMessages?: QueuedMessage[]
   /** Which agent the chat runs on. Absent in chats saved before agents existed. */
   agentId?: string
-  /** Optional tool groups revealed for this conversation, in append order. */
+  /** Legacy: tool groups revealed before sections existed; read once as `openToolSections`. */
   revealedToolGroups?: string[]
+  /**
+   * Tool sections open before this chat's own history — inherited by a delegated run, or carried
+   * over from `revealedToolGroups`. Sections the chat opens itself are derived from its branch.
+   */
+  openToolSections?: string[]
   /** Absent means an ordinary chat. A comment keeps its kind once expanded, see `anchor`. */
   kind?: 'chat' | 'comment'
   /** Set for a comment and for a chat expanded from one, so the marker still finds the file. */

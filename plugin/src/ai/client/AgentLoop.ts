@@ -27,6 +27,8 @@ export interface AgentLoopOptions {
   tools: AgentTool[]
   /** Re-resolved for each request and call when a conversation reveals optional groups. */
   getTools?: () => AgentTool[]
+  /** Why a called tool is missing, when the conversation can say more than "not found". */
+  missingTool?: (name: string) => string | undefined
   messages: Message[]
   streamOptions?: StreamOptions
   /** Publish accumulated history after each completed message, not only a whole tool batch. */
@@ -199,7 +201,8 @@ export class AgentLoop {
             tc,
             opts.beforeToolCall,
             signal,
-            opts.getTools
+            opts.getTools,
+            opts.missingTool
           )
 
           if (!resultMsg) {
@@ -429,7 +432,8 @@ export class AgentLoop {
     tc: ToolCallContent,
     beforeToolCall: AgentLoopOptions['beforeToolCall'],
     signal: AbortSignal,
-    getTools?: () => AgentTool[]
+    getTools?: () => AgentTool[],
+    missingTool?: (name: string) => string | undefined
   ): Promise<ToolResultMessage | null> {
     const makeResult = (content: string, isError: boolean): ToolResultMessage => ({
       role: 'toolResult',
@@ -442,7 +446,7 @@ export class AgentLoop {
 
     // Tool not found
     if (!tool) {
-      const result = makeResult(`Tool "${tc.name}" not found`, true)
+      const result = makeResult(missingTool?.(tc.name) ?? `Tool "${tc.name}" not found`, true)
       this.emit({
         type: 'tool_end',
         toolCallId: tc.id,

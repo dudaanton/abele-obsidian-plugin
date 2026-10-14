@@ -1,12 +1,15 @@
-import { beforeEach, describe, expect, it, vi } from 'vitest'
+import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest'
 import { ChatSession } from '@/ai/ChatSession'
 import { ChatService } from '@/ai/ChatService'
 import { ChatStorage } from '@/ai/ChatStorage'
 import { AgentRegistry } from '@/ai/agents/AgentRegistry'
+import { boundRunToParent } from '@/ai/DelegateRun'
 import { AbeleConfig } from '@/services/AbeleConfig'
 import { DEFAULT_AI_SETTINGS, type ChatMessage } from '@/ai/types'
 import { parseChat, serializeChat, type ChatSnapshot } from '@/ai/ChatLog'
-import type { AgentTool } from '@/ai/client'
+import { EMPTY_USAGE, type AgentTool, type AssistantMessage } from '@/ai/client'
+import { OpenAIClient } from '@/ai/client/OpenAIClient'
+import { estimateTokens } from '@/ai/tokens'
 import type { TFile } from 'obsidian'
 import { useVault } from '../helpers/testEnv'
 import { destroyChatsAfterEach } from '../helpers/chatTeardown'
@@ -14,113 +17,263 @@ import { destroyChatsAfterEach } from '../helpers/chatTeardown'
 const tools = (session: ChatSession) =>
   (session as unknown as { getTools(): AgentTool[] }).getTools()
 const names = (session: ChatSession) => tools(session).map((t) => t.name)
-const reveal = async (session: ChatSession, group: string) => {
-  const tool = tools(session).find((t) => t.name === 'enable_tools')
-  expect(tool).toBeDefined()
-  await tool!.execute('sample-call', { group })
-}
 const file = { path: 'AI/Chats/sample.abchat', basename: 'sample' } as TFile
 let session: ChatSession
 let saved: ChatSnapshot
+
+/** A fake model that answers each request with the next of these assistant contents. */
+const script = (...turns: AssistantMessage['content'][]) => {
+  const offered: string[][] = []
+  vi.spyOn(OpenAIClient.prototype, 'stream').mockImplementation(
+    async function* (_m, _s, _history, sent) {
+      offered.push(sent.map((t) => t.name))
+      const content = turns[offered.length - 1] ?? [{ type: 'text', text: 'Sample answer' }]
+      yield {
+        type: 'done',
+        message: {
+          role: 'assistant',
+          content,
+          model: 'sample',
+          usage: EMPTY_USAGE,
+          stopReason: content.some((c) => c.type === 'toolCall') ? 'toolUse' : 'stop',
+          timestamp: 1,
+        },
+      }
+    }
+  )
+  return offered
+}
+const call = (id: string, name: string): AssistantMessage['content'] => [
+  { type: 'toolCall', id, name, arguments: {} },
+]
 
 destroyChatsAfterEach()
 beforeEach(() => {
   useVault([])
   AgentRegistry.destroy()
-  AbeleConfig.getInstance().ai = { ...DEFAULT_AI_SETTINGS, agents: [], defaultAgentId: '' }
+  AbeleConfig.getInstance().ai = {
+    ...DEFAULT_AI_SETTINGS,
+    agents: [],
+    defaultAgentId: '',
+    providers: [
+      {
+        id: 'sample-provider',
+        name: 'Sample provider',
+        baseUrl: 'https://sample.invalid/v1',
+        apiKeyId: '',
+        models: [
+          {
+            id: 'sample',
+            name: 'Sample',
+            maxTokens: 1000,
+            contextWindow: 100000,
+            supportsReasoning: false,
+          },
+        ],
+      },
+    ],
+  }
   const registry = AgentRegistry.getInstance()
   const agent = registry.create({
     name: 'Sample agent',
-    toolDiscovery: 'by-group',
+    providerId: 'sample-provider',
+    modelId: 'sample',
     toolModes: { geocode: 'ask', route: 'off', chart_docs: 'auto' },
   })
   registry.setDefault(agent.id)
-  session = new ChatSession(ChatService.getInstance())
+  const chats = ChatService.getInstance()
+  vi.spyOn(chats, 'getSystemPrompt').mockResolvedValue('Synthetic prompt.')
+  vi.spyOn(chats, 'saveTabs').mockImplementation(() => {})
   vi.spyOn(ChatStorage.getInstance(), 'saveChat').mockImplementation(async (snapshot) => {
     saved = snapshot
     return file
   })
-  vi.spyOn(ChatService.getInstance(), 'saveTabs').mockImplementation(() => {})
+  session = new ChatSession(chats)
+  quiet(session)
 })
+afterEach(() => vi.restoreAllMocks())
 
-describe('tools revealed by group', () => {
-  it('starts with core tools and advertises only groups with an enabled optional tool', () => {
+function quiet(s: ChatSession) {
+  const summarizer = (s as unknown as { summarizer: Record<string, () => Promise<void>> })
+    .summarizer
+  for (const name of ['generateTitle', 'generateSummary', 'generateRecap', 'autoCompactIfNeeded'])
+    vi.spyOn(summarizer, name).mockResolvedValue(undefined)
+}
+
+describe('tools offered by section', () => {
+  it('is how a new agent starts: core tools and one section tool per allowed group', () => {
     expect(names(session)).toContain('read')
     expect(names(session)).toContain('query_docs')
+    expect(names(session)).toContain('open_maps')
+    expect(names(session)).toContain('open_docs')
+    expect(names(session)).toContain('open_templates')
     expect(names(session)).not.toContain('geocode')
     expect(names(session)).not.toContain('chart_docs')
-    const description = tools(session).find((t) => t.name === 'enable_tools')?.description
-    expect(description).toContain('Maps:')
-    expect(description).toContain('Docs:')
-    expect(description).not.toContain('Books:')
-    expect(description).not.toContain('Canvas:')
-  })
-
-  it('offers no discovery tool when every optional tool is Off', () => {
-    session.toolModes.value = {}
-    expect(names(session)).toContain('read')
+    expect(names(session)).not.toContain('list_templates')
+    expect(names(session)).not.toContain('open_github')
     expect(names(session)).not.toContain('enable_tools')
+  })
+
+  it('offers only the always-allowed sections when every optional tool is Off', () => {
+    session.toolModes.value = {}
+    expect(names(session).filter((n) => n.startsWith('open_'))).toEqual(['open_templates'])
     expect(names(session)).not.toContain('geocode')
   })
 
-  it('reveals only enabled tools, leaves Ask intact, and rejects an unavailable group', async () => {
-    await reveal(session, 'Maps')
-    expect(names(session)).toContain('geocode')
-    expect(names(session)).not.toContain('route')
-    expect(names(session)).not.toContain('chart_docs')
+  it('opens a section within the turn, leaves Ask intact and never asks to open', async () => {
+    const offered = script(call('c1', 'open_maps'), call('c2', 'route'))
+    await session.sendMessage('Where is the sample place?')
+    expect(offered[0]).not.toContain('geocode')
+    expect(offered[1]).toContain('geocode')
+    // Off stays out even with the section open.
+    expect(offered[1]).not.toContain('route')
+    expect(session.needsApproval('open_maps')).toBe(false)
     expect(session.needsApproval('geocode')).toBe(true)
-    expect(session.needsApproval('enable_tools')).toBe(false)
-    await expect(reveal(session, 'Books')).rejects.toThrow('Unknown or unavailable tool group')
-    session.toolModes.value = { ...session.toolModes.value, geocode: 'off' }
-    expect(names(session)).not.toContain('geocode')
+    const opened = session.messages.value.find((m) => m.toolName === 'open_maps')
+    expect(opened?.toolResult).toContain('geocode (asks the person first)')
+    const refused = session.messages.value.find((m) => m.toolName === 'route')
+    expect(refused?.toolResult ?? refused?.content).toContain('not found')
   })
 
-  it('only appends groups, with an unchanged discovery description across ordinary turns', async () => {
+  it('tells the agent to open a section before using its tools', async () => {
+    script(call('c1', 'chart_docs'))
+    await session.sendMessage('Explain sample charts')
+    const refused = session.messages.value.find((m) => m.toolName === 'chart_docs')
+    expect(refused?.toolResult ?? refused?.content).toContain('Call open_docs first')
+  })
+
+  it('only appends when a section opens, so the cached prefix stays', async () => {
     const start = tools(session)
-    await reveal(session, 'Docs')
-    const middle = tools(session)
-    expect(middle.slice(0, start.length)).toEqual(
-      start.map((t) =>
-        expect.objectContaining({
-          name: t.name,
-          description: t.description,
-          parameters: t.parameters,
-        })
-      )
-    )
-    await reveal(session, 'Maps')
+    script(call('c1', 'open_docs'), call('c2', 'open_maps'))
+    await session.sendMessage('Open two sample sections')
     const end = tools(session)
-    expect(end.map((t) => t.name).slice(0, middle.length)).toEqual(middle.map((t) => t.name))
-    await reveal(session, 'Docs')
-    expect(names(session)).toEqual(end.map((t) => t.name))
+    expect(end.slice(0, start.length).map((t) => [t.name, t.description])).toEqual(
+      start.map((t) => [t.name, t.description])
+    )
+    expect(end.slice(start.length).map((t) => t.name)).toEqual(['chart_docs', 'geocode'])
   })
 
-  it('persists reveal order through the chat file and clears it for a new conversation', async () => {
-    ;(session as unknown as { allChatMessages: ChatMessage[] }).allChatMessages = [
-      { id: 'sample-message', role: 'user', content: 'Show a chart', timestamp: 1 },
-    ]
-    await reveal(session, 'Docs')
-    await reveal(session, 'Maps')
+  it('belongs to the branch: rewinding past the open call closes it, returning reopens it', async () => {
+    script(call('c1', 'open_docs'))
+    await session.sendMessage('Open the sample docs')
+    const leaf = session.messages.value.at(-1)!.id
+    expect(names(session)).toContain('chart_docs')
+    const question = session.messages.value.find((m) => m.role === 'user')!
+    session.createBranch(question.id)
+    expect(names(session)).not.toContain('chart_docs')
+    session.switchBranch(leaf)
+    expect(names(session)).toContain('chart_docs')
+  })
+
+  it('keeps open sections through the chat file and clears them for a new conversation', async () => {
+    script(call('c1', 'open_docs'), call('c2', 'open_maps'))
+    await session.sendMessage('Open two sample sections')
     await session.save()
-    const parsed = parseChat(serializeChat(saved))
-    vi.spyOn(ChatStorage.getInstance(), 'loadChat').mockResolvedValue(parsed)
+    vi.spyOn(ChatStorage.getInstance(), 'loadChat').mockResolvedValue(
+      parseChat(serializeChat(saved))
+    )
     const reopened = new ChatSession(ChatService.getInstance())
     await reopened.load(file)
     expect(names(reopened)).toEqual(names(session))
+    expect(names(reopened)).toContain('chart_docs')
+    expect(names(reopened)).toContain('geocode')
     await reopened.reset()
-    expect(names(reopened)).not.toContain('geocode')
     expect(names(reopened)).not.toContain('chart_docs')
+    expect(names(reopened)).not.toContain('geocode')
     reopened.destroy()
   })
 
-  it('keeps the original list unchanged when discovery is off, including old agents', async () => {
+  it('opens the groups a chat revealed before sections existed', async () => {
+    const messages: ChatMessage[] = [{ id: 'm1', role: 'user', content: 'Sample', timestamp: 1 }]
+    vi.spyOn(ChatStorage.getInstance(), 'loadChat').mockResolvedValue({
+      metadata: {
+        type: 'abele-chat',
+        agentId: session.agentId.value,
+        revealedToolGroups: ['Maps'],
+        activeLeafId: 'm1',
+      },
+      messages,
+      internalMessages: [],
+    } as unknown as Awaited<ReturnType<ChatStorage['loadChat']>>)
+    const reopened = new ChatSession(ChatService.getInstance())
+    await reopened.load(file)
+    expect(names(reopened)).toContain('geocode')
+    reopened.destroy()
+  })
+
+  it('opens the node section from the start in a chat with node scope', () => {
+    session.overrides.value = {
+      ...session.overrides.value,
+      nodeScope: [{ kind: 'node', node_id: 'sample-node', access: 'read' }],
+    }
+    const offered = names(session)
+    expect(offered).toContain('open_nodes')
+    expect(offered).toContain('node_ls')
+    expect(offered.indexOf('node_ls')).toBeGreaterThan(offered.indexOf('open_nodes'))
+  })
+
+  it('starts a delegated run with the sections its parent had open', async () => {
+    script(call('c1', 'open_docs'))
+    await session.sendMessage('Open the sample docs')
+    const run = new ChatSession(ChatService.getInstance(), undefined, {
+      kind: 'run',
+      agentId: session.agentId.value,
+      depth: 1,
+      root: session,
+    })
+    boundRunToParent(run, session)
+    expect(names(run)).toContain('chart_docs')
+    expect(names(run)).not.toContain('geocode')
+    run.destroy()
+  })
+
+  it('keeps the whole list in All at once mode', () => {
+    AgentRegistry.getInstance().update(session.agentId.value, { toolDiscovery: 'all-at-once' })
+    const all = names(session)
+    expect(all).toContain('geocode')
+    expect(all).toContain('chart_docs')
+    expect(all).toContain('list_templates')
+    expect(all.some((n) => n.startsWith('open_'))).toBe(false)
+  })
+
+  it('treats older saved modes as sections', () => {
+    for (const toolDiscovery of ['all', 'by-group', undefined] as const) {
+      AgentRegistry.getInstance().update(session.agentId.value, { toolDiscovery })
+      expect(names(session)).toContain('open_maps')
+    }
+  })
+
+  it('sends a default agent far fewer tool tokens per request by section', () => {
     const registry = AgentRegistry.getInstance()
-    registry.update(session.agentId.value, { toolDiscovery: 'all' })
-    const original = names(session)
-    expect(original).toContain('geocode')
-    expect(original).toContain('chart_docs')
-    expect(original).not.toContain('enable_tools')
-    registry.update(session.agentId.value, { toolDiscovery: undefined })
-    expect(names(session)).toEqual(original)
+    // A new agent exactly as the settings make it.
+    const fresh = registry.create({
+      name: 'Sample default',
+      providerId: 'sample-provider',
+      modelId: 'sample',
+    })
+    const size = (s: ChatSession) => {
+      const sent = tools(s).map((t) => ({
+        name: t.name,
+        description: t.description,
+        parameters: t.parameters,
+      }))
+      return { count: sent.length, tokens: estimateTokens(JSON.stringify(sent)) }
+    }
+    const chat = new ChatSession(ChatService.getInstance(), undefined, { agentId: fresh.id })
+    const sections = size(chat)
+    registry.update(fresh.id, { toolDiscovery: 'all-at-once' })
+    const all = size(chat)
+    chat.overrides.value = { nodeScope: [{ kind: 'node', node_id: 'sample-node', access: 'edit' }] }
+    const allNode = size(chat)
+    registry.update(fresh.id, { toolDiscovery: 'sections' })
+    const sectionsNode = size(chat)
+    console.log(
+      `default agent tools per request — all at once: ${all.count} tools, ~${all.tokens} tokens; ` +
+        `by section: ${sections.count} tools, ~${sections.tokens} tokens; with node scope — ` +
+        `all at once: ${allNode.count}, ~${allNode.tokens}; by section: ${sectionsNode.count}, ~${sectionsNode.tokens}`
+    )
+    expect(sections.tokens).toBeLessThan(all.tokens / 2)
+    expect(sections.count).toBeLessThan(40)
+    chat.destroy()
   })
 })

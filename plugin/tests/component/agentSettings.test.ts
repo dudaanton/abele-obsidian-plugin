@@ -107,10 +107,13 @@ it('offers tool discovery on the agent Access tab and saves the selection', asyn
   await access.trigger('click')
   const discovery = view
     .findAllComponents(Dropdown)
-    .find((d) => d.props('options').some((o: { value: string }) => o.value === 'by-group'))!
-  expect(discovery.props('modelValue')).toBe('all')
-  await discovery.vm.$emit('update:modelValue', 'by-group')
-  expect(AgentRegistry.getInstance().get(main.id)?.toolDiscovery).toBe('by-group')
+    .find((d) => d.props('options').some((o: { value: string }) => o.value === 'all-at-once'))!
+  // Sections are the default; an agent saved with the old default reads as sections too.
+  expect(discovery.props('modelValue')).toBe('sections')
+  await discovery.vm.$emit('update:modelValue', 'all-at-once')
+  expect(AgentRegistry.getInstance().get(main.id)?.toolDiscovery).toBe('all-at-once')
+  await discovery.vm.$emit('update:modelValue', 'sections')
+  expect(AgentRegistry.getInstance().get(main.id)?.toolDiscovery).toBe('sections')
   view.unmount()
 })
 

@@ -112,6 +112,8 @@ export const approvalScript = (screen: string) => `(async () => {
     session.scopeResolver.addFile(root + '/Nested/visible.md')
     session.permissionMode.value = 'confirm-all'
     session.toolModes.value = { eval_js: 'ask', fetch: 'auto' }
+    // A fresh tab, as if its agent had opened Web: fetch is a section tool by default.
+    session.inheritToolSections(['web'])
     const registered = session.getTools()
     const ls = registered.find(t => t.name === 'ls'), fetch = registered.find(t => t.name === 'fetch')
     if (!ls || !fetch) throw Error('registered scoped tools missing')

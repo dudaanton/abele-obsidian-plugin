@@ -95,7 +95,7 @@ function session(mode: 'off' | 'ask' | 'auto', kind: 'chat' | 'run' = 'chat') {
     modelId: 'sample-model',
     permissionMode: 'allow-all',
     toolModes: { canvas_edit: mode },
-    toolDiscovery: 'all',
+    toolDiscovery: 'all-at-once',
   })
   const chat = new ChatSession(ChatService.getInstance(), undefined, { agentId: agent.id, kind })
   chat.scopeResolver.setFullVaultAccess(true)

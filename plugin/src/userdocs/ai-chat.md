@@ -305,20 +305,22 @@ apart from creation and refresh, with confirmation. **Unregister project** retai
 checkout and requires removing its managed workspaces first. Git initialization, merging,
 pushing, editing files and automatic repair of jobs needing attention are not offered here.
 
-## Offering tools by group
+## Offering tools by section
 
 Open an agent on **Settings → Abele → AI Agent → Agents**, then its **Access** tab.
-Under **Tools**, **Tool discovery** chooses between **All at once** (the default) and
-**By group**. All at once gives the agent every enabled tool immediately. By group starts
-with the usual core file, skill, template and reference tools, plus a short list of the groups
-it can ask to reveal, such as Maps, Books or Canvas. Tools tied to a selected comment passage
-also stay available immediately.
+Under **Tools**, **Tool discovery** chooses between **By section** (the default) and
+**All at once**. By section starts with the file tools, skills, the reference and questions,
+plus one entry per tool group — Nodes, Tasks, Finance, Canvas, Maps and so on — that says what
+the group is for. When the conversation needs one, the agent opens it and gets its tools, how
+to use them and, for Nodes, what this chat may reach on your computers right now. All at once
+gives the agent every enabled tool immediately, which costs more on every message.
 
-A group is listed only if at least one of its tools is enabled. Revealing it never turns on
-an Off tool, and Ask tools still ask for approval. Revealed groups stay available for the rest
-of the conversation, including after closing and reopening the chat. A new chat starts fresh.
-The choice travels with the agent when you transfer settings. You can switch it back to
-compare the two modes; neither mode changes your permissions.
+A section is listed only if at least one of its tools is enabled. Opening it never turns on an
+Off tool, and Ask tools still ask for approval. Open sections stay with the branch of the
+conversation: going back to before the agent opened one closes it again. A chat with node scope
+has Nodes open from the start. The words each section tells the agent can be changed under
+**Tool descriptions**, like any tool's. The choice travels with the agent when you transfer
+settings.
 
 ## Saved keys in requests
 

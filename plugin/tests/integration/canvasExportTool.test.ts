@@ -18,6 +18,9 @@ import type { AgentTool } from '@/ai/client'
 import { useVault } from '../helpers/testEnv'
 import { destroyChatsAfterEach } from '../helpers/chatTeardown'
 
+// The model here calls its tools by name: these agents are offered every tool at once, as
+// sections are not what is tested (`toolGroups.test.ts` covers them).
+
 destroyChatsAfterEach()
 
 const delivery = vi.hoisted(() => vi.fn())
@@ -50,7 +53,7 @@ it('registers an independent Ask permission, preserving explicit Off during migr
   expect(createAgentTools().some((t) => t.name === 'canvas_export')).toBe(true)
   expect(CANVAS_TOOL_MODES.canvas_export).toBe('ask')
   const ai = JSON.parse(JSON.stringify(DEFAULT_AI_SETTINGS))
-  const agent = createAgent({ toolModes: { canvas_export: 'off' } })
+  const agent = createAgent({ toolDiscovery: 'all-at-once', toolModes: { canvas_export: 'off' } })
   ai.agents = [agent]
   migrateAgents(ai)
   expect(ai.agents.find((a: { id: string }) => a.id === agent.id).toolModes.canvas_export).toBe(
@@ -61,7 +64,11 @@ it('registers an independent Ask permission, preserving explicit Off during migr
       subAgentRefusal(
         'canvas_export',
         { path: 'sample.canvas' },
-        createAgent({ permissionMode: 'allow-all', toolModes: { canvas_export: mode } }),
+        createAgent({
+          toolDiscovery: 'all-at-once',
+          permissionMode: 'allow-all',
+          toolModes: { canvas_export: mode },
+        }),
         scope
       )
     ).toMatch(/not enabled|approval/)
@@ -69,7 +76,7 @@ it('registers an independent Ask permission, preserving explicit Off during migr
     subAgentRefusal(
       'canvas_export',
       { path: 'outside.canvas' },
-      createAgent({ toolModes: { canvas_export: 'auto' } }),
+      createAgent({ toolDiscovery: 'all-at-once', toolModes: { canvas_export: 'auto' } }),
       scope
     )
   ).toMatch(/scope/)
@@ -117,6 +124,7 @@ it('dispatches an approved export through the owning chat and keeps Off unavaila
   }
   const registry = AgentRegistry.getInstance()
   const agent = registry.create({
+    toolDiscovery: 'all-at-once',
     name: 'Sample export helper',
     providerId: 'sample-provider',
     modelId: 'sample-model',

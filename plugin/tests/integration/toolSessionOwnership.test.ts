@@ -10,6 +10,9 @@ import { DelegateRun } from '@/ai/DelegateRun'
 import { deferred } from '../helpers/deferred'
 import { createQuestionsTool } from '@/ai/tools/QuestionsTool'
 
+// The model here calls its tools by name: these agents are offered every tool at once, as
+// sections are not what is tested (`toolGroups.test.ts` covers them).
+
 const sessions: ChatSession[] = []
 afterEach(() => {
   sessions.forEach((session) => session.destroy())
@@ -46,6 +49,7 @@ it('asks in the executing chat even when another chat is in front', async () => 
   config.ai = { ...DEFAULT_AI_SETTINGS, agents: [], defaultAgentId: '' }
   const registry = AgentRegistry.getInstance()
   const agent = registry.create({
+    toolDiscovery: 'all-at-once',
     name: 'Sample helper',
     toolModes: { questions: 'auto' },
     permissionMode: 'allow-all',
@@ -75,12 +79,13 @@ it('keeps a delegation attached to its caller while a second tool is running', a
   config.ai = { ...DEFAULT_AI_SETTINGS, agents: [], defaultAgentId: '' }
   const registry = AgentRegistry.getInstance()
   const agent = registry.create({
+    toolDiscovery: 'all-at-once',
     name: 'Sample coordinator',
     toolModes: { delegate: 'auto' },
     maxDelegateDepth: 1,
   })
   registry.setDefault(agent.id)
-  const target = registry.create({ name: 'Sample worker' })
+  const target = registry.create({ toolDiscovery: 'all-at-once', name: 'Sample worker' })
   const service = ChatService.getInstance()
   const owner = new ChatSession(service)
   const other = new ChatSession(service)

@@ -229,6 +229,8 @@ export function boundRunToParent(run: ChatSession, parent: ChatSession): void {
   run.toolModes.value = intersectModes(parent.toolModes.value, run.toolModes.value)
   run.depthLimit = Math.min(parent.depthLimit, parent.agent.value?.maxDelegateDepth ?? 0)
   run.skillCeiling = parent.offeredSkillNames()
+  // The sections the parent opened are part of how it understood the task; the run starts there.
+  run.inheritToolSections(parent.openToolSections())
   run.githubConnectionCeiling = intersectModes(
     parent.githubAgent()?.githubConnections ?? {},
     target?.githubConnections ?? {}
