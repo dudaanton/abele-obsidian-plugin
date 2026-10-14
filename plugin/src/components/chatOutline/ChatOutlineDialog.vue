@@ -3,6 +3,7 @@
     <ChatOutlinePane
       v-bind="props"
       :preview="preview"
+      :footer-to="footer"
       :autofocus="!Platform.isMobile"
       @start="emit('start')"
       @latest="emit('latest')"
@@ -12,10 +13,14 @@
       @jump="jump"
       @discussion="discussion"
     />
+    <template #footer>
+      <div ref="footer" class="abele-chat-outline__footer-row" />
+    </template>
   </Modal>
 </template>
 
 <script setup lang="ts">
+import { useTemplateRef } from 'vue'
 import Modal from '../obsidian/Modal.vue'
 import { Platform } from 'obsidian'
 import ChatOutlinePane from './ChatOutlinePane.vue'
@@ -24,6 +29,7 @@ import type { NavigationState } from '@/ai/chatNavigation'
 import type { ChatMessage, MessageComment } from '@/ai/types'
 import type { FindPart } from '@/ai/chatFind'
 
+const footer = useTemplateRef<HTMLElement>('footer')
 const props = defineProps<{
   messages: readonly ChatMessage[]
   allMessages?: readonly ChatMessage[]
@@ -65,3 +71,9 @@ const preview = async (id: string) => {
   }
 }
 </script>
+
+<style>
+.abele-chat-outline__footer-row {
+  display: contents;
+}
+</style>

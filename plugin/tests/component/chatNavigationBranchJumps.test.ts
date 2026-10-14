@@ -16,7 +16,12 @@ import { useFakeClock } from '../helpers/fakeClock'
 const pause = useFakeClock()
 let session: ChatSession
 let wrapper: VueWrapper
-const modal = () => document.querySelector<HTMLElement>('.abele-chat-outline')!
+// The whole dialog: its moves sit in the footer row, outside the outline itself.
+const modal = () => {
+  const outline = document.querySelector<HTMLElement>('.abele-chat-outline')
+  // Null once the dialog has closed, as the outline itself was.
+  return (outline && (outline.closest<HTMLElement>('.modal') ?? document.body)) as HTMLElement
+}
 const open = async () => {
   await wrapper.find('.abele-ai-chat__navigation').trigger('click')
   await flushPromises()

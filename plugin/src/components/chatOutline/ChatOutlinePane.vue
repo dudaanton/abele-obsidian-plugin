@@ -70,20 +70,23 @@
       </template>
     </div>
 
-    <!-- In a dialog the moves sit under the list, beside the keys, as the quick switcher shows its. -->
-    <div class="abele-chat-outline__footer">
-      <Icon
-        v-for="b in moves"
-        :key="b.icon"
-        :icon="b.icon"
-        :tooltip="b.label"
-        :disabled="b.disabled"
-        @click="b.run"
-      />
-      <span class="abele-chat-outline__keys">
-        <span><kbd>↑↓</kbd> move</span><span><kbd>→</kbd> open</span><span><kbd>↵</kbd> go</span>
-      </span>
-    </div>
+    <!-- In a dialog the moves sit under the list, beside the keys, as the quick switcher shows its:
+         in the dialog's own footer row, so the list scrolls to the bottom of the body. -->
+    <Teleport :to="footerTo" :disabled="!footerTo">
+      <div class="abele-chat-outline__footer">
+        <Icon
+          v-for="b in moves"
+          :key="b.icon"
+          :icon="b.icon"
+          :tooltip="b.label"
+          :disabled="b.disabled"
+          @click="b.run"
+        />
+        <span class="abele-chat-outline__keys">
+          <span><kbd>↑↓</kbd> move</span><span><kbd>→</kbd> open</span><span><kbd>↵</kbd> go</span>
+        </span>
+      </div>
+    </Teleport>
   </div>
 </template>
 
@@ -140,6 +143,8 @@ const props = withDefaults(
     /** A fork to open and show first. */
     focusFork?: string
     preview: (id: string) => Promise<NavigationDiscussionData | null>
+    /** The dialog's footer row, where the moves go; without one they stay under the list. */
+    footerTo?: HTMLElement | null
   }>(),
   {
     allMessages: undefined,
@@ -147,6 +152,7 @@ const props = withDefaults(
     pending: undefined,
     focusFork: undefined,
     autofocus: true,
+    footerTo: null,
   }
 )
 const emit = defineEmits<{
@@ -430,6 +436,12 @@ const onKey = (event: KeyboardEvent) => {
   gap: var(--size-4-1);
   padding-top: var(--size-4-2);
   border-top: var(--border-width) solid var(--background-modifier-border);
+}
+// The dialog's footer draws the line and the room above it already.
+.abele-modal__footer .abele-chat-outline__footer {
+  flex: 1 1 100%;
+  padding-top: 0;
+  border-top: none;
 }
 .abele-chat-outline__keys {
   display: flex;

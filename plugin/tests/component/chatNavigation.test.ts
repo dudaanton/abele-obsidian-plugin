@@ -31,6 +31,8 @@ const messages: ChatMessage[] = [
 ]
 let wrapper: VueWrapper | undefined
 const root = () => document.querySelector<HTMLElement>('.abele-chat-outline')!
+/** The whole dialog: its moves sit in the footer row, outside the outline itself. */
+const dialog = () => root().closest<HTMLElement>('.modal') ?? document.body
 const click = async (text: string) => {
   if (text === 'Answers · 1') {
     root()
@@ -50,7 +52,8 @@ const click = async (text: string) => {
   }
   let button = [
     ...root().querySelectorAll<HTMLElement>('.search-result-file-match'),
-    ...root().querySelectorAll<HTMLElement>('.tree-item-self, button[aria-label]'),
+    ...root().querySelectorAll<HTMLElement>('.tree-item-self'),
+    ...dialog().querySelectorAll<HTMLElement>('button[aria-label]'),
   ].find((el) => el.textContent?.includes(text) || el.getAttribute('aria-label')?.includes(text))
   if (!button) {
     root().querySelector<HTMLElement>('[data-question] > .tree-item-self > .collapse-icon')?.click()
@@ -212,6 +215,13 @@ describe('the navigation modal', () => {
     expect(wrapper!.emitted('jump')).toBeUndefined()
     await click('Put a pond near')
     expect(wrapper!.emitted('jump')![0]).toEqual(['a1'])
+  })
+
+  it('keeps the moves in the dialog footer, so the list scrolls down to the bottom of the body', async () => {
+    await open({ canGoBack: true })
+    const footer = document.querySelector('.abele-modal__footer')
+    expect(footer?.querySelector('[aria-label^="To the start"]')).not.toBeNull()
+    expect(document.querySelector('.abele-modal__body .abele-chat-outline__footer')).toBeNull()
   })
 
   it('offers start, latest, back, and search results in folded tool details without switching branches', async () => {
