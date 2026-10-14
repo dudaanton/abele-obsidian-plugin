@@ -73,7 +73,16 @@ export interface InputPorts {
    * make there. The gesture's draft stays open until it answers.
    */
   dropped?(drop: CanvasDrop): void
+  /** Two presses in one place: what was pressed opens for writing, or a card is made there. */
+  double?(target: CanvasDouble): void
 }
+/** What a double press landed on. */
+export type CanvasDouble =
+  | { kind: 'node' | 'frame' | 'connection'; id: string }
+  | { kind: 'empty'; point: Point }
+/** Two presses this close in time and on the screen are one double press. */
+const DOUBLE_MS = 400,
+  DOUBLE_PX = 8
 /** Where a connection was let go over nothing, and the card edge it came from. */
 export interface CanvasDrop {
   source: string
@@ -173,6 +182,8 @@ export class CanvasInput implements CanvasViewerInput {
   private penHover: [number, number] | null = null
   /** Once a pen has touched the canvas, a finger moves it rather than drawing. */
   private penSeen = false
+  /** The last press with Select that has not become a drag, for a second press to pair with. */
+  private lastPress: { time: number; x: number; y: number } | null = null
   constructor(
     private readonly viewer: CanvasViewer,
     private readonly ports: InputPorts
@@ -248,6 +259,7 @@ export class CanvasInput implements CanvasViewerInput {
       }
       return true
     }
+    if (this.doubleDown(event)) return true
     if (this.connectionDown(event)) return true
     if (this.ports.tool() !== 'select') return false
     const graph = this.viewer.graph,
@@ -265,9 +277,9 @@ export class CanvasInput implements CanvasViewerInput {
           ? hitResize(single, x, y, this.viewer.camera.zoom, event.pointerType !== 'mouse')
           : null,
       node = corner ? single : (named ?? hitNode(graph, x, y))
-    if (!node && !multiple) {
+    if (!node && !multiple && event.pointerType !== 'mouse') {
       this.ports.select(new Set())
-      return false // Empty space still pans.
+      return false // A finger on empty space moves the canvas; a mouse draws a box there.
     }
     if (!corner && (multiple || !node || !selected.has(node.id)))
       this.ports.select(selectNode(selected, node?.id ?? null, multiple))
@@ -321,6 +333,7 @@ export class CanvasInput implements CanvasViewerInput {
       dx = x - g.start[0],
       dy = y - g.start[1]
     if (g.box) {
+      this.lastPress = null
       this.marquee = {
         x: Math.min(x, g.start[0]),
         y: Math.min(y, g.start[1]),
@@ -343,6 +356,7 @@ export class CanvasInput implements CanvasViewerInput {
         return
       }
       g.active = true
+      this.lastPress = null
     }
     let preview: CanvasGraph
     if (g.corner) {
@@ -604,6 +618,50 @@ export class CanvasInput implements CanvasViewerInput {
     })
     return side ? { node, side } : null
   }
+  /** The connection or free line under a point, the one drawn last winning. */
+  private connectionAt(point: Point, tolerance: number): string | null {
+    const graph = this.viewer.graph
+    const line = [...linesOf(graph)]
+      .reverse()
+      .find((l) => segmentDistance(point, l.from, l.to) <= tolerance)
+    if (line) return line.id
+    const edge = [...graph.edges].reverse().find((e) => {
+      const samples = routeSamples(paintedRoute(e, graph))
+      return samples.slice(1).some((p, i) => segmentDistance(point, samples[i], p) <= tolerance)
+    })
+    return edge?.id ?? null
+  }
+  /** A second press with Select close to the first: the host opens what it landed on. */
+  private doubleDown(event: PointerEvent): boolean {
+    if (this.ports.tool() !== 'select' || event.shiftKey || !this.ports.double) return false
+    const now = Date.now(),
+      last = this.lastPress
+    this.lastPress = { time: now, x: event.clientX, y: event.clientY }
+    if (
+      !last ||
+      now - last.time > DOUBLE_MS ||
+      Math.hypot(event.clientX - last.x, event.clientY - last.y) > DOUBLE_PX
+    )
+      return false
+    this.lastPress = null
+    const graph = this.viewer.graph,
+      [x, y] = this.point(event),
+      labelled = (event.target as Element | null)?.closest?.<HTMLElement>('[data-frame-id]'),
+      over = hitNode(graph, x, y),
+      tolerance = (event.pointerType === 'mouse' ? 10 : 22) / this.viewer.camera.zoom,
+      connection = this.connectionAt({ x, y }, tolerance)
+    const target: CanvasDouble = labelled?.dataset.frameId
+      ? { kind: 'frame', id: labelled.dataset.frameId }
+      : over && over.type !== 'group'
+        ? { kind: 'node', id: over.id }
+        : connection
+          ? { kind: 'connection', id: connection }
+          : over
+            ? { kind: 'frame', id: over.id }
+            : { kind: 'empty', point: { x: Math.round(x), y: Math.round(y) } }
+    this.ports.double(target)
+    return true
+  }
   private connectionDown(event: PointerEvent): boolean {
     const graph = this.viewer.graph,
       [x, y] = this.point(event),
@@ -650,20 +708,10 @@ export class CanvasInput implements CanvasViewerInput {
         // Bodies of cards win over connections underneath them; selected endpoint handles win above.
         const card = hitNode(graph, x, y)
         if (card && card.type !== 'group') return false
-        line =
-          [...linesOf(graph)]
-            .reverse()
-            .find((l) => segmentDistance(point, l.from, l.to) <= tolerance) ?? null
-        const hit =
-          line ??
-          [...graph.edges].reverse().find((e) => {
-            const samples = routeSamples(paintedRoute(e, graph))
-            return samples
-              .slice(1)
-              .some((p, i) => segmentDistance(point, samples[i], p) <= tolerance)
-          })
+        const hit = this.connectionAt(point, tolerance)
         if (!hit) return false
-        id = hit.id
+        id = hit
+        line = linesOf(graph).find((l) => l.id === hit) ?? null
       }
       this.ports.select(new Set([id]))
       creating = false
@@ -702,6 +750,7 @@ export class CanvasInput implements CanvasViewerInput {
         return
       }
       g.active = true
+      this.lastPress = null
     }
     const [x, y] = this.point(event)
     g.point = { x, y }

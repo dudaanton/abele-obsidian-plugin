@@ -1,7 +1,4 @@
-import { afterEach, describe, expect, it, vi } from 'vitest'
-import { CanvasEditor } from '@/canvas/Editor'
-import { CanvasViewer } from '@/canvas/Viewer'
-import { CanvasDocument } from '@/canvas/documentRegistry'
+import { describe, expect, it, vi } from 'vitest'
 import { emptyCanvas, type CanvasGraph } from '@/canvas/core/model'
 import { TFile } from 'obsidian'
 

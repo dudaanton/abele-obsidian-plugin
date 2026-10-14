@@ -198,6 +198,12 @@ export function routeEdge(edge: CanvasEdge, graph: CanvasGraph): Point[] {
     ? [a, { x: (a.x + b.x) / 2, y: a.y }, { x: (a.x + b.x) / 2, y: b.y }, b]
     : [a, { x: a.x, y: (a.y + b.y) / 2 }, { x: b.x, y: (a.y + b.y) / 2 }, b]
 }
+/** Where a connection's or a free line's label stands: the middle of the points it runs by. */
+export function labelPoint(points: Point[]): Point {
+  const first = points[0],
+    last = points[points.length - 1]
+  return points.length === 5 ? points[2] : { x: (first.x + last.x) / 2, y: (first.y + last.y) / 2 }
+}
 export function sideAt(node: CanvasNode, point: Point): Side {
   const dx = (point.x - node.x - node.width / 2) / node.width,
     dy = (point.y - node.y - node.height / 2) / node.height

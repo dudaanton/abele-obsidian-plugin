@@ -18,6 +18,7 @@ import { lintCanvas, type CanvasWarning } from './lint'
 import {
   centredLabel,
   contentBox,
+  labelPoint,
   paintedRoute,
   routeEdge,
   textLines,
@@ -352,10 +353,7 @@ export function paintCanvas(
     if (edge.toEnd !== 'none') arrow(ctx, before, end, edge.styleAttributes?.arrow)
     if (edge.fromEnd === 'arrow') arrow(ctx, points[1], points[0], edge.styleAttributes?.arrow)
     if (edge.label) {
-      const first = points[0],
-        last = points[points.length - 1]
-      const middle =
-        points.length === 5 ? points[2] : { x: (first.x + last.x) / 2, y: (first.y + last.y) / 2 }
+      const middle = labelPoint(points)
       ctx.font = `${theme.size}px ${theme.font}`
       const width = ctx.measureText(edge.label).width
       const caption = {
@@ -396,8 +394,9 @@ export function paintCanvas(
     if (line.label) {
       ctx.font = `${theme.size}px ${theme.font}`
       const width = ctx.measureText(line.label).width,
-        x = (line.from.x + line.to.x) / 2 - width / 2,
-        y = (line.from.y + line.to.y) / 2
+        middle = labelPoint([line.from, line.to]),
+        x = middle.x - width / 2,
+        y = middle.y
       ctx.fillStyle = theme.paper
       ctx.fillRect(x - 4, y - theme.size, width + 8, theme.size * 1.4)
       ctx.fillStyle = theme.text

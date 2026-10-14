@@ -13,7 +13,14 @@ import type { CanvasSession, GraphTransform } from './core/session'
 import { CanvasSessionError } from './core/session'
 import { CanvasWriteScheduler, type CanvasWriteSchedule } from './core/writeScheduler'
 import type { CanvasViewer } from './Viewer'
-import { CanvasInput, OPPOSITE, type CanvasDrop, type CanvasInputTool } from './input'
+import {
+  CanvasInput,
+  OPPOSITE,
+  type CanvasDouble,
+  type CanvasDrop,
+  type CanvasInputTool,
+} from './input'
+import { paintedRoute, routeSamples } from './core/scene'
 import { WIDTHS } from '../drawing/model'
 import { THICKNESSES, type Thickness } from '../ink/thickness'
 
@@ -120,6 +127,10 @@ export class CanvasEditor {
   private fingerDraws = readFingerDraws()
   /** A frame whose name is being written on its label. */
   private naming: string | null = null
+  /** A connection or free line whose label is being written where it stands. */
+  private labeling: string | null = null
+  /** The tool to go back to when a held Space lets go of the canvas. */
+  private spaceFrom: CanvasInputTool | null = null
   private ownedDraft: CanvasEditorDocument | null = null
   /** Strokes drawn while the last change was being written, added one by one after it. */
   private held: CanvasOperation[] = []
@@ -170,6 +181,15 @@ export class CanvasEditor {
       this.refresh()
     },
     renameFrame: (id: string, label: string): Promise<void> => this.frameOp(id, 'rename', label),
+    /** The connection whose label is being written where it stands. */
+    labeling: (): string | null => this.labeling,
+    editLabel: (id: string | null): void => {
+      this.labeling = id
+      if (id) this.selected = new Set([id])
+      this.refresh()
+    },
+    /** Writes a connection's label as one step; an unchanged one is left alone. */
+    saveLabel: (id: string, label: string): Promise<void> => this.saveLabel(id, label),
     foldFrame: (id: string, collapsed: boolean): Promise<void> =>
       this.frameOp(id, collapsed ? 'collapse' : 'expand'),
     /**
@@ -177,6 +197,8 @@ export class CanvasEditor {
      * clipboard, stacking, and taking a frame away together with what is inside it.
      */
     act: (action: CanvasAction): Promise<void> => this.act(action),
+    /** A text card's place taken by a note, made from its words, in one step. */
+    replaceWithNote: (id: string, path: string): Promise<void> => this.replaceWithNote(id, path),
     /** A connection let go over nothing, waiting to be told what to make there. */
     drop: (): CanvasDrop | null => this.drop,
     /** Makes a card, a note or a shape at the end of the dropped connection, or nothing. */
@@ -502,6 +524,7 @@ export class CanvasEditor {
         this.drop = drop
         this.refresh()
       },
+      double: (target) => this.double(target),
     })
     viewer.onSelect = (node) => {
       if (this.editing || this.waiting) return
@@ -521,6 +544,12 @@ export class CanvasEditor {
       doc.addEventListener('visibilitychange', hidden)
       this.off.push(() => doc.removeEventListener('visibilitychange', hidden))
     }
+    this.listen(viewer.el, 'keyup', (event) => {
+      if ((event as KeyboardEvent).key !== ' ' || this.spaceFrom === null) return
+      this.tool = this.spaceFrom
+      this.spaceFrom = null
+      this.refresh()
+    })
     viewer.onFingersTap = (fingers) =>
       this.buttons.get(fingers === 2 ? 'Undo canvas change' : 'Redo canvas change')?.click()
     this.refresh()
@@ -731,9 +760,11 @@ export class CanvasEditor {
       y: region.y + region.height / 2 - 80 + offset,
     }
   }
-  private addText(shape?: Shape): void {
+  /** A card, or a shape, at the middle of the view, or with its middle at a point. */
+  private addText(shape?: Shape, at?: { x: number; y: number }): void {
     const document = this.ready(),
-      id = nanoid()
+      id = nanoid(),
+      size = { width: 260, height: 160 }
     document.beginDraft()
     this.ownedDraft = document
     this.update(document, [
@@ -745,7 +776,9 @@ export class CanvasEditor {
           shape,
           ...(shape && this.shapeColor.value ? { color: this.shapeColor.value } : {}),
           label: '',
-          ...this.location(),
+          ...(at
+            ? { x: at.x - size.width / 2, y: at.y - size.height / 2, ...size }
+            : this.location()),
         },
       },
     ])
@@ -753,6 +786,33 @@ export class CanvasEditor {
     this.tool = 'select'
     this.palette.hidden = true
     this.showText(id)
+  }
+  /** Two presses on one place open what is there for writing, or make a card on empty canvas. */
+  private double(target: CanvasDouble): void {
+    if (target.kind === 'empty') return this.addText(undefined, target.point)
+    this.selected = new Set([target.id])
+    if (target.kind === 'frame') this.naming = target.id
+    else if (target.kind === 'connection') this.labeling = target.id
+    else {
+      const node = this.node()
+      if (node?.type === 'text') return this.editText()
+      if (node) this.viewer.openNode(node)
+    }
+    this.refresh()
+  }
+  private async saveLabel(id: string, label: string): Promise<void> {
+    if (this.labeling === id) this.labeling = null
+    const graph = this.ports.document()?.session.graph,
+      element =
+        graph?.edges.find((e) => e.id === id) ??
+        linesOf(graph ?? { nodes: [], edges: [] }).find((l) => l.id === id)
+    const text = label.replace(/\s+/g, ' ').trim()
+    if (!element || (element.label ?? '') === text) return this.refresh()
+    const document = this.ready()
+    document.beginDraft()
+    this.update(document, [{ op: 'update', id, patch: { label: text || undefined } }])
+    document.finishDraft()
+    await this.saving(() => this.ports.publish())
   }
   private showText(id: string): void {
     this.editing = id
@@ -1144,6 +1204,18 @@ export class CanvasEditor {
     if (after) this.selected = after
     await this.saving(() => this.ports.publish())
   }
+  private async replaceWithNote(id: string, path: string): Promise<void> {
+    const document = this.ready(),
+      node = document.session.graph.nodes.find((n) => n.id === id)
+    if (node?.type !== 'text') return
+    document.beginDraft()
+    this.update(document, [
+      { op: 'update', id, patch: { type: 'file', file: path, text: undefined } },
+    ])
+    document.finishDraft()
+    this.selected = new Set([id])
+    await this.saving(() => this.ports.publish())
+  }
   /** Renames, folds or unfolds one frame as a single step to undo. */
   private async frameOp(
     id: string,
@@ -1268,7 +1340,15 @@ export class CanvasEditor {
       const edge = graph.edges.find((e) => e.id === id)
       if (edge) {
         kinds.push('connection')
-        rects.push(...graph.nodes.filter((n) => n.id === edge.fromNode || n.id === edge.toNode))
+        // Where the line runs, not the cards it joins, so the bar over it stands by it.
+        const points = routeSamples(paintedRoute(edge, graph)),
+          xs = points.map((p) => p.x),
+          ys = points.map((p) => p.y)
+        if (points.length) {
+          const x = Math.min(...xs),
+            y = Math.min(...ys)
+          rects.push({ x, y, width: Math.max(...xs) - x, height: Math.max(...ys) - y })
+        }
         continue
       }
       const line = linesOf(graph).find((l) => l.id === id)
@@ -1550,6 +1630,38 @@ export class CanvasEditor {
       return true
     }
     const command = event.metaKey || event.ctrlKey
+    if (event.key === ' ' && this.viewer.step === null && !command) {
+      // Space held moves the canvas whatever is in hand, as in every drawing tool.
+      if (!event.repeat && this.spaceFrom === null && this.tool !== 'pan') {
+        this.inputAdapter.cancel()
+        this.spaceFrom = this.tool
+        this.tool = 'pan'
+        this.refresh()
+      }
+      event.preventDefault()
+      return true
+    }
+    const tools: Record<string, [string, string?]> = {
+      v: ['Select canvas objects'],
+      h: ['Navigate canvas'],
+      a: ['Draw connection'],
+      f: ['Draw frame'],
+      l: ['Lasso canvas objects'],
+      p: ['Draw with pen', 'Draw with marker'],
+      e: ['Erase whole strokes', 'Erase part of strokes'],
+      t: ['Add text card'],
+      n: ['Add note or attachment'],
+      r: ['Add canvas shape'],
+    }
+    const letter = event.key.length === 1 ? event.key.toLowerCase() : ''
+    if (!command && !event.altKey && tools[letter]) {
+      const [first, again] = tools[letter],
+        pressed = this.buttons.get(first)?.getAttribute('aria-pressed') === 'true'
+      event.preventDefault()
+      event.stopPropagation()
+      this.buttons.get(pressed && again ? again : first)?.click()
+      return true
+    }
     let label: string
     if (command && event.key.toLowerCase() === 'z')
       label = event.shiftKey ? 'Redo canvas change' : 'Undo canvas change'
