@@ -47,11 +47,11 @@ const recordPoint=async (line,takes)=>{
   press(document.querySelector('.abele-trace-point [aria-label="Keep (Enter)"]'));
   await until(()=>!document.querySelector('.abele-trace-point'),'point saved');
   const said=()=>[...document.querySelectorAll('button.abele-debug-source__point')].map(b=>b.getAttribute('aria-label')).filter(l=>l&&!l.startsWith('Stop at line')).join(' | ');
-  await until(()=>said().startsWith('Record point ·'),'record point confirmed: '+said(),400).catch(e=>{throw Error(e.message+' / now: '+said()+' / state: '+debugState())});
+  await until(()=>said().startsWith('Record point ·'),'record point confirmed: '+said(),400).catch(()=>{throw Error('record point not confirmed: '+debugState())});
 };
 window.__dbgLog=[];if(!console.__wrapped){const d=console.debug.bind(console);console.debug=(...a)=>{if(/^\\[(debugger|trace|Abele node)\\]/.test(String(a[0])))window.__dbgLog.push(a.map(x=>x instanceof Error?x.message+' '+(x.code??''):typeof x==='string'?x:JSON.stringify(x)?.slice(0,300)).join(' '));d(...a)};console.__wrapped=true}
 const debugState=()=>JSON.stringify({log:window.__dbgLog.slice(-10),notices:[...document.querySelectorAll('.notice')].map(n=>n.textContent)})+' '+debugState0();
-const debugState0=()=>{const b=api.DebuggerService.instance.active.value,c=b?.controller;return JSON.stringify({session:c?.snapshot?.debug_session_id,lifecycle:c?.snapshot?.lifecycle,execution:c?.snapshot?.execution,status:c?.session.status,error:c?.error,bps:c?.snapshot?.breakpoints,identity:c?.snapshot?.target.build_identity,points:b?.trace?.points,actions:c?.actions?.slice(-3),notices:[...document.querySelectorAll('.notice')].map(n=>n.textContent)}).slice(0,3000)};
+const debugState0=()=>{const b=api.DebuggerService.instance.active.value,c=b?.controller,n=c?.snapshot;return JSON.stringify({status:c?.session.status,error:c?.error,lifecycle:n?.lifecycle,execution:n?.execution,identity:n?.target.build_identity,bps:n?.breakpoints?.map(x=>[x.source_id,x.line,x.status]),known:c?.knownBreakpoints?.().map(x=>[x.sourceId,x.line,x.state,x.file]),points:b?.trace?.points?.map(p=>p.breakpoint_id.slice(0,6)),actions:c?.actions?.slice(-3).map(a=>[a.kind,a.status,a.result])})};
 const goOn=async()=>{
   const go=await until(()=>[...document.querySelectorAll('[aria-label="Continue (F5)"]')].find(b=>!b.classList.contains('is-disabled')&&!b.hasAttribute('disabled')),'Continue offered');
   press(go);
