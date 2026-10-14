@@ -328,6 +328,72 @@ describe('the view while older messages are being revealed', () => {
 })
 
 /**
+ * The marker above the oldest mounted message, and a page that does not fill the box.
+ *
+ * Revealing used to wait for a scroll event near the top, and that is all it waited for. A page
+ * of an agent's work is mostly calls folded into a few runs, so thirty messages can draw shorter
+ * than the box: there is nothing to scroll, no scroll event ever comes, and the marker saying how
+ * many are held back was the only thing on screen about them — not something to press.
+ */
+describe('reaching the messages held back', () => {
+  it('reveals the previous page from the marker, which is a button', async () => {
+    messages.value = conversation(DEFAULT_TAIL_PAGE_SIZE * 3)
+    const wrapper = mountAttached()
+    const marker = wrapper.find('.abele-ai-chat__older button')
+
+    expect(marker.exists()).toBe(true)
+    expect(marker.attributes('aria-label')).toContain('earlier messages')
+    await marker.trigger('click')
+    await nextTick()
+
+    expect(mounted(wrapper)).toBe(DEFAULT_TAIL_PAGE_SIZE * 2)
+  })
+
+  it('reveals earlier pages by itself while the conversation is too short to scroll, up to its start', async () => {
+    messages.value = conversation(DEFAULT_TAIL_PAGE_SIZE * 3)
+    const wrapper = mountAttached()
+    const model = layoutModel(wrapper)
+    // Thirty short rows: 300px in an 800px box, nothing to scroll.
+    model.setHeights(10)
+    await advance(60)
+    await nextTick()
+    model.setHeights(10)
+    await advance(60)
+    await nextTick()
+
+    expect(mounted(wrapper)).toBe(DEFAULT_TAIL_PAGE_SIZE * 3)
+    expect(wrapper.find('.abele-ai-chat__older').exists()).toBe(false)
+  })
+
+  it('reveals nothing by itself once the page fills the box', async () => {
+    messages.value = conversation(DEFAULT_TAIL_PAGE_SIZE * 3)
+    const wrapper = mountAttached()
+    const model = layoutModel(wrapper)
+    model.setHeights(100)
+    model.scrollTo(2200)
+    await advance(60)
+    await nextTick()
+
+    expect(mounted(wrapper)).toBe(DEFAULT_TAIL_PAGE_SIZE)
+  })
+
+  it('reveals the previous page on a turn of the wheel up at the very top, where nothing scrolls', async () => {
+    messages.value = conversation(DEFAULT_TAIL_PAGE_SIZE * 3)
+    const wrapper = mountAttached()
+    const model = layoutModel(wrapper)
+    model.setHeights(100)
+    await advance(60)
+    // Already at the top, the event for getting there spent: the wheel is all that comes now.
+    model.scrollTo(0)
+
+    await wrapper.find('.abele-ai-chat__messages').trigger('wheel', { deltaY: -40 })
+    await nextTick()
+
+    expect(mounted(wrapper)).toBe(DEFAULT_TAIL_PAGE_SIZE * 2)
+  })
+})
+
+/**
  * A chat follows the reply being streamed into it, until the reader scrolls back to read
  * something. Then it has to stay where they left it, however much more of the reply arrives.
  */

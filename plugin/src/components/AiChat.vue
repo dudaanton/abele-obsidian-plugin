@@ -157,9 +157,14 @@
           </template>
         </EmptyState>
 
+        <!-- Scrolling to the top reveals them too; this is the way for a key, or a chat too short to scroll. -->
         <div v-if="olderCount" class="abele-ai-chat__older">
-          <Icon icon="chevron-up" no-hover />
-          <span>{{ olderCount }} earlier messages</span>
+          <Icon
+            icon="chevron-up"
+            :text-right="`${olderCount} earlier messages`"
+            :label="`Show ${olderCount} earlier messages`"
+            @click="loadOlder"
+          />
         </div>
 
         <template
@@ -1143,6 +1148,7 @@ const {
   onMessagesScroll,
   scrollOnUserSend,
   doScroll,
+  loadOlder,
   holdInView,
   clearAnchor,
   rememberPlace,

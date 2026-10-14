@@ -96,6 +96,9 @@ export function useChatScroll(options: ChatScrollOptions) {
         ? (event as WheelEvent).deltaY < 0
         : event?.type === 'keydown' && SCROLL_UP_KEYS.has((event as KeyboardEvent).key)
     if (up) shouldAutoScroll = false
+    // At the very top nothing scrolls, so no scroll event comes to say the reader wants more.
+    const el = messagesContainer.value
+    if (up && el && el.scrollTop < LOAD_OLDER_THRESHOLD_PX) loadOlder()
   }
 
   const SCROLL_UP_KEYS = new Set(['ArrowUp', 'PageUp', 'Home'])
@@ -126,13 +129,39 @@ export function useChatScroll(options: ChatScrollOptions) {
    * messages take to render themselves. Held with the frames rather than with a timer: a frame
    * is when layout has settled, and there is nothing to correct between them.
    */
+  let revealing = false
   const loadOlder = () => {
     const el = messagesContainer.value
-    if (!el || !hasOlder.value) return
+    // One page at a time: the next is asked for once this one is on the page and measured.
+    if (!el || !hasOlder.value || revealing) return
 
+    revealing = true
     captureAnchor()
     showOlder()
-    void nextTick(() => holdAnchorAWhile(el))
+    void nextTick(() => {
+      holdAnchorAWhile(el)
+      anchors.nextFrame(el.win, () => {
+        revealing = false
+        revealUntilScrollable()
+      })
+    })
+  }
+
+  /**
+   * Reveals earlier pages while the conversation is too short to scroll back through.
+   *
+   * Revealing waits for the reader to scroll near the top, and a page that does not fill the box
+   * has nothing to scroll: an agent's thirty messages are mostly calls folded into a few runs,
+   * and they can draw shorter than the box. No scroll event then ever came, and the messages
+   * above stayed out of reach. Measured by the content, not the position, so a chat opened at
+   * its end is not taken for one being read from the top before it has been scrolled there.
+   */
+  const revealUntilScrollable = () => {
+    const el = messagesContainer.value
+    if (!el || composing.value || !hasOlder.value || revealing) return
+    // Not laid out — hidden, or nothing drawn in it yet: no height to go by.
+    if (!el.clientHeight || !el.scrollHeight) return
+    if (el.scrollHeight - el.clientHeight < LOAD_OLDER_THRESHOLD_PX) loadOlder()
   }
 
   // Before the page changes: a message added, removed or replaced, a reply starting or ending.
@@ -238,6 +267,9 @@ export function useChatScroll(options: ChatScrollOptions) {
     // even when the conversation grows without a completed Markdown mutation in this tick.
     keepGapCurrent()
     doScroll()
+    // Once drawn: a conversation opened or switched to may not fill the box.
+    const el = messagesContainer.value
+    if (el) anchors.nextFrame(el.win, revealUntilScrollable)
   })
 
   /**
@@ -258,6 +290,7 @@ export function useChatScroll(options: ChatScrollOptions) {
       boxHeight = el.clientHeight
       if (shouldAutoScroll) scrollContainerTo(el, el.scrollHeight)
       else scrollContainerTo(el, el.scrollHeight - el.clientHeight - gapBeforeComposing)
+      revealUntilScrollable()
     })
   })
 
@@ -297,6 +330,7 @@ export function useChatScroll(options: ChatScrollOptions) {
     }
     // A narrower box wraps the text longer; a reader at the end stays at the end.
     doScroll()
+    revealUntilScrollable()
   }
 
   /**
@@ -324,6 +358,7 @@ export function useChatScroll(options: ChatScrollOptions) {
       holdSteady()
       keepGapCurrent()
       doScroll()
+      revealUntilScrollable()
     })
     mutObserver.observe(el, {
       childList: true,
@@ -334,6 +369,7 @@ export function useChatScroll(options: ChatScrollOptions) {
     boxHeight = null
     sizeObserver = new ResizeObserver(onBoxResized)
     sizeObserver.observe(el)
+    anchors.nextFrame(el.win, revealUntilScrollable)
   }
 
   const unobserve = () => {
@@ -376,6 +412,7 @@ export function useChatScroll(options: ChatScrollOptions) {
     doScroll,
     holdInView,
     endSteady,
+    loadOlder,
     rememberPlace,
     returnTo,
     places,
