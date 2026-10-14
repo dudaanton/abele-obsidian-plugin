@@ -721,6 +721,31 @@ export function checkScreen(scope: ScreenScope = {}): ScreenCheck {
       }
     }
     rule('Р37', 'Нет цветной полосы сбоку и полосы сбоку со скруглением', f37)
+
+    // Р39: a window without a frame draws its own buttons over the page: macOS's three lights in the
+    // top left corner. A dialog laid over the whole window keeps its words and controls out of
+    // there, as Obsidian's tab bar does; in native full screen there are no lights to avoid.
+    const f39: string[] = []
+    const bodyEl = document.body
+    if (
+      bodyEl.classList.contains('mod-macos') &&
+      bodyEl.classList.contains('is-hidden-frameless') &&
+      !bodyEl.classList.contains('is-fullscreen')
+    ) {
+      const lights = { right: 78, bottom: 38 }
+      for (const el of document.querySelectorAll('.modal *')) {
+        if (!visible(el)) continue
+        // The words by their glyphs, a control by its box: a title's padding may lie under the lights.
+        const text = [...el.childNodes].find((n) => n.nodeType === 3 && n.textContent!.trim())
+        if (!text && !el.matches('button, .clickable-icon, input, select')) continue
+        const range = document.createRange()
+        if (text) range.selectNodeContents(text)
+        const r = text ? range.getBoundingClientRect() : el.getBoundingClientRect()
+        if (r.left < lights.right && r.top < lights.bottom && r.right > 0 && r.bottom > 0)
+          f39.push(`${name(el)}: под кнопками окна, ${px(r.left)} слева, ${px(r.top)} сверху`)
+      }
+    }
+    rule('Р39', 'Окно на всё окно не залезает под кнопки окна macOS', f39.slice(0, 6))
   }
 
   return { rules: out, tables }
