@@ -25,13 +25,32 @@
         :aria-pressed="mode === 'changed'"
         @click="emit('update:mode', 'changed')"
       />
+      <!-- Reading again under rows already shown: said here, in a slot that is always there,
+           so neither the rows nor the field move when it comes and goes. -->
+      <span class="abele-file-tree__state">
+        <template v-if="progress && !statusLine">
+          <Icon
+            v-if="progress.state === 'failed'"
+            class="abele-file-tree__state-failed"
+            icon="alert-triangle"
+            size="xs"
+            :tooltip="`Couldn't read the files. Try again${progress.error ? ` · ${progress.error}` : ''}`"
+            @click="emit('retry')"
+          />
+          <ResultMark
+            v-else
+            state="working"
+            :text="`Reading the files…${progress.count ? ` ${progress.count.toLocaleString()} so far` : ''}`"
+          />
+        </template>
+      </span>
     </div>
 
     <div class="abele-file-tree__body" role="tree" :aria-label="label">
-      <!-- The files are still being read, or reading them failed: said over what is there so
-           far, never as an empty folder. -->
+      <!-- The files are still being read, or reading them failed, and there is no row yet:
+           said in place of the rows, never as an empty folder. -->
       <div
-        v-if="progress && (mode === 'all' || !git) && !query.trim()"
+        v-if="statusLine"
         class="abele-file-tree__status"
         :class="{ 'abele-file-tree__status_failed': progress.state === 'failed' }"
         role="status"
@@ -191,6 +210,13 @@ const emit = defineEmits<{
 }>()
 
 const query = ref('')
+const statusLine = computed(
+  () =>
+    !!props.progress &&
+    !props.entries.length &&
+    (props.mode === 'all' || !props.git) &&
+    !query.value.trim()
+)
 
 // Folders start folded, except the ones that lead to the open file.
 const folded = reactive(new Set<string>())
@@ -273,6 +299,16 @@ const found = computed(() => matches.value.slice(0, 50))
 .abele-file-tree__search {
   flex: 1 1 auto;
   min-width: 0;
+}
+.abele-file-tree__state {
+  display: inline-flex;
+  flex: 0 0 auto;
+  align-items: center;
+  justify-content: center;
+  width: calc(var(--icon-xs) + 2 * var(--size-2-2));
+}
+.abele-file-tree__state-failed {
+  color: var(--text-error);
 }
 .abele-file-tree__body {
   padding: 0 var(--size-4-2) var(--size-4-4);
