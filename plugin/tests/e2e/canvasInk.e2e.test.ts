@@ -5,6 +5,7 @@ import { onPhone, targets } from './helpers/target'
 import { driver, tap, swipe, screenshot } from './helpers/phone'
 import { withNativeInput } from './helpers/nativeInput'
 import { shotDir } from './helpers/shots'
+import { canvasBackgroundGesture } from './helpers/canvasBackgroundGesture'
 import { randomUUID } from 'node:crypto'
 
 targets('desktop', 'phone')
@@ -141,8 +142,16 @@ describe.skipIf(!available)('canvas pen with real mouse and finger input', () =>
     shot('attached-pen')
     await click('Draw with marker')
     await until('button("Draw with marker").getAttribute("aria-pressed")==="true"')
-    const background = point(false)
-    await input(background, [background[0] + 55, background[1] - 8])
+    const [background, end] = run<number[][]>(`const v=view().viewer;
+      return (${canvasBackgroundGesture.toString()})(v.stage.getBoundingClientRect(),v.camera,v.graph.nodes,55,-8)`)
+    expect(
+      run<boolean>(
+        `return [${JSON.stringify(background)},${JSON.stringify(end)}].every(([x,y])=>view().viewer.stage.contains(document.elementFromPoint(x,y)))`
+      ),
+      'Background stroke is hittable outside all cards'
+    ).toBe(true)
+    await input(background, end)
+    await until('(await read()).abele?.ink?.length===1')
     await saved()
     expect(run<{ tool: string }[]>('return (await read()).abele.ink')[0].tool).toBe('marker')
     const source = run<string>('return await app.vault.read(app.vault.getAbstractFileByPath(path))')
