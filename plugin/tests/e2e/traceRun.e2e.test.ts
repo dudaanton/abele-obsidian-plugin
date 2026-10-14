@@ -1,0 +1,271 @@
+// A run the debugger recorded, opened from the node: its tab of steps, a step's values by shape,
+// a value whole in its own tab, and a note about the run in the vault. No program is launched:
+// the run is written as the node writes runs, into the project's runs folder, and the node serves
+// it. Desktop and the emulated phone, with a picture of each screen.
+import { afterAll, beforeAll, expect, it } from 'vitest'
+import { spawn, spawnSync, type ChildProcess } from 'node:child_process'
+import { createHash } from 'node:crypto'
+import { mkdirSync, mkdtempSync, realpathSync, rmSync, writeFileSync } from 'node:fs'
+import { join, resolve } from 'node:path'
+import { evalAsync } from './helpers/githubLive'
+import { evalRaw } from './helpers/obsidianCli'
+import { withEmulatedPhone } from './helpers/emulatedPhone'
+import { shotDir } from './helpers/shots'
+import { targets } from './helpers/target'
+targets('desktop')
+
+const SHOTS = shotDir('abele-trace')
+const RUN = '20260102-030405-a1b2c3'
+const wait = (ms: number) => new Promise((r) => setTimeout(r, ms))
+const prelude = `const wait=ms=>new Promise(r=>setTimeout(r,ms)),until=async(fn,what)=>{for(let i=0;i<200;i++){if(fn())return;await wait(50)}throw Error('Trace view did not converge: '+what+'; '+(document.querySelector('.workspace-leaf.mod-active')?.textContent??'').slice(0,600))};
+const api=window.__abeleTest,nodes=api.NodeService.getInstance();
+const shot=async name=>{await wait(300);const image=await require('@electron/remote').getCurrentWebContents().capturePage();require('fs').writeFileSync(${JSON.stringify(SHOTS)}+'/'+name+'.png',image.toPNG())};`
+
+let child: ChildProcess | undefined
+let dir = ''
+let port = 0
+let token = ''
+let repo = ''
+let registration = ''
+let project = ''
+
+/** The run as the node writes one: a timeline of steps and each larger value by its hash. */
+function writeRun(root: string) {
+  const runDir = join(root, '.abele', 'runs', RUN)
+  mkdirSync(join(runDir, 'blobs'), { recursive: true })
+  const xml = `<?xml version="1.0"?><contracts>${Array.from(
+    { length: 40 },
+    (_, i) => `<contract id="C-${100 + i}"><amount>${(i * 12.5).toFixed(2)}</amount></contract>`
+  ).join('')}</contracts>`
+  const result = JSON.stringify({
+    items: Array.from({ length: 40 }, (_, i) => ({ id: `C-${100 + i}`, amount: i * 12.5 })),
+    source: 'sample-service',
+  })
+  const blob = (name: string, text: string, format: string, brief: string) => {
+    const sha = createHash('sha256').update(text).digest('hex')
+    writeFileSync(join(runDir, 'blobs', sha), text)
+    return { name, format, bytes: Buffer.byteLength(text), sha256: sha, brief }
+  }
+  const xmlValue = blob('xmlText', xml, 'xml', '<contracts>')
+  const resultValue = blob('result', result, 'json', '{ items: 40, source }')
+  const steps = [
+    {
+      id: 't0001',
+      kind: 'probe',
+      ts: '2026-01-02T03:04:05.420Z',
+      at: 420,
+      label: 'Contracts parsed',
+      point: 'bp-sample',
+      place: { file: 'src/sample/parse.ts', line: 18, fn: 'parseContracts' },
+      stack: ['parseContracts src/sample/parse.ts:18', 'loadContracts src/sample/service.ts:9'],
+      paused_ms: 31,
+      values: [xmlValue, resultValue],
+    },
+    {
+      id: 't0002',
+      kind: 'probe',
+      ts: '2026-01-02T03:04:06.100Z',
+      at: 1100,
+      label: 'Contracts parsed',
+      point: 'bp-sample',
+      place: { file: 'src/sample/parse.ts', line: 18, fn: 'parseContracts' },
+      paused_ms: 12,
+      values: [xmlValue, resultValue],
+    },
+    {
+      id: 't0003',
+      kind: 'error',
+      ts: '2026-01-02T03:04:06.300Z',
+      at: 1300,
+      label: 'SampleError: no rows',
+      values: [],
+    },
+  ]
+  writeFileSync(
+    join(runDir, 'timeline.jsonl'),
+    steps.map((s) => JSON.stringify(s)).join('\n') + '\n'
+  )
+  writeFileSync(
+    join(runDir, 'run.json'),
+    JSON.stringify({
+      version: 1,
+      id: RUN,
+      name: 'Sample contracts run',
+      session: 'sample-debug',
+      started_at: '2026-01-02T03:04:05.000Z',
+      ended_at: '2026-01-02T03:04:07.000Z',
+      length_ms: 2000,
+      state: 'done',
+      steps: 3,
+      bytes: 0,
+      points: [
+        {
+          breakpoint_id: 'bp-sample',
+          file: 'src/sample/parse.ts',
+          line: 18,
+          take: ['xmlText', 'result'],
+          note: 'Contracts parsed',
+        },
+      ],
+    })
+  )
+}
+
+beforeAll(async () => {
+  const cli = process.env.ABELE_NODE_CLI
+  if (!cli) throw new Error('Set ABELE_NODE_CLI to the built daemon CLI')
+  mkdirSync('../.scratch', { recursive: true })
+  dir = realpathSync(mkdtempSync(resolve('../.scratch/trace-')))
+  repo = resolve(dir, 'repo')
+  const state = resolve(dir, 'state')
+  mkdirSync(repo)
+  writeFileSync(resolve(repo, 'sample.txt'), 'sample')
+  const git = (...args: string[]) => {
+    const r = spawnSync('/usr/bin/git', args, { cwd: repo, encoding: 'utf8' })
+    if (r.status) throw Error(r.stderr)
+  }
+  git('init', '-b', 'main')
+  git('add', '.')
+  git(
+    '-c',
+    'user.name=Fixture',
+    '-c',
+    'user.email=fixture@example.invalid',
+    '-c',
+    'commit.gpgsign=false',
+    'commit',
+    '-m',
+    'fixture'
+  )
+  writeRun(repo)
+  const fake = resolve('tests/fixtures/nodeClaude.mjs')
+  const created = spawnSync(
+    process.execPath,
+    [cli, 'token', 'create', 'fixture', '--state-dir', state, '--claude-path', fake, '--json'],
+    { encoding: 'utf8' }
+  )
+  expect(created.status, created.stderr).toBe(0)
+  token = (JSON.parse(created.stdout) as { token: string }).token
+  child = spawn(
+    process.execPath,
+    [
+      cli,
+      'start',
+      '--state-dir',
+      state,
+      '--port',
+      '0',
+      '--claude-path',
+      fake,
+      '--debugger',
+      '--json',
+    ],
+    { stdio: ['ignore', 'pipe', 'pipe'] }
+  )
+  let output = ''
+  let errors = ''
+  child.stdout!.on('data', (b) => (output += b))
+  child.stderr!.on('data', (b) => (errors += b))
+  for (let i = 0; !output.includes('"listening"'); i++) {
+    if (i > 500 || child.exitCode !== null) throw Error(errors || 'Daemon startup deadline')
+    await wait(20)
+  }
+  port = (
+    JSON.parse(output.split('\n').find((l) => l.includes('"listening"'))!) as { port: number }
+  ).port
+}, 60000)
+
+afterAll(async () => {
+  evalRaw(
+    `(()=>{const api=window.__abeleTest;for(const l of app.workspace.getLeavesOfType('abele-trace-run').concat(app.workspace.getLeavesOfType('abele-trace-value')))l.detach();if(${JSON.stringify(registration)})api.NodeService.getInstance().remove(${JSON.stringify(registration)});return true})()`
+  )
+  if (child && child.exitCode === null && child.signalCode === null) {
+    const stopped = new Promise<void>((r) => child!.once('exit', () => r()))
+    child.kill('SIGTERM')
+    await stopped
+  }
+  if (dir) rmSync(dir, { recursive: true, force: true })
+})
+
+/** Registers the node and the project in the app; a phone run starts after a reload, so again. */
+function connect() {
+  const r = evalAsync<{ registration: string; project: string }>(`(async()=>{${prelude}
+    const existing=nodes.nodes.value.find(n=>n.label==='Trace fixture');if(existing)nodes.remove(existing.id);
+    const node=await nodes.add('Trace fixture','http://127.0.0.1:${port}',${JSON.stringify(token)}),client=nodes.connection(node.id).client;
+    const project=await client.registerProject(${JSON.stringify(repo)},'untrusted');
+    return {registration:node.id,project:project.project_id}
+  })()`)
+  registration = r.registration
+  project = r.project
+}
+
+const OPEN_RUN =
+  () => `await api.openTraceRun({registrationId:${JSON.stringify(registration)},projectId:${JSON.stringify(project)},runId:${JSON.stringify(RUN)}});
+  await until(()=>document.querySelectorAll('.abele-trace-run__step').length>=2,'steps listed')`
+
+it('opens a recorded run as a tab of steps, a step with its values by shape, and a value whole', () => {
+  connect()
+  const seen = evalAsync<{
+    rows: string[]
+    place: string
+    values: string[]
+    shape: boolean
+    whole: string
+  }>(`(async()=>{${prelude}
+    ${OPEN_RUN()}
+    const rows=[...document.querySelectorAll('.abele-trace-run__steps > .abele-trace-run__step .abele-tree-item__text')].map(e=>e.textContent.trim());
+    await shot('2026-10-14-trace-run-desktop');
+    document.querySelector('.abele-trace-run__step .abele-tree-item__self, .abele-trace-run__step .tree-item-self')?.click();
+    await until(()=>document.querySelector('.abele-trace-step'),'step detail');
+    await until(()=>document.querySelector('.abele-trace-step .abele-trace-shape, .abele-trace-step .abele-trace-value .tree-item-children'),'shape filled');
+    const place=document.querySelector('.abele-trace-step__place')?.textContent.trim()??'';
+    const values=[...document.querySelectorAll('.abele-trace-step .abele-trace-value > .tree-item-self .abele-tree-item__text, .abele-trace-step .abele-trace-value .abele-tree-item__text')].map(e=>e.textContent.trim()).slice(0,4);
+    await shot('2026-10-14-trace-step-desktop');
+    await api.openTraceValue({registrationId:${JSON.stringify(registration)},projectId:${JSON.stringify(project)},runId:${JSON.stringify(RUN)},step:'t0001',valueName:'xmlText',view:'whole'});
+    await until(()=>document.querySelector('.abele-trace-value-tab')?.textContent.includes('C-139'),'whole value');
+    await shot('2026-10-14-trace-value-desktop');
+    return {rows,place,values,shape:!!document.querySelector('.abele-trace-step'),whole:document.querySelector('.abele-trace-value-tab').textContent.slice(0,200)}
+  })()`)
+  expect(seen.rows).toEqual(['Contracts parsed', 'Contracts parsed', 'SampleError: no rows'])
+  expect(seen.place).toContain('parse.ts:18')
+  expect(seen.values).toContain('xmlText')
+  expect(seen.whole).toContain('Sample contracts run')
+})
+
+it('writes a note about the run whose links lead back to the node', () => {
+  const note = evalAsync<string>(`(async()=>{${prelude}
+    const leaf=app.workspace.getLeavesOfType('abele-trace-run')[0];app.workspace.setActiveLeaf(leaf,{focus:true});
+    leaf.view.containerEl.querySelector('.view-action[aria-label="Write a note about this run"]').click();
+    await until(()=>app.vault.getMarkdownFiles().some(f=>f.path.startsWith('Trace/Sample contracts run')),'note written');
+    const file=app.vault.getMarkdownFiles().find(f=>f.path.startsWith('Trace/Sample contracts run'));
+    const text=await app.vault.read(file);await app.vault.delete(file);
+    for(const l of app.workspace.getLeavesOfType('markdown'))if(l.view.file?.path===file.path)l.detach();
+    return text
+  })()`)
+  expect(note).toContain('Recorded run [Sample contracts run]')
+  expect(note).toContain('obsidian://abele-trace?node=')
+  expect(note).toContain('### t0001 · Contracts parsed')
+  expect(note).toContain('## What happens in this flow')
+})
+
+it('reads the run on a phone: the steps whole-screen, a step over them', async () => {
+  await withEmulatedPhone(async () => {
+    connect()
+    const seen = evalAsync<{
+      steps: number
+      detail: boolean
+      overflow: number
+    }>(`(async()=>{${prelude}
+      ${OPEN_RUN()}
+      await shot('2026-10-14-trace-run-phone');
+      document.querySelector('.abele-trace-run__step .abele-tree-item__self, .abele-trace-run__step .tree-item-self')?.click();
+      await until(()=>document.querySelector('.abele-trace-step'),'step detail');
+      await shot('2026-10-14-trace-step-phone');
+      const root=document.querySelector('.abele-trace-run');
+      return {steps:document.querySelectorAll('.abele-trace-run__step').length,detail:!!document.querySelector('.abele-trace-step'),overflow:root.scrollWidth-root.clientWidth}
+    })()`)
+    expect(seen.steps).toBeGreaterThanOrEqual(2)
+    expect(seen.detail).toBe(true)
+    expect(seen.overflow).toBeLessThanOrEqual(1)
+  })
+}, 180000)

@@ -16,6 +16,7 @@ import { setZen, zen } from '@/reader/zen'
 import { ScopeResolver } from '@/ai/ScopeResolver'
 import { ChatService } from '@/ai/ChatService'
 import { mountDebugSource } from '@/debugger/sourceExtension'
+import { openTraceRun, openTraceValue } from '@/debugger/trace/TraceTabs'
 import { chatCodeSelection, insertCodeSelection } from '@/views/codeSelectionHost'
 import { NodeService } from '@/node/NodeService'
 import { NodePathService } from '@/node/NodePathService'
@@ -263,6 +264,8 @@ interface AbeleTestApi {
     dialog: typeof scriptApprovalDialog
   }
   mountDebugSource: typeof mountDebugSource
+  openTraceRun: typeof openTraceRun
+  openTraceValue: typeof openTraceValue
   codeSelectionAdapters: { chat: typeof chatCodeSelection; note: typeof insertCodeSelection }
   ChatService: typeof ChatService
   NodeService: typeof NodeService
@@ -908,6 +911,8 @@ export function exposeTestApi(plugin: Plugin): void {
       dialog: scriptApprovalDialog,
     },
     mountDebugSource,
+    openTraceRun,
+    openTraceValue,
     codeSelectionAdapters: { chat: chatCodeSelection, note: insertCodeSelection },
     ChatService,
     NodeService,
