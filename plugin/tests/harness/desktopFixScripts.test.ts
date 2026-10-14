@@ -2,6 +2,7 @@ import { readFileSync } from 'node:fs'
 import ts from 'typescript'
 import { expect, it } from 'vitest'
 import { WAIT_PRELUDE } from '../e2e/helpers/wait'
+import { canvasBackgroundGesture } from '../e2e/helpers/canvasBackgroundGesture'
 
 const files = [
   'bookSidebarResize',
@@ -25,6 +26,7 @@ it.each(files)('parses %s browser programs without executing the app', (file) =>
     Date,
     Buffer,
     WAIT_PRELUDE,
+    canvasBackgroundGesture,
     DIR: 'Sample probe',
     BOOK: 'Sample probe/sample.epub',
     PDF: 'Sample probe/sample.pdf',

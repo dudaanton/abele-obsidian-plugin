@@ -29,6 +29,9 @@ it.each(files)('parses emitted browser scripts in %s without contacting a live a
     ...chatProbeInteractions,
     DIR: 'Sample fixture',
     FILE: 'Sample fixture/sample.pdf',
+    RUN_ID: 'sample-run',
+    SCRIPT_NAME: 'Sample library sample-run',
+    SCRIPT_PATH: 'Sample fixture/Scripts/Sample reader library.js',
     PATH: 'sample.md',
     SHOTS: 'sample-shots',
     shots: 'sample-shots',
@@ -64,7 +67,7 @@ it.each(files)('parses emitted browser scripts in %s without contacting a live a
     for (const declaration of statement.declarationList.declarations) {
       if (
         !declaration.initializer ||
-        !['SCRIPT', 'SOURCE', 'NATIVE_TOUCH', 'PRELUDE', 'wait'].includes(
+        !['SCRIPT', 'SOURCE', 'NATIVE_TOUCH', 'PRELUDE', 'CLOSE_PANELS', 'wait'].includes(
           declaration.name.getText(tree)
         )
       )
