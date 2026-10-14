@@ -115,6 +115,18 @@ const emit = defineEmits<{ 'update:more': [open: boolean] }>()
     margin-inline-end: 0;
   }
   min-height: calc(var(--line-height-normal) * 1em);
+
+  // A check in its label sat on the label's own baseline, above the middle of the words, and in a
+  // note's reading view Obsidian's nudge for an inline check pushed it below: the label stands it
+  // in the middle of the line by itself, wherever the row is.
+  .task-list-label {
+    display: flex;
+    align-items: center;
+  }
+  .task-list-label input[type='checkbox'] {
+    top: 0;
+    margin-block: 0;
+  }
 }
 
 .abele-entry-row__body {
