@@ -46,6 +46,8 @@ const script = (layout: string) => `(async () => {
   const comments = window.__abeleTest.CommentService.getInstance()
   const path = 'sample-navigation.abchat'
   const dirs = [], files = [], report = {}
+  const evidence = window.__navigationProbe = {path,generation:performance.timeOrigin,phase:'setup',report}
+  const phase = name => { evidence.phase = name; console.info('Navigation phase', name) }
   const box = () => [...document.querySelectorAll('.abele-ai-chat__messages')].find(el => el.getClientRects().length)
   const modal = () => document.querySelector('.abele-chat-outline')
   const item = id => box()?.querySelector('[data-message-id="' + id + '"]')
@@ -154,6 +156,7 @@ const script = (layout: string) => `(async () => {
       { v: 2, k: 'meta', type: 'abele-chat', kind: 'comment', created: '2023-11-14', anchor: { note: commentPath, message: 'du', quote: 'shade' } },
       { k: 'msg', id: 'nu', role: 'user', content: 'How much shade?', timestamp: 1700000006000 },
     ].map(JSON.stringify).join('\\n') + '\\n'))
+    phase('open 600-message chat')
     await chats.openChatFile(files[0]); await chats.revealSidebar({ focus: false })
     owner = chats.getSessionByFile(path)
     await until(() => item('a299'))
@@ -161,6 +164,7 @@ const script = (layout: string) => `(async () => {
     await wait(300)
     owner.draft.value.text = 'An unsent sample follow-up'
     report.beforeBranch = owner.branchLeafId
+    phase('start and latest navigation')
     await open()
     report.focusedSearch = document.activeElement === modal().querySelector('input')
     report.questions = modal().querySelectorAll('[data-question]').length
@@ -190,6 +194,7 @@ const script = (layout: string) => `(async () => {
     await open(); await choose('To the start'); await holds(() => !modal() && item('q0'))
     await open(); await choose('Back to where you were'); await holds(() => Math.abs(offset('q80') - middleAt) < 2)
     report.middleReturnDrift = Math.abs(offset('q80') - middleAt)
+    phase('direct and nested discussions')
     // Put the reader at the first question again, then open its direct and nested discussions.
     await open(); await choose('To the start'); await holds(() => !modal() && item('q0'))
     await open(); await until(() => modal().textContent.includes('Which plants need shade?'))
@@ -210,6 +215,7 @@ const script = (layout: string) => `(async () => {
     await open(); await choose('Back to where you were'); await holds(() => chats.activeSession.value?.commentId === 'navd01')
     report.nestedBack = chats.activeSession.value?.commentId === 'navd01'
     await open(); await choose('Back to where you were'); await holds(() => chats.activeSession.value === owner)
+    phase('tool-result search')
     // Search includes a folded tool result, and selecting its snippet opens that exact part.
     const tool = { id: 'tool-sample', parentId: 'a299', role: 'tool-call', content: '', toolName: 'read', thinking: 'A sample liner', toolResult: 'A sample liner', toolStatus: 'approved', timestamp: 1700000007000 }
     owner.appendChatMessage(tool); owner.updateVisibleMessages()
@@ -226,6 +232,7 @@ const script = (layout: string) => `(async () => {
     // Finish the preceding find excursion before capturing a separate branch-return point.
     // Back intentionally retains the original bookmark until it is used.
     await open(); await choose('Back to where you were'); await wait(1800)
+    phase('alternate branch and deferred navigation')
     const originalLeaf = owner.branchLeafId
     box().dispatchEvent(new WheelEvent('wheel', { bubbles: true, deltaY: -120 }))
     box().scrollTop += offset('q80') - 16
@@ -252,6 +259,7 @@ const script = (layout: string) => `(async () => {
     await until(() => owner.branchLeafId === 'other-first')
     await open(); await choose('Back to where you were'); await until(() => owner.branchLeafId === originalLeaf)
     await open()
+    phase('all-branch discussion search')
     modal().querySelector('[aria-label="Search every branch of this chat"]').click()
     const words = modal().querySelector('input')
     words.value = 'Hidden alternate'; words.dispatchEvent(new Event('input', { bubbles: true }))
@@ -273,6 +281,7 @@ const script = (layout: string) => `(async () => {
     // The search/jump cannot have selected the alternate answer. Account for the explicit
     // synthetic append above, which alone changed the leaf.
     report.selectedBranch = owner.messages.value.some(m => m.id === 'other') ? 'other' : report.beforeBranch
+    phase('complete')
     return JSON.stringify(report)
   } finally {
     document.body.dispatchEvent(new KeyboardEvent('keydown', { key: 'Escape', bubbles: true }))
@@ -342,7 +351,31 @@ describe.skipIf(!available)('current-branch chat navigation', () => {
   it.each(onPhone() ? ['phone'] : ['desktop', 'emulated phone'])(
     'jumps, returns, opens direct and nested discussions, and keeps the draft and reading place on %s',
     async (layout) => {
-      const run = async () => JSON.parse(await evalLong(script(layout), 90_000)) as NavigationReport
+      const run = async () => {
+        const generation = await evalLong('JSON.stringify({generation:performance.timeOrigin})')
+        try {
+          return JSON.parse(await evalLong(script(layout), 90_000)) as NavigationReport
+        } catch (error) {
+          let evidence
+          try {
+            evidence = await evalLong(
+              'JSON.stringify({generation:performance.timeOrigin,probe:window.__navigationProbe})',
+              10_000
+            )
+          } catch (diagnostic) {
+            evidence = String(diagnostic)
+          }
+          throw Error(
+            String(error) + '; before=' + generation + '; last navigation evidence=' + evidence
+          )
+        } finally {
+          try {
+            evalRaw('delete window.__navigationProbe')
+          } catch (error) {
+            console.warn('Navigation diagnostic cleanup:', error)
+          }
+        }
+      }
       const result = layout === 'emulated phone' ? await withEmulatedPhone(run) : await run()
       console.warn(
         `Navigation of 600 messages: mount ${Math.round(result.jumpMs)} ms; settled sample ${Math.round(result.settledMs)} ms`

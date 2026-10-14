@@ -1,17 +1,21 @@
 import { afterAll, beforeAll, describe, expect, it } from 'vitest'
+import { randomUUID } from 'node:crypto'
 import { evalLong, evalRaw, hasTestApi, isObsidianRunning, reloadApp } from './helpers/obsidianCli'
 import { onPhone, targets } from './helpers/target'
 import { shotDir } from './helpers/shots'
+import { closeFixtureLeaves } from './helpers/fixtureBoundary'
 
 targets('desktop', 'phone')
 const available = isObsidianRunning() && hasTestApi()
 const shots = shotDir('timeline-drag')
+const RUN_ID = randomUUID()
 const probe = (footer: boolean) => String.raw`(async () => {
   const wait = ms => new Promise(r => setTimeout(r, ms))
   const until = async fn => { for (let i = 0; i < 100; i++) { const v = fn(); if (v) return v; await wait(100) } throw Error('timeline not ready') }
-  const folder = 'Sample drag probe'
+  const folder = ${JSON.stringify(`Sample drag probe ${RUN_ID}`)}
   const day = offset => { const d = new Date(); d.setHours(12,0,0,0); d.setDate(d.getDate()+offset); return d.getFullYear()+'-'+String(d.getMonth()+1).padStart(2,'0')+'-'+String(d.getDate()).padStart(2,'0') }
-  const report = {}
+  const report = {phase:'setup',events:[]}
+  const layout=app.workspace.getLayout()
   const picture = async name => {
     const path = ${JSON.stringify(shots)}+'/'+(${footer}?'footer':'sidebar')+'-'+(document.body.classList.contains('is-mobile')?'mobile':'desktop')+'-'+name+'.png'
     if (window.__e2eHost) await window.__e2eHost.shot(path)
@@ -20,11 +24,12 @@ const probe = (footer: boolean) => String.raw`(async () => {
       require('fs').writeFileSync(path,image.toPNG())
     }
   }
-  let leaf
+  let leaf,owned=false
   const previousLeaf=app.workspace.activeLeaf
   const cleanups=[]
   try {
-    if (!app.vault.getAbstractFileByPath(folder)) await app.vault.createFolder(folder)
+    if (app.vault.getAbstractFileByPath(folder))throw Error('Owned drag fixture already exists')
+    await app.vault.createFolder(folder);owned=true
     const write = async (name, text) => { const f = app.vault.getAbstractFileByPath(folder+'/'+name+'.md'); if (f) await app.vault.modify(f,text); else await app.vault.create(folder+'/'+name+'.md',text) }
     await write('Sample group','Sample group\n')
     const fixture=[['Sample moving',0,false],['Sample past',-1,false],['Sample completed',-2,true],['Sample future',2,false]]
@@ -37,6 +42,7 @@ const probe = (footer: boolean) => String.raw`(async () => {
     }))
     leaf = app.workspace.getLeaf('tab')
     await leaf.setViewState(${footer} ? { type:'markdown', state:{file:folder+'/Sample group.md',mode:'source',source:false},active:true } : {type:'abele-timeline-sidebar-view',active:true})
+    await app.workspace.revealLeaf(leaf)
     app.workspace.setActiveLeaf(leaf,{focus:true})
     if (${footer}) await until(() => { const s=leaf.view.containerEl.querySelector('.cm-scroller'); if(s) s.scrollTop=s.scrollHeight; return leaf.view.containerEl.querySelector('.abele-timeline') })
     const root = await until(() => leaf.view.containerEl.querySelector('.abele-timeline'))
@@ -126,6 +132,19 @@ const probe = (footer: boolean) => String.raw`(async () => {
     report.extraGone=dates().length===2 && !root.querySelector('[data-abele-anchor="task:'+folder+'/Sample completed.md"]') && !root.querySelector('[data-abele-anchor="task:'+folder+'/Sample past.md"]')
     // Exercise the real WebKit touch path: a fast swipe scrolls, a held swipe drags.
     if (window.__e2eHost) {
+      const nativePoint=async()=>{
+        let last='',stable=0,point
+        await until(()=>{
+          const r=row().getBoundingClientRect(),x=Math.round(r.left+r.width/2),y=Math.round(r.top+10),hit=document.elementFromPoint(x,y)
+          const signature=JSON.stringify([r.x,r.y,r.width,r.height]),reachable=row().contains(hit)&&y>=0&&y<usableBottom()
+          stable=reachable&&signature===last?stable+1:0;last=signature;point={x,y,rect:r.toJSON(),hit:hit?.className}
+          return stable>=5
+        })
+        return point
+      }
+      const recordTouch=e=>report.events.push({phase:report.phase,type:e.type,x:e.touches[0]?.clientX,y:e.touches[0]?.clientY,target:e.target.className})
+      document.addEventListener('touchstart',recordTouch,true)
+      cleanups.push(()=>document.removeEventListener('touchstart',recordTouch,true))
       align(); await settle()
       const b=row().getBoundingClientRect(), bx=b.left+b.width/2, by=b.top+10
       let expanded=false, nativeStart, sourceBefore
@@ -136,7 +155,8 @@ const probe = (footer: boolean) => String.raw`(async () => {
       })
       observer.observe(root,{childList:true,subtree:true})
       cleanups.push(()=>observer.disconnect())
-      await window.__e2eHost.swipe(bx,by,bx,by-100,{velocity:500})
+      report.phase='native fast swipe';const fast=await nativePoint()
+      await window.__e2eHost.swipe(fast.x,fast.y,fast.x,fast.y-100,{velocity:500})
       await wait(700); report.nativeSwipe=!expanded
       align(); await wait(600)
       const c=row().getBoundingClientRect()
@@ -152,7 +172,8 @@ const probe = (footer: boolean) => String.raw`(async () => {
       document.addEventListener('touchend',record,true)
       cleanups.push(()=>document.removeEventListener('touchend',record,true))
       expanded=false
-      await window.__e2eHost.swipe(bx,c.top+10,bx,nativeTarget.top+15,{hold:0.65,velocity:100})
+      report.phase='native held drag';const held=await nativePoint()
+      await window.__e2eHost.swipe(held.x,held.y,held.x,nativeTarget.top+15,{hold:0.65,velocity:100})
       document.removeEventListener('touchend',record,true); document.removeEventListener('touchmove',beforeMove,true); observer.disconnect(); await wait(1200)
       report.nativeWritten=app.metadataCache.getFileCache(app.vault.getAbstractFileByPath(folder+'/Sample moving.md'))?.frontmatter?.date===day(2)
       report.nativeDrag=expanded
@@ -164,7 +185,8 @@ const probe = (footer: boolean) => String.raw`(async () => {
       const nearEdge=e=>{ if(document.querySelector('.abele-timeline__drag-card') && e.touches[0]?.clientY>edgeY-35) { edgeStart??=scroller.scrollTop; edgeDistance=Math.max(edgeDistance,scroller.scrollTop-edgeStart) } }
       document.addEventListener('touchmove',nearEdge,true)
       cleanups.push(()=>document.removeEventListener('touchmove',nearEdge,true))
-      await window.__e2eHost.swipe(edgeRow.left+edgeRow.width/2,edgeRow.top+10,edgeRow.left+edgeRow.width/2,edgeY,{hold:0.65,velocity:60})
+      report.phase='native edge drag';const near=await nativePoint()
+      await window.__e2eHost.swipe(near.x,near.y,near.x,edgeY,{hold:0.65,velocity:60})
       document.removeEventListener('touchmove',nearEdge,true)
       report.nativeEdgeScroll=edgeDistance
       await wait(1000)
@@ -172,12 +194,15 @@ const probe = (footer: boolean) => String.raw`(async () => {
       await window.__e2eHost.shot(${JSON.stringify(shots)}+'/'+(${footer}?'footer':'sidebar')+'.png')
     }
     return JSON.stringify(report)
+  } catch(error) {
+    throw Error(String(error)+'; timeline delivery='+JSON.stringify(report))
   } finally {
     for(const cleanup of cleanups) cleanup()
     document.dispatchEvent(new KeyboardEvent('keydown',{key:'Escape',bubbles:true}))
-    leaf?.detach()
-    if(previousLeaf) app.workspace.setActiveLeaf(previousLeaf,{focus:true})
-    const dir=app.vault.getAbstractFileByPath(folder)
+    if(leaf)await (${closeFixtureLeaves.toString()})([leaf])
+    await app.workspace.changeLayout(layout)
+    if(previousLeaf?.view?.containerEl.isConnected) app.workspace.setActiveLeaf(previousLeaf,{focus:true})
+    const dir=owned && app.vault.getAbstractFileByPath(folder)
     if(dir) await app.vault.delete(dir,true)
   }
 })()`
