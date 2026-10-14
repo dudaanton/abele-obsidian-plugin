@@ -44,6 +44,8 @@ export interface RepositoryTree {
   readonly root: TreeNode
   readonly sha: string
   readonly truncated: boolean
+  /** Kept current in place by its source: a newer observation of the same files needs no reread. */
+  readonly live?: boolean
   expand(node: TreeNode): Promise<void>
   reveal(path: string): Promise<void>
 }

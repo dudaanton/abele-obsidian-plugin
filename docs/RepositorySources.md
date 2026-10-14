@@ -12,6 +12,14 @@ locations keep refs and paths separate, including branches containing slashes. N
 provided by the source. `repository/model.ts` owns the shared view data; existing GitHub modules
 re-export the same types so agent tools and other callers keep their imports.
 
+A node advertising `repository_changes_v1` sends numbered `repository.changed` batches instead
+of invalidations. The node source keeps the trees of the current files it handed out
+(`RepositoryTree.live`) and patches them in place (`repository/nodeTreeChanges.ts`), so unchanged
+rows keep their objects and open folders stay open; it emits `tree` and `status` changes with
+the touched paths, and the tab reloads only the file or folder listing they touch. An
+incomplete batch, a skipped batch number, another stream (the node restarted) or a renewed lease
+the node cannot continue is the one case that rereads everything.
+
 `githubRepositorySource` wraps the exact `GithubClient` supplied by the tab, including its chat
 capability wrapper. It does not unwrap guards, select another connection, or add another content
 cache. Existing GitHub readers retain their request ordering, REST/GraphQL fallback, pagination,

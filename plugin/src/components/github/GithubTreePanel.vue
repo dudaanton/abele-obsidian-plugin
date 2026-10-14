@@ -238,7 +238,16 @@ watch(
       workingKey(key) !== null &&
       workingKey(key) === workingKey(previous[0])
     ) {
-      void refreshInPlace()
+      // A tree its source patches from the node's change batches is already current.
+      if (tree.value.live) {
+        const mine = generation
+        void props.resolve().then(
+          (v) => {
+            if (mine === generation) version.value = v
+          },
+          () => {}
+        )
+      } else void refreshInPlace()
       return
     }
     tree.value = null

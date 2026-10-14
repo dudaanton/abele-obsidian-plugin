@@ -4,7 +4,12 @@ import type {
   RepositoryClient,
   RepositoryRevision as NodeRevision,
 } from '@abele/node-client'
-import { RepositoryInvalidationSchema } from '@abele/node-protocol'
+import {
+  RepositoryChangeBatchSchema,
+  RepositoryInvalidationSchema,
+  type RepositoryChangeBatch,
+  type RepositoryChangesCursor,
+} from '@abele/node-protocol'
 import type {
   RepositoryIdentity,
   RepositorySource,
@@ -34,6 +39,7 @@ import { parsePatch } from '@/github/patch'
 import { sortNodes, findNode } from '@/github/tree/fileTree'
 import { readNodeText } from '@/node/NodeFilesModel'
 import { nodeRepositoryLink } from './nodeLinks'
+import { applyTreeChanges, nodeTreeNode } from './nodeTreeChanges'
 
 export const WORKING_TREE = 'Working tree'
 export const EMPTY_TREE = 'Empty tree'
@@ -83,6 +89,14 @@ export class NodeRepositorySource implements RepositorySource {
   private subscription?: string
   private watching = false
   private mutableWatch = false
+  /** Set once the node is known to send change batches; null until asked. */
+  private changeStream: Promise<boolean> | null = null
+  private streaming = false
+  private cursor?: RepositoryChangesCursor
+  /** Batches that arrived before the lease said where the stream stands. */
+  private early: RepositoryChangeBatch[] = []
+  /** Roots of the trees of the current files handed out, patched by every batch. */
+  private liveTrees = new Set<TreeNode>()
   private comparisonIds = new WeakMap<ComparisonIndex, string>()
   readonly navigation: RepositorySource['navigation']
   constructor(
@@ -351,33 +365,32 @@ export class NodeRepositorySource implements RepositorySource {
       revision = await this.at(sha)
     // Reactive, as GitHub's tree is: a folder read later appears in whatever shows the tree.
     const root: TreeNode = reactive({ name: '', path: '', kind: 'dir' })
+    // The current files on the change stream are patched in place, so a folder opened later
+    // is read as the files are now, not as they were when the tree was first read.
+    const current = this.aliases.get(WORKING_TREE)
+    const live =
+      revision.kind === 'working' &&
+      this.streaming &&
+      (ref === WORKING_TREE || (current !== undefined && (await current) === sha))
     const expand = async (node: TreeNode) => {
       if (node.kind !== 'dir' || node.children) return
+      const at = live ? await this.at(WORKING_TREE) : revision
       const page = await this.pages((cursor) =>
-        this.client.repository.tree({ ...this.target, revision, path: node.path, cursor })
+        this.client.repository.tree({ ...this.target, revision: at, path: node.path, cursor })
       )
-      node.children = sortNodes(
-        page.entries.map((entry) => ({
-          name: entry.name,
-          path: entry.path,
-          kind:
-            entry.kind === 'directory'
-              ? ('dir' as const)
-              : entry.kind === 'submodule'
-                ? ('submodule' as const)
-                : ('file' as const),
-          mode:
-            entry.kind === 'symlink' ? '120000' : entry.kind === 'directory' ? '040000' : '100644',
-          ...(entry.oid ? { sha: entry.oid } : {}),
-          ...(entry.size !== null ? { size: entry.size } : {}),
-        }))
-      )
+      node.children = sortNodes(page.entries.map(nodeTreeNode))
     }
     await expand(root)
+    if (live) {
+      this.liveTrees.add(root)
+      // Only the trees still on screen matter; an old one is left to the collector.
+      if (this.liveTrees.size > 8) this.liveTrees.delete(this.liveTrees.values().next().value!)
+    }
     return {
       root,
       sha,
       truncated: true,
+      live,
       expand,
       reveal: async (path) => {
         const parts = path.split('/')
@@ -962,6 +975,17 @@ export class NodeRepositorySource implements RepositorySource {
         this.refresh()
         this.emit({ kind: 'refs' })
       }
+      if (event.type === 'repository.changed') {
+        const batch = RepositoryChangeBatchSchema.safeParse(event.data)
+        if (
+          batch.success &&
+          this.streaming &&
+          batch.data.project_id === this.identity.project &&
+          batch.data.worktree_id === this.identity.workspace
+        )
+          this.changed(batch.data)
+        return
+      }
       if (event.type !== 'repository.invalidated') return
       const parsed = RepositoryInvalidationSchema.safeParse(event.data)
       if (
@@ -970,6 +994,8 @@ export class NodeRepositorySource implements RepositorySource {
         parsed.data.worktree_id !== this.identity.workspace
       )
         return
+      // On the change stream every filesystem edit, our own saves included, arrives as a batch.
+      if (this.streaming && parsed.data.reason === 'filesystem') return
       this.refresh()
       this.emit({ kind: 'workspace' })
     })
@@ -995,11 +1021,79 @@ export class NodeRepositorySource implements RepositorySource {
         .unwatch({ ...this.target, subscription_id: subscription })
         .catch(() => {})
   }
+  private supportsChanges() {
+    const describe = this.client.describe
+    this.changeStream ??= describe
+      ? this.read(() => describe())
+          .then((description) => {
+            const capabilities = (
+              description as { capabilities?: { capabilities?: Record<string, unknown> } }
+            )?.capabilities?.capabilities
+            const stream = capabilities?.repository_changes_v1 as { status?: unknown } | undefined
+            return stream?.status === 'supported'
+          })
+          .catch(() => {
+            this.changeStream = null
+            return false
+          })
+      : Promise.resolve(false)
+    return this.changeStream
+  }
+  /** Rereads everything once; batches after `cursor` describe what changes from there. */
+  private reread(cursor?: RepositoryChangesCursor) {
+    this.cursor = cursor
+    this.refresh()
+    this.emit({ kind: 'workspace' })
+  }
+  private changed(batch: RepositoryChangeBatch) {
+    if (!this.cursor) {
+      // The lease has not said yet where the stream stands; keep it until it does.
+      if (this.early.length < 64) this.early.push(batch)
+      return
+    }
+    if (batch.stream_id === this.cursor.stream_id && batch.revision <= this.cursor.revision) return
+    const next = { stream_id: batch.stream_id, revision: batch.revision }
+    if (
+      !batch.complete ||
+      batch.stream_id !== this.cursor.stream_id ||
+      batch.revision !== this.cursor.revision + 1
+    ) {
+      console.debug('[Abele] node repository: rereading the files', {
+        reason: 'reason' in batch ? batch.reason : 'revision gap',
+        from: this.cursor,
+        to: next,
+      })
+      this.reread(next)
+      return
+    }
+    this.cursor = next
+    // Reads after this one observe the files again; rows on screen are patched, not reread.
+    this.aliases.delete(WORKING_TREE)
+    if (batch.entries.length) {
+      let paths: string[] = []
+      for (const root of this.liveTrees) paths = applyTreeChanges(root, batch.entries)
+      if (!this.liveTrees.size)
+        paths = batch.entries.flatMap((e) =>
+          e.change === 'deleted'
+            ? [e.path]
+            : e.change === 'renamed'
+              ? [e.from, e.entry.path]
+              : [e.entry.path]
+        )
+      this.emit({ kind: 'tree', paths: [...new Set(paths)] })
+    }
+    if (batch.git) this.emit({ kind: 'status', paths: batch.git.status.map((row) => row.path) })
+  }
   private async renewWatch() {
     if (this.disposed || this.retired || !this.mutableWatch) return
     try {
       if (this.client.connected) {
-        const lease = await this.read(() => this.client.repository.watch(this.target))
+        const streaming = await this.supportsChanges()
+        const lease = await this.read(() =>
+          this.client.repository.watch(
+            streaming ? { ...this.target, changes: this.cursor ?? null } : this.target
+          )
+        )
         if (!this.mutableWatch || this.disposed || this.retired) {
           void this.client.repository
             .unwatch({ ...this.target, subscription_id: lease.subscription_id })
@@ -1008,7 +1102,13 @@ export class NodeRepositorySource implements RepositorySource {
         }
         const firstLease = !this.subscription
         this.subscription = lease.subscription_id
-        if (firstLease) {
+        if (streaming && lease.changes) {
+          this.streaming = true
+          const early = this.early.splice(0)
+          if (lease.refresh_required) this.reread(lease.changes)
+          else this.cursor = lease.changes
+          for (const batch of early) this.changed(batch)
+        } else if (firstLease) {
           this.refresh()
           this.emit({ kind: 'workspace' })
         }
@@ -1030,6 +1130,7 @@ export class NodeRepositorySource implements RepositorySource {
     this.textCache.clear()
     this.fileContents.clear()
     this.revisions.clear()
+    this.liveTrees.clear()
     this.textBytes = 0
     if (this.subscription)
       void this.client.repository

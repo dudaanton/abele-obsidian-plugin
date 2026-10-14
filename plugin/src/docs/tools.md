@@ -998,6 +998,10 @@ the repository tab's native toggle, and can be revoked there. Historical files r
 
 Working-tree tabs refresh trees, status, visible files and executed searches on invalidations
 and reconnect, including redacted catalogue hints that require refreshing all mutable state.
+On a node with the repository change stream, the tab instead applies the node's numbered
+batches of added, modified, renamed and deleted paths to its file tree in place, and reads
+again only the file or folder listing a batch touches; it rereads everything only when the
+node reports a batch it could not describe or a batch number is skipped.
 Local drafts, scroll and selection are kept. “Changed on disk” and conflicts offer two actions:
 Reload asks before discarding changed local text and re-reads the file from the node; Keep mine
 re-reads disk, keeps the proposed text, and explicitly adopts that content identity for the next

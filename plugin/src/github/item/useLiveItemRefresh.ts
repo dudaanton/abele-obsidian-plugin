@@ -1,5 +1,9 @@
 import { nextTick, onBeforeUnmount, watch } from 'vue'
-import { type RepositorySource } from '@/repository/source'
+import {
+  type RepositoryChange,
+  type RepositoryLocation,
+  type RepositorySource,
+} from '@/repository/source'
 import { type ItemData } from '@/github/loadItem'
 import { pinIntoView } from '@/github/scrollTo'
 import { emptyScreen } from '@/github/screen'
@@ -19,6 +23,21 @@ interface LiveRefreshOptions {
   anchorPin: { unpin: () => void }
   reload: (retry?: boolean) => Promise<void>
   isActive: () => boolean
+}
+const parentOf = (path: string) => (path.includes('/') ? path.slice(0, path.lastIndexOf('/')) : '')
+/** Whether a batch's paths touch the file or the folder listing a tab shows. */
+function shows(location: RepositoryLocation, change: RepositoryChange) {
+  const paths = change.paths ?? []
+  const within = (path: string, root: string) => path === root || path.startsWith(root + '/')
+  if (location.kind === 'file') return paths.some((path) => within(location.path, path))
+  if (location.kind === 'home' || location.kind === 'folder') {
+    const folder = location.kind === 'home' ? '' : location.path
+    // The home page lists the changed files too.
+    if (change.kind === 'status')
+      return location.kind === 'home' || paths.some((p) => parentOf(p) === folder)
+    return paths.some((path) => parentOf(path) === folder || (folder && within(folder, path)))
+  }
+  return true
 }
 export function useLiveItemRefresh(options: LiveRefreshOptions) {
   const { props, source, projectPin, main, screen, root, loadKey, anchorPin, reload, isActive } =
@@ -53,6 +72,9 @@ export function useLiveItemRefresh(options: LiveRefreshOptions) {
             !('ref' in location) ||
             location.ref !== 'Working tree'
           )
+            return
+          // A change batch has already patched the file tree; read again only what is on screen.
+          if ((change.kind === 'tree' || change.kind === 'status') && !shows(location, change))
             return
           const refresh = async () => {
             if (refreshRunning) {

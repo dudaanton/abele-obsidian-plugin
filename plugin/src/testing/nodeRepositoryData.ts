@@ -22,7 +22,9 @@ const metadata = (commit: string) => ({
   subject: 'Update sample',
   message: 'Update sample\n',
 })
-export function nodeRepositoryFixture() {
+/** `changes`: the node advertises the repository change stream. */
+export function nodeRepositoryFixture(options: { changes?: boolean } = {}) {
+  let streamRevision = 0
   const calls: { method: string; params: any }[] = []
   const listeners = new Set<(event: JournalEvent) => void>()
   let text = 'export const answer = 42\n'
@@ -184,7 +186,12 @@ export function nodeRepositoryFixture() {
         return {
           subscription_id: 'subscription-fixture',
           expires_at: new Date(Date.now() + 60000).toISOString(),
-          refresh_required: true,
+          refresh_required:
+            params.changes?.stream_id !== 'stream-fixture' ||
+            params.changes?.revision !== streamRevision,
+          ...(params.changes !== undefined
+            ? { changes: { stream_id: 'stream-fixture', revision: streamRevision } }
+            : {}),
         }
       case 'repository.v1.unwatch':
         return { removed: true }
@@ -203,6 +210,34 @@ export function nodeRepositoryFixture() {
       get connected() {
         return true
       },
+      ...(options.changes
+        ? {
+            describe: async () => ({
+              capabilities: { capabilities: { repository_changes_v1: { status: 'supported' } } },
+            }),
+          }
+        : {}),
+    },
+    /** Sends a `repository.changed` batch; the node's stream counts it. */
+    batch(revision: number, body: Record<string, unknown>) {
+      streamRevision = Math.max(streamRevision, revision)
+      for (const listener of listeners)
+        listener({
+          kind: 'event',
+          stream_id: 'catalog',
+          node_id: identity.node,
+          seq: 3,
+          type: 'repository.changed',
+          actor: { kind: 'node' },
+          at: '2025-01-01T00:00:00Z',
+          data: {
+            project_id: identity.project,
+            worktree_id: identity.workspace,
+            stream_id: 'stream-fixture',
+            revision,
+            ...body,
+          },
+        })
     },
     calls,
     request,
