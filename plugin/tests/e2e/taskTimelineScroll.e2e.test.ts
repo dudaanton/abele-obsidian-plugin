@@ -244,12 +244,10 @@ const script = (footer: boolean, short = false) => String.raw`(async function* (
         ...blocks().map(x => [x.dataset.timelineGroup + ' ' + x.dataset.abeleAnchor, x])]
         .filter(([, el]) => el).map(([name, el]) => [name, el.getBoundingClientRect()])
         .filter(([, r]) => r.height > 0)
-      const top = usableTop(), bottom = scroller.getBoundingClientRect().bottom
       for (let i = 0; i < boxes.length; i++) for (let j = i + 1; j < boxes.length; j++) {
         const [a, ra] = boxes[i], [b, rb] = boxes[j]
         // The days scroll under the pinned header by design; it is opaque. Elsewhere, nothing overlaps.
         if (a === 'pinned') continue
-        if (Math.max(ra.top, rb.top) < top || Math.min(ra.bottom, rb.bottom) > bottom) continue
         const w = Math.min(ra.right, rb.right) - Math.max(ra.left, rb.left)
         const h = Math.min(ra.bottom, rb.bottom) - Math.max(ra.top, rb.top)
         if (w > 0.5 && h > 0.5) (report.overlaps ??= []).push(state + ': ' + a + ' × ' + b + ' ' + JSON.stringify([ra.toJSON(), rb.toJSON()]))
@@ -263,7 +261,7 @@ const script = (footer: boolean, short = false) => String.raw`(async function* (
       for (const el of [overdueRow(), pastRow(), root.querySelector('[data-timeline-item^="task:"]')]) {
         if (!el) continue
         const r = el.getBoundingClientRect()
-        if (r.top < usableTop() || r.bottom > scroller.getBoundingClientRect().bottom) continue
+        if (r.top < readTop() || r.bottom > scroller.getBoundingClientRect().bottom) continue
         const x = Math.round(r.left + r.width / 2), y = Math.round(r.top + r.height / 2)
         await cdp.sendCommand('Input.dispatchMouseEvent', { type: 'mouseMoved', x, y })
         await new Promise(r => requestAnimationFrame(() => requestAnimationFrame(r)))
