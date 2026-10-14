@@ -535,6 +535,15 @@ export function createNodeAgentTools(factory: NodeAgentHostFactory): AgentTool[]
       }
       const connection = admittedConnection(target.node_id),
         client = connection.client
+      // The node is asked about a folder only once this chat may reach it.
+      if (
+        !host.ledger
+          .approvedEntries(session, target.node_id, connection.principal())
+          .some((entry) => entry.kind === 'node' || entry.project_id === target.project_id)
+      )
+        throw new Error(
+          `Folder ${JSON.stringify(target.project_id)} is not in this chat's node access. ${CHOOSE_TARGET}`
+        )
       await safe(() => resolveNodeTarget(client, target, scopes, guard))
       const id = nodeTargetId(target.target),
         git = target.target.kind === 'worktree'

@@ -822,4 +822,12 @@ describe('what the node file tools tell a model that cannot reach a file yet', (
       /node_folders/
     )
   })
+  it("asks the node nothing about a folder outside this chat's node access", async () => {
+    const { call, client } = setupGit()
+    client.getProject.mockClear()
+    await expect(
+      call('node_read', { project: 'other-project', path: 'sample.txt' })
+    ).rejects.toThrow(/node_folders/)
+    expect(client.getProject).not.toHaveBeenCalled()
+  })
 })
