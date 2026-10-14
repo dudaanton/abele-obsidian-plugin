@@ -1,6 +1,6 @@
 import { MarkdownView, Platform, TFile, type Plugin, type WorkspaceLeaf } from 'obsidian'
 import { DeckView } from './DeckView'
-import { parseDeck } from './core/markdown'
+import { deckProperties } from './core/markdown'
 import { slideDividers } from './dividers'
 import { DECK_VIEW_TYPE, presentationFileOpening, sourceLeaves } from './opening'
 import './core/layouts.css'
@@ -12,7 +12,7 @@ export function registerSlides(plugin: Plugin): void {
     if (!file || file.extension !== 'md') return false
     const frontmatter = app.metadataCache.getFileCache(file)?.frontmatter
     if (frontmatter) return frontmatter.type === 'presentation'
-    return parseDeck(await app.vault.cachedRead(file)).settings.properties.type === 'presentation'
+    return deckProperties(await app.vault.cachedRead(file)).type === 'presentation'
   }
   plugin.register(presentationFileOpening(isPresentation))
   plugin.registerMarkdownPostProcessor(slideDividers)

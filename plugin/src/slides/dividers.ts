@@ -1,8 +1,9 @@
 import type { MarkdownPostProcessorContext } from 'obsidian'
-import { parseDeck } from './core/markdown'
+import { deckProperties, parseDeck } from './core/markdown'
 
 let lastText = ''
-let lastDeck = parseDeck('')
+const NO_DECK = parseDeck('')
+let lastDeck = NO_DECK
 
 /** Only source-positioned reading sections: a slide's renderer must not rewrite its own content. */
 export function slideDividers(el: HTMLElement, ctx: MarkdownPostProcessorContext): void {
@@ -10,7 +11,8 @@ export function slideDividers(el: HTMLElement, ctx: MarkdownPostProcessorContext
   if (!info) return
   if (info.text !== lastText) {
     lastText = info.text
-    lastDeck = parseDeck(info.text)
+    // Runs for every rendered section of every note: ordinary notes never get a deck parse.
+    lastDeck = deckProperties(info.text).type === 'presentation' ? parseDeck(info.text) : NO_DECK
   }
   if (lastDeck.settings.properties.type !== 'presentation') return
   const lines = info.text.split('\n')
