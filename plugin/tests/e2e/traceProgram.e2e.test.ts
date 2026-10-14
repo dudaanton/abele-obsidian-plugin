@@ -99,23 +99,7 @@ beforeAll(async () => {
     mkdirSync(join(repo, path, '..'), { recursive: true })
     writeFileSync(join(repo, path), text)
   }
-  const git = (...args: string[]) => {
-    const r = spawnSync('/usr/bin/git', args, { cwd: repo, encoding: 'utf8' })
-    if (r.status) throw Error(r.stderr)
-  }
-  git('init', '-b', 'main')
-  git('add', '.')
-  git(
-    '-c',
-    'user.name=Fixture',
-    '-c',
-    'user.email=fixture@example.invalid',
-    '-c',
-    'commit.gpgsign=false',
-    'commit',
-    '-m',
-    'fixture'
-  )
+  // A plain folder, not a repository: the chat runs in the folder itself.
   const fake = resolve('tests/fixtures/nodeClaude.mjs')
   const created = spawnSync(
     process.execPath,
@@ -163,7 +147,7 @@ beforeAll(async () => {
     const project=await client.registerProject(${JSON.stringify(repo)},'trusted');
     const workspaces=await client.listWorkspaces(project.project_id),workspace=(workspaces.items??workspaces)[0];
     await client.nodePath.execution({project_id:project.project_id,target:{kind:'workspace',workspace_id:workspace.workspace_id},enabled:true},crypto.randomUUID());
-    const s=await client.createSession('Program fixture',workspace.workspace_id);
+    const s=await client.nodePath.createSession({title:'Program fixture',provider:'fake',target:{kind:'workspace',workspace_id:workspace.workspace_id}},crypto.randomUUID());
     await chats.openNodeSession({kind:'node-session',registrationId:node.id,nodeId:node.expectedNodeId,sessionId:s.session_id,title:s.title});
     await chats.revealSidebar({focus:false});
     await until(()=>document.querySelector('.abele-node-chat__title')?.textContent==='Program fixture','chat open');
