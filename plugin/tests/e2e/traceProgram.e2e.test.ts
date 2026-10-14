@@ -16,6 +16,16 @@ targets('desktop')
 
 const SHOTS = shotDir('abele-trace')
 const wait = (ms: number) => new Promise((r) => setTimeout(r, ms))
+/** What the app answered, or why not, with what the node said on its way out. */
+function inApp<T>(script: string): T {
+  try {
+    return evalAsync<T>(script)
+  } catch (e) {
+    throw new Error(
+      `${e instanceof Error ? e.message : String(e)}\nnode: ${daemonExit || 'running'}\n${daemonErrors}`
+    )
+  }
+}
 const prelude = `const wait=ms=>new Promise(r=>setTimeout(r,ms)),until=async(fn,what,tries=300)=>{for(let i=0;i<tries;i++){const v=fn();if(v)return v;await wait(50)}throw Error('Did not converge: '+what+'; '+(document.querySelector('.workspace-leaf.mod-active')?.textContent??'').slice(0,400))};
 const api=window.__abeleTest,nodes=api.NodeService.getInstance(),chats=api.ChatService.getInstance();
 const shot=async name=>{await wait(300);const image=await require('@electron/remote').getCurrentWebContents().capturePage();require('fs').writeFileSync(${JSON.stringify(SHOTS)}+'/'+name+'.png',image.toPNG())};
@@ -39,8 +49,8 @@ const recordPoint=async (line,takes)=>{
   const said=()=>[...document.querySelectorAll('button.abele-debug-source__point')].map(b=>b.getAttribute('aria-label')).filter(l=>l&&!l.startsWith('Stop at line')).join(' | ');
   await until(()=>said().startsWith('Record point ·'),'record point confirmed: '+said(),400).catch(e=>{throw Error(e.message+' / now: '+said()+' / state: '+debugState())});
 };
-window.__dbgLog=[];if(!console.__wrapped){const d=console.debug.bind(console);console.debug=(...a)=>{if(String(a[0]).startsWith('[debugger]')||String(a[0]).startsWith('[trace]'))window.__dbgLog.push(a.map(x=>x instanceof Error?x.message+' '+(x.code??''):typeof x==='string'?x:JSON.stringify(x)?.slice(0,300)).join(' '));d(...a)};console.__wrapped=true}
-const debugState=()=>JSON.stringify({log:window.__dbgLog.slice(-6),notices:[...document.querySelectorAll('.notice')].map(n=>n.textContent)})+' '+debugState0();
+window.__dbgLog=[];if(!console.__wrapped){const d=console.debug.bind(console);console.debug=(...a)=>{if(/^\\[(debugger|trace|Abele node)\\]/.test(String(a[0])))window.__dbgLog.push(a.map(x=>x instanceof Error?x.message+' '+(x.code??''):typeof x==='string'?x:JSON.stringify(x)?.slice(0,300)).join(' '));d(...a)};console.__wrapped=true}
+const debugState=()=>JSON.stringify({log:window.__dbgLog.slice(-10),notices:[...document.querySelectorAll('.notice')].map(n=>n.textContent)})+' '+debugState0();
 const debugState0=()=>{const b=api.DebuggerService.instance.active.value,c=b?.controller;return JSON.stringify({session:c?.snapshot?.debug_session_id,lifecycle:c?.snapshot?.lifecycle,execution:c?.snapshot?.execution,status:c?.session.status,error:c?.error,bps:c?.snapshot?.breakpoints,identity:c?.snapshot?.target.build_identity,points:b?.trace?.points,actions:c?.actions?.slice(-3),notices:[...document.querySelectorAll('.notice')].map(n=>n.textContent)}).slice(0,3000)};
 const goOn=async()=>{
   const go=await until(()=>[...document.querySelectorAll('[aria-label="Continue (F5)"]')].find(b=>!b.classList.contains('is-disabled')&&!b.hasAttribute('disabled')),'Continue offered');
@@ -53,6 +63,8 @@ let port = 0
 let token = ''
 let repo = ''
 let registration = ''
+let daemonErrors = ''
+let daemonExit = ''
 let folder: Record<string, string> = {}
 
 const JS = [
@@ -143,7 +155,11 @@ beforeAll(async () => {
   let output = ''
   let errors = ''
   child.stdout!.on('data', (b) => (output += b))
-  child.stderr!.on('data', (b) => (errors += b))
+  child.stderr!.on('data', (b) => {
+    errors += b
+    daemonErrors = (daemonErrors + b).slice(-2000)
+  })
+  child.on('exit', (code, signal) => (daemonExit = `daemon exited ${code ?? signal}`))
   for (let i = 0; !output.includes('"listening"'); i++) {
     if (i > 500 || child.exitCode !== null) throw Error(errors || 'Daemon startup deadline')
     await wait(20)
@@ -207,7 +223,7 @@ const READ_RUN = `
   }`
 
 it('runs a JavaScript program from the chat menu, records at a point set in its margin, and opens the run by itself', () => {
-  const seen = evalAsync<{
+  const seen = inApp<{
     steps: { label: string; place: string; text: string }[]
     notes: number
   }>(`(async()=>{${prelude}
@@ -230,7 +246,7 @@ it('runs a JavaScript program from the chat menu, records at a point set in its 
 })
 
 it('records at a line of TypeScript open beside its build, through the source map', () => {
-  const seen = evalAsync<{
+  const seen = inApp<{
     steps: { label: string; place: string; text: string }[]
   }>(`(async()=>{${prelude}
     for(const t of ['abele-trace-run','abele-trace-value','abele-node-file'])for(const l of app.workspace.getLeavesOfType(t))l.detach();
