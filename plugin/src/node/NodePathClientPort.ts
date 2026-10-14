@@ -869,8 +869,10 @@ export class NodePathClientPort implements NodePathPort {
       if (!streaming || !lease.changes) return false
       const pending = early.splice(0)
       if (lease.refresh_required) {
+        // The first lease only says where the stream starts: the caller reads the files after
+        // the watch is up. A later one means batches were lost.
+        if (cursor) notify()
         cursor = lease.changes
-        notify()
         // Behind the lease is fine: the node says every batch since is on its way here.
       } else cursor ??= lease.changes
       for (const batch of pending) follow(batch)

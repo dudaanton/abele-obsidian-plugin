@@ -136,8 +136,8 @@ describe('the path sidebar port on the change stream', () => {
       worktree_id: identity.workspace,
       changes: null,
     })
-    expect(notify).toHaveBeenCalledTimes(1)
-    notify.mockClear()
+    // The first lease starts the stream; the caller reads the files after it, once.
+    expect(notify).not.toHaveBeenCalled()
     batch(1, { complete: true, entries: [{ change: 'added', entry: file('a.ts') }], git: null })
     expect(changed.mock.calls).toEqual([
       [{ entries: [{ change: 'added', entry: file('a.ts') }], git: false }],
@@ -283,6 +283,41 @@ describe('the path sidebar model on the change stream', () => {
     port.inspect.mockClear()
     return { model, port, changed: (batch: PathTreeBatch) => changed(batch) }
   }
+  it('starts the watch before reading the files, and reads them once', async () => {
+    const order: string[] = []
+    const port = {
+      catalogue: vi.fn(async () => ({
+        folders: [],
+        targets: [target],
+        sessions: [],
+        capabilities: [],
+      })),
+      tree: vi.fn(async () => {
+        order.push('tree')
+        return { entries: [row('README.md')], cursor: null, revision }
+      }),
+      inspect: vi.fn(async () => ({ entries: [], changes: [], revision })),
+      file: vi.fn(),
+      history: vi.fn(),
+      commit: vi.fn(),
+      subscribe: vi.fn(async () => () => {}),
+      watch: vi.fn(async () => {
+        order.push('watch')
+        return () => {}
+      }),
+    }
+    const model = new NodePathModel(
+      target.nodeId,
+      target.registrationId,
+      port as unknown as NodePathPort,
+      { get: () => undefined, set: () => {} }
+    )
+    await model.refresh()
+    await model.select(target.id)
+    await ticks()
+    expect(order).toEqual(['watch', 'tree'])
+    model.destroy()
+  })
   it('patches an opened folder in place without reading the tree again', async () => {
     const { model, port, changed } = await open()
     const readme = model.entries.value[1]

@@ -343,26 +343,37 @@ export class NodePathModel {
         target.kind === 'worktree' && this.changes.value.length ? 'changed-tree' : 'all'
       return
     }
+    // The watch comes first and the files are read after it, once: a read before it could miss
+    // what changed until the stream started, and reading again would race whatever comes next.
+    let stop: (() => void) | undefined, watchError: unknown
+    try {
+      stop = await this.port.watch(
+        target,
+        () => {
+          void this.reloadTarget(target).catch((e) => {
+            // The tree already says it failed, with a retry, without moving its rows; a notice
+            // over it would push them down on every failed background read.
+            if (this.progress.value[pathTargetKey(target)]?.state === 'failed')
+              console.debug('[Abele] node path: reading the files again failed', e)
+            else this.report(e)
+          })
+        },
+        (batch) => this.applyBatch(target, batch)
+      )
+    } catch (error) {
+      watchError = error
+    }
+    if (this.disposed || generation !== this.selectionGeneration) {
+      stop?.()
+      return
+    }
+    this.stopWatch = stop
     const pending = this.treeLoads.get(pathTargetKey(target))
     await (pending?.promise ?? this.reloadTarget(target))
     if (this.disposed || generation !== this.selectionGeneration) return
     this.mode.value =
       target.kind === 'worktree' && this.changes.value.length ? 'changed-tree' : 'all'
-    const stop = await this.port.watch(
-      target,
-      () => {
-        void this.reloadTarget(target).catch((e) => {
-          // The tree already says it failed, with a retry, without moving its rows; a notice over
-          // it would push them down on every failed background read.
-          if (this.progress.value[pathTargetKey(target)]?.state === 'failed')
-            console.debug('[Abele] node path: reading the files again failed', e)
-          else this.report(e)
-        })
-      },
-      (batch) => this.applyBatch(target, batch)
-    )
-    if (this.disposed || generation !== this.selectionGeneration) stop()
-    else this.stopWatch = stop
+    if (watchError) throw watchError
   }
   async reloadTarget(target: PathTarget, files = true): Promise<void> {
     if (this.disposed) return

@@ -28,7 +28,8 @@ to that client.
 The node path sidebar follows the same stream (`node/nodePathChanges.ts`), and for a plain
 folder the node's `workspace_changes_v1` stream (`workspace.files_changed`): its port hands the
 model in-order batches, the model patches its listing in place, and reads again only the change
-list when git state moved or a changed file was touched. Lease renewals no longer reread it.
+list when git state moved or a changed file was touched. Selecting a folder starts the watch
+first and reads the files once after it; lease renewals no longer reread it.
 
 `githubRepositorySource` wraps the exact `GithubClient` supplied by the tab, including its chat
 capability wrapper. It does not unwrap guards, select another connection, or add another content
