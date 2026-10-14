@@ -27,6 +27,7 @@ const DIR = `Sample attachment rules ${process.pid}`
 const RULED = `${DIR}/Ruled notes`
 const RULE_FILES = `${DIR}/Ruled files`
 const DEFAULT_FILES = `${DIR}/Default files`
+const BESIDE = `${DIR}/Beside notes`
 
 afterAll(async () => {
   if (available) await restoreDesktopWindow()
@@ -41,7 +42,16 @@ interface Result {
   error?: string
   mobile: boolean
   landed: Record<string, Landing[]>
-  rows: Record<string, { names: string[]; overflow: string[] }>
+  rows: Record<
+    string,
+    {
+      fields: string[]
+      places: string[]
+      overflow: string[]
+      binBeside: boolean[]
+      endsShown: boolean[]
+    }
+  >
   ruleKept: unknown
   folderKept: unknown
 }
@@ -93,10 +103,10 @@ const probe = (mobile: boolean) => `(async () => {
   const settingsWindow = () => app.setting.popout?.win.electronWindow || require('@electron/remote').getCurrentWindow()
   const shoot = async (state) => {
     config.attachmentRules = state === 'empty' ? [] : state === 'two'
-      ? [{ notesFolder: ${JSON.stringify(RULED)}, attachmentsFolder: ${JSON.stringify(RULE_FILES)} },
-         { notesFolder: '/', attachmentsFolder: './' }]
-      : [{ notesFolder: 'Sample archive/Twenty years of sample travel notes/Every country visited/Long sample folder name',
-           attachmentsFolder: 'Sample archive/Twenty years of sample travel notes/Pictures of every country/Long sample folder name' }]
+      ? [{ notesFolder: ${JSON.stringify(RULED)}, location: 'folder', attachmentsFolder: ${JSON.stringify(RULE_FILES)}, subfolder: '' },
+         { notesFolder: '/', location: 'subfolder', attachmentsFolder: '', subfolder: 'pictures' }]
+      : [{ notesFolder: 'Sample archive/Twenty years of sample travel notes/Every country visited/Long sample folder name', location: 'folder',
+           attachmentsFolder: 'Sample archive/Twenty years of sample travel notes/Pictures of every country/Long sample folder name', subfolder: '' }]
     config.version.value++
     app.setting.open()
     app.setting.openTabById('abele')
@@ -106,7 +116,7 @@ const probe = (mobile: boolean) => `(async () => {
     if (shown && !shown.classList.contains('abele-attachment-rules')) shown.click()
     const count = state === 'empty' ? 0 : state === 'two' ? 2 : 1
     // The group drawn with the rules just set, not one still on its way out from the last opening.
-    const group = await until(() => [...doc.querySelectorAll('.abele-attachment-rules')].find(g => g.isConnected && g.querySelectorAll('.abele-attachment-rules__rule').length === count))
+    const group = await until(() => [...doc.querySelectorAll('.abele-attachment-rules')].find(g => g.isConnected && g.querySelectorAll('.abele-attachment-rules__notes').length === count))
     if (!group) throw new Error('The Attachment folders group never drew')
     await wait(400)
     group.scrollIntoView({ block: 'start' })
@@ -117,8 +127,18 @@ const probe = (mobile: boolean) => `(async () => {
       const box = el.getBoundingClientRect()
       if (box.width > 0 && (box.left < -1 || box.right > width + 1)) overflow.push(el.className || el.tagName)
     }
-    const names = [...group.querySelectorAll('.abele-attachment-rules__rule .setting-item-name')].map(n => n.textContent.trim())
-    out.rows[state] = { names, overflow }
+    const notes = [...group.querySelectorAll('.abele-attachment-rules__notes')]
+    const fields = notes.map(row => row.querySelector('input').value)
+    const places = [...group.querySelectorAll('.abele-attachment-rules__place select')].map(select => select.value)
+    // The bin on the line of its field, at its end, on the desktop and with the phone's stacked rows.
+    const binBeside = notes.map(row => {
+      const field = row.querySelector('input').getBoundingClientRect(), bin = row.querySelector('.clickable-icon').getBoundingClientRect()
+      return bin.left >= field.right - 1 && Math.abs((bin.top + bin.bottom) / 2 - (field.top + field.bottom) / 2) < 8
+    })
+    // A long path shows its end, with the whole of it in the tooltip.
+    const endsShown = [...group.querySelectorAll('.abele-attachment-rules__path')].map(input =>
+      input.title === input.value && (input.scrollWidth <= input.clientWidth || input.scrollLeft + input.clientWidth >= input.scrollWidth - 2))
+    out.rows[state] = { fields, places, overflow, binBeside, endsShown }
     const win = settingsWindow()
     const image = await win.webContents.capturePage()
     require('fs').writeFileSync(${JSON.stringify(SHOTS + '/')} + (${mobile} ? 'phone' : 'desktop') + '-' + state + '.png',
@@ -132,11 +152,17 @@ const probe = (mobile: boolean) => `(async () => {
     await app.vault.create(${JSON.stringify(RULED + '/Deeper/inside.md')}, '# Inside\\n\\n')
     await app.vault.create(${JSON.stringify(DIR + '/outside.md')}, '# Outside\\n\\n')
     app.vault.setConfig('attachmentFolderPath', ${JSON.stringify(DEFAULT_FILES)})
-    config.attachmentRules = [{ notesFolder: ${JSON.stringify(RULED + '/')}, attachmentsFolder: ${JSON.stringify(RULE_FILES)} }]
+    await app.vault.createFolder(${JSON.stringify(BESIDE)})
+    await app.vault.create(${JSON.stringify(BESIDE + '/beside.md')}, '# Beside\\n\\n')
+    config.attachmentRules = [
+      { notesFolder: ${JSON.stringify(RULED + '/')}, location: 'folder', attachmentsFolder: ${JSON.stringify(RULE_FILES)}, subfolder: '' },
+      { notesFolder: ${JSON.stringify(BESIDE)}, location: 'subfolder', attachmentsFolder: '', subfolder: 'pictures' },
+    ]
     for (const how of ['paste', 'drop']) {
       out.landed[how] = [
         await send(${JSON.stringify(RULED + '/Deeper/inside.md')}, how),
         await send(${JSON.stringify(DIR + '/outside.md')}, how),
+        await send(${JSON.stringify(BESIDE + '/beside.md')}, how),
       ]
     }
     for (const state of ['empty', 'two', 'long']) await shoot(state)
@@ -176,13 +202,18 @@ describe.skipIf(!available)('attachment folder rules in the running app', () => 
         expect(result.landed[how], how).toEqual([
           { folder: RULE_FILES, embedded: true },
           { folder: DEFAULT_FILES, embedded: true },
+          { folder: `${BESIDE}/pictures`, embedded: true },
         ])
       }
-      expect(result.rows.empty.names).toEqual([])
-      expect(result.rows.two.names).toEqual([`Notes in ${RULED}`, 'Every note'])
-      expect(result.rows.long.names).toHaveLength(1)
-      for (const state of ['empty', 'two', 'long'])
+      expect(result.rows.empty.fields).toEqual([])
+      expect(result.rows.two.fields).toEqual([RULED, 'Whole vault'])
+      expect(result.rows.two.places).toEqual(['folder', 'subfolder'])
+      expect(result.rows.long.fields).toHaveLength(1)
+      for (const state of ['empty', 'two', 'long']) {
         expect(result.rows[state].overflow, state).toEqual([])
+        expect(result.rows[state].binBeside.every(Boolean), state).toBe(true)
+        expect(result.rows[state].endsShown.every(Boolean), state).toBe(true)
+      }
       expect(result.folderKept).toBe(true)
     },
     300_000
