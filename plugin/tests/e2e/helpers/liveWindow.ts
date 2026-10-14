@@ -14,6 +14,7 @@ import {
   cliCost,
   closeStrayWindows,
   evalLong,
+  insideCoveredPhone,
   isObsidianRunning,
   notesInEditor,
   setBackgroundThrottling,
@@ -21,7 +22,7 @@ import {
   useDomMenus,
   waitForLinkIndex,
 } from './obsidianCli'
-import { onPhone } from './target'
+import { EmulationCoveredError, onPhone, skipReason } from './target'
 import { installPhoneHost } from './phone'
 import { RESTORE_PHONE_SCRIPT } from './phoneState'
 import { assertNoLeakedRootViews, snapshotRootViews, type RootView } from './rootViews'
@@ -109,9 +110,16 @@ afterAll(async () => {
 
 /**
  * A test that failed only because it asked for something a phone does not have (see
- * `DesktopOnlyError`) is reported as skipped, with what it needed, rather than as failed.
+ * `DesktopOnlyError`) is reported as skipped, with what it needed, rather than as failed. So is
+ * every case after the file asked for a phone the real one covers, until it leaves that phone
+ * (`insideCoveredPhone`): it was written for a layout this window never entered.
  */
-beforeEach(() => {
+beforeEach((context) => {
+  if (insideCoveredPhone()) {
+    const reason = new EmulationCoveredError().message
+    skipReason(context.task, reason)
+    context.skip(reason)
+  }
   onTestFailed(({ task }) => {
     const errors = task.result?.errors ?? []
     if (!errors.length || !errors.every((e) => SKIPS.includes(e?.name ?? ''))) return
@@ -120,5 +128,6 @@ beforeEach(() => {
     result.state = 'skip'
     result.note = errors[0].message
     result.errors = undefined
+    skipReason(task, errors[0].message)
   })
 })

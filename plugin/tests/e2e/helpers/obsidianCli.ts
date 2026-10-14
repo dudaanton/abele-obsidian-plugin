@@ -809,8 +809,11 @@ export async function reloadApp(
   if (onPhone()) return reloadPhone()
   const asked = /emulateMobile\((true|false)\)/.exec(how)?.[1]
   if (asked === 'true') skipCoveredEmulation()
-  // Leaving a phone this file never entered: nothing to reload.
-  if (asked === 'false' && emulationSkipped && !evalJsonIdempotent<boolean>('app.isMobile')) return
+  // Leaving a phone this file never entered: nothing to reload, and its cases run again.
+  if (asked === 'false' && emulationSkipped && !evalJsonIdempotent<boolean>('app.isMobile')) {
+    emulationSkipped = false
+    return
+  }
   if (asked === 'true') rememberDesktop()
   await reloadWindow(asked, launch)
   if (asked === 'false') putDesktopBack()
@@ -818,6 +821,13 @@ export async function reloadApp(
 
 let emulationSkipped = false
 let fileSource: [string, string] | undefined
+
+/**
+ * Whether this file asked for an emulated phone the real one covers (`skipCoveredEmulation`) and
+ * has not left it since: its cases from there on were written for the phone layout, and would
+ * run in the desktop one instead. The setup file skips them, with the same reason.
+ */
+export const insideCoveredPhone = (): boolean => emulationSkipped
 
 /** Skips entering the emulated phone where the real phone in this batch checks the same. */
 function skipCoveredEmulation(): void {

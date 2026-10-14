@@ -66,6 +66,14 @@ export function emulationCovered(
 }
 
 /**
+ * Records why a case was skipped where the run's JSON report carries it: the report has no field
+ * for the runner's own skip note, but it does copy each case's `meta`, which the batch reads.
+ */
+export function skipReason(task: { meta: object }, reason: string): void {
+  ;(task.meta as { skipReason?: string }).skipReason = reason
+}
+
+/**
  * Thrown where a desktop file would enter the emulated phone that the real phone covers in the
  * same batch (`emulationCovered`). The case, or the part whose setup threw it, is reported
  * skipped, with this as the reason.

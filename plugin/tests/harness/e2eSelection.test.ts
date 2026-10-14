@@ -1,5 +1,5 @@
 import { afterEach, describe, expect, it, vi } from 'vitest'
-import { emulationCovered, interimRun, requested } from '../e2e/helpers/target'
+import { emulationCovered, interimRun, requested, skipReason } from '../e2e/helpers/target'
 
 describe('e2e run selection', () => {
   afterEach(() => {
@@ -34,5 +34,13 @@ describe('e2e run selection', () => {
     expect(emulationCovered('/e2e/sampleCase.e2e.test.ts', '', real)).toBe(false)
     expect(emulationCovered('/e2e/footerTaskClick.e2e.test.ts', both, real)).toBe(false)
     expect(emulationCovered(undefined, both, real)).toBe(false)
+  })
+
+  it('records why a case was skipped where the JSON report carries it', () => {
+    const task = { meta: {} as Record<string, unknown> }
+    skipReason(task, 'skipped: the real phone checks this layout in the same batch')
+    expect(task.meta.skipReason).toBe(
+      'skipped: the real phone checks this layout in the same batch'
+    )
   })
 })

@@ -91,6 +91,58 @@ describe.skipIf(!available)('aside column layouts', () => {
       `for(const leaf of app.workspace.getLeavesOfType('markdown'))if(leaf.view.file?.path?.startsWith(${JSON.stringify(FOLDER + '/')}))leaf.detach();const folder=app.vault.getAbstractFileByPath(${JSON.stringify(FOLDER)});if(folder)await app.vault.delete(folder,true);return true;`
     )
   })
+  // Print is a desktop case: it runs after the desktop pass, in the desktop layout, not after the
+  // phone one, whose cases a batch with the real phone skips. A phone reports it skipped.
+  const printCase = () =>
+    it.skipIf(onPhone())('print expands the aside, restores proportions and exports a PDF', () => {
+      expect(show('aside-collapse', 'preview')).toBe(true)
+      probe(`${ROOT}
+        const print=document.body.createDiv({cls:'print'});
+        const preview=print.createDiv({cls:'markdown-preview-view'});
+        const sizer=preview.createDiv({cls:'markdown-preview-sizer'});sizer.style.width='700px';sizer.append(frame.cloneNode(true));
+        require('@electron/remote').getCurrentWindow().setContentSize(900,1000);return true;`)
+      runCli([
+        'dev:cdp',
+        'method=Emulation.setEmulatedMedia',
+        'params=' + JSON.stringify({ media: 'print' }),
+      ])
+      try {
+        const layout = probe<{
+          visible: boolean
+          controls: boolean
+          ratio: number
+          ordered: boolean
+        }>(
+          `const frame=document.querySelector('.print .abele-columns');const columns=[...frame.querySelectorAll(':scope > .callout-content > .abele-column')];const aside=columns[1];const content=aside.querySelector('.callout-content');await wait(300);return {visible:getComputedStyle(content).display!=='none',controls:getComputedStyle(frame.querySelector('.abele-columns-controls')).display!=='none',ratio:columns[0].clientWidth/aside.clientWidth,ordered:columns[0].getBoundingClientRect().x<aside.getBoundingClientRect().x}`
+        )
+        expect(layout.visible).toBe(true)
+        expect(layout.controls).toBe(false)
+        expect(layout.ratio).toBeCloseTo(2, 1)
+        expect(layout.ordered).toBe(true)
+        capture('print-expanded-aside')
+      } finally {
+        runCli([
+          'dev:cdp',
+          'method=Emulation.setEmulatedMedia',
+          'params=' + JSON.stringify({ media: '' }),
+        ])
+        probe(`document.querySelector('.print')?.remove();return true;`)
+      }
+      const bytes = probe<number>(`${ROOT}
+        const fs=require('fs'),remote=require('@electron/remote'),dialog=remote.dialog;
+        const path=${JSON.stringify(SHOTS + '/sample-columns.pdf')};if(fs.existsSync(path))fs.unlinkSync(path);
+        const save=dialog.showSaveDialog,saveSync=dialog.showSaveDialogSync;
+        dialog.showSaveDialog=async()=>({filePath:path,canceled:false});dialog.showSaveDialogSync=()=>path;
+        try{
+          view.printToPdf();await wait(100);
+          const button=[...document.querySelectorAll('.modal button')].find(e=>e.textContent==='Export to PDF');
+          if(!button)throw Error('the native PDF export modal did not open');button.click();
+          for(let i=0;i<100;i++){if(fs.existsSync(path))return fs.statSync(path).size;await wait(100)}
+          throw Error('the native PDF exporter did not save');
+        }finally{dialog.showSaveDialog=save;dialog.showSaveDialogSync=saveSync}
+      `)
+      expect(bytes).toBeGreaterThan(1000)
+    })
   for (const narrow of onPhone() ? [true] : [false, true]) {
     it(`sets the ${narrow ? 'phone' : 'desktop'} viewport`, async () => {
       if (!onPhone()) {
@@ -160,7 +212,9 @@ describe.skipIf(!available)('aside column layouts', () => {
           capture(`${narrow ? 'phone' : 'desktop'}-${mode}-${state.name}`)
         })
       }
+    if (!narrow) printCase()
   }
+  if (onPhone()) printCase()
   it('the native menu changes a column role without changing its body', () => {
     expect(show('stack', 'source')).toBe(true)
     probe(
@@ -178,54 +232,5 @@ describe.skipIf(!available)('aside column layouts', () => {
     probe(
       `const view=app.workspace.activeLeaf.view;view.editor.setValue(${JSON.stringify(body('stack'))});await view.save();return true;`
     )
-  })
-  it.skipIf(onPhone())('print expands the aside, restores proportions and exports a PDF', () => {
-    expect(show('aside-collapse', 'preview')).toBe(true)
-    probe(`${ROOT}
-      const print=document.body.createDiv({cls:'print'});
-      const preview=print.createDiv({cls:'markdown-preview-view'});
-      const sizer=preview.createDiv({cls:'markdown-preview-sizer'});sizer.style.width='700px';sizer.append(frame.cloneNode(true));
-      require('@electron/remote').getCurrentWindow().setContentSize(900,1000);return true;`)
-    runCli([
-      'dev:cdp',
-      'method=Emulation.setEmulatedMedia',
-      'params=' + JSON.stringify({ media: 'print' }),
-    ])
-    try {
-      const layout = probe<{
-        visible: boolean
-        controls: boolean
-        ratio: number
-        ordered: boolean
-      }>(
-        `const frame=document.querySelector('.print .abele-columns');const columns=[...frame.querySelectorAll(':scope > .callout-content > .abele-column')];const aside=columns[1];const content=aside.querySelector('.callout-content');await wait(300);return {visible:getComputedStyle(content).display!=='none',controls:getComputedStyle(frame.querySelector('.abele-columns-controls')).display!=='none',ratio:columns[0].clientWidth/aside.clientWidth,ordered:columns[0].getBoundingClientRect().x<aside.getBoundingClientRect().x}`
-      )
-      expect(layout.visible).toBe(true)
-      expect(layout.controls).toBe(false)
-      expect(layout.ratio).toBeCloseTo(2, 1)
-      expect(layout.ordered).toBe(true)
-      capture('print-expanded-aside')
-    } finally {
-      runCli([
-        'dev:cdp',
-        'method=Emulation.setEmulatedMedia',
-        'params=' + JSON.stringify({ media: '' }),
-      ])
-      probe(`document.querySelector('.print')?.remove();return true;`)
-    }
-    const bytes = probe<number>(`${ROOT}
-      const fs=require('fs'),remote=require('@electron/remote'),dialog=remote.dialog;
-      const path=${JSON.stringify(SHOTS + '/sample-columns.pdf')};if(fs.existsSync(path))fs.unlinkSync(path);
-      const save=dialog.showSaveDialog,saveSync=dialog.showSaveDialogSync;
-      dialog.showSaveDialog=async()=>({filePath:path,canceled:false});dialog.showSaveDialogSync=()=>path;
-      try{
-        view.printToPdf();await wait(100);
-        const button=[...document.querySelectorAll('.modal button')].find(e=>e.textContent==='Export to PDF');
-        if(!button)throw Error('the native PDF export modal did not open');button.click();
-        for(let i=0;i<100;i++){if(fs.existsSync(path))return fs.statSync(path).size;await wait(100)}
-        throw Error('the native PDF exporter did not save');
-      }finally{dialog.showSaveDialog=save;dialog.showSaveDialogSync=saveSync}
-    `)
-    expect(bytes).toBeGreaterThan(1000)
   })
 })

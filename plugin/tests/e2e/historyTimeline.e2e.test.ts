@@ -383,91 +383,8 @@ describe.skipIf(!available)('the history timeline of a base', () => {
           300_000
         )
       ) as Perf
-
-      await enterPhone(PHONE.width, PHONE.height)
     }
-
-    // Started and asked after on a phone, whose real pinch and tap take their time.
-    phone = JSON.parse(
-      await evalLong(
-        `(async () => {
-      ${PRELUDE}
-      const report = { phone: document.body.classList.contains('is-phone'), shots: [] }
-      try {
-        app.workspace.leftSplit?.collapse?.()
-        app.workspace.rightSplit?.collapse?.()
-        const root = await openBase(${JSON.stringify(`${FOLDER}/History.base`)})
-        if (!root) return { ...report, error: 'the timeline did not open' }
-        // The collapsing sidebars' animations end, within the former 600 ms allowance.
-        await until(() => !document.getAnimations().some((a) => a.playState === 'running'), 600)
-        await frames(2)
-        const c = canvasOf(root)
-        report.canvas = [c.clientWidth, c.clientHeight]
-        report.over = overEdge(root)
-        report.shots.push(await picture('timeline-phone.png'))
-        // Two fingers drawn apart zoom in: a real pinch in the middle of the screen on a phone.
-        const host = window.__e2eHost
-        const box = c.getBoundingClientRect()
-        const before = view(root).ppy
-        if (host) await host.pinch(2)
-        else {
-          const y = box.top + box.height / 3
-          pointer(root, 'pointerdown', box.left + 150, y, 'touch', 21)
-          pointer(root, 'pointerdown', box.left + 230, y, 'touch', 22)
-          for (let i = 1; i <= 5; i++) {
-            pointer(root, 'pointermove', box.left + 150 - i * 15, y, 'touch', 21)
-            pointer(root, 'pointermove', box.left + 230 + i * 15, y, 'touch', 22)
-            await frames(1)
-          }
-          pointer(root, 'pointerup', box.left + 75, y, 'touch', 21)
-          pointer(root, 'pointerup', box.left + 305, y, 'touch', 22)
-        }
-        await wait(300)
-        await frames(2)
-        report.ppy = [before, view(root).ppy]
-        report.shots.push(await picture('timeline-phone-pinched.png'))
-        // Centuries: the bars of the Renaissance are wide enough for a finger.
-        const tab = [...root.querySelectorAll('.abele-timeline-base__levels .abele-tabs__tab')].find((t) => t.textContent.trim() === 'Centuries')
-        tab?.click()
-        const go = root.querySelector('.abele-timeline-base__go input')
-        go.value = '1580'
-        go.dispatchEvent(new Event('input', { bubbles: true }))
-        go.dispatchEvent(new KeyboardEvent('keydown', { key: 'Enter', bubbles: true }))
-        go.blur()
-        await wait(300)
-        await frames(3)
-        const s = hitOf(root, 'Шекспир')
-        if (s) {
-          const [x, y] = centre(root, s)
-          // A finger on a phone; a touch pointer where there is none.
-          // Reply loss leaves delivery unknown. Preserve the transport failure, never replay.
-          if (host) {
-            try {
-              const reply = await (${nativeGesture.toString()})(() => host.tap(x, y))
-              report.tapAcknowledged = reply.ok
-            } catch (e) {
-              report.tapError = String((e && e.message) || e)
-              throw e
-            }
-          } else await press(root, x, y, 'touch')
-          await until(() => panel(root), 3000)
-          await until(() => panelRows(root).length, 300)
-          await frames(3)
-          report.picked = panel(root)?.dataset.selected
-          report.contemporaries = panelRows(root)
-          report.rows = report.contemporaries.length
-          report.over = [...report.over, ...overEdge(root)]
-          report.shots.push(await picture('timeline-phone-contemporaries.png'))
-        }
-      } catch (e) {
-        report.error = String((e && e.message) || e) + ' | ' + String(e && e.stack)
-      }
-      return JSON.stringify(report)
-    })()`,
-        170_000
-      )
-    ) as Phone
-    console.info(`\n  ${JSON.stringify({ desktop, perf, phone })}\n`)
+    console.info(`\n  ${JSON.stringify({ desktop, perf })}\n`)
   }, 600_000)
 
   afterAll(async () => {
@@ -540,20 +457,107 @@ describe.skipIf(!available)('the history timeline of a base', () => {
     expect(perf.frameMs ?? Infinity).toBeLessThan(80)
   })
 
-  it('on a phone: nothing past the edge, a tap picks, two fingers zoom', () => {
-    if (phone.tapError) throw new Error(phone.tapError)
-    expect(phone.error).toBeUndefined()
-    if (onPhone()) expect(phone.tapAcknowledged).toBe(true)
-    expect(phone.phone).toBe(true)
-    expect(phone.over).toEqual([])
-    expect(phone.canvas?.[0] ?? Infinity).toBeLessThanOrEqual(PHONE.width)
-    expect(phone.picked).toBe(`${FOLDER}/Notes/Шекспир.md`)
-    expect(phone.rows ?? 0).toBeGreaterThan(3)
-    expect(phone.contemporaries).toEqual(
-      expect.arrayContaining(['Галилей 52 years', 'Сервантес 52 years', 'Кеплер 45 years'])
-    )
-    expect(phone.contemporaries?.some((r) => r.startsWith('Данте'))).toBe(false)
-    const [a, b] = phone.ppy ?? [1, 1]
-    expect(b).toBeGreaterThan(a * 1.3)
+  describe('on a phone', () => {
+    beforeAll(async () => {
+      if (!onPhone()) await enterPhone(PHONE.width, PHONE.height)
+      // Started and asked after on a phone, whose real pinch and tap take their time.
+      phone = JSON.parse(
+        await evalLong(
+          `(async () => {
+        ${PRELUDE}
+        const report = { phone: document.body.classList.contains('is-phone'), shots: [] }
+        try {
+          app.workspace.leftSplit?.collapse?.()
+          app.workspace.rightSplit?.collapse?.()
+          const root = await openBase(${JSON.stringify(`${FOLDER}/History.base`)})
+          if (!root) return { ...report, error: 'the timeline did not open' }
+          // The collapsing sidebars' animations end, within the former 600 ms allowance.
+          await until(() => !document.getAnimations().some((a) => a.playState === 'running'), 600)
+          await frames(2)
+          const c = canvasOf(root)
+          report.canvas = [c.clientWidth, c.clientHeight]
+          report.over = overEdge(root)
+          report.shots.push(await picture('timeline-phone.png'))
+          // Two fingers drawn apart zoom in: a real pinch in the middle of the screen on a phone.
+          const host = window.__e2eHost
+          const box = c.getBoundingClientRect()
+          const before = view(root).ppy
+          if (host) await host.pinch(2)
+          else {
+            const y = box.top + box.height / 3
+            pointer(root, 'pointerdown', box.left + 150, y, 'touch', 21)
+            pointer(root, 'pointerdown', box.left + 230, y, 'touch', 22)
+            for (let i = 1; i <= 5; i++) {
+              pointer(root, 'pointermove', box.left + 150 - i * 15, y, 'touch', 21)
+              pointer(root, 'pointermove', box.left + 230 + i * 15, y, 'touch', 22)
+              await frames(1)
+            }
+            pointer(root, 'pointerup', box.left + 75, y, 'touch', 21)
+            pointer(root, 'pointerup', box.left + 305, y, 'touch', 22)
+          }
+          await wait(300)
+          await frames(2)
+          report.ppy = [before, view(root).ppy]
+          report.shots.push(await picture('timeline-phone-pinched.png'))
+          // Centuries: the bars of the Renaissance are wide enough for a finger.
+          const tab = [...root.querySelectorAll('.abele-timeline-base__levels .abele-tabs__tab')].find((t) => t.textContent.trim() === 'Centuries')
+          tab?.click()
+          const go = root.querySelector('.abele-timeline-base__go input')
+          go.value = '1580'
+          go.dispatchEvent(new Event('input', { bubbles: true }))
+          go.dispatchEvent(new KeyboardEvent('keydown', { key: 'Enter', bubbles: true }))
+          go.blur()
+          await wait(300)
+          await frames(3)
+          const s = hitOf(root, 'Шекспир')
+          if (s) {
+            const [x, y] = centre(root, s)
+            // A finger on a phone; a touch pointer where there is none.
+            // Reply loss leaves delivery unknown. Preserve the transport failure, never replay.
+            if (host) {
+              try {
+                const reply = await (${nativeGesture.toString()})(() => host.tap(x, y))
+                report.tapAcknowledged = reply.ok
+              } catch (e) {
+                report.tapError = String((e && e.message) || e)
+                throw e
+              }
+            } else await press(root, x, y, 'touch')
+            await until(() => panel(root), 3000)
+            await until(() => panelRows(root).length, 300)
+            await frames(3)
+            report.picked = panel(root)?.dataset.selected
+            report.contemporaries = panelRows(root)
+            report.rows = report.contemporaries.length
+            report.over = [...report.over, ...overEdge(root)]
+            report.shots.push(await picture('timeline-phone-contemporaries.png'))
+          }
+        } catch (e) {
+          report.error = String((e && e.message) || e) + ' | ' + String(e && e.stack)
+        }
+        return JSON.stringify(report)
+      })()`,
+          170_000
+        )
+      ) as Phone
+      console.info(`\n  ${JSON.stringify({ phone })}\n`)
+    }, 300_000)
+
+    it('on a phone: nothing past the edge, a tap picks, two fingers zoom', () => {
+      if (phone.tapError) throw new Error(phone.tapError)
+      expect(phone.error).toBeUndefined()
+      if (onPhone()) expect(phone.tapAcknowledged).toBe(true)
+      expect(phone.phone).toBe(true)
+      expect(phone.over).toEqual([])
+      expect(phone.canvas?.[0] ?? Infinity).toBeLessThanOrEqual(PHONE.width)
+      expect(phone.picked).toBe(`${FOLDER}/Notes/Шекспир.md`)
+      expect(phone.rows ?? 0).toBeGreaterThan(3)
+      expect(phone.contemporaries).toEqual(
+        expect.arrayContaining(['Галилей 52 years', 'Сервантес 52 years', 'Кеплер 45 years'])
+      )
+      expect(phone.contemporaries?.some((r) => r.startsWith('Данте'))).toBe(false)
+      const [a, b] = phone.ppy ?? [1, 1]
+      expect(b).toBeGreaterThan(a * 1.3)
+    })
   })
 })

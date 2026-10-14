@@ -7,6 +7,7 @@
  */
 import { TestRunner } from 'vitest'
 import type { Suite, Test } from '@vitest/runner'
+import { skipReason } from './target'
 
 /** The part of a vitest task this rule reads; the real `Task` fits it. */
 export interface RunTask {
@@ -38,10 +39,16 @@ export function failedSetup(task: RunTask, bodyStarted: boolean): string | undef
   return reason(task.result.errors[0]?.message)
 }
 
+const tests = (suite: Suite): Test[] =>
+  suite.tasks.flatMap((task) =>
+    task.type === 'test' ? [task] : task.type === 'suite' ? tests(task) : []
+  )
+
 const skip = (test: Test, note: string): void => {
   test.mode = 'skip'
   // The runner reports a result in this state as skipped, `note` as the reason.
   test.result = { state: 'skip', note } as NonNullable<Test['result']>
+  skipReason(test, note)
 }
 
 export default class FailFastRunner extends TestRunner {
@@ -79,6 +86,7 @@ export default class FailFastRunner extends TestRunner {
     if (errors.length && errors.every((e) => e.name === 'EmulationCoveredError')) {
       suite.result!.state = 'skip'
       suite.result!.errors = undefined
+      for (const test of tests(suite)) skipReason(test, errors[0].message)
     }
     this.broken ??= failedSetup(suite as RunTask, false)
     await super.onAfterRunSuite(suite)
