@@ -173,6 +173,92 @@ describe('a program that ends while it records', () => {
   })
 })
 
+describe('a program that ends by itself', () => {
+  it('ends the wait once its session is gone and reads its runs once more', async () => {
+    const { openRun } = await import('@/debugger/trace/panel')
+    vi.mocked(openRun).mockClear()
+    let recording = true
+    let waited = 0
+    const c = connection(true)
+    c.rpc.mockImplementation(async (method: string, params: any): Promise<unknown> => {
+      switch (method) {
+        case 'debugger.v1.status':
+          return debuggerStatus()
+        case 'debugger.v1.wait': {
+          if (++waited > 2) return new Promise(() => {})
+          // The node keeps the session's last state; its program and connection are gone.
+          return {
+            wait_id: params.wait_id,
+            reason: waited === 1 ? 'event' : 'elapsed',
+            elapsed_ms: 1,
+            snapshot: debuggerSnapshot({ lifecycle: 'connection-lost', event_seq: 9 }),
+          }
+        }
+        case 'debugger.v1.cancelWait':
+          return { cancelled: true }
+        case 'trace.v1.points.list':
+          return { points: [] }
+        case 'trace.v1.status':
+          // The node closes the run as the session goes: any read after that sees it closed.
+          if (waited) recording = false
+          return {
+            folder: '/sample/runs',
+            chosen: true,
+            recording: recording
+              ? { run_id: 'run-2', steps: 1, started_at: '2026-01-02T03:04:05.000Z' }
+              : null,
+          }
+        case 'trace.v1.runs':
+          return {
+            folder: '/sample/runs',
+            chosen: true,
+            runs: [
+              {
+                id: 'run-2',
+                name: 'Sample run',
+                debug_session_id: 'sample-debug',
+                started_at: '2026-01-02T03:04:05.000Z',
+                state: recording ? 'recording' : 'done',
+                steps: 1,
+                bytes: 10,
+              },
+            ],
+          }
+        case 'trace.v1.run':
+          return {
+            run: {
+              id: 'run-2',
+              name: 'Sample run',
+              debug_session_id: 'sample-debug',
+              started_at: '2026-01-02T03:04:05.000Z',
+              state: 'done',
+              steps: 1,
+              bytes: 10,
+            },
+            points: [],
+            steps: [],
+            marks: [],
+            folder: '/sample/runs',
+          }
+      }
+      return {}
+    })
+    const binding = new DebuggerBinding(c.connection, 'sample-chat', 'sample-registration')
+    for (const m of ['refreshApprovals', 'refreshHistory', 'refreshOutput', 'loadStack'] as const)
+      vi.spyOn(binding.controller, m).mockResolvedValue(undefined)
+    // The first read happens before the program goes: the run is being written.
+    const first = vi.spyOn(binding, 'refresh')
+    try {
+      await binding.open('sample-debug')
+      await vi.waitFor(() => expect(openRun).toHaveBeenCalledWith(binding, 'run-2'))
+      expect(waited).toBeLessThanOrEqual(2)
+      expect(first).toHaveBeenCalled()
+    } finally {
+      binding.destroy()
+    }
+  })
+})
+
 describe('waiting for what the program does', () => {
   it('asks the node in rounds the channel lets finish, and a quiet round reads nothing again', async () => {
     const asked: number[] = []

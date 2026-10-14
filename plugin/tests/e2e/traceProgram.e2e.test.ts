@@ -214,7 +214,7 @@ const RUN = (program: string, shotMenu = '') => `
 
 /** The run that opened by itself: its steps, and the values of each, read from the step pane. */
 const READ_RUN = `
-  await until(()=>document.querySelectorAll('.abele-trace-run__steps > .abele-trace-run__step').length>0,'run opened by itself',600);
+  await until(()=>document.querySelectorAll('.abele-trace-run__steps > .abele-trace-run__step').length>0,'run opened by itself',600).catch(()=>{const b=api.DebuggerService.instance.active.value;throw Error('run did not open: '+JSON.stringify({status:b?.trace?.status,runs:b?.trace?.runs?.map(r=>[r.id,r.state,r.steps]),tabs:app.workspace.getLeavesOfType('abele-trace-run').length})+' '+debugState())});
   const rows=[...document.querySelectorAll('.abele-trace-run__steps > .abele-trace-run__step')];
   const steps=[];
   for(const row of rows){
