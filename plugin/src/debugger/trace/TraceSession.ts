@@ -20,6 +20,8 @@ export interface PointEdit {
   note?: string
 }
 
+const FOLLOW_MS = 2000
+
 export class TraceSession {
   points: WirePoint[] = []
   status?: WireStatus
@@ -29,6 +31,9 @@ export class TraceSession {
   folder = ''
   private refreshing?: Promise<void>
   private readonly endedListeners = new Set<(runId: string) => void>()
+  /** While a run is written its steps and time go on, and its end comes with no event of its own. */
+  private following?: ReturnType<typeof setTimeout>
+  private disposed = false
   constructor(
     readonly rpc: TraceRpc,
     private readonly debug: TraceBreakpoints,
@@ -74,7 +79,22 @@ export class TraceSession {
         for (const listener of [...this.endedListeners]) listener(was)
     })().finally(() => {
       this.refreshing = undefined
+      this.follow()
     }))
+  }
+
+  private follow() {
+    clearTimeout(this.following)
+    this.following = undefined
+    if (this.disposed || !this.status?.recording) return
+    this.following = setTimeout(() => {
+      this.following = undefined
+      void this.refresh().catch((e) => console.debug('[trace] Run not read again', e))
+    }, FOLLOW_MS)
+  }
+  dispose() {
+    this.disposed = true
+    clearTimeout(this.following)
   }
 
   /** A stop on record points only: the node takes the values and lets the program go on, so it

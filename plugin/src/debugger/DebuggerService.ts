@@ -254,6 +254,7 @@ export class DebuggerBinding {
   }
   destroy() {
     this.disposed = true
+    this.trace?.dispose()
     this.stopWatch()
     this.stopConnection()
     this.controller.invalidate()

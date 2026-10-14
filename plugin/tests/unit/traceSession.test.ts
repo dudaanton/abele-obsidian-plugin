@@ -247,3 +247,31 @@ describe('reading the runs again', () => {
     expect(node.calls.length).toBeGreaterThan(before)
   })
 })
+
+describe('a run being written', () => {
+  it('is read again every two seconds until the node has closed it, and no longer once disposed', async () => {
+    vi.useFakeTimers()
+    try {
+      const node = fakeNode()
+      const s = new TraceSession(node.rpc, fakeDebugger([{ id: 'bp-1', line: 4 }]), () => {})
+      const ended = vi.fn()
+      s.onRunEnded(ended)
+      await s.savePoint('sample-source', 4, { take: ['sample'] })
+      const reads = () => node.calls.filter((c) => c.method === 'trace.v1.status').length
+      const before = reads()
+      await vi.advanceTimersByTimeAsync(2100)
+      expect(reads()).toBe(before + 1)
+      // The node closes the run (here: its points go) and the next read sees it.
+      node.request.mockClear()
+      await s.removePoint('bp-1')
+      await vi.advanceTimersByTimeAsync(2100)
+      expect(ended).toHaveBeenCalledWith('run-1')
+      const after = reads()
+      await vi.advanceTimersByTimeAsync(6000)
+      expect(reads()).toBe(after)
+      s.dispose()
+    } finally {
+      vi.useRealTimers()
+    }
+  })
+})
