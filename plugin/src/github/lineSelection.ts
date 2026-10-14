@@ -167,7 +167,7 @@ export function lineSelection(hooks: SelectionHooks): {
     mouseup: (_event, view) => {
       // After the browser has settled the selection the press made.
       window.setTimeout(() => {
-        const sel = view.root.getSelection()
+        const sel = view.dom.ownerDocument.getSelection()
         if (!sel || sel.isCollapsed || !sel.rangeCount) return
         const r = sel.getRangeAt(0)
         if (
