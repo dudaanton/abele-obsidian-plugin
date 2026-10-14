@@ -177,12 +177,15 @@ const probe = (screen: string) => `(async () => {
     await shot('model', '.abele-agent-selector__model')
     const chip = root().querySelector('.abele-agent-selector__model')
     if (chip.getAttribute('aria-haspopup') !== 'menu' || !chip.querySelector('svg')?.getBoundingClientRect().width) throw Error('Model chip lost its menu or its glyph')
-    chip.click()
-    const menuTitles = () => [...document.querySelectorAll('.menu .menu-item-title')].map(t => t.textContent)
-    await until(() => menuTitles().some(t => t.startsWith('Follow Sample assistant')))
-    document.body.dispatchEvent(new KeyboardEvent('keydown', { key: 'Escape', bubbles: true }))
-    await wait(100)
-    for (const menu of document.querySelectorAll('.menu')) menu.remove()
+    // Its menu offers the way back to the agent's model. Desktop only: a phone's Escape that
+    // closes the menu also closes the drawer the chat is in.
+    if (${JSON.stringify(screen)} === 'desktop') {
+      chip.click()
+      const menuTitles = () => [...document.querySelectorAll('.menu .menu-item-title')].map(t => t.textContent)
+      await until(() => menuTitles().some(t => t.startsWith('Follow Sample assistant')))
+      document.body.dispatchEvent(new KeyboardEvent('keydown', { key: 'Escape', bubbles: true }))
+      await until(() => !document.querySelector('.menu'))
+    }
     session.clearOverride('modelId')
     await until(() => !root()?.querySelector('.abele-agent-selector__model'))
 
