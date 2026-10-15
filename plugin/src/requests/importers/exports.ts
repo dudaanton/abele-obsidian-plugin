@@ -22,9 +22,10 @@ const text = (v: unknown) =>
 /** `:id` path variables and Insomnia's `{{ _.name }}` become `{{name}}`. */
 const vars = (t: string) => t.replace(/\{\{\s*_\.([\w.-]+)\s*\}\}/g, '{{$1}}')
 
-function variable(out: EnvVar[], key: string, value: unknown) {
+/** A value of the environment; one the source marks secret, or whose name says so, without it. */
+function variable(out: EnvVar[], key: string, value: unknown, secret = false) {
   if (!key || out.some((v) => v.key === key)) return
-  out.push(SECRET_NAME.test(key) ? { key, secret: true } : { key, value: text(value) })
+  out.push(secret || SECRET_NAME.test(key) ? { key, secret: true } : { key, value: text(value) })
 }
 
 function headersOf(raw: unknown[], leftOut: string[]): Pair[] {
@@ -77,7 +78,8 @@ export function importPostman(doc: Obj): Imported {
   const leftOut: string[] = []
   const skipped: string[] = []
   const env: EnvVar[] = []
-  for (const v of list(doc.variable).map(obj)) variable(env, text(v.key), v.value)
+  for (const v of list(doc.variable).map(obj))
+    variable(env, text(v.key), v.value, v.type === 'secret')
   if (obj(doc.auth).type && obj(doc.auth).type !== 'noauth') leave(leftOut, 'the collection’s auth')
   const requests: ImportedRequest[] = []
   const walk = (items: unknown[], folder: string | undefined) => {
@@ -135,7 +137,7 @@ export function importInsomnia(doc: Obj): Imported {
   const byId = new Map(resources.map((r) => [text(r._id), r]))
   const workspace = resources.find((r) => r._type === 'workspace')
   for (const e of resources.filter((r) => r._type === 'environment'))
-    for (const [k, v] of Object.entries(obj(e.data))) variable(env, k, v)
+    for (const [k, v] of Object.entries(obj(e.data))) variable(env, k, v, e.isPrivate === true)
   const folderOf = (parent: string): string | undefined => {
     const p = byId.get(parent)
     if (!p || p._type !== 'request_group') return undefined

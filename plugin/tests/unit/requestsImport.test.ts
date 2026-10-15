@@ -304,8 +304,10 @@ describe('importing requests from other clients', () => {
     expect(r.vars).toEqual([
       { key: 'base', value: 'https://shop.example.test' },
       { key: 'apiToken', secret: true },
+      { key: 'tenant', secret: true },
     ])
     expect(JSON.stringify(r)).not.toContain('sk-1')
+    expect(JSON.stringify(r)).not.toContain('tn-2')
   })
 
   it('reads an Insomnia export with its groups and environment', () => {
@@ -346,7 +348,11 @@ describe('importing requests from other clients', () => {
         headers: [{ key: 'Accept', value: 'application/json' }],
       }),
     })
-    expect(r.vars).toEqual([{ key: 'base', value: 'http://localhost:4000' }])
+    expect(r.vars).toEqual([
+      { key: 'base', value: 'http://localhost:4000' },
+      { key: 'tenant', secret: true },
+    ])
+    expect(JSON.stringify(r)).not.toContain('private-1')
   })
 
   it('reads a Bruno collection export', () => {
