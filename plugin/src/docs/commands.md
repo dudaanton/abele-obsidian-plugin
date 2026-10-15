@@ -67,6 +67,10 @@ genuinely theirs to take. Every one is prefixed **Abele:** in the palette.
 - Copy wikilink — copies a wikilink to the note, even when the vault uses Markdown links.
   Also available in the note's context menus and mobile quick menu with the AI switched off
 - Find in the current chat — opens search within the conversation in front
+- Close the current chat tab · Reopen the last closed chat tab · Go to the next chat tab · Go to
+  the previous chat tab — work the chat's tabs. They have no hotkeys of their own: inside the chat
+  Cmd/Ctrl+W, Cmd/Ctrl+Shift+T, Cmd/Ctrl+Alt+arrows, Ctrl+Tab and Cmd/Ctrl+1..9 do the same.
+  Closing a tab saves the chat and never deletes it
 - Open quick menu — opens the configured quick actions without pressing the floating button
 - Show script runs · Show script API reference
 - Review scripts waiting for confirmation — reviews scripts awaiting this device's approval
