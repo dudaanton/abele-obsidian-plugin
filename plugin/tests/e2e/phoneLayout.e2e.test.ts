@@ -182,6 +182,7 @@ const DIALOGS = [
   'discussion-remove',
   'book-repair-one',
   'book-repair-many',
+  'request-environment',
 ].map((name) => `dialog ${name}`)
 
 interface Screen {

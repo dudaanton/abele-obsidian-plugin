@@ -17,6 +17,7 @@ import { destinationFixture } from './destinationFixture'
 import { reviewScript } from '@/scripting/reviewScript'
 import { chatArtifactsFixture } from './chatArtifactsFixture'
 import TokenUiFixture from './TokenUiFixture.vue'
+import EnvironmentDialog from '@/components/debugger/http/EnvironmentDialog.vue'
 
 export interface DialogFixtureOptions {
   /** Inspect all synthetic recipient-row variants, without inheriting ambient rights. */
@@ -754,6 +755,21 @@ const DIALOGS: Record<string, (options?: DialogFixtureOptions) => void | Promise
   'book-repair-one': () => void askToRepairLinks(GlobalStore.getInstance().app, repairExamples(1)),
   'book-repair-many': () =>
     void askToRepairLinks(GlobalStore.getInstance().app, repairExamples(12)),
+  // A saved requests' environment: values written, values kept in memory, the step header.
+  'request-environment': () =>
+    mountAlone(EnvironmentDialog, {
+      environment: {
+        name: 'local',
+        vars: [
+          { key: 'base', value: 'http://localhost:4000' },
+          { key: 'tenant', value: 'sample-tenant' },
+          { key: 'debug', value: '1', off: true },
+          { key: 'token', secret: true },
+        ],
+        stepHeader: true,
+      },
+      secrets: { token: 'sample-token-value' },
+    }),
 }
 
 /** The names `openDialog` knows, for a probe to walk. */
