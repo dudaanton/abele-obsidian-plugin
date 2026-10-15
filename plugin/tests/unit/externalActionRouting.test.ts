@@ -25,7 +25,12 @@ function fixture() {
     { id: 'broad', scope: { path: '/' } },
     { id: 'narrow', scope: { path: 'Media' } },
   ]
-  const app = { workspace: { iterateAllLeaves: (_visit: (leaf: unknown) => void) => {} } }
+  const saved = new Map<string, unknown>()
+  const app = {
+    loadLocalStorage: (key: string) => saved.get(key),
+    saveLocalStorage: (key: string, value: unknown) => saved.set(key, value),
+    workspace: { iterateAllLeaves: (_visit: (leaf: unknown) => void) => {} },
+  }
   const activity = { value: {} }
   const host = Object.assign(Object.create(TokenEngines.prototype), {
     app,
@@ -72,4 +77,15 @@ it('keeps nonactive editor paths and refused publications out of rule previews',
   app.workspace.iterateAllLeaves = () => {}
   activity.value = { broad: { refused: [{ path: 'Media/sample.bin', reason: 'quota' }] } }
   expect((await host.actions().preview(['Media/sample.bin'])).skipped[0].status).toBe('refused')
+})
+
+it('retains the device pin when its original connection is no longer running', async () => {
+  const { host, broad, ports } = fixture()
+  await host.pin('Media/sample.bin', true)
+  ports.clear()
+  ports.set('broad', broad)
+  expect((await host.actions().preview(['Media/sample.bin'])).skipped[0]?.status).toBe('pinned')
+  expect((await host.evict('broad', 'Media/sample.bin')).status).toBe('pinned')
+  await host.pin('Media/sample.bin', false)
+  expect((await host.actions().preview(['Media/sample.bin'])).files).toHaveLength(1)
 })

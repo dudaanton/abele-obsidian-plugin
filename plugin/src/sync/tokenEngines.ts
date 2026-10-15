@@ -1,5 +1,5 @@
 import { Platform, type App, type EventRef } from 'obsidian'
-import { encodeAccessToken } from '@abele/sync-protocol'
+import { caseKey, encodeAccessToken } from '@abele/sync-protocol'
 import type { EngineStatus, SyncReport } from '@abele/sync-core'
 import { ConnectionEngines, type ConnectionRuntime } from './connectionEngines'
 import { TokenEngineRuntime } from './tokenEngineRuntime'
@@ -69,9 +69,16 @@ export class TokenEngines {
     this.localFiles = new TokenAttachmentHost(app, (path) =>
       tokenOffloadsOf(app.vault, pathCoordinatorOf(app.vault)).isOffloaded(path)
     )
-    this.renameEvent = app.vault.on('rename', (file, from) =>
+    this.renameEvent = app.vault.on('rename', (file, from) => {
       this.localFiles.renamed(from, file.path)
-    )
+      const pins = this.devicePins()
+      const moved = pins.map((path) =>
+        caseKey(path) === caseKey(from) || caseKey(path).startsWith(caseKey(from) + '/')
+          ? file.path + path.slice(from.length)
+          : path
+      )
+      if (JSON.stringify(moved) !== JSON.stringify(pins)) this.saveDevicePins(moved)
+    })
     ui.connectionsChanged = async (assertCurrent) => {
       assertCurrent?.()
       this.start()
@@ -757,6 +764,8 @@ export class TokenEngines {
     editCopiesOf(this.app.vault).expect([...this.pending, ...this.live.keys()])
   }
   evict(id: string, path: string) {
+    if (this.devicePins().some((pin) => caseKey(pin) === caseKey(path)))
+      return Promise.resolve({ status: 'pinned' as const, reclaimedBytes: 0 })
     const port = this.offloadPorts.get(id)
     if (!port) throw new Error('Connection is unavailable')
     return port.evict(path)
@@ -787,6 +796,7 @@ export class TokenEngines {
       inspect: async (path) => {
         const chosen = portFor(path)
         const result = await chosen.inspect(path)
+        if (this.devicePins().some((pin) => caseKey(pin) === caseKey(path))) result.pinned = true
         for (const port of this.offloadPorts.values())
           if (port !== chosen && port.includes(path) && (await port.pinned(path)))
             result.pinned = true
@@ -802,12 +812,26 @@ export class TokenEngines {
     })
   }
   async pin(path: string, pinned: boolean): Promise<void> {
+    if (pinned) this.saveDevicePins([...new Set([...this.devicePins(), path])])
     const ports = [...this.offloadPorts.values()].filter((port) => port.includes(path))
     if (!ports.length) throw new Error('No available connection holds this file')
     for (const port of ports) {
       const result = await port.setPinned(path, pinned)
       if (result.status !== 'complete') throw new Error(result.status)
     }
+    if (!pinned)
+      this.saveDevicePins(this.devicePins().filter((pin) => caseKey(pin) !== caseKey(path)))
+  }
+  private devicePins(): string[] {
+    const saved: unknown = this.app.loadLocalStorage('abele-external-pins-v1') ?? []
+    if (!Array.isArray(saved) || saved.some((path) => typeof path !== 'string'))
+      throw new Error('Device pin preferences require recovery')
+    return saved as string[]
+  }
+  private saveDevicePins(paths: string[]): void {
+    this.app.saveLocalStorage('abele-external-pins-v1', paths)
+    if (JSON.stringify(this.devicePins()) !== JSON.stringify(paths))
+      throw new Error('Device pin preference was not saved')
   }
   async hydrate(path: string): Promise<void> {
     const manager = tokenOffloadsOf(this.app.vault, pathCoordinatorOf(this.app.vault))
