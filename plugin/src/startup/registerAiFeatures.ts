@@ -8,6 +8,7 @@ import { AiSidebarView } from '@/views/AiSidebarView'
 import { SCRIPT_RUNS_VIEW_TYPE, ScriptRunsView } from '@/views/ScriptRunsView'
 import { UserDocsView, openUserDocs } from '@/views/UserDocsView'
 import { ChatService } from '@/ai/ChatService'
+import { runChatTabAction, type ChatTabAction } from '@/ai/chatTabKeys'
 import { AgentsService } from '@/agents/AgentsService'
 import { openAgents } from '@/agents/openAgents'
 import { CommentService } from '@/ai/CommentService'
@@ -230,6 +231,18 @@ export function registerAiFeatures(
       void chats.revealSidebar({ focus: false }).then(() => (chats.historyRequest.value = true))
     },
   })
+
+  // The chat's tab keys as commands too, with no hotkey of their own: the keys work inside the
+  // chat by themselves (`chatTabKeys.ts`), and a command is what can be given a key of one's
+  // choosing that works from anywhere.
+  const tabCommands: [ChatTabAction, string, string][] = [
+    ['close', 'chat-close-tab', 'Close the current chat tab'],
+    ['reopen', 'chat-reopen-tab', 'Reopen the last closed chat tab'],
+    ['next', 'chat-next-tab', 'Go to the next chat tab'],
+    ['previous', 'chat-previous-tab', 'Go to the previous chat tab'],
+  ]
+  for (const [action, id, name] of tabCommands)
+    plugin.addCommand({ id, name, callback: () => runChatTabAction(action) })
 
   plugin.addRibbonIcon(AiSidebarView.getIcon(), 'Show AI chat', () => {
     void ChatService.getInstance().revealSidebar()

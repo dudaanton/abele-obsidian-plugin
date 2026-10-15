@@ -446,7 +446,17 @@
 </template>
 
 <script setup lang="ts">
-import { ref, shallowRef, watch, nextTick, computed, onMounted, onUnmounted, reactive } from 'vue'
+import {
+  ref,
+  shallowRef,
+  watch,
+  nextTick,
+  computed,
+  onMounted,
+  onUnmounted,
+  provide,
+  reactive,
+} from 'vue'
 import { Notice, Platform, TFile } from 'obsidian'
 import Icon from './obsidian/Icon.vue'
 import AgentsButton from './AgentsButton.vue'
@@ -467,6 +477,8 @@ import type { HighlightColor } from '@/reader/highlights'
 import ChatFindBar from './ChatFindBar.vue'
 import { useChatFind } from '@/composables/useChatFind'
 import { useFindKey } from '@/composables/useFindKey'
+import { chatTabScope, onEscapeStop } from '@/ai/chatTabKeys'
+import { CHAT_KEY_SCOPE } from '@/ai/chatKeyScope'
 import type { FindPart } from '@/ai/chatFind'
 import { useChatScroll } from '@/composables/useChatScroll'
 import { useChatNavigation } from '@/composables/useChatNavigation'
@@ -1402,6 +1414,34 @@ useFindKey(chatContainer, () => {
   // A tab held by a delegated run has no conversation to search.
   if (!activeRun.value) find.open()
 })
+
+// The tab keys (Cmd+W, Cmd+T, Ctrl+Tab…): the pane's scope answers them while the pane is
+// active, and the composer's field sits on the same scope while it has the focus.
+provide(CHAT_KEY_SCOPE, chatTabScope(GlobalStore.getInstance().app))
+
+/**
+ * Esc stops the agent, as the stop button does, while the cursor is in this chat's composer or
+ * on its conversation. Not from another field in the chat (find, a message being edited) nor
+ * while the «/» list is open: Esc there closes what it is in.
+ */
+const stopOnEscape = () => {
+  const root = chatContainer.value
+  const focused = root?.ownerDocument.activeElement
+  if (!root || !focused || !root.contains(focused)) return false
+  const inComposer = !!chatInput.value?.hasFocus()
+  const typing = focused.closest('input, textarea, select, [contenteditable="true"]')
+  if (!inComposer && typing) return false
+  if (inComposer && chatInput.value?.suggesting()) return false
+  const working =
+    isStreaming.value ||
+    isExecutingTool.value ||
+    interceptorWorking.value ||
+    interceptorStreaming.value
+  if (!working) return false
+  onAbort()
+  return true
+}
+onUnmounted(onEscapeStop(stopOnEscape))
 
 // Another chat loaded into this tab: the words were looked for in the one it replaced.
 watch(

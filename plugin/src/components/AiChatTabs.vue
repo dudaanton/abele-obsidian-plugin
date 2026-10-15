@@ -18,7 +18,12 @@
           :aria-label="tab.waiting ? 'Waiting for you' : 'The agent is working'"
         />
         <span class="abele-chat-tabs__label">{{ tab.label || 'New chat' }}</span>
-        <Icon icon="x" class="abele-chat-tabs__close" @click.stop="emit('close', tab.id)" />
+        <Icon
+          icon="x"
+          class="abele-chat-tabs__close"
+          :tooltip="tab.isActive ? closeTip : 'Close tab'"
+          @click.stop="emit('close', tab.id)"
+        />
       </div>
     </div>
     <div class="abele-chat-tabs__add-wrap">
@@ -26,6 +31,7 @@
         icon="plus"
         class="abele-chat-tabs__add"
         :class="{ 'abele-chat-tabs__add--disabled': !canCreate }"
+        :tooltip="newTip"
         @click="canCreate && emit('create')"
       />
     </div>
@@ -35,6 +41,7 @@
 <script setup lang="ts">
 import { nextTick, onMounted, ref, watch } from 'vue'
 import Icon from './obsidian/Icon.vue'
+import { withShortcut } from '@/ai/chatTabKeyMap'
 
 export interface TabInfo {
   id: string
@@ -51,6 +58,11 @@ const props = defineProps<{
 }>()
 
 const strip = ref<HTMLElement | null>(null)
+
+// The keys are named on the controls they stand for. Cmd+W closes the tab in front, so only
+// that tab's × says so.
+const closeTip = withShortcut('Close tab', 'close')
+const newTip = withShortcut('New chat', 'create')
 
 /** The width of the fade the add button paints over the right end of the strip. */
 const FADE_PX = 12

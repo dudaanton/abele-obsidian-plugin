@@ -13,6 +13,9 @@ export class AiSidebarView extends ItemView {
     super(leaf)
     this.app = app
     this.id = nanoid()
+    // While this pane is active its keys work the chat's tabs (`chatTabKeys.ts`). Loaded on
+    // demand, as the quick menu loads the chat service, so the view stays light to register.
+    void import('@/ai/chatTabKeys').then((m) => (this.scope = m.chatTabScope(app)))
   }
 
   getViewType() {

@@ -798,12 +798,49 @@ export class FuzzySuggestModal<T> extends SuggestModal<T> {
   onChooseItem(_item: T, _evt: unknown): void {}
 }
 
-/** A keymap scope. Only registration is modelled; nothing here dispatches a key. */
-export class Scope {
-  readonly bindings: Array<{ modifiers: string[]; key: string }> = []
+type ScopeHandler = (evt: KeyboardEvent, ctx: { modifiers: string; key: string }) => unknown
 
-  register(modifiers: string[], key: string, _handler: unknown): void {
-    this.bindings.push({ modifiers, key })
+/**
+ * A keymap scope. `handleKey` walks it the way Obsidian's does: the first registration that
+ * matches decides, a catch-all (no key, no modifiers) that answers nothing passes the key on,
+ * and a scope with nothing to say hands it to its parent. Mod is Cmd on a Mac, Ctrl elsewhere.
+ */
+export class Scope {
+  readonly bindings: Array<{ modifiers: string[] | null; key: string | null }> = []
+  private readonly handlers = new Map<object, ScopeHandler>()
+
+  constructor(public parent?: Scope) {}
+
+  static compile(modifiers: string[]): string {
+    const real = modifiers.map((m) =>
+      m === 'Mod' ? ((Platform as { isMacOS?: boolean }).isMacOS ? 'Meta' : 'Ctrl') : m
+    )
+    return ['Ctrl', 'Meta', 'Alt', 'Shift'].filter((m) => real.includes(m)).join(',')
+  }
+
+  register(modifiers: string[] | null, key: string | null, handler: unknown): object {
+    const binding = { modifiers, key }
+    this.bindings.push(binding)
+    this.handlers.set(binding, handler as ScopeHandler)
+    return binding
+  }
+
+  unregister(binding: object): void {
+    const at = this.bindings.indexOf(binding as (typeof this.bindings)[number])
+    if (at >= 0) this.bindings.splice(at, 1)
+    this.handlers.delete(binding)
+  }
+
+  handleKey(evt: KeyboardEvent, ctx: { modifiers: string; key: string }): unknown {
+    for (const binding of this.bindings) {
+      const { modifiers, key } = binding
+      if (modifiers !== null && Scope.compile(modifiers) !== ctx.modifiers) continue
+      if (key && key.toLowerCase() !== ctx.key.toLowerCase()) continue
+      const answer = this.handlers.get(binding)?.(evt, ctx)
+      if (answer !== undefined) return answer
+      if (key !== null || modifiers !== null) return answer
+    }
+    return this.parent?.handleKey(evt, ctx)
   }
 }
 

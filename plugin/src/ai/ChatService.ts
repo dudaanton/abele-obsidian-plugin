@@ -638,12 +638,41 @@ export class ChatService {
     }
 
     const intent = this.presentations.begin(session.currentChatFile.value?.path ?? tabId, false)
+    this.rememberClosed(session)
     await this.saveForRelease(session)
     this.presentations.apply(intent, () => {
       if (this.sessions.get(tabId) !== session || session.isDestroyed) return
       session.destroy()
       this.dropTabNow(tabId)
     })
+  }
+
+  /** The chats whose tabs were closed, the latest last: what Cmd+Shift+T brings back. */
+  private readonly closedTabs: string[] = []
+
+  private rememberClosed(session: ChatSession): void {
+    const path = session.currentChatFile.value?.path
+    if (session.kind !== 'chat' || !path) return
+    const at = this.closedTabs.indexOf(path)
+    if (at >= 0) this.closedTabs.splice(at, 1)
+    this.closedTabs.push(path)
+    if (this.closedTabs.length > MAX_TABS) this.closedTabs.shift()
+  }
+
+  /**
+   * Opens the chat whose tab was closed last, as a browser's Cmd+Shift+T does. A chat open
+   * again by now, or deleted since, is passed over for the one closed before it.
+   */
+  async reopenClosedTab(): Promise<boolean> {
+    const { app } = GlobalStore.getInstance()
+    for (let path = this.closedTabs.pop(); path; path = this.closedTabs.pop()) {
+      if (this.getSessionByFile(path)) continue
+      const file = app.vault.getAbstractFileByPath(path)
+      if (!(file instanceof TFile)) continue
+      await this.openChatFile(file)
+      return true
+    }
+    return false
   }
 
   /**

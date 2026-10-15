@@ -195,8 +195,9 @@
 </template>
 
 <script setup lang="ts">
-import { ref, computed, nextTick, watch } from 'vue'
-import { TFile } from 'obsidian'
+import { ref, computed, inject, nextTick, watch } from 'vue'
+import { TFile, type Scope } from 'obsidian'
+import { CHAT_KEY_SCOPE } from '@/ai/chatKeyScope'
 import Icon from './obsidian/Icon.vue'
 import ChatSlashSuggest, { type SlashItem } from './ChatSlashSuggest.vue'
 import VoiceRecorder from './VoiceRecorder.vue'
@@ -327,6 +328,8 @@ const {
   keepNote: () => keepNote(),
   emitFocus: (focused) => emit('focus', focused),
   extensions: [replyChips((to) => emit('show-reply', to))],
+  // Only inside a chat pane, whose tabs the keys work: a comment or a node's own view has none.
+  parentScope: inject<Scope | undefined>(CHAT_KEY_SCOPE, undefined),
 })
 const expandLabel = computed(() =>
   expanded.value ? 'Collapse the message field' : 'Expand the message field'
@@ -569,7 +572,11 @@ watch(text, (value) => {
 const splitPlaces = (value: string) =>
   fallback.value ? splitMarkedText(value, marked.value) : splitComposerText(value)
 
+/** The «/» list is open over the field, and Esc is its to take. */
+const suggesting = () => slashQuery.value !== null && !slashDismissed.value && !!slash.value?.open
+
 defineExpose({
+  suggesting,
   quote,
   setText,
   addAttachment,

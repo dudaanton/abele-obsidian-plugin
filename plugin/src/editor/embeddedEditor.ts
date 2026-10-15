@@ -148,6 +148,11 @@ export interface EmbeddedEditorOptions {
    * CodeMirror's notation (`Shift-Enter`). `run` says whether the key was taken.
    */
   keys?: { key: string; run: () => boolean }[]
+  /**
+   * The keys of the place the field sits in — a pane's. While the field has the focus its own
+   * scope is the one Obsidian asks, and without this the pane's keys went unheard there.
+   */
+  parentScope?: Scope
   placeholder?: string
   /** More of the field's own drawing — the composer's reply chips. */
   extensions?: Extension[]
@@ -271,10 +276,10 @@ export function createEmbeddedEditor(
     // What the editor commands and the suggester look for on whatever is active.
     controller.owner.editMode = controller
     controller.owner.editor = controller.editor
-    if (options.onSubmit || options.onEscape) {
+    if (options.onSubmit || options.onEscape || options.parentScope) {
       // Obsidian's window-capture hotkeys run before CodeMirror and before a form's
       // capture listener. Shadow follow-link here, in the scope it consults first.
-      const scope = new Scope(controller.scope ?? app.scope)
+      const scope = new Scope(options.parentScope ?? controller.scope ?? app.scope)
       if (options.onSubmit) scope.register(['Mod'], 'Enter', submit)
       if (options.onEscape)
         scope.register([], 'Escape', () => {

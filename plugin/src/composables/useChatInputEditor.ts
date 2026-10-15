@@ -1,5 +1,5 @@
 import { ref, nextTick, onMounted, onUnmounted, type Ref } from 'vue'
-import { TFile } from 'obsidian'
+import { TFile, type Scope } from 'obsidian'
 import type { Extension } from '@codemirror/state'
 import { insertLine } from '@/ai/replyLinks'
 import { GlobalStore } from '@/stores/GlobalStore'
@@ -18,6 +18,8 @@ interface InputEditorOptions {
   emitFocus: (focused: boolean) => void
   /** More of the note editor's drawing: the reply chips. */
   extensions?: Extension[]
+  /** The keys of the chat pane around the field, heard while it has the focus. */
+  parentScope?: Scope
 }
 
 /** The borrowed note editor and the plain-text fallback share the same composer actions. */
@@ -181,6 +183,7 @@ export function useChatInputEditor(options: InputEditorOptions) {
       onBlur: () => emitFocus(false),
       keys: EDITOR_KEYS,
       extensions: options.extensions,
+      parentScope: options.parentScope,
     })
     if (!editor) fallback.value = true
   }
