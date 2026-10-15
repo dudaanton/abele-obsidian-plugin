@@ -201,6 +201,11 @@ const script = (footer: boolean, short = false) => String.raw`(async function* (
     const count = state => (report.counts ??= []).push([state, headerCount(), openTasks()])
     uiState = () => ({today:day(0),dates:dates(),overdue:overdueRow()?.textContent.trim(),past:pastRow()?.textContent.trim(),
       viewport:[scroller.clientWidth,scroller.clientHeight],label,
+      paging:{scrollTop:scroller.scrollTop,scrollHeight:scroller.scrollHeight,owner:scroller.getBoundingClientRect().toJSON(),
+        sentinel:root.querySelector('.abele-timeline__sentinel')?.getBoundingClientRect().toJSON() ?? null,
+        space:root.querySelector('.abele-timeline__anchor-space')?.style.height ?? null,
+        padding:root.querySelector('.abele-timeline__blocks')?.style.paddingTop ?? null,
+        held:scroller.classList.contains('abele-timeline__scroll-hold'),window:[innerWidth,innerHeight]},
       fixtureDates:[...window.__abeleTest.GlobalStore.getInstance().tasksList.value.tasks.values()]
         .filter(task=>task.taskPath.startsWith(folder+'/')&&!task.completedAt)
         .reduce((counts,task)=>{const key=task.date?.format('YYYY-MM-DD')??'none';counts[key]=(counts[key]??0)+1;return counts},{})})
