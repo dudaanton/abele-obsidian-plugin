@@ -273,3 +273,63 @@ describe('keys on what is picked', () => {
     expect(s.document.session.dirty).toBe(false)
   })
 })
+
+describe('a pinned card', () => {
+  it('is picked but stays where it was put', async () => {
+    const s = setup(cards())
+    s.viewer.setCamera({ x: 0, y: 0, zoom: 1 })
+    await s.editor.controls.setPinned('alpha', true)
+    expect(s.document.session.graph.nodes[0].abele?.pinned).toBe(true)
+    pointer(s, 'pointerdown', 100, 80, { ...mouse, buttons: 1 })
+    pointer(s, 'pointermove', 160, 120, { ...mouse, buttons: 1 })
+    pointer(s, 'pointerup', 160, 120, mouse)
+    expect(s.editor.controls.picked().ids).toEqual(['alpha'])
+    expect(s.document.session.graph.nodes[0]).toMatchObject({ x: 0, y: 0 })
+    await s.editor.controls.setPinned('alpha', false)
+    expect(s.document.session.graph.nodes[0].abele?.pinned).toBeUndefined()
+    expect(s.document.session.history.undo).toBe(2)
+  })
+})
+
+describe('a note on the canvas', () => {
+  it('shows a chosen part of itself, as one step', async () => {
+    const graph: CanvasGraph = {
+      nodes: [{ id: 'n', type: 'file', file: 'Sample.md', x: 0, y: 0, width: 300, height: 200 }],
+      edges: [],
+    }
+    const s = setup(graph)
+    await s.editor.controls.setSubpath('n', '#Sample part')
+    expect(s.document.session.graph.nodes[0].subpath).toBe('#Sample part')
+    await s.editor.controls.setSubpath('n', '')
+    expect(s.document.session.graph.nodes[0].subpath).toBeUndefined()
+  })
+  it('reads on under the wheel before the canvas moves', () => {
+    const s = setup(cards())
+    s.viewer.setCamera({ x: 0, y: 0, zoom: 1 })
+    const scrolled: [string, number][] = []
+    let room = true
+    ;(s.viewer as unknown as { ports: { cards: Record<string, unknown> } }).ports.cards.scroll = (
+      id: string,
+      _dx: number,
+      dy: number
+    ) => {
+      scrolled.push([id, dy])
+      return room
+    }
+    // jsdom's WheelEvent carries no pointer position; a mouse event with the wheel's deltas does.
+    const wheel = () =>
+      s.viewer.stage.dispatchEvent(
+        Object.assign(
+          new MouseEvent('wheel', { clientX: 100, clientY: 80, bubbles: true, cancelable: true }),
+          { deltaX: 0, deltaY: 40 }
+        )
+      )
+    wheel()
+    expect(scrolled).toEqual([['alpha', 40]])
+    expect(s.viewer.camera.y).toBe(0)
+    // At the end of its words the canvas moves on.
+    room = false
+    wheel()
+    expect(s.viewer.camera.y).toBe(40)
+  })
+})

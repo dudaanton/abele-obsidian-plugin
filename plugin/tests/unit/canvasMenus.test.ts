@@ -31,6 +31,7 @@ function host(): CanvasHostActions & Record<string, ReturnType<typeof vi.fn>> {
     makeNote: vi.fn(async () => 'Sample idea.md'),
     trashNote: vi.fn(async () => true),
     askText: vi.fn(async () => null),
+    pickPart: vi.fn(async () => null),
   }
 }
 const rect = { x: 100, y: 50, width: 200, height: 100 }
@@ -145,5 +146,37 @@ describe('finding things on the canvas', () => {
       title: 'Draw with a finger',
       checked: true,
     })
+  })
+})
+
+describe('the parts of a note', () => {
+  it('are all of it first, then its headings and named blocks', async () => {
+    const { noteParts } = await import('@/canvas/pickedActions')
+    expect(
+      noteParts(
+        [
+          { heading: 'Sample plan', level: 1 },
+          { heading: 'Detail', level: 2 },
+        ],
+        ['abc123']
+      )
+    ).toEqual([
+      { title: 'The whole note', subpath: '' },
+      { title: 'Sample plan', subpath: '#Sample plan' },
+      { title: '  Detail', subpath: '#Detail' },
+      { title: 'Block ^abc123', subpath: '#^abc123' },
+    ])
+  })
+  it('offer a part, and pinning, from a note\'s more menu', async () => {
+    const c = controls() as ReturnType<typeof controls> & Record<string, ReturnType<typeof vi.fn>>
+    c.setSubpath = vi.fn(async () => {})
+    c.setPinned = vi.fn(async () => {})
+    const h = host()
+    h.pickPart = vi.fn(async () => '#Sample plan')
+    const entries = moreEntries(c, picked('file', { type: 'file', file: 'Sample.md' }), h)
+    await run(entries, 'Show a part of the note…')
+    expect(c.setSubpath).toHaveBeenCalledWith('one', '#Sample plan')
+    await run(entries, 'Pin in place')
+    expect(c.setPinned).toHaveBeenCalledWith('one', true)
   })
 })
