@@ -31,15 +31,21 @@ const CONTEXT_KEY = 'abele-requests-context'
 const key = (c: Pick<RequestsContext, 'registrationId' | 'projectId'>) =>
   JSON.stringify([c.registrationId, c.projectId])
 
+/** The node's requests over its connection, looked up only when a request is made: a node
+ * removed since says so then, instead of breaking whatever holds the model. */
 export function rpcFor(registrationId: string) {
-  const connection = NodeService.getInstance().connection(registrationId)
   return {
-    connection,
     rpc: new HttpRpc(async (method, params) => {
+      const connection = NodeService.getInstance().connection(registrationId)
       await connection.connect()
       return connection.client.request(method, params)
     }),
   }
+}
+
+/** Whether this device still has the node a project was chosen on. */
+export function nodeKnown(registrationId: string) {
+  return NodeService.getInstance().nodes.value.some((n) => n.id === registrationId)
 }
 
 /** Keys by name from the plugin's key store; the owner allows an address the way scripts do. */
@@ -145,8 +151,12 @@ export class RequestsService {
   private readonly models = new Map<string, RequestsModel>()
   /** The request whose tab was looked at last: the view marks it, a new request goes beside it. */
   readonly openRequest = shallowRef<{ registrationId: string; projectId: string; id: string }>()
-  /** The project the Requests view shows. */
-  readonly context = shallowRef<RequestsContext | undefined>(this.remembered())
+  private readonly chosen = shallowRef<RequestsContext | undefined>(this.remembered())
+  /** The project the Requests view shows; none once its node has been removed from this device. */
+  readonly context = computed(() => {
+    const c = this.chosen.value
+    return c && nodeKnown(c.registrationId) ? c : undefined
+  })
 
   private remembered(): RequestsContext | undefined {
     try {
@@ -161,7 +171,7 @@ export class RequestsService {
   }
 
   choose(c: RequestsContext) {
-    this.context.value = c
+    this.chosen.value = c
     GlobalStore.getInstance().app.saveLocalStorage(CONTEXT_KEY, JSON.stringify(c))
   }
 

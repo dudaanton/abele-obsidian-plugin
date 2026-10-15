@@ -111,9 +111,15 @@ const Sidebar = defineComponent({
     const service = RequestsService.instance()
     const context = service.context
     const model = computed(() => (context.value ? service.model(context.value) : undefined))
-    const connection = computed(() =>
-      context.value ? NodeService.getInstance().connection(context.value.registrationId) : undefined
-    )
+    const connection = computed(() => {
+      const c = context.value
+      if (!c) return undefined
+      try {
+        return NodeService.getInstance().connection(c.registrationId)
+      } catch {
+        return undefined
+      }
+    })
     const recording = computed(() =>
       context.value ? service.recording(context.value).value : undefined
     )
