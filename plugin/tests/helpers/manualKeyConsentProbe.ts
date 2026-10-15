@@ -126,10 +126,11 @@ export function manualKeyConsentProbe(shots: string, token: string, physical: bo
       const c=s.controls.find(c=>c.id===id)
       const geometry=await settle(()=>sample(c,acknowledged),()=>wait(50),Date.now,10000,400,ready)
       const vp=geometry.viewport
-      for(const[label,r]of[[c.label,geometry.field],['Allow key and address',geometry.primary]])if(r.left<vp.left||r.right>vp.right||r.top<vp.top||r.bottom>vp.bottom)s.out.outside.push(label)
+      // The kit dropdown keeps Obsidian's hidden sizing copy fixed off screen; it is no control.
+      for(const[label,r]of[...(c.kind==='sizing-copy'?[]:[[c.label,geometry.field]]),['Allow key and address',geometry.primary]])if(r.left<vp.left||r.right>vp.right||r.top<vp.top||r.bottom>vp.bottom)s.out.outside.push(label)
       s.out.ringCuts.push(...geometry.cuts)
       const r=geometry.field,reach=geometry.reach
-      if(r.left-reach<vp.left||r.right+reach>vp.right||r.top-reach<vp.top||r.bottom+reach>vp.bottom)s.out.ringCuts.push(c.label)
+      if(c.kind!=='sizing-copy'&&(r.left-reach<vp.left||r.right+reach>vp.right||r.top-reach<vp.top||r.bottom+reach>vp.bottom))s.out.ringCuts.push(c.label)
       s.out.geometry.push(geometry)
       return geometry
     }
