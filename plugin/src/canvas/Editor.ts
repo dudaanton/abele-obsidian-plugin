@@ -116,8 +116,11 @@ export class CanvasEditor {
             this.writes.changed(document)
             return
           }
+          // One failure is told once; later attempts that fail the same way stay quiet.
+          const repeated = this.writeFailed === document
           this.writeFailed = document
-          this.fail(error)
+          if (repeated) this.refresh()
+          else this.fail(error)
         },
       },
       {

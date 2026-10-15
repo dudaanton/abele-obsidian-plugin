@@ -1127,6 +1127,23 @@ describe('card text saves itself', () => {
       expect(s.document.session.committed.graph.nodes[0].text).toBe('Written on Escape')
     )
   })
+  it('tells about a failing write once, not again at every later attempt', async () => {
+    const s = setup(emptyCanvas(), { textSchedule: { idle: 20, max: 1000 } })
+    const write = s.publish.getMockImplementation()!
+    s.publish.mockRejectedValue(new Error('Sample storage unavailable'))
+    s.button('Add text card').click()
+    s.input('Typed before failures')
+    await vi.waitFor(() => expect(s.publish).toHaveBeenCalledTimes(1))
+    s.field().blur()
+    s.done()
+    await vi.waitFor(() => expect(s.publish.mock.calls.length).toBeGreaterThan(1))
+    await new Promise((resolve) => setTimeout(resolve, 50))
+    expect(s.notice).toHaveBeenCalledOnce()
+    expect(s.button('Retry save').hidden).toBe(false)
+    s.publish.mockImplementation(write)
+    s.button('Retry save').click()
+    await vi.waitFor(() => expect(s.document.session.dirty).toBe(false))
+  })
   it('still offers Retry, Keep and Discard when a write of typed text fails', async () => {
     const s = setup(emptyCanvas(), { textSchedule: { idle: 20, max: 1000 } })
     s.publish.mockRejectedValueOnce(new Error('Sample storage unavailable'))
