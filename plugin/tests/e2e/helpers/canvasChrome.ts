@@ -91,6 +91,8 @@ const PICKED: Record<string, string> = {
   'Ungroup canvas selection': 'Remove the frame, keep what is inside',
   'Detach selected ink': 'Detach from its card',
   'Attach selected ink': 'Attach to the card under it',
+  'Toggle multiple selection': 'Pick several',
+  'Toggle lasso multiple selection': 'Pick several',
 }
 /** Glyphs in the zoom and history column. */
 const COLUMN: Record<string, string> = {
@@ -155,8 +157,8 @@ export function canvasChrome(d: CanvasChromeDriver) {
   return {
     emptySpot,
     tool,
-    /** Presses whatever does `label` now. */
-    async click(label: string) {
+    /** Presses whatever does `label` now; `allowDisabled` presses it even while it may not run. */
+    async click(label: string, allowDisabled = false) {
       if (GONE.has(label)) return
       if (TOOLS[label]) return tool(label)
       if (ADDS[label]) {
@@ -167,7 +169,11 @@ export function canvasChrome(d: CanvasChromeDriver) {
       if (label === 'Add canvas shape')
         return d.press(startsWith('.abele-canvas-chrome__tools', 'Shape: '))
       if (PICKED[label]) {
-        await d.until(`${picked(PICKED[label])}&&!${picked(PICKED[label])}.disabled`)
+        await d.until(
+          allowDisabled
+            ? picked(PICKED[label])
+            : `${picked(PICKED[label])}&&!${picked(PICKED[label])}.disabled`
+        )
         return d.press(picked(PICKED[label]))
       }
       if (label === 'Fit diagram' && d.phone) {

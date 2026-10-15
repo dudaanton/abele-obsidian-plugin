@@ -5,6 +5,7 @@ import { onPhone, targets } from './helpers/target'
 import { tap, swipe, screenshot, driver, swipeDriverArgs, typeText } from './helpers/phone'
 import { withNativeInput } from './helpers/nativeInput'
 import { shotDir } from './helpers/shots'
+import { canvasChrome, menuItem } from './helpers/canvasChrome'
 
 targets('desktop', 'phone')
 const available = isObsidianRunning() && hasTestApi()
@@ -48,18 +49,25 @@ const press = async (expression: string) => {
   await expect.poll(() => run<number[] | null>(geometry), { timeout: 15_000 }).not.toBeNull()
   await input(run<number[]>(geometry))
 }
-const click = async (label: string) => {
-  await until(`button(${JSON.stringify(label)})&&!button(${JSON.stringify(label)}).disabled`)
-  await press(`button(${JSON.stringify(label)})`)
+/** Two presses in one place, as quick as a person's double click or double tap. */
+const double = async (at: number[]) => {
+  if (onPhone()) driver(['doubletap', String(at[0]), String(at[1])])
+  else
+    await withNativeInput(() =>
+      run(`
+    const cdp=require('@electron/remote').getCurrentWebContents().debugger,owned=!cdp.isAttached();if(owned)cdp.attach('1.3')
+    try {
+      for(const n of [1,2]){
+        await cdp.sendCommand('Input.dispatchMouseEvent',{type:'mousePressed',x:${at[0]},y:${at[1]},button:'left',buttons:1,clickCount:n})
+        await cdp.sendCommand('Input.dispatchMouseEvent',{type:'mouseReleased',x:${at[0]},y:${at[1]},button:'left',buttons:0,clickCount:n})
+        await new Promise(r=>setTimeout(r,60))}
+    } finally {if(owned)cdp.detach()}return true
+  `)
+    )
 }
-const palette = async (open: boolean) => {
-  if (
-    run<boolean>('return view().contentEl.querySelector(".abele-canvas-shape-controls").hidden') ===
-    open
-  )
-    await click('Shapes and connections')
-  await until(`view().contentEl.querySelector(".abele-canvas-shape-controls").hidden===${!open}`)
-}
+const chrome = canvasChrome({ run, press, until, at: (p) => input(p), phone: onPhone() })
+/** Presses what does `label` on the canvas's tool bar, its column or the bar over the picked. */
+const click = (label: string) => chrome.click(label)
 const point = (id: string, corner = false): number[] =>
   run(`
   const v=view().viewer,n=v.graph.nodes.find(n=>n.id===${JSON.stringify(id)}),c=v.camera,r=v.stage.getBoundingClientRect()
@@ -162,7 +170,6 @@ describe.skipIf(!available)('shapes and connections with real pointer input', ()
 
   it('adds a shape with typed text and changes a selected card into a shape', async () => {
     await reopen()
-    await click('Shapes and connections')
     shot('shape-palette')
     await click('Add canvas shape')
     await press('view().contentEl.querySelector("textarea")')
@@ -184,8 +191,12 @@ describe.skipIf(!available)('shapes and connections with real pointer input', ()
     await saved()
     await fit()
     await input(point('alpha'))
-    await click('Shapes and connections')
-    await click('Apply selected shape')
+    // The shape glyph over the picked card opens Obsidian's menu of shapes.
+    await press(
+      `view().contentEl.querySelector('.abele-canvas-chrome__picked [aria-label="Shape"]')`
+    )
+    await until(menuItem('Rectangle'))
+    await press(menuItem('Rectangle'))
     await saved()
     expect(
       run<string>("return (await read()).nodes.find(n=>n.id==='alpha').styleAttributes.shape")
@@ -193,7 +204,6 @@ describe.skipIf(!available)('shapes and connections with real pointer input', ()
   }, 120_000)
 
   it('connects cards, changes the caption and arrow, reconnects an endpoint and undoes', async () => {
-    await palette(true)
     await click('Draw connection')
     await fit()
     await input(point('alpha'), point('beta'))
@@ -204,22 +214,28 @@ describe.skipIf(!available)('shapes and connections with real pointer input', ()
     )
     expect(edge).toMatchObject({ fromNode: 'alpha', toNode: 'beta' })
     await click('Select canvas objects')
-    await palette(false) // Leave room for the property sheet.
-    await press('view().contentEl.querySelector(".abele-canvas-connection-properties summary")')
-    await press('view().contentEl.querySelector(\'[aria-label="Connection label"]\')')
+    // A double press on the connection writes its label where it stands.
+    const middle = run<number[]>(
+      `const v=view().viewer,c=v.camera,r=v.stage.getBoundingClientRect(),edge=v.graph.edges[0],a=v.graph.nodes.find(n=>n.id===edge.fromNode),b=v.graph.nodes.find(n=>n.id===edge.toNode),end=(n,side)=>({top:[n.x+n.width/2,n.y],right:[n.x+n.width,n.y+n.height/2],bottom:[n.x+n.width/2,n.y+n.height],left:[n.x,n.y+n.height/2]})[side],p=end(a,edge.fromSide??'right'),q=end(b,edge.toSide??'left');return [Math.round(r.left+((p[0]+q[0])/2-c.x)*c.zoom),Math.round(r.top+((p[1]+q[1])/2-c.y)*c.zoom)]`
+    )
+    await double(middle)
+    await until(`document.activeElement?.matches('[aria-label="Label of the connection"]')`)
     await type('Next step')
     await expect
       .poll(
         () =>
           run<string>(
-            'return view().contentEl.querySelector(\'[aria-label="Connection label"]\').value'
+            'return view().contentEl.querySelector(\'[aria-label="Label of the connection"]\')?.value'
           ),
         { timeout: 15_000 }
       )
       .toBe('Next step')
     shot('caption-keyboard')
-    await click('Apply connection style')
+    // Leaving the field writes the label.
+    await chrome.click('Save text')
     await saved()
+    await until(`(await read()).edges[0].label==='Next step'`)
+    await input(middle)
     await click('Reverse connection arrows')
     await saved()
     expect(run('return (await read()).edges[0]')).toMatchObject({
@@ -229,7 +245,6 @@ describe.skipIf(!available)('shapes and connections with real pointer input', ()
       toEnd: 'none',
     })
     shot('connection-style')
-    await press('view().contentEl.querySelector(".abele-canvas-connection-properties summary")')
     await fit()
     await input(endpoint('to'), point('gamma'))
     await saved()
@@ -272,7 +287,6 @@ describe.skipIf(!available)('shapes and connections with real pointer input', ()
   }, 120_000)
 
   it('draws a free arrow, edits its endpoints, and retains it through a real native Canvas move', async () => {
-    await palette(true)
     await click('Draw free arrow')
     await fit()
     const points = run<number[]>(
@@ -283,8 +297,13 @@ describe.skipIf(!available)('shapes and connections with real pointer input', ()
     const original = run<{ id: string }>('return (await read()).abele.lines[0]')
     expect(original).toMatchObject({ version: 1, toEnd: 'arrow' })
     await click('Select canvas objects')
-    await palette(false)
     await fit()
+    // The arrow is picked by a press on it; its ends then show their handles.
+    const along = run<number[]>(
+      `const l=view().viewer.graph.abele.lines[0],v=view().viewer,c=v.camera,r=v.stage.getBoundingClientRect();return [Math.round(r.left+((l.from.x+l.to.x)/2-c.x)*c.zoom),Math.round(r.top+((l.from.y+l.to.y)/2-c.y)*c.zoom)]`
+    )
+    await input(along)
+    await until(`view().contentEl.querySelector('[data-end="to"]')`)
     const e = endpoint('to')
     await input(e, [e[0] + 12, e[1] - 16])
     await saved()

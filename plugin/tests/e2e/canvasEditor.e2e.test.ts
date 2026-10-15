@@ -7,6 +7,7 @@ import { tap, typeText, screenshot } from './helpers/phone'
 import { withNativeInput } from './helpers/nativeInput'
 import { shotDir } from './helpers/shots'
 import { dismissOwnNotices } from './helpers/ownNotices'
+import { canvasChrome } from './helpers/canvasChrome'
 
 targets('desktop', 'phone')
 const available = isObsidianRunning() && hasTestApi()
@@ -60,11 +61,21 @@ const press = async (expression: string, corner = false) => {
   `)
     )
 }
-const click = async (label: string, allowDisabled = false) => {
-  if (!allowDisabled)
-    await until(`button(${JSON.stringify(label)}) && !button(${JSON.stringify(label)}).disabled`)
-  await press(`button(${JSON.stringify(label)})`)
+/** A tap or click at a point of the screen. */
+const at = async ([x, y]: number[]) => {
+  if (onPhone()) tap(x, y)
+  else
+    await withNativeInput(() =>
+      run(`
+    const cdp=require('@electron/remote').getCurrentWebContents().debugger,owned=!cdp.isAttached();if(owned)cdp.attach('1.3')
+    try {await cdp.sendCommand('Input.dispatchMouseEvent',{type:'mousePressed',x:${x},y:${y},button:'left',buttons:1,clickCount:1});await cdp.sendCommand('Input.dispatchMouseEvent',{type:'mouseReleased',x:${x},y:${y},button:'left',buttons:0,clickCount:1})}
+    finally {if(owned)cdp.detach()}return true
+  `)
+    )
 }
+const chrome = canvasChrome({ run, press: (e) => press(e), until, at, phone: onPhone() })
+/** Presses what does `label` on the canvas's tool bar, its column, the bar over the picked or a menu. */
+const click = (label: string, allowDisabled = false) => chrome.click(label, allowDisabled)
 const type = async (text: string) => {
   if (onPhone()) {
     // DOM focus precedes the native keyboard. Wait for it, then use its keys directly:

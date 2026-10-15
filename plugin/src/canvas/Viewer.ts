@@ -59,6 +59,8 @@ export class CanvasViewer {
   input?: CanvasViewerInput
   /** The host draws each frame's name as a label of its own; the surface paints only the frame. */
   groupLabels = false
+  /** Screen height at the stage's top covered by the host's tools: framing keeps clear of it. */
+  insetTop = 0
   openNode(node: CanvasNode): void {
     this.ports.openNode(node)
   }
@@ -253,13 +255,15 @@ export class CanvasViewer {
     }
     this.pendingFocus = null
     this.fitted = true
-    const target = fitRect(
-      { x: region.x, y: region.y, w: region.width, h: region.height },
-      width,
-      height,
-      2,
-      16
-    )
+    const top = Math.min(this.insetTop, height / 2),
+      target = fitRect(
+        { x: region.x, y: region.y, w: region.width, h: region.height },
+        width,
+        height - top,
+        2,
+        16
+      )
+    target.y -= top / target.zoom
     this.stopAnimation()
     const win = this.el.ownerDocument.defaultView
     if (!animate || win.matchMedia('(prefers-reduced-motion: reduce)').matches) {
@@ -300,7 +304,7 @@ export class CanvasViewer {
       height = this.stage.clientHeight,
       zoom = this.camera.zoom
     if (!width || !height) return
-    const top = inset.top ?? 16,
+    const top = (inset.top ?? 16) + this.insetTop,
       bottom = inset.bottom ?? 16,
       side = inset.side ?? 16
     const sx = (region.x - this.camera.x) * zoom,

@@ -167,6 +167,13 @@
           @click="press('Ungroup selected group')"
         />
       </template>
+      <!-- Where there is no Shift to hold: each press on a card then adds it or takes it away. -->
+      <ChromeIcon
+        icon="list-checks"
+        tooltip="Pick several"
+        :active="state('Toggle multiple selection').on"
+        @click="press('Toggle multiple selection')"
+      />
       <ChromeIcon
         icon="more-horizontal"
         tooltip="More"
@@ -396,10 +403,17 @@ let barSize: ResizeObserver | undefined
 onMounted(() => {
   const el = toolsBar.value?.$el
   if (!el || typeof ResizeObserver === 'undefined') return
-  barSize = new ResizeObserver(() => (barHeight.value = el.offsetHeight))
+  barSize = new ResizeObserver(() => {
+    barHeight.value = el.offsetHeight
+    // Fitting and revealing keep what they show clear of the row of tools.
+    props.viewer.insetTop = el.offsetHeight
+  })
   barSize.observe(el)
 })
-onBeforeUnmount(() => barSize?.disconnect())
+onBeforeUnmount(() => {
+  barSize?.disconnect()
+  props.viewer.insetTop = 0
+})
 /** The pen's width, from its row's glyph: Obsidian's menu under the button. */
 function widthMenu(e: MouseEvent) {
   const menu = new Menu()
@@ -612,6 +626,20 @@ const watchCamera = () => {
 }
 let dropShown: unknown = null
 const off = shallowRef<() => void>()
+/**
+ * A press on the canvas leaves whatever is being written there: the canvas keeps its touches to
+ * itself, so a phone would otherwise keep the field, and its keyboard, open.
+ */
+const leaveFields = (e: Event) => {
+  const active = props.viewer.el.ownerDocument.activeElement as HTMLElement | null
+  if (!active || active === e.target || active.contains(e.target as Node)) return
+  if (
+    active === c.textField() ||
+    active === labelEl.value ||
+    active.matches('[data-frame-id][contenteditable="true"]')
+  )
+    active.blur()
+}
 const blur = () => {
   if (c.editing() && !state('Save text').disabled) press('Save text')
 }
@@ -629,11 +657,13 @@ onMounted(() => {
     } else if (!drop) dropShown = null
   })
   c.textField().addEventListener('blur', blur)
+  props.viewer.stage.addEventListener('pointerdown', leaveFields, true)
   frame = window.requestAnimationFrame(watchCamera)
 })
 onBeforeUnmount(() => {
   off.value?.()
   c.textField().removeEventListener('blur', blur)
+  props.viewer.stage.removeEventListener('pointerdown', leaveFields, true)
   cancelAnimationFrame(frame)
   props.viewer.el.classList.remove('abele-canvas-view_chrome')
   props.viewer.groupLabels = false

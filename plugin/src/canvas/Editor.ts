@@ -830,6 +830,19 @@ export class CanvasEditor {
     this.palette.hidden = true
     this.showText(id)
   }
+  /** Moves what is picked by a few units, as one step to take back. */
+  private async nudge(ids: string[], dx: number, dy: number): Promise<void> {
+    const document = this.ready()
+    document.beginDraft()
+    try {
+      this.update(document, [{ op: 'move', ids, dx, dy }])
+    } catch (error) {
+      document.discardDraft()
+      throw error
+    }
+    document.finishDraft()
+    await this.saving(() => this.ports.publish())
+  }
   /** What was pasted, on the canvas where the pointer was, or in the middle of the view. */
   private async paste(files: File[], text: string): Promise<void> {
     const view = this.viewer.visible(),
@@ -1175,8 +1188,8 @@ export class CanvasEditor {
       },
     ])
     this.selected = new Set([id])
-    // The new card stands clear of the tools at the foot, so its words can be written in view.
-    this.viewer.reveal({ ...at, ...size }, { bottom: 96 })
+    // The new card stands clear of the tools, so its words can be written in view.
+    this.viewer.reveal({ ...at, ...size })
     if (kind !== 'note') this.editText()
     else this.refresh()
   }
@@ -1714,6 +1727,53 @@ export class CanvasEditor {
         this.refresh()
       }
       event.preventDefault()
+      return true
+    }
+    const graph = this.ports.document()?.session.graph
+    // Cmd with a letter or a bracket acts on what is picked, as in every editor of shapes.
+    if (command && !event.altKey && this.viewer.step === null) {
+      const k = event.key.toLowerCase()
+      const run = (action: () => Promise<void> | void) => {
+        event.preventDefault()
+        event.stopPropagation()
+        void Promise.resolve(action()).catch((error) => this.fail(error))
+        return true
+      }
+      if (k === 'a' && graph)
+        return run(() => {
+          this.selected = new Set(canvasVisibility(graph).visible.map((n) => n.id))
+          this.refresh()
+        })
+      if (this.selected.size) {
+        if (k === 'd' && !event.shiftKey) return run(() => this.act('duplicate'))
+        if (k === 'c' && !event.shiftKey) return run(() => this.act('copy'))
+        if (event.key === ']') return run(() => this.act('front'))
+        if (event.key === '[') return run(() => this.act('back'))
+      }
+    }
+    // Shift+1 shows the whole canvas, Shift+2 what is picked.
+    if (event.shiftKey && !command && (event.code === 'Digit1' || event.code === 'Digit2')) {
+      const rect = this.picked().rect
+      if (event.code === 'Digit1') this.viewer.fit()
+      else if (rect) this.viewer.focusRegion(rect, true)
+      event.preventDefault()
+      return true
+    }
+    // Arrows move what is picked a step, ten with Shift; with nothing picked they go through steps.
+    const arrows: Record<string, [number, number]> = {
+      ArrowLeft: [-1, 0],
+      ArrowRight: [1, 0],
+      ArrowUp: [0, -1],
+      ArrowDown: [0, 1],
+    }
+    if (arrows[event.key] && this.selected.size && this.viewer.step === null && !command) {
+      const step = event.shiftKey ? 10 : 1,
+        [dx, dy] = arrows[event.key],
+        ids = [...this.selected].filter((id) => !graph?.edges.some((e) => e.id === id))
+      event.preventDefault()
+      event.stopPropagation()
+      if (ids.length)
+        void this.nudge(ids, dx * step, dy * step).catch((error) => this.fail(error))
       return true
     }
     const tools: Record<string, [string, string?]> = {

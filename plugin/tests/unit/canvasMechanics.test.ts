@@ -229,3 +229,47 @@ describe('a paste', () => {
     expect(event.defaultPrevented).toBe(false)
   })
 })
+
+describe('fitting the canvas', () => {
+  it('keeps what it shows clear of the tools across the top', () => {
+    const s = setup(cards())
+    Object.defineProperty(s.viewer.stage, 'clientWidth', { value: 1000 })
+    Object.defineProperty(s.viewer.stage, 'clientHeight', { value: 600 })
+    s.viewer.insetTop = 44
+    s.viewer.fit(false)
+    const { y, zoom } = s.viewer.camera
+    // The topmost card's edge lands under the row of tools, with the margin still to spare.
+    expect((0 - y) * zoom).toBeGreaterThanOrEqual(44 + 16 - 0.5)
+  })
+})
+
+describe('keys on what is picked', () => {
+  const pick = (s: Harness, ...ids: string[]) =>
+    ((s.editor as unknown as { selected: Set<string> }).selected = new Set(ids))
+  it('duplicate it with Cmd+D and move it with the arrows', async () => {
+    const s = setup(cards())
+    pick(s, 'alpha')
+    key(s, 'd', 'keydown', { metaKey: true })
+    await vi.waitFor(() => expect(s.document.session.graph.nodes).toHaveLength(4))
+    const copy = s.editor.controls.picked().ids[0]
+    key(s, 'ArrowRight', 'keydown', { shiftKey: true })
+    await vi.waitFor(() =>
+      expect(s.document.session.graph.nodes.find((n) => n.id === copy)!.x).toBe(260 + 40 + 10)
+    )
+    expect(s.document.session.history.undo).toBe(2)
+  })
+  it('send it back with Cmd+[ and pick all with Cmd+A', async () => {
+    const s = setup(cards())
+    pick(s, 'gamma')
+    key(s, '[', 'keydown', { metaKey: true })
+    await vi.waitFor(() => expect(s.document.session.graph.nodes[0].id).toBe('gamma'))
+    key(s, 'a', 'keydown', { metaKey: true })
+    expect(new Set(s.editor.controls.picked().ids)).toEqual(new Set(['alpha', 'beta', 'gamma']))
+  })
+  it('leave the arrows to the walkthrough when nothing is picked', () => {
+    const s = setup(cards())
+    const event = new KeyboardEvent('keydown', { key: 'ArrowRight', bubbles: true, cancelable: true })
+    s.el.dispatchEvent(event)
+    expect(s.document.session.dirty).toBe(false)
+  })
+})

@@ -25,8 +25,20 @@ const PRELUDE = `
 `
 const run = <T>(body: string): T =>
   evalAsync<T>(`(async()=>{${PRELUDE} return JSON.stringify(await (async()=>{${body}})())})()`)
+/** What the canvas was doing, said when a wait gives up. */
+const state = () =>
+  run(`const v=view(),e=v?.editor,d=v?.documentLease?.document
+    return {tool:e?.controls.tool(),picked:e?.controls.picked().ids,camera:v?.viewer.camera,dirty:d?.session.dirty,busy:d?.session.busy,
+      waiting:e?.waiting,error:d?.error,ink:(v?.viewer.graph.abele?.ink??[]).length,events:(window.__canvasChrome?.events??[]).slice(-14)}`)
 const until = async (expression: string) => {
-  await expect.poll(() => run<boolean>(`return !!(${expression})`), { timeout: 15_000 }).toBe(true)
+  try {
+    await expect
+      .poll(() => run<boolean>(`return !!(${expression})`), { timeout: 15_000 })
+      .toBe(true)
+  } catch (error) {
+    console.error('canvas state while waiting for', expression, JSON.stringify(state()))
+    throw error
+  }
 }
 const saved = () =>
   until(
@@ -57,6 +69,11 @@ const double = async (at: number[]) => {
     await cdp(`
       for(const n of [1,2]){await mouse({type:'mousePressed',x:${at[0]},y:${at[1]},buttons:1,clickCount:n});await mouse({type:'mouseReleased',x:${at[0]},y:${at[1]},buttons:0,clickCount:n});await wait(60)}`)
 }
+/** The middle of a mark drawn over the canvas, which lets presses through to the canvas. */
+const mark = (expression: string) =>
+  run<number[] | null>(
+    `const el=${expression};if(!el)return null;const r=el.getBoundingClientRect();return [Math.round(r.left+r.width/2),Math.round(r.top+r.height/2)]`
+  )
 const center = (expression: string) =>
   run<
     number[] | null
@@ -106,6 +123,9 @@ const reopen = async () => {
     for(const l of old)l.detach();return true`
   )
   await until('view()?.editor&&view().contentEl.querySelector(".abele-canvas-chrome__tools")')
+  run(`const f=window.__canvasChrome;f.events=[];const st=view().viewer.stage
+    for(const t of ['pointerdown','pointerup','pointercancel'])st.addEventListener(t,e=>f.events.push([t,e.pointerType,e.button,e.buttons,Math.round(e.clientX),Math.round(e.clientY),e.target.className?.baseVal??e.target.className]),true)
+    return true`)
   // The cards stand in the middle third of the stage, under the tools and clear of its edges.
   run(
     `const v=view().viewer,s=v.stage;v.setCamera({x:-60,y:-Math.max(80,s.clientHeight*.25),zoom:Math.min(1,s.clientWidth/820)});return true`
@@ -187,7 +207,7 @@ describe.skipIf(!available)('the canvas by hand', () => {
     await input(middle('beta'))
     const point = `view().contentEl.querySelector('.abele-canvas-connect-point[data-side="bottom"]')`
     await until(point)
-    const from = center(point)!,
+    const from = mark(point)!,
       to = middle('gamma')
     if (onPhone()) swipe(from[0], from[1], to[0], to[1])
     else
@@ -219,7 +239,7 @@ describe.skipIf(!available)('the canvas by hand', () => {
     await input(middle('alpha'))
     const right = `view().contentEl.querySelector('.abele-canvas-connect-point[data-side="right"]')`
     await until(right)
-    const start = center(right)!,
+    const start = mark(right)!,
       end = screen(110, 330)
     await input(start, end)
     await until(menuItem('Card'))

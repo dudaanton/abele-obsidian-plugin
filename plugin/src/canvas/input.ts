@@ -81,7 +81,7 @@ export type CanvasDouble =
   | { kind: 'node' | 'frame' | 'connection'; id: string }
   | { kind: 'empty'; point: Point }
 /** Two presses this close in time and on the screen are one double press. */
-const DOUBLE_MS = 400,
+const DOUBLE_MS = 500,
   DOUBLE_PX = 8
 /** Where a connection was let go over nothing, and the card edge it came from. */
 export interface CanvasDrop {
