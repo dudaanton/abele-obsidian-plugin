@@ -37,11 +37,12 @@
 
 <script setup lang="ts">
 import { ref } from 'vue'
-import { Menu, setIcon } from 'obsidian'
+import { Menu } from 'obsidian'
 import Icon from './obsidian/Icon.vue'
 import type { BranchChoice } from '@/ai/chatBranches'
 import Button from './obsidian/Button.vue'
-import { formatTimestamp } from '@/helpers/displayFormat'
+import ChatBranchTitle from './chat/ChatBranchTitle.vue'
+import { renderKit, unrenderKit } from './obsidian/mount'
 
 const props = defineProps<{
   choices: BranchChoice[]
@@ -57,32 +58,23 @@ const emit = defineEmits<{
 
 const count = ref<InstanceType<typeof Button>>()
 
-const toneLabel = { waiting: 'Waiting for your approval', failed: 'Refused or failed' } as const
-
 /** Obsidian's own menu, a branch per item: how it starts, then its facts as codes, its words in labels. */
 function showAll() {
+  if (!count.value) return
   const menu = new Menu()
+  const titles: HTMLElement[] = []
+  menu.onHide(() => titles.forEach(unrenderKit))
   props.choices.forEach((choice, i) => {
     const title = createFragment()
-    const words = title.createSpan({ cls: 'abele-chat-branch__title', text: choice.title })
-    words.setAttr('title', choice.title)
-    const facts = title.createSpan({ cls: 'abele-chat-branch__facts' })
-    const questions = facts.createSpan({
-      cls: 'abele-chat-branch__questions',
-      attr: { 'aria-label': `${choice.questions} questions in it` },
+    const holder = createSpan({ cls: 'abele-chat-branch__menu-title' })
+    title.append(holder)
+    renderKit(holder, ChatBranchTitle, {
+      title: choice.title,
+      questions: choice.questions,
+      timestamp: choice.timestamp,
+      tone: choice.tone,
     })
-    setIcon(questions.createSpan({ cls: 'abele-chat-branch__glyph' }), 'message-circle-question')
-    questions.createSpan({ text: String(choice.questions) })
-    const time = formatTimestamp(choice.timestamp, { diagnostic: true })
-    facts.createEl('time', {
-      text: time.datetime ? time.exact.split(', ')[1].slice(0, 5) : time.label,
-      attr: { ...(time.datetime ? { datetime: time.datetime } : {}), 'aria-label': time.exact },
-    })
-    if (choice.tone)
-      facts.createSpan({
-        cls: `abele-chat-branch__dot abele-chat-branch__dot_${choice.tone}`,
-        attr: { 'aria-label': toneLabel[choice.tone], role: 'img' },
-      })
+    titles.push(holder)
     menu.addItem((item) =>
       item
         .setTitle(title)
@@ -100,7 +92,6 @@ function showAll() {
         .onClick(() => emit('new'))
     )
   }
-  if (!count.value) return
   const button = count.value.$el as HTMLElement
   const box = button.getBoundingClientRect()
   menu.onHide(() => {
@@ -131,12 +122,17 @@ function showAll() {
   color: var(--text-muted);
 }
 
-// The menu's item: how the branch starts on the left, its facts at the end in quiet codes.
-.menu-item-title:has(> .abele-chat-branch__title) {
+// The menu's item: how the branch starts on the left, its facts at the end in quiet codes. The
+// span the title is rendered into stands out of the way, so both are the title's own flex items.
+.menu-item-title:has(> .abele-chat-branch__menu-title) {
   display: flex;
   align-items: baseline;
   gap: var(--size-4-3);
   min-width: 0;
+}
+
+.abele-chat-branch__menu-title {
+  display: contents;
 }
 
 .abele-chat-branch__title {
@@ -164,22 +160,10 @@ function showAll() {
   gap: var(--size-2-1);
 }
 
-.abele-chat-branch__glyph {
+.abele-chat-branch__glyph.abele-obsidian-icon {
   display: inline-flex;
+  min-height: 0;
+  color: inherit;
   --icon-size: var(--icon-xs);
-}
-
-.abele-chat-branch__dot {
-  width: var(--size-4-2);
-  height: var(--size-4-2);
-  border-radius: 50%;
-
-  &_waiting {
-    background-color: var(--color-orange);
-  }
-
-  &_failed {
-    background-color: var(--color-red);
-  }
 }
 </style>
