@@ -25,7 +25,9 @@ export async function readPhotoCodes(image: ImageData): Promise<string[]> {
     tryDownscale: true,
     downscaleFactor: 2,
     downscaleThreshold: 400,
-    maxNumberOfSymbols: 1,
+    // Validate several candidates: an unrelated code must not hide the token.
+    // Keep a finite limit because this decoder runs on the phone's UI thread.
+    maxNumberOfSymbols: 8,
   }
   const found = await readBarcodes(image, options)
   if (found.length) return found.map((code) => code.text)
