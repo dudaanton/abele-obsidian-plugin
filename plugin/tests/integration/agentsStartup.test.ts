@@ -12,6 +12,21 @@ import * as ChatLog from '@/ai/ChatLog'
 import { useAttentionVault as useVault } from '../helpers/attentionVault'
 import { syntheticChats } from '../helpers/syntheticChats'
 
+/**
+ * Waits until every scheduled change has been read, rather than for a fixed time: the debounce is
+ * 250 ms, but the read after it can take longer on a busy machine. Only a drain that never ends
+ * reaches the bound.
+ */
+async function untilChangesDrained(agents: AgentsService): Promise<void> {
+  // A scheduled file waits out its debounce first, so the flag is up until the drain has ended.
+  await vi.waitFor(
+    () => {
+      if (agents['updating'].value) throw new Error('changes are still being read')
+    },
+    { timeout: 10_000, interval: 20 }
+  )
+}
+
 beforeEach(() => {
   AbeleConfig.getInstance().ai = structuredClone(DEFAULT_AI_SETTINGS)
   vi.spyOn(AbeleConfig.getInstance(), 'saveSettings').mockResolvedValue(undefined)
@@ -303,7 +318,7 @@ it('discovers a recreated path after cancelling its deleted pending revision', a
   agents.deleted(file.path)
   const recreated = await app.vault.create(fixture[0].path, fixture[0].content)
   agents.scheduleFile(recreated)
-  await new Promise((resolve) => setTimeout(resolve, 600))
+  await untilChangesDrained(agents)
   expect(agents.badge.value.attention).toBe(1)
   expect(agents.rows.value[0].reference.path).toBe(recreated.path)
 })
@@ -329,7 +344,7 @@ it('ignores discovery events before layout readiness and coalesces streamed writ
   await agents.start()
   read.mockClear()
   for (let i = 0; i < 20; i++) agents.scheduleFile(file)
-  await new Promise((resolve) => setTimeout(resolve, 600))
+  await untilChangesDrained(agents)
   expect(read).toHaveBeenCalledTimes(1)
 })
 
@@ -352,7 +367,7 @@ it('serializes different changed files and does not race the initial inventory',
   const starting = agents.start()
   for (const file of app.vault.getFiles()) agents.scheduleFile(file)
   await starting
-  await new Promise((resolve) => setTimeout(resolve, 600))
+  await untilChangesDrained(agents)
   expect(peak).toBe(1)
 })
 
