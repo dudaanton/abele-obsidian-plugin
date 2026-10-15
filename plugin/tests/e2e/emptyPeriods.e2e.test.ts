@@ -112,7 +112,7 @@ const probe = `(async () => {
       // Rows of its own, so the check does not lean on what the vault holds; removed afterwards.
       if (!app.vault.getAbstractFileByPath(FOLDER)) await app.vault.createFolder(FOLDER)
       for (const [name, balance] of [['Wallet', 120], ['Savings', 5000], ['Card', -40], ['Cash', 15]]) {
-        await app.vault.create(FOLDER + '/Empty probe ' + name + '.md', '---\ntype: account\naccountType: asset\ncurrency: EUR\nstartingBalance: ' + balance + '\nstartingBalanceDate: 2020-01-01\n---\n')
+        await app.vault.create(FOLDER + '/Empty probe ' + name + '.md', '---\\ntype: account\\naccountType: asset\\ncurrency: EUR\\nstartingBalance: ' + balance + '\\nstartingBalanceDate: 2020-01-01\\n---\\n')
       }
       const accounts = await open('abele-accounts-sidebar-view')
       const pane = () => accounts.view.containerEl.querySelector('.abele-accounts-sidebar')

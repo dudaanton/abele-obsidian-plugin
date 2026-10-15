@@ -75,7 +75,8 @@ describe.each(onPhone() ? ['phone'] : ['desktop', 'emulated-phone'])(
         .filter(el => el.textContent.trim() === 'XTS').length
       state.summary = label => [...(state.root()?.querySelectorAll('.abele-finance-sidebar__summary-row') || [])]
         .find(el => el.querySelector('.abele-finance-sidebar__summary-label')?.textContent.trim() === label)
-        ?.querySelector('.abele-finance-sidebar__summary-value')?.textContent.trim() || null
+        // The number alone: one currency's code stands beside it in a span of its own.
+        ?.querySelector('.abele-finance-sidebar__summary-value')?.firstChild?.textContent.trim() || null
       await until(state.count, 2)
       return JSON.stringify(true)
     `)
