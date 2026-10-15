@@ -343,7 +343,7 @@ it('keeps Send off while a key the plugin does not have is named, and says which
     await openRequest('Signed sample');
     const b=tab().querySelector('.abele-http-request__send');
     const missing=!!tab().querySelector('.abele-http-pairs__row_missing');
-    const said=tab().querySelector('.abele-http-request__answer .abele-http-request__notice')?.textContent.trim()??'';
+    const said=tab().querySelector('.abele-http-request__answer .abele-http-request__notice > span')?.textContent.trim()??'';
     const openKeys=!!tab().querySelector('.abele-http-request__open-keys');
     await shot('2026-10-15-http-missing-key-desktop');
     return {said,openKeys,disabled:b.disabled||b.classList.contains('is-disabled')||b.getAttribute('aria-disabled')==='true',missing,key:tab().querySelector('.abele-http-pairs__secret')?.textContent.trim()??''}
@@ -396,7 +396,7 @@ it('imports requests from the clipboard into the view, a clash numbered, nothing
     try{
       clip.writeText(${JSON.stringify(
         [
-          '### Create sample',
+          '### Archive sample',
           'POST {{base}}/samples',
           'Content-Type: application/json',
           '',
@@ -414,8 +414,8 @@ it('imports requests from the clipboard into the view, a clash numbered, nothing
       // The same again: nothing is overwritten, each clashing name is numbered.
       app.commands.executeCommandById('abele:import-requests');
       const notice=await until(()=>notices().find(n=>n.startsWith('Imported')),'import said');
-      await until(()=>row('Create sample 2')&&row('Count samples 2'),'imported rows listed');
-      const imported=[...document.querySelectorAll('.abele-requests-panel__request')].filter(r=>/^(Create sample 2|Count samples 2)$/.test(r.querySelector('.abele-tree-item__text')?.textContent.trim()??''));
+      await until(()=>row('Archive sample 2')&&row('Count samples 2'),'imported rows listed');
+      const imported=[...document.querySelectorAll('.abele-requests-panel__request')].filter(r=>/^(Archive sample 2|Count samples 2)$/.test(r.querySelector('.abele-tree-item__text')?.textContent.trim()??''));
       const box=panel().closest('.view-content').getBoundingClientRect();
       const visible=imported.filter(r=>{const b=r.getBoundingClientRect();return b.top>=box.top-1&&b.bottom<=box.bottom+1}).map(r=>r.querySelector('.abele-tree-item__text').textContent.trim());
       await shot('2026-10-15-http-import-desktop');
@@ -423,12 +423,12 @@ it('imports requests from the clipboard into the view, a clash numbered, nothing
       clip.writeText('hello, nothing to import here');
       app.commands.executeCommandById('abele:import-requests');
       const nothing=await until(()=>notices().find(n=>n.startsWith('The clipboard')),'nothing said');
-      return {notice,unfolded:!!row('Create sample 2')?.offsetParent,visible,nothing};
+      return {notice,unfolded:!!row('Archive sample 2')?.offsetParent,visible,nothing};
     }finally{clip.writeText(was)}
   })()`)
   expect(seen.notice).toBe('Imported 2 requests into Imported.')
   expect(seen.unfolded).toBe(true)
-  expect(seen.visible.sort()).toEqual(['Count samples 2', 'Create sample 2'])
+  expect(seen.visible.sort()).toEqual(['Archive sample 2', 'Count samples 2'])
   expect(seen.nothing).toBe(
     'The clipboard holds no request: paste a curl command, a .http file, or a Postman, Insomnia or Bruno export'
   )
@@ -444,6 +444,7 @@ it('works the same on a phone: the list in the drawer, a request on the whole sc
       error: string
       compared: boolean
     }>(`(async()=>{${prelude}
+      try{
       ${CHOOSE(() => emptyProject, 'empty-repo')}
       await until(()=>panel().querySelector('.abele-requests-panel__empty'),'empty said');
       await shot('2026-10-15-http-empty-phone');
@@ -472,10 +473,12 @@ it('works the same on a phone: the list in the drawer, a request on the whole sc
       tab().closest('.view-content').scrollTop=tab().querySelector('.abele-http-request__answer').offsetTop;
       await shot('2026-10-15-http-error-phone');
       const error=facts();
-      // The phone's layout is saved apart from the desktop's: leave no request tab in it.
-      for(const t of ['abele-request','abele-requests'])for(const l of app.workspace.getLeavesOfType(t))l.detach();
-      await app.workspace.requestSaveLayout.run();
       return {rows,facts:f,overflow,error,compared}
+      }finally{
+        // The phone's layout is saved apart from the desktop's: leave no request tab in it.
+        for(const t of ['abele-request','abele-requests'])for(const l of app.workspace.getLeavesOfType(t))l.detach();
+        await app.workspace.requestSaveLayout.run();
+      }
     })()`)
     expect(seen.rows).toBeGreaterThanOrEqual(34)
     expect(seen.facts).toMatch(/^201 Created/)
