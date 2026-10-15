@@ -105,7 +105,7 @@ describe.skipIf(!available)('node folder dialog layout', () => {
       expect(layout.shown).toBeGreaterThanOrEqual(8)
     } else {
       // A centred dialog sized by what it holds, the list showing a page of folders. Their
-      // \`mod-lg\` may be on it: every rule they have for it is a phone rule.
+      // `mod-lg` may be on it: every rule they have for it is a phone rule.
       expect(layout.bottom - layout.top).toBeLessThan(layout.window * 0.75)
       expect(layout.shown).toBeGreaterThanOrEqual(6)
     }
