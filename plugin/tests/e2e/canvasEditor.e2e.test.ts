@@ -321,7 +321,7 @@ describe.skipIf(!available)('human canvas creation and editing with real input',
     expect(link).toBe('https://sample.example/diagram')
   }, 120_000)
 
-  it('blocks text editing of a failed undo preview until explicit discard', async () => {
+  it('keeps a failed write of an undo visible as local work, then discards it explicitly', async () => {
     await click('Fit diagram')
     await new Promise((resolve) => setTimeout(resolve, 350))
     await press(
@@ -333,16 +333,15 @@ describe.skipIf(!available)('human canvas creation and editing with real input',
       'return view().documentLease.document.session.history'
     )
     failSave()
-    await click('Undo canvas change')
-    await until(
-      "view().documentLease.document.session.dirty&&!view().documentLease.document.session.busy&&button('Retry save').disabled"
-    )
-    expect(run<boolean>("return button('Edit card text').disabled")).toBe(true)
-    const generation = run<number>('return view().documentLease.document.session.generation')
-    await click('Edit card text', true)
-    expect(run<number>('return view().documentLease.document.session.generation')).toBe(generation)
-    expect(run('return view().documentLease.document.session.history')).toEqual(history)
-    restoreProcess()
+    try {
+      // Undo applies at once in memory; its batched write fails and the work stays local.
+      await click('Undo canvas change')
+      await until("button('Retry save')&&!button('Retry save').hidden")
+      expect(run<boolean>("return view().contentEl.textContent.includes('not saved')")).toBe(true)
+      expect(run('return view().documentLease.document.session.history')).toEqual(history)
+    } finally {
+      restoreProcess()
+    }
     await click('Discard local draft')
     await press(textButton('.abele-canvas-choice', 'Discard local draft'))
     await saved()
@@ -355,7 +354,8 @@ describe.skipIf(!available)('human canvas creation and editing with real input',
     failSave()
     // Use ordinary words: the native keyboard autocorrects a made-up adjective on space.
     await addText('Pending human text')
-    await until("button('Retry save')&&!button('Retry save').disabled")
+    // Retry shows once the write has failed.
+    await until("button('Retry save')&&!button('Retry save').hidden&&!button('Retry save').disabled")
     const pending = run<boolean>(
       "return view().viewer.graph.nodes.some(node=>node.text==='Pending human text')&&view().contentEl.textContent.includes('not saved')"
     )
@@ -397,7 +397,7 @@ describe.skipIf(!available)('human canvas creation and editing with real input',
         )
         failSave()
         await addText('Retained human text')
-        await until("button('Retry save')&&!button('Retry save').disabled")
+        await until("button('Retry save')&&!button('Retry save').hidden")
         const unsaved = run<boolean>(
           "return view().contentEl.textContent.includes('not saved')&&view().viewer.graph.nodes.some(node=>node.text==='Retained human text')"
         )

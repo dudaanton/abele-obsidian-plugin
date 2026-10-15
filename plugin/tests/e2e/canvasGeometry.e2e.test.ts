@@ -205,7 +205,7 @@ describe.skipIf(!available)('canvas selection and geometry with real pointer inp
     run<{ x: number; y: number }>(`
       const stage=view().viewer.stage,r=stage.getBoundingClientRect()
       const x=${onPhone()}?innerWidth/2:r.left+r.width/2,y=${onPhone()}?innerHeight/2:r.top+r.height/2,under=document.elementFromPoint(x,y)
-      if (!stage.contains(under)) throw Error('Pinch stage is covered: '+under?.className)
+      if (!stage.contains(under)) throw Error('Pinch stage is covered: '+under?.className+' — '+(under?.textContent??'').slice(0,160)+' '+JSON.stringify({dirty:view().documentLease.document.session.dirty,steps:view().documentLease.document.session.pendingSteps,conflict:view().documentLease.document.session.conflict}))
       const events=[],active=new Set()
       const record=e=>{
         if(e.type==='pointerdown')active.add(e.pointerId)

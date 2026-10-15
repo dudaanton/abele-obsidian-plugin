@@ -912,6 +912,8 @@ export class CanvasEditor {
         this.flushHook.document.writes = null
       this.flushHook = { document, flush: () => this.writes.flush(document) }
       document.writes = this.flushHook
+      // Work left unwritten by an earlier tab is written like a new change.
+      if (this.writable(document)) this.writes.changed(document)
     }
     const active = !!this.editing,
       blocked = !this.editable(document),
