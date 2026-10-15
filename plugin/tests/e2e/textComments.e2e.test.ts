@@ -263,9 +263,10 @@ describe.skipIf(!available)('ordinary-note text comments', () => {
       const reply = document.querySelector('.abele-text-comments__reply')
       const field = reply.querySelector('.cm-content')
       // Under a long thread the field is at the end of the list: in sight for its picture.
-      reply.scrollIntoView({ block: 'end' })
+      const scroller = reply.closest('.abele-modal__body')
       field.focus()
-      await still(() => reply.getBoundingClientRect().height, 600)
+      scroller.scrollTop = scroller.scrollHeight
+      await still(() => [scroller.scrollTop, reply.getBoundingClientRect().top], 1500)
       const edges = []
       const paints = (s) =>
         ['Top', 'Right', 'Bottom', 'Left'].some(side => parseFloat(s['border' + side + 'Width']) > 0 && s['border' + side + 'Style'] !== 'none' && !/rgba\\(.*, 0\\)$|transparent/.test(s['border' + side + 'Color'])) ||
